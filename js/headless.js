@@ -654,8 +654,14 @@ export class HeadlessDisplay {
     }
 
     async morePrompt(nhgetch) {
-        // Keep topline text stable during replay; C harness snapshots don't
-        // expose the transient "--More--" marker.
+        // C tty appends "--More--" immediately after the top-line message
+        // and the captured screen includes this marker.  Render it so that
+        // replay screen comparisons match C-captured screens.
+        // C ref: win/tty/topl.c tmore()
+        const moreStr = '--More--';
+        const msgLen = (this.topMessage || '').length;
+        const col = Math.min(msgLen, this.cols - moreStr.length);
+        this.putstr(col, 0, moreStr, CLR_WHITE);
         await nhgetch();
         this.clearRow(0);
         this.messageNeedsMore = false;

@@ -87,13 +87,31 @@ function diagKey(file) {
 const CELL_W = 12; // visible width of each PES metric cell
 
 /**
- * Format one PES metric cell.
- * @param {number|null} step   - Step of first divergence (1-indexed), or null if none
- * @param {number}      total  - Total steps in session (screens.total)
- * @param {boolean}     full   - True if channel matched 100%
- * @returns {string}           - ANSI-colored cell of width CELL_W
+ * Compute the yellow threshold for a column from its array of pct values.
+ * - If any pct >= 0.90, threshold = 0.90 (highlight everything near-perfect)
+ * - Else if any pct > 0.50, threshold = the maximum such pct (highlight the
+ *   easiest case in the column so something is always yellow if possible)
+ * - Else null (no yellow shown)
+ * @param {Array<number|null>} pcts  - Pct values (0–1) for non-full sessions; nulls ignored
+ * @returns {number|null}
  */
-function fmtCell(step, total, full) {
+function columnYellowThreshold(pcts) {
+    const valid = pcts.filter(p => p !== null && p < 1.0);
+    if (valid.some(p => p >= 0.90)) return 0.90;
+    const above50 = valid.filter(p => p > 0.50);
+    if (above50.length === 0) return null;
+    return Math.max(...above50);
+}
+
+/**
+ * Format one PES metric cell.
+ * @param {number|null} step        - Step of first divergence (1-indexed), or null if none
+ * @param {number}      total       - Total steps in session (screens.total)
+ * @param {boolean}     full        - True if channel matched 100%
+ * @param {number|null} yellowThres - Yellow threshold for this column (from columnYellowThreshold)
+ * @returns {string}                - ANSI-colored cell of width CELL_W
+ */
+function fmtCell(step, total, full, yellowThres = null) {
     if (!total) return ' '.repeat(CELL_W);   // no data — blank
 
     let raw;
@@ -113,8 +131,8 @@ function fmtCell(step, total, full) {
     if (pct === null) return raw;
     if (pct >= 1.0)   return cGreen(raw);
     if (pct <= 0.25)  return cRed(raw);
-    if (pct >= 0.80)  return cYellow(raw);
-    return raw;  // 26–79%: plain
+    if (yellowThres !== null && pct >= yellowThres) return cYellow(raw);
+    return raw;  // plain
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -270,6 +288,38 @@ function main() {
         console.log('─'.repeat(LINE_W));
     }
 
+    // ── Compute per-column yellow thresholds ─────────────────────────
+    function sessionPct(r, channel) {
+        const m   = r.metrics || {};
+        const fds = r.firstDivergences || {};
+        const total = m.screens?.total || 0;
+        if (!total) return null;
+        if (channel === 'rng') {
+            const full = (m.rngCalls?.total > 0) && (m.rngCalls.matched === m.rngCalls.total);
+            if (full) return 1.0;
+            const step = fds.rng?.step ?? null;
+            return (step != null) ? step / total : null;
+        }
+        if (channel === 'ev') {
+            const full = (m.events?.total > 0) && (m.events.matched === m.events.total);
+            if (full) return 1.0;
+            const hasData = m.events?.total > 0;
+            if (!hasData) return null;
+            const step = fds.event?.step ?? null;
+            return (step != null) ? step / total : null;
+        }
+        if (channel === 'sc') {
+            const full = (m.screens?.total > 0) && (m.screens.matched === m.screens.total);
+            if (full) return 1.0;
+            const step = fds.screen?.step ?? null;
+            return (step != null) ? step / total : null;
+        }
+        return null;
+    }
+    const rngThres = columnYellowThreshold(gameplay.map(r => sessionPct(r, 'rng')));
+    const evThres  = columnYellowThreshold(gameplay.map(r => sessionPct(r, 'ev')));
+    const scThres  = columnYellowThreshold(gameplay.map(r => sessionPct(r, 'sc')));
+
     // ── Per-session rows ──────────────────────────────────────────────
     const failingResults = [];
 
@@ -298,9 +348,9 @@ function main() {
         const scStep  = fds.screen?.step ?? null;
 
         if (!diagnoseOnly) {
-            const rngCell = fmtCell(rngStep, rngTotal, rngFull);
-            const evCell  = fmtCell(evStep,  evTotal,  evFull);
-            const scCell  = fmtCell(scStep,  scTotal,  scFull);
+            const rngCell = fmtCell(rngStep, rngTotal, rngFull, rngThres);
+            const evCell  = fmtCell(evStep,  evTotal,  evFull,  evThres);
+            const scCell  = fmtCell(scStep,  scTotal,  scFull,  scThres);
 
             const passIndicator = r.passed ? cGreen('✓') : cRed('✗');
             const namePad = padEndVis(name, NAME_W - 2);  // -2 for indicator + space
@@ -354,8 +404,7 @@ function main() {
         // ── Color legend ──────────────────────────────────────────────
         console.log(cDim(
             `  Color: ${ANSI_GREEN}GREEN=100%${ANSI_RESET}${ANSI_DIM}   `
-            + `${ANSI_YELLOW}YELLOW=≥80%${ANSI_RESET}${ANSI_DIM}   `
-            + `plain=26–79%   `
+            + `${ANSI_YELLOW}YELLOW=best-per-col (≥90% or closest >50%)${ANSI_RESET}${ANSI_DIM}   `
             + `${ANSI_RED}RED=≤25%${ANSI_RESET}`
         ));
     }

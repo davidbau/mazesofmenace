@@ -365,7 +365,7 @@ export async function rhack(ch, game) {
 
     // Look (:)
     if (c === ':') {
-        return dolook(game);
+        return await dolook(game);
     }
 
     // What is (;)

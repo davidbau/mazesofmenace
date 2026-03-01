@@ -34,6 +34,11 @@ import {
 } from './monsters.js';
 import { lays_eggs } from './mondata.js';
 
+// Re-export RANDOM_CLASS from objclass.js (no-import module).
+// Re-export bindings are live at link-time, preventing TDZ in circular imports.
+// C ref: include/objclass.h RANDOM_CLASS = 0
+export { RANDOM_CLASS } from './objclass.js';
+
 // Named object indices we need (exported from objects.js)
 // Check: CORPSE, EGG, TIN, SLIME_MOLD, KELP_FROND, CANDY_BAR,
 // LOADSTONE, LUCKSTONE, TALLOW_CANDLE, WAX_CANDLE, BRASS_LANTERN, OIL_LAMP,
@@ -1054,9 +1059,6 @@ export function mkobj(oclass, artif, skipErosion) {
     mkobjTrace(`mkobj call=${getRngCallCount()} in_class=${inputClass} class=${oclass} picked=${i} artif=${artif ? 1 : 0}`);
     return mksobj(i, true, artif, skipErosion);
 }
-
-// RANDOM_CLASS constant (matches C's RANDOM_CLASS = 0)
-export const RANDOM_CLASS = 0;
 
 // C ref: objnam.c just_an()
 function just_an(str) {

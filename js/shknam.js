@@ -21,7 +21,8 @@ import {
 import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, CORR,
          D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
 import { makemon, mkclass, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
-import { mksobj, mkobj, RANDOM_CLASS } from './mkobj.js';
+import { mksobj, mkobj } from './mkobj.js';
+import { RANDOM_CLASS } from './objclass.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
 import { placeFloorObject } from './stackobj.js';
 

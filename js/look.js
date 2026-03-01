@@ -3,12 +3,13 @@
 
 import {
     STAIRS, LADDER, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE, POOL, LAVAPOOL,
-    DOOR, IRONBARS, TREE, CORR, SCORR,
+    DOOR, IRONBARS, TREE, CORR, SCORR, ICE,
 } from './config.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { nhgetch } from './input.js';
 import { def_monsyms } from './symbols.js';
 import { x_monnam } from './mondata.js';
+import { engr_at, can_reach_floor } from './engrave.js';
 
 const LOOK_ONCE = 1;
 const LOOK_VERBOSE = 3;
@@ -256,10 +257,73 @@ function build_dolook_message(ctx) {
     return 'You see no objects here.';
 }
 
-// C ref: invent.c dolook()
-export function dolook(game) {
+// C ref: invent.c dolook() → look_here() → read_engr_at()
+// Shows engraving type message, pauses for --More--, then shows engraving text.
+// This matches C's tty multi-message sequence that produces --More-- between lines.
+export async function dolook(game) {
     const { map, player, display } = game || {};
     if (!display) return { moved: false, tookTime: false };
+
+    if (map && player) {
+        const ep = engr_at(map, player.x, player.y);
+        if (ep && ep.text) {
+            const loc = map.at ? map.at(player.x, player.y) : null;
+            const onIce = !!(loc && loc.typ === ICE);
+            const blind = !!(player.blind);
+            let sensed = false;
+            let typeMsg = '';
+
+            switch (ep.type) {
+            case 'dust':
+                if (!blind) {
+                    sensed = true;
+                    typeMsg = `Something is written here in the ${onIce ? 'frost' : 'dust'}.`;
+                }
+                break;
+            case 'engrave':
+            case 'headstone':
+                if (!blind || can_reach_floor(player, map)) {
+                    sensed = true;
+                    typeMsg = 'Something is engraved here on the floor.';
+                }
+                break;
+            case 'burn':
+                if (!blind || can_reach_floor(player, map)) {
+                    sensed = true;
+                    typeMsg = `Some text has been ${onIce ? 'melted' : 'burned'} into the floor here.`;
+                }
+                break;
+            case 'mark':
+                if (!blind) {
+                    sensed = true;
+                    typeMsg = "There's some graffiti on the floor here.";
+                }
+                break;
+            case 'blood':
+                if (!blind) {
+                    sensed = true;
+                    typeMsg = 'You see a message scrawled in blood here.';
+                }
+                break;
+            default:
+                sensed = true;
+                typeMsg = 'Something is written in a very strange way.';
+                break;
+            }
+
+            if (sensed) {
+                // C: tty --More-- occurs here because a second pline follows immediately
+                display.putstr_message(typeMsg);
+                await display.morePrompt(nhgetch);
+                const et = ep.text;
+                const endpunct = (et.length >= 2 && '.!?'.includes(et[et.length - 1])) ? '' : '.';
+                display.putstr_message(`You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
+                ep.eread = true;
+                ep.erevealed = true;
+            }
+        }
+    }
+
     display.putstr_message(String(build_dolook_message({ map, player }) || '').substring(0, 79));
     return { moved: false, tookTime: false };
 }
