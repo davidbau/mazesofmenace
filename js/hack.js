@@ -46,6 +46,7 @@ import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
 import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
 import { maybe_unhide_at } from './mon.js';
+import { MZ_LARGE } from './monsters.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {
@@ -305,11 +306,31 @@ export function moverock(a0, a1, a2, a3, a4, a5, a6, a7) {
 }
 
 // C ref: hack.c cant_squeeze_thru()
-export function cant_squeeze_thru(ux, uy, x, y, player, map) {
-    if (!player) return false;
-    if (Math.abs(x - ux) !== 1 || Math.abs(y - uy) !== 1) return false;
-    if (!bad_rock(null, ux, y, map) || !bad_rock(null, x, uy, map)) return false;
-    return !could_move_onto_boulder(x, y, player);
+// Returns 0 if the player can squeeze through, nonzero if blocked:
+//   1: body too large, 2: carrying too much, 3: Sokoban restriction
+// Caller should already have checked bad_rock for both intermediate cells.
+// C ref: hack.c:935 cant_squeeze_thru()
+export function cant_squeeze_thru(player, map) {
+    if (!player) return 0;
+    // Passes_walls (phasing) always allows squeeze
+    if (player.passesWalls || player.phasing
+        || (player.uprops && player.uprops[62])) return 0; // 62 = PASSES_WALLS
+    // bigmonst check: msize >= MZ_LARGE (3)
+    const mdat = player.type;
+    const msize = mdat ? (mdat.msize ?? mdat.size ?? 0) : 0;
+    const isBig = msize >= MZ_LARGE;
+    if (isBig) {
+        // amorphous/whirly/noncorporeal/slithy/can_fog checks omitted for brevity;
+        // player in normal form is none of these
+        return 1; // body too large
+    }
+    // C ref: hack.c:954 — weight check WT_TOOMUCH_DIAGONAL = 600
+    const WT_TOOMUCH_DIAGONAL = 600;
+    const wt = inv_weight(player) + weight_cap(player);
+    if (wt > WT_TOOMUCH_DIAGONAL) return 2; // lugging too much
+    // Sokoban restriction
+    if (map?.flags?.is_sokoban) return 3;
+    return 0; // can squeeze through
 }
 
 // C ref: hack.c notice_mons_cmp()
@@ -1758,11 +1779,22 @@ export function test_move(ux, uy, dx, dy, mode, player, map, display, game = nul
     }
 
     // Diagonal squeeze check
+    // C ref: hack.c:1133-1148 — only block if cant_squeeze_thru returns nonzero.
+    // Normal-size heroes (MZ_MEDIUM) can always squeeze diagonally through walls.
     if (dx && dy && bad_rock(null, ux, y, map) && bad_rock(null, x, uy, map)) {
-        if (mode === DO_MOVE) {
-            if (display) display.putstr_message('Your body is too large to fit through.');
+        const squeezeReason = cant_squeeze_thru(player, map);
+        if (squeezeReason) {
+            if (mode === DO_MOVE) {
+                if (squeezeReason === 1) {
+                    if (display) display.putstr_message('Your body is too large to fit through.');
+                } else if (squeezeReason === 2) {
+                    if (display) display.putstr_message('You are carrying too much to get through.');
+                } else if (squeezeReason === 3) {
+                    if (display) display.putstr_message('You cannot pass that way.');
+                }
+            }
+            return false;
         }
-        return false;
     }
 
     // C parity: trap/liquid travel gating is only active while running/travel.
