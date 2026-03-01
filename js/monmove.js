@@ -230,7 +230,7 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
 // C ref: monmove.c:534 — determine whether a monster is in range, nearby,
 // and/or scared of something at or near the hero's position.
 // Sets inrange (within BOLT_LIM), nearby (adjacent), and scared (triggers flee).
-// Always consumes rn2(5) for bravegremlin check.
+// Always consumes rn2(5) for bravegremlin check (C: monmove.c:551).
 export function distfleeck(mon, map, player, display, fov) {
     const bravegremlin = (rn2(5) === 0);
 

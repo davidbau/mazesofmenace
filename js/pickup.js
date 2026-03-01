@@ -27,6 +27,7 @@ import { makemon, NO_MM_FLAGS, NO_MINVENT, MM_ADJACENTOK } from './makemon.js';
 import { christen_monst, Monnam, mon_nam, x_monnam, ARTICLE_THE,
          SUPPRESS_SADDLE } from './do_name.js';
 import { revive as revive_corpse } from './zap.js';
+import { near_capacity } from './hack.js';
 
 // pickup.js -- Autopickup, floor object pickup, container looting
 // Ported from NetHack pickup.c
@@ -440,6 +441,8 @@ function pickup_object(obj, count, telekinesis, player, map) {
         obj = splitobj(obj, cnt_p.value);
 
     obj = pick_obj(obj, player, map);
+    // C ref: pickup.c — encumber_msg() called after pick_obj/pickup_prinv
+    encumber_msg(player);
     return 1;
 }
 
@@ -448,11 +451,14 @@ function pickup_object(obj, count, telekinesis, player, map) {
 function pickup_prinv(_obj, _count, _verb) { }
 
 // cf. pickup.c:1972 — encumber_msg()
+// Uses player._oldcap to track per-session baseline (avoids
+// module-level oldcap contaminating multiple test sessions).
 function encumber_msg(player) {
-    // near_capacity not yet fully ported; stub
-    const newcap = player.near_capacity ? player.near_capacity() : 0;
+    const newcap = near_capacity(player);
+    // C ref: static int oldcap = 0; — per-session initial encumbrance baseline
+    const oldcap_val = Number.isInteger(player?._oldcap) ? player._oldcap : 0;
 
-    if (oldcap < newcap) {
+    if (oldcap_val < newcap) {
         switch (newcap) {
         case 1:
             Your("movements are slowed slightly because of your load.");
@@ -468,7 +474,7 @@ function encumber_msg(player) {
                 newcap === 4 ? "can barely" : "can't even");
             break;
         }
-    } else if (oldcap > newcap) {
+    } else if (oldcap_val > newcap) {
         switch (newcap) {
         case 0:
             Your("movements are now unencumbered.");
@@ -484,6 +490,7 @@ function encumber_msg(player) {
             break;
         }
     }
+    if (player) player._oldcap = newcap;
     oldcap = newcap;
 }
 
@@ -1168,6 +1175,7 @@ function handlePickup(player, map, display) {
     map.removeObject(obj);
     observeObject(obj);
     display.putstr_message(formatInventoryPickupMessage(obj, inventoryObj, player));
+    encumber_msg(player);
     return { moved: false, tookTime: true };
 }
 

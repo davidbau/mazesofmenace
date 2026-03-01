@@ -1089,7 +1089,12 @@ export class NetHackGame {
     // Generate or retrieve a level
     // C ref: dungeon.c -- level management
     changeLevel(depth, transitionDir = null, opts = {}) {
-        setMakemonPlayerContext(this.player);
+        // C ref: makemon.c byyou = (!in_mklev && x == u.ux && y == u.uy).
+        // At level-gen time in C, u.ux/u.uy are 0,0 (player not yet placed),
+        // so byyou is never true during fill_zoo. In JS the player still has
+        // old-level coordinates, so we clear x/y here to prevent spurious
+        // enexto_core calls when a zoo cell coincidentally matches.
+        setMakemonPlayerContext({ ...this.player, x: null, y: null });
         const heroHasAmulet = !!(this.player?.uhave?.amulet);
         const makeLevel = Number.isInteger(this.dnum)
             ? (d) => makelevel(d, this.dnum, d, {
