@@ -34,7 +34,7 @@ import { placeFloorObject, place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
-import { monsterNearby, monnear, newsym } from './monutil.js';
+import { dist2, monsterNearby, monnear, newsym } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';

@@ -32,6 +32,7 @@ import { handleSet } from './options_menu.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          RUN_KEYS, performWaitSearch } from './hack.js';
+import { dist2 } from './monutil.js';
 
 function Sprintf(fmt, ...args) {
     let i = 0;

@@ -26,7 +26,7 @@ import {
     TALLOW_CANDLE, WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE, STATUE,
     MEAT_STICK, ENORMOUS_MEATBALL,
 } from './objects.js';
-import { doname, mkcorpstat, mksobj } from './mkobj.js';
+import { doname, xname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
 import {
     x_monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
@@ -386,6 +386,12 @@ export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) 
         }
         damage += (otmp.spe || 0);
         if (damage < 1) damage = 1;
+        // C ref: mthrowu.c ohitmon() — pline("The %s hits %s%s", xname, mon_nam, exclam)
+        if (verbose && display && !player?.blind && couldsee(map, player, mtmp.mx, mtmp.my)) {
+            display.putstr_message(
+                `The ${xname({ ...otmp, dknown: true })} hits ${x_monnam(mtmp, { article: 'none' })}${exclam(damage)}`
+            );
+        }
         mtmp.mhp -= damage;
         if (mtmp.mhp <= 0) {
             mondead(mtmp, map);
@@ -463,6 +469,13 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
         && !mtarg
         && display
         && typeof display.morePrompt === 'function') {
+        // C ref: win/tty/topl.c tmore() renders "--More--" before blocking on getch,
+        // but only when two messages were concatenated onto the topline.
+        // When only a single throw message is present, C does not show --More-- here.
+        if (typeof display.renderMoreMarker === 'function'
+            && (display.topMessage || '').includes('  ')) {
+            display.renderMoreMarker();
+        }
         await display.morePrompt(nhgetch);
         if (Object.hasOwn(display, 'noConcatenateMessages')) {
             display.noConcatenateMessages = true;

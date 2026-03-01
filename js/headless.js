@@ -527,7 +527,7 @@ export class HeadlessDisplay {
         const moreStr = '--More--';
         const msgLen = (this.topMessage || '').length;
         const col = Math.min(msgLen, this.cols - moreStr.length);
-        this.putstr(col, 0, moreStr, CLR_WHITE);
+        this.putstr(col, 0, moreStr, CLR_GRAY);
     }
 
     async morePrompt(nhgetch) {

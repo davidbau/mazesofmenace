@@ -17,7 +17,6 @@ import { initLevelGeneration, makelevel, setGameSeed, isBranchLevelToDnum } from
 import { TUTORIAL } from './special_levels.js';
 import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
 import { setMakemonPlayerContext } from './makemon.js';
-import { FOOD_CLASS } from './objects.js';
 import { setObjectMoves } from './mkobj.js';
 import { monsterNearby } from './monutil.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
@@ -232,9 +231,23 @@ export async function enterTutorial(game, opts = {}) {
         await game.display.morePrompt(nhgetch);
     }
 
-    // C tutorial startup uses a dedicated branch and starts without
-    // carried comestibles; tutorial places food explicitly in-map.
-    (game.u || game.player).inventory = (game.u || game.player).inventory.filter((obj) => obj.oclass !== FOOD_CLASS);
+    // C ref: nhlib.lua tutorial_enter() calls nh.gamestate() which saves and
+    // removes ALL inventory items, clearing equipment slots. The tutorial
+    // places food/items explicitly in-map; the character enters unequipped.
+    const player = game.u || game.player;
+    player.inventory = [];
+    player.weapon = null;
+    player.swapWeapon = null;
+    player.armor = null;
+    player.shield = null;
+    player.helmet = null;
+    player.gloves = null;
+    player.boots = null;
+    player.cloak = null;
+    player.shirt = null;
+    player.quiver = null;
+    player.gold = 0;
+    player.ac = 10;
 
     setMakemonPlayerContext((game.u || game.player));
     setSplevPlayerContext((game.u || game.player));

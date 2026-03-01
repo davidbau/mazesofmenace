@@ -116,6 +116,7 @@ import {
 import { AMULET_OF_YENDOR, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
 import { ALL_TRAPS, NO_TRAP } from './config.js';
+import { dist2 } from './monutil.js';
 
 const NATTK = 6;
 
