@@ -274,6 +274,12 @@ node scripts/comparison-window.mjs --session seed110_samurai_selfplay200_gamepla
   --channel event --index 1076 --window 10
 ```
 
+5. Inspect per-step turn-accounting drift (RNG/event counts):
+```bash
+node scripts/comparison-window.mjs --session seed110_samurai_selfplay200_gameplay \
+  --step-summary --step-from 186 --step-to 200
+```
+
 Notes:
 - Artifacts are written under `tmp/session-comparisons/<run-id>/`.
 - `tmp/session-comparisons/LATEST` points to the most recent run.

@@ -16,12 +16,25 @@ function usage() {
     console.log('  --channel <name>    rng|event (default: rng)');
     console.log('  --index <n>         Explicit normalized index (default: first divergence)');
     console.log('  --window <n>        Context on each side (default: 8)');
+    console.log('  --step-summary      Show per-step RNG/event count deltas');
+    console.log('  --step-from <n>     First step for --step-summary (default: 1)');
+    console.log('  --step-to <n>       Last step for --step-summary (default: session step count)');
     console.log('  --help              Show this help');
 }
 
 function parseArgs(argv) {
     const args = argv.slice(2);
-    const out = { target: null, dir: null, list: false, channel: 'rng', index: null, window: 8 };
+    const out = {
+        target: null,
+        dir: null,
+        list: false,
+        channel: 'rng',
+        index: null,
+        window: 8,
+        stepSummary: false,
+        stepFrom: null,
+        stepTo: null,
+    };
     for (let i = 0; i < args.length; i++) {
         const a = args[i];
         if (a === '--help' || a === '-h') return { help: true };
@@ -31,6 +44,9 @@ function parseArgs(argv) {
         if (a === '--channel') { out.channel = args[++i] || 'rng'; continue; }
         if (a === '--index') { out.index = Number.parseInt(args[++i], 10); continue; }
         if (a === '--window') { out.window = Number.parseInt(args[++i], 10) || 8; continue; }
+        if (a === '--step-summary') { out.stepSummary = true; continue; }
+        if (a === '--step-from') { out.stepFrom = Number.parseInt(args[++i], 10); continue; }
+        if (a === '--step-to') { out.stepTo = Number.parseInt(args[++i], 10); continue; }
         if (!out.target) { out.target = a; continue; }
         throw new Error(`Unknown arg: ${a}`);
     }
@@ -108,6 +124,48 @@ function renderWindow(artifact, channel, center, windowSize) {
     }
 }
 
+function stepCountFromEnds(stepEnds) {
+    if (!Array.isArray(stepEnds) || stepEnds.length === 0) return 0;
+    return Math.max(0, stepEnds.length - 1);
+}
+
+function perStepCount(stepEnds, stepNum) {
+    // stepNum is 1-based gameplay step index
+    if (!Array.isArray(stepEnds)) return 0;
+    const idx = Number(stepNum);
+    if (!Number.isInteger(idx) || idx < 1 || idx >= stepEnds.length) return 0;
+    return Math.max(0, (stepEnds[idx] || 0) - (stepEnds[idx - 1] || 0));
+}
+
+function renderStepSummary(artifact, stepFrom, stepTo) {
+    const rng = artifact?.comparison?.rng;
+    const evt = artifact?.comparison?.event;
+    if (!rng || !evt) throw new Error('Artifact missing rng/event comparison data');
+    const maxSteps = Math.max(
+        stepCountFromEnds(rng.js.stepEnds),
+        stepCountFromEnds(rng.session.stepEnds),
+        stepCountFromEnds(evt.js.stepEnds),
+        stepCountFromEnds(evt.session.stepEnds),
+    );
+    const from = Number.isInteger(stepFrom) ? Math.max(1, stepFrom) : 1;
+    const to = Number.isInteger(stepTo) ? Math.min(maxSteps, stepTo) : maxSteps;
+    let cumRng = 0;
+    let cumEvt = 0;
+
+    console.log(`artifact: ${artifact?.session?.file}`);
+    console.log(`step-summary: steps ${from}..${to} (max=${maxSteps})`);
+    for (let step = from; step <= to; step++) {
+        const jsRng = perStepCount(rng.js.stepEnds, step);
+        const cRng = perStepCount(rng.session.stepEnds, step);
+        const jsEvt = perStepCount(evt.js.stepEnds, step);
+        const cEvt = perStepCount(evt.session.stepEnds, step);
+        cumRng += jsRng - cRng;
+        cumEvt += jsEvt - cEvt;
+        const marker = (jsRng !== cRng || jsEvt !== cEvt) ? '!!' : '  ';
+        console.log(`${marker} step=${step} rng js/c=${jsRng}/${cRng} d=${jsRng - cRng} cum=${cumRng} | evt js/c=${jsEvt}/${cEvt} d=${jsEvt - cEvt} cum=${cumEvt}`);
+    }
+}
+
 function main() {
     const args = parseArgs(process.argv);
     if (args.help) {
@@ -150,6 +208,10 @@ function main() {
     }
     if (!artifactPath) throw new Error(`No artifact found for target: ${args.target || '(default)'}`);
     const artifact = JSON.parse(readFileSync(artifactPath, 'utf8'));
+    if (args.stepSummary) {
+        renderStepSummary(artifact, args.stepFrom, args.stepTo);
+        return;
+    }
     const channel = args.channel === 'event' ? 'event' : 'rng';
     const first = artifact?.comparison?.[channel]?.firstDivergence?.index;
     const center = Number.isInteger(args.index) ? args.index : (Number.isInteger(first) ? first : 0);
