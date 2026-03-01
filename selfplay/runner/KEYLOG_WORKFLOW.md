@@ -30,7 +30,11 @@ Optional flags:
 Tutorial example:
 
 ```bash
-node selfplay/runner/c_manual_record.js --seed=5 --tutorial --keylog=/tmp/seed5_tutorial_manual.jsonl
+node selfplay/runner/c_manual_record.js \
+  --seed=5 \
+  --tutorial \
+  --keylog-delay=0 \
+  --keylog=/tmp/seed5_tutorial_manual.jsonl
 ```
 
 To run in your normal (default) tmux server:
@@ -72,6 +76,8 @@ python3 test/comparison/c-harness/keylog_to_session.py \
 - `--startup-mode=auto` is the safe default for manual keylogs.
 - It detects startup keys in the keylog (`in_moveloop=0`) and replays startup
   exactly from the log instead of auto-advancing prompts.
+- For tutorial recordings, keep startup logging enabled (`--keylog-delay=0`)
+  so any recorder-fed chargen/tutorial prompt keys become part of the session.
 - Tutorial prompt mode defaults to keylog metadata (`tutorial: true/false`).
   Override with `--tutorial=on|off` if needed.
 
@@ -80,3 +86,24 @@ To regenerate all keylog-backed fixtures configured in `seeds.json`:
 ```bash
 python3 test/comparison/c-harness/keylog_to_session.py --from-config
 ```
+
+## Direct Manual-to-v3 Capture (no conversion replay)
+
+For debugging where conversion replay timing may drift, capture v3 session data
+directly while manually playing:
+
+```bash
+python3 test/comparison/c-harness/record_manual_session_v3.py \
+  --seed=8 \
+  --name=Tutes \
+  --role=Wizard \
+  --race=human \
+  --gender=male \
+  --align=neutral \
+  --symset=DECgraphics \
+  --tutorial-option=unset
+```
+
+Then attach to the printed tmux session and play manually. The watcher writes
+keys + RNG deltas + ANSI screen frames directly into the output `.session.json`
+while the game runs.
