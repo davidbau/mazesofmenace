@@ -23,10 +23,16 @@ import { monsterNearby } from './monutil.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
-import { defsyms, trap_to_defsym } from './symbols.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { setOutputContext } from './pline.js';
 import { NetHackGame } from './allmain.js';
+import {
+    wallIsVisible,
+    trapGlyph, isDoorHorizontal, determineWallType,
+    terrainSymbol as renderTerrainSymbol,
+    CLR_BLACK, CLR_GRAY, NO_COLOR, CLR_WHITE,
+    CLR_RED, CLR_ORANGE, CLR_BRIGHT_BLUE,
+} from './render.js';
 import {
     COLNO, ROWNO, NORMAL_SPEED,
     A_STR, A_DEX, A_CON,
@@ -44,52 +50,6 @@ import {
     D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './config.js';
 
-// seenv angle bits (C ref: rm.h:379-386)
-const SV0 = 0x01, SV1 = 0x02, SV2 = 0x04, SV3 = 0x08;
-const SV4 = 0x10, SV5 = 0x20, SV6 = 0x40, SV7 = 0x80;
-const WM_MASK = 0x07;
-const WM_C_OUTER = 1;
-const WM_C_INNER = 2;
-
-// C ref: display.c:3502-3765 wall_angle() — check if wall should render
-function wallIsVisible(typ, seenv, wallInfo) {
-    if (!seenv) return false;
-    const mode = wallInfo & WM_MASK;
-    switch (typ) {
-    case VWALL:
-        if (mode === 0) return true;
-        if (mode === 1) return !!(seenv & (SV1 | SV2 | SV3 | SV4 | SV5));
-        if (mode === 2) return !!(seenv & (SV0 | SV1 | SV5 | SV6 | SV7));
-        return true;
-    case HWALL:
-        if (mode === 0) return true;
-        if (mode === 1) return !!(seenv & (SV3 | SV4 | SV5 | SV6 | SV7));
-        if (mode === 2) return !!(seenv & (SV0 | SV1 | SV2 | SV3 | SV7));
-        return true;
-    case TLCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV3 | SV4 | SV5));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV4);
-        return true;
-    case TRCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV5 | SV6 | SV7));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV6);
-        return true;
-    case BLCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV1 | SV2 | SV3));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV2);
-        return true;
-    case BRCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV7 | SV0 | SV1));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV0);
-        return true;
-    default:
-        return true;
-    }
-}
 
 const DEFAULT_GAME_FLAGS = {
     pickup: false,
@@ -450,102 +410,6 @@ const DEC_TO_UNICODE = {
     x: '\u2502', '~': '\u00b7',
 };
 
-const CLR_BLACK = 0;
-const CLR_BROWN = 3;
-const CLR_GRAY = 7;
-const NO_COLOR = 8;
-const CLR_CYAN = 6;
-const CLR_WHITE = 15;
-const CLR_MAGENTA = 5;
-const CLR_ORANGE = 9;
-const CLR_YELLOW = 11;
-const CLR_RED = 1;
-const CLR_BRIGHT_BLUE = 12;
-
-const TERRAIN_SYMBOLS_ASCII = {
-    [STONE]:   { ch: ' ', color: CLR_GRAY },
-    [VWALL]:   { ch: '|', color: CLR_GRAY },
-    [HWALL]:   { ch: '-', color: CLR_GRAY },
-    [TLCORNER]: { ch: '-', color: CLR_GRAY },
-    [TRCORNER]: { ch: '-', color: CLR_GRAY },
-    [BLCORNER]: { ch: '-', color: CLR_GRAY },
-    [BRCORNER]: { ch: '-', color: CLR_GRAY },
-    [CROSSWALL]: { ch: '-', color: CLR_GRAY },
-    [TUWALL]:  { ch: '-', color: CLR_GRAY },
-    [TDWALL]:  { ch: '-', color: CLR_GRAY },
-    [TLWALL]:  { ch: '|', color: CLR_GRAY },
-    [TRWALL]:  { ch: '|', color: CLR_GRAY },
-    [DOOR]:    { ch: '+', color: CLR_BROWN },
-    [CORR]:    { ch: '#', color: CLR_GRAY },
-    [ROOM]:    { ch: '.', color: CLR_GRAY },
-    [STAIRS]:  { ch: '<', color: CLR_GRAY },
-    [FOUNTAIN]: { ch: '{', color: 12 },
-    [THRONE]:  { ch: '\\', color: 11 },
-    [SINK]:    { ch: '#', color: CLR_GRAY },
-    [GRAVE]:   { ch: '|', color: CLR_WHITE },
-    [ALTAR]:   { ch: '_', color: CLR_GRAY },
-    [POOL]:    { ch: '}', color: 4 },
-    [MOAT]:    { ch: '}', color: 4 },
-    [WATER]:   { ch: '}', color: 12 },
-    [LAVAPOOL]: { ch: '}', color: CLR_RED },
-    [LAVAWALL]: { ch: '}', color: CLR_ORANGE },
-    [ICE]:     { ch: '.', color: CLR_CYAN },
-    [IRONBARS]: { ch: '#', color: CLR_CYAN },
-    [TREE]:    { ch: '#', color: 2 },
-    [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
-    [DRAWBRIDGE_DOWN]: { ch: '.', color: CLR_BROWN },
-    [AIR]:     { ch: ' ', color: CLR_CYAN },
-    [CLOUD]:   { ch: '#', color: CLR_GRAY },
-    [SDOOR]:   { ch: '|', color: CLR_GRAY },
-    [SCORR]:   { ch: ' ', color: CLR_GRAY },
-};
-
-function trapDisplayGlyph(ttyp) {
-    const idx = trap_to_defsym(ttyp);
-    const sym = (idx >= 0 && idx < defsyms.length) ? defsyms[idx] : null;
-    return {
-        ch: sym?.ch || '^',
-        color: Number.isInteger(sym?.color) ? sym.color : CLR_MAGENTA,
-    };
-}
-
-const TERRAIN_SYMBOLS_DEC = {
-    [STONE]:   { ch: ' ', color: CLR_GRAY },
-    [VWALL]:   { ch: '\u2502', color: CLR_GRAY },
-    [HWALL]:   { ch: '\u2500', color: CLR_GRAY },
-    [TLCORNER]: { ch: '\u250c', color: CLR_GRAY },
-    [TRCORNER]: { ch: '\u2510', color: CLR_GRAY },
-    [BLCORNER]: { ch: '\u2514', color: CLR_GRAY },
-    [BRCORNER]: { ch: '\u2518', color: CLR_GRAY },
-    [CROSSWALL]: { ch: '\u253c', color: CLR_GRAY },
-    [TUWALL]:  { ch: '\u2534', color: CLR_GRAY },
-    [TDWALL]:  { ch: '\u252c', color: CLR_GRAY },
-    [TLWALL]:  { ch: '\u2524', color: CLR_GRAY },
-    [TRWALL]:  { ch: '\u251c', color: CLR_GRAY },
-    [DOOR]:    { ch: '+', color: CLR_BROWN },
-    [CORR]:    { ch: '#', color: CLR_GRAY },
-    [ROOM]:    { ch: '\u00b7', color: CLR_GRAY },
-    [STAIRS]:  { ch: '<', color: CLR_GRAY },
-    [FOUNTAIN]: { ch: '{', color: 12 },
-    [THRONE]:  { ch: '\\', color: 11 },
-    [SINK]:    { ch: '#', color: CLR_GRAY },
-    [GRAVE]:   { ch: '\u2020', color: CLR_WHITE },
-    [ALTAR]:   { ch: '_', color: CLR_GRAY },
-    [POOL]:    { ch: '\u2248', color: 4 },
-    [MOAT]:    { ch: '\u2248', color: 4 },
-    [WATER]:   { ch: '\u2248', color: 12 },
-    [LAVAPOOL]: { ch: '\u2248', color: CLR_RED },
-    [LAVAWALL]: { ch: '\u2248', color: CLR_ORANGE },
-    [ICE]:     { ch: '\u00b7', color: CLR_CYAN },
-    [IRONBARS]: { ch: '#', color: CLR_CYAN },
-    [TREE]:    { ch: '#', color: 2 },
-    [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
-    [DRAWBRIDGE_DOWN]: { ch: '\u00b7', color: CLR_BROWN },
-    [AIR]:     { ch: ' ', color: CLR_CYAN },
-    [CLOUD]:   { ch: '#', color: CLR_GRAY },
-    [SDOOR]:   { ch: '\u2502', color: CLR_GRAY },
-    [SCORR]:   { ch: ' ', color: CLR_GRAY },
-};
 
 // Headless display for testing chargen screen rendering.
 // Same grid-based rendering as Display but without any DOM dependency.
@@ -981,6 +845,7 @@ export class HeadlessDisplay {
         this._lastMapState = { gameMap, player, fov, flags: { ...this.flags } };
         const mapOffset = this.flags.msg_window ? 3 : MAP_ROW_START;
 
+
         for (let y = 0; y < ROWNO; y++) {
             const row = y + mapOffset;
             // C tty map rendering uses game x in [1..COLNO-1] at terminal cols [0..COLNO-2].
@@ -1084,9 +949,9 @@ export class HeadlessDisplay {
 
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
-                    const trapGlyph = trapDisplayGlyph(trap.ttyp);
-                    loc.mem_trap = trapGlyph.ch;
-                    this.setCell(col, row, trapGlyph.ch, trapGlyph.color);
+                    const tg = trapGlyph(trap.ttyp);
+                    loc.mem_trap = tg.ch;
+                    this.setCell(col, row, tg.ch, tg.color);
                     continue;
                 }
                 loc.mem_trap = 0;
@@ -1294,121 +1159,9 @@ export class HeadlessDisplay {
         }
     }
 
-    // Door orientation helper
-    // C ref: display.c glyph_at() - door orientation affects symbol choice
-    _isDoorHorizontal(gameMap, x, y) {
-        if (!gameMap || x < 0 || y < 0) return false;
-
-        // Check for walls to east and west (makes door horizontal)
-        const hasWallEast = x + 1 < COLNO && IS_WALL(gameMap.at(x + 1, y)?.typ || 0);
-        const hasWallWest = x - 1 >= 0 && IS_WALL(gameMap.at(x - 1, y)?.typ || 0);
-
-        // If walls E/W, door is horizontal; otherwise vertical
-        return hasWallEast || hasWallWest;
-    }
-
-    _determineWallType(gameMap, x, y) {
-        if (!gameMap || x < 0 || y < 0) return VWALL;
-
-        const N = y - 1 >= 0 && IS_WALL(gameMap.at(x, y - 1)?.typ || 0);
-        const S = y + 1 < ROWNO && IS_WALL(gameMap.at(x, y + 1)?.typ || 0);
-        const E = x + 1 < COLNO && IS_WALL(gameMap.at(x + 1, y)?.typ || 0);
-        const W = x - 1 >= 0 && IS_WALL(gameMap.at(x - 1, y)?.typ || 0);
-
-        if (N && W && !S && !E) return TLCORNER;
-        if (N && E && !S && !W) return TRCORNER;
-        if (S && W && !N && !E) return BLCORNER;
-        if (S && E && !N && !W) return BRCORNER;
-        if (N && S && E && !W) return TRWALL;
-        if (N && S && W && !E) return TLWALL;
-        if (E && W && N && !S) return TUWALL;
-        if (E && W && S && !N) return TDWALL;
-        if (N && S && E && W) return CROSSWALL;
-        // Straight wall orientation for secret-door rendering.
-        // E/W neighbors => horizontal wall, N/S => vertical wall.
-        if ((N || S) && !E && !W) return VWALL;
-        if ((E || W) && !N && !S) return HWALL;
-        return VWALL;
-    }
-
-    // Terrain symbol rendering for testing
-    // C ref: defsym.h PCHAR definitions
+    // C ref: display.c back_to_glyph() — delegates to render.js canonical implementation.
     terrainSymbol(loc, gameMap = null, x = -1, y = -1) {
-        const typ = loc.typ;
-        const useDEC = this.flags.DECgraphics || false;
-        const TERRAIN_SYMBOLS = useDEC ? TERRAIN_SYMBOLS_DEC : TERRAIN_SYMBOLS_ASCII;
-        const wallMode = loc.flags & 0x07;
-
-        // C display uses wall_info mode bits to adjust some T-wall glyphs.
-        // Keep the proven parity cases here for WM_T_LONG (1).
-        if (typ === TRWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TRWALL];
-        }
-        if (typ === TLWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TRCORNER] || TERRAIN_SYMBOLS[TLWALL];
-        }
-        if (typ === TDWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TDWALL];
-        }
-        if (typ === TUWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[BLCORNER] || TERRAIN_SYMBOLS[TUWALL];
-        }
-
-        // Handle door states
-        if (typ === DOOR) {
-            if (loc.flags & D_ISOPEN) {
-                // C ref: defsym.h:13-14 - Open doors use different symbols for vertical vs horizontal
-                // S_vodoor (vertical open door): '-'  (walls N/S)
-                // S_hodoor (horizontal open door): '|' (walls E/W)
-                const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
-                return useDEC
-                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
-                    : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
-            } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
-                return { ch: '+', color: CLR_BROWN };
-            } else {
-                // Doorway: MIDDLE DOT for DEC, '.' for ASCII
-                return useDEC
-                    ? { ch: '\u00b7', color: CLR_GRAY }
-                    : { ch: '.', color: CLR_GRAY };
-            }
-        }
-
-        if (typ === STAIRS) {
-            const isBranchStair = !!loc.branchStair;
-            return loc.flags === 1
-                ? { ch: '<', color: isBranchStair ? CLR_YELLOW : CLR_GRAY }
-                : { ch: '>', color: isBranchStair ? CLR_YELLOW : CLR_GRAY };
-        }
-
-        // Handle altar alignment colors
-        // C ref: display.h altar_color enum
-        if (typ === ALTAR) {
-            const align = loc.altarAlign !== undefined ? loc.altarAlign
-                : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
-            let altarColor;
-            if (align === A_LAWFUL) {
-                altarColor = 15;  // CLR_WHITE
-            } else if (align === A_CHAOTIC) {
-                altarColor = 0;   // CLR_BLACK
-            } else {
-                altarColor = CLR_GRAY;   // neutral or unaligned
-            }
-            return { ch: '_', color: altarColor };
-        }
-
-        // Handle secret doors (appear as walls)
-        // C ref: display.c - secret doors render as walls in their orientation
-        if (typ === SDOOR) {
-            const wallType = this._determineWallType(gameMap, x, y);
-            return TERRAIN_SYMBOLS[wallType] || TERRAIN_SYMBOLS[VWALL];
-        }
-
-        if (typ === CORR && this.flags.lit_corridor) {
-            return { ch: '#', color: CLR_CYAN };
-        }
-
-        return TERRAIN_SYMBOLS[typ] || { ch: '?', color: CLR_MAGENTA };
+        return renderTerrainSymbol(loc, gameMap, x, y, this.flags);
     }
 }
 

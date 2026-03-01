@@ -55,7 +55,7 @@ import {
     MAGIC_PORTAL, WEB, ANTI_MAGIC, POLY_TRAP, STATUE_TRAP, MAGIC_TRAP,
     VIBRATING_SQUARE, NO_TRAP, TRAPNUM, is_pit, is_hole,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_SECRET,
-    COLNO, ROWNO, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
+    COLNO, ROWNO, IS_ROOM, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, Align2amask,
     MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     MAXNROFROOMS, ROOMOFFSET,
@@ -6398,9 +6398,37 @@ export function wallify(opts) {
 }
 
 // C ref: sp_lev.c wallify_map()
+// Converts STONE cells that are adjacent (in 3x3 neighborhood) to a ROOM
+// or CROSSWALL cell into HWALL (vertical neighbor) or VWALL (horizontal neighbor).
+// This is DIFFERENT from dungeonWallifyRegion / fix_wall_spines which sets wall
+// junction types; wallify_map only converts raw STONE to border wall types.
 export function wallify_map(map, x1, y1, x2, y2) {
-    // Use sp_lev/dungeon bounded wallification semantics for parity.
-    return dungeonWallifyRegion(map, x1, y1, x2, y2);
+    // Clamp to valid map coordinates (matches C: y1=max(y1,0), x1=max(x1,1), etc.)
+    const cy1 = Math.max(y1, 0);
+    const cx1 = Math.max(x1, 1);
+    const cy2 = Math.min(y2, ROWNO - 1);
+    const cx2 = Math.min(x2, COLNO - 1);
+
+    for (let y = cy1; y <= cy2; y++) {
+        const lo_yy = (y > 0)   ? y - 1 : 0;
+        const hi_yy = (y < cy2) ? y + 1 : cy2;
+        for (let x = cx1; x <= cx2; x++) {
+            const loc = map.at(x, y);
+            if (!loc || loc.typ !== STONE) continue;
+            const lo_xx = (x > 1)   ? x - 1 : 1;
+            const hi_xx = (x < cx2) ? x + 1 : cx2;
+            outer:
+            for (let yy = lo_yy; yy <= hi_yy; yy++) {
+                for (let xx = lo_xx; xx <= hi_xx; xx++) {
+                    const nloc = map.at(xx, yy);
+                    if (nloc && (IS_ROOM(nloc.typ) || nloc.typ === CROSSWALL)) {
+                        loc.typ = (yy !== y) ? HWALL : VWALL;
+                        break outer;
+                    }
+                }
+            }
+        }
+    }
 }
 
 // C ref: sp_lev.c sel_set_wallify()

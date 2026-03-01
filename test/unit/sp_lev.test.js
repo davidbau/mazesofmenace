@@ -537,14 +537,24 @@ describe('sp_lev.js - des.* API', () => {
     });
 
     it('applies des.wallify bounded x1/y1/x2/y2 semantics', () => {
+        // C ref: sp_lev.c wallify_map() — converts STONE→wall when adjacent to ROOM.
+        // Non-STONE tiles (existing walls) are left unchanged.
         resetLevelState();
         des.level_init({ style: 'solidfill', fg: ' ' });
-        des.terrain(10, 10, '-');
+        // Place a ROOM tile at (10,9) and STONE at (10,10) (the default).
+        des.terrain(10, 9, '.');
         const map = getLevelState().map;
-        assert.equal(map.locations[10][10].typ, HWALL, 'test setup should place a wall tile');
+        assert.equal(map.locations[10][9].typ, ROOM, 'test setup should place a room tile');
+        assert.equal(map.locations[10][10].typ, STONE, 'test setup: (10,10) should start as STONE');
 
-        des.wallify({ x1: 10, y1: 10, x2: 10, y2: 10 });
-        assert.equal(map.locations[10][10].typ, STONE, 'isolated wall should be cleaned to stone');
+        // wallify within a region that includes both: STONE adjacent to ROOM becomes HWALL.
+        des.wallify({ x1: 9, y1: 9, x2: 11, y2: 11 });
+        assert.equal(map.locations[10][10].typ, HWALL, 'STONE adjacent to ROOM above should become HWALL');
+
+        // An existing HWALL placed explicitly is NOT converted (only STONE is processed).
+        des.terrain(12, 10, '-');
+        des.wallify({ x1: 12, y1: 10, x2: 12, y2: 10 });
+        assert.equal(map.locations[12][10].typ, HWALL, 'existing wall stays unchanged by wallify');
     });
 
     it('accepts des.mineralize option table without regressions', () => {

@@ -11,14 +11,18 @@ import {
     WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, TREE,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, AIR, CLOUD, SDOOR, SCORR,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED,
-    IS_WALL, IS_DOOR, IS_ROOM,
-    Amask2align
+    IS_WALL,
 } from './config.js';
 
-import { def_monsyms, def_oc_syms, defsyms, trap_to_defsym } from './symbols.js';
+import { def_monsyms, def_oc_syms } from './symbols.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './discovery.js';
+import {
+    wallIsVisible,
+    trapGlyph,
+    terrainSymbol as renderTerrainSymbol,
+} from './render.js';
 import { do_lookat, format_do_look_html } from './look.js';
 
 // Color constants (color.h)
@@ -66,140 +70,8 @@ const COLOR_CSS = [
     '#fff',    // 15 - CLR_WHITE
 ];
 
-// Default symbol for each terrain type
-// C ref: defsym.h PCHAR definitions
-// Uses Unicode box-drawing characters (DECGraphics / Enhanced1 from dat/symbols)
-// ASCII terrain symbols (default, DECgraphics=false)
-const TERRAIN_SYMBOLS_ASCII = {
-    [STONE]:   { ch: ' ', color: CLR_GRAY },
-    [VWALL]:   { ch: '|', color: CLR_GRAY },
-    [HWALL]:   { ch: '-', color: CLR_GRAY },
-    [TLCORNER]: { ch: '-', color: CLR_GRAY },
-    [TRCORNER]: { ch: '-', color: CLR_GRAY },
-    [BLCORNER]: { ch: '-', color: CLR_GRAY },
-    [BRCORNER]: { ch: '-', color: CLR_GRAY },
-    [CROSSWALL]: { ch: '-', color: CLR_GRAY },
-    [TUWALL]:  { ch: '-', color: CLR_GRAY },
-    [TDWALL]:  { ch: '-', color: CLR_GRAY },
-    [TLWALL]:  { ch: '|', color: CLR_GRAY },
-    [TRWALL]:  { ch: '|', color: CLR_GRAY },
-    [DOOR]:    { ch: '+', color: CLR_BROWN },
-    [CORR]:    { ch: '#', color: CLR_GRAY },
-    [ROOM]:    { ch: '.', color: CLR_GRAY },
-    [STAIRS]:  { ch: '<', color: CLR_GRAY },
-    [FOUNTAIN]: { ch: '{', color: CLR_BRIGHT_BLUE },
-    [THRONE]:  { ch: '\\', color: HI_GOLD },
-    [SINK]:    { ch: '#', color: CLR_GRAY },
-    [GRAVE]:   { ch: '|', color: CLR_WHITE },
-    [ALTAR]:   { ch: '_', color: CLR_GRAY },
-    [POOL]:    { ch: '}', color: CLR_BLUE },
-    [MOAT]:    { ch: '}', color: CLR_BLUE },
-    [WATER]:   { ch: '}', color: CLR_BRIGHT_BLUE },
-    [LAVAPOOL]: { ch: '}', color: CLR_RED },
-    [LAVAWALL]: { ch: '}', color: CLR_ORANGE },
-    [ICE]:     { ch: '.', color: CLR_CYAN },
-    [IRONBARS]: { ch: '#', color: HI_METAL },
-    [TREE]:    { ch: '#', color: CLR_GREEN },
-    [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
-    [DRAWBRIDGE_DOWN]: { ch: '.', color: CLR_BROWN },
-    [AIR]:     { ch: ' ', color: CLR_CYAN },
-    [CLOUD]:   { ch: '#', color: CLR_GRAY },
-    [SDOOR]:   { ch: '|', color: CLR_GRAY },
-    [SCORR]:   { ch: ' ', color: CLR_GRAY },
-};
+// Terrain symbol tables and rendering logic live in render.js.
 
-// DECgraphics terrain symbols (DECgraphics=true, box-drawing characters)
-// C ref: dat/symbols DECgraphics symset
-const TERRAIN_SYMBOLS_DEC = {
-    [STONE]:   { ch: ' ', color: CLR_GRAY },
-    [VWALL]:   { ch: '\u2502', color: CLR_GRAY },   // BOX VERT
-    [HWALL]:   { ch: '\u2500', color: CLR_GRAY },   // BOX HORIZ
-    [TLCORNER]: { ch: '\u250c', color: CLR_GRAY },  // BOX TL
-    [TRCORNER]: { ch: '\u2510', color: CLR_GRAY },  // BOX TR
-    [BLCORNER]: { ch: '\u2514', color: CLR_GRAY },  // BOX BL
-    [BRCORNER]: { ch: '\u2518', color: CLR_GRAY },  // BOX BR
-    [CROSSWALL]: { ch: '\u253c', color: CLR_GRAY }, // BOX CROSS
-    [TUWALL]:  { ch: '\u2534', color: CLR_GRAY },   // BOX UP-T
-    [TDWALL]:  { ch: '\u252c', color: CLR_GRAY },   // BOX DOWN-T
-    [TLWALL]:  { ch: '\u2524', color: CLR_GRAY },   // BOX LEFT-T
-    [TRWALL]:  { ch: '\u251c', color: CLR_GRAY },   // BOX RIGHT-T
-    [DOOR]:    { ch: '+', color: CLR_BROWN },
-    [CORR]:    { ch: '#', color: CLR_GRAY },
-    [ROOM]:    { ch: '\u00b7', color: CLR_GRAY },   // MIDDLE DOT
-    [STAIRS]:  { ch: '<', color: CLR_GRAY },
-    [FOUNTAIN]: { ch: '{', color: CLR_BRIGHT_BLUE },
-    [THRONE]:  { ch: '\\', color: HI_GOLD },
-    [SINK]:    { ch: '#', color: CLR_GRAY },
-    [GRAVE]:   { ch: '\u2020', color: CLR_WHITE },  // DAGGER
-    [ALTAR]:   { ch: '_', color: CLR_GRAY },
-    [POOL]:    { ch: '\u2248', color: CLR_BLUE },   // APPROX EQUAL
-    [MOAT]:    { ch: '\u2248', color: CLR_BLUE },
-    [WATER]:   { ch: '\u2248', color: CLR_BRIGHT_BLUE },
-    [LAVAPOOL]: { ch: '\u2248', color: CLR_RED },
-    [LAVAWALL]: { ch: '\u2248', color: CLR_ORANGE },
-    [ICE]:     { ch: '\u00b7', color: CLR_CYAN },   // MIDDLE DOT
-    [IRONBARS]: { ch: '#', color: HI_METAL },
-    [TREE]:    { ch: '#', color: CLR_GREEN },
-    [DRAWBRIDGE_UP]:   { ch: '#', color: CLR_BROWN },
-    [DRAWBRIDGE_DOWN]: { ch: '\u00b7', color: CLR_BROWN },
-    [AIR]:     { ch: ' ', color: CLR_CYAN },
-    [CLOUD]:   { ch: '#', color: CLR_GRAY },
-    [SDOOR]:   { ch: '\u2502', color: CLR_GRAY },   // BOX VERT
-    [SCORR]:   { ch: ' ', color: CLR_GRAY },
-};
-
-// seenv angle bits (C ref: rm.h:379-386)
-const SV0 = 0x01, SV1 = 0x02, SV2 = 0x04, SV3 = 0x08;
-const SV4 = 0x10, SV5 = 0x20, SV6 = 0x40, SV7 = 0x80;
-
-// WM_MASK constants (C ref: rm.h:287,353-354)
-const WM_MASK = 0x07;
-const WM_C_OUTER = 1;
-const WM_C_INNER = 2;
-
-// Check whether a wall cell should render as stone (invisible) based on
-// its seenv bits and wall_info mode.  Returns true if the wall should be
-// visible, false if it should show as stone.
-// C ref: display.c:3502-3765 wall_angle()
-function wallIsVisible(typ, seenv, wallInfo) {
-    if (!seenv) return false;
-    const mode = wallInfo & WM_MASK;
-    switch (typ) {
-    case VWALL:
-        if (mode === 0) return true;
-        if (mode === 1) return !!(seenv & (SV1 | SV2 | SV3 | SV4 | SV5));
-        if (mode === 2) return !!(seenv & (SV0 | SV1 | SV5 | SV6 | SV7));
-        return true;
-    case HWALL:
-        if (mode === 0) return true;
-        if (mode === 1) return !!(seenv & (SV3 | SV4 | SV5 | SV6 | SV7));
-        if (mode === 2) return !!(seenv & (SV0 | SV1 | SV2 | SV3 | SV7));
-        return true;
-    case TLCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV3 | SV4 | SV5));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV4);
-        return true;
-    case TRCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV5 | SV6 | SV7));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV6);
-        return true;
-    case BLCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV1 | SV2 | SV3));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV2);
-        return true;
-    case BRCORNER:
-        if (mode === 0) return true;
-        if (mode === WM_C_OUTER) return !!(seenv & (SV7 | SV0 | SV1));
-        if (mode === WM_C_INNER) return !!(seenv & ~SV0);
-        return true;
-    default:
-        // T-walls, crosswalls, and other types: always visible if seenv > 0
-        return true;
-    }
-}
 
 /**
  * Compute the optimal line-height for seamless box-drawing characters.
@@ -654,13 +526,13 @@ export class Display {
                 // Check for traps
                 const trap = gameMap.trapAt(x, y);
                 if (trap && trap.tseen) {
-                    const trapGlyph = this._trapGlyph(trap.ttyp);
-                    loc.mem_trap = trapGlyph.ch;
-                    this.setCell(col, row, trapGlyph.ch, trapGlyph.color);
+                    const tg = trapGlyph(trap.ttyp);
+                    loc.mem_trap = tg.ch;
+                    this.setCell(col, row, tg.ch, tg.color);
                     this.cellInfo[row][col] = {
-                        name: trapGlyph.name,
+                        name: tg.name,
                         desc: 'trap',
-                        color: trapGlyph.color,
+                        color: tg.color,
                     };
                     continue;
                 }
@@ -792,92 +664,7 @@ export class Display {
     // Get the display symbol for a terrain type
     // C ref: defsym.h PCHAR definitions, display.c back_to_glyph()
     terrainSymbol(loc, gameMap = null, x = -1, y = -1) {
-        const typ = loc.typ;
-        const useDEC = this.flags.DECgraphics || false;
-        const wallMode = loc.flags & 0x07;
-
-        // Choose symbol set based on DECgraphics option
-        // C ref: dat/symbols — DECgraphics vs default ASCII
-        const TERRAIN_SYMBOLS = useDEC ? TERRAIN_SYMBOLS_DEC : TERRAIN_SYMBOLS_ASCII;
-
-        // C display uses wall_info mode bits to adjust some T-wall glyphs.
-        // Keep the proven parity cases here for WM_T_LONG (1).
-        if (typ === TRWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TRWALL];
-        }
-        if (typ === TLWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TRCORNER] || TERRAIN_SYMBOLS[TLWALL];
-        }
-        if (typ === TDWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[TLCORNER] || TERRAIN_SYMBOLS[TDWALL];
-        }
-        if (typ === TUWALL && wallMode === 1) {
-            return TERRAIN_SYMBOLS[BLCORNER] || TERRAIN_SYMBOLS[TUWALL];
-        }
-
-        // Handle door states
-        if (typ === DOOR) {
-            if (loc.flags & D_ISOPEN) {
-                // C ref: defsym.h:13-14 - Open doors use different symbols for vertical vs horizontal
-                // S_vodoor (vertical open door): '-'  (walls N/S)
-                // S_hodoor (horizontal open door): '|' (walls E/W)
-                const isHorizontalDoor = this._isDoorHorizontal(gameMap, x, y);
-                return useDEC
-                    ? { ch: '\u2592', color: CLR_BROWN }  // DEC checkerboard (S_vodoor/S_hodoor)
-                    : { ch: isHorizontalDoor ? '|' : '-', color: CLR_BROWN };
-            } else if (loc.flags & D_CLOSED || loc.flags & D_LOCKED) {
-                return { ch: '+', color: CLR_BROWN };
-            } else {
-                // Doorway: MIDDLE DOT for DEC, '.' for ASCII
-                return useDEC
-                    ? { ch: '\u00b7', color: CLR_GRAY }
-                    : { ch: '.', color: CLR_GRAY };
-            }
-        }
-
-        // Handle stairs
-        if (typ === STAIRS) {
-            const isBranchStair = !!loc.branchStair;
-            if (loc.flags === 1) { // up
-                return { ch: '<', color: isBranchStair ? HI_GOLD : CLR_GRAY };
-            } else { // down
-                return { ch: '>', color: isBranchStair ? HI_GOLD : CLR_GRAY };
-            }
-        }
-
-        // Handle altar alignment colors
-        // C ref: display.h altar_color enum, display.c altarcolors[]
-        if (typ === ALTAR) {
-            const align = loc.altarAlign !== undefined ? loc.altarAlign
-                : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
-            let altarColor;
-            if (align === 1) {        // A_LAWFUL
-                altarColor = CLR_WHITE;
-            } else if (align === -1) { // A_CHAOTIC
-                altarColor = CLR_BLACK;
-            } else {                   // A_NEUTRAL (0) or unaligned
-                altarColor = CLR_GRAY;
-            }
-            return { ch: '_', color: altarColor };
-        }
-
-        // Handle secret door/corridor (appears as wall/stone when unseen)
-        // C ref: display.c - SDOOR falls through to wall cases, using wall symbols
-        // Secret doors must render as the appropriate wall type (including corners)
-        // to be truly invisible
-        if (typ === SDOOR) {
-            // Determine what kind of wall this should appear as based on surroundings
-            const wallType = this._determineWallType(gameMap, x, y);
-            return TERRAIN_SYMBOLS[wallType] || TERRAIN_SYMBOLS[VWALL];
-        }
-
-        // Handle lit_corridor option
-        // C ref: flag.h flags.lit_corridor - corridors shown with bright color
-        if (typ === CORR && this.flags.lit_corridor) {
-            return { ch: '#', color: CLR_CYAN };
-        }
-
-        return TERRAIN_SYMBOLS[typ] || { ch: '?', color: CLR_MAGENTA };
+        return renderTerrainSymbol(loc, gameMap, x, y, this.flags);
     }
 
     // Render the status lines
@@ -1158,54 +945,6 @@ export class Display {
 
     // --- Hover info helpers ---
 
-    // Determine if a door is horizontal (walls E/W) or vertical (walls N/S)
-    // C ref: display.c glyph_at() - door orientation affects symbol choice
-    _isDoorHorizontal(gameMap, x, y) {
-        if (!gameMap || x < 0 || y < 0) return false;
-
-        // Check for walls to east and west (makes door horizontal)
-        const hasWallEast = x + 1 < COLNO && IS_WALL(gameMap.at(x + 1, y)?.typ || 0);
-        const hasWallWest = x - 1 >= 0 && IS_WALL(gameMap.at(x - 1, y)?.typ || 0);
-
-        // If walls E/W, door is horizontal; otherwise vertical
-        return hasWallEast || hasWallWest;
-    }
-
-    // Determine what wall type a secret door should appear as
-    // C ref: display.c - SDOOR falls through to wall rendering, matching surroundings
-    _determineWallType(gameMap, x, y) {
-        if (!gameMap || x < 0 || y < 0) return VWALL;
-
-        // Check all 4 directions for walls
-        const N = y - 1 >= 0 && IS_WALL(gameMap.at(x, y - 1)?.typ || 0);
-        const S = y + 1 < ROWNO && IS_WALL(gameMap.at(x, y + 1)?.typ || 0);
-        const E = x + 1 < COLNO && IS_WALL(gameMap.at(x + 1, y)?.typ || 0);
-        const W = x - 1 >= 0 && IS_WALL(gameMap.at(x - 1, y)?.typ || 0);
-
-        // Determine wall type based on adjacent walls
-        // Corners: walls in two perpendicular directions
-        if (N && W && !S && !E) return TLCORNER;  // Top-left: walls above and left
-        if (N && E && !S && !W) return TRCORNER;  // Top-right: walls above and right
-        if (S && W && !N && !E) return BLCORNER;  // Bottom-left: walls below and left
-        if (S && E && !N && !W) return BRCORNER;  // Bottom-right: walls below and right
-
-        // T-junctions and crosses
-        if (N && S && E && !W) return TRWALL;     // T pointing right
-        if (N && S && W && !E) return TLWALL;     // T pointing left
-        if (E && W && N && !S) return TUWALL;     // T pointing up
-        if (E && W && S && !N) return TDWALL;     // T pointing down
-        if (N && S && E && W) return CROSSWALL;   // Cross
-
-        // Straight walls.
-        // For wall glyphs, E/W adjacency is horizontal wall ('-'),
-        // N/S adjacency is vertical wall ('|').
-        if ((N || S) && !E && !W) return VWALL;
-        if ((E || W) && !N && !S) return HWALL;
-
-        // Default to vertical wall if unclear
-        return VWALL;
-    }
-
     // Get terrain description for a map location
     _terrainDesc(loc) {
         const typ = loc.typ;
@@ -1258,17 +997,6 @@ export class Display {
         if (obj.charges) parts.push(`Charges: ${obj.charges}`);
         if (obj.weight) parts.push(`Wt: ${obj.weight}`);
         return parts.join(', ');
-    }
-
-    // C ref: trap_to_defsym(ttyp) + defsyms[] entry in defsym.h
-    _trapGlyph(ttyp) {
-        const idx = trap_to_defsym(ttyp);
-        const sym = (idx >= 0 && idx < defsyms.length) ? defsyms[idx] : null;
-        return {
-            ch: sym?.ch || '^',
-            color: Number.isInteger(sym?.color) ? sym.color : CLR_MAGENTA,
-            name: sym?.desc || 'trap',
-        };
     }
 
     // Set up mouseover handling for the hover info panel

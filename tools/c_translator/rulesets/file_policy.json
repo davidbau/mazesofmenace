@@ -138,6 +138,11 @@
       "reason": "Runtime/platform/infrastructure boundary; keep manual control."
     },
     {
+      "path": "js/render.js",
+      "policy": "manual_only",
+      "reason": "Shared rendering logic (glyph selection, wall_angle, seenv); display infrastructure shared by display.js and headless.js."
+    },
+    {
       "path": "js/do.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
