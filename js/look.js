@@ -201,10 +201,14 @@ export async function do_look(game, mode = 0, click_cc = null) {
     do {
         if (from_screen || clicklook) {
             if (from_screen) {
-                if (flags?.verbose) display.putstr_message('Please move the cursor to a monster, object or location.');
-                set_getpos_context({ map, display, flags, goalPrompt: 'a monster, object or location', player });
-                ans = await getpos_async(cc, quick, 'a monster, object or location');
-                if (ans < 0 || cc.x < 0 || cc.y < 0) break;
+                if (!quick) {
+                    // Interactive cursor mode: let user navigate to any position.
+                    if (flags?.verbose) display.putstr_message('Please move the cursor to a monster, object or location.');
+                    set_getpos_context({ map, display, flags, goalPrompt: 'a monster, object or location', player });
+                    ans = await getpos_async(cc, false, 'a monster, object or location');
+                    if (ans < 0 || cc.x < 0 || cc.y < 0) break;
+                }
+                // quick=true (doquickwhatis): cc already set to player position, no cursor needed.
             }
             const desc = do_screen_description({ map, player }, cc);
             if (desc.found) display.putstr_message(desc.text);
