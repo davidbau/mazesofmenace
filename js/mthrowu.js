@@ -421,6 +421,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
     const available = Number.isInteger(otmp.quan) ? otmp.quan : 1;
     const shots = Math.max(1, Math.min(multishot, available));
     const tethered_weapon = !!(mwep && otmp?.otyp === AKLYS && mwep.otyp === AKLYS);
+    let hitPlayer = false;
 
     if (display) {
         const targetName = mtarg ? ` at the ${x_monnam(mtarg)}` : '';
@@ -436,6 +437,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
             mon, mon.mx, mon.my, ddx, ddy, dm, projectile, map, player, display, game,
             { tethered_weapon }
         );
+        if (result?.hitPlayer) hitPlayer = true;
         if (tethered_weapon && result?.returnFlight) {
             return_from_mtoss(mon, projectile, true, map);
             if (mon.dead) break;
@@ -454,7 +456,10 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
         }
         if (mon.dead) break;
     }
-    if (!mtarg
+    // Preserve existing throw-message ack behavior, but don't consume the next
+    // command key when the throw already resolved with a direct hit on hero.
+    if (!hitPlayer
+        && !mtarg
         && game?.input?.nhgetch
         && display
         && typeof display.morePrompt === 'function') {
@@ -472,6 +477,7 @@ export async function m_throw_timed(
     options = {}
 ) {
     const tethered_weapon = !!options.tethered_weapon;
+    let hitPlayer = false;
     let x = startX;
     let y = startY;
     let dropX = startX;
@@ -572,6 +578,7 @@ export async function m_throw_timed(
                     }
                 }
                 if (hitu) {
+                    hitPlayer = true;
                     break;
                 }
             }
@@ -594,9 +601,9 @@ export async function m_throw_timed(
     await nh_delay_output();
     if (tethered_weapon) {
         await tmp_at_end_async(BACKTRACK);
-        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my };
+        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my, hitPlayer };
     }
-    return { drop: true, x: dropX, y: dropY };
+    return { drop: true, x: dropX, y: dropY, hitPlayer };
 }
 
 // C ref: mthrowu.c return_from_mtoss().

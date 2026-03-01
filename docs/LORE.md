@@ -1543,3 +1543,10 @@ hard-won wisdom:
 - Denylists are useful for broad suppression, but they still leave room for accidental extra inserts when candidate sets evolve.
 - `runtime_stitch_apply.py` now supports `--allowlist` with exact `{js_module,function}` pairs, so surgical batches can be applied deterministically.
 - Operationally, use allowlists for high-accuracy incremental landings; reserve denylists for coarse global exclusions.
+
+### Monster-throw input handoff can consume replay command keys (2026-03-01)
+
+- `seed113_wizard_selfplay200_gameplay` divergence at step 22 was caused by JS consuming the next recorded command key after a monster throw.
+- Root cause: `mthrowu.monshoot()` always forced `display.morePrompt(nhgetch)` for non-target throws, which can shift replay command timing by treating the next gameplay key as prompt acknowledgement.
+- C parity behavior is subtler: this handoff is not unconditional and should not always steal the next command key.
+- Fix: keep throw-message handoff only for non-target throws that did **not** already resolve with a direct hit on the hero, preserving known-good behavior on control seeds while removing the step-22 key-steal in seed113.
