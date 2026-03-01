@@ -9,8 +9,7 @@
 //           medusa gazemu stubbed, erinyes aggravate implemented
 // - dochug: find_defensive/find_misc stubbed (return false, no RNG consumed)
 // - dochug: mind_blast RNG-faithful (rn2(20) gate, hero lock-on, monster loop), losehp stubbed
-// - dochug: flees_light (gremlin+artifact light) not implemented (C:555)
-// - dochug: in_your_sanctuary (temple) not implemented (C:564)
+// - dochug: flees_light: artifact_light only checks Sunsword and gold dragon scales (C:555)
 // - m_move: no boulder-pushing by strong monsters (C:2020)
 // - m_move: no vault guard movement (C:1730)
 // - m_move: covetous monster teleport-to-hero not implemented (C:1737)
@@ -18,7 +17,7 @@
 // - set_apparxy: displacement displacement-offset details simplified
 // - shk_move: simplified from full C shk.c; no billing/theft tracking
 // - undesirable_disp: not yet implemented (C:2279)
-// - distfleeck: flees_light (gremlin+artifact), in_your_sanctuary not implemented
+// - distfleeck: in_your_sanctuary implemented (priest.js); flees_light implemented
 // - mon_allowflags: ALLOW_DIG deferred (needs wielded pick tracking)
 // - mon_allowflags: Conflict ALLOW_U not implemented
 
@@ -49,7 +48,7 @@ import { can_teleport, noeyes, perceives, nohands,
          passes_walls, corpse_eater,
          passes_bars, is_human, canseemon, monsdat } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
-         PM_LEPRECHAUN,
+         PM_LEPRECHAUN, PM_GREMLIN,
          PM_XORN,
          PM_DISPLACER_BEAST,
          PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
@@ -66,6 +65,8 @@ import { dog_move, could_reach_item } from './dogmove.js';
 import { initrack, settrack, gettrack } from './track.js';
 import { pointInShop, monsterInShop } from './shknam.js';
 import { stop_occupation } from './allmain.js';
+import { in_your_sanctuary } from './priest.js';
+import { artifact_light } from './artifact.js';
 
 // Shared utilities — re-exported for consumers
 import { dist2, distmin, monnear,
@@ -227,6 +228,19 @@ export function monflee(mon, fleetime, first, fleemsg, player, display, fov) {
 // distfleeck — C ref: monmove.c:534-568
 // ========================================================================
 
+// flees_light — C ref: monmove.c:451-457 (macro)
+// Gremlin flees from hero's lit artifact weapon or body armor.
+// C: uwep->lamplit && artifact_light(uwep) || uarm->lamplit && artifact_light(uarm)
+function flees_light(mon, map, player) {
+    if ((mon.type || mon.data || {}).mndx !== PM_GREMLIN) return false;
+    const uwep = player.uwep;
+    const uarm = player.uarm;
+    if (!((uwep && uwep.lamplit && artifact_light(uwep))
+            || (uarm && uarm.lamplit && artifact_light(uarm)))) return false;
+    if (mon.mcansee === false) return false;
+    return couldsee(map, player, mon.mx, mon.my);
+}
+
 // C ref: monmove.c:534 — determine whether a monster is in range, nearby,
 // and/or scared of something at or near the hero's position.
 // Sets inrange (within BOLT_LIM), nearby (adjacent), and scared (triggers flee).
@@ -247,10 +261,10 @@ export function distfleeck(mon, map, player, display, fov) {
         const seescaryY = monCanSee ? player.y : targetY;
 
         const sawscary = onscary(map, seescaryX, seescaryY, mon);
-        // INCOMPLETE: flees_light (gremlin+artifact) not fully implemented
-        // C ref: monmove.c:562 — flees_light(mtmp) && !bravegremlin
-        // INCOMPLETE: in_your_sanctuary not implemented (C:563)
-        if (sawscary) {
+        // C ref: monmove.c:559-565 — scared if: scary object, or gremlin flees light, or temple sanctuary
+        if (sawscary
+                || (flees_light(mon, map, player) && !bravegremlin)
+                || (!mon.mpeaceful && in_your_sanctuary(mon, 0, 0, map, player))) {
             scared = 1;
             monflee(mon, rnd(rn2(7) ? 10 : 100), true, true, player, display, fov);
         }

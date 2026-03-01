@@ -18,7 +18,9 @@ import {
 } from './artifacts.js';
 
 import { rn2, rnd, d, rnz } from './rng.js';
-import { objectData, LUCKSTONE, WEAPON_CLASS, STRANGE_OBJECT } from './objects.js';
+import { objectData, LUCKSTONE, WEAPON_CLASS, STRANGE_OBJECT,
+         GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES } from './objects.js';
+import { W_ARM } from './worn.js';
 import {
   NON_PM, AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRLI,
   AD_STUN, AD_BLND, AD_WERE, AD_DISN, AD_STON,
@@ -331,8 +333,12 @@ export function arti_cost(otmp) {
 }
 
 // cf. artifact.c:2264 — artifact_light(obj)
+// Returns true if obj emits light constantly (Sunsword, or worn gold dragon scales).
 export function artifact_light(obj) {
-  return !!(get_artifact(obj) !== artilist[ART_NONARTIFACT] && is_art(obj, ART_SUNSWORD));
+    if (obj && (obj.otyp === GOLD_DRAGON_SCALE_MAIL || obj.otyp === GOLD_DRAGON_SCALES)
+            && (obj.owornmask & W_ARM))
+        return true;
+    return !!(get_artifact(obj) !== artilist[ART_NONARTIFACT] && is_art(obj, ART_SUNSWORD));
 }
 
 // cf. artifact.c:2808 — is_art(obj, art)
