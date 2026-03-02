@@ -201,6 +201,17 @@ function screenCharDiff(js, session) {
     return 'trailing spaces only';
 }
 
+function timeoutSummary(result) {
+    if (!result?.error || !/timed out/i.test(String(result.error))) return null;
+    const td = result.timeoutDiagnostics || {};
+    const step = Number.isInteger(td.step) ? td.step : null;
+    const key = (typeof td.key === 'string' && td.key.length > 0) ? td.key : null;
+    const topline = (typeof td.topline === 'string' && td.topline.length > 0) ? td.topline : null;
+    const pendingPrompt = !!td.pendingPrompt;
+    const multi = Number.isInteger(td.multi) ? td.multi : 0;
+    return { step, key, topline, pendingPrompt, multi };
+}
+
 // Short inline note: cached cat, or per-channel fallback
 function shortNote(result, cache) {
     const screenEarlyOnly = result?.metrics?.screenWindow?.earlyOnlyCount || 0;
@@ -212,6 +223,12 @@ function shortNote(result, cache) {
     }
     const entry = getCached(cache, result);
     if (entry) return entry.cat;
+    const timeout = timeoutSummary(result);
+    if (timeout) {
+        const stepPart = timeout.step != null ? `step ${timeout.step}` : 'unknown step';
+        const keyPart = timeout.key ? ` key=${JSON.stringify(timeout.key)}` : '';
+        return `timeout at ${stepPart}${keyPart} prompt=${timeout.pendingPrompt} multi=${timeout.multi}`;
+    }
     const fds = result.firstDivergences || {};
     if (fds.rng) {
         const jsFn   = (fds.rng.jsRaw      || '').split(' @ ')[1]?.split('(')[0] || '?';
@@ -240,6 +257,13 @@ function fullDiagnose(result, cache) {
     }
     const entry = getCached(cache, result);
     if (entry) return entry.tldr;
+    const timeout = timeoutSummary(result);
+    if (timeout) {
+        const stepPart = timeout.step != null ? `last observed step ${timeout.step}` : 'no observed step';
+        const keyPart = timeout.key ? ` last key ${JSON.stringify(timeout.key)}.` : '.';
+        const toplinePart = timeout.topline ? ` Topline: ${JSON.stringify(timeout.topline)}.` : '';
+        return `Session timed out with ${stepPart}${keyPart} pendingPrompt=${timeout.pendingPrompt}, multi=${timeout.multi}.${toplinePart}`;
+    }
     const fds = result.firstDivergences || {};
     if (fds.rng) {
         const fd     = fds.rng;
