@@ -36,7 +36,7 @@ import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          CLOAK_OF_DISPLACEMENT, MINERAL, GOLD_PIECE,
          SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
          objectData } from './objects.js';
-import { next_ident, weight } from './mkobj.js';
+import { next_ident, weight, doname } from './mkobj.js';
 import { can_carry } from './dogmove.js';
 import { couldsee, m_cansee } from './vision.js';
 import { pline_mon, verbalize } from './pline.js';
@@ -1032,7 +1032,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 && mon.mcanmove !== false
                 && (mmoved || moveDone)
                 && map.objectsAt(mon.mx, mon.my).length > 0
-                && maybeMonsterPickStuff(mon, map)) {
+                && maybeMonsterPickStuff(mon, map, player, display, fov)) {
                 // C ref: postmov() sets mmoved = MMOVE_DONE when mpickstuff()
                 // succeeds, which suppresses Phase 4 attacks in dochug().
                 moveDone = true;
@@ -1218,7 +1218,7 @@ function shk_move(mon, map, player) {
 }
 
 // C ref: mon.c mpickstuff() early gates.
-function maybeMonsterPickStuff(mon, map) {
+function maybeMonsterPickStuff(mon, map, player, display, fov) {
     if (mon.isshk && monsterInShop(mon, map)) return false;
     if (!mon.tame && monsterInShop(mon, map) && rn2(25)) return false;
 
@@ -1239,6 +1239,12 @@ function maybeMonsterPickStuff(mon, map) {
             picked.owt = weight(picked);
         } else {
             map.removeObject(obj);
+        }
+        if (display
+            && !player?.blind
+            && (canSpotMonsterForMap(mon, map, player, fov) || couldsee(map, player, mon.mx, mon.my))) {
+            const seenName = doname({ ...picked, dknown: true }, player);
+            display.putstr_message(`${Monnam(mon)} picks up ${seenName}.`);
         }
         mpickobj(mon, picked);
         return true;

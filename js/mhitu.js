@@ -121,8 +121,9 @@ function maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg
     const bash = false;
     const swingVerb = monsterWeaponSwingVerb(monster.weapon, bash);
     const oneOf = ((monster.weapon.quan || 1) > 1) ? 'one of ' : '';
+    const seenWeapon = xname({ ...monster.weapon, dknown: true });
     display.putstr_message(
-        `The ${x_monnam(monster)} ${swingVerb} ${oneOf}${monsterPossessive(monster)} ${xname(monster.weapon)}.`
+        `The ${x_monnam(monster)} ${swingVerb} ${oneOf}${monsterPossessive(monster)} ${seenWeapon}.`
     );
 }
 
@@ -1896,7 +1897,15 @@ export function mswings_verb(mwep, bash) {
 // Autotranslated from mhitu.c:130
 export function mswings(mtmp, otemp, bash, game, player) {
   if (game.flags.verbose && !(player?.Blind || player?.blind || false) && mon_visible(mtmp)) {
-    pline_mon(mtmp, "%s %s %s%s %s.", Monnam(mtmp), mswings_verb(otemp, bash), (otemp.quan > 1) ? "one of " : "", mhis(mtmp), xname(otemp));
+    pline_mon(
+      mtmp,
+      "%s %s %s%s %s.",
+      Monnam(mtmp),
+      mswings_verb(otemp, bash),
+      (otemp.quan > 1) ? "one of " : "",
+      mhis(mtmp),
+      xname({ ...otemp, dknown: true })
+    );
   }
 }
 

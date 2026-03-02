@@ -1572,3 +1572,16 @@ hard-won wisdom:
   - `Ctrl+A` now follows observed session semantics for counted search replay.
   - `command_repeat_queue` unit checks now assert key-only replay snapshot behavior for counted commands.
 - Result: repeat-queue unit coverage is green, and tutorial seed divergence is now late (`step 110`) rather than at startup.
+
+### Seed110 throw-frame parity and visible monster-item naming (2026-03-02)
+
+- `seed110_samurai_selfplay200_gameplay` had full RNG/event parity but a screen mismatch at step 106 during a goblin dagger throw.
+- Root cause was message/animation ordering: JS paused for `--More--` in `monshoot()` after projectile cleanup, while C can block during `m_throw()`/`ohitmon()` before cleanup, preserving the intermediate projectile frame.
+- Fix in core combat flow (`js/mthrowu.js`):
+  - made `ohitmon()`/`thitu()` async-capable with C-like topline flush checks,
+  - moved the throw-window `--More--` pause to the impact path inside `m_throw_timed()` (before cleanup),
+  - surfaced deferred death message timing (`"<Mon> is killed!"`) so it appears after dismissing `--More--`, matching C captures.
+- Follow-on parity gap exposed by this fix: non-pet monster pickup messaging/naming.
+  - Added C-like visible pickup messages in `monmove` pickup path (`js/monmove.js`), using seen-known object naming.
+  - Aligned monster weapon-swing visible naming in `mhitu` to seen-known names (`orcish dagger` vs unidentified appearance names like `crude dagger`).
+- Result: `seed110` is now fully green (`201/201` screens, `4824/4824` colors, RNG/events 100%) and overall failing gameplay sessions dropped from 14 to 13 in `run-and-report --failures`.

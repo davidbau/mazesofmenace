@@ -29,7 +29,7 @@ import {
 import { doname, xname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
 import {
-    x_monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
+    x_monnam, Monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
     throws_rocks, is_unicorn,
 } from './mondata.js';
 import {
@@ -255,23 +255,47 @@ function exclam(force) {
     return '!';
 }
 
+// C ref: pline.c vpline() + win/tty/topl.c update_topl()/more().
+// If a pending topline message cannot concatenate with the next message,
+// tty blocks at "--More--" before showing that next message.
+async function maybeFlushToplineBeforeMessage(display, msg, game) {
+    if (!display || typeof display.morePrompt !== 'function') return;
+    const prior = String(display.topMessage || '');
+    if (!prior || !display.messageNeedsMore) return;
+    if (String(msg || '').startsWith('You die')) return;
+    const cols = Number.isInteger(display.cols) ? display.cols : 80;
+    const combined = `${prior}  ${String(msg || '')}`;
+    if (combined.length + 9 < cols) return;
+    if (typeof display.renderMoreMarker === 'function') {
+        display.renderMoreMarker();
+    }
+    await display.morePrompt(nhgetch);
+    if (Object.hasOwn(display, 'noConcatenateMessages')) {
+        display.noConcatenateMessages = true;
+        if (game) game._tempNoConcatMessages = true;
+    }
+}
+
 // hero is hit by a thrown object.
 // C ref: mthrowu.c thitu().
-export function thitu(tlev, dam, objp, name, player, display, game, mon = null) {
+export async function thitu(tlev, dam, objp, name, player, display, game, mon = null) {
     const obj = objp || null;
     const dieRoll = rnd(20);
     if ((player.ac || 10) + tlev <= dieRoll) {
         if (display) {
             const verbose = game?.flags?.verbose !== false;
+            let msg;
             if (player.blind || !verbose) {
-                display.putstr_message('It misses.');
+                msg = 'It misses.';
             } else if ((player.ac || 10) + tlev <= dieRoll - 2) {
                 const objName = name || thrownObjectName(obj, player);
                 const cap = objName.charAt(0).toUpperCase() + objName.slice(1);
-                display.putstr_message(`${cap} misses you.`);
+                msg = `${cap} misses you.`;
             } else {
-                display.putstr_message(`You are almost hit by ${name || thrownObjectName(obj, player)}.`);
+                msg = `You are almost hit by ${name || thrownObjectName(obj, player)}.`;
             }
+            await maybeFlushToplineBeforeMessage(display, msg, game);
+            display.putstr_message(msg);
         }
         return 0;
     }
@@ -279,7 +303,9 @@ export function thitu(tlev, dam, objp, name, player, display, game, mon = null) 
     if (display) {
         const text = name || thrownObjectName(obj, player);
         const punct = exclam(Number.isFinite(dam) ? dam : 0);
-        display.putstr_message(`You are hit by ${text}${punct}`);
+        const msg = `You are hit by ${text}${punct}`;
+        await maybeFlushToplineBeforeMessage(display, msg, game);
+        display.putstr_message(msg);
     }
     if (player.takeDamage) player.takeDamage(dam, mon ? x_monnam(mon) : 'an object');
     else player.uhp -= dam;
@@ -372,12 +398,13 @@ export function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -
 }
 
 // C ref: mthrowu.c ohitmon().
-export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) {
-    if (!mtmp || !otmp) return 1;
+export async function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) {
+    if (!mtmp || !otmp) return { stop: true, deathMessage: null };
     const od = objectData[otmp.otyp] || {};
     const hitThreshold = 5 + find_mac(mtmp);
     const dieRoll = rnd(20);
     if (hitThreshold >= dieRoll) {
+        let deathMessage = null;
         let damage = 0;
         if (otmp.oclass === WEAPON_CLASS || otmp.oclass === GEM_CLASS) {
             damage = dmgval(otmp, mtmp);
@@ -388,12 +415,15 @@ export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) 
         if (damage < 1) damage = 1;
         // C ref: mthrowu.c ohitmon() — pline("The %s hits %s%s", xname, mon_nam, exclam)
         if (verbose && display && !player?.blind && couldsee(map, player, mtmp.mx, mtmp.my)) {
-            display.putstr_message(
-                `The ${xname({ ...otmp, dknown: true })} hits ${x_monnam(mtmp, { article: 'none' })}${exclam(damage)}`
-            );
+            const msg = `The ${xname({ ...otmp, dknown: true })} hits ${x_monnam(mtmp, { article: 'none' })}${exclam(damage)}`;
+            await maybeFlushToplineBeforeMessage(display, msg, game);
+            display.putstr_message(msg);
         }
         mtmp.mhp -= damage;
         if (mtmp.mhp <= 0) {
+            if (verbose && display && !player?.blind && couldsee(map, player, mtmp.mx, mtmp.my)) {
+                deathMessage = `${Monnam(mtmp)} is killed!`;
+            }
             mondead(mtmp, map);
             map.removeMonster?.(mtmp);
             if (player) {
@@ -409,13 +439,13 @@ export function ohitmon(mtmp, otmp, range, verbose, map, player, display, game) 
             }
         }
         drop_throw(otmp, true, mtmp.mx, mtmp.my, map);
-        return 1;
+        return { stop: true, deathMessage };
     }
     if (range <= 0) {
         drop_throw(otmp, false, mtmp.mx, mtmp.my, map);
-        return 1;
+        return { stop: true, deathMessage: null };
     }
-    return 0;
+    return { stop: false, deathMessage: null };
 }
 
 // C ref: mthrowu.c monshoot() — common multishot throw/shoot logic.
@@ -429,6 +459,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
     const shots = Math.max(1, Math.min(multishot, available));
     const tethered_weapon = !!(mwep && otmp?.otyp === AKLYS && mwep.otyp === AKLYS);
     let hitPlayer = false;
+    let promptedForTopline = false;
 
     if (display) {
         const targetName = mtarg ? ` at the ${x_monnam(mtarg)}` : '';
@@ -445,6 +476,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
             { tethered_weapon }
         );
         if (result?.hitPlayer) hitPlayer = true;
+        if (result?.promptedForTopline) promptedForTopline = true;
         if (tethered_weapon && result?.returnFlight) {
             return_from_mtoss(mon, projectile, true, map);
             if (mon.dead) break;
@@ -467,6 +499,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
     // command key when the throw already resolved with a direct hit on hero.
     if (!hitPlayer
         && !mtarg
+        && !promptedForTopline
         && display
         && typeof display.morePrompt === 'function') {
         // C ref: win/tty/topl.c tmore() renders "--More--" before blocking on getch,
@@ -492,6 +525,7 @@ export async function m_throw_timed(
     const tethered_weapon = !!options.tethered_weapon;
     let hitPlayer = false;
     let dropHandledInImpact = false;
+    let promptedForTopline = false;
     let x = startX;
     let y = startY;
     let dropX = startX;
@@ -544,7 +578,23 @@ export async function m_throw_timed(
 
         const mtmp = map.monsterAt(x, y);
         if (mtmp && !mtmp.dead) {
-            if (ohitmon(mtmp, weapon, range, true, map, player, display, game)) {
+            const impact = await ohitmon(mtmp, weapon, range, true, map, player, display, game);
+            if (impact.stop) {
+                if (display
+                    && typeof display.morePrompt === 'function'
+                    && typeof display.renderMoreMarker === 'function'
+                    && (display.topMessage || '').includes('  ')) {
+                    display.renderMoreMarker();
+                    await display.morePrompt(nhgetch);
+                    if (Object.hasOwn(display, 'noConcatenateMessages')) {
+                        display.noConcatenateMessages = true;
+                        if (game) game._tempNoConcatMessages = true;
+                    }
+                    promptedForTopline = true;
+                }
+                if (impact.deathMessage && display) {
+                    display.putstr_message(impact.deathMessage);
+                }
                 // ohitmon() already performs drop_throw() when projectile stops.
                 dropHandledInImpact = true;
                 break;
@@ -581,7 +631,7 @@ export async function m_throw_timed(
                 break;
             }
             }
-            const hitu = thitu(hitv, dam, weapon, null, player, display, game, mon);
+            const hitu = await thitu(hitv, dam, weapon, null, player, display, game, mon);
             if (game) {
                 if (typeof game.stop_occupation === 'function') game.stop_occupation();
                 else if (typeof game.stopOccupation === 'function') game.stopOccupation();
@@ -612,10 +662,10 @@ export async function m_throw_timed(
     await nh_delay_output();
     if (tethered_weapon) {
         await tmp_at_end_async(BACKTRACK);
-        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my, hitPlayer };
+        return { drop: false, returnFlight: true, x: mon.mx, y: mon.my, hitPlayer, promptedForTopline };
     }
     tmp_at(DISP_END, 0);
-    return { drop: !dropHandledInImpact, x: dropX, y: dropY, hitPlayer };
+    return { drop: !dropHandledInImpact, x: dropX, y: dropY, hitPlayer, promptedForTopline };
 }
 
 // C ref: mthrowu.c return_from_mtoss().
@@ -664,7 +714,7 @@ export async function thrwmu(mon, map, player, display, game) {
             let hitv = 3 - distmin(player.x, player.y, mon.mx, mon.my);
             if (hitv < -4) hitv = -4;
             hitv += 8 + (otmp.spe || 0);
-            thitu(hitv, dam, otmp, null, player, display, game, mon);
+            await thitu(hitv, dam, otmp, null, player, display, game, mon);
             // C ref: mthrowu.c m_throw() stop_occupation() ordering.
             if (game) {
                 if (typeof game.stop_occupation === 'function') game.stop_occupation();
