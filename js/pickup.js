@@ -502,44 +502,48 @@ function encumber_msg(player) {
     const newcap = near_capacity(player);
     // C ref: static int oldcap = 0; — per-session initial encumbrance baseline
     const oldcap_val = Number.isInteger(player?._oldcap) ? player._oldcap : 0;
+    const encMsg = get_encumber_msg_for_change(oldcap_val, newcap);
 
-    if (oldcap_val < newcap) {
-        switch (newcap) {
-        case 1:
-            Your("movements are slowed slightly because of your load.");
-            break;
-        case 2:
-            You("rebalance your load.  Movement is difficult.");
-            break;
-        case 3:
-            You("stagger under your heavy load.  Movement is very hard.");
-            break;
-        default:
-            You("%s move a handspan with this load!",
-                newcap === 4 ? "can barely" : "can't even");
-            break;
-        }
-    } else if (oldcap_val > newcap) {
-        switch (newcap) {
-        case 0:
-            Your("movements are now unencumbered.");
-            break;
-        case 1:
-            Your("movements are only slowed slightly by your load.");
-            break;
-        case 2:
-            You("rebalance your load.  Movement is still difficult.");
-            break;
-        case 3:
-            You("stagger under your load.  Movement is still very hard.");
-            break;
-        }
+    if (encMsg) {
+        pline(encMsg);
     }
     if (player) {
         player._oldcap = newcap;
         player.encumbrance = newcap;
     }
     oldcap = newcap;
+}
+
+function get_encumber_msg_for_change(oldcap_val, newcap) {
+    if (oldcap_val < newcap) {
+        switch (newcap) {
+        case 1:
+            return "Your movements are slowed slightly because of your load.";
+        case 2:
+            return "You rebalance your load.  Movement is difficult.";
+        case 3:
+            return "You stagger under your heavy load.  Movement is very hard.";
+        default:
+            return (newcap === 4)
+                ? "You can barely move a handspan with this load!"
+                : "You can't even move a handspan with this load!";
+        }
+    }
+    if (oldcap_val > newcap) {
+        switch (newcap) {
+        case 0:
+            return "Your movements are now unencumbered.";
+        case 1:
+            return "Your movements are only slowed slightly by your load.";
+        case 2:
+            return "You rebalance your load.  Movement is still difficult.";
+        case 3:
+            return "You stagger under your load.  Movement is still very hard.";
+        default:
+            return null;
+        }
+    }
+    return null;
 }
 
 // cf. pickup.c:2018 — container_at(x, y, countem)
@@ -1267,8 +1271,31 @@ function handlePickup(player, map, display, game = null) {
             map.removeObject(obj);
         }
         observeObject(pickedObj);
-        display.putstr_message(formatInventoryPickupMessage(pickedObj, inventoryObj, player));
-        encumber_msg(player);
+        const pickupMsg = formatInventoryPickupMessage(pickedObj, inventoryObj, player);
+        const oldcapVal = Number.isInteger(player?._oldcap) ? player._oldcap : 0;
+        const newcapVal = near_capacity(player);
+        const encMsg = get_encumber_msg_for_change(oldcapVal, newcapVal);
+        const combinedFits = !encMsg
+            || ((pickupMsg.length + 2 + encMsg.length + 9) < Number(display?.cols || 80));
+
+        if (encMsg && !combinedFits && game) {
+            display.putstr_message(`${pickupMsg}--More--`);
+            player._oldcap = newcapVal;
+            player.encumbrance = newcapVal;
+            game.pendingPrompt = {
+                type: 'pickup_encumber_more',
+                onKey: (_chCode, gameCtx) => {
+                    gameCtx.pendingPrompt = null;
+                    if (typeof display.clearRow === 'function') display.clearRow(0);
+                    if ('messageNeedsMore' in display) display.messageNeedsMore = false;
+                    display.putstr_message(encMsg);
+                    return { handled: true, moved: false, tookTime: false };
+                },
+            };
+        } else {
+            display.putstr_message(pickupMsg);
+            encumber_msg(player);
+        }
         return { moved: false, tookTime: true };
     };
 
