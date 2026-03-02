@@ -500,29 +500,45 @@ function curr_mon_load_for_search(mon) {
     return load;
 }
 
-function mon_would_take_item_search(mon, obj, map) {
+function mon_item_search_profile(mon) {
     const ptr = mon?.type || {};
-    if (!obj) return false;
-    if (obj.achievement) return false;
-    if (mon?.tame && obj.cursed) return false;
-
-    const maxload = max_mon_load_for_search(mon);
-    const pctload = Math.floor((curr_mon_load_for_search(mon) * 100) / maxload);
-
     const likesGold = !!(ptr.flags2 & M2_GREEDY);
     const likesGems = !!(ptr.flags2 & M2_JEWELS);
     const likesObjs = !!(ptr.flags2 & M2_COLLECT)
         || (Array.isArray(ptr.attacks) && ptr.attacks.some((atk) => atk?.type === AT_WEAP));
     const likesMagic = !!(ptr.flags2 & M2_MAGIC);
     const throwsRocks = !!(ptr.flags2 & M2_ROCKTHROW);
+    const anyInterest = likesGold || likesGems || likesObjs || likesMagic || throwsRocks;
 
-    if (likesGold && obj.otyp === GOLD_PIECE && pctload < 95) return true;
-    if (likesGems && obj.oclass === GEM_CLASS
+    const maxload = max_mon_load_for_search(mon);
+    const pctload = Math.floor((curr_mon_load_for_search(mon) * 100) / maxload);
+
+    return {
+        likesGold,
+        likesGems,
+        likesObjs,
+        likesMagic,
+        throwsRocks,
+        anyInterest,
+        pctload,
+    };
+}
+
+function mon_would_take_item_search(mon, obj, map, profile = null) {
+    if (!obj) return false;
+    if (obj.achievement) return false;
+    if (mon?.tame && obj.cursed) return false;
+
+    const prefs = profile || mon_item_search_profile(mon);
+    const pctload = prefs.pctload;
+
+    if (prefs.likesGold && obj.otyp === GOLD_PIECE && pctload < 95) return true;
+    if (prefs.likesGems && obj.oclass === GEM_CLASS
         && (objectData[obj.otyp]?.material !== MINERAL)
         && pctload < 85) return true;
-    if (likesObjs && PRACTICAL_CLASSES.has(obj.oclass) && pctload < 75) return true;
-    if (likesMagic && MAGICAL_CLASSES.has(obj.oclass) && pctload < 85) return true;
-    if (throwsRocks && obj.otyp === BOULDER && pctload < 50 && !map?.flags?.sokoban) return true;
+    if (prefs.likesObjs && PRACTICAL_CLASSES.has(obj.oclass) && pctload < 75) return true;
+    if (prefs.likesMagic && MAGICAL_CLASSES.has(obj.oclass) && pctload < 85) return true;
+    if (prefs.throwsRocks && obj.otyp === BOULDER && pctload < 50 && !map?.flags?.sokoban) return true;
     return false;
 }
 
@@ -563,6 +579,12 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
         return { ggx, ggy, appr, done: false };
     }
 
+    // Fast reject: most monsters have no reason to search for items.
+    const searchProfile = mon_item_search_profile(mon);
+    if (!searchProfile.anyInterest) {
+        return { ggx, ggy, appr, done: false };
+    }
+
     const hmx = Math.min(COLNO - 1, omx + minr);
     const hmy = Math.min(ROWNO - 1, omy + minr);
     const lmx = Math.max(1, omx - minr);
@@ -570,33 +592,34 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
 
     // Hot path optimization: preserve scan order while avoiding repeated
     // O(n) filters/finds for each searched tile in object-heavy levels.
-    const keyOf = (x, y) => `${x},${y}`;
-    const objectsByCoord = new Map();
+    const cellIndex = (x, y) => (y * COLNO) + x;
+    const objectsByCoord = new Array(COLNO * ROWNO);
     for (const obj of map.objects || []) {
-        const key = keyOf(obj.ox, obj.oy);
-        const pile = objectsByCoord.get(key);
+        const idx = cellIndex(obj.ox, obj.oy);
+        const pile = objectsByCoord[idx];
         if (pile) pile.push(obj);
-        else objectsByCoord.set(key, [obj]);
+        else objectsByCoord[idx] = [obj];
     }
-    const monsterByCoord = new Map();
+    const monsterByCoord = new Array(COLNO * ROWNO);
     for (const occ of map.monsters || []) {
         if (!occ || occ.mhp <= 0) continue;
-        const key = keyOf(occ.mx, occ.my);
-        if (!monsterByCoord.has(key)) monsterByCoord.set(key, occ);
+        const idx = cellIndex(occ.mx, occ.my);
+        if (!monsterByCoord[idx]) monsterByCoord[idx] = occ;
     }
-    const trapByCoord = new Map();
+    const trapByCoord = new Array(COLNO * ROWNO);
     for (const tr of map.traps || []) {
-        trapByCoord.set(keyOf(tr.tx, tr.ty), tr);
+        trapByCoord[cellIndex(tr.tx, tr.ty)] = tr;
     }
 
     for (let xx = lmx; xx <= hmx; xx++) {
         for (let yy = lmy; yy <= hmy; yy++) {
-            const pile = objectsByCoord.get(keyOf(xx, yy)) || [];
+            const idx = cellIndex(xx, yy);
+            const pile = objectsByCoord[idx] || [];
             if (!pile || pile.length === 0) continue;
             if (minr < distmin(omx, omy, xx, yy)) continue;
             if (!could_reach_item(map, mon, xx, yy)) continue;
             if (hides_under(mon.type || {}) && cansee_for_hider_avoidance(map, player, fov, xx, yy)) continue;
-            const occ = monsterByCoord.get(keyOf(xx, yy)) || null;
+            const occ = monsterByCoord[idx] || null;
             if (occ && occ !== mon) {
                 const occHelpless = !!occ.sleeping
                     || (Number(occ.mfrozen || 0) > 0)
@@ -607,7 +630,7 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
                 if (occHelpless || occHidden || occMimicDisguise || occImmobile) continue;
             }
             if (onscary(map, xx, yy)) continue;
-            const trap = trapByCoord.get(keyOf(xx, yy)) || null;
+            const trap = trapByCoord[idx] || null;
             if (trap && mon_knows_traps(mon, trap.ttyp)) {
                 if (ggx === xx && ggy === yy) {
                     ggx = mux;
@@ -621,7 +644,7 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
             for (const obj of pile) {
                 if (obj?.otyp === ROCK) continue;
                 if (costly && !obj?.no_charge) continue;
-                if (!mon_would_take_item_search(mon, obj, map)) continue;
+                if (!mon_would_take_item_search(mon, obj, map, searchProfile)) continue;
                 if (can_carry(mon, obj) <= 0) continue;
 
                 minr = distmin(omx, omy, xx, yy);

@@ -24,6 +24,7 @@ let rngLogWithTags = false;  // when true, log includes caller info
 let rngLogWithParent = false; // when true, include parent/grandparent in tag
 let rngCallerTag = null;     // current caller annotation (propagated through wrappers)
 let rngDepth = 0;            // nesting depth for context propagation
+const rngTagCache = new Map();
 
 export function enableRngLog(withTags = true) {
     if (typeof process !== 'undefined' && process?.env) {
@@ -40,6 +41,7 @@ export function enableRngLog(withTags = true) {
     rngLogWithParent = !!withTags && parentPref !== '0';
     rngCallerTag = null;
     rngDepth = 0;
+    rngTagCache.clear();
 }
 
 export function getRngLog() {
@@ -70,6 +72,33 @@ export function disableRngLog() {
     rngLogWithParent = false;
     rngCallerTag = null;
     rngDepth = 0;
+    rngTagCache.clear();
+}
+
+function parseStackFrameTag(line) {
+    if (!line || typeof line !== 'string') return null;
+    const at = line.indexOf('at ');
+    if (at < 0) return null;
+    const frame = line.slice(at + 3).trim();
+    if (!frame) return null;
+
+    let fn = null;
+    let loc = frame;
+    const lparen = frame.indexOf(' (');
+    if (lparen > 0 && frame.endsWith(')')) {
+        fn = frame.slice(0, lparen).trim() || null;
+        loc = frame.slice(lparen + 2, -1);
+    }
+    const slash = loc.lastIndexOf('/');
+    const tail = slash >= 0 ? loc.slice(slash + 1) : loc;
+    const colon2 = tail.lastIndexOf(':');
+    if (colon2 <= 0) return null;
+    const colon1 = tail.lastIndexOf(':', colon2 - 1);
+    if (colon1 <= 0) return null;
+    const file = tail.slice(0, colon1);
+    const lineNo = tail.slice(colon1 + 1, colon2);
+    if (!file || !lineNo) return null;
+    return fn ? `${fn}(${file}:${lineNo})` : `${file}:${lineNo}`;
 }
 
 // Capture caller context on first entry into an RNG function.
@@ -79,31 +108,44 @@ export function disableRngLog() {
 function enterRng() {
     rngDepth++;
     if (rngDepth === 1 && rngLogWithTags) {
-        const stack = new Error().stack;
+        const holder = {};
+        const prevLimit = Error.stackTraceLimit;
+        Error.stackTraceLimit = rngLogWithParent ? 6 : 4;
+        Error.captureStackTrace(holder, enterRng);
+        const stack = holder.stack || '';
+        Error.stackTraceLimit = prevLimit;
         const lines = stack.split('\n');
         // [0]=Error, [1]=enterRng, [2]=rn2/rnz/etc, [3]=caller
-        const callerLine = lines[3] || '';
-        // ESM stack frames:
-        //   "    at funcName (file:///path/to/file.js:line:col)"
-        //   "    at file:///path/to/file.js:line:col"
-        const m = callerLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
         const parentLine = lines[4] || '';
         const grandLine = lines[5] || '';
-        const pm = parentLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
-        const gm = grandLine.match(/at (?:(\S+) \()?.*?([^/\s]+\.js):(\d+)/);
-        if (m) {
-            rngCallerTag = m[1] ? `${m[1]}(${m[2]}:${m[3]})` : `${m[2]}:${m[3]}`;
-            if (rngLogWithParent && pm) {
-                const parentTag = pm[1] ? `${pm[1]}(${pm[2]}:${pm[3]})` : `${pm[2]}:${pm[3]}`;
-                rngCallerTag = `${rngCallerTag} <= ${parentTag}`;
-                if (gm) {
-                    const grandTag = gm[1] ? `${gm[1]}(${gm[2]}:${gm[3]})` : `${gm[2]}:${gm[3]}`;
-                    rngCallerTag = `${rngCallerTag} <= ${grandTag}`;
+        const callerLine = lines[3] || '';
+        const cacheKey = rngLogWithParent
+            ? `${callerLine}\n${parentLine}\n${grandLine}`
+            : callerLine;
+        if (rngTagCache.has(cacheKey)) {
+            rngCallerTag = rngTagCache.get(cacheKey);
+            return;
+        }
+
+        const callerTag = parseStackFrameTag(callerLine);
+        if (!callerTag) {
+            rngCallerTag = null;
+            rngTagCache.set(cacheKey, null);
+            return;
+        }
+        let fullTag = callerTag;
+        if (rngLogWithParent) {
+            const parentTag = parseStackFrameTag(parentLine);
+            if (parentTag) {
+                fullTag = `${fullTag} <= ${parentTag}`;
+                const grandTag = parseStackFrameTag(grandLine);
+                if (grandTag) {
+                    fullTag = `${fullTag} <= ${grandTag}`;
                 }
             }
-        } else {
-            rngCallerTag = null;
         }
+        rngCallerTag = fullTag;
+        rngTagCache.set(cacheKey, fullTag);
     }
 }
 
