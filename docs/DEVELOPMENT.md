@@ -219,23 +219,23 @@ creates a controlled `.nethackrc`, and cleans stale save/lock/bones state.
 ```bash
 # Tutorial manual recording example
 ./record-manual-capture.sh \
-  --seed=9 \
-  --role=Archeologist \
+  --seed=7 \
+  --role=Wizard \
   --race=human \
-  --gender=female \
+  --gender=male \
   --align=neutral \
   --no-wizard \
   --tutorial \
   --tmux-socket=default \
-  --keylog=test/comparison/keylogs/seed9_tutorial_manual.jsonl
+  --keylog=test/comparison/keylogs/seed7_tutorial_manual_wizard.jsonl
 ```
 
 Then convert to a v3 comparison session:
 
 ```bash
 python3 test/comparison/c-harness/keylog_to_session.py \
-  --in test/comparison/keylogs/seed9_tutorial_manual.jsonl \
-  --out test/comparison/sessions/seed9_tutorial_manual_gameplay.session.json \
+  --in test/comparison/keylogs/seed7_tutorial_manual_wizard.jsonl \
+  --out test/comparison/sessions/seed7_tutorial_manual_wizard_gameplay.session.json \
   --startup-mode auto \
   --tutorial on \
   --wizard auto
@@ -254,6 +254,35 @@ python3 test/comparison/c-harness/record_manual_session_v3.py \
   --align=neutral \
   --symset=DECgraphics \
   --tutorial-option=unset
+```
+
+For reproducible C-only capture from an existing keylog, use integrated
+autofeed mode (exact-byte tmux injection) instead of a separate feeder:
+
+```bash
+python3 test/comparison/c-harness/record_manual_session_v3.py \
+  --autofeed \
+  --seed=7 \
+  --name=Tutes \
+  --role=Wizard \
+  --race=human \
+  --gender=male \
+  --align=neutral \
+  --symset=DECgraphics \
+  --tutorial-option=on \
+  --autofeed-keylog=test/comparison/keylogs/seed7_tutorial_manual_wizard.jsonl \
+  --keylog=test/comparison/keylogs/seed7_tutorial_autofeed_direct.jsonl \
+  --output-session=test/comparison/sessions/seed7_tutorial_manual_wizard_gameplay.session.json
+```
+
+The command reports key integrity (`AUTOFEED_KEY_MISMATCH_AT=...`) so you can
+verify captured keys match the source stream.
+
+To verify tutorial coverage quickly:
+
+```bash
+node scripts/tutorial-coverage.mjs \
+  test/comparison/sessions/seed7_tutorial_manual_wizard_gameplay.session.json
 ```
 
 ## Project Structure
