@@ -212,6 +212,13 @@ function timeoutSummary(result) {
     return { step, key, topline, pendingPrompt, multi };
 }
 
+function truncateText(s, max = CELL_W - 2) {
+    const src = String(s || '');
+    if (src.length <= max) return src;
+    if (max <= 1) return src.slice(0, max);
+    return `${src.slice(0, max - 1)}…`;
+}
+
 // Short inline note: cached cat, or per-channel fallback
 function shortNote(result, cache) {
     const screenEarlyOnly = result?.metrics?.screenWindow?.earlyOnlyCount || 0;
@@ -405,15 +412,35 @@ function main() {
         const scStep  = fds.screen?.step ?? null;
 
         if (!diagnoseOnly) {
-            const rngCell = fmtCell(rngStep, rngTotal, rngFull, rngThres);
-            const evCell  = fmtCell(evStep,  evTotal,  evFull,  evThres);
-            const scCell  = fmtCell(scStep,  scTotal,  scFull,  scThres);
+            const timeout = timeoutSummary(r);
+            const noPesData = (rngTotal === 0 && evTotal === 0 && scTotal === 0);
+            let rngCell;
+            let evCell;
+            let scCell;
+            if (timeout && noPesData) {
+                const timeoutText = cRed(padStartVis(truncateText('TIMEOUT', CELL_W - 2), CELL_W - 1));
+                const stepText = timeout.step != null
+                    ? padStartVis(truncateText(`step ${timeout.step}`, CELL_W - 2), CELL_W - 1)
+                    : padStartVis(truncateText('step ?', CELL_W - 2), CELL_W - 1);
+                const keyText = timeout.key
+                    ? padStartVis(truncateText(`key ${JSON.stringify(timeout.key)}`, CELL_W - 2), CELL_W - 1)
+                    : padStartVis(truncateText(`prompt ${timeout.pendingPrompt}`, CELL_W - 2), CELL_W - 1);
+                rngCell = timeoutText;
+                evCell = stepText;
+                scCell = keyText;
+            } else {
+                rngCell = fmtCell(rngStep, rngTotal, rngFull, rngThres);
+                evCell  = fmtCell(evStep,  evTotal,  evFull,  evThres);
+                scCell  = fmtCell(scStep,  scTotal,  scFull,  scThres);
+            }
 
             const passIndicator = r.passed ? cGreen('✓') : cRed('✗');
             const namePad = padEndVis(name, NAME_W - 2);  // -2 for indicator + space
 
             // Short inline note for failing sessions (from cache if valid)
-            const note = (!r.passed) ? cDim('  ' + shortNote(r, cache)) : '';
+            const note = (!r.passed && !(timeout && noPesData))
+                ? cDim('  ' + shortNote(r, cache))
+                : '';
 
             console.log(
                 passIndicator + ' ' + namePad +
