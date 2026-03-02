@@ -873,7 +873,10 @@ export class HeadlessDisplay {
                             continue;
                         }
                         if (loc.mem_trap) {
-                            this.setCell(col, row, loc.mem_trap, CLR_BLACK);
+                            // C ref: back_to_glyph() preserves trap's full color in memory.
+                            const memTrapColor = Number.isInteger(loc.mem_trap_color)
+                                ? loc.mem_trap_color : CLR_BLACK;
+                            this.setCell(col, row, loc.mem_trap, memTrapColor);
                             continue;
                         }
                         if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
@@ -953,6 +956,7 @@ export class HeadlessDisplay {
                 if (trap && trap.tseen) {
                     const tg = trapGlyph(trap.ttyp);
                     loc.mem_trap = tg.ch;
+                    loc.mem_trap_color = tg.color;
                     this.setCell(col, row, tg.ch, tg.color);
                     continue;
                 }

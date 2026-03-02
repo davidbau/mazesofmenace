@@ -413,8 +413,11 @@ export class Display {
                             continue;
                         }
                         if (loc.mem_trap) {
-                            this.setCell(col, row, loc.mem_trap, CLR_BLACK);
-                            this.cellInfo[row][col] = { name: 'remembered trap', desc: '(remembered)', color: CLR_BLACK };
+                            // C ref: back_to_glyph() preserves trap's full color in memory.
+                            const memTrapColor = Number.isInteger(loc.mem_trap_color)
+                                ? loc.mem_trap_color : CLR_BLACK;
+                            this.setCell(col, row, loc.mem_trap, memTrapColor);
+                            this.cellInfo[row][col] = { name: 'remembered trap', desc: '(remembered)', color: memTrapColor };
                             continue;
                         }
                         // Show remembered (dimmed) — check wall_angle first
@@ -528,6 +531,7 @@ export class Display {
                 if (trap && trap.tseen) {
                     const tg = trapGlyph(trap.ttyp);
                     loc.mem_trap = tg.ch;
+                    loc.mem_trap_color = tg.color;
                     this.setCell(col, row, tg.ch, tg.color);
                     this.cellInfo[row][col] = {
                         name: tg.name,

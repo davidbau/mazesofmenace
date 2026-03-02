@@ -1004,6 +1004,13 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
 
         trap_result = await trapeffect_selector_mon(
             mon, trap, 0, map, player, display, fov);
+
+        // C ref: mintrap() calls seetrap() after the switch block when
+        // !already_seen, including when the monster is moved (e.g. magic portal).
+        // Only skip when the trap itself is gone (Trap_Killed_Mon may delete it).
+        if (!already_seen && trap_result !== Trap_Killed_Mon) {
+            seetrap(trap);
+        }
     }
     return trap_result;
 }
