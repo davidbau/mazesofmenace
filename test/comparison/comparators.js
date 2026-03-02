@@ -545,14 +545,11 @@ function isEventEntry(entry) {
 }
 
 function isIgnorableEventEntry(entry) {
-    // TODO: remove dog diagnostic event filters after re-recording sessions
-    return typeof entry === 'string' && (
-        entry.startsWith('^trick[') ||
-        entry.startsWith('^distfleeck[') ||
-        entry.startsWith('^dog_invent_decision[') ||
-        entry.startsWith('^dog_move_choice[') ||
-        entry.startsWith('^mapdump[')
-    );
+    // `trick[...]` remains ignored because it is map-regeneration recovery noise.
+    // `mapdump[...]` is harness-level diagnostics rather than gameplay semantics.
+    // Dog/monster diagnostic events are compared directly.
+    return typeof entry === 'string'
+        && (entry.startsWith('^trick[') || entry.startsWith('^mapdump['));
 }
 
 // Strip JS caller context (` @ caller <= parent`) appended by pushRngLogEntry.

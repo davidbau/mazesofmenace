@@ -517,9 +517,17 @@ export async function getCount(firstKey, maxCount, display) {
         if (cnt > 9 || backspaced) {
             if (disp) {
                 if (backspaced && !cnt && !showzero) {
-                    disp.putstr_message('Count: ');
+                    const countText = 'Count: ';
+                    disp.putstr_message(countText);
+                    if (typeof disp.moveCursorTo === 'function') {
+                        disp.moveCursorTo(countText.length, 0);
+                    }
                 } else {
-                    disp.putstr_message(`Count: ${cnt}`);
+                    const countText = `Count: ${cnt}`;
+                    disp.putstr_message(countText);
+                    if (typeof disp.moveCursorTo === 'function') {
+                        disp.moveCursorTo(countText.length, 0);
+                    }
                 }
             }
             backspaced = false;

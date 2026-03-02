@@ -843,12 +843,21 @@ export async function replaySession(seed, session, opts = {}) {
                 const hadCount = pendingCount > 0;
                 const digit = ch - 48;
                 pendingCount = Math.min(32767, (pendingCount * 10) + digit);
+                let countCursorCol = null;
                 if (hadCount || digit === 0) {
                     game.display.clearRow(0);
                     game.display.topMessage = null;
-                    game.display.putstr_message(`Count: ${pendingCount}`);
+                    const countText = `Count: ${pendingCount}`;
+                    game.display.putstr_message(countText);
+                    // Preserve this cursor location after renderCurrentScreen().
+                    countCursorCol = countText.length;
                 }
                 game.renderCurrentScreen();
+                // C leaves the cursor after the count prompt on topline.
+                if (countCursorCol !== null
+                    && typeof game.display.setCursor === 'function') {
+                    game.display.setCursor(countCursorCol, 0);
+                }
                 const raw = getRngLog().slice(prevByteCount);
                 const frame = captureSnapshot(
                     raw,
