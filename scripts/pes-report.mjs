@@ -438,7 +438,13 @@ function main() {
                 const metricsW = LINE_W - NAME_W - 2;
                 const merged = timeoutDetailText(timeout, metricsW);
                 const payload = cRed(padEndVis(merged, metricsW));
-                console.log(passIndicator + ' ' + namePad + '  ' + payload);
+                const safeTopline = timeout.topline
+                    ? String(timeout.topline).replace(/\s+/g, ' ').trim()
+                    : '';
+                const toplineNote = timeout.topline
+                    ? cDim(`  topline=${JSON.stringify(safeTopline)}`)
+                    : '';
+                console.log(passIndicator + ' ' + namePad + '  ' + payload + toplineNote);
                 if (!r.passed) failingResults.push(r);
                 continue;
             }
