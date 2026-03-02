@@ -1290,7 +1290,11 @@ export class NetHackGame {
     // When a prompt/menu is active, preserve that screen instead of forcing a
     // map/status redraw which would erase prompt content.
     shouldRenderAfterCommand(commandResult = null) {
-        return !(commandResult?.prompt || this.pendingPrompt);
+        // Prompt-consuming keys should preserve prompt content. But if a timed
+        // command just produced a prompt (for instance "--More--"), C already
+        // reflects the command's world/map changes on that same step.
+        if (this.pendingPrompt && commandResult?.prompt) return false;
+        return true;
     }
 
     // Return the COLNO×ROWNO terrain type grid
