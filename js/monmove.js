@@ -24,8 +24,8 @@
 import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          ACCESSIBLE, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
          SHOPBASE, ROOM, ROOMOFFSET,
-         NORMAL_SPEED, isok } from './config.js';
-import { rn2, rnd } from './rng.js';
+         NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED } from './config.js';
+import { rn2, rnd, d } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
 import { mattacku } from './mhitu.js';
 import { makemon } from './makemon.js';
@@ -46,13 +46,15 @@ import { can_teleport, noeyes, perceives, nohands,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          passes_walls, corpse_eater,
-         passes_bars, is_human, canseemon, monsdat } from './mondata.js';
+         passes_bars, is_human, canseemon, monsdat,
+         webmaker } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN, PM_GREMLIN, PM_STALKER,
          PM_XORN,
          PM_DISPLACER_BEAST,
          PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
          PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
+         PM_HEZROU, PM_STEAM_VORTEX, PM_FOG_CLOUD, PM_GIANT_SPIDER,
          AT_WEAP,
          S_MIMIC, S_GHOST, S_BAT, S_LIGHT,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
@@ -61,6 +63,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          MZ_TINY, MZ_HUMAN, WT_HUMAN,
          M2_WANDER,
          MS_LEADER, MS_SHRIEK } from './monsters.js';
+import { create_gas_cloud, visible_region_at } from './region.js';
 import { dog_move, could_reach_item } from './dogmove.js';
 import { initrack, settrack, gettrack } from './track.js';
 import { pointInShop, monsterInShop } from './shknam.js';
@@ -75,6 +78,7 @@ import { dist2, distmin, monnear,
          canSpotMonsterForMap, map_invisible,
          addToMonsterInventory, canMergeMonsterInventoryObj,
          mondead, mpickobj, mdrop_obj, unstuck,
+         helpless,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM } from './monutil.js';
 export { dist2, distmin, monnear, monmoveTrace, monmovePhase3Trace, monmoveStepLabel, attackVerb, monAttackName, canSpotMonsterForMap, map_invisible, addToMonsterInventory, canMergeMonsterInventoryObj, mondead, mpickobj, mdrop_obj, MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
 
@@ -93,8 +97,10 @@ export { mfndpos, onscary, corpse_chance, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALL
 // mon_allowflags is exported from its definition below
 
 // Re-export trap.c functions
-import { m_harmless_trap, floor_trigger, mintrap_postmove } from './trap.js';
+import { m_harmless_trap, floor_trigger, mintrap_postmove, t_at } from './trap.js';
 export { m_harmless_trap, floor_trigger, mintrap_postmove };
+import { maketrap } from './dungeon.js';
+import { mdig_tunnel } from './dig.js';
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
@@ -105,7 +111,7 @@ import { find_defensive, use_defensive, find_misc, use_misc } from './muse.js';
 // movemon — wrapper that binds dochug into mon.js movemon
 // ========================================================================
 export async function movemon(map, player, display, fov, game = null) {
-    return await _movemon(map, player, display, fov, game, { dochug, handleHiderPremove });
+    return await _movemon(map, player, display, fov, game, { dochug, handleHiderPremove, everyturnEffect: m_everyturn_effect });
 }
 
 // C direction tables (C ref: monmove.c)
@@ -415,7 +421,21 @@ export function mon_allowflags(mon) {
         flag |= ALLOW_SSM | ALLOW_SANCT;
     }
 
+    // C ref: mon.c:2086 — wielded pick/mattock grants ALLOW_DIG
+    if (mon_has_pick(mon)) {
+        flag |= ALLOW_DIG;
+    }
+
     return flag;
+}
+
+// Check if monster is carrying a digging tool (pick-axe or mattock).
+// C ref: mon.c:2086 uses which_armor(W_WEP) + dig_typ() — simplified to inventory check.
+function mon_has_pick(mon) {
+    for (const obj of mon?.minvent || []) {
+        if (obj.otyp === PICK_AXE || obj.otyp === DWARVISH_MATTOCK) return true;
+    }
+    return false;
 }
 
 // ========================================================================
@@ -987,6 +1007,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 return;
             }
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
+                m_postmove_effect(mon, map, player, game, omx, omy);
                 const trapResult = await mintrap_postmove(mon, map, player, display, fov);
                 if (trapResult === 2 || trapResult === 3) {
                     return;
@@ -999,6 +1020,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             moveDone = !!mon._mMoveDone;
             let trapDied = false;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
+                m_postmove_effect(mon, map, player, game, omx, omy);
                 const trapResult = await mintrap_postmove(mon, map, player, display, fov);
                 if (trapResult === 2 || trapResult === 3) {
                     trapDied = true;
@@ -1324,7 +1346,8 @@ function m_move(mon, map, player, display = null, fov = null) {
         }
     }
 
-    const positions = mfndpos(mon, map, player, mon_allowflags(mon));
+    const allowflags = mon_allowflags(mon);
+    const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
     const replayStep = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
     const posSummary = positions.map((p) => `(${p.x},${p.y})`).join(' ');
@@ -1447,6 +1470,23 @@ function m_move(mon, map, player, display = null, fov = null) {
         if (attacksMonster && m_move_aggress(mon, map, player, nix, niy, display, fov)) {
             mon._mMoveDone = true;
             return false;
+        }
+    }
+
+    // C ref: monmove.c:1704 — maybe_spin_web called outside mmoved block (regardless of movement)
+    if (!mon.dead) maybe_spin_web(mon, map);
+
+    // C ref: monmove.c:1704-area — if monster selected an obstructed position (ALLOW_DIG),
+    // move there and call mdig_tunnel to process the terrain.
+    if ((nix !== omx || niy !== omy) && (allowflags & ALLOW_DIG)) {
+        const nixLoc = map.at(nix, niy);
+        if (nixLoc && IS_OBSTRUCTED(nixLoc.typ)) {
+            mon_track_add(mon, omx, omy);
+            mon.mx = nix;
+            mon.my = niy;
+            const digDied = mdig_tunnel(mon, map, player);
+            if (digDied || mon.dead) return false;
+            return true;
         }
     }
 
@@ -1610,16 +1650,27 @@ export async function dochugw(mon, map, player, display, fov, game) {
     await dochug(mon, map, player, display, fov, game);
 }
 
-// C ref: monmove.c:648 m_everyturn_effect() — per-turn effects (fog cloud)
-// Simplified: fog cloud vapor creation not ported (NhRegion system).
-export function m_everyturn_effect(mon) {
-    // PM_FOG_CLOUD creates harmless vapor — region system not ported
+// C ref: monmove.c:660 m_everyturn_effect() — effects every turn for ALL alive monsters
+// Called before the movement check, so runs even when monster can't move this tick.
+export function m_everyturn_effect(mon, map, player, game) {
+    if (mon.mndx === PM_FOG_CLOUD) {
+        // C ref: monmove.c:669-675 — fog cloud leaves harmless vapor unless door or existing cloud
+        if (!closed_door(mon.mx, mon.my, map) && !visible_region_at(mon.mx, mon.my, map)) {
+            create_gas_cloud(mon.mx, mon.my, 1, 0, map, player, game);
+        }
+    }
 }
 
-// C ref: monmove.c:666 m_postmove_effect() — post-move effects (hezrou stench)
-// Simplified: gas cloud creation not ported.
-export function m_postmove_effect(mon) {
-    // PM_HEZROU stench, PM_STEAM_VORTEX vapor — region system not ported
+// C ref: monmove.c:678 m_postmove_effect() — post-move effects at OLD position
+// omx/omy: pre-move position (C calls this before place_monster updates mtmp->mx/my)
+export function m_postmove_effect(mon, map, player, game, omx, omy) {
+    if (mon.mndx === PM_HEZROU) {
+        // C ref: monmove.c:692-693 — hezrou leaves stench cloud at old position
+        create_gas_cloud(omx, omy, 1, 8, map, player, game);
+    } else if (mon.mndx === PM_STEAM_VORTEX && !mon.mcan) {
+        // C ref: monmove.c:694-695 — steam vortex leaves harmless vapor at old position
+        create_gas_cloud(omx, omy, 1, 0, map, player, game);
+    }
 }
 
 // C ref: monmove.c:1458 postmov() — post-movement processing
@@ -1847,22 +1898,26 @@ export function holds_up_web(x, y, map) {
   return false;
 }
 
-// Autotranslated from monmove.c:1272
-export function maybe_spin_web(mtmp) {
-  if (webmaker(mtmp.data) && !helpless(mtmp) && !mtmp.mspec_used && !t_at(mtmp.mx, mtmp.my) && soko_allow_web(mtmp)) {
-    let trap;
-    let prob = ((((mtmp.data === mons[PM_GIANT_SPIDER]) ? 15 : 5) * (count_webbing_walls(mtmp.mx, mtmp.my) + 1)) - (3 * count_traps(WEB)));
-    if (rn2(1000) < prob && (trap = maketrap(mtmp.mx, mtmp.my, WEB)) !== 0) {
-      mtmp.mspec_used = d(4, 4);
-      if (cansee(mtmp.mx, mtmp.my)) {
-        let mbuf;
-        Strcpy(mbuf, canspotmon(mtmp) ? y_monnam(mtmp) : something);
-        pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
-        trap.tseen = 1;
-      }
-      if ( in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) add_damage(mtmp.mx, mtmp.my, 0);
+// C ref: monmove.c:1272 maybe_spin_web() — spider/spinner places a web trap
+// Called from end of m_move (C ref: monmove.c:1704) after movement candidate selection.
+export function maybe_spin_web(mtmp, map) {
+    if (!webmaker(mtmp.data || mtmp.type)) return;
+    if (helpless(mtmp) || mtmp.mspec_used) return;
+    if (t_at(mtmp.mx, mtmp.my, map)) return;
+    // soko_allow_web: returns false on sokoban levels; JS doesn't track sokoban
+    // type per-level yet, so assume true (non-sokoban)
+    // count_webbing_walls: counts nearby walls for prob boost; stub as 0 until implemented
+    const nwalls = 0; // count_webbing_walls stub
+    // count_traps(WEB): count existing webs on the level to reduce prob
+    const nwebs = map && Array.isArray(map.traps) ? map.traps.filter(t => t && t.ttyp === WEB).length : 0;
+    const prob = (((mtmp.mndx === PM_GIANT_SPIDER) ? 15 : 5) * (nwalls + 1)) - (3 * nwebs);
+    if (rn2(1000) < prob) {
+        const trap = maketrap(map, mtmp.mx, mtmp.my, WEB);
+        if (trap) {
+            mtmp.mspec_used = d(4, 4);
+            // Display message (cansee/canspotmon stubs — skip for now)
+        }
     }
-  }
 }
 
 // Autotranslated from monmove.c:2123

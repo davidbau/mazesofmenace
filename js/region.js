@@ -95,7 +95,7 @@ export function inside_rect(r, x, y) {
 export function inside_region(reg, x, y) {
   let i;
   if (reg ===  0 || !inside_rect( (reg.bounding_box), x, y)) return false;
-  for (i = 0; i < reg.nrects; i++) {
+  for (i = 0; i < reg.rects.length; i++) {
     if (inside_rect( (reg.rects[i]), x, y)) return true;
   }
   return false;

@@ -100,7 +100,8 @@ import {
     CORPSE, LUCKSTONE, objectData,
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
-import { mpickobj } from './monutil.js';
+import { mpickobj, dist2, BOLT_LIM } from './monutil.js';
+import { canseemon } from './mondata.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -1495,6 +1496,38 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null) {
     return true;
 }
 
+// C ref: mon.c newcham() with specific target ptr — apply form change to a known target mndx.
+// Used when the target form was already selected (e.g., pickvampshape was already called).
+// Unlike apply_newcham_from_base, does NOT re-call select_newcham_form/pickvampshape.
+function apply_newcham_direct(mon, targetMndx, depth, map = null) {
+    const target = mons[targetMndx];
+    if (!target) return false;
+
+    const chamMndx = Number.isInteger(mon.cham) ? mon.cham : -1;
+
+    // C ref: mgender_from_permonst() -- RNG call for ungendered forms.
+    if (!is_male(target) && !is_female(target) && !is_neuter(target)) {
+        if (!rn2(10) && !(target.mlet === S_VAMPIRE || is_vampshifter_mndx(chamMndx))) {
+            // female toggle omitted; RNG parity only.
+        }
+    }
+
+    const { hp: newHp, m_lev: newLev } = newmonhp(targetMndx, depth || 1);
+    const symEntry = def_monsyms[target.mlet];
+    mon.mndx = targetMndx;
+    mon.type = target;
+    mon.name = target.name;
+    mon.displayChar = symEntry ? symEntry.sym : '?';
+    mon.displayColor = target.color;
+    mon.attacks = target.attacks;
+    mon.mhp = newHp;
+    mon.mhpmax = newHp;
+    mon.m_lev = newLev;
+    mon.mac = target.ac;
+    mon.speed = target.speed;
+    return true;
+}
+
 function maybe_apply_newcham(mon, baseMndx, depth, map = null) {
     const basePtr = mons[baseMndx];
     if (!(basePtr.flags2 & M2_SHAPESHIFTER)) return false;
@@ -1503,19 +1536,57 @@ function maybe_apply_newcham(mon, baseMndx, depth, map = null) {
     return apply_newcham_from_base(mon, baseMndx, depth, map);
 }
 
-// C ref: mon.c m_calcdistress() decide_to_shapeshift() regular branch.
-// Runtime subset: regular shapechangers roll rn2(6) and may newcham.
-export function runtimeDecideToShapeshift(mon, depth = 1) {
+// C ref: mon.c m_calcdistress() decide_to_shapeshift()
+// Handles both regular shapechangers and vampshifters.
+// player/fov optional: needed only to evaluate canseemon check after rn2 passes.
+export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = null, fov = null) {
     if (!mon || mon.dead) return false;
     const chamMndx = Number.isInteger(mon.cham) ? mon.cham : -1;
     if (chamMndx < LOW_PM || chamMndx >= SPECIAL_PM) return false;
-    if (is_vampshifter_mndx(chamMndx)) {
-        // C ref: mon.c m_calcdistress()/pickvampshape path for vampshifters.
-        // Do not consume generic chameleon rn2(6) here.
-        return false;
+
+    if (!is_vampshifter_mndx(chamMndx)) {
+        // Regular shapeshifter: rn2(6) to decide
+        if (rn2(6) !== 0) return false;
+        return apply_newcham_from_base(mon, chamMndx, depth, map);
     }
-    if (rn2(6) !== 0) return false;
-    return apply_newcham_from_base(mon, chamMndx, depth, null);
+
+    // Vampshifter — C ref: mon.c:4882 decide_to_shapeshift() vampshifter path
+    const STRAT_WAITFORU = 0x20000000;
+    if (mon.mstrategy & STRAT_WAITFORU) return false;
+
+    const currentMlet = mons[mon.mndx]?.mlet;
+
+    if (currentMlet !== S_VAMPIRE) {
+        // Currently shifted to non-vampire form
+        if (mon.mhp <= Math.floor((mon.mhpmax + 5) / 6)) {
+            // C: low HP — consume rn2(4); if nonzero → shift back to base form
+            if (!rn2(4)) return false;
+            // Shift back to base vampire form directly (C: newcham with specific ptr)
+            if (chamMndx >= LOW_PM && chamMndx < SPECIAL_PM)
+                return apply_newcham_direct(mon, chamMndx, depth, map);
+        } else if (mon.mndx === PM_FOG_CLOUD && mon.mhp === mon.mhpmax) {
+            // C: fog cloud at full HP — consume rn2(4); if zero AND unseen/far → new shape
+            if (rn2(4) !== 0) return false;
+            const seen = canseemon(mon, player, fov);
+            const distSq = player ? dist2(player.x, player.y, mon.mx, mon.my) : 999;
+            if (seen && distSq <= BOLT_LIM * BOLT_LIM) return false;
+            // pickvampshape selects new form; use apply_newcham_direct to avoid double-calling
+            const newMndx = pickvampshape(mon, chamMndx, map);
+            if (newMndx < 0 || newMndx === mon.mndx) return false;
+            return apply_newcham_direct(mon, newMndx, depth, map);
+        }
+    } else {
+        // Currently in vampire (base) form — maybe shift to alternate form
+        if (mon.mhp >= Math.floor(9 * mon.mhpmax / 10)) {
+            // C: high HP — consume rn2(6); if zero AND unseen/far → shift
+            if (rn2(6) !== 0) return false;
+            const seen = canseemon(mon, player, fov);
+            const distSq = player ? dist2(player.x, player.y, mon.mx, mon.my) : 999;
+            if (seen && distSq <= BOLT_LIM * BOLT_LIM) return false;
+            return apply_newcham_from_base(mon, chamMndx, depth, map);
+        }
+    }
+    return false;
 }
 
 function set_mimic_sym(mndx, x, y, map, depth) {

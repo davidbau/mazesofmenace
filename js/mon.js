@@ -436,9 +436,9 @@ export function mfndpos(mon, map, player, flag) {
             const ntyp = loc.typ;
             let posInfo = 0;
 
-            // C ref: mon.c:2192-2197 — IS_OBSTRUCTED: need ALLOW_WALL or ALLOW_ROCK (ALLOW_DIG deferred)
+            // C ref: mon.c:2192-2197 — IS_OBSTRUCTED: need ALLOW_WALL, ALLOW_ROCK, or ALLOW_DIG
             if (IS_OBSTRUCTED(ntyp)) {
-                if (!(flag & ALLOW_WALL) && !(flag & ALLOW_ROCK)) continue;
+                if (!(flag & ALLOW_WALL) && !(flag & ALLOW_ROCK) && !(flag & ALLOW_DIG)) continue;
             }
             if (ntyp === WATER && !isSwimmer) continue;
             // C ref: mon.c:2203-2206 — IRONBARS: check ALLOW_BARS flag
@@ -1469,12 +1469,14 @@ function m_calcdistress(mon, map, player) {
 // ========================================================================
 // movemon — C ref: mon.c movemon()
 // ========================================================================
-export async function movemon(map, player, display, fov, game = null, { dochug, handleHiderPremove: hhp } = {}) {
+export async function movemon(map, player, display, fov, game = null, { dochug, handleHiderPremove: hhp, everyturnEffect } = {}) {
     if (game) game._suppressMonsterHitMessagesThisTurn = false;
     if (map) map._heardDistantNoiseThisTurn = false;
     let somebodyCanMove = false;
     for (const mon of map.monsters) {
         if (mon.dead) continue;
+        // C ref: mon.c:1230 — m_everyturn_effect called for ALL alive monsters before movement check
+        if (everyturnEffect) everyturnEffect(mon, map, player, game);
         if (mon.movement >= NORMAL_SPEED) {
             pushRngLogEntry(`^movemon_turn[${mon.mndx}@${mon.mx},${mon.my} mv=${mon.movement}->${mon.movement - NORMAL_SPEED}]`);
             const oldx = mon.mx;
