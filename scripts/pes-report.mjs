@@ -219,6 +219,23 @@ function truncateText(s, max = CELL_W - 2) {
     return `${src.slice(0, max - 1)}…`;
 }
 
+function timeoutDetailText(timeout, maxWidth = 999) {
+    const baseParts = ['TIMEOUT'];
+    if (timeout.step != null) baseParts.push(`step=${timeout.step}`);
+    if (timeout.key) baseParts.push(`key=${JSON.stringify(timeout.key)}`);
+    baseParts.push(`p=${timeout.pendingPrompt ? 1 : 0}`);
+    baseParts.push(`m=${timeout.multi}`);
+    let text = baseParts.join(' ');
+    if (!timeout.topline) return truncateText(text, maxWidth);
+    const toplinePart = ` topline=${JSON.stringify(timeout.topline)}`;
+    if (text.length + toplinePart.length <= maxWidth) return text + toplinePart;
+    const remaining = maxWidth - text.length;
+    if (remaining > 14) {
+        return text + truncateText(toplinePart, remaining);
+    }
+    return truncateText(text, maxWidth);
+}
+
 // Short inline note: cached cat, or per-channel fallback
 function shortNote(result, cache) {
     const screenEarlyOnly = result?.metrics?.screenWindow?.earlyOnlyCount || 0;
@@ -414,31 +431,24 @@ function main() {
         if (!diagnoseOnly) {
             const timeout = timeoutSummary(r);
             const noPesData = (rngTotal === 0 && evTotal === 0 && scTotal === 0);
-            let rngCell;
-            let evCell;
-            let scCell;
-            if (timeout && noPesData) {
-                const timeoutText = cRed(padStartVis(truncateText('TIMEOUT', CELL_W - 2), CELL_W - 1));
-                const stepText = timeout.step != null
-                    ? padStartVis(truncateText(`step ${timeout.step}`, CELL_W - 2), CELL_W - 1)
-                    : padStartVis(truncateText('step ?', CELL_W - 2), CELL_W - 1);
-                const keyText = timeout.key
-                    ? padStartVis(truncateText(`key ${JSON.stringify(timeout.key)}`, CELL_W - 2), CELL_W - 1)
-                    : padStartVis(truncateText(`prompt ${timeout.pendingPrompt}`, CELL_W - 2), CELL_W - 1);
-                rngCell = timeoutText;
-                evCell = stepText;
-                scCell = keyText;
-            } else {
-                rngCell = fmtCell(rngStep, rngTotal, rngFull, rngThres);
-                evCell  = fmtCell(evStep,  evTotal,  evFull,  evThres);
-                scCell  = fmtCell(scStep,  scTotal,  scFull,  scThres);
-            }
-
             const passIndicator = r.passed ? cGreen('✓') : cRed('✗');
             const namePad = padEndVis(name, NAME_W - 2);  // -2 for indicator + space
 
+            if (timeout && noPesData) {
+                const metricsW = LINE_W - NAME_W - 2;
+                const merged = timeoutDetailText(timeout, metricsW);
+                const payload = cRed(padEndVis(merged, metricsW));
+                console.log(passIndicator + ' ' + namePad + '  ' + payload);
+                if (!r.passed) failingResults.push(r);
+                continue;
+            }
+
+            const rngCell = fmtCell(rngStep, rngTotal, rngFull, rngThres);
+            const evCell  = fmtCell(evStep,  evTotal,  evFull,  evThres);
+            const scCell  = fmtCell(scStep,  scTotal,  scFull,  scThres);
+
             // Short inline note for failing sessions (from cache if valid)
-            const note = (!r.passed && !(timeout && noPesData))
+            const note = (!r.passed)
                 ? cDim('  ' + shortNote(r, cache))
                 : '';
 
