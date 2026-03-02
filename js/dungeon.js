@@ -4302,6 +4302,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     const bonesMap = getbones(null, depth);
     if (bonesMap) return bonesMap;
     inMklev = true;
+    setMakemonInMklevContext(true);
     setMklevObjectContext(true);
     try {
 

@@ -15,7 +15,7 @@
 //   newgame(): full new-game setup (role selection, dungeon gen, startup).
 //   welcome(): display character description at game start or restore.
 
-import { movemon, settrack } from './monmove.js';
+import { movemon, settrack, mon_regen } from './monmove.js';
 import { savebones } from './bones.js';
 import { setCurrentTurn, nh_timeout } from './timeout.js';
 import { setOutputContext } from './pline.js';
@@ -160,6 +160,12 @@ export function moveloop_turnend(game) {
                 mon.flee = false;
             }
         }
+    }
+
+    // C ref: mon.c m_calcdistress() — HP regen + mspec_used decrement, once per game turn.
+    for (const mon of (game.lev || game.map).monsters) {
+        if (mon.dead) continue;
+        mon_regen(mon, false, game.turnCount);
     }
 
     // C ref: mon.c m_calcdistress() shapechange + lycanthropy pass.

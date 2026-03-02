@@ -1148,7 +1148,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     // ========================================================================
 
     // Collect valid positions (column-major order, no stay pos, boulder filter)
-    const allowflags = mon_allowflags(mon);
+    const allowflags = mon_allowflags(mon, player);
     const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
     pushRngLogEntry(`^dog_move_entry[${mon.mndx}@${omx},${omy} goal=${gx},${gy} appr=${appr}]`);

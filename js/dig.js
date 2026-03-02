@@ -86,7 +86,7 @@ function sobj_at(otyp, x, y, map) {
 }
 
 // C ref: may_dig(x, y) — is digging allowed at this location?
-function may_dig(x, y, map) {
+export function may_dig(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
     return !loc.nondiggable;

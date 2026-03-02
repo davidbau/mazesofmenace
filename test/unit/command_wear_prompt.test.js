@@ -73,6 +73,13 @@ describe('wear command prompt parity', () => {
 
         const result = await rhack('W'.charCodeAt(0), game);
         assert.equal(result.tookTime, true);
+        // Ring mail has delay > 1, so wearing it starts an occupation.
+        // Simulate the occupation completing to verify armor is applied.
+        if (game.occupation) {
+            while (game.occupation.fn()) { /* drain turns */ }
+            game.occupation.onFinishAfterTurn?.();
+            game.occupation = null;
+        }
         assert.equal(game.player.armor, armor);
     });
 });

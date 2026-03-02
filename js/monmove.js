@@ -18,21 +18,21 @@
 // - shk_move: simplified from full C shk.c; no billing/theft tracking
 // - undesirable_disp: not yet implemented (C:2279)
 // - distfleeck: in_your_sanctuary implemented (priest.js); flees_light implemented
-// - mon_allowflags: ALLOW_DIG deferred (needs wielded pick tracking)
 // - mon_allowflags: Conflict ALLOW_U not implemented
 
 import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          ACCESSIBLE, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
          SHOPBASE, ROOM, ROOMOFFSET,
-         NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED } from './config.js';
-import { rn2, rnd, d } from './rng.js';
+         NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED, IS_STWALL,
+         IRONBARS, STAIRS, LADDER } from './config.js';
+import { rn2, rnd, d, c_d } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
 import { mattacku } from './mhitu.js';
 import { makemon } from './makemon.js';
 import { FOOD_CLASS, COIN_CLASS, BOULDER, ROCK, ROCK_CLASS,
          WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
          AMULET_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, RING_CLASS, SPBOOK_CLASS,
-         PICK_AXE, DWARVISH_MATTOCK,
+         PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE,
          CLOAK_OF_DISPLACEMENT, MINERAL, GOLD_PIECE,
          SKELETON_KEY, LOCK_PICK, CREDIT_CARD,
          objectData } from './objects.js';
@@ -47,7 +47,7 @@ import { can_teleport, noeyes, perceives, nohands,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          passes_walls, corpse_eater,
          passes_bars, is_human, canseemon, monsdat,
-         webmaker } from './mondata.js';
+         webmaker, tunnels, needspick } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN, PM_GREMLIN, PM_STALKER,
          PM_XORN,
@@ -100,7 +100,11 @@ export { mfndpos, onscary, corpse_chance, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALL
 import { m_harmless_trap, floor_trigger, mintrap_postmove, t_at } from './trap.js';
 export { m_harmless_trap, floor_trigger, mintrap_postmove };
 import { maketrap } from './dungeon.js';
-import { mdig_tunnel } from './dig.js';
+import { mdig_tunnel, may_dig } from './dig.js';
+import { IS_TREE } from './symbols.js';
+import { stairway_at } from './stairs.js';
+import { mwelded } from './wield.js';
+import { mon_wield_item, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './weapon.js';
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
@@ -343,9 +347,8 @@ export function m_can_break_boulder(mtmp) {
 // mon_allowflags — C ref: mon.c:2046-2108
 // ========================================================================
 // Compute the bitfield flag argument for mfndpos().
-// INCOMPLETE: ALLOW_DIG (needs monster wielded pick tracking),
-//   Conflict ALLOW_U (Conflict system not implemented)
-export function mon_allowflags(mon) {
+// INCOMPLETE: Conflict ALLOW_U not implemented
+export function mon_allowflags(mon, player) {
     const ptr = mon?.type || {};
     const f1 = ptr.flags1 || 0;
     let flag = 0;
@@ -421,21 +424,17 @@ export function mon_allowflags(mon) {
         flag |= ALLOW_SSM | ALLOW_SANCT;
     }
 
-    // C ref: mon.c:2086 — wielded pick/mattock grants ALLOW_DIG
-    if (mon_has_pick(mon)) {
-        flag |= ALLOW_DIG;
+    // C ref: mon.c:2083 — can_tunnel → ALLOW_DIG
+    // can_tunnel = tunnels(ptr) unless needspick && hostile && close to player
+    let can_tunnel = tunnels(ptr);
+    if (can_tunnel && needspick(ptr) && !mon.tame && !mon.peaceful) {
+        const mux = Number.isInteger(mon.mux) ? mon.mux : (player?.x ?? mon.mx);
+        const muy = Number.isInteger(mon.muy) ? mon.muy : (player?.y ?? mon.my);
+        if (dist2(mon.mx, mon.my, mux, muy) <= 8) can_tunnel = false;
     }
+    if (can_tunnel) flag |= ALLOW_DIG;
 
     return flag;
-}
-
-// Check if monster is carrying a digging tool (pick-axe or mattock).
-// C ref: mon.c:2086 uses which_armor(W_WEP) + dig_typ() — simplified to inventory check.
-function mon_has_pick(mon) {
-    for (const obj of mon?.minvent || []) {
-        if (obj.otyp === PICK_AXE || obj.otyp === DWARVISH_MATTOCK) return true;
-    }
-    return false;
 }
 
 // ========================================================================
@@ -1015,6 +1014,14 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 mmoved = true;
             }
         } else {
+            // C ref: monmove.c:1747 — pre-movement mtrapped check.
+            // If monster is already trapped, try to escape before allowing movement.
+            if (mon.mtrapped) {
+                await mintrap_postmove(mon, map, player, display, fov);
+                if (mon.dead) return; // monster died in trap
+                if (mon.mtrapped) return; // still caught → MMOVE_NOTHING (no movement)
+                // else: escaped, continue with normal movement
+            }
             const omx = mon.mx, omy = mon.my;
             m_move(mon, map, player, display, fov);
             moveDone = !!mon._mMoveDone;
@@ -1111,7 +1118,7 @@ export function move_special(mon, map, player, inHisShop, appr, uondoor, avoid, 
 
     let nix = omx;
     let niy = omy;
-    const positions = mfndpos(mon, map, player, mon_allowflags(mon));
+    const positions = mfndpos(mon, map, player, mon_allowflags(mon, player));
     const cnt = positions.length;
     let chcnt = 0;
     if (mon.isshk && avoid && uondoor) {
@@ -1259,6 +1266,34 @@ function maybeMonsterPickStuff(mon, map, player, display, fov) {
 // - No door-breaking by strong hostiles (C:2035)
 // - No pool/lava avoidance messaging
 // - Inventory-based door unlock limited to iswiz only
+
+// C ref: monmove.c:1124 — m_digweapon_check()
+// Returns TRUE if the monster switched weapons (costs the move, no dig this turn).
+// Called BEFORE moving when ALLOW_DIG is set, to let monster wield its pick first.
+function m_digweapon_check(mon, nix, niy, map) {
+    const ptr = mon.type || mon.data;
+    if (!tunnels(ptr) || !needspick(ptr)) return false;
+    const mw_tmp = mon.weapon || null;
+    if (mwelded(mw_tmp)) return false;
+    const loc = map.at(nix, niy);
+    const typ = loc?.typ ?? 0;
+    if (!may_dig(nix, niy, map) && !closed_door(nix, niy, map)) return false;
+    if (closed_door(nix, niy, map)) {
+        if (!mw_tmp || (mw_tmp.otyp !== PICK_AXE && mw_tmp.otyp !== DWARVISH_MATTOCK
+                        && mw_tmp.otyp !== AXE && mw_tmp.otyp !== BATTLE_AXE))
+            mon.weapon_check = NEED_PICK_OR_AXE;
+    } else if (IS_TREE(typ)) {
+        if (!mw_tmp || (mw_tmp.otyp !== AXE && mw_tmp.otyp !== BATTLE_AXE))
+            mon.weapon_check = NEED_AXE;
+    } else if (IS_STWALL(typ)) {
+        if (!mw_tmp || (mw_tmp.otyp !== PICK_AXE && mw_tmp.otyp !== DWARVISH_MATTOCK))
+            mon.weapon_check = NEED_PICK_AXE;
+    }
+    if ((mon.weapon_check ?? 0) >= NEED_PICK_AXE && mon_wield_item(mon) !== 0)
+        return true;
+    return false;
+}
+
 function m_move(mon, map, player, display = null, fov = null) {
     mon._mMoveDone = false;
     if (mon.isshk) {
@@ -1352,7 +1387,7 @@ function m_move(mon, map, player, display = null, fov = null) {
         }
     }
 
-    const allowflags = mon_allowflags(mon);
+    const allowflags = mon_allowflags(mon, player);
     const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
     const replayStep = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
@@ -1479,28 +1514,29 @@ function m_move(mon, map, player, display = null, fov = null) {
         }
     }
 
-    // C ref: monmove.c:1704 — maybe_spin_web called outside mmoved block (regardless of movement)
-    if (!mon.dead) maybe_spin_web(mon, map);
-
-    // C ref: monmove.c:1704-area — if monster selected an obstructed position (ALLOW_DIG),
-    // move there and call mdig_tunnel to process the terrain.
-    if ((nix !== omx || niy !== omy) && (allowflags & ALLOW_DIG)) {
-        const nixLoc = map.at(nix, niy);
-        if (nixLoc && IS_OBSTRUCTED(nixLoc.typ)) {
-            mon_track_add(mon, omx, omy);
-            mon.mx = nix;
-            mon.my = niy;
-            const digDied = mdig_tunnel(mon, map, player);
-            if (digDied || mon.dead) return false;
-            return true;
-        }
-    }
-
     if (nix !== omx || niy !== omy) {
+        // C ref: monmove.c:2026 — m_digweapon_check: if tunneling monster needs to wield
+        // its pick before digging, it wields it and returns MMOVE_DONE (no movement this turn).
+        if ((allowflags & ALLOW_DIG) && m_digweapon_check(mon, nix, niy, map))
+            return false; // monster wields pick but doesn't move — MMOVE_DONE
+
         // C ref: monmove.c:2065 — mon_track_add(mtmp, omx, omy)
         mon_track_add(mon, omx, omy);
         mon.mx = nix;
         mon.my = niy;
+
+        // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
+        if (!mon.dead) maybe_spin_web(mon, map);
+
+        // C ref: postmov() line 1658 — if can_tunnel && may_dig, call mdig_tunnel.
+        // mdig_tunnel always consumes rnd(12), even for non-obstructed terrain (returns FALSE).
+        // For obstructed terrain it digs through and returns TRUE (MMOVE_DIED).
+        if ((allowflags & ALLOW_DIG) && may_dig(nix, niy, map)) {
+            const typBefore = map.at(nix, niy)?.typ;
+            const monsterDied = mdig_tunnel(mon, map, player);
+            if (monsterDied || mon.dead) return false;
+            if (typBefore != null && IS_OBSTRUCTED(typBefore)) return true; // MMOVE_DIED
+        }
 
         const here = map.at(mon.mx, mon.my);
         if (here && IS_DOOR(here.typ)) {
@@ -1904,6 +1940,14 @@ export function holds_up_web(x, y, map) {
   return false;
 }
 
+// C ref: monmove.c:1260 count_webbing_walls() — count cardinal-direction walls that hold a web
+function count_webbing_walls(x, y, map) {
+    return (holds_up_web(x, y - 1, map) ? 1 : 0)
+         + (holds_up_web(x + 1, y, map) ? 1 : 0)
+         + (holds_up_web(x, y + 1, map) ? 1 : 0)
+         + (holds_up_web(x - 1, y, map) ? 1 : 0);
+}
+
 // C ref: monmove.c:1272 maybe_spin_web() — spider/spinner places a web trap
 // Called from end of m_move (C ref: monmove.c:1704) after movement candidate selection.
 export function maybe_spin_web(mtmp, map) {
@@ -1912,15 +1956,14 @@ export function maybe_spin_web(mtmp, map) {
     if (t_at(mtmp.mx, mtmp.my, map)) return;
     // soko_allow_web: returns false on sokoban levels; JS doesn't track sokoban
     // type per-level yet, so assume true (non-sokoban)
-    // count_webbing_walls: counts nearby walls for prob boost; stub as 0 until implemented
-    const nwalls = 0; // count_webbing_walls stub
+    const nwalls = count_webbing_walls(mtmp.mx, mtmp.my, map);
     // count_traps(WEB): count existing webs on the level to reduce prob
     const nwebs = map && Array.isArray(map.traps) ? map.traps.filter(t => t && t.ttyp === WEB).length : 0;
     const prob = (((mtmp.mndx === PM_GIANT_SPIDER) ? 15 : 5) * (nwalls + 1)) - (3 * nwebs);
     if (rn2(1000) < prob) {
         const trap = maketrap(map, mtmp.mx, mtmp.my, WEB);
         if (trap) {
-            mtmp.mspec_used = d(4, 4);
+            mtmp.mspec_used = c_d(4, 4); // C ref: monmove.c:1297 — C-style d(), not Lua d()
             // Display message (cansee/canspotmon stubs — skip for now)
         }
     }

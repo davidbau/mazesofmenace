@@ -3,7 +3,7 @@
 // C ref: makemon.c — monster creation, selection, weapon/inventory assignment
 
 import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
-import { mksobj, mkobj, next_ident, weight } from './mkobj.js';
+import { mksobj, mkobj, next_ident, weight, place_object } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
 import { m_dowear } from './worn.js';
 import {
@@ -2020,9 +2020,12 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         mimicApType = set_mimic_sym(mndx, x, y, map, depth);
     } else if ((ptr.mlet === S_SPIDER || ptr.mlet === S_SNAKE) && map) {
         // C ref: in_mklev && x && y → mkobj_at(RANDOM_CLASS, x, y, TRUE)
-        // mkobj_at creates a random object (consumes RNG), then hideunder (no RNG)
-        if (x && y) {
-            mkobj(0, true); // RANDOM_CLASS = 0, artif = true
+        // mkobj_at creates a random object, places it at (x,y), then hideunder (no RNG)
+        if (_makemonInMklev && x && y) {
+            const hideObj = mkobj(0, true); // RANDOM_CLASS = 0, artif = true
+            if (hideObj) {
+                place_object(hideObj, x, y, map); // emits ^place event, matches C
+            }
         }
         // hideunder() — no RNG
     }
