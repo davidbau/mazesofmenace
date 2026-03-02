@@ -318,7 +318,9 @@ export function stop_occupation(game) {
 function u_calc_moveamt(player) {
     let moveamt = player.speed || NORMAL_SPEED;
     if (player.veryFast) {
-        if (typeof process !== 'undefined') {
+        if (typeof process !== 'undefined'
+            && process?.env?.WEBHACK_RUN_DEBUG
+            && process.env.WEBHACK_RUN_DEBUG !== '0') {
             const e = player.uprops[28];
             const rngIdx = readRngLog().length;
             process.stderr.write(`DBG u_calc_moveamt veryFast turns=${player.turns} rngIdx=${rngIdx} intr=${e?.intrinsic} extr=${e?.extrinsic}\n`);

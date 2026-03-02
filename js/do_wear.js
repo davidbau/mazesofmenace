@@ -126,7 +126,9 @@ function toggle_displacement(player, on) {
 // Helper: adjust a single extrinsic flag by +1 or -1
 function toggle_extrinsic(player, prop, on) {
     const entry = player.ensureUProp(prop);
-    if (prop === 28 && typeof process !== 'undefined') {
+    if (prop === 28 && typeof process !== 'undefined'
+        && process?.env?.WEBHACK_RUN_DEBUG
+        && process.env.WEBHACK_RUN_DEBUG !== '0') {
         const e = new Error();
         process.stderr.write(`DBG toggle_extrinsic FAST on=${on} turns=${player?.turns} stack=${e.stack.split('\n').slice(1,8).join('|')}\n`);
     }

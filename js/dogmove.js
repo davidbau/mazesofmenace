@@ -537,8 +537,14 @@ function droppables(mon) {
 // Returns: 0 (no action), 1 (ate something), 2 (died)
 // ========================================================================
 function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = null) {
-    if (mon.meating) return 0;
+    if (mon.meating) {
+        pushRngLogEntry(`^dog_invent_decision[${mon.mndx}@${mon.mx},${mon.my} ud=${udist} act=-1 otyp=-1 carry=0 rv=0]`);
+        return 0;
+    }
     const omx = mon.mx, omy = mon.my;
+    let diagAct = 0;
+    let diagOtyp = -1;
+    let diagCarry = 0;
 
     const hasDrop = !!droppables(mon);
 
@@ -566,6 +572,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                 if (edog.apport > 1) edog.apport--;
                 edog.dropdist = udist;
                 edog.droptime = turnCount;
+                diagAct = 1;
             }
         }
     } else {
@@ -597,6 +604,7 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                     display.putstr_message(`${YMonnam(mon)} eats ${doname(obj, null)}.`);
                 }
                 dog_eat(mon, obj, map, turnCount);
+                pushRngLogEntry(`^dog_invent_decision[${mon.mndx}@${omx},${omy} ud=${udist} act=2 otyp=${obj.otyp} carry=0 rv=1]`);
                 return 1;
             }
 
@@ -636,11 +644,15 @@ function dog_invent(mon, edog, udist, map, turnCount, display, player, fov = nul
                             const monLabel = Monnam(mon);
                             display.putstr_message(`${monLabel} picks up ${doname(picked, null)}.`);
                         }
+                        diagAct = 3;
+                        diagOtyp = picked?.otyp ?? -1;
+                        diagCarry = carryamt;
                     }
                 }
             }
         }
     }
+    pushRngLogEntry(`^dog_invent_decision[${mon.mndx}@${omx},${omy} ud=${udist} act=${diagAct} otyp=${diagOtyp} carry=${diagCarry} rv=0]`);
     return 0;
 }
 
@@ -1399,6 +1411,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
 
     // Move the dog
     // C ref: dogmove.c:1274-1348 — newdogpos label
+    pushRngLogEntry(`^dog_move_choice[${mon.mndx}@${omx},${omy} pick=${nix},${niy} chi=${chi} do_eat=${do_eat ? 1 : 0} cnt=${cnt} appr=${appr}]`);
     if (nix !== omx || niy !== omy) {
         pushRngLogEntry(`^dog_move_exit[${mon.mndx}@${omx},${omy}->${nix},${niy} chi=${chi} do_eat=${do_eat ? 1 : 0}]`);
         monmoveTrace('dog_move-pick',

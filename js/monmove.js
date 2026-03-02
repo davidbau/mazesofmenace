@@ -25,7 +25,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          SHOPBASE, ROOM, ROOMOFFSET,
          NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED, IS_STWALL,
          IRONBARS, STAIRS, LADDER } from './config.js';
-import { rn2, rnd, d, c_d } from './rng.js';
+import { rn2, rnd, d, c_d, pushRngLogEntry } from './rng.js';
 import { wipe_engr_at } from './engrave.js';
 import { mattacku } from './mhitu.js';
 import { makemon } from './makemon.js';
@@ -264,21 +264,25 @@ export function distfleeck(mon, map, player, display, fov) {
     const nearby = inrange && monnear(mon, targetX, targetY);
 
     let scared = 0;
+    let sawscary = 0;
+    let fleeLight = 0;
+    let sanctuary = 0;
     if (nearby) {
         // C ref: monmove.c:552-558 — displaced image vs real position
         const monCanSee = (mon.mcansee !== false) && !mon.blind;
         const seescaryX = monCanSee ? player.x : targetX;
         const seescaryY = monCanSee ? player.y : targetY;
 
-        const sawscary = onscary(map, seescaryX, seescaryY, mon);
+        sawscary = onscary(map, seescaryX, seescaryY, mon) ? 1 : 0;
+        fleeLight = (flees_light(mon, map, player) && !bravegremlin) ? 1 : 0;
+        sanctuary = (!mon.mpeaceful && in_your_sanctuary(mon, 0, 0, map, player)) ? 1 : 0;
         // C ref: monmove.c:559-565 — scared if: scary object, or gremlin flees light, or temple sanctuary
-        if (sawscary
-                || (flees_light(mon, map, player) && !bravegremlin)
-                || (!mon.mpeaceful && in_your_sanctuary(mon, 0, 0, map, player))) {
+        if (sawscary || fleeLight || sanctuary) {
             scared = 1;
             monflee(mon, rnd(rn2(7) ? 10 : 100), true, true, player, display, fov);
         }
     }
+    pushRngLogEntry(`^distfleeck[${mon.mndx}@${mon.mx},${mon.my} in=${inrange ? 1 : 0} near=${nearby ? 1 : 0} scare=${scared} brave=${bravegremlin ? 1 : 0} saw=${sawscary} light=${fleeLight} sanct=${sanctuary}]`);
 
     monmoveTrace('distfleeck',
         `step=${monmoveStepLabel(map)}`,
