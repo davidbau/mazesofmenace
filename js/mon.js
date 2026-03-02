@@ -142,7 +142,7 @@ export function allocateMonsterMovement(map) {
     for (const mon of map.monsters) {
         if (mon.dead) continue;
         const oldMv = mon.movement;
-        mon.movement += mcalcmove(mon);
+        mon.movement += withRngTag('allocateMonsterMovement(mon.js:145)', () => mcalcmove(mon));
         pushRngLogEntry(`^mcalcmove[${mon.mndx}@${mon.mx},${mon.my} speed=${mon.speed} mv=${oldMv}->${mon.movement}]`);
     }
 }
