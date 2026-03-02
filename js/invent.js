@@ -3,7 +3,7 @@
 
 import { nhgetch, getlin } from './input.js';
 import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
-import { COLNO, STATUS_ROW_1, PM_ARCHEOLOGIST, A_STR, A_CON, A_WIS,
+import { COLNO, STATUS_ROW_1, STATUS_ROW_2, PM_ARCHEOLOGIST, A_STR, A_CON, A_WIS,
          UNENCUMBERED, OVERLOADED } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
@@ -115,14 +115,14 @@ function buildInventoryPages(lines, rows = STATUS_ROW_1) {
     if (lines.length <= rows) {
         return [lines.slice()];
     }
-    const contentRows = Math.max(1, rows - 1); // reserve one row for "--More--"
+    const contentRows = Math.max(1, rows - 1); // reserve one row for page counter
+    const totalPages = Math.max(1, Math.ceil(lines.length / contentRows));
     const pages = [];
-    for (let i = 0; i < lines.length; i += contentRows) {
+    for (let i = 0, page = 1; i < lines.length; i += contentRows, page++) {
         const chunk = lines.slice(i, i + contentRows);
-        const hasMore = i + contentRows < lines.length;
-        pages.push(hasMore ? [...chunk, '--More--'] : chunk);
+        pages.push([...chunk, ` (${page} of ${totalPages})`]);
     }
-    return pages.length > 0 ? pages : [['--More--']];
+    return pages.length > 0 ? pages : [[' (1 of 1)']];
 }
 
 function clearInventoryOverlayArea(display, lines = []) {
@@ -150,12 +150,35 @@ function clearInventoryOverlayArea(display, lines = []) {
     }
 }
 
-function drawInventoryPage(display, lines) {
-    clearInventoryOverlayArea(display, lines);
-    if (typeof display.renderOverlayMenu === 'function') {
-        display.renderOverlayMenu(lines);
+function drawInventoryPage(display, lines, opts = {}) {
+    if (!display) return;
+    const fullScreen = !!opts.fullScreen;
+    if (!fullScreen) {
+        if (typeof display.renderOverlayMenu === 'function') {
+            display.renderOverlayMenu(lines);
+        } else {
+            display.renderChargenMenu(lines, false);
+        }
+        return;
+    }
+    const isCategoryHeader = (line) => {
+        const text = String(line || '').trimStart();
+        return /^(Weapons|Armor|Rings|Amulets|Tools|Comestibles|Potions|Scrolls|Spellbooks|Wands|Coins|Gems\/Stones|Rocks|Balls|Chains|Venoms|Other)\b/.test(text);
+    };
+    if (typeof display.clearScreen === 'function') {
+        display.clearScreen();
     } else {
-        display.renderChargenMenu(lines, false);
+        clearInventoryOverlayArea(display, lines);
+    }
+    const rows = Math.min(lines.length, Number.isInteger(display.rows) ? display.rows : STATUS_ROW_1);
+    for (let i = 0; i < rows; i++) {
+        const line = String(lines[i] || '');
+        const header = isCategoryHeader(line);
+        const rendered = line.startsWith(' ') ? line.slice(1) : line;
+        if (typeof display.setCell === 'function') {
+            display.setCell(0, i, ' ', 7, 0);
+        }
+        display.putstr(1, i, rendered, undefined, header ? 1 : 0);
     }
 }
 
@@ -212,10 +235,12 @@ export async function handleInventory(player, display, game) {
     const win = create_nhwindow(NHW_MENU);
     try {
     const lines = buildInventoryOverlayLines(player);
-    const pages = buildInventoryPages(lines, STATUS_ROW_1);
+    const pageRows = Number.isInteger(display?.rows) ? display.rows : STATUS_ROW_1;
+    const pages = buildInventoryPages(lines, pageRows);
     let pageIndex = 0;
 
-    drawInventoryPage(display, pages[pageIndex] || []);
+    const fullScreenInventory = pages.length > 1;
+    drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
     const invByLetter = new Map();
     for (const item of player.inventory || []) {
         if (item?.invlet) invByLetter.set(String(item.invlet), item);
@@ -234,7 +259,7 @@ export async function handleInventory(player, display, game) {
         if (ch === 32) {
             if (pageIndex + 1 < pages.length) {
                 pageIndex++;
-                drawInventoryPage(display, pages[pageIndex] || []);
+                drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
                 continue;
             }
             break;
@@ -242,28 +267,28 @@ export async function handleInventory(player, display, game) {
         if (ch === 62) { // '>'
             if (pageIndex + 1 < pages.length) {
                 pageIndex++;
-                drawInventoryPage(display, pages[pageIndex] || []);
+                drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             }
             continue;
         }
         if (ch === 98 && pageIndex > 0) { // b
             pageIndex--;
-            drawInventoryPage(display, pages[pageIndex] || []);
+            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 60 && pageIndex > 0) { // '<'
             pageIndex--;
-            drawInventoryPage(display, pages[pageIndex] || []);
+            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 94 && pageIndex > 0) { // '^'
             pageIndex = 0;
-            drawInventoryPage(display, pages[pageIndex] || []);
+            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 124 && pageIndex + 1 < pages.length) { // '|'
             pageIndex = pages.length - 1;
-            drawInventoryPage(display, pages[pageIndex] || []);
+            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 27 || ch === 10 || ch === 13) break;
@@ -274,7 +299,16 @@ export async function handleInventory(player, display, game) {
             await getlin('Search for: ', display);
             continue;
         }
-        const selected = invByLetter.get(c);
+        const pageLines = pages[pageIndex] || [];
+        const visibleLetters = new Set(
+            pageLines
+                .map((line) => {
+                    const m = String(line || '').match(/^\s*([a-zA-Z])\s+-\s+/);
+                    return m ? m[1] : null;
+                })
+                .filter(Boolean)
+        );
+        const selected = visibleLetters.has(c) ? invByLetter.get(c) : null;
         if (selected) {
             const baseName = xname({ ...selected, quan: 1 });
             const noun = xname(selected);
@@ -448,19 +482,17 @@ export async function handleInventory(player, display, game) {
             const pad = ' '.repeat(menuOffx);
             const stackActions = rawActions.map((line) => `${pad}${line}`);
             const actionPrompt = `${pad}${promptText}`;
-            if (game && typeof game.renderCurrentScreen === 'function') {
-                game.renderCurrentScreen();
-            }
             if (typeof display.setCell === 'function'
                 && Number.isInteger(display.cols)
                 && Number.isInteger(display.rows)) {
-                // Clear only the rows we will repaint for this submenu so
-                // underlying map glyphs below remain visible, matching tty flow.
-                const maxActionRow = Math.min(STATUS_ROW_1 - 1, stackActions.length + 1);
-                for (let r = 0; r <= maxActionRow; r++) {
-                    for (let col = menuOffx; col < display.cols; col++) {
-                        display.setCell(col, r, ' ', 7, 0);
+                if (game && typeof display.renderMap === 'function' && game.map && game.player && game.fov) {
+                    display.renderMap(game.map, game.player, game.fov, game.flags || {});
+                    if (fullScreenInventory && typeof display.clearRow === 'function') {
+                        if (Number.isInteger(STATUS_ROW_1)) display.clearRow(STATUS_ROW_1);
+                        if (Number.isInteger(STATUS_ROW_2)) display.clearRow(STATUS_ROW_2);
                     }
+                } else {
+                    display.clearScreen();
                 }
             }
             if (typeof display.putstr === 'function' && typeof display.clearRow === 'function') {
@@ -574,6 +606,9 @@ export async function handleInventory(player, display, game) {
                 return { moved: false, tookTime: false };
             }
         }
+        // C tty parity for plain inventory view: non-navigation keys which do
+        // not select a visible inventory letter are ignored.
+        continue;
     }
     clearTopline();
 
