@@ -634,6 +634,9 @@ export async function replaySession(seed, session, opts = {}) {
                     screenAnsi: (typeof display.getScreenAnsiLines === 'function')
                         ? display.getScreenAnsiLines()
                         : null,
+                    cursor: (typeof display.getCursor === 'function')
+                        ? display.getCursor()
+                        : null,
                 };
                 stepAnimationBoundaries.push(snap);
             },
@@ -717,7 +720,7 @@ export async function replaySession(seed, session, opts = {}) {
     let pendingCount = 0;
     // game.pendingDeferredTimedTurn is used instead (game-level flag)
 
-    const captureSnapshot = (rawLog, screen, screenAnsiOverride, stepIndex, byteIndex, key) => {
+    const captureSnapshot = (rawLog, screen, screenAnsiOverride, stepIndex, byteIndex, key, cursorOverride) => {
         const compact = rawLog.map(toCompactRng);
         const normalizedScreen = Array.isArray(screen)
             ? screen.map((line) => stripAnsiSequences(line))
@@ -729,6 +732,8 @@ export async function replaySession(seed, session, opts = {}) {
                     ? game.display.getScreenAnsiLines()
                     : null))
             : null;
+        const cursor = cursorOverride
+            || (typeof game.display?.getCursor === 'function' ? game.display.getCursor() : null);
         const frame = {
             key,
             stepIndex,
@@ -737,6 +742,7 @@ export async function replaySession(seed, session, opts = {}) {
             rng: compact,
             screen: normalizedScreen,
             screenAnsi: normalizedScreenAnsi,
+            cursor,
         };
         byteResults.push(frame);
         return frame;
@@ -772,6 +778,7 @@ export async function replaySession(seed, session, opts = {}) {
             const ch = keyText.charCodeAt(byteIndex);
             let capturedScreenOverride = null;
             let capturedScreenAnsiOverride = null;
+            let capturedCursorOverride = null;
             let commandResult = null;
 
             const isCountPrefixDigit = !!(
@@ -853,6 +860,9 @@ export async function replaySession(seed, session, opts = {}) {
                     capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
                         ? game.display.getScreenAnsiLines()
                         : null;
+                    capturedCursorOverride = (typeof game.display?.getCursor === 'function')
+                        ? game.display.getCursor()
+                        : null;
                 }
             } else {
                 const countPrefixForRun = pendingCount > 0 ? pendingCount : 0;
@@ -875,6 +885,9 @@ export async function replaySession(seed, session, opts = {}) {
                         capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')
                             ? game.display.getScreenAnsiLines()
                             : null;
+                        capturedCursorOverride = (typeof game.display?.getCursor === 'function')
+                            ? game.display.getCursor()
+                            : null;
                     }
                 } else {
                     commandResult = settled.value;
@@ -896,7 +909,8 @@ export async function replaySession(seed, session, opts = {}) {
                 capturedScreenAnsiOverride,
                 stepIndex,
                 byteIndex,
-                keyText[byteIndex]
+                keyText[byteIndex],
+                capturedCursorOverride
             );
             stepFrames.push(frame);
         }

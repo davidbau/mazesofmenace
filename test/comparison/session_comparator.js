@@ -37,6 +37,9 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
     let animationBoundariesMatched = 0;
     let animationBoundariesTotal = 0;
     let firstAnimationBoundaryDivergence = null;
+    let cursorMatched = 0;
+    let cursorTotal = 0;
+    let firstCursorDivergence = null;
 
     for (let i = 0; i < count; i++) {
         const expected = session.steps[i];
@@ -105,6 +108,24 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
                 firstAnimationBoundaryDivergence = { step: i + 1, ...animationBoundaryCmp.firstDiff };
             }
         }
+
+        // Cursor comparison — optional (old sessions lack cursor field)
+        const expectedCursor = expected.cursor || null;
+        const actualCursor = actual.cursor || null;
+        if (expectedCursor) {
+            cursorTotal++;
+            const [ec, er] = expectedCursor;
+            const [ac, ar] = actualCursor || [null, null];
+            if (ac === ec && ar === er) {
+                cursorMatched++;
+            } else if (!firstCursorDivergence) {
+                firstCursorDivergence = {
+                    step: i + 1,
+                    expected: expectedCursor,
+                    actual: actualCursor,
+                };
+            }
+        }
     }
 
     const eventCmp = policy.compareEvents(allJsRng, allSessionRng);
@@ -150,6 +171,11 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             matched: animationBoundariesMatched,
             total: animationBoundariesTotal,
             firstDivergence: firstAnimationBoundaryDivergence,
+        },
+        cursor: {
+            matched: cursorMatched,
+            total: cursorTotal,
+            firstDivergence: firstCursorDivergence,
         },
     };
 }

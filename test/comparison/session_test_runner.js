@@ -50,6 +50,7 @@ import {
     recordColorWindow,
     recordEvents,
     recordAnimationBoundaries,
+    recordCursor,
     markFailed,
     setDuration,
     createResultsBundle,
@@ -465,6 +466,10 @@ async function runGameplayResult(session) {
                 'animationBoundaries',
                 cmp.animationBoundaries.firstDivergence
             );
+        }
+        if (cmp.cursor?.total > 0) {
+            recordCursor(result, cmp.cursor.matched, cmp.cursor.total);
+            setFirstDivergence(result, 'cursor', cmp.cursor.firstDivergence);
         }
         if ((cmp.screenWindow?.rerecordCandidate || cmp.colorWindow?.rerecordCandidate) && !result.rerecordHint) {
             const steps = [];

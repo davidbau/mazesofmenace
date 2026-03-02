@@ -992,6 +992,7 @@ export class NetHackGame {
         this.display.renderMessageWindow();
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
+        this.display.cursorOnPlayer(this.player);
     }
 
     // Initialize a new game — browser chargen path
@@ -1167,6 +1168,7 @@ export class NetHackGame {
         this.fov.compute(this.map, this.player.x, this.player.y);
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
+        this.display.cursorOnPlayer(this.player);
 
         if (this.flags.tutorial && urlOpts.character) {
             const replayStartupPrompts = Array.isArray(urlOpts.replayTutorialStartupPrompts)
@@ -1286,6 +1288,7 @@ export class NetHackGame {
         this.fov.compute(this.map, this.player.x, this.player.y);
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
+        this.display.cursorOnPlayer(this.player);
     }
 
     _renderAll() {
@@ -1393,6 +1396,7 @@ export class NetHackGame {
         this.fov.compute(this.map, this.player.x, this.player.y);
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
+        this.display.cursorOnPlayer(this.player);
         if (typeof this.hooks.onScreenRendered === 'function') {
             this.hooks.onScreenRendered({ game: this, keyCode: code });
         }
@@ -1532,6 +1536,7 @@ export class NetHackGame {
                 this.fov.compute(this.map, this.player.x, this.player.y);
                 this.display.renderMap(this.map, this.player, this.fov, this.flags);
                 this.display.renderStatus(this.player);
+                this.display.cursorOnPlayer(this.player);
                 continue;
             }
 
@@ -1548,6 +1553,7 @@ export class NetHackGame {
                         this.fov.compute(this.map, this.player.x, this.player.y);
                         this.display.renderMap(this.map, this.player, this.fov, this.flags);
                         this.display.renderStatus(this.player);
+                        this.display.cursorOnPlayer(this.player);
                         await new Promise(r => setTimeout(r, 0));
                     },
                     onBeforeRepeat: async () => {
@@ -1561,6 +1567,7 @@ export class NetHackGame {
                 this.fov.compute(this.map, this.player.x, this.player.y);
                 this.display.renderMap(this.map, this.player, this.fov, this.flags);
                 this.display.renderStatus(this.player);
+                this.display.cursorOnPlayer(this.player);
                 continue;
             } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
                 const result = await getCount(firstCh, 32767, this.display);
@@ -1588,6 +1595,7 @@ export class NetHackGame {
                     this.fov.compute(this.map, this.player.x, this.player.y);
                     this.display.renderMap(this.map, this.player, this.fov, this.flags);
                     this.display.renderStatus(this.player);
+                    this.display.cursorOnPlayer(this.player);
                     await new Promise(r => setTimeout(r, 0));
                 },
                 onBeforeRepeat: async () => {
@@ -1602,6 +1610,7 @@ export class NetHackGame {
             this.fov.compute(this.map, this.player.x, this.player.y);
             this.display.renderMap(this.map, this.player, this.fov, this.flags);
             this.display.renderStatus(this.player);
+            this.display.cursorOnPlayer(this.player);
         }
 
         // Game over

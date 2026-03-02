@@ -454,6 +454,17 @@ def capture_screen_compressed(session):
     return encode_screen_ansi_rle(lines)
 
 
+def capture_cursor(session):
+    """Return [col, row] cursor position of the pane (0-indexed)."""
+    out = subprocess.run(
+        ['tmux', 'display-message', '-p', '-t', session,
+         '#{pane_cursor_x},#{pane_cursor_y}'],
+        capture_output=True, text=True, check=True
+    ).stdout.strip()
+    col, row = (int(v) for v in out.split(','))
+    return [col, row]
+
+
 def capture_screen_payload(session, include_ansi=False):
     payload = {
         'screen': capture_screen_lines(session)
@@ -514,6 +525,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         'action': 'extended-command',
         'rng': [],
         'screen': capture_screen_compressed(session),
+        'cursor': capture_cursor(session),
     })
 
     # Type wizloaddes
@@ -523,6 +535,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         'action': 'command-text',
         'rng': [],
         'screen': capture_screen_compressed(session),
+        'cursor': capture_cursor(session),
     })
 
     # Press Enter
@@ -532,6 +545,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         'action': 'command-confirm',
         'rng': [],
         'screen': capture_screen_compressed(session),
+        'cursor': capture_cursor(session),
     })
 
     # Wait for and handle the file prompt
@@ -560,6 +574,7 @@ def execute_wizload(session, level_name, steps, rng_log_file, verbose=False):
         'action': 'level-name',
         'rng': [],
         'screen': capture_screen_compressed(session),
+        'cursor': capture_cursor(session),
     })
 
     # Press Enter to load
@@ -1007,6 +1022,7 @@ def run_wizload_session(seed, output_json, level_name, verbose=False):
         print(f'Startup: {startup_rng_count} RNG calls')
 
         startup_screen_compressed = capture_screen_compressed(session_name)
+        startup_cursor = capture_cursor(session_name)
 
         # Build session object (unified format v3)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
@@ -1018,6 +1034,7 @@ def run_wizload_session(seed, output_json, level_name, verbose=False):
             'action': 'startup',
             'rng': startup_rng_entries,
             'screen': startup_screen_compressed,
+            'cursor': startup_cursor,
         }
 
         session_data = {
@@ -1084,11 +1101,13 @@ def run_wizload_session(seed, output_json, level_name, verbose=False):
 
         # Add final step with level data
         final_screen = capture_screen_compressed(session_name)
+        final_cursor = capture_cursor(session_name)
         final_step = {
             'key': '\r',
             'action': f'load-{level_name}',
             'rng': rng_entries,
             'screen': final_screen,
+            'cursor': final_cursor,
         }
         if typ_grid:
             final_step['typGrid'] = encode_typgrid_rle(typ_grid)
@@ -1184,6 +1203,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
 
         # Capture initial startup state (first step with no key)
         startup_screen = capture_screen_compressed(session_name)
+        startup_cursor = capture_cursor(session_name)
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
 
@@ -1192,6 +1212,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
             'action': 'startup',
             'rng': startup_rng_entries,
             'screen': startup_screen,
+            'cursor': startup_cursor,
         }]
         prev_rng_count = startup_rng_count
 
@@ -1209,6 +1230,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                 break
 
             screen = capture_screen_compressed(session_name)
+            cursor = capture_cursor(session_name)
             rng_count, rng_lines = read_rng_log(rng_log_file)
             delta_lines = rng_lines[prev_rng_count:rng_count]
             rng_entries = parse_rng_lines(delta_lines)
@@ -1219,6 +1241,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'more-prompt',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send_special(session_name, 'Space', 0.1)
                 prev_rng_count = rng_count
@@ -1230,6 +1253,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'decline-autopick',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, 'n', 0.1)
                 prev_rng_count = rng_count
@@ -1243,6 +1267,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'select-role',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, key, 0.1)
                 selection_idx += 1
@@ -1257,6 +1282,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'select-race',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, key, 0.1)
                 selection_idx += 1
@@ -1271,6 +1297,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'select-gender',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, key, 0.1)
                 selection_idx += 1
@@ -1285,6 +1312,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'select-alignment',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, key, 0.1)
                 selection_idx += 1
@@ -1297,6 +1325,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'confirm-character',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, 'y', 0.1)
                 prev_rng_count = rng_count
@@ -1309,6 +1338,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'accept-tutorial' if tkey == 'y' else 'decline-tutorial',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 tmux_send(session_name, tkey, 0.1)
                 prev_rng_count = rng_count
@@ -1322,6 +1352,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
                     'action': 'game-ready',
                     'rng': rng_entries,
                     'screen': screen,
+                    'cursor': cursor,
                 })
                 prev_rng_count = rng_count
                 print(f'  Game ready after {len(steps)} steps, {rng_count} RNG calls')
@@ -1332,6 +1363,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
         tmux_send(session_name, 'i', 0.2)
         time.sleep(0.02)
         screen = capture_screen_compressed(session_name)
+        cursor = capture_cursor(session_name)
         rng_count, rng_lines = read_rng_log(rng_log_file)
         delta_lines = rng_lines[prev_rng_count:rng_count]
         rng_entries = parse_rng_lines(delta_lines)
@@ -1340,6 +1372,7 @@ def run_chargen_session(seed, output_json, selections, tutorial_response='n', ve
             'action': 'inventory',
             'rng': rng_entries,
             'screen': screen,
+            'cursor': cursor,
         })
         prev_rng_count = rng_count
         print(f'  Inventory captured')
@@ -1455,6 +1488,7 @@ def run_interface_session(seed, output_json, keys, verbose=False, auto_clear_mor
         print(f'Startup: {startup_rng_count} RNG calls')
 
         startup_screen = capture_screen_compressed(session_name)
+        startup_cursor = capture_cursor(session_name)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
 
         # Build startup step (first step with no key)
@@ -1463,6 +1497,7 @@ def run_interface_session(seed, output_json, keys, verbose=False, auto_clear_mor
             'action': 'startup',
             'rng': startup_rng_entries,
             'screen': startup_screen,
+            'cursor': startup_cursor,
         }
 
         session_data = {
@@ -1520,6 +1555,7 @@ def run_interface_session(seed, output_json, keys, verbose=False, auto_clear_mor
                 clear_more_prompts(session_name)
 
             screen = capture_screen_compressed(session_name)
+            cursor = capture_cursor(session_name)
             rng_count, rng_lines = read_rng_log(rng_log_file)
             delta_lines = rng_lines[prev_rng_count:rng_count]
             rng_entries = parse_rng_lines(delta_lines)
@@ -1529,6 +1565,7 @@ def run_interface_session(seed, output_json, keys, verbose=False, auto_clear_mor
                 'action': action,
                 'rng': rng_entries,
                 'screen': screen,
+                'cursor': cursor,
             }
             session_data['steps'].append(step)
             prev_rng_count = rng_count
@@ -1819,6 +1856,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
 
         # Capture compressed ANSI screen for startup
         startup_screen_compressed = capture_screen_compressed(session_name)
+        startup_cursor = capture_cursor(session_name)
 
         # Build session object (unified format v3)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
@@ -1830,6 +1868,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
             'action': 'startup',
             'rng': startup_rng_entries,
             'screen': startup_screen_compressed,
+            'cursor': startup_cursor,
         }
         if startup_typ_grid:
             startup_step['typGrid'] = encode_typgrid_rle(startup_typ_grid)
@@ -1911,6 +1950,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
             # Capture state after this step
             screen_lines = capture_screen_lines(session_name)
             screen_compressed = capture_screen_compressed(session_name)
+            step_cursor = capture_cursor(session_name)
             rng_count, rng_lines = read_rng_log(rng_log_file)
             delta_lines = rng_lines[prev_rng_count:rng_count]
             rng_entries = parse_rng_lines(delta_lines)
@@ -1924,6 +1964,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
                 'action': description,
                 'rng': rng_entries,
                 'screen': screen_compressed,
+                'cursor': step_cursor,
             }
             if step_num in key_delay_overrides:
                 # Optional per-step capture metadata (session v3).
