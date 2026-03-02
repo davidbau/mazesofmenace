@@ -20,7 +20,11 @@ export async function handleKick(player, map, display, game) {
     // Prompt should not concatenate with outcome message.
     display.topMessage = null;
     const c = String.fromCharCode(dirCh);
-    const dir = DIRECTION_KEYS[c];
+    let dir = DIRECTION_KEYS[c];
+    // Match getdir-style tty behavior used by recorded sessions.
+    if (!dir && (dirCh === 10 || dirCh === 13)) {
+        dir = DIRECTION_KEYS.j;
+    }
     if (!dir) {
         if (game.flags.verbose) {
             display.putstr_message("Never mind.");

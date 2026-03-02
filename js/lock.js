@@ -522,6 +522,7 @@ export async function pick_lock(game, pick, rx, ry, container) {
         display.topMessage = null;
         const c = String.fromCharCode(dirCh);
         let dir = DIRECTION_KEYS[c];
+        if (!dir && (dirCh === 10 || dirCh === 13)) dir = DIRECTION_KEYS.j;
         if (!dir && (c === '.' || c === 's')) dir = [0, 0];
         if (!dir) {
             return PICKLOCK_DID_NOTHING;
@@ -951,6 +952,7 @@ export async function handleOpen(player, map, display, game) {
     display.topMessage = null;
     const c = String.fromCharCode(dirCh);
     let dir = DIRECTION_KEYS[c];
+    if (!dir && (dirCh === 10 || dirCh === 13)) dir = DIRECTION_KEYS.j;
     // C ref: getdir() accepts self-direction ('.' and 's').
     if (!dir && (c === '.' || c === 's')) {
         dir = [0, 0];
@@ -1036,7 +1038,8 @@ export async function handleClose(player, map, display, game) {
     display.topMessage = null;
     display.messageNeedsMore = false;
     const c = String.fromCharCode(dirCh);
-    const dir = DIRECTION_KEYS[c];
+    let dir = DIRECTION_KEYS[c];
+    if (!dir && (dirCh === 10 || dirCh === 13)) dir = DIRECTION_KEYS.j;
     if (!dir) {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         return { moved: false, tookTime: false };
