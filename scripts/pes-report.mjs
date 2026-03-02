@@ -446,13 +446,13 @@ function main() {
 
             if (timeout && noPesData) {
                 const metricsW = LINE_W - NAME_W - 2;
-                const merged = timeoutDetailText(timeout, metricsW);
+                const merged = '  ' + timeoutDetailText(timeout, metricsW - 2);
                 const payload = cRed(padEndVis(merged, metricsW));
                 const safeTopline = timeout.topline
                     ? String(timeout.topline).replace(/\s+/g, ' ').trim()
                     : '';
                 const toplineNote = timeout.topline
-                    ? cDim(` ${trimMiddleWords(safeTopline, 96)}`)
+                    ? cDim(trimMiddleWords(safeTopline, 96))
                     : '';
                 console.log(passIndicator + ' ' + namePad + '  ' + payload + toplineNote);
                 if (!r.passed) failingResults.push(r);
