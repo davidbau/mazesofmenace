@@ -1033,11 +1033,17 @@ function weight_cap_for_inventory(player) {
 
 function near_capacity_for_inventory(player) {
     let wt = 0;
+    let hasCoinObject = false;
     for (const obj of (player?.inventory || [])) {
         if (!obj) continue;
-        if (obj.oclass === COIN_CLASS) wt += Math.floor(((obj.quan || 0) + 50) / 100);
-        else wt += obj.owt || weight(obj) || 0;
+        if (obj.oclass === COIN_CLASS) {
+            hasCoinObject = true;
+            wt += Math.floor(((obj.quan || 0) + 50) / 100);
+        }
+        else wt += weight(obj) || 0;
     }
+    // JS often stores gold on player.gold instead of a COIN_CLASS inventory obj.
+    if (!hasCoinObject) wt += Math.floor((((player?.gold || 0)) + 50) / 100);
     const wc = weight_cap_for_inventory(player);
     const over = wt - wc;
     if (over <= 0) return UNENCUMBERED;

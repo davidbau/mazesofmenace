@@ -32,6 +32,7 @@ import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './sh
 import { observeObject } from './discovery.js';
 import { placeFloorObject, place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
+import { weight } from './mkobj.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
 import { dist2, monsterNearby, monnear, newsym } from './monutil.js';
@@ -1663,14 +1664,21 @@ export function weight_cap(player) {
 // C ref: hack.c inv_weight() — weight beyond carrying capacity (negative = under)
 export function inv_weight(player) {
     let wt = 0;
+    let hasCoinObject = false;
     const inv = player.inventory || [];
     for (const obj of inv) {
         if (!obj) continue;
         if (obj.oclass === COIN_CLASS) {
+            hasCoinObject = true;
             wt += Math.floor(((obj.quan || 0) + 50) / 100);
         } else {
-            wt += obj.owt || 0;
+            wt += weight(obj) || 0;
         }
+    }
+    // JS frequently stores hero gold in player.gold (not as COIN_CLASS obj).
+    // C inv_weight includes carried coins, so account for that representation.
+    if (!hasCoinObject) {
+        wt += Math.floor(((player?.gold || 0) + 50) / 100);
     }
     const wc = weight_cap(player);
     // Store wc on player for calc_capacity to use (mirrors C's global gw.wc)

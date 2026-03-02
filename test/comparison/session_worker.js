@@ -38,6 +38,7 @@ parentPort.on('message', async (msg) => {
                     session: msg.filePath,
                     passed: false,
                     error: error.message,
+                    errorStack: (error && typeof error.stack === 'string') ? error.stack : undefined,
                 },
             });
         } finally {

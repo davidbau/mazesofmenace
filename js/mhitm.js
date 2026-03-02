@@ -53,6 +53,7 @@ import { canonicalizeAttackFields } from './attack_fields.js';
 export { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE };
 
 const NATTK = 6; // C ref: monattk.h — max number of monster attacks
+const STRAT_WAITFORU = 0x20000000; // C ref: mon.h
 let farNoise = false;
 let noiseTime = -999999;
 

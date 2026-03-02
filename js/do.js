@@ -4,9 +4,11 @@
 import { nhgetch, ynFunction } from './input.js';
 import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
-         IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE } from './config.js';
+         IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
+         PM_TOURIST } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { deltrap, enexto, makelevel, assign_level } from './dungeon.js';
+import { depth as dungeonDepth } from './dungeon.js';
 import { mon_arrive } from './dog.js';
 import { initrack } from './monmove.js';
 import { COIN_CLASS, RING_CLASS, POTION_CLASS,
@@ -45,6 +47,8 @@ import { revive } from './zap.js';
 import { cansee } from './vision.js';
 import { canseemon } from './mondata.js';
 import { movebubbles } from './mkmaze.js';
+import { newuexp, pluslvl } from './exper.js';
+import { setCurrentLevelStairs } from './stairs.js';
 
 // Translator-compat globals used by some C-emitted helper candidates.
 const gd = {};
@@ -1181,6 +1185,7 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
     if (Number.isInteger((game.lev || game.map)?._genDnum)) {
         game.dnum = (game.lev || game.map)._genDnum;
     }
+    setCurrentLevelStairs(game.lev || game.map);
 
     (game.u || game.player).dungeonLevel = depth;
     (game.u || game.player).inTutorial = !!(game.lev || game.map)?.flags?.is_tutorial;
@@ -1230,6 +1235,28 @@ export function changeLevel(game, depth, transitionDir = null, opts = {}) {
             };
         }
         movebubbles((game.lev || game.map));
+    }
+
+    // C ref: do.c goto_level() — tourists gain depth-based XP on each
+    // first entry to a new level, which can immediately trigger level-up.
+    if (Number.isInteger(previousDepth) && depth !== previousDepth) {
+        const player = (game.u || game.player);
+        if (player?.roleIndex === PM_TOURIST) {
+            const lev = {
+                dnum: Number.isInteger(game.dnum) ? game.dnum : 0,
+                dlevel: Number.isInteger(player.dungeonLevel) ? player.dungeonLevel : 1,
+            };
+            const exper = dungeonDepth(lev);
+            player.uexp = (Number(player.uexp) || 0) + exper;
+            player.urexp = (Number(player.urexp) || 0) + (4 * exper);
+            if ((Number(player.urexp) || 0) >= 2000 && game?.flags) {
+                game.flags.beginner = false;
+            }
+            if ((Number(player.ulevel) || 0) < 30
+                && (Number(player.uexp) || 0) >= newuexp(Number(player.ulevel) || 0)) {
+                pluslvl(player, game?.display, true);
+            }
+        }
     }
 
 }

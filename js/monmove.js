@@ -1978,7 +1978,7 @@ export function leppie_stash(mtmp, map) {
 // Autotranslated from monmove.c:1230
 export function holds_up_web(x, y, map) {
   let sway;
-  if (!isok(x, y) || IS_OBSTRUCTED(map.locations[x][y].typ) || ((map.locations[x][y].typ === STAIRS || map.locations[x][y].typ === LADDER) && (sway = stairway_at(x, y)) !== 0 && sway.up) || map.locations[x][y].typ === IRONBARS) return true;
+  if (!isok(x, y) || IS_OBSTRUCTED(map.locations[x][y].typ) || ((map.locations[x][y].typ === STAIRS || map.locations[x][y].typ === LADDER) && (sway = stairway_at(x, y, map)) !== 0 && sway.up) || map.locations[x][y].typ === IRONBARS) return true;
   return false;
 }
 

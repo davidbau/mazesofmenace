@@ -92,6 +92,8 @@ import { pushRngLogEntry } from './rng.js';
 import { Can_dig_down, Can_fall_thru, Can_rise_up } from './dungeon.js';
 import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
 
+const STRAT_WAITFORU = 0x20000000; // C ref: mon.h
+
 // ========================================================================
 // Module-level state — C ref: gm.m struct (defense/offense/misc selections)
 // ========================================================================

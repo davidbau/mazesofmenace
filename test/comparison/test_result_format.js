@@ -201,6 +201,9 @@ export function markFailed(result, error = null) {
     result.passed = false;
     if (error) {
         result.error = typeof error === 'string' ? error : error.message;
+        if (error && typeof error === 'object' && typeof error.stack === 'string') {
+            result.errorStack = error.stack;
+        }
     }
 }
 

@@ -2,36 +2,77 @@
 // cf. stairs.c — stairway_add/free/at/find_*, u_on_upstairs/dnstairs/sstairs,
 //                On_stairs/On_ladder/On_stairs_up/On_stairs_dn,
 //                known_branch_stairs, stairs_description
-//
-// C data model: gs.stairs is a singly-linked list of stairway structs:
-//   { sx, sy, up, isladder, u_traversed, tolev {dnum,dlevel}, next }
-// This list holds ALL stairways on the level including branch portals.
-// JS data model: map.upstair / map.dnstair are simple {x, y, isladder}
-//   objects set at level generation time (sp_lev.js:3771).
-//   Branch portal tracking (dnum, u_traversed) partially supported.
-//
-// Each stairway node returned by lookup functions has the shape:
-//   { sx, sy, up, isladder, u_traversed, tolev: {dnum, dlevel} }
 
-// ============================================================================
-// Helper: build a stairway node from map.upstair or map.dnstair
-// ============================================================================
-function _makeStairNode(stair, up) {
-    if (!stair || (stair.x === 0 && stair.y === 0)) return null;
+const gs = globalThis.gs || (globalThis.gs = {});
+if (!Object.prototype.hasOwnProperty.call(gs, 'stairs')) {
+    gs.stairs = null;
+}
+
+function _currentMap(map) {
+    if (map) return map;
+    return globalThis?.game?.lev || globalThis?.game?.map || null;
+}
+
+function _makeStairNode(stair, upHint) {
+    if (!stair) return null;
+    const sx = Number.isInteger(stair.sx) ? stair.sx : stair.x;
+    const sy = Number.isInteger(stair.sy) ? stair.sy : stair.y;
+    if (!Number.isInteger(sx) || !Number.isInteger(sy)) return null;
+    const up = (typeof stair.up === 'boolean') ? stair.up : !!upHint;
     return {
-        sx: stair.x,
-        sy: stair.y,
-        up: up,
+        sx,
+        sy,
+        up,
         isladder: !!stair.isladder,
         u_traversed: !!stair.u_traversed,
         tolev: stair.tolev || { dnum: 0, dlevel: 0 },
+        next: null,
     };
 }
 
-// ============================================================================
+function _prependStairNode(node) {
+    if (!node) return null;
+    node.next = gs.stairs || null;
+    gs.stairs = node;
+    return node;
+}
+
+function _forEachStair(fn) {
+    let tmp = gs.stairs;
+    while (tmp) {
+        const out = fn(tmp);
+        if (out !== undefined) return out;
+        tmp = tmp.next;
+    }
+    return undefined;
+}
+
+function _ensureStairsInitialized(map = null) {
+    if (gs.stairs) return;
+    const m = _currentMap(map);
+    if (!m) return;
+    setCurrentLevelStairs(m);
+}
+
+// Build current gs.stairs list from map stair data.
+export function setCurrentLevelStairs(map) {
+    stairway_free_all();
+    const m = _currentMap(map);
+    if (!m) return;
+
+    const up = _makeStairNode(m.upstair, true);
+    const dn = _makeStairNode(m.dnstair, false);
+    if (dn) _prependStairNode(dn);
+    if (up) _prependStairNode(up);
+
+    if (Array.isArray(m.stairs)) {
+        for (const stair of m.stairs) {
+            _prependStairNode(_makeStairNode(stair, null));
+        }
+    }
+}
+
 // cf. stairs.c:7 — stairway_add(x, y, up, isladder, dest)
-// Registers a stairway on the map. Sets map.upstair or map.dnstair.
-// ============================================================================
 export function stairway_add(map, x, y, up, isladder, dest) {
     const stair = {
         x, y,
@@ -39,203 +80,134 @@ export function stairway_add(map, x, y, up, isladder, dest) {
         u_traversed: false,
         tolev: dest ? { dnum: dest.dnum, dlevel: dest.dlevel } : { dnum: 0, dlevel: 0 },
     };
-    if (up) {
-        map.upstair = stair;
-    } else {
-        map.dnstair = stair;
+    if (map) {
+        if (up) map.upstair = stair;
+        else map.dnstair = stair;
     }
+    _prependStairNode(_makeStairNode(stair, up));
 }
 
-// cf. stairs.c:26 — stairway_free_all(): free all stairway nodes on level change
-// N/A: JS uses garbage collection; map.upstair/dnstair are plain objects.
-
-// ============================================================================
-// cf. stairs.c:39 — stairway_at(x, y): find stairway at grid position
-// Returns stairway node at (x, y), or null.
-// ============================================================================
-// Autotranslated from stairs.c:39
-export function stairway_at(x, y) {
-  let tmp = gs.stairs;
-  while (tmp && !(tmp.sx === x && tmp.sy === y)) {
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:39 — stairway_at(x, y)
+export function stairway_at(x, y, map = null) {
+    _ensureStairsInitialized(map);
+    return _forEachStair((tmp) => (tmp.sx === x && tmp.sy === y ? tmp : undefined)) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:49 — stairway_find(fromdlev): find stairway whose tolev matches
-// Returns stairway whose tolev.dnum==fromdlev.dnum && tolev.dlevel==fromdlev.dlevel.
-// ============================================================================
-// Autotranslated from stairs.c:49
-export function stairway_find(fromdlev) {
-  let tmp = gs.stairs;
-  while (tmp) {
-    if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel) {
-      break;
-    }
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:49 — stairway_find(fromdlev)
+export function stairway_find(fromdlev, map = null) {
+    _ensureStairsInitialized(map);
+    return _forEachStair((tmp) => (
+        tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel
+            ? tmp
+            : undefined
+    )) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:63 — stairway_find_from(fromdlev, isladder): find by dest + type
-// Like stairway_find() but also matches isladder flag.
-// ============================================================================
-// Autotranslated from stairs.c:63
-export function stairway_find_from(fromdlev, isladder) {
-  let tmp = gs.stairs;
-  while (tmp) {
-    if (tmp.tolev.dnum === fromdlev.dnum && tmp.tolev.dlevel === fromdlev.dlevel && tmp.isladder === isladder) {
-      break;
-    }
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:63 — stairway_find_from(fromdlev, isladder)
+export function stairway_find_from(fromdlev, isladder, map = null) {
+    _ensureStairsInitialized(map);
+    return _forEachStair((tmp) => (
+        tmp.tolev.dnum === fromdlev.dnum
+        && tmp.tolev.dlevel === fromdlev.dlevel
+        && tmp.isladder === isladder
+            ? tmp
+            : undefined
+    )) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:78 — stairway_find_dir(up): find first stairway going up or down
-// Returns first stairway with matching up flag.
-// ============================================================================
-// Autotranslated from stairs.c:78
-export function stairway_find_dir(up) {
-  let tmp = gs.stairs;
-  while (tmp && !(tmp.up === up)) {
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:78 — stairway_find_dir(up)
+export function stairway_find_dir(up, map = null) {
+    _ensureStairsInitialized(map);
+    return _forEachStair((tmp) => (tmp.up === up ? tmp : undefined)) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:88 — stairway_find_type_dir(isladder, up): find by type+direction
-// Matches both isladder and up flags.
-// ============================================================================
-// Autotranslated from stairs.c:88
-export function stairway_find_type_dir(isladder, up) {
-  let tmp = gs.stairs;
-  while (tmp && !(tmp.isladder === isladder && tmp.up === up)) {
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:88 — stairway_find_type_dir(isladder, up)
+export function stairway_find_type_dir(isladder, up, map = null) {
+    _ensureStairsInitialized(map);
+    return _forEachStair((tmp) => (
+        tmp.isladder === isladder && tmp.up === up ? tmp : undefined
+    )) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:98 — stairway_find_special_dir(up, map, player): find branch stairway
-// Returns first stairway where tolev.dnum != u.uz.dnum AND stway.up != up.
-// In JS, player.dnum (or 0 if absent) represents u.uz.dnum.
-// ============================================================================
-// Autotranslated from stairs.c:98
-export function stairway_find_special_dir(up, map) {
-  let tmp = gs.stairs;
-  while (tmp) {
-    if (tmp.tolev.dnum !== map.uz.dnum && tmp.up !== up) return tmp;
-    tmp = tmp.next;
-  }
-  return tmp;
+// cf. stairs.c:98 — stairway_find_special_dir(up)
+export function stairway_find_special_dir(up, map = null) {
+    _ensureStairsInitialized(map);
+    const m = _currentMap(map);
+    const currentDnum = Number.isInteger(m?.uz?.dnum) ? m.uz.dnum : 0;
+    return _forEachStair((tmp) => (
+        tmp.tolev.dnum !== currentDnum && tmp.up !== up ? tmp : undefined
+    )) || null;
 }
 
-// ============================================================================
-// cf. stairs.c:112 — u_on_sstairs(upflag): place hero on special (branch) stairs
-// If special stair found, place hero there; else random spot (fallback).
-// ============================================================================
+// cf. stairs.c:112 — u_on_sstairs(upflag)
 export function u_on_sstairs(upflag, map, player) {
-    const stway = stairway_find_special_dir(upflag, map, player);
+    const stway = stairway_find_special_dir(upflag, map);
     if (stway) {
         player.x = stway.sx;
         player.y = stway.sy;
     }
-    // else: u_on_rndspot — caller (getArrivalPosition) handles random fallback
 }
 
-// ============================================================================
-// cf. stairs.c:124 — u_on_upstairs(): place hero on up stairway
-// JS equivalent: getArrivalPosition(map, _, 'down') in do.js
-// ============================================================================
+// cf. stairs.c:124 — u_on_upstairs()
 export function u_on_upstairs(map, player) {
     const stway = stairway_find_dir(true, map);
     if (stway) {
         player.x = stway.sx;
         player.y = stway.sy;
     } else {
-        u_on_sstairs(0, map, player); // destination upstairs implies moving down
+        u_on_sstairs(0, map, player);
     }
 }
 
-// ============================================================================
-// cf. stairs.c:136 — u_on_dnstairs(): place hero on down stairway
-// JS equivalent: getArrivalPosition(map, _, 'up') in do.js
-// ============================================================================
+// cf. stairs.c:136 — u_on_dnstairs()
 export function u_on_dnstairs(map, player) {
     const stway = stairway_find_dir(false, map);
     if (stway) {
         player.x = stway.sx;
         player.y = stway.sy;
     } else {
-        u_on_sstairs(1, map, player); // destination dnstairs implies moving up
+        u_on_sstairs(1, map, player);
     }
 }
 
-// ============================================================================
-// cf. stairs.c:147 — On_stairs(x, y): is there any stairway at this position?
-// ============================================================================
-// Autotranslated from stairs.c:147
-export function On_stairs(x, y) {
-  return (stairway_at(x, y) !== null);
+// cf. stairs.c:147 — On_stairs(x, y)
+export function On_stairs(x, y, map = null) {
+    return stairway_at(x, y, map) !== null;
 }
 
-// ============================================================================
-// cf. stairs.c:153 — On_ladder(x, y): is there a ladder (not stairs) at position?
-// ============================================================================
-// Autotranslated from stairs.c:153
-export function On_ladder(x, y) {
-  let stway = stairway_at(x, y);
-  return (stway && stway.isladder);
+// cf. stairs.c:153 — On_ladder(x, y)
+export function On_ladder(x, y, map = null) {
+    const stway = stairway_at(x, y, map);
+    return !!(stway && stway.isladder);
 }
 
-// ============================================================================
-// cf. stairs.c:161 — On_stairs_up(x, y): is there an up stairway at position?
-// ============================================================================
-// Autotranslated from stairs.c:161
-export function On_stairs_up(x, y) {
-  let stway = stairway_at(x, y);
-  return (stway && stway.up);
+// cf. stairs.c:161 — On_stairs_up(x, y)
+export function On_stairs_up(x, y, map = null) {
+    const stway = stairway_at(x, y, map);
+    return !!(stway && stway.up);
 }
 
-// ============================================================================
-// cf. stairs.c:169 — On_stairs_dn(x, y): is there a down stairway at position?
-// ============================================================================
-// Autotranslated from stairs.c:169
-export function On_stairs_dn(x, y) {
-  let stway = stairway_at(x, y);
-  return (stway && !stway.up);
+// cf. stairs.c:169 — On_stairs_dn(x, y)
+export function On_stairs_dn(x, y, map = null) {
+    const stway = stairway_at(x, y, map);
+    return !!(stway && !stway.up);
 }
 
-// ============================================================================
-// cf. stairs.c:179 — known_branch_stairs(sway, player): branch-stair traversal check
-// Returns true if sway is a branch staircase the hero has used.
-// ============================================================================
+// cf. stairs.c:179 — known_branch_stairs(sway)
 export function known_branch_stairs(sway, player) {
     if (!sway) return false;
     const playerDnum = (player && player.dnum) || 0;
     return sway.tolev.dnum !== playerDnum && !!sway.u_traversed;
 }
 
-// ============================================================================
-// cf. stairs.c:186 — stairs_description(sway, stcase, player): describe a stairway
-// Returns text like "stairs up", "stairs up to level 5",
-//   "branch stairs up to Gehennom", or special level-1 exit text.
-// stcase: true → "staircase" (singular); false → "stairs" (plural form).
-// ============================================================================
+// cf. stairs.c:186 — stairs_description(sway, stcase)
 export function stairs_description(sway, stcase, player) {
-    const stairs = sway.isladder ? "ladder" : stcase ? "staircase" : "stairs";
-    const updown = sway.up ? "up" : "down";
+    const stairs = sway.isladder ? 'ladder' : stcase ? 'staircase' : 'stairs';
+    const updown = sway.up ? 'up' : 'down';
 
     if (!known_branch_stairs(sway, player)) {
-        // Ordinary stairs or branch stairs to not-yet-visited branch
         let desc = `${stairs} ${updown}`;
         if (sway.u_traversed) {
-            // Append destination level depth
             const toDepth = sway.tolev.dlevel || 0;
             desc += ` to level ${toDepth}`;
         }
@@ -246,29 +218,16 @@ export function stairs_description(sway, stcase, player) {
     const playerDlevel = (player && player.dungeonLevel) || 1;
 
     if (playerDnum === 0 && playerDlevel === 1 && sway.up) {
-        // Stairs up from level one: special case
         const hasAmulet = player && player.uhave && player.uhave.amulet;
-        if (!hasAmulet) {
-            return `${stairs} ${updown} out of the dungeon`;
-        } else {
-            return `branch ${stairs} ${updown} to the end game`;
-        }
+        if (!hasAmulet) return `${stairs} ${updown} out of the dungeon`;
+        return `branch ${stairs} ${updown} to the end game`;
     }
 
-    // Known branch stairs; show destination branch name
-    // C uses svd.dungeons[tolev.dnum].dname; JS doesn't track dungeon names fully.
-    // Use a generic description.
-    const branchName = sway.tolev.dname || "a branch";
+    const branchName = sway.tolev.dname || 'a branch';
     return `branch ${stairs} ${updown} to ${branchName}`;
 }
 
-// Autotranslated from stairs.c:26
+// cf. stairs.c:26 — stairway_free_all()
 export function stairway_free_all() {
-  let tmp = gs.stairs;
-  while (tmp) {
-    let tmp2 = tmp.next;
-    (tmp, 0);
-    tmp = tmp2;
-  }
-  gs.stairs = null;
+    gs.stairs = null;
 }
