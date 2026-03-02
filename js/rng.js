@@ -22,9 +22,12 @@ let rngLog = null;       // null = disabled, Array = enabled
 let rngCallCount = 0;
 let rngLogWithTags = false;  // when true, log includes caller info
 let rngLogWithParent = false; // when true, include parent/grandparent in tag
+let rngLogEventTags = false; // when true, add caller tags to ^event log entries
 let rngCallerTag = null;     // current caller annotation (propagated through wrappers)
 let rngDepth = 0;            // nesting depth for context propagation
+let rngTagOverride = null;   // explicit caller tag override for hotspot paths
 const rngTagCache = new Map();
+const rngEventTagCache = new Map();
 
 export function enableRngLog(withTags = true) {
     if (typeof process !== 'undefined' && process?.env) {
@@ -34,14 +37,21 @@ export function enableRngLog(withTags = true) {
     const parentPref = (typeof process !== 'undefined' && process?.env)
         ? process.env.RNG_LOG_PARENT
         : undefined;
+    const eventTagPref = (typeof process !== 'undefined' && process?.env)
+        ? process.env.RNG_LOG_EVENT_TAGS
+        : undefined;
     rngLog = [];
     rngCallCount = 0;
     rngLogWithTags = withTags;
     // Default-on parent context whenever caller tags are enabled; opt out with RNG_LOG_PARENT=0.
     rngLogWithParent = !!withTags && parentPref !== '0';
+    // Event caller tags are lower-value and high-overhead in monster-heavy replays.
+    // Keep disabled by default; opt in with RNG_LOG_EVENT_TAGS=1.
+    rngLogEventTags = !!withTags && eventTagPref === '1';
     rngCallerTag = null;
     rngDepth = 0;
     rngTagCache.clear();
+    rngEventTagCache.clear();
 }
 
 export function getRngLog() {
@@ -52,13 +62,26 @@ export function pushRngLogEntry(entry) {
     if (!rngLog) return;
     if (typeof entry !== 'string' || entry.length === 0) return;
     // For event entries (^...), append caller context when tag logging is enabled.
-    if (rngLogWithTags && entry[0] === '^') {
-        const e = new Error();
-        const frames = (e.stack || '').split('\n').slice(2, 4);
-        const callers = frames.map(f => {
-            const m = f.match(/at (\S+)/);
-            return m ? m[1] : '?';
-        }).join(' <= ');
+    if (rngLogWithTags && rngLogEventTags && entry[0] === '^') {
+        const holder = {};
+        const prevLimit = Error.stackTraceLimit;
+        Error.stackTraceLimit = 5;
+        Error.captureStackTrace(holder, pushRngLogEntry);
+        const stack = holder.stack || '';
+        Error.stackTraceLimit = prevLimit;
+        const lines = stack.split('\n');
+        const callerLine = lines[1] || '';
+        const parentLine = lines[2] || '';
+        const cacheKey = `${callerLine}\n${parentLine}`;
+        let callers = rngEventTagCache.get(cacheKey);
+        if (callers === undefined) {
+            const callerTag = parseStackFrameTag(callerLine);
+            const parentTag = parseStackFrameTag(parentLine);
+            callers = callerTag && parentTag
+                ? `${callerTag} <= ${parentTag}`
+                : (callerTag || parentTag || null);
+            rngEventTagCache.set(cacheKey, callers);
+        }
         if (callers) {
             rngLog.push(`${entry} @ ${callers}`);
             return;
@@ -70,9 +93,31 @@ export function pushRngLogEntry(entry) {
 export function disableRngLog() {
     rngLog = null;
     rngLogWithParent = false;
+    rngLogEventTags = false;
     rngCallerTag = null;
     rngDepth = 0;
+    rngTagOverride = null;
     rngTagCache.clear();
+    rngEventTagCache.clear();
+}
+
+// Hot-path helper: avoid per-call stack parsing by supplying explicit tag context.
+export function withRngTag(tag, fn) {
+    const prev = rngTagOverride;
+    rngTagOverride = (typeof tag === 'string' && tag.length > 0) ? tag : null;
+    try {
+        const out = fn();
+        if (out && typeof out.then === 'function') {
+            return out.finally(() => {
+                rngTagOverride = prev;
+            });
+        }
+        rngTagOverride = prev;
+        return out;
+    } catch (err) {
+        rngTagOverride = prev;
+        throw err;
+    }
 }
 
 function parseStackFrameTag(line) {
@@ -108,6 +153,10 @@ function parseStackFrameTag(line) {
 function enterRng() {
     rngDepth++;
     if (rngDepth === 1 && rngLogWithTags) {
+        if (rngTagOverride) {
+            rngCallerTag = rngTagOverride;
+            return;
+        }
         const holder = {};
         const prevLimit = Error.stackTraceLimit;
         Error.stackTraceLimit = rngLogWithParent ? 6 : 4;
