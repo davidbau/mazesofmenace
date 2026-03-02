@@ -18,7 +18,7 @@
 //   make_grave/disturb_grave: grave creation and disturbance.
 //   save/rest_engravings: persistence across level changes.
 
-import { pushRngLogEntry, rn1, rn2, rnd } from './rng.js';
+import { pushRngLogEntry, rn1, rn2, rnd, withRngTag } from './rng.js';
 import { nhgetch } from './input.js';
 import { WAND_CLASS } from './objects.js';
 import { compactInvletPromptChars } from './invent.js';
@@ -142,24 +142,26 @@ export function wipe_engr_at(map, x, y, cnt, magical = false) {
     // no engraving exists at (x,y). This matches C's wipe_engr_at which
     // calls event_log() before checking if ep is non-NULL.
     pushRngLogEntry(`^wipe[${x},${y}]`);
-    const idx = map.engravings.findIndex((e) => e && e.x === x && e.y === y);
-    if (idx < 0) return;
-    const engr = map.engravings[idx];
-    if (!engr || engr.type === 'headstone' || engr.nowipeout) return;
-    const loc = map.at ? map.at(x, y) : null;
-    const isIce = !!loc && loc.typ === ICE;
-    if (engr.type !== 'burn' || isIce || (magical && !rn2(2))) {
-        let erase = cnt;
-        if (engr.type !== 'dust' && engr.type !== 'blood') {
-            erase = rn2(1 + Math.floor(50 / (cnt + 1))) ? 0 : 1;
-        }
-        if (erase > 0) {
-            engr.text = wipeoutEngravingText(engr.text || '', erase).replace(/^ +/, '');
-            if (!engr.text) {
-                del_engr(map, x, y);
+    withRngTag('wipe_engr_at(engrave.js:139)', () => {
+        const idx = map.engravings.findIndex((e) => e && e.x === x && e.y === y);
+        if (idx < 0) return;
+        const engr = map.engravings[idx];
+        if (!engr || engr.type === 'headstone' || engr.nowipeout) return;
+        const loc = map.at ? map.at(x, y) : null;
+        const isIce = !!loc && loc.typ === ICE;
+        if (engr.type !== 'burn' || isIce || (magical && !rn2(2))) {
+            let erase = cnt;
+            if (engr.type !== 'dust' && engr.type !== 'blood') {
+                erase = rn2(1 + Math.floor(50 / (cnt + 1))) ? 0 : 1;
+            }
+            if (erase > 0) {
+                engr.text = wipeoutEngravingText(engr.text || '', erase).replace(/^ +/, '');
+                if (!engr.text) {
+                    del_engr(map, x, y);
+                }
             }
         }
-    }
+    });
 }
 
 // cf. engrave.c:51 — random_engraving(outbuf, pristine_copy): random engraving text

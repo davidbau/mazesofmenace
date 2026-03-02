@@ -53,7 +53,7 @@ export const ALLOW_BARS   = 0x10000000;
 export const ALLOW_SANCT  = 0x20000000;
 export const ALLOW_SSM    = 0x40000000;
 export const NOGARLIC     = 0x80000000 | 0; // force signed 32-bit
-import { rn2, rnd, d, pushRngLogEntry } from './rng.js';
+import { rn2, rnd, d, pushRngLogEntry, withRngTag } from './rng.js';
 import { BOULDER, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC } from './objects.js';
 import { couldsee, m_cansee } from './vision.js';
 import { is_hider, hides_under, is_mindless, is_displacer, perceives,
@@ -1514,7 +1514,8 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
                 }
             }
             // TODO: fightm() — Conflict not implemented
-            const rd = await dochug(mon, map, player, display, fov, game);
+            const rd = await withRngTag('dochug(monmove.js:847)', () =>
+                dochug(mon, map, player, display, fov, game));
             if (game && game.occupation && !mon.dead && !rd) {
                 const attacks = mon.type?.attacks || [];
                 const noAttacks = !attacks.some((a) => a && a.type !== AT_NONE);
