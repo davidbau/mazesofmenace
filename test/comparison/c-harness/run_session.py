@@ -62,8 +62,8 @@ RESULTS_DIR = os.path.join(SCRIPT_DIR, 'results')
 SESSIONS_DIR = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
 INSTALL_DIR = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir')
 NETHACK_BINARY = os.path.join(INSTALL_DIR, 'nethack')
-UNIX_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'sys', 'unix', 'sysconf')
-LIBNH_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'sys', 'libnh', 'sysconf')
+UNIX_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'patched', 'sys', 'unix', 'sysconf')
+LIBNH_SYSCONF_SOURCE = os.path.join(PROJECT_ROOT, 'nethack-c', 'patched', 'sys', 'libnh', 'sysconf')
 DEFAULT_FIXED_DATETIME = '20000110090000'
 import re
 

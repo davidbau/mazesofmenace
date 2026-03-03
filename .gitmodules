@@ -1,0 +1,3 @@
+[submodule "nethack-upstream"]
+	path = nethack-c/upstream
+	url = https://github.com/NetHack/NetHack.git

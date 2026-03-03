@@ -44,31 +44,45 @@ NETHACK_REPO="https://github.com/NetHack/NetHack.git"
 PINNED_COMMIT="79c688cc6"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-NETHACK_DIR="$PROJECT_ROOT/nethack-c"
+UPSTREAM_DIR="$PROJECT_ROOT/nethack-c/upstream"
+NETHACK_DIR="$PROJECT_ROOT/nethack-c/patched"
+INSTALL_PREFIX="$PROJECT_ROOT/nethack-c/install"
 PATCHES_DIR="$SCRIPT_DIR/patches"
 BINARY="$NETHACK_DIR/src/nethack"
 
 echo "=== WebHack C Harness Setup ==="
-echo "    Project root: $PROJECT_ROOT"
-echo "    NetHack source: $NETHACK_DIR"
-echo "    Pinned commit: $PINNED_COMMIT"
+echo "    Project root:    $PROJECT_ROOT"
+echo "    Upstream source: $UPSTREAM_DIR"
+echo "    Patched build:   $NETHACK_DIR"
+echo "    Install prefix:  $INSTALL_PREFIX"
+echo "    Pinned commit:   $PINNED_COMMIT"
 echo ""
 
-# --- Step 1: Ensure source exists at correct commit ---
+# --- Step 1: Ensure patched working copy exists at correct commit ---
+# Prefer copying from the upstream submodule (fast, no network).
+# Fall back to git clone if submodule not populated.
 if [ -d "$NETHACK_DIR/.git" ]; then
     CURRENT_COMMIT=$(cd "$NETHACK_DIR" && git rev-parse --short=9 HEAD)
     if [[ "$CURRENT_COMMIT" == "$PINNED_COMMIT"* ]]; then
-        echo "[OK] Source exists at correct commit ($CURRENT_COMMIT)"
+        echo "[OK] Patched source exists at correct commit ($CURRENT_COMMIT)"
     else
-        echo "[WARN] Source exists but at commit $CURRENT_COMMIT (expected $PINNED_COMMIT)"
-        echo "       Checking out pinned commit..."
-        (cd "$NETHACK_DIR" && git checkout "$PINNED_COMMIT")
+        echo "[WARN] Patched source at wrong commit $CURRENT_COMMIT (expected $PINNED_COMMIT)"
+        echo "       Removing and re-creating from upstream..."
+        rm -rf "$NETHACK_DIR"
     fi
-else
-    echo "[...] Cloning NetHack source..."
-    git clone "$NETHACK_REPO" "$NETHACK_DIR"
-    (cd "$NETHACK_DIR" && git checkout "$PINNED_COMMIT")
-    echo "[OK] Cloned and checked out $PINNED_COMMIT"
+fi
+if [ ! -d "$NETHACK_DIR/.git" ]; then
+    if [ -d "$UPSTREAM_DIR/.git" ]; then
+        echo "[...] Copying upstream submodule to patched working copy..."
+        git clone "$UPSTREAM_DIR" "$NETHACK_DIR"
+        (cd "$NETHACK_DIR" && git checkout "$PINNED_COMMIT")
+        echo "[OK] Copied from upstream at $PINNED_COMMIT"
+    else
+        echo "[...] Upstream submodule not found; cloning from network..."
+        git clone "$NETHACK_REPO" "$NETHACK_DIR"
+        (cd "$NETHACK_DIR" && git checkout "$PINNED_COMMIT")
+        echo "[OK] Cloned and checked out $PINNED_COMMIT"
+    fi
 fi
 echo ""
 
@@ -91,7 +105,6 @@ echo ""
 
 # --- Step 3: Configure build system ---
 cd "$NETHACK_DIR"
-INSTALL_PREFIX="$PROJECT_ROOT/nethack-c/install"
 # On macOS, install our minimal hints file (no macosx-minimal in upstream)
 if [ "$OS" = "Darwin" ]; then
     cp "$SCRIPT_DIR/macosx-minimal" sys/unix/hints/macosx-minimal
