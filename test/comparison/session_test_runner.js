@@ -300,9 +300,20 @@ async function replayInterfaceSession(session) {
                 tutorial: subtype === 'tutorial' || session.meta.regen?.tutorial === true,
             }
         );
-        const raw = await replaySession(replaySeed, replayOpts, keys);
-        // Interface steps are single-key, so keys map 1:1 to steps.
-        return { startup: raw.startup, steps: raw.keys };
+        const jsSession = await replaySession(replaySeed, replayOpts, keys);
+        // V3 format: steps[0] is startup, steps[1..] are per-keystroke.
+        // Convert screen strings to arrays for the comparator.
+        const startup = {
+            rng: jsSession.steps[0].rng,
+            screen: (jsSession.steps[0].screen || '').split('\n'),
+            cursor: jsSession.steps[0].cursor,
+        };
+        const steps = jsSession.steps.slice(1).map(s => ({
+            ...s,
+            screen: (s.screen || '').split('\n'),
+            screenAnsi: (s.screen || '').split('\n'),
+        }));
+        return { startup, steps };
     }
     if (subtype === 'startup' || subtype === 'tutorial') {
         // C startup interface captures are recorded after login-derived name selection.

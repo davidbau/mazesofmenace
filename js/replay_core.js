@@ -2,6 +2,7 @@
 //
 // Game-agnostic: feeds a string of single-byte keystrokes to the game,
 // records RNG traces and display state after each keystroke.
+// Returns a V3-format session object (source: 'js').
 
 import { enableRngLog, getRngLog, disableRngLog } from './rng.js';
 import { pushInput } from './input.js';
@@ -36,6 +37,17 @@ async function tryResolve(commandPromise, inputRuntime) {
     return { done: true, value };
 }
 
+function captureScreen(display) {
+    const lines = (typeof display.getScreenAnsiLines === 'function')
+        ? display.getScreenAnsiLines()
+        : display.getScreenLines() || [];
+    return lines.join('\n');
+}
+
+function captureCursor(display) {
+    return (typeof display.getCursor === 'function') ? display.getCursor() : null;
+}
+
 // ---------------------------------------------------------------------------
 // replaySession(seed, opts, keys)
 //
@@ -43,8 +55,9 @@ async function tryResolve(commandPromise, inputRuntime) {
 //   opts  — { initOpts, displayFlags, chargenKeys, captureScreens, onKey }
 //   keys  — string of single-byte keystrokes to feed to the game
 //
-// Returns { startup, keys: [...] } where each key entry has
-//   { ch, rng, screen, screenAnsi, cursor }
+// Returns a V3-format session: { version, seed, source, steps }
+//   steps[0] = startup (key: null, rng, screen, cursor)
+//   steps[1..N] = one per keystroke (key, rng, screen, cursor)
 // ---------------------------------------------------------------------------
 
 export async function replaySession(seed, opts, keys) {
@@ -87,11 +100,16 @@ export async function replaySession(seed, opts, keys) {
         }
     }
 
-    const startupLog = getRngLog();
-    const startupRng = startupLog.map(toCompactRng);
+    // steps[0]: startup frame
+    const startupRng = getRngLog().map(toCompactRng);
+    const steps = [{
+        key: null,
+        rng: startupRng,
+        screen: opts.captureScreens ? captureScreen(display) : '',
+        cursor: captureCursor(display),
+    }];
 
     // Feed each keystroke to the game, record results.
-    const keyResults = [];
     let pendingCommand = null;
 
     for (let i = 0; i < keys.length; i++) {
@@ -118,23 +136,16 @@ export async function replaySession(seed, opts, keys) {
         }
 
         const raw = getRngLog().slice(prevCount);
-        const result = {
-            ch: keys[i],
+        const step = {
+            key: keys[i],
             rng: raw.map(toCompactRng),
+            screen: opts.captureScreens ? captureScreen(display) : '',
+            cursor: captureCursor(display),
         };
-        if (opts.captureScreens) {
-            result.screen = display.getScreenLines() || [];
-            if (typeof display.getScreenAnsiLines === 'function') {
-                result.screenAnsi = display.getScreenAnsiLines();
-            }
-        }
-        if (typeof display.getCursor === 'function') {
-            result.cursor = display.getCursor();
-        }
-        keyResults.push(result);
+        steps.push(step);
 
         if (typeof opts.onKey === 'function') {
-            opts.onKey({ index: i, ch: keys[i], game, result });
+            opts.onKey({ index: i, ch: keys[i], game, step });
         }
     }
 
@@ -157,7 +168,9 @@ export async function replaySession(seed, opts, keys) {
     disableRngLog();
 
     return {
-        startup: { rng: startupRng },
-        keys: keyResults,
+        version: 3,
+        seed,
+        source: 'js',
+        steps,
     };
 }

@@ -2,7 +2,7 @@
 // Pure recording helpers: execute JS using C-captured inputs and return raw trace.
 
 import { replaySession } from '../../js/replay_core.js';
-import { prepareReplayArgs } from '../../js/replay_compare.js';
+import { prepareReplayArgs, stripAnsiSequences } from '../../js/replay_compare.js';
 import { DEFAULT_FLAGS } from '../../js/storage.js';
 
 function ensureSessionGlobals() {
@@ -46,6 +46,13 @@ export function buildGameplayReplayFlags(session) {
     return flags;
 }
 
+// Split a V3 screen string into ANSI and plain-text line arrays.
+function splitScreen(screenStr) {
+    const ansi = (screenStr || '').split('\n');
+    const plain = ansi.map(line => stripAnsiSequences(line));
+    return { ansi, plain };
+}
+
 export async function recordGameplaySessionFromInputs(session, opts = {}) {
     ensureSessionGlobals();
     const flags = opts.flags || buildGameplayReplayFlags(session);
@@ -68,7 +75,6 @@ export async function recordGameplaySessionFromInputs(session, opts = {}) {
     const { seed: replaySeed, opts: replayOpts, keys, stepBoundaries } = prepareReplayArgs(
         session.meta.seed, session.raw, {
             captureScreens: true,
-            startupBurstInFirstStep: false,
             flags,
             tutorial,
             replayTutorialStartupPrompts,
@@ -89,22 +95,35 @@ export async function recordGameplaySessionFromInputs(session, opts = {}) {
             } : undefined,
         }
     );
-    const raw = await replaySession(replaySeed, replayOpts, keys);
+    const jsSession = await replaySession(replaySeed, replayOpts, keys);
 
-    // Group flat per-key results into per-step results for the comparator.
+    // Adapt V3 session for the comparator.
+    // jsSession.steps[0] is startup, jsSession.steps[1..] are per-keystroke.
+    // Group per-keystroke steps using stepBoundaries to align with C session steps.
+    const startupScreen = splitScreen(jsSession.steps[0].screen);
+    const startup = {
+        rng: jsSession.steps[0].rng,
+        screen: startupScreen.plain,
+        screenAnsi: startupScreen.ansi,
+        cursor: jsSession.steps[0].cursor,
+    };
+
+    const gameplaySteps = jsSession.steps.slice(1);
     const steps = [];
     let keyIdx = 0;
     for (const len of stepBoundaries) {
-        const stepKeys = raw.keys.slice(keyIdx, keyIdx + len);
+        const stepSlice = gameplaySteps.slice(keyIdx, keyIdx + len);
+        const lastStep = stepSlice.length > 0 ? stepSlice[stepSlice.length - 1] : null;
+        const scr = splitScreen(lastStep?.screen);
         steps.push({
-            rng: stepKeys.flatMap(k => k.rng),
-            rngCalls: stepKeys.reduce((n, k) => n + k.rng.length, 0),
-            screen: stepKeys.length > 0 ? stepKeys[stepKeys.length - 1].screen : [],
-            screenAnsi: stepKeys.length > 0 ? stepKeys[stepKeys.length - 1].screenAnsi : undefined,
-            cursor: stepKeys.length > 0 ? stepKeys[stepKeys.length - 1].cursor : undefined,
+            rng: stepSlice.flatMap(k => k.rng),
+            rngCalls: stepSlice.reduce((n, k) => n + k.rng.length, 0),
+            screen: scr.plain,
+            screenAnsi: scr.ansi,
+            cursor: lastStep?.cursor,
         });
         keyIdx += len;
     }
 
-    return { startup: raw.startup, steps };
+    return { startup, steps };
 }

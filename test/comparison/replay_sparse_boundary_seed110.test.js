@@ -36,17 +36,20 @@ test('replay emits per-key results with correct structure (seed110)', async () =
             flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
         });
 
-        // Per-key results are available as replay.keys
-        assert.ok(Array.isArray(replay.keys));
-        assert.ok(replay.keys.length > 0);
+        // V3 session: steps[0] is startup, steps[1..] are per-keystroke.
+        const jsSteps = replay.jsSession.steps;
+        assert.ok(Array.isArray(jsSteps));
+        assert.ok(jsSteps.length > 1); // at least startup + 1 key
+        assert.equal(jsSteps[0].key, null); // startup
+        const keystrokeSteps = jsSteps.slice(1);
         const expectedKeys = session.steps.reduce(
             (n, s) => n + ((typeof s?.key === 'string') ? s.key.length : 0),
             0
         );
-        assert.equal(replay.keys.length, expectedKeys);
-        for (let i = 0; i < replay.keys.length; i++) {
-            const k = replay.keys[i];
-            assert.equal(typeof k.ch, 'string');
+        assert.equal(keystrokeSteps.length, expectedKeys);
+        for (let i = 0; i < keystrokeSteps.length; i++) {
+            const k = keystrokeSteps[i];
+            assert.equal(typeof k.key, 'string');
             assert.equal(Array.isArray(k.rng), true);
         }
     } finally {
@@ -70,10 +73,12 @@ test('per-step RNG equals concatenated per-key RNG (seed5)', async () => {
             flags: { ...DEFAULT_FLAGS, bgcolors: true, customcolors: true },
         });
 
-        // Step-level RNG should equal the full per-key RNG stream
+        // Step-level RNG should equal the per-keystroke RNG stream
         const stepsRng = comparable(replay.steps.flatMap((s) => s.rng || []));
-        const keysRng = comparable(replay.keys.flatMap((k) => k.rng || []));
-        assert.deepEqual(stepsRng, keysRng);
+        const keystrokeRng = comparable(
+            replay.jsSession.steps.slice(1).flatMap((s) => s.rng || [])
+        );
+        assert.deepEqual(stepsRng, keystrokeRng);
     } finally {
         if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
         else process.env.RNG_LOG_TAGS = prevTags;
@@ -97,14 +102,16 @@ test('global step RNG stream equals global key RNG stream (seed5 maxSteps)', asy
         });
 
         const stepsRng = comparable(replay.steps.flatMap((s) => s.rng || []));
-        const keysRng = comparable(replay.keys.flatMap((k) => k.rng || []));
-        assert.deepEqual(stepsRng, keysRng);
+        const keystrokeRng = comparable(
+            replay.jsSession.steps.slice(1).flatMap((s) => s.rng || [])
+        );
+        assert.deepEqual(stepsRng, keystrokeRng);
 
         const expectedKeys = session.steps.slice(0, 541).reduce(
             (n, s) => n + ((typeof s?.key === 'string') ? s.key.length : 0),
             0
         );
-        assert.equal(replay.keys.length, expectedKeys);
+        assert.equal(replay.jsSession.steps.length - 1, expectedKeys);
     } finally {
         if (prevTags === undefined) delete process.env.RNG_LOG_TAGS;
         else process.env.RNG_LOG_TAGS = prevTags;
