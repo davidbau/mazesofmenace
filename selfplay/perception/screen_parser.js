@@ -46,7 +46,7 @@ const FLOOR_CHARS = new Set([
 ]);
 
 // Monster class letters (uppercase and lowercase a-z, plus special)
-const MONSTER_LETTERS = /^[a-zA-Z&';:~]$/;
+const MONSTER_LETTERS = /^[a-zA-Z&';:]$/;
 
 // Item class symbols
 const ITEM_SYMBOLS = new Set([
@@ -110,6 +110,8 @@ function classifyCell(ch, color) {
         if (color === 3) return 'door_open'; // CLR_BROWN
         return 'floor';
     }
+    // In DECgraphics captures from tmux, '~' often represents traversable room terrain.
+    if (ch === '~') return 'floor';
 
     // Closed door / spellbook
     if (ch === '+') {
@@ -156,7 +158,6 @@ function classifyCell(ch, color) {
     if (ch === '&') return 'monster'; // demon
     if (ch === '\'') return 'monster'; // golem or piercer
     if (ch === ':') return 'monster'; // lizard/newt
-    if (ch === '~') return 'monster'; // mimic
     if (ch === ';') return 'monster'; // sea monster
 
     return 'unknown';

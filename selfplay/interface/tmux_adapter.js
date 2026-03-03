@@ -60,9 +60,37 @@ function parseAnsiLine(line, maxCols) {
     const cells = [];
     let currentColor = 7; // default gray
     let currentBright = false;
+    let decGraphics = false; // Shift-Out/Shift-In DEC line-drawing mode
     let i = 0;
 
+    const DEC_GRAPHICS_MAP = {
+        // VT100/DEC Special Graphics set used by NetHack DECgraphics.
+        j: '┘',
+        k: '┐',
+        l: '┌',
+        m: '└',
+        n: '┼',
+        q: '─',
+        t: '├',
+        u: '┤',
+        v: '┴',
+        w: '┬',
+        x: '│',
+    };
+
     while (i < line.length && cells.length < maxCols) {
+        // Shift-Out (SO, 0x0E) enables DEC line-drawing; Shift-In (SI, 0x0F) disables it.
+        if (line[i] === '\x0e') {
+            decGraphics = true;
+            i++;
+            continue;
+        }
+        if (line[i] === '\x0f') {
+            decGraphics = false;
+            i++;
+            continue;
+        }
+
         // Check for ANSI escape sequence: ESC [ ... m
         if (line[i] === '\x1b' && line[i + 1] === '[') {
             // Find the end of the escape sequence (ends with 'm')
@@ -103,7 +131,9 @@ function parseAnsiLine(line, maxCols) {
         }
 
         // Regular character
-        cells.push({ ch: line[i], color: currentColor });
+        const raw = line[i];
+        const ch = decGraphics && DEC_GRAPHICS_MAP[raw] ? DEC_GRAPHICS_MAP[raw] : raw;
+        cells.push({ ch, color: currentColor });
         i++;
     }
 
