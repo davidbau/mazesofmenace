@@ -33,7 +33,8 @@ import { EXPL_FIERY } from './explode.js';
 import { tmp_at, DISP_BEAM, DISP_END } from './animation.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 import { pline, impossible } from './pline.js';
-import { cansee } from './vision.js';
+import { cansee, mark_vision_dirty } from './vision.js';
+import { newsym } from './monutil.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN
 const MAX_SPELL_STUDY = 3; // cf. spell.h MAX_SPELL_STUDY
@@ -630,6 +631,21 @@ export async function seffect_charging(sobj, player, display, game) {
     return true; // consumed
 }
 
+// cf. display.c litroom() — light or darken a room and update display
+function litroom(player, map, doit) {
+    const room = map?.roomAt(player.x, player.y);
+    if (!room) return;
+    room.rlit = doit;
+    for (let y = room.ly; y <= room.hy; y++) {
+        for (let x = room.lx; x <= room.hx; x++) {
+            const loc = map.at ? map.at(x, y) : (map.locations?.[x]?.[y]);
+            if (loc) loc.lit = doit;
+            newsym(x, y);
+        }
+    }
+    mark_vision_dirty();
+}
+
 // cf. read.c seffect_light()
 export async function seffect_light(sobj, player, display, game) {
     const sblessed = sobj.blessed;
@@ -639,6 +655,7 @@ export async function seffect_light(sobj, player, display, game) {
 
     if (!confused) {
         // cf. litroom(!scursed, sobj) — light or darken current room
+        litroom(player, map, !scursed);
         if (!player.blind) {
             if (!scursed) {
                 await display.putstr_message('A lit field surrounds you!');
@@ -646,8 +663,7 @@ export async function seffect_light(sobj, player, display, game) {
                 await display.putstr_message('Darkness surrounds you.');
             }
         }
-        // cf. litroom() — map lighting changes not yet ported
-        return false;
+        return true;
     }
 
     // Confused: create tame lights around player

@@ -24,6 +24,7 @@ import { ART_MAGICBANE, SPFX_INTEL } from './artifacts.js';
 import { make_confused, make_blinded } from './potion.js';
 import { makemon } from './makemon.js';
 import { unbless, curse as curseObj } from './mkobj.js';
+import { mark_vision_dirty } from './vision.js';
 
 // cf. sit.c:14 -- take_gold(): remove all gold coins from hero inventory
 export async function take_gold(player, display) {
@@ -285,6 +286,7 @@ async function throne_sit_effect(player, map, display) {
                 }
                 // HSee_invisible |= FROMOUTSIDE
                 player.see_invisible_intrinsic = true;
+                mark_vision_dirty();
             }
             break;
         case 11:

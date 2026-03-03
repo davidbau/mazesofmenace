@@ -30,6 +30,7 @@ import { drinkfountain } from './fountain.js';
 import { pline, You, Your, You_feel, You_cant } from './pline.js';
 import { registerMakeStatusFns } from './timeout.js';
 import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
+import { mark_vision_dirty } from './vision.js';
 
 
 // ============================================================
@@ -220,6 +221,7 @@ async function make_blinded(player, xtime, talk) {
     if (u_could_see !== can_see_now) {
         // C ref: toggle_blindness() — vision_full_recalc, see_monsters
         player._botl = true;
+        mark_vision_dirty();
     }
 }
 

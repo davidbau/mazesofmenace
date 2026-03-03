@@ -56,6 +56,7 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          DRAIN_RES, SICK_RES, STONE_RES, INFRAVISION,
          TIMEOUT } from './config.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
+import { mark_vision_dirty } from './vision.js';
 
 
 // ============================================================
@@ -637,6 +638,7 @@ export function Ring_on(player, ring) {
     case RIN_SEE_INVISIBLE:
         toggle_extrinsic(player, SEE_INVIS, true);
         // C ref: set_mimic_blocking(); see_monsters();
+        mark_vision_dirty();
         if (!oldprop && !player.blind) {
             // C ref: "Suddenly you are transparent, but there!"
             learnring(r, true);
@@ -747,6 +749,7 @@ export function Ring_off(player, ring) {
         break;
     case RIN_SEE_INVISIBLE:
         toggle_extrinsic(player, SEE_INVIS, false);
+        mark_vision_dirty();
         if (!player.blind) {
             learnring(ring, true);
         }
@@ -1815,6 +1818,7 @@ export async function Ring_off_or_gone(obj, gone, game, player) {
     break;
     case RIN_SEE_INVISIBLE:
       if (!See_invisible) { set_mimic_blocking(); see_monsters(); }
+      mark_vision_dirty();
     if (Invisible && !(player?.Blind || player?.blind || false)) {
       newsym(player.x, player.y);
       await pline("Suddenly you cannot see yourself.");

@@ -27,7 +27,7 @@ import {
 } from './objects.js';
 import { artifact_light } from './artifact.js';
 import { end_burn } from './timeout.js';
-import { clear_path } from './vision.js';
+import { clear_path, mark_vision_dirty } from './vision.js';
 
 // ---------- Constants ----------
 // cf. light.c:41-43
@@ -47,7 +47,6 @@ const TEMP_LIT  = 0x4;  // C ref: vision.h — TEMP_LIT marks temporarily-lit ce
 // ---------- Module State ----------
 // Linked list head for all light sources.  In JS we use a simple array.
 let light_base = [];
-let vision_full_recalc_flag = 0;
 
 // ---------- Internal helpers ----------
 
@@ -90,7 +89,7 @@ function new_light_core(x, y, range, type, id) {
         flags: 0,
     };
     light_base.push(ls);
-    vision_full_recalc_flag = 1;
+    mark_vision_dirty();
     return ls;
 }
 
@@ -114,7 +113,7 @@ export function del_light_source(type, id) {
 function delete_ls(idx) {
     if (idx >= 0 && idx < light_base.length) {
         light_base.splice(idx, 1);
-        vision_full_recalc_flag = 1;
+        mark_vision_dirty();
     }
 }
 
@@ -264,7 +263,7 @@ function discard_flashes() {
     for (let i = light_base.length - 1; i >= 0; i--) {
         if (light_base[i].type === LS_OBJECT && !light_base[i].id) {
             light_base.splice(i, 1);
-            vision_full_recalc_flag = 1;
+            mark_vision_dirty();
         }
     }
 }
@@ -371,7 +370,7 @@ export function obj_split_light_source(src, dest) {
                 // Split candles may emit less light than original group
                 ls.range = candle_light_range(src);
                 new_ls.range = candle_light_range(dest);
-                vision_full_recalc_flag = 1;
+                mark_vision_dirty();
             }
             light_base.push(new_ls);
             dest.lamplit = true;
@@ -392,7 +391,7 @@ export function obj_merge_light_sources(src, dest) {
     for (const ls of light_base) {
         if (ls.type === LS_OBJECT && ls.id === dest) {
             ls.range = candle_light_range(dest);
-            vision_full_recalc_flag = 1;
+            mark_vision_dirty();
             break;
         }
     }
@@ -406,7 +405,7 @@ export function obj_adjust_light_radius(obj, new_radius) {
     for (const ls of light_base) {
         if (ls.type === LS_OBJECT && ls.id === obj) {
             if (new_radius !== ls.range) {
-                vision_full_recalc_flag = 1;
+                mark_vision_dirty();
             }
             ls.range = new_radius;
             return;
@@ -487,7 +486,6 @@ export function wiz_light_sources() {
 // ========================================================================
 export function reset_light_sources() {
     light_base = [];
-    vision_full_recalc_flag = 0;
 }
 
 // ========================================================================
@@ -500,16 +498,6 @@ export function light_sources_sanity_check() {
             // panic("insane light source: no id!");
         }
     }
-}
-
-// ========================================================================
-// Accessors for vision_full_recalc integration
-// ========================================================================
-export function get_vision_full_recalc() {
-    return vision_full_recalc_flag;
-}
-export function set_vision_full_recalc(v) {
-    vision_full_recalc_flag = v;
 }
 
 // ========================================================================
