@@ -34,7 +34,7 @@ import { placeFloorObject, place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
-import { dist2, monsterNearby, monnear, newsym, setDisplayContext } from './monutil.js';
+import { dist2, monsterNearby, monnear, newsym, setDisplayContext, vision_recalc } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
@@ -399,11 +399,12 @@ export async function domove_swap_with_pet(mon, nx, ny, dir, player, map, displa
     player.displacedPetThisTurn = true;
     await maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
 
-    // C ref: vision_recalc(0) after domove — recompute FOV at new player position
+    // C ref: vision_recalc(0) after domove — recompute FOV and update changed cells
     if (game.fov) {
-        game.fov.compute(map, player.x, player.y);
         setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
-        display.renderMap(map, player, game.fov, game.flags);
+        vision_recalc();
+        newsym(oldPlayerX, oldPlayerY);  // show pet at old player position
+        newsym(player.x, player.y);      // show '@' at new player position
         display.renderStatus(player);
     }
     await display.putstr_message(`You swap places with ${y_monnam(mon)}.`);
@@ -762,14 +763,14 @@ export async function domove_core(dir, player, map, display, game) {
     clear_forcefight_prefix(game, ctx);
     await maybeHandleShopEntryMessage(game, oldX, oldY);
 
-    // C ref: vision_recalc(0) — recompute FOV and update display after
-    // player moves.  C's vision_recalc calls newsym() for all cells whose
-    // visibility changed, so the display is correct before any subsequent
-    // messages (combat, --More--) are shown.
+    // C ref: vision_recalc(0) — recompute FOV and update changed cells after
+    // player moves.  Calls newsym() only for cells whose visibility changed,
+    // matching C's incremental display update in vision_recalc().
     if (game.fov) {
-        game.fov.compute(map, player.x, player.y);
         setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
-        display.renderMap(map, player, game.fov, game.flags);
+        vision_recalc();
+        newsym(oldX, oldY);          // update old player position (show terrain)
+        newsym(player.x, player.y);  // update new player position (show '@')
         display.renderStatus(player);
     }
 

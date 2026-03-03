@@ -3,7 +3,7 @@
 // visibility checks, and monster inventory utilities.
 
 import { isok, IS_WALL, CORR, SCORR, ROOM,
-         MAP_ROW_START } from './config.js';
+         MAP_ROW_START, COLNO, ROWNO } from './config.js';
 import { PM_GRID_BUG,
          AT_BITE, AT_CLAW, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
          AT_ENGL, AT_HUGS, AD_STCK } from './monsters.js';
@@ -157,8 +157,8 @@ export function newsym(x, y) {
     if (!loc) return;
 
     const ctx = _displayContext;
-    if (!ctx || !ctx.display) {
-        // No display wired — just update memory state (level gen, tests)
+    if (!ctx || !ctx.display || typeof ctx.display.setCell !== 'function') {
+        // No display wired (or mock display without setCell) — just update memory state
         loc.mem_invis = false;
         return;
     }
@@ -306,6 +306,38 @@ export function see_monsters(map) {
     const player = ctx.player;
     if (player && !player.usteed) {
         newsym(player.x, player.y);
+    }
+}
+
+// C ref: vision.c:511 vision_recalc() — recompute FOV and call newsym() for
+// all cells whose visibility changed.  Uses _displayContext for fov/map/player.
+// Safe to call when _displayContext is null (no-op: level gen or tests).
+// For the player-move case, call newsym(oldX, oldY) and newsym(player.x, player.y)
+// after vision_recalc to ensure old and new player positions are updated
+// (vision_recalc only updates cells whose visibility changed).
+export function vision_recalc() {
+    const ctx = _displayContext;
+    if (!ctx || !ctx.fov || !ctx.fov.visible || !ctx.map || !ctx.player) return;
+    const { fov, map, player } = ctx;
+
+    // Snapshot old visibility before recompute
+    const oldVisible = [];
+    for (let x = 0; x < COLNO; x++) {
+        oldVisible[x] = fov.visible[x].slice();
+    }
+
+    // Recompute FOV — mutates fov.visible in place
+    fov.compute(map, player.x, player.y);
+
+    // Call newsym for all cells whose visibility changed
+    if (ctx.display) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                if (oldVisible[x][y] !== fov.visible[x][y]) {
+                    newsym(x, y);
+                }
+            }
+        }
     }
 }
 
