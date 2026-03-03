@@ -52,7 +52,7 @@ import { find_mac, W_WEP, W_QUIVER, W_SWAPWEP } from './worn.js';
 import { spec_abon } from './artifact.js';
 import { erode_obj, ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED } from './trap.js';
 import { goodpos } from './teleport.js';
-import { mpickobj, newsym } from './monutil.js';
+import { mpickobj, newsym, flush_screen } from './monutil.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {
@@ -271,6 +271,7 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
             await nh_delay_output();
         } finally {
             tmp_at(DISP_END, 0);
+            flush_screen(1); // C ref: dothrow.c:912 — flush after throw animation frame
         }
     }
     const landingLoc = (typeof map.at === 'function')
@@ -984,6 +985,7 @@ async function boomhit_visual(obj, dx, dy, player, map, game) {
         }
     }
     tmp_at(DISP_END, 0);
+    flush_screen(1); // C ref: dothrow.c:912 — flush after boomerang animation
     if (game) game.bhitpos = { x, y };
 }
 

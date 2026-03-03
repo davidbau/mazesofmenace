@@ -48,7 +48,7 @@ import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
          EF_GREASE, EF_VERBOSE } from './trap.js';
 import { xkilled, XKILL_NOMSG } from './mon.js';
-import { mondead } from './monutil.js';
+import { mondead, flush_screen } from './monutil.js';
 import { mon_explodes } from './explode.js';
 import { spec_dbon } from './artifact.js';
 import { msummon } from './minion.js';
@@ -1321,6 +1321,7 @@ export async function gulpmu(mtmp, mattk, player, map, display) {
 
     if (!player.uswallow) {
         // Initial engulfment
+        flush_screen(1); // C ref: mhitu.c:850 — show current map state before engulfment
         player.ustuck = mtmp;
         player.uswallow = true;
         if (display) {

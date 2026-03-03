@@ -4,6 +4,7 @@
 
 import { MAP_ROW_START, COLNO, ROWNO, DOOR, ROOM, CORR, isok } from './config.js';
 import { nhgetch } from './input.js';
+import { flush_screen } from './monutil.js';
 import {
     NHW_MENU,
     PICK_ONE,
@@ -105,7 +106,7 @@ function putCursor(display, x, y) {
     const { col, row } = screenPosForMap(display, x, y);
     const prev = getCell(display, col, row);
     if (typeof display?.setCell === 'function') display.setCell(col, row, 'X', 14, 0);
-    if (typeof display?.flush === 'function') display.flush();
+    flush_screen(0); // C ref: getpos.c:660,854,863,1149 — flush tty after cursor move
     return { col, row, prev };
 }
 
@@ -120,7 +121,7 @@ function restoreCursor(display, cursorState) {
             cursorState.prev.attr || 0
         );
     }
-    if (typeof display?.flush === 'function') display.flush();
+    flush_screen(0); // C ref: getpos.c:660,854,863,1149 — flush tty after cursor move
 }
 
 function moveDeltaForChar(c) {

@@ -36,7 +36,7 @@ import {
     mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
     AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY, MZ_HUMAN, MZ_LARGE,
 } from './monsters.js';
-import { distmin, dist2, mondead, BOLT_LIM } from './monutil.js';
+import { distmin, dist2, mondead, BOLT_LIM, flush_screen } from './monutil.js';
 import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './stackobj.js';
 import { corpse_chance } from './mon.js';
@@ -665,6 +665,7 @@ export async function m_throw_timed(
         return { drop: false, returnFlight: true, x: mon.mx, y: mon.my, hitPlayer, promptedForTopline };
     }
     tmp_at(DISP_END, 0);
+    flush_screen(1); // C ref: dothrow.c:1015 — flush after monster throw animation
     return { drop: !dropHandledInImpact, x: dropX, y: dropY, hitPlayer, promptedForTopline };
 }
 

@@ -739,6 +739,7 @@ export async function do_mapping(player, map, display) {
         for (let zy = 0; zy < ROWNO; zy++)
             show_map_spot(zx, zy, cnf, map);
     reconstrain_map(player);
+    flush_screen(1); // C ref: detect.c:2389 — show mapped terrain before messages
     await exercise(player, A_WIS, true);
 }
 
@@ -871,6 +872,7 @@ export async function findit(player, map, display, game) {
     const fov = game && game.fov ? game.fov : null;
     await do_clear_area(fov, map, player.x, player.y, BOLT_LIM,
         (zx, zy, arg) => findone_fn(zx, zy, arg, player, map, display), found);
+    flush_screen(1); // C ref: detect.c:1892 — show revealed items before messages
     let num = 0;
     const k = (found.num_sdoors ? 1 : 0) + (found.num_scorrs ? 1 : 0)
             + (found.num_traps ? 1 : 0) + (found.num_mons ? 1 : 0);
