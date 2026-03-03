@@ -31,7 +31,7 @@ index 780bca6c3..f5da8fb77 100644
 +
 +    fp = fopen(fname, "w");
 +    if (!fp) {
-+        pline("Cannot open %s for writing.", fname);
++        raw_printf("dumpmap: cannot open %s for writing.", fname);
 +        return ECMD_OK;
 +    }
 +
@@ -45,7 +45,9 @@ index 780bca6c3..f5da8fb77 100644
 +    }
 +
 +    fclose(fp);
-+    pline("Map dumped to %s.", fname);
++    /* Silent: no pline() here.  pline would pollute the topline,
++     * trigger --More-- prompts, and shift message timing — all of
++     * which cause false divergences in session comparison tests. */
 +    return ECMD_OK;
 +}
 +

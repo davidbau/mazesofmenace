@@ -299,7 +299,7 @@ index d77454878..843e21f50 100644
 +    if (!*phasebuf)
 +        Strcpy(phasebuf, "manual");
 +    harness_dump_checkpoint(phasebuf);
-+    pline("Snapshot appended (%s).", phasebuf);
++    /* Silent: no pline() — avoids topline pollution in session captures. */
 +    return ECMD_OK;
 +}
 +
