@@ -37,7 +37,7 @@ import { hcolor, hliquid, rndmonnam, Monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { body_part, FACE, HAND, LEG, STOMACH } from './polyself.js';
 import { IS_SINK, IS_ALTAR } from './symbols.js';
-import { newsym } from './monutil.js';
+import { newsym, mark_vision_dirty, vision_recalc, setDisplayContext } from './monutil.js';
 import { digests, touch_petrifies, is_rider, is_reviver, throws_rocks, passes_walls, is_whirly } from './mondata.js';
 import { mons, S_ZOMBIE, NON_PM, PM_DEATH, PM_PESTILENCE, PM_FAMINE,
          PM_GREEN_SLIME, PM_WRAITH, PM_NURSE } from './monsters.js';
@@ -1229,14 +1229,11 @@ export async function changeLevel(game, depth, transitionDir = null, opts = {}) 
             (game.lev || game.map)._water.onHeroMoved = (x, y) => {
                 (game.u || game.player).x = x;
                 (game.u || game.player).y = y;
-                if (game.fov?.compute) {
-                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
-                }
+                mark_vision_dirty(); // player position changed
             };
             (game.lev || game.map)._water.onVisionRecalc = () => {
-                if (game.fov?.compute) {
-                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
-                }
+                setDisplayContext({ display: game.display, player: (game.u || game.player), fov: game.fov, flags: game.flags, map: (game.lev || game.map) });
+                vision_recalc();
             };
         }
         await movebubbles((game.lev || game.map));

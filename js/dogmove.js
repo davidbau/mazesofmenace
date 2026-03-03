@@ -924,9 +924,6 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     const maxY = Math.min(ROWNO - 1, omy + SQSRCHRADIUS);
 
     // C ref: in_masters_sight = couldsee(omx, omy)
-    if (fov && typeof fov.compute === 'function') {
-        fov.compute(map, player.x, player.y);
-    }
     const inMastersSight = (fov && typeof fov.couldSee === 'function')
         ? !!fov.couldSee(omx, omy)
         : couldsee(map, player, omx, omy);

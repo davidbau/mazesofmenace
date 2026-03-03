@@ -38,7 +38,7 @@ import { maybe_finished_meal } from './eat.js';
 import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
-import { monsterNearby, setDisplayContext, see_monsters, vision_recalc } from './monutil.js';
+import { monsterNearby, setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty } from './monutil.js';
 import { nomul, unmul, near_capacity } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
@@ -231,14 +231,11 @@ export async function moveloop_turnend(game) {
             (game.lev || game.map)._water.onHeroMoved = (x, y) => {
                 (game.u || game.player).x = x;
                 (game.u || game.player).y = y;
-                if (game.fov?.compute) {
-                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
-                }
+                mark_vision_dirty(); // player position changed
             };
             (game.lev || game.map)._water.onVisionRecalc = () => {
-                if (game.fov?.compute) {
-                    game.fov.compute((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y);
-                }
+                setDisplayContext({ display: game.display, player: (game.u || game.player), fov: game.fov, flags: game.flags, map: (game.lev || game.map) });
+                vision_recalc();
             };
         }
         await movebubbles((game.lev || game.map));
@@ -446,7 +443,6 @@ export async function moveloop_dosounds(game) {
 // opts.onTimedTurn:      hook called after each moveloop_core
 // opts.onBeforeRepeat:   hook called before each multi-repeat iteration
 // opts.skipMonsterMove:  passed through to moveloop_core
-// opts.computeFov:       passed through to moveloop_core
 // opts.skipTurnEnd:      skip all post-rhack processing (moveloop, occ, multi)
 export async function run_command(game, ch, opts = {}) {
     const {
@@ -454,7 +450,6 @@ export async function run_command(game, ch, opts = {}) {
         onTimedTurn,
         onBeforeRepeat,
         skipMonsterMove,
-        computeFov = false,
         skipTurnEnd = false,
         skipRepeatRecord = false,
     } = opts;
@@ -535,7 +530,6 @@ export async function run_command(game, ch, opts = {}) {
     game.cmdKey = chCode;
 
     const coreOpts = {};
-    if (computeFov) coreOpts.computeFov = true;
     if (skipMonsterMove) coreOpts.skipMonsterMove = true;
 
     // Process one timed turn of world updates after a command consumed time.
@@ -1333,7 +1327,7 @@ export class NetHackGame {
     async runPendingDeferredTimedTurn() {
         if (!this.pendingDeferredTimedTurn) return;
         this.pendingDeferredTimedTurn = false;
-        await moveloop_core(this, { computeFov: true });
+        await moveloop_core(this);
     }
 
     // C-parity naming for internal callers.
@@ -1437,7 +1431,7 @@ export class NetHackGame {
 
     async executeCommand(ch) {
         const code = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-        const result = await run_command(this, code, { computeFov: true });
+        const result = await run_command(this, code);
 
         if (typeof this.hooks.onCommandResult === 'function') {
             this.hooks.onCommandResult({ game: this, keyCode: code, result });
@@ -1484,7 +1478,6 @@ export class NetHackGame {
         const result = await run_command(this, key, {
             countPrefix: (options.countPrefix && options.countPrefix > 0) ? options.countPrefix : 0,
             skipMonsterMove: options.skipMonsterMove,
-            computeFov: true,
             skipTurnEnd: !!options.skipTurnEnd,
             onBeforeRepeat: () => {
                 if (typeof this.shouldInterruptMulti === 'function'
@@ -1601,7 +1594,6 @@ export class NetHackGame {
             // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
             if (firstCh === 1) { // Ctrl+A
                 await execute_repeat_command(this, {
-                    computeFov: true,
                     onTimedTurn: async () => {
                         this.fov.compute(this.map, this.player.x, this.player.y);
                         this.display.renderMap(this.map, this.player, this.fov, this.flags);

@@ -34,7 +34,7 @@ import { placeFloorObject, place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
-import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_dirty } from './monutil.js';
+import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_dirty, vision_recalc } from './monutil.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
@@ -1020,10 +1020,9 @@ export async function do_run(dir, player, map, display, fov, game, runStyle = 'r
             break;
         }
 
-        // C ref: allmain.c moveloop_core() invokes lookaround() while
-        // multi-turn running continues. Mirror by checking continuation after
-        // each completed movement step.
-        fov.compute(map, player.x, player.y);
+        // C ref: vision_recalc at top of moveloop before lookaround — each
+        // running step sees fresh FOV from the just-completed domove.
+        vision_recalc();
         const look = await lookaround(map, player, fov, runDir, runStyle, display, game);
         if (Array.isArray(look?.nextDir)) {
             runDir = look.nextDir;
