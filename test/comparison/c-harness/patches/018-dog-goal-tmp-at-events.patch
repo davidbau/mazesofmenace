@@ -1,4 +1,3 @@
-diff --git a/src/dogmove.c b/src/dogmove.c
 --- a/src/dogmove.c
 +++ b/src/dogmove.c
 @@ -532,6 +532,11 @@
@@ -88,8 +87,6 @@ diff --git a/src/dogmove.c b/src/dogmove.c
      return appr;
  #undef FARAWAY
  }
-
-diff --git a/src/display.c b/src/display.c
 --- a/src/display.c
 +++ b/src/display.c
 @@ -1183,6 +1183,7 @@
@@ -116,4 +113,3 @@ diff --git a/src/display.c b/src/display.c
              break;
          } /* end switch */
      }
-
