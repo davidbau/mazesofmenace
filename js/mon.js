@@ -762,6 +762,7 @@ export function mondied(mon, map, player) {
         const loc = map.at(mon.mx, mon.my);
         if (loc && (ACCESSIBLE(loc.typ) || IS_POOL(loc.typ))) {
             make_corpse(mon, 0, map);
+            newsym(map, mon.mx, mon.my);
         }
     }
 }
@@ -815,6 +816,7 @@ export function xkilled(mon, xkill_flags, map, player) {
         const loc = map.at(x, y);
         if (loc && (ACCESSIBLE(loc.typ) || IS_POOL(loc.typ))) {
             make_corpse(mon, 0, map);
+            newsym(map, x, y);
         }
     }
 }
