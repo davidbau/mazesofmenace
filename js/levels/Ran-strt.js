@@ -25,7 +25,7 @@ export async function generate() {
     des.level_init({ style: "mines", fg: ".", bg: ".", smoothed: true, joined: true, lit: 1, walled: false });
     des.replace_terrain({ region: [0,0, 76,19], fromterrain: ".", toterrain: "T", chance: 5 });
     // 1234567890123456789012345678901234567890123456789012345678901234567890
-    des.map({ halign: "left", valign: "center", map: `\
+    await des.map({ halign: "left", valign: "center", map: `\
                                        xx
    ...................................  x
   ..                                 ..  
@@ -49,28 +49,28 @@ export async function generate() {
                                        xx
 ` });
     // Dungeon Description
-    des.region(selection.area(0,0,40,20), "lit");
+    await des.region(selection.area(0,0,40,20), "lit");
     // Stairs
     des.stair("down", 10,10);
     // Portal arrival point; just about anywhere on the right hand side of the map
     des.levregion({ region: [51,2,77,18], region_islev: 1, type: "branch" });
     // Orion
-    des.monster({ id: "Orion", coord: [20, 10], inventory: function() {
-       des.object({ id: "leather armor", spe: 4 });
-       des.object({ id: "yumi", spe: 4 });
-       des.object({ id: "ya", spe: 4, quantity: 50 });
+    await des.monster({ id: "Orion", coord: [20, 10], inventory: async function() {
+       await des.object({ id: "leather armor", spe: 4 });
+       await des.object({ id: "yumi", spe: 4 });
+       await des.object({ id: "ya", spe: 4, quantity: 50 });
     } })
     // The treasure of Orion
-    des.object("chest", 20, 10);
+    await des.object("chest", 20, 10);
     // Guards for the audience chamber
-    des.monster("hunter", 19, 9);
-    des.monster("hunter", 20, 9);
-    des.monster("hunter", 21, 9);
-    des.monster("hunter", 19, 10);
-    des.monster("hunter", 21, 10);
-    des.monster("hunter", 19, 11);
-    des.monster("hunter", 20, 11);
-    des.monster("hunter", 21, 11);
+    await des.monster("hunter", 19, 9);
+    await des.monster("hunter", 20, 9);
+    await des.monster("hunter", 21, 9);
+    await des.monster("hunter", 19, 10);
+    await des.monster("hunter", 21, 10);
+    await des.monster("hunter", 19, 11);
+    await des.monster("hunter", 20, 11);
+    await des.monster("hunter", 21, 11);
     // Non diggable walls
     des.non_diggable(selection.area(0,0,40,20));
     // Traps
@@ -81,33 +81,33 @@ export async function generate() {
     await des.trap("bear");
     await des.trap("bear");
     // Monsters on siege duty.
-    des.monster({ id: "minotaur", x: 33, y: 9, peaceful: 0, asleep: 1 });
-    des.monster({ id: "forest centaur", x: 19, y: 3, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 19, y: 4, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 19, y: 5, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 3, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 4, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 5, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 1, y: 9, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 2, y: 9, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 3, y: 9, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 1, y: 11, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 2, y: 11, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 3, y: 11, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 19, y: 15, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 19, y: 16, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 19, y: 17, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 15, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 16, peaceful: 0 });
-    des.monster({ id: "forest centaur", x: 21, y: 17, peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "plains centaur", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "minotaur", x: 33, y: 9, peaceful: 0, asleep: 1 });
+    await des.monster({ id: "forest centaur", x: 19, y: 3, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 19, y: 4, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 19, y: 5, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 3, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 4, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 5, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 1, y: 9, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 2, y: 9, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 3, y: 9, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 1, y: 11, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 2, y: 11, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 3, y: 11, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 19, y: 15, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 19, y: 16, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 19, y: 17, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 15, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 16, peaceful: 0 });
+    await des.monster({ id: "forest centaur", x: 21, y: 17, peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "plains centaur", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
 
 
     return await des.finalize_level();

@@ -19,12 +19,12 @@ export async function generate() {
     des.level_flags("mazelevel", "noflip");
     des.level_init({ style: "maze", corrwid: 3 + nh.rn2(3), wallthick: 1, deadends: t_or_f() });
 
-    des.region(selection.area(0,0,75,18), "lit");
+    await des.region(selection.area(0,0,75,18), "lit");
     des.non_diggable();
 
-    function replace_wall_boulder(x,y) {
+    async function replace_wall_boulder(x,y) {
        des.terrain(x, y, ".");
-       des.object("boulder", x, y);
+       await des.object("boulder", x, y);
     }
 
     // replace horizontal && vertical walls
@@ -38,13 +38,13 @@ export async function generate() {
     des.stair("down");
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
     for (let i = 1; i <= 6; i++) {
        await des.trap("rolling boulder");
     }
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     
     }
     return await des.finalize_level();

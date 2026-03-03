@@ -12,7 +12,7 @@ export async function generate() {
     des.level_flags("mazelevel", "noflip",
                     "nomongen", "nodeathdrops", "noautosearch");
 
-    des.map(`\
+    await des.map(`\
 --------------
 |............|
 |............|
@@ -24,7 +24,7 @@ export async function generate() {
 `);
 
 
-    des.region(selection.area(1,1, 73, 16), "lit");
+    await des.region(selection.area(1,1, 73, 16), "lit");
 
     des.stair({ dir: "up", coord: [ 2,2 ] });
 

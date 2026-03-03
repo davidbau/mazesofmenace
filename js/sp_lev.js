@@ -5045,7 +5045,7 @@ export function exclusion(opts) {
  * @param {number} [x] - X coordinate (if opts_or_class is string)
  * @param {number} [y] - Y coordinate (if opts_or_class is string)
  */
-export function create_monster(opts_or_class, x, y) {
+export async function create_monster(opts_or_class, x, y) {
     if (!levelState.map) {
         levelState.map = new GameMap();
     }
@@ -5085,7 +5085,7 @@ export function create_monster(opts_or_class, x, y) {
     // C ref: sp_lev.c lspo_monster() creates monsters during script execution
     // rather than batching them by type. Resolve coordinates at execution time
     // to keep get_location_coord() call timing aligned.
-    createScriptMonster({
+    await createScriptMonster({
         opts_or_class,
         deferCoord: true,
         rawX: srcX,
@@ -5095,8 +5095,8 @@ export function create_monster(opts_or_class, x, y) {
     });
 }
 
-export function monster(opts_or_class, x, y) {
-    return create_monster(opts_or_class, x, y);
+export async function monster(opts_or_class, x, y) {
+    return await create_monster(opts_or_class, x, y);
 }
 
 /**
@@ -5950,7 +5950,7 @@ export function sp_amask_to_amask(amask = 'random') {
  * all C-parity logic (class resolution, inventory, alignment, etc.)
  * C ref: sp_lev.c create_monster()
  */
-function createScriptMonster(deferred) {
+async function createScriptMonster(deferred) {
     const { opts_or_class, x, y } = deferred;
     const immediateParity = !!levelState.finalizeContext || !!deferred.parityImmediate;
     const traceMon = (typeof process !== 'undefined' && process.env.WEBHACK_MON_TRACE === '1');
@@ -6221,7 +6221,7 @@ function createScriptMonster(deferred) {
             if ((hasInvent & CUSTOM_INVENT) && typeof opts.inventory === 'function') {
                 levelState.monsterInventoryStack.push(mtmp);
                 try {
-                    opts.inventory(mtmp);
+                    await opts.inventory(mtmp);
                 } finally {
                     spo_end_moninvent();
                 }
@@ -6790,7 +6790,7 @@ export async function load_special(name) {
 }
 
 export function lspo_message(...args) { return message(...args); }
-export function lspo_monster(...args) { return monster(...args); }
+export async function lspo_monster(...args) { return await monster(...args); }
 export async function lspo_object(...args) { return await object(...args); }
 export function lspo_level_flags(...args) { return level_flags(...args); }
 export function lspo_level_init(...args) { return level_init(...args); }

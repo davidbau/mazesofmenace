@@ -17,24 +17,24 @@ export async function generate() {
     // des.level_init(mines,'.','}',true,true,unlit,false)
     des.level_init({ style: "swamp", lit: 0 });
     // guarantee at least one open spot to ensure successful stair placement
-    des.map({ halign: "left", valign: "bottom", map: `\
+    await des.map({ halign: "left", valign: "bottom", map: `\
 xxxxxxxx
 xx...xxx
 xxx...xx
 xxxx.xxx
 xxxxxxxx
 ` });
-    des.object("boulder");
-    des.map({ halign: "right", valign: "top", map: `\
+    await des.object("boulder");
+    await des.map({ halign: "right", valign: "top", map: `\
 xxxxxxxx
 xxxx.xxx
 xxx...xx
 xx...xxx
 xxxxxxxx
 ` });
-    des.object("boulder");
+    await des.object("boulder");
     // lair
-    des.map(`\
+    await des.map(`\
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxx
 xxx...xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxx
@@ -65,63 +65,63 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     place.set(46,15);
 
     // Dungeon description
-    des.region({ region: [0,0,50,17], lit: 0, type: "swamp", filled: 2 });
+    await des.region({ region: [0,0,50,17], lit: 0, type: "swamp", filled: 2 });
     des.levregion({ region: [1,0,11,20], region_islev: 1, exclude: [0,0,50,17], type: "stair-down" });
     des.levregion({ region: [69,0,79,20], region_islev: 1, exclude: [0,0,50,17], type: "stair-up" });
     des.levregion({ region: [1,0,11,20], region_islev: 1, exclude: [0,0,50,17], type: "branch" });
     des.teleport_region({ region: [1,0,11,20], region_islev: 1, exclude: [0,0,50,17],dir: "up" });
     des.teleport_region({ region: [69,0,79,20], region_islev: 1, exclude: [0,0,50,17],dir: "down" });
     des.feature("fountain", place.rndcoord(1));
-    des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
-    des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
-    des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
+    await des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
+    await des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
+    await des.monster({ id: "giant mimic", coord: place.rndcoord(1), appear_as: "ter:fountain" });
     // The demon of the swamp
-    des.monster("Juiblex",25,8);
+    await des.monster("Juiblex",25,8);
     // And a couple demons
-    des.monster("lemure",43,8);
-    des.monster("lemure",44,8);
-    des.monster("lemure",45,8);
+    await des.monster("lemure",43,8);
+    await des.monster("lemure",44,8);
+    await des.monster("lemure",45,8);
     // Some liquids && gems
-    des.object("*",43,6);
-    des.object("*",45,6);
-    des.object("!",43,9);
-    des.object("!",44,9);
-    des.object("!",45,9);
+    await des.object("*",43,6);
+    await des.object("*",45,6);
+    await des.object("!",43,9);
+    await des.object("!",44,9);
+    await des.object("!",45,9);
     // And lots of blobby monsters
-    des.monster(monster[3],25,6);
-    des.monster(monster[0],24,7);
-    des.monster(monster[1],26,7);
-    des.monster(monster[2],23,8);
-    des.monster(monster[2],27,8);
-    des.monster(monster[1],24,9);
-    des.monster(monster[0],26,9);
-    des.monster(monster[3],25,10);
-    des.monster("j");
-    des.monster("j");
-    des.monster("j");
-    des.monster("j");
-    des.monster("P");
-    des.monster("P");
-    des.monster("P");
-    des.monster("P");
-    des.monster("b");
-    des.monster("b");
-    des.monster("b");
-    des.monster("F");
-    des.monster("F");
-    des.monster("F");
-    des.monster("m");
-    des.monster("m");
-    des.monster("jellyfish");
-    des.monster("jellyfish");
+    await des.monster(monster[3],25,6);
+    await des.monster(monster[0],24,7);
+    await des.monster(monster[1],26,7);
+    await des.monster(monster[2],23,8);
+    await des.monster(monster[2],27,8);
+    await des.monster(monster[1],24,9);
+    await des.monster(monster[0],26,9);
+    await des.monster(monster[3],25,10);
+    await des.monster("j");
+    await des.monster("j");
+    await des.monster("j");
+    await des.monster("j");
+    await des.monster("P");
+    await des.monster("P");
+    await des.monster("P");
+    await des.monster("P");
+    await des.monster("b");
+    await des.monster("b");
+    await des.monster("b");
+    await des.monster("F");
+    await des.monster("F");
+    await des.monster("F");
+    await des.monster("m");
+    await des.monster("m");
+    await des.monster("jellyfish");
+    await des.monster("jellyfish");
     // Some random objects
-    des.object("!");
-    des.object("!");
-    des.object("!");
-    des.object("%");
-    des.object("%");
-    des.object("%");
-    des.object("boulder");
+    await des.object("!");
+    await des.object("!");
+    await des.object("!");
+    await des.object("%");
+    await des.object("%");
+    await des.object("%");
+    await des.object("boulder");
     // Some traps
     await des.trap("sleep gas");
     await des.trap("sleep gas");

@@ -16,7 +16,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
                                                                             
                           .....................                             
                          .......................                            
@@ -39,32 +39,32 @@ export async function generate() {
                                                                             
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     // Stairs
     des.stair("up");
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Objects
-    des.object({ id: "mace", x: 23, y: 10, buc: "blessed", spe: 0, name: "The Sceptre of Might" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "mace", x: 23, y: 10, buc: "blessed", spe: 0, name: "The Sceptre of Might" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // monsters.
-    des.monster({ id: "Chromatic Dragon", x: 23, y: 10, asleep: 1 });
-    des.monster("shrieker", 26, 13);
-    des.monster("shrieker", 25, 8);
-    des.monster("shrieker", 45, 11);
+    await des.monster({ id: "Chromatic Dragon", x: 23, y: 10, asleep: 1 });
+    await des.monster("shrieker", 26, 13);
+    await des.monster("shrieker", 25, 8);
+    await des.monster("shrieker", 45, 11);
     des.wallify();
 
 

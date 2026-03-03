@@ -18,7 +18,7 @@ export async function generate() {
     // 
     des.level_init({ style: "mines", fg: ".", bg: "P", smoothed: true ,joined: true, lit: 1, walled: false });
 
-    des.map(`\
+    await des.map(`\
 PPPPPPPPPPPPP.......PPPPPPPPPPP
 PPPPPPPP...............PPPPPPPP
 PPPP.....-------------...PPPPPP
@@ -31,8 +31,8 @@ PPPPPPPP...............PPPPPPPP
 PPPPPPPPPPP........PPPPPPPPPPPP
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,30,9), "lit");
-    des.region({ region: [12,3, 20,6], lit: 1, type: "temple", filled: 1 });
+    await des.region(selection.area(0,0,30,9), "lit");
+    await des.region({ region: [12,3, 20,6], lit: 1, type: "temple", filled: 1 });
     // Doors
     des.door("closed",9,4);
     des.door("closed",9,5);
@@ -46,21 +46,21 @@ PPPPPPPPPPP........PPPPPPPPPPPP
     // Altar in the temple.
     des.altar({ x: 13,y: 5, align: "chaos", type: "shrine" });
     // Objects
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap();
     await des.trap();
@@ -69,41 +69,41 @@ PPPPPPPPPPP........PPPPPPPPPPPP
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster({ class: "r", peaceful: 0 });
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("electric eel");
-    des.monster("electric eel");
-    des.monster("kraken");
-    des.monster("shark");
-    des.monster("shark");
-    des.monster({ class: ";", peaceful: 0 });
-    des.monster({ class: ";", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster({ class: "r", peaceful: 0 });
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("electric eel");
+    await des.monster("electric eel");
+    await des.monster("kraken");
+    await des.monster("shark");
+    await des.monster("shark");
+    await des.monster({ class: ";", peaceful: 0 });
+    await des.monster({ class: ";", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
 
 
     return await des.finalize_level();

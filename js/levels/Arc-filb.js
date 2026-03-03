@@ -12,55 +12,55 @@ export async function generate() {
     // NetHack may be freely redistributed.  See license for details.
     // 
     // 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.stair("up");
-                  des.object();
-                  des.monster("M");
-               }
-    })
-
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.monster("M");
-               }
-    })
-
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  await des.trap();
-                  des.object();
-                  des.monster("M");
+                  des.stair("up");
+                  await des.object();
+                  await des.monster("M");
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.monster("M");
+               }
+    })
+
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.object();
+                  await des.monster("M");
+               }
+    })
+
+    await des.room({ type: "ordinary",
                contents: async function() {
                   des.stair("down");
-                  des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster("S");
-                  des.monster("human mummy");
+                  await des.monster("S");
+                  await des.monster("human mummy");
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  des.object();
+                  await des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster("S");
+                  await des.monster("S");
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster("S");
+                  await des.monster("S");
                }
     })
 

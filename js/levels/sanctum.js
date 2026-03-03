@@ -19,7 +19,7 @@ export async function generate() {
     // that map && anchoring coordinates to it. This extends the invisible
     // barrier up to the top row, which falls outside the drawn map.
     des.non_passwall(selection.area(39,0,41,0));
-    des.map(`\
+    await des.map(`\
 ----------------------------------------------------------------------------
 |             --------------                                               |
 |             |............|             -------                           |
@@ -41,11 +41,11 @@ export async function generate() {
 |             -------------                  -----          -------        |
 ----------------------------------------------------------------------------
 `);
-    des.region({ region: [15,7, 21,10], lit: 1, type: "temple", filled: 2, contents: function() {
+    await des.region({ region: [15,7, 21,10], lit: 1, type: "temple", filled: 2, contents: async function() {
                     des.door({ wall: "random", state: "secret" });
     } })
     des.altar({ x: 18, y: 8, align: "noalign", type: "sanctum" });
-    des.region({ region: [41,6, 48,11], lit: 0, type: "morgue", filled: 1, irregular: 1 });
+    await des.region({ region: [41,6, 48,11], lit: 0, type: "morgue", filled: 1, irregular: 1 });
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Invisible barrier separating the left & right halves of the level
@@ -98,44 +98,44 @@ export async function generate() {
     await des.trap("fire");
     await des.trap("magic");
     // Some random objects
-    des.object("[");
-    des.object("[");
-    des.object("[");
-    des.object("[");
-    des.object(")");
-    des.object(")");
-    des.object("*");
-    des.object("!");
-    des.object("!");
-    des.object("!");
-    des.object("!");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
+    await des.object("[");
+    await des.object("[");
+    await des.object("[");
+    await des.object("[");
+    await des.object(")");
+    await des.object(")");
+    await des.object("*");
+    await des.object("!");
+    await des.object("!");
+    await des.object("!");
+    await des.object("!");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
     // Some monsters.
-    des.monster({ id: "horned devil", x: 14,y: 12,peaceful: 0 });
-    des.monster({ id: "barbed devil", x: 18,y: 8,peaceful: 0 });
-    des.monster({ id: "erinys", x: 10,y: 4,peaceful: 0 });
-    des.monster({ id: "marilith", x: 7,y: 9,peaceful: 0 });
-    des.monster({ id: "nalfeshnee", x: 27,y: 8,peaceful: 0 });
+    await des.monster({ id: "horned devil", x: 14,y: 12,peaceful: 0 });
+    await des.monster({ id: "barbed devil", x: 18,y: 8,peaceful: 0 });
+    await des.monster({ id: "erinys", x: 10,y: 4,peaceful: 0 });
+    await des.monster({ id: "marilith", x: 7,y: 9,peaceful: 0 });
+    await des.monster({ id: "nalfeshnee", x: 27,y: 8,peaceful: 0 });
     // Moloch's horde
-    des.monster({ id: "aligned cleric", x: 20,y: 3,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 15,y: 4,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 11,y: 5,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 11,y: 7,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 11,y: 9,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 11,y: 12,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 15,y: 13,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 17,y: 13,align: "noalign",peaceful: 0 });
-    des.monster({ id: "aligned cleric", x: 21,y: 13,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 20,y: 3,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 15,y: 4,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 11,y: 5,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 11,y: 7,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 11,y: 9,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 11,y: 12,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 15,y: 13,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 17,y: 13,align: "noalign",peaceful: 0 });
+    await des.monster({ id: "aligned cleric", x: 21,y: 13,align: "noalign",peaceful: 0 });
     // A few nasties
-    des.monster("L");
-    des.monster("L");
-    des.monster("V");
-    des.monster("V");
-    des.monster("V");
+    await des.monster("L");
+    await des.monster("L");
+    await des.monster("V");
+    await des.monster("V");
+    await des.monster("V");
     des.stair("up", 63,15);
     // Teleporting to this level is allowed after the invocation creates its
     // entrance.  Force arrival in that case to be on rightmost third of level.

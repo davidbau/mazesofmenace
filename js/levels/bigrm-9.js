@@ -15,7 +15,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
     des.level_flags("mazelevel", "noflip");
 
-    des.map(`\
+    await des.map(`\
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}
@@ -38,10 +38,10 @@ export async function generate() {
 `);
 
     // Unlit, except 3 mapgrids around the "pupil"
-    des.region(selection.area(0,0,73,18),"unlit");
-    des.region(selection.area(26,4,47,14),"lit");
-    des.region(selection.area(21,5,51,13),"lit");
-    des.region(selection.area(19,6,54,12),"lit");
+    await des.region(selection.area(0,0,73,18),"unlit");
+    await des.region(selection.area(26,4,47,14),"lit");
+    await des.region(selection.area(21,5,51,13),"lit");
+    await des.region(selection.area(19,6,54,12),"lit");
 
     des.stair("up");
     des.stair("down");
@@ -49,7 +49,7 @@ export async function generate() {
     des.non_diggable();
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
 
     for (let i = 1; i <= 6; i++) {
@@ -57,7 +57,7 @@ export async function generate() {
     }
 
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     }
 
     return await des.finalize_level();

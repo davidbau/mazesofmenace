@@ -16,7 +16,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
                                                                             
                                .............                                
                              ..................                             
@@ -39,7 +39,7 @@ export async function generate() {
                                                                             
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "unlit");
+    await des.region(selection.area(0,0,75,19), "unlit");
     // Secret doors
     des.door("locked",22,9);
     des.door("locked",26,9);
@@ -49,21 +49,21 @@ export async function generate() {
     des.altar({ x: 63,y: 4,align: "noncoaligned", type: "altar" });
     des.non_diggable(selection.area(0,0,75,19));
     // Objects
-    des.object({ id: "luckstone", x: 63, y: 4,buc: "blessed",spe: 0,name: "The Heart of Ahriman" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "luckstone", x: 63, y: 4,buc: "blessed",spe: 0,name: "The Heart of Ahriman" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap();
     await des.trap();
@@ -72,34 +72,34 @@ export async function generate() {
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster({ id: "Thoth Amon", x: 63, y: 4, peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ class: "O", peaceful: 0 });
-    des.monster({ class: "O", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ class: "T", peaceful: 0 });
+    await des.monster({ id: "Thoth Amon", x: 63, y: 4, peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ class: "O", peaceful: 0 });
+    await des.monster({ class: "O", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ class: "T", peaceful: 0 });
     des.wallify();
 
 

@@ -19,7 +19,7 @@ export async function generate() {
     des.level_flags("mazelevel", "corrmaze");
     // the two pools are fakes used to mark spots which need special wall fixups
     // the two iron bars are eyes && spots to their left will be made diggable
-    des.map({ halign: "right", valign: "center", map: `\
+    await des.map({ halign: "right", valign: "center", map: `\
 -------------------------------------------------
 |                   ----               ----      
 |          ----     |     -----------  |         
@@ -43,18 +43,18 @@ export async function generate() {
     des.stair("down", 44,6);
     des.door("locked",0,6);
     // The fellow in residence
-    des.monster("Baalzebub",35,6);
+    await des.monster("Baalzebub",35,6);
     // Some random weapons && armor.
-    des.object("[");
-    des.object("[");
-    des.object(")");
-    des.object(")");
-    des.object("*");
-    des.object("!");
-    des.object("!");
-    des.object("?");
-    des.object("?");
-    des.object("?");
+    await des.object("[");
+    await des.object("[");
+    await des.object(")");
+    await des.object(")");
+    await des.object("*");
+    await des.object("!");
+    await des.object("!");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
     // Some traps.
     await des.trap("spiked pit");
     await des.trap("fire");
@@ -64,14 +64,14 @@ export async function generate() {
     await des.trap("magic");
     await des.trap("magic");
     // Random monsters.
-    des.monster("ghost",37,7);
-    des.monster("horned devil",32,5);
-    des.monster("barbed devil",38,7);
-    des.monster("L");
+    await des.monster("ghost",37,7);
+    await des.monster("horned devil",32,5);
+    await des.monster("barbed devil",38,7);
+    await des.monster("L");
     // Some Vampires for good measure
-    des.monster("V");
-    des.monster("V");
-    des.monster("V");
+    await des.monster("V");
+    await des.monster("V");
+    await des.monster("V");
 
 
 

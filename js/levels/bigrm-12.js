@@ -16,7 +16,7 @@ export async function generate() {
     des.level_flags("mazelevel", "noflipy");
     des.level_init({ style: "solidfill", fg: " " });
 
-    des.map(`\
+    await des.map(`\
                                                                            
          .......................           .......................         
         .........................         .........................        
@@ -75,7 +75,7 @@ export async function generate() {
        }
     }
 
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     des.non_diggable();
 
     des.wallify();
@@ -84,13 +84,13 @@ export async function generate() {
     des.stair("down");
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
     for (let i = 1; i <= 6; i++) {
        await des.trap();
     }
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     
     }
     return await des.finalize_level();

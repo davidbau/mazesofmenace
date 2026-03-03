@@ -16,7 +16,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
     des.level_flags("mazelevel", "noflip");
 
-    des.map(`\
+    await des.map(`\
 ---------------------------------------------------------------------------
 |.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|
 |.........................................................................|
@@ -38,7 +38,7 @@ export async function generate() {
 `);
 
     // Dungeon Description
-    des.region(selection.area(1,1,73,16), "lit");
+    await des.region(selection.area(1,1,73,16), "lit");
 
     // replace some walls
     if (percent(66)) {
@@ -56,41 +56,41 @@ export async function generate() {
     des.non_diggable();
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
 
     for (let i = 1; i <= 6; i++) {
        await des.trap();
     }
 
-    des.monster({ x: 1, y: 1 });
-    des.monster({ x: 13, y: 1 });
-    des.monster({ x: 25, y: 1 });
-    des.monster({ x: 37, y: 1 });
-    des.monster({ x: 49, y: 1 });
-    des.monster({ x: 61, y: 1 });
-    des.monster({ x: 73, y: 1 });
-    des.monster({ x: 7, y: 7 });
-    des.monster({ x: 13, y: 7 });
-    des.monster({ x: 25, y: 7 });
-    des.monster({ x: 37, y: 7 });
-    des.monster({ x: 49, y: 7 });
-    des.monster({ x: 61, y: 7 });
-    des.monster({ x: 67, y: 7 });
-    des.monster({ x: 7, y: 9 });
-    des.monster({ x: 13, y: 9 });
-    des.monster({ x: 25, y: 9 });
-    des.monster({ x: 37, y: 9 });
-    des.monster({ x: 49, y: 9 });
-    des.monster({ x: 61, y: 9 });
-    des.monster({ x: 67, y: 9 });
-    des.monster({ x: 1, y: 16 });
-    des.monster({ x: 13, y: 16 });
-    des.monster({ x: 25, y: 16 });
-    des.monster({ x: 37, y: 16 });
-    des.monster({ x: 49, y: 16 });
-    des.monster({ x: 61, y: 16 });
-    des.monster({ x: 73, y: 16 });
+    await des.monster({ x: 1, y: 1 });
+    await des.monster({ x: 13, y: 1 });
+    await des.monster({ x: 25, y: 1 });
+    await des.monster({ x: 37, y: 1 });
+    await des.monster({ x: 49, y: 1 });
+    await des.monster({ x: 61, y: 1 });
+    await des.monster({ x: 73, y: 1 });
+    await des.monster({ x: 7, y: 7 });
+    await des.monster({ x: 13, y: 7 });
+    await des.monster({ x: 25, y: 7 });
+    await des.monster({ x: 37, y: 7 });
+    await des.monster({ x: 49, y: 7 });
+    await des.monster({ x: 61, y: 7 });
+    await des.monster({ x: 67, y: 7 });
+    await des.monster({ x: 7, y: 9 });
+    await des.monster({ x: 13, y: 9 });
+    await des.monster({ x: 25, y: 9 });
+    await des.monster({ x: 37, y: 9 });
+    await des.monster({ x: 49, y: 9 });
+    await des.monster({ x: 61, y: 9 });
+    await des.monster({ x: 67, y: 9 });
+    await des.monster({ x: 1, y: 16 });
+    await des.monster({ x: 13, y: 16 });
+    await des.monster({ x: 25, y: 16 });
+    await des.monster({ x: 37, y: 16 });
+    await des.monster({ x: 49, y: 16 });
+    await des.monster({ x: 61, y: 16 });
+    await des.monster({ x: 73, y: 16 });
 
 
     return await des.finalize_level();

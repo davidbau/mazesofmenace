@@ -16,7 +16,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ..........PPP.........................................                      
 ...........PP..........................................        .......      
 ..........PP...........-----..........------------------     ..........     
@@ -39,13 +39,13 @@ export async function generate() {
 ................PPP...................................................      
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
-    des.region(selection.area(24,3,26,4), "unlit");
-    des.region(selection.area(31,8,33,9), "unlit");
-    des.region(selection.area(35,14,37,15), "unlit");
-    des.region(selection.area(39,3,54,8), "lit");
-    des.region(selection.area(56,0,75,8), "unlit");
-    des.region(selection.area(64,9,75,16), "unlit");
+    await des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(24,3,26,4), "unlit");
+    await des.region(selection.area(31,8,33,9), "unlit");
+    await des.region(selection.area(35,14,37,15), "unlit");
+    await des.region(selection.area(39,3,54,8), "lit");
+    await des.region(selection.area(56,0,75,8), "unlit");
+    await des.region(selection.area(64,9,75,16), "unlit");
     // Doors
     des.door("open",23,3);
     des.door("open",30,8);
@@ -61,21 +61,21 @@ export async function generate() {
     des.stair("up", 5,2);
     des.stair("down", 70,13);
     // Objects
-    des.object({ x: 42, y: 3 });
-    des.object({ x: 42, y: 3 });
-    des.object({ x: 42, y: 3 });
-    des.object({ x: 41, y: 3 });
-    des.object({ x: 41, y: 3 });
-    des.object({ x: 41, y: 3 });
-    des.object({ x: 41, y: 3 });
-    des.object({ x: 41, y: 8 });
-    des.object({ x: 41, y: 8 });
-    des.object({ x: 42, y: 8 });
-    des.object({ x: 42, y: 8 });
-    des.object({ x: 42, y: 8 });
-    des.object({ x: 71, y: 13 });
-    des.object({ x: 71, y: 13 });
-    des.object({ x: 71, y: 13 });
+    await des.object({ x: 42, y: 3 });
+    await des.object({ x: 42, y: 3 });
+    await des.object({ x: 42, y: 3 });
+    await des.object({ x: 41, y: 3 });
+    await des.object({ x: 41, y: 3 });
+    await des.object({ x: 41, y: 3 });
+    await des.object({ x: 41, y: 3 });
+    await des.object({ x: 41, y: 8 });
+    await des.object({ x: 41, y: 8 });
+    await des.object({ x: 42, y: 8 });
+    await des.object({ x: 42, y: 8 });
+    await des.object({ x: 42, y: 8 });
+    await des.object({ x: 71, y: 13 });
+    await des.object({ x: 71, y: 13 });
+    await des.object({ x: 71, y: 13 });
     // Random traps
     await des.trap("spiked pit",10,13);
     await des.trap("spiked pit",21,7);
@@ -86,33 +86,33 @@ export async function generate() {
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster({ id: "ogre", x: 12, y: 9, peaceful: 0 });
-    des.monster({ id: "ogre", x: 18, y: 11, peaceful: 0 });
-    des.monster({ id: "ogre", x: 45, y: 5, peaceful: 0 });
-    des.monster({ id: "ogre", x: 45, y: 6, peaceful: 0 });
-    des.monster({ id: "ogre", x: 47, y: 5, peaceful: 0 });
-    des.monster({ id: "ogre", x: 46, y: 5, peaceful: 0 });
-    des.monster({ id: "ogre", x: 56, y: 3, peaceful: 0 });
-    des.monster({ id: "ogre", x: 56, y: 4, peaceful: 0 });
-    des.monster({ id: "ogre", x: 56, y: 5, peaceful: 0 });
-    des.monster({ id: "ogre", x: 56, y: 6, peaceful: 0 });
-    des.monster({ id: "ogre", x: 57, y: 3, peaceful: 0 });
-    des.monster({ id: "ogre", x: 57, y: 4, peaceful: 0 });
-    des.monster({ id: "ogre", x: 57, y: 5, peaceful: 0 });
-    des.monster({ id: "ogre", x: 57, y: 6, peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ id: "ogre", peaceful: 0 });
-    des.monster({ class: "O", peaceful: 0 });
-    des.monster({ class: "T", peaceful: 0 });
-    des.monster({ id: "rock troll", x: 46, y: 6, peaceful: 0 });
-    des.monster({ id: "rock troll", x: 47, y: 6, peaceful: 0 });
-    des.monster({ id: "rock troll", x: 56, y: 7, peaceful: 0 });
-    des.monster({ id: "rock troll", x: 57, y: 7, peaceful: 0 });
-    des.monster({ id: "rock troll", x: 70, y: 13, peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ id: "rock troll", peaceful: 0 });
-    des.monster({ class: "T", peaceful: 0 });
+    await des.monster({ id: "ogre", x: 12, y: 9, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 18, y: 11, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 45, y: 5, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 45, y: 6, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 47, y: 5, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 46, y: 5, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 56, y: 3, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 56, y: 4, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 56, y: 5, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 56, y: 6, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 57, y: 3, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 57, y: 4, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 57, y: 5, peaceful: 0 });
+    await des.monster({ id: "ogre", x: 57, y: 6, peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ id: "ogre", peaceful: 0 });
+    await des.monster({ class: "O", peaceful: 0 });
+    await des.monster({ class: "T", peaceful: 0 });
+    await des.monster({ id: "rock troll", x: 46, y: 6, peaceful: 0 });
+    await des.monster({ id: "rock troll", x: 47, y: 6, peaceful: 0 });
+    await des.monster({ id: "rock troll", x: 56, y: 7, peaceful: 0 });
+    await des.monster({ id: "rock troll", x: 57, y: 7, peaceful: 0 });
+    await des.monster({ id: "rock troll", x: 70, y: 13, peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ id: "rock troll", peaceful: 0 });
+    await des.monster({ class: "T", peaceful: 0 });
 
 
 

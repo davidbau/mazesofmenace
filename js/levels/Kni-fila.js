@@ -21,21 +21,21 @@ export async function generate() {
     des.stair("up");
     des.stair("down");
     // 
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // 
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
     // 
     await des.trap();
     await des.trap();

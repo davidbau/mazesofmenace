@@ -27,7 +27,7 @@ export async function generate() {
 
     des.level_flags('mazelevel', 'noteleport');
 
-    des.map(`\
+    await des.map(`\
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}.}}}}}..}}}}}......}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}....}}}...}}}}}
@@ -51,15 +51,15 @@ export async function generate() {
 `);
 
     // Dungeon Description
-    des.region(selection.area(0, 0, 74, 19), 'lit');
-    des.region(selection.area(31, 7, 45, 7), 'unlit');
+    await des.region(selection.area(0, 0, 74, 19), 'lit');
+    await des.region(selection.area(31, 7, 45, 7), 'unlit');
 
     // Make the downstairs room a real room to control arriving monsters,
     // and also as a fixup_special hack; the first room defined on Medusa's level
     // receives some statues
-    des.region({ region: [35, 9, 41, 10], lit: false, type: 'ordinary', arrival_room: true });
+    await des.region({ region: [35, 9, 41, 10], lit: false, type: 'ordinary', arrival_room: true });
 
-    des.region(selection.area(31, 12, 45, 12), 'unlit');
+    await des.region(selection.area(31, 12, 45, 12), 'unlit');
 
     // Teleport: down to up stairs island, up to Medusa's island
     des.teleport_region({ region: [1, 1, 5, 17], dir: 'down' });
@@ -83,17 +83,17 @@ export async function generate() {
 
     // Objects
     // Perseus statue with potential artifacts - simplified, ignoring contents function
-    des.object({ id: 'statue', x: 36, y: 10, buc: 'uncursed', montype: 'knight',
+    await des.object({ id: 'statue', x: 36, y: 10, buc: 'uncursed', montype: 'knight',
                  historic: 1, male: 1, name: 'Perseus' });
 
     // Additional empty statues
     for (let i = 0; i < 7; i++) {
-        des.object({ id: 'statue' });
+        await des.object({ id: 'statue' });
     }
 
     // Random objects
     for (let i = 0; i < 8; i++) {
-        des.object();
+        await des.object();
     }
 
     // Random traps
@@ -104,21 +104,21 @@ export async function generate() {
     await des.trap('board', 38, 12);
 
     // Random monsters
-    des.monster({ id: 'Medusa', x: 36, y: 10, asleep: 1 });
-    des.monster('giant eel', 11, 6);
-    des.monster('giant eel', 23, 13);
-    des.monster('giant eel', 29, 2);
-    des.monster('jellyfish', 2, 2);
-    des.monster('jellyfish', 0, 8);
-    des.monster('jellyfish', 4, 18);
-    des.monster('water troll', 51, 3);
-    des.monster('water troll', 64, 11);
-    des.monster({ class: 'S', x: 38, y: 7 });
-    des.monster({ class: 'S', x: 38, y: 12 });
+    await des.monster({ id: 'Medusa', x: 36, y: 10, asleep: 1 });
+    await des.monster('giant eel', 11, 6);
+    await des.monster('giant eel', 23, 13);
+    await des.monster('giant eel', 29, 2);
+    await des.monster('jellyfish', 2, 2);
+    await des.monster('jellyfish', 0, 8);
+    await des.monster('jellyfish', 4, 18);
+    await des.monster('water troll', 51, 3);
+    await des.monster('water troll', 64, 11);
+    await des.monster({ class: 'S', x: 38, y: 7 });
+    await des.monster({ class: 'S', x: 38, y: 12 });
 
     // Random monsters
     for (let i = 0; i < 10; i++) {
-        des.monster();
+        await des.monster();
     }
 
     return await des.finalize_level();

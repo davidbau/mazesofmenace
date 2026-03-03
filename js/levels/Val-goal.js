@@ -18,7 +18,7 @@ export async function generate() {
 
     des.level_init({ style: "mines", fg: ".", bg: "L", smoothed: true, joined: true, lit: 1, walled: false });
 
-    des.map(`\
+    await des.map(`\
 xxxxxx.....................xxxxxxxx
 xxxxx.......LLLLL.LLLLL......xxxxxx
 xxxx......LLLLLLLLLLLLLLL......xxxx
@@ -38,7 +38,7 @@ xxxxxx......LLLLL.LLLLL.....xxxxxxx
 xxxxxxxxx..................xxxxxxxx
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,34,16), "lit");
+    await des.region(selection.area(0,0,34,16), "lit");
     // Stairs
     // Note:  The up stairs are *intentionally* off of the map.
     // if the stairs are surrounded by lava, maybe give some room
@@ -55,21 +55,21 @@ xxxxxxxxx..................xxxxxxxx
        des.drawbridge({ x: 17, y: 14, dir: "north", state: "random" });
     }
     // Objects
-    des.object({ id: "crystal ball", x: 17, y: 8, buc: "blessed", spe: 5, name: "The Orb of Fate" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "crystal ball", x: 17, y: 8, buc: "blessed", spe: 5, name: "The Orb of Fate" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Traps
     await des.trap("board",13,8);
     await des.trap("board",21,8);
@@ -82,26 +82,26 @@ xxxxxxxxx..................xxxxxxxx
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster("Lord Surtur", 17, 8);
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("a");
-    des.monster("a");
-    des.monster({ id: "fire giant", x: 10, y: 6, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 7, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 8, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 9, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 10, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 6, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 7, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 8, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 9, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 10, peaceful: 0 });
-    des.monster({ id: "fire giant", peaceful: 0 });
-    des.monster({ id: "fire giant", peaceful: 0 });
-    des.monster({ class: "H", peaceful: 0 });
+    await des.monster("Lord Surtur", 17, 8);
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("a");
+    await des.monster("a");
+    await des.monster({ id: "fire giant", x: 10, y: 6, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 7, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 8, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 9, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 10, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 6, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 7, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 8, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 9, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 10, peaceful: 0 });
+    await des.monster({ id: "fire giant", peaceful: 0 });
+    await des.monster({ id: "fire giant", peaceful: 0 });
+    await des.monster({ class: "H", peaceful: 0 });
 
     // 
     // The "fill" levels for the quest.

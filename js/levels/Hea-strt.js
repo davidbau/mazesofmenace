@@ -22,7 +22,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "noteleport", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
 PPPP........PPPP.....PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP.P..PPPPP......PPPPPPPP
 PPP..........PPPP...PPPPP.........................PPPP..PPPPP........PPPPPPP
@@ -48,7 +48,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     des.replace_terrain({ region: [1,1, 74,18], fromterrain: "P", toterrain: ".", chance: 10 });
 
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     // Stairs
     des.stair("down", 37,9);
     // Portal arrival point
@@ -69,20 +69,20 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     des.door("closed",48,12);
     des.door("locked",50,10);
     // Hippocrates
-    des.monster({ id: "Hippocrates", coord: [37, 10], inventory: function() {
-       des.object({ id: "silver dagger", spe: 5 });
+    await des.monster({ id: "Hippocrates", coord: [37, 10], inventory: async function() {
+       await des.object({ id: "silver dagger", spe: 5 });
     } })
     // The treasure of Hippocrates
-    des.object("chest", 37, 10);
+    await des.object("chest", 37, 10);
     // intern guards for the audience chamber
-    des.monster("attendant", 29, 8);
-    des.monster("attendant", 29, 9);
-    des.monster("attendant", 29, 10);
-    des.monster("attendant", 29, 11);
-    des.monster("attendant", 40, 9);
-    des.monster("attendant", 40, 10);
-    des.monster("attendant", 40, 11);
-    des.monster("attendant", 40, 13);
+    await des.monster("attendant", 29, 8);
+    await des.monster("attendant", 29, 9);
+    await des.monster("attendant", 29, 10);
+    await des.monster("attendant", 29, 11);
+    await des.monster("attendant", 40, 9);
+    await des.monster("attendant", 40, 10);
+    await des.monster("attendant", 40, 11);
+    await des.monster("attendant", 40, 13);
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Random traps
@@ -93,29 +93,29 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     await des.trap();
     await des.trap();
     // Monsters on siege duty.
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("rabid rat");
-    des.monster("giant eel");
-    des.monster("shark");
-    des.monster(";");
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("rabid rat");
+    await des.monster("giant eel");
+    await des.monster("shark");
+    await des.monster(";");
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
 
 
     return await des.finalize_level();

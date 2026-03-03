@@ -15,7 +15,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 
-    des.map(`\
+    await des.map(`\
 --------------------
 |........|...|.....|
 |.....-..|.-.|.....|
@@ -32,28 +32,28 @@ export async function generate() {
     des.stair("down", 6,10);
     des.stair("up", 16,4);
     des.door("locked", 18,8);
-    des.region(selection.area(0,0, 19,11), "lit");
+    await des.region(selection.area(0,0, 19,11), "lit");
     des.non_diggable(selection.area(0,0,19,11));
     des.non_passwall(selection.area(0,0,19,11));
 
     // Boulders
-    des.object("boulder",2,2);
-    des.object("boulder",3,2);
+    await des.object("boulder",2,2);
+    await des.object("boulder",3,2);
     // 
-    des.object("boulder",5,3);
-    des.object("boulder",7,3);
-    des.object("boulder",7,2);
-    des.object("boulder",8,2);
+    await des.object("boulder",5,3);
+    await des.object("boulder",7,3);
+    await des.object("boulder",7,2);
+    await des.object("boulder",8,2);
     // 
-    des.object("boulder",10,3);
-    des.object("boulder",11,3);
+    await des.object("boulder",10,3);
+    await des.object("boulder",11,3);
     // 
-    des.object("boulder",2,7);
-    des.object("boulder",2,8);
-    des.object("boulder",3,9);
+    await des.object("boulder",2,7);
+    await des.object("boulder",2,8);
+    await des.object("boulder",3,9);
     // 
-    des.object("boulder",5,7);
-    des.object("boulder",6,6);
+    await des.object("boulder",5,7);
+    await des.object("boulder",6,6);
 
     // prevent monster generation over the (filled) holes
     des.exclusion({ type: "monster-generation", region: [ 7,9, 18,9 ] });
@@ -70,12 +70,12 @@ export async function generate() {
     await des.trap("hole",17,9);
 
     // Random objects
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "=" });
-    des.object({ class: "/" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "=" });
+    await des.object({ class: "/" });
 
 
     return await des.finalize_level();

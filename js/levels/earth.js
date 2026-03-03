@@ -31,7 +31,7 @@ export async function generate() {
     // portal to the next level is randomly chosen.
     // This map has no visible outer boundary, &&
     // is mostly diggable "rock".
-    des.map(`\
+    await des.map(`\
                                                                             
   ...                                                                       
  ....                ..                                                     
@@ -62,79 +62,79 @@ export async function generate() {
     // Some helpful monsters.  Making sure a
     // pick axe && at least one wand of digging
     // are available.
-    des.monster("Elvenking", 67,16);
-    des.monster("minotaur", 67,14);
+    await des.monster("Elvenking", 67,16);
+    await des.monster("minotaur", 67,14);
     // An assortment of earth-appropriate nasties
     // in each cavern.
-    des.monster({ id: "earth elemental", x: 52, y: 13, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 53, y: 13, peaceful: 0 });
-    des.monster("rock troll", 53,12);
-    des.monster("stone giant", 54,12);
+    await des.monster({ id: "earth elemental", x: 52, y: 13, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 53, y: 13, peaceful: 0 });
+    await des.monster("rock troll", 53,12);
+    await des.monster("stone giant", 54,12);
     // 
-    des.monster("pit viper", 70,5);
-    des.monster("barbed devil", 69,6);
-    des.monster("stone giant", 69,8);
-    des.monster("stone golem", 71,8);
-    des.monster("pit fiend", 70,9);
-    des.monster({ id: "earth elemental", x: 70, y: 8, peaceful: 0 });
+    await des.monster("pit viper", 70,5);
+    await des.monster("barbed devil", 69,6);
+    await des.monster("stone giant", 69,8);
+    await des.monster("stone golem", 71,8);
+    await des.monster("pit fiend", 70,9);
+    await des.monster({ id: "earth elemental", x: 70, y: 8, peaceful: 0 });
     // 
-    des.monster({ id: "earth elemental", x: 60, y: 3, peaceful: 0 });
-    des.monster("stone giant", 61,4);
-    des.monster({ id: "earth elemental", x: 62, y: 4, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 61, y: 5, peaceful: 0 });
-    des.monster("scorpion", 62,5);
-    des.monster("rock piercer", 63,5);
+    await des.monster({ id: "earth elemental", x: 60, y: 3, peaceful: 0 });
+    await des.monster("stone giant", 61,4);
+    await des.monster({ id: "earth elemental", x: 62, y: 4, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 61, y: 5, peaceful: 0 });
+    await des.monster("scorpion", 62,5);
+    await des.monster("rock piercer", 63,5);
     // 
-    des.monster("umber hulk", 40,5);
-    des.monster("dust vortex", 42,5);
-    des.monster("rock troll", 38,6);
-    des.monster({ id: "earth elemental", x: 39, y: 6, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 41, y: 6, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 38, y: 7, peaceful: 0 });
-    des.monster("stone giant", 39,7);
-    des.monster({ id: "earth elemental", x: 43, y: 7, peaceful: 0 });
-    des.monster("stone golem", 37,8);
-    des.monster("pit viper", 43,8);
-    des.monster("pit viper", 43,9);
-    des.monster("rock troll", 44,10);
+    await des.monster("umber hulk", 40,5);
+    await des.monster("dust vortex", 42,5);
+    await des.monster("rock troll", 38,6);
+    await des.monster({ id: "earth elemental", x: 39, y: 6, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 41, y: 6, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 38, y: 7, peaceful: 0 });
+    await des.monster("stone giant", 39,7);
+    await des.monster({ id: "earth elemental", x: 43, y: 7, peaceful: 0 });
+    await des.monster("stone golem", 37,8);
+    await des.monster("pit viper", 43,8);
+    await des.monster("pit viper", 43,9);
+    await des.monster("rock troll", 44,10);
     // 
-    des.monster({ id: "earth elemental", x: 2, y: 1, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 3, y: 1, peaceful: 0 });
-    des.monster("stone golem", 1,2);
-    des.monster({ id: "earth elemental", x: 2, y: 2, peaceful: 0 });
-    des.monster("rock troll", 4,3);
-    des.monster("rock troll", 3,3);
-    des.monster("pit fiend", 3,4);
-    des.monster({ id: "earth elemental", x: 4, y: 5, peaceful: 0 });
-    des.monster("pit viper", 5,6);
+    await des.monster({ id: "earth elemental", x: 2, y: 1, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 3, y: 1, peaceful: 0 });
+    await des.monster("stone golem", 1,2);
+    await des.monster({ id: "earth elemental", x: 2, y: 2, peaceful: 0 });
+    await des.monster("rock troll", 4,3);
+    await des.monster("rock troll", 3,3);
+    await des.monster("pit fiend", 3,4);
+    await des.monster({ id: "earth elemental", x: 4, y: 5, peaceful: 0 });
+    await des.monster("pit viper", 5,6);
     // 
-    des.monster({ id: "earth elemental", x: 21, y: 2, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 21, y: 3, peaceful: 0 });
-    des.monster("minotaur", 21,4);
-    des.monster({ id: "earth elemental", x: 21, y: 5, peaceful: 0 });
-    des.monster("rock troll", 22,5);
-    des.monster({ id: "earth elemental", x: 22, y: 6, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 23, y: 6, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 21, y: 2, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 21, y: 3, peaceful: 0 });
+    await des.monster("minotaur", 21,4);
+    await des.monster({ id: "earth elemental", x: 21, y: 5, peaceful: 0 });
+    await des.monster("rock troll", 22,5);
+    await des.monster({ id: "earth elemental", x: 22, y: 6, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 23, y: 6, peaceful: 0 });
     // 
-    des.monster("pit viper", 14,8);
-    des.monster("barbed devil", 14,9);
-    des.monster({ id: "earth elemental", x: 13, y: 10, peaceful: 0 });
-    des.monster("rock troll", 12,11);
-    des.monster({ id: "earth elemental", x: 14, y: 12, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 15, y: 13, peaceful: 0 });
-    des.monster("stone giant", 17,13);
-    des.monster("stone golem", 18,13);
-    des.monster("pit fiend", 18,12);
-    des.monster({ id: "earth elemental", x: 18, y: 11, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 18, y: 10, peaceful: 0 });
+    await des.monster("pit viper", 14,8);
+    await des.monster("barbed devil", 14,9);
+    await des.monster({ id: "earth elemental", x: 13, y: 10, peaceful: 0 });
+    await des.monster("rock troll", 12,11);
+    await des.monster({ id: "earth elemental", x: 14, y: 12, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 15, y: 13, peaceful: 0 });
+    await des.monster("stone giant", 17,13);
+    await des.monster("stone golem", 18,13);
+    await des.monster("pit fiend", 18,12);
+    await des.monster({ id: "earth elemental", x: 18, y: 11, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 18, y: 10, peaceful: 0 });
     // 
-    des.monster("barbed devil", 2,16);
-    des.monster({ id: "earth elemental", x: 3, y: 16, peaceful: 0 });
-    des.monster("rock troll", 2,17);
-    des.monster({ id: "earth elemental", x: 4, y: 17, peaceful: 0 });
-    des.monster({ id: "earth elemental", x: 4, y: 18, peaceful: 0 });
+    await des.monster("barbed devil", 2,16);
+    await des.monster({ id: "earth elemental", x: 3, y: 16, peaceful: 0 });
+    await des.monster("rock troll", 2,17);
+    await des.monster({ id: "earth elemental", x: 4, y: 17, peaceful: 0 });
+    await des.monster({ id: "earth elemental", x: 4, y: 18, peaceful: 0 });
 
-    des.object("boulder");
+    await des.object("boulder");
 
 
 

@@ -11,55 +11,55 @@ export async function generate() {
     // NetHack may be freely redistributed.  See license for details.
     // 
     // 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.stair("up");
-                  des.object();
-                  des.monster({ class: "X", peaceful: 0 });
-               }
-    })
-
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.monster({ class: "i", peaceful: 0 });
-               }
-    })
-
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  await des.trap();
-                  des.object();
-                  des.monster({ class: "X", peaceful: 0 });
+                  des.stair("up");
+                  await des.object();
+                  await des.monster({ class: "X", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.monster({ class: "i", peaceful: 0 });
+               }
+    })
+
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.object();
+                  await des.monster({ class: "X", peaceful: 0 });
+               }
+    })
+
+    await des.room({ type: "ordinary",
                contents: async function() {
                   des.stair("down");
-                  des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster({ class: "i", peaceful: 0 });
-                  des.monster("vampire bat");
+                  await des.monster({ class: "i", peaceful: 0 });
+                  await des.monster("vampire bat");
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  des.object();
+                  await des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster({ class: "i", peaceful: 0 });
+                  await des.monster({ class: "i", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster("vampire bat");
+                  await des.monster("vampire bat");
                }
     })
 

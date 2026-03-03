@@ -44,7 +44,7 @@ export async function generate() {
     des.terrain(selection.grow(pools, 1), "P");
     des.terrain(pools, "L");
 
-    des.map(`\
+    await des.map(`\
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxx..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxx..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx..{..xxxxxxxxxxxxxxxxxxxx
@@ -67,7 +67,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.......xxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     // Portal arrival point
     des.levregion({ region: [66,17,66,17], type: "branch" });
     // Stairs
@@ -77,21 +77,21 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     des.door("locked",26,10);
     des.door("locked",43,10);
     // Norn
-    des.monster({ id: "Norn", coord: [35, 10], inventory: function() {
-       des.object({ id: "banded mail", spe: 5 });
-       des.object({ id: "long sword", spe: 4 });
+    await des.monster({ id: "Norn", coord: [35, 10], inventory: async function() {
+       await des.object({ id: "banded mail", spe: 5 });
+       await des.object({ id: "long sword", spe: 4 });
     } })
     // The treasure of the Norn
-    des.object("chest", 36, 10);
+    await des.object("chest", 36, 10);
     // valkyrie guards for the audience chamber
-    des.monster("warrior", 27, 8);
-    des.monster("warrior", 27, 9);
-    des.monster("warrior", 27, 11);
-    des.monster("warrior", 27, 12);
-    des.monster("warrior", 42, 8);
-    des.monster("warrior", 42, 9);
-    des.monster("warrior", 42, 11);
-    des.monster("warrior", 42, 12);
+    await des.monster("warrior", 27, 8);
+    await des.monster("warrior", 27, 9);
+    await des.monster("warrior", 27, 11);
+    await des.monster("warrior", 27, 12);
+    await des.monster("warrior", 42, 8);
+    await des.monster("warrior", 42, 9);
+    await des.monster("warrior", 42, 11);
+    await des.monster("warrior", 42, 12);
     // Non diggable walls
     des.non_diggable(selection.area(26,7,43,13));
     // Random traps
@@ -102,17 +102,17 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     await des.trap("fire");
     await des.trap("fire");
     // Monsters on siege duty.
-    des.monster("fire ant", 4, 12);
-    des.monster("fire ant", 8, 8);
-    des.monster("fire ant", 14, 4);
-    des.monster("fire ant", 17, 11);
-    des.monster("fire ant", 24, 10);
-    des.monster("fire ant", 45, 10);
-    des.monster("fire ant", 54, 2);
-    des.monster("fire ant", 55, 7);
-    des.monster("fire ant", 58, 14);
-    des.monster("fire ant", 63, 17);
-    des.monster({ id: "fire giant", x: 18, y: 1, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 16, peaceful: 0 });
+    await des.monster("fire ant", 4, 12);
+    await des.monster("fire ant", 8, 8);
+    await des.monster("fire ant", 14, 4);
+    await des.monster("fire ant", 17, 11);
+    await des.monster("fire ant", 24, 10);
+    await des.monster("fire ant", 45, 10);
+    await des.monster("fire ant", 54, 2);
+    await des.monster("fire ant", 55, 7);
+    await des.monster("fire ant", 58, 14);
+    await des.monster("fire ant", 63, 17);
+    await des.monster({ id: "fire giant", x: 18, y: 1, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 16, peaceful: 0 });
     return await des.finalize_level();
 }

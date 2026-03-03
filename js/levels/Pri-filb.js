@@ -13,56 +13,56 @@ export async function generate() {
     // 
     // 
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.stair("up");
-                  des.object();
-                  des.monster("human zombie");
-                  des.monster("wraith");
-               }
-    })
-
-    des.room({ type: "morgue",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.object();
-               }
-    })
-
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  await des.trap();
-                  des.object();
-                  des.monster("human zombie");
-                  des.monster("wraith");
+                  des.stair("up");
+                  await des.object();
+                  await des.monster("human zombie");
+                  await des.monster("wraith");
                }
     })
 
-    des.room({ type: "morgue",
+    await des.room({ type: "morgue",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.object();
+               }
+    })
+
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.object();
+                  await des.monster("human zombie");
+                  await des.monster("wraith");
+               }
+    })
+
+    await des.room({ type: "morgue",
                contents: async function() {
                   des.stair("down");
-                  des.object();
-                  des.object();
+                  await des.object();
+                  await des.object();
                   await des.trap();
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  des.object();
+                  await des.object();
+                  await des.object();
                   await des.trap();
-                  des.monster("human zombie");
-                  des.monster("wraith");
+                  await des.monster("human zombie");
+                  await des.monster("wraith");
                }
     })
 
 
-    des.room({ type: "morgue",
+    await des.room({ type: "morgue",
                contents: async function() {
-                  des.object();
+                  await des.object();
                   await des.trap();
                }
     })

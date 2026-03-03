@@ -15,7 +15,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 
-    des.map(`\
+    await des.map(`\
  ----          -----------
 -|..|-------   |.........|
 |..........|   |.........|
@@ -34,27 +34,27 @@ export async function generate() {
     des.stair("down", 3,1);
     des.stair("up", 20,4);
     des.door("locked",24,9);
-    des.region(selection.area(0,0,25,13), "lit");
+    await des.region(selection.area(0,0,25,13), "lit");
     des.non_diggable(selection.area(0,0,25,13));
     des.non_passwall(selection.area(0,0,25,13));
 
     // Boulders
-    des.object("boulder",2,3);
-    des.object("boulder",8,3);
-    des.object("boulder",9,4);
-    des.object("boulder",2,5);
-    des.object("boulder",4,5);
-    des.object("boulder",9,5);
-    des.object("boulder",2,6);
-    des.object("boulder",5,6);
-    des.object("boulder",6,7);
-    des.object("boulder",3,8);
-    des.object("boulder",7,8);
-    des.object("boulder",5,9);
-    des.object("boulder",10,9);
-    des.object("boulder",7,10);
-    des.object("boulder",10,10);
-    des.object("boulder",3,11);
+    await des.object("boulder",2,3);
+    await des.object("boulder",8,3);
+    await des.object("boulder",9,4);
+    await des.object("boulder",2,5);
+    await des.object("boulder",4,5);
+    await des.object("boulder",9,5);
+    await des.object("boulder",2,6);
+    await des.object("boulder",5,6);
+    await des.object("boulder",6,7);
+    await des.object("boulder",3,8);
+    await des.object("boulder",7,8);
+    await des.object("boulder",5,9);
+    await des.object("boulder",10,9);
+    await des.object("boulder",7,10);
+    await des.object("boulder",10,10);
+    await des.object("boulder",3,11);
 
     // prevent monster generation over the (filled) holes
     des.exclusion({ type: "monster-generation", region: [ 12,10, 24,10 ] });
@@ -73,12 +73,12 @@ export async function generate() {
     await des.trap("hole",23,10);
 
     // Random objects
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "=" });
-    des.object({ class: "/" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "=" });
+    await des.object({ class: "/" });
 
 
 

@@ -24,7 +24,7 @@ export async function generate() {
     des.message("You arrive on the Astral Plane!");
     des.message("Here the High Temple of %d is located.");
     des.message("You sense alarm, hostility, && excitement in the air!");
-    des.map(`\
+    await des.map(`\
                               ---------------                              
                               |.............|                              
                               |..---------..|                              
@@ -73,9 +73,9 @@ export async function generate() {
          }
          // extra monsters; was [6 + 3d4] when both wings were opened up at once
          for (let i = 1; i <= 3 + (rn2((2*3) - (2 - 1) + 1) + (2 - 1)); i++) {
-            des.monster({ id: "Angel", coord: hall.rndcoord(1), align: "noalign", peaceful: 0 });
+            await des.monster({ id: "Angel", coord: hall.rndcoord(1), align: "noalign", peaceful: 0 });
             if (percent(50)) {
-               des.monster({ coord: hall.rndcoord(1), peaceful: 0 });
+               await des.monster({ coord: hall.rndcoord(1), peaceful: 0 });
             }
          }
        }
@@ -90,15 +90,15 @@ export async function generate() {
     // Where the player will land on arrival
     des.teleport_region({ region: [29,15,45,15], exclude: [30,15,44,15] });
     // Lit courts
-    des.region({ region: [1,5,16,14],lit: 1,type: "ordinary",irregular: 1 });
-    des.region({ region: [31,1,44,10],lit: 1,type: "ordinary",irregular: 1 });
-    des.region({ region: [61,5,74,14],lit: 1,type: "ordinary",irregular: 1 });
+    await des.region({ region: [1,5,16,14],lit: 1,type: "ordinary",irregular: 1 });
+    await des.region({ region: [31,1,44,10],lit: 1,type: "ordinary",irregular: 1 });
+    await des.region({ region: [61,5,74,14],lit: 1,type: "ordinary",irregular: 1 });
     // A Sanctum for each alignment
     // The shrines' alignments are shuffled for
     // each game
-    des.region({ region: [4,7,10,11],lit: 1,type: "temple",filled: 2 });
-    des.region({ region: [34,3,40,7],lit: 1,type: "temple",filled: 2 });
-    des.region({ region: [64,7,70,11],lit: 1,type: "temple",filled: 2 });
+    await des.region({ region: [4,7,10,11],lit: 1,type: "temple",filled: 2 });
+    await des.region({ region: [34,3,40,7],lit: 1,type: "temple",filled: 2 });
+    await des.region({ region: [64,7,70,11],lit: 1,type: "temple",filled: 2 });
 
     des.altar({ x: 7, y: 9, align: align[0],type: "sanctum" });
     des.altar({ x: 37, y: 5, align: align[1],type: "sanctum" });
@@ -118,29 +118,29 @@ export async function generate() {
     des.non_passwall(selection.area(0,0,74,19));
     // Moloch's horde
     // West round room
-    des.monster({ id: "aligned cleric",x: 18,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 19,y: 8,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 19,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 19,y: 10,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 20,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 20,y: 10,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Pestilence", coord: place.rndcoord(1), peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 18,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 19,y: 8,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 19,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 19,y: 10,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 20,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 20,y: 10,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Pestilence", coord: place.rndcoord(1), peaceful: 0 });
     // South-central round room
-    des.monster({ id: "aligned cleric",x: 36,y: 12,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 37,y: 12,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 38,y: 12,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 36,y: 13,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 38,y: 13,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 37,y: 13,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Death", coord: place.rndcoord(1), peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 36,y: 12,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 37,y: 12,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 38,y: 12,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 36,y: 13,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 38,y: 13,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 37,y: 13,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Death", coord: place.rndcoord(1), peaceful: 0 });
     // East round room
-    des.monster({ id: "aligned cleric",x: 56,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 55,y: 8,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 55,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 55,y: 10,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 54,y: 9,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Angel",x: 54,y: 10,align: "noalign", peaceful: 0 });
-    des.monster({ id: "Famine", coord: place.rndcoord(1), peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 56,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 55,y: 8,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 55,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 55,y: 10,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 54,y: 9,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 54,y: 10,align: "noalign", peaceful: 0 });
+    await des.monster({ id: "Famine", coord: place.rndcoord(1), peaceful: 0 });
     // 
     // The aligned horde
     // 
@@ -150,55 +150,55 @@ export async function generate() {
     // but a place holder.
     // 
     // West court
-    des.monster({ id: "aligned cleric",x: 12,y: 7,align: "chaos", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 13,y: 7,align: "chaos",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 14,y: 7,align: "law", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 12,y: 11,align: "law",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 13,y: 11,align: "neutral", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 14,y: 11,align: "neutral",peaceful: 1 });
-    des.monster({ id: "Angel",x: 11,y: 5,align: "chaos", peaceful: 0 });
-    des.monster({ id: "Angel",x: 12,y: 5,align: "chaos",peaceful: 1 });
-    des.monster({ id: "Angel",x: 13,y: 5,align: "law", peaceful: 0 });
-    des.monster({ id: "Angel",x: 11,y: 13,align: "law",peaceful: 1 });
-    des.monster({ id: "Angel",x: 12,y: 13,align: "neutral", peaceful: 0 });
-    des.monster({ id: "Angel",x: 13,y: 13,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 12,y: 7,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 13,y: 7,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 14,y: 7,align: "law", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 12,y: 11,align: "law",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 13,y: 11,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 14,y: 11,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 11,y: 5,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 12,y: 5,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 13,y: 5,align: "law", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 11,y: 13,align: "law",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 12,y: 13,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 13,y: 13,align: "neutral",peaceful: 1 });
     // Central court
-    des.monster({ id: "aligned cleric",x: 32,y: 9,align: "chaos", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 33,y: 9,align: "chaos",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 34,y: 9,align: "law", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 40,y: 9,align: "law",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 41,y: 9,align: "neutral", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 42,y: 9,align: "neutral",peaceful: 1 });
-    des.monster({ id: "Angel",x: 31,y: 8,align: "chaos", peaceful: 0 });
-    des.monster({ id: "Angel",x: 32,y: 8,align: "chaos",peaceful: 1 });
-    des.monster({ id: "Angel",x: 31,y: 9,align: "law", peaceful: 0 });
-    des.monster({ id: "Angel",x: 42,y: 8,align: "law",peaceful: 1 });
-    des.monster({ id: "Angel",x: 43,y: 8,align: "neutral", peaceful: 0 });
-    des.monster({ id: "Angel",x: 43,y: 9,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 32,y: 9,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 33,y: 9,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 34,y: 9,align: "law", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 40,y: 9,align: "law",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 41,y: 9,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 42,y: 9,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 31,y: 8,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 32,y: 8,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 31,y: 9,align: "law", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 42,y: 8,align: "law",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 43,y: 8,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 43,y: 9,align: "neutral",peaceful: 1 });
     // East court
-    des.monster({ id: "aligned cleric",x: 60,y: 7,align: "chaos", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 61,y: 7,align: "chaos",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 62,y: 7,align: "law", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 60,y: 11,align: "law",peaceful: 1 });
-    des.monster({ id: "aligned cleric",x: 61,y: 11,align: "neutral", peaceful: 0 });
-    des.monster({ id: "aligned cleric",x: 62,y: 11,align: "neutral",peaceful: 1 });
-    des.monster({ id: "Angel",x: 61,y: 5,align: "chaos", peaceful: 0 });
-    des.monster({ id: "Angel",x: 62,y: 5,align: "chaos",peaceful: 1 });
-    des.monster({ id: "Angel",x: 63,y: 5,align: "law", peaceful: 0 });
-    des.monster({ id: "Angel",x: 61,y: 13,align: "law",peaceful: 1 });
-    des.monster({ id: "Angel",x: 62,y: 13,align: "neutral", peaceful: 0 });
-    des.monster({ id: "Angel",x: 63,y: 13,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 60,y: 7,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 61,y: 7,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 62,y: 7,align: "law", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 60,y: 11,align: "law",peaceful: 1 });
+    await des.monster({ id: "aligned cleric",x: 61,y: 11,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "aligned cleric",x: 62,y: 11,align: "neutral",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 61,y: 5,align: "chaos", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 62,y: 5,align: "chaos",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 63,y: 5,align: "law", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 61,y: 13,align: "law",peaceful: 1 });
+    await des.monster({ id: "Angel",x: 62,y: 13,align: "neutral", peaceful: 0 });
+    await des.monster({ id: "Angel",x: 63,y: 13,align: "neutral",peaceful: 1 });
     // 
     // Assorted nasties
-    des.monster({ class: "L", peaceful: 0 });
-    des.monster({ class: "L", peaceful: 0 });
-    des.monster({ class: "L", peaceful: 0 });
-    des.monster({ class: "V", peaceful: 0 });
-    des.monster({ class: "V", peaceful: 0 });
-    des.monster({ class: "V", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "L", peaceful: 0 });
+    await des.monster({ class: "L", peaceful: 0 });
+    await des.monster({ class: "L", peaceful: 0 });
+    await des.monster({ class: "V", peaceful: 0 });
+    await des.monster({ class: "V", peaceful: 0 });
+    await des.monster({ class: "V", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
 
 
     return await des.finalize_level();

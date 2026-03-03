@@ -16,7 +16,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
     des.level_flags("mazelevel", "noflip");
 
-    des.map(`\
+    await des.map(`\
 .......................................................................
 .......................................................................
 .......................................................................
@@ -47,13 +47,13 @@ export async function generate() {
        des.replace_terrain({ region: [0, 0, 70, 18], fromterrain: "C", toterrain: terrain[tidx] });
     };
 
-    des.region(selection.area(0,0,70,18), "lit");
+    await des.region(selection.area(0,0,70,18), "lit");
 
     // when falling down on this level, never } up in the fog maze
     des.teleport_region({ region: [0,0,70,18], exclude: [2,3,68,15], dir: "down" });
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
 
     for (let i = 1; i <= 6; i++) {
@@ -61,7 +61,7 @@ export async function generate() {
     }
 
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     }
 
     des.mazewalk({ x: 4, y: 2, dir: "south", stocked: 0 });

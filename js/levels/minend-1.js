@@ -19,7 +19,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
 ------------------------------------------------------------------   ------
 |                        |.......|     |.......-...|       |.....|.       |
 |    ---------        ----.......-------...........|       ---...-S-      |
@@ -45,9 +45,9 @@ export async function generate() {
     shuffle(place)
 
     // make the entry chamber a real room; it affects monster arrival
-    des.region({ region: [26,1,32,1], lit: 0, type: "ordinary", irregular: 1, arrival_room: true });
-    des.region(selection.area(20,8,21,8),"unlit");
-    des.region(selection.area(23,8,25,8),"unlit");
+    await des.region({ region: [26,1,32,1], lit: 0, type: "ordinary", irregular: 1, arrival_room: true });
+    await des.region(selection.area(20,8,21,8),"unlit");
+    await des.region(selection.area(23,8,25,8),"unlit");
     // Secret doors
     des.door("locked",7,16);
     des.door("locked",22,8);
@@ -62,41 +62,41 @@ export async function generate() {
     des.non_diggable(selection.area(0,0,74,17));
     // Niches
     // Note: place[5] empty
-    des.object("diamond",place[6]);
-    des.object("emerald",place[6]);
-    des.object("worthless piece of violet glass",place[6]);
-    des.monster({ class: "m", coord: place[6], appear_as: "obj:luckstone" });
-    des.object("worthless piece of white glass",place[0]);
-    des.object("emerald",place[0]);
-    des.object("amethyst",place[0]);
-    des.monster({ class: "m", coord: place[0], appear_as: "obj:loadstone" });
-    des.object("diamond",place[1]);
-    des.object("worthless piece of green glass",place[1]);
-    des.object("amethyst",place[1]);
-    des.monster({ class: "m", coord: place[1], appear_as: "obj:flint" });
-    des.object("worthless piece of white glass",place[2]);
-    des.object("emerald",place[2]);
-    des.object("worthless piece of violet glass",place[2]);
-    des.monster({ class: "m", coord: place[2], appear_as: "obj:touchstone" });
-    des.object("worthless piece of red glass",place[3]);
-    des.object("ruby",place[3]);
-    des.object("loadstone",place[3]);
-    des.object("ruby",place[4]);
-    des.object("worthless piece of red glass",place[4]);
-    des.object({ id: "luckstone", coord: place[4], buc: "!-cursed", achievement: 1 });
+    await des.object("diamond",place[6]);
+    await des.object("emerald",place[6]);
+    await des.object("worthless piece of violet glass",place[6]);
+    await des.monster({ class: "m", coord: place[6], appear_as: "obj:luckstone" });
+    await des.object("worthless piece of white glass",place[0]);
+    await des.object("emerald",place[0]);
+    await des.object("amethyst",place[0]);
+    await des.monster({ class: "m", coord: place[0], appear_as: "obj:loadstone" });
+    await des.object("diamond",place[1]);
+    await des.object("worthless piece of green glass",place[1]);
+    await des.object("amethyst",place[1]);
+    await des.monster({ class: "m", coord: place[1], appear_as: "obj:flint" });
+    await des.object("worthless piece of white glass",place[2]);
+    await des.object("emerald",place[2]);
+    await des.object("worthless piece of violet glass",place[2]);
+    await des.monster({ class: "m", coord: place[2], appear_as: "obj:touchstone" });
+    await des.object("worthless piece of red glass",place[3]);
+    await des.object("ruby",place[3]);
+    await des.object("loadstone",place[3]);
+    await des.object("ruby",place[4]);
+    await des.object("worthless piece of red glass",place[4]);
+    await des.object({ id: "luckstone", coord: place[4], buc: "!-cursed", achievement: 1 });
     // Random objects
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("(");
-    des.object("(");
-    des.object();
-    des.object();
-    des.object();
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("(");
+    await des.object("(");
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap();
     await des.trap();
@@ -105,27 +105,27 @@ export async function generate() {
     await des.trap();
     await des.trap();
     // Random monsters
-    des.monster("gnome king");
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("gnomish wizard");
-    des.monster("gnomish wizard");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("hobbit");
-    des.monster("hobbit");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("h");
+    await des.monster("gnome king");
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("gnomish wizard");
+    await des.monster("gnomish wizard");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("hobbit");
+    await des.monster("hobbit");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("h");
 
 
     return await des.finalize_level();

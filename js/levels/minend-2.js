@@ -19,7 +19,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
 ---------------------------------------------------------------------------
 |...................................................|                     |
 |.|---------S--.--|...|--------------------------|..|                     |
@@ -72,12 +72,12 @@ export async function generate() {
 
     // Dungeon Description
     des.feature("fountain", [14,13]);
-    des.region(selection.area(23,3,48,6),"lit");
-    des.region(selection.area(21,6,22,6),"lit");
-    des.region(selection.area(14,4,14,4),"unlit");
-    des.region(selection.area(10,5,14,8),"unlit");
-    des.region(selection.area(10,9,11,9),"unlit");
-    des.region(selection.area(15,8,16,8),"unlit");
+    await des.region(selection.area(23,3,48,6),"lit");
+    await des.region(selection.area(21,6,22,6),"lit");
+    await des.region(selection.area(14,4,14,4),"unlit");
+    await des.region(selection.area(10,5,14,8),"unlit");
+    await des.region(selection.area(10,9,11,9),"unlit");
+    await des.region(selection.area(15,8,16,8),"unlit");
     // Secret doors
     des.door("locked",12,2);
     des.door("locked",11,6);
@@ -95,48 +95,48 @@ export async function generate() {
     des.engraving([12,3], "engrave",
     	      "You are now entering the Gnome King's wine cellar.")
     des.engraving([12,4], "engrave", "Trespassers will be persecuted!");
-    des.object("potion of booze", 10, 7);
-    des.object("potion of booze", 10, 7);
-    des.object("!", 10, 7);
-    des.object("potion of booze", 10, 8);
-    des.object("potion of booze", 10, 8);
-    des.object("!", 10, 8);
-    des.object("potion of booze", 10, 9);
-    des.object("potion of booze", 10, 9);
-    des.object("potion of object detection", 10, 9);
+    await des.object("potion of booze", 10, 7);
+    await des.object("potion of booze", 10, 7);
+    await des.object("!", 10, 7);
+    await des.object("potion of booze", 10, 8);
+    await des.object("potion of booze", 10, 8);
+    await des.object("!", 10, 8);
+    await des.object("potion of booze", 10, 9);
+    await des.object("potion of booze", 10, 9);
+    await des.object("potion of object detection", 10, 9);
     // Objects
     // The Treasure chamber...args
-    des.object("diamond", 69, 4);
-    des.object("*", 69, 4);
-    des.object("diamond", 69, 4);
-    des.object("*", 69, 4);
-    des.object("emerald", 70, 4);
-    des.object("*", 70, 4);
-    des.object("emerald", 70, 4);
-    des.object("*", 70, 4);
-    des.object("emerald", 69, 5);
-    des.object("*", 69, 5);
-    des.object("ruby", 69, 5);
-    des.object("*", 69, 5);
-    des.object("ruby", 70, 5);
-    des.object("amethyst", 70, 5);
-    des.object("*", 70, 5);
-    des.object("amethyst", 70, 5);
-    des.object({ id: "luckstone", x: 70, y: 5,
+    await des.object("diamond", 69, 4);
+    await des.object("*", 69, 4);
+    await des.object("diamond", 69, 4);
+    await des.object("*", 69, 4);
+    await des.object("emerald", 70, 4);
+    await des.object("*", 70, 4);
+    await des.object("emerald", 70, 4);
+    await des.object("*", 70, 4);
+    await des.object("emerald", 69, 5);
+    await des.object("*", 69, 5);
+    await des.object("ruby", 69, 5);
+    await des.object("*", 69, 5);
+    await des.object("ruby", 70, 5);
+    await des.object("amethyst", 70, 5);
+    await des.object("*", 70, 5);
+    await des.object("amethyst", 70, 5);
+    await des.object({ id: "luckstone", x: 70, y: 5,
     	     buc: "!-cursed", achievement: 1 });
     // Scattered gems...args
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("*");
-    des.object("(");
-    des.object("(");
-    des.object();
-    des.object();
-    des.object();
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("*");
+    await des.object("(");
+    await des.object("(");
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap();
     await des.trap();
@@ -145,27 +145,27 @@ export async function generate() {
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster("gnome king");
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("gnomish wizard");
-    des.monster("gnomish wizard");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("hobbit");
-    des.monster("hobbit");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("h");
+    await des.monster("gnome king");
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("gnomish wizard");
+    await des.monster("gnomish wizard");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("hobbit");
+    await des.monster("hobbit");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("h");
 
 
     return await des.finalize_level();

@@ -35,7 +35,7 @@ export async function generate() {
     // creating inaccessible spaces. The inaccessibles flag does compensate for
     // this, but it does so by doing things like creating backdoors into adjacent
     // shops which we don't want.
-    des.map({ halign: "center", valign: "top", map: `\
+    await des.map({ halign: "center", valign: "top", map: `\
 x--------xxxxxxxxxxx-------------------x
 x------xxxxxxxxxxxxxx-----------------xx
 .-----................----------------.x
@@ -58,19 +58,19 @@ x|..+...|...|.............|..|...|...|..
 xxxx-------xxxxxxxxxxxxxxx--------------
 ` });
 
-    des.region(selection.area(0,0,39,19),"lit");
+    await des.region(selection.area(0,0,39,19),"lit");
 
     // stairs can generate 1 column left || right inside the map,
     // in case the randomly generated mines layout doesn't extend outside the map
     des.levregion({ type: "stair-up", region: [1,3,21,19], region_islev: 1, exclude: [1,0,39,18] });
     des.levregion({ type: "stair-down", region: [60,3,75,19], region_islev: 1, exclude: [0,0,38,18] });
 
-    des.region(selection.area(13,7,14,8),"unlit");
-    des.region({ region: [9,9, 11,11], lit: 1, type: "candle shop", filled: 1 });
-    des.region({ region: [16,6, 18,8], lit: 1, type: "tool shop", filled: 1 });
-    des.region({ region: [23,3, 25,5], lit: 1, type: "shop", filled: 1 });
-    des.region({ region: [22,14, 24,15], lit: 1, type: monkfoodshop(), filled: 1 });
-    des.region({ region: [31,14, 36,16], lit: 1, type: "temple", filled: 1 });
+    await des.region(selection.area(13,7,14,8),"unlit");
+    await des.region({ region: [9,9, 11,11], lit: 1, type: "candle shop", filled: 1 });
+    await des.region({ region: [16,6, 18,8], lit: 1, type: "tool shop", filled: 1 });
+    await des.region({ region: [23,3, 25,5], lit: 1, type: "shop", filled: 1 });
+    await des.region({ region: [22,14, 24,15], lit: 1, type: monkfoodshop(), filled: 1 });
+    await des.region({ region: [31,14, 36,16], lit: 1, type: "temple", filled: 1 });
     des.altar({ x: 35,y: 15,align: align[0],type: "shrine"});
 
     des.door("closed",5,4);
@@ -91,25 +91,25 @@ xxxx-------xxxxxxxxxxxxxxx--------------
     des.door("closed",35,5);
     des.door("closed",33,9);
 
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome", 14, 8);
-    des.monster("gnome lord", 14, 7);
-    des.monster("gnome", 27, 10);
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watch captain", peaceful: 1 });
-    des.monster({ id: "watch captain", peaceful: 1 });
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome", 14, 8);
+    await des.monster("gnome lord", 14, 7);
+    await des.monster("gnome", 27, 10);
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watch captain", peaceful: 1 });
+    await des.monster({ id: "watch captain", peaceful: 1 });
 
 
 

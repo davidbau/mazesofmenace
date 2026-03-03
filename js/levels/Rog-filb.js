@@ -11,61 +11,61 @@ export async function generate() {
     // NetHack may be freely redistributed.  See license for details.
     // 
     // 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.stair("up");
-                  des.object();
-                  des.monster({ id: "leprechaun", peaceful: 0 });
-               }
-    })
-
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.monster({ id: "leprechaun", peaceful: 0 });
-                  des.monster({ id: "guardian naga", peaceful: 0 });
-               }
-    })
-
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  await des.trap();
-                  await des.trap();
-                  des.object();
-                  des.monster({ id: "water nymph", peaceful: 0 });
+                  des.stair("up");
+                  await des.object();
+                  await des.monster({ id: "leprechaun", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.monster({ id: "leprechaun", peaceful: 0 });
+                  await des.monster({ id: "guardian naga", peaceful: 0 });
+               }
+    })
+
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.trap();
+                  await des.object();
+                  await des.monster({ id: "water nymph", peaceful: 0 });
+               }
+    })
+
+    await des.room({ type: "ordinary",
                contents: async function() {
                   des.stair("down");
-                  des.object();
+                  await des.object();
                   await des.trap();
                   await des.trap();
-                  des.monster({ class: "l", peaceful: 0 });
-                  des.monster({ id: "guardian naga", peaceful: 0 });
+                  await des.monster({ class: "l", peaceful: 0 });
+                  await des.monster({ id: "guardian naga", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
-                  des.object();
+                  await des.object();
+                  await des.object();
                   await des.trap();
                   await des.trap();
-                  des.monster({ id: "leprechaun", peaceful: 0 });
+                  await des.monster({ id: "leprechaun", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
+    await des.room({ type: "ordinary",
                contents: async function() {
-                  des.object();
+                  await des.object();
                   await des.trap();
                   await des.trap();
-                  des.monster({ id: "leprechaun", peaceful: 0 });
-                  des.monster({ id: "water nymph", peaceful: 0 });
+                  await des.monster({ id: "leprechaun", peaceful: 0 });
+                  await des.monster({ id: "water nymph", peaceful: 0 });
                }
     })
 

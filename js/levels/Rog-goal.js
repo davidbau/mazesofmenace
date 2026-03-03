@@ -17,7 +17,7 @@ export async function generate() {
 
     // 1         2         3         4         5         6         7
     // 123456789012345678901234567890123456789012345678901234567890123456789012345
-    des.map(`\
+    await des.map(`\
 -----      -------.......................................|-----------------|
 |...|  -----.....|.......................................|.................|
 |...----...|.....|.......................................|....---------....|
@@ -41,7 +41,7 @@ export async function generate() {
     ----------------------------------------  ......       ----------   ----
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,20), "lit");
+    await des.region(selection.area(0,0,75,20), "lit");
     // Stairs
     des.levregion({ region: [1,0,15,20], region_islev: 1, exclude: [1,18,4,20], type: "stair-up" });
     // Doors
@@ -50,21 +50,21 @@ export async function generate() {
     // One trap to keep the gnomes at bay.
     await des.trap("spiked pit",37,7);
     // Objects
-    des.object({ id: "skeleton key", x: 38, y: 10, buc: "blessed", spe: 0, name: "The Master Key of Thievery" });
-    des.object({ id: "tin", x: 26, y: 12, montype: "chameleon" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "skeleton key", x: 38, y: 10, buc: "blessed", spe: 0, name: "The Master Key of Thievery" });
+    await des.object({ id: "tin", x: 26, y: 12, montype: "chameleon" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap();
     await des.trap();
@@ -78,45 +78,45 @@ export async function generate() {
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster({ id: "Master Assassin", x: 38, y: 10, peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ class: "l", peaceful: 0 });
-    des.monster({ class: "l", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "shark", x: 51, y: 14, peaceful: 0 });
-    des.monster({ id: "shark", x: 53, y: 9, peaceful: 0 });
-    des.monster({ id: "shark", x: 55, y: 15, peaceful: 0 });
-    des.monster({ id: "shark", x: 58, y: 10, peaceful: 0 });
+    await des.monster({ id: "Master Assassin", x: 38, y: 10, peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ class: "l", peaceful: 0 });
+    await des.monster({ class: "l", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "shark", x: 51, y: 14, peaceful: 0 });
+    await des.monster({ id: "shark", x: 53, y: 9, peaceful: 0 });
+    await des.monster({ id: "shark", x: 55, y: 15, peaceful: 0 });
+    await des.monster({ id: "shark", x: 58, y: 10, peaceful: 0 });
 
 
     return await des.finalize_level();

@@ -21,26 +21,26 @@ export async function generate() {
     des.stair("up");
     des.stair("down");
     // 
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // 
     await des.trap();
     await des.trap();
     await des.trap();
     await des.trap();
     // 
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ class: "C", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ class: "C", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
 
 
     return await des.finalize_level();

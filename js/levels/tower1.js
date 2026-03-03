@@ -17,7 +17,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
 
     des.level_flags("mazelevel", "noteleport", "hardfloor", "solidify");
-    des.map({ halign: "half-left", valign: "center", map: `\
+    await des.map({ halign: "half-left", valign: "center", map: `\
   --- --- ---  
   |.| |.| |.|  
 ---S---S---S---
@@ -36,10 +36,10 @@ export async function generate() {
 
     des.ladder("down", 11,5);
     // The lord && his court
-    des.monster("Vlad the Impaler", 6, 5);
-    des.monster("V",niches[0]);
-    des.monster("V",niches[1]);
-    des.monster("V",niches[2]);
+    await des.monster("Vlad the Impaler", 6, 5);
+    await des.monster("V",niches[0]);
+    await des.monster("V",niches[1]);
+    await des.monster("V",niches[2]);
     // The brides; they weren't named in Bram Stoker's original _Dracula_
     // && when appearing in umpteen subsequent books && movies there is
     // no consensus for their names.  According to the Wikipedia entry for
@@ -52,9 +52,9 @@ export async function generate() {
     if ((! Vgenod)) {
        Vnames = [ "Madame", "Marquise", "Countess" ];
     }
-    des.monster({ id: "vampire lady", coord: niches[3], name: Vnames[0], waiting: 1 });
-    des.monster({ id: "vampire lady", coord: niches[4], name: Vnames[1], waiting: 1 });
-    des.monster({ id: "vampire lady", coord: niches[5], name: Vnames[2], waiting: 1 });
+    await des.monster({ id: "vampire lady", coord: niches[3], name: Vnames[0], waiting: 1 });
+    await des.monster({ id: "vampire lady", coord: niches[4], name: Vnames[1], waiting: 1 });
+    await des.monster({ id: "vampire lady", coord: niches[5], name: Vnames[2], waiting: 1 });
     // The doors
     des.door("closed",8,3);
     des.door("closed",10,3);
@@ -64,20 +64,20 @@ export async function generate() {
     des.door("locked",10,7);
     des.door("closed",3,6);
     // treasures
-    des.object("chest", 7,5);
+    await des.object("chest", 7,5);
 
-    des.object("chest",niches[5]);
-    des.object("chest",niches[0]);
-    des.object("chest",niches[1]);
-    des.object("chest",niches[2]);
-    des.object({ id: "chest", coord: niches[3],
-                 contents: function() {
-                    des.object({ id: "wax candle", quantity: (rn2((8) - (4) + 1) + (4)) });
+    await des.object("chest",niches[5]);
+    await des.object("chest",niches[0]);
+    await des.object("chest",niches[1]);
+    await des.object("chest",niches[2]);
+    await des.object({ id: "chest", coord: niches[3],
+                 contents: async function() {
+                    await des.object({ id: "wax candle", quantity: (rn2((8) - (4) + 1) + (4)) });
                  }
     });
-    des.object({ id: "chest", coord: niches[4],
-                 contents: function() {
-                    des.object({ id: "tallow candle", quantity: (rn2((8) - (4) + 1) + (4)) });
+    await des.object({ id: "chest", coord: niches[4],
+                 contents: async function() {
+                    await des.object({ id: "tallow candle", quantity: (rn2((8) - (4) + 1) + (4)) });
                  }
     });
     // We have to protect the tower against outside attacks

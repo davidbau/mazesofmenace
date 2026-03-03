@@ -13,64 +13,64 @@ export async function generate() {
     // Oracle level
     des.level_flags("noflip");
 
-    des.room({ type: "ordinary", lit: 1, x: 3,y: 3, xalign: "center",yalign: "center", w: 11,h: 9, contents: function() {
-                  des.object({ id: "statue", x: 0, y: 0, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 0, y: 8, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 10, y: 0, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 10, y: 8, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 5, y: 1, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 5, y: 7, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 2, y: 4, montype: "C", historic: true });
-                  des.object({ id: "statue", x: 8, y: 4, montype: "C", historic: true });
+    await des.room({ type: "ordinary", lit: 1, x: 3,y: 3, xalign: "center",yalign: "center", w: 11,h: 9, contents: async function() {
+                  await des.object({ id: "statue", x: 0, y: 0, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 0, y: 8, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 10, y: 0, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 10, y: 8, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 5, y: 1, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 5, y: 7, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 2, y: 4, montype: "C", historic: true });
+                  await des.object({ id: "statue", x: 8, y: 4, montype: "C", historic: true });
 
-                  des.room({ type: "delphi", lit: 1, x: 4,y: 3, w: 3,h: 3, contents: function() {
+                  await des.room({ type: "delphi", lit: 1, x: 4,y: 3, w: 3,h: 3, contents: async function() {
                                 des.feature("fountain", 0, 1);
                                 des.feature("fountain", 1, 0);
                                 des.feature("fountain", 1, 2);
                                 des.feature("fountain", 2, 1);
-                                des.monster("Oracle", 1, 1);
+                                await des.monster("Oracle", 1, 1);
                                 des.door({ state: "nodoor", wall: "all" });
                              }
                   });
 
-                  des.monster();
-                  des.monster();
+                  await des.monster();
+                  await des.monster();
                }
     });
 
-    des.room({ contents: function() {
+    await des.room({ contents: async function() {
                      des.stair("up");
-                     des.object();
+                     await des.object();
                   }
     });
 
-    des.room({ contents: async function() {
+    await des.room({ contents: async function() {
                      des.stair("down");
-                     des.object();
+                     await des.object();
                      await des.trap();
-                     des.monster();
-                     des.monster();
+                     await des.monster();
+                     await des.monster();
                   }
     });
 
-    des.room({ contents: function() {
-                     des.object();
-                     des.object();
-                     des.monster();
+    await des.room({ contents: async function() {
+                     await des.object();
+                     await des.object();
+                     await des.monster();
                   }
     });
 
-    des.room({ contents: async function() {
-                     des.object();
+    await des.room({ contents: async function() {
+                     await des.object();
                      await des.trap();
-                     des.monster();
+                     await des.monster();
                   }
     });
 
-    des.room({ contents: async function() {
-                     des.object();
+    await des.room({ contents: async function() {
+                     await des.object();
                      await des.trap();
-                     des.monster();
+                     await des.monster();
                   }
     });
 

@@ -21,7 +21,7 @@ export async function generate() {
     let bnds = tmpbounds.bounds();
     let bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
-    let fakewiz1 = des.map({ halign: "center", valign: "center", map: `\
+    let fakewiz1 = await des.map({ halign: "center", valign: "center", map: `\
 .........
 .}}}}}}}.
 .}}---}}.
@@ -38,10 +38,10 @@ export async function generate() {
        des.teleport_region({ region: [1,0,79,20], region_islev: 1,exclude: [2,2,6,6] });
        des.levregion({ region: [4,4,4,4], type: "portal", name: "wizard3" });
        des.mazewalk(8,5,"east");
-       des.region({ region: [4,3,6,6],lit: 0,type: "ordinary",irregular: 1,arrival_room: true });
-       des.monster("L",4,4);
-       des.monster("vampire lord",3,4);
-       des.monster("kraken",6,6);
+       await des.region({ region: [4,3,6,6],lit: 0,type: "ordinary",irregular: 1,arrival_room: true });
+       await des.monster("L",4,4);
+       await des.monster("vampire lord",3,4);
+       await des.monster("kraken",6,6);
        // And to make things a little harder.
        await des.trap("board",4,3);
        await des.trap("board",4,5);

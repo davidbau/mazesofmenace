@@ -21,7 +21,7 @@ export async function generate() {
     let bnds = tmpbounds.bounds();
     let bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
-    let wiz2 = des.map({ halign: "center", valign: "center", map: `\
+    let wiz2 = await des.map({ halign: "center", valign: "center", map: `\
 ----------------------------x
 |.....|.S....|.............|x
 |.....|.-------S--------S--|x
@@ -41,8 +41,8 @@ export async function generate() {
        des.levregion({ type: "branch", region: [1,0,79,20], region_islev: 1, exclude: [0,0,28,12] });
        des.teleport_region({ region: [1,0,79,20], region_islev: 1, exclude: [0,0,27,12] });
        // entire tower in a region, constrains monster migration
-       des.region({ region: [1,1, 26,11], lit: 0, type: "ordinary", arrival_room: true });
-       des.region({ region: [9,3, 17,9], lit: 0, type: "zoo", filled: 1 });
+       await des.region({ region: [1,1, 26,11], lit: 0, type: "ordinary", arrival_room: true });
+       await des.region({ region: [9,3, 17,9], lit: 0, type: "zoo", filled: 1 });
        des.door("closed",15,2);
        des.door("closed",11,10);
        des.mazewalk(28,5,"east");
@@ -58,13 +58,13 @@ export async function generate() {
        await des.trap("anti magic");
        await des.trap("magic");
        // Some random loot.
-       des.object("!");
-       des.object("!");
-       des.object("?");
-       des.object("?");
-       des.object("+");
+       await des.object("!");
+       await des.object("!");
+       await des.object("?");
+       await des.object("?");
+       await des.object("+");
        // treasures
-       des.object("\"", 4, 6);
+       await des.object("\"", 4, 6);
     }
     });
 

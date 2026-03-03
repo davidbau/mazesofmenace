@@ -19,7 +19,7 @@ export async function generate() {
 
     des.level_init({ style: "mines", fg: "L", bg: ".", smoothed: false, joined: false, lit: 0, walled: false });
 
-    des.map(`\
+    await des.map(`\
 xxxxxx..xxxxxx...xxxxxxxxx
 xxxx......xx......xxxxxxxx
 xx.xx.............xxxxxxxx
@@ -36,25 +36,25 @@ xxxxx...xxxxxx....xxxxxxxx
     let place = [ [14,4],[13,7] ]
     let placeidx = (rn2((place.length) - (1) + 1) + (1));
 
-    des.region(selection.area(0,0,25,10), "unlit");
+    await des.region(selection.area(0,0,25,10), "unlit");
     // Stairs
     des.stair("up", 20,5);
     // Objects
-    des.object({ id: "lenses", coord: place[placeidx], buc: "blessed", spe: 0, name: "The Eyes of the Overworld" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "lenses", coord: place[placeidx], buc: "blessed", spe: 0, name: "The Eyes of the Overworld" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap("fire");
     await des.trap("fire");
@@ -63,26 +63,26 @@ xxxxx...xxxxxx....xxxxxxxx
     await des.trap();
     await des.trap();
     // Random monsters.
-    des.monster("Master Kaen",place[placeidx]);
+    await des.monster("Master Kaen",place[placeidx]);
     des.altar({ coord: place[placeidx], align: "noalign", type: "altar" });
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("earth elemental");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
-    des.monster("xorn");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("earth elemental");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
+    await des.monster("xorn");
 
 
     return await des.finalize_level();

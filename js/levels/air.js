@@ -25,7 +25,7 @@ export async function generate() {
     // portal to the next level is randomly chosen.
     // This map has no visible outer boundary, &&
     // is all "air".
-    des.map(`\
+    await des.map(`\
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
@@ -56,64 +56,64 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
     // des.portal(levregion(57,1,78,19),(0,0,0,0),"fire")
     des.levregion({ region: [57,1,78,19], region_islev: 1, type: "portal", name: "fire" });
-    des.region(selection.area(0,0,75,19),"lit");
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
-    des.monster({ id: "air elemental", peaceful: 0 });
+    await des.region(selection.area(0,0,75,19),"lit");
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
+    await des.monster({ id: "air elemental", peaceful: 0 });
 
-    des.monster({ id: "floating eye", peaceful: 0 });
-    des.monster({ id: "floating eye", peaceful: 0 });
-    des.monster({ id: "floating eye", peaceful: 0 });
+    await des.monster({ id: "floating eye", peaceful: 0 });
+    await des.monster({ id: "floating eye", peaceful: 0 });
+    await des.monster({ id: "floating eye", peaceful: 0 });
 
-    des.monster({ id: "yellow light", peaceful: 0 });
-    des.monster({ id: "yellow light", peaceful: 0 });
-    des.monster({ id: "yellow light", peaceful: 0 });
+    await des.monster({ id: "yellow light", peaceful: 0 });
+    await des.monster({ id: "yellow light", peaceful: 0 });
+    await des.monster({ id: "yellow light", peaceful: 0 });
 
-    des.monster("couatl");
+    await des.monster("couatl");
 
-    des.monster("D");
-    des.monster("D");
-    des.monster("D");
-    des.monster("D");
-    des.monster("D");
+    await des.monster("D");
+    await des.monster("D");
+    await des.monster("D");
+    await des.monster("D");
+    await des.monster("D");
 
-    des.monster("E");
-    des.monster("E");
-    des.monster("E");
-    des.monster("J");
-    des.monster("J");
+    await des.monster("E");
+    await des.monster("E");
+    await des.monster("E");
+    await des.monster("J");
+    await des.monster("J");
 
-    des.monster({ id: "djinni", peaceful: 0 });
-    des.monster({ id: "djinni", peaceful: 0 });
-    des.monster({ id: "djinni", peaceful: 0 });
+    await des.monster({ id: "djinni", peaceful: 0 });
+    await des.monster({ id: "djinni", peaceful: 0 });
+    await des.monster({ id: "djinni", peaceful: 0 });
 
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "fog cloud", peaceful: 0 });
-    des.monster({ id: "energy vortex", peaceful: 0 });
-    des.monster({ id: "energy vortex", peaceful: 0 });
-    des.monster({ id: "energy vortex", peaceful: 0 });
-    des.monster({ id: "energy vortex", peaceful: 0 });
-    des.monster({ id: "energy vortex", peaceful: 0 });
-    des.monster({ id: "steam vortex", peaceful: 0 });
-    des.monster({ id: "steam vortex", peaceful: 0 });
-    des.monster({ id: "steam vortex", peaceful: 0 });
-    des.monster({ id: "steam vortex", peaceful: 0 });
-    des.monster({ id: "steam vortex", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "fog cloud", peaceful: 0 });
+    await des.monster({ id: "energy vortex", peaceful: 0 });
+    await des.monster({ id: "energy vortex", peaceful: 0 });
+    await des.monster({ id: "energy vortex", peaceful: 0 });
+    await des.monster({ id: "energy vortex", peaceful: 0 });
+    await des.monster({ id: "energy vortex", peaceful: 0 });
+    await des.monster({ id: "steam vortex", peaceful: 0 });
+    await des.monster({ id: "steam vortex", peaceful: 0 });
+    await des.monster({ id: "steam vortex", peaceful: 0 });
+    await des.monster({ id: "steam vortex", peaceful: 0 });
+    await des.monster({ id: "steam vortex", peaceful: 0 });
 
 
 

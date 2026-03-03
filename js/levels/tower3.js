@@ -14,7 +14,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
 
     des.level_flags("mazelevel", "noteleport", "hardfloor", "solidify");
-    des.map({ halign: "half-left", valign: "center", map: `\
+    await des.map({ halign: "half-left", valign: "center", map: `\
     --- --- ---    
     |.| |.| |.|    
   ---S---S---S---  
@@ -38,22 +38,22 @@ export async function generate() {
     // Entry door is, of course, locked
     des.door("locked",14,5);
     // Let's put a dragon behind the door, just for the fun...args
-    des.monster("D", 13, 5);
-    des.monster({ x: 12, y: 4 });
-    des.monster({ x: 12, y: 6 });
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.object("long sword",place[3]);
+    await des.monster("D", 13, 5);
+    await des.monster({ x: 12, y: 4 });
+    await des.monster({ x: 12, y: 6 });
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.object("long sword",place[3]);
     await des.trap({ coord: place[3] });
-    des.object("lock pick",place[0]);
+    await des.object("lock pick",place[0]);
     await des.trap({ coord: place[0] });
-    des.object("elven cloak",place[1]);
+    await des.object("elven cloak",place[1]);
     await des.trap({ coord: place[1] });
-    des.object("blindfold",place[2]);
+    await des.object("blindfold",place[2]);
     await des.trap({ coord: place[2] });
     // Walls in the tower are non diggable
     des.non_diggable(selection.area(0,0,18,12));

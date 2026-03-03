@@ -300,7 +300,7 @@ export const themeroom_fills = [
 
    {
       name: "Teleportation hub",
-      contents: function(rm) {
+      contents: async function(rm) {
          const locs = selection.room().filter_mapchar(".");
          for (let i = 1; i <= 2 + rn2(3); i++) {
             const pos = locs.rndcoord(1);
@@ -444,7 +444,7 @@ export const themerooms = [
       name: 'Pillars',
       contents: async function() {
          const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
-         if (DEBUG) console.log('Pillars: outer contents() called, about to call des.room()');
+         if (DEBUG) console.log('Pillars: outer contents() called, about to call await des.room()');
          await des.room({ type: "themed", w: 10, h: 10,
                   contents: async function(rm) {
                      if (DEBUG) console.log(`Pillars: inner contents() called for room at (${rm.lx},${rm.ly}), about to shuffle`);
@@ -1091,7 +1091,7 @@ export async function themerooms_generate(map, depth) {
    const rngLog = getRngLog();
    const rngBefore = rngLog ? rngLog.length : 0;
 
-   // Set up failure callback so des.room() can signal when it can't create a room
+   // Set up failure callback so await des.room() can signal when it can't create a room
    // This bridges the sp_lev → themerms communication without circular dependency
    levelState.roomFailureCallback = () => { themeroom_failed = true; };
 
@@ -1116,7 +1116,7 @@ export async function themerooms_generate(map, depth) {
    // }
 
    // C ref: mklev.c:408 — return failure if theme room creation failed
-   // The contents() function calls des.room() which sets themeroom_failed flag on failure
+   // The contents() function calls await des.room() which sets themeroom_failed flag on failure
    return !themeroom_failed;
 }
 

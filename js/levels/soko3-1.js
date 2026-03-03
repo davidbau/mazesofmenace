@@ -15,7 +15,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 
-    des.map(`\
+    await des.map(`\
 -----------       -----------
 |....|....|--     |.........|
 |....|......|     |.........|
@@ -32,34 +32,34 @@ export async function generate() {
     des.stair("down", 11,2);
     des.stair("up", 23,4);
     des.door("locked", 27,9);
-    des.region(selection.area(0,0,28,11), "lit");
+    await des.region(selection.area(0,0,28,11), "lit");
     des.non_diggable(selection.area(0,0,28,11));
     des.non_passwall(selection.area(0,0,28,11));
 
     // Boulders
-    des.object("boulder",3,2);
-    des.object("boulder",4,2);
+    await des.object("boulder",3,2);
+    await des.object("boulder",4,2);
     // 
-    des.object("boulder",6,2);
-    des.object("boulder",6,3);
-    des.object("boulder",7,2);
+    await des.object("boulder",6,2);
+    await des.object("boulder",6,3);
+    await des.object("boulder",7,2);
     // 
-    des.object("boulder",3,6);
-    des.object("boulder",2,7);
-    des.object("boulder",3,7);
-    des.object("boulder",3,8);
-    des.object("boulder",2,9);
-    des.object("boulder",3,9);
-    des.object("boulder",4,9);
+    await des.object("boulder",3,6);
+    await des.object("boulder",2,7);
+    await des.object("boulder",3,7);
+    await des.object("boulder",3,8);
+    await des.object("boulder",2,9);
+    await des.object("boulder",3,9);
+    await des.object("boulder",4,9);
     // 
-    des.object("boulder",6,7);
-    des.object("boulder",6,9);
-    des.object("boulder",8,7);
-    des.object("boulder",8,10);
-    des.object("boulder",9,8);
-    des.object("boulder",9,9);
-    des.object("boulder",10,7);
-    des.object("boulder",10,10);
+    await des.object("boulder",6,7);
+    await des.object("boulder",6,9);
+    await des.object("boulder",8,7);
+    await des.object("boulder",8,10);
+    await des.object("boulder",9,8);
+    await des.object("boulder",9,9);
+    await des.object("boulder",10,7);
+    await des.object("boulder",10,10);
 
     // prevent monster generation over the (filled) holes
     des.exclusion({ type: "monster-generation", region: [ 11,10, 27,10 ] });
@@ -81,12 +81,12 @@ export async function generate() {
     await des.trap("hole",26,10);
 
     // Random objects
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "%" });
-    des.object({ class: "=" });
-    des.object({ class: "/" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "%" });
+    await des.object({ class: "=" });
+    await des.object({ class: "/" });
 
 
 

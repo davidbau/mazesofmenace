@@ -18,7 +18,7 @@ export async function generate() {
 
     des.level_init({ style: "mines", fg: ".", bg: "P", smoothed: false, joined: true, lit: 1, walled: false });
 
-    des.map(`\
+    await des.map(`\
 xxxxxxxxx......xxxx...........xxxxxxxxxx
 xxxxxxx.........xxx.............xxxxxxxx
 xxxx..............................xxxxxx
@@ -34,30 +34,30 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
 `);
     // Dungeon Description
     // The Isle of Glass is a Tor rising out of the swamps surrounding it.
-    des.region(selection.area(0,0,39,11), "lit");
+    await des.region(selection.area(0,0,39,11), "lit");
     // The top area of the Tor is a holy site.
-    des.region({ region: [9,2, 27,9], lit: 1, type: "temple", filled: 2 });
+    await des.region({ region: [9,2, 27,9], lit: 1, type: "temple", filled: 2 });
     // Stairs
     des.stair("up", 38,0);
     des.stair("down", 18,5);
     // The altar atop the Tor && its attendant (creating altar makes the priest).
     des.altar({ x: 17, y: 5, align: "neutral", type: "shrine" });
     // Objects
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     // All of the avenues are guarded by magic except for the East.
     // South
@@ -117,33 +117,33 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
     await des.trap("anti magic");
     await des.trap("anti magic");
     // Random monsters.
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ id: "quasit", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "j", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ id: "ochre jelly", peaceful: 0 });
-    des.monster({ class: "j", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ id: "quasit", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "j", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ id: "ochre jelly", peaceful: 0 });
+    await des.monster({ class: "j", peaceful: 0 });
 
 
     return await des.finalize_level();

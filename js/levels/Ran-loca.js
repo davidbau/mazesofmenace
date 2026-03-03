@@ -16,7 +16,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "hardfloor");
     // 1234567890123456789012345678901234567890123456789012345678901234567890
-    des.map(`\
+    await des.map(`\
               .......  .........  .......              
      ...................       ...................     
   ....        .......             .......        ....  
@@ -39,21 +39,21 @@ export async function generate() {
       .......  .......  .......  .......  .......      
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,54,19), "lit");
+    await des.region(selection.area(0,0,54,19), "lit");
     // Stairs
     des.stair("up", 25,5);
     des.stair("down", 27,18);
     // Non diggable walls
     des.non_diggable(selection.area(0,0,54,19));
     // Objects
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
     await des.trap("spiked pit");
     await des.trap("spiked pit");
@@ -62,29 +62,29 @@ export async function generate() {
     await des.trap("arrow");
     await des.trap("arrow");
     // Random monsters.
-    des.monster({ id: "wumpus", x: 27, y: 18, peaceful: 0, asleep: 1 });
-    des.monster({ id: "giant bat", peaceful: 0 });
-    des.monster({ id: "giant bat", peaceful: 0 });
-    des.monster({ id: "giant bat", peaceful: 0 });
-    des.monster({ id: "giant bat", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "forest centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "mountain centaur", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
-    des.monster({ id: "scorpion", peaceful: 0 });
-    des.monster({ class: "s", peaceful: 0 });
-    des.monster({ class: "s", peaceful: 0 });
+    await des.monster({ id: "wumpus", x: 27, y: 18, peaceful: 0, asleep: 1 });
+    await des.monster({ id: "giant bat", peaceful: 0 });
+    await des.monster({ id: "giant bat", peaceful: 0 });
+    await des.monster({ id: "giant bat", peaceful: 0 });
+    await des.monster({ id: "giant bat", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "forest centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "mountain centaur", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ id: "scorpion", peaceful: 0 });
+    await des.monster({ class: "s", peaceful: 0 });
+    await des.monster({ class: "s", peaceful: 0 });
 
 
 

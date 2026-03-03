@@ -19,7 +19,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "nommap");
 
-    des.map({ halign: "center", valign: "bottom", map: `\
+    await des.map({ halign: "center", valign: "bottom", map: `\
  - - - - - - - - - - -- -- - - . - - - - - - - - - -- - - -- - - - - . - - |
 ------...---------.-----------...-----.-------.-------     ----------------|
  - - - - - - - - - - - . - - - . - - - - - - - - - - -- - -- - . - - - - - |
@@ -46,8 +46,8 @@ export async function generate() {
     des.non_diggable(selection.area(0,12,2,16));
     des.feature("fountain", [12,8]);
     des.feature("fountain", [51,15]);
-    des.region(selection.area(0,0,75,16),"unlit");
-    des.region(selection.area(38,6,46,10),"lit");
+    await des.region(selection.area(0,0,75,16),"unlit");
+    await des.region(selection.area(38,6,46,10),"lit");
     des.door("closed",37,8);
     des.door("closed",47,8);
     des.door("closed",73,5);
@@ -57,36 +57,36 @@ export async function generate() {
     des.wallify();
 
     // Objects
-    des.object("diamond");
-    des.object("*");
-    des.object("diamond");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("ruby");
-    des.object("*");
-    des.object("ruby");
-    des.object("amethyst");
-    des.object("*");
-    des.object("amethyst");
-    des.object({ id: "luckstone", coord: place[1], buc: "!-cursed", achievement: 1 });
-    des.object("flint",place[0]);
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("+");
-    des.object("+");
-    des.object("+");
-    des.object("+");
-    des.object();
-    des.object();
-    des.object();
+    await des.object("diamond");
+    await des.object("*");
+    await des.object("diamond");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("ruby");
+    await des.object("*");
+    await des.object("ruby");
+    await des.object("amethyst");
+    await des.object("*");
+    await des.object("amethyst");
+    await des.object({ id: "luckstone", coord: place[1], buc: "!-cursed", achievement: 1 });
+    await des.object("flint",place[0]);
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("+");
+    await des.object("+");
+    await des.object("+");
+    await des.object("+");
+    await des.object();
+    await des.object();
+    await des.object();
     await des.trap();
     await des.trap();
     await des.trap();
@@ -97,23 +97,23 @@ export async function generate() {
     // One-time annoyance factor
     await des.trap("level teleport",place[1]);
     await des.trap("level teleport",place[0]);
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("ettin mummy");
-    des.monster("V");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("V");
-    des.monster("e");
-    des.monster("e");
-    des.monster("e");
-    des.monster("e");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("ettin mummy");
+    await des.monster("V");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("V");
+    await des.monster("e");
+    await des.monster("e");
+    await des.monster("e");
+    await des.monster("e");
 
 
     return await des.finalize_level();

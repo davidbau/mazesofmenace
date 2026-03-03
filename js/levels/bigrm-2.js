@@ -16,7 +16,7 @@ export async function generate() {
     des.level_init({ style: "solidfill", fg: " " });
     des.level_flags("mazelevel", "noflip");
 
-    des.map(`\
+    await des.map(`\
 ---------------------------------------------------------------------------
 |.........................................................................|
 |.........................................................................|
@@ -37,7 +37,7 @@ export async function generate() {
 ---------------------------------------------------------------------------
 `);
     // Dungeon Description
-    des.region(selection.area(1,1,73,16),"lit");
+    await des.region(selection.area(1,1,73,16),"lit");
 
     let darkness;
 
@@ -55,7 +55,7 @@ export async function generate() {
     }
 
     if (darkness !== null) {
-       des.region(darkness,"unlit");
+       await des.region(darkness,"unlit");
        if (percent(25)) {
           des.replace_terrain({ selection: darkness.grow(),
                                 fromterrain: ".", toterrain: "I" });
@@ -69,7 +69,7 @@ export async function generate() {
     des.non_diggable();
     // Objects
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
     // Random traps
     for (let i = 1; i <= 6; i++) {
@@ -77,7 +77,7 @@ export async function generate() {
     }
     // Random monsters.
     for (let i = 1; i <= 28; i++) {
-       des.monster();
+       await des.monster();
     
     }
     return await des.finalize_level();

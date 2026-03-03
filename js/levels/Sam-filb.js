@@ -16,7 +16,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
 -------------                                  -------------
 |...........|                                  |...........|
 |...-----...|----------------------------------|...-----...|
@@ -34,7 +34,7 @@ export async function generate() {
 |...........|                                  |...........|
 -------------                                  -------------
 `);
-    des.region(selection.area(0,0,59,15), "unlit");
+    await des.region(selection.area(0,0,59,15), "unlit");
     // Doors
     des.door("closed",16,7);
     des.door("closed",16,8);
@@ -44,24 +44,24 @@ export async function generate() {
     des.stair("up");
     des.stair("down");
     // 
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // 
-    des.monster("d");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
+    await des.monster("d");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
     // 
     await des.trap();
     await des.trap();

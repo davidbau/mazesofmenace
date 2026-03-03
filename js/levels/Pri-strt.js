@@ -22,7 +22,7 @@ export async function generate() {
 
     des.level_flags("mazelevel", "noteleport", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ............................................................................
 ............................................................................
 ............................................................................
@@ -45,8 +45,8 @@ export async function generate() {
 ............................................................................
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
-    des.region({ region: [24,6, 33,13], lit: 1, type: "temple", filled: 2 });
+    await des.region(selection.area(0,0,75,19), "lit");
+    await des.region({ region: [24,6, 33,13], lit: 1, type: "temple", filled: 2 });
 
     des.replace_terrain({ region: [0,0, 10,19], fromterrain: ".", toterrain: "T", chance: 10 });
     des.replace_terrain({ region: [65,0, 75,19], fromterrain: ".", toterrain: "T", chance: 10 });
@@ -80,21 +80,21 @@ export async function generate() {
     // Unattended Altar - unaligned due to conflict - player must align it.
     des.altar({ x: 28, y: 9, align: "noalign", type: "altar" });
     // High Priest
-    des.monster({ id: "Arch Priest", coord: [28, 10], inventory: function() {
-       des.object({ id: "robe", spe: 4 });
-       des.object({ id: "mace", spe: 4 });
+    await des.monster({ id: "Arch Priest", coord: [28, 10], inventory: async function() {
+       await des.object({ id: "robe", spe: 4 });
+       await des.object({ id: "mace", spe: 4 });
     } })
     // The treasure of High Priest
-    des.object("chest", 27, 10);
+    await des.object("chest", 27, 10);
     // knight guards for the audience chamber
-    des.monster("acolyte", 32, 7);
-    des.monster("acolyte", 32, 8);
-    des.monster("acolyte", 32, 11);
-    des.monster("acolyte", 32, 12);
-    des.monster("acolyte", 33, 7);
-    des.monster("acolyte", 33, 8);
-    des.monster("acolyte", 33, 11);
-    des.monster("acolyte", 33, 12);
+    await des.monster("acolyte", 32, 7);
+    await des.monster("acolyte", 32, 8);
+    await des.monster("acolyte", 32, 11);
+    await des.monster("acolyte", 32, 12);
+    await des.monster("acolyte", 33, 7);
+    await des.monster("acolyte", 33, 8);
+    await des.monster("acolyte", 33, 11);
+    await des.monster("acolyte", 33, 12);
     // Non diggable walls
     des.non_diggable(selection.area(18,3,55,16));
     // Random traps
@@ -107,7 +107,7 @@ export async function generate() {
     await des.trap();
     // Monsters on siege duty.
     for (let i = 1; i <= 12; i++) {
-       des.monster("human zombie", spacelocs.rndcoord(1));
+       await des.monster("human zombie", spacelocs.rndcoord(1));
     
     }
     return await des.finalize_level();

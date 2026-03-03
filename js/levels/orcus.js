@@ -23,7 +23,7 @@ export async function generate() {
     let bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
     // A ghost town
-    let orcus1 = des.map({ halign: "right", valign: "center", map: `\
+    let orcus1 = await des.map({ halign: "right", valign: "center", map: `\
 .|....|....|....|..............|....|........
 .|....|....|....|..............|....|........
 .|....|....|....|--...-+-------|.............
@@ -44,33 +44,33 @@ export async function generate() {
 `, contents: async function(rm) {
        des.mazewalk(0,6,"west");
        // Entire main area
-       des.region(selection.area(1,0,44,16),"unlit");
+       await des.region(selection.area(1,0,44,16),"unlit");
        des.stair("down", 33,15);
        // Wall "ruins"
-       des.object("boulder",19,2);
-       des.object("boulder",20,2);
-       des.object("boulder",21,2);
-       des.object("boulder",36,2);
-       des.object("boulder",36,3);
-       des.object("boulder",6,4);
-       des.object("boulder",5,5);
-       des.object("boulder",6,5);
-       des.object("boulder",7,5);
-       des.object("boulder",39,5);
-       des.object("boulder",8,8);
-       des.object("boulder",9,8);
-       des.object("boulder",10,8);
-       des.object("boulder",11,8);
-       des.object("boulder",6,10);
-       des.object("boulder",5,11);
-       des.object("boulder",6,11);
-       des.object("boulder",7,11);
-       des.object("boulder",21,11);
-       des.object("boulder",21,12);
-       des.object("boulder",13,13);
-       des.object("boulder",14,13);
-       des.object("boulder",15,13);
-       des.object("boulder",14,14);
+       await des.object("boulder",19,2);
+       await des.object("boulder",20,2);
+       await des.object("boulder",21,2);
+       await des.object("boulder",36,2);
+       await des.object("boulder",36,3);
+       await des.object("boulder",6,4);
+       await des.object("boulder",5,5);
+       await des.object("boulder",6,5);
+       await des.object("boulder",7,5);
+       await des.object("boulder",39,5);
+       await des.object("boulder",8,8);
+       await des.object("boulder",9,8);
+       await des.object("boulder",10,8);
+       await des.object("boulder",11,8);
+       await des.object("boulder",6,10);
+       await des.object("boulder",5,11);
+       await des.object("boulder",6,11);
+       await des.object("boulder",7,11);
+       await des.object("boulder",21,11);
+       await des.object("boulder",21,12);
+       await des.object("boulder",13,13);
+       await des.object("boulder",14,13);
+       await des.object("boulder",15,13);
+       await des.object("boulder",14,14);
        // Doors
        des.door("closed",23,2);
        des.door("open",31,3);
@@ -90,9 +90,9 @@ export async function generate() {
        des.door("closed",6,15);
        // Special rooms
        des.altar({ x: 24,y: 7,align: "noalign",type: "sanctum" });
-       des.region({ region: [22,12,25,16],lit: 0,type: "morgue",filled: 1 });
-       des.region({ region: [32,9,37,12],lit: 1,type: "shop",filled: 1 });
-       des.region({ region: [12,0,15,4],lit: 1,type: "shop",filled: 1 });
+       await des.region({ region: [22,12,25,16],lit: 0,type: "morgue",filled: 1 });
+       await des.region({ region: [32,9,37,12],lit: 1,type: "shop",filled: 1 });
+       await des.region({ region: [12,0,15,4],lit: 1,type: "shop",filled: 1 });
        // Some traps.
        await des.trap("spiked pit");
        await des.trap("sleep gas");
@@ -103,63 +103,63 @@ export async function generate() {
        await des.trap("magic");
        await des.trap("magic");
        // Some random objects
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
-       des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
+       await des.object();
        // An object that's worth most of a wish
        // (this is part of the compensation for the reduced wishes at the Castle)
        if ((rn2((1) - (0) + 1) + (0)) == 1) {
-          des.object("magic marker");
+          await des.object("magic marker");
        } else {
-          des.object("magic lamp");
+          await des.object("magic lamp");
        }
        // The resident nasty
-       des.monster("Orcus",33,15);
+       await des.monster("Orcus",33,15);
        // And its preferred companions
-       des.monster("human zombie",32,15);
-       des.monster("shade",32,14);
-       des.monster("shade",32,16);
-       des.monster("vampire",35,16);
-       des.monster("vampire",35,14);
-       des.monster("vampire lord",36,14);
-       des.monster("vampire lord",36,15);
+       await des.monster("human zombie",32,15);
+       await des.monster("shade",32,14);
+       await des.monster("shade",32,16);
+       await des.monster("vampire",35,16);
+       await des.monster("vampire",35,14);
+       await des.monster("vampire lord",36,14);
+       await des.monster("vampire lord",36,15);
        // Randomly placed companions
-       des.monster("skeleton");
-       des.monster("skeleton");
-       des.monster("skeleton");
-       des.monster("skeleton");
-       des.monster("skeleton");
-       des.monster("shade");
-       des.monster("shade");
-       des.monster("shade");
-       des.monster("shade");
-       des.monster("giant zombie");
-       des.monster("giant zombie");
-       des.monster("giant zombie");
-       des.monster("ettin zombie");
-       des.monster("ettin zombie");
-       des.monster("ettin zombie");
-       des.monster("human zombie");
-       des.monster("human zombie");
-       des.monster("human zombie");
-       des.monster("vampire");
-       des.monster("vampire");
-       des.monster("vampire");
-       des.monster("vampire lord");
-       des.monster("vampire lord");
+       await des.monster("skeleton");
+       await des.monster("skeleton");
+       await des.monster("skeleton");
+       await des.monster("skeleton");
+       await des.monster("skeleton");
+       await des.monster("shade");
+       await des.monster("shade");
+       await des.monster("shade");
+       await des.monster("shade");
+       await des.monster("giant zombie");
+       await des.monster("giant zombie");
+       await des.monster("giant zombie");
+       await des.monster("ettin zombie");
+       await des.monster("ettin zombie");
+       await des.monster("ettin zombie");
+       await des.monster("human zombie");
+       await des.monster("human zombie");
+       await des.monster("human zombie");
+       await des.monster("vampire");
+       await des.monster("vampire");
+       await des.monster("vampire");
+       await des.monster("vampire lord");
+       await des.monster("vampire lord");
        // A few more for the party
-       des.monster();
-       des.monster();
-       des.monster();
-       des.monster();
-       des.monster();
+       await des.monster();
+       await des.monster();
+       await des.monster();
+       await des.monster();
+       await des.monster();
     } });
 
     des.levregion({ region: [1,0,12,20], region_islev: 1, exclude: [20,1,70,20], exclude_islev: 1, type: "stair-up" });

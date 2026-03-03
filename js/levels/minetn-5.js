@@ -28,7 +28,7 @@ export async function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
 -----         ---------                                                    
 |...---  ------.......--    -------                       ---------------  
 |.....----.........--..|    |.....|          -------      |.............|  
@@ -86,53 +86,53 @@ export async function generate() {
     des.feature("fountain", 10,15);
     des.feature("fountain", 66,18);
 
-    des.region(selection.area(0,0,74,20),"unlit");
-    des.region(selection.area(9,13,11,17),"lit");
-    des.region(selection.area(8,14,12,16),"lit");
-    des.region(selection.area(49,7,51,11),"lit");
-    des.region(selection.area(48,8,52,10),"lit");
-    des.region(selection.area(64,17,68,19),"lit");
-    des.region(selection.area(37,13,39,17),"lit");
-    des.region(selection.area(36,14,40,17),"lit");
-    des.region(selection.area(59,2,72,10),"lit");
+    await des.region(selection.area(0,0,74,20),"unlit");
+    await des.region(selection.area(9,13,11,17),"lit");
+    await des.region(selection.area(8,14,12,16),"lit");
+    await des.region(selection.area(49,7,51,11),"lit");
+    await des.region(selection.area(48,8,52,10),"lit");
+    await des.region(selection.area(64,17,68,19),"lit");
+    await des.region(selection.area(37,13,39,17),"lit");
+    await des.region(selection.area(36,14,40,17),"lit");
+    await des.region(selection.area(59,2,72,10),"lit");
 
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watchman", peaceful: 1 });
-    des.monster({ id: "watch captain", peaceful: 1 });
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome");
-    des.monster("gnome lord");
-    des.monster("gnome lord");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("dwarf");
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watchman", peaceful: 1 });
+    await des.monster({ id: "watch captain", peaceful: 1 });
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome");
+    await des.monster("gnome lord");
+    await des.monster("gnome lord");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
 
     // The shops
-    des.region({ region: [25,17, 28,19], lit: 1, type: "candle shop", filled: 1 });
+    await des.region({ region: [25,17, 28,19], lit: 1, type: "candle shop", filled: 1 });
     des.door("closed",24,18);
-    des.region({ region: [59, 9, 67,10], lit: 1, type: "shop", filled: 1 });
+    await des.region({ region: [59, 9, 67,10], lit: 1, type: "shop", filled: 1 });
     des.door("closed",66,8);
-    des.region({ region: [57,13, 60,15], lit: 1, type: "tool shop", filled: 1 });
+    await des.region({ region: [57,13, 60,15], lit: 1, type: "tool shop", filled: 1 });
     des.door("closed",56,14);
-    des.region({ region: [5,9, 8,10], lit: 1, type: monkfoodshop(), filled: 1 });
+    await des.region({ region: [5,9, 8,10], lit: 1, type: monkfoodshop(), filled: 1 });
     des.door("closed",7,11);
     // Gnome homes
     des.door("closed",4,14);
     des.door("locked",1,17);
-    des.monster("gnomish wizard", 2, 19);
+    await des.monster("gnomish wizard", 2, 19);
     des.door("locked",20,16);
-    des.monster("G", 20, 18);
+    await des.monster("G", 20, 18);
     des.door("random",21,14);
     des.door("random",25,14);
     des.door("random",42,8);
     des.door("locked",40,5);
-    des.monster("G", 38, 7);
+    await des.monster("G", 38, 7);
     des.door("random",59,3);
     des.door("random",58,6);
     des.door("random",63,3);
@@ -141,17 +141,17 @@ export async function generate() {
     des.door("locked",71,6);
     des.door("closed",69,4);
     des.door("closed",67,16);
-    des.monster("gnomish wizard", 67, 14);
-    des.object("=", 70, 14);
+    await des.monster("gnomish wizard", 67, 14);
+    await des.object("=", 70, 14);
     des.door("locked",69,18);
-    des.monster("gnome lord", 71, 19);
+    await des.monster("gnome lord", 71, 19);
     des.door("locked",73,18);
-    des.object("chest", 73, 19);
+    await des.object("chest", 73, 19);
     des.door("locked",50,6);
-    des.object("(", 50, 3);
-    des.object({ id: "statue", x: 38, y: 15, montype: "gnome king", historic: 1 });
+    await des.object("(", 50, 3);
+    await des.object({ id: "statue", x: 38, y: 15, montype: "gnome king", historic: 1 });
     // Temple
-    des.region({ region: [29,2, 33,4], lit: 1, type: "temple", filled: 1 });
+    await des.region({ region: [29,2, 33,4], lit: 1, type: "temple", filled: 1 });
     des.door("closed",31,5);
     des.altar({ x: 31,y: 3, align: align[0], type: "shrine" });
 

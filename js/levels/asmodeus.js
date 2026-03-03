@@ -22,7 +22,7 @@ export async function generate() {
     let bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
     // First part
-    let asmo1 = des.map({ halign: "half-left", valign: "center", map: `\
+    let asmo1 = await des.map({ halign: "half-left", valign: "center", map: `\
 ---------------------
 |.............|.....|
 |.............S.....|
@@ -45,20 +45,20 @@ export async function generate() {
        // Non diggable walls
        des.non_diggable(selection.area(0,0,20,11));
        // Entire main area
-       des.region(selection.area(1,1,20,10),"unlit");
+       await des.region(selection.area(1,1,20,10),"unlit");
        // The fellow in residence
-       des.monster("Asmodeus",12,7);
+       await des.monster("Asmodeus",12,7);
        // Some random weapons && armor.
-       des.object("[");
-       des.object("[");
-       des.object(")");
-       des.object(")");
-       des.object("*");
-       des.object("!");
-       des.object("!");
-       des.object("?");
-       des.object("?");
-       des.object("?");
+       await des.object("[");
+       await des.object("[");
+       await des.object(")");
+       await des.object(")");
+       await des.object("*");
+       await des.object("!");
+       await des.object("!");
+       await des.object("?");
+       await des.object("?");
+       await des.object("?");
        // Some traps.
        await des.trap("spiked pit", 5,2);
        await des.trap("fire", 8,6);
@@ -68,13 +68,13 @@ export async function generate() {
        await des.trap("magic");
        await des.trap("magic");
        // Random monsters.
-       des.monster("ghost",11,7);
-       des.monster("horned devil",10,5);
-       des.monster("L");
+       await des.monster("ghost",11,7);
+       await des.monster("horned devil",10,5);
+       await des.monster("L");
        // Some Vampires for good measure
-       des.monster("V");
-       des.monster("V");
-       des.monster("V");
+       await des.monster("V");
+       await des.monster("V");
+       await des.monster("V");
     } });
 
     des.levregion({ region: [1,0,6,20], region_islev: 1, exclude: [6,1,70,16], exclude_islev: 1, type: "stair-up" });
@@ -83,7 +83,7 @@ export async function generate() {
     des.teleport_region({ region: [1,0,6,20], region_islev: 1, exclude: [6,1,70,16], exclude_islev: 1 });
 
     // Second part
-    let asmo2 = des.map({ halign: "half-right", valign: "center", map: `\
+    let asmo2 = await des.map({ halign: "half-right", valign: "center", map: `\
 ---------------------------------
 ................................|
 ................................+
@@ -94,9 +94,9 @@ export async function generate() {
        // Non diggable walls
        des.non_diggable(selection.area(0,0,32,4));
        des.door("closed",32,2);
-       des.monster("&");
-       des.monster("&");
-       des.monster("&");
+       await des.monster("&");
+       await des.monster("&");
+       await des.monster("&");
        await des.trap("anti magic");
        await des.trap("fire");
        await des.trap("magic");

@@ -31,27 +31,27 @@ export async function generate() {
     des.stair("down");
     // 
     for (let i = 1, __end_i = (rn2((5) - (2) + 1) + (2)); i <= __end_i; i++) {
-       des.object("*");
+       await des.object("*");
     }
-    des.object("(");
+    await des.object("(");
     for (let i = 1, __end_i = (rn2((4) - (2) + 1) + (2)); i <= __end_i; i++) {
-       des.object();
+       await des.object();
     }
     if (percent(75)) {
        for (let i = 1, __end_i = (rn2((2) - (1) + 1) + (1)); i <= __end_i; i++) {
-          des.object("boulder");
+          await des.object("boulder");
        }
     }
     // 
     for (let i = 1, __end_i = (rn2((8) - (6) + 1) + (6)); i <= __end_i; i++) {
-       des.monster("gnome");
+       await des.monster("gnome");
     }
-    des.monster("gnome lord");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("G");
-    des.monster("G");
-    des.monster(percent(50) && "h" || "G");
+    await des.monster("gnome lord");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("G");
+    await des.monster("G");
+    await des.monster(percent(50) && "h" || "G");
     // 
     await des.trap();
     await des.trap();
