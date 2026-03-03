@@ -286,6 +286,26 @@ export function newsym(map, x, y) {
     display.setCell(col, row, sym.ch, sym.color);
 }
 
+// C ref: display.c:1480 see_monsters() — loop through all monsters
+// and call newsym() at each monster's position.  Called in the
+// "once-per-player-input" section of moveloop_core to update the
+// display after monsters have moved.
+export function see_monsters(map) {
+    if (!map || !map.monsters) return;
+    const ctx = _displayContext;
+    if (!ctx || !ctx.display) return;  // no display wired
+
+    for (const mon of map.monsters) {
+        if (!mon || mon.mhp <= 0) continue;  // DEADMONSTER
+        newsym(map, mon.mx, mon.my);
+    }
+    // When not riding, also update hero's cell
+    const player = ctx.player;
+    if (player && !player.usteed) {
+        newsym(map, player.x, player.y);
+    }
+}
+
 // C ref: display.h canseemon(mon) — hero can see the monster
 // Checks cansee(location) AND mon_visible (not invisible, not hiding).
 // Note: C's canspotmon adds sensemon (telepathy/detection) — not yet ported.

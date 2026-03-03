@@ -38,7 +38,7 @@ import { maybe_finished_meal } from './eat.js';
 import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV } from './vision.js';
-import { monsterNearby, setDisplayContext } from './monutil.js';
+import { monsterNearby, setDisplayContext, see_monsters } from './monutil.js';
 import { nomul, unmul, near_capacity } from './hack.js';
 import { Player, roles, races } from './player.js';
 import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
@@ -460,6 +460,17 @@ export async function run_command(game, ch, opts = {}) {
         return { tookTime: false };
     }
 
+    // C ref: tty_display_nhwindow(WIN_MESSAGE, FALSE) — at the start of
+    // each command cycle, C clears the previous turn's topline message.
+    // The old message text is "remembered" (pushed to history) and the
+    // message area is marked empty, so the next screen capture shows a
+    // clean topline unless a new pline() fires during this command.
+    if (game.display && game.display.topMessage && !game.display._pendingMore) {
+        game.display.clearRow(0);
+        game.display.topMessage = null;
+        game.display.messageNeedsMore = false;
+    }
+
     if (game?._tempNoConcatMessages
         && game.display
         && Object.hasOwn(game.display, 'noConcatenateMessages')) {
@@ -519,6 +530,9 @@ export async function run_command(game, ch, opts = {}) {
     // Process one timed turn of world updates after a command consumed time.
     const advanceTimedTurn = async () => {
         await moveloop_core(game, coreOpts);
+        // C ref: allmain.c:459-474 — "once-per-player-input" section.
+        // After monsters move, update display at every monster position.
+        see_monsters(game.map);
         if (onTimedTurn) {
             await onTimedTurn();
         }
@@ -580,6 +594,19 @@ export async function run_command(game, ch, opts = {}) {
 
             // Drain occupation from repeated command
             await _drainOccupation(game, coreOpts, onTimedTurn);
+        }
+    }
+
+    // C ref: bot() + curs_on_u() — update status line and cursor position
+    // after all command processing.  In C, bot() runs at the end of each
+    // moveloop turn, and curs_on_u() runs before waiting for the next key.
+    const _player = game.u || game.player;
+    if (game.display && _player) {
+        if (typeof game.display.renderStatus === 'function') {
+            game.display.renderStatus(_player);
+        }
+        if (typeof game.display.cursorOnPlayer === 'function') {
+            game.display.cursorOnPlayer(_player);
         }
     }
 

@@ -75,7 +75,7 @@ import { artifact_light } from './artifact.js';
 import { dist2, distmin, monnear,
          monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
          attackVerb, monAttackName,
-         canSpotMonsterForMap, map_invisible,
+         canSpotMonsterForMap, map_invisible, newsym,
          addToMonsterInventory, canMergeMonsterInventoryObj,
          mondead, mpickobj, mdrop_obj, unstuck,
          helpless,
@@ -902,8 +902,12 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 if (!loc || !ACCESSIBLE(loc.typ)) continue;
                 if (map.monsterAt(nx, ny)) continue;
                 if (nx === player.x && ny === player.y) continue;
+                // C ref: remove_monster/place_monster → newsym at old+new positions
+                const _omx = mon.mx, _omy = mon.my;
                 mon.mx = nx;
                 mon.my = ny;
+                newsym(map, _omx, _omy);
+                newsym(map, nx, ny);
                 return;
             }
             return;
@@ -1202,8 +1206,11 @@ export function move_special(mon, map, player, inHisShop, appr, uondoor, avoid, 
 
     if (nix !== omx || niy !== omy) {
         if (map.monsterAt(nix, niy) || (nix === player.x && niy === player.y)) return 0;
+        // C ref: remove_monster/place_monster → newsym at old+new positions
         mon.mx = nix;
         mon.my = niy;
+        newsym(map, omx, omy);
+        newsym(map, nix, niy);
         return 1;
     }
     return 0;
@@ -1469,8 +1476,12 @@ async function m_move(mon, map, player, display = null, fov = null) {
             if (!loc || !ACCESSIBLE(loc.typ)) continue;
             if (map.monsterAt(nx, ny)) continue;
             if (nx === player.x && ny === player.y) continue;
+            // C ref: remove_monster/place_monster → newsym at old+new positions
+            const _omx = mon.mx, _omy = mon.my;
             mon.mx = nx;
             mon.my = ny;
+            newsym(map, _omx, _omy);
+            newsym(map, nx, ny);
             return true;
         }
         return false;
@@ -1568,8 +1579,11 @@ async function m_move(mon, map, player, display = null, fov = null) {
 
         // C ref: monmove.c:2065 — mon_track_add(mtmp, omx, omy)
         mon_track_add(mon, omx, omy);
+        // C ref: remove_monster/place_monster → newsym at old+new positions
         mon.mx = nix;
         mon.my = niy;
+        newsym(map, omx, omy);
+        newsym(map, nix, niy);
 
         // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
         if (!mon.dead) await maybe_spin_web(mon, map);
@@ -2067,6 +2081,6 @@ export function can_fog(mtmp, game) {
 export async function dissolve_bars(x, y, map) {
   map.locations[x][y].typ = (map.locations[x][y].edge === 1) ? DOOR : (Is_special(map.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
   map.locations[x][y].flags = 0;
-  newsym(x, y);
+  newsym(map, x, y);
   if (u_at(x, y)) await switch_terrain();
 }

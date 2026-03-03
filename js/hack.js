@@ -387,6 +387,8 @@ export async function domove_bump_mon(mon, _glyph, _nopick, game, display) {
 export async function domove_swap_with_pet(mon, nx, ny, dir, player, map, display, game) {
     const oldPlayerX = player.x;
     const oldPlayerY = player.y;
+    // C ref: remove_monster/place_monster → newsym at old+new positions
+    const petOldX = mon.mx, petOldY = mon.my;
     mon.mx = oldPlayerX;
     mon.my = oldPlayerY;
     player.x = nx;
@@ -396,6 +398,14 @@ export async function domove_swap_with_pet(mon, nx, ny, dir, player, map, displa
     await maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y, player);
     player.displacedPetThisTurn = true;
     await maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
+
+    // C ref: vision_recalc(0) after domove — recompute FOV at new player position
+    if (game.fov) {
+        game.fov.compute(map, player.x, player.y);
+        setDisplayContext({ display, player, fov: game.fov, flags: game.flags });
+        display.renderMap(map, player, game.fov, game.flags);
+        display.renderStatus(player);
+    }
     await display.putstr_message(`You swap places with ${y_monnam(mon)}.`);
     const landedObjs = map.objectsAt(nx, ny);
     if (landedObjs.length > 1) {

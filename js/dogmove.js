@@ -51,6 +51,7 @@ import { dist2, distmin, monnear, mfndpos, mon_allowflags,
          MTSZ, SQSRCHRADIUS, FARAWAY,
          mon_track_add,
          ALLOW_M, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U } from './monmove.js';
+import { newsym } from './monutil.js';
 
 // ========================================================================
 // Constants — C ref: dogmove.c:11-13
@@ -1456,8 +1457,11 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         // Update track history (shift old positions, add current)
         // C ref: dogmove.c:1319 — mon_track_add(mtmp, omx, omy)
         mon_track_add(mon, omx, omy);
+        // C ref: remove_monster/place_monster → newsym at old+new positions
         mon.mx = nix;
         mon.my = niy;
+        newsym(map, omx, omy);
+        newsym(map, nix, niy);
 
         // C ref: dogmove.c:1324-1327 — eat after moving
         if (do_eat && eatObj) {
@@ -1481,8 +1485,12 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         if (isok(ccx, ccy) && !map.monsterAt(ccx, ccy)) {
             const loc = map.at(ccx, ccy);
             if (loc && loc.typ >= POOL) {
+                // C ref: remove_monster/place_monster → newsym at old+new positions
+                const _omx = mon.mx, _omy = mon.my;
                 mon.mx = ccx;
                 mon.my = ccy;
+                newsym(map, _omx, _omy);
+                newsym(map, ccx, ccy);
             }
         }
     }
