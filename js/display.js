@@ -163,9 +163,14 @@ export class Display {
         this.cursorRow = 0;
         this.cursorVisible = 1;
         this._cursorSpan = null; // currently highlighted <span>
+        this._nhgetch = null;
+        this._pendingMore = false;
+        this._messageQueue = [];
 
         this._createDOM();
     }
+
+    setNhgetch(fn) { this._nhgetch = fn; }
 
     _createDOM() {
         // Create the pre element
@@ -290,6 +295,12 @@ span.nh-cursor {
             }
         }
 
+        // If --More-- is pending, queue the message for later display.
+        if (this._pendingMore) {
+            this._messageQueue.push(msg);
+            return;
+        }
+
         // If msg_window is enabled, render the message window
         // C ref: win/tty/topl.c — message window modes
         if (this.flags.msg_window) {
@@ -297,12 +308,9 @@ span.nh-cursor {
             return;
         }
 
-        // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit
-        // ONLY if no keypress happened between messages (toplin == TOPLINE_NEED_MORE)
-        // If there's a current message and both messages fit on one line, combine them
+        // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when deciding whether to concatenate.
         const notDied = !msg.startsWith('You die');
-        // Only concatenate if messageNeedsMore is true (no keypress since last message)
         if (this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
             // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
@@ -310,16 +318,19 @@ span.nh-cursor {
                 this.clearRow(MESSAGE_ROW);
                 this.putstr(0, MESSAGE_ROW, combined, CLR_WHITE);
                 this.topMessage = combined;
-                // Keep messageNeedsMore true for potential further concatenation
                 this.setCursor(Math.min(combined.length, this.cols - 1), 0);
                 return;
             }
+            // Overflow: show --More-- and queue the new message for later.
+            this.renderMoreMarker();
+            this._pendingMore = true;
+            this._messageQueue.push(msg);
+            return;
         }
 
-        // Otherwise, use traditional single-line message display
+        // Display message on single line
         this.clearRow(MESSAGE_ROW);
 
-        // If message fits on one line, display it normally
         if (msg.length <= this.cols) {
             this.putstr(0, MESSAGE_ROW, msg, CLR_WHITE);
             this.topMessage = msg;
@@ -345,6 +356,18 @@ span.nh-cursor {
         // C ref: toplin = TOPLINE_NEED_MORE after displaying message
         this.messageNeedsMore = true;
         this.setCursor(Math.min(msg.length, this.cols - 1), 0);
+    }
+
+    // Dismiss the --More-- prompt and display queued messages.
+    _clearMore() {
+        this._pendingMore = false;
+        this.clearRow(MESSAGE_ROW);
+        this.messageNeedsMore = false;
+        this.topMessage = null;
+        while (this._messageQueue.length > 0 && !this._pendingMore) {
+            const queued = this._messageQueue.shift();
+            this.putstr_message(queued);
+        }
     }
 
     // Render message window (last 3 messages)

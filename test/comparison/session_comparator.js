@@ -117,8 +117,9 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             cursorTotal++;
             const [ec, er, ev] = expectedCursor;
             const [ac, ar, av] = actualCursor || [null, null, null];
-            // Position must match; visibility compared only when both sides have it
-            const posMatch = (ac === ec && ar === er);
+            // When cursor is invisible on either side, position is meaningless — skip check
+            const eitherInvisible = (ev === 0 || av === 0);
+            const posMatch = eitherInvisible || (ac === ec && ar === er);
             const visMatch = (ev == null || av == null || av === ev);
             if (posMatch && visMatch) {
                 cursorMatched++;

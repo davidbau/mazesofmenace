@@ -450,6 +450,16 @@ export async function run_command(game, ch, opts = {}) {
 
     const chCode = typeof ch === 'number' ? ch
         : (typeof ch === 'string' && ch.length > 0) ? ch.charCodeAt(0) : 0;
+
+    // C ref: readchar() / flush_screen — if --More-- is pending on the
+    // topline, this key dismisses it rather than being processed as a
+    // command.  This handles --More-- for turns where nhgetch is not
+    // called (normal combat/movement turns without prompts).
+    if (game.display && game.display._pendingMore) {
+        game.display._clearMore();
+        return { tookTime: false };
+    }
+
     if (game?._tempNoConcatMessages
         && game.display
         && Object.hasOwn(game.display, 'noConcatenateMessages')) {
@@ -1060,6 +1070,11 @@ export class NetHackGame {
 
         // Wire up nhwindow infrastructure
         init_nhwindows(this.display, nhgetch, () => this._rerenderGame());
+        // Give the display access to nhgetch so putstr_message can block
+        // on --More-- when message overflow occurs (C ref: topl.c more()).
+        if (this.display && typeof this.display.setNhgetch === 'function') {
+            this.display.setNhgetch(nhgetch);
+        }
 
         // Dynamically import chargen functions from nethack.js to avoid circular deps
         const nethackChargen = await import('./chargen.js');

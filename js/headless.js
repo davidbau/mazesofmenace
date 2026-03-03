@@ -450,7 +450,12 @@ export class HeadlessDisplay {
         this.cursorCol = 0;
         this.cursorRow = 0;
         this.cursorVisible = 1;
+        this._nhgetch = null;
+        this._pendingMore = false;
+        this._messageQueue = [];
     }
+
+    setNhgetch(fn) { this._nhgetch = fn; }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
@@ -511,14 +516,16 @@ export class HeadlessDisplay {
             }
         }
 
-        // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit
+        // If --More-- is pending, queue the message for later display.
+        if (this._pendingMore) {
+            this._messageQueue.push(msg);
+            return;
+        }
+
+        // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when checking if messages
         // can be concatenated.  When the combined message plus --More-- would
-        // exceed the line width, C shows --More-- and starts a new line instead.
-        // However, C's pline() calls flush_screen(1) before every message, which
-        // shows --More-- and clears the topline.  In selfplay captures, the
-        // harness auto-dismisses these, so messages are never concatenated.
-        // When noConcatenateMessages is set, we skip concatenation to match C.
+        // exceed the line width, C shows --More-- and blocks on input first.
         const notDied = !msg.startsWith('You die');
         if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
@@ -531,6 +538,13 @@ export class HeadlessDisplay {
                 this.setCursor(Math.min(combined.length, this.cols - 1), 0);
                 return;
             }
+            // Overflow: show --More-- and queue the new message for later.
+            // C ref: topl.c more() → xwaitforspace() blocks here; in JS
+            // we defer to the next nhgetch/run_command call.
+            this.renderMoreMarker();
+            this._pendingMore = true;
+            this._messageQueue.push(msg);
+            return;
         }
 
         this.clearRow(0);
@@ -538,6 +552,21 @@ export class HeadlessDisplay {
         this.topMessage = msg;
         this.messageNeedsMore = true;
         this.setCursor(Math.min(msg.length, this.cols - 1), 0);
+    }
+
+    // Dismiss the --More-- prompt and display queued messages.
+    // Called when a key is consumed for --More-- dismissal (from nhgetch
+    // or run_command).  Drains the queue one message at a time; if another
+    // overflow triggers a new --More--, draining stops.
+    _clearMore() {
+        this._pendingMore = false;
+        this.clearRow(0);
+        this.messageNeedsMore = false;
+        this.topMessage = null;
+        while (this._messageQueue.length > 0 && !this._pendingMore) {
+            const queued = this._messageQueue.shift();
+            this.putstr_message(queued);
+        }
     }
 
     // Render the "--More--" marker that C tty appends to the topline before

@@ -16,11 +16,16 @@ test('message display: messages persist until replaced', () => {
     assert.strictEqual(display.topMessage, longMsg1,
         'First message should be stored in topMessage');
 
-    // Display second message - should replace first (too long to concatenate together)
+    // Display second long message - triggers --More-- (too long to concatenate)
     const longMsg2 = 'You kill the grid bug with a mighty blow that echoes through the dungeon!';
     display.putstr_message(longMsg2);
+    assert.strictEqual(display._pendingMore, true,
+        'Overflow should trigger --More--');
+
+    // After clearing --More--, second message replaces first
+    display._clearMore();
     assert.strictEqual(display.topMessage, longMsg2,
-        'Long second message should replace first when both dont fit');
+        'Long second message should replace first after --More-- cleared');
 });
 
 test('message display: short messages concatenate', () => {
@@ -49,15 +54,16 @@ test('message display: regression test for clearRow bug', () => {
     display.putstr_message(longMsg);
     assert.strictEqual(display.topMessage, longMsg);
 
-    // Simulate game loop: DON'T clear message row
-    // (the fix ensures no clearRow before input)
-    // The message should persist until a new message is displayed
-
-    // Display another long message that replaces it
+    // Display another long message — triggers --More--
     const longMsg2 = 'You strike back at the grid bug with your enchanted weapon dealing massive damage!';
     display.putstr_message(longMsg2);
+    assert.strictEqual(display._pendingMore, true,
+        'Overflow should trigger --More--');
+
+    // After clearing --More--, new message replaces old
+    display._clearMore();
     assert.strictEqual(display.topMessage, longMsg2,
-        'New long message should replace old message');
+        'New long message should replace old message after --More-- cleared');
 });
 
 test('message display: death messages never concatenate', () => {
@@ -87,9 +93,14 @@ test('message display: topMessage tracks current message state', () => {
     display.putstr_message('Second msg');
     assert.strictEqual(display.topMessage, 'First message  Second msg');
 
-    // Long message replaces
+    // Long message triggers --More-- (combined would overflow)
     const longMsg = 'This is a very long message that will not concatenate because it exceeds';
     display.putstr_message(longMsg);
+    assert.strictEqual(display._pendingMore, true,
+        '--More-- should be pending after overflow');
+
+    // After clearing, long message is displayed
+    display._clearMore();
     assert.strictEqual(display.topMessage, longMsg);
 });
 

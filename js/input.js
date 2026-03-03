@@ -333,33 +333,21 @@ function popQueuedInputKey(inDoAgain = false) {
     return null;
 }
 
-// Get a character of input (async)
-// This is the JS equivalent of C's nhgetch().
-// C ref: winprocs.h win_nhgetch
-export function nhgetch() {
-    const display = getRuntimeDisplay();
-
-    // Clear message acknowledgement flag when user presses a key.
-    // C ref: win/tty/topl.c - toplin gets set to TOPLINE_EMPTY after keypress
-    if (display) {
-        display.messageNeedsMore = false;
-    }
-
-    // C ref: readchar() drains cmdq when replaying doagain/canned arguments.
+// Get a raw key from the input system (no --More-- handling).
+// Used internally by nhgetch to get a key without recursion.
+function _getRawKey() {
     const queuedKey = popQueuedInputKey(cmdqInputModeDoAgain);
     if (Number.isFinite(queuedKey)) {
         recordKey(queuedKey);
         return Promise.resolve(queuedKey);
     }
 
-    // Replay mode: pull from replay buffer
     if (isReplayMode()) {
         const key = getNextReplayKey();
         if (key !== null) {
             recordKey(key);
             return Promise.resolve(key);
         }
-        // Replay exhausted — fall through to interactive input
     }
 
     return Promise.resolve(activeInputRuntime.nhgetch()).then((ch) => {
@@ -369,6 +357,31 @@ export function nhgetch() {
         }
         return ch;
     });
+}
+
+// Get a character of input (async)
+// This is the JS equivalent of C's nhgetch().
+// C ref: winprocs.h win_nhgetch
+export function nhgetch() {
+    const display = getRuntimeDisplay();
+
+    // C ref: readchar() / flush_screen — if --More-- is pending on the
+    // topline, consume one key to dismiss it, drain queued messages, then
+    // recurse to get the actual key the caller wants.
+    if (display && display._pendingMore) {
+        return _getRawKey().then(() => {
+            display._clearMore();
+            return nhgetch();
+        });
+    }
+
+    // Clear message acknowledgement flag when user presses a key.
+    // C ref: win/tty/topl.c - toplin gets set to TOPLINE_EMPTY after keypress
+    if (display) {
+        display.messageNeedsMore = false;
+    }
+
+    return _getRawKey();
 }
 
 // Get a line of input (async)
