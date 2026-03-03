@@ -420,13 +420,15 @@ export class TmuxAdapter extends GameAdapter {
             // Remove lock files and level files
             if (existsSync(INSTALL_DIR)) {
                 const lowerName = String(playerName || '').toLowerCase();
+                const explicitRuntimeFiles = new Set(['record', 'xlogfile', 'logfile', 'paniclog']);
                 for (const f of readdirSync(INSTALL_DIR)) {
                     if (f.endsWith('.lua')) continue;
                     const lower = f.toLowerCase();
                     const matchesKnown = lower.includes('agent') || lower.includes('wizard');
                     const matchesPlayer = lowerName && lower.includes(lowerName);
                     const matchesBones = lower.startsWith('bon');
-                    if (matchesKnown || matchesPlayer || matchesBones) {
+                    const matchesRuntime = explicitRuntimeFiles.has(lower);
+                    if (matchesKnown || matchesPlayer || matchesBones || matchesRuntime) {
                         try { unlinkSync(join(INSTALL_DIR, f)); } catch {}
                     }
                 }
