@@ -122,7 +122,7 @@ def build_command(session_path, data, force_record_more_spaces=False):
             regen,
             options,
             data.get('steps'),
-            force_record_more_spaces=force_record_more_spaces,
+            force_record_more_spaces=False,  # disabled: sessions now carry needed pager-dismiss keys
         )
     elif mode == 'chargen':
         return _build_chargen(seed, output, regen)
@@ -138,7 +138,7 @@ def build_command(session_path, data, force_record_more_spaces=False):
             output,
             data,
             options,
-            force_record_more_spaces=force_record_more_spaces,
+            force_record_more_spaces=False,  # disabled: sessions now carry needed pager-dismiss keys
         )
         if cmd is not None:
             return cmd, description
@@ -228,11 +228,8 @@ def _build_gameplay(seed, output, regen, options, steps, force_record_more_space
 
     if regen.get('raw_moves') or regen.get('rawMoves'):
         cmd.append('--raw-moves')
-    record_more_spaces = regen.get('record_more_spaces')
-    if record_more_spaces is None:
-        record_more_spaces = regen.get('recordMoreSpaces')
-    if force_record_more_spaces or bool(record_more_spaces):
-        cmd.append('--record-more-spaces')
+    # Intentionally disabled: sessions now carry explicit pager-dismiss keys.
+    _ = force_record_more_spaces
     if options.get('wizard') is False:
         cmd.append('--no-wizard')
 
@@ -304,8 +301,8 @@ def _build_from_steps(seed, output, data, options, force_record_more_spaces=Fals
 
     move_str = ''.join(keys)
     cmd = ['python3', RUN_SESSION, str(seed), output, move_str, '--raw-moves']
-    if force_record_more_spaces:
-        cmd.append('--record-more-spaces')
+    # Intentionally disabled: sessions now carry explicit pager-dismiss keys.
+    _ = force_record_more_spaces
     cmd = _append_character_and_mode_flags(cmd, options)
     return cmd, f'gameplay raw-from-steps seed={seed} keys={len(keys)}'
 
@@ -519,7 +516,7 @@ def main():
     parser.add_argument(
         '--record-more-spaces',
         action='store_true',
-        help='Force --record-more-spaces for gameplay sessions',
+        help='Deprecated no-op (sessions now include required pager-dismiss keys)',
     )
     parser.add_argument('--parallel', nargs='?', const=4, type=int, default=None,
                         help='Run up to N sessions in parallel (default 4)')
