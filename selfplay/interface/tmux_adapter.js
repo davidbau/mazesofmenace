@@ -138,11 +138,12 @@ export class TmuxAdapter extends GameAdapter {
      */
     async start(options = {}) {
         const seed = options.seed || Math.floor(Math.random() * 100000);
-        const role = options.role || 'Valkyrie';
-        const race = options.race || 'human';
-        const name = options.name || 'Agent';
-        const gender = options.gender || 'female';
-        const align = options.align || 'neutral';
+        const interactive = options.interactive === true;
+        const role = interactive ? null : (options.role || 'Valkyrie');
+        const race = interactive ? null : (options.race || 'human');
+        const name = interactive ? null : (options.name || 'Agent');
+        const gender = interactive ? null : (options.gender || 'female');
+        const align = interactive ? null : (options.align || 'neutral');
         const tutorial = options.tutorial === true;
         const rngLogPath = options.rngLogPath || null;
         const wizard = options.wizard !== undefined ? options.wizard : true;
@@ -153,16 +154,20 @@ export class TmuxAdapter extends GameAdapter {
 
         const nethackrc = join(this._homeDir, '.nethackrc');
         const rcOptions = [
-            `OPTIONS=name:${name}`,
-            `OPTIONS=race:${race}`,
-            `OPTIONS=role:${role}`,
-            `OPTIONS=gender:${gender}`,
-            `OPTIONS=align:${align}`,
             'OPTIONS=showexp',
             'OPTIONS=!autopickup',
             'OPTIONS=suppress_alert:3.4.3',
         ];
-        rcOptions.push(tutorial ? 'OPTIONS=tutorial' : 'OPTIONS=!tutorial');
+        if (!interactive) {
+            rcOptions.unshift(
+                `OPTIONS=name:${name}`,
+                `OPTIONS=race:${race}`,
+                `OPTIONS=role:${role}`,
+                `OPTIONS=gender:${gender}`,
+                `OPTIONS=align:${align}`,
+            );
+            rcOptions.push(tutorial ? 'OPTIONS=tutorial' : 'OPTIONS=!tutorial');
+        }
 
         // Add symbol set if specified
         if (this.symset === 'DECgraphics') {
@@ -171,8 +176,12 @@ export class TmuxAdapter extends GameAdapter {
 
         writeFileSync(nethackrc, rcOptions.join('\n') + '\n');
 
-        // Clean up stale game state for this specific player name.
-        this._cleanGameState(name);
+        // Clean up stale game state.
+        if (interactive) {
+            this._cleanGameState(null); // clean all known state
+        } else {
+            this._cleanGameState(name);
+        }
 
         // Kill any existing tmux session with the same name
         try { execSync(`${this.tmuxBaseCmd} kill-session -t ${this.sessionName} 2>/dev/null`); } catch {}
@@ -196,14 +205,17 @@ export class TmuxAdapter extends GameAdapter {
 
         const envStr = Object.entries(env).map(([k, v]) => `${k}=${v}`).join(' ');
         const wizardFlag = wizard ? ' -D' : '';
-        execSync(`${this.tmuxBaseCmd} new-session -d -s ${this.sessionName} -x ${TERMINAL_COLS} -y ${TERMINAL_ROWS} "env ${envStr} ${NETHACK_BINARY} -u ${name}${wizardFlag}"`);
+        const nameFlag = interactive ? '' : ` -u ${name}`;
+        execSync(`${this.tmuxBaseCmd} new-session -d -s ${this.sessionName} -x ${TERMINAL_COLS} -y ${TERMINAL_ROWS} "env ${envStr} ${NETHACK_BINARY}${nameFlag}${wizardFlag}"`);
 
         // Wait for game to start
         await sleep(STARTUP_DELAY);
         this._running = true;
 
-        // Skip through character selection if needed
-        await this._skipChargen({ stopAtTutorialPrompt: tutorial });
+        // Skip through character selection if needed (not in interactive mode)
+        if (!interactive) {
+            await this._skipChargen({ stopAtTutorialPrompt: tutorial });
+        }
     }
 
     /**

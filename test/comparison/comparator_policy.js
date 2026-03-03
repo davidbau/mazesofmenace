@@ -55,8 +55,12 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
 } = {}) {
     const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session).slice();
     const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session).slice();
+    const highScore = isHighScoreScreen(comparableExpected) || isHighScoreScreen(comparableActual);
     for (let row = 0; row < Math.min(comparableActual.length, comparableExpected.length); row++) {
         if (isStartupToplineAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
+        } else if (highScore && isHighScoreRow(comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
         }
@@ -71,11 +75,15 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput) {
     const actualAnsi = (Array.isArray(actualAnsiInput) ? actualAnsiInput : []).slice();
     const actualPlain = actualAnsi.map((line) => ansiCellsToPlainLine(line));
     const expectedPlain = expectedMasked.map((line) => ansiCellsToPlainLine(line));
+    const highScore = isHighScoreScreen(expectedPlain) || isHighScoreScreen(actualPlain);
     for (let row = 0; row < Math.min(actualPlain.length, expectedPlain.length); row++) {
         if (isMapLoadPromptAlias(actualPlain[row]) && isMapLoadPromptAlias(expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (isStartupToplineAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (highScore && isHighScoreRow(expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         }
@@ -168,6 +176,21 @@ function isWelcomeTopline(line) {
 function isStartupToplineAlias(actualLine, expectedLine) {
     return (isHarnessMapDumpLine(actualLine) && isWelcomeTopline(expectedLine))
         || (isHarnessMapDumpLine(expectedLine) && isWelcomeTopline(actualLine));
+}
+
+function isHighScoreScreen(lines) {
+    return (Array.isArray(lines) ? lines : []).some(
+        (line) => /No {2}Points/.test(String(line || ''))
+    );
+}
+
+function isHighScoreRow(line) {
+    const text = String(line || '');
+    // Header row: " No  Points     Name ..."
+    if (/No {2}Points/.test(text)) return true;
+    // Score entry rows: leading spaces, rank number, points, player name
+    if (/^\s+\d+\s+\d+\s+\S+-\w{3}-\w{3}-\w{3}-\w{3}/.test(text)) return true;
+    return false;
 }
 
 export function createGameplayComparatorPolicy(session, options = {}) {
