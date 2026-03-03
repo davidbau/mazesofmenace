@@ -713,6 +713,14 @@ export async function replaySession(seed, session, opts = {}) {
 
     await game.init(initOpts);
 
+    // Enable true --More-- blocking now that chargen is complete.
+    // C ref: topl.c more() → xwaitforspace() blocks during gameplay.
+    // During chargen, keys are pre-pushed and must not be consumed by
+    // --More-- blocking, so this is only enabled after init.
+    if (game.display && typeof game.display._moreBlockingEnabled !== 'undefined') {
+        game.display._moreBlockingEnabled = true;
+    }
+
     const sessionSymset = session?.options?.symset || session?.meta?.options?.symset;
     const decgraphicsMode = session.screenMode === 'decgraphics' || sessionSymset === 'DECgraphics';
     game.display.flags.DECgraphics = !!decgraphicsMode;
@@ -906,6 +914,20 @@ export async function replaySession(seed, session, opts = {}) {
                         `key=${JSON.stringify(keyText[byteIndex] || '')}`,
                         'setPending=1'
                     );
+                    // C ref: when --More-- blocks mid-turn, the tty display
+                    // already reflects the player's new position (via newsym
+                    // calls during domove/movemon).  JS batches display updates
+                    // in renderCurrentScreen(), so we must flush the map grid
+                    // here before capturing the screen snapshot.
+                    // Only render when the pending is due to --More-- blocking
+                    // (display has topMessage and messageNeedsMore set), not
+                    // when the command blocks on a prompt.
+                    if (game.display?.topMessage && game.display?.messageNeedsMore) {
+                        const player = game.u || game.player;
+                        game.fov.compute(game.map || game.lev, player.x, player.y);
+                        game.display.renderMap(game.map || game.lev, player, game.fov, game.flags);
+                        game.display.renderStatus(player);
+                    }
                     if (opts.captureScreens) {
                         capturedScreenOverride = game.display.getScreenLines();
                         capturedScreenAnsiOverride = (typeof game.display?.getScreenAnsiLines === 'function')

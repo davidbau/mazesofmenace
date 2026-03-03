@@ -453,6 +453,7 @@ export class HeadlessDisplay {
         this._nhgetch = null;
         this._pendingMore = false;
         this._messageQueue = [];
+        this._moreBlockingEnabled = false;
     }
 
     setNhgetch(fn) { this._nhgetch = fn; }
@@ -507,7 +508,7 @@ export class HeadlessDisplay {
         }
     }
 
-    putstr_message(msg) {
+    async putstr_message(msg) {
         // Add to message history
         if (msg.trim()) {
             this.messages.push(msg);
@@ -516,7 +517,7 @@ export class HeadlessDisplay {
             }
         }
 
-        // If --More-- is pending, queue the message for later display.
+        // If --More-- is pending (non-blocking fallback), queue the message.
         if (this._pendingMore) {
             this._messageQueue.push(msg);
             return;
@@ -538,13 +539,20 @@ export class HeadlessDisplay {
                 this.setCursor(Math.min(combined.length, this.cols - 1), 0);
                 return;
             }
-            // Overflow: show --More-- and queue the new message for later.
-            // C ref: topl.c more() → xwaitforspace() blocks here; in JS
-            // we defer to the next nhgetch/run_command call.
+            // Overflow: show --More-- and block until a key is pressed.
+            // C ref: topl.c more() → xwaitforspace() blocks here.
             this.renderMoreMarker();
-            this._pendingMore = true;
-            this._messageQueue.push(msg);
-            return;
+            if (this._moreBlockingEnabled && this._nhgetch) {
+                // True blocking: await a keypress to dismiss --More--,
+                // matching C's xwaitforspace() behavior.
+                await this._nhgetch();
+                // Fall through to display the new message fresh.
+            } else {
+                // Non-blocking fallback: queue message for later display.
+                this._pendingMore = true;
+                this._messageQueue.push(msg);
+                return;
+            }
         }
 
         this.clearRow(0);
