@@ -4,7 +4,9 @@
 import { nhgetch, getlin } from './input.js';
 import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr as win_putstr, NHW_MENU } from './windows.js';
 import { COLNO, STATUS_ROW_1, STATUS_ROW_2, PM_ARCHEOLOGIST, A_STR, A_CON, A_WIS,
-         UNENCUMBERED, OVERLOADED } from './config.js';
+         UNENCUMBERED, OVERLOADED,
+         STAIRS, LADDER, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
+         IS_DOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
          RING_CLASS, AMULET_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -17,6 +19,7 @@ import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
          CLASS_SYMBOLS } from './objects.js';
 import { doname, xname, weight, splitobj, Is_container, erosion_matters, mergable } from './mkobj.js';
+import { an } from './objnam.js';
 import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 import { pline, You, Your } from './pline.js';
 import { rn2 } from './rng.js';
@@ -1690,18 +1693,48 @@ export function inv_cnt(incl_gold, player) {
 // ============================================================
 
 // C ref: invent.c dfeature_at() — describe dungeon feature at location
-export function dfeature_at(x, y, map) {
-    if (!map || !map.grid) return null;
-    const cell = map.grid[y]?.[x];
+// opts.depth: player's dungeon level (for "out of the dungeon" on level 1)
+export function dfeature_at(x, y, map, opts = {}) {
+    if (!map) return null;
+    const cell = (typeof map.at === 'function') ? map.at(x, y) : null;
     if (!cell) return null;
-    // Simplified: return feature description from cell type
-    const typ = cell.typ || cell.type;
-    if (typ === 'fountain') return 'fountain';
-    if (typ === 'throne') return 'opulent throne';
-    if (typ === 'sink') return 'sink';
-    if (typ === 'altar') return 'altar';
-    if (typ === 'grave') return 'grave';
-    if (typ === 'tree') return 'tree';
+    const typ = cell.typ;
+    if (typ === STAIRS) {
+        if (map.upstair && map.upstair.x === x && map.upstair.y === y) {
+            // C ref: pickup.c describe_decor() — on dungeon level 1, the
+            // upstair is the exit from the dungeon.
+            if (opts.depth === 1) return 'staircase up out of the dungeon';
+            return 'staircase up';
+        }
+        if (map.dnstair && map.dnstair.x === x && map.dnstair.y === y) {
+            return 'staircase down';
+        }
+        return null;
+    }
+    if (typ === LADDER) {
+        if (map.upladder && map.upladder.x === x && map.upladder.y === y) {
+            return 'ladder up';
+        }
+        if (map.dnladder && map.dnladder.x === x && map.dnladder.y === y) {
+            return 'ladder down';
+        }
+        return null;
+    }
+    if (IS_DOOR(typ)) {
+        // C ref: invent.c dfeature_at() door handling
+        if (cell.flags === D_NODOOR) return 'doorway';
+        if (cell.flags === D_ISOPEN) return 'open door';
+        if (cell.flags === D_BROKEN) return 'broken door';
+        if (cell.flags & D_CLOSED) return 'closed door';
+        if (cell.flags & D_LOCKED) return 'closed door';
+        return null;
+    }
+    if (typ === FOUNTAIN) return 'fountain';
+    if (typ === THRONE) return 'opulent throne';
+    if (typ === SINK) return 'kitchen sink';
+    if (typ === GRAVE) return 'grave';
+    if (typ === ALTAR) return 'altar';
+    if (typ === TREE) return 'tree';
     return null;
 }
 
@@ -1714,12 +1747,12 @@ export async function look_here(player, map, obj_cnt) {
     // the most recently placed object comes first.  JS place_object appends
     // to the end, so we reverse to match C's newest-first iteration order.
     const objects = (map?.objects || []).filter(o => o.ox === x && o.oy === y && !o.buried).reverse();
-    const dfeature = dfeature_at(x, y, map);
+    const dfeature = dfeature_at(x, y, map, { depth: player.dungeonLevel });
 
     if (objects.length >= 2 || dfeature) {
         const tmpwin = create_nhwindow(NHW_MENU);
         if (dfeature) {
-            await win_putstr(tmpwin, 0, dfeature);
+            await win_putstr(tmpwin, 0, `There is ${an(dfeature)} here.`);
         }
         if (objects.length >= 2) {
             await win_putstr(tmpwin, 0, 'Things that are here:');
@@ -1731,6 +1764,9 @@ export async function look_here(player, map, obj_cnt) {
         await display_nhwindow(tmpwin, true);
         destroy_nhwindow(tmpwin);
     } else if (objects.length === 1) {
+        if (dfeature) {
+            await pline(`There is ${an(dfeature)} here.`);
+        }
         await You('see here %s.', doname(objects[0]));
     } else if (!dfeature) {
         await You('see no objects here.');

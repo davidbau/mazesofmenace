@@ -45,7 +45,7 @@ import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
 import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
-import { look_here } from './invent.js';
+import { look_here, dfeature_at } from './invent.js';
 import { maybe_unhide_at } from './mon.js';
 import { MZ_LARGE } from './monsters.js';
 
@@ -897,22 +897,7 @@ export async function domove_core(dir, player, map, display, game) {
         }
     }
 
-    // C ref: pickup.c pickup() — terrain feature messages come BEFORE items.
-    // Order must match C: stairs/fountain → engravings → door + items.
-
-    // C ref: do.c:738 flags.verbose gates "There is a staircase..."
-    if (game.flags.verbose && loc.typ === STAIRS) {
-        if (loc.flags === 1) {
-            await display.putstr_message('There is a staircase up out of the dungeon here.');
-        } else {
-            await display.putstr_message('There is a staircase down here.');
-        }
-    }
-
-    // C ref: do.c:774 flags.verbose gates terrain feature descriptions
-    if (game.flags.verbose && loc.typ === FOUNTAIN) {
-        await display.putstr_message('There is a fountain here.');
-    }
+    // C ref: pickup.c pickup() — engravings come BEFORE items.
 
     // C ref: read engravings on the current square when not submerged.
     if (!is_lava(player.x, player.y, map)
@@ -921,12 +906,15 @@ export async function domove_core(dir, player, map, display, game) {
     }
 
     // Show what's here if nothing was picked up
-    // C ref: pickup.c look_here() — items display comes AFTER terrain features
+    // C ref: invent.c look_here() — terrain features (stairs, fountain, doorway)
+    // are shown via dfeature_at() inside look_here(), not via flags.verbose.
     if (!pickedUp && objs.length > 0) {
-        if (IS_DOOR(loc.typ) && !(loc.flags & (D_CLOSED | D_LOCKED))) {
-            await display.putstr_message('There is a doorway here.');
-        }
         if (objs.length === 1) {
+            // C ref: invent.c look_here() — show dfeature BEFORE object.
+            const dfeature = dfeature_at(player.x, player.y, map, { depth: player.dungeonLevel });
+            if (dfeature) {
+                await display.putstr_message(`There is ${an(dfeature)} here.`);
+            }
             const seen = objs[0];
             if (seen.oclass === COIN_CLASS) {
                 const count = seen.quan || 1;
