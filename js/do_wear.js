@@ -1740,8 +1740,32 @@ async function handlePutOn(player, display) {
             await display.putstr_message("You're already wearing two rings.");
             return { moved: false, tookTime: false };
         }
-        if (!player.leftRing) player.leftRing = item;
-        else player.rightRing = item;
+        if (player.leftRing) {
+            // Left slot occupied — assign to right automatically (C: else if (uleft) mask=RIGHT_RING)
+            player.rightRing = item;
+        } else if (player.rightRing) {
+            // Right slot occupied — assign to left automatically (C: else if (uright) mask=LEFT_RING)
+            player.leftRing = item;
+        } else {
+            // C ref: do_wear.c accessory_or_armor_on() — both slots free → ask which finger
+            const fingerQ = 'Which ring-finger, Right or Left? [rl]';
+            await display.putstr_message(fingerQ);
+            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+            if (typeof display.setCursor === 'function') {
+                display.setCursor(Math.min(fingerQ.length + 1, (display.cols || 80) - 1), 0);
+            }
+            let mask = null;
+            while (!mask) {
+                const fc = await nhgetch();
+                const fs = String.fromCharCode(fc);
+                if (fc === 27 || fc === 0) return { moved: false, tookTime: false }; // ESC
+                if (fs === 'r' || fs === 'R') mask = 'right';
+                else if (fs === 'l' || fs === 'L') mask = 'left';
+                // else: invalid key, loop again
+            }
+            if (mask === 'left') player.leftRing = item;
+            else player.rightRing = item;
+        }
         Ring_on(player, item);
     } else if (item.oclass === AMULET_CLASS) {
         if (player.amulet) {

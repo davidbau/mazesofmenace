@@ -33,7 +33,7 @@ test('put on reports no available accessories when no rings are available', asyn
     assert.equal(game.display.topMessage, "You don't have anything else to put on.");
 });
 
-test('put on allows selecting a ring and equips it', async () => {
+test('put on allows selecting a ring and equips it on left finger', async () => {
     const game = makeGame();
     game.player.inventory = [{
         invlet: 'a',
@@ -43,11 +43,44 @@ test('put on allows selecting a ring and equips it', async () => {
         quan: 1,
     }];
     clearInputQueue();
-    pushInput('a'.charCodeAt(0));
+    pushInput('a'.charCodeAt(0)); // select the ring
+    pushInput('l'.charCodeAt(0)); // choose left finger (C ref: "Which ring-finger, Right or Left?")
 
     const result = await rhack('P'.charCodeAt(0), game);
     assert.equal(result.tookTime, true);
     assert.equal(game.player.leftRing?.invlet, 'a');
+});
+
+test('put on allows selecting a ring and equips it on right finger', async () => {
+    const game = makeGame();
+    game.player.inventory = [{
+        invlet: 'a',
+        oclass: RING_CLASS,
+        otyp: RIN_PROTECTION,
+        name: 'ring of protection',
+        quan: 1,
+    }];
+    clearInputQueue();
+    pushInput('a'.charCodeAt(0)); // select the ring
+    pushInput('r'.charCodeAt(0)); // choose right finger
+
+    const result = await rhack('P'.charCodeAt(0), game);
+    assert.equal(result.tookTime, true);
+    assert.equal(game.player.rightRing?.invlet, 'a');
+});
+
+test('put on skips ring-finger prompt when left slot already occupied', async () => {
+    const game = makeGame();
+    const existingRing = { invlet: 'b', oclass: RING_CLASS, otyp: RIN_PROTECTION, quan: 1 };
+    const newRing = { invlet: 'a', oclass: RING_CLASS, otyp: RIN_PROTECTION, quan: 1 };
+    game.player.inventory = [newRing, existingRing];
+    game.player.leftRing = existingRing;
+    clearInputQueue();
+    pushInput('a'.charCodeAt(0)); // select ring — no finger prompt, goes to right
+
+    const result = await rhack('P'.charCodeAt(0), game);
+    assert.equal(result.tookTime, true);
+    assert.equal(game.player.rightRing?.invlet, 'a'); // auto-assigned to right
 });
 
 }); // describe
