@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Caveman Cav-goal.lua	$NHDT-Date: 1652196002 2022/5/10 15:20:2 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991 by M. Stephenson
@@ -16,7 +16,7 @@ export function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
                                                                             
                           .....................                             
                          .......................                            
@@ -39,34 +39,34 @@ export function generate() {
                                                                             
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     // Stairs
     des.stair("up");
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Objects
-    des.object({ id: "mace", x: 23, y: 10, buc: "blessed", spe: 0, name: "The Sceptre of Might" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "mace", x: 23, y: 10, buc: "blessed", spe: 0, name: "The Sceptre of Might" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // monsters.
-    des.monster({ id: "Chromatic Dragon", x: 23, y: 10, asleep: 1 });
-    des.monster("shrieker", 26, 13);
-    des.monster("shrieker", 25, 8);
-    des.monster("shrieker", 45, 11);
+    await des.monster({ id: "Chromatic Dragon", x: 23, y: 10, asleep: 1 });
+    await des.monster("shrieker", 26, 13);
+    await des.monster("shrieker", 25, 8);
+    await des.monster("shrieker", 45, 11);
     des.wallify();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

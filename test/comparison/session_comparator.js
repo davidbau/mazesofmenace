@@ -3,6 +3,7 @@
 
 import { stripAnsiSequences } from './session_loader.js';
 import { createGameplayComparatorPolicy } from './comparator_policy.js';
+import { compareMapdumpCheckpoints } from './comparators.js';
 
 export function compareRecordedGameplaySession(session, replay, options = {}) {
     const policy = options.policy || createGameplayComparatorPolicy(session);
@@ -45,13 +46,17 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
         const expected = session.steps[i];
         const actual = replay.steps[i] || {};
 
+        let screenOk = true;
         if (expected.screen.length > 0) {
             screensTotal++;
             const screenCmp = policy.compareScreenStep(actual, expected, i);
             if (screenCmp.match) {
                 screensMatched++;
-            } else if (!firstScreenDivergence && screenCmp.firstDiff) {
-                firstScreenDivergence = { step: i + 1, ...screenCmp.firstDiff };
+            } else {
+                screenOk = false;
+                if (!firstScreenDivergence && screenCmp.firstDiff) {
+                    firstScreenDivergence = { step: i + 1, ...screenCmp.firstDiff };
+                }
             }
             const screenWindowCmp = policy.compareScreenWindowStep(actual, expected, i);
             if (screenWindowCmp && screenWindowCmp.total > 0) {
@@ -109,16 +114,19 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             }
         }
 
-        // Cursor comparison — optional (old sessions lack cursor field)
+        // Cursor comparison — optional (old sessions lack cursor field).
         // Supports both [col, row] (legacy) and [col, row, visible] formats.
+        // Skip when screen already diverged: cursor position is determined by screen
+        // content, so a cursor mismatch at a screen-divergent step is not independent signal.
         const expectedCursor = expected.cursor || null;
         const actualCursor = actual.cursor || null;
-        if (expectedCursor) {
+        if (expectedCursor && screenOk) {
             cursorTotal++;
             const [ec, er, ev] = expectedCursor;
             const [ac, ar, av] = actualCursor || [null, null, null];
-            // Position must match; visibility compared only when both sides have it
-            const posMatch = (ac === ec && ar === er);
+            // When cursor is invisible on either side, position is meaningless — skip check
+            const eitherInvisible = (ev === 0 || av === 0);
+            const posMatch = eitherInvisible || (ac === ec && ar === er);
             const visMatch = (ev == null || av == null || av === ev);
             if (posMatch && visMatch) {
                 cursorMatched++;
@@ -133,6 +141,10 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
     }
 
     const eventCmp = policy.compareEvents(allJsRng, allSessionRng);
+    const mapdumpCmp = compareMapdumpCheckpoints(
+        replay?.checkpoints || null,
+        session?.mapdumpCheckpoints || null
+    );
 
     return {
         rng: {
@@ -170,6 +182,11 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
             matched: eventCmp.matched,
             total: eventCmp.total,
             firstDivergence: eventCmp.firstDivergence || null,
+        },
+        mapdump: {
+            matched: mapdumpCmp.matched,
+            total: mapdumpCmp.total,
+            firstDivergence: mapdumpCmp.firstDivergence || null,
         },
         animationBoundaries: {
             matched: animationBoundariesMatched,

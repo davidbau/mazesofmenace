@@ -97,15 +97,12 @@ export function mergable(otmp, obj) {
         if (!!obj.orotten !== !!otmp.orotten) return false;
     }
 
-    if (!!obj.dknown !== !!otmp.dknown) return false;
-    if (!!obj.bknown !== !!otmp.bknown) return false;
     if ((obj.oeroded ?? 0) !== (otmp.oeroded ?? 0)) return false;
     if ((obj.oeroded2 ?? 0) !== (otmp.oeroded2 ?? 0)) return false;
     if (!!obj.greased !== !!otmp.greased) return false;
 
     if (erosion_matters(obj)) {
         if (!!obj.oerodeproof !== !!otmp.oerodeproof) return false;
-        if (!!obj.rknown !== !!otmp.rknown) return false;
     }
 
     if (obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN) {
@@ -131,7 +128,6 @@ export function mergable(otmp, obj) {
     // Artifacts must match
     if ((obj.oartifact || 0) !== (otmp.oartifact || 0)) return false;
 
-    if (!!obj.known !== !!otmp.known) return false;
     if (!!obj.opoisoned !== !!otmp.opoisoned) return false;
 
     return true;
@@ -1231,7 +1227,20 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
         }
         break;
     default:
-        base = od.name;
+        // C ref: objnam.c xname() includes the monster descriptor for statues.
+        if (obj.otyp === STATUE) {
+            const statueIdx = Number.isInteger(obj.corpsenm) ? obj.corpsenm : obj.corpsem;
+            const monName = (Number.isInteger(statueIdx) && mons[statueIdx])
+                ? String(mons[statueIdx].name || '').trim()
+                : '';
+            if (monName) {
+                base = `statue of ${just_an(monName)} ${monName}`;
+            } else {
+                base = od.name;
+            }
+        } else {
+            base = od.name;
+        }
         break;
     }
     // C uses gem-name logic that yields "flint stone(s)" for FLINT.
@@ -1349,10 +1358,20 @@ export function doname(obj, player) {
     // Suffix: worn/wielded/charges
     if (player) {
         if (player.weapon === obj) {
+            const dominantHand = player.rightHanded === false ? 'left' : 'right';
             if (od.big) {
                 result += ' (weapon in hands)';
             } else {
-                result += ' (wielded)';
+                // C ref: objnam.c doname() uses "(weapon in right hand)" for a
+                // single regular weapon; uses "(wielded)" for stacks, ammo
+                // (sub in -22..-20, P_CROSSBOW..P_BOW), missiles
+                // (sub in -25..-23, P_BOOMERANG..P_DART), and non-weptools.
+                const odSub = od.sub || 0;
+                const isAmmo = odSub <= -20 && odSub >= -22; // -P_BOW..-P_CROSSBOW
+                const isMissile = odSub <= -23 && odSub >= -25; // -P_DART..-P_BOOMERANG
+                const useWielded = (quan !== 1)
+                    || (obj.oclass === WEAPON_CLASS ? (isAmmo || isMissile) : !isWeptool);
+                result += useWielded ? ' (wielded)' : ` (weapon in ${dominantHand} hand)`;
             }
         } else if (player.swapWeapon === obj) {
             // C ref: objnam.c plur(obj->quan) for alternate weapon(s)
@@ -1847,17 +1866,17 @@ export function obj_meld(obj1, obj2) {
 }
 
 // Autotranslated from mkobj.c:3817
-export function pudding_merge_message(otmp, otmp2, player) {
+export async function pudding_merge_message(otmp, otmp2, player) {
   let visible = (cansee(otmp.ox, otmp.oy) || cansee(otmp2.ox, otmp2.oy)), onfloor = (otmp.where === 'OBJ_FLOOR' || otmp2.where === 'OBJ_FLOOR'), inpack = (carried(otmp) || carried(otmp2));
   if ((!(player?.Blind || player?.blind || false) && visible) || inpack) {
     if ((player?.Hallucination || player?.hallucinating || false)) {
-      if (onfloor) { You_see("parts of the floor melting!"); }
-      else if (inpack) { Your("pack reaches out and grabs something!"); }
+      if (onfloor) { await You_see("parts of the floor melting!"); }
+      else if (inpack) { await Your("pack reaches out and grabs something!"); }
     }
     else if (onfloor || inpack) {
       let adj = ((otmp.ox !== player.x || otmp.oy !== player.y) && (otmp2.ox !== player.x || otmp2.oy !== player.y));
-      pline("The %s%s coalesce%s.", (onfloor && adj) ? "adjacent " : "", makeplural(obj_typename(otmp.otyp)), inpack ? " inside your pack" : "");
+      await pline("The %s%s coalesce%s.", (onfloor && adj) ? "adjacent " : "", makeplural(obj_typename(otmp.otyp)), inpack ? " inside your pack" : "");
     }
   }
-  else { You_hear("a faint sloshing sound."); }
+  else { await You_hear("a faint sloshing sound."); }
 }

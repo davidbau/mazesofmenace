@@ -17,7 +17,7 @@ import { rn2, rnd, rn1, rne, d, getRngLog } from './rng.js';
 import { newhp, newpw } from './exper.js';
 import { initrack } from './monmove.js';
 import { setMakemonPlayerContext } from './makemon.js';
-import { initLevelGeneration, makelevel } from './dungeon.js';
+import { initLevelGeneration, mklev } from './dungeon.js';
 import { getArrivalPosition } from './do.js';
 import { mksobj, mkobj, weight, setStartupInventoryMode, Is_container } from './mkobj.js';
 import { NUM_ATTRS,
@@ -1134,7 +1134,7 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     const role = roles[player.roleIndex];
 
     // Update makemon context with player's placed position (x/y).
-    // The earlier setMakemonPlayerContext call (before makelevel) didn't have x/y.
+    // The earlier setMakemonPlayerContext call (before mklev) didn't have x/y.
     setMakemonPlayerContext(player);
 
     // 1. makedog() — pet creation (actually places pet on map)
@@ -1226,23 +1226,25 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
 // ========================================================================
 
 // Performs the full first-level init sequence: initrack, makemon context,
-// level generation init, makelevel, player placement, and post-level init.
+// level generation init, mklev, player placement, and post-level init.
 // C ref: allmain.c newgame() — from init_dungeons through welcome(TRUE)
-export function initFirstLevel(player, roleIndex, wizard, opts = {}) {
+export async function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     const startDlevel = opts.startDlevel ?? 1;
     initrack();
     setMakemonPlayerContext(player);
-    const { enadv_roll } = initLevelGeneration(roleIndex, wizard, {
+    const { enadv_roll, rightHanded } = initLevelGeneration(roleIndex, wizard, {
         alignment: player.alignment,
         race: player.race,
     });
+    // C ref: u_init_misc() handedness assignment in u.uhandedness
+    player.rightHanded = rightHanded;
     const map = (opts.startDnum != null)
-        ? makelevel(startDlevel, opts.startDnum, startDlevel,
+        ? await mklev(startDlevel, opts.startDnum, startDlevel,
             {
                 dungeonAlignOverride: opts.dungeonAlignOverride,
                 heroHasAmulet: !!player?.uhave?.amulet,
             })
-        : makelevel(startDlevel, undefined, undefined,
+        : await mklev(startDlevel, undefined, undefined,
             {
                 dungeonAlignOverride: opts.dungeonAlignOverride,
                 heroHasAmulet: !!player?.uhave?.amulet,

@@ -22,7 +22,7 @@ import {
 } from './test_result_format.js';
 
 import {
-    generateStartupWithRng, replaySession,
+    generateStartupWithRng, replayGameplaySession,
     getSessionStartup, getSessionCharacter, getSessionGameplaySteps,
     compareRng, compareGrids, getSessionScreenLines,
 } from './session_helpers.js';
@@ -72,7 +72,7 @@ async function main() {
             // Test startup RNG
             if (sessionStartup?.rng && sessionStartup.rng.length > 0) {
                 try {
-                    const startup = generateStartupWithRng(session.seed, session);
+                    const startup = await generateStartupWithRng(session.seed, session);
                     const div = compareRng(startup.rng, sessionStartup.rng);
                     const matched = div.index === -1;
                     recordRngResult(result, matched,
@@ -97,7 +97,7 @@ async function main() {
             // Test startup grid
             if (sessionStartup?.typGrid) {
                 try {
-                    const startup = generateStartupWithRng(session.seed, session);
+                    const startup = await generateStartupWithRng(session.seed, session);
                     const diffs = compareGrids(startup.grid, sessionStartup.typGrid);
                     recordGridResult(result, diffs.length === 0, 0, diffs.length);
                 } catch (e) {
@@ -109,7 +109,7 @@ async function main() {
             const gameplaySteps = getSessionGameplaySteps(session);
             if (gameplaySteps.length > 0 && sessionStartup?.rng) {
                 try {
-                    const replay = await replaySession(session.seed, session);
+                    const replay = await replayGameplaySession(session.seed, session);
 
                     for (let i = 0; i < gameplaySteps.length; i++) {
                         const step = gameplaySteps[i];

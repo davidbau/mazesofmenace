@@ -8,7 +8,7 @@ import { selection } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 import { hell_tweaks } from './hellfill.js';
 
-export function generate() {
+export async function generate() {
     // NetHack yendor wizard1.lua	$NHDT-Date: 1652196039 2022/5/10 15:20:39 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1992 by M. Stephenson && Izchak Miller
@@ -25,7 +25,7 @@ export function generate() {
     let bnds = tmpbounds.bounds();
     let bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
-    let wiz1 = des.map({ halign: "center", valign: "center", map: `\
+    let wiz1 = await des.map({ halign: "center", valign: "center", map: `\
 ----------------------------x
 |.......|..|.........|.....|x
 |.......S..|.}}}}}}}.|.....|x
@@ -39,17 +39,17 @@ export function generate() {
 |..|.......|-----------S-S-|x
 |..|.......S...............|x
 ----------------------------x
-`, contents: function(rm) {
+`, contents: async function(rm) {
        des.levregion({ type: "stair-up", region: [1,0,79,20], region_islev: 1, exclude: [0,0,28,12] });
        des.levregion({ type: "stair-down", region: [1,0,79,20], region_islev: 1, exclude: [0,0,28,12] });
        des.levregion({ type: "branch", region: [1,0,79,20], region_islev: 1, exclude: [0,0,28,12] });
        des.teleport_region({ region: [1,0,79,20], region_islev: 1, exclude: [0,0,27,12] });
-       des.region({ region: [12,1, 20,9], lit: 0, type: "morgue", filled: 2, contents: function() {
+       await des.region({ region: [12,1, 20,9], lit: 0, type: "morgue", filled: 2, contents: async function() {
                        let sdwall = [ "south", "west", "east" ];
                        des.door({ wall: sdwall[rn2(sdwall.length)], state: "secret" });
        } })
        // another region to constrain monster arrival
-       des.region({ region: [1,1, 10,11], lit: 0, type: "ordinary", arrival_room: true });
+       await des.region({ region: [1,1, 10,11], lit: 0, type: "ordinary", arrival_room: true });
        des.mazewalk(28,5,"east");
        des.ladder("down", 6,5);
        // Non diggable walls
@@ -64,48 +64,48 @@ export function generate() {
        des.non_passwall(selection.area(11,10,27,12));
        des.non_passwall(selection.area(21,0,27,10));
        // The wizard && his guards
-       des.monster({ id: "Wizard of Yendor", x: 16, y: 5, asleep: 1 });
-       des.monster("hell hound", 15, 5);
-       des.monster("vampire lord", 17, 5);
+       await des.monster({ id: "Wizard of Yendor", x: 16, y: 5, asleep: 1 });
+       await des.monster("hell hound", 15, 5);
+       await des.monster("vampire lord", 17, 5);
        // The let treasure
-       des.object("Book of the Dead", 16, 5);
+       await des.object("Book of the Dead", 16, 5);
        // Surrounding terror
-       des.monster("kraken", 14, 2);
-       des.monster("giant eel", 17, 2);
-       des.monster("kraken", 13, 4);
-       des.monster("giant eel", 13, 6);
-       des.monster("kraken", 19, 4);
-       des.monster("giant eel", 19, 6);
-       des.monster("kraken", 15, 8);
-       des.monster("giant eel", 17, 8);
-       des.monster("piranha", 15, 2);
-       des.monster("piranha", 19, 8);
+       await des.monster("kraken", 14, 2);
+       await des.monster("giant eel", 17, 2);
+       await des.monster("kraken", 13, 4);
+       await des.monster("giant eel", 13, 6);
+       await des.monster("kraken", 19, 4);
+       await des.monster("giant eel", 19, 6);
+       await des.monster("kraken", 15, 8);
+       await des.monster("giant eel", 17, 8);
+       await des.monster("piranha", 15, 2);
+       await des.monster("piranha", 19, 8);
        // Random monsters
-       des.monster("D");
-       des.monster("H");
-       des.monster("&");
-       des.monster("&");
-       des.monster("&");
-       des.monster("&");
+       await des.monster("D");
+       await des.monster("H");
+       await des.monster("&");
+       await des.monster("&");
+       await des.monster("&");
+       await des.monster("&");
        // And to make things a little harder.
-       des.trap("board",16,4);
-       des.trap("board",16,6);
-       des.trap("board",15,5);
-       des.trap("board",17,5);
+       await des.trap("board",16,4);
+       await des.trap("board",16,6);
+       await des.trap("board",15,5);
+       await des.trap("board",17,5);
        // Random traps.
-       des.trap("spiked pit");
-       des.trap("sleep gas");
-       des.trap("anti magic");
-       des.trap("magic");
+       await des.trap("spiked pit");
+       await des.trap("sleep gas");
+       await des.trap("anti magic");
+       await des.trap("magic");
        // Some random loot.
-       des.object("ruby");
-       des.object("!");
-       des.object("!");
-       des.object("?");
-       des.object("?");
-       des.object("+");
-       des.object("+");
-       des.object("+");
+       await des.object("ruby");
+       await des.object("!");
+       await des.object("!");
+       await des.object("?");
+       await des.object("?");
+       await des.object("+");
+       await des.object("+");
+       await des.object("+");
     }
     });
 
@@ -113,5 +113,5 @@ export function generate() {
     hell_tweaks(protected_region);
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -77,6 +77,13 @@ def clean_game_state(player_name):
             except FileNotFoundError:
                 pass
 
+    # Wipe high score list so each session starts with a clean record file.
+    record_path = os.path.join(INSTALL_DIR, "record")
+    try:
+        open(record_path, "w").close()
+    except OSError:
+        pass
+
     lower_name = str(player_name or "").lower()
     for fn in os.listdir(INSTALL_DIR):
         if fn.endswith(".lua"):
@@ -99,11 +106,12 @@ def write_nethackrc(home_dir, opts):
     os.makedirs(home_dir, exist_ok=True)
     rc_path = os.path.join(home_dir, ".nethackrc")
     with open(rc_path, "w", encoding="utf-8") as f:
-        f.write(f"OPTIONS=name:{opts.name}\n")
-        f.write(f"OPTIONS=role:{opts.role}\n")
-        f.write(f"OPTIONS=race:{opts.race}\n")
-        f.write(f"OPTIONS=gender:{opts.gender}\n")
-        f.write(f"OPTIONS=align:{opts.align}\n")
+        if not opts.interactive:
+            f.write(f"OPTIONS=name:{opts.name}\n")
+            f.write(f"OPTIONS=role:{opts.role}\n")
+            f.write(f"OPTIONS=race:{opts.race}\n")
+            f.write(f"OPTIONS=gender:{opts.gender}\n")
+            f.write(f"OPTIONS=align:{opts.align}\n")
         f.write(f"OPTIONS=symset:{opts.symset}\n")
         if opts.tutorial_option == "on":
             f.write("OPTIONS=tutorial\n")
@@ -138,7 +146,7 @@ def run_watcher(args):
     session_mod = load_run_session_module()
 
     capture_screen_compressed = session_mod.capture_screen_compressed
-    capture_screen_lines = session_mod.capture_screen_lines
+    screen_to_plain_lines = session_mod.screen_to_plain_lines
     read_rng_log = session_mod.read_rng_log
     parse_rng_lines = session_mod.parse_rng_lines
     detect_depth = session_mod.detect_depth
@@ -226,7 +234,7 @@ def run_watcher(args):
             time.sleep(0.03)
             try:
                 screen = capture_screen_compressed(session_name)
-                lines = capture_screen_lines(session_name)
+                lines = screen_to_plain_lines(screen)
                 cur_rng_count, cur_rng_lines = read_rng_log(rnglog)
                 delta = parse_rng_lines(cur_rng_lines[rng_count:cur_rng_count])
                 rng_count = cur_rng_count
@@ -311,16 +319,23 @@ def launch_manual_capture(args):
 
     wizard_flag = "-D" if args.wizard else ""
     datetime_env = f"NETHACK_FIXED_DATETIME={args.datetime} " if args.datetime else ""
+    name_flag = "-u '' " if args.interactive else f"-u {args.name} "
+    ask_name_env = ""
+    mapdump_env = f"NETHACK_MAPDUMP_DIR={args.mapdump_dir} " if args.mapdump_dir else ""
+    if args.mapdump_dir:
+        os.makedirs(args.mapdump_dir, exist_ok=True)
     cmd = (
         f"NETHACKDIR={INSTALL_DIR} "
         f"NETHACK_SEED={args.seed} "
         f"{datetime_env}"
+        f"{ask_name_env}"
+        f"{mapdump_env}"
         f"NETHACK_KEYLOG={args.keylog} "
         f"NETHACK_KEYLOG_DELAY_MS={args.keylog_delay_ms} "
         f"NETHACK_RNGLOG={args.rnglog} "
         f"HOME={args.home} "
         f"TERM=xterm-256color "
-        f"{NETHACK_BINARY} -u {args.name} {wizard_flag}; "
+        f"{NETHACK_BINARY} {name_flag}{wizard_flag}; "
         f"sleep 999"
     )
 
@@ -368,16 +383,21 @@ def run_autofeed_capture(args):
 
     wizard_flag = "-D" if args.wizard else ""
     datetime_env = f"NETHACK_FIXED_DATETIME={args.datetime} " if args.datetime else ""
+    name_flag = "-u '' " if args.interactive else f"-u {args.name} "
+    mapdump_env = f"NETHACK_MAPDUMP_DIR={args.mapdump_dir} " if args.mapdump_dir else ""
+    if args.mapdump_dir:
+        os.makedirs(args.mapdump_dir, exist_ok=True)
     cmd = (
         f"NETHACKDIR={INSTALL_DIR} "
         f"NETHACK_SEED={args.seed} "
         f"{datetime_env}"
+        f"{mapdump_env}"
         f"NETHACK_KEYLOG={args.keylog} "
         f"NETHACK_KEYLOG_DELAY_MS={args.keylog_delay_ms} "
         f"NETHACK_RNGLOG={args.rnglog} "
         f"HOME={args.home} "
         f"TERM=xterm-256color "
-        f"{NETHACK_BINARY} -u {args.name} {wizard_flag}; "
+        f"{NETHACK_BINARY} {name_flag}{wizard_flag}; "
         f"sleep 999"
     )
     subprocess.run(
@@ -438,13 +458,15 @@ def run_autofeed_capture(args):
 
 
 def default_paths(seed, name):
-    keylog = os.path.join(PROJECT_ROOT, "test", "comparison", "keylogs", f"seed{seed}_{name.lower()}_manual_direct.jsonl")
-    out = os.path.join(PROJECT_ROOT, "test", "comparison", "sessions", f"seed{seed}_{name.lower()}_manual_direct.session.json")
-    home = os.path.join(PROJECT_ROOT, "test", "comparison", "c-harness", "results", f"manual_seed{seed}_{name.lower()}_direct")
-    watch_log = os.path.join("/tmp", f"manual_direct_seed{seed}_{name.lower()}.watch.log")
-    rnglog = os.path.join("/tmp", f"manual_direct_seed{seed}_{name.lower()}.rnglog")
-    session = f"nethack-manual-seed{seed}-direct-{name.lower()}"
-    return keylog, out, home, watch_log, rnglog, session
+    prefix = f"seed{seed}_{name.lower()}" if name else f"seed{seed}"
+    keylog = os.path.join(PROJECT_ROOT, "test", "comparison", "keylogs", f"{prefix}_manual_direct.jsonl")
+    out = os.path.join(PROJECT_ROOT, "test", "comparison", "sessions", f"{prefix}_manual_direct.session.json")
+    home = os.path.join(PROJECT_ROOT, "test", "comparison", "c-harness", "results", f"manual_{prefix}_direct")
+    watch_log = os.path.join("/tmp", f"manual_direct_{prefix}.watch.log")
+    rnglog = os.path.join("/tmp", f"manual_direct_{prefix}.rnglog")
+    mapdump_dir = os.path.join("/tmp", f"manual_direct_{prefix}_mapdumps")
+    session = f"nethack-manual-{prefix}-direct"
+    return keylog, out, home, watch_log, rnglog, mapdump_dir, session
 
 
 def parse_args():
@@ -459,6 +481,10 @@ def parse_args():
     p.add_argument("--symset", default="DECgraphics", choices=["ASCII", "DECgraphics"])
     p.add_argument("--tutorial-option", default="unset", choices=["unset", "on", "off"])
     p.add_argument("--wizard", action="store_true", help="Launch with -D")
+    p.add_argument("--interactive", action="store_true",
+                   help="Blank state: no pre-filled name/chargen; nethack asks everything")
+    p.add_argument("--mapdump-dir", default=None, dest="mapdump_dir",
+                   help="Directory for auto mapdumps (NETHACK_MAPDUMP_DIR); auto-set if not given")
     p.add_argument("--datetime", default="20000110090000")
     p.add_argument("--keylog-delay-ms", type=int, default=0)
     p.add_argument("--session", default=None)
@@ -477,7 +503,8 @@ def parse_args():
                    help="Watcher flush wait in ms after killing tmux session")
     args = p.parse_args()
 
-    d_keylog, d_out, d_home, d_watch_log, d_rnglog, d_session = default_paths(args.seed, args.name)
+    path_name = None if args.interactive else args.name
+    d_keylog, d_out, d_home, d_watch_log, d_rnglog, d_mapdump, d_session = default_paths(args.seed, path_name)
     if args.keylog is None:
         args.keylog = d_keylog
     if args.output_session is None:
@@ -488,6 +515,8 @@ def parse_args():
         args.watch_log = d_watch_log
     if args.rnglog is None:
         args.rnglog = d_rnglog
+    if args.mapdump_dir is None:
+        args.mapdump_dir = d_mapdump
     if args.session is None:
         args.session = d_session
 

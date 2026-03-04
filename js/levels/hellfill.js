@@ -16,7 +16,7 @@ export function hell_tweaks(protected_region) {
 }
 
 
-export function generate() {
+export async function generate() {
     // NetHack 3.7	hellfill.des	$NHDT-Date: 1432512783 2015/5/25 0:13:3 $  $NHDT-Branch: master $:$NHDT-Revision: 1.25 $
     // Copyright (c) 2022 by Pasi Kallinen
     // NetHack may be freely redistributed.  See license for details.
@@ -29,69 +29,69 @@ export function generate() {
     // specific levels.
     // 
 
-    function hellobjects() {
+    async function hellobjects() {
        let objclass = [ "(", "/", "=", "+", ")", "[", "?", "*", "%" ];
        shuffle(objclass);
 
-       des.object(objclass[0]);
-       des.object(objclass[0]);
-       des.object(objclass[1]);
-       des.object(objclass[2]);
-       des.object(objclass[3]);
-       des.object(objclass[4]);
-       des.object();
-       des.object();
+       await des.object(objclass[0]);
+       await des.object(objclass[0]);
+       await des.object(objclass[1]);
+       await des.object(objclass[2]);
+       await des.object(objclass[3]);
+       await des.object(objclass[4]);
+       await des.object();
+       await des.object();
     }
 
     // 
 
-    function hellmonsters() {
+    async function hellmonsters() {
        let monclass = [ "V", "D", " ", "&", "Z" ];
        shuffle(monclass);
 
-       des.monster({ class: monclass[0], peaceful: 0 });
-       des.monster({ class: monclass[0], peaceful: 0 });
-       des.monster({ class: monclass[1], peaceful: 0 });
-       des.monster({ class: monclass[1], peaceful: 0 });
-       des.monster({ class: monclass[2], peaceful: 0 });
-       des.monster({ class: monclass[3], peaceful: 0 });
-       des.monster({ peaceful: 0 });
-       des.monster({ class: "H", peaceful: 0 });
+       await des.monster({ class: monclass[0], peaceful: 0 });
+       await des.monster({ class: monclass[0], peaceful: 0 });
+       await des.monster({ class: monclass[1], peaceful: 0 });
+       await des.monster({ class: monclass[1], peaceful: 0 });
+       await des.monster({ class: monclass[2], peaceful: 0 });
+       await des.monster({ class: monclass[3], peaceful: 0 });
+       await des.monster({ peaceful: 0 });
+       await des.monster({ class: "H", peaceful: 0 });
     }
 
     // 
 
-    function helltraps() {
+    async function helltraps() {
        for (let i = 1; i <= 12; i++) {
-          des.trap();
+          await des.trap();
        }
     }
 
     // 
 
-    function populatemaze() {
+    async function populatemaze() {
        const mazeObjectCount = rnd(8) + 11;
        for (let i = 1; i <= mazeObjectCount; i++) {
           if ((percent(50))) {
-             des.object("*");
+             await des.object("*");
           } else {
-             des.object();
+             await des.object();
           }
        }
 
        const boulderCount = rnd(10) + 2;
        for (let i = 1; i <= boulderCount; i++) {
-          des.object("`");
+          await des.object("`");
    }
 
    const minotaurCount = rnd(3);
    for (let i = 1; i <= minotaurCount; i++) {
-      des.monster({ id: "minotaur", peaceful: 0 });
+      await des.monster({ id: "minotaur", peaceful: 0 });
    }
 
    const randomMonsterCount = rnd(5) + 7;
    for (let i = 1; i <= randomMonsterCount; i++) {
-      des.monster({ peaceful: 0 });
+      await des.monster({ peaceful: 0 });
    }
 
    const goldCount = rnd(6) + 7;
@@ -101,7 +101,7 @@ export function generate() {
 
    const trapCount = rnd(6) + 7;
    for (let i = 1; i <= trapCount; i++) {
-      des.trap();
+      await des.trap();
    }
 }
 
@@ -124,8 +124,8 @@ function rnd_valign() {
 let hell_prefabs = [
    {
       repeatable: true,
-      contents: function() {
-      des.map({ halign: rnd_halign(), valign: "center", map: `\
+      contents: async function() {
+      await des.map({ halign: rnd_halign(), valign: "center", map: `\
 ......
 ......
 ......
@@ -141,13 +141,13 @@ let hell_prefabs = [
 ......
 ......
 ......
-......`, contents: function() { } });
+......`, contents: async function() { } });
       }
    },
    {
       repeatable: true,
-      contents: function() {
-      des.map({ halign: rnd_halign(), valign: "center", map: `\
+      contents: async function() {
+      await des.map({ halign: rnd_halign(), valign: "center", map: `\
 xxxxxx.....xxxxxx
 xxxx.........xxxx
 xx.............xx
@@ -165,11 +165,11 @@ xx.............xx
 xx.............xx
 xxxx.........xxxx
 xxxxxx.....xxxxxx
-`, contents: function() { } });
+`, contents: async function() { } });
       }
    },
-   function(coldhell) {
-      des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
+   async function(coldhell) {
+      await des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
 xxxxxx.xxxxxx
 xLLLLLLLLLLLx
 xL---------Lx
@@ -181,9 +181,9 @@ xL|.......|Lx
 xL---------Lx
 xLLLLLLLLLLLx
 xxxxxx.xxxxxx
-`, contents: function() {
+`, contents: async function() {
    des.non_diggable(selection.area(2,2, 10,8));
-   des.region(selection.area(4,4, 8,6), "lit");
+   await des.region(selection.area(4,4, 8,6), "lit");
    des.exclusion({ type: "teleport", region: [ 2,2, 10,8 ] });
    if ((coldhell)) {
       des.replace_terrain({ region: [1,1, 11,9], fromterrain: "L", toterrain: "P" });
@@ -203,49 +203,49 @@ xxxxxx.xxxxxx
    shuffle(mons);
    const guardCount = 3 + (rn2((5) - (1) + 1) + (1));
    for (let i = 1; i <= guardCount; i++) {
-      des.monster(mons[0], 6, 5);
+      await des.monster(mons[0], 6, 5);
    }
       } });
    },
    {
       repeatable: true,
-      contents: function() {
-      des.map({ halign: "center", valign: "center", map: `\
+      contents: async function() {
+      await des.map({ halign: "center", valign: "center", map: `\
 ..............................................................
 ..............................................................
 ..............................................................
 ..............................................................
-..............................................................`, contents: function() { } });
+..............................................................`, contents: async function() { } });
       }
    },
    {
       repeatable: true,
-      contents: function() {
-      des.map({ halign: rnd_halign(), valign: rnd_valign(), lit: true, map: `\
+      contents: async function() {
+      await des.map({ halign: rnd_halign(), valign: rnd_valign(), lit: true, map: `\
 x.....x
 .......
 .......
 .......
 .......
 .......
-x.....x`, contents: function() { }  });
+x.....x`, contents: async function() { }  });
    }
    },
-   function() {
-      des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
+   async function() {
+      await des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
 BBBBBBB
 B.....B
 B.....B
 B.....B
 B.....B
 B.....B
-BBBBBBB`, contents: function() {
-   des.region({ region: [2,2, 2,2], type: "temple", filled: 1, irregular: 1 });
+BBBBBBB`, contents: async function() {
+   await des.region({ region: [2,2, 2,2], type: "temple", filled: 1, irregular: 1 });
    des.altar({ x: 3, y: 3, align: "noalign", type: percent(75) && "altar" || "shrine" });
       }  });
    },
-   function() {
-      des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
+   async function() {
+      await des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
 ..........
 ..........
 ..........
@@ -255,15 +255,15 @@ BBBBBBB`, contents: function() {
 ...FFFF...
 ..........
 ..........
-..........`, contents: function() {
+..........`, contents: async function() {
    des.exclusion({ type: "teleport", region: [ 4,4, 5,5 ] });
    const mons = [ "Angel", "D", "H", "L" ];
-   des.monster(mons[rn2(mons.length)], 4,4);
+   await des.monster(mons[rn2(mons.length)], 4,4);
       } });
    },
 
-   function() {
-      des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
+   async function() {
+      await des.map({ halign: rnd_halign(), valign: rnd_valign(), map: `\
 .........
 .}}}}}}}.
 .}}---}}.
@@ -273,12 +273,12 @@ BBBBBBB`, contents: function() {
 .}}---}}.
 .}}}}}}}.
 .........
-`, contents: function(rm) {
+`, contents: async function(rm) {
    des.exclusion({ type: "teleport", region: [ 3,3, 5,5 ] });
-   des.monster("L",4,4);
+   await des.monster("L",4,4);
       } })
    },
-   function() {
+   async function() {
       let mapstr = percent(30) && `\
 .....
 .LLL.
@@ -291,13 +291,13 @@ BBBBBBB`, contents: function() {
 .PPP.
 .....`;
       for (let dx = 1; dx <= 5; dx++) {
-         des.map({ x: dx*14 - 4, y: (rn2((15) - (3) + 1) + (3)),
-                   map: mapstr, contents: function() { } })
+         await des.map({ x: dx*14 - 4, y: (rn2((15) - (3) + 1) + (3)),
+                   map: mapstr, contents: async function() { } })
       }
    },
    {
       repeatable: true,
-      contents: function() {
+      contents: async function() {
       const mapstr = `\
 ...
 ...
@@ -317,14 +317,14 @@ BBBBBBB`, contents: function() {
 ...
 ...`;
       for (let dx = 1; dx <= 3; dx++) {
-         des.map({ x: (rn2((75) - (3) + 1) + (3)), y: 3,
-                   map: mapstr, contents: function() { } })
+         await des.map({ x: (rn2((75) - (3) + 1) + (3)), y: 3,
+                   map: mapstr, contents: async function() { } })
       }
    }
    },
 ];
 
-function rnd_hell_prefab(coldhell) {
+async function rnd_hell_prefab(coldhell) {
    let dorepeat = true;
    let nloops = 0;
    while (dorepeat && nloops <= 5) {
@@ -334,10 +334,10 @@ function rnd_hell_prefab(coldhell) {
       const fabtype = typeof fab;
 
       if (fabtype === "function") {
-         fab(coldhell);
+         await fab(coldhell);
          dorepeat = false;
       } else if (fab && fabtype === "object") {
-         fab.contents(coldhell);
+         await fab.contents(coldhell);
          dorepeat = !(fab.repeatable && rn2((nloops * 2) + 1) === 0);
       }
    }
@@ -356,7 +356,7 @@ let hells = [
    },
 
    // 2: mazes like original, with some hell_tweaks
-   function() {
+   async function() {
       des.level_init({ style: "solidfill", fg: " ", lit: 0 });
       des.level_flags("mazelevel", "noflip");
       des.level_init({ style: "mazegrid", bg: "-" });
@@ -366,7 +366,7 @@ let hells = [
       let protected_area = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
       hell_tweaks(protected_area.negate());
       if ((percent(25))) {
-         rnd_hell_prefab(false);
+         await rnd_hell_prefab(false);
       }
    },
 
@@ -378,7 +378,7 @@ let hells = [
    },
 
    // 4: mazes, style 2: replace wall with iron bars || lava
-   function() {
+   async function() {
       let cwid = rnd(4);
       des.level_init({ style: "solidfill", fg: " ", lit: 0 });
       des.level_flags("mazelevel", "noflip");
@@ -392,7 +392,7 @@ let hells = [
             // replace some horizontal iron bars walls with floor
             des.replace_terrain({ mapfragment: ".\nF\n.", toterrain: ".", chance: 25 * rnd(4) });
          } else if ((percent(25))) {
-            rnd_hell_prefab(false);
+            await rnd_hell_prefab(false);
          }
       }
       des.terrain(outside_walls, " ");  // return the outside back to solid wall;
@@ -416,7 +416,7 @@ let hells = [
    },
 
    // 6: cold maze, with ice && water
-   function() {
+   async function() {
       let cwid = rnd(4);
       des.level_init({ style: "solidfill", fg: " ", lit: 0 });
       des.level_flags("mazelevel", "noflip", "cold");
@@ -433,7 +433,7 @@ let hells = [
          des.terrain(selection.match("w"), "W"); // walls of water;
       }
       if ((cwid == 1 && percent(25))) {
-         rnd_hell_prefab(true);
+         await rnd_hell_prefab(true);
       }
       des.terrain(outside_walls, " ");  // return the outside back to solid wall;
    },
@@ -454,19 +454,19 @@ let hells = [
 ];
 
 let hellno = rn2(hells.length);
-hells[hellno]();
+await hells[hellno]();
 
 // 
 
 des.stair("up");
 if ((u.invocation_level)) {
-   des.trap("vibrating square");
+   await des.trap("vibrating square");
 } else {
    des.stair("down");
 }
 
-populatemaze();
+await populatemaze();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

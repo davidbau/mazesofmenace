@@ -5,7 +5,7 @@
 
 import * as des from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack endgame fire.lua	$NHDT-Date: 1700398454 2023/11/19 12:54:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1992,1993 by Izchak Miller, David Cohrs,
@@ -21,7 +21,7 @@ export function generate() {
     // This map has no visible outer boundary, &&
     // is mostly open area, with lava lakes && bunches of fire traps.
     // It fills the entire mappable area.
-    des.map(`\
+    await des.map(`\
 LL.............LL..............L...LL.........LL.................LL...........L
 LL....LLLLLLLL............L...L.............LL....LLL.......................LL.
 L....LL...................L......................LLLL................LL........
@@ -47,124 +47,124 @@ L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL
     des.teleport_region({ region: [71,16,71,16] });
     des.levregion({ region: [0,0,78,19], exclude: [67,13,78,19], type: "portal", name: "water" });
 
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
     // An assortment of fire-appropriate nasties
-    des.monster("red dragon");
-    des.monster("balrog");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("fire vortex");
-    des.monster("hell hound");
+    await des.monster("red dragon");
+    await des.monster("balrog");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire vortex");
+    await des.monster("hell hound");
     // 
-    des.monster("fire giant");
-    des.monster("barbed devil");
-    des.monster("hell hound");
-    des.monster("stone golem");
-    des.monster("pit fiend");
-    des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire giant");
+    await des.monster("barbed devil");
+    await des.monster("hell hound");
+    await des.monster("stone golem");
+    await des.monster("pit fiend");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
     // 
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("hell hound");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("scorpion");
-    des.monster("fire giant");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("hell hound");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("scorpion");
+    await des.monster("fire giant");
     // 
-    des.monster("hell hound");
-    des.monster("dust vortex");
-    des.monster("fire vortex");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("hell hound");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("stone golem");
-    des.monster("pit viper");
-    des.monster("pit viper");
-    des.monster("fire vortex");
+    await des.monster("hell hound");
+    await des.monster("dust vortex");
+    await des.monster("fire vortex");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("hell hound");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("stone golem");
+    await des.monster("pit viper");
+    await des.monster("pit viper");
+    await des.monster("fire vortex");
     // 
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("fire giant");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("fire vortex");
-    des.monster("fire vortex");
-    des.monster("pit fiend");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("pit viper");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire giant");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire vortex");
+    await des.monster("fire vortex");
+    await des.monster("pit fiend");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("pit viper");
     // 
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster("minotaur");
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster("steam vortex");
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster("minotaur");
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster("steam vortex");
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster({ id: "salamander", peaceful: 0 });
     // 
-    des.monster("fire giant");
-    des.monster("barbed devil");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("fire vortex");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster("hell hound");
-    des.monster("fire giant");
-    des.monster("pit fiend");
-    des.monster({ id: "fire elemental", peaceful: 0 });
-    des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire giant");
+    await des.monster("barbed devil");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("fire vortex");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster("hell hound");
+    await des.monster("fire giant");
+    await des.monster("pit fiend");
+    await des.monster({ id: "fire elemental", peaceful: 0 });
+    await des.monster({ id: "fire elemental", peaceful: 0 });
     // 
-    des.monster("barbed devil");
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster("steam vortex");
-    des.monster({ id: "salamander", peaceful: 0 });
-    des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster("barbed devil");
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster("steam vortex");
+    await des.monster({ id: "salamander", peaceful: 0 });
+    await des.monster({ id: "salamander", peaceful: 0 });
 
-    des.object("boulder");
-    des.object("boulder");
-    des.object("boulder");
-    des.object("boulder");
-    des.object("boulder");
+    await des.object("boulder");
+    await des.object("boulder");
+    await des.object("boulder");
+    await des.object("boulder");
+    await des.object("boulder");
 
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

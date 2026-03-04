@@ -60,9 +60,37 @@ function parseAnsiLine(line, maxCols) {
     const cells = [];
     let currentColor = 7; // default gray
     let currentBright = false;
+    let decGraphics = false; // Shift-Out/Shift-In DEC line-drawing mode
     let i = 0;
 
+    const DEC_GRAPHICS_MAP = {
+        // VT100/DEC Special Graphics set used by NetHack DECgraphics.
+        j: '┘',
+        k: '┐',
+        l: '┌',
+        m: '└',
+        n: '┼',
+        q: '─',
+        t: '├',
+        u: '┤',
+        v: '┴',
+        w: '┬',
+        x: '│',
+    };
+
     while (i < line.length && cells.length < maxCols) {
+        // Shift-Out (SO, 0x0E) enables DEC line-drawing; Shift-In (SI, 0x0F) disables it.
+        if (line[i] === '\x0e') {
+            decGraphics = true;
+            i++;
+            continue;
+        }
+        if (line[i] === '\x0f') {
+            decGraphics = false;
+            i++;
+            continue;
+        }
+
         // Check for ANSI escape sequence: ESC [ ... m
         if (line[i] === '\x1b' && line[i + 1] === '[') {
             // Find the end of the escape sequence (ends with 'm')
@@ -103,7 +131,9 @@ function parseAnsiLine(line, maxCols) {
         }
 
         // Regular character
-        cells.push({ ch: line[i], color: currentColor });
+        const raw = line[i];
+        const ch = decGraphics && DEC_GRAPHICS_MAP[raw] ? DEC_GRAPHICS_MAP[raw] : raw;
+        cells.push({ ch, color: currentColor });
         i++;
     }
 
@@ -138,11 +168,12 @@ export class TmuxAdapter extends GameAdapter {
      */
     async start(options = {}) {
         const seed = options.seed || Math.floor(Math.random() * 100000);
-        const role = options.role || 'Valkyrie';
-        const race = options.race || 'human';
-        const name = options.name || 'Agent';
-        const gender = options.gender || 'female';
-        const align = options.align || 'neutral';
+        const interactive = options.interactive === true;
+        const role = interactive ? null : (options.role || 'Valkyrie');
+        const race = interactive ? null : (options.race || 'human');
+        const name = interactive ? null : (options.name || 'Agent');
+        const gender = interactive ? null : (options.gender || 'female');
+        const align = interactive ? null : (options.align || 'neutral');
         const tutorial = options.tutorial === true;
         const rngLogPath = options.rngLogPath || null;
         const wizard = options.wizard !== undefined ? options.wizard : true;
@@ -153,16 +184,20 @@ export class TmuxAdapter extends GameAdapter {
 
         const nethackrc = join(this._homeDir, '.nethackrc');
         const rcOptions = [
-            `OPTIONS=name:${name}`,
-            `OPTIONS=race:${race}`,
-            `OPTIONS=role:${role}`,
-            `OPTIONS=gender:${gender}`,
-            `OPTIONS=align:${align}`,
             'OPTIONS=showexp',
             'OPTIONS=!autopickup',
             'OPTIONS=suppress_alert:3.4.3',
         ];
-        rcOptions.push(tutorial ? 'OPTIONS=tutorial' : 'OPTIONS=!tutorial');
+        if (!interactive) {
+            rcOptions.unshift(
+                `OPTIONS=name:${name}`,
+                `OPTIONS=race:${race}`,
+                `OPTIONS=role:${role}`,
+                `OPTIONS=gender:${gender}`,
+                `OPTIONS=align:${align}`,
+            );
+            rcOptions.push(tutorial ? 'OPTIONS=tutorial' : 'OPTIONS=!tutorial');
+        }
 
         // Add symbol set if specified
         if (this.symset === 'DECgraphics') {
@@ -171,8 +206,12 @@ export class TmuxAdapter extends GameAdapter {
 
         writeFileSync(nethackrc, rcOptions.join('\n') + '\n');
 
-        // Clean up stale game state for this specific player name.
-        this._cleanGameState(name);
+        // Clean up stale game state.
+        if (interactive) {
+            this._cleanGameState(null); // clean all known state
+        } else {
+            this._cleanGameState(name);
+        }
 
         // Kill any existing tmux session with the same name
         try { execSync(`${this.tmuxBaseCmd} kill-session -t ${this.sessionName} 2>/dev/null`); } catch {}
@@ -196,14 +235,17 @@ export class TmuxAdapter extends GameAdapter {
 
         const envStr = Object.entries(env).map(([k, v]) => `${k}=${v}`).join(' ');
         const wizardFlag = wizard ? ' -D' : '';
-        execSync(`${this.tmuxBaseCmd} new-session -d -s ${this.sessionName} -x ${TERMINAL_COLS} -y ${TERMINAL_ROWS} "env ${envStr} ${NETHACK_BINARY} -u ${name}${wizardFlag}"`);
+        const nameFlag = interactive ? '' : ` -u ${name}`;
+        execSync(`${this.tmuxBaseCmd} new-session -d -s ${this.sessionName} -x ${TERMINAL_COLS} -y ${TERMINAL_ROWS} "env ${envStr} ${NETHACK_BINARY}${nameFlag}${wizardFlag}"`);
 
         // Wait for game to start
         await sleep(STARTUP_DELAY);
         this._running = true;
 
-        // Skip through character selection if needed
-        await this._skipChargen({ stopAtTutorialPrompt: tutorial });
+        // Skip through character selection if needed (not in interactive mode)
+        if (!interactive) {
+            await this._skipChargen({ stopAtTutorialPrompt: tutorial });
+        }
     }
 
     /**
@@ -378,13 +420,15 @@ export class TmuxAdapter extends GameAdapter {
             // Remove lock files and level files
             if (existsSync(INSTALL_DIR)) {
                 const lowerName = String(playerName || '').toLowerCase();
+                const explicitRuntimeFiles = new Set(['record', 'xlogfile', 'logfile', 'paniclog']);
                 for (const f of readdirSync(INSTALL_DIR)) {
                     if (f.endsWith('.lua')) continue;
                     const lower = f.toLowerCase();
                     const matchesKnown = lower.includes('agent') || lower.includes('wizard');
                     const matchesPlayer = lowerName && lower.includes(lowerName);
                     const matchesBones = lower.startsWith('bon');
-                    if (matchesKnown || matchesPlayer || matchesBones) {
+                    const matchesRuntime = explicitRuntimeFiles.has(lower);
+                    if (matchesKnown || matchesPlayer || matchesBones || matchesRuntime) {
                         try { unlinkSync(join(INSTALL_DIR, f)); } catch {}
                     }
                 }

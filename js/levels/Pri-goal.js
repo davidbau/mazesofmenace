@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Priest Pri-goal.lua	$NHDT-Date: 1687033651 2023/6/17 20:27:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991-2 by M. Stephenson
@@ -19,7 +19,7 @@ export function generate() {
 
     des.level_init({ style: "mines", fg: "L", bg: ".", smoothed: false, joined: false, lit: 0, walled: false });
 
-    des.map(`\
+    await des.map(`\
 xxxxxx..xxxxxx...xxxxxxxxx
 xxxx......xx......xxxxxxxx
 xx.xx.............xxxxxxxx
@@ -36,63 +36,63 @@ xxxxx...xxxxxx....xxxxxxxx
     let place = [ [14,4], [13,7] ]
     let placeidx = (rn2((place.length) - (1) + 1) + (1));
 
-    des.region(selection.area(0,0,25,10), "unlit");
+    await des.region(selection.area(0,0,25,10), "unlit");
     // Stairs
     des.stair("up", 20,5);
     // Objects [note: eroded=-1 => obj->oerodeproof=1]
-    des.object({ id: "helm of brilliance", coord: place[placeidx],
+    await des.object({ id: "helm of brilliance", coord: place[placeidx],
                  buc: "blessed", spe: 0, eroded: -1, name: "The Mitre of Holiness" })
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap();
-    des.trap();
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap();
+    await des.trap();
     // Random monsters.
-    des.monster("Nalzok",place[placeidx]);
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("human zombie");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("wraith");
-    des.monster("W");
+    await des.monster("Nalzok",place[placeidx]);
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("human zombie");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("wraith");
+    await des.monster("W");
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

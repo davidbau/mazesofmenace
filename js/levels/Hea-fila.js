@@ -5,7 +5,7 @@
 
 import * as des from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Healer Hea-fila.lua	$NHDT-Date: 1652196003 2022/5/10 15:20:3 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991, 1993 by M. Stephenson, P. Winner
@@ -21,34 +21,34 @@ export function generate() {
     des.stair("up");
     des.stair("down");
     // 
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // 
-    des.monster("rabid rat");
-    des.monster({ class: "r", peaceful: 0 });
-    des.monster({ class: "r", peaceful: 0 });
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("electric eel");
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "D", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
-    des.monster({ class: "S", peaceful: 0 });
+    await des.monster("rabid rat");
+    await des.monster({ class: "r", peaceful: 0 });
+    await des.monster({ class: "r", peaceful: 0 });
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("electric eel");
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "D", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
+    await des.monster({ class: "S", peaceful: 0 });
     // 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

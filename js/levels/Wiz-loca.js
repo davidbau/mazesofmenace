@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Wizard Wiz-loca.lua	$NHDT-Date: 1652196019 2022/5/10 15:20:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
     // Copyright (c) 1992 by David Cohrs
     // NetHack may be freely redistributed.  See license for details.
@@ -16,7 +16,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 .............        .......................................................
 ..............       .............}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.......
 ..............      ..............}.................................}.......
@@ -45,39 +45,39 @@ export function generate() {
     des.replace_terrain({ region: [34, 1,68,19], fromterrain: "}", toterrain: ".", chance: 2 });
 
     // Dungeon Description
-    des.region(selection.area(0,0,75,20), "lit");
-    des.region({ region: [37,4,65,16], lit: 0, type: "ordinary", irregular: 1,
-                 contents: function() {
+    await des.region(selection.area(0,0,75,20), "lit");
+    await des.region({ region: [37,4,65,16], lit: 0, type: "ordinary", irregular: 1,
+                 contents: async function() {
                     des.door({ state: "secret", wall: "random" });
                     }
     })
-    des.region({ region: [39,6,63,14], lit: 0, type: "ordinary", irregular: 1,
-                 contents: function() {
+    await des.region({ region: [39,6,63,14], lit: 0, type: "ordinary", irregular: 1,
+                 contents: async function() {
                     des.door({ state: "secret", wall: "random" });
                  }
     })
 
-    des.region({ region: [41,8,46,12], lit: 1, type: "ordinary", irregular: 1,
-                 contents: function() {
+    await des.region({ region: [41,8,46,12], lit: 1, type: "ordinary", irregular: 1,
+                 contents: async function() {
                     const walls = [ "north", "south", "west" ];
                     const widx = rn2(walls.length);
                     des.door({ state: "secret", wall: walls[widx] });
                  }
     })
 
-    des.region({ region: [56,8,61,12], lit: 1, type: "ordinary", irregular: 1,
-                 contents: function() {
+    await des.region({ region: [56,8,61,12], lit: 1, type: "ordinary", irregular: 1,
+                 contents: async function() {
                     const walls = [ "north", "south", "east" ];
                     const widx = rn2(walls.length);
                     des.door({ state: "secret", wall: walls[widx] });
                  }
     })
 
-    des.region(selection.area(48,8,54,8), "unlit");
-    des.region(selection.area(48,12,54,12), "unlit");
+    await des.region(selection.area(48,8,54,8), "unlit");
+    await des.region(selection.area(48,12,54,12), "unlit");
 
-    des.region({ region: [48,10,54,10], lit: 0, type: "ordinary", irregular: 1,
-                 contents: function() {
+    await des.region({ region: [48,10,54,10], lit: 0, type: "ordinary", irregular: 1,
+                 contents: async function() {
                     des.door({ state: "secret", wall: "random" });
                  }
     })
@@ -94,72 +94,72 @@ export function generate() {
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,20));
     // Objects
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
-    des.trap("spiked pit",24,2);
-    des.trap("spiked pit",7,10);
-    des.trap("spiked pit",23,5);
-    des.trap("spiked pit",26,19);
-    des.trap("spiked pit",72,2);
-    des.trap("spiked pit",72,12);
-    des.trap("falling rock",45,16);
-    des.trap("falling rock",65,13);
-    des.trap("falling rock",55,6);
-    des.trap("falling rock",39,11);
-    des.trap("falling rock",57,9);
-    des.trap("magic");
-    des.trap("statue");
-    des.trap("statue");
-    des.trap("polymorph");
-    des.trap("anti magic",53,10);
-    des.trap("sleep gas");
-    des.trap("sleep gas");
-    des.trap("dart");
-    des.trap("dart");
-    des.trap("dart");
+    await des.trap("spiked pit",24,2);
+    await des.trap("spiked pit",7,10);
+    await des.trap("spiked pit",23,5);
+    await des.trap("spiked pit",26,19);
+    await des.trap("spiked pit",72,2);
+    await des.trap("spiked pit",72,12);
+    await des.trap("falling rock",45,16);
+    await des.trap("falling rock",65,13);
+    await des.trap("falling rock",55,6);
+    await des.trap("falling rock",39,11);
+    await des.trap("falling rock",57,9);
+    await des.trap("magic");
+    await des.trap("statue");
+    await des.trap("statue");
+    await des.trap("polymorph");
+    await des.trap("anti magic",53,10);
+    await des.trap("sleep gas");
+    await des.trap("sleep gas");
+    await des.trap("dart");
+    await des.trap("dart");
+    await des.trap("dart");
     // Random monsters.
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "B", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster({ class: "i", peaceful: 0 });
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster("vampire bat");
-    des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "B", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster({ class: "i", peaceful: 0 });
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster("vampire bat");
+    await des.monster({ class: "i", peaceful: 0 });
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

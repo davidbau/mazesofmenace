@@ -4,6 +4,63 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
+const keylogMetaCache = new Map();
+
+function isFourteenDigitDatetime(value) {
+    return typeof value === 'string' && /^\d{14}$/.test(value);
+}
+
+function keylogMetaFromPath(keylogPath) {
+    if (!keylogPath || typeof keylogPath !== 'string') return null;
+    const resolved = resolve(keylogPath);
+    if (keylogMetaCache.has(resolved)) return keylogMetaCache.get(resolved);
+    let out = null;
+    try {
+        if (existsSync(resolved)) {
+            const firstLine = readFileSync(resolved, 'utf8').split(/\r?\n/, 1)[0] || '';
+            if (firstLine.trim()) {
+                const row = JSON.parse(firstLine);
+                if (row?.type === 'meta') {
+                    out = {
+                        datetime: isFourteenDigitDatetime(row?.datetime) ? row.datetime : null,
+                        recordedAt: (typeof row?.recordedAt === 'string' && row.recordedAt.length > 0)
+                            ? row.recordedAt
+                            : null,
+                    };
+                }
+            }
+        }
+    } catch {
+        out = null;
+    }
+    keylogMetaCache.set(resolved, out);
+    return out;
+}
+
+function inferSessionDatetime(raw) {
+    const fromOptions = raw?.options?.datetime;
+    if (isFourteenDigitDatetime(fromOptions)) return fromOptions;
+    const fromRegen = raw?.regen?.datetime;
+    if (isFourteenDigitDatetime(fromRegen)) return fromRegen;
+    const keylog = raw?.regen?.keylog;
+    if (typeof keylog === 'string' && keylog.length > 0) {
+        return keylogMetaFromPath(keylog)?.datetime || null;
+    }
+    return null;
+}
+
+function inferSessionRecordedAt(raw) {
+    const fromOptions = raw?.options?.recordedAt;
+    if (typeof fromOptions === 'string' && fromOptions.length > 0) return fromOptions;
+    const fromRegen = raw?.regen?.recordedAt;
+    if (typeof fromRegen === 'string' && fromRegen.length > 0) return fromRegen;
+    const keylog = raw?.regen?.keylog;
+    if (typeof keylog === 'string' && keylog.length > 0) {
+        return keylogMetaFromPath(keylog)?.recordedAt || null;
+    }
+    return null;
+}
+
 export function stripAnsiSequences(text) {
     if (!text) return '';
     return String(text)
@@ -17,34 +74,13 @@ export function stripAnsiSequences(text) {
 }
 
 export function getSessionScreenLines(screenHolder) {
-    if (Array.isArray(screenHolder?.screen)) {
-        return screenHolder.screen.map((line) => stripAnsiSequences(line));
-    }
     if (typeof screenHolder?.screen === 'string') {
         return screenHolder.screen.split('\n').map((line) => stripAnsiSequences(line));
-    }
-    // Deprecated compatibility path. v3 canonical field is `screen`.
-    if (Array.isArray(screenHolder?.screenAnsi)) {
-        return screenHolder.screenAnsi.map((line) => stripAnsiSequences(line));
-    }
-    if (typeof screenHolder?.screenAnsi === 'string') {
-        return screenHolder.screenAnsi.split('\n').map((line) => stripAnsiSequences(line));
     }
     return [];
 }
 
 export function getSessionScreenAnsiLines(screenHolder) {
-    // Prefer explicit ANSI captures when both plain and ANSI views exist.
-    // normalizeSession populates both, and color comparisons must use ANSI.
-    if (Array.isArray(screenHolder?.screenAnsi)) {
-        return screenHolder.screenAnsi.map((line) => String(line || ''));
-    }
-    if (typeof screenHolder?.screenAnsi === 'string') {
-        return screenHolder.screenAnsi.split('\n').map((line) => String(line || ''));
-    }
-    if (Array.isArray(screenHolder?.screen)) {
-        return screenHolder.screen.map((line) => String(line || ''));
-    }
     if (typeof screenHolder?.screen === 'string') {
         // v3 canonical: ANSI-compressed screen is stored directly in `screen`.
         return screenHolder.screen.split('\n').map((line) => String(line || ''));
@@ -71,6 +107,9 @@ function normalizeStep(step, index) {
     return {
         index,
         key: row.key ?? null,
+        action: row.action ?? null,
+        turn: Number.isInteger(row.turn) ? row.turn : null,
+        depth: (typeof row.depth === 'string' && row.depth.length > 0) ? row.depth : null,
         rng,
         // Prefer explicit traces over count-only comparison. For captured
         // `rng: []`, leave rngCalls null so downstream uses compareRng()
@@ -88,10 +127,10 @@ function normalizeStep(step, index) {
 function decodeCell(cell) {
     if (typeof cell !== 'string' || cell.length === 0) return 0;
     if (/^\d+$/.test(cell)) return Number(cell);
-    const ch = cell.toLowerCase();
-    const code = ch.charCodeAt(0);
-    if (code >= 48 && code <= 57) return code - 48;
-    if (code >= 97 && code <= 122) return 10 + (code - 97);
+    const code = cell.charCodeAt(0);
+    if (code >= 48 && code <= 57) return code - 48;        // 0..9
+    if (code >= 97 && code <= 122) return 10 + (code - 97); // a..z => 10..35
+    if (code >= 65 && code <= 90) return 36 + (code - 65);  // A..Z => 36..61
     return 0;
 }
 
@@ -245,7 +284,15 @@ export function normalizeSession(raw, meta = {}) {
     const source = raw?.source || 'unknown';
     const seed = Number.isInteger(raw?.seed) ? raw.seed : 0;
     const type = deriveType(raw, file);
-    const options = raw?.options || {};
+    const options = { ...(raw?.options || {}) };
+    const inferredDatetime = inferSessionDatetime(raw);
+    if (!options.datetime && inferredDatetime) {
+        options.datetime = inferredDatetime;
+    }
+    const inferredRecordedAt = inferSessionRecordedAt(raw);
+    if (!options.recordedAt && inferredRecordedAt) {
+        options.recordedAt = inferredRecordedAt;
+    }
 
     const sourceSteps = Array.isArray(raw?.steps) ? raw.steps : [];
     const startupFromStep = sourceSteps.length > 0

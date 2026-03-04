@@ -15,11 +15,10 @@ import {
     setRngCallCount,
     pushRngLogEntry,
 } from './rng.js';
-import { makelevel, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { rankOf, roles } from './player.js';
 import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
-import { monsterNearby } from './monutil.js';
+import { monsterNearby, newsym, setDisplayContext } from './monutil.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
@@ -301,7 +300,7 @@ export async function generateMapsWithCoreReplay(seed, maxDepth, options = {}) {
 
     for (let depth = 1; depth <= targetDepth; depth++) {
         if (depth > 1) {
-            game.teleportToLevel(depth);
+            await game.teleportToLevel(depth);
         }
         grids[depth] = game.getTypGrid();
         maps[depth] = (game.lev || game.map);
@@ -450,7 +449,13 @@ export class HeadlessDisplay {
         this.cursorCol = 0;
         this.cursorRow = 0;
         this.cursorVisible = 1;
+        this._nhgetch = null;
+        this._pendingMore = false;
+        this._messageQueue = [];
+        this._moreBlockingEnabled = false;
     }
+
+    setNhgetch(fn) { this._nhgetch = fn; }
 
     setCell(col, row, ch, color = CLR_GRAY, attr = 0) {
         if (row >= 0 && row < this.rows && col >= 0 && col < this.cols) {
@@ -502,7 +507,7 @@ export class HeadlessDisplay {
         }
     }
 
-    putstr_message(msg) {
+    async putstr_message(msg) {
         // Add to message history
         if (msg.trim()) {
             this.messages.push(msg);
@@ -511,14 +516,16 @@ export class HeadlessDisplay {
             }
         }
 
-        // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit
+        // If --More-- is pending (non-blocking fallback), queue the message.
+        if (this._pendingMore) {
+            this._messageQueue.push(msg);
+            return;
+        }
+
+        // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when checking if messages
         // can be concatenated.  When the combined message plus --More-- would
-        // exceed the line width, C shows --More-- and starts a new line instead.
-        // However, C's pline() calls flush_screen(1) before every message, which
-        // shows --More-- and clears the topline.  In selfplay captures, the
-        // harness auto-dismisses these, so messages are never concatenated.
-        // When noConcatenateMessages is set, we skip concatenation to match C.
+        // exceed the line width, C shows --More-- and blocks on input first.
         const notDied = !msg.startsWith('You die');
         if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
@@ -531,6 +538,24 @@ export class HeadlessDisplay {
                 this.setCursor(Math.min(combined.length, this.cols - 1), 0);
                 return;
             }
+            // Overflow: show --More-- and block until a key is pressed.
+            // C ref: topl.c more() → flush_screen(1) → bot() before xwaitforspace().
+            // Update status line so HP/Pw reflect current state at the --More-- prompt.
+            if (this._lastMapState?.player) {
+                this.renderStatus(this._lastMapState.player);
+            }
+            this.renderMoreMarker();
+            if (this._moreBlockingEnabled && this._nhgetch) {
+                // True blocking: await a keypress to dismiss --More--,
+                // matching C's xwaitforspace() behavior.
+                await this._nhgetch();
+                // Fall through to display the new message fresh.
+            } else {
+                // Non-blocking fallback: queue message for later display.
+                this._pendingMore = true;
+                this._messageQueue.push(msg);
+                return;
+            }
         }
 
         this.clearRow(0);
@@ -538,6 +563,21 @@ export class HeadlessDisplay {
         this.topMessage = msg;
         this.messageNeedsMore = true;
         this.setCursor(Math.min(msg.length, this.cols - 1), 0);
+    }
+
+    // Dismiss the --More-- prompt and display queued messages.
+    // Called when a key is consumed for --More-- dismissal (from nhgetch
+    // or run_command).  Drains the queue one message at a time; if another
+    // overflow triggers a new --More--, draining stops.
+    _clearMore() {
+        this._pendingMore = false;
+        this.clearRow(0);
+        this.messageNeedsMore = false;
+        this.topMessage = null;
+        while (this._messageQueue.length > 0 && !this._pendingMore) {
+            const queued = this._messageQueue.shift();
+            this.putstr_message(queued);
+        }
     }
 
     // Render the "--More--" marker that C tty appends to the topline before
@@ -629,7 +669,8 @@ export class HeadlessDisplay {
 
         for (let i = 0; i < menuRows; i++) {
             const line = lines[i];
-            const isHeader = isCategoryHeader(line);
+            // C ref: wintty.c — menu prompt (line 0) and category headers use inverse video.
+            const isHeader = (i === 0 && line.trim().length > 0) || isCategoryHeader(line);
             if (isHeader) {
                 // C ref: wintty.c — category headers have a single leading
                 // space that is part of the clear region, not inverse video.
@@ -661,6 +702,48 @@ export class HeadlessDisplay {
                 this.colors[i][c] = CLR_GRAY;
             }
         }
+    }
+
+    // C ref: tty_display_nhwindow process_text_window / process_menu_window
+    // Renders a text popup as a right-side overlay on the map.
+    // Used by look_here() for "Things that are here:" and similar displays.
+    renderTextPopup(lines) {
+        // Filter out trailing empty lines from the data
+        while (lines.length > 0 && lines[lines.length - 1] === '') {
+            lines = lines.slice(0, -1);
+        }
+        // Add "--More--" prompt at the end
+        lines = [...lines, '--More--'];
+
+        let maxcol = 0;
+        for (const line of lines) {
+            if (line.length > maxcol) maxcol = line.length;
+        }
+
+        // C ref: process_menu_window offx calculation:
+        // offx = min(min(82, cols/2), cols - maxcol - 1)
+        // Empirically, for 80 cols this produces offx=41 (0-indexed) because
+        // C adds cw->offx to the 1-based cursor x, yielding offx+1 screen col.
+        const halfCols = Math.floor(this.cols / 2) + 1;
+        const offx = Math.min(halfCols, this.cols - maxcol - 1);
+
+        const menuRows = Math.min(lines.length, this.rows - 2);
+        // Clear the popup area
+        for (let r = 0; r < menuRows; r++) {
+            for (let c = Math.max(0, offx); c < this.cols; c++) {
+                this.grid[r][c] = ' ';
+                this.colors[r][c] = CLR_GRAY;
+                this.attrs[r][c] = 0;
+            }
+        }
+        // Render each line
+        for (let i = 0; i < menuRows; i++) {
+            this.putstr(offx, i, lines[i], CLR_GRAY, 0);
+        }
+        // Position cursor at end of "--More--" on the last row
+        const lastRow = menuRows - 1;
+        const moreEnd = offx + lines[lastRow].length;
+        this.setCursor(Math.min(moreEnd, this.cols - 1), lastRow);
     }
 
     // Return 24-line string array matching C TTY screen format
@@ -869,140 +952,15 @@ export class HeadlessDisplay {
         this._lastMapState = { gameMap, player, fov, flags: { ...this.flags } };
         const mapOffset = this.flags.msg_window ? 3 : MAP_ROW_START;
 
-
+        // Temporarily set display context so newsym() renders to this display
+        const prevCtx = setDisplayContext({ display: this, player, fov, flags: this.flags, map: gameMap });
         for (let y = 0; y < ROWNO; y++) {
             const row = y + mapOffset;
             // C tty map rendering uses game x in [1..COLNO-1] at terminal cols [0..COLNO-2].
             // Keep the last terminal column blank for map rows.
             this.setCell(COLNO - 1, row, ' ', CLR_GRAY);
             for (let x = 1; x < COLNO; x++) {
-                const col = x - 1;
-
-                if (!fov || !fov.canSee(x, y)) {
-                    const loc = gameMap.at(x, y);
-                    // C ref: map_invisible() uses show_glyph() directly,
-                    // so mem_invis displays even at unseen locations.
-                    if (loc && loc.mem_invis) {
-                        this.setCell(col, row, 'I', CLR_GRAY);
-                        continue;
-                    }
-                    if (loc && loc.seenv) {
-                        if (loc.mem_obj) {
-                            const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
-                                ? loc.mem_obj_color
-                                : CLR_BLACK;
-                            this.setCell(col, row, loc.mem_obj, rememberedObjColor);
-                            continue;
-                        }
-                        if (loc.mem_trap) {
-                            // C ref: back_to_glyph() preserves trap's full color in memory.
-                            const memTrapColor = Number.isInteger(loc.mem_trap_color)
-                                ? loc.mem_trap_color : CLR_BLACK;
-                            this.setCell(col, row, loc.mem_trap, memTrapColor);
-                            continue;
-                        }
-                        if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
-                            this.setCell(col, row, ' ', CLR_GRAY);
-                            continue;
-                        }
-                        const sym = this.terrainSymbol(loc, gameMap, x, y);
-                        const rememberedColor = (loc.typ === ROOM) ? NO_COLOR : sym.color;
-                        this.setCell(col, row, sym.ch, rememberedColor);
-                    } else {
-                        this.setCell(col, row, ' ', CLR_GRAY);
-                    }
-                    continue;
-                }
-
-                const loc = gameMap.at(x, y);
-                if (!loc) {
-                    this.setCell(col, row, ' ', CLR_GRAY);
-                    continue;
-                }
-                // seenv is now tracked by vision.js compute()
-
-                if (player && x === player.x && y === player.y) {
-                    this.setCell(col, row, '@', CLR_WHITE);
-                    continue;
-                }
-
-                const mon = gameMap.monsterAt(x, y);
-                if (mon) {
-                    loc.mem_invis = false;
-                    const underObjs = gameMap.objectsAt(x, y);
-                    if (underObjs.length > 0) {
-                        const underTop = underObjs[underObjs.length - 1];
-                        const underGlyph = objectMapGlyph(underTop, false, { player, x, y });
-                        loc.mem_obj = underGlyph.ch || 0;
-                        loc.mem_obj_color = Number.isInteger(underGlyph.color)
-                            ? underGlyph.color
-                            : CLR_GRAY;
-                    } else {
-                        const engr = gameMap.engravingAt(x, y);
-                        if (engr && (player?.wizard || engr.erevealed)) {
-                            const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
-                            loc.mem_obj = engrCh;
-                            loc.mem_obj_color = CLR_BRIGHT_BLUE;
-                        } else {
-                            loc.mem_obj = 0;
-                            loc.mem_obj_color = 0;
-                        }
-                    }
-                    const hallu = !!player?.hallucinating;
-                    const glyph = monsterMapGlyph(mon, hallu);
-                    this.setCell(col, row, glyph.ch, glyph.color);
-                    continue;
-                }
-                if (loc.mem_invis) {
-                    this.setCell(col, row, 'I', CLR_GRAY);
-                    continue;
-                }
-
-                const objs = gameMap.objectsAt(x, y);
-                if (objs.length > 0) {
-                    const topObj = objs[objs.length - 1];
-                    const hallu = !!player?.hallucinating;
-                    const glyph = objectMapGlyph(topObj, hallu, { player, x, y });
-                    const memGlyph = hallu
-                        ? objectMapGlyph(topObj, false, { player, x, y, observe: false })
-                        : glyph;
-                    loc.mem_obj = memGlyph.ch || 0;
-                    loc.mem_obj_color = Number.isInteger(memGlyph.color)
-                        ? memGlyph.color
-                        : CLR_GRAY;
-                    this.setCell(col, row, glyph.ch, glyph.color);
-                    continue;
-                }
-                loc.mem_obj = 0;
-                loc.mem_obj_color = 0;
-
-                const trap = gameMap.trapAt(x, y);
-                if (trap && trap.tseen) {
-                    const tg = trapGlyph(trap.ttyp);
-                    loc.mem_trap = tg.ch;
-                    loc.mem_trap_color = tg.color;
-                    this.setCell(col, row, tg.ch, tg.color);
-                    continue;
-                }
-                loc.mem_trap = 0;
-
-                // C ref: display.c back_to_glyph() — wizard mode shows
-                // engravings with S_engroom ('`') / S_engrcorr ('#').
-                const engr = gameMap.engravingAt(x, y);
-                if (engr && (player?.wizard || engr.erevealed)) {
-                    const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
-                    loc.mem_obj = engrCh;
-                    loc.mem_obj_color = CLR_BRIGHT_BLUE;
-                    this.setCell(col, row, engrCh, CLR_BRIGHT_BLUE);
-                    continue;
-                }
-
-                if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
-                    this.setCell(col, row, ' ', CLR_GRAY);
-                    continue;
-                }
-                const sym = this.terrainSymbol(loc, gameMap, x, y);
-                this.setCell(col, row, sym.ch, sym.color);
+                newsym(x, y);
             }
         }
         this._captureMapBase();

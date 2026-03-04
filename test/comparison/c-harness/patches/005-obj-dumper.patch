@@ -29,7 +29,7 @@ diff --git a/src/cmd.c b/src/cmd.c
 +
 +    fp = fopen(fname, "w");
 +    if (!fp) {
-+        pline("Cannot open %s for writing.", fname);
++        raw_printf("dumpobj: cannot open %s for writing.", fname);
 +        return ECMD_OK;
 +    }
 +
@@ -40,7 +40,7 @@ diff --git a/src/cmd.c b/src/cmd.c
 +    }
 +
 +    fclose(fp);
-+    pline("Objects dumped to %s.", fname);
++    /* Silent: no pline() — avoids topline pollution in session captures. */
 +    return ECMD_OK;
 +}
 +

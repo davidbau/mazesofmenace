@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, percent } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack medusa medusa-4.lua	$NHDT-Date: 1716152274 2024/5/19 20:57:54 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.8 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1990, 1991 by M. Stephenson
@@ -18,7 +18,7 @@ export function generate() {
     // Here the Medusa rules some slithery monsters from her 'palace', with
     // a yellow dragon nesting in the backyard.
     // 
-    des.map(`\
+    await des.map(`\
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}........}}}}}}}}}}}}}}}}}}}}}}}..}}}.....}}}}}}}}}}}----|}}}}}
 }}}}}}..----------F-.....}}}}}}}}}}}}}}}}..---...}}}}....T.}}}}}}}....|}}}}}
@@ -61,11 +61,11 @@ export function generate() {
     let altloc = place.rndcoord(1,1);
 
     // 
-    des.region(selection.area(0,0,74,19),"lit");
+    await des.region(selection.area(0,0,74,19),"lit");
     // fixup_special hack: The first "room" region in Medusa levels gets filled
     // with some leaderboard statues, so this needs to be a room; setting
     // irregular=1 will force this
-    des.region({ region: [13,3, 18,13], lit: 1, type: "ordinary", irregular: 1 });
+    await des.region({ region: [13,3, 18,13], lit: 1, type: "ordinary", irregular: 1 });
     // 
     des.teleport_region({ region: [64,1,74,17], dir: "down" });
     des.teleport_region({ region: [2,2,18,13], dir: "up" });
@@ -87,79 +87,79 @@ export function generate() {
     // 
     des.non_diggable(selection.area(1,1,22,14));
     // 
-    des.object("crystal ball", 7,8);
+    await des.object("crystal ball", 7,8);
     // 
     // same spot as Medusa plus downstairs
-    des.object({ id: "statue", coord: medloc, buc: "uncursed",
+    await des.object({ id: "statue", coord: medloc, buc: "uncursed",
                           montype: "knight", historic: 1, male: 1,name: "Perseus",
-                          contents: function() {
+                          contents: async function() {
                              if (percent(75)) {
-                                des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
+                                await des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
                              }
                              if (percent(25)) {
-                                des.object({ id: "levitation boots", spe: 0 });
+                                await des.object({ id: "levitation boots", spe: 0 });
                              }
                              if (percent(50)) {
-                                des.object({ id: "scimitar", buc: "blessed", spe: 2 });
+                                await des.object({ id: "scimitar", buc: "blessed", spe: 2 });
                              }
                              if (percent(50)) {
-                                des.object("sack");
+                                await des.object("sack");
                              }
                           }
     });
     // 
     // first random statue is in one of the designated stair rooms but ! the
     // one with Medusa plus downstairs
-    des.object({ id: "statue", coord: altloc, contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", coord: altloc, contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
     for (let i = 1; i <= 8; i++) {
-       des.object();
+       await des.object();
     }
     // 
     for (let i = 1; i <= 7; i++) {
-       des.trap();
+       await des.trap();
     }
     // 
     // place Medusa before placing other monsters so that they won't be able to
     // unintentionally steal her spot on the downstairs
-    des.monster({ id: "Medusa", coord: medloc, asleep: 1 });
-    des.monster("kraken", 7,7);
+    await des.monster({ id: "Medusa", coord: medloc, asleep: 1 });
+    await des.monster("kraken", 7,7);
     // 
     // the nesting dragon
-    des.monster({ id: "yellow dragon", x: 5, y: 4, asleep: 1 });
+    await des.monster({ id: "yellow dragon", x: 5, y: 4, asleep: 1 });
     if (percent(50)) {
-       des.monster({ id: "baby yellow dragon", x: 4,y: 4, asleep: 1 });
+       await des.monster({ id: "baby yellow dragon", x: 4,y: 4, asleep: 1 });
     }
     if (percent(25)) {
-       des.monster({ id: "baby yellow dragon", x: 4, y: 5, asleep: 1 });
+       await des.monster({ id: "baby yellow dragon", x: 4, y: 5, asleep: 1 });
     }
-    des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
+    await des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
     if (percent(50)) {
-       des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
+       await des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
     }
     if (percent(25)) {
-       des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
+       await des.object({ id: "egg", x: 5, y: 4, montype: "yellow dragon" });
     }
     // 
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("jellyfish");
-    des.monster("jellyfish");
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("jellyfish");
+    await des.monster("jellyfish");
     for (let i = 1; i <= 14; i++) {
-       des.monster("S");
+       await des.monster("S");
     }
     for (let i = 1; i <= 4; i++) {
-       des.monster("black naga hatchling");
-       des.monster("black naga");
+       await des.monster("black naga hatchling");
+       await des.monster("black naga");
     }
 
     // medusa.length-4.lua
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

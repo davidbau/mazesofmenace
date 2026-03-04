@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, percent } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack medusa medusa-3.lua	$NHDT-Date: 1716152250 2024/5/19 20:57:30 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.8 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1990, 1991 by M. Stephenson
@@ -17,7 +17,7 @@ export function generate() {
     // 
     // Here you disturb ravens nesting in the trees.
     // 
-    des.map(`\
+    await des.map(`\
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}T..T.}}}}}}}}}}}}}}}}}}}}..}}}}}}}}.}}}...}}}}}}}.}}}}}......}}}}}}}
@@ -57,14 +57,14 @@ export function generate() {
     let othloc = place.rndcoord(1,1);
     // once here, all three points set in 'place' have been used up
 
-    des.region(selection.area(0,0,74,19),"lit");
+    await des.region(selection.area(0,0,74,19),"lit");
     // fixup_special hack: the first room defined on a Medusa level gets some
     // leaderboard statues, use arrival_room to force it to be a room even though
     // monsters won't arrive within it
-    des.region({ region: [49,14, 51,16], lit: -1, type: "ordinary", arrival_room: true });
-    des.region(selection.area(7,5,9,7),"unlit");
-    des.region(selection.area(65,4,67,6),"unlit");
-    des.region(selection.area(45,14,47,16),"unlit");
+    await des.region({ region: [49,14, 51,16], lit: -1, type: "ordinary", arrival_room: true });
+    await des.region(selection.area(7,5,9,7),"unlit");
+    await des.region(selection.area(65,4,67,6),"unlit");
+    await des.region(selection.area(45,14,47,16),"unlit");
     // Non diggable walls
     // 4th room has diggable walls as Medusa is never placed there
     des.non_diggable(selection.area(6,4,10,8));
@@ -88,64 +88,64 @@ export function generate() {
     des.feature("fountain", othloc);
     // 
     // same spot as Medusa plus downstairs
-    des.object({ id: "statue", coord: medloc, buc: "uncursed",
+    await des.object({ id: "statue", coord: medloc, buc: "uncursed",
                           montype: "knight", historic: 1, male: 1,name: "Perseus",
-                          contents: function() {
+                          contents: async function() {
                              if (percent(75)) {
-                                des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
+                                await des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
                              }
                              if (percent(25)) {
-                                des.object({ id: "levitation boots", spe: 0 });
+                                await des.object({ id: "levitation boots", spe: 0 });
                              }
                              if (percent(50)) {
-                                des.object({ id: "scimitar", buc: "blessed", spe: 2 });
+                                await des.object({ id: "scimitar", buc: "blessed", spe: 2 });
                              }
                              if (percent(50)) {
-                                des.object("sack");
+                                await des.object("sack");
                              }
                           }
     });
     // 
     // first random statue is in one of the three designated rooms but ! the
     // one with Medusa plus downstairs || the one with the fountain
-    des.object({ id: "statue", coord: altloc, contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", coord: altloc, contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
 
     for (let i = 1; i <= 8; i++) {
-       des.object();
+       await des.object();
     }
-    des.object("scroll of blank paper",48,18);
-    des.object("scroll of blank paper",48,18);
+    await des.object("scroll of blank paper",48,18);
+    await des.object("scroll of blank paper",48,18);
     // 
-    des.trap("rust");
-    des.trap("rust");
-    des.trap("board");
-    des.trap("board");
-    des.trap();
+    await des.trap("rust");
+    await des.trap("rust");
+    await des.trap("board");
+    await des.trap("board");
+    await des.trap();
     // 
     // place Medusa before placing other monsters so that they won't be able to
     // unintentionally steal her spot on the downstairs
-    des.monster({ id: "Medusa", coord: medloc, asleep: 1 });
-    des.monster("giant eel");
-    des.monster("giant eel");
-    des.monster("jellyfish");
-    des.monster("jellyfish");
-    des.monster("wood nymph");
-    des.monster("wood nymph");
-    des.monster("water nymph");
-    des.monster("water nymph");
+    await des.monster({ id: "Medusa", coord: medloc, asleep: 1 });
+    await des.monster("giant eel");
+    await des.monster("giant eel");
+    await des.monster("jellyfish");
+    await des.monster("jellyfish");
+    await des.monster("wood nymph");
+    await des.monster("wood nymph");
+    await des.monster("water nymph");
+    await des.monster("water nymph");
 
     for (let i = 1; i <= 30; i++) {
-       des.monster({ id: "raven", peaceful: 0 });
+       await des.monster({ id: "raven", peaceful: 0 });
     }
 
     // medusa.length-3.lua
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Barbarian Bar-strt.lua	$NHDT-Date: 1652196001 2022/5/10 15:20:1 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991 by M. Stephenson
@@ -22,7 +22,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "noteleport", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ..................................PP........................................
 ...................................PP.......................................
 ...................................PP.......................................
@@ -54,16 +54,16 @@ export function generate() {
     des.terrain([62,2], ".");
 
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
-    des.region(selection.area(9,5,11,5), "unlit");
-    des.region(selection.area(9,7,11,7), "lit");
-    des.region(selection.area(9,9,11,9), "unlit");
-    des.region(selection.area(13,5,20,9), "lit");
-    des.region(selection.area(29,5,31,6), "lit");
-    des.region(selection.area(26,10,28,11), "lit");
-    des.region(selection.area(4,13,6,14), "lit");
-    des.region(selection.area(15,13,17,14), "lit");
-    des.region(selection.area(22,14,24,15), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(9,5,11,5), "unlit");
+    await des.region(selection.area(9,7,11,7), "lit");
+    await des.region(selection.area(9,9,11,9), "unlit");
+    await des.region(selection.area(13,5,20,9), "lit");
+    await des.region(selection.area(29,5,31,6), "lit");
+    await des.region(selection.area(26,10,28,11), "lit");
+    await des.region(selection.area(4,13,6,14), "lit");
+    await des.region(selection.area(15,13,17,14), "lit");
+    await des.region(selection.area(22,14,24,15), "lit");
     // Stairs
     des.stair("down", 9,9);
     // Portal arrival point
@@ -78,34 +78,34 @@ export function generate() {
     des.door("open",25,10);
     des.door("open",28,5);
     // Elder
-    des.monster({ id: "Pelias", coord: [10, 7], inventory: function() {
-       des.object({ id: "runesword", spe: 5 });
-       des.object({ id: "chain mail", spe: 5 });
+    await des.monster({ id: "Pelias", coord: [10, 7], inventory: async function() {
+       await des.object({ id: "runesword", spe: 5 });
+       await des.object({ id: "chain mail", spe: 5 });
     } })
     // The treasure of Pelias
-    des.object("chest", 9, 5);
+    await des.object("chest", 9, 5);
     // chieftain guards for the audience chamber
-    des.monster("chieftain", 10, 5);
-    des.monster("chieftain", 10, 9);
-    des.monster("chieftain", 11, 5);
-    des.monster("chieftain", 11, 9);
-    des.monster("chieftain", 14, 5);
-    des.monster("chieftain", 14, 9);
-    des.monster("chieftain", 16, 5);
-    des.monster("chieftain", 16, 9);
+    await des.monster("chieftain", 10, 5);
+    await des.monster("chieftain", 10, 9);
+    await des.monster("chieftain", 11, 5);
+    await des.monster("chieftain", 11, 9);
+    await des.monster("chieftain", 14, 5);
+    await des.monster("chieftain", 14, 9);
+    await des.monster("chieftain", 16, 5);
+    await des.monster("chieftain", 16, 9);
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // One trap to keep the ogres at bay.
-    des.trap("spiked pit",37,7);
+    await des.trap("spiked pit",37,7);
     // Eels in the river
-    des.monster("giant eel", 36, 1);
-    des.monster("giant eel", 37, 9);
-    des.monster("giant eel", 39, 15);
+    await des.monster("giant eel", 36, 1);
+    await des.monster("giant eel", 37, 9);
+    await des.monster("giant eel", 39, 15);
     // Monsters on siege duty.
     let ogrelocs = selection.floodfill(37,7).intersect(selection.area(40,3, 45,20))
     for (let i = 0; i <= 11; i++) {
-       des.monster({ id: "ogre", coord: ogrelocs.rndcoord(1), peaceful: 0 });
+       await des.monster({ id: "ogre", coord: ogrelocs.rndcoord(1), peaceful: 0 });
     
     }
-    return des.finalize_level();
+    return await des.finalize_level();
 }

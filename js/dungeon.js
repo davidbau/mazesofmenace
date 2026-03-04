@@ -159,7 +159,7 @@ import { makeroguerooms } from './extralev.js';
  * then cleans up. This allows themed rooms (which use des.room()) to
  * work with procedural dungeon generation.
  */
-function themerooms_generate(map, depth) {
+async function themerooms_generate(map, depth) {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
 
     try {
@@ -172,7 +172,7 @@ function themerooms_generate(map, depth) {
         // place - see themerms.js reservoir sampling loop.
 
         // Call ported themerms (uses des.* API internally)
-        const result = themermsGenerate(map, depth);
+        const result = await themermsGenerate(map, depth);
 
         if (DEBUG) {
             console.log(`themerooms_generate: result=${result}, nroom=${map.nroom}`);
@@ -221,6 +221,8 @@ let _dungeonLevelCounts = new Map();
 let inMklev = false;
 // Mirror C global wizard mode checks used by mkroom.c pick_room().
 let _wizardMode = true;
+let _harnessMapdumpSerial = 0;
+let _harnessMapdumpPayloads = new Map();
 
 // C ref: gi.in_mklev is also TRUE while special-level Lua code runs.
 // Exposed for sp_lev.js to bracket des.* generation phases.
@@ -287,6 +289,125 @@ const _dungeonEntryLevelByDnum = new Map([
     [TUTORIAL, 1],
 ]);
 let _specialLevelChain = [];
+
+function harnessMapdumpCell(v) {
+    let n = Number.isFinite(v) ? Math.trunc(v) : 0;
+    if (n < 0) n = 0;
+    if (n <= 9) return String.fromCharCode(48 + n);
+    if (n <= 35) return String.fromCharCode(97 + (n - 10));
+    if (n <= 61) return String.fromCharCode(65 + (n - 36));
+    return 'Z';
+}
+
+function emitHarnessMapdumpRun(parts, value, count) {
+    if (count <= 0) return;
+    if (count >= 3) {
+        parts.push(`~${count},${harnessMapdumpCell(value)}`);
+        return;
+    }
+    const ch = harnessMapdumpCell(value);
+    for (let i = 0; i < count; i++) parts.push(ch);
+}
+
+function buildHarnessMapdumpGrid(map, which) {
+    const rowParts = [];
+    for (let y = 0; y < ROWNO; y++) {
+        const out = [];
+        let runVal = null;
+        let runLen = 0;
+        for (let x = 0; x < COLNO; x++) {
+            const loc = map.at(x, y);
+            let value = 0;
+            switch (which) {
+                case 0: value = Number(loc?.typ ?? 0); break;
+                case 1: value = Number(loc?.flags ?? 0) & 0x1f; break;
+                case 2: value = loc?.horizontal ? 1 : 0; break;
+                case 3: value = loc?.lit ? 1 : 0; break;
+                case 4: value = Number(loc?.roomno ?? 0) & 0x3f; break;
+            }
+            if (runLen === 0) {
+                runVal = value;
+                runLen = 1;
+            } else if (value === runVal) {
+                runLen++;
+            } else {
+                emitHarnessMapdumpRun(out, runVal, runLen);
+                runVal = value;
+                runLen = 1;
+            }
+        }
+        emitHarnessMapdumpRun(out, runVal, runLen);
+        rowParts.push(out.join(''));
+    }
+    return rowParts.join('|');
+}
+
+function buildHarnessMapdumpPayload(map) {
+    const lines = [];
+    lines.push(`T${buildHarnessMapdumpGrid(map, 0)}`);
+    lines.push(`F${buildHarnessMapdumpGrid(map, 1)}`);
+    lines.push(`H${buildHarnessMapdumpGrid(map, 2)}`);
+    lines.push(`L${buildHarnessMapdumpGrid(map, 3)}`);
+    lines.push(`R${buildHarnessMapdumpGrid(map, 4)}`);
+
+    const objParts = [];
+    for (const obj of (Array.isArray(map?.objects) ? map.objects : [])) {
+        const ox = Number(obj?.ox);
+        const oy = Number(obj?.oy);
+        if (!isok(ox, oy)) continue;
+        const otyp = Number.isFinite(obj?.otyp) ? Math.trunc(obj.otyp) : 0;
+        const quan = Number.isFinite(obj?.quan) ? Math.trunc(obj.quan) : 0;
+        objParts.push(`${ox},${oy},${otyp},${quan}`);
+    }
+    lines.push(`O${objParts.join(';')}`);
+
+    const monParts = [];
+    for (const mon of (Array.isArray(map?.monsters) ? map.monsters : [])) {
+        const mx = Number(mon?.mx);
+        const my = Number(mon?.my);
+        if (!isok(mx, my)) continue;
+        const mndx = Number.isFinite(mon?.mndx) ? Math.trunc(mon.mndx) : 0;
+        const mhp = Number.isFinite(mon?.mhp) ? Math.trunc(mon.mhp) : 0;
+        monParts.push(`${mx},${my},${mndx},${mhp}`);
+    }
+    lines.push(`M${monParts.join(';')}`);
+
+    const trapParts = [];
+    for (const trap of (Array.isArray(map?.traps) ? map.traps : [])) {
+        const tx = Number(trap?.tx);
+        const ty = Number(trap?.ty);
+        if (!isok(tx, ty)) continue;
+        const ttyp = Number.isFinite(trap?.ttyp) ? Math.trunc(trap.ttyp) : 0;
+        trapParts.push(`${tx},${ty},${ttyp}`);
+    }
+    lines.push(`K${trapParts.join(';')}`);
+
+    return `${lines.join('\n')}\n`;
+}
+
+function emitHarnessMapdumpEvent(map, depth, dnum, dlevel) {
+    const mapDnum = Number.isInteger(map?._genDnum) ? map._genDnum : undefined;
+    const mapDlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : undefined;
+    const useDnum = Number.isInteger(mapDnum)
+        ? mapDnum
+        : (Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM);
+    const useDlevel = Number.isInteger(mapDlevel)
+        ? mapDlevel
+        : (Number.isInteger(dlevel)
+            ? dlevel
+            : (Number.isInteger(depth) && depth > 0 ? depth : 1));
+    const serial = String(++_harnessMapdumpSerial).padStart(3, '0');
+    const dumpId = `d${useDnum}l${useDlevel}_${serial}`;
+    _harnessMapdumpPayloads.set(dumpId, buildHarnessMapdumpPayload(map));
+    pushRngLogEntry(`^mapdump[${dumpId}]`);
+}
+
+export function consumeHarnessMapdumpPayloads() {
+    const out = {};
+    for (const [id, payload] of _harnessMapdumpPayloads.entries()) out[id] = payload;
+    _harnessMapdumpPayloads = new Map();
+    return out;
+}
 const RUNTIME_SPECIAL_LEVEL_CANON = new Map([
     [DUNGEONS_OF_DOOM, [
         { index: 0, canonDlevel: 15 }, // rogue
@@ -1319,6 +1440,24 @@ export function isBranchLevelToDnum(dnum, dlevel, targetDnum) {
     return otherEnd?.dnum === targetDnum;
 }
 
+// Resolve branch destination when traversing a branch staircase at this level.
+// goingUp=true means using '<' stair direction; false means '>'.
+export function resolveBranchDestinationForStair(dnum, dlevel, goingUp) {
+    const cdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+    if (!Number.isInteger(dlevel)) return null;
+    const info = getBranchAtLevel(cdnum, dlevel);
+    if (!info) return null;
+
+    const stairGoesUp = info.onEnd1 ? !!info.branch.end1_up : !info.branch.end1_up;
+    if (stairGoesUp !== !!goingUp) return null;
+
+    const dest = info.onEnd1 ? info.branch.end2 : info.branch.end1;
+    if (!dest || !Number.isInteger(dest.dnum) || !Number.isInteger(dest.dlevel)) {
+        return null;
+    }
+    return { dnum: dest.dnum, dlevel: dest.dlevel };
+}
+
 // Track Lua MT RNG initialization (shared with sp_lev.js via export)
 // Lazy initialization happens on first Lua RNG use (des.object/des.monster)
 // Use getter function to avoid stale import copies (primitives are copied, not referenced)
@@ -1332,7 +1471,7 @@ export function setMtInitialized(val) {
 
 // C ref: mkmaze.c makemaz(protofile): load named special level, including
 // protofile base-name variants (for example "medusa" -> "medusa-1..4").
-export function load_special_by_protofile(protofile, dnum, dlevel, depth) {
+export async function load_special_by_protofile(protofile, dnum, dlevel, depth) {
     const where = findSpecialLevelByProto(protofile, dnum, dlevel);
     if (!where) return null;
 
@@ -1355,7 +1494,7 @@ export function load_special_by_protofile(protofile, dnum, dlevel, depth) {
         rn2(2);
     }
 
-    const specialMap = special.generator();
+    const specialMap = await special.generator();
     if (!specialMap) return null;
     if (!specialMap.flags) specialMap.flags = {};
     specialMap.flags.is_tutorial = (where.dnum === TUTORIAL);
@@ -1367,7 +1506,7 @@ export function load_special_by_protofile(protofile, dnum, dlevel, depth) {
 }
 
 // C ref: mklev.c makerooms()
-export function makerooms(map, depth) {
+export async function makerooms(map, depth) {
     let tried_vault = false;
     let themeroom_tries = 0;
 
@@ -1412,7 +1551,7 @@ export function makerooms(map, depth) {
         } else {
             // C ref: mklev.c:402-407
             const nroom_before = map.nroom;
-            const result = themerooms_generate(map, depth);
+            const result = await themerooms_generate(map, depth);
             const nroom_after = map.nroom;
 
             if (DEBUG_POOL && nroom_before === nroom_after && result) {
@@ -2664,7 +2803,9 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
                     const otyp = rn2(2) ? POT_HEALING : supply_items[rn2(9)];
                     const otmp = mksobj(otyp, true, false);
                     if (otyp === POT_HEALING && rn2(2)) {
-                        // quan = 2 (no extra RNG, just weight update)
+                        // C ref: mklev.c:1056-1058
+                        otmp.quan = 2;
+                        otmp.owt = weight(otmp);
                     }
                     cursed = otmp.cursed;
                     // C ref: mklev.c — add_to_container() stores item in chest
@@ -2700,6 +2841,8 @@ export function fill_ordinary_room(map, croom, depth, bonusItems) {
                     if (chest) chest.cobj.push(otmp);
                 }
 
+                // C ref: mklev.c:1112 — add_to_container() doesn't update container weight
+                if (chest) chest.owt = weight(chest);
                     skip_chests = true;
                 }
             }
@@ -3172,9 +3315,9 @@ export function mkinvokearea(map, invPos, depth = 1) {
 
 // C ref: mklev.c:1312-1322 — vault creation and fill
 // Called when check_room succeeds for vault position.
-// Creates the vault room structure, fills with gold (simulated RNG),
-// and runs wallification on the vault region.
-function do_fill_vault(map, vaultCheck, depth) {
+// Creates the vault room structure, calls fill_special_room (matching C's
+// mklev.c:1319 first fill), then runs wallification on the vault region.
+async function do_fill_vault(map, vaultCheck, depth) {
     const lowx = vaultCheck.lowx;
     const lowy = vaultCheck.lowy;
     const hix = lowx + vaultCheck.ddx;
@@ -3185,24 +3328,17 @@ function do_fill_vault(map, vaultCheck, depth) {
     // C ref: mklev.c:1318 — vault room gets needfill=FILL_NORMAL
     map.rooms[map.nroom - 1].needfill = FILL_NORMAL;
 
-    // C ref: fill_special_room for VAULT — mkgold per cell
-    // mkgold(rn1(abs(depth)*100, 51), x, y) for each cell
-    // rn1(n, base) = rn2(n) + base, then mkgold → mksobj_at(GOLD_PIECE)
-    // → newobj() → next_ident() which consumes rnd(2) per gold object.
-    const vroom = map.rooms[map.nroom - 1];
-    for (let vx = vroom.lx; vx <= vroom.hx; vx++) {
-        for (let vy = vroom.ly; vy <= vroom.hy; vy++) {
-            // C ref: sp_lev.c:2758-2762 — mkgold(rn1(abs(depth)*100, 51), x, y)
-            mkgold(map, rn1(Math.abs(depth) * 100, 51), vx, vy);
-        }
-    }
+    // C ref: mklev.c:1319 — fill_special_room called immediately after vault creation.
+    // C calls it here AND again in the general room loop (mklev.c:1406), so vault gold
+    // is filled twice and stacks. needfill is not reset to FILL_NONE by fill_special_room.
+    fill_special_room(map, map.rooms[map.nroom - 1], depth);
 
     // C ref: mk_knox_portal(vault_x + w, vault_y + h)
     mk_knox_portal(map, hix, hiy, depth);
 
     // C ref: mklev.c:1321-1322 — !rn2(3) → makevtele()
     if (!rn2(3)) {
-        makevtele(map, depth);
+        await makevtele(map, depth);
     }
 
     // Re-run wallification around the vault region to fix wall types
@@ -3513,9 +3649,11 @@ export function fill_special_room(map, croom, depth) {
         }
         switch (croom.rtype) {
         case VAULT:
+            // C ref: sp_lev.c:2758-2762 — mkgold(rn1(abs(depth)*100, 51), x, y) per cell.
+            // Called twice for vault (mklev.c:1319 + mklev.c:1406), so gold stacks.
             for (let vx = croom.lx; vx <= croom.hx; vx++) {
                 for (let vy = croom.ly; vy <= croom.hy; vy++) {
-                    rn2(Math.abs(depth) * 100 || 100);
+                    mkgold(map, rn1(Math.abs(depth) * 100 || 100, 51), vx, vy);
                 }
             }
             break;
@@ -3919,13 +4057,14 @@ export function init_dungeons(roleIndex, wizard = true) {
     const role = roleIndex !== undefined ? roles[roleIndex] : null;
     const enadv = role ? (role.enadv || 0) : 0;
     const enadv_roll = enadv > 0 ? rnd(enadv) : 0;
-    // C ref: u_init.c u_init_misc() — rn2(10)
-    rn2(10);
+    // C ref: u_init.c u_init_misc() — rn2(10) ? RIGHT_HANDED : LEFT_HANDED
+    // Preserve the consumed roll and propagate handedness to player state.
+    const rightHanded = rn2(10) !== 0;
 
     // 5. nhlua pre_themerooms shuffle (loaded when themerms.lua is first used)
     rn2(3); rn2(2);
 
-    return { enadv_roll };
+    return { enadv_roll, rightHanded };
 }
 
 // Simulate C's place_level() recursive backtracking for one dungeon.
@@ -4255,6 +4394,8 @@ export function mineralize(map, depth, opts = null) {
 //        u_init.c u_init(), nhlua pre_themerooms
 export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     _wizardMode = !!wizard;
+    _harnessMapdumpSerial = 0;
+    _harnessMapdumpPayloads = new Map();
     set_mkroom_wizard_mode(_wizardMode);
     set_mkroom_ubirthday(_gameUbirthday);
     init_objects();
@@ -4277,7 +4418,11 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
  * @param {number} [dlevel] - Level within branch (optional, 1-based)
  * @returns {GameMap} The generated level
  */
-export function makelevel(depth, dnum, dlevel, opts = {}) {
+export async function makelevel(depth, dnum, dlevel, opts = {}) {
+    const finishGeneratedMap = (outMap) => {
+        emitHarnessMapdumpEvent(outMap, depth, dnum, dlevel);
+        return outMap;
+    };
     const forcedAlign = Number.isInteger(opts?.dungeonAlignOverride)
         ? opts.dungeonAlignOverride
         : undefined;
@@ -4300,7 +4445,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // C ref: bones.c getbones() — rn2(3) + bones load pipeline
     // Must happen BEFORE special level check to match C RNG order
     const bonesMap = getbones(null, depth);
-    if (bonesMap) return bonesMap;
+    if (bonesMap) return finishGeneratedMap(bonesMap);
     inMklev = true;
     setMakemonInMklevContext(true);
     setMklevObjectContext(true);
@@ -4363,7 +4508,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                 rn2(2);
             }
 
-            const specialMap = special.generator();
+            const specialMap = await special.generator();
             if (specialMap) {
                 if (!specialMap.flags) specialMap.flags = {};
                 specialMap._heroHasAmulet = heroHasAmulet;
@@ -4374,7 +4519,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                     specialMap.flags.is_rogue_lev = true;
                     specialMap.flags.roguelike = true;
                 }
-                return specialMap;
+                return finishGeneratedMap(specialMap);
             }
             // If special level generation fails, fall through to procedural
             if (DEBUG) console.warn(`Special level ${special.name} generation failed, using procedural`);
@@ -4399,7 +4544,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     if (shouldMakeMaze) {
         // C ref: mklev.c:1278 makemaz("")
-        makemaz(map, "", dnum, dlevel, depth);
+        await makemaz(map, "", dnum, dlevel, depth);
     } else {
         if (isRogueLevel) {
             // C ref: mklev.c:1290-1292 — Is_rogue_level() uses makeroguerooms path.
@@ -4409,7 +4554,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
             if (!rogueMap.flags) rogueMap.flags = {};
             rogueMap.flags.is_rogue_lev = true;
             rogueMap.flags.roguelike = true;
-            return rogueMap;
+            return finishGeneratedMap(rogueMap);
         }
         // C ref: mklev.c:1287 makerooms()
         // Initialize rectangle pool for BSP room placement
@@ -4417,7 +4562,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
         // Make rooms using rect BSP algorithm
         // Note: makerooms() handles the Lua theme load shuffle (rn2(3), rn2(2))
-        makerooms(map, depth);
+        await makerooms(map, depth);
     }
 
     if (map.nroom === 0) {
@@ -4443,7 +4588,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
 
     // Add niches
     // C ref: mklev.c:1300 make_niches()
-    make_niches(map, depth);
+    await make_niches(map, depth);
 
     // C ref: mklev.c:1305 mklev_sanity_check()
     mklev_sanity_check(map);
@@ -4457,7 +4602,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
         let w = 1, h = 1;
         const vaultCheck = check_room(map, map.vault_x, w, map.vault_y, h, true);
         if (vaultCheck) {
-            do_fill_vault(map, vaultCheck, depth);
+            await do_fill_vault(map, vaultCheck, depth);
         } else if (rnd_rect()) {
             // Retry: create_vault() = create_room(-1,-1,2,2,-1,-1,VAULT,TRUE)
             if (create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth)) {
@@ -4466,7 +4611,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
                     w = 1; h = 1;
                     const vc2 = check_room(map, map.vault_x, w, map.vault_y, h, true);
                     if (vc2) {
-                        do_fill_vault(map, vc2, depth);
+                        await do_fill_vault(map, vc2, depth);
                     }
                 }
             }
@@ -4581,7 +4726,7 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // These callbacks operate on the active level map through sp_lev levelState.
     setLevelContext(map, depth);
     try {
-        themerooms_post_level_generate();
+        await themerooms_post_level_generate();
     } finally {
         clearLevelContext();
     }
@@ -4589,15 +4734,15 @@ export function makelevel(depth, dnum, dlevel, opts = {}) {
     // C ref: mklev.c:1533-1539,1558,1561-1562 — level_finalize_topology().
     level_finalize_topology(map, depth);
 
-    return map;
+    return finishGeneratedMap(map);
     } finally {
         leaveMklevContext();
     }
 }
 
 // C ref: mklev.c mklev()
-export function mklev(depth, dnum, dlevel, opts = {}) {
-    return makelevel(depth, dnum, dlevel, opts);
+export async function mklev(depth, dnum, dlevel, opts = {}) {
+    return await makelevel(depth, dnum, dlevel, opts);
 }
 
 // =============================================================================
@@ -4710,8 +4855,8 @@ export function init_castle_tune() {
 }
 
 // Autotranslated from dungeon.c:1496
-export function next_level(at_stairs, map, player) {
-  let stway = stairway_at(player.x, player.y), newlevel;
+export async function next_level(at_stairs, map, player) {
+  let stway = await stairway_at(player.x, player.y), newlevel;
   if (at_stairs && stway) stway.u_traversed = true;
   if (at_stairs && stway) {
     newlevel.dnum = stway.tolev.dnum;
@@ -4726,11 +4871,11 @@ export function next_level(at_stairs, map, player) {
 }
 
 // Autotranslated from dungeon.c:1517
-export function prev_level(at_stairs, map, player) {
-  let stway = stairway_at(player.x, player.y), newlevel;
+export async function prev_level(at_stairs, map, player) {
+  let stway = await stairway_at(player.x, player.y), newlevel;
   if (at_stairs && stway) stway.u_traversed = true;
   if (at_stairs && stway && stway.tolev.dnum !== map.uz.dnum) {
-    if (!map.uz.dnum && map.uz.dlevel === 1 && !player.uhave.amulet) done(ESCAPED);
+    if (!map.uz.dnum && map.uz.dlevel === 1 && !player.uhave.amulet) await done(ESCAPED);
     else {
       newlevel.dnum = stway.tolev.dnum;
       newlevel.dlevel = stway.tolev.dlevel;
@@ -4745,11 +4890,11 @@ export function prev_level(at_stairs, map, player) {
 }
 
 // Autotranslated from dungeon.c:1567
-export function u_on_newpos(x, y, map, player) {
+export async function u_on_newpos(x, y, map, player) {
   if (!isok(x, y)) {
     let PRINTF_F_PTR;
     func = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) ? panic : impossible;
-    func("u_on_newpos: trying to place hero off map <%d,%d>", x, y);
+    await func("u_on_newpos: trying to place hero off map <%d,%d>", x, y);
   }
   player.x = x;
   player.y = y;
@@ -4762,7 +4907,7 @@ export function u_on_newpos(x, y, map, player) {
 }
 
 // Autotranslated from dungeon.c:1743
-export function surface(x, y, map, player) {
+export async function surface(x, y, map, player) {
   let lev =  map.locations[x][y], levtyp = SURFACE_AT(x, y);
   if (u_at(x, y) && player.uswallow && is_animal(player.ustuck.data)) return digests(player.ustuck.data) ? "maw" : enfolds(player.ustuck.data) ? "husk" : "nonesuch";
   else if (IS_AIR(levtyp)) return Is_waterlevel(map.uz) ? "air bubble" : (levtyp === CLOUD) ? "cloud" : "air";
@@ -4773,7 +4918,7 @@ export function surface(x, y, map, player) {
   else if (IS_ALTAR(levtyp)) return "altar";
   else if (IS_GRAVE(levtyp)) return "headstone";
   else if (IS_FOUNTAIN(levtyp)) return "fountain";
-  else if (On_stairs(x, y)) return "stairs";
+  else if (await On_stairs(x, y)) return "stairs";
   else if (IS_WALL(levtyp) || levtyp === SDOOR) return "wall";
   else if (IS_DOOR(levtyp)) return "doorway";
   else if (IS_ROOM(levtyp) && !Is_earthlevel(map.uz)) return "floor";
@@ -4834,9 +4979,9 @@ export function get_annotation(lev) {
 }
 
 // Autotranslated from dungeon.c:2482
-export function print_level_annotation(map) {
+export async function print_level_annotation(map) {
   let annotation;
-  if ((annotation = get_annotation(map.uz)) !== 0) You("remember this level as %s.", annotation);
+  if ((annotation = get_annotation(map.uz)) !== 0) await You("remember this level as %s.", annotation);
 }
 
 // Autotranslated from dungeon.c:2564
@@ -4926,7 +5071,7 @@ export async function show_overview(why, reason, map) {
   if (In_endgame(map.uz)) traverse_mapseenchn(1, win, why, reason, lastdun);
   if (why > 0 || !In_endgame(map.uz)) traverse_mapseenchn(0, win, why, reason, lastdun);
   end_menu(win,  0);
-  n = select_menu(win, (why !== -1) ? PICK_NONE : PICK_ONE, selected);
+  n = await select_menu(win, (why !== -1) ? PICK_NONE : PICK_ONE, selected);
   if (n > 0) {
     let ledger, lev;
     ledger = selected[0].item.a_int - 1;

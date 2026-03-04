@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Monk Mon-strt.lua	$NHDT-Date: 1652196007 2022/5/10 15:20:7 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991-2 by M. Stephenson
@@ -22,7 +22,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "noteleport", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ............................................................................
 ............................................................................
 ............................................................................
@@ -45,8 +45,8 @@ export function generate() {
 ............................................................................
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
-    des.region({ region: [24,6, 33,13], lit: 1, type: "temple" });
+    await des.region(selection.area(0,0,75,19), "lit");
+    await des.region({ region: [24,6, 33,13], lit: 1, type: "temple" });
 
     des.replace_terrain({ region: [0,0, 10,19], fromterrain: ".", toterrain: "T", chance: 10 });
     des.replace_terrain({ region: [65,0, 75,19], fromterrain: ".", toterrain: "T", chance: 10 });
@@ -80,42 +80,42 @@ export function generate() {
     // Unattended Altar - unaligned due to conflict - player must align it.
     des.altar({ x: 28,y: 9, align: "noalign", type: "altar" });
     // The Grand Master
-    des.monster({ id: "Grand Master", coord: [28, 10], inventory: function() {
-       des.object({ id: "robe", spe: 6 });
+    await des.monster({ id: "Grand Master", coord: [28, 10], inventory: async function() {
+       await des.object({ id: "robe", spe: 6 });
     } })
     // No treasure chest!
     // guards for the audience chamber
-    des.monster("abbot", 32, 7);
-    des.monster("abbot", 32, 8);
-    des.monster("abbot", 32, 11);
-    des.monster("abbot", 32, 12);
-    des.monster("abbot", 33, 7);
-    des.monster("abbot", 33, 8);
-    des.monster("abbot", 33, 11);
-    des.monster("abbot", 33, 12);
+    await des.monster("abbot", 32, 7);
+    await des.monster("abbot", 32, 8);
+    await des.monster("abbot", 32, 11);
+    await des.monster("abbot", 32, 12);
+    await des.monster("abbot", 33, 7);
+    await des.monster("abbot", 33, 8);
+    await des.monster("abbot", 33, 11);
+    await des.monster("abbot", 33, 12);
     // Non diggable walls
     des.non_diggable(selection.area(18,3,55,16));
     // Random traps
     for (let i = 1; i <= 2; i++) {
-       des.trap("dart", spacelocs.rndcoord(1));
+       await des.trap("dart", spacelocs.rndcoord(1));
     }
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     // Monsters on siege duty.
     for (let i = 1; i <= 8; i++) {
-       des.monster("earth elemental", spacelocs.rndcoord(1));
+       await des.monster("earth elemental", spacelocs.rndcoord(1));
     }
     for (let i = 1; i <= 4; i++) {
-       des.monster("xorn", spacelocs.rndcoord(1));
+       await des.monster("xorn", spacelocs.rndcoord(1));
     }
     // next to leader, so possibly tricky to pick up if ! ready for quest yet;
     // there's no protection against a xorn eating these tins; BUC state is random
-    des.object({ id: "tin", coord: [29, 9], quantity: 2, montype: "spinach" });
+    await des.object({ id: "tin", coord: [29, 9], quantity: 2, montype: "spinach" });
     // ensure enough vegetarian food generates for vegetarian games
-    des.object({ id: "food ration", coord: [46, 4], quantity: 4});
+    await des.object({ id: "food ration", coord: [46, 4], quantity: 4});
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -5,8 +5,8 @@
 // per-key JSONL traces from C instrumentation (NETHACK_KEYLOG).
 
 import { execSync, spawnSync } from 'child_process';
-import { writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { writeFileSync, mkdirSync } from 'fs';
+import { resolve, dirname, basename } from 'path';
 import { TmuxAdapter } from '../interface/tmux_adapter.js';
 
 function parseArgs(argv) {
@@ -19,6 +19,7 @@ function parseArgs(argv) {
         name: 'Recorder',
         wizard: true,
         tutorial: false,
+        interactive: false,
         symset: 'ASCII',
         tmuxSocket: process.env.SELFPLAY_TMUX_SOCKET || 'default',
         session: `nethack-manual-${Date.now()}`,
@@ -38,6 +39,7 @@ function parseArgs(argv) {
         else if (a === '--no-wizard') opts.wizard = false;
         else if (a === '--tutorial') opts.tutorial = true;
         else if (a === '--no-tutorial') opts.tutorial = false;
+        else if (a === '--interactive') { opts.interactive = true; opts.wizard = false; }
         else if (a === '--real-time') opts.fixedDatetime = '';
         else if (a.startsWith('--seed=')) opts.seed = Number(a.slice(7));
         else if (a.startsWith('--datetime=')) opts.fixedDatetime = a.slice(11);
@@ -57,6 +59,9 @@ function parseArgs(argv) {
         opts.keylog = `/tmp/nethack_keylog_seed${opts.seed}_${Date.now()}.jsonl`;
     }
     opts.keylog = resolve(opts.keylog);
+    // Auto-derive mapdump dir alongside keylog (strip .jsonl suffix if present)
+    const keylogBase = opts.keylog.replace(/\.jsonl$/, '');
+    opts.mapdumpDir = keylogBase + '_mapdumps';
     return opts;
 }
 
@@ -94,20 +99,24 @@ async function main() {
     process.env.NETHACK_KEYLOG_DELAY_MS = String(opts.keylogDelayMs);
     if (opts.fixedDatetime) process.env.NETHACK_FIXED_DATETIME = opts.fixedDatetime;
     else delete process.env.NETHACK_FIXED_DATETIME;
+    mkdirSync(opts.mapdumpDir, { recursive: true });
+    process.env.NETHACK_MAPDUMP_DIR = opts.mapdumpDir;
 
     // Write metadata header to keylog before starting game
     const metadata = {
         type: 'meta',
         seed: opts.seed,
-        role: opts.role,
-        race: opts.race,
-        gender: opts.gender,
-        align: opts.align,
-        name: opts.name,
+        role: opts.interactive ? null : opts.role,
+        race: opts.interactive ? null : opts.race,
+        gender: opts.interactive ? null : opts.gender,
+        align: opts.interactive ? null : opts.align,
+        name: opts.interactive ? null : opts.name,
         wizard: opts.wizard,
         tutorial: opts.tutorial,
+        interactive: opts.interactive,
         symset: opts.symset,
         datetime: opts.fixedDatetime || null,
+        mapdumpDir: opts.mapdumpDir,
         keylogDelayMs: opts.keylogDelayMs,
         recordedAt: new Date().toISOString(),
     };
@@ -125,7 +134,9 @@ async function main() {
     console.log(`  tmuxSocket=${opts.tmuxSocket}`);
     console.log(`  session=${opts.session}`);
     console.log(`  keylog=${opts.keylog}`);
+    console.log(`  mapdumpDir=${opts.mapdumpDir}`);
     console.log(`  datetime=${opts.fixedDatetime || 'real-time'}`);
+    console.log(`  wizard=${opts.wizard}`);
     console.log(`  tutorial=${opts.tutorial}`);
 
     await adapter.start({
@@ -137,6 +148,7 @@ async function main() {
         name: opts.name,
         wizard: opts.wizard,
         tutorial: opts.tutorial,
+        interactive: opts.interactive,
     });
 
     // Lock capture session geometry regardless of attaching client size.

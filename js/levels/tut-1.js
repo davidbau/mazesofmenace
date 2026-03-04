@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection, percent, shuffle, nh, u } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
 
     let tut_ctrl_key = null;
     let tut_alt_key = null;
@@ -49,7 +49,7 @@ export function generate() {
     des.level_flags("mazelevel", "noflip",
                     "nomongen", "nodeathdrops", "noautosearch");
 
-    des.map(`\
+    await des.map(`\
 ---------------------------------------------------------------------------
 |-.--|.......|......|..S....|.F.......|.............|.......|.............|
 |.-..........|......|--|....|.F.....|.|S-------.....|.....................|
@@ -71,7 +71,7 @@ export function generate() {
 `);
 
 
-    des.region(selection.area(1,1, 73, 16), "lit");
+    await des.region(selection.area(1,1, 73, 16), "lit");
 
     des.non_diggable();
 
@@ -109,7 +109,7 @@ export function generate() {
     // 
 
     des.engraving({ coord: [ 4,5 ], type: "engrave", text: "You can leave the tutorial via the magic portal.", degrade: false });
-    des.trap({ type: "magic portal", coord: [ 4,4 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 4,4 ], seen: true });
 
     // 
 
@@ -132,8 +132,8 @@ export function generate() {
 
     des.engraving({ coord: [ 10,10 ], type: "engrave", text: "Behind this door is a dark corridor", degrade: false });
     des.door({ coord: [ 10,9 ], state: percent(50) && "locked" || "closed" });
-    des.region(selection.match("#"), "unlit");
-    des.region(selection.match(" "), "unlit");
+    await des.region(selection.match("#"), "unlit");
+    await des.region(selection.match(" "), "unlit");
     des.door({ coord: [ 15,10 ], state: percent(50) && "locked" || "closed" });
 
     // 
@@ -142,12 +142,12 @@ export function generate() {
     let locs = [ [14,11], [14,12], [15,12], [16,12], [16,11] ];
     shuffle(locs);
     for (let i = 0; i < 4; i++) {
-       des.trap({ type: percent(50) && "sleep gas" || "board",
+       await des.trap({ type: percent(50) && "sleep gas" || "board",
                   coord: locs[i], victim: false });
     }
 
     des.engraving({ coord: [ 15,15 ], type: "engrave", text: "Some traps can be disabled with '" + tut_key("untrap") + "'", degrade: false });
-    des.trap({ coord: [ 15,16 ], type: "web", spider_on_web: false });
+    await des.trap({ coord: [ 15,16 ], type: "web", spider_on_web: false });
 
     // 
 
@@ -157,30 +157,30 @@ export function generate() {
 
     let armor = (u.role == "Monk") && "leather gloves" || "leather armor";
 
-    des.object({ id: armor, spe: 0, buc: "cursed", coord: [ 19,14] });
+    await des.object({ id: armor, spe: 0, buc: "cursed", coord: [ 19,14] });
 
     des.engraving({ coord: [ 19,15 ], type: "engrave", text: "Wear armor with '" + tut_key("wear") + "'", degrade: false });
 
-    des.object({ id: "dagger", spe: 0, buc: "!-cursed", coord: [ 21,15] });
+    await des.object({ id: "dagger", spe: 0, buc: "!-cursed", coord: [ 21,15] });
 
     des.engraving({ coord: [ 21,14 ], type: "engrave", text: "Wield weapons with '" + tut_key("wield") + "'", degrade: false });
 
 
     des.engraving({ coord: [ 22,13 ], type: "engrave", text: "Hit monsters by walking into them.", degrade: false });
 
-    des.monster({ id: "lichen", coord: [ 23,15 ], waiting: true, countbirth: false });
+    await des.monster({ id: "lichen", coord: [ 23,15 ], waiting: true, countbirth: false });
 
     // 
 
     des.engraving({ coord: [ 24,16 ], type: "engrave", text: "Now you know the very basics. You can leave the tutorial via the magic portal.", degrade: false });
 
     des.engraving({ coord: [ 26,16 ], type: "engrave", text: "Step into this portal to leave the tutorial", degrade: false });
-    des.trap({ type: "magic portal", coord: [ 27,16 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 27,16 ], seen: true });
 
     // 
 
     des.engraving({ coord: [ 25,13 ], type: "engrave", text: "Push boulders by moving into them", degrade: false });
-    des.object({ id: "boulder", coord: [25,12] });
+    await des.object({ id: "boulder", coord: [25,12] });
 
     // 
 
@@ -188,24 +188,24 @@ export function generate() {
 
     // 
 
-    des.object({ class: "?", id: "remove curse", buc: "blessed", coord: [23,11] });
+    await des.object({ class: "?", id: "remove curse", buc: "blessed", coord: [23,11] });
     des.engraving({ coord: [ 22,11 ], type: "engrave", text: "Some items have shuffled descriptions, different each game", degrade: false });
     des.engraving({ coord: [ 23,11 ], type: "engrave", text: "Pick up this scroll, read it with '" + tut_key("read") + "', && try to remove the armor again", degrade: false });
 
     // 
 
     des.engraving({ coord: [ 19,10 ], type: "engrave", text: "Another magic portal, a way to leave this tutorial", degrade: false });
-    des.trap({ type: "magic portal", coord: [ 19,11 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 19,11 ], seen: true });
 
     // 
 
     // rock fall
-    des.object({ coord: [14, 5], id: "rock", quantity: (rn2((99) - (50) + 1) + (50)) });
-    des.object({ coord: [15, 5], id: "rock", quantity: (rn2((30) - (10) + 1) + (10)) });
-    des.object({ coord: [14, 4], id: "rock", quantity: (rn2((30) - (10) + 1) + (10)) });
-    des.object({ coord: [15, 6], id: "rock", quantity: (rn2((60) - (30) + 1) + (30)) });
-    des.object({ coord: [14, 6], id: "rock", quantity: (rn2((60) - (30) + 1) + (30)) });
-    des.object({ coord: [14, 6], id: "boulder" });
+    await des.object({ coord: [14, 5], id: "rock", quantity: (rn2((99) - (50) + 1) + (50)) });
+    await des.object({ coord: [15, 5], id: "rock", quantity: (rn2((30) - (10) + 1) + (10)) });
+    await des.object({ coord: [14, 4], id: "rock", quantity: (rn2((30) - (10) + 1) + (10)) });
+    await des.object({ coord: [15, 6], id: "rock", quantity: (rn2((60) - (30) + 1) + (30)) });
+    await des.object({ coord: [14, 6], id: "rock", quantity: (rn2((60) - (30) + 1) + (30)) });
+    await des.object({ coord: [14, 6], id: "boulder" });
 
     des.door({ coord: [ 20,3 ], state: percent(50) && "open" || "closed" });
 
@@ -215,19 +215,19 @@ export function generate() {
 
     // 
 
-    des.monster({ id: "yellow mold", coord: [ 26,2 ], waiting: true, countbirth: false });
+    await des.monster({ id: "yellow mold", coord: [ 26,2 ], waiting: true, countbirth: false });
 
     des.engraving({ coord: [ 25,5 ], type: "engrave", text: "Throw items with '" + tut_key("throw") + "'", degrade: false });
 
-    des.trap({ type: "magic portal", coord: [ 21,1 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 21,1 ], seen: true });
 
     // 
 
-    des.monster({ id: "wolf", coord: [ 29,2 ], peaceful: 0, waiting: true, countbirth: false });
+    await des.monster({ id: "wolf", coord: [ 29,2 ], peaceful: 0, waiting: true, countbirth: false });
 
     des.engraving({ coord: [ 37,4 ], type: "engrave", text: "Missiles, such as rocks, work better when fired from appropriate launcher", degrade: false });
 
-    des.object({ coord: [ 37,3 ], id: "sling", buc: "!-cursed", spe: 9 });
+    await des.object({ coord: [ 37,3 ], id: "sling", buc: "!-cursed", spe: 9 });
     des.engraving({ coord: [ 37,3 ], type: "engrave", text: "Wield the sling", degrade: false });
     des.engraving({ coord: [ 36,1 ], type: "engrave", text: "Use '" + tut_key("fire") + "' to fire missiles with the wielded launcher", degrade: false });
 
@@ -242,9 +242,9 @@ export function generate() {
 
     des.engraving({ coord: [ 39,6 ], type: "engrave", text: "You loot containers with '" + tut_key("loot") + "'", degrade: false });
 
-    des.object({ coord: [ 41,6 ], id: "large box", broken: true, trapped: false,
-                 contents: function(obj) {
-                    des.object({ id: "secret door detection", class: "/", spe: 30 }); }
+    await des.object({ coord: [ 41,6 ], id: "large box", broken: true, trapped: false,
+                 contents: async function(obj) {
+                    await des.object({ id: "secret door detection", class: "/", spe: 30 }); }
     });
     des.engraving({ coord: [ 42,6 ], type: "engrave", text: "Containers can also be emptied with '" + tut_key("tip") + "'", degrade: false });
 
@@ -262,24 +262,24 @@ export function generate() {
 
     // 
 
-    des.trap({ type: "magic portal", coord: [ 27,14 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 27,14 ], seen: true });
 
     // 
 
     des.engraving({ coord: [ 48,1 ], type: "burn", text: "Use '" + tut_key("eat") + "' to eat edible things", degrade: false });
 
-    des.object({ coord: [ 50,3 ], id: "apple", buc: "!-cursed"  });
-    des.object({ coord: [ 50,3 ], id: "candy bar", buc: "!-cursed"  });
+    await des.object({ coord: [ 50,3 ], id: "apple", buc: "!-cursed"  });
+    await des.object({ coord: [ 50,3 ], id: "candy bar", buc: "!-cursed"  });
 
-    des.object({ coord: [ 50,3 ], id: "corpse", montype: "lichen", buc: "!-cursed" });
+    await des.object({ coord: [ 50,3 ], id: "corpse", montype: "lichen", buc: "!-cursed" });
 
     // 
 
     des.door({ coord: [ 46,11 ], state: "closed" });
 
     des.engraving({ coord: [ 43,11 ], type: "burn", text: "Use '" + tut_key("twoweapon") + "' to use two weapons at once", degrade: false });
-    des.object({ coord: [ 43,13 ], id: "knife", buc: "uncursed" });
-    des.object({ coord: [ 43,14 ], id: "dagger", buc: "blessed" });
+    await des.object({ coord: [ 43,13 ], id: "knife", buc: "uncursed" });
+    await des.object({ coord: [ 43,14 ], id: "dagger", buc: "blessed" });
 
     des.engraving({ coord: [ 43,16 ], type: "burn", text: "Swap weapons quickly with '" + tut_key("swap") + "'", degrade: false });
 
@@ -287,7 +287,7 @@ export function generate() {
 
     // 
 
-    des.object({ coord: [ 48,7 ], id: "ring of levitation", buc: "!-cursed" });
+    await des.object({ coord: [ 48,7 ], id: "ring of levitation", buc: "!-cursed" });
 
     des.engraving({ coord: [ 48,10 ], type: "burn", text: "Put on accessories with '" + tut_key("puton") + "'", degrade: false });
 
@@ -308,7 +308,7 @@ export function generate() {
 
     des.engraving({ coord: [ 65,3 ], type: "burn", text: "UNDER CONSTRUCTION", degrade: false });
 
-    des.trap({ type: "magic portal", coord: [ 66,2 ], seen: true });
+    await des.trap({ type: "magic portal", coord: [ 66,2 ], seen: true });
 
     // 
 
@@ -318,10 +318,10 @@ export function generate() {
 
     // try to squeeze over boulders, find a trap door
 
-    des.object({ id: "boulder", coord: [71,16] });
-    des.object({ id: "boulder", coord: [72,16] });
-    des.object({ id: "boulder", coord: [73,16] });
-    des.trap({ type: "trap door", coord: [ 73,15 ] });
+    await des.object({ id: "boulder", coord: [71,16] });
+    await des.object({ id: "boulder", coord: [72,16] });
+    await des.object({ id: "boulder", coord: [73,16] });
+    await des.trap({ type: "trap door", coord: [ 73,15 ] });
 
     // 
 
@@ -332,15 +332,15 @@ export function generate() {
        des.engraving({ coord: [ 59,2 ], type: "engrave", text: "Unfortunately you don't have enough energy to cast spells.", degrade: false });
     }
     des.engraving({ coord: [ 57,2 ], type: "engrave", text: "Pick up the spellbook with '" + tut_key("pickup") + "'", degrade: false });
-    des.object({ coord: [ 57,2 ], id: "spellbook of light", buc: "blessed" });
+    await des.object({ coord: [ 57,2 ], id: "spellbook of light", buc: "blessed" });
     des.engraving({ coord: [ 55,2 ], type: "engrave", text: "Read the spellbook with '" + tut_key("read") + "'", degrade: false });
     des.engraving({ coord: [ 53,2 ], type: "engrave", text: "Use '" + tut_key("cast") + "' to cast a spell", degrade: false });
-    des.region(selection.area(53,1, 59, 3), "unlit");
+    await des.region(selection.area(53,1, 59, 3), "unlit");
 
     // 
 
     des.engraving({ coord: [ 72,2 ], type: "engrave", text: "You \"quaff\" potions with '" + tut_key("quaff") + "'", degrade: false });
-    des.object({ coord: [ 72,2 ], id: "potion of object detection", buc: "blessed" });
+    await des.object({ coord: [ 72,2 ], id: "potion of object detection", buc: "blessed" });
 
 
     // --------------
@@ -354,11 +354,11 @@ export function generate() {
     // --------------
 
     // temporary stuff here
-    // des.trap({ type: "magic portal", coord: [ 9,5 ], seen: true });
-    // des.trap({ type: "magic portal", coord: [ 9,1 ], seen: true });
-    // des.object({ id: "leather armor", spe: 0, coord: [ 9,2] });
+    // await des.trap({ type: "magic portal", coord: [ 9,5 ], seen: true });
+    // await des.trap({ type: "magic portal", coord: [ 9,1 ], seen: true });
+    // await des.object({ id: "leather armor", spe: 0, coord: [ 9,2] });
 
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -30,6 +30,7 @@ import {
 } from './render.js';
 import { rankOf } from './player.js';
 import { do_lookat, format_do_look_html } from './look.js';
+import { newsym, setDisplayContext, flush_screen } from './monutil.js';
 
 // Re-export color constants from the canonical source (render.js)
 export {
@@ -163,9 +164,14 @@ export class Display {
         this.cursorRow = 0;
         this.cursorVisible = 1;
         this._cursorSpan = null; // currently highlighted <span>
+        this._nhgetch = null;
+        this._pendingMore = false;
+        this._messageQueue = [];
 
         this._createDOM();
     }
+
+    setNhgetch(fn) { this._nhgetch = fn; }
 
     _createDOM() {
         // Create the pre element
@@ -290,6 +296,12 @@ span.nh-cursor {
             }
         }
 
+        // If --More-- is pending, queue the message for later display.
+        if (this._pendingMore) {
+            this._messageQueue.push(msg);
+            return;
+        }
+
         // If msg_window is enabled, render the message window
         // C ref: win/tty/topl.c — message window modes
         if (this.flags.msg_window) {
@@ -297,12 +309,9 @@ span.nh-cursor {
             return;
         }
 
-        // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit
-        // ONLY if no keypress happened between messages (toplin == TOPLINE_NEED_MORE)
-        // If there's a current message and both messages fit on one line, combine them
+        // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when deciding whether to concatenate.
         const notDied = !msg.startsWith('You die');
-        // Only concatenate if messageNeedsMore is true (no keypress since last message)
         if (this.topMessage && this.messageNeedsMore && notDied) {
             const combined = this.topMessage + '  ' + msg;
             // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
@@ -310,16 +319,19 @@ span.nh-cursor {
                 this.clearRow(MESSAGE_ROW);
                 this.putstr(0, MESSAGE_ROW, combined, CLR_WHITE);
                 this.topMessage = combined;
-                // Keep messageNeedsMore true for potential further concatenation
                 this.setCursor(Math.min(combined.length, this.cols - 1), 0);
                 return;
             }
+            // Overflow: show --More-- and queue the new message for later.
+            this.renderMoreMarker();
+            this._pendingMore = true;
+            this._messageQueue.push(msg);
+            return;
         }
 
-        // Otherwise, use traditional single-line message display
+        // Display message on single line
         this.clearRow(MESSAGE_ROW);
 
-        // If message fits on one line, display it normally
         if (msg.length <= this.cols) {
             this.putstr(0, MESSAGE_ROW, msg, CLR_WHITE);
             this.topMessage = msg;
@@ -345,6 +357,18 @@ span.nh-cursor {
         // C ref: toplin = TOPLINE_NEED_MORE after displaying message
         this.messageNeedsMore = true;
         this.setCursor(Math.min(msg.length, this.cols - 1), 0);
+    }
+
+    // Dismiss the --More-- prompt and display queued messages.
+    _clearMore() {
+        this._pendingMore = false;
+        this.clearRow(MESSAGE_ROW);
+        this.messageNeedsMore = false;
+        this.topMessage = null;
+        while (this._messageQueue.length > 0 && !this._pendingMore) {
+            const queued = this._messageQueue.shift();
+            this.putstr_message(queued);
+        }
     }
 
     // Render message window (last 3 messages)
@@ -458,6 +482,11 @@ span.nh-cursor {
                 // seenv is now tracked by the vision code (vision.js compute())
                 // which sets the correct angle bits per direction.
 
+                // C ref: display.c:963-964 — mark any engraving at a visible square as
+                // revealed, "even when covered by objects or a monster".
+                const visEngr = gameMap.engravingAt(x, y);
+                if (visEngr) visEngr.erevealed = true;
+
                 // Check for player at this position
                 if (player && x === player.x && y === player.y) {
                     this.setCell(col, row, '@', CLR_WHITE);
@@ -481,7 +510,7 @@ span.nh-cursor {
                             : CLR_GRAY;
                     } else {
                         const engr = gameMap.engravingAt(x, y);
-                        if (engr && (player?.wizard || engr.erevealed)) {
+                        if (engr && (player?.wizard || !player?.blind || engr.erevealed)) {
                             const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
                             loc.mem_obj = engrCh;
                             loc.mem_obj_color = CLR_BRIGHT_BLUE;
@@ -505,10 +534,10 @@ span.nh-cursor {
                     };
                     continue;
                 }
+                // C parity: remembered invis markers are for out-of-sight
+                // memory; once a square is currently visible, clear stale marker.
                 if (loc.mem_invis) {
-                    this.setCell(col, row, 'I', CLR_GRAY);
-                    this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
-                    continue;
+                    loc.mem_invis = false;
                 }
 
                 // Check for objects on the ground
@@ -559,7 +588,7 @@ span.nh-cursor {
                 // as S_engroom ('`') or S_engrcorr ('#') when no higher-priority
                 // map symbol (player/monster/object/trap) occupies the square.
                 const engr = gameMap.engravingAt(x, y);
-                if (engr && (player?.wizard || engr.erevealed)) {
+                if (engr && (player?.wizard || !player?.blind || engr.erevealed)) {
                     const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
                     loc.mem_obj = engrCh;
                     loc.mem_obj_color = CLR_BRIGHT_BLUE;

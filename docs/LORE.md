@@ -41,6 +41,27 @@ Wizard of Yendor while the Riders watch — dramatic, but unproductive.
 
 ## RNG Parity
 
+### Repro harness datetime should be explicit and selectable
+
+Some sessions are sensitive to calendar-dependent behavior (moon phase, Friday
+13th luck, and downstream RNG/state effects). If replay always forces one fixed
+date, sessions recorded under a different calendar condition can diverge early.
+
+Harness rule:
+
+1. preserve both `options.datetime` and `options.recordedAt` in session metadata;
+2. allow explicit replay policy for fixed datetime source;
+3. default to session-declared datetime for strict reproducibility.
+
+Current replay selector modes:
+
+- `session`: use session datetime first, then `recordedAt`-derived UTC datetime
+- `recorded-at-prefer`: prefer `recordedAt`-derived UTC datetime
+- `recorded-at-only`: only use `recordedAt`-derived UTC datetime
+
+This enables controlled experiments without mutating sessions when diagnosing
+calendar-conditioned divergences.
+
 ### `maybe_wail()` message parity depends on intrinsic power-count branch
 
 C `hack.c maybe_wail()` does not always print the same warning for
@@ -1617,3 +1638,52 @@ hard-won wisdom:
 - Root cause: replay count-prefix digit handling rendered map/status after writing `Count: N`, which reset cursor to player.
 - Fix: in replay capture path, restore cursor to topline (`setCursor(len("Count: N"), 0)`) after render and before snapshot capture.
 - Result: `seed204_multidigit_wait_gameplay` cursor parity is now full (`3/3`).
+
+### seed301 kick-door RNG mismatch triage (2026-03-04)
+
+- `seed301_archeologist_selfplay200_gameplay` first RNG divergence is at step 10 around a `^D`/`l` kick-door interaction.
+- JS emits:
+  - `rn2(19)=10` (DEX exercise),
+  - `rnl(35)=23`.
+- The recorded C session emits:
+  - `rn2(19)=10` (DEX exercise),
+  - `rn2(38)=10`,
+  - `rnl(35)=22`.
+- Current C source (`dokick.c` + `rnd.c`) only emits `rn2(37+abs(Luck))` inside `rnl()` when `Luck != 0`.
+- JS runtime trace at that kick site shows `uluck=0`, `moreluck=0`, so no `rn2(38)` is expected from current C logic either.
+- Conclusion: this looks like capture provenance mismatch (session generated from a C build/behavior not matching current patched source), not a safe JS core fix candidate.
+
+### Engraving/trap helper correctness hardening (2026-03-04)
+
+- Fixed `engrave.del_engr_at()` argument handling; it previously called `engr_at()`/`del_engr()` with wrong signatures and could silently no-op.
+- `del_engr_at()` now accepts map-first and map-last call forms and correctly deletes from `map.engravings`.
+- Tightened `can_reach_floor()` toward C semantics:
+  - checks `uswallow`, `ustuck + AT_HUGS`, levitation, `uundetected + ceiling_hider`, flying/huge-size fast path,
+  - supports explicit `check_pit` gating and uses trap-at-hero checks for pit/hole edge cases.
+- Updated `u_wipe_engr()` and `maybeSmudgeEngraving()` to pass `check_pit=TRUE` semantics explicitly.
+- Fixed translated trap helpers with wrong argument order:
+  - `adj_nonconjoined_pit()` now passes map to `t_at()`,
+  - `uteetering_at_seen_pit()` and `uescaped_shaft()` now pass `player` to `u_at()`.
+- Validation:
+  - `seed309_rogue_selfplay200_gameplay` remains fully green (no regression),
+  - known `seed312` first divergence (`^wipe[56,13]`) is unchanged, so this patch improves helper correctness but does not resolve that divergence yet.
+
+### Wear prompt parity: `GETOBJ_DOWNPLAY` behavior for `W` (2026-03-04)
+
+- `dowear` prompt behavior in C comes from `getobj()` callbacks, not a simple
+  "any unworn armor?" check.
+- C's `wear_ok` can return:
+  - `GETOBJ_SUGGEST` for valid armor candidates,
+  - `GETOBJ_DOWNPLAY` for non-armor wearable items (rings/amulets/etc.) and
+    for armor that currently fails `canwearobj`.
+- When suggested candidates are empty but any downplayed candidate exists,
+  `getobj()` still prompts `What do you want to wear? [*]` instead of emitting
+  `You don't have anything else to wear.`
+- JS `handleWear` now mirrors that suggest/downplay split:
+  - keeps the `"don't have anything else to wear"` message when there are no
+    suggestions and no downplayed candidates,
+  - forces the `[*]` prompt when downplayed candidates exist.
+- Validation:
+  - preserves full parity for `seed309_rogue_selfplay200_gameplay`,
+  - improves `seed313_wizard_selfplay200_gameplay` by moving first divergence
+    from step 13 to a later screen-only map glyph mismatch at step 78.

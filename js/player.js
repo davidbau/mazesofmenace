@@ -10,6 +10,7 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
 import { M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC } from './monsters.js';
 import { objectData, COIN_CLASS, FOOD_CLASS } from './objects.js';
 import { weight } from './mkobj.js';
+import { skill_init, skills_for_role } from './weapon.js';
 
 const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -488,8 +489,15 @@ export class Player {
         this.moved = false;
 
         // Luck
-        // C ref: you.h u.uluck, u.moreluck
-        this.luck = 0;
+        // C ref: you.h u.uluck, u.moreluck.
+        // Keep legacy `player.luck` as an alias so old callsites stay in sync.
+        this.uluck = 0;
+        Object.defineProperty(this, 'luck', {
+            get: () => this.uluck,
+            set: (v) => { this.uluck = v; },
+            enumerable: true,
+            configurable: true,
+        });
         this.moreluck = 0;
 
         // Intrinsic properties (C ref: you.h u.uprops[])
@@ -565,6 +573,10 @@ export class Player {
 
         // Starting AC depends on role; default 10 = unarmored
         this.ac = 10;
+
+        // cf. u_init.c:1400 — skill_init(skills_for_role())
+        // Initialize weapon/spell skill caps from the role's skill table.
+        skill_init(skills_for_role(roleIndex));
     }
 
     // Get the role name
@@ -620,7 +632,8 @@ export class Player {
 
     // Add an item to inventory, assigning an inventory letter
     // C ref: invent.c addinv()
-    addToInventory(obj) {
+    addToInventory(obj, options = {}) {
+        const withMeta = !!options?.withMeta;
         // C ref: the special mines/sokoban prize marker is cleared once the
         // hero picks the object up, allowing normal monster interactions later.
         if (obj && obj.achievement) obj.achievement = 0;
@@ -633,11 +646,15 @@ export class Player {
             if (existingCoin) {
                 existingCoin.quan = (existingCoin.quan || 1) + (obj.quan || 1);
                 existingCoin.invlet = '$';
-                return existingCoin;
+                return withMeta
+                    ? { item: existingCoin, merged: true, discoveredByCompare: false }
+                    : existingCoin;
             }
             obj.invlet = '$';
             this.inventory.push(obj);
-            return obj;
+            return withMeta
+                ? { item: obj, merged: false, discoveredByCompare: false }
+                : obj;
         }
 
         // C ref: invent.c mergable() — merge before assigning a new invlet.
@@ -656,23 +673,36 @@ export class Player {
                 && ((a.oeaten ?? 0) !== (b.oeaten ?? 0) || !!a.orotten !== !!b.orotten)) {
                 return false;
             }
-            if (!!a.dknown !== !!b.dknown || !!a.bknown !== !!b.bknown) return false;
             if ((a.oeroded ?? 0) !== (b.oeroded ?? 0) || (a.oeroded2 ?? 0) !== (b.oeroded2 ?? 0)) {
                 return false;
             }
             if (!!a.greased !== !!b.greased) return false;
-            if (!!a.oerodeproof !== !!b.oerodeproof || !!a.rknown !== !!b.rknown) return false;
+            if (!!a.oerodeproof !== !!b.oerodeproof) return false;
             if ((a.corpsenm ?? -1) !== (b.corpsenm ?? -1)) return false;
             if (!!a.opoisoned !== !!b.opoisoned) return false;
-            if (!!a.known !== !!b.known) return false;
             return true;
         };
 
         const existing = this.inventory.find(it => canMerge(it, obj));
         if (existing) {
+            let discoveredByCompare = false;
+            if (!!existing.known !== !!obj.known) discoveredByCompare = true;
+            if (!!existing.rknown !== !!obj.rknown && !!existing.oerodeproof) {
+                discoveredByCompare = true;
+            }
+            const roleName = String(this.roleName || '');
+            const roleIsCleric = roleName === 'Priest' || roleName === 'Priestess' || roleName === 'Cleric';
+            if (!!existing.bknown !== !!obj.bknown && !roleIsCleric) {
+                discoveredByCompare = true;
+            }
+            if (!!existing.known !== !!obj.known) existing.known = true;
+            if (!!existing.rknown !== !!obj.rknown) existing.rknown = true;
+            if (!!existing.bknown !== !!obj.bknown) existing.bknown = true;
             existing.quan = (existing.quan || 1) + (obj.quan || 1);
             existing.owt = weight(existing);
-            return existing;
+            return withMeta
+                ? { item: existing, merged: true, discoveredByCompare }
+                : existing;
         }
 
         // C ref: invent.c assigninvlet() — preserve an object's existing invlet
@@ -709,7 +739,9 @@ export class Player {
             obj.invlet = '?';
         }
         this.inventory.push(obj);
-        return obj;
+        return withMeta
+            ? { item: obj, merged: false, discoveredByCompare: false }
+            : obj;
     }
 
     // Remove item from inventory

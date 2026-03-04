@@ -41,18 +41,23 @@ test('E2E: multiple pickups concatenate correctly', async () => {
     assert.strictEqual(display.topMessage, 'a - a dagger.  b - a scroll.');
 });
 
-test('E2E: long message breaks concatenation', async () => {
+test('E2E: long message triggers --More-- on overflow', async () => {
     const display = new HeadlessDisplay();
 
     // First message that's too long to concatenate
     const longMsg = 'a - a very long magical item with an extremely verbose description';
     display.putstr_message(longMsg);
 
-    // Second message should NOT concatenate
+    // Second message triggers --More-- (combined would overflow)
     display.putstr_message('There is a fountain here.');
 
+    assert.strictEqual(display._pendingMore, true,
+                      'Overflow should trigger --More--');
+
+    // After clearing, new message is displayed
+    display._clearMore();
     assert.strictEqual(display.topMessage, 'There is a fountain here.',
-                      'Long messages should break concatenation');
+                      'After --More-- cleared, new message replaces old');
 });
 
 test('E2E: "You die" never concatenates', async () => {

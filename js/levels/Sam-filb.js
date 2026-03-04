@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Samurai Sam-filb.lua	$NHDT-Date: 1652196013 2022/5/10 15:20:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991-92 by M. Stephenson, P. Winner
@@ -16,7 +16,7 @@ export function generate() {
 
     des.level_flags("mazelevel");
 
-    des.map(`\
+    await des.map(`\
 -------------                                  -------------
 |...........|                                  |...........|
 |...-----...|----------------------------------|...-----...|
@@ -34,7 +34,7 @@ export function generate() {
 |...........|                                  |...........|
 -------------                                  -------------
 `);
-    des.region(selection.area(0,0,59,15), "unlit");
+    await des.region(selection.area(0,0,59,15), "unlit");
     // Doors
     des.door("closed",16,7);
     des.door("closed",16,8);
@@ -44,30 +44,30 @@ export function generate() {
     des.stair("up");
     des.stair("down");
     // 
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // 
-    des.monster("d");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("wolf");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
+    await des.monster("d");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("wolf");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
     // 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

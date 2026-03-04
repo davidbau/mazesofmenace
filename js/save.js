@@ -22,6 +22,7 @@
 //   format — no direct equivalents to these file-based save functions.
 //   Memory management (freedynamicdata, free_dungeons) is handled by GC.
 import { tmp_at, DISP_FREEMEM } from './animation.js';
+import { pushRngLogEntry } from './rng.js';
 
 // cf. save.c:42 — dosave(): player-facing #save command
 // Prompts player to confirm; calls dosave0(); handles quit-to-save logic.
@@ -154,12 +155,13 @@ export function save_gamelog(nhfp) {
 }
 
 // Autotranslated from save.c:328
-export function tricked_fileremoved(nhfp, whynot) {
+export async function tricked_fileremoved(nhfp, whynot) {
   if (!nhfp) {
+    pushRngLogEntry(`^trick[${whynot ? String(whynot) : ''}]`);
     pline1(whynot);
-    pline("Probably someone removed it.");
+    await pline("Probably someone removed it.");
     Strcpy(svk.killer.name, whynot);
-    done(TRICKED);
+    await done(TRICKED);
     return true;
   }
   return false;

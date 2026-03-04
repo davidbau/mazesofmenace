@@ -333,33 +333,21 @@ function popQueuedInputKey(inDoAgain = false) {
     return null;
 }
 
-// Get a character of input (async)
-// This is the JS equivalent of C's nhgetch().
-// C ref: winprocs.h win_nhgetch
-export function nhgetch() {
-    const display = getRuntimeDisplay();
-
-    // Clear message acknowledgement flag when user presses a key.
-    // C ref: win/tty/topl.c - toplin gets set to TOPLINE_EMPTY after keypress
-    if (display) {
-        display.messageNeedsMore = false;
-    }
-
-    // C ref: readchar() drains cmdq when replaying doagain/canned arguments.
+// Get a raw key from the input system (no --More-- handling).
+// Used internally by nhgetch to get a key without recursion.
+function _getRawKey() {
     const queuedKey = popQueuedInputKey(cmdqInputModeDoAgain);
     if (Number.isFinite(queuedKey)) {
         recordKey(queuedKey);
         return Promise.resolve(queuedKey);
     }
 
-    // Replay mode: pull from replay buffer
     if (isReplayMode()) {
         const key = getNextReplayKey();
         if (key !== null) {
             recordKey(key);
             return Promise.resolve(key);
         }
-        // Replay exhausted — fall through to interactive input
     }
 
     return Promise.resolve(activeInputRuntime.nhgetch()).then((ch) => {
@@ -371,6 +359,31 @@ export function nhgetch() {
     });
 }
 
+// Get a character of input (async)
+// This is the JS equivalent of C's nhgetch().
+// C ref: winprocs.h win_nhgetch
+export function nhgetch() {
+    const display = getRuntimeDisplay();
+
+    // C ref: readchar() / flush_screen — if --More-- is pending on the
+    // topline, consume one key to dismiss it, drain queued messages, then
+    // recurse to get the actual key the caller wants.
+    if (display && display._pendingMore) {
+        return _getRawKey().then(() => {
+            display._clearMore();
+            return nhgetch();
+        });
+    }
+
+    // Clear message acknowledgement flag when user presses a key.
+    // C ref: win/tty/topl.c - toplin gets set to TOPLINE_EMPTY after keypress
+    if (display) {
+        display.messageNeedsMore = false;
+    }
+
+    return _getRawKey();
+}
+
 // Get a line of input (async)
 // C ref: winprocs.h win_getlin
 export async function getlin(prompt, display) {
@@ -379,17 +392,22 @@ export async function getlin(prompt, display) {
     let line = '';
 
     // Helper to update display
-    const updateDisplay = () => {
+    const updateDisplay = async () => {
         if (disp) {
             // Clear the message row and display prompt + current input.
             // Don't use putstr_message as it concatenates short messages.
             disp.clearRow(0);
-            disp.putstr(0, 0, prompt + line, CLR_GRAY);
+            await disp.putstr(0, 0, prompt + line, CLR_GRAY);
+            // C ref: tty_getlin() places cursor at end of typed text.
+            // Set cursor to end of prompt + current input.
+            const cols = disp.cols || 80;
+            const cursorCol = Math.min((prompt + line).length, cols - 1);
+            if (typeof disp.setCursor === 'function') disp.setCursor(cursorCol, 0);
         }
     };
 
     // Initial display
-    updateDisplay();
+    await updateDisplay();
 
     while (true) {
         const ch = await nhgetch();
@@ -413,11 +431,11 @@ export async function getlin(prompt, display) {
         } else if (ch === 8 || ch === 127) { // Backspace
             if (line.length > 0) {
                 line = line.slice(0, -1);
-                updateDisplay();
+                await updateDisplay();
             }
         } else if (ch >= 32 && ch < 127) {
             line += String.fromCharCode(ch);
-            updateDisplay();
+            await updateDisplay();
         }
     }
 }
@@ -436,7 +454,7 @@ export async function ynFunction(query, choices, def, display) {
     }
     prompt += ' ';
 
-    if (disp) disp.putstr_message(prompt);
+    if (disp) await disp.putstr_message(prompt);
 
     while (true) {
         const ch = await nhgetch();
@@ -518,13 +536,13 @@ export async function getCount(firstKey, maxCount, display) {
             if (disp) {
                 if (backspaced && !cnt && !showzero) {
                     const countText = 'Count: ';
-                    disp.putstr_message(countText);
+                    await disp.putstr_message(countText);
                     if (typeof disp.moveCursorTo === 'function') {
                         disp.moveCursorTo(countText.length, 0);
                     }
                 } else {
                     const countText = `Count: ${cnt}`;
-                    disp.putstr_message(countText);
+                    await disp.putstr_message(countText);
                     if (typeof disp.moveCursorTo === 'function') {
                         disp.moveCursorTo(countText.length, 0);
                     }

@@ -5,67 +5,67 @@
 
 import * as des from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Wizard Wiz-fila.lua	$NHDT-Date: 1652196018 2022/5/10 15:20:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
     // Copyright (c) 1992 by David Cohrs
     // NetHack may be freely redistributed.  See license for details.
     // 
     // 
-    des.room({ type: "ordinary",
-               contents: function() {
+    await des.room({ type: "ordinary",
+               contents: async function() {
                   des.stair("up");
-                  des.object();
-                  des.monster({ class: "i", peaceful: 0 });
+                  await des.object();
+                  await des.monster({ class: "i", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.monster({ class: "i", peaceful: 0 });
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.monster({ class: "i", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.trap();
-                  des.object();
-                  des.monster("vampire bat");
-                  des.monster("vampire bat");
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.object();
+                  await des.monster("vampire bat");
+                  await des.monster("vampire bat");
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
+    await des.room({ type: "ordinary",
+               contents: async function() {
                   des.stair("down");
-                  des.object();
-                  des.trap();
-                  des.monster({ class: "i", peaceful: 0 });
-                  des.monster("vampire bat");
+                  await des.object();
+                  await des.trap();
+                  await des.monster({ class: "i", peaceful: 0 });
+                  await des.monster("vampire bat");
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.object();
-                  des.trap();
-                  des.monster({ class: "i", peaceful: 0 });
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.object();
+                  await des.trap();
+                  await des.monster({ class: "i", peaceful: 0 });
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.object();
-                  des.trap();
-                  des.monster("vampire bat");
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.object();
+                  await des.trap();
+                  await des.monster("vampire bat");
                }
     })
 
     des.random_corridors();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

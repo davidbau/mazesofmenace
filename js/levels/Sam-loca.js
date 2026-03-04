@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Samurai Sam-loca.lua	$NHDT-Date: 1652196014 2022/5/10 15:20:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991-92 by M. Stephenson, P. Winner
@@ -16,7 +16,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ............................................................................
 ............................................................................
 ........-----..................................................-----........
@@ -39,7 +39,7 @@ export function generate() {
 ............................................................................
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     // Doors
     des.door("locked",22,4);
     des.door("locked",22,15);
@@ -71,84 +71,84 @@ export function generate() {
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Objects
-    des.object("*", 25, 5);
-    des.object("*", 26, 5);
-    des.object("*", 27, 5);
-    des.object("*", 28, 5);
-    des.object("*", 25, 6);
-    des.object("*", 26, 6);
-    des.object("*", 27, 6);
-    des.object("*", 28, 6);
+    await des.object("*", 25, 5);
+    await des.object("*", 26, 5);
+    await des.object("*", 27, 5);
+    await des.object("*", 28, 5);
+    await des.object("*", 25, 6);
+    await des.object("*", 26, 6);
+    await des.object("*", 27, 6);
+    await des.object("*", 28, 6);
     // 
-    des.object("[", 40, 5);
-    des.object("[", 41, 5);
-    des.object("[", 42, 5);
-    des.object("[", 43, 5);
-    des.object("[", 40, 6);
-    des.object("[", 41, 6);
-    des.object("[", 42, 6);
-    des.object("[", 43, 6);
+    await des.object("[", 40, 5);
+    await des.object("[", 41, 5);
+    await des.object("[", 42, 5);
+    await des.object("[", 43, 5);
+    await des.object("[", 40, 6);
+    await des.object("[", 41, 6);
+    await des.object("[", 42, 6);
+    await des.object("[", 43, 6);
     // 
-    des.object(")", 27, 13);
-    des.object(")", 28, 13);
-    des.object(")", 29, 13);
-    des.object(")", 30, 13);
-    des.object(")", 27, 14);
-    des.object(")", 28, 14);
-    des.object(")", 29, 14);
-    des.object(")", 30, 14);
+    await des.object(")", 27, 13);
+    await des.object(")", 28, 13);
+    await des.object(")", 29, 13);
+    await des.object(")", 30, 13);
+    await des.object(")", 27, 14);
+    await des.object(")", 28, 14);
+    await des.object(")", 29, 14);
+    await des.object(")", 30, 14);
     // 
-    des.object("(", 37, 13);
-    des.object("(", 38, 13);
-    des.object("(", 39, 13);
-    des.object("(", 40, 13);
-    des.object("(", 37, 14);
-    des.object("(", 38, 14);
-    des.object("(", 39, 14);
-    des.object("(", 40, 14);
+    await des.object("(", 37, 13);
+    await des.object("(", 38, 13);
+    await des.object("(", 39, 13);
+    await des.object("(", 40, 13);
+    await des.object("(", 37, 14);
+    await des.object("(", 38, 14);
+    await des.object("(", 39, 14);
+    await des.object("(", 40, 14);
     // Random traps
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     // Random monsters.
-    des.monster({ id: "ninja", x: 15, y: 5, peaceful: 0 });
-    des.monster({ id: "ninja", x: 16, y: 5, peaceful: 0 });
-    des.monster("wolf", 17, 5);
-    des.monster("wolf", 18, 5);
-    des.monster({ id: "ninja", x: 19, y: 5, peaceful: 0 });
-    des.monster("wolf", 15, 14);
-    des.monster("wolf", 16, 14);
-    des.monster({ id: "ninja", x: 17, y: 14, peaceful: 0 });
-    des.monster({ id: "ninja", x: 18, y: 14, peaceful: 0 });
-    des.monster("wolf", 56, 5);
-    des.monster({ id: "ninja", x: 57, y: 5, peaceful: 0 });
-    des.monster("wolf", 58, 5);
-    des.monster("wolf", 59, 5);
-    des.monster({ id: "ninja", x: 56, y: 14, peaceful: 0 });
-    des.monster("wolf", 57, 14);
-    des.monster({ id: "ninja", x: 58, y: 14, peaceful: 0 });
-    des.monster("d", 59, 14);
-    des.monster("wolf", 60, 14);
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
-    des.monster("stalker");
+    await des.monster({ id: "ninja", x: 15, y: 5, peaceful: 0 });
+    await des.monster({ id: "ninja", x: 16, y: 5, peaceful: 0 });
+    await des.monster("wolf", 17, 5);
+    await des.monster("wolf", 18, 5);
+    await des.monster({ id: "ninja", x: 19, y: 5, peaceful: 0 });
+    await des.monster("wolf", 15, 14);
+    await des.monster("wolf", 16, 14);
+    await des.monster({ id: "ninja", x: 17, y: 14, peaceful: 0 });
+    await des.monster({ id: "ninja", x: 18, y: 14, peaceful: 0 });
+    await des.monster("wolf", 56, 5);
+    await des.monster({ id: "ninja", x: 57, y: 5, peaceful: 0 });
+    await des.monster("wolf", 58, 5);
+    await des.monster("wolf", 59, 5);
+    await des.monster({ id: "ninja", x: 56, y: 14, peaceful: 0 });
+    await des.monster("wolf", 57, 14);
+    await des.monster({ id: "ninja", x: 58, y: 14, peaceful: 0 });
+    await des.monster("d", 59, 14);
+    await des.monster("wolf", 60, 14);
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
+    await des.monster("stalker");
     // "guards" for the central courtyard.
-    des.monster({ id: "samurai", x: 30, y: 5, peaceful: 0 });
-    des.monster({ id: "samurai", x: 31, y: 5, peaceful: 0 });
-    des.monster({ id: "samurai", x: 32, y: 5, peaceful: 0 });
-    des.monster({ id: "samurai", x: 32, y: 14, peaceful: 0 });
-    des.monster({ id: "samurai", x: 33, y: 14, peaceful: 0 });
-    des.monster({ id: "samurai", x: 34, y: 14, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 30, y: 5, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 31, y: 5, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 32, y: 5, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 32, y: 14, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 33, y: 14, peaceful: 0 });
+    await des.monster({ id: "samurai", x: 34, y: 14, peaceful: 0 });
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

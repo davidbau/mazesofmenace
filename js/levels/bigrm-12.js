@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, percent } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack bigroom bigrm-12.lua	$NHDT-Date: $  $NHDT-Branch: NetHack-3.7 $
     // Copyright (c) 2024 by Pasi Kallinen
     // NetHack may be freely redistributed.  See license for details.
@@ -16,7 +16,7 @@ export function generate() {
     des.level_flags("mazelevel", "noflipy");
     des.level_init({ style: "solidfill", fg: " " });
 
-    des.map(`\
+    await des.map(`\
                                                                            
          .......................           .......................         
         .........................         .........................        
@@ -75,7 +75,7 @@ export function generate() {
        }
     }
 
-    des.region(selection.area(0,0,75,19), "lit");
+    await des.region(selection.area(0,0,75,19), "lit");
     des.non_diggable();
 
     des.wallify();
@@ -84,14 +84,14 @@ export function generate() {
     des.stair("down");
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
     for (let i = 1; i <= 6; i++) {
-       des.trap();
+       await des.trap();
     }
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     
     }
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -430,7 +430,14 @@ export function topologize(map, croom, do_ordinary = false) {
     const roomno = croom.roomnoidx + ROOMOFFSET;
     const lowx = croom.lx, lowy = croom.ly;
     const hix = croom.hx, hiy = croom.hy;
-    if (map.at(lowx, lowy)?.roomno === roomno || croom.irregular) return;
+    // C ref: topologize() skips irregular rooms and rooms already topologized.
+    // The "already done" check in C tests if interior cell has roomno set;
+    // in JS, do_room_or_subroom pre-sets interior roomno during creation, so
+    // we can't use that test — instead only skip irregular rooms (which are
+    // handled separately by sp_lev flood-fill).
+    if (croom.irregular) return;
+    // Guard against negative/invalid bounds (hx < 0 means uninitialized room).
+    if (croom.hx < 0) return;
 
     // Non-SPECIALIZATION C build always applies this block.
     for (let x = lowx; x <= hix; x++) {
@@ -622,7 +629,7 @@ TRAP_ENGRAVINGS[TELEP_TRAP] = "ad aerarium";
 TRAP_ENGRAVINGS[LEVEL_TELEP] = "ad aerarium";
 
 // C ref: mklev.c makeniche().
-export function makeniche(map, depth, trap_type) {
+export async function makeniche(map, depth, trap_type) {
     let vct = 8;
     while (vct--) {
         const aroom = map.rooms[rn2(map.nroom)];
@@ -645,7 +652,7 @@ export function makeniche(map, depth, trap_type) {
                 const engrText = TRAP_ENGRAVINGS[trap_type];
                 if (engrText) {
                     make_engr_at(map, xx, yy - dy, engrText, 'dust');
-                    wipe_engr_at(map, xx, yy - dy, 5, false);
+                    await wipe_engr_at(map, xx, yy - dy, 5, false);
                 }
             }
             dosdoor(map, xx, yy, aroom, SDOOR, depth);
@@ -670,7 +677,7 @@ export function makeniche(map, depth, trap_type) {
 }
 
 // C ref: mklev.c make_niches().
-export function make_niches(map, depth) {
+export async function make_niches(map, depth) {
     let ct = rnd(Math.floor(map.nroom / 2) + 1);
     let ltptr = (!map.flags.noteleport && depth > 15);
     let vamp = (depth > 5 && depth < 25);
@@ -678,19 +685,19 @@ export function make_niches(map, depth) {
     while (ct--) {
         if (ltptr && !rn2(6)) {
             ltptr = false;
-            makeniche(map, depth, LEVEL_TELEP);
+            await makeniche(map, depth, LEVEL_TELEP);
         } else if (vamp && !rn2(6)) {
             vamp = false;
-            makeniche(map, depth, TRAPDOOR);
+            await makeniche(map, depth, TRAPDOOR);
         } else {
-            makeniche(map, depth, NO_TRAP);
+            await makeniche(map, depth, NO_TRAP);
         }
     }
 }
 
 // C ref: mklev.c makevtele().
-export function makevtele(map, depth) {
-    makeniche(map, depth, TELEP_TRAP);
+export async function makevtele(map, depth) {
+    await makeniche(map, depth, TELEP_TRAP);
 }
 
 // C ref: mklev.c alloc_doors()

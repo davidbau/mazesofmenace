@@ -16,10 +16,12 @@ import { nhgetch, ynFunction, getlin, cmdq_pop_command, cmdq_clear, cmdq_add_ec,
 import { handleEat } from './eat.js';
 import { handleQuaff } from './potion.js';
 import { handleRead } from './read.js';
-import { handleWear, handlePutOn, handleTakeOff, handleRemove } from './do_wear.js';
+import { handleWear, handlePutOn, handleTakeOff, handleRemove, handleRemoveAll } from './do_wear.js';
 import { handleWield, handleSwapWeapon, handleQuiver } from './wield.js';
-import { handleDownstairs, handleUpstairs, handleDrop } from './do.js';
-import { handleInventory, currency } from './invent.js';
+import { handleDownstairs, handleUpstairs, handleDrop, dowipe } from './do.js';
+import { handleInventory, currency, doorganize } from './invent.js';
+import { dopray, doturn, dosacrifice } from './pray.js';
+import { dodip } from './potion.js';
 import { handleCallObjectTypePrompt, handleDiscoveries } from './discovery.js';
 import { handlePrevMessages, handleHelp, handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
 import { dolook, dowhatis, doquickwhatis } from './look.js';
@@ -28,6 +30,8 @@ import { handleZap } from './zap.js';
 import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
+import { dotalk } from './sounds.js';
+import { add_skills_to_menu, can_advance, skill_advance, skill_level_name, P_NUM_SKILLS } from './weapon.js';
 import { handleSet } from './options_menu.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
@@ -46,7 +50,7 @@ function Strcpy(_dst, src) {
 function t_at(x, y, map) {
     if (!map || !Array.isArray(map.traps)) return null;
     for (const t of map.traps) {
-        if (t && t.x === x && t.y === y) return t;
+        if (t && t.tx === x && t.ty === y) return t;
     }
     return null;
 }
@@ -156,6 +160,38 @@ export async function rhack(ch, game) {
         player.kickedloc = null;
     }
 
+    // C ref: cmd.c parse() / get_count() — digit keys '1'-'9' start a count
+    // prefix; '0'-'9' extend an existing one.  C only displays "Count: N"
+    // after the second digit (when N > 9, get_count.c:4839).
+    if (ch >= 49 && ch <= 57) {
+        // '1'-'9': start or extend count accumulator
+        game.countAccum = ((game.countAccum || 0) * 10) + (ch - 48);
+        if (game.countAccum > 9) {
+            clearTopline();
+            await display.putstr_message(`Count: ${game.countAccum}`);
+        }
+        // isCountDigitWithDisplay: cursor was set to topline by putstr_message;
+        // caller must NOT call cursorOnPlayer (would clobber topline cursor pos).
+        return { moved: false, tookTime: false, isCountDigitWithDisplay: game.countAccum > 9 };
+    }
+    if (ch === 48 && game.countAccum != null) {
+        // '0': extend an in-progress count (not allowed as first digit)
+        game.countAccum = game.countAccum * 10;
+        if (game.countAccum > 9) {
+            clearTopline();
+            await display.putstr_message(`Count: ${game.countAccum}`);
+        }
+        return { moved: false, tookTime: false, isCountDigitWithDisplay: game.countAccum > 9 };
+    }
+    // Non-digit: if a count was accumulated, apply it as the command count.
+    // C ref: cmd.c:4909-4914 — gm.multi = command_count - 1; clear_nhwindow
+    if (game.countAccum != null) {
+        game.commandCount = game.countAccum;
+        game.multi = Math.max(0, game.countAccum - 1);
+        game.countAccum = null;
+        clearTopline();
+    }
+
     // C ref: cmdhelp/keyhelp + fixes3-6-3:
     // ^J (LF/newline) is bound to a south "go until near something" command
     // in non-numpad mode, while ^M is separate (often transformed before core).
@@ -210,7 +246,7 @@ export async function rhack(ch, game) {
         // the prefix-specific warning; they fall through as ordinary input.
         const isQuitLike = (ch === 32 || ch === 10 || ch === 13);
         if (!isQuitLike) {
-            display.putstr_message(`The '${prefix}' prefix should be followed by a movement command.`);
+            await display.putstr_message(`The '${prefix}' prefix should be followed by a movement command.`);
             return { moved: false, tookTime: false };
         }
     }
@@ -218,7 +254,7 @@ export async function rhack(ch, game) {
     // Period/space = wait/search
     // C ref: cmd.c — space maps to donull only when rest_on_space is enabled.
     if (c === '.' || c === 's' || (c === ' ' && game?.flags?.rest_on_space)) {
-        const result = performWaitSearch(c, game, map, player, fov, display);
+        const result = await performWaitSearch(c, game, map, player, fov, display);
         // C ref: cmd.c set_occupation(..., "waiting"/"searching", gm.multi)
         // for counted repeats of rest/search. timed_occupation executes the
         // command then decrements multi each turn.
@@ -226,8 +262,8 @@ export async function rhack(ch, game) {
             const occCmd = c;
             game.occupation = {
                 occtxt: occCmd === 's' ? 'searching' : 'waiting',
-                fn(g) {
-                    performWaitSearch(occCmd, g, g.map, g.player, g.fov, g.display);
+                async fn(g) {
+                    await performWaitSearch(occCmd, g, g.map, g.player, g.fov, g.display);
                     if (g.multi > 0) g.multi--;
                     return g.multi > 0;
                 },
@@ -243,7 +279,7 @@ export async function rhack(ch, game) {
     // Pick up
     if (c === ',') {
         // C ref: cmd.c -- ',' is pickup
-        return handlePickup(player, map, display, game);
+        return await handlePickup(player, map, display, game);
     }
 
     // Go down stairs
@@ -275,7 +311,7 @@ export async function rhack(ch, game) {
     // C ref: cmd.c doprgold()
     if (c === '$') {
         const amount = Number.isFinite(player.gold) ? Math.max(0, Math.floor(player.gold)) : 0;
-        display.putstr_message(`Your wallet contains ${amount} ${currency(amount)}.`);
+        await display.putstr_message(`Your wallet contains ${amount} ${currency(amount)}.`);
         return { moved: false, tookTime: false };
     }
 
@@ -312,6 +348,12 @@ export async function rhack(ch, game) {
     // C ref: do_wear.c doremring()
     if (c === 'R') {
         return await handleRemove(player, display);
+    }
+
+    // Take off all worn items (category menu)
+    // C ref: do_wear.c doddoremarm()
+    if (c === 'A') {
+        return await handleRemoveAll(player, display, game);
     }
 
     // Engrave
@@ -467,7 +509,7 @@ export async function rhack(ch, game) {
             game.gameOver = true;
             game.gameOverReason = 'quit';
             player.deathCause = 'quit';
-            display.putstr_message('Goodbye...');
+            await display.putstr_message('Goodbye...');
         }
         return { moved: false, tookTime: false };
     }
@@ -490,19 +532,19 @@ export async function rhack(ch, game) {
         if (game.travelX !== undefined && game.travelY !== undefined) {
             const path = findPath(map, player.x, player.y, game.travelX, game.travelY);
             if (!path) {
-                display.putstr_message('No path to previous destination.');
+                await display.putstr_message('No path to previous destination.');
                 return { moved: false, tookTime: false };
             }
             if (path.length === 0) {
-                display.putstr_message('You are already there.');
+                await display.putstr_message('You are already there.');
                 return { moved: false, tookTime: false };
             }
             game.travelPath = path;
             game.travelStep = 0;
-            display.putstr_message(`Traveling... (${path.length} steps)`);
+            await display.putstr_message(`Traveling... (${path.length} steps)`);
             return await dotravel_target(game);
         } else {
-            display.putstr_message('No previous travel destination.');
+            await display.putstr_message('No previous travel destination.');
             return { moved: false, tookTime: false };
         }
     }
@@ -516,7 +558,7 @@ export async function rhack(ch, game) {
     // Wizard mode: Ctrl+F = magic mapping (reveal map)
     // C ref: cmd.c wiz_map()
     if (ch === 6 && game.wizard) {
-        return wizMap(game);
+        return await wizMap(game);
     }
 
     // Wizard mode: Ctrl+T = teleport
@@ -540,7 +582,7 @@ export async function rhack(ch, game) {
     // Wizard mode: Ctrl+I = identify all
     // C ref: cmd.c wiz_identify()
     if (ch === 9 && game.wizard) {
-        display.putstr_message('All items in inventory identified.');
+        await display.putstr_message('All items in inventory identified.');
         return { moved: false, tookTime: false };
     }
 
@@ -567,12 +609,12 @@ export async function rhack(ch, game) {
     // C ref: cmd.c:1671 do_fight() — 'F' prefix
     if (c === 'F') {
         if (getForceFight()) {
-            display.putstr_message('Double fight prefix, canceled.');
+            await display.putstr_message('Double fight prefix, canceled.');
             setForceFight(false);
         } else {
             setForceFight(true);
             if (game.flags.verbose) {
-                display.putstr_message('Next movement will force fight even if no monster visible.');
+                await display.putstr_message('Next movement will force fight even if no monster visible.');
             }
         }
         return { moved: false, tookTime: false };
@@ -581,12 +623,12 @@ export async function rhack(ch, game) {
     // C ref: cmd.c:1655 do_run() — 'G' prefix (run)
     if (c === 'G') {
         if (getRunMode()) {
-            display.putstr_message('Double run prefix, canceled.');
+            await display.putstr_message('Double run prefix, canceled.');
             clearRunMode();
         } else {
             setRunMode(3); // run mode
             if (game.flags.verbose) {
-                display.putstr_message('Next direction will run until something interesting.');
+                await display.putstr_message('Next direction will run until something interesting.');
             }
         }
         return { moved: false, tookTime: false };
@@ -595,29 +637,30 @@ export async function rhack(ch, game) {
     // C ref: cmd.c:1639 do_rush() — 'g' prefix (rush)
     if (c === 'g') {
         if (getRunMode()) {
-            display.putstr_message('Double rush prefix, canceled.');
+            await display.putstr_message('Double rush prefix, canceled.');
             clearRunMode();
         } else {
             setRunMode(2); // rush mode
             if (game.flags.verbose) {
-                display.putstr_message('Next direction will rush until something interesting.');
+                await display.putstr_message('Next direction will rush until something interesting.');
             }
         }
         return { moved: false, tookTime: false };
     }
 
     // Escape -- ignore silently (cancels pending prompts)
-    // C ref: cmd.c -- ESC aborts current command
+    // C ref: cmd.c -- ESC aborts current command; parse():4891 clears count
     if (ch === 27) {
         // Also clear prefix flags
         setMenuRequested(false);
         setForceFight(false);
         clearRunMode();
+        game.countAccum = null;
         return { moved: false, tookTime: false };
     }
 
     // Unknown command
-    display.putstr_message(`Unknown command '${ch < 32 ? '^' + String.fromCharCode(ch + 64) : c}'.`);
+    await display.putstr_message(`Unknown command '${ch < 32 ? '^' + String.fromCharCode(ch + 64) : c}'.`);
     return { moved: false, tookTime: false };
 }
 
@@ -629,7 +672,7 @@ async function handleExtendedCommand(game) {
     }
     const rawCmd = input.trim();
     const cmd = rawCmd.toLowerCase();
-    const queueRepeatExtcmd = (fn) => {
+    const queueRepeatExtcmd = async (fn) => {
         if (game?.inDoAgain || typeof fn !== 'function') return;
         cmdq_clear(CQ_REPEAT);
         cmdq_add_ec(CQ_REPEAT, fn);
@@ -637,9 +680,74 @@ async function handleExtendedCommand(game) {
     switch (cmd) {
         case 'o':
         case 'options':
-        case 'optionsfull':
             queueRepeatExtcmd((g) => handleSet(g));
             return await handleSet(game);
+        case 'optionsfull':
+            queueRepeatExtcmd((g) => handleSet(g, { showAdvanced: true }));
+            return await handleSet(game, { showAdvanced: true });
+        case 'adjust':
+            queueRepeatExtcmd((g) => doorganize(g));
+            return await doorganize(game);
+        case 'wipe':
+            queueRepeatExtcmd((g) => dowipe(g.player).then(t => ({ moved: false, tookTime: !!t })));
+            return { moved: false, tookTime: !!(await dowipe(player)) };
+        case 'pray':
+            queueRepeatExtcmd((g) => dopray(g.player, g.map).then(t => ({ moved: false, tookTime: !!t })));
+            return { moved: false, tookTime: !!(await dopray(player, game.map)) };
+        case 'turn':
+            queueRepeatExtcmd((g) => doturn(g.player, g.map).then(t => ({ moved: false, tookTime: !!t })));
+            return { moved: false, tookTime: !!(await doturn(player, game.map)) };
+        case 'dip':
+            queueRepeatExtcmd((g) => dodip(g.player, g.map, g.display).then(t => ({ moved: false, tookTime: !!t })));
+            return { moved: false, tookTime: !!(await dodip(player, game.map, display)) };
+        case 'enhance': {
+            // cf. weapon.c enhance_weapon_skill() — skill advancement menu.
+            const rows = add_skills_to_menu();
+            const advanceable = rows.filter((r) => r.canAdvance);
+            if (!rows.length) {
+                await display.putstr_message('You have no skills to show.');
+                return { moved: false, tookTime: false };
+            }
+            const heading = advanceable.length > 0 ? 'Pick a skill to advance:' : 'Current skills:';
+            await display.putstr_message(heading);
+            const letters = 'abcdefghijklmnopqrstuvwxyz';
+            for (let idx = 0; idx < rows.length; idx++) {
+                const r = rows[idx];
+                const letter = letters[idx] || '?';
+                const mark = r.canAdvance ? ' *' : '';
+                await display.putstr_message(`  ${letter} - ${r.name} [${r.levelName}]${mark}`);
+            }
+            if (!advanceable.length) return { moved: false, tookTime: false };
+            await display.putstr_message('Skill to advance (letter or ESC):');
+            const ech = await nhgetch();
+            if (ech === 27) return { moved: false, tookTime: false };
+            const ec = String.fromCharCode(ech);
+            const idx = letters.indexOf(ec);
+            const chosen = (idx >= 0 && idx < rows.length) ? rows[idx] : null;
+            if (chosen && chosen.canAdvance) {
+                skill_advance(chosen.skill);
+                await display.putstr_message('You feel you could be more dangerous!');
+                return { moved: false, tookTime: false };
+            }
+            return { moved: false, tookTime: false };
+        }
+        case 'chat':
+            queueRepeatExtcmd((g) => dotalk(g));
+            return { moved: false, tookTime: !!(await dotalk(game)) };
+        case 'offer': {
+            const tookTimeOffer = await dosacrifice(player, game.map);
+            return { moved: false, tookTime: !!tookTimeOffer };
+        }
+        case 'monster': {
+            // cf. cmd.c domonability() — use polymorphed monster special ability.
+            const isPolyd = !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
+            if (isPolyd) {
+                await display.putstr_message('Any special ability you may have is purely reflexive.');
+            } else {
+                await display.putstr_message("You don't have a special ability in your normal form!");
+            }
+            return { moved: false, tookTime: false };
+        }
         case 'n':
         case 'name': {
             queueRepeatExtcmd(async (g) => handleExtendedCommandName(g));
@@ -658,8 +766,8 @@ async function handleExtendedCommand(game) {
             queueRepeatExtcmd((g) => wizWish(g));
             return await wizWish(game);
         case 'map':
-            queueRepeatExtcmd((g) => wizMap(g));
-            return wizMap(game);
+            queueRepeatExtcmd(async (g) => await wizMap(g));
+            return await wizMap(game);
         case 'teleport':
             queueRepeatExtcmd((g) => wizTeleport(g));
             return await wizTeleport(game);
@@ -675,7 +783,7 @@ async function handleExtendedCommand(game) {
                 game.gameOver = true;
                 game.gameOverReason = 'quit';
                 player.deathCause = 'quit';
-                display.putstr_message('Goodbye...');
+                await display.putstr_message('Goodbye...');
             }
             return { moved: false, tookTime: false };
         }
@@ -707,7 +815,7 @@ async function handleExtendedCommand(game) {
             return await handleExtendedCommandUntrap(game);
         default:
             // C-style unknown extended command feedback
-            display.putstr_message(`#${rawCmd}: unknown extended command.`);
+            await display.putstr_message(`#${rawCmd}: unknown extended command.`);
             return { moved: false, tookTime: false };
     }
 }
@@ -716,13 +824,13 @@ async function handleExtendedCommandUntrap(game) {
     const { player, map, display } = game;
     let dir = null;
     while (!dir) {
-        display.putstr_message('In what direction?');
+        await display.putstr_message('In what direction?');
         const dirCh = await nhgetch();
         display.topMessage = null;
         display.messageNeedsMore = false;
 
         if (dirCh === 27 || dirCh === 32) {
-            display.putstr_message('Never mind.');
+            await display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
         const c = String.fromCharCode(dirCh).toLowerCase();
@@ -735,33 +843,38 @@ async function handleExtendedCommandUntrap(game) {
     const ty = player.y + dir[1];
     const trap = map?.trapAt?.(tx, ty);
     if (!trap) {
-        display.putstr_message('You cannot disable that trap.');
+        await display.putstr_message('You cannot disable that trap.');
         return { moved: false, tookTime: false };
     }
 
     if (trap.ttyp === SQKY_BOARD) {
         while (true) {
-            display.putstr_message('What do you want to untrap with? [*]');
+            const untrapPrompt = 'What do you want to untrap with? [*]';
+            await display.putstr_message(untrapPrompt);
+            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+            if (typeof display.setCursor === 'function') {
+                display.setCursor(Math.min(untrapPrompt.length + 1, (display.cols || 80) - 1), 0);
+            }
             const toolCh = await nhgetch();
             if (toolCh === 27 || toolCh === 32) {
-                display.putstr_message('Never mind.');
+                await display.putstr_message('Never mind.');
                 return { moved: false, tookTime: false };
             }
         }
     }
 
-    display.putstr_message('You cannot disable that trap.');
+    await display.putstr_message('You cannot disable that trap.');
     return { moved: false, tookTime: false };
 }
 
 async function handleExtendedCommandName(game) {
     const { player, display } = game;
     while (true) {
-        display.putstr_message('                                What do you want to name?');
+        await display.putstr_message('                                What do you want to name?');
         const sel = await nhgetch();
         const c = String.fromCharCode(sel).toLowerCase();
         if (sel === 27 || c === ' ') {
-            display.putstr_message('Never mind.');
+            await display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
         if (c === 'a') {
@@ -813,34 +926,34 @@ export function cmdq_reverse(head) {
 
 // Autotranslated from cmd.c:1201
 export async function enter_explore_mode() {
-  if (discover) { You("are already in explore mode."); }
+  if (discover) { await You("are already in explore mode."); }
   else {
     let oldmode = !wizard ? "normal game" : "debug mode";
     if (!authorize_explore_mode()) {
-      if (!wizard) { You("cannot access explore mode."); return ECMD_OK; }
+      if (!wizard) { await You("cannot access explore mode."); return ECMD_OK; }
       else {
-        pline( "Note: normally you wouldn't be allowed into explore mode.");
+        await pline( "Note: normally you wouldn't be allowed into explore mode.");
       }
     }
-    pline("Beware! From explore mode there will be no return to %s,", oldmode);
+    await pline("Beware! From explore mode there will be no return to %s,", oldmode);
     if (paranoid_query(ParanoidQuit, "Do you want to enter explore mode?")) {
       discover = true;
       wizard = false;
       clear_nhwindow(WIN_MESSAGE);
-      You("are now in non-scoring explore mode.");
+      await You("are now in non-scoring explore mode.");
     }
-    else { clear_nhwindow(WIN_MESSAGE); pline("Continuing with %s.", oldmode); }
+    else { clear_nhwindow(WIN_MESSAGE); await pline("Continuing with %s.", oldmode); }
   }
   return ECMD_OK;
 }
 
 // Autotranslated from cmd.c:1323
-export function wiz_dumpmap(map) {
+export async function wiz_dumpmap(map) {
   let fname, fp, x, y;
   fname = getenv("NETHACK_DUMPMAP");
   if (!fname || !fname) fname = "dumpmap.txt";
   fp = fopen(fname, "w");
-  if (!fp) { pline("Cannot open %s for writing.", fname); return ECMD_OK; }
+  if (!fp) { await pline("Cannot open %s for writing.", fname); return ECMD_OK; }
   for (y = 0; y < ROWNO; y++) {
     for (x = 0; x < COLNO; x++) {
       if (x > 0) fputc(' ', fp);
@@ -849,22 +962,22 @@ export function wiz_dumpmap(map) {
     fputc('\n', fp);
   }
   fclose(fp);
-  pline("Map dumped to %s.", fname);
+  await pline("Map dumped to %s.", fname);
   return ECMD_OK;
 }
 
 // Autotranslated from cmd.c:1357
-export function wiz_dumpobj() {
+export async function wiz_dumpobj() {
   let fname, fp, obj;
   fname = getenv("NETHACK_DUMPOBJ");
   if (!fname || !fname) fname = "dumpobj.txt";
   fp = fopen(fname, "w");
-  if (!fp) { pline("Cannot open %s for writing.", fname); return ECMD_OK; }
+  if (!fp) { await pline("Cannot open %s for writing.", fname); return ECMD_OK; }
   for (obj = fobj; obj; obj = obj.nobj) {
     fprintf(fp, "%d %d %d %u %s\n", obj.ox, obj.oy, obj.otyp, obj.owt, OBJ_NAME(objectData[obj.otyp]));
   }
   fclose(fp);
-  pline("Objects dumped to %s.", fname);
+  await pline("Objects dumped to %s.", fname);
   return ECMD_OK;
 }
 
@@ -878,7 +991,7 @@ export async function wiz_dumpsnap() {
     Strcpy(phasebuf, "manual");
   }
   harness_dump_checkpoint(phasebuf);
-  pline("Snapshot appended (%s).", phasebuf);
+  await pline("Snapshot appended (%s).", phasebuf);
   return ECMD_OK;
 }
 
@@ -890,20 +1003,20 @@ export function dolookaround_floodfill_findroom(x, y, map) {
 }
 
 // Autotranslated from cmd.c:1608
-export function lookaround_known_room(x, y, player) {
+export async function lookaround_known_room(x, y, player) {
   let sel = selection_new(), rmno = player.urooms[0] - ROOMOFFSET, qbuf;
   set_selection_floodfillchk(dolookaround_floodfill_findroom);
   selection_floodfill(sel, x, y, true);
   if (!u_at(x, y)) set_msg_xy(x, y);
   if (u_have_seen_whole_selection(sel)) {
     let u_in =  selection_getpoint(x, y, sel);
-    You("%s %s %s.", u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? "are in" : (u_at(x, y)) ? "remember this as" : "remember that as", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
+    await You("%s %s %s.", u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? "are in" : (u_at(x, y)) ? "remember this as" : "remember that as", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
   }
   else if (u_have_seen_bounds_selection(sel)) {
-    You("guess %s to be %s %s.", u_at(x, y) ? "this" : "that", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
+    await You("guess %s to be %s %s.", u_at(x, y) ? "this" : "that", an(selection_size_description(sel, qbuf)), rmno >= 0 ? "room" : "area");
   }
   else {
-    You("can't guess the size of %s area.", u_at(x, y) ? "this" : "that");
+    await You("can't guess the size of %s area.", u_at(x, y) ? "this" : "that");
   }
   selection_free(sel, true);
 }
@@ -1053,9 +1166,9 @@ export function do_run_southwest() {
 }
 
 // Autotranslated from cmd.c:1939
-export function do_fight(game) {
+export async function do_fight(game) {
   if (game.svc.context.forcefight) {
-    Norep("Double fight prefix, canceled.");
+    await Norep("Double fight prefix, canceled.");
     game.svc.context.forcefight = 0;
     game.gd.domove_attempting = 0;
     return ECMD_CANCEL;
@@ -1084,7 +1197,7 @@ export async function handler_change_autocompletions() {
     add_menu(win, nul_glyphinfo, any, '\0', 0, ATR_NONE, clr, buf, (ec.flags & AUTOCOMPLETE) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
   }
   end_menu(win, "Which commands autocomplete?");
-  n = select_menu(win, PICK_ANY, picks);
+  n = await select_menu(win, PICK_ANY, picks);
   if (n >= 0) {
     let j;
     for (i = 0; i < extcmdlist_length; i++) {
@@ -1176,7 +1289,7 @@ export function dxdy_moveok(player) {
 // Autotranslated from cmd.c:4042
 export async function get_adjacent_loc(prompt, emsg, x, y, cc, player) {
   let new_x, new_y;
-  if (!getdir(prompt)) { pline1(Never_mind); return 0; }
+  if (!await getdir(prompt)) { pline1(Never_mind); return 0; }
   new_x = x + player.dx;
   new_y = y + player.dy;
   if (cc && isok(new_x, new_y)) { cc.x = new_x; cc.y = new_y; }
@@ -1185,28 +1298,28 @@ export async function get_adjacent_loc(prompt, emsg, x, y, cc, player) {
 }
 
 // Autotranslated from cmd.c:4233
-export function show_direction_keys(win, centerchar, nodiag) {
+export async function show_direction_keys(win, centerchar, nodiag) {
   let buf;
   if (!centerchar) centerchar = ' ';
   if (nodiag) {
     Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_north)));
-    putstr(win, 0, buf);
-    putstr(win, 0, " | ");
+    await putstr(win, 0, buf);
+    await putstr(win, 0, " | ");
     Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
-    putstr(win, 0, buf);
-    putstr(win, 0, " | ");
+    await putstr(win, 0, buf);
+    await putstr(win, 0, " | ");
     Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_south)));
-    putstr(win, 0, buf);
+    await putstr(win, 0, buf);
   }
   else {
     Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_northwest)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_northeast)));
-    putstr(win, 0, buf);
-    putstr(win, 0, " \\ | / ");
+    await putstr(win, 0, buf);
+    await putstr(win, 0, " \\ | / ");
     Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
-    putstr(win, 0, buf);
-    putstr(win, 0, " / | \\ ");
+    await putstr(win, 0, buf);
+    await putstr(win, 0, " / | \\ ");
     Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_southwest)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_southeast)));
-    putstr(win, 0, buf);
+    await putstr(win, 0, buf);
   }
 }
 

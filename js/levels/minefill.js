@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { percent } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
     // NetHack mines minefill.lua	$NHDT-Date: 1652196028 2022/5/10 15:20:28 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
     // Copyright (c) 1989-95 by Jean-Christophe Collet
     // Copyright (c) 1991-95 by M. Stephenson
@@ -31,35 +31,35 @@ export function generate() {
     des.stair("down");
     // 
     for (let i = 1, __end_i = (rn2((5) - (2) + 1) + (2)); i <= __end_i; i++) {
-       des.object("*");
+       await des.object("*");
     }
-    des.object("(");
+    await des.object("(");
     for (let i = 1, __end_i = (rn2((4) - (2) + 1) + (2)); i <= __end_i; i++) {
-       des.object();
+       await des.object();
     }
     if (percent(75)) {
        for (let i = 1, __end_i = (rn2((2) - (1) + 1) + (1)); i <= __end_i; i++) {
-          des.object("boulder");
+          await des.object("boulder");
        }
     }
     // 
     for (let i = 1, __end_i = (rn2((8) - (6) + 1) + (6)); i <= __end_i; i++) {
-       des.monster("gnome");
+       await des.monster("gnome");
     }
-    des.monster("gnome lord");
-    des.monster("dwarf");
-    des.monster("dwarf");
-    des.monster("G");
-    des.monster("G");
-    des.monster(percent(50) && "h" || "G");
+    await des.monster("gnome lord");
+    await des.monster("dwarf");
+    await des.monster("dwarf");
+    await des.monster("G");
+    await des.monster("G");
+    await des.monster(percent(50) && "h" || "G");
     // 
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

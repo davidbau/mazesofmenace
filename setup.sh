@@ -14,7 +14,16 @@ echo "Installing dependencies..."
 npm install
 echo ""
 
-# 2. Build C NetHack binary for comparison tests
+# 2. Populate NetHack C source submodule (pristine reference at nethack-c/upstream/)
+if [ -f nethack-c/upstream/src/display.c ]; then
+  echo "NetHack C source submodule already populated."
+else
+  echo "Initializing NetHack C source submodule..."
+  git submodule update --init nethack-c/upstream
+fi
+echo ""
+
+# 3. Build C NetHack binary for comparison tests
 if [ -f test/comparison/c-harness/setup.sh ]; then
   echo "Building C NetHack harness for comparison tests..."
   bash test/comparison/c-harness/setup.sh

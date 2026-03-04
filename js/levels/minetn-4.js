@@ -13,7 +13,7 @@ function monkfoodshop() {
 }
 
 
-export function generate() {
+export async function generate() {
     const align = [A_CHAOTIC, A_NEUTRAL, A_LAWFUL];
     shuffle(align);
 
@@ -25,132 +25,132 @@ export function generate() {
     // Minetown variant 4 by Kelly Bailey
     // "College Town"
 
-    des.room({ type: "ordinary", lit: 1, x: 3,y: 3,
+    await des.room({ type: "ordinary", lit: 1, x: 3,y: 3,
                xalign: "center", yalign: "center", w: 30, h: 15,
-               contents: function() {
+               contents: async function() {
                   des.feature("fountain", 8,7);
                   des.feature("fountain", 18,7);
 
-                  des.room({ type: "book shop", lit: 1, x: 4, y: 2, w: 3, h: 3,
-                             contents: function() {
+                  await des.room({ type: "book shop", lit: 1, x: 4, y: 2, w: 3, h: 3,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "south" });
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 8, y: 2, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 8, y: 2, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "south" });
                              }
                   })
 
-                  des.room({ type: "temple", lit: 1, x: 11, y: 3, w: 5, h: 4,
-                             contents: function() {
+                  await des.room({ type: "temple", lit: 1, x: 11, y: 3, w: 5, h: 4,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "south" });
                                 des.altar({ x: 2,y: 1,align: align[0], type: "shrine" });
-                                des.monster("gnomish wizard");
-                                des.monster("gnomish wizard");
+                                await des.monster("gnomish wizard");
+                                await des.monster("gnomish wizard");
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 19, y: 2, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 19, y: 2, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "south" });
-                                des.monster("G");
+                                await des.monster("G");
                              }
                   })
 
-                  des.room({ type: "candle shop", lit: 1, x: 22, y: 2, w: 3, h: 3,
-                             contents: function() {
+                  await des.room({ type: "candle shop", lit: 1, x: 22, y: 2, w: 3, h: 3,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "south" });
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 26, y: 2, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 26, y: 2, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "locked", wall: "east" });
-                                des.monster("G");
+                                await des.monster("G");
                              }
                   })
 
-                  des.room({ type: "tool shop", chance: 90, lit: 1, x: 4,y: 10, w: 3,h: 3,
-                             contents: function() {
+                  await des.room({ type: "tool shop", chance: 90, lit: 1, x: 4,y: 10, w: 3,h: 3,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "north" });
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 8, y: 11, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 8, y: 11, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "locked", wall: "south" });
-                                des.monster("kobold shaman");
-                                des.monster("kobold shaman");
-                                des.monster("kitten");
-                                des.monster("f");
+                                await des.monster("kobold shaman");
+                                await des.monster("kobold shaman");
+                                await des.monster("kitten");
+                                await des.monster("f");
                              }
                   })
 
-                  des.room({ type: monkfoodshop(), chance: 90, lit: 1, x: 11, y: 11, w: 3, h: 2,
-                             contents: function() {
+                  await des.room({ type: monkfoodshop(), chance: 90, lit: 1, x: 11, y: 11, w: 3, h: 2,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "east" });
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 17, y: 11, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 17, y: 11, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "west" });
                              }
                   })
 
-                  des.room({ type: "ordinary", x: 20, y: 10, w: 2, h: 2,
-                             contents: function() {
+                  await des.room({ type: "ordinary", x: 20, y: 10, w: 2, h: 2,
+                             contents: async function() {
                                 des.door({ state: "locked", wall: "north" });
-                                des.monster("G");
+                                await des.monster("G");
                              }
                   })
 
-                  des.room({ type: "shop", chance: 90, lit: 1, x: 23, y: 10, w: 3, h: 3,
-                             contents: function() {
+                  await des.room({ type: "shop", chance: 90, lit: 1, x: 23, y: 10, w: 3, h: 3,
+                             contents: async function() {
                                 des.door({ state: "closed", wall: "north" });
                              }
                   })
 
-                  des.monster({ id: "watchman", peaceful: 1 });
-                  des.monster({ id: "watchman", peaceful: 1 });
-                  des.monster({ id: "watchman", peaceful: 1 });
-                  des.monster({ id: "watchman", peaceful: 1 });
-                  des.monster({ id: "watch captain", peaceful: 1 });
+                  await des.monster({ id: "watchman", peaceful: 1 });
+                  await des.monster({ id: "watchman", peaceful: 1 });
+                  await des.monster({ id: "watchman", peaceful: 1 });
+                  await des.monster({ id: "watchman", peaceful: 1 });
+                  await des.monster({ id: "watch captain", peaceful: 1 });
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
+    await des.room({ type: "ordinary",
+               contents: async function() {
                   des.stair("up");
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
+    await des.room({ type: "ordinary",
+               contents: async function() {
                   des.stair("down");
-                  des.trap();
-                  des.monster("gnome");
-                  des.monster("gnome");
+                  await des.trap();
+                  await des.monster("gnome");
+                  await des.monster("gnome");
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.monster("dwarf");
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.monster("dwarf");
                }
     })
 
-    des.room({ type: "ordinary",
-               contents: function() {
-                  des.trap();
-                  des.monster("gnome");
+    await des.room({ type: "ordinary",
+               contents: async function() {
+                  await des.trap();
+                  await des.monster("gnome");
                }
     })
 
     des.random_corridors();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

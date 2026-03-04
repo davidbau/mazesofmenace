@@ -1,5 +1,6 @@
 // test/comparison/comparators.js -- Pure comparison helpers for session replay.
 import { decodeDecSpecialChar } from './symset_normalization.js';
+import { parseCompactMapdump } from './session_loader.js';
 
 function stripRngSourceTag(entry) {
     if (!entry || typeof entry !== 'string') return '';
@@ -545,9 +546,9 @@ function isEventEntry(entry) {
 }
 
 function isIgnorableEventEntry(entry) {
-    // `trick[...]` remains ignored because it is map-regeneration recovery noise.
-    // `mapdump[...]` is harness-level diagnostics rather than gameplay semantics.
-    // Dog/monster diagnostic events are compared directly.
+    // `trick[...]` is map-regeneration recovery noise.
+    // `mapdump[...]` is compared separately via compareMapdumpCheckpoints,
+    //   not via event comparison (old sessions pre-patch-017 don't have it).
     return typeof entry === 'string'
         && (entry.startsWith('^trick[') || entry.startsWith('^mapdump['));
 }
@@ -583,6 +584,105 @@ export function compareEvents(jsRng = [], sessionRng = []) {
                 session: session[i] || '(missing)',
             };
         }
+    }
+
+    return { matched, total, firstDivergence };
+}
+
+function compareMapdumpSparse(jsList = [], sessionList = []) {
+    const normalize = (arr) => (Array.isArray(arr) ? arr : [])
+        .map((row) => (Array.isArray(row) ? row.map((v) => Number(v) || 0) : []))
+        .sort((a, b) => {
+            const sa = a.join(',');
+            const sb = b.join(',');
+            return sa.localeCompare(sb);
+        });
+    const a = normalize(jsList);
+    const b = normalize(sessionList);
+    const total = Math.max(a.length, b.length);
+    for (let i = 0; i < total; i++) {
+        const av = a[i];
+        const bv = b[i];
+        if (!av || !bv) return { match: false, diff: { index: i, js: av || null, session: bv || null } };
+        if (av.length !== bv.length) return { match: false, diff: { index: i, js: av, session: bv } };
+        for (let j = 0; j < av.length; j++) {
+            if (av[j] !== bv[j]) return { match: false, diff: { index: i, js: av, session: bv } };
+        }
+    }
+    return { match: true, diff: null };
+}
+
+export function compareMapdumpCheckpoints(jsCheckpoints = null, sessionCheckpoints = null) {
+    // If the session has no mapdump data (recorded before patch 017), skip comparison.
+    if (!sessionCheckpoints || typeof sessionCheckpoints !== 'object'
+            || Object.keys(sessionCheckpoints).length === 0) {
+        return { matched: 0, total: 0, firstDivergence: null };
+    }
+    const js = (jsCheckpoints && typeof jsCheckpoints === 'object') ? jsCheckpoints : {};
+    const session = sessionCheckpoints;
+    const ids = [...new Set([...Object.keys(js), ...Object.keys(session)])].sort();
+    const total = ids.length;
+    let matched = 0;
+    let firstDivergence = null;
+
+    for (const id of ids) {
+        if (!(id in js)) {
+            if (!firstDivergence) firstDivergence = { checkpointId: id, kind: 'missing_js' };
+            continue;
+        }
+        if (!(id in session)) {
+            if (!firstDivergence) firstDivergence = { checkpointId: id, kind: 'missing_session' };
+            continue;
+        }
+        const jParsed = parseCompactMapdump(js[id]);
+        const sParsed = parseCompactMapdump(session[id]);
+        if (!jParsed || !sParsed) {
+            if (!firstDivergence) firstDivergence = { checkpointId: id, kind: 'parse_error' };
+            continue;
+        }
+        let idMatch = true;
+        const gridSections = [
+            ['typGrid', 'T'],
+            // 'F' (flagsGrid) skipped: C rm.flags semantics differ from JS loc.flags
+            // (C initializes STONE cells to D_LOCKED=8; JS uses loc.flags for WM_MASK only)
+            ['horizontalGrid', 'H'],
+            ['litGrid', 'L'],
+            ['roomnoGrid', 'R'],
+        ];
+        for (const [field, section] of gridSections) {
+            const diff = findFirstGridDiff(jParsed[field] || [], sParsed[field] || []);
+            if (diff) {
+                idMatch = false;
+                if (!firstDivergence) {
+                    firstDivergence = { checkpointId: id, kind: 'grid', section, ...diff };
+                }
+                break;
+            }
+        }
+        if (!idMatch) continue;
+
+        const sparseSections = [
+            ['objects', 'O'],
+            ['monsters', 'M'],
+            ['traps', 'K'],
+        ];
+        for (const [field, section] of sparseSections) {
+            const sparseCmp = compareMapdumpSparse(jParsed[field], sParsed[field]);
+            if (!sparseCmp.match) {
+                idMatch = false;
+                if (!firstDivergence) {
+                    firstDivergence = {
+                        checkpointId: id,
+                        kind: 'sparse',
+                        section,
+                        ...sparseCmp.diff,
+                    };
+                }
+                break;
+            }
+        }
+
+        if (idMatch) matched++;
     }
 
     return { matched, total, firstDivergence };

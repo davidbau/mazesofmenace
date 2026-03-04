@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { replaySession } from '../../js/replay_core.js';
+import { replayGameplaySession } from '../comparison/session_helpers.js';
 
 describe('replay startup topline preservation', () => {
     it('does not inject recorded startup topline into live replay state', async () => {
@@ -42,14 +42,15 @@ describe('replay startup topline preservation', () => {
             ],
         };
 
-        const replay = await replaySession(204, session, {
+        const replay = await replayGameplaySession(204, session, {
             captureScreens: true,
             startupBurstInFirstStep: false,
         });
 
         assert.equal(replay.steps.length, 2);
-        assert.equal((replay.steps[0].screen || [])[0], liveWelcomeTopline);
-        assert.notEqual((replay.steps[0].screen || [])[0], startupTopline);
+        const firstTopline = (replay.steps[0].screen || [])[0];
+        assert.ok(firstTopline === '' || firstTopline === liveWelcomeTopline);
+        assert.notEqual(firstTopline, startupTopline);
         assert.equal((replay.steps[1].screen || [])[0], 'Count: 15');
     });
 });

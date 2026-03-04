@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection, shuffle } from '../sp_lev.js';
 import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from '../config.js';
 
-export function generate() {
+export async function generate() {
     const align = [A_CHAOTIC, A_NEUTRAL, A_LAWFUL];
     shuffle(align);
 
@@ -20,7 +20,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "hardfloor");
 
-    des.map(`\
+    await des.map(`\
 ............................................................................
 ............................................................................
 ............................................................................
@@ -43,20 +43,20 @@ export function generate() {
 ............................................................................
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,19), "lit");
-    des.region({ region: [25,4, 28,7], lit: 1, type: "temple", filled: 2 });
-    des.region({ region: [25,9, 28,11], lit: 0, type: "temple", filled: 2 });
-    des.region({ region: [25,13, 28,16], lit: 1, type: "temple", filled: 2 });
-    des.region(selection.area(30,4,30,16), "lit");
-    des.region(selection.area(32,4,32,16), "unlit");
-    des.region({ region: [33,4, 53,4], lit: 0, type: "ordinary", irregular: 1 });
-    des.region(selection.area(36,10,37,10), "unlit");
-    des.region(selection.area(39,9,39,11), "unlit");
-    des.region({ region: [36,6, 42,8], lit: 0, type: "ordinary", irregular: 1 });
-    des.region({ region: [36,12, 42,14], lit: 0, type: "ordinary", irregular: 1 });
-    des.region(selection.area(46,6,51,9), "unlit");
-    des.region({ region: [46,11, 49,11], lit: 0, type: "ordinary", irregular: 1 });
-    des.region(selection.area(48,13,51,14), "unlit");
+    await des.region(selection.area(0,0,75,19), "lit");
+    await des.region({ region: [25,4, 28,7], lit: 1, type: "temple", filled: 2 });
+    await des.region({ region: [25,9, 28,11], lit: 0, type: "temple", filled: 2 });
+    await des.region({ region: [25,13, 28,16], lit: 1, type: "temple", filled: 2 });
+    await des.region(selection.area(30,4,30,16), "lit");
+    await des.region(selection.area(32,4,32,16), "unlit");
+    await des.region({ region: [33,4, 53,4], lit: 0, type: "ordinary", irregular: 1 });
+    await des.region(selection.area(36,10,37,10), "unlit");
+    await des.region(selection.area(39,9,39,11), "unlit");
+    await des.region({ region: [36,6, 42,8], lit: 0, type: "ordinary", irregular: 1 });
+    await des.region({ region: [36,12, 42,14], lit: 0, type: "ordinary", irregular: 1 });
+    await des.region(selection.area(46,6,51,9), "unlit");
+    await des.region({ region: [46,11, 49,11], lit: 0, type: "ordinary", irregular: 1 });
+    await des.region(selection.area(48,13,51,14), "unlit");
     // Doors
     des.door("closed",31,4);
     des.door("closed",28,8);
@@ -84,79 +84,79 @@ export function generate() {
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,19));
     // Objects
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Treasure?
     des.engraving({ type: "engrave", text: "X marks the spot." });
     des.engraving({ type: "engrave", text: "X marks the spot." });
     des.engraving({ type: "engrave", text: "X marks the spot." });
     des.engraving({ type: "engrave", text: "X marks the spot." });
     // Random traps
-    des.trap("spiked pit",24,2);
-    des.trap("spiked pit",37,0);
-    des.trap("spiked pit",23,5);
-    des.trap("spiked pit",26,19);
-    des.trap("spiked pit",55,10);
-    des.trap("spiked pit",55,8);
-    des.trap("pit",51,1);
-    des.trap("pit",23,18);
-    des.trap("pit",31,18);
-    des.trap("pit",48,19);
-    des.trap("pit",55,15);
-    des.trap("magic",60,4);
-    des.trap("statue",72,7);
-    des.trap("statue");
-    des.trap("statue");
-    des.trap("anti magic",64,12);
-    des.trap("sleep gas");
-    des.trap("sleep gas");
-    des.trap("dart");
-    des.trap("dart");
-    des.trap("dart");
-    des.trap("rolling boulder",32,10);
-    des.trap("rolling boulder",40,16);
+    await des.trap("spiked pit",24,2);
+    await des.trap("spiked pit",37,0);
+    await des.trap("spiked pit",23,5);
+    await des.trap("spiked pit",26,19);
+    await des.trap("spiked pit",55,10);
+    await des.trap("spiked pit",55,8);
+    await des.trap("pit",51,1);
+    await des.trap("pit",23,18);
+    await des.trap("pit",31,18);
+    await des.trap("pit",48,19);
+    await des.trap("pit",55,15);
+    await des.trap("magic",60,4);
+    await des.trap("statue",72,7);
+    await des.trap("statue");
+    await des.trap("statue");
+    await des.trap("anti magic",64,12);
+    await des.trap("sleep gas");
+    await des.trap("sleep gas");
+    await des.trap("dart");
+    await des.trap("dart");
+    await des.trap("dart");
+    await des.trap("rolling boulder",32,10);
+    await des.trap("rolling boulder",40,16);
     // Random monsters.
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("S");
-    des.monster("M");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("human mummy");
-    des.monster("M");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("S");
+    await des.monster("M");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("human mummy");
+    await des.monster("M");
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

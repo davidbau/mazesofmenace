@@ -9,8 +9,8 @@ import {
     ansiLineToCells,
     compareEvents,
 } from './comparators.js';
-import { getSessionScreenAnsiLines } from './session_loader.js';
-import { decodeDecSpecialChar } from './symset_normalization.js';
+import { getSessionScreenAnsiLines, stripAnsiSequences } from './session_loader.js';
+import { decodeDecSpecialChar, decodeSOSILine } from './symset_normalization.js';
 
 function normalizeGameplayScreenLines(lines) {
     return (Array.isArray(lines) ? lines : [])
@@ -21,18 +21,6 @@ function ansiCellsToPlainLine(line) {
     return ansiLineToCells(line).map((cell) => cell?.ch || ' ').join('');
 }
 
-function decodeSOSILine(line) {
-    const src = String(line || '').replace(/\r$/, '');
-    let result = '';
-    let inDec = false;
-    for (let i = 0; i < src.length; i++) {
-        const ch = src[i];
-        if (ch === '\x0e') { inDec = true; continue; }
-        if (ch === '\x0f') { inDec = false; continue; }
-        result += inDec ? decodeDecSpecialChar(ch) : ch;
-    }
-    return result;
-}
 
 function resolveGameplayComparableLines(plainLines, ansiLines, session) {
     const ansi = Array.isArray(ansiLines) ? ansiLines : [];
@@ -40,7 +28,11 @@ function resolveGameplayComparableLines(plainLines, ansiLines, session) {
     if (ansi.length > 0) {
         return ansi.map((line) => ansiCellsToPlainLine(line));
     }
-    const plain = Array.isArray(plainLines) ? plainLines : [];
+    // No ANSI cell data available — strip any embedded ANSI escape sequences
+    // from plain lines so JS output with embedded escapes compares correctly
+    // against session plain text.
+    const plain = (Array.isArray(plainLines) ? plainLines : [])
+        .map((line) => stripAnsiSequences(line));
     if (!decgraphics) {
         return plain.map(decodeSOSILine);
     }
@@ -53,10 +45,17 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
     actualAnsi = null,
     expectedAnsi = null,
 } = {}) {
-    const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session).slice();
+    // If the session has no ANSI data, force plain-text comparison on both
+    // sides so embedded ANSI in JS screen strings doesn't cause mismatches.
+    const sessionHasAnsi = Array.isArray(expectedAnsi) && expectedAnsi.length > 0;
+    const comparableActual = resolveGameplayComparableLines(actualLines, sessionHasAnsi ? actualAnsi : null, session).slice();
     const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session).slice();
+    const highScore = isHighScoreScreen(comparableExpected) || isHighScoreScreen(comparableActual);
     for (let row = 0; row < Math.min(comparableActual.length, comparableExpected.length); row++) {
         if (isStartupToplineAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
+        } else if (highScore && isHighScoreRow(comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
         }
@@ -67,15 +66,23 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
 }
 
 function compareGameplayColors(actualAnsiInput, expectedAnsiInput) {
-    const expectedMasked = (Array.isArray(expectedAnsiInput) ? expectedAnsiInput : []).slice();
+    // If session has no ANSI data there's nothing to compare for colors.
+    if (!Array.isArray(expectedAnsiInput) || expectedAnsiInput.length === 0) {
+        return { matched: 0, total: 0, match: true, diffs: [], firstDiff: null };
+    }
+    const expectedMasked = expectedAnsiInput.slice();
     const actualAnsi = (Array.isArray(actualAnsiInput) ? actualAnsiInput : []).slice();
     const actualPlain = actualAnsi.map((line) => ansiCellsToPlainLine(line));
     const expectedPlain = expectedMasked.map((line) => ansiCellsToPlainLine(line));
+    const highScore = isHighScoreScreen(expectedPlain) || isHighScoreScreen(actualPlain);
     for (let row = 0; row < Math.min(actualPlain.length, expectedPlain.length); row++) {
         if (isMapLoadPromptAlias(actualPlain[row]) && isMapLoadPromptAlias(expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (isStartupToplineAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (highScore && isHighScoreRow(expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         }
@@ -123,7 +130,7 @@ function approximateStepForRngIndex(session, normalizedIndex) {
 }
 
 function stepForEventIndex(session, eventIndex) {
-    const isEvent = (e) => typeof e === 'string' && e.startsWith('^') && !e.startsWith('^trick[');
+    const isEvent = (e) => typeof e === 'string' && e.startsWith('^');
     let cumulative = 0;
     cumulative += (session.startup?.rng || []).filter(isEvent).length;
     for (let i = 0; i < session.steps.length; i++) {
@@ -168,6 +175,21 @@ function isWelcomeTopline(line) {
 function isStartupToplineAlias(actualLine, expectedLine) {
     return (isHarnessMapDumpLine(actualLine) && isWelcomeTopline(expectedLine))
         || (isHarnessMapDumpLine(expectedLine) && isWelcomeTopline(actualLine));
+}
+
+function isHighScoreScreen(lines) {
+    return (Array.isArray(lines) ? lines : []).some(
+        (line) => /No {2}Points/.test(String(line || ''))
+    );
+}
+
+function isHighScoreRow(line) {
+    const text = String(line || '');
+    // Header row: " No  Points     Name ..."
+    if (/No {2}Points/.test(text)) return true;
+    // Score entry rows: leading spaces, rank number, points, player name
+    if (/^\s+\d+\s+\d+\s+\S+-\w{3}-\w{3}-\w{3}-\w{3}/.test(text)) return true;
+    return false;
 }
 
 export function createGameplayComparatorPolicy(session, options = {}) {

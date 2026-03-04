@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, percent } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack medusa medusa-1.lua	$NHDT-Date: 1652196027 2022/5/10 15:20:27 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1990, 1991 by M. Stephenson
@@ -20,7 +20,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "noteleport");
 
-    des.map(`\
+    await des.map(`\
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}.}}}}}..}}}}}......}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}....}}}...}}}}}
@@ -43,13 +43,13 @@ export function generate() {
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,74,19),"lit");
-    des.region(selection.area(31,7,45,7),"unlit");
+    await des.region(selection.area(0,0,74,19),"lit");
+    await des.region(selection.area(31,7,45,7),"unlit");
     // make the downstairs room a real room to control arriving monsters, 
     // && also as a fixup_special hack; the first room defined on Medusa's level
     // receives some statues
-    des.region({ region: [35,9, 41,10], lit: 0, type: "ordinary", arrival_room: true });
-    des.region(selection.area(31,12,45,12),"unlit");
+    await des.region({ region: [35,9, 41,10], lit: 0, type: "ordinary", arrival_room: true });
+    await des.region(selection.area(31,12,45,12),"unlit");
     // Teleport: down to up stairs island, up to Medusa's island
     des.teleport_region({ region: [1,1,5,17], dir: "down" });
     des.teleport_region({ region: [26,4,50,15], dir: "up" });
@@ -66,71 +66,71 @@ export function generate() {
     // Non diggable walls
     des.non_diggable(selection.area(30,6,46,13));
     // Objects
-    des.object({ id: "statue", x: 36,y: 10, buc: "uncursed",
+    await des.object({ id: "statue", x: 36,y: 10, buc: "uncursed",
                  montype: "knight", historic: 1, male: 1, name: "Perseus",
-                 contents: function() {
+                 contents: async function() {
                     if (percent(75)) {
-                       des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
+                       await des.object({ id: "shield of reflection", buc: "cursed", spe: 0 });
                     }
                     if (percent(25)) {
-                       des.object({ id: "levitation boots", spe: 0 });
+                       await des.object({ id: "levitation boots", spe: 0 });
                     }
                     if (percent(50)) {
-                       des.object({ id: "scimitar", buc: "blessed", spe: 2 });
+                       await des.object({ id: "scimitar", buc: "blessed", spe: 2 });
                     }
                     if (percent(50)) {
-                       des.object("sack");
+                       await des.object("sack");
                     }
                  }
     });
 
     // Specifying explicit contents forces them to be empty.
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object({ id: "statue", contents: 0 });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object({ id: "statue", contents: 0 });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap("board",38,7);
-    des.trap("board",38,12);
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap("board",38,7);
+    await des.trap("board",38,12);
     // Random monsters
-    des.monster({ id: "Medusa", x: 36,y: 10, asleep: 1 });
-    des.monster("giant eel",11,6);
-    des.monster("giant eel",23,13);
-    des.monster("giant eel",29,2);
-    des.monster("jellyfish",2,2);
-    des.monster("jellyfish",0,8);
-    des.monster("jellyfish",4,18);
-    des.monster("water troll",51,3);
-    des.monster("water troll",64,11);
-    des.monster({ class: 'S', x: 38, y: 7 });
-    des.monster({ class: 'S', x: 38, y: 12 });
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
-    des.monster();
+    await des.monster({ id: "Medusa", x: 36,y: 10, asleep: 1 });
+    await des.monster("giant eel",11,6);
+    await des.monster("giant eel",23,13);
+    await des.monster("giant eel",29,2);
+    await des.monster("jellyfish",2,2);
+    await des.monster("jellyfish",0,8);
+    await des.monster("jellyfish",4,18);
+    await des.monster("water troll",51,3);
+    await des.monster("water troll",64,11);
+    await des.monster({ class: 'S', x: 38, y: 7 });
+    await des.monster({ class: 'S', x: 38, y: 12 });
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
+    await des.monster();
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

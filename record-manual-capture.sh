@@ -32,6 +32,7 @@ Common options:
   --no-wizard              Disable debug/wizard mode
   --tutorial               Enable tutorial prompt; recorder stops there for manual y/n
   --no-tutorial            Skip tutorial prompt (default)
+  --interactive            Blank state: no pre-filled name/chargen; nethack asks everything
   --symset=ASCII|DECgraphics
   --help, -h               Show this help
 

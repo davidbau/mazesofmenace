@@ -2,9 +2,11 @@
 // cf. invent.c — ddoinv, display_inventory, display_pickinv, compactify, getobj, askchain
 
 import { nhgetch, getlin } from './input.js';
-import { create_nhwindow, destroy_nhwindow, NHW_MENU } from './windows.js';
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr as win_putstr, NHW_MENU } from './windows.js';
 import { COLNO, STATUS_ROW_1, STATUS_ROW_2, PM_ARCHEOLOGIST, A_STR, A_CON, A_WIS,
-         UNENCUMBERED, OVERLOADED } from './config.js';
+         UNENCUMBERED, OVERLOADED,
+         STAIRS, LADDER, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
+         IS_DOOR, D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED } from './config.js';
 import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          FLINT, ROCK, SLING, MAGIC_MARKER, COIN_CLASS, ARMOR_CLASS,
          RING_CLASS, AMULET_CLASS, TOOL_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -17,6 +19,7 @@ import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
          CLASS_SYMBOLS } from './objects.js';
 import { doname, xname, weight, splitobj, Is_container, erosion_matters, mergable } from './mkobj.js';
+import { an } from './objnam.js';
 import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 import { pline, You, Your } from './pline.js';
 import { rn2 } from './rng.js';
@@ -99,10 +102,7 @@ export function buildInventoryOverlayLines(player) {
         lines.push(CLASS_NAMES[cls] || 'Other');
         for (const item of groups[cls]) {
             const named = doname(item, player);
-            const invName = (item.oclass === WEAPON_CLASS)
-                ? named.replace('(wielded)', '(weapon in right hand)')
-                : named;
-            lines.push(`${item.invlet} - ${invName}`);
+            lines.push(`${item.invlet} - ${named}`);
         }
     }
     lines.push('(end)');
@@ -150,14 +150,35 @@ function clearInventoryOverlayArea(display, lines = []) {
     }
 }
 
-function drawInventoryPage(display, lines, opts = {}) {
+async function drawInventoryPage(display, lines, opts = {}) {
     if (!display) return;
     const fullScreen = !!opts.fullScreen;
     if (!fullScreen) {
+        let offx = 0;
         if (typeof display.renderOverlayMenu === 'function') {
-            display.renderOverlayMenu(lines);
+            offx = display.renderOverlayMenu(lines) || 0;
         } else {
-            display.renderChargenMenu(lines, false);
+            offx = display.renderChargenMenu(lines, false) || 0;
+        }
+        // C tty parity: menu items occupy up to STATUS_ROW_1 rows, then
+        // "(end)" / "(x of y)" prompt is displayed on the next row.
+        const promptRow = STATUS_ROW_1;
+        const prompt = lines.length > STATUS_ROW_1 ? String(lines[STATUS_ROW_1] || '') : '';
+        if (prompt && typeof display.setCell === 'function' && Number.isInteger(display.cols)) {
+            for (let col = Math.max(0, offx - 1); col < display.cols; col++) {
+                display.setCell(col, promptRow, ' ', 7, 0);
+            }
+        } else if (prompt && typeof display.clearRow === 'function') {
+            display.clearRow(promptRow);
+        }
+        if (prompt) {
+            await display.putstr(offx, promptRow, prompt, undefined, 0);
+        }
+        // C ref: wintty.c line 2831 — morestr is "(end) " (with trailing space).
+        // Cursor for menu wait sits after the prompt on the prompt row.
+        if (prompt && typeof display.setCursor === 'function') {
+            const cols = display.cols || 80;
+            display.setCursor(Math.min(offx + prompt.length + 1, cols - 1), promptRow);
         }
         return;
     }
@@ -178,7 +199,7 @@ function drawInventoryPage(display, lines, opts = {}) {
         if (typeof display.setCell === 'function') {
             display.setCell(0, i, ' ', 7, 0);
         }
-        display.putstr(1, i, rendered, undefined, header ? 1 : 0);
+        await display.putstr(1, i, rendered, undefined, header ? 1 : 0);
     }
 }
 
@@ -228,7 +249,7 @@ export async function renderOverlayMenuUntilDismiss(display, lines, allowedSelec
 // C ref: invent.c ddoinv()
 export async function handleInventory(player, display, game) {
     if (player.inventory.length === 0 && (player.gold || 0) <= 0) {
-        display.putstr_message('Not carrying anything.');
+        await display.putstr_message('Not carrying anything.');
         return { moved: false, tookTime: false };
     }
 
@@ -240,7 +261,7 @@ export async function handleInventory(player, display, game) {
     let pageIndex = 0;
 
     const fullScreenInventory = pages.length > 1;
-    drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+    await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
     const invByLetter = new Map();
     for (const item of player.inventory || []) {
         if (item?.invlet) invByLetter.set(String(item.invlet), item);
@@ -259,7 +280,7 @@ export async function handleInventory(player, display, game) {
         if (ch === 32) {
             if (pageIndex + 1 < pages.length) {
                 pageIndex++;
-                drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+                await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
                 continue;
             }
             break;
@@ -267,28 +288,28 @@ export async function handleInventory(player, display, game) {
         if (ch === 62) { // '>'
             if (pageIndex + 1 < pages.length) {
                 pageIndex++;
-                drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+                await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             }
             continue;
         }
         if (ch === 98 && pageIndex > 0) { // b
             pageIndex--;
-            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+            await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 60 && pageIndex > 0) { // '<'
             pageIndex--;
-            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+            await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 94 && pageIndex > 0) { // '^'
             pageIndex = 0;
-            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+            await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 124 && pageIndex + 1 < pages.length) { // '|'
             pageIndex = pages.length - 1;
-            drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
+            await drawInventoryPage(display, pages[pageIndex] || [], { fullScreen: fullScreenInventory });
             continue;
         }
         if (ch === 27 || ch === 10 || ch === 13) break;
@@ -497,17 +518,17 @@ export async function handleInventory(player, display, game) {
             }
             if (typeof display.putstr === 'function' && typeof display.clearRow === 'function') {
                 display.clearRow(0);
-                display.putstr(0, 0, pad, 7, 0);
-                display.putstr(menuOffx, 0, promptText, 7, 1);
+                await display.putstr(0, 0, pad, 7, 0);
+                await display.putstr(menuOffx, 0, promptText, 7, 1);
                 if (display && Object.hasOwn(display, 'topMessage')) display.topMessage = actionPrompt;
                 if (display && Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = false;
             } else {
-                display.putstr_message(actionPrompt);
+                await display.putstr_message(actionPrompt);
             }
             if (typeof display.putstr === 'function') {
                 for (let i = 0; i < stackActions.length; i++) {
                     if (typeof display.clearRow === 'function') display.clearRow(i + 2);
-                    display.putstr(0, i + 2, stackActions[i]);
+                    await display.putstr(0, i + 2, stackActions[i]);
                 }
             }
             const actionKeys = new Set(rawActions.map((line) => String(line || '').charAt(0)));
@@ -541,8 +562,8 @@ export async function handleInventory(player, display, game) {
                 }
                 if (actionKey === 'i') {
                     // cf. invent.c doorganize() / #adjust — reassign inventory letter
-                    if (game && typeof game.renderCurrentScreen === 'function') {
-                        game.renderCurrentScreen();
+                    if (game && typeof game.docrt === 'function') {
+                        game.docrt();
                     }
                     const inv = player.inventory || [];
                     const usedLetters = new Set(inv.map(o => o.invlet));
@@ -573,12 +594,12 @@ export async function handleInventory(player, display, game) {
                         }
                     }
                     const adjustPrompt = `Adjust letter to what [${availStr}] (? see used letters)?`;
-                    display.putstr_message(adjustPrompt);
+                    await display.putstr_message(adjustPrompt);
                     const adjCh = await nhgetch();
                     const adjChar = String.fromCharCode(adjCh);
                     if (adjCh === 27 || adjCh === 10 || adjCh === 13 || adjCh === 32) {
                         clearTopline();
-                        display.putstr_message('Never mind.');
+                        await display.putstr_message('Never mind.');
                         return { moved: false, tookTime: false };
                     }
                     if (/^[a-zA-Z]$/.test(adjChar)) {
@@ -593,8 +614,8 @@ export async function handleInventory(player, display, game) {
                     return { moved: false, tookTime: false };
                 }
                 if (actionKey === 'c') {
-                    if (game && typeof game.renderCurrentScreen === 'function') {
-                        game.renderCurrentScreen();
+                    if (game && typeof game.docrt === 'function') {
+                        game.docrt();
                     }
                     const namedInput = await getlin(`What do you want to name this ${baseName}? `, display);
                     if (namedInput !== null) {
@@ -968,7 +989,7 @@ export function addinv_core1(obj, player) {
 }
 
 // C ref: invent.c addinv_core2() — side effects after adding to inventory
-export function addinv_core2(obj, player) {
+export async function addinv_core2(obj, player) {
     // confers_luck check would go here
     // C ref: invent.c addinv_core2() — archeologists can decipher scroll labels.
     if (player
@@ -979,7 +1000,7 @@ export function addinv_core2(obj, player) {
         && !isObjectNameKnown(obj.otyp)) {
         observeObject(obj);
         discoverObject(obj.otyp, true, true);
-        exercise(player, A_WIS, true);
+        await exercise(player, A_WIS, true);
         if (!player.uconduct) player.uconduct = {};
         player.uconduct.literate = (player.uconduct.literate || 0) + 1;
     }
@@ -992,20 +1013,20 @@ export function carry_obj_effects(obj) {
 
 // C ref: invent.c addinv() — add object to hero inventory
 // This is now a standalone function wrapping player.addToInventory
-export function addinv(obj, player) {
+export async function addinv(obj, player) {
     if (!obj || !player) return obj;
     addinv_core1(obj, player);
     const result = player.addToInventory(obj) || obj;
-    addinv_core2(result, player);
+    await addinv_core2(result, player);
     carry_obj_effects(result);
     return result;
 }
 
 // C ref: invent.c addinv_nomerge() — add without merging
-export function addinv_nomerge(obj, player) {
+export async function addinv_nomerge(obj, player) {
     const save = obj.nomerge;
     obj.nomerge = true;
-    const result = addinv(obj, player);
+    const result = await addinv(obj, player);
     obj.nomerge = save;
     return result;
 }
@@ -1051,35 +1072,35 @@ function near_capacity_for_inventory(player) {
     return Math.min(cap, OVERLOADED);
 }
 
-function encumber_msg_transition(prevCap, newCap) {
+async function encumber_msg_transition(prevCap, newCap) {
     if (prevCap < newCap) {
         switch (newCap) {
         case 1:
-            Your('movements are slowed slightly because of your load.');
+            await Your('movements are slowed slightly because of your load.');
             break;
         case 2:
-            You('rebalance your load.  Movement is difficult.');
+            await You('rebalance your load.  Movement is difficult.');
             break;
         case 3:
-            You('stagger under your heavy load.  Movement is very hard.');
+            await You('stagger under your heavy load.  Movement is very hard.');
             break;
         default:
-            You('%s move a handspan with this load!', newCap === 4 ? 'can barely' : "can't even");
+            await You('%s move a handspan with this load!', newCap === 4 ? 'can barely' : "can't even");
             break;
         }
     } else if (prevCap > newCap) {
         switch (newCap) {
         case 0:
-            Your('movements are now unencumbered.');
+            await Your('movements are now unencumbered.');
             break;
         case 1:
-            Your('movements are only slowed slightly by your load.');
+            await Your('movements are only slowed slightly by your load.');
             break;
         case 2:
-            You('rebalance your load.  Movement is still difficult.');
+            await You('rebalance your load.  Movement is still difficult.');
             break;
         case 3:
-            You('stagger under your load.  Movement is still very hard.');
+            await You('stagger under your load.  Movement is still very hard.');
             break;
         default:
             break;
@@ -1088,16 +1109,20 @@ function encumber_msg_transition(prevCap, newCap) {
 }
 
 // C ref: invent.c hold_another_object() — add object or drop if can't hold
-export function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
+export async function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
     const prevCap = near_capacity_for_inventory(player);
     const oquan = obj?.quan || 0;
-    const result = addinv(obj, player);
+    const result = await addinv(obj, player);
     if (result && (hold_msg || drop_fmt)) {
-        prinv(hold_msg || null, result, oquan, player);
+        await prinv(hold_msg || null, result, oquan, player);
     }
     const newCap = near_capacity_for_inventory(player);
+    // C ref: pickup.c encumber_msg() sets go.oldcap = newcap AFTER printing the
+    // transition message (not before). Move player.encumbrance update to after the
+    // message so that renderStatus at the --More-- overflow still reads the OLD
+    // encumbrance, matching C's disp.botl/bot() deferred update pattern.
+    await encumber_msg_transition(prevCap, newCap);
     if (player) player.encumbrance = newCap;
-    encumber_msg_transition(prevCap, newCap);
     return result;
 }
 
@@ -1195,7 +1220,7 @@ export function delobj_core(obj, map, force) {
         if (idx >= 0) {
             map.objects.splice(idx, 1);
             if (typeof newsym === 'function') {
-                newsym(map, obj.ox, obj.oy);
+                newsym(obj.ox, obj.oy);
             }
         }
     }
@@ -1340,8 +1365,8 @@ export function taking_off(action) {
 }
 
 // C ref: invent.c mime_action() — mime gesture for empty-handed action
-export function mime_action(word) {
-    You('mime %sing something.', word);
+export async function mime_action(word) {
+    await You('mime %sing something.', word);
 }
 
 // C ref: invent.c any_obj_ok() — callback that allows any object but not hands
@@ -1352,8 +1377,8 @@ export function any_obj_ok(obj) {
 }
 
 // C ref: invent.c silly_thing() — message for using silly object
-export function silly_thing(word, otmp) {
-    pline("That is a silly thing to %s.", word);
+export async function silly_thing(word, otmp) {
+    await pline("That is a silly thing to %s.", word);
 }
 
 // C ref: invent.c ckvalidcat() — check if object belongs to valid category
@@ -1382,6 +1407,84 @@ export function is_worn(otmp) {
 // C ref: invent.c is_inuse() — check if object is in use (worn/wielded/active tool)
 export function is_inuse(obj, player) {
     return is_worn(obj, player) || tool_being_used(obj, player);
+}
+
+// C ref: invent.c doorganize() — #adjust extended command
+// Prompt for an inventory item then reassign its letter.
+export async function doorganize(game) {
+    const { player, display } = game;
+    const inv = Array.isArray(player.inventory) ? player.inventory : [];
+    if (!inv.length) {
+        await display.putstr_message("You have nothing to adjust.");
+        return { moved: false, tookTime: false };
+    }
+
+    // Step 1: prompt for which item to adjust (by inventory letter)
+    const letters = inv.map(o => o.invlet).join('');
+    const selectPrompt = `Adjust which item? [${letters} or ?*]`;
+    await display.putstr_message(selectPrompt);
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(selectPrompt.length + 1, (display.cols || 80) - 1), 0);
+    }
+
+    let selected = null;
+    while (!selected) {
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+        if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
+            if (typeof display.clearRow === 'function') display.clearRow(0);
+            display.topMessage = null;
+            await display.putstr_message('Never mind.');
+            return { moved: false, tookTime: false };
+        }
+        if (c === '?' || c === '*') continue;
+        selected = inv.find(o => o.invlet === c);
+    }
+
+    // Step 2: prompt for target letter
+    if (typeof display.clearRow === 'function') display.clearRow(0);
+    display.topMessage = null;
+
+    const usedLetters = new Set(inv.map(o => o.invlet));
+    const allLetters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let availStr = '';
+    {
+        let i = 0;
+        while (i < allLetters.length) {
+            const ch = allLetters[i];
+            if (!usedLetters.has(ch) || ch === selected.invlet) {
+                let j = i;
+                while (j + 1 < allLetters.length
+                    && (!usedLetters.has(allLetters[j + 1]) || allLetters[j + 1] === selected.invlet)) {
+                    j++;
+                }
+                if (j - i >= 2) {
+                    availStr += `${allLetters[i]}-${allLetters[j]}`;
+                } else {
+                    for (let k = i; k <= j; k++) availStr += allLetters[k];
+                }
+                i = j + 1;
+            } else {
+                i++;
+            }
+        }
+    }
+    const adjustPrompt = `Adjust letter to what [${availStr}] (? see used letters)?`;
+    await display.putstr_message(adjustPrompt);
+    const adjCh = await nhgetch();
+    const adjChar = String.fromCharCode(adjCh);
+    if (typeof display.clearRow === 'function') display.clearRow(0);
+    display.topMessage = null;
+    if (adjCh === 27 || adjCh === 10 || adjCh === 13 || adjCh === 32) {
+        await display.putstr_message('Never mind.');
+        return { moved: false, tookTime: false };
+    }
+    if (/^[a-zA-Z]$/.test(adjChar)) {
+        const other = inv.find(o => o !== selected && o.invlet === adjChar);
+        if (other) other.invlet = selected.invlet;
+        selected.invlet = adjChar;
+    }
+    return { moved: false, tookTime: false };
 }
 
 // C ref: invent.c getobj() — prompt player to select an inventory object
@@ -1453,9 +1556,9 @@ export function fully_identify_obj(otmp) {
 
 // C ref: invent.c identify() — identify object and give feedback
 // Autotranslated from invent.c:2650
-export function identify(otmp) {
+export async function identify(otmp) {
   fully_identify_obj(otmp);
-  prinv( 0, otmp, 0);
+  await prinv( 0, otmp, 0);
   return 1;
 }
 
@@ -1470,19 +1573,19 @@ export function count_unidentified(objchn) {
 }
 
 // C ref: invent.c identify_pack() — identify pack items
-export function identify_pack(id_limit, player, learning_id) {
+export async function identify_pack(id_limit, player, learning_id) {
     const inv = player.inventory || [];
     let unid_cnt = count_unidentified(inv);
 
     if (!unid_cnt) {
-        You('have already identified %s of your possessions.',
+        await You('have already identified %s of your possessions.',
             !learning_id ? 'all' : 'the rest');
         return;
     }
     if (!id_limit || id_limit >= unid_cnt) {
         for (const obj of inv) {
             if (not_fully_identified(obj)) {
-                identify(obj, player);
+                await identify(obj, player);
                 if (--unid_cnt < 1) break;
             }
         }
@@ -1492,7 +1595,7 @@ export function identify_pack(id_limit, player, learning_id) {
         for (const obj of inv) {
             if (remaining <= 0) break;
             if (not_fully_identified(obj)) {
-                identify(obj, player);
+                await identify(obj, player);
                 remaining--;
             }
         }
@@ -1557,11 +1660,11 @@ function xprname_simple(obj) {
 }
 
 // C ref: invent.c prinv() — print an inventory item
-export function prinv(prefix, obj, quan, player) {
+export async function prinv(prefix, obj, quan, player) {
     if (!prefix) prefix = '';
     const let_char = obj_to_let(obj);
     const line = xprname(obj, null, let_char, true, 0, quan, player);
-    pline('%s%s%s', prefix, prefix ? ' ' : '', line);
+    await pline('%s%s%s', prefix, prefix ? ' ' : '', line);
 }
 
 // C ref: invent.c find_unpaid() — find unpaid items recursively
@@ -1590,8 +1693,8 @@ export function display_inventory_items(lets, player) {
 }
 
 // C ref: invent.c invdisp_nothing() — display "nothing" message
-export function invdisp_nothing(hdr, txt) {
-    pline('%s: %s', hdr, txt);
+export async function invdisp_nothing(hdr, txt) {
+    await pline('%s: %s', hdr, txt);
 }
 
 
@@ -1690,46 +1793,90 @@ export function inv_cnt(incl_gold, player) {
 // ============================================================
 
 // C ref: invent.c dfeature_at() — describe dungeon feature at location
-export function dfeature_at(x, y, map) {
-    if (!map || !map.grid) return null;
-    const cell = map.grid[y]?.[x];
+// opts.depth: player's dungeon level (for "out of the dungeon" on DoD level 1)
+// opts.dnum: player's current dungeon number (0 = DUNGEONS_OF_DOOM)
+export function dfeature_at(x, y, map, opts = {}) {
+    if (!map) return null;
+    const cell = (typeof map.at === 'function') ? map.at(x, y) : null;
     if (!cell) return null;
-    // Simplified: return feature description from cell type
-    const typ = cell.typ || cell.type;
-    if (typ === 'fountain') return 'fountain';
-    if (typ === 'throne') return 'opulent throne';
-    if (typ === 'sink') return 'sink';
-    if (typ === 'altar') return 'altar';
-    if (typ === 'grave') return 'grave';
-    if (typ === 'tree') return 'tree';
+    const typ = cell.typ;
+    if (typ === STAIRS) {
+        if (map.upstair && map.upstair.x === x && map.upstair.y === y) {
+            // C ref: pickup.c describe_decor() — on dungeon level 1, the
+            // upstair is the exit from the dungeon.
+            if (opts.depth === 1 && opts.dnum === 0) return 'staircase up out of the dungeon';
+            return 'staircase up';
+        }
+        if (map.dnstair && map.dnstair.x === x && map.dnstair.y === y) {
+            return 'staircase down';
+        }
+        return null;
+    }
+    if (typ === LADDER) {
+        if (map.upladder && map.upladder.x === x && map.upladder.y === y) {
+            return 'ladder up';
+        }
+        if (map.dnladder && map.dnladder.x === x && map.dnladder.y === y) {
+            return 'ladder down';
+        }
+        return null;
+    }
+    if (IS_DOOR(typ)) {
+        // C ref: invent.c dfeature_at() door handling
+        if (cell.flags === D_NODOOR) return 'doorway';
+        if (cell.flags === D_ISOPEN) return 'open door';
+        if (cell.flags === D_BROKEN) return 'broken door';
+        if (cell.flags & D_CLOSED) return 'closed door';
+        if (cell.flags & D_LOCKED) return 'closed door';
+        return null;
+    }
+    if (typ === FOUNTAIN) return 'fountain';
+    if (typ === THRONE) return 'opulent throne';
+    if (typ === SINK) return 'kitchen sink';
+    if (typ === GRAVE) return 'grave';
+    if (typ === ALTAR) return 'altar';
+    if (typ === TREE) return 'tree';
     return null;
 }
 
 // C ref: invent.c look_here() — look at objects at hero location
-export function look_here(player, map, obj_cnt) {
+// For 2+ objects, C creates a NHW_MENU window and uses putstr to display
+// "Things that are here:" as a right-side popup, then blocks for keypress.
+export async function look_here(player, map, obj_cnt) {
     const x = player.x, y = player.y;
-    const objects = (map?.objects || []).filter(o => o.ox === x && o.oy === y && !o.buried);
-    const dfeature = dfeature_at(x, y, map);
+    // C iterates level.objects[x][y] via nexthere — a LIFO linked list where
+    // the most recently placed object comes first.  JS place_object appends
+    // to the end, so we reverse to match C's newest-first iteration order.
+    const objects = (map?.objects || []).filter(o => o.ox === x && o.oy === y && !o.buried).reverse();
+    const dfeature = dfeature_at(x, y, map, { depth: player.dungeonLevel, dnum: player.dnum });
 
-    if (dfeature) {
-        pline('There is %s here.', dfeature);
-    }
-
-    if (objects.length === 0) {
-        You('see no objects here.');
-    } else if (objects.length === 1) {
-        You('see here %s.', doname(objects[0]));
-    } else {
-        pline('Things that are here:');
-        for (const obj of objects) {
-            pline('  %s', doname(obj));
+    if (objects.length >= 2 || dfeature) {
+        const tmpwin = create_nhwindow(NHW_MENU);
+        if (dfeature) {
+            await win_putstr(tmpwin, 0, `There is ${an(dfeature)} here.`);
         }
+        if (objects.length >= 2) {
+            await win_putstr(tmpwin, 0, 'Things that are here:');
+        }
+        for (const obj of objects) {
+            await win_putstr(tmpwin, 0, doname(obj));
+        }
+        await win_putstr(tmpwin, 0, '');
+        await display_nhwindow(tmpwin, true);
+        destroy_nhwindow(tmpwin);
+    } else if (objects.length === 1) {
+        if (dfeature) {
+            await pline(`There is ${an(dfeature)} here.`);
+        }
+        await You('see here %s.', doname(objects[0]));
+    } else if (!dfeature) {
+        await You('see no objects here.');
     }
 }
 
 // C ref: invent.c dolook() — look command
-export function dolook(player, map) {
-    return look_here(player, map, 0);
+export async function dolook(player, map) {
+    return await look_here(player, map, 0);
 }
 
 // C ref: invent.c will_feel_cockatrice() — check if touching will petrify
@@ -1742,9 +1889,9 @@ export function will_feel_cockatrice(otmp, force_touch, player) {
 }
 
 // C ref: invent.c feel_cockatrice() — handle touching cockatrice corpse
-export function feel_cockatrice(otmp, force_touch, player) {
+export async function feel_cockatrice(otmp, force_touch, player) {
     if (will_feel_cockatrice(otmp, force_touch, player)) {
-        pline('Touching that is a fatal mistake...');
+        await pline('Touching that is a fatal mistake...');
         // instapetrify would be called here
     }
 }
@@ -1774,59 +1921,59 @@ export { mergable };  // re-export from mkobj.js import above
 // ============================================================
 
 // C ref: invent.c doprgold() — print gold amount
-export function doprgold(player) {
+export async function doprgold(player) {
     const gold = player.gold || 0;
     if (gold) {
-        Your('wallet contains %d %s.', gold, currency(gold));
+        await Your('wallet contains %d %s.', gold, currency(gold));
     } else {
-        Your('wallet is empty.');
+        await Your('wallet is empty.');
     }
 }
 
 // C ref: invent.c doprwep() — print wielded weapon
-export function doprwep(player) {
+export async function doprwep(player) {
     if (!player.weapon) {
-        You('are empty handed.');
+        await You('are empty handed.');
     } else {
-        prinv(null, player.weapon, 0, player);
+        await prinv(null, player.weapon, 0, player);
     }
 }
 
 // C ref: invent.c noarmor() — report no armor worn
-export function noarmor() {
-    You('are not wearing any armor.');
+export async function noarmor() {
+    await You('are not wearing any armor.');
 }
 
 // C ref: invent.c doprarm() — print worn armor
-export function doprarm(player) {
+export async function doprarm(player) {
     if (!wearing_armor(player)) {
-        noarmor();
+        await noarmor();
     } else {
         const pieces = [player.armor, player.cloak, player.shield,
                        player.helmet, player.gloves, player.boots, player.shirt]
                        .filter(Boolean);
         for (const obj of pieces) {
-            prinv(null, obj, 0, player);
+            await prinv(null, obj, 0, player);
         }
     }
 }
 
 // C ref: invent.c doprring() — print worn rings
-export function doprring(player) {
+export async function doprring(player) {
     if (!player.leftRing && !player.rightRing) {
-        You('are not wearing any rings.');
+        await You('are not wearing any rings.');
     } else {
-        if (player.rightRing) prinv(null, player.rightRing, 0, player);
-        if (player.leftRing) prinv(null, player.leftRing, 0, player);
+        if (player.rightRing) await prinv(null, player.rightRing, 0, player);
+        if (player.leftRing) await prinv(null, player.leftRing, 0, player);
     }
 }
 
 // C ref: invent.c dopramulet() — print worn amulet
-export function dopramulet(player) {
+export async function dopramulet(player) {
     if (!player.amulet) {
-        You('are not wearing an amulet.');
+        await You('are not wearing an amulet.');
     } else {
-        prinv(null, player.amulet, 0, player);
+        await prinv(null, player.amulet, 0, player);
     }
 }
 
@@ -1839,25 +1986,25 @@ export function tool_being_used(obj, player) {
 }
 
 // C ref: invent.c doprtool() — print tools in use
-export function doprtool(player) {
+export async function doprtool(player) {
     const tools = (player.inventory || []).filter(o => tool_being_used(o, player));
     if (!tools.length) {
-        You('are not using any tools.');
+        await You('are not using any tools.');
     } else {
         for (const obj of tools) {
-            prinv(null, obj, 0, player);
+            await prinv(null, obj, 0, player);
         }
     }
 }
 
 // C ref: invent.c doprinuse() — print all items in use
-export function doprinuse(player) {
+export async function doprinuse(player) {
     const inuse = (player.inventory || []).filter(o => is_inuse(o, player));
     if (!inuse.length) {
-        You('are not wearing or wielding anything.');
+        await You('are not wearing or wielding anything.');
     } else {
         for (const obj of inuse) {
-            prinv(null, obj, 0, player);
+            await prinv(null, obj, 0, player);
         }
     }
 }

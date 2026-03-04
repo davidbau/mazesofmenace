@@ -23,6 +23,7 @@ const opts = {
     moveDelay: 0,
     role: 'Valkyrie',
     symset: 'ASCII', // 'ASCII' or 'DECgraphics'
+    wizard: true,
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -41,6 +42,7 @@ for (let i = 0; i < args.length; i++) {
             else if (key === '--role') opts.role = value;
             else if (key === '--graphics') opts.symset = value === 'dec' ? 'DECgraphics' : 'ASCII';
             else if (key === '--trace-dog-loop') opts.traceDogLoop = value !== 'false';
+            else if (key === '--wizard') opts.wizard = value !== 'false';
             continue;
         }
     }
@@ -55,6 +57,8 @@ for (let i = 0; i < args.length; i++) {
         const val = args[++i];
         opts.symset = val === 'dec' ? 'DECgraphics' : 'ASCII';
     }
+    else if (arg === '--wizard') opts.wizard = true;
+    else if (arg === '--no-wizard') opts.wizard = false;
     else if (arg === '--trace-dog-loop') opts.traceDogLoop = true;
     else if (arg === '--no-trace-dog-loop') opts.traceDogLoop = false;
     else if (arg === '--verbose' || arg === '-v') opts.verbose = true;
@@ -67,6 +71,8 @@ for (let i = 0; i < args.length; i++) {
         console.log('  --key-delay=MS   Delay after each tmux keystroke in ms (default: 60)');
         console.log('  --role=ROLE      Character role/class (default: Valkyrie)');
         console.log('  --graphics=MODE  Symbol set: ascii or dec (DECgraphics) (default: ascii)');
+        console.log('  --wizard         Launch in wizard mode (-D) (default)');
+        console.log('  --no-wizard      Launch without wizard mode');
         console.log('  --trace-dog-loop Emit per-turn dog-loop counter deltas');
         console.log('  --verbose/-v     Verbose output (default: on)');
         console.log('  --quiet/-q       Suppress verbose output');
@@ -96,9 +102,18 @@ runnerLog(`NetHack AI Agent vs C Binary`);
 runnerLog(`  Seed: ${opts.seed}`);
 runnerLog(`  Max turns: ${opts.maxTurns}`);
 runnerLog(`  Role: ${opts.role}`);
+runnerLog(`  Wizard mode: ${opts.wizard ? 'on' : 'off'}`);
 runnerLog(`  Key delay: ${opts.keyDelay}ms`);
 runnerLog(`  Symbol set: ${opts.symset}`);
 runnerLog('');
+
+// Ensure deterministic and fast C runs unless caller explicitly overrides.
+if (!process.env.NETHACK_FIXED_DATETIME) {
+    process.env.NETHACK_FIXED_DATETIME = '20000110090000';
+}
+if (!process.env.NETHACK_NO_DELAY) {
+    process.env.NETHACK_NO_DELAY = '1';
+}
 
 const adapter = new TmuxAdapter({
     keyDelay: opts.keyDelay,
@@ -114,6 +129,7 @@ try {
         name: 'Agent',
         gender: 'female',
         align: 'neutral',
+        wizard: opts.wizard,
     });
 
     runnerLog('Game started. Running agent...');

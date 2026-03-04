@@ -8,13 +8,13 @@
 
 import { des, selection, finalize_level } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     des.level_init({ style: 'solidfill', fg: ' ' });
 
     des.level_flags('mazelevel', 'noflip');
 
     // One giant room filling most of the level
-    des.map({
+    await des.map({
         map: `
 ---------------------------------------------------------------------------
 |.........................................................................|
@@ -38,7 +38,7 @@ export function generate() {
     });
 
     // Light the whole room
-    des.region(selection.area(1, 1, 73, 16), 'lit');
+    await des.region(selection.area(1, 1, 73, 16), 'lit');
 
     // Stairs
     des.stair('up');
@@ -49,18 +49,18 @@ export function generate() {
 
     // Lots of random objects (15)
     for (let i = 0; i < 15; i++) {
-        des.object();
+        await des.object();
     }
 
     // Random traps (6)
     for (let i = 0; i < 6; i++) {
-        des.trap();
+        await des.trap();
     }
 
     // Lots of random monsters (28)
     for (let i = 0; i < 28; i++) {
-        des.monster();
+        await des.monster();
     }
 
-    return finalize_level();
+    return await finalize_level();
 }

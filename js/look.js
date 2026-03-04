@@ -46,9 +46,17 @@ const SYMBOL_DESCRIPTIONS = {
     '\u00b7': 'floor of a room (middle dot)',
 };
 
-function terrain_here_description(loc) {
+function terrain_here_description(loc, ctx = {}) {
     if (!loc) return '';
-    if (loc.typ === STAIRS && loc.flags === 1) return 'There is a staircase up out of the dungeon here.';
+    const player = ctx.player || null;
+    const map = ctx.map || null;
+    const dnum = Number.isInteger(player?.dnum)
+        ? player.dnum
+        : (Number.isInteger(map?._genDnum) ? map._genDnum : undefined);
+    const depth = Number.isInteger(player?.dungeonLevel) ? player.dungeonLevel : undefined;
+    const outOfDungeonExit = (loc.typ === STAIRS && loc.flags === 1 && dnum === 0 && depth === 1);
+    if (outOfDungeonExit) return 'There is a staircase up out of the dungeon here.';
+    if (loc.typ === STAIRS && loc.flags === 1) return 'There is a staircase up here.';
     if (loc.typ === STAIRS && loc.flags === 0) return 'There is a staircase down here.';
     if (loc.typ === LADDER && loc.flags === 1) return 'There is a ladder up here.';
     if (loc.typ === LADDER && loc.flags === 0) return 'There is a ladder down here.';
@@ -140,7 +148,7 @@ export function do_screen_description(ctx, cc) {
     }
 
     const loc = map.at ? map.at(x, y) : null;
-    const terrain = terrain_here_description(loc);
+    const terrain = terrain_here_description(loc, { map, player });
     if (terrain) {
         return { found: true, firstmatch: terrain, outStr: '', text: terrain, kind: 'terrain' };
     }
@@ -163,13 +171,13 @@ export function do_lookat(ctx, target = null) {
     };
 }
 
-function do_look_symbol(display, symChar) {
+async function do_look_symbol(display, symChar) {
     if ((symChar >= 'a' && symChar <= 'z') || (symChar >= 'A' && symChar <= 'Z')) {
-        display.putstr_message(`'${symChar}': a monster (or straddling the letter range).`);
+        await display.putstr_message(`'${symChar}': a monster (or straddling the letter range).`);
     } else if (SYMBOL_DESCRIPTIONS[symChar]) {
-        display.putstr_message(`'${symChar}': ${SYMBOL_DESCRIPTIONS[symChar]}.`);
+        await display.putstr_message(`'${symChar}': ${SYMBOL_DESCRIPTIONS[symChar]}.`);
     } else {
-        display.putstr_message(`I don't know what '${symChar}' represents.`);
+        await display.putstr_message(`I don't know what '${symChar}' represents.`);
     }
 }
 
@@ -189,7 +197,7 @@ export async function do_look(game, mode = 0, click_cc = null) {
         if (quick) {
             from_screen = true;
         } else {
-            display.putstr_message("What do you want to identify? [type a symbol, ';' for map, or ESC]");
+            await display.putstr_message("What do you want to identify? [type a symbol, ';' for map, or ESC]");
             const ch = await nhgetch();
             if (ch === 27) return { moved: false, tookTime: false };
             const c = String.fromCharCode(ch);
@@ -204,17 +212,17 @@ export async function do_look(game, mode = 0, click_cc = null) {
                 // C ref: pager.c do_look() always enters getpos() for map lookups;
                 // quick mode still uses getpos, but with force=true.
                 if (!quick && flags?.verbose) {
-                    display.putstr_message('Please move the cursor to a monster, object or location.');
+                    await display.putstr_message('Please move the cursor to a monster, object or location.');
                 }
                 set_getpos_context({ map, display, flags, goalPrompt: 'a monster, object or location', player });
                 ans = await getpos_async(cc, quick, 'a monster, object or location');
                 if (ans < 0 || cc.x < 0 || cc.y < 0) break;
             }
             const desc = do_screen_description({ map, player }, cc);
-            if (desc.found) display.putstr_message(desc.text);
-            else display.putstr_message("I've never heard of such things.");
+            if (desc.found) await display.putstr_message(desc.text);
+            else await display.putstr_message("I've never heard of such things.");
         } else if (sym !== null) {
-            do_look_symbol(display, sym);
+            await do_look_symbol(display, sym);
         }
     } while (from_screen && !quick && ans !== LOOK_ONCE && ans !== LOOK_VERBOSE && !clicklook);
 
@@ -250,7 +258,7 @@ function build_dolook_message(ctx) {
 
     const loc = map.at ? map.at(player.x, player.y) : null;
     const objs = map.objectsAt ? map.objectsAt(player.x, player.y) : [];
-    const terrain = terrain_here_description(loc);
+    const terrain = terrain_here_description(loc, { map, player });
     const objText = (objs.length > 0)
         ? `Things that are here: ${objs.map(o => look_object_name(o)).join(', ')}`
         : '';
@@ -319,19 +327,19 @@ export async function dolook(game) {
                 // C tty appends "--More--" to the topline before blocking on the
                 // next keypress; render the marker so captured screen comparisons match.
                 // C ref: win/tty/topl.c tmore(), pager.c dolook() flow.
-                display.putstr_message(typeMsg);
+                await display.putstr_message(typeMsg);
                 if (typeof display.renderMoreMarker === 'function') display.renderMoreMarker();
                 await display.morePrompt(nhgetch);
                 const et = ep.text;
                 const endpunct = (et.length >= 2 && '.!?'.includes(et[et.length - 1])) ? '' : '.';
-                display.putstr_message(`You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
+                await display.putstr_message(`You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`);
                 ep.eread = true;
                 ep.erevealed = true;
             }
         }
     }
 
-    display.putstr_message(String(build_dolook_message({ map, player }) || '').substring(0, 79));
+    await display.putstr_message(String(build_dolook_message({ map, player }) || '').substring(0, 79));
     return { moved: false, tookTime: false };
 }
 

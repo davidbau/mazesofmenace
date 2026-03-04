@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
     // NetHack bigroom bigrm-13.lua	$NHDT-Date: 1652196024 2022/5/10 15:20:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.0 $
     // Copyright (c) 2026 by Pasi Kallinen
     // NetHack may be freely redistributed.  See license for details.
@@ -17,7 +17,7 @@ export function generate() {
     des.level_init({ style: "solidfill", fg: " " });
     des.level_flags("mazelevel", "noflip");
 
-    des.map(`\
+    await des.map(`\
 ---------------------------------------------------------------------------
 |.........................................................................|
 |.........................................................................|
@@ -68,12 +68,12 @@ export function generate() {
     for (let y = 0; y <= 2; y++) {
        for (let x = 0; x <= 6; x++) {
           if ((filters[idx](x, y))) {
-             des.map({ coord: [12 + x*9, 4 + y*5], map: pillar, contents: function() { } });
+             await des.map({ coord: [12 + x*9, 4 + y*5], map: pillar, contents: async function() { } });
           }
        }
     }
 
-    des.region(selection.area(0,0,75,18), "lit");
+    await des.region(selection.area(0,0,75,18), "lit");
     des.wallify();
     des.non_diggable();
 
@@ -81,14 +81,14 @@ export function generate() {
     des.stair("down");
 
     for (let i = 1; i <= 15; i++) {
-       des.object();
+       await des.object();
     }
     for (let i = 1; i <= 6; i++) {
-       des.trap();
+       await des.trap();
     }
     for (let i = 1; i <= 28; i++) {
-      des.monster();
+      await des.monster();
     
     }
-    return des.finalize_level();
+    return await des.finalize_level();
 }

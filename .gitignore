@@ -1,6 +1,7 @@
 node_modules/
 __pycache__/
-nethack-c/
+nethack-c/patched/
+nethack-c/install/
 .beads/
 .claude/
 *.pyc

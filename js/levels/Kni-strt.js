@@ -7,7 +7,7 @@ import * as des from '../sp_lev.js';
 import { selection, percent, nh } from '../sp_lev.js';
 import { rn2 } from '../rng.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Knight Kni-strt.lua	$NHDT-Date: 1652196006 2022/5/10 15:20:6 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991,92 by M. Stephenson
@@ -25,7 +25,7 @@ export function generate() {
     // This is a kludge to init the level as a lit field.
     des.level_init({ style: "mines", fg: ".", bg: ".", smoothed: false, joined: false, lit: 1, walled: false });
 
-    des.map(`\
+    await des.map(`\
 ..................................................
 .-----......................................-----.
 .|...|......................................|...|.
@@ -44,10 +44,10 @@ export function generate() {
 ..................................................
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,49,15), "lit");
-    des.region(selection.area(4,4,45,11), "unlit");
-    des.region({ region: [6,6,22,9], lit: 1, type: "throne", filled: 2 });
-    des.region(selection.area(27,6,43,9), "lit");
+    await des.region(selection.area(0,0,49,15), "lit");
+    await des.region(selection.area(4,4,45,11), "unlit");
+    await des.region({ region: [6,6,22,9], lit: 1, type: "throne", filled: 2 });
+    await des.region(selection.area(27,6,43,9), "lit");
     // Portal arrival point
     des.levregion({ region: [20,14,20,14], type: "branch" });
     // Stairs
@@ -72,51 +72,51 @@ export function generate() {
     des.door("closed",4,12);
     des.door("closed",45,12);
     // King Arthur
-    des.monster({ id: "King Arthur", coord: [9, 7], inventory: function() {
-       des.object({ id: "long sword", spe: 4, buc: "blessed", name: "Excalibur" });
-       des.object({ id: "plate mail", spe: 4 });
+    await des.monster({ id: "King Arthur", coord: [9, 7], inventory: async function() {
+       await des.object({ id: "long sword", spe: 4, buc: "blessed", name: "Excalibur" });
+       await des.object({ id: "plate mail", spe: 4 });
     } })
     // The treasure of King Arthur
-    des.object("chest", 9, 7);
+    await des.object("chest", 9, 7);
     // knight guards for the watchrooms
-    des.monster({ id: "knight", x: 4, y: 2, peaceful: 1 });
-    des.monster({ id: "knight", x: 4, y: 13, peaceful: 1 });
-    des.monster({ id: "knight", x: 45, y: 2, peaceful: 1 });
-    des.monster({ id: "knight", x: 45, y: 13, peaceful: 1 });
+    await des.monster({ id: "knight", x: 4, y: 2, peaceful: 1 });
+    await des.monster({ id: "knight", x: 4, y: 13, peaceful: 1 });
+    await des.monster({ id: "knight", x: 45, y: 2, peaceful: 1 });
+    await des.monster({ id: "knight", x: 45, y: 13, peaceful: 1 });
     // page guards for the audience chamber
-    des.monster("page", 16, 6);
-    des.monster("page", 18, 6);
-    des.monster("page", 20, 6);
-    des.monster("page", 16, 9);
-    des.monster("page", 18, 9);
-    des.monster("page", 20, 9);
+    await des.monster("page", 16, 6);
+    await des.monster("page", 18, 6);
+    await des.monster("page", 20, 6);
+    await des.monster("page", 16, 9);
+    await des.monster("page", 18, 9);
+    await des.monster("page", 20, 9);
     // Non diggable walls
     des.non_diggable(selection.area(0,0,49,15));
     // Random traps
-    des.trap("sleep gas",24,4);
-    des.trap("sleep gas",25,4);
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap("sleep gas",24,4);
+    await des.trap("sleep gas",25,4);
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     // Monsters on siege duty.
-    des.monster({ id: "quasit", x: 14, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 16, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 18, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 20, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 22, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 24, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 26, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 28, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 30, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 32, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 34, y: 0, peaceful: 0 });
-    des.monster({ id: "quasit", x: 36, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 14, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 16, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 18, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 20, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 22, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 24, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 26, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 28, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 30, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 32, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 34, y: 0, peaceful: 0 });
+    await des.monster({ id: "quasit", x: 36, y: 0, peaceful: 0 });
 
     // Some warhorses
     for (let i = 1; i <= 2 + nh.rn2(3); i++) {
-        des.monster({ id: "warhorse", peaceful: 1, inventory: function() { if (percent(50)) { des.object("saddle"); } } });
+        await des.monster({ id: "warhorse", peaceful: 1, inventory: async function() { if (percent(50)) { await des.object("saddle"); } } });
     
     }
-    return des.finalize_level();
+    return await des.finalize_level();
 }

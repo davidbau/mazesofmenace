@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, shuffle } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack mines minend-3.lua	$NHDT-Date: 1652196029 2022/5/10 15:20:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
     // Copyright (c) 1989-95 by Jean-Christophe Collet
     // Copyright (c) 1991-95 by M. Stephenson
@@ -19,7 +19,7 @@ export function generate() {
 
     des.level_flags("mazelevel", "nommap");
 
-    des.map({ halign: "center", valign: "bottom", map: `\
+    await des.map({ halign: "center", valign: "bottom", map: `\
  - - - - - - - - - - -- -- - - . - - - - - - - - - -- - - -- - - - - . - - |
 ------...---------.-----------...-----.-------.-------     ----------------|
  - - - - - - - - - - - . - - - . - - - - - - - - - - -- - -- - . - - - - - |
@@ -46,8 +46,8 @@ export function generate() {
     des.non_diggable(selection.area(0,12,2,16));
     des.feature("fountain", [12,8]);
     des.feature("fountain", [51,15]);
-    des.region(selection.area(0,0,75,16),"unlit");
-    des.region(selection.area(38,6,46,10),"lit");
+    await des.region(selection.area(0,0,75,16),"unlit");
+    await des.region(selection.area(38,6,46,10),"lit");
     des.door("closed",37,8);
     des.door("closed",47,8);
     des.door("closed",73,5);
@@ -57,64 +57,64 @@ export function generate() {
     des.wallify();
 
     // Objects
-    des.object("diamond");
-    des.object("*");
-    des.object("diamond");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("emerald");
-    des.object("*");
-    des.object("ruby");
-    des.object("*");
-    des.object("ruby");
-    des.object("amethyst");
-    des.object("*");
-    des.object("amethyst");
-    des.object({ id: "luckstone", coord: place[1], buc: "!-cursed", achievement: 1 });
-    des.object("flint",place[0]);
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("?");
-    des.object("+");
-    des.object("+");
-    des.object("+");
-    des.object("+");
-    des.object();
-    des.object();
-    des.object();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.object("diamond");
+    await des.object("*");
+    await des.object("diamond");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("emerald");
+    await des.object("*");
+    await des.object("ruby");
+    await des.object("*");
+    await des.object("ruby");
+    await des.object("amethyst");
+    await des.object("*");
+    await des.object("amethyst");
+    await des.object({ id: "luckstone", coord: place[1], buc: "!-cursed", achievement: 1 });
+    await des.object("flint",place[0]);
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("?");
+    await des.object("+");
+    await des.object("+");
+    await des.object("+");
+    await des.object("+");
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     // One-time annoyance factor
-    des.trap("level teleport",place[1]);
-    des.trap("level teleport",place[0]);
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("M");
-    des.monster("ettin mummy");
-    des.monster("V");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("Z");
-    des.monster("V");
-    des.monster("e");
-    des.monster("e");
-    des.monster("e");
-    des.monster("e");
+    await des.trap("level teleport",place[1]);
+    await des.trap("level teleport",place[0]);
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("M");
+    await des.monster("ettin mummy");
+    await des.monster("V");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("Z");
+    await des.monster("V");
+    await des.monster("e");
+    await des.monster("e");
+    await des.monster("e");
+    await des.monster("e");
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

@@ -6,9 +6,8 @@ import { statSync, readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
-import {
-    replaySession,
-} from '../../js/replay_core.js';
+import { replaySession } from '../../js/replay_core.js';
+import { prepareReplayArgs, applyManualDirectChargenView } from '../../js/replay_compare.js';
 import { NetHackGame } from '../../js/allmain.js';
 import {
     createHeadlessInput,
@@ -27,11 +26,10 @@ import {
     compareGrids,
     compareScreenLines,
     compareScreenAnsi,
-    ansiLineToCells,
     findFirstGridDiff,
 } from './comparators.js';
 import { loadAllSessions, stripAnsiSequences, getSessionScreenAnsiLines } from './session_loader.js';
-import { decodeDecSpecialChar } from './symset_normalization.js';
+import { decodeDecSpecialChar, decodeSOSILine } from './symset_normalization.js';
 import { recordGameplaySessionFromInputs } from './session_recorder.js';
 import { compareRecordedGameplaySession } from './session_comparator.js';
 import {
@@ -49,6 +47,7 @@ import {
     recordScreenWindow,
     recordColorWindow,
     recordEvents,
+    recordMapdump,
     recordAnimationBoundaries,
     recordCursor,
     markFailed,
@@ -57,12 +56,28 @@ import {
     formatResult,
     formatBundleSummary,
 } from './test_result_format.js';
+import { resolveSessionFixedDatetime } from './session_datetime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SESSIONS_DIR = join(__dirname, 'sessions');
 const MAPS_DIR = join(__dirname, 'maps');
 const SKIP_SESSIONS = new Set();
+const DEFAULT_FIXED_DATETIME = '20000110090000';
+
+async function withSessionFixedDatetime(session, fn) {
+    const prev = process.env.NETHACK_FIXED_DATETIME;
+    const sourcePref = process.env.NETHACK_SESSION_DATETIME_SOURCE || 'session';
+    const chosen = resolveSessionFixedDatetime(session, sourcePref) || prev || DEFAULT_FIXED_DATETIME;
+    if (chosen) process.env.NETHACK_FIXED_DATETIME = chosen;
+    else delete process.env.NETHACK_FIXED_DATETIME;
+    try {
+        return await fn();
+    } finally {
+        if (prev == null) delete process.env.NETHACK_FIXED_DATETIME;
+        else process.env.NETHACK_FIXED_DATETIME = prev;
+    }
+}
 
 function createReplayResult(session) {
     const result = createSessionResult({
@@ -121,7 +136,7 @@ function decodeLegacyDecgraphicsLine(line) {
 }
 
 function normalizeInterfaceLineForComparison(line, { decgraphics = false } = {}) {
-    let normalized = String(line || '');
+    let normalized = stripAnsiSequences(String(line || ''));
     if (decgraphics) {
         normalized = decodeSOSILine(normalized);
         normalized = decodeLegacyDecgraphicsLine(normalized);
@@ -148,64 +163,6 @@ function compareInterfaceScreens(actualLines, expectedLines) {
     return compareScreenLines(actualLines, expectedLines);
 }
 
-function normalizeGameplayScreenLines(lines) {
-    return (Array.isArray(lines) ? lines : [])
-        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''));
-}
-
-function ansiCellsToPlainLine(line) {
-    return ansiLineToCells(line).map((cell) => cell?.ch || ' ').join('');
-}
-
-function decodeSOSILine(line) {
-    // Decode DEC special graphics characters inside SO/SI regions,
-    // then strip the control characters. This converts e.g.
-    // "\x0elqqqqk\x0f" → "┌────┐" (Unicode box-drawing).
-    const src = String(line || '').replace(/\r$/, '');
-    let result = '';
-    let inDec = false;
-    for (let i = 0; i < src.length; i++) {
-        const ch = src[i];
-        if (ch === '\x0e') { inDec = true; continue; }
-        if (ch === '\x0f') { inDec = false; continue; }
-        result += inDec ? decodeDecSpecialChar(ch) : ch;
-    }
-    return result;
-}
-
-function resolveGameplayComparableLines(plainLines, ansiLines, session) {
-    const ansi = Array.isArray(ansiLines) ? ansiLines : [];
-    const decgraphics = session?.meta?.options?.symset === 'DECgraphics';
-    if (ansi.length > 0) {
-        return ansi.map((line) => {
-            const plain = ansiCellsToPlainLine(line);
-            return plain;
-        });
-    }
-    const plain = Array.isArray(plainLines) ? plainLines : [];
-    if (!decgraphics) {
-        // Decode DEC characters inside SO/SI regions to Unicode, then strip
-        // the control characters. This ensures C session data using SO/SI
-        // line-drawing mode matches JS's direct Unicode box-drawing output.
-        return plain.map(decodeSOSILine);
-    }
-    // Legacy plain-only DECgraphics sessions cannot preserve SO/SI mode
-    // boundaries, so decode the stripped line consistently as a fallback.
-    return plain
-        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''))
-        .map((line) => [...line].map((ch) => decodeDecSpecialChar(ch)).join(''));
-}
-
-function compareGameplayScreens(actualLines, expectedLines, session, {
-    actualAnsi = null,
-    expectedAnsi = null,
-} = {}) {
-    const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session);
-    const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session);
-    const normalizedExpected = normalizeGameplayScreenLines(comparableExpected);
-    const normalizedActual = normalizeGameplayScreenLines(comparableActual);
-    return compareScreenLines(normalizedActual, normalizedExpected);
-}
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -293,13 +250,28 @@ async function replayInterfaceSession(session) {
             replayFlags.customsymbols = true;
             replayFlags.symset = 'DECgraphics, active, handler=DEC';
         }
-        return replaySession(session.meta.seed, session.raw, {
-            captureScreens: true,
-            startupBurstInFirstStep: false,
-            flags: replayFlags,
-            tutorial: subtype === 'tutorial' || session.meta.regen?.tutorial === true,
-            inferStatusFlagsFromStartup: false,
-        });
+        const { seed: replaySeed, opts: replayOpts, keys } = prepareReplayArgs(
+            session.meta.seed, session.raw, {
+                captureScreens: true,
+                startupBurstInFirstStep: false,
+                flags: replayFlags,
+                tutorial: subtype === 'tutorial' || session.meta.regen?.tutorial === true,
+            }
+        );
+        const jsSession = await replaySession(replaySeed, replayOpts, keys);
+        // V3 format: steps[0] is startup, steps[1..] are per-keystroke.
+        // Convert screen strings to arrays for the comparator.
+        const startup = {
+            rng: jsSession.steps[0].rng,
+            screen: (jsSession.steps[0].screen || '').split('\n'),
+            cursor: jsSession.steps[0].cursor,
+        };
+        const steps = jsSession.steps.slice(1).map(s => ({
+            ...s,
+            screen: (s.screen || '').split('\n'),
+            screenAnsi: (s.screen || '').split('\n'),
+        }));
+        return { startup, steps };
     }
     if (subtype === 'startup' || subtype === 'tutorial') {
         // C startup interface captures are recorded after login-derived name selection.
@@ -403,13 +375,18 @@ async function runGameplayResult(session) {
     const start = Date.now();
 
     try {
-        const replay = await recordGameplaySessionFromInputs(session);
+        // For manual-direct-live sessions, fold embedded chargen/lore steps into startup
+        // and provide the correct character + gameplay-only steps for comparison.
+        // Must be applied BEFORE recordGameplaySessionFromInputs so the recorder uses
+        // the transformed session (correct character detection, correct gameplay step range).
+        const sessionForCmp = applyManualDirectChargenView(session);
+        const replay = await recordGameplaySessionFromInputs(sessionForCmp);
         if (!replay || replay.error) {
             markFailed(result, replay?.error || 'Replay failed');
             setDuration(result, Date.now() - start);
             return result;
         }
-        const cmp = compareRecordedGameplaySession(session, replay);
+        const cmp = compareRecordedGameplaySession(sessionForCmp, replay);
 
         if (cmp.rng.total > 0) {
             recordRng(result, cmp.rng.matched, cmp.rng.total, cmp.rng.firstDivergence);
@@ -454,6 +431,10 @@ async function runGameplayResult(session) {
                 total: result.metrics.events.total,
             };
             setFirstDivergence(result, 'event', cmp.event.firstDivergence);
+        }
+        if (cmp.mapdump?.total > 0) {
+            recordMapdump(result, cmp.mapdump.matched, cmp.mapdump.total);
+            setFirstDivergence(result, 'mapdump', cmp.mapdump.firstDivergence);
         }
         if (cmp.animationBoundaries.total > 0) {
             recordAnimationBoundaries(
@@ -724,15 +705,17 @@ async function runSpecialResult(session) {
 }
 
 export async function runSessionResult(session) {
-    ensureSessionGlobals();
-    if (session.meta.type === 'chargen') return runChargenResult(session);
-    if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
-        return runChargenResult(session);
-    }
-    if (session.meta.type === 'interface') return runInterfaceResult(session);
-    if (session.meta.type === 'map') return runMapResult(session);
-    if (session.meta.type === 'special') return runSpecialResult(session);
-    return runGameplayResult(session);
+    return withSessionFixedDatetime(session, async () => {
+        ensureSessionGlobals();
+        if (session.meta.type === 'chargen') return runChargenResult(session);
+        if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
+            return runChargenResult(session);
+        }
+        if (session.meta.type === 'interface') return runInterfaceResult(session);
+        if (session.meta.type === 'map') return runMapResult(session);
+        if (session.meta.type === 'special') return runSpecialResult(session);
+        return runGameplayResult(session);
+    });
 }
 
 function summarizeTimeoutProgress(progress) {
@@ -954,6 +937,12 @@ export async function runSessionBundle({
     onProgress = null,
     sessionTimeoutMs = 20000,
 } = {}) {
+    // Keep JS replay-time calendar/luck behavior aligned with C captures.
+    // Allow explicit caller override via environment.
+    if (!process.env.NETHACK_FIXED_DATETIME) {
+        process.env.NETHACK_FIXED_DATETIME = DEFAULT_FIXED_DATETIME;
+    }
+
     const sessions = loadAllSessions({
         sessionsDir: SESSIONS_DIR,
         mapsDir: MAPS_DIR,
@@ -1087,6 +1076,12 @@ export async function runSessionCli() {
         else if (arg.startsWith('--session-timeout-ms=')) {
             args.sessionTimeoutMs = parseInt(arg.slice('--session-timeout-ms='.length), 10);
         }
+        else if (arg === '--datetime-source' && argv[i + 1]) {
+            process.env.NETHACK_SESSION_DATETIME_SOURCE = argv[++i];
+        }
+        else if (arg.startsWith('--datetime-source=')) {
+            process.env.NETHACK_SESSION_DATETIME_SOURCE = arg.slice('--datetime-source='.length);
+        }
         else if (arg === '--type' && argv[i + 1]) args.typeFilter = argv[++i];
         else if (arg.startsWith('--type=')) args.typeFilter = arg.slice('--type='.length);
         else if (arg === '--session-list' && argv[i + 1]) args.sessionListPath = argv[++i];
@@ -1118,6 +1113,7 @@ export async function runSessionCli() {
             console.log('  --sessions=a,b,c  Run only these session files (comma-separated)');
             console.log('  --failed[=FILE]   Run sessions marked failed in FILE (default: oracle/pending.jsonl)');
             console.log('  --session-timeout-ms=N  Timeout for single-session runs (default: 20000)');
+            console.log('  --datetime-source=MODE  session|recorded-at-prefer|recorded-at-only');
             console.log('  --golden          Compare against golden branch');
             process.exit(0);
         } else if (arg.startsWith('--')) {

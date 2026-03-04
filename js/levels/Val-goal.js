@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection, percent } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Valkyrie Val-goal.lua	$NHDT-Date: 1652196017 2022/5/10 15:20:17 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.5 $
     // Copyright (c) 1989 by Jean-Christophe Collet
     // Copyright (c) 1991-2 by M. Stephenson
@@ -18,7 +18,7 @@ export function generate() {
 
     des.level_init({ style: "mines", fg: ".", bg: "L", smoothed: true, joined: true, lit: 1, walled: false });
 
-    des.map(`\
+    await des.map(`\
 xxxxxx.....................xxxxxxxx
 xxxxx.......LLLLL.LLLLL......xxxxxx
 xxxx......LLLLLLLLLLLLLLL......xxxx
@@ -38,7 +38,7 @@ xxxxxx......LLLLL.LLLLL.....xxxxxxx
 xxxxxxxxx..................xxxxxxxx
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,34,16), "lit");
+    await des.region(selection.area(0,0,34,16), "lit");
     // Stairs
     // Note:  The up stairs are *intentionally* off of the map.
     // if the stairs are surrounded by lava, maybe give some room
@@ -55,53 +55,53 @@ xxxxxxxxx..................xxxxxxxx
        des.drawbridge({ x: 17, y: 14, dir: "north", state: "random" });
     }
     // Objects
-    des.object({ id: "crystal ball", x: 17, y: 8, buc: "blessed", spe: 5, name: "The Orb of Fate" });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "crystal ball", x: 17, y: 8, buc: "blessed", spe: 5, name: "The Orb of Fate" });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Traps
-    des.trap("board",13,8);
-    des.trap("board",21,8);
+    await des.trap("board",13,8);
+    await des.trap("board",21,8);
     // Random traps
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("fire");
-    des.trap("board");
-    des.trap();
-    des.trap();
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("fire");
+    await des.trap("board");
+    await des.trap();
+    await des.trap();
     // Random monsters.
-    des.monster("Lord Surtur", 17, 8);
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("fire ant");
-    des.monster("a");
-    des.monster("a");
-    des.monster({ id: "fire giant", x: 10, y: 6, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 7, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 8, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 9, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 10, y: 10, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 6, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 7, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 8, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 9, peaceful: 0 });
-    des.monster({ id: "fire giant", x: 24, y: 10, peaceful: 0 });
-    des.monster({ id: "fire giant", peaceful: 0 });
-    des.monster({ id: "fire giant", peaceful: 0 });
-    des.monster({ class: "H", peaceful: 0 });
+    await des.monster("Lord Surtur", 17, 8);
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("fire ant");
+    await des.monster("a");
+    await des.monster("a");
+    await des.monster({ id: "fire giant", x: 10, y: 6, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 7, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 8, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 9, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 10, y: 10, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 6, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 7, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 8, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 9, peaceful: 0 });
+    await des.monster({ id: "fire giant", x: 24, y: 10, peaceful: 0 });
+    await des.monster({ id: "fire giant", peaceful: 0 });
+    await des.monster({ id: "fire giant", peaceful: 0 });
+    await des.monster({ class: "H", peaceful: 0 });
 
     // 
     // The "fill" levels for the quest.
@@ -113,5 +113,5 @@ xxxxxxxxx..................xxxxxxxx
     // 
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

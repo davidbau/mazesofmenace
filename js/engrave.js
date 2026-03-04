@@ -25,7 +25,7 @@ import { compactInvletPromptChars } from './invent.js';
 import { pline, You, You_cant, impossible, You_see } from './pline.js';
 import {
     COLNO, ROWNO, ROOM, GRAVE, FOUNTAIN, ICE,
-    ACCESSIBLE, isok,
+    ACCESSIBLE, is_hole, is_pit, isok,
 } from './config.js';
 import { is_lava, is_pool, is_pool_or_lava } from './dbridge.js';
 import { IS_GRAVE, IS_AIR } from './symbols.js';
@@ -33,6 +33,9 @@ import { newsym } from './monutil.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
+import { t_at } from './trap.js';
+import { attacktype, ceiling_hider, sticks } from './mondata.js';
+import { AT_HUGS, MZ_HUGE } from './monsters.js';
 
 function engrTraceEnabled() {
     const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
@@ -87,9 +90,26 @@ export function del_engr(map, x, y) {
 // cf. engrave.c:461 — del_engr_at(x, y)
 // Deletes any engraving at location (x,y). Convenience wrapper around del_engr.
 // Autotranslated from engrave.c:462
-export function del_engr_at(x, y) {
-  let ep = engr_at(x, y);
-  if (ep) del_engr(ep);
+export function del_engr_at(mapOrX, xOrY, yMaybe) {
+    let map = null;
+    let x = null;
+    let y = null;
+
+    if (mapOrX && Array.isArray(mapOrX.engravings)) {
+        map = mapOrX;
+        x = xOrY;
+        y = yMaybe;
+    } else if (yMaybe && Array.isArray(yMaybe.engravings)) {
+        x = mapOrX;
+        y = xOrY;
+        map = yMaybe;
+    } else {
+        return;
+    }
+
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+    const ep = engr_at(map, x, y);
+    if (ep) del_engr(map, x, y);
 }
 
 // C ref: engrave.c:120 — wipeout_text(engr, cnt, seed=0)
@@ -136,17 +156,26 @@ function wipeoutEngravingText(text, cnt) {
 
 // cf. engrave.c:271 — wipe_engr_at(x, y, cnt, magical)
 // Centralized engraving wiping/erosion.
-export function wipe_engr_at(map, x, y, cnt, magical = false) {
+export async function wipe_engr_at(map, x, y, cnt, magical = false) {
     if (!map || !Array.isArray(map.engravings)) return;
-    // C ref: event_log("wipe[%d,%d]") is unconditional — logged even when
-    // no engraving exists at (x,y). This matches C's wipe_engr_at which
-    // calls event_log() before checking if ep is non-NULL.
-    pushRngLogEntry(`^wipe[${x},${y}]`);
-    withRngTag('wipe_engr_at(engrave.js:139)', () => {
+    const step = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
+    await withRngTag('wipe_engr_at(engrave.js:139)', () => {
         const idx = map.engravings.findIndex((e) => e && e.x === x && e.y === y);
-        if (idx < 0) return;
+        if (idx < 0) {
+            engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`, 'engr=none');
+            return;
+        }
         const engr = map.engravings[idx];
-        if (!engr || engr.type === 'headstone' || engr.nowipeout) return;
+        if (!engr || engr.type === 'headstone' || engr.nowipeout) {
+            engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`,
+                `engr=${engr ? engr.type : 'null'}`, `nowipeout=${engr?.nowipeout ? 1 : 0}`, 'skip=1');
+            return;
+        }
+        // C harness parity: only emit wipe when an engraving actually exists
+        // and is eligible to be wiped.
+        engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`,
+            `engr=${engr.type}`, `len=${String(engr.text || '').length}`);
+        pushRngLogEntry(`^wipe[${x},${y}]`);
         const loc = map.at ? map.at(x, y) : null;
         const isIce = !!loc && loc.typ === ICE;
         if (engr.type !== 'burn' || isIce || (magical && !rn2(2))) {
@@ -176,35 +205,54 @@ export function wipe_engr_at(map, x, y, cnt, magical = false) {
 //           Flying/huge size, pit teetering.
 // In JS the player properties for Levitation/Flying/etc. are not yet uniformly
 // available, so this is a simplified version that covers the common cases.
-export function can_reach_floor(player, map) {
+export function can_reach_floor(player, map, check_pit = false) {
     if (!player) return true;
-    // C: if (u.uswallow) return FALSE
-    if (player.uswallow) return false;
-    // C: if (u.ustuck && !sticks(youmonst.data) && attacktype(ustuck.data, AT_HUGS))
-    // Simplified: if stuck and not sticking, can't reach
-    // C: if (Levitation && !(Is_airlevel || Is_waterlevel)) return FALSE
-    const props = player.uprops || {};
-    const HLevitation = (props[19] && props[19].intrinsic) || 0; // LEVITATION = 19
-    const ELevitation = (props[19] && props[19].extrinsic) || 0;
-    if (HLevitation || ELevitation) return false;
-    // C: if (u.usteed && P_SKILL(P_RIDING) < P_BASIC) return FALSE
-    if (player.usteed) return false; // simplified: all riders can't reach
-    // C: Flying or huge size => can reach
-    // For simplicity, assume reachable in the common ground case
+    const mapRef = map || player.lev || player.map || null;
+    const youmonst = player.data || player.type || null;
+    const stuckData = player.ustuck?.data || player.ustuck?.type || null;
+    const levitation = !!(player.Levitation || player.levitating
+        || player.inherentLevitation
+        || ((player.uprops || {})[19]?.intrinsic)
+        || ((player.uprops || {})[19]?.extrinsic));
+
+    if (player.uswallow
+        || (player.ustuck && !sticks(youmonst) && attacktype(stuckData, AT_HUGS))
+        || levitation) {
+        return false;
+    }
+    // C checks riding skill; JS does not track full skill state here. Keep
+    // prior conservative behavior: riders can't reach floor.
+    if (player.usteed) return false;
+    if (player.uundetected && ceiling_hider(youmonst)) return false;
+
+    if (player.Flying || player.flying || (youmonst?.size >= MZ_HUGE)) {
+        return true;
+    }
+
+    // C: if check_pit and hero is teetering at seen pit or just escaped shaft,
+    // cannot reach floor.
+    const trap = check_pit && mapRef ? t_at(player.x, player.y, mapRef) : null;
+    if (trap?.tseen) {
+        const heroInPit = !!player.utrap && (is_pit(trap.ttyp) || is_hole(trap.ttyp));
+        if ((is_pit(trap.ttyp) && !heroInPit) || (is_hole(trap.ttyp) && !heroInPit)) {
+            return false;
+        }
+    }
+
     return true;
 }
 
 // cf. engrave.c:218 — cant_reach_floor(x, y, up, check_pit, wand_engraving)
 // Prints message explaining why hero can't reach floor or ceiling.
-export function cant_reach_floor(player, map, x, y, up, check_pit, wand_engraving) {
+export async function cant_reach_floor(player, map, x, y, up, check_pit, wand_engraving) {
     const surface_name = "floor"; // simplified surface()
     const what = wand_engraving
         ? "The wand does nothing more, and the tip of the wand"
         : "You";
     if (up) {
-        pline("%s can't reach the ceiling.", what);
+        await pline("%s can't reach the ceiling.", what);
     } else {
-        pline("%s can't reach the %s.", what, surface_name);
+        await pline("%s can't reach the %s.", what, surface_name);
     }
 }
 
@@ -235,8 +283,8 @@ export function sengr_at(map, s, x, y, strict) {
 
 // cf. engrave.c:264 — u_wipe_engr(cnt): wipe engraving at hero's location
 // Wipes cnt characters from engraving at hero's position if reachable.
-export function u_wipe_engr(player, map, cnt) {
-    if (can_reach_floor(player, map)) wipe_engr_at(map, player.x, player.y, cnt, false);
+export async function u_wipe_engr(player, map, cnt) {
+    if (can_reach_floor(player, map, true)) await wipe_engr_at(map, player.x, player.y, cnt, false);
 }
 
 // cf. engrave.c:297 — engr_can_be_felt(ep): engraving can be felt?
@@ -320,7 +368,7 @@ export async function read_engr_at(map, x, y, player, game = null) {
     const info = describe_readable_engraving(map, x, y, player);
     if (!info) return;
     const { ep, typeMsg, readMsg } = info;
-    pline(typeMsg);
+    await pline(typeMsg);
     // Match C topline flow for engraving reads: split into two prompts only
     // when both messages can't fit on one topline.
     // C tty message wrapping leaves less than a full 80 columns for
@@ -330,8 +378,8 @@ export async function read_engr_at(map, x, y, player, game = null) {
     if (needsMoreBetweenMessages && game?.display && typeof game.display.morePrompt === 'function') {
         // C-parity for in-command engraving prompts: movement side effects have
         // already happened; refresh map/status before waiting for dismissal.
-        if (typeof game.renderCurrentScreen === 'function') {
-            game.renderCurrentScreen();
+        if (typeof game.docrt === 'function') {
+            game.docrt();
         }
         if (typeof game.display.renderMoreMarker === 'function') {
             game.display.renderMoreMarker();
@@ -347,7 +395,7 @@ export async function read_engr_at(map, x, y, player, game = null) {
             game.display.messageNeedsMore = false;
         }
     }
-    pline(readMsg);
+    await pline(readMsg);
     ep.eread = true;
     ep.erevealed = true;
     // C ref: engrave.c read_engr_at() -> if (context.run > 0) nomul(0)
@@ -399,7 +447,7 @@ export function stylus_ok(obj) {
 
 // cf. engrave.c:503 [static] — u_can_engrave(void): player can engrave?
 // Checks if player is at a valid location for engraving.
-function u_can_engrave(player, map) {
+async function u_can_engrave(player, map) {
     if (!player || !map) return false;
     const loc = map.at ? map.at(player.x, player.y) : null;
     if (!loc) return false;
@@ -410,19 +458,19 @@ function u_can_engrave(player, map) {
         return false;
     }
     if (is_lava(player.x, player.y, map)) {
-        You_cant("write on the lava!");
+        await You_cant("write on the lava!");
         return false;
     }
     if (is_pool(player.x, player.y, map) || levtyp === FOUNTAIN) {
-        You_cant("write on the water!");
+        await You_cant("write on the water!");
         return false;
     }
     if (IS_AIR(levtyp)) {
-        You_cant("write in thin air!");
+        await You_cant("write in thin air!");
         return false;
     }
     if (!ACCESSIBLE(levtyp)) {
-        You_cant("write here.");
+        await You_cant("write here.");
         return false;
     }
     return true;
@@ -523,23 +571,26 @@ export async function handleEngrave(player, display) {
         .filter((item) => item && item.oclass === WAND_CLASS && item.invlet)
         .map((item) => item.invlet)
         .join(''));
-    if (writeLetters) {
-        display.putstr_message(`What do you want to write with? [- ${writeLetters} or ?*]`);
-    } else {
-        display.putstr_message('What do you want to write with? [- or ?*]');
+    const writePrompt = writeLetters
+        ? `What do you want to write with? [- ${writeLetters} or ?*]`
+        : 'What do you want to write with? [- or ?*]';
+    await display.putstr_message(writePrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(writePrompt.length + 1, (display.cols || 80) - 1), 0);
     }
     while (true) {
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
         if (ch === 27 || ch === 10 || ch === 13 || c === ' ') {
             replacePromptMessage();
-            display.putstr_message('Never mind.');
+            await display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
         if (c === '?' || c === '*') continue;
         if (c === '-' || (writeLetters && writeLetters.includes(c))) {
             replacePromptMessage();
-            display.putstr_message('Engraving is not implemented yet.');
+            await display.putstr_message('Engraving is not implemented yet.');
             return { moved: false, tookTime: false };
         }
         // Keep prompt active for unsupported letters.
@@ -689,7 +740,7 @@ export function make_grave(map, x, y, str) {
 
 // cf. engrave.c:1706 — disturb_grave(x, y): disturb a grave
 // Summons ghoul when grave is disturbed by engraving or kicking.
-export function disturb_grave(map, x, y, player, depth) {
+export async function disturb_grave(map, x, y, player, depth) {
     if (!map) return;
     const loc = map.at ? map.at(x, y) : null;
     if (!loc) return;
@@ -698,7 +749,7 @@ export function disturb_grave(map, x, y, player, depth) {
     } else if (loc.disturbed) {
         impossible("Disturbing already disturbed grave?");
     } else {
-        You("disturb the undead!");
+        await You("disturb the undead!");
         loc.disturbed = true;
         // C: makemon(&mons[PM_GHOUL], x, y, NO_MM_FLAGS)
         if (typeof makemon === 'function') {
@@ -706,7 +757,7 @@ export function disturb_grave(map, x, y, player, depth) {
         }
         // C: exercise(A_WIS, FALSE)
         if (player) {
-            exercise(player, 2, false); // A_WIS = 2
+            await exercise(player, 2, false); // A_WIS = 2
         }
     }
 }
@@ -726,14 +777,14 @@ export function feel_engraving(map, ep) {
         ep.eread = true;
         ep.erevealed = true;
         // C: map_engraving(ep, 1) — not yet ported
-        newsym(map, ep.x, ep.y);
+        newsym(ep.x, ep.y);
     }
 }
 
 // C ref: hack.c:3001-3012 maybe_smudge_engr()
 // On successful movement, attempt to smudge engravings at origin/destination.
 // C: checks can_reach_floor(TRUE), then wipes at old pos and new pos if engravings exist.
-export function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
+export async function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
     const step = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
     const fmt = (ep) => {
         if (!ep) return 'none';
@@ -741,7 +792,7 @@ export function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
         return `${ep.type || '?'} len=${txt.length} nowipeout=${ep.nowipeout ? 1 : 0}`;
     };
     // C ref: if (can_reach_floor(TRUE)) { ... }
-    const reach = can_reach_floor(player, map);
+    const reach = can_reach_floor(player, map, true);
     engrTrace(`step=${step}`, `maybeSmudgeEngraving reach=${reach ? 1 : 0}`, `from=(${x1},${y1})`, `to=(${x2},${y2})`);
     if (!reach) return;
     // C ref: if ((ep = engr_at(x1,y1)) && ep->engr_type != HEADSTONE)
@@ -751,7 +802,7 @@ export function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
     if (ep1 && ep1.type !== 'headstone') {
         const roll = rnd(5);
         engrTrace(`step=${step}`, `old-roll=${roll}`, `pos=(${x1},${y1})`);
-        wipe_engr_at(map, x1, y1, roll, false);
+        await wipe_engr_at(map, x1, y1, roll, false);
         engrTrace(`step=${step}`, `old-after=${fmt(engr_at(map, x1, y1))}`);
     }
     // C ref: if ((x2!=x1 || y2!=y1) && (ep = engr_at(x2,y2)) && ep->engr_type != HEADSTONE)
@@ -762,7 +813,7 @@ export function maybeSmudgeEngraving(map, x1, y1, x2, y2, player) {
         if (ep2 && ep2.type !== 'headstone') {
             const roll = rnd(5);
             engrTrace(`step=${step}`, `new-roll=${roll}`, `pos=(${x2},${y2})`);
-            wipe_engr_at(map, x2, y2, roll, false);
+            await wipe_engr_at(map, x2, y2, roll, false);
             engrTrace(`step=${step}`, `new-after=${fmt(engr_at(map, x2, y2))}`);
         }
     }

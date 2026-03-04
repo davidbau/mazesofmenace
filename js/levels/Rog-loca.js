@@ -6,7 +6,7 @@
 import * as des from '../sp_lev.js';
 import { selection } from '../sp_lev.js';
 
-export function generate() {
+export async function generate() {
     // NetHack Rogue Rog-loca.lua	$NHDT-Date: 1652196012 2022/5/10 15:20:12 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
     // Copyright (c) 1992 by Dean Luick
     // NetHack may be freely redistributed.  See license for details.
@@ -17,7 +17,7 @@ export function generate() {
 
     // 1         2         3         4         5         6         7
     // 123456789012345678901234567890123456789012345678901234567890123456789012345
-    des.map(`\
+    await des.map(`\
              ----------------------------------------------------   --------
            ---.................................................-    --.....|
          ---...--------........-------.......................---     ---...|
@@ -41,7 +41,7 @@ export function generate() {
 ------------------------------------------                    ------        
 `);
     // Dungeon Description
-    des.region(selection.area(0,0,75,20), "lit");
+    await des.region(selection.area(0,0,75,20), "lit");
     // Doors
     // DOOR:locked.union(closed)|open,(xx,yy)
     // Stairs
@@ -50,63 +50,63 @@ export function generate() {
     // Non diggable walls
     des.non_diggable(selection.area(0,0,75,20));
     // Objects
-    des.object({ id: "scroll of teleportation", x: 11, y: 18, buc: "cursed", spe: 0 });
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
-    des.object();
+    await des.object({ id: "scroll of teleportation", x: 11, y: 18, buc: "cursed", spe: 0 });
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
+    await des.object();
     // Random traps
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
-    des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
+    await des.trap();
     // Random monsters.
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ id: "leprechaun", peaceful: 0 });
-    des.monster({ class: "l", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ id: "guardian naga", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ class: "N", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
-    des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ id: "leprechaun", peaceful: 0 });
+    await des.monster({ class: "l", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ id: "guardian naga", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ class: "N", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
+    await des.monster({ id: "chameleon", peaceful: 0 });
 
 
-    return des.finalize_level();
+    return await des.finalize_level();
 }

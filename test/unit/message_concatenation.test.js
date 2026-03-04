@@ -18,16 +18,23 @@ test('message concatenation: short messages combine with two spaces', () => {
     assert.strictEqual(display.topMessage, 'a - a +1 ring mail.  There is a staircase down here.');
 });
 
-test('message concatenation: long combined message does not concatenate', () => {
+test('message concatenation: long combined message triggers --More--', () => {
     const display = new HeadlessDisplay(80, 24);
 
     // First long message
     const longMsg = 'a - a very long description of some magical item that takes up lots of space';
     display.putstr_message(longMsg);
 
-    // Second message should NOT concatenate (would exceed cols - 8)
+    // Second message triggers --More-- (combined would exceed cols - 9)
     display.putstr_message('There is a fountain here.');
+    assert.strictEqual(display._pendingMore, true, '--More-- should be pending');
+    assert.strictEqual(display._messageQueue.length, 1, 'new message should be queued');
+    assert.strictEqual(display._messageQueue[0], 'There is a fountain here.');
+
+    // After clearing --More--, the new message is displayed
+    display._clearMore();
     assert.strictEqual(display.topMessage, 'There is a fountain here.');
+    assert.strictEqual(display._pendingMore, false);
 });
 
 test('message concatenation: "You die" never concatenates', () => {

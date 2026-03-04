@@ -1,0 +1,191 @@
+# Session Capture Options (3xx/32x)
+
+This file records the exact NetHack option settings used for newly-captured sessions.
+
+## 301..313 Non-Wizard Selfplay Agent
+
+- `seed301_archeologist_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=301 --turns=200 --role=Archeologist --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Archeologist`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed302_barbarian_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=302 --turns=200 --role=Barbarian --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Barbarian`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed303_caveman_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=303 --turns=200 --role=Caveman --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Caveman`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed304_healer_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=304 --turns=200 --role=Healer --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Healer`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed305_knight_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=305 --turns=200 --role=Knight --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Knight`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed306_monk_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=306 --turns=200 --role=Monk --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Monk`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed307_priest_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=307 --turns=200 --role=Priest --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Priest`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed308_ranger_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=308 --turns=200 --role=Ranger --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Ranger`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed309_rogue_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=309 --turns=200 --role=Rogue --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Rogue`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed310_samurai_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=310 --turns=200 --role=Samurai --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Samurai`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed311_tourist_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=311 --turns=200 --role=Tourist --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Tourist`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed312_valkyrie_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=312 --turns=200 --role=Valkyrie --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Valkyrie`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+- `seed313_wizard_selfplay200_gameplay.session.json`
+  - runner: `node selfplay/runner/c_runner.js --seed=313 --turns=200 --role=Wizard --graphics=dec --no-wizard --quiet`
+  - options:
+    - `OPTIONS=name:Agent`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Wizard`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`
+## 321..333 Scripted-Manual Wizard Sessions
+
+- `seed333_wizard_wizard_gameplay.session.json`
+  - runner: `node selfplay/runner/run_wizard_agent_session.js --seed=333 --role=Wizard --agent-turns=200 ...`
+  - plan: potions=14 teleport=Dlvl:20 wishes=blessed magic marker, blessed +2 cloak of magic resistance, blessed scroll of charging, ring of teleport control, wand of wishing
+  - options:
+    - `OPTIONS=name:Recorder`
+    - `OPTIONS=race:human`
+    - `OPTIONS=role:Wizard`
+    - `OPTIONS=gender:female`
+    - `OPTIONS=align:neutral`
+    - `OPTIONS=showexp`
+    - `OPTIONS=!autopickup`
+    - `OPTIONS=suppress_alert:3.4.3`
+    - `OPTIONS=!tutorial`
+    - `OPTIONS=symset:DECgraphics`

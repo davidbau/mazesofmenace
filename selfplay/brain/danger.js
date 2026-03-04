@@ -211,18 +211,13 @@ export function shouldEngageMonster(
         };
     }
 
-    // Strategy: FLEE MORE, FIGHT LESS
-    // Only fight when necessary (blocking path or already attacking)
-    // Target: <20% of turns in combat (down from 53%)
-    //
-    // New tactical considerations:
-    // 1. Multiple monsters = higher danger (risk of being surrounded)
-    // 2. Corridors = tactical advantage (monsters can't surround us)
-    // 3. Open rooms = tactical disadvantage (can be surrounded)
+    // Strategy: push forward early. We still avoid obviously lethal fights,
+    // but we prefer decisive melee on shallow floors to prevent flee loops
+    // that stall exploration/level progression.
 
     // CRITICAL: Never engage when outnumbered unless in a corridor
     // Being surrounded is extremely dangerous even against weak monsters
-    if (nearbyMonsterCount >= 2 && !inCorridor) {
+    if (nearbyMonsterCount >= 3 && !inCorridor) {
         return {
             shouldEngage: false,
             shouldFlee: true,
@@ -260,7 +255,15 @@ export function shouldEngageMonster(
     }
 
     if (danger === DangerLevel.HIGH) {
-        // NEVER engage high-danger monsters unless absolutely forced
+        // Early-game aggression on shallow floors with healthy HP.
+        if (dungeonLevel <= 2 && hpRatio >= 0.85 && nearbyMonsterCount <= 1) {
+            return {
+                shouldEngage: true,
+                shouldFlee: false,
+                ignore: false,
+                reason: `aggressively clearing ${monsterChar} on shallow level`,
+            };
+        }
         if (!isBlocking) {
             return {
                 shouldEngage: false,
@@ -287,17 +290,25 @@ export function shouldEngageMonster(
     }
 
     if (danger === DangerLevel.MEDIUM) {
-        // Avoid medium-danger monsters unless they're blocking
+        // Prefer engaging medium threats on shallow levels when healthy.
+        if (dungeonLevel <= 2 && hpRatio >= 0.55) {
+            return {
+                shouldEngage: true,
+                shouldFlee: false,
+                ignore: false,
+                reason: `engaging ${monsterChar} to maintain tempo on shallow level`,
+            };
+        }
         if (!isBlocking) {
             return {
                 shouldEngage: false,
                 shouldFlee: true,
                 ignore: false,
-                reason: `avoiding ${monsterChar} (medium danger, not worth the fight)`,
+                reason: `avoiding ${monsterChar} (medium danger, non-blocking)`,
             };
         }
-        // If blocking, need reasonable HP
-        if (playerHP < playerMaxHP * 0.5) {
+        // If blocking, need only modest HP.
+        if (playerHP < playerMaxHP * 0.4) {
             return {
                 shouldEngage: false,
                 shouldFlee: true,

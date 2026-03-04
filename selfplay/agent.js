@@ -534,6 +534,9 @@ export class Agent {
                     cell.type = 'door_locked'; // update door type so we know to kick it
                     cell.walkable = false; // treat as impassable for now
                     console.log(`[DOOR] Discovered door at (${adjDoor.x},${adjDoor.y}) is locked`);
+                    // Immediately queue this door for kick handling so we don't
+                    // fall back to random movement while stuck at the doorway.
+                    this.pendingLockedDoor = { x: adjDoor.x, y: adjDoor.y, attempts: 0, nonAdjacentTurns: 0 };
 
                     // Clear justOpenedDoor if we just discovered this door is locked
                     // (prevents DOOR-FIX from overwriting it to door_open)
@@ -987,7 +990,7 @@ export class Agent {
         const hasHostileMonsters = nearbyMonsters.length > 0 || adjacentMonster !== null;
 
         // Calculate retreat threshold based on threats
-        let retreatThreshold = 0.5; // Base: 50% HP
+        let retreatThreshold = 0.4; // Base: 40% HP (more aggressive)
         if (this.status && hasHostileMonsters) {
             const playerLevel = this.status.experienceLevel || 1;
             const dungeonLevel = this.status.dungeonLevel || 1;
@@ -1021,14 +1024,19 @@ export class Agent {
 
             // Adjust retreat threshold based on maximum danger
             if (maxDanger >= DangerLevel.HIGH) {
-                retreatThreshold = 0.7; // Retreat at 70% HP for HIGH danger
+                retreatThreshold = 0.55; // Retreat at 55% HP for HIGH danger
             } else if (maxDanger >= DangerLevel.MEDIUM) {
-                retreatThreshold = 0.6; // Retreat at 60% HP for MEDIUM danger
+                retreatThreshold = 0.45; // Retreat at 45% HP for MEDIUM danger
             }
 
             // On deeper levels, be more cautious
             if (dungeonLevel >= 4) {
                 retreatThreshold = Math.min(0.75, retreatThreshold + 0.1);
+            }
+
+            // On shallow levels, bias toward aggression/progression.
+            if (dungeonLevel <= 2) {
+                retreatThreshold = Math.max(0.3, retreatThreshold - 0.1);
             }
         }
 
@@ -1037,7 +1045,7 @@ export class Agent {
         if (this.status) {
             const dungeonLevel = this.status.dungeonLevel || 1;
             const xpPoints = this.status.xpPoints || 0;
-            const lowXpRetreatThreshold = 0.85;
+            const lowXpRetreatThreshold = 0.45;
             if (dungeonLevel === 2 && xpPoints <= 1 && hpPercent < lowXpRetreatThreshold && level.stairsUp.length > 0) {
                 const stairs = level.stairsUp[0];
                 if (px === stairs.x && py === stairs.y) {
@@ -1051,19 +1059,39 @@ export class Agent {
         }
 
         if (this.status && hpPercent <= retreatThreshold && hasHostileMonsters) {
-                // Try to flee to upstairs if available and not too far
                 const currentDepth = this.status?.dungeonLevel || this.dungeon.currentDepth || 1;
-                if (currentDepth > 1 && level.stairsUp.length > 0) {
+                // On Dlvl:1, downstairs is the only true escape route.
+                if (currentDepth <= 1 && level.stairsDown.length > 0) {
+                    const down = level.stairsDown[0];
+                    if (px === down.x && py === down.y) {
+                        return { type: 'descend', key: '>', reason: `emergency descent from Dlvl 1 (HP ${this.status.hp}/${this.status.hpmax})` };
+                    }
+                    const downDist = Math.abs(down.x - px) + Math.abs(down.y - py);
+                    if (downDist <= 30) {
+                        const downPath = findPath(level, px, py, down.x, down.y, { allowUnexplored: true });
+                        if (downPath.found && downPath.path.length <= 30) {
+                            return this._followPath(downPath, 'flee', `retreating to downstairs on Dlvl 1 (HP ${this.status.hp}/${this.status.hpmax})`);
+                        }
+                    }
+                }
+
+                // Try to flee to upstairs if available and not too far
+                if (level.stairsUp.length > 0) {
                     const stairs = level.stairsUp[0];
                     // If we're already at the stairs, ascend immediately
                     if (px === stairs.x && py === stairs.y) {
-                        return { type: 'ascend', key: '<', reason: `ascending to escape (HP ${this.status.hp}/${this.status.hpmax})` };
+                        if (currentDepth > 1) {
+                            return { type: 'ascend', key: '<', reason: `ascending to escape (HP ${this.status.hp}/${this.status.hpmax})` };
+                        }
+                        // On Dlvl:1 there is nowhere higher; hold the choke point.
+                        return { type: 'wait', key: '.', reason: `holding upstairs at low HP (${this.status.hp}/${this.status.hpmax})` };
                     }
                     const dist = Math.abs(stairs.x - px) + Math.abs(stairs.y - py);
-                    // If stairs are close (within 10 steps), path to them
-                    if (dist <= 10) {
-                        const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: false });
-                        if (path.found && path.path.length <= 10) {
+                    // If stairs are close, path to them.
+                    const stairRetreatRange = currentDepth <= 1 ? 30 : 10;
+                    if (dist <= stairRetreatRange) {
+                        const path = findPath(level, px, py, stairs.x, stairs.y, { allowUnexplored: currentDepth <= 1 });
+                        if (path.found && path.path.length <= stairRetreatRange) {
                             return this._followPath(path, 'flee', `fleeing to upstairs (HP ${this.status.hp}/${this.status.hpmax})`);
                         }
                     }
@@ -1082,6 +1110,11 @@ export class Agent {
         if (this.status && this.status.hp < this.status.hpmax) {
             // hpPercent, nearbyMonsters, adjacentMonster already declared above
             const monstersNearby = nearbyMonsters.length > 0 || adjacentMonster !== null;
+            const frontierPressure = level.getExplorationFrontier().length;
+            const progressPriority =
+                dungeonLevel <= 1 &&
+                level.stairsDown.length === 0 &&
+                frontierPressure >= 20;
 
             // Check if HP increased since last check (natural regen occurred)
             if (this.lastHP !== null && this.status.hp > this.lastHP) {
@@ -1099,13 +1132,13 @@ export class Agent {
             // - In corridor: good (monsters can't surround)
             // - Dead-end: moderate (trapped but monsters can't surround)
             // - Open room: risky (can be surrounded)
-            let maxRestTurns = 100;
+            let maxRestTurns = 35;
             let safetyBonus = '';
             if (onStairs) {
-                maxRestTurns = 150; // Extra time on stairs
+                maxRestTurns = 60; // Extra time on stairs, but keep momentum
                 safetyBonus = ' (on stairs - safe)';
             } else if (inCorridor) {
-                maxRestTurns = 120; // Good safety in corridors
+                maxRestTurns = 50; // Good safety in corridors
                 safetyBonus = ' (in corridor)';
             }
 
@@ -1114,16 +1147,18 @@ export class Agent {
             // Moderate HP < 70%: rest for shorter time
             // Note: These thresholds MUST be higher than combat engagement thresholds
             // to prevent flee-loops where agent can't rest but won't fight
-            if (hpPercent <= 0.5 && !monstersNearby && this.restTurns < maxRestTurns) {
+            if (hpPercent <= 0.45 && !monstersNearby && this.restTurns < maxRestTurns) {
                 this.restTurns++;
                 return { type: 'rest', key: '.', reason: `HP low, resting (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/${maxRestTurns})${safetyBonus}` };
-            } else if (hpPercent < 0.7 && !monstersNearby && this.restTurns < Math.min(50, maxRestTurns)) {
+            } else if (hpPercent < 0.55 && !monstersNearby &&
+                       (!progressPriority || hpPercent < 0.5) &&
+                       this.restTurns < Math.min(18, maxRestTurns)) {
                 this.restTurns++;
-                return { type: 'rest', key: '.', reason: `resting to heal (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/50)${safetyBonus}` };
+                return { type: 'rest', key: '.', reason: `resting to heal (${this.status.hp}/${this.status.hpmax}, ${this.restTurns}/18)${safetyBonus}` };
             }
 
             // If we've rested enough, give up and continue (HP will heal while exploring)
-            if (this.restTurns >= 50) {
+            if (this.restTurns >= 20) {
                 this.restTurns = 0; // Reset for next time
             }
         } else {
@@ -3056,7 +3091,7 @@ export class Agent {
         // proactively probe doors even without classic stuck signals.
         const prolongedDlvl1NoStairs =
             (this.dungeon.currentDepth || this.status?.dungeonLevel || 1) <= 1 &&
-            this.turnNumber > 160 &&
+            this.turnNumber > 40 &&
             exploredPercent > 0.08 &&
             level.stairsDown.length === 0;
         if ((frontier.length > 25 && this.levelStuckCounter > 20) || highCoverageNoDoors || desperatelyTrapped || prolongedDlvl1NoStairs) {
