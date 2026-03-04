@@ -29,14 +29,14 @@ import {
 import { doname, xname, mkcorpstat, mksobj } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
 import {
-    x_monnam, Monnam, canseemon, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
+    x_monnam, Monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
     throws_rocks, is_unicorn,
 } from './mondata.js';
 import {
     mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
     AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY, MZ_HUMAN, MZ_LARGE,
 } from './monsters.js';
-import { distmin, dist2, mondead, BOLT_LIM, flush_screen } from './monutil.js';
+import { distmin, dist2, mondead, BOLT_LIM, flush_screen, canSeeMonsterForMap } from './monutil.js';
 import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './stackobj.js';
 import { corpse_chance } from './mon.js';
@@ -470,7 +470,7 @@ export async function monshoot(mon, otmp, mwep, map, player, display, game, mtar
     let hitPlayer = false;
     let promptedForTopline = false;
 
-    if (display && canseemon(mon, player, game?.fov)) {
+    if (display && canSeeMonsterForMap(mon, map, player, game?.fov)) {
         const targetName = mtarg ? ` at the ${x_monnam(mtarg)}` : '';
         await display.putstr_message(`The ${x_monnam(mon)} throws ${thrownObjectName(otmp, player)}${targetName}!`);
     }
