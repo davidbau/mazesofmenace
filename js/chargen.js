@@ -217,7 +217,9 @@ export async function maybeDoTutorial(game) {
     start_menu(win, MENU_BEHAVE_STANDARD);
     add_menu(win, null, { ival: 'y' }, 'y'.charCodeAt(0), 0, ATR_NONE, 0, 'Yes, do a tutorial', 0);
     add_menu(win, null, { ival: 'n' }, 'n'.charCodeAt(0), 0, ATR_NONE, 0, 'No, just start play', 0);
-    end_menu(win, ' Do you want a tutorial?');
+    add_menu(win, null, null, 0, 0, ATR_NONE, 0, '', 0);  // C ref: options.c add_menu_str(win, "")
+    add_menu(win, null, null, 0, 0, ATR_NONE, 0, 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.', 0);
+    end_menu(win, 'Do you want a tutorial?');  // C ref: options.c — no leading space
     const sel = await select_menu(win, PICK_ONE);
     destroy_nhwindow(win);
     if (sel && sel[0].identifier.ival === 'y') {

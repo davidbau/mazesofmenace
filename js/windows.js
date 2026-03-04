@@ -193,7 +193,7 @@ export function end_menu(win, prompt) {
     w.prompt = prompt ?? '';
     let autoChar = 'a'.charCodeAt(0);
     for (const item of w.mlist) {
-        if (!item.ch) {
+        if (!item.ch && item.id !== null) {  // C ref: only selectable items get auto-assigned
             item.ch = autoChar;
             if (autoChar === 'z'.charCodeAt(0))      autoChar = 'A'.charCodeAt(0);
             else if (autoChar === 'Z'.charCodeAt(0)) autoChar = 0; // exhausted
@@ -208,9 +208,16 @@ function buildMenuLines(w) {
     if (w.prompt) lines.push(w.prompt);
     lines.push('');
     for (const item of w.mlist) {
-        const sel = item.ch ? String.fromCharCode(item.ch) + ' - ' : '    ';
-        lines.push(sel + item.str);
+        // C ref: tty_add_menu() — non-selectable items (id===null, a_void==0)
+        // store str as-is; selectable items store "%c - str". Render to match.
+        if (item.id === null) {
+            lines.push(item.str);          // add_menu_str equivalent: raw text, no prefix
+        } else {
+            const sel = item.ch ? String.fromCharCode(item.ch) + ' - ' : '    ';
+            lines.push(sel + item.str);
+        }
     }
+    lines.push('(end)');  // C ref: wintty.c morestr for single-page menus
     return lines;
 }
 
