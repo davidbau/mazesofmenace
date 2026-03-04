@@ -313,7 +313,9 @@ export const themeroom_fills = [
       name: "Teleportation hub",
       contents: async function(rm) {
          const locs = selection.room().filter_mapchar(".");
-         for (let i = 1; i <= 2 + rn2(3); i++) {
+         // Lua numeric-for evaluates the upper bound once at loop entry.
+         const trapCount = 2 + rn2(3);
+         for (let i = 1; i <= trapCount; i++) {
             const pos = locs.rndcoord(1);
             // JS note: selection.room() returns absolute coords, no adjustment needed
             // (unlike Lua which returns room-relative coords)
