@@ -4,6 +4,46 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
+const keylogDatetimeCache = new Map();
+
+function isFourteenDigitDatetime(value) {
+    return typeof value === 'string' && /^\d{14}$/.test(value);
+}
+
+function datetimeFromKeylogPath(keylogPath) {
+    if (!keylogPath || typeof keylogPath !== 'string') return null;
+    const resolved = resolve(keylogPath);
+    if (keylogDatetimeCache.has(resolved)) return keylogDatetimeCache.get(resolved);
+    let out = null;
+    try {
+        if (existsSync(resolved)) {
+            const firstLine = readFileSync(resolved, 'utf8').split(/\r?\n/, 1)[0] || '';
+            if (firstLine.trim()) {
+                const row = JSON.parse(firstLine);
+                if (row?.type === 'meta' && isFourteenDigitDatetime(row?.datetime)) {
+                    out = row.datetime;
+                }
+            }
+        }
+    } catch {
+        out = null;
+    }
+    keylogDatetimeCache.set(resolved, out);
+    return out;
+}
+
+function inferSessionDatetime(raw) {
+    const fromOptions = raw?.options?.datetime;
+    if (isFourteenDigitDatetime(fromOptions)) return fromOptions;
+    const fromRegen = raw?.regen?.datetime;
+    if (isFourteenDigitDatetime(fromRegen)) return fromRegen;
+    const keylog = raw?.regen?.keylog;
+    if (typeof keylog === 'string' && keylog.length > 0) {
+        return datetimeFromKeylogPath(keylog);
+    }
+    return null;
+}
+
 export function stripAnsiSequences(text) {
     if (!text) return '';
     return String(text)
@@ -245,7 +285,11 @@ export function normalizeSession(raw, meta = {}) {
     const source = raw?.source || 'unknown';
     const seed = Number.isInteger(raw?.seed) ? raw.seed : 0;
     const type = deriveType(raw, file);
-    const options = raw?.options || {};
+    const options = { ...(raw?.options || {}) };
+    const inferredDatetime = inferSessionDatetime(raw);
+    if (!options.datetime && inferredDatetime) {
+        options.datetime = inferredDatetime;
+    }
 
     const sourceSteps = Array.isArray(raw?.steps) ? raw.steps : [];
     const startupFromStep = sourceSteps.length > 0

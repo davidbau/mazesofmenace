@@ -64,6 +64,25 @@ const MAPS_DIR = join(__dirname, 'maps');
 const SKIP_SESSIONS = new Set();
 const DEFAULT_FIXED_DATETIME = '20000110090000';
 
+function resolveSessionFixedDatetime(session) {
+    const candidate = session?.meta?.options?.datetime || session?.meta?.regen?.datetime;
+    if (typeof candidate === 'string' && /^\d{14}$/.test(candidate)) return candidate;
+    return null;
+}
+
+async function withSessionFixedDatetime(session, fn) {
+    const prev = process.env.NETHACK_FIXED_DATETIME;
+    const chosen = resolveSessionFixedDatetime(session) || prev || DEFAULT_FIXED_DATETIME;
+    if (chosen) process.env.NETHACK_FIXED_DATETIME = chosen;
+    else delete process.env.NETHACK_FIXED_DATETIME;
+    try {
+        return await fn();
+    } finally {
+        if (prev == null) delete process.env.NETHACK_FIXED_DATETIME;
+        else process.env.NETHACK_FIXED_DATETIME = prev;
+    }
+}
+
 function createReplayResult(session) {
     const result = createSessionResult({
         file: session.file,
@@ -685,15 +704,17 @@ async function runSpecialResult(session) {
 }
 
 export async function runSessionResult(session) {
-    ensureSessionGlobals();
-    if (session.meta.type === 'chargen') return runChargenResult(session);
-    if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
-        return runChargenResult(session);
-    }
-    if (session.meta.type === 'interface') return runInterfaceResult(session);
-    if (session.meta.type === 'map') return runMapResult(session);
-    if (session.meta.type === 'special') return runSpecialResult(session);
-    return runGameplayResult(session);
+    return withSessionFixedDatetime(session, async () => {
+        ensureSessionGlobals();
+        if (session.meta.type === 'chargen') return runChargenResult(session);
+        if (session.meta.type === 'interface' && session.meta.regen?.subtype === 'chargen') {
+            return runChargenResult(session);
+        }
+        if (session.meta.type === 'interface') return runInterfaceResult(session);
+        if (session.meta.type === 'map') return runMapResult(session);
+        if (session.meta.type === 'special') return runSpecialResult(session);
+        return runGameplayResult(session);
+    });
 }
 
 function summarizeTimeoutProgress(progress) {
