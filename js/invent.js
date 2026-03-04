@@ -1112,7 +1112,16 @@ async function encumber_msg_transition(prevCap, newCap) {
 export async function hold_another_object(obj, player, drop_fmt, drop_arg, hold_msg) {
     const prevCap = near_capacity_for_inventory(player);
     const oquan = obj?.quan || 0;
-    const result = await addinv(obj, player);
+    // Inline addinv with withMeta to detect compare-discovery (C ref: invent.c merged())
+    addinv_core1(obj, player);
+    const addResult = player.addToInventory(obj, { withMeta: true });
+    const result = (addResult?.item != null) ? addResult.item : (addResult ?? obj);
+    await addinv_core2(result, player);
+    carry_obj_effects(result);
+    // C ref: invent.c merged() — "You learn more about your items by comparing them."
+    if (addResult?.discoveredByCompare) {
+        await pline('You learn more about your items by comparing them.');
+    }
     if (result && (hold_msg || drop_fmt)) {
         await prinv(hold_msg || null, result, oquan, player);
     }
@@ -1663,7 +1672,9 @@ function xprname_simple(obj) {
 export async function prinv(prefix, obj, quan, player) {
     if (!prefix) prefix = '';
     const let_char = obj_to_let(obj);
-    const line = xprname(obj, null, let_char, true, 0, quan, player);
+    // C ref: invent.c prinv() — dot suppressed when showing partial stack
+    const total_of = quan && (quan < (obj?.quan ?? 0));
+    const line = xprname(obj, null, let_char, !total_of, 0, quan, player);
     await pline('%s%s%s', prefix, prefix ? ' ' : '', line);
 }
 

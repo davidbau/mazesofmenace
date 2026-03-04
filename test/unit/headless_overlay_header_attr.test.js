@@ -14,11 +14,11 @@ test('headless overlay menu renders first header line in inverse video', () => {
         'b - an armor piece',
     ]);
 
-    assert.equal(display.attrs[0][offx], 0);
-    assert.equal(display.attrs[0][offx + 1], 1);
+    // C ref: wintty.c — category header leading space is in the pre-cleared area;
+    // the text ("Weapons") starts at offx in inverse video (not offx+1).
+    assert.equal(display.attrs[0][offx], 1);
     assert.equal(display.attrs[1][offx], 0);
-    assert.equal(display.attrs[2][offx], 0);
-    assert.equal(display.attrs[2][offx + 1], 1);
+    assert.equal(display.attrs[2][offx], 1);
 });
 
 test('headless overlay menu caps right-side offset at C tty max column', () => {

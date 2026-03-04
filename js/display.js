@@ -935,11 +935,16 @@ span.nh-cursor {
             if (line.length > maxcol) maxcol = line.length;
         }
         // C ref: wintty.c cw->offx = max(10, cols - maxcol - 1).
-        // C's maxcol includes +1 padding beyond the longest line, so for JS
+        // C's maxcol includes +2 padding (space + end), so for JS
         // (where maxcol is the raw longest line length) we use -2.
-        const offx = Math.max(10, this.cols - maxcol - 2);
+        let offx = Math.max(10, this.cols - maxcol - 2);
 
-        const menuRows = Math.min(lines.length, STATUS_ROW_1);
+        // C ref: wintty.c line 1926 — force full-screen when offx hits the
+        // minimum (10) or menu fills the terminal height (maxrow >= rows).
+        const fullScreen = (offx === 10 || lines.length >= this.rows);
+        if (fullScreen) offx = 1;
+
+        const menuRows = Math.min(lines.length, fullScreen ? this.rows : STATUS_ROW_1);
         // C tty parity: clear only rows occupied by the menu itself.
         for (let r = 0; r < menuRows; r++) {
             for (let c = Math.max(0, offx - 1); c < this.cols; c++) {
@@ -950,13 +955,12 @@ span.nh-cursor {
         for (let i = 0; i < menuRows; i++) {
             const line = lines[i];
             const isHeader = isCategoryHeader(line);
-            if (isHeader && line.startsWith(' ')) {
-                this.setCell(offx, i, ' ', CLR_WHITE, 0);
-                this.putstr(offx + 1, i, line.slice(1), CLR_WHITE, 1);
-            } else if (isHeader) {
-                this.putstr(offx, i, line, CLR_WHITE, 1);
+            const isSingleSpacePrefix = line.startsWith(' ') && (line.length < 2 || line[1] !== ' ');
+            const trimmed = isSingleSpacePrefix ? line.slice(1) : line;
+            if (isHeader) {
+                this.putstr(offx, i, trimmed, CLR_WHITE, 1);
             } else {
-                this.putstr(offx, i, line, CLR_WHITE, 0);
+                this.putstr(offx, i, trimmed, CLR_WHITE, 0);
             }
         }
         return offx;

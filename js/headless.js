@@ -699,11 +699,19 @@ export class HeadlessDisplay {
             if (line.length > maxcol) maxcol = line.length;
         }
         // C ref: wintty.c cw->offx = max(10, cols - maxcol - 1).
-        // C's maxcol includes +1 padding beyond the longest line, so for JS
+        // C's maxcol includes +2 padding (space + end), so for JS
         // (where maxcol is the raw longest line length) we use -2.
-        const offx = Math.max(10, this.cols - maxcol - 2);
+        let offx = Math.max(10, this.cols - maxcol - 2);
 
-        const menuRows = Math.min(lines.length, STATUS_ROW_1);
+        // C ref: wintty.c line 1926 — force full-screen when offx hits the
+        // minimum (10) or menu fills the terminal height (maxrow >= rows).
+        // In C, full-screen uses offx=0 then putchar(' ') before each item.
+        // In JS, use offx=1 so the clearing loop places a space at col 0
+        // and putstr places text at col 1 — matching C's output.
+        const fullScreen = (offx === 10 || lines.length >= this.rows);
+        if (fullScreen) offx = 1;
+
+        const menuRows = Math.min(lines.length, fullScreen ? this.rows : STATUS_ROW_1);
         // C tty parity: clear only rows occupied by the menu itself.
         for (let r = 0; r < menuRows; r++) {
             for (let c = Math.max(0, offx - 1); c < this.cols; c++) {
@@ -719,13 +727,13 @@ export class HeadlessDisplay {
             const isHeader = (i === 0 && line.trim().length > 0) || isCategoryHeader(line);
             if (isHeader) {
                 // C ref: wintty.c — category headers have a single leading
-                // space that is part of the clear region, not inverse video.
+                // space that is part of the pre-cleared region, not inverse video.
+                // The text itself (e.g. "Weapons") starts at offx in inverse.
                 // Column headers (spell list "    Name...") have structural
                 // whitespace that IS rendered in inverse.
                 const isSingleSpacePrefix = line.startsWith(' ') && (line.length < 2 || line[1] !== ' ');
                 const trimmed = isSingleSpacePrefix ? line.slice(1) : line;
-                const pad = line.length - trimmed.length;
-                this.putstr(offx + pad, i, trimmed, CLR_GRAY, 1);
+                this.putstr(offx, i, trimmed, CLR_GRAY, 1);
             } else {
                 this.putstr(offx, i, line, CLR_GRAY, 0);
             }
