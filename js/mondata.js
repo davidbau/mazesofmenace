@@ -351,7 +351,7 @@ export function is_pet(mon) { return !!mon.tame; }
 
 // C ref: #define attacktype(ptr, atyp) — check if monster has this attack type
 export function attacktype(ptr, atyp) {
-    if (!ptr.attacks) return false;
+    if (!ptr || !ptr.attacks) return false;
     for (const atk of ptr.attacks) {
         if (atk.type === atyp) return true;
     }
@@ -538,7 +538,7 @@ export function passes_bars(mdat) {
 // Returns true if monster has an attack of type atyp dealing damage dtyp.
 // atyp == AT_ANY matches any attack type.
 export function dmgtype_fromattack(ptr, dtyp, atyp) {
-    if (!ptr.attacks) return false;
+    if (!ptr || !ptr.attacks) return false;
     for (const atk of ptr.attacks) {
         const adtyp = atk.adtyp ?? atk.damage;
         const aatyp = atk.aatyp ?? atk.type;
@@ -576,7 +576,7 @@ export function noattacks(ptr) {
 // Returns true if monster has any distance attack (DISTANCE_ATTK_TYPE macro).
 // DISTANCE_ATTK_TYPE = AT_SPIT || AT_BREA || AT_MAGC || AT_GAZE
 export function ranged_attk(ptr) {
-    if (!ptr.attacks) return false;
+    if (!ptr || !ptr.attacks) return false;
     for (const atk of ptr.attacks) {
         const t = atk.type;
         if (t === AT_SPIT || t === AT_BREA || t === AT_MAGC || t === AT_GAZE)

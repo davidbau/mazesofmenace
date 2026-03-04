@@ -215,8 +215,8 @@ export class Display {
         const style = document.createElement('style');
         style.textContent = `
 @keyframes nh-cursor-blink {
-  0%, 49% { border-bottom: 2px solid rgba(255,255,255,0.85); }
-  50%, 100% { border-bottom: none; }
+  0%, 49% { box-shadow: inset 0 -3px 0 0 rgba(255,255,255,0.85); }
+  50%, 100% { box-shadow: none; }
 }
 span.nh-cursor {
   animation: nh-cursor-blink 0.8s step-end infinite;
