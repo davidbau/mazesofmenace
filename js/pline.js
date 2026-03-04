@@ -54,8 +54,8 @@ export function set_msg_dir(dir) {
 
 // Autotranslated from pline.c:92
 export function set_msg_xy(x, y) {
-  a11y.msg_loc.x = x;
-  a11y.msg_loc.y = y;
+  _pendingContext.x = x;
+  _pendingContext.y = y;
 }
 
 function formatLine(format, args) {

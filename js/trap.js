@@ -60,9 +60,23 @@ import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
 import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, You } from './pline.js';
+import { pline, You, pline_mon, You_hear } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
+import { dist2 } from './monutil.js';
 import { an } from './objnam.js';
+
+// C ref: trap.c:2990 trapnote() — return note name string with "an/a" prefix
+const tnnames = [
+    'C note', 'D flat', 'D note', 'E flat',
+    'E note', 'F note', 'F sharp', 'G note',
+    'G sharp', 'A note', 'B flat', 'B note',
+];
+function trapnote(trap) {
+    const tn = tnnames[trap.tnote] || 'C note';
+    return an(tn);  // "an F note", "a C note", etc.
+}
+
+const BOLT_LIM = 8;
 
 // Trap result constants
 const Trap_Effect_Finished = 0;
@@ -379,15 +393,28 @@ function trapeffect_rocktrap_mon(mon, trap, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_sqky_board_mon(mon, trap, player, fov) {
+async function trapeffect_sqky_board_mon(mon, trap, player, fov) {
     if (m_in_air(mon))
         return Trap_Effect_Finished;
     // C ref: trap.c:1435-1465 — monster steps on squeaky board
     const in_sight = canseemon(mon, player, fov);
     const isDeaf = !!(player?.Deaf || player?.deaf);
-    if (in_sight && !isDeaf) {
-        // Player hears the squeak and sees the board location
-        seetrap(trap);
+    const note = trapnote(trap);
+    if (in_sight) {
+        if (!isDeaf) {
+            await pline_mon(mon, 'A board beneath %s squeaks %s loudly.',
+                            mon_nam(mon), note);
+            seetrap(trap);
+        } else if (!is_mindless(mons[mon.mndx])) {
+            await pline_mon(mon, '%s stops momentarily and appears to cringe.',
+                            Monnam(mon));
+        }
+    } else {
+        // C ref: trap.c:1450-1462 — distant squeak sound
+        const range = couldsee(mon.mx, mon.my) ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+        const mdist = dist2(player.x, player.y, mon.mx, mon.my);
+        await You_hear('%s squeak %s.', note,
+                       mdist <= range * range ? 'nearby' : 'in the distance');
     }
     // C ref: wake_nearto(mtmp->mx, mtmp->my, 40) — not ported
     return Trap_Effect_Finished;
@@ -904,7 +931,7 @@ async function trapeffect_selector_mon(mon, trap, trflags, map, player, display,
     case ROCKTRAP:
         return trapeffect_rocktrap_mon(mon, trap, map, player);
     case SQKY_BOARD:
-        return trapeffect_sqky_board_mon(mon, trap, player, fov);
+        return await trapeffect_sqky_board_mon(mon, trap, player, fov);
     case BEAR_TRAP:
         return trapeffect_bear_trap_mon(mon, trap, map, player);
     case SLP_GAS_TRAP:

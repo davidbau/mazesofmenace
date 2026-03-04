@@ -87,6 +87,7 @@ function MGIVENNAME(mon) {
 const MALE = 0;
 const FEMALE = 1;
 const NEUTRAL = 2;
+const NUM_MGENDERS = 3;
 
 export function Mgender(mtmp) {
     if (mtmp?.female) return FEMALE;
@@ -100,8 +101,8 @@ export function Mgender(mtmp) {
 // ========================================================================
 // Autotranslated from do_name.c:1302
 export function pmname(pm, mgender) {
-  if (mgender < MALE || mgender >= NUM_MGENDERS || !pm.pmnames[mgender]) mgender = NEUTRAL;
-  return pm.pmnames[mgender];
+  // JS monsters have a single .name field rather than C's pmnames[] array per gender
+  return pm?.name || '';
 }
 
 // ========================================================================
@@ -110,7 +111,7 @@ export function pmname(pm, mgender) {
 // ========================================================================
 // Autotranslated from do_name.c:1312
 export function mon_pmname(mon) {
-  return pmname(mon.data, Mgender(mon));
+  return pmname(mon.type || mon.data, Mgender(mon));
 }
 
 // ========================================================================
