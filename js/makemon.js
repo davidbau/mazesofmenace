@@ -15,10 +15,9 @@ import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './config.js';
 import { couldsee } from './vision.js';
 
 // Registration for get_shop_item to avoid circular dependency with shknam.js.
-// shknam.js calls registerGetShopItem() during initialization.
-// Use `var` instead of `let` to avoid TDZ: ES module import hoisting means
-// shknam.js may call registerGetShopItem() before this line executes.
-var _getShopItem = null;
+// Keep this uninitialized: in ESM cycles shknam.js may call registerGetShopItem()
+// before makemon.js body runs, and assigning here would clobber that registration.
+var _getShopItem;
 export function registerGetShopItem(fn) { _getShopItem = fn; }
 import {
     mons, LOW_PM, SPECIAL_PM, MAXMCLASSES,
@@ -1658,6 +1657,9 @@ function set_mimic_sym(mndx, x, y, map, depth) {
             s_sym = S_MIMIC_DEF;
             // fall through to assign_sym below
         } else {
+            if (typeof _getShopItem !== 'function') {
+                throw new Error('get_shop_item is not registered (makemon/shknam init order)');
+            }
             s_sym = _getShopItem(rt - SHOPBASE);
             if (s_sym < 0) {
                 // Specific item type: appear = -s_sym (no goto assign_sym)
