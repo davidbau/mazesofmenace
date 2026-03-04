@@ -415,6 +415,7 @@ export async function getlin(prompt, display) {
             // C-style prompt cleanup after accepting typed input.
             if (disp) {
                 disp.topMessage = null;
+                disp.messageNeedsMore = false;
                 if (typeof disp.clearRow === 'function') {
                     disp.clearRow(0);
                 }
@@ -423,6 +424,7 @@ export async function getlin(prompt, display) {
         } else if (ch === 27) { // ESC
             if (disp) {
                 disp.topMessage = null;
+                disp.messageNeedsMore = false;
                 if (typeof disp.clearRow === 'function') {
                     disp.clearRow(0);
                 }
