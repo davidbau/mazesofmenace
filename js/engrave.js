@@ -158,13 +158,23 @@ function wipeoutEngravingText(text, cnt) {
 // Centralized engraving wiping/erosion.
 export async function wipe_engr_at(map, x, y, cnt, magical = false) {
     if (!map || !Array.isArray(map.engravings)) return;
+    const step = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';
     await withRngTag('wipe_engr_at(engrave.js:139)', () => {
         const idx = map.engravings.findIndex((e) => e && e.x === x && e.y === y);
-        if (idx < 0) return;
+        if (idx < 0) {
+            engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`, 'engr=none');
+            return;
+        }
         const engr = map.engravings[idx];
-        if (!engr || engr.type === 'headstone' || engr.nowipeout) return;
+        if (!engr || engr.type === 'headstone' || engr.nowipeout) {
+            engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`,
+                `engr=${engr ? engr.type : 'null'}`, `nowipeout=${engr?.nowipeout ? 1 : 0}`, 'skip=1');
+            return;
+        }
         // C harness parity: only emit wipe when an engraving actually exists
         // and is eligible to be wiped.
+        engrTrace(`step=${step}`, `wipe_at(${x},${y})`, `cnt=${cnt}`, `magical=${magical ? 1 : 0}`,
+            `engr=${engr.type}`, `len=${String(engr.text || '').length}`);
         pushRngLogEntry(`^wipe[${x},${y}]`);
         const loc = map.at ? map.at(x, y) : null;
         const isIce = !!loc && loc.typ === ICE;
