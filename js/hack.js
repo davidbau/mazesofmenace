@@ -30,7 +30,7 @@ import { engr_at, read_engr_at, maybeSmudgeEngraving, u_wipe_engr } from './engr
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage } from './shk.js';
 import { observeObject } from './discovery.js';
-import { placeFloorObject, place_object } from './stackobj.js';
+import { place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { dosearch0 } from './detect.js';
@@ -297,14 +297,18 @@ export function moverock_done(_sx, _sy, _map) {
 export async function moverock_core(sx, sy, dx, dy, player, map, display, game) {
     const otmp = sobj_at(BOULDER, sx, sy, map);
     if (!otmp) return 0;
+    // C ref: hack.c moverock_core() — ensure this boulder is top object.
+    const here = map.objectsAt ? map.objectsAt(sx, sy) : [];
+    if (here.length > 0 && here[here.length - 1] !== otmp) movobj(otmp, sx, sy, map);
     const rx = sx + dx;
     const ry = sy + dy;
     if (await cannot_push(otmp, rx, ry, map, display)) {
         return -1;
     }
+    // C ref: hack.c dopush() — strength exercise happens before moving rock.
+    if (player && !player.throwsRocks) await exercise(player, A_STR, true);
     await dopush(sx, sy, rx, ry, otmp, false, map, display);
     if (game) game.lastMoveDir = [dx, dy];
-    if (player) await exercise(player, A_STR, true);
     return 1;
 }
 
@@ -1650,7 +1654,11 @@ function closed_door(x, y, map) {
 // C ref: hack.c sobj_at() — find object of given type at (x,y)
 function sobj_at(otyp, x, y, map) {
     const objs = map.objectsAt ? map.objectsAt(x, y) : [];
-    for (const obj of objs) if (obj.otyp === otyp) return obj;
+    // C ref: floor object chain is scanned from top object downward.
+    for (let i = objs.length - 1; i >= 0; i--) {
+        const obj = objs[i];
+        if (obj.otyp === otyp) return obj;
+    }
     return null;
 }
 
@@ -2861,10 +2869,14 @@ export function revive_nasty(_x, _y, _msg, _map) {
 
 // C ref: hack.c movobj() — move an object to new position
 export function movobj(obj, ox, oy, map) {
-    if (map && map.removeObject) map.removeObject(obj);
-    obj.ox = ox;
-    obj.oy = oy;
-    if (map) placeFloorObject(map, obj);
+    if (!obj || !map?.objects) return;
+    // C ref: remove_object() — unlink from floor list without logging ^remove.
+    const idx = map.objects.indexOf(obj);
+    if (idx >= 0) map.objects.splice(idx, 1);
+    maybe_unhide_at(obj.ox, obj.oy, map);
+    newsym(obj.ox, obj.oy);
+    place_object(obj, ox, oy, map);
+    newsym(ox, oy);
 }
 
 // C ref: hack.c dosinkfall() — fall into a sink while levitating
