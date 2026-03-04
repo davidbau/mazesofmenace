@@ -11,7 +11,10 @@ import { PM_GOLD_GOLEM, PM_LONG_WORM, S_EEL, S_WORM_TAIL } from './monsters.js';
 import { is_hider, hides_under } from './mondata.js';
 import { pline, You, Your, You_feel, You_see, pline_The,
          Norep, There, set_msg_xy } from './pline.js';
-import { BOLT_LIM, map_invisible, newsym, helpless as monHelpless, flush_screen } from './monutil.js';
+import {
+    BOLT_LIM, map_invisible, newsym, helpless as monHelpless, flush_screen,
+    canSpotMonsterForMap, senseMonsterForMap,
+} from './monutil.js';
 import { findgold } from './steal.js';
 import { observeObject } from './discovery.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
@@ -89,13 +92,6 @@ function M_AP_TYPE(mtmp) {
 function Is_rogue_level() { return false; }
 function random_object(rn2func) { return rn2func(400) || 1; }
 function random_monster(rn2func) { return rn2func(400); }
-function canspotmon(mtmp, map, player) {
-    if (!mtmp || !player) return false;
-    if (mtmp.minvis && !player.seeInvisible) return false;
-    if (mtmp.mundetected) return false;
-    return true;
-}
-function sensemon() { return false; }
 function warning_of() { return false; }
 function seemimic_local(mtmp) {
     if (mtmp && mtmp.m_ap_type) mtmp.m_ap_type = 0;
@@ -823,7 +819,7 @@ function findone_fn(zx, zy, found_p, player, map, display) {
     if (mtmp) detect_obj_traps(mtmp.minvent || [], true, 0, found_p, player, map, display);
     if (u_at(player, zx, zy))
         detect_obj_traps(player.inventory || [], true, 0, found_p, player, map, display);
-    if (mtmp && (!canspotmon(mtmp, map, player) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
+    if (mtmp && (!canSpotMonsterForMap(mtmp, map, player) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
         if (M_AP_TYPE(mtmp)) { seemimic_local(mtmp); found_p.num_mons++; }
         else if (mtmp.mundetected) {
             const mdat = mtmp.type || mtmp.data || {};
@@ -831,7 +827,7 @@ function findone_fn(zx, zy, found_p, player, map, display) {
                 mtmp.mundetected = 0; newsym(zx, zy); found_p.num_mons++;
             }
         }
-        if (!canspotmon(mtmp, map, player)) {
+        if (!canSpotMonsterForMap(mtmp, map, player)) {
             map_invisible(map, zx, zy, player); found_p.num_invis++;
         }
     }
@@ -957,7 +953,7 @@ export async function mfind0(mtmp, via_warning, player, map, display) {
     if (M_AP_TYPE(mtmp)) {
         seemimic_local(mtmp); found_something = true;
     } else {
-        found_something = !canspotmon(mtmp, map, player);
+        found_something = !canSpotMonsterForMap(mtmp, map, player);
         const mdat = mtmp.type || mtmp.data || {};
         if (mtmp.mundetected && (is_hider(mdat) || hides_under(mdat) || mdat.mlet === S_EEL)) {
             if (via_warning && found_something) {
@@ -970,15 +966,15 @@ export async function mfind0(mtmp, via_warning, player, map, display) {
         newsym(x, y);
     }
     if (found_something) {
-        if (!canspotmon(mtmp, map, player)) {
+        if (!canSpotMonsterForMap(mtmp, map, player)) {
             const loc = map.at(x, y);
             if (loc && loc.mem_invis) return -1;
         }
         await exercise(player, A_WIS, true);
-        if (!canspotmon(mtmp, map, player)) {
+        if (!canSpotMonsterForMap(mtmp, map, player)) {
             map_invisible(map, x, y, player); set_msg_xy(x, y);
             await You_feel("an unseen monster!");
-        } else if (!sensemon(mtmp, player)) {
+        } else if (!senseMonsterForMap(mtmp, map, player)) {
             set_msg_xy(x, y); await You("find a monster.");
         }
         return 1;

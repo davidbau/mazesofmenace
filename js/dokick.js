@@ -110,7 +110,7 @@ import { set_apparxy } from './monmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { finish_meating } from './dogmove.js';
 import { is_watch } from './mondata.js';
-import { map_invisible } from './monutil.js';
+import { map_invisible, canSpotMonsterForMap } from './monutil.js';
 import { water_damage, mintrap_postmove } from './trap.js';
 
 // ============================================================================
@@ -187,11 +187,7 @@ function martial_bonus(player) {
 function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
 function verysmall(ptr) { return (ptr.msize || 0) < MZ_SMALL; }
 function canspotmon(mon, player, map, fov) {
-    // simplified — if not invisible or player can see invisible
-    if (!mon || mon.dead) return false;
-    if (mon.minvis && !player.seeInvisible) return false;
-    if (player.blind) return false;
-    return true;
+    return canSpotMonsterForMap(mon, map, player, fov);
 }
 
 // C: M_AP_TYPE(mon) — check mimicry type

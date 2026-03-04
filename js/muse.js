@@ -19,7 +19,7 @@ import { isok, STAIRS, LADDER, SCORR, CORR, ACCESSIBLE,
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, pline_mon, You_hear, verbalize } from './pline.js';
 import { dist2, distmin, BOLT_LIM, mondead, mpickobj, mdrop_obj,
-         newsym, map_invisible, monnear } from './monutil.js';
+         newsym, map_invisible, monnear, canSpotMonsterForMap } from './monutil.js';
 import { is_animal, is_mindless, nohands, is_mercenary, is_unicorn,
          is_floater, is_flyer, throws_rocks, passes_walls,
          haseyes, is_undead, poly_when_stoned,
@@ -275,7 +275,7 @@ function u_at(x, y, player) {
 
 // C ref: canspotmon(mon) — can hero see or sense the monster?
 function canspotmon(mon, player, map, fov) {
-    return canseemon(mon, player, fov);
+    return canSpotMonsterForMap(mon, map, player, fov);
 }
 
 // C ref: m_at(x, y) — monster at position

@@ -25,7 +25,7 @@ import {
 import { PM_GUARD, PM_CROESUS } from './monsters.js';
 import { COIN_CLASS, ROCK, BOULDER, TIN_WHISTLE, GOLD_PIECE } from './objects.js';
 import { pline, pline_The, You, You_hear, You_see, verbalize } from './pline.js';
-import { newsym, map_invisible } from './monutil.js';
+import { newsym, map_invisible, canSpotMonsterForMap, monVisibleForMap } from './monutil.js';
 import { place_monster } from './steed.js';
 import { mongone, mpickgold } from './mon.js';
 import { relobj } from './steal.js';
@@ -133,24 +133,13 @@ function in_rooms(x, y, rtype, map) {
 
 // C ref: canspotmon(mon) — hero can see or sense the monster
 function canspotmon(grd, map, player, fov) {
-    if (!grd || !map || !player) return false;
-    if (grd.mx === 0 && grd.my === 0) return false;
-    // Simplified: check cansee and not invisible
-    if (cansee(map, player, fov, grd.mx, grd.my)) {
-        if (!player.blind && !grd.mundetected) {
-            if (!grd.minvis || player.seeInvisible) return true;
-        }
-    }
-    // Telepathy/detection would go here
-    return false;
+    if (!grd || grd.mx === 0 && grd.my === 0) return false;
+    return canSpotMonsterForMap(grd, map, player, fov);
 }
 
 // C ref: mon_visible(mon) — is monster actually visible (not invis/hiding)?
 function mon_visible(grd, player) {
-    if (!grd) return false;
-    if (grd.minvis && !player?.seeInvisible) return false;
-    if (grd.mundetected) return false;
-    return true;
+    return monVisibleForMap(grd, player);
 }
 
 // C ref: m_canseeu(mon) — can monster see hero?
