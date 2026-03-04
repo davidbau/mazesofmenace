@@ -482,6 +482,11 @@ span.nh-cursor {
                 // seenv is now tracked by the vision code (vision.js compute())
                 // which sets the correct angle bits per direction.
 
+                // C ref: display.c:963-964 — mark any engraving at a visible square as
+                // revealed, "even when covered by objects or a monster".
+                const visEngr = gameMap.engravingAt(x, y);
+                if (visEngr) visEngr.erevealed = true;
+
                 // Check for player at this position
                 if (player && x === player.x && y === player.y) {
                     this.setCell(col, row, '@', CLR_WHITE);

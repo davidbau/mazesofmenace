@@ -209,6 +209,11 @@ export function newsym(x, y) {
 
     // --- Visible (in FOV) ---
 
+    // C ref: display.c:963-964 — mark any engraving at a visible square as
+    // revealed, "even when covered by objects or a monster".
+    const visEngr = map.engravingAt(x, y);
+    if (visEngr) visEngr.erevealed = true;
+
     // Player glyph
     if (player && x === player.x && y === player.y) {
         display.setCell(col, row, '@', CLR_WHITE);
