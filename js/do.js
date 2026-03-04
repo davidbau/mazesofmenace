@@ -5,7 +5,7 @@ import { nhgetch, ynFunction } from './input.js';
 import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
-         PM_TOURIST } from './config.js';
+         PM_TOURIST, I_SPECIAL, TIMEOUT } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { deltrap, enexto, mklev, assign_level, resolveBranchDestinationForStair } from './dungeon.js';
 import { depth as dungeonDepth } from './dungeon.js';
@@ -49,6 +49,8 @@ import { canseemon } from './mondata.js';
 import { movebubbles } from './mkmaze.js';
 import { newuexp, pluslvl } from './exper.js';
 import { setCurrentLevelStairs } from './stairs.js';
+import { float_down } from './trap.js';
+import { W_ART, W_ARTI } from './artifact.js';
 
 // Translator-compat globals used by some C-emitted helper candidates.
 const gd = {};
@@ -1577,7 +1579,7 @@ export async function drop(obj, game, map, player) {
       if (game.flags.verbose) await You("drop %s.", doname(obj));
       freeinv(obj);
       await hitfloor(obj, true);
-      if (levhack) float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
+      if (levhack) await float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART, player, game);
       return ECMD_TIME;
     }
     if (!IS_ALTAR(map.locations[player.x][player.y].typ) && game.flags.verbose) await You("drop %s.", doname(obj));

@@ -57,6 +57,8 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          DRAIN_RES, SICK_RES, STONE_RES, INFRAVISION,
          TIMEOUT } from './config.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
+import { float_down } from './trap.js';
+import { float_vs_flight } from './polyself.js';
 import { mark_vision_dirty } from './vision.js';
 
 
@@ -1942,10 +1944,10 @@ export async function Ring_off_or_gone(obj, gone, game, player) {
     break;
     case RIN_LEVITATION:
       if (!(B(player?.Levitation || player?.levitating || false) & FROMOUTSIDE)) {
-        float_down(0, 0);
+        await float_down(0, 0, player, game);
         if (!(player?.Levitation || player?.levitating || false)) learnring(obj, true);
       }
-      else { float_vs_flight(); }
+      else { float_vs_flight(game || { disp: {} }, player); }
     break;
     case RIN_GAIN_STRENGTH:
       adjust_attrib(obj, A_STR, -obj.spe);

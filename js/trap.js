@@ -64,6 +64,8 @@ import { pline, You, pline_mon, You_hear } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { dist2 } from './monutil.js';
 import { an } from './objnam.js';
+import { float_vs_flight } from './polyself.js';
+import { LEVITATION, TIMEOUT, HALLUC } from './config.js';
 
 // C ref: trap.c:2990 trapnote() — return note name string with "an/a" prefix
 const tnnames = [
@@ -1342,21 +1344,81 @@ export function keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) {
   return false;
 }
 
+// C ref: trap.c:3845 — hero starts floating up (gaining levitation)
+// Prints the appropriate message and calls float_vs_flight().
+export async function float_up(player, game) {
+    const p = player;
+    if (!p) return;
+    if (game) game.disp = game.disp || {};
+    if (game) game.disp.botl = true;
+    // C: trap cases (utrap) — simplified: just handle the common cases
+    if (p.utrap) {
+        const TT_PIT_local = 1;  // C TT_PIT = 1
+        if (p.utraptype === TT_PIT_local) {
+            // reset_utrap handles this separately; just float_vs_flight
+        } else {
+            await You("float up slightly, but your legs are still stuck.");
+        }
+    } else if (p.getPropTimeout?.(HALLUC)) {
+        await pline("Up, up, and awaaaay!  You're walking on air!");
+    } else {
+        await You("start to float in the air!");
+    }
+    if (p.flying || p.Flying) await You("are no longer able to control your flight.");
+    // C: float_vs_flight() adjusts BFlying/BLevitation block flags
+    // Pass a minimal game-like object; polyself.js float_vs_flight uses game.disp.botl
+    float_vs_flight(game || { disp: {} }, p);
+    // C: encumber_msg() — levitation changes encumbrance; skipped (complex)
+}
+
+// C ref: trap.c:3932 — hero stops levitating
+// hmask: bits to clear from HLevitation; emask: bits to clear from ELevitation (worn items)
+export async function float_down(hmask, emask, player, game) {
+    const p = player;
+    if (!p) return;
+    // Clear the specified levitation sources
+    if (hmask && p.uprops?.[LEVITATION]) {
+        p.uprops[LEVITATION].intrinsic &= ~hmask;
+    }
+    if (emask && p.uprops?.[LEVITATION]) {
+        p.uprops[LEVITATION].extrinsic &= ~emask;
+    }
+    // If still levitating from another source, don't land
+    const stillLev = p.uprops?.[LEVITATION]
+        ? ((p.uprops[LEVITATION].intrinsic | p.uprops[LEVITATION].extrinsic) & (TIMEOUT | 0xFFFFFF))
+        : 0;
+    if (stillLev) return;
+    if (game) game.disp = game.disp || {};
+    if (game) game.disp.botl = true;
+    float_vs_flight(game || { disp: {} }, p);
+    // C: various complex cases (pool, lava, swallowed, Sokoban, air level) — simplified
+    if (p.uswallow) {
+        await You("float down, but you are still engulfed.");
+    } else if (p.getPropTimeout?.(HALLUC)) {
+        await pline("Bummer!  You've hit the ground.");
+    } else {
+        await You("float gently to the %s.", "floor");
+    }
+    // C: encumber_msg() — skipped (complex)
+}
+
 // Autotranslated from trap.c:1030
 export function set_utrap(tim, typ, game, player) {
   if (!player.utrap ^ !tim) game.disp.botl = true;
   player.utrap = tim;
   player.utraptype = tim ? typ : TT_NONE;
-  float_vs_flight();
+  // C: float_vs_flight() adjusts BFlying/BLevitation block state
+  float_vs_flight(game || { disp: {} }, player);
 }
 
 // Autotranslated from trap.c:1045
-export async function reset_utrap(msg, player) {
-  let was_Lev = ((player?.Levitation || player?.levitating || false) !== 0), was_Fly = ((player?.Flying || player?.flying || false) !== 0);
-  set_utrap(0, 0);
+export async function reset_utrap(msg, player, game) {
+  const was_Lev = !!(player?.Levitation || player?.levitating);
+  const was_Fly = !!(player?.Flying || player?.flying);
+  set_utrap(0, 0, game || { disp: {} }, player);
   if (msg) {
-    if (!was_Lev && (player?.Levitation || player?.levitating || false)) float_up();
-    if (!was_Fly && (player?.Flying || player?.flying || false)) await You("can fly.");
+    if (!was_Lev && (player?.Levitation || player?.levitating)) await float_up(player, game);
+    if (!was_Fly && (player?.Flying || player?.flying)) await You("can fly.");
   }
 }
 

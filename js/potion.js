@@ -31,6 +31,8 @@ import { pline, You, Your, You_feel, You_cant } from './pline.js';
 import { registerMakeStatusFns } from './timeout.js';
 import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
 import { mark_vision_dirty } from './vision.js';
+import { float_up, float_down } from './trap.js';
+import { float_vs_flight } from './polyself.js';
 
 
 // ============================================================
@@ -1533,7 +1535,7 @@ export async function peffect_object_detection(otmp) {
 export async function peffect_levitation(otmp, map, player) {
   if (!(player?.Levitation || player?.levitating || false) && !B(player?.Levitation || player?.levitating || false)) {
     set_itimeout( H(player?.Levitation || player?.levitating || false), 1);
-    float_up();
+    await float_up(player, null);
   }
   else {
     gp.potion_nothing++;
@@ -1559,7 +1561,7 @@ export async function peffect_levitation(otmp, map, player) {
     incr_itimeout( H(player?.Levitation || player?.levitating || false), rn1(140, 10));
   }
   if ((player?.Levitation || player?.levitating || false) && IS_SINK(map.locations[player.x][player.y].typ)) await spoteffects(false);
-  float_vs_flight();
+  float_vs_flight({ disp: {} }, player);
 }
 
 // Autotranslated from potion.c:1313
