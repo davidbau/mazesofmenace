@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { initRng } from '../../js/rng.js';
+import { initRng, enableRngLog, disableRngLog, getRngLog } from '../../js/rng.js';
 import { COLNO, ROWNO, ROOM, STONE, HWALL, WATER } from '../../js/config.js';
 import { GameMap } from '../../js/map.js';
 import { movemon, mon_track_add, mon_track_clear, monhaskey, m_can_break_boulder, MTSZ } from '../../js/monmove.js';
@@ -145,6 +145,41 @@ describe('Monster movement', () => {
         // Sleeping monster far from player should stay put
         assert.equal(mon.mx, startX);
         assert.equal(mon.my, startY);
+    });
+
+    it('immobile monsters skip dochug movement logic', async () => {
+        initRng(42);
+        enableRngLog();
+        const map = makeSimpleMap();
+        const player = new Player();
+        player.x = 20; player.y = 10;
+        player.initRole(0);
+
+        const mon = {
+            name: 'frozen',
+            mndx: PM_GOBLIN,
+            type: mons[PM_GOBLIN],
+            mx: 12, my: 10,
+            mhp: 10, mhpmax: 10,
+            ac: 8, level: 1,
+            speed: 12, movement: 12,
+            attacks: [],
+            dead: false, sleeping: false,
+            confused: false, peaceful: false,
+            tame: false, flee: false,
+            mcanmove: false,
+        };
+        map.monsters.push(mon);
+
+        await movemon(map, player, mockDisplay);
+        const log = (getRngLog() || []).map((entry) => String(entry));
+        disableRngLog();
+        assert.equal(mon.mx, 12);
+        assert.equal(mon.my, 10);
+        assert.ok(
+            !log.some((line) => line.includes('^distfleeck[27@12,10')),
+            'immobile monster should not enter distfleeck phase in dochug'
+        );
     });
 
     it('movemon does not stamp mlstmv for non-combat movement processing', async () => {

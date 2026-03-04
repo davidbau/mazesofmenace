@@ -106,6 +106,11 @@ import { stairway_at } from './stairs.js';
 import { mwelded } from './wield.js';
 import { mon_wield_item, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './weapon.js';
 
+// C ref: monst.h strategy bits used by monmove.c:717 early dochug gate
+const STRAT_WAITFORU = 0x20000000;
+const STRAT_CLOSE = 0x10000000;
+const STRAT_WAITMASK = (STRAT_CLOSE | STRAT_WAITFORU);
+
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
 import { m_carrying } from './mthrowu.js';
@@ -857,6 +862,13 @@ async function dochug(mon, map, player, display, fov, game = null) {
     if (mon.waiting && map?.flags?.is_tutorial) return;
 
     if (mon.type && mon.type.mlet === S_MIMIC) {
+        return;
+    }
+
+    // C ref: monmove.c:717-724 — immobile/waiting monsters cannot act.
+    // Preserve Hallucination newsym side effect when represented.
+    if (mon.mcanmove === false || (((mon.mstrategy || 0) & STRAT_WAITMASK) !== 0)) {
+        if (player?.hallucinating) newsym(mon.mx, mon.my);
         return;
     }
 
