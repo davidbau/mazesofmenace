@@ -1568,10 +1568,11 @@ function medusa_fixup(map, depth = 1) {
         // C ref: mk_tt_object(STATUE) uses mksobj_at(..., init=FALSE).
         const otmp = mksobj(STATUE, false, false);
         if (!otmp) return null;
+        placeObjectAt(otmp, x, y);
         // C ref: mk_tt_object() tt_oname path (scoreboard RNG) + fallback role.
         rnd(10);
         set_corpsenm(otmp, rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST));
-        return placeObjectAt(otmp, x, y);
+        return otmp;
     };
 
     for (let tryct = rnd(4); tryct > 0; tryct--) {
@@ -1586,10 +1587,17 @@ function medusa_fixup(map, depth = 1) {
 
     let finalStatue = null;
     if (rn2(2)) {
-        const { x, y } = randRoomPos();
+        // C call uses mk_tt_object(..., somex(croom), somey(croom)); argument
+        // evaluation order is implementation-defined. Match observed C harness
+        // ordering (somey then somex) for RNG parity on this toolchain.
+        const y = somey(croom);
+        const x = somex(croom);
         finalStatue = mk_tt_statue(x, y);
     } else {
-        const { x, y } = randRoomPos();
+        // C call uses mkcorpstat(..., somex(croom), somey(croom), ...); match
+        // observed C harness evaluation order (somey then somex).
+        const y = somey(croom);
+        const x = somex(croom);
         finalStatue = isok(x, y) ? mkcorpstat(STATUE, -1, false, x, y, map) : null;
     }
     if (finalStatue) {

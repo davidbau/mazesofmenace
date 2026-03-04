@@ -23,8 +23,8 @@ import {
     setup_waterlevel,
     baalz_fixup,
 } from './mkmaze.js';
-import { create_subroom } from './mklev.js';
-import { somexy } from './mkroom.js';
+import { count_level_features, create_subroom } from './mklev.js';
+import { somex, somey, somexy } from './mkroom.js';
 import { make_engr_at, del_engr } from './engrave.js';
 import { random_epitaph_text } from './rumors.js';
 import { seedFromMT } from './xoshiro256.js';
@@ -1270,10 +1270,10 @@ function medusa_fixup(map) {
         // C ref: mk_tt_object(STATUE) uses mksobj_at(..., init=FALSE).
         const otmp = mksobj(STATUE, false, false);
         if (!otmp) return null;
+        placeObjectAt(otmp, x, y);
         // C ref: mk_tt_object() tt_oname path (scoreboard RNG) + fallback role.
         rnd(10);
         set_corpsenm(otmp, rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST));
-        placeObjectAt(otmp, x, y);
         return otmp;
     };
 
@@ -1290,11 +1290,17 @@ function medusa_fixup(map) {
 
     let otmp = null;
     if (rn2(2)) {
-        const { x, y } = randRoomPos();
+        // C call uses mk_tt_object(..., somex(croom), somey(croom)); argument
+        // evaluation order is implementation-defined. Match observed C harness
+        // ordering (somey then somex) for RNG parity on this toolchain.
+        const y = somey(croom);
+        const x = somex(croom);
         otmp = mk_tt_statue(x, y);
     } else {
-        // Medusa statues don't contain books in this branch.
-        const { x, y } = randRoomPos();
+        // C call uses mkcorpstat(..., somex(croom), somey(croom), ...); match
+        // observed C harness evaluation order (somey then somex).
+        const y = somey(croom);
+        const x = somex(croom);
         otmp = mkcorpstat(STATUE, -1, false, x, y, levelState.map);
     }
     if (otmp) {
@@ -6787,6 +6793,11 @@ export async function finalize_level() {
     // not full wallification().
     if (levelState.map && flipped) {
         fix_wall_spines(levelState.map, 1, 0, COLNO - 1, ROWNO - 1);
+    }
+
+    // C ref: sp_lev.c calls count_level_features() before fixup_special().
+    if (levelState.map) {
+        count_level_features(levelState.map);
     }
 
     // C ref: sp_lev.c fixup_special() (branch stair placement, etc.)

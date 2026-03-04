@@ -60,7 +60,7 @@ import { is_hider, hides_under, is_mindless, is_displacer, perceives,
          is_human, is_elf, is_dwarf, is_gnome, is_orc, is_shapeshifter,
          mon_knows_traps, passes_bars, nohands, is_clinger,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
-         is_golem, is_rider, is_mplayer } from './mondata.js';
+         is_golem, is_rider, is_mplayer, canseemon } from './mondata.js';
 import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          PM_FLOATING_EYE, PM_MINOTAUR,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
@@ -969,15 +969,24 @@ export function maybe_unhide_at(x, y, map) {
 }
 
 // C ref: mon.c:4721 hideunder() — monster tries to hide under something
-export function hideunder(mon, map) {
+export function hideunder(mon, map, player = null, fov = null) {
     if (!mon || !map) return false;
     const mdat = mon.type || {};
     const x = mon.mx, y = mon.my;
     let undetected = false;
-
-    if (mdat.mlet === S_EEL) {
-        // Eels hide in pools
-        undetected = IS_POOL(map.at(x, y)?.typ);
+    const trap = map.trapAt ? map.trapAt(x, y) : null;
+    const trappedOutsidePit = !!((mon.mtrapped || false)
+        || (trap && trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT));
+    if ((player && player.ustuck === mon) || trappedOutsidePit) {
+        undetected = false;
+    } else if (mdat.mlet === S_EEL) {
+        const isWaterLevel = !!(map?.flags?.is_waterlevel);
+        const heroUnderwater = !!(player && (player.underwater || player.uinwater || player.Underwater));
+        // C ref: mon.c hideunder() eel clause:
+        // is_pool(x,y) && !Is_waterlevel(&u.uz) && (!Underwater || !couldsee(x,y))
+        undetected = IS_POOL(map.at(x, y)?.typ)
+            && !isWaterLevel
+            && (!heroUnderwater || !(fov?.canSee ? fov.canSee(x, y) : couldsee(map, player, x, y)));
     } else if (hides_under(mdat)) {
         // Hider-unders hide under objects on non-water tiles
         const objects = map.objectsAt ? map.objectsAt(x, y) : [];
@@ -1509,13 +1518,10 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
             // C ref: mon.c:1277-1284 — eel hiding
             if (mon.type?.mlet === S_EEL && !mon.mundetected
                 && (mon.flee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
-                && !(fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my))
+                && !canseemon(mon, player, fov)
                 && !rn2(4)) {
-                // C ref: hideunder() — set mundetected if on water terrain
-                if (IS_POOL(map.at(mon.mx, mon.my)?.typ)) {
-                    mon.mundetected = true;
+                if (hideunder(mon, map, player, fov))
                     continue;
-                }
             }
             // TODO: fightm() — Conflict not implemented
             const rd = await withRngTag('dochug(monmove.js:847)', () =>

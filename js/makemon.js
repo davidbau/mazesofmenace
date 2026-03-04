@@ -2048,6 +2048,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
 
     // C ref: makemon.c:1299-1310 — post-placement switch on mlet
     let mimicApType = null;
+    let startsUndetected = false;
     if (ptr.mlet === S_MIMIC) {
         mimicApType = set_mimic_sym(mndx, x, y, map, depth);
     } else if ((ptr.mlet === S_SPIDER || ptr.mlet === S_SNAKE) && map) {
@@ -2059,7 +2060,15 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
                 place_object(hideObj, x, y, map); // emits ^place event, matches C
             }
         }
-        // hideunder() — no RNG
+        // C ref: hideunder() for spider/snake in mklev (no RNG).
+        if (_makemonInMklev) startsUndetected = true;
+    } else if (ptr.mlet === S_EEL && map) {
+        // C ref: makemon.c:1319-1322 — eels in mklev call hideunder() (no RNG).
+        // Eels hide only in water and not on the Plane of Water.
+        if (_makemonInMklev) {
+            const loc = map.at(x, y);
+            startsUndetected = !!(IS_POOL(loc?.typ) && !map?.flags?.is_waterlevel);
+        }
     }
 
     // C ref: makemon.c:1299-1340 switch(ptr->mlet), sleep-related cases.
@@ -2129,6 +2138,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         blind: false,
         sleeping: false,
         msleeping: 0,
+        mundetected: startsUndetected ? 1 : 0,
         dead: false,
         passive: false,
         minvent: [],
