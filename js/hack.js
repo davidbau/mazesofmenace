@@ -459,7 +459,16 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
     if (!mon) return { handled: false };
     const forcefight = has_forcefight_prefix(game, ctx);
     if (forcefight && ctx) ctx.forcefight = 1;
-    const shouldDisplace = (mon.tame || mon.peaceful) && !forcefight;
+    const safeDogEnabled = !!(game?.flags?.safe_pet ?? game?.flags?.safe_dog ?? true);
+    const disoriented = !!(player?.confused || player?.Confusion
+        || player?.hallucinating || player?.Hallucination
+        || player?.stunned || player?.Stunned);
+    const safeMonVisible = game?.fov ? canseemon(mon, player, game.fov) : true;
+    const shouldDisplace = safeDogEnabled
+        && !!mon.peaceful
+        && safeMonVisible
+        && !disoriented
+        && !forcefight;
     if (shouldDisplace) {
         const monData = mon.type || {};
         const playerLoc = map?.at ? map.at(player.x, player.y) : null;
