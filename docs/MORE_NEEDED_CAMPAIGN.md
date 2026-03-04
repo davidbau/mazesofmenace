@@ -83,9 +83,9 @@ Observed failure taxonomy (all 27 failing sessions triaged):
    Several diverge at step 1 immediately after descending to a new level.
    Affected: seed321, seed323, seed326, seed327, seed328, seed330, seed331.
 
-3. **Screen-only failures** (2 sessions — RNG and events fully matched):
-   seed305 and seed313 pass all RNG and event checks but diverge on screen
-   rendering (e.g., floor tile `·` rendered as `` ` `` at step 118).
+3. **Screen-only failure** (1 session — RNG and events fully matched):
+   seed305 passes all RNG and event checks but diverges on screen rendering
+   (floor tile `·` rendered as `` ` `` at step 118).
    These are pure display bugs, not logic divergences.
 
 4. **Other gameplay divergences** (~4 sessions):
@@ -93,9 +93,9 @@ Observed failure taxonomy (all 27 failing sessions triaged):
    loading), seed322/seed332/seed333 (combat and makemon paths diverging
    late in long sessions), seed312 (`wipe_engr_at` vs `mcalcmove`).
 
-5. **Prompt/input boundary bug** (1 session):
-   `seed033_manual_direct` times out (`Unknown command ' '`) — space key
-   treated as a game command instead of a modal dismissal.
+5. **Manual-direct message/turn boundary divergence** (1 session):
+   `seed033_manual_direct` currently fails as gameplay divergence (`rhack` vs
+   `mcalcmove` first RNG mismatch) with `^mcalcmove` event disagreement.
 
 ## Active Workstreams
 
@@ -116,24 +116,26 @@ Team execution lanes:
    - Investigate whether JS level-gen code matches C order for room filling,
      object placement, and monster initialization in special rooms.
 
-3. **Screen-only rendering bugs** (2 sessions — seed305, seed313):
+3. **Screen-only rendering bug** (1 session — seed305):
    - RNG and events match fully; screen diverges on tile/symbol rendering.
    - Fix the specific display path producing wrong tile (e.g., `·` vs `` ` ``).
 
-4. **Prompt/input boundary stabilization** (targeted, 1 session):
-   - Fix `seed033_manual_direct` timeout where space is treated as a game
-     command instead of a modal dismissal.
+4. **Manual-direct boundary stabilization** (targeted, 1 session):
+   - Resolve `seed033_manual_direct` command/turn ordering mismatch
+     (`rhack`-side RNG in JS vs `mcalcmove`-side RNG in C).
+   - Use `^mcalcmove` and surrounding `--More--`/message evidence to confirm
+     correct pause and progression ordering.
 
-4. **Cursor parity closure** (tracked in [`docs/CURSOR_PLAN.md`](CURSOR_PLAN.md)):
+5. **Cursor parity closure** (tracked in [`docs/CURSOR_PLAN.md`](CURSOR_PLAN.md)):
    - Complete JS `setCursor` / `getCursor` integration across display paths.
    - Add cursor comparison to gameplay session suite.
    - Align gameplay/topline/prompt cursor behavior with C.
 
-5. **Async message-flow parity** (ongoing):
+6. **Async message-flow parity** (ongoing):
    - Propagate async call chains wherever C behavior can block on `--More--`.
    - Eliminate any remaining queueing-era approximations that mask ordering.
 
-6. **Event fidelity** (ongoing, supports all lanes):
+7. **Event fidelity** (ongoing, supports all lanes):
    - Add instrumentation where first-divergence evidence is thin.
    - Keep instrumentation behavior-neutral (no gameplay side effects).
 
