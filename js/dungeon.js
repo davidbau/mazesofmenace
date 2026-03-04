@@ -1440,6 +1440,24 @@ export function isBranchLevelToDnum(dnum, dlevel, targetDnum) {
     return otherEnd?.dnum === targetDnum;
 }
 
+// Resolve branch destination when traversing a branch staircase at this level.
+// goingUp=true means using '<' stair direction; false means '>'.
+export function resolveBranchDestinationForStair(dnum, dlevel, goingUp) {
+    const cdnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+    if (!Number.isInteger(dlevel)) return null;
+    const info = getBranchAtLevel(cdnum, dlevel);
+    if (!info) return null;
+
+    const stairGoesUp = info.onEnd1 ? !!info.branch.end1_up : !info.branch.end1_up;
+    if (stairGoesUp !== !!goingUp) return null;
+
+    const dest = info.onEnd1 ? info.branch.end2 : info.branch.end1;
+    if (!dest || !Number.isInteger(dest.dnum) || !Number.isInteger(dest.dlevel)) {
+        return null;
+    }
+    return { dnum: dest.dnum, dlevel: dest.dlevel };
+}
+
 // Track Lua MT RNG initialization (shared with sp_lev.js via export)
 // Lazy initialization happens on first Lua RNG use (des.object/des.monster)
 // Use getter function to avoid stale import copies (primitives are copied, not referenced)

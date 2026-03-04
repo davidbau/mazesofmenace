@@ -1350,8 +1350,11 @@ export class NetHackGame {
         // enexto_core calls when a zoo cell coincidentally matches.
         setMakemonPlayerContext({ ...this.player, x: null, y: null });
         const heroHasAmulet = !!(this.player?.uhave?.amulet);
-        const makeLevel = Number.isInteger(this.dnum)
-            ? async (d) => await mklev(d, this.dnum, d, {
+        const targetDnum = Number.isInteger(opts?.targetDnum)
+            ? opts.targetDnum
+            : this.dnum;
+        const makeLevel = Number.isInteger(targetDnum)
+            ? async (d) => await mklev(d, targetDnum, d, {
                 dungeonAlignOverride: this.dungeonAlignOverride,
                 heroHasAmulet,
             })

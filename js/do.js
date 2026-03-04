@@ -7,7 +7,7 @@ import { COLNO, ROWNO, STAIRS,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
          PM_TOURIST } from './config.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { deltrap, enexto, mklev, assign_level } from './dungeon.js';
+import { deltrap, enexto, mklev, assign_level, resolveBranchDestinationForStair } from './dungeon.js';
 import { depth as dungeonDepth } from './dungeon.js';
 import { mon_arrive } from './dog.js';
 import { initrack } from './monmove.js';
@@ -808,6 +808,21 @@ export async function handleDownstairs(player, map, display, game) {
     await display.putstr_message('You descend the stairs.');
     await waitForStairMessageAck(display);
 
+    const currentDnum = Number.isInteger(game?.dnum)
+        ? game.dnum
+        : (Number.isInteger(map?._genDnum) ? map._genDnum : 0);
+    if (loc.branchStair) {
+        const branchDest = resolveBranchDestinationForStair(
+            currentDnum,
+            Number.isInteger(player?.dungeonLevel) ? player.dungeonLevel : 1,
+            false
+        );
+        if (branchDest) {
+            await game.changeLevel(branchDest.dlevel, 'down', { targetDnum: branchDest.dnum });
+            return { moved: false, tookTime: true };
+        }
+    }
+
     // Go to next level
     const newDepth = player.dungeonLevel + 1;
     if (newDepth > player.maxDungeonLevel) {
@@ -841,6 +856,21 @@ export async function handleUpstairs(player, map, display, game) {
     // C ref: do.c goto_level() ordinary ascent message when verbose.
     await display.putstr_message('You climb up the stairs.');
     await waitForStairMessageAck(display);
+
+    const currentDnum = Number.isInteger(game?.dnum)
+        ? game.dnum
+        : (Number.isInteger(map?._genDnum) ? map._genDnum : 0);
+    if (loc.branchStair) {
+        const branchDest = resolveBranchDestinationForStair(
+            currentDnum,
+            Number.isInteger(player?.dungeonLevel) ? player.dungeonLevel : 1,
+            true
+        );
+        if (branchDest) {
+            await game.changeLevel(branchDest.dlevel, 'up', { targetDnum: branchDest.dnum });
+            return { moved: false, tookTime: true };
+        }
+    }
 
     const newDepth = player.dungeonLevel - 1;
     await game.changeLevel(newDepth, 'up');
@@ -1198,7 +1228,9 @@ export async function changeLevel(game, depth, transitionDir = null, opts = {}) 
         game.levelsByBranch[levelKey(currentDnum, (game.u || game.player).dungeonLevel)] = (game.lev || game.map);
     }
     const previousMap = game.levels[(game.u || game.player).dungeonLevel];
-    const targetDnum = Number.isInteger(game.dnum) ? game.dnum : currentDnum;
+    const targetDnum = Number.isInteger(opts?.targetDnum)
+        ? opts.targetDnum
+        : (Number.isInteger(game.dnum) ? game.dnum : currentDnum);
     const branchCacheKey = levelKey(targetDnum, depth);
 
     // Use pre-generated map if provided, otherwise check cache or generate new.
@@ -1208,7 +1240,7 @@ export async function changeLevel(game, depth, transitionDir = null, opts = {}) 
         game.levelsByBranch[branchCacheKey] = opts.map;
     } else if (game.levelsByBranch[branchCacheKey]) {
         game.lev = game.levelsByBranch[branchCacheKey];
-    } else if (game.levels[depth]) {
+    } else if (targetDnum === currentDnum && game.levels[depth]) {
         game.lev = game.levels[depth];
     } else {
         game.lev = opts.makeLevel ? await opts.makeLevel(depth) : await mklev(depth);
