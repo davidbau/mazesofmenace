@@ -780,9 +780,10 @@ function mkbox_cnts(box) {
         n = box.olocked ? 7 : 5;
     } else if (od.name === 'large box') {
         n = box.olocked ? 5 : 3;
-    } else if (_startupInventoryMode
-               && (od.name === 'sack' || od.name === 'oilskin sack')) {
-        // C ref: mkobj.c mkbox_cnts() -- during startup inventory, sacks start empty.
+    } else if ((od.name === 'sack' || od.name === 'oilskin sack')
+               && _objectMoves <= 1 && !_inMklevContext) {
+        // C ref: mkobj.c mkbox_cnts() -- sacks/oilskin sacks are empty when
+        // moves<=1 outside mklev (early game startup and equivalent contexts).
         n = 0;
     } else {
         // sack, oilskin sack, bag of holding

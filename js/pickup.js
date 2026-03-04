@@ -1410,13 +1410,16 @@ async function containerMenu(game, container) {
     while (true) {
         const contents = getContainerContents(container);
         const hasContents = contents.length > 0;
+        const outmaybe = hasContents || !container?.cknown;
         const cname = xname(container);
 
-        // cf. pickup.c:3052-3061 — empty vs non-empty prompt wording
-        const prompt = hasContents
+        // cf. pickup.c:3052-3061 — use non-empty wording until emptiness is known.
+        const prompt = outmaybe
             ? `Do what with the ${cname}?`
             : `The ${cname} is empty.  Do what with it?`;
-        await display.putstr_message(prompt);
+        const cols = display?.cols || 80;
+        const pad = Math.max(0, Math.floor((cols - prompt.length) / 2));
+        await display.putstr_message(`${' '.repeat(pad)}${prompt}`);
 
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
@@ -1428,16 +1431,22 @@ async function containerMenu(game, container) {
             // cf. pickup.c out_container walk with iflags.menu_requested
             if (!hasContents) {
                 await display.putstr_message(`The ${cname} is empty.`);
+                container.cknown = true;
             } else {
                 await display.putstr_message(`Contents of the ${cname}:`);
                 for (const item of contents) {
                     await display.putstr_message(`  ${doname(item, player)}`);
                 }
+                container.cknown = true;
             }
         } else if (c === 'b') {
             // 'b' = bring all out — takes everything, exits menu.
             // cf. pickup.c use_container() 'b' case.
-            if (!hasContents) { await display.putstr_message('It is empty.'); continue; }
+            if (!hasContents) {
+                await display.putstr_message('It is empty.');
+                container.cknown = true;
+                continue;
+            }
             const taken = [...contents];
             for (const item of taken) { player.addToInventory(item); observeObject(item); }
             setContainerContents(container, []);
@@ -1449,7 +1458,11 @@ async function containerMenu(game, container) {
             // cf. pickup.c traditional_loot(FALSE): first asks class filter,
             // then prompts "Take out what?" for matching letters.
             // loops until ESC, then returns to outer "Do what?" menu.
-            if (!hasContents) { await display.putstr_message('It is empty.'); continue; }
+            if (!hasContents) {
+                await display.putstr_message('It is empty.');
+                container.cknown = true;
+                continue;
+            }
             const currentContents = getContainerContents(container);
             const seenClasses = new Set();
             for (const o of currentContents) {

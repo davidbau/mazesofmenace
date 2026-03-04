@@ -192,7 +192,7 @@ describe('loot via meta key', () => {
             `expected "Contents of" message, got: ${JSON.stringify(messages)}`);
     });
 
-    it('containerMenu empty chest shows empty prompt wording', async () => {
+    it('containerMenu unknown empty chest still uses generic prompt wording', async () => {
         const { game, messages } = makeGame();
         const chest = {
             otyp: CHEST,
@@ -208,8 +208,8 @@ describe('loot via meta key', () => {
         const result = await rhack('l'.charCodeAt(0) | 0x80, game);
 
         assert.equal(result.tookTime, false);
-        assert.ok(messages.some((m) => m.includes('is empty')),
-            `expected "is empty" prompt, got: ${JSON.stringify(messages)}`);
+        assert.ok(messages.some((m) => m.includes('Do what with the chest?')),
+            `expected generic unknown-emptiness prompt, got: ${JSON.stringify(messages)}`);
     });
 
     it('containerMenu s stash puts item into container and exits menu', async () => {
