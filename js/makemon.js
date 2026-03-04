@@ -1695,6 +1695,7 @@ export const MM_IGNOREWATER  = 0x00000008;
 export const MM_ADJACENTOK   = 0x00000010;
 export const MM_NONAME       = 0x00000040; // monster is not christened
 export const MM_EDOG         = 0x00000800; // add edog structure
+export const MM_ASLEEP       = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP        = 0x00002000;
 export const MM_IGNORELAVA   = 0x00080000;
 
@@ -2032,12 +2033,17 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         // hideunder() — no RNG
     }
 
-    // C ref: makemon.c:1299-1340 switch(ptr->mlet), nymph/jabberwock case.
-    // This check happens regardless of in_mklev; preserve RNG side effects.
+    // C ref: makemon.c:1299-1340 switch(ptr->mlet), sleep-related cases.
+    // Keep RNG consumption aligned with existing port order and apply sleep state
+    // after monster object creation.
     const hasAmulet = playerHasAmulet(map);
+    let startsSleeping = false;
+    if (ptr.mlet === S_LEPRECHAUN) {
+        startsSleeping = true;
+    }
     if ((ptr.mlet === S_JABBERWOCK || ptr.mlet === S_NYMPH)
         && !hasAmulet && rn2(5)) {
-        // mtmp->msleeping = TRUE; RNG side effect only.
+        startsSleeping = true;
     }
 
     // C ref: makemon.c:1382-1386 -- in_mklev only.
@@ -2045,7 +2051,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     if ((is_ndemon(ptr) || mndx === PM_WUMPUS
         || mndx === PM_LONG_WORM || mndx === PM_GIANT_EEL)
         && !hasAmulet && rn2(5)) {
-        // mtmp->msleeping = TRUE; RNG side effect only.
+        startsSleeping = true;
     }
 
     // C ref: makemon.c:1370-1371 — ghost naming via rndghostname()
@@ -2092,7 +2098,8 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         confused: false,
         stunned: false,
         blind: false,
-        sleeping: false,  // sleep handled by C's finalize_creation, not here
+        sleeping: false,
+        msleeping: 0,
         dead: false,
         passive: false,
         minvent: [],
@@ -2102,6 +2109,16 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         mtrack: [{x:0,y:0},{x:0,y:0},{x:0,y:0},{x:0,y:0}],
     };
     mon.mpeaceful = mon.peaceful;
+
+    // C ref: makemon.c — MM_ASLEEP sets initial sleep state.
+    if (mmflags & MM_ASLEEP) {
+        mon.msleeping = 1;
+        mon.sleeping = true;
+    }
+    if (startsSleeping) {
+        mon.msleeping = 1;
+        mon.sleeping = true;
+    }
 
     // C ref: makemon.c:1396 — MM_EDOG: allocate edog structure
     if (mmflags & MM_EDOG) {

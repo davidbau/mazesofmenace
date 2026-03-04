@@ -5,8 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { ACCESSIBLE } from '../../js/config.js';
-import { makemon, rndmonnum, NO_MM_FLAGS, MM_NOGRP, setMakemonPlayerContext, mbirth_limit } from '../../js/makemon.js';
-import { mons, PM_NAZGUL, PM_ERINYS, PM_LITTLE_DOG } from '../../js/monsters.js';
+import { makemon, rndmonnum, NO_MM_FLAGS, MM_ASLEEP, MM_NOGRP, setMakemonPlayerContext, mbirth_limit } from '../../js/makemon.js';
+import { mons, PM_NAZGUL, PM_ERINYS, PM_LEPRECHAUN, PM_LITTLE_DOG } from '../../js/monsters.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 
 /** Find an unoccupied accessible tile in a room. */
@@ -103,6 +103,32 @@ describe('Monster creation (C-faithful)', () => {
         });
         const lawfulGremlin = makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map);
         assert.equal(lawfulGremlin.peaceful, false);
+    });
+
+    it('MM_ASLEEP marks new monsters sleeping', () => {
+        const map = {
+            monsters: [],
+            at: () => ({ typ: 100 }),
+            monsterAt() { return null; },
+            addMonster(m) { this.monsters.unshift(m); },
+        };
+        const gridBug = mons.findIndex(m => m.name === 'grid bug');
+        assert.ok(gridBug >= 0, 'grid bug should exist in mons[]');
+        const mon = makemon(gridBug, 10, 10, MM_ASLEEP, 1, map);
+        assert.equal(mon.msleeping, 1);
+        assert.equal(mon.sleeping, true);
+    });
+
+    it('leprechauns start asleep by default', () => {
+        const map = {
+            monsters: [],
+            at: () => ({ typ: 100 }),
+            monsterAt() { return null; },
+            addMonster(m) { this.monsters.unshift(m); },
+        };
+        const mon = makemon(PM_LEPRECHAUN, 11, 10, NO_MM_FLAGS, 1, map);
+        assert.equal(mon.msleeping, 1);
+        assert.equal(mon.sleeping, true);
     });
 });
 
