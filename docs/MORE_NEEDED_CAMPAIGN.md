@@ -99,9 +99,9 @@ Observed failure taxonomy (all 27 failing sessions triaged):
 
 ## Active Workstreams
 
-Team execution lanes:
+Team execution lanes (GitHub issues linked):
 
-1. **`dochug` monster-movement/pet-AI divergence** (primary blocker, ~14 sessions):
+1. **`dochug` monster-movement/pet-AI divergence** (primary blocker, ~14 sessions) — [#213](https://github.com/davidbau/menace/issues/213):
    - Investigate `dochug(monmove.js:847)`: why does JS arrive there when C is
      in `dog_move`, `do_attack`, `m_move`, etc. at the same RNG position?
    - Likely root causes: JS processes extra or wrong monster turns, or takes a
@@ -109,18 +109,21 @@ Team execution lanes:
    - Fix `dochug`/`distfleeck`/`dog_goal` ordering and decision-path mismatches
      using `^event` traces. Prioritize fixes that move first divergence later
      across many sessions simultaneously.
+   - Related: #170 (dog_goal food eval), #8 (pet combat/dog_move sequencing),
+     #11 (pet-position render drift)
 
-2. **Level-generation divergence in wizard sessions** (~7 sessions):
+2. **Level-generation divergence in wizard sessions** (~7 sessions) — [#214](https://github.com/davidbau/menace/issues/214):
    - `themeroom_fill`, `makerooms`, `makedog`, `sp_lev` placement paths diverge
      from C when descending to new dungeon levels.
    - Investigate whether JS level-gen code matches C order for room filling,
      object placement, and monster initialization in special rooms.
+   - Related: #165 (room and maze generation parity)
 
-3. **Screen-only rendering bug** (1 session — seed305):
+3. **Screen-only rendering bug** (1 session — seed305) — [#215](https://github.com/davidbau/menace/issues/215):
    - RNG and events match fully; screen diverges on tile/symbol rendering.
    - Fix the specific display path producing wrong tile (e.g., `·` vs `` ` ``).
 
-4. **Manual-direct boundary stabilization** (targeted, 1 session):
+4. **Manual-direct boundary stabilization** (targeted, 1 session) — [#216](https://github.com/davidbau/menace/issues/216):
    - Resolve `seed033_manual_direct` command/turn ordering mismatch
      (`rhack`-side RNG in JS vs `mcalcmove`-side RNG in C).
    - Use `^mcalcmove` and surrounding `--More--`/message evidence to confirm
