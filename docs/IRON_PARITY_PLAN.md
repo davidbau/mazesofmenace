@@ -1,5 +1,21 @@
 # IRON_PARITY_PLAN.md
 
+## Outcome Notice (Read First)
+
+As of **March 4, 2026**, Operation Iron Parity is considered **unsuccessful as
+the repository's primary execution strategy** for near-term parity closure.
+
+Mandatory interpretation for readers:
+1. This document is now **architecture/policy reference**, not the active
+   day-to-day delivery plan.
+2. Translator output is permitted only as a **first-draft accelerator** for
+   specific functions.
+3. No translator output counts as parity progress until validated by core JS
+   review plus replay/session evidence.
+4. Active near-term execution is driven by
+   `/share/u/davidbau/git/mazesofmenace/mazes/docs/CURSOR_PLAN.md` and direct
+   gameplay parity burndown priorities.
+
 ## Status Update (March 4, 2026)
 
 Operation Iron Parity is currently in **archived-guidance mode** rather than
@@ -20,6 +36,8 @@ Active execution pivot:
    as the near-term concrete plan.
 4. Keep translator work gated and limited to support tasks until baseline and
    gameplay parity are stable again.
+5. When used, translator output should be treated as first-draft scaffolding,
+   then corrected by C-faithful manual review before parity sign-off.
 
 This document remains authoritative for naming, canonical-state targets, and
 translator policy constraints when translator work resumes.
