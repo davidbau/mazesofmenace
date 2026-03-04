@@ -401,7 +401,12 @@ async function handleQuaff(player, map, display) {
         return { moved: false, tookTime: false };
     }
 
-    await display.putstr_message(`What do you want to drink? [${potions.map(p => p.invlet).join('')} or ?*]`);
+    const drinkPrompt = `What do you want to drink? [${potions.map(p => p.invlet).join('')} or ?*]`;
+    await display.putstr_message(drinkPrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(drinkPrompt.length + 1, (display.cols || 80) - 1), 0);
+    }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
     const replacePromptMessage = () => {

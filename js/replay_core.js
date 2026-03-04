@@ -89,6 +89,16 @@ export async function replaySession(seed, opts, keys) {
         game.display._moreBlockingEnabled = true;
     }
 
+    // C ref: c-harness keylog_to_session calls clear_more_prompts() before
+    // capturing the startup screen. In C, the welcome message triggers a
+    // --More-- that is dismissed (and the topline cleared) before step 0.
+    // Simulate that here so the startup topline is blank, matching session.
+    if (game.display && game.display.topMessage) {
+        game.display.clearRow(0);
+        game.display.topMessage = null;
+        game.display.messageNeedsMore = false;
+    }
+
     // Apply display flags.
     if (opts.displayFlags && typeof opts.displayFlags === 'object') {
         Object.assign(game.display.flags, opts.displayFlags);

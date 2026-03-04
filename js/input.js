@@ -398,6 +398,11 @@ export async function getlin(prompt, display) {
             // Don't use putstr_message as it concatenates short messages.
             disp.clearRow(0);
             await disp.putstr(0, 0, prompt + line, CLR_GRAY);
+            // C ref: tty_getlin() places cursor at end of typed text.
+            // Set cursor to end of prompt + current input.
+            const cols = disp.cols || 80;
+            const cursorCol = Math.min((prompt + line).length, cols - 1);
+            if (typeof disp.setCursor === 'function') disp.setCursor(cursorCol, 0);
         }
     };
 

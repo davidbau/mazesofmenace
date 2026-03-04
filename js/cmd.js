@@ -156,6 +156,38 @@ export async function rhack(ch, game) {
         player.kickedloc = null;
     }
 
+    // C ref: cmd.c parse() / get_count() — digit keys '1'-'9' start a count
+    // prefix; '0'-'9' extend an existing one.  C only displays "Count: N"
+    // after the second digit (when N > 9, get_count.c:4839).
+    if (ch >= 49 && ch <= 57) {
+        // '1'-'9': start or extend count accumulator
+        game.countAccum = ((game.countAccum || 0) * 10) + (ch - 48);
+        if (game.countAccum > 9) {
+            clearTopline();
+            await display.putstr_message(`Count: ${game.countAccum}`);
+        }
+        // isCountDigitWithDisplay: cursor was set to topline by putstr_message;
+        // caller must NOT call cursorOnPlayer (would clobber topline cursor pos).
+        return { moved: false, tookTime: false, isCountDigitWithDisplay: game.countAccum > 9 };
+    }
+    if (ch === 48 && game.countAccum != null) {
+        // '0': extend an in-progress count (not allowed as first digit)
+        game.countAccum = game.countAccum * 10;
+        if (game.countAccum > 9) {
+            clearTopline();
+            await display.putstr_message(`Count: ${game.countAccum}`);
+        }
+        return { moved: false, tookTime: false, isCountDigitWithDisplay: game.countAccum > 9 };
+    }
+    // Non-digit: if a count was accumulated, apply it as the command count.
+    // C ref: cmd.c:4909-4914 — gm.multi = command_count - 1; clear_nhwindow
+    if (game.countAccum != null) {
+        game.commandCount = game.countAccum;
+        game.multi = Math.max(0, game.countAccum - 1);
+        game.countAccum = null;
+        clearTopline();
+    }
+
     // C ref: cmdhelp/keyhelp + fixes3-6-3:
     // ^J (LF/newline) is bound to a south "go until near something" command
     // in non-numpad mode, while ^M is separate (often transformed before core).
@@ -607,12 +639,13 @@ export async function rhack(ch, game) {
     }
 
     // Escape -- ignore silently (cancels pending prompts)
-    // C ref: cmd.c -- ESC aborts current command
+    // C ref: cmd.c -- ESC aborts current command; parse():4891 clears count
     if (ch === 27) {
         // Also clear prefix flags
         setMenuRequested(false);
         setForceFight(false);
         clearRunMode();
+        game.countAccum = null;
         return { moved: false, tookTime: false };
     }
 
@@ -741,7 +774,12 @@ async function handleExtendedCommandUntrap(game) {
 
     if (trap.ttyp === SQKY_BOARD) {
         while (true) {
-            await display.putstr_message('What do you want to untrap with? [*]');
+            const untrapPrompt = 'What do you want to untrap with? [*]';
+            await display.putstr_message(untrapPrompt);
+            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+            if (typeof display.setCursor === 'function') {
+                display.setCursor(Math.min(untrapPrompt.length + 1, (display.cols || 80) - 1), 0);
+            }
             const toolCh = await nhgetch();
             if (toolCh === 27 || toolCh === 32) {
                 await display.putstr_message('Never mind.');

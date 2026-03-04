@@ -1364,7 +1364,12 @@ async function handleEat(player, display, game) {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         display.topMessage = null;
         display.messageNeedsMore = false;
-        await display.putstr_message(`What do you want to eat? [${eatChoices} or ?*]`);
+        const eatPrompt = `What do you want to eat? [${eatChoices} or ?*]`;
+        await display.putstr_message(eatPrompt);
+        // C ref: topl.c:424 yn_function adds trailing space; cursor lands one past end.
+        if (typeof display.setCursor === 'function') {
+            display.setCursor(Math.min(eatPrompt.length + 1, (display.cols || 80) - 1), 0);
+        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
 
@@ -1401,6 +1406,11 @@ async function handleEat(player, display, game) {
             }
             continue;
         }
+        // C ref: after getobj() returns, tty clears the prompt from topline.
+        if (typeof display.clearRow === 'function') display.clearRow(0);
+        display.topMessage = null;
+        display.messageNeedsMore = false;
+
         // cf. eat.c doesplit() path — splitobj() for stacked comestibles:
         // splitobj() creates a single-item object and consumes next_ident() (rnd(2)).
         const eatingFromStack = ((item.quan || 1) > 1 && item.oclass === FOOD_CLASS);
@@ -1476,9 +1486,11 @@ async function handleEat(player, display, game) {
                     }
                 }
             }
-            if (reqtime > 1) {
-                await display.putstr_message(`You begin eating the ${eatenItem.name}.`);
-            }
+            // C ref: eat.c fprefx() for non-corpse food prints flavor messages
+            // based on hunger level (e.g. "This food really hits the spot!") but
+            // does NOT print "You begin eating X." — that message is only for
+            // already_partly_eaten resumption (eat.c:3038-3040). Fresh food has
+            // no generic "You begin eating" message in C.
         }
         let consumedInventoryItem = false;
         const consumeInventoryItem = () => {

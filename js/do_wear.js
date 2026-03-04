@@ -1536,11 +1536,14 @@ async function handleWear(player, display, game = null) {
         const wearChoices = filtered
             .map((a) => a.invlet)
             .join('');
-        await display.putstr_message(
-            wearChoices.length > 0
-                ? `What do you want to wear? [${wearChoices} or ?*]`
-                : 'What do you want to wear? [*]'
-        );
+        const wearPrompt = wearChoices.length > 0
+            ? `What do you want to wear? [${wearChoices} or ?*]`
+            : 'What do you want to wear? [*]';
+        await display.putstr_message(wearPrompt);
+        // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+        if (typeof display.setCursor === 'function') {
+            display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
+        }
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
@@ -1614,11 +1617,14 @@ async function handlePutOn(player, display) {
 
     {
         const choices = eligible.map(r => r.invlet).join('');
-        await display.putstr_message(
-            choices.length > 0
-                ? `What do you want to put on? [${choices} or ?*]`
-                : 'What do you want to put on? [*]'
-        );
+        const putOnPrompt = choices.length > 0
+            ? `What do you want to put on? [${choices} or ?*]`
+            : 'What do you want to put on? [*]';
+        await display.putstr_message(putOnPrompt);
+        // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+        if (typeof display.setCursor === 'function') {
+            display.setCursor(Math.min(putOnPrompt.length + 1, (display.cols || 80) - 1), 0);
+        }
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);

@@ -523,10 +523,13 @@ export async function handleEngrave(player, display) {
         .filter((item) => item && item.oclass === WAND_CLASS && item.invlet)
         .map((item) => item.invlet)
         .join(''));
-    if (writeLetters) {
-        await display.putstr_message(`What do you want to write with? [- ${writeLetters} or ?*]`);
-    } else {
-        await display.putstr_message('What do you want to write with? [- or ?*]');
+    const writePrompt = writeLetters
+        ? `What do you want to write with? [- ${writeLetters} or ?*]`
+        : 'What do you want to write with? [- or ?*]';
+    await display.putstr_message(writePrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(writePrompt.length + 1, (display.cols || 80) - 1), 0);
     }
     while (true) {
         const ch = await nhgetch();

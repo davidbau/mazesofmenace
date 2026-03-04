@@ -485,10 +485,13 @@ export async function handleFire(player, map, display, game) {
         }
     }
     const fireChoices = compactInvletPromptChars(fireLetters.join(''));
-    if (fireChoices) {
-        await display.putstr_message(`What do you want to fire? [${fireChoices} or ?*]`);
-    } else {
-        await display.putstr_message('What do you want to fire? [*]');
+    const firePrompt = fireChoices
+        ? `What do you want to fire? [${fireChoices} or ?*]`
+        : 'What do you want to fire? [*]';
+    await display.putstr_message(firePrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(firePrompt.length + 1, (display.cols || 80) - 1), 0);
     }
     let pendingCount = '';
     while (true) {

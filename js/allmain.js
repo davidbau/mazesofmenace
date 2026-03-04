@@ -473,7 +473,12 @@ export async function run_command(game, ch, opts = {}) {
     // The old message text is "remembered" (pushed to history) and the
     // message area is marked empty, so the next screen capture shows a
     // clean topline unless a new pline() fires during this command.
-    if (game.display && game.display.topMessage && !game.display._pendingMore) {
+    // Exception: digit count-prefix keys ('1'-'9', and '0' extending an
+    // existing count) do NOT clear the topline — C only clears the message
+    // window after the final command key is read (parse():4914).
+    const _isCountDigit = (chCode >= 49 && chCode <= 57)
+        || (chCode === 48 && game.countAccum != null);
+    if (!_isCountDigit && game.display && game.display.topMessage && !game.display._pendingMore) {
         game.display.clearRow(0);
         game.display.topMessage = null;
         game.display.messageNeedsMore = false;
@@ -618,7 +623,10 @@ export async function run_command(game, ch, opts = {}) {
         if (typeof game.display.renderStatus === 'function') {
             game.display.renderStatus(_player);
         }
-        if (typeof game.display.cursorOnPlayer === 'function') {
+        // C ref: parse() / get_count() — while accumulating a count prefix that
+        // has been displayed ("Count: N"), the cursor stays on the topline.
+        // putstr_message() already positioned it there; skip cursorOnPlayer.
+        if (typeof game.display.cursorOnPlayer === 'function' && !result?.isCountDigitWithDisplay) {
             game.display.cursorOnPlayer(_player);
         }
     }

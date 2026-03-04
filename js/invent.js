@@ -102,10 +102,7 @@ export function buildInventoryOverlayLines(player) {
         lines.push(CLASS_NAMES[cls] || 'Other');
         for (const item of groups[cls]) {
             const named = doname(item, player);
-            const invName = (item.oclass === WEAPON_CLASS)
-                ? named.replace('(wielded)', '(weapon in right hand)')
-                : named;
-            lines.push(`${item.invlet} - ${invName}`);
+            lines.push(`${item.invlet} - ${named}`);
         }
     }
     lines.push('(end)');
@@ -157,10 +154,20 @@ async function drawInventoryPage(display, lines, opts = {}) {
     if (!display) return;
     const fullScreen = !!opts.fullScreen;
     if (!fullScreen) {
+        let offx = 0;
         if (typeof display.renderOverlayMenu === 'function') {
-            display.renderOverlayMenu(lines);
+            offx = display.renderOverlayMenu(lines) || 0;
         } else {
-            display.renderChargenMenu(lines, false);
+            offx = display.renderChargenMenu(lines, false) || 0;
+        }
+        // C ref: wintty.c line 2831 — morestr is "(end) " (with trailing space).
+        // After displaying the last line, cursor is at offx + lastLine.length + 1.
+        const menuRows = Math.min(lines.length, 22);
+        const lastLineIndex = menuRows - 1;
+        if (lastLineIndex >= 0 && typeof display.setCursor === 'function') {
+            const lastLine = String(lines[lastLineIndex] || '');
+            const cols = display.cols || 80;
+            display.setCursor(Math.min(offx + lastLine.length + 1, cols - 1), lastLineIndex);
         }
         return;
     }
@@ -1099,8 +1106,12 @@ export async function hold_another_object(obj, player, drop_fmt, drop_arg, hold_
         await prinv(hold_msg || null, result, oquan, player);
     }
     const newCap = near_capacity_for_inventory(player);
-    if (player) player.encumbrance = newCap;
+    // C ref: pickup.c encumber_msg() sets go.oldcap = newcap AFTER printing the
+    // transition message (not before). Move player.encumbrance update to after the
+    // message so that renderStatus at the --More-- overflow still reads the OLD
+    // encumbrance, matching C's disp.botl/bot() deferred update pattern.
     await encumber_msg_transition(prevCap, newCap);
+    if (player) player.encumbrance = newCap;
     return result;
 }
 

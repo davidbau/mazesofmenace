@@ -689,7 +689,12 @@ export async function handleDrop(player, map, display) {
         if (countMode && countDigits.length > 1) {
             await display.putstr_message(`Count: ${countDigits}`);
         } else {
-            await display.putstr_message(`What do you want to drop? [${dropChoices} or ?*]`);
+            const dropPrompt = `What do you want to drop? [${dropChoices} or ?*]`;
+            await display.putstr_message(dropPrompt);
+            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+            if (typeof display.setCursor === 'function') {
+                display.setCursor(Math.min(dropPrompt.length + 1, (display.cols || 80) - 1), 0);
+            }
         }
         const ch = await nhgetch();
         let c = String.fromCharCode(ch);

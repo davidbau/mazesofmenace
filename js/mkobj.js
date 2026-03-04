@@ -1352,7 +1352,16 @@ export function doname(obj, player) {
             if (od.big) {
                 result += ' (weapon in hands)';
             } else {
-                result += ' (wielded)';
+                // C ref: objnam.c doname() uses "(weapon in right hand)" for a
+                // single regular weapon; uses "(wielded)" for stacks, ammo
+                // (sub in -22..-20, P_CROSSBOW..P_BOW), missiles
+                // (sub in -25..-23, P_BOOMERANG..P_DART), and non-weptools.
+                const odSub = od.sub || 0;
+                const isAmmo = odSub <= -20 && odSub >= -22; // -P_BOW..-P_CROSSBOW
+                const isMissile = odSub <= -23 && odSub >= -25; // -P_DART..-P_BOOMERANG
+                const useWielded = (quan !== 1)
+                    || (obj.oclass === WEAPON_CLASS ? (isAmmo || isMissile) : !isWeptool);
+                result += useWielded ? ' (wielded)' : ' (weapon in right hand)';
             }
         } else if (player.swapWeapon === obj) {
             // C ref: objnam.c plur(obj->quan) for alternate weapon(s)
