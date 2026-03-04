@@ -225,7 +225,7 @@ export async function wizWish(game) {
 // JS version loads a special level generator by name instead of a Lua file.
 export async function handleWizLoadDes(game) {
     const { player, display } = game;
-    const input = await getlin('Load which level?', display);
+    const input = await getlin('Load which des lua file? ', display);
     if (input === null || input.trim() === '') {
         return { moved: false, tookTime: false };
     }
