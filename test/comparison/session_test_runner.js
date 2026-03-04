@@ -26,11 +26,10 @@ import {
     compareGrids,
     compareScreenLines,
     compareScreenAnsi,
-    ansiLineToCells,
     findFirstGridDiff,
 } from './comparators.js';
 import { loadAllSessions, stripAnsiSequences, getSessionScreenAnsiLines } from './session_loader.js';
-import { decodeDecSpecialChar } from './symset_normalization.js';
+import { decodeDecSpecialChar, decodeSOSILine } from './symset_normalization.js';
 import { recordGameplaySessionFromInputs } from './session_recorder.js';
 import { compareRecordedGameplaySession } from './session_comparator.js';
 import {
@@ -121,7 +120,7 @@ function decodeLegacyDecgraphicsLine(line) {
 }
 
 function normalizeInterfaceLineForComparison(line, { decgraphics = false } = {}) {
-    let normalized = String(line || '');
+    let normalized = stripAnsiSequences(String(line || ''));
     if (decgraphics) {
         normalized = decodeSOSILine(normalized);
         normalized = decodeLegacyDecgraphicsLine(normalized);
@@ -148,64 +147,6 @@ function compareInterfaceScreens(actualLines, expectedLines) {
     return compareScreenLines(actualLines, expectedLines);
 }
 
-function normalizeGameplayScreenLines(lines) {
-    return (Array.isArray(lines) ? lines : [])
-        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''));
-}
-
-function ansiCellsToPlainLine(line) {
-    return ansiLineToCells(line).map((cell) => cell?.ch || ' ').join('');
-}
-
-function decodeSOSILine(line) {
-    // Decode DEC special graphics characters inside SO/SI regions,
-    // then strip the control characters. This converts e.g.
-    // "\x0elqqqqk\x0f" → "┌────┐" (Unicode box-drawing).
-    const src = String(line || '').replace(/\r$/, '');
-    let result = '';
-    let inDec = false;
-    for (let i = 0; i < src.length; i++) {
-        const ch = src[i];
-        if (ch === '\x0e') { inDec = true; continue; }
-        if (ch === '\x0f') { inDec = false; continue; }
-        result += inDec ? decodeDecSpecialChar(ch) : ch;
-    }
-    return result;
-}
-
-function resolveGameplayComparableLines(plainLines, ansiLines, session) {
-    const ansi = Array.isArray(ansiLines) ? ansiLines : [];
-    const decgraphics = session?.meta?.options?.symset === 'DECgraphics';
-    if (ansi.length > 0) {
-        return ansi.map((line) => {
-            const plain = ansiCellsToPlainLine(line);
-            return plain;
-        });
-    }
-    const plain = Array.isArray(plainLines) ? plainLines : [];
-    if (!decgraphics) {
-        // Decode DEC characters inside SO/SI regions to Unicode, then strip
-        // the control characters. This ensures C session data using SO/SI
-        // line-drawing mode matches JS's direct Unicode box-drawing output.
-        return plain.map(decodeSOSILine);
-    }
-    // Legacy plain-only DECgraphics sessions cannot preserve SO/SI mode
-    // boundaries, so decode the stripped line consistently as a fallback.
-    return plain
-        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''))
-        .map((line) => [...line].map((ch) => decodeDecSpecialChar(ch)).join(''));
-}
-
-function compareGameplayScreens(actualLines, expectedLines, session, {
-    actualAnsi = null,
-    expectedAnsi = null,
-} = {}) {
-    const comparableActual = resolveGameplayComparableLines(actualLines, actualAnsi, session);
-    const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session);
-    const normalizedExpected = normalizeGameplayScreenLines(comparableExpected);
-    const normalizedActual = normalizeGameplayScreenLines(comparableActual);
-    return compareScreenLines(normalizedActual, normalizedExpected);
-}
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));

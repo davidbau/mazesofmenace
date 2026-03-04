@@ -38,6 +38,22 @@ export function decodeDecSpecialChar(ch) {
     return DEC_SPECIAL_TO_UNICODE[String(ch || '')] || String(ch || '');
 }
 
+// Decode DEC special graphics characters embedded inside SO (0x0E) / SI (0x0F)
+// regions and strip the shift control codes.  Converts e.g. "\x0elqqqqk\x0f"
+// to "┌────┐" (Unicode box-drawing characters).
+export function decodeSOSILine(line) {
+    const src = String(line || '').replace(/\r$/, '');
+    let result = '';
+    let inDec = false;
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === '\x0e') { inDec = true; continue; }
+        if (ch === '\x0f') { inDec = false; continue; }
+        result += inDec ? decodeDecSpecialChar(ch) : ch;
+    }
+    return result;
+}
+
 export function normalizeSymsetLine(line, { decGraphics = false } = {}) {
     const src = String(line || '');
     if (!src) return src;
