@@ -160,14 +160,25 @@ async function drawInventoryPage(display, lines, opts = {}) {
         } else {
             offx = display.renderChargenMenu(lines, false) || 0;
         }
+        // C tty parity: menu items occupy up to STATUS_ROW_1 rows, then
+        // "(end)" / "(x of y)" prompt is displayed on the next row.
+        const promptRow = STATUS_ROW_1;
+        const prompt = lines.length > STATUS_ROW_1 ? String(lines[STATUS_ROW_1] || '') : '';
+        if (prompt && typeof display.setCell === 'function' && Number.isInteger(display.cols)) {
+            for (let col = Math.max(0, offx - 1); col < display.cols; col++) {
+                display.setCell(col, promptRow, ' ', 7, 0);
+            }
+        } else if (prompt && typeof display.clearRow === 'function') {
+            display.clearRow(promptRow);
+        }
+        if (prompt) {
+            await display.putstr(offx, promptRow, prompt, undefined, 0);
+        }
         // C ref: wintty.c line 2831 — morestr is "(end) " (with trailing space).
-        // After displaying the last line, cursor is at offx + lastLine.length + 1.
-        const menuRows = Math.min(lines.length, 22);
-        const lastLineIndex = menuRows - 1;
-        if (lastLineIndex >= 0 && typeof display.setCursor === 'function') {
-            const lastLine = String(lines[lastLineIndex] || '');
+        // Cursor for menu wait sits after the prompt on the prompt row.
+        if (prompt && typeof display.setCursor === 'function') {
             const cols = display.cols || 80;
-            display.setCursor(Math.min(offx + lastLine.length + 1, cols - 1), lastLineIndex);
+            display.setCursor(Math.min(offx + prompt.length + 1, cols - 1), promptRow);
         }
         return;
     }
