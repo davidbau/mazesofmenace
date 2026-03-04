@@ -27,7 +27,9 @@ import { newsym, mondead, mark_vision_dirty } from './monutil.js';
 import { set_apparxy, mon_track_clear } from './monmove.js';
 import { onscary } from './mon.js';
 import { pline } from './pline.js';
+import { Monnam } from './do_name.js';
 import { deltrap } from './dungeon.js';
+import { couldsee } from './vision.js';
 
 // ============================================================================
 // Flags (cf. hack.h)
@@ -321,12 +323,28 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
     const oldx = mtmp.mx;
     const oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
+    const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
+    const domsg = !!display && vanishmsg && !preventmsg;
+    let telemsg = false;
+    const canSeePos = (tx, ty) => {
+        if (!player) return false;
+        if (fov?.canSee) return !!fov.canSee(tx, ty);
+        return !!couldsee(map, player, tx, ty);
+    };
 
     if (x === mtmp.mx && y === mtmp.my && map.monsterAt(x, y) === mtmp)
         return; // already there
 
     // "pick up" monster from old location
     if (oldx) {
+        if (domsg && canSeePos(mtmp.mx, mtmp.my)) {
+            const seenAfter = canSeePos(x, y);
+            if (seenAfter) {
+                telemsg = true;
+            } else {
+                pline(`${Monnam(mtmp)} vanishes!`);
+            }
+        }
         // Remove from old position (update grid)
         newsym(oldx, oldy);
     }
@@ -344,6 +362,10 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
     // Orient monster toward player
     if (player) {
         set_apparxy(mtmp, map, player);
+    }
+
+    if (domsg && telemsg && canSeePos(mtmp.mx, mtmp.my)) {
+        pline(`${Monnam(mtmp)} vanishes and reappears.`);
     }
 
     // Trapped monster teleported away — clear trap state

@@ -2,9 +2,16 @@
 // cf. steal.c — leprechaun gold theft, nymph/monkey item theft, monster pickup/drop
 
 import { rn1, rn2, rnd } from './rng.js';
-import { GOLD_PIECE, COIN_CLASS, objectData } from './objects.js';
+import { GOLD_PIECE, COIN_CLASS } from './objects.js';
 import { newsym, mdrop_obj, mpickobj } from './monutil.js';
-import { W_ARMOR, W_ACCESSORY } from './worn.js';
+import { doname } from './objnam.js';
+import { Some_Monnam } from './do_name.js';
+import {
+    W_ARMOR, W_ACCESSORY, W_WEAPONS,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+    W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER,
+} from './worn.js';
+import { S_NYMPH } from './symbols.js';
 
 function isWornForSteal(obj, player) {
     if (!obj || !player) return false;
@@ -150,7 +157,7 @@ export function unresponsive(player) {
 // slot and owornmask. Full C version handles armor off effects, ring effects,
 // amulet effects, ball/chain, etc.
 export function remove_worn_item(player, obj) {
-    if (!obj || !obj.owornmask) return;
+    if (!obj) return;
 
     // Clear equipment slots
     if (obj === player.armor) player.armor = null;
@@ -166,6 +173,51 @@ export function remove_worn_item(player, obj) {
     else if (obj === player.quiver) player.quiver = null;
 
     obj.owornmask = 0;
+}
+
+function inferred_wornmask(player, obj) {
+    let mask = Number(obj?.owornmask || 0);
+    if (!player || !obj) return mask;
+    if (obj === player.armor) mask |= W_ARM;
+    else if (obj === player.cloak) mask |= W_ARMC;
+    else if (obj === player.helmet) mask |= W_ARMH;
+    else if (obj === player.shield) mask |= W_ARMS;
+    else if (obj === player.gloves) mask |= W_ARMG;
+    else if (obj === player.boots) mask |= W_ARMF;
+    else if (obj === player.shirt) mask |= W_ARMU;
+    else if (obj === player.amulet) mask |= W_AMUL;
+    else if (obj === player.weapon) mask |= W_WEP;
+    else if (obj === player.swapWeapon) mask |= W_SWAPWEP;
+    else if (obj === player.quiver) mask |= W_QUIVER;
+    return mask;
+}
+
+function stripLeadArticle(text, replacement) {
+    if (text.startsWith('the ')) return replacement + text.slice(4);
+    if (text.startsWith('an ')) return replacement + text.slice(3);
+    if (text.startsWith('a ')) return replacement + text.slice(2);
+    return text;
+}
+
+function worn_item_removal_desc(obj, player) {
+    // C ref: steal.c:worn_item_removal() doname()-massage logic.
+    let desc = doname(obj, player);
+    desc = stripLeadArticle(desc, 'your ');
+    desc = desc.replace(' (being worn)', '');
+    desc = desc.replace(' (alternate weapon; not wielded)', '');
+    desc = desc.replace(' (on left hand)', ' (from left hand)');
+    desc = desc.replace(' (on right hand)', ' (from right hand)');
+    return desc;
+}
+
+async function worn_item_removal(mon, obj, player, display) {
+    const desc = worn_item_removal_desc(obj, player);
+    const mask = inferred_wornmask(player, obj);
+    const verb = (mask & W_WEAPONS) ? 'disarms'
+        : (mask & W_ACCESSORY) ? 'removes'
+            : 'takes off';
+    await display.putstr_message(`${Some_Monnam(mon)} ${verb} ${desc}.`);
+    remove_worn_item(player, obj);
 }
 
 // ============================================================================
@@ -209,9 +261,9 @@ export async function steal(mon, player, display, map = null) {
     if (otmp === player.shirt && player.cloak) otmp = player.cloak;
     else if (otmp === player.shirt && player.armor) otmp = player.armor;
 
-    // Remove from worn slots if worn
-    if (otmp.owornmask) {
-        remove_worn_item(player, otmp);
+    const wasWorn = (inferred_wornmask(player, otmp) !== 0);
+    if (wasWorn) {
+        await worn_item_removal(mon, otmp, player, display);
     }
 
     // Remove from hero inventory
@@ -227,9 +279,9 @@ export async function steal(mon, player, display, map = null) {
     }
 
     if (display) {
-        const monName = mon.type?.name || 'Something';
-        const objName = objectData[otmp.otyp]?.name || 'something';
-        await display.putstr_message(`${monName} stole ${objName}!`);
+        // C ref: steal.c:600-604 — nymph theft after worn-item removal uses "She".
+        const thiefName = (wasWorn && mon?.type?.mlet === S_NYMPH) ? 'She' : Some_Monnam(mon);
+        await display.putstr_message(`${thiefName} stole ${doname(otmp, player)}.`);
     }
 
     // Set mavenge flag
