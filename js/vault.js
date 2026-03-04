@@ -83,9 +83,7 @@ function sobj_at(otyp, x, y, map) {
 function t_at(x, y, map) {
     if (!map || !map.traps) return null;
     for (const trap of map.traps) {
-        const tx = Number.isInteger(trap.tx) ? trap.tx : trap.x;
-        const ty = Number.isInteger(trap.ty) ? trap.ty : trap.y;
-        if (tx === x && ty === y) return trap;
+        if (trap && trap.tx === x && trap.ty === y) return trap;
     }
     return null;
 }

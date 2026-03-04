@@ -118,7 +118,7 @@ function has_boulder_at(map, x, y) {
 export function t_at(x, y, map) {
     if (!map || !Array.isArray(map.traps)) return null;
     for (const t of map.traps) {
-        if (t && t.x === x && t.y === y) return t;
+        if (t && t.tx === x && t.ty === y) return t;
     }
     return null;
 }
@@ -379,10 +379,16 @@ function trapeffect_rocktrap_mon(mon, trap, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_sqky_board_mon(mon, trap) {
+function trapeffect_sqky_board_mon(mon, trap, player, fov) {
     if (m_in_air(mon))
         return Trap_Effect_Finished;
-    // stepped on a squeaky board — wake nearby monsters
+    // C ref: trap.c:1435-1465 — monster steps on squeaky board
+    const in_sight = canseemon(mon, player, fov);
+    const isDeaf = !!(player?.Deaf || player?.deaf);
+    if (in_sight && !isDeaf) {
+        // Player hears the squeak and sees the board location
+        seetrap(trap);
+    }
     // C ref: wake_nearto(mtmp->mx, mtmp->my, 40) — not ported
     return Trap_Effect_Finished;
 }
@@ -898,7 +904,7 @@ async function trapeffect_selector_mon(mon, trap, trflags, map, player, display,
     case ROCKTRAP:
         return trapeffect_rocktrap_mon(mon, trap, map, player);
     case SQKY_BOARD:
-        return trapeffect_sqky_board_mon(mon, trap);
+        return trapeffect_sqky_board_mon(mon, trap, player, fov);
     case BEAR_TRAP:
         return trapeffect_bear_trap_mon(mon, trap, map, player);
     case SLP_GAS_TRAP:

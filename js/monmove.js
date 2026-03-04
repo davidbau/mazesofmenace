@@ -1990,7 +1990,7 @@ export function gelcube_digests(mtmp) {
 // Autotranslated from monmove.c:1157
 export function leppie_stash(mtmp, map) {
   let gold;
-  if (mtmp.data === mons[PM_LEPRECHAUN] && !DEADMONSTER(mtmp) && !m_canseeu(mtmp) && !in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && map.locations[mtmp.mx][mtmp.my].typ === ROOM && !t_at(mtmp.mx, mtmp.my) && rn2(4) && (gold = findgold(mtmp.minvent)) !== 0) {
+  if (mtmp.data === mons[PM_LEPRECHAUN] && !DEADMONSTER(mtmp) && !m_canseeu(mtmp) && !in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && map.locations[mtmp.mx][mtmp.my].typ === ROOM && !t_at(mtmp.mx, mtmp.my, map) && rn2(4) && (gold = findgold(mtmp.minvent)) !== 0) {
     mdrop_obj(mtmp, gold, false);
     gold = g_at(mtmp.mx, mtmp.my);
     if (gold) {

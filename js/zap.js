@@ -136,7 +136,7 @@ function engulfing_u(player) {
 function t_at(x, y, map) {
   if (!map || !Array.isArray(map.traps)) return null;
   for (const t of map.traps) {
-    if (t && t.x === x && t.y === y) return t;
+    if (t && t.tx === x && t.ty === y) return t;
   }
   return null;
 }

@@ -418,8 +418,8 @@ function captureCheckpoint(phase) {
 
     const traps = (Array.isArray(map.traps) ? map.traps : [])
         .map((t) => ({
-            x: Number.isInteger(t?.tx) ? t.tx : (Number.isInteger(t?.x) ? t.x : -1),
-            y: Number.isInteger(t?.ty) ? t.ty : (Number.isInteger(t?.y) ? t.y : -1),
+            x: Number.isInteger(t?.tx) ? t.tx : -1,
+            y: Number.isInteger(t?.ty) ? t.ty : -1,
             ttyp: Number.isInteger(t?.ttyp) ? t.ttyp : -1
         }))
         .filter((t) => t.x >= 0 && t.x < COLNO && t.y >= 0 && t.y < ROWNO)
@@ -1838,8 +1838,6 @@ function flipLevelRandom(extras = false) {
         if (inFlipArea(trap.tx, trap.ty)) {
             if (flipBits & 1) trap.ty = flipY(trap.ty);
             if (flipBits & 2) trap.tx = flipX(trap.tx);
-            if (Number.isInteger(trap.x)) trap.x = trap.tx;
-            if (Number.isInteger(trap.y)) trap.y = trap.ty;
         }
         if (trap.launch && inFlipArea(trap.launch.x, trap.launch.y)) {
             if (flipBits & 1) trap.launch.y = flipY(trap.launch.y);
@@ -6533,9 +6531,7 @@ export function map_cleanup(map) {
     if (Array.isArray(map.traps) && map.traps.length > 0) {
         const toRemove = map.traps.filter((trap) => {
             if (!trap) return true; // remove nulls
-            const tx = Number.isInteger(trap.tx) ? trap.tx : trap.x;
-            const ty = Number.isInteger(trap.ty) ? trap.ty : trap.y;
-            const loc = map.at(tx, ty);
+            const loc = map.at(trap.tx, trap.ty);
             if (!loc) return false;
             return (IS_LAVA(loc.typ) || IS_POOL(loc.typ)) && !undestroyableTrap(trap.ttyp);
         });
