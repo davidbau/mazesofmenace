@@ -129,6 +129,9 @@ export function map_invisible(map, x, y, player) {
     const loc = map.at(x, y);
     if (!loc) return;
     loc.mem_invis = true;
+    // C ref: display.c map_invisible() updates glyph immediately.
+    // Keep display in sync with remembered invisible markers.
+    newsym(x, y);
 }
 
 // ========================================================================
@@ -153,15 +156,17 @@ export function setDisplayContext(ctx) {
 // Map is obtained from the display context (matching C's implicit global
 // level pointer — C's newsym() takes no map argument).
 export function newsym(x, y) {
-    const map = _displayContext?.map;
+    const ctx = _displayContext;
+    if (!ctx?.map) return;
+    const map = ctx.map;
     if (!map || !isok(x, y)) return;
     const loc = map.at(x, y);
     if (!loc) return;
 
-    const ctx = _displayContext;
     if (!ctx || !ctx.display || typeof ctx.display.setCell !== 'function') {
-        // No display wired (or mock display without setCell) — just update memory state
-        loc.mem_invis = false;
+        // No display wired (or mock display without setCell). Preserve
+        // remembered glyph state; C newsym updates display/glyph buffers but
+        // does not clear remembered invisible markers as a side effect.
         return;
     }
 
