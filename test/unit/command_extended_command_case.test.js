@@ -101,37 +101,52 @@ test('#wipe prints face-clean message and returns tookTime true', async () => {
         `expected face message, got: ${JSON.stringify(game.display.messages)}`);
 });
 
-test('#pray returns without crashing', async () => {
+test('#pray shows prayer message', async () => {
     clearInputQueue();
     const game = makeGame();
+    setOutputContext(game.display);
     for (const ch of 'pray') pushInput(ch.charCodeAt(0));
     pushInput('\n'.charCodeAt(0));
 
-    const result = await rhack('#'.charCodeAt(0), game);
-    // dopray may or may not consume time depending on cooldown; just check no crash
-    assert.ok(typeof result.tookTime === 'boolean');
+    await rhack('#'.charCodeAt(0), game);
+    // dopray should say something — either prayer start or "can't pray" message
+    assert.ok(game.display.messages.length > 0,
+        'expected at least one message from #pray');
+    assert.ok(game.display.messages.some(m =>
+        m.toLowerCase().includes('pray') || m.toLowerCase().includes('surrounded')
+        || m.toLowerCase().includes('shimmering') || m.toLowerCase().includes('align')),
+        `expected prayer message, got: ${JSON.stringify(game.display.messages)}`);
 });
 
-test('#turn returns without crashing', async () => {
+test('#turn shows turn-undead message', async () => {
     clearInputQueue();
     const game = makeGame();
+    setOutputContext(game.display);
     for (const ch of 'turn') pushInput(ch.charCodeAt(0));
     pushInput('\n'.charCodeAt(0));
 
-    const result = await rhack('#'.charCodeAt(0), game);
-    assert.ok(typeof result.tookTime === 'boolean');
+    await rhack('#'.charCodeAt(0), game);
+    // Non-priest/knight role should get "don't know how to turn undead"
+    assert.ok(game.display.messages.length > 0,
+        'expected at least one message from #turn');
+    assert.ok(game.display.messages.some(m =>
+        m.toLowerCase().includes('turn') || m.toLowerCase().includes('undead')
+        || m.toLowerCase().includes('spell')),
+        `expected turn-undead message, got: ${JSON.stringify(game.display.messages)}`);
 });
 
-test('#dip returns without crashing when no items', async () => {
+test('#dip shows unavailable message', async () => {
     clearInputQueue();
     const game = makeGame();
-    game.player.inventory = [];
+    setOutputContext(game.display);
     for (const ch of 'dip') pushInput(ch.charCodeAt(0));
     pushInput('\n'.charCodeAt(0));
-    pushInput(27); // escape any prompts
 
     const result = await rhack('#'.charCodeAt(0), game);
-    assert.ok(typeof result.tookTime === 'boolean');
+    assert.ok(game.display.messages.length > 0,
+        'expected at least one message from #dip');
+    assert.ok(game.display.messages.some(m => m.length > 0),
+        `expected non-empty message from #dip, got: ${JSON.stringify(game.display.messages)}`);
 });
 
 test('#enhance reports not yet implemented', async () => {
