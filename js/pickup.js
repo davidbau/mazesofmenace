@@ -1599,6 +1599,9 @@ async function handleLoot(game) {
             // C prompt leaves cursor one past '?' on topline.
             await display.putstr_message('Loot in what direction? ');
             const dirCh = await nhgetch();
+            // Avoid concatenating prompt + result on the same topline message.
+            display.topMessage = null;
+            display.messageNeedsMore = false;
             if (dirCh === 27 || dirCh === 32 || dirCh === 10 || dirCh === 13) {
                 await display.putstr_message('Never mind.');
                 return { moved: false, tookTime: false };

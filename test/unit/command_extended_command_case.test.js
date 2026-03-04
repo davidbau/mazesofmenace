@@ -50,6 +50,18 @@ test('extended command unknown feedback preserves typed casing', async () => {
     assert.equal(game.display.topMessage, '#Oyce: unknown extended command.');
 });
 
+test('single-letter #l remains unknown unless full command is entered', async () => {
+    clearInputQueue();
+    const game = makeGame();
+    pushInput('l'.charCodeAt(0));
+    pushInput('\n'.charCodeAt(0));
+
+    const result = await rhack('#'.charCodeAt(0), game);
+
+    assert.equal(result.tookTime, false);
+    assert.equal(game.display.topMessage, '#l: unknown extended command.');
+});
+
 test('#name object-type path rejects non-callable inventory item with C wording', async () => {
     clearInputQueue();
     const game = makeGame();

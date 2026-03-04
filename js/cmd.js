@@ -666,7 +666,7 @@ export async function rhack(ch, game) {
 
 async function handleExtendedCommand(game) {
     const { player, display } = game;
-    const input = await getlin('# ', display);
+    const input = await readExtendedCommandLine(game, display);
     if (input === null || input.trim() === '') {
         return { moved: false, tookTime: false };
     }
@@ -817,6 +817,72 @@ async function handleExtendedCommand(game) {
             // C-style unknown extended command feedback
             await display.putstr_message(`#${rawCmd}: unknown extended command.`);
             return { moved: false, tookTime: false };
+    }
+}
+
+function knownExtendedCommands(game) {
+    const cmds = [
+        'options', 'optionsfull', 'adjust', 'wipe', 'pray', 'turn', 'dip',
+        'enhance', 'chat', 'offer', 'monster', 'name', 'force', 'loot',
+        'quit', 'wield', 'wear', 'eat', 'read', 'again', 'repeat', 'untrap',
+    ];
+    if (game?.wizard) {
+        cmds.push('levelchange', 'wish', 'map', 'teleport', 'genesis', 'wizloaddes');
+    }
+    return cmds;
+}
+
+function displayCompletedExtcmd(typed, game) {
+    const raw = String(typed || '');
+    const lowered = raw.toLowerCase();
+    if (!lowered) return raw;
+    const cmds = knownExtendedCommands(game);
+    const exact = cmds.find((c) => c === lowered);
+    if (exact) return raw;
+    const matches = cmds.filter((c) => c.startsWith(lowered));
+    if (matches.length === 1) return matches[0];
+    return raw;
+}
+
+async function readExtendedCommandLine(game, display) {
+    if (!display || typeof display.putstr !== 'function' || typeof display.clearRow !== 'function') {
+        return await getlin('# ', display);
+    }
+    let line = '';
+    while (true) {
+        const shown = displayCompletedExtcmd(line, game);
+        display.clearRow(0);
+        await display.putstr(0, 0, `# ${shown}`);
+        if (typeof display.setCursor === 'function') {
+            const cols = display.cols || 80;
+            // Cursor remains at typed length even when showing completion text.
+            display.setCursor(Math.min(`# ${line}`.length, cols - 1), 0);
+        }
+
+        const ch = await nhgetch();
+        if (ch === 13 || ch === 10) {
+            if (display) {
+                display.topMessage = null;
+                display.messageNeedsMore = false;
+                if (typeof display.clearRow === 'function') display.clearRow(0);
+            }
+            return line;
+        }
+        if (ch === 27) {
+            if (display) {
+                display.topMessage = null;
+                display.messageNeedsMore = false;
+                if (typeof display.clearRow === 'function') display.clearRow(0);
+            }
+            return null;
+        }
+        if (ch === 8 || ch === 127) {
+            if (line.length > 0) line = line.slice(0, -1);
+            continue;
+        }
+        if (ch >= 32 && ch < 127) {
+            line += String.fromCharCode(ch);
+        }
     }
 }
 
