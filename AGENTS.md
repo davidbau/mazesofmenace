@@ -157,6 +157,16 @@ node test/comparison/rng_step_diff.js <session-path> --step <N> --window 8
 `RNG_LOG_PARENT=0` can be used to shorten tags if needed.
 Set `RNG_LOG_TAGS=0` to disable caller tags when you need lower-overhead runs.
 
+## Skill Usage
+1. Agents that support skills should use repo skills from `skills/<skill-name>/SKILL.md` when relevant.
+2. Current repo skills:
+   - `skills/parity-rng-triage/SKILL.md`
+3. `AGENTS.md` remains the source of truth for non-negotiable policy.
+4. If skill loading is unavailable in a client, follow the workflow and guardrails from the referenced `SKILL.md` manually.
+5. Skill guardrails are mandatory when applicable, including:
+   - no comparator masking/exceptions to hide divergences
+   - no `js/replay_core.js` compensating behavior (no synthetic queueing/injection/auto-dismiss/timing compensation)
+
 ## Priority Docs (Read Order)
 1. Always start with:
    - `PROJECT_PLAN.md`
