@@ -1113,15 +1113,66 @@ export async function domonnoise(mtmp, game) {
 // ============================================================================
 
 // cf. sounds.c:1247 — dotalk(): #chat command handler
-// Stub: the #chat command is not yet fully ported.
+// cf. sounds.c:1247-1409 — full direction + monster-lookup implementation.
 export async function dotalk(game) {
-    await game.display.putstr_message('Talking to yourself is a bad habit for a dungeoneer.');
-    return 0;
+    const { player, map, display } = game;
+
+    // cf. sounds.c:1262 — swallowed: can't chat from inside a monster
+    if (player.uswallow) {
+        await display.putstr_message("They won't hear you out there.");
+        return 0;
+    }
+
+    // cf. sounds.c:1266 — strangled: can't speak
+    if (player.strangled) {
+        await display.putstr_message("You can't.  You're choking!");
+        return 0;
+    }
+
+    // cf. sounds.c:1287 — prompt for direction
+    // Lazy import to avoid circular dependency.
+    const { nhgetch } = await import('./input.js');
+    const { DIRECTION_KEYS } = await import('./dothrow.js');
+    await display.putstr_message('Talk to whom? (in what direction)');
+    const ch = await nhgetch();
+    const c = String.fromCharCode(ch);
+    const dir = DIRECTION_KEYS[c.toLowerCase()];
+
+    // Cancel / invalid key
+    if (ch === 27 || (!dir && c !== '.' && c !== '>' && c !== '<')) return 0;
+
+    // cf. sounds.c:1296 — vertical directions not valid for chat
+    if (c === '>' || c === '<') {
+        await display.putstr_message("You can't do that in that direction.");
+        return 0;
+    }
+
+    // Self-direction ('.'): talking to yourself
+    if (!dir || (dir[0] === 0 && dir[1] === 0)) {
+        await display.putstr_message('Talking to yourself is a bad habit for a dungeoneer.');
+        return 0;
+    }
+
+    const tx = player.x + dir[0];
+    const ty = player.y + dir[1];
+
+    // cf. sounds.c:1412 — find a monster at the target cell
+    const mon = (typeof map.monsterAt === 'function') ? map.monsterAt(tx, ty) : null;
+
+    if (!mon) {
+        // cf. sounds.c:1426 — tiphat / no one there
+        await display.putstr_message('There is nobody here to talk to.');
+        return 0;
+    }
+
+    // cf. sounds.c:1352 — call domonnoise for the monster's response
+    await domonnoise(mon, game);
+    return 1;
 }
 
 // cf. sounds.c:1412 — responsive_mon_at(x, y): find monster at pos for chat
 export function responsive_mon_at(x, y, map) {
-    // Simplified stub
+    if (typeof map.monsterAt === 'function') return map.monsterAt(x, y);
     return null;
 }
 

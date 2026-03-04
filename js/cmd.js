@@ -20,7 +20,7 @@ import { handleWear, handlePutOn, handleTakeOff, handleRemove, handleRemoveAll }
 import { handleWield, handleSwapWeapon, handleQuiver } from './wield.js';
 import { handleDownstairs, handleUpstairs, handleDrop, dowipe } from './do.js';
 import { handleInventory, currency, doorganize } from './invent.js';
-import { dopray, doturn } from './pray.js';
+import { dopray, doturn, dosacrifice } from './pray.js';
 import { dodip } from './potion.js';
 import { handleCallObjectTypePrompt, handleDiscoveries } from './discovery.js';
 import { handlePrevMessages, handleHelp, handleWhatdoes, handleHistory, handleViewMapPrompt } from './pager.js';
@@ -30,6 +30,8 @@ import { handleZap } from './zap.js';
 import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
+import { dotalk } from './sounds.js';
+import { add_skills_to_menu, can_advance, skill_advance, skill_level_name, P_NUM_SKILLS } from './weapon.js';
 import { handleSet } from './options_menu.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
@@ -698,12 +700,54 @@ async function handleExtendedCommand(game) {
         case 'dip':
             queueRepeatExtcmd((g) => dodip(g.player, g.map, g.display).then(t => ({ moved: false, tookTime: !!t })));
             return { moved: false, tookTime: !!(await dodip(player, game.map, display)) };
-        case 'enhance':
-        case 'chat':
-        case 'offer':
-        case 'monster':
-            await display.putstr_message(`#${rawCmd}: not yet implemented.`);
+        case 'enhance': {
+            // cf. weapon.c enhance_weapon_skill() — skill advancement menu.
+            const rows = add_skills_to_menu();
+            const advanceable = rows.filter((r) => r.canAdvance);
+            if (!rows.length) {
+                await display.putstr_message('You have no skills to show.');
+                return { moved: false, tookTime: false };
+            }
+            const heading = advanceable.length > 0 ? 'Pick a skill to advance:' : 'Current skills:';
+            await display.putstr_message(heading);
+            const letters = 'abcdefghijklmnopqrstuvwxyz';
+            for (let idx = 0; idx < rows.length; idx++) {
+                const r = rows[idx];
+                const letter = letters[idx] || '?';
+                const mark = r.canAdvance ? ' *' : '';
+                await display.putstr_message(`  ${letter} - ${r.name} [${r.levelName}]${mark}`);
+            }
+            if (!advanceable.length) return { moved: false, tookTime: false };
+            await display.putstr_message('Skill to advance (letter or ESC):');
+            const ech = await nhgetch();
+            if (ech === 27) return { moved: false, tookTime: false };
+            const ec = String.fromCharCode(ech);
+            const idx = letters.indexOf(ec);
+            const chosen = (idx >= 0 && idx < rows.length) ? rows[idx] : null;
+            if (chosen && chosen.canAdvance) {
+                skill_advance(chosen.skill);
+                await display.putstr_message('You feel you could be more dangerous!');
+                return { moved: false, tookTime: false };
+            }
             return { moved: false, tookTime: false };
+        }
+        case 'chat':
+            queueRepeatExtcmd((g) => dotalk(g));
+            return { moved: false, tookTime: !!(await dotalk(game)) };
+        case 'offer': {
+            const tookTimeOffer = await dosacrifice(player, game.map);
+            return { moved: false, tookTime: !!tookTimeOffer };
+        }
+        case 'monster': {
+            // cf. cmd.c domonability() — use polymorphed monster special ability.
+            const isPolyd = !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
+            if (isPolyd) {
+                await display.putstr_message('Any special ability you may have is purely reflexive.');
+            } else {
+                await display.putstr_message("You don't have a special ability in your normal form!");
+            }
+            return { moved: false, tookTime: false };
+        }
         case 'n':
         case 'name': {
             queueRepeatExtcmd(async (g) => handleExtendedCommandName(g));

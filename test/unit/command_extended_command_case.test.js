@@ -6,6 +6,7 @@ import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
 import { setOutputContext } from '../../js/pline.js';
+import { ALTAR } from '../../js/config.js';
 
 describe('extended command case', () => {
 
@@ -149,7 +150,7 @@ test('#dip shows unavailable message', async () => {
         `expected non-empty message from #dip, got: ${JSON.stringify(game.display.messages)}`);
 });
 
-test('#enhance reports not yet implemented', async () => {
+test('#enhance with no advanceable skills shows current skills heading', async () => {
     clearInputQueue();
     const game = makeGame();
     for (const ch of 'enhance') pushInput(ch.charCodeAt(0));
@@ -157,32 +158,68 @@ test('#enhance reports not yet implemented', async () => {
 
     const result = await rhack('#'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.ok(game.display.topMessage.includes('not yet implemented'));
+    // skill system not initialized in unit test context — shows empty message
+    assert.ok(game.display.topMessage !== null,
+        'expected some message from #enhance');
+    assert.ok(!game.display.topMessage.includes('not yet implemented'),
+        `expected real enhance response, got: ${game.display.topMessage}`);
 });
 
-test('#chat reports not yet implemented', async () => {
+test('#chat with ESC direction shows nothing or cancels', async () => {
     clearInputQueue();
     const game = makeGame();
     for (const ch of 'chat') pushInput(ch.charCodeAt(0));
     pushInput('\n'.charCodeAt(0));
+    pushInput(27); // ESC = cancel direction prompt
 
     const result = await rhack('#'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.ok(game.display.topMessage.includes('not yet implemented'));
+    // cancelled at direction prompt — no error
 });
 
-test('#offer reports not yet implemented', async () => {
+test('#chat with no monster at target cell says no one to talk to', async () => {
     clearInputQueue();
     const game = makeGame();
+    for (const ch of 'chat') pushInput(ch.charCodeAt(0));
+    pushInput('\n'.charCodeAt(0));
+    pushInput('j'.charCodeAt(0)); // south — no monster there
+
+    const result = await rhack('#'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.ok(game.display.messages.some((m) => m.includes('nobody') || m.includes('no one')),
+        `expected no-one-to-talk message, got: ${JSON.stringify(game.display.messages)}`);
+});
+
+test('#offer off altar prints C wording', async () => {
+    clearInputQueue();
+    const game = makeGame();
+    setOutputContext(game.display);
     for (const ch of 'offer') pushInput(ch.charCodeAt(0));
     pushInput('\n'.charCodeAt(0));
 
     const result = await rhack('#'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.ok(game.display.topMessage.includes('not yet implemented'));
+    // cf. pray.c dosacrifice(): "You are not on an altar." (or "over" when levitating)
+    assert.ok(game.display.messages.some((m) => m.includes('altar')),
+        `expected altar message, got: ${JSON.stringify(game.display.messages)}`);
 });
 
-test('#monster reports not yet implemented', async () => {
+test('#offer on altar does not say not-on-altar', async () => {
+    clearInputQueue();
+    const game = makeGame();
+    setOutputContext(game.display);
+    // Place an altar at player position
+    const loc = game.map.at(game.player.x, game.player.y);
+    loc.typ = ALTAR;
+    for (const ch of 'offer') pushInput(ch.charCodeAt(0));
+    pushInput('\n'.charCodeAt(0));
+
+    await rhack('#'.charCodeAt(0), game);
+    assert.ok(!game.display.messages.some((m) => m.includes('not on') || m.includes('not over')),
+        `expected no "not on altar" message, got: ${JSON.stringify(game.display.messages)}`);
+});
+
+test('#monster when not polymorphed prints C wording', async () => {
     clearInputQueue();
     const game = makeGame();
     for (const ch of 'monster') pushInput(ch.charCodeAt(0));
@@ -190,7 +227,9 @@ test('#monster reports not yet implemented', async () => {
 
     const result = await rhack('#'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.ok(game.display.topMessage.includes('not yet implemented'));
+    // cf. cmd.c domonability(): "You don't have a special ability in your normal form!"
+    assert.ok(game.display.topMessage.includes('normal form'),
+        `expected normal-form message, got: ${game.display.topMessage}`);
 });
 
 test('#adjust with empty inventory shows message', async () => {
