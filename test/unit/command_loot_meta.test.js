@@ -428,4 +428,28 @@ describe('loot via meta key', () => {
         assert.ok(messages.some((m) => m.includes("don't find anything there to loot")),
             `expected directional no-loot message, got: ${JSON.stringify(messages)}`);
     });
+
+    it('loot direction up reports ceiling wording and consumes a turn', async () => {
+        const { game, messages } = makeGame();
+        game.map.monsters.push({ mx: game.player.x + 1, my: game.player.y, m_id: 1 });
+        pushInput('<'.charCodeAt(0));
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, true);
+        assert.ok(messages.some((m) => m.includes('to loot on the ceiling')),
+            `expected ceiling message, got: ${JSON.stringify(messages)}`);
+    });
+
+    it('loot invalid direction key cancels with never mind', async () => {
+        const { game, messages } = makeGame();
+        game.map.monsters.push({ mx: game.player.x + 1, my: game.player.y, m_id: 1 });
+        pushInput('x'.charCodeAt(0));
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, false);
+        assert.ok(messages.some((m) => m.includes('Never mind.')),
+            `expected cancellation message, got: ${JSON.stringify(messages)}`);
+    });
 });

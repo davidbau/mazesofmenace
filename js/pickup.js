@@ -1378,15 +1378,17 @@ function monsterBeside(map, x, y) {
 
 function lootDirectionDelta(ch) {
     switch (String.fromCharCode(ch).toLowerCase()) {
-        case 'h': return [-1, 0];
-        case 'j': return [0, 1];
-        case 'k': return [0, -1];
-        case 'l': return [1, 0];
-        case 'y': return [-1, -1];
-        case 'u': return [1, -1];
-        case 'b': return [-1, 1];
-        case 'n': return [1, 1];
-        case '.': return [0, 0];
+        case 'h': return { dx: -1, dy: 0, dz: 0 };
+        case 'j': return { dx: 0, dy: 1, dz: 0 };
+        case 'k': return { dx: 0, dy: -1, dz: 0 };
+        case 'l': return { dx: 1, dy: 0, dz: 0 };
+        case 'y': return { dx: -1, dy: -1, dz: 0 };
+        case 'u': return { dx: 1, dy: -1, dz: 0 };
+        case 'b': return { dx: -1, dy: 1, dz: 0 };
+        case 'n': return { dx: 1, dy: 1, dz: 0 };
+        case '.': return { dx: 0, dy: 0, dz: 0 };
+        case '<': return { dx: 0, dy: 0, dz: -1 };
+        case '>': return { dx: 0, dy: 0, dz: 1 };
         default: return null;
     }
 }
@@ -1603,19 +1605,27 @@ async function handleLoot(game) {
             }
             const delta = lootDirectionDelta(dirCh);
             if (!delta) {
+                await display.putstr_message('Never mind.');
+                return { moved: false, tookTime: false };
+            }
+            if (delta.dz < 0) {
+                await display.putstr_message("You don't find anything to loot on the ceiling.");
+                return { moved: false, tookTime: true };
+            }
+            const tx = player.x + delta.dx;
+            const ty = player.y + delta.dy;
+            if (!isok(tx, ty)) {
                 await display.putstr_message('Invalid loot location');
                 return { moved: false, tookTime: false };
             }
-            const tx = player.x + delta[0];
-            const ty = player.y + delta[1];
             const thereContainers = (map.objectsAt(tx, ty) || [])
                 .filter((obj) => !!objectData[obj?.otyp]?.container);
-            if ((delta[0] !== 0 || delta[1] !== 0) && thereContainers.length > 0) {
+            if ((delta.dx !== 0 || delta.dy !== 0) && thereContainers.length > 0) {
                 await display.putstr_message('You have to be at a container to loot it.');
                 return { moved: false, tookTime: false };
             }
             await display.putstr_message(
-                (delta[0] === 0 && delta[1] === 0)
+                (delta.dx === 0 && delta.dy === 0)
                     ? "You don't find anything here to loot."
                     : "You don't find anything there to loot."
             );
