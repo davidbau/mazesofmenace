@@ -7,14 +7,18 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { x_monnam } from './mondata.js';
-import { mondead } from './monutil.js';
+import { mondead, newsym, setDisplayContext } from './monutil.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './dothrow.js';
 import { u_wipe_engr } from './engrave.js';
+import { recalc_block_point } from './vision.js';
 
 // Handle kicking
 // C ref: dokick.c dokick()
 export async function handleKick(player, map, display, game) {
+    if (game?.fov) {
+        setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
+    }
     await display.putstr_message('In what direction?');
     const dirCh = await nhgetch();
     // Prompt should not concatenate with outcome message.
@@ -74,6 +78,9 @@ export async function handleKick(player, map, display, game) {
                 await display.putstr_message("As you kick the door, it crashes open!");
                 loc.flags = D_BROKEN;
             }
+            // C ref: dokick.c kick_door() updates map cell immediately.
+            newsym(nx, ny);
+            recalc_block_point(nx, ny);
             await exercise(player, A_STR, true);
         } else {
             // We do not model Deaf yet; keep C's rn2(3) branch split for RNG parity.

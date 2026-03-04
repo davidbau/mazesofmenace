@@ -305,6 +305,11 @@ export async function moverock_core(sx, sy, dx, dy, player, map, display, game) 
     if (await cannot_push(otmp, rx, ry, map, display)) {
         return -1;
     }
+    // C ref: hack.c moverock_core() — relink at top of fobj chain before dopush.
+    if (Array.isArray(map?.objects) && map.objects.length > 0
+        && map.objects[map.objects.length - 1] !== otmp) {
+        movobj(otmp, sx, sy, map);
+    }
     // C ref: hack.c dopush() — strength exercise happens before moving rock.
     if (player && !player.throwsRocks) await exercise(player, A_STR, true);
     await dopush(sx, sy, rx, ry, otmp, false, map, display);
