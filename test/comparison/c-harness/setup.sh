@@ -58,6 +58,29 @@ echo "    Install prefix:  $INSTALL_PREFIX"
 echo "    Pinned commit:   $PINNED_COMMIT"
 echo ""
 
+# Guardrail: upstream submodule must stay pristine; patches belong in nethack-c/patched.
+if [ -d "$UPSTREAM_DIR/.git" ]; then
+    UPSTREAM_DIRTY="$(cd "$UPSTREAM_DIR" && git status --porcelain)"
+    if [ -n "$UPSTREAM_DIRTY" ]; then
+        echo "[FAIL] Upstream submodule is dirty: $UPSTREAM_DIR"
+        echo "       This harness treats nethack-c/upstream as a pristine reference."
+        echo "       Apply gameplay/comparison patches only in nethack-c/patched."
+        echo ""
+        echo "       Dirty paths:"
+        echo "$UPSTREAM_DIRTY" | sed 's/^/         /'
+        echo ""
+        echo "       Remediation:"
+        echo "         1) Inspect changes:"
+        echo "            git -C \"$UPSTREAM_DIR\" status --short"
+        echo "            git -C \"$UPSTREAM_DIR\" diff"
+        echo "         2) If accidental, discard:"
+        echo "            git -C \"$UPSTREAM_DIR\" restore ."
+        echo "         3) If intentional patch work, port it into:"
+        echo "            $PATCHES_DIR/*.patch"
+        exit 1
+    fi
+fi
+
 # --- Step 1: Ensure patched working copy exists at correct commit ---
 # Prefer copying from the upstream submodule (fast, no network).
 # Fall back to git clone if submodule not populated.
