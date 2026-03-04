@@ -1383,8 +1383,8 @@ async function containerMenu(game, container) {
 
         // cf. pickup.c:3052-3061 — empty vs non-empty prompt wording
         const prompt = hasContents
-            ? `Do what with the ${cname}? [:oibrsq or ?] (q)`
-            : `The ${cname} is empty.  Do what with it? [:irsq or ?] (q)`;
+            ? `Do what with the ${cname}?`
+            : `The ${cname} is empty.  Do what with it?`;
         await display.putstr_message(prompt);
 
         const ch = await nhgetch();
