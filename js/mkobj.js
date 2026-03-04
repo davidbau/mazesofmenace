@@ -579,7 +579,8 @@ function mksobj_init(obj, artif, skipErosion) {
         } else if (od.name === 'tin') {
             obj.corpsenm = -1;
             if (!rn2(6)) {
-                // spinach tin -- no RNG
+                // spinach tin -- C ref: set_tin_variety(SPINACH_TIN) sets spe=1
+                obj.spe = 1;
                 mkobjTrace(`tin spinach call=${getRngCallCount()}`);
             } else {
                 // C ref: mkobj.c:930-937 — retry until cnutrit && !G_NOCORPSE
@@ -1242,6 +1243,16 @@ function xname_for_doname(obj, dknown = true, known = true, bknown = false) {
             } else {
                 base = 'corpse';
             }
+        } else if (obj.otyp === TIN && known) {
+            // C ref: eat.c tin_details() — show content when obj->known is set
+            if (obj.spe === 1) {
+                base = 'tin of spinach';
+            } else if (Number.isInteger(obj.corpsenm) && obj.corpsenm >= 0 && mons[obj.corpsenm]) {
+                // C: vegetarian monsters get "tin of <name>"; others get "tin of <name> meat"
+                // JS monsters lack material field; default to meat (correct for sewer rat etc.)
+                base = `tin of ${mons[obj.corpsenm].name} meat`;
+            }
+            // else: empty/unknown tin — just "tin"
         } else {
             base = od.name;
         }
