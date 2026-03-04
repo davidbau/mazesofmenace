@@ -257,19 +257,14 @@ function getManualDirectChargenInfo(rawSession) {
     if (firstBurst < 0) return null;
     // hasTutorial: a secondary burst (tutorial level gen) follows the primary (dungeon level gen)
     const hasTutorial = lastBurst > firstBurst;
-    let boundary;
-    if (hasTutorial) {
-        // Tutorial level gen is the last pre-gameplay step; gameplay starts after it.
-        boundary = Math.min(lastBurst, steps.length - 1);
-    } else {
-        // Scan forward: include steps with ≤ 3 raw RNG entries (preamble=2, prompt dismisses=0).
-        // C shows welcome message, then maybe_do_tutorial() prompt (answered "n" to decline).
-        // These steps have 0-2 entries. First actual gameplay step has 5+ entries.
-        boundary = firstBurst;
-        for (let j = firstBurst + 1; j < steps.length && j <= firstBurst + 10; j++) {
-            if ((steps[j].rng || []).length > 3) break;
-            boundary = j;
-        }
+    // Scan forward from the last large burst: include steps with ≤ 3 raw RNG entries.
+    // Non-tutorial: preamble (2 RNG) + welcome dismiss (0) + tutorial-answer-"n" (0).
+    // Tutorial: tutorial level gen burst + starting engraving dismissals (0 RNG each).
+    // The first actual gameplay step has 4+ RNG entries.
+    let boundary = lastBurst;
+    for (let j = lastBurst + 1; j < steps.length && j <= lastBurst + 10; j++) {
+        if ((steps[j].rng || []).length > 3) break;
+        boundary = j;
     }
     return { boundary, hasTutorial, firstBurst, lastBurst };
 }
