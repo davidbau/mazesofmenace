@@ -241,7 +241,7 @@ describe('Monster movement', () => {
             owornmask: 0,
             nobj: null,
         };
-        pet.weapon = null; // parity case: rely on W_WEP fallback, like MON_WEP
+        pet.weapon = wieldedPick; // weapon pointer set, matching C MON_WEP semantics
         pet.minvent = [wieldedPick, spareMattock];
         map.monsters.push(pet);
 

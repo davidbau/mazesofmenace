@@ -10,8 +10,8 @@ describe('message persistence', () => {
 test('message display: messages persist until replaced', () => {
     const display = new HeadlessDisplay(80, 24);
 
-    // Display first long message
-    const longMsg1 = 'The grid bug hits you multiple times with critical damage from its powerful attack!';
+    // Display first long message (must fit in 80 cols so topMessage stores full msg)
+    const longMsg1 = 'The grid bug hits you multiple times with critical damage from its attack!';
     display.putstr_message(longMsg1);
     assert.strictEqual(display.topMessage, longMsg1,
         'First message should be stored in topMessage');
@@ -55,7 +55,7 @@ test('message display: regression test for clearRow bug', () => {
     assert.strictEqual(display.topMessage, longMsg);
 
     // Display another long message — triggers --More--
-    const longMsg2 = 'You strike back at the grid bug with your enchanted weapon dealing massive damage!';
+    const longMsg2 = 'You strike back at the grid bug with your enchanted weapon dealing damage!';
     display.putstr_message(longMsg2);
     assert.strictEqual(display._pendingMore, true,
         'Overflow should trigger --More--');
