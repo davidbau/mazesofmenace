@@ -1709,5 +1709,13 @@ hard-won wisdom:
   adjacent steps:
   - step 89: session topline empty, JS has throw+hit message;
   - step 90: session has hit message, JS topline empty.
-- This indicates a display/timing/topline flush ordering issue (not gameplay
-  state or RNG drift), and should be chased in message pipeline behavior.
+- Step-local evidence from tagged RNG traces shows boundary redistribution
+  rather than semantic drift:
+  - C step 89 includes early throw setup (`tmp_at_start` + flight rolls),
+  - C step 90 includes throw damage and message-frame update (`tmp_at_step`),
+  - C step 91 includes `tmp_at_end` and then a large monster-move block.
+  - JS keeps global RNG parity but shifts parts of the large move block earlier,
+    which changes where topline updates are captured at step boundaries.
+- Debugging rule: when text is identical but appears one step early/late and
+  RNG/events still match, treat it as step-boundary timing skew (render/flush
+  boundary attribution), not a gameplay logic mismatch.
