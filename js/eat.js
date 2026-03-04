@@ -187,13 +187,23 @@ export async function morehungry(player, num) {
 }
 
 // cf. eat.c lesshungry() — decrease hunger by amount
-async function lesshungry(player, num) {
+async function lesshungry(player, num, opts = null) {
     player.hunger += num;
     if (player.hunger >= 2000) {
         // choking territory - simplified
         await choke(player, null);
     } else if (player.hunger >= 1500) {
-        await pline("You're having a hard time getting all of it down.");
+        // C ref: eat.c lesshungry() emits this warning once per meal and sets
+        // gn.nomovemsg to "You're finally finished." for meal completion.
+        const satietyState = opts && typeof opts === 'object' ? opts.satietyState : null;
+        const shouldWarn = !(satietyState && satietyState.warned);
+        if (shouldWarn) {
+            await pline("You're having a hard time getting all of it down.");
+            if (satietyState) {
+                satietyState.warned = true;
+                satietyState.nomovemsg = "You're finally finished.";
+            }
+        }
     }
     await newuhs(player, false);
 }
@@ -1454,14 +1464,15 @@ async function handleEat(player, display, game) {
             : (baseNutr >= reqtime) ? -Math.floor(baseNutr / reqtime)
             : reqtime % baseNutr;
         const eatState = { usedtime: 0, reqtime };
+        const satietyState = { warned: false, nomovemsg: null };
 
         // cf. eat.c bite() — apply incremental nutrition (partial)
         async function doBite() {
             if (nmod < 0) {
-                await lesshungry(player, -nmod);
+                await lesshungry(player, -nmod, { satietyState });
                 player.nutrition += (-nmod);
             } else if (nmod > 0 && (eatState.usedtime % nmod)) {
-                await lesshungry(player, 1);
+                await lesshungry(player, 1, { satietyState });
                 player.nutrition += 1;
             }
         }
@@ -1512,6 +1523,8 @@ async function handleEat(player, display, game) {
                         `This ${eatenItem.name} ${verb} ${tastes[idx]}.  `
                         + `You finish eating the ${eatenItem.name}.--More--`
                     );
+                } else if (satietyState.nomovemsg) {
+                    await display.putstr_message(satietyState.nomovemsg);
                 } else {
                     // cf. eat.c done_eating() generic multi-turn completion line.
                     await display.putstr_message("You're finally finished.");
