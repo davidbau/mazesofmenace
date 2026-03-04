@@ -5958,17 +5958,17 @@ export function mineralize(opts = {}) {
 // C ref: sp_lev.c pm_to_humidity()
 // Autotranslated from sp_lev.c:1884
 export function pm_to_humidity(pm) {
-  let loc = DRY;
+  let loc = GETLOC_DRY;
   if (!pm) return loc;
-  if (pm.mlet === S_EEL || amphibious(pm) || is_swimmer(pm)) loc = WET;
+  if (pm.mlet === S_EEL || amphibious(pm) || is_swimmer(pm)) loc = GETLOC_WET;
   if (is_flyer(pm) || is_floater(pm)) {
-    loc |= (HOT | WET);
+    loc |= (GETLOC_HOT | GETLOC_WET);
   }
   if (passes_walls(pm) || noncorporeal(pm)) {
-    loc |= SOLID;
+    loc |= GETLOC_SOLID;
   }
   if (likes_fire(pm)) {
-    loc |= HOT;
+    loc |= GETLOC_HOT;
   }
   return loc;
 }
@@ -6206,7 +6206,16 @@ async function createScriptMonster(deferred) {
             if (traceMon && deferred.room) {
                 console.log(`[MONTRACE] room lx=${deferred.room.lx} hx=${deferred.room.hx} ly=${deferred.room.ly} hy=${deferred.room.hy} nsub=${deferred.room.nsubrooms} sbrooms=${(deferred.room.sbrooms || []).length}`);
             }
-            const pos = getLocationCoord(deferred.rawX, deferred.rawY, GETLOC_DRY, deferred.room || null);
+            // C ref: create_monster() uses pm_to_humidity(pm) for get_location_coord(),
+            // then retries with DRY included only if no location is found.
+            let humidity = GETLOC_DRY;
+            if (Number.isInteger(mndxForParity) && mndxForParity >= 0 && mndxForParity < mons.length) {
+                humidity = pm_to_humidity(mons[mndxForParity]);
+            }
+            let pos = getLocationCoord(deferred.rawX, deferred.rawY, humidity, deferred.room || null);
+            if (pos.x === -1 && pos.y === -1 && (humidity & GETLOC_DRY) === 0) {
+                pos = getLocationCoord(deferred.rawX, deferred.rawY, humidity | GETLOC_DRY, deferred.room || null);
+            }
             coordX = pos.x;
             coordY = pos.y;
             if (traceMon) {
