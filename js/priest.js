@@ -551,6 +551,7 @@ export async function priest_talk(priest, map, player, display) {
                   priest.female ? "her" : "his");
             priest.mfrozen = 0;
             priest.msleeping = false;
+            priest.sleeping = false;
             priest.mcanmove = true;
         }
         priest.mpeaceful = false;
@@ -660,6 +661,7 @@ export function mk_roamer(ptr, alignment, x, y, peaceful, depth, map, player) {
     if (mon_learns_traps) mon_learns_traps(roamer, ALL_TRAPS);
     roamer.mpeaceful = peaceful;
     roamer.msleeping = false;
+    roamer.sleeping = false;
     set_malign(roamer);
 
     return roamer;

@@ -515,7 +515,11 @@ export async function monster_detect(otmp, mclass, player, map, display, game) {
                 || (mdat.mndx === PM_LONG_WORM && mclass === S_WORM_TAIL))
                 map_monst(mtmp, true);
             if (otmp && otmp.cursed && helpless(mtmp)) {
-                mtmp.msleeping = 0; mtmp.mfrozen = 0; mtmp.mcanmove = 1; woken = true;
+                mtmp.msleeping = 0;
+                mtmp.sleeping = false;
+                mtmp.mfrozen = 0;
+                mtmp.mcanmove = 1;
+                woken = true;
             }
         }
         if (!swallowed) display_self();

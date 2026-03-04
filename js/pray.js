@@ -2521,6 +2521,7 @@ async function maybe_turn_mon_iter(mtmp, player, map) {
         && (is_undead(mdat)
             || (is_demon(mdat) && (player.ulevel || 1) > 15))) {
         mtmp.msleeping = 0;
+        mtmp.sleeping = false;
         if (player.confused) {
             if (!turn_undead_msg_cnt++)
                 await pline("Unfortunately, your voice falters.");

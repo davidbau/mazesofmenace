@@ -1174,7 +1174,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     if (await maybeMonsterWieldBeforeAttack(mon, player, display, fov, true)) {
                         return;
                     }
-                    await mattacku(mon, player, display, game);
+                    await mattacku(mon, player, display, game, { map });
                 }
             } else {
                 // At range: route through mattacku with range2=true

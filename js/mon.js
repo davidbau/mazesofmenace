@@ -851,6 +851,7 @@ export function wake_msg(mon, via_attack) {
 // C ref: mon.c wakeup() — wake monster, possibly anger
 export function wakeup(mon, via_attack, map, player) {
     mon.msleeping = 0;
+    mon.sleeping = false;
     // Reveal hidden mimic
     if (mon.m_ap_type && mon.m_ap_type !== 'monster') {
         seemimic(mon, map);
@@ -874,6 +875,7 @@ export function wake_nearto_core(x, y, distance, petcall, map) {
         if (mon.dead) continue;
         if (distance === 0 || dist2(mon.mx, mon.my, x, y) < distance) {
             mon.msleeping = 0;
+            mon.sleeping = false;
         }
     }
 }

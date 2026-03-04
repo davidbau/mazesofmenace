@@ -845,7 +845,10 @@ export async function resurrect(map, player, display) {
             if (m.dead) continue;
             if (m.iswiz && !mon_has_amulet(m)) {
                 mtmp = m;
-                if (mtmp.sleeping) { mtmp.sleeping = false; mtmp.msleeping = 0; }
+                if (mtmp.sleeping) {
+                    mtmp.sleeping = false;
+                    mtmp.msleeping = 0;
+                }
                 if (mtmp.mfrozen === 1) { mtmp.mfrozen = 0; mtmp.mcanmove = true; }
                 break;
             }

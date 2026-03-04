@@ -1605,6 +1605,7 @@ async function mbhitm(mtmp, otmp, map, player) {
 
     if (!hits_you && otmp.otyp !== WAN_UNDEAD_TURNING) {
         mtmp.msleeping = 0;
+        mtmp.sleeping = false;
         if (mtmp.m_ap_type) seemimic(mtmp, map);
     }
 

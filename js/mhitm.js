@@ -608,7 +608,10 @@ export async function mattackm(magr, mdef, display, vis, map, ctx) {
     let tmp = find_mac(mdef) + (magr.m_lev ?? (pa.mlevel || 0));
     if (mdef.mconf || helpless(mdef)) {
         tmp += 4;
-        if (mdef.msleeping) mdef.msleeping = 0;
+        if (mdef.msleeping) {
+            mdef.msleeping = 0;
+            mdef.sleeping = false;
+        }
     }
 
     // C ref: mhitm.c:354 — elf vs orc bonus
@@ -809,7 +812,10 @@ export function mdisplacem(magr, mdef, quietly, map) {
         return M_ATTK_MISS;
 
     if (mdef.mundetected) mdef.mundetected = false;
-    if (mdef.msleeping) mdef.msleeping = 0;
+    if (mdef.msleeping) {
+        mdef.msleeping = 0;
+        mdef.sleeping = false;
+    }
 
     // Petrification check: aggressor touching cockatrice
     const pd = mdef.type || {};

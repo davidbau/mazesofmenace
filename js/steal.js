@@ -3,7 +3,35 @@
 
 import { rn1, rn2, rnd } from './rng.js';
 import { GOLD_PIECE, COIN_CLASS, objectData } from './objects.js';
-import { newsym, mdrop_obj } from './monutil.js';
+import { newsym, mdrop_obj, mpickobj } from './monutil.js';
+import { W_ARMOR, W_ACCESSORY } from './worn.js';
+
+function isWornForSteal(obj, player) {
+    if (!obj || !player) return false;
+    if ((obj.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0) return true;
+    return obj === player.armor
+        || obj === player.cloak
+        || obj === player.helmet
+        || obj === player.gloves
+        || obj === player.boots
+        || obj === player.shield
+        || obj === player.shirt
+        || obj === player.leftRing
+        || obj === player.rightRing
+        || obj === player.amulet
+        // Legacy aliases still used in some paths.
+        || obj === player.uarm
+        || obj === player.uarmc
+        || obj === player.uarmh
+        || obj === player.uarmg
+        || obj === player.uarmf
+        || obj === player.uarms
+        || obj === player.uarmu
+        || obj === player.uleft
+        || obj === player.uright
+        || obj === player.uamul
+        ;
+}
 
 // ============================================================================
 // somegold — cf. steal.c:14
@@ -148,7 +176,7 @@ export function remove_worn_item(player, obj) {
 // Full C version has armor layering, seduction, multi-turn delays.
 // Returns 1 if stolen (monster should flee), 0 if nothing stolen,
 // -1 if monster died in attempt.
-export async function steal(mon, player, display) {
+export async function steal(mon, player, display, map = null) {
     if (!mon || !player) return 0;
     const inv = Array.isArray(player.inventory) ? player.inventory : [];
 
@@ -165,12 +193,12 @@ export async function steal(mon, player, display) {
     // C ref: steal.c:414-428 — weighted random selection (worn items 5x weight)
     let total = 0;
     for (const obj of eligible) {
-        total += (obj.owornmask & 0x007F) ? 5 : 1; // W_ARMOR | W_ACCESSORY
+        total += isWornForSteal(obj, player) ? 5 : 1;
     }
     let pick = rn2(total);
     let otmp = null;
     for (const obj of eligible) {
-        pick -= (obj.owornmask & 0x007F) ? 5 : 1;
+        pick -= isWornForSteal(obj, player) ? 5 : 1;
         if (pick < 0) { otmp = obj; break; }
     }
     if (!otmp) return 0;
@@ -190,9 +218,13 @@ export async function steal(mon, player, display) {
     const idx = inv.indexOf(otmp);
     if (idx >= 0) inv.splice(idx, 1);
 
-    // Add to monster inventory
-    if (!Array.isArray(mon.minvent)) mon.minvent = [];
-    mon.minvent.push(otmp);
+    // Add to monster inventory (C uses mpickobj and emits pickup event logs).
+    if (map) {
+        mpickobj(mon, otmp, map);
+    } else {
+        if (!Array.isArray(mon.minvent)) mon.minvent = [];
+        mon.minvent.push(otmp);
+    }
 
     if (display) {
         const monName = mon.type?.name || 'Something';

@@ -207,4 +207,3 @@ export function set_ulycn(player, which) {
     player.ulycn = which;
     // TODO: call set_uasmon() to update innate intrinsics (Drain_resistance)
 }
-

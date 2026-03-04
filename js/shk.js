@@ -821,6 +821,7 @@ export async function rouse_shk(shkp, verbosely) {
   if (helpless(shkp)) {
     if (verbosely && canspotmon(shkp)) await pline("%s %s.", Shknam(shkp), shkp.msleeping ? "wakes up" : "can move again");
     shkp.msleeping = 0;
+    shkp.sleeping = false;
     shkp.mfrozen = 0;
     shkp.mcanmove = 1;
   }

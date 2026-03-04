@@ -780,7 +780,10 @@ export async function bhitm(mon, otmp, map, player) {
 
   // Wake the monster (if appropriate)
   if (wake && mon.mhp > 0) {
-    if (mon.msleeping) mon.msleeping = 0;
+    if (mon.msleeping) {
+        mon.msleeping = 0;
+        mon.sleeping = false;
+    }
     if (!mon.mcanmove) { mon.mcanmove = 1; mon.mfrozen = 0; }
   }
 

@@ -37,7 +37,7 @@ import {
 import {
     weaponEnchantment, weaponDamageSides,
     mhitm_mgc_atk_negated,
-    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
+    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
 } from './uhitm.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { castmu } from './mcastu.js';
@@ -56,6 +56,7 @@ import { new_were, were_summon } from './were.js';
 import { Mgender } from './do_name.js';
 import { resists_blnd } from './zap.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
+import { rloc, RLOC_MSG, tele_restrict } from './teleport.js';
 
 const PIERCE = 1;
 
@@ -743,10 +744,30 @@ async function mhitu_ad_dise(monster, attack, player, mhm, ctx) {
 
 // cf. uhitm.c:4611 mhitm_ad_sedu — mhitu branch (seduction/theft)
 async function mhitu_ad_sedu(monster, attack, player, mhm, ctx) {
-    await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // C ref: doseduce()/steal() — call steal for item theft
+    const animalAttacker = is_animal(monster.type || monster.data || {});
+    if (animalAttacker) {
+        await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
+        if (monster.mcan) return;
+    }
+
+    let stole = 0;
     if (player && ctx.display) {
-        await steal(monster, player, ctx.display);
+        stole = await steal(monster, player, ctx.display, ctx.map);
+    }
+
+    if (stole < 0) {
+        mhm.hitflags = M_ATTK_AGR_DIED;
+        mhm.done = true;
+        return;
+    }
+    if (stole > 0) {
+        if (!animalAttacker && ctx.map && !tele_restrict(monster, ctx.map)) {
+            rloc(monster, RLOC_MSG, ctx.map, player, ctx.display);
+        }
+        monster.flee = true;
+        monster.fleetim = 0;
+        mhm.hitflags = M_ATTK_AGR_DONE;
+        mhm.done = true;
     }
     mhm.damage = 0;
 }
@@ -991,7 +1012,7 @@ export async function mattacku(monster, player, display, game = null, opts = {})
         }
 
         // Context for handlers
-        const ctx = { display, game, suppressHitMsg };
+        const ctx = { display, game, suppressHitMsg, map };
 
         // cf. mhitu.c:1187 — mhitm_adtyping dispatch
         // Each handler calls hitmsg() and applies effects.

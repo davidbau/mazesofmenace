@@ -658,6 +658,7 @@ export async function seffect_light(sobj, player, display, game) {
                                 MM_EDOG | NO_MINVENT, depth, map);
             if (mon) {
                 mon.msleeping = 0;
+                mon.sleeping = false;
                 mon.mcan = true; // cancelled — won't explode
                 mon.tame = true;
                 sawlights = true;
@@ -737,6 +738,7 @@ export async function seffect_scare_monster(sobj, player, display, game) {
                 mtmp.flee = false;
                 mtmp.mfrozen = 0;
                 mtmp.msleeping = 0;
+                mtmp.sleeping = false;
                 mtmp.mcanmove = true;
             } else if (!resist(mtmp, SCROLL_CLASS)) {
                 // cf. read.c:1420 monflee(mtmp, 0, FALSE, FALSE)

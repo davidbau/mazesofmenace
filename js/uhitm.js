@@ -135,7 +135,10 @@ export async function attack_checks(mtmp, wep, opts = {}) {
     // C: alerts waiting monster, checks forcefight, invisible, mimic, peaceful
     if (mtmp.mstrategy) mtmp.mstrategy &= ~0x08000000; // ~STRAT_WAITMASK
     if (!mtmp) return true;
-    if (mtmp.msleeping) mtmp.msleeping = 0;
+    if (mtmp.msleeping) {
+        mtmp.msleeping = 0;
+        mtmp.sleeping = false;
+    }
 
     // C-style safety gates: don't auto-attack tame/peaceful unless forced.
     if (!forcefight) {
@@ -1437,6 +1440,7 @@ export function stumble_onto_mimic(mtmp) {
 
     // Wake the mimic
     mtmp.msleeping = 0;
+    mtmp.sleeping = false;
     if (mtmp.m_ap_type) {
         mtmp.m_ap_type = 0;
     }
@@ -1486,6 +1490,7 @@ export function flash_hits_mon(mtmp, otmp) {
     // Wake mimics — simplified, no M_AP_TYPE tracking
     if (mtmp.msleeping && haseyes(ptr)) {
         mtmp.msleeping = 0;
+        mtmp.sleeping = false;
         res = 1;
     } else if (ptr.mlet !== S_LIGHT) {
         // Blind non-resistant monsters

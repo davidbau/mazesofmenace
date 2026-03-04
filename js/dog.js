@@ -611,6 +611,7 @@ export async function make_familiar(otmp, x, y, quietly) {
   }
   if (reallytame) initedog(mtmp, true);
   mtmp.msleeping = 0;
+  mtmp.sleeping = false;
   set_malign(mtmp);
   newsym(mtmp.mx, mtmp.my);
   if (mtmp.mtame && attacktype(mtmp.data, AT_WEAP)) { mtmp.weapon_check = NEED_HTH_WEAPON; mon_wield_item(mtmp); }
@@ -721,6 +722,7 @@ export async function keepdogs(pets_only, game, map, player) {
       mtmp.mtrapped = 0;
       finish_meating(mtmp);
       mtmp.msleeping = 0;
+      mtmp.sleeping = false;
       mtmp.mfrozen = 0;
       mtmp.mcanmove = 1;
     }

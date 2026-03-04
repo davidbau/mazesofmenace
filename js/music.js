@@ -120,6 +120,7 @@ function plur(n) { return n === 1 ? '' : 's'; }
 // ============================================================================
 export async function awaken_scare(mtmp, scary) {
     mtmp.msleeping = 0;
+    mtmp.sleeping = false;
     mtmp.mcanmove = 1;
     mtmp.mfrozen = 0;
     // may scare some monsters -- waiting monsters excluded
@@ -202,6 +203,7 @@ export async function calm_nymphs(distance, map, player, fov) {
         if (ptr && ptr.mlet === S_NYMPH && mtmp.mcanmove
             && mdistu(mtmp, player) < distance) {
             mtmp.msleeping = 0;
+            mtmp.sleeping = false;
             mtmp.mpeaceful = 1;
             mtmp.mavenge = 0;
             mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
@@ -230,6 +232,7 @@ export async function awaken_soldiers(bugler, map, player, fov) {
             if (!mtmp.mtame)
                 mtmp.mpeaceful = 0;
             mtmp.msleeping = 0;
+            mtmp.sleeping = false;
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
             mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
