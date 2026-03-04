@@ -71,6 +71,7 @@ import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, MR_STONE, S_E
 import { poly_when_stoned } from './mondata.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
 import { placeFloorObject, place_object } from './stackobj.js';
+import { mongone } from './mon.js';
 import { premap_detect } from './detect.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
 import {
@@ -3608,6 +3609,28 @@ function l_create_stairway(directionOrOpts, x, y, is_ladder = false) {
         const { x: tx, y: ty } = get_table_xy_or_coord(directionOrOpts);
         sx = tx;
         sy = ty;
+    } else {
+        // C ref: l_create_stairway() supports stair("down", {x,y}) and
+        // stair("down", {coord={x,y}}) via nhl_get_xy_params().
+        let coord1;
+        let coord2;
+        if (typeof directionOrOpts === 'string') {
+            coord1 = x;
+            coord2 = y;
+        } else {
+            dir = 'down';
+            coord1 = directionOrOpts;
+            coord2 = x;
+        }
+        if (coord1 !== undefined && coord2 === undefined
+            && (Array.isArray(coord1) || typeof coord1 === 'object')) {
+            const unpacked = get_unpacked_coord(coord1);
+            sx = unpacked.x;
+            sy = unpacked.y;
+        } else {
+            sx = coord1;
+            sy = coord2;
+        }
     }
 
     const isRandom = sx === undefined || sy === undefined || sx < 0 || sy < 0;
@@ -4142,6 +4165,56 @@ export async function object(name_or_opts, x, y) {
             // placement was skipped, just mark buried without floor events.
         } else if (!alreadyPlaced && absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
             placeFloorObject(levelState.map, obj);
+        }
+
+        // C ref: sp_lev.c create_object() Medusa statue special-case.
+        // For script-defined statues without explicit montype on Medusa levels,
+        // create a temporary monster to choose a non-stone-resistant corpsenm
+        // and transfer monster inventory into the statue.
+        const objOptsForMedusa = (name_or_opts && typeof name_or_opts === 'object') ? name_or_opts : null;
+        const specialNameForMedusa = String(levelState.finalizeContext?.specialName || '').toLowerCase();
+        if (obj.otyp === STATUE
+            && specialNameForMedusa.startsWith('medusa')
+            && objOptsForMedusa
+            && objOptsForMedusa.montype === undefined) {
+            const depth = (levelState.finalizeContext && Number.isFinite(levelState.finalizeContext.dunlev))
+                ? levelState.finalizeContext.dunlev
+                : (levelState.levelDepth || 1);
+            let was = null;
+            let wastyp = Number.isInteger(obj.corpsenm) ? obj.corpsenm : NON_PM;
+            for (let i = 0; i < 1000; i++) {
+                if (!Number.isInteger(wastyp) || wastyp < 0 || wastyp >= mons.length) {
+                    wastyp = rndmonnum(depth);
+                }
+                was = makemon(wastyp, 0, 0, NO_MM_FLAGS, depth, levelState.map);
+                if (was) {
+                    const wasMndx = Number.isInteger(was.mndx) ? was.mndx : wastyp;
+                    const wasData = mons[wasMndx];
+                    if (!(wasData?.mr1 & MR_STONE) && !poly_when_stoned(wasData)) {
+                        break;
+                    }
+                    mongone(was, levelState.map, null);
+                    const idx = levelState.map.monsters.indexOf(was);
+                    if (idx >= 0) levelState.map.monsters.splice(idx, 1);
+                    was = null;
+                }
+                wastyp = rndmonnum(depth);
+            }
+            if (was) {
+                set_corpsenm(obj, wastyp);
+                if (Array.isArray(was.minvent) && was.minvent.length > 0) {
+                    if (!Array.isArray(obj.contents)) obj.contents = [];
+                    while (was.minvent.length > 0) {
+                        const invObj = was.minvent.shift();
+                        invObj.owornmask = 0;
+                        obj.contents.push(invObj);
+                    }
+                    obj.owt = weight(obj);
+                }
+                mongone(was, levelState.map, null);
+                const idx = levelState.map.monsters.indexOf(was);
+                if (idx >= 0) levelState.map.monsters.splice(idx, 1);
+            }
         }
 
         // C ref: lspo_object() executes contents callback with this object as
@@ -5056,13 +5129,19 @@ export async function create_monster(opts_or_class, x, y) {
     let srcY = y;
     // C ref: lspo_monster supports monster("id", {x,y}) coordinate table form.
     if (typeof opts_or_class === 'string' && srcY === undefined
-        && srcX && typeof srcX === 'object') {
-        if (Array.isArray(srcX)) {
-            srcY = srcX[1];
-            srcX = srcX[0];
+        && srcX !== undefined && srcX !== null) {
+        if (typeof srcX === 'object') {
+            if (Array.isArray(srcX)) {
+                srcY = srcX[1];
+                srcX = srcX[0];
+            } else {
+                srcY = srcX.y;
+                srcX = srcX.x;
+            }
         } else {
-            srcY = srcX.y;
-            srcX = srcX.x;
+            const unpacked = get_unpacked_coord(srcX);
+            srcX = unpacked.x;
+            srcY = unpacked.y;
         }
     }
     if (opts_or_class && typeof opts_or_class === 'object' && srcX === undefined && srcY === undefined) {
@@ -5070,9 +5149,13 @@ export async function create_monster(opts_or_class, x, y) {
             if (Array.isArray(opts_or_class.coord)) {
                 srcX = opts_or_class.coord[0];
                 srcY = opts_or_class.coord[1];
-            } else {
+            } else if (typeof opts_or_class.coord === 'object') {
                 srcX = opts_or_class.coord.x;
                 srcY = opts_or_class.coord.y;
+            } else {
+                const unpacked = get_unpacked_coord(opts_or_class.coord);
+                srcX = unpacked.x;
+                srcY = unpacked.y;
             }
         } else {
             srcX = opts_or_class.x;
@@ -5927,17 +6010,10 @@ export function sp_amask_to_amask(amask = 'random') {
     if (raw === 'noncoaligned') return Align2amask(noncoalignment(originalAlign));
     const ctx = levelState.finalizeContext || {};
     const specialName = typeof ctx.specialName === 'string' ? ctx.specialName : '';
-    const tutorialLike = !!levelState.map?.flags?.is_tutorial || specialName.startsWith('tut-');
-    const oracleLike = specialName.startsWith('oracle');
-    if (!tutorialLike && !oracleLike) {
-        // Keep existing RNG timing behavior in normal levels.
-        const rawAlign = rn2(3) - 1;
-        return Align2amask(rawAlign);
-    }
     const dnum = Number.isFinite(ctx.dnum) ? ctx.dnum : undefined;
     const dungeonAlign = (dnum !== undefined) ? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE) : A_NONE;
     let specialAlign = A_NONE;
-    if (oracleLike) specialAlign = A_NEUTRAL;
+    if (specialName.startsWith('oracle')) specialAlign = A_NEUTRAL;
     if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
     else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
     return Align2amask(induced_align(80, specialAlign, dungeonAlign));
@@ -6072,9 +6148,13 @@ async function createScriptMonster(deferred) {
             if (Array.isArray(opts.coord)) {
                 coordX = opts.coord[0];
                 coordY = opts.coord[1];
-            } else {
+            } else if (typeof opts.coord === 'object') {
                 coordX = opts.coord.x;
                 coordY = opts.coord.y;
+            } else {
+                const unpacked = get_unpacked_coord(opts.coord);
+                coordX = unpacked.x;
+                coordY = unpacked.y;
             }
         } else {
             coordX = opts.x;

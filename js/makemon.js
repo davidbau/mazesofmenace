@@ -8,6 +8,7 @@ import { def_monsyms } from './symbols.js';
 import { m_dowear } from './worn.js';
 import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
+    VAULT, ZOO, DELPHI, TEMPLE,
     D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO
 } from './config.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './config.js';
@@ -1606,16 +1607,44 @@ function set_mimic_sym(mndx, x, y, map, depth) {
         && (IS_DOOR(typ) || IS_WALL(typ) || typ === SDOOR || typ === SCORR)) {
         return 'furniture';
     }
+    // C ref: makemon.c set_mimic_sym() maze-level branch.
+    // Excludes Mine Town and Sokoban; this path consumes rn2(2).
+    const inMineTown = !!(map?.flags?.has_town);
+    const inSokoban = Number.isInteger(map?._genDnum) && map._genDnum === 2;
+    if (map?.flags?.is_maze_lev && !inMineTown && !inSokoban && rn2(2)) {
+        return 'object';
+    }
 
     // Look up room type at (x, y) from map
     let rt = 0;
+    let roomno = -1;
     if (map && map.at) {
         if (loc && loc.roomno >= ROOMOFFSET) {
-            const roomIdx = loc.roomno - ROOMOFFSET;
-            if (roomIdx >= 0 && roomIdx < map.rooms.length) {
-                rt = map.rooms[roomIdx].rtype;
+            roomno = loc.roomno - ROOMOFFSET;
+            if (roomno >= 0 && roomno < map.rooms.length) {
+                rt = map.rooms[roomno].rtype;
             }
         }
+    }
+
+    // C ref: set_mimic_sym() branch for out-of-room non-trap tiles.
+    if (roomno < 0 && !(typeof map?.trapAt === 'function' && map.trapAt(x, y))) {
+        return 'object';
+    }
+    // C ref: zoo/vault mimics become gold pieces (no RNG).
+    if (rt === ZOO || rt === VAULT) {
+        return 'object';
+    }
+    // C ref: Delphi alternates statue/fountain with rn2(2).
+    if (rt === DELPHI) {
+        if (rn2(2)) {
+            return 'object';
+        }
+        return 'furniture';
+    }
+    // C ref: Temple mimics become altars (no RNG).
+    if (rt === TEMPLE) {
+        return 'furniture';
     }
 
     // Determine s_sym and possibly set appear directly
