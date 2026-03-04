@@ -40,7 +40,7 @@ import { doname, is_crackable } from './mkobj.js';
 import { armor_simple_name } from './objnam.js';
 import { is_metallic, obj_resists } from './objdata.js';
 import { which_armor } from './worn.js';
-import { useup } from './invent.js';
+import { useup, renderOverlayMenuUntilDismiss } from './invent.js';
 import { discoverObject } from './discovery.js';
 import { pline, You, You_feel } from './pline.js';
 import { rn2, rnd } from './rng.js';
@@ -1262,6 +1262,57 @@ function menu_remarm(_retry) {
     return 0;
 }
 
+// cf. do_wear.c doddoremarm() — 'A' command: show category menu for take-off-all
+export async function handleRemoveAll(player, display, _game) {
+    // Collect worn/wielded items via player slot properties (owornmask not reliably set in JS)
+    const wornItems = [
+        player.weapon, player.swapwep, player.quiver,
+        player.armor, player.cloak, player.shirt, player.helmet,
+        player.gloves, player.boots, player.shield,
+        player.leftRing, player.rightRing, player.amulet,
+    ].filter(Boolean);
+    if (wornItems.length === 0) {
+        await pline("Not wearing anything.");
+        return { moved: false, tookTime: false };
+    }
+
+    // Build category menu (cf. C query_category with WORN_TYPES|ALL_TYPES|BUCX_TYPES)
+    const CLASS_LABEL = {
+        1: 'Weapons', 2: 'Armor', 3: 'Rings', 4: 'Amulets',
+        5: 'Tools', 6: 'Comestibles', 7: 'Potions', 8: 'Scrolls',
+        9: 'Spellbooks', 10: 'Wands', 11: 'Coins', 12: 'Gems/Stones',
+    };
+    // Mirrors C def_inv_order (COIN, AMULET, WEAPON, ARMOR, FOOD, SCROLL, SPBOOK, POTION, RING, WAND, TOOL, GEM, ROCK, BALL, CHAIN)
+    const INV_ORDER = [11, 4, 1, 2, 6, 8, 9, 7, 3, 10, 5, 12, 13, 14, 15];
+
+    const lines = ["What type of things do you want to take off?", ""];
+    lines.push("a - All worn and wielded types");
+
+    let autoChar = 'b'.charCodeAt(0);
+    const wornClasses = new Set(wornItems.map(o => o.oclass));
+    for (const cls of INV_ORDER) {
+        if (!wornClasses.has(cls)) continue;
+        const label = CLASS_LABEL[cls] || 'Other';
+        lines.push(String.fromCharCode(autoChar) + " - " + label);
+        autoChar++;
+        if (autoChar > 'z'.charCodeAt(0)) autoChar = 'A'.charCodeAt(0);
+    }
+
+    // BUC entries with fixed letters (only shown if any worn item has that status)
+    const bucLines = [];
+    if (wornItems.some(o => o.bknown && o.blessed))                  bucLines.push("B - Items known to be Blessed");
+    if (wornItems.some(o => o.bknown && o.cursed))                   bucLines.push("C - Items known to be Cursed");
+    if (wornItems.some(o => o.bknown && !o.blessed && !o.cursed))    bucLines.push("U - Items known to be Uncursed");
+    if (wornItems.some(o => !o.bknown))                              bucLines.push("X - Items of unknown B/C/U status");
+    if (bucLines.length > 0) {
+        lines.push("", ...bucLines);
+    }
+    lines.push("(end)");
+
+    await renderOverlayMenuUntilDismiss(display, lines, '');
+    return { moved: false, tookTime: false };
+}
+
 // ============================================================
 // 8. Armor destruction stubs
 // ============================================================
@@ -1518,32 +1569,49 @@ function getWornArmorItems(player) {
 // cf. do_wear.c dowear() — W command: wear a piece of armor
 async function handleWear(player, display, game = null) {
     const wornSet = new Set(getWornArmorItems(player));
-    const armor = (player.inventory || []).filter((o) => o.oclass === ARMOR_CLASS && !wornSet.has(o));
-    if (armor.length === 0) {
-        if (wornSet.size > 0) {
-            await display.putstr_message("You don't have anything else to wear.");
-        } else {
-            await display.putstr_message('You have no armor to wear.');
+    const suggested = [];
+    let inaccess = 0;
+    let forcePrompt = false; // C getobj: GETOBJ_DOWNPLAY causes forced prompt.
+    for (const obj of (player.inventory || [])) {
+        const isWorn = wornSet.has(obj);
+        if (isWorn) {
+            inaccess++;
+            continue;
         }
+        const isAccessoryClass = obj.oclass === RING_CLASS || obj.oclass === AMULET_CLASS;
+        const isAccessoryException = obj.otyp === MEAT_RING || obj.otyp === BLINDFOLD
+            || obj.otyp === TOWEL || obj.otyp === LENSES;
+        const isArmorClass = obj.oclass === ARMOR_CLASS;
+        if (!isArmorClass && !isAccessoryClass && !isAccessoryException) {
+            continue;
+        }
+        if (!isArmorClass) {
+            // C equip_ok(removing=false, accessory=false): non-armor wearable
+            // items for 'W' are downplayed rather than excluded.
+            forcePrompt = true;
+            continue;
+        }
+        // C equip_ok for 'W': armor that fails canwearobj is downplayed.
+        if (!await canwearobj(player, obj, display, false)) {
+            forcePrompt = true;
+            continue;
+        }
+        suggested.push(obj);
+    }
+
+    if (suggested.length === 0 && !forcePrompt) {
+        await display.putstr_message(`You don't have anything ${inaccess ? 'else ' : ''}to wear.`);
         return { moved: false, tookTime: false };
     }
 
-    {
-        const filtered = [];
-        for (const obj of armor) {
-            if (await canwearobj(player, obj, display, true)) filtered.push(obj);
-        }
-        const wearChoices = filtered
-            .map((a) => a.invlet)
-            .join('');
-        const wearPrompt = wearChoices.length > 0
-            ? `What do you want to wear? [${wearChoices} or ?*]`
-            : 'What do you want to wear? [*]';
-        await display.putstr_message(wearPrompt);
-        // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-        if (typeof display.setCursor === 'function') {
-            display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
-        }
+    const wearChoices = suggested.map((a) => a.invlet).join('');
+    const wearPrompt = wearChoices.length > 0
+        ? `What do you want to wear? [${wearChoices} or ?*]`
+        : 'What do you want to wear? [*]';
+    await display.putstr_message(wearPrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);

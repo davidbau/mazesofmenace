@@ -529,10 +529,10 @@ span.nh-cursor {
                     };
                     continue;
                 }
+                // C parity: remembered invis markers are for out-of-sight
+                // memory; once a square is currently visible, clear stale marker.
                 if (loc.mem_invis) {
-                    this.setCell(col, row, 'I', CLR_GRAY);
-                    this.cellInfo[row][col] = { name: 'remembered invisible monster', desc: '(remembered)', color: CLR_GRAY };
-                    continue;
+                    loc.mem_invis = false;
                 }
 
                 // Check for objects on the ground

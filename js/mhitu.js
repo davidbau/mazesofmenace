@@ -1451,7 +1451,7 @@ export async function gulpmu(mtmp, mattk, player, map, display) {
     }
 
     // Apply damage via mdamageu
-    await mdamageu(mtmp, tmp, player, display);
+    await mdamageu(mtmp, tmp, player, display, ctx?.game || null);
 
     // Check for expulsion conditions
     if (player.uswallow) {
@@ -1651,7 +1651,7 @@ export async function gazemu(mtmp, mattk, player, map, display) {
                     dmg = 0;
                 }
                 if (dmg > 0) {
-                    await mdamageu(mtmp, dmg, player, display);
+                    await mdamageu(mtmp, dmg, player, display, null);
                 }
             }
         }
@@ -1666,7 +1666,7 @@ export async function gazemu(mtmp, mattk, player, map, display) {
 // --- Group 8: Damage/seduction (mhitu.c:1895-2348) ---
 
 // cf. mhitu.c:1895 mdamageu() — apply n points of damage to hero
-export async function mdamageu(mtmp, n, player, display) {
+export async function mdamageu(mtmp, n, player, display, game = null) {
     if (!player) return;
     if (n < 0) n = 0;
 
@@ -1787,7 +1787,7 @@ export async function doseduce(mon, player, display) {
         case 4:
             if (display) await display.putstr_message('You feel exhausted.');
             await exercise(player, A_STR, false);
-            await mdamageu(mon, rn1(10, 6), player, display);
+            await mdamageu(mon, rn1(10, 6), player, display, null);
             break;
         }
     } else {

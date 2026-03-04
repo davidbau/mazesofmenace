@@ -759,6 +759,22 @@ export async function handleDrop(player, map, display) {
 // 4. Stair commands
 // ============================================================
 
+async function waitForStairMessageAck(display) {
+    // C ref: tty window handoff can force --More-- before map redraw on
+    // stair transitions. Reproduce that blocking acknowledgment so replayed
+    // key timing aligns with captured sessions.
+    if (!display?._moreBlockingEnabled || typeof display?.morePrompt !== 'function'
+        || typeof display?._nhgetch !== 'function') {
+        return;
+    }
+    if (typeof display.renderMoreMarker === 'function') {
+        display.renderMoreMarker();
+    }
+    await display.morePrompt(display._nhgetch);
+    display.topMessage = null;
+    display.messageNeedsMore = false;
+}
+
 // cf. do.c u_stuck_cannot_go() — check if engulfed/grabbed preventing movement
 export async function u_stuck_cannot_go(updn, player) {
     if (player.ustuck) {
@@ -787,6 +803,10 @@ export async function handleDownstairs(player, map, display, game) {
         await display.putstr_message("You can't go down here.");
         return { moved: false, tookTime: false };
     }
+
+    // C ref: do.c goto_level() ordinary descent message when verbose.
+    await display.putstr_message('You descend the stairs.');
+    await waitForStairMessageAck(display);
 
     // Go to next level
     const newDepth = player.dungeonLevel + 1;
@@ -817,6 +837,10 @@ export async function handleUpstairs(player, map, display, game) {
         }
         return { moved: false, tookTime: false };
     }
+
+    // C ref: do.c goto_level() ordinary ascent message when verbose.
+    await display.putstr_message('You climb up the stairs.');
+    await waitForStairMessageAck(display);
 
     const newDepth = player.dungeonLevel - 1;
     await game.changeLevel(newDepth, 'up');

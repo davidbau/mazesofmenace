@@ -303,7 +303,8 @@ def run_from_keylog(
     tutorial_enabled,
     wizard_enabled,
     key_delay_ms,
-    regen=None
+    regen=None,
+    datetime_hint=None
 ):
     setup_home(character, symset, tutorial_enabled)
     output_json = os.path.abspath(output_json)
@@ -315,6 +316,8 @@ def run_from_keylog(
     keylog_moves_base = int(events[0].get('moves', 0))
 
     key_delay_s = max(0.0, float(key_delay_ms) / 1000.0)
+
+    fixed_datetime = datetime_hint or _session.harness_fixed_datetime()
 
     try:
         cmd = (
@@ -380,6 +383,7 @@ def run_from_keylog(
                 'wizard': bool(wizard_enabled),
                 'symset': symset,
                 'tutorial': bool(tutorial_enabled),
+                'datetime': fixed_datetime,
             },
             'steps': [{
                 'key': None,
@@ -552,6 +556,7 @@ def run_from_config():
             'mode': 'keylog',
             'subtype': 'manual',
             'keylog': keylog_rel,
+            'datetime': str(metadata.get('datetime') or _session.harness_fixed_datetime()) if metadata else _session.harness_fixed_datetime(),
             'startupMode': startup_mode,
             'screenCapture': screen_capture_mode,
             'tutorial': tutorial_enabled,
@@ -571,6 +576,7 @@ def run_from_config():
             wizard_enabled,
             key_delay_ms,
             regen=regen,
+            datetime_hint=str(metadata.get('datetime')) if (metadata and metadata.get('datetime')) else None,
         )
 
 
@@ -629,6 +635,7 @@ def main():
         'mode': 'keylog',
         'subtype': 'manual',
         'keylog': os.path.relpath(os.path.abspath(args.input_jsonl), PROJECT_ROOT),
+        'datetime': str(metadata.get('datetime') or _session.harness_fixed_datetime()) if metadata else _session.harness_fixed_datetime(),
         'startupMode': args.startup_mode,
         'screenCapture': screen_capture_mode,
         'tutorial': tutorial_enabled,
@@ -648,6 +655,7 @@ def main():
         wizard_enabled,
         key_delay_ms,
         regen=regen,
+        datetime_hint=str(metadata.get('datetime')) if (metadata and metadata.get('datetime')) else None,
     )
 
 

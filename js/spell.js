@@ -954,7 +954,7 @@ export function spell_would_be_useless_hero(spellOtyp, player) {
     if (spellOtyp === SPE_RESTORE_ABILITY) {
         // Useful if any stat is drained
     }
-    if (spellOtyp === SPE_INVISIBILITY && player.invisible) return true;
+    if (spellOtyp === SPE_INVISIBILITY && player.Invis) return true;
     if (spellOtyp === SPE_LEVITATION && player.levitating) return true;
     return false;
 }

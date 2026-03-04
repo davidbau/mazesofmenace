@@ -40,7 +40,7 @@ import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
 import { monsterNearby, setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty, flush_screen } from './monutil.js';
 import { nomul, unmul, near_capacity } from './hack.js';
-import { Player, roles, races, validAlignsForRoleRace } from './player.js';
+import { Player, roles, races } from './player.js';
 import { mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
 import { loadSave, deleteSave, loadFlags, saveFlags, deserializeRng,
@@ -57,6 +57,8 @@ import { CLR_GRAY } from './display.js';
 import { initFirstLevel } from './u_init.js';
 import { movebubbles } from './mkmaze.js';
 import { initAnimation, configureAnimation, setAnimationMode } from './animation.js';
+import { phase_of_the_moon, friday_13th } from './calendar.js';
+import { change_luck } from './attrib.js';
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -1084,6 +1086,8 @@ export class NetHackGame {
         setAnimationMode(interactiveMode ? 'interactive' : 'headless');
         configureAnimation({
             skipDelays: !interactiveMode,
+            // C harness parity: tmp_at_start/step/end are canonical events.
+            trace: true,
             canSee: (x, y) => {
                 if (!this.fov || typeof this.fov.canSee !== 'function') return true;
                 return !!this.fov.canSee(x, y);
@@ -1105,8 +1109,6 @@ export class NetHackGame {
                     pushRngLogEntry(`^tmp_at_step[${p.x},${p.y},${String(p.glyph)}]`);
                 } else if (trace.type === 'tmp_at_end') {
                     pushRngLogEntry(`^tmp_at_end[flags=${String(p.flags)}]`);
-                } else if (trace.type === 'delay_output') {
-                    pushRngLogEntry(`^delay_output[ms=${String(p.ms || 0)}]`);
                 }
                 if (typeof this.hooks.onAnimationTrace === 'function') {
                     this.hooks.onAnimationTrace({ game: this, trace });
@@ -1187,8 +1189,12 @@ export class NetHackGame {
                 const idx = roles.findIndex(r => r.name === char.role);
                 if (idx >= 0) roleIndex = idx;
             }
-            this.player.initRole(roleIndex);
-            this.player.name = char.name || 'Agent';
+            const role = roles[roleIndex] || roles[11];
+            const roleRaces = Array.isArray(role?.validRaces) && role.validRaces.length
+                ? role.validRaces.slice()
+                : [RACE_HUMAN];
+
+            let selectedRace = this.player.race;
             if (Number.isInteger(char.gender)) {
                 this.player.gender = char.gender;
             } else if (typeof char.gender === 'string' && char.gender.toLowerCase() === 'female') {
@@ -1196,23 +1202,44 @@ export class NetHackGame {
             }
             const raceMap = { human: RACE_HUMAN, elf: RACE_ELF, dwarf: RACE_DWARF, gnome: RACE_GNOME, orc: RACE_ORC };
             if (Number.isInteger(char.race)) {
-                this.player.race = char.race;
+                selectedRace = char.race;
             } else if (typeof char.race === 'string') {
                 const r = raceMap[char.race.toLowerCase()];
-                if (r !== undefined) this.player.race = r;
+                if (r !== undefined) selectedRace = r;
             }
+            if (!roleRaces.includes(selectedRace)) {
+                selectedRace = roleRaces[0];
+            }
+
+            this.player.initRole(roleIndex);
+            this.player.name = char.name || 'Agent';
+            this.player.race = selectedRace;
+
+            // C ref: role.c rigid_role_checks() -- enforce forced gender.
+            if (role?.forceGender === 'female') {
+                this.player.gender = FEMALE;
+            } else if (role?.forceGender === 'male') {
+                this.player.gender = MALE;
+            }
+
             const alignMap = { lawful: A_LAWFUL, neutral: A_NEUTRAL, chaotic: A_CHAOTIC };
+            let selectedAlign = this.player.alignment;
             if (Number.isInteger(char.alignment)) {
-                this.player.alignment = char.alignment;
+                selectedAlign = char.alignment;
             } else if (typeof char.align === 'string') {
                 const a = alignMap[char.align.toLowerCase()];
-                if (a !== undefined) this.player.alignment = a;
+                if (a !== undefined) selectedAlign = a;
             }
-            // C ref: role.c player_selection() — if chosen alignment is not valid for role+race, use first valid one
-            const validAligns = validAlignsForRoleRace(this.player.roleIndex, this.player.race);
-            if (validAligns.length > 0 && !validAligns.includes(this.player.alignment)) {
-                this.player.alignment = validAligns[0];
+            const raceAligns = Array.isArray(races[selectedRace]?.validAligns)
+                ? races[selectedRace].validAligns
+                : [];
+            const validAligns = Array.isArray(role?.validAligns)
+                ? role.validAligns.filter((a) => raceAligns.includes(a))
+                : [];
+            if (!validAligns.includes(selectedAlign)) {
+                selectedAlign = validAligns[0] ?? role?.validAligns?.[0] ?? A_NEUTRAL;
             }
+            this.player.alignment = selectedAlign;
             // C ref: role.c:1222 pick_align(PICK_RIGID) via rigid_role_checks()
             // For manual-direct-live sessions, the C recording includes a rn2(1) call that
             // fires when the gender menu is shown (if alignment is forced to a single choice).
@@ -1229,6 +1256,26 @@ export class NetHackGame {
             this.player.alignment = A_NEUTRAL;
         } else {
             await _playerSelection(this);
+        }
+
+        // C ref: allmain.c moveloop_preamble() — real-world side effects.
+        this.flags.moonphase = phase_of_the_moon();
+        if (this.flags.moonphase === 4) { // FULL_MOON
+            if (!urlOpts.character) {
+                await this.display.putstr_message('You are lucky!  Full moon tonight.');
+            }
+            change_luck(1, this.player);
+        } else if (this.flags.moonphase === 0) { // NEW_MOON
+            if (!urlOpts.character) {
+                await this.display.putstr_message('Be careful!  New moon tonight.');
+            }
+        }
+        this.flags.friday13 = friday_13th();
+        if (this.flags.friday13) {
+            if (!urlOpts.character) {
+                await this.display.putstr_message('Watch out!  Bad things can happen on Friday the 13th.');
+            }
+            change_luck(-1, this.player);
         }
 
         // First-level init

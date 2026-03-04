@@ -4039,14 +4039,14 @@ export function init_dungeons(roleIndex, wizard = true) {
     const role = roleIndex !== undefined ? roles[roleIndex] : null;
     const enadv = role ? (role.enadv || 0) : 0;
     const enadv_roll = enadv > 0 ? rnd(enadv) : 0;
-    // C ref: u_init.c u_init_misc() — rn2(10)
-    // RIGHT_HANDED=0, LEFT_HANDED=1; 9/10 chance right-handed
-    const uhandedness = rn2(10) ? 0 : 1;
+    // C ref: u_init.c u_init_misc() — rn2(10) ? RIGHT_HANDED : LEFT_HANDED
+    // Preserve the consumed roll and propagate handedness to player state.
+    const rightHanded = rn2(10) !== 0;
 
     // 5. nhlua pre_themerooms shuffle (loaded when themerms.lua is first used)
     rn2(3); rn2(2);
 
-    return { enadv_roll, uhandedness };
+    return { enadv_roll, rightHanded };
 }
 
 // Simulate C's place_level() recursive backtracking for one dungeon.

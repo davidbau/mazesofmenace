@@ -38,6 +38,12 @@ const SAVE_VERSION = 2;
 // In Node.js 22+, globalThis.localStorage exists but warns without --localstorage-file.
 // Suppress that one-time warning on first access.
 let _storageWarned = false;
+function isStorageLike(s) {
+    return !!s
+        && typeof s.getItem === 'function'
+        && typeof s.setItem === 'function'
+        && typeof s.removeItem === 'function';
+}
 function storage() {
     try {
         if (typeof localStorage === 'undefined') return null;
@@ -51,9 +57,9 @@ function storage() {
             };
             const s = localStorage;
             process.emitWarning = orig;
-            return s;
+            return isStorageLike(s) ? s : null;
         }
-        return localStorage;
+        return isStorageLike(localStorage) ? localStorage : null;
     } catch (e) { return null; }
 }
 

@@ -41,6 +41,7 @@ import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
 import { MAGIC_PORTAL } from './symbols.js';
 import { gettrack } from './track.js';
 import { helpless } from './monutil.js';
+import { onscary } from './mon.js';
 
 // Shared utilities from monmove.js
 import { dist2, distmin, monnear, mfndpos, mon_allowflags,
@@ -810,7 +811,7 @@ function score_targ(mon, target, map, player) {
 // C ref: dogmove.c:842-890 best_target() — find best ranged attack target
 export function best_target(mon, forced, map, player) {
     // C ref: dogmove.c:854 — if (!mtmp->mcansee) return 0;
-    const monCanSee = (mon.mcansee !== false)
+    const monCanSee = (mon.mcansee !== 0 && mon.mcansee !== false)
         && !mon.blind
         && !(Number.isFinite(mon.mblinded) && mon.mblinded > 0)
         && !mon.mblind;
@@ -862,7 +863,7 @@ export async function pet_ranged_attk(mon, map, player, display, fov = null, gam
     // C ref: dogmove.c:928-944 — retaliation for ranged attack
     if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
         && rn2(4)) {
-        if (mtarg.mcansee !== false) {
+        if (mtarg.mcansee !== 0 && mtarg.mcansee !== false) {
             const rctx = { ...ctx, agrVisible: defSpot, defVisible: agrSpot };
             const rstatus = await mattackm(mtarg, mon, display, vis, map, rctx);
             if (rstatus & M_ATTK_DEF_DIED) return 1;
@@ -1240,11 +1241,11 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 {
                     const tdat = mons[target.mndx] || target.type || {};
                     const mondat = mons[mon.mndx] || mon.type || {};
-                    const monCanSee = (mon.mcansee !== false)
+                    const monCanSee = (mon.mcansee !== 0 && mon.mcansee !== false)
                         && !mon.blind
                         && !(Number.isFinite(mon.mblinded) && mon.mblinded > 0)
                         && !mon.mblind;
-                    const targCanSee = (target.mcansee !== false)
+                    const targCanSee = (target.mcansee !== 0 && target.mcansee !== false)
                         && !target.blind
                         && !(Number.isFinite(target.mblinded) && target.mblinded > 0)
                         && !target.mblind;
@@ -1293,6 +1294,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
                     && rn2(4)
                     && target.mlstmv !== turnCount
+                    && !onscary(map, mon.mx, mon.my, target)
                     && monnear(target, mon.mx, mon.my)) {
                     const rctx = { ...ctx, agrVisible: targetSpot, defVisible: monSpot };
                     const rstatus = await mattackm(target, mon, display, mmVisible, map, rctx);
