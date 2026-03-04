@@ -69,6 +69,7 @@ describe('loot via meta key', () => {
             obroken: false,
         };
         game.map.objects.push(chest);
+        pushInput('b'.charCodeAt(0)); // containerMenu: 'b' = bring all out
 
         const result = await rhack('l'.charCodeAt(0) | 0x80, game);
 
@@ -90,6 +91,7 @@ describe('loot via meta key', () => {
         };
         game.map.objects.push(chest);
         pushInput('.'.charCodeAt(0));
+        pushInput('b'.charCodeAt(0)); // containerMenu: 'b' = bring all out
 
         const result = await rhack('o'.charCodeAt(0), game);
 
@@ -115,6 +117,7 @@ describe('loot via meta key', () => {
         pushInput('o'.charCodeAt(0));
         pushInput('t'.charCodeAt(0));
         pushInput('\n'.charCodeAt(0));
+        pushInput('b'.charCodeAt(0)); // containerMenu: 'b' = bring all out
 
         const result = await rhack('#'.charCodeAt(0), game);
 
@@ -142,5 +145,97 @@ describe('loot via meta key', () => {
         assert.equal(game.player.inventory.length, 0);
         assert.equal(chest.contents.length, 1);
         assert.equal(messages.at(-1), 'Hmmm, it seems to be locked.');
+    });
+
+    it('containerMenu q quit does not take items', async () => {
+        const { game, messages } = makeGame();
+        const chest = {
+            otyp: CHEST,
+            ox: game.player.x,
+            oy: game.player.y,
+            contents: [makeTestItem()],
+            olocked: false,
+            obroken: false,
+        };
+        game.map.objects.push(chest);
+        pushInput('q'.charCodeAt(0)); // quit the menu immediately
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, false);
+        assert.equal(game.player.inventory.length, 0);
+        assert.equal(chest.contents.length, 1);
+        assert.ok(messages.some((m) => m.includes('Do what with')),
+            `expected "Do what with" prompt, got: ${JSON.stringify(messages)}`);
+    });
+
+    it('containerMenu : look-in shows chest contents without taking them', async () => {
+        const { game, messages } = makeGame();
+        const item = makeTestItem();
+        const chest = {
+            otyp: CHEST,
+            ox: game.player.x,
+            oy: game.player.y,
+            contents: [item],
+            olocked: false,
+            obroken: false,
+        };
+        game.map.objects.push(chest);
+        pushInput(':'.charCodeAt(0)); // look inside
+        pushInput('q'.charCodeAt(0)); // quit after looking
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, false);
+        assert.equal(game.player.inventory.length, 0);
+        assert.equal(chest.contents.length, 1);
+        assert.ok(messages.some((m) => m.includes('Contents of')),
+            `expected "Contents of" message, got: ${JSON.stringify(messages)}`);
+    });
+
+    it('containerMenu empty chest shows empty prompt wording', async () => {
+        const { game, messages } = makeGame();
+        const chest = {
+            otyp: CHEST,
+            ox: game.player.x,
+            oy: game.player.y,
+            contents: [],
+            olocked: false,
+            obroken: false,
+        };
+        game.map.objects.push(chest);
+        pushInput('q'.charCodeAt(0)); // quit immediately
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, false);
+        assert.ok(messages.some((m) => m.includes('is empty')),
+            `expected "is empty" prompt, got: ${JSON.stringify(messages)}`);
+    });
+
+    it('containerMenu s stash puts item into container and exits menu', async () => {
+        const { game, messages } = makeGame();
+        const item = makeTestItem();
+        item.invlet = 'a';
+        game.player.inventory = [item];
+        const chest = {
+            otyp: CHEST,
+            ox: game.player.x,
+            oy: game.player.y,
+            contents: [],
+            olocked: false,
+            obroken: false,
+        };
+        game.map.objects.push(chest);
+        pushInput('s'.charCodeAt(0)); // stash
+        pushInput('a'.charCodeAt(0)); // stash item 'a'
+
+        const result = await rhack('l'.charCodeAt(0) | 0x80, game);
+
+        assert.equal(result.tookTime, true);
+        assert.equal(game.player.inventory.length, 0);
+        assert.equal(chest.contents.length, 1);
+        assert.ok(messages.some((m) => m.includes('You put')),
+            `expected "You put" message, got: ${JSON.stringify(messages)}`);
     });
 });

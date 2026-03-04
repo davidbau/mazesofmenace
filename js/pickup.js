@@ -1367,6 +1367,87 @@ async function announceLootedItems(display, player, items, verb) {
     }
 }
 
+// cf. pickup.c use_container() — interactive "Do what with <container>?" menu.
+// Options: ':' look in, 'o' take out, 'i' put in, 'b' bring all, 's' stash one,
+//          'r' reversed (put in then take out), 'q'/ESC quit.
+// Returns { moved: false, tookTime: bool }.
+async function containerMenu(game, container) {
+    const { player, display } = game;
+    let tookTime = false;
+
+    while (true) {
+        const contents = getContainerContents(container);
+        const hasContents = contents.length > 0;
+        const cname = xname(container);
+
+        // cf. pickup.c:3052-3061 — empty vs non-empty prompt wording
+        const prompt = hasContents
+            ? `Do what with the ${cname}? [:oibrsq or ?] (q)`
+            : `The ${cname} is empty.  Do what with it? [:irsq or ?] (q)`;
+        await display.putstr_message(prompt);
+
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
+
+        if (ch === 27 || c === 'q') break;
+
+        if (c === ':') {
+            // Look inside — show contents then loop back to menu.
+            // cf. pickup.c out_container walk with iflags.menu_requested
+            if (!hasContents) {
+                await display.putstr_message(`The ${cname} is empty.`);
+            } else {
+                await display.putstr_message(`Contents of the ${cname}:`);
+                for (const item of contents) {
+                    await display.putstr_message(`  ${doname(item, player)}`);
+                }
+            }
+        } else if (c === 'b' || c === 'o') {
+            // 'b' = bring all out (cf. "take all things out"); 'o' = take out.
+            // For 'o', C prompts per-item; we take all for now (same net effect).
+            // cf. pickup.c use_container() — exits menu after taking everything.
+            if (!hasContents) { await display.putstr_message('It is empty.'); continue; }
+            const taken = [...contents];
+            for (const item of taken) { player.addToInventory(item); observeObject(item); }
+            setContainerContents(container, []);
+            await announceLootedItems(display, player, taken, 'loot');
+            tookTime = true;
+            break; // exit menu after bringing all (C behavior)
+        } else if (c === 's') {
+            // Stash one item — cf. pickup.c "Stash: put one item in".
+            // C exits the container menu after one stash.
+            const inv = (player.inventory || []).filter((o) => o?.invlet);
+            if (!inv.length) {
+                await display.putstr_message('You have nothing to put in.');
+                return { moved: false, tookTime };
+            }
+            const letters = inv.map((o) => o.invlet).join('');
+            await display.putstr_message(`What do you want to stash? [${letters} or ?*]`);
+            const sch = await nhgetch();
+            const item = inv.find((o) => o.invlet === String.fromCharCode(sch));
+            if (item) {
+                player.inventory = player.inventory.filter((o) => o !== item);
+                const cur = getContainerContents(container);
+                setContainerContents(container, [...cur, item]);
+                await display.putstr_message(`You put ${doname(item, player)} into the ${cname}.`);
+                tookTime = true;
+            }
+            return { moved: false, tookTime }; // 's' exits menu (C behavior)
+        } else if (c === 'i') {
+            // Put things in — cf. pickup.c "Put in" with type filter.
+            // Show type-filter prompt; stub: accept all types with a single keypress.
+            await display.putstr_message('Put in what type of objects?');
+            await nhgetch(); // consume the class-filter key (stub)
+            // Full query_classes() type filter not yet ported — treated as cancel.
+        } else if (c === '?') {
+            await display.putstr_message(
+                'Container actions: : look, o take out, i put in, b bring all, s stash one, q quit');
+        }
+    }
+
+    return { moved: false, tookTime };
+}
+
 async function handleLoot(game) {
     const { player, map, display } = game;
 
@@ -1385,24 +1466,14 @@ async function handleLoot(game) {
     }
 
     // Loot floor container first (C behavior: floor takes priority).
+    // cf. pickup.c use_container() — show interactive "Do what?" menu.
     if (floorContainers.length > 0) {
         const container = floorContainers[0];
         if (container.olocked && !container.obroken) {
             await display.putstr_message('Hmmm, it seems to be locked.');
             return { moved: false, tookTime: false };
         }
-        const contents = getContainerContents(container);
-        if (contents.length === 0) {
-            await display.putstr_message("It's empty.");
-            return { moved: false, tookTime: true };
-        }
-        for (const item of contents) {
-            player.addToInventory(item);
-            observeObject(item);
-        }
-        setContainerContents(container, []);
-        await announceLootedItems(display, player, contents, 'loot');
-        return { moved: false, tookTime: true };
+        return await containerMenu(game, container);
     }
 
     // Loot an inventory container (take things out).
