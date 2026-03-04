@@ -1075,7 +1075,7 @@ async function potionbreathe(player, obj) {
         await make_confused(player, itimeout_incr(player.getPropTimeout(CONFUSION), rnd(5)), false);
         break;
     case POT_INVISIBILITY:
-        if (!player.blind && !player.invisible) {
+        if (!player.blind && !player.Invis) {
             await pline("For an instant you %s!",
                   player.seeInvisible ? "could see right through yourself"
                                       : "couldn't see yourself");

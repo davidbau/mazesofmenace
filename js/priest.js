@@ -370,7 +370,7 @@ export async function pri_move(priest, map, player, display, fov) {
             }
             avoid = false;
         }
-    } else if (player.invisible) {
+    } else if (player.Invis) {
         avoid = false;
     }
 

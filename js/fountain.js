@@ -361,7 +361,7 @@ export async function drinkfountain(player, map, display, fov) {
         }
         case 25: // See invisible
             if (player.blind) {
-                if (player.invisible) {
+                if (player.Invis) {
                     await You_feel("transparent.");
                 } else {
                     await You_feel("very self-conscious.");

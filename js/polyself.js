@@ -1889,7 +1889,7 @@ export async function dogaze(player, map) {
         if (!mdata) continue;
 
         // Invisible player check
-        if (player.invisible && !perceives(mdata)) {
+        if (player.Invis && !perceives(mdata)) {
             await pline("%s seems not to notice your gaze.", Monnam(mtmp));
         } else if (mtmp.invisible && !player.seeInvisible) {
             await You_cant("see where to gaze at %s.", Monnam(mtmp));
