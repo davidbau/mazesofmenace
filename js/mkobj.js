@@ -1059,12 +1059,29 @@ export function mkobj(oclass, artif, skipErosion) {
     return mksobj(i, true, artif, skipErosion);
 }
 
-// C ref: objnam.c just_an()
+// C ref: objnam.c just_an() — pick "a" vs "an" for a noun.
+// Mirrors the exception list in objnam.js just_an().
 function just_an(str) {
     const s = String(str || '').trimStart();
     if (!s) return 'a';
     const c = s[0].toLowerCase();
-    return 'aeiou'.includes(c) ? 'an' : 'a';
+    const sl = s.toLowerCase();
+    if ('aeiou'.includes(c)) {
+        // Exceptions: vowel-starting words with consonant-like pronunciation
+        if ((sl.startsWith('one') && (!s[3] || '-_ '.includes(s[3])))
+            || sl.startsWith('eu')
+            || sl.startsWith('uke')
+            || sl.startsWith('ukulele')
+            || sl.startsWith('unicorn')
+            || sl.startsWith('uranium')
+            || sl.startsWith('useful')) {
+            return 'a';
+        }
+        return 'an';
+    }
+    // "x" before a consonant sounds like "ex" → "an x-ray"
+    if (c === 'x' && !'aeiou'.includes(s[1]?.toLowerCase() || '')) return 'an';
+    return 'a';
 }
 
 // C ref: objnam.c makeplural() + singplur_compound() (subset).
