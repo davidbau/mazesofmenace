@@ -23,7 +23,13 @@ else
 fi
 echo ""
 
-# 3. Build C NetHack binary for comparison tests
+# 3. Configure repo-local merge driver for auto-generated version counters
+echo "Configuring git merge driver for version counter files..."
+git config merge.keepnewest.name "keep higher version counter"
+git config merge.keepnewest.driver "bash scripts/git-merge-keepnewest.sh %O %A %B"
+echo ""
+
+# 4. Build C NetHack binary for comparison tests
 if [ -f test/comparison/c-harness/setup.sh ]; then
   echo "Building C NetHack harness for comparison tests..."
   bash test/comparison/c-harness/setup.sh
