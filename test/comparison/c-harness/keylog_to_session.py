@@ -44,6 +44,7 @@ execute_dumpmap = _session.execute_dumpmap
 quit_game = _session.quit_game
 compact_session_json = _session.compact_session_json
 fixed_datetime_env = _session.fixed_datetime_env
+capture_cursor = _session.capture_cursor
 
 
 def parse_args():
@@ -368,6 +369,7 @@ def run_from_keylog(
 
         startup_screen = capture_screen_v3(session_name)
         startup_screen_lines = screen_to_plain_lines(startup_screen)
+        startup_cursor = capture_cursor(session_name)
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
         startup_actual_rng = sum(1 for e in startup_rng_entries if e[0] not in ('>', '<'))
@@ -397,6 +399,7 @@ def run_from_keylog(
                 'rng': startup_rng_entries,
                 'typGrid': startup_typ_grid,
                 'screen': startup_screen,
+                'cursor': startup_cursor,
             }],
         }
         if regen:
@@ -448,6 +451,7 @@ def run_from_keylog(
                 'depth': depth,
                 'rng': rng_entries,
                 'screen': screen,
+                'cursor': capture_cursor(session_name),
             }
 
             # For long manual traces, #dumpmap on every key is too expensive.
