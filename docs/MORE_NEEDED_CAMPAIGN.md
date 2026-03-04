@@ -67,43 +67,62 @@ Concrete fixes already landed:
 
 Session suite: **123 / 150 passing** (27 failing).
 
-Observed failure taxonomy (current evidence):
+Observed failure taxonomy (all 27 failing sessions triaged):
 
-The current failing set is no longer a single-cause bucket. Chargen RNG
-ordering is still relevant in some paths, but detailed `^event` evidence now
-shows several concrete divergence families that should be worked in parallel.
+1. **`dochug` monster-movement/pet-AI divergence** (~14 sessions, dominant):
+   First RNG mismatch is JS at `dochug(monmove.js:847)` while C is at a
+   completely different callsite — `dog_move`, `do_attack`, `m_move`,
+   `dog_invent`, `mcalcmove`, `teleport`, `obj_resists`, etc. This single
+   codepath is the #1 blocker. Affected sessions include seed031, seed303,
+   seed304, seed306, seed307, seed308, seed310, seed311, seed325, seed329
+   and others.
 
-1. **Monster movement / pet AI cascade** (dominant):
-   - most first RNG divergences originate at `dochug(monmove.js:847)`,
-   - first event mismatches frequently include `^distfleeck`, `^movemon_turn`,
-     `^dog_goal_*`, and `^mcalcmove`.
-2. **Explicit `--More--` text-boundary parity gaps**:
-   - several failures now show missing or late `--More--` in JS topline frames,
-     with session rows containing expected `--More--` suffixes.
-3. **Early generation/rebaseline divergences (subset)**:
-   - some wizard seeds diverge at step 1 in map/gen paths (`themeroom_fill`,
-     `makerooms`, `makedog`, placement events), consistent with refreshed
-     baselines and stricter capture.
-4. **Prompt/input boundary bug (single-session blocker)**:
-   - `seed033_manual_direct` currently times out (`Unknown command ' '`) and
-     needs explicit prompt-state handling fix for space-dismiss transitions.
+2. **Level-generation divergence** (~7 sessions, Group D wizard seeds):
+   Divergence in dungeon/object placement code: `themeroom_fill`,
+   `makerooms`, `makedog`, `get_location_coord`, `newobj` in `sp_lev`.
+   Several diverge at step 1 immediately after descending to a new level.
+   Affected: seed321, seed323, seed326, seed327, seed328, seed330, seed331.
+
+3. **Screen-only failures** (2 sessions — RNG and events fully matched):
+   seed305 and seed313 pass all RNG and event checks but diverge on screen
+   rendering (e.g., floor tile `·` rendered as `` ` `` at step 118).
+   These are pure display bugs, not logic divergences.
+
+4. **Other gameplay divergences** (~4 sessions):
+   Miscellaneous first divergences: seed302 (`getbones` — bones-file
+   loading), seed322/seed332/seed333 (combat and makemon paths diverging
+   late in long sessions), seed312 (`wipe_engr_at` vs `mcalcmove`).
+
+5. **Prompt/input boundary bug** (1 session):
+   `seed033_manual_direct` times out (`Unknown command ' '`) — space key
+   treated as a game command instead of a modal dismissal.
 
 ## Active Workstreams
 
 Team execution lanes:
 
-1. **Monster-movement/pet-AI first-divergence cluster** (primary blocker):
-   - Triage and fix `dochug`/`distfleeck`/`dog_goal` ordering and decision-path
-     mismatches using current `^event` traces.
-   - Prioritize fixes that move first divergence later across many sessions.
+1. **`dochug` monster-movement/pet-AI divergence** (primary blocker, ~14 sessions):
+   - Investigate `dochug(monmove.js:847)`: why does JS arrive there when C is
+     in `dog_move`, `do_attack`, `m_move`, etc. at the same RNG position?
+   - Likely root causes: JS processes extra or wrong monster turns, or takes a
+     different code path for a monster type/situation that C handles differently.
+   - Fix `dochug`/`distfleeck`/`dog_goal` ordering and decision-path mismatches
+     using `^event` traces. Prioritize fixes that move first divergence later
+     across many sessions simultaneously.
 
-2. **`--More--` boundary correctness** (high impact):
-   - Resolve missing/late `--More--` topline states in async message paths.
-   - Keep explicit space-dismiss key steps as authoritative session behavior.
+2. **Level-generation divergence in wizard sessions** (~7 sessions):
+   - `themeroom_fill`, `makerooms`, `makedog`, `sp_lev` placement paths diverge
+     from C when descending to new dungeon levels.
+   - Investigate whether JS level-gen code matches C order for room filling,
+     object placement, and monster initialization in special rooms.
 
-3. **Prompt/input boundary stabilization** (targeted):
-   - Fix manual-direct timeout path (`seed033`) where space is treated as a
-     command instead of modal dismissal at the relevant boundary.
+3. **Screen-only rendering bugs** (2 sessions — seed305, seed313):
+   - RNG and events match fully; screen diverges on tile/symbol rendering.
+   - Fix the specific display path producing wrong tile (e.g., `·` vs `` ` ``).
+
+4. **Prompt/input boundary stabilization** (targeted, 1 session):
+   - Fix `seed033_manual_direct` timeout where space is treated as a game
+     command instead of a modal dismissal.
 
 4. **Cursor parity closure** (tracked in [`docs/CURSOR_PLAN.md`](CURSOR_PLAN.md)):
    - Complete JS `setCursor` / `getCursor` integration across display paths.
