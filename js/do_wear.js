@@ -1569,32 +1569,49 @@ function getWornArmorItems(player) {
 // cf. do_wear.c dowear() — W command: wear a piece of armor
 async function handleWear(player, display, game = null) {
     const wornSet = new Set(getWornArmorItems(player));
-    const armor = (player.inventory || []).filter((o) => o.oclass === ARMOR_CLASS && !wornSet.has(o));
-    if (armor.length === 0) {
-        if (wornSet.size > 0) {
-            await display.putstr_message("You don't have anything else to wear.");
-        } else {
-            await display.putstr_message('You have no armor to wear.');
+    const suggested = [];
+    let inaccess = 0;
+    let forcePrompt = false; // C getobj: GETOBJ_DOWNPLAY causes forced prompt.
+    for (const obj of (player.inventory || [])) {
+        const isWorn = wornSet.has(obj);
+        if (isWorn) {
+            inaccess++;
+            continue;
         }
+        const isAccessoryClass = obj.oclass === RING_CLASS || obj.oclass === AMULET_CLASS;
+        const isAccessoryException = obj.otyp === MEAT_RING || obj.otyp === BLINDFOLD
+            || obj.otyp === TOWEL || obj.otyp === LENSES;
+        const isArmorClass = obj.oclass === ARMOR_CLASS;
+        if (!isArmorClass && !isAccessoryClass && !isAccessoryException) {
+            continue;
+        }
+        if (!isArmorClass) {
+            // C equip_ok(removing=false, accessory=false): non-armor wearable
+            // items for 'W' are downplayed rather than excluded.
+            forcePrompt = true;
+            continue;
+        }
+        // C equip_ok for 'W': armor that fails canwearobj is downplayed.
+        if (!await canwearobj(player, obj, display, false)) {
+            forcePrompt = true;
+            continue;
+        }
+        suggested.push(obj);
+    }
+
+    if (suggested.length === 0 && !forcePrompt) {
+        await display.putstr_message(`You don't have anything ${inaccess ? 'else ' : ''}to wear.`);
         return { moved: false, tookTime: false };
     }
 
-    {
-        const filtered = [];
-        for (const obj of armor) {
-            if (await canwearobj(player, obj, display, true)) filtered.push(obj);
-        }
-        const wearChoices = filtered
-            .map((a) => a.invlet)
-            .join('');
-        const wearPrompt = wearChoices.length > 0
-            ? `What do you want to wear? [${wearChoices} or ?*]`
-            : 'What do you want to wear? [*]';
-        await display.putstr_message(wearPrompt);
-        // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-        if (typeof display.setCursor === 'function') {
-            display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
-        }
+    const wearChoices = suggested.map((a) => a.invlet).join('');
+    const wearPrompt = wearChoices.length > 0
+        ? `What do you want to wear? [${wearChoices} or ?*]`
+        : 'What do you want to wear? [*]';
+    await display.putstr_message(wearPrompt);
+    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
+    if (typeof display.setCursor === 'function') {
+        display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);

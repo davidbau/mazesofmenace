@@ -1646,3 +1646,23 @@ hard-won wisdom:
 - Validation:
   - `seed309_rogue_selfplay200_gameplay` remains fully green (no regression),
   - known `seed312` first divergence (`^wipe[56,13]`) is unchanged, so this patch improves helper correctness but does not resolve that divergence yet.
+
+### Wear prompt parity: `GETOBJ_DOWNPLAY` behavior for `W` (2026-03-04)
+
+- `dowear` prompt behavior in C comes from `getobj()` callbacks, not a simple
+  "any unworn armor?" check.
+- C's `wear_ok` can return:
+  - `GETOBJ_SUGGEST` for valid armor candidates,
+  - `GETOBJ_DOWNPLAY` for non-armor wearable items (rings/amulets/etc.) and
+    for armor that currently fails `canwearobj`.
+- When suggested candidates are empty but any downplayed candidate exists,
+  `getobj()` still prompts `What do you want to wear? [*]` instead of emitting
+  `You don't have anything else to wear.`
+- JS `handleWear` now mirrors that suggest/downplay split:
+  - keeps the `"don't have anything else to wear"` message when there are no
+    suggestions and no downplayed candidates,
+  - forces the `[*]` prompt when downplayed candidates exist.
+- Validation:
+  - preserves full parity for `seed309_rogue_selfplay200_gameplay`,
+  - improves `seed313_wizard_selfplay200_gameplay` by moving first divergence
+    from step 13 to a later screen-only map glyph mismatch at step 78.
