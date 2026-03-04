@@ -1632,7 +1632,7 @@ async function handleLoot(game) {
                     ? "You don't find anything here to loot."
                     : "You don't find anything there to loot."
             );
-            return { moved: false, tookTime: true };
+            return { moved: false, tookTime: false };
         }
         await display.putstr_message("You don't find anything here to loot.");
         return { moved: false, tookTime: false };

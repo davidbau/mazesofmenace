@@ -410,7 +410,7 @@ describe('loot via meta key', () => {
 
         const result = await rhack('l'.charCodeAt(0) | 0x80, game);
 
-        assert.equal(result.tookTime, true);
+        assert.equal(result.tookTime, false);
         assert.ok(messages.some((m) => m.includes('Loot in what direction?')),
             `expected direction prompt, got: ${JSON.stringify(messages)}`);
         assert.ok(messages.some((m) => m.includes("don't find anything here to loot")),
@@ -424,7 +424,7 @@ describe('loot via meta key', () => {
 
         const result = await rhack('l'.charCodeAt(0) | 0x80, game);
 
-        assert.equal(result.tookTime, true);
+        assert.equal(result.tookTime, false);
         assert.ok(messages.some((m) => m.includes("don't find anything there to loot")),
             `expected directional no-loot message, got: ${JSON.stringify(messages)}`);
     });
