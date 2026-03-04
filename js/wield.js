@@ -398,6 +398,13 @@ async function handleWield(player, display) {
         const item = inventory.find((o) => o.invlet === c);
         if (!item) continue;
 
+        // C ref: wield.c dowield() — selecting current weapon is a no-op failure.
+        if (player.weapon && item === player.weapon) {
+            replacePromptMessage(display);
+            await display.putstr_message('You are already wielding that!');
+            return { moved: false, tookTime: false };
+        }
+
         // C ref: wield.c dowield() — selecting uswapwep triggers doswapweapon().
         if (player.swapWeapon && item === player.swapWeapon) {
             const oldwep = player.weapon || null;
