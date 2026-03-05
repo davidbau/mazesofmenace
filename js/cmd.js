@@ -896,7 +896,7 @@ async function handleExtendedCommandUntrap(game) {
     const { player, map, display } = game;
     let dir = null;
     while (!dir) {
-        await display.putstr_message('In what direction?');
+        await display.putstr_message('In what direction? ');
         const dirCh = await nhgetch();
         display.topMessage = null;
         display.messageNeedsMore = false;
@@ -921,12 +921,8 @@ async function handleExtendedCommandUntrap(game) {
 
     if (trap.ttyp === SQKY_BOARD) {
         while (true) {
-            const untrapPrompt = 'What do you want to untrap with? [*]';
+            const untrapPrompt = 'What do you want to untrap with? [*] ';
             await display.putstr_message(untrapPrompt);
-            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-            if (typeof display.setCursor === 'function') {
-                display.setCursor(Math.min(untrapPrompt.length + 1, (display.cols || 80) - 1), 0);
-            }
             const toolCh = await nhgetch();
             if (toolCh === 27 || toolCh === 32) {
                 await display.putstr_message('Never mind.');

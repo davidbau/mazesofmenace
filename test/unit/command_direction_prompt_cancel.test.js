@@ -47,7 +47,7 @@ describe('direction prompt cancel flow', () => {
         const result = await rhack('o'.charCodeAt(0), game);
 
         assert.equal(result.tookTime, false);
-        assert.equal(messages[0], 'In what direction?');
+        assert.equal(messages[0], 'In what direction? ');
         assert.equal(messages.at(-1), 'What a strange direction!  Never mind.');
     });
 
@@ -60,8 +60,8 @@ describe('direction prompt cancel flow', () => {
         const result = await rhack('c'.charCodeAt(0), game);
 
         assert.equal(result.tookTime, false);
-        assert.equal(messages[0], 'In what direction?');
-        assert.equal(messages.at(-1), 'In what direction?');
+        assert.equal(messages[0], 'In what direction? ');
+        assert.equal(messages.at(-1), 'In what direction? ');
         assert.equal(game.display.topMessage, null);
     });
 

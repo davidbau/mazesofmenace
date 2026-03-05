@@ -856,7 +856,7 @@ export async function handleApply(player, map, display, game) {
     const resolveApplySelection = async (selected) => {
         replacePromptMessage();
         if (isApplyChopWeapon(selected)) {
-            await display.putstr_message('In what direction do you want to chop? [>]');
+            await display.putstr_message('In what direction do you want to chop? [>] ');
             await nhgetch();
             replacePromptMessage();
             return { moved: false, tookTime: false };
@@ -864,7 +864,7 @@ export async function handleApply(player, map, display, game) {
 
         if (selected.otyp === CREDIT_CARD || selected.otyp === LOCK_PICK
             || selected.otyp === SKELETON_KEY) {
-            await display.putstr_message('In what direction?');
+            await display.putstr_message('In what direction? ');
             const dirCh = await nhgetch();
             const dch = String.fromCharCode(dirCh);
             const dir = DIRECTION_KEYS[dch];
@@ -932,7 +932,7 @@ export async function handleApply(player, map, display, game) {
             || selected.otyp === BULLWHIP || selected.otyp === STETHOSCOPE
             || selected.otyp === EXPENSIVE_CAMERA || selected.otyp === MIRROR
             || selected.otyp === FIGURINE || isApplyPolearm(selected)) {
-            await display.putstr_message('In what direction?');
+            await display.putstr_message('In what direction? ');
             const dirCh = await nhgetch();
             const dch = String.fromCharCode(dirCh);
             const dir = DIRECTION_KEYS[dch];

@@ -388,16 +388,9 @@ async function handleWield(player, display) {
     // C ref: wield.c getobj() prompt format for wield command.
     const letters = inventory.filter(suggestWield).map((item) => item.invlet).join('');
     const wieldPrompt = letters.length > 0
-        ? `What do you want to wield? [- ${letters} or ?*]`
-        : 'What do you want to wield? [- or ?*]';
+        ? `What do you want to wield? [- ${letters} or ?*] `
+        : 'What do you want to wield? [- or ?*] ';
     await display.putstr_message(wieldPrompt);
-    // C ref: invent.c getobj() → tty_yn_function(qbuf, NULL, ...) formats as
-    // "%s " (query + trailing space): topl.c:424. The cursor lands one past
-    // the prompt end, but the space is NOT written visibly to the screen
-    // (just background). Advance cursor by 1 to match C's cursor position.
-    if (typeof display.setCursor === 'function') {
-        display.setCursor(Math.min(wieldPrompt.length + 1, (display.cols || 80) - 1), 0);
-    }
 
     while (true) {
         const ch = await nhgetch();
@@ -557,13 +550,9 @@ async function handleQuiver(player, display) {
 
     const letters = quiverEligible.map((item) => item.invlet).join('');
     const prompt = letters.length > 0
-        ? `What do you want to ready? [- ${letters} or ?*]`
-        : 'What do you want to ready? [- or ?*]';
+        ? `What do you want to ready? [- ${letters} or ?*] `
+        : 'What do you want to ready? [- or ?*] ';
     await display.putstr_message(prompt);
-    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-    if (typeof display.setCursor === 'function') {
-        display.setCursor(Math.min(prompt.length + 1, (display.cols || 80) - 1), 0);
-    }
 
     while (true) {
         const ch = await nhgetch();

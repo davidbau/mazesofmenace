@@ -64,7 +64,7 @@ describe('throw prompt behavior', () => {
 
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
-        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages[1], 'In what direction? ');
         assert.equal(game.display.messages.length, 2);
         assert.equal(game.display.topMessage, null);
     });
@@ -110,7 +110,7 @@ describe('throw prompt behavior', () => {
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, true);
         assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
-        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages[1], 'In what direction? ');
         assert.equal(game.display.messages.length, 2);
         assert.equal(game.display.topMessage, null);
     });
@@ -141,7 +141,7 @@ describe('throw prompt behavior', () => {
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
         assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
-        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages[1], 'In what direction? ');
         assert.equal(game.display.messages.at(-1), 'You cannot throw something you are wearing.');
     });
 
@@ -153,7 +153,7 @@ describe('throw prompt behavior', () => {
         const result = await rhack('t'.charCodeAt(0), game);
         assert.equal(result.tookTime, false);
         assert.equal(game.display.messages[0], 'What do you want to throw? [b or ?*]');
-        assert.equal(game.display.messages[1], 'In what direction?');
+        assert.equal(game.display.messages[1], 'In what direction? ');
         assert.equal(game.display.messages.length, 2);
         assert.equal(game.display.topMessage, null);
     });

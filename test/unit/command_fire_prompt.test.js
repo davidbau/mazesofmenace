@@ -42,7 +42,7 @@ test('fire command keeps prompt open until canceled', async () => {
 
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to fire? [*]');
+    assert.equal(game.display.messages[0], 'What do you want to fire? [*] ');
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 
@@ -67,7 +67,7 @@ test('fire prompt includes C-style candidate letters for non-wielded weapon plus
 
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to fire? [bh or ?*]');
+    assert.equal(game.display.messages[0], 'What do you want to fire? [bh or ?*] ');
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 
@@ -96,7 +96,7 @@ test('fire prompt falls back to coin letter when no launcher candidates exist', 
 
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to fire? [$ or ?*]');
+    assert.equal(game.display.messages[0], 'What do you want to fire? [$ or ?*] ');
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 
@@ -110,8 +110,8 @@ test('fire with readied quiver skips item prompt and asks for direction', async 
 
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, true);
-    assert.equal(game.display.messages[0], 'In what direction?');
-    assert.equal(game.display.messages.includes('What do you want to fire? [a or ?*]'), false);
+    assert.equal(game.display.messages[0], 'In what direction? ');
+    assert.equal(game.display.messages.includes('What do you want to fire? [a or ?*] '), false);
     assert.equal(readied.quan, 1);
 });
 
@@ -134,7 +134,7 @@ test('fireassist swaps to launcher before direction prompt and can consume a tur
     assert.equal(runTurns, 1);
     assert.equal(game.player.weapon, bow);
     assert.equal(game.player.swapWeapon, sword);
-    assert.ok(game.display.messages.includes('In what direction?'));
+    assert.ok(game.display.messages.includes('In what direction? '));
 });
 
 test('fireassist swap preserves timed turn without run hook when direction is canceled', async () => {
@@ -174,7 +174,7 @@ test('fireassist treats flint/rock as sling ammo for launcher swap', async () =>
     assert.equal(runTurns, 1);
     assert.equal(game.player.weapon, sling);
     assert.equal(game.player.swapWeapon, rocks);
-    assert.ok(game.display.messages.includes('In what direction?'));
+    assert.ok(game.display.messages.includes('In what direction? '));
 });
 
 test('fire accepts manual inventory letters then asks direction', async () => {
@@ -190,7 +190,7 @@ test('fire accepts manual inventory letters then asks direction', async () => {
 
     const result = await rhack('f'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[1], 'In what direction?');
+    assert.equal(game.display.messages[1], 'In what direction? ');
     assert.equal(game.display.topMessage, null);
     assert.equal(game.player.quiver, readied);
 });

@@ -1374,12 +1374,8 @@ async function handleEat(player, display, game) {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         display.topMessage = null;
         display.messageNeedsMore = false;
-        const eatPrompt = `What do you want to eat? [${eatChoices} or ?*]`;
+        const eatPrompt = `What do you want to eat? [${eatChoices} or ?*] `;
         await display.putstr_message(eatPrompt);
-        // C ref: topl.c:424 yn_function adds trailing space; cursor lands one past end.
-        if (typeof display.setCursor === 'function') {
-            display.setCursor(Math.min(eatPrompt.length + 1, (display.cols || 80) - 1), 0);
-        }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
 

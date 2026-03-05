@@ -196,7 +196,7 @@ export async function promptDirectionAndThrowItem(player, map, display, item, { 
         display.messageNeedsMore = false;
     };
     replacePromptMessage();
-    await display.putstr_message('In what direction?');
+    await display.putstr_message('In what direction? ');
     const dirCh = await nhgetch();
     const dch = String.fromCharCode(dirCh);
     let dir = DIRECTION_KEYS[dch];
@@ -407,7 +407,7 @@ export async function handleFire(player, map, display, game) {
     }
 
     if (!player.quiver && weapon && weapon.otyp === BULLWHIP) {
-        await display.putstr_message('In what direction?');
+        await display.putstr_message('In what direction? ');
         const dirCh = await nhgetch();
         const dch = String.fromCharCode(dirCh);
         const dir = DIRECTION_KEYS[dch];
@@ -486,13 +486,9 @@ export async function handleFire(player, map, display, game) {
     }
     const fireChoices = compactInvletPromptChars(fireLetters.join(''));
     const firePrompt = fireChoices
-        ? `What do you want to fire? [${fireChoices} or ?*]`
-        : 'What do you want to fire? [*]';
+        ? `What do you want to fire? [${fireChoices} or ?*] `
+        : 'What do you want to fire? [*] ';
     await display.putstr_message(firePrompt);
-    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-    if (typeof display.setCursor === 'function') {
-        display.setCursor(Math.min(firePrompt.length + 1, (display.cols || 80) - 1), 0);
-    }
     let pendingCount = '';
     while (true) {
         const ch = await nhgetch();

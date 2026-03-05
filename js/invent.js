@@ -1442,11 +1442,8 @@ export async function doorganize(game) {
 
     // Step 1: prompt for which item to adjust (by inventory letter)
     const letters = inv.map(o => o.invlet).join('');
-    const selectPrompt = `Adjust which item? [${letters} or ?*]`;
+    const selectPrompt = `Adjust which item? [${letters} or ?*] `;
     await display.putstr_message(selectPrompt);
-    if (typeof display.setCursor === 'function') {
-        display.setCursor(Math.min(selectPrompt.length + 1, (display.cols || 80) - 1), 0);
-    }
 
     let selected = null;
     while (!selected) {

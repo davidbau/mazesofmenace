@@ -1715,7 +1715,7 @@ export async function dokick(player, map, display, game) {
     }
 
     // Get direction
-    if (display) await display.putstr_message('In what direction?');
+    if (display) await display.putstr_message('In what direction? ');
     const dirCh = await nhgetch();
     if (display) display.topMessage = null;
     const c = String.fromCharCode(dirCh);

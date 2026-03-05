@@ -39,9 +39,9 @@ test('eat command reports missing object for invalid inventory letter', async ()
 
     const result = await rhack('e'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to eat? [a or ?*]');
+    assert.equal(game.display.messages[0], 'What do you want to eat? [a or ?*] ');
     assert.equal(game.display.messages[1], "You don't have that object.--More--");
-    assert.equal(game.display.messages[2], 'What do you want to eat? [a or ?*]');
+    assert.equal(game.display.messages[2], 'What do you want to eat? [a or ?*] ');
     assert.equal(game.display.messages.at(-1), 'Never mind.');
 });
 

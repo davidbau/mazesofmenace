@@ -50,7 +50,7 @@ test('wield prompt stays open on invalid letters until canceled', async () => {
 
     const result = await rhack('w'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to wield? [- b or ?*]');
+    assert.equal(game.display.messages[0], 'What do you want to wield? [- b or ?*] ');
     assert.equal(game.display.topMessage, 'Never mind.');
 });
 

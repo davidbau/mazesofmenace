@@ -1643,13 +1643,9 @@ async function handleWear(player, display, game = null) {
 
     const wearChoices = suggested.map((a) => a.invlet).join('');
     const wearPrompt = wearChoices.length > 0
-        ? `What do you want to wear? [${wearChoices} or ?*]`
-        : 'What do you want to wear? [*]';
+        ? `What do you want to wear? [${wearChoices} or ?*] `
+        : 'What do you want to wear? [*] ';
     await display.putstr_message(wearPrompt);
-    // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-    if (typeof display.setCursor === 'function') {
-        display.setCursor(Math.min(wearPrompt.length + 1, (display.cols || 80) - 1), 0);
-    }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
 
@@ -1741,13 +1737,9 @@ async function handlePutOn(player, display) {
     {
         const choices = eligible.map(r => r.invlet).join('');
         const putOnPrompt = choices.length > 0
-            ? `What do you want to put on? [${choices} or ?*]`
-            : 'What do you want to put on? [*]';
+            ? `What do you want to put on? [${choices} or ?*] `
+            : 'What do you want to put on? [*] ';
         await display.putstr_message(putOnPrompt);
-        // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-        if (typeof display.setCursor === 'function') {
-            display.setCursor(Math.min(putOnPrompt.length + 1, (display.cols || 80) - 1), 0);
-        }
     }
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
@@ -1784,12 +1776,8 @@ async function handlePutOn(player, display) {
             setworn(player, item, W_RINGL);
         } else {
             // C ref: do_wear.c accessory_or_armor_on() — both slots free → ask which finger
-            const fingerQ = 'Which ring-finger, Right or Left? [rl]';
+            const fingerQ = 'Which ring-finger, Right or Left? [rl] ';
             await display.putstr_message(fingerQ);
-            // C ref: topl.c:424 yn_function adds trailing space; cursor one past end.
-            if (typeof display.setCursor === 'function') {
-                display.setCursor(Math.min(fingerQ.length + 1, (display.cols || 80) - 1), 0);
-            }
             let mask = null;
             while (!mask) {
                 const fc = await nhgetch();

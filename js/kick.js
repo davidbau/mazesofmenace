@@ -19,7 +19,7 @@ export async function handleKick(player, map, display, game) {
     if (game?.fov) {
         setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
     }
-    await display.putstr_message('In what direction?');
+    await display.putstr_message('In what direction? ');
     const dirCh = await nhgetch();
     // Prompt should not concatenate with outcome message.
     display.topMessage = null;

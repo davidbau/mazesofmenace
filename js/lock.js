@@ -517,7 +517,7 @@ export async function pick_lock(game, pick, rx, ry, container) {
         ccy = ry;
     } else {
         // Prompt for direction
-        await display.putstr_message('In what direction?');
+        await display.putstr_message('In what direction? ');
         const dirCh = await nhgetch();
         display.topMessage = null;
         const c = String.fromCharCode(dirCh);
@@ -946,7 +946,7 @@ export async function handleForce(game) {
 // Handle opening a door
 // C ref: lock.c doopen() / doopen_indir()
 export async function handleOpen(player, map, display, game) {
-    await display.putstr_message('In what direction?');
+    await display.putstr_message('In what direction? ');
     const dirCh = await nhgetch();
     // Prompt should not concatenate with outcome message.
     display.topMessage = null;
@@ -1034,7 +1034,7 @@ export async function handleOpen(player, map, display, game) {
 // Handle closing a door
 // C ref: lock.c doclose()
 export async function handleClose(player, map, display, game) {
-    await display.putstr_message('In what direction?');
+    await display.putstr_message('In what direction? ');
     const dirCh = await nhgetch();
     display.topMessage = null;
     display.messageNeedsMore = false;

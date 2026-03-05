@@ -39,7 +39,7 @@ test('engrave prompt stays open on invalid keys and cancels on enter', async () 
 
     const result = await rhack('E'.charCodeAt(0), game);
     assert.equal(result.tookTime, false);
-    assert.equal(game.display.messages[0], 'What do you want to write with? [- f or ?*]');
+    assert.equal(game.display.messages[0], 'What do you want to write with? [- f or ?*] ');
     assert.equal(game.display.messages.at(-1), 'Never mind.');
     assert.equal(game.display.topMessage, 'Never mind.');
 });
