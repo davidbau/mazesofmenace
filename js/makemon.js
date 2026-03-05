@@ -176,6 +176,9 @@ function race_hostile(ptr, playerCtx) {
 function normalizePlayerContext(ctx = {}) {
     const roleIndex = Number.isInteger(ctx.roleIndex) ? ctx.roleIndex : undefined;
     const role = roleIndex !== undefined ? roles[roleIndex] : null;
+    const level = Number.isInteger(ctx.ulevel)
+        ? ctx.ulevel
+        : (Number.isInteger(ctx.level) ? ctx.level : 1);
     return {
         roleIndex,
         ulevel: Number.isInteger(ctx.ulevel)
@@ -188,6 +191,7 @@ function normalizePlayerContext(ctx = {}) {
         alignmentAbuse: Number.isInteger(ctx.alignmentAbuse) ? ctx.alignmentAbuse : 0,
         race: Number.isInteger(ctx.race) ? ctx.race : 0,
         hasAmulet: !!ctx.hasAmulet,
+        ulevel: level > 0 ? level : 1,
         x: Number.isInteger(ctx.x) ? ctx.x : null,
         y: Number.isInteger(ctx.y) ? ctx.y : null,
     };
@@ -227,12 +231,12 @@ export function setMakemonPlayerContext(playerLike) {
     const inventory = Array.isArray(playerLike?.inventory) ? playerLike.inventory : [];
     _makemonPlayerCtx = normalizePlayerContext({
         roleIndex: playerLike?.roleIndex,
-        ulevel: playerLike?.ulevel,
-        level: playerLike?.level,
         alignment: playerLike?.alignment,
         alignmentRecord: playerLike?.alignmentRecord,
         alignmentAbuse: playerLike?.alignmentAbuse,
         race: playerLike?.race,
+        ulevel: playerLike?.ulevel,
+        level: playerLike?.level,
         hasAmulet: inventory.some(o => o?.otyp === AMULET_OF_YENDOR),
         x: playerLike?.x,
         y: playerLike?.y,
@@ -2253,7 +2257,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     // C ref: makemon.c:1427-1435 — only for anymon (random monster)
     if (anymon && !(mmflags & MM_NOGRP)) {
         const initgrp = (n) => {
-            const ulevel = 1;
+            const ulevel = getMakemonUlevel();
             let cnt = rnd(n);
             cnt = Math.floor(cnt / ((ulevel < 3) ? 4 : (ulevel < 5) ? 2 : 1));
             if (!cnt) cnt = 1;

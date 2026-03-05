@@ -3,6 +3,7 @@
 
 import { rn1, rn2, rnd } from './rng.js';
 import { roles, races } from './player.js';
+import { setMakemonPlayerContext } from './makemon.js';
 import { A_CON, A_WIS,
          PM_PRIEST, PM_WIZARD, PM_HEALER, PM_KNIGHT,
          PM_BARBARIAN, PM_VALKYRIE } from './config.js';
@@ -143,6 +144,7 @@ export async function losexp(player, display, drainer) {
 
     player.ulevel--;
     player.exp = newuexp(player.ulevel);
+    setMakemonPlayerContext(player);
     if (display) {
         await display.putstr_message(`You feel your life force draining away.`);
     }
@@ -185,6 +187,7 @@ export async function pluslvl(player, display, incr) {
             player.exp = player.uexp;
         }
         player.ulevel++;
+        setMakemonPlayerContext(player);
         const back = (player.ulevelmax != null && player.ulevelmax >= player.ulevel) ? 'back ' : '';
         await display.putstr_message(`Welcome ${back}to experience level ${player.ulevel}.`);
         if (player.ulevelmax == null || player.ulevelmax < player.ulevel) {

@@ -140,6 +140,10 @@ export async function moveloop_core(game, opts = {}) {
 // game must provide: player, map, display, fov, multi, turnCount, seerTurn,
 //                    flags, travelPath, runMode
 export async function moveloop_turnend(game) {
+    // Keep makemon/rndmonst difficulty tied to live hero state (u.ulevel, pos).
+    // C reads globals directly; JS must refresh this context explicitly.
+    setMakemonPlayerContext((game.u || game.player));
+
     // C ref: allmain.c:239 — settrack() called after movemon, before moves++
     settrack((game.u || game.player));
     game.turnCount++;
