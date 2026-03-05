@@ -1775,6 +1775,8 @@ export const MM_NOCOUNTBIRTH = 0x00000004;
 export const MM_IGNOREWATER  = 0x00000008;
 export const MM_ADJACENTOK   = 0x00000010;
 export const MM_NONAME       = 0x00000040; // monster is not christened
+export const MM_MALE         = 0x00008000; // force male variation
+export const MM_FEMALE       = 0x00010000; // force female variation
 export const MM_EDOG         = 0x00000800; // add edog structure
 export const MM_ASLEEP       = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP        = 0x00002000;
@@ -2110,7 +2112,11 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     // Gender assignment
     // C ref: makemon.c:1262-1281
     let monFemale = false;
-    if (is_female(ptr)) {
+    if (mmflags & MM_FEMALE) {
+        monFemale = true;
+    } else if (mmflags & MM_MALE) {
+        monFemale = false;
+    } else if (is_female(ptr)) {
         monFemale = true;
     } else if (is_male(ptr)) {
         monFemale = false;

@@ -33,6 +33,9 @@ export const TIMER_FUNC = {
     FALL_ASLEEP: 'FALL_ASLEEP',
     DO_STORMS: 'DO_STORMS',
     MELT_ICE_AWAY: 'MELT_ICE_AWAY',
+    REVIVE_MON: 'REVIVE_MON',
+    ZOMBIFY_MON: 'ZOMBIFY_MON',
+    ROT_CORPSE: 'ROT_CORPSE',
 };
 
 // C ref: timeout.h func_index enum value used by zap.c melt-ice timers.
@@ -171,6 +174,9 @@ function _getTimerCallback(funcIndex, custom) {
     if (funcIndex === TIMER_FUNC.FIGURINE_TRANSFORM) return fig_transform;
     if (funcIndex === TIMER_FUNC.FALL_ASLEEP) return fall_asleep;
     if (funcIndex === TIMER_FUNC.DO_STORMS) return do_storms;
+    if (funcIndex === TIMER_FUNC.REVIVE_MON) return revive_mon_timer;
+    if (funcIndex === TIMER_FUNC.ZOMBIFY_MON) return zombify_mon_timer;
+    if (funcIndex === TIMER_FUNC.ROT_CORPSE) return rot_corpse_timer;
     if (funcIndex === 'melt-ice') return () => {
         // Placeholder for themed room melt timers.
     };
@@ -274,7 +280,7 @@ export function insert_timer(timer) {
     insertTimer(timer);
 }
 
-function _fireTimer(timer) {
+async function _fireTimer(timer) {
     if (!timer) return;
     const callback = timer.callback || _getTimerCallback(timer.funcIndex, null);
     if (typeof callback !== 'function') return;
@@ -282,7 +288,7 @@ function _fireTimer(timer) {
         timer.arg.timed = Math.max(0, timer.arg.timed - 1);
     }
     try {
-        callback(timer.arg, timer);
+        await callback(timer.arg, timer);
     } catch (err) {
         if (typeof console !== 'undefined' && console.error) {
             console.error(`timeout callback failed for ${timer.funcIndex}:`, err);
@@ -290,7 +296,7 @@ function _fireTimer(timer) {
     }
 }
 
-export function run_timers(when) {
+export async function run_timers(when) {
     if (Number.isFinite(when)) {
         _currentTurn = normalizeTurnArg(when);
     }
@@ -299,7 +305,7 @@ export function run_timers(when) {
     while (next && next.when <= _currentTurn) {
         const timer = _timerQueue.shift();
         traceTimerEvent(`run_timers(${timer.funcIndex}, ${timer.when})`);
-        _fireTimer(timer);
+        await _fireTimer(timer);
         next = _timerQueue[0];
     }
 }
@@ -433,7 +439,7 @@ export async function nh_timeout(context = {}) {
     if (context.player || context.display || context.map) {
         setTimerContext(context);
     }
-    run_timers(_currentTurn);
+    await run_timers(_currentTurn);
 
     const player = context.player || _timeoutContext.player;
     if (!player) return;
@@ -500,6 +506,24 @@ export async function nh_timeout(context = {}) {
             }
         }
     }
+}
+
+async function revive_mon_timer(body) {
+    if (!body) return;
+    const { revive_mon } = await import('./do.js');
+    await revive_mon(body, _timeoutContext.player, _timeoutContext.map);
+}
+
+async function zombify_mon_timer(body) {
+    if (!body) return;
+    const { zombify_mon } = await import('./do.js');
+    await zombify_mon(body, _timeoutContext.player, _timeoutContext.map);
+}
+
+async function rot_corpse_timer(body) {
+    if (!body) return;
+    const { rot_corpse } = await import('./dig.js');
+    rot_corpse(body, _currentTurn, _timeoutContext.map, _timeoutContext.player);
 }
 
 // Status effect function registry — set by potion.js at import time via

@@ -44,7 +44,10 @@ import { mons, G_FREQ, MZ_TINY, MZ_HUMAN, M1_NOEYES,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM,
          PM_GLASS_GOLEM, PM_PAPER_GOLEM, PM_STRAW_GOLEM,
          PM_LONG_WORM, S_TROLL, S_ZOMBIE, S_EEL, S_GOLEM, S_MIMIC } from './monsters.js';
-import { rndmonnum, makemon } from './makemon.js';
+import {
+  rndmonnum, makemon,
+  NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
+} from './makemon.js';
 import { next_ident, mksobj, mkobj, weight } from './mkobj.js';
 import { newexplevel } from './exper.js';
 import { corpse_chance } from './mon.js';
@@ -577,7 +580,11 @@ function destroyable_by(obj, dmgtyp) {
 // ============================================================
 // cf. zap.c revive() — revive a corpse into a living monster
 // ============================================================
-export async function revive(obj, by_hero, map) {
+const CORPSTAT_GENDER = 0x03;
+const CORPSTAT_FEMALE = 1;
+const CORPSTAT_MALE = 2;
+
+export async function revive(obj, by_hero, map, player = null) {
   if (!obj || obj.otyp !== CORPSE) return null;
 
   const montype = obj.corpsenm;
@@ -604,10 +611,19 @@ export async function revive(obj, by_hero, map) {
   // C ref: zap.c:965-971 — norevive or eel-not-in-water check
   if (obj.norevive) return null;
 
-  // C ref: zap.c:1004-1007 — make a new monster
-  // Simplified: create monster at corpse location
-  const mtmp = makemon(mptr, x, y, 0x0200 | 0x0800, 0, map);
-  // NO_MINVENT=0x0200, MM_NOCOUNTBIRTH=0x0800 (approximate)
+  // C ref: zap.c:974-979,1004-1007 — pass corpse sex flags through mmflags.
+  const cgend = Number(obj.spe || 0) & CORPSTAT_GENDER;
+  // C ref: zap.c revive() initializes mmflags to
+  // NO_MINVENT | MM_NOWAIT | MM_NOMSG, then ORs MM_NOCOUNTBIRTH.
+  let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
+  if (cgend === CORPSTAT_MALE) mmflags |= MM_MALE;
+  else if (cgend === CORPSTAT_FEMALE) mmflags |= MM_FEMALE;
+
+  // C ref: zap.c revive() passes MM_NOCOUNTBIRTH plus optional gender flags.
+  const reviveDepth = Number.isInteger(player?.dungeonLevel)
+    ? player.dungeonLevel
+    : (Number.isInteger(map?.uz?.dlevel) ? map.uz.dlevel : 1);
+  const mtmp = makemon(mptr, x, y, mmflags, reviveDepth, map);
   if (!mtmp) return null;
 
   // C ref: zap.c:1012-1017 — unhide revived monster
@@ -622,8 +638,9 @@ export async function revive(obj, by_hero, map) {
   }
 
   // Remove the corpse from the map
-  if (map && typeof map.removeFloorObject === 'function') {
-    map.removeFloorObject(obj);
+  if (map) {
+    if (typeof map.removeObject === 'function') map.removeObject(obj);
+    else if (typeof map.removeFloorObject === 'function') map.removeFloorObject(obj);
   }
 
   return mtmp;

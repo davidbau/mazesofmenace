@@ -36,6 +36,7 @@ import {
 } from './monsters.js';
 import { PM_SAMURAI } from './config.js';
 import { lays_eggs } from './mondata.js';
+import { start_timer, stop_timer, TIMER_KIND, TIMER_FUNC } from './timeout.js';
 
 // Re-export RANDOM_CLASS from objclass.js (no-import module).
 // Re-export bindings are live at link-time, preventing TDZ in circular imports.
@@ -878,16 +879,23 @@ function mksobj_postinit(obj) {
     if ((od.name === 'statue' || od.name === 'figurine') && obj.corpsenm === -1) {
         obj.corpsenm = rndmonnum(_levelDepth);
     }
-    // Gender assignment for corpse/statue/figurine
-    // C ref: mkobj.c:1215-1218 — only rn2(2) if not neuter/female/male
+    // Gender assignment for corpse/statue/figurine.
+    // C ref: mkobj.c:1215-1219 — store CORPSTAT_* in spe.
     if (obj.corpsenm >= 0 && (od.name === 'corpse' || od.name === 'statue' || od.name === 'figurine')) {
         const ptr = mons[obj.corpsenm];
         const isNeuter = !!(ptr.flags2 & M2_NEUTER);
         const isFemale = !!(ptr.flags2 & M2_FEMALE);
         const isMale   = !!(ptr.flags2 & M2_MALE);
-        if (!isNeuter && !isFemale && !isMale) {
-            rn2(2); // random gender
-        }
+        const CORPSTAT_FEMALE = 1;
+        const CORPSTAT_MALE = 2;
+        const CORPSTAT_NEUTER = 3;
+        obj.spe = isNeuter
+            ? CORPSTAT_NEUTER
+            : isFemale
+                ? CORPSTAT_FEMALE
+                : isMale
+                    ? CORPSTAT_MALE
+                    : (rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE);
     }
     // C ref: mkobj.c:1221-1225 — set_corpsenm() is called for
     // CORPSE/STATUE/FIGURINE/EGG (and TIN, but corpsenm is NON_PM there).
@@ -943,30 +951,46 @@ function zombie_form_exists_for_corpse(corpsenm) {
 // Only called for RNG alignment; we don't actually track timers.
 export const TAINT_AGE = 50;
 const TROLL_REVIVE_CHANCE = 37;
-function start_corpse_timeout(corpsenm, opts = {}) {
+export function start_corpse_timeout(body, opts = {}) {
+    if (!body || body.otyp !== CORPSE) return;
+    const corpsenm = Number.isInteger(body.corpsenm) ? body.corpsenm : -1;
+    if (corpsenm < 0 || !mons[corpsenm]) return;
     const zombify = !!opts?.zombify;
-    const norevive = !!opts?.norevive;
+    const norevive = !!opts?.norevive || !!body.norevive;
     // Lizards and lichen don't rot or revive
     if (corpsenm === PM_LIZARD || corpsenm === PM_LICHEN) return;
+    stop_timer(TIMER_FUNC.ROT_CORPSE, body);
+    stop_timer(TIMER_FUNC.REVIVE_MON, body);
+    stop_timer(TIMER_FUNC.ZOMBIFY_MON, body);
+    let action = TIMER_FUNC.ROT_CORPSE;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
     const rotAdjust = _inMklevContext ? 25 : 10;
-    rnz(rotAdjust);
+    const age = Math.max(_objectMoves, 1) - Number(body.age || 0);
+    let when = (age > 250) ? rotAdjust : (250 - age);
+    when += (rnz(rotAdjust) - rotAdjust);
     // Rider: rn2(3) loop for revival time
     if (mons[corpsenm].sound === MS_RIDER) {
+        action = TIMER_FUNC.REVIVE_MON;
         const minturn = 12; // non-Death rider default
-        for (let when = minturn; when < 67; when++) {
+        for (when = minturn; when < 67; when++) {
             if (!rn2(3)) break;
         }
     } else if (mons[corpsenm].mlet === S_TROLL) {
         // Troll: rn2(37) loop up to TAINT_AGE times
         for (let age = 2; age <= TAINT_AGE; age++) {
-            if (!rn2(TROLL_REVIVE_CHANCE)) break;
+            if (!rn2(TROLL_REVIVE_CHANCE)) {
+                action = TIMER_FUNC.REVIVE_MON;
+                when = age;
+                break;
+            }
         }
     } else if (zombify && !norevive
                && zombie_form_exists_for_corpse(corpsenm)) {
         // C ref: mkobj.c start_corpse_timeout() zombify branch
-        rn1(15, 5); // consume rn2(15)
+        action = TIMER_FUNC.ZOMBIFY_MON;
+        when = rn1(15, 5); // consume rn2(15)
     }
+    start_timer(when, TIMER_KIND.SHORT, action, body);
 }
 
 const MAX_EGG_HATCH_TIME = 200;
@@ -995,7 +1019,7 @@ export function set_corpsenm(obj, id) {
         : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
-        start_corpse_timeout(id, { norevive: !!obj.norevive });
+        start_corpse_timeout(obj, { norevive: !!obj.norevive });
     } else if (obj.otyp === EGG) {
         if (id >= 0) {
             obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
@@ -1030,7 +1054,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null, op
                 || special_corpse(ptr_mndx))) {
             // C: obj_stop_timers(otmp) — no RNG consumed
             // Restart corpse timeout with new corpsenm
-            start_corpse_timeout(ptr_mndx, {
+            start_corpse_timeout(otmp, {
                 zombify: !!opts.zombify,
                 norevive: !!otmp.norevive,
             });

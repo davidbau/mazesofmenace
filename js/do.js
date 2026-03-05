@@ -27,7 +27,7 @@ import { COIN_CLASS, RING_CLASS, POTION_CLASS,
          RIN_INVISIBILITY, RIN_SEE_INVISIBLE,
          RIN_PROTECTION_FROM_SHAPE_CHAN,
          objectData } from './objects.js';
-import { doname, xname, splitobj, set_bknown } from './mkobj.js';
+import { doname, xname, splitobj, set_bknown, set_corpsenm } from './mkobj.js';
 import { placeFloorObject } from './stackobj.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { observeObject } from './discovery.js';
@@ -1354,7 +1354,7 @@ export async function revive_corpse(corpse, player, map) {
     const where = corpse.where || 'floor';
 
     // Attempt to revive via zap.js revive()
-    const mtmp = await revive(corpse, false, map);
+    const mtmp = await revive(corpse, false, map, player);
     if (!mtmp) return false;
 
     // Give appropriate messages based on location
@@ -1401,7 +1401,9 @@ export async function zombify_mon(body, player, map) {
     if (!body || body.otyp !== CORPSE) return;
     const zmon = zombie_form(mons[body.corpsenm]);
     if (zmon !== NON_PM && zmon !== undefined) {
-        body.corpsenm = zmon;
+        // C ref: do.c zombify_mon() uses set_corpsenm(), which consumes
+        // corpse timeout RNG and resets corpse timers before revive.
+        set_corpsenm(body, zmon);
         await revive_mon(body, player, map);
     } else {
         // rot_corpse — would start rot timer

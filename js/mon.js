@@ -28,7 +28,8 @@ import { W_AMUL, W_ARMG,
 import { nonliving, resists_ston, resists_fire, resists_poison,
          is_flyer, is_floater,
          likes_lava, cant_drown, can_teleport, vegan as vegan_mondata,
-         mon_hates_silver, touch_petrifies, flesh_petrifies } from './mondata.js';
+         mon_hates_silver, touch_petrifies, flesh_petrifies,
+         is_male, is_female, is_neuter } from './mondata.js';
 import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists } from './objdata.js';
 import { mondead as _monutil_mondead, unstuck, newsym, mpickobj, mdrop_obj } from './monutil.js';
@@ -842,6 +843,15 @@ export function make_corpse(mon, corpseflags, map) {
     // Simplified: create a standard corpse for non-special cases
     // The mkcorpstat call handles corpse creation with RNG
     const obj = mkcorpstat(CORPSE, mndx, true, x, y, map);
+    // C ref: mon.c make_corpse() sets CORPSTAT gender bits from the source
+    // monster so revive() can pass MM_MALE/MM_FEMALE without an extra rn2(2).
+    const ptr = mon?.type || mons[mndx] || null;
+    const CORPSTAT_FEMALE = 1;
+    const CORPSTAT_MALE = 2;
+    const CORPSTAT_NEUTER = 3;
+    if (is_neuter(ptr)) obj.spe = CORPSTAT_NEUTER;
+    else if (is_female(ptr) || mon?.female === true) obj.spe = CORPSTAT_FEMALE;
+    else if (is_male(ptr) || mon?.female === false) obj.spe = CORPSTAT_MALE;
     return obj;
 }
 
