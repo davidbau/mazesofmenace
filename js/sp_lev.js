@@ -2618,6 +2618,15 @@ export function terrain(x_or_opts, y_or_type, type) {
     // des.terrain({x, y, typ})
     // des.terrain(selection, type)
 
+    // C ref: sp_lev.c lspo_terrain() routes all paths through sel_set_ter(),
+    // which sets typ and also handles horizontal flag for HWALL/IRONBARS,
+    // door orientation, etc.  Use sel_set_ter with clear:false to match.
+    function applyTerrain(px, py, terrainType) {
+        if (px >= 0 && px < COLNO && py >= 0 && py < ROWNO) {
+            sel_set_ter(px, py, terrainType, { clear: false, lit: null });
+        }
+    }
+
     if (typeof x_or_opts === 'object') {
         if (Array.isArray(x_or_opts)) {
             const terrainType = mapchrToTerrain(y_or_type);
@@ -2627,32 +2636,21 @@ export function terrain(x_or_opts, y_or_type, type) {
             if (x_or_opts.length === 2
                 && Number.isFinite(x_or_opts[0]) && Number.isFinite(x_or_opts[1])) {
                 const pos = getLocationCoord(x_or_opts[0], x_or_opts[1], GETLOC_ANY_LOC, levelState.currentRoom || null);
-                if (pos.x >= 0 && pos.x < COLNO && pos.y >= 0 && pos.y < ROWNO) {
-                    levelState.map.locations[pos.x][pos.y].typ = terrainType;
-                    markSpLevMap(pos.x, pos.y);
-                    markSpLevTouched(pos.x, pos.y);
-                }
+                applyTerrain(pos.x, pos.y, terrainType);
                 return;
             }
 
             // selection.line() / selection.area() coord list
             for (const coord of x_or_opts) {
-                if (coord.x >= 0 && coord.x < 80 && coord.y >= 0 && coord.y < 21) {
-                    levelState.map.locations[coord.x][coord.y].typ = terrainType;
-                    markSpLevMap(coord.x, coord.y);
-                    markSpLevTouched(coord.x, coord.y);
-                }
+                applyTerrain(coord.x, coord.y, terrainType);
             }
         } else if (x_or_opts.x !== undefined && x_or_opts.y !== undefined) {
             // {x, y, typ} format
             // C ref: sp_lev.c lspo_terrain() applies room offset via get_location_coord()
             const pos = getLocationCoord(x_or_opts.x, x_or_opts.y, GETLOC_ANY_LOC, levelState.currentRoom || null);
             const terrainType = mapchrToTerrain(x_or_opts.typ);
-            if (terrainType !== -1 && pos.x >= 0 && pos.x < 80 &&
-                pos.y >= 0 && pos.y < 21) {
-                levelState.map.locations[pos.x][pos.y].typ = terrainType;
-                markSpLevMap(pos.x, pos.y);
-                markSpLevTouched(pos.x, pos.y);
+            if (terrainType !== -1) {
+                applyTerrain(pos.x, pos.y, terrainType);
             }
         } else if (Array.isArray(x_or_opts.coords)) {
             // selection object format (selection.new()/area()/randline() result)
@@ -2660,11 +2658,7 @@ export function terrain(x_or_opts, y_or_type, type) {
             if (terrainType === -1) return;
             for (const coord of x_or_opts.coords) {
                 if (!coord) continue;
-                if (coord.x >= 0 && coord.x < COLNO && coord.y >= 0 && coord.y < ROWNO) {
-                    levelState.map.locations[coord.x][coord.y].typ = terrainType;
-                    markSpLevMap(coord.x, coord.y);
-                    markSpLevTouched(coord.x, coord.y);
-                }
+                applyTerrain(coord.x, coord.y, terrainType);
             }
         }
     } else if (typeof x_or_opts === 'number') {
@@ -2672,13 +2666,9 @@ export function terrain(x_or_opts, y_or_type, type) {
         // C ref: sp_lev.c lspo_terrain() calls get_location_coord() which
         // adds croom->lx/ly offset for room-relative coordinates
         const pos = getLocationCoord(x_or_opts, y_or_type, GETLOC_ANY_LOC, levelState.currentRoom || null);
-        if (pos.x >= 0 && pos.x < 80 && pos.y >= 0 && pos.y < 21) {
-            const terrainType = mapchrToTerrain(type);
-            if (terrainType !== -1) {
-                levelState.map.locations[pos.x][pos.y].typ = terrainType;
-                markSpLevMap(pos.x, pos.y);
-                markSpLevTouched(pos.x, pos.y);
-            }
+        const terrainType = mapchrToTerrain(type);
+        if (terrainType !== -1) {
+            applyTerrain(pos.x, pos.y, terrainType);
         }
     }
 }
