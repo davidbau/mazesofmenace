@@ -828,6 +828,14 @@ export function mklev_sanity_check(map) {
 export function level_finalize_topology(map, depth) {
     bound_digging(map);
     mineralize(map, depth);
+    // C ref: mkmap.c:354-359 — lava remains lit even when surrounding
+    // generation path is otherwise dark.
+    for (let y = 0; y < map.locations[0].length; y++) {
+        for (let x = 0; x < map.locations.length; x++) {
+            const loc = map.locations[x]?.[y];
+            if (loc && IS_LAVA(loc.typ)) loc.lit = true;
+        }
+    }
     if (!map.flags.is_maze_lev) {
         for (let i = 0; i < map.nroom; i++) topologize(map, map.rooms[i]);
     }

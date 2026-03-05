@@ -88,6 +88,8 @@ export function set_levltyp(map, x, y, typ) {
     const loc = at(map, x, y);
     if (!loc || !Number.isInteger(typ)) return false;
     loc.typ = typ;
+    // C ref: mkmaze.c set_levltyp() — lava terrain is always lit.
+    if (IS_LAVA(typ)) loc.lit = 1;
     return true;
 }
 
