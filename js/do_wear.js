@@ -1830,7 +1830,11 @@ async function putOnSelectedItem(player, display, game, item) {
             while (!mask) {
                 const fc = await nhgetch();
                 const fs = String.fromCharCode(fc);
-                if (fc === 27 || fc === 0) return { moved: false, tookTime: false };
+                // C yn_function(..., rightleftchars, '\0', ...) cancels on
+                // ESC and Enter (default '\0').
+                if (fc === 27 || fc === 0 || fc === 10 || fc === 13) {
+                    return { moved: false, tookTime: false };
+                }
                 if (fs === 'r' || fs === 'R') mask = 'right';
                 else if (fs === 'l' || fs === 'L') mask = 'left';
             }

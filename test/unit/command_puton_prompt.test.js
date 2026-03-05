@@ -83,4 +83,22 @@ test('put on skips ring-finger prompt when left slot already occupied', async ()
     assert.equal(game.player.rightRing?.invlet, 'a'); // auto-assigned to right
 });
 
+test('put on ring-finger prompt cancels on Enter without consuming a turn', async () => {
+    const game = makeGame();
+    game.player.inventory = [{
+        invlet: 'a',
+        oclass: RING_CLASS,
+        otyp: RIN_PROTECTION,
+        quan: 1,
+    }];
+    clearInputQueue();
+    pushInput('a'.charCodeAt(0)); // select ring
+    pushInput('\n'.charCodeAt(0)); // cancel finger prompt (C yn default '\0')
+
+    const result = await rhack('P'.charCodeAt(0), game);
+    assert.equal(result.tookTime, false);
+    assert.equal(game.player.leftRing, null);
+    assert.equal(game.player.rightRing, null);
+});
+
 }); // describe
