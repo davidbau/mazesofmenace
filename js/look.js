@@ -7,7 +7,7 @@ import {
 } from './const.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { nhgetch } from './input.js';
-import { def_monsyms } from './symbols.js';
+import { def_monsyms } from './const.js';
 import { x_monnam } from './mondata.js';
 import { engr_at, can_reach_floor } from './engrave.js';
 

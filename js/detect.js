@@ -20,7 +20,7 @@ import { observeObject } from './discovery.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
 import { body_part } from './polyself.js';
 import { tmp_at, nh_delay_output, DISP_FLASH, DISP_CHANGE, DISP_END } from './animation.js';
-import { defsyms, trap_to_defsym } from './symbols.js';
+import { defsyms, trap_to_defsym } from './const.js';
 
 // detect.js -- Detection spells, scrolls, and searching
 // cf. detect.c -- Full port of all detection routines.

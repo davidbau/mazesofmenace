@@ -35,7 +35,7 @@ import {
     BEAR_TRAP, LANDMINE, HOLE, TRAPDOOR, PIT, SPIKED_PIT,
     SHOPBASE,
 } from './const.js';
-import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './symbols.js';
+import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { newsym } from './monutil.js';

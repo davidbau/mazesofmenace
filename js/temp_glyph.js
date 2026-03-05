@@ -36,7 +36,7 @@ import {
     S_vwall,
     S_invisible,
     WARNCOUNT,
-} from './symbols.js';
+} from './const.js';
 
 const NUM_ZAP = 8;
 const MAXEXPCHARS = (S_expl_br - S_expl_tl) + 1;

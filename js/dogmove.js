@@ -42,7 +42,7 @@ import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
          WT_HUMAN, MZ_HUMAN,
          MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, MZ_GIGANTIC,
          G_FREQ } from './monsters.js';
-import { MAGIC_PORTAL } from './symbols.js';
+import { MAGIC_PORTAL } from './const.js';
 import { gettrack } from './track.js';
 import { helpless } from './monutil.js';
 import { onscary } from './mon.js';

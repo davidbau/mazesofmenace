@@ -104,7 +104,7 @@ import { m_harmless_trap, floor_trigger, mintrap_postmove, t_at } from './trap.j
 export { m_harmless_trap, floor_trigger, mintrap_postmove };
 import { maketrap } from './dungeon.js';
 import { mdig_tunnel, may_dig } from './dig.js';
-import { IS_TREE } from './symbols.js';
+import { IS_TREE } from './const.js';
 import { stairway_at } from './stairs.js';
 import { mwelded } from './wield.js';
 import { mon_wield_item, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './weapon.js';

@@ -11,7 +11,7 @@ import { is_humanoid, slithy, amorphous, noncorporeal, is_whirly,
          grounded } from './mondata.js';
 import { MZ_MEDIUM, MZ_SMALL, MZ_LARGE } from './monsters.js';
 import { S_QUADRUPED, S_UNICORN, S_ANGEL, S_CENTAUR, S_DRAGON,
-         S_JABBERWOCK } from './symbols.js';
+         S_JABBERWOCK } from './const.js';
 import { W_SADDLE, which_armor } from './worn.js';
 import { SADDLE } from './objects.js';
 

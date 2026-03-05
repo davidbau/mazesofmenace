@@ -36,7 +36,7 @@ import { pline, pline_The, You, Your, You_hear, You_see, You_feel, There, Norep 
 import { hcolor, hliquid, rndmonnam, Monnam } from './do_name.js';
 import { an } from './objnam.js';
 import { body_part, FACE, HAND, LEG, STOMACH } from './polyself.js';
-import { IS_SINK, IS_ALTAR } from './symbols.js';
+import { IS_SINK, IS_ALTAR } from './const.js';
 import { newsym, mark_vision_dirty, vision_recalc, setDisplayContext } from './monutil.js';
 import { digests, touch_petrifies, is_rider, is_reviver, throws_rocks, passes_walls, is_whirly } from './mondata.js';
 import { mons, S_ZOMBIE, NON_PM, PM_DEATH, PM_PESTILENCE, PM_FAMINE,

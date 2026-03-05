@@ -30,7 +30,7 @@ import {
 import {
     IS_TREE, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR,
     IS_DRAWBRIDGE, IS_SOFT, ZAP_POS,
-} from './symbols.js';
+} from './const.js';
 import {
     pline, pline_The, You, Your, You_hear, You_cant, There, Norep,
     impossible,

@@ -4,7 +4,7 @@
 
 import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, next_ident, weight, place_object, set_corpsenm } from './mkobj.js';
-import { def_monsyms } from './symbols.js';
+import { def_monsyms } from './const.js';
 import { m_dowear, mon_break_armor } from './worn.js';
 import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
@@ -114,7 +114,7 @@ import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';
 import { get_wormno, initworm, place_worm_tail_randomly } from './worm.js';
-import { PIT, SPIKED_PIT } from './symbols.js';
+import { PIT, SPIKED_PIT } from './const.js';
 import { In_sokoban, Is_stronghold } from './dungeon.js';
 
 // ========================================================================

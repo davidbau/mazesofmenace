@@ -1,7 +1,22 @@
 // const.js -- Consolidated constant surface for issue #227 phase 1.
 //
-// Initial migration step: re-export config constants through a stable import
-// surface. symbols.js re-exports are added in a later pass after resolving
-// duplicate export names shared with config.js.
+// Re-export both config.js and symbols.js through a single constants module.
+// Names exported by both are explicitly resolved to config.js below.
 
 export * from './config.js';
+export * from './symbols.js';
+export {
+    ACCESSIBLE, AIR, ALL_TRAPS, ALTAR, ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP,
+    BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DART_TRAP, DBWALL, DOOR,
+    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED,
+    D_NODOOR, D_SECRET, D_TRAPPED, FIRE_TRAP, FOUNTAIN, GRAVE, HOLE, HWALL,
+    ICE, IRONBARS, IS_DOOR, IS_DRAWBRIDGE, IS_FURNITURE, IS_LAVA,
+    IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_WALL, IS_WATERWALL, LADDER,
+    LANDMINE, LAVAPOOL, LAVAWALL, LEVEL_TELEP, MAGIC_PORTAL, MAGIC_TRAP,
+    MAXMCLASSES, MAXOCLASSES, MAX_TYPE, MOAT, NO_TRAP, PIT, POLY_TRAP, POOL,
+    ROCKTRAP, ROLLING_BOULDER_TRAP, ROOM, RUST_TRAP, SCORR, SDOOR, SINK,
+    SLP_GAS_TRAP, SPIKED_PIT, SQKY_BOARD, STAIRS, STATUE_TRAP, STONE, TDWALL,
+    TELEP_TRAP, THRONE, TLCORNER, TLWALL, TRAPDOOR, TRAPNUM, TRAPPED_CHEST,
+    TRAPPED_DOOR, TRCORNER, TREE, TRWALL, TUWALL, VIBRATING_SQUARE, VWALL,
+    WATER, WEB, is_hole, is_pit,
+} from './config.js';

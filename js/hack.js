@@ -17,8 +17,8 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
          HOLE, TRAPDOOR } from './const.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP,
-         ARROW_TRAP, DART_TRAP, ROCKTRAP } from './symbols.js';
-import { defsyms, trap_to_defsym } from './symbols.js';
+         ARROW_TRAP, DART_TRAP, ROCKTRAP } from './const.js';
+import { defsyms, trap_to_defsym } from './const.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,

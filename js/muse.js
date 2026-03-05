@@ -84,7 +84,7 @@ import { monverbself } from './do_name.js';
 import { arti_reflects } from './artifact.js';
 import { can_carry } from './dogmove.js';
 import { sobj_at, carrying } from './invent.js';
-import { ZAP_POS } from './symbols.js';
+import { ZAP_POS } from './const.js';
 import { is_pool, is_lava, is_ice, find_drawbridge, destroy_drawbridge,
          is_drawbridge_wall } from './dbridge.js';
 import { trycall } from './do.js';

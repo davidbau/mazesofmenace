@@ -90,7 +90,7 @@ import {
 import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
 import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
-import { HOLE, TRAPDOOR } from './symbols.js';
+import { HOLE, TRAPDOOR } from './const.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng, deltrap } from './dungeon.js';
 import { TT_NONE } from './trap.js';

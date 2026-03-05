@@ -16,7 +16,7 @@ import {
     D_ISOPEN, D_CLOSED, D_LOCKED,
     IS_WALL, Amask2align,
 } from './const.js';
-import { defsyms, trap_to_defsym } from './symbols.js';
+import { defsyms, trap_to_defsym } from './const.js';
 
 // ============================================================================
 // Color constants (C ref: include/color.h)

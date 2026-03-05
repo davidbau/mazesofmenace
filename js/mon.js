@@ -99,7 +99,7 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_MIMIC, S_UNICORN,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN } from './monsters.js';
-import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './symbols.js';
+import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './const.js';
 import { m_harmless_trap } from './trap.js';
 import { dist2, distmin, monnear,
          monmoveTrace, monmoveStepLabel,

@@ -72,7 +72,7 @@ import {
     TRAPPED_DOOR as CFG_TRAPPED_DOOR,
     TRAPPED_CHEST as CFG_TRAPPED_CHEST,
     TRAPNUM as CFG_TRAPNUM,
-} from './const.js';
+} from './config.js';
 
 /**
  * symbols.js - NetHack 3.7 symbol and color definitions

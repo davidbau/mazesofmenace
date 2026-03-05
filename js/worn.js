@@ -10,7 +10,7 @@ import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns,
          is_humanoid, breakarm, sliparm, is_whirly, noncorporeal,
          attacktype, canseemon,
        } from './mondata.js';
-import { S_MUMMY, S_CENTAUR } from './symbols.js';
+import { S_MUMMY, S_CENTAUR } from './const.js';
 import { PM_SKELETON, PM_HOBBIT, MZ_TINY, MZ_SMALL, MZ_HUMAN, MZ_HUGE,
          AT_WEAP,
        } from './monsters.js';

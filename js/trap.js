@@ -53,7 +53,7 @@ import { ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD,
          TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC,
          POLY_TRAP, VIBRATING_SQUARE
-       } from './symbols.js';
+       } from './const.js';
 import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
          is_crackable, erosion_matters, mksobj, weight } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
