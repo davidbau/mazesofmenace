@@ -20,7 +20,7 @@ import {
 } from './objects.js';
 import { MAXOCLASSES, ROOM, SHOPBASE, ROOMOFFSET, SDOOR, DOOR, CORR,
          D_NODOOR, D_ISOPEN, D_TRAPPED, D_LOCKED } from './config.js';
-import { makemon, mkclass, mongets, NO_MM_FLAGS, registerGetShopItem } from './makemon.js';
+import { makemon, mkclass, mongets, NO_MM_FLAGS } from './makemon.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { RANDOM_CLASS } from './objclass.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
@@ -300,9 +300,6 @@ export function get_shop_item(type) {
   }
   return RANDOM_CLASS;
 }
-
-// Register get_shop_item with makemon.js (avoids circular dependency)
-registerGetShopItem(get_shop_item);
 
 // ========================================================================
 // veggy_item / shkveg / mkveggy_at — C ref: shknam.c:379-450

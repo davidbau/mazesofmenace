@@ -1448,6 +1448,15 @@ as long as needed for migration safety; move level/map structures and APIs into
 canonical module ownership, then delete or reduce `map.js` to thin compatibility
 shims that are removed before final completion gates.
 
+**Concrete migration targets before deleting `map.js`:**
+1. `makeRoom` and `FILL_*` live in `mkroom.js`.
+2. `makeLocation` and level container constructor live in canonical level-state
+   ownership (`game.js` in the target module layout).
+3. All current `map.js` importers (`dungeon.js`, `mklev.js`, `sp_lev.js`,
+   `storage.js`, `chargen.js`, `extralev.js`, `mkroom.js`) import only from
+   canonical owners.
+4. `map.js` is deleted (not kept as a re-export shim) once (1)-(3) are done.
+
 ---
 
 ### `game.rooms[]` — class `MkRoom` (struct mkroom)

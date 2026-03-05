@@ -28,7 +28,6 @@ const SICK_ALL = (SICK_VOMITABLE | SICK_NONVOMITABLE);
 import { exercise } from './attrib_exercise.js';
 import { drinkfountain } from './fountain.js';
 import { pline, You, Your, You_feel, You_cant } from './pline.js';
-import { registerMakeStatusFns } from './timeout.js';
 import { tmp_at, DISP_ALWAYS, DISP_END } from './animation.js';
 import { mark_vision_dirty } from './vision.js';
 import { float_up, float_down } from './trap.js';
@@ -1439,22 +1438,6 @@ async function split_mon(mon, mtmp, map, player) {
         return null;
     }
 }
-
-// ============================================================
-// Register make_* functions with timeout.js for expiry callbacks
-// ============================================================
-registerMakeStatusFns({
-    make_confused,
-    make_stunned,
-    make_blinded,
-    make_hallucinated,
-    make_sick,
-    make_vomiting,
-    make_deaf,
-    make_glib,
-    make_slimed,
-    make_stoned,
-});
 
 export { handleQuaff, peffects, make_stunned, make_blinded, make_sick, make_hallucinated, make_deaf, make_slimed, bottlename, H2Opotion_dip, potionhit, potionbreathe, hold_potion, dodip, dip_potion_explosion, potion_dip, djinni_from_bottle, split_mon };
 

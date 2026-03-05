@@ -526,21 +526,30 @@ async function rot_corpse_timer(body) {
     rot_corpse(body, _currentTurn, _timeoutContext.map, _timeoutContext.player);
 }
 
-// Status effect function registry — set by potion.js at import time via
-// registerMakeStatusFns() to avoid circular import issues.
-// var (not let) avoids TDZ when potion.js calls registerMakeStatusFns() during
-// circular-import module init before this line would execute with let/const.
-var _makeStatusFns;
-
-// Called by potion.js to register make_* functions for expiry callbacks.
-export function registerMakeStatusFns(fns) {
-    _makeStatusFns = fns || {};
+let _statusFnsPromise = null;
+async function getStatusFns() {
+    if (!_statusFnsPromise) {
+        // Runtime lazy import avoids module-init registration side effects.
+        _statusFnsPromise = import('./potion.js').then((m) => ({
+            make_confused: m.make_confused,
+            make_stunned: m.make_stunned,
+            make_blinded: m.make_blinded,
+            make_hallucinated: m.make_hallucinated,
+            make_sick: m.make_sick,
+            make_vomiting: m.make_vomiting,
+            make_deaf: m.make_deaf,
+            make_glib: m.make_glib,
+            make_slimed: m.make_slimed,
+            make_stoned: m.make_stoned,
+        }));
+    }
+    return _statusFnsPromise;
 }
 
 // Fire expiry effect when an intrinsic timeout reaches zero.
 // C ref: timeout.c nh_timeout() — the big switch on each prop (lines 690-940)
 async function _fireExpiryEffect(player, prop) {
-    const fns = _makeStatusFns || {};
+    const fns = await getStatusFns();
     const entry = player.uprops[prop];
 
     switch (prop) {
@@ -864,7 +873,7 @@ export async function vomiting_dialogue(player) {
     const p = player || _timeoutContext.player;
     if (!p) return;
     const v = p.getPropTimeout(VOMITING);
-    const fns = _makeStatusFns || {};
+    const fns = await getStatusFns();
     switch (v - 1) {
     case 14:
         await You(vomiting_texts[0]);

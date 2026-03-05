@@ -314,6 +314,22 @@ JS built-ins or irrelevant in the browser):
 structures and APIs into canonical `game.*` state ownership and/or C-source
 module ownership during Phase 4, then delete remaining compatibility shims.
 
+### `map.js` elimination execution checklist
+
+`map.js` currently exports four gameplay-facing symbols:
+`makeLocation`, `makeRoom`, `GameMap`, and `FILL_*`.
+Elimination should be done in small commits with these destinations:
+
+1. `makeRoom` + `FILL_*` -> `mkroom.js` (source-of-truth for `struct mkroom`).
+2. `makeLocation` -> level-state owner (`game.js` once introduced) with C-shape
+   fields matching `struct rm`.
+3. `GameMap` constructor/methods -> level-state owner (`game.js` once
+   introduced), with room/door/flags collections as `game.level.*`.
+4. Importers (`dungeon.js`, `mklev.js`, `sp_lev.js`, `storage.js`, `chargen.js`,
+   `extralev.js`, `mkroom.js`) switch directly to canonical owners.
+5. Delete `map.js` after final importer migration; do not leave compatibility
+   re-exports.
+
 ---
 
 ## C Field Name Normalization
