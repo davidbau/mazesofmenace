@@ -83,7 +83,8 @@ test('monsterNearby ignores helpless monsters', () => {
             '11,10': hostileMonster(undefined, { sleeping: true }),
             '10,11': hostileMonster(undefined, { mcanmove: false }),
             '9,9': hostileMonster(undefined, { mfrozen: 1 }),
-            '9,10': hostileMonster(undefined, { stunned: true }),
+            // Note: stunned (mstun) is NOT helpless in C — stunned monsters
+            // can still attack (just move randomly), so they DO stop running.
         },
     });
 
