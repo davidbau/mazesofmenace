@@ -1,7 +1,7 @@
 // extralev.c helper functions moved out of dungeon.js to mirror C file layout.
 
 import { rn1, rn2, rnd } from './rng.js';
-import { GameMap } from './map.js';
+import { GameMap } from './game.js';
 import { curse, mksobj, weight } from './mkobj.js';
 import {
     ARROW, BOW, FAKE_AMULET_OF_YENDOR, FOOD_RATION, MACE, PLATE_MAIL, RING_MAIL, TWO_HANDED_SWORD,

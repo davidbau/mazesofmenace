@@ -310,25 +310,23 @@ JS built-ins or irrelevant in the browser):
 **JS invented consolidation files** (functions/structures need sorting into canonical ownership):
 `combat`, `look`, `monutil`, `stackobj`, `player`, `discovery`, `options_menu`, `map`
 
-`map.js` plan: treat as transitional consolidation scaffolding. Move level/map
-structures and APIs into canonical `game.*` state ownership and/or C-source
-module ownership during Phase 4, then delete remaining compatibility shims.
+`map.js` plan status: completed. Level map ownership now lives in `game.js`;
+`map.js` has been removed.
 
-### `map.js` elimination execution checklist
+### `map.js` elimination execution checklist (completed)
 
-`map.js` currently exports four gameplay-facing symbols:
+`map.js` previously exported four gameplay-facing symbols:
 `makeLocation`, `makeRoom`, `GameMap`, and `FILL_*`.
-Elimination should be done in small commits with these destinations:
+Implemented destinations:
 
 1. `makeRoom` + `FILL_*` -> `mkroom.js` (source-of-truth for `struct mkroom`).
-2. `makeLocation` -> level-state owner (`game.js` once introduced) with C-shape
+2. `makeLocation` -> level-state owner (`game.js`) with C-shape
    fields matching `struct rm`.
-3. `GameMap` constructor/methods -> level-state owner (`game.js` once
-   introduced), with room/door/flags collections as `game.level.*`.
+3. `GameMap` constructor/methods -> level-state owner (`game.js`), with
+   room/door/flags collections as `game.level.*`.
 4. Importers (`dungeon.js`, `mklev.js`, `sp_lev.js`, `storage.js`, `chargen.js`,
-   `extralev.js`, `mkroom.js`) switch directly to canonical owners.
-5. Delete `map.js` after final importer migration; do not leave compatibility
-   re-exports.
+   `extralev.js`) switched to canonical owners.
+5. `map.js` deleted without compatibility re-exports.
 
 ---
 

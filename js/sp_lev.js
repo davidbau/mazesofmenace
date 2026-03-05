@@ -13,7 +13,7 @@
  * - The API is designed to be called from transpiled Lua → JS level files
  */
 
-import { GameMap } from './map.js';
+import { GameMap } from './game.js';
 import { FILL_NORMAL } from './mkroom.js';
 import { rn2, rnd, rn1, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from './mkobj.js';

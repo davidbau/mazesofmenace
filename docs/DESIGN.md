@@ -63,7 +63,7 @@ webhack/
 │   │
 │   │  ┌─ World Generation ────────────────────────────────┐
 │   ├── dungeon.js             Level generation (← mklev.c, mkroom.c, sp_lev.c)
-│   ├── map.js                 Map data structures (← rm.h, mkmap.c)
+│   ├── game.js                Level map data structures (← rm.h, mkmap.c)
 │   ├── themerms.js            Themeroom definitions (← dat/themerms.lua)
 │   ├── vision.js              Field of view, Algorithm C (← vision.c)
 │   │

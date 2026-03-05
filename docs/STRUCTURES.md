@@ -280,7 +280,7 @@ Phase 2 but must be complete before the legacy rename sweep begins.
 | `monsters.js` | `const.js` | auto-generated monster table |
 | `game.js` | `const.js` only | `game` singleton + inline struct class definitions |
 
-`map.js` is transitional scaffolding and is not part of the target leaf set.
+`map.js` scaffolding has been removed and is not part of the target leaf set.
 Map/level structures are owned by canonical `game.*` state definitions in this
 document and should be instantiated from `game.js` (or C-source-mapped files in
 later phases), not from a standalone `map.js` singleton class module.
@@ -1401,11 +1401,11 @@ Array of all dungeons (branches). `game.n_dgns` is the count.
 
 ---
 
-### `game.level` — canonical level-state structure (transitional `map.js` owner)
+### `game.level` — canonical level-state structure (`game.js` owner)
 
 `game.level` represents the C level-state aggregate (`svl.level` plus related
-level arrays/collections). During transition, `map.js` may host constructors or
-helpers, but the target ownership is canonical `game.*` state definitions.
+level arrays/collections). Constructors/helpers now live in `game.js` as the
+canonical ownership module for level container state.
 
 | C source | JS field | Description |
 |----------|----------|-------------|
@@ -1443,19 +1443,12 @@ from `rm.h`):
 | `nondiggable` | — | bool | W_NONDIGGABLE set |
 | `drawbridgemask` | — | uchar | drawbridge direction + terrain-under bits |
 
-**`map.js` and the refactor:** `map.js` is temporary scaffolding. Keep it only
-as long as needed for migration safety; move level/map structures and APIs into
-canonical module ownership, then delete or reduce `map.js` to thin compatibility
-shims that are removed before final completion gates.
-
-**Concrete migration targets before deleting `map.js`:**
-1. `makeRoom` and `FILL_*` live in `mkroom.js`.
-2. `makeLocation` and level container constructor live in canonical level-state
-   ownership (`game.js` in the target module layout).
-3. All current `map.js` importers (`dungeon.js`, `mklev.js`, `sp_lev.js`,
-   `storage.js`, `chargen.js`, `extralev.js`, `mkroom.js`) import only from
-   canonical owners.
-4. `map.js` is deleted (not kept as a re-export shim) once (1)-(3) are done.
+**`map.js` and the refactor:** migration is complete.
+1. `makeRoom` and `FILL_*` now live in `mkroom.js`.
+2. `makeLocation` and level container constructor now live in `game.js`.
+3. Runtime importers (`dungeon.js`, `mklev.js`, `sp_lev.js`, `storage.js`,
+   `chargen.js`, `extralev.js`) now import from canonical owners.
+4. `map.js` is deleted with no compatibility re-export shim.
 
 ---
 

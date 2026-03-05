@@ -367,7 +367,7 @@ Uses `pushRngLogEntry()` from `js/rng.js`. Instrumented functions:
 | JS File | Function | Event |
 |---------|----------|-------|
 | `js/floor_objects.js` | `placeFloorObject()` | `^place` |
-| `js/map.js` | `removeObject()` | `^remove` |
+| `js/game.js` | `removeObject()` | `^remove` |
 | `js/mkobj.js` | `mkcorpstat()` | `^corpse` |
 | `js/dogmove.js` | `dog_eat()` | `^eat` |
 | `js/dogmove.js` | `dog_invent()` pickup/drop | `^pickup`, `^drop` |

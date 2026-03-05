@@ -7,8 +7,9 @@
 
 ## Active Phase
 
-Phase 1 (remove top-level `register*` wiring) with first Phase 4 ownership move
-started (`makeRoom`/`FILL_*` migrated from `map.js` to `mkroom.js`).
+Phase 1 (remove top-level `register*` wiring), with `map.js` elimination now
+completed (`makeRoom`/`FILL_*` in `mkroom.js`, `GameMap`/`makeLocation` in
+`game.js`).
 
 ## Completed This Turn
 
@@ -24,6 +25,12 @@ started (`makeRoom`/`FILL_*` migrated from `map.js` to `mkroom.js`).
    - moved `makeRoom` and `FILL_*` ownership to `mkroom.js`,
    - updated importers (`dungeon.js`, `mklev.js`, `sp_lev.js`, `storage.js`),
    - removed those exports from `map.js`.
+5. Completed `map.js` elimination:
+   - moved `GameMap`/`makeLocation` ownership to `game.js`,
+   - migrated all runtime importers off `map.js`,
+   - deleted `js/map.js`,
+   - updated docs references (`MODULES`, `STRUCTURES`, `SESSION_FORMAT_V3`,
+     `DESIGN`, `CODEMATCH`).
 4. Validation after each step:
    - `node --test test/unit/wizard_mode.test.js` passes,
    - parity spot checks (`seed42`, `seed100`) pass,
@@ -32,12 +39,8 @@ started (`makeRoom`/`FILL_*` migrated from `map.js` to `mkroom.js`).
 
 ## Next Commit Target
 
-Continue `map.js` elimination in small no-behavior steps:
-
-1. move `makeLocation` ownership out of `map.js` to canonical level-state owner
-   module as planned,
-2. migrate remaining `GameMap` constructor ownership accordingly,
-3. keep importer updates and test gates in each commit.
+Continue Phase 1 removal of remaining top-level init fragility patterns and keep
+parity envelope stable after each increment.
 
 ## Blockers
 

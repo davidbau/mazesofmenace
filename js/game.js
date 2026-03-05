@@ -1,4 +1,4 @@
-// map.js -- Map data structures
+// game.js -- Level map data structures
 // Mirrors the level structure from rm.h, decl.h
 // The map is COLNO x ROWNO grid of location objects.
 

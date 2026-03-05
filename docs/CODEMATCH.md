@@ -200,7 +200,7 @@ These JS files don't directly correspond to a single C file:
 | keylog.js | Keystroke logging | None (JS-only) |
 | hack.js | Core movement/running/travel | hack.c |
 | kick.js | Kick command | dokick.c |
-| map.js | Map data structure | hack.c, mklev.c |
+| game.js | Map data structure | hack.c, mklev.c |
 | monsters.js | Monster data tables | monst.c |
 | nethack.js | Browser entry point: reads URL params, wires Display+input to NetHackGame, registers window APIs | sys/unix/nethack.c (platform main) |
 | objdata.js | Object property queries | objnam.c, mkobj.c |

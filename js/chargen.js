@@ -12,7 +12,7 @@ import { FOV } from './vision.js';
 import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
          needsGenderMenu, rankOf, godForRoleAlign, isGoddess, greetingForRole,
          roleNameForGender, alignName, formatLoreText } from './player.js';
-import { GameMap } from './map.js';
+import { GameMap } from './game.js';
 import { initLevelGeneration, mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { TUTORIAL } from './special_levels.js';
 import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
