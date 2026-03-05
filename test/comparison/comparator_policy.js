@@ -21,6 +21,11 @@ function ansiCellsToPlainLine(line) {
     return ansiLineToCells(line).map((cell) => cell?.ch || ' ').join('');
 }
 
+function stepAnsiLines(step) {
+    if (Array.isArray(step?.screenAnsi)) return step.screenAnsi;
+    return getSessionScreenAnsiLines(step);
+}
+
 
 function resolveGameplayComparableLines(plainLines, ansiLines, session) {
     const ansi = Array.isArray(ansiLines) ? ansiLines : [];
@@ -206,14 +211,14 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             return rngCmp;
         },
         compareScreenStep(actualStep, expectedStep) {
-            const expectedAnsi = getSessionScreenAnsiLines(expectedStep);
+            const expectedAnsi = stepAnsiLines(expectedStep);
             return compareGameplayScreens(actualStep?.screen || [], expectedStep?.screen || [], session, {
                 actualAnsi: actualStep?.screenAnsi,
                 expectedAnsi,
             });
         },
         compareColorStep(actualStep, expectedStep) {
-            const expectedAnsi = getSessionScreenAnsiLines(expectedStep);
+            const expectedAnsi = stepAnsiLines(expectedStep);
             if (!expectedAnsi.length || !Array.isArray(actualStep?.screenAnsi)) {
                 return null;
             }
@@ -223,7 +228,7 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             if (!Array.isArray(expectedStep?.screen) || expectedStep.screen.length === 0) {
                 return null;
             }
-            const expectedAnsi = getSessionScreenAnsiLines(expectedStep);
+            const expectedAnsi = stepAnsiLines(expectedStep);
             const frames = getStepFrames(actualStep);
             let finalDiff = null;
             for (const frame of frames) {
@@ -253,7 +258,7 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             };
         },
         compareColorWindowStep(actualStep, expectedStep) {
-            const expectedAnsi = getSessionScreenAnsiLines(expectedStep);
+            const expectedAnsi = stepAnsiLines(expectedStep);
             if (!expectedAnsi.length) return null;
             const frames = getStepFrames(actualStep);
             let finalDiff = null;
