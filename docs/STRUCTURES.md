@@ -143,9 +143,16 @@ both `A` and `B` import `game` from the same zero-dep root.
 ### Fix: runtime wiring discipline
 
 Avoid top-level side-effect wiring and `register*()`-style initialization
-patterns. Do not add `initAll`/startup orchestrator wiring; module top-level
-code should stay declarative, and cross-module interactions should happen when
-runtime functions/classes are called/instantiated.
+patterns. Do not add `initAll`/startup orchestrator wiring.
+
+**Why `initAll` is not needed:** after the five leaf files are in place, every
+remaining circular import is a cycle between function-exporting modules. ESM live
+bindings resolve function references correctly — a function body that calls an
+imported function will always see the correct binding as long as it is not
+*invoked* during module initialization. Since module top-level code is restricted
+to declarations (classes, functions, constants), no function body runs until
+after all modules are loaded, so all live bindings are already set. No explicit
+wiring phase is required.
 
 ## Work Plan
 
@@ -179,13 +186,22 @@ Rename all non-C JS field aliases to canonical C names, file by file.
 Run tests after each file. This is a pure rename of property accesses with no
 logic changes.
 
+**Why Phase 2 before Phase 3:** once field names are canonical, the autotranslator
+can emit correct code for newly ported C functions without a field-mapping layer.
+Doing this first means every subsequent phase benefits immediately.
+
+**Batching rule:** one struct type per commit — attack struct first, then
+permonst, then objclass, then obj instances. Run tests after each commit.
+
 **Exit gate — before moving to Phase 3:**
 
 | | Status |
 |-|--------|
 | **Present** | All struct fields accessed by canonical C names throughout the codebase |
-| **Complete** | Every alias listed in the tables below has been renamed in every file |
-| **Deleted** | `attack_fields.js` is gone; no remaining uses of `.at`, `.type` (on attacks), `.damage`, `.ad`, `.dice`, `.sides`, `.speed`, `.difficulty`, `.mr1`, `.mr2`, `.flags1/.2/.3`, `.sdam`, `.ldam`, `.oc1`, `.oc2`, `.sub` (on objclass), `.prop` (on objclass), `.dir` (on objclass) |
+| **Complete** | Every alias in the tables below renamed in every file |
+| **Deleted (attack)** | `attack_fields.js` gone; no remaining `.at`, `.type` (on attacks), `.damage`, `.ad`, `.dice`, `.sides` |
+| **Deleted (permonst)** | No remaining `.speed`, `.difficulty`, `.mr1`, `.mr2`, `.flags1`/`.flags2`/`.flags3` (on permonst) |
+| **Deleted (objclass/obj)** | No remaining `.sdam`, `.ldam`, `.oc1`, `.oc2`, `.sub`/`.prop`/`.dir` (on objclass); no `.name` (user-given, on obj instances) |
 | **Verified** | Test suite is no worse than before Phase 2 began |
 
 **Attack struct** (`struct attack` in `permonst.h`):
@@ -247,11 +263,12 @@ already emits C names; fix all reading-side uses:
 |----------|-----------|-------|
 | `.name` (user-given name) | `.oname` | ~11 files; distinct from `.oc_name` |
 
-### Phase 2 parallel — game.js bootstrap (fifth leaf file)
+### game.js bootstrap — prerequisite for the rename sweep
 
 `docs/MODULES.md` defines four constant leaf files (`version.js`, `const.js`,
-`objects.js`, `monsters.js`). `game.js` is the fifth leaf: it owns the game
-singleton and all top-level variable initializations.
+`objects.js`, `monsters.js`). `game.js` is the fifth leaf: it owns the `game`
+singleton and all struct class definitions. It can be written in parallel with
+Phase 2 but must be complete before the legacy rename sweep begins.
 
 **The five leaf files and their import rules:**
 
@@ -261,32 +278,47 @@ singleton and all top-level variable initializations.
 | `const.js` | `version.js` | all hand-maintained capitalized constants |
 | `objects.js` | `const.js` | auto-generated object table + `initObjectData()` |
 | `monsters.js` | `const.js` | auto-generated monster table |
-| `game.js` | `const.js` only | `game` singleton + struct class definitions |
+| `game.js` | `const.js`, `map.js` | `game` singleton + inline struct class definitions |
 
-All other gameplay files import freely from each other **and** from these five.
-Because the five leaf files import no gameplay functions, they cannot participate
-in cycles. This makes all other circular imports safe — they involve only
-function bindings, which resolve before any function body executes.
+`map.js` is also a near-leaf (imports only `const.js` and `rng.js`; both are
+infrastructure with no gameplay deps). `game.js` imports `GameMap` from `map.js`
+for `game.level`. See the `map.js` section in Struct Types for its field tables.
+
+All gameplay files import freely from each other and from these five.
+Because the leaf files import no gameplay functions, they cannot participate in
+cycles. This makes all other circular imports safe — function bindings resolve
+before any function body executes.
+
+**Why `game.js` doesn't import `objects.js` or `monsters.js`:** `game.js` only
+creates empty/default instances (e.g. `new Monst()`). Monster and object table
+data is loaded at game start via `initObjectData()` called from game startup code,
+not at module-init time. No module-init dependency on those tables.
+
+**Why `game.u` is a sub-object (not flat):** see the "Hero state nesting" section
+above. The key reason: ported C functions can do `const u = game.u;` and the code
+reads exactly like the original C with its global `struct you u;`.
 
 ```js
-// game.js — imports only const.js (no gameplay modules)
-import { ... } from './const.js';
+// game.js — imports only const.js + map.js (no gameplay modules)
+import { COLNO, ROWNO, ... } from './const.js';
+import { GameMap } from './map.js';
 
-// Struct class definitions live here (inline or in game.js directly):
+// Struct class definitions inline:
 class Context { constructor() { this.run = 0; ... } }
 class Flag     { constructor() { this.debug = false; ... } }
 // ...
 
 export const game = {
   u:        new You(),      // struct you  — hero state (u.* → game.u.*)
-  context:  new Context(),  // svc.context — replaces game.svc.context
-  flags:    new Flag(),     // flags       — replaces game.wizard etc.
+  context:  new Context(),  // target: game.context (was game.svc.context)
+  flags:    new Flag(),     // target: game.flags.* (was game.wizard etc.)
   youmonst: new Monst(),    // gy.youmonst — hero-as-monster form cache
-  // ... all fields from Complete game.* Field Reference below
+  level:    new GameMap(),  // svl.level — current dungeon level
+  // ... all other fields from Complete game.* Field Reference below
 };
 ```
 
-During migration, temporary shims can be added to `game.js`:
+During migration, temporary shims let old code keep working:
 
 ```js
 // TEMPORARY — delete when all callers are migrated to game.context
@@ -301,13 +333,13 @@ updated. End state: zero shims in `game.js`.
 const u = game.u;   // mirrors C's global `struct you u;`
 ```
 
-**Exit gate for game.js bootstrap — before the legacy rename sweep (Phase 2→3 boundary):**
+**Exit gate for game.js bootstrap — before the legacy rename sweep:**
 
 | | Status |
 |-|--------|
-| **Present** | `game.js` exists; exports `game` singleton with all fields from the Complete Reference; all struct class definitions are in `game.js` |
-| **Complete** | All gameplay modules import `game` from `game.js`; all `// TEMPORARY` shims are documented |
-| **Deleted** | Nothing yet — shims still present; `player.js` still in use |
+| **Present** | `game.js` exists; exports `game` singleton with all fields; all struct class definitions inline or imported from `map.js` |
+| **Complete** | All gameplay modules import `game` from `game.js`; all `// TEMPORARY` shims documented |
+| **Deleted** | Nothing yet — shims still live; `player.js` still in use |
 | **Verified** | Test suite is no worse than before |
 
 ### Phase 3 — Constant Consolidation
@@ -364,6 +396,15 @@ must pass after each file):
 | `player.spells` | `game.spl_book` | `svs.spl_book` |
 | `player.name` | `game.plname` | `gp.plname` |
 
+**youmonst and set_uasmon():** `game.youmonst` is a **form cache**, not a
+continuous mirror of `game.u`. Port `set_uasmon()` before porting anything that
+passes the hero to monster-combat functions. When porting it:
+- Set `game.youmonst.data = mons[game.u.umonnum]` (permonst entry for current form)
+- Set `game.youmonst.m_id = 1` (always; `mx` stays 0 — youmonst has no map position)
+- Propagate species intrinsics into `game.u.uprops[]`
+- Do **not** sync on every turn — rebuilt only on polymorph, lycanthropy, and restore.
+- Called from: `u_init`, `restore`, `polyself`, `were`, `allmain`
+
 **Exit gate for the legacy rename sweep — before Phase 4:**
 
 | | Status |
@@ -372,20 +413,6 @@ must pass after each file):
 | **Complete** | Every row in the legacy rename table above has been applied in every file |
 | **Deleted** | `game.svc` shim; `game.wizard` reference; `game.turnCount` reference; all `// TEMPORARY` shims that have been migrated |
 | **Verified** | Test suite is no worse than before |
-
-### Between Phase 3 and Phase 4 — youmonst and set_uasmon() in JS
-
-`game.youmonst` is a **form cache**, not a continuous mirror of `game.u`.
-It is initialized by `set_uasmon()` — port this function before porting anything
-that passes the hero to monster-combat functions.
-
-When porting `set_uasmon()` (called from `u_init`, `restore`, `polyself`, `were`,
-`allmain`):
-- Set `game.youmonst.data = mons[game.u.umonnum]` (permonst entry for current form)
-- Set `game.youmonst.m_id = 1` (always; `mx` stays 0 — youmonst has no map position)
-- Propagate species intrinsics into `game.u.uprops[]`
-- Do **not** sync `game.youmonst` on every turn — it is rebuilt only on polymorph,
-  lycanthropy/were-change, and save-file restore.
 
 ### Phase 4 — File-per-C-Source Reorganization
 
@@ -416,6 +443,7 @@ body runs. Gameplay modules just import what they need, with no restrictions.
 | **Present** | Clean codebase with canonical C names everywhere |
 | **Complete** | No `// TEMPORARY` comments remain; no `?? legacyField` fallback expressions; no shim objects |
 | **Deleted** | `player.js`; `game.svc`; all legacy alias blocks; any remaining re-export pass-throughs |
+| **Kept** | `map.js` — JS infrastructure, stays as class-definition file for `GameMap`/`makeLocation`/`makeRoom` |
 | **Verified** | Test suite is no worse than the start of the refactor |
 
 ## Complete game.* Field Reference
@@ -1373,9 +1401,58 @@ Array of all dungeons (branches). `game.n_dgns` is the count.
 
 ---
 
+### `game.level` — class `GameMap` (JS consolidation — `map.js`)
+
+**JS infrastructure class with no single C counterpart.** `map.js` consolidates
+several C globals that together represent a dungeon level:
+
+| C source | JS field | Description |
+|----------|----------|-------------|
+| `svl.level.locations[COLNO][ROWNO]` | `game.level.locations[x][y]` | per-tile data (struct rm) |
+| `svr.rooms[]` | `game.level.rooms[]` | room array for current level |
+| `svd.doors[]` | `game.level.doors[]` | door data array |
+| `svl.level` flags | `game.level.flags` | level-wide boolean flags |
+| `level.monsters` / fmon chain | `game.level.monsters[]` | monsters on level |
+| `level.objects` / fobj chain | `game.level.objects[]` | objects on level |
+| `level.traps` / ftrap chain | `game.level.traps[]` | traps on level |
+| `level.engravings` | `game.level.engravings[]` | engravings on level |
+
+**Note on consolidation:** In C, `svr.rooms`, `svd.doors`, and `svl.level` are
+separate saved-state globals. The JS `GameMap` class merges them. Future Phase 4
+work may split these back to separate top-level `game.*` fields if it aids porting.
+
+**Location tile fields** (each `game.level.locations[x][y]`, mirrors `struct rm`
+from `rm.h`):
+
+| C field | current/legacy JS | type | description |
+|---------|-------------------|------|-------------|
+| `typ` | — | levl_typ | terrain type (STONE, ROOM, CORR, DOOR…) |
+| `seenv` | — | uchar | seen-from-direction bitmask |
+| `flags` | — | uchar | door state, altar alignment, etc. |
+| `lit` | — | bool | currently lit |
+| `waslit` | — | bool | was ever lit |
+| `roomno` | — | uchar | room number (0 = not in a room) |
+| `edge` | — | bool | on the edge of a room |
+| `mem_bg` | — | uchar | remembered background glyph |
+| `mem_trap` | — | uchar | remembered trap type |
+| `mem_obj` | — | ushort | remembered object type |
+| `mem_obj_color` | — | uchar | remembered object color |
+| `mem_invis` | — | bool | remembered invisible monster |
+| `horizontal` | — | bool | wall orientation (JS extension of C bitfield) |
+| `nondiggable` | — | bool | W_NONDIGGABLE set |
+| `drawbridgemask` | — | uchar | drawbridge direction + terrain-under bits |
+
+**`map.js` and the refactor:** `map.js` imports only from `const.js` and `rng.js`
+(both infrastructure). `game.js` imports `GameMap` from `map.js`. As a result,
+`map.js` is a near-leaf — it participates in no gameplay cycles. It stays as a
+JS infrastructure file through all phases; it does not get deleted.
+
+---
+
 ### `game.rooms[]` — class `MkRoom` (struct mkroom)
 
 Array of rooms on current level. `game.nroom` is the count.
+In JS these live inside `game.level.rooms[]`; `game.rooms` may be an alias.
 
 | C field | current/legacy JS | type | description |
 |---------|-------------------|------|-------------|
