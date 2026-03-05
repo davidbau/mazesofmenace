@@ -37,7 +37,7 @@ import { isok, ACCESSIBLE, COLNO, ROWNO, IS_DOOR, D_CLOSED, D_LOCKED,
          POOL, LAVAPOOL, PM_CAVEMAN, PM_SAMURAI, PM_BARBARIAN, PM_RANGER } from './config.js';
 import { SADDLE } from './objects.js';
 import { roles } from './player.js';
-import { makemon, NO_MINVENT, MM_EDOG, mbirth_limit, MAXMONNO } from './makemon.js';
+import { makemon, NO_MINVENT, MM_EDOG, MM_NOMSG, mbirth_limit, MAXMONNO } from './makemon.js';
 import { mksobj } from './mkobj.js';
 import { mpickobj, mark_vision_dirty } from './monutil.js';
 
@@ -290,7 +290,7 @@ export function makedog(map, player, depth) {
         else if (player.roleIndex === PM_RANGER) petName = 'Sirius';
     }
 
-    const pet = makemon(pmIdx, player.x, player.y, MM_EDOG | NO_MINVENT, depth, map);
+    const pet = makemon(pmIdx, player.x, player.y, MM_EDOG | NO_MINVENT | MM_NOMSG, depth, map);
     if (!pet) return null;
 
     if (pmIdx === PM_PONY) {

@@ -104,8 +104,10 @@ import {
     CORPSE, LARGE_BOX, LUCKSTONE, objectData,
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
-import { mpickobj, dist2, BOLT_LIM } from './monutil.js';
-import { canseemon } from './mondata.js';
+import { mpickobj, dist2, BOLT_LIM, newsym } from './monutil.js';
+import { Amonnam } from './do_name.js';
+import { vtense } from './objnam.js';
+import { Norep, set_msg_xy } from './pline.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -1746,12 +1748,15 @@ function set_mimic_sym(mndx, x, y, map, depth) {
 export const NO_MM_FLAGS = 0;
 export const NO_MINVENT      = 0x00000001; // suppress minvent when creating mon
 export const MM_NOWAIT       = 0x00000002; // don't set STRAT_WAITFORU/STRAT_CLOSE from mflags3
+export const MM_NOCOUNTBIRTH = 0x00000004;
 export const MM_IGNOREWATER  = 0x00000008;
 export const MM_ADJACENTOK   = 0x00000010;
 export const MM_NONAME       = 0x00000040; // monster is not christened
 export const MM_EDOG         = 0x00000800; // add edog structure
 export const MM_ASLEEP       = 0x00001000; // monsters should be generated asleep
 export const MM_NOGRP        = 0x00002000;
+export const MM_NOMSG        = 0x00020000; // no appear message
+export const MM_NOEXCLAM     = 0x00040000; // use "<mon> appears."
 export const MM_IGNORELAVA   = 0x00080000;
 
 // C ref: makemon.c makemon_rnd_goodpos() — find random valid position
@@ -1976,6 +1981,15 @@ function group_enexto(cx, cy, map) {
 function randomMonGoodpos(ptr, x, y, map, mmflags = NO_MM_FLAGS) {
     if (!map || x === undefined || y === undefined) return true;
     return makemonGoodpos(map, x, y, ptr, mmflags, true);
+}
+
+function makemonVisibleToPlayer(mon, map) {
+    const ux = _makemonPlayerCtx?.x;
+    const uy = _makemonPlayerCtx?.y;
+    if (!Number.isInteger(ux) || !Number.isInteger(uy) || !map || !mon) return false;
+    if (!couldsee(map, { x: ux, y: uy }, mon.mx, mon.my)) return false;
+    if (mon.mundetected) return false;
+    return true;
 }
 
 export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
@@ -2262,6 +2276,29 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         if (ptr.flags3 & M3_WAITFORU) mon.mstrategy = (mon.mstrategy || 0) | STRAT_WAITFORU;
         if (ptr.flags3 & M3_CLOSE)    mon.mstrategy = (mon.mstrategy || 0) | STRAT_CLOSE;
         if (ptr.flags3 & (M3_WAITMASK | M3_COVETOUS)) mon.mstrategy = (mon.mstrategy || 0) | STRAT_APPEARMSG;
+    }
+
+    // C ref: makemon.c:1469-1498 — runtime appear message outside mklev.
+    if (!_makemonInMklev) {
+        newsym(mon.mx, mon.my);
+        if (!(mmflags & MM_NOMSG) && makemonVisibleToPlayer(mon, map)) {
+            const exclaim = !(mmflags & MM_NOEXCLAM);
+            const what = Amonnam(mon);
+            const ux = Number.isInteger(_makemonPlayerCtx?.x) ? _makemonPlayerCtx.x : null;
+            const uy = Number.isInteger(_makemonPlayerCtx?.y) ? _makemonPlayerCtx.y : null;
+            let suffix = '';
+            if (ux != null && uy != null) {
+                if (dist2(x, y, ux, uy) <= 2) suffix = ' next to you';
+                else if (dist2(x, y, ux, uy) <= (BOLT_LIM * BOLT_LIM)) suffix = ' close by';
+            }
+            set_msg_xy(mon.mx, mon.my);
+            void Norep('%s%s %s%s%s',
+                what,
+                exclaim ? ' suddenly' : '',
+                vtense(what, 'appear'),
+                suffix,
+                exclaim ? '!' : '.');
+        }
     }
 
     // C ref: event_log("makemon[%d@%d,%d]", mndx, mtmp->mx, mtmp->my)

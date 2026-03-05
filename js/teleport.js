@@ -28,7 +28,7 @@ import { newsym, mondead, mark_vision_dirty } from './monutil.js';
 import { set_apparxy, mon_track_clear } from './monmove.js';
 import { onscary } from './mon.js';
 import { pline } from './pline.js';
-import { Monnam } from './do_name.js';
+import { Monnam, Amonnam } from './do_name.js';
 import { deltrap } from './dungeon.js';
 import { couldsee } from './vision.js';
 
@@ -61,6 +61,7 @@ const CC_UNSHUFFLED = 0x02;
 const CC_RING_PAIRS = 0x04;
 const CC_SKIP_MONS = 0x08;
 const CC_SKIP_INACCS = 0x10;
+const STRAT_APPEARMSG = 0x80000000;
 
 // TELEDS flags
 export const TELEDS_NO_FLAGS = 0;
@@ -325,8 +326,15 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
     const oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
-    const domsg = !!display && vanishmsg && !preventmsg;
+    let appearmsg = ((Number(mtmp.mstrategy || 0) & STRAT_APPEARMSG) !== 0);
+    const domsg = !!display && (vanishmsg || appearmsg) && !preventmsg;
     let telemsg = false;
+    const heroDist2 = (tx, ty) => {
+        if (!player) return Number.MAX_SAFE_INTEGER;
+        const dx = tx - player.x;
+        const dy = ty - player.y;
+        return (dx * dx) + (dy * dy);
+    };
     const canSeePos = (tx, ty) => {
         if (!player) return false;
         if (fov?.canSee) return !!fov.canSee(tx, ty);
@@ -345,6 +353,9 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
             } else {
                 pline(`${Monnam(mtmp)} vanishes!`);
             }
+            // C ref: teleport.c suppresses appearmsg when we just emitted a
+            // vanish message and won't see an immediate post-teleport arrival.
+            appearmsg = false;
         }
         // Remove from old position (update grid)
         newsym(oldx, oldy);
@@ -366,7 +377,19 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
     }
 
     if (domsg && telemsg && canSeePos(mtmp.mx, mtmp.my)) {
-        pline(`${Monnam(mtmp)} vanishes and reappears.`);
+        const du = heroDist2(x, y);
+        const olddu = heroDist2(oldx, oldy);
+        const next = du <= 2 ? ' next to you' : '';
+        const nearu = du <= (BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+        const where = next || nearu || (du === olddu ? '' : (du < olddu ? ' closer to you' : ' farther away'));
+        pline(`${Monnam(mtmp)} vanishes and reappears${where}.`);
+    } else if (domsg && (canSeePos(mtmp.mx, mtmp.my)
+        || appearmsg)) {
+        const du = heroDist2(x, y);
+        const next = du <= 2 ? ' next to you' : '';
+        const nearu = du <= (BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+        mtmp.mstrategy = Number(mtmp.mstrategy || 0) & ~STRAT_APPEARMSG;
+        pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${appearmsg ? 'suddenly ' : ''}${player?.blind ? 'arrives' : 'appears'}${next || nearu}!`);
     }
 
     // Trapped monster teleported away — clear trap state

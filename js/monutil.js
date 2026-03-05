@@ -600,9 +600,8 @@ export function monsterNearby(map, player, fov) {
             if (monsterHelpless(mon)) continue;
             if (onscary(map, px, py)) continue;
 
-            // C ref: hack.c monster_nearby() uses canspotmon(mtmp), which is
-            // broader than strict cansee() (telepathy/warning paths can qualify).
-            // Avoid over-constraining to direct LoS-only visibility here.
+            // C ref: hack.c monster_nearby() requires canspotmon(mtmp).
+            if (!canSpotMonsterForMap(mon, map, player, fov)) continue;
 
             return true;
         }

@@ -1617,6 +1617,16 @@ async function safetyWarning(cmd, game, display) {
     if (!game.flags?.cmdassist) game[counterKey] += 1;
 
     const msg = includeHint ? `${act}  Use 'm' prefix to force ${cmddesc}.` : act;
+    // Keep suppression aligned with C Norep semantics: if a different topline
+    // message was shown since the prior safety warning, allow warning again.
+    const lastShown = Array.isArray(display?.messages) && display.messages.length
+        ? display.messages[display.messages.length - 1]
+        : null;
+    if (game.lastSafetyWarningMessage
+        && typeof lastShown === 'string'
+        && lastShown !== game.lastSafetyWarningMessage) {
+        game.lastSafetyWarningMessage = '';
+    }
     if (game.lastSafetyWarningMessage === msg) {
         // C ref: pline() with Norep suppression clears the message window
         // (clear_nhwindow(WIN_MESSAGE)) without displaying a new message.
