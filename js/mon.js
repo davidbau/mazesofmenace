@@ -31,10 +31,11 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          mon_hates_silver, touch_petrifies, flesh_petrifies,
          is_male, is_female, is_neuter } from './mondata.js';
 import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
+import { next_ident } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists } from './objdata.js';
 import { mondead as _monutil_mondead, unstuck, newsym, mpickobj, mdrop_obj } from './monutil.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
-import { rloc, tele_restrict } from './teleport.js';
+import { rloc, tele_restrict, enexto } from './teleport.js';
 
 // ========================================================================
 // mfndpos flag constants — C ref: mfndpos.h
@@ -1256,6 +1257,45 @@ export function minliquid(mon, map, player) {
     return minliquid_core(mon, map, player);
 }
 
+function split_mon_clone(mon, map, player) {
+    if (!mon || !map) return null;
+    if ((mon.mhp || 0) <= 1) return null;
+
+    // C ref: clone_mon() places clone at same square if possible, otherwise
+    // enexto() selects nearby legal space (consuming collect_coords RNG).
+    const dest = { x: mon.mx, y: mon.my };
+    if (map.monsterAt(dest.x, dest.y)) {
+        if (!enexto(dest, dest.x, dest.y, mon.type || {}, map, player)) {
+            return null;
+        }
+        if (map.monsterAt(dest.x, dest.y)) return null;
+    }
+
+    const clone = { ...mon };
+    clone.m_id = next_ident();
+    clone.mx = dest.x;
+    clone.my = dest.y;
+    clone.mundetected = 0;
+    clone.mtrapped = 0;
+    clone.mcloned = 1;
+    clone.minvent = [];
+    clone.mleashed = 0;
+    clone.isshk = 0;
+    clone.isgd = 0;
+    clone.ispriest = 0;
+    // C ref: monst.h MTSZ is 4.
+    clone.mtrack = new Array(4).fill(null).map(() => ({ x: 0, y: 0 }));
+    clone.nmon = null;
+
+    clone.mhpmax = mon.mhpmax;
+    clone.mhp = Math.floor((mon.mhp || 0) / 2);
+    mon.mhp = (mon.mhp || 0) - clone.mhp;
+
+    map.addMonster(clone);
+    newsym(clone.mx, clone.my);
+    return clone;
+}
+
 // C ref: mon.c:943 minliquid_core() — guts of minliquid
 function minliquid_core(mon, map, player) {
     if (!mon || !map) return 0;
@@ -1269,8 +1309,8 @@ function minliquid_core(mon, map, player) {
 
     // Gremlin splitting in pools
     if (mon.mndx === PM_GREMLIN && inpool && rn2(3)) {
-        // C ref: split_mon — gremlin clone not fully ported
-        // RNG consumed: rn2(3) above
+        // C ref: mon.c minliquid_core() -> split_mon(mtmp, 0).
+        split_mon_clone(mon, map, player);
         if (inpool) water_damage_chain(mon.minvent, false);
         return 0;
     }
