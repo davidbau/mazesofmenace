@@ -29,6 +29,7 @@ PROJECT_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, '..', '..', '..'))
 SESSIONS_DIR = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'sessions')
 MAPS_DIR = os.path.join(PROJECT_ROOT, 'test', 'comparison', 'maps')
 MANUAL_DIR = os.path.join(SESSIONS_DIR, 'manual')
+INSTALL_DIR = os.path.join(PROJECT_ROOT, 'nethack-c', 'install', 'games', 'lib', 'nethackdir')
 
 RUN_SESSION = os.path.join(SCRIPT_DIR, 'run_session.py')
 GEN_OPTION = os.path.join(SCRIPT_DIR, 'gen_option_sessions.py')
@@ -57,6 +58,41 @@ CHARACTER_PRESETS = {
 DEFAULT_CHARACTER = {
     'name': 'Wizard', 'role': 'Valkyrie', 'race': 'human', 'gender': 'female', 'align': 'neutral',
 }
+
+
+def clear_runtime_state():
+    """Clear runtime artifacts that can skew deterministic re-recording."""
+    if not os.path.isdir(INSTALL_DIR):
+        return
+
+    save_dir = os.path.join(INSTALL_DIR, 'save')
+    if os.path.isdir(save_dir):
+        for path in glob.glob(os.path.join(save_dir, '*')):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+
+    explicit_runtime_files = {'record', 'xlogfile', 'logfile', 'paniclog'}
+    for path in glob.glob(os.path.join(INSTALL_DIR, '*')):
+        if not os.path.isfile(path):
+            continue
+        name = os.path.basename(path)
+        lower = name.lower()
+        if name.endswith('.lua'):
+            continue
+        if (
+            lower in explicit_runtime_files
+            or lower.startswith('bon')
+            or lower.endswith('.0')
+            or 'wizard' in lower
+            or 'recorder' in lower
+            or 'agent' in lower
+        ):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
 
 
 def find_preset(options):
@@ -485,6 +521,7 @@ def run_command(cmd, description, dry_run=False):
         print(f'    {shell_quote_cmd(cmd)}')
         return True, description
 
+    clear_runtime_state()
     print(f'  Recording: {description}')
     print(f'    {shell_quote_cmd(cmd)}')
     result = subprocess.run(cmd, cwd=SCRIPT_DIR)
@@ -503,6 +540,7 @@ def shell_quote_cmd(cmd):
 def _run_one(args_tuple):
     """Worker for parallel execution."""
     cmd, description = args_tuple
+    clear_runtime_state()
     result = subprocess.run(cmd, cwd=SCRIPT_DIR)
     return result.returncode == 0, description
 
