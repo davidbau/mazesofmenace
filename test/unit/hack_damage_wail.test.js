@@ -14,7 +14,7 @@ import {
     POISON_RES,
     COLD_RES,
     INTRINSIC,
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 function makeDisplayLog() {
     const messages = [];

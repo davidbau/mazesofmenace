@@ -3,7 +3,7 @@
 import { describe, test } from 'node:test';
 import assert from 'assert';
 import { Player } from '../../js/player.js';
-import { A_STR } from '../../js/config.js';
+import { A_STR } from '../../js/const.js';
 
 describe('strength display', () => {
 

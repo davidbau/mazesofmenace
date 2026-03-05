@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { STAIRS } from '../../js/config.js';
+import { STAIRS } from '../../js/const.js';
 import { do_screen_description } from '../../js/look.js';
 import { dfeature_at } from '../../js/invent.js';
 

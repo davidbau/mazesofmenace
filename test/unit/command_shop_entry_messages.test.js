@@ -6,7 +6,7 @@ import { GameMap } from '../../js/map.js';
 import {
     DOOR, CORR, ROOM, D_ISOPEN,
     SHOPBASE, ROOMOFFSET, A_CHA,
-} from '../../js/config.js';
+} from '../../js/const.js';
 import { SPBOOK_CLASS, SPE_TELEPORT_AWAY } from '../../js/objects.js';
 import { initDiscoveryState } from '../../js/discovery.js';
 import { Player } from '../../js/player.js';

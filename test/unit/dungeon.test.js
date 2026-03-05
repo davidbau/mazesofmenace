@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL,
          SDOOR, SCORR, IRONBARS, VAULT, VIBRATING_SQUARE,
-         IS_WALL, IS_DOOR, ACCESSIBLE, isok } from '../../js/config.js';
+         IS_WALL, IS_DOOR, ACCESSIBLE, isok } from '../../js/const.js';
 function REACHABLE(typ) { return ACCESSIBLE(typ) || typ === SDOOR || typ === SCORR; }
 import { initRng } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, wallification, fix_wall_spines } from '../../js/dungeon.js';

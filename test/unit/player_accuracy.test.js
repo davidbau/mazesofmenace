@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { roles, races } from '../../js/player.js';
-import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, RACE_HUMAN, RACE_ORC } from '../../js/config.js';
+import { A_LAWFUL, A_NEUTRAL, A_CHAOTIC, RACE_HUMAN, RACE_ORC } from '../../js/const.js';
 
 // Constants matching C NetHack
 const GENDER_MALE = 0;

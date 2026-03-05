@@ -5,7 +5,7 @@
 
 import * as des from '../sp_lev.js';
 import { selection, shuffle } from '../sp_lev.js';
-import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from '../config.js';
+import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from '../const.js';
 
 export async function generate() {
     const align = [A_CHAOTIC, A_NEUTRAL, A_LAWFUL];

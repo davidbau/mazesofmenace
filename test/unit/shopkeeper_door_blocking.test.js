@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ROOM, ROOMOFFSET, SHOPBASE } from '../../js/config.js';
+import { ROOM, ROOMOFFSET, SHOPBASE } from '../../js/const.js';
 import { u_left_shop } from '../../js/shk.js';
 import { check_special_room } from '../../js/hack.js';
 

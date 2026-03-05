@@ -8,7 +8,7 @@ import { initRng, rn2, rnd, enableRngLog, getRngLog, disableRngLog } from '../..
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 import { Player, roles } from '../../js/player.js';
 import { simulatePostLevelInit } from '../../js/u_init.js';
-import { NORMAL_SPEED, A_DEX } from '../../js/config.js';
+import { NORMAL_SPEED, A_DEX } from '../../js/const.js';
 
 // Minimal game-like object for testing simulateTurnEnd
 async function setupTestGame() {

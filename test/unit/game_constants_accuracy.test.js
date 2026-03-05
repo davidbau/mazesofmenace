@@ -20,7 +20,7 @@ import {
   MALE, FEMALE,
   // Race constants
   RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Game Constants Accuracy', () => {
   describe('Attribute Indices (A_*)', () => {

@@ -13,7 +13,7 @@ import {
   TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, SHOPBASE,
   // Window types
   NHW_MESSAGE, NHW_STATUS, NHW_MAP, NHW_MENU, NHW_TEXT
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Special Room and Window Type Accuracy', () => {
   describe('Special Room Type Constants', () => {

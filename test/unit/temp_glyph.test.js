@@ -19,7 +19,7 @@ import {
     WARNCOUNT,
     def_warnsyms,
     defsyms,
-} from '../../js/symbols.js';
+} from '../../js/const.js';
 import { tempGlyphToCell } from '../../js/temp_glyph.js';
 
 const NUM_ZAP = 8;

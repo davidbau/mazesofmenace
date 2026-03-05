@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { STAIRS } from '../../js/config.js';
+import { STAIRS } from '../../js/const.js';
 import { init_dungeons, dungeon_branch, resolveBranchDestinationForStair } from '../../js/dungeon.js';
 import { handleDownstairs } from '../../js/do.js';
 

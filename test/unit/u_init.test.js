@@ -8,7 +8,7 @@ import { initRng, rn2, enableRngLog, getRngLog, disableRngLog } from '../../js/r
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 import { Player, roles } from '../../js/player.js';
 import { simulatePostLevelInit, mon_arrive, MON_ARRIVE_WITH_YOU } from '../../js/u_init.js';
-import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS, STONE, ROOM, ACCESSIBLE } from '../../js/config.js';
+import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS, STONE, ROOM, ACCESSIBLE } from '../../js/const.js';
 import { GOLD_PIECE } from '../../js/objects.js';
 
 // Helper: create a level-1 wizard-mode Valkyrie game state

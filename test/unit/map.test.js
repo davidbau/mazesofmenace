@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { COLNO, ROWNO, STONE, ROOM, ACCESSIBLE } from '../../js/config.js';
+import { COLNO, ROWNO, STONE, ROOM, ACCESSIBLE } from '../../js/const.js';
 import { GameMap } from '../../js/map.js';
 
 describe('GameMap', () => {

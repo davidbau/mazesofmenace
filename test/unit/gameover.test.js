@@ -9,7 +9,7 @@ import { Player, roles, races, rankOf, roleNameForGender } from '../../js/player
 import { mattacku } from '../../js/mhitu.js';
 import { rhack } from '../../js/cmd.js';
 import { pushInput, clearInputQueue } from '../../js/input.js';
-import { FEMALE, MALE, A_NEUTRAL, A_CHAOTIC, A_LAWFUL, RACE_HUMAN, STAIRS } from '../../js/config.js';
+import { FEMALE, MALE, A_NEUTRAL, A_CHAOTIC, A_LAWFUL, RACE_HUMAN, STAIRS } from '../../js/const.js';
 
 // Mock display that captures messages
 function mockDisplay() {

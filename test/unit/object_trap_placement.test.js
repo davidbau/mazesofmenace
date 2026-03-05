@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { resetLevelState, getLevelState, des, finalize_level } from '../../js/sp_lev.js';
 import { initRng } from '../../js/rng.js';
 import { BOULDER, SCR_EARTH } from '../../js/objects.js';
-import { PIT } from '../../js/config.js';
+import { PIT } from '../../js/const.js';
 
 describe('Object and trap placement', () => {
     before(() => {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { rhack } from '../../js/cmd.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
-import { DOOR, D_ISOPEN, ROOM } from '../../js/config.js';
+import { DOOR, D_ISOPEN, ROOM } from '../../js/const.js';
 
 describe('diagonal doorway movement', () => {
 

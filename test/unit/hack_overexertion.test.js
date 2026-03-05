@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { overexertion } from '../../js/hack.js';
 import { initRng, enableRngLog, getRngLog, disableRngLog } from '../../js/rng.js';
-import { HVY_ENCUMBER } from '../../js/config.js';
+import { HVY_ENCUMBER } from '../../js/const.js';
 
 function makePlayer() {
     return {

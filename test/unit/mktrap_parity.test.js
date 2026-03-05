@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { initRng } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, mktrap } from '../../js/dungeon.js';
-import { PIT, POOL } from '../../js/config.js';
+import { PIT, POOL } from '../../js/const.js';
 import { BOULDER } from '../../js/objects.js';
 
 function firstRoomCenter(map) {

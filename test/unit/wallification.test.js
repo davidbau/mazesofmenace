@@ -9,7 +9,7 @@ import { initRng } from '../../js/rng.js';
 import {
     STONE, ROOM, HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Wall junction computation (wallification)', () => {
     before(() => {

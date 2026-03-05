@@ -16,7 +16,7 @@ import {
     PM_KNIGHT, PM_MONK, PM_PRIEST, PM_RANGER, PM_ROGUE,
     PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
     FEMALE, MALE
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Chargen: Role data completeness', () => {
     it('has 13 roles with all chargen fields', () => {

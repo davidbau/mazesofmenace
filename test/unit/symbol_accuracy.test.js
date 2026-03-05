@@ -37,7 +37,7 @@ import {
   // Miscellaneous (monster symbols - uppercase!)
   S_GOLEM, S_DEMON, S_HUMAN, S_GHOST,
   MAXPCHARS
-} from '../../js/symbols.js';
+} from '../../js/const.js';
 
 describe('Symbol System Accuracy', () => {
   describe('Wall Symbol Constants', () => {

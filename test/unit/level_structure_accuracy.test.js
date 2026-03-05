@@ -12,7 +12,7 @@ import {
   COLNO, ROWNO, MAXNROFROOMS,
   MAXDUNGEON, MAXLEVEL,
   ROOMOFFSET
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Level Structure and Limits Accuracy', () => {
   describe('Map Dimensions', () => {

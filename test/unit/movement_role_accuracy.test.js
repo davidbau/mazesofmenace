@@ -15,7 +15,7 @@ import {
   PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
   PM_KNIGHT, PM_MONK, PM_PRIEST, PM_ROGUE, PM_RANGER,
   PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Movement and Role Constants Accuracy', () => {
   describe('Direction Constants', () => {

@@ -3,7 +3,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { TERMINAL_COLS, TERMINAL_ROWS } from '../../js/config.js';
+import { TERMINAL_COLS, TERMINAL_ROWS } from '../../js/const.js';
 import { CLR_GRAY, CLR_WHITE, CLR_YELLOW } from '../../js/display.js';
 
 // Build a minimal mock Display object that has a grid and the methods

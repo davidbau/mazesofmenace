@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, HWALL, VWALL, TLCORNER,
          TRCORNER, BLCORNER, BRCORNER, SDOOR,
          D_CLOSED, D_ISOPEN, D_LOCKED,
-         IS_WALL, IS_DOOR, IS_ROOM, ACCESSIBLE, isok } from '../../js/config.js';
+         IS_WALL, IS_DOOR, IS_ROOM, ACCESSIBLE, isok } from '../../js/const.js';
 
 describe('Config module', () => {
     it('has correct map dimensions', () => {

@@ -5,7 +5,7 @@ import { rhack } from '../../js/cmd.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
-import { ROOM } from '../../js/config.js';
+import { ROOM } from '../../js/const.js';
 import { FLINT, GEM_CLASS } from '../../js/objects.js';
 
 function makeGame() {

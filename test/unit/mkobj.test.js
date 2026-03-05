@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
-import { ACCESSIBLE } from '../../js/config.js';
+import { ACCESSIBLE } from '../../js/const.js';
 import { mksobj, mkobj, RANDOM_CLASS } from '../../js/mkobj.js';
 import { objectData, NUM_OBJECTS,
     WEAPON_CLASS, ARMOR_CLASS, FOOD_CLASS, COIN_CLASS, WAND_CLASS,

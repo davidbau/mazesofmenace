@@ -5,7 +5,7 @@
 
 import * as des from '../sp_lev.js';
 import { shuffle } from '../sp_lev.js';
-import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from '../config.js';
+import { A_CHAOTIC, A_NEUTRAL, A_LAWFUL } from '../const.js';
 
 // Helper function: returns shop type based on role.
 function monkfoodshop() {

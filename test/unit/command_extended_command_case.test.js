@@ -6,7 +6,7 @@ import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
 import { setOutputContext } from '../../js/pline.js';
-import { ALTAR } from '../../js/config.js';
+import { ALTAR } from '../../js/const.js';
 
 describe('extended command case', () => {
 

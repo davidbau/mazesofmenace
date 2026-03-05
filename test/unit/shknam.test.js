@@ -17,7 +17,7 @@ import {
     GEM_CLASS, AMULET_CLASS, TOOL_CLASS,
     TOUCHSTONE,
 } from '../../js/objects.js';
-import { SHOPBASE } from '../../js/config.js';
+import { SHOPBASE } from '../../js/const.js';
 
 // ========================================================================
 // saleable

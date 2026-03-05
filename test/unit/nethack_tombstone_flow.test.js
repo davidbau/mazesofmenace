@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { NetHackGame } from '../../js/chargen.js';
 import { createInputQueue, setInputRuntime } from '../../js/input.js';
-import { RACE_HUMAN, FEMALE, A_NEUTRAL } from '../../js/config.js';
+import { RACE_HUMAN, FEMALE, A_NEUTRAL } from '../../js/const.js';
 
 function makeStorage() {
     const m = new Map();

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { rhack } from '../../js/cmd.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
-import { STAIRS, VWALL } from '../../js/config.js';
+import { STAIRS, VWALL } from '../../js/const.js';
 
 describe('force fight terrain message', () => {
 

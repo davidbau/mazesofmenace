@@ -7,7 +7,7 @@ import { GameMap } from '../../js/map.js';
 import {
     DOOR, VWALL, HWALL, ROOM, COLNO, ROWNO,
     D_ISOPEN, D_CLOSED, D_LOCKED, D_NODOOR
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('door symbols', () => {
 

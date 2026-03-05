@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { rhack } from '../../js/cmd.js';
 import { GameMap } from '../../js/map.js';
 import { Player } from '../../js/player.js';
-import { CORR, ROOM } from '../../js/config.js';
+import { CORR, ROOM } from '../../js/const.js';
 
 function makeGame() {
     const map = new GameMap();

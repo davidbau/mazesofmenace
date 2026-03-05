@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng, enableRngLog, disableRngLog, getRngLog } from '../../js/rng.js';
-import { COLNO, ROWNO, ROOM, STONE, HWALL, WATER } from '../../js/config.js';
+import { COLNO, ROWNO, ROOM, STONE, HWALL, WATER } from '../../js/const.js';
 import { GameMap } from '../../js/map.js';
 import { movemon, mon_track_add, mon_track_clear, monhaskey, m_can_break_boulder, MTSZ } from '../../js/monmove.js';
 import { Player } from '../../js/player.js';

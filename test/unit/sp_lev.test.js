@@ -18,7 +18,7 @@ import {
     STONE, ROOM, CORR, DOOR, HWALL, VWALL, STAIRS, LAVAPOOL, PIT, MAGIC_PORTAL, CROSSWALL, GRAVE,
     WATER, AIR,
     ALTAR, THRONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, ROOMOFFSET,
-} from '../../js/config.js';
+} from '../../js/const.js';
 import { BOULDER, DAGGER, GOLD_PIECE } from '../../js/objects.js';
 
 // Alias for stairs

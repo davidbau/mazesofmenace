@@ -31,7 +31,7 @@ import {
   ANTI_MAGIC,
   POLY_TRAP,
   VIBRATING_SQUARE
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Trap System Accuracy', () => {
   describe('Trap Type Constants', () => {

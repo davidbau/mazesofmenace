@@ -15,7 +15,7 @@ import {
   DIR_UP, DIR_DOWN,
   // Direction count
   N_DIRS
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Direction Constants Accuracy', () => {
   describe('Compass Direction Constants (0-7)', () => {

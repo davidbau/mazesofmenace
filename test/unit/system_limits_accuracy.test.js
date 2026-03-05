@@ -18,7 +18,7 @@ import {
   // Encumbrance levels
   UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER,
   HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('System Limits and Game Mechanics Accuracy', () => {
   describe('Version Constants', () => {

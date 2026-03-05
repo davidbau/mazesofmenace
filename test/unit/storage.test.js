@@ -9,7 +9,7 @@ import { makemon, NO_MM_FLAGS } from '../../js/makemon.js';
 import { mksobj } from '../../js/mkobj.js';
 import { mons, PM_GHOST } from '../../js/monsters.js';
 import { objectData, SCR_EARTH } from '../../js/objects.js';
-import { COLNO, ROWNO, ACCESSIBLE } from '../../js/config.js';
+import { COLNO, ROWNO, ACCESSIBLE } from '../../js/const.js';
 import { Player, roles } from '../../js/player.js';
 import { GameMap } from '../../js/map.js';
 import {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { NetHackGame } from '../../js/chargen.js';
 import { createInputQueue } from '../../js/input.js';
 import { createHeadlessGame, HeadlessDisplay } from '../../js/headless.js';
-import { COLNO, ROWNO, STONE } from '../../js/config.js';
+import { COLNO, ROWNO, STONE } from '../../js/const.js';
 
 function queueLine(input, text) {
     for (const ch of String(text)) {

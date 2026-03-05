@@ -5,7 +5,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Player, roles, races } from '../../js/player.js';
 import { FEMALE, MALE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
-         RACE_HUMAN, RACE_ELF } from '../../js/config.js';
+         RACE_HUMAN, RACE_ELF } from '../../js/const.js';
 import {
     loadScores, saveScore, buildEntry,
     formatTopTenEntry, formatTopTenHeader, getPlayerRank,

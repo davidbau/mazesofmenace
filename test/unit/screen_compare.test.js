@@ -23,7 +23,7 @@ import {
     FOUNTAIN, THRONE, SINK, GRAVE, ALTAR,
     POOL, MOAT, WATER, LAVAPOOL, ICE, IRONBARS, TREE,
     D_ISOPEN, D_CLOSED, D_LOCKED,
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SESSION_DIR = join(__dirname, '../comparison/sessions');

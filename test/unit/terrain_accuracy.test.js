@@ -26,7 +26,7 @@ import {
   AIR, CLOUD, IRONBARS,
   // Boundary constant
   MAX_TYPE
-} from '../../js/config.js';
+} from '../../js/const.js';
 
 describe('Terrain Type Accuracy', () => {
   describe('Basic Terrain Constants', () => {

@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { COLNO, ROWNO } from '../../js/config.js';
+import { COLNO, ROWNO } from '../../js/const.js';
 import { initRng, enableRngLog, getRngLog, disableRngLog } from '../../js/rng.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 

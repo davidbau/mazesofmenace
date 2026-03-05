@@ -6,7 +6,7 @@ import {
     generateMapsWithCoreReplay,
     generateStartupWithCoreReplay,
 } from '../../js/headless.js';
-import { RACE_ELF } from '../../js/config.js';
+import { RACE_ELF } from '../../js/const.js';
 
 describe('HeadlessGame replay contract', () => {
     it('start() applies explicit startup options', async () => {
