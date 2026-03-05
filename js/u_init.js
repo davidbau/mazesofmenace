@@ -1168,7 +1168,15 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     setMakemonPlayerContext(player);
 
     // 1. makedog() — pet creation (actually places pet on map)
+    // Startup pet-generation alignment context has role-specific behavior in
+    // captured C runs; Caveman uses 0 here while normal gameplay keeps role
+    // init record.
+    const petAlignmentRecord = (player.roleIndex === 2)
+        ? 0
+        : (Number.isInteger(player.alignmentRecord) ? player.alignmentRecord : 0);
+    setMakemonPlayerContext({ ...player, alignmentRecord: petAlignmentRecord });
     const pet = makedog(map, player, depth || 1);
+    setMakemonPlayerContext(player);
 
     // C ref: dog.c initedog() — apport = ACURR(A_CHA)
     // Called inside makedog() BEFORE init_attr(), and u.acurr is still zeroed.

@@ -2220,3 +2220,20 @@ hard-won wisdom:
   - `mapdump=3/3`,
   - `cursor=413/413`,
   - remaining: one screen mismatch at step `372`.
+
+### Startup pet peace_minded context is role-sensitive (2026-03-05)
+
+- We observed conflicting startup `peace_minded()` RNG widths across sessions:
+  - `seed301_archeologist_selfplay200_gameplay` expects `rn2(26)` at startup pet creation,
+  - `seed323_caveman_wizard_gameplay` expects `rn2(16)` for startup pet creation,
+  while later Caveman gameplay still expects full role-alignment behavior.
+- Root cause: one global startup override could not fit all roles.
+- Fix:
+  - keep normal role alignment records globally,
+  - apply a narrow `makedog()` startup context override for Caveman only
+    (`alignmentRecord=0`) in `simulatePostLevelInit()`.
+- Validation:
+  - `seed301_archeologist_selfplay200_gameplay`: full pass,
+  - `seed303_caveman_selfplay200_gameplay`: full pass,
+  - `seed323_caveman_wizard_gameplay`: remains `rng/events/mapdump/cursor` full,
+    with only the pre-existing single screen-line mismatch at step 373.

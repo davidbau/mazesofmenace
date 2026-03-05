@@ -398,6 +398,7 @@ export function initialAlignmentRecordForRole(roleIndex) {
     switch (roleIndex) {
         case 0:  // Archeologist
         case 1:  // Barbarian
+        case 2:  // Caveman/Cavewoman
         case 3:  // Healer
         case 4:  // Knight
         case 5:  // Monk
