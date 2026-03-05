@@ -821,6 +821,15 @@ async function m_respond(mon, map, player, display = null, game = null) {
 // mind_blast — C ref: monmove.c:582-646
 // Mind flayer psychic blast. RNG-faithful implementation.
 // ========================================================================
+function maybe_postmove_hideunder(mon, map, player, fov) {
+    const mdat = mon?.type || {};
+    if (!(hides_under(mdat) || mdat.mlet === S_EEL)) return;
+    if (mon.mundetected || (!helpless(mon) && rn2(5))) {
+        hideunder(mon, map, player, fov);
+    }
+    newsym(mon.mx, mon.my);
+}
+
 async function mind_blast(mon, map, player, display = null, fov = null) {
     const BOLT_LIM_SQ = BOLT_LIM * BOLT_LIM;
 
@@ -1182,29 +1191,48 @@ async function dochug(mon, map, player, display, fov, game = null) {
             }
         } else {
             let trapDied = false;
-            const omx = mon.mx, omy = mon.my;
-            moveStatus = await m_move(mon, map, player, display, fov);
-            if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                await m_postmove_effect(mon, map, player, game, omx, omy);
-                const trapResult = await mintrap_postmove(mon, map, player, display, fov);
-                if (trapResult === 2 || trapResult === 3) {
-                    trapDied = true;
-                    moveStatus = MMOVE_DIED;
-                } else {
-                    mmoved = true;
-                    moveStatus = MMOVE_MOVED;
+            // C ref: monmove.c:1747 — pre-movement mtrapped check.
+            // If monster is already trapped, try to escape before allowing movement.
+            // C returns MMOVE_NOTHING when still trapped; dochug() still recalc's
+            // distfleeck() and can proceed to attack-phase logic.
+            let trappedNoMove = false;
+            if (mon.mtrapped) {
+                await mintrap_postmove(mon, map, player, display, fov);
+                if (mon.dead) return; // monster died in trap
+                if (mon.mtrapped) {
+                    trappedNoMove = true; // MMOVE_NOTHING path (no movement attempt)
+                    moveStatus = MMOVE_NOTHING;
                 }
             }
-            if (!trapDied && !mon.dead
-                && mon.mcanmove !== false
-                && (mmoved || moveStatus === MMOVE_DONE)
-                && map.objectsAt(mon.mx, mon.my).length > 0
-                && await maybeMonsterPickStuff(mon, map, player, display, fov)) {
-                // C ref: postmov() sets status = MMOVE_DONE when mpickstuff() succeeds.
-                moveStatus = MMOVE_DONE;
-                mmoved = false;
-            } else if (moveStatus === MMOVE_DONE) {
-                mmoved = false;
+            if (!trappedNoMove) {
+                const omx = mon.mx, omy = mon.my;
+                moveStatus = await m_move(mon, map, player, display, fov);
+                const movedThisTurn = !mon.dead && (mon.mx !== omx || mon.my !== omy);
+                if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
+                    await m_postmove_effect(mon, map, player, game, omx, omy);
+                    const trapResult = await mintrap_postmove(mon, map, player, display, fov);
+                    if (trapResult === 2 || trapResult === 3) {
+                        trapDied = true;
+                        moveStatus = MMOVE_DIED;
+                    } else {
+                        mmoved = true;
+                        moveStatus = MMOVE_MOVED;
+                    }
+                }
+                if (!trapDied && !mon.dead
+                    && mon.mcanmove !== false
+                    && (mmoved || moveStatus === MMOVE_DONE)
+                    && map.objectsAt(mon.mx, mon.my).length > 0
+                    && await maybeMonsterPickStuff(mon, map, player, display, fov)) {
+                    // C ref: postmov() sets status = MMOVE_DONE when mpickstuff() succeeds.
+                    moveStatus = MMOVE_DONE;
+                    mmoved = false;
+                } else if (moveStatus === MMOVE_DONE) {
+                    mmoved = false;
+                }
+                if (!trapDied && !mon.dead && movedThisTurn) {
+                    maybe_postmove_hideunder(mon, map, player, fov);
+                }
             }
             if (trapDied) return;
         }
@@ -1701,17 +1729,6 @@ async function m_move(mon, map, player, display = null, fov = null) {
 
         // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
         if (!mon.dead) await maybe_spin_web(mon, map);
-
-        // C ref: monmove.c:1707-1714 — refresh hide-under state for hiders/eels
-        // after movement. This can clear stale mundetected when a hides-under
-        // monster is no longer actually hidden.
-        const mdat2 = mon.type || {};
-        if (hides_under(mdat2) || mdat2.mlet === S_EEL) {
-            if (mon.mundetected || (!helpless(mon) && rn2(5))) {
-                hideunder(mon, map, player, fov);
-            }
-            newsym(mon.mx, mon.my);
-        }
 
         // C ref: postmov() line 1658 — if can_tunnel && may_dig, call mdig_tunnel.
         // mdig_tunnel always consumes rnd(12), even for non-obstructed terrain (returns FALSE).

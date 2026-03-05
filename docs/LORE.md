@@ -2204,3 +2204,19 @@ hard-won wisdom:
   309, 313) because the Space key that C consumed via `--More--` dismissal
   reached the command parser in JS, producing `"Unknown command ' '."` and
   desyncing all subsequent steps.
+### Seed323 monmove RNG fix: remove duplicate post-move hide-under roll (2026-03-05)
+
+- We traced a late-sequence RNG drift to duplicated hide-under logic in JS:
+  - `m_move()` already performed C `postmov()` hide-under/eel handling (`rn2(5)`),
+  - `dochug()` repeated another hide-under check after `mintrap_postmove`.
+- This inserted an extra `rn2(5)` before the next `distfleeck`, shifting
+  brave/flee outcomes and downstream pet goal RNG.
+- C-faithful fix in `js/monmove.js`:
+  - remove the duplicate hide-under block after movement,
+  - keep one post-move hide-under pass in the correct post-trap ordering path.
+- Validation on `seed323_caveman_wizard_gameplay` moved from major late drift to:
+  - `rng=18770/18770`,
+  - `events=9072/9072`,
+  - `mapdump=3/3`,
+  - `cursor=413/413`,
+  - remaining: one screen mismatch at step `372`.
