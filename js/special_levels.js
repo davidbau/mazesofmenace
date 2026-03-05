@@ -544,6 +544,27 @@ export const questLevels = {
     }
 };
 
+/**
+ * Initialize quest levels for the player's role.
+ * C ref: mklev.c init_dungeons() — only one role's quest levels are active per game.
+ * Call this at game start with the player's role abbreviation (e.g. 'Mon', 'Cav').
+ */
+export function initQuestLevels(roleAbbr) {
+    const q = questLevels[roleAbbr];
+    if (!q) return; // unknown role, keep existing registration
+    // Clear variant cache for QUEST slots so new role's variants are picked fresh
+    variantCache.delete(`${QUEST}:1`);
+    variantCache.delete(`${QUEST}:2`);
+    variantCache.delete(`${QUEST}:3`);
+    variantCache.delete(`${QUEST}:5`);
+    // Register this role's quest levels at the canonical QUEST dlevel positions
+    // C ref: sp_lev.c — strt=dlevel1, loca=dlevel2, fill=dlevel3, goal=dlevel5
+    registerSpecialLevel(QUEST, 1, q.strt, `${roleAbbr}-strt`);
+    registerSpecialLevel(QUEST, 2, q.loca, `${roleAbbr}-loca`);
+    registerSpecialLevel(QUEST, 3, q.fila, [`${roleAbbr}-fila`, `${roleAbbr}-filb`]);
+    registerSpecialLevel(QUEST, 5, q.goal, `${roleAbbr}-goal`);
+}
+
 // Export bigroom variants for random selection
 export const bigroomVariants = [
     generateBigroom1,

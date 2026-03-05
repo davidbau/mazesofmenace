@@ -76,6 +76,7 @@ import {
 import {
     getSpecialLevel,
     findSpecialLevelByProto,
+    initQuestLevels,
 } from './special_levels.js';
 import { litstate_rnd } from './mkmap.js';
 import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
@@ -212,6 +213,13 @@ let _branchTopology = [];
 // Used by mklev.c fill_ordinary_room() bonus supply chest gating.
 // Keep default dnum literal (0 = DUNGEONS_OF_DOOM) to avoid circular-import TDZ.
 let _oracleLevel = { dnum: 0, dlevel: 5 };
+// C ref: mklev.c:1276-1286 — loca dlevel used to choose fila vs filb for quest fills.
+// Set during init_dungeons() when the QUEST branch is processed.
+let _questLocaDlevel = 2; // QUEST branch loca canonical dlevel (updated at runtime)
+let _questRoleAbbr = 'Arc'; // Player role abbreviation (set in initLevelGeneration)
+// C ref: mklev.c:1277 In_hell check — level 20 is canonical medusa depth.
+// isPastMedusa uses actual placed medusa dlevel to avoid hardcoded threshold bugs.
+let _medusaDepth = 20; // actual placed medusa dlevel in DoD (updated at runtime)
 // Runtime mapping from actual placed special-level locations to canonical
 // special-level registry coordinates used by getSpecialLevel().
 let _runtimeSpecialLevelMap = new Map();
@@ -261,9 +269,11 @@ export function induced_align(pct, specialAlign = A_NONE, dungeonAlign = A_NONE)
 export function clearBranchTopology() {
     _branchTopology = [];
     _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: 5 };
+    _medusaDepth = 20;
     _runtimeSpecialLevelMap = new Map();
     _dungeonLedgerStartByDnum = new Map([[DUNGEONS_OF_DOOM, 0]]);
     _dungeonLevelCounts = new Map();
+    _questLocaDlevel = 2;
 }
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { stock_room } from './shknam.js';
@@ -446,6 +456,11 @@ const RUNTIME_SPECIAL_LEVEL_CANON = new Map([
         { index: 0, canonDlevel: 1 }, // tut-1
         { index: 1, canonDlevel: 2 }, // tut-2
     ]],
+    [QUEST, [
+        { index: 0, canonDlevel: 1 }, // x-strt
+        { index: 1, canonDlevel: 2 }, // x-loca
+        { index: 2, canonDlevel: 5 }, // x-goal
+    ]],
 ]);
 
 function runtimeSpecialLevelFor(dnum, dlevel) {
@@ -545,7 +560,7 @@ export function In_mines(lev) {
 }
 // Autotranslated from dungeon.c:1842
 export function In_quest(lev) {
-  return (lev.dnum === quest_dnum);
+  return (lev.dnum === QUEST);
 }
 export function In_hell(lev) {
     return (lev?.dnum ?? lev) === GEHENNOM;
@@ -3884,6 +3899,17 @@ export function init_dungeon_dungeons({
             if (jsDnum === DUNGEONS_OF_DOOM) {
                 const oracleDlevel = Number.isInteger(placed[1]) && placed[1] > 0 ? placed[1] : 5;
                 _oracleLevel = { dnum: DUNGEONS_OF_DOOM, dlevel: oracleDlevel };
+                // placed[3] = medusa dlevel (index 3 in DUNGEONS_OF_DOOM special level list)
+                // C ref: mklev.c:1277 — In_hell || (rn2(5) && beyond_medusa) path
+                const medusaDlevel = Number.isInteger(placed[3]) && placed[3] > 0 ? placed[3] : 20;
+                _medusaDepth = medusaDlevel;
+            }
+            if (jsDnum === QUEST) {
+                // C ref: mklev.c:1280-1285 — loca dlevel used for fila/filb selection
+                // placed[1] = loca dlevel (index 1 in QUEST branch levels list)
+                if (Number.isInteger(placed[1]) && placed[1] > 0) {
+                    _questLocaDlevel = placed[1];
+                }
             }
             const canonList = RUNTIME_SPECIAL_LEVEL_CANON.get(jsDnum);
             if (canonList) {
@@ -4424,6 +4450,9 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     set_mkroom_ubirthday(_gameUbirthday);
     init_objects();
     setMakemonRoleContext(roleIndex, opts);
+    // C ref: mklev.c — quest levels are role-specific; register the active role's levels.
+    _questRoleAbbr = roles[roleIndex]?.abbr ?? 'Arc';
+    initQuestLevels(_questRoleAbbr);
     _branchTopology = [];  // reset before recalculating from init_dungeons RNG
     _dungeonLevelCounts = new Map();
     const dungeonResult = init_dungeons(roleIndex, wizard);
@@ -4559,35 +4588,46 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
     map._isInvocationLevel = map.is_invocation_lev; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
 
     // C ref: mklev.c:1274-1287 — maze vs rooms decision (else-if chain)
-    // The rn2(5) is part of the final condition in the chain
-    // For procedural levels: check if In_hell or (rn2(5) && past Medusa)
-    const isGehennom = (dnum === GEHENNOM);
-    const mazeRoll = rn2(5); // 0-4, maze if non-zero (80% chance) - C ref: mklev.c:1276
-    const isPastMedusa = (dnum === DUNGEONS_OF_DOOM || dnum === undefined) && depth > 25;
-    const shouldMakeMaze = isGehennom || (mazeRoll !== 0 && isPastMedusa);
-
-    if (shouldMakeMaze) {
-        // C ref: mklev.c:1278 makemaz("")
+    // Condition 4 (In_quest) fires for fill levels not covered by named special levels.
+    // No rn2(5) is consumed on the quest path — it only appears in condition 5.
+    if (dnum === QUEST) {
+        // C ref: mklev.c:1276-1286 — In_quest() fill level path.
+        // C calls makemaz("Mon-fila" or "Mon-filb"), but the compiled .lev file is not
+        // available in the harness environment, so C falls through to procedural maze
+        // (rn2(3) for corrmaze, rn2(2) for maze params).
+        // JS matches by calling makemaz with empty protofile = procedural maze directly.
         await makemaz(map, "", dnum, dlevel, depth);
     } else {
-        if (isRogueLevel) {
-            // C ref: mklev.c:1290-1292 — Is_rogue_level() uses makeroguerooms path.
-            const rogueMap = makeroguerooms(depth);
-            rogueMap._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
-            rogueMap._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-            if (!rogueMap.flags) rogueMap.flags = {};
-            rogueMap.flags.is_rogue_lev = true;
-            rogueMap.flags.roguelike = true;
-            return finishGeneratedMap(rogueMap);
-        }
-        // C ref: mklev.c:1287 makerooms()
-        // Initialize rectangle pool for BSP room placement
-        init_rect();
+        const isGehennom = (dnum === GEHENNOM);
+        const mazeRoll = rn2(5); // 0-4, maze if non-zero (80% chance) - C ref: mklev.c:1276
+        // C ref: mklev.c:1277 — "past Medusa" uses actual placed medusa dlevel, not hardcoded 25.
+        // _medusaDepth is updated from init_dungeon_dungeons when DoD placed[] is parsed.
+        const isPastMedusa = (dnum === DUNGEONS_OF_DOOM || dnum === undefined) && depth > _medusaDepth;
+        const shouldMakeMaze = isGehennom || (mazeRoll !== 0 && isPastMedusa);
 
-        // Make rooms using rect BSP algorithm
-        // Note: makerooms() handles the Lua theme load shuffle (rn2(3), rn2(2))
-        await makerooms(map, depth);
-    }
+        if (shouldMakeMaze) {
+            // C ref: mklev.c:1278 makemaz("")
+            await makemaz(map, "", dnum, dlevel, depth);
+        } else {
+            if (isRogueLevel) {
+                // C ref: mklev.c:1290-1292 — Is_rogue_level() uses makeroguerooms path.
+                const rogueMap = makeroguerooms(depth);
+                rogueMap._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+                rogueMap._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
+                if (!rogueMap.flags) rogueMap.flags = {};
+                rogueMap.flags.is_rogue_lev = true;
+                rogueMap.flags.roguelike = true;
+                return finishGeneratedMap(rogueMap);
+            }
+            // C ref: mklev.c:1287 makerooms()
+            // Initialize rectangle pool for BSP room placement
+            init_rect();
+
+            // Make rooms using rect BSP algorithm
+            // Note: makerooms() handles the Lua theme load shuffle (rn2(3), rn2(2))
+            await makerooms(map, depth);
+        }
+    } // end QUEST else-if chain
 
     if (map.nroom === 0) {
         // Fallback: should never happen, but safety

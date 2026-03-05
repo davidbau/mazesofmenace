@@ -148,12 +148,15 @@ export function okay(x, y, dir, map = null) {
         : [0, -1];
     const tx = x + 2 * dx;
     const ty = y + 2 * dy;
-    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : ((COLNO - 1) & ~1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : ((ROWNO - 1) & ~1);
     if (tx < 3 || ty < 3 || tx > xMax || ty > yMax) return false;
     if (!isok(tx, ty)) return false;
-    return at(map, x + dx, y + dy)?.typ === STONE
-        && at(map, tx, ty)?.typ === STONE;
+    // C ref: mkmaze.c okay() only checks the DESTINATION tile (2 steps away),
+    // NOT the intermediate tile at distance 1. Non-corrmaze initializes
+    // intermediate tiles (even coords) to HWALL, not STONE, so checking the
+    // intermediate would incorrectly block all moves in the non-corrmaze case.
+    return at(map, tx, ty)?.typ === STONE;
 }
 
 // C ref: mkmaze.c maze0xy
@@ -274,8 +277,8 @@ export async function makemaz(map, protofile, dnum, dlevel, depth) {
     // Wallification for non-corridor mazes
     if (!map.flags.corrmaze) {
         // C ref: mkmaze.c wallification(2, 2, gx.x_maze_max, gy.y_maze_max)
-        const maxX = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-        const maxY = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+        const maxX = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : ((COLNO - 1) & ~1);
+        const maxY = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : ((ROWNO - 1) & ~1);
         wallify_region(map, 2, 2, maxX, maxY);
     }
 
@@ -296,7 +299,11 @@ export async function makemaz(map, protofile, dnum, dlevel, depth) {
 
     // C ref: mkmaze.c:1211 — place_branch(Is_branchlev(&u.uz), 0, 0)
     // Only invoke placement when this exact level is a branch endpoint.
-    const branchPlacement = resolveBranchPlacementForLevel(dnum, dlevel).placement;
+    // Use map._genDnum/_genDlevel as authoritative source when dnum/dlevel are undefined
+    // (e.g., wizard teleport path passes only depth, not dnum/dlevel).
+    const branchDnum = Number.isInteger(dnum) ? dnum : (Number.isInteger(map._genDnum) ? map._genDnum : 0 /* DUNGEONS_OF_DOOM */);
+    const branchDlevel = Number.isInteger(dlevel) ? dlevel : (Number.isInteger(map._genDlevel) ? map._genDlevel : depth);
+    const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
     if (branchPlacement && branchPlacement !== 'none') {
         place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement });
     }
@@ -307,8 +314,10 @@ export async function makemaz(map, protofile, dnum, dlevel, depth) {
 
 // C ref: mkmaze.c create_maze
 export function create_maze(map, corrwid, wallthick, rmdeadends) {
-    const defaultMaxX = (COLNO - 1);
-    const defaultMaxY = (ROWNO - 1);
+    // C ref: decl.c — gx.x_maze_max initialized to (COLNO-1) & ~1 (largest even < COLNO).
+    // This ensures maze cell indices are always even and within the COLNO/ROWNO bounds.
+    const defaultMaxX = (COLNO - 1) & ~1;
+    const defaultMaxY = (ROWNO - 1) & ~1;
     // C ref: save/restore gx.x_maze_max/gy.y_maze_max around temporary small-maze bounds.
     const savedMaxX = Number.isInteger(map?._mazeMaxX) ? map._mazeMaxX : defaultMaxX;
     const savedMaxY = Number.isInteger(map?._mazeMaxY) ? map._mazeMaxY : defaultMaxY;
@@ -453,8 +462,8 @@ export function populate_maze(map, depth) {
 export function maze_remove_deadends(map, typ) {
     if (!map || !map.at) return false;
     const ftyp = Number.isInteger(typ) ? typ : (map.flags?.corrmaze ? CORR : ROOM);
-    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : ((COLNO - 1) & ~1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : ((ROWNO - 1) & ~1);
     const accessible = (x, y) => {
         const loc = map.at(x, y);
         return !!loc && loc.typ >= DOOR; // C ACCESSIBLE(typ)
@@ -510,8 +519,8 @@ export function maze_remove_deadends(map, typ) {
 export function mazexy(map) {
     // C ref: mkmaze.c:1317-1348 mazexy()
     // Find a random CORR/ROOM location in the maze
-    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : (COLNO - 1);
-    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : (ROWNO - 1);
+    const xMax = Number.isInteger(map._mazeMaxX) ? map._mazeMaxX : ((COLNO - 1) & ~1);
+    const yMax = Number.isInteger(map._mazeMaxY) ? map._mazeMaxY : ((ROWNO - 1) & ~1);
     const allowedtyp = map.flags.corrmaze ? CORR : ROOM;
     let cpt = 0;
 
