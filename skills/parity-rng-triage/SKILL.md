@@ -18,7 +18,7 @@ Use this for session parity failures where gameplay diverges between C and JS:
 
 ## Workflow
 0. **Pull first** — other agents push frequently; start from current main:
-   - `git pull`
+   - `git pull --rebase origin main`
 1. **Check issue labels** before diving into a session. Divergences in
    `dochug`/`monmove`/`makemon` are often labeled `agent:game` and owned by
    the game engine agent. `agent:mazes` issues are ours. Don't duplicate work.
@@ -26,6 +26,9 @@ Use this for session parity failures where gameplay diverges between C and JS:
    - `scripts/run-and-report.sh` — runs all gameplay sessions, then shows a
      color-coded table of PRNG/Event/Screen first-divergence step per session.
      `--failures` filters to failing rows only. `--why` adds AI diagnosis labels.
+     If this script is unavailable in your checkout, use:
+     - `npm test`
+     - `node scripts/pes-report.mjs`
    - `node scripts/pes-report.mjs` — instant replay of last results without re-running.
    - `npm test` — runs all test categories (unit/chargen/map/gameplay/special) and
      prints first-divergence JSON blobs for failing sessions. Note: `npm test` runs
@@ -36,6 +39,9 @@ Use this for session parity failures where gameplay diverges between C and JS:
      failure details for a specific seed across all test categories.
 4. If RNG diverges, localize first mismatch window:
    - `node test/comparison/rng_step_diff.js <session-path> --step <N> --window 8`
+   - Note: `rng_step_diff.js` replays one step in isolation; use it as a
+     microscope only. Treat `session_test_runner.js --verbose` as authoritative
+     for true first divergence.
 5. Confirm expected behavior in C source under `nethack-c/patched/src/`.
 6. Patch JS core behavior to match C semantics.
 7. Re-run the same session, then a targeted set:
@@ -52,6 +58,8 @@ Use this for session parity failures where gameplay diverges between C and JS:
   - no timing compensation that changes semantic input stream
 - Do not "fix" parity by modifying session expectations to match JS output.
 - Fix behavior in core JS game logic to match C.
+- Do not overfit to one seed: before committing, validate the fix on at least
+  1-2 additional nearby gameplay sessions.
 
 ## Quick Triage Heuristics
 - If RNG diverges first: find the first branch/function-call mismatch and fix that root cause.
@@ -61,6 +69,9 @@ Use this for session parity failures where gameplay diverges between C and JS:
   `dmonsfree()`, which runs after `harness_auto_mapdump()`. This is a C harness
   artifact, not a game logic bug — filter mhp=0 from both lists before comparing.
 - Prefer earliest shared drift signal over downstream cascades.
+- For lower-overhead RNG logs during triage:
+  - `RNG_LOG_PARENT=0` shortens caller tags.
+  - `RNG_LOG_TAGS=0` disables caller tags entirely.
 
 ## Done Criteria
 - First divergence is eliminated or moved later with evidence.
