@@ -160,10 +160,11 @@ The full four-phase refactor is described in `docs/MODULES.md` (Issue #227).
 Each step must leave the test suite no worse than before moving to the next —
 this is purely structural; no behavior changes at any phase.
 
-**Phase 0** (preflight) and **Phase 1** (remove `register*()`/top-level wiring
-side effects) are described in MODULES.md. The state-rename work below maps to
-**Phases 2–4** of that plan. No `initAll` or startup orchestrator is added;
-cross-module interactions happen at normal runtime call sites.
+**Phase 0** (preflight) and **Phase 1** (infrastructure laydown first) are
+described in MODULES.md. The state-rename work below maps to **Phases 2–4** of
+that plan; legacy wiring decommission is **Phase 5**. No `initAll` or startup
+orchestrator is added; cross-module interactions happen at normal runtime call
+sites.
 
 ### Target end state
 

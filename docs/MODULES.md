@@ -172,7 +172,7 @@ only import from `const.js`.
 
 ## Master Refactor Plan (Issue #227)
 
-Three sequential phases. Each phase keeps tests passing before moving to the next.
+Five sequential phases. Each phase keeps tests passing before moving to the next.
 
 ## Autonomous Execution Plan (Issue #227)
 
@@ -193,22 +193,23 @@ Exit gate:
 - Inventory file(s) exist and are reviewed.
 - Baseline parity report is captured in commit notes/comments.
 
-### Phase 1 — Module-init fragility removal (Issue #227 core scope)
+### Phase 1 — Infrastructure Laydown (highway first)
 
-1. Remove top-level cross-module registration/wiring side effects.
-2. Do not add `initAll` or any global startup orchestrator.
-3. Keep module top-level code limited to declarations/constants/class/function
-   definitions; wiring happens at normal runtime call sites.
-4. Remove `register*()` patterns as touched.
+1. Lay down target ownership and module boundaries first:
+   - establish/expand leaf ownership (`version.js`, `const.js`, `objects.js`,
+     `monsters.js`, `game.js`),
+   - move structural ownership to canonical homes (for example map/level state).
+2. Keep behavior unchanged; this phase is structure-only.
+3. Do not add `initAll` or any global startup orchestrator.
+4. Existing legacy wiring (`register*`, `set*Context`, etc.) may temporarily
+   remain if still needed during migration.
 
 Batching rule:
-- Land in small batches (1-3 wiring paths per commit), each with targeted test
-  evidence.
+- Land in small structural batches with regression evidence.
 
 Exit gate:
-- No remaining top-level `register*()` invocations in gameplay modules.
-- No top-level cross-module wiring side effects outside leaf modules.
-- Parity is no worse than baseline.
+- Canonical ownership targets are in place for migrated subsystems.
+- No parity regressions vs baseline.
 
 ### Phase 2 — C Field Name Normalization
 
@@ -254,6 +255,19 @@ Exit gate:
 - Each gameplay function is in its corresponding C-source-named file.
 - Consolidation helper files listed below are either empty or deleted.
 - Parity is no worse than baseline.
+
+### Phase 5 — Legacy Wiring Decommission
+
+1. Remove no-longer-needed module-init wiring patterns:
+   - top-level `register*()` usage in gameplay modules,
+   - top-level `set*Context`/`set*Player` style cross-module wiring side effects.
+2. Convert remaining initialization to declarative data setup or runtime call
+   sites.
+3. Keep bootstrap/UI-only registration helpers scoped to bootstrap modules.
+
+Exit gate:
+- No remaining top-level gameplay `register*()`/context wiring side effects.
+- No parity regressions vs baseline.
 
 ## Non-Negotiable Autonomy Rules
 

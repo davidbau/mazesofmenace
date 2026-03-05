@@ -7,9 +7,8 @@
 
 ## Active Phase
 
-Phase 1 (remove top-level `register*` wiring), with `map.js` elimination now
-completed (`makeRoom`/`FILL_*` in `mkroom.js`, `GameMap`/`makeLocation` in
-`game.js`).
+Phase 1 (infrastructure laydown first), with `map.js` elimination completed
+(`makeRoom`/`FILL_*` in `mkroom.js`, `GameMap`/`makeLocation` in `game.js`).
 
 ## Completed This Turn
 
@@ -44,8 +43,8 @@ completed (`makeRoom`/`FILL_*` in `mkroom.js`, `GameMap`/`makeLocation` in
 
 ## Next Commit Target
 
-Continue Phase 1 removal of remaining top-level init fragility patterns and keep
-parity envelope stable after each increment.
+Continue Phase 1 infrastructure ownership consolidation only. Legacy top-level
+`register*`/context-wiring cleanup is deferred to Phase 5.
 
 ## Blockers
 
