@@ -58,19 +58,19 @@ import {
     COLNO, ROWNO, IS_ROOM, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, Align2amask,
     MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
-    MAXNROFROOMS, ROOMOFFSET,
+    MAXNROFROOMS, ROOMOFFSET, MAXMCLASSES,
     PM_PRIEST as ROLE_PRIEST
 } from './config.js';
 import {
     BOULDER, SCROLL_CLASS, FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     POTION_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS, AMULET_CLASS,
     GEM_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
-    SCR_EARTH, objectData, GOLD_PIECE, STATUE
+    SCR_EARTH, objectData, GOLD_PIECE, STATUE, CORPSE, EGG, TIN, FIGURINE
 } from './objects.js';
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, MR_STONE, S_EEL } from './monsters.js';
 import { poly_when_stoned } from './mondata.js';
 import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
-import { placeFloorObject, place_object } from './stackobj.js';
+import { placeFloorObject, place_object, stackobj } from './stackobj.js';
 import { mongone } from './mon.js';
 import { premap_detect } from './detect.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';
@@ -3979,6 +3979,39 @@ export async function object(name_or_opts, x, y) {
         && typeof name_or_opts.name === 'string'
         && name_or_opts.name.length > 0);
     const artif = !named;
+    const objOpts = (name_or_opts && typeof name_or_opts === 'object') ? name_or_opts : null;
+    let specialObjResolution = null;
+    if (objOpts && typeof objOpts.id === 'string') {
+        const specialOtyp = objectNameToType(objOpts.id);
+        if (specialOtyp === STATUE || specialOtyp === EGG
+            || specialOtyp === CORPSE || specialOtyp === TIN
+            || specialOtyp === FIGURINE) {
+            specialObjResolution = {
+                otyp: specialOtyp,
+                nonpmobj: false,
+                nonpmSpe: 0,
+                mndx: -1,
+                unknownMontype: false
+            };
+            if (typeof objOpts.montype === 'string' && objOpts.montype.length > 0) {
+                const montype = objOpts.montype;
+                if ((specialOtyp === TIN && (/^spinach$/i.test(montype) || /^empty$/i.test(montype)))
+                    || (specialOtyp === EGG && /^empty$/i.test(montype))) {
+                    specialObjResolution.nonpmobj = true;
+                    specialObjResolution.nonpmSpe = /^spinach$/i.test(montype) ? 1 : 0;
+                } else if (montype.length === 1
+                    && def_char_to_monclass(montype[0]) !== MAXMCLASSES) {
+                    specialObjResolution.mndx = mkclass(def_char_to_monclass(montype[0]),
+                        G_NOGEN | G_IGNORE, levelState.levelDepth || 1);
+                } else {
+                    specialObjResolution.mndx = monsterNameToIndex(montype);
+                }
+                if (specialObjResolution.mndx < 0 && !specialObjResolution.nonpmobj) {
+                    specialObjResolution.unknownMontype = true;
+                }
+            }
+        }
+    }
     const specClass = (typeof name_or_opts === 'string' && name_or_opts.length === 1)
         ? name_or_opts
         : (typeof name_or_opts === 'object' && name_or_opts && typeof name_or_opts.class === 'string'
@@ -4036,22 +4069,12 @@ export async function object(name_or_opts, x, y) {
             // for corpses (unconditionally), unlike mkcorpstat's conditional check.
             const lowerName = name_or_opts.id.toLowerCase();
             if (name_or_opts.montype && (lowerName === 'corpse' || lowerName === 'statue')) {
-                let mndx = -1;
-                const montype = String(name_or_opts.montype);
-                // C ref: lspo_object() montype single-char class path:
-                // mkclass(def_char_to_monclass(*montype), G_NOGEN | G_IGNORE)
-                if (montype.length === 1) {
-                    const mclass = def_char_to_monclass(montype[0]);
-                    mndx = mkclass(mclass, G_NOGEN | G_IGNORE, levelState.depth || 1);
-                } else {
-                    mndx = monsterNameToIndex(montype);
-                }
                 obj = mksobj(otyp, true, artif);
-                // C ref: sp_lev.c create_object() uses mkobj_at which calls
-                // place_object (^place) BEFORE the explicit set_corpsenm call.
-                // For buried objects, perform early placement now so ^place
-                // precedes set_corpsenm #2 in the RNG log (matching C order).
-                if (peekBuried && obj && levelState.map
+                // C ref: sp_lev.c create_object() uses mkobj_at/mksobj_at:
+                // place_object (^place) happens BEFORE explicit set_corpsenm.
+                // Do the early floor placement for normal floor objects so
+                // event ordering and later stackobj behavior match C.
+                if (obj && levelState.map
                     && absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO
                     && !levelState.containerStack.length
                     && !levelState.monsterInventoryStack.length) {
@@ -4059,9 +4082,6 @@ export async function object(name_or_opts, x, y) {
                     obj.oy = absY;
                     place_object(obj, absX, absY, levelState.map);
                     alreadyPlaced = true;
-                }
-                if (mndx >= 0) {
-                    set_corpsenm(obj, mndx);
                 }
             } else {
                 obj = mksobj(otyp, true, artif);
@@ -4076,9 +4096,41 @@ export async function object(name_or_opts, x, y) {
         }
     }
     if (obj) {
-        const objOpts = (name_or_opts && typeof name_or_opts === 'object') ? name_or_opts : null;
-        if (objOpts && Number.isFinite(objOpts.spe)) {
+        const isCStyleSpecialObj = (obj.otyp === STATUE
+            || obj.otyp === EGG
+            || obj.otyp === CORPSE
+            || obj.otyp === TIN
+            || obj.otyp === FIGURINE);
+        if (objOpts && Number.isFinite(objOpts.spe) && !isCStyleSpecialObj) {
             obj.spe = Math.trunc(objOpts.spe);
+        }
+        if (objOpts && isCStyleSpecialObj) {
+            let nonpmobj = false;
+            if (specialObjResolution && specialObjResolution.otyp === obj.otyp) {
+                if (specialObjResolution.nonpmobj) {
+                    obj.corpsenm = NON_PM;
+                    obj.spe = specialObjResolution.nonpmSpe;
+                    nonpmobj = true;
+                } else if (specialObjResolution.mndx >= 0) {
+                    set_corpsenm(obj, specialObjResolution.mndx);
+                } else if (specialObjResolution.unknownMontype) {
+                    throw new Error('Unknown montype');
+                }
+            }
+            if (obj.otyp === STATUE || obj.otyp === CORPSE) {
+                const CORPSTAT_HISTORIC = 4;
+                const CORPSTAT_MALE = 2;
+                const CORPSTAT_FEMALE = 1;
+                let lflags = 0;
+                if (objOpts.historic) lflags |= CORPSTAT_HISTORIC;
+                if (objOpts.male) lflags |= CORPSTAT_MALE;
+                if (objOpts.female) lflags |= CORPSTAT_FEMALE;
+                obj.spe = lflags;
+            } else if (obj.otyp === EGG) {
+                obj.spe = objOpts.laid_by_you ? 1 : 0;
+            } else if (!nonpmobj) {
+                obj.spe = 0;
+            }
         }
         if (objOpts && Number.isFinite(objOpts.quantity)) {
             obj.quan = Math.max(1, Math.trunc(objOpts.quantity));
@@ -4193,6 +4245,10 @@ export async function object(name_or_opts, x, y) {
             // placement was skipped, just mark buried without floor events.
         } else if (!alreadyPlaced && absX >= 0 && absX < COLNO && absY >= 0 && absY < ROWNO) {
             placeFloorObject(levelState.map, obj);
+        } else if (alreadyPlaced && !isBuried) {
+            // C ref: sp_lev.c create_object() calls stackobj(otmp) for
+            // non-contained objects after placement and set_corpsenm.
+            stackobj(obj, levelState.map);
         }
 
         // C ref: sp_lev.c create_object() Medusa statue special-case.

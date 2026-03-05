@@ -2127,3 +2127,25 @@ hard-won wisdom:
     and recapture startup before recording gameplay keys.
 - Guidance: re-record `seed323` with updated harness; gameplay sessions should
   not include tutorial menu interaction in keyed gameplay steps.
+
+### Seed42 corpse stacking drift came from `lspo_object` special-obj `spe` handling (2026-03-05)
+
+- Divergence: `seed42_inventory_wizard_pickup_gameplay` failed at event/mapdump
+  parity with `^place` vs `^remove` mismatch and wrong corpse pile quantity.
+- Root cause:
+  - In C (`sp_lev.c::lspo_object`), table-defined
+    `id in {statue, egg, corpse, tin, figurine}` always gets branch-specific
+    `spe` handling; for corpse/statue this is `historic/male/female` flags
+    (default `0`), not the randomized `mksobj` default.
+  - JS kept randomized corpse `spe` from `mksobj_postinit`, so otherwise
+    identical corpses failed `mergable()` (`spe` mismatch), preventing expected
+    stack/remove behavior.
+- Fix in `js/sp_lev.js`:
+  - implement C-special-object `spe` semantics for those ids,
+  - pre-resolve `montype` once before object creation (preserving C RNG order),
+  - reuse that result post-create for `set_corpsenm` (avoids duplicate RNG).
+- Validation:
+  - `seed42_inventory_wizard_pickup_gameplay` now fully passes
+    (`rng 2894/2894`, `events 31/31`, `mapdump 1/1`),
+  - map parity regression check: `seed16_map` and `seed16_maps_c` both pass,
+  - full suite improved from `134/150` to `135/150` (`16 -> 15` failures).
