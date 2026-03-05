@@ -7,7 +7,7 @@
 import { enableRngLog, getRngLog, disableRngLog } from './rng.js';
 import { pushInput } from './input.js';
 import { initrack } from './monmove.js';
-import { NetHackGame, maybe_deferred_goto_after_rhack, run_command, execute_repeat_command } from './allmain.js';
+import { NetHackGame, run_command, execute_repeat_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 import { consumeHarnessMapdumpPayloads } from './dungeon.js';
 import { hasActiveTextPopupWindow, redrawActiveTextPopupWindows } from './windows.js';
@@ -20,8 +20,9 @@ function toCompactRng(entry) {
     return entry.replace(/^\d+\s+/, '');
 }
 
-// Run a command promise until it either resolves or blocks waiting for input.
-async function tryResolve(commandPromise, inputRuntime) {
+// Drain the microtask queue until the command either completes or blocks
+// waiting for input (e.g., direction prompt, --More--, inventory selection).
+async function drainUntilInput(commandPromise, inputRuntime) {
     let done = false;
     let value;
     let error;
@@ -113,15 +114,9 @@ export async function replaySession(seed, opts, keys) {
         game.display._moreBlockingEnabled = true;
     }
 
-    // C ref: c-harness keylog_to_session calls clear_more_prompts() before
-    // capturing the startup screen. In C, the welcome message triggers a
-    // --More-- that is dismissed (and the topline cleared) before step 0.
-    // Simulate that here so the startup topline is blank, matching session.
-    if (game.display && game.display.topMessage) {
-        game.display.clearRow(0);
-        game.display.topMessage = null;
-        game.display.messageNeedsMore = false;
-    }
+    // The welcome/lore message from init may still be visible on the topline.
+    // Leave it in place so step 0 shows the natural post-init screen state.
+    // The first keystroke (typically space) will dismiss it via --More--.
 
     // Apply display flags.
     if (opts.displayFlags && typeof opts.displayFlags === 'object') {
@@ -161,9 +156,8 @@ export async function replaySession(seed, opts, keys) {
         if (pendingCommand) {
             replayPendingTrace(`step=${i + 1}`, `key=${JSON.stringify(String.fromCharCode(ch))}`, 'mode=resume');
             pushInput(ch);
-            const settled = await tryResolve(pendingCommand, game.input);
+            const settled = await drainUntilInput(pendingCommand, game.input);
             if (settled.done) {
-                await maybe_deferred_goto_after_rhack(game, settled.value);
                 pendingCommand = null;
                 commandSettled = true;
                 replayPendingTrace(`step=${i + 1}`, 'resume=done');
@@ -174,7 +168,7 @@ export async function replaySession(seed, opts, keys) {
             const commandPromise = (ch === 1)
                 ? execute_repeat_command(game)
                 : run_command(game, ch);
-            const settled = await tryResolve(commandPromise, game.input);
+            const settled = await drainUntilInput(commandPromise, game.input);
             if (!settled.done) {
                 pendingCommand = commandPromise;
                 replayPendingTrace(
@@ -184,7 +178,6 @@ export async function replaySession(seed, opts, keys) {
                     'start=waiting'
                 );
             } else {
-                await maybe_deferred_goto_after_rhack(game, settled.value);
                 commandSettled = true;
             }
         }
@@ -201,12 +194,18 @@ export async function replaySession(seed, opts, keys) {
         const postMap = game.lev || game.map || null;
         if (postMap) postMap._replayStepIndex = i;
 
+        // C ref: the C harness captures the tmux screen AFTER the key is
+        // fully processed (including deferred_goto which runs inside
+        // run_command). Screen capture here reflects the post-command state.
+        const screenCapture = opts.captureScreens ? captureScreen(display) : '';
+        const cursorCapture = captureCursor(display);
+
         const raw = getRngLog().slice(prevCount);
         const step = {
             key: keys[i],
             rng: raw.map(toCompactRng),
-            screen: opts.captureScreens ? captureScreen(display) : '',
-            cursor: captureCursor(display),
+            screen: screenCapture,
+            cursor: cursorCapture,
         };
         steps.push(step);
 

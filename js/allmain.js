@@ -629,7 +629,11 @@ export async function run_command(game, ch, opts = {}) {
     if (!skipRepeatRecord && !game.inDoAgain) {
         game._repeatPrefixChainActive = !!(result && !result.tookTime && isPrefixKey);
     }
-    await maybe_deferred_goto_after_rhack(game, result, { skipTurnEnd });
+    // C ref: allmain.c deferred_goto() immediately follows rhack() whenever
+    // u.utotype is set.
+    if (game?.player?.utotype && !game.display?._pendingMore) {
+        await deferred_goto((game.u || game.player), game);
+    }
 
     // Clear advanceRunTurn
     game.advanceRunTurn = null;
@@ -724,18 +728,6 @@ export async function execute_repeat_command(game, opts = {}) {
     }
 }
 
-// C ref: allmain.c deferred_goto() immediately follows rhack() whenever
-// u.utotype is set.
-export async function maybe_deferred_goto_after_rhack(game, result, opts = {}) {
-    const { skipTurnEnd = false } = opts;
-    if (!game?.player?.utotype) return;
-    if (game.display?._pendingMore) return;
-    if (!result || skipTurnEnd || result.prompt) {
-        await deferred_goto((game.u || game.player), game);
-        return;
-    }
-    await deferred_goto((game.u || game.player), game);
-}
 
 // Internal helper: drain a multi-turn occupation until it completes or is
 // interrupted by an adjacent hostile monster.
@@ -1725,70 +1717,57 @@ export class NetHackGame {
     // C ref: allmain.c moveloop() -> moveloop_core()
     async gameLoop() {
         while (!this.gameOver) {
-            // Travel continuation
-            if (this.travelPath && this.travelStep < this.travelPath.length) {
-                const { dotravel_target } = await import('./hack.js');
-                const result = await dotravel_target(this);
-                if (result.tookTime) {
-                    await moveloop_core(this);
+            try {
+                await this._gameLoopStep();
+            } catch (e) {
+                // Show error on topline and let the player continue.
+                // Log to console for debugging, then re-render so the game
+                // state is visible and the player can try another command.
+                console.error('gameLoop error:', e);
+                try {
+                    await this.display.putstr_message(
+                        `Program in disorder! Please report to the Menace team. (${e?.message || e})`
+                    );
+                    await nhgetch();
+                    this.fov.compute(this.map, this.player.x, this.player.y);
+                    this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                    this.display.renderStatus(this.player);
+                    this.display.cursorOnPlayer(this.player);
+                } catch (displayErr) {
+                    console.error('gameLoop recovery failed:', displayErr);
                 }
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                this.display.renderStatus(this.player);
-                this.display.cursorOnPlayer(this.player);
-                continue;
             }
+        }
 
-            // Get player input with optional count prefix
-            const firstCh = await nhgetch();
-            let ch;
-            let countPrefix = 0;
+        // Game over — delete autosave synchronously before any await so a tab
+        // close at the death screen cannot restore a dead character.
+        deleteAutosave();
+        await this.showGameOver();
+    }
 
-            // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
-            if (firstCh === 1) { // Ctrl+A
-                await execute_repeat_command(this, {
-                    onTimedTurn: async () => {
-                        this.fov.compute(this.map, this.player.x, this.player.y);
-                        this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                        this.display.renderStatus(this.player);
-                        this.display.cursorOnPlayer(this.player);
-                        await new Promise(r => setTimeout(r, 0));
-                    },
-                    onBeforeRepeat: async () => {
-                        if (this.shouldInterruptMulti()) {
-                            this.multi = 0;
-                            await this.display.putstr_message('--More--');
-                            await nhgetch();
-                        }
-                    },
-                });
-                this.fov.compute(this.map, this.player.x, this.player.y);
-                this.display.renderMap(this.map, this.player, this.fov, this.flags);
-                this.display.renderStatus(this.player);
-                this.display.cursorOnPlayer(this.player);
-                continue;
-            } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
-                const result = await getCount(firstCh, 32767, this.display);
-                countPrefix = result.count;
-                ch = result.key;
-                if (ch === 27) { // ESC
-                    this.display.clearRow(0);
-                    continue;
-                }
-            } else {
-                ch = firstCh;
+    async _gameLoopStep() {
+        // Travel continuation
+        if (this.travelPath && this.travelStep < this.travelPath.length) {
+            const { dotravel_target } = await import('./hack.js');
+            const result = await dotravel_target(this);
+            if (result.tookTime) {
+                await moveloop_core(this);
             }
+            this.fov.compute(this.map, this.player.x, this.player.y);
+            this.display.renderMap(this.map, this.player, this.fov, this.flags);
+            this.display.renderStatus(this.player);
+            this.display.cursorOnPlayer(this.player);
+            return;
+        }
 
-            if (!ch) continue;
+        // Get player input with optional count prefix
+        const firstCh = await nhgetch();
+        let ch;
+        let countPrefix = 0;
 
-            if (firstCh !== 1) {
-                this.lastCommand = { key: ch, count: countPrefix };
-            }
-
-            await this.runPendingDeferredTimedTurn();
-
-            await run_command(this, ch, {
-                countPrefix,
+        // C ref: cmd.c:1687 do_repeat() — Ctrl+A repeats last command
+        if (firstCh === 1) { // Ctrl+A
+            await execute_repeat_command(this, {
                 onTimedTurn: async () => {
                     this.fov.compute(this.map, this.player.x, this.player.y);
                     this.display.renderMap(this.map, this.player, this.fov, this.flags);
@@ -1804,18 +1783,54 @@ export class NetHackGame {
                     }
                 },
             });
-
             this.fov.compute(this.map, this.player.x, this.player.y);
             this.display.renderMap(this.map, this.player, this.fov, this.flags);
             this.display.renderStatus(this.player);
             this.display.cursorOnPlayer(this.player);
-            scheduleAutosave(this);   // fire-and-forget crash recovery save
+            return;
+        } else if (firstCh >= 48 && firstCh <= 57) { // '0'-'9'
+            const result = await getCount(firstCh, 32767, this.display);
+            countPrefix = result.count;
+            ch = result.key;
+            if (ch === 27) { // ESC
+                this.display.clearRow(0);
+                return;
+            }
+        } else {
+            ch = firstCh;
         }
 
-        // Game over — delete autosave synchronously before any await so a tab
-        // close at the death screen cannot restore a dead character.
-        deleteAutosave();
-        await this.showGameOver();
+        if (!ch) return;
+
+        if (firstCh !== 1) {
+            this.lastCommand = { key: ch, count: countPrefix };
+        }
+
+        await this.runPendingDeferredTimedTurn();
+
+        await run_command(this, ch, {
+            countPrefix,
+            onTimedTurn: async () => {
+                this.fov.compute(this.map, this.player.x, this.player.y);
+                this.display.renderMap(this.map, this.player, this.fov, this.flags);
+                this.display.renderStatus(this.player);
+                this.display.cursorOnPlayer(this.player);
+                await new Promise(r => setTimeout(r, 0));
+            },
+            onBeforeRepeat: async () => {
+                if (this.shouldInterruptMulti()) {
+                    this.multi = 0;
+                    await this.display.putstr_message('--More--');
+                    await nhgetch();
+                }
+            },
+        });
+
+        this.fov.compute(this.map, this.player.x, this.player.y);
+        this.display.renderMap(this.map, this.player, this.fov, this.flags);
+        this.display.renderStatus(this.player);
+        this.display.cursorOnPlayer(this.player);
+        scheduleAutosave(this);   // fire-and-forget crash recovery save
     }
 }
 

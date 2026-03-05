@@ -256,13 +256,11 @@ export function terrainSymbol(loc, gameMap = null, x = -1, y = -1, flags = {}) {
     }
 
     // Altar alignment color
-    // C ref: display.h altar_color enum, display.c altarcolors[]
+    // C ref: display.h altar_color enum — without USE_GENERAL_ALTAR_COLORS
+    // (the default build), all altar alignments render as CLR_GRAY.
     if (typ === ALTAR) {
-        const align = loc.altarAlign !== undefined ? loc.altarAlign
-            : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
-        const altarColor = align === 1 ? CLR_WHITE : align === -1 ? CLR_BLACK : CLR_GRAY; // A_NONE(-128) → gray
         const altarCh = useDEC ? '\u03c0' : '_'; // DEC: pi; ASCII: underscore
-        return { ch: altarCh, color: altarColor };
+        return { ch: altarCh, color: CLR_GRAY };
     }
 
     // Secret door: render as the wall type implied by neighbors

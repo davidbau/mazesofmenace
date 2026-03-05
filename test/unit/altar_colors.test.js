@@ -1,5 +1,6 @@
-// Test altar rendering with alignment-based colors
-// C ref: display.h altar_color enum
+// Test altar rendering colors
+// C ref: display.h altar_color enum — without USE_GENERAL_ALTAR_COLORS
+// (the default build), all altar alignments render as CLR_GRAY.
 import { describe, test } from 'node:test';
 import assert from 'assert';
 import { HeadlessDisplay } from '../comparison/session_helpers.js';
@@ -8,7 +9,7 @@ import { ALTAR, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from '../../js/config.js';
 
 describe('altar colors', () => {
 
-test('altar colors: lawful altar uses white', () => {
+test('altar colors: lawful altar uses gray', () => {
     const display = new HeadlessDisplay(80, 24);
     const map = new GameMap();
 
@@ -18,7 +19,7 @@ test('altar colors: lawful altar uses white', () => {
 
     const sym = display.terrainSymbol(map.at(x, y), map, x, y);
     assert.strictEqual(sym.ch, '_', 'Altar should use "_" symbol');
-    assert.strictEqual(sym.color, 15, 'Lawful altar should use CLR_WHITE (15)');
+    assert.strictEqual(sym.color, 7, 'Lawful altar should use CLR_GRAY (7)');
 });
 
 test('altar colors: neutral altar uses gray', () => {
@@ -34,7 +35,7 @@ test('altar colors: neutral altar uses gray', () => {
     assert.strictEqual(sym.color, 7, 'Neutral altar should use CLR_GRAY (7)');
 });
 
-test('altar colors: chaotic altar uses black', () => {
+test('altar colors: chaotic altar uses gray', () => {
     const display = new HeadlessDisplay(80, 24);
     const map = new GameMap();
 
@@ -44,7 +45,7 @@ test('altar colors: chaotic altar uses black', () => {
 
     const sym = display.terrainSymbol(map.at(x, y), map, x, y);
     assert.strictEqual(sym.ch, '_', 'Altar should use "_" symbol');
-    assert.strictEqual(sym.color, 0, 'Chaotic altar should use CLR_BLACK (0)');
+    assert.strictEqual(sym.color, 7, 'Chaotic altar should use CLR_GRAY (7)');
 });
 
 test('altar colors: unaligned altar defaults to gray', () => {
