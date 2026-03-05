@@ -5,7 +5,7 @@
 import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, next_ident, weight, place_object, set_corpsenm } from './mkobj.js';
 import { def_monsyms } from './symbols.js';
-import { m_dowear } from './worn.js';
+import { m_dowear, mon_break_armor } from './worn.js';
 import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
     VAULT, ZOO, DELPHI, TEMPLE,
@@ -34,7 +34,7 @@ import {
     S_HUMAN, S_GHOST, S_GOLEM, S_DEMON, S_EEL, S_LIZARD, S_MIMIC_DEF,
     M2_MERC, M2_LORD, M2_PRINCE, M2_NASTY, M2_FEMALE, M2_MALE, M2_STRONG, M2_ROCKTHROW,
     M2_HOSTILE, M2_PEACEFUL, M2_DOMESTIC, M2_NEUTER, M2_GREEDY,
-    M2_SHAPESHIFTER, M2_WERE, M2_PNAME, M2_HUMAN, M2_ELF, M2_DWARF,
+    M2_SHAPESHIFTER, M2_NOPOLY, M2_ELF, M2_DWARF,
     M2_MINION, M2_DEMON,
     M3_WAITFORU, M3_CLOSE, M3_WAITMASK, M3_COVETOUS,
     M1_FLY, M1_NOHANDS, M1_SWIM, M1_AMPHIBIOUS, M1_WALLWALK, M1_AMORPHOUS,
@@ -53,10 +53,16 @@ import {
     PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_GHOST, PM_ERINYS,
     PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER, PM_WOLF, PM_FOG_CLOUD, PM_VAMPIRE_BAT,
     PM_CHAMELEON,
+    PM_ROTHE, PM_CAVE_DWELLER, PM_BARBARIAN, PM_NEANDERTHAL,
+    PM_HORNED_DEVIL, PM_BALROG, PM_ASMODEUS, PM_DISPATER, PM_YEENOGHU, PM_ORCUS,
+    PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF,
+    PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_OWLBEAR,
+    PM_STEAM_VORTEX, PM_GREEN_SLIME, PM_VIOLET_FUNGUS, PM_SHRIEKER,
+    PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN, PM_JELLYFISH,
     MS_LEADER, MS_NEMESIS, MS_GUARDIAN, MS_PRIEST,
     PM_CROESUS,
     PM_ARCHEOLOGIST, PM_WIZARD,
-    PM_QUANTUM_MECHANIC, PM_HOUSECAT,
+    PM_QUANTUM_MECHANIC, PM_HOUSECAT, PM_PONY,
 } from './monsters.js';
 import {
     ROCK, STATUE, FIGURINE, EGG, TIN, STRANGE_OBJECT, GOLD_PIECE, DILITHIUM_CRYSTAL,
@@ -105,7 +111,7 @@ import {
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
 import { mpickobj, dist2, BOLT_LIM, newsym } from './monutil.js';
-import { canseemon, polyok } from './mondata.js';
+import { canseemon, olfaction } from './mondata.js';
 import { senseMonsterForMap } from './monutil.js';
 import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
@@ -1418,15 +1424,21 @@ function is_placeholder_mndx(mndx) {
         || mndx === PM_ELF || mndx === PM_HUMAN;
 }
 
+function polyok_for_newcham(ptr) {
+    if (!ptr) return false;
+    // C ref: mondata.h polyok(ptr) => ((ptr->mflags2 & M2_NOPOLY) == 0L)
+    return ((ptr.flags2 || 0) & M2_NOPOLY) === 0;
+}
 function accept_newcham_form(chamMndx, mndx) {
     if (!Number.isInteger(mndx) || mndx < LOW_PM || mndx >= SPECIAL_PM) return null;
     if (is_placeholder_mndx(mndx)) return null;
     const mdat = mons[mndx];
     if (!mdat) return null;
+    // C ref: accept_newcham_form() allows mplayer forms even when !polyok.
+    if (is_mplayer_idx(mndx)) return mdat;
+    // C ref: allow only the monster's own natural shapeshifter form.
     if ((mdat.flags2 & M2_SHAPESHIFTER) && mndx === chamMndx) return mdat;
-    // C ref: mon.c accept_newcham_form() uses polyok().
-    if (!polyok(mdat)) return null;
-    if (mdat.flags2 & M2_SHAPESHIFTER) return null;
+    if (!polyok_for_newcham(mdat)) return null;
     return mdat;
 }
 
@@ -1513,7 +1525,92 @@ function maybe_init_long_worm_after_newcham(mon, newMndx, map = null, player = n
     place_worm_tail_randomly(mon, mon.mx, mon.my, map, player);
 }
 
-function apply_newcham_from_base(mon, baseMndx, depth, map = null, player = null) {
+function maybe_usmellmon_after_newcham(mdat, newMndx, player = null, display = null) {
+    const youdata = player?.data
+        || player?.type
+        || player?.monsterData
+        || player?.monsterType
+        || player?.youmonst?.data
+        || (Number.isInteger(player?.umonnum) ? mons[player.umonnum] : null)
+        || mons[PM_HUMAN];
+    if (!mdat || !youdata || !olfaction(youdata)) return false;
+
+    if (!display || typeof display.putstr_message !== 'function') return false;
+
+    const emit = (text) => {
+        void display.putstr_message(text);
+        return true;
+    };
+
+    // C ref: mon.c usmellmon() first switch by monster index.
+    let nonspecific = false;
+    switch (newMndx) {
+    case PM_ROTHE:
+    case PM_MINOTAUR:
+        return emit('You notice a bovine smell.');
+    case PM_CAVE_DWELLER:
+    case PM_BARBARIAN:
+    case PM_NEANDERTHAL:
+        return emit('You smell body odor.');
+    case PM_HORNED_DEVIL:
+    case PM_BALROG:
+    case PM_ASMODEUS:
+    case PM_DISPATER:
+    case PM_YEENOGHU:
+    case PM_ORCUS:
+        return false;
+    case PM_HUMAN_WEREJACKAL:
+    case PM_HUMAN_WERERAT:
+    case PM_HUMAN_WEREWOLF:
+    case PM_WEREJACKAL:
+    case PM_WERERAT:
+    case PM_WEREWOLF:
+    case PM_OWLBEAR:
+        return emit("You detect an odor reminiscent of an animal's den.");
+    case PM_STEAM_VORTEX:
+        return emit('You smell steam.');
+    case PM_GREEN_SLIME:
+        return emit('Something stinks.');
+    case PM_VIOLET_FUNGUS:
+    case PM_SHRIEKER:
+        return emit('You smell mushrooms.');
+    case PM_WHITE_UNICORN:
+    case PM_GRAY_UNICORN:
+    case PM_BLACK_UNICORN:
+    case PM_JELLYFISH:
+        return false;
+    default:
+        nonspecific = true;
+        break;
+    }
+
+    if (!nonspecific) return false;
+
+    // C ref: mon.c usmellmon() nonspecific mlet switch.
+    switch (mdat.mlet) {
+    case S_DOG:
+        return emit('You notice a dog smell.');
+    case S_DRAGON:
+        return emit('You smell a dragon!');
+    case S_FUNGUS:
+        return emit('Something smells moldy.');
+    case S_UNICORN: {
+        const a = (newMndx === PM_PONY) ? 'n' : ' strong';
+        return emit(`You detect a${a} odor reminiscent of a stable.`);
+    }
+    case S_ZOMBIE:
+        return emit('You smell rotting flesh.');
+    case S_EEL:
+        return emit('You smell fish.');
+    case S_ORC:
+        return emit('A foul stench makes you feel a little nauseated.');
+    default:
+        return false;
+    }
+}
+
+function apply_newcham_from_base(mon, baseMndx, depth, map = null, player = null, fov = null, display = null, showMsg = false) {
+    const seenBefore = canseemon(mon, player, fov, map);
     let target = null;
     let tryct = 20;
     do {
@@ -1548,6 +1645,16 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null, player = null
     mon.m_lev = newLev;
     mon.mac = target.ac;
     mon.speed = target.speed;
+    const seenAfter = canseemon(mon, player, fov, map);
+    // C ref: newcham() post-transform gear handling.
+    mon_break_armor(mon, false, map, { visible: canseemon(mon, player, fov, map) });
+    if (showMsg && !seenAfter) {
+        if (seenBefore) {
+            // C also reports disappearance when previously sensed/seen;
+            // smell message is the parity-critical part here.
+        }
+        maybe_usmellmon_after_newcham(target, newMndx, player, display);
+    }
     maybe_init_long_worm_after_newcham(mon, newMndx, map, player);
     return true;
 }
@@ -1555,9 +1662,10 @@ function apply_newcham_from_base(mon, baseMndx, depth, map = null, player = null
 // C ref: mon.c newcham() with specific target ptr — apply form change to a known target mndx.
 // Used when the target form was already selected (e.g., pickvampshape was already called).
 // Unlike apply_newcham_from_base, does NOT re-call select_newcham_form/pickvampshape.
-function apply_newcham_direct(mon, targetMndx, depth, map = null, player = null) {
+function apply_newcham_direct(mon, targetMndx, depth, map = null, player = null, fov = null, display = null, showMsg = false) {
     const target = mons[targetMndx];
     if (!target) return false;
+    const seenBefore = canseemon(mon, player, fov, map);
 
     const chamMndx = Number.isInteger(mon.cham) ? mon.cham : -1;
 
@@ -1581,6 +1689,16 @@ function apply_newcham_direct(mon, targetMndx, depth, map = null, player = null)
     mon.m_lev = newLev;
     mon.mac = target.ac;
     mon.speed = target.speed;
+    const seenAfter = canseemon(mon, player, fov, map);
+    // C ref: newcham() post-transform gear handling.
+    mon_break_armor(mon, false, map, { visible: canseemon(mon, player, fov, map) });
+    if (showMsg && !seenAfter) {
+        if (seenBefore) {
+            // C also reports disappearance when previously sensed/seen;
+            // smell message is the parity-critical part here.
+        }
+        maybe_usmellmon_after_newcham(target, targetMndx, player, display);
+    }
     maybe_init_long_worm_after_newcham(mon, targetMndx, map, player);
     return true;
 }
@@ -1590,13 +1708,13 @@ function maybe_apply_newcham(mon, baseMndx, depth, map = null) {
     if (!(basePtr.flags2 & M2_SHAPESHIFTER)) return false;
     if (baseMndx === PM_VLAD_THE_IMPALER) return false;
     mon.cham = baseMndx;
-    return apply_newcham_from_base(mon, baseMndx, depth, map, null);
+    return apply_newcham_from_base(mon, baseMndx, depth, map, null, null, null, false);
 }
 
 // C ref: mon.c m_calcdistress() decide_to_shapeshift()
 // Handles both regular shapechangers and vampshifters.
 // player/fov optional: needed only to evaluate canseemon check after rn2 passes.
-export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = null, fov = null) {
+export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = null, fov = null, display = null) {
     if (!mon || mon.dead) return false;
     const chamMndx = Number.isInteger(mon.cham) ? mon.cham : -1;
     if (chamMndx < LOW_PM || chamMndx >= SPECIAL_PM) return false;
@@ -1604,7 +1722,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
     if (!is_vampshifter_mndx(chamMndx)) {
         // Regular shapeshifter: rn2(6) to decide
         if (rn2(6) !== 0) return false;
-        return apply_newcham_from_base(mon, chamMndx, depth, map, player);
+        return apply_newcham_from_base(mon, chamMndx, depth, map, player, fov, display, true);
     }
 
     // Vampshifter — C ref: mon.c:4882 decide_to_shapeshift() vampshifter path
@@ -1620,7 +1738,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
             if (!rn2(4)) return false;
             // Shift back to base vampire form directly (C: newcham with specific ptr)
             if (chamMndx >= LOW_PM && chamMndx < SPECIAL_PM)
-                return apply_newcham_direct(mon, chamMndx, depth, map, player);
+                return apply_newcham_direct(mon, chamMndx, depth, map, player, fov, display, true);
         } else if (mon.mndx === PM_FOG_CLOUD && mon.mhp === mon.mhpmax) {
             // C: fog cloud at full HP — consume rn2(4); if zero AND unseen/far → new shape
             if (rn2(4) !== 0) return false;
@@ -1630,7 +1748,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
             // pickvampshape selects new form; use apply_newcham_direct to avoid double-calling
             const newMndx = pickvampshape(mon, chamMndx, map);
             if (newMndx < 0 || newMndx === mon.mndx) return false;
-            return apply_newcham_direct(mon, newMndx, depth, map, player);
+            return apply_newcham_direct(mon, newMndx, depth, map, player, fov, display, true);
         }
     } else {
         // Currently in vampire (base) form — maybe shift to alternate form
@@ -1640,7 +1758,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
             const seen = canseemon(mon, player, fov, map);
             const distSq = player ? dist2(player.x, player.y, mon.mx, mon.my) : 999;
             if (seen && distSq <= BOLT_LIM * BOLT_LIM) return false;
-            return apply_newcham_from_base(mon, chamMndx, depth, map, player);
+            return apply_newcham_from_base(mon, chamMndx, depth, map, player, fov, display, true);
         }
     }
     return false;
