@@ -1245,9 +1245,12 @@ async function handlePickup(player, map, display, game = null) {
         return { moved: false, tookTime: true };
     }
 
-    // Pick up first other item
+    // Pick up first non-gold item in C floor-chain order.
+    // C floor lists are prepended (newest first), while JS stores floor objects
+    // in append order, so objectsAt() yields oldest->newest.
+    // Select newest here to match C default ',' pickup target.
     // TODO: show menu if multiple items (like C NetHack)
-    const obj = objs[0];
+    const obj = objs[objs.length - 1];
     if (!obj) {
         await display.putstr_message('There is nothing here to pick up.');
         return { moved: false, tookTime: false };
