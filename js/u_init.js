@@ -89,6 +89,10 @@ import { roles, races } from './player.js';
 import { discoverObject } from './discovery.js';
 import { mons } from './monsters.js';
 import { makedog, mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
+import {
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
+    W_WEP, W_SWAPWEP, W_QUIVER,
+} from './worn.js';
 export { mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
 
 // ========================================================================
@@ -1004,6 +1008,19 @@ function equipInitialGear(player) {
     }
 
     player.quiver = selectStartupQuiverItem(player);
+
+    // Keep slot pointers and owornmask in sync (C faithful state).
+    for (const item of player.inventory) item.owornmask = 0;
+    if (player.armor) player.armor.owornmask |= W_ARM;
+    if (player.cloak) player.cloak.owornmask |= W_ARMC;
+    if (player.helmet) player.helmet.owornmask |= W_ARMH;
+    if (player.shield) player.shield.owornmask |= W_ARMS;
+    if (player.gloves) player.gloves.owornmask |= W_ARMG;
+    if (player.boots) player.boots.owornmask |= W_ARMF;
+    if (player.shirt) player.shirt.owornmask |= W_ARMU;
+    if (player.weapon) player.weapon.owornmask |= W_WEP;
+    if (player.swapWeapon) player.swapWeapon.owornmask |= W_SWAPWEP;
+    if (player.quiver) player.quiver.owornmask |= W_QUIVER;
 }
 
 // C ref: u_init.c ini_inv_use_obj() discovery side effects.

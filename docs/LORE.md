@@ -1914,21 +1914,20 @@ hard-won wisdom:
   - nearby green canaries remained green:
     `seed301`, `seed302`, `seed307`, `seed308`.
 
-### `magic_negation` must read hero worn slots, not only inventory `owornmask` (2026-03-05)
+### Keep `magic_negation` inventory-only; fix `owornmask` state instead (2026-03-05)
 
-- In `seed306_monk_selfplay200_gameplay`, first drift at step `115` showed:
-  C consumed `rn2(10)` in `mhitm_mgc_atk_negated` then went directly to
-  `mhitm_knockback` (`rn2(3)`, `rn2(6)`), while JS consumed an extra `rn2(20)`
-  from elemental-item-destruction path.
-- Root cause: JS `magic_negation(player)` could undercount hero magic
-  cancellation when relying on `inventory[].owornmask` alone; in replay paths
-  that metadata can be stale while player equipment slots are authoritative.
-- Fix:
-  - in `mondata.js`, compute hero MC from direct worn slots
-    (`armor/cloak/helmet/shield/gloves/boots/shirt/amulet`) and keep inventory
-    scan as fallback for monsters and compatibility.
+- C `magic_negation()` (`mhitu.c`) is inventory-driven:
+  hero uses `gi.invent`, monsters use `mon->minvent`, and worn state is read
+  only via `o->owornmask`.
+- In JS, `seed306_monk_selfplay200_gameplay` step `115` drift (`rn2(20)` extra
+  in elemental attack path) came from stale worn-mask state, not from C logic:
+  some startup/equip paths set player slot pointers without synchronizing
+  `owornmask`.
+- Strict-faithful fix:
+  - keep `mondata.js:magic_negation()` inventory+`owornmask` only,
+  - synchronize `owornmask` in core equip paths (`u_init` startup equipment and
+    `do_wear` wear/remove operations).
 - Validation:
-  - `seed306` now reaches full RNG/event parity
-    (`rng=6904/6904`, `events=3949/3949`),
-  - canaries remain green:
-    `seed301`, `seed302`, `seed307`, `seed308`.
+  - `seed306` retains full RNG/event parity (`6904/6904`, `3949/3949`) after
+    reverting the slot-based workaround,
+  - canaries remain green: `seed301`, `seed302`, `seed307`, `seed308`.

@@ -986,8 +986,8 @@ export function resists_ston(mon) { return !!((_mdat(mon)?.mr1 || 0) & MR_STONE)
 // ========================================================================
 // Magic negation — C ref: mhitu.c:1085 magic_negation()
 // Computes armor-based magic cancellation level (0-3).
-// Simplified: JS doesn't track a_can on armor objects yet, so this returns
-// 0 for most monsters. Special cases for high priests and minions preserved.
+// Uses worn inventory masks (owornmask), matching C traversal over gi.invent
+// for hero and mon->minvent for monsters.
 // ========================================================================
 export function magic_negation(mon) {
     const ptr = _mdat(mon);
@@ -1004,22 +1004,6 @@ export function magic_negation(mon) {
         for (let o = mon.minvent; o && !seen.has(o); o = o.nobj) {
             seen.add(o);
             inv.push(o);
-        }
-    }
-
-    // Player equipment is authoritative for worn state; inventory owornmask can
-    // be stale in some replay paths and undercount magic cancellation.
-    if (isYou) {
-        const wornSlots = [
-            mon.armor, mon.cloak, mon.helmet, mon.shield,
-            mon.gloves, mon.boots, mon.shirt, mon.amulet,
-        ];
-        for (const o of wornSlots) {
-            if (!o) continue;
-            if (o.otyp === AMULET_OF_GUARDING) viaAmul = true;
-            if ((Number(objectData[o.otyp]?.oc_class) || 0) !== 2) continue; // ARMOR_CLASS
-            const armpro = Number(objectData[o.otyp]?.oc2) || 0; // objects[].a_can
-            if (armpro > mc) mc = armpro;
         }
     }
 

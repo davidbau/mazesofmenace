@@ -39,7 +39,11 @@ import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, objectData,
 import { doname, is_crackable } from './mkobj.js';
 import { armor_simple_name } from './objnam.js';
 import { is_metallic, obj_resists } from './objdata.js';
-import { which_armor } from './worn.js';
+import {
+    which_armor,
+    setworn,
+    setnotworn,
+} from './worn.js';
 import { useup, renderOverlayMenuUntilDismiss } from './invent.js';
 import { discoverObject } from './discovery.js';
 import { pline, You, You_feel } from './pline.js';
@@ -61,6 +65,25 @@ import { float_down } from './trap.js';
 import { float_vs_flight } from './polyself.js';
 import { mark_vision_dirty } from './vision.js';
 
+// Worn-mask bits (cf. worn.js / prop.h)
+const W_ARM = 0x00000001;
+const W_ARMC = 0x00000002;
+const W_ARMH = 0x00000004;
+const W_ARMS = 0x00000008;
+const W_ARMG = 0x00000010;
+const W_ARMF = 0x00000020;
+const W_ARMU = 0x00000040;
+const W_AMUL = 0x00010000;
+const W_RINGL = 0x00020000;
+const W_RINGR = 0x00040000;
+const W_TOOL = 0x00080000;
+const W_RING = W_RINGL | W_RINGR;
+const W_ACCESSORY = W_RING | W_AMUL | W_TOOL;
+const W_ARMOR = W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU;
+
+
+
+
 
 // ============================================================
 // 1. Armor slot mapping
@@ -74,6 +97,16 @@ const ARMOR_SLOTS = {
     [ARM_BOOTS]:  { prop: 'boots',   name: 'boots' },
     [ARM_CLOAK]:  { prop: 'cloak',   name: 'cloak' },
     [ARM_SHIRT]:  { prop: 'shirt',   name: 'shirt' },
+};
+
+const ARM_SUB_TO_MASK = {
+    [ARM_SUIT]: W_ARM,
+    [ARM_SHIELD]: W_ARMS,
+    [ARM_HELM]: W_ARMH,
+    [ARM_GLOVES]: W_ARMG,
+    [ARM_BOOTS]: W_ARMF,
+    [ARM_CLOAK]: W_ARMC,
+    [ARM_SHIRT]: W_ARMU,
 };
 
 // ============================================================
@@ -1646,7 +1679,9 @@ async function handleWear(player, display, game = null) {
     const slot = ARMOR_SLOTS[sub];
     const delay = Number(objectData[item.otyp]?.delay || 0);
     const wearNow = () => {
-        player[slot.prop] = item;
+        const mask = ARM_SUB_TO_MASK[sub] || 0;
+        if (mask) setworn(player, item, mask);
+        else player[slot.prop] = item;
         const onFn = SLOT_ON[sub];
         if (onFn) onFn(player);
         find_ac(player);
@@ -1742,10 +1777,10 @@ async function handlePutOn(player, display) {
         }
         if (player.leftRing) {
             // Left slot occupied — assign to right automatically (C: else if (uleft) mask=RIGHT_RING)
-            player.rightRing = item;
+            setworn(player, item, W_RINGR);
         } else if (player.rightRing) {
             // Right slot occupied — assign to left automatically (C: else if (uright) mask=LEFT_RING)
-            player.leftRing = item;
+            setworn(player, item, W_RINGL);
         } else {
             // C ref: do_wear.c accessory_or_armor_on() — both slots free → ask which finger
             const fingerQ = 'Which ring-finger, Right or Left? [rl]';
@@ -1763,8 +1798,8 @@ async function handlePutOn(player, display) {
                 else if (fs === 'l' || fs === 'L') mask = 'left';
                 // else: invalid key, loop again
             }
-            if (mask === 'left') player.leftRing = item;
-            else player.rightRing = item;
+            if (mask === 'left') setworn(player, item, W_RINGL);
+            else setworn(player, item, W_RINGR);
         }
         Ring_on(player, item);
     } else if (item.oclass === AMULET_CLASS) {
@@ -1772,14 +1807,14 @@ async function handlePutOn(player, display) {
             await display.putstr_message("You're already wearing an amulet.");
             return { moved: false, tookTime: false };
         }
-        player.amulet = item;
+        setworn(player, item, W_AMUL);
         await Amulet_on(player);
     } else if (isEyewear(item)) {
         if (player.blindfold) {
             await display.putstr_message('You are already wearing that!');
             return { moved: false, tookTime: false };
         }
-        player.blindfold = item;
+        setworn(player, item, W_TOOL);
         await Blindf_on(player, item);
     }
 
@@ -1841,7 +1876,8 @@ async function handleTakeOff(player, display, game = null) {
     const offFn = SLOT_OFF[sub];
     const takeOffNow = () => {
         if (offFn) offFn(player);
-        player[slot.prop] = null;
+        if (item?.owornmask) setnotworn(player, item);
+        else player[slot.prop] = null;
         find_ac(player);
     };
 
@@ -1917,13 +1953,13 @@ async function handleRemove(player, display) {
 
     if (item === player.leftRing) {
         Ring_off(player, item);
-        player.leftRing = null;
+        setnotworn(player, item);
     } else if (item === player.rightRing) {
         Ring_off(player, item);
-        player.rightRing = null;
+        setnotworn(player, item);
     } else if (item === player.amulet) {
         Amulet_off(player);
-        player.amulet = null;
+        setnotworn(player, item);
     }
 
     find_ac(player);
