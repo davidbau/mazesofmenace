@@ -40,7 +40,6 @@ clear_more_prompts = _session.clear_more_prompts
 wait_for_game_ready = _session.wait_for_game_ready
 read_rng_log = _session.read_rng_log
 parse_rng_lines = _session.parse_rng_lines
-execute_dumpmap = _session.execute_dumpmap
 quit_game = _session.quit_game
 compact_session_json = _session.compact_session_json
 fixed_datetime_env = _session.fixed_datetime_env
@@ -107,15 +106,16 @@ def load_seeds_config():
         return json.load(f)
 
 
-def setup_home(character, symset, tutorial_enabled=False):
+def setup_home(character, symset, tutorial_enabled=False, interactive=False):
     os.makedirs(RESULTS_DIR, exist_ok=True)
     nethackrc = os.path.join(RESULTS_DIR, '.nethackrc')
     with open(nethackrc, 'w') as f:
-        f.write(f'OPTIONS=name:{character["name"]}\n')
-        f.write(f'OPTIONS=race:{character["race"]}\n')
-        f.write(f'OPTIONS=role:{character["role"]}\n')
-        f.write(f'OPTIONS=gender:{character["gender"]}\n')
-        f.write(f'OPTIONS=align:{character["align"]}\n')
+        if not interactive:
+            f.write(f'OPTIONS=name:{character["name"]}\n')
+            f.write(f'OPTIONS=race:{character["race"]}\n')
+            f.write(f'OPTIONS=role:{character["role"]}\n')
+            f.write(f'OPTIONS=gender:{character["gender"]}\n')
+            f.write(f'OPTIONS=align:{character["align"]}\n')
         f.write('OPTIONS=!autopickup\n')
         f.write('OPTIONS=tutorial\n' if tutorial_enabled else 'OPTIONS=!tutorial\n')
         f.write('OPTIONS=suppress_alert:3.4.3\n')
@@ -311,14 +311,14 @@ def run_from_keylog(
     wizard_enabled,
     key_delay_ms,
     regen=None,
-    datetime_hint=None
+    datetime_hint=None,
+    interactive=False,
 ):
-    setup_home(character, symset, tutorial_enabled)
+    setup_home(character, symset, tutorial_enabled, interactive=interactive)
     output_json = os.path.abspath(output_json)
 
     tmpdir = tempfile.mkdtemp(prefix='webhack-keylog-session-')
     rng_log_file = os.path.join(tmpdir, 'rnglog.txt')
-    dumpmap_file = os.path.join(tmpdir, 'dumpmap.txt')
     session_name = f'webhack-keylog-{seed}-{os.getpid()}'
     keylog_moves_base = int(events[0].get('moves', 0))
 
@@ -326,16 +326,17 @@ def run_from_keylog(
 
     fixed_datetime = datetime_hint or _session.harness_fixed_datetime()
 
+    name_flag = "-u '' " if interactive else f'-u {character["name"]} '
+    wiz_flag = '-D' if wizard_enabled else ''
     try:
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
             f'{fixed_datetime_env()}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
-            f'NETHACK_DUMPMAP={dumpmap_file} '
             f'HOME={RESULTS_DIR} '
             f'TERM=xterm-256color '
-            f'{NETHACK_BINARY} -u {character["name"]} {"-D" if wizard_enabled else ""}; '
+            f'{NETHACK_BINARY} {name_flag}{wiz_flag}; '
             f'sleep 999'
         )
         subprocess.run(
@@ -373,7 +374,6 @@ def run_from_keylog(
         startup_rng_count, startup_rng_lines = read_rng_log(rng_log_file)
         startup_rng_entries = parse_rng_lines(startup_rng_lines)
         startup_actual_rng = sum(1 for e in startup_rng_entries if e[0] not in ('>', '<'))
-        startup_typ_grid = execute_dumpmap(session_name, dumpmap_file)
         if not replay_startup_from_keylog:
             clear_more_prompts(session_name)
 
@@ -397,7 +397,6 @@ def run_from_keylog(
                 'key': None,
                 'rngCalls': startup_actual_rng,
                 'rng': startup_rng_entries,
-                'typGrid': startup_typ_grid,
                 'screen': startup_screen,
                 'cursor': startup_cursor,
             }],
@@ -406,7 +405,6 @@ def run_from_keylog(
             session_data['regen'] = regen
 
         prev_rng_count = startup_rng_count
-        prev_depth = detect_screen_depth(startup_screen_lines)
         prev_depth_recorded = None  # Record depth only when it changes
         warned_tutorial_dnum_lag = False
 
@@ -456,15 +454,6 @@ def run_from_keylog(
             if depth != prev_depth_recorded:
                 step['depth'] = depth
                 prev_depth_recorded = depth
-
-            # For long manual traces, #dumpmap on every key is too expensive.
-            # Capture typGrid when depth changes, matching level-transition points.
-            if depth != prev_depth:
-                current_grid = execute_dumpmap(session_name, dumpmap_file)
-                clear_more_prompts(session_name)
-                if current_grid:
-                    step['typGrid'] = current_grid
-                prev_depth = depth
 
             session_data['steps'].append(step)
             prev_rng_count = rng_count
@@ -644,6 +633,7 @@ def main():
     replay_events, dropped = drop_leading_space_events(events, args.drop_leading_spaces)
     if dropped:
         print(f'Dropped leading space key events: {dropped}')
+    interactive = bool(metadata.get('interactive', False)) if metadata else False
     regen = {
         'mode': 'keylog',
         'subtype': 'manual',
@@ -655,6 +645,7 @@ def main():
         'wizard': wizard_enabled,
         'dropLeadingSpaces': dropped,
         'keyDelayMs': key_delay_ms,
+        'interactive': interactive,
     }
     run_from_keylog(
         replay_events,
@@ -669,6 +660,7 @@ def main():
         key_delay_ms,
         regen=regen,
         datetime_hint=str(metadata.get('datetime')) if (metadata and metadata.get('datetime')) else None,
+        interactive=interactive,
     )
 
 

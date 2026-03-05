@@ -135,6 +135,7 @@ def write_keylog_header(path, opts):
         "symset": opts.symset,
         "datetime": opts.datetime if opts.datetime else None,
         "keylogDelayMs": int(opts.keylog_delay_ms),
+        "interactive": bool(opts.interactive),
         "recordedAt": iso_utc,
         "captureMode": "direct-v3-live",
     }

@@ -789,16 +789,16 @@ def wait_for_game_ready(session, rng_log_file):
 
         rng_count, _ = read_rng_log(rng_log_file)
 
+        if '--More--' in content:
+            print(f'  [startup-{attempt}] rng={rng_count} --More--')
+            tmux_send_special(session, 'Space', 0.1)
+            continue
+
         if has_calendar_luck_warning(content) and harness_fixed_datetime():
             raise RuntimeError(
                 'Calendar luck warning appeared despite fixed datetime; '
                 'verify fixed datetime injection and C binary patch install.'
             )
-
-        if '--More--' in content:
-            print(f'  [startup-{attempt}] rng={rng_count} --More--')
-            tmux_send_special(session, 'Space', 0.1)
-            continue
 
         if 'keep the save file' in content or 'keep save' in content.lower():
             tmux_send(session, 'n', 0.1)

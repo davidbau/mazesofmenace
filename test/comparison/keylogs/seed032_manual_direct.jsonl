@@ -1,4 +1,4 @@
-{"type": "meta", "seed": 32, "role": "Wizard", "race": "human", "gender": "male", "align": "neutral", "name": "Tutes", "wizard": false, "tutorial": null, "symset": "DECgraphics", "datetime": "20000110090000", "keylogDelayMs": 0, "recordedAt": "2026-03-03T21:34:27.375861+00:00", "captureMode": "direct-v3-live"}
+{"type": "meta", "seed": 32, "role": "Wizard", "race": "human", "gender": "male", "align": "neutral", "name": "Tutes", "wizard": false, "tutorial": null, "symset": "DECgraphics", "datetime": "20000110090000", "keylogDelayMs": 0, "recordedAt": "2026-03-03T21:34:27.375861+00:00", "captureMode": "direct-v3-live", "interactive": true}
 {"seq":1,"key":83,"moves":0,"x":0,"y":0,"dnum":0,"dlevel":0,"in_getlin":0,"in_moveloop":0,"seed":"32"}
 {"seq":2,"key":97,"moves":0,"x":0,"y":0,"dnum":0,"dlevel":0,"in_getlin":0,"in_moveloop":0,"seed":"32"}
 {"seq":3,"key":114,"moves":0,"x":0,"y":0,"dnum":0,"dlevel":0,"in_getlin":0,"in_moveloop":0,"seed":"32"}
