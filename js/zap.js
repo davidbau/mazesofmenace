@@ -93,7 +93,7 @@ import { HOLE, TRAPDOOR } from './symbols.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng, deltrap } from './dungeon.js';
 import { discoverObject } from './discovery.js';
-import { u_teleport_mon, rloco } from './teleport.js';
+import { u_teleport_mon, rloco, enexto } from './teleport.js';
 import { boxlock } from './lock.js';
 import { cansee } from './vision.js';
 import {
@@ -607,6 +607,16 @@ export async function revive(obj, by_hero, map, player = null) {
   }
 
   if (!x && !y) return null;
+
+  // C ref: zap.c:960-963 — if occupied, try adjacent spot via enexto(),
+  // which consumes collect_coords RNG in teleport.c.
+  if (map?.monsterAt?.(x, y)) {
+    const xy = { x: 0, y: 0 };
+    if (enexto(xy, x, y, mptr, map, player)) {
+      x = xy.x;
+      y = xy.y;
+    }
+  }
 
   // C ref: zap.c:965-971 — norevive or eel-not-in-water check
   if (obj.norevive) return null;

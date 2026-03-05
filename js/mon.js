@@ -34,6 +34,7 @@ import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists } from './objdata.js';
 import { mondead as _monutil_mondead, unstuck, newsym, mpickobj, mdrop_obj } from './monutil.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
+import { rloc, tele_restrict } from './teleport.js';
 
 // ========================================================================
 // mfndpos flag constants — C ref: mfndpos.h
@@ -1269,9 +1270,8 @@ function minliquid_core(mon, map, player) {
     if (inlava) {
         if (!is_clinger(mdat) && !likes_lava(mdat)) {
             // Try teleport escape
-            if (can_teleport(mdat)) {
-                // C ref: rloc — simplified random relocation
-                // Not wiring full rloc yet
+            if (can_teleport(mdat) && !tele_restrict(mon, map)) {
+                if (rloc(mon, 0, map, player)) return 0;
             }
             if (!resists_fire(mon)) {
                 // Burns to death
@@ -1290,8 +1290,8 @@ function minliquid_core(mon, map, player) {
     } else if (inpool) {
         if (!is_clinger(mdat) && !cant_drown(mdat)) {
             // Try teleport escape
-            if (can_teleport(mdat)) {
-                // C ref: rloc — not wiring full rloc yet
+            if (can_teleport(mdat) && !tele_restrict(mon, map)) {
+                if (rloc(mon, 0, map, player)) return 0;
             }
             // Drowns
             mondied(mon, map, player);
