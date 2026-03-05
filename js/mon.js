@@ -20,7 +20,10 @@
 import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          POOL, ROOM, WATER, LAVAWALL, IRONBARS,
          D_CLOSED, D_LOCKED, D_BROKEN,
-         SHOPBASE, ROOMOFFSET, TEMPLE, NORMAL_SPEED, isok } from './const.js';
+         SHOPBASE, ROOMOFFSET, TEMPLE, NORMAL_SPEED, isok,
+         ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL,
+         NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
+         ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC } from './const.js';
 import { AMULET_OF_LIFE_SAVING, CORPSE } from './objects.js';
 import { which_armor } from './worn.js';
 import { W_AMUL, W_ARMG,
@@ -38,26 +41,6 @@ import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
 import { in_your_sanctuary } from './priest.js';
 
-// ========================================================================
-// mfndpos flag constants — C ref: mfndpos.h
-// ========================================================================
-export const ALLOW_MDISP  = 0x00001000;
-export const ALLOW_TRAPS  = 0x00020000;
-export const ALLOW_U      = 0x00040000;
-export const ALLOW_M      = 0x00080000;
-export const ALLOW_TM     = 0x00100000;
-export const ALLOW_ALL    = ALLOW_U | ALLOW_M | ALLOW_TM | ALLOW_TRAPS;
-export const NOTONL       = 0x00200000;
-export const OPENDOOR     = 0x00400000;
-export const UNLOCKDOOR   = 0x00800000;
-export const BUSTDOOR     = 0x01000000;
-export const ALLOW_ROCK   = 0x02000000;
-export const ALLOW_WALL   = 0x04000000;
-export const ALLOW_DIG    = 0x08000000;
-export const ALLOW_BARS   = 0x10000000;
-export const ALLOW_SANCT  = 0x20000000;
-export const ALLOW_SSM    = 0x40000000;
-export const NOGARLIC     = 0x80000000 | 0; // force signed 32-bit
 import { rn2, rnd, d, pushRngLogEntry, withRngTag } from './rng.js';
 import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC } from './objects.js';
 import { couldsee, m_cansee } from './vision.js';
