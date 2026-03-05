@@ -174,6 +174,40 @@ only import from `const.js`.
 
 Three sequential phases. Each phase keeps tests passing before moving to the next.
 
+## Autonomous Execution Plan (Issue #227)
+
+This section defines the required execution order and stop gates so work can be
+done autonomously without ambiguity.
+
+### Phase 0 — Preflight and baseline (required before code edits)
+
+1. Generate and check in an inventory of:
+   - top-level `register*()` calls,
+   - top-level `set*Context` / `set*Player` / similar wiring calls,
+   - gameplay modules exporting capitalized names outside the leaf set.
+2. Record baseline parity metrics using the current standard report command.
+3. Do not start structural rewrites until both inventory and baseline are
+   committed.
+
+Exit gate:
+- Inventory file(s) exist and are reviewed.
+- Baseline parity report is captured in commit notes/comments.
+
+### Phase 1 — Initialization fragility removal (Issue #227 core scope)
+
+1. Convert top-level cross-module registration/wiring to explicit init functions.
+2. Add a single startup orchestrator order where init functions are called.
+3. Remove top-level side-effect registration calls.
+
+Batching rule:
+- Land in small batches (1-3 wiring paths per commit), each with targeted test
+  evidence.
+
+Exit gate:
+- No remaining top-level `register*()` invocations in gameplay modules.
+- Startup order is explicit and documented.
+- Parity is no worse than baseline.
+
 ### Phase 1 — C Field Name Normalization
 
 Fix all non-C field name aliases across the JS codebase (see table below).
@@ -193,6 +227,14 @@ phase the rule is enforced: `const.js`, `objects.js`, `monsters.js`,
 Circular imports among all other files become safe — they only involve
 function bindings, which are resolved before any function executes.
 
+Batching rule:
+- Move constants by subsystem (for example: traps/symbols, dungeon, combat),
+  one subsystem per commit.
+
+Exit gate:
+- `rg "export (const|let|var) [A-Z]" js` only reports the four leaf files.
+- Parity is no worse than baseline.
+
 ### Phase 3 — File-per-C-Source Reorganization
 
 Move every function into a `.js` file whose name matches the `.c` file it was
@@ -201,6 +243,26 @@ file to put them in, and the autotranslator can target the right file directly.
 
 Circular imports between `.js` files are explicitly allowed and safe after
 Phase 2. No need for registration patterns or deferred imports.
+
+Batching rule:
+- Move functions file-by-file with no behavior edits in the same commit.
+- After each move commit, run targeted parity tests for touched areas.
+
+Exit gate:
+- Each gameplay function is in its corresponding C-source-named file.
+- Consolidation helper files listed below are either empty or deleted.
+- Parity is no worse than baseline.
+
+## Non-Negotiable Autonomy Rules
+
+1. No behavior changes mixed into pure-structure commits unless needed to keep
+   tests passing; if needed, isolate the behavior fix in a separate commit.
+2. Never proceed to the next phase with unresolved regressions.
+3. Keep `CURRENT_WORK.md` updated with:
+   - active phase/subphase,
+   - current blockers,
+   - next concrete commit target.
+4. Push validated increments immediately; do not accumulate large local WIP.
 
 **C source files already matched 1:1 in JS** (no work needed):
 `apply`, `artifact`, `ball`, `bones`, `botl`, `cmd`, `decl`, `detect`, `dig`,

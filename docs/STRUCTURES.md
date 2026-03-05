@@ -121,17 +121,13 @@ from each other. The fix is to separate these concerns:
 
 ### Fix: constants-only leaf modules
 
-Move shared constants (trap types, symbol values, etc.) into modules that import
-**nothing** from the game engine. These become the roots of the import DAG.
+Use the `docs/MODULES.md` leaf-file architecture as the source of truth:
+`version.js`, `const.js`, `objects.js`, `monsters.js` (plus `game.js` as the
+state leaf defined in this doc). Do not introduce alternative constant files
+(`constants.js`, `trapconst.js`, etc.) in parallel.
 
-Already done:
-- `config.js` — monster/object/armor constants
-- `trap.js` now exports `TT_*` constants (but also imports from `hack.js`, `vision.js` — that's the problem)
-
-Needed: extract constants from modules that participate in cycles. For example,
-`TT_*` constants should live in a zero-dependency `constants.js` or `trapconst.js`
-so that `vision.js`, `hack.js`, `trap.js`, `insight.js` etc. all import from
-there without creating cycles.
+All capitalized constants are consolidated into those leaf files; gameplay
+modules import constants from leaf files only.
 
 ### Fix: game object as the shared root
 
@@ -144,11 +140,11 @@ gameplay modules.
 This breaks the cycle pattern: instead of `A imports from B imports from A`,
 both `A` and `B` import `game` from the same zero-dep root.
 
-### Fix: deferred imports for unavoidable cycles
+### Fix: runtime wiring discipline
 
-Where a cycle is truly unavoidable (two modules need each other's functions),
-use a lazy function-level import or a registration pattern rather than a
-top-level `import` statement.
+Avoid top-level side-effect wiring and `register*()`-style initialization
+patterns. Cross-module wiring belongs in explicit init routines orchestrated by
+startup order (see Issue #227), after modules are loaded.
 
 ## Work Plan
 

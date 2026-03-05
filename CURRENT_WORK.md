@@ -1,83 +1,43 @@
-# Current Work: Gameplay Session Failure Analysis
+# Current Work: Issue #227 Execution
 
-**Baseline**: 3206/3234 tests pass (20 gameplay failures out of 34 sessions)
-**Branch**: main
-**Date**: 2026-03-04
+**Issue**: #227 — explicit init phase / circular-import fragility removal  
+**Branch**: main  
+**Date**: 2026-03-05  
+**Owner**: agent:game
 
-## Recent Fixes (this session)
-- trap.js: tx/ty coordinate standardization
-- trap.js: seetrap(), squeak sound messages
-- do_name.js: NUM_MGENDERS, pmname(), mon_pmname() auto-translation bugs
-- pline.js: set_msg_xy() fix
-- dogmove.js: droppables wielded-tool handling, linked-list inventories
-- monmove.js: skip dochug for immobile/waiting monsters
-- makemon.js: S_LEPRECHAUN always starts sleeping (C ref: makemon.c:1325)
-- makemon.js: startSleeping for S_NYMPH, S_JABBERWOCK, ndemon, wumpus, eel, long worm
-- makemon.js: STRAT_WAITFORU/STRAT_CLOSE/STRAT_APPEARMSG from mflags3 in finalize_creation
-- makemon.js: MM_NOWAIT constant defined (0x00000002)
-- monmove.js: dochug sleep handling — continue after wakeup instead of always returning
-- monmove.js: STRAT_WAITFORU clearing when monster can see player or is hurt
-- mon.js: check_gear_next_turn() bug fix: was 0x80000000, now correct 0x20000000 (I_SPECIAL)
-- mon.js: I_SPECIAL check in movemon — monster spends turn equipping picked-up gear
-- monmove.js: check_gear_next_turn() after monster floor pickup in maybeMonsterPickStuff
+## Active Phase
 
-**Fixed this session**: seed312 (goblin picks up orcish helm at step 21, spends turn equipping at step 23)
+Phase 0 (preflight and baseline), per `docs/MODULES.md` Autonomous Execution Plan.
 
-**Fixed by upstream pull** (seed303, seed304, seed307, seed310, seed321):
-- seed307: session rerecorded with updated fixture
-- Others: upstream parity fixes
+## Completed This Turn
 
-**Screen fixes (no pass count change)**: tutorial menu now renders at column 21 to match C:
-- chargen.js: added blank + OPTIONS hint lines, removed leading space from prompt (C ref: options.c)
-- windows.js buildMenuLines: id=null items (add_menu_str equivalent) render as raw text; added (end) footer
-- windows.js end_menu: only auto-assign selector letters to selectable items (id !== null)
+1. Audited `docs/MODULES.md` and `docs/STRUCTURES.md` for ambiguity/conflicts.
+2. Resolved contradictory guidance in `docs/STRUCTURES.md`:
+   - removed alternate `constants.js` / `trapconst.js` direction,
+   - aligned to leaf architecture (`version.js`, `const.js`, `objects.js`, `monsters.js`, `game.js`),
+   - replaced deferred-import guidance with explicit init-phase wiring discipline.
+3. Added explicit autonomous execution gates to `docs/MODULES.md`:
+   - Phase 0 preflight/baseline requirements,
+   - Phase 1 init-fragility scope and gates,
+   - batching rules and stop conditions for Phases 2/3,
+   - non-negotiable autonomy rules for commit hygiene and regression handling.
 
-## Current Failure Categorization
+## Next Commit Target
 
-### Group A: Dog movement chcnt divergences (~3 sessions)
-rn2(1)=0 in JS (chcnt=0) vs rn2(3)=2 in C (chcnt=2) in dog_move position loop.
-JS evaluates fewer equidistant positions than C.
+Phase 0 inventory artifact(s):
 
-Sessions: seed031, seed301, seed306
+1. `register*()` and top-level wiring call inventory
+2. capitalized-export-outside-leaf inventory
+3. baseline parity snapshot reference
 
-seed031 diverges at step=41, index=7347:
-  JS: rn2(1)=0 @ dochug (monmove.js:847)
-  C:  rn2(3)=2 @ dog_move(dogmove.c:1302) >mfndpos >dog_move >m_move
-  Event: goal=(70,9) in JS vs goal=(71,10) in C
+This is required before structural rewrites begin.
 
-### Group B: Do_attack / combat divergences (1 session)
-JS reaches dochug where C reaches do_attack (uhitm.c:473) — combat path difference.
+## Blockers
 
-Sessions: seed308
+None currently.
 
-### Group C: Monster movement / mcalcmove divergences (3 sessions)
-Sessions: seed032, seed033, seed311
+## Guardrails
 
-seed032 at step=19: rn2(15) @ dochug vs rnd(2) @ next_ident (mkobj.c:522) - trap missile
-seed033 at step=69: rnl(20) @ rhack vs rn2(12) @ mcalcmove(mon.c:1146)
-seed311 at step=15: RNG divergence
-
-### Group D: Level generation / sp_lev divergences (12 sessions)
-Sessions: seed322-seed333 (wizard-mode level gen)
-
-seed322 diverges at step=1. These are likely sp_lev/themerms differences.
-
-### Group E: Other (1 session)
-seed302
-
-## Known Non-Gameplay Failures (pre-existing in upstream HEAD)
-
-### Map tests: 4 failures (error:4)
-seed306_map, seed306_maps_c, seed72_map, seed72_maps_c — all fail with
-`_getShopItem is not a function`. Pre-existing issue in committed HEAD.
-Root cause: circular import timing between makemon.js and shknam.js.
-
-## Next Steps
-
-1. Investigate dog_goal divergence in seed031 at step=41
-   - JS goal=(70,9) vs C goal=(71,10)
-   - Check dog_goal_obj selection and apport scoring
-2. Investigate seed032/033/311 mcalcmove divergences
-3. Investigate the wizard-mode level gen sessions (322+)
-4. Investigate seed308 combat divergence
-5. Fix _getShopItem null-safety in makemon.js set_mimic_sym (low priority)
+1. No mixed structural+behavior changes in one commit unless needed to keep tests passing.
+2. No progression to next phase with unresolved regressions.
+3. Push validated increments immediately.
