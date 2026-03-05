@@ -14,6 +14,7 @@ import {
     D_CLOSED, D_LOCKED,
     NO_TRAP, TELEP_TRAP, LEVEL_TELEP, VIBRATING_SQUARE,
     MAGIC_PORTAL,
+    HOLE, TRAPDOOR,
     is_pit, is_hole,
 } from './config.js';
 import { BOULDER } from './objects.js';
@@ -513,10 +514,10 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight, map, play
     if (mtmp === player?.ustuck) return 0;
     if (!teleport_pet(mtmp, force_it)) return 0;
 
-    // Minimal C-faithful monster migration behavior:
-    // magic portals can remove monsters from the current level.
-    // (C ref: teleport.c mlevel_tele_trap() -> migrate_to_level() -> Trap_Moved_Mon)
-    if (tt === MAGIC_PORTAL) {
+    // C ref: teleport.c mlevel_tele_trap() -> migrate_to_level() -> Trap_Moved_Mon.
+    // For gameplay parity, treat all level-changing trap variants as migration
+    // off the current level.
+    if (tt === MAGIC_PORTAL || tt === LEVEL_TELEP || tt === HOLE || tt === TRAPDOOR) {
         if (in_sight) {
             const mname = (typeof mtmp?.name === 'string' && mtmp.name.length > 0)
                 ? mtmp.name

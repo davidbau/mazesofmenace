@@ -112,6 +112,11 @@ import { mon_wield_item, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './wea
 const STRAT_WAITFORU = 0x20000000;
 const STRAT_CLOSE = 0x10000000;
 const STRAT_WAITMASK = (STRAT_CLOSE | STRAT_WAITFORU);
+const MMOVE_NOTHING = 0;
+const MMOVE_MOVED = 1;
+const MMOVE_DIED = 2;
+const MMOVE_DONE = 3;
+const MMOVE_NOMOVES = 4;
 
 // Re-export mthrowu.c functions
 import { hasWeaponAttack, maybeMonsterWieldBeforeAttack, linedUpToPlayer } from './mthrowu.js';
@@ -1119,12 +1124,13 @@ async function dochug(mon, map, player, display, fov, game = null) {
     // Phase 3 movement + optional Phase 4 attack
     // C ref: monmove.c:900-963 — movement dispatch and status tracking
     let mmoved = false;
+    let panicattk = false;
     let phase4Allowed = !phase3Cond;
-    let moveDone = false; // tracks MMOVE_DONE equivalent
+    let moveStatus = MMOVE_NOTHING;
     if (phase3Cond) {
         if (mon.meating) {
             mon.meating--;
-            moveDone = true; // eating uses up the action (MMOVE_DONE)
+            moveStatus = MMOVE_DONE; // eating uses up the action
         } else if (mon.tame) {
             const omx = mon.mx, omy = mon.my;
             const petMoveStatus = await dog_move(mon, map, player, display, fov, false, game);
@@ -1132,6 +1138,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
             if (petMoveStatus === 2 || mon.dead) {
                 return;
             }
+            moveStatus = Number.isInteger(petMoveStatus) ? petMoveStatus : MMOVE_NOTHING;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                 await m_postmove_effect(mon, map, player, game, omx, omy);
                 const trapResult = await mintrap_postmove(mon, map, player, display, fov);
@@ -1139,6 +1146,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     return;
                 }
                 mmoved = true;
+                moveStatus = MMOVE_MOVED;
             }
         } else {
             // C ref: monmove.c:1747 — pre-movement mtrapped check.
@@ -1151,64 +1159,60 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 if (mon.dead) return; // monster died in trap
                 if (mon.mtrapped) {
                     trappedNoMove = true; // MMOVE_NOTHING path (no movement attempt)
+                    moveStatus = MMOVE_NOTHING;
                 }
             }
             let trapDied = false;
             if (!trappedNoMove) {
                 const omx = mon.mx, omy = mon.my;
-                await m_move(mon, map, player, display, fov);
-                moveDone = !!mon._mMoveDone;
+                moveStatus = await m_move(mon, map, player, display, fov);
                 if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
                     await m_postmove_effect(mon, map, player, game, omx, omy);
                     const trapResult = await mintrap_postmove(mon, map, player, display, fov);
                     if (trapResult === 2 || trapResult === 3) {
                         trapDied = true;
+                        moveStatus = MMOVE_DIED;
                     } else {
                         mmoved = true;
+                        moveStatus = MMOVE_MOVED;
                     }
                 }
                 if (!trapDied && !mon.dead
                     && mon.mcanmove !== false
-                    && (mmoved || moveDone)
+                    && (mmoved || moveStatus === MMOVE_DONE)
                     && map.objectsAt(mon.mx, mon.my).length > 0
                     && await maybeMonsterPickStuff(mon, map, player, display, fov)) {
-                    // C ref: postmov() sets mmoved = MMOVE_DONE when mpickstuff()
-                    // succeeds, which suppresses Phase 4 attacks in dochug().
-                    moveDone = true;
+                    // C ref: postmov() sets status = MMOVE_DONE when mpickstuff() succeeds.
+                    moveStatus = MMOVE_DONE;
                     mmoved = false;
-                } else if (moveDone) {
+                } else if (moveStatus === MMOVE_DONE) {
                     mmoved = false;
                 }
             }
             if (trapDied) return;
         }
         // C ref: monmove.c:919 — recalculate distfleeck after m_move
-        if (!mon.dead) {
+        if (moveStatus !== MMOVE_DIED && !mon.dead) {
             ({ inrange, nearby, scared } = await distfleeck(mon, map, player, display, fov));
         }
 
-        // C ref: monmove.c:949-953 — after movement, ranged attack check
-        if (mmoved && !mon.dead) {
-            const targetX2 = Number.isInteger(mon.mux) ? mon.mux : player.x;
-            const targetY2 = Number.isInteger(mon.muy) ? mon.muy : player.y;
-            const nearby2 = monnear(mon, targetX2, targetY2);
-            if (!nearby2 && hasWeaponAttack(mon)) {
-                // C: break from switch to reach Phase 4 (ranged)
-            }
+        if (moveStatus === MMOVE_DIED || mon.dead) {
+            return;
+        }
+
+        if (moveStatus === MMOVE_NOMOVES && scared) {
+            panicattk = true;
         }
 
         // C ref: monmove.c:970 — status != MMOVE_DONE allows attack after movement.
-        // In C, monsters can move AND attack on the same turn.
-        if (!moveDone && !mon.dead) {
-            phase4Allowed = true;
-        }
+        phase4Allowed = moveStatus !== MMOVE_DONE && !mon.dead;
     }
 
     // Phase 4: Standard Attacks
     // cf. mhitu.c mattacku() — both melee and ranged attacks are dispatched
     // through the attack table.  range2 determines which attack types fire.
     if (phase4Allowed && !mon.peaceful && !mon.flee && !mon.dead) {
-        if (inrange) {
+        if (inrange || panicattk) {
             if (nearby) {
                 // C ref: monmove.c:938-959 — MMOVE_MOVED returns 0 (skip Phase 4
                 // melee), but MMOVE_NOTHING/MMOVE_NOMOVES fall through to Phase 4.
@@ -1432,11 +1436,10 @@ function m_digweapon_check(mon, nix, niy, map) {
 }
 
 async function m_move(mon, map, player, display = null, fov = null) {
-    mon._mMoveDone = false;
     if (mon.isshk) {
         const omx = mon.mx, omy = mon.my;
         shk_move(mon, map, player);
-        return mon.mx !== omx || mon.my !== omy;
+        return (mon.mx !== omx || mon.my !== omy) ? MMOVE_MOVED : MMOVE_NOTHING;
     }
     if (mon.ispriest) {
         if (mon.epri && mon.epri.shrpos) {
@@ -1444,7 +1447,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
             const ggx = mon.epri.shrpos.x + (rn2(3) - 1);
             const ggy = mon.epri.shrpos.y + (rn2(3) - 1);
             move_special(mon, map, player, false, 1, false, true, ggx, ggy);
-            return mon.mx !== omx || mon.my !== omy;
+            return (mon.mx !== omx || mon.my !== omy) ? MMOVE_MOVED : MMOVE_NOTHING;
         }
     }
 
@@ -1519,8 +1522,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
             `to=(${ggx},${ggy})`,
             `appr=${apprBeforeSearch}->${appr}`);
         if (searchState.done) {
-            mon._mMoveDone = true;
-            return false;
+            return MMOVE_DONE;
         }
     }
 
@@ -1571,11 +1573,8 @@ async function m_move(mon, map, player, display = null, fov = null) {
         return false;
     };
     if (cnt === 0) {
-        if (tryUnicornFallbackTeleport()) return true;
-        // C m_move() returns MMOVE_DONE when no legal moves exist.
-        // Preserve that status so dochug() does not grant a Phase 4 attack.
-        mon._mMoveDone = true;
-        return false;
+        if (tryUnicornFallbackTeleport()) return MMOVE_MOVED;
+        return MMOVE_NOMOVES;
     }
 
     let nix = omx, niy = omy;
@@ -1643,15 +1642,14 @@ async function m_move(mon, map, player, display = null, fov = null) {
             mmoved = true;
         }
     }
-    if (!mmoved && tryUnicornFallbackTeleport()) return true;
+    if (!mmoved && tryUnicornFallbackTeleport()) return MMOVE_MOVED;
 
     if (mmoved && chosenIdx >= 0) {
         const chosen = positions[chosenIdx];
         const attacksMonster = !!chosen.allowM
             || (nix === (mon.mux ?? -1) && niy === (mon.muy ?? -1));
-        if (attacksMonster && await m_move_aggress(mon, map, player, nix, niy, display, fov)) {
-            mon._mMoveDone = true;
-            return false;
+        if (attacksMonster) {
+            return await m_move_aggress(mon, map, player, nix, niy, display, fov);
         }
     }
 
@@ -1659,7 +1657,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
         // C ref: monmove.c:2026 — m_digweapon_check: if tunneling monster needs to wield
         // its pick before digging, it wields it and returns MMOVE_DONE (no movement this turn).
         if ((allowflags & ALLOW_DIG) && m_digweapon_check(mon, nix, niy, map))
-            return false; // monster wields pick but doesn't move — MMOVE_DONE
+            return MMOVE_DONE;
 
         // C ref: monmove.c:2065 — mon_track_add(mtmp, omx, omy)
         mon_track_add(mon, omx, omy);
@@ -1678,8 +1676,8 @@ async function m_move(mon, map, player, display = null, fov = null) {
         if ((allowflags & ALLOW_DIG) && may_dig(nix, niy, map)) {
             const typBefore = map.at(nix, niy)?.typ;
             const monsterDied = mdig_tunnel(mon, map, player);
-            if (monsterDied || mon.dead) return false;
-            if (typBefore != null && IS_OBSTRUCTED(typBefore)) return true; // MMOVE_DIED
+            if (monsterDied || mon.dead) return MMOVE_DIED;
+            if (typBefore != null && IS_OBSTRUCTED(typBefore)) return MMOVE_DIED;
         }
 
         const here = map.at(mon.mx, mon.my);
@@ -1699,9 +1697,9 @@ async function m_move(mon, map, player, display = null, fov = null) {
                 }
             }
         }
-        return true;
+        return MMOVE_MOVED;
     }
-    return false;
+    return MMOVE_NOTHING;
 }
 
 // ========================================================================
@@ -1710,7 +1708,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
 // C-faithful: calls shared mattackm for full multi-attack resolution.
 export async function m_move_aggress(mon, map, player, nx, ny, display = null, fov = null) {
     const target = map.monsterAt(nx, ny);
-    if (!target || target === mon || target.dead) return false;
+    if (!target || target === mon || target.dead) return MMOVE_DONE;
 
     const attackerVisible = canSpotMonsterForMap(mon, map, player, fov);
     const defenderVisible = canSpotMonsterForMap(target, map, player, fov);
@@ -1730,7 +1728,7 @@ export async function m_move_aggress(mon, map, player, nx, ny, display = null, f
 
     // C ref: monmove.c:2104 — aggressor died
     if ((mstatus & M_ATTK_AGR_DIED) || mon.dead || (mon.mhp != null && mon.mhp <= 0))
-        return true;
+        return MMOVE_DIED;
 
     // C ref: monmove.c:2107-2119 — retaliation
     if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
@@ -1741,10 +1739,10 @@ export async function m_move_aggress(mon, map, player, nx, ny, display = null, f
             target.movement = 0;
         const rctx = { ...ctx, agrVisible: defenderVisible, defVisible: attackerVisible };
         const rstatus = await mattackm(target, mon, display, vis, map, rctx);
-        if (rstatus & M_ATTK_DEF_DIED) return true;
+        if (rstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
     }
 
-    return true;
+    return MMOVE_DONE;
 }
 
 // ========================================================================

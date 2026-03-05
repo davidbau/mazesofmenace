@@ -1821,3 +1821,21 @@ hard-won wisdom:
   - RNG matched `6041 -> 7901`,
   - screens matched `106 -> 166`,
   - events matched `858 -> 2134`.
+
+### Monster trapdoor migration + MMOVE status handling (2026-03-05)
+
+- `seed301_archeologist_selfplay200_gameplay` had a late drift where C returned
+  `m_move=MMOVE_DIED` after stepping on a trapdoor, but JS treated the monster as
+  still on-level and continued `distfleeck`/later movement.
+- Two C-faithful fixes were required:
+  - `teleport.js:mlevel_tele_trap()` now migrates monsters off-level for
+    level-changing trap variants (`LEVEL_TELEP`, `HOLE`, `TRAPDOOR`,
+    `MAGIC_PORTAL`), not just portals.
+  - `monmove.js` now carries explicit `MMOVE_*` status codes through `m_move`,
+    `m_move_aggress`, and `dochug`, and gates post-move `distfleeck`/phase-4
+    attacks from status (not boolean movement side effects).
+- Practical effect:
+  - seed301 improved from `11350/11596` RNG matched to `11578/11586`, and
+    events from `1953/2110` to `2057/2061`.
+  - first remaining drift moved from mid-turn post-move behavior to a narrower
+    movement scheduling/state difference.

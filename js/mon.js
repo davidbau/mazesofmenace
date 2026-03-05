@@ -1485,7 +1485,10 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
     if (game) game._suppressMonsterHitMessagesThisTurn = false;
     if (map) map._heardDistantNoiseThisTurn = false;
     let somebodyCanMove = false;
-    for (const mon of map.monsters) {
+    // C ref: mon.c movemon() caches next monster pointer before dochug(),
+    // so list mutations (death/migration) do not skip subsequent turns.
+    // Iterate a snapshot for equivalent stability under JS array mutation.
+    for (const mon of [...map.monsters]) {
         if (mon.dead) continue;
         // C ref: mon.c:1230 — m_everyturn_effect called for ALL alive monsters before movement check
         if (everyturnEffect) await everyturnEffect(mon, map, player, game);
