@@ -106,6 +106,7 @@ import {
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
 import { mpickobj, dist2, BOLT_LIM, newsym } from './monutil.js';
 import { canseemon } from './mondata.js';
+import { senseMonsterForMap } from './monutil.js';
 import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';
@@ -152,6 +153,12 @@ function playerHasAmulet(map) {
 
 function sgn(x) {
     return x > 0 ? 1 : (x < 0 ? -1 : 0);
+}
+
+function sensemon(mon, player = null, map = null) {
+    if (!player) return false;
+    const levelMap = map || player?.map || null;
+    return senseMonsterForMap(mon, levelMap, player);
 }
 
 function race_peaceful(ptr, playerCtx) {
@@ -1595,7 +1602,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
         } else if (mon.mndx === PM_FOG_CLOUD && mon.mhp === mon.mhpmax) {
             // C: fog cloud at full HP — consume rn2(4); if zero AND unseen/far → new shape
             if (rn2(4) !== 0) return false;
-            const seen = canseemon(mon, player, fov);
+            const seen = canseemon(mon, player, fov, map);
             const distSq = player ? dist2(player.x, player.y, mon.mx, mon.my) : 999;
             if (seen && distSq <= BOLT_LIM * BOLT_LIM) return false;
             // pickvampshape selects new form; use apply_newcham_direct to avoid double-calling
@@ -1608,7 +1615,7 @@ export function runtimeDecideToShapeshift(mon, depth = 1, map = null, player = n
         if (mon.mhp >= Math.floor(9 * mon.mhpmax / 10)) {
             // C: high HP — consume rn2(6); if zero AND unseen/far → shift
             if (rn2(6) !== 0) return false;
-            const seen = canseemon(mon, player, fov);
+            const seen = canseemon(mon, player, fov, map);
             const distSq = player ? dist2(player.x, player.y, mon.mx, mon.my) : 999;
             if (seen && distSq <= BOLT_LIM * BOLT_LIM) return false;
             return apply_newcham_from_base(mon, chamMndx, depth, map);
@@ -2397,7 +2404,8 @@ export function create_critters(cnt, mptr, neverask, player) {
     if ((mon = makemon(mptr, x, y, NO_MM_FLAGS)) === 0) {
       continue;
     }
-    if ((canseemon(mon) && (M_AP_TYPE(mon) === M_AP_NOTHING || M_AP_TYPE(mon) === M_AP_MONSTER)) || sensemon(mon)) known = true;
+    if ((canseemon(mon, player, null, player?.map || null) && (M_AP_TYPE(mon) === M_AP_NOTHING || M_AP_TYPE(mon) === M_AP_MONSTER))
+        || sensemon(mon, player, player?.map || null)) known = true;
   }
   return known;
 }
@@ -2541,7 +2549,8 @@ export function bagotricks(bag, tipping, seencount, player) {
       mtmp = makemon( 0, player.x, player.y, NO_MM_FLAGS);
       if (mtmp) {
         ++moncount;
-        if ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING || M_AP_TYPE(mtmp) === M_AP_MONSTER)) || sensemon(mtmp)) ++seecount;
+        if ((canseemon(mtmp, player, null, player?.map || null) && (M_AP_TYPE(mtmp) === M_AP_NOTHING || M_AP_TYPE(mtmp) === M_AP_MONSTER))
+            || sensemon(mtmp, player, player?.map || null)) ++seecount;
       }
     } while (--creatcnt > 0);
     if (seecount) {
