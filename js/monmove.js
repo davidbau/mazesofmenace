@@ -57,7 +57,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
          PM_HEZROU, PM_STEAM_VORTEX, PM_FOG_CLOUD, PM_GIANT_SPIDER,
          AT_WEAP,
-         S_MIMIC, S_GHOST, S_BAT, S_LIGHT,
+         S_MIMIC, S_GHOST, S_BAT, S_LIGHT, S_EEL,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
          M1_WALLWALK, M1_AMORPHOUS, M1_UNSOLID,
          M2_COLLECT, M2_STRONG, M2_ROCKTHROW, M2_GREEDY, M2_JEWELS, M2_MAGIC,
@@ -90,6 +90,7 @@ export { initrack, settrack };
 import { movemon as _movemon, mfndpos, handleHiderPremove,
          onscary,
          corpse_chance,
+         hideunder,
          check_gear_next_turn,
          ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL,
          NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
@@ -1704,6 +1705,17 @@ async function m_move(mon, map, player, display = null, fov = null) {
 
         // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
         if (!mon.dead) await maybe_spin_web(mon, map);
+
+        // C ref: monmove.c:1707-1714 — refresh hide-under state for hiders/eels
+        // after movement. This can clear stale mundetected when a hides-under
+        // monster is no longer actually hidden.
+        const mdat2 = mon.type || {};
+        if (hides_under(mdat2) || mdat2.mlet === S_EEL) {
+            if (mon.mundetected || (!helpless(mon) && rn2(5))) {
+                hideunder(mon, map, player, fov);
+            }
+            newsym(mon.mx, mon.my);
+        }
 
         // C ref: postmov() line 1658 — if can_tunnel && may_dig, call mdig_tunnel.
         // mdig_tunnel always consumes rnd(12), even for non-obstructed terrain (returns FALSE).
