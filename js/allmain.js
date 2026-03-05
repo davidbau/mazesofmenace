@@ -474,6 +474,19 @@ export async function run_command(game, ch, opts = {}) {
     // called (normal combat/movement turns without prompts).
     if (game.display && game.display._pendingMore) {
         game.display._clearMore();
+        if (game._pendingDeferredTurnAfterMore) {
+            if ((game.u || game.player)?.utotype) {
+                await deferred_goto((game.u || game.player), game);
+            }
+            if (!skipTurnEnd) {
+                const coreOpts = {};
+                if (skipMonsterMove) coreOpts.skipMonsterMove = true;
+                await moveloop_core(game, coreOpts);
+                see_monsters(game.map);
+                if (onTimedTurn) await onTimedTurn();
+            }
+            game._pendingDeferredTurnAfterMore = false;
+        }
         return { tookTime: false };
     }
 
@@ -590,7 +603,7 @@ export async function run_command(game, ch, opts = {}) {
     game.advanceRunTurn = null;
 
     // Post-rhack processing: moveloop_core, occupation, multi-repeat
-    if (result && result.tookTime && !skipTurnEnd) {
+    if (result && result.tookTime && !skipTurnEnd && !game._pendingDeferredTurnAfterMore) {
         await advanceTimedTurn();
         if (typeof result.onAfterTurn === 'function') {
             await result.onAfterTurn(game);
@@ -684,6 +697,7 @@ export async function execute_repeat_command(game, opts = {}) {
 export async function maybe_deferred_goto_after_rhack(game, result, opts = {}) {
     const { skipTurnEnd = false } = opts;
     if (!game?.player?.utotype) return;
+    if (game.display?._pendingMore) return;
     if (!result || skipTurnEnd || result.prompt) {
         await deferred_goto((game.u || game.player), game);
         return;

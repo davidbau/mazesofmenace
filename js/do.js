@@ -6,7 +6,7 @@ import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
          PM_TOURIST, I_SPECIAL, TIMEOUT } from './config.js';
-import { rn1, rn2, rnd, d } from './rng.js';
+import { rn1, rn2, rnd, c_d } from './rng.js';
 import { deltrap, enexto, mklev, assign_level, resolveBranchDestinationForStair } from './dungeon.js';
 import { depth as dungeonDepth } from './dungeon.js';
 import { mon_arrive } from './dog.js';
@@ -900,6 +900,8 @@ export function schedule_goto(player, tolev, utotype_flags, pre_msg, post_msg) {
 export async function deferred_goto(player, game) {
     if (!player.utolev || !player.utotype) return;
     const dest = player.utolev;
+    const typmask = Number(player.utotype) || 0;
+    const fromDepth = Number(player.dungeonLevel) || 1;
     if (dest !== player.dungeonLevel) {
         if (player.dfr_pre_msg)
             await pline(player.dfr_pre_msg);
@@ -910,6 +912,18 @@ export async function deferred_goto(player, game) {
             await pline(player.dfr_post_msg);
         // In C this calls goto_level(); in JS we use changeLevel()
         await game.changeLevel(dest, 'teleport');
+        // C ref: do.c goto_level(falling) damage uses d(max(dist,1),6) from
+        // rnd.c (composite d() log entry).
+        if (typmask & 0x02) {
+            const dist = Math.max(1, Math.abs((Number(dest) || fromDepth) - fromDepth));
+            const dmg = c_d(dist, 6);
+            if (typeof player.takeDamage === 'function') {
+                player.takeDamage(Math.max(0, dmg), 'falling down a mine shaft');
+            } else {
+                const hp = Number(player.uhp);
+                if (Number.isFinite(hp)) player.uhp = Math.max(0, hp - Math.max(0, dmg));
+            }
+        }
     }
     player.utotype = 0;
     player.dfr_pre_msg = null;

@@ -1801,3 +1801,23 @@ hard-won wisdom:
   - seed302 improved substantially (`rng 2922 -> 6041`, `screens 44 -> 105`,
     `events 715 -> 858`) and the first drift moved past the trapdoor boundary.
   - seed303 canary became fully green under the same ordering fix.
+
+### Trapdoor `--More--` must defer post-turn processing to dismissal key (2026-03-05)
+
+- After initial trapdoor fixes, seed302 still had a step-boundary skew:
+  step 45 over-consumed RNG/events and step 46 had none.
+- Root cause: JS was still running deferred level transition/turn processing in
+  the trap-trigger step, while C effectively blocks at `--More--` and resumes
+  that work on the dismissal key step.
+- Fix shape:
+  - mark trapdoor/hole fall as `--More--`-deferred in `domove`,
+  - when `run_command` sees a key that only dismisses pending `--More--`, run
+    deferred level transition and one timed turn there (instead of on the prior
+    step),
+  - use C-style falling transition flag and C-style composite dice roll (`c_d`)
+    for shaft damage RNG signature.
+- Measured impact on `seed302_barbarian_selfplay200_gameplay`:
+  - first divergence moved from step `46` to step `126`,
+  - RNG matched `6041 -> 7901`,
+  - screens matched `106 -> 166`,
+  - events matched `858 -> 2134`.

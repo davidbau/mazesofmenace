@@ -964,6 +964,7 @@ export async function domove_core(dir, player, map, display, game) {
             if (display && typeof display.renderMoreMarker === 'function') {
                 display.renderMoreMarker();
                 display._pendingMore = true;
+                if (game) game._pendingDeferredTurnAfterMore = true;
             }
             const currentDepth = Number.isInteger(player?.dungeonLevel)
                 ? player.dungeonLevel
@@ -971,7 +972,9 @@ export async function domove_core(dir, player, map, display, game) {
             const destDepth = Number.isInteger(trap?.dst?.dlevel)
                 ? trap.dst.dlevel
                 : (currentDepth + 1);
-            schedule_goto(player, destDepth, 0, null, null);
+            // C ref: trap.c fall_through() schedules deferred level change with
+            // UTOTYPE_FALLING so goto_level applies fall-damage semantics.
+            schedule_goto(player, destDepth, 0x02, null, null);
         }
     }
 
