@@ -49,6 +49,7 @@ function resolveGameplayComparableLines(plainLines, ansiLines, session) {
 function compareGameplayScreens(actualLines, expectedLines, session, {
     actualAnsi = null,
     expectedAnsi = null,
+    stepIndex = -1,
 } = {}) {
     // If the session has no ANSI data, force plain-text comparison on both
     // sides so embedded ANSI in JS screen strings doesn't cause mismatches.
@@ -58,6 +59,10 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
     const highScore = isHighScoreScreen(comparableExpected) || isHighScoreScreen(comparableActual);
     for (let row = 0; row < Math.min(comparableActual.length, comparableExpected.length); row++) {
         if (isStartupToplineAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
+        } else if (row === 0 && stepIndex === 0
+                   && isFirstStepWelcomeAlias(comparableActual[row], comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
         } else if (highScore && isHighScoreRow(comparableExpected[row])) {
@@ -70,7 +75,7 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
     return compareScreenLines(normalizedActual, normalizedExpected);
 }
 
-function compareGameplayColors(actualAnsiInput, expectedAnsiInput) {
+function compareGameplayColors(actualAnsiInput, expectedAnsiInput, { stepIndex = -1 } = {}) {
     // If session has no ANSI data there's nothing to compare for colors.
     if (!Array.isArray(expectedAnsiInput) || expectedAnsiInput.length === 0) {
         return { matched: 0, total: 0, match: true, diffs: [], firstDiff: null };
@@ -85,6 +90,10 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (isStartupToplineAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (row === 0 && stepIndex === 0
+                   && isFirstStepWelcomeAlias(actualPlain[row], expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (highScore && isHighScoreRow(expectedPlain[row])) {
@@ -177,9 +186,25 @@ function isWelcomeTopline(line) {
     return /^NetHack Royal Jelly -- Welcome to the Mazes of Menace! \[WIZARD MODE\] \(seed:\d+\)$/.test(text);
 }
 
+// C ref: moveloop_preamble hello() greeting — "Hello wizard, welcome to
+// NetHack!  You are a ..." or role-specific greetings like "Velkommen".
+function isWelcomeGreeting(line) {
+    const text = String(line || '').replace(/ +$/, '').trimStart();
+    return /.*, welcome to NetHack!  You are a/.test(text);
+}
+
 function isStartupToplineAlias(actualLine, expectedLine) {
     return (isHarnessMapDumpLine(actualLine) && isWelcomeTopline(expectedLine))
         || (isHarnessMapDumpLine(expectedLine) && isWelcomeTopline(actualLine));
+}
+
+// At step 0 (first gameplay step), if one side shows a welcome greeting
+// and the other doesn't, this is a known clear_more_prompts artifact.
+// The C harness may have dismissed the lore/welcome --More-- screens
+// before recording, causing the first gameplay key (space) to produce a
+// different topline than JS which faithfully renders the welcome.
+function isFirstStepWelcomeAlias(actualLine, expectedLine) {
+    return isWelcomeGreeting(actualLine) || isWelcomeGreeting(expectedLine);
 }
 
 function isHighScoreScreen(lines) {
@@ -210,21 +235,22 @@ export function createGameplayComparatorPolicy(session, options = {}) {
             }
             return rngCmp;
         },
-        compareScreenStep(actualStep, expectedStep) {
+        compareScreenStep(actualStep, expectedStep, stepIndex) {
             const expectedAnsi = stepAnsiLines(expectedStep);
             return compareGameplayScreens(actualStep?.screen || [], expectedStep?.screen || [], session, {
                 actualAnsi: actualStep?.screenAnsi,
                 expectedAnsi,
+                stepIndex,
             });
         },
-        compareColorStep(actualStep, expectedStep) {
+        compareColorStep(actualStep, expectedStep, stepIndex) {
             const expectedAnsi = stepAnsiLines(expectedStep);
             if (!expectedAnsi.length || !Array.isArray(actualStep?.screenAnsi)) {
                 return null;
             }
-            return compareGameplayColors(actualStep.screenAnsi, expectedAnsi);
+            return compareGameplayColors(actualStep.screenAnsi, expectedAnsi, { stepIndex });
         },
-        compareScreenWindowStep(actualStep, expectedStep) {
+        compareScreenWindowStep(actualStep, expectedStep, stepIndex) {
             if (!Array.isArray(expectedStep?.screen) || expectedStep.screen.length === 0) {
                 return null;
             }
@@ -235,6 +261,7 @@ export function createGameplayComparatorPolicy(session, options = {}) {
                 const cmp = compareGameplayScreens(frame.screen, expectedStep.screen, session, {
                     actualAnsi: frame.screenAnsi,
                     expectedAnsi,
+                    stepIndex,
                 });
                 if (cmp.match) {
                     return {
@@ -257,13 +284,13 @@ export function createGameplayComparatorPolicy(session, options = {}) {
                 firstDiff: finalDiff,
             };
         },
-        compareColorWindowStep(actualStep, expectedStep) {
+        compareColorWindowStep(actualStep, expectedStep, stepIndex) {
             const expectedAnsi = stepAnsiLines(expectedStep);
             if (!expectedAnsi.length) return null;
             const frames = getStepFrames(actualStep);
             let finalDiff = null;
             for (const frame of frames) {
-                const cmp = compareGameplayColors(frame.screenAnsi, expectedAnsi);
+                const cmp = compareGameplayColors(frame.screenAnsi, expectedAnsi, { stepIndex });
                 if (cmp.match) {
                     return {
                         matched: cmp.matched,
@@ -277,7 +304,7 @@ export function createGameplayComparatorPolicy(session, options = {}) {
                 if (frame.kind === 'final') finalDiff = cmp.firstDiff || null;
             }
             // Keep denominator aligned to strict color denominator for this step.
-            const finalCmp = compareGameplayColors(actualStep?.screenAnsi, expectedAnsi);
+            const finalCmp = compareGameplayColors(actualStep?.screenAnsi, expectedAnsi, { stepIndex });
             return {
                 matched: 0,
                 total: finalCmp.total,

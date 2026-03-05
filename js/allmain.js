@@ -40,7 +40,8 @@ import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
 import { monsterNearby, setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty, flush_screen } from './monutil.js';
 import { nomul, unmul, near_capacity } from './hack.js';
-import { Player, roles, races } from './player.js';
+import { Player, roles, races, formatLoreText, godForRoleAlign, isGoddess,
+         rankOf, greetingForRole, roleNameForGender, alignName } from './player.js';
 import { mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
 import { loadSave, deleteSave, loadAutosave, scheduleAutosave, deleteAutosave,
@@ -1359,6 +1360,54 @@ export class NetHackGame {
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
         this.display.cursorOnPlayer(this.player);
+
+        // C ref: moveloop_preamble() shows lore text with --More-- then
+        // queues a welcome message.  Replicate this in headless init so
+        // step 0 captures the lore screen and step 1's space dismisses
+        // --More-- (revealing the welcome greeting), matching C behaviour.
+        if (urlOpts.showLoreAndWelcome && urlOpts.character && !this.flags.tutorial) {
+            const roleIdx = this.player.roleIndex;
+            const raceIdx = this.player.race;
+            const female = this.player.gender === FEMALE;
+            const align = this.player.alignment;
+
+            let deityName = godForRoleAlign(roleIdx, align);
+            let goddess = isGoddess(roleIdx, align);
+            if (!deityName) {
+                let donorRole;
+                do { donorRole = rn2(roles.length); } while (!roles[donorRole].gods[0]);
+                deityName = godForRoleAlign(donorRole, align);
+                goddess = isGoddess(donorRole, align);
+            }
+            const godOrGoddess = goddess ? 'goddess' : 'god';
+            const rankTitle = rankOf(1, roleIdx, female);
+            const loreText = formatLoreText(deityName, godOrGoddess, rankTitle);
+            const loreLines = loreText.split('\n');
+            let maxLoreWidth = 0;
+            for (const line of loreLines) {
+                if (line.length > maxLoreWidth) maxLoreWidth = line.length;
+            }
+            const loreOffx = Math.max(0, TERMINAL_COLS - maxLoreWidth - 1);
+            loreLines.push('--More--');
+            this.display.renderLoreText(loreLines, loreOffx);
+
+            const greeting = greetingForRole(roleIdx);
+            const rName = roleNameForGender(roleIdx, female);
+            const raceAdj = races[raceIdx].adj;
+            const alignStr = alignName(align);
+            let genderStr = '';
+            if (roles[roleIdx].namef || roles[roleIdx].forceGender) {
+                // Gender implicit in role name or forced — omit
+            } else {
+                genderStr = female ? 'female ' : 'male ';
+            }
+            // C ref: hello() uses plname directly (lowercase in wizard mode).
+            const plname = this.wizard ? 'wizard' : (this.u || this.player).name;
+            const welcomeMsg = `${greeting} ${plname}, welcome to NetHack!  You are a ${alignStr} ${genderStr}${raceAdj} ${rName}.`;
+
+            this.display._pendingMore = true;
+            this.display._messageQueue.push(welcomeMsg);
+        }
 
         if (this.flags.tutorial && urlOpts.character) {
             const replayStartupPrompts = Array.isArray(urlOpts.replayTutorialStartupPrompts)

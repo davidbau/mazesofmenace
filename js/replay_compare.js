@@ -362,6 +362,16 @@ export function prepareReplayArgs(seed, session, opts = {}) {
                 ? opts.tutorialStartupEnterAfterPromptCount : undefined,
             tutorialDirectStart: opts.tutorialDirectStart === true,
         };
+    // Detect whether the C session recorded lore/welcome screens (step 0 has
+    // lore text).  When present, enable lore/welcome rendering in JS init so
+    // both sides match.  Sessions recorded with clear_more_prompts won't have
+    // lore at step 0, so JS skips it to stay compatible.
+    if (chargenKeys.length === 0) {
+        const step0Screen = String(session.steps?.[0]?.screen || '');
+        if (/It is written in the Book of/.test(step0Screen)) {
+            initOpts.showLoreAndWelcome = true;
+        }
+    }
     // For manual-direct-live sessions, add RNG simulation so the JS startup matches
     // the combined C startup (chargen + level-gen + moveloop_preamble steps folded in).
     if (session.regen?.mode === 'manual-direct-live') {
