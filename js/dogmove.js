@@ -47,7 +47,6 @@ import { W_ARMS, W_WEP } from './worn.js';
 // Shared utilities from monmove.js
 import { dist2, distmin, monnear, mfndpos, mon_allowflags,
          m_avoid_kicked_loc, m_avoid_soko_push_loc,
-         m_harmless_trap,
          monmoveTrace, monmoveStepLabel,
          canSpotMonsterForMap,
          mondead, mpickobj, mdrop_obj,
@@ -1328,12 +1327,12 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
             continue;
         }
 
-        // Trap avoidance — C ref: dogmove.c:1182-1204
-        // Pets avoid harmful seen traps with 39/40 probability
-        // Only check if mfndpos flagged this position as having a trap (ALLOW_TRAPS)
+        // Trap avoidance — C ref: dogmove.c:1230-1253
+        // C-faithful: ALLOW_TRAPS already encodes trap-harmfulness decisions
+        // made by mfndpos/mon.c; do not re-filter with m_harmless_trap here.
         if (positions[i].allowTraps) {
             const trap = map.trapAt(nx, ny);
-            if (trap && !m_harmless_trap(mon, trap)) {
+            if (trap) {
                 if (mon.mleashed) {
                     // C ref: dogmove.c:1193-1195 — leashed pet whimper at trap
                     // (sound message omitted — no Deaf check yet)
