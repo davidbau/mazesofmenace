@@ -23,7 +23,7 @@
 import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          ACCESSIBLE, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
          SHOPBASE, ROOM, ROOMOFFSET,
-         NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED, IS_STWALL,
+         NORMAL_SPEED, isok, WEB, IS_OBSTRUCTED, IS_STWALL, A_STR,
          IRONBARS, STAIRS, LADDER,
          INVIS, DISPLACED } from './config.js';
 import { rn2, rnd, d, c_d, pushRngLogEntry } from './rng.js';
@@ -617,7 +617,9 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
         minr = 1;
     }
 
-    if (pointInShop(omx, omy, map) && (rn2(25) || mon.isshk)) {
+    const inShop = pointInShop(omx, omy, map);
+    const shopRoll = inShop ? rn2(25) : 0;
+    if (inShop && (shopRoll || mon.isshk)) {
         if (minr < SQSRCHRADIUS && appr === -1) {
             if (distmin(omx, omy, mux, muy) <= 3) {
                 ggx = mux;
@@ -1498,7 +1500,10 @@ async function m_move(mon, map, player, display = null, fov = null) {
     let getitems = false;
     const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
     if ((!mon_is_peaceful(mon) || !rn2(10)) && !isRogueLevel) {
-        const heroStr = Number(player?.str) || Number(player?.acurrstr) || 10;
+        const heroStr = Number(player?.attributes?.[A_STR])
+            || Number(player?.str)
+            || Number(player?.acurrstr)
+            || 10;
         const inLine = linedUpToPlayer(mon, map, player, fov)
             && (distmin(mon.mx, mon.my, mon.mux ?? player.x, mon.muy ?? player.y)
                 <= (Math.floor(heroStr / 2) + 1));
