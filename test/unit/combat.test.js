@@ -74,8 +74,9 @@ describe('Combat system', () => {
         const p = new Player();
         p.initRole(0);
         p.ac = 10; // easy to hit
+        p.x = 5; p.y = 5;
 
-        const mon = makeMonster({ attacks: [{dmg: [2, 6]}] }); // 2d6 damage
+        const mon = makeMonster({ attacks: [{dmg: [2, 6]}], mx: 6, my: 5 }); // 2d6 damage
         const startHp = p.hp;
         let totalDamage = 0;
         for (let i = 0; i < 50; i++) {
@@ -91,6 +92,7 @@ describe('Combat system', () => {
         const p = new Player();
         p.initRole(0);
         p.ac = 10;
+        p.x = 5; p.y = 5;
         const baseHp = p.hp;
         const weapon = {
             otyp: ORCISH_DAGGER,
@@ -102,6 +104,7 @@ describe('Combat system', () => {
 
         const withWeapon = makeMonster({
             attacks: [{ type: AT_WEAP, dice: 1, sides: 4 }],
+            mx: 6, my: 5,
         });
         withWeapon.weapon = weapon;
         let withWeaponTotal = 0;
@@ -115,6 +118,7 @@ describe('Combat system', () => {
 
         const noWeapon = makeMonster({
             attacks: [{ type: AT_WEAP, dice: 1, sides: 4 }],
+            mx: 6, my: 5,
         });
         noWeapon.weapon = null;
         let noWeaponTotal = 0;
@@ -135,6 +139,7 @@ describe('Combat system', () => {
         const p = new Player();
         p.initRole(0);
         p.ac = 10;
+        p.x = 5; p.y = 5;
 
         const mon = makeMonster({
             name: 'goblin',
@@ -150,7 +155,7 @@ describe('Combat system', () => {
             dknown: true,
             known: false,
         };
-        mon.mx = 5;
+        mon.mx = 6;
         mon.my = 5;
 
         const messages = [];

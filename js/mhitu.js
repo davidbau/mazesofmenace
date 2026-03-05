@@ -1244,8 +1244,11 @@ export function calc_mattacku_vars(mtmp, player) {
     const my = mtmp.my ?? 0;
     const ux = player.x ?? 0;
     const uy = player.y ?? 0;
-    const mux = (mtmp.mux ?? mx);
-    const muy = (mtmp.muy ?? my);
+    // If tracked hero coords are absent, fall back to current hero position.
+    // This matches C expectations that monsters attacking in melee have a
+    // valid remembered target location rather than defaulting to self coords.
+    const mux = (mtmp.mux ?? ux);
+    const muy = (mtmp.muy ?? uy);
     const dx = Math.abs(mx - ux);
     const dy = Math.abs(my - uy);
     const dist = dx * dx + dy * dy;
