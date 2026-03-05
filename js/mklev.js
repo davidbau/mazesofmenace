@@ -64,8 +64,8 @@ function mkobj_at(map, oclass, x, y, artif) {
     return otmp;
 }
 
-// C ref: mklev.c luathemes lifecycle globals.
-let _luathemesLoaded = false;
+// C ref: mklev.c gl.luathemes[] lifecycle globals are per-dungeon-branch.
+const _luathemesLoadedByDnum = new Set();
 let _specialThemesLoaded = false;
 
 // C ref: mklev.c mkroom_cmp() — sort rooms by lx only
@@ -640,7 +640,13 @@ export async function makeniche(map, depth, trap_type) {
         const { xx, yy, dy } = niche;
         const rm = map.at(xx, yy + dy);
 
-        if (trap_type || !rn2(4)) {
+        let secretNiche = false;
+        if (trap_type) {
+            secretNiche = true;
+        } else {
+            secretNiche = !rn2(4);
+        }
+        if (secretNiche) {
             rm.typ = SCORR;
             if (trap_type) {
                 let actual_trap = trap_type;
@@ -845,12 +851,17 @@ export function level_finalize_topology(map, depth) {
     }
 }
 
-export function get_luathemes_loaded() {
-    return _luathemesLoaded;
+export function get_luathemes_loaded(dnum = null) {
+    if (Number.isInteger(dnum)) {
+        return _luathemesLoadedByDnum.has(dnum);
+    }
+    return _luathemesLoadedByDnum.size > 0;
 }
 
-export function set_luathemes_loaded(loaded) {
-    _luathemesLoaded = !!loaded;
+export function set_luathemes_loaded(dnum, loaded = true) {
+    if (!Number.isInteger(dnum)) return;
+    if (loaded) _luathemesLoadedByDnum.add(dnum);
+    else _luathemesLoadedByDnum.delete(dnum);
 }
 
 export function get_special_themes_loaded() {
@@ -863,7 +874,7 @@ export function set_special_themes_loaded(loaded) {
 
 // C ref: mklev.c free_luathemes()
 export function free_luathemes() {
-    _luathemesLoaded = false;
+    _luathemesLoadedByDnum.clear();
     _specialThemesLoaded = false;
 }
 

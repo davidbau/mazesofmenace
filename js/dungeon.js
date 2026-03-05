@@ -143,8 +143,6 @@ import {
     free_luathemes,
     get_luathemes_loaded,
     set_luathemes_loaded,
-    get_special_themes_loaded,
-    set_special_themes_loaded,
 } from './mklev.js';
 import {
     place_lregion,
@@ -1506,11 +1504,11 @@ export async function load_special_by_protofile(protofile, dnum, dlevel, depth) 
         isBranchLevel: isBranchLevel(where.dnum, where.dlevel),
     });
 
-    if (!get_special_themes_loaded()) {
-        set_special_themes_loaded(true);
-        rn2(3);
-        rn2(2);
-    }
+    // C ref: nhlua.c load_lua()/nhl_init() for every special-level load.
+    // Each load initializes a fresh Lua state and executes nhlib.lua,
+    // whose top-level shuffle(align) consumes rn2(3), rn2(2).
+    rn2(3);
+    rn2(2);
 
     const specialMap = await special.generator();
     if (!specialMap) return null;
@@ -1530,8 +1528,9 @@ export async function makerooms(map, depth) {
 
     // C ref: mklev.c:365-380 — load Lua themes on first call only
     // These rn2() calls simulate Lua theme loading
-    if (!get_luathemes_loaded()) {
-        set_luathemes_loaded(true);
+    const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : 0;
+    if (!get_luathemes_loaded(dnum)) {
+        set_luathemes_loaded(dnum, true);
         rn2(3); rn2(2);
     }
 
@@ -1751,7 +1750,8 @@ export function dig_corridor(map, org, dest, nxcor, depth) {
         const crm = map.at(xx, yy);
         if (crm.typ === btyp) {
             // C: maybe_sdoor(100) can turn corridor into SCORR
-            if (ftyp === CORR && maybe_sdoor(depth, 100)) {
+            const secretCorr = (ftyp === CORR && maybe_sdoor(depth, 100));
+            if (secretCorr) {
                 npoints++;
                 crm.typ = SCORR;
             } else {
@@ -3819,23 +3819,14 @@ export function init_dungeon_set_depth(base, count, roll, parentDnum, occupiedBy
 
 function buildBranchTopology(dungeonLayouts, parentRolls) {
     const branchSpecs = [
-        // child dnum 1: Gehennom, parent DoD castle, no_down -> BR_NO_END1 (end1_up=false)
-        {
-            childDnum: GEHENNOM, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
-            selector: { kind: 'chain', parentDungeon: DUNGEONS_OF_DOOM, chainLevelIndex: 4, baseOffset: 0, count: 1 },
-            type: BR_NO_END1, end1_up: false
-        },
+        // C ref: dungeon.lua branch order for The Dungeons of Doom:
+        // Mines, Sokoban, Quest, Fort Ludios, Gehennom, Elemental Planes.
+        // parent_dlevel() avoids occupied branch slots in sequence, so order matters.
         // child dnum 2: Mines, base 2 range 3
         {
             childDnum: GNOMISH_MINES, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
             selector: { kind: 'fixed', base: 2, count: 3 },
             type: BR_STAIR, end1_up: false
-        },
-        // child dnum 3: Quest, chain oracle +6 range2, portal
-        {
-            childDnum: QUEST, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
-            selector: { kind: 'chain', parentDungeon: DUNGEONS_OF_DOOM, chainLevelIndex: 1, baseOffset: 6, count: 2 },
-            type: BR_PORTAL, end1_up: false
         },
         // child dnum 4: Sokoban, chain oracle +1, direction up
         {
@@ -3843,23 +3834,35 @@ function buildBranchTopology(dungeonLayouts, parentRolls) {
             selector: { kind: 'chain', parentDungeon: DUNGEONS_OF_DOOM, chainLevelIndex: 1, baseOffset: 1, count: 1 },
             type: BR_STAIR, end1_up: true
         },
+        // child dnum 3: Quest, chain oracle +6 range2, portal
+        {
+            childDnum: QUEST, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
+            selector: { kind: 'chain', parentDungeon: DUNGEONS_OF_DOOM, chainLevelIndex: 1, baseOffset: 6, count: 2 },
+            type: BR_PORTAL, end1_up: false
+        },
         // child dnum 5: Fort Ludios, base 18 range 4, portal
         {
             childDnum: KNOX, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
             selector: { kind: 'fixed', base: 18, count: 4 },
             type: BR_PORTAL, end1_up: false
         },
-        // child dnum 6: Vlad's Tower, parent Gehennom base9 range5, direction up
+        // child dnum 1: Gehennom, parent DoD castle, no_down -> BR_NO_END1 (end1_up=false)
         {
-            childDnum: VLADS_TOWER, childEntry: 1, parentDnum: GEHENNOM,
-            selector: { kind: 'fixed', base: 9, count: 5 },
-            type: BR_STAIR, end1_up: true
+            childDnum: GEHENNOM, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
+            selector: { kind: 'chain', parentDungeon: DUNGEONS_OF_DOOM, chainLevelIndex: 4, baseOffset: 0, count: 1 },
+            type: BR_NO_END1, end1_up: false
         },
         // child dnum 7: Elemental Planes, parent DoD base1, no_down, direction up
         {
             childDnum: ELEMENTAL_PLANES, childEntry: 1, parentDnum: DUNGEONS_OF_DOOM,
             selector: { kind: 'fixed', base: 1, count: 1 },
             type: BR_NO_END1, end1_up: true
+        },
+        // child dnum 6: Vlad's Tower, parent Gehennom base9 range5, direction up
+        {
+            childDnum: VLADS_TOWER, childEntry: 1, parentDnum: GEHENNOM,
+            selector: { kind: 'fixed', base: 9, count: 5 },
+            type: BR_STAIR, end1_up: true
         }
     ];
 
@@ -4585,15 +4588,11 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
                 isBranchLevel: isBranchLevel(useDnum, useDlevel),
             });
 
-            // C ref: mklev.c:365-380 — Lua theme shuffle when loading special level
-            // In C, loading oracle.lua triggers themerms.lua load, which does rn2(3), rn2(2).
-            // Tutorial entry can hit this path after startup without prior themed-room
-            // Lua load, so preserve that shuffle for tut-* special levels as well.
-            if (!get_special_themes_loaded() || depthOnlySpecialLookup) {
-                set_special_themes_loaded(true);
-                rn2(3);
-                rn2(2);
-            }
+            // C ref: nhlua.c load_lua()/nhl_init() for load_special():
+            // each special-level generation loads nhlib.lua and consumes
+            // shuffle(align): rn2(3), rn2(2).
+            rn2(3);
+            rn2(2);
 
             const specialMap = await special.generator();
             if (specialMap) {

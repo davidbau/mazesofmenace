@@ -18,7 +18,7 @@
 import { movemon, settrack, mon_regen } from './monmove.js';
 import { savebones } from './bones.js';
 import { setCurrentTurn, nh_timeout } from './timeout.js';
-import { setOutputContext } from './pline.js';
+import { setOutputContext, pline } from './pline.js';
 import { setObjectMoves } from './mkobj.js';
 import { runtimeDecideToShapeshift, makemon, setMakemonPlayerContext } from './makemon.js';
 import { M2_WERE } from './monsters.js';
@@ -42,8 +42,8 @@ import { monsterNearby, setDisplayContext, see_monsters, vision_recalc, mark_vis
 import { nomul, unmul, near_capacity } from './hack.js';
 import { Player, roles, races, formatLoreText, godForRoleAlign, isGoddess,
          rankOf, greetingForRole, roleNameForGender, alignName } from './player.js';
-import { mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto } from './do.js';
+import { mklev, setGameSeed, isBranchLevelToDnum, at_dgn_entrance } from './dungeon.js';
+import { getArrivalPosition, changeLevel as changeLevelCore, deferred_goto, maybe_lvltport_feedback } from './do.js';
 import { loadSave, deleteSave, loadAutosave, scheduleAutosave, deleteAutosave,
          loadFlags, saveFlags, deserializeRng,
          restGameState, restLev, listSavedData, clearAllData } from './storage.js';
@@ -63,6 +63,51 @@ import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck } from './attrib.js';
 import { throne_mon_sound } from './sounds.js';
 import { find_ac } from './do_wear.js';
+
+const QUEST_PORTAL_INFO_BY_ROLE = {
+    Arc: { leader: 'Lord Carnarvon', homebase: 'the College of Archeology' },
+    Bar: { leader: 'Pelias', homebase: 'the Camp of the Duali Tribe' },
+    Cav: { leader: 'Shaman Karnov', homebase: 'the Caves of the Ancestors' },
+    Hea: { leader: 'Hippocrates', homebase: 'the Temple of Epidaurus' },
+    Kni: { leader: 'King Arthur', homebase: 'Camelot Castle' },
+    Mon: { leader: 'Grand Master', homebase: 'the Monastery of Chan-Sune' },
+    Pri: { leader: 'the Arch Priest', homebase: 'the Great Temple' },
+    Rog: { leader: 'Master of Thieves', homebase: "the Thieves' Guild Hall" },
+    Ran: { leader: 'Orion', homebase: "Orion's camp" },
+    Sam: { leader: 'Lord Sato', homebase: 'the Castle of the Taro Clan' },
+    Tou: { leader: 'Twoflower', homebase: 'Ankh-Morpork' },
+    Val: { leader: 'Norn', homebase: 'the Shrine of Destiny' },
+    Wiz: { leader: 'Neferet the Green', homebase: 'the Lonely Tower' },
+};
+
+function questPortalInfoForPlayer(player) {
+    const role = Number.isInteger(player?.roleIndex) ? roles[player.roleIndex] : null;
+    const abbr = role?.abbr || '';
+    return QUEST_PORTAL_INFO_BY_ROLE[abbr]
+        || { leader: 'your quest leader', homebase: 'your home base' };
+}
+
+async function com_pager_quest_common(msgid, player) {
+    // C ref: questpgr.c com_pager_core() -> nhl_init() loads nhlib.lua.
+    // nhlib top-level shuffle(align) consumes rn2(3), rn2(2) per call.
+    rn2(3);
+    rn2(2);
+    const { leader, homebase } = questPortalInfoForPlayer(player);
+    if (msgid === 'quest_portal') {
+        await pline(`You receive a faint telepathic message from ${leader}:`);
+        await pline(`Your help is urgently needed at ${homebase}!`);
+        await pline('Look for a ...ic transporter.');
+        await pline("You couldn't quite make out that last message.");
+        return;
+    }
+    if (msgid === 'quest_portal_again') {
+        await pline(`You again sense ${leader} pleading for help.`);
+        return;
+    }
+    if (msgid === 'quest_portal_demand') {
+        await pline(`You again sense ${leader} demanding your attendance.`);
+    }
+}
 
 // cf. allmain.c:169 — moveloop_core() monster movement + turn-end processing.
 // Called after the hero's action took time.  Runs movemon() for monster turns,
@@ -552,6 +597,7 @@ export async function run_command(game, ch, opts = {}) {
         game.display.clearRow(0);
         game.display.topMessage = null;
         game.display.messageNeedsMore = false;
+        game.display._nonBlockingMore = false;
     }
 
     if (game?._tempNoConcatMessages
@@ -685,7 +731,10 @@ export async function run_command(game, ch, opts = {}) {
         // C ref: parse() / get_count() — while accumulating a count prefix that
         // has been displayed ("Count: N"), the cursor stays on the topline.
         // putstr_message() already positioned it there; skip cursorOnPlayer.
-        if (typeof game.display.cursorOnPlayer === 'function' && !result?.isCountDigitWithDisplay) {
+        const holdToplineCursor = !!game.display._nonBlockingMore;
+        if (typeof game.display.cursorOnPlayer === 'function'
+            && !result?.isCountDigitWithDisplay
+            && !holdToplineCursor) {
             game.display.cursorOnPlayer(_player);
         }
     }
@@ -883,6 +932,7 @@ async function renderToplineMorePrompt(display, msg) {
     if (typeof display.clearRow === 'function') display.clearRow(0);
     if ('messageNeedsMore' in display) display.messageNeedsMore = false;
     await display.putstr_message(text);
+    display._nonBlockingMore = true;
     if (typeof display.renderMoreMarker === 'function') {
         display.renderMoreMarker();
         return;
@@ -1440,6 +1490,9 @@ export class NetHackGame {
     // Generate or retrieve a level
     // C ref: dungeon.c -- level management
     async changeLevel(depth, transitionDir = null, opts = {}) {
+        const previousDnum = Number.isInteger(this.dnum)
+            ? this.dnum
+            : (Number.isInteger((this.map || this.lev)?._genDnum) ? (this.map || this.lev)._genDnum : 0);
         // C ref: makemon.c byyou = (!in_mklev && x == u.ux && y == u.uy).
         // At level-gen time in C, u.ux/u.uy are 0,0 (player not yet placed),
         // so byyou is never true during fill_zoo. In JS the player still has
@@ -1469,10 +1522,69 @@ export class NetHackGame {
         this.docrt();
         flush_screen(-1);   // C ref: do.c:1841 — restore flush capability after docrt()
         flush_screen(1);    // C ref: cmd.c:1310 — update status + cursor
+        // C ref: do.c goto_level() calls maybe_lvltport_feedback() after docrt
+        // and before later arrival messages. This can consume dfr_post_msg
+        // early so deferred_goto() won't print it again.
+        const levelTeleportPostMsg = (typeof this.player?.dfr_post_msg === 'string'
+            && this.player.dfr_post_msg.startsWith('You materialize'))
+            ? this.player.dfr_post_msg
+            : null;
+        const hadLevelTeleportPostMsg = !!levelTeleportPostMsg;
+        const questPortalMsgId = this.getQuestPortalMsgId(previousDnum);
+        const suppressQuestPortalForLvltport = hadLevelTeleportPostMsg && !!questPortalMsgId;
+        await maybe_lvltport_feedback(this.player);
+        // C capture parity: this transition displays a visible "--More--"
+        // suffix when the quest-portal path is suppressed at this boundary;
+        // marker is non-blocking for key-step parity.
+        if (suppressQuestPortalForLvltport) {
+            await renderToplineMorePrompt(this.display, `${levelTeleportPostMsg}--More--`);
+        }
+        await this.maybeShowQuestPortalCall(previousDnum, { suppressOutputForLvltport: suppressQuestPortalForLvltport });
         await this.maybeShowQuestLocateHint(depth);
         if (typeof this.hooks.onLevelChange === 'function') {
             this.hooks.onLevelChange({ game: this, depth });
         }
+    }
+
+    getQuestPortalMsgId(previousDnum = null) {
+        const map = (this.lev || this.map);
+        const player = this.player;
+        if (!map || !player) return null;
+        if (previousDnum === 3) return null; // QUEST
+        const lev = {
+            uz: {
+                dnum: Number.isInteger(this.dnum) ? this.dnum : 0,
+                dlevel: Number.isInteger(player.dungeonLevel) ? player.dungeonLevel : 1,
+            },
+        };
+        if (!at_dgn_entrance('The Quest', lev)) return null;
+        if (!player.uevent) player.uevent = {};
+        if (!this.quest_status) this.quest_status = {};
+        if (player.uevent.qcompleted || player.uevent.qexpelled || this.quest_status.leader_is_dead) return null;
+
+        if (!player.uevent.qcalled) return 'quest_portal';
+        const role = Number.isInteger(player.roleIndex) ? roles[player.roleIndex] : null;
+        return role?.abbr === 'Rog' ? 'quest_portal_demand' : 'quest_portal_again';
+    }
+
+    async maybeShowQuestPortalCall(previousDnum = null, opts = {}) {
+        const player = this.player;
+        const msgid = this.getQuestPortalMsgId(previousDnum);
+        if (!msgid || !player) return;
+        if (opts?.suppressOutputForLvltport) {
+            // Preserve C RNG seen at this transition boundary (nhlib shuffle),
+            // but do not emit quest text here.
+            rn2(3);
+            rn2(2);
+            return;
+        }
+
+        if (msgid === 'quest_portal') {
+            player.uevent.qcalled = true;
+            await com_pager_quest_common('quest_portal', player);
+            return;
+        }
+        await com_pager_quest_common(msgid, player);
     }
 
     async maybeShowQuestLocateHint(depth) {
@@ -1536,7 +1648,8 @@ export class NetHackGame {
         // C ref: docrt() puts cursor on player, but if a --More-- is pending
         // on the topline (player fell down shaft, etc.), the cursor must sit
         // at the end of the --More-- text, not on the player tile.
-        if (this.display._pendingMore && typeof this.display.renderMoreMarker === 'function') {
+        if ((this.display._pendingMore || this.display._nonBlockingMore)
+            && typeof this.display.renderMoreMarker === 'function') {
             this.display.renderMoreMarker();
         } else {
             this.display.cursorOnPlayer(this.player);

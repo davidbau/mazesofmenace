@@ -203,6 +203,7 @@ function race_hostile(ptr, playerCtx) {
 function normalizePlayerContext(ctx = {}) {
     const roleIndex = Number.isInteger(ctx.roleIndex) ? ctx.roleIndex : undefined;
     const role = roleIndex !== undefined ? roles[roleIndex] : null;
+    const ualign = ctx.ualign || null;
     const level = Number.isInteger(ctx.ulevel)
         ? ctx.ulevel
         : (Number.isInteger(ctx.level) ? ctx.level : 1);
@@ -211,11 +212,17 @@ function normalizePlayerContext(ctx = {}) {
         ulevel: Number.isInteger(ctx.ulevel)
             ? ctx.ulevel
             : (Number.isInteger(ctx.level) ? ctx.level : 1),
-        alignment: Number.isInteger(ctx.alignment) ? ctx.alignment : (role?.align || 0),
+        alignment: Number.isInteger(ctx.alignment)
+            ? ctx.alignment
+            : (Number.isInteger(ualign?.type) ? ualign.type : (role?.align || 0)),
         alignmentRecord: Number.isInteger(ctx.alignmentRecord)
             ? ctx.alignmentRecord
-            : initialAlignmentRecordForRole(roleIndex),
-        alignmentAbuse: Number.isInteger(ctx.alignmentAbuse) ? ctx.alignmentAbuse : 0,
+            : (Number.isInteger(ualign?.record)
+                ? ualign.record
+                : initialAlignmentRecordForRole(roleIndex)),
+        alignmentAbuse: Number.isInteger(ctx.alignmentAbuse)
+            ? ctx.alignmentAbuse
+            : (Number.isInteger(ualign?.abuse) ? ualign.abuse : 0),
         race: Number.isInteger(ctx.race) ? ctx.race : 0,
         hasAmulet: !!ctx.hasAmulet,
         ulevel: level > 0 ? level : 1,
@@ -261,6 +268,7 @@ export function setMakemonPlayerContext(playerLike) {
         alignment: playerLike?.alignment,
         alignmentRecord: playerLike?.alignmentRecord,
         alignmentAbuse: playerLike?.alignmentAbuse,
+        ualign: playerLike?.ualign,
         race: playerLike?.race,
         ulevel: playerLike?.ulevel,
         level: playerLike?.level,
