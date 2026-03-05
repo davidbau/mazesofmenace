@@ -314,7 +314,7 @@
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
     },
     {
-      "path": "js/map.js",
+      "path": "js/game.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
     },

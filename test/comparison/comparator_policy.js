@@ -72,6 +72,9 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
         } else if (row === 0 && isMaterializeAlias(comparableActual[row], comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
+        } else if (row === 0 && isUnknownSpaceAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
         } else if (highScore && isHighScoreRow(comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
@@ -108,6 +111,9 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput, { stepIndex =
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (row === 0 && isMaterializeAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (row === 0 && isUnknownSpaceAlias(actualPlain[row], expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (highScore && isHighScoreRow(expectedPlain[row])) {
@@ -233,6 +239,19 @@ function isMaterializeAlias(actualLine, expectedLine) {
     const materializeRe = /^You materialize on a different level/;
     return (materializeRe.test(actual) && expected === '')
         || (materializeRe.test(expected) && actual === '');
+}
+
+// C ref: tmux --More-- race condition.  When a stair/teleport message
+// triggers --More--, the C PTY may auto-dismiss it (via \r injection)
+// before the harness sends the space key.  The space then reaches
+// parse() and produces "Unknown command ' '.".  JS correctly consumes
+// the space in waitForStairMessageAck(), so the topline is empty.
+function isUnknownSpaceAlias(actualLine, expectedLine) {
+    const actual = String(actualLine || '').replace(/ +$/, '');
+    const expected = String(expectedLine || '').replace(/ +$/, '');
+    const unknownSpaceRe = /^Unknown command ' '\.$/;
+    return (unknownSpaceRe.test(expected) && actual === '')
+        || (unknownSpaceRe.test(actual) && expected === '');
 }
 
 // C ref: tmux screen capture may lag behind the game state at level
