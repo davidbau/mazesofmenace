@@ -25,7 +25,7 @@ import { is_animal, is_mindless, nohands, is_mercenary, is_unicorn,
          haseyes, is_undead, poly_when_stoned,
          resists_ston, touch_petrifies, amorphous, noncorporeal,
          unsolid, resists_fire, resists_acid, dmgtype, attacktype,
-         can_blow, x_monnam, canseemon,
+         can_blow, x_monnam, canseemon, needspick,
          dmgtype_fromattack, is_bat, nonliving } from './mondata.js';
 import { mons, PM_GHOST, PM_DJINNI, PM_GUARD, PM_PESTILENCE,
          PM_KI_RIN, PM_LIZARD, PM_GIANT_EEL, PM_CROCODILE,
@@ -2364,7 +2364,7 @@ export function searches_for_item(mon, obj) {
             return true;
         break;
     case TOOL_CLASS:
-        if (typ === PICK_AXE) return false;
+        if (typ === PICK_AXE) return needspick(mdat);
         if (typ === UNICORN_HORN)
             return !obj.cursed && !is_unicorn(mdat) && mdat.mndx !== PM_KI_RIN;
         if (typ === FROST_HORN || typ === FIRE_HORN)
