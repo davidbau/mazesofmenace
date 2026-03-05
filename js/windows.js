@@ -221,6 +221,35 @@ function buildMenuLines(w) {
     return lines;
 }
 
+function forEachActiveTextPopupWindow(visitor) {
+    for (let i = 1; i < wins.length; i++) {
+        const w = wins[i];
+        if (!w) continue;
+        if (w.type !== NHW_MENU && w.type !== NHW_TEXT) continue;
+        if (w.mlist.length !== 0 || w.data.length === 0) continue;
+        visitor(w);
+    }
+}
+
+// Replay helper: true when an active NHW_MENU/NHW_TEXT is currently being shown
+// as a text popup (for example look_here "Things that are here:").
+export function hasActiveTextPopupWindow() {
+    let found = false;
+    forEachActiveTextPopupWindow(() => {
+        found = true;
+    });
+    return found;
+}
+
+// Replay helper: redraw active text popups after docrt-like rerender.
+export function redrawActiveTextPopupWindows() {
+    if (!_display?.renderTextPopup) return;
+    forEachActiveTextPopupWindow((w) => {
+        const lines = w.data.map((d) => (typeof d === 'string' ? d : d.str));
+        _display.renderTextPopup(lines);
+    });
+}
+
 // select_menu(win, how) — C ref: tty_select_menu()
 // Returns [{identifier, count}] for selected items, or null for no selection.
 export async function select_menu(win, how) {

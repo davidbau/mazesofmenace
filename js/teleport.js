@@ -28,7 +28,7 @@ import { newsym, mondead, mark_vision_dirty } from './monutil.js';
 import { set_apparxy, mon_track_clear } from './monmove.js';
 import { onscary } from './mon.js';
 import { pline } from './pline.js';
-import { Monnam, Amonnam } from './do_name.js';
+import { Monnam, Amonnam, mon_nam } from './do_name.js';
 import { deltrap } from './dungeon.js';
 import { couldsee } from './vision.js';
 
@@ -542,10 +542,12 @@ export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight, map, play
     // off the current level.
     if (tt === MAGIC_PORTAL || tt === LEVEL_TELEP || tt === HOLE || tt === TRAPDOOR) {
         if (in_sight) {
-            const mname = (typeof mtmp?.name === 'string' && mtmp.name.length > 0)
-                ? mtmp.name
-                : 'it';
-            await pline(`Suddenly, ${mname} disappears out of sight.`);
+            const action = (tt === HOLE)
+                ? 'falls into a hole'
+                : (tt === TRAPDOOR)
+                    ? 'falls through a trap door'
+                    : 'disappears out of sight';
+            await pline('Suddenly, %s %s.', mon_nam(mtmp), action);
             // C ref: teleport.c:2082 — seetrap(trap) when in_sight
             if (trap && !trap.tseen) { trap.tseen = 1; newsym(trap.tx, trap.ty); }
         }

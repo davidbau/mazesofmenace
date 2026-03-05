@@ -10,6 +10,7 @@ import { initrack } from './monmove.js';
 import { NetHackGame, maybe_deferred_goto_after_rhack, run_command, execute_repeat_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 import { consumeHarnessMapdumpPayloads } from './dungeon.js';
+import { hasActiveTextPopupWindow, redrawActiveTextPopupWindows } from './windows.js';
 
 export { HeadlessDisplay };
 
@@ -189,9 +190,13 @@ export async function replaySession(seed, opts, keys) {
         }
 
         // C ref: allmain.c handleInput loop re-renders after each consumed key.
-        // Replay must do the same so cursor/topline/map state matches captured C steps.
+        // Replay normally rerenders after settled commands. For pending commands,
+        // rerender only when a NHW text popup is active and redraw that popup.
         if (commandSettled) {
             rerenderLikeMainLoop(game);
+        } else if (pendingCommand && hasActiveTextPopupWindow()) {
+            rerenderLikeMainLoop(game);
+            redrawActiveTextPopupWindows();
         }
         const postMap = game.lev || game.map || null;
         if (postMap) postMap._replayStepIndex = i;
