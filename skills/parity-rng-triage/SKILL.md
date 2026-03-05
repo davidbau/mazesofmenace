@@ -37,6 +37,10 @@ Use this for session parity failures where gameplay diverges between C and JS:
      34 gameplay sessions; the pre-push hook runs all 150.
 3. **Pick a session and reproduce** with verbose output:
    - `node test/comparison/session_test_runner.js --verbose <session-path>`
+   - `node --test test/comparison/sessions.test.js` — runs the full session
+     comparison suite and prints a pass/fail table with first-divergence JSON
+     for each failing session. Faster feedback than `npm test` for gameplay-only
+     iteration.
    - `node scripts/run-test-gates.mjs <seed>` — alternative: shows per-step
      failure details for a specific seed across all test categories.
 4. If RNG diverges, localize first mismatch window:
@@ -44,7 +48,12 @@ Use this for session parity failures where gameplay diverges between C and JS:
    - Note: `rng_step_diff.js` replays one step in isolation; use it as a
      microscope only. Treat `session_test_runner.js --verbose` as authoritative
      for true first divergence.
-5. Confirm expected behavior in C source under `nethack-c/patched/src/`.
+5. Confirm expected behavior in C source:
+   - Use `nethack-c/patched/src/` — this is the primary reference. It is
+     `nethack-c/upstream/` plus all instrumentation patches (RNG logging,
+     event tracing, harness hooks) that make session recording possible.
+   - The ultimate goal is matching vanilla upstream NetHack behavior, but
+     `patched/` is the measurable target: it's what generated the sessions.
 6. Patch JS core behavior to match C semantics.
 7. Re-run the same session, then a targeted set:
    - `node test/comparison/session_test_runner.js --verbose <session-path>`
@@ -75,11 +84,24 @@ Use this for session parity failures where gameplay diverges between C and JS:
   - `RNG_LOG_PARENT=0` shortens caller tags.
   - `RNG_LOG_TAGS=0` disables caller tags entirely.
 
+## Unit Tests
+Run after any core JS change and after every `git pull`:
+- `node scripts/test-unit-core.mjs` — fast unit-only run (~8s), clean pass/fail
+  count. Prefer this over `npm test` during iteration.
+- Upstream pulls sometimes rename fields (e.g. `flee→mflee`, `sleeping→msleeping`);
+  unit tests that hardcode old field names will fail and need updating.
+
 ## Done Criteria
 - First divergence is eliminated or moved later with evidence.
 - Target failing session is green or measurably improved.
 - No harness/comparator/replay compensation hacks were introduced.
 - `docs/LORE.md` updated with what changed and why.
+
+## Caching Note
+`analyze_golden.js` caches results keyed on commit hash. Results won't refresh
+until you commit — if you need to see whether an uncommitted change affects
+session results, use `node --test test/comparison/sessions.test.js` directly
+(it always runs live against current code).
 
 ## Commit/Push Cadence
 - Once a regression fix is verified (target session and relevant targeted checks), commit promptly.
