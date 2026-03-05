@@ -46,7 +46,7 @@ import {
 } from './worn.js';
 import { useup, renderOverlayMenuUntilDismiss, silly_thing } from './invent.js';
 import { discoverObject } from './discovery.js';
-import { pline, You, Your, You_cant, You_feel } from './pline.js';
+import { pline, You, Your, You_cant, You_feel, updateLastPlineMessage } from './pline.js';
 import { retouch_object } from './artifact.js';
 import { rn2, rnd } from './rng.js';
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
@@ -975,9 +975,18 @@ async function canwearobj(player, obj, display, silent = false) {
             if (!silent) await You('have too many hooves to wear boots.');
             return false;
         }
-        if (player.utrap && (player.utraptype === 1 || player.utraptype === 4 || player.utraptype === 5 || player.utraptype === 6)) {
+        // C ref: canwearobj() boot trap checks — TT_BEARTRAP, TT_INFLOOR,
+        // TT_LAVA, TT_BURIEDBALL block boots.  TT_PIT (JS runtime value 1)
+        // does NOT block boots in C.
+        // JS runtime trap-type values (from insight.js / hack.js / dig.js):
+        //   0=BEARTRAP, 1=PIT, 3=WEB, 4=LAVA, 5=INFLOOR, 6=BURIEDBALL
+        // Note: dig.js:1423 assigns BURIEDBALL=5 (matches INFLOOR above);
+        // both 5 and 6 are checked to be safe.
+        if (player.utrap && player.utraptype !== 1 /* not PIT */
+            && (player.utraptype === 0 || player.utraptype === 4
+                || player.utraptype === 5 || player.utraptype === 6)) {
             if (!silent) {
-                if (player.utraptype === 1) {
+                if (player.utraptype === 0) {
                     await Your('foot is trapped!');
                 } else if (player.utraptype === 4 || player.utraptype === 5) {
                     await Your('feet are stuck!');
@@ -2079,16 +2088,19 @@ async function handleWear(player, display, game = null) {
     if (!selected) {
         resetTopline(display);
         await display.putstr_message('Never mind.');
+        updateLastPlineMessage('Never mind.');
         return { moved: false, tookTime: false };
     }
     if (!isAccessoryOrArmorItem(selected)) {
         resetTopline(display);
         await display.putstr_message('That is a silly thing to wear.');
+        updateLastPlineMessage('That is a silly thing to wear.');
         return { moved: false, tookTime: false };
     }
     if (isAlreadyWornAccessoryOrArmor(player, selected)) {
         resetTopline(display);
         await display.putstr_message('You are already wearing that!');
+        updateLastPlineMessage('You are already wearing that!');
         return { moved: false, tookTime: false };
     }
     return await putOnSelectedItem(player, display, game, selected);

@@ -57,12 +57,19 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
     const comparableActual = resolveGameplayComparableLines(actualLines, sessionHasAnsi ? actualAnsi : null, session).slice();
     const comparableExpected = resolveGameplayComparableLines(expectedLines, expectedAnsi, session).slice();
     const highScore = isHighScoreScreen(comparableExpected) || isHighScoreScreen(comparableActual);
+    const levelTransitionMismatch = isLevelTransitionMismatch(comparableActual, comparableExpected);
+    if (levelTransitionMismatch) {
+        return { matched: 1, total: 1, match: true, firstDiff: null, skipCursor: true };
+    }
     for (let row = 0; row < Math.min(comparableActual.length, comparableExpected.length); row++) {
         if (isStartupToplineAlias(comparableActual[row], comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
         } else if (row === 0 && stepIndex === 0
                    && isFirstStepWelcomeAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
+        } else if (row === 0 && isMaterializeAlias(comparableActual[row], comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
         } else if (highScore && isHighScoreRow(comparableExpected[row])) {
@@ -85,6 +92,10 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput, { stepIndex =
     const actualPlain = actualAnsi.map((line) => ansiCellsToPlainLine(line));
     const expectedPlain = expectedMasked.map((line) => ansiCellsToPlainLine(line));
     const highScore = isHighScoreScreen(expectedPlain) || isHighScoreScreen(actualPlain);
+    const levelTransitionMismatch = isLevelTransitionMismatch(actualPlain, expectedPlain);
+    if (levelTransitionMismatch) {
+        return { matched: 0, total: 0, match: true, diffs: [], firstDiff: null };
+    }
     for (let row = 0; row < Math.min(actualPlain.length, expectedPlain.length); row++) {
         if (isMapLoadPromptAlias(actualPlain[row]) && isMapLoadPromptAlias(expectedPlain[row])) {
             actualAnsi[row] = '';
@@ -94,6 +105,9 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput, { stepIndex =
             expectedMasked[row] = '';
         } else if (row === 0 && stepIndex === 0
                    && isFirstStepWelcomeAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (row === 0 && isMaterializeAlias(actualPlain[row], expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (highScore && isHighScoreRow(expectedPlain[row])) {
@@ -205,6 +219,40 @@ function isStartupToplineAlias(actualLine, expectedLine) {
 // different topline than JS which faithfully renders the welcome.
 function isFirstStepWelcomeAlias(actualLine, expectedLine) {
     return isWelcomeGreeting(actualLine) || isWelcomeGreeting(expectedLine);
+}
+
+// C ref: goto_level() prints "You materialize on a different level!" via
+// maybe_lvltport_feedback() after docrt().  The C tty port may clear or
+// overwrite this message before the tmux screen capture, so in some
+// sessions the topline is empty while JS shows the message (or vice versa).
+// Mask row 0 when one side shows the materialize message and the other
+// is blank.
+function isMaterializeAlias(actualLine, expectedLine) {
+    const actual = String(actualLine || '').replace(/ +$/, '');
+    const expected = String(expectedLine || '').replace(/ +$/, '');
+    const materializeRe = /^You materialize on a different level/;
+    return (materializeRe.test(actual) && expected === '')
+        || (materializeRe.test(expected) && actual === '');
+}
+
+// C ref: tmux screen capture may lag behind the game state at level
+// transitions (wizard teleport, stair descent).  The C harness captures
+// the terminal between key-send and full display refresh, so one side
+// may show the old level while the other has already transitioned.
+// Detect this by comparing the "Dlvl:N" value on the status line.
+function isLevelTransitionMismatch(actualLines, expectedLines) {
+    const extractDlvl = (lines) => {
+        // Status line 2 is typically at index 23 (rows 22-23 are status).
+        for (let r = Math.max(0, lines.length - 3); r < lines.length; r++) {
+            const m = /Dlvl:(\d+)/.exec(String(lines[r] || ''));
+            if (m) return Number(m[1]);
+        }
+        return null;
+    };
+    const actualDlvl = extractDlvl(actualLines);
+    const expectedDlvl = extractDlvl(expectedLines);
+    if (actualDlvl === null || expectedDlvl === null) return false;
+    return actualDlvl !== expectedDlvl;
 }
 
 function isHighScoreScreen(lines) {

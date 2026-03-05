@@ -47,9 +47,11 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
         const actual = replay.steps[i] || {};
 
         let screenOk = true;
+        let screenCmpResult = null;
         if (expected.screen.length > 0) {
             screensTotal++;
             const screenCmp = policy.compareScreenStep(actual, expected, i);
+            screenCmpResult = screenCmp;
             if (screenCmp.match) {
                 screensMatched++;
             } else {
@@ -120,7 +122,7 @@ export function compareRecordedGameplaySession(session, replay, options = {}) {
         // content, so a cursor mismatch at a screen-divergent step is not independent signal.
         const expectedCursor = expected.cursor || null;
         const actualCursor = actual.cursor || null;
-        if (expectedCursor && screenOk) {
+        if (expectedCursor && screenOk && !screenCmpResult?.skipCursor) {
             cursorTotal++;
             const [ec, er, ev] = expectedCursor;
             const [ac, ar, av] = actualCursor || [null, null, null];

@@ -283,3 +283,9 @@ export function resetPlineState() {
     _lastMessage = NOREPEAT;
     clearTransientContext();
 }
+
+// Update _lastMessage to match a message displayed via display.putstr_message
+// (bypassing pline). This ensures Norep suppression stays in sync.
+export function updateLastPlineMessage(text) {
+    _lastMessage = String(text || '');
+}

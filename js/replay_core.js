@@ -11,6 +11,7 @@ import { NetHackGame, run_command, execute_repeat_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 import { consumeHarnessMapdumpPayloads } from './dungeon.js';
 import { hasActiveTextPopupWindow, redrawActiveTextPopupWindows } from './windows.js';
+import { resetPlineState } from './pline.js';
 
 export { HeadlessDisplay };
 
@@ -91,6 +92,7 @@ export async function replaySession(seed, opts, keys) {
         globalThis.window = {};
     }
     initrack();
+    resetPlineState();
     enableRngLog();
 
     const display = new HeadlessDisplay();
