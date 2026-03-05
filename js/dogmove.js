@@ -885,12 +885,8 @@ function score_targ(mon, target, map, player) {
 
 // C ref: dogmove.c:842-890 best_target() — find best ranged attack target
 export function best_target(mon, forced, map, player) {
-    // C ref: dogmove.c:854 — if (!mtmp->mcansee) return 0;
-    const monCanSee = (mon.mcansee !== 0 && mon.mcansee !== false)
-        && !mon.blind
-        && !(Number.isFinite(mon.mblinded) && mon.mblinded > 0)
-        && !mon.mblind;
-    if (!monCanSee) return null;
+    // C ref: dogmove.c:854 — only checks mtmp->mcansee here.
+    if (mon.mcansee === 0 || mon.mcansee === false) return null;
     let bestscore = -40000;
     let bestTarg = null;
     // C ref: dogmove.c:861-882 — scan all 8 directions

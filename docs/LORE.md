@@ -2149,3 +2149,26 @@ hard-won wisdom:
     (`rng 2894/2894`, `events 31/31`, `mapdump 1/1`),
   - map parity regression check: `seed16_map` and `seed16_maps_c` both pass,
   - full suite improved from `134/150` to `135/150` (`16 -> 15` failures).
+
+### Wizard-session Medusa drift: `somex/somey` eval order mattered on this toolchain (2026-03-05)
+
+- In `medusa_fixup` (`mkmaze`/`sp_lev`), C call sites are written as
+  `(..., somex(croom), somey(croom), ...)` with implementation-defined arg eval.
+- On this harness/toolchain, observed C order is `somex` then `somey`.
+- JS had `somey` then `somex`, which shifted RNG and diverged around wizard
+  session level-teleport windows.
+- Fix:
+  - swapped to `somex` then `somey` in both `js/sp_lev.js` and `js/mkmaze.js`.
+- Impact:
+  - `seed328_ranger_wizard_gameplay` first RNG divergence moved later
+    (`idx 7457 -> 8751`, step `186 -> 191`), confirming better alignment in the
+    Medusa finalize region.
+
+### Rolling-boulder launch parity: endpoint and door checks tightened (2026-03-05)
+
+- C `find_random_launch_coord()` rejects rolling-boulder endpoints on pool/lava;
+  JS lacked this gate.
+- C `closed_door()` semantics are bitmask-based; JS used strict equality.
+- Fix in `js/dungeon.js`:
+  - added pool/lava endpoint rejection in rolling-boulder launch search,
+  - changed door checks to bitmask (`flags & D_CLOSED/D_LOCKED`).

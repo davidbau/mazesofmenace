@@ -2275,7 +2275,7 @@ function isclearpath(map, startx, starty, distance, dx, dy) {
         // ZAP_POS: typ >= POOL (everything from POOL onwards is passable to zaps)
         if (typ < POOL) return null;
         // closed_door check
-        if (typ === DOOR && (loc.flags === D_CLOSED || loc.flags === D_LOCKED))
+        if (typ === DOOR && ((loc.flags & D_CLOSED) || (loc.flags & D_LOCKED)))
             return null;
         // check for pit/hole/teleport traps blocking path
         const t = map.trapAt(x, y);
@@ -2298,6 +2298,21 @@ function find_random_launch_coord(map, trap) {
     while (distance >= mindist) {
         const dx = xdir[tmp];
         const dy = ydir[tmp];
+        // C ref: trap.c find_random_launch_coord() -- rolling boulders
+        // cannot be placed on pool/lava endpoints.
+        if (trap.ttyp === ROLLING_BOULDER_TRAP) {
+            const ex = trap.tx + (distance * dx);
+            const ey = trap.ty + (distance * dy);
+            const endpoint = map.at(ex, ey);
+            if (endpoint && (IS_POOL(endpoint.typ) || IS_LAVA(endpoint.typ))) {
+                success = false;
+                cc = null;
+                tmp = (tmp + 1) % N_DIRS;
+                trycount++;
+                if ((trycount % 8) === 0) distance--;
+                continue;
+            }
+        }
         // Check forward path
         const fwd = isclearpath(map, trap.tx, trap.ty, distance, dx, dy);
         if (fwd) {

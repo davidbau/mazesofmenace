@@ -1309,17 +1309,16 @@ function medusa_fixup(map) {
 
     let otmp = null;
     if (rn2(2)) {
-        // C call uses mk_tt_object(..., somex(croom), somey(croom)); argument
-        // evaluation order is implementation-defined. Match observed C harness
-        // ordering (somey then somex) for RNG parity on this toolchain.
-        const y = somey(croom);
+        // C call uses mk_tt_object(..., somex(croom), somey(croom)).
+        // Match observed harness order on this toolchain: somex then somey.
         const x = somex(croom);
+        const y = somey(croom);
         otmp = mk_tt_statue(x, y);
     } else {
-        // C call uses mkcorpstat(..., somex(croom), somey(croom), ...); match
-        // observed C harness evaluation order (somey then somex).
-        const y = somey(croom);
+        // C call uses mkcorpstat(..., somex(croom), somey(croom), ...);
+        // keep the same observed order: somex then somey.
         const x = somex(croom);
+        const y = somey(croom);
         otmp = mkcorpstat(STATUE, -1, false, x, y, levelState.map);
     }
     if (otmp) {
