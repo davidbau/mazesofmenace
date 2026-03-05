@@ -1828,8 +1828,8 @@ async function handleTakeOff(player, display, game = null) {
             const choices = worn.map(a => a.invlet).join('');
             await display.putstr_message(
                 choices.length > 1
-                    ? `What do you want to take off? [${choices} or ?*]`
-                    : 'What do you want to take off? [*]'
+                    ? `What do you want to take off? [${choices} or ?*] `
+                    : 'What do you want to take off? [*] '
             );
         }
         const ch = await nhgetch();
@@ -1922,8 +1922,8 @@ async function handleRemove(player, display) {
             const choices = accessories.map(a => a.invlet).join('');
             await display.putstr_message(
                 choices.length > 1
-                    ? `What do you want to remove? [${choices} or ?*]`
-                    : 'What do you want to remove? [*]'
+                    ? `What do you want to remove? [${choices} or ?*] `
+                    : 'What do you want to remove? [*] '
             );
         }
         const ch = await nhgetch();

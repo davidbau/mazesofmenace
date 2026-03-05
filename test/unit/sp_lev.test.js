@@ -395,8 +395,8 @@ describe('sp_lev.js - des.* API', () => {
         assert.equal(monsters.length, 1);
         assert.equal(monsters[0].mx, 12);
         assert.equal(monsters[0].my, 8);
-        assert.equal(monsters[0].flee, true);
-        assert.equal(monsters[0].fleetim, 9);
+        assert.equal(monsters[0].mflee, true);
+        assert.equal(monsters[0].mfleetim, 9);
     });
 
     it('finalize_level applies C solidify_map to untouched stone/walls', async () => {

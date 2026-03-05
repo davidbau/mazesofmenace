@@ -757,17 +757,17 @@ describe('levl_follower', () => {
     });
 
     it('stalking monster (Death) follows when not fleeing', () => {
-        const mon = makeMon({ type: mons[PM_DEATH], flee: false });
+        const mon = makeMon({ type: mons[PM_DEATH], mflee: false });
         assert.equal(levl_follower(mon, { inventory: [] }), true);
     });
 
     it('stalking monster fleeing does NOT follow (no player amulet)', () => {
-        const mon = makeMon({ type: mons[PM_DEATH], flee: true });
+        const mon = makeMon({ type: mons[PM_DEATH], mflee: true });
         assert.equal(levl_follower(mon, { inventory: [] }), false);
     });
 
     it('stalking monster fleeing DOES follow when player has Amulet of Yendor', () => {
-        const mon = makeMon({ type: mons[PM_DEATH], flee: true });
+        const mon = makeMon({ type: mons[PM_DEATH], mflee: true });
         const player = { inventory: [{ otyp: AMULET_OF_YENDOR }] };
         assert.equal(levl_follower(mon, player), true);
     });

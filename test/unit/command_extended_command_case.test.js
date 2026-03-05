@@ -86,7 +86,7 @@ test('#name object-type path rejects non-callable inventory item with C wording'
 
     assert.equal(result.tookTime, false);
     assert.ok(game.display.messages.includes('                                What do you want to name?'));
-    assert.ok(game.display.messages.includes('What do you want to call? [eg or ?*]'));
+    assert.ok(game.display.messages.includes('What do you want to call? [eg or ?*] '));
     assert.equal(game.display.topMessage, 'That is a silly thing to call.');
 });
 

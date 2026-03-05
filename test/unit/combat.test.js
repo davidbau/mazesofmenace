@@ -186,7 +186,7 @@ describe('Combat system', () => {
         let fled = false;
         for (let i = 0; i < 1000; i++) {
             await do_attack(p, mon, mockDisplay);
-            if (mon.flee) {
+            if (mon.mflee) {
                 fled = true;
                 break;
             }

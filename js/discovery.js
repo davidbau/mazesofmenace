@@ -331,8 +331,8 @@ export async function handleCallObjectTypePrompt(player, display) {
         .map((obj) => obj.invlet)
         .join('');
     const prompt = callChoices
-        ? `What do you want to call? [${callChoices} or ?*]`
-        : 'What do you want to call? [*]';
+        ? `What do you want to call? [${callChoices} or ?*] `
+        : 'What do you want to call? [*] ';
     const replacePromptMessage = () => {
         if (typeof display.clearRow === 'function') display.clearRow(0);
         display.topMessage = null;

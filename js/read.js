@@ -290,8 +290,8 @@ async function handleRead(player, display, game) {
     const readable = (player.inventory || []).filter((o) => o && readableClasses.has(o.oclass));
     const letters = readable.map((o) => o.invlet).join('');
     const prompt = letters
-        ? `What do you want to read? [${letters} or ?*]`
-        : 'What do you want to read? [*]';
+        ? `What do you want to read? [${letters} or ?*] `
+        : 'What do you want to read? [*] ';
 
     // Keep prompt active until explicit cancel, matching tty flow.
     const replacePromptMessage = () => {

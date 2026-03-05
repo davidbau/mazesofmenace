@@ -845,8 +845,8 @@ export async function handleApply(player, map, display, game) {
             .map((item) => [String(item.invlet), item])
     );
     const prompt = letters.length > 0
-        ? `What do you want to use or apply? [${letters} or ?*]`
-        : 'What do you want to use or apply? [*]';
+        ? `What do you want to use or apply? [${letters} or ?*] `
+        : 'What do you want to use or apply? [*] ';
     await display.putstr_message(prompt);
     const replacePromptMessage = () => {
         if (typeof display.clearRow === 'function') display.clearRow(0);

@@ -337,8 +337,8 @@ export async function handleThrow(player, map, display) {
     const throwLetters = promptItems.map((o) => String(o.invlet)).join('');
     const throwChoices = compactInvletPromptChars(throwLetters);
     const throwPrompt = throwChoices
-        ? `What do you want to throw? [${throwChoices} or ?*]`
-        : 'What do you want to throw? [*]';
+        ? `What do you want to throw? [${throwChoices} or ?*] `
+        : 'What do you want to throw? [*] ';
     await display.putstr_message(throwPrompt);
     while (true) {
         const ch = await nhgetch();
