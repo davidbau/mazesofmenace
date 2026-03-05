@@ -54,6 +54,7 @@ import { corpse_chance } from './mon.js';
 import { xkilled, killed, monkilled,
          wakeup, healmon } from './mon.js';
 import { nhgetch } from './input.js';
+import { getdir } from './hack.js';
 import { nonliving, is_undead, is_demon, is_rider,
          x_monnam, resists_fire, resists_cold, resists_elec,
          resists_poison, resists_acid, resists_disint } from './mondata.js';
@@ -449,7 +450,7 @@ async function xkilled_local(mon, map, player, display) {
 }
 
 // Main zap handler — called from cmd.js
-// C ref: zap.c dozap()
+// C ref: zap.c dozap() — faithfully follows C ordering
 export async function handleZap(player, map, display, game) {
     // C ref: zap.c:2626 — getobj("zap", zap_ok, GETOBJ_NOFLAGS)
     const wands = (player.inventory || []).filter(o => o.oclass === WAND_CLASS);
@@ -474,7 +475,6 @@ export async function handleZap(player, map, display, game) {
         return { moved: false, tookTime: false };
     }
 
-    // Find the wand in inventory
     const selected = player.inventory.find(o => o.invlet === itemChar);
     if (selected && selected.oclass !== WAND_CLASS) {
         replacePromptMessage();
@@ -489,49 +489,61 @@ export async function handleZap(player, map, display, game) {
     }
     replacePromptMessage();
 
-    // Read direction
-    const dirCh = await nhgetch();
-    const dirChar = String.fromCharCode(dirCh);
-    const dir = DIRECTION_KEYS[dirChar];
+    // C ref: zap.c:2632 — need_dir check BEFORE direction prompt
+    const need_dir = (objectData[wand.otyp]?.dir || 0) !== 1; // NODIR = 1
 
-    if (!dir) {
-        if (game.flags.verbose) {
-            await display.putstr_message('Never mind.');
-        }
-        return { moved: false, tookTime: false };
+    // C ref: zap.c:2633-2634 — zappable check (before direction prompt)
+    if (!zappable(wand)) {
+        await pline('Nothing happens.');
+        return { moved: false, tookTime: true };
     }
 
-    // C ref: attrib.c:506 — exercise(A_STR, TRUE) before zapping
-    await exercise(player, A_STR, true);
-
-    player.dx = dir[0];
-    player.dy = dir[1];
-    player.dz = 0;
-
-    // C ref: zap.c dozap() cursed-wand backfire chance.
-    if (maybe_explode_wand(wand, player.dx, player.dy)) {
-        await break_wand(wand, player, map);
+    // C ref: zap.c:2635-2640 — cursed wand backfire (before direction prompt)
+    // WAND_BACKFIRE_CHANCE = 100 in C (hack.h:1415)
+    if (wand.cursed && !rn2(100)) {
+        await backfire(wand, player);
+        await exercise(player, A_STR, false);
         useupall(wand, player);
         return { moved: false, tookTime: true };
     }
 
-    if (!zappable(wand)) {
-        if (display?.putstr_message) await display.putstr_message('Nothing happens.');
-        return { moved: false, tookTime: true };
+    // C ref: zap.c:2641 — getdir for directional wands
+    if (need_dir) {
+        const dirResult = await getdir(null, display);
+        if (!dirResult) {
+            // C ref: zap.c:2642-2643 — "glows and fades" when direction cancelled
+            if (!player.blind) {
+                await pline(`${The(xname(wand))} glows and fades.`);
+            }
+            // C: "make him pay for knowing !NODIR" — still takes time
+            return { moved: false, tookTime: true };
+        }
+        player.dx = dirResult.dx;
+        player.dy = dirResult.dy;
+        player.dz = dirResult.dz;
+    } else {
+        // NODIR wands: no direction needed
+        player.dx = 0;
+        player.dy = 0;
+        player.dz = 0;
     }
 
-    const need_dir = (objectData[wand.otyp]?.dir || 0) !== 1;
+    // C ref: zap.c:2645-2652 — zapping yourself (direction = self)
     if (need_dir && !player.dx && !player.dy && !player.dz) {
         const damage = await zapyourself(wand, player, true, map);
         if (damage > 0) {
-            // hp loss is already applied in zapyourself(); keep time semantics.
+            // hp loss is already applied in zapyourself()
         }
-        return { moved: false, tookTime: true };
+    } else {
+        // C ref: zap.c:2660-2663 — weffects for directed/non-directed wands
+        await weffects(wand, player, map, display, game);
     }
 
-    // Route all wand effects through weffects() so player zaps share the
-    // same C-structured animation/effect path as other wand callsites.
-    await weffects(wand, player, map, display, game);
+    // C ref: zap.c:2665-2669 — post-zap: wand turns to dust if spe < 0
+    if (wand && wand.spe < 0) {
+        await pline(`${The(xname(wand))} turns to dust.`);
+        useupall(wand, player);
+    }
 
     return { moved: false, tookTime: true };
 }
@@ -1380,8 +1392,8 @@ export function skiprange(range, skipstart, skipend) {
 export function maybe_explode_wand(obj, dx, dy) {
   if (!obj) return false;
   // C ref: zap.c:2635 — cursed wands have 1/WAND_BACKFIRE_CHANCE to explode
-  // WAND_BACKFIRE_CHANCE = 7 in C
-  if (obj.cursed && !rn2(7)) return true;
+  // WAND_BACKFIRE_CHANCE = 100 in C (hack.h:1415)
+  if (obj.cursed && !rn2(100)) return true;
   return false;
 }
 

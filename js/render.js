@@ -9,7 +9,7 @@ import {
     COLNO, ROWNO,
     STONE, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    DOOR, CORR, ROOM, STAIRS,
+    DOOR, CORR, ROOM, STAIRS, LADDER,
     ALTAR, FOUNTAIN, THRONE, SINK, GRAVE, POOL, MOAT, WATER, LAVAPOOL,
     LAVAWALL, ICE, IRONBARS, TREE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     AIR, CLOUD, SDOOR, SCORR,
@@ -132,7 +132,7 @@ export const TERRAIN_SYMBOLS_DEC = {
     [THRONE]:         { ch: '\\',      color: HI_GOLD },
     [SINK]:           { ch: '#',       color: CLR_GRAY },
     [GRAVE]:          { ch: '\u2020',  color: CLR_WHITE },  // DAGGER
-    [ALTAR]:          { ch: '_',       color: CLR_GRAY },
+    [ALTAR]:          { ch: '\u03c0',  color: CLR_GRAY },   // PI (DEC meta-{)
     // C ref: dat/symbols DECgraphics
     // S_pool/S_water/S_lava/S_lavawall use meta-\ (DEC diamond).
     [POOL]:           { ch: '\u25c6',  color: CLR_BLUE },   // BLACK DIAMOND
@@ -246,13 +246,23 @@ export function terrainSymbol(loc, gameMap = null, x = -1, y = -1, flags = {}) {
             : { ch: '>', color: isBranchStair ? HI_GOLD : CLR_GRAY };
     }
 
+    // Ladders — C ref: dat/symbols DECgraphics S_upladder/S_dnladder
+    // DEC: ≤ (up) / ≥ (down); ASCII: < / >
+    if (typ === LADDER) {
+        const up = loc.flags === 1;
+        return useDEC
+            ? { ch: up ? '\u2264' : '\u2265', color: CLR_GRAY }
+            : { ch: up ? '<' : '>', color: CLR_GRAY };
+    }
+
     // Altar alignment color
     // C ref: display.h altar_color enum, display.c altarcolors[]
     if (typ === ALTAR) {
         const align = loc.altarAlign !== undefined ? loc.altarAlign
             : (loc.flags !== undefined ? Amask2align(loc.flags) : 0);
         const altarColor = align === 1 ? CLR_WHITE : align === -1 ? CLR_BLACK : CLR_GRAY; // A_NONE(-128) → gray
-        return { ch: '_', color: altarColor };
+        const altarCh = useDEC ? '\u03c0' : '_'; // DEC: pi; ASCII: underscore
+        return { ch: altarCh, color: altarColor };
     }
 
     // Secret door: render as the wall type implied by neighbors
