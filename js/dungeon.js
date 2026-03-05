@@ -4074,20 +4074,6 @@ export function init_dungeons(roleIndex, wizard = true) {
     });
 
     _branchTopology = init_dungeon_branches(dungeonLayouts, parentRolls);
-    // C ref: dungeon.c — The Quest loca special level (.lev file) is placed in DoD
-    // at the level where the Quest branch portal/stairs are. When DoD dlevel X is the
-    // Quest branch entry (end1), that DoD level is generated as the role's loca level.
-    for (const br of _branchTopology) {
-        if (br.end2?.dnum === QUEST && br.end1?.dnum === DUNGEONS_OF_DOOM) {
-            const dodQuestLevel = br.end1.dlevel;
-            if (Number.isInteger(dodQuestLevel) && dodQuestLevel > 0) {
-                _runtimeSpecialLevelMap.set(`${DUNGEONS_OF_DOOM}:${dodQuestLevel}`, {
-                    dnum: QUEST,
-                    dlevel: 2, // canonical Quest loca dlevel (x-loca)
-                });
-            }
-        }
-    }
     _dungeonLevelCounts = new Map();
     for (const [jsDnum, layout] of dungeonLayouts.entries()) {
         if (!layout || !Number.isInteger(layout.numLevels)) continue;
