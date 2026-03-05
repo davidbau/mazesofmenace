@@ -3553,10 +3553,12 @@ function fill_zoo_room(map, sroom, depth) {
             else if (type === ANTHOLE) monType = antholemon(depth);
             else monType = null; // ZOO: random
 
-            // C: MM_ASLEEP | MM_NOGRP — MM_ASLEEP isn't defined in JS, use MM_NOGRP + set sleeping
+            // C: MM_ASLEEP | MM_NOGRP — keep both fields in sync until legacy
+            // `sleeping` alias is fully removed.
             const mon = makemon(monType, sx, sy, MM_NOGRP, depth, map);
             if (mon) {
                 mon.sleeping = true;
+                mon.msleeping = 1;
                 if (type === COURT && mon.mpeaceful) {
                     mon.mpeaceful = false;
                     set_malign(mon);

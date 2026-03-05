@@ -977,19 +977,18 @@ async function dochug(mon, map, player, display, fov, game = null) {
 
     // C ref: monmove.c:739-744 — sleep check: if sleeping and doesn't wake up, skip movement.
     // If monster wakes up, dochug continues (wipe engravings, etc.).
-    const monsterSleeping = !!(mon.msleeping || mon.sleeping);
+    // C ref: monmove.c:740 — sleep gate is mtmp->msleeping only.
+    const monsterSleeping = !!mon.msleeping;
     if (monsterSleeping) {
         monmoveTrace('dochug-skip',
             `step=${monmoveStepLabel(map)}`,
             `id=${mon.m_id ?? '?'}`,
             `mndx=${mon.mndx ?? '?'}`,
             `reason=sleep`,
-            `msleeping=${mon.msleeping ? 1 : 0}`,
-            `sleeping=${mon.sleeping ? 1 : 0}`);
+            `msleeping=${mon.msleeping ? 1 : 0}`);
         if (!disturb(mon)) {
             return;
         }
-        mon.sleeping = false;
         mon.msleeping = 0;
     }
 
