@@ -301,11 +301,13 @@ export async function makemaz(map, protofile, dnum, dlevel, depth) {
     // Only invoke placement when this exact level is a branch endpoint.
     // Use map._genDnum/_genDlevel as authoritative source when dnum/dlevel are undefined
     // (e.g., wizard teleport path passes only depth, not dnum/dlevel).
+    // C always calls find_branch_room() to consume RNG even for BR_NO_END1 (no stair placed).
+    // Use branchResult.found (not placement !== 'none') to match C's RNG consumption.
     const branchDnum = Number.isInteger(dnum) ? dnum : (Number.isInteger(map._genDnum) ? map._genDnum : 0 /* DUNGEONS_OF_DOOM */);
     const branchDlevel = Number.isInteger(dlevel) ? dlevel : (Number.isInteger(map._genDlevel) ? map._genDlevel : depth);
-    const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
-    if (branchPlacement && branchPlacement !== 'none') {
-        place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement });
+    const branchResult = resolveBranchPlacementForLevel(branchDnum, branchDlevel);
+    if (branchResult.found) {
+        place_lregion(map, 0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, { branchPlacement: branchResult.placement });
     }
 
     // C ref: mkmaze.c:1213 — populate_maze()

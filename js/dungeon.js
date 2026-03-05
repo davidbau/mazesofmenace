@@ -1423,23 +1423,26 @@ function getOracleLevel() {
 
 // C-faithful branch placement resolution for special-level LR_BRANCH handling.
 // Mirrors place_branch(Is_branchlev(&u.uz), x, y):
-// - no branch on this level => none
-// - BR_PORTAL => portal
-// - BR_NO_END* => one-way stair (or none on blocked side)
+// - no branch on this level => { placement: 'none', found: false }
+// - BR_PORTAL => { placement: 'portal', found: true }
+// - BR_NO_END* => one-way stair (or { placement: 'none', found: true } on blocked side)
 // - BR_STAIR => stair, direction based on end1_up and which end we're on
+// The `found` flag distinguishes "no branch here" from "branch exists but no stair on this end".
+// C's place_branch() always calls find_branch_room() to consume RNG even for BR_NO_END1
+// (no stair is placed, but position picking still happens). JS must match this behavior.
 export function resolveBranchPlacementForLevel(dnum, dlevel) {
     const cdnum = Number.isFinite(dnum) ? dnum : DUNGEONS_OF_DOOM;
     if (!Number.isFinite(dlevel)) {
-        return { placement: 'none' };
+        return { placement: 'none', found: false };
     }
 
     // Exact topology if available (normal gameplay path).
     const info = getBranchAtLevel(cdnum, dlevel);
     if (info) {
-        return branchPlacementForEnd(info.branch, info.onEnd1);
+        return { ...branchPlacementForEnd(info.branch, info.onEnd1), found: true };
     }
 
-    return { placement: 'none' };
+    return { placement: 'none', found: false };
 }
 
 // True if the specified level has a branch connection whose opposite end
@@ -4069,6 +4072,20 @@ export function init_dungeons(roleIndex, wizard = true) {
     });
 
     _branchTopology = init_dungeon_branches(dungeonLayouts, parentRolls);
+    // C ref: dungeon.c — The Quest loca special level (.lev file) is placed in DoD
+    // at the level where the Quest branch portal/stairs are. When DoD dlevel X is the
+    // Quest branch entry (end1), that DoD level is generated as the role's loca level.
+    for (const br of _branchTopology) {
+        if (br.end2?.dnum === QUEST && br.end1?.dnum === DUNGEONS_OF_DOOM) {
+            const dodQuestLevel = br.end1.dlevel;
+            if (Number.isInteger(dodQuestLevel) && dodQuestLevel > 0) {
+                _runtimeSpecialLevelMap.set(`${DUNGEONS_OF_DOOM}:${dodQuestLevel}`, {
+                    dnum: QUEST,
+                    dlevel: 2, // canonical Quest loca dlevel (x-loca)
+                });
+            }
+        }
+    }
     _dungeonLevelCounts = new Map();
     for (const [jsDnum, layout] of dungeonLayouts.entries()) {
         if (!layout || !Number.isInteger(layout.numLevels)) continue;
@@ -4741,14 +4758,16 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
 
         // C ref: mklev.c:1367-1376 — place_branch(Is_branchlev(&u.uz), 0, 0)
         // For non-first levels, only execute when this level is an actual branch endpoint.
+        // C always calls find_branch_room() to consume RNG even for BR_NO_END1 (no stair placed).
+        // Use branchResult.found (not placement !== 'none') to match C's RNG consumption.
         if (depth > 1) {
             const branchDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
             const branchDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-            const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
-            if (_branchTopology.length && branchPlacement && branchPlacement !== 'none') {
+            const branchResult = resolveBranchPlacementForLevel(branchDnum, branchDlevel);
+            if (_branchTopology.length && branchResult.found) {
                 const { pos } = find_branch_room(map);
                 if (pos) {
-                    place_branch(map, pos.x, pos.y, branchPlacement);
+                    place_branch(map, pos.x, pos.y, branchResult.placement);
                 }
             }
         }

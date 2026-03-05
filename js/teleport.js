@@ -247,8 +247,8 @@ export function collect_coords(cx, cy, maxradius, cc_flags, map) {
 // ============================================================================
 
 // Autotranslated from teleport.c:190
-export function enexto(cc, xx, yy, mdat) {
-  return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY) || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS));
+export function enexto(cc, xx, yy, mdat, map, player) {
+  return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY, map, player) || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS, map, player));
 }
 
 export function enexto_core(cc_out, xx, yy, mdat, entflags, map, player) {
