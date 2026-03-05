@@ -1044,10 +1044,6 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
             setmangry(mon, false, map, player);
         }
 
-        if (m_harmless_trap(mon, trap)) {
-            return Trap_Effect_Finished;
-        }
-
         trap_result = await trapeffect_selector_mon(
             mon, trap, 0, map, player, display, fov);
     }
