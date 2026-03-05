@@ -151,6 +151,10 @@ function wipeoutEngravingText(text, cnt) {
             chars[nxt] = '?';
         }
     }
+    // C ref: engrave.c wipeout_text() trims trailing spaces.
+    while (chars.length > 0 && chars[chars.length - 1] === ' ') {
+        chars.pop();
+    }
     return chars.join('');
 }
 
@@ -185,7 +189,7 @@ export async function wipe_engr_at(map, x, y, cnt, magical = false) {
                 erase = rn2(1 + Math.floor(50 / (cnt + 1))) ? 0 : 1;
             }
             if (erase > 0) {
-                engr.text = wipeoutEngravingText(engr.text || '', erase).replace(/^ +/, '');
+                engr.text = wipeoutEngravingText(engr.text || '', erase);
                 engrTrace(
                     `step=${step}`,
                     `wipe_text(${x},${y})`,

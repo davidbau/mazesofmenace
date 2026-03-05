@@ -7,7 +7,7 @@ import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, objectData,
          SPEED_BOOTS, ELVEN_BOOTS, LEVITATION_BOOTS, FUMBLE_BOOTS,
          ELVEN_CLOAK, CLOAK_OF_PROTECTION, CLOAK_OF_INVISIBILITY,
          CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT,
-         HELM_OF_BRILLIANCE, HELM_OF_TELEPATHY, DUNCE_CAP,
+         HELM_OF_BRILLIANCE, HELM_OF_TELEPATHY, HELM_OF_OPPOSITE_ALIGNMENT, DUNCE_CAP,
          GAUNTLETS_OF_FUMBLING, GAUNTLETS_OF_POWER, GAUNTLETS_OF_DEXTERITY,
          RIN_ADORNMENT,
          RIN_GAIN_STRENGTH, RIN_GAIN_CONSTITUTION,
@@ -37,16 +37,17 @@ import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, objectData,
          WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL,
          SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL } from './objects.js';
 import { doname, is_crackable } from './mkobj.js';
-import { armor_simple_name } from './objnam.js';
+import { armor_simple_name, suit_simple_name, cloak_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name } from './objnam.js';
 import { is_metallic, obj_resists } from './objdata.js';
 import {
     which_armor,
     setworn,
     setnotworn,
 } from './worn.js';
-import { useup, renderOverlayMenuUntilDismiss } from './invent.js';
+import { useup, renderOverlayMenuUntilDismiss, silly_thing } from './invent.js';
 import { discoverObject } from './discovery.js';
-import { pline, You, You_feel } from './pline.js';
+import { pline, You, Your, You_cant, You_feel } from './pline.js';
+import { retouch_object } from './artifact.js';
 import { rn2, rnd } from './rng.js';
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          FAST, STEALTH, FUMBLING, LEVITATION, INVIS, SEE_INVIS,
@@ -64,6 +65,8 @@ import { set_itimeout, incr_itimeout } from './potion.js';
 import { float_down } from './trap.js';
 import { float_vs_flight } from './polyself.js';
 import { mark_vision_dirty } from './vision.js';
+import { nohands, nolimbs, cantweararm, slithy, has_horns, has_head, is_humanoid } from './mondata.js';
+import { MZ_SMALL, S_CENTAUR } from './monsters.js';
 
 // Worn-mask bits (cf. worn.js / prop.h)
 const W_ARM = 0x00000001;
@@ -74,6 +77,7 @@ const W_ARMG = 0x00000010;
 const W_ARMF = 0x00000020;
 const W_ARMU = 0x00000040;
 const W_AMUL = 0x00010000;
+const W_WEP = 0x00000100;
 const W_RINGL = 0x00020000;
 const W_RINGR = 0x00040000;
 const W_TOOL = 0x00080000;
@@ -890,33 +894,155 @@ async function canwearobj(player, obj, display, silent = false) {
     const sub = objectData[obj.otyp]?.sub;
     const slot = ARMOR_SLOTS[sub];
     if (!slot) return false;
+    const mdat = player?.data || player?.polyData || null;
+    const verysmall = !!mdat && ((mdat.msize || 0) < MZ_SMALL);
+    const cantWear = !!mdat && cantweararm(mdat);
+    const wearingThisArmor = !!(obj.owornmask & W_ARMOR);
+    const weapon = player?.weapon || null;
+    const bimanualWep = !!(weapon && objectData[weapon.otyp]?.bimanual);
+    const weldedWep = !!(weapon && weapon.cursed);
+    const isFlimsy = (o) => Number(objectData[o?.otyp]?.material || 0) <= 7;
 
-    // Already wearing something in that slot?
-    if (player[slot.prop]) {
-        if (!silent) await pline('You are already wearing that!');
+    // C: verysmall/nohands gate
+    if (verysmall || (!!mdat && nohands(mdat))) {
+        if (!silent) await You("can't wear any armor in your current form.");
         return false;
     }
 
-    // Layering checks
-    if (sub === ARM_SUIT && player.cloak) {
-        if (!silent) await display.putstr_message('You are wearing a cloak.');
-        return false;
-    }
-    if (sub === ARM_SHIRT && (player.cloak || player.armor)) {
-        if (!silent && player.cloak) {
-            await display.putstr_message('You are wearing a cloak.');
-        } else if (!silent) {
-            await display.putstr_message('You are wearing body armor.');
+    // C: cantweararm body-fit gate for suit/shirt/cloak with cloak exception.
+    const isSuit = sub === ARM_SUIT;
+    const isShirt = sub === ARM_SHIRT;
+    const isCloak = sub === ARM_CLOAK;
+    if ((isSuit || isShirt || isCloak) && cantWear) {
+        const wrappingAllowed = !!mdat && is_humanoid(mdat);
+        const isCloakAllowedException = isCloak
+            && ((obj.otyp !== MUMMY_WRAPPING && !!mdat && (mdat.msize === MZ_SMALL))
+                || (obj.otyp === MUMMY_WRAPPING && wrappingAllowed));
+        if (!isCloakAllowedException) {
+            if (!silent) await pline("The %s will not fit on your body.", slot.name);
+            return false;
         }
-        return false;
-    }
-    // Bimanual weapon + shield
-    if (sub === ARM_SHIELD && player.weapon && objectData[player.weapon.otyp]?.big) {
-        if (!silent) await display.putstr_message('You cannot wear a shield while wielding a two-handed weapon.');
+    } else if (wearingThisArmor) {
+        if (!silent) await You('are already wearing that!');
         return false;
     }
 
-    return true;
+    // C: welded two-handed weapon blocks suit/shirt.
+    if (weldedWep && bimanualWep && (isSuit || isShirt)) {
+        if (!silent) await You('cannot do that while holding your weapon.');
+        return false;
+    }
+
+    // Slot-specific prechecks in C order.
+    if (sub === ARM_HELM) {
+        if (player.helmet) {
+            if (!silent) await You('are already wearing %s.', helm_simple_name(player.helmet));
+            return false;
+        }
+        if (!!mdat && has_horns(mdat) && !isFlimsy(obj)) {
+            if (!silent) await pline("The %s won't fit over your horns.", armor_simple_name(obj));
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_SHIELD) {
+        if (player.shield) {
+            if (!silent) await You('are already wearing a shield.');
+            return false;
+        }
+        if (weapon && bimanualWep) {
+            if (!silent) await You('cannot wear a shield while wielding a two-handed weapon.');
+            return false;
+        }
+        if (player.twoweap) {
+            if (!silent) await You('cannot wear a shield while wielding two weapons.');
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_BOOTS) {
+        if (player.boots) {
+            if (!silent) await You('are already wearing %s.', boots_simple_name(player.boots));
+            return false;
+        }
+        if (!!mdat && slithy(mdat)) {
+            if (!silent) await You('have no feet...');
+            return false;
+        }
+        if (!!mdat && mdat.mlet === S_CENTAUR) {
+            if (!silent) await You('have too many hooves to wear boots.');
+            return false;
+        }
+        if (player.utrap && (player.utraptype === 1 || player.utraptype === 4 || player.utraptype === 5 || player.utraptype === 6)) {
+            if (!silent) {
+                if (player.utraptype === 1) {
+                    await Your('foot is trapped!');
+                } else if (player.utraptype === 4 || player.utraptype === 5) {
+                    await Your('feet are stuck!');
+                } else {
+                    await Your('leg is attached to the buried ball!');
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_GLOVES) {
+        if (player.gloves) {
+            if (!silent) await You('are already wearing %s.', gloves_simple_name(player.gloves));
+            return false;
+        }
+        if (weldedWep) {
+            if (!silent) await You('cannot wear gloves over your weapon.');
+            return false;
+        }
+        if (player.glib) {
+            if (!silent) await pline('Your fingers are too slippery to pull on those gloves.');
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_SHIRT) {
+        if (player.armor || player.cloak || player.shirt) {
+            if (!silent) {
+                if (player.shirt) await You('are already wearing a shirt.');
+                else if (player.armor && !player.cloak) await You_cant('wear that over your armor.');
+                else await You_cant('wear that over your %s.', cloak_simple_name(player.cloak));
+            }
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_CLOAK) {
+        if (player.cloak) {
+            if (!silent) await You('are already wearing %s.', cloak_simple_name(player.cloak));
+            return false;
+        }
+        return true;
+    }
+
+    if (sub === ARM_SUIT) {
+        if (player.cloak) {
+            if (!silent) await You('cannot wear armor over a %s.', cloak_simple_name(player.cloak));
+            return false;
+        }
+        if (player.armor) {
+            if (!silent) await You('are already wearing some armor.');
+            return false;
+        }
+        return true;
+    }
+
+    if (!silent) {
+        await silly_thing('wear', obj);
+        return false;
+    }
+    return false;
 }
 
 // cf. do_wear.c cursed() — check if item is cursed and print message
@@ -1602,6 +1728,301 @@ function getWornArmorItems(player) {
     return (player.inventory || []).filter((obj) => worn.has(obj));
 }
 
+function getWornAccessoryItems(player) {
+    const worn = new Set();
+    if (player.leftRing) worn.add(player.leftRing);
+    if (player.rightRing) worn.add(player.rightRing);
+    if (player.amulet) worn.add(player.amulet);
+    if (player.blindfold) worn.add(player.blindfold);
+    return (player.inventory || []).filter((obj) => worn.has(obj));
+}
+
+function getWornArmorAndAccessoryItems(player) {
+    const worn = new Set();
+    for (const obj of getWornArmorItems(player)) worn.add(obj);
+    for (const obj of getWornAccessoryItems(player)) worn.add(obj);
+    return (player.inventory || []).filter((obj) => worn.has(obj));
+}
+
+function resetTopline(display) {
+    if (typeof display?.clearRow === 'function') display.clearRow(0);
+    if (display) display.topMessage = null;
+    if (display && Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = false;
+}
+
+function isEyewearItem(o) {
+    return !!o && (o.otyp === BLINDFOLD || o.otyp === TOWEL || o.otyp === LENSES);
+}
+
+function isAccessoryOrArmorItem(o) {
+    return !!o && (
+        o.oclass === ARMOR_CLASS
+        || o.oclass === RING_CLASS
+        || o.otyp === MEAT_RING
+        || o.oclass === AMULET_CLASS
+        || isEyewearItem(o)
+    );
+}
+
+function isAlreadyWornAccessoryOrArmor(player, o) {
+    if (!o) return false;
+    if (o.oclass === ARMOR_CLASS) {
+        return o === player.armor || o === player.cloak || o === player.helmet
+            || o === player.shield || o === player.gloves || o === player.boots
+            || o === player.shirt;
+    }
+    if (o.oclass === RING_CLASS || o.otyp === MEAT_RING) return o === player.leftRing || o === player.rightRing;
+    if (o.oclass === AMULET_CLASS) return o === player.amulet;
+    if (isEyewearItem(o)) return o === player.blindfold;
+    return false;
+}
+
+async function putOnSelectedItem(player, display, game, item) {
+    if (item.oclass === ARMOR_CLASS) {
+        resetTopline(display);
+        if (!await canwearobj(player, item, display)) {
+            return { moved: false, tookTime: false };
+        }
+        // C ref: do_wear.c accessory_or_armor_on() — quest helm guard before retouch.
+        if (item.otyp === HELM_OF_OPPOSITE_ALIGNMENT) {
+            const inQuestBranch = Number.isInteger(player?.uz?.dnum) && player.uz.dnum === 3;
+            if (inQuestBranch) {
+                const currentBase = (player?.ualignbase_current != null) ? player.ualignbase_current : player?.alignment;
+                const originalBase = (player?.ualignbase_original != null) ? player.ualignbase_original : player?.alignment;
+                if (currentBase === originalBase) {
+                    await You('narrowly avoid losing all chance at your goal.');
+                } else {
+                    await You('are suddenly overcome with shame and change your mind.');
+                }
+                player.ublessed = 0;
+                makeknown(item.otyp);
+                return { moved: false, tookTime: true };
+            }
+        }
+        if (!(await retouch_object(item, false, player))) {
+            return { moved: false, tookTime: true };
+        }
+        return await wearArmorItem(player, display, game, item);
+    }
+
+    if (item.oclass === RING_CLASS || item.otyp === MEAT_RING) {
+        let ringMask = 0;
+        if (nolimbs(player?.data || player?.polyData || {})) {
+            await You('cannot make the ring stick to your body.');
+            return { moved: false, tookTime: false };
+        }
+        if (player.leftRing && player.rightRing) {
+            const humanoid = !nolimbs(player?.data || player?.polyData || {});
+            await pline("There are no more %s%s to fill.",
+                humanoid ? 'ring-' : '',
+                fingers_or_gloves(player, false));
+            return { moved: false, tookTime: false };
+        }
+        if (player.leftRing) {
+            ringMask = W_RINGR;
+        } else if (player.rightRing) {
+            ringMask = W_RINGL;
+        } else {
+            const fingerQ = 'Which ring-finger, Right or Left? [rl] ';
+            resetTopline(display);
+            await display.putstr_message(fingerQ);
+            let mask = null;
+            while (!mask) {
+                const fc = await nhgetch();
+                const fs = String.fromCharCode(fc);
+                if (fc === 27 || fc === 0) return { moved: false, tookTime: false };
+                if (fs === 'r' || fs === 'R') mask = 'right';
+                else if (fs === 'l' || fs === 'L') mask = 'left';
+            }
+            if (mask === 'left') ringMask = W_RINGL;
+            else ringMask = W_RINGR;
+        }
+        if (player.gloves && player.glib) {
+            await pline("Your %s are too slippery to remove, so you cannot put on the ring.", armor_simple_name(player.gloves));
+            return { moved: false, tookTime: true };
+        }
+        if (player.gloves && player.gloves.cursed) {
+            const learned = !player.gloves.bknown;
+            player.gloves.bknown = true;
+            await You('cannot remove your gloves to put on the ring.');
+            return { moved: false, tookTime: learned };
+        }
+        if (player.weapon) {
+            const dominantRight = player.rightHanded !== false;
+            const weapon = player.weapon;
+            const weldedWeapon = !!(weapon.cursed && (weapon.owornmask & W_WEP));
+            const bimanualWeapon = !!objectData[weapon.otyp]?.bimanual;
+            const putsOnDominantHand = (dominantRight && (ringMask & W_RINGR)) || (!dominantRight && (ringMask & W_RINGL));
+            if (weldedWeapon && (bimanualWeapon || putsOnDominantHand)) {
+                const learned = !weapon.bknown;
+                weapon.bknown = true;
+                await You('cannot free your weapon hand to put on the ring.');
+                return { moved: false, tookTime: learned };
+            }
+        }
+        if (!(await retouch_object(item, false, player))) {
+            return { moved: false, tookTime: true };
+        }
+        setworn(player, item, ringMask);
+        Ring_on(player, item);
+    } else if (item.oclass === AMULET_CLASS) {
+        if (player.amulet) {
+            await display.putstr_message("You're already wearing an amulet.");
+            return { moved: false, tookTime: false };
+        }
+        if (!(await retouch_object(item, false, player))) {
+            return { moved: false, tookTime: true };
+        }
+        setworn(player, item, W_AMUL);
+        await Amulet_on(player);
+    } else if (isEyewearItem(item)) {
+        if (!has_head(player?.data || player?.polyData || {})) {
+            await You('have no head to wear that on.');
+            return { moved: false, tookTime: false };
+        }
+        if (player.blindfold) {
+            if (player.blindfold.otyp === TOWEL) {
+                await Your('face is already covered by a towel.');
+            } else if (player.blindfold.otyp === BLINDFOLD) {
+                if (item.otyp === LENSES) await You("can't wear lenses because you're wearing a blindfold there already.");
+                else await You('are already wearing a blindfold.');
+            } else if (player.blindfold.otyp === LENSES) {
+                if (item.otyp === BLINDFOLD) await You("can't wear a blindfold because you're wearing some lenses there already.");
+                else await You('are already wearing some lenses.');
+            } else {
+                await You('are already wearing that!');
+            }
+            return { moved: false, tookTime: false };
+        }
+        if (!(await retouch_object(item, false, player))) {
+            return { moved: false, tookTime: true };
+        }
+        setworn(player, item, W_TOOL);
+        await Blindf_on(player, item);
+    } else {
+        await display.putstr_message('That is a silly thing to put on.');
+        return { moved: false, tookTime: false };
+    }
+
+    find_ac(player);
+    await display.putstr_message(`You are now wearing ${doname(item, player)}.`);
+    return { moved: false, tookTime: true };
+}
+
+async function wearArmorItem(player, display, game, item) {
+    const sub = objectData[item.otyp]?.sub;
+    const slot = ARMOR_SLOTS[sub];
+    const delay = Number(objectData[item.otyp]?.delay || 0);
+    const wearNow = () => {
+        const mask = ARM_SUB_TO_MASK[sub] || 0;
+        if (mask) setworn(player, item, mask);
+        else if (slot?.prop) player[slot.prop] = item;
+        const onFn = SLOT_ON[sub];
+        if (onFn) onFn(player);
+        find_ac(player);
+    };
+
+    // C parity: armor donning can be a multi-turn occupation.
+    if (game && delay > 1) {
+        let remaining = Math.max(0, delay - 1);
+        game.occupation = {
+            occtxt: 'dressing',
+            fn: () => {
+                remaining -= 1;
+                return remaining > 0;
+            },
+            onFinishAfterTurn: async () => {
+                wearNow();
+                await display.putstr_message('You finish your dressing maneuver.');
+            },
+        };
+        return { moved: false, tookTime: true };
+    }
+
+    wearNow();
+    await display.putstr_message(`You are now wearing ${doname(item, player)}.`);
+    return { moved: false, tookTime: true };
+}
+
+async function removeArmorOrAccessory(player, display, game, item) {
+    if (!item || !(item.owornmask & (W_ARMOR | W_ACCESSORY))) {
+        await You('are not wearing that.');
+        return { moved: false, tookTime: false };
+    }
+
+    // C parity: layered suit/shirt and uskin checks happen before select_off().
+    if (item === player.uskin
+        || (item === player.armor && player.cloak)
+        || (item === player.shirt && (player.cloak || player.armor))) {
+        let why = '';
+        if (item === player.uskin) {
+            why = "; it's embedded";
+        } else {
+            const blockers = [];
+            if (player.cloak) blockers.push('cloak');
+            if (item === player.shirt && player.armor) blockers.push('suit');
+            why = ` without taking off your ${blockers.join(' and ')} first`;
+        }
+        await You_cant(`take that off${why}.`);
+        return { moved: false, tookTime: false };
+    }
+
+    if (!await select_off(player, item, display)) {
+        return { moved: false, tookTime: false };
+    }
+
+    if (item.owornmask & W_ARMOR) {
+        const sub = objectData[item.otyp]?.sub;
+        const slot = ARMOR_SLOTS[sub];
+        const offFn = SLOT_OFF[sub];
+        const delay = Number(objectData[item.otyp]?.delay || 0);
+        const takeOffNow = async () => {
+            if (offFn) await offFn(player);
+            if (item?.owornmask) setnotworn(player, item);
+            else if (slot?.prop) player[slot.prop] = null;
+            find_ac(player);
+        };
+
+        if (game && delay > 1) {
+            let remaining = Math.max(0, delay - 1);
+            game.occupation = {
+                occtxt: 'disrobing',
+                fn: () => {
+                    remaining -= 1;
+                    return remaining > 0;
+                },
+                onFinishAfterTurn: async () => {
+                    await takeOffNow();
+                    await display.putstr_message(`You finish taking off your ${armor_simple_name(item)}.`);
+                },
+            };
+            return { moved: false, tookTime: true };
+        }
+
+        await takeOffNow();
+        await off_msg(item, player);
+        return { moved: false, tookTime: true };
+    }
+
+    if (item === player.rightRing || item === player.leftRing) {
+        await off_msg(item, player);
+        Ring_off(player, item);
+        setnotworn(player, item);
+    } else if (item === player.amulet) {
+        await off_msg(item, player);
+        Amulet_off(player);
+        setnotworn(player, item);
+    } else if (item === player.blindfold) {
+        await off_msg(item, player);
+        await Blindf_off(player, item);
+        setnotworn(player, item);
+    } else {
+        if (item.owornmask) setnotworn(player, item);
+    }
+    find_ac(player);
+    return { moved: false, tookTime: true };
+}
+
 // cf. do_wear.c dowear() — W command: wear a piece of armor
 async function handleWear(player, display, game = null) {
     const wornSet = new Set(getWornArmorItems(player));
@@ -1645,100 +2066,56 @@ async function handleWear(player, display, game = null) {
     const wearPrompt = wearChoices.length > 0
         ? `What do you want to wear? [${wearChoices} or ?*] `
         : 'What do you want to wear? [*] ';
+    resetTopline(display);
     await display.putstr_message(wearPrompt);
     const ch = await nhgetch();
     const c = String.fromCharCode(ch);
 
     const selected = (player.inventory || []).find((o) => o.invlet === c);
     if (!selected) {
-        if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
+        resetTopline(display);
         await display.putstr_message('Never mind.');
         return { moved: false, tookTime: false };
     }
-    if (selected.oclass !== ARMOR_CLASS) {
-        if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
+    if (!isAccessoryOrArmorItem(selected)) {
+        resetTopline(display);
         await display.putstr_message('That is a silly thing to wear.');
         return { moved: false, tookTime: false };
     }
-
-    const item = selected;
-
-    // Validate that we can wear this item in its slot
-    if (typeof display.clearRow === 'function') display.clearRow(0);
-    display.topMessage = null;
-    if (!await canwearobj(player, item, display)) {
+    if (isAlreadyWornAccessoryOrArmor(player, selected)) {
+        resetTopline(display);
+        await display.putstr_message('You are already wearing that!');
         return { moved: false, tookTime: false };
     }
-
-    const sub = objectData[item.otyp]?.sub;
-    const slot = ARMOR_SLOTS[sub];
-    const delay = Number(objectData[item.otyp]?.delay || 0);
-    const wearNow = () => {
-        const mask = ARM_SUB_TO_MASK[sub] || 0;
-        if (mask) setworn(player, item, mask);
-        else player[slot.prop] = item;
-        const onFn = SLOT_ON[sub];
-        if (onFn) onFn(player);
-        find_ac(player);
-    };
-
-    // C parity: armor donning can be a multi-turn occupation.
-    if (game && delay > 1) {
-        let remaining = Math.max(0, delay - 1);
-        game.occupation = {
-            occtxt: 'dressing',
-            fn: () => {
-                remaining -= 1;
-                return remaining > 0;
-            },
-            onFinishAfterTurn: async () => {
-                wearNow();
-                await display.putstr_message('You finish your dressing maneuver.');
-            },
-        };
-        return { moved: false, tookTime: true };
-    }
-
-    wearNow();
-    await display.putstr_message(`You are now wearing ${doname(item, player)}.`);
-    return { moved: false, tookTime: true };
+    return await putOnSelectedItem(player, display, game, selected);
 }
 
 // cf. do_wear.c doputon() — P command: put on ring or amulet
-async function handlePutOn(player, display) {
-    const isEyewear = (o) => !!o && (o.otyp === BLINDFOLD || o.otyp === TOWEL || o.otyp === LENSES);
-    const isPutOnClass = (o) => !!o
-        && (o.oclass === ARMOR_CLASS || o.oclass === RING_CLASS || o.oclass === AMULET_CLASS || isEyewear(o));
-    const isAlreadyWornForPutOn = (o) => !!o && (
-        (o.oclass === ARMOR_CLASS && (
-            o === player.armor || o === player.cloak || o === player.helmet
-            || o === player.shield || o === player.gloves || o === player.boots
-            || o === player.shirt
-        ))
-        ||
-        (o.oclass === RING_CLASS && (o === player.leftRing || o === player.rightRing))
-        || (o.oclass === AMULET_CLASS && o === player.amulet)
-        || (isEyewear(o) && o === player.blindfold)
-    );
+async function handlePutOn(player, display, game = null) {
+    if (player.leftRing && player.rightRing && player.amulet && player.blindfold
+        && player.armor && player.shirt && player.cloak && player.helmet && player.shield && player.gloves && player.boots) {
+        await display.putstr_message("Your ring-fingers are full, and you're already wearing an amulet and a blindfold.");
+        return { moved: false, tookTime: false };
+    }
 
-    const eligible = (player.inventory || []).filter((o) => {
-        if (o.oclass === RING_CLASS && o !== player.leftRing && o !== player.rightRing) return true;
-        if (o.oclass === AMULET_CLASS && o !== player.amulet) return true;
-        if (isEyewear(o) && o !== player.blindfold) return true;
-        return false;
+    const putOnCandidates = (player.inventory || []).filter((o) => {
+        if (!isAccessoryOrArmorItem(o)) return false;
+        if (isAlreadyWornAccessoryOrArmor(player, o)) return false;
+        return true;
     });
-    if (eligible.length === 0) {
+    if (putOnCandidates.length === 0) {
         await display.putstr_message("You don't have anything else to put on.");
         return { moved: false, tookTime: false };
     }
 
+    // C getobj parity: 'P' suggests accessories and downplays armor.
+    const suggested = putOnCandidates.filter((o) => o.oclass !== ARMOR_CLASS);
     {
-        const choices = eligible.map(r => r.invlet).join('');
+        const choices = suggested.map((r) => r.invlet).join('');
         const putOnPrompt = choices.length > 0
             ? `What do you want to put on? [${choices} or ?*] `
             : 'What do you want to put on? [*] ';
+        resetTopline(display);
         await display.putstr_message(putOnPrompt);
     }
     const ch = await nhgetch();
@@ -1747,85 +2124,40 @@ async function handlePutOn(player, display) {
     const selected = (player.inventory || []).find((o) => o.invlet === c);
     if (!selected) {
         if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
+        resetTopline(display);
         await display.putstr_message('Never mind.');
         return { moved: false, tookTime: false };
     }
-    if (!eligible.includes(selected)) {
-        if (typeof display.clearRow === 'function') display.clearRow(0);
-        display.topMessage = null;
-        if (isPutOnClass(selected) && isAlreadyWornForPutOn(selected)) {
+    if (!putOnCandidates.includes(selected)) {
+        resetTopline(display);
+        if (isAccessoryOrArmorItem(selected) && isAlreadyWornAccessoryOrArmor(player, selected)) {
             await display.putstr_message('You are already wearing that!');
         } else {
             await display.putstr_message('That is a silly thing to put on.');
         }
         return { moved: false, tookTime: false };
     }
-    const item = selected;
-
-    if (item.oclass === RING_CLASS) {
-        if (player.leftRing && player.rightRing) {
-            await display.putstr_message("You're already wearing two rings.");
-            return { moved: false, tookTime: false };
-        }
-        if (player.leftRing) {
-            // Left slot occupied — assign to right automatically (C: else if (uleft) mask=RIGHT_RING)
-            setworn(player, item, W_RINGR);
-        } else if (player.rightRing) {
-            // Right slot occupied — assign to left automatically (C: else if (uright) mask=LEFT_RING)
-            setworn(player, item, W_RINGL);
-        } else {
-            // C ref: do_wear.c accessory_or_armor_on() — both slots free → ask which finger
-            const fingerQ = 'Which ring-finger, Right or Left? [rl] ';
-            await display.putstr_message(fingerQ);
-            let mask = null;
-            while (!mask) {
-                const fc = await nhgetch();
-                const fs = String.fromCharCode(fc);
-                if (fc === 27 || fc === 0) return { moved: false, tookTime: false }; // ESC
-                if (fs === 'r' || fs === 'R') mask = 'right';
-                else if (fs === 'l' || fs === 'L') mask = 'left';
-                // else: invalid key, loop again
-            }
-            if (mask === 'left') setworn(player, item, W_RINGL);
-            else setworn(player, item, W_RINGR);
-        }
-        Ring_on(player, item);
-    } else if (item.oclass === AMULET_CLASS) {
-        if (player.amulet) {
-            await display.putstr_message("You're already wearing an amulet.");
-            return { moved: false, tookTime: false };
-        }
-        setworn(player, item, W_AMUL);
-        await Amulet_on(player);
-    } else if (isEyewear(item)) {
-        if (player.blindfold) {
-            await display.putstr_message('You are already wearing that!');
-            return { moved: false, tookTime: false };
-        }
-        setworn(player, item, W_TOOL);
-        await Blindf_on(player, item);
-    }
-
-    find_ac(player);
-    await display.putstr_message(`You are now wearing ${doname(item, player)}.`);
-    return { moved: false, tookTime: true };
+    return await putOnSelectedItem(player, display, game, selected);
 }
 
 // cf. do_wear.c dotakeoff() — T command: take off a piece of armor
 async function handleTakeOff(player, display, game = null) {
-    const worn = getWornArmorItems(player);
-    if (worn.length === 0) {
-        await display.putstr_message("You're not wearing any armor.");
+    const { armorCount, accessoryCount, lastArmor } = count_worn_stuff(player);
+    if (!armorCount && !accessoryCount) {
+        await display.putstr_message('Not wearing any armor or accessories.');
         return { moved: false, tookTime: false };
     }
 
-    let item;
-    if (worn.length === 1) {
-        item = worn[0];
+    const wornAll = getWornArmorAndAccessoryItems(player);
+    const suggested = new Set(getWornArmorItems(player));
+    let item = null;
+
+    if (armorCount === 1 && lastArmor) {
+        item = lastArmor;
     } else {
         {
-            const choices = worn.map(a => a.invlet).join('');
+            const choices = wornAll.filter((a) => suggested.has(a)).map((a) => a.invlet).join('');
+            resetTopline(display);
             await display.putstr_message(
                 choices.length > 1
                     ? `What do you want to take off? [${choices} or ?*] `
@@ -1834,92 +2166,34 @@ async function handleTakeOff(player, display, game = null) {
         }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
-        item = worn.find(a => a.invlet === c);
+        item = wornAll.find((a) => a.invlet === c);
         if (!item) {
             await display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
     }
 
-    // Layering: can't remove suit if cloak worn, can't remove shirt if cloak or suit worn
-    const sub = objectData[item.otyp]?.sub;
-    if (sub === ARM_SUIT && player.cloak) {
-        await display.putstr_message("You can't take that off while wearing a cloak.");
-        return { moved: false, tookTime: false };
-    }
-    if (sub === ARM_SHIRT && (player.cloak || player.armor)) {
-        if (player.cloak) {
-            await display.putstr_message("You can't take that off while wearing a cloak.");
-        } else {
-            await display.putstr_message("You can't take that off while wearing body armor.");
-        }
-        return { moved: false, tookTime: false };
-    }
-
-    // Cursed check
-    if (await cursed_check(item, display)) {
-        return { moved: false, tookTime: false };
-    }
-
-    const slot = ARMOR_SLOTS[sub];
-    const offFn = SLOT_OFF[sub];
-    const takeOffNow = () => {
-        if (offFn) offFn(player);
-        if (item?.owornmask) setnotworn(player, item);
-        else player[slot.prop] = null;
-        find_ac(player);
-    };
-
-    // C parity: takeoff completion is emitted after this command's timed turn.
-    if (game) {
-        return {
-            moved: false,
-            tookTime: true,
-            onAfterTurn: () => {
-                takeOffNow();
-                const finishMsg = `You finish taking off your ${armor_simple_name(item)}.`;
-                const prior = (typeof display.topMessage === 'string') ? display.topMessage.trim() : '';
-                if (prior.length > 0 && !prior.endsWith(finishMsg)) {
-                    const combined = `${prior}  ${finishMsg}`;
-                    if (typeof display.clearRow === 'function') display.clearRow(0);
-                    if (typeof display.putstr === 'function') {
-                        const width = Number.isInteger(display.cols) ? display.cols : combined.length;
-                        display.putstr(0, 0, combined.substring(0, width));
-                    } else {
-                        display.putstr_message(combined);
-                    }
-                    display.topMessage = combined;
-                    if (Object.hasOwn(display, 'messageNeedsMore')) display.messageNeedsMore = true;
-                    return;
-                }
-                display.putstr_message(finishMsg);
-            },
-        };
-    }
-
-    takeOffNow();
-    display.putstr_message(`You finish taking off your ${armor_simple_name(item)}.`);
-    return { moved: false, tookTime: true };
+    return await removeArmorOrAccessory(player, display, game, item);
 }
 
 // cf. do_wear.c doremring() — R command: remove ring or amulet
-async function handleRemove(player, display) {
-    const accessories = [];
-    if (player.leftRing) accessories.push(player.leftRing);
-    if (player.rightRing) accessories.push(player.rightRing);
-    if (player.amulet) accessories.push(player.amulet);
-
-    if (accessories.length === 0) {
-        await display.putstr_message("You aren't wearing any accessories.");
+async function handleRemove(player, display, game = null) {
+    const { armorCount, accessoryCount, lastAccessory } = count_worn_stuff(player);
+    if (!accessoryCount && !armorCount) {
+        await display.putstr_message('Not wearing any accessories or armor.');
         return { moved: false, tookTime: false };
     }
 
-    let item;
-    if (accessories.length === 1) {
-        item = accessories[0];
+    const wornAll = getWornArmorAndAccessoryItems(player);
+    const suggested = new Set(getWornAccessoryItems(player));
+    let item = null;
+
+    if (accessoryCount === 1 && lastAccessory) {
+        item = lastAccessory;
     } else {
         {
-            const choices = accessories.map(a => a.invlet).join('');
+            const choices = wornAll.filter((a) => suggested.has(a)).map((a) => a.invlet).join('');
+            resetTopline(display);
             await display.putstr_message(
                 choices.length > 1
                     ? `What do you want to remove? [${choices} or ?*] `
@@ -1928,32 +2202,14 @@ async function handleRemove(player, display) {
         }
         const ch = await nhgetch();
         const c = String.fromCharCode(ch);
-        item = accessories.find(a => a.invlet === c);
+        item = wornAll.find((a) => a.invlet === c);
         if (!item) {
             await display.putstr_message('Never mind.');
             return { moved: false, tookTime: false };
         }
     }
 
-    // Cursed check
-    if (await cursed_check(item, display)) {
-        return { moved: false, tookTime: false };
-    }
-
-    if (item === player.leftRing) {
-        Ring_off(player, item);
-        setnotworn(player, item);
-    } else if (item === player.rightRing) {
-        Ring_off(player, item);
-        setnotworn(player, item);
-    } else if (item === player.amulet) {
-        Amulet_off(player);
-        setnotworn(player, item);
-    }
-
-    find_ac(player);
-    await display.putstr_message(`You remove ${doname(item, player)}.`);
-    return { moved: false, tookTime: true };
+    return await removeArmorOrAccessory(player, display, game, item);
 }
 
 export { handleWear, handlePutOn, handleTakeOff, handleRemove, canwearobj, cursed_check, Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off, Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off, Amulet_on, Amulet_off, wielding_corpse, dragon_armor_handling, set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning, glibr, some_armor, stuck_ring, count_worn_stuff, select_off, remarm_swapwep, menu_remarm, wornarm_destroyed, inaccessible_equipment, equip_ok, any_worn_armor_ok };

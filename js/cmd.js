@@ -350,7 +350,7 @@ export async function rhack(ch, game) {
     // Remove ring/amulet
     // C ref: do_wear.c doremring()
     if (c === 'R') {
-        return await handleRemove(player, display);
+        return await handleRemove(player, display, game);
     }
 
     // Take off all worn items (category menu)
@@ -373,7 +373,7 @@ export async function rhack(ch, game) {
     // Put on ring/accessory
     // C ref: do_wear.c doputon()
     if (c === 'P') {
-        return await handlePutOn(player, display);
+        return await handlePutOn(player, display, game);
     }
 
     // Take off armor

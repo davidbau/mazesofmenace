@@ -2159,7 +2159,7 @@ export function enexto(cx, cy, map) {
 
 // C ref: engrave.c rubouts[] — partial rubout substitution table
 const RUBOUTS = {
-    'A': "^", 'B': "Pb[", 'C': "(", 'D': "|)[", 'E': "|FL[_",
+    'A': "V", 'B': "Pb", 'C': "(", 'D': "|)", 'E': "FL",
     'F': "|-", 'G': "C(", 'H': "|-", 'I': "|", 'K': "|<",
     'L': "|_", 'M': "|", 'N': "|\\", 'O': "C(", 'P': "F",
     'Q': "C(", 'R': "PF", 'T': "|", 'U': "J", 'V': "/\\",
@@ -2194,6 +2194,10 @@ function wipeout_text(text, cnt) {
         } else {
             chars[nxt] = '?';
         }
+    }
+    // C ref: engrave.c wipeout_text() trims trailing spaces.
+    while (chars.length > 0 && chars[chars.length - 1] === ' ') {
+        chars.pop();
     }
     return chars.join('');
 }

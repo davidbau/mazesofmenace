@@ -465,7 +465,6 @@ export async function domove_swap_with_pet(mon, nx, ny, dir, player, map, displa
     player.y = ny;
     player.moved = true;
     game.lastMoveDir = dir;
-    await maybe_smudge_engr(map, oldPlayerX, oldPlayerY, player.x, player.y, player);
     player.displacedPetThisTurn = true;
     await maybeHandleShopEntryMessage(game, oldPlayerX, oldPlayerY);
 
@@ -873,7 +872,6 @@ export async function domove_core(dir, player, map, display, game) {
     player.moved = true;
     ctx.move = 1;
     game.lastMoveDir = moveDir;
-
     // Clear force-fight prefix after successful movement.
     clear_forcefight_prefix(game, ctx);
     await maybeHandleShopEntryMessage(game, oldX, oldY);
