@@ -294,6 +294,37 @@ Missing a single truncation can shift coordinates by one cell, which shifts
 room geometry, which shifts corridor layout, which shifts the entire RNG
 sequence.
 
+### Lua `for` loop upper bounds use floor semantics — JS must match
+
+In Lua, `for x = 0, n do` iterates while `x <= n`, where `n` is evaluated
+as-is (floats included). So `for x = 0, (rm.width / 4) - 1 do` with
+`rm.width = 10` gives `n = 1.5`, and x goes 0, 1 (two iterations, since
+2 > 1.5).
+
+The JS translation `for (let x = 0; x < (rm.width / 4); x++)` is subtly
+wrong: `x < 2.5` allows x=0, 1, **2** (three iterations!), placing pillar
+terrain outside the room boundary.
+
+The correct translation of Lua `for x = 0, expr - 1 do` is:
+```js
+for (let x = 0; x < Math.floor(expr); x++)
+```
+
+This bug was found in the Pillars themeroom (`themerms.js`). For a 10-wide
+room, the extra x=2 iteration placed HWALL tiles at raw coords (10,*) and
+(11,*), which via `getLocationCoord()` landed one tile past the room's right
+wall — changing 3 mineralize-eligible STONE tiles to HWALL. This caused JS
+to find 587 eligible mineralize tiles at depth=1 vs C's 590, diverging at
+normalized RNG index 6210.
+
+**Root cause chain**: Pillars loop iterates x=2 → terrain at raw (10..11,y)
+→ absolute x=13..14 (room right wall + 1 outside) → 3 STONE→HWALL changes
+→ mineralize eligibility drops by 3 → RNG divergence at depth=1 start.
+
+Triage method: use `DEBUG_ROOM_TRAP=1` (in sp_lev.js terrain()) to trap
+writes to specific absolute positions and find which `des.terrain()` call
+is placing outside the room.
+
 ### Match C exactly — no "close enough" stubs
 
 When porting a C function, match it completely: same name, same RNG calls,

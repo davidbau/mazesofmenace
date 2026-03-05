@@ -4224,6 +4224,9 @@ export function bound_digging(map) {
     // C ref: mkmaze.c:1439-1455
     // Mark boundary stone/wall cells as non-diggable so mineralize skips them.
     const { xmin, xmax, ymin, ymax } = get_level_extends(map);
+    if (typeof process !== 'undefined' && process.env.DEBUG_MINERALIZE === '1') {
+        console.log(`bound_digging: xmin=${xmin} xmax=${xmax} ymin=${ymin} ymax=${ymax}`);
+    }
 
     for (let x = 0; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
@@ -4268,8 +4271,10 @@ export function mineralize(map, depth, opts = null) {
         ? Math.trunc(opts.kelp_moat) : 30; // C default when kelp_moat < 0
 
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_MINERALIZE === '1';
+    if (DEBUG) console.log(`  mineralize depth=${depth}`);
     let eligible_count = 0;
     let rng_calls = 0;
+    const startRng = DEBUG ? getRngCallCount() : 0;
 
     // C ref: mklev.c:1454-1457 — Place kelp in water (except plane of water)
     // Skip for wizard tower (not in endgame)
@@ -4304,22 +4309,38 @@ export function mineralize(map, depth, opts = null) {
     // Wizard tower is neither, so use defaults
 
     // C ref: mklev.c:1490-1529 — scan for eligible stone tiles
+    let debug_nondig = 0, debug_neighbor = 0, debug_null = 0;
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
             const loc_yp1 = map.at(x, y + 1);
             if (!loc_yp1 || loc_yp1.typ !== STONE) {
                 // <x,y> and <x,y+1> not eligible, skip ahead
+                if (DEBUG && !loc_yp1) debug_null++;
+                if (DEBUG) {
+                    const cur = map.at(x, y);
+                    let wouldEligible = false;
+                    if (cur && cur.typ === STONE && !cur.nondiggable) {
+                        const n7ok = map.at(x,y-1)?.typ===STONE && map.at(x+1,y-1)?.typ===STONE
+                            && map.at(x-1,y-1)?.typ===STONE && map.at(x+1,y)?.typ===STONE
+                            && map.at(x-1,y)?.typ===STONE && map.at(x+1,y+1)?.typ===STONE
+                            && map.at(x-1,y+1)?.typ===STONE;
+                        wouldEligible = n7ok;
+                    }
+                    if (wouldEligible)
+                        console.log(`  YP1_ELIGIBLE_SKIP: (${x},${y}) yp1_typ=${loc_yp1?.typ ?? 'null'} WOULD BE ELIGIBLE`);
+                }
                 y += 2;
                 continue;
             }
             const loc = map.at(x, y);
             if (!loc || loc.typ !== STONE) {
                 // <x,y> not eligible, <x,y+1> also not eligible
+                if (DEBUG && !loc) debug_null++;
                 y += 1;
                 continue;
             }
             // C ref: mklev.c:1496-1503 — check W_NONDIGGABLE and all 8 neighbors
-            if (loc.nondiggable) continue;
+            if (!process.env.DEBUG_SKIP_NONDIG && loc.nondiggable) { if (DEBUG) { debug_nondig++; } continue; }
             if (map.at(x, y - 1)?.typ !== STONE
                 || map.at(x + 1, y - 1)?.typ !== STONE
                 || map.at(x - 1, y - 1)?.typ !== STONE
@@ -4327,11 +4348,13 @@ export function mineralize(map, depth, opts = null) {
                 || map.at(x - 1, y)?.typ !== STONE
                 || map.at(x + 1, y + 1)?.typ !== STONE
                 || map.at(x - 1, y + 1)?.typ !== STONE) {
+                if (DEBUG) { debug_neighbor++; console.log(`  skip neighbor: (${x},${y}) [ym1=${map.at(x,y-1)?.typ} xp1ym1=${map.at(x+1,y-1)?.typ} xm1ym1=${map.at(x-1,y-1)?.typ} xp1=${map.at(x+1,y)?.typ} xm1=${map.at(x-1,y)?.typ} xp1yp1=${map.at(x+1,y+1)?.typ} xm1yp1=${map.at(x-1,y+1)?.typ}]`); }
                 continue;
             }
 
             // Eligible stone tile — try to place gold
             eligible_count++;
+            if (DEBUG) console.log(`  eligible[${eligible_count}]: (${x},${y})`);
             rng_calls++;
             if (rn2(1000) < goldprob) {
                 const otmp = mksobj(GOLD_PIECE, false, false);
@@ -4374,7 +4397,8 @@ export function mineralize(map, depth, opts = null) {
     }
 
     if (DEBUG) {
-        console.log(`mineralize: depth=${depth}, eligible=${eligible_count}, rng_calls=${rng_calls} (expected 1110 in C)`);
+        const endRng = getRngCallCount();
+        console.log(`mineralize: depth=${depth}, eligible=${eligible_count}, rng_calls=${rng_calls} (base), actual_rng=${endRng-startRng} (indices ${startRng}..${endRng-1}), skip_nondig=${debug_nondig}, skip_neighbor=${debug_neighbor}, skip_null=${debug_null}`);
     }
 }
 

@@ -464,8 +464,8 @@ export const themerooms = [
                      const terr = [ "-", "-", "-", "-", "L", "P", "T" ];
                      shuffle(terr);
                      if (DEBUG) console.log('Pillars: shuffle complete, terr=', terr);
-                     for (let x = 0; x < (rm.width / 4); x++) {
-                        for (let y = 0; y < (rm.height / 4); y++) {
+                     for (let x = 0; x < Math.floor(rm.width / 4); x++) {
+                        for (let y = 0; y < Math.floor(rm.height / 4); y++) {
                            await des.terrain({ x: x * 4 + 2, y: y * 4 + 2, typ: terr[0], lit: -2 });
                            await des.terrain({ x: x * 4 + 3, y: y * 4 + 2, typ: terr[0], lit: -2 });
                            await des.terrain({ x: x * 4 + 2, y: y * 4 + 3, typ: terr[0], lit: -2 });
