@@ -1162,9 +1162,6 @@ async function fixupSpecialLevel() {
                 }
 
                 const branch = resolveBranchPlacementForLevel(ctx.dnum, ctx.dlevel);
-                if (branch.placement === 'none') {
-                    break;
-                }
                 if (branch.placement === 'portal') {
                     placeRegion(region, LR_BRANCH, { branchPlacement: 'portal' });
                     break;
@@ -1177,6 +1174,10 @@ async function fixupSpecialLevel() {
                     placeRegion(region, LR_BRANCH, { branchPlacement: 'stair-down' });
                     break;
                 }
+                // 'none' or unknown: C still calls place_lregion (consuming RNG) even
+                // when no actual stair/portal is placed (BR_NO_END1 etc.) — match C.
+                placeRegion(region, LR_BRANCH, { branchPlacement: 'none' });
+                break;
                 // Fallback for unknown resolver states.
                 // fall through to default placement path.
             case LR_PORTAL:

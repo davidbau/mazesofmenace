@@ -1024,9 +1024,10 @@ function m_initweap(mon, mndx, depth) {
 // C ref: muse.c:1221-1274
 // ========================================================================
 
-function rnd_defensive_item(mndx) {
+function rnd_defensive_item(mon, mndx, map) {
     const ptr = mons[mndx];
     const difficulty = ptr.difficulty || 0;
+    let trycnt = 0;
 
     // Animals, exploders, mindless, ghosts, Kops don't get defensive items
     if (is_animal(ptr) || attacktype(ptr, AT_EXPL) || mindless(ptr)
@@ -1041,7 +1042,8 @@ function rnd_defensive_item(mndx) {
         switch (roll) {
         case 6:
         case 9:
-            // C retries only on noteleport_level(); levelgen path does not.
+            // C ref: muse.c:1234 — retry (goto try_again) on noteleport level
+            if ((map && map.flags && map.flags.noteleport) && ++trycnt < 2) continue;
             if (!rn2(3)) return WAN_TELEPORTATION;
             // Fall through
         case 0:
@@ -1377,7 +1379,7 @@ function m_initinv(mon, mndx, depth, m_lev, map) {
     // At depth 1 (m_lev typically 0-1), the checks almost never pass
     const rollDef = rn2(50);
     if (m_lev > rollDef) {
-        const otyp = rnd_defensive_item(mndx);
+        const otyp = rnd_defensive_item(mon, mndx, map);
         if (otyp) mongets(mon,otyp);
     }
     if (m_lev > rn2(100)) {

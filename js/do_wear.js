@@ -893,7 +893,7 @@ async function canwearobj(player, obj, display, silent = false) {
 
     // Already wearing something in that slot?
     if (player[slot.prop]) {
-        if (!silent) await display.putstr_message('You are already wearing that!');
+        if (!silent) await pline('You are already wearing that!');
         return false;
     }
 
