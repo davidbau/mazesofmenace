@@ -762,9 +762,12 @@ export async function handleDrop(player, map, display) {
 // ============================================================
 
 async function waitForStairMessageAck(display) {
-    // C ref: tty window handoff can force --More-- before map redraw on
-    // stair transitions. Reproduce that blocking acknowledgment so replayed
-    // key timing aligns with captured sessions.
+    // C ref: goto_level() in do.c calls docrt() after stair messages, which
+    // triggers display_nhwindow(WIN_MESSAGE, TRUE) in the tty port — this
+    // shows --More-- and blocks until the player presses a key to dismiss it.
+    // Reproduce that blocking acknowledgment so replayed key timing aligns
+    // with captured sessions (the Space that dismisses --More-- is consumed
+    // here, never reaching the command parser).
     if (!display?._moreBlockingEnabled || typeof display?.morePrompt !== 'function'
         || typeof display?._nhgetch !== 'function') {
         return;

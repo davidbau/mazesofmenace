@@ -2190,15 +2190,17 @@ hard-won wisdom:
 - Remaining first divergence is now a single screen-line timing mismatch at step `373`
   (`Unknown command ' '.`), which is separate from this terrain-state fix.
 
-### Stair transition `--More--`: non-blocking marker rollback (2026-03-05)
+### Stair transition `--More--` lesson: C DOES block (2026-03-05)
 
-- A non-blocking stair `--More--` approach in `do.js` (`showNonBlockingStairMore`)
-  introduced screen-only regressions in previously green selfplay sessions:
-  `seed301`, `seed305`, `seed309`, `seed313`.
-- Signal profile of the regression:
-  - `RNG` and `events` remained `100%` matched,
-  - only `screen`/`color` diverged near stair transitions.
-- Restoring the blocking stair-ack path (`waitForStairMessageAck`) returned those
-  sessions to green and restored gameplay parity from `15/34` back to `19/34`.
-- Current project state keeps the blocking stair ack path because it matches
-  existing canonical session captures better than the non-blocking marker variant.
+- `goto_level()` in C's `do.c` calls `docrt()` after the stair message
+  ("You descend/climb the stairs."), which triggers
+  `display_nhwindow(WIN_MESSAGE, TRUE)` in the tty port — this shows
+  `--More--` and blocks until the player presses a key to dismiss it.
+- Session evidence confirms this: e.g. seed301 step 148 key=`>` shows
+  `"You descend the stairs.--More--"`, step 149 key=`" "` dismisses it.
+- The JS `waitForStairMessageAck()` function correctly reproduces this
+  blocking behavior.  An earlier attempt to make it non-blocking (treating
+  `--More--` as a display-only marker) broke 4 selfplay sessions (301, 305,
+  309, 313) because the Space key that C consumed via `--More--` dismissal
+  reached the command parser in JS, producing `"Unknown command ' '."` and
+  desyncing all subsequent steps.
