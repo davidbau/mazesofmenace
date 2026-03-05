@@ -325,13 +325,14 @@ def run_from_keylog(
     key_delay_s = max(0.0, float(key_delay_ms) / 1000.0)
 
     fixed_datetime = datetime_hint or _session.harness_fixed_datetime()
+    datetime_env = f'NETHACK_FIXED_DATETIME={fixed_datetime} ' if fixed_datetime else ''
 
     name_flag = "-u '' " if interactive else f'-u {character["name"]} '
     wiz_flag = '-D' if wizard_enabled else ''
     try:
         cmd = (
             f'NETHACKDIR={INSTALL_DIR} '
-            f'{fixed_datetime_env()}'
+            f'{datetime_env}'
             f'NETHACK_SEED={seed} '
             f'NETHACK_RNGLOG={rng_log_file} '
             f'HOME={RESULTS_DIR} '
