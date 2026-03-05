@@ -31,6 +31,11 @@ completed (`makeRoom`/`FILL_*` in `mkroom.js`, `GameMap`/`makeLocation` in
    - deleted `js/map.js`,
    - updated docs references (`MODULES`, `STRUCTURES`, `SESSION_FORMAT_V3`,
      `DESIGN`, `CODEMATCH`).
+6. Removed gameplay top-level registration side effects in `special_levels.js`:
+   - replaced eager module-top-level special-level registration with lazy
+     deterministic `initializeSpecialLevels()`,
+   - switched helper naming from `register*` to `set*` in this module,
+   - preserved `initQuestLevels()` role remapping semantics.
 4. Validation after each step:
    - `node --test test/unit/wizard_mode.test.js` passes,
    - parity spot checks (`seed42`, `seed100`) pass,

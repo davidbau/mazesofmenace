@@ -212,13 +212,13 @@ const specialLevels = new Map();
 const variantCache = new Map();
 
 /**
- * Register a special level at a specific dungeon location
+ * Set a special level at a specific dungeon location
  * @param {number} dnum - Dungeon number
  * @param {number} dlevel - Dungeon level (1-based)
  * @param {Function|Array<Function>} generator - Level generator function or array of variant generators
  * @param {string|Array<string>} name - Level name(s) for debugging
  */
-function registerSpecialLevel(dnum, dlevel, generator, name) {
+function setSpecialLevel(dnum, dlevel, generator, name) {
     const key = `${dnum}:${dlevel}`;
     if (Array.isArray(generator)) {
         const wrappedGenerators = generator.map((gen) => () => gen());
@@ -229,6 +229,8 @@ function registerSpecialLevel(dnum, dlevel, generator, name) {
     }
 }
 
+let specialLevelsInitialized = false;
+
 /**
  * Get special level generator for a dungeon location
  * @param {number} dnum - Dungeon number
@@ -236,6 +238,7 @@ function registerSpecialLevel(dnum, dlevel, generator, name) {
  * @returns {Object|null} - { generator, name } or null if no special level
  */
 export function getSpecialLevel(dnum, dlevel) {
+    initializeSpecialLevels();
     const key = `${dnum}:${dlevel}`;
     const entry = specialLevels.get(key);
 
@@ -281,56 +284,61 @@ export function resetVariantCache() {
  * @returns {boolean}
  */
 export function hasSpecialLevel(dnum, dlevel) {
+    initializeSpecialLevels();
     return specialLevels.has(`${dnum}:${dlevel}`);
 }
 
+function initializeSpecialLevels() {
+    if (specialLevelsInitialized) return;
+    specialLevelsInitialized = true;
+
 // Register Fort Ludios (Knox)
 // Fort Ludios is its own branch, accessed via magic portal
-// registerSpecialLevel(KNOX, 1, generateKnox, 'knox');
+// setSpecialLevel(KNOX, 1, generateKnox, 'knox');
 
 // Register Vlad's Tower (3 levels)
 // Tower is in its own branch, levels 1-3
-// registerSpecialLevel(VLADS_TOWER, 1, generateTower1, 'tower1');
-// registerSpecialLevel(VLADS_TOWER, 2, generateTower2, 'tower2');
-// registerSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
+// setSpecialLevel(VLADS_TOWER, 1, generateTower1, 'tower1');
+// setSpecialLevel(VLADS_TOWER, 2, generateTower2, 'tower2');
+// setSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
 
 // Register Gehennom levels
 // Valley is the entrance to Gehennom (level 1)
 // Demon lairs are scattered throughout Gehennom (levels 3-6)
 // Sanctum is the final level (level 10 in a typical game)
 // Wizard's Tower appears after getting the Amulet (levels 11-13)
-// registerSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
-// registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
-// registerSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
-// registerSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
-// registerSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
-// registerSpecialLevel(GEHENNOM, 10, generateSanctum, 'sanctum');
-// registerSpecialLevel(GEHENNOM, 11, generateWizard1, 'wizard1');
-// registerSpecialLevel(GEHENNOM, 12, generateWizard2, 'wizard2');
-// registerSpecialLevel(GEHENNOM, 13, generateWizard3, 'wizard3');
+// setSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
+// setSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
+// setSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
+// setSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
+// setSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
+// setSpecialLevel(GEHENNOM, 10, generateSanctum, 'sanctum');
+// setSpecialLevel(GEHENNOM, 11, generateWizard1, 'wizard1');
+// setSpecialLevel(GEHENNOM, 12, generateWizard2, 'wizard2');
+// setSpecialLevel(GEHENNOM, 13, generateWizard3, 'wizard3');
 
 // Register Sokoban levels (4 levels, 2 variants each)
 // Sokoban is accessed from Dungeons of Doom around depth 6-9
 // Player gets one of two variants per level (a or b)
 // Variant selection happens at first access using RNG, then cached
-registerSpecialLevel(SOKOBAN, 1, [generateSoko1a, generateSoko1b], ['soko1-1', 'soko1-2']);
-registerSpecialLevel(SOKOBAN, 2, [generateSoko2a, generateSoko2b], ['soko2-1', 'soko2-2']);
-registerSpecialLevel(SOKOBAN, 3, [generateSoko3a, generateSoko3b], ['soko3-1', 'soko3-2']);
-registerSpecialLevel(SOKOBAN, 4, [generateSoko4a, generateSoko4b], ['soko4-1', 'soko4-2']);
+setSpecialLevel(SOKOBAN, 1, [generateSoko1a, generateSoko1b], ['soko1-1', 'soko1-2']);
+setSpecialLevel(SOKOBAN, 2, [generateSoko2a, generateSoko2b], ['soko2-1', 'soko2-2']);
+setSpecialLevel(SOKOBAN, 3, [generateSoko3a, generateSoko3b], ['soko3-1', 'soko3-2']);
+setSpecialLevel(SOKOBAN, 4, [generateSoko4a, generateSoko4b], ['soko4-1', 'soko4-2']);
 
 // Register special levels in main dungeon
 // In Dungeons of Doom, at depths that vary by dungeon generation
 // Using specific depths for testing (actual depths determined at runtime)
 
 // Tutorial levels (optional early game levels)
-registerSpecialLevel(TUTORIAL, 1, generateTut1, 'tut-1');
-registerSpecialLevel(TUTORIAL, 2, generateTut2, 'tut-2');
+setSpecialLevel(TUTORIAL, 1, generateTut1, 'tut-1');
+setSpecialLevel(TUTORIAL, 2, generateTut2, 'tut-2');
 
 // Oracle level (typically depth 5-7 in Dungeons of Doom)
-registerSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
+setSpecialLevel(DUNGEONS_OF_DOOM, 5, generateOracle, 'oracle');
 
 // Big room level (13 variants; depth varies by dungeon generation)
-registerSpecialLevel(DUNGEONS_OF_DOOM, 10, [
+setSpecialLevel(DUNGEONS_OF_DOOM, 10, [
     generateBigroom1,
     generateBigroom2,
     generateBigroom3,
@@ -361,13 +369,13 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, 10, [
 ]);
 
 // Castle (Stronghold) level (typically depth 17 in Dungeons of Doom)
-registerSpecialLevel(DUNGEONS_OF_DOOM, 17, generateCastle, 'castle');
+setSpecialLevel(DUNGEONS_OF_DOOM, 17, generateCastle, 'castle');
 
 // Rogue branch placeholder level (Dungeons of Doom depth 15 in harness parity checks)
-registerSpecialLevel(DUNGEONS_OF_DOOM, 15, generateRogue, 'rogue');
+setSpecialLevel(DUNGEONS_OF_DOOM, 15, generateRogue, 'rogue');
 
 // Medusa level (4 variants, typically depth 20 in Dungeons of Doom)
-registerSpecialLevel(DUNGEONS_OF_DOOM, 20, [
+setSpecialLevel(DUNGEONS_OF_DOOM, 20, [
     generateMedusa1,
     generateMedusa2,
     generateMedusa3,
@@ -375,39 +383,39 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, 20, [
 ], ['medusa-1', 'medusa-2', 'medusa-3', 'medusa-4']);
 
 // Fort Ludios (Knox's Fort) - bonus level accessed via magic portal
-registerSpecialLevel(KNOX, 1, generateKnox, 'knox');
+setSpecialLevel(KNOX, 1, generateKnox, 'knox');
 
 // Register Gehennom levels
 // Valley of the Dead (first level of Gehennom)
-registerSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
+setSpecialLevel(GEHENNOM, 1, generateValley, 'valley');
 
 // Demon lairs in Gehennom
-registerSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
-registerSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
-registerSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
-registerSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
+setSpecialLevel(GEHENNOM, 3, generateAsmodeus, 'asmodeus');
+setSpecialLevel(GEHENNOM, 4, generateBaalz, 'baalz');
+setSpecialLevel(GEHENNOM, 5, generateJuiblex, 'juiblex');
+setSpecialLevel(GEHENNOM, 6, generateOrcus, 'orcus');
 
 // Moloch's Sanctum (final level of Gehennom)
-registerSpecialLevel(GEHENNOM, 10, generateSanctum, 'sanctum');
+setSpecialLevel(GEHENNOM, 10, generateSanctum, 'sanctum');
 
 // Wizard's Tower levels (in Gehennom, typically depths 11-13)
-registerSpecialLevel(GEHENNOM, 11, generateWizard1, 'wizard1');
-registerSpecialLevel(GEHENNOM, 12, generateWizard2, 'wizard2');
-registerSpecialLevel(GEHENNOM, 13, generateWizard3, 'wizard3');
+setSpecialLevel(GEHENNOM, 11, generateWizard1, 'wizard1');
+setSpecialLevel(GEHENNOM, 12, generateWizard2, 'wizard2');
+setSpecialLevel(GEHENNOM, 13, generateWizard3, 'wizard3');
 
 // Vlad's Tower (vampire tower in Gehennom)
-registerSpecialLevel(VLADS_TOWER, 1, generateTower1, 'tower1');
-registerSpecialLevel(VLADS_TOWER, 2, generateTower2, 'tower2');
-registerSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
+setSpecialLevel(VLADS_TOWER, 1, generateTower1, 'tower1');
+setSpecialLevel(VLADS_TOWER, 2, generateTower2, 'tower2');
+setSpecialLevel(VLADS_TOWER, 3, generateTower3, 'tower3');
 
 // Register Gnomish Mines levels
 // Mines Town can have multiple variants (7 variants)
 // Mine End has 3 variants
 // Minefill is a generic procedural mines level
 // Note: Actual level placement is determined at runtime by dungeon generation
-registerSpecialLevel(GNOMISH_MINES, 3, generateMinefill, 'minefill');
+setSpecialLevel(GNOMISH_MINES, 3, generateMinefill, 'minefill');
 
-registerSpecialLevel(GNOMISH_MINES, 5, [
+setSpecialLevel(GNOMISH_MINES, 5, [
     generateMinetn1,
     generateMinetn2,
     generateMinetn3,
@@ -417,7 +425,7 @@ registerSpecialLevel(GNOMISH_MINES, 5, [
     generateMinetn7
 ], ['minetn-1', 'minetn-2', 'minetn-3', 'minetn-4', 'minetn-5', 'minetn-6', 'minetn-7']);
 
-registerSpecialLevel(GNOMISH_MINES, 8, [
+setSpecialLevel(GNOMISH_MINES, 8, [
     generateMinend1,
     generateMinend2,
     generateMinend3
@@ -425,11 +433,11 @@ registerSpecialLevel(GNOMISH_MINES, 8, [
 
 // Register Elemental Planes (accessed at end game via negative depths)
 // These are the final 5 levels before ascending
-registerSpecialLevel(DUNGEONS_OF_DOOM, -1, generateAir, 'air');
-registerSpecialLevel(DUNGEONS_OF_DOOM, -2, generateEarth, 'earth');
-registerSpecialLevel(DUNGEONS_OF_DOOM, -3, generateFire, 'fire');
-registerSpecialLevel(DUNGEONS_OF_DOOM, -4, generateWater, 'water');
-registerSpecialLevel(DUNGEONS_OF_DOOM, -5, generateAstral, 'astral');
+setSpecialLevel(DUNGEONS_OF_DOOM, -1, generateAir, 'air');
+setSpecialLevel(DUNGEONS_OF_DOOM, -2, generateEarth, 'earth');
+setSpecialLevel(DUNGEONS_OF_DOOM, -3, generateFire, 'fire');
+setSpecialLevel(DUNGEONS_OF_DOOM, -4, generateWater, 'water');
+setSpecialLevel(DUNGEONS_OF_DOOM, -5, generateAstral, 'astral');
 
 // Register Quest levels
 // Each role has 5 quest levels: start, locate, fill-a, fill-b, goal
@@ -437,10 +445,11 @@ registerSpecialLevel(DUNGEONS_OF_DOOM, -5, generateAstral, 'astral');
 // These are registered at fixed positions in the QUEST branch
 
 // Archeologist quest
-registerSpecialLevel(QUEST, 1, generateArcStrt, 'Arc-strt');
-registerSpecialLevel(QUEST, 2, generateArcLoca, 'Arc-loca');
-registerSpecialLevel(QUEST, 3, [generateArcFila, generateArcFilb], ['Arc-fila', 'Arc-filb']);
-registerSpecialLevel(QUEST, 5, generateArcGoal, 'Arc-goal');
+setSpecialLevel(QUEST, 1, generateArcStrt, 'Arc-strt');
+setSpecialLevel(QUEST, 2, generateArcLoca, 'Arc-loca');
+setSpecialLevel(QUEST, 3, [generateArcFila, generateArcFilb], ['Arc-fila', 'Arc-filb']);
+setSpecialLevel(QUEST, 5, generateArcGoal, 'Arc-goal');
+}
 
 // Note: In the actual game, only ONE role's quest levels are used per game.
 // The following registrations are examples. A full implementation would
@@ -550,6 +559,7 @@ export const questLevels = {
  * Call this at game start with the player's role abbreviation (e.g. 'Mon', 'Cav').
  */
 export function initQuestLevels(roleAbbr) {
+    initializeSpecialLevels();
     const q = questLevels[roleAbbr];
     if (!q) return; // unknown role, keep existing registration
     // Clear variant cache for QUEST slots so new role's variants are picked fresh
@@ -557,12 +567,12 @@ export function initQuestLevels(roleAbbr) {
     variantCache.delete(`${QUEST}:2`);
     variantCache.delete(`${QUEST}:3`);
     variantCache.delete(`${QUEST}:5`);
-    // Register this role's quest levels at the canonical QUEST dlevel positions
+    // Set this role's quest levels at the canonical QUEST dlevel positions
     // C ref: sp_lev.c — strt=dlevel1, loca=dlevel2, fill=dlevel3, goal=dlevel5
-    registerSpecialLevel(QUEST, 1, q.strt, `${roleAbbr}-strt`);
-    registerSpecialLevel(QUEST, 2, q.loca, `${roleAbbr}-loca`);
-    registerSpecialLevel(QUEST, 3, q.fila, [`${roleAbbr}-fila`, `${roleAbbr}-filb`]);
-    registerSpecialLevel(QUEST, 5, q.goal, `${roleAbbr}-goal`);
+    setSpecialLevel(QUEST, 1, q.strt, `${roleAbbr}-strt`);
+    setSpecialLevel(QUEST, 2, q.loca, `${roleAbbr}-loca`);
+    setSpecialLevel(QUEST, 3, q.fila, [`${roleAbbr}-fila`, `${roleAbbr}-filb`]);
+    setSpecialLevel(QUEST, 5, q.goal, `${roleAbbr}-goal`);
 }
 
 // Export bigroom variants for random selection
@@ -618,6 +628,7 @@ export const otherSpecialLevels = {
  * @returns {Array} Array of { dnum, dlevel, name, variants }
  */
 export function listSpecialLevels() {
+    initializeSpecialLevels();
     return Array.from(specialLevels.values()).map(({ dnum, dlevel, name, generator }) => {
         const isVariant = Array.isArray(generator);
         return {
@@ -634,6 +645,7 @@ export function listSpecialLevels() {
  * Returns { dnum, dlevel } or null when unknown.
  */
 export function findSpecialLevelByName(levelName) {
+    initializeSpecialLevels();
     if (typeof levelName !== 'string' || !levelName.length) return null;
     const target = levelName.toLowerCase();
 
@@ -670,6 +682,7 @@ function nameMatchesProto(levelName, protoName) {
  * addressed by base name "medusa".
  */
 export function findSpecialLevelByProto(protoName, dnum = null, dlevel = null) {
+    initializeSpecialLevels();
     const normalizedProto = normalizeProtoName(protoName);
     if (!normalizedProto) return null;
 
