@@ -25,7 +25,8 @@ import { COLNO, ROWNO } from './config.js';
 import { Player } from './player.js';
 import { CONFUSION, STUNNED, BLINDED, HALLUC, SICK,
          TIMEOUT, SICK_VOMITABLE, SICK_NONVOMITABLE } from './config.js';
-import { GameMap, makeRoom } from './map.js';
+import { GameMap } from './map.js';
+import { makeRoom } from './mkroom.js';
 import { getDiscoveryState, setDiscoveryState } from './discovery.js';
 
 const SAVE_KEY = 'menace-save';

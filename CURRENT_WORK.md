@@ -7,33 +7,37 @@
 
 ## Active Phase
 
-Phase 0 (preflight and baseline), per `docs/MODULES.md` Autonomous Execution Plan.
+Phase 1 (remove top-level `register*` wiring) with first Phase 4 ownership move
+started (`makeRoom`/`FILL_*` migrated from `map.js` to `mkroom.js`).
 
 ## Completed This Turn
 
-1. Audited `docs/MODULES.md` and `docs/STRUCTURES.md` for ambiguity/conflicts.
-2. Resolved contradictory guidance in `docs/STRUCTURES.md`:
-   - removed alternate `constants.js` / `trapconst.js` direction,
-   - aligned to leaf architecture (`version.js`, `const.js`, `objects.js`, `monsters.js`, `game.js`),
-   - replaced deferred-import guidance with no-top-level-wiring discipline.
-3. Added explicit autonomous execution gates to `docs/MODULES.md`:
-   - Phase 0 preflight/baseline requirements,
-   - Phase 1 init-fragility scope and gates,
-   - batching rules and stop conditions for Phases 2/3,
-   - non-negotiable autonomy rules for commit hygiene and regression handling.
-4. Added explicit `map.js` retirement direction to plan docs:
-   - `STRUCTURES.md`: `map.js` marked transitional; canonical level structures live under `game.*`.
-   - `MODULES.md`: `map.js` moved out of permanent infrastructure list into consolidation files to retire.
+1. Removed top-level `register*` wiring in active gameplay paths:
+   - `potion.js` no longer registers status callbacks into `timeout.js`;
+     `timeout.js` now lazily resolves status handlers at runtime.
+   - `makemon.js`/`shknam.js` no longer use `registerGetShopItem`; direct
+     import path is used instead.
+2. Strengthened docs for unambiguous `map.js` retirement:
+   - `docs/MODULES.md` now includes an explicit `map.js` elimination checklist.
+   - `docs/STRUCTURES.md` now includes concrete migration targets before delete.
+3. Executed first ownership migration step:
+   - moved `makeRoom` and `FILL_*` ownership to `mkroom.js`,
+   - updated importers (`dungeon.js`, `mklev.js`, `sp_lev.js`, `storage.js`),
+   - removed those exports from `map.js`.
+4. Validation after each step:
+   - `node --test test/unit/wizard_mode.test.js` passes,
+   - parity spot checks (`seed42`, `seed100`) pass,
+   - `bash scripts/run-and-report.sh --failures` unchanged envelope (`23/34`,
+     same 11 failing sessions).
 
 ## Next Commit Target
 
-Phase 0 inventory artifact(s):
+Continue `map.js` elimination in small no-behavior steps:
 
-1. `register*()` and top-level wiring call inventory
-2. capitalized-export-outside-leaf inventory
-3. baseline parity snapshot reference
-
-This is required before structural rewrites begin.
+1. move `makeLocation` ownership out of `map.js` to canonical level-state owner
+   module as planned,
+2. migrate remaining `GameMap` constructor ownership accordingly,
+3. keep importer updates and test gates in each commit.
 
 ## Blockers
 

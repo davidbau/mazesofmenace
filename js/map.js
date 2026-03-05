@@ -35,31 +35,6 @@ export function makeLocation() {
     };
 }
 
-// A room structure (mirrors struct mkroom in mkroom.h)
-// C ref: mkroom.h needfill values
-const FILL_NONE = 0;
-const FILL_NORMAL = 1;
-
-export { FILL_NONE, FILL_NORMAL };
-
-export function makeRoom() {
-    return {
-        lx: 0, ly: 0,     // lower-left corner
-        hx: 0, hy: 0,     // upper-right corner
-        rtype: 0,          // room type (OROOM, SHOP, etc.)
-        orig_rtype: 0,     // C ref: mklev.c orig_rtype snapshot post-topology
-        rlit: false,       // is the room lit?
-        needjoining: true, // does this room need corridors?
-        needfill: FILL_NONE, // C ref: mkroom.h — needs filling? default 0
-        doorct: 0,         // number of doors
-        fdoor: 0,          // index of first door in doors[]
-        irregular: false,  // is this an irregular room?
-        nsubrooms: 0,      // number of subrooms
-        sbrooms: [],       // C ref: mkroom.h sbrooms[] — subroom pointers
-        roomnoidx: 0,      // room index before sort (for sort_rooms)
-    };
-}
-
 // The level structure (mirrors parts of decl.h level data)
 export class GameMap {
     constructor() {

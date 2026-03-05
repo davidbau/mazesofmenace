@@ -30,7 +30,7 @@ import {
     PM_PRIEST as ROLE_PRIEST,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC
 } from './config.js';
-import { GameMap, makeRoom, FILL_NONE, FILL_NORMAL } from './map.js';
+import { GameMap } from './map.js';
 import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
 import { getbones } from './bones.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
@@ -87,6 +87,9 @@ import {
 } from './levels/themerms.js';
 import {
     isbig,
+    makeRoom,
+    FILL_NONE,
+    FILL_NORMAL,
     has_dnstairs,
     has_upstairs,
     somex,

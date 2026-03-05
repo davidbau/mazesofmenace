@@ -9,7 +9,6 @@ import {
     isok,
 } from './config.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { FILL_NORMAL } from './map.js';
 import { mkclass, makemon, NO_MM_FLAGS } from './makemon.js';
 import { ndemon } from './minion.js';
 import { mkobj, mksobj } from './mkobj.js';
@@ -26,6 +25,27 @@ import {
 } from './monsters.js';
 import { WAND_CLASS, SPBOOK_CLASS, SPBOOK_no_NOVEL, MACE } from './objects.js';
 import { shtypes } from './shknam.js';
+
+export const FILL_NONE = 0;
+export const FILL_NORMAL = 1;
+
+export function makeRoom() {
+    return {
+        lx: 0, ly: 0,
+        hx: 0, hy: 0,
+        rtype: 0,
+        orig_rtype: 0,
+        rlit: false,
+        needjoining: true,
+        needfill: FILL_NONE,
+        doorct: 0,
+        fdoor: 0,
+        irregular: false,
+        nsubrooms: 0,
+        sbrooms: [],
+        roomnoidx: 0,
+    };
+}
 
 // C ref: mkroom.c:41-48
 export function isbig(sroom) {

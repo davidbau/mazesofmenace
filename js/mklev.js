@@ -18,7 +18,7 @@ import {
     MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, is_hole, isok,
 } from './config.js';
 import { rn1, rn2, rnd, getRngCallCount } from './rng.js';
-import { makeRoom } from './map.js';
+import { makeRoom } from './mkroom.js';
 import { mksobj, mkobj, mkcorpstat } from './mkobj.js';
 import { placeFloorObject } from './stackobj.js';
 import { GOLD_PIECE, BELL, CORPSE, SCR_TELEPORTATION } from './objects.js';
