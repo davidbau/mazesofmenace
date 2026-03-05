@@ -1027,6 +1027,10 @@ export function cansee(map, player, fov, x, y) {
     return couldsee(map, player, x, y);
 }
 
+export function getActiveFov() {
+    return activeFov;
+}
+
 // Could the player see this position (LOS only, ignoring lighting)
 // C ref: vision.h #define couldsee(x, y) ((gv.viz_array[y][x] & COULD_SEE) != 0)
 export function couldsee(map, player, x, y) {

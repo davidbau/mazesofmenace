@@ -1894,3 +1894,22 @@ hard-won wisdom:
     (`dochug/distfleeck` drift no longer earliest),
   - no regressions in nearby green canaries:
     `seed301`, `seed302`, `seed307`, `seed308` remained full RNG/Event/Screen green.
+
+### `makemon_rnd_goodpos` must use `cansee` semantics, not `couldsee` (2026-03-05)
+
+- In `seed306_monk_selfplay200_gameplay`, after fixing hero dart traps, first
+  drift moved into `makemon` random placement path.
+- Root cause: JS `makemon_rnd_goodpos()` filtered candidate spawn squares using
+  `couldsee` (LOS-only), while C uses `cansee` (IN_SIGHT).
+- Using LOS in JS over-rejected random squares, causing extra
+  `rn2(77)/rn2(21)` retries in `makemon_rnd_goodpos` before `rndmonst_adj`,
+  shifting downstream RNG.
+- Fix:
+  - expose `getActiveFov()` from `vision.js`,
+  - switch `makemon_rnd_goodpos` visibility rejection to
+    `cansee(..., getActiveFov(), x, y)`.
+- Validation:
+  - `seed306` first divergence moved later from step `105` to step `115`,
+    with matched RNG increasing (`4389/7096` -> `4510/6904`),
+  - nearby green canaries remained green:
+    `seed301`, `seed302`, `seed307`, `seed308`.

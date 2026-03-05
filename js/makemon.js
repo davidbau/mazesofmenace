@@ -12,7 +12,7 @@ import {
     D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO
 } from './config.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './config.js';
-import { couldsee } from './vision.js';
+import { couldsee, cansee, getActiveFov } from './vision.js';
 
 // Registration for get_shop_item to avoid circular dependency with shknam.js.
 // Keep this uninitialized: in ESM cycles shknam.js may call registerGetShopItem()
@@ -1904,7 +1904,13 @@ function makemon_rnd_goodpos(map, ptr, mmflags = NO_MM_FLAGS) {
         // good = (!in_mklev && cansee(nx,ny)) ? FALSE : goodpos(...)
         if (!_makemonInMklev
             && Number.isInteger(_makemonPlayerCtx?.x) && Number.isInteger(_makemonPlayerCtx?.y)
-            && couldsee(map, { x: _makemonPlayerCtx.x, y: _makemonPlayerCtx.y }, nx, ny)) {
+            && cansee(
+                map,
+                { x: _makemonPlayerCtx.x, y: _makemonPlayerCtx.y },
+                getActiveFov(),
+                nx,
+                ny
+            )) {
             continue;
         }
         if (makemonGoodpos(map, nx, ny, ptr, mmflags, true)) return { x: nx, y: ny };
