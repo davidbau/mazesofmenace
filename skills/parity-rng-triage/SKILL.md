@@ -19,9 +19,11 @@ Use this for session parity failures where gameplay diverges between C and JS:
 ## Workflow
 0. **Pull first** — other agents push frequently; start from current main:
    - `git pull --rebase origin main`
-1. **Check issue labels** before diving into a session. Divergences in
-   `dochug`/`monmove`/`makemon` are often labeled `agent:game` and owned by
-   the game engine agent. `agent:mazes` issues are ours. Don't duplicate work.
+1. **Check issue labels** before diving into a session. Your agent label is
+   determined by your working directory name (e.g. `mazesofmenace/ux` →
+   `agent:ux`). Divergences in `dochug`/`monmove`/`makemon` are often labeled
+   `agent:game` (game engine agent). Don't work on issues labeled for other
+   agents — check the label matches your directory before starting.
 2. **Survey all failing sessions** with the PES report (most informative view):
    - `scripts/run-and-report.sh` — runs all gameplay sessions, then shows a
      color-coded table of PRNG/Event/Screen first-divergence step per session.
