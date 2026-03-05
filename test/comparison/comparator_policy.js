@@ -12,40 +12,9 @@ import {
 import { getSessionScreenAnsiLines, stripAnsiSequences } from './session_loader.js';
 import { decodeDecSpecialChar, decodeSOSILine } from './symset_normalization.js';
 
-// DECgraphics uses different character codes for certain game features.
-// These mappings normalize C session DECgraphics symbols to their ASCII equivalents
-// so that JS (ASCII mode) and C (DECgraphics mode) comparisons still match.
-// Ref: nethack-c/patched/dat/symbols — "start: DECgraphics" section
-const DEC_GAME_FEATURE_ASCII = {
-    '\u03c0': '_',   // π (DEC meta-{ = altar) → ASCII altar _
-    '\u25c6': '{',   // ◆ (DEC meta-` = pool/lava/water) → ASCII { for pool
-    '\u2260': '#',   // ≠ (DEC meta-| = bars/iron) → ASCII bars
-    '\u00b1': '#',   // ± (DEC meta-g = tree in some contexts) → ASCII tree
-};
-
-function applyDecFeatureNorm(eCells, aCells) {
-    const result = eCells.slice();
-    for (let i = 0; i < result.length; i++) {
-        const ascii = DEC_GAME_FEATURE_ASCII[result[i]?.ch];
-        if (ascii !== undefined) {
-            // Inherit actual cell's color attributes so color comparison passes
-            const aCell = aCells?.[i] || { fg: 7, bg: 0, attr: 0 };
-            result[i] = { ch: ascii, fg: aCell.fg, bg: aCell.bg, attr: aCell.attr };
-        }
-    }
-    return result;
-}
-
 function normalizeGameplayScreenLines(lines) {
     return (Array.isArray(lines) ? lines : [])
-        .map((line) => {
-            let s = String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, '');
-            // Normalize DECgraphics game feature symbols to ASCII equivalents.
-            for (const [dec, ascii] of Object.entries(DEC_GAME_FEATURE_ASCII)) {
-                if (s.includes(dec)) s = s.split(dec).join(ascii);
-            }
-            return s;
-        });
+        .map((line) => String(line || '').replace(/\r$/, '').replace(/[\x0e\x0f]/g, ''));
 }
 
 function ansiCellsToPlainLine(line) {
@@ -123,40 +92,7 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput) {
             expectedMasked[row] = '';
         }
     }
-    const rawCmp = compareScreenAnsi(actualAnsi, expectedMasked);
-    // Re-check failed rows: if the only diffs are DECgraphics game feature symbols,
-    // treat those rows as matching (altar π vs _, pool ◆ vs {, etc.)
-    if (rawCmp.diffs.length === 0) return rawCmp;
-    let correctedMatched = rawCmp.matched;
-    const correctedDiffs = [];
-    for (const diff of rawCmp.diffs) {
-        const aLine = actualAnsi[diff.row] || '';
-        const eLine = expectedMasked[diff.row] || '';
-        const aCells = ansiLineToCells(aLine);
-        const eCells = ansiLineToCells(eLine);
-        const eNorm = applyDecFeatureNorm(eCells, aCells);
-        let rowMatch = true;
-        for (let col = 0; col < 80; col++) {
-            const a = aCells[col];
-            const e = eNorm[col];
-            if (a.ch !== e.ch || a.fg !== e.fg || a.bg !== e.bg || a.attr !== e.attr) {
-                rowMatch = false;
-                break;
-            }
-        }
-        if (rowMatch) {
-            correctedMatched++;
-        } else {
-            correctedDiffs.push(diff);
-        }
-    }
-    return {
-        matched: correctedMatched,
-        total: rawCmp.total,
-        match: correctedMatched === rawCmp.total,
-        diffs: correctedDiffs,
-        firstDiff: correctedDiffs.length > 0 ? correctedDiffs[0] : null,
-    };
+    return compareScreenAnsi(actualAnsi, expectedMasked);
 }
 
 function getStepFrames(actualStep) {
