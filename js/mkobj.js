@@ -944,6 +944,8 @@ function zombie_form_exists_for_corpse(corpsenm) {
 export const TAINT_AGE = 50;
 const TROLL_REVIVE_CHANCE = 37;
 function start_corpse_timeout(corpsenm, opts = {}) {
+    const zombify = !!opts?.zombify;
+    const norevive = !!opts?.norevive;
     // Lizards and lichen don't rot or revive
     if (corpsenm === PM_LIZARD || corpsenm === PM_LICHEN) return;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
@@ -960,7 +962,7 @@ function start_corpse_timeout(corpsenm, opts = {}) {
         for (let age = 2; age <= TAINT_AGE; age++) {
             if (!rn2(TROLL_REVIVE_CHANCE)) break;
         }
-    } else if (!!opts.zombify && !opts.norevive
+    } else if (zombify && !norevive
                && zombie_form_exists_for_corpse(corpsenm)) {
         // C ref: mkobj.c start_corpse_timeout() zombify branch
         rn1(15, 5); // consume rn2(15)
@@ -993,7 +995,7 @@ export function set_corpsenm(obj, id) {
         : 0;
     obj.corpsenm = id;
     if (obj.otyp === CORPSE) {
-        start_corpse_timeout(id);
+        start_corpse_timeout(id, { norevive: !!obj.norevive });
     } else if (obj.otyp === EGG) {
         if (id >= 0) {
             obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
@@ -1030,7 +1032,7 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null, op
             // Restart corpse timeout with new corpsenm
             start_corpse_timeout(ptr_mndx, {
                 zombify: !!opts.zombify,
-                norevive: !!opts.norevive,
+                norevive: !!otmp.norevive,
             });
         }
     }

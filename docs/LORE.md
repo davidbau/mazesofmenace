@@ -1968,3 +1968,27 @@ hard-won wisdom:
   - `seed322` improved from `rng=13995/30190` and `events=3879/21344` to
     `rng=14190/30190` and `events=3902/21344`,
   - `seed306_monk_selfplay200_gameplay` remained full-pass.
+
+### `mkcorpstat` must restart corpse timeout under zombify context (2026-03-05)
+
+- Seed322 had an RNG frontier in monster-vs-monster kill handling where C
+  consumed an additional `start_corpse_timeout` sequence (including zombify
+  timing), but JS advanced directly into `grow_up`/`distfleeck`.
+- Root cause in JS:
+  - `mkcorpstat()` restart condition only handled `special_corpse(old/new)`,
+    but C also restarts when `gz.zombify` is active.
+  - `start_corpse_timeout()` lacked the C zombify branch RNG
+    (`rn1(15, 5)` when zombify is set and corpse is revivable).
+- Fix:
+  - extend `mkcorpstat(..., options)` with `{ zombify }` and include it in the
+    restart condition (C: `gz.zombify || special_corpse(...)`),
+  - add zombify branch in `start_corpse_timeout`,
+  - thread zombify context from `mhitm` kill path using C conditions
+    (`!mwep`, `zombie_maker`, touch/claw/bite, `zombie_form != NON_PM`).
+- Validation:
+  - `seed322` first RNG divergence moved later from index `13926` (step `355`)
+    to index `13999` (step `356`),
+  - `seed306_monk_selfplay200_gameplay` remains full-pass
+    (`rng=6904/6904`, `events=3949/3949`),
+  - new exposed frontier is in `set_apparxy`/`distfleeck` nearby state for the
+    kitten turn at step `356` (targeting/phase gating skew).
