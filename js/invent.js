@@ -1136,7 +1136,12 @@ export async function hold_another_object(obj, player, drop_fmt, drop_arg, hold_
     // message so that renderStatus at the --More-- overflow still reads the OLD
     // encumbrance, matching C's disp.botl/bot() deferred update pattern.
     await encumber_msg_transition(prevCap, newCap);
-    if (player) player.encumbrance = newCap;
+    if (player) {
+        player.encumbrance = newCap;
+        // Keep pickup.c-style oldcap tracking in sync across call sites
+        // (e.g. hold_another_object() followed by wiz_wish encumber_msg()).
+        player._oldcap = newCap;
+    }
     return result;
 }
 
