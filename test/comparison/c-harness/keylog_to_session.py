@@ -407,6 +407,7 @@ def run_from_keylog(
 
         prev_rng_count = startup_rng_count
         prev_depth = detect_screen_depth(startup_screen_lines)
+        prev_depth_recorded = None  # Record depth only when it changes
         warned_tutorial_dnum_lag = False
 
         print(
@@ -448,11 +449,13 @@ def run_from_keylog(
             step = {
                 'key': key_repr(code),
                 'turn': turn,
-                'depth': depth,
                 'rng': rng_entries,
                 'screen': screen,
                 'cursor': capture_cursor(session_name),
             }
+            if depth != prev_depth_recorded:
+                step['depth'] = depth
+                prev_depth_recorded = depth
 
             # For long manual traces, #dumpmap on every key is too expensive.
             # Capture typGrid when depth changes, matching level-transition points.

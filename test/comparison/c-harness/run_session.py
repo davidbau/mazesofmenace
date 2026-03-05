@@ -2011,6 +2011,7 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
         # Execute moves - send each character individually (no grouping)
         prev_rng_count = startup_rng_count
         prev_typ_grid = startup_typ_grid
+        prev_depth_recorded = None  # Record depth only when it changes
         captured_levels = {'Dlvl:1'} if wizard_mode else set()  # Track levels with typGrid snapshots
         replay_keys = list(move_str)
 
@@ -2068,6 +2069,9 @@ def run_session(seed, output_json, move_str, raw_moves=False, record_more_spaces
                 'screen': screen_compressed,
                 'cursor': step_cursor,
             }
+            if depth != prev_depth_recorded:
+                step['depth'] = depth
+                prev_depth_recorded = depth
             if step_num in key_delay_overrides:
                 # Optional per-step capture metadata (session v3).
                 step['capture'] = {
