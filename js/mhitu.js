@@ -1002,16 +1002,26 @@ export async function mattacku(monster, player, display, game = null, opts = {})
     const attackVars = calc_mattacku_vars(monster, player);
     let range2 = (opts.range2 !== undefined) ? !!opts.range2 : !!attackVars.range2;
     let foundyou = !!attackVars.foundyou;
+    const firstfoundyou = foundyou;
     let skipnonmagc = false;
     const map = opts.map || null;
+    const sum = new Array(6).fill(M_ATTK_MISS); // C NATTK == 6
 
-    for (let i = 0; i < monster.attacks.length; i++) {
+    for (let i = 0; i < 6; i++) {
         if (opts.range2 === undefined && i > 0) {
             const vars = calc_mattacku_vars(monster, player);
             range2 = !!vars.range2;
             foundyou = !!vars.foundyou;
+            // C ref: mhitu.c:778 — avoid wildmiss spam after initial foundyou.
+            if (firstfoundyou && !foundyou) {
+                sum[i] = M_ATTK_MISS;
+                continue;
+            }
         }
-        const attack = canonicalizeAttackFields(monster.attacks[i]);
+        const attack = getmattk(monster, player, i, sum);
+        if (!attack) continue;
+        canonicalizeAttackFields(attack);
+        if (attack.aatyp === AT_NONE) continue;
         if (skipnonmagc && attack.aatyp !== AT_MAGC) continue;
 
         // cf. mhitu.c mattacku() attack dispatch:
@@ -1071,6 +1081,7 @@ export async function mattacku(monster, player, display, game = null, opts = {})
                 const just = (toHit === dieRoll) ? 'just ' : '';
                 await display.putstr_message(`The ${x_monnam(monster)} ${just}misses!`);
             }
+            sum[i] = M_ATTK_MISS;
             continue;
         }
 
@@ -1104,7 +1115,11 @@ export async function mattacku(monster, player, display, game = null, opts = {})
         await mhitm_knockback(monster, attack, weaponUsed, display);
 
         // cf. mhitu.c:1192 — check if handler consumed the attack
-        if (mhm.done) break;
+        if (mhm.done) {
+            sum[i] = mhm.hitflags || M_ATTK_HIT;
+            if (sum[i] & (M_ATTK_AGR_DIED | M_ATTK_AGR_DONE)) break;
+            continue;
+        }
 
         // ================================================================
         // Negative AC damage reduction (hitmu path)
@@ -1166,6 +1181,8 @@ export async function mattacku(monster, player, display, game = null, opts = {})
                 game.multi = 0;
             }
         }
+        sum[i] = mhm.hitflags || (mhm.damage > 0 ? M_ATTK_HIT : M_ATTK_MISS);
+        if (sum[i] & (M_ATTK_AGR_DIED | M_ATTK_AGR_DONE)) break;
     }
 }
 
@@ -1263,8 +1280,8 @@ export async function expels(mtmp, mdat, message, player, display) {
 // Simplified: handles mspec_used holdback, consecutive disease→stun.
 // Missing: SEDUCE=0 substitution, energy scaling, elemental home doubling.
 export function getmattk(monster, mdef, indx, prev_result) {
-    const mptr = monster.type || {};
-    const attacks = mptr.attacks || [];
+    const mptr = monster.type || monster.data || {};
+    const attacks = mptr.attacks || monster.attacks || [];
     if (indx >= attacks.length) return null;
     const attk = { ...attacks[indx] };
 
