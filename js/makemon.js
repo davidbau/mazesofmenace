@@ -117,6 +117,7 @@ import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';
 import { get_wormno, initworm, place_worm_tail_randomly } from './worm.js';
+import { PIT, SPIKED_PIT } from './symbols.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -138,6 +139,25 @@ function is_hobbit(ptr) { return ptr.mlet === S_HUMANOID && ptr.name && ptr.name
 function is_giant_species(ptr) { return ptr.mlet === S_GIANT && ptr.name && ptr.name.includes('giant'); }
 // C ref: mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
 function is_armed(ptr) { return ptr.attacks && ptr.attacks.some(a => a.type === AT_WEAP); }
+
+function canHideUnderObjAt(map, x, y) {
+    if (!map) return false;
+    const trap = map.trapAt ? map.trapAt(x, y) : null;
+    if (trap && trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT) return false;
+    const stack = map.objectsAt ? map.objectsAt(x, y) : [];
+    if (!stack || stack.length === 0) return false;
+    if (stack[0]?.oclass === COIN_CLASS) {
+        let coins = 0;
+        let i = 0;
+        while (i < stack.length && stack[i]?.oclass === COIN_CLASS) {
+            coins += Number(stack[i]?.quan || 0);
+            if (coins >= 10) break;
+            i++;
+        }
+        if (coins < 10) return false;
+    }
+    return true;
+}
 // C ref: #define is_sword(otmp) (otmp->otyp >= SHORT_SWORD && otmp->otyp <= KATANA)
 function is_sword(otmp) { return otmp && otmp.otyp >= SHORT_SWORD && otmp.otyp <= KATANA; }
 // C ref: #define is_mplayer(ptr) ((ptr) >= &mons[PM_ARCHEOLOGIST] && (ptr) <= &mons[PM_WIZARD])
@@ -2258,8 +2278,14 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
                 place_object(hideObj, x, y, map); // emits ^place event, matches C
             }
         }
-        // C ref: hideunder() for spider/snake in mklev (no RNG).
-        if (_makemonInMklev) startsUndetected = true;
+        // C ref: makemon.c calls hideunder(); it may fail on non-pit traps
+        // or with non-hideable floor object stacks.
+        if (_makemonInMklev) {
+            const loc = map.at(x, y);
+            startsUndetected = canHideUnderObjAt(map, x, y)
+                && !IS_POOL(loc?.typ)
+                && !IS_LAVA(loc?.typ);
+        }
     } else if (ptr.mlet === S_EEL && map) {
         // C ref: makemon.c:1319-1322 — eels in mklev call hideunder() (no RNG).
         // Eels hide only in water and not on the Plane of Water.
