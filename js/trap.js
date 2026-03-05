@@ -16,7 +16,7 @@ import { is_mindless, touch_petrifies, resists_ston,
          extra_nasty, flaming, acidic, completelyrusts,
          canseemon
        } from './mondata.js';
-import { mon_knows_traps, mon_learns_traps } from './mondata.js';
+import { mon_knows_traps, mon_learns_traps, mons_see_trap } from './mondata.js';
 import { mondead, newsym, helpless as monHelpless } from './monutil.js';
 import { monkilled, m_in_air, setmangry } from './mon.js';
 import { sleep_monst } from './mhitm.js';
@@ -309,11 +309,12 @@ function mon_check_in_air(mon) {
 // ========================================================================
 // m_harmless_trap — C ref: trap.c m_harmless_trap()
 // ========================================================================
-export function m_harmless_trap(mon, trap) {
+export function m_harmless_trap(mon, trap, map) {
     const mdat = mons[mon.mndx] || {};
+    const inSokoban = !!(map?.flags?.is_sokoban || map?.flags?.in_sokoban);
 
-    // C ref: floor_trigger + check_in_air — flyers/floaters avoid floor traps
-    if (floor_trigger(trap.ttyp) && mon_check_in_air(mon))
+    // C ref: trap.c m_harmless_trap() — !Sokoban gate on floor-triggered air check.
+    if (!inSokoban && floor_trigger(trap.ttyp) && mon_check_in_air(mon))
         return true;
 
     switch (trap.ttyp) {
@@ -345,7 +346,8 @@ export function m_harmless_trap(mon, trap) {
     case SPIKED_PIT:
     case HOLE:
     case TRAPDOOR:
-        if (is_clinger(mdat))
+        // C ref: trap.c m_harmless_trap() — clingers bypass pits/holes only outside Sokoban.
+        if (is_clinger(mdat) && !inSokoban)
             return true;
         break;
     case TELEP_TRAP:
@@ -1024,6 +1026,7 @@ async function trapeffect_selector_mon(mon, trap, trflags, map, player, display,
 export async function mintrap_postmove(mon, map, player, display, fov) {
     const trap = map.trapAt(mon.mx, mon.my);
     let trap_result = Trap_Effect_Finished;
+    const inSokoban = !!(map?.flags?.is_sokoban || map?.flags?.in_sokoban);
 
     if (!trap) {
         mon.mtrapped = 0;
@@ -1065,7 +1068,8 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
         const already_seen = mon_knows_traps(mon, tt)
             || (tt === HOLE && !is_mindless(mon?.type || {}));
 
-        if (floor_trigger(tt) && mon_check_in_air(mon)) {
+        // C ref: trap.c mintrap() — !Sokoban gate for floor-triggered in-air bypass.
+        if (!inSokoban && floor_trigger(tt) && mon_check_in_air(mon)) {
             return Trap_Effect_Finished;
         }
         if (already_seen && rn2(4)) {
@@ -1073,6 +1077,7 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
         }
 
         mon_learns_traps(mon, tt);
+        mons_see_trap(trap, map);
 
         // C ref: Monster is aggravated by being trapped by you
         if (trap.madeby_u && rnl(5)) {

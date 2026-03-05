@@ -1790,6 +1790,9 @@ export async function m_move_aggress(mon, map, player, nx, ny, display = null, f
     // C ref: monmove.c:2104 — aggressor died
     if ((mstatus & M_ATTK_AGR_DIED) || mon.dead || (mon.mhp != null && mon.mhp <= 0))
         return MMOVE_DIED;
+    // C parity: migrated/off-level aggressor should be treated as gone for this turn.
+    if (!isok(mon.mx, mon.my) || !map.monsters.includes(mon))
+        return MMOVE_DIED;
 
     // C ref: monmove.c:2107-2119 — retaliation
     if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
@@ -1801,6 +1804,8 @@ export async function m_move_aggress(mon, map, player, nx, ny, display = null, f
         const rctx = { ...ctx, agrVisible: defenderVisible, defVisible: attackerVisible };
         const rstatus = await mattackm(target, mon, display, vis, map, rctx);
         if (rstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
+        if (!isok(mon.mx, mon.my) || !map.monsters.includes(mon))
+            return MMOVE_DIED;
     }
 
     return MMOVE_DONE;

@@ -200,7 +200,7 @@ export class GameMap {
 
     // Find monster at (x,y)
     monsterAt(x, y) {
-        return this.monsters.find(m => m.mx === x && m.my === y && m.mhp > 0) || null;
+        return this.monsters.find((m) => m.mx === x && m.my === y && !m.dead) || null;
     }
 
     // Find objects at (x,y)

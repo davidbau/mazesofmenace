@@ -99,11 +99,12 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_MIMIC, S_UNICORN,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN } from './monsters.js';
-import { PIT, SPIKED_PIT, HOLE } from './symbols.js';
+import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './symbols.js';
 import { m_harmless_trap } from './trap.js';
 import { dist2, distmin, monnear,
          monmoveTrace, monmoveStepLabel,
          canSpotMonsterForMap, BOLT_LIM } from './monutil.js';
+import { monsterAtWithSegments } from './worm.js';
 
 // ========================================================================
 // Monster speed constants — C ref: include/monsym.h
@@ -434,6 +435,30 @@ export function mfndpos(mon, map, player, flag) {
     const canFog = isAmorphous;
 
     const positions = [];
+    const cellInRegion = (reg, rx, ry) => {
+        if (!reg) return false;
+        const bb = reg.bounding_box;
+        if (!bb || rx < bb.lx || rx > bb.hx || ry < bb.ly || ry > bb.hy) return false;
+        if (Array.isArray(reg.rects) && reg.rects.length > 0) {
+            for (const rr of reg.rects) {
+                if (rx >= rr.lx && rx <= rr.hx && ry >= rr.ly && ry <= rr.hy) return true;
+            }
+            return false;
+        }
+        return true;
+    };
+    const visiblePoisonGasAt = (rx, ry) => {
+        const regs = map?.regions;
+        if (!Array.isArray(regs)) return false;
+        for (const reg of regs) {
+            if (!reg || !reg.visible || reg.ttl === -2) continue;
+            if (reg.glyph !== S_poisoncloud) continue;
+            if (cellInRegion(reg, rx, ry)) return true;
+        }
+        return false;
+    };
+    const poisongas_ok = (m_poisongas_ok(mon) === M_POISONGAS_OK);
+    const in_poisongas = visiblePoisonGasAt(omx, omy);
     const maxx = Math.min(omx + 1, COLNO - 1);
     const maxy = Math.min(omy + 1, ROWNO - 1);
 
@@ -465,6 +490,10 @@ export function mfndpos(mon, map, player, flag) {
                     if ((loc.flags & D_LOCKED) && !(flag & UNLOCKDOOR)) continue;
                 }
             }
+
+            // C ref: mon.c:2226-2230 — avoid entering poison gas unless
+            // monster tolerates it, or it's already in poison gas.
+            if (!poisongas_ok && !in_poisongas && visiblePoisonGasAt(nx, ny)) continue;
 
             // C ref: mon.c:2218-2221 — diagonal door checks
             if (nx !== omx && ny !== omy) {
@@ -501,8 +530,8 @@ export function mfndpos(mon, map, player, flag) {
             }
 
             // C ref: mon.c:2277-2304 — monster at position
-            const monAtPos = map.monsterAt(nx, ny);
-            if (monAtPos && !monAtPos.dead) {
+            const monAtPos = monsterAtWithSegments(map, nx, ny);
+            if (monAtPos) {
                 let allowMAttack = false;
                 if (flag & ALLOW_M) {
                     // Tame: attack non-tame non-peaceful
@@ -589,7 +618,7 @@ export function mfndpos(mon, map, player, flag) {
             // C ref: mon.c:2342-2352 — trap check
             const trap = map.trapAt(nx, ny);
             if (trap) {
-                if (!m_harmless_trap(mon, trap)) {
+                if (!m_harmless_trap(mon, trap, map)) {
                     if (!(flag & ALLOW_TRAPS)) {
                         if (mon_knows_traps(mon, trap.ttyp))
                             continue;

@@ -605,9 +605,29 @@ function In_endgame(lev) {
     return dnum === ELEMENTAL_PLANES;
 }
 
-function In_sokoban(lev) {
+export function In_sokoban(lev) {
     const { dnum } = _coerceLevelArg(lev);
     return dnum === SOKOBAN;
+}
+
+export function Is_stronghold(lev) {
+    if (lev?.flags?.graveyard && lev?.flags?.is_maze_lev) return true;
+    if (lev?.flags?.is_stronghold || lev?.flags?.stronghold) return true;
+    const { dnum, dlevel } = _coerceLevelArg(lev);
+    if (dnum === DUNGEONS_OF_DOOM) {
+        for (const br of _branchTopology) {
+            if (br?.end1?.dnum === DUNGEONS_OF_DOOM
+                && br?.end2?.dnum === GEHENNOM
+                && Number.isInteger(br?.end1?.dlevel)
+                && dlevel === br.end1.dlevel) {
+                return true;
+            }
+        }
+    }
+    const mapped = runtimeSpecialLevelFor(dnum, dlevel);
+    if (!mapped) return false;
+    const special = getSpecialLevel(mapped.dnum, mapped.dlevel);
+    return String(special?.name || '').toLowerCase() === 'castle';
 }
 
 function Is_earthlevel(lev) {
@@ -799,9 +819,7 @@ export function Can_dig_down(levOrMap) {
 }
 
 export function Can_fall_thru(levOrMap) {
-    const lev = _coerceLevelArg(levOrMap);
-    const stronghold = (lev.dnum === DUNGEONS_OF_DOOM && lev.dlevel === 27);
-    return Can_dig_down(levOrMap) || stronghold;
+    return Can_dig_down(levOrMap) || Is_stronghold(levOrMap);
 }
 
 export function Can_rise_up(x, y, levOrMap) {

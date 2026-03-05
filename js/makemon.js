@@ -9,7 +9,8 @@ import { m_dowear, mon_break_armor } from './worn.js';
 import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
     VAULT, ZOO, DELPHI, TEMPLE,
-    D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO
+    D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO,
+    ALL_TRAPS, HOLE, TRAPDOOR
 } from './config.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './config.js';
 import { couldsee, cansee, getActiveFov } from './vision.js';
@@ -111,13 +112,14 @@ import {
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
 import { mpickobj, dist2, BOLT_LIM, newsym } from './monutil.js';
-import { canseemon } from './mondata.js';
+import { canseemon, mon_learns_traps } from './mondata.js';
 import { senseMonsterForMap } from './monutil.js';
 import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';
 import { get_wormno, initworm, place_worm_tail_randomly } from './worm.js';
 import { PIT, SPIKED_PIT } from './symbols.js';
+import { In_sokoban, Is_stronghold } from './dungeon.js';
 
 // ========================================================================
 // Monster flags needed for m_initweap/m_initinv checks
@@ -2379,8 +2381,26 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         mux: 0,
         muy: 0,
         mtrack: [{x:0,y:0},{x:0,y:0},{x:0,y:0},{x:0,y:0}],
+        mtrapseen: 0,
     };
     mon.mpeaceful = mon.peaceful;
+
+    // C ref: makemon.c:1283-1291 — initial trap knowledge by branch/special role.
+    const levelRef = map?.uz || map || null;
+    const inSokoban = In_sokoban(levelRef);
+    const inStronghold = Is_stronghold(levelRef);
+    if (!mindless(ptr)) {
+        if (inSokoban) {
+            mon_learns_traps(mon, PIT);
+            mon_learns_traps(mon, HOLE);
+        }
+        if (inStronghold) {
+            mon_learns_traps(mon, TRAPDOOR);
+        }
+    }
+    if (ptr.msound === MS_LEADER || ptr.msound === MS_NEMESIS) {
+        mon_learns_traps(mon, ALL_TRAPS);
+    }
 
     // C ref: makemon.c — MM_ASLEEP sets initial sleep state.
     if (mmflags & MM_ASLEEP) {

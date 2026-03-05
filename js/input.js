@@ -369,10 +369,22 @@ export function nhgetch() {
     // topline, consume one key to dismiss it, drain queued messages, then
     // recurse to get the actual key the caller wants.
     if (display && display._pendingMore) {
-        return _getRawKey().then(() => {
-            display._clearMore();
-            return nhgetch();
+        const isMoreDismissKey = (ch) => (
+            ch === 10     // '\n'
+            || ch === 13  // '\r'
+            || ch === 27  // ESC
+            || ch === 32  // space
+            || ch === 16  // ^P (tty dismiss_more)
+        );
+        const waitForMoreDismiss = () => _getRawKey().then((ch) => {
+            if (isMoreDismissKey(ch)) {
+                display._clearMore();
+                return nhgetch();
+            }
+            // C ref: tty xwaitforspace() ignores non-dismiss keys (and beeps).
+            return waitForMoreDismiss();
         });
+        return waitForMoreDismiss();
     }
 
     // Clear message acknowledgement flag when user presses a key.

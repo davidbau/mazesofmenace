@@ -58,6 +58,11 @@ function m_at(map, x, y) {
     return null;
 }
 
+// C-faithful m_at-style lookup for callers outside worm.js.
+export function monsterAtWithSegments(map, x, y) {
+    return m_at(map, x, y);
+}
+
 // C ref: hack.h distu(x,y) = dist2(u.ux, u.uy, x, y)
 function distu(player, x, y) {
     var dx = player.x - x;

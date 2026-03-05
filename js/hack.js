@@ -28,7 +28,7 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
 import { nhgetch } from './input.js';
 import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage, schedule_goto } from './do.js';
-import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm } from './mondata.js';
+import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm, mon_learns_traps, mons_see_trap } from './mondata.js';
 import { engr_at, read_engr_at, maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage, u_left_shop, inhishop } from './shk.js';
@@ -892,6 +892,10 @@ export async function domove_core(dir, player, map, display, game) {
         if (!trap.tseen) {
             trap.tseen = true;
         }
+        // C ref: trap.c dotrap() — mount learns trap type and nearby monsters
+        // that can see the trap remember it.
+        if (player?.usteed) mon_learns_traps(player.usteed, trap.ttyp);
+        mons_see_trap(trap, map);
         // C ref: trap.c trapeffect_arrow_trap()/trapeffect_dart_trap()
         // Hero branch in dotrap().
         if (trap.ttyp === ARROW_TRAP || trap.ttyp === DART_TRAP) {

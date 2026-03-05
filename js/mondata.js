@@ -112,6 +112,7 @@ import {
     PM_KOBOLD_ZOMBIE, PM_KOBOLD_MUMMY,
     PM_MONKEY, PM_APE, PM_LICHEN,
 } from './monsters.js';
+import { m_cansee } from './vision.js';
 
 import { AMULET_OF_YENDOR, AMULET_OF_GUARDING, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
@@ -1434,16 +1435,23 @@ export function monstunseesu(seenres, map, player) {
 
 // Autotranslated from mondata.c:1640
 export function mons_see_trap(ttmp, map) {
-  let mtmp, tx = ttmp.tx, ty = ttmp.ty;
-  let maxdist = map.locations[tx][ty].lit ? 7*7 : 2;
-  for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
-    if (is_animal(mtmp.data) || mindless(mtmp.data) || !haseyes(mtmp.data) || !mtmp.mcansee) {
+  if (!ttmp || !map || !Array.isArray(map.monsters)) return;
+  const tx = ttmp.tx;
+  const ty = ttmp.ty;
+  const lit = !!map.at?.(tx, ty)?.lit;
+  const maxdist = lit ? 49 : 2;
+  for (const mtmp of map.monsters) {
+    if (!mtmp || mtmp.dead) continue;
+    const mdat = mtmp.type || {};
+    if (is_animal(mdat) || is_mindless(mdat) || !haseyes(mdat) || !mtmp.mcansee) {
       continue;
     }
-    if (dist2(mtmp.mx, mtmp.my, tx, ty) > maxdist) {
+    const dx = mtmp.mx - tx;
+    const dy = mtmp.my - ty;
+    if ((dx * dx + dy * dy) > maxdist) {
       continue;
     }
-    if (!m_cansee(mtmp, tx, ty)) {
+    if (!m_cansee(mtmp, map, tx, ty)) {
       continue;
     }
     mon_learns_traps(mtmp, ttmp.ttyp);
