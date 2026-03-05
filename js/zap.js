@@ -59,9 +59,15 @@ import { placeFloorObject } from './stackobj.js';
 import { zap_dig as zap_dig_core } from './dig.js';
 import { pline } from './pline.js';
 import { mon_nam, Monnam } from './do_name.js';
-import { find_mac } from './worn.js';
-import { mon_adjust_speed } from './worn.js';
-import { mon_set_minvis } from './worn.js';
+import {
+  find_mac,
+  mon_adjust_speed,
+  mon_set_minvis,
+  W_ARMOR, W_ACCESSORY, W_WEP,
+  W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMG, W_ARMF, W_ARMS,
+  W_AMUL, W_TOOL, W_RING, W_RINGL, W_RINGR,
+} from './worn.js';
+import { W_ART } from './artifact.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
 import { mstatusline, run_magic_enlightenment_effect } from './insight.js';
 import { display_minventory, sobj_at, update_inventory } from './invent.js';
@@ -71,7 +77,12 @@ import { delobj } from './invent.js';
 import { useupall } from './invent.js';
 import { monflee } from './monmove.js';
 import { readobjnam, hands_obj } from './objnam.js';
-import { xname, an, The } from './objnam.js';
+import {
+  xname, an, The, simpleonames,
+  suit_simple_name, cloak_simple_name, helm_simple_name,
+  gloves_simple_name, boots_simple_name, shield_simple_name,
+  shirt_simple_name,
+} from './objnam.js';
 import { hold_another_object, prinv } from './invent.js';
 import { findit } from './detect.js';
 import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy_drawbridge } from './dbridge.js';
@@ -2008,11 +2019,38 @@ export function item_what(_osym_or_dmgtyp, maybe_dmgtyp = null, maybe_player = n
   const player = (maybe_player == null) ? maybe_dmgtyp : maybe_player;
   const prob = u_adtyp_resistance_obj(player, dmgtyp);
   if (!prob) return '';
-  const inv = Array.isArray(player?.inventory) ? player.inventory : [];
-  const defensive = inv.find((o) => o && (o.owornmask || o.worn || o.wielded));
-  if (!defensive) return '';
-  const name = objectData[defensive.otyp]?.name || 'equipment';
-  return `by your ${name}`;
+  const prop = adtyp_to_prop(dmgtyp);
+  const xtrinsic = Number(player?.uprops?.[prop]?.extrinsic || 0);
+  let what = '';
+  const safeName = (fn, obj) => (obj ? fn(obj) : '');
+  if (!prop || !xtrinsic) return '';
+  if (xtrinsic & W_ARMC) {
+    what = safeName(cloak_simple_name, player?.cloak);
+  } else if (xtrinsic & W_ARM) {
+    what = safeName(suit_simple_name, player?.armor);
+  } else if (xtrinsic & W_ARMU) {
+    what = safeName(shirt_simple_name, player?.shirt);
+  } else if (xtrinsic & W_ARMH) {
+    what = safeName(helm_simple_name, player?.helmet);
+  } else if (xtrinsic & W_ARMG) {
+    what = safeName(gloves_simple_name, player?.gloves);
+  } else if (xtrinsic & W_ARMF) {
+    what = safeName(boots_simple_name, player?.boots);
+  } else if (xtrinsic & W_ARMS) {
+    what = safeName(shield_simple_name, player?.shield);
+  } else if (xtrinsic & (W_AMUL | W_TOOL)) {
+    const obj = (xtrinsic & W_AMUL) ? player?.amulet : player?.blindfold;
+    what = obj ? simpleonames(obj) : '';
+  } else if (xtrinsic & W_RING) {
+    if ((xtrinsic & W_RING) === W_RING) what = 'rings';
+    else {
+      const obj = (xtrinsic & W_RINGL) ? player?.leftRing : player?.rightRing;
+      what = obj ? simpleonames(obj) : '';
+    }
+  } else if (xtrinsic & W_WEP) {
+    what = player?.weapon ? simpleonames(player.weapon) : '';
+  }
+  return what ? `by your ${what}` : '';
 }
 
 function Is_box(otmp) {
@@ -2281,15 +2319,13 @@ export function start_melt_ice_timeout(x, y, map) {
   if (when <= max) map._meltIcePending.push({ x, y, when });
 }
 export function u_adtyp_resistance_obj(player, adtyp) {
-  if (!player || !Array.isArray(player.inventory)) return 0;
+  if (!player) return 0;
   const prop = adtyp_to_prop(adtyp);
   if (!prop) return 0;
-  const inv = player.inventory;
-  const givesExtrinsic = inv.some((o) => o && (o.owornmask || o.worn || o.wielded)
-      && (o[prop] || o.prop === prop || o.resist === prop || o.grants === prop));
-  if (givesExtrinsic) return 99;
-  const dwarfCloak = inv.find((o) => o && (o.owornmask || o.worn) && o.otyp === DWARVISH_CLOAK);
-  if (dwarfCloak && (adtyp === 2 || adtyp === 3)) return 90;
+  const xtrinsic = Number(player?.uprops?.[prop]?.extrinsic || 0);
+  if ((xtrinsic & (W_ARMOR | W_ACCESSORY | W_WEP | W_ART)) !== 0) return 99;
+  if ((xtrinsic & W_ARMC) && player?.cloak?.otyp === DWARVISH_CLOAK
+      && (adtyp === 2 /* AD_FIRE */ || adtyp === 3 /* AD_COLD */)) return 90;
   return 0;
 }
 // Autotranslated from zap.c:4699

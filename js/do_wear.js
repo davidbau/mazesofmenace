@@ -1299,7 +1299,8 @@ function menu_remarm(_retry) {
 
 // cf. do_wear.c doddoremarm() — 'A' command: show category menu for take-off-all
 export async function handleRemoveAll(player, display, _game) {
-    // Collect worn/wielded items via player slot properties (owornmask not reliably set in JS)
+    // Collect currently equipped/wielded items from canonical hero slot pointers.
+    // (owornmask is now kept in sync; this path stays slot-driven to match command UX.)
     const wornItems = [
         player.weapon, player.swapwep, player.quiver,
         player.armor, player.cloak, player.shirt, player.helmet,
