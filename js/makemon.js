@@ -826,12 +826,14 @@ function m_initweap(mon, mndx, depth) {
 
     case S_HUMANOID:
         if (is_hobbit(ptr)) {
-            const w = rn2(3);
-            if (w === 0) mongets(mon,DAGGER);
-            else if (w === 1) mongets(mon,ELVEN_DAGGER);
-            else mongets(mon,SLING);
-            if (rn2(4)) m_initthrow(mon, FLINT, 8);
-            else m_initthrow(mon, ROCK, 8);
+            switch (rn2(3)) {
+            case 0: mongets(mon, DAGGER); break;
+            case 1: mongets(mon, ELVEN_DAGGER); break;
+            case 2:
+                mongets(mon, SLING);
+                m_initthrow(mon, !rn2(4) ? FLINT : ROCK, 6);
+                break;
+            }
             if (!rn2(10)) mongets(mon,ELVEN_MITHRIL_COAT);
             if (!rn2(10)) mongets(mon,DWARVISH_CLOAK);
         } else if (is_dwarf(ptr)) {
