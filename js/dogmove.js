@@ -1309,13 +1309,24 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 const monMtame = !!((mon.mtame || 0) > 0 || mon.tame);
                 const targetMsound = (target.type?.sound ?? target.type?.msound
                     ?? mons[target.mndx]?.sound ?? mons[target.mndx]?.msound ?? 0);
+                const passiveDmg = max_passive_dmg(target, mon);
                 if ((target.m_lev || 0) >= balk
                     || (targetMtame && monMtame && !conflictActive)
-                    || (max_passive_dmg(target, mon) >= (mon.mhp || 1))
+                    || (passiveDmg >= (mon.mhp || 1))
                     || (((mon.mhp || 1) * 4 < Math.max(1, mon.mhpmax || 1)
                         || targetMsound === MS_GUARDIAN
                         || targetMsound === MS_LEADER)
                         && targetMpeaceful && !conflictActive)) {
+                    monmoveTrace('dog_move-skip-attack',
+                        `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
+                        `id=${mon.m_id ?? '?'}`,
+                        `target=${target.m_id ?? '?'}`,
+                        `reason=balk_or_tame_or_passive`,
+                        `balk=${balk}`,
+                        `targetLev=${target.m_lev || 0}`,
+                        `passive=${passiveDmg}`,
+                        `mhp=${mon.mhp || 0}`,
+                        `peace=${targetMpeaceful ? 1 : 0}`);
                     continue;
                 }
 
@@ -1348,11 +1359,28 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                     } else if (isPetrifier && !resists_ston(mon)) {
                         skipTarget = true;
                     }
-                if (skipTarget) continue;
-            }
+                    if (skipTarget) {
+                        monmoveTrace('dog_move-skip-attack',
+                            `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
+                            `id=${mon.m_id ?? '?'}`,
+                            `target=${target.m_id ?? '?'}`,
+                            `reason=special_target_avoidance`,
+                            `floatingEye=${isFloatingEye ? 1 : 0}`,
+                            `gelCube=${isGelCube ? 1 : 0}`,
+                            `petrifier=${isPetrifier ? 1 : 0}`);
+                        continue;
+                    }
+                }
 
                 // C ref: dogmove.c:1141 — only attack once per move
-                if (after) return 0;
+                if (after) {
+                    monmoveTrace('dog_move-skip-attack',
+                        `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
+                        `id=${mon.m_id ?? '?'}`,
+                        `target=${target.m_id ?? '?'}`,
+                        'reason=after_already_attacked');
+                    return 0;
+                }
 
                 // C ref: dogmove.c:1144-1146 — visibility for combat messages
                 const monSpot = canSpotMonsterForMap(mon, map, player, fov);
@@ -1365,6 +1393,12 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
 
                 // C ref: dogmove.c:1146 — mattackm(mtmp, mtmp2)
                 const ctx = { player, fov, turnCount, agrVisible: monSpot, defVisible: targetSpot };
+                monmoveTrace('dog_move-attack',
+                    `step=${(Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?')}`,
+                    `id=${mon.m_id ?? '?'}`,
+                    `target=${target.m_id ?? '?'}`,
+                    `from=(${mon.mx},${mon.my})`,
+                    `to=(${target.mx},${target.my})`);
                 const mstatus = await mattackm(mon, target, display, mmVisible, map, ctx);
 
                 // C ref: dogmove.c:1148-1150 — pet died

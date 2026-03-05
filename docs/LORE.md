@@ -2014,3 +2014,24 @@ hard-won wisdom:
   - this frontier is currently a pre-existing hero/pet positional-state skew
     entering step `356` (not a local `dog_goal` formula typo); continue
     debugging upstream movement/position semantics feeding `set_apparxy`.
+
+### Seed322 dog/combat skew is downstream of earlier local-neighborhood drift (2026-03-05)
+
+- Additional tracing at current `main` (`52d5f8bc`) shows:
+  - first RNG divergence still at step `357` (`rn2(8)` JS vs `rnd(20)` C),
+  - earliest visible screen mismatch still step `223` (`AC:8` JS vs `AC:7` C),
+  - by step `221`, JS and C already differ in adjacent-monster neighborhood
+    around pet `id=52` (C has a pet-adjacent `mattackm` block; JS does not).
+- JS step-223 `dog_move` traces show balk gating is behaving C-faithfully for
+  nearby rust monster (`targetLev=7`, `balk=2`), so the missing attack at this
+  frontier is not from a local `dog_move` conditional typo.
+- Practical implication:
+  - treat step-357 dog/combat mismatch as downstream from earlier
+    position/layout/state skew (likely same source family as step-223 AC/state
+    mismatch), not as an isolated `dog_move` attack-selection bug.
+- Hardening changes merged while tracing:
+  - `mattacku` now always calls `d(damn,damd)` (including `0,0`),
+  - successful contact hits now default to `M_ATTK_HIT` even when post-effect
+    damage is `0` (rust/corrode touches),
+  - armor erosion now marks AC dirty for `ER_DESTROYED` as well as
+    `ER_DAMAGED`.

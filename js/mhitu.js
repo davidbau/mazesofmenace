@@ -46,7 +46,7 @@ import { make_confused, make_stunned, make_blinded, make_hallucinated } from './
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
-         EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED } from './trap.js';
+         EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED, ER_DESTROYED } from './trap.js';
 import { xkilled, XKILL_NOMSG } from './mon.js';
 import { mondead, flush_screen } from './monutil.js';
 import { mon_explodes } from './explode.js';
@@ -881,7 +881,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (!target || er === ER_NOTHING) {
                 continue;
             }
-            if (er === ER_DAMAGED) {
+            if (er === ER_DAMAGED || er === ER_DESTROYED) {
                 acDirty = true;
                 if (display) await display.putstr_message(erosionMessage(target, before));
             }
@@ -892,7 +892,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (cloak) {
                 const before = erosionCount(cloak);
                 const er = erode_obj(cloak, xname(cloak), erosionType, EF_GREASE | EF_VERBOSE);
-                if (er === ER_DAMAGED) {
+                if (er === ER_DAMAGED || er === ER_DESTROYED) {
                     acDirty = true;
                     if (display) await display.putstr_message(erosionMessage(cloak, before));
                 }
@@ -902,7 +902,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (suit) {
                 const before = erosionCount(suit);
                 const er = erode_obj(suit, xname(suit), erosionType, EF_GREASE | EF_VERBOSE);
-                if (er === ER_DAMAGED) {
+                if (er === ER_DAMAGED || er === ER_DESTROYED) {
                     acDirty = true;
                     if (display) await display.putstr_message(erosionMessage(suit, before));
                 }
@@ -912,7 +912,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (shirt) {
                 const before = erosionCount(shirt);
                 const er = erode_obj(shirt, xname(shirt), erosionType, EF_GREASE | EF_VERBOSE);
-                if (er === ER_DAMAGED) {
+                if (er === ER_DAMAGED || er === ER_DESTROYED) {
                     acDirty = true;
                     if (display) await display.putstr_message(erosionMessage(shirt, before));
                 }
@@ -926,7 +926,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (!target || er === ER_NOTHING) {
                 continue;
             }
-            if (er === ER_DAMAGED) {
+            if (er === ER_DAMAGED || er === ER_DESTROYED) {
                 acDirty = true;
                 if (display) await display.putstr_message(erosionMessage(target, before));
             }
@@ -939,7 +939,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (!target || er === ER_NOTHING) {
                 continue;
             }
-            if (er === ER_DAMAGED) {
+            if (er === ER_DAMAGED || er === ER_DESTROYED) {
                 acDirty = true;
                 if (display) await display.putstr_message(erosionMessage(target, before));
             }
@@ -952,7 +952,7 @@ async function erode_armor_on_player(player, erosionType, display = null) {
             if (!target || er === ER_NOTHING) {
                 continue;
             }
-            if (er === ER_DAMAGED) {
+            if (er === ER_DAMAGED || er === ER_DESTROYED) {
                 acDirty = true;
                 if (display) await display.putstr_message(erosionMessage(target, before));
             }
@@ -1160,8 +1160,9 @@ export async function mattacku(monster, player, display, game = null, opts = {})
             permdmg: 0,
             done: false,
         };
-        if (attack.damn && attack.damd) {
-            mhm.damage = c_d(attack.damn, attack.damd);
+        if (attack.damn !== undefined || attack.damd !== undefined) {
+            // C ref: hitmu() always calls d(damn, damd), even for 0,0 attacks.
+            mhm.damage = c_d(attack.damn || 0, attack.damd || 0);
         } else if (attack.dmg) {
             mhm.damage = c_d(attack.dmg[0], attack.dmg[1]);
         }
@@ -1245,7 +1246,9 @@ export async function mattacku(monster, player, display, game = null, opts = {})
                 game.multi = 0;
             }
         }
-        sum[i] = mhm.hitflags || (mhm.damage > 0 ? M_ATTK_HIT : M_ATTK_MISS);
+        // C ref: hitmu() returns M_ATTK_HIT for successful contact even when
+        // post-effect damage is 0 (for example, rust/corrode touch attacks).
+        sum[i] = mhm.hitflags || M_ATTK_HIT;
         if (sum[i] & (M_ATTK_AGR_DIED | M_ATTK_AGR_DONE)) break;
     }
 }
