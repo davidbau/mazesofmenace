@@ -16,7 +16,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
          NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
          HOLE, TRAPDOOR } from './config.js';
-import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC } from './symbols.js';
+import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP } from './symbols.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -48,6 +48,7 @@ import { drag_ball as drag_ball_core } from './ball.js';
 import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
 import { look_here, dfeature_at } from './invent.js';
 import { maybe_unhide_at } from './mon.js';
+import { safe_teleds, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './teleport.js';
 import { MZ_LARGE, PM_GRID_BUG } from './monsters.js';
 
 // Run direction keys (shift = run)
@@ -952,6 +953,12 @@ export async function domove_core(dir, player, map, display, game) {
                 }
                 await display.putstr_message(`You feel your magical energy drain away${punct}`);
             }
+        }
+        // C ref: trap.c dotrap() TELEP_TRAP -> teleds/safe_teleds path.
+        else if (trap.ttyp === TELEP_TRAP) {
+            await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT, game);
+            // Teleport can move hero away; skip local post-move trap effects.
+            return { moved: true, tookTime: true };
         }
         // C ref: trap.c dotrap() -> fall_through(TRUE, ...)
         else if (trap.ttyp === TRAPDOOR || trap.ttyp === HOLE) {
