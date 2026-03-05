@@ -86,11 +86,20 @@ export async function moveloop_core(game, opts = {}) {
     // C ref: allmain.c:197 — actual time passed.
     player.umovement -= NORMAL_SPEED;
 
+    let forceStopMoveLoop = false;
     do {
         let monscanmove = false;
         if (!opts.skipMonsterMove) {
             do {
                 monscanmove = await movemon((game.lev || game.map), player, game.display, game.fov, game);
+                // C ref: savelife() stops further movement progression for the
+                // current command cycle after life-saving.
+                if (game?._stopMoveloopAfterLifesave) {
+                    forceStopMoveLoop = true;
+                    monscanmove = false;
+                    game._stopMoveloopAfterLifesave = false;
+                    break;
+                }
                 if (player.umovement >= NORMAL_SPEED)
                     break; /* it's now your turn */
             } while (monscanmove);
@@ -101,10 +110,10 @@ export async function moveloop_core(game, opts = {}) {
             await deferred_goto(player, game);
             monscanmove = false;
         }
-        if (!monscanmove && player.umovement < NORMAL_SPEED) {
+        if (!monscanmove && player.umovement < NORMAL_SPEED && !forceStopMoveLoop) {
             await moveloop_turnend(game);
         }
-    } while (player.umovement < NORMAL_SPEED);
+    } while (player.umovement < NORMAL_SPEED && !forceStopMoveLoop);
 
     // C ref: vision_full_recalc set during monster turns (digs, door breaks, etc.) —
     // fire vision_recalc now so the display is current before screen capture.
