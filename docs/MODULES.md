@@ -254,7 +254,7 @@ Part of the same work: JS code uses non-C field names as aliases on data
 structs. These must be renamed to match the C source so that the autotranslator
 can emit correct code and ported functions look like the original.
 
-See also: `docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md` for the parallel effort on
+See also: `docs/STRUCTURES.md` for the parallel effort on
 global variable names (`gX.` → `game.*`).
 
 ### Attack struct (`struct attack` — permonst.h)

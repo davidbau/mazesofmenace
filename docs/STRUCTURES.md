@@ -6,7 +6,7 @@ Make the JS runtime state match NetHack C global variable names directly, so tha
 C functions can be ported with near-1:1 structure and the autotranslate tool can
 emit working code without a complex field-mapping layer.
 
-See also: `docs/CIRCULAR_DEP_DESIGN.md` for the complementary plan to consolidate
+See also: `docs/MODULES.md` for the complementary plan to consolidate
 all capitalized constants into four leaf header files (`const.js`, `objects.js`,
 `monsters.js`, `version.js`), and for the C field name normalization table covering
 struct fields like `aatyp`/`adtyp`/`damn`/`damd` and `mmove`.
@@ -1232,7 +1232,7 @@ species. `struct monst` instances reference it via `monst.data`.
 | `difficulty` | `difficulty` ✓ | uchar | toughness rating (for difficulty checks) |
 | `mcolor` | `color` | uchar | display color |
 
-**Field name fixes needed** (see also CIRCULAR_DEP_DESIGN.md):
+**Field name fixes needed** (see also MODULES.md):
 
 | current JS | → target JS | C field | note |
 |------------|-------------|---------|------|

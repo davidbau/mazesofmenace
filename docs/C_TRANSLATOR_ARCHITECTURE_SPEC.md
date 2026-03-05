@@ -44,7 +44,7 @@ This translator is not generic. It is intentionally tuned to:
 
 ## Preconditions
 
-The translator assumes the state refactor direction in [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md):
+The translator assumes the state refactor direction in [STRUCTURES.md](/share/u/davidbau/git/mazesofmenace/game/docs/STRUCTURES.md):
 
 1. Canonical runtime state under `game.*`.
 2. Reduced legacy mirror fields.
@@ -813,7 +813,7 @@ When canonical state model changes:
 
 ## Documentation Links
 
-1. State architecture: [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+1. State architecture: [STRUCTURES.md](/share/u/davidbau/git/mazesofmenace/game/docs/STRUCTURES.md)
 2. Port coverage: [CODEMATCH.md](/share/u/davidbau/git/mazesofmenace/game/docs/CODEMATCH.md)
 3. Parity debugging: [RNG_ALIGNMENT_GUIDE.md](/share/u/davidbau/git/mazesofmenace/game/docs/RNG_ALIGNMENT_GUIDE.md)
 4. Learnings: [LORE.md](/share/u/davidbau/git/mazesofmenace/game/docs/LORE.md)

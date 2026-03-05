@@ -483,7 +483,7 @@ For state-canonicalization and translator campaign work, use the Iron Parity
 docs as the planning authority:
 
 1. [IRON_PARITY_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/IRON_PARITY_PLAN.md)
-2. [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+2. [STRUCTURES.md](/share/u/davidbau/git/mazesofmenace/game/docs/STRUCTURES.md)
 3. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
 4. [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
 

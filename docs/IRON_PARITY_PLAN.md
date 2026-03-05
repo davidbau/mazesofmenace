@@ -55,7 +55,7 @@ This campaign treats green tests as guardrails, not the goal. The goal is faithf
 
 ## Source Plans
 
-1. State refactor plan: [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+1. State refactor plan: [STRUCTURES.md](/share/u/davidbau/git/mazesofmenace/game/docs/STRUCTURES.md)
 2. Translator architecture: [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
 3. Translator parser strategy: [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
 4. Translator out-param/format strategy: [C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_OUTPARAM_AND_FORMAT_ARCHITECTURE.md)
@@ -318,7 +318,7 @@ Governance rules:
 ## Integrated Phase Plan
 
 Shared milestone IDs in this table are authoritative for all three planning docs.
-`C_FAITHFUL_STATE_REFACTOR_PLAN.md` and translator specs must reference these IDs.
+`STRUCTURES.md` and translator specs must reference these IDs.
 
 | Milestone | Scope lead | Exit gate |
 | --- | --- | --- |
@@ -505,7 +505,7 @@ Manual required if any are true:
 3. Remaining non-translated zones are explicitly policy-marked and justified.
 4. Replay parity trend is stable/improving with reduced hidden-state divergence clusters.
 5. All campaign plan docs remain synchronized and current:
-   1. [C_FAITHFUL_STATE_REFACTOR_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
+   1. [STRUCTURES.md](/share/u/davidbau/git/mazesofmenace/game/docs/STRUCTURES.md)
    2. [C_TRANSLATOR_ARCHITECTURE_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
    3. [C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](/share/u/davidbau/git/mazesofmenace/game/docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
    4. [IRON_PARITY_PLAN.md](/share/u/davidbau/git/mazesofmenace/game/docs/IRON_PARITY_PLAN.md)
