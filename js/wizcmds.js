@@ -204,6 +204,7 @@ import { COLNO, ROWNO, ACCESSIBLE, MAXLEVEL, isok } from './config.js';
 import { makemon, setMakemonPlayerContext } from './makemon.js';
 import { mons } from './monsters.js';
 import { makewish } from './zap.js';
+import { encumber_msg } from './pickup.js';
 import { schedule_goto } from './do.js';
 
 // cf. wizcmds.c:32 — wiz_wish(): prompt then call makewish()
@@ -217,7 +218,13 @@ export async function wizWish(game) {
     if (wishText === null || wishText.trim() === '') {
         return { moved: false, tookTime: false };
     }
+    // C ref: wizcmds.c wiz_wish() — makewish() with verbose temporarily off,
+    // then encumber_msg().
+    const saveVerbose = game.flags?.verbose;
+    if (game.flags) game.flags.verbose = false;
     await makewish(wishText, player, display);
+    if (game.flags) game.flags.verbose = saveVerbose;
+    await encumber_msg(player);
     return { moved: false, tookTime: false };
 }
 
