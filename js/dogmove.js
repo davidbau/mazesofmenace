@@ -23,18 +23,22 @@ import { couldsee, m_cansee, do_clear_area } from './vision.js';
 import { mattackm, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './mhitm.js';
 import { is_animal, is_mindless, nohands, nolimbs, unsolid,
          carnivorous, herbivorous, is_metallivore,
-         y_monnam, YMonnam, Monnam } from './mondata.js';
+         y_monnam, YMonnam, Monnam,
+         resists_fire, resists_cold, resists_elec,
+         completelyburns, completelyrots, completelyrusts } from './mondata.js';
 import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
          PM_LONG_WORM, PM_COCKATRICE, PM_CHICKATRICE, PM_MEDUSA,
          NUMMONS,
          mons,
          AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_WEAP,
-         AT_ENGL,
+         AT_ENGL, AT_HUGS, AT_TENT,
+         AT_BOOM,
+         AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_ACID, AD_DCAY, AD_RUST,
          MR_POISON, MR_ACID, MR_STONE, MR_FIRE,
          M1_SWIM, M1_NEEDPICK, M1_TUNNEL, M1_SEE_INVIS,
          M1_NOTAKE, M1_NOHANDS, M1_UNSOLID, M1_NOHEAD, M1_NOLIMBS,
          M2_STRONG, M2_ROCKTHROW,
-         S_MIMIC, S_DRAGON, S_NYMPH,
+         S_MIMIC, S_DRAGON, S_NYMPH, MS_GUARDIAN, MS_LEADER,
          WT_HUMAN, MZ_HUMAN,
          MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, MZ_GIGANTIC,
          G_FREQ } from './monsters.js';
@@ -108,6 +112,56 @@ function has_head(ptr) { return !(ptr.flags1 & M1_NOHEAD); }
 // C ref: mondata.h — haseyes(ptr) = !(M1_NOEYES)
 // M1_NOEYES = 0x00001000
 function haseyes(ptr) { return !(ptr.flags1 & 0x00001000); }
+
+// C ref: mondata.c max_passive_dmg(mdef, magr)
+function max_passive_dmg(mdef, magr) {
+    const mdefData = mons[mdef?.mndx] || mdef?.type || null;
+    const magrData = mons[magr?.mndx] || magr?.type || null;
+    if (!mdefData || !magrData) return 0;
+
+    let multi2 = 0;
+    for (const atk of (magrData.attacks || [])) {
+        switch (atk.aatyp) {
+            case AT_CLAW:
+            case AT_BITE:
+            case AT_KICK:
+            case AT_BUTT:
+            case AT_TUCH:
+            case AT_STNG:
+            case AT_HUGS:
+            case AT_ENGL:
+            case AT_TENT:
+            case AT_WEAP:
+                multi2++;
+                break;
+            default:
+                break;
+        }
+    }
+    if (multi2 <= 0) return 0;
+
+    for (const atk of (mdefData.attacks || [])) {
+        if (atk.aatyp !== AT_NONE && atk.aatyp !== AT_BOOM) continue;
+        const adtyp = atk.adtyp;
+        if ((adtyp === AD_FIRE && completelyburns(magrData))
+            || (adtyp === AD_DCAY && completelyrots(magrData))
+            || (adtyp === AD_RUST && completelyrusts(magrData))) {
+            return Number(magr?.mhp) || 0;
+        }
+        if ((adtyp === AD_ACID && !resists_acid(magr))
+            || (adtyp === AD_COLD && !resists_cold(magr))
+            || (adtyp === AD_FIRE && !resists_fire(magr))
+            || (adtyp === AD_ELEC && !resists_elec(magr))
+            || adtyp === AD_PHYS) {
+            let dmg = Number(atk.damn) || 0;
+            if (!dmg) dmg = (Number(mdefData.level) || 0) + 1;
+            dmg *= Number(atk.damd) || 0;
+            return dmg * multi2;
+        }
+        return 0;
+    }
+    return 0;
+}
 
 // ========================================================================
 // dog_nutrition — C ref: dogmove.c:155-214
@@ -1248,9 +1302,19 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
                 const balk = (mon.m_lev || 1)
                     + Math.floor((5 * (mon.mhp || 1)) / Math.max(1, mon.mhpmax || 1))
                     - 2;
+                const conflictActive = false; // JS Conflict not implemented yet.
+                const targetMpeaceful = !!(target.mpeaceful ?? target.peaceful);
+                const targetMtame = !!((target.mtame || 0) > 0 || target.tame);
+                const monMtame = !!((mon.mtame || 0) > 0 || mon.tame);
+                const targetMsound = (target.type?.sound ?? target.type?.msound
+                    ?? mons[target.mndx]?.sound ?? mons[target.mndx]?.msound ?? 0);
                 if ((target.m_lev || 0) >= balk
-                    || (target.tame && mon.tame)
-                    || (target.peaceful && (mon.mhp || 1) * 4 < Math.max(1, mon.mhpmax || 1))) {
+                    || (targetMtame && monMtame && !conflictActive)
+                    || (max_passive_dmg(target, mon) >= (mon.mhp || 1))
+                    || (((mon.mhp || 1) * 4 < Math.max(1, mon.mhpmax || 1)
+                        || targetMsound === MS_GUARDIAN
+                        || targetMsound === MS_LEADER)
+                        && targetMpeaceful && !conflictActive)) {
                     continue;
                 }
 

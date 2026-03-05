@@ -8,7 +8,7 @@ import {
     CONFUSION, STUNNED, BLINDED, HALLUC, TIMEOUT,
     FIRE_RES, COLD_RES, SHOCK_RES, SLEEP_RES, POISON_RES, DRAIN_RES,
     ACID_RES, FREE_ACTION, FAST, SICK_RES, STONE_RES, REFLECTING,
-    MALE, FEMALE,
+    MALE, FEMALE, DISPLACED,
 } from './config.js';
 import {
     G_UNIQ, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME,
@@ -25,7 +25,7 @@ import {
     AD_MAGM, AD_DISN,
     mons,
 } from './monsters.js';
-import { objectData, BULLWHIP } from './objects.js';
+import { objectData, BULLWHIP, CLOAK_OF_DISPLACEMENT } from './objects.js';
 import { xname } from './mkobj.js';
 import {
     x_monnam, is_humanoid, thick_skinned,
@@ -943,11 +943,20 @@ export async function mattacku(monster, player, display, game = null, opts = {})
     if (!monster.attacks || monster.attacks.length === 0) return;
     if (monster.passive) return; // passive monsters don't initiate attacks
 
-    const range2 = !!opts.range2;
+    const attackVars = calc_mattacku_vars(monster, player);
+    let range2 = (opts.range2 !== undefined) ? !!opts.range2 : !!attackVars.range2;
+    let foundyou = !!attackVars.foundyou;
+    let skipnonmagc = false;
     const map = opts.map || null;
 
     for (let i = 0; i < monster.attacks.length; i++) {
+        if (opts.range2 === undefined && i > 0) {
+            const vars = calc_mattacku_vars(monster, player);
+            range2 = !!vars.range2;
+            foundyou = !!vars.foundyou;
+        }
         const attack = canonicalizeAttackFields(monster.attacks[i]);
+        if (skipnonmagc && attack.aatyp !== AT_MAGC) continue;
 
         // cf. mhitu.c mattacku() attack dispatch:
         // Melee attacks (AT_CLAW, AT_BITE, etc.) only fire when !range2.
@@ -969,7 +978,7 @@ export async function mattacku(monster, player, display, game = null, opts = {})
             }
             if (attack.aatyp === AT_MAGC) {
                 const vis = !player?.blind && !(monster.minvis && !player?.seeInvisible);
-                await castmu(monster, attack, vis, true, player, map);
+                await castmu(monster, attack, vis, foundyou, player, map);
                 continue;
             }
             // Skip melee-only attack types when at range
@@ -991,6 +1000,11 @@ export async function mattacku(monster, player, display, game = null, opts = {})
 
         if (attack.aatyp === AT_WEAP && monster.weapon) {
             await maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg);
+        }
+        if (!foundyou) {
+            await wildmiss(monster, attack, player, display);
+            skipnonmagc = true;
+            continue;
         }
 
         const dieRoll = rnd(20 + i);
@@ -1134,8 +1148,15 @@ export async function u_slow_down(player, display) {
 // C ref: mhitu.c:175 wildmiss() — displaced/invisible miss message
 async function wildmiss(monster, attack, player, display) {
     if (!display) return;
-    // Simplified: just consume rn2(3) and show a message
     const name = x_monnam(monster);
+    const displaced = !!(player?.Displaced
+        || player?.displaced
+        || playerHasProp(player, DISPLACED)
+        || (player?.cloak && player.cloak.otyp === CLOAK_OF_DISPLACEMENT));
+    if (displaced) {
+        await display.putstr_message(`The ${name} strikes at your displaced image and misses you!`);
+        return;
+    }
     switch (rn2(3)) {
     case 0:
         await display.putstr_message(`The ${name} swings wildly and misses!`);
@@ -1219,14 +1240,19 @@ export function getmattk(monster, mdef, indx, prev_result) {
 
 // cf. mhitu.c:446 calc_mattacku_vars() — compute attack range/visibility variables
 export function calc_mattacku_vars(mtmp, player) {
-    const dx = Math.abs((mtmp.mx ?? 0) - (player.x ?? 0));
-    const dy = Math.abs((mtmp.my ?? 0) - (player.y ?? 0));
+    const mx = mtmp.mx ?? 0;
+    const my = mtmp.my ?? 0;
+    const ux = player.x ?? 0;
+    const uy = player.y ?? 0;
+    const mux = (mtmp.mux ?? mx);
+    const muy = (mtmp.muy ?? my);
+    const dx = Math.abs(mx - ux);
+    const dy = Math.abs(my - uy);
     const dist = dx * dx + dy * dy;
     const ranged = dist > 3;
-    // range2: monster thinks it's not near where hero is
-    const range2 = dist > 2;
-    const foundyou = ((mtmp.mux ?? mtmp.mx) === (player.x ?? 0))
-                  && ((mtmp.muy ?? mtmp.my) === (player.y ?? 0));
+    // C ref: range2 = !monnear(mtmp, mtmp->mux, mtmp->muy)
+    const range2 = Math.max(Math.abs(mx - mux), Math.abs(my - muy)) > 1;
+    const foundyou = (mux === ux) && (muy === uy);
     return { ranged, range2, foundyou };
 }
 
