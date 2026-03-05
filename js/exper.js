@@ -150,14 +150,16 @@ export async function losexp(player, display, drainer) {
 
 // cf. exper.c:299 — newexplevel(): check if player should gain a level
 // Autotranslated from exper.c:299
-export async function newexplevel(player) {
-  if (player.ulevel < MAXULEV && player.uexp >= newuexp(player.ulevel)) await pluslvl(true);
+export async function newexplevel(player, display = null) {
+  if (player.ulevel < MAXULEV && (Number(player.uexp) || Number(player.exp) || 0) >= newuexp(player.ulevel)) {
+    await pluslvl(player, display, true);
+  }
 }
 
 // cf. exper.c:306 — pluslvl(): gain an experience level
 export async function pluslvl(player, display, incr) {
     if (!incr) {
-        await display.putstr_message('You feel more experienced.');
+        if (display) await display.putstr_message('You feel more experienced.');
     }
 
     // cf. exper.c:324 newhp() — role-dependent HP gain
@@ -173,11 +175,14 @@ export async function pluslvl(player, display, incr) {
     if (player.ulevel < MAXULEV) {
         if (incr) {
             const tmp = newuexp(player.ulevel + 1);
-            if (player.exp >= tmp) {
-                player.exp = tmp - 1;
+            const currentExp = (Number(player.uexp) || Number(player.exp) || 0);
+            if (currentExp >= tmp) {
+                player.uexp = tmp - 1;
+                player.exp = player.uexp;
             }
         } else {
-            player.exp = newuexp(player.ulevel);
+            player.uexp = newuexp(player.ulevel);
+            player.exp = player.uexp;
         }
         player.ulevel++;
         const back = (player.ulevelmax != null && player.ulevelmax >= player.ulevel) ? 'back ' : '';

@@ -1649,12 +1649,6 @@ async function handleMonsterKilled(player, monster, display, map) {
     await display.putstr_message(`You ${killVerb} the ${x_monnam(monster)}!`);
     mondead(monster, map, player);
 
-    // cf. exper.c experience() -- roughly monster level * level
-    const exp = ((monster.m_lev || 0) + 1) * ((monster.m_lev || 0) + 1);
-    player.exp += exp;
-    player.score += exp;
-    await newexplevel(player, display);
-
     // C ref: mon.c LEVEL_SPECIFIC_NOCORPSE() + xkilled() gate.
     // This pre-check suppresses both treasure drops and corpse creation.
     const isRogueLevel = !!map?.flags?.is_rogue_level;
@@ -1702,6 +1696,15 @@ async function handleMonsterKilled(player, monster, display, map) {
             if (map) newsym(monster.mx, monster.my);
         }
     }
+
+    // C ref: mon.c cleanup section — award XP after xkilled drop/corpse logic.
+    // Keep legacy player.exp mirrored so status/insight views stay consistent.
+    const exp = ((monster.m_lev || 0) + 1) * ((monster.m_lev || 0) + 1);
+    player.uexp = (Number(player.uexp) || Number(player.exp) || 0) + exp;
+    player.urexp = (Number(player.urexp) || 0) + (4 * exp);
+    player.exp = player.uexp;
+    player.score += exp;
+    await newexplevel(player, display);
 
     return true;
 }

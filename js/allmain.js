@@ -110,6 +110,14 @@ export async function moveloop_core(game, opts = {}) {
         vision_recalc();
     }
 
+    // C ref: allmain.c:414-420 seer_turn update happens once here,
+    // after the movement loop, rather than inside moveloop_turnend().
+    // JS turnCount is one behind C's svm.moves; mirror C check with +1 offset.
+    const movesForSeer = game.turnCount + 1;
+    if (movesForSeer >= game.seerTurn) {
+        game.seerTurn = movesForSeer + rn1(31, 15);
+    }
+
     // C ref: allmain.c end of moveloop_core — check for player death
     if (player.isDead || player.uhp <= 0) {
         if (!player.deathCause) {
@@ -284,11 +292,6 @@ export async function moveloop_turnend(game) {
         await wipe_engr_at((game.lev || game.map), (game.u || game.player).x, (game.u || game.player).y, rnd(3), false);
     }
 
-    // C ref: allmain.c:414 seer_turn check
-    // C's svm.moves is +1 ahead of turnCount (same offset as exerchk)
-    if (moves >= game.seerTurn) {
-        game.seerTurn = moves + rn1(31, 15);
-    }
     // C ref: allmain.c:385-393 — immobile turn countdown and unmul().
     if (game.multi < 0) {
         if (++game.multi === 0) {
