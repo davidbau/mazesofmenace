@@ -230,7 +230,8 @@ and is the startup step. Subsequent steps have string keys:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `key` | string\|null | yes | Key sent to NetHack (null for startup) |
-| `rng` | string[] | yes | RNG calls during this step (may be empty) |
+| `rng` | string[] | yes | RNG calls **and event entries** during this step (may be empty). RNG entries have `fn(args)=result @ file:line` format; event entries use `^event[...]` format (see Event Entries section). |
+| `cursor` | [col, row, visible] | no | Terminal cursor position after this step: `[col, row, 1]` where col/row are 0-based, visible is always 1. Present on every step when cursor tracking is enabled. |
 | `capture` | object | no | Optional capture metadata; supports `key_delay_s` for per-step C capture settle timing |
 | `screen` | string | no | ANSI-compressed screen after this step (v3 canonical) |
 | `typGrid` | string | no | RLE terrain grid (on level changes) |
@@ -257,6 +258,10 @@ consume multiple game turns (e.g., running, resting). The RNG delta accurately
 captures what happened; turn info can be read from the status line if needed.
 
 ## RNG Log Format
+
+The `rng` array in each step contains three kinds of string entries mixed together:
+RNG calls, midlog markers, and event entries. The session test runner separates
+them by prefix: `^` = event, `>` or `<` = midlog marker, everything else = RNG call.
 
 Each RNG entry is a string:
 

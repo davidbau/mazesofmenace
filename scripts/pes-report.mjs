@@ -12,8 +12,9 @@
  *   plain  = 26–79% — mid-range
  *
  * Usage:
- *   node scripts/pes-report.mjs                  # Read from latest git note (instant)
+ *   node scripts/pes-report.mjs                  # Run tests if stale, then show report
  *   node scripts/pes-report.mjs FILE.json         # Read from results JSON file
+ *   node scripts/pes-report.mjs --cached          # Read from git note without staleness check
  *   node scripts/pes-report.mjs --diagnose        # Include full AI TL;DR below the table
  *   node scripts/pes-report.mjs --no-color        # Disable ANSI colors
  *
@@ -23,9 +24,9 @@
  * See docs/PESREPORT.md for full documentation.
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -319,6 +320,79 @@ function fullDiagnose(result, cache) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Staleness check + auto-run
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the newest mtime (ms) of any file that would affect gameplay test results:
+ * session JSON files and JS source files.
+ */
+function newestRelevantMtime() {
+    let newest = 0;
+
+    function scanDir(dir, ext) {
+        if (!existsSync(dir)) return;
+        for (const f of readdirSync(dir)) {
+            if (!f.endsWith(ext)) continue;
+            try {
+                const mt = statSync(join(dir, f)).mtimeMs;
+                if (mt > newest) newest = mt;
+            } catch { /* skip */ }
+        }
+    }
+
+    // Session files
+    scanDir(join(REPO_ROOT, 'test', 'comparison', 'sessions'), '.session.json');
+    scanDir(join(REPO_ROOT, 'test', 'comparison', 'maps'), '.session.json');
+    // JS game sources (changes invalidate cached results)
+    scanDir(join(REPO_ROOT, 'js'), '.js');
+    scanDir(join(REPO_ROOT, 'test', 'comparison'), '.js');
+
+    return newest;
+}
+
+/**
+ * Load results from git note if fresh, otherwise auto-run the gameplay tests.
+ */
+function loadFreshOrCachedBundle() {
+    // Try to read existing git note
+    let raw;
+    try {
+        raw = execSync('git notes --ref=test-results show HEAD 2>/dev/null', { encoding: 'utf8' });
+    } catch { /* no note */ }
+
+    if (raw) {
+        try {
+            const cached = JSON.parse(raw);
+            const cachedTs = cached.timestamp ? new Date(cached.timestamp).getTime() : 0;
+            const newestSession = newestRelevantMtime();
+            if (cachedTs >= newestSession) {
+                // Cache is fresh
+                return cached;
+            }
+            console.error('Session files changed since last run — re-running tests...');
+        } catch { /* parse error, re-run */ }
+    } else {
+        console.error('No cached results — running gameplay tests...');
+    }
+
+    // Run session tests and capture output
+    const runner = join(REPO_ROOT, 'test', 'comparison', 'session_test_runner.js');
+    const result = spawnSync(
+        process.execPath,
+        [runner, '--type=gameplay'],
+        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+    );
+    const output = (result.stdout || '') + (result.stderr || '');
+    const match = output.match(/__RESULTS_JSON__\n(\{.*\})/s);
+    if (!match) {
+        console.error('Error: session_test_runner.js produced no results JSON.');
+        process.exit(1);
+    }
+    return JSON.parse(match[1]);
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Main
 // ──────────────────────────────────────────────────────────────────────
 
@@ -334,18 +408,21 @@ function main() {
 
     // Determine results source
     let bundle;
+    const useCached = args.includes('--cached');
     const fileArg = args.find(a => !a.startsWith('--'));
     if (fileArg) {
         bundle = JSON.parse(readFileSync(resolve(process.cwd(), fileArg), 'utf8'));
-    } else {
+    } else if (useCached) {
         try {
             const raw = execSync('git notes --ref=test-results show HEAD 2>/dev/null', { encoding: 'utf8' });
             bundle = JSON.parse(raw);
         } catch {
-            console.error('Error: No results file given and no git note found on HEAD.');
-            console.error('Usage: node scripts/pes-report.mjs [results.json]');
+            console.error('Error: --cached requested but no git note found on HEAD.');
             process.exit(1);
         }
+    } else {
+        // Auto-run if no git note exists or if session files are newer than cached results.
+        bundle = loadFreshOrCachedBundle();
     }
 
     const cache = loadCache();
