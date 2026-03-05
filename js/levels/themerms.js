@@ -318,18 +318,17 @@ export const themeroom_fills = [
          for (let i = 1; i <= trapCount; i++) {
             const pos = locs.rndcoord(1);
             if (pos && pos.x > 0) {
-               // C/Lua parity: themerms.lua converts room-relative rndcoord()
-               // to absolute map coordinates before postprocessing.
-               //   pos.x = pos.x + rm.region.x1 - 1
-               //   pos.y = pos.y + rm.region.y1
-               const rx1 = Number.isFinite(rm?.region?.x1)
-                  ? rm.region.x1
-                  : (Number.isFinite(rm?.lx) ? (rm.lx + 1) : 1);
-               const ry1 = Number.isFinite(rm?.region?.y1)
-                  ? rm.region.y1
-                  : (Number.isFinite(rm?.ly) ? rm.ly : 0);
-               pos.x = pos.x + rx1 - 1;
-               pos.y = pos.y + ry1;
+               // C/Lua parity: convert room-relative rndcoord() to absolute map
+               // coordinates before postprocessing. JS selection.rndcoord()
+               // returns 0-based room-relative coords (x-lx, y-ly), so add lx/ly.
+               const lx = Number.isFinite(rm?.lx)
+                  ? rm.lx
+                  : (Number.isFinite(rm?.region?.x1) ? rm.region.x1 : 0);
+               const ly = Number.isFinite(rm?.ly)
+                  ? rm.ly
+                  : (Number.isFinite(rm?.region?.y1) ? rm.region.y1 : 0);
+               pos.x = pos.x + lx;
+               pos.y = pos.y + ly;
                postprocess.push({ handler: make_a_trap,
                                   data: { type: "teleport", seen: true,
                                           coord: pos, teledest: 1 } });

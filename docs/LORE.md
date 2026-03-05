@@ -2237,3 +2237,18 @@ hard-won wisdom:
   - `seed303_caveman_selfplay200_gameplay`: full pass,
   - `seed323_caveman_wizard_gameplay`: remains `rng/events/mapdump/cursor` full,
     with only the pre-existing single screen-line mismatch at step 373.
+
+### Themed-room trap postprocess coords were shifted by one X (2026-03-05)
+
+- `seed330_samurai_wizard_gameplay` had a startup event/mapdump mismatch where
+  themed-room teleport traps were consistently placed at `x-1` in JS.
+- Root cause:
+  - `themerms` postprocess converted `selection.rndcoord()` coordinates with a
+    `region.x1 - 1` formula copied from Lua/C assumptions.
+  - In JS, `selection.rndcoord()` for room selections returns coordinates
+    relative to `rm.lx/rm.ly` (0-based), and `rm.region.x1` is already aligned
+    to that origin for this path, so subtracting `1` shifted placement left.
+- Fix:
+  - Convert with `rm.lx/rm.ly` directly in themed-room trap postprocessing.
+- Validation:
+  - `seed330_samurai_wizard_gameplay`: full pass (`rng/events/mapdump/screen/cursor` all matched).
