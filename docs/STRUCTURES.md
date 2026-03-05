@@ -149,9 +149,14 @@ runtime functions/classes are called/instantiated.
 
 ## Work Plan
 
-The full three-phase refactor is described in `docs/MODULES.md` (Issue #227).
+The full four-phase refactor is described in `docs/MODULES.md` (Issue #227).
 Each step must leave the test suite no worse than before moving to the next —
 this is purely structural; no behavior changes at any phase.
+
+**Phase 0** (preflight) and **Phase 1** (remove `register*()`/top-level wiring
+side effects) are described in MODULES.md. The state-rename work below maps to
+**Phases 2–4** of that plan. No `initAll` or startup orchestrator is added;
+cross-module interactions happen at normal runtime call sites.
 
 ### Target end state
 
@@ -168,20 +173,20 @@ Backward-compatible aliases introduced during migration are **temporary
 scaffolding only** — each alias is removed as soon as the last code that uses it
 is migrated and tests are confirmed no worse.
 
-### Phase 1 — Struct Field Name Normalization
+### Phase 2 — Struct Field Name Normalization
 
 Rename all non-C JS field aliases to canonical C names, file by file.
 Run tests after each file. This is a pure rename of property accesses with no
 logic changes.
 
-**Exit gate — before moving to Phase 2:**
+**Exit gate — before moving to Phase 3:**
 
 | | Status |
 |-|--------|
 | **Present** | All struct fields accessed by canonical C names throughout the codebase |
 | **Complete** | Every alias listed in the tables below has been renamed in every file |
 | **Deleted** | `attack_fields.js` is gone; no remaining uses of `.at`, `.type` (on attacks), `.damage`, `.ad`, `.dice`, `.sides`, `.speed`, `.difficulty`, `.mr1`, `.mr2`, `.flags1/.2/.3`, `.sdam`, `.ldam`, `.oc1`, `.oc2`, `.sub` (on objclass), `.prop` (on objclass), `.dir` (on objclass) |
-| **Verified** | Test suite is no worse than before Phase 1 began |
+| **Verified** | Test suite is no worse than before Phase 2 began |
 
 **Attack struct** (`struct attack` in `permonst.h`):
 
@@ -242,7 +247,7 @@ already emits C names; fix all reading-side uses:
 |----------|-----------|-------|
 | `.name` (user-given name) | `.oname` | ~11 files; distinct from `.oc_name` |
 
-### Phase 1 parallel — game.js bootstrap (fifth leaf file)
+### Phase 2 parallel — game.js bootstrap (fifth leaf file)
 
 `docs/MODULES.md` defines four constant leaf files (`version.js`, `const.js`,
 `objects.js`, `monsters.js`). `game.js` is the fifth leaf: it owns the game
@@ -296,7 +301,7 @@ updated. End state: zero shims in `game.js`.
 const u = game.u;   // mirrors C's global `struct you u;`
 ```
 
-**Exit gate for game.js bootstrap — before the legacy rename sweep:**
+**Exit gate for game.js bootstrap — before the legacy rename sweep (Phase 2→3 boundary):**
 
 | | Status |
 |-|--------|
@@ -305,7 +310,7 @@ const u = game.u;   // mirrors C's global `struct you u;`
 | **Deleted** | Nothing yet — shims still present; `player.js` still in use |
 | **Verified** | Test suite is no worse than before |
 
-### Phase 2 — Constant Consolidation
+### Phase 3 — Constant Consolidation
 
 Move all capitalized constants into the four leaf files (`const.js`, `objects.js`,
 `monsters.js`, `version.js`). No behavior changes — only the file that owns each
@@ -319,9 +324,9 @@ safe because they involve only function bindings, not constant values.
 | **Present** | `const.js`, `objects.js`, `monsters.js`, `version.js` each contain all their respective constants |
 | **Complete** | Only these four files (plus `game.js`) export capitalized names; no other JS file exports a capitalized constant |
 | **Deleted** | Any intermediate consolidation helpers or re-export shims used during the move |
-| **Verified** | Test suite is no worse than before Phase 2 began |
+| **Verified** | Test suite is no worse than before Phase 3 began |
 
-### Between Phase 2 and Phase 3 — state_paths.json and legacy rename sweep
+### Between Phase 3 and Phase 4 — state_paths.json and legacy rename sweep
 
 Add autotranslate rewrites so newly ported functions emit `game.*` directly:
 
@@ -359,7 +364,7 @@ must pass after each file):
 | `player.spells` | `game.spl_book` | `svs.spl_book` |
 | `player.name` | `game.plname` | `gp.plname` |
 
-**Exit gate for the legacy rename sweep — before Phase 3:**
+**Exit gate for the legacy rename sweep — before Phase 4:**
 
 | | Status |
 |-|--------|
@@ -368,7 +373,7 @@ must pass after each file):
 | **Deleted** | `game.svc` shim; `game.wizard` reference; `game.turnCount` reference; all `// TEMPORARY` shims that have been migrated |
 | **Verified** | Test suite is no worse than before |
 
-### youmonst and set_uasmon() in JS
+### Between Phase 3 and Phase 4 — youmonst and set_uasmon() in JS
 
 `game.youmonst` is a **form cache**, not a continuous mirror of `game.u`.
 It is initialized by `set_uasmon()` — port this function before porting anything
@@ -382,13 +387,13 @@ When porting `set_uasmon()` (called from `u_init`, `restore`, `polyself`, `were`
 - Do **not** sync `game.youmonst` on every turn — it is rebuilt only on polymorph,
   lycanthropy/were-change, and save-file restore.
 
-### Phase 3 — File-per-C-Source Reorganization
+### Phase 4 — File-per-C-Source Reorganization
 
 Move functions to `.js` files matching their `.c` origin. No pass-through
 wrappers — each function is defined once, in the file where others will import it,
 with the same name used in C. See `docs/MODULES.md` for the full file list.
 
-After Phase 2, all non-leaf modules can import each other freely without any
+After Phase 3, all non-leaf modules can import each other freely without any
 concern about circular initialization order. The five leaf files guarantee that
 all constants and the `game` singleton are fully initialized before any function
 body runs. Gameplay modules just import what they need, with no restrictions.
@@ -400,7 +405,7 @@ body runs. Gameplay modules just import what they need, with no restrictions.
 | **Present** | Every gameplay function lives in a `.js` file named after its origin `.c` file; each function defined exactly once |
 | **Complete** | No pass-through wrapper functions anywhere in the codebase; autotranslator targets correct files |
 | **Deleted** | JS invented consolidation files (`combat.js`, `look.js`, `monutil.js`, `stackobj.js`, `player.js`, `discovery.js`, `options_menu.js`) once their contents are distributed |
-| **Verified** | Test suite is no worse than before Phase 3 began |
+| **Verified** | Test suite is no worse than before Phase 4 began |
 
 ### Final step — remove all remaining scaffolding
 
