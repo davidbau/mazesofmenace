@@ -1005,9 +1005,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     const maxY = Math.min(ROWNO - 1, omy + SQSRCHRADIUS);
 
     // C ref: in_masters_sight = couldsee(omx, omy)
-    const inMastersSight = (fov && typeof fov.couldSee === 'function')
-        ? !!fov.couldSee(omx, omy)
-        : couldsee(map, player, omx, omy);
+    const inMastersSight = couldsee(map, player, omx, omy);
 
     // C ref: dogmove.c:498 — dog_has_minvent = (droppables(mtmp) != 0)
     const dogHasMinvent = !!droppables(mon);
@@ -1239,7 +1237,7 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
     // ========================================================================
 
     // Collect valid positions (column-major order, no stay pos, boulder filter)
-    const allowflags = mon_allowflags(mon, player);
+    const allowflags = mon_allowflags(mon, player, map);
     const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
     pushRngLogEntry(`^dog_move_entry[${mon.mndx}@${omx},${omy} goal=${gx},${gy} appr=${appr}]`);

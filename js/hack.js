@@ -47,7 +47,7 @@ import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
-import { pline, You, You_feel, You_cant, You_hear, set_msg_xy } from './pline.js';
+import { pline, Norep, You, You_feel, You_cant, You_hear, set_msg_xy } from './pline.js';
 import { look_here, dfeature_at } from './invent.js';
 import { maybe_unhide_at } from './mon.js';
 import { safe_teleds, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './teleport.js';
@@ -833,7 +833,8 @@ export async function domove_core(dir, player, map, display, game) {
     }
     if (player.utrap) {
         const moved = await trapmove(player, nx, ny, display, map);
-        if (!moved) return { moved: false, tookTime: false };
+        // C ref: hack.c trapmove() — failed escape attempt still uses a turn.
+        if (!moved) return { moved: false, tookTime: true };
     }
     loc = map.at(nx, ny);
     const steppingTrap = map.trapAt(nx, ny);
@@ -953,16 +954,25 @@ export async function domove_core(dir, player, map, display, game) {
         else if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) {
             const trapTurns = rn2(6) + 2; // rn1(6,2)
             player.pitTrapTurns = Math.max(player.pitTrapTurns || 0, trapTurns);
+            // C ref: trap.c set_utrap(rn1(6,2), TT_PIT)
+            player.utrap = trapTurns;
+            player.utraptype = 1; // TT_PIT
             const pitDmg = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
             player.takeDamage(Math.max(0, pitDmg), trap.ttyp === SPIKED_PIT
                 ? 'a pit of spikes'
                 : 'a pit');
             if (trap.ttyp === SPIKED_PIT) {
                 rn2(6); // C ref: 1-in-6 poison-spike branch gate.
+                // C ref: trap.c trapeffect_pit() emits both lines when falling
+                // into a spiked pit: first "fall into a pit", then "land on spikes".
+                await display.putstr_message('You fall into a pit!');
+                await display.putstr_message('You land on a set of sharp iron spikes!');
+            } else {
+                await display.putstr_message('You fall into a pit!');
             }
-            await display.putstr_message(trap.ttyp === SPIKED_PIT
-                ? 'You land on a set of sharp iron spikes!'
-                : 'You fall into a pit!');
+            // C ref: trap.c:1943-1944
+            await exercise(player, A_STR, false);
+            await exercise(player, A_DEX, false);
         }
         // C ref: trap.c trapeffect_anti_magic()
         else if (trap.ttyp === ANTI_MAGIC) {
@@ -3075,7 +3085,28 @@ export async function trapmove(player, x, y, display, map = null) {
         if (desttrap && desttrap.tseen && is_pit(desttrap.ttyp)) {
             return true; // move into adjacent known pit
         }
-        if (display) await display.putstr_message('You are in a pit.');
+        // C ref: trap.c climb_pit() — always consumes rn2(2) before checking
+        // boulder-in-pit leg-stuck branch.
+        const legStuckRoll = rn2(2);
+        const hereX = Number.isInteger(player.x) ? player.x : x;
+        const hereY = Number.isInteger(player.y) ? player.y : y;
+        const objsHere = (typeof map?.objectsAt === 'function')
+            ? map.objectsAt(hereX, hereY)
+            : (map?.objects || []).filter((obj) => obj?.ox === hereX && obj?.oy === hereY);
+        const boulderHere = objsHere.some((obj) => obj?.otyp === BOULDER);
+        if (legStuckRoll === 0 && boulderHere) {
+            if (display) {
+                await display.putstr_message('Your leg gets stuck in a crevice.');
+                await display.putstr_message('You free your leg.');
+            }
+            return false;
+        }
+        player.utrap = Math.max(0, (player.utrap || 0) - 1);
+        if (!player.utrap) {
+            if (display) await display.putstr_message('You crawl to the edge of the pit.');
+            return false;
+        }
+        await Norep('You are still in a pit.');
         return false;
     }
     if (isWebTrap) {

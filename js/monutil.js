@@ -390,7 +390,7 @@ export function vision_recalc() {
 
     // Recompute FOV — mutates fov.visible in place
     // C ref: vision_recalc() calls do_light_sources() to mark TEMP_LIT before lighting loop
-    fov.compute(map, player.x, player.y, do_light_sources);
+    fov.compute(map, player.x, player.y, do_light_sources, player);
 
     // Call newsym for all cells whose visibility changed
     if (ctx.display) {

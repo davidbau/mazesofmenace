@@ -4588,6 +4588,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
     map._isInvocationLevel = map.is_invocation_lev; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
 
     // C ref: mklev.c:1274-1287 — maze vs rooms decision (else-if chain)
+    let usedRoomGenerationPath = false;
     // Condition 4 (In_quest) fires for fill levels not covered by named special levels.
     // No rn2(5) is consumed on the quest path — it only appears in condition 5.
     if (dnum === QUEST) {
@@ -4626,155 +4627,158 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
             // Make rooms using rect BSP algorithm
             // Note: makerooms() handles the Lua theme load shuffle (rn2(3), rn2(2))
             await makerooms(map, depth);
+            usedRoomGenerationPath = true;
         }
     } // end QUEST else-if chain
 
-    if (map.nroom === 0) {
-        // Fallback: should never happen, but safety
-        if (DEBUG) console.warn(`⚠️ makerooms() created 0 rooms! Using fallback single room. This is a bug!`);
-        add_room(map, 10, 5, 20, 10, true, OROOM, false);
-    } else if (DEBUG) {
-        console.log(`✓ makerooms() created ${map.nroom} rooms`);
-    }
+    if (usedRoomGenerationPath) {
+        if (map.nroom === 0) {
+            // Fallback: should never happen, but safety
+            if (DEBUG) console.warn(`⚠️ makerooms() created 0 rooms! Using fallback single room. This is a bug!`);
+            add_room(map, 10, 5, 20, 10, true, OROOM, false);
+        } else if (DEBUG) {
+            console.log(`✓ makerooms() created ${map.nroom} rooms`);
+        }
 
-    // Sort rooms left-to-right
-    // C ref: mklev.c:1290 sort_rooms()
-    sort_rooms(map);
-    repair_irregular_room_boundaries(map);
+        // Sort rooms left-to-right
+        // C ref: mklev.c:1290 sort_rooms()
+        sort_rooms(map);
+        repair_irregular_room_boundaries(map);
 
-    // Place stairs
-    // C ref: mklev.c:1292 generate_stairs()
-    generate_stairs(map, depth);
+        // Place stairs
+        // C ref: mklev.c:1292 generate_stairs()
+        generate_stairs(map, depth);
 
-    // Connect rooms with corridors
-    // C ref: mklev.c:1299 makecorridors()
-    makecorridors(map, depth);
+        // Connect rooms with corridors
+        // C ref: mklev.c:1299 makecorridors()
+        makecorridors(map, depth);
 
-    // Add niches
-    // C ref: mklev.c:1300 make_niches()
-    await make_niches(map, depth);
+        // Add niches
+        // C ref: mklev.c:1300 make_niches()
+        await make_niches(map, depth);
 
-    // C ref: mklev.c:1305 mklev_sanity_check()
-    mklev_sanity_check(map);
+        // C ref: mklev.c:1305 mklev_sanity_check()
+        mklev_sanity_check(map);
 
-    // Fix wall types after corridors are dug (needed for structural consistency)
-    wallification(map);
+        // Fix wall types after corridors are dug (needed for structural consistency)
+        wallification(map);
 
-    // C ref: mklev.c:1305-1331 — do_vault()
-    // Make a secret treasure vault, not connected to the rest
-    if (map.vault_x !== undefined && map.vault_x >= 0) {
-        let w = 1, h = 1;
-        const vaultCheck = check_room(map, map.vault_x, w, map.vault_y, h, true);
-        if (vaultCheck) {
-            await do_fill_vault(map, vaultCheck, depth);
-        } else if (rnd_rect()) {
-            // Retry: create_vault() = create_room(-1,-1,2,2,-1,-1,VAULT,TRUE)
-            if (create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth)) {
-                // create_room for vault saves position but doesn't add room
-                if (map.vault_x >= 0) {
-                    w = 1; h = 1;
-                    const vc2 = check_room(map, map.vault_x, w, map.vault_y, h, true);
-                    if (vc2) {
-                        await do_fill_vault(map, vc2, depth);
+        // C ref: mklev.c:1305-1331 — do_vault()
+        // Make a secret treasure vault, not connected to the rest
+        if (map.vault_x !== undefined && map.vault_x >= 0) {
+            let w = 1, h = 1;
+            const vaultCheck = check_room(map, map.vault_x, w, map.vault_y, h, true);
+            if (vaultCheck) {
+                await do_fill_vault(map, vaultCheck, depth);
+            } else if (rnd_rect()) {
+                // Retry: create_vault() = create_room(-1,-1,2,2,-1,-1,VAULT,TRUE)
+                if (create_room(map, -1, -1, 2, 2, -1, -1, VAULT, true, depth)) {
+                    // create_room for vault saves position but doesn't add room
+                    if (map.vault_x >= 0) {
+                        w = 1; h = 1;
+                        const vc2 = check_room(map, map.vault_x, w, map.vault_y, h, true);
+                        if (vc2) {
+                            await do_fill_vault(map, vc2, depth);
+                        }
                     }
                 }
             }
         }
-    }
 
-    // C ref: mklev.c:1333-1365 — do_mkroom chain
-    // Special room type selection based on depth.
-    // At depth 1: u_depth > 1 fails, so entire chain is skipped (no RNG consumed).
-    // For deeper depths, the chain consumes rn2() calls for each check.
-    if (depth > 1) {
-        // C ref: mklev.c room_threshold = branchp ? 4 : 3
-        const room_threshold = isBranchLevel(dnum, dlevel) ? 4 : 3;
-        const mktempleOpts = {
-            induced_align_fn: induced_align,
-            dungeon_align_by_dnum: DUNGEON_ALIGN_BY_DNUM,
-            default_dnum: DUNGEONS_OF_DOOM,
-        };
-        // C ref: each check consumes one rn2() if it reaches that point
-        if (depth > 1 && map.nroom >= room_threshold && rn2(depth) < 3) {
-            mkshop(map);
-        } else if (depth > 4 && !rn2(6)) {
-            do_mkroom(map, COURT, depth, mktempleOpts);
-        } else if (depth > 5 && !rn2(8)) {
-            do_mkroom(map, LEPREHALL, depth, mktempleOpts);
-        } else if (depth > 6 && !rn2(7)) {
-            do_mkroom(map, ZOO, depth, mktempleOpts);
-        } else if (depth > 8 && !rn2(5)) {
-            do_mkroom(map, TEMPLE, depth, mktempleOpts);
-        } else if (depth > 9 && !rn2(5)) {
-            do_mkroom(map, BEEHIVE, depth, mktempleOpts);
-        } else if (depth > 11 && !rn2(6)) {
-            do_mkroom(map, MORGUE, depth, mktempleOpts);
-        } else if (depth > 12 && !rn2(8)) {
-            do_mkroom(map, ANTHOLE, depth, mktempleOpts);
-        } else if (depth > 14 && !rn2(4)) {
-            do_mkroom(map, BARRACKS, depth, mktempleOpts);
-        } else if (depth > 15 && !rn2(6)) {
-            do_mkroom(map, SWAMP, depth, mktempleOpts);
-        } else if (depth > 16 && !rn2(8)) {
-            do_mkroom(map, COCKNEST, depth, mktempleOpts);
-        }
-    }
-
-    // C ref: mklev.c:1367-1376 — place_branch()
-    // At depth 1: branch exists (entry from surface), place branch stairs
-    if (depth === 1) {
-        const { pos } = find_branch_room(map);
-        if (pos) {
-            const loc = map.at(pos.x, pos.y);
-            if (loc) {
-                loc.typ = STAIRS;
-                loc.flags = 1; // up (branch goes up to surface)
-                loc.stairdir = 1;
-                loc.branchStair = true;
-                map.upstair = { x: pos.x, y: pos.y };
+        // C ref: mklev.c:1333-1365 — do_mkroom chain
+        // Special room type selection based on depth.
+        // At depth 1: u_depth > 1 fails, so entire chain is skipped (no RNG consumed).
+        // For deeper depths, the chain consumes rn2() calls for each check.
+        if (depth > 1) {
+            // C ref: mklev.c room_threshold = branchp ? 4 : 3
+            const room_threshold = isBranchLevel(dnum, dlevel) ? 4 : 3;
+            const mktempleOpts = {
+                induced_align_fn: induced_align,
+                dungeon_align_by_dnum: DUNGEON_ALIGN_BY_DNUM,
+                default_dnum: DUNGEONS_OF_DOOM,
+            };
+            // C ref: each check consumes one rn2() if it reaches that point
+            if (depth > 1 && map.nroom >= room_threshold && rn2(depth) < 3) {
+                mkshop(map);
+            } else if (depth > 4 && !rn2(6)) {
+                do_mkroom(map, COURT, depth, mktempleOpts);
+            } else if (depth > 5 && !rn2(8)) {
+                do_mkroom(map, LEPREHALL, depth, mktempleOpts);
+            } else if (depth > 6 && !rn2(7)) {
+                do_mkroom(map, ZOO, depth, mktempleOpts);
+            } else if (depth > 8 && !rn2(5)) {
+                do_mkroom(map, TEMPLE, depth, mktempleOpts);
+            } else if (depth > 9 && !rn2(5)) {
+                do_mkroom(map, BEEHIVE, depth, mktempleOpts);
+            } else if (depth > 11 && !rn2(6)) {
+                do_mkroom(map, MORGUE, depth, mktempleOpts);
+            } else if (depth > 12 && !rn2(8)) {
+                do_mkroom(map, ANTHOLE, depth, mktempleOpts);
+            } else if (depth > 14 && !rn2(4)) {
+                do_mkroom(map, BARRACKS, depth, mktempleOpts);
+            } else if (depth > 15 && !rn2(6)) {
+                do_mkroom(map, SWAMP, depth, mktempleOpts);
+            } else if (depth > 16 && !rn2(8)) {
+                do_mkroom(map, COCKNEST, depth, mktempleOpts);
             }
         }
-    }
 
-    // C ref: mklev.c:1367-1376 — place_branch(Is_branchlev(&u.uz), 0, 0)
-    // For non-first levels, only execute when this level is an actual branch endpoint.
-    if (depth > 1) {
-        const branchDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
-        const branchDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-        const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
-        if (_branchTopology.length && branchPlacement && branchPlacement !== 'none') {
+        // C ref: mklev.c:1367-1376 — place_branch()
+        // At depth 1: branch exists (entry from surface), place branch stairs
+        if (depth === 1) {
             const { pos } = find_branch_room(map);
             if (pos) {
-                place_branch(map, pos.x, pos.y, branchPlacement);
+                const loc = map.at(pos.x, pos.y);
+                if (loc) {
+                    loc.typ = STAIRS;
+                    loc.flags = 1; // up (branch goes up to surface)
+                    loc.stairdir = 1;
+                    loc.branchStair = true;
+                    map.upstair = { x: pos.x, y: pos.y };
+                }
             }
         }
-    }
 
-    // C ref: sp_lev.c lspo_room() sets needfill during room creation.
-    // During themed room generation (in_mk_themerooms), default is FILL_NONE (0).
-    // Only rooms with explicit filled=1 get FILL_NORMAL.
-    // We do NOT bulk-override needfill here — des.room() sets it correctly.
+        // C ref: mklev.c:1367-1376 — place_branch(Is_branchlev(&u.uz), 0, 0)
+        // For non-first levels, only execute when this level is an actual branch endpoint.
+        if (depth > 1) {
+            const branchDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
+            const branchDlevel = Number.isInteger(dlevel) ? dlevel : depth;
+            const branchPlacement = resolveBranchPlacementForLevel(branchDnum, branchDlevel).placement;
+            if (_branchTopology.length && branchPlacement && branchPlacement !== 'none') {
+                const { pos } = find_branch_room(map);
+                if (pos) {
+                    place_branch(map, pos.x, pos.y, branchPlacement);
+                }
+            }
+        }
 
-    // C ref: mklev.c:1381-1401 — bonus item room selection + fill loop
-    // ROOM_IS_FILLABLE: (rtype == OROOM || rtype == THEMEROOM) && needfill == FILL_NORMAL
-    const isFillable = (r) => (r.rtype === OROOM || r.rtype === THEMEROOM)
-                              && r.needfill === FILL_NORMAL;
-    let fillableCount = 0;
-    // Only iterate over main rooms (nroom), not subrooms
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
-        if (!croom || croom.hx <= 0) continue;
-        if (isFillable(croom)) fillableCount++;
-    }
-    let bonusCountdown = fillableCount > 0 ? rn2(fillableCount) : -1;
+        // C ref: sp_lev.c lspo_room() sets needfill during room creation.
+        // During themed room generation (in_mk_themerooms), default is FILL_NONE (0).
+        // Only rooms with explicit filled=1 get FILL_NORMAL.
+        // We do NOT bulk-override needfill here — des.room() sets it correctly.
 
-    for (let i = 0; i < map.nroom; i++) {
-        const croom = map.rooms[i];
-        if (!croom || croom.hx <= 0) continue;
-        const fillable = isFillable(croom);
-        fill_ordinary_room(map, croom, depth,
-                           fillable && bonusCountdown === 0);
-        if (fillable) bonusCountdown--;
+        // C ref: mklev.c:1381-1401 — bonus item room selection + fill loop
+        // ROOM_IS_FILLABLE: (rtype == OROOM || rtype == THEMEROOM) && needfill == FILL_NORMAL
+        const isFillable = (r) => (r.rtype === OROOM || r.rtype === THEMEROOM)
+                                  && r.needfill === FILL_NORMAL;
+        let fillableCount = 0;
+        // Only iterate over main rooms (nroom), not subrooms
+        for (let i = 0; i < map.nroom; i++) {
+            const croom = map.rooms[i];
+            if (!croom || croom.hx <= 0) continue;
+            if (isFillable(croom)) fillableCount++;
+        }
+        let bonusCountdown = fillableCount > 0 ? rn2(fillableCount) : -1;
+
+        for (let i = 0; i < map.nroom; i++) {
+            const croom = map.rooms[i];
+            if (!croom || croom.hx <= 0) continue;
+            const fillable = isFillable(croom);
+            fill_ordinary_room(map, croom, depth,
+                               fillable && bonusCountdown === 0);
+            if (fillable) bonusCountdown--;
+        }
     }
 
     // C ref: mklev.c:1405-1407 + sp_lev.c:2723-2795 — second fill_special_room

@@ -393,8 +393,8 @@ export function m_can_break_boulder(mtmp) {
 // ========================================================================
 // Compute the bitfield flag argument for mfndpos().
 // INCOMPLETE: Conflict ALLOW_U not implemented
-export function mon_allowflags(mon, player) {
-    const ptr = mon?.type || {};
+export function mon_allowflags(mon, player, map = null) {
+    const ptr = (Number.isInteger(mon?.mndx) && mons[mon.mndx]) || mon?.type || {};
     const f1 = ptr.flags1 || 0;
     let flag = 0;
 
@@ -444,8 +444,9 @@ export function mon_allowflags(mon, player) {
         flag |= ALLOW_SANCT;
     }
 
-    // C ref: mon.c:2088-2093 — unicorn on noteleport level
-    if (is_unicorn(ptr) /* && level.flags.noteleport — deferred */) {
+    // C ref: mon.c:2088-2093 — unicorn may avoid line to hero unless on
+    // noteleport levels (where teleport fallback is unavailable).
+    if (is_unicorn(ptr) && !map?.flags?.noteleport) {
         flag |= NOTONL;
     }
 
@@ -1257,7 +1258,7 @@ export function move_special(mon, map, player, inHisShop, appr, uondoor, avoid, 
 
     let nix = omx;
     let niy = omy;
-    const positions = mfndpos(mon, map, player, mon_allowflags(mon, player));
+    const positions = mfndpos(mon, map, player, mon_allowflags(mon, player, map));
     const cnt = positions.length;
     let chcnt = 0;
     if (mon.isshk && avoid && uondoor) {
@@ -1531,7 +1532,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
         }
     }
 
-    const allowflags = mon_allowflags(mon, player);
+    const allowflags = mon_allowflags(mon, player, map);
     const positions = mfndpos(mon, map, player, allowflags);
     const cnt = positions.length;
     const replayStep = Number.isInteger(map?._replayStepIndex) ? map._replayStepIndex + 1 : '?';

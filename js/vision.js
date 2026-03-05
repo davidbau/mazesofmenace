@@ -813,7 +813,7 @@ export class FOV {
 
     // Recompute field of view from player position
     // C ref: vision.c:511-846 vision_recalc()
-    compute(gameMap, px, py, lightFn) {
+    compute(gameMap, px, py, lightFn, playerState = null) {
         // Build lookup tables (once per level, or rebuild each time for simplicity)
         this.visionReset(gameMap);
         activeFov = this;
@@ -835,11 +835,41 @@ export class FOV {
         }
 
         // Run Algorithm C to compute COULD_SEE
+        const hero = playerState || null;
+        const heroBlind = !!(hero?.blind || hero?.Blind);
+        const heroUnderwater = !!(hero?.underwater || hero?.uinwater || hero?.Underwater);
+        const heroInPit = !!(hero?.utrap && Number(hero?.utraptype) === 1); // TT_PIT
         const isRogueLevel = !!(gameMap?.flags?.is_rogue
             || gameMap?.flags?.roguelike
             || gameMap?.flags?.is_rogue_lev);
-        if (isRogueLevel) {
+        if (heroBlind) {
+            // C ref: vision.c blind branch computes COULD_SEE only.
+            view_from(py, px, cs, csLeft, csRight);
+        } else if (isRogueLevel) {
             rogue_vision(cs, csLeft, csRight);
+        } else if (heroUnderwater && !gameMap?.flags?.is_waterlevel) {
+            // C ref: vision.c underwater branch (non-water levels): only adjacent
+            // underwater squares are marked visible/could-see.
+            for (let row = py - 1; row <= py + 1; row++) {
+                for (let col = px - 1; col <= px + 1; col++) {
+                    if (!isok(col, row) || !is_pool(col, row, gameMap)) continue;
+                    csLeft[row] = Math.min(csLeft[row], col);
+                    csRight[row] = Math.max(csRight[row], col);
+                    cs[row][col] = IN_SIGHT | COULD_SEE;
+                }
+            }
+        } else if (heroInPit) {
+            // C ref: vision.c pit branch: COULD_SEE/IN_SIGHT limited to 3x3.
+            for (let row = py - 1; row <= py + 1; row++) {
+                if (row < 0 || row >= ROWNO) continue;
+                const rowMin = Math.max(1, px - 1);
+                const rowMax = Math.min(COLNO - 1, px + 1);
+                csLeft[row] = Math.min(csLeft[row], rowMin);
+                csRight[row] = Math.max(csRight[row], rowMax);
+                for (let col = rowMin; col <= rowMax; col++) {
+                    cs[row][col] = IN_SIGHT | COULD_SEE;
+                }
+            }
         } else {
             view_from(py, px, cs, csLeft, csRight);
         }
@@ -848,45 +878,47 @@ export class FOV {
         // C ref: vision.c:670-699 (u.nv_range = 1 for standard hero)
         // C marks ALL cells with COULD_SEE within nv_range as IN_SIGHT — no
         // viz_clear check — so walls adjacent to the hero are visible.
-        for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-                const nx = px + dx, ny = py + dy;
-                if (nx >= 0 && nx < COLNO && ny >= 0 && ny < ROWNO) {
-                    if (!cs[ny][nx]) continue;
-                    cs[ny][nx] |= IN_SIGHT;
+        if (!heroBlind && !(heroUnderwater && !gameMap?.flags?.is_waterlevel) && !heroInPit) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = px + dx, ny = py + dy;
+                    if (nx >= 0 && nx < COLNO && ny >= 0 && ny < ROWNO) {
+                        if (!cs[ny][nx]) continue;
+                        cs[ny][nx] |= IN_SIGHT;
+                    }
                 }
             }
-        }
 
-        // C ref: vision.c:703 — do_light_sources(next_array) marks TEMP_LIT
-        if (lightFn) lightFn(cs, gameMap, { x: px, y: py });
+            // C ref: vision.c:703 — do_light_sources(next_array) marks TEMP_LIT
+            if (lightFn) lightFn(cs, gameMap, { x: px, y: py });
 
-        // Lighting loop: COULD_SEE + (lit | TEMP_LIT) → IN_SIGHT
-        // C ref: vision.c:727-829
-        for (let row = 0; row < ROWNO; row++) {
-            for (let col = 0; col < COLNO; col++) {
-                if (cs[row][col] & IN_SIGHT) {
-                    // Already visible via night vision — nothing more to do
-                } else if (cs[row][col] & COULD_SEE) {
-                    const loc = gameMap.at(col, row);
-                    if (loc && (loc.lit || (cs[row][col] & TEMP_LIT))) {
-                        // Door/wall special case: only visible if adjacent square
-                        // toward hero is also lit (prevents seeing doors at end
-                        // of dark hallways)
-                        // C ref: vision.c:760-784
-                        if ((IS_DOOR(loc.typ) || loc.typ === SDOOR || IS_WALL(loc.typ))
-                            && !this.viz_clear[row][col]) {
-                            const dx = sign(px - col);
-                            const dy = sign(py - row);
-                            const adjCol = col + dx, adjRow = row + dy;
-                            if (adjCol >= 0 && adjCol < COLNO && adjRow >= 0 && adjRow < ROWNO) {
-                                const adj = gameMap.at(adjCol, adjRow);
-                                if (adj && (adj.lit || (cs[adjRow][adjCol] & TEMP_LIT))) {
-                                    cs[row][col] |= IN_SIGHT;
+            // Lighting loop: COULD_SEE + (lit | TEMP_LIT) → IN_SIGHT
+            // C ref: vision.c:727-829
+            for (let row = 0; row < ROWNO; row++) {
+                for (let col = 0; col < COLNO; col++) {
+                    if (cs[row][col] & IN_SIGHT) {
+                        // Already visible via night vision — nothing more to do
+                    } else if (cs[row][col] & COULD_SEE) {
+                        const loc = gameMap.at(col, row);
+                        if (loc && (loc.lit || (cs[row][col] & TEMP_LIT))) {
+                            // Door/wall special case: only visible if adjacent square
+                            // toward hero is also lit (prevents seeing doors at end
+                            // of dark hallways)
+                            // C ref: vision.c:760-784
+                            if ((IS_DOOR(loc.typ) || loc.typ === SDOOR || IS_WALL(loc.typ))
+                                && !this.viz_clear[row][col]) {
+                                const dx = sign(px - col);
+                                const dy = sign(py - row);
+                                const adjCol = col + dx, adjRow = row + dy;
+                                if (adjCol >= 0 && adjCol < COLNO && adjRow >= 0 && adjRow < ROWNO) {
+                                    const adj = gameMap.at(adjCol, adjRow);
+                                    if (adj && (adj.lit || (cs[adjRow][adjCol] & TEMP_LIT))) {
+                                        cs[row][col] |= IN_SIGHT;
+                                    }
                                 }
+                            } else {
+                                cs[row][col] |= IN_SIGHT;
                             }
-                        } else {
-                            cs[row][col] |= IN_SIGHT;
                         }
                     }
                 }
@@ -1034,6 +1066,17 @@ export function getActiveFov() {
 // Could the player see this position (LOS only, ignoring lighting)
 // C ref: vision.h #define couldsee(x, y) ((gv.viz_array[y][x] & COULD_SEE) != 0)
 export function couldsee(map, player, x, y) {
+    if (player && player.utrap && Number(player.utraptype) === 1) { // TT_PIT
+        return Math.abs((player.x | 0) - (x | 0)) <= 1
+            && Math.abs((player.y | 0) - (y | 0)) <= 1;
+    }
+    // Prefer the active vision-array result when available; C couldsee()
+    // reads gv.viz_array, not geometric LOS.
+    if (activeFov && typeof activeFov.couldSee === 'function'
+        && Number.isInteger(activeFov._playerX) && Number.isInteger(activeFov._playerY)
+        && player && activeFov._playerX === player.x && activeFov._playerY === player.y) {
+        return activeFov.couldSee(x, y);
+    }
     if (viz_clear) return !!clear_path(player.x, player.y, x, y);
     return clear_path_map(map, player.x, player.y, x, y);
 }

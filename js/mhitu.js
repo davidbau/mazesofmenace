@@ -46,7 +46,7 @@ import { make_confused, make_stunned, make_blinded, make_hallucinated } from './
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
-         EF_GREASE, EF_VERBOSE, ER_NOTHING } from './trap.js';
+         EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED } from './trap.js';
 import { xkilled, XKILL_NOMSG } from './mon.js';
 import { mondead, flush_screen } from './monutil.js';
 import { mon_explodes } from './explode.js';
@@ -57,8 +57,19 @@ import { Mgender, Monnam } from './do_name.js';
 import { resists_blnd } from './zap.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
 import { rloc, RLOC_MSG, tele_restrict } from './teleport.js';
+import { find_ac } from './do_wear.js';
 
 const PIERCE = 1;
+
+let _hitmsg_mid = 0;
+let _hitmsg_prev_idx = -1;
+let _hitmsg_prev_aatyp = AT_NONE;
+
+function clear_hitmsg_state() {
+    _hitmsg_mid = 0;
+    _hitmsg_prev_idx = -1;
+    _hitmsg_prev_aatyp = AT_NONE;
+}
 
 
 // ============================================================================
@@ -70,6 +81,11 @@ const PIERCE = 1;
 async function hitmsg(monster, attack, display, suppressHitMsg) {
     if (suppressHitMsg) return;
     let verb;
+    const attackIdx = Number.isInteger(attack?._attackIndex) ? attack._attackIndex : -1;
+    const again = (monster?.m_id === _hitmsg_mid
+        && _hitmsg_prev_idx >= 0
+        && attackIdx === _hitmsg_prev_idx + 1
+        && attack?.aatyp === _hitmsg_prev_aatyp);
     switch (attack.aatyp) {
     case AT_BITE: verb = 'bites'; break;
     case AT_KICK:
@@ -81,7 +97,10 @@ async function hitmsg(monster, attack, display, suppressHitMsg) {
     case AT_TENT: verb = 'tentacles suck your brain'; break;
     default: verb = 'hits'; break;
     }
-    await display.putstr_message(`The ${x_monnam(monster)} ${verb}!`);
+    await display.putstr_message(`The ${x_monnam(monster)} ${verb}${again ? ' again' : ''}!`);
+    _hitmsg_mid = monster?.m_id || 0;
+    _hitmsg_prev_idx = attackIdx;
+    _hitmsg_prev_aatyp = attack?.aatyp ?? AT_NONE;
 }
 
 // cf. mhitu.c mswings_verb() / mswings().
@@ -840,52 +859,102 @@ async function mhitu_ad_halu(monster, attack, player, mhm, ctx) {
 
 // Equipment erosion handlers — hitmsg + erode armor + zero damage
 // C ref: uhitm.c erode_armor(mdef, hurt)
-function erode_armor_on_player(player, erosionType) {
+async function erode_armor_on_player(player, erosionType, display = null) {
     if (!player) return;
+    const isPrimary = erosionType === ERODE_RUST;
+    const erosionVerb = (etype) => {
+        if (etype === ERODE_RUST) return 'rusts';
+        if (etype === ERODE_CORRODE) return 'corrodes';
+        if (etype === ERODE_ROT) return 'rots';
+        return 'is damaged';
+    };
+    const erosionCount = (obj) => isPrimary ? Number(obj?.oeroded || 0) : Number(obj?.oeroded2 || 0);
+    const erosionMessage = (obj, before) =>
+        `Your ${xname(obj)} ${erosionVerb(erosionType)}${before > 0 ? ' further' : ''}!`;
+    let acDirty = false;
     while (true) {
         switch (rn2(5)) {
         case 0: { // helmet
             const target = player.helmet || null;
-            if (!target || erode_obj(target, xname(target), erosionType, EF_GREASE) === ER_NOTHING) {
+            const before = erosionCount(target);
+            const er = target ? erode_obj(target, xname(target), erosionType, EF_GREASE) : ER_NOTHING;
+            if (!target || er === ER_NOTHING) {
                 continue;
+            }
+            if (er === ER_DAMAGED) {
+                acDirty = true;
+                if (display) await display.putstr_message(erosionMessage(target, before));
             }
             break;
         }
         case 1: { // cloak, else body armor, else shirt
             const cloak = player.cloak || null;
             if (cloak) {
-                erode_obj(cloak, xname(cloak), erosionType, EF_GREASE | EF_VERBOSE);
+                const before = erosionCount(cloak);
+                const er = erode_obj(cloak, xname(cloak), erosionType, EF_GREASE | EF_VERBOSE);
+                if (er === ER_DAMAGED) {
+                    acDirty = true;
+                    if (display) await display.putstr_message(erosionMessage(cloak, before));
+                }
                 break;
             }
             const suit = player.armor || player.suit || null;
             if (suit) {
-                erode_obj(suit, xname(suit), erosionType, EF_GREASE | EF_VERBOSE);
+                const before = erosionCount(suit);
+                const er = erode_obj(suit, xname(suit), erosionType, EF_GREASE | EF_VERBOSE);
+                if (er === ER_DAMAGED) {
+                    acDirty = true;
+                    if (display) await display.putstr_message(erosionMessage(suit, before));
+                }
                 break;
             }
             const shirt = player.shirt || null;
             if (shirt) {
-                erode_obj(shirt, xname(shirt), erosionType, EF_GREASE | EF_VERBOSE);
+                const before = erosionCount(shirt);
+                const er = erode_obj(shirt, xname(shirt), erosionType, EF_GREASE | EF_VERBOSE);
+                if (er === ER_DAMAGED) {
+                    acDirty = true;
+                    if (display) await display.putstr_message(erosionMessage(shirt, before));
+                }
             }
             break;
         }
         case 2: { // shield
             const target = player.shield || null;
-            if (!target || erode_obj(target, xname(target), erosionType, EF_GREASE) === ER_NOTHING) {
+            const before = erosionCount(target);
+            const er = target ? erode_obj(target, xname(target), erosionType, EF_GREASE) : ER_NOTHING;
+            if (!target || er === ER_NOTHING) {
                 continue;
+            }
+            if (er === ER_DAMAGED) {
+                acDirty = true;
+                if (display) await display.putstr_message(erosionMessage(target, before));
             }
             break;
         }
         case 3: { // gloves
             const target = player.gloves || null;
-            if (!target || erode_obj(target, xname(target), erosionType, EF_GREASE) === ER_NOTHING) {
+            const before = erosionCount(target);
+            const er = target ? erode_obj(target, xname(target), erosionType, EF_GREASE) : ER_NOTHING;
+            if (!target || er === ER_NOTHING) {
                 continue;
+            }
+            if (er === ER_DAMAGED) {
+                acDirty = true;
+                if (display) await display.putstr_message(erosionMessage(target, before));
             }
             break;
         }
         case 4: { // boots
             const target = player.boots || null;
-            if (!target || erode_obj(target, xname(target), erosionType, EF_GREASE) === ER_NOTHING) {
+            const before = erosionCount(target);
+            const er = target ? erode_obj(target, xname(target), erosionType, EF_GREASE) : ER_NOTHING;
+            if (!target || er === ER_NOTHING) {
                 continue;
+            }
+            if (er === ER_DAMAGED) {
+                acDirty = true;
+                if (display) await display.putstr_message(erosionMessage(target, before));
             }
             break;
         }
@@ -894,27 +963,28 @@ function erode_armor_on_player(player, erosionType) {
         }
         break;
     }
+    if (acDirty) find_ac(player);
 }
 
 async function mhitu_ad_rust(monster, attack, player, mhm, ctx) {
     await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     // C ref: hurtarmor(mdef, AD_RUST) — erode hero's armor
     if (player) {
-        erode_armor_on_player(player, ERODE_RUST);
+        await erode_armor_on_player(player, ERODE_RUST, ctx.display);
     }
     mhm.damage = 0;
 }
 async function mhitu_ad_corr(monster, attack, player, mhm, ctx) {
     await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     if (player) {
-        erode_armor_on_player(player, ERODE_CORRODE);
+        await erode_armor_on_player(player, ERODE_CORRODE, ctx.display);
     }
     mhm.damage = 0;
 }
 async function mhitu_ad_dcay(monster, attack, player, mhm, ctx) {
     await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     if (player) {
-        erode_armor_on_player(player, ERODE_ROT);
+        await erode_armor_on_player(player, ERODE_ROT, ctx.display);
     }
     mhm.damage = 0;
 }
@@ -1060,6 +1130,7 @@ export async function mattacku(monster, player, display, game = null, opts = {})
             await maybeMonsterWeaponSwingMessage(monster, player, display, suppressHitMsg);
         }
         if (!foundyou) {
+            clear_hitmsg_state();
             await wildmiss(monster, attack, player, display);
             skipnonmagc = true;
             continue;
@@ -1069,6 +1140,7 @@ export async function mattacku(monster, player, display, game = null, opts = {})
 
         if (toHit <= dieRoll) {
             // Miss — cf. mhitu.c:86-98 missmu()
+            clear_hitmsg_state();
             if (!suppressHitMsg) {
                 const just = (toHit === dieRoll) ? 'just ' : '';
                 await display.putstr_message(`The ${x_monnam(monster)} ${just}misses!`);
@@ -1276,6 +1348,7 @@ export function getmattk(monster, mdef, indx, prev_result) {
     const attacks = mptr.attacks || monster.attacks || [];
     if (indx >= attacks.length) return null;
     const attk = { ...attacks[indx] };
+    attk._attackIndex = indx;
 
     // Consecutive disease/pest/famn → stun
     if (indx > 0 && prev_result && prev_result[indx - 1] > M_ATTK_MISS) {

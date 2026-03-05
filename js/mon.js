@@ -325,11 +325,15 @@ function mm_aggression(magr, mdef, map) {
 // mfndpos — C ref: mon.c mfndpos()
 // ========================================================================
 // C ref: hack.c bad_rock() / cant_squeeze_thru() subset used by mon.c mfndpos().
+function permonst_for(mon) {
+    return (Number.isInteger(mon?.mndx) && mons[mon.mndx]) || mon?.type || mon?.data || {};
+}
+
 function bad_rock_for_mon(mon, map, x, y) {
     const loc = map.at(x, y);
     if (!loc) return true;
     if (!IS_OBSTRUCTED(loc.typ)) return false;
-    const f1 = mon.type?.flags1 || 0;
+    const f1 = permonst_for(mon).flags1 || 0;
     const canPassWall = !!(f1 & M1_WALLWALK);
     if (canPassWall) return false;
     const canTunnel = !!(f1 & M1_TUNNEL);
@@ -339,7 +343,7 @@ function bad_rock_for_mon(mon, map, x, y) {
 }
 
 function cant_squeeze_thru_mon(mon) {
-    const ptr = mon.type || {};
+    const ptr = permonst_for(mon);
     const f1 = ptr.flags1 || 0;
     if (f1 & M1_WALLWALK) return false;
     const size = ptr.msize || 0;
@@ -388,7 +392,7 @@ export function mfndpos(mon, map, player, flag) {
 
     const omx = mon.mx, omy = mon.my;
     const nowtyp = map.at(omx, omy)?.typ;
-    const mdat = mon.type || {};
+    const mdat = permonst_for(mon);
     const mflags1 = mdat.flags1 || 0;
     const mlet = mdat.mlet ?? -1;
     const nodiag = (mon.mndx === PM_GRID_BUG);
@@ -543,14 +547,14 @@ export function mfndpos(mon, map, player, flag) {
             }
 
             // C ref: mon.c:2325-2331 — NOTONL: check monlineu
-            if (flag & NOTONL) {
-                const monSeeHero = (mon.mcansee !== 0 && mon.mcansee !== false)
-                    && !mon.blind
-                    && m_cansee(mon, map, player.x, player.y)
-                    && (!player.Invis || perceives(mdat));
-                if (monSeeHero && monlineu(mon, player, nx, ny)) {
-                    posInfo |= NOTONL;
-                }
+            // C ref: mon.c mfndpos() monseeu = (mon->mcansee && (!Invis || perceives(mdat))).
+            // This intentionally does not require clear LOS to current hero square.
+            const heroInvis = !!(player?.Invis || player?.invisible);
+            const monSeeHero = (mon.mcansee !== 0 && mon.mcansee !== false)
+                && (!heroInvis || perceives(mdat));
+            if (monSeeHero && monlineu(mon, player, nx, ny)) {
+                if (flag & NOTONL) continue;
+                posInfo |= NOTONL;
             }
 
             // C ref: mon.c:2333-2340 — tight squeeze for diagonal
