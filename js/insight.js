@@ -32,6 +32,7 @@ import { find_mac } from './worn.js';
 import { pline } from './pline.js';
 import { showPager } from './pager.js';
 import { is_pool_or_lava } from './dbridge.js';
+import { TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 // Window system imports available for future use (e.g., menu-based display)
 // import { create_nhwindow, destroy_nhwindow, putstr, start_menu, add_menu,
 //          end_menu, select_menu, display_nhwindow,
@@ -83,13 +84,7 @@ const ENL_GAMEOVERDEAD = 2;
 const BASICENLIGHTENMENT = 1;
 const MAGICENLIGHTENMENT = 2;
 
-// Trap types (cf. trap.h)
-const TT_BEARTRAP = 0;
-const TT_PIT = 1;
-const TT_WEB = 3;
-const TT_LAVA = 4;
-const TT_INFLOOR = 5;
-const TT_BURIEDBALL = 6;
+// Trap types imported from trap.js (canonical C values)
 
 // Half-damage categories
 const HALF_PHDAM = 0;

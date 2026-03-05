@@ -62,7 +62,7 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          DRAIN_RES, SICK_RES, STONE_RES, INFRAVISION,
          TIMEOUT } from './config.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
-import { float_down } from './trap.js';
+import { float_down, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 import { float_vs_flight } from './polyself.js';
 import { mark_vision_dirty } from './vision.js';
 import { nohands, nolimbs, cantweararm, slithy, has_horns, has_head, is_humanoid } from './mondata.js';
@@ -975,20 +975,11 @@ async function canwearobj(player, obj, display, silent = false) {
             if (!silent) await You('have too many hooves to wear boots.');
             return false;
         }
-        // C ref: canwearobj() boot trap checks — TT_BEARTRAP, TT_INFLOOR,
-        // TT_LAVA, TT_BURIEDBALL block boots.  TT_PIT (JS runtime value 1)
-        // does NOT block boots in C.
-        // JS runtime trap-type values (from insight.js / hack.js / dig.js):
-        //   0=BEARTRAP, 1=PIT, 3=WEB, 4=LAVA, 5=INFLOOR, 6=BURIEDBALL
-        // Note: dig.js:1423 assigns BURIEDBALL=5 (matches INFLOOR above);
-        // both 5 and 6 are checked to be safe.
-        if (player.utrap && player.utraptype !== 1 /* not PIT */
-            && (player.utraptype === 0 || player.utraptype === 4
-                || player.utraptype === 5 || player.utraptype === 6)) {
+        if (player.utrap && (player.utraptype === TT_BEARTRAP || player.utraptype === TT_LAVA || player.utraptype === TT_INFLOOR || player.utraptype === TT_BURIEDBALL)) {
             if (!silent) {
-                if (player.utraptype === 0) {
+                if (player.utraptype === TT_BEARTRAP) {
                     await Your('foot is trapped!');
-                } else if (player.utraptype === 4 || player.utraptype === 5) {
+                } else if (player.utraptype === TT_LAVA || player.utraptype === TT_INFLOOR) {
                     await Your('feet are stuck!');
                 } else {
                     await Your('leg is attached to the buried ball!');

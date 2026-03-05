@@ -9,6 +9,7 @@ import { COLNO, ROWNO, DOOR, SDOOR, POOL,
          WATER, CLOUD, LAVAWALL, MOAT, ROOMOFFSET, PM_ROGUE,
          CROSSWALL, TRWALL } from './config.js';
 import { BOULDER } from './objects.js';
+import { TT_PIT } from './trap.js';
 
 // Vision bit flags (C ref: vision.h)
 const COULD_SEE = 0x1;
@@ -838,7 +839,7 @@ export class FOV {
         const hero = playerState || null;
         const heroBlind = !!(hero?.blind || hero?.Blind);
         const heroUnderwater = !!(hero?.underwater || hero?.uinwater || hero?.Underwater);
-        const heroInPit = !!(hero?.utrap && Number(hero?.utraptype) === 1); // TT_PIT
+        const heroInPit = !!(hero?.utrap && Number(hero?.utraptype) === TT_PIT);
         const isRogueLevel = !!(gameMap?.flags?.is_rogue
             || gameMap?.flags?.roguelike
             || gameMap?.flags?.is_rogue_lev);

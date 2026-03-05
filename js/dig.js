@@ -55,6 +55,7 @@ import {
 } from './dbridge.js';
 import { deltrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
+import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './trap.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -785,7 +786,7 @@ export function use_pick_axe(obj, map, player) {
     }
 
     // Check: entangled in web?
-    if (player.utrap && player.utraptype === 6) { // TT_WEB
+    if (player.utrap && player.utraptype === TT_WEB) { // TT_WEB
         // "Unfortunately, you can't dig while entangled in a web."
         return 0;
     }
@@ -1334,7 +1335,7 @@ export function buried_ball(cc, map, player) {
     if (!map || !player || !cc) return null;
 
     // If player is trapped but not by buried ball, no search
-    if (player.utrap && player.utraptype !== 5) return null; // TT_BURIEDBALL = 5
+    if (player.utrap && player.utraptype !== TT_BURIEDBALL) return null; // TT_BURIEDBALL
 
     let ball = null;
     let bdist = COLNO;
@@ -1374,9 +1375,9 @@ export function buried_ball_to_punishment(map, player) {
         ball.buried = false;
         // punish(ball) — attach as punishment ball
         // reset_utrap(FALSE) — release from buried ball trap
-        if (player.utrap && player.utraptype === 5) { // TT_BURIEDBALL
+        if (player.utrap && player.utraptype === TT_BURIEDBALL) { // TT_BURIEDBALL
             player.utrap = 0;
-            player.utraptype = 0;
+            player.utraptype = TT_NONE;
         }
         // del_engr_at(cc.x, cc.y) — remove engravings
         newsym(cc.x, cc.y);
@@ -1397,9 +1398,9 @@ export function buried_ball_to_freedom(map, player) {
         ball.oy = cc.y;
         placeFloorObject(map, ball);
         // reset_utrap(TRUE) — release from trap, maybe enable Lev or Fly
-        if (player.utrap && player.utraptype === 5) { // TT_BURIEDBALL
+        if (player.utrap && player.utraptype === TT_BURIEDBALL) { // TT_BURIEDBALL
             player.utrap = 0;
-            player.utraptype = 0;
+            player.utraptype = TT_NONE;
         }
         // del_engr_at(cc.x, cc.y) — remove engravings
         newsym(cc.x, cc.y);
@@ -1420,7 +1421,7 @@ export function bury_an_obj(otmp, map, player) {
         const trap_dur = rn1(50, 20);
         if (player) {
             player.utrap = trap_dur;
-            player.utraptype = 5; // TT_BURIEDBALL
+            player.utraptype = TT_BURIEDBALL;
         }
         // "The iron ball gets buried!"
     }
@@ -1499,7 +1500,7 @@ export function unearth_objs(x, y, map, player) {
 
     for (const otmp of buried) {
         if (bball && otmp === bball
-            && player && player.utrap && player.utraptype === 5) {
+            && player && player.utrap && player.utraptype === TT_BURIEDBALL) {
             // TT_BURIEDBALL — convert to punishment
             buried_ball_to_punishment(map, player);
         } else {

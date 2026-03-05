@@ -111,7 +111,7 @@ import { maybe_unhide_at } from './mon.js';
 import { finish_meating } from './dogmove.js';
 import { is_watch } from './mondata.js';
 import { map_invisible, canSpotMonsterForMap } from './monutil.js';
-import { water_damage, mintrap_postmove } from './trap.js';
+import { water_damage, mintrap_postmove, TT_PIT, TT_WEB, TT_BEARTRAP } from './trap.js';
 
 // ============================================================================
 // Constants
@@ -1692,14 +1692,14 @@ export async function dokick(player, map, display, game) {
     } else if (player.utrap) {
         no_kick = true;
         switch (player.utraptype) {
-        case 1: // TT_PIT
+        case TT_PIT: // TT_PIT
             if (!Passes_walls(player))
                 await pline("There's not enough room to kick down here.");
             else
                 no_kick = false;
             break;
-        case 3: // TT_WEB
-        case 2: // TT_BEARTRAP
+        case TT_WEB: // TT_WEB
+        case TT_BEARTRAP: // TT_BEARTRAP
             await You_cant("move your %s!", body_part(LEG, player));
             break;
         default:
@@ -1758,7 +1758,7 @@ export async function dokick(player, map, display, game) {
             break;
         }
         return { moved: false, tookTime: true };
-    } else if (player.utrap && player.utraptype === 1) { // TT_PIT
+    } else if (player.utrap && player.utraptype === TT_PIT) { // TT_PIT
         await You("kick at the side of the pit.");
         return { moved: false, tookTime: true };
     }

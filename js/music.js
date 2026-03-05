@@ -32,7 +32,7 @@ import { sleep_monst, slept_monst } from './mhitm.js';
 import { newsym } from './monutil.js';
 import { dist2, highc, mungspaces } from './hacklib.js';
 import { consume_obj_charge, sobj_at } from './invent.js';
-import { selftouch, mselftouch } from './trap.js';
+import { selftouch, mselftouch, TT_NONE, TT_PIT, TT_BURIEDBALL } from './trap.js';
 import { losehp } from './hack.js';
 import { in_rooms } from './hack.js';
 import { maketrap } from './dungeon.js';
@@ -346,27 +346,27 @@ async function do_pit(x, y, tu_pit, map, player, fov) {
             }
         }
     } else if (u_at(x, y, player)) {
-        if (player.utrap && player.utraptype === 5/*TT_BURIEDBALL*/) {
+        if (player.utrap && player.utraptype === TT_BURIEDBALL) {
             await Your('chain breaks!');
             // reset_utrap(TRUE)
             player.utrap = 0;
-            player.utraptype = 0;
+            player.utraptype = TT_NONE;
         }
         if (player.levitating || player.flying || is_clinger(player.data || player.monsterType || {})) {
             if (!tu_pit) { // no pit here previously
                 await pline('A chasm opens up under you!');
                 await You("don't fall in!");
             }
-        } else if (!tu_pit || !player.utrap || player.utraptype !== 1/*TT_PIT*/) {
+        } else if (!tu_pit || !player.utrap || player.utraptype !== TT_PIT) {
             // no pit here previously, or you were not in it even if there was
             await You('fall into a chasm!');
             // set_utrap(rn1(6, 2), TT_PIT)
             player.utrap = rn1(6, 2);
-            player.utraptype = 1; // TT_PIT
+            player.utraptype = TT_PIT;
             await losehp(Maybe_Half_Phys(rnd(6), player),
                    'fell into a chasm', 2/*NO_KILLER_PREFIX*/, player);
             selftouch('Falling, you', player);
-        } else if (player.utrap && player.utraptype === 1/*TT_PIT*/) {
+        } else if (player.utrap && player.utraptype === TT_PIT) {
             const keepfooting =
                 (!(player.fumbling && rn2(5))
                  && (!(rnl(Role_if(player, PM_ARCHEOLOGIST) ? 3 : 9))
@@ -374,7 +374,7 @@ async function do_pit(x, y, tu_pit, map, player, fov) {
             await You('are jostled around violently!');
             // set_utrap(rn1(6, 2), TT_PIT)
             player.utrap = rn1(6, 2);
-            player.utraptype = 1; // TT_PIT
+            player.utraptype = TT_PIT;
             await losehp(Maybe_Half_Phys(rnd(keepfooting ? 2 : 4), player),
                    'hurt in a chasm', 2/*NO_KILLER_PREFIX*/, player);
             if (keepfooting)

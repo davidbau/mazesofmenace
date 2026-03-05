@@ -136,6 +136,7 @@ import {
     PASSES_WALLS, REGENERATION, REFLECTING,
     FROM_FORM, FROM_RACE, FROMOUTSIDE, I_SPECIAL,
 } from './config.js';
+import { TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, TT_BEARTRAP } from './trap.js';
 
 // Local helper: cf. C attacktype_fordmg() — find attack with given type and damage type
 // Attack objects are canonicalized to C field names: aatyp/adtyp/damn/damd.
@@ -741,7 +742,7 @@ async function polyman(player, fmt, arg) {
     // if (player.twoweap && !could_twoweap(player.type)) untwoweapon(player);
 
     // Pit escape timer reset
-    if (player.utrap && player.utraptype === 0 /* TT_PIT */) {
+    if (player.utrap && player.utraptype === TT_PIT) {
         player.utrap = rn1(6, 2);
     }
 
@@ -1211,7 +1212,7 @@ export async function polymon(player, mntmp, map) {
     if (player.findAC) player.findAC();
 
     // Pit escape timer reset
-    if (player.utrap && player.utraptype === 0 /* TT_PIT */) {
+    if (player.utrap && player.utraptype === TT_PIT) {
         player.utrap = rn1(6, 2);
     }
 
@@ -1262,7 +1263,7 @@ export async function polymon(player, mntmp, map) {
 
     // Passes_walls trap handling
     if (passes_walls(mons[mntmp]) && player.utrap) {
-        const TT_INFLOOR = 4, TT_BURIEDBALL = 5;
+        // TT_INFLOOR, TT_BURIEDBALL from trap.js
         if (player.utraptype === TT_INFLOOR) {
             await pline_The("rock seems to no longer trap you.");
             player.utrap = 0;
@@ -1273,7 +1274,7 @@ export async function polymon(player, mntmp, map) {
     }
 
     // Lava-loving creatures
-    if (likes_lava(mons[mntmp]) && player.utrap && player.utraptype === 3 /* TT_LAVA */) {
+    if (likes_lava(mons[mntmp]) && player.utrap && player.utraptype === TT_LAVA) {
         await pline_The("lava now feels soothing.");
         player.utrap = 0;
     }
@@ -1284,7 +1285,7 @@ export async function polymon(player, mntmp, map) {
             await You("slip out of the iron chain.");
             player.punished = false;
         }
-        const TT_WEB = 6, TT_BEARTRAP = 1;
+        // TT_WEB, TT_BEARTRAP from trap.js
         if (player.utrap && (player.utraptype === TT_WEB || player.utraptype === TT_BEARTRAP)) {
             await You("are no longer stuck in the %s.",
                 player.utraptype === TT_WEB ? "web" : "bear trap");
@@ -1294,7 +1295,7 @@ export async function polymon(player, mntmp, map) {
 
     // Small creatures can escape bear traps and webs
     if (player.utrap) {
-        const TT_WEB = 6, TT_BEARTRAP = 1;
+        // TT_WEB, TT_BEARTRAP from trap.js
         if ((player.utraptype === TT_WEB || player.utraptype === TT_BEARTRAP)
             && (mons[mntmp].msize !== undefined && mons[mntmp].msize <= MZ_SMALL)) {
             await You("are no longer stuck in the %s.",
@@ -1304,7 +1305,7 @@ export async function polymon(player, mntmp, map) {
     }
 
     // Webmaker in web: orient yourself
-    if (webmaker(mons[mntmp]) && player.utrap && player.utraptype === 6 /* TT_WEB */) {
+    if (webmaker(mons[mntmp]) && player.utrap && player.utraptype === TT_WEB) {
         await You("orient yourself on the web.");
         player.utrap = 0;
     }
@@ -1681,7 +1682,7 @@ export async function doremove(player) {
     const Punished = player.punished || false;
 
     if (!Punished) {
-        if (player.utrap && player.utraptype === 5 /* TT_BURIEDBALL */) {
+        if (player.utrap && player.utraptype === TT_BURIEDBALL) {
             await pline_The("ball and chain are buried firmly in the ground.");
             return 0;
         }
@@ -1989,7 +1990,7 @@ export async function dohide(player, map) {
     const on_ceiling = is_clinger(player.type) || Flying;
 
     // Can't hide while being held or while trapped (except floor hiders in pits)
-    if (player.ustuck || (player.utrap && (player.utraptype !== 0 /* TT_PIT */ || on_ceiling))) {
+    if (player.ustuck || (player.utrap && (player.utraptype !== TT_PIT || on_ceiling))) {
         let reason;
         if (player.utrap && !player.ustuck)
             reason = "trapped";

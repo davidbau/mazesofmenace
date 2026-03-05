@@ -20,6 +20,7 @@ import { W_BALL, W_CHAIN, W_WEAPONS } from './worn.js';
 import { NO_KILLER_PREFIX, KILLED_BY_AN, KILLED_BY } from './end.js';
 import { exercise } from './attrib_exercise.js';
 import { maybe_unhide_at } from './mon.js';
+import { TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 
 // cf. ball.c:17 — static restriction state
 let bcrestriction = 0;
@@ -758,9 +759,7 @@ export async function drop_ball(x, y, player, map, game) {
     const uchain = player.uchain;
     if (!uball || !uchain) return;
 
-    // Trap type constants
-    const TT_PIT = 0, TT_WEB = 6, TT_LAVA = 3, TT_BEARTRAP = 1;
-    const TT_INFLOOR = 4, TT_BURIEDBALL = 5;
+    // TT_ constants imported from trap.js
     const LEFT_SIDE = 0x10, RIGHT_SIDE = 0x20;
 
     if (player.blind) {
@@ -817,7 +816,7 @@ export async function drop_ball(x, y, player, map, game) {
             }
             // reset_utrap(true)
             player.utrap = 0;
-            player.utraptype = 0;
+            player.utraptype = TT_NONE;
             // fill_pit(player.x, player.y) — stub
         }
 

@@ -25,6 +25,7 @@ import { make_confused, make_blinded } from './potion.js';
 import { makemon } from './makemon.js';
 import { unbless, curse as curseObj } from './mkobj.js';
 import { mark_vision_dirty } from './vision.js';
+import { TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 
 // cf. sit.c:14 -- take_gold(): remove all gold coins from hero inventory
 export async function take_gold(player, display) {
@@ -412,13 +413,13 @@ export async function dosit(player, map, display) {
                 await pline("It's not very comfortable...");
             }
         }
-    } else if (trap || (player.utrap && (player.utraptype || 0) >= 4 /* TT_LAVA */)) {
+    } else if (trap || (player.utrap && (player.utraptype || 0) >= TT_LAVA)) {
         if (player.utrap) {
             await exercise(player, A_WIS, false);
-            if (player.utraptype === 0) { // TT_BEARTRAP
+            if (player.utraptype === TT_BEARTRAP) { // TT_BEARTRAP
                 await You_cant("sit down with your foot in the bear trap.");
                 player.utrap++;
-            } else if (player.utraptype === 1) { // TT_PIT
+            } else if (player.utraptype === TT_PIT) { // TT_PIT
                 if (trap && trap.ttyp === 8) { // SPIKED_PIT
                     await You("sit down on a spike.  Ouch!");
                     // RNG parity: rn2(2) for half phys damage
@@ -429,15 +430,15 @@ export async function dosit(player, map, display) {
                     await You("sit down in the pit.");
                 }
                 player.utrap += rn2(5);
-            } else if (player.utraptype === 3) { // TT_WEB
+            } else if (player.utraptype === TT_WEB) { // TT_WEB
                 await You("sit in the spider web and get entangled further!");
                 player.utrap += rn1(10, 5);
-            } else if (player.utraptype === 4) { // TT_LAVA
+            } else if (player.utraptype === TT_LAVA) { // TT_LAVA
                 await You("sit in the lava!");
                 player.utrap += rnd(4);
                 const dmg = d(2, 10);
                 // TODO: losehp(dmg, "sitting in lava", KILLED_BY)
-            } else if (player.utraptype === 5 || player.utraptype === 6) {
+            } else if (player.utraptype === TT_INFLOOR || player.utraptype === TT_BURIEDBALL) {
                 // TT_INFLOOR or TT_BURIEDBALL
                 await You_cant("maneuver to sit!");
                 player.utrap++;

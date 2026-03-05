@@ -93,6 +93,7 @@ import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy
 import { HOLE, TRAPDOOR } from './symbols.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng, deltrap } from './dungeon.js';
+import { TT_NONE } from './trap.js';
 import { discoverObject } from './discovery.js';
 import { u_teleport_mon, rloco, enexto } from './teleport.js';
 import { boxlock } from './lock.js';
@@ -1604,7 +1605,7 @@ export async function zap_updown(obj, player, map) {
     }
     if (player.dz && player.dz > 0 && player.utrap) {
       player.utrap = 0;
-      player.utraptype = 0;
+      player.utraptype = TT_NONE;
       disclose = true;
     }
     break;

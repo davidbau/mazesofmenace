@@ -57,7 +57,8 @@ import { stackobj } from './stackobj.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { poisoned, acurr, acurrstr } from './attrib.js';
-import { t_missile, seetrap, conjoined_pits, adj_nonconjoined_pit, into_vs_onto } from './trap.js';
+import { t_missile, seetrap, conjoined_pits, adj_nonconjoined_pit, into_vs_onto,
+         TT_PIT } from './trap.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {
@@ -966,7 +967,7 @@ export async function domove_core(dir, player, map, display, game) {
             player.pitTrapTurns = Math.max(player.pitTrapTurns || 0, trapTurns);
             // C ref: trap.c set_utrap(rn1(6,2), TT_PIT)
             player.utrap = trapTurns;
-            player.utraptype = 1; // TT_PIT
+            player.utraptype = TT_PIT;
             const pitDmg = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
             player.takeDamage(Math.max(0, pitDmg), trap.ttyp === SPIKED_PIT
                 ? 'a pit of spikes'

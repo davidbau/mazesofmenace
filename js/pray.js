@@ -65,6 +65,7 @@ import { killed, wake_nearby } from './mon.js';
 import { losexp } from './exper.js';
 import { rndcurse, attrcurse } from './sit.js';
 import { safe_teleds } from './teleport.js';
+import { TT_NONE, TT_LAVA, TT_BURIEDBALL } from './trap.js';
 import { summon_minion, dlord } from './minion.js';
 import { makemon } from './makemon.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
@@ -153,9 +154,7 @@ const EYE = 8;
 const HUNGER_WEAK = 50;
 const HUNGER_HUNGRY = 150;
 
-// Trap types
-const TT_LAVA = 4;
-const TT_BURIEDBALL = 5;
+// TT_ constants imported from trap.js
 
 // C macro helpers
 function Cursed_obj(obj, typ) {
@@ -428,7 +427,7 @@ function region_safety() { }
 // Helper: reset_utrap
 function reset_utrap(player, _talk) {
     player.utrap = 0;
-    player.utraptype = 0;
+    player.utraptype = TT_NONE;
 }
 
 // Helper: rescued_from_terrain stub
