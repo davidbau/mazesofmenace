@@ -216,11 +216,14 @@ export async function moveloop_turnend(game) {
     // C ref: allmain.c:226-227 — reallocate movement to monsters via mcalcmove
     await allocateMonsterMovement((game.lev || game.map));
 
-    // C ref: allmain.c:232-236 — occasionally spawn a new monster.
-    // New monster spawns after movement allocation and therefore loses its first turn.
-    const levFlags = (game.lev || game.map)?.flags || {};
-    const randomMonstersAllowed = !levFlags.nomongen;
-    if (!rn2(70) && randomMonstersAllowed && !levFlags.is_tutorial) {
+    // C ref: allmain.c:235-242 — occasional random monster spawn.
+    // Rate depends on demigod state and depth relative to stronghold.
+    // Spawn happens after movement allocation, so a new monster loses first turn.
+    const player = (game.u || game.player);
+    const playerDepth = Number(player?.dungeonLevel || 0);
+    const spawnRate = player?.uevent?.udemigod ? 25
+        : (playerDepth > 27 ? 50 : 70);
+    if (!rn2(spawnRate)) {
         setMakemonPlayerContext((game.u || game.player));
         makemon(null, 0, 0, 0, (game.u || game.player).dungeonLevel, (game.lev || game.map));
     }
