@@ -384,14 +384,14 @@ def run_from_keylog(
             'source': 'c',
             'type': 'gameplay',
             'options': {
-                'name': character['name'],
-                'role': character['role'],
-                'race': character['race'],
-                'gender': character['gender'],
-                'align': character['align'],
+                'name': None if interactive else character['name'],
+                'role': None if interactive else character['role'],
+                'race': None if interactive else character['race'],
+                'gender': None if interactive else character['gender'],
+                'align': None if interactive else character['align'],
                 'wizard': bool(wizard_enabled),
                 'symset': symset,
-                'tutorial': bool(tutorial_enabled),
+                'tutorial': None if interactive else bool(tutorial_enabled),
                 'datetime': fixed_datetime,
             },
             'steps': [{
@@ -556,7 +556,7 @@ def run_from_config():
             print(f'[{label or os.path.basename(output_json)}] dropped leading spaces: {dropped}')
 
         regen = {
-            'mode': 'keylog',
+            'mode': 'manual-direct-live' if interactive else 'keylog',
             'subtype': 'manual',
             'keylog': keylog_rel,
             'datetime': str(metadata.get('datetime') or _session.harness_fixed_datetime()) if metadata else _session.harness_fixed_datetime(),
@@ -636,7 +636,7 @@ def main():
         print(f'Dropped leading space key events: {dropped}')
     interactive = bool(metadata.get('interactive', False)) if metadata else False
     regen = {
-        'mode': 'keylog',
+        'mode': 'manual-direct-live' if interactive else 'keylog',
         'subtype': 'manual',
         'keylog': os.path.relpath(os.path.abspath(args.input_jsonl), PROJECT_ROOT),
         'datetime': str(metadata.get('datetime') or _session.harness_fixed_datetime()) if metadata else _session.harness_fixed_datetime(),
