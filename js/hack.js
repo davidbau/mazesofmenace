@@ -15,13 +15,15 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
          NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
+         ARROW_TRAP, DART_TRAP, ROCKTRAP,
          HOLE, TRAPDOOR } from './config.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP } from './symbols.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
-         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BOULDER } from './objects.js';
+         WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BOULDER,
+         ARROW, DART } from './objects.js';
 import { nhgetch } from './input.js';
 import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage, schedule_goto } from './do.js';
@@ -39,17 +41,22 @@ import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_d
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
-import { Invocation_lev, find_level } from './dungeon.js';
+import { Invocation_lev, find_level, deltrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, nh_delay_output_nowait, DISP_ALL, DISP_END } from './animation.js';
 import { set_getpos_context, getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
-import { pline, You, You_feel, You_cant, set_msg_xy } from './pline.js';
+import { pline, You, You_feel, You_cant, You_hear, set_msg_xy } from './pline.js';
 import { look_here, dfeature_at } from './invent.js';
 import { maybe_unhide_at } from './mon.js';
 import { safe_teleds, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './teleport.js';
 import { MZ_LARGE, PM_GRID_BUG } from './monsters.js';
+import { stackobj } from './stackobj.js';
+import { thitu } from './mthrowu.js';
+import { dmgval } from './weapon.js';
+import { poisoned } from './attrib.js';
+import { t_missile, seetrap } from './trap.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {
@@ -874,13 +881,47 @@ export async function domove_core(dir, player, map, display, game) {
         display.renderStatus(player);
     }
 
-    // Check for traps — C ref: hack.c spoteffects() → dotrap()
-    // C ref: trap.c trapeffect_*() — trap-specific effects
-    const trap = map.trapAt(nx, ny);
-    if (trap) {
+    async function applySteppedTrap(trap) {
+        if (!trap) return null;
         // C ref: trap.c seetrap() — mark trap as discovered
         if (!trap.tseen) {
             trap.tseen = true;
+        }
+        // C ref: trap.c trapeffect_arrow_trap()/trapeffect_dart_trap()
+        // Hero branch in dotrap().
+        if (trap.ttyp === ARROW_TRAP || trap.ttyp === DART_TRAP) {
+            if (trap.once && trap.tseen && !rn2(15)) {
+                await You_hear(trap.ttyp === ARROW_TRAP ? 'a loud click!' : 'a soft click.');
+                deltrap(map, trap);
+                newsym(player.x, player.y);
+                return trap;
+            }
+            trap.once = 1;
+            seetrap(trap);
+            const isDart = trap.ttyp === DART_TRAP;
+            await pline(isDart ? 'A little dart shoots out at you!' : 'An arrow shoots out at you!');
+            const otmp = t_missile(isDart ? DART : ARROW, trap);
+            if (isDart && !rn2(6)) otmp.opoisoned = 1;
+            const hit = await thitu(
+                isDart ? 7 : 8,
+                dmgval(otmp, player),
+                otmp,
+                isDart ? 'little dart' : 'arrow',
+                player,
+                display,
+                game
+            );
+            if (hit) {
+                if (isDart && otmp.opoisoned) {
+                    await poisoned(player, 'dart', A_CON, 'little dart', 10, true);
+                }
+            } else {
+                place_object(otmp, player.x, player.y, map);
+                if (!player.blind) observeObject(otmp);
+                stackobj(otmp, map);
+                newsym(player.x, player.y);
+            }
+            return trap;
         }
         // Trap-specific effects (no RNG for SQKY_BOARD)
         if (trap.ttyp === SQKY_BOARD) {
@@ -957,8 +998,7 @@ export async function domove_core(dir, player, map, display, game) {
         // C ref: trap.c dotrap() TELEP_TRAP -> teleds/safe_teleds path.
         else if (trap.ttyp === TELEP_TRAP) {
             await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT, game);
-            // Teleport can move hero away; skip local post-move trap effects.
-            return { moved: true, tookTime: true };
+            return 'teleported';
         }
         // C ref: trap.c dotrap() -> fall_through(TRUE, ...)
         else if (trap.ttyp === TRAPDOOR || trap.ttyp === HOLE) {
@@ -982,6 +1022,22 @@ export async function domove_core(dir, player, map, display, game) {
             // C ref: trap.c fall_through() schedules deferred level change with
             // UTOTYPE_FALLING so goto_level applies fall-damage semantics.
             schedule_goto(player, destDepth, 0x02, null, null);
+        } else if (trap.ttyp === ROCKTRAP) {
+            // TODO(parity): hero rock-trap detail path is not fully modeled yet.
+            // Keep branch explicit to avoid accidental fallthrough semantics.
+        }
+        return trap;
+    }
+
+    // C ref: hack.c spoteffects() order:
+    // - non-pit trap squares: pickup/look_here first, then dotrap
+    // - pit/spiked pit: dotrap first, then pickup
+    const trap = map.trapAt(nx, ny);
+    const pitTrap = !!(trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT));
+    if (pitTrap) {
+        const trapResult = await applySteppedTrap(trap);
+        if (trapResult === 'teleported') {
+            return { moved: true, tookTime: true };
         }
     }
 
@@ -1086,6 +1142,13 @@ export async function domove_core(dir, player, map, display, game) {
             // C ref: invent.c look_here() — for 2+ objects, C uses a NHW_MENU
             // popup window ("Things that are here:") that the player dismisses.
             await look_here(player, map, objs.length);
+        }
+    }
+
+    if (!pitTrap && trap) {
+        const trapResult = await applySteppedTrap(trap);
+        if (trapResult === 'teleported') {
+            return { moved: true, tookTime: true };
         }
     }
 

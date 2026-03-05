@@ -1870,3 +1870,27 @@ hard-won wisdom:
     events from `1953/2110` to `2057/2061`.
   - first remaining drift moved from mid-turn post-move behavior to a narrower
     movement scheduling/state difference.
+
+### Hero dart/arrow trap handling was missing in `domove` spot-effects path (2026-03-05)
+
+- `seed306_monk_selfplay200_gameplay` had early drift at step 71 with C
+  expecting `t_missile(DART)`/`thitu` RNG, but JS jumping directly to
+  `movemon`/`distfleeck`.
+- Root cause: JS hero trap handling in `hack.js` did not implement
+  `ARROW_TRAP`/`DART_TRAP` effects (C `trap.c trapeffect_arrow_trap` /
+  `trapeffect_dart_trap`), so stepping on dart traps could not generate
+  projectile-hit RNG/message flow.
+- JS also had trap handling order earlier than C `spoteffects()`:
+  C does pickup/look-here before `dotrap` for non-pit traps, while JS did trap
+  first.
+- Fix shape:
+  - add hero `ARROW_TRAP`/`DART_TRAP` handling in `domove_core` via
+    `t_missile`, `dmgval`, `thitu`, poisoned-dart follow-up, and floor-drop on
+    miss,
+  - align `spoteffects` ordering in `domove_core`:
+    pit traps before pickup, non-pit traps after pickup/look-here.
+- Validation:
+  - `seed306` first divergence moved later from step `71` to step `105`
+    (`dochug/distfleeck` drift no longer earliest),
+  - no regressions in nearby green canaries:
+    `seed301`, `seed302`, `seed307`, `seed308` remained full RNG/Event/Screen green.

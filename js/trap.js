@@ -55,9 +55,10 @@ import { ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD,
          POLY_TRAP, VIBRATING_SQUARE
        } from './symbols.js';
 import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
-         is_crackable, erosion_matters, mksobj } from './mkobj.js';
+         is_crackable, erosion_matters, mksobj, weight } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
+import { place_object, stackobj } from './stackobj.js';
 import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, You, pline_mon, You_hear } from './pline.js';
@@ -177,6 +178,7 @@ export function t_missile(otyp, trap) {
     const otmp = mksobj(otyp, true, false);
     if (otmp) {
         otmp.quan = 1;
+        otmp.owt = weight(otmp);
         otmp.opoisoned = 0;
         if (trap) {
             otmp.ox = trap.tx;
@@ -219,8 +221,11 @@ export function thitm(tlev, mon, obj, d_override, nocorpse, map, player) {
         }
     }
 
-    // Object placement: if miss or d_override, object stays; otherwise consumed
-    // Simplified: don't manage object placement on map for now
+    // C ref: trap.c thitm() — place projectile on floor for miss/forced-hit.
+    if (obj && (!strike || d_override)) {
+        place_object(obj, mon.mx, mon.my, map);
+        stackobj(obj, map);
+    }
 
     return trapkilled;
 }
