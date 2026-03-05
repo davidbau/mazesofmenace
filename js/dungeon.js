@@ -317,6 +317,17 @@ function emitHarnessMapdumpRun(parts, value, count) {
     for (let i = 0; i < count; i++) parts.push(ch);
 }
 
+// C ref: struct rm union field overlaid on `horizontal`:
+// - walls/doors/drawbridges use `horizontal`
+// - fountains use `blessedftn`
+// - graves use `disturbed`
+function harnessMapdumpHorizontalValue(loc) {
+    if (!loc) return 0;
+    if (loc.typ === FOUNTAIN) return loc.blessedftn ? 1 : 0;
+    if (loc.typ === GRAVE) return loc.disturbed ? 1 : 0;
+    return loc.horizontal ? 1 : 0;
+}
+
 function buildHarnessMapdumpGrid(map, which) {
     const rowParts = [];
     for (let y = 0; y < ROWNO; y++) {
@@ -329,7 +340,7 @@ function buildHarnessMapdumpGrid(map, which) {
             switch (which) {
                 case 0: value = Number(loc?.typ ?? 0); break;
                 case 1: value = Number(loc?.flags ?? 0) & 0x1f; break;
-                case 2: value = loc?.horizontal ? 1 : 0; break;
+                case 2: value = harnessMapdumpHorizontalValue(loc); break;
                 case 3: value = loc?.lit ? 1 : 0; break;
                 case 4: value = Number(loc?.roomno ?? 0) & 0x3f; break;
             }

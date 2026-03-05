@@ -574,7 +574,10 @@ export function mkfount(map, croom) {
     const loc = map.at(pos.x, pos.y);
     if (!loc) return;
     loc.typ = FOUNTAIN;
-    if (!rn2(7)) { /* blessed fountain parity roll */ }
+    // C ref: mklev.c:2285-2286 — 1/7 fountains are blessed.
+    // `blessedftn` aliases the same C union byte as `horizontal`.
+    loc.blessedftn = 0;
+    if (!rn2(7)) loc.blessedftn = 1;
     map.flags.nfountains++;
 }
 

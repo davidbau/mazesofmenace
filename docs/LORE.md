@@ -2270,3 +2270,20 @@ hard-won wisdom:
     `423/423`, `10152/10152`, `423/423`).
   - remaining mismatch is mapdump-only (`d0l24_002`, `H[37,17]`), likely same
     topology-state class as `seed321`.
+
+### `seed329` mapdump `H` parity: fountain `blessedftn` union byte (2026-03-05)
+
+- After fixing seed329 RNG/event drift, the remaining mismatch was mapdump-only:
+  `d0l24_002 H[37,17]` (`JS=0`, `C=1`) on a `FOUNTAIN` tile (`T=28`).
+- Root cause had two C-faithfulness gaps:
+  - `mkfount()` in JS consumed the 1-in-7 roll but never set `loc.blessedftn`.
+  - JS mapdump `H` export read only `loc.horizontal`, while C's `struct rm`
+    overlays that byte for `horizontal` / `blessedftn` / `disturbed`.
+- Fix:
+  - `js/mklev.js::mkfount()` now sets `loc.blessedftn = 1` on `!rn2(7)`.
+  - `js/dungeon.js` mapdump `H` now exports typ-specific alias values:
+    fountain=`blessedftn`, grave=`disturbed`, else=`horizontal`.
+- Validation:
+  - `seed329_rogue_wizard_gameplay` now fully passes:
+    `rng=15900/15900`, `events=14329/14329`, `screens=423/423`,
+    `colors=10152/10152`, `cursor=423/423`, `mapdump=2/2`.
