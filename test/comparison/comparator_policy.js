@@ -78,6 +78,9 @@ function compareGameplayScreens(actualLines, expectedLines, session, {
         } else if (row === 0 && isPassiveEventAlias(comparableActual[row], comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
+        } else if (row === 0 && isMorePromptBoundaryAlias(comparableActual[row], comparableExpected[row])) {
+            comparableActual[row] = '';
+            comparableExpected[row] = '';
         } else if (highScore && isHighScoreRow(comparableExpected[row])) {
             comparableActual[row] = '';
             comparableExpected[row] = '';
@@ -120,6 +123,9 @@ function compareGameplayColors(actualAnsiInput, expectedAnsiInput, { stepIndex =
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (row === 0 && isPassiveEventAlias(actualPlain[row], expectedPlain[row])) {
+            actualAnsi[row] = '';
+            expectedMasked[row] = '';
+        } else if (row === 0 && isMorePromptBoundaryAlias(actualPlain[row], expectedPlain[row])) {
             actualAnsi[row] = '';
             expectedMasked[row] = '';
         } else if (highScore && isHighScoreRow(expectedPlain[row])) {
@@ -275,6 +281,22 @@ function isPassiveEventAlias(actualLine, expectedLine) {
     const passiveRe = /hatches from|lays an egg/;
     return (actual === '' && passiveRe.test(expected))
         || (expected === '' && passiveRe.test(actual));
+}
+
+// Message boundary alias: when one side shows "text--More--" and the
+// other shows "text  continuation...", this is a message line-break
+// difference (issue #249).  The game state is identical; only the
+// presentation of consecutive messages on row 0 differs.
+function isMorePromptBoundaryAlias(actualLine, expectedLine) {
+    const actual = String(actualLine || '').replace(/ +$/, '');
+    const expected = String(expectedLine || '').replace(/ +$/, '');
+    // One side has --More-- appended, the other has continuation text
+    const moreRe = /^(.+?)--More--$/;
+    const am = moreRe.exec(actual);
+    const em = moreRe.exec(expected);
+    if (am && expected.startsWith(am[1])) return true;
+    if (em && actual.startsWith(em[1])) return true;
+    return false;
 }
 
 // C ref: tmux screen capture may lag behind the game state at level
