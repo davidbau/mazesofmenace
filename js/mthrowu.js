@@ -10,7 +10,9 @@
 // - No buzzmu (spell ray) implementation
 
 import { ACCESSIBLE, IS_OBSTRUCTED, IS_DOOR,
-         D_CLOSED, D_LOCKED, IRONBARS, SINK, isok, A_STR, BOLT_LIM } from './const.js';
+         D_CLOSED, D_LOCKED, IRONBARS, SINK, isok, A_STR, BOLT_LIM,
+         MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP, MIGR_SSTAIRS,
+         is_hole } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { newexplevel } from './exper.js';
@@ -56,6 +58,9 @@ import {
     tmp_at, tmp_at_end_async, nh_delay_output,
 } from './animation.js';
 import { DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './const.js';
+import { flooreffects } from './do.js';
+import { stairway_at } from './stairs.js';
+import { t_at } from './trap.js';
 
 const hallublasts = [
     'bubbles', 'butterflies', 'dust specks', 'flowers', 'glitter',
@@ -70,6 +75,22 @@ function objectTmpGlyph(otmp) {
     const NUMMONS = Array.isArray(mons) ? mons.length : 0;
     const GLYPH_OBJ_OFF = (9 * NUMMONS) + 1;
     return GLYPH_OBJ_OFF + otyp;
+}
+
+async function down_gate_for_throw(x, y, map, player) {
+    const stway = await stairway_at(x, y, map);
+    if (stway && !stway.up && !stway.isladder) {
+        return (stway.tolev && stway.tolev.dnum === (player?.uz ? player.uz.dnum : 0))
+            ? MIGR_STAIRS_UP : MIGR_SSTAIRS;
+    }
+    if (stway && !stway.up && stway.isladder) {
+        return MIGR_LADDER_UP;
+    }
+    const trap = t_at(x, y, map);
+    if (trap && trap.tseen && is_hole(trap.ttyp)) {
+        return MIGR_RANDOM;
+    }
+    return MIGR_NOWHERE;
 }
 
 /* Return a random hallucinatory blast.
@@ -323,7 +344,7 @@ export async function thitu(tlev, dam, objp, name, player, display, game, mon = 
 }
 
 // C ref: mthrowu.c drop_throw().
-export function drop_throw(obj, ohit, x, y, map) {
+export async function drop_throw(obj, ohit, x, y, map, player, game) {
     if (!obj || !map) return true;
     let broken;
     if (obj.otyp === CREAM_PIE || obj.oclass === VENOM_CLASS
@@ -336,6 +357,16 @@ export function drop_throw(obj, ohit, x, y, map) {
     if (!isok(x, y)) return true;
     const spot = map.at(x, y);
     if (!spot || !ACCESSIBLE(spot.typ)) return true;
+    const toloc = await down_gate_for_throw(x, y, map, player);
+    if (toloc !== MIGR_NOWHERE) {
+        // C ref: dokick.c ship_object() nodrop gate for non-ladder routes.
+        const nodrop = (obj === player?.uball) || (obj === player?.uchain)
+            || (toloc !== MIGR_LADDER_UP && rn2(3));
+        if (!nodrop) return true;
+    }
+    if (await flooreffects(obj, x, y, 'fall', player, map)) {
+        return true;
+    }
     obj.ox = x;
     obj.oy = y;
     placeFloorObject(map, obj);
@@ -343,22 +374,19 @@ export function drop_throw(obj, ohit, x, y, map) {
 }
 
 // C ref: mthrowu.c hit_bars().
-export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags = 0, map) {
+export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags = 0, map, player, game) {
     const obj = objp || null;
     if (!obj) return;
     // C-style: breakable items may shatter on bars.
     const broken = await breaks(obj, objx, objy, null, map);
     if (broken) return;
     // Survived impact: drop at the impact cell.
-    if (map && isok(objx, objy)) {
-        obj.ox = objx;
-        obj.oy = objy;
-        placeFloorObject(map, obj);
-    }
+    if (map && isok(objx, objy))
+        await drop_throw(obj, false, objx, objy, map, player, game);
 }
 
 // C ref: mthrowu.c hits_bars().
-export async function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -1, map = null) {
+export async function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodidit = -1, map = null, player = null, game = null) {
     const obj = objp || null;
     if (!obj) return true;
     let hits = !!always_hit;
@@ -401,7 +429,7 @@ export async function hits_bars(objp, x, y, barsx, barsy, always_hit = 0, whodid
         }
     }
     if (hits && whodidit !== -1) {
-        await hit_bars(obj, x, y, barsx, barsy, 0, map);
+        await hit_bars(obj, x, y, barsx, barsy, 0, map, player, game);
     }
     return hits;
 }
@@ -447,11 +475,11 @@ export async function ohitmon(mtmp, otmp, range, verbose, map, player, display, 
                 if (corpse) corpse.age = (player?.turns || 0) + 1;
             }
         }
-        drop_throw(otmp, true, mtmp.mx, mtmp.my, map);
+        await drop_throw(otmp, true, mtmp.mx, mtmp.my, map, player, game);
         return { stop: true, deathMessage };
     }
     if (range <= 0) {
-        drop_throw(otmp, false, mtmp.mx, mtmp.my, map);
+        await drop_throw(otmp, false, mtmp.mx, mtmp.my, map, player, game);
         return { stop: true, deathMessage: null };
     }
     return { stop: false, deathMessage: null };
@@ -629,7 +657,7 @@ export async function m_throw_timed(
             }
             if (hitu) {
                 if (!tethered_weapon) {
-                    drop_throw(weapon, true, player.x, player.y, map);
+                    await drop_throw(weapon, true, player.x, player.y, map, player, game);
                     dropHandledInImpact = true;
                 }
                 hitPlayer = true;
@@ -641,7 +669,8 @@ export async function m_throw_timed(
         const nx = x + dx;
         const ny = y + dy;
         const nextLoc = isok(nx, ny) ? map.at(nx, ny) : null;
-        if (nextLoc && nextLoc.typ === IRONBARS && await hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map)) {
+        if (nextLoc && nextLoc.typ === IRONBARS
+            && await hits_bars(weapon, x, y, nx, ny, forcehit ? 1 : 0, 0, map, player, game)) {
             // C ref: mthrowu.c hit_bars()/drop_throw happen before the final tmp_at
             // frame on blocked flight.
             dropHandledInImpact = true;
@@ -649,7 +678,7 @@ export async function m_throw_timed(
         }
         if (!range || flightBlocked(x, y, false, forcehit)) {
             if (!tethered_weapon) {
-                drop_throw(weapon, false, x, y, map);
+                await drop_throw(weapon, false, x, y, map, player, game);
                 dropHandledInImpact = true;
             }
             break;
