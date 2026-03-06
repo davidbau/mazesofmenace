@@ -15,10 +15,10 @@ import { placeFloorObject } from './stackobj.js';
 import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, POOL,
          is_pit, is_hole, A_STR, SLT_ENCUMBER,
          W_BALL, W_CHAIN, W_WEAPONS,
+         NO_KILLER_PREFIX, KILLED_BY_AN, KILLED_BY,
          TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { xname } from './objnam.js';
 import { HEAVY_IRON_BALL, IRON_CHAIN } from './objects.js';
-import { NO_KILLER_PREFIX, KILLED_BY_AN, KILLED_BY } from './end.js';
 import { exercise } from './attrib_exercise.js';
 import { maybe_unhide_at } from './mon.js';
 

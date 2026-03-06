@@ -3,6 +3,10 @@
 
 import { CLR_GRAY } from './display.js';
 import { recordKey, isReplayMode, getNextReplayKey } from './keylog.js';
+import {
+    CMDQ_KEY, CMDQ_EXTCMD, CMDQ_DIR, CMDQ_USER_INPUT, CMDQ_INT,
+    CQ_CANNED, CQ_REPEAT,
+} from './const.js';
 
 /**
  * Display contract used by input helpers.
@@ -89,17 +93,6 @@ export function clearInputQueue() {
         activeInputRuntime.clearInputQueue();
     }
 }
-
-// C ref: hack.h enum cmdq_cmdtypes / struct _cmd_queue.
-export const CMDQ_KEY = 0;
-export const CMDQ_EXTCMD = 1;
-export const CMDQ_DIR = 2;
-export const CMDQ_USER_INPUT = 3;
-export const CMDQ_INT = 4;
-
-// C ref: hack.h enum { CQ_CANNED, CQ_REPEAT, NUM_CQS }.
-export const CQ_CANNED = 0;
-export const CQ_REPEAT = 1;
 
 const _cmdQueues = {
     [CQ_CANNED]: null,

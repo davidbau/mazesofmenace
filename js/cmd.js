@@ -12,7 +12,8 @@ import { handleEngrave } from './engrave.js';
 import { handleApply } from './apply.js';
 import { COIN_CLASS } from './objects.js';
 import { nhgetch, ynFunction, getlin, cmdq_pop_command, cmdq_clear, cmdq_add_ec,
-         CQ_REPEAT } from './input.js';
+       } from './input.js';
+import { CQ_REPEAT } from './const.js';
 import { handleEat } from './eat.js';
 import { handleQuaff } from './potion.js';
 import { handleRead } from './read.js';

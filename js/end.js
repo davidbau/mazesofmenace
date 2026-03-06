@@ -21,7 +21,13 @@
 //   renderTombstone → display.js:1135 (PARTIAL — tombstone rendering)
 //   renderTopTen → display.js:1186 (PARTIAL — high score display)
 
-import { A_CON, isok } from './const.js';
+import {
+    A_CON, isok,
+    DIED, CHOKING, POISONING, STARVING, DROWNING, BURNING, DISSOLVED,
+    CRUSHING, STONING, TURNED_SLIME, GENOCIDED, PANICKED, TRICKED, QUIT,
+    ESCAPED, ASCENDED,
+    KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
+} from './const.js';
 import { pline, You, Your, You_feel, pline_The, impossible } from './pline.js';
 import { mons, G_UNIQ, PM_GHOST, PM_HIGH_CLERIC, PM_WRAITH,
          PM_VAMPIRE, PM_GHOUL, S_WRAITH, S_MUMMY, S_VAMPIRE,
@@ -39,31 +45,6 @@ import { currency } from './invent.js';
 import { d } from './rng.js';
 import { roles } from './player.js';
 import { freedynamicdata } from './save.js';
-
-// ============================================================================
-// Game-end type constants (cf. hack.h:482 enum game_end_types)
-// ============================================================================
-export const DIED         = 0;
-export const CHOKING      = 1;
-export const POISONING    = 2;
-export const STARVING     = 3;
-export const DROWNING     = 4;
-export const BURNING      = 5;
-export const DISSOLVED    = 6;
-export const CRUSHING     = 7;
-export const STONING      = 8;
-export const TURNED_SLIME = 9;
-export const GENOCIDED    = 10;
-export const PANICKED     = 11;
-export const TRICKED      = 12;
-export const QUIT         = 13;
-export const ESCAPED      = 14;
-export const ASCENDED     = 15;
-
-// Killer format constants (cf. hack.h)
-export const KILLED_BY_AN      = 0;
-export const KILLED_BY         = 1;
-export const NO_KILLER_PREFIX  = 2;
 
 // cf. end.c:47 — death descriptions (indexed by game_end_types)
 const deaths = [

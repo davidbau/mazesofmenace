@@ -282,6 +282,45 @@ export const AUGMENT_IT = 0x40;
 export const EXACT_NAME = (SUPPRESS_IT | SUPPRESS_INVISIBLE
     | SUPPRESS_HALLUCINATION | SUPPRESS_NAME);
 
+// Game end type constants (include/hack.h enum game_end_types; src/end.c)
+// Runtime fields:
+// - end.done(how) / end.really_done(how) `how` values
+// - death cause checks for game-over handling
+export const DIED = 0;
+export const CHOKING = 1;
+export const POISONING = 2;
+export const STARVING = 3;
+export const DROWNING = 4;
+export const BURNING = 5;
+export const DISSOLVED = 6;
+export const CRUSHING = 7;
+export const STONING = 8;
+export const TURNED_SLIME = 9;
+export const GENOCIDED = 10;
+export const PANICKED = 11;
+export const TRICKED = 12;
+export const QUIT = 13;
+export const ESCAPED = 14;
+export const ASCENDED = 15;
+
+// Killer name prefix selectors (include/hack.h; src/end.c killer.format)
+// Runtime fields: end.killer.format and delayed killer records.
+export const KILLED_BY_AN = 0;
+export const KILLED_BY = 1;
+export const NO_KILLER_PREFIX = 2;
+
+// Command queue type IDs and queue selectors (include/hack.h cmdq_cmdtypes/CQ_*)
+// Runtime fields:
+// - input cmdq node fields: node.typ/node.key/node.dir*/node.intval
+// - queue selector passed to cmdq_* helpers (CQ_CANNED/CQ_REPEAT)
+export const CMDQ_KEY = 0;
+export const CMDQ_EXTCMD = 1;
+export const CMDQ_DIR = 2;
+export const CMDQ_USER_INPUT = 3;
+export const CMDQ_INT = 4;
+export const CQ_CANNED = 0;
+export const CQ_REPEAT = 1;
+
 // Maximum values
 export const MAXNROFROOMS = 40;
 export const MAXDUNGEON = 16;
