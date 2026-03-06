@@ -33,6 +33,7 @@ import {
 } from './mondata.js';
 import { wake_nearto } from './mon.js';
 import { night, midnight } from './calendar.js';
+import { vault_occupied, findgd } from './vault.js';
 
 // ============================================================================
 // Hallucination sound table (cf. sounds.c:341)
@@ -166,22 +167,28 @@ export async function temple_priest_sound(mtmp, hallu, game) {
         // Simplified check: priest must be in a TEMPLE room
         if (!mon_in_room(mtmp, TEMPLE, (game.lev || game.map))) return false;
 
-        // C does: do { rn2(SIZE(temple_msg)-1+hallu) } while (++trycount < 50)
-        // with retry logic for speechless/in_sight. We consume at least one rn2.
+        // C sounds.c:159-166: retry loop with *=speechless, #=in_sight guards
         const temple_msg = [
-            'someone praising a deity.',
-            'someone beseeching a deity.',
-            'an animal carcass being offered in sacrifice.',
-            'a strident plea for donations.',
+            'someone praising a deity.',       // C: *someone praising %s.
+            'someone beseeching a deity.',      // C: *someone beseeching %s.
+            'an animal carcass being offered in sacrifice.', // C: #an animal carcass...
+            'a strident plea for donations.',   // C: *a strident plea...
         ];
         const msgCount = temple_msg.length;
+        const speechless = (mtmp.type?.msound ?? 0) <= MS_ANIMAL;
+        const in_sight = canseemon(mtmp); // simplified: C also checks cansee(altar)
         let trycount = 0;
         let msgIdx;
         do {
             msgIdx = rn2(msgCount - 1 + hallu);
-        } while (++trycount < 50
-                 && ((msgIdx === 0 || msgIdx === 1 || msgIdx === 3)
-                     && mtmp.type.msound <= MS_ANIMAL));
+            // C: * prefix (indices 0,1,3) → retry if speechless
+            if ((msgIdx === 0 || msgIdx === 1 || msgIdx === 3) && speechless)
+                continue;
+            // C: # prefix (index 2) → retry if in_sight
+            if (msgIdx === 2 && in_sight)
+                continue;
+            break;
+        } while (++trycount < 50);
         await game.display.putstr_message(`You hear ${temple_msg[msgIdx]}`);
         return true;
     }
@@ -270,9 +277,12 @@ export async function dosounds(game) {
 
     // --- Vault (rn2(200)) ---
     if (f.has_vault && !rn2(200)) {
-        // C ref: gd_sound() check, search_special(VAULT), complex logic.
-        // Simplified: always produce sound (gd_sound not ported).
-        // RNG: rn2(2) + hallu to select message, matching C's switch.
+        // C sounds.c:244: if (gd_sound()) — skip sounds if vault occupied or guard exists
+        // vault_occupied returns '\0' for "not in vault" (truthy in JS!), non-null char for "in vault"
+        const player = game.u || game.player;
+        const vaultOcc = vault_occupied(player?.urooms || '', map);
+        const gdSound = !((vaultOcc && vaultOcc !== '\0') || findgd(map, player));
+        if (gdSound)
         switch (rn2(2) + hallu) {
         case 1:
             // C: checks gold_in_vault and vault_occupied; simplified here
@@ -369,8 +379,9 @@ export async function dosounds(game) {
     // There is no leprehall check in C's dosounds(). Skip it.
 
     // --- Temple (rn2(200)) ---
-    // C: if (has_temple && !rn2(200) && !(Is_astralevel || Is_sanctum))
-    if (f.has_temple && !rn2(200)) {
+    // C sounds.c:330: if (has_temple && !rn2(200) && !(Is_astralevel || Is_sanctum))
+    // Is_astralevel/Is_sanctum are stubs (false) so guard is a no-op for now.
+    if (f.has_temple && !rn2(200) && !(f.is_astral || f.is_sanctum)) {
         for (const mtmp of map.monsters) {
             if (mtmp.dead) continue;
             if (await temple_priest_sound(mtmp, hallu, game)) return;
