@@ -1583,6 +1583,18 @@ export function newsym(x, y, ctxOrMap = null) {
     const mapOffset = flags?.msg_window ? 3 : MAP_ROW_START;
     const col = x - 1;
     const row = y + mapOffset;
+    const rememberTerrain = () => {
+        if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
+            loc.mem_terrain_ch = ' ';
+            loc.mem_terrain_color = CLR_GRAY;
+            return { ch: ' ', color: CLR_GRAY };
+        }
+        const sym = renderTerrainSymbol(loc, map, x, y, flags);
+        const rememberedColor = (loc.typ === ROOM) ? NO_COLOR : sym.color;
+        loc.mem_terrain_ch = sym.ch;
+        loc.mem_terrain_color = rememberedColor;
+        return { ch: sym.ch, color: rememberedColor };
+    };
 
     // --- Not visible (out of FOV) ---
     if (!fov || !fov.canSee(x, y)) {
@@ -1603,13 +1615,15 @@ export function newsym(x, y, ctxOrMap = null) {
                 display.setCell(col, row, loc.mem_trap, memTrapColor);
                 return;
             }
-            if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
-                display.setCell(col, row, ' ', CLR_GRAY);
-                return;
+            if (typeof loc.mem_terrain_ch === 'string') {
+                const rememberedColor = Number.isInteger(loc.mem_terrain_color)
+                    ? loc.mem_terrain_color
+                    : CLR_GRAY;
+                display.setCell(col, row, loc.mem_terrain_ch, rememberedColor);
+            } else {
+                const remembered = rememberTerrain();
+                display.setCell(col, row, remembered.ch, remembered.color);
             }
-            const sym = renderTerrainSymbol(loc, map, x, y, flags);
-            const rememberedColor = (loc.typ === ROOM) ? NO_COLOR : sym.color;
-            display.setCell(col, row, sym.ch, rememberedColor);
         } else {
             display.setCell(col, row, ' ', CLR_GRAY);
         }
@@ -1617,6 +1631,7 @@ export function newsym(x, y, ctxOrMap = null) {
     }
 
     // --- Visible (in FOV) ---
+    rememberTerrain();
     const visEngr = map.engravingAt(x, y);
     if (visEngr) visEngr.erevealed = true;
 

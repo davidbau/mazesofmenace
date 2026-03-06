@@ -2711,3 +2711,30 @@ hard-won wisdom:
     remain at first divergence steps `226` and `220` (no regression in first
     divergence position).
   - `npm run test:unit -- --runInBand` passes.
+
+### unseen map memory parity: preserve remembered glyphs in `newsym()` (2026-03-06)
+
+- Root cause for recurring screen drift (seed325 step 218 hidden-door cell) was
+  in unseen map rendering semantics, not RNG pathing:
+  - JS recomputed unseen terrain from live `loc.typ` each refresh.
+  - C `newsym()` (`display.c`) reuses remembered `lev->glyph` when out of sight.
+- C-visible consequence:
+  - when an unseen secret-door tile changed `SDOOR -> DOOR` during monster
+    digging, JS immediately redrew memory as doorway `·`, while C kept the prior
+    remembered wall glyph until visibility changed.
+- Fix in `js/display.js`:
+  - `newsym()` now caches remembered terrain glyph/color (`mem_terrain_*`) and
+    reuses it for unseen cells.
+  - visible-cell refresh updates remembered terrain first, then overlays
+    monster/object/trap glyphs.
+- Validation:
+  - `seed325_knight_wizard_gameplay` screen parity improved:
+    - screens `217/422` -> `243/422`
+    - colors `8401/10128` -> `8433/10128`
+    - first screen divergence moved from step `218` to step `239`
+    - first RNG divergence unchanged at step `224` (`10493/25281`).
+  - nearby seeds also moved forward without RNG regressions:
+    - `seed327_priest_wizard_gameplay` first RNG divergence step `226` -> `288`
+      (`9944/20304` matched prefix).
+    - `seed328_ranger_wizard_gameplay` first RNG divergence remains step `220`.
+  - `node scripts/test-unit-core.mjs --runInBand` passes.
