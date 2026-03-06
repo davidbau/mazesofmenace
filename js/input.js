@@ -77,6 +77,9 @@ export function createInputQueue() {
             if (inputQueue.length > 0) {
                 return Promise.resolve(inputQueue.shift());
             }
+            if (inputResolver) {
+                throw new Error('Concurrent nhgetch() wait detected: existing input read is still pending');
+            }
             notifyWaitStarted();
             return new Promise((resolve) => {
                 inputResolver = resolve;

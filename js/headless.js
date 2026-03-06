@@ -222,6 +222,9 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
             if (queue.length > 0) {
                 return queue.shift();
             }
+            if (resolver) {
+                throw new Error('Concurrent nhgetch() wait detected: existing input read is still pending');
+            }
             if (throwOnEmpty) {
                 throw new Error('Input queue empty - test may be missing keystrokes');
             }

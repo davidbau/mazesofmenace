@@ -117,6 +117,17 @@ describe('input runtime primitives', () => {
         await assert.rejects(p, /aborted/);
     });
 
+    it('throws on concurrent nhgetch waits for createInputQueue', async () => {
+        const runtime = createInputQueue();
+        const pending = runtime.nhgetch();
+        assert.throws(
+            () => runtime.nhgetch(),
+            /Concurrent nhgetch\(\) wait detected/
+        );
+        runtime.pushInput('x'.charCodeAt(0));
+        assert.equal(await pending, 'x'.charCodeAt(0));
+    });
+
     it('headless input exposes the same boundary wait contract', async () => {
         const runtime = createHeadlessInput();
         assert.equal(runtime.getInputState().waitEpoch, 0);
@@ -125,6 +136,17 @@ describe('input runtime primitives', () => {
         assert.equal(epoch, 1);
         runtime.pushInput('z'.charCodeAt(0));
         assert.equal(await pending, 'z'.charCodeAt(0));
+    });
+
+    it('throws on concurrent nhgetch waits for headless input', async () => {
+        const runtime = createHeadlessInput();
+        const pending = runtime.nhgetch();
+        await assert.rejects(
+            runtime.nhgetch(),
+            /Concurrent nhgetch\(\) wait detected/
+        );
+        runtime.pushInput('y'.charCodeAt(0));
+        assert.equal(await pending, 'y'.charCodeAt(0));
     });
 });
 
