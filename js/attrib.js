@@ -1226,14 +1226,14 @@ export async function uchangealign(player, newalign, reason) {
         player.alignment = newalign;
         if (reason === A_CG_HELM_ON) {
             adjalign(player, -7);
-            const hallu = getIntrinsic(player, 16 /* HALLUC */);
+            const hallu = getIntrinsic(player, HALLUC);
             await Your("mind oscillates %s.", hallu ? "wildly" : "briefly");
             await make_confused(player, rn1(2, 3), false);
             // summon_furies check simplified
             livelog_printf(0, "used a helm to turn %s",
                            newalign === -1 ? "chaotic" : newalign === 0 ? "neutral" : "lawful");
         } else if (reason === A_CG_HELM_OFF) {
-            const hallu = getIntrinsic(player, 16 /* HALLUC */);
+            const hallu = getIntrinsic(player, HALLUC);
             await Your("mind is %s.", hallu
                                     ? "much of a muchness"
                                     : "back in sync with your body");
