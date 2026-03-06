@@ -7,6 +7,7 @@
 //   - exported callbacks used by higher-level effects (burning, egg hatch, etc.)
 //   - basic foundation for `nh_timeout()` and status-processing hooks
 
+import { game as _gstate } from './gstate.js';
 import { rnd, rn2 } from './rng.js';
 import { pline, You, You_feel } from './pline.js';
 import { TIMEOUT, INTRINSIC, FROMOUTSIDE,
@@ -23,12 +24,15 @@ const OBJ_TIMER_KIND = TIMER_KIND.SHORT;
 
 const MAX_EGG_HATCH_TIME = 200;
 
-let _currentTurn = 0;
+// _currentTurn is stored on the game object (gstate.game._currentTurn).
+// The local fallback handles early boot before the game object exists.
+let _currentTurnFallback = 0;
 let _timerQueue = [];
+// _timeoutContext falls back to gstate.game fields when not explicitly set.
 let _timeoutContext = {
-    player: null,
-    map: null,
-    display: null,
+    get player() { return _gstate?.player ?? null; },
+    get map() { return _gstate?.map ?? null; },
+    get display() { return _gstate?.display ?? null; },
 };
 
 let _timerTrace = [];
@@ -69,7 +73,7 @@ function timerMatches(timer, { funcIndex = '', arg = null, kind = null } = {}) {
 function calculateAbsoluteTurn(when, kind) {
     const t = normalizeTurnArg(when);
     if (kind === TIMER_KIND.SHORT) {
-        return _currentTurn + Math.max(0, t);
+        return _getCurrentTurn() + Math.max(0, t);
     }
     return Math.max(0, t);
 }
@@ -105,16 +109,24 @@ function traceTimerEvent(event) {
     if (_timerTrace.length > 200) _timerTrace.shift();
 }
 
+// setTimerContext is now a no-op — _timeoutContext reads from gstate directly.
 export function setTimerContext(context = {}) {
-    _timeoutContext = { ..._timeoutContext, ...context };
+    // Kept for backward compatibility; context reads fall through to gstate.
+}
+
+function _getCurrentTurn() {
+    if (_gstate && '_currentTurn' in _gstate) return _gstate._currentTurn;
+    return _currentTurnFallback;
 }
 
 export function setCurrentTurn(turn) {
-    _currentTurn = normalizeTurnArg(turn);
+    const v = normalizeTurnArg(turn);
+    _currentTurnFallback = v;
+    if (_gstate) _gstate._currentTurn = v;
 }
 
 export function getCurrentTurn() {
-    return _currentTurn;
+    return _getCurrentTurn();
 }
 
 export function clearTimeoutQueue() {
@@ -278,11 +290,12 @@ async function _fireTimer(timer) {
 
 export async function run_timers(when) {
     if (Number.isFinite(when)) {
-        _currentTurn = normalizeTurnArg(when);
+        _currentTurnFallback = normalizeTurnArg(when);
     }
+    const currentTurn = Number.isFinite(when) ? normalizeTurnArg(when) : _getCurrentTurn();
 
     let next = _timerQueue[0];
-    while (next && next.when <= _currentTurn) {
+    while (next && next.when <= currentTurn) {
         const timer = _timerQueue.shift();
         traceTimerEvent(`run_timers(${timer.funcIndex}, ${timer.when})`);
         await _fireTimer(timer);
@@ -304,7 +317,7 @@ export async function print_queue(win, base) {
 
 export function wiz_timeout_queue() {
     return {
-        currentTurn: _currentTurn,
+        currentTurn: _getCurrentTurn(),
         count: _timerQueue.length,
         timers: _timerQueue.map((timer) => ({
             when: timer.when,
@@ -416,10 +429,7 @@ export function spot_time_left(x, y, func_index, game) {
 // Timeout-driven gameplay behavior ------------------------------------------
 
 export async function nh_timeout(context = {}) {
-    if (context.player || context.display || context.map) {
-        setTimerContext(context);
-    }
-    await run_timers(_currentTurn);
+    await run_timers(_getCurrentTurn());
 
     const player = context.player || _timeoutContext.player;
     if (!player) return;
@@ -503,7 +513,7 @@ async function zombify_mon_timer(body) {
 async function rot_corpse_timer(body) {
     if (!body) return;
     const { rot_corpse } = await import('./dig.js');
-    rot_corpse(body, _currentTurn, _timeoutContext.map, _timeoutContext.player);
+    rot_corpse(body, _getCurrentTurn(), _timeoutContext.map, _timeoutContext.player);
 }
 
 let _statusFnsPromise = null;

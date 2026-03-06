@@ -132,16 +132,14 @@ export function mergable(otmp, obj) {
     return true;
 }
 
-// Module-level depth for level_difficulty() during mklev
-let _levelDepth = 1;
-export function setLevelDepth(d) { _levelDepth = d; }
-let _inMklevContext = false;
-export function setMklevObjectContext(enabled) { _inMklevContext = !!enabled; }
+import { game as _gstate } from './gstate.js';
+
+// Accessors for game state previously passed through set*Context() wiring hacks.
+// Now read from the game singleton (gstate.js), mirroring C's global variables.
+function _getMoves() { return _gstate?.moves ?? 1; }
+function _getLevelDepth() { return _gstate?._levelDepth ?? 1; }
+function _getInMklev() { return !!_gstate?._inMklev; }
 let _zombifyContext = false;
-let _objectMoves = 1;
-export function setObjectMoves(moves) {
-    if (Number.isInteger(moves) && moves > 0) _objectMoves = moves;
-}
 let _startupInventoryMode = false;
 export function setStartupInventoryMode(enabled) {
     _startupInventoryMode = !!enabled;
@@ -162,7 +160,7 @@ function mkobjTrace(msg) {
         let ctx = c1 || '?';
         if (c2) ctx += ` <= ${c2}`;
         if (c3) ctx += ` <= ${c3}`;
-        console.log(`[MKOBJ][d=${_levelDepth}] ${msg} ctx=${ctx}`);
+        console.log(`[MKOBJ][d=${_getLevelDepth()}] ${msg} ctx=${ctx}`);
     }
 }
 
@@ -353,7 +351,7 @@ function is_damageable(obj) {
 function may_generate_eroded(obj) {
     // C ref: mkobj.c may_generate_eroded() -- suppress erosion generation
     // for early startup objects while moves <= 1 unless in mklev context.
-    if (_objectMoves <= 1 && !_inMklevContext) return false;
+    if (_getMoves() <= 1 && !_getInMklev()) return false;
     if (obj.oerodeproof) return false;
     if (!erosion_matters(obj) || !is_damageable(obj)) return false;
     if (obj.otyp === WORM_TOOTH || obj.otyp === UNICORN_HORN) return false;
@@ -555,7 +553,7 @@ function mksobj_init(obj, artif, skipErosion) {
             // C ref: mkobj.c:900-910 — retry if G_NOCORPSE
             let tryct = 50;
             do {
-                obj.corpsenm = undead_to_corpse(rndmonnum(_levelDepth));
+                obj.corpsenm = undead_to_corpse(rndmonnum(_getLevelDepth()));
                 mkobjTrace(`corpse try=${51 - tryct} call=${getRngCallCount()} corpsenm=${obj.corpsenm} nocorpse=${obj.corpsenm >= 0 ? (((mons[obj.corpsenm].geno & G_NOCORPSE) !== 0) ? 1 : 0) : -1}`);
             } while (obj.corpsenm >= 0
                      && (mons[obj.corpsenm].geno & G_NOCORPSE)
@@ -567,7 +565,7 @@ function mksobj_init(obj, artif, skipErosion) {
             mkobjTrace(`egg roll call=${getRngCallCount()} rn2(3)=${eggRoll}`);
             if (!eggRoll) {
                 for (let tryct = 200; tryct > 0; --tryct) {
-                    const base = rndmonnum(_levelDepth);
+                    const base = rndmonnum(_getLevelDepth());
                     const mndx = can_be_hatched(base);
                     obj.corpsenm = mndx;
                     mkobjTrace(`egg try=${201 - tryct} call=${getRngCallCount()} base=${base} hatched=${mndx}`);
@@ -583,7 +581,7 @@ function mksobj_init(obj, artif, skipErosion) {
             } else {
                 // C ref: mkobj.c:930-937 — retry until cnutrit && !G_NOCORPSE
                 for (let tryct = 200; tryct > 0; --tryct) {
-                    const mndx = undead_to_corpse(rndmonnum(_levelDepth));
+                    const mndx = undead_to_corpse(rndmonnum(_getLevelDepth()));
                     const nutrition = mndx >= 0 ? (mons[mndx].cnutrit || 0) : 0;
                     const nocorpse = mndx >= 0 ? (((mons[mndx].geno & G_NOCORPSE) !== 0) ? 1 : 0) : -1;
                     mkobjTrace(`tin try=${201 - tryct} call=${getRngCallCount()} mndx=${mndx} cnutrit=${nutrition} nocorpse=${nocorpse}`);
@@ -654,7 +652,7 @@ function mksobj_init(obj, artif, skipErosion) {
         } else if (od.oc_name === 'figurine') {
             let tryct = 0;
             do {
-                obj.corpsenm = rndmonnum_adj(5, 10, _levelDepth);
+                obj.corpsenm = rndmonnum_adj(5, 10, _getLevelDepth());
                 mkobjTrace(`figurine try=${tryct + 1} call=${getRngCallCount()} corpsenm=${obj.corpsenm}`);
             } while (tryct++ < 30 && false); // simplified: first attempt ok
             blessorcurse(obj, 4);
@@ -743,14 +741,14 @@ function mksobj_init(obj, artif, skipErosion) {
 
     case ROCK_CLASS:
         if (od.oc_name === 'statue') {
-            obj.corpsenm = rndmonnum(_levelDepth); // Pass depth for correct monster selection
+            obj.corpsenm = rndmonnum(_getLevelDepth()); // Pass depth for correct monster selection
             mkobjTrace(`statue call=${getRngCallCount()} corpsenm=${obj.corpsenm}`);
             // C ref: !verysmall() && rn2(level_difficulty()/2+10) > 10
             // verysmall = msize < MZ_SMALL (i.e., MZ_TINY)
             // Short-circuit: skip rn2 if monster is very small
             if (obj.corpsenm >= 0 && obj.corpsenm < mons.length
                 && mons[obj.corpsenm].msize >= MZ_SMALL
-                && rn2(Math.floor(_levelDepth / 2 + 10)) > 10) {
+                && rn2(Math.floor(_getLevelDepth() / 2 + 10)) > 10) {
                 // C ref: mkobj.c:1152-1154 — statue may contain a non-novel spellbook.
                 const inside = mkobj(SPBOOK_no_NOVEL, false);
                 if (inside) {
@@ -782,7 +780,7 @@ function mkbox_cnts(box) {
     } else if (od.oc_name === 'large box') {
         n = box.olocked ? 5 : 3;
     } else if ((od.oc_name === 'sack' || od.oc_name === 'oilskin sack')
-               && _objectMoves <= 1 && !_inMklevContext) {
+               && _getMoves() <= 1 && !_getInMklev()) {
         // C ref: mkobj.c mkbox_cnts() -- sacks/oilskin sacks are empty when
         // moves<=1 outside mklev (early game startup and equivalent contexts).
         n = 0;
@@ -833,7 +831,7 @@ function mkbox_cnts(box) {
             // C ref: mkobj.c:360-370 — coin quantity and rock substitution
             if (otmp.oclass === COIN_CLASS) {
                 // C ref: rnd(level_difficulty() + 2) * rnd(75)
-                rnd(_levelDepth + 2);
+                rnd(_getLevelDepth() + 2);
                 rnd(75);
             } else {
                 // C ref: while (otmp->otyp == ROCK) rnd_class(...)
@@ -863,7 +861,7 @@ function mksobj_postinit(obj) {
     const od = objectData[obj.otyp];
     // Corpse: if corpsenm not set, assign one
     if (od.oc_name === 'corpse' && obj.corpsenm === -1) {
-        obj.corpsenm = undead_to_corpse(rndmonnum(_levelDepth));
+        obj.corpsenm = undead_to_corpse(rndmonnum(_getLevelDepth()));
     }
     // C ref: mkobj.c mksobj() SPE_NOVEL case:
     // initialize novelidx and consume noveltitle() selection RNG.
@@ -873,7 +871,7 @@ function mksobj_postinit(obj) {
     // Statue/figurine: if corpsenm not set, assign one
     // C ref: mkobj.c:1212 — otmp->corpsenm = rndmonnum()
     if ((od.oc_name === 'statue' || od.oc_name === 'figurine') && obj.corpsenm === -1) {
-        obj.corpsenm = rndmonnum(_levelDepth);
+        obj.corpsenm = rndmonnum(_getLevelDepth());
     }
     // Gender assignment for corpse/statue/figurine.
     // C ref: mkobj.c:1215-1219 — store CORPSTAT_* in spe.
@@ -959,8 +957,8 @@ export function start_corpse_timeout(body, opts = {}) {
     stop_timer(TIMER_FUNC.ZOMBIFY_MON, body);
     let action = TIMER_FUNC.ROT_CORPSE;
     // C ref: mkobj.c start_corpse_timeout() — rot_adjust depends on gi.in_mklev.
-    const rotAdjust = _inMklevContext ? 25 : 10;
-    const age = Math.max(_objectMoves, 1) - Number(body.age || 0);
+    const rotAdjust = _getInMklev() ? 25 : 10;
+    const age = Math.max(_getMoves(), 1) - Number(body.age || 0);
     let when = (age > 250) ? rotAdjust : (250 - age);
     when += (rnz(rotAdjust) - rotAdjust);
     // Rider: rn2(3) loop for revival time

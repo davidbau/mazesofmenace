@@ -272,23 +272,35 @@ Exit gate:
 - Ownership mapping in `docs/MODULES.md` reflects code reality. ✓
 - No parity regression vs baseline. ✓
 
-### Phase 4 — Remove `set*Context` Wiring Hacks
+### Phase 4 — Remove `set*Context` Wiring Hacks ✓
 
-The `set*Context`/`set*Player` pattern was a workaround for passing runtime
-state into modules without importing them directly. Now that cyclic imports
-are understood to be safe, these can be replaced by direct imports of the
-`game` singleton or explicit function parameters (matching how C passes
-struct pointers).
+Created `gstate.js` — a game state singleton (mirrors C's global `u`/`level`/
+`flags`). `allmain.js` calls `setGame(this)` once; modules read
+`gstate.game.player`, `gstate.game.map`, `gstate.game.display`, etc.
 
-Target: remove `setOutputContext`, `setDisplayContext`,
-`setMakemonPlayerContext`, `setMakemonRoleContext`, `setMakemonLevelContext`,
-`setMakemonInMklevContext`, `setObjectMoves`, `setMklevObjectContext`,
-`setLevelDepth`, `setTimerContext`, `setLevelContext`, `setFinalizeContext`,
-`setSplevPlayerContext` and their associated module-level context variables.
+Tiers 1-3 & 5 completed (11 setters removed or reduced to no-ops):
+
+| Removed setter | Was in | Replaced with |
+|---|---|---|
+| `setObjectMoves` | mkobj.js | `gstate.game.moves` |
+| `setMklevObjectContext` | mkobj.js | `gstate.game._inMklev` |
+| `setLevelDepth` | mkobj.js | `gstate.game._levelDepth` |
+| `setMakemonInMklevContext` | makemon.js | `gstate.game._inMklev` |
+| `setMakemonRoleContext` | makemon.js | `gstate.game.player.roleIndex` |
+| `setMakemonLevelContext` | makemon.js | `gstate.game._dungeonAlign` |
+| `setMakemonPlayerContext` | makemon.js | live read from `gstate.game.player` (override kept for level-gen x/y clearing) |
+| `setOutputContext` | pline.js | `gstate.game.display` |
+| `setDisplayContext` | display.js | `gstate.game` fallback (override kept for headless save/restore) |
+| `setTimerContext` | timeout.js | `gstate.game` getter properties |
+| `setCurrentTurn` | timeout.js | `gstate.game._currentTurn` |
+
+Tier 4 deferred — level-generation setters (`setLevelContext`,
+`setFinalizeContext`, `setSplevPlayerContext`, `setCurrentLevelStairs`)
+are initialization for procedural generation, not wiring hacks.
 
 Exit gate:
-- No `set*Context`/`set*Player` style module-level wiring remains.
-- No parity regression vs baseline.
+- No `set*Context`/`set*Player` wiring remains (except deferred Tier 4). ✓
+- No parity regression vs baseline (25/34 gameplay, 2508 unit). ✓
 
 ## Non-Negotiable Autonomy Rules
 

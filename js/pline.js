@@ -1,12 +1,16 @@
 // pline.js -- NetHack-like message primitives.
 // This module centralizes common message entry points that map C code calls.
 
+import { game as _gstate } from './gstate.js';
+
 const PLINE_URGENT = 1 << 0;
 const PLINE_NOREP = 1 << 1;
 
 const NOREPEAT = '___PLINE_NO_REPEAT___';
 
-let _outputContext = null;
+// _outputContext now reads from gstate.game.display by default.
+// The explicit setter is kept for headless/test paths that may override.
+let _outputContextOverride = null;
 let _lastMessage = NOREPEAT;
 const _pendingContext = {
     dir: null,
@@ -25,11 +29,12 @@ function safeString(value) {
 }
 
 function getOutputContext() {
-    if (_outputContext && typeof _outputContext.putstr_message === 'function') {
-        return _outputContext;
+    const ctx = _outputContextOverride || _gstate?.display || null;
+    if (ctx && typeof ctx.putstr_message === 'function') {
+        return ctx;
     }
-    if (typeof _outputContext === 'function') {
-        return { putstr_message: _outputContext };
+    if (typeof ctx === 'function') {
+        return { putstr_message: ctx };
     }
     return { putstr_message: (text) => {
         if (typeof console !== 'undefined' && console.log) {
@@ -39,7 +44,7 @@ function getOutputContext() {
 }
 
 export function setOutputContext(context) {
-    _outputContext = context || null;
+    _outputContextOverride = context || null;
 }
 
 function clearTransientContext() {

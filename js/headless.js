@@ -19,12 +19,11 @@ import { rankOf, roles } from './player.js';
 import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
 import { monsterNearby } from './hack.js';
-import { newsym, setDisplayContext } from './display.js';
+import { newsym, setDisplayContext } from './display.js'; // setDisplayContext still used for explicit override in renderMap
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
-import { doname, setObjectMoves } from './mkobj.js';
+import { doname } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
-import { setOutputContext } from './pline.js';
 import { NetHackGame } from './allmain.js';
 import {
     wallIsVisible,

@@ -3,6 +3,11 @@
   "updated_at": "2026-02-28T21:12:41.613Z",
   "files": [
     {
+      "path": "js/gstate.js",
+      "policy": "manual_only",
+      "reason": "Game state singleton — no C equivalent, JS-only infrastructure."
+    },
+    {
       "path": "js/allmain.js",
       "policy": "mixed",
       "reason": "Contains both translatable core logic and manual boundary code.",

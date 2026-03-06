@@ -36,16 +36,15 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
 import { getbones } from './bones.js';
 import { make_engr_at, wipe_engr_at } from './engrave.js';
+import { game as _gstate } from './gstate.js';
 import {
     mkobj,
     mksobj,
     mkcorpstat,
     next_ident,
     weight,
-    setLevelDepth,
-    setMklevObjectContext,
 } from './mkobj.js';
-import { makemon, mkclass, rndmonnum_adj, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex, setMakemonInMklevContext } from './makemon.js';
+import { makemon, mkclass, rndmonnum_adj, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import {
     mons, S_UNICORN, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD,
@@ -236,14 +235,12 @@ let _harnessMapdumpPayloads = new Map();
 // Exposed for sp_lev.js to bracket des.* generation phases.
 export function enterMklevContext() {
     inMklev = true;
-    setMakemonInMklevContext(true);
-    setMklevObjectContext(true);
+    if (_gstate) _gstate._inMklev = true;
 }
 
 export function leaveMklevContext() {
     inMklev = false;
-    setMakemonInMklevContext(false);
-    setMklevObjectContext(false);
+    if (_gstate) _gstate._inMklev = false;
 }
 
 // C ref: dungeon.c induced_align(int pct)
@@ -4540,7 +4537,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
         dungeonAlign: forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE),
     });
 
-    setLevelDepth(depth);
+    if (_gstate) _gstate._levelDepth = depth;
     // C ref: mklev.c:1260, sp_lev.c:6004 — oinit() calls setgemprobs(&u.uz)
     // Depth-only callers (no branch coordinates) should still use the
     // requested level depth rather than falling back to level 1.
@@ -4556,8 +4553,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
     const bonesMap = getbones(null, depth);
     if (bonesMap) return finishGeneratedMap(bonesMap);
     inMklev = true;
-    setMakemonInMklevContext(true);
-    setMklevObjectContext(true);
+    if (_gstate) _gstate._inMklev = true;
     try {
 
     // Check for special level.

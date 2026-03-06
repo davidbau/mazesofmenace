@@ -17,9 +17,9 @@
 
 import { movemon, settrack, mon_regen } from './monmove.js';
 import { savebones } from './bones.js';
+import { setGame } from './gstate.js';
 import { setCurrentTurn, nh_timeout } from './timeout.js';
-import { setOutputContext, pline } from './pline.js';
-import { setObjectMoves } from './mkobj.js';
+import { pline } from './pline.js';
 import { runtimeDecideToShapeshift, makemon, setMakemonPlayerContext } from './makemon.js';
 import { M2_WERE } from './monsters.js';
 import { were_change } from './were.js';
@@ -39,7 +39,7 @@ import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
 import { monsterNearby, nomul, unmul, near_capacity } from './hack.js';
-import { setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty, flush_screen, CLR_GRAY } from './display.js';
+import { see_monsters, vision_recalc, mark_vision_dirty, flush_screen, CLR_GRAY } from './display.js';
 import { Player, roles, races, formatLoreText, godForRoleAlign, isGoddess,
          rankOf, greetingForRole, roleNameForGender, alignName } from './player.js';
 import { mklev, setGameSeed, isBranchLevelToDnum, at_dgn_entrance } from './dungeon.js';
@@ -116,13 +116,10 @@ async function com_pager_quest_common(msgid, player) {
 // Autotranslated from allmain.c:169
 export async function moveloop_core(game, opts = {}) {
     const player = (game.u || game.player);
-    // Keep makemon selection context synchronized with live player state.
-    setMakemonPlayerContext(player);
     // C ref: at top of each moveloop iteration, vision_recalc(0) if vision_full_recalc set.
     // This catches topology changes from the player's action (door opens, dig, teleport, etc.)
     // so that monsters run with up-to-date FOV.
     if (game.fov && get_vision_full_recalc()) {
-        setDisplayContext({ display: game.display, player, fov: game.fov, flags: game.flags, map: (game.lev || game.map) });
         vision_recalc();
     }
     if (!Number.isFinite(player.umovement)) {
@@ -163,7 +160,6 @@ export async function moveloop_core(game, opts = {}) {
     // C ref: vision_full_recalc set during monster turns (digs, door breaks, etc.) —
     // fire vision_recalc now so the display is current before screen capture.
     if (game.fov && get_vision_full_recalc()) {
-        setDisplayContext({ display: game.display, player, fov: game.fov, flags: game.flags, map: (game.lev || game.map) });
         vision_recalc();
     }
 
@@ -195,19 +191,15 @@ export async function moveloop_core(game, opts = {}) {
 //                    flags, travelPath, runMode
 export async function moveloop_turnend(game) {
     // Keep makemon/rndmonst difficulty tied to live hero state (u.ulevel, pos).
-    // C reads globals directly; JS must refresh this context explicitly.
-    setMakemonPlayerContext((game.u || game.player));
-
     // C ref: allmain.c:239 — settrack() called after movemon, before moves++
     settrack((game.u || game.player));
     game.turnCount++;
     (game.u || game.player).turns = game.turnCount;
     setCurrentTurn(game.turnCount + 1);
-    setOutputContext(game.display);
     // C ref: allmain.c -- random spawn happens before svm.moves++.
     // During this turn-end frame, mkobj-side erosion checks should
     // still observe the pre-increment move count.
-    setObjectMoves(game.turnCount);
+    game.moves = game.turnCount;
 
     // Minimal C-faithful wounded-legs timer (set_wounded_legs): while active,
     // DEX stays penalized; recover when timeout expires.
@@ -273,7 +265,6 @@ export async function moveloop_turnend(game) {
     const spawnRate = player?.uevent?.udemigod ? 25
         : (playerDepth > 27 ? 50 : 70);
     if (!rn2(spawnRate)) {
-        setMakemonPlayerContext((game.u || game.player));
         makemon(null, 0, 0, 0, (game.u || game.player).dungeonLevel, (game.lev || game.map));
     }
 
@@ -315,7 +306,6 @@ export async function moveloop_turnend(game) {
                 mark_vision_dirty(); // player position changed
             };
             (game.lev || game.map)._water.onVisionRecalc = () => {
-                setDisplayContext({ display: game.display, player: (game.u || game.player), fov: game.fov, flags: game.flags, map: (game.lev || game.map) });
                 vision_recalc();
             };
         }
@@ -370,7 +360,7 @@ export async function moveloop_turnend(game) {
     }
     // After turn-end completes, subsequent command processing observes
     // the incremented move counter.
-    setObjectMoves(game.turnCount + 1);
+    game.moves = game.turnCount + 1;
 }
 
 // C ref: allmain.c:680 stop_occupation()
@@ -1003,6 +993,7 @@ async function buildReplayTutorialPromptFlow(messages, enterAfterPromptCount, on
 // ============================================================================
 export class NetHackGame {
     constructor(deps = {}) {
+        setGame(this); // Mirror C's global game state — modules read gstate.game
         this.deps = deps;
         this.lifecycle = deps.lifecycle || {};
         this.hooks = deps.hooks || {};
@@ -1016,7 +1007,11 @@ export class NetHackGame {
         this.gameOver = false;
         this.gameOverReason = '';
         this.turnCount = 0;
-        setObjectMoves(1); // C ref: svm.moves starts at 1
+        this._currentTurn = 0; // C ref: timeout.c timer reference turn
+        this.moves = 1; // C ref: svm.moves starts at 1
+        this._inMklev = false; // C ref: gi.in_mklev
+        this._levelDepth = 1; // depth being generated (C: implicit from mklev args)
+        this._dungeonAlign = 0; // A_NONE — dungeon branch alignment for makemon
         this.wizard = false;
         this.seerTurn = 0;
         this.occupation = null;
@@ -1045,7 +1040,6 @@ export class NetHackGame {
         this.player = new Player();
         this.map = null;
         this.display = deps.display || null;
-        setOutputContext(this.display);
         // Canonical namespace aliases for state refactor campaign.
         Object.defineProperty(this, 'context', {
             configurable: true,
@@ -1501,6 +1495,7 @@ export class NetHackGame {
         // so byyou is never true during fill_zoo. In JS the player still has
         // old-level coordinates, so we clear x/y here to prevent spurious
         // enexto_core calls when a zoo cell coincidentally matches.
+        // Override makemon player ctx: clear x/y so byyou is never true during fill_zoo
         setMakemonPlayerContext({ ...this.player, x: null, y: null });
         const heroHasAmulet = !!(this.player?.uhave?.amulet);
         const targetDnum = Number.isInteger(opts?.targetDnum)
@@ -1515,6 +1510,7 @@ export class NetHackGame {
 
         flush_screen(-1);   // C ref: do.c:1720 — suppress flushes during level transition
         await changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
+        setMakemonPlayerContext(null); // Clear override — resume live gstate reads
 
         // Bones level message
         if (this.map.isBones) {
@@ -1645,7 +1641,6 @@ export class NetHackGame {
     // Render current screen state
     docrt() {
         this.fov.compute(this.map, this.player.x, this.player.y);
-        setDisplayContext({ display: this.display, player: this.player, fov: this.fov, flags: this.flags, map: this.map });
         this.display.renderMap(this.map, this.player, this.fov, this.flags);
         this.display.renderStatus(this.player);
         // C ref: docrt() puts cursor on player, but if a --More-- is pending

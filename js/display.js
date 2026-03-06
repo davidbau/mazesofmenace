@@ -1524,8 +1524,23 @@ export function fn_cmap_to_glyph(cmap) {
 // Display functions moved from monutil.js — C ref: display.c / vision.c
 // ========================================================================
 
-// Display context — allows newsym() to perform per-cell rendering
+import { game as _gstate } from './gstate.js';
+
+// Display context — allows newsym() to perform per-cell rendering.
+// Falls back to gstate.game fields when no explicit override is active.
 let _displayContext = null;
+
+function _getDisplayCtx() {
+    if (_displayContext) return _displayContext;
+    if (!_gstate) return null;
+    return {
+        display: _gstate.display,
+        player: _gstate.player,
+        fov: _gstate.fov,
+        flags: _gstate.flags,
+        map: _gstate.map,
+    };
+}
 
 function playerHasActiveProp(player, prop) {
     if (!player || !Number.isInteger(prop)) return false;
@@ -1558,7 +1573,7 @@ export function map_invisible(map, x, y, player) {
 
 // C ref: display.c:918 newsym()
 export function newsym(x, y) {
-    const ctx = _displayContext;
+    const ctx = _getDisplayCtx();
     if (!ctx?.map) return;
     const map = ctx.map;
     if (!map || !isok(x, y)) return;
@@ -1702,7 +1717,7 @@ export function newsym(x, y) {
 // C ref: display.c:1480 see_monsters()
 export function see_monsters(map) {
     if (!map || !map.monsters) return;
-    const ctx = _displayContext;
+    const ctx = _getDisplayCtx();
     if (!ctx || !ctx.display) return;
     for (const mon of map.monsters) {
         if (!mon || mon.mhp <= 0) continue;
@@ -1717,7 +1732,7 @@ export function see_monsters(map) {
 // C ref: vision.c:511 vision_recalc()
 export function vision_recalc() {
     clear_vision_full_recalc();
-    const ctx = _displayContext;
+    const ctx = _getDisplayCtx();
     if (!ctx || !ctx.fov || !ctx.fov.visible || !ctx.map || !ctx.player) return;
     const { fov, map, player } = ctx;
     const oldVisible = [];
@@ -1748,7 +1763,7 @@ export function flush_screen(cursor_on_u) {
     if (_delay_flushing) return;
     if (_flushing) return;
     _flushing = true;
-    const ctx = _displayContext;
+    const ctx = _getDisplayCtx();
     if (ctx?.display && ctx?.player) {
         const { display, player } = ctx;
         if (player._botl) {

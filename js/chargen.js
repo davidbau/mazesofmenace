@@ -16,8 +16,6 @@ import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
 import { GameMap } from './game.js';
 import { initLevelGeneration, mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
 import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
-import { setMakemonPlayerContext } from './makemon.js';
-import { setObjectMoves } from './mkobj.js';
 import { monsterNearby } from './hack.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
@@ -27,7 +25,6 @@ import { loadSave, deleteSave, hasSave, saveGame,
          listSavedData, clearAllData } from './storage.js';
 import { buildEntry, saveScore, loadScores, formatTopTenEntry, formatTopTenHeader } from './topten.js';
 import { startRecording } from './keylog.js';
-import { setOutputContext } from './pline.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow,
          start_menu, add_menu, end_menu, select_menu,
        } from './windows.js';
@@ -301,7 +298,6 @@ export async function enterTutorial(game, opts = {}) {
         applyTutorialStrip();
     }
 
-    setMakemonPlayerContext((game.u || game.player));
     setSplevPlayerContext((game.u || game.player));
     game.lev = await mklev(1, TUTORIAL, 1, { dungeonAlignOverride: A_NONE });
     clearSplevPlayerContext();
@@ -381,10 +377,9 @@ export async function restoreFromSave(game, saveData, urlOpts) {
     const restored = restGameState(gs);
     game.u = restored.player;
     (game.u || game.player).wizard = game.wizard;
-    setMakemonPlayerContext((game.u || game.player));
     game.wizard = restored.wizard;
     game.turnCount = restored.turnCount;
-    setObjectMoves(game.turnCount + 1);
+    game.moves = game.turnCount + 1;
     game.seerTurn = restored.seerTurn;
 
     // Restore current level (saved first in v2 format)

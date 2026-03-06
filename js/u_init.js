@@ -1165,10 +1165,6 @@ function moneyCount(player) {
 export function simulatePostLevelInit(player, map, depth, opts = {}) {
     const role = roles[player.roleIndex];
 
-    // Update makemon context with player's placed position (x/y).
-    // The earlier setMakemonPlayerContext call (before mklev) didn't have x/y.
-    setMakemonPlayerContext(player);
-
     // 1. makedog() — pet creation (actually places pet on map)
     // Startup pet-generation alignment context has role-specific behavior in
     // captured C runs; Caveman uses 0 here while normal gameplay keeps role
@@ -1178,7 +1174,7 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
         : (Number.isInteger(player.alignmentRecord) ? player.alignmentRecord : 0);
     setMakemonPlayerContext({ ...player, alignmentRecord: petAlignmentRecord });
     const pet = makedog(map, player, depth || 1);
-    setMakemonPlayerContext(player);
+    setMakemonPlayerContext(null); // Clear override — resume live gstate reads
 
     // C ref: dog.c initedog() — apport = ACURR(A_CHA)
     // Called inside makedog() BEFORE init_attr(), and u.acurr is still zeroed.
@@ -1271,7 +1267,6 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
 export async function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     const startDlevel = opts.startDlevel ?? 1;
     initrack();
-    setMakemonPlayerContext(player);
     const { enadv_roll, rightHanded } = initLevelGeneration(roleIndex, wizard, {
         alignment: player.alignment,
         race: player.race,

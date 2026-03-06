@@ -2,6 +2,7 @@
 // Faithful port of makemon.c from NetHack 3.7
 // C ref: makemon.c — monster creation, selection, weapon/inventory assignment
 
+import { game as _gstate } from './gstate.js';
 import { rn2, rnd, rn1, d, c_d, getRngLog, getRngCallCount, pushRngLogEntry } from './rng.js';
 import { mksobj, mkobj, next_ident, weight, place_object, set_corpsenm } from './mkobj.js';
 import { def_monsyms } from './const.js';
@@ -234,11 +235,33 @@ function normalizePlayerContext(ctx = {}) {
     };
 }
 
-let _makemonPlayerCtx = normalizePlayerContext();
-let _makemonLevelCtx = {
-    dungeonAlign: A_NONE,
-};
-let _makemonInMklev = false;
+// --- Makemon context: reads live from gstate.game.player ---
+// Override is set for special cases (x/y clearing during level change,
+// alignmentRecord override for pet creation, role-only context during early init).
+let _makemonPlayerOverride = null;
+
+function _getMakemonPlayerCtx() {
+    if (_makemonPlayerOverride) return _makemonPlayerOverride;
+    const player = _gstate?.player;
+    if (!player) return normalizePlayerContext();
+    const inventory = Array.isArray(player.inventory) ? player.inventory : [];
+    return normalizePlayerContext({
+        roleIndex: player.roleIndex,
+        alignment: player.alignment,
+        alignmentRecord: player.alignmentRecord,
+        alignmentAbuse: player.alignmentAbuse,
+        ualign: player.ualign,
+        race: player.race,
+        ulevel: player.ulevel ?? player.level,
+        hasAmulet: !!player.uhave?.amulet || inventory.some(o => o?.otyp === AMULET_OF_YENDOR),
+        x: player.x,
+        y: player.y,
+    });
+}
+
+// dungeonAlign now stored on gstate.game._dungeonAlign (set by dungeon.js makelevel)
+// _getInMklev() now reads from gstate.game._inMklev (unified with dungeon.js/mkobj.js).
+function _getInMklev() { return !!_gstate?._inMklev; }
 
 let _rndmonTraceInvocation = 0;
 
@@ -264,9 +287,17 @@ function getRndmonTraceCtx() {
     return b ? `${a} <= ${b}` : a;
 }
 
+// Set a player context override. Pass null to clear and read live from gstate.
+// Callers that need non-default context (e.g. clearing x/y during level change,
+// overriding alignmentRecord for pet creation) use this. Pure sync calls are
+// no longer needed — _getMakemonPlayerCtx() reads live from gstate.game.player.
 export function setMakemonPlayerContext(playerLike) {
+    if (playerLike == null) {
+        _makemonPlayerOverride = null;
+        return;
+    }
     const inventory = Array.isArray(playerLike?.inventory) ? playerLike.inventory : [];
-    _makemonPlayerCtx = normalizePlayerContext({
+    _makemonPlayerOverride = normalizePlayerContext({
         roleIndex: playerLike?.roleIndex,
         alignment: playerLike?.alignment,
         alignmentRecord: playerLike?.alignmentRecord,
@@ -282,33 +313,32 @@ export function setMakemonPlayerContext(playerLike) {
 }
 
 function getMakemonUlevel() {
-    const n = Number(_makemonPlayerCtx?.ulevel);
+    const n = Number(_getMakemonPlayerCtx()?.ulevel);
     if (Number.isFinite(n) && n >= 1) return Math.floor(n);
     return 1;
 }
 
 export function setMakemonRoleContext(roleIndex, opts = {}) {
-    _makemonPlayerCtx = normalizePlayerContext({ roleIndex, ...opts });
+    _makemonPlayerOverride = normalizePlayerContext({ roleIndex, ...opts });
 }
 
 export function getMakemonRoleIndex() {
-    return _makemonPlayerCtx.roleIndex;
+    return _getMakemonPlayerCtx().roleIndex;
 }
 
 export function setMakemonLevelContext(levelCtx = {}) {
-    _makemonLevelCtx = {
-        dungeonAlign: Number.isInteger(levelCtx.dungeonAlign)
+    if (_gstate) {
+        _gstate._dungeonAlign = Number.isInteger(levelCtx.dungeonAlign)
             ? levelCtx.dungeonAlign
-            : A_NONE,
-    };
+            : A_NONE;
+    }
 }
 
-export function setMakemonInMklevContext(active) {
-    _makemonInMklev = !!active;
-}
+// setMakemonInMklevContext removed — now unified on gstate.game._inMklev
+// (set by dungeon.js enterMklevContext/leaveMklevContext)
 
 // C ref: makemon.c peace_minded(struct permonst *ptr)
-function peace_minded(ptr, playerCtx = _makemonPlayerCtx) {
+function peace_minded(ptr, playerCtx = _getMakemonPlayerCtx()) {
     const mal = ptr.maligntyp || 0;
     const ual = playerCtx.alignment || 0;
     const alignRecord = playerCtx.alignmentRecord;
@@ -377,7 +407,7 @@ const ALIGNWEIGHT = 4; // C ref: global.h ALIGNWEIGHT
 
 // C ref: makemon.c align_shift()
 function align_shift(ptr) {
-    switch (_makemonLevelCtx.dungeonAlign) {
+    switch (_gstate?._dungeonAlign ?? A_NONE) {
     default:
     case A_NONE:
         return 0;
@@ -1964,8 +1994,8 @@ function makemonGoodpos(map, x, y, ptr, mmflags = NO_MM_FLAGS, avoidMonpos = tru
 
     // C ref: teleport.c goodpos() rejects hero location unless GP_ALLOW_U.
     // makemon_rnd_goodpos() doesn't set GP_ALLOW_U, so keep hero tile invalid.
-    if (Number.isInteger(_makemonPlayerCtx?.x) && Number.isInteger(_makemonPlayerCtx?.y)
-        && x === _makemonPlayerCtx.x && y === _makemonPlayerCtx.y) {
+    if (Number.isInteger(_getMakemonPlayerCtx()?.x) && Number.isInteger(_getMakemonPlayerCtx()?.y)
+        && x === _getMakemonPlayerCtx().x && y === _getMakemonPlayerCtx().y) {
         return false;
     }
 
@@ -2050,11 +2080,11 @@ function makemon_rnd_goodpos(map, ptr, mmflags = NO_MM_FLAGS) {
         lastNy = ny;
         // C ref: makemon.c makemon_rnd_goodpos()
         // good = (!in_mklev && cansee(nx,ny)) ? FALSE : goodpos(...)
-        if (!_makemonInMklev
-            && Number.isInteger(_makemonPlayerCtx?.x) && Number.isInteger(_makemonPlayerCtx?.y)
+        if (!_getInMklev()
+            && Number.isInteger(_getMakemonPlayerCtx()?.x) && Number.isInteger(_getMakemonPlayerCtx()?.y)
             && cansee(
                 map,
-                { x: _makemonPlayerCtx.x, y: _makemonPlayerCtx.y },
+                { x: _getMakemonPlayerCtx().x, y: _getMakemonPlayerCtx().y },
                 getActiveFov(),
                 nx,
                 ny
@@ -2146,8 +2176,8 @@ function randomMonGoodpos(ptr, x, y, map, mmflags = NO_MM_FLAGS) {
 }
 
 function makemonVisibleToPlayer(mon, map) {
-    const ux = _makemonPlayerCtx?.x;
-    const uy = _makemonPlayerCtx?.y;
+    const ux = _getMakemonPlayerCtx()?.x;
+    const uy = _getMakemonPlayerCtx()?.y;
     if (!Number.isInteger(ux) || !Number.isInteger(uy) || !map || !mon) return false;
     const player = map?.player || null;
     if (player) {
@@ -2179,9 +2209,9 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     const allow_minvent = !(mmflags & NO_MINVENT);
 
     // C ref: makemon.c:1160 — byyou: creating monster at hero position
-    const byyou = map && !_makemonInMklev
-        && Number.isInteger(_makemonPlayerCtx?.x) && Number.isInteger(_makemonPlayerCtx?.y)
-        && x === _makemonPlayerCtx.x && y === _makemonPlayerCtx.y;
+    const byyou = map && !_getInMklev()
+        && Number.isInteger(_getMakemonPlayerCtx()?.x) && Number.isInteger(_getMakemonPlayerCtx()?.y)
+        && x === _getMakemonPlayerCtx().x && y === _getMakemonPlayerCtx().y;
 
     // C ref: makemon.c:1173-1178 — random position finding for (0,0)
     // Happens before random monster selection when ptr is null.
@@ -2266,7 +2296,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     } else if ((ptr.mlet === S_SPIDER || ptr.mlet === S_SNAKE) && map) {
         // C ref: in_mklev && x && y → mkobj_at(RANDOM_CLASS, x, y, TRUE)
         // mkobj_at creates a random object, places it at (x,y), then hideunder (no RNG)
-        if (_makemonInMklev && x && y) {
+        if (_getInMklev() && x && y) {
             const hideObj = mkobj(0, true); // RANDOM_CLASS = 0, artif = true
             if (hideObj) {
                 place_object(hideObj, x, y, map); // emits ^place event, matches C
@@ -2274,7 +2304,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         }
         // C ref: makemon.c calls hideunder(); it may fail on non-pit traps
         // or with non-hideable floor object stacks.
-        if (_makemonInMklev) {
+        if (_getInMklev()) {
             const loc = map.at(x, y);
             startsUndetected = canHideUnderObjAt(map, x, y)
                 && !IS_POOL(loc?.typ)
@@ -2283,7 +2313,7 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     } else if (ptr.mlet === S_EEL && map) {
         // C ref: makemon.c:1319-1322 — eels in mklev call hideunder() (no RNG).
         // Eels hide only in water and not on the Plane of Water.
-        if (_makemonInMklev) {
+        if (_getInMklev()) {
             const loc = map.at(x, y);
             startsUndetected = !!(IS_POOL(loc?.typ) && !map?.flags?.is_waterlevel);
         }
@@ -2479,13 +2509,13 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     }
 
     // C ref: makemon.c:1469-1498 — runtime appear message outside mklev.
-    if (!_makemonInMklev) {
+    if (!_getInMklev()) {
         newsym(mon.mx, mon.my);
         if (!(mmflags & MM_NOMSG) && makemonVisibleToPlayer(mon, map)) {
             const exclaim = !(mmflags & MM_NOEXCLAM);
             const what = Amonnam(mon);
-            const ux = Number.isInteger(_makemonPlayerCtx?.x) ? _makemonPlayerCtx.x : null;
-            const uy = Number.isInteger(_makemonPlayerCtx?.y) ? _makemonPlayerCtx.y : null;
+            const ux = Number.isInteger(_getMakemonPlayerCtx()?.x) ? _getMakemonPlayerCtx().x : null;
+            const uy = Number.isInteger(_getMakemonPlayerCtx()?.y) ? _getMakemonPlayerCtx().y : null;
             let suffix = '';
             if (ux != null && uy != null) {
                 if (dist2(x, y, ux, uy) <= 2) suffix = ' next to you';

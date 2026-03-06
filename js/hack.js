@@ -40,7 +40,7 @@ import { place_object } from './mkobj.js';
 import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
 import { dosearch0 } from './detect.js';
-import { newsym, setDisplayContext, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './display.js';
+import { newsym, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './display.js';
 import { helpless } from './mon.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
@@ -466,7 +466,6 @@ export async function domove_swap_with_pet(mon, nx, ny, dir, player, map, displa
 
     // C ref: player moved — mark FOV dirty; vision_recalc fires at start of moveloop_core
     if (game.fov) {
-        setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
         mark_vision_dirty();
         newsym(oldPlayerX, oldPlayerY);  // show pet at old player position
         newsym(player.x, player.y);      // show '@' at new player position
@@ -874,7 +873,6 @@ export async function domove_core(dir, player, map, display, game) {
 
     // C ref: player moved — mark FOV dirty; vision_recalc fires at start of moveloop_core
     if (game.fov) {
-        setDisplayContext({ display, player, fov: game.fov, flags: game.flags, map });
         mark_vision_dirty();
         newsym(oldX, oldY);          // update old player position (show terrain)
         newsym(player.x, player.y);  // update new player position (show '@')

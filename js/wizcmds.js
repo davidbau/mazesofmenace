@@ -100,7 +100,6 @@ export async function wizGenesis(game) {
             const loc = map.at(mx, my);
             if (!loc || !ACCESSIBLE(loc.typ)) continue;
             if (map.monsterAt(mx, my)) continue;
-            setMakemonPlayerContext(player);
             const mon = makemon(mndx, mx, my, 0, player.dungeonLevel, map);
             if (mon) {
                 mon.sleeping = false;
@@ -201,7 +200,7 @@ import { isBranchLevel } from './dungeon.js';
 import { otherSpecialLevels } from './special_levels.js';
 import { getlin } from './input.js';
 import { COLNO, ROWNO, ACCESSIBLE, MAXLEVEL, isok } from './const.js';
-import { makemon, setMakemonPlayerContext } from './makemon.js';
+import { makemon } from './makemon.js';
 import { mons } from './monsters.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './pickup.js';
