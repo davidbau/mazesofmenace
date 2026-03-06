@@ -238,7 +238,9 @@ Inventory and baseline captured before code edits began.
 ### Phase 1 — Infrastructure Laydown + Constant Consolidation (complete)
 
 Established leaf header architecture. All exported capitalized constants now
-live in leaf files only. `config.js`, `symbols.js`, `objclass.js` deleted.
+live in leaf files only. `config.js` and `objclass.js` deleted.
+`symbols.js` is intentionally reintroduced as a leaf owner for `display.h`
+glyph/symbol constants.
 Constant export rule enforced via audit command.
 
 ### Phase 2 — C Field Name Normalization (complete)
@@ -274,13 +276,13 @@ Exit gate:
 - Ownership mapping in `docs/MODULES.md` reflects code reality. ✓
 - No parity regression vs baseline. ✓
 
-### Phase 4 — Remove `set*Context` Wiring Hacks ✓
+### Phase 4 — Remove `set*Context` Wiring Hacks (in progress)
 
 Created `gstate.js` — a game state singleton (mirrors C's global `u`/`level`/
 `flags`). `allmain.js` calls `setGame(this)` once; modules read
 `gstate.game.player`, `gstate.game.map`, `gstate.game.display`, etc.
 
-Tiers 1-3 & 5 completed (11 setters removed or reduced to no-ops):
+Substantial progress completed (11 setters removed or reduced to no-ops):
 
 | Removed setter | Was in | Replaced with |
 |---|---|---|
@@ -296,12 +298,13 @@ Tiers 1-3 & 5 completed (11 setters removed or reduced to no-ops):
 | `setTimerContext` | timeout.js | `gstate.game` getter properties |
 | `setCurrentTurn` | timeout.js | `gstate.game._currentTurn` |
 
-Tier 4 deferred — level-generation setters (`setLevelContext`,
-`setFinalizeContext`, `setSplevPlayerContext`, `setCurrentLevelStairs`)
-are initialization for procedural generation, not wiring hacks.
+Remaining active setters pending migration or explicit design retention:
+- `setDisplayContext` (`display.js`) for headless explicit override save/restore.
+- `setMakemonPlayerContext` / `setMakemonRoleContext` / `setMakemonLevelContext` (`makemon.js`).
+- `setLevelContext` / `setFinalizeContext` / `setSplevPlayerContext` (`sp_lev.js`).
 
 Exit gate:
-- No `set*Context`/`set*Player` wiring remains (except deferred Tier 4). ✓
+- No `set*Context`/`set*Player` wiring remains (except explicitly accepted bootstrap-only cases). (pending)
 - No parity regression vs baseline (26/34 gameplay, 2511 unit). ✓
 
 ## Non-Negotiable Autonomy Rules

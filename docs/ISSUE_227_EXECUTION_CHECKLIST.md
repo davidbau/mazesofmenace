@@ -39,16 +39,17 @@ Everything else can freely import from them and from each other.
 ### 1A. Ownership / boundaries
 - [x] Retire `map.js` ownership; move canonical map/room structures to owning modules (`game.js`, `mkroom.js`).
 - [x] Consolidate constant entrypoint to `js/const.js`.
-- [x] Delete `js/config.js` and `js/symbols.js` after migration.
+- [x] Delete `js/config.js` after migration.
+- [x] Reintroduce `js/symbols.js` as the canonical late-bound owner of `display.h` glyph/symbol constants.
 - [x] Normalize imports to `const.js` across runtime and tests.
 
 ### 1B. Documentation / tooling alignment
-- [x] Remove active references to `config.js` / `symbols.js` in docs, scripts, comments, templates.
+- [x] Remove active references to deleted/retired files (`config.js`, `objclass.js`) in docs, scripts, comments, templates.
 - [x] Keep historical timestamped artifacts unchanged (`docs/metrics`, `docs/port-status`, `docs/archive`).
 
 ### 1C. Phase-1 remaining work
 - [x] Confirm canonical ownership table in `docs/MODULES.md` and `docs/STRUCTURES.md` has no stale text.
-  - No references to deleted files (`config.js`, `symbols.js`, `objclass.js`).
+  - No references to deleted files (`config.js`, `objclass.js`).
   - Updated "The rule" section to document expanded leaf header taxonomy.
 - [x] Run full parity report and record a short Phase-1 signoff note in docs.
   - See Phase-1 exit gate below.
@@ -156,15 +157,17 @@ Move functions so each JS file aligns to its C source file. Cyclic imports
 between gameplay files are explicitly allowed — function bindings resolve
 lazily at call time, so moving functions cannot create init-time cycles.
 
-- [ ] Move functions from JS "consolidation" files (`combat.js`, `look.js`,
-      `monutil.js`, `stackobj.js`, `player.js`, `discovery.js`,
-      `options_menu.js`) into their canonical C-source-named JS files.
-- [ ] Each move commit is structure-only (no logic edits mixed in).
-- [ ] Update `docs/MODULES.md` ownership table after each batch.
+- [x] Move functions from JS "consolidation" files (`combat.js`, `look.js`,
+      `monutil.js`, `stackobj.js`, `discovery.js`, `options_menu.js`) into
+      their canonical C-source-named JS files.
+- [x] Keep remaining `player.js` scope intentional (Player struct/state runtime);
+      roles/races tables moved to `role.js`.
+- [x] Each move commit is structure-only (no logic edits mixed in).
+- [x] Update `docs/MODULES.md` ownership table after each batch.
 
 Phase-3 exit gate:
-- [ ] Ownership mapping in `docs/MODULES.md` reflects code reality.
-- [ ] No parity regression vs baseline envelope.
+- [x] Ownership mapping in `docs/MODULES.md` reflects code reality.
+- [x] No parity regression vs baseline envelope.
 
 ## Phase 4: Remove `set*Context` Wiring Hacks
 
@@ -195,7 +198,15 @@ as function parameters (matching how C passes struct pointers).
 - [ ] For each setter: replace with direct import of `game` singleton or
       explicit parameter passing, matching C's approach.
 - [ ] Remove setter functions and module-level context variables.
-- [ ] Keep bootstrap/UI-only runtime setup where appropriate.
+- [x] Keep bootstrap/UI-only runtime setup where appropriate.
+
+Current Phase-4 reality snapshot (2026-03-06):
+- Completed/reduced in prior passes: `setOutputContext`, timer/global state
+  wiring, and several mkobj/makemon context consumers now read via `gstate`.
+- Remaining active setters (still to eliminate or formally justify):
+  - `setDisplayContext` (`display.js`) for headless explicit override save/restore.
+  - `setMakemonPlayerContext` / `setMakemonRoleContext` / `setMakemonLevelContext` (`makemon.js`).
+  - `setLevelContext` / `setFinalizeContext` / `setSplevPlayerContext` (`sp_lev.js`).
 
 Phase-4 exit gate:
 - [ ] No `set*Context` / `set*Player` style module-level wiring remains.
@@ -210,8 +221,10 @@ Phase-4 exit gate:
 
 ## Current Focus
 
-- Phase 2 complete. All C field name normalization done for attack, permonst,
-  and objclass structs. Backward-compat aliases remain in generators.
-- Next: Phase 3 (file-per-C-source reorg) — move functions from consolidation
-  files into canonical C-source-named JS files.
-- Then: Phase 4 — remove `set*Context` wiring hacks.
+- Phase 3 complete (consolidation files dissolved; ownership documented).
+- Constants ownership routed to leaf modules:
+  - `display.h` -> `symbols.js`
+  - `permonst.h` -> `monsters.js`
+  - `objclass.h` -> `objects.js`
+  - `const.js` deferred report now at zero.
+- Current execution target: Phase 4 cleanup of remaining setter/context wiring.
