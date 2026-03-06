@@ -290,6 +290,8 @@ export async function do_attack(player, mtmp, display, map, opts = {}) {
     // C ref: uhitm.c:550-552 — pre-attack exercise and engrave wipe
     await exercise(player, A_STR, true);
     await u_wipe_engr(player, map, 3);
+    // TODO: C uhitm.c:555-562 — leprechaun dodge (rn2(7) + m_move)
+    // TODO: C uhitm.c:564-567 — Upolyd hmonas() dispatch
     // Delegate to hmon for the normal case
     return await do_attack_core(player, mtmp, display, map, game);
 }
