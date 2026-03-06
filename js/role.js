@@ -26,15 +26,10 @@ import {
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     MALE, FEMALE,
     RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
+    ROLE_NONE, ROLE_RANDOM, PICK_RANDOM, PICK_RIGID,
 } from './const.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './monsters.js';
-
-// cf. role.c ROLE_NONE, ROLE_RANDOM, PICK_RANDOM, PICK_RIGID
-export const ROLE_NONE = -1;
-export const ROLE_RANDOM = -2;
-export const PICK_RANDOM = 0;
-export const PICK_RIGID = 1;
 
 // cf. role.c RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter
 const RS_ROLE = 0;

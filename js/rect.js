@@ -5,12 +5,8 @@
 // Rooms are placed by picking a random free rectangle and splitting the
 // remaining space around the allocated room.
 
-import { COLNO, ROWNO } from './const.js';
+import { COLNO, ROWNO, XLIM, YLIM } from './const.js';
 import { rn2 } from './rng.js';
-
-// cf. rect.c:16-17
-export const XLIM = 4;
-export const YLIM = 3;
 
 // cf. rect.c:19-21
 const n_rects = Math.floor((COLNO * ROWNO) / 30);

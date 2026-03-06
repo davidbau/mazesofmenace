@@ -2,7 +2,11 @@
 // cf. steed.c -- saddle application, mounting/dismounting, steed movement and kicks
 
 import { rn2, rnd, rn1 } from './rng.js';
-import { isok, A_WIS, A_DEX, A_CHA, W_SADDLE } from './const.js';
+import {
+    isok, A_WIS, A_DEX, A_CHA, W_SADDLE,
+    DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_FELL,
+    DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, DISMOUNT_GENERIC,
+} from './const.js';
 import { pline, You, Your, You_feel, You_cant, pline_The } from './pline.js';
 import { exercise } from './attrib_exercise.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -22,16 +26,6 @@ function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
 
 // Monsters that might be ridden
 const STEEDS = [S_QUADRUPED, S_UNICORN, S_ANGEL, S_CENTAUR, S_DRAGON, S_JABBERWOCK];
-
-// Dismount reasons (matching C constants)
-export const DISMOUNT_BYCHOICE = 0;
-export const DISMOUNT_THROWN   = 1;
-export const DISMOUNT_KNOCKED  = 2;
-export const DISMOUNT_FELL     = 3;
-export const DISMOUNT_POLY     = 4;
-export const DISMOUNT_ENGULFED = 5;
-export const DISMOUNT_BONES    = 6;
-export const DISMOUNT_GENERIC  = 7;
 
 // MAXULEV for steed taming checks
 const MAXULEV = 30;

@@ -30,6 +30,7 @@ import {
     PM_PRIEST as ROLE_PRIEST,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     MM_NOGRP, FILL_NONE, FILL_NORMAL, RUMOR_PAD_LENGTH, RANDOM_CLASS,
+    XLIM, YLIM,
 } from './const.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
@@ -879,7 +880,7 @@ export function ceiling(x, y, map, levOrMap) {
 
 // Rectangle allocation — imported from rect.js (C ref: rect.c)
 import {
-    XLIM, YLIM, init_rect, get_rect_count, get_rects, rnd_rect, get_rect,
+    init_rect, get_rect_count, get_rects, rnd_rect, get_rect,
     split_rects, update_rect_pool_for_room, rect_bounds
 } from './rect.js';
 export { init_rect, get_rect_count, get_rects, rnd_rect, get_rect, split_rects, update_rect_pool_for_room };

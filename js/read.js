@@ -30,7 +30,7 @@ import { hcolor } from './do_name.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { gold_detect, food_detect, trap_detect, do_mapping, cvt_sdoor_to_door } from './detect.js';
 import { explode } from './explode.js';
-import { EXPL_FIERY } from './explode.js';
+import { EXPL_FIERY } from './const.js';
 import { tmp_at } from './animation.js';
 import { DISP_BEAM, DISP_END } from './const.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';

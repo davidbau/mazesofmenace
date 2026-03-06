@@ -4,7 +4,12 @@
 //                 adtyp_to_expltype, mon_explodes
 
 import { rn2, rnd, d } from './rng.js';
-import { isok } from './const.js';
+import {
+  isok,
+  EXPL_DARK, EXPL_NOXIOUS, EXPL_MUDDY, EXPL_WET, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, EXPL_MAX,
+  MON_EXPLODE, BURNING_OIL, TRAP_EXPLODE,
+  MAY_HITMON, MAY_HITYOU, MAY_HIT, MAY_DESTROY, MAY_FRACTURE,
+} from './const.js';
 import { AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
          MR_FIRE, MR_COLD, MR_ELEC,
          mons } from './monsters.js';
@@ -14,28 +19,6 @@ import {
   tmp_at, nh_delay_output,
 } from './animation.js';
 import { DISP_BEAM, DISP_CHANGE, DISP_END } from './const.js';
-
-// Explosion display types (C ref: explode.c)
-export const EXPL_DARK = 0;
-export const EXPL_NOXIOUS = 1;
-export const EXPL_MUDDY = 2;
-export const EXPL_WET = 3;
-export const EXPL_MAGICAL = 4;
-export const EXPL_FIERY = 5;
-export const EXPL_FROSTY = 6;
-export const EXPL_MAX = 7;
-
-// Explosion source types for olet parameter
-export const MON_EXPLODE = -1;
-export const BURNING_OIL = -2;
-export const TRAP_EXPLODE = -3;
-
-// Scatter flags
-export const MAY_HITMON = 0x1;
-export const MAY_HITYOU = 0x2;
-export const MAY_HIT = (0x1 | 0x2);
-export const MAY_DESTROY = 0x4;
-export const MAY_FRACTURE = 0x8;
 
 // cf. explode.c:984 — adtyp_to_expltype(adtyp)
 export function adtyp_to_expltype(adtyp) {

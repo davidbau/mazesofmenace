@@ -21,6 +21,7 @@ import {
     TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     IS_WALL, IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, IS_OBSTRUCTED,
     D_NODOOR,
+    VAULT_GUARD_TIME, GD_EATGOLD, GD_DESTROYGOLD,
 } from './const.js';
 import { PM_GUARD, PM_CROESUS } from './monsters.js';
 import { COIN_CLASS, ROCK, BOULDER, TIN_WHISTLE, GOLD_PIECE } from './objects.js';
@@ -43,9 +44,6 @@ import { cansee, couldsee, block_point, unblock_point, recalc_block_point } from
 
 // ---------- Constants ----------
 const FCSIZ = ROWNO + COLNO;
-export const VAULT_GUARD_TIME = 30;
-export const GD_EATGOLD = 0x01;
-export const GD_DESTROYGOLD = 0x02;
 
 // RLOC flags (matching teleport.js)
 const RLOC_NOMSG = 0x0001;

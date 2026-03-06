@@ -16,7 +16,8 @@ import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, POOL,
          is_pit, is_hole, A_STR, SLT_ENCUMBER,
          W_BALL, W_CHAIN, W_WEAPONS,
          NO_KILLER_PREFIX, KILLED_BY_AN, KILLED_BY,
-         TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
+         TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL,
+         BC_BALL, BC_CHAIN } from './const.js';
 import { xname } from './objnam.js';
 import { HEAVY_IRON_BALL, IRON_CHAIN } from './objects.js';
 import { exercise } from './attrib_exercise.js';
@@ -29,10 +30,6 @@ let bcrestriction = 0;
 const BCPOS_DIFFER = 0; // ball & chain at different positions
 const BCPOS_CHAIN = 1;  // chain on top of ball
 const BCPOS_BALL = 2;   // ball on top of chain
-
-// cf. ball.c:97-98 — bc_felt bitmasks
-export const BC_BALL = 0x01;
-export const BC_CHAIN = 0x02;
 
 // Helper: carried(obj) — is object in player inventory?
 function carried(obj) {

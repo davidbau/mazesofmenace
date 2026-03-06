@@ -425,6 +425,94 @@ export const GEHENNOM = 5;
 export const VLADS_TOWER = 6;
 export const TUTORIAL = 8;
 
+// Role/race selection sentinels and chooser policy (src/role.c)
+// Runtime fields:
+// - flags.initrole/initrace/initgend/initalign unresolved-state sentinels
+// - rigid/random chooser mode for role-picking helpers
+export const ROLE_NONE = -1;
+export const ROLE_RANDOM = -2;
+export const PICK_RANDOM = 0;
+export const PICK_RIGID = 1;
+
+// Digging target classification and digcheck return codes (src/dig.c)
+// Runtime fields:
+// - dig target classification from dig_typ()
+// - dig viability/error code from dig_check()
+export const DIGTYP_UNDIGGABLE = 0;
+export const DIGTYP_ROCK = 1;
+export const DIGTYP_STATUE = 2;
+export const DIGTYP_BOULDER = 3;
+export const DIGTYP_DOOR = 4;
+export const DIGTYP_TREE = 5;
+export const DIGCHECK_PASSED = 0;
+export const DIGCHECK_PASSED_PITONLY = 1;
+export const DIGCHECK_PASSED_DESTROY_TRAP = 2;
+export const DIGCHECK_FAILED = 10;
+export const DIGCHECK_FAIL_ONLADDER = 11;
+export const DIGCHECK_FAIL_ONSTAIRS = 12;
+export const DIGCHECK_FAIL_THRONE = 13;
+export const DIGCHECK_FAIL_ALTAR = 14;
+export const DIGCHECK_FAIL_AIRLEVEL = 15;
+export const DIGCHECK_FAIL_WATERLEVEL = 16;
+export const DIGCHECK_FAIL_TOOHARD = 17;
+export const DIGCHECK_FAIL_UNDESTROYABLETRAP = 18;
+export const DIGCHECK_FAIL_CANTDIG = 19;
+export const DIGCHECK_FAIL_BOULDER = 20;
+export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = 21;
+
+// Explosion type/source/flag constants (src/explode.c)
+// Runtime fields:
+// - explode(..., expltype/olet) rendering and source class
+// - scatter/explosion hit+destroy flag masks
+export const EXPL_DARK = 0;
+export const EXPL_NOXIOUS = 1;
+export const EXPL_MUDDY = 2;
+export const EXPL_WET = 3;
+export const EXPL_MAGICAL = 4;
+export const EXPL_FIERY = 5;
+export const EXPL_FROSTY = 6;
+export const EXPL_MAX = 7;
+export const MON_EXPLODE = -1;
+export const BURNING_OIL = -2;
+export const TRAP_EXPLODE = -3;
+export const MAY_HITMON = 0x1;
+export const MAY_HITYOU = 0x2;
+export const MAY_HIT = (0x1 | 0x2);
+export const MAY_DESTROY = 0x4;
+export const MAY_FRACTURE = 0x8;
+
+// Steed dismount reason enum (src/steed.c)
+// Runtime fields: dismount_steed(reason) reason selector.
+export const DISMOUNT_BYCHOICE = 0;
+export const DISMOUNT_THROWN = 1;
+export const DISMOUNT_KNOCKED = 2;
+export const DISMOUNT_FELL = 3;
+export const DISMOUNT_POLY = 4;
+export const DISMOUNT_ENGULFED = 5;
+export const DISMOUNT_BONES = 6;
+export const DISMOUNT_GENERIC = 7;
+
+// Vault guard constants (src/vault.c)
+// Runtime fields: guard timers and guard activity/witness bits.
+export const VAULT_GUARD_TIME = 30;
+export const GD_EATGOLD = 0x01;
+export const GD_DESTROYGOLD = 0x02;
+
+// Attribute constitution-gain reason enum (src/attrib.c)
+// Runtime fields: adjcon(reason) reason selector.
+export const A_CG_CONVERT = 0;
+export const A_CG_HELM_ON = 1;
+export const A_CG_HELM_OFF = 2;
+
+// Punishment control bits and rectangle split limits (src/ball.c, src/rect.c)
+// Runtime fields:
+// - drag_ball control mask in punishment movement
+// - map rectangle generation limits in room splitting
+export const BC_BALL = 0x01;
+export const BC_CHAIN = 0x02;
+export const XLIM = 4;
+export const YLIM = 3;
+
 // Maximum values
 export const MAXNROFROOMS = 40;
 export const MAXDUNGEON = 16;

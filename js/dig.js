@@ -34,6 +34,12 @@ import {
     DB_MOAT, DB_LAVA, DB_ICE, DB_UNDER,
     BEAR_TRAP, LANDMINE, HOLE, TRAPDOOR, PIT, SPIKED_PIT,
     SHOPBASE,
+    DIGTYP_UNDIGGABLE, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_TREE,
+    DIGCHECK_PASSED, DIGCHECK_PASSED_PITONLY, DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_FAILED,
+    DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_ALTAR,
+    DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAIL_TOOHARD,
+    DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_BOULDER,
+    DIGCHECK_FAIL_OBJ_POOL_OR_TRAP,
 } from './const.js';
 import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -62,13 +68,6 @@ import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './const.js';
 // Constants (cf. dig.c:19-27)
 // ============================================================================
 
-// Indices returned by dig_typ()
-export const DIGTYP_UNDIGGABLE = 0;
-export const DIGTYP_ROCK = 1;
-export const DIGTYP_STATUE = 2;
-export const DIGTYP_BOULDER = 3;
-export const DIGTYP_DOOR = 4;
-export const DIGTYP_TREE = 5;
 
 // ============================================================================
 // Helper functions (inline equivalents of C utility functions)
@@ -1222,22 +1221,6 @@ export function holetime(player) {
 // ============================================================================
 
 // cf. dig.c:206-252 — dig_check result enum
-export const DIGCHECK_PASSED = 0;
-export const DIGCHECK_PASSED_PITONLY = 1;
-export const DIGCHECK_PASSED_DESTROY_TRAP = 2;
-export const DIGCHECK_FAILED = 10;
-export const DIGCHECK_FAIL_ONLADDER = 11;
-export const DIGCHECK_FAIL_ONSTAIRS = 12;
-export const DIGCHECK_FAIL_THRONE = 13;
-export const DIGCHECK_FAIL_ALTAR = 14;
-export const DIGCHECK_FAIL_AIRLEVEL = 15;
-export const DIGCHECK_FAIL_WATERLEVEL = 16;
-export const DIGCHECK_FAIL_TOOHARD = 17;
-export const DIGCHECK_FAIL_UNDESTROYABLETRAP = 18;
-export const DIGCHECK_FAIL_CANTDIG = 19;
-export const DIGCHECK_FAIL_BOULDER = 20;
-export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = 21;
-
 const BY_YOU = 'BY_YOU';
 const BY_OBJECT = 'BY_OBJECT';
 

@@ -19,6 +19,7 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
          FIXED_ABIL, INTRINSIC, TIMEOUT,
          FROM_ROLE as FROMEXPER_BIT, FROM_RACE as FROMRACE_BIT,
          FROM_FORM as FROMFORM_BIT, FROMOUTSIDE } from './const.js';
+import { A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF } from './const.js';
 import { roles, races } from './player.js';
 import { pline, You, Your, You_feel, pline_The, livelog_printf } from './pline.js';
 import { sgn, strstri } from './hacklib.js';
@@ -50,11 +51,6 @@ const FROM_INTR = 3; // intrinsically (eating some corpse or prayer reward)
 const FROM_EXP = 4;  // from experience for some level > 1
 const FROM_FORM_REASON = 5;
 const FROM_LYCN = 6;
-
-// Alignment change reasons
-export const A_CG_CONVERT = 0;
-export const A_CG_HELM_ON = 1;
-export const A_CG_HELM_OFF = 2;
 
 const ALIGNLIM = 14;
 
