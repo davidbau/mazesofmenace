@@ -41,3 +41,17 @@ conv_ops(const char *s, const char *a, const char *b, int x)
 {
     return strlen(s) + atoi(s) + abs(x) + strcmpi(a, b) + strncmpi(a, b, 2);
 }
+
+#define ACURR(x) acurr(x)
+#define STR18(x) (18+(x))
+#define DEADMONSTER(m) ((m)->mhp < 1)
+int acurr(int);
+
+int
+macro_ops(int idx)
+{
+    int st = ACURR(idx);
+    if (st > STR18(100))
+        return 1;
+    return 0;
+}

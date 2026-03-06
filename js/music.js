@@ -35,7 +35,7 @@ import { consume_obj_charge, sobj_at } from './invent.js';
 import { selftouch, mselftouch } from './trap.js';
 import { losehp } from './hack.js';
 import { in_rooms } from './hack.js';
-import { maketrap } from './dungeon.js';
+import { maketrap, In_sokoban, In_V_tower } from './dungeon.js';
 import { set_levltyp } from './mkmaze.js';
 import { fillholetyp, liquid_flow } from './dig.js';
 import { unblock_point, recalc_block_point, cansee } from './vision.js';
@@ -116,61 +116,50 @@ function Maybe_Half_Phys(n, player) {
 
 function plur(n) { return n === 1 ? '' : 's'; }
 
-// ============================================================================
-// cf. music.c:44 — awaken_scare(mtmp, scary)
+// Autotranslated from music.c:44 — awaken_scare(mtmp, scary)
 // Wake up monster, possibly scare it.
-// ============================================================================
 export async function awaken_scare(mtmp, scary) {
     mtmp.msleeping = 0;
-    mtmp.sleeping = false;
     mtmp.mcanmove = 1;
     mtmp.mfrozen = 0;
-    // may scare some monsters -- waiting monsters excluded
+    /* may scare some monsters -- waiting monsters excluded */
     if (!unique_corpstat(mtmp.data || mtmp.type)
         && ((mtmp.mstrategy || 0) & STRAT_WAITMASK) !== 0) {
         mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
     } else if (scary
                && !is_mindless(mtmp.data || mtmp.type)
                && !resist(mtmp, TOOL_CLASS, 0)
-               // some monsters are immune
                && onscary(null, 0, 0, mtmp)) {
         await monflee(mtmp, 0, false, true);
     }
 }
 
-// ============================================================================
-// cf. music.c:66 — awaken_monsters(distance)
+// Autotranslated from music.c:66 — awaken_monsters(distance)
 // Wake every monster in range.
-// ============================================================================
 export async function awaken_monsters(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         const distm = mdistu(mtmp, player);
-        if (distm < distance) {
+        if (distm < distance)
             await awaken_scare(mtmp, (distm < Math.floor(distance / 3)));
-        }
     }
 }
 
-// ============================================================================
-// cf. music.c:84 — put_monsters_to_sleep(distance)
+// Autotranslated from music.c:84 — put_monsters_to_sleep(distance)
 // Make monsters fall asleep. Note that they may resist the spell.
-// ============================================================================
 export function put_monsters_to_sleep(distance, map, player) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
         if (mdistu(mtmp, player) < distance
             && sleep_monst(mtmp, d(10, 10), TOOL_CLASS)) {
-            mtmp.msleeping = 1; // 10d10 turns + wake_nearby to rouse
+            mtmp.msleeping = 1; /* 10d10 turns + wake_nearby to rouse */
             slept_monst(mtmp);
         }
     }
 }
 
-// ============================================================================
-// cf. music.c:104 — charm_snakes(distance)
+// Autotranslated from music.c:104 — charm_snakes(distance)
 // Charm snakes in range. Note that the snakes are NOT tamed.
-// ============================================================================
 export async function charm_snakes(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -194,10 +183,8 @@ export async function charm_snakes(distance, map, player, fov) {
     }
 }
 
-// ============================================================================
-// cf. music.c:138 — calm_nymphs(distance)
+// Autotranslated from music.c:138 — calm_nymphs(distance)
 // Calm nymphs in range.
-// ============================================================================
 export async function calm_nymphs(distance, map, player, fov) {
     for (const mtmp of (map.monsters || [])) {
         if (DEADMONSTER(mtmp)) continue;
@@ -205,7 +192,6 @@ export async function calm_nymphs(distance, map, player, fov) {
         if (ptr && ptr.mlet === S_NYMPH && mtmp.mcanmove
             && mdistu(mtmp, player) < distance) {
             mtmp.msleeping = 0;
-            mtmp.sleeping = false;
             mtmp.mpeaceful = 1;
             mtmp.mavenge = 0;
             mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
@@ -215,14 +201,11 @@ export async function calm_nymphs(distance, map, player, fov) {
     }
 }
 
-// ============================================================================
-// cf. music.c:161 — awaken_soldiers(bugler)
+// Autotranslated from music.c:161 — awaken_soldiers(bugler)
 // Awake soldiers anywhere the level (and any nearby monster).
-// ============================================================================
-
 export async function awaken_soldiers(bugler, map, player, fov) {
     const isHero = (bugler === player || bugler === 'player');
-    // distance of affected non-soldier monsters to bugler
+    /* distance of affected non-soldier monsters to bugler */
     const distance = (isHero
         ? (player.ulevel || 1)
         : ((bugler.data || bugler.type || {}).mlevel || 0)) * 30;
@@ -234,45 +217,40 @@ export async function awaken_soldiers(bugler, map, player, fov) {
             if (!mtmp.mtame)
                 mtmp.mpeaceful = 0;
             mtmp.msleeping = 0;
-            mtmp.sleeping = false;
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
             mtmp.mstrategy = (mtmp.mstrategy || 0) & ~STRAT_WAITMASK;
             if (canseemon(mtmp, player, fov))
                 await pline(`${Monnam(mtmp)} is now ready for battle!`);
             else if (!player.Deaf)
-                await Norep('%s the rattle of battle gear being readied.', 'You hear');
+                await Norep('You hear the rattle of battle gear being readied.');
         } else {
             const distm = isHero
                 ? mdistu(mtmp, player)
                 : dist2(bugler.mx, bugler.my, mtmp.mx, mtmp.my);
-            if (distm < distance) {
+            if (distm < distance)
                 await awaken_scare(mtmp, (distm < Math.floor(distance / 3)));
-            }
         }
     }
 }
 
-// ============================================================================
-// cf. music.c:195 — charm_monsters(distance)
+// Autotranslated from music.c:195 — charm_monsters(distance)
 // Charm monsters in range. Note that they may resist the spell.
-// ============================================================================
 export function charm_monsters(distance, map, player) {
     if (player.uswallow)
-        distance = 0; // only ustuck affected
+        distance = 0; /* only ustuck affected */
 
     const monstersCopy = [...(map.monsters || [])];
     for (const mtmp of monstersCopy) {
         if (DEADMONSTER(mtmp)) continue;
         if (mdistu(mtmp, player) <= distance) {
-            // a shopkeeper can't be tamed but tamedog() pacifies an angry one
+            /* a shopkeeper can't be tamed but tamedog() pacifies an angry one */
             if (!resist(mtmp, TOOL_CLASS, 0) || mtmp.isshk) {
-                // tamedog(mtmp, null, true) — simplified: tame the monster
+                /* tamedog(mtmp, null, true) — simplified until tamedog is ported */
                 if (!mtmp.isshk) {
                     mtmp.mtame = 10;
                     mtmp.mpeaceful = 1;
                 } else {
-                    // pacify angry shopkeeper
                     mtmp.mpeaceful = 1;
                 }
                 mtmp.mavenge = 0;
@@ -514,39 +492,37 @@ async function do_earthquake(force, map, player, fov) {
     }
 }
 
-// ============================================================================
-// cf. music.c:477 — generic_lvl_desc()
+// Autotranslated from music.c:477 — generic_lvl_desc()
 // Returns a generic description of the current level type for messages.
-// ============================================================================
-export function generic_lvl_desc() {
-    // Simplified: endgame/sokoban/vlad tower not modeled yet
+export function generic_lvl_desc(map) {
+    /* Is_astralevel, Is_sanctum, In_endgame not yet ported */
+    if (In_sokoban && map && In_sokoban(map.uz || map))
+        return 'puzzle';
+    if (In_V_tower && map && In_V_tower(map.uz || map))
+        return 'tower';
     return 'dungeon';
 }
 
-// ============================================================================
-// Beats table (cf. music.c:494)
-// ============================================================================
+// Autotranslated from music.c:494 — beats table
 
 const beats = [
     'stepper', 'one drop', 'slow two', 'triple stroke roll',
     'double shuffle', 'half-time shuffle', 'second line', 'train',
 ];
 
-// ============================================================================
-// cf. music.c:732 — improvised_notes(same_as_last_time)
+// Autotranslated from music.c:732 — improvised_notes(same_as_last_time)
 // Creates a random note sequence or returns the previous sequence if unchanged.
-// ============================================================================
 
-// Module-level state for the jingle context
+// Module-level state for the jingle context (C: svc.context.jingle[6])
 let _jingle = '';
 export function improvised_notes(player) {
     const notes = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
     let same_as_last_time = false;
 
-    // C: if (!(Unchanging && svc.context.jingle[0] != '\0'))
+    /* You can change your tune, usually */
     const unchanging = player.Unchanging || false;
     if (!(unchanging && _jingle.length > 0)) {
-        const notecount = rnd(5); // rnd(SIZE(svc.context.jingle) - 1) where jingle is char[6], so 1-5
+        const notecount = rnd(5); /* rnd(SIZE(jingle) - 1) where jingle is char[6], so 1-5 */
         let result = '';
         for (let i = 0; i < notecount; ++i) {
             result += ROLL_FROM(notes);
@@ -705,7 +681,7 @@ async function do_improvisation(instr, player, map, display, fov) {
         consume_obj_charge(instr, true, player);
         await You('produce a heavy, thunderous rolling!');
         // Hero_playnotes — sound library, no-op in JS
-        await pline_The(`entire ${generic_lvl_desc()} is shaking around you!`);
+        await pline_The(`entire ${generic_lvl_desc(map)} is shaking around you!`);
         await do_earthquake(Math.floor((ulevel - 1) / 3) + 1, map, player, fov);
         // shake up monsters in a much larger radius...
         await awaken_monsters(ROWNO * COLNO, map, player);

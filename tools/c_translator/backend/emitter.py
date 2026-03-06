@@ -1212,6 +1212,9 @@ def _lower_expr(expr, rewrite_rules):
     out = re.sub(r"#\s*endif\b", " ", out)
     out = re.sub(r"#\s*\w+\b", " ", out)
     out, required_params = _apply_rewrite_rules(out, rewrite_rules)
+    macro_out, macro_req = _apply_macro_rewrites(out, _load_macro_rewrites())
+    out = macro_out
+    required_params.update(macro_req)
     out = re.sub(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", r"\1(", out)
     out = re.sub(r"\bTRUE\b", "true", out)
     out = re.sub(r"\bFALSE\b", "false", out)
@@ -1486,6 +1489,62 @@ def _apply_rewrite_rules(expr, rules):
     while prev != out:
         prev = out
         out = out.replace("game.game.", "game.")
+    return out, required
+
+
+_compiled_macro_rewrites_cache = None
+
+
+def _load_macro_rewrites():
+    global _compiled_macro_rewrites_cache
+    if _compiled_macro_rewrites_cache is not None:
+        return _compiled_macro_rewrites_cache
+    p = Path("tools/c_translator/rulesets/macro_rewrites.json")
+    if not p.exists():
+        _compiled_macro_rewrites_cache = []
+        return _compiled_macro_rewrites_cache
+    data = json.loads(p.read_text(encoding="utf-8"))
+    compiled = []
+    for rule in data.get("rewrites", []):
+        c_pat = rule.get("c", "")
+        js_tpl = rule.get("js", "")
+        req = set(rule.get("requires_params", []))
+        # Count placeholders to determine arity
+        placeholders = re.findall(r"\$(\d+)", c_pat)
+        arity = max((int(n) for n in placeholders), default=0)
+        # Build regex from C pattern
+        if arity == 0:
+            # Simple word boundary match
+            regex = re.compile(r"\b" + re.escape(c_pat) + r"\b")
+        else:
+            # Extract name and build arg-capturing regex
+            m = re.match(r"(\w+)\s*\(", c_pat)
+            if not m:
+                continue
+            name = m.group(1)
+            arg_re = r"\s*([^(),]+?)\s*"
+            args = arg_re + (r"," + arg_re) * (arity - 1)
+            regex = re.compile(r"\b" + re.escape(name) + r"\s*\(" + args + r"\)")
+        compiled.append((regex, js_tpl, req))
+    _compiled_macro_rewrites_cache = compiled
+    return compiled
+
+
+def _apply_macro_rewrites(expr, compiled_macros):
+    out = expr
+    required = set()
+    for _iteration in range(10):
+        prev = out
+        for regex, js_tpl, req in compiled_macros:
+            def _replace(m, _tpl=js_tpl, _req=req):
+                required.update(_req)
+                result = _tpl
+                for i in range(len(m.groups())):
+                    result = result.replace(f"${i + 1}", m.group(i + 1).strip())
+                return result
+            out = regex.sub(_replace, out)
+        if out == prev:
+            break
     return out, required
 
 

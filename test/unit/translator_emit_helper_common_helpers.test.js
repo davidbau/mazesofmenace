@@ -75,3 +75,19 @@ test('emit-helper lowers Sprintf/Snprintf and string helpers', (t) => {
     assert.match(convOps.js, /Math\.abs\(x\)/);
     assert.match(convOps.js, /toLowerCase\(\)\.localeCompare/);
 });
+
+test('emit-helper rewrites parameterized C macros', (t) => {
+    if (!fs.existsSync(CONDA)) {
+        t.skip('conda not available for clang-backed translator run');
+        return;
+    }
+
+    const macroOps = emitHelper('macro_ops');
+    assert.equal(macroOps.meta.translated, true);
+    // ACURR(idx) → acurr(player, idx)
+    assert.match(macroOps.js, /acurr\(player, idx\)/);
+    // STR18(100) → (18 + (100))
+    assert.match(macroOps.js, /\(18 \+ \(100\)\)/);
+    // player param injected into signature
+    assert.match(macroOps.js, /\(.*player.*\)/);
+});

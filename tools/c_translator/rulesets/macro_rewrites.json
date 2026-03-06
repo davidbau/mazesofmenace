@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "rewrites": [
+    {"c": "ACURR($1)", "js": "acurr(player, $1)", "requires_params": ["player"]},
+    {"c": "ACURRSTR", "js": "acurrstr(player)", "requires_params": ["player"]},
+    {"c": "ABASE($1)", "js": "player.attributes[$1]", "requires_params": ["player"]},
+    {"c": "ABON($1)", "js": "player.abon[$1]", "requires_params": ["player"]},
+    {"c": "AEXE($1)", "js": "player.aexe[$1]", "requires_params": ["player"]},
+    {"c": "ATEMP($1)", "js": "player.atemp[$1]", "requires_params": ["player"]},
+    {"c": "ATIME($1)", "js": "player.atime[$1]", "requires_params": ["player"]},
+    {"c": "AMAX($1)", "js": "player.amax[$1]", "requires_params": ["player"]},
+    {"c": "STR18($1)", "js": "(18 + ($1))"},
+    {"c": "DEADMONSTER($1)", "js": "(($1).mhp < 1)"},
+    {"c": "distu($1, $2)", "js": "dist2($1, $2, player.x, player.y)", "requires_params": ["player"]},
+    {"c": "next2u($1, $2)", "js": "(dist2($1, $2, player.x, player.y) <= 2)", "requires_params": ["player"]},
+    {"c": "isok($1, $2)", "js": "isok($1, $2)"},
+    {"c": "m_at($1, $2)", "js": "map.monsters[$1][$2]", "requires_params": ["map"]},
+    {"c": "MON_AT($1, $2)", "js": "(map.monsters[$1][$2] != null)", "requires_params": ["map"]},
+    {"c": "OBJ_AT($1, $2)", "js": "(map.objects[$1][$2] != null)", "requires_params": ["map"]},
+    {"c": "SIZE($1)", "js": "($1).length"},
+    {"c": "Upolyd", "js": "(player.umonnum !== player.umonster)", "requires_params": ["player"]},
+    {"c": "Underwater", "js": "player.uinwater", "requires_params": ["player"]},
+    {"c": "Punished", "js": "(player.uball != null)", "requires_params": ["player"]},
+    {"c": "mdistu($1)", "js": "mdistu($1, player)", "requires_params": ["player"]},
+    {"c": "canseemon($1)", "js": "canseemon($1, player, fov)", "requires_params": ["player", "fov"]},
+    {"c": "mindless($1)", "js": "is_mindless($1)"},
+    {"c": "Unchanging", "js": "(player.Unchanging || false)", "requires_params": ["player"]},
+    {"c": "Deaf", "js": "player.Deaf", "requires_params": ["player"]},
+    {"c": "Stunned", "js": "player.Stunned", "requires_params": ["player"]},
+    {"c": "Confusion", "js": "player.Confusion", "requires_params": ["player"]},
+    {"c": "Hallucination", "js": "player.Hallucination", "requires_params": ["player"]}
+  ]
+}
