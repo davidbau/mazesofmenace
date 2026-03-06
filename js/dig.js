@@ -40,6 +40,7 @@ import {
     DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_FAIL_TOOHARD,
     DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_BOULDER,
     DIGCHECK_FAIL_OBJ_POOL_OR_TRAP,
+    DIR_ERR, N_DIRS, DIR_180, xdir, ydir,
 } from './const.js';
 import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './const.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -64,6 +65,10 @@ import { deltrap } from './dungeon.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_BEAM, DISP_END } from './const.js';
 import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './const.js';
+import { game as _gstate } from './gstate.js';
+import { wake_nearby } from './mon.js';
+import { add_damage, pay_for_damage } from './shk.js';
+import { t_at, conjoined_pits } from './trap.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -209,9 +214,10 @@ export function mdig_tunnel(mtmp, map, player) {
             }
         } else {
             // C: if (flags.verbose) { if (!Unaware && !rn2(3)) draft_message(TRUE); }
-            if (!rn2(3)) {
-                // draft_message(true) — "You feel an unexpected draft."
-                // Message only, no further RNG
+            if (_gstate?.flags?.verbose && !(player?.Unaware || player?.unaware)) {
+                if (!rn2(3)) {
+                    draft_message(true, player);
+                }
             }
         }
         return false;
@@ -220,11 +226,7 @@ export function mdig_tunnel(mtmp, map, player) {
         here.flags = 0;
         unblock_point(mtmp.mx, mtmp.my);
         newsym(mtmp.mx, mtmp.my);
-        // draft_message(false) — "You feel a draft."
-        // C: draft_message consumes rn1(2, ...) + possibly rn1(3, ...) if hallucinating
-        // Since we can't detect hallucination state here, and this is a message-only
-        // path, we skip the draft_message RNG. This is safe because draft_message
-        // is only called for non-hallucinating players in the common case.
+        draft_message(false, player);
         return false;
     } else if (!IS_OBSTRUCTED(here.typ) && !IS_TREE(here.typ)) {
         // No dig — nothing to tunnel through
@@ -239,8 +241,8 @@ export function mdig_tunnel(mtmp, map, player) {
 
     if (IS_WALL(here.typ)) {
         // C: if (flags.verbose && !rn2(5)) You_hear("crashing rock.");
-        if (!rn2(5)) {
-            // "You hear crashing rock." — message only
+        if (_gstate?.flags?.verbose && !rn2(5)) {
+            _gstate?.display?.putstr_message('You hear crashing rock.');
         }
         // C: if (*in_rooms(..., SHOPBASE)) add_damage(...)
         // Shop damage not yet wired
@@ -606,9 +608,43 @@ export function dig_up_grave(cc, map, player) {
 // Since hallucination detection requires player state, this is a light stub.
 // ============================================================================
 
-export function draft_message(unexpected) {
-    // Message display only — no gameplay effect
-    // RNG consumption for hallucination paths is deferred
+export function draft_message(unexpected, player = null) {
+    // C ref: dig.c draft_message(): includes Hallucination branches which
+    // consume RNG. Preserve those RNG calls for parity.
+    const display = _gstate?.display || null;
+    const Hallucination = !!(player?.Hallucination || player?.hallucinating);
+    if (!display || typeof display.putstr_message !== 'function') return;
+
+    if (unexpected) {
+        if (!Hallucination) {
+            display.putstr_message('You feel an unexpected draft.');
+        } else {
+            const weakAttr = (player?.acurrstr ?? 10) < 6
+                || (player?.acurrdex ?? 10) < 6
+                || (player?.acurrcon ?? 10) < 6
+                || (player?.acurrcha ?? 10) < 6
+                || (player?.acurrint ?? 10) < 6
+                || (player?.acurrwis ?? 10) < 6;
+            display.putstr_message(`You feel like you are ${weakAttr ? '4-F' : '1-A'}.`);
+        }
+        return;
+    }
+
+    if (!Hallucination) {
+        display.putstr_message('You feel a draft.');
+        return;
+    }
+
+    const draft_reaction = ['enlisting', 'marching', 'protesting', 'fleeing'];
+    const alignType = Number.isInteger(player?.ualign?.type) ? player.ualign.type : 0;
+    const alignSign = alignType > 0 ? 1 : alignType < 0 ? -1 : 0;
+    let dridx = rn1(2, 1 - alignSign);
+    if ((player?.ualign?.record ?? 0) < 4) {
+        dridx += rn1(3, alignSign - 1);
+    }
+    if (dridx < 0) dridx = 0;
+    if (dridx >= draft_reaction.length) dridx = draft_reaction.length - 1;
+    display.putstr_message(`You feel like ${draft_reaction[dridx]}.`);
 }
 
 
@@ -644,26 +680,57 @@ export async function zap_dig(map, player) {
 
     // C: if (u.dz) { ... } — up/down digging
     if (u.dz) {
-        if (u.dz < 0) {
-            // Dig upward — rock falls on head
-            // C: rnd(hard_helmet(uarmh) ? 2 : 6) — always consumed
-            const dmg = rnd(6); // simplified: assume no hard helmet
-            // C: mksobj_at(ROCK, u.ux, u.uy, FALSE, FALSE)
-            mksobj_at(map, ROCK, u.x, u.y, false, false);
-            newsym(u.x, u.y);
-        } else {
-            // Dig downward
-            watch_dig(null, u.x, u.y, true, map);
-            dighole(false, true, null, map, player);
+        const isAir = !!map?.flags?.is_airlevel;
+        const isWater = !!map?.flags?.is_waterlevel;
+        const underwater = !!(u.Underwater || u.underwater || u.uinwater);
+        if (!isAir && !isWater && !underwater) {
+            const hereTyp = map.at(u.x, u.y)?.typ;
+            const onStairs = (hereTyp === STAIRS || hereTyp === LADDER);
+            if (u.dz < 0 || onStairs) {
+                if (onStairs) {
+                    _gstate?.display?.putstr_message?.(
+                        `The beam bounces off the ${hereTyp === LADDER ? 'ladder' : 'stairs'} and hits the ceiling.`
+                    );
+                }
+                _gstate?.display?.putstr_message?.('You loosen a rock from the ceiling.');
+                _gstate?.display?.putstr_message?.('It falls on your head!');
+                // C: rnd(hard_helmet(uarmh) ? 2 : 6). Keep RNG shape (helmet hardness not wired here).
+                rnd(6);
+                mksobj_at(map, ROCK, u.x, u.y, false, false);
+                newsym(u.x, u.y);
+            } else {
+                watch_dig(null, u.x, u.y, true, map);
+                dighole(false, true, null, map, player);
+            }
         }
         return;
     }
 
     // Normal case: digging across the level
-    const maze_dig = !!(map.flags && map.flags.is_maze_lev);
+    const maze_dig = !!(map.flags && map.flags.is_maze_lev && !map.flags.is_earthlevel);
     let zx = u.x + (u.dx || 0);
     let zy = u.y + (u.dy || 0);
     let shopdoor = false, shopwall = false;
+    let trap_with_u = null;
+    let diridx = 8;
+    let pitdig = false;
+    let pitflow = false;
+    let flow_x = -1, flow_y = -1;
+
+    if (u.utrap && u.utraptype === TT_PIT) {
+        trap_with_u = t_at(u.x, u.y, map);
+        if (trap_with_u) {
+            pitdig = true;
+            diridx = (() => {
+                const dx = u.dx || 0;
+                const dy = u.dy || 0;
+                for (let i = 0; i < N_DIRS; i++) {
+                    if (xdir[i] === dx && ydir[i] === dy) return i;
+                }
+                return DIR_ERR;
+            })();
+        }
+    }
 
     // C: pitdig handling when in a pit — simplified/skipped for now
     let digdepth = rn1(18, 8); // C: digdepth = rn1(18, 8)
@@ -679,11 +746,38 @@ export async function zap_dig(map, player) {
             tmp_at(zx, zy);
             await nh_delay_output();
 
-            if (closed_door(zx, zy, map) || room.typ === SDOOR) {
-                // C: shop damage
-                if (room.typ === SDOOR) {
-                    room.typ = DOOR;
+            if (pitdig) {
+                const adjpit = t_at(zx, zy, map);
+                if (diridx !== DIR_ERR && !conjoined_pits(adjpit, trap_with_u, false, player)) {
+                    digdepth = 0;
+                    if (!(adjpit && (adjpit.ttyp === PIT || adjpit.ttyp === SPIKED_PIT))) {
+                        const cc = { x: zx, y: zy };
+                        if (await adj_pit_checks(cc, '', map)) {
+                            dighole(true, true, cc, map, player);
+                        }
+                    }
+                    const newAdjPit = t_at(zx, zy, map);
+                    if (newAdjPit && (newAdjPit.ttyp === PIT || newAdjPit.ttyp === SPIKED_PIT)) {
+                        const adjidx = DIR_180(diridx);
+                        trap_with_u.conjoined |= (1 << diridx);
+                        newAdjPit.conjoined |= (1 << adjidx);
+                        flow_x = zx;
+                        flow_y = zy;
+                        pitflow = true;
+                    }
+                    if (is_pool(zx, zy, map) || is_lava(zx, zy, map)) {
+                        flow_x = zx - (u.dx || 0);
+                        flow_y = zy - (u.dy || 0);
+                        pitflow = true;
+                    }
+                    break;
                 }
+            } else if (closed_door(zx, zy, map) || room.typ === SDOOR) {
+                if (in_rooms_shopbase(zx, zy, map)) {
+                    add_damage(zx, zy, 400, map, _gstate?.moves || 0);
+                    shopdoor = true;
+                }
+                if (room.typ === SDOOR) room.typ = DOOR;
                 watch_dig(null, zx, zy, true, map);
                 room.flags = D_NODOOR;
                 recalc_block_point(zx, zy);
@@ -716,6 +810,10 @@ export async function zap_dig(map, player) {
                 if (!may_dig(zx, zy, map)) break;
 
                 if (IS_WALL(room.typ) || room.typ === SDOOR) {
+                    if (in_rooms_shopbase(zx, zy, map)) {
+                        add_damage(zx, zy, 500, map, _gstate?.moves || 0);
+                        shopwall = true;
+                    }
                     watch_dig(null, zx, zy, true, map);
                     if (map.flags && map.flags.is_cavernous_lev && !in_town(zx, zy, map)) {
                         room.typ = CORR;
@@ -746,7 +844,17 @@ export async function zap_dig(map, player) {
         tmp_at(DISP_END, 0);
     }
 
-    // C: shopdoor/shopwall pay_for_damage — not yet wired
+    if (pitflow && isok(flow_x, flow_y)) {
+        const ttmp = t_at(flow_x, flow_y, map);
+        if (ttmp && (ttmp.ttyp === PIT || ttmp.ttyp === SPIKED_PIT)) {
+            const filltyp = fillholetyp(ttmp.tx, ttmp.ty, true, map);
+            if (filltyp !== ROOM) pit_flow(ttmp, filltyp, map);
+        }
+    }
+
+    if (shopdoor || shopwall) {
+        pay_for_damage(shopdoor ? 'destroy' : 'dig into', false, map, player, _gstate?.moves || 0);
+    }
 }
 
 
@@ -948,7 +1056,7 @@ export function dig(map, player) {
     const dpx = ctx.pos.x, dpy = ctx.pos.y;
     const uwep = player.weapon;
     const isPick = uwep && (uwep.otyp === PICK_AXE || uwep.otyp === DWARVISH_MATTOCK);
-    const isAxeWep = uwep && !isPick && uwep.otyp >= 0; // simplified axe check
+    const isAxeWep = uwep && (uwep.otyp === AXE || uwep.otyp === BATTLE_AXE);
     const verb = (!uwep || isPick) ? 'dig into' : 'chop through';
     let dcresult = DIGCHECK_PASSED;
 
@@ -956,7 +1064,18 @@ export function dig(map, player) {
     if (!lev) return 0;
 
     // Check if pick-axe was stolen or player teleported
+    const ctxLevel = ctx.level || null;
+    const mapLevel = map?.uz || null;
+    const onSameDigLevel = (() => {
+        if (!ctxLevel || !mapLevel) return true;
+        if (!Number.isInteger(ctxLevel.dnum) || !Number.isInteger(ctxLevel.dlevel)) return true;
+        if (ctxLevel.dnum === 0 && ctxLevel.dlevel === -1) return true;
+        if (!Number.isInteger(mapLevel.dnum) || !Number.isInteger(mapLevel.dlevel)) return true;
+        return ctxLevel.dnum === mapLevel.dnum && ctxLevel.dlevel === mapLevel.dlevel;
+    })();
+
     if (player.uswallow || !uwep || (!isPick && !isAxeWep)
+        || !onSameDigLevel
         || (ctx.down ? (dpx !== player.x || dpy !== player.y)
                      : !next2u(dpx, dpy, player))) {
         return 0;
@@ -965,18 +1084,20 @@ export function dig(map, player) {
     if (ctx.down) {
         dcresult = dig_check(BY_YOU, player.x, player.y, map, player);
         if (dcresult >= DIGCHECK_FAILED) {
-            // digcheck_fail_message would go here
+            digcheck_fail_message(dcresult, BY_YOU, player.x, player.y, player);
             return 0;
         }
     } else {
         if (IS_TREE(lev.typ) && !may_dig(dpx, dpy, map)
             && dig_typ(uwep, dpx, dpy, map) === DIGTYP_TREE) {
-            // "This tree seems to be petrified."
+            _gstate?.display?.putstr_message?.('This tree seems to be petrified.');
             return 0;
         }
         if (IS_OBSTRUCTED(lev.typ) && !may_dig(dpx, dpy, map)
             && dig_typ(uwep, dpx, dpy, map) === DIGTYP_ROCK) {
-            // "This wall/drawbridge is too hard to dig into/chop through."
+            _gstate?.display?.putstr_message?.(
+                `This ${is_drawbridge_wall(dpx, dpy, map) >= 0 ? 'drawbridge' : 'wall'} is too hard to ${verb}.`
+            );
             return 0;
         }
     }
@@ -1109,6 +1230,7 @@ export function dig(map, player) {
             }
         } else if (IS_WALL(lev.typ)) {
             if (shopedge) {
+                add_damage(dpx, dpy, 10, map, _gstate?.moves || 0);
                 dmgtxt = 'damage';
             }
             if (map.flags && map.flags.is_maze_lev) {
@@ -1131,6 +1253,10 @@ export function dig(map, player) {
             }
         } else if (closed_door(dpx, dpy, map)) {
             digtxt = 'You break through the door.';
+            if (shopedge) {
+                add_damage(dpx, dpy, 400, map, _gstate?.moves || 0);
+                dmgtxt = 'break';
+            }
             if (!(lev.flags & D_TRAPPED)) {
                 lev.flags = D_BROKEN;
             }
@@ -1142,6 +1268,12 @@ export function dig(map, player) {
             unblock_point(dpx, dpy);
         }
         newsym(dpx, dpy);
+        if (digtxt && !ctx.quiet) {
+            _gstate?.display?.putstr_message?.(digtxt);
+        }
+        if (dmgtxt) {
+            pay_for_damage(dmgtxt, false, map, player, _gstate?.moves || 0);
+        }
 
         // Earth level: rn2(3), rn2(2) for earth elemental
         if (map.flags && map.flags.is_earthlevel && !rn2(3)) {
@@ -1166,13 +1298,21 @@ export function dig(map, player) {
         const dig_target = dig_typ(uwep, dpx, dpy, map);
         if (IS_WALL(lev.typ) || dig_target === DIGTYP_DOOR) {
             if (in_rooms_shopbase(dpx, dpy, map)) {
+                _gstate?.display?.putstr_message?.(
+                    `This ${IS_DOOR(lev.typ) ? 'door' : 'wall'} seems too hard to ${verb}.`
+                );
                 return 0;
             }
         } else if (dig_target === DIGTYP_UNDIGGABLE
                    || (dig_target === DIGTYP_ROCK && !IS_OBSTRUCTED(lev.typ))) {
             return 0; // statue or boulder got taken
         }
-        // "You hit the <target> with all your might."
+        const d_target = ['', 'rock', 'statue', 'boulder', 'door', 'tree'];
+        if (!_gstate?.did_dig_msg) {
+            _gstate?.display?.putstr_message?.(`You hit the ${d_target[dig_target] || 'rock'} with all your might.`);
+            wake_nearby(false, player);
+            _gstate.did_dig_msg = true;
+        }
     }
     return 1;
 }
@@ -1660,118 +1800,201 @@ export function escape_tomb(map, player) {
     }
 }
 
+// cf. dig.c:30-139 — rm_waslit/mkcavepos/mkcavearea
+// Earth-level cave-in/cave-out helpers used by digging side effects.
+export function rm_waslit(map, player) {
+    if (!map || !player) return false;
+    const here = map.at(player.x, player.y);
+    if (here?.typ === ROOM && !!here.waslit) return true;
+    for (let x = player.x - 2; x < player.x + 3; x++) {
+        for (let y = player.y - 1; y < player.y + 2; y++) {
+            const loc = map.at(x, y);
+            if (loc?.waslit) return true;
+        }
+    }
+    return false;
+}
+
+export function mkcavepos(x, y, dist, waslit, rockit, map) {
+    if (!map || !isok(x, y)) return;
+    const lev = map.at(x, y);
+    if (!lev) return;
+    if (rockit) {
+        if (IS_OBSTRUCTED(lev.typ)) return;
+        if (map.trapAt?.(x, y)) return;
+    } else if (lev.typ === ROOM) {
+        return;
+    }
+
+    unblock_point(x, y);
+    lev.seenv = 0;
+    lev.flags = 0;
+    lev.horizontal = false;
+    if (dist < 3) lev.lit = !rockit;
+    if (waslit) lev.waslit = !rockit;
+    lev.typ = rockit ? STONE : ROOM;
+    newsym(x, y);
+}
+
+export function mkcavearea(rockit, map, player) {
+    if (!map || !player) return;
+    const waslit = rm_waslit(map, player);
+    let xmin = player.x, xmax = player.x;
+    let ymin = player.y, ymax = player.y;
+
+    for (let dist = 1; dist <= 2; dist++) {
+        xmin--;
+        xmax++;
+        if (dist < 2) {
+            ymin--;
+            ymax++;
+            for (let i = xmin + 1; i < xmax; i++) {
+                mkcavepos(i, ymin, dist, waslit, rockit, map);
+                mkcavepos(i, ymax, dist, waslit, rockit, map);
+            }
+        }
+        for (let i = ymin; i <= ymax; i++) {
+            mkcavepos(xmin, i, dist, waslit, rockit, map);
+            mkcavepos(xmax, i, dist, waslit, rockit, map);
+        }
+    }
+
+    const here = map.at(player.x, player.y);
+    if (!rockit && here?.typ === CORR) {
+        here.typ = ROOM;
+        if (waslit) here.waslit = true;
+        newsym(player.x, player.y);
+    }
+}
+
 // Autotranslated from dig.c:140
-export function pick_can_reach(pick, x, y, player) {
-  let t = t_at(x, y), target_in_pit = t && is_pit(t.ttyp) && t.tseen;
-  if (player.utrap && player.utraptype === TT_PIT) {
-    if (target_in_pit) return conjoined_pits(t, t_at(player.x, player.y), false);
-    return bimanual(pick);
-  }
-  if (bimanual(pick) || (player?.Flying || player?.flying || false)) return true;
-  if (!target_in_pit) return true;
-  return false;
+export function pick_can_reach(pick, x, y, player, map = null) {
+    const gmap = map || _gstate?.map || null;
+    const t = gmap?.trapAt?.(x, y) || null;
+    const targetInPit = !!(t && (t.ttyp === PIT || t.ttyp === SPIKED_PIT) && t.tseen);
+    if (player?.utrap && player.utraptype === TT_PIT) {
+        if (targetInPit) {
+            const heroTrap = gmap?.trapAt?.(player.x, player.y) || null;
+            return !!(heroTrap && heroTrap === t);
+        }
+        return !!bimanual(pick);
+    }
+    if (bimanual(pick) || (player?.Flying || player?.flying || false)) return true;
+    return !targetInPit;
 }
 
 // Autotranslated from dig.c:254
-export async function digcheck_fail_message(digresult, madeby, x, y) {
-  let verb = (madeby === BY_YOU && uwep && is_axe(uwep)) ? "chop" : "dig in";
-  if (digresult < DIGCHECK_FAILED) return;
-  switch (digresult) {
+export function digcheck_fail_message(digresult, madeby, x, y, player = null) {
+    if (digresult < DIGCHECK_FAILED) return;
+    const d = _gstate?.display || null;
+    if (!d?.putstr_message) return;
+    const uwep = player?.weapon || null;
+    const verb = (madeby === BY_YOU && uwep && (uwep.otyp === AXE || uwep.otyp === BATTLE_AXE)) ? "chop" : "dig in";
+    switch (digresult) {
     case DIGCHECK_FAIL_AIRLEVEL:
-      await You("cannot %s thin air.", verb);
-    break;
+        d.putstr_message(`You cannot ${verb} thin air.`);
+        break;
     case DIGCHECK_FAIL_ALTAR:
-      await pline_The("altar is too hard to break apart.");
-    break;
+        d.putstr_message("The altar is too hard to break apart.");
+        break;
     case DIGCHECK_FAIL_BOULDER:
-      await There("isn't enough room to %s here.", verb);
-    break;
+        d.putstr_message(`There isn't enough room to ${verb} here.`);
+        break;
     case DIGCHECK_FAIL_ONLADDER:
-      await pline_The("ladder resists your effort.");
-    break;
+        d.putstr_message("The ladder resists your effort.");
+        break;
     case DIGCHECK_FAIL_ONSTAIRS:
-      await pline_The("stairs are too hard to %s.", verb);
-    break;
+        d.putstr_message(`The stairs are too hard to ${verb}.`);
+        break;
     case DIGCHECK_FAIL_THRONE:
-      await pline_The("throne is too hard to break apart.");
-    break;
+        d.putstr_message("The throne is too hard to break apart.");
+        break;
     case DIGCHECK_FAIL_CANTDIG:
-      case DIGCHECK_FAIL_TOOHARD:
-        case DIGCHECK_FAIL_UNDESTROYABLETRAP:
-          await pline_The("%s here is too hard to %s.", await surface(x, y), verb);
-    break;
+    case DIGCHECK_FAIL_TOOHARD:
+    case DIGCHECK_FAIL_UNDESTROYABLETRAP:
+        d.putstr_message(`The surface here is too hard to ${verb}.`);
+        break;
     case DIGCHECK_FAIL_WATERLEVEL:
-      await pline_The("%s splashes and subsides.", hliquid("water"));
-    break;
-    case DIGCHECK_FAIL_OBJ_POOL_OR_TRAP:
-      case DIGCHECK_PASSED:
-        case DIGCHECK_PASSED_PITONLY:
-          case DIGCHECK_PASSED_DESTROY_TRAP:
-            break;
-  }
+        d.putstr_message("The water splashes and subsides.");
+        break;
+    default:
+        break;
+    }
 }
 
 // Autotranslated from dig.c:1361
 export function watchman_canseeu(mtmp) {
-  if (is_watch(mtmp.data) && mtmp.mcansee && m_canseeu(mtmp) && mtmp.mpeaceful) return true;
-  return false;
+    if (!mtmp || !mtmp.data) return false;
+    const canSee = (mtmp.mcansee !== false);
+    return !!(is_watch(mtmp.data) && canSee && mtmp.mpeaceful);
 }
 
 // Autotranslated from dig.c:1762
 export async function adj_pit_checks(cc, msg, map) {
-  let ltyp, room;
-  let foundation_msg = "The foundation is too hard to dig through from this angle.";
-  if (!cc) return false;
-  if (!isok(cc.x, cc.y)) return false;
-   msg = '\0';
-  room = map.locations[cc.x][cc.y];
-  ltyp = room.typ, room.flags = 0;
-  if (is_pool(cc.x, cc.y) || is_lava(cc.x, cc.y)) { return false; }
-  else if (closed_door(cc.x, cc.y) || room.typ === SDOOR) { msg = foundation_msg; return false; }
-  else if (IS_WALL(ltyp)) { msg = foundation_msg; return false; }
-  else if (IS_TREE(ltyp)) { msg = "The tree's roots glow then fade."; return false; }
-  else if (ltyp === STONE || ltyp === SCORR) {
-    if (room.wall_info & W_NONDIGGABLE) { msg = "The rock glows then fades."; return false; }
-  }
-  else if (ltyp === IRONBARS) {
-    msg = "The bars go much deeper than your pit.";
-    return false;
-  }
-  else if (IS_SINK(ltyp)) {
-    msg = "A tangled mass of plumbing remains below the sink.";
-    return false;
-  }
-  else if (await On_ladder(cc.x, cc.y)) { msg = "The ladder is unaffected."; return false; }
-  else {
-    let supporting =  0;
-    if (IS_FOUNTAIN(ltyp)) supporting = "fountain";
-    else if (IS_THRONE(ltyp)) supporting = "throne";
-    else if (IS_ALTAR(ltyp)) supporting = "altar";
-    else if (await On_stairs(cc.x, cc.y)) supporting = "stairs";
-    else if (ltyp === DRAWBRIDGE_DOWN   || ltyp === DBWALL) supporting = "drawbridge";
-    if (supporting) {
-      msg = `The ${s_suffix(supporting)} supporting structures remain intact.`;
-      return false;
+    if (!cc || !map || !isok(cc.x, cc.y)) return false;
+    const room = map.at(cc.x, cc.y);
+    if (!room) return false;
+    const ltyp = room.typ;
+    const foundation_msg = "The foundation is too hard to dig through from this angle.";
+    let out = null;
+
+    if (is_pool(cc.x, cc.y, map) || is_lava(cc.x, cc.y, map)) {
+        out = null;
+    } else if (closed_door(cc.x, cc.y, map) || ltyp === SDOOR || IS_WALL(ltyp)) {
+        out = foundation_msg;
+    } else if (IS_TREE(ltyp)) {
+        out = "The tree's roots glow then fade.";
+    } else if ((ltyp === STONE || ltyp === SCORR) && room.nondiggable) {
+        out = "The rock glows then fades.";
+    } else if (ltyp === IRONBARS) {
+        out = "The bars go much deeper than your pit.";
+    } else if (IS_SINK(ltyp)) {
+        out = "A tangled mass of plumbing remains below the sink.";
     }
-  }
-  return true;
+    if (out) {
+        await _gstate?.display?.putstr_message?.(out);
+        return false;
+    }
+    return true;
 }
 
 // Autotranslated from dig.c:1843
 export function pit_flow(trap, filltyp, map) {
-  if (trap && filltyp !== ROOM && is_pit(trap.ttyp)) {
-    let t, idx;
-    t = trap;
-    map.locations[t.tx][t.ty].typ = filltyp, map.locations[t.tx][t.ty].flags = 0;
-    liquid_flow(t.tx, t.ty, filltyp, trap, u_at(t.tx, t.ty) ? "Suddenly %s flows in from the adjacent pit!" :  0);
-    for (idx = 0; idx < N_DIRS; ++idx) {
-      if (t.conjoined & (1 << idx)) {
-        let x, y, t2;
-        x = t.tx + xdir;
-        y = t.ty + ydir;
-        t2 = t_at(x, y);
-        pit_flow(t2, filltyp);
-      }
+    if (!trap || !map || filltyp === ROOM) return;
+    if (trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT) return;
+    const loc = map.at(trap.tx, trap.ty);
+    if (!loc) return;
+    loc.typ = filltyp;
+    loc.flags = 0;
+    liquid_flow(trap.tx, trap.ty, filltyp, trap, null, map);
+}
+
+// cf. dig.c:2273 — bury_obj() [#if 0 in C]
+export function bury_obj(otmp, map, player) {
+    if (!otmp || !map) return;
+    bury_objs(otmp.ox, otmp.oy, map, player);
+}
+
+// cf. dig.c:2288 — wiz_debug_cmd_bury() [DEBUG]
+export async function wiz_debug_cmd_bury(map, player) {
+    if (!map || !player) return 0;
+    let before = 0;
+    let after = 0;
+    for (let x = player.x - 1; x <= player.x + 1; x++) {
+        for (let y = player.y - 1; y <= player.y + 1; y++) {
+            if (!isok(x, y)) continue;
+            before += map.objectsAt ? map.objectsAt(x, y).length : 0;
+            bury_objs(x, y, map, player);
+            after += map.objectsAt ? map.objectsAt(x, y).length : 0;
+        }
     }
-  }
+    const diff = before - after;
+    if (before === 0) {
+        await _gstate?.display?.putstr_message?.("No objects here or adjacent to bury.");
+    } else if (diff === 0) {
+        await _gstate?.display?.putstr_message?.("No objects buried.");
+    } else {
+        await _gstate?.display?.putstr_message?.(`${diff} object${diff === 1 ? "" : "s"} buried.`);
+    }
+    return 0;
 }
