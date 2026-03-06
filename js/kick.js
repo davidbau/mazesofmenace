@@ -6,6 +6,7 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
          IS_WALL, A_STR, A_DEX, A_CON, SHOPBASE, ROOMOFFSET } from './const.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
+import { Luck } from './attrib.js';
 import { x_monnam, is_watch } from './mondata.js';
 import { mondead, angry_guards } from './mon.js';
 import { newsym } from './display.js';
@@ -74,10 +75,7 @@ export async function handleKick(player, map, display, game) {
             ? map?.rooms?.[roomno - ROOMOFFSET]
             : null;
         const shopdoor = !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
-        // C ref: dokick.c kick_door() uses Luck-adjusted rnl(35).
-        // Passing luck here is required for RNG-call parity (may trigger rn2(37+|luck|)).
-        const luck = ((player.uluck ?? player.luck) || 0) + (player.moreluck || 0);
-        const kickedOpen = rnl(35, luck) < avrgAttrib;
+        const kickedOpen = rnl(35, Luck(player)) < avrgAttrib;
         if (kickedOpen) {
             // C ref: dokick.c:940 — do not roll rn2(5) for shop doors.
             if (str > 18 && !shopdoor && rn2(5) === 0) {

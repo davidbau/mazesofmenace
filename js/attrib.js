@@ -610,6 +610,13 @@ export function change_luck(n, player) {
   if (player.uluck > 0 && player.uluck > LUCKMAX) player.uluck = LUCKMAX;
 }
 
+// C ref: you.h macro Luck -- effective luck used by gameplay rolls.
+// JS keeps u.uluck as `player.uluck` (legacy alias `player.luck`) and
+// u.moreluck as `player.moreluck`.
+export function Luck(player) {
+    return ((player?.uluck ?? player?.luck) || 0) + (player?.moreluck || 0);
+}
+
 // cf. attrib.c:420 — stone_luck(include_uncursed)
 export function stone_luck(player, include_uncursed) {
     let bonchance = 0;

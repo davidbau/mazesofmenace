@@ -76,6 +76,7 @@ import { aggravate } from './wizard.js';
 import { spelleffects } from './spell.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { resist } from './zap.js';
+import { Luck } from './attrib.js';
 
 // cf. pray.c:58 -- Moloch constant
 const Moloch = "Moloch";
@@ -715,11 +716,6 @@ function Punished(player) {
 // Helper: Inhell check
 function Inhell(player) {
     return player.inGehennom || false;
-}
-
-// Helper: Luck accessor
-function Luck(player) {
-    return (player.luck || 0) + (player.moreluck || 0);
 }
 
 // Helper: Is_astralevel / Is_sanctum
