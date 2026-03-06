@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { monsterNearby } from '../../js/monutil.js';
+import { monsterNearby } from '../../js/hack.js';
 import { PM_GAS_SPORE, mons, PM_GIANT_ANT, M1_HIDE } from '../../js/monsters.js';
 import { SCR_SCARE_MONSTER } from '../../js/objects.js';
 

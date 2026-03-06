@@ -26,7 +26,7 @@ import {
     TALLOW_CANDLE, WAX_CANDLE, LENSES, TIN_WHISTLE, MAGIC_WHISTLE, STATUE,
     MEAT_STICK, ENORMOUS_MEATBALL,
 } from './objects.js';
-import { doname, xname, mkcorpstat, mksobj } from './mkobj.js';
+import { doname, xname, mkcorpstat, mksobj, add_to_minv } from './mkobj.js';
 import { couldsee, m_cansee } from './vision.js';
 import {
     x_monnam, Monnam, is_prince, is_lord, is_mplayer, is_elf, is_orc, is_gnome,
@@ -36,10 +36,10 @@ import {
     mons, AT_WEAP, G_NOCORPSE, AD_ACID, AD_BLND, AD_DRST,
     AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC, MZ_TINY, MZ_HUMAN, MZ_LARGE,
 } from './monsters.js';
-import { distmin, dist2, mondead, flush_screen, canSeeMonsterForMap } from './monutil.js';
-import { add_to_minv } from './monutil.js';
+import { distmin, dist2 } from './hack.js';
+import { mondead, corpse_chance } from './mon.js';
+import { flush_screen, canSeeMonsterForMap } from './display.js';
 import { placeFloorObject } from './invent.js';
-import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
     mon_wield_item, dmgval } from './weapon.js';
 import { NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, P_BOW } from './const.js';

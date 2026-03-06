@@ -123,7 +123,7 @@ import {
 import { pline, You, Your, You_cant, You_feel, pline_The } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { s_suffix } from './hacklib.js';
-import { dist2 } from './monutil.js';
+import { dist2 } from './hack.js';
 import { killed, wakeup, setmangry } from './mon.js';
 import { mksobj } from './mkobj.js';
 import { were_summon } from './were.js';

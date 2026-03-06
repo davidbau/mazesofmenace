@@ -18,11 +18,12 @@ import { mons, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC, PM_ANGEL,
          PM_GHOST } from './monsters.js';
 import { mon_nam, Monnam, mon_pmname, rndmonnam, hcolor } from './do_name.js';
 import { is_minion, is_rider, canseemon, mon_learns_traps } from './mondata.js';
-import { monnear, newsym, dist2, mondead } from './monutil.js';
+import { newsym } from './display.js';
+import { dist2 } from './hack.js';
 import { move_special } from './monmove.js';
 import { newemin, bribe } from './minion.js';
 import { makemon } from './makemon.js';
-import { wakeup, setmangry, mongone } from './mon.js';
+import { monnear, mondead, wakeup, setmangry, mongone } from './mon.js';
 import { exercise } from './attrib_exercise.js';
 import { s_suffix, sgn } from './hacklib.js';
 import { body_part } from './polyself.js';

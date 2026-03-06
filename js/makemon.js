@@ -111,9 +111,10 @@ import {
     CORPSE, LARGE_BOX, LUCKSTONE, objectData,
 } from './objects.js';
 import { roles, races, initialAlignmentRecordForRole } from './player.js';
-import { mpickobj, dist2, newsym } from './monutil.js';
+import { mpickobj } from './steal.js';
+import { dist2 } from './hack.js';
+import { newsym, senseMonsterForMap } from './display.js';
 import { canseemon, mon_learns_traps } from './mondata.js';
-import { senseMonsterForMap } from './monutil.js';
 import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';

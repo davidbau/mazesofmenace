@@ -34,11 +34,13 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          is_flyer, is_floater,
          likes_lava, cant_drown, can_teleport, vegan as vegan_mondata,
          mon_hates_silver, touch_petrifies, flesh_petrifies,
-         is_male, is_female, is_neuter } from './mondata.js';
+         is_male, is_female, is_neuter,
+         dmgtype, attacktype } from './mondata.js';
 import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
 import { next_ident } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists } from './objdata.js';
-import { mondead as _monutil_mondead, unstuck, newsym, mpickobj, mdrop_obj } from './monutil.js';
+import { newsym, canSpotMonsterForMap } from './display.js';
+import { mpickobj, mdrop_obj } from './steal.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
 import { in_your_sanctuary } from './priest.js';
@@ -74,7 +76,7 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          PM_STALKER, PM_GREEN_SLIME,
          NON_PM, NUMMONS,
          mons,
-         AT_NONE, AT_BOOM, AD_PHYS, AD_ACID, AD_ENCH,
+         AT_NONE, AT_BOOM, AT_ENGL, AT_HUGS, AD_PHYS, AD_ACID, AD_ENCH, AD_STCK,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_WALLWALK,
          M1_BREATHLESS, M1_TUNNEL, M1_NEEDPICK,
          M1_SLITHY, M1_UNSOLID,
@@ -86,9 +88,8 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN } from './monsters.js';
 import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './const.js';
 import { m_harmless_trap } from './trap.js';
-import { dist2, distmin, monnear,
-         monmoveTrace, monmoveStepLabel,
-         canSpotMonsterForMap } from './monutil.js';
+import { dist2, distmin } from './hack.js';
+import { monmoveTrace, monmoveStepLabel } from './monmove.js';
 import { monsterAtWithSegments } from './worm.js';
 
 // ========================================================================
@@ -790,7 +791,7 @@ export function m_detach(mon, mptr, due_to_death, map, player) {
     // The existing monutil.mondead handles the core: mark dead, drop inv, newsym, unstuck.
     // This wrapper is for callers that expect the C API.
     if (due_to_death && map) {
-        _monutil_mondead(mon, map, player);
+        mondead(mon, map, player);
     } else {
         mon.dead = true;
         mon.mhp = 0;
@@ -805,7 +806,7 @@ export function mondead_full(mon, map, player) {
     if (mon.mhp > 0) return; // life-saved
 
     // Log death event and process (delegating to monutil.mondead)
-    _monutil_mondead(mon, map, player);
+    mondead(mon, map, player);
 }
 
 // C ref: mon.c mondied() — died of own accord, maybe leaves corpse
@@ -2236,4 +2237,57 @@ export async function see_nearby_monsters(game, player) {
       }
     }
   }
+}
+
+// ========================================================================
+// Functions moved from monutil.js — C ref: mon.c / monst.h
+// ========================================================================
+
+// C ref: mon.c monnear() + NODIAG()
+export function monnear(mon, x, y) {
+    const distance = dist2(mon.mx, mon.my, x, y);
+    const nodiag = mon.mndx === PM_GRID_BUG;
+    if (distance === 2 && nodiag) return false;
+    return distance < 3;
+}
+
+// C ref: monst.h helpless(mon) — sleeping or unable to move.
+export function helpless(mon) {
+    if (!mon) return true;
+    if (mon.msleeping || mon.sleeping) return true;
+    if (mon.mcanmove === false || mon.mcanmove === 0) return true;
+    if (Number(mon.mfrozen || 0) > 0) return true;
+    return false;
+}
+
+// C ref: mon.c:3434 unstuck() — release hero if stuck to dying/departing monster
+export function unstuck(mon, player) {
+    if (!player || player.ustuck !== mon) return;
+    const ptr = mon.data || mon.type || {};
+    player.ustuck = null;
+    if (!mon.mspec_used && (dmgtype(ptr, AD_STCK)
+                            || attacktype(ptr, AT_ENGL)
+                            || attacktype(ptr, AT_HUGS))) {
+        mon.mspec_used = rnd(2);
+    }
+}
+
+// C ref: mon.c mondead() → m_detach() → mon_leaving_level() → unstuck()
+export function mondead(mon, map, player) {
+    mon.dead = true;
+    pushRngLogEntry(`^die[${mon.mndx || 0}@${mon.mx},${mon.my}]`);
+    const deathLoc = map?.at?.(mon.mx, mon.my);
+    if (deathLoc) deathLoc.mem_invis = false;
+    newsym(mon.mx, mon.my);
+    if (player) unstuck(mon, player);
+    if (Array.isArray(mon.minvent) && mon.minvent.length > 0) {
+        const items = [...mon.minvent];
+        for (let idx = items.length - 1; idx >= 0; idx--) {
+            const obj = items[idx];
+            if (!obj) continue;
+            mdrop_obj(mon, obj, map);
+        }
+        mon.minvent = [];
+        mon.weapon = null;
+    }
 }

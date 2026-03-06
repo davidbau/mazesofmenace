@@ -25,7 +25,7 @@ import {
     is_lord, canseemon,
 } from './mondata.js';
 import { Monnam, Amonnam } from './do_name.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { enexto } from './teleport.js';
 import { RLOC_MSG } from './const.js';
 

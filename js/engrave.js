@@ -29,7 +29,7 @@ import {
 } from './const.js';
 import { is_lava, is_pool, is_pool_or_lava } from './dbridge.js';
 import { IS_GRAVE, IS_AIR } from './const.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';

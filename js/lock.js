@@ -35,7 +35,7 @@ import { pline, pline_The, You, You_cant, You_hear, There, set_msg_xy,
          verbalize } from './pline.js';
 import { acurr, acurrstr } from './attrib.js';
 import { obj_resists } from './objdata.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { block_point, unblock_point, recalc_block_point, cansee } from './vision.js';
 import { wake_nearto, wake_nearby } from './mon.js';
 import { useup, delobj, currency } from './invent.js';

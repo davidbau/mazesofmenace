@@ -29,9 +29,9 @@ import { passes_walls, is_swimmer, is_flyer, is_floater,
          likes_lava, canseemon,
          is_rider, is_dlord, is_dprince, control_teleport,
          } from './mondata.js';
-import { newsym, mondead, mark_vision_dirty } from './monutil.js';
+import { newsym, mark_vision_dirty } from './display.js';
+import { mondead, onscary } from './mon.js';
 import { set_apparxy, mon_track_clear } from './monmove.js';
-import { onscary } from './mon.js';
 import { pline } from './pline.js';
 import { Monnam, Amonnam, mon_nam } from './do_name.js';
 import { deltrap } from './dungeon.js';

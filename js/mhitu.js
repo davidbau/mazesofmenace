@@ -48,8 +48,8 @@ import { make_confused, make_stunned, make_blinded, make_hallucinated } from './
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj } from './trap.js';
-import { xkilled } from './mon.js';
-import { mondead, flush_screen } from './monutil.js';
+import { xkilled, mondead } from './mon.js';
+import { flush_screen } from './display.js';
 import { mon_explodes } from './explode.js';
 import { spec_dbon } from './artifact.js';
 import { msummon } from './minion.js';

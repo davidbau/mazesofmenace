@@ -7,7 +7,7 @@
 
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, pline_The, You, Your, You_feel, impossible } from './pline.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { dist2, distmin } from './hacklib.js';
 import { movobj, near_capacity, losehp, nomul, spoteffects } from './hack.js';
 import { flooreffects } from './do.js';

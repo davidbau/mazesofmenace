@@ -70,7 +70,7 @@ import { summon_minion, dlord } from './minion.js';
 import { makemon } from './makemon.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
 import { monflee } from './monmove.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { couldsee } from './vision.js';
 import { aggravate } from './wizard.js';
 import { spelleffects } from './spell.js';

@@ -1,9 +1,12 @@
 // steal.js -- Monster stealing mechanics
 // cf. steal.c — leprechaun gold theft, nymph/monkey item theft, monster pickup/drop
 
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd, pushRngLogEntry } from './rng.js';
 import { GOLD_PIECE, COIN_CLASS } from './objects.js';
-import { newsym, mdrop_obj, mpickobj } from './monutil.js';
+import { newsym } from './display.js';
+import { addToMonsterInventory, stackobj } from './invent.js';
+import { place_object, weight } from './mkobj.js';
+import { extract_from_minvent, update_mon_extrinsics } from './worn.js';
 import { doname } from './objnam.js';
 import { Some_Monnam } from './do_name.js';
 import {
@@ -339,5 +342,32 @@ export function relobj(mon, map, show, _is_pet) {
 
     if (show) {
         newsym(mon.mx, mon.my);
+    }
+}
+
+// C ref: steal.c:619 mpickobj()
+// Adds object to monster inventory with event logging.
+// Callers are responsible for floor removal before calling this.
+export function mpickobj(mon, obj) {
+    pushRngLogEntry(`^pickup[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
+    return addToMonsterInventory(mon, obj);
+}
+
+// C ref: steal.c:814 mdrop_obj()
+// Removes object from monster inventory and places on floor with event logging.
+// Uses extract_from_minvent for proper worn-item cleanup.
+export function mdrop_obj(mon, obj, map) {
+    // C ref: extract_from_minvent with do_extrinsics=FALSE, silently=TRUE
+    const unwornmask = obj.owornmask || 0;
+    extract_from_minvent(mon, obj, false, true);
+    obj.ox = mon.mx;
+    obj.oy = mon.my;
+    // C ref: steal.c:838-841 — place_object(); stackobj(); then event_log(EV_DROP)
+    place_object(obj, obj.ox, obj.oy, map);
+    stackobj(obj, map);
+    pushRngLogEntry(`^drop[${mon.mndx}@${mon.mx},${mon.my},${obj.otyp}]`);
+    // C ref: steal.c:846-847 — update extrinsics after placement
+    if (!mon.dead && unwornmask) {
+        update_mon_extrinsics(mon, obj, false, true);
     }
 }

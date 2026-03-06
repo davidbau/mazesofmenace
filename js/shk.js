@@ -23,7 +23,7 @@ import { objectData, WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS, POTION_CLASS, TOOL_C
          STRANGE_OBJECT, GEMSTONE, GLASS,
          CANDELABRUM_OF_INVOCATION } from './objects.js';
 import { isObjectNameKnown } from './o_init.js';
-import { doname, xname, splitobj, next_ident, weight, Is_container } from './mkobj.js';
+import { doname, xname, splitobj, next_ident, weight, Is_container, add_to_minv } from './mkobj.js';
 import { currency } from './invent.js';
 import { greetingForRole } from './player.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
@@ -32,7 +32,8 @@ import { pline, You, Your, You_hear, You_feel, You_cant, pline_The, There,
          verbalize, Norep, impossible, livelog_printf } from './pline.js';
 import { s_suffix, upstart, highc } from './hacklib.js';
 import { findgold } from './steal.js';
-import { add_to_minv, helpless as monHelpless, newsym } from './monutil.js';
+import { helpless as monHelpless } from './mon.js';
+import { newsym } from './display.js';
 import { canseemon } from './mondata.js';
 
 // ============================================================

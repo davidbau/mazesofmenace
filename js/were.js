@@ -6,7 +6,7 @@ import { makemon } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import { canseemon } from './mondata.js';
 import { mon_break_armor } from './worn.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { possibly_unwield } from './weapon.js';
 import {
     mons,

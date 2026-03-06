@@ -47,7 +47,7 @@ import {
     BOLT_LIM, AKLYS_LIM,
 } from './const.js';
 import { which_armor } from './worn.js';
-import { dist2 } from './monutil.js';
+import { dist2 } from './hack.js';
 import { couldsee } from './vision.js';
 
 // Hero skill state (C: P_SKILL/P_MAX_SKILL/P_ADVANCE).

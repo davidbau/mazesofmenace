@@ -39,8 +39,7 @@ import { add_skills_to_menu, can_advance, skill_advance, skill_level_name } from
 import { handleSet } from './options.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
-         performWaitSearch } from './hack.js';
-import { dist2 } from './monutil.js';
+         performWaitSearch, dist2 } from './hack.js';
 
 function Sprintf(fmt, ...args) {
     let i = 0;

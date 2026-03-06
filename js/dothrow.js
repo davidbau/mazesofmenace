@@ -54,7 +54,8 @@ import { find_mac } from './worn.js';
 import { spec_abon } from './artifact.js';
 import { erode_obj } from './trap.js';
 import { goodpos } from './teleport.js';
-import { mpickobj, newsym, flush_screen, canSeeMonsterForMap } from './monutil.js';
+import { mpickobj } from './steal.js';
+import { newsym, flush_screen, canSeeMonsterForMap } from './display.js';
 import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {

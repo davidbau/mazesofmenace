@@ -117,7 +117,7 @@ import { m_cansee } from './vision.js';
 import { AMULET_OF_YENDOR, AMULET_OF_GUARDING, FOOD_CLASS, VEGGY, CORPSE, BANANA,
          objectData } from './objects.js';
 import { ALL_TRAPS, NO_TRAP, W_ARMOR, W_AMUL } from './const.js';
-import { dist2 } from './monutil.js';
+import { dist2 } from './hack.js';
 
 const NATTK = 6;
 

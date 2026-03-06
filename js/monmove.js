@@ -75,14 +75,14 @@ import { in_your_sanctuary } from './priest.js';
 import { artifact_light } from './artifact.js';
 
 // Shared utilities — re-exported for consumers
-import { dist2, distmin, monnear,
-         monmoveTrace, monmovePhase3Trace, monmoveStepLabel,
-         attackVerb, monAttackName,
-         canSpotMonsterForMap, map_invisible, newsym,
-         addToMonsterInventory, canMergeMonsterInventoryObj,
-         mondead, mpickobj, mdrop_obj, unstuck,
-         helpless } from './monutil.js';
-export { dist2, distmin, monnear, monmoveTrace, monmovePhase3Trace, monmoveStepLabel, attackVerb, monAttackName, canSpotMonsterForMap, map_invisible, addToMonsterInventory, canMergeMonsterInventoryObj, mondead, mpickobj, mdrop_obj, MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
+import { dist2, distmin } from './hack.js';
+import { monnear, helpless, mondead, unstuck } from './mon.js';
+import { attackVerb } from './mhitm.js';
+import { monAttackName } from './do_name.js';
+import { canSpotMonsterForMap, map_invisible, newsym } from './display.js';
+import { addToMonsterInventory, canMergeMonsterInventoryObj } from './invent.js';
+import { mpickobj, mdrop_obj } from './steal.js';
+export { dist2, distmin, monnear, attackVerb, monAttackName, canSpotMonsterForMap, map_invisible, addToMonsterInventory, canMergeMonsterInventoryObj, mondead, mpickobj, mdrop_obj, MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM };
 
 // Re-export track functions (track.c)
 export { initrack, settrack };
@@ -2266,6 +2266,34 @@ export function can_ooze(mtmp) {
 export function can_fog(mtmp, game) {
   if (!(game.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp) && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp)) return true;
   return false;
+}
+
+// ========================================================================
+// Debug tracing — development-only trace helpers
+// ========================================================================
+function monmoveTraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_MONMOVE_TRACE === '1';
+}
+
+export function monmoveTrace(...args) {
+    if (!monmoveTraceEnabled()) return;
+    console.log('[MONMOVE_TRACE]', ...args);
+}
+
+function monmovePhase3TraceEnabled() {
+    const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+    return env.WEBHACK_MONMOVE_PHASE3_TRACE === '1';
+}
+
+export function monmovePhase3Trace(...args) {
+    if (!monmovePhase3TraceEnabled()) return;
+    console.log('[MONMOVE_PHASE3]', ...args);
+}
+
+export function monmoveStepLabel(map) {
+    const idx = map?._replayStepIndex;
+    return Number.isInteger(idx) ? String(idx + 1) : '?';
 }
 
 // Autotranslated from monmove.c:2172

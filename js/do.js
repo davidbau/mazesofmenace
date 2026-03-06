@@ -39,7 +39,7 @@ import { an } from './objnam.js';
 import { body_part } from './polyself.js';
 import { FACE, HAND, LEG, STOMACH } from './const.js';
 import { IS_SINK, IS_ALTAR } from './const.js';
-import { newsym, mark_vision_dirty, vision_recalc, setDisplayContext } from './monutil.js';
+import { newsym, mark_vision_dirty, vision_recalc, setDisplayContext } from './display.js';
 import { digests, touch_petrifies, is_rider, is_reviver, throws_rocks, passes_walls, is_whirly } from './mondata.js';
 import { mons, S_ZOMBIE, NON_PM, PM_DEATH, PM_PESTILENCE, PM_FAMINE,
          PM_GREEN_SLIME, PM_WRAITH, PM_NURSE } from './monsters.js';

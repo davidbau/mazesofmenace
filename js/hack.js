@@ -27,11 +27,11 @@ import { exercise } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
          TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          WAND_CLASS, COIN_CLASS, GEM_CLASS, ROCK_CLASS, BOULDER,
-         ARROW, DART } from './objects.js';
+         ARROW, DART, SCR_SCARE_MONSTER } from './objects.js';
 import { nhgetch } from './input.js';
 import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage, schedule_goto } from './do.js';
-import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm, mon_learns_traps, mons_see_trap } from './mondata.js';
+import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm, mon_learns_traps, mons_see_trap, is_hider, noattacks, is_human, is_rider } from './mondata.js';
 import { engr_at, read_engr_at, maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage, u_left_shop, inhishop } from './shk.js';
@@ -40,7 +40,8 @@ import { place_object } from './mkobj.js';
 import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
 import { dosearch0 } from './detect.js';
-import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './monutil.js';
+import { newsym, setDisplayContext, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './display.js';
+import { helpless } from './mon.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
@@ -57,7 +58,7 @@ import { maybe_unhide_at } from './mon.js';
 import { safe_teleds } from './teleport.js';
 import { TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './const.js';
 import { TT_PIT } from './const.js';
-import { MZ_LARGE, PM_GRID_BUG } from './monsters.js';
+import { MZ_LARGE, PM_GRID_BUG, PM_ANGEL, G_UNIQ, AT_WEAP } from './monsters.js';
 import { stackobj } from './invent.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
@@ -3317,4 +3318,104 @@ export function monster_nearby(player) {
     }
   }
   return 0;
+}
+
+// ========================================================================
+// Functions moved from monutil.js — C ref: hack.h / hack.c
+// ========================================================================
+
+// C ref: hack.h dist2() — squared distance
+export function dist2(x1, y1, x2, y2) {
+    return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+}
+
+// C ref: hack.h distmin()
+export function distmin(x1, y1, x2, y2) {
+    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+}
+
+function onscary(map, x, y, mon = null) {
+    if (!map) return false;
+    if (mon) {
+        const mdat = mon.data || mon.type || {};
+        if (mon.iswiz) return false;
+        if (is_rider(mdat)) return false;
+        if (mdat.mndx === PM_ANGEL) return false;
+        if (is_human(mdat) || (Number(mdat.geno || 0) & G_UNIQ)
+            || mon.isshk || mon.ispriest) return false;
+    }
+    const objects = Array.isArray(map.objects) ? map.objects : [];
+    for (const obj of objects) {
+        if (!obj || obj.buried) continue;
+        if (obj.ox === x && obj.oy === y
+            && obj.otyp === SCR_SCARE_MONSTER
+            && !obj.cursed) {
+            return true;
+        }
+    }
+    if (!Array.isArray(map.engravings)) return false;
+    for (const engr of map.engravings) {
+        if (!engr || engr.x !== x || engr.y !== y) continue;
+        if (/elbereth/i.test(String(engr.text || ''))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function monsterIsTame(mon) {
+    if (!mon) return false;
+    if (mon.mtame !== undefined) return !!mon.mtame;
+    return !!mon.tame;
+}
+
+function sanitizeMonsterType(mon) {
+    const ptr = mon?.data || mon?.type;
+    const ptrIsObject = ptr && typeof ptr === 'object';
+    const attacks = ptrIsObject && Array.isArray(ptr.mattk)
+        ? ptr.mattk
+        : (!ptrIsObject ? [{ aatyp: AT_WEAP }] : []);
+    return {
+        ...(ptrIsObject ? ptr : {}),
+        attacks,
+        mflags1: Number(ptr?.mflags1 ?? 0),
+        mflags2: Number(ptr?.mflags2 ?? 0),
+        mflags3: Number(ptr?.mflags3 ?? 0),
+    };
+}
+
+// C ref: hack.c:3988 — monster_nearby()
+export function monsterNearby(map, player, fov) {
+    if (!map || !player) return false;
+    const px = player.x;
+    const py = player.y;
+    const playerHallucinating = !!player.hallucinating;
+
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const x = px + dx;
+            const y = py + dy;
+            if (!isok(x, y)) continue;
+
+            const mon = map.monsterAt(x, y);
+            if (!mon || mon.dead) continue;
+            if (mon.m_ap_type === 'furniture' || mon.m_ap_type === 'object') continue;
+
+            const mptr = sanitizeMonsterType(mon);
+            const isPeaceful = !!(mon.mpeaceful || mon.peaceful);
+            const hostileThreat = playerHallucinating || (!monsterIsTame(mon) && !isPeaceful && !noattacks(mptr));
+            const hidden = is_hider(mptr || {}) && mon.mundetected;
+            const isHelpless = helpless(mon);
+            const scary = onscary(map, px, py, mon);
+            const canSpot = canSpotMonsterForMap(mon, map, player, fov);
+            if (!hostileThreat) continue;
+            if (hidden) continue;
+            if (isHelpless) continue;
+            if (scary) continue;
+            if (!canSpot) continue;
+            return true;
+        }
+    }
+    return false;
 }

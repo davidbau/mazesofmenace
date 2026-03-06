@@ -26,10 +26,10 @@ import {
 import { PM_GUARD, PM_CROESUS } from './monsters.js';
 import { COIN_CLASS, ROCK, BOULDER, TIN_WHISTLE, GOLD_PIECE } from './objects.js';
 import { pline, pline_The, You, You_hear, You_see, verbalize } from './pline.js';
-import { newsym, map_invisible, canSpotMonsterForMap, monVisibleForMap } from './monutil.js';
+import { newsym, map_invisible, canSpotMonsterForMap, monVisibleForMap } from './display.js';
 import { place_monster } from './steed.js';
 import { mongone, mpickgold } from './mon.js';
-import { relobj } from './steal.js';
+import { relobj, mpickobj } from './steal.js';
 import { rloc } from './teleport.js';
 import { Monnam, noit_Monnam, noit_mon_nam, Some_Monnam, x_monnam,
          Mgender, pmname, mon_nam } from './do_name.js';
@@ -38,7 +38,7 @@ import { upstart, dist2 } from './hacklib.js';
 import { currency } from './invent.js';
 import { placeFloorObject } from './invent.js';
 import { deltrap } from './dungeon.js';
-import { mpickobj, add_to_minv } from './monutil.js';
+import { add_to_minv } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { cansee, couldsee, block_point, unblock_point, recalc_block_point } from './vision.js';
 

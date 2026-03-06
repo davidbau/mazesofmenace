@@ -27,7 +27,8 @@ import { block_point, unblock_point } from './vision.js';
 import { passes_walls, noncorporeal, is_flyer, is_floater,
          is_swimmer, likes_lava, x_monnam, y_monnam,
          canseemon } from './mondata.js';
-import { mondead, newsym } from './monutil.js';
+import { mondead } from './mon.js';
+import { newsym } from './display.js';
 
 // ============================================================================
 // Terrain predicates (cf. dbridge.c:38-128)

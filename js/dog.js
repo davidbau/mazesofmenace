@@ -43,7 +43,8 @@ import { roles } from './player.js';
 import { makemon, mbirth_limit } from './makemon.js';
 import { NO_MINVENT, MAXMONNO } from './const.js';
 import { mksobj } from './mkobj.js';
-import { mpickobj, mark_vision_dirty } from './monutil.js';
+import { mpickobj } from './steal.js';
+import { mark_vision_dirty } from './display.js';
 
 // Re-export dogmove.c functions that were previously defined here
 export { can_carry, dog_eat } from './dogmove.js';

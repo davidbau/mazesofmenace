@@ -23,7 +23,7 @@ import {
 } from './const.js';
 import { hasGivenName, type_is_pname, is_mplayer,
          is_animal, is_mindless, is_humanoid } from './mondata.js';
-import { flush_screen } from './monutil.js';
+import { flush_screen } from './display.js';
 import { nhgetch, getlin } from './input.js';
 import { doname } from './mkobj.js';
 import { objectData,
@@ -1037,4 +1037,9 @@ export async function handleCallObjectTypePrompt(player, display) {
         await getlin(`Call ${doname(selected, player)}:`, display);
         return { moved: false, tookTime: false };
     }
+}
+
+// C ref: do_name.c Monnam() — uses ARTICLE_THE regardless of tame status.
+export function monAttackName(mon) {
+    return Monnam(mon);
 }

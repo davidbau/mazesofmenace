@@ -13,7 +13,7 @@ import { mkclass, makemon } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import { ndemon } from './minion.js';
 import { mkobj, mksobj } from './mkobj.js';
-import { mpickobj } from './monutil.js';
+import { mpickobj } from './steal.js';
 import {
     mons, S_FUNGUS, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD, S_VAMPIRE, S_ZOMBIE,
     PM_GIANT_EEL, PM_PIRANHA, PM_ELECTRIC_EEL,

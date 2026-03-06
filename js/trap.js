@@ -23,8 +23,8 @@ import { is_mindless, touch_petrifies, resists_ston,
          canseemon
        } from './mondata.js';
 import { mon_knows_traps, mon_learns_traps, mons_see_trap } from './mondata.js';
-import { mondead, newsym, helpless as monHelpless } from './monutil.js';
-import { monkilled, m_in_air, setmangry } from './mon.js';
+import { mondead, helpless as monHelpless, monkilled, m_in_air, setmangry } from './mon.js';
+import { newsym } from './display.js';
 import { sleep_monst } from './mhitm.js';
 import { find_mac, which_armor } from './worn.js';
 import { mtele_trap, mlevel_tele_trap,
@@ -68,11 +68,10 @@ import { DISP_FLASH, DISP_END } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, You, pline_mon, You_hear } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
-import { dist2 } from './monutil.js';
+import { dist2, losehp } from './hack.js';
 import { an } from './objnam.js';
 import { float_vs_flight } from './polyself.js';
 import { LEVITATION, TIMEOUT, HALLUC } from './const.js';
-import { losehp } from './hack.js';
 import { fall_asleep } from './timeout.js';
 import { thitu } from './mthrowu.js';
 import { exercise } from './attrib_exercise.js';

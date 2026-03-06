@@ -38,8 +38,8 @@ import { maybe_finished_meal } from './eat.js';
 import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
-import { monsterNearby, setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty, flush_screen } from './monutil.js';
-import { nomul, unmul, near_capacity } from './hack.js';
+import { monsterNearby, nomul, unmul, near_capacity } from './hack.js';
+import { setDisplayContext, see_monsters, vision_recalc, mark_vision_dirty, flush_screen, CLR_GRAY } from './display.js';
 import { Player, roles, races, formatLoreText, godForRoleAlign, isGoddess,
          rankOf, greetingForRole, roleNameForGender, alignName } from './player.js';
 import { mklev, setGameSeed, isBranchLevelToDnum, at_dgn_entrance } from './dungeon.js';
@@ -55,7 +55,6 @@ import { nhgetch, getCount, setInputRuntime, cmdq_clear, cmdq_add_int, cmdq_add_
 import { CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './const.js';
 import { init_nhwindows, create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './const.js';
-import { CLR_GRAY } from './display.js';
 import { initFirstLevel } from './u_init.js';
 import { movebubbles } from './mkmaze.js';
 import { initAnimation, configureAnimation, setAnimationMode } from './animation.js';

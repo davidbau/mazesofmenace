@@ -364,11 +364,6 @@
       "reason": "Generated or data-table module; managed by generators/data sources."
     },
     {
-      "path": "js/monutil.js",
-      "policy": "auto",
-      "reason": "C-mapped gameplay module; eligible for rule-driven translation."
-    },
-    {
       "path": "js/mplayer.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."

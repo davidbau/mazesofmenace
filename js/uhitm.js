@@ -52,7 +52,8 @@ import {
 import { obj_resists } from './objdata.js';
 import { newexplevel } from './exper.js';
 import { applyMonflee } from './mhitu.js';
-import { mondead, newsym } from './monutil.js';
+import { mondead } from './mon.js';
+import { newsym } from './display.js';
 import { placeFloorObject } from './invent.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { find_mac } from './worn.js';

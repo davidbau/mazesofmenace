@@ -18,7 +18,8 @@ import {
 import { rankOf, roles } from './player.js';
 import { initrack } from './monmove.js';
 import { FOV } from './vision.js';
-import { monsterNearby, newsym, setDisplayContext } from './monutil.js';
+import { monsterNearby } from './hack.js';
+import { newsym, setDisplayContext } from './display.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { doname, setObjectMoves } from './mkobj.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';

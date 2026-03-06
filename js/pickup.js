@@ -23,7 +23,7 @@ import { body_part } from './polyself.js';
 import { HAND, FOOT } from './const.js';
 import { instapetrify } from './trap.js';
 import { exercise } from './attrib_exercise.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { currency, compactInvletPromptChars } from './invent.js';
 import { makemon } from './makemon.js';
 import { NO_MM_FLAGS, NO_MINVENT } from './const.js';

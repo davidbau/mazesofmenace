@@ -21,8 +21,10 @@ import { isok, STAIRS, LADDER, SCORR, CORR, ACCESSIBLE,
          BOLT_LIM } from './const.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, pline_mon, You_hear, verbalize } from './pline.js';
-import { dist2, distmin, mondead, mpickobj, mdrop_obj,
-         newsym, map_invisible, monnear, canSpotMonsterForMap } from './monutil.js';
+import { dist2, distmin } from './hack.js';
+import { mondead, monnear } from './mon.js';
+import { mpickobj, mdrop_obj } from './steal.js';
+import { newsym, map_invisible, canSpotMonsterForMap } from './display.js';
 import { is_animal, is_mindless, nohands, is_mercenary, is_unicorn,
          is_floater, is_flyer, throws_rocks, passes_walls,
          haseyes, is_undead, poly_when_stoned,

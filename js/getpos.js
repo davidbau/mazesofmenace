@@ -4,7 +4,7 @@
 
 import { MAP_ROW_START, COLNO, ROWNO, DOOR, ROOM, CORR, isok } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen } from './monutil.js';
+import { flush_screen } from './display.js';
 import {
     create_nhwindow,
     start_menu,

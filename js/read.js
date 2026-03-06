@@ -36,7 +36,7 @@ import { DISP_BEAM, DISP_END } from './const.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 import { pline, impossible } from './pline.js';
 import { cansee, mark_vision_dirty } from './vision.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { identify_pack } from './invent.js';
 
 const SPELL_KEEN = 20000; // cf. spell.c KEEN

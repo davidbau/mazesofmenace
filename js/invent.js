@@ -29,7 +29,7 @@ import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 import { pline, You, Your } from './pline.js';
 import { rn2, pushRngLogEntry } from './rng.js';
 import { touch_petrifies } from './mondata.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 import { observeObject, discoverObject, isObjectNameKnown } from './o_init.js';
 import { exercise } from './attrib_exercise.js';
 import { acurr, acurrstr } from './attrib.js';
@@ -2266,5 +2266,41 @@ export function stackobj(obj, map) {
 export function placeFloorObject(map, obj) {
     place_object(obj, obj.ox, obj.oy, map);
     stackobj(obj, map);
+    return obj;
+}
+
+// ========================================================================
+// Monster inventory helpers — C ref: mkobj.c / invent.c
+// ========================================================================
+export function canMergeMonsterInventoryObj(dst, src) {
+    if (!dst || !src) return false;
+    if (dst.otyp !== src.otyp) return false;
+    if (!!dst.cursed !== !!src.cursed) return false;
+    if (!!dst.blessed !== !!src.blessed) return false;
+    if (Number(dst.spe || 0) !== Number(src.spe || 0)) return false;
+    if (Number(dst.oeroded || 0) !== Number(src.oeroded || 0)) return false;
+    if (Number(dst.oeroded2 || 0) !== Number(src.oeroded2 || 0)) return false;
+    if (!!dst.oerodeproof !== !!src.oerodeproof) return false;
+    if (!!dst.greased !== !!src.greased) return false;
+    if (!!dst.opoisoned !== !!src.opoisoned) return false;
+    if ((dst.corpsenm ?? -1) !== (src.corpsenm ?? -1)) return false;
+    if ((dst.fromsink ?? null) !== (src.fromsink ?? null)) return false;
+    if ((dst.no_charge ?? null) !== (src.no_charge ?? null)) return false;
+    return true;
+}
+
+export function addToMonsterInventory(mon, obj) {
+    if (!mon || !obj) return null;
+    if (!Array.isArray(mon.minvent)) mon.minvent = [];
+    const quan = Number(obj.quan || 1);
+    if (quan <= 0) return null;
+    obj.quan = quan;
+    for (const invObj of mon.minvent) {
+        if (!canMergeMonsterInventoryObj(invObj, obj)) continue;
+        invObj.quan = Number(invObj.quan || 0) + quan;
+        invObj.owt = weight(invObj);
+        return invObj;
+    }
+    mon.minvent.push(obj);
     return obj;
 }

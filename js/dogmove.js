@@ -46,8 +46,7 @@ import { PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_FLOATING_EYE, PM_GELATINOUS_CUBE,
          G_FREQ } from './monsters.js';
 import { MAGIC_PORTAL } from './const.js';
 import { gettrack } from './track.js';
-import { helpless } from './monutil.js';
-import { onscary } from './mon.js';
+import { helpless, onscary } from './mon.js';
 
 // Shared utilities from monmove.js
 import { dist2, distmin, monnear, mfndpos, mon_allowflags,
@@ -58,7 +57,7 @@ import { dist2, distmin, monnear, mfndpos, mon_allowflags,
          MTSZ, SQSRCHRADIUS, FARAWAY,
          mon_track_add,
          ALLOW_M, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U } from './monmove.js';
-import { newsym } from './monutil.js';
+import { newsym } from './display.js';
 
 // ========================================================================
 // Constants — C ref: dogmove.c:11-13

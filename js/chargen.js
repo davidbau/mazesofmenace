@@ -18,7 +18,7 @@ import { initLevelGeneration, mklev, setGameSeed, isBranchLevelToDnum } from './
 import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
 import { setMakemonPlayerContext } from './makemon.js';
 import { setObjectMoves } from './mkobj.js';
-import { monsterNearby } from './monutil.js';
+import { monsterNearby } from './hack.js';
 import { simulatePostLevelInit, initFirstLevel } from './u_init.js';
 import { getArrivalPosition, changeLevel as changeLevelCore } from './do.js';
 import { loadSave, deleteSave, hasSave, saveGame,

@@ -31,7 +31,13 @@ import {
 } from './render.js';
 import { rankOf } from './player.js';
 import { do_lookat, format_do_look_html } from './pager.js';
-import { newsym, setDisplayContext, flush_screen } from './monutil.js';
+import { isok, SEE_INVIS, DETECT_MONSTERS, TELEPAT, INFRAVISION, WARNING, WARN_OF_MON,
+         BOLT_LIM } from './const.js';
+import { cansee, couldsee, clear_vision_full_recalc } from './vision.js';
+import { do_light_sources } from './light.js';
+import { infravisible, is_mindless } from './mondata.js';
+import { worm_known } from './worm.js';
+export { mark_vision_dirty } from './vision.js';
 
 // Re-export color constants from the canonical source (render.js)
 export {
@@ -1512,4 +1518,329 @@ export function set_seenv(lev, x0, y0, x, y) {
 // Autotranslated from display.c:3785
 export function fn_cmap_to_glyph(cmap) {
   return cmap_to_glyph(cmap);
+}
+
+// ========================================================================
+// Display functions moved from monutil.js — C ref: display.c / vision.c
+// ========================================================================
+
+// Display context — allows newsym() to perform per-cell rendering
+let _displayContext = null;
+
+function playerHasActiveProp(player, prop) {
+    if (!player || !Number.isInteger(prop)) return false;
+    if (typeof player.hasProp === 'function') return !!player.hasProp(prop);
+    const entry = player.uprops?.[prop];
+    if (!entry) return false;
+    return !!(entry.intrinsic || entry.extrinsic);
+}
+
+function playerCanSeeInvisible(player) {
+    return !!(player?.seeInvisible || player?.See_invisible || playerHasActiveProp(player, SEE_INVIS));
+}
+
+// Set the display context for incremental rendering.
+export function setDisplayContext(ctx) {
+    const prev = _displayContext;
+    _displayContext = ctx || null;
+    return prev;
+}
+
+// C ref: display.c:378 map_invisible()
+export function map_invisible(map, x, y, player) {
+    if (!map || !isok(x, y)) return;
+    if (player && x === player.x && y === player.y) return;
+    const loc = map.at(x, y);
+    if (!loc) return;
+    loc.mem_invis = true;
+    newsym(x, y);
+}
+
+// C ref: display.c:918 newsym()
+export function newsym(x, y) {
+    const ctx = _displayContext;
+    if (!ctx?.map) return;
+    const map = ctx.map;
+    if (!map || !isok(x, y)) return;
+    const loc = map.at(x, y);
+    if (!loc) return;
+
+    if (!ctx || !ctx.display || typeof ctx.display.setCell !== 'function') {
+        return;
+    }
+
+    const { display, player, fov, flags } = ctx;
+    const mapOffset = flags?.msg_window ? 3 : MAP_ROW_START;
+    const col = x - 1;
+    const row = y + mapOffset;
+
+    // --- Not visible (out of FOV) ---
+    if (!fov || !fov.canSee(x, y)) {
+        if (loc.mem_invis) {
+            display.setCell(col, row, 'I', CLR_GRAY);
+            return;
+        }
+        if (loc.seenv) {
+            if (loc.mem_obj) {
+                const rememberedObjColor = Number.isInteger(loc.mem_obj_color)
+                    ? loc.mem_obj_color : 0;
+                display.setCell(col, row, loc.mem_obj, rememberedObjColor);
+                return;
+            }
+            if (loc.mem_trap) {
+                const memTrapColor = Number.isInteger(loc.mem_trap_color)
+                    ? loc.mem_trap_color : 0;
+                display.setCell(col, row, loc.mem_trap, memTrapColor);
+                return;
+            }
+            if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
+                display.setCell(col, row, ' ', CLR_GRAY);
+                return;
+            }
+            const sym = renderTerrainSymbol(loc, map, x, y, flags);
+            const rememberedColor = (loc.typ === ROOM) ? NO_COLOR : sym.color;
+            display.setCell(col, row, sym.ch, rememberedColor);
+        } else {
+            display.setCell(col, row, ' ', CLR_GRAY);
+        }
+        return;
+    }
+
+    // --- Visible (in FOV) ---
+    const visEngr = map.engravingAt(x, y);
+    if (visEngr) visEngr.erevealed = true;
+
+    // Player glyph
+    if (player && x === player.x && y === player.y) {
+        display.setCell(col, row, '@', CLR_WHITE);
+        return;
+    }
+
+    // Monster
+    const mon = map.monsterAt(x, y);
+    if (monsterShownOnMap(mon, player)) {
+        loc.mem_invis = false;
+        const underObjs = coversObjectsAt(loc, player) ? [] : map.objectsAt(x, y);
+        if (underObjs.length > 0) {
+            const underTop = underObjs[underObjs.length - 1];
+            const underGlyph = objectMapGlyph(underTop, false, { player, x, y });
+            loc.mem_obj = underGlyph.ch || 0;
+            loc.mem_obj_color = Number.isInteger(underGlyph.color)
+                ? underGlyph.color : CLR_GRAY;
+        } else {
+            const engr = map.engravingAt(x, y);
+            if (engr && (player?.wizard || !player?.blind || engr.erevealed)) {
+                const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
+                loc.mem_obj = engrCh;
+                loc.mem_obj_color = CLR_BRIGHT_BLUE;
+            } else {
+                loc.mem_obj = 0;
+                loc.mem_obj_color = 0;
+            }
+        }
+        const hallu = !!player?.hallucinating;
+        const glyph = monsterMapGlyph(mon, hallu);
+        display.setCell(col, row, glyph.ch, glyph.color);
+        return;
+    }
+    if (loc.mem_invis) {
+        display.setCell(col, row, 'I', CLR_GRAY);
+        return;
+    }
+
+    // Objects
+    const objs = coversObjectsAt(loc, player) ? [] : map.objectsAt(x, y);
+    if (objs.length > 0) {
+        const topObj = objs[objs.length - 1];
+        const hallu = !!player?.hallucinating;
+        const glyph = objectMapGlyph(topObj, hallu, { player, x, y });
+        const memGlyph = hallu
+            ? objectMapGlyph(topObj, false, { player, x, y, observe: false })
+            : glyph;
+        loc.mem_obj = memGlyph.ch || 0;
+        loc.mem_obj_color = Number.isInteger(memGlyph.color)
+            ? memGlyph.color : CLR_GRAY;
+        display.setCell(col, row, glyph.ch, glyph.color);
+        return;
+    }
+    loc.mem_obj = 0;
+    loc.mem_obj_color = 0;
+
+    // Traps
+    const trap = map.trapAt(x, y);
+    if (trap && trap.tseen && !coversObjectsAt(loc, player)) {
+        const tg = trapGlyph(trap.ttyp);
+        loc.mem_trap = tg.ch;
+        loc.mem_trap_color = tg.color;
+        display.setCell(col, row, tg.ch, tg.color);
+        return;
+    }
+    loc.mem_trap = 0;
+
+    // Engravings
+    const engr = map.engravingAt(x, y);
+    if (spotShowsEngravings(loc)
+        && engr
+        && (player?.wizard || !player?.blind || engr.erevealed)
+        && !coversObjectsAt(loc, player)) {
+        const engrCh = (loc.typ === CORR || loc.typ === SCORR) ? '#' : '`';
+        loc.mem_obj = engrCh;
+        loc.mem_obj_color = CLR_BRIGHT_BLUE;
+        display.setCell(col, row, engrCh, CLR_BRIGHT_BLUE);
+        return;
+    }
+
+    // Terrain
+    if (IS_WALL(loc.typ) && !wallIsVisible(loc.typ, loc.seenv, loc.flags)) {
+        display.setCell(col, row, ' ', CLR_GRAY);
+        return;
+    }
+    const sym = renderTerrainSymbol(loc, map, x, y, flags);
+    display.setCell(col, row, sym.ch, sym.color);
+}
+
+// C ref: display.c:1480 see_monsters()
+export function see_monsters(map) {
+    if (!map || !map.monsters) return;
+    const ctx = _displayContext;
+    if (!ctx || !ctx.display) return;
+    for (const mon of map.monsters) {
+        if (!mon || mon.mhp <= 0) continue;
+        newsym(mon.mx, mon.my);
+    }
+    const player = ctx.player;
+    if (player && !player.usteed) {
+        newsym(player.x, player.y);
+    }
+}
+
+// C ref: vision.c:511 vision_recalc()
+export function vision_recalc() {
+    clear_vision_full_recalc();
+    const ctx = _displayContext;
+    if (!ctx || !ctx.fov || !ctx.fov.visible || !ctx.map || !ctx.player) return;
+    const { fov, map, player } = ctx;
+    const oldVisible = [];
+    for (let x = 0; x < COLNO; x++) {
+        oldVisible[x] = fov.visible[x].slice();
+    }
+    fov.compute(map, player.x, player.y, do_light_sources, player);
+    if (ctx.display) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                if (oldVisible[x][y] !== fov.visible[x][y]) {
+                    newsym(x, y);
+                }
+            }
+        }
+    }
+}
+
+// C ref: display.c:2200 flush_screen(cursor_on_u)
+let _flushing = false;
+let _delay_flushing = false;
+
+export function flush_screen(cursor_on_u) {
+    if (cursor_on_u === -1) {
+        _delay_flushing = !_delay_flushing;
+        return;
+    }
+    if (_delay_flushing) return;
+    if (_flushing) return;
+    _flushing = true;
+    const ctx = _displayContext;
+    if (ctx?.display && ctx?.player) {
+        const { display, player } = ctx;
+        if (player._botl) {
+            if (typeof display.renderStatus === 'function')
+                display.renderStatus(player);
+            player._botl = false;
+        }
+        if (cursor_on_u > 0 && typeof display.cursorOnPlayer === 'function')
+            display.cursorOnPlayer(player);
+    }
+    _flushing = false;
+}
+
+function hasPlayerProp(player, propId, ...legacyFlags) {
+    if (!player) return false;
+    if (typeof player.hasProp === 'function') {
+        try {
+            if (player.hasProp(propId)) return true;
+        } catch (e) {
+            // Fall through to legacy field checks.
+        }
+    }
+    return legacyFlags.some((flag) => !!player?.[flag]);
+}
+
+function playerBlind(player) {
+    return !!(player?.blind || player?.Blind);
+}
+
+// C ref: display.h _mon_visible(mon)
+export function monVisibleForMap(mon, player) {
+    if (!mon) return false;
+    if (mon.mundetected) return false;
+    const seeInvis = hasPlayerProp(player, SEE_INVIS, 'seeInvisible', 'See_invisible');
+    if (mon.minvis && !seeInvis) return false;
+    return true;
+}
+
+// C ref: display.h _see_with_infrared(mon)
+export function seeWithInfraredForMap(mon, map, player) {
+    if (!mon || !map || !player) return false;
+    if (playerBlind(player)) return false;
+    const hasInfra = hasPlayerProp(player, INFRAVISION, 'infravision', 'Infravision');
+    if (!hasInfra) return false;
+    const mdat = mon.data || mon.type || null;
+    if (!mdat || !infravisible(mdat)) return false;
+    return couldsee(map, player, mon.mx, mon.my);
+}
+
+// C ref: display.h _canseemon(mon)
+export function canSeeMonsterForMap(mon, map, player, fov) {
+    if (!mon || !map || !player) return false;
+    const locSeen = mon.wormno
+        ? worm_known(mon, map, player, fov)
+        : (cansee(map, player, fov, mon.mx, mon.my)
+            || seeWithInfraredForMap(mon, map, player));
+    if (!locSeen) return false;
+    return monVisibleForMap(mon, player);
+}
+
+// C ref: display.h _sensemon(mon)
+export function senseMonsterForMap(mon, map, player) {
+    if (!mon || !player) return false;
+    if (player?.uswallow && player?.ustuck && mon !== player.ustuck) return false;
+    const heroUnderwater = !!(player?.underwater || player?.uinwater || player?.Underwater);
+    if (heroUnderwater) {
+        const d2 = (player.x - mon.mx) * (player.x - mon.mx)
+                  + (player.y - mon.my) * (player.y - mon.my);
+        const onPool = !!(map && isPoolAt(map.at(mon.mx, mon.my)));
+        if (!(d2 <= 2 && onPool)) return false;
+    }
+    const detectMonsters = hasPlayerProp(player, DETECT_MONSTERS, 'detectMonsters', 'Detect_monsters');
+    const telepathy = hasPlayerProp(player, TELEPAT, 'telepathy', 'Telepathy');
+    let tpSense = false;
+    if (telepathy) {
+        const mdat = mon.data || mon.type || null;
+        if (mdat && !is_mindless(mdat)) {
+            const blindTelepathic = playerBlind(player);
+            const unblindRange = Number(player?.unblind_telepat_range || player?.unblindTelepathRange || BOLT_LIM);
+            tpSense = blindTelepathic
+                || ((player.x - mon.mx) * (player.x - mon.mx)
+                    + (player.y - mon.my) * (player.y - mon.my)) <= (unblindRange * unblindRange);
+        }
+    }
+    const warning = hasPlayerProp(player, WARNING, 'warning', 'Warning');
+    const warnOfMon = hasPlayerProp(player, WARN_OF_MON, 'warnOfMon', 'Warn_of_mon');
+    const warnSense = warning || warnOfMon;
+    return detectMonsters || tpSense || warnSense;
+}
+
+// C ref: display.h canspotmon(mon) = canseemon(mon) || sensemon(mon)
+export function canSpotMonsterForMap(mon, map, player, fov) {
+    return canSeeMonsterForMap(mon, map, player, fov)
+        || senseMonsterForMap(mon, map, player);
 }

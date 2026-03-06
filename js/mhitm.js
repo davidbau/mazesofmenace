@@ -18,10 +18,9 @@
 
 import { rn2, rnd, d, c_d } from './rng.js';
 import { distmin } from './hacklib.js';
-import {
-    monnear, mondead, monAttackName, map_invisible, newsym,
-    canSpotMonsterForMap, helpless,
-} from './monutil.js';
+import { monnear, mondead, helpless } from './mon.js';
+import { map_invisible, newsym, canSpotMonsterForMap } from './display.js';
+import { monAttackName } from './do_name.js';
 import { cansee } from './vision.js';
 import {
     x_monnam, touch_petrifies, unsolid, resists_fire, resists_cold,
@@ -938,4 +937,19 @@ export async function mswingsm(magr, mdef, otemp, display, vis, ctx) {
     await display.putstr_message(
         `${agrName} ${verb} ${oneOf}${monsterPossessive(magr)} ${xname(otemp)} at ${defName}.`
     );
+}
+
+// C ref: mhitm.c — attack verb for monster-vs-monster display
+export function attackVerb(type) {
+    switch (type) {
+        case AT_BITE: return 'bites';
+        case AT_CLAW: return 'claws';
+        // C ref: mhitm.c hitmm() uses generic "hits" for AT_KICK.
+        case AT_KICK: return 'hits';
+        case AT_BUTT: return 'butts';
+        case AT_TUCH: return 'touches';
+        case AT_STNG: return 'stings';
+        case AT_WEAP: return 'hits';
+        default: return 'hits';
+    }
 }

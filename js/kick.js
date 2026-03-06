@@ -7,7 +7,8 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { x_monnam } from './mondata.js';
-import { mondead, newsym, setDisplayContext } from './monutil.js';
+import { mondead } from './mon.js';
+import { newsym, setDisplayContext } from './display.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './const.js';
 import { u_wipe_engr } from './engrave.js';

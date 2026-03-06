@@ -7,7 +7,7 @@ import { rn2, rnd, rn1 } from './rng.js';
 import { pline, You, You_feel, verbalize } from './pline.js';
 import { makemon } from './makemon.js';
 import { NO_MM_FLAGS, RLOC_MSG, BOLT_LIM } from './const.js';
-import { mksobj, doname } from './mkobj.js';
+import { mksobj, doname, add_to_minv } from './mkobj.js';
 import {
     AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
     BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION,
@@ -38,9 +38,10 @@ import {
 import { is_covetous, is_minion, attacktype, big_to_little } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { hcolor } from './do_name.js';
-import { newsym, mpickobj, add_to_minv, helpless as monHelpless } from './monutil.js';
+import { newsym } from './display.js';
+import { mpickobj } from './steal.js';
 import { enexto, rloc, rloc_to } from './teleport.js';
-import { healmon, wake_nearto } from './mon.js';
+import { helpless as monHelpless, healmon, wake_nearto } from './mon.js';
 import { monster_census, msummon } from './minion.js';
 import { sgn, dist2 } from './hacklib.js';
 import { is_quest_artifact } from './objdata.js';

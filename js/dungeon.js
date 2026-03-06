@@ -267,7 +267,7 @@ import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
 import { placeFloorObject } from './invent.js';
-import { mpickobj } from './monutil.js';
+import { mpickobj } from './steal.js';
 import { set_corpsenm, place_object } from './mkobj.js';
 import { getnow } from './calendar.js';
 

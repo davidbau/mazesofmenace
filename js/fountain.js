@@ -14,7 +14,7 @@ import { makemon } from './makemon.js';
 import { mons, PM_WATER_MOCCASIN, PM_WATER_DEMON, PM_WATER_NYMPH,
          PM_WATER_ELEMENTAL, PM_SEWER_RAT } from './monsters.js';
 import { mksobj, mkobj, bless, curse, uncurse, xname } from './mkobj.js';
-import { newsym, mark_vision_dirty } from './monutil.js';
+import { newsym, mark_vision_dirty } from './display.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { distmin } from './hacklib.js';
 import { sobj_at, useup } from './invent.js';

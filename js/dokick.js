@@ -67,8 +67,9 @@ import {
     objectData,
 } from './objects.js';
 import { obj_resists } from './objdata.js';
-import { mondead, newsym, mpickobj } from './monutil.js';
-import { setmangry, seemimic, wakeup, wake_nearto, wake_nearby } from './mon.js';
+import { mondead, setmangry, seemimic, wakeup, wake_nearto, wake_nearby } from './mon.js';
+import { newsym, map_invisible, canSpotMonsterForMap } from './display.js';
+import { mpickobj } from './steal.js';
 import { monflee } from './monmove.js';
 import { cansee } from './vision.js';
 import { recalc_block_point, unblock_point } from './vision.js';
@@ -111,7 +112,6 @@ import { set_apparxy } from './monmove.js';
 import { maybe_unhide_at } from './mon.js';
 import { finish_meating } from './dogmove.js';
 import { is_watch } from './mondata.js';
-import { map_invisible, canSpotMonsterForMap } from './monutil.js';
 import { water_damage, mintrap_postmove } from './trap.js';
 
 // ============================================================================

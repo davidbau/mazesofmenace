@@ -13,9 +13,10 @@ import { is_hider, hides_under } from './mondata.js';
 import { pline, You, Your, You_feel, You_see, pline_The,
          Norep, There, set_msg_xy } from './pline.js';
 import {
-    map_invisible, newsym, helpless as monHelpless, flush_screen,
+    map_invisible, newsym, flush_screen,
     canSpotMonsterForMap, senseMonsterForMap,
-} from './monutil.js';
+} from './display.js';
+import { helpless as monHelpless } from './mon.js';
 import { findgold } from './steal.js';
 import { observeObject } from './o_init.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
@@ -145,7 +146,7 @@ async function flash_glyph_at(x, y, glyph, repeatCount = 1) {
 function feel_location() {}
 function feel_newsym() {}
 function docrt() {}
-// flush_screen imported from monutil.js
+// flush_screen imported from display.js
 async function strange_feeling(sobj, msg, player, display) {
     if (display && msg) await display.putstr_message(msg);
 }
