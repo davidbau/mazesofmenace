@@ -35,7 +35,7 @@ import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
 import { dotalk } from './sounds.js';
 import { add_skills_to_menu, can_advance, skill_advance, skill_level_name } from './weapon.js';
-import { handleSet } from './options_menu.js';
+import { handleSet } from './options.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          performWaitSearch } from './hack.js';

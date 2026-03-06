@@ -273,3 +273,8 @@ export function more_experienced(exper, rexp, game, player) {
   if (newrexp !== oldrexp) { player.urexp = newrexp; }
   if (player.urexp >= (Role_if(PM_WIZARD) ? 1000 : 2000)) game.flags.beginner = false;
 }
+
+// C helper: new level on sufficient XP (formerly in combat.js shim).
+export async function checkLevelUp(player, display) {
+    await newexplevel(player, display);
+}

@@ -20,7 +20,7 @@ import {
     getOptionByKey,
     setOptionValue,
     renderOptionsMenu,
-} from '../../js/options_menu.js';
+} from '../../js/options.js';
 
 describe('options interactive', () => {
 

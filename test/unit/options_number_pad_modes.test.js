@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { renderOptionsMenu } from '../../js/options_menu.js';
+import { renderOptionsMenu } from '../../js/options.js';
 import { DEFAULT_FLAGS } from '../../js/storage.js';
 
 function findNumberPadLine(flags) {
