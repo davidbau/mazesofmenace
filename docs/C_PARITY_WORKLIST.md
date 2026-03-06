@@ -9,6 +9,11 @@
 
 Last updated: 2026-02-18
 
+> **NOTE** — This document was actively maintained through early March 2026.
+> Issue references (#6–#13 etc.) reflect early-project numbering; current open
+> issues are in the 200s range. The PRNG Timing section and Status Legend remain
+> useful reference. For current active parity issues, see GitHub issues.
+
 This document tracks **active parity debugging** by domain: which functions are
 diverging from C behavior and which issues track them (PROJECT_PLAN Phase 2–3).
 For **structural coverage** (complete C↔JS file/function mapping and refactoring

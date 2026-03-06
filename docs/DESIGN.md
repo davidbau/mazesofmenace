@@ -162,31 +162,64 @@ constant ever relies on a circular chain.
 > *"You feel the weight of hundreds of global variables. They are neatly organized."*
 
 The C code uses hundreds of global variables declared in `decl.c`/`decl.h`. In JS,
-these become fields on a single `game` object exported from `game.js` and accessed
-via `gstate.js`. Key groups:
+these become fields on a single `game` object, accessed via `gstate.js`:
+
+```javascript
+// gstate.js — the entire file
+export let game = null;
+export function setGame(g) { game = g; }
+```
+
+All game modules do `import { game } from './gstate.js'` and access state through
+`game.*`. The reference is set once at startup by `allmain.js` before the game loop
+starts. The simplicity is intentional — no registry, no DI, just one object.
+
+Key groups on `game`:
 
 | JS path | C equivalent | Contents |
 |---------|-------------|---------|
-| `game.u` | `struct you u` | Player: HP, AC, alignment, stats, intrinsics, inventory chain head |
-| `game.level` | `struct level svl.level` + `svr.rooms[]` + `svd.doors[]` | Current dungeon level: map locations, rooms, doors, stairs |
+| `game.u` | `struct you u` | Player: HP, AC, alignment, stats, intrinsics, hunger, inventory chain head |
+| `game.level` | `svl.level` + `svr.rooms[]` + `svd.doors[]` | Current level: `locations[x][y]` map, rooms, doors, stairs, flags |
 | `game.flags` | `struct flag flags` | Game flags: verbose, confirm, tombstone, etc. |
 | `game.context` | `struct context_info context` | Turn context: running, resting, occupied movement |
-| `game.svc` | `struct statedata svc` | Persistent save-compatible variables |
+| `game.svc` | `struct statedata svc` | Persistent save-compatible game variables |
 | `game.moves` | `moves` | Turn counter |
 | `game.fmon` | `fmon` | Monster linked list head for current level |
 | `game.invent` | `invent` | Player inventory linked list head |
 | `game.youmonst` | `youmonst` | Player-as-monster struct (for polymorph) |
 | `game.display` | display object | The `Display` instance |
 
-The `game` object is initialized in `allmain.js` and passed to `gstate.js`
-(`setGame(game)`). All game code accesses globals through `gstate.game.*` rather
-than true JS globals. This makes save/restore, testing, and reasoning about state
-much cleaner.
+The map is `game.level`, a `GameMap` instance. Each cell is a location object:
 
-**Key difference from old code:** Early versions used a separate `player.js` module
-with its own namespace, plus multiple `set*Context()` wiring calls in module init.
-All of this has been replaced by `gstate.js` — one place, one object. No wiring
-needed because ESM live bindings handle the circular reference naturally.
+```javascript
+// makeLocation() in game.js — mirrors struct rm from rm.h
+{
+  typ,          // terrain type: STONE, VWALL, HWALL, ROOM, CORR, DOOR, ...
+  seenv,        // bitmask: which directions this cell has been seen from
+  flags,        // door state (D_LOCKED, D_TRAPPED), altar alignment, etc.
+  lit, waslit,  // current and permanent lighting
+  roomno,       // which room this cell belongs to (0 = no room)
+  edge,         // true if this is a room boundary cell
+  glyph,        // what's currently displayed here
+  horizontal,   // wall orientation hint for corridor walls
+  mem_bg, mem_trap, mem_obj, mem_obj_color, mem_invis,  // player's memory of cell
+  nondiggable, drawbridgemask   // special terrain flags
+}
+```
+
+`GameMap` also holds:
+- `rooms[]` / `nroom` — room descriptors (C: `svr.rooms[]`)
+- `doors[]` / `doorindex` — door descriptors (C: `svd.doors[]`)
+- `upstair`, `dnstair` — stair coordinates
+- `smeq[]` — same-equivalent groups for room graph connectivity
+- `flags` — level metadata: `has_shop`, `has_vault`, `is_maze_lev`, `nommap`, and ~22 more
+- Level entity lists accessed through `game.fmon`, `game.ftrap`, etc.
+
+**Evolution note:** Early code used `player.js` with its own namespace and
+`set*Context()` / `register*()` wiring calls to inject dependencies at init time.
+All of that has been replaced by the `gstate.js` pattern — ESM live bindings
+mean modules can reference `game` freely without explicit wiring, because the
+binding resolves at call time, not import time.
 
 ### The async game loop
 
@@ -435,25 +468,37 @@ files** (`test/comparison/`).
 
 ### Session format V3
 
-156 golden session files record C reference behavior. Each file contains:
+156 golden session files record C reference behavior. Session format V3:
 
 ```json
 {
-  "metadata": { "seed": 42, "datetime": "...", ... },
+  "version": 3,
+  "seed": 42,
+  "source": "c",
+  "regen": { "mode": "gameplay", "moves": ":hhlh..." },
+  "options": { "name": "Wizard", "role": "Valkyrie", ... },
   "steps": [
     {
-      "moves": "hjkl...",
-      "rng": [1234567, "^event[monster placed]", 7654321, ...],
-      "screen": ["...", "...", ...],
-      "cursor": { "x": 3, "y": 12 },
-      "mapdump": [[0, 5, 5, ...], ...]
+      "key": "h",
+      "rng": ["rn2(12)=2 @ mon.c:1145", "^place[otyp,x,y]", ...],
+      "screen": "...(ANSI-compressed 80x24 string)...",
+      "typGrid": "||2:0,3,3:2,...(RLE terrain grid)...",
+      "cursor": [col, row, 1]
     }
   ]
 }
 ```
 
-RNG values and inline events (`^event[...]` strings) share the same array in step
-order, letting the session file serve as a complete trace of everything that happened.
+The **`rng` array** in each step is the richest channel — it interleaves three kinds of entries:
+- RNG call entries: `"rn2(12)=2 @ mon.c:1145"` — value, range, and call site
+- Midlog markers: `">makemon"` / `"<makemon"` — function entry/exit boundaries
+- Event entries: `"^place[otyp,x,y]"`, `"^die[mndx@x,y]"`, `"^trap[type,x,y]"` — logical game events
+
+The JS engine emits matching entries via `pushRngLogEntry()` in `rng.js`. When C and
+JS RNG arrays differ, the first mismatch reveals exactly what happened and where.
+
+The **`typGrid`** field is an RLE-encoded terrain map: rows separated by `|`, values
+encoded as digits (0-9) or letters (a-z for 10-35), runs compressed as `count:value`.
 
 ### Test result tracking via git notes
 

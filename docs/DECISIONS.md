@@ -102,14 +102,14 @@ TTY experience.
 
 ---
 
-## Decision 5: Simplified Vision for Initial Port
+## Decision 5: Simplified Vision for Initial Port *(superseded — see update)*
 
 > *"It is dark. You can't see anything but the pragmatic choice."*
 
 **Context:** NetHack's vision.c implements a complex raycasting algorithm for
 field of view.
 
-**Choice:** For the initial port, implement a rule-based FOV:
+**Original choice:** For the initial port, implement a rule-based FOV:
 - Lit rooms: player sees all squares in the room
 - Dark rooms/corridors: player sees only adjacent 8 squares
 - Remembered squares are shown in a different color
@@ -122,11 +122,17 @@ The raycasting is only needed for open areas, line-of-sight blocking by
 boulders, etc. Getting the core game playable is more valuable than perfect
 FOV initially.
 
+**Update (implemented):** `vision.js` now implements the full Algorithm C
+raycasting from `vision.c` — the same recursive line-of-sight scanner that
+traces visibility along octant rays, handling walls, doors, boulders, and
+partial occlusion exactly as the C does. The simplified rule-based approach
+was completely replaced.
+
 ---
 
 ## Decision 6: Monster & Object Data as Structured JS Arrays
 
-> *"You see here 382 monsters and 478 objects. They have been carefully catalogued."*
+> *"You see here 383 monsters and 478 objects. They have been carefully catalogued."*
 
 **Context:** The C code defines monster data via C macros in monsters.h
 (3927 lines) and object data in objects.h (1647 lines).
@@ -144,21 +150,22 @@ MON(NAM("giant ant"), S_ANT,
     M2_HOSTILE, 0, CLR_BROWN, GIANT_ANT)
 ```
 
-Example (JS):
+Example (JS — using canonical C field names):
 ```javascript
 { // monsters.h:120
-  name: "giant ant", symbol: S_ANT,
-  level: 2, speed: 18, ac: 3, mr: 0, align: 0,
+  mname: "giant ant", mlet: S_ANT,
+  mlevel: 2, mmove: 18, ac: 3, mr: 0, maligntyp: 0,
   geno: G_GENO | G_SGROUP,
-  attacks: [{type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4}, ...],
-  weight: 10, nutrition: 10, sound: MS_SILENT, size: MZ_TINY,
-  flags1: M1_ANIMAL | M1_NOHANDS | M1_OVIPAROUS | M1_CARNIVORE,
-  flags2: M2_HOSTILE, flags3: 0,
-  color: CLR_BROWN
+  mattk: [{aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4}, ...],
+  cwt: 10, cnutrit: 10, msound: MS_SILENT, msize: MZ_TINY,
+  mflags1: M1_ANIMAL | M1_NOHANDS | M1_OVIPAROUS | M1_CARNIVORE,
+  mflags2: M2_HOSTILE, mflags3: 0,
+  mcolor: CLR_BROWN
 }
 ```
 
-The C line reference in the comment allows cross-referencing.
+The C line reference in the comment allows cross-referencing. Field names
+now match `struct permonst` in `permonst.h` exactly (Phase 2 normalization).
 
 ---
 
@@ -172,16 +179,28 @@ How to manage these in JS?
 
 **Options:**
 1. True global variables
-2. Single namespace object (NH.u, NH.level, etc.)
+2. Single namespace object (`NH.u`, `NH.level`, etc.)
 3. Class instances with encapsulation
 
-**Choice:** Option 2 -- Single `NH` namespace object.
+**Choice:** Option 2 -- single `game` object, accessed via `gstate.js`.
 
 **Rationale:**
 - Mirrors the C's global access pattern (code reads similarly)
 - Avoids polluting the JS global namespace
 - Easy to serialize for save/restore
 - No class ceremony for what is fundamentally global state
+
+**Implementation:** `gstate.js` exports a single mutable `game` reference
+(`export let game = null`). `allmain.js` calls `setGame(game)` once before
+the game loop starts. All other modules import `game` from `gstate.js` and
+access state through `game.u`, `game.level`, `game.flags`, etc. — matching
+C's naming where possible (`u`, `level`, `flags`, `context`, `moves`, `fmon`).
+
+**Evolution:** Early versions used an `NH` namespace (this decision's original
+choice) and also had multiple `set*Context()` / `register*()` calls to wire
+module dependencies at init time. All of that was replaced by `gstate.js`
+during Phase 4 of the architectural refactor. The final pattern is simpler:
+one object, no wiring, ESM live bindings handle the rest.
 
 ---
 

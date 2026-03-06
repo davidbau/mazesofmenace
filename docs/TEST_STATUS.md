@@ -1,5 +1,10 @@
 # Test Status Summary
 
+> **HISTORICAL RECORD** — Last updated 2026-02-09 when the project had 1090/1164
+> tests passing. Current test counts are substantially higher. For live test status,
+> run `npm test` or check the oracle dashboard at `oracle/`. For the canonical test
+> reference, see [PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md).
+
 **See also:**
 [TESTING.md](TESTING.md) (testing infrastructure) |
 [PARITY_TEST_MATRIX.md](PARITY_TEST_MATRIX.md) (test reference) |

@@ -1,5 +1,11 @@
 # Next Steps for RNG Alignment
 
+> **HISTORICAL RECORD** — This document reflects early-stage RNG alignment work
+> from approximately early 2026, when the project had ~568/1811 tests passing and
+> 22.1% RNG alignment. The Lua/themerms RNG divergence described here has since
+> been resolved. For current test status and active work, see
+> [TESTING.md](TESTING.md) and the open GitHub issues.
+
 **See also:**
 [LORE.md](LORE.md) (porting lessons) |
 [RNG_ALIGNMENT_GUIDE.md](RNG_ALIGNMENT_GUIDE.md) (RNG techniques) |
