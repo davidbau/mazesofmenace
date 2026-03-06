@@ -9,6 +9,18 @@ const LATEST_FILE = 'LATEST';
 const INDEX_FILE = 'index.jsonl';
 const FORMAT_VERSION = 'comparison-v1';
 
+function envEnabled(name) {
+    const v = process.env[name];
+    if (v == null) return false;
+    const s = String(v).trim().toLowerCase();
+    return !(s === '' || s === '0' || s === 'false' || s === 'no' || s === 'off');
+}
+
+function parsePositiveInt(value, fallback) {
+    const n = Number.parseInt(String(value ?? ''), 10);
+    return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
 function shouldKeepEntry(entry, { eventsOnly = false } = {}) {
     if (typeof entry !== 'string' || entry.length === 0) return false;
     if (eventsOnly) {
@@ -82,6 +94,59 @@ export function isComparisonArtifactsEnabled() {
     return !(v === '0' || v.toLowerCase?.() === 'false');
 }
 
+function buildStepScreenContext(session, replay, result) {
+    const first = result?.firstDivergence || null;
+    const fds = result?.firstDivergences || {};
+    const screenLike = first?.channel === 'screen'
+        || first?.channel === 'color'
+        || first?.channel === 'screenWindow'
+        || first?.channel === 'colorWindow'
+        || !!fds.screen
+        || !!fds.color
+        || !!fds.screenWindow
+        || !!fds.colorWindow;
+    if (!screenLike) return null;
+
+    const preferred = first?.step
+        ?? fds.screen?.step
+        ?? fds.color?.step
+        ?? fds.screenWindow?.step
+        ?? fds.colorWindow?.step
+        ?? null;
+    const center = Number.isInteger(preferred) ? preferred : null;
+    if (!center || center < 1) return null;
+
+    const radius = parsePositiveInt(process.env.WEBHACK_COMPARISON_SCREEN_CONTEXT, 2);
+    const steps = [];
+    const start = Math.max(1, center - radius);
+    const end = center + radius;
+    for (let step = start; step <= end; step++) {
+        const idx = step - 1;
+        const cStep = session?.steps?.[idx] || null;
+        const jStep = replay?.steps?.[idx] || null;
+        steps.push({
+            step,
+            key: cStep?.key ?? null,
+            session: {
+                screen: Array.isArray(cStep?.screen) ? cStep.screen : [],
+                screenAnsi: Array.isArray(cStep?.screenAnsi) ? cStep.screenAnsi : [],
+                cursor: Array.isArray(cStep?.cursor) ? cStep.cursor : null,
+            },
+            js: {
+                screen: Array.isArray(jStep?.screen) ? jStep.screen : [],
+                screenAnsi: Array.isArray(jStep?.screenAnsi) ? jStep.screenAnsi : [],
+                cursor: Array.isArray(jStep?.cursor) ? jStep.cursor : null,
+            },
+        });
+    }
+
+    return {
+        centerStep: center,
+        radius,
+        steps,
+    };
+}
+
 export function initComparisonArtifactsRunDir({ baseDir = DEFAULT_BASE_DIR } = {}) {
     mkdirSync(baseDir, { recursive: true });
     const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-pid${process.pid}`;
@@ -107,7 +172,7 @@ export function buildComparisonArtifact(session, replay, cmp, result) {
     const jsEvents = normalizeChannel(replay, { eventsOnly: true });
     const cEvents = normalizeChannel(session, { eventsOnly: true });
 
-    return {
+    const artifact = {
         format: FORMAT_VERSION,
         createdAt: new Date().toISOString(),
         session: {
@@ -145,6 +210,13 @@ export function buildComparisonArtifact(session, replay, cmp, result) {
             },
         },
     };
+
+    if (envEnabled('WEBHACK_COMPARISON_INCLUDE_SCREENS')) {
+        const context = buildStepScreenContext(session, replay, result);
+        if (context) artifact.screenContext = context;
+    }
+
+    return artifact;
 }
 
 export function writeComparisonArtifact(runDir, sessionFile, artifact) {

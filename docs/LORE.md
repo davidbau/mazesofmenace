@@ -2878,3 +2878,18 @@ hard-won wisdom:
     with RNG/events still 100% matched.
   - `scripts/run-and-report.sh --failures` remains `27/34` gameplay passing
     (no failing-session count regression).
+
+### Comparison artifact screen-window context for boundary triage (2026-03-06)
+
+- Added optional screen payloads to comparison artifacts to speed pure-screen
+  drift debugging without changing default artifact size.
+- New env toggle:
+  - `WEBHACK_COMPARISON_INCLUDE_SCREENS=1`
+  - Optional radius override: `WEBHACK_COMPARISON_SCREEN_CONTEXT=<N>` (default `2`)
+- When enabled, artifacts include `screenContext` with expected-vs-JS
+  `screen`/`screenAnsi`/`cursor` for `step = first_screen_or_color_divergence ± N`.
+- Seed328 triage insight from this view:
+  - divergence is localized to one map glyph row at step `231` (`%` vs `s`),
+    while RNG/events remain 100% matched.
+  - JS row at step `231` matches session row at step `232`, indicating a
+    narrow per-step display boundary/state timing issue, not broad PRNG drift.

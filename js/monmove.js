@@ -1353,7 +1353,11 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 } else if (moveStatus === MMOVE_DONE) {
                     mmoved = false;
                 }
-                if (!trapDied && !mon.dead && movedThisTurn) {
+                // C ref: monmove.c postmov() applies hides-under reevaluation
+                // whenever status is MMOVE_MOVED or MMOVE_DONE, even if the
+                // monster ended up staying on the same square.
+                if (!trapDied && !mon.dead
+                    && (moveStatus === MMOVE_MOVED || moveStatus === MMOVE_DONE)) {
                     maybe_postmove_hideunder(mon, map, player, fov, display);
                 }
             }
