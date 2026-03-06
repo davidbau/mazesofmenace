@@ -2984,3 +2984,33 @@ hard-won wisdom:
   - Step `306` now first diverges around `ship_object(dokick.c:1660)` /
     `^tmp_at_step[...]` versus JS `^place[...]`, indicating the next
     unmasked C-faithful gap is in the object-kick/tmp-at sequence boundary.
+
+### Stair --More-- boundary: preserve step alignment without cursor drift (2026-03-06)
+
+- Symptom:
+  - After moving stair-message ack to non-blocking behavior, `seed325` improved
+    screen frontier to step `306` but introduced cursor divergence at step `302`
+    (`expected [3,3,1]`, `actual [37,0,1]`).
+- Root cause:
+  - Stair ack path needed a pending input boundary to keep replay steps aligned,
+    but it reused generic pending-`--More--` rendering paths that left the cursor
+    on topline during snapshot.
+  - Separately, `run_command()` early-returned after dismissing pending-more
+    without running its normal end-of-command cursor/status placement.
+- Fix:
+  - Added stair-specific pending-more mode in `js/do.js`:
+    sets `display._pendingMore = true` and `display._pendingMoreNoCursor = true`
+    (no marker rendering).
+  - `docrt()` now skips `renderMoreMarker()` when `_pendingMoreNoCursor` is set.
+  - `Display`/`Headless` clear `_pendingMoreNoCursor` in constructors and `_clearMore()`.
+  - `run_command()` now refreshes status + cursor-to-player in the pending-more
+    early-return branch after consuming the dismiss key.
+- Validation:
+  - `seed325_knight_wizard_gameplay`:
+    - current: `screens=326/422`, `cursor=322/325`
+    - remaining cursor mismatch is still at step `302` (`expected [3,3,1]`,
+      `actual [64,0,1]`)
+    - first RNG divergence remains at step `309` (`rn2(12)` vs `rn2(100)`).
+  - Companion checks show no frontier regression:
+    - `seed327_priest_wizard_gameplay` first RNG divergence still step `390`.
+    - `seed328_ranger_wizard_gameplay` first RNG divergence still step `242`.

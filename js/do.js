@@ -758,23 +758,15 @@ export async function handleDrop(player, map, display) {
 // 4. Stair commands
 // ============================================================
 
-async function waitForStairMessageAck(display) {
-    // C ref: goto_level() in do.c calls docrt() after stair messages, which
-    // triggers display_nhwindow(WIN_MESSAGE, TRUE) in the tty port — this
-    // shows --More-- and blocks until the player presses a key to dismiss it.
-    // Reproduce that blocking acknowledgment so replayed key timing aligns
-    // with captured sessions (the Space that dismisses --More-- is consumed
-    // here, never reaching the command parser).
-    if (!display?._moreBlockingEnabled || typeof display?.morePrompt !== 'function'
-        || typeof display?._nhgetch !== 'function') {
-        return;
-    }
-    if (typeof display.renderMoreMarker === 'function') {
-        display.renderMoreMarker();
-    }
-    await display.morePrompt(display._nhgetch);
-    display.topMessage = null;
-    display.messageNeedsMore = false;
+async function waitForStairMessageAck(display, player = null) {
+    // C ref: do.c goto_level() message path:
+    // preserve key-boundary behavior without forcing visible --More-- marker
+    // or cursor relocation on the topline.
+    if (!display?._moreBlockingEnabled) return;
+    display._pendingMore = true;
+    display._pendingMoreNoCursor = true;
+    void player;
+    return;
 }
 
 // cf. do.c u_stuck_cannot_go() — check if engulfed/grabbed preventing movement
@@ -808,7 +800,7 @@ export async function handleDownstairs(player, map, display, game) {
 
     // C ref: do.c goto_level() ordinary descent message when verbose.
     await display.putstr_message('You descend the stairs.');
-    await waitForStairMessageAck(display);
+    await waitForStairMessageAck(display, player);
 
     const currentDnum = Number.isInteger(game?.dnum)
         ? game.dnum
@@ -857,7 +849,7 @@ export async function handleUpstairs(player, map, display, game) {
 
     // C ref: do.c goto_level() ordinary ascent message when verbose.
     await display.putstr_message('You climb up the stairs.');
-    await waitForStairMessageAck(display);
+    await waitForStairMessageAck(display, player);
 
     const currentDnum = Number.isInteger(game?.dnum)
         ? game.dnum

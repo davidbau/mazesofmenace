@@ -479,7 +479,17 @@ export async function run_command(game, ch, opts = {}) {
     // command.  This handles --More-- for turns where nhgetch is not
     // called (normal combat/movement turns without prompts).
     if (game.display && game.display._pendingMore) {
+        const prevMoreBlocking = game.display._moreBlockingEnabled;
+        if (typeof prevMoreBlocking === 'boolean') {
+            game.display._moreBlockingEnabled = false;
+        }
         game.display._clearMore();
+        if (typeof prevMoreBlocking === 'boolean') {
+            game.display._moreBlockingEnabled = prevMoreBlocking;
+        }
+        if (Object.hasOwn(game.display, '_nonBlockingMore')) {
+            game.display._nonBlockingMore = false;
+        }
         if (game._pendingDeferredTurnAfterMore) {
             if ((game.u || game.player)?.utotype) {
                 await deferred_goto((game.u || game.player), game);
@@ -492,6 +502,15 @@ export async function run_command(game, ch, opts = {}) {
                 if (onTimedTurn) await onTimedTurn();
             }
             game._pendingDeferredTurnAfterMore = false;
+        }
+        const _player = game.u || game.player;
+        if (game.display && _player) {
+            if (typeof game.display.renderStatus === 'function') {
+                game.display.renderStatus(_player);
+            }
+            if (typeof game.display.cursorOnPlayer === 'function') {
+                game.display.cursorOnPlayer(_player);
+            }
         }
         return { tookTime: false };
     }
@@ -603,7 +622,6 @@ export async function run_command(game, ch, opts = {}) {
         setCmdqInputMode(false);
         setCmdqRepeatRecordMode(false);
     }
-
     if (result && result.repeatRequest) {
         game.advanceRunTurn = null;
         return await execute_repeat_command(game, opts);
@@ -1633,6 +1651,7 @@ export class NetHackGame {
         // on the topline (player fell down shaft, etc.), the cursor must sit
         // at the end of the --More-- text, not on the player tile.
         if ((this.display._pendingMore || this.display._nonBlockingMore)
+            && !this.display._pendingMoreNoCursor
             && typeof this.display.renderMoreMarker === 'function') {
             this.display.renderMoreMarker();
         } else {

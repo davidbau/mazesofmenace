@@ -517,6 +517,7 @@ export class HeadlessDisplay {
         this.cursorVisible = 1;
         this._nhgetch = null;
         this._pendingMore = false;
+        this._pendingMoreNoCursor = false;
         this._messageQueue = [];
         this._moreBlockingEnabled = false;
     }
@@ -686,6 +687,7 @@ export class HeadlessDisplay {
     // overflow triggers a new --More--, draining stops.
     _clearMore() {
         this._pendingMore = false;
+        this._pendingMoreNoCursor = false;
         this.clearRow(0);
         this.messageNeedsMore = false;
         this.topMessage = null;

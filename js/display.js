@@ -203,6 +203,7 @@ export class Display {
         this._cursorSpan = null; // currently highlighted <span>
         this._nhgetch = null;
         this._pendingMore = false;
+        this._pendingMoreNoCursor = false;
         this._messageQueue = [];
         this._topMessageRow1 = undefined; // set when message wraps to row 1
 
@@ -413,6 +414,7 @@ span.nh-cursor {
     // Dismiss the --More-- prompt and display queued messages.
     _clearMore() {
         this._pendingMore = false;
+        this._pendingMoreNoCursor = false;
         this.clearRow(MESSAGE_ROW);
         if (this._topMessageRow1 !== undefined) {
             this.clearRow(MESSAGE_ROW + 1);
