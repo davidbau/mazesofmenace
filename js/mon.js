@@ -96,6 +96,7 @@ import { dist2, distmin } from './hack.js';
 import { monmoveTrace, monmoveStepLabel } from './monmove.js';
 import { monsterAtWithSegments } from './worm.js';
 import { ansimpleoname } from './objnam.js';
+import { game as _gstate } from './gstate.js';
 
 // ========================================================================
 // Monster speed constants — C ref: include/monsym.h
@@ -1363,6 +1364,10 @@ function split_mon_clone(mon, map, player) {
     mon.mhp = (mon.mhp || 0) - clone.mhp;
 
     map.addMonster(clone);
+    if (canSpotMonsterForMap(mon, map, player, null) && _gstate?.display?.putstr_message) {
+        const mname = mon?.data?.mname || mon?.type?.mname || mon?.name || 'monster';
+        _gstate.display.putstr_message(`The ${mname} multiplies!`);
+    }
     newsym(clone.mx, clone.my);
     return clone;
 }
