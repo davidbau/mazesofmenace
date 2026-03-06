@@ -6,414 +6,523 @@
 **See also:**
 [DEVELOPMENT.md](DEVELOPMENT.md) (dev workflow) |
 [DECISIONS.md](DECISIONS.md) (trade-offs) |
-[LORE.md](LORE.md) (porting lessons)
+[LORE.md](LORE.md) (porting lessons) |
+[MODULES.md](MODULES.md) (module dependency rules)
+
+---
 
 ## Overview
 
-This project is a faithful JavaScript port of NetHack 3.7, rendering the classic
-ASCII/DEC-symbol display in a web browser. The goal is **readable, traceable
-JavaScript** that mirrors the C implementation's logic, with comments referencing
-the original C source files and line numbers.
+Mazes of Menace (Royal Jelly) is a faithful JavaScript port of NetHack 3.7,
+playable in any modern browser — no build step, no WebAssembly, no binary blobs.
+Every game behavior is hand-ported readable JavaScript that mirrors the C source
+logic, with `// C ref: file.c function()` comments linking each function to its
+counterpart. The goal is a codebase that can be read alongside the C source, not
+a transpilation.
 
-## Design Philosophy
+---
 
-> *"The strident call of fidelity echoes through the corridors."*
+## How NetHack Is Structured
 
-This port prioritizes **fidelity, readability, and traceable implementation**:
+> *"You read the C source. It reads like a novel written over thirty-eight years by
+> seventy authors who never met."*
 
-- Every function is hand-ported readable JavaScript that can be followed alongside the C source (not compiled/WASM)
-- Comments link each JS function to its C counterpart (e.g., `// C ref: uhitm.c find_roll_to_hit()`)
-- Display matches terminal NetHack exactly: 80×24 grid, 16 ANSI colors, DEC line-drawing characters
-- We port the core game loop first, then layer on subsystems in priority order
+Understanding the C we're porting is half the battle. NetHack 3.7 is approximately
+420,000 lines of C, C headers, and Lua across ~300 source files and ~8,600
+functions.
 
-For the design trade-offs that created this architecture (async game loop, ES6 modules without bundling, `<pre>`/`<span>` rendering), see [DECISIONS.md](DECISIONS.md).
+### The C game loop
 
-## Architecture
+The top-level loop in `allmain.c`:
 
-### Module Structure
-
-```
-webhack/
-├── index.html                 Main HTML page (80×24 terminal)
-├── package.json               Node.js project config (ES modules, test scripts)
-├── CNAME                      GitHub Pages domain (mazesofmenace.net)
-├── Guidebook.txt              Original NetHack Guidebook
-├── README.md                  Project overview and status
-├── AGENTS.md                  Agent workflow instructions
-├── scripts/generators/gen_monsters.py          Code generator: C monsters.h → JS monsters.js
-├── scripts/generators/gen_objects.py           Code generator: C objects.h → JS objects.js
-├── scripts/generators/gen_artifacts.py         Code generator: C artilist.h → JS artifacts.js
-├── scripts/generators/gen_constants.py         Code generator: C header constants → JS const.js blocks
-│
-├── js/                        ── Game Source (32 modules) ──
-│   │
-│   │  ┌─ Core ─────────────────────────────────────────────┐
-│   ├── nethack.js             Entry point, game init (← allmain.c)
-│   ├── const.js              Game constants & terrain types (← rm.h, hack.h)
-│   ├── player.js              Player state (← you.h, decl.h)
-│   ├── cmd.js                 Command dispatch (← cmd.c)
-│   │
-│   │  ┌─ Display & I/O ───────────────────────────────────┐
-│   ├── display.js             Browser TTY display (← win/tty/*.c)
-│   ├── input.js               Async keyboard queue (← tty input)
-│   ├── const.js              (also includes display symbols & colors from ← defsym.h, drawing.c)
-│   ├── pager.js               In-terminal text pager (← pager.c)
-│   │
-│   │  ┌─ RNG ─────────────────────────────────────────────┐
-│   ├── isaac64.js             ISAAC64 PRNG engine, BigInt (← isaac64.c)
-│   ├── rng.js                 RNG interface: rn2, rnd, d (← rnd.c)
-│   │
-│   │  ┌─ World Generation ────────────────────────────────┐
-│   ├── dungeon.js             Level generation (← mklev.c, mkroom.c, sp_lev.c)
-│   ├── game.js                Level map data structures (← rm.h, mkmap.c)
-│   ├── themerms.js            Themeroom definitions (← dat/themerms.lua)
-│   ├── vision.js              Field of view, Algorithm C (← vision.c)
-│   │
-│   │  ┌─ Creatures ───────────────────────────────────────┐
-│   ├── monsters.js            Monster data table (← monsters.h)
-│   ├── mondata.js             Monster predicate functions (← mondata.h)
-│   ├── makemon.js             Monster creation (← makemon.c)
-│   ├── monmove.js             Monster movement AI (← monmove.c)
-│   ├── dog.js                 Pet AI helpers (← dog.c)
-│   │
-│   │  ┌─ Objects ─────────────────────────────────────────┐
-│   ├── objects.js             Object data table (← objects.h)
-│   ├── objdata.js             Object predicate functions (← objclass.h)
-│   ├── mkobj.js               Object creation (← mkobj.c)
-│   ├── o_init.js              Object init & description shuffle (← o_init.c)
-│   │
-│   │  ┌─ Character Creation ──────────────────────────────┐
-│   ├── u_init.js              Post-level init: pet, inventory, attrs (← u_init.c)
-│   │
-│   │  ┌─ Combat ──────────────────────────────────────────┐
-│   ├── uhitm.js               Hero-vs-monster combat core (← uhitm.c)
-│   ├── mhitu.js               Monster-vs-hero combat core (← mhitu.c)
-│   ├── mhitm.js               Monster-vs-monster combat core (← mhitm.c)
-│   │
-│   │  ┌─ Persistence ─────────────────────────────────────┐
-│   ├── storage.js             Save/restore via localStorage (← save.c, restore.c)
-│   ├── bones.js               Bones file management (← bones.c)
-│   ├── topten.js              High score list (← topten.c)
-│   │
-│   │  ┌─ Data Files ──────────────────────────────────────┐
-│   ├── hacklib.js             xcrypt cipher & data parsing (← hacklib.c)
-│   ├── epitaph_data.js        Encrypted epitaphs (← dat/epitaph)
-│   ├── engrave_data.js        Encrypted engravings (← dat/engrave)
-│   └── rumor_data.js          Encrypted rumors (← dat/rumors)
-│
-├── dat/                       ── Help Text Data ──
-│   ├── help.txt               General help
-│   ├── hh.txt                 Quick reference
-│   ├── history.txt            Version history
-│   ├── opthelp.txt            Options help
-│   └── wizhelp.txt            Wizard mode help
-│
-├── docs/                      ── Documentation ──
-│   ├── DESIGN.md              This file
-│   ├── DECISIONS.md           Design decision log
-│   ├── SESSION_FORMAT.md      Session file format spec (v2)
-│   ├── COLLECTING_SESSIONS.md How to capture C reference sessions
-│   ├── DEVELOPMENT.md         Development workflow
-│   ├── PHASE_1_PRNG_ALIGNMENT.md   Phase 1 goals & progress
-│   ├── PHASE_2_GAMEPLAY_ALIGNMENT.md Phase 2 goals & progress
-│   └── bugs/
-│       └── pet-ai-rng-divergence.md Known pet AI divergence
-│
-├── test/                      ── Test Infrastructure ──
-│   ├── unit/                  26 unit test files (node --test)
-│   │   ├── rng.test.js        PRNG functions
-│   │   ├── isaac64.test.js    ISAAC64 engine
-│   │   ├── dungeon.test.js    Level generation
-│   │   ├── map.test.js        Map structures
-│   │   ├── combat.test.js     Combat system
-│   │   ├── makemon.test.js    Monster creation
-│   │   ├── mkobj.test.js      Object creation
-│   │   ├── o_init.test.js     Object shuffling
-│   │   ├── u_init.test.js     Character init
-│   │   ├── chargen.test.js    Character creation (90 golden sessions)
-│   │   ├── monsters.test.js   Monster data
-│   │   ├── objects.test.js    Object data
-│   │   ├── player.test.js     Player state
-│   │   ├── monmove.test.js    Monster movement
-│   │   ├── config.test.js     Configuration
-│   │   ├── fov.test.js        Field of view
-│   │   ├── gameloop.test.js   Game loop
-│   │   ├── bones.test.js      Bones system
-│   │   ├── storage.test.js    Save/restore
-│   │   ├── topten.test.js     High scores
-│   │   ├── epitaph.test.js    Epitaph decryption
-│   │   ├── hacklib.test.js    hacklib utilities
-│   │   ├── wizard.test.js     Wizard mode
-│   │   ├── gameover.test.js   Game over logic
-│   │   ├── display_gameover.test.js  Death screen
-│   │   └── screen_compare.test.js    Screen comparison
-│   │
-│   ├── e2e/                   End-to-end browser tests (Puppeteer)
-│   │   ├── game.e2e.test.js
-│   │   └── gameplay.e2e.test.js
-│   │
-│   └── comparison/            ── C Comparison Testing ──
-│       ├── sessions.test.js       Session replay test entrypoint
-│       ├── gen_rng_log.js     Generate JS RNG logs
-│       ├── gen_typ_grid.js    Generate JS terrain grids
-│       ├── sessions/          96 golden session files (.session.json)
-│       ├── golden/            ISAAC64 reference outputs (4 seeds)
-│       ├── isaac64_reference.c  C ISAAC64 for golden generation
-│       └── c-harness/         C NetHack build & capture tools
-│           ├── setup.sh           Build patched C NetHack
-│           ├── macosx-minimal     macOS build hints file
-│           ├── run_session.py     Capture gameplay sessions via tmux
-│           ├── run_dumpmap.py     Capture map grids
-│           ├── run_trace.py       Capture RNG traces
-│           ├── gen_chargen_sessions.py  Generate chargen sessions
-│           ├── gen_map_sessions.py     Generate map sessions
-│           ├── capture_inventory.py    Capture inventory data
-│           ├── plan_session.py    Session planning helper
-│           └── patches/
-│               ├── 001-deterministic-seed.patch
-│               ├── 002-map-dumper.patch
-│               ├── 003-prng-logging.patch
-│               ├── 004-obj-dumper.patch
-│               └── 005-midlog-infrastructure.patch
-│
-├── spoilers/                  ── Spoiler Guide (separate site) ──
-│   ├── guide.md               Guide source (Markdown)
-│   ├── index.html             Built HTML guide
-│   ├── style.css              Guide styling
-│   ├── template.html          Pandoc HTML template
-│   ├── template.tex           Pandoc LaTeX template
-│   ├── latex-filter.lua       Pandoc Lua filter
-│   ├── build.sh               Build HTML version
-│   └── build-latex.sh         Build PDF version
-│
-└── nethack-c/                 ── Reference C Source (git-ignored) ──
-    └── (cloned & patched by test/comparison/c-harness/setup.sh)
-```
-
-### Display Architecture
-
-> *"The walls of the room are covered in `<span>` tags."*
-
-**Choice: `<pre>` with per-cell `<span>` elements**
-
-The display uses a `<pre>` element containing an 80×24 grid. Each character
-position is a `<span>` with CSS classes for the 16 NetHack colors. This matches
-the TTY window port's approach of writing individual characters at (x,y)
-positions.
-
-The C code's `window_procs` structure defines the windowing interface:
-- `win_print_glyph(win, x, y, glyph_info)` → renders a character at (x,y)
-- `win_putstr(win, attr, str)` → writes a string to a window
-- `win_nhgetch()` → gets a character of input
-- `win_yn_function(query, resp, def)` → yes/no prompts
-
-Our JS `Display` class implements all these as methods that manipulate the DOM.
-
-**Color mapping:** NetHack uses 16 colors (CLR_BLACK through CLR_WHITE plus
-bright variants). These map directly to CSS classes: `.clr-red`, `.clr-green`,
-etc.
-
-**Window types:** NetHack has NHW_MESSAGE (top line), NHW_MAP (main map),
-NHW_STATUS (bottom two lines), and NHW_MENU (popup menus). We implement all
-four as regions within the terminal grid, with menus overlaying the map.
-
-### Input Architecture
-
-> *"You wait for input. Time passes..."*
-
-**Choice: Async queue with Promise-based waiting**
-
-The C game loop is synchronous: `ch = nhgetch()` blocks until a key is pressed.
-In JavaScript, we can't block. Instead:
-
-1. Keyboard events push characters into an input queue
-2. `nhgetch()` returns a Promise that resolves when a character is available
-3. The game loop uses `await nhgetch()` to wait for input
-4. `moveloop_core()` becomes an async function
-
-This is the fundamental architectural difference from the C version. Everything
-else follows from this: the game loop, command dispatch, and all input-requesting
-functions become async.
-
-### Game Loop Architecture
-
-> *"You are caught in an infinite loop!"*
-
-**C version** (allmain.c:593):
 ```c
+void moveloop(boolean resuming) {
+    moveloop_preamble(resuming);      // setup, restore, display init
+    for (;;) {
+        moveloop_core();              // one player turn
+    }
+}
+```
+
+Inside `moveloop_core()`:
+1. **Monster movement** — `mon_move()` advances every monster on the level
+2. **Display update** — `vision_recalc()`, `botl_update()`, message flush
+3. **Player command** — `rhack()` reads a keystroke, dispatches to `docmd()`,
+   which calls `dodo()` — the 200-line command dispatch table
+4. **Turn accounting** — `moves++`, hunger, timeout, exercise checks
+
+The loop is **synchronous and blocking** in C. `nhgetch()` stops the process until
+a key arrives. This is the single most consequential structural fact for the JS port.
+
+### Major C subsystems
+
+| Subsystem | Key C files | What it does |
+|-----------|-------------|-------------|
+| Game loop | `allmain.c`, `hack.c`, `cmd.c` | Input dispatch, turn cycle, time management |
+| Dungeon gen | `mklev.c`, `mkroom.c`, `mkmaze.c`, `sp_lev.c` | Level layout, rooms, corridors, special levels |
+| Special levels | `dat/*.lua`, `sp_lev.c`, `nhlua.c` | 132 hand-designed levels as Lua scripts |
+| Vision/FOV | `vision.c` | Algorithm C raycasting for field of view |
+| Monster AI | `monmove.c`, `dog.c`, `dogmove.c` | Pathfinding, fleeing, pet behavior |
+| Combat | `uhitm.c`, `mhitu.c`, `mhitm.c` | Hero-hits-monster, monster-hits-hero, monster-hits-monster |
+| Objects | `mkobj.c`, `pickup.c`, `invent.c`, `apply.c` | Item creation, picking up, using |
+| Magic | `spell.c`, `zap.c`, `potion.c`, `read.c` | Spells, wand beams, potions, scrolls |
+| Traps | `trap.c` | All trap types (arrow, pit, teleport, ...) |
+| Display | `win/tty/*.c`, `drawing.c` | The pluggable windowing layer |
+| Persistence | `save.c`, `restore.c`, `bones.c` | Save/restore, bones files |
+| Data | `monsters.h`, `objects.h`, `artilist.h` | Static game data (macro-defined tables) |
+
+### The windowing abstraction
+
+NetHack's display code is pluggable through a `window_procs` struct in `wintype.h`.
+All game code calls functions like `win_print_glyph()`, `win_putstr()`,
+`win_nhgetch()`, `win_yn_function()` — which dispatch through a runtime function
+pointer table to the active backend (tty, curses, X11, Qt, or shim/WASM). This
+abstraction was built to allow ports, and we exploit it: our JS `Display` class
+implements exactly these primitives.
+
+### Static data tables
+
+The three large data tables are defined entirely via C macros:
+
+- **`monsters.h`** (~4,000 lines) — 383 monster types via `MON(NAM(...), S_ANT, LVL(...), ...)`
+- **`objects.h`** (~1,700 lines) — 478 object types via `WEPTOOL(...)`, `ARMOR(...)`, etc.
+- **`artilist.h`** (~600 lines) — artifact definitions via `PHYS(...)`, `DRLI(...)`, etc.
+
+These are not C code that runs — they are data initialization disguised as macro
+calls. Python generators parse them and emit equivalent JS.
+
+### Encrypted data files
+
+NetHack's `makedefs` tool XOR-encrypts several data files:
+- `dat/epitaph` — gravestone inscriptions
+- `dat/engrave` — Elbereth and other engravings
+- `dat/rumors` — in-game rumors and fortunes
+
+The encryption uses a trivial self-inverse XOR cipher from `hacklib.c`. We embed
+the encrypted data directly in JS modules and decrypt at load time using `hacklib.js`.
+
+---
+
+## JS Port Architecture
+
+### Module structure
+
+The port has **141 JavaScript modules** in `js/`. Each module corresponds to one
+or more C source files, named to match (e.g. `uhitm.js` ↔ `uhitm.c`). The naming
+policy exists so the autotranslator can target the right file directly.
+
+Modules divide into two tiers:
+
+**Leaf files** (no imports from gameplay modules; can be imported freely by anyone):
+
+| File | What it contains |
+|------|-----------------|
+| `version.js` | `COMMIT_NUMBER` build artifact (git hook generated) |
+| `const.js` | All hand-maintained capitalized constants: terrain, colors, attributes, directions, trap types, alignment, etc. |
+| `objects.js` | 478 object definitions (generated from `objects.h`) |
+| `monsters.js` | 383 monster definitions (generated from `monsters.h`) |
+| `artifacts.js` | Artifact definitions and `ART_*`/`SPFX_*` constants (generated from `artilist.h`) |
+| `symbols.js` | Glyph/symbol constants derived from `display.h`; imports from the generated leaf files |
+| `game.js` | `game` singleton + all struct class definitions (`struct rm`, `struct mkroom`, etc.) |
+| `engrave_data.js`, `epitaph_data.js`, `rumor_data.js` | Encrypted string blobs |
+| `storage.js` | `DEFAULT_FLAGS`, `OPTION_DEFS` config data |
+
+**Rule:** Only leaf files export capitalized constants. All other files export
+functions only. This means gameplay files may have arbitrary circular imports
+between themselves without any constant initialization risk.
+
+**Gameplay files** (141 total minus the leaf files above) — these implement the
+actual game logic, each corresponding to a C source file. They freely import
+from leaf files and from each other.
+
+### Why circular imports are safe
+
+> *"You feel a circular dependency. It does not bind you."*
+
+ESM (ES6 modules) resolves import bindings **lazily at call time**, not at module
+parse time. When module A imports a function from module B, and module B imports
+from module A, JavaScript installs a live binding — a reference that resolves to
+the actual value when it is first *called*, not when the module is first loaded.
+
+This means: **circular imports between gameplay modules are safe** as long as they
+only import functions (not values computed at module top level). By the time any
+function is actually called, all modules have finished their top-level init.
+
+The one exception: **constant values** resolved at module top level (e.g.
+`export const X = importedValue + 1`). If module A's init uses a value from
+module B, and module B hasn't finished loading yet, X gets `undefined`. This is
+why all exported constants live in leaf files — files with no circular deps.
+
+Gameplay files with circular imports (e.g. `hack.js ↔ vision.js ↔ trap.js`) are
+explicitly allowed and work correctly. The leaf file architecture ensures no
+constant ever relies on a circular chain.
+
+### Global state: `game.*`
+
+> *"You feel the weight of hundreds of global variables. They are neatly organized."*
+
+The C code uses hundreds of global variables declared in `decl.c`/`decl.h`. In JS,
+these become fields on a single `game` object exported from `game.js` and accessed
+via `gstate.js`. Key groups:
+
+| JS path | C equivalent | Contents |
+|---------|-------------|---------|
+| `game.u` | `struct you u` | Player: HP, AC, alignment, stats, intrinsics, inventory chain head |
+| `game.level` | `struct level svl.level` + `svr.rooms[]` + `svd.doors[]` | Current dungeon level: map locations, rooms, doors, stairs |
+| `game.flags` | `struct flag flags` | Game flags: verbose, confirm, tombstone, etc. |
+| `game.context` | `struct context_info context` | Turn context: running, resting, occupied movement |
+| `game.svc` | `struct statedata svc` | Persistent save-compatible variables |
+| `game.moves` | `moves` | Turn counter |
+| `game.fmon` | `fmon` | Monster linked list head for current level |
+| `game.invent` | `invent` | Player inventory linked list head |
+| `game.youmonst` | `youmonst` | Player-as-monster struct (for polymorph) |
+| `game.display` | display object | The `Display` instance |
+
+The `game` object is initialized in `allmain.js` and passed to `gstate.js`
+(`setGame(game)`). All game code accesses globals through `gstate.game.*` rather
+than true JS globals. This makes save/restore, testing, and reasoning about state
+much cleaner.
+
+**Key difference from old code:** Early versions used a separate `player.js` module
+with its own namespace, plus multiple `set*Context()` wiring calls in module init.
+All of this has been replaced by `gstate.js` — one place, one object. No wiring
+needed because ESM live bindings handle the circular reference naturally.
+
+### The async game loop
+
+> *"You await input. The Promise resolves."*
+
+The C game loop blocks on `nhgetch()`. JavaScript in the browser cannot block the
+main thread. The solution is **async/await with a Promise-based input queue**:
+
+```javascript
+// C version (allmain.c):
 void moveloop(boolean resuming) {
     moveloop_preamble(resuming);
     for (;;) {
-        moveloop_core();  // synchronous, blocks on input
+        moveloop_core();      // blocks until key pressed
     }
 }
-```
 
-**JS version:**
-```javascript
+// JS version (allmain.js):
 async function moveloop(resuming) {
     moveloop_preamble(resuming);
     while (true) {
-        await moveloop_core();  // async, awaits input
+        await moveloop_core();  // awaits Promise from nhgetch()
     }
 }
 ```
 
-The core loop structure mirrors the C exactly:
-1. Process monster movement (if time passed)
-2. Update display (vision, status, messages)
-3. Get player input via `rhack()` → command dispatch
-4. Execute command (may consume time)
-5. Repeat
+**Async infection:** Any function in the call chain from `moveloop_core` to a
+function that reads input must be `async`. This propagates transitively:
 
-### Data Porting Strategy
-
-> *"You see here 382 monsters and 478 objects."*
-
-**Monster data** (`monsters.h`, 3927 lines): The C uses macro-heavy definitions
-like `MON(NAM("giant ant"), S_ANT, LVL(2,18,3,0,0), ...)`. We port these to
-JS objects: `{ name: "giant ant", symbol: 'a', level: 2, speed: 18, ... }`.
-Each entry includes a comment `// monsters.h:NNN` for traceability.
-
-**Object data** (`objects.h`, 1647 lines): Similar macro-heavy definitions
-ported to JS objects with traceability comments.
-
-**Symbol data** (`defsym.h`): The PCHAR definitions map indices to characters,
-descriptions, and colors. Ported to a JS array of `{ch, desc, color}` objects.
-
-### Level Generation Strategy
-
-> *"You hear the rumble of distant construction."*
-
-NetHack's dungeon generation (mklev.c) uses this algorithm:
-1. Decide number of rooms (3-5 on most levels)
-2. Place rooms with random sizes at random positions
-3. Connect rooms with corridors (using the order they were created)
-4. Add doors at room boundaries
-5. Place stairs (up and down)
-6. Place furniture (fountains, altars, etc.)
-7. Populate with monsters and objects
-
-We port this algorithm faithfully, including the room-joining corridor algorithm
-from `join()` in mklev.c which creates L-shaped corridors.
-
-### Combat Architecture
-
-> *"You hit the grid bug! The grid bug is killed!"*
-
-Combat mirrors the C's `uhitm.c` (hero hits monster) and `mhitu.c` (monster
-hits hero). The core flow:
-1. To-hit roll: `1d20 + bonuses >= target AC + 10`
-2. Damage roll: weapon base damage + strength bonus
-3. Special effects (poison, drain, etc.)
-
-### Vision/FOV Architecture
-
-> *"It is dark. You can see four directions."*
-
-The JS `vision.js` is a faithful port of the C's Algorithm C from `vision.c`,
-the recursive line-of-sight scanner that NetHack actually uses. It traces
-visibility along octant rays, handling walls, doors, and partial occlusion
-exactly as the C does. This replaced an earlier simplified rule-based approach.
-
-## Global State Management
-
-> *"You feel the weight of hundreds of global variables."*
-
-The C version uses extensive global variables (declared in decl.c/decl.h):
-- `u` -- the player (`struct you`)
-- `level` -- current level data
-- `mons[]` -- monster type data
-- `objects[]` -- object type data
-- `fmon` -- linked list of monsters on level
-- `invent` -- player's inventory chain
-- `moves` -- turn counter
-
-In JS, these become properties of a global `NetHack` game state object,
-preserving the same names for readability:
-```javascript
-const NH = {
-    u: { ... },        // player state
-    level: { ... },    // current level
-    moves: 0,          // turn counter
-    fmon: null,         // monster list head
-    invent: null,       // inventory list head
-};
+```
+moveloop_core → rhack → docmd → dodo → ... → getlin/yn_function/nhgetch
 ```
 
-## Map Representation
+Every function in this chain is `async`. The rule is mechanical: if a function
+`await`s anything (directly or transitively), it must be `async`. In practice
+this means most game logic functions are async.
 
-> *"You try to map the level. This is too hard to map!"*
+**What this does NOT change:** The sequential logic of the C code is completely
+preserved. `await nhgetch()` reads exactly like `nhgetch()` in context. The
+async/await boundary is invisible to the game logic — it just allows the browser
+to remain responsive while waiting for input.
 
-The C version uses `level.locations[x][y]` (an array of `struct rm`).
-Each location has:
-- `typ` -- terrain type (ROOM, CORR, DOOR, WALL, etc.)
-- `seenv` -- which directions player has seen this from
-- `flags` -- door state, etc.
-- `lit` -- illumination state
-- `glyph` -- what's currently displayed here
+**Input queue:** Keyboard events push keycodes into a queue (`input.js`). `nhgetch()`
+either dequeues immediately (if a key is waiting) or returns a Promise that resolves
+when the next key arrives. Multi-step commands (running, searching) queue multiple
+synthetic keypresses.
 
-We mirror this exactly in JS with a 2D array of location objects.
-Map dimensions: COLNO=80, ROWNO=21 (matching the C constants).
+### Display architecture
 
-### Special Level Strategy
+> *"The walls of the room are covered in `<span>` tags."*
 
-> *You read a scroll labeled "des.room()". It's a special level definition!*
+The display is a `<pre>` element containing an 80×24 grid of character positions,
+each a `<span>` with CSS classes for the 16 NetHack colors (`clr-red`, `clr-green`,
+etc.) and attributes (bold, dim, inverse). This matches the TTY window port's
+character-at-position model.
 
-NetHack 3.7 defines special levels (Oracle, Castle, Medusa, Sokoban, etc.) via
-141 Lua scripts in `dat/`.  WebHack ports these directly to JavaScript rather
-than embedding a Lua interpreter.  See Decision 11 in DECISIONS.md for the full
-analysis.
+**Window types** (matching NetHack's `NHW_*` constants):
+- `NHW_MESSAGE` — top row: the message line
+- `NHW_MAP` — rows 1-21: the dungeon map
+- `NHW_STATUS` — rows 22-23: HP, AC, experience, conditions
+- `NHW_MENU` — popup overlays for menus, inventory, text paging
 
-The porting requires three foundation pieces:
+All four are rendered within the same 80×24 grid. Menus overlay the map.
 
-1. **`des.*` API** -- JS implementations of the 35+ level-builder functions that
-   C exposes to Lua via `sp_lev.c`.  These are the verbs of level definition:
-   `des.room()`, `des.monster()`, `des.terrain()`, `des.map()`, etc.
+**DEC line-drawing:** NetHack's walls and corridors use DEC Special Graphics
+characters (box-drawing: ─│┌┐└┘├┤┬┴┼). We use Unicode box-drawing (U+2500 block)
+which maps identically and renders correctly in all modern fonts.
 
-2. **Selection API** -- Geometric operations on map coordinates used by complex
-   levels and theme rooms: set union/intersection, flood fill, grow, random
-   coordinate selection.
+**Cursor tracking:** The display tracks cursor position to one cell of accuracy,
+matching the C TTY port. Parity tests compare cursor position step-by-step.
 
-3. **`nhlib` helpers** -- Utility functions shared across level files: `percent()`,
-   `shuffle()`, dice rolling (already in `rng.js`).
+---
 
-### PRNG Comparison Architecture
+## C-to-JS Translation Strategy
 
-> *You sense the presence of determinism.*
+> *"The autotranslator dreams of field names that match the C source."*
 
-The C and JS versions share an identical PRNG (ISAAC64, BigInt-based).  The
-core verification strategy: replay the same deterministic seed through both
-implementations and compare PRNG call sequences, screen output, and map grids.
+### Field names must match C
 
-**C harness** (`test/comparison/c-harness/`): Patches applied to C NetHack
-enable deterministic seeding, PRNG call logging with caller context, map
-grid dumping, and object inspection. Python scripts drive tmux sessions to
-capture reference data as JSON session files.
+All struct fields use their C canonical names, not JS aliases. This matters because:
+1. Ported functions look like the C source — you can read them side by side
+2. The autotranslator can emit correct field accesses directly
+3. Debugging is easier when JS and C name the same thing the same way
 
-**Session files** (`test/comparison/sessions/`): 96 golden reference files
-in a unified format (see `docs/SESSION_FORMAT.md`). Two session types:
-- **`"gameplay"`** -- full playthrough with RNG traces, screens, and step data
-- **`"map"`** -- terrain type grids at multiple dungeon depths
+Key normalizations completed during Phase 2:
 
-**Session runner** (`test/comparison/sessions.test.js`): Replays each
-session through the JS engine, comparing RNG traces call-by-call, screen
-output character-by-character, and terrain grids cell-by-cell.
+| JS alias (old) | C canonical | Struct |
+|----------------|-------------|--------|
+| `.at`, `.type` | `.aatyp` | `struct attack` |
+| `.damage`, `.ad` | `.adtyp` | `struct attack` |
+| `.dice` | `.damn` | `struct attack` |
+| `.sides` | `.damd` | `struct attack` |
+| `.speed` | `.mmove` | `struct permonst` |
+| `.difficulty` | `.mlevel` | `struct permonst` |
+| `.name` (on item) | `.oname` | `struct obj` |
+| `oc_class` fields | `oc_name`, `oc_descr`, `oc_material`, ... | `struct objclass` |
 
-**Current status**: Character creation (90 chargen sessions across 13 roles,
-5 races, all alignments) matches the C bit-identically. Gameplay sessions
-track RNG through dungeon generation and into the game loop, with remaining
-divergences in unimplemented subsystems (shops, some special levels).
+### Macros → constants and helper functions
 
-### Encrypted Data Files
+C `#define` constants become `export const` in `const.js`. C expression macros
+that compute values — like `HARDGEM(n)` (gem hardness check) or `PHYS(a,b)` (attack
+struct shorthand) — become small inline helper functions defined at the top of the
+file that uses them, not exported:
 
-> *"You try to read the scroll. It's encrypted!"*
+```javascript
+// In objects.js:
+function HARDGEM(n) { return n >= 8 ? 1 : 0; }
+function BITS(p1, p2, ...) { /* unpack bitfield args */ }
 
-NetHack's `makedefs` tool encrypts data files (epitaphs, rumors, engravings)
-with a trivial XOR cipher defined in `hacklib.c`. Rather than running makedefs
-at build time, we embed the encrypted strings directly in JS modules
-(`epitaph_data.js`, `rumor_data.js`, `engrave_data.js`) and decrypt them at
-load time using `hacklib.js`'s `xcrypt()` -- the same self-inverse cipher.
+// In artifacts.js:
+function PHYS(a, b) { return { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: a, damd: b }; }
+function NO_ATTK() { return { aatyp: AT_NONE, adtyp: AD_NONE, damn: 0, damd: 0 }; }
+```
+
+The Python generators emit calls like `HARDGEM(9)` rather than pre-evaluated
+literals, keeping the generated tables readable alongside the C source.
+
+### Structs → plain objects and classes
+
+Most C structs become plain JS objects. Struct fields are accessed directly as
+properties. `struct rm` (map location) becomes an object with fields `typ`, `seenv`,
+`flags`, `lit`, `glyph` — same names as C.
+
+For structs that need methods or prototypal identity (monsters, objects, player),
+we use ES6 classes — but with the C field names on instances.
+
+### Linked lists
+
+NetHack uses linked lists pervasively (monster list `fmon`, inventory `invent`,
+object piles on map cells). These are preserved as JS linked lists using the same
+`nobj`/`nextmon` chain field names. JS garbage collection handles deallocation.
+
+### File-level correspondence
+
+Each JS file corresponds to one or more C source files. The naming policy:
+one JS file per C file, same base name. JS infrastructure that has no C counterpart
+(async input system, browser display, replay infrastructure) lives in
+platform-specific files with descriptive names (`input.js`, `browser_input.js`,
+`render.js`, etc.).
+
+C files not needed in JS (file I/O, memory allocation, Lua bindings, Unix mail,
+crash reporting) are deliberately omitted. See MODULES.md for the complete list.
+
+---
+
+## Data and Code Generation
+
+> *"You read a scroll of generate data. Your objects.js glows blue!"*
+
+### Generated data tables
+
+Three Python generators parse C headers and patch JS files between marker comments:
+
+```bash
+python3 scripts/generators/gen_monsters.py   # monsters.h → js/monsters.js
+python3 scripts/generators/gen_objects.py    # objects.h  → js/objects.js
+python3 scripts/generators/gen_artifacts.py  # artilist.h → js/artifacts.js
+python3 scripts/generators/gen_constants.py  # various headers → js/const.js blocks
+```
+
+Each generator patches between `// AUTO-IMPORT-START` / `// AUTO-IMPORT-END`
+markers, leaving the rest of the file (manually written functions and helpers)
+untouched.
+
+### Special level conversion: Lua → JS
+
+NetHack 3.7 defines all 132 special levels in Lua scripts (`dat/*.lua`). Rather
+than embedding a Lua interpreter, each script was converted directly to JavaScript:
+
+```
+-- Lua (Arc-fila.lua)               // JavaScript (js/levels/Arc-fila.js)
+des.room({ type = "ordinary",       des.room({ type: "ordinary",
+  x = 3, y = 3,                       x: 3, y: 3,
+  contents = function()                contents: () => {
+    des.monster()                        des.monster();
+  end                                  }
+})                                   });
+```
+
+The conversion is mechanical: Lua table syntax (`{key=val}`) becomes JS object
+syntax (`{key:val}`), Lua functions become arrow functions or named functions, and
+`math.random()` becomes `rn2()`. The `des.*` API that the Lua scripts call is
+implemented in `sp_lev.js` — a JS port of `sp_lev.c`.
+
+The Lua scripts use no metatables, coroutines, module system, or runtime code
+generation — features that would require a real interpreter. The most complex files
+use closures and geometric set operations (`selection` API in `sp_lev.js`).
+
+### ISAAC64: bit-identical PRNG
+
+The PRNG is a direct port of `isaac64.c` using JavaScript BigInt for 64-bit
+unsigned arithmetic. Every arithmetic operation — mixing, bit shifting, modular
+addition — is identical to the C source:
+
+```javascript
+// From isaac64.js — matches isaac64.c exactly
+x[i] = (x[i] - x[(i + 4) & 7]) & MASK;
+x[(i + 5) & 7] ^= x[(i + 7) & 7] >> BigInt(SHIFT[i]);
+```
+
+Seeding also matches: the 64-bit seed is converted to 8 little-endian bytes, same
+as the C `sizeof(unsigned long)` layout on 64-bit Linux. Golden reference tests
+verify 500 consecutive values for 4 seeds against a compiled C reference program.
+
+### Encrypted data
+
+`hacklib.js` ports `xcrypt()` from `hacklib.c` — a self-inverse XOR cipher applied
+byte-by-byte with alternating key bits. The encrypted binary blobs from `dat/epitaph`,
+`dat/engrave`, and `dat/rumors` are embedded directly as strings in the `*_data.js`
+files and decrypted at startup.
+
+---
+
+## Testing and Parity Architecture
+
+> *"You sense the presence of determinism. It feels reassuring."*
+
+### Parity channels
+
+The fundamental correctness check: run the same seed through C NetHack and through
+the JS port, and compare on every observable channel:
+
+| Channel | What it measures |
+|---------|-----------------|
+| **RNG** | ISAAC64 call sequence — value and consuming function, step by step |
+| **Screen** | Full 80×24 character grid after each step |
+| **Cursor** | Terminal cursor position after each step |
+| **Events** | Logical game events (monster placed, item picked up, etc.) |
+| **Mapdump** | `level.locations[x][y].typ` grid — terrain type at every cell |
+
+All five channels are compared simultaneously. RNG divergence cascades into
+everything else, so RNG is checked first.
+
+### C harness and session capture
+
+The C NetHack binary is patched (`test/comparison/c-harness/patches/`) to enable:
+- Deterministic seeding via command-line argument
+- PRNG call logging (value + caller file:line) at every `rn2()`/`rnd()`/`d()` call
+- Map grid dumping to JSON after level generation
+- Cursor position reporting after each display operation
+- Midlog infrastructure for structured event emission
+
+Python scripts (`run_session.py`, `rerecord.py`) drive the patched C binary
+through recorded move sequences and capture all channel data into **session JSON
+files** (`test/comparison/`).
+
+### Session format V3
+
+156 golden session files record C reference behavior. Each file contains:
+
+```json
+{
+  "metadata": { "seed": 42, "datetime": "...", ... },
+  "steps": [
+    {
+      "moves": "hjkl...",
+      "rng": [1234567, "^event[monster placed]", 7654321, ...],
+      "screen": ["...", "...", ...],
+      "cursor": { "x": 3, "y": 12 },
+      "mapdump": [[0, 5, 5, ...], ...]
+    }
+  ]
+}
+```
+
+RNG values and inline events (`^event[...]` strings) share the same array in step
+order, letting the session file serve as a complete trace of everything that happened.
+
+### Test result tracking via git notes
+
+Test results are stored as **git notes** on commits, not in the working tree. This
+allows retroactive comparison: given any commit, you can fetch its test note and
+see exactly which sessions passed and which failed at that point in history. The
+pre-push hook runs sessions and attaches a note to every pushed commit.
+
+### Current status
+
+- **156 session tests**: gameplay sessions (self-play + wizard mode + multi-depth)
+- **2,462 unit tests**: 183 test files covering individual subsystems
+- **E2E browser tests**: Puppeteer tests for UI and full game loop
+
+---
+
+## Phase History
+
+> *"You recall the long campaign. The dungeon has changed."*
+
+The codebase has gone through four architectural phases, all now complete:
+
+**Phase 1 — Leaf header architecture.** Established the leaf file rule. Merged
+`config.js` and old `symbols.js`. Deleted `objclass.js`. The constant export
+audit now enforces that only leaf files export capitalized names.
+
+**Phase 2 — C field name normalization.** All struct field names renamed to C
+canonical (`.aatyp`, `.adtyp`, `.mmove`, `.mlevel`, etc.). `attack_fields.js`
+(a runtime alias shim) was deleted. Generators updated to emit canonical names.
+
+**Phase 3 — File-per-C-source reorganization.** JS "consolidation" files that
+had no C counterpart were dissolved into their canonical C-source-named files.
+`combat.js`, `look.js`, `monutil.js`, `stackobj.js`, `discovery.js`,
+`options_menu.js`, and `map.js` were all deleted. Functions moved to their
+correct homes. `player.js` roles/races tables moved to `role.js`.
+
+**Phase 4 — Context wiring elimination.** Multiple `set*Context()` / `register*()`
+patterns that wired module dependencies at init time were replaced by `gstate.js`
+direct access and explicit parameter passing. No registration patterns remain.
+
+---
+
+## Appendix: Key C Files and Their JS Counterparts
+
+| C file | JS file | Notes |
+|--------|---------|-------|
+| `allmain.c` | `allmain.js` | Entry point, game loop |
+| `hack.c` | `hack.js` | Turn management, run/rest/multi |
+| `cmd.c` | `cmd.js` | Command dispatch |
+| `mklev.c` | `mklev.js` | Level generation |
+| `mkroom.c` | `mkroom.js` | Room layout |
+| `sp_lev.c` | `sp_lev.js` | Special level API |
+| `vision.c` | `vision.js` | FOV — Algorithm C raycasting |
+| `uhitm.c` | `uhitm.js` | Hero-hits-monster |
+| `mhitu.c` | `mhitu.js` | Monster-hits-hero |
+| `monmove.c` | `monmove.js` | Monster movement AI |
+| `dog.c` | `dog.js` + `dogmove.js` | Pet AI |
+| `apply.c` | `apply.js` | Tool use |
+| `zap.c` | `zap.js` | Wand and beam effects |
+| `trap.c` | `trap.js` | All trap logic |
+| `invent.c` | `invent.js` | Inventory management |
+| `pager.c` | `pager.js` | In-terminal text display |
+| `save.c`/`restore.c` | `storage.js` | Persistence via localStorage |
+| `bones.c` | `bones.js` | Bones file management |
+| `topten.c` | `topten.js` | High score tracking |
+| `hacklib.c` | `hacklib.js` | xcrypt cipher, utility functions |
+| `monsters.h` | `monsters.js` | Generated monster data table |
+| `objects.h` | `objects.js` | Generated object data table |
+| `artilist.h` | `artifacts.js` | Generated artifact table |
 
 ---
 
