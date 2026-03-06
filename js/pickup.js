@@ -1416,6 +1416,17 @@ function classSymbolLabel(sym) {
     }
 }
 
+// C ref: pickup.c query_category() — count distinct BUC statuses among items.
+// Returns 0-4 (blessed, cursed, uncursed, BUC-unknown).
+function countBucTypes(items) {
+    let n = 0;
+    if (items.some(o => o?.bknown && o?.blessed)) n++;
+    if (items.some(o => o?.bknown && o?.cursed)) n++;
+    if (items.some(o => o?.bknown && !o?.blessed && !o?.cursed)) n++;
+    if (items.some(o => !o?.bknown)) n++;
+    return n;
+}
+
 function cContainerOrder(items) {
     // C container chains are prepended (head is newest); JS arrays are append-order.
     // Reverse for menu/class enumeration parity.
@@ -1533,7 +1544,11 @@ async function containerMenu(game, container) {
                 if (sym) seenClasses.add(sym);
             }
             let allowedClasses = null; // null => all classes
-            if (seenClasses.size > 1) {
+            // C ref: pickup.c menu_loot() → query_category() → select_menu(PICK_ANY)
+            // C's select_menu requires: toggle letter(s) to select, then Enter to confirm.
+            // We must consume the same keystrokes: selection key + Enter.
+            const numBucTypes = countBucTypes(currentContents);
+            if (seenClasses.size > 1 || numBucTypes > 1) {
                 const classOrder = [...seenClasses];
                 const classPrompt = 'Take out what type of objects?';
                 const classPad = centeredPad(classPrompt, 23);
@@ -1542,33 +1557,104 @@ async function containerMenu(game, container) {
                 await putMenuPrompt(`${' '.repeat(classPad)}${classPrompt}`);
                 drawMenuOptionLine(classPad, 2, 'A - Auto-select every relevant item');
                 drawMenuOptionLine(classPad + 4, 3, '(ignored unless some other choices are also picked)');
-                drawMenuOptionLine(classPad, 5, 'a - All types');
+                // C ref: pickup.c query_category() — build menu items.
+                // Each entry has a canonical letter (invlet) and optionally
+                // a class-symbol accelerator (e.g. ')' for weapons).
+                // menuItems maps canonical letter → {row, label, value}
+                // accelMap maps accelerator → canonical letter
+                const menuItems = new Map();
+                const accelMap = new Map(); // symbol accelerator → canonical letter
+                let nextRow = 5;
+                const showAll = seenClasses.size > 1;
+                if (showAll) {
+                    // C: a_int = ALL_TYPES_SELECTED
+                    menuItems.set('a', { row: nextRow, label: 'All types', value: 'ALL' });
+                    drawMenuOptionLine(classPad, nextRow++, 'a - All types');
+                }
                 for (let i = 0; i < classOrder.length; i++) {
-                    const letter = String.fromCharCode('b'.charCodeAt(0) + i);
-                    drawMenuOptionLine(
-                        classPad,
-                        6 + i,
-                        `${letter} - ${classSymbolLabel(classOrder[i])}`
-                    );
+                    const letter = showAll
+                        ? String.fromCharCode('b'.charCodeAt(0) + i)
+                        : String.fromCharCode('a'.charCodeAt(0) + i);
+                    const sym = classOrder[i]; // class symbol like ), [, +
+                    const label = classSymbolLabel(sym);
+                    // C ref: each class entry has accelerator = def_oc_syms[oclass].sym
+                    menuItems.set(letter, { row: nextRow, label, value: sym });
+                    accelMap.set(sym, letter); // map class symbol → menu letter
+                    drawMenuOptionLine(classPad, nextRow++, `${letter} - ${label}`);
                 }
+                // C ref: pickup.c:1379-1383 — blank separator before BUC/unpaid items
                 if (hasUnknownBUC) {
-                    drawMenuOptionLine(classPad, 9, 'X - Items of unknown Bless/Curse status');
+                    nextRow++; // blank separator row (matches C's add_menu_str(win, ""))
+                    menuItems.set('X', { row: nextRow, label: 'Items of unknown Bless/Curse status', value: 'X' });
+                    drawMenuOptionLine(classPad, nextRow++, 'X - Items of unknown Bless/Curse status');
                 }
-                drawMenuOptionLine(classPad, 10, '(end)');
-                const clsCh = await nhgetch();
-                if (clsCh === 27) continue; // ESC => back to "Do what?" menu
-                const cls = String.fromCharCode(clsCh);
-                if (cls === '?' || cls === '*' || cls === 'A' || cls === 'a') {
-                    allowedClasses = null;
-                } else {
-                    const letterIndex = letters.indexOf(cls.toLowerCase());
-                    if (letterIndex >= 1 && (letterIndex - 1) < classOrder.length) {
-                        allowedClasses = new Set([classOrder[letterIndex - 1]]);
-                    } else if (classOrder.includes(cls)) {
-                        allowedClasses = new Set([cls]);
+                menuItems.set('A', { row: 2, label: 'Auto-select every relevant item', value: 'A' });
+                drawMenuOptionLine(classPad, nextRow, '(end)');
+                // C select_menu(PICK_ANY): toggle selections, then Enter to confirm.
+                // Supports both menu letters and class-symbol accelerators.
+                const selections = new Set(); // set of canonical letters
+                while (true) {
+                    const ch = await nhgetch();
+                    if (ch === 27) { selections.clear(); break; } // ESC → cancel
+                    if (ch === 10 || ch === 13 || ch === 32) break; // Enter/Space → confirm
+                    let key = String.fromCharCode(ch);
+                    // Map accelerator to canonical letter if applicable
+                    if (accelMap.has(key)) key = accelMap.get(key);
+                    if (!menuItems.has(key)) continue; // unknown key — ignore
+                    if (selections.has(key)) {
+                        selections.delete(key); // toggle off
                     } else {
-                        continue; // invalid class choice
+                        selections.add(key); // toggle on
                     }
+                    // Update menu display to show toggled state
+                    const mi = menuItems.get(key);
+                    const indicator = selections.has(key) ? '+' : '-';
+                    drawMenuOptionLine(classPad, mi.row, `${key} ${indicator} ${mi.label}`);
+                }
+                if (selections.size === 0) {
+                    // No selection or ESC → back to "Do what?"
+                    // C: query_category returns 0 → menu_loot returns ECMD_OK
+                    continue;
+                }
+                // C ref: pickup.c menu_loot() — process category selections.
+                let hasAll = false;
+                let autopick = false;
+                const selectedClassSyms = new Set();
+                for (const key of selections) {
+                    const mi = menuItems.get(key);
+                    if (!mi) continue;
+                    if (mi.value === 'A') {
+                        autopick = true;
+                        hasAll = true;
+                    } else if (mi.value === 'ALL') {
+                        hasAll = true;
+                    } else if (mi.value === 'X') {
+                        // BUC unknown filter — match C's allow_category BUC filtering
+                        hasAll = true; // TODO: proper BUC filter
+                    } else {
+                        // mi.value is the class symbol (e.g. ')', '[', '+')
+                        selectedClassSyms.add(mi.value);
+                    }
+                }
+                if (autopick) {
+                    // C ref: menu_loot autopick path — take all items, skip item menu
+                    const taken = [...cContainerOrder(currentContents)];
+                    for (const item of taken) {
+                        player.addToInventory(item); observeObject(item);
+                        setContainerContents(container,
+                            getContainerContents(container).filter((o) => o !== item));
+                        await pline(`${item.invlet || '-'} - ${doname(item, player)}.`);
+                        tookTime = true;
+                    }
+                    container.cknown = true;
+                    return { moved: false, tookTime };
+                }
+                if (hasAll) {
+                    allowedClasses = null;
+                } else if (selectedClassSyms.size > 0) {
+                    allowedClasses = selectedClassSyms;
+                } else {
+                    continue; // no valid selection
                 }
             }
             const selected = new Set();

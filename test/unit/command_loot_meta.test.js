@@ -354,7 +354,9 @@ describe('loot via meta key', () => {
         };
         game.map.objects.push(chest);
         pushInput('o'.charCodeAt(0)); // take-out mode
-        pushInput(')'.charCodeAt(0)); // weapon class only
+        // C ref: query_category select_menu(PICK_ANY) — toggle class, then confirm
+        pushInput(')'.charCodeAt(0)); // toggle weapon class (accelerator key)
+        pushInput('\n'.charCodeAt(0)); // confirm class filter selection
         pushInput('a'.charCodeAt(0)); // select first visible item
         pushInput('\n'.charCodeAt(0)); // commit selected item
         pushInput(27);                // ESC back to container menu
