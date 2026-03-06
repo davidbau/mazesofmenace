@@ -38,7 +38,7 @@ import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_BEAM, DISP_CHANGE, DISP_END } from './const.js';
-import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
+import { getpos_sethilite, getpos_async } from './getpos.js';
 
 // ── Constants ──
 
@@ -1266,12 +1266,13 @@ export async function throwspell(player, map, display = null, flags = null) {
 
     await pline("Where do you want to cast the spell?");
     const cc = { x: player.x, y: player.y };
-    set_getpos_context({ map, display, flags, goalPrompt: 'the desired position', player });
     getpos_sethilite(
         (on) => display_spell_target_positions(player, map, on),
         (x, y) => can_center_spell_location(player, map, x, y)
     );
-    const rc = await getpos_async(cc, true, 'the desired position');
+    const rc = await getpos_async(cc, true, 'the desired position', {
+        map, display, flags, goalPrompt: 'the desired position', player
+    });
     if (rc < 0) return 0;
     return 1;
 }

@@ -13,7 +13,7 @@ import { CLR_GRAY, CLR_WHITE, CLR_GREEN, CLR_CYAN } from './display.js';
 import { create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu,
        } from './windows.js';
 import { NHW_MENU, NHW_TEXT, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './const.js';
-import { set_getpos_context, getpos_async } from './getpos.js';
+import { getpos_async } from './getpos.js';
 import { x_monnam } from './mondata.js';
 import { engr_at, can_reach_floor } from './engrave.js';
 import { objectData, STRANGE_OBJECT } from './objects.js';
@@ -224,8 +224,9 @@ export async function do_look(game, mode = 0, click_cc = null) {
                 if (!quick && flags?.verbose) {
                     await display.putstr_message('Please move the cursor to a monster, object or location.');
                 }
-                set_getpos_context({ map, display, flags, goalPrompt: 'a monster, object or location', player });
-                ans = await getpos_async(cc, quick, 'a monster, object or location');
+                ans = await getpos_async(cc, quick, 'a monster, object or location', {
+                    map, display, flags, goalPrompt: 'a monster, object or location', player
+                });
                 if (ans < 0 || cc.x < 0 || cc.y < 0) break;
             }
             const desc = do_screen_description({ map, player }, cc);

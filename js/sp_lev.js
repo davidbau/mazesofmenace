@@ -1078,13 +1078,23 @@ export async function withFinalizeContext(ctx, fn) {
     }
 }
 
-export function setSpecialLevelDepth(depth) {
+function applySpecialLevelDepth(depth) {
     if (Number.isFinite(depth)) {
         levelState.levelDepth = depth;
         if (_gstate) _gstate._levelDepth = depth;
     } else {
         levelState.levelDepth = undefined;
         if (_gstate) _gstate._levelDepth = 1;
+    }
+}
+
+export async function withSpecialLevelDepth(depth, fn) {
+    const prevDepth = levelState.levelDepth;
+    applySpecialLevelDepth(depth);
+    try {
+        return await fn();
+    } finally {
+        applySpecialLevelDepth(prevDepth);
     }
 }
 
@@ -6984,13 +6994,14 @@ export async function load_special(name) {
     if (!special || typeof special.generator !== 'function') return false;
 
     resetLevelState();
-    setSpecialLevelDepth(where.dlevel);
-    const map = await withFinalizeContext({
-        dnum: where.dnum,
-        dlevel: where.dlevel,
-        specialName: typeof special.name === 'string' ? special.name : name,
-        isBranchLevel: false,
-    }, async () => await special.generator());
+    const map = await withSpecialLevelDepth(where.dlevel, async () =>
+        await withFinalizeContext({
+            dnum: where.dnum,
+            dlevel: where.dlevel,
+            specialName: typeof special.name === 'string' ? special.name : name,
+            isBranchLevel: false,
+        }, async () => await special.generator())
+    );
     if (!map) return false;
     levelState.map = map;
     return true;

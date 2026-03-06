@@ -25,13 +25,20 @@ let getpos_getvalid = null;
 let getpos_hilite_state = HiliteGoodposSymbol;
 let defaultHiliteState = HiliteGoodposSymbol;
 let hiliteOn = false;
-let getposContext = {
+const defaultGetposContext = {
     map: null,
     display: null,
     flags: null,
     goalPrompt: null,
     player: null,
 };
+
+function normalizeGetposContext(ctx = null) {
+    return {
+        ...defaultGetposContext,
+        ...(ctx || {}),
+    };
+}
 
 function callHilite(on) {
     if (typeof getpos_hilitefunc !== 'function') return;
@@ -63,12 +70,12 @@ export function getpos_sethilite(gp_hilitef, gp_getvalidf) {
 
 // cf. getpos.c:72
 // Autotranslated from getpos.c:72
-export function getpos_toggle_hilite_state() {
+export function getpos_toggle_hilite_state(flags = null) {
     if (!getpos_hilitefunc) return;
     if (getpos_hilite_state === HiliteGoodposSymbol) {
         callHilite(false);
     }
-    const cycleCount = getposContext?.flags?.bgcolors ? HiliteStateCount : HiliteBackground;
+    const cycleCount = flags?.bgcolors ? HiliteStateCount : HiliteBackground;
     getpos_hilite_state = (getpos_hilite_state + 1) % cycleCount;
     if (getpos_hilite_state === HiliteGoodposSymbol) {
         callHilite(true);
@@ -236,12 +243,12 @@ function getFilterMode(flags) {
     return 'none';
 }
 
-function gloc_filter_allows(map, x, y) {
-    const mode = getFilterMode(getposContext.flags);
+function gloc_filter_allows(map, x, y, ctx) {
+    const mode = getFilterMode(ctx?.flags);
     if (mode === 'none') return true;
     if (!isSeenCell(map, x, y)) return false;
     if (mode === 'view') return true;
-    const player = getposContext.player;
+    const player = ctx?.player;
     if (!player || !Number.isInteger(player.x) || !Number.isInteger(player.y)) return true;
     const here = map?.at ? map.at(x, y) : null;
     const base = map?.at ? map.at(player.x, player.y) : null;
@@ -261,7 +268,7 @@ export function getpos_getvalids_selection(validf = mapxy_valid) {
     return out;
 }
 
-function collectTargets(map, filter) {
+function collectTargets(map, filter, ctx) {
     if (!map) return [];
     const targets = [];
     const seen = new Set();
@@ -287,7 +294,7 @@ function collectTargets(map, filter) {
 
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
-            if (!gloc_filter_allows(map, x, y)) continue;
+            if (!gloc_filter_allows(map, x, y, ctx)) continue;
             if (filter === 'object') {
                 const objs = map.objectsAt ? map.objectsAt(x, y) : [];
                 if (Array.isArray(objs) && objs.length > 0) add(x, y);
@@ -302,15 +309,15 @@ function collectTargets(map, filter) {
     return targets;
 }
 
-function collectTargetsForGloc(map, gloc) {
+function collectTargetsForGloc(map, gloc, ctx) {
     if (gloc === GLOC_VALID) {
-        return getpos_getvalids_selection((x, y) => mapxy_valid(x, y) && gloc_filter_allows(map, x, y));
+        return getpos_getvalids_selection((x, y) => mapxy_valid(x, y) && gloc_filter_allows(map, x, y, ctx));
     }
     const targets = [];
     if (!map) return targets;
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
-            if (!gloc_filter_allows(map, x, y)) continue;
+            if (!gloc_filter_allows(map, x, y, ctx)) continue;
             if (gather_locs_interesting(map, x, y, gloc)) targets.push({ x, y });
         }
     }
@@ -346,15 +353,15 @@ function getpos_filter_text(flags) {
     return '';
 }
 
-export async function getpos_help_keyxhelp(display, k1, k2, gloc, moveCursorTo = 'move the cursor to ') {
+export async function getpos_help_keyxhelp(display, k1, k2, gloc, moveCursorTo = 'move the cursor to ', flags = null) {
     if (typeof display?.putstr_message !== 'function') return;
-    const filtertxt = getpos_filter_text(getposContext.flags);
+    const filtertxt = getpos_filter_text(flags);
     await display.putstr_message(
         `Use '${k1}'/'${k2}' to ${moveCursorTo}${glocLabel(gloc)}${filtertxt}.`
     );
 }
 
-async function getpos_help(force, goal, display) {
+async function getpos_help(force, goal, display, flags = null) {
     if (typeof display?.putstr_message !== 'function') return;
     const g = goal || 'desired location';
     await display.putstr_message(
@@ -363,12 +370,12 @@ async function getpos_help(force, goal, display) {
     await display.putstr_message("Use 'H', 'J', 'K', 'L' to fast-move the cursor.");
     await display.putstr_message("Use '@' to move the cursor onto yourself.");
     await display.putstr_message("Or enter a background symbol (example '<').");
-    await getpos_help_keyxhelp(display, 'm', 'M', GLOC_MONS);
-    await getpos_help_keyxhelp(display, 'o', 'O', GLOC_OBJS);
-    await getpos_help_keyxhelp(display, 'd', 'D', GLOC_DOOR);
-    await getpos_help_keyxhelp(display, 'x', 'X', GLOC_EXPLORE, 'move the cursor next to ');
-    await getpos_help_keyxhelp(display, 'i', 'I', GLOC_INTERESTING);
-    await getpos_help_keyxhelp(display, 'v', 'V', GLOC_VALID);
+    await getpos_help_keyxhelp(display, 'm', 'M', GLOC_MONS, 'move the cursor to ', flags);
+    await getpos_help_keyxhelp(display, 'o', 'O', GLOC_OBJS, 'move the cursor to ', flags);
+    await getpos_help_keyxhelp(display, 'd', 'D', GLOC_DOOR, 'move the cursor to ', flags);
+    await getpos_help_keyxhelp(display, 'x', 'X', GLOC_EXPLORE, 'move the cursor next to ', flags);
+    await getpos_help_keyxhelp(display, 'i', 'I', GLOC_INTERESTING, 'move the cursor to ', flags);
+    await getpos_help_keyxhelp(display, 'v', 'V', GLOC_VALID, 'move the cursor to ', flags);
     await display.putstr_message("Use '^' to toggle marking of valid locations.");
     await display.putstr_message("Use '=' for a menu listing of possible targets.");
     if (!force) {
@@ -386,9 +393,9 @@ function targetMenuLine(display, map, x, y) {
     return `location [${x},${y}]`;
 }
 
-async function getpos_menu(display, map, gloc) {
-    const targets = collectTargetsForGloc(map, gloc);
-    const player = getposContext.player;
+async function getpos_menu(display, map, gloc, ctx) {
+    const targets = collectTargetsForGloc(map, gloc, ctx);
+    const player = ctx?.player;
     const menuTargets = (player && Number.isInteger(player.x) && Number.isInteger(player.y))
         ? targets.filter((t) => !(t.x === player.x && t.y === player.y))
         : targets;
@@ -488,8 +495,8 @@ export function getpos_gloc_from_filter(filter) {
     }
 }
 
-async function getpos_cycle_target(display, map, gloc, cx, cy, dir) {
-    const targets = collectTargetsForGloc(map, gloc);
+async function getpos_cycle_target(display, map, gloc, cx, cy, dir, ctx) {
+    const targets = collectTargetsForGloc(map, gloc, ctx);
     if (!targets.length) {
         if (typeof display?.putstr_message === 'function') {
             await display.putstr_message(`Cannot detect ${glocLabel(gloc)}.`);
@@ -500,16 +507,10 @@ async function getpos_cycle_target(display, map, gloc, cx, cy, dir) {
     return targets[(idx + dir + targets.length) % targets.length];
 }
 
-export function set_getpos_context(ctx = {}) {
-    getposContext = {
-        ...getposContext,
-        ...ctx,
-    };
-}
-
 // cf. getpos.c:771
-export async function getpos_async(ccp, force = true, goal = '') {
-    const display = getposContext.display;
+export async function getpos_async(ccp, force = true, goal = '', ctx = null) {
+    const runtimeCtx = normalizeGetposContext(ctx);
+    const display = runtimeCtx.display;
     if (!ccp || typeof ccp !== 'object') return -1;
 
     let cx = Number.isInteger(ccp.x) ? ccp.x : 1;
@@ -520,7 +521,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
     }
 
     if (typeof display?.putstr_message === 'function') {
-        const promptGoal = goal || getposContext.goalPrompt || 'desired location';
+        const promptGoal = goal || runtimeCtx.goalPrompt || 'desired location';
         await display.putstr_message(`Move cursor to ${promptGoal}:`);
     }
     if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol && !hiliteOn) {
@@ -550,12 +551,12 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 return 0;
             }
             if (c === '?') {
-                await getpos_help(force, goal || getposContext.goalPrompt, display);
+                await getpos_help(force, goal || runtimeCtx.goalPrompt, display, runtimeCtx.flags);
                 continue;
             }
             if (c === '^') {
                 restoreCursor(display, cursorState);
-                getpos_toggle_hilite_state();
+                getpos_toggle_hilite_state(runtimeCtx.flags);
                 cursorState = putCursor(display, cx, cy);
                 continue;
             }
@@ -582,7 +583,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
             };
             if (glocKeys[c]) {
                 const [gloc, dir] = glocKeys[c];
-                const next = await getpos_cycle_target(display, getposContext.map, gloc, cx, cy, dir);
+                const next = await getpos_cycle_target(display, runtimeCtx.map, gloc, cx, cy, dir, runtimeCtx);
                 if (!next) continue;
                 restoreCursor(display, cursorState);
                 cx = next.x;
@@ -600,7 +601,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
                 continue;
             }
             if (c === '[' || c === ']') {
-                const targets = collectTargets(getposContext.map, targetFilter);
+                const targets = collectTargets(runtimeCtx.map, targetFilter, runtimeCtx);
                 if (!targets.length) {
                     if (typeof display?.putstr_message === 'function') {
                         await display.putstr_message(`No ${targetFilterLabel(targetFilter)} targets.`);
@@ -618,7 +619,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
             }
             if (c === '=') {
                 const currentGloc = getpos_gloc_from_filter(targetFilter);
-                const target = await getpos_menu(display, getposContext.map, currentGloc);
+                const target = await getpos_menu(display, runtimeCtx.map, currentGloc, runtimeCtx);
                 if (!target) continue;
                 restoreCursor(display, cursorState);
                 cx = target.x;
@@ -658,7 +659,7 @@ export async function getpos_async(ccp, force = true, goal = '') {
             }
 
             if (isShiftedPrintable(c, ch) || isUnshiftedPrintable(c, ch)) {
-                const found = findMatchingMapChar(display, getposContext.map, cx, cy, c, !isShiftedPrintable(c, ch));
+                const found = findMatchingMapChar(display, runtimeCtx.map, cx, cy, c, !isShiftedPrintable(c, ch));
                 if (found) {
                     restoreCursor(display, cursorState);
                     cx = found.x;

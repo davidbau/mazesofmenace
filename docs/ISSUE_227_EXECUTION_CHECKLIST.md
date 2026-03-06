@@ -179,17 +179,16 @@ as function parameters (matching how C passes struct pointers).
 
 ### Inventory of hacks to remove
 
-| Module | Setter | Internal var | Callers |
-|--------|--------|-------------|---------|
-| pline.js | `setOutputContext()` | `_outputContext` | allmain, chargen, headless |
-| mkobj.js | `setObjectMoves()` | `_objectMoves` | allmain, chargen |
-| mkobj.js | `setMklevObjectContext()` | `_inMklevContext` | dungeon |
-| mkobj.js | `setLevelDepth()` | `_levelDepth` | dungeon |
-| timeout.js | `setTimerContext()` | `_timeoutContext` | timeout (internal) |
+Completed removals/replacements:
+- `setOutputContext`, display-context override wiring, timer/global setter wiring
+- makemon setter wiring (`setMakemon*`) replaced by scoped/direct-state helpers
+- level/finalize context setter lifecycles replaced by `withLevelContext` and `withFinalizeContext`
+- getpos context setter wiring (`set_getpos_context`) replaced by explicit `getpos_async(..., ctx)`
+- special-level depth setter wiring (`setSpecialLevelDepth`) replaced by `withSpecialLevelDepth`
 
-- [ ] For each setter: replace with direct import of `game` singleton or
+- [x] For each setter: replace with direct import of `game` singleton or
       explicit parameter passing, matching C's approach.
-- [ ] Remove setter functions and module-level context variables.
+- [x] Remove setter functions and module-level context variables.
 - [x] Keep bootstrap/UI-only runtime setup where appropriate.
 
 Current Phase-4 reality snapshot (2026-03-06):
@@ -197,12 +196,13 @@ Current Phase-4 reality snapshot (2026-03-06):
   wiring, display context override wiring (`setDisplayContext`), and makemon
   setter wiring now replaced with scoped/direct-state helpers, and level-context
   wiring now scoped through `withLevelContext`; finalize-context wiring now
-  scoped through `withFinalizeContext`.
+  scoped through `withFinalizeContext`; getpos/special-level-depth setter
+  wiring now scoped through explicit ctx args and `withSpecialLevelDepth`.
 - Remaining active setters (still to eliminate or formally justify): none.
 
 Phase-4 exit gate:
-- [ ] No `set*Context` / `set*Player` style module-level wiring remains.
-- [ ] No parity regression vs baseline envelope.
+- [x] No `set*Context` / `set*Player` style module-level wiring remains.
+- [x] No parity regression vs baseline envelope.
 
 ## Validation Commands (Use Per Batch)
 
@@ -219,4 +219,4 @@ Phase-4 exit gate:
   - `permonst.h` -> `monsters.js`
   - `objclass.h` -> `objects.js`
   - `const.js` deferred report now at zero.
-- Current execution target: Phase 4 cleanup of remaining setter/context wiring.
+- Phase 4 complete: remaining setter/context wiring removed with scoped/direct alternatives.

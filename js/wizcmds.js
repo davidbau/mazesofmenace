@@ -195,7 +195,7 @@ export async function wizTeleport(game) {
 // JS equivalent: handleWizLoadDes() below — loads a JS special level generator.
 
 import { rn2 } from './rng.js';
-import { resetLevelState, withFinalizeContext, setSpecialLevelDepth } from './sp_lev.js';
+import { resetLevelState, withFinalizeContext, withSpecialLevelDepth } from './sp_lev.js';
 import { isBranchLevel } from './dungeon.js';
 import { otherSpecialLevels } from './special_levels.js';
 import { getlin } from './input.js';
@@ -246,17 +246,18 @@ export async function handleWizLoadDes(game) {
     rn2(3);
     rn2(2);
     resetLevelState();
-    setSpecialLevelDepth(player.dungeonLevel);
     // C ref: fixup_special() uses Is_branchlev(&u.uz) for branch placement.
     // Must pass dnum/dlevel so isBranchLevel is computed correctly.
     const dnum = 0; // JS currently only tracks Dungeons of Doom
     const dlevel = player.dungeonLevel;
-    const newMap = await withFinalizeContext({
-        dnum,
-        dlevel,
-        specialName: levelName,
-        isBranchLevel: isBranchLevel(dnum, dlevel),
-    }, async () => await generator());
+    const newMap = await withSpecialLevelDepth(player.dungeonLevel, async () =>
+        await withFinalizeContext({
+            dnum,
+            dlevel,
+            specialName: levelName,
+            isBranchLevel: isBranchLevel(dnum, dlevel),
+        }, async () => await generator())
+    );
     if (newMap) {
         // Route through changeLevel for hero placement, pet migration, and
         // arrival collision — matching C's goto_level() flow.

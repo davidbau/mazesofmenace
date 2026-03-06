@@ -48,7 +48,7 @@ import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';
 import { Invocation_lev, find_level, deltrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, nh_delay_output_nowait } from './animation.js';
 import { DISP_ALL, DISP_END } from './const.js';
-import { set_getpos_context, getpos_async } from './getpos.js';
+import { getpos_async } from './getpos.js';
 import { stucksteed } from './steed.js';
 import { in_out_region } from './region.js';
 import { drag_ball as drag_ball_core } from './ball.js';
@@ -1609,9 +1609,10 @@ export async function dotravel(game) {
     const ctx = ensure_context(game);
 
     await display.putstr_message('Where do you want to travel to?');
-    set_getpos_context({ map, display, flags: game.flags, goalPrompt: 'travel to', player });
     const cc = { x: player.x, y: player.y };
-    const result = await getpos_async(cc, true, 'travel to');
+    const result = await getpos_async(cc, true, 'travel to', {
+        map, display, flags: game.flags, goalPrompt: 'travel to', player
+    });
     if (result < 0) {
         await display.putstr_message('Travel cancelled.');
         return { moved: false, tookTime: false };

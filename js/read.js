@@ -33,7 +33,7 @@ import { explode } from './explode.js';
 import { EXPL_FIERY } from './const.js';
 import { tmp_at } from './animation.js';
 import { DISP_BEAM, DISP_END } from './const.js';
-import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
+import { getpos_sethilite, getpos_async } from './getpos.js';
 import { pline, impossible } from './pline.js';
 import { cansee, mark_vision_dirty } from './vision.js';
 import { newsym } from './display.js';
@@ -1383,9 +1383,10 @@ export async function seffect_stinking_cloud(sobj, player, display, game) {
             return Math.max(Math.abs(x - player.x), Math.abs(y - player.y)) <= STINKING_CLOUD_TARGET_DIST;
         };
         const cc = { x: player.x, y: player.y };
-        set_getpos_context({ map, display, flags: game?.flags, goalPrompt: 'the desired position', player });
         getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
-        const rc = await getpos_async(cc, true, 'the desired position');
+        const rc = await getpos_async(cc, true, 'the desired position', {
+            map, display, flags: game?.flags, goalPrompt: 'the desired position', player
+        });
         if (rc < 0) {
             return false;
         }
