@@ -2216,6 +2216,11 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
         else specifiedPtr = ptr_or_null;
     }
 
+    // C ref: makemon.c:1169-1170 — no random monster generation on nomongen levels
+    if (map?.flags?.nomongen && !specifiedPtr) {
+        return null;
+    }
+
     // C ref: makemon.c:1161 — allow_minvent flag
     const allow_minvent = !(mmflags & NO_MINVENT);
 

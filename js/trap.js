@@ -360,8 +360,9 @@ export function m_harmless_trap(mon, trap, map) {
 // C ref: trap.c trapeffect_*() — else branch (mtmp != &gy.youmonst)
 // ========================================================================
 
-function trapeffect_arrow_trap_mon(mon, trap, map, player) {
+function trapeffect_arrow_trap_mon(mon, trap, map, player, fov) {
     let trapkilled = false;
+    const in_sight = canseemon(mon, player, fov) || (mon === player?.usteed);
 
     if (trap.once && trap.tseen && !rn2(15)) {
         deltrap(map, trap);
@@ -370,7 +371,7 @@ function trapeffect_arrow_trap_mon(mon, trap, map, player) {
     }
     trap.once = 1;
     const otmp = t_missile(ARROW, trap);
-    seetrap(trap);
+    if (in_sight) seetrap(trap);  // C ref: trap.c:1231 — only if visible
     if (thitm(8, mon, otmp, 0, false, map, player))
         trapkilled = true;
 
@@ -378,8 +379,9 @@ function trapeffect_arrow_trap_mon(mon, trap, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_dart_trap_mon(mon, trap, map, player) {
+function trapeffect_dart_trap_mon(mon, trap, map, player, fov) {
     let trapkilled = false;
+    const in_sight = canseemon(mon, player, fov) || (mon === player?.usteed);
 
     if (trap.once && trap.tseen && !rn2(15)) {
         deltrap(map, trap);
@@ -390,7 +392,7 @@ function trapeffect_dart_trap_mon(mon, trap, map, player) {
     const otmp = t_missile(DART, trap);
     if (!rn2(6))
         otmp.opoisoned = 1;
-    seetrap(trap);
+    if (in_sight) seetrap(trap);  // C ref: trap.c:1305 — only if visible
     if (thitm(7, mon, otmp, 0, false, map, player))
         trapkilled = true;
 
@@ -398,8 +400,9 @@ function trapeffect_dart_trap_mon(mon, trap, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-function trapeffect_rocktrap_mon(mon, trap, map, player) {
+function trapeffect_rocktrap_mon(mon, trap, map, player, fov) {
     let trapkilled = false;
+    const in_sight = canseemon(mon, player, fov) || (mon === player?.usteed);
 
     if (trap.once && trap.tseen && !rn2(15)) {
         deltrap(map, trap);
@@ -408,7 +411,7 @@ function trapeffect_rocktrap_mon(mon, trap, map, player) {
     }
     trap.once = 1;
     const otmp = t_missile(ROCK, trap);
-    seetrap(trap);
+    if (in_sight) seetrap(trap);  // C ref: trap.c:1377 — only if visible
     if (thitm(0, mon, otmp, d(2, 6), false, map, player))
         trapkilled = true;
 
@@ -942,11 +945,11 @@ function trapeffect_vibrating_square_mon(/* mon, trap */) {
 async function trapeffect_selector_mon(mon, trap, trflags, map, player, display, fov) {
     switch (trap.ttyp) {
     case ARROW_TRAP:
-        return trapeffect_arrow_trap_mon(mon, trap, map, player);
+        return trapeffect_arrow_trap_mon(mon, trap, map, player, fov);
     case DART_TRAP:
-        return trapeffect_dart_trap_mon(mon, trap, map, player);
+        return trapeffect_dart_trap_mon(mon, trap, map, player, fov);
     case ROCKTRAP:
-        return trapeffect_rocktrap_mon(mon, trap, map, player);
+        return trapeffect_rocktrap_mon(mon, trap, map, player, fov);
     case SQKY_BOARD:
         return await trapeffect_sqky_board_mon(mon, trap, player, fov);
     case BEAR_TRAP:
