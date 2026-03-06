@@ -197,9 +197,10 @@ commits for retroactive comparison.
 │   ├── levels/             132 special level modules (← dat/*.lua)
 │   └── ...
 ├── test/
-│   ├── unit/               183 unit test files
+│   ├── unit/               170 unit test files (~2,500 tests)
 │   ├── comparison/         C-vs-JS golden session tests (156 sessions)
 │   └── e2e/                Puppeteer browser tests
+├── hack/                   1982 Hack browser port (separate supplement)
 ├── nethack-c/              C reference source & harness (git-ignored)
 ├── scripts/                Utility and generator scripts
 │   └── generators/         Python data generators
@@ -221,9 +222,9 @@ commits for retroactive comparison.
 - [docs/MODULES.md](docs/MODULES.md) — Module dependency rules and leaf file architecture
 
 **Development**
+- [PROJECT_PLAN.md](PROJECT_PLAN.md) — Project goals, milestones, history, and working principles
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Workflow guide
 - [docs/LORE.md](docs/LORE.md) — Hard-won porting lessons: RNG parity, translation patterns, known traps
-- [PROJECT_PLAN.md](PROJECT_PLAN.md) — Project goals, milestones, working principles
 - [AGENTS.md](AGENTS.md) — Agent workflow and session protocol
 
 **Testing and parity**
@@ -318,9 +319,10 @@ human direction, could produce a faithful port of one of the most complex codeba
 in gaming history: not a prototype, but a real, playable, parity-correct
 reimplementation that matches NetHack's behavior down to the random number generator.
 
-So far, yes. The codebase — 141 JavaScript modules, 2,400+ passing unit tests, 156
+So far, yes. The codebase — 141 JavaScript modules, ~2,500 unit tests, 156
 golden C-comparison sessions — was written through natural-language conversation
-with AI agents. The human set direction; the agents wrote the code, tests, and
+with AI agents over the course of one month (3,300+ commits since February 6,
+2026). The human set direction; the agents wrote the code, tests, and
 documentation.
 
 ---

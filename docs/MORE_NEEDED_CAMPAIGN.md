@@ -1,5 +1,12 @@
 # MORE_NEEDED_CAMPAIGN.md
 
+## Status: Merged (March 6, 2026)
+
+Operation More Needed has been merged to `main`. This document is retained as a
+historical record of the campaign's goals, fixes, and methodology. For current
+parity work, see [PROJECT_PLAN.md](../PROJECT_PLAN.md) and the open GitHub
+issues.
+
 ## Execution Update (March 4, 2026)
 
 MORE_NEEDED implementation and parity-fix work now lands directly on `main`.

@@ -9,6 +9,9 @@ async game loop, session-based parity testing, and a patched C harness for refer
 
 The result lives at `mazesofmenace.net/hack` — the 1982 prototype next to its 40-year descendant.
 
+For the full story of how four teenagers at Lincoln-Sudbury Regional High School
+wrote the game that became NetHack, see [HISTORY.md](HISTORY.md).
+
 ---
 
 ## Directory Structure

@@ -509,35 +509,39 @@ pre-push hook runs sessions and attaches a note to every pushed commit.
 
 ### Current status
 
-- **156 session tests**: gameplay sessions (self-play + wizard mode + multi-depth)
-- **2,462 unit tests**: 183 test files covering individual subsystems
+- **156 session tests**: 89 gameplay/interface/chargen + 62 map + 5 pending
+- **~2,500 unit tests**: 170 test files covering individual subsystems
 - **E2E browser tests**: Puppeteer tests for UI and full game loop
 
 ---
 
-## Phase History
+## Architectural Refactoring History
 
 > *"You recall the long campaign. The dungeon has changed."*
 
-The codebase has gone through four architectural phases, all now complete:
+The codebase has gone through four architectural refactoring phases, all
+completed during early Phase 2 (Feb 2026). These are structural cleanups, not
+project phases — see [PROJECT_PLAN.md](../PROJECT_PLAN.md) for the overall
+project timeline.
 
-**Phase 1 — Leaf header architecture.** Established the leaf file rule. Merged
-`config.js` and old `symbols.js`. Deleted `objclass.js`. The constant export
-audit now enforces that only leaf files export capitalized names.
+**Refactor 1 — Leaf header architecture.** Established the leaf file rule.
+Merged `config.js` and old `symbols.js`. Deleted `objclass.js`. The constant
+export audit now enforces that only leaf files export capitalized names.
 
-**Phase 2 — C field name normalization.** All struct field names renamed to C
+**Refactor 2 — C field name normalization.** All struct field names renamed to C
 canonical (`.aatyp`, `.adtyp`, `.mmove`, `.mlevel`, etc.). `attack_fields.js`
 (a runtime alias shim) was deleted. Generators updated to emit canonical names.
 
-**Phase 3 — File-per-C-source reorganization.** JS "consolidation" files that
+**Refactor 3 — File-per-C-source reorganization.** JS "consolidation" files that
 had no C counterpart were dissolved into their canonical C-source-named files.
 `combat.js`, `look.js`, `monutil.js`, `stackobj.js`, `discovery.js`,
 `options_menu.js`, and `map.js` were all deleted. Functions moved to their
 correct homes. `player.js` roles/races tables moved to `role.js`.
 
-**Phase 4 — Context wiring elimination.** Multiple `set*Context()` / `register*()`
-patterns that wired module dependencies at init time were replaced by `gstate.js`
-direct access and explicit parameter passing. No registration patterns remain.
+**Refactor 4 — Context wiring elimination.** Multiple `set*Context()` /
+`register*()` patterns that wired module dependencies at init time were replaced
+by `gstate.js` direct access and explicit parameter passing. No registration
+patterns remain.
 
 ---
 

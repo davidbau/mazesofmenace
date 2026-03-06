@@ -3,9 +3,15 @@
 > *"Never build a dungeon you wouldn't be happy to spend the night in yourself."*
 > — Terry Pratchett, quoted in the NetHack 3.6.0 release notes
 
-**Current phase:** Phase 2 (testing burndown) with Phase 5 (self-play) as a concurrent track. As of **March 4, 2026**, the original IRON_PARITY execution strategy is considered unsuccessful and has been replaced by a parity-recovery sequence: stabilize baseline/tooling first, then drive direct gameplay parity burndown in Tier-1 runtime code. The active near-term execution campaign is **Operation More Needed** ([`docs/MORE_NEEDED_CAMPAIGN.md`](docs/MORE_NEEDED_CAMPAIGN.md)), with cursor-parity closure tracked in [`docs/CURSOR_PLAN.md`](docs/CURSOR_PLAN.md). Progress is tracked on the [Oracle dashboard](https://davidbau.github.io/mazesofmenace/oracle/) with per-commit parity metrics sourced from [oracle/results.jsonl](oracle/results.jsonl).
+**Current phase:** Phase 2 (testing burndown) with Phase 5 (self-play) running
+in parallel. Active execution is direct gameplay parity burndown on `main`,
+following the completion and merge of the More Needed campaign.
 
-**Context:** [README.md](README.md) explains what Royal Jelly is, why NetHack matters, and the intersection of the 3.7.0 release moment with AI-assisted software development. This document describes **how** we build it—the strategy, phases, gates, and working discipline that will transform an audacious goal into a real, shipped product.
+**Context:** [README.md](README.md) explains what Royal Jelly is, why NetHack
+matters, and the intersection of the 3.7.0 release moment with AI-assisted
+software development. This document describes **how** we build it — the strategy,
+phases, gates, and working discipline that will transform an audacious goal into
+a real, shipped product.
 
 ## Strategic Thesis
 
@@ -14,15 +20,15 @@ When NetHack 3.7.0 releases (unknown date, certain to happen), there will be a b
 This is only possible because:
 1. **Agentic engineering works.** AI agents can produce readable, correct code at scale when guided by someone who understands the problem deeply and enforces strict testing discipline.
 2. **Parity-first methodology works.** By treating failing tests as the primary signal and porting C behavior directly (not fitting to traces), we can achieve behavior fidelity without understanding every line of 200,000-line C codebase manually.
-3. **Parallel tracks accelerate.** Parity work (Phase 2) and self-play development (Phase 5) run together, neither blocking the other—parity enables agent training, agents generate test traces, both feed into release readiness.
+3. **Parallel tracks accelerate.** Parity work (Phase 2) and self-play development (Phase 5) run together, neither blocking the other — parity enables agent training, agents generate test traces, both feed into release readiness.
 
 This is not "I accept all diffs and hope for the best." This is **disciplined agentic engineering**: strict test gates, human-directed strategy, evidence-driven work, and frequent commits with clear regression checks.
 
 ## Purpose
 
-Create **Royal Jelly,** an HTML/JavaScript port of C NetHack 3.7.0 that is 100% faithful to original gameplay and character-based display, while adding a small set of usability enhancements outside the 24×80 game screen. The codename refers to this project—the vibe-coded JS port—not to the official 3.7.0 release itself, which has no codename.
+Create **Royal Jelly,** an HTML/JavaScript port of C NetHack 3.7.0 that is 100% faithful to original gameplay and character-based display, while adding a small set of usability enhancements outside the 24×80 game screen. The codename refers to this project — the vibe-coded JS port — not to the official 3.7.0 release itself, which has no codename.
 
-The codebase should remain readable and maintainable JavaScript—not compiled or transpiled from C, but hand-ported so that every function can be read and understood alongside the original source. The project should be positioned for publication within days of the official NetHack 3.7.0 release.
+The codebase should remain readable and maintainable JavaScript — not compiled or transpiled from C, but hand-ported so that every function can be read and understood alongside the original source. The project should be positioned for publication within days of the official NetHack 3.7.0 release.
 
 The intended outcome is a superior but historically accurate NetHack gameplay and community experience in a web browser.
 
@@ -88,19 +94,145 @@ Selfplay train/holdout seed policy and acceptance criteria are defined in `selfp
 8. Account/cloud platform features (profiles, cloud saves, social systems) are out of scope.
 9. Large architectural rewrites not required for parity or release readiness are out of scope.
 
+---
+
+## Project History
+
+> *"You recall the long campaign. The dungeon has changed."*
+
+The project started on **February 6, 2026** and has produced over 3,300 commits
+across one month of intensive development, with 255+ GitHub issues filed and
+200+ resolved. The trajectory below reflects the actual path taken — including
+campaigns that were attempted and pivoted away from.
+
+### Phase 0: Rough Playable Draft (Feb 6–7)
+
+The initial commit landed a browser-playable skeleton: ISAAC64 PRNG (bit-identical
+to C), wizard mode, basic level-1 dungeon generation, and a 80×24 terminal display.
+Within two days the port could generate levels and accept player input.
+
+### Phase 1: Testing Infrastructure (Feb 7–9)
+
+C comparison harness built and operational. Python scripts drive the patched C
+binary through recorded move sequences, capturing RNG call logs, screen frames,
+and map grids into session JSON files. The JS test suite replays these
+step-by-step. By Feb 9, map generation achieved 10/10 perfect C-vs-JS alignment
+across all test seeds.
+
+### Phase 2: Testing Burndown (Feb 9 – present, active)
+
+The main body of work: porting C logic into JS to drive session tests green
+across RNG, screen, events, typgrid, and cursor channels. This phase has
+proceeded through several sub-campaigns:
+
+**Early parity push (Feb 9–22).** Rapid porting of core gameplay systems:
+monster AI, pet behavior, combat, vision (Algorithm C raycasting), multi-depth
+dungeon, special levels, field-name normalization, object creation, trap
+mechanics, and more. Session pass rates climbed from near-zero to a solid
+majority. Four architectural refactoring phases completed during this period
+(leaf-file architecture, C field-name normalization, file-per-C-source
+reorganization, context-wiring elimination).
+
+**Operation Iron Parity (Feb 22 – Mar 4, pivoted).** An ambitious campaign to
+close the remaining parity gap through coordinated state canonicalization
+(`game.*` namespace migration) and a project-specific C-to-JS mechanical
+translator. The campaign established the [CODEMATCH.md](docs/CODEMATCH.md)
+correspondence ledger (5,000 functions tracked), completed M0–M2 milestones
+(baseline, canonical state spine, movement/turn canonicalization), and built
+translator infrastructure through M3 (parser, NIR model, rule engine). However,
+baseline instability and broad replay regressions from the translator work
+reduced signal quality, and the campaign was assessed as unsuccessful for
+near-term parity closure on March 4. It remains valuable as architecture
+guidance. See [docs/IRON_PARITY_PLAN.md](docs/IRON_PARITY_PLAN.md).
+
+**Operation More Needed (Mar 4–6, merged to main).** A recovery campaign that
+pivoted to direct gameplay parity burndown. Key contributions: explicit
+`--More--` handling in sessions (no auto-suppression), async message-flow
+refactors so JS pauses exactly when C does, rich `^event` logging for monster
+movement and pet AI, cursor-position capture and comparison, session
+re-recording with corrected C harness behavior. The campaign brought sessions
+to ~124/150 passing and was merged to `main`.
+
+**Direct parity burndown (Mar 4 – present).** Ongoing work on `main` targeting
+the remaining divergence clusters: `dochug`/monster-movement sequencing (~14
+sessions), level-generation wizard-mode divergences (~7 sessions), combat and
+late-game divergences, and miscellaneous rendering issues. Recent fixes include
+C-faithful `gethungry`, `moveloop_turnend` wiring, `wall_info` bitfield
+unification, `mhitu` hide-under detection, `mkobj` floor placement, and
+postmov trap/effect ordering.
+
+### Phase 3–4: Full-Coverage Closure and Stabilization (groundwork started)
+
+The [CODEMATCH.md](docs/CODEMATCH.md) correspondence ledger is maintained.
+Per-file refactoring issues ([#32–#138](https://github.com/davidbau/menace/issues?q=label%3Acodematch))
+track structural alignment. Code-coverage tooling and targeted sessions for
+uncovered paths are planned but not yet the primary execution focus.
+
+### Phase 5: Self-Play Agent (parallel track, ongoing)
+
+The self-play agent runs alongside parity work: generating gameplay traces for
+testing, and building toward a demonstration-mode capability. See
+[selfplay/SELFPLAY_PLAN.md](selfplay/SELFPLAY_PLAN.md).
+
+### Supplement: 1982 Hack Port
+
+A separate parallel effort ports Jay Fenlason's original 1982 *Hack* (~6,200
+lines of C) to the browser using the same methodology. This lives in the
+`hack/` directory with its own plan, CODEMATCH, and test harness. It is a
+supplementary project — a historical companion piece — not part of the main
+NetHack parity campaign. See [hack/PLAN.md](hack/PLAN.md).
+
+---
+
+## Current Status (as of March 6, 2026)
+
+> *"You sense the presence of determinism. It feels reassuring."*
+
+**Codebase:** 141 JavaScript modules in `js/` (~164,000 lines) mirroring the C
+source structure, plus 131 special level modules in `js/levels/`. Total JS
+source: ~180,000 lines.
+
+**Testing:** 156 golden session files (89 gameplay/interface/chargen + 62 map +
+5 pending), ~2,500 individual unit/integration tests across 170 test files, plus
+E2E browser tests.
+
+**Parity:** The majority of session tests pass across all five comparison
+channels (RNG, screen, cursor, events, mapdump). Remaining failures cluster in
+three areas: (1) monster movement and pet AI sequencing in `dochug`/`monmove`,
+(2) level-generation divergences in wizard-mode multi-depth sessions, and (3)
+scattered late-game combat divergences.
+
+**Coverage:** The [CODEMATCH.md](docs/CODEMATCH.md) ledger tracks ~5,000 C
+functions. Of these, ~1,758 have JS counterparts; ~3,242 remain unported
+(excluding N/A platform code). The core gameplay loop, dungeon generation,
+combat, monster AI, pet behavior, object system, magic, and display are
+substantially ported. Major remaining gaps include: full shop economy (`shk.c`),
+player trap effects (`dotrap` path), some artifact invocations, and many
+secondary interaction paths.
+
+**Issues:** 27 open GitHub issues, predominantly `parity`-labeled divergence
+fixes. 200+ issues closed.
+
+---
+
 ## Milestones
 
-Milestones use a hybrid model: phase completion + parity gates + release-timing gates. Per-commit parity metrics (RNG match rates, screen fidelity, session pass/fail across 200+ test sessions) are recorded in [oracle/results.jsonl](oracle/results.jsonl) and visualized on the [Oracle dashboard](https://davidbau.github.io/mazesofmenace/oracle/).
+Milestones use a hybrid model: phase completion + parity gates + release-timing
+gates. Per-commit parity metrics are recorded in
+[oracle/results.jsonl](oracle/results.jsonl) and visualized on the
+[Oracle dashboard](https://davidbau.github.io/mazesofmenace/oracle/).
 
-1. **Phase 0: Rough playable draft**
+1. **Phase 0: Rough playable draft** *(complete, Feb 6–7)*
    - Browser port launches and supports basic level-1 gameplay.
    - Initial implementation attempts C-faithful behavior.
-2. **Phase 1: Testing infrastructure foundation**
+2. **Phase 1: Testing infrastructure foundation** *(complete, Feb 7–9)*
    - Session recording/replay infrastructure exists for gameplay sessions, UI interactions, and map sessions.
    - Fast strict session tests exist and intentionally expose many fidelity failures.
-3. **Phase 2: Testing burndown** *(active)*
+3. **Phase 2: Testing burndown** *(active, Feb 9 – present)*
    - Port C logic into JS to drive session tests toward green across semantics, PRNG, typgrid, and screen parity.
-4. **Phase 3: Full-coverage closure** *(groundwork)*
+   - Sub-campaigns completed: early parity push, Iron Parity (pivoted), More Needed (merged).
+   - Current focus: direct parity burndown on remaining divergence clusters.
+4. **Phase 3: Full-coverage closure** *(groundwork started)*
    - Maintain the [C-to-JS code correspondence ledger](docs/CODEMATCH.md) (file-by-file and function-by-function mapping).
    - Refactor JS files to match C file/function naming (one GitHub issue per C file, labeled `codematch`; [issues #32–#138](https://github.com/davidbau/menace/issues?q=label%3Acodematch)).
    - Run and maintain JS code-coverage tooling to identify unexercised codepaths.
@@ -114,7 +246,7 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
    - Improve JavaScript/browser packaging and surrounding UX through collaborative iteration with human designers.
    - Deliver help and assistance outside the 80×24 core game area (quick-reference guidance for beginners, contextual "what is this?" support, running inventory views).
    - Provide demonstration autoplay when the user is not actively playing.
-   - Provide up-to-date 3.7.0 spoilers in a witty, high-quality style, plus an integrated reading experience including NetHack history, the official Guidebook, and updated spoilers—without disrupting core gameplay.
+   - Provide up-to-date 3.7.0 spoilers in a witty, high-quality style, plus an integrated reading experience including NetHack history, the official Guidebook, and updated spoilers — without disrupting core gameplay.
 8. **Official-release trigger** *(external date)*
    - When official NetHack 3.7.0 releases, switch to final release mode immediately.
    - Freeze scope to must-hit parity and release-critical fixes.
@@ -125,130 +257,35 @@ Milestones use a hybrid model: phase completion + parity gates + release-timing 
 9. **Public release**
    - Publish within 1–2 days of official NetHack 3.7.0 release with must-hit criteria satisfied.
 
-## MORE_NEEDED Campaign (Active)
+---
 
-Operation More Needed is the active parity campaign on this branch.
+## Campaign History
 
-Campaign intent:
-1. Use high-fidelity, explicit session evidence (events, `--More--` keysteps,
-   cursor, screen, RNG) to drive parity fixes.
-2. Keep replay execution simple and deterministic; keep flexible logic in
-   comparator/reporting layers.
-3. Align JS message/timing behavior with C at real pause boundaries by
-   continuing async-message-flow refactors where needed.
+> *"The dungeon remembers all who have passed through it."*
 
-Branch success target:
-1. Bring a substantial portion of the new gameplay sessions green under this
-   stricter evidence model.
-2. Merge `more-needed` into `main` once campaign gates are met.
+Two named parity campaigns have been executed during Phase 2. Both are now
+complete or merged; their documents remain as reference.
 
-Authoritative campaign doc:
-1. [docs/MORE_NEEDED_CAMPAIGN.md](docs/MORE_NEEDED_CAMPAIGN.md)
+### Operation Iron Parity (Feb 22 – Mar 4, pivoted)
 
-## IRON_PARITY Campaign (Status: Pivoted on March 4, 2026)
+A structured campaign for closing the parity gap through state canonicalization
+and translator-assisted porting. Completed M0–M2 milestones. Translator
+infrastructure built through M3 but not deployed at scale. Assessed as
+unsuccessful for near-term parity closure due to baseline instability; pivoted
+to direct burndown. Remains authoritative for canonical naming policy and
+`game.*` state architecture.
 
-Operation Iron Parity remains valuable as architecture guidance, but it is no
-longer the active execution driver for near-term parity closure.
+Authoritative doc: [docs/IRON_PARITY_PLAN.md](docs/IRON_PARITY_PLAN.md)
 
-Current execution priority order:
-1. Restore trustworthy baseline signals in `npm test` by fixing environment and
-   source-path/data-source drift in tests and tooling.
-2. Focus parity burndown directly on highest-cascade gameplay divergence origins
-   (especially Tier-1 monster movement and pet AI paths).
-3. Execute cursor-parity closure from [`docs/CURSOR_PLAN.md`](docs/CURSOR_PLAN.md) as the
-   concrete near-term implementation track.
-4. Run translator work only as gated support work after baseline and gameplay
-   parity stability are restored.
-5. Treat translator throughput milestones as paused until parity evidence and
-   regression gates are healthy again.
+### Operation More Needed (Mar 4–6, merged)
 
-See [docs/IRON_PARITY_PLAN.md](docs/IRON_PARITY_PLAN.md) for detailed pivot
-policy and recovery gates.
-Historical context: Operation Iron Parity is the repository's structured
-campaign for closing the remaining C-faithfulness gap through coordinated state
-canonicalization and translator-assisted porting. It runs across Phases 2-4 and
-feeds Phase 6 readiness by reducing hidden-state drift and improving
-auditability.
+A recovery campaign focused on explicit `--More--` handling, async message-flow
+parity, event logging, cursor capture, and session re-recording. Brought
+gameplay sessions to ~124/150 passing and was merged to `main`.
 
-Authoritative design and execution documents:
-1. [docs/IRON_PARITY_PLAN.md](docs/IRON_PARITY_PLAN.md)
-2. [docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md](docs/C_FAITHFUL_STATE_REFACTOR_PLAN.md)
-3. [docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md](docs/C_TRANSLATOR_ARCHITECTURE_SPEC.md)
-4. [docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md](docs/C_TRANSLATOR_PARSER_IMPLEMENTATION_SPEC.md)
+Authoritative doc: [docs/MORE_NEEDED_CAMPAIGN.md](docs/MORE_NEEDED_CAMPAIGN.md)
 
-Campaign objectives:
-1. Move parity-critical runtime ownership to canonical `game.*` state paths.
-2. Eliminate legacy mirror drift in Tier-1 gameplay modules.
-3. Stand up deterministic, policy-governed translation tooling for scalable
-   C-to-JS function-body porting.
-4. Keep parity evidence first: session replay metrics remain the acceptance
-   authority for gameplay fidelity.
-
-Campaign scope baseline (from `docs/CODEMATCH.md`, snapshot 2026-02-26):
-1. Function rows tracked: `5000`.
-2. Missing function rows (raw): `3863`.
-3. Missing function rows excluding `N/A` files: `3242`.
-4. Planning implication: this is a thousands-function campaign; strategy must
-   optimize for safe throughput scaling, not one-off manual edits.
-
-Campaign phase map (shared IDs):
-1. `M0` baseline + policy guardrails
-2. `M1` canonical state spine
-3. `M2` movement/turn canonicalization
-4. `M3` translator alpha (safe subset)
-5. `M4` combat/monster + translator pilot
-6. `M5` generation/startup + translator expansion
-7. `M6` boundary hardening + legacy path removal
-
-Campaign governance:
-1. No harness-side mismatch suppression to "improve" metrics.
-2. Mixed translator files are annotation/policy constrained and CI enforced.
-3. Any regression is either fixed immediately, rolled back, or tracked as an
-   explicit approved follow-up.
-4. The umbrella `IRON_PARITY_PLAN.md` milestone matrix is authoritative when
-   phase wording across docs differs.
-5. Canonical naming is C-first: translator and refactor work must prefer
-   canonical `game.*` ownership with C-like symbols, and avoid cosmetic renames
-   that weaken mechanical translation generalization.
-6. Translation throughput scales only by gated stages:
-   1. scrutinized pilot set (single-digit to low dozens),
-   2. batched expansion (dozens),
-   3. subsystem waves (hundreds),
-   4. campaign-scale closure (thousands).
-7. No stage promotion without passing quality gates from the prior stage
-   (translator regression, policy checks, and parity evidence stability).
-
-### GitHub Issue Organization (IRON_PARITY)
-
-Use a campaign hierarchy so progress is visible at both strategic and tactical
-levels.
-
-1. One parent epic issue for the campaign:
-   - Title: `IRON_PARITY: Campaign Tracker (M0-M6)`
-   - Contains checklist links for all milestone and workstream issues.
-2. One milestone issue per campaign milestone:
-   - `IRON_PARITY M0: Baseline + guardrails`
-   - `IRON_PARITY M1: Canonical state spine`
-   - `IRON_PARITY M2: Movement/turn canonicalization`
-   - `IRON_PARITY M3: Translator alpha`
-   - `IRON_PARITY M4: Combat/monster + translator pilot`
-   - `IRON_PARITY M5: Generation/startup + expansion`
-   - `IRON_PARITY M6: Boundary hardening + legacy removal`
-3. Child implementation issues grouped by subsystem, each linked with:
-   - `Blocked by #<milestone-issue>`
-   - `Blocks #<dependent-issue>` where applicable.
-4. Label policy:
-   - required: `parity`, `campaign:iron-parity`
-   - exactly one scope label: `state`, `translator`, `animation`, `parity-test`, `docs`, or `infra`
-   - optional ownership label: `agent:<name>` only while actively worked.
-5. Evidence policy for every parity issue:
-   - session/seed reference,
-   - first divergence step/index and channel (`rng`, `event`, `screen`, `typgrid`),
-   - expected C behavior and current JS behavior,
-   - suspected `file:function` origin when available.
-6. Closure policy:
-   - issues close only with a linked commit and validation summary,
-   - if partial, close with explicit follow-up issue linked in the closing comment.
+---
 
 ## Phasing Strategy
 
@@ -269,7 +306,7 @@ levels.
 ## Risks and Mitigations
 
 1. **Latent parity drift in rare paths not yet exercised.**
-   Many of NetHack's deepest interactions involve rare events—polymorphed quest leaders, artifact theft while engulfed, riding a steed over a polymorph trap. Paths like these are easy to miss and hard to test.
+   Many of NetHack's deepest interactions involve rare events — polymorphed quest leaders, artifact theft while engulfed, riding a steed over a polymorph trap. Paths like these are easy to miss and hard to test.
    - *Mitigation:* Maintain and expand the [C-to-JS code correspondence ledger](docs/CODEMATCH.md) (file/function mapping). Maintain resilient, fast, high-coverage targeted sessions for uncovered or low-confidence logic.
 
 2. **Parity work surfaces probable bugs in official C NetHack.**
@@ -304,7 +341,7 @@ levels.
    Never relax PRNG, typgrid, or screen checks to gain speed. Optimize diagnostics and plumbing, not semantic rigor. A passing test that doesn't check what it claims to check is worse than a failing one.
 
 6. **Make debugging fast and actionable.**
-   Preserve first-divergence reporting with enough context to diagnose quickly. Prefer simple, auditable tools and data flow. When the trail goes cold, add instrumentation—but only the instrumentation you need.
+   Preserve first-divergence reporting with enough context to diagnose quickly. Prefer simple, auditable tools and data flow. When the trail goes cold, add instrumentation — but only the instrumentation you need.
 
 7. **Use evidence-driven infrastructure changes.**
    Add new tracing or instrumentation only when divergence evidence shows it is needed. Avoid broad infrastructure expansion without demonstrated payoff. Yak-shaving is the cockatrice of engineering projects: it looks harmless until you're stone dead.
@@ -358,9 +395,24 @@ levels.
    - Add issues from failing tests/sessions, C-to-JS audit gaps, release blockers, selfplay findings, and developer/user bug reports.
    - For `parity` issues, include reproducible evidence (seed/session/command, first mismatch, expected vs actual) before prioritization.
 
-## Immediate Next Steps
+## Immediate Focus
 
-1. Maintain a prioritized unified project backlog: begin by analyzing current failing tests/sessions to identify highest-impact systematic divergences, file and prioritize an initial set of `parity` GitHub issues, then continue intake from tests/audits/bugs with label classification, unowned-until-claimed ownership, and evidence-first issue bodies for `parity` entries.
-2. ~~Start and maintain the C-to-JS correspondence ledger.~~ **Done.** See [docs/CODEMATCH.md](docs/CODEMATCH.md) for the file-by-file mapping and [codematch issues](https://github.com/davidbau/menace/issues?q=label%3Acodematch) for per-file refactoring tasks (#32–#138).
+The current work is direct parity burndown on `main`, targeting the three
+remaining divergence clusters:
+
+1. **Monster movement / pet AI** (~14 sessions): `dochug` sequencing, `dog_move`
+   ordering, `mcalcmove` allocation, `distfleeck` decision paths. This is the
+   dominant blocker. See [#213](https://github.com/davidbau/menace/issues/213).
+2. **Level-generation wizard sessions** (~7 sessions): `themeroom_fill`,
+   `makerooms`, `sp_lev` placement divergences on new dungeon levels. See
+   [#214](https://github.com/davidbau/menace/issues/214) (historical) and
+   related open issues.
+3. **Late-game combat and miscellaneous** (~5 sessions): scattered divergences
+   in combat, bones loading, and long-session drift.
+
+Secondary priorities: shop economy (`shk.c` — [#245](https://github.com/davidbau/menace/issues/245)),
+player trap effects (`dotrap` — [#238](https://github.com/davidbau/menace/issues/238)),
+and dig/passwall parity ([#250](https://github.com/davidbau/menace/issues/250),
+[#255](https://github.com/davidbau/menace/issues/255)).
 
 The canonical parity test matrix is published at [docs/PARITY_TEST_MATRIX.md](docs/PARITY_TEST_MATRIX.md) — it defines session categories, test commands, comparison channels, deterministic controls, and quality gates.
