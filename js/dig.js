@@ -43,7 +43,7 @@ import {
     DIR_ERR, N_DIRS, DIR_180, xdir, ydir,
 } from './const.js';
 import { IS_TREE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR, IS_THRONE } from './const.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, rnl } from './rng.js';
 import { unblock_point, recalc_block_point } from './vision.js';
 import { newsym } from './display.js';
 import { mb_trapped } from './monmove.js';
@@ -732,7 +732,6 @@ export async function zap_dig(map, player) {
         }
     }
 
-    // C: pitdig handling when in a pit — simplified/skipped for now
     let digdepth = rn1(18, 8); // C: digdepth = rn1(18, 8)
 
     // C: tmp_at(DISP_BEAM, ...), tmp_at(x,y), nh_delay_output(), tmp_at(DISP_END,0).
@@ -1165,7 +1164,7 @@ export function dig(map, player) {
             return 0;
         } else if (ttmp && ttmp.ttyp === BEAR_TRAP && player.utrap) {
             // C: rnl(7) > (Fumbling ? 1 : 4) — hit self or destroy trap
-            const rnlval = rn2(7); // simplified rnl
+            const rnlval = rnl(7, player.luck || 0);
             if (rnlval > (player.fumbling ? 1 : 4)) {
                 // Hit self in foot
                 // dmgval + dbon + losehp
@@ -1215,6 +1214,22 @@ export function dig(map, player) {
             }
         } else if (lev.typ === STONE || lev.typ === SCORR
                    || IS_TREE(lev.typ)) {
+            if (map.flags && map.flags.is_earthlevel) {
+                if (uwep.blessed && !rn2(3)) {
+                    mkcavearea(false, map, player);
+                    ctx.lastdigtime = player.moves || 0;
+                    ctx.quiet = false;
+                    ctx.level = { dnum: 0, dlevel: -1 };
+                    return 0;
+                } else if ((uwep.cursed && !rn2(4))
+                           || (!uwep.blessed && !rn2(6))) {
+                    mkcavearea(true, map, player);
+                    ctx.lastdigtime = player.moves || 0;
+                    ctx.quiet = false;
+                    ctx.level = { dnum: 0, dlevel: -1 };
+                    return 0;
+                }
+            }
             if (digtyp === DIGTYP_TREE) {
                 digtxt = 'You cut down the tree.';
                 lev.typ = ROOM;
