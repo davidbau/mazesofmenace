@@ -20,7 +20,7 @@ import { savebones } from './bones.js';
 import { setGame } from './gstate.js';
 import { nh_timeout } from './timeout.js';
 import { pline } from './pline.js';
-import { runtimeDecideToShapeshift, makemon, setMakemonPlayerContext } from './makemon.js';
+import { runtimeDecideToShapeshift, makemon, withMakemonPlayerOverrideAsync } from './makemon.js';
 import { M2_WERE, NORMAL_SPEED } from './monsters.js';
 import { were_change } from './were.js';
 import { allocateMonsterMovement } from './mon.js';
@@ -1496,7 +1496,6 @@ export class NetHackGame {
         // old-level coordinates, so we clear x/y here to prevent spurious
         // enexto_core calls when a zoo cell coincidentally matches.
         // Override makemon player ctx: clear x/y so byyou is never true during fill_zoo
-        setMakemonPlayerContext({ ...this.player, x: null, y: null });
         const heroHasAmulet = !!(this.player?.uhave?.amulet);
         const targetDnum = Number.isInteger(opts?.targetDnum)
             ? opts.targetDnum
@@ -1509,8 +1508,10 @@ export class NetHackGame {
             : undefined;
 
         flush_screen(-1);   // C ref: do.c:1720 — suppress flushes during level transition
-        await changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel });
-        setMakemonPlayerContext(null); // Clear override — resume live gstate reads
+        await withMakemonPlayerOverrideAsync(
+            { ...this.player, x: null, y: null },
+            async () => await changeLevelCore(this, depth, transitionDir, { ...opts, makeLevel })
+        );
 
         // Bones level message
         if (this.map.isBones) {

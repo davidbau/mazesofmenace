@@ -182,10 +182,6 @@ as function parameters (matching how C passes struct pointers).
 | Module | Setter | Internal var | Callers |
 |--------|--------|-------------|---------|
 | pline.js | `setOutputContext()` | `_outputContext` | allmain, chargen, headless |
-| makemon.js | `setMakemonPlayerContext()` | `_makemonPlayerCtx` | allmain, chargen, exper, u_init, wizcmds, dungeon |
-| makemon.js | `setMakemonRoleContext()` | `_makemonPlayerCtx` | dungeon |
-| makemon.js | `setMakemonLevelContext()` | `_makemonLevelCtx` | dungeon |
-| makemon.js | `setMakemonInMklevContext()` | `_makemonInMklev` | dungeon |
 | mkobj.js | `setObjectMoves()` | `_objectMoves` | allmain, chargen |
 | mkobj.js | `setMklevObjectContext()` | `_inMklevContext` | dungeon |
 | mkobj.js | `setLevelDepth()` | `_levelDepth` | dungeon |
@@ -200,10 +196,9 @@ as function parameters (matching how C passes struct pointers).
 
 Current Phase-4 reality snapshot (2026-03-06):
 - Completed/reduced in prior passes: `setOutputContext`, timer/global state
-  wiring, display context override wiring (`setDisplayContext`), and several
-  mkobj/makemon context consumers now read via `gstate`.
+  wiring, display context override wiring (`setDisplayContext`), and makemon
+  setter wiring now replaced with scoped/direct-state helpers.
 - Remaining active setters (still to eliminate or formally justify):
-  - `setMakemonPlayerContext` / `setMakemonRoleContext` / `setMakemonLevelContext` (`makemon.js`).
   - `setLevelContext` / `setFinalizeContext` (`sp_lev.js`).
 
 Phase-4 exit gate:

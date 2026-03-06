@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initRng } from '../../js/rng.js';
 import { ACCESSIBLE, MM_ASLEEP, NO_MM_FLAGS, MM_NOGRP } from '../../js/const.js';
-import { makemon, rndmonnum, setMakemonPlayerContext, mbirth_limit } from '../../js/makemon.js';
+import { makemon, rndmonnum, withMakemonPlayerOverride, mbirth_limit } from '../../js/makemon.js';
 import { mons, PM_NAZGUL, PM_ERINYS, PM_LEPRECHAUN, PM_LITTLE_DOG } from '../../js/monsters.js';
 import { initLevelGeneration, makelevel, wallification } from '../../js/dungeon.js';
 
@@ -90,18 +90,18 @@ describe('Monster creation (C-faithful)', () => {
         };
 
         initRng(1234);
-        setMakemonPlayerContext({
-            roleIndex: 1, alignment: -1, alignmentRecord: 10, race: 0, inventory: [],
-        });
-        const chaoticGremlin = makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map);
+        const chaoticGremlin = withMakemonPlayerOverride(
+            { roleIndex: 1, alignment: -1, alignmentRecord: 10, race: 0, inventory: [] },
+            () => makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map)
+        );
         assert.equal(chaoticGremlin.peaceful, true);
 
         initRng(1234);
         map.monsters = [];
-        setMakemonPlayerContext({
-            roleIndex: 4, alignment: 1, alignmentRecord: 10, race: 0, inventory: [],
-        });
-        const lawfulGremlin = makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map);
+        const lawfulGremlin = withMakemonPlayerOverride(
+            { roleIndex: 4, alignment: 1, alignmentRecord: 10, race: 0, inventory: [] },
+            () => makemon(gremlin, 10, 10, NO_MM_FLAGS, 1, map)
+        );
         assert.equal(lawfulGremlin.peaceful, false);
     });
 

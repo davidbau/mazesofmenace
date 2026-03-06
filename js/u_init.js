@@ -16,7 +16,7 @@
 import { rn2, rnd, rn1, rne, d, getRngLog } from './rng.js';
 import { newhp, newpw } from './exper.js';
 import { initrack } from './monmove.js';
-import { setMakemonPlayerContext } from './makemon.js';
+import { withMakemonPlayerOverride } from './makemon.js';
 import { initLevelGeneration, mklev } from './dungeon.js';
 import { getArrivalPosition } from './do.js';
 import { mksobj, mkobj, weight, setStartupInventoryMode, Is_container } from './mkobj.js';
@@ -1172,9 +1172,10 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     const petAlignmentRecord = (player.roleIndex === PM_CAVEMAN)
         ? 0
         : (Number.isInteger(player.alignmentRecord) ? player.alignmentRecord : 0);
-    setMakemonPlayerContext({ ...player, alignmentRecord: petAlignmentRecord });
-    const pet = makedog(map, player, depth || 1);
-    setMakemonPlayerContext(null); // Clear override — resume live gstate reads
+    const pet = withMakemonPlayerOverride(
+        { ...player, alignmentRecord: petAlignmentRecord },
+        () => makedog(map, player, depth || 1)
+    );
 
     // C ref: dog.c initedog() — apport = ACURR(A_CHA)
     // Called inside makedog() BEFORE init_attr(), and u.acurr is still zeroed.

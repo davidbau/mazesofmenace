@@ -44,7 +44,7 @@ import {
     next_ident,
     weight,
 } from './mkobj.js';
-import { makemon, mkclass, rndmonnum_adj, setMakemonRoleContext, setMakemonLevelContext, getMakemonRoleIndex } from './makemon.js';
+import { makemon, mkclass, rndmonnum_adj } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import {
     mons, S_UNICORN, S_DRAGON, S_GIANT, S_TROLL, S_CENTAUR, S_ORC, S_GNOME, S_KOBOLD,
@@ -2356,7 +2356,9 @@ function find_random_launch_coord(map, trap) {
 // C ref: trap.c mk_trap_statue()
 function mk_trap_statue(map, x, y, depth = 1) {
     const sgn = (v) => (v > 0 ? 1 : (v < 0 ? -1 : 0));
-    const roleIndex = getMakemonRoleIndex();
+    const roleIndex = Number.isInteger(_gstate?.player?.roleIndex)
+        ? _gstate.player.roleIndex
+        : (Number.isInteger(_gstate?._makemonRoleIndex) ? _gstate._makemonRoleIndex : 11);
     const ualign = roles[roleIndex]?.align || 0;
     let trycount = 10;
     let statueMndx = -1;
@@ -4503,7 +4505,10 @@ export function initLevelGeneration(roleIndex, wizard = true, opts = {}) {
     set_mkroom_wizard_mode(_wizardMode);
     set_mkroom_ubirthday(_gameUbirthday);
     init_objects();
-    setMakemonRoleContext(roleIndex, opts);
+    if (_gstate) {
+        _gstate._makemonRoleIndex = Number.isInteger(roleIndex) ? roleIndex : null;
+        _gstate._makemonRoleOpts = opts ? { ...opts } : {};
+    }
     // C ref: mklev.c — quest levels are role-specific; register the active role's levels.
     _questRoleAbbr = roles[roleIndex]?.abbr ?? 'Arc';
     initQuestLevels(_questRoleAbbr);
@@ -4534,9 +4539,9 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
         ? opts.dungeonAlignOverride
         : undefined;
     const heroHasAmulet = !!opts?.heroHasAmulet;
-    setMakemonLevelContext({
-        dungeonAlign: forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE),
-    });
+    if (_gstate) {
+        _gstate._dungeonAlign = forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[dnum] ?? A_NONE);
+    }
 
     if (_gstate) _gstate._levelDepth = depth;
     // C ref: mklev.c:1260, sp_lev.c:6004 — oinit() calls setgemprobs(&u.uz)
@@ -4586,7 +4591,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
             let specialAlign = forcedAlign ?? (DUNGEON_ALIGN_BY_DNUM[useDnum] ?? A_NONE);
             if (specialName.startsWith('medusa')) specialAlign = A_CHAOTIC;
             else if (specialName.startsWith('tut-')) specialAlign = A_LAWFUL;
-            setMakemonLevelContext({ dungeonAlign: specialAlign });
+            if (_gstate) _gstate._dungeonAlign = specialAlign;
 
             if (DEBUG) console.log(`Generating special level: ${special.name} at (${useDnum}, ${useDlevel})`);
             // Reset special-level Lua/des state for each special level generation.

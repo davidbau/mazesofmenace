@@ -243,10 +243,19 @@ let _makemonPlayerOverride = null;
 function _getMakemonPlayerCtx() {
     if (_makemonPlayerOverride) return _makemonPlayerOverride;
     const player = _gstate?.player;
-    if (!player) return normalizePlayerContext();
+    if (!player) {
+        return normalizePlayerContext({
+            roleIndex: Number.isInteger(_gstate?._makemonRoleIndex)
+                ? _gstate._makemonRoleIndex
+                : undefined,
+            ...(_gstate?._makemonRoleOpts || {}),
+        });
+    }
     const inventory = Array.isArray(player.inventory) ? player.inventory : [];
     return normalizePlayerContext({
-        roleIndex: player.roleIndex,
+        roleIndex: Number.isInteger(player.roleIndex)
+            ? player.roleIndex
+            : (Number.isInteger(_gstate?._makemonRoleIndex) ? _gstate._makemonRoleIndex : undefined),
         alignment: player.alignment,
         alignmentRecord: player.alignmentRecord,
         alignmentAbuse: player.alignmentAbuse,
@@ -287,17 +296,10 @@ function getRndmonTraceCtx() {
     return b ? `${a} <= ${b}` : a;
 }
 
-// Set a player context override. Pass null to clear and read live from gstate.
-// Callers that need non-default context (e.g. clearing x/y during level change,
-// overriding alignmentRecord for pet creation) use this. Pure sync calls are
-// no longer needed — _getMakemonPlayerCtx() reads live from gstate.game.player.
-export function setMakemonPlayerContext(playerLike) {
-    if (playerLike == null) {
-        _makemonPlayerOverride = null;
-        return;
-    }
+function _normalizeMakemonOverride(playerLike) {
+    if (playerLike == null) return null;
     const inventory = Array.isArray(playerLike?.inventory) ? playerLike.inventory : [];
-    _makemonPlayerOverride = normalizePlayerContext({
+    return normalizePlayerContext({
         roleIndex: playerLike?.roleIndex,
         alignment: playerLike?.alignment,
         alignmentRecord: playerLike?.alignmentRecord,
@@ -312,26 +314,35 @@ export function setMakemonPlayerContext(playerLike) {
     });
 }
 
+export function withMakemonPlayerOverride(playerLike, fn) {
+    const prev = _makemonPlayerOverride;
+    _makemonPlayerOverride = _normalizeMakemonOverride(playerLike);
+    try {
+        return fn();
+    } finally {
+        _makemonPlayerOverride = prev;
+    }
+}
+
+export async function withMakemonPlayerOverrideAsync(playerLike, fn) {
+    const prev = _makemonPlayerOverride;
+    _makemonPlayerOverride = _normalizeMakemonOverride(playerLike);
+    try {
+        return await fn();
+    } finally {
+        _makemonPlayerOverride = prev;
+    }
+}
+
+export function getMakemonRoleIndex() {
+    const roleIndex = _getMakemonPlayerCtx().roleIndex;
+    return Number.isInteger(roleIndex) ? roleIndex : 11;
+}
+
 function getMakemonUlevel() {
     const n = Number(_getMakemonPlayerCtx()?.ulevel);
     if (Number.isFinite(n) && n >= 1) return Math.floor(n);
     return 1;
-}
-
-export function setMakemonRoleContext(roleIndex, opts = {}) {
-    _makemonPlayerOverride = normalizePlayerContext({ roleIndex, ...opts });
-}
-
-export function getMakemonRoleIndex() {
-    return _getMakemonPlayerCtx().roleIndex;
-}
-
-export function setMakemonLevelContext(levelCtx = {}) {
-    if (_gstate) {
-        _gstate._dungeonAlign = Number.isInteger(levelCtx.dungeonAlign)
-            ? levelCtx.dungeonAlign
-            : A_NONE;
-    }
 }
 
 // C ref: makemon.c peace_minded(struct permonst *ptr)
