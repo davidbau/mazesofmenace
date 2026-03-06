@@ -1785,13 +1785,10 @@ async function m_move(mon, map, player, display = null, fov = null) {
         if (!mon.dead) await maybe_spin_web(mon, map);
 
         // C ref: postmov() line 1658 — if can_tunnel && may_dig, call mdig_tunnel.
-        // mdig_tunnel always consumes rnd(12), even for non-obstructed terrain (returns FALSE).
-        // For obstructed terrain it digs through and returns TRUE (MMOVE_DIED).
+        // Return MMOVE_DIED only when mdig_tunnel reports actual monster death.
         if ((allowflags & ALLOW_DIG) && may_dig(nix, niy, map)) {
-            const typBefore = map.at(nix, niy)?.typ;
             const monsterDied = await mdig_tunnel(mon, map, player);
             if (monsterDied || mon.dead) return MMOVE_DIED;
-            if (typBefore != null && IS_OBSTRUCTED(typBefore)) return MMOVE_DIED;
         }
 
         const here = map.at(mon.mx, mon.my);
