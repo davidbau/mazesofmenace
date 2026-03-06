@@ -98,7 +98,7 @@ export const themeroom_fills = [
       name: "Cloud room",
       contents: async function(rm) {
          const fog = selection.room();
-         for (let i = 1; i <= (fog.numpoints() / 4); i++) {
+         for (let i = 1; i <= Math.floor(fog.numpoints() / 4); i++) {
             await des.monster({ id: "fog cloud", asleep: true });
          }
          await des.gas_cloud({ selection: fog });
@@ -154,7 +154,7 @@ export const themeroom_fills = [
       eligible: function(rm) { return rm.rlit === true; },
       contents: async function(rm) {
          const s = selection.room();
-         const npts = (s.numpoints() / 6);
+         const npts = Math.floor(s.numpoints() / 6);
          for (let i = 1; i <= npts; i++) {
             await des.monster({ id: "wood nymph", asleep: true });
             if (percent(30)) {
@@ -198,7 +198,7 @@ export const themeroom_fills = [
                zombifiable[7] = "giant";
             }
          }
-         for (let i = 1; i <= (rm.width * rm.height) / 2; i++) {
+         for (let i = 1; i <= Math.floor((rm.width * rm.height) / 2); i++) {
             shuffle(zombifiable);
             const o = await des.object({ id: "corpse", montype: zombifiable[0],
                                  buried: true });

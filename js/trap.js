@@ -1753,7 +1753,7 @@ export async function delfloortrap(ttmp, player) {
 
 // Autotranslated from trap.c:6602
 export async function b_trapped(item, bodypart) {
-  let lvl = level_difficulty(), dmg = rnd(5 + (lvl < 5 ? lvl : 2 + lvl / 2));
+  let lvl = level_difficulty(), dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.floor(lvl / 2)));
   await pline("KABOOM!! %s was booby-trapped!", The(item));
   wake_nearby(false);
   await losehp(Maybe_Half_Phys(dmg), "explosion", KILLED_BY_AN);

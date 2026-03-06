@@ -1925,7 +1925,7 @@ export function obj_absorb(obj1, obj2, game) {
       otmp1.quan = 1;
       if (otmp1.globby && otmp2.globby) {
         let tm1 = stop_timer(SHRINK_GLOB, obj_to_any(otmp1)), tm2 = stop_timer(SHRINK_GLOB, obj_to_any(otmp2));
-        tm1 = ((tm1 ? tm1 : 25) + (tm2 ? tm2 : 25) + 1) / 2;
+        tm1 = Math.floor(((tm1 ? tm1 : 25) + (tm2 ? tm2 : 25) + 1) / 2);
         start_glob_timeout(otmp1, tm1);
       }
       obj_extract_self(otmp2);

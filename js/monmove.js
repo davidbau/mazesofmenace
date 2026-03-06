@@ -2078,7 +2078,7 @@ export function m_balks_at_approaching(oldappr, mon, player) {
     // Has ranged attack capability and is low on HP — avoid
     const hasRanged = (mdat.mattk || []).some(a =>
         a && (a.aatyp === AT_BREA || a.aatyp === AT_SPIT));
-    if (hasRanged && ((mon.mhp || 0) < ((mon.mhpmax || 1) + 1) / 3 || !mon.mspec_used))
+    if (hasRanged && ((mon.mhp || 0) < Math.floor(((mon.mhpmax || 1) + 1) / 3) || !mon.mspec_used))
         return -1; // retreat
 
     return oldappr;

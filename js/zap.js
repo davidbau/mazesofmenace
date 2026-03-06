@@ -1383,11 +1383,12 @@ export async function probe_monster(mon) {
 // cf. zap.c:3567 skiprange() — range calculation for thrown rocks
 // ============================================================
 // Autotranslated from zap.c:3566
-export function skiprange(range, skipstart, skipend) {
-  let tr = (range / 4), tmp = range - ((tr > 0) ? rnd(tr) : 0);
-   skipstart = tmp;
-   skipend = tmp - ((tmp / 4) * rnd(3));
-  if ( skipend >= tmp) skipend = tmp - 1;
+export function skiprange(range) {
+  let tr = Math.floor(range / 4), tmp = range - ((tr > 0) ? rnd(tr) : 0);
+  const skipstart = tmp;
+  let skipend = tmp - (Math.floor(tmp / 4) * rnd(3));
+  if (skipend >= tmp) skipend = tmp - 1;
+  return { skipstart, skipend };
 }
 
 // ============================================================
