@@ -10,6 +10,7 @@ import {
     ACID_RES, FREE_ACTION, FAST, SICK_RES, STONE_RES, REFLECTING,
     MALE, FEMALE, DISPLACED,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+    XKILL_NOMSG,
 } from './const.js';
 import {
     G_UNIQ, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME,
@@ -47,7 +48,7 @@ import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
          EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED, ER_DESTROYED } from './trap.js';
-import { xkilled, XKILL_NOMSG } from './mon.js';
+import { xkilled } from './mon.js';
 import { mondead, flush_screen } from './monutil.js';
 import { mon_explodes } from './explode.js';
 import { spec_dbon } from './artifact.js';

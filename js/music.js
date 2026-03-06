@@ -25,7 +25,7 @@ import { unique_corpstat, is_mindless, canseemon, is_mercenary,
          is_flyer, is_clinger, is_humanoid, slithy, nolimbs,
          ceiling_hider, can_blow } from './mondata.js';
 import { mons, PM_GUARD, PM_ARCHEOLOGIST, S_SNAKE, S_NYMPH } from './monsters.js';
-import { onscary, wakeup, seemimic, xkilled, XKILL_NOMSG } from './mon.js';
+import { onscary, wakeup, seemimic, xkilled } from './mon.js';
 import { monflee } from './monmove.js';
 import { resist } from './zap.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
@@ -56,7 +56,7 @@ import { isok, COLNO, ROWNO, PIT, SPIKED_PIT, is_pit,
          SDOOR, DOOR, D_NODOOR,
          AM_MASK, AM_SANCTUM, Amask2align,
          DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, SHOPBASE,
-         IS_DRAWBRIDGE } from './const.js';
+         IS_DRAWBRIDGE, XKILL_NOMSG } from './const.js';
 import { getlin, ynFunction } from './input.js';
 
 // ============================================================================

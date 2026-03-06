@@ -15,7 +15,8 @@ import { isok, STAIRS, LADDER, SCORR, CORR, ACCESSIBLE,
          TELEP_TRAP, TRAPDOOR, HOLE, PIT, SPIKED_PIT, BEAR_TRAP, WEB,
          POLY_TRAP, FIRE_TRAP,
          is_pit, is_hole,
-         IS_FURNITURE, IS_DRAWBRIDGE } from './const.js';
+         IS_FURNITURE, IS_DRAWBRIDGE,
+         XKILL_NOMSG, XKILL_NOCONDUCT } from './const.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, pline_mon, You_hear, verbalize } from './pline.js';
 import { dist2, distmin, BOLT_LIM, mondead, mpickobj, mdrop_obj,
@@ -68,7 +69,6 @@ import { noteleport_level, tele_restrict, rloc, enexto } from './teleport.js';
 import { mon_knows_traps, mon_learns_traps } from './mondata.js';
 import { mon_has_amulet, mon_has_special } from './wizard.js';
 import { onscary, healmon, mongone, monkilled, xkilled,
-         XKILL_NOMSG, XKILL_NOCONDUCT,
          wakeup, seemimic } from './mon.js';
 import { monflee } from './monmove.js';
 import { paralyze_monst } from './mhitm.js';

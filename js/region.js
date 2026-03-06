@@ -24,14 +24,14 @@
 
 import { rn1, rn2, rnd, d } from './rng.js';
 import { pline, You, You_feel, pline_The, You_see } from './pline.js';
-import { isok, ACCESSIBLE, COLNO, ROWNO } from './const.js';
+import { isok, ACCESSIBLE, COLNO, ROWNO, M_POISONGAS_OK } from './const.js';
 import { newsym } from './monutil.js';
 import { cansee, block_point, unblock_point, mark_vision_dirty } from './vision.js';
 import { nonliving, haseyes, is_silent, resists_poison, canseemon } from './mondata.js';
 import { Monnam } from './do_name.js';
 import { body_part, EYE, LUNG } from './polyself.js';
 import { makeplural } from './objnam.js';
-import { m_poisongas_ok, M_POISONGAS_OK, wake_nearto, killed, monkilled, setmangry } from './mon.js';
+import { m_poisongas_ok, wake_nearto, killed, monkilled, setmangry } from './mon.js';
 import { find_mid } from './light.js';
 import { is_pool, is_lava } from './dbridge.js';
 import { safe_teleds } from './teleport.js';

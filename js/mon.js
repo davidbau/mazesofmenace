@@ -23,7 +23,9 @@ import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          SHOPBASE, ROOMOFFSET, TEMPLE, NORMAL_SPEED, isok,
          ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL,
          NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
-         ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC } from './const.js';
+         ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC,
+         XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
+         M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD } from './const.js';
 import { AMULET_OF_LIFE_SAVING, CORPSE } from './objects.js';
 import { which_armor } from './worn.js';
 import { W_AMUL, W_ARMG,
@@ -821,12 +823,6 @@ export function monkilled(mon, fltxt, how, map, player) {
     mondied(mon, map, player);
 }
 
-// XKILL flag constants — C ref: hack.h
-export const XKILL_GIVEMSG   = 0x0;
-export const XKILL_NOMSG     = 0x1;
-export const XKILL_NOCORPSE  = 0x2;
-export const XKILL_NOCONDUCT = 0x4;
-
 // C ref: mon.c xkilled() — hero kills monster
 export function xkilled(mon, xkill_flags, map, player) {
     const nomsg = !!(xkill_flags & XKILL_NOMSG);
@@ -957,12 +953,6 @@ export function m_in_air(mon) {
     return is_flyer(mdat) || is_floater(mdat)
         || (is_clinger(mdat) && !!mon.mundetected);
 }
-
-// C ref: mon.c:311 m_poisongas_ok() — would monster be OK with poison gas?
-// Returns: 2 = OK, 1 = minor (resistant), 0 = bad
-export const M_POISONGAS_OK = 2;
-export const M_POISONGAS_MINOR = 1;
-export const M_POISONGAS_BAD = 0;
 
 export function m_poisongas_ok(mon) {
     const mdat = mon?.type || {};

@@ -374,6 +374,17 @@ export const POISON = 5;
 export const UNDEF = 6;
 export const TABU = 7;
 
+// Hero-kill/xkilled flag bits (include/hack.h; used by src/mon.c xkilled())
+export const XKILL_GIVEMSG = 0x0;
+export const XKILL_NOMSG = 0x1;
+export const XKILL_NOCORPSE = 0x2;
+export const XKILL_NOCONDUCT = 0x4;
+
+// Poison gas tolerance enum (src/mon.c m_poisongas_ok())
+export const M_POISONGAS_OK = 2;
+export const M_POISONGAS_MINOR = 1;
+export const M_POISONGAS_BAD = 0;
+
 // Trap types (trap.h)
 export const ALL_TRAPS = -1;
 export const NO_TRAP = 0;
