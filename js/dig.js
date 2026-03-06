@@ -58,6 +58,7 @@ import {
     PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
 } from './objects.js';
 import { S_ZOMBIE, S_MUMMY } from './monsters.js';
+import { PM_EARTH_ELEMENTAL, PM_XORN } from './monsters.js';
 import {
     is_pool, is_lava, is_pool_or_lava, is_moat, is_ice,
     is_drawbridge_wall, find_drawbridge, destroy_drawbridge,
@@ -74,6 +75,7 @@ import { On_ladder, On_stairs } from './stairs.js';
 import { s_suffix } from './hacklib.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { expels } from './mhitu.js';
+import { hard_helmet } from './do_wear.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -733,8 +735,8 @@ export async function zap_dig(map, player) {
                 }
                 _gstate?.display?.putstr_message?.('You loosen a rock from the ceiling.');
                 _gstate?.display?.putstr_message?.('It falls on your head!');
-                // C: rnd(hard_helmet(uarmh) ? 2 : 6). Keep RNG shape (helmet hardness not wired here).
-                rnd(6);
+                const helmet = u.helmet || u.uarmh || null;
+                rnd(hard_helmet(helmet) ? 2 : 6);
                 mksobj_at(map, ROCK, u.x, u.y, false, false);
                 newsym(u.x, u.y);
             } else {
@@ -818,7 +820,7 @@ export async function zap_dig(map, player) {
                     shopdoor = true;
                 }
                 if (wasSdoor) {
-                    room.typ = DOOR;
+                    cvt_sdoor_to_door(room, map);
                 } else {
                     razedVisibleDoor = !!cansee(map, player, _gstate?.fov || null, zx, zy);
                 }
@@ -1347,8 +1349,8 @@ export function dig(map, player) {
 
         // Earth level: rn2(3), rn2(2) for earth elemental
         if (map.flags && map.flags.is_earthlevel && !rn2(3)) {
-            const mndx = rn2(2); // PM_EARTH_ELEMENTAL or PM_XORN
-            // makemon — earth elemental spawning
+            const mndx = rn2(2) ? PM_EARTH_ELEMENTAL : PM_XORN;
+            makemon(mndx, dpx, dpy, 0x04 /* MM_NOMSG */, undefined, map);
         }
 
         if (IS_DOOR(lev.typ) && (lev.flags & D_TRAPPED)) {
