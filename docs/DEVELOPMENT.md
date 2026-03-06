@@ -908,6 +908,13 @@ python3 scripts/generators/gen_constants.py --report-deferred-json
 # - details[] with missingDeps/rootMissingDeps per deferred macro
 # - rootBlockers[] with ownerHint (likely leaf owner)
 # - ownerSummary[] and unknownOwnerBlockers[] for ownership coverage checks
+
+# Export report JSON to docs/metrics/deferred_constants_report_latest.json
+python3 scripts/generators/export_deferred_constants_report.py
+
+# npm aliases
+npm run constants:report
+npm run constants:report:write
 ```
 
 ### Converting Lua special levels to JavaScript

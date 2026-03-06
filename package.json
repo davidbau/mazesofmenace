@@ -12,6 +12,8 @@
     "replay:dump": "node scripts/dump-js-replay.mjs",
     "session:compare": "node scripts/compare-sessions.mjs",
     "comparison:window": "node scripts/comparison-window.mjs",
+    "constants:report": "python3 scripts/generators/gen_constants.py --report-deferred-json",
+    "constants:report:write": "python3 scripts/generators/export_deferred_constants_report.py",
     "translator:check-policy": "node scripts/check-translator-file-policy.mjs",
     "translator:check-annotations": "node scripts/check-translator-annotations.mjs",
     "serve": "python3 -m http.server 8080",
