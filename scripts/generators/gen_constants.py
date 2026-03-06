@@ -525,6 +525,7 @@ def _emit_header_block(
     title: str,
     emitted: list[tuple[str, str, str]],
     unresolved: list[tuple[str, str, str]],
+    known_names: set[str],
     include_deferred: bool,
     include_platform_defaults: bool,
 ) -> str:
@@ -554,9 +555,26 @@ def _emit_header_block(
         lines.append(f"export const {name} = {expr};")
     lines.append("")
     if include_deferred:
+        unresolved_details: list[tuple[str, str, list[str], str]] = []
+        for name, src, expr in unresolved:
+            deps = sorted({d for d in _expr_identifiers(expr) if d != name and d not in known_names})
+            unresolved_details.append((name, src, deps, expr))
+
         lines.append("export const DEFERRED_HEADER_CONST_MACROS = Object.freeze([")
         for name, src in unresolved_names:
             lines.append(f'    "{name} ({src})",')
+        lines.append("]);")
+        lines.append("")
+        lines.append("export const DEFERRED_HEADER_CONST_MACRO_DETAILS = Object.freeze([")
+        for name, src, deps, expr in unresolved_details:
+            deps_js = ", ".join(f'"{d}"' for d in deps)
+            expr_js = expr.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append("    Object.freeze({")
+            lines.append(f'        name: "{name}",')
+            lines.append(f'        source: "{src}",')
+            lines.append(f"        missingDeps: Object.freeze([{deps_js}]),")
+            lines.append(f'        expr: "{expr_js}",')
+            lines.append("    }),")
         lines.append("]);")
         lines.append("")
         lines.append("export const HEADER_MACRO_NON_EMITTABLE = Object.freeze([")
@@ -587,6 +605,7 @@ def generate_all_headers_blocks(
         title="Auto-imported header constants (pre-symbol pass)",
         emitted=pre_emitted,
         unresolved=pre_pending,
+        known_names=pre_known | {name for name, _expr, _src in pre_emitted},
         include_deferred=False,
         include_platform_defaults=True,
     )
@@ -594,6 +613,7 @@ def generate_all_headers_blocks(
         title="Auto-imported header constants (post-symbol pass)",
         emitted=post_emitted,
         unresolved=post_pending,
+        known_names=post_known | {name for name, _expr, _src in post_emitted},
         include_deferred=True,
         include_platform_defaults=False,
     )
