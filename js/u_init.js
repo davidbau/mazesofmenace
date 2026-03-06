@@ -1169,7 +1169,7 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     // Startup pet-generation alignment context has role-specific behavior in
     // captured C runs; Caveman uses 0 here while normal gameplay keeps role
     // init record.
-    const petAlignmentRecord = (player.roleIndex === 2)
+    const petAlignmentRecord = (player.roleIndex === PM_CAVEMAN)
         ? 0
         : (Number.isInteger(player.alignmentRecord) ? player.alignmentRecord : 0);
     setMakemonPlayerContext({ ...player, alignmentRecord: petAlignmentRecord });

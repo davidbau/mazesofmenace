@@ -23,7 +23,7 @@ import { ACCESSIBLE, isok, xdir, ydir, W_WEP, W_QUIVER, W_SWAPWEP,
          DIRECTION_KEYS } from './const.js';
 import { IS_SOFT, ZAP_POS, S_boomleft, S_boomright, defsyms,
          PM_WIZARD, PM_CAVEMAN, PM_HEALER, PM_TOURIST,
-         PM_MONK, PM_RANGER, PM_ROGUE,
+         PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
          RACE_ELF, RACE_ORC } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
@@ -545,7 +545,7 @@ export function multishot_class_bonus(pm, ammo, launcher) {
     case PM_ROGUE:
         if (skill === P_DAGGER) multishot++;
         break;
-    case 9: // PM_SAMURAI
+    case PM_SAMURAI:
         if (ammo.otyp === YA && launcher && launcher.otyp === YUMI) multishot++;
         break;
     default:

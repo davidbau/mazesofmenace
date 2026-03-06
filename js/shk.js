@@ -3,7 +3,7 @@
 // Handles shop pricing, billing, entry messages, shopkeeper queries,
 // payment, selling, damage tracking, and shopkeeper movement hooks.
 
-import { SHOPBASE, ROOMOFFSET, COLNO, ROWNO, DOOR, CORR, A_CHA, A_WIS, isok } from './const.js';
+import { SHOPBASE, ROOMOFFSET, COLNO, ROWNO, DOOR, CORR, A_CHA, A_WIS, isok, PM_TOURIST } from './const.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS, POTION_CLASS, TOOL_CLASS,
          COIN_CLASS, GEM_CLASS, FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          BALL_CLASS, CHAIN_CLASS, RING_CLASS, AMULET_CLASS,
@@ -374,7 +374,7 @@ function getCost(obj, player, shkp) {
     if (player?.helmet?.otyp === DUNCE_CAP) {
         multiplier *= 4;
         divisor *= 3;
-    } else if (player?.roleIndex === 10 && Number(player.ulevel || 1) < 15) {
+    } else if (player?.roleIndex === PM_TOURIST && Number(player.ulevel || 1) < 15) {
         multiplier *= 4;
         divisor *= 3;
     }
