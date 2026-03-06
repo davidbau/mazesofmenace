@@ -5,7 +5,7 @@
 NetHack is one of the most complex single-player games ever made — a procedurally
 generated dungeon RPG with 38 years of accumulated rules, running in 80 columns of
 ASCII text. This is a faithful JavaScript port, playable in any modern browser.
-No app. No install. No build step. Open the page, pick a role, descend.
+Open the page, pick a role, descend.
 
 **Play it now: [mazesofmenace.net](https://mazesofmenace.net/)**
 
