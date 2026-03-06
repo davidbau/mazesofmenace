@@ -910,7 +910,6 @@ async function run_dochug_postmove_pipeline_current_js(
                 const monsterDied = await mdig_tunnel(mon, map, player);
                 if (monsterDied || mon.dead) return MMOVE_DIED;
             }
-            if (!mon.dead) await maybe_spin_web(mon, map);
         }
     }
     return MMOVE_MOVED;
@@ -1401,6 +1400,11 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     mmoved = false;
                 } else if (moveStatus === MMOVE_DONE) {
                     mmoved = false;
+                }
+                if (!trapDied && !mon.dead
+                    && (moveStatus === MMOVE_MOVED || moveStatus === MMOVE_DONE)) {
+                    // C ref: postmov() tail — maybe_spin_web runs in moved/done tail.
+                    await maybe_spin_web(mon, map);
                 }
                 // C ref: monmove.c postmov() applies hides-under reevaluation
                 // whenever status is MMOVE_MOVED or MMOVE_DONE, even if the

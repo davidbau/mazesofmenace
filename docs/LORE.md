@@ -3130,3 +3130,17 @@ hard-won wisdom:
   - `./scripts/run-and-report.sh --failures` remained `27/34` passing, `7` failing
 - Even when immediate frontier movement is flat, landing C-faithful neutral slices
   simplifies later debugging and reduces mixed-order confounders.
+
+## Lesson: placing maybe_spin_web in postmov tail is a safe cleanup slice
+
+- C `postmov()` runs `maybe_spin_web` in the moved/done tail, after moved-cell core
+  work and after object interaction checks.
+- JS had non-pet `maybe_spin_web` inside moved-cell core helper.
+- We moved non-pet web spin to `dochug` moved/done tail (just before hide-under),
+  keeping trap/dig/door handling in the shared postmove core helper.
+- Validation remained stable:
+  - `seed325` stayed improved at first RNG divergence step `309`
+  - `seed327`/`seed328` unchanged
+  - failing suite remained `27/34` passing, `7` failing
+- This reduces one more ordering mismatch and keeps the code closer to C postmov
+  structure without introducing regressions.
