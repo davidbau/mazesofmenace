@@ -44,6 +44,7 @@ import {
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { exercise } from './attrib_exercise.js';
+import { poisoned } from './attrib.js';
 import { make_confused, make_stunned, make_blinded, make_hallucinated } from './potion.js';
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
@@ -54,10 +55,11 @@ import { mon_explodes } from './explode.js';
 import { spec_dbon } from './artifact.js';
 import { msummon } from './minion.js';
 import { new_were, were_summon } from './were.js';
-import { Mgender, Monnam } from './do_name.js';
+import { Mgender, Monnam, pmname } from './do_name.js';
 import { resists_blnd } from './zap.js';
 import { rloc, tele_restrict } from './teleport.js';
 import { RLOC_MSG } from './const.js';
+import { s_suffix } from './hacklib.js';
 import { find_ac } from './do_wear.js';
 
 const PIERCE = 1;
@@ -532,29 +534,17 @@ async function mhitu_ad_drst(monster, attack, player, mhm, ctx) {
     const negated = mhitm_mgc_atk_negated(monster, player);
     await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
     if (!negated && !rn2(8)) {
-        // C: poisoned(buf, ptmp, ..., 30, FALSE)
-        // ptmp depends on adtyp: AD_DRST→A_STR, AD_DRDX→A_DEX, AD_DRCO→A_CON
+        // C ref: uhitm.c mhitm_ad_drst() mhitu branch.
+        // Route through attrib.c poisoned() for faithful RNG/side effects.
         let ptmp = A_STR;
         switch (attack.adtyp) {
         case AD_DRST: ptmp = A_STR; break;
         case AD_DRDX: ptmp = A_DEX; break;
         case AD_DRCO: ptmp = A_CON; break;
         }
-        // poisoned() in C consumes rn2(hpdamchance=30) for HP damage vs attr drain.
-        // For now: apply attribute drain and print message.
-        if (playerHasProp(player, POISON_RES)) {
-            if (!ctx.suppressHitMsg)
-                await ctx.display.putstr_message('The poison doesn\'t seem to affect you.');
-        } else {
-            // C: poisoned() with hpdamchance=30 → !rn2(30) for instant kill
-            if (!ctx.suppressHitMsg)
-                await ctx.display.putstr_message('You feel very sick!');
-            // Drain the appropriate attribute
-            if (player.attributes && player.attributes[ptmp] > 1) {
-                player.attributes[ptmp]--;
-            }
-            await exercise(player, A_CON, false);
-        }
+        const reason = `${s_suffix(Monnam(monster))} ${mpoisons_subj(monster, attack)}`;
+        const pkiller = pmname(monster.data || monster.type, Mgender(monster));
+        await poisoned(player, reason, ptmp, pkiller, 30, false);
     }
 }
 

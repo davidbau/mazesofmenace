@@ -41,7 +41,7 @@ import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
 import { dosearch0 } from './detect.js';
 import { newsym, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './display.js';
-import { helpless } from './mon.js';
+import { helpless, monnear } from './mon.js';
 import { monflee } from './monmove.js';
 import { ynFunction } from './input.js';
 import { water_friction, maybe_adjust_hero_bubble } from './mkmaze.js';

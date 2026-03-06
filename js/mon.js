@@ -535,44 +535,65 @@ export function mfndpos(mon, map, player, flag) {
             // C ref: mon.c:2267-2269 — onscary + ALLOW_SSM check
             if (onscary(map, nx, ny) && !(flag & ALLOW_SSM)) continue;
 
-            // C ref: mon.c:2271-2275 — hero position: ALLOW_U check
-            if (nx === player.x && ny === player.y) {
+            // C ref: mon.c:2270-2315 — hero/apparent-target handling.
+            // If square is actual hero OR current apparent hero target, treat it
+            // as ALLOW_U candidate and skip MON_AT/sanctuary branch checks.
+            if ((nx === player.x && ny === player.y)
+                || (nx === mon.mux && ny === mon.muy)) {
+                if (nx === player.x && ny === player.y) {
+                    // C ref: if right next to you, set mux/muy to true hero pos.
+                    mon.mux = player.x;
+                    mon.muy = player.y;
+                }
                 if (!(flag & ALLOW_U)) continue;
                 posInfo |= ALLOW_U;
-            }
-
-            // C ref: mon.c:2277-2304 — monster at position
-            const monAtPos = monsterAtWithSegments(map, nx, ny);
-            if (monAtPos) {
-                let allowMAttack = false;
-                if (flag & ALLOW_M) {
-                    // C ref: mon.c mfndpos() — ALLOW_M from caller permits
-                    // attacking occupied squares; defender tame still requires ALLOW_TM.
-                    allowMAttack = true;
-                    if (monAtPos.tame && !(flag & ALLOW_TM)) {
-                        allowMAttack = false;
-                    }
-                } else {
-                    // Hostile/peaceful: check mm_aggression-derived flags.
-                    const mmflag = mm_aggression(mon, monAtPos, map);
-                    if (mmflag.allowM) {
+            } else {
+                // C ref: mon.c:2286-2304 — monster at position
+                const monAtPos = monsterAtWithSegments(map, nx, ny);
+                if (monAtPos) {
+                    let allowMAttack = false;
+                    if (flag & ALLOW_M) {
+                        // C ref: ALLOW_M from caller permits attacking occupied
+                        // squares; defender tame still requires ALLOW_TM.
                         allowMAttack = true;
-                        if (monAtPos.tame && !mmflag.allowTM) {
+                        if (monAtPos.tame && !(flag & ALLOW_TM)) {
                             allowMAttack = false;
                         }
+                    } else {
+                        // Hostile/peaceful: check mm_aggression-derived flags.
+                        const mmflag = mm_aggression(mon, monAtPos, map);
+                        if (mmflag.allowM) {
+                            allowMAttack = true;
+                            if (monAtPos.tame && !mmflag.allowTM) {
+                                allowMAttack = false;
+                            }
+                        }
+                    }
+                    if (allowMAttack) {
+                        posInfo |= ALLOW_M;
+                        if (monAtPos.tame) posInfo |= ALLOW_TM;
+                    } else if (mm_displacement(mon, monAtPos)) {
+                        posInfo |= ALLOW_MDISP;
+                    } else {
+                        continue;
                     }
                 }
-                if (allowMAttack) {
-                    posInfo |= ALLOW_M;
-                    if (monAtPos.tame) posInfo |= ALLOW_TM;
-                } else if (mm_displacement(mon, monAtPos)) {
-                    posInfo |= ALLOW_MDISP;
-                } else {
-                    continue;
+
+                // C ref: mon.c:2306-2313 — entering sanctuary from outside.
+                if (map?.flags?.has_temple) {
+                    const roomHere = map.roomAt ? map.roomAt(omx, omy) : null;
+                    const roomThere = map.roomAt ? map.roomAt(nx, ny) : null;
+                    const hereTemple = roomHere?.rtype === TEMPLE;
+                    const thereTemple = roomThere?.rtype === TEMPLE;
+                    if (thereTemple && !hereTemple
+                        && in_your_sanctuary(null, nx, ny, map, player)) {
+                        if (!(flag & ALLOW_SANCT)) continue;
+                        posInfo |= ALLOW_SANCT;
+                    }
                 }
             }
 
-            // C ref: mon.c:2306-2313 — garlic avoidance for undead
+            // C ref: mon.c:2316+ — garlic avoidance for undead
             if (flag & NOGARLIC) {
                 let hasGarlic = false;
                 for (const obj of map.objects) {
@@ -583,20 +604,6 @@ export function mfndpos(mon, map, player, flag) {
                     }
                 }
                 if (hasGarlic) continue;
-            }
-
-            // C ref: mon.c:2298-2304 — entering your sanctuary.
-            // ALLOW_SANCT permits stepping into temple sanctuary squares.
-            if (map?.flags?.has_temple) {
-                const roomHere = map.roomAt ? map.roomAt(omx, omy) : null;
-                const roomThere = map.roomAt ? map.roomAt(nx, ny) : null;
-                const hereTemple = roomHere?.rtype === TEMPLE;
-                const thereTemple = roomThere?.rtype === TEMPLE;
-                if (thereTemple && !hereTemple
-                    && in_your_sanctuary(null, nx, ny, map, player)) {
-                    if (!(flag & ALLOW_SANCT)) continue;
-                    posInfo |= ALLOW_SANCT;
-                }
             }
 
             // C ref: mon.c:2315-2323 — boulder check (ALLOW_ROCK)
