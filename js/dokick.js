@@ -104,7 +104,7 @@ import { rnd_class } from './objnam.js';
 import { kick_steed } from './steed.js';
 import { legs_in_no_shape } from './do.js';
 import { nhgetch } from './input.js';
-import { DIRECTION_KEYS } from './dothrow.js';
+import { DIRECTION_KEYS } from './const.js';
 import { place_monster } from './steed.js';
 import { m_in_out_region } from './region.js';
 import { set_apparxy } from './monmove.js';

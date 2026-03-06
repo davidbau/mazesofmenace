@@ -377,6 +377,20 @@ export const RUMOR_PAD_LENGTH = 60;
 // Runtime field: migrating monster `mon_arrive(..., with_you, ...)` argument.
 export const MON_ARRIVE_WITH_YOU = 'With_you';
 
+// Input direction maps for command parsing/running (src/cmd.c/hack.c key semantics)
+// Runtime fields:
+// - command handlers: direction dispatch and movement vectors
+// - travel/run logic in cmd/hack/lock/kick/dokick
+export const DIRECTION_KEYS = {
+    h: [-1, 0], j: [0, 1], k: [0, -1], l: [1, 0],
+    y: [-1, -1], u: [1, -1], b: [-1, 1], n: [1, 1],
+    '.': [0, 0],
+};
+export const RUN_KEYS = {
+    H: [-1, 0], J: [0, 1], K: [0, -1], L: [1, 0],
+    Y: [-1, -1], U: [1, -1], B: [-1, 1], N: [1, 1],
+};
+
 // Maximum values
 export const MAXNROFROOMS = 40;
 export const MAXDUNGEON = 16;

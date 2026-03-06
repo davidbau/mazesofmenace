@@ -3,17 +3,17 @@
 // Maps keyboard input to game actions.
 
 import { A_STR, A_DEX, A_CON, A_WIS, STATUS_ROW_1,
-         PM_CAVEMAN, PM_ROGUE, RACE_ORC, SQKY_BOARD } from './const.js';
+         PM_CAVEMAN, PM_ROGUE, RACE_ORC, SQKY_BOARD,
+         DIRECTION_KEYS, RUN_KEYS, CQ_REPEAT } from './const.js';
 import { rn2 } from './rng.js';
 import { handleWizLoadDes, wizLevelChange, wizMap, wizTeleport, wizGenesis, wizWish } from './wizcmds.js';
-import { DIRECTION_KEYS, handleThrow, handleFire } from './dothrow.js';
+import { handleThrow, handleFire } from './dothrow.js';
 import { handleKnownSpells } from './spell.js';
 import { handleEngrave } from './engrave.js';
 import { handleApply } from './apply.js';
 import { COIN_CLASS } from './objects.js';
 import { nhgetch, ynFunction, getlin, cmdq_pop_command, cmdq_clear, cmdq_add_ec,
        } from './input.js';
-import { CQ_REPEAT } from './const.js';
 import { handleEat } from './eat.js';
 import { handleQuaff } from './potion.js';
 import { handleRead } from './read.js';
@@ -36,7 +36,7 @@ import { add_skills_to_menu, can_advance, skill_advance, skill_level_name, P_NUM
 import { handleSet } from './options_menu.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
-         RUN_KEYS, performWaitSearch } from './hack.js';
+         performWaitSearch } from './hack.js';
 import { dist2 } from './monutil.js';
 
 function Sprintf(fmt, ...args) {

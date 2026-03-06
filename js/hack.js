@@ -36,7 +36,7 @@ import { observeObject } from './discovery.js';
 import { place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
-import { DIRECTION_KEYS } from './dothrow.js';
+import { DIRECTION_KEYS, RUN_KEYS } from './const.js';
 import { dosearch0 } from './detect.js';
 import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './monutil.js';
 import { monflee } from './monmove.js';
@@ -63,18 +63,6 @@ import { poisoned, acurr, acurrstr } from './attrib.js';
 import { intemple } from './priest.js';
 import { t_missile, seetrap, conjoined_pits, adj_nonconjoined_pit, into_vs_onto,
        } from './trap.js';
-
-// Run direction keys (shift = run)
-export const RUN_KEYS = {
-    'H': [-1,  0],
-    'J': [ 0,  1],
-    'K': [ 0, -1],
-    'L': [ 1,  0],
-    'Y': [-1, -1],
-    'U': [ 1, -1],
-    'B': [-1,  1],
-    'N': [ 1,  1],
-};
 
 function runTraceEnabled() {
     const env = (typeof process !== 'undefined' && process.env) ? process.env : {};

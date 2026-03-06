@@ -9,7 +9,7 @@ import { exercise } from './attrib_exercise.js';
 import { x_monnam } from './mondata.js';
 import { mondead, newsym, setDisplayContext } from './monutil.js';
 import { nhgetch } from './input.js';
-import { DIRECTION_KEYS } from './dothrow.js';
+import { DIRECTION_KEYS } from './const.js';
 import { u_wipe_engr } from './engrave.js';
 import { recalc_block_point } from './vision.js';
 

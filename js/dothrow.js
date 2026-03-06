@@ -19,7 +19,8 @@
 //   breakobj()/breaktest(): object breakage mechanics.
 
 import { ACCESSIBLE, isok, xdir, ydir, W_WEP, W_QUIVER, W_SWAPWEP,
-         ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED } from './const.js';
+         ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED,
+         DIRECTION_KEYS } from './const.js';
 import { IS_SOFT, ZAP_POS, S_boomleft, S_boomright, defsyms } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
@@ -157,19 +158,6 @@ const BRK_FROM_INV = 1;
 const BRK_KNOWN2BREAK = 4;
 const BRK_KNOWN2NOTBREAK = 8;
 const BRK_KNOWN_OUTCOME = BRK_KNOWN2BREAK | BRK_KNOWN2NOTBREAK;
-
-// Direction key mappings
-// C ref: cmd.c -- movement key definitions
-export const DIRECTION_KEYS = {
-    'h': [-1,  0],  // west
-    'j': [ 0,  1],  // south
-    'k': [ 0, -1],  // north
-    'l': [ 1,  0],  // east
-    'y': [-1, -1],  // northwest
-    'u': [ 1, -1],  // northeast
-    'b': [-1,  1],  // southwest
-    'n': [ 1,  1],  // southeast
-};
 
 // C ref: dothrow.c ammo_and_launcher() for dofire fireassist behavior.
 export function ammoAndLauncher(ammo, launcher) {

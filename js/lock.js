@@ -29,7 +29,7 @@ import { objectData, WEAPON_CLASS, TOOL_CLASS, ROCK_CLASS, POTION_CLASS,
          PAPER, WAX, VEGGY, FLESH, GLASS, WOOD,
        } from './objects.js';
 import { doname, xname } from './mkobj.js';
-import { DIRECTION_KEYS } from './dothrow.js';
+import { DIRECTION_KEYS } from './const.js';
 import { handleLoot } from './pickup.js';
 import { pline, pline_The, You, You_cant, You_hear, There, set_msg_xy,
          verbalize } from './pline.js';
