@@ -2335,3 +2335,88 @@ hard-won wisdom:
   display's topline (via `display.putstr_message`) rather than through pline's
   output context. Unit tests also mock `display.putstr_message` directly.
 - **Impact**: Fixed seed326 from 504/507 to 507/507 screens (individually).
+
+### Forest centaur gets BOW+ARROW, not CROSSBOW (2026-03-05)
+
+- C's `m_initweap()` in `makemon.c:477` distinguishes `PM_FOREST_CENTAUR`
+  from other centaurs: forest centaurs get `BOW` + `ARROW`, others get
+  `CROSSBOW` + `CROSSBOW_BOLT`.
+- JS was unconditionally giving all centaurs `CROSSBOW` + `CROSSBOW_BOLT`.
+- **Fix**: Added `PM_FOREST_CENTAUR` import and `mndx === PM_FOREST_CENTAUR`
+  check in `js/makemon.js` S_CENTAUR case.
+- **Impact**: Fixed seed324 event mismatch (otyp 88→83).
+
+### topologize double edge-stamping in sp_lev rooms (2026-03-05)
+
+- C calls `topologize()` in `makecorridors()` to stamp roomno values on
+  wall/edge cells of rooms. JS was missing this for sp_lev rooms in maze
+  levels (the guard `if (!map.flags.is_maze_lev)` skipped maze levels).
+- Removing the guard exposed a second bug: `addRegionRectRoom` in `sp_lev.js`
+  had inline edge-stamping that pre-set edges to `roomno=3`, then topologize
+  saw them as already-set and marked them `SHARED=1` instead.
+- **Fix**: (1) Removed `is_maze_lev` guard in `mklev.js` so topologize runs
+  for all room types. (2) Added topologize loop in `sp_lev.js finalize_level()`.
+  (3) Removed the inline edge-stamping block from `addRegionRectRoom`.
+- **Lesson**: When two code paths both stamp roomno on edges, topologize's
+  SHARED logic treats the pre-stamped edges as belonging to a different room,
+  producing incorrect `roomno=1` (SHARED) instead of the expected `roomno=3`.
+- **Impact**: Fixed seed321 mapdump roomnoGrid parity.
+
+### des.terrain() must route through sel_set_ter for horizontal flag (2026-03-05)
+
+- `des.terrain()` in `sp_lev.js` was setting `loc.typ` directly instead of
+  calling `sel_set_ter()`. This bypassed the horizontal flag logic that
+  `sel_set_ter` applies to HWALL and IRONBARS tiles.
+- **Fix**: Refactored all `des.terrain()` paths to use a local `applyTerrain`
+  helper that calls `sel_set_ter(x, y, terrainType, { clear: false, lit: null })`.
+- **Impact**: Improved seed331 mapdump from 1/2 to 2/2.
+
+### C harness --More-- race condition (isUnknownSpaceAlias) (2026-03-05)
+
+- The tmux-based C recording harness can auto-dismiss `--More--` prompts
+  before the space key arrives, causing `"Unknown command ' '."` to appear
+  in C recordings where JS correctly consumes the space.
+- **Fix**: Added `isUnknownSpaceAlias()` comparator in `comparator_policy.js`
+  that treats `"Unknown command ' '."` ↔ blank line as equivalent on row 0.
+- Also re-recorded `seed323_caveman_wizard_gameplay.session.json` to remove
+  the timing artifact.
+- **Impact**: Fixed seed323 from failing to passing.
+
+### intemple() was dead code — check_special_room must call it (2026-03-05)
+
+- JS `check_special_room()` in `hack.js` had `case TEMPLE: break;` — a stub
+  that never called `intemple()`. C calls `intemple(roomno + ROOMOFFSET)`.
+- `intemple()` in `priest.js` uses `d(10,500)`, `d(10,100)`, `d(10,20)` for
+  angry god anger timers. These must use `c_d()` (composite RNG) not `d()`
+  (individual RNG) to match C's RNG stream.
+- **Fix**: (1) Connected `intemple()` call in `check_special_room` TEMPLE case.
+  (2) Added `check_special_room` call in `do.js` `deferred_goto()` after level
+  transition (lazy import to avoid circular dep). (3) Changed `d()` → `c_d()`
+  in `priest.js`. (4) Fixed `p_coaligned()` to use `player.alignment` instead
+  of `player.ualign.type`.
+- **Impact**: Improved seed332 RNG/event alignment.
+
+### mk_knox_portal wizard mode bypass (2026-03-05)
+
+- C's `mk_knox_portal()` has `(rn2(3) && !wizard)` — in wizard mode, the
+  portal is always placed. JS was missing the `!wizard` check, deferring
+  portal placement 2/3 of the time even in wizard sessions.
+- **Fix**: Added `&& !_wizardMode` to the `rn2(3)` guard in `js/dungeon.js`.
+- **Impact**: Fixed knox portal placement parity in wizard sessions.
+
+### Wall glyph rendering: set_wall_state() never called in JS (2026-03-05)
+
+- C calls `set_wall_state()` during level finalization, which computes
+  `wall_info` mode bits for T-walls and corners based on adjacent wall
+  connectivity. These bits determine which Unicode box-drawing character
+  to render (e.g., ┴ vs └ vs ┘).
+- JS never calls `set_wall_state()` and lacks the `loc.wall_info` field.
+  The `terrainSymbol()` function in `render.js` uses `loc.flags` (which
+  stores `seenv` bits for explored visibility) instead of `wall_info`.
+- **Root cause of seed033 wall glyph mismatches**: T-walls and corner
+  walls render with wrong characters because the mode bits are absent.
+- **Future fix requires**: (1) Add `wall_info` field to location objects.
+  (2) Port `set_wall_state()` from `display.c`. (3) Call it in
+  `finalize_level()`. (4) Update `terrainSymbol()` to use `wall_info`
+  instead of `loc.flags` for wall type determination.
+- **Status**: Research complete, implementation deferred (complex multi-file change).
