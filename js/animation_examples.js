@@ -7,8 +7,8 @@
 
 import {
     tmp_at, tmp_at_end_async,
-    DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
+import { DISP_BEAM, DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './const.js';
 import { delay_output } from './delay.js';
 
 /**

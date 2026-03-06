@@ -59,7 +59,8 @@ import { make_stunned } from './potion.js';
 import {
     erode_obj, erode_obj_player,
 } from './trap.js';
-import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_ALWAYS, DISP_END } from './const.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
 import { pline, pline_The, You, impossible } from './pline.js';
 import { mon_nam, Monnam } from './do_name.js';

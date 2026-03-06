@@ -21,7 +21,8 @@
 // N/A: JS port uses storage.js (localStorage/IndexedDB) with a different
 //   format — no direct equivalents to these file-based save functions.
 //   Memory management (freedynamicdata, free_dungeons) is handled by GC.
-import { tmp_at, DISP_FREEMEM } from './animation.js';
+import { tmp_at } from './animation.js';
+import { DISP_FREEMEM } from './const.js';
 import { pushRngLogEntry } from './rng.js';
 
 // cf. save.c:42 — dosave(): player-facing #save command

@@ -63,7 +63,8 @@ import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
 import { place_object, stackobj } from './stackobj.js';
-import { tmp_at, nh_delay_output, DISP_FLASH, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_FLASH, DISP_END } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, You, pline_mon, You_hear } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';

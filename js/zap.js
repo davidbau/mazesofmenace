@@ -100,8 +100,8 @@ import { boxlock } from './lock.js';
 import { cansee } from './vision.js';
 import {
     tmp_at, nh_delay_output,
-    DISP_BEAM, DISP_END,
 } from './animation.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 import { WIN_MESSAGE, display_nhwindow } from './windows.js';
 import { attach_egg_hatch_timeout, MELT_ICE_AWAY } from './timeout.js';
 import { impossible, You_feel } from './pline.js';

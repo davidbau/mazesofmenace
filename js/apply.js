@@ -87,7 +87,8 @@ import { setnotworn } from './worn.js';
 import { begin_burn, end_burn, obj_has_timer,
          kill_egg, attach_egg_hatch_timeout } from './timeout.js';
 import { maketrap } from './dungeon.js';
-import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 import { break_wand } from './zap.js';
 import { useupall, update_inventory, sobj_at } from './invent.js';
 import { cansee } from './vision.js';

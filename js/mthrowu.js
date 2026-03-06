@@ -53,8 +53,8 @@ import {
 } from './zap.js';
 import {
     tmp_at, tmp_at_end_async, nh_delay_output,
-    DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
+import { DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './const.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
 
 const hallublasts = [

@@ -90,7 +90,8 @@ import { is_pool, is_lava, is_ice, find_drawbridge, destroy_drawbridge,
 import { trycall } from './do.js';
 import { pushRngLogEntry } from './rng.js';
 import { Can_dig_down, Can_fall_thru, Can_rise_up } from './dungeon.js';
-import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 
 const STRAT_WAITFORU = 0x20000000; // C ref: mon.h
 

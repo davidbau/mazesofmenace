@@ -54,7 +54,8 @@ import {
     is_drawbridge_wall, find_drawbridge, destroy_drawbridge,
 } from './dbridge.js';
 import { deltrap } from './dungeon.js';
-import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './const.js';
 
 // ============================================================================

@@ -12,8 +12,8 @@ import { WAND_CLASS } from './objects.js';
 import { resist } from './zap.js';
 import {
   tmp_at, nh_delay_output,
-  DISP_BEAM, DISP_CHANGE, DISP_END,
 } from './animation.js';
+import { DISP_BEAM, DISP_CHANGE, DISP_END } from './const.js';
 
 // Explosion display types (C ref: explode.c)
 export const EXPL_DARK = 0;

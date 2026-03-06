@@ -58,8 +58,8 @@ import { makemon } from './makemon.js';
 import { exercise } from './attrib_exercise.js';
 import {
     tmp_at, tmp_at_end_async, nh_delay_output,
-    DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK,
 } from './animation.js';
+import { DISP_FLASH, DISP_TETHER, DISP_END, BACKTRACK } from './const.js';
 import { objectMapGlyph } from './display_rng.js';
 import { u_wipe_engr } from './engrave.js';
 

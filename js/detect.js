@@ -19,7 +19,8 @@ import { findgold } from './steal.js';
 import { observeObject } from './discovery.js';
 import { unblock_point, recalc_block_point, do_clear_area } from './vision.js';
 import { body_part } from './polyself.js';
-import { tmp_at, nh_delay_output, DISP_FLASH, DISP_CHANGE, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_FLASH, DISP_CHANGE, DISP_END } from './const.js';
 import { defsyms, trap_to_defsym } from './const.js';
 
 // detect.js -- Detection spells, scrolls, and searching

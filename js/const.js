@@ -321,6 +321,20 @@ export const CMDQ_INT = 4;
 export const CQ_CANNED = 0;
 export const CQ_REPEAT = 1;
 
+// Transient animation style/opcode constants (include/display.h DISP_*; src/display.c tmp_at)
+// Runtime fields:
+// - animation tmp_at(x, y): x opcode selector, y style/flush mode
+// - temporary glyph path logic for beams/flash/tether and cleanup
+export const DISP_BEAM = -1;
+export const DISP_ALL = -2;
+export const DISP_TETHER = -3;
+export const DISP_FLASH = -4;
+export const DISP_ALWAYS = -5;
+export const DISP_CHANGE = -6;
+export const DISP_END = -7;
+export const DISP_FREEMEM = -8;
+export const BACKTRACK = -1;
+
 // Maximum values
 export const MAXNROFROOMS = 40;
 export const MAXDUNGEON = 16;

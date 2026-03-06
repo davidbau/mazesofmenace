@@ -5,18 +5,11 @@
  * C ref: display.c tmp_at(), include/display.h DISP_* constants,
  *        and nh_delay_output() timing boundaries.
  */
-import { COLNO } from './const.js';
-
-export const DISP_BEAM = -1;
-export const DISP_ALL = -2;
-export const DISP_TETHER = -3;
-export const DISP_FLASH = -4;
-export const DISP_ALWAYS = -5;
-export const DISP_CHANGE = -6;
-export const DISP_END = -7;
-export const DISP_FREEMEM = -8;
-
-export const BACKTRACK = -1;
+import {
+    COLNO,
+    DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS, DISP_CHANGE,
+    DISP_END, DISP_FREEMEM, BACKTRACK,
+} from './const.js';
 
 // C ref: display.c TMP_AT_MAX_GLYPHS (COLNO * 2)
 const TMP_AT_MAX_GLYPHS = COLNO * 2;

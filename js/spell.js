@@ -36,7 +36,8 @@ import { NHW_MENU } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
-import { tmp_at, nh_delay_output, DISP_BEAM, DISP_CHANGE, DISP_END } from './animation.js';
+import { tmp_at, nh_delay_output } from './animation.js';
+import { DISP_BEAM, DISP_CHANGE, DISP_END } from './const.js';
 import { getpos_sethilite, getpos_async, set_getpos_context } from './getpos.js';
 
 // ── Constants ──
