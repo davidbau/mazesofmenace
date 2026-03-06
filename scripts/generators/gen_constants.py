@@ -585,11 +585,11 @@ def _emit_header_block(
     return "\n".join(lines)
 
 
-def generate_all_headers_blocks(
+def _resolve_all_headers(
     existing_exports_before_pre: set[str],
     existing_exports_before_post: set[str],
     existing_exports_outside_pre: set[str],
-) -> tuple[str, str]:
+) -> dict[str, object]:
     candidates = _collect_header_const_candidates(existing_exports_outside_pre)
     pre_known = set(existing_exports_before_pre) | {name for name, _expr, _note in PLATFORM_DEFAULT_CONSTS}
     pre_emitted, pre_pending = _resolve_const_candidates(candidates, pre_known)
@@ -600,6 +600,32 @@ def generate_all_headers_blocks(
         | {name for name, _expr, _src in pre_emitted}
     )
     post_emitted, post_pending = _resolve_const_candidates(pre_pending, post_known)
+    return {
+        "pre_known": pre_known,
+        "pre_emitted": pre_emitted,
+        "pre_pending": pre_pending,
+        "post_known": post_known,
+        "post_emitted": post_emitted,
+        "post_pending": post_pending,
+    }
+
+
+def generate_all_headers_blocks(
+    existing_exports_before_pre: set[str],
+    existing_exports_before_post: set[str],
+    existing_exports_outside_pre: set[str],
+) -> tuple[str, str]:
+    resolved = _resolve_all_headers(
+        existing_exports_before_pre,
+        existing_exports_before_post,
+        existing_exports_outside_pre,
+    )
+    pre_known = resolved["pre_known"]
+    pre_emitted = resolved["pre_emitted"]
+    pre_pending = resolved["pre_pending"]
+    post_known = resolved["post_known"]
+    post_emitted = resolved["post_emitted"]
+    post_pending = resolved["post_pending"]
 
     pre_block = _emit_header_block(
         title="Auto-imported header constants (pre-symbol pass)",
@@ -677,6 +703,11 @@ def generate_weapon_constants_block() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Patch generated constants blocks in js/const.js")
     parser.add_argument("--stdout", action="store_true", help="Print generated constants blocks to stdout.")
+    parser.add_argument(
+        "--report-deferred",
+        action="store_true",
+        help="Print deferred header macro details and dependency summary without patching.",
+    )
     parser.add_argument("--output", default=OUTPUT_PATH, help="Target js file (default: js/const.js).")
     args = parser.parse_args()
 
@@ -684,6 +715,30 @@ def main() -> None:
     before = _existing_export_names_before_marker(args.output, MARKER_ALL_HEADERS.tag)
     outside = _existing_export_names_outside_marker(args.output, MARKER_ALL_HEADERS.tag)
     before_post = _existing_export_names_before_marker(args.output, MARKER_ALL_HEADERS_POST.tag)
+    resolved = _resolve_all_headers(before, before_post, outside)
+    pre_emitted = resolved["pre_emitted"]
+    post_emitted = resolved["post_emitted"]
+    post_pending = resolved["post_pending"]
+    post_known = resolved["post_known"] | {name for name, _expr, _src in post_emitted}
+
+    if args.report_deferred:
+        dep_counts: dict[str, int] = {}
+        print(f"Deferred macro count: {len(post_pending)}")
+        for name, src, expr in post_pending:
+            missing = sorted({d for d in _expr_identifiers(expr) if d != name and d not in post_known})
+            if not missing:
+                missing = ["<unknown>"]
+            for dep in missing:
+                dep_counts[dep] = dep_counts.get(dep, 0) + 1
+            print(f"{name} ({src})")
+            print(f"  missing: {', '.join(missing)}")
+            print(f"  expr: {expr}")
+        print("")
+        print("Top missing dependencies:")
+        for dep, count in sorted(dep_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"  {dep}: {count}")
+        return
+
     all_headers_block, all_headers_post_block = generate_all_headers_blocks(before, before_post, outside)
     weapon_block = generate_weapon_constants_block()
 

@@ -897,6 +897,9 @@ python3 scripts/generators/gen_monsters.py
 python3 scripts/generators/gen_objects.py
 python3 scripts/generators/gen_artifacts.py
 python3 scripts/generators/gen_constants.py
+
+# Inspect unresolved/deferred header macros with missing dependency details
+python3 scripts/generators/gen_constants.py --report-deferred
 ```
 
 ### Converting Lua special levels to JavaScript
