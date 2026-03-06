@@ -140,7 +140,22 @@ import { envFlag } from './runtime_env.js';
 // Accessors for game state previously passed through set*Context() wiring hacks.
 // Now read from the game singleton (gstate.js), mirroring C's global variables.
 function _getMoves() { return _gstate?.moves ?? 1; }
-function _getLevelDepth() { return _gstate?._levelDepth ?? 1; }
+function _getLevelDepth() {
+    // During level generation, use the explicitly set depth (ledger number).
+    if (_gstate?._inMklev) {
+        return _gstate._levelDepth ?? 1;
+    }
+    // At runtime, read the player's current dungeon depth.
+    // C ref: level_difficulty() calls depth(&u.uz) which returns the
+    // ledger number.  player.dungeonLevel is the JS equivalent (set by
+    // changeLevel to the ledger depth).
+    const player = _gstate?.u ?? _gstate?.player;
+    if (player?.dungeonLevel > 0) {
+        return player.dungeonLevel;
+    }
+    // Fallback during early init or when player isn't placed yet.
+    return _gstate?._levelDepth ?? 1;
+}
 function _getInMklev() { return !!_gstate?._inMklev; }
 let _zombifyContext = false;
 let _startupInventoryMode = false;

@@ -300,7 +300,7 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
     if (passiveAttk.damn) {
         tmp = d(passiveAttk.damn, passiveAttk.damd || 0);
     } else if (passiveAttk.damd) {
-        const mlev = mdef.m_lev ?? (mddat.mlevel || 0);
+        const mlev = mddat.mlevel || 0;  // C: mddat->mlevel (species base, not adjusted)
         tmp = d(mlev + 1, passiveAttk.damd);
     } else {
         tmp = 0;

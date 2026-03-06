@@ -1628,7 +1628,10 @@ export async function dog_move(mon, map, player, display, fov, after = false, ga
         }
     }
 
-    return nix !== omx || niy !== omy ? 1 : 0;
+    // C ref: dogmove.c:1349 — always returns MMOVE_MOVED regardless of
+    // whether the dog actually changed position.  postmov() needs to run
+    // its checks (mdig_tunnel, mintrap, etc.) even when position is unchanged.
+    return 1; // MMOVE_MOVED
 }
 
 // Autotranslated from dogmove.c:1473

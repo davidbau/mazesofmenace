@@ -1272,9 +1272,11 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 return;
             }
             moveStatus = Number.isInteger(petMoveStatus) ? petMoveStatus : MMOVE_NOTHING;
-            if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
-                // C ref: monmove.c postmov() via m_move()->dog_move():
-                // tame movement still performs can_tunnel/may_dig/mdig_tunnel.
+            // C ref: monmove.c postmov() runs when mmoved == MMOVE_MOVED
+            // regardless of whether the dog actually changed position.
+            // dog_move returns MMOVE_MOVED even when the dog stays put,
+            // so postmov (mdig_tunnel, mintrap, etc.) must always run.
+            if (!mon.dead && moveStatus === MMOVE_MOVED) {
                 const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
                 const can_tunnel = !isRogueLevel && tunnels(mon.data || mon.type || mons[mon.mndx] || {});
                 if (can_tunnel && may_dig(mon.mx, mon.my, map)) {
@@ -1283,13 +1285,14 @@ async function dochug(mon, map, player, display, fov, game = null) {
                         return;
                     }
                 }
-                await m_postmove_effect(mon, map, player, game, omx, omy);
+                if (mon.mx !== omx || mon.my !== omy) {
+                    await m_postmove_effect(mon, map, player, game, omx, omy);
+                }
                 const trapResult = await mintrap_postmove(mon, map, player, display, fov);
                 if (trapResult === 2 || trapResult === 3) {
                     return;
                 }
                 mmoved = true;
-                moveStatus = MMOVE_MOVED;
             }
         } else {
             let trapDied = false;

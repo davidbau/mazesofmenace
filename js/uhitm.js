@@ -212,7 +212,7 @@ function find_roll_to_hit(player, mtmp, aatyp, weapon) {
     let tmp = 1 + abon(str, dex, player.ulevel)
         + find_mac(mtmp)
         + (player.uhitinc || 0) // rings of increase accuracy etc.
-        + luckBonus(player.luck || 0)
+        + luckBonus((player.luck || 0) + (player.moreluck || 0))
         + player.ulevel;
 
     // cf. uhitm.c:386-393 — monster state adjustments

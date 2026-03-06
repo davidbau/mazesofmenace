@@ -16,6 +16,7 @@
 import { rn2, rnd, rn1, rne, d, getRngLog } from './rng.js';
 import { newhp, newpw } from './exper.js';
 import { initrack } from './monmove.js';
+import { skill_init_from_inventory } from './weapon.js';
 import { withMakemonPlayerOverride } from './makemon.js';
 import { initLevelGeneration, mklev } from './dungeon.js';
 import { getArrivalPosition } from './do.js';
@@ -1197,6 +1198,9 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
     player.umoney0 += hiddenGold(player, true);
     player.gold = moneyCount(player) + hiddenGold(player, true);
     equipInitialGear(player);
+    // C ref: weapon.c:1745-1784 — skill_init reads inventory to set P_BASIC
+    // for weapon skills matching starting items. Must happen after all ini_inv.
+    skill_init_from_inventory(player.inventory || [], player.roleIndex);
     applyRolePreknowledge(player);
     applyStartupDiscoveries(player);
     //    c+d. init_attr(75) + vary_init_attr()

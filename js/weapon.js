@@ -49,6 +49,7 @@ import {
 import { which_armor } from './worn.js';
 import { dist2 } from './hack.js';
 import { couldsee } from './vision.js';
+import { game as _gstate } from './gstate.js';
 
 // Hero skill state (C: P_SKILL/P_MAX_SKILL/P_ADVANCE).
 let skillSystemActive = false;
@@ -213,43 +214,104 @@ export function dbon(str) {
 }
 
 // ============================================================================
-// weapon_hit_bonus / weapon_dam_bonus — GATED STUBS
+// weapon_hit_bonus / weapon_dam_bonus — cf. weapon.c:1540
 // ============================================================================
-// These return 0 (P_BASIC equivalent) until Phase 5 activates them.
 export function weapon_hit_bonus(weapon) {
     if (!skillSystemActive) return 0;
-    const skill = weapon_type(weapon);
-    if (skill === P_NONE) return 0;
-    const level = heroSkill[skill] ?? P_ISRESTRICTED;
-    switch (level) {
-    case P_ISRESTRICTED:
-    case P_UNSKILLED: return -4;
-    case P_BASIC: return 0;
-    case P_SKILLED: return 2;
-    case P_EXPERT: return 3;
-    case P_MASTER: return 3;
-    case P_GRAND_MASTER: return 3;
-    default: return 0;
+    const wep_type = weapon_type(weapon);
+    // C ref: twoweap override — use P_TWO_WEAPON_COMBAT when dual-wielding
+    const player = _gstate?.u ?? _gstate?.player;
+    const type = (player?.twoweap && weapon &&
+                  (weapon === player?.weapon || weapon === player?.swapWeapon))
+        ? P_TWO_WEAPON_COMBAT : wep_type;
+    if (type === P_NONE) return 0;
+    let bonus = 0;
+    const level = heroSkill[type] ?? P_ISRESTRICTED;
+    if (type <= P_LAST_WEAPON) {
+        // C ref: weapon.c:1553-1572 — standard weapon skills
+        switch (level) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED: bonus = -4; break;
+        case P_BASIC:     bonus = 0;  break;
+        case P_SKILLED:   bonus = 2;  break;
+        case P_EXPERT:    bonus = 3;  break;
+        default:          bonus = 0;  break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        // C ref: weapon.c:1573-1595 — two-weapon combat
+        let skill = heroSkill[P_TWO_WEAPON_COMBAT] ?? P_ISRESTRICTED;
+        const wepSkill = heroSkill[wep_type] ?? P_ISRESTRICTED;
+        if (wepSkill < skill) skill = wepSkill;
+        switch (skill) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED: bonus = -9; break;
+        case P_BASIC:     bonus = -7; break;
+        case P_SKILLED:   bonus = -5; break;
+        case P_EXPERT:    bonus = -3; break;
+        default:          bonus = -9; break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        // C ref: weapon.c:1596-1609 — bare-handed / martial arts
+        const roleIndex = player?.roleIndex;
+        const martial = (roleIndex === 5 || roleIndex === 9); // PM_MONK or PM_SAMURAI
+        bonus = Math.max(level, P_UNSKILLED) - 1;
+        bonus = Math.floor((bonus + 2) * (martial ? 2 : 1) / 2);
     }
-    return 0;
+    // C ref: weapon.c:1611-1625 — riding penalty
+    if (player?.usteed) {
+        const ridingSkill = heroSkill[P_RIDING] ?? P_ISRESTRICTED;
+        if (ridingSkill <= P_UNSKILLED) bonus -= 2;
+        else if (ridingSkill === P_BASIC) bonus -= 1;
+    }
+    return bonus;
 }
 
+// cf. weapon.c:1638
 export function weapon_dam_bonus(weapon) {
     if (!skillSystemActive) return 0;
-    const skill = weapon_type(weapon);
-    if (skill === P_NONE) return 0;
-    const level = heroSkill[skill] ?? P_ISRESTRICTED;
-    switch (level) {
-    case P_ISRESTRICTED:
-    case P_UNSKILLED: return -2;
-    case P_BASIC: return 0;
-    case P_SKILLED: return 1;
-    case P_EXPERT: return 2;
-    case P_MASTER: return 3;
-    case P_GRAND_MASTER: return 4;
-    default: return 0;
+    const wep_type = weapon_type(weapon);
+    const player = _gstate?.u ?? _gstate?.player;
+    const type = (player?.twoweap && weapon &&
+                  (weapon === player?.weapon || weapon === player?.swapWeapon))
+        ? P_TWO_WEAPON_COMBAT : wep_type;
+    if (type === P_NONE) return 0;
+    let bonus = 0;
+    const level = heroSkill[type] ?? P_ISRESTRICTED;
+    if (type <= P_LAST_WEAPON) {
+        switch (level) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED: bonus = -2; break;
+        case P_BASIC:     bonus = 0;  break;
+        case P_SKILLED:   bonus = 1;  break;
+        case P_EXPERT:    bonus = 2;  break;
+        default:          bonus = 0;  break;
+        }
+    } else if (type === P_TWO_WEAPON_COMBAT) {
+        let skill = heroSkill[P_TWO_WEAPON_COMBAT] ?? P_ISRESTRICTED;
+        const wepSkill = heroSkill[wep_type] ?? P_ISRESTRICTED;
+        if (wepSkill < skill) skill = wepSkill;
+        switch (skill) {
+        case P_ISRESTRICTED:
+        case P_UNSKILLED: bonus = -3; break;
+        case P_BASIC:     bonus = -1; break;
+        case P_SKILLED:   bonus = 0;  break;
+        case P_EXPERT:    bonus = 1;  break;
+        default:          bonus = -3; break;
+        }
+    } else if (type === P_BARE_HANDED_COMBAT) {
+        // C ref: weapon.c:1691-1704
+        const roleIndex = player?.roleIndex;
+        const martial = (roleIndex === 5 || roleIndex === 9); // PM_MONK or PM_SAMURAI
+        bonus = Math.max(level, P_UNSKILLED) - 1;
+        bonus = Math.floor((bonus + 1) * (martial ? 3 : 1) / 2);
     }
-    return 0;
+    // C ref: weapon.c:1706-1721 — riding thrust damage
+    if (player?.usteed && type !== P_TWO_WEAPON_COMBAT) {
+        const ridingSkill = heroSkill[P_RIDING] ?? P_ISRESTRICTED;
+        if (ridingSkill === P_SKILLED) bonus += 1;
+        else if (ridingSkill === P_EXPERT) bonus += 2;
+    }
+    return bonus;
 }
 
 // ============================================================================
@@ -759,22 +821,76 @@ export function skill_init(_class_skill) {
         skillSystemActive = false;
         return;
     }
-    // Array-of-pairs format: [[skill, maxLevel], ...]
+    // C ref: weapon.c:1768-1776 — walk class_skill table, set maximums.
+    // Skills still at P_ISRESTRICTED become P_UNSKILLED (NOT P_BASIC).
+    // P_BASIC is only given to skills matching starting inventory weapons
+    // (done later by skill_init_from_inventory).
     if (Array.isArray(_class_skill[0])) {
         for (const [skill, maxLevel] of _class_skill) {
             if (skill < 0 || skill >= P_NUM_SKILLS) continue;
             heroMaxSkill[skill] = maxLevel;
-            heroSkill[skill] = Math.min(P_BASIC, maxLevel);
+            if (heroSkill[skill] === P_ISRESTRICTED) {
+                heroSkill[skill] = P_UNSKILLED;
+            }
         }
     } else {
-        // Legacy: flat array indexed by skill
         for (let i = 0; i < P_NUM_SKILLS; i++) {
             const maxSkill = _class_skill[i] ?? P_BASIC;
             heroMaxSkill[i] = maxSkill;
-            heroSkill[i] = Math.min(P_BASIC, maxSkill);
+            if (heroSkill[i] === P_ISRESTRICTED) {
+                heroSkill[i] = P_UNSKILLED;
+            }
         }
     }
+    // C ref: weapon.c:1778-1780 — high-potential fighters start with basic
+    if (heroMaxSkill[P_BARE_HANDED_COMBAT] > P_EXPERT) {
+        heroSkill[P_BARE_HANDED_COMBAT] = P_BASIC;
+    }
     skillSystemActive = true;
+}
+
+// C ref: weapon.c:1745-1784 — Set P_BASIC for weapon skills matching
+// inventory items and role-specific magic skills.
+// Called after starting inventory is created.
+export function skill_init_from_inventory(inventory, roleIndex) {
+    if (!skillSystemActive) return;
+    // C ref: weapon.c:1746-1756 — inventory weapon skills → P_BASIC
+    if (inventory) {
+        for (const obj of inventory) {
+            if (is_ammo_obj(obj)) continue;
+            const skill = weapon_type(obj);
+            if (skill !== P_NONE) {
+                heroSkill[skill] = P_BASIC;
+            }
+        }
+    }
+    // C ref: weapon.c:1759-1766 — magic skills by role
+    if (roleIndex === 3 /* PM_HEALER */ || roleIndex === 5 /* PM_MONK */) {
+        heroSkill[P_HEALING_SPELL] = P_BASIC;
+    } else if (roleIndex === 6 /* PM_PRIEST */) {
+        heroSkill[P_CLERIC_SPELL] = P_BASIC;
+    } else if (roleIndex === 12 /* PM_WIZARD */) {
+        heroSkill[P_ATTACK_SPELL] = P_BASIC;
+        heroSkill[P_ENCHANTMENT_SPELL] = P_BASIC;
+    }
+    // C ref: weapon.c:1790-1797 — set advance values
+    // practice_needed_to_advance(level) = level * level * 20
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
+        if (heroSkill[skill] > P_ISRESTRICTED) {
+            const lvl = heroSkill[skill] - 1;
+            heroSkillAdvance[skill] = lvl * lvl * 20;
+        }
+    }
+}
+
+// C ref: obj.h is_ammo() — (WEAPON_CLASS || GEM_CLASS) && oc_skill in [-P_CROSSBOW..-P_BOW]
+function is_ammo_obj(obj) {
+    if (!obj) return false;
+    const od = objectData[obj.otyp];
+    if (!od) return false;
+    if (od.oc_class !== WEAPON_CLASS && od.oc_class !== GEM_CLASS) return false;
+    const sk = od.oc_subtyp ?? 0;
+    return sk >= -P_CROSSBOW && sk <= -P_BOW;
 }
 
 export function use_skill(skill, degree = 1) {
