@@ -2736,5 +2736,29 @@ hard-won wisdom:
   - nearby seeds also moved forward without RNG regressions:
     - `seed327_priest_wizard_gameplay` first RNG divergence step `226` -> `288`
       (`9944/20304` matched prefix).
-    - `seed328_ranger_wizard_gameplay` first RNG divergence remains step `220`.
+  - `seed328_ranger_wizard_gameplay` first RNG divergence remains step `220`.
+  - `node scripts/test-unit-core.mjs --runInBand` passes.
+
+### dosounds parity: remove stale allmain ambient-sound stub (2026-03-06)
+
+- Root cause for the next seed325 RNG split (`rn2(20)` JS vs
+  `rn2(2) @ morgue_mon_sound` C) was an outdated duplicate implementation:
+  - `allmain.js:moveloop_dosounds()` had a partial ambient-sound stub that
+    short-circuited on room-feature gates (`has_morgue`, `has_beehive`, etc.)
+    without running the monster-iteration branches used by C `dosounds()`.
+  - This skipped C-required RNG branches (notably `morgue_mon_sound rn2(2)`).
+- C-faithful fix:
+  - `moveloop_dosounds()` now delegates directly to canonical
+    `sounds.js:dosounds()` (the maintained sounds.c parity path) instead of
+    maintaining a divergent duplicate in `allmain.js`.
+- Validation:
+  - `seed325_knight_wizard_gameplay`:
+    - first RNG divergence moved from step `224` to step `238`
+    - matched RNG prefix improved `10493/25281` -> `10500/25281`
+    - cursor parity at compared steps improved to `243/243`.
+  - `seed327_priest_wizard_gameplay`:
+    - first RNG divergence remains at step `288`, matched prefix improved
+      `9944/20304` -> `9954/20304`.
+  - `seed328_ranger_wizard_gameplay`:
+    - first RNG divergence remains step `220` (no regression).
   - `node scripts/test-unit-core.mjs --runInBand` passes.

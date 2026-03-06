@@ -61,7 +61,7 @@ import { movebubbles } from './mkmaze.js';
 import { initAnimation, configureAnimation, setAnimationMode } from './animation.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck } from './attrib.js';
-import { throne_mon_sound } from './sounds.js';
+import { dosounds } from './sounds.js';
 import { find_ac } from './do_wear.js';
 
 const QUEST_PORTAL_INFO_BY_ROLE = {
@@ -424,83 +424,8 @@ function u_calc_moveamt(player) {
 // when the feature exists. Fountains/sinks don't return early;
 // all others return on a triggered sound.
 export async function moveloop_dosounds(game) {
-    if (game.flags && game.flags.acoustics === false) return;
-    const hallu = (game.u || game.player)?.hallucinating ? 1 : 0;
-    const playerInShop = (() => {
-        const loc = (game.lev || game.map)?.at?.((game.u || game.player).x, (game.u || game.player).y);
-        if (!loc || !Number.isFinite(loc.roomno)) return false;
-        const ridx = loc.roomno - ROOMOFFSET;
-        const room = (game.lev || game.map)?.rooms?.[ridx];
-        return !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
-    })();
-    const tendedShop = ((game.lev || game.map)?.monsters || []).some((m) => m && !m.dead && m.isshk);
-    const f = (game.lev || game.map).flags || {};
-    if (f.nfountains && !rn2(400)) {
-        const fountainMsg = [
-            'You hear bubbling water.',
-            'You hear water falling on coins.',
-            'You hear the splashing of a naiad.',
-            'You hear a soda fountain!',
-        ];
-        await game.display.putstr_message(fountainMsg[rn2(3) + hallu]);
-    }
-    if (f.nsinks && !rn2(300)) {
-        const sinkMsg = [
-            'You hear a slow drip.',
-            'You hear a gurgling noise.',
-            'You hear dishes being washed!',
-        ];
-        await game.display.putstr_message(sinkMsg[rn2(2) + hallu]);
-    }
-    if (f.has_court && !rn2(200)) {
-        for (const mtmp of ((game.lev || game.map)?.monsters || [])) {
-            if (!mtmp || mtmp.dead) continue;
-            if (await throne_mon_sound(mtmp, hallu, game)) return;
-        }
-    }
-    if (f.has_swamp && !rn2(200)) {
-        const swampMsg = [
-            'You hear mosquitoes!',
-            'You smell marsh gas!',
-            'You hear Donald Duck!',
-        ];
-        await game.display.putstr_message(swampMsg[rn2(2) + hallu]);
-        return;
-    }
-    if (f.has_vault && !rn2(200)) {
-        const vaultMsg = [
-            'You hear the footsteps of a guard on patrol.',
-            'You hear someone counting gold coins.',
-            'You hear Ebenezer Scrooge!',
-        ];
-        await game.display.putstr_message(vaultMsg[rn2(2) + hallu]);
-        return;
-    }
-    if (f.has_beehive && !rn2(200)) { return; }
-    if (f.has_morgue && !rn2(200)) { return; }
-    if (f.has_barracks && !rn2(200)) {
-        const barracksMsg = [
-            'You hear blades being honed.',
-            'You hear loud snoring.',
-            'You hear dice being thrown.',
-            'You hear General MacArthur!',
-        ];
-        await game.display.putstr_message(barracksMsg[rn2(3) + hallu]);
-        return;
-    }
-    if (f.has_zoo && !rn2(200)) { return; }
-    if (f.has_shop && !rn2(200)) {
-        if (tendedShop && !playerInShop) {
-            const shopMsg = [
-                'You hear someone cursing shoplifters.',
-                'You hear the chime of a cash register.',
-                'You hear Neiman and Marcus arguing!',
-            ];
-            await game.display.putstr_message(shopMsg[rn2(2) + hallu]);
-        }
-        return;
-    }
-    if (f.has_temple && !rn2(200)) { return; }
+    // Delegate to the canonical sounds.c-faithful implementation.
+    await dosounds(game);
 }
 
 // cf. allmain.c moveloop() — shared post-input command orchestration.
