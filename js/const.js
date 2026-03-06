@@ -241,7 +241,10 @@ export const COCKNEST = 12;
 export const ANTHOLE = 13;
 export const SHOPBASE = 14;
 
-// Window types (wintype.h)
+// Window/UI constants (wintype.h, winprocs.h, color.h)
+// Runtime fields:
+// - windows.WinDesc.type / .how / .mbehavior
+// - windows.putstr attr bitmask (ATR_*)
 export const NHW_MESSAGE = 1;
 export const NHW_STATUS = 2;
 export const NHW_MAP = 3;
@@ -262,6 +265,9 @@ export const ATR_URGENT = 16;
 export const ATR_NOHISTORY = 32;
 
 // Name formatting article selectors and suppression flags (src/do_name.c and include/flag.h)
+// Runtime fields:
+// - Naming function args/locals in do_name.js (article, suppress)
+// - pickup/music callers choosing article/suppress behavior for message text
 export const ARTICLE_NONE = 0;
 export const ARTICLE_THE = 1;
 export const ARTICLE_A = 2;
@@ -376,6 +382,9 @@ export const M_ATTK_AGR_DIED = 0x4;
 export const M_ATTK_AGR_DONE = 0x8;
 
 // Monster creation flags (include/hack.h; consumed by src/makemon.c)
+// Runtime fields:
+// - makemon(..., mmflags) argument
+// - monster instance init flow (inventory/group/sleep/name behavior)
 export const NO_MM_FLAGS = 0;
 export const NO_MINVENT = 0x00000001;
 export const MM_NOWAIT = 0x00000002;
@@ -393,12 +402,14 @@ export const MM_NOEXCLAM = 0x00040000;
 export const MM_IGNORELAVA = 0x00080000;
 
 // Teleport target search flags (include/hack.h; src/teleport.c goodpos/enexto)
+// Runtime fields: teleport goodpos/enexto entflags/gpflags args
 export const GP_CHECKSCARY = 0x00000100;
 export const GP_ALLOW_U = 0x00000200;
 export const GP_AVOID_MONPOS = 0x00000400;
 export const GP_ALLOW_XY = 0x00000800;
 
 // Monster relocation flags (include/hack.h; src/teleport.c rloc/rloc_to)
+// Runtime fields: rloc/rloc_to rlocflags args
 export const RLOC_NONE = 0x0000;
 export const RLOC_NOMSG = 0x0001;
 export const RLOC_MSG = 0x0002;
@@ -406,6 +417,7 @@ export const RLOC_TELE = 0x0004;
 export const RLOC_ERR = 0x0100;
 
 // Hero teleport placement flags (include/hack.h; src/teleport.c teleds)
+// Runtime fields: teleds/safe_teleds flags args
 export const TELEDS_NO_FLAGS = 0;
 export const TELEDS_ALLOW_DRAG = 1;
 export const TELEDS_TELEPORT = 2;
@@ -435,6 +447,10 @@ export const M_POISONGAS_BAD = 0;
 export const MAXMONNO = 120;
 
 // Wornmask bit flags (include/prop.h and include/youprop.h)
+// Runtime fields:
+// - object.owornmask
+// - player equipment slots (weapon/armor/rings/amulet/quiver/etc.)
+// - monster.misc_worn_check
 export const W_ARM = 0x00000001;
 export const W_ARMC = 0x00000002;
 export const W_ARMH = 0x00000004;
@@ -458,6 +474,7 @@ export const W_BALL = 0x00200000;
 export const W_CHAIN = 0x00400000;
 
 // Hero trap state enum (include/you.h enum utraptype)
+// Runtime field: player.utraptype
 export const TT_NONE = 0;
 export const TT_BEARTRAP = 1;
 export const TT_PIT = 2;
@@ -467,6 +484,7 @@ export const TT_INFLOOR = 5;
 export const TT_BURIEDBALL = 6;
 
 // Trap trigger flags (include/hack.h; src/trap.c trigger_trap())
+// Runtime field: trigger_trap(...) tflags argument
 export const FORCETRAP = 0x01;
 export const NOWEBMSG = 0x02;
 export const FORCEBUNGLE = 0x04;
@@ -476,6 +494,9 @@ export const VIASITTING = 0x20;
 export const FAILEDUNTRAP = 0x40;
 
 // Item erosion kinds/results/flags (src/trap.c erode_obj*)
+// Runtime fields:
+// - erode_obj / erode_obj_player type/result/ef_flags arguments
+// - object erosion counters (oeroded/oeroded2) driven by these enums
 export const ERODE_BURN = 0;
 export const ERODE_RUST = 1;
 export const ERODE_ROT = 2;
