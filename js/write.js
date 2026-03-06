@@ -91,17 +91,13 @@ export function dowrite(pen) {
 // "the spellbook warps strangely, then turns <result>."
 // Composition-material descriptions (parchment, vellum, cloth) get "into " prepended.
 // JS: returns the string directly rather than writing into a caller-provided buffer.
-// Autotranslated from write.c:394
-export function new_book_description(booktype, outbuf) {
-  let compositions = [ "parchment", "vellum", "cloth",    0 ], descr, comp_p;
-  descr = OBJ_DESCR(objects[booktype]);
-  for (comp_p = compositions;  comp_p; ++comp_p) {
-    if (!strcmpi(descr, comp_p)) {
-      break;
-    }
-  }
-  Sprintf(outbuf, "%s%s", comp_p ? "into " : "", descr);
-  return outbuf;
+// C ref: write.c:394 — check if spellbook description is a composition material
+// NOTE: 0 JS callers currently; uses objectData for description lookup.
+export function new_book_description(booktype) {
+  const compositions = ["parchment", "vellum", "cloth"];
+  const descr = objectData[booktype]?.oc_descr || '';
+  const isComposition = compositions.some(c => c.toLowerCase() === descr.toLowerCase());
+  return `${isComposition ? "into " : ""}${descr}`;
 }
 
 export { cost };

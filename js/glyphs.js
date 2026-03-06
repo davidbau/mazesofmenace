@@ -322,16 +322,18 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
   return reslt;
 }
 
-// Autotranslated from glyphs.c:183
+// C ref: glyphs.c:183 — normalize glyph name to lowercase with _ for non-alnum
 export function fix_glyphname(str) {
-  let c;
-  for (c = str;  c; c++) {
-    if ( c >= 'A' && c <= 'Z') {
-       c +=  ('a' - 'A');
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i];
+    if (c >= 'A' && c <= 'Z') {
+      result += c.toLowerCase();
+    } else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+      result += c;
+    } else {
+      result += '_';
     }
-    else if ( c >= '0' && c <= '9') {
-    }
-    else if ( c < 'a' || c > 'z') c = '_';
   }
-  return str;
+  return result;
 }

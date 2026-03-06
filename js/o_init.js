@@ -385,14 +385,11 @@ export async function disco_output_sorted(tmpwin, sorted_lines, sorted_ct, loots
   }
 }
 
-// Autotranslated from o_init.c:832
+// C ref: o_init.c:832 — return class name in lowercase
+// NOTE: dead code (0 JS callers); Strcpy/lowc not imported.
 export function oclass_to_name(oclass, buf) {
-  let s;
-  Strcpy(buf, let_to_name(oclass, false, false));
-  for (s = buf;  s; ++s) {
-     s = lowc( s);
-  }
-  return buf;
+  const name = let_to_name(oclass, false, false);
+  return (name || '').toLowerCase();
 }
 
 // Autotranslated from o_init.c:1138
