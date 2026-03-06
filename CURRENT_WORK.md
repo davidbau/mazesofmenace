@@ -7,48 +7,40 @@
 
 ## Active Phase
 
-Phase 4 structure-only reorganization, batch-by-batch, with strict no-regression
-validation against the current gameplay baseline envelope.
+Phase 4 completed. Setter/context wiring cleanup is now done; no active
+`set*Context` / `set*Player` module-wiring hooks remain.
 
-## Latest Validated Commit
+## Latest Validated Commits
 
-- `ed8ada40` — `docs: refresh CURRENT_WORK status for issue 227 phase transition`
-  - Documentation handoff for Phase 2 completion and Phase 4 kickoff.
-  - Validation envelope unchanged at handoff:
-    - `npm test`: `2652/2661` (9 gameplay parity failures; known baseline set)
-    - gameplay suite: `25/34` pass
+- `8512b036` — removed remaining getpos and special-level-depth setter wiring.
+- `4917bb69` — finalized `withFinalizeContext` scoped replacement.
+
+Validation envelope at latest commit:
+- `node --test test/unit/*.test.js`: `2481 pass, 0 fail, 1 skipped`
+- `scripts/run-and-report.sh`: `26/34` gameplay pass (8 known failures; unchanged envelope)
 
 ## Current Code State
 
-- No remaining runtime `objectData[...]` legacy field reads for:
-  `.prob/.cost/.weight/.delay/.sdam/.ldam/.oc1/.oc2/.sub/.dir/.nutrition`
-  outside generated data layer.
-- Remaining pattern hits are non-objclass contexts (display/render structs,
-  transient local structs, player/monster names).
-- Checklist source of truth:
-  `docs/ISSUE_227_EXECUTION_CHECKLIST.md`.
+- Source-of-truth checklist:
+  `docs/ISSUE_227_EXECUTION_CHECKLIST.md`
+- `docs/MODULES.md` now reflects Phase 4 completion.
+- Structure-only reorganization and context wiring removal are complete;
+  remaining open work is parity behavior issues outside #227 scope.
 
 ## Next Concrete Commit Target
 
-Phase 4 structure-only batch 2:
-- Continue look/pager ownership consolidation after batch 1 routing work.
-- Keep `look.js` as compatibility layer during transition, then prune once
-  imports are fully rerouted without cycles.
-- Validate with:
-  - `node --test test/unit/config.test.js test/unit/symbol_accuracy.test.js`
-  - `node test/comparison/session_test_runner.js test/comparison/sessions/seed42_gameplay.session.json`
-  - `npm test --silent`
-  - `scripts/run-and-report.sh`
+- Keep docs synchronized with code reality for #227 closeout.
+- If #227 remains open, only take residual cleanup that is strictly structural
+  and proven regression-safe; otherwise shift to next assigned parity issue.
 
 ## Blockers / Risks
 
-- Main risk in current branch is accidental behavior change while doing
-  structure-only file moves; mitigate by tiny batches + immediate parity check.
-- Keep gameplay baseline stable at `25/34` (or better) during phase-4 moves.
+- Primary risk is stale docs claiming old in-progress state after structure
+  work has landed.
 
 ## Guardrails
 
 1. No comparator/harness masking for parity.
 2. No replay compensation logic as a fix for gameplay divergences.
 3. Keep commits small and push validated increments immediately.
-4. If a move causes parity drift, revert that move and split smaller.
+4. Treat session gameplay envelope as authoritative parity signal.

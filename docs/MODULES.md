@@ -276,36 +276,32 @@ Exit gate:
 - Ownership mapping in `docs/MODULES.md` reflects code reality. ✓
 - No parity regression vs baseline. ✓
 
-### Phase 4 — Remove `set*Context` Wiring Hacks (in progress)
+### Phase 4 — Remove `set*Context` Wiring Hacks (complete)
 
 Created `gstate.js` — a game state singleton (mirrors C's global `u`/`level`/
 `flags`). `allmain.js` calls `setGame(this)` once; modules read
 `gstate.game.player`, `gstate.game.map`, `gstate.game.display`, etc.
 
-Substantial progress completed (11 setters removed or reduced to no-ops):
+Completed removals/replacements:
 
-| Removed setter | Was in | Replaced with |
-|---|---|---|
-| `setObjectMoves` | mkobj.js | `gstate.game.moves` |
-| `setMklevObjectContext` | mkobj.js | `gstate.game._inMklev` |
-| `setLevelDepth` | mkobj.js | `gstate.game._levelDepth` |
-| `setMakemonInMklevContext` | makemon.js | `gstate.game._inMklev` |
-| `setMakemonRoleContext` | makemon.js | `gstate.game.player.roleIndex` |
-| `setMakemonLevelContext` | makemon.js | `gstate.game._dungeonAlign` |
-| `setMakemonPlayerContext` | makemon.js | live read from `gstate.game.player` (override kept for level-gen x/y clearing) |
-| `setOutputContext` | pline.js | `gstate.game.display` |
-| `setDisplayContext` | display.js | `gstate.game` fallback (override kept for headless save/restore) |
-| `setTimerContext` | timeout.js | `gstate.game` getter properties |
-| `setCurrentTurn` | timeout.js | `gstate.game._currentTurn` |
+- `mkobj.js`: `setObjectMoves`, `setMklevObjectContext`, `setLevelDepth`
+- `makemon.js`: `setMakemonInMklevContext`, `setMakemonRoleContext`,
+  `setMakemonLevelContext`, `setMakemonPlayerContext`
+- `pline.js`: `setOutputContext`
+- `display.js`: display-context override setter wiring removed
+- `timeout.js`: timer/current-turn setter wiring removed
+- `sp_lev.js`: `setLevelContext`, `setFinalizeContext`, `setSplevPlayerContext`,
+  `setSpecialLevelDepth` replaced by scoped wrappers (`withLevelContext`,
+  `withFinalizeContext`, `withSpecialLevelDepth`)
+- `getpos.js`: `set_getpos_context` replaced by explicit
+  `getpos_async(..., ctx)` parameter passing
 
 Remaining active setters pending migration or explicit design retention:
-- `setDisplayContext` (`display.js`) for headless explicit override save/restore.
-- `setMakemonPlayerContext` / `setMakemonRoleContext` / `setMakemonLevelContext` (`makemon.js`).
-- `setLevelContext` / `setFinalizeContext` / `setSplevPlayerContext` (`sp_lev.js`).
+- None.
 
 Exit gate:
-- No `set*Context`/`set*Player` wiring remains (except explicitly accepted bootstrap-only cases). (pending)
-- No parity regression vs baseline (26/34 gameplay, 2511 unit). ✓
+- No `set*Context`/`set*Player` wiring remains (except explicitly accepted bootstrap-only cases). ✓
+- No parity regression vs baseline envelope. ✓ (`26/34` gameplay, `2481` unit pass)
 
 ## Non-Negotiable Autonomy Rules
 
