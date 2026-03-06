@@ -1010,7 +1010,7 @@ export function magic_negation(mon) {
         if (!o) continue;
         const worn = o.owornmask || 0;
         if (worn & W_ARMOR) {
-            const armpro = Number(objectData[o.otyp]?.oc2) || 0; // objects[].a_can
+            const armpro = Number(objectData[o.otyp]?.oc_oc2) || 0; // objects[].a_can
             if (armpro > mc) mc = armpro;
         } else if ((worn & W_AMUL) && o.otyp === AMULET_OF_GUARDING) {
             viaAmul = true;

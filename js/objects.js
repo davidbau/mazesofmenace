@@ -9263,7 +9263,7 @@ export function initObjectData() {
     for (let oc = 0; oc < MAXOCLASSES_OBJ; oc++) {
         let sum = 0;
         for (let i = bases[oc]; i < bases[oc + 1]; i++) {
-            sum += objectData[i].prob || 0;
+            sum += objectData[i].oc_prob || 0;
         }
         oclass_prob_totals[oc] = sum;
     }

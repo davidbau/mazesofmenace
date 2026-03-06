@@ -419,7 +419,7 @@ export async function handleKnownSpells(player, display) {
         const sp = knownSpells[i];
         const od = objectData[sp.otyp] || null;
         const spellName = String(od?.oc_name || 'unknown spell').toLowerCase();
-        const spellLevel = Math.max(1, Number(od?.oc2 || sp.sp_lev || 1));
+        const spellLevel = Math.max(1, Number(od?.oc_oc2 || sp.sp_lev || 1));
         const category = spellCategoryForName(spellName);
         const skillRank = spellSkillRank(player, category);
         const turnsLeft = Math.max(0, sp.sp_know);
@@ -1017,7 +1017,7 @@ export async function getspell(prompt, player, display) {
         const sp = spells[i];
         const od = objectData[sp.otyp] || null;
         const spellNameStr = String(od?.oc_name || 'unknown spell').toLowerCase();
-        const spellLevel = Math.max(1, Number(od?.oc2 || sp.sp_lev || 1));
+        const spellLevel = Math.max(1, Number(od?.oc_oc2 || sp.sp_lev || 1));
         const category = spellCategoryForName(spellNameStr);
         const turnsLeft = Math.max(0, sp.sp_know);
         const fail = estimateSpellFailPercent(player, spellNameStr, spellLevel, category);

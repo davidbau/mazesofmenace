@@ -57,7 +57,7 @@ const P_LANCE = 19;
 // cf. obj.h: is_blade(otmp)
 function is_blade(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
-    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    const sk = objectData[otmp.otyp]?.oc_subtyp ?? 0;
     return sk >= P_DAGGER && sk <= P_SABER;
 }
 
@@ -69,7 +69,7 @@ function is_pick(otmp) {
 // cf. obj.h: is_weptool(o)
 function is_weptool(o) {
     if (!o || o.oclass !== TOOL_CLASS) return false;
-    return (objectData[o.otyp]?.sub ?? 0) !== 0;
+    return (objectData[o.otyp]?.oc_subtyp ?? 0) !== 0;
 }
 
 // cf. obj.h: Is_box(obj)
@@ -925,7 +925,7 @@ export async function handleForce(game) {
             await You(`start bashing it with ${doname(wep)}.`);
         }
         xlock.box = otmp;
-        xlock.chance = (objectData[wep.otyp]?.ldam || 4) * 2;
+        xlock.chance = (objectData[wep.otyp]?.oc_wldam || 4) * 2;
         xlock.picktyp = picktyp;
         xlock.magic_key = false;
         xlock.usedtime = 0;

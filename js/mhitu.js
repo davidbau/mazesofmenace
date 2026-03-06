@@ -108,7 +108,7 @@ async function hitmsg(monster, attack, display, suppressHitMsg) {
 export function monsterWeaponSwingVerb(weapon, bash = false) {
     if (!weapon) return 'swings';
     const info = objectData[weapon.otyp] || {};
-    const dir = Number.isInteger(info.dir) ? info.dir : 0;
+    const dir = Number.isInteger(info.oc_dir) ? info.oc_dir : 0;
     const lash = weapon.otyp === BULLWHIP;
     const thrust = (dir & PIERCE) !== 0 && (((dir & ~PIERCE) === 0) || !rn2(2));
 

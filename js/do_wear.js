@@ -350,7 +350,7 @@ function Helmet_off(player) {
 // cf. do_wear.c hard_helmet() — check if helmet is hard (non-cloth)
 // C ref: return (is_metallic(obj) || is_crackable(obj))
 export function hard_helmet(obj) {
-    if (!obj || objectData[obj.otyp]?.sub !== ARM_HELM) return false;
+    if (!obj || objectData[obj.otyp]?.oc_subtyp !== ARM_HELM) return false;
     return is_metallic(obj) || is_crackable(obj);
 }
 
@@ -891,7 +891,7 @@ const SLOT_OFF = {
 
 // cf. do_wear.c canwearobj() — check if player can wear this armor piece
 async function canwearobj(player, obj, display, silent = false) {
-    const sub = objectData[obj.otyp]?.sub;
+    const sub = objectData[obj.otyp]?.oc_subtyp;
     const slot = ARMOR_SLOTS[sub];
     if (!slot) return false;
     const mdat = player?.data || player?.polyData || null;
@@ -1126,7 +1126,7 @@ export function find_ac(player) {
     let uac = 10; // base AC for human player form (mons[PM_HUMAN].ac = 10)
     const arm_bonus = (obj) => {
         if (!obj) return 0;
-        const baseAc = Number(objectData[obj.otyp]?.oc1 || 0);
+        const baseAc = Number(objectData[obj.otyp]?.oc_oc1 || 0);
         const spe = Number(obj.spe || 0);
         const erosion = Math.max(Number(obj.oeroded || 0), Number(obj.oeroded2 || 0));
         return baseAc + spe - Math.min(erosion, baseAc);
@@ -1914,9 +1914,9 @@ async function putOnSelectedItem(player, display, game, item) {
 }
 
 async function wearArmorItem(player, display, game, item) {
-    const sub = objectData[item.otyp]?.sub;
+    const sub = objectData[item.otyp]?.oc_subtyp;
     const slot = ARMOR_SLOTS[sub];
-    const delay = Number(objectData[item.otyp]?.delay || 0);
+    const delay = Number(objectData[item.otyp]?.oc_delay || 0);
     const wearNow = () => {
         const mask = ARM_SUB_TO_MASK[sub] || 0;
         if (mask) setworn(player, item, mask);
@@ -1976,10 +1976,10 @@ async function removeArmorOrAccessory(player, display, game, item) {
     }
 
     if (item.owornmask & W_ARMOR) {
-        const sub = objectData[item.otyp]?.sub;
+        const sub = objectData[item.otyp]?.oc_subtyp;
         const slot = ARMOR_SLOTS[sub];
         const offFn = SLOT_OFF[sub];
-        const delay = Number(objectData[item.otyp]?.delay || 0);
+        const delay = Number(objectData[item.otyp]?.oc_delay || 0);
         const takeOffNow = async () => {
             if (offFn) await offFn(player);
             if (item?.owornmask) setnotworn(player, item);

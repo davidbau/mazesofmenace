@@ -89,7 +89,7 @@ const PIERCE = 1;
 export function is_ammo(otmp) {
     if (!otmp) return false;
     if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== GEM_CLASS) return false;
-    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    const sk = objectData[otmp.otyp]?.oc_subtyp ?? 0;
     return sk >= -P_CROSSBOW && sk <= -P_BOW;
 }
 
@@ -97,45 +97,45 @@ export function is_ammo(otmp) {
 export function is_missile(otmp) {
     if (!otmp) return false;
     if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== TOOL_CLASS) return false;
-    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    const sk = objectData[otmp.otyp]?.oc_subtyp ?? 0;
     return sk >= -P_BOOMERANG && sk <= -P_DART;
 }
 
 // cf. obj.h: is_spear(otmp)
 function is_spear(otmp) {
     return otmp && otmp.oclass === WEAPON_CLASS
-        && (objectData[otmp.otyp]?.sub ?? 0) === P_SPEAR;
+        && (objectData[otmp.otyp]?.oc_subtyp ?? 0) === P_SPEAR;
 }
 
 // cf. obj.h: is_blade(otmp)
 function is_blade(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
-    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    const sk = objectData[otmp.otyp]?.oc_subtyp ?? 0;
     return sk >= P_DAGGER && sk <= P_SABER;
 }
 
 // cf. obj.h: is_sword(otmp)
 function is_sword(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
-    const sk = objectData[otmp.otyp]?.sub ?? 0;
+    const sk = objectData[otmp.otyp]?.oc_subtyp ?? 0;
     return sk >= P_SHORT_SWORD && sk <= P_SABER;
 }
 
 // cf. obj.h: is_weptool(o)
 function is_weptool(o) {
     if (!o || o.oclass !== TOOL_CLASS) return false;
-    return (objectData[o.otyp]?.sub ?? 0) !== 0;
+    return (objectData[o.otyp]?.oc_subtyp ?? 0) !== 0;
 }
 
 // cf. obj.h: matching_launcher(a, l)
 function matching_launcher(a, l) {
     if (!l) return false;
-    return (objectData[a.otyp]?.sub ?? 0) === -(objectData[l.otyp]?.sub ?? 0);
+    return (objectData[a.otyp]?.oc_subtyp ?? 0) === -(objectData[l.otyp]?.oc_subtyp ?? 0);
 }
 
 // cf. obj.h: uslinging() -- player is wielding a sling
 function uslinging_check(player) {
-    return !!(player.weapon && (objectData[player.weapon.otyp]?.sub ?? 0) === P_SLING);
+    return !!(player.weapon && (objectData[player.weapon.otyp]?.oc_subtyp ?? 0) === P_SLING);
 }
 
 // Helper: greatest_erosion(obj) -- cf. obj.h
@@ -165,8 +165,8 @@ export function ammoAndLauncher(ammo, launcher) {
     if ((ammo.otyp === FLINT || ammo.otyp === ROCK) && launcher.otyp === SLING) {
         return true;
     }
-    const ammoSub = objectData[ammo.otyp]?.sub;
-    const launcherSub = objectData[launcher.otyp]?.sub;
+    const ammoSub = objectData[ammo.otyp]?.oc_subtyp;
+    const launcherSub = objectData[launcher.otyp]?.oc_subtyp;
     return Number.isInteger(ammoSub)
         && Number.isInteger(launcherSub)
         && ammoSub < 0
@@ -385,7 +385,7 @@ export async function handleFire(player, map, display, game) {
         display.messageNeedsMore = false;
     };
     const weapon = player.weapon || null;
-    const weaponSkill = weapon ? objectData[weapon.otyp]?.sub : null;
+    const weaponSkill = weapon ? objectData[weapon.otyp]?.oc_subtyp : null;
     const wieldingPolearm = !!weapon
         && weapon.oclass === WEAPON_CLASS
         && (weaponSkill === 18 || weaponSkill === 19);
@@ -448,12 +448,12 @@ export async function handleFire(player, map, display, game) {
     }
     const isLauncher = (o) => {
         if (o.oclass !== WEAPON_CLASS) return false;
-        const sk = objectData[o.otyp]?.sub ?? 0;
+        const sk = objectData[o.otyp]?.oc_subtyp ?? 0;
         return sk >= 20 && sk <= 22;
     };
     const isAmmo = (o) => {
         if (o.oclass !== WEAPON_CLASS && o.oclass !== GEM_CLASS) return false;
-        const sk = objectData[o.otyp]?.sub ?? 0;
+        const sk = objectData[o.otyp]?.oc_subtyp ?? 0;
         return sk >= -22 && sk <= -20;
     };
     for (const itm of inventory) {
@@ -527,7 +527,7 @@ export async function handleFire(player, map, display, game) {
 // cf. dothrow.c:38 -- multishot_class_bonus(pm, ammo, launcher)
 export function multishot_class_bonus(pm, ammo, launcher) {
     let multishot = 0;
-    const skill = objectData[ammo.otyp]?.sub ?? 0;
+    const skill = objectData[ammo.otyp]?.oc_subtyp ?? 0;
     switch (pm) {
     case 1: // PM_CAVE_DWELLER
         if (skill === -P_SLING || skill === P_SPEAR) multishot++;
@@ -553,7 +553,7 @@ export function multishot_class_bonus(pm, ammo, launcher) {
 // cf. dothrow.c:86 [static] -- throw_obj(obj, shotlimit)
 export function throw_obj(player, obj, shotlimit) {
     let multishot = 1;
-    const skill = objectData[obj.otyp]?.sub ?? 0;
+    const skill = objectData[obj.otyp]?.oc_subtyp ?? 0;
     const uwep = player.weapon;
     if ((obj.quan || 1) > 1
         && (is_ammo(obj) ? matching_launcher(obj, uwep) : obj.oclass === WEAPON_CLASS)) {
@@ -634,7 +634,7 @@ export function autoquiver(player) {
         } else if (is_missile(otmp)) {
             omissile = otmp;
         } else if (otmp.oclass === WEAPON_CLASS && throwing_weapon(otmp)) {
-            if ((objectData[otmp.otyp]?.sub ?? 0) === P_DAGGER && !omissile) omissile = otmp;
+            if ((objectData[otmp.otyp]?.oc_subtyp ?? 0) === P_DAGGER && !omissile) omissile = otmp;
             else if (otmp.otyp === AKLYS) continue;
             else omisc = otmp;
         }
@@ -903,7 +903,7 @@ export async function toss_up(obj, hitsroof, player, map) {
 export function throwing_weapon(obj) {
     if (!obj) return false;
     return is_missile(obj) || is_spear(obj)
-        || (is_blade(obj) && !is_sword(obj) && ((objectData[obj.otyp]?.dir ?? 0) & PIERCE) !== 0)
+        || (is_blade(obj) && !is_sword(obj) && ((objectData[obj.otyp]?.oc_dir ?? 0) & PIERCE) !== 0)
         || obj.otyp === WAR_HAMMER || obj.otyp === AKLYS;
 }
 
@@ -1190,7 +1190,7 @@ export async function thitmonst(mon, obj, player, map, game) {
     if (disttmp < -4) disttmp = -4;
     tmp += disttmp;
 
-    if (player.gloves && uwep && (objectData[uwep.otyp]?.sub ?? 0) === P_BOW) tmp -= 2;
+    if (player.gloves && uwep && (objectData[uwep.otyp]?.oc_subtyp ?? 0) === P_BOW) tmp -= 2;
 
     tmp += omon_adj(mon, obj, true);
 

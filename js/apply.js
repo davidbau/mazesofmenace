@@ -787,7 +787,7 @@ export function isApplyCandidate(obj) {
         || obj.oclass === SPBOOK_CLASS)
         return true;
     if (obj.oclass === WEAPON_CLASS) {
-        const skill = objectData[obj.otyp]?.sub;
+        const skill = objectData[obj.otyp]?.oc_subtyp;
         if (obj.otyp === BULLWHIP || obj.otyp === LANCE
             || skill === 3 || skill === 4 || skill === 18 || skill === 19)
             return true;
@@ -804,13 +804,13 @@ export function isApplyCandidate(obj) {
 
 export function isApplyChopWeapon(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
-    const skill = objectData[obj.otyp]?.sub;
+    const skill = objectData[obj.otyp]?.oc_subtyp;
     return skill === 3 || skill === 4;
 }
 
 export function isApplyPolearm(obj) {
     if (!obj || obj.oclass !== WEAPON_CLASS) return false;
-    const skill = objectData[obj.otyp]?.sub;
+    const skill = objectData[obj.otyp]?.oc_subtyp;
     return skill === 18 || skill === 19;
 }
 

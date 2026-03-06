@@ -339,12 +339,12 @@ function mkobj_rnd_class(first, last) {
     }
     let sum = 0;
     for (let i = first; i <= last; i++) {
-        sum += (objectData[i]?.prob || 0);
+        sum += (objectData[i]?.oc_prob || 0);
     }
     if (sum <= 0) return first;
     let x = rnd(sum);
     for (let i = first; i <= last; i++) {
-        x -= (objectData[i]?.prob || 0);
+        x -= (objectData[i]?.oc_prob || 0);
         if (x <= 0) return i;
     }
     return last;
@@ -1251,7 +1251,7 @@ function m_initinv(mon, mndx, depth, m_lev, map) {
             const addAc = (otyp) => {
                 if (!Number.isFinite(otyp)) return;
                 const obj = mongets(mon,otyp);
-                const baseAc = Number(objectData[otyp]?.oc1 || 0);
+                const baseAc = Number(objectData[otyp]?.oc_oc1 || 0);
                 const spe = Number(obj?.spe || 0);
                 const erosion = Math.max(Number(obj?.oeroded || 0), Number(obj?.oeroded2 || 0));
                 // C ref: ARM_BONUS(obj) = a_ac + spe - min(greatest_erosion, a_ac)
