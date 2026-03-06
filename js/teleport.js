@@ -296,7 +296,7 @@ function rloc_pos_ok(x, y, mtmp, map, player) {
 // Core monster relocation.
 // ============================================================================
 
-function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
+async function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
     const oldx = mtmp.mx;
     const oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
@@ -326,7 +326,7 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
             if (seenAfter) {
                 telemsg = true;
             } else {
-                pline(`${Monnam(mtmp)} vanishes!`);
+                await pline(`${Monnam(mtmp)} vanishes!`);
             }
             // C ref: teleport.c suppresses appearmsg when we just emitted a
             // vanish message and won't see an immediate post-teleport arrival.
@@ -357,14 +357,14 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
         const next = du <= 2 ? ' next to you' : '';
         const nearu = du <= (BOLT_LIM * BOLT_LIM) ? ' close by' : '';
         const where = next || nearu || (du === olddu ? '' : (du < olddu ? ' closer to you' : ' farther away'));
-        pline(`${Monnam(mtmp)} vanishes and reappears${where}.`);
+        await pline(`${Monnam(mtmp)} vanishes and reappears${where}.`);
     } else if (domsg && (canSeePos(mtmp.mx, mtmp.my)
         || appearmsg)) {
         const du = heroDist2(x, y);
         const next = du <= 2 ? ' next to you' : '';
         const nearu = du <= (BOLT_LIM * BOLT_LIM) ? ' close by' : '';
         mtmp.mstrategy = Number(mtmp.mstrategy || 0) & ~STRAT_APPEARMSG;
-        pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${appearmsg ? 'suddenly ' : ''}${player?.blind ? 'arrives' : 'appears'}${next || nearu}!`);
+        await pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${appearmsg ? 'suddenly ' : ''}${player?.blind ? 'arrives' : 'appears'}${next || nearu}!`);
     }
 
     // Trapped monster teleported away — clear trap state
@@ -375,14 +375,14 @@ function rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov) {
 
 // cf. teleport.c:1766 — rloc_to(mon, x, y)
 // Autotranslated from teleport.c:1765
-export function rloc_to(mtmp, x, y) {
-  rloc_to_core(mtmp, x, y, RLOC_NOMSG);
+export async function rloc_to(mtmp, x, y) {
+  await rloc_to_core(mtmp, x, y, RLOC_NOMSG);
 }
 
 // cf. teleport.c:1772 — rloc_to_flag(mon, x, y, rflags)
 // Autotranslated from teleport.c:1771
-export function rloc_to_flag(mtmp, x, y, rlocflags) {
-  rloc_to_core(mtmp, x, y, rlocflags);
+export async function rloc_to_flag(mtmp, x, y, rlocflags) {
+  await rloc_to_core(mtmp, x, y, rlocflags);
 }
 
 // ============================================================================
@@ -390,7 +390,7 @@ export function rloc_to_flag(mtmp, x, y, rlocflags) {
 // Relocate monster to random location. Returns true if successful.
 // ============================================================================
 
-export function rloc(mtmp, rlocflags, map, player, display, fov) {
+export async function rloc(mtmp, rlocflags, map, player, display, fov) {
     let x, y;
 
     // Try random positions (up to 50 times)
@@ -398,7 +398,7 @@ export function rloc(mtmp, rlocflags, map, player, display, fov) {
         x = rnd(COLNO - 1); // 1..COLNO-1
         y = rn2(ROWNO);     // 0..ROWNO-1
         if (rloc_pos_ok(x, y, mtmp, map, player)) {
-            rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+            await rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
             return true;
         }
     }
@@ -428,7 +428,7 @@ export function rloc(mtmp, rlocflags, map, player, display, fov) {
         x = candy[i].x;
         y = candy[i].y;
         if (rloc_pos_ok(x, y, mtmp, map, player)) {
-            rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
+            await rloc_to_core(mtmp, x, y, rlocflags, map, player, display, fov);
             return true;
         }
         if (!backupX && goodpos(x, y, mtmp, NO_MM_FLAGS, map, player)) {
@@ -441,7 +441,7 @@ export function rloc(mtmp, rlocflags, map, player, display, fov) {
     if (!backupX) {
         return false;
     }
-    rloc_to_core(mtmp, backupX, backupY, rlocflags, map, player, display, fov);
+    await rloc_to_core(mtmp, backupX, backupY, rlocflags, map, player, display, fov);
     return true;
 }
 
@@ -461,7 +461,7 @@ export function tele_restrict(mon, map) {
 // Player teleports a monster (via wand/spell). Returns false if fails.
 // ============================================================================
 
-export function u_teleport_mon(mtmp, give_feedback, map, player, display, fov) {
+export async function u_teleport_mon(mtmp, give_feedback, map, player, display, fov) {
     const cc = {};
 
     if (mtmp.ispriest) {
@@ -480,9 +480,9 @@ export function u_teleport_mon(mtmp, give_feedback, map, player, display, fov) {
         && rn2(13)
         && enexto(cc, player ? player.x : mtmp.mx, player ? player.y : mtmp.my,
                   mdat, map, player)) {
-        rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+        await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
     } else {
-        if (!rloc(mtmp, RLOC_MSG, map, player, display, fov))
+        if (!await rloc(mtmp, RLOC_MSG, map, player, display, fov))
             return false;
     }
     return true;
@@ -493,11 +493,11 @@ export function u_teleport_mon(mtmp, give_feedback, map, player, display, fov) {
 // Monster steps on teleport trap.
 // ============================================================================
 
-export function mtele_trap(mtmp, trap, in_sight, map, player, display, fov) {
+export async function mtele_trap(mtmp, trap, in_sight, map, player, display, fov) {
     if (tele_restrict(mtmp, map)) return;
 
     // Relocate monster
-    rloc(mtmp, RLOC_NONE, map, player, display, fov);
+    await rloc(mtmp, RLOC_NONE, map, player, display, fov);
 }
 
 // ============================================================================
@@ -875,7 +875,7 @@ export async function tele_trap(trap, game) {
             if (mtmp) {
                 const dest = enexto(mtmp.mx, mtmp.my, mtmp.data, map, player);
                 if (dest.found) {
-                    rloc_to(mtmp, dest.x, dest.y, map, player);
+                    await rloc_to(mtmp, dest.x, dest.y, map, player);
                 }
             }
             if (!map.monsterAt(trap.teledest_x, trap.teledest_y)) {

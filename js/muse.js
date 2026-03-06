@@ -737,7 +737,7 @@ async function m_tele(mtmp, vismon, oseen, how, map, player) {
         }
     } else {
         if (how && oseen) makeknown(how);
-        rloc(mtmp, 0, map, player);
+        await rloc(mtmp, 0, map, player);
     }
 }
 
@@ -1652,7 +1652,7 @@ async function mbhitm(mtmp, otmp, map, player) {
             if (zap_oseen) makeknown(WAN_TELEPORTATION);
         } else {
             if (!tele_restrict(mtmp, map))
-                rloc(mtmp, 0, map, player);
+                await rloc(mtmp, 0, map, player);
         }
         break;
 

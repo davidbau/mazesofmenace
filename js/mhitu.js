@@ -788,7 +788,7 @@ async function mhitu_ad_sedu(monster, attack, player, mhm, ctx) {
         if (!animalAttacker && ctx.map && !tele_restrict(monster, ctx.map)) {
             // C ref: uhitm.c mhitm_ad_sedu + teleport.c rloc_to_core:
             // relocation handles any vanish/reappear messaging.
-            rloc(monster, RLOC_MSG, ctx.map, player, ctx.display);
+            await rloc(monster, RLOC_MSG, ctx.map, player, ctx.display);
         }
         monster.mflee = true;
         monster.mfleetim = 0;

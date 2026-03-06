@@ -494,17 +494,17 @@ export async function tactics(mtmp, map, player, display, fov) {
         if (In_W_tower(mx, my)
             || (mtmp.iswiz && !sx && !mon_has_amulet(mtmp))) {
             if (!rn2(3 + Math.floor(mtmp.mhp / 10)))
-                rloc(mtmp, RLOC_MSG, map, player, display, fov);
+                await rloc(mtmp, RLOC_MSG, map, player, display, fov);
         } else if (sx && (mx !== sx || my !== sy)) {
             // mnearto: teleport near stairs
             const cc = {};
             if (!enexto(cc, sx, sy, mptr(mtmp), map, player)
-                || (rloc_to(mtmp, cc.x, cc.y, map, player, display, fov), false)) {
+                || (await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov), false)) {
                 // couldn't move to target; stay put
-                rloc_to(mtmp, mx, my, map, player, display, fov);
+                await rloc_to(mtmp, mx, my, map, player, display, fov);
                 return 0;
             }
-            rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+            await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
             mx = mtmp.mx;
             my = mtmp.my;
         }
@@ -523,7 +523,7 @@ export async function tactics(mtmp, map, player, display, fov) {
             // mnexto: teleport near current position
             const cc = {};
             if (enexto(cc, mtmp.mx, mtmp.my, mptr(mtmp), map, player))
-                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+                await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
         }
         return 0;
     }
@@ -541,16 +541,16 @@ export async function tactics(mtmp, map, player, display, fov) {
             const mx = mtmp.mx, my = mtmp.my;
             const cc = {};
             if (enexto(cc, tx, ty, mptr(mtmp), map, player))
-                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+                await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
             else
-                rloc_to(mtmp, mx, my, map, player, display, fov);
+                await rloc_to(mtmp, mx, my, map, player, display, fov);
             return 0;
         }
 
         if (where === STRAT_GROUND) {
             if (!map.monsterAt(tx, ty) || (mtmp.mx === tx && mtmp.my === ty)) {
                 // teleport to it and pick it up
-                rloc_to(mtmp, tx, ty, map, player, display, fov);
+                await rloc_to(mtmp, tx, ty, map, player, display, fov);
 
                 const otmp = on_ground(which_arti(targ), map);
                 if (otmp) {
@@ -568,7 +568,7 @@ export async function tactics(mtmp, map, player, display, fov) {
                 if (!rn2(5)) {
                     const cc = {};
                     if (enexto(cc, mtmp.mx, mtmp.my, mptr(mtmp), map, player))
-                        rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+                        await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
                 }
                 return 0;
             }
@@ -577,9 +577,9 @@ export async function tactics(mtmp, map, player, display, fov) {
             const mx = mtmp.mx, my = mtmp.my;
             const cc = {};
             if (enexto(cc, tx, ty, mptr(mtmp), map, player))
-                rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
+                await rloc_to(mtmp, cc.x, cc.y, map, player, display, fov);
             else
-                rloc_to(mtmp, mx, my, map, player, display, fov);
+                await rloc_to(mtmp, mx, my, map, player, display, fov);
             return 0;
         }
     } // default case

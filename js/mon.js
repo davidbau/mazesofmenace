@@ -1895,7 +1895,7 @@ export async function vamp_stone(mtmp, game) {
       if (engulfing_u(mtmp)) await expels(mtmp, mtmp.data, false);
       if (amorphous(mtmp.data) && closed_door(mtmp.mx, mtmp.my)) {
         let new_xy;
-        if (enexto( new_xy, mtmp.mx, mtmp.my, mons[mndx])) { rloc_to(mtmp, new_xy.x, new_xy.y); }
+        if (enexto( new_xy, mtmp.mx, mtmp.my, mons[mndx])) { await rloc_to(mtmp, new_xy.x, new_xy.y); }
       }
       if (canspotmon(mtmp)) { await pline_mon(mtmp, "%s!", buf); await display_nhwindow(WIN_MESSAGE, false); }
       newcham(mtmp, mons[mndx], NO_NC_FLAGS);

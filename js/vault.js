@@ -266,7 +266,7 @@ async function clear_fcorr(grd, forceshow, map, player, fov) {
                 if (mtmp.tame || mtmp.mtame) {
                     // yelp(mtmp) — simplified
                 }
-                if (!rloc(mtmp, RLOC_MSG, map, player)) {
+                if (!await rloc(mtmp, RLOC_MSG, map, player)) {
                     // m_into_limbo: just move off-map
                     const _omx = mtmp.mx, _omy = mtmp.my;
                     mtmp.mx = 0;
@@ -533,7 +533,7 @@ async function wallify_vault(grd, map, player, fov) {
                     if (mon.tame || mon.mtame) {
                         // yelp(mon) — simplified
                     }
-                    if (!rloc(mon, RLOC_MSG, map, player)) {
+                    if (!await rloc(mon, RLOC_MSG, map, player)) {
                         const _omx = mon.mx, _omy = mon.my;
                         mon.mx = 0;
                         mon.my = 0;
@@ -610,7 +610,7 @@ export async function gd_mv_monaway(grd, nx, ny, map, player, fov) {
         if (!player?.deaf) {
             await verbalize("Out of my way, scum!");
         }
-        if (!rloc(mtmp, RLOC_ERR | RLOC_MSG, map, player)
+        if (!await rloc(mtmp, RLOC_ERR | RLOC_MSG, map, player)
             || (map.monsterAt && map.monsterAt(nx, ny))) {
             // m_into_limbo
             const _omx = mtmp.mx, _omy = mtmp.my;
@@ -984,7 +984,7 @@ export async function gd_move(grd, map, player, fov) {
         if (!u_in_vault
             && (grd_in_vault || (in_fcorridor(grd, grd.mx, grd.my)
                 && !in_fcorridor(grd, player.x, player.y)))) {
-            rloc(grd, RLOC_MSG, map, player);
+            await rloc(grd, RLOC_MSG, map, player);
             await wallify_vault(grd, map, player, fov);
             if (!in_fcorridor(grd, grd.mx, grd.my))
                 await clear_fcorr(grd, true, map, player, fov);
@@ -1037,7 +1037,7 @@ export async function gd_move(grd, map, player, fov) {
                 }
                 grd.mpeaceful = 0;
                 // C: mnexto(grd, RLOC_NOMSG) — simplified: rloc
-                rloc(grd, RLOC_NOMSG, map, player);
+                await rloc(grd, RLOC_NOMSG, map, player);
                 // Restore entry point
                 const loc = map.at(m, n);
                 if (loc) {
@@ -1059,7 +1059,7 @@ export async function gd_move(grd, map, player, fov) {
             if (u_carry_gold) {
                 // Player teleported out with gold
                 const m = grd.mx, n = grd.my;
-                rloc(grd, RLOC_MSG, map, player);
+                await rloc(grd, RLOC_MSG, map, player);
                 const loc = map.at(m, n);
                 if (loc) {
                     loc.typ = egrd.fakecorr[0].ftyp;
@@ -1380,7 +1380,7 @@ export async function paygd(silently, map, player) {
         }
 
         // C: mnexto(grd, RLOC_NOMSG) — simplified: rloc
-        rloc(grd, RLOC_NOMSG, map, player);
+        await rloc(grd, RLOC_NOMSG, map, player);
         if (!silently)
             await pline("%s remits your gold to the vault.", Monnam(grd));
 
