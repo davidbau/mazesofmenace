@@ -547,7 +547,7 @@ export function encglyph(glyph, game) {
 export function decode_glyph(str, glyph_ptr, game) {
   let rndchk = 0, dcount = 0, retval = 0, dp;
   for ( str && ++dcount <= 4; ++str; ) {
-    if ((dp = strchr(hexdd, str)) !== 0) {
+    if ((dp = strchr(hexdd, str)) != null) {
       retval++;
       rndchk = (rndchk * 16) + (Math.trunc(dp - hexdd) / 2);
     }
@@ -558,7 +558,7 @@ export function decode_glyph(str, glyph_ptr, game) {
   if (rndchk === game.svc.context.rndencode) {
      glyph_ptr = dcount = 0;
     for ( str && ++dcount <= 4; ++str; ) {
-      if ((dp = strchr(hexdd, str)) !== 0) {
+      if ((dp = strchr(hexdd, str)) != null) {
         retval++;
          glyph_ptr = ( glyph_ptr * 16) + (Math.trunc(dp - hexdd) / 2);
       }

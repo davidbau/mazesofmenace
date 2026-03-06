@@ -1733,7 +1733,7 @@ export function get_mtraits(obj, copyof) {
 // Autotranslated from mkobj.c:2523
 export function discard_minvent(mtmp, uncreate_artifacts) {
   let otmp;
-  while ((otmp = mtmp.minvent) !== 0) {
+  while ((otmp = mtmp.minvent) != null) {
     extract_from_minvent(mtmp, otmp, true, true);
     if (uncreate_artifacts && otmp.oartifact) artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
     obfree(otmp,  0);
