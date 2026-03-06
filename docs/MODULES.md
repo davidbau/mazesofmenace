@@ -206,6 +206,7 @@ Check for stray exported capitalized constants outside leaf files:
 
 ```bash
 node --test test/unit/constants_export_policy.test.js
+node --test test/unit/gen_constants_report.test.js
 
 rg -n "^export (const|let|var) [A-Z]" js \
   | rg -v "js/(const|objects|monsters|artifacts|version|storage|.*_data)\\.js:"
