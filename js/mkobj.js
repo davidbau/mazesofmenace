@@ -38,7 +38,7 @@ import {
 } from './monsters.js';
 import { PM_SAMURAI, TIMER_KIND, TIMER_FUNC, TAINT_AGE } from './const.js';
 import { lays_eggs } from './mondata.js';
-import { start_timer, stop_timer } from './timeout.js';
+import { start_timer, stop_timer, attach_egg_hatch_timeout } from './timeout.js';
 
 // Named object indices we need (exported from objects.js)
 // Check: CORPSE, EGG, TIN, SLIME_MOLD, KELP_FROND, CANDY_BAR,
@@ -989,22 +989,6 @@ export function start_corpse_timeout(body, opts = {}) {
     start_timer(when, TIMER_KIND.SHORT, action, body);
 }
 
-const MAX_EGG_HATCH_TIME = 200;
-
-// C ref: timeout.c attach_egg_hatch_timeout() — RNG-only parity for hatch timing.
-function attach_egg_hatch_timeout_rng(when) {
-    let hatchWhen = Number.isFinite(when) ? Math.trunc(when) : 0;
-    if (!hatchWhen) {
-        for (let i = (MAX_EGG_HATCH_TIME - 50) + 1; i <= MAX_EGG_HATCH_TIME; i++) {
-            if (rnd(i) > 150) {
-                hatchWhen = i;
-                break;
-            }
-        }
-    }
-    return hatchWhen;
-}
-
 // C ref: mkobj.c set_corpsenm() — set corpsenm and restart timers
 // Used by create_object (sp_lev) when overriding corpsenm after mksobj
 // Unlike mkcorpstat's conditional check, this ALWAYS restarts start_corpse_timeout
@@ -1017,8 +1001,9 @@ export function set_corpsenm(obj, id) {
     if (obj.otyp === CORPSE) {
         start_corpse_timeout(obj, { norevive: !!obj.norevive });
     } else if (obj.otyp === EGG) {
+        stop_timer(TIMER_FUNC.HATCH_EGG, obj);
         if (id >= 0) {
-            obj._egg_hatch_when = attach_egg_hatch_timeout_rng(when);
+            obj._egg_hatch_when = attach_egg_hatch_timeout(obj, when);
         } else {
             delete obj._egg_hatch_when;
         }

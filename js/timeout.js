@@ -17,8 +17,12 @@ import { TIMEOUT, INTRINSIC, FROMOUTSIDE,
          PASSES_WALLS, MAGICAL_BREATHING, FLYING,
          FIRE_RES, STONE_RES, DETECT_MONSTERS, PROT_FROM_SHAPE_CHANGERS,
          SICK_NONVOMITABLE, A_CON, A_DEX, A_STR, ACCESSIBLE,
-         TIMER_KIND, TIMER_FUNC, MELT_ICE_AWAY } from './const.js';
+         TIMER_KIND, TIMER_FUNC, MELT_ICE_AWAY,
+         NO_MINVENT, MM_NOMSG } from './const.js';
 import { exercise } from './attrib_exercise.js';
+import { mons } from './monsters.js';
+import { big_to_little } from './mondata.js';
+import { enexto } from './teleport.js';
 
 const OBJ_TIMER_KIND = TIMER_KIND.SHORT;
 
@@ -719,7 +723,7 @@ export function attach_egg_hatch_timeout(egg, when) {
         }
         if (!timeout) timeout = MAX_EGG_HATCH_TIME;
     }
-    const turns = start_timer(timeout, TIMER_KIND.SHORT, TIMER_FUNC.HATCH_EGG, egg);
+    const turns = start_timer(timeout + 1, TIMER_KIND.SHORT, TIMER_FUNC.HATCH_EGG, egg);
     if (!turns) return 0;
     egg._egg_hatch_timeout = turns.when;
     return turns.when;
@@ -735,6 +739,30 @@ export function kill_egg(egg) {
 export async function hatch_egg(egg) {
     if (!egg || egg._deadHatching) return;
     egg._deadHatching = true;
+    // C ref: timeout.c hatch_egg() performs hatchcount = rnd((int) egg->quan)
+    // before hatching attempts.
+    const qty = Math.max(1, Math.trunc(Number(egg.quan) || 1));
+    const hatchcount = rnd(qty);
+    const map = _timeoutContext.map;
+    const player = _timeoutContext.player;
+    const mnum = big_to_little(Number.isInteger(egg.corpsenm) ? egg.corpsenm : -1);
+    const mdat = Number.isInteger(mnum) && mnum >= 0 ? mons[mnum] : null;
+    if (map && mdat) {
+        const { makemon } = await import('./makemon.js');
+        const x = Number.isInteger(egg.ox) ? egg.ox : (player?.x || 0);
+        const y = Number.isInteger(egg.oy) ? egg.oy : (player?.y || 0);
+        const depth = Number(player?.dungeonLevel || 1);
+        let hatched = 0;
+        for (let i = 0; i < hatchcount; i++) {
+            const cc = { x, y };
+            if (!enexto(cc, x, y, mdat, map, player)) break;
+            if (!makemon(mnum, cc.x, cc.y, NO_MINVENT | MM_NOMSG, depth, map)) break;
+            hatched++;
+        }
+        if (hatched > 0 && Number.isInteger(egg.quan)) {
+            egg.quan = Math.max(0, egg.quan - hatched);
+        }
+    }
     if (typeof pline === 'function') {
         if (typeof egg.corpsenm === 'number' && egg.corpsenm >= 0) {
             await pline(`A creature hatches from a nearby egg.`);

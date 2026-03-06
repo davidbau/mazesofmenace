@@ -2580,3 +2580,29 @@ hard-won wisdom:
     - seed332: first RNG divergence moved from step `221` -> `386`
       (`moveloop_turnend rn2(400)` vs `hatch_egg rnd(1)`), with
       RNG `16471/17821`, screens `393/410`, events `5709/6595`.
+
+### seed332 hatch_egg timeout path: RNG parity closure (2026-03-06)
+
+- After the pre-move spell fixes, seed332's first RNG divergence moved to
+  `hatch_egg(timeout.c)` (`rnd(1)`), which exposed missing egg-timeout behavior
+  in JS.
+- C-faithful closures landed:
+  - `js/mkobj.js:set_corpsenm()` now restarts real `HATCH_EGG` timers via
+    `attach_egg_hatch_timeout()` instead of RNG-only placeholder state.
+  - `js/timeout.js:attach_egg_hatch_timeout()` keeps C loop bounds
+    (`i = 151..200`) and schedules hatch timers with C-consistent turn timing.
+  - `js/timeout.js:hatch_egg()` now executes real hatch-path behavior needed for
+    RNG parity:
+    - consumes `rnd((int)egg->quan)`,
+    - resolves hatch species via `big_to_little(corpsenm)`,
+    - attempts placement with `enexto()` (which drives `collect_coords` RNG),
+    - spawns hatchlings with `makemon(..., NO_MINVENT | MM_NOMSG)`,
+    - decrements `egg.quan` by successful hatch count.
+- Validation:
+  - `node scripts/test-unit-core.mjs` passes.
+  - tracked seed set (`325/327/328/332`) shows no regressions on 325/327/328.
+  - `seed332_valkyrie_wizard_gameplay` now has full RNG parity:
+    - RNG `17821/17821` (was `16471/17821`)
+    - screens `408/410` (was `393/410`)
+    - events `5714/6595` (was `5709/6595`)
+    - first remaining divergence is non-RNG (screen/event), not RNG drift.
