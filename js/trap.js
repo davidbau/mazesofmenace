@@ -14,6 +14,7 @@ import {
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
     EF_NONE, EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
 } from './const.js';
+import { SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS } from './objects.js';
 import { rn2, rnd, rnl, d, c_d, rn1 } from './rng.js';
 import { is_mindless, touch_petrifies, resists_ston,
          amorphous, is_whirly, unsolid, is_clinger, passes_walls,
@@ -1210,12 +1211,12 @@ export function water_damage(obj, ostr, force) {
     } else if (!force && rn2(20) < 5) {
         // C ref: (Luck + 5) > rn2(20) — simplified without Luck
         return ER_NOTHING;
-    } else if (obj.oclass === 7 /* SCROLL_CLASS */) {
+    } else if (obj.oclass === SCROLL_CLASS) {
         // Scrolls get blanked
         return ER_DAMAGED;
-    } else if (obj.oclass === 11 /* SPBOOK_CLASS */) {
+    } else if (obj.oclass === SPBOOK_CLASS) {
         return ER_DAMAGED;
-    } else if (obj.oclass === 6 /* POTION_CLASS */) {
+    } else if (obj.oclass === POTION_CLASS) {
         if (obj.odiluted) {
             return ER_DAMAGED;
         } else {

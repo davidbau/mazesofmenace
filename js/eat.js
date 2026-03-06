@@ -1363,7 +1363,7 @@ async function handleEat(player, display, game) {
     }
 
     // cf. eat.c doeat() / eat_ok() (partial) — inventory food selection
-    const food = player.inventory.filter(o => o.oclass === 6); // FOOD_CLASS
+    const food = player.inventory.filter(o => o.oclass === FOOD_CLASS);
     if (food.length === 0) {
         await display.putstr_message("You don't have anything to eat.");
         return { moved: false, tookTime: false };

@@ -45,7 +45,7 @@ import { PM_PRIEST, PM_KNIGHT, PM_WIZARD, PM_MONK } from './const.js';
 import { CORPSE, STATUE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
          POT_WATER, POTION_CLASS, LOADSTONE, LEVITATION_BOOTS, FUMBLE_BOOTS,
          GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT,
-         AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, RIN_LEVITATION, RIN_SUSTAIN_ABILITY,
+         AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, RIN_LEVITATION, RIN_SUSTAIN_ABILITY, TOOL_CLASS,
          SADDLE, LONG_SWORD, RUNESWORD, MAGIC_MARKER,
          WEAPON_CLASS, SPBOOK_CLASS, STRANGE_OBJECT, BOULDER,
          SPE_FINGER_OF_DEATH, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD,
@@ -229,7 +229,7 @@ function unchanger(player) {
 function is_weptool(obj) {
     if (!obj) return false;
     const od = objectData[obj.otyp];
-    return od && od.oclass === 2 && od.oc_skill; // TOOL_CLASS with weapon skill
+    return od && od.oclass === TOOL_CLASS && od.oc_skill;
 }
 
 // Helper: Role_if check

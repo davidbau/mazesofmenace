@@ -397,7 +397,7 @@ async function handleQuaff(player, map, display) {
     }
 
     // cf. potion.c dodrink() / drink_ok() — inventory selection (partial)
-    const potions = player.inventory.filter(o => o.oclass === 7); // POTION_CLASS
+    const potions = player.inventory.filter(o => o.oclass === POTION_CLASS);
     if (potions.length === 0) {
         await display.putstr_message("You don't have anything to drink.");
         return { moved: false, tookTime: false };

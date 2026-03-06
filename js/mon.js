@@ -1220,8 +1220,8 @@ export function meatobj(mon, map) {
         if (!otmp || otmp.buried) continue;
         // Skip scare monster scrolls
         if (otmp.otyp === SCR_SCARE_MONSTER) continue;
-        // Skip boulders (ROCK_CLASS = 1)
-        if (otmp.oclass === 1) continue;
+        // C ref: is_boulder(otmp) — gelatinous cubes can't eat boulders
+        if (otmp.otyp === BOULDER) continue;
 
         // Petrifying corpses — skip if not resistant
         if (otmp.otyp === CORPSE && otmp.corpsenm >= 0 && otmp.corpsenm < NUMMONS) {

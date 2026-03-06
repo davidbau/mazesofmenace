@@ -20,6 +20,7 @@ import { mon_nam, Monnam, mon_pmname, rndmonnam, hcolor } from './do_name.js';
 import { is_minion, is_rider, canseemon, mon_learns_traps } from './mondata.js';
 import { newsym } from './display.js';
 import { dist2 } from './hack.js';
+import { COIN_CLASS, GOLD_PIECE } from './objects.js';
 import { move_special } from './monmove.js';
 import { newemin, bribe } from './minion.js';
 import { makemon } from './makemon.js';
@@ -302,7 +303,7 @@ function money_cnt(inventory) {
     if (Array.isArray(inventory)) {
         let total = 0;
         for (const obj of inventory) {
-            if (obj && (obj.oclass === 'COIN_CLASS' || obj.oclass === 1 || obj.otyp === 'GOLD_PIECE')) {
+            if (obj && (obj.oclass === COIN_CLASS || obj.otyp === GOLD_PIECE)) {
                 total += obj.quan || 1;
             }
         }
