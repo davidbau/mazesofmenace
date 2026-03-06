@@ -2403,7 +2403,7 @@ export function maketrap(map, x, y, typ, depth = 1) {
     const loc = map.at(x, y);
     if (!loc) return null;
     // CAN_OVERWRITE_TERRAIN: reject stairs/ladders
-    if (loc.typ === STAIRS || loc.typ === 27/*LADDER*/) return null;
+    if (loc.typ === STAIRS || loc.typ === LADDER) return null;
     if (IS_POOL(loc.typ) || IS_LAVA(loc.typ)) return null;
     if (IS_FURNITURE(loc.typ) && typ !== PIT && typ !== HOLE) return null;
 

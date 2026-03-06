@@ -35,7 +35,7 @@ import { rn2, rnd, rn1, rnl, rnz, d } from './rng.js';
 import { rn2_on_display_rng } from './rng.js';
 import { pline, pline_The, verbalize, You, Your, You_feel, You_hear,
          livelog_printf } from './pline.js';
-import { S_altar, IS_OBSTRUCTED } from './const.js';
+import { S_altar, IS_OBSTRUCTED, POOL, LAVAPOOL } from './const.js';
 import { mark_vision_dirty } from './vision.js';
 import { S_LICH, S_GHOST, S_VAMPIRE, S_WRAITH, S_MUMMY, S_ZOMBIE, S_HUMAN,
          mons, PM_ACID_BLOB, PM_WRAITH,
@@ -595,7 +595,7 @@ function p_coaligned() { return false; }
 function is_pool_or_lava(x, y, map) {
     if (!isok(x, y)) return false;
     const loc = map.at(x, y);
-    return loc.typ === 16 || loc.typ === 20; // POOL or LAVAPOOL
+    return loc.typ === POOL || loc.typ === LAVAPOOL;
 }
 
 // Helper: sobj_at -- checks if object type is at location
