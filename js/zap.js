@@ -1984,36 +1984,29 @@ export async function boxlock_invent(player, otmp) {
 
 // C ref: zap.c location helpers.
 // Autotranslated from zap.c:651
-export function get_obj_location(obj, xp, yp, locflags, player) {
+// C ref: zap.c:651 — get_obj_location(obj, &xp, &yp, locflags)
+// Returns { found: bool, x, y } since JS has no pass-by-reference.
+export function get_obj_location(obj, locflags = 0, player = null) {
   switch (obj.where) {
     case OBJ_INVENT:
-       xp = player.x;
-     yp = player.y;
-    return true;
+      return { found: true, x: player.x, y: player.y };
     case OBJ_FLOOR:
-       xp = obj.ox;
-     yp = obj.oy;
-    return true;
+      return { found: true, x: obj.ox, y: obj.oy };
     case OBJ_MINVENT:
       if (obj.ocarry.mx) {
-         xp = obj.ocarry.mx;
-         yp = obj.ocarry.my;
-        return true;
+        return { found: true, x: obj.ocarry.mx, y: obj.ocarry.my };
       }
-    break;
+      break;
     case OBJ_BURIED:
       if (locflags & BURIED_TOO) {
-         xp = obj.ox;
-         yp = obj.oy;
-        return true;
+        return { found: true, x: obj.ox, y: obj.oy };
       }
-    break;
+      break;
     case OBJ_CONTAINED:
-      if (locflags & CONTAINED_TOO) return get_obj_location(obj.ocontainer, xp, yp, locflags);
-    break;
+      if (locflags & CONTAINED_TOO) return get_obj_location(obj.ocontainer, locflags, player);
+      break;
   }
-   xp = yp = 0;
-  return false;
+  return { found: false, x: 0, y: 0 };
 }
 
 export function get_mon_location(mon, out = null, locflags = 0, player = null) {
@@ -2046,7 +2039,12 @@ export function get_container_location(container, out = null, container_nesting 
   if (container_nesting && typeof container_nesting === 'object') {
     container_nesting.value = nest;
   }
-  return get_obj_location(obj, out, BURIED_TOO | CONTAINED_TOO);
+  const loc = get_obj_location(obj, BURIED_TOO | CONTAINED_TOO);
+  if (out && typeof out === 'object') {
+    out.x = loc.x;
+    out.y = loc.y;
+  }
+  return loc.found;
 }
 
 // C ref: zap.c release_hold()

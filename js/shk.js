@@ -2192,8 +2192,10 @@ export async function call_kops(shkp, nearshop, game, player) {
     return;
   }
   if (nokops) return;
-  let mm, sx = 0, sy = 0;
-  choose_stairs( sx, sy, true);
+  const mm = { x: 0, y: 0 };
+  const sx_out = { x: 0 }, sy_out = { y: 0 };
+  choose_stairs(sx_out, sy_out, true);
+  const sx = sx_out.x, sy = sy_out.y;
   if (nearshop) {
     if (game.flags.verbose) await pline_The("Keystone Kops appear!");
     mm.x = player.x;
