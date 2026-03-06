@@ -1,3 +1,7 @@
+// monsters.js — monster constants and data
+// Auto-imported from nethack-c/include/monsters.h
+// Regenerate with: python3 scripts/generators/gen_monsters.py
+// AUTO-IMPORT-BEGIN: MONSTERS
 // NetHack 3.7 Monster Data - auto-generated from monsters.h
 // Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985.
 // NetHack may be freely redistributed.  See license for details.
@@ -739,8 +743,8 @@ export const PM_APPRENTICE = 382;
 export const NUMMONS = 383;
 export const NON_PM = -1;
 export const LOW_PM = 0;
-export const HIGH_PM = 381;
-export const SPECIAL_PM = PM_LONG_WORM_TAIL; // 329
+export const HIGH_PM = 382;
+export const SPECIAL_PM = PM_LONG_WORM_TAIL; // 330
 
 // The master monster array
 export const mons = [
@@ -749,7 +753,7 @@ export const mons = [
     symbol: S_ANT,
     level: 2, speed: 18, ac: 3, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 3,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -763,7 +767,7 @@ export const mons = [
     symbol: S_ANT,
     level: 1, speed: 18, ac: -1, mr: 0, align: 0,
     geno: G_GENO | G_LGROUP | 2,
-    attacks: [{ aatyp: AT_STNG, adtyp: AD_DRST, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_STNG, damage: AD_DRST, dice: 1, sides: 3 }],
     weight: 1, nutrition: 5,
     sound: MS_BUZZ, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -777,7 +781,7 @@ export const mons = [
     symbol: S_ANT,
     level: 3, speed: 18, ac: 3, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_STNG, adtyp: AD_DRST, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_STNG, damage: AD_DRST, dice: 3, sides: 4 }],
     weight: 20, nutrition: 5,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -791,7 +795,7 @@ export const mons = [
     symbol: S_ANT,
     level: 3, speed: 18, ac: 3, mr: 10, align: 0,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_BITE, adtyp: AD_FIRE, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_BITE, damage: AD_FIRE, dice: 2, sides: 4 }],
     weight: 30, nutrition: 10,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_FIRE, mr2: MR_FIRE,
@@ -805,7 +809,7 @@ export const mons = [
     symbol: S_ANT,
     level: 5, speed: 6, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }],
     weight: 200, nutrition: 50,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -819,7 +823,7 @@ export const mons = [
     symbol: S_ANT,
     level: 9, speed: 24, ac: -4, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_STNG, adtyp: AD_DRST, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_STNG, damage: AD_DRST, dice: 1, sides: 8 }],
     weight: 1, nutrition: 5,
     sound: MS_BUZZ, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -833,7 +837,7 @@ export const mons = [
     symbol: S_BLOB,
     level: 1, speed: 3, ac: 8, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_ACID, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_NONE, damage: AD_ACID, dice: 1, sides: 8 }],
     weight: 30, nutrition: 10,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_SLEEP | MR_POISON | MR_ACID | MR_STONE, mr2: MR_ACID | MR_STONE,
@@ -848,7 +852,7 @@ export const mons = [
     symbol: S_BLOB,
     level: 5, speed: 1, ac: 8, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 200, nutrition: 100,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_SLEEP | MR_POISON, mr2: MR_POISON,
@@ -862,7 +866,7 @@ export const mons = [
     symbol: S_BLOB,
     level: 6, speed: 6, ac: 8, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PLYS, damn: 2, damd: 4 }, { aatyp: AT_NONE, adtyp: AD_PLYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PLYS, dice: 2, sides: 4 }, { type: AT_NONE, damage: AD_PLYS, dice: 1, sides: 4 }],
     weight: 600, nutrition: 150,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON | MR_ACID
@@ -879,9 +883,9 @@ export const mons = [
     level: 4, speed: 4, ac: 8, mr: 30, align: 0,
     geno: G_GENO | G_SGROUP | 1,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 },
-      { aatyp: AT_TUCH, adtyp: AD_STON, damn: 0, damd: 0 },
-      { aatyp: AT_NONE, adtyp: AD_STON, damn: 0, damd: 0 }
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 },
+      { type: AT_TUCH, damage: AD_STON, dice: 0, sides: 0 },
+      { type: AT_NONE, damage: AD_STON, dice: 0, sides: 0 }
     ],
     weight: 10, nutrition: 10,
     sound: MS_HISS, size: MZ_TINY,
@@ -897,9 +901,9 @@ export const mons = [
     level: 5, speed: 6, ac: 6, mr: 30, align: 0,
     geno: G_GENO | 5,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_TUCH, adtyp: AD_STON, damn: 0, damd: 0 },
-      { aatyp: AT_NONE, adtyp: AD_STON, damn: 0, damd: 0 }
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_TUCH, damage: AD_STON, dice: 0, sides: 0 },
+      { type: AT_NONE, damage: AD_STON, dice: 0, sides: 0 }
     ],
     weight: 30, nutrition: 30,
     sound: MS_HISS, size: MZ_SMALL,
@@ -914,7 +918,7 @@ export const mons = [
     symbol: S_COCKATRICE,
     level: 6, speed: 6, ac: 6, mr: 30, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_GAZE, adtyp: AD_FIRE, damn: 2, damd: 6 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_GAZE, damage: AD_FIRE, dice: 2, sides: 6 }, { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 30, nutrition: 30,
     sound: MS_HISS, size: MZ_SMALL,
     mr1: MR_POISON | MR_FIRE, mr2: MR_POISON | MR_FIRE,
@@ -928,7 +932,7 @@ export const mons = [
     symbol: S_DOG,
     level: 0, speed: 12, ac: 7, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 3,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 300, nutrition: 250,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -942,7 +946,7 @@ export const mons = [
     symbol: S_DOG,
     level: 0, speed: 15, ac: 7, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 300, nutrition: 250,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -956,7 +960,7 @@ export const mons = [
     symbol: S_DOG,
     level: 1, speed: 12, ac: 7, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 300, nutrition: 250,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -970,7 +974,7 @@ export const mons = [
     symbol: S_DOG,
     level: 2, speed: 12, ac: 7, mr: 10, align: -7,
     geno: G_NOGEN | G_NOCORPSE,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_WERE, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_WERE, dice: 1, sides: 4 }],
     weight: 300, nutrition: 250,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: MR_POISON, mr2: 0,
@@ -984,7 +988,7 @@ export const mons = [
     symbol: S_DOG,
     level: 2, speed: 18, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 150, nutrition: 150,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -998,7 +1002,7 @@ export const mons = [
     symbol: S_DOG,
     level: 4, speed: 16, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 400, nutrition: 200,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1012,7 +1016,7 @@ export const mons = [
     symbol: S_DOG,
     level: 4, speed: 16, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 400, nutrition: 200,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1026,7 +1030,7 @@ export const mons = [
     symbol: S_DOG,
     level: 6, speed: 15, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 250,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1040,7 +1044,7 @@ export const mons = [
     symbol: S_DOG,
     level: 5, speed: 12, ac: 4, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 500, nutrition: 250,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1054,7 +1058,7 @@ export const mons = [
     symbol: S_DOG,
     level: 5, speed: 12, ac: 4, mr: 20, align: -7,
     geno: G_NOGEN | G_NOCORPSE,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_WERE, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_WERE, dice: 2, sides: 6 }],
     weight: 500, nutrition: 250,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: MR_POISON, mr2: 0,
@@ -1068,7 +1072,7 @@ export const mons = [
     symbol: S_DOG,
     level: 5, speed: 12, ac: 4, mr: 0, align: 0,
     geno: G_NOHELL | G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_BREA, adtyp: AD_COLD, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_BREA, damage: AD_COLD, dice: 1, sides: 6 }],
     weight: 250, nutrition: 200,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: MR_COLD, mr2: MR_COLD,
@@ -1082,7 +1086,7 @@ export const mons = [
     symbol: S_DOG,
     level: 7, speed: 12, ac: 4, mr: 0, align: -5,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 850, nutrition: 350,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1096,7 +1100,7 @@ export const mons = [
     symbol: S_DOG,
     level: 7, speed: 12, ac: 4, mr: 20, align: -5,
     geno: G_NOHELL | G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_BREA, adtyp: AD_COLD, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_BREA, damage: AD_COLD, dice: 2, sides: 6 }],
     weight: 700, nutrition: 300,
     sound: MS_BARK, size: MZ_LARGE,
     mr1: MR_COLD, mr2: MR_COLD,
@@ -1110,7 +1114,7 @@ export const mons = [
     symbol: S_DOG,
     level: 7, speed: 12, ac: 4, mr: 20, align: 0,
     geno: G_HELL | G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_BREA, damage: AD_FIRE, dice: 2, sides: 6 }],
     weight: 200, nutrition: 200,
     sound: MS_BARK, size: MZ_SMALL,
     mr1: MR_FIRE, mr2: MR_FIRE,
@@ -1124,7 +1128,7 @@ export const mons = [
     symbol: S_DOG,
     level: 12, speed: 14, ac: 2, mr: 20, align: -5,
     geno: G_HELL | G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }, { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }, { type: AT_BREA, damage: AD_FIRE, dice: 3, sides: 6 }],
     weight: 600, nutrition: 300,
     sound: MS_BARK, size: MZ_MEDIUM,
     mr1: MR_FIRE, mr2: MR_FIRE,
@@ -1138,7 +1142,7 @@ export const mons = [
     symbol: S_EYE,
     level: 1, speed: 3, ac: 10, mr: 0, align: 0,
     geno: G_NOCORPSE | G_GENO | 1,
-    attacks: [{ aatyp: AT_BOOM, adtyp: AD_PHYS, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_BOOM, damage: AD_PHYS, dice: 4, sides: 6 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1152,7 +1156,7 @@ export const mons = [
     symbol: S_EYE,
     level: 2, speed: 1, ac: 9, mr: 10, align: 0,
     geno: G_GENO | 5,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_PLYS, damn: 0, damd: 70 }],
+    attacks: [{ type: AT_NONE, damage: AD_PLYS, dice: 0, sides: 70 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1166,7 +1170,7 @@ export const mons = [
     symbol: S_EYE,
     level: 6, speed: 13, ac: 4, mr: 0, align: 0,
     geno: G_NOCORPSE | G_NOHELL | G_GENO | 2,
-    attacks: [{ aatyp: AT_EXPL, adtyp: AD_COLD, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_EXPL, damage: AD_COLD, dice: 4, sides: 6 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_COLD, mr2: MR_COLD,
@@ -1181,7 +1185,7 @@ export const mons = [
     symbol: S_EYE,
     level: 6, speed: 13, ac: 4, mr: 0, align: 0,
     geno: G_NOCORPSE | G_GENO | 2,
-    attacks: [{ aatyp: AT_EXPL, adtyp: AD_FIRE, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_EXPL, damage: AD_FIRE, dice: 4, sides: 6 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_FIRE, mr2: MR_FIRE,
@@ -1196,7 +1200,7 @@ export const mons = [
     symbol: S_EYE,
     level: 6, speed: 13, ac: 4, mr: 0, align: 0,
     geno: G_NOCORPSE | G_GENO | 2,
-    attacks: [{ aatyp: AT_EXPL, adtyp: AD_ELEC, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_EXPL, damage: AD_ELEC, dice: 4, sides: 6 }],
     weight: 10, nutrition: 10,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_ELEC, mr2: MR_ELEC,
@@ -1211,7 +1215,7 @@ export const mons = [
     symbol: S_FELINE,
     level: 2, speed: 18, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 150, nutrition: 150,
     sound: MS_MEW, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1225,7 +1229,7 @@ export const mons = [
     symbol: S_FELINE,
     level: 4, speed: 16, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 200, nutrition: 200,
     sound: MS_MEW, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1240,9 +1244,9 @@ export const mons = [
     level: 4, speed: 15, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 8 }
     ],
     weight: 600, nutrition: 300,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -1258,9 +1262,9 @@ export const mons = [
     level: 5, speed: 15, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 10 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 10 }
     ],
     weight: 600, nutrition: 300,
     sound: MS_GROWL, size: MZ_SMALL,
@@ -1276,9 +1280,9 @@ export const mons = [
     level: 5, speed: 15, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 10 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 10 }
     ],
     weight: 600, nutrition: 300,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -1293,7 +1297,7 @@ export const mons = [
     symbol: S_FELINE,
     level: 6, speed: 15, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 250, nutrition: 250,
     sound: MS_MEW, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1308,9 +1312,9 @@ export const mons = [
     level: 6, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 10 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 10 }
     ],
     weight: 600, nutrition: 300,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -1326,9 +1330,9 @@ export const mons = [
     level: 12, speed: 12, ac: -10, mr: 0, align: -3,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 10 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 10 }
     ],
     weight: 750, nutrition: 400,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -1344,10 +1348,10 @@ export const mons = [
     level: 5, speed: 12, ac: 2, mr: 25, align: -9,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_CURS, damn: 0, damd: 0 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_CURS, dice: 0, sides: 0 }
     ],
     weight: 100, nutrition: 20,
     sound: MS_LAUGH, size: MZ_SMALL,
@@ -1363,9 +1367,9 @@ export const mons = [
     level: 6, speed: 10, ac: -4, mr: 0, align: -9,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }
     ],
     weight: 1000, nutrition: 200,
     sound: MS_GRUNT, size: MZ_HUMAN,
@@ -1381,9 +1385,9 @@ export const mons = [
     level: 9, speed: 15, ac: -2, mr: 0, align: -12,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 4 }
     ],
     weight: 1200, nutrition: 300,
     sound: MS_GRUNT, size: MZ_HUMAN,
@@ -1398,7 +1402,7 @@ export const mons = [
     symbol: S_HUMANOID,
     level: 1, speed: 9, ac: 10, mr: 0, align: 6,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 500, nutrition: 200,
     sound: MS_HUMANOID, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1412,7 +1416,7 @@ export const mons = [
     symbol: S_HUMANOID,
     level: 2, speed: 6, ac: 10, mr: 10, align: 4,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 900, nutrition: 300,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1426,7 +1430,7 @@ export const mons = [
     symbol: S_HUMANOID,
     level: 3, speed: 9, ac: 5, mr: 0, align: -6,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1250, nutrition: 250,
     sound: MS_GROWL, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -1440,7 +1444,7 @@ export const mons = [
     symbol: S_HUMANOID,
     level: 4, speed: 6, ac: 10, mr: 10, align: 5,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 900, nutrition: 300,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1454,7 +1458,7 @@ export const mons = [
     symbol: S_HUMANOID,
     level: 6, speed: 6, ac: 10, mr: 20, align: 6,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 900, nutrition: 300,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1470,10 +1474,10 @@ export const mons = [
     level: 9, speed: 12, ac: 5, mr: 90, align: -8,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_HISS, size: MZ_HUMAN,
@@ -1489,12 +1493,12 @@ export const mons = [
     level: 13, speed: 12, ac: 0, mr: 90, align: -8,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 },
-      { aatyp: AT_TENT, adtyp: AD_DRIN, damn: 2, damd: 1 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 },
+      { type: AT_TENT, damage: AD_DRIN, dice: 2, sides: 1 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_HISS, size: MZ_HUMAN,
@@ -1510,9 +1514,9 @@ export const mons = [
     level: 1, speed: 3, ac: 7, mr: 0, align: -7,
     geno: G_GENO | G_LGROUP | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 100, nutrition: 100,
     sound: MS_SILENT, size: MZ_SMALL,
@@ -1527,7 +1531,7 @@ export const mons = [
     symbol: S_IMP,
     level: 2, speed: 12, ac: 6, mr: 10, align: -7,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_SLEE, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_SLEE, dice: 1, sides: 3 }],
     weight: 60, nutrition: 100,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_SLEEP | MR_POISON, mr2: MR_SLEEP | MR_POISON,
@@ -1541,7 +1545,7 @@ export const mons = [
     symbol: S_IMP,
     level: 3, speed: 12, ac: 2, mr: 20, align: -7,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 20, nutrition: 10,
     sound: MS_CUSS, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -1555,7 +1559,7 @@ export const mons = [
     symbol: S_IMP,
     level: 3, speed: 3, ac: 7, mr: 0, align: -7,
     geno: G_HELL | G_GENO | G_LGROUP | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 150, nutrition: 100,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_SLEEP | MR_POISON, mr2: MR_SLEEP,
@@ -1570,9 +1574,9 @@ export const mons = [
     level: 3, speed: 15, ac: 2, mr: 20, align: -7,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_DRDX, damn: 1, damd: 2 },
-      { aatyp: AT_CLAW, adtyp: AD_DRDX, damn: 1, damd: 2 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_DRDX, dice: 1, sides: 2 },
+      { type: AT_CLAW, damage: AD_DRDX, dice: 1, sides: 2 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 200, nutrition: 200,
     sound: MS_SILENT, size: MZ_SMALL,
@@ -1587,7 +1591,7 @@ export const mons = [
     symbol: S_IMP,
     level: 6, speed: 13, ac: 5, mr: 30, align: 7,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 7 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 7 }],
     weight: 300, nutrition: 200,
     sound: MS_SQAWK, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -1601,7 +1605,7 @@ export const mons = [
     symbol: S_JELLY,
     level: 4, speed: 0, ac: 8, mr: 10, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_COLD, damn: 0, damd: 6 }],
+    attacks: [{ type: AT_NONE, damage: AD_COLD, dice: 0, sides: 6 }],
     weight: 50, nutrition: 20,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_COLD | MR_POISON, mr2: MR_COLD | MR_POISON,
@@ -1616,7 +1620,7 @@ export const mons = [
     symbol: S_JELLY,
     level: 5, speed: 0, ac: 8, mr: 10, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_ACID, damn: 0, damd: 6 }],
+    attacks: [{ type: AT_NONE, damage: AD_ACID, dice: 0, sides: 6 }],
     weight: 50, nutrition: 20,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_ACID | MR_STONE, mr2: MR_ACID | MR_STONE,
@@ -1631,7 +1635,7 @@ export const mons = [
     symbol: S_JELLY,
     level: 6, speed: 3, ac: 8, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_ACID, damn: 3, damd: 6 }, { aatyp: AT_NONE, adtyp: AD_ACID, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_ENGL, damage: AD_ACID, dice: 3, sides: 6 }, { type: AT_NONE, damage: AD_ACID, dice: 3, sides: 6 }],
     weight: 50, nutrition: 20,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_ACID | MR_STONE, mr2: MR_ACID | MR_STONE,
@@ -1646,7 +1650,7 @@ export const mons = [
     symbol: S_KOBOLD,
     level: 0, speed: 6, ac: 10, mr: 0, align: -2,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 400, nutrition: 100,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: MR_POISON, mr2: 0,
@@ -1660,7 +1664,7 @@ export const mons = [
     symbol: S_KOBOLD,
     level: 1, speed: 6, ac: 10, mr: 0, align: -3,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 450, nutrition: 150,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: MR_POISON, mr2: 0,
@@ -1674,7 +1678,7 @@ export const mons = [
     symbol: S_KOBOLD,
     level: 2, speed: 6, ac: 10, mr: 0, align: -4,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 500, nutrition: 200,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: MR_POISON, mr2: 0,
@@ -1688,7 +1692,7 @@ export const mons = [
     symbol: S_KOBOLD,
     level: 2, speed: 6, ac: 6, mr: 10, align: -4,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 450, nutrition: 150,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: MR_POISON, mr2: 0,
@@ -1702,7 +1706,7 @@ export const mons = [
     symbol: S_LEPRECHAUN,
     level: 5, speed: 15, ac: 8, mr: 20, align: 0,
     geno: G_GENO | 4,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SGLD, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SGLD, dice: 1, sides: 2 }],
     weight: 60, nutrition: 30,
     sound: MS_LAUGH, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -1716,7 +1720,7 @@ export const mons = [
     symbol: S_MIMIC,
     level: 7, speed: 3, ac: 7, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 }],
     weight: 300, nutrition: 200,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_ACID, mr2: 0,
@@ -1731,7 +1735,7 @@ export const mons = [
     symbol: S_MIMIC,
     level: 8, speed: 3, ac: 7, mr: 10, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_STCK, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_STCK, dice: 3, sides: 4 }],
     weight: 600, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_ACID, mr2: 0,
@@ -1747,7 +1751,7 @@ export const mons = [
     symbol: S_MIMIC,
     level: 9, speed: 3, ac: 7, mr: 20, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_STCK, damn: 3, damd: 6 }, { aatyp: AT_CLAW, adtyp: AD_STCK, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_STCK, dice: 3, sides: 6 }, { type: AT_CLAW, damage: AD_STCK, dice: 3, sides: 6 }],
     weight: 800, nutrition: 500,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_ACID, mr2: 0,
@@ -1763,7 +1767,7 @@ export const mons = [
     symbol: S_NYMPH,
     level: 3, speed: 12, ac: 9, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SITM, damn: 0, damd: 0 }, { aatyp: AT_CLAW, adtyp: AD_SEDU, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SITM, dice: 0, sides: 0 }, { type: AT_CLAW, damage: AD_SEDU, dice: 0, sides: 0 }],
     weight: 600, nutrition: 300,
     sound: MS_SEDUCE, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1777,7 +1781,7 @@ export const mons = [
     symbol: S_NYMPH,
     level: 3, speed: 12, ac: 9, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SITM, damn: 0, damd: 0 }, { aatyp: AT_CLAW, adtyp: AD_SEDU, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SITM, dice: 0, sides: 0 }, { type: AT_CLAW, damage: AD_SEDU, dice: 0, sides: 0 }],
     weight: 600, nutrition: 300,
     sound: MS_SEDUCE, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1791,7 +1795,7 @@ export const mons = [
     symbol: S_NYMPH,
     level: 3, speed: 12, ac: 9, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SITM, damn: 0, damd: 0 }, { aatyp: AT_CLAW, adtyp: AD_SEDU, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SITM, dice: 0, sides: 0 }, { type: AT_CLAW, damage: AD_SEDU, dice: 0, sides: 0 }],
     weight: 600, nutrition: 300,
     sound: MS_SEDUCE, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1805,7 +1809,7 @@ export const mons = [
     symbol: S_ORC,
     level: 0, speed: 6, ac: 10, mr: 0, align: -3,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 400, nutrition: 100,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1819,7 +1823,7 @@ export const mons = [
     symbol: S_ORC,
     level: 1, speed: 9, ac: 10, mr: 0, align: -4,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1000, nutrition: 200,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -1833,7 +1837,7 @@ export const mons = [
     symbol: S_ORC,
     level: 1, speed: 9, ac: 10, mr: 0, align: -3,
     geno: G_GENO | G_NOGEN | G_LGROUP,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 850, nutrition: 150,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1847,7 +1851,7 @@ export const mons = [
     symbol: S_ORC,
     level: 2, speed: 9, ac: 10, mr: 0, align: -4,
     geno: G_GENO | G_LGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1000, nutrition: 200,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1861,7 +1865,7 @@ export const mons = [
     symbol: S_ORC,
     level: 3, speed: 5, ac: 10, mr: 0, align: -5,
     geno: G_GENO | G_LGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1200, nutrition: 200,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1875,7 +1879,7 @@ export const mons = [
     symbol: S_ORC,
     level: 3, speed: 7, ac: 10, mr: 0, align: -4,
     geno: G_GENO | G_LGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1300, nutrition: 300,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1889,7 +1893,7 @@ export const mons = [
     symbol: S_ORC,
     level: 3, speed: 9, ac: 5, mr: 10, align: -5,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1000, nutrition: 300,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1903,7 +1907,7 @@ export const mons = [
     symbol: S_ORC,
     level: 5, speed: 5, ac: 10, mr: 0, align: -5,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1350, nutrition: 350,
     sound: MS_ORC, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -1917,7 +1921,7 @@ export const mons = [
     symbol: S_PIERCER,
     level: 3, speed: 1, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 4,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 200, nutrition: 200,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -1932,7 +1936,7 @@ export const mons = [
     symbol: S_PIERCER,
     level: 5, speed: 1, ac: 0, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }],
     weight: 400, nutrition: 300,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -1947,7 +1951,7 @@ export const mons = [
     symbol: S_PIERCER,
     level: 7, speed: 1, ac: 0, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 6 }],
     weight: 400, nutrition: 300,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_ACID, mr2: 0,
@@ -1963,9 +1967,9 @@ export const mons = [
     level: 2, speed: 9, ac: 7, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 4,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 8 }
     ],
     weight: 400, nutrition: 100,
     sound: MS_MOO, size: MZ_LARGE,
@@ -1980,7 +1984,7 @@ export const mons = [
     symbol: S_QUADRUPED,
     level: 5, speed: 9, ac: 0, mr: 0, align: -2,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 4, damd: 12 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BUTT, damage: AD_PHYS, dice: 4, sides: 12 }, { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 2500, nutrition: 500,
     sound: MS_TRUMPET, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -1995,9 +1999,9 @@ export const mons = [
     level: 6, speed: 18, ac: 4, mr: 10, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 1200, nutrition: 500,
     sound: MS_IMITATE, size: MZ_LARGE,
@@ -2012,7 +2016,7 @@ export const mons = [
     symbol: S_QUADRUPED,
     level: 8, speed: 3, ac: 2, mr: 10, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }],
     weight: 2500, nutrition: 500,
     sound: MS_BURBLE, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2026,7 +2030,7 @@ export const mons = [
     symbol: S_QUADRUPED,
     level: 12, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 2650, nutrition: 650,
     sound: MS_BELLOW, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2040,7 +2044,7 @@ export const mons = [
     symbol: S_QUADRUPED,
     level: 14, speed: 12, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 5, damd: 4 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 5, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 5, sides: 4 }, { type: AT_CLAW, damage: AD_PHYS, dice: 5, sides: 4 }],
     weight: 3800, nutrition: 800,
     sound: MS_BELLOW, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2054,7 +2058,7 @@ export const mons = [
     symbol: S_QUADRUPED,
     level: 20, speed: 12, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 4, damd: 8 }, { aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 4, damd: 8 }],
+    attacks: [{ type: AT_BUTT, damage: AD_PHYS, dice: 4, sides: 8 }, { type: AT_BUTT, damage: AD_PHYS, dice: 4, sides: 8 }],
     weight: 3800, nutrition: 800,
     sound: MS_TRUMPET, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2068,7 +2072,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 0, speed: 12, ac: 7, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 20, nutrition: 12,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -2082,7 +2086,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 1, speed: 10, ac: 7, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 30, nutrition: 30,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -2096,7 +2100,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 2, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRCO, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRCO, dice: 2, sides: 4 }],
     weight: 30, nutrition: 5,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: MR_POISON, mr2: 0,
@@ -2110,7 +2114,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 2, speed: 12, ac: 6, mr: 10, align: -7,
     geno: G_NOGEN | G_NOCORPSE,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_WERE, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_WERE, dice: 1, sides: 4 }],
     weight: 40, nutrition: 30,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: MR_POISON, mr2: 0,
@@ -2124,7 +2128,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 3, speed: 3, ac: 0, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 30, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -2138,7 +2142,7 @@ export const mons = [
     symbol: S_RODENT,
     level: 3, speed: 3, ac: 0, mr: 20, align: 0,
     geno: G_NOGEN | G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 30, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -2153,7 +2157,7 @@ export const mons = [
     symbol: S_SPIDER,
     level: 1, speed: 12, ac: 3, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 50, nutrition: 50,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2167,7 +2171,7 @@ export const mons = [
     symbol: S_SPIDER,
     level: 2, speed: 4, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 1, sides: 3 }],
     weight: 50, nutrition: 50,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2181,7 +2185,7 @@ export const mons = [
     symbol: S_SPIDER,
     level: 5, speed: 15, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 2, sides: 4 }],
     weight: 200, nutrition: 100,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2196,9 +2200,9 @@ export const mons = [
     level: 5, speed: 15, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 2 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 2 },
-      { aatyp: AT_STNG, adtyp: AD_DRST, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 2 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 2 },
+      { type: AT_STNG, damage: AD_DRST, dice: 1, sides: 4 }
     ],
     weight: 50, nutrition: 100,
     sound: MS_SILENT, size: MZ_SMALL,
@@ -2214,7 +2218,7 @@ export const mons = [
     symbol: S_TRAPPER,
     level: 10, speed: 3, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_WRAP, damn: 1, damd: 6 }, { aatyp: AT_ENGL, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_ENGL, damage: AD_WRAP, dice: 1, sides: 6 }, { type: AT_ENGL, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 800, nutrition: 350,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -2229,7 +2233,7 @@ export const mons = [
     symbol: S_TRAPPER,
     level: 12, speed: 3, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_WRAP, damn: 1, damd: 8 }, { aatyp: AT_ENGL, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_ENGL, damage: AD_WRAP, dice: 1, sides: 8 }, { type: AT_ENGL, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 800, nutrition: 350,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -2244,7 +2248,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 3, speed: 16, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 1300, nutrition: 250,
     sound: MS_NEIGH, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -2258,7 +2262,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 4, speed: 24, ac: 2, mr: 70, align: 7,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 1, damd: 12 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BUTT, damage: AD_PHYS, dice: 1, sides: 12 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1300, nutrition: 300,
     sound: MS_NEIGH, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2272,7 +2276,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 4, speed: 24, ac: 2, mr: 70, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 1, damd: 12 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BUTT, damage: AD_PHYS, dice: 1, sides: 12 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1300, nutrition: 300,
     sound: MS_NEIGH, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2286,7 +2290,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 4, speed: 24, ac: 2, mr: 70, align: -7,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 1, damd: 12 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BUTT, damage: AD_PHYS, dice: 1, sides: 12 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1300, nutrition: 300,
     sound: MS_NEIGH, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2300,7 +2304,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 5, speed: 20, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 1500, nutrition: 300,
     sound: MS_NEIGH, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2314,7 +2318,7 @@ export const mons = [
     symbol: S_UNICORN,
     level: 7, speed: 24, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 10 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 10 }, { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 1800, nutrition: 350,
     sound: MS_NEIGH, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2328,7 +2332,7 @@ export const mons = [
     symbol: S_VORTEX,
     level: 3, speed: 1, ac: 0, mr: 0, align: 0,
     geno: G_GENO | G_NOCORPSE | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_ENGL, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -2343,7 +2347,7 @@ export const mons = [
     symbol: S_VORTEX,
     level: 4, speed: 20, ac: 2, mr: 30, align: 0,
     geno: G_GENO | G_NOCORPSE | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_BLND, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_ENGL, damage: AD_BLND, dice: 2, sides: 8 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -2358,7 +2362,7 @@ export const mons = [
     symbol: S_VORTEX,
     level: 5, speed: 20, ac: 2, mr: 30, align: 0,
     geno: G_NOHELL | G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_COLD, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_ENGL, damage: AD_COLD, dice: 1, sides: 6 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -2374,9 +2378,9 @@ export const mons = [
     level: 6, speed: 20, ac: 2, mr: 30, align: 0,
     geno: G_GENO | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_ENGL, adtyp: AD_ELEC, damn: 1, damd: 6 },
-      { aatyp: AT_ENGL, adtyp: AD_DREN, damn: 2, damd: 6 },
-      { aatyp: AT_NONE, adtyp: AD_ELEC, damn: 0, damd: 4 }
+      { type: AT_ENGL, damage: AD_ELEC, dice: 1, sides: 6 },
+      { type: AT_ENGL, damage: AD_DREN, dice: 2, sides: 6 },
+      { type: AT_NONE, damage: AD_ELEC, dice: 0, sides: 4 }
     ],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
@@ -2392,7 +2396,7 @@ export const mons = [
     symbol: S_VORTEX,
     level: 7, speed: 22, ac: 2, mr: 30, align: 0,
     geno: G_HELL | G_GENO | G_NOCORPSE | 2,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_FIRE, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_ENGL, damage: AD_FIRE, dice: 1, sides: 8 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_FIRE | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -2407,7 +2411,7 @@ export const mons = [
     symbol: S_VORTEX,
     level: 8, speed: 22, ac: 2, mr: 30, align: 0,
     geno: G_HELL | G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_FIRE, damn: 1, damd: 10 }, { aatyp: AT_NONE, adtyp: AD_FIRE, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_ENGL, damage: AD_FIRE, dice: 1, sides: 10 }, { type: AT_NONE, damage: AD_FIRE, dice: 0, sides: 4 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_FIRE | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -2422,7 +2426,7 @@ export const mons = [
     symbol: S_WORM,
     level: 5, speed: 3, ac: 5, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 600, nutrition: 250,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2436,7 +2440,7 @@ export const mons = [
     symbol: S_WORM,
     level: 8, speed: 3, ac: 5, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 600, nutrition: 250,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2450,7 +2454,7 @@ export const mons = [
     symbol: S_WORM,
     level: 9, speed: 3, ac: 5, mr: 10, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1500, nutrition: 500,
     sound: MS_SILENT, size: MZ_GIGANTIC,
     mr1: 0, mr2: 0,
@@ -2465,7 +2469,7 @@ export const mons = [
     symbol: S_WORM,
     level: 15, speed: 9, ac: 6, mr: 20, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_ENGL, adtyp: AD_DGST, damn: 1, damd: 10 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_ENGL, damage: AD_DGST, dice: 1, sides: 10 }],
     weight: 2700, nutrition: 700,
     sound: MS_SILENT, size: MZ_GIGANTIC,
     mr1: 0, mr2: 0,
@@ -2479,7 +2483,7 @@ export const mons = [
     symbol: S_XAN,
     level: 0, speed: 12, ac: 9, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | G_NOCORPSE | 3,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_ELEC, damn: 1, damd: 1 }],
+    attacks: [{ type: AT_BITE, damage: AD_ELEC, dice: 1, sides: 1 }],
     weight: 15, nutrition: 10,
     sound: MS_BUZZ, size: MZ_TINY,
     mr1: MR_ELEC | MR_POISON, mr2: 0,
@@ -2493,7 +2497,7 @@ export const mons = [
     symbol: S_XAN,
     level: 7, speed: 18, ac: -4, mr: 0, align: 0,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_STNG, adtyp: AD_LEGS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_STNG, damage: AD_LEGS, dice: 1, sides: 4 }],
     weight: 300, nutrition: 300,
     sound: MS_BUZZ, size: MZ_TINY,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -2507,7 +2511,7 @@ export const mons = [
     symbol: S_LIGHT,
     level: 3, speed: 15, ac: 0, mr: 0, align: 0,
     geno: G_NOCORPSE | G_GENO | 4,
-    attacks: [{ aatyp: AT_EXPL, adtyp: AD_BLND, damn: 10, damd: 20 }],
+    attacks: [{ type: AT_EXPL, damage: AD_BLND, dice: 10, sides: 20 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_DISINT | MR_SLEEP | MR_POISON
@@ -2523,7 +2527,7 @@ export const mons = [
     symbol: S_LIGHT,
     level: 5, speed: 15, ac: 0, mr: 0, align: 0,
     geno: G_NOCORPSE | G_GENO | 2,
-    attacks: [{ aatyp: AT_EXPL, adtyp: AD_HALU, damn: 10, damd: 12 }],
+    attacks: [{ type: AT_EXPL, damage: AD_HALU, dice: 10, sides: 12 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_DISINT | MR_SLEEP | MR_POISON
@@ -2540,9 +2544,9 @@ export const mons = [
     level: 9, speed: 8, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }
     ],
     weight: 1200, nutrition: 600,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -2558,9 +2562,9 @@ export const mons = [
     level: 8, speed: 10, ac: 5, mr: 30, align: 7,
     geno: G_NOHELL | G_SGROUP | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_DRST, damn: 2, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_HUGS, adtyp: AD_WRAP, damn: 2, damd: 4 }
+      { type: AT_BITE, damage: AD_DRST, dice: 2, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_HUGS, damage: AD_WRAP, dice: 2, sides: 4 }
     ],
     weight: 900, nutrition: 400,
     sound: MS_HISS, size: MZ_LARGE,
@@ -2576,9 +2580,9 @@ export const mons = [
     level: 10, speed: 8, ac: 0, mr: 30, align: 7,
     geno: G_NOHELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_IMITATE, size: MZ_HUMAN,
@@ -2594,10 +2598,10 @@ export const mons = [
     level: 14, speed: 10, ac: -4, mr: 55, align: 12,
     geno: G_NOHELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_MAGC, adtyp: AD_MAGM, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_MAGC, damage: AD_MAGM, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_CUSS, size: MZ_HUMAN,
@@ -2613,10 +2617,10 @@ export const mons = [
     level: 16, speed: 18, ac: -5, mr: 90, align: 15,
     geno: G_NOHELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 2, damd: 6 }
+      { type: AT_KICK, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_BUTT, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SPELL, size: MZ_LARGE,
@@ -2632,11 +2636,11 @@ export const mons = [
     level: 19, speed: 16, ac: -6, mr: 80, align: 15,
     geno: G_NOHELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_GAZE, adtyp: AD_BLND, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 4, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_GAZE, damage: AD_BLND, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 4, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_CUSS, size: MZ_LARGE,
@@ -2652,7 +2656,7 @@ export const mons = [
     symbol: S_BAT,
     level: 0, speed: 22, ac: 8, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 20, nutrition: 20,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -2666,7 +2670,7 @@ export const mons = [
     symbol: S_BAT,
     level: 2, speed: 22, ac: 7, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 30, nutrition: 30,
     sound: MS_SQEEK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -2680,7 +2684,7 @@ export const mons = [
     symbol: S_BAT,
     level: 4, speed: 20, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_CLAW, adtyp: AD_BLND, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_CLAW, damage: AD_BLND, dice: 1, sides: 6 }],
     weight: 40, nutrition: 20,
     sound: MS_SQAWK, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -2694,7 +2698,7 @@ export const mons = [
     symbol: S_BAT,
     level: 5, speed: 20, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_BITE, adtyp: AD_DRST, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_BITE, damage: AD_DRST, dice: 0, sides: 0 }],
     weight: 30, nutrition: 20,
     sound: MS_SQEEK, size: MZ_SMALL,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -2708,7 +2712,7 @@ export const mons = [
     symbol: S_CENTAUR,
     level: 4, speed: 18, ac: 4, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 2500, nutrition: 500,
     sound: MS_HUMANOID, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2722,7 +2726,7 @@ export const mons = [
     symbol: S_CENTAUR,
     level: 5, speed: 18, ac: 3, mr: 10, align: -1,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 2550, nutrition: 600,
     sound: MS_HUMANOID, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -2737,9 +2741,9 @@ export const mons = [
     level: 6, speed: 20, ac: 2, mr: 10, align: -3,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 10 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 10 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 6 }
     ],
     weight: 2550, nutrition: 500,
     sound: MS_HUMANOID, size: MZ_LARGE,
@@ -2754,7 +2758,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -2768,7 +2772,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -2782,7 +2786,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -2796,7 +2800,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_FIRE, mr2: 0,
@@ -2810,7 +2814,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_COLD, mr2: 0,
@@ -2824,7 +2828,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_SLEEP, mr2: 0,
@@ -2838,7 +2842,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_DISINT, mr2: 0,
@@ -2852,7 +2856,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_ELEC, mr2: 0,
@@ -2866,7 +2870,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_POISON, mr2: 0,
@@ -2880,7 +2884,7 @@ export const mons = [
     symbol: S_DRAGON,
     level: 12, speed: 9, ac: 2, mr: 10, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_ROAR, size: MZ_HUGE,
     mr1: MR_ACID | MR_STONE, mr2: 0,
@@ -2895,10 +2899,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 4,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_MAGM, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_MAGM, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -2915,10 +2919,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 4,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_FIRE, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -2935,10 +2939,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 4,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_COLD, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_COLD, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -2955,10 +2959,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: -4,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 6, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_FIRE, dice: 6, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -2975,10 +2979,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: -5,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_COLD, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_COLD, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -2995,10 +2999,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 5,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_SLEE, damn: 4, damd: 25 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_SLEE, dice: 4, sides: 25 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -3015,10 +3019,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: -6,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_DISN, damn: 1, damd: 255 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_DISN, dice: 1, sides: 255 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -3035,10 +3039,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: -7,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_ELEC, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_ELEC, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -3055,10 +3059,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 6,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_DRST, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_DRST, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -3075,10 +3079,10 @@ export const mons = [
     level: 15, speed: 9, ac: -1, mr: 20, align: 7,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_ACID, damn: 4, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_BREA, damage: AD_ACID, dice: 4, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 4500, nutrition: 1500,
     sound: MS_ROAR, size: MZ_GIGANTIC,
@@ -3094,7 +3098,7 @@ export const mons = [
     symbol: S_ELEMENTAL,
     level: 8, speed: 12, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 4 }],
     weight: 900, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -3108,7 +3112,7 @@ export const mons = [
     symbol: S_ELEMENTAL,
     level: 8, speed: 36, ac: 2, mr: 30, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_PHYS, damn: 1, damd: 10 }],
+    attacks: [{ type: AT_ENGL, damage: AD_PHYS, dice: 1, sides: 10 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_POISON | MR_STONE, mr2: 0,
@@ -3123,7 +3127,7 @@ export const mons = [
     symbol: S_ELEMENTAL,
     level: 8, speed: 12, ac: 2, mr: 30, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_FIRE, damn: 3, damd: 6 }, { aatyp: AT_NONE, adtyp: AD_FIRE, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_FIRE, dice: 3, sides: 6 }, { type: AT_NONE, damage: AD_FIRE, dice: 0, sides: 4 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_FIRE | MR_POISON | MR_STONE, mr2: 0,
@@ -3138,7 +3142,7 @@ export const mons = [
     symbol: S_ELEMENTAL,
     level: 8, speed: 6, ac: 2, mr: 30, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 6 }],
     weight: 2500, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_FIRE | MR_COLD | MR_POISON | MR_STONE, mr2: 0,
@@ -3153,7 +3157,7 @@ export const mons = [
     symbol: S_ELEMENTAL,
     level: 8, speed: 5, ac: 2, mr: 30, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 5, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 5, sides: 6 }],
     weight: 2500, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_POISON | MR_STONE, mr2: 0,
@@ -3168,7 +3172,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 0, speed: 1, ac: 9, mr: 0, align: 0,
     geno: G_GENO | 4,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_STCK, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_STCK, dice: 0, sides: 0 }],
     weight: 20, nutrition: 200,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -3183,7 +3187,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 1, speed: 0, ac: 9, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_COLD, damn: 0, damd: 6 }],
+    attacks: [{ type: AT_NONE, damage: AD_COLD, dice: 0, sides: 6 }],
     weight: 50, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_COLD | MR_POISON, mr2: MR_COLD | MR_POISON,
@@ -3198,7 +3202,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 1, speed: 0, ac: 9, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_STUN, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_NONE, damage: AD_STUN, dice: 0, sides: 4 }],
     weight: 50, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -3213,7 +3217,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 1, speed: 0, ac: 9, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_ACID, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_NONE, damage: AD_ACID, dice: 0, sides: 4 }],
     weight: 50, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_ACID | MR_STONE, mr2: MR_ACID | MR_STONE,
@@ -3228,7 +3232,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 1, speed: 0, ac: 9, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_FIRE, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_NONE, damage: AD_FIRE, dice: 0, sides: 4 }],
     weight: 50, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_FIRE | MR_POISON, mr2: MR_FIRE | MR_POISON,
@@ -3258,7 +3262,7 @@ export const mons = [
     symbol: S_FUNGUS,
     level: 3, speed: 1, ac: 7, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PHYS, damn: 1, damd: 4 }, { aatyp: AT_TUCH, adtyp: AD_STCK, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PHYS, dice: 1, sides: 4 }, { type: AT_TUCH, damage: AD_STCK, dice: 0, sides: 0 }],
     weight: 100, nutrition: 100,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -3273,7 +3277,7 @@ export const mons = [
     symbol: S_GNOME,
     level: 1, speed: 6, ac: 10, mr: 4, align: 0,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 650, nutrition: 100,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -3287,7 +3291,7 @@ export const mons = [
     symbol: S_GNOME,
     level: 3, speed: 8, ac: 10, mr: 4, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 700, nutrition: 120,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -3301,7 +3305,7 @@ export const mons = [
     symbol: S_GNOME,
     level: 3, speed: 10, ac: 4, mr: 10, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 700, nutrition: 120,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -3315,7 +3319,7 @@ export const mons = [
     symbol: S_GNOME,
     level: 5, speed: 10, ac: 10, mr: 20, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 750, nutrition: 150,
     sound: MS_ORC, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -3329,7 +3333,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 6, speed: 6, ac: 0, mr: 0, align: 2,
     geno: G_GENO | G_NOGEN | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 }],
     weight: 2250, nutrition: 750,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -3344,7 +3348,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 6, speed: 6, ac: 0, mr: 0, align: 2,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 }],
     weight: 2250, nutrition: 750,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -3359,7 +3363,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 8, speed: 10, ac: 6, mr: 0, align: -2,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 2200, nutrition: 700,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -3374,7 +3378,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 9, speed: 12, ac: 4, mr: 5, align: 2,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 }],
     weight: 2250, nutrition: 750,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: MR_FIRE, mr2: MR_FIRE,
@@ -3389,7 +3393,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 10, speed: 12, ac: 3, mr: 10, align: -3,
     geno: G_NOHELL | G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 12 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 12 }],
     weight: 2250, nutrition: 750,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: MR_COLD, mr2: MR_COLD,
@@ -3404,7 +3408,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 10, speed: 12, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 6 }],
     weight: 1700, nutrition: 500,
     sound: MS_GRUNT, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -3418,7 +3422,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 16, speed: 12, ac: 3, mr: 10, align: -3,
     geno: G_GENO | G_SGROUP | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 12 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 12 }],
     weight: 2250, nutrition: 750,
     sound: MS_BOAST, size: MZ_HUGE,
     mr1: MR_ELEC, mr2: MR_ELEC,
@@ -3433,7 +3437,7 @@ export const mons = [
     symbol: S_GIANT,
     level: 16, speed: 18, ac: -3, mr: 70, align: 9,
     geno: 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 2300, nutrition: 900,
     sound: MS_SPELL, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -3448,9 +3452,9 @@ export const mons = [
     level: 15, speed: 15, ac: 6, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 10 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 10 },
-      { aatyp: AT_BUTT, adtyp: AD_PHYS, damn: 2, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 10 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 10 },
+      { type: AT_BUTT, damage: AD_PHYS, dice: 2, sides: 8 }
     ],
     weight: 1500, nutrition: 700,
     sound: MS_MOO, size: MZ_LARGE,
@@ -3466,10 +3470,10 @@ export const mons = [
     level: 15, speed: 12, ac: -2, mr: 50, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 10 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 10 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 10 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 10 }
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 10 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 10 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 10 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 10 }
     ],
     weight: 1300, nutrition: 600,
     sound: MS_BURBLE, size: MZ_LARGE,
@@ -3484,7 +3488,7 @@ export const mons = [
     symbol: S_KOP,
     level: 1, speed: 6, ac: 10, mr: 10, align: 9,
     geno: G_GENO | G_LGROUP | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 1450, nutrition: 200,
     sound: MS_ARREST, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -3498,7 +3502,7 @@ export const mons = [
     symbol: S_KOP,
     level: 2, speed: 8, ac: 10, mr: 10, align: 10,
     geno: G_GENO | G_SGROUP | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 200,
     sound: MS_ARREST, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -3512,7 +3516,7 @@ export const mons = [
     symbol: S_KOP,
     level: 3, speed: 10, ac: 10, mr: 20, align: 11,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 200,
     sound: MS_ARREST, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -3526,7 +3530,7 @@ export const mons = [
     symbol: S_KOP,
     level: 4, speed: 12, ac: 10, mr: 20, align: 12,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1450, nutrition: 200,
     sound: MS_ARREST, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -3540,7 +3544,7 @@ export const mons = [
     symbol: S_LICH,
     level: 11, speed: 6, ac: 0, mr: 30, align: -9,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_COLD, damn: 1, damd: 10 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_COLD, dice: 1, sides: 10 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1200, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: MR_COLD,
@@ -3554,7 +3558,7 @@ export const mons = [
     symbol: S_LICH,
     level: 14, speed: 9, ac: -2, mr: 60, align: -12,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_COLD, damn: 3, damd: 4 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_COLD, dice: 3, sides: 4 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1200, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: MR_COLD,
@@ -3568,7 +3572,7 @@ export const mons = [
     symbol: S_LICH,
     level: 17, speed: 9, ac: -4, mr: 90, align: -15,
     geno: G_HELL | G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_COLD, damn: 3, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_COLD, dice: 3, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1200, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_SLEEP | MR_POISON, mr2: MR_FIRE | MR_COLD,
@@ -3582,7 +3586,7 @@ export const mons = [
     symbol: S_LICH,
     level: 25, speed: 9, ac: -6, mr: 90, align: -15,
     geno: G_HELL | G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_COLD, damn: 5, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_COLD, dice: 5, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1200, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_SLEEP | MR_ELEC | MR_POISON, mr2: MR_FIRE | MR_COLD,
@@ -3596,7 +3600,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 3, speed: 8, ac: 6, mr: 20, align: -2,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 400, nutrition: 50,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3610,7 +3614,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 4, speed: 10, ac: 6, mr: 20, align: -3,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 650, nutrition: 50,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3624,7 +3628,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 5, speed: 10, ac: 5, mr: 20, align: -4,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 850, nutrition: 75,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3638,7 +3642,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 5, speed: 10, ac: 5, mr: 20, align: -4,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 900, nutrition: 150,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3652,7 +3656,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 6, speed: 12, ac: 4, mr: 30, align: -5,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 175,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3666,7 +3670,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 6, speed: 12, ac: 4, mr: 30, align: -5,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 200,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3680,7 +3684,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 7, speed: 12, ac: 4, mr: 30, align: -6,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1700, nutrition: 250,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3694,7 +3698,7 @@ export const mons = [
     symbol: S_MUMMY,
     level: 8, speed: 14, ac: 3, mr: 30, align: -7,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 }, { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 }],
     weight: 2050, nutrition: 375,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -3708,7 +3712,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 3, speed: 10, ac: 6, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 500, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_LARGE,
     mr1: MR_FIRE | MR_POISON, mr2: MR_POISON,
@@ -3722,7 +3726,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 3, speed: 10, ac: 6, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 500, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_LARGE,
     mr1: MR_POISON | MR_ACID | MR_STONE, mr2: MR_POISON,
@@ -3737,7 +3741,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 3, speed: 10, ac: 6, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 500, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -3751,7 +3755,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 3, speed: 10, ac: 6, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 500, nutrition: 100,
     sound: MS_MUMBLE, size: MZ_LARGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -3765,7 +3769,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 6, speed: 12, ac: 4, mr: 0, align: -4,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_BREA, damage: AD_FIRE, dice: 2, sides: 6 }],
     weight: 2600, nutrition: 400,
     sound: MS_MUMBLE, size: MZ_HUGE,
     mr1: MR_FIRE | MR_POISON, mr2: MR_FIRE | MR_POISON,
@@ -3780,7 +3784,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 8, speed: 14, ac: 2, mr: 10, align: 4,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_SPIT, adtyp: AD_ACID, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_SPIT, damage: AD_ACID, dice: 0, sides: 0 }],
     weight: 2600, nutrition: 400,
     sound: MS_MUMBLE, size: MZ_HUGE,
     mr1: MR_POISON | MR_ACID | MR_STONE, mr2: MR_POISON | MR_ACID | MR_STONE,
@@ -3795,7 +3799,7 @@ export const mons = [
     symbol: S_NAGA,
     level: 10, speed: 14, ac: 2, mr: 70, align: 5,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 4, sides: 6 }],
     weight: 2600, nutrition: 400,
     sound: MS_MUMBLE, size: MZ_HUGE,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -3811,10 +3815,10 @@ export const mons = [
     level: 12, speed: 16, ac: 0, mr: 50, align: 7,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_SPIT, adtyp: AD_DRST, damn: 1, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PLYS, damn: 1, damd: 6 },
-      { aatyp: AT_TUCH, adtyp: AD_PHYS, damn: 0, damd: 0 },
-      { aatyp: AT_HUGS, adtyp: AD_WRAP, damn: 2, damd: 4 }
+      { type: AT_SPIT, damage: AD_DRST, dice: 1, sides: 6 },
+      { type: AT_BITE, damage: AD_PLYS, dice: 1, sides: 6 },
+      { type: AT_TUCH, damage: AD_PHYS, dice: 0, sides: 0 },
+      { type: AT_HUGS, damage: AD_WRAP, dice: 2, sides: 4 }
     ],
     weight: 2600, nutrition: 400,
     sound: MS_MUMBLE, size: MZ_HUGE,
@@ -3830,7 +3834,7 @@ export const mons = [
     symbol: S_OGRE,
     level: 5, speed: 10, ac: 5, mr: 0, align: -3,
     geno: G_SGROUP | G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 5 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 5 }],
     weight: 1600, nutrition: 500,
     sound: MS_GRUNT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -3844,7 +3848,7 @@ export const mons = [
     symbol: S_OGRE,
     level: 7, speed: 12, ac: 3, mr: 30, align: -5,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1700, nutrition: 700,
     sound: MS_GRUNT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -3858,7 +3862,7 @@ export const mons = [
     symbol: S_OGRE,
     level: 9, speed: 14, ac: 4, mr: 60, align: -7,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 5 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 5 }],
     weight: 1700, nutrition: 750,
     sound: MS_GRUNT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -3872,7 +3876,7 @@ export const mons = [
     symbol: S_PUDDING,
     level: 3, speed: 1, ac: 8, mr: 0, align: 0,
     geno: G_GENO | G_NOCORPSE | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_RUST, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_BITE, damage: AD_RUST, dice: 2, sides: 8 }],
     weight: 500, nutrition: 250,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_FIRE | MR_COLD | MR_POISON | MR_ACID | MR_STONE, mr2: MR_FIRE | MR_COLD | MR_POISON,
@@ -3887,7 +3891,7 @@ export const mons = [
     symbol: S_PUDDING,
     level: 5, speed: 3, ac: 8, mr: 0, align: 0,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DCAY, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_DCAY, dice: 0, sides: 0 }],
     weight: 500, nutrition: 250,
     sound: MS_SILENT, size: MZ_MEDIUM,
     mr1: MR_COLD | MR_ELEC | MR_POISON | MR_ACID | MR_STONE, mr2: MR_COLD | MR_ELEC | MR_POISON,
@@ -3902,7 +3906,7 @@ export const mons = [
     symbol: S_PUDDING,
     level: 6, speed: 6, ac: 6, mr: 0, align: 0,
     geno: G_HELL | G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_SLIM, damn: 1, damd: 4 }, { aatyp: AT_NONE, adtyp: AD_SLIM, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_TUCH, damage: AD_SLIM, dice: 1, sides: 4 }, { type: AT_NONE, damage: AD_SLIM, dice: 0, sides: 0 }],
     weight: 400, nutrition: 150,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_COLD | MR_ELEC | MR_POISON | MR_ACID | MR_STONE, mr2: MR_ACID | MR_STONE,
@@ -3917,7 +3921,7 @@ export const mons = [
     symbol: S_PUDDING,
     level: 10, speed: 6, ac: 6, mr: 0, align: 0,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_CORR, damn: 3, damd: 8 }, { aatyp: AT_NONE, adtyp: AD_CORR, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_CORR, dice: 3, sides: 8 }, { type: AT_NONE, damage: AD_CORR, dice: 0, sides: 0 }],
     weight: 900, nutrition: 250,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_COLD | MR_ELEC | MR_POISON | MR_ACID | MR_STONE, mr2: MR_COLD | MR_ELEC | MR_POISON,
@@ -3932,7 +3936,7 @@ export const mons = [
     symbol: S_QUANTMECH,
     level: 7, speed: 12, ac: 3, mr: 10, align: 0,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_TLPT, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_TLPT, dice: 1, sides: 4 }],
     weight: 1450, nutrition: 20,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -3946,7 +3950,7 @@ export const mons = [
     symbol: S_QUANTMECH,
     level: 12, speed: 12, ac: 3, mr: 10, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_POLY, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_POLY, dice: 1, sides: 4 }],
     weight: 1450, nutrition: 20,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -3961,9 +3965,9 @@ export const mons = [
     level: 5, speed: 18, ac: 2, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_TUCH, adtyp: AD_RUST, damn: 0, damd: 0 },
-      { aatyp: AT_TUCH, adtyp: AD_RUST, damn: 0, damd: 0 },
-      { aatyp: AT_NONE, adtyp: AD_RUST, damn: 0, damd: 0 }
+      { type: AT_TUCH, damage: AD_RUST, dice: 0, sides: 0 },
+      { type: AT_TUCH, damage: AD_RUST, dice: 0, sides: 0 },
+      { type: AT_NONE, damage: AD_RUST, dice: 0, sides: 0 }
     ],
     weight: 1000, nutrition: 250,
     sound: MS_SILENT, size: MZ_MEDIUM,
@@ -3978,7 +3982,7 @@ export const mons = [
     symbol: S_RUSTMONST,
     level: 12, speed: 12, ac: -10, mr: 0, align: -3,
     geno: G_HELL | G_GENO | 2,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_ENCH, damn: 4, damd: 4 }, { aatyp: AT_NONE, adtyp: AD_ENCH, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_CLAW, damage: AD_ENCH, dice: 4, sides: 4 }, { type: AT_NONE, damage: AD_ENCH, dice: 0, sides: 0 }],
     weight: 750, nutrition: 200,
     sound: MS_GROWL, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -3992,7 +3996,7 @@ export const mons = [
     symbol: S_SNAKE,
     level: 1, speed: 8, ac: 8, mr: 0, align: 0,
     geno: G_LGROUP | G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 50, nutrition: 60,
     sound: MS_HISS, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -4007,7 +4011,7 @@ export const mons = [
     symbol: S_SNAKE,
     level: 4, speed: 15, ac: 3, mr: 0, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 1, sides: 6 }],
     weight: 100, nutrition: 80,
     sound: MS_HISS, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -4022,7 +4026,7 @@ export const mons = [
     symbol: S_SNAKE,
     level: 4, speed: 15, ac: 3, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN | G_LGROUP,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 1, sides: 6 }],
     weight: 150, nutrition: 80,
     sound: MS_HISS, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -4038,10 +4042,10 @@ export const mons = [
     level: 6, speed: 3, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_TUCH, adtyp: AD_PHYS, damn: 0, damd: 0 },
-      { aatyp: AT_HUGS, adtyp: AD_WRAP, damn: 1, damd: 4 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 2, damd: 4 }
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_TUCH, damage: AD_PHYS, dice: 0, sides: 0 },
+      { type: AT_HUGS, damage: AD_WRAP, dice: 1, sides: 4 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 2, sides: 4 }
     ],
     weight: 250, nutrition: 100,
     sound: MS_HISS, size: MZ_LARGE,
@@ -4057,7 +4061,7 @@ export const mons = [
     symbol: S_SNAKE,
     level: 6, speed: 15, ac: 2, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 4 }, { aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 1, sides: 4 }, { type: AT_BITE, damage: AD_DRST, dice: 1, sides: 4 }],
     weight: 100, nutrition: 60,
     sound: MS_HISS, size: MZ_MEDIUM,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -4072,7 +4076,7 @@ export const mons = [
     symbol: S_SNAKE,
     level: 6, speed: 18, ac: 2, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 2, damd: 4 }, { aatyp: AT_SPIT, adtyp: AD_BLND, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 2, sides: 4 }, { type: AT_SPIT, damage: AD_BLND, dice: 0, sides: 0 }],
     weight: 250, nutrition: 100,
     sound: MS_HISS, size: MZ_MEDIUM,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -4088,9 +4092,9 @@ export const mons = [
     level: 7, speed: 12, ac: 4, mr: 0, align: -3,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 2 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 2 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 2 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 2 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 800, nutrition: 350,
     sound: MS_GRUNT, size: MZ_LARGE,
@@ -4106,9 +4110,9 @@ export const mons = [
     level: 9, speed: 10, ac: 2, mr: 20, align: -3,
     geno: G_NOHELL | G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_COLD, damn: 2, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_COLD, dice: 2, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 1000, nutrition: 300,
     sound: MS_GRUNT, size: MZ_LARGE,
@@ -4124,9 +4128,9 @@ export const mons = [
     level: 9, speed: 12, ac: 0, mr: 0, align: -3,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 1200, nutrition: 300,
     sound: MS_GRUNT, size: MZ_LARGE,
@@ -4142,9 +4146,9 @@ export const mons = [
     level: 11, speed: 14, ac: 4, mr: 40, align: -3,
     geno: G_NOGEN | G_GENO,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 1200, nutrition: 350,
     sound: MS_GRUNT, size: MZ_LARGE,
@@ -4160,9 +4164,9 @@ export const mons = [
     level: 13, speed: 12, ac: -4, mr: 0, align: -7,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }
     ],
     weight: 1500, nutrition: 400,
     sound: MS_GRUNT, size: MZ_LARGE,
@@ -4178,10 +4182,10 @@ export const mons = [
     level: 9, speed: 6, ac: 2, mr: 25, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 5 },
-      { aatyp: AT_GAZE, adtyp: AD_CONF, damn: 0, damd: 0 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 5 },
+      { type: AT_GAZE, damage: AD_CONF, dice: 0, sides: 0 }
     ],
     weight: 1200, nutrition: 500,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -4196,7 +4200,7 @@ export const mons = [
     symbol: S_VAMPIRE,
     level: 10, speed: 12, ac: 1, mr: 25, align: -8,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_BITE, adtyp: AD_DRLI, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_BITE, damage: AD_DRLI, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_VAMPIRE, size: MZ_HUMAN,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -4211,7 +4215,7 @@ export const mons = [
     symbol: S_VAMPIRE,
     level: 12, speed: 14, ac: 0, mr: 50, align: -9,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_BITE, adtyp: AD_DRLI, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_BITE, damage: AD_DRLI, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_VAMPIRE, size: MZ_HUMAN,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -4226,7 +4230,7 @@ export const mons = [
     symbol: S_VAMPIRE,
     level: 28, speed: 26, ac: -6, mr: 80, align: -10,
     geno: G_NOGEN | G_NOCORPSE | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 }, { aatyp: AT_BITE, adtyp: AD_DRLI, damn: 1, damd: 12 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 }, { type: AT_BITE, damage: AD_DRLI, dice: 1, sides: 12 }],
     weight: 1450, nutrition: 400,
     sound: MS_VAMPIRE, size: MZ_HUMAN,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -4242,10 +4246,10 @@ export const mons = [
     level: 3, speed: 12, ac: 5, mr: 5, align: -3,
     geno: G_GENO | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_DRLI, damn: 0, damd: 0 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_TUCH, adtyp: AD_COLD, damn: 1, damd: 4 }
+      { type: AT_WEAP, damage: AD_DRLI, dice: 0, sides: 0 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_TUCH, damage: AD_COLD, dice: 1, sides: 4 }
     ],
     weight: 1200, nutrition: 0,
     sound: MS_SPELL, size: MZ_HUMAN,
@@ -4260,7 +4264,7 @@ export const mons = [
     symbol: S_WRAITH,
     level: 6, speed: 12, ac: 4, mr: 15, align: -6,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_DRLI, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_TUCH, damage: AD_DRLI, dice: 1, sides: 6 }],
     weight: 0, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -4274,7 +4278,7 @@ export const mons = [
     symbol: S_WRAITH,
     level: 13, speed: 12, ac: 0, mr: 25, align: -17,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_DRLI, damn: 1, damd: 4 }, { aatyp: AT_BREA, adtyp: AD_SLEE, damn: 2, damd: 25 }],
+    attacks: [{ type: AT_WEAP, damage: AD_DRLI, dice: 1, sides: 4 }, { type: AT_BREA, damage: AD_SLEE, dice: 2, sides: 25 }],
     weight: 1450, nutrition: 0,
     sound: MS_SPELL, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4290,10 +4294,10 @@ export const mons = [
     level: 8, speed: 9, ac: -2, mr: 20, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 6 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 6 }
     ],
     weight: 1200, nutrition: 700,
     sound: MS_ROAR, size: MZ_MEDIUM,
@@ -4308,7 +4312,7 @@ export const mons = [
     symbol: S_YETI,
     level: 2, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SITM, damn: 0, damd: 0 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SITM, dice: 0, sides: 0 }, { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 100, nutrition: 50,
     sound: MS_GROWL, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -4323,9 +4327,9 @@ export const mons = [
     level: 4, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | G_SGROUP | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }
     ],
     weight: 1100, nutrition: 500,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -4341,9 +4345,9 @@ export const mons = [
     level: 5, speed: 12, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 3,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 2, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 2, sides: 8 }
     ],
     weight: 1700, nutrition: 700,
     sound: MS_ROAR, size: MZ_LARGE,
@@ -4359,9 +4363,9 @@ export const mons = [
     level: 5, speed: 15, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }
     ],
     weight: 1600, nutrition: 700,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -4377,9 +4381,9 @@ export const mons = [
     level: 6, speed: 12, ac: 6, mr: 0, align: 0,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 1, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 1, sides: 8 }
     ],
     weight: 1250, nutrition: 550,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -4395,9 +4399,9 @@ export const mons = [
     level: 7, speed: 15, ac: 6, mr: 0, align: 2,
     geno: G_GENO | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 8 }
     ],
     weight: 1550, nutrition: 750,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -4412,7 +4416,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 0, speed: 6, ac: 10, mr: 0, align: -2,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 400, nutrition: 50,
     sound: MS_GROAN, size: MZ_SMALL,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4426,7 +4430,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 1, speed: 6, ac: 10, mr: 0, align: -2,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 5 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 5 }],
     weight: 650, nutrition: 50,
     sound: MS_GROAN, size: MZ_SMALL,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4440,7 +4444,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 2, speed: 6, ac: 9, mr: 0, align: -3,
     geno: G_GENO | G_SGROUP | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 850, nutrition: 75,
     sound: MS_GROAN, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4454,7 +4458,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 2, speed: 6, ac: 9, mr: 0, align: -3,
     geno: G_GENO | G_SGROUP | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 900, nutrition: 150,
     sound: MS_GROAN, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4468,7 +4472,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 3, speed: 6, ac: 9, mr: 0, align: -3,
     geno: G_GENO | G_SGROUP | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 7 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 7 }],
     weight: 800, nutrition: 175,
     sound: MS_GROAN, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4482,7 +4486,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 4, speed: 6, ac: 8, mr: 0, align: -3,
     geno: G_GENO | G_SGROUP | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 200,
     sound: MS_GROAN, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4496,7 +4500,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 6, speed: 8, ac: 6, mr: 0, align: -4,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 10 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 10 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 10 }, { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 10 }],
     weight: 1700, nutrition: 250,
     sound: MS_GROAN, size: MZ_HUGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4510,7 +4514,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 3, speed: 6, ac: 10, mr: 0, align: -2,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PLYS, damn: 1, damd: 2 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PLYS, dice: 1, sides: 2 }, { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 400, nutrition: 50,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4524,7 +4528,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 8, speed: 8, ac: 6, mr: 0, align: -4,
     geno: G_GENO | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 2050, nutrition: 375,
     sound: MS_GROAN, size: MZ_HUGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4538,7 +4542,7 @@ export const mons = [
     symbol: S_ZOMBIE,
     level: 12, speed: 8, ac: 4, mr: 0, align: 0,
     geno: G_NOCORPSE | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_TUCH, adtyp: AD_SLOW, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_TUCH, damage: AD_SLOW, dice: 1, sides: 6 }],
     weight: 300, nutrition: 5,
     sound: MS_BONES, size: MZ_HUMAN,
     mr1: MR_COLD | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -4553,7 +4557,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 3, speed: 12, ac: 10, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 2 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 2 }, { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 400, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4567,7 +4571,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 3, speed: 12, ac: 10, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 400, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4582,9 +4586,9 @@ export const mons = [
     level: 4, speed: 9, ac: 8, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 6, damd: 1 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 6, sides: 1 }
     ],
     weight: 450, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -4599,7 +4603,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 5, speed: 9, ac: 6, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 3 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 3 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 3 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 3 }],
     weight: 450, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_SLEEP | MR_POISON | MR_ACID, mr2: 0,
@@ -4613,7 +4617,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 6, speed: 6, ac: 6, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 800, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -4627,7 +4631,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 7, speed: 3, ac: 4, mr: 0, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 }],
     weight: 900, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_COLD | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4641,7 +4645,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 9, speed: 8, ac: 9, mr: 30, align: 0,
     geno: 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 1400, nutrition: 600,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON, mr2: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON,
@@ -4655,7 +4659,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 11, speed: 7, ac: 7, mr: 40, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 10 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 10 }],
     weight: 1550, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_SLEEP | MR_POISON, mr2: 0,
@@ -4669,7 +4673,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 14, speed: 6, ac: 5, mr: 50, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 8 }],
     weight: 1900, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -4683,7 +4687,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 16, speed: 6, ac: 1, mr: 50, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }, { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 1800, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_SLEEP | MR_POISON | MR_ACID, mr2: 0,
@@ -4697,7 +4701,7 @@ export const mons = [
     symbol: S_GOLEM,
     level: 18, speed: 6, ac: 3, mr: 60, align: 0,
     geno: G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_BREA, adtyp: AD_DRST, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_BREA, damage: AD_DRST, dice: 4, sides: 6 }],
     weight: 2000, nutrition: 0,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON, mr2: 0,
@@ -4711,7 +4715,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 0, speed: 12, ac: 10, mr: 0, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4725,7 +4729,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 2, speed: 12, ac: 10, mr: 10, align: -7,
     geno: 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_WERE, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -4739,7 +4743,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 2, speed: 12, ac: 10, mr: 10, align: -7,
     geno: 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_WERE, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -4753,7 +4757,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 20, align: -7,
     geno: 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_WERE, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -4767,7 +4771,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 0, speed: 12, ac: 10, mr: 2, align: -3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4781,7 +4785,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 4, speed: 12, ac: 10, mr: 10, align: -5,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4795,7 +4799,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: -6,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4809,7 +4813,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 6, speed: 12, ac: 10, mr: 10, align: -7,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4823,7 +4827,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 8, speed: 12, ac: 10, mr: 20, align: -9,
     geno: G_GENO | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4837,7 +4841,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 9, speed: 12, ac: 10, mr: 25, align: -10,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 800, nutrition: 350,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: MR_SLEEP,
@@ -4851,7 +4855,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 9, speed: 12, ac: 5, mr: 20, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 12 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 12 }],
     weight: 1450, nutrition: 400,
     sound: MS_IMITATE, size: MZ_HUMAN,
     mr1: MR_SLEEP, mr2: 0,
@@ -4866,7 +4870,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 12, speed: 16, ac: 0, mr: 50, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SELL, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4881,7 +4885,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 12, speed: 12, ac: 10, mr: 40, align: 10,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARD, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4895,7 +4899,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 12, speed: 12, ac: 10, mr: 0, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_DJINNI, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4909,7 +4913,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 12, speed: 0, ac: 0, mr: 50, align: 0,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_NONE, adtyp: AD_MAGM, damn: 0, damd: 4 }],
+    attacks: [{ type: AT_NONE, damage: AD_MAGM, dice: 0, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_ORACLE, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4924,9 +4928,9 @@ export const mons = [
     level: 12, speed: 12, ac: 10, mr: 50, align: 0,
     geno: G_NOGEN,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 0, damd: 0 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 0, sides: 0 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_PRIEST, size: MZ_HUMAN,
@@ -4942,10 +4946,10 @@ export const mons = [
     level: 25, speed: 15, ac: 7, mr: 70, align: 0,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_PRIEST, size: MZ_HUMAN,
@@ -4961,7 +4965,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 6, speed: 10, ac: 10, mr: 0, align: -2,
     geno: G_SGROUP | G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4976,7 +4980,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 8, speed: 10, ac: 10, mr: 5, align: -3,
     geno: G_SGROUP | G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -4991,7 +4995,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 11, speed: 6, ac: 0, mr: 0, align: 0,
     geno: G_GENO | 3,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_HEAL, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_HEAL, dice: 2, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_NURSE, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -5005,7 +5009,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 10, speed: 10, ac: 10, mr: 15, align: -4,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5020,7 +5024,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 12, speed: 10, ac: 10, mr: 15, align: -5,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5035,7 +5039,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 6, speed: 10, ac: 10, mr: 0, align: -2,
     geno: G_SGROUP | G_NOGEN | G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5050,7 +5054,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 10, speed: 10, ac: 10, mr: 15, align: -4,
     geno: G_NOGEN | G_GENO | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SOLDIER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5066,10 +5070,10 @@ export const mons = [
     level: 20, speed: 12, ac: 2, mr: 50, align: -15,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 },
-      { aatyp: AT_GAZE, adtyp: AD_STON, damn: 0, damd: 0 },
-      { aatyp: AT_BITE, adtyp: AD_DRST, damn: 1, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 },
+      { type: AT_GAZE, damage: AD_STON, dice: 0, sides: 0 },
+      { type: AT_BITE, damage: AD_DRST, dice: 1, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_HISS, size: MZ_LARGE,
@@ -5084,7 +5088,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 30, speed: 12, ac: -8, mr: 100, align: -128,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 12 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 12 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1450, nutrition: 400,
     sound: MS_CUSS, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_POISON, mr2: MR_FIRE | MR_POISON,
@@ -5100,7 +5104,7 @@ export const mons = [
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 40, align: 15,
     geno: G_UNIQ | G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARD, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5116,7 +5120,7 @@ export const mons = [
     symbol: S_GHOST,
     level: 10, speed: 3, ac: -5, mr: 50, align: -5,
     geno: G_NOCORPSE | G_NOGEN,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PHYS, damn: 1, damd: 1 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PHYS, dice: 1, sides: 1 }],
     weight: 1450, nutrition: 0,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_COLD | MR_DISINT | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -5130,7 +5134,7 @@ export const mons = [
     symbol: S_GHOST,
     level: 12, speed: 10, ac: 10, mr: 0, align: 0,
     geno: G_NOCORPSE | G_NOGEN,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PLYS, damn: 2, damd: 6 }, { aatyp: AT_TUCH, adtyp: AD_SLOW, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PLYS, dice: 2, sides: 6 }, { type: AT_TUCH, damage: AD_SLOW, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 0,
     sound: MS_WAIL, size: MZ_HUMAN,
     mr1: MR_COLD | MR_DISINT | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -5146,9 +5150,9 @@ export const mons = [
     level: 8, speed: 12, ac: -4, mr: 30, align: -7,
     geno: G_NOCORPSE | G_NOGEN,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_DJINNI, size: MZ_HUMAN,
@@ -5164,9 +5168,9 @@ export const mons = [
     level: 6, speed: 12, ac: 0, mr: 70, align: -9,
     geno: G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_BITE, adtyp: AD_SSEX, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 }
+      { type: AT_BITE, damage: AD_SSEX, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SEDUCE, size: MZ_HUMAN,
@@ -5182,10 +5186,10 @@ export const mons = [
     level: 6, speed: 9, ac: -5, mr: 50, align: 11,
     geno: G_HELL | G_NOCORPSE | 2,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 3 },
-      { aatyp: AT_STNG, adtyp: AD_PHYS, damn: 1, damd: 3 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 3 },
+      { type: AT_STNG, damage: AD_PHYS, dice: 1, sides: 3 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_HUMAN,
@@ -5200,7 +5204,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 7, speed: 12, ac: 2, mr: 30, align: 10,
     geno: G_HELL | G_NOCORPSE | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_DRST, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_DRST, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_POISON, mr2: 0,
@@ -5216,9 +5220,9 @@ export const mons = [
     level: 8, speed: 12, ac: 0, mr: 35, align: 8,
     geno: G_HELL | G_NOCORPSE | G_SGROUP | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_STCK, damn: 2, damd: 4 },
-      { aatyp: AT_STNG, adtyp: AD_PHYS, damn: 3, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_STCK, dice: 2, sides: 4 },
+      { type: AT_STNG, damage: AD_PHYS, dice: 3, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_HUMAN,
@@ -5234,12 +5238,12 @@ export const mons = [
     level: 7, speed: 12, ac: -6, mr: 80, align: -12,
     geno: G_HELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_CUSS, size: MZ_LARGE,
@@ -5255,11 +5259,11 @@ export const mons = [
     level: 8, speed: 12, ac: 0, mr: 50, align: -9,
     geno: G_HELL | G_NOCORPSE | G_SGROUP | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -5275,9 +5279,9 @@ export const mons = [
     level: 9, speed: 6, ac: -2, mr: 55, align: -10,
     geno: G_HELL | G_NOCORPSE | G_SGROUP | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 3 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 3 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -5292,7 +5296,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 9, speed: 15, ac: -1, mr: 40, align: -9,
     geno: G_HELL | G_NOCORPSE | G_SGROUP | 2,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 4 }, { aatyp: AT_STNG, adtyp: AD_DRST, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 4 }, { type: AT_STNG, damage: AD_DRST, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_FIRE | MR_POISON, mr2: 0,
@@ -5307,11 +5311,11 @@ export const mons = [
     level: 11, speed: 6, ac: -4, mr: 55, align: -12,
     geno: G_HELL | G_NOCORPSE | 2,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_STNG, adtyp: AD_COLD, damn: 3, damd: 4 },
-      { aatyp: AT_TUCH, adtyp: AD_SLOW, damn: 1, damd: 1 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_STNG, damage: AD_COLD, dice: 3, sides: 4 },
+      { type: AT_TUCH, damage: AD_SLOW, dice: 1, sides: 1 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
@@ -5327,10 +5331,10 @@ export const mons = [
     level: 11, speed: 9, ac: -1, mr: 65, align: -11,
     geno: G_HELL | G_NOCORPSE | 1,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 4 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 4 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_SPELL, size: MZ_LARGE,
@@ -5346,9 +5350,9 @@ export const mons = [
     level: 13, speed: 6, ac: -3, mr: 65, align: -13,
     geno: G_HELL | G_NOCORPSE | 2,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 2 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 2 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 2, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 2 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 2 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 2, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_GROWL, size: MZ_LARGE,
@@ -5363,7 +5367,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 13, speed: 12, ac: 4, mr: 60, align: -5,
     geno: G_HELL | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 400,
     sound: MS_CUSS, size: MZ_HUMAN,
     mr1: MR_STONE, mr2: 0,
@@ -5377,7 +5381,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 16, speed: 5, ac: -2, mr: 75, align: -14,
     geno: G_HELL | G_NOCORPSE | 1,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 8, damd: 4 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 8, sides: 4 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: MR_FIRE | MR_POISON, mr2: 0,
@@ -5391,7 +5395,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 50, speed: 3, ac: -7, mr: 65, align: -15,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_ENGL, adtyp: AD_DISE, damn: 4, damd: 10 }, { aatyp: AT_SPIT, adtyp: AD_ACID, damn: 3, damd: 6 }],
+    attacks: [{ type: AT_ENGL, damage: AD_DISE, dice: 4, sides: 10 }, { type: AT_SPIT, damage: AD_ACID, dice: 3, sides: 6 }],
     weight: 1500, nutrition: 0,
     sound: MS_GURGLE, size: MZ_LARGE,
     mr1: MR_FIRE | MR_POISON | MR_ACID | MR_STONE, mr2: 0,
@@ -5408,10 +5412,10 @@ export const mons = [
     level: 56, speed: 18, ac: -5, mr: 80, align: -15,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_CONF, damn: 2, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_PLYS, damn: 1, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_MAGM, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_WEAP, damage: AD_CONF, dice: 2, sides: 8 },
+      { type: AT_CLAW, damage: AD_PLYS, dice: 1, sides: 6 },
+      { type: AT_MAGC, damage: AD_MAGM, dice: 2, sides: 6 }
     ],
     weight: 900, nutrition: 500,
     sound: MS_ORC, size: MZ_LARGE,
@@ -5428,11 +5432,11 @@ export const mons = [
     level: 66, speed: 9, ac: -6, mr: 85, align: -20,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 4 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 8, damd: 6 },
-      { aatyp: AT_STNG, adtyp: AD_DRST, damn: 2, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 4 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 8, sides: 6 },
+      { type: AT_STNG, damage: AD_DRST, dice: 2, sides: 4 }
     ],
     weight: 1500, nutrition: 500,
     sound: MS_ORC, size: MZ_HUGE,
@@ -5450,9 +5454,9 @@ export const mons = [
     level: 72, speed: 3, ac: -3, mr: 75, align: 15,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 3, damd: 6 },
-      { aatyp: AT_STNG, adtyp: AD_DRST, damn: 2, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 3, sides: 6 },
+      { type: AT_STNG, damage: AD_DRST, dice: 2, sides: 4 }
     ],
     weight: 1500, nutrition: 500,
     sound: MS_BRIBE, size: MZ_HUGE,
@@ -5468,7 +5472,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 78, speed: 15, ac: -2, mr: 80, align: 15,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 6, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 6, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_BRIBE, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_POISON, mr2: 0,
@@ -5483,7 +5487,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 89, speed: 9, ac: -5, mr: 85, align: 20,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_DRST, damn: 2, damd: 6 }, { aatyp: AT_GAZE, adtyp: AD_STUN, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_DRST, dice: 2, sides: 6 }, { type: AT_GAZE, damage: AD_STUN, dice: 2, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_BRIBE, size: MZ_LARGE,
     mr1: MR_FIRE | MR_POISON, mr2: 0,
@@ -5498,7 +5502,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 105, speed: 12, ac: -7, mr: 90, align: 20,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 4 }, { aatyp: AT_MAGC, adtyp: AD_COLD, damn: 6, damd: 6 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 4 }, { type: AT_MAGC, damage: AD_COLD, dice: 6, sides: 6 }],
     weight: 1500, nutrition: 500,
     sound: MS_BRIBE, size: MZ_HUGE,
     mr1: MR_FIRE | MR_COLD | MR_POISON, mr2: 0,
@@ -5514,10 +5518,10 @@ export const mons = [
     level: 106, speed: 15, ac: -8, mr: 95, align: -20,
     geno: G_HELL | G_NOCORPSE | G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 8, damd: 6 },
-      { aatyp: AT_STNG, adtyp: AD_DRLI, damn: 1, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_DISE, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_DISE, damn: 1, damd: 6 }
+      { type: AT_MAGC, damage: AD_SPEL, dice: 8, sides: 6 },
+      { type: AT_STNG, damage: AD_DRLI, dice: 1, sides: 4 },
+      { type: AT_CLAW, damage: AD_DISE, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_DISE, dice: 1, sides: 6 }
     ],
     weight: 1500, nutrition: 500,
     sound: MS_GROWL, size: MZ_HUGE,
@@ -5533,7 +5537,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 30, speed: 12, ac: -5, mr: 100, align: 0,
     geno: G_UNIQ | G_NOGEN,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_DETH, damn: 8, damd: 8 }, { aatyp: AT_TUCH, adtyp: AD_DETH, damn: 8, damd: 8 }],
+    attacks: [{ type: AT_TUCH, damage: AD_DETH, dice: 8, sides: 8 }, { type: AT_TUCH, damage: AD_DETH, dice: 8, sides: 8 }],
     weight: 1450, nutrition: 1,
     sound: MS_RIDER, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -5547,7 +5551,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 30, speed: 12, ac: -5, mr: 100, align: 0,
     geno: G_UNIQ | G_NOGEN,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_PEST, damn: 8, damd: 8 }, { aatyp: AT_TUCH, adtyp: AD_PEST, damn: 8, damd: 8 }],
+    attacks: [{ type: AT_TUCH, damage: AD_PEST, dice: 8, sides: 8 }, { type: AT_TUCH, damage: AD_PEST, dice: 8, sides: 8 }],
     weight: 1450, nutrition: 1,
     sound: MS_RIDER, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -5561,7 +5565,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 30, speed: 12, ac: -5, mr: 100, align: 0,
     geno: G_UNIQ | G_NOGEN,
-    attacks: [{ aatyp: AT_TUCH, adtyp: AD_FAMN, damn: 8, damd: 8 }, { aatyp: AT_TUCH, adtyp: AD_FAMN, damn: 8, damd: 8 }],
+    attacks: [{ type: AT_TUCH, damage: AD_FAMN, dice: 8, sides: 8 }, { type: AT_TUCH, damage: AD_FAMN, dice: 8, sides: 8 }],
     weight: 1450, nutrition: 1,
     sound: MS_RIDER, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
@@ -5570,7 +5574,7 @@ export const mons = [
     flags3: M3_INFRAVISIBLE | M3_INFRAVISION | M3_DISPLACES,
     difficulty: 34, color: HI_OVERLORD
   },
-  { // PM_MAIL_DAEMON (314) - monsters.h line 3177 (MAIL_STRUCTURES)
+  { // PM_MAIL_DAEMON (314) - monsters.h line 3185
     name: 'mail daemon',
     symbol: S_DEMON,
     level: 56, speed: 24, ac: 10, mr: 127, align: 0,
@@ -5579,7 +5583,8 @@ export const mons = [
     weight: 600, nutrition: 300,
     sound: MS_SILENT, size: MZ_HUMAN,
     mr1: MR_FIRE | MR_COLD | MR_ELEC | MR_SLEEP | MR_POISON | MR_STONE, mr2: 0,
-    flags1: M1_FLY | M1_SWIM | M1_BREATHLESS | M1_SEE_INVIS | M1_HUMANOID | M1_POIS,
+    flags1: M1_FLY | M1_SWIM | M1_BREATHLESS | M1_SEE_INVIS | M1_HUMANOID
+            | M1_POIS,
     flags2: M2_NOPOLY | M2_STALK | M2_PEACEFUL,
     flags3: M3_INFRAVISIBLE | M3_INFRAVISION,
     difficulty: 26, color: CLR_BRIGHT_BLUE
@@ -5589,7 +5594,7 @@ export const mons = [
     symbol: S_DEMON,
     level: 7, speed: 12, ac: 4, mr: 30, align: 0,
     geno: G_NOGEN | G_NOCORPSE,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 }],
     weight: 1500, nutrition: 400,
     sound: MS_DJINNI, size: MZ_HUMAN,
     mr1: MR_POISON | MR_STONE, mr2: 0,
@@ -5598,12 +5603,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 8, color: CLR_YELLOW
   },
-  { // PM_JELLYFISH (315) - monsters.h line 3212
+  { // PM_JELLYFISH (316) - monsters.h line 3212
     name: 'jellyfish',
     symbol: S_EEL,
     level: 3, speed: 3, ac: 6, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_STNG, adtyp: AD_DRST, damn: 3, damd: 3 }],
+    attacks: [{ type: AT_STNG, damage: AD_DRST, dice: 3, sides: 3 }],
     weight: 80, nutrition: 20,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: MR_POISON, mr2: MR_POISON,
@@ -5613,12 +5618,12 @@ export const mons = [
     flags3: 0,
     difficulty: 5, color: CLR_BLUE
   },
-  { // PM_PIRANHA (316) - monsters.h line 3220
+  { // PM_PIRANHA (317) - monsters.h line 3220
     name: 'piranha',
     symbol: S_EEL,
     level: 5, speed: 18, ac: 4, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN | G_SGROUP,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }, { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }, { type: AT_BITE, damage: AD_PHYS, dice: 2, sides: 6 }],
     weight: 60, nutrition: 30,
     sound: MS_SILENT, size: MZ_SMALL,
     mr1: 0, mr2: 0,
@@ -5628,12 +5633,12 @@ export const mons = [
     flags3: 0,
     difficulty: 7, color: CLR_RED
   },
-  { // PM_SHARK (317) - monsters.h line 3229
+  { // PM_SHARK (318) - monsters.h line 3229
     name: 'shark',
     symbol: S_EEL,
     level: 7, speed: 12, ac: 2, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 5, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 5, sides: 6 }],
     weight: 500, nutrition: 350,
     sound: MS_SILENT, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -5643,12 +5648,12 @@ export const mons = [
     flags3: 0,
     difficulty: 9, color: CLR_GRAY
   },
-  { // PM_GIANT_EEL (318) - monsters.h line 3238
+  { // PM_GIANT_EEL (319) - monsters.h line 3238
     name: 'giant eel',
     symbol: S_EEL,
     level: 5, speed: 9, ac: -1, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 3, damd: 6 }, { aatyp: AT_TUCH, adtyp: AD_WRAP, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 3, sides: 6 }, { type: AT_TUCH, damage: AD_WRAP, dice: 0, sides: 0 }],
     weight: 200, nutrition: 250,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -5658,12 +5663,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: CLR_CYAN
   },
-  { // PM_ELECTRIC_EEL (319) - monsters.h line 3247
+  { // PM_ELECTRIC_EEL (320) - monsters.h line 3247
     name: 'electric eel',
     symbol: S_EEL,
     level: 7, speed: 10, ac: -3, mr: 0, align: 0,
     geno: G_GENO | G_NOGEN,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_ELEC, damn: 4, damd: 6 }, { aatyp: AT_TUCH, adtyp: AD_WRAP, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_BITE, damage: AD_ELEC, dice: 4, sides: 6 }, { type: AT_TUCH, damage: AD_WRAP, dice: 0, sides: 0 }],
     weight: 200, nutrition: 250,
     sound: MS_SILENT, size: MZ_HUGE,
     mr1: MR_ELEC, mr2: MR_ELEC,
@@ -5673,16 +5678,16 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 10, color: CLR_BRIGHT_BLUE
   },
-  { // PM_KRAKEN (320) - monsters.h line 3256
+  { // PM_KRAKEN (321) - monsters.h line 3256
     name: 'kraken',
     symbol: S_EEL,
     level: 20, speed: 3, ac: 6, mr: 0, align: -3,
     geno: G_GENO | G_NOGEN,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_HUGS, adtyp: AD_WRAP, damn: 2, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 5, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_HUGS, damage: AD_WRAP, dice: 2, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 5, sides: 4 }
     ],
     weight: 1800, nutrition: 1000,
     sound: MS_SILENT, size: MZ_HUGE,
@@ -5692,12 +5697,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 22, color: CLR_RED
   },
-  { // PM_NEWT (321) - monsters.h line 3267
+  { // PM_NEWT (322) - monsters.h line 3267
     name: 'newt',
     symbol: S_LIZARD,
     level: 0, speed: 6, ac: 8, mr: 0, align: 0,
     geno: G_GENO | 5,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 2 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 2 }],
     weight: 10, nutrition: 20,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -5706,12 +5711,12 @@ export const mons = [
     flags3: 0,
     difficulty: 1, color: CLR_YELLOW
   },
-  { // PM_GECKO (322) - monsters.h line 3274
+  { // PM_GECKO (323) - monsters.h line 3274
     name: 'gecko',
     symbol: S_LIZARD,
     level: 1, speed: 6, ac: 8, mr: 0, align: 0,
     geno: G_GENO | 5,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 3 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 3 }],
     weight: 10, nutrition: 20,
     sound: MS_SQEEK, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -5720,12 +5725,12 @@ export const mons = [
     flags3: 0,
     difficulty: 2, color: CLR_GREEN
   },
-  { // PM_IGUANA (323) - monsters.h line 3281
+  { // PM_IGUANA (324) - monsters.h line 3281
     name: 'iguana',
     symbol: S_LIZARD,
     level: 2, speed: 6, ac: 7, mr: 0, align: 0,
     geno: G_GENO | 5,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 30, nutrition: 30,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -5734,12 +5739,12 @@ export const mons = [
     flags3: 0,
     difficulty: 3, color: CLR_BROWN
   },
-  { // PM_BABY_CROCODILE (324) - monsters.h line 3289
+  { // PM_BABY_CROCODILE (325) - monsters.h line 3289
     name: 'baby crocodile',
     symbol: S_LIZARD,
     level: 3, speed: 6, ac: 7, mr: 0, align: 0,
     geno: G_GENO,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 200, nutrition: 200,
     sound: MS_CHIRP, size: MZ_MEDIUM,
     mr1: 0, mr2: 0,
@@ -5748,12 +5753,12 @@ export const mons = [
     flags3: 0,
     difficulty: 4, color: CLR_BROWN
   },
-  { // PM_LIZARD (325) - monsters.h line 3298
+  { // PM_LIZARD (326) - monsters.h line 3298
     name: 'lizard',
     symbol: S_LIZARD,
     level: 5, speed: 6, ac: 6, mr: 10, align: 0,
     geno: G_GENO | 5,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 10, nutrition: 40,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: MR_STONE, mr2: MR_STONE,
@@ -5762,12 +5767,12 @@ export const mons = [
     flags3: 0,
     difficulty: 6, color: CLR_GREEN
   },
-  { // PM_CHAMELEON (326) - monsters.h line 3306
+  { // PM_CHAMELEON (327) - monsters.h line 3306
     name: 'chameleon',
     symbol: S_LIZARD,
     level: 6, speed: 5, ac: 6, mr: 10, align: 0,
     geno: G_GENO | 2,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 2 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 2 }],
     weight: 100, nutrition: 100,
     sound: MS_SILENT, size: MZ_TINY,
     mr1: 0, mr2: 0,
@@ -5776,12 +5781,12 @@ export const mons = [
     flags3: 0,
     difficulty: 7, color: CLR_BROWN
   },
-  { // PM_CROCODILE (327) - monsters.h line 3315
+  { // PM_CROCODILE (328) - monsters.h line 3315
     name: 'crocodile',
     symbol: S_LIZARD,
     level: 6, speed: 9, ac: 5, mr: 0, align: 0,
     geno: G_GENO | 1,
-    attacks: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 2 }, { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 12 }],
+    attacks: [{ type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 2 }, { type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 12 }],
     weight: 1450, nutrition: 400,
     sound: MS_BELLOW, size: MZ_LARGE,
     mr1: 0, mr2: 0,
@@ -5791,16 +5796,16 @@ export const mons = [
     flags3: 0,
     difficulty: 7, color: CLR_BROWN
   },
-  { // PM_SALAMANDER (328) - monsters.h line 3324
+  { // PM_SALAMANDER (329) - monsters.h line 3324
     name: 'salamander',
     symbol: S_LIZARD,
     level: 8, speed: 12, ac: -1, mr: 0, align: -9,
     geno: G_HELL | 1,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_TUCH, adtyp: AD_FIRE, damn: 1, damd: 6 },
-      { aatyp: AT_HUGS, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_HUGS, adtyp: AD_FIRE, damn: 3, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_TUCH, damage: AD_FIRE, dice: 1, sides: 6 },
+      { type: AT_HUGS, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_HUGS, damage: AD_FIRE, dice: 3, sides: 6 }
     ],
     weight: 1500, nutrition: 400,
     sound: MS_MUMBLE, size: MZ_HUMAN,
@@ -5810,7 +5815,7 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: CLR_ORANGE
   },
-  { // PM_LONG_WORM_TAIL (329) - monsters.h line 3334
+  { // PM_LONG_WORM_TAIL (330) - monsters.h line 3334
     name: 'long worm tail',
     symbol: S_WORM_TAIL,
     level: 0, speed: 0, ac: 0, mr: 0, align: 0,
@@ -5824,12 +5829,12 @@ export const mons = [
     flags3: 0,
     difficulty: 1, color: CLR_BROWN
   },
-  { // PM_ARCHEOLOGIST (330) - monsters.h line 3352
+  { // PM_ARCHEOLOGIST (331) - monsters.h line 3352
     name: 'archeologist',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5838,12 +5843,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_BARBARIAN (331) - monsters.h line 3360
+  { // PM_BARBARIAN (332) - monsters.h line 3360
     name: 'barbarian',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -5852,12 +5857,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_CAVE_DWELLER (332) - monsters.h line 3369
+  { // PM_CAVE_DWELLER (333) - monsters.h line 3369
     name: 'caveman',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 0, align: 1,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5866,12 +5871,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_HEALER (333) - monsters.h line 3377
+  { // PM_HEALER (334) - monsters.h line 3377
     name: 'healer',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -5880,12 +5885,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_KNIGHT (334) - monsters.h line 3385
+  { // PM_KNIGHT (335) - monsters.h line 3385
     name: 'knight',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5894,12 +5899,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_MONK (335) - monsters.h line 3394
+  { // PM_MONK (336) - monsters.h line 3394
     name: 'monk',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 2, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_CLAW, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_KICK, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5908,12 +5913,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 11, color: HI_DOMESTIC
   },
-  { // PM_CLERIC (336) - monsters.h line 3404
+  { // PM_CLERIC (337) - monsters.h line 3404
     name: 'priest',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 2, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5922,12 +5927,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_RANGER (337) - monsters.h line 3412
+  { // PM_RANGER (338) - monsters.h line 3412
     name: 'ranger',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 2, align: -3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5936,12 +5941,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_ROGUE (338) - monsters.h line 3421
+  { // PM_ROGUE (339) - monsters.h line 3421
     name: 'rogue',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: -3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5950,12 +5955,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_SAMURAI (339) - monsters.h line 3429
+  { // PM_SAMURAI (340) - monsters.h line 3429
     name: 'samurai',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5964,12 +5969,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_TOURIST (340) - monsters.h line 3437
+  { // PM_TOURIST (341) - monsters.h line 3437
     name: 'tourist',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -5978,12 +5983,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_VALKYRIE (341) - monsters.h line 3451
+  { // PM_VALKYRIE (342) - monsters.h line 3451
     name: 'valkyrie',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 1, align: 1,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: MR_COLD, mr2: 0,
@@ -5992,12 +5997,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_WIZARD (342) - monsters.h line 3460
+  { // PM_WIZARD (343) - monsters.h line 3460
     name: 'wizard',
     symbol: S_HUMAN,
     level: 10, speed: 12, ac: 10, mr: 3, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6006,12 +6011,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 12, color: HI_DOMESTIC
   },
-  { // PM_LORD_CARNARVON (343) - monsters.h line 3472
+  { // PM_LORD_CARNARVON (344) - monsters.h line 3472
     name: 'Lord Carnarvon',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 20,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 4, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_MAGC, damage: AD_SPEL, dice: 4, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6021,12 +6026,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_PELIAS (344) - monsters.h line 3481
+  { // PM_PELIAS (345) - monsters.h line 3481
     name: 'Pelias',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -6036,12 +6041,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_SHAMAN_KARNOV (345) - monsters.h line 3490
+  { // PM_SHAMAN_KARNOV (346) - monsters.h line 3490
     name: 'Shaman Karnov',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 20,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6051,15 +6056,15 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_HIPPOCRATES (346) - monsters.h line 3523
+  { // PM_HIPPOCRATES (347) - monsters.h line 3523
     name: 'Hippocrates',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 3, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 3, damd: 8 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 3, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 3, sides: 8 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
@@ -6070,12 +6075,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 26, color: HI_LORD
   },
-  { // PM_KING_ARTHUR (347) - monsters.h line 3532
+  { // PM_KING_ARTHUR (348) - monsters.h line 3532
     name: 'King Arthur',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 20,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6085,16 +6090,16 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_GRAND_MASTER (348) - monsters.h line 3543
+  { // PM_GRAND_MASTER (349) - monsters.h line 3543
     name: 'Grand Master',
     symbol: S_HUMAN,
     level: 25, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
@@ -6105,16 +6110,16 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 30, color: CLR_BLACK
   },
-  { // PM_ARCH_PRIEST (349) - monsters.h line 3554
+  { // PM_ARCH_PRIEST (350) - monsters.h line 3554
     name: 'Arch Priest',
     symbol: S_HUMAN,
     level: 25, speed: 15, ac: 7, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_KICK, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 2, damd: 8 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_KICK, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 2, sides: 8 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
@@ -6125,12 +6130,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 30, color: CLR_WHITE
   },
-  { // PM_ORION (350) - monsters.h line 3563
+  { // PM_ORION (351) - monsters.h line 3563
     name: 'Orion',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 4, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_MAGC, damage: AD_SPEL, dice: 4, sides: 8 }],
     weight: 2200, nutrition: 700,
     sound: MS_LEADER, size: MZ_HUGE,
     mr1: 0, mr2: 0,
@@ -6140,15 +6145,15 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_MASTER_OF_THIEVES (351) - monsters.h line 3575
+  { // PM_MASTER_OF_THIEVES (352) - monsters.h line 3575
     name: 'Master of Thieves',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: -20,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
@@ -6159,12 +6164,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_LORD_SATO (352) - monsters.h line 3583
+  { // PM_LORD_SATO (353) - monsters.h line 3583
     name: 'Lord Sato',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 20,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6174,12 +6179,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_TWOFLOWER (353) - monsters.h line 3592
+  { // PM_TWOFLOWER (354) - monsters.h line 3592
     name: 'Twoflower',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 10, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6189,12 +6194,12 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 22, color: HI_DOMESTIC
   },
-  { // PM_NORN (354) - monsters.h line 3603
+  { // PM_NORN (355) - monsters.h line 3603
     name: 'Norn',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }, { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 }],
     weight: 1800, nutrition: 550,
     sound: MS_LEADER, size: MZ_HUGE,
     mr1: MR_COLD, mr2: 0,
@@ -6204,15 +6209,15 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 24, color: HI_LORD
   },
-  { // PM_NEFERET_THE_GREEN (355) - monsters.h line 3612
+  { // PM_NEFERET_THE_GREEN (356) - monsters.h line 3612
     name: 'Neferet the Green',
     symbol: S_HUMAN,
     level: 20, speed: 15, ac: 0, mr: 90, align: 0,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 10 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 2, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 2, damd: 8 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 10 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 2, sides: 8 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 2, sides: 8 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_LEADER, size: MZ_HUMAN,
@@ -6223,16 +6228,16 @@ export const mons = [
     flags3: M3_CLOSE | M3_INFRAVISIBLE,
     difficulty: 25, color: CLR_GREEN
   },
-  { // PM_MINION_OF_HUHETOTL (356) - monsters.h line 3626
+  { // PM_MINION_OF_HUHETOTL (357) - monsters.h line 3626
     name: 'Minion of Huhetotl',
     symbol: S_DEMON,
     level: 16, speed: 12, ac: -2, mr: 75, align: -14,
     geno: G_NOCORPSE | G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 8, damd: 4 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 8, sides: 4 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 6 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_LARGE,
@@ -6243,16 +6248,16 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 23, color: CLR_ORANGE
   },
-  { // PM_THOTH_AMON (357) - monsters.h line 3637
+  { // PM_THOTH_AMON (358) - monsters.h line 3637
     name: 'Thoth Amon',
     symbol: S_HUMAN,
     level: 16, speed: 12, ac: 0, mr: 10, align: -14,
     geno: G_NOGEN | G_UNIQ | G_NOCORPSE,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 1, damd: 4 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 1, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6263,18 +6268,18 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 22, color: HI_LORD
   },
-  { // PM_CHROMATIC_DRAGON (358) - monsters.h line 3656
+  { // PM_CHROMATIC_DRAGON (359) - monsters.h line 3656
     name: 'Chromatic Dragon',
     symbol: S_DRAGON,
     level: 16, speed: 12, ac: 0, mr: 30, align: -14,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_RBRE, damn: 6, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 8 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 8 },
-      { aatyp: AT_STNG, adtyp: AD_PHYS, damn: 1, damd: 6 }
+      { type: AT_BREA, damage: AD_RBRE, dice: 6, sides: 6 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 8 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 8 },
+      { type: AT_STNG, damage: AD_PHYS, dice: 1, sides: 6 }
     ],
     weight: 4500, nutrition: 1700,
     sound: MS_NEMESIS, size: MZ_GIGANTIC,
@@ -6287,15 +6292,15 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 23, color: HI_LORD
   },
-  { // PM_CYCLOPS (359) - monsters.h line 3678
+  { // PM_CYCLOPS (360) - monsters.h line 3678
     name: 'Cyclops',
     symbol: S_GIANT,
     level: 18, speed: 12, ac: 0, mr: 0, align: -15,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 8 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 8 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 8 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 1900, nutrition: 700,
     sound: MS_NEMESIS, size: MZ_HUGE,
@@ -6306,17 +6311,17 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 23, color: CLR_GRAY
   },
-  { // PM_IXOTH (360) - monsters.h line 3690
+  { // PM_IXOTH (361) - monsters.h line 3690
     name: 'Ixoth',
     symbol: S_DRAGON,
     level: 15, speed: 12, ac: -1, mr: 20, align: -14,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_BREA, adtyp: AD_FIRE, damn: 8, damd: 6 },
-      { aatyp: AT_BITE, adtyp: AD_PHYS, damn: 4, damd: 8 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 4 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 4 }
+      { type: AT_BREA, damage: AD_FIRE, dice: 8, sides: 6 },
+      { type: AT_BITE, damage: AD_PHYS, dice: 4, sides: 8 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 4 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 4 }
     ],
     weight: 4500, nutrition: 1600,
     sound: MS_NEMESIS, size: MZ_GIGANTIC,
@@ -6327,16 +6332,16 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 22, color: CLR_RED
   },
-  { // PM_MASTER_KAEN (361) - monsters.h line 3701
+  { // PM_MASTER_KAEN (362) - monsters.h line 3701
     name: 'Master Kaen',
     symbol: S_HUMAN,
     level: 25, speed: 12, ac: -10, mr: 10, align: -20,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 16, damd: 2 },
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 16, damd: 2 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 16, sides: 2 },
+      { type: AT_CLAW, damage: AD_PHYS, dice: 16, sides: 2 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 1, sides: 4 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6347,16 +6352,16 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 31, color: HI_LORD
   },
-  { // PM_NALZOK (362) - monsters.h line 3712
+  { // PM_NALZOK (363) - monsters.h line 3712
     name: 'Nalzok',
     symbol: S_DEMON,
     level: 16, speed: 12, ac: -2, mr: 85, align: -127,
     geno: G_NOGEN | G_UNIQ | G_NOCORPSE,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 8, damd: 4 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 6 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 8, sides: 4 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 4, sides: 6 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_LARGE,
@@ -6367,15 +6372,15 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 23, color: CLR_ORANGE
   },
-  { // PM_SCORPIUS (363) - monsters.h line 3722
+  { // PM_SCORPIUS (364) - monsters.h line 3722
     name: 'Scorpius',
     symbol: S_SPIDER,
     level: 15, speed: 12, ac: 10, mr: 0, align: -15,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 },
-      { aatyp: AT_STNG, adtyp: AD_DISE, damn: 1, damd: 4 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 },
+      { type: AT_STNG, damage: AD_DISE, dice: 1, sides: 4 }
     ],
     weight: 750, nutrition: 350,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6386,15 +6391,15 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU,
     difficulty: 17, color: HI_LORD
   },
-  { // PM_MASTER_ASSASSIN (364) - monsters.h line 3732
+  { // PM_MASTER_ASSASSIN (365) - monsters.h line 3732
     name: 'Master Assassin',
     symbol: S_HUMAN,
     level: 15, speed: 12, ac: 0, mr: 30, align: 18,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_DRST, damn: 2, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 8 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_DRST, dice: 2, sides: 6 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 8 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6405,15 +6410,15 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 20, color: HI_LORD
   },
-  { // PM_ASHIKAGA_TAKAUJI (365) - monsters.h line 3745
+  { // PM_ASHIKAGA_TAKAUJI (366) - monsters.h line 3745
     name: 'Ashikaga Takauji',
     symbol: S_HUMAN,
     level: 15, speed: 12, ac: 0, mr: 40, align: -13,
     geno: G_NOGEN | G_UNIQ | G_NOCORPSE,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 6 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6424,15 +6429,15 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 19, color: HI_LORD
   },
-  { // PM_LORD_SURTUR (366) - monsters.h line 3758
+  { // PM_LORD_SURTUR (367) - monsters.h line 3758
     name: 'Lord Surtur',
     symbol: S_GIANT,
     level: 15, speed: 12, ac: 2, mr: 50, align: 12,
     geno: G_NOGEN | G_UNIQ,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 10 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 2, damd: 6 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 10 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 2, sides: 6 }
     ],
     weight: 2250, nutrition: 850,
     sound: MS_NEMESIS, size: MZ_HUGE,
@@ -6443,16 +6448,16 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 19, color: HI_LORD
   },
-  { // PM_DARK_ONE (367) - monsters.h line 3769
+  { // PM_DARK_ONE (368) - monsters.h line 3769
     name: 'Dark One',
     symbol: S_HUMAN,
     level: 15, speed: 12, ac: 0, mr: 80, align: -10,
     geno: G_NOGEN | G_UNIQ | G_NOCORPSE,
     attacks: [
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
-      { aatyp: AT_CLAW, adtyp: AD_SAMU, damn: 1, damd: 4 },
-      { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 },
+      { type: AT_CLAW, damage: AD_SAMU, dice: 1, sides: 4 },
+      { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_NEMESIS, size: MZ_HUMAN,
@@ -6463,12 +6468,12 @@ export const mons = [
     flags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISIBLE,
     difficulty: 20, color: CLR_BLACK
   },
-  { // PM_STUDENT (368) - monsters.h line 3781
+  { // PM_STUDENT (369) - monsters.h line 3781
     name: 'student',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6477,12 +6482,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_CHIEFTAIN (369) - monsters.h line 3790
+  { // PM_CHIEFTAIN (370) - monsters.h line 3790
     name: 'chieftain',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -6491,12 +6496,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_NEANDERTHAL (370) - monsters.h line 3799
+  { // PM_NEANDERTHAL (371) - monsters.h line 3799
     name: 'neanderthal',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 1,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 2, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 2, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6505,12 +6510,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_ATTENDANT (371) - monsters.h line 3821
+  { // PM_ATTENDANT (372) - monsters.h line 3821
     name: 'attendant',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: MR_POISON, mr2: 0,
@@ -6519,12 +6524,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_PAGE (372) - monsters.h line 3830
+  { // PM_PAGE (373) - monsters.h line 3830
     name: 'page',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6533,15 +6538,15 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_ABBOT (373) - monsters.h line 3839
+  { // PM_ABBOT (374) - monsters.h line 3839
     name: 'abbot',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 20, align: 0,
     geno: G_NOGEN,
     attacks: [
-      { aatyp: AT_CLAW, adtyp: AD_PHYS, damn: 8, damd: 2 },
-      { aatyp: AT_KICK, adtyp: AD_STUN, damn: 3, damd: 2 },
-      { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 0, damd: 0 }
+      { type: AT_CLAW, damage: AD_PHYS, dice: 8, sides: 2 },
+      { type: AT_KICK, damage: AD_STUN, dice: 3, sides: 2 },
+      { type: AT_MAGC, damage: AD_CLRC, dice: 0, sides: 0 }
     ],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
@@ -6551,12 +6556,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 8, color: HI_DOMESTIC
   },
-  { // PM_ACOLYTE (374) - monsters.h line 3848
+  { // PM_ACOLYTE (375) - monsters.h line 3848
     name: 'acolyte',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 20, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_CLRC, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_MAGC, damage: AD_CLRC, dice: 0, sides: 0 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6565,12 +6570,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 8, color: HI_DOMESTIC
   },
-  { // PM_HUNTER (375) - monsters.h line 3857
+  { // PM_HUNTER (376) - monsters.h line 3857
     name: 'hunter',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: -7,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 4 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 4 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6579,12 +6584,12 @@ export const mons = [
     flags3: M3_INFRAVISION | M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_THUG (376) - monsters.h line 3866
+  { // PM_THUG (377) - monsters.h line 3866
     name: 'thug',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: -3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6594,12 +6599,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_NINJA (377) - monsters.h line 3875
+  { // PM_NINJA (378) - monsters.h line 3875
     name: 'ninja',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_HUMANOID, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6608,12 +6613,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_ROSHI (378) - monsters.h line 3884
+  { // PM_ROSHI (379) - monsters.h line 3884
     name: 'roshi',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 3,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6622,12 +6627,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_GUIDE (379) - monsters.h line 3893
+  { // PM_GUIDE (380) - monsters.h line 3893
     name: 'guide',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 20, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6637,12 +6642,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 8, color: HI_DOMESTIC
   },
-  { // PM_WARRIOR (380) - monsters.h line 3905
+  { // PM_WARRIOR (381) - monsters.h line 3905
     name: 'warrior',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 10, align: 1,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }, { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 8 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }, { type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 8 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6652,12 +6657,12 @@ export const mons = [
     flags3: M3_INFRAVISIBLE,
     difficulty: 7, color: HI_DOMESTIC
   },
-  { // PM_APPRENTICE (381) - monsters.h line 3914
+  { // PM_APPRENTICE (382) - monsters.h line 3914
     name: 'apprentice',
     symbol: S_HUMAN,
     level: 5, speed: 12, ac: 10, mr: 30, align: 0,
     geno: G_NOGEN,
-    attacks: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 }, { aatyp: AT_MAGC, adtyp: AD_SPEL, damn: 0, damd: 0 }],
+    attacks: [{ type: AT_WEAP, damage: AD_PHYS, dice: 1, sides: 6 }, { type: AT_MAGC, damage: AD_SPEL, dice: 0, sides: 0 }],
     weight: 1450, nutrition: 400,
     sound: MS_GUARDIAN, size: MZ_HUMAN,
     mr1: 0, mr2: 0,
@@ -6669,29 +6674,10 @@ export const mons = [
   },
 ];
 
-function setAliasPair(obj, canonical, legacy) {
-  if (!obj || typeof obj !== 'object') return;
-  if (obj[canonical] === undefined && obj[legacy] !== undefined) {
-    obj[canonical] = obj[legacy];
-  }
-  if (obj[legacy] === undefined && obj[canonical] !== undefined) {
-    obj[legacy] = obj[canonical];
-  }
-}
-
-function normalizeMonsterFields(mon) {
-  if (!mon || typeof mon !== 'object') return;
-  setAliasPair(mon, 'mlevel', 'level');
-  setAliasPair(mon, 'm_lev', 'mlevel');
-  setAliasPair(mon, 'msize', 'size');
-  setAliasPair(mon, 'mlet', 'symbol');
-  if (Array.isArray(mon.attacks)) {
-    for (const attk of mon.attacks) canonicalizeAttackFields(attk);
-  }
-}
-
 for (const mon of mons) {
-  normalizeMonsterFields(mon);
+  if (!Array.isArray(mon.attacks)) continue;
+  for (const attk of mon.attacks) canonicalizeAttackFields(attk);
 }
 
 // End of monsters.js
+// AUTO-IMPORT-END: MONSTERS

@@ -40,8 +40,10 @@ webhack/
 ├── Guidebook.txt              Original NetHack Guidebook
 ├── README.md                  Project overview and status
 ├── AGENTS.md                  Agent workflow instructions
-├── gen_monsters.py            Code generator: C monsters.h → JS monsters.js
-├── gen_objects.py             Code generator: C objects.h → JS objects.js
+├── scripts/generators/gen_monsters.py          Code generator: C monsters.h → JS monsters.js
+├── scripts/generators/gen_objects.py           Code generator: C objects.h → JS objects.js
+├── scripts/generators/gen_artifacts.py         Code generator: C artilist.h → JS artifacts.js
+├── scripts/generators/gen_weapon_constants.py  Code generator: C skills.h/monst.h → JS weapon constants
 │
 ├── js/                        ── Game Source (32 modules) ──
 │   │

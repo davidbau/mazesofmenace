@@ -893,8 +893,10 @@ for comparison with JS.
 The monster and object tables are auto-generated from C headers:
 
 ```bash
-python3 gen_monsters.py > js/monsters.js
-python3 gen_objects.py > js/objects.js
+python3 scripts/generators/gen_monsters.py
+python3 scripts/generators/gen_objects.py
+python3 scripts/generators/gen_artifacts.py
+python3 scripts/generators/gen_weapon_constants.py
 ```
 
 ### Converting Lua special levels to JavaScript

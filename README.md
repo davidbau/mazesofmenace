@@ -180,8 +180,10 @@ Monster and object data are auto-generated from the NetHack C source
 headers via Python scripts:
 
 ```bash
-python3 scripts/generators/gen_monsters.py > js/monsters.js   # 383 monsters
-python3 scripts/generators/gen_objects.py > js/objects.js      # 478 objects
+python3 scripts/generators/gen_monsters.py   # patches js/monsters.js between markers
+python3 scripts/generators/gen_objects.py    # patches js/objects.js between markers
+python3 scripts/generators/gen_artifacts.py  # patches js/artifacts.js between markers
+python3 scripts/generators/gen_weapon_constants.py  # patches js/weapon.js constants block
 ```
 
 ## Project Structure

@@ -38,7 +38,11 @@ import { couldsee } from './vision.js';
 // ============================================================================
 // Skill constants — cf. objclass.h
 // ============================================================================
-// Weapon sub-class constants matching objects.js sub field
+// AUTO-IMPORT-BEGIN: WEAPON_CONSTANTS
+// Auto-imported weapon constants from C headers
+// Sources: skills.h, monst.h
+
+// Skill constants — cf. skills.h enum p_skills
 const P_NONE = 0;
 const P_DAGGER = 1;
 const P_KNIFE = 2;
@@ -67,8 +71,6 @@ const P_SHURIKEN = 24;
 const P_BOOMERANG = 25;
 const P_WHIP = 26;
 const P_UNICORN_HORN = 27;
-
-// Spell skills
 export const P_ATTACK_SPELL = 28;
 export const P_HEALING_SPELL = 29;
 export const P_DIVINATION_SPELL = 30;
@@ -76,11 +78,10 @@ export const P_ENCHANTMENT_SPELL = 31;
 export const P_CLERIC_SPELL = 32;
 export const P_ESCAPE_SPELL = 33;
 export const P_MATTER_SPELL = 34;
-
-// Fighting skills
 export const P_BARE_HANDED_COMBAT = 35;
 export const P_TWO_WEAPON_COMBAT = 36;
 export const P_RIDING = 37;
+export const P_NUM_SKILLS = 38;
 
 export const P_FIRST_WEAPON = P_DAGGER;
 export const P_LAST_WEAPON = P_UNICORN_HORN;
@@ -88,9 +89,8 @@ export const P_FIRST_SPELL = P_ATTACK_SPELL;
 export const P_LAST_SPELL = P_MATTER_SPELL;
 export const P_FIRST_H_TO_H = P_BARE_HANDED_COMBAT;
 export const P_LAST_H_TO_H = P_RIDING;
-export const P_NUM_SKILLS = 38;
 
-// Skill levels
+// Skill levels — cf. skills.h enum skill_levels
 export const P_ISRESTRICTED = 0;
 export const P_UNSKILLED = 1;
 export const P_BASIC = 2;
@@ -99,18 +99,19 @@ export const P_EXPERT = 4;
 export const P_MASTER = 5;
 export const P_GRAND_MASTER = 6;
 
-// Monster weapon_check states
+// Monster weapon_check states — cf. monst.h enum wpn_chk_flags
 export const NO_WEAPON_WANTED = 0;
 export const NEED_WEAPON = 1;
-export const NEED_HTH_WEAPON = 2;
-export const NEED_RANGED_WEAPON = 3;
+export const NEED_RANGED_WEAPON = 2;
+export const NEED_HTH_WEAPON = 3;
 export const NEED_PICK_AXE = 4;
 export const NEED_AXE = 5;
 export const NEED_PICK_OR_AXE = 6;
 
-// BOLT_LIM for distance checks
+// BOLT_LIM for distance checks (hack.h)
 const BOLT_LIM = 8;
 const AKLYS_LIM = BOLT_LIM / 2;
+// AUTO-IMPORT-END: WEAPON_CONSTANTS
 
 // Hero skill state (C: P_SKILL/P_MAX_SKILL/P_ADVANCE).
 let skillSystemActive = false;

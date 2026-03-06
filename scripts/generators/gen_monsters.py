@@ -4,8 +4,20 @@ Parse NetHack 3.7 monsters.h and generate js/monsters.js
 """
 import re
 import sys
+import os
+import argparse
 
-MONSTERS_H = "nethack-c/include/monsters.h"
+from marker_patch import MarkerSpec, patch_between_markers
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_MONSTERS_H_CANDIDATES = [
+    os.path.join(SCRIPT_DIR, 'nethack-c', 'include', 'monsters.h'),
+    os.path.join(SCRIPT_DIR, '..', '..', 'nethack-c', 'patched', 'include', 'monsters.h'),
+    os.path.join(SCRIPT_DIR, '..', '..', 'nethack-c', 'include', 'monsters.h'),
+]
+MONSTERS_H = next((p for p in _MONSTERS_H_CANDIDATES if os.path.exists(p)), _MONSTERS_H_CANDIDATES[0])
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'js', 'monsters.js')
+MARKER = MarkerSpec('MONSTERS')
 
 # Read the source
 with open(MONSTERS_H) as f:
@@ -60,7 +72,8 @@ CLR = {
 # A_NONE
 A_NONE = -128
 
-# First, strip out #if 0 ... #endif blocks and #ifdef CHARON / MAIL_STRUCTURES blocks
+# First, strip out #if 0 ... #endif blocks and #ifdef CHARON blocks.
+# Keep MAIL_STRUCTURES contents so PM indices match canonical builds.
 filtered_lines = []
 skip_depth = 0
 in_skip = False
@@ -76,7 +89,7 @@ while i < len(lines):
         in_skip = True
         i += 1
         continue
-    elif stripped.startswith('#ifdef CHARON') or stripped.startswith('#ifdef MAIL_STRUCTURES'):
+    elif stripped.startswith('#ifdef CHARON'):
         skip_stack.append(True)
         in_skip = True
         i += 1
@@ -397,6 +410,8 @@ out.append('// NetHack 3.7 Monster Data - auto-generated from monsters.h')
 out.append('// Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985.')
 out.append('// NetHack may be freely redistributed.  See license for details.')
 out.append('')
+out.append("import { canonicalizeAttackFields } from './attack_fields.js';")
+out.append('')
 
 # Monster symbol classes
 out.append('// Monster symbol classes (from defsym.h)')
@@ -681,12 +696,32 @@ for idx, mon in enumerate(monsters):
 
 out.append('];')
 out.append('')
+# Keep attack structures canonicalized for C-faithful field aliases.
+out.append('for (const mon of mons) {')
+out.append('  if (!Array.isArray(mon.attacks)) continue;')
+out.append('  for (const attk of mon.attacks) canonicalizeAttackFields(attk);')
+out.append('}')
+out.append('')
 out.append('// End of monsters.js')
+generated = '\n'.join(out) + '\n'
 
-# Write the output
-output_path = "js/monsters.js"
-with open(output_path, 'w') as f:
-    f.write('\n'.join(out))
-    f.write('\n')
+parser = argparse.ArgumentParser(description='Generate monsters auto-import block.')
+parser.add_argument('--stdout', action='store_true', help='Print generated block to stdout.')
+parser.add_argument('--output', default=OUTPUT_PATH, help='Target js file (default: js/monsters.js).')
+args = parser.parse_args()
 
-print(f"Generated {output_path} with {len(monsters)} monsters")
+if args.stdout:
+    sys.stdout.write(generated)
+else:
+    header = (
+        "// monsters.js — monster constants and data\n"
+        "// Auto-imported from nethack-c/include/monsters.h\n"
+        "// Regenerate with: python3 scripts/generators/gen_monsters.py\n"
+    )
+    patch_between_markers(
+        args.output,
+        MARKER,
+        generated,
+        init_prefix=header,
+    )
+    print(f"Patched {args.output} ({MARKER.tag}) with {len(monsters)} monsters")

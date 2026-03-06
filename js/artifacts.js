@@ -1,5 +1,9 @@
+// artifacts.js — artifact constants and data
+// Auto-imported from nethack-c/include/artilist.h
+// Regenerate with: python3 scripts/generators/gen_artifacts.py
+// AUTO-IMPORT-BEGIN: ARTIFACTS
 // artifacts.js — Auto-generated from nethack-c/include/artilist.h
-// DO NOT EDIT — regenerate with: python3 scripts/generators/gen_artifacts.py > js/artifacts.js
+// DO NOT EDIT — regenerate with: python3 scripts/generators/gen_artifacts.py
 
 // ── SPFX_ flags (artifact special effects) ──
 export const SPFX_NONE = 0x00000000;
@@ -127,4 +131,4 @@ export const artilist = [
   {otyp:199,name:"The Eye of the Aethiopica",spfx:0x00000007,cspfx:0x00018000,mtype:0,attk:{at:0,ad:0,dice:0,sides:0},defn:{at:0,ad:1,dice:0,sides:0},cary:{at:0,ad:0,dice:0,sides:0},inv_prop:70,alignment:0,role:343,race:-1,gen_spe:0,gift_value:12,cost:4000,acolor:8}, // [33] The Eye of the Aethiopica
   {otyp:0,name:"",spfx:0x00000000,cspfx:0x00000000,mtype:0,attk:{at:0,ad:0,dice:0,sides:0},defn:{at:0,ad:0,dice:0,sides:0},cary:{at:0,ad:0,dice:0,sides:0},inv_prop:0,alignment:-128,role:-1,race:-1,gen_spe:0,gift_value:0,cost:0,acolor:8}, // [34] dummy
 ];
-
+// AUTO-IMPORT-END: ARTIFACTS

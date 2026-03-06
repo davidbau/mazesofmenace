@@ -7,19 +7,26 @@ a JavaScript data file with the artifact table, SPFX_* constants, ART_*
 enum constants, and invoke property constants.
 
 Usage:
-    python3 gen_artifacts.py > js/artifacts.js
+    python3 gen_artifacts.py
+    python3 gen_artifacts.py --stdout
 """
 
 import re
 import sys
 import os
+import argparse
+
+from marker_patch import MarkerSpec, patch_between_markers
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _ARTILIST_H_CANDIDATES = [
     os.path.join(SCRIPT_DIR, 'nethack-c', 'include', 'artilist.h'),
+    os.path.join(SCRIPT_DIR, '..', '..', 'nethack-c', 'patched', 'include', 'artilist.h'),
     os.path.join(SCRIPT_DIR, '..', '..', 'nethack-c', 'include', 'artilist.h'),
 ]
 ARTILIST_H = next((p for p in _ARTILIST_H_CANDIDATES if os.path.exists(p)), _ARTILIST_H_CANDIDATES[0])
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, '..', '..', 'js', 'artifacts.js')
+MARKER = MarkerSpec('ARTIFACTS')
 
 # ── SPFX_ flags (from artifact.h) ─────────────────────────────────────
 SPFX = {
@@ -371,7 +378,7 @@ def generate_js(artifacts):
     """Generate the artifacts.js JavaScript source."""
     lines = []
     lines.append('// artifacts.js — Auto-generated from nethack-c/include/artilist.h')
-    lines.append('// DO NOT EDIT — regenerate with: python3 scripts/generators/gen_artifacts.py > js/artifacts.js')
+    lines.append('// DO NOT EDIT — regenerate with: python3 scripts/generators/gen_artifacts.py')
     lines.append('')
 
     # SPFX constants
@@ -425,13 +432,29 @@ def generate_js(artifacts):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Generate artifacts auto-import block.')
+    parser.add_argument('--stdout', action='store_true', help='Print generated block to stdout.')
+    parser.add_argument('--output', default=OUTPUT_PATH, help='Target js file (default: js/artifacts.js).')
+    args = parser.parse_args()
+
     artifacts = parse_artilist()
     if not artifacts:
         print("ERROR: No artifacts parsed!", file=sys.stderr)
         sys.exit(1)
 
     js = generate_js(artifacts)
-    sys.stdout.write(js)
-
-    # Summary to stderr
-    print(f"Generated {len(artifacts)} artifacts ({len(artifacts)-1} real + 1 dummy)", file=sys.stderr)
+    if args.stdout:
+        sys.stdout.write(js)
+    else:
+        header = (
+            "// artifacts.js — artifact constants and data\n"
+            "// Auto-imported from nethack-c/include/artilist.h\n"
+            "// Regenerate with: python3 scripts/generators/gen_artifacts.py\n"
+        )
+        patch_between_markers(
+            args.output,
+            MARKER,
+            js,
+            init_prefix=header,
+        )
+        print(f"Patched {args.output} ({MARKER.tag}) with {len(artifacts)-1} artifacts", file=sys.stderr)
