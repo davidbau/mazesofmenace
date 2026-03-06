@@ -5,6 +5,7 @@ import {
     CORR, ROOM, AIR, CLOUD, MAGIC_PORTAL, VIBRATING_SQUARE, MKTRAP_MAZEFLAG,
     POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
     IS_WALL, IS_POOL, isok, PM_PRIEST as ROLE_PRIEST,
+    QUEST, GNOMISH_MINES,
 } from './const.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
@@ -33,7 +34,6 @@ import {
     place_branch,
 } from './mklev.js';
 import { somex, somey, somexyspace } from './mkroom.js';
-import { QUEST, GNOMISH_MINES } from './special_levels.js';
 import { block_point, unblock_point, recalc_block_point } from './vision.js';
 import { create_gas_cloud, clear_heros_fault } from './region.js';
 import { Norep } from './pline.js';

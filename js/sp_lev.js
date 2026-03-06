@@ -62,7 +62,8 @@ import {
     MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     MAXNROFROOMS, ROOMOFFSET, MAXMCLASSES,
     PM_PRIEST as ROLE_PRIEST,
-    MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH
+    MM_NOGRP, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH,
+    GEHENNOM,
 } from './const.js';
 import {
     BOULDER, SCROLL_CLASS, FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS,
@@ -72,7 +73,7 @@ import {
 } from './objects.js';
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, MR_STONE, S_EEL } from './monsters.js';
 import { poly_when_stoned } from './mondata.js';
-import { getSpecialLevel, findSpecialLevelByName, GEHENNOM } from './special_levels.js';
+import { getSpecialLevel, findSpecialLevelByName } from './special_levels.js';
 import { placeFloorObject, place_object, stackobj } from './stackobj.js';
 import { mongone } from './mon.js';
 import { premap_detect } from './detect.js';

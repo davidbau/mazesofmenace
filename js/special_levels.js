@@ -6,6 +6,16 @@
  */
 
 import { rnd } from './rng.js';
+import {
+    DUNGEONS_OF_DOOM,
+    GNOMISH_MINES,
+    SOKOBAN,
+    QUEST,
+    KNOX,
+    GEHENNOM,
+    VLADS_TOWER,
+    TUTORIAL,
+} from './const.js';
 
 // Import special level generators
 import { generate as generateKnox } from './levels/knox.js';
@@ -182,19 +192,6 @@ import { generate as generateTut1 } from './levels/tut-1.js';
 import { generate as generateTut2 } from './levels/tut-2.js';
 
 // Library files (nhcore, nhlib, quest, bigroom are support files, not level generators)
-
-/**
- * Dungeon branch numbers
- * C ref: include/dungeon.h
- */
-export const DUNGEONS_OF_DOOM = 0;
-export const GNOMISH_MINES = 1;
-export const SOKOBAN = 2;
-export const QUEST = 3;
-export const KNOX = 4;  // Fort Ludios
-export const GEHENNOM = 5;
-export const VLADS_TOWER = 6;
-export const TUTORIAL = 8;
 
 /**
  * Special level lookup table

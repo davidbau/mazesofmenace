@@ -4,7 +4,8 @@
 import { NORMAL_SPEED, A_DEX, A_CON,
          A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
          RACE_HUMAN, RACE_ELF, RACE_DWARF, RACE_GNOME, RACE_ORC,
-         FEMALE, MALE, TERMINAL_COLS, ROOMOFFSET, SHOPBASE } from './const.js';
+         FEMALE, MALE, TERMINAL_COLS, ROOMOFFSET, SHOPBASE,
+         TUTORIAL } from './const.js';
 import { initRng, rn2, rnd, rn1, getRngState, setRngState, getRngCallCount, setRngCallCount, pushRngLogEntry } from './rng.js';
 import { CLR_GRAY } from './display.js';
 import { nhgetch, getCount, getlin, setInputRuntime } from './input.js';
@@ -14,7 +15,6 @@ import { Player, roles, races, validRacesForRole, validAlignsForRoleRace,
          roleNameForGender, alignName, formatLoreText } from './player.js';
 import { GameMap } from './game.js';
 import { initLevelGeneration, mklev, setGameSeed, isBranchLevelToDnum } from './dungeon.js';
-import { TUTORIAL } from './special_levels.js';
 import { setSplevPlayerContext, clearSplevPlayerContext } from './sp_lev.js';
 import { setMakemonPlayerContext } from './makemon.js';
 import { setObjectMoves } from './mkobj.js';

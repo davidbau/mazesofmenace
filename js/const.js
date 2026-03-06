@@ -412,6 +412,19 @@ export const SQSRCHRADIUS = 5;
 export const FARAWAY = 127;
 export const BOLT_LIM = 8;
 
+// Dungeon branch indices (include/dungeon.h / src/dungeon.c)
+// Runtime fields:
+// - level coordinates: `lev.dnum` / `_genDnum`
+// - special-level registry keys and branch-selection predicates
+export const DUNGEONS_OF_DOOM = 0;
+export const GNOMISH_MINES = 1;
+export const SOKOBAN = 2;
+export const QUEST = 3;
+export const KNOX = 4;
+export const GEHENNOM = 5;
+export const VLADS_TOWER = 6;
+export const TUTORIAL = 8;
+
 // Maximum values
 export const MAXNROFROOMS = 40;
 export const MAXDUNGEON = 16;
