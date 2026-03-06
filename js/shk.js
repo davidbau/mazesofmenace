@@ -1567,6 +1567,7 @@ export async function maybeHandleShopEntryMessage(game, oldX, oldY) {
 export async function dopay(game) {
     const { map, player } = game;
     if (!map) return 0;
+    let tookTime = false;
 
     // Find shopkeepers on level
     const monsters = map.monsters || [];
@@ -1593,6 +1594,7 @@ export async function dopay(game) {
         if (!eshkp.billct && !eshkp.debit) {
             if (!eshkp.robbed && eshkp.mpeaceful !== false) {
                 await You("do not owe %s anything.", shkname(resident));
+                tookTime = true;
             }
         } else {
             if ((resident.debit || 0) > 0) {
@@ -1601,20 +1603,23 @@ export async function dopay(game) {
                     if (!insufficient_funds(resident, { otyp: 0, quan: 1, oclass: 0 }, debit)) {
                         await pay(debit, resident, game);
                         resident.debit = 0;
+                        tookTime = true;
                     }
                 }
             }
             const ibill = make_itemized_bill(resident);
             const paid = { paid: false };
             await pay_billed_items(resident, ibill.length, ibill, false, paid);
+            if (paid.paid) tookTime = true;
             if (!paid.paid && (resident.billct || 0)) {
                 await pline("You owe %s %d %s.", shkname(resident),
                     shop_debt(resident), currency(shop_debt(resident)));
+                tookTime = true;
             }
         }
     }
 
-    return 0;
+    return tookTime ? 1 : 0;
 }
 
 // C ref: shk.c make_itemized_bill()

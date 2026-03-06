@@ -1822,13 +1822,12 @@ async function handleLoot(game) {
     return { moved: false, tookTime: true };
 }
 
-// C ref: shk.c dopay() — stub; full billing flow not yet ported.
-async function handlePay(player, map, display) {
-    // C ref: shk.c dopay() can still report "There appears..." even when
-    // shopkeepers exist elsewhere on level; our billing-state model is partial,
-    // so keep the C-safe no-shopkeeper text for strict replay parity.
-    await display.putstr_message('There appears to be no shopkeeper here to receive your payment.');
-    return { moved: false, tookTime: false };
+// C ref: shk.c dopay()
+async function handlePay(player, map, display, game = null) {
+    const { dopay } = await import('./shk.js');
+    const state = game || { player, map, display };
+    const result = await dopay(state);
+    return { moved: false, tookTime: !!result };
 }
 
 // Toggle autopickup (@)

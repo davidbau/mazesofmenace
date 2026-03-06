@@ -398,9 +398,9 @@ export async function rhack(ch, game) {
     }
 
     // Pay shopkeeper
-    // C ref: shk.c dopay() -- full billing flow is not yet ported; preserve no-shopkeeper message.
+    // C ref: shk.c dopay()
     if (c === 'p') {
-        return await handlePay(player, map, display);
+        return await handlePay(player, map, display, game);
     }
 
     // Read scroll/spellbook
