@@ -611,6 +611,7 @@ export async function rhack(ch, game) {
             setForceFight(false);
         } else {
             setForceFight(true);
+            // C does not print a message for the success case (only for double-prefix cancel)
         }
         return { moved: false, tookTime: false };
     }
@@ -622,6 +623,7 @@ export async function rhack(ch, game) {
             clearRunMode();
         } else {
             setRunMode(3); // run mode
+            // C does not print a message for the success case
         }
         return { moved: false, tookTime: false };
     }
@@ -633,6 +635,7 @@ export async function rhack(ch, game) {
             clearRunMode();
         } else {
             setRunMode(2); // rush mode
+            // C does not print a message for the success case
         }
         return { moved: false, tookTime: false };
     }
