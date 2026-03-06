@@ -32,8 +32,8 @@ function ensureSessionGlobals() {
 export function buildGameplayReplayFlags(session) {
     const flags = { ...DEFAULT_FLAGS };
     flags.color = session?.meta?.options?.color !== false;
-    // C harness gameplay captures default to concise messaging unless explicit.
-    flags.verbose = (session?.meta?.options?.verbose === true);
+    // NetHack defaults verbose=true; preserve that unless a session explicitly disables it.
+    flags.verbose = session?.meta?.options?.verbose !== false;
     if (session?.meta?.options?.autopickup === false) flags.pickup = false;
     if (session?.meta?.options?.rest_on_space) flags.rest_on_space = true;
     flags.DECgraphics = session?.meta?.options?.symset === 'DECgraphics';

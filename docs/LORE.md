@@ -2687,3 +2687,27 @@ hard-won wisdom:
     step `208` to step `218`, RNG matched prefix improved `9725 -> 10781`.
   - `seed327_priest_wizard_gameplay` and `seed328_ranger_wizard_gameplay` first
     divergence steps remained unchanged (`226` and `220` respectively).
+
+### gameplay replay option parity: verbose default-on restoration (2026-03-06)
+
+- Root cause for recurring seed325 `mdig_tunnel` RNG drift was in replay option
+  wiring, not core dig logic: gameplay replay flags forced `verbose=false`
+  unless a session explicitly set `meta.options.verbose=true`.
+- NetHack default is `verbose=true` (`DEFAULT_FLAGS`), and most gameplay session
+  fixtures omit `meta.options.verbose`, so replay had been running in terse mode
+  unintentionally.
+- C-faithful fix:
+  - `test/comparison/session_recorder.js`: `buildGameplayReplayFlags()` now
+    defaults `flags.verbose` to on and only disables when session explicitly
+    sets `verbose: false`.
+  - `test/comparison/rng_shift_analysis.js`: aligned diagnostic replay flags to
+    the same default so tooling and session runner observe the same behavior.
+- Validation:
+  - `node test/comparison/session_test_runner.js --no-parallel --session-timeout-ms=30000 test/comparison/sessions/seed325_knight_wizard_gameplay.session.json`
+    now reaches first RNG divergence at step `224` with RNG prefix
+    `10493/25281` and first RNG mismatch:
+    `rn2(20)=12 @ moveloop_core` vs `rn2(2)=0 @ morgue_mon_sound`.
+  - `seed327_priest_wizard_gameplay` and `seed328_ranger_wizard_gameplay`
+    remain at first divergence steps `226` and `220` (no regression in first
+    divergence position).
+  - `npm run test:unit -- --runInBand` passes.

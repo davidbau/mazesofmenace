@@ -158,7 +158,7 @@ async function replayAndAnalyze(session, opts) {
     replayFlags.customsymbols = true;
     if (session.meta?.options?.autopickup === false) replayFlags.pickup = false;
     if (session.meta?.options?.rest_on_space) replayFlags.rest_on_space = true;
-    replayFlags.verbose = session.meta?.options?.verbose === true;
+    replayFlags.verbose = session.meta?.options?.verbose !== false;
     replayFlags.DECgraphics = session.meta?.options?.symset === 'DECgraphics';
     if (replayFlags.DECgraphics) {
         replayFlags.symset = 'DECgraphics, active, handler=DEC';
