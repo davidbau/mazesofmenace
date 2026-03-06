@@ -59,6 +59,8 @@ export function place_object(obj, x, y, map) {
     if (!obj || !map?.objects) return obj;
     obj.ox = x;
     obj.oy = y;
+    // C ref: place_object() puts object on floor chain (OBJ_FLOOR).
+    obj.where = 'OBJ_FLOOR';
     pushRngLogEntry(`^place[${obj.otyp},${obj.ox},${obj.oy}]`);
     map.objects.push(obj);
     return obj;

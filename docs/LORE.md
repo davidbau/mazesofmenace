@@ -2893,3 +2893,17 @@ hard-won wisdom:
     while RNG/events remain 100% matched.
   - JS row at step `231` matches session row at step `232`, indicating a
     narrow per-step display boundary/state timing issue, not broad PRNG drift.
+
+### place_object() now marks OBJ_FLOOR (2026-03-06)
+
+- Root cause:
+  - `js/mkobj.js place_object()` appended objects to `map.objects` but did not
+    set `obj.where` to floor state.
+  - This left some floor objects carrying stale/constructor `where` values
+    (`free`), making `where`-sensitive C-faithful checks unreliable.
+- Fix:
+  - `place_object()` now sets `obj.where = 'OBJ_FLOOR'` when placing on map.
+- Validation:
+  - `node scripts/test-unit-core.mjs --runInBand` passes (`2483/2483`).
+  - `scripts/run-and-report.sh --failures` unchanged (`27/34` gameplay passing,
+    same 7 failing sessions).
