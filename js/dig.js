@@ -48,7 +48,7 @@ import { unblock_point, recalc_block_point } from './vision.js';
 import { newsym } from './display.js';
 import { cansee } from './vision.js';
 import { mb_trapped } from './monmove.js';
-import { canseemon } from './mondata.js';
+import { canseemon, is_whirly, digests, unique_corpstat } from './mondata.js';
 import { mksobj } from './mkobj.js';
 import { placeFloorObject } from './invent.js';
 import { makemon, mkclass } from './makemon.js';
@@ -73,6 +73,7 @@ import { t_at, conjoined_pits } from './trap.js';
 import { On_ladder, On_stairs } from './stairs.js';
 import { s_suffix } from './hacklib.js';
 import { cvt_sdoor_to_door } from './detect.js';
+import { expels } from './mhitu.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -654,8 +655,36 @@ export function draft_message(unexpected, player = null) {
 // ============================================================================
 
 export function watch_dig(mtmp, x, y, zap, map) {
-    // Stub: watchman AI not yet wired
-    // No RNG consumed in this function
+    const lev = map?.at?.(x, y);
+    const player = _gstate?.player || null;
+    if (!lev || !player) return;
+    const inTown = in_town(x, y, map);
+    const watchedSurface = closed_door(x, y, map) || lev.typ === SDOOR
+        || IS_WALL(lev.typ) || IS_FOUNTAIN(lev.typ) || IS_TREE(lev.typ);
+    if (!inTown || !watchedSurface) return;
+
+    let mon = mtmp || null;
+    if (!mon && Array.isArray(map.monsters)) {
+        mon = map.monsters.find((cand) => watchman_canseeu(cand)) || null;
+    }
+    if (!mon) return;
+
+    const diggingCtx = player.context?.digging || null;
+    const warned = !!diggingCtx?.warned;
+    if (zap || warned) {
+        _gstate?.display?.putstr_message?.("Halt, vandal!  You're under arrest!");
+    } else {
+        let str = 'fountain';
+        if (IS_DOOR(lev.typ)) str = 'door';
+        else if (IS_TREE(lev.typ)) str = 'tree';
+        else if (IS_OBSTRUCTED(lev.typ)) str = 'wall';
+        _gstate?.display?.putstr_message?.(`Hey, stop damaging that ${str}!`);
+        if (diggingCtx) diggingCtx.warned = true;
+    }
+
+    if (is_digging(player)) {
+        player.occupation = null;
+    }
 }
 
 
@@ -673,8 +702,18 @@ export async function zap_dig(map, player) {
 
     // C: if (u.uswallow) { ... } — swallowed handling
     if (u.uswallow) {
-        // C: pierce stomach wall, expels monster
-        // Swallow handling not yet wired
+        const mtmp = u.ustuck || null;
+        if (mtmp && !is_whirly(mtmp.data || mtmp.type || {})) {
+            if (digests(mtmp.data || mtmp.type || {})) {
+                _gstate?.display?.putstr_message?.('You pierce its stomach wall!');
+            }
+            if (unique_corpstat(mtmp.data || mtmp.type || {})) {
+                mtmp.mhp = Math.floor(((mtmp.mhp || 0) + 1) / 2);
+            } else {
+                mtmp.mhp = 1;
+            }
+            await expels(mtmp, mtmp.data || mtmp.type || {}, !digests(mtmp.data || mtmp.type || {}), u, _gstate?.display || null);
+        }
         return;
     }
 
