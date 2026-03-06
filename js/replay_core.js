@@ -26,21 +26,56 @@ function toCompactRng(entry) {
 // Drain the microtask queue until the command either completes or blocks
 // waiting for input (e.g., direction prompt, --More--, inventory selection).
 async function drainUntilInput(commandPromise, inputRuntime) {
-    let done = false;
-    let value;
-    let error;
-    commandPromise.then(
-        (v) => { done = true; value = v; },
-        (e) => { done = true; error = e; }
+    const completion = commandPromise.then(
+        (value) => ({ type: 'done', value }),
+        (error) => ({ type: 'error', error })
     );
-    while (!done) {
+    const hasBoundaryWaitApi = typeof inputRuntime?.waitForInputWait === 'function'
+        && typeof inputRuntime?.getInputState === 'function';
+    let waitEpoch = hasBoundaryWaitApi
+        ? Number(inputRuntime.getInputState()?.waitEpoch || 0)
+        : 0;
+
+    while (true) {
         if (typeof inputRuntime?.isWaitingInput === 'function' && inputRuntime.isWaitingInput()) {
             return { done: false };
         }
-        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        if (!hasBoundaryWaitApi) {
+            const next = await Promise.race([
+                completion,
+                new Promise((resolve) => setTimeout(() => resolve({ type: 'tick' }), 0)),
+            ]);
+            if (next.type === 'done') return { done: true, value: next.value };
+            if (next.type === 'error') throw next.error;
+            continue;
+        }
+
+        const waitAbort = new AbortController();
+        const waitPromise = inputRuntime
+            .waitForInputWait({ afterEpoch: waitEpoch, signal: waitAbort.signal })
+            .then((epoch) => ({ type: 'wait', epoch }))
+            .catch((err) => {
+                if (err?.name === 'AbortError') return { type: 'aborted' };
+                throw err;
+            });
+
+        const next = await Promise.race([completion, waitPromise]);
+        if (next.type === 'done') {
+            waitAbort.abort();
+            return { done: true, value: next.value };
+        }
+        if (next.type === 'error') {
+            waitAbort.abort();
+            throw next.error;
+        }
+        if (next.type === 'wait') {
+            waitEpoch = next.epoch;
+            if (typeof inputRuntime?.isWaitingInput === 'function' && inputRuntime.isWaitingInput()) {
+                return { done: false };
+            }
+        }
     }
-    if (error) throw error;
-    return { done: true, value };
 }
 
 function captureScreen(display) {

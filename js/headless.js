@@ -167,6 +167,34 @@ export function buildInventoryLines(player) {
 export function createHeadlessInput({ throwOnEmpty = false } = {}) {
     const queue = [];
     let resolver = null;
+    let waitEpoch = 0;
+    const waitListeners = [];
+
+    function abortError() {
+        const err = new Error('waitForInputWait aborted');
+        err.name = 'AbortError';
+        return err;
+    }
+
+    function removeWaitListener(listener) {
+        const idx = waitListeners.indexOf(listener);
+        if (idx >= 0) waitListeners.splice(idx, 1);
+    }
+
+    function notifyWaitStarted() {
+        waitEpoch += 1;
+        for (let i = waitListeners.length - 1; i >= 0; i--) {
+            const listener = waitListeners[i];
+            if (waitEpoch > listener.afterEpoch) {
+                waitListeners.splice(i, 1);
+                if (listener.signal && listener.onAbort) {
+                    listener.signal.removeEventListener('abort', listener.onAbort);
+                }
+                listener.resolve(waitEpoch);
+            }
+        }
+    }
+
     return {
         display: null,
         pushInput(ch) {
@@ -197,12 +225,46 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
             if (throwOnEmpty) {
                 throw new Error('Input queue empty - test may be missing keystrokes');
             }
+            notifyWaitStarted();
             return await new Promise((resolve) => {
                 resolver = resolve;
             });
         },
         isWaitingInput() {
             return resolver !== null;
+        },
+        getInputState() {
+            return {
+                waiting: resolver !== null,
+                queueLength: queue.length,
+                waitEpoch,
+            };
+        },
+        waitForInputWait({ afterEpoch = 0, signal = null } = {}) {
+            const since = Number.isInteger(afterEpoch) ? afterEpoch : 0;
+            if (resolver !== null && waitEpoch > since) {
+                return Promise.resolve(waitEpoch);
+            }
+            return new Promise((resolve, reject) => {
+                if (signal?.aborted) {
+                    reject(abortError());
+                    return;
+                }
+                const listener = {
+                    afterEpoch: since,
+                    resolve,
+                    signal,
+                    onAbort: null,
+                };
+                if (signal) {
+                    listener.onAbort = () => {
+                        removeWaitListener(listener);
+                        reject(abortError());
+                    };
+                    signal.addEventListener('abort', listener.onAbort, { once: true });
+                }
+                waitListeners.push(listener);
+            });
         },
     };
 }

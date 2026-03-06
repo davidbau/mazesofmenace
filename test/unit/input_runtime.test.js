@@ -26,6 +26,7 @@ import {
 } from '../../js/input.js';
 import { CMDQ_KEY, CMDQ_INT, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT } from '../../js/const.js';
 import { mapBrowserKeyToNhCode } from '../../js/browser_input.js';
+import { createHeadlessInput } from '../../js/headless.js';
 
 describe('input runtime primitives', () => {
     beforeEach(() => {
@@ -80,6 +81,50 @@ describe('input runtime primitives', () => {
         assert.equal(result, 'y'.charCodeAt(0));
         assert.equal(prompts.length, 1);
         assert.match(prompts[0], /Proceed\?/);
+    });
+
+    it('waitForInputWait signals queue->wait transitions with incrementing epochs', async () => {
+        const runtime = createInputQueue();
+        assert.equal(runtime.isWaitingInput(), false);
+        assert.equal(runtime.getInputState().waitEpoch, 0);
+
+        const pending = runtime.nhgetch();
+        await new Promise((r) => setTimeout(r, 0));
+        const s1 = runtime.getInputState();
+        assert.equal(runtime.isWaitingInput(), true);
+        assert.equal(s1.waitEpoch, 1);
+
+        const immediate = await runtime.waitForInputWait({ afterEpoch: 0 });
+        assert.equal(immediate, 1);
+
+        const nextWait = runtime.waitForInputWait({ afterEpoch: 1 });
+        runtime.pushInput('x'.charCodeAt(0));
+        assert.equal(await pending, 'x'.charCodeAt(0));
+        assert.equal(runtime.isWaitingInput(), false);
+
+        const secondPending = runtime.nhgetch();
+        const secondEpoch = await nextWait;
+        assert.equal(secondEpoch, 2);
+        runtime.pushInput('y'.charCodeAt(0));
+        await secondPending;
+    });
+
+    it('waitForInputWait supports abort signals', async () => {
+        const runtime = createInputQueue();
+        const ac = new AbortController();
+        const p = runtime.waitForInputWait({ afterEpoch: 0, signal: ac.signal });
+        ac.abort();
+        await assert.rejects(p, /aborted/);
+    });
+
+    it('headless input exposes the same boundary wait contract', async () => {
+        const runtime = createHeadlessInput();
+        assert.equal(runtime.getInputState().waitEpoch, 0);
+        const pending = runtime.nhgetch();
+        const epoch = await runtime.waitForInputWait({ afterEpoch: 0 });
+        assert.equal(epoch, 1);
+        runtime.pushInput('z'.charCodeAt(0));
+        assert.equal(await pending, 'z'.charCodeAt(0));
     });
 });
 

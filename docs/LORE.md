@@ -2624,3 +2624,21 @@ hard-won wisdom:
   - remaining seed332 gap is now screen/color-only at step ~204
     (`Unknown command ' '.` capture artifact class), with metrics
     screens `408/410`, colors `9838/9840`.
+
+### replay input-boundary contract (architecture simplification, 2026-03-06)
+
+- New replay-facing input contract added to both runtime adapters:
+  - `isWaitingInput()`
+  - `getInputState() -> { waiting, queueLength, waitEpoch }`
+  - `waitForInputWait({ afterEpoch, signal })`
+- `waitEpoch` increments exactly when a runtime transitions into unresolved
+  `nhgetch()` waiting state, enabling deterministic replay boundary waiting.
+- `js/replay_core.js` `drainUntilInput()` now races command completion against
+  explicit boundary waits instead of relying on setTimeout polling.
+- Boundary-wait subscriptions are abortable (`AbortSignal`) to avoid leaked
+  listeners when command completion wins the race.
+- Regression results for tracked seeds remained stable:
+  - seed325/327/328 first divergences unchanged
+  - seed332 retains full RNG+event parity (`17821/17821`, `6595/6595`)
+- Maintainer rule: replay boundary detection should key off runtime waiting
+  transitions, not message/topline side effects.
