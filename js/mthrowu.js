@@ -38,7 +38,7 @@ import {
 } from './monsters.js';
 import { distmin, dist2, mondead, flush_screen, canSeeMonsterForMap } from './monutil.js';
 import { add_to_minv } from './monutil.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
     mon_wield_item, dmgval } from './weapon.js';

@@ -36,7 +36,7 @@ import { engr_at, read_engr_at, maybeSmudgeEngraving, u_wipe_engr } from './engr
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage, u_left_shop, inhishop } from './shk.js';
 import { observeObject } from './o_init.js';
-import { place_object } from './stackobj.js';
+import { place_object } from './mkobj.js';
 import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
 import { dosearch0 } from './detect.js';
@@ -58,7 +58,7 @@ import { safe_teleds } from './teleport.js';
 import { TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './const.js';
 import { TT_PIT } from './const.js';
 import { MZ_LARGE, PM_GRID_BUG } from './monsters.js';
-import { stackobj } from './stackobj.js';
+import { stackobj } from './invent.js';
 import { thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
 import { poisoned, acurr, acurrstr } from './attrib.js';

@@ -266,9 +266,9 @@ export function clearBranchTopology() {
 import { ENGRAVE_FILE_TEXT } from './engrave_data.js';
 import { stock_room } from './shknam.js';
 import { obj_resists } from './objdata.js';
-import { placeFloorObject, place_object } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import { mpickobj } from './monutil.js';
-import { set_corpsenm } from './mkobj.js';
+import { set_corpsenm, place_object } from './mkobj.js';
 import { getnow } from './calendar.js';
 
 // Module-level ubirthday surrogate for nameshk() — set by setGameSeed() before level gen.

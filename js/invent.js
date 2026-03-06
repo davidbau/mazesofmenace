@@ -23,11 +23,11 @@ import { objectData, WEAPON_CLASS, FOOD_CLASS, WAND_CLASS, SPBOOK_CLASS,
          GLASS, GEMSTONE, MINERAL,
          ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
          CLASS_SYMBOLS } from './objects.js';
-import { doname, xname, weight, splitobj, Is_container, erosion_matters, mergable } from './mkobj.js';
+import { doname, xname, weight, splitobj, Is_container, erosion_matters, mergable, place_object } from './mkobj.js';
 import { an } from './objnam.js';
 import { promptDirectionAndThrowItem, ammoAndLauncher } from './dothrow.js';
 import { pline, You, Your } from './pline.js';
-import { rn2 } from './rng.js';
+import { rn2, pushRngLogEntry } from './rng.js';
 import { touch_petrifies } from './mondata.js';
 import { newsym } from './monutil.js';
 import { observeObject, discoverObject, isObjectNameKnown } from './o_init.js';
@@ -2239,4 +2239,32 @@ export function adjust_ok(obj) {
 export function adjust_gold_ok(obj) {
   if (!obj) return GETOBJ_EXCLUDE;
   return GETOBJ_SUGGEST;
+}
+
+// C ref: invent.c stackobj() — try to merge object into existing stack on floor.
+// C behavior: the newly placed obj SURVIVES; the old otmp is merged away and
+// removed.  This matches merged(&obj, &otmp) where obj (new) accumulates
+// otmp's (old) quantity.
+export function stackobj(obj, map) {
+    if (!map || !map.objects) return;
+    for (const otmp of map.objects) {
+        if (otmp !== obj && otmp.ox === obj.ox && otmp.oy === obj.oy
+            && !otmp.buried && !obj.buried && mergable(otmp, obj)) {
+            // C ref: merged() — new obj survives, old otmp is extracted/removed
+            obj.quan = (obj.quan || 1) + (otmp.quan || 1);
+            obj.owt = weight(obj);
+            // Remove otmp (old) from map — matches C obj_extract_self(obj) in merged()
+            const idx = map.objects.indexOf(otmp);
+            if (idx >= 0) map.objects.splice(idx, 1);
+            pushRngLogEntry(`^remove[${otmp.otyp},${otmp.ox},${otmp.oy}]`);
+            return;
+        }
+    }
+}
+
+// JS-only convenience wrapper (no C counterpart): place_object() + stackobj()
+export function placeFloorObject(map, obj) {
+    place_object(obj, obj.ox, obj.oy, map);
+    stackobj(obj, map);
+    return obj;
 }

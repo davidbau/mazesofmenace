@@ -21,7 +21,7 @@ import {
     bound_digging,
     repair_irregular_room_boundaries,
 } from './dungeon.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import { mkobj, mksobj, mkcorpstat, set_corpsenm, weight } from './mkobj.js';
 import { GEM_CLASS, BOULDER, GOLD_PIECE, STATUE } from './objects.js';
 import { makemon, rndmonnum, getMakemonRoleIndex } from './makemon.js';

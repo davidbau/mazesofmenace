@@ -59,10 +59,10 @@ import { ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD,
          POLY_TRAP, VIBRATING_SQUARE
        } from './const.js';
 import { is_flammable, is_rustprone, is_rottable, is_corrodeable,
-         is_crackable, erosion_matters, mksobj, weight } from './mkobj.js';
+         is_crackable, erosion_matters, mksobj, weight, place_object } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
-import { place_object, stackobj } from './stackobj.js';
+import { stackobj } from './invent.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_FLASH, DISP_END } from './const.js';
 import { cansee, couldsee } from './vision.js';

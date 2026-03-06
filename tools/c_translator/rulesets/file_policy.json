@@ -208,11 +208,6 @@
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."
     },
     {
-      "path": "js/stackobj.js",
-      "policy": "manual_only",
-      "reason": "Runtime/platform/infrastructure boundary; keep manual control."
-    },
-    {
       "path": "js/fountain.js",
       "policy": "auto",
       "reason": "C-mapped gameplay module; eligible for rule-driven translation."

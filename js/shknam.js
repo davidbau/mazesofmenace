@@ -25,7 +25,7 @@ import { NO_MM_FLAGS } from './const.js';
 import { mksobj, mkobj } from './mkobj.js';
 import { RANDOM_CLASS } from './const.js';
 import { PM_SHOPKEEPER, S_MIMIC } from './monsters.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1; // 19
 

@@ -23,7 +23,7 @@ import { PM_SKELETON, PM_HOBBIT, MZ_TINY, MZ_SMALL, MZ_HUMAN, MZ_HUGE,
 import { mons } from './monsters.js';
 import { newsym } from './monutil.js';
 import { You_hear } from './pline.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 
 // Armor category constants — cf. objclass.h
 const ARM_SUIT   = 0;

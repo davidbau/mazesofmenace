@@ -11,7 +11,7 @@ import { PM_GHOST } from './monsters.js';
 import { makemon } from './makemon.js';
 import { NO_MM_FLAGS } from './const.js';
 import { christen_monst, roguename } from './do_name.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import {
     fill_ordinary_room,
 } from './dungeon.js';

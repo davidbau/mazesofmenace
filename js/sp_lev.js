@@ -16,7 +16,7 @@
 import { GameMap } from './game.js';
 import { FILL_NORMAL, DUNGEON_ALIGN_BY_DNUM } from './const.js';
 import { rn2, rnd, rn1, getRngCallCount, pushRngLogEntry } from './rng.js';
-import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight } from './mkobj.js';
+import { mksobj, mkobj, mkcorpstat, set_corpsenm, setLevelDepth, weight, place_object } from './mkobj.js';
 import { create_room, makecorridors, create_corridor, init_rect, rnd_rect, get_rect, split_rects, check_room, add_doors_to_room, link_doors_rooms, update_rect_pool_for_room, bound_digging, mineralize as dungeonMineralize, fill_ordinary_room, fill_special_room, isMtInitialized, setMtInitialized, wallification as dungeonWallification, wallify_region as dungeonWallifyRegion, fix_wall_spines, set_wall_state, mktrap, deltrap, enexto, sp_create_door, floodFillAndRegister, repair_irregular_room_boundaries, resolveBranchPlacementForLevel, induced_align, enterMklevContext, leaveMklevContext } from './dungeon.js';
 import {
     place_lregion,
@@ -74,7 +74,7 @@ import {
 import { mons, M2_FEMALE, M2_MALE, G_NOGEN, G_IGNORE, PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, MR_STONE, S_EEL } from './monsters.js';
 import { poly_when_stoned } from './mondata.js';
 import { getSpecialLevel, findSpecialLevelByName } from './special_levels.js';
-import { placeFloorObject, place_object, stackobj } from './stackobj.js';
+import { placeFloorObject, stackobj } from './invent.js';
 import { mongone } from './mon.js';
 import { premap_detect } from './detect.js';
 import { start_timer, stop_timer, obj_move_timers as moveObjectTimers, obj_split_timers as splitObjectTimers, obj_has_timer as hasObjectTimer } from './timeout.js';

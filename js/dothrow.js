@@ -43,7 +43,7 @@ import { doname, next_ident, xname, is_crackable } from './mkobj.js';
 import { x_monnam, is_unicorn, nohands, notake } from './mondata.js';
 import { obj_resists } from './objdata.js';
 import { uwepgone, uswapwepgone, uqwepgone, handleSwapWeapon, setuqwep } from './wield.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import { pline } from './pline.js';
 import { sgn, distmin } from './hacklib.js';
 import { Monnam, a_monnam, mon_nam } from './do_name.js';

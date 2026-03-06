@@ -39,7 +39,7 @@ import { newsym } from './monutil.js';
 import { block_point, unblock_point, recalc_block_point, cansee } from './vision.js';
 import { wake_nearto, wake_nearby } from './mon.js';
 import { useup, delobj, currency } from './invent.js';
-import { stackobj } from './stackobj.js';
+import { stackobj } from './invent.js';
 import { add_damage } from './shk.js';
 import { mon_nam, some_mon_nam } from './do_name.js';
 import { canseemon } from './mondata.js';

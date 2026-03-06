@@ -11,7 +11,7 @@ import { newsym } from './monutil.js';
 import { dist2, distmin } from './hacklib.js';
 import { movobj, near_capacity, losehp, nomul, spoteffects } from './hack.js';
 import { flooreffects } from './do.js';
-import { placeFloorObject } from './stackobj.js';
+import { placeFloorObject } from './invent.js';
 import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, POOL,
          is_pit, is_hole, A_STR, SLT_ENCUMBER,
          W_BALL, W_CHAIN, W_WEAPONS,
