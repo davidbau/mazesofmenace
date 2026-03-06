@@ -594,7 +594,8 @@ export async function domove_attackmon_at(mon, nx, ny, dir, player, map, display
             return { handled: true, moved: false, tookTime: false };
         }
     }
-    rn2(20);
+    // C ref: uhitm.c:530-532 — overexertion() calls gethungry() which consumes rn2(20)
+    await overexertion(game);
     await exercise(player, A_STR, true);
     await u_wipe_engr(player, map, 3);
     const killed = await do_attack(player, mon, display, map, { game, context: ctx });
