@@ -1568,25 +1568,88 @@ export async function dopay(game) {
     const { map, player } = game;
     if (!map) return 0;
     let tookTime = false;
+    const moneyOnHand = () => {
+        let total = Number(player?.gold || 0);
+        const inv = Array.isArray(player?.inventory) ? player.inventory : [];
+        for (const otmp of inv) {
+            if (!otmp) continue;
+            if (otmp.oclass === COIN_CLASS || otmp.otyp === GOLD_PIECE) {
+                total += Number(otmp.quan || 0);
+            }
+        }
+        return total;
+    };
 
-    // Find shopkeepers on level
     const monsters = map.monsters || [];
-    let sk = 0, seensk = 0;
+    const hereRooms = in_rooms(map, player.x, player.y, SHOPBASE);
+    let sk = 0, seensk = 0, nexttosk = 0;
+    let nxtm = null;
     let resident = null;
 
     for (const m of monsters) {
         if (!m || m.dead || !m.isshk) continue;
         sk++;
-        if (m.mpeaceful !== false) seensk++;
-        const rooms = in_rooms(map, player.x, player.y, SHOPBASE);
-        if (rooms.length > 0 && Number(m.shoproom || 0) === rooms[0] && inhishop(m, map)) {
+        if (m_next2u(m, player)) {
+            nexttosk++;
+            if (!nxtm || nxtm.mpeaceful !== false) nxtm = m;
+        }
+        if (canspotmon(m)) seensk++;
+        if (hereRooms.length > 0 && Number(m.shoproom || 0) === hereRooms[0] && inhishop(m, map)) {
             resident = m;
         }
     }
 
-    if (!sk) {
+    let shkp = null;
+    if (nxtm && nexttosk === 1) {
+        shkp = nxtm;
+    } else if (!sk) {
         await There("appears to be no shopkeeper here to receive your payment.");
         return 0;
+    } else if (!seensk) {
+        await You_cant("see...");
+        return 0;
+    } else if (sk === 1 && resident) {
+        shkp = resident;
+    } else if (seensk === 1) {
+        shkp = monsters.find((m) => m && !m.dead && m.isshk && canspotmon(m)) || null;
+        if (shkp && shkp !== resident && !m_next2u(shkp, player)) {
+            await pline("%s is not near enough to receive your payment.", Shknam(shkp));
+            return 0;
+        }
+    } else if (resident) {
+        shkp = resident;
+    } else {
+        await pline("Pay whom?");
+        return 0;
+    }
+
+    if (!shkp) return 0;
+
+    const robbed = Number(shkp.robbed || 0);
+    if (robbed || Number(shkp.billct || 0) || Number(shkp.debit || 0)) {
+        rouse_shk(shkp, true);
+    }
+    if (helpless(shkp)) {
+        await pline("%s %s.", Shknam(shkp), rn2(2) ? "seems to be napping" : "doesn't respond");
+        return 0;
+    }
+
+    if (shkp !== resident && shkp.mpeaceful !== false) {
+        const umoney = moneyOnHand();
+        if (!robbed) {
+            await You("do not owe %s anything.", shkname(shkp));
+            tookTime = true;
+        } else if (!umoney) {
+            await You("have no gold.");
+            tookTime = true;
+        } else {
+            await pay(Math.min(umoney, robbed), shkp, game);
+            if (umoney >= robbed) {
+                await make_happy_shk(shkp, false, map);
+            }
+            tookTime = true;
+        }
+        return tookTime ? 1 : 0;
     }
 
     if (resident) {
