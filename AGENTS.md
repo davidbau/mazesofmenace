@@ -9,8 +9,9 @@ This file defines how coding agents should work in this repository.
 This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the authoritative source for goals, scope, and milestone priorities.
 
 ## Current Mission (Temporary Priority)
-1. Execute GitHub issue `#227` as the top active workstream.
-2. Prioritize issue `#227` structural/module-init tasks over unrelated parity tuning unless explicitly directed otherwise.
+1. Burndown phase: drive gameplay session parity to **100% passing**.
+2. Prioritize fixes that eliminate earliest shared divergences across failing sessions.
+3. Do not add architectural or harness cruft while fixing parity; prefer minimal, C-faithful core-JS fixes.
 
 ## Source of Truth and Priorities
 1. NetHack C 3.7.0 behavior is the gameplay source of truth.
@@ -41,6 +42,10 @@ This project uses GitHub Issues for work tracking. `PROJECT_PLAN.md` is the auth
 6. Keep tests fast to expose hangs early:
    - unit tests: 1000ms timeout per test
    - single-session parity runs: 10000ms timeout per session
+7. Avoid cruft in parity fixes:
+   - no broad refactors unrelated to the active divergence
+   - no compatibility shims unless required for immediate correctness
+   - remove temporary debug scaffolding before commit unless explicitly retained for observability
 
 ## No-Fake-Implementation Rule (Strict)
 1. Do not present scaffolds, placeholders, or heuristics as completed parity or translation work.
