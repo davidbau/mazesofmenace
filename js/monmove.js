@@ -1185,6 +1185,16 @@ async function dochug(mon, map, player, display, fov, game = null) {
             }
             moveStatus = Number.isInteger(petMoveStatus) ? petMoveStatus : MMOVE_NOTHING;
             if (!mon.dead && (mon.mx !== omx || mon.my !== omy)) {
+                // C ref: monmove.c postmov() via m_move()->dog_move():
+                // tame movement still performs can_tunnel/may_dig/mdig_tunnel.
+                const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
+                const can_tunnel = !isRogueLevel && tunnels(mon.data || mon.type || {});
+                if (can_tunnel && may_dig(mon.mx, mon.my, map)) {
+                    const petDiedDigging = mdig_tunnel(mon, map, player);
+                    if (petDiedDigging || mon.dead) {
+                        return;
+                    }
+                }
                 await m_postmove_effect(mon, map, player, game, omx, omy);
                 const trapResult = await mintrap_postmove(mon, map, player, display, fov);
                 if (trapResult === 2 || trapResult === 3) {

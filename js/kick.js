@@ -3,7 +3,7 @@
 
 import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
          IRONBARS, TREE, THRONE, ALTAR, FOUNTAIN, GRAVE, SINK,
-         IS_WALL, A_STR, A_DEX, A_CON } from './const.js';
+         IS_WALL, A_STR, A_DEX, A_CON, SHOPBASE, ROOMOFFSET } from './const.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { x_monnam } from './mondata.js';
@@ -13,6 +13,7 @@ import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './const.js';
 import { u_wipe_engr } from './engrave.js';
 import { recalc_block_point } from './vision.js';
+import { add_damage, pay_for_damage } from './shk.js';
 
 // Handle kicking
 // C ref: dokick.c dokick()
@@ -64,12 +65,18 @@ export async function handleKick(player, map, display, game) {
         const dex = player.attributes ? player.attributes[A_DEX] : 11;
         const con = player.attributes ? player.attributes[A_CON] : 18;
         const avrgAttrib = Math.floor((str + dex + con) / 3);
+        const roomno = Number(loc.roomno);
+        const room = (Number.isInteger(roomno) && roomno >= ROOMOFFSET)
+            ? map?.rooms?.[roomno - ROOMOFFSET]
+            : null;
+        const shopdoor = !!(room && Number.isFinite(room.rtype) && room.rtype >= SHOPBASE);
         // C ref: dokick.c kick_door() uses Luck-adjusted rnl(35).
         // Passing luck here is required for RNG-call parity (may trigger rn2(37+|luck|)).
         const luck = ((player.uluck ?? player.luck) || 0) + (player.moreluck || 0);
         const kickedOpen = rnl(35, luck) < avrgAttrib;
         if (kickedOpen) {
-            if (str > 18 && rn2(5) === 0) {
+            // C ref: dokick.c:940 — do not roll rn2(5) for shop doors.
+            if (str > 18 && !shopdoor && rn2(5) === 0) {
                 await display.putstr_message("As you kick the door, it shatters to pieces!");
                 loc.flags = D_NODOOR;
             } else {
@@ -80,6 +87,11 @@ export async function handleKick(player, map, display, game) {
             newsym(nx, ny);
             recalc_block_point(nx, ny);
             await exercise(player, A_STR, true);
+            if (shopdoor) {
+                // C ref: dokick.c:953-956
+                add_damage(nx, ny, 400, map, game?.moves ?? 0);
+                pay_for_damage('break', false, map, player, game?.moves ?? 0);
+            }
         } else {
             // We do not model Deaf yet; keep C's rn2(3) branch split for RNG parity.
             await exercise(player, A_STR, true);

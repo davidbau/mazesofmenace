@@ -2484,3 +2484,19 @@ hard-won wisdom:
 - Direction constants were re-anchored to C-faithful values near direction
   arrays to prevent generator drift:
   - `N_DIRS_Z = 10`, `N_DIRS = 8`.
+
+### kick/monmove C-path closure for door and tame postmove logic (2026-03-06)
+
+- `js/kick.js` was missing two C `kick_door()` behaviors from `dokick.c`:
+  - shop-door shatter gate: C only rolls `rn2(5)` for shatter when `!shopdoor`;
+    JS now matches that guard.
+  - shop-door side effects after breaking: C calls `add_damage(..., SHOP_DOOR_COST)`
+    then `pay_for_damage("break", FALSE)`; JS now mirrors this path.
+- `js/monmove.js` tame movement path (`dog_move`) bypassed C `postmov()` tunneling
+  behavior. C applies `if (can_tunnel && may_dig(...) && mdig_tunnel(...))` even
+  when movement comes from `dog_move`; JS now performs the same check for tame
+  monsters after a successful move.
+- Validation:
+  - `node scripts/test-unit-core.mjs` passes.
+  - `seed325_knight_wizard_gameplay` first divergence did not move yet, so this
+    is a correctness-alignment increment, not a resolved session divergence.
