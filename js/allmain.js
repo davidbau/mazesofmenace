@@ -18,7 +18,7 @@
 import { movemon, settrack, mon_regen } from './monmove.js';
 import { savebones } from './bones.js';
 import { setGame } from './gstate.js';
-import { setCurrentTurn, nh_timeout } from './timeout.js';
+import { nh_timeout } from './timeout.js';
 import { pline } from './pline.js';
 import { runtimeDecideToShapeshift, makemon, setMakemonPlayerContext } from './makemon.js';
 import { M2_WERE } from './monsters.js';
@@ -195,7 +195,7 @@ export async function moveloop_turnend(game) {
     settrack((game.u || game.player));
     game.turnCount++;
     (game.u || game.player).turns = game.turnCount;
-    setCurrentTurn(game.turnCount + 1);
+    game._currentTurn = game.turnCount + 1;
     // C ref: allmain.c -- random spawn happens before svm.moves++.
     // During this turn-end frame, mkobj-side erosion checks should
     // still observe the pre-increment move count.

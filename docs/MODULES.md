@@ -301,7 +301,7 @@ are initialization for procedural generation, not wiring hacks.
 
 Exit gate:
 - No `set*Context`/`set*Player` wiring remains (except deferred Tier 4). ✓
-- No parity regression vs baseline (25/34 gameplay, 2508 unit). ✓
+- No parity regression vs baseline (26/34 gameplay, 2511 unit). ✓
 
 ## Non-Negotiable Autonomy Rules
 

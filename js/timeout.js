@@ -116,11 +116,7 @@ function _getCurrentTurn() {
     return _currentTurnFallback;
 }
 
-export function setCurrentTurn(turn) {
-    const v = normalizeTurnArg(turn);
-    _currentTurnFallback = v;
-    if (_gstate) _gstate._currentTurn = v;
-}
+// setCurrentTurn removed in Phase 4 — allmain.js writes game._currentTurn directly.
 
 export function getCurrentTurn() {
     return _getCurrentTurn();
