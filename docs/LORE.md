@@ -2500,3 +2500,17 @@ hard-won wisdom:
   - `node scripts/test-unit-core.mjs` passes.
   - `seed325_knight_wizard_gameplay` first divergence did not move yet, so this
     is a correctness-alignment increment, not a resolved session divergence.
+
+### kick town-watch and monmove monster-data fallback closure (2026-03-06)
+
+- `js/kick.js` now mirrors C `dokick.c` town-watch behavior after door break:
+  - when `in_town(x,y)` and a peaceful visible watchman exists, emit the
+    watchman arrest yell and call `angry_guards(FALSE)` path.
+- `js/monmove.js` now uses canonical monster-data fallback
+  `mon.data || mon.type || mons[mon.mndx]` in tunneling-related callsites
+  (`m_digweapon_check`, tame post-`dog_move` can_tunnel check, and `m_move`
+  `ptr` initialization), matching C's always-valid `mtmp->data` assumption.
+- Validation:
+  - `node scripts/test-unit-core.mjs` passes.
+  - targeted gameplay seeds (`seed325`, `seed327`) remain at same first
+    divergence points; no measured parity shift yet from this closure.

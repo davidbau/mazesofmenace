@@ -1189,7 +1189,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                 // C ref: monmove.c postmov() via m_move()->dog_move():
                 // tame movement still performs can_tunnel/may_dig/mdig_tunnel.
                 const isRogueLevel = !!(map?.flags?.is_rogue || map?.flags?.roguelike || map?.flags?.is_rogue_lev);
-                const can_tunnel = !isRogueLevel && tunnels(mon.data || mon.type || {});
+                const can_tunnel = !isRogueLevel && tunnels(mon.data || mon.type || mons[mon.mndx] || {});
                 if (can_tunnel && may_dig(mon.mx, mon.my, map)) {
                     const petDiedDigging = mdig_tunnel(mon, map, player);
                     if (petDiedDigging || mon.dead) {
@@ -1472,7 +1472,7 @@ async function maybeMonsterPickStuff(mon, map, player, display, fov) {
 // Returns TRUE if the monster switched weapons (costs the move, no dig this turn).
 // Called BEFORE moving when ALLOW_DIG is set, to let monster wield its pick first.
 function m_digweapon_check(mon, nix, niy, map) {
-    const ptr = mon.data || mon.type;
+    const ptr = mon.data || mon.type || mons[mon.mndx] || {};
     if (!tunnels(ptr) || !needspick(ptr)) return false;
     const mw_tmp = mon.weapon || null;
     if (mwelded(mw_tmp)) return false;
@@ -1523,7 +1523,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
     }
 
     const omx = mon.mx, omy = mon.my;
-    const ptr = mon.data || mon.type || {};
+    const ptr = mon.data || mon.type || mons[mon.mndx] || {};
     const verysmall = (ptr.msize || 0) === MZ_TINY;
     const can_open = !(nohands(ptr) || verysmall);
     // C ref: monmove.c:1768 — can_unlock = (can_open && monhaskey) || iswiz || is_rider

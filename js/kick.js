@@ -6,14 +6,15 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
          IS_WALL, A_STR, A_DEX, A_CON, SHOPBASE, ROOMOFFSET } from './const.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
-import { x_monnam } from './mondata.js';
-import { mondead } from './mon.js';
+import { x_monnam, is_watch } from './mondata.js';
+import { mondead, angry_guards } from './mon.js';
 import { newsym } from './display.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './const.js';
 import { u_wipe_engr } from './engrave.js';
-import { recalc_block_point } from './vision.js';
+import { recalc_block_point, couldsee } from './vision.js';
 import { add_damage, pay_for_damage } from './shk.js';
+import { in_town } from './hack.js';
 
 // Handle kicking
 // C ref: dokick.c dokick()
@@ -92,6 +93,10 @@ export async function handleKick(player, map, display, game) {
                 add_damage(nx, ny, 400, map, game?.moves ?? 0);
                 pay_for_damage('break', false, map, player, game?.moves ?? 0);
             }
+            // C ref: dokick.c:957-958 — in_town() then get_iter_mons(watchman_thief_arrest)
+            if (in_town(nx, ny, map)) {
+                await maybeWatchmanThiefArrest(map, player, display);
+            }
         } else {
             // We do not model Deaf yet; keep C's rn2(3) branch split for RNG parity.
             await exercise(player, A_STR, true);
@@ -140,4 +145,20 @@ export async function handleKick(player, map, display, game) {
         rnd(5); // set_wounded_legs timeout component
     }
     return { moved: false, tookTime: true };
+}
+
+async function maybeWatchmanThiefArrest(map, player, display) {
+    if (!Array.isArray(map?.monsters)) return false;
+    for (const mon of map.monsters) {
+        if (!mon || mon.dead || !mon.mpeaceful) continue;
+        const mdat = mon.data || mon.type || {};
+        if (!is_watch(mdat)) continue;
+        if (!couldsee(map, player, mon.mx, mon.my)) continue;
+        const monName = x_monnam(mon) || 'watchman';
+        const capName = monName[0].toUpperCase() + monName.slice(1);
+        await display.putstr_message(`${capName} yells: "Halt, thief!  You're under arrest!"`);
+        await angry_guards(false, map);
+        return true;
+    }
+    return false;
 }
