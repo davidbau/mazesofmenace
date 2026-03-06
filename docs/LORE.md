@@ -3098,3 +3098,23 @@ hard-won wisdom:
   - target seeds `325`, `327`, `328`: unchanged first-divergence signatures
   - `./scripts/run-and-report.sh --failures`: remained at `7` failing gameplay sessions
 - This is useful as a safe C-ordering correction even without immediate frontier gain.
+
+## Lesson: non-pet postmov trap-boundary refactor can reveal a later seed325 frontier
+
+- C `m_move()` returns movement intent, then `postmov()` handles trap/door/dig/web
+  sequencing as post-move effects. JS had non-pet door/dig/web effects inline inside
+  `m_move()` before shared trap handling in `dochug()`.
+- For issue #260 Gate 3 slice 2:
+  - moved non-pet moved-cell effects out of `m_move()` and into the shared
+    `run_dochug_postmove_pipeline_current_js(...)` post-trap phase
+  - kept internal moved-effect order unchanged for this slice (`maybe_spin_web` ->
+    dig -> door) to avoid batching multiple semantic changes
+  - added transient context handoff (`mon._m_move_postmove_ctx`) and cleared it at
+    `m_move()` entry to prevent stale-turn leakage
+- Validation:
+  - `seed325_knight_wizard_gameplay`: first RNG divergence advanced `238 -> 309`
+  - `seed327_priest_wizard_gameplay`: unchanged (`390`)
+  - `seed328_ranger_wizard_gameplay`: unchanged (RNG/events full-match; screen-only first divergence)
+  - `./scripts/run-and-report.sh --failures`: still `27/34` passing, `7` failing
+- Takeaway: this supports the hypothesis that postmov trap-boundary ordering is a
+  real parity frontier, and it can be improved without increasing failing-session count.

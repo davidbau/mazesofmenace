@@ -882,6 +882,35 @@ async function run_dochug_postmove_pipeline_current_js(
                 return MMOVE_DIED;
             }
         }
+    } else {
+        const ctx = mon._m_move_postmove_ctx || null;
+        mon._m_move_postmove_ctx = null;
+        if (ctx) {
+            const { allowflags = 0, can_open = false, can_unlock = false } = ctx;
+            // Preserve current JS moved-cell side-effect order for non-pet path.
+            if (!mon.dead) await maybe_spin_web(mon, map);
+            if ((allowflags & ALLOW_DIG) && may_dig(mon.mx, mon.my, map)) {
+                const monsterDied = await mdig_tunnel(mon, map, player);
+                if (monsterDied || mon.dead) return MMOVE_DIED;
+            }
+            const here = map.at(mon.mx, mon.my);
+            if (here && IS_DOOR(here.typ)) {
+                const wasLocked = !!(here.flags & D_LOCKED);
+                const wasClosed = !!(here.flags & D_CLOSED);
+                if ((wasLocked && can_unlock) || (wasClosed && can_open)) {
+                    here.flags &= ~(D_LOCKED | D_CLOSED);
+                    here.flags |= D_ISOPEN;
+                    if (display) {
+                        const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+                        if (canSeeDoor && mon.name) {
+                            await display.putstr_message(`${Monnam(mon)} opens a door.`);
+                        } else {
+                            await display.putstr_message('You hear a door open.');
+                        }
+                    }
+                }
+            }
+        }
     }
     return MMOVE_MOVED;
 }
@@ -1577,6 +1606,9 @@ async function m_digweapon_check(mon, nix, niy, map, player, display, fov) {
 }
 
 async function m_move(mon, map, player, display = null, fov = null) {
+    // Transient handoff state consumed by dochug postmove pipeline.
+    mon._m_move_postmove_ctx = null;
+
     // C ref: monmove.c:1748-1757 — trapped monsters resolve mintrap at m_move entry.
     if (mon.mtrapped) {
         const trapResult = await mintrap_postmove(mon, map, player, display, fov);
@@ -1845,37 +1877,6 @@ async function m_move(mon, map, player, display = null, fov = null) {
         }
     }
 
-    async function m_move_apply_moved_effects_current_order() {
-        // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
-        if (!mon.dead) await maybe_spin_web(mon, map);
-
-        // C ref: postmov() line 1658 — if can_tunnel && may_dig, call mdig_tunnel.
-        // Return MMOVE_DIED only when mdig_tunnel reports actual monster death.
-        if ((allowflags & ALLOW_DIG) && may_dig(mon.mx, mon.my, map)) {
-            const monsterDied = await mdig_tunnel(mon, map, player);
-            if (monsterDied || mon.dead) return MMOVE_DIED;
-        }
-
-        const here = map.at(mon.mx, mon.my);
-        if (here && IS_DOOR(here.typ)) {
-            const wasLocked = !!(here.flags & D_LOCKED);
-            const wasClosed = !!(here.flags & D_CLOSED);
-            if ((wasLocked && can_unlock) || (wasClosed && can_open)) {
-                here.flags &= ~(D_LOCKED | D_CLOSED);
-                here.flags |= D_ISOPEN;
-                if (display) {
-                    const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
-                    if (canSeeDoor && mon.name) {
-                        await display.putstr_message(`${Monnam(mon)} opens a door.`);
-                    } else {
-                        await display.putstr_message('You hear a door open.');
-                    }
-                }
-            }
-        }
-        return MMOVE_MOVED;
-    }
-
     if (nix !== omx || niy !== omy) {
         // C ref: monmove.c:2026 — m_digweapon_check: if tunneling monster needs to wield
         // its pick before digging, it wields it and returns MMOVE_DONE (no movement this turn).
@@ -1889,11 +1890,7 @@ async function m_move(mon, map, player, display = null, fov = null) {
         // Visible redraw happens in postmov() around mintrap/newsym ordering.
         mon.mx = nix;
         mon.my = niy;
-
-        const movedEffectsStatus = await m_move_apply_moved_effects_current_order();
-        if (movedEffectsStatus === MMOVE_DIED) {
-            return MMOVE_DIED;
-        }
+        mon._m_move_postmove_ctx = { allowflags, can_open, can_unlock };
         return MMOVE_MOVED;
     }
     return MMOVE_NOTHING;
