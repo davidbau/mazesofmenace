@@ -15,7 +15,7 @@ import {
     IS_WALL,
 } from './const.js';
 
-import { def_monsyms, def_oc_syms } from './const.js';
+import { def_monsyms, def_oc_syms, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { monsterMapGlyph, objectMapGlyph } from './display_rng.js';
 import { tempGlyphToCell } from './temp_glyph.js';
 import { isObjectNameKnown, isObjectEncountered, discoveryTypeName } from './o_init.js';
@@ -92,13 +92,20 @@ function coversObjectsAt(loc, player) {
         || loc?.typ === LAVAWALL);
 }
 
-function monsterShownOnMap(mon, player) {
+// C ref: display.c newsym() — see_it logic (lines 1004-1006)
+// A monster is shown if mon_visible (not mimic/undetected/invisible)
+// OR sensed via telepathy/warning/detect_monsters.
+function monsterShownOnMap(mon, player, map) {
     if (!mon) return false;
-    if (mon.mundetected) return false;
     const ap = mon.m_ap_type;
-    if (ap === 'furniture' || ap === 'object' || ap === 1 || ap === 2) return false;
-    if (mon.minvis && !(player?.seeInvisible || player?.See_invisible)) return false;
-    return true;
+    // Mimic disguises always hide the monster glyph (show furniture/object instead)
+    if (ap === M_AP_FURNITURE || ap === M_AP_OBJECT) return false;
+    // mon_visible: not mundetected AND not invisible-without-see-invis
+    const monVisible = !mon.mundetected
+        && !(mon.minvis && !playerCanSeeInvisible(player));
+    if (monVisible) return true;
+    // Even if not directly visible, player may sense via telepathy/warning/detect
+    return senseMonsterForMap(mon, map, player);
 }
 
 
@@ -572,7 +579,7 @@ span.nh-cursor {
 
                 // Check for monsters
                 const mon = gameMap.monsterAt(x, y);
-                if (monsterShownOnMap(mon, player)) {
+                if (monsterShownOnMap(mon, player, gameMap)) {
                     loc.mem_invis = false;
                     // Keep remembered object glyph under visible monsters in sync
                     // so when LOS drops, memory matches C back_to_glyph behavior.
@@ -1645,7 +1652,7 @@ export function newsym(x, y, ctxOrMap = null) {
 
     // Monster
     const mon = map.monsterAt(x, y);
-    if (monsterShownOnMap(mon, player)) {
+    if (monsterShownOnMap(mon, player, map)) {
         loc.mem_invis = false;
         const underObjs = coversObjectsAt(loc, player) ? [] : map.objectsAt(x, y);
         if (underObjs.length > 0) {

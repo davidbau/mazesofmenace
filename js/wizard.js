@@ -6,7 +6,7 @@
 import { rn2, rnd, rn1 } from './rng.js';
 import { pline, You, You_feel, verbalize } from './pline.js';
 import { makemon } from './makemon.js';
-import { NO_MM_FLAGS, RLOC_MSG, BOLT_LIM, MAGIC_PORTAL } from './const.js';
+import { NO_MM_FLAGS, RLOC_MSG, BOLT_LIM, MAGIC_PORTAL, M_AP_MONSTER } from './const.js';
 import { mksobj, doname, add_to_minv } from './mkobj.js';
 import {
     AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
@@ -657,7 +657,7 @@ export function clonewiz(map, player, display) {
 
         // C: if (!Protection_from_shape_changers)
         // Protection not tracked; apply disguise unconditionally
-        mtmp2.m_ap_type = 'monster'; // M_AP_MONSTER
+        mtmp2.m_ap_type = M_AP_MONSTER;
         mtmp2.mappearance = ROLL_FROM(wizapp);
 
         if (map) newsym(mtmp2.mx, mtmp2.my);

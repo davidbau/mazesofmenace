@@ -35,7 +35,7 @@ import { rn2, rnd, rn1, rnl, rnz, d } from './rng.js';
 import { rn2_on_display_rng } from './rng.js';
 import { pline, pline_The, verbalize, You, Your, You_feel, You_hear,
          livelog_printf } from './pline.js';
-import { S_altar, IS_OBSTRUCTED, POOL, LAVAPOOL } from './const.js';
+import { S_altar, IS_OBSTRUCTED, POOL, LAVAPOOL, M_AP_FURNITURE } from './const.js';
 import { mark_vision_dirty } from './vision.js';
 import { S_LICH, S_GHOST, S_VAMPIRE, S_WRAITH, S_MUMMY, S_ZOMBIE, S_HUMAN,
          mons, PM_ACID_BLOB, PM_WRAITH,
@@ -2613,7 +2613,7 @@ export function altarmask_at(x, y, map) {
     if (isok(x, y)) {
         const loc = map.at(x, y);
         const mon = loc.monster;
-        if (mon && mon.m_ap_type === 'furniture' && mon.mappearance === S_altar) {
+        if (mon && mon.m_ap_type === M_AP_FURNITURE && mon.mappearance === S_altar) {
             res = mon.mcorpsenm || 0;
         } else if (loc.typ === ALTAR) {
             res = loc.flags || 0;

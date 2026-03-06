@@ -29,7 +29,7 @@ import { objectData, WEAPON_CLASS, TOOL_CLASS, ROCK_CLASS, POTION_CLASS,
          PAPER, WAX, VEGGY, FLESH, GLASS, WOOD,
        } from './objects.js';
 import { doname, xname } from './mkobj.js';
-import { DIRECTION_KEYS } from './const.js';
+import { DIRECTION_KEYS, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { handleLoot } from './pickup.js';
 import { pline, pline_The, You, You_cant, You_hear, There, set_msg_xy,
          verbalize } from './pline.js';
@@ -248,8 +248,8 @@ export async function obstructed(x, y, quietly, map) {
     const mtmp = map.monsterAt(x, y);
     if (mtmp) {
         // C: M_AP_TYPE != M_AP_FURNITURE check
-        if (mtmp.m_ap_type !== 'furniture') {
-            if (mtmp.m_ap_type === 'object') {
+        if (mtmp.m_ap_type !== M_AP_FURNITURE) {
+            if (mtmp.m_ap_type === M_AP_OBJECT) {
                 // fall through to object check
             } else {
                 if (!quietly) {
@@ -281,11 +281,11 @@ export function u_have_forceable_weapon() {
 // cf. lock.c:759 — stumble_onto_mimic(x, y): detect door mimic
 export async function stumble_onto_mimic(x, y, map) {
     const mtmp = map.monsterAt(x, y);
-    if (mtmp && mtmp.m_ap_type === 'furniture'
+    if (mtmp && mtmp.m_ap_type === M_AP_FURNITURE
         && mtmp.mappearance === DOOR) {
         // C: stumble_onto_mimic(mtmp) — not ported; reveal the mimic
         await pline("The door actually was a monster!");
-        if (mtmp.m_ap_type) mtmp.m_ap_type = null;
+        if (mtmp.m_ap_type) mtmp.m_ap_type = M_AP_NOTHING;
         if (mtmp.mappearance) mtmp.mappearance = null;
         return true;
     }
@@ -612,7 +612,7 @@ export async function pick_lock(game, pick, rx, ry, container) {
         const loc = map.at(ccx, ccy);
 
         const mtmp = map.monsterAt(ccx, ccy);
-        if (mtmp && mtmp.m_ap_type !== 'furniture' && mtmp.m_ap_type !== 'object') {
+        if (mtmp && mtmp.m_ap_type !== M_AP_FURNITURE && mtmp.m_ap_type !== M_AP_OBJECT) {
             if (picktyp === CREDIT_CARD
                 && (mtmp.isshk || mtmp.data?.mname === 'Oracle')) {
                 await verbalize("No checks, no credit, no problem.");

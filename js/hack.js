@@ -22,7 +22,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID } from './const.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP,
          ARROW_TRAP, DART_TRAP, ROCKTRAP } from './const.js';
-import { defsyms, trap_to_defsym, PASSES_WALLS } from './const.js';
+import { defsyms, trap_to_defsym, PASSES_WALLS, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise, registerNearCapacity } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -1362,8 +1362,8 @@ export async function lookaround(map, player, fov, dir, runStyle = 'run', displa
 
             const mon = map.monsterAt(x, y);
             if (mon && !mon.dead
-                && mon.m_ap_type !== 'furniture'
-                && mon.m_ap_type !== 'object'
+                && mon.m_ap_type !== M_AP_FURNITURE
+                && mon.m_ap_type !== M_AP_OBJECT
                 && fov.canSee(mon.mx, mon.my)) {
                 const isSafeMon = !!(mon.tame || mon.peaceful || mon.mpeaceful);
                 if ((runMode !== 1 && !isSafeMon) || (infront && !travel)) {
@@ -3447,7 +3447,7 @@ export function monsterNearby(map, player, fov) {
 
             const mon = map.monsterAt(x, y);
             if (!mon || mon.dead) continue;
-            if (mon.m_ap_type === 'furniture' || mon.m_ap_type === 'object') continue;
+            if (mon.m_ap_type === M_AP_FURNITURE || mon.m_ap_type === M_AP_OBJECT) continue;
 
             const mptr = sanitizeMonsterType(mon);
             const isPeaceful = !!(mon.mpeaceful || mon.peaceful);

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { monsterNearby } from '../../js/hack.js';
 import { PM_GAS_SPORE, mons, PM_GIANT_ANT, M1_HIDE } from '../../js/monsters.js';
 import { SCR_SCARE_MONSTER } from '../../js/objects.js';
+import { M_AP_FURNITURE, M_AP_OBJECT } from '../../js/const.js';
 
 function mkMap({ monsters = {}, objects = [], engravings = [] } = {}) {
     return {
@@ -58,8 +59,8 @@ test('monsterNearby ignores hidden apes in mimic/furniture/object appearances', 
     const player = { x: 10, y: 10, hallucinating: false };
     const map = mkMap({
         monsters: {
-            '11,10': hostileMonster(undefined, { m_ap_type: 'furniture' }),
-            '10,11': hostileMonster(undefined, { m_ap_type: 'object' }),
+            '11,10': hostileMonster(undefined, { m_ap_type: M_AP_FURNITURE }),
+            '10,11': hostileMonster(undefined, { m_ap_type: M_AP_OBJECT }),
         },
     });
 

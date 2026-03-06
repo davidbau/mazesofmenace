@@ -90,7 +90,7 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
          PM_FLESH_GOLEM, PM_STONE_GOLEM, PM_ERINYS } from './monsters.js';
-import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './const.js';
+import { PIT, SPIKED_PIT, HOLE, S_poisoncloud, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER } from './const.js';
 import { m_harmless_trap } from './trap.js';
 import { dist2, distmin } from './hack.js';
 import { monmoveTrace, monmoveStepLabel } from './monmove.js';
@@ -709,7 +709,7 @@ export function handleHiderPremove(mon, map, player, fov) {
     if (!blocked) {
         if (ptr.mlet === S_MIMIC) {
             if (!(mon.sleeping || (mon.mfrozen > 0))) {
-                mon.m_ap_type = mon.m_ap_type || 'object';
+                mon.m_ap_type = mon.m_ap_type || M_AP_OBJECT;
                 return true;
             }
         } else if (map.at(mon.mx, mon.my)?.typ === ROOM) {
@@ -933,7 +933,7 @@ export function wakeup(mon, via_attack, map, player) {
     mon.msleeping = 0;
     mon.sleeping = false;
     // Reveal hidden mimic
-    if (mon.m_ap_type && mon.m_ap_type !== 'monster') {
+    if (mon.m_ap_type && mon.m_ap_type !== M_AP_MONSTER) {
         seemimic(mon, map);
     }
     if (via_attack) {
@@ -943,7 +943,7 @@ export function wakeup(mon, via_attack, map, player) {
 
 // C ref: mon.c seemimic() — reveal hiding mimic
 export function seemimic(mon, map) {
-    mon.m_ap_type = null;
+    mon.m_ap_type = M_AP_NOTHING;
     mon.appear_as_type = null;
     if (map) newsym(mon.mx, mon.my);
 }

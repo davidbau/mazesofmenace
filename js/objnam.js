@@ -58,6 +58,7 @@ import {
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB, STATUE_TRAP,
     MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE,
+    M_AP_OBJECT,
 } from './const.js';
 import { maketrap, deltrap } from './dungeon.js';
 import { make_grave, del_engr_at } from './engrave.js';
@@ -2294,7 +2295,7 @@ export function armor_simple_name(armor) {
 
 // cf. objnam.c:5596 — mimic_obj_name(mtmp): object name for mimic disguise
 export function mimic_obj_name(mtmp) {
-    if (mtmp.m_ap_type === 'object') {
+    if (mtmp.m_ap_type === M_AP_OBJECT) {
         if (mtmp.mappearance === GOLD_PIECE) return 'gold';
         if (mtmp.mappearance != null && mtmp.mappearance !== STRANGE_OBJECT)
             return simple_typename(mtmp.mappearance);
