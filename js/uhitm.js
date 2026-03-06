@@ -40,7 +40,8 @@ import {
 } from './objects.js';
 import { mkobj, mkcorpstat, next_ident, xname } from './mkobj.js';
 import { hitval as weapon_hitval, dmgval, abon, dbon, weapon_hit_bonus, weapon_dam_bonus } from './weapon.js';
-import { near_capacity } from './hack.js';
+import { near_capacity, overexertion } from './hack.js';
+import { u_wipe_engr } from './engrave.js';
 import {
     nonliving, x_monnam, y_monnam, is_undead, is_demon,
     magic_negation,
@@ -283,6 +284,12 @@ export async function do_attack(player, mtmp, display, map, opts = {}) {
     })) {
         return false;
     }
+    // C ref: uhitm.c:530-532 — consume extra nutrition during combat
+    if (await overexertion(game))
+        return false;
+    // C ref: uhitm.c:550-552 — pre-attack exercise and engrave wipe
+    await exercise(player, A_STR, true);
+    await u_wipe_engr(player, map, 3);
     // Delegate to hmon for the normal case
     return await do_attack_core(player, mtmp, display, map, game);
 }
