@@ -1103,7 +1103,7 @@ export function hide_monst(mon, map) {
     }
 }
 
-function can_hide_under_obj_at(map, x, y) {
+export function can_hide_under_obj_at(map, x, y) {
     if (!map) return false;
     // C ref: can_hide_under_obj() rejects non-pit trap locations.
     const trap = map.trapAt ? map.trapAt(x, y) : null;

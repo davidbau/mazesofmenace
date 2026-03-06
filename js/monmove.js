@@ -97,7 +97,8 @@ import { movemon as _movemon, mfndpos, handleHiderPremove,
          onscary,
          corpse_chance,
          hideunder,
-         check_gear_next_turn } from './mon.js';
+         check_gear_next_turn,
+         can_hide_under_obj_at } from './mon.js';
 import { ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, ALLOW_M, ALLOW_TM, ALLOW_ALL,
          NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL,
          ALLOW_DIG, ALLOW_BARS, ALLOW_SANCT, ALLOW_SSM, NOGARLIC } from './const.js';
@@ -1574,6 +1575,13 @@ async function m_move(mon, map, player, display = null, fov = null) {
     }
 
     const ptr = mon.data || mon.type || mons[mon.mndx] || {};
+
+    // C ref: monmove.c:1766-1769 — hiders can stay under suitable floor objects.
+    if (hides_under(ptr)
+        && can_hide_under_obj_at(map, mon.mx, mon.my)
+        && rn2(10)) {
+        return MMOVE_NOTHING;
+    }
 
     // C ref: monmove.c:1840-1848 — Tengu innate teleport before normal movement.
     if (mon.mndx === PM_TENGU && !rn2(5) && !mon.mcan && !tele_restrict(mon, map)) {
