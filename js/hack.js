@@ -15,7 +15,10 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
          NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
-         HOLE, TRAPDOOR } from './const.js';
+         HOLE, TRAPDOOR,
+         DIRECTION_KEYS, RUN_KEYS,
+         DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP,
+         TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID } from './const.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP,
          ARROW_TRAP, DART_TRAP, ROCKTRAP } from './const.js';
 import { defsyms, trap_to_defsym } from './const.js';
@@ -36,7 +39,6 @@ import { observeObject } from './discovery.js';
 import { place_object } from './stackobj.js';
 import { xname, an, The } from './objnam.js';
 import { hliquid } from './do_name.js';
-import { DIRECTION_KEYS, RUN_KEYS } from './const.js';
 import { dosearch0 } from './detect.js';
 import { dist2, monsterNearby, monnear, newsym, setDisplayContext, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './monutil.js';
 import { monflee } from './monmove.js';
@@ -2025,17 +2027,6 @@ export async function dump_weights(player, display) {
 // --------------------------------------------------------------------
 // Movement validation (test_move, carrying_too_much, etc.)
 // --------------------------------------------------------------------
-
-// Movement mode constants matching C
-export const DO_MOVE = 0;
-export const TEST_MOVE = 1;
-export const TEST_TRAV = 2;
-export const TEST_TRAP = 3;
-
-// C ref: hack.c findtravelpath() mode constants.
-export const TRAVP_TRAVEL = 0;
-export const TRAVP_GUESS = 1;
-export const TRAVP_VALID = 2;
 
 // C ref: hack.c test_move() — validate a move from (ux,uy) by (dx,dy)
 export async function test_move(ux, uy, dx, dy, mode, player, map, display, game = null) {

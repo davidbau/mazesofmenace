@@ -391,6 +391,18 @@ export const RUN_KEYS = {
     Y: [-1, -1], U: [1, -1], B: [-1, 1], N: [1, 1],
 };
 
+// Movement/travel mode enums (src/hack.c domove()/test_move()/findtravelpath())
+// Runtime fields:
+// - `test_move(..., mode)` behavior selector
+// - `findtravelpath(mode)` travel-path mode selector
+export const DO_MOVE = 0;
+export const TEST_MOVE = 1;
+export const TEST_TRAV = 2;
+export const TEST_TRAP = 3;
+export const TRAVP_TRAVEL = 0;
+export const TRAVP_GUESS = 1;
+export const TRAVP_VALID = 2;
+
 // Shared monster/pathing distance constants (include/monst.h, include/hack.h, src/dogmove.c)
 // Runtime fields:
 // - monster mtrack ring size and object-search radius in dog/monmove logic
