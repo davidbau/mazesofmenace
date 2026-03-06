@@ -179,7 +179,10 @@ function u_at(player, x, y) {
 // ========================================================================
 // Autotranslated from trap.c:3485
 export function seetrap(trap) {
-  if (!trap.tseen) { trap.tseen = 1; newsym(trap.tx, trap.ty); }
+  if (!trap.tseen) {
+    trap.tseen = 1;
+    newsym(trap.tx, trap.ty);
+  }
 }
 
 // ========================================================================
@@ -612,24 +615,24 @@ function trapeffect_pit_mon(mon, trap, trflags, map, player) {
         : mon.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
 }
 
-async function trapeffect_hole_mon(mon, trap, trflags, map, player) {
+async function trapeffect_hole_mon(mon, trap, trflags, map, player, fov) {
     const mptr = mons[mon.mndx] || {};
 
     if (!grounded(mptr) || (mptr.msize || 0) >= MZ_HUGE) {
         return Trap_Effect_Finished;
     }
     // C ref: calls trapeffect_level_telep for monsters
-    return await trapeffect_level_telep_mon(mon, trap, trflags, map, player);
+    return await trapeffect_level_telep_mon(mon, trap, trflags, map, player, fov);
 }
 
 async function trapeffect_telep_trap_mon(mon, trap, map, player, display, fov) {
-    const in_sight = true; // simplified
+    const in_sight = !!(canseemon(mon, player, fov) || mon === player?.usteed);
     await mtele_trap(mon, trap, in_sight, map, player, display, fov);
     return Trap_Moved_Mon;
 }
 
-async function trapeffect_level_telep_mon(mon, trap, trflags, map, player) {
-    const in_sight = true; // simplified
+async function trapeffect_level_telep_mon(mon, trap, trflags, map, player, fov) {
+    const in_sight = !!(canseemon(mon, player, fov) || mon === player?.usteed);
     const forcetrap = false;
     return await mlevel_tele_trap(mon, trap, forcetrap, in_sight, map, player);
 }
@@ -965,11 +968,11 @@ async function trapeffect_selector_mon(mon, trap, trflags, map, player, display,
         return trapeffect_pit_mon(mon, trap, trflags, map, player);
     case HOLE:
     case TRAPDOOR:
-        return await trapeffect_hole_mon(mon, trap, trflags, map, player);
+        return await trapeffect_hole_mon(mon, trap, trflags, map, player, fov);
     case TELEP_TRAP:
         return await trapeffect_telep_trap_mon(mon, trap, map, player, display, fov);
     case LEVEL_TELEP:
-        return await trapeffect_level_telep_mon(mon, trap, trflags, map, player);
+        return await trapeffect_level_telep_mon(mon, trap, trflags, map, player, fov);
     case MAGIC_PORTAL:
         return await trapeffect_magic_portal_mon(mon, trap, trflags, map, player);
     case WEB:
@@ -1039,15 +1042,21 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
     } else {
         // Not currently trapped — new trap encounter
         const tt = trap.ttyp;
+        // C ref: trap.c mintrap() fixed_tele_trap(ttmp) sets FORCETRAP.
+        const forceTrap = (tt === TELEP_TRAP
+            && isok(trap?.teledest?.x ?? -1, trap?.teledest?.y ?? -1));
         const already_seen = mon_knows_traps(mon, tt)
             || (tt === HOLE && !is_mindless(mon?.type || {}));
 
         // C ref: trap.c mintrap() — !Sokoban gate for floor-triggered in-air bypass.
-        if (!inSokoban && floor_trigger(tt) && mon_check_in_air(mon)) {
-            return Trap_Effect_Finished;
-        }
-        if (already_seen && rn2(4)) {
-            return Trap_Effect_Finished;
+        if (!forceTrap) {
+            if (!inSokoban && floor_trigger(tt) && mon_check_in_air(mon)) {
+                return Trap_Effect_Finished;
+            }
+            const skipSeenRoll = already_seen ? rn2(4) : 0;
+            if (already_seen && skipSeenRoll) {
+                return Trap_Effect_Finished;
+            }
         }
 
         mon_learns_traps(mon, tt);

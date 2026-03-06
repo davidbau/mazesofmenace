@@ -2954,3 +2954,33 @@ hard-won wisdom:
     first RNG/event divergence moved from step `43` to step `48`
     (`rng matched 4902 -> 5081`, `events matched 1507 -> 1548`).
   - `scripts/run-and-report.sh` remains stable at `27/34` gameplay passing.
+
+### seed325 teleport-trap visibility alignment unmasked later frontier (2026-03-06)
+
+- Symptom:
+  - `seed325_knight_wizard_gameplay` first divergence at step `297`:
+    C consumed `rn2(40)` in pet trap-avoidance while JS consumed `rn2(12)`.
+  - At candidate square `(30,8)`, JS had `TELEP_TRAP` with `tseen=0` while C
+    behaved as if trap had already been seen.
+- Root causes:
+  - Monster teleport-trap sight checks were using `canseemon(mon)` without
+    passing `player/fov` in JS paths that import `canseemon` from `mondata.js`.
+    That always returned false and suppressed in-sight trap discovery.
+  - `mtele_trap()` in JS was under-ported versus C (`teleport.c`):
+    missing pet-teleport gate and in-sight trap-discovery/message behavior.
+- C-faithful fixes:
+  - In trap teleport effect selectors, compute `in_sight` with
+    `canseemon(mon, player, fov) || mon === player.usteed`.
+  - Ported key `mtele_trap()` behavior:
+    `teleport_pet(..., false)` gate, once/fixed/random destination handling,
+    and in-sight post-teleport messaging with trap discovery (`tseen` + `newsym`).
+- Validation:
+  - `seed325_knight_wizard_gameplay` improved from:
+    `rng=14859/25281`, `screens=256/422`, `events=6896/18600`, `mapdump=2/3`
+    to:
+    `rng=18499/25281`, `screens=303/422`, `events=7501/18600`, `mapdump=3/3`.
+  - First divergence moved later from step `297` to step `306`.
+- New frontier:
+  - Step `306` now first diverges around `ship_object(dokick.c:1660)` /
+    `^tmp_at_step[...]` versus JS `^place[...]`, indicating the next
+    unmasked C-faithful gap is in the object-kick/tmp-at sequence boundary.

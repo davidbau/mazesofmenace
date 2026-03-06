@@ -495,9 +495,36 @@ export async function u_teleport_mon(mtmp, give_feedback, map, player, display, 
 
 export async function mtele_trap(mtmp, trap, in_sight, map, player, display, fov) {
     if (tele_restrict(mtmp, map)) return;
+    if (!teleport_pet(mtmp, false)) return;
 
-    // Relocate monster
-    await rloc(mtmp, RLOC_NONE, map, player, display, fov);
+    // C ref: teleport.c mtele_trap() — preserve pre-teleport visible name.
+    const monname = Monnam(mtmp);
+
+    if (trap?.once) {
+        await mvault_tele(mtmp);
+    } else if (isok(trap?.teledest?.x ?? -1, trap?.teledest?.y ?? -1)) {
+        const tx = trap.teledest.x;
+        const ty = trap.teledest.y;
+        const blockedByMon = !!(map?.monsterAt && map.monsterAt(tx, ty));
+        const blockedByHero = !!(player && player.x === tx && player.y === ty);
+        if (!(blockedByMon || blockedByHero)) {
+            await rloc_to_core(mtmp, tx, ty, RLOC_MSG, map, player, display, fov);
+        }
+    } else {
+        await rloc(mtmp, RLOC_NONE, map, player, display, fov);
+    }
+
+    if (in_sight) {
+        if (canseemon(mtmp, player, fov)) {
+            await pline(`${monname} seems disoriented.`);
+        } else {
+            await pline(`${monname} suddenly disappears!`);
+        }
+        if (trap && !trap.tseen) {
+            trap.tseen = 1;
+            newsym(trap.tx, trap.ty);
+        }
+    }
 }
 
 // ============================================================================
