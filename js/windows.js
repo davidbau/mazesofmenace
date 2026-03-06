@@ -540,7 +540,7 @@ export function glyph2symidx(glyph, game) {
 // Autotranslated from windows.c:1427
 export function encglyph(glyph, game) {
   let encbuf;
-  Sprintf(encbuf, "\\G%04X%04X", game.svc.context.rndencode, glyph);
+  encbuf = `\\G${game.svc.context.rndencode.toString(16).toUpperCase().padStart(4, '0')}${glyph.toString(16).toUpperCase().padStart(4, '0')}`;
   return encbuf;
 }
 

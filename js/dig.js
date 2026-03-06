@@ -1727,21 +1727,21 @@ export async function adj_pit_checks(cc, msg, map) {
   room = map.locations[cc.x][cc.y];
   ltyp = room.typ, room.flags = 0;
   if (is_pool(cc.x, cc.y) || is_lava(cc.x, cc.y)) { return false; }
-  else if (closed_door(cc.x, cc.y) || room.typ === SDOOR) { Strcpy(msg, foundation_msg); return false; }
-  else if (IS_WALL(ltyp)) { Strcpy(msg, foundation_msg); return false; }
-  else if (IS_TREE(ltyp)) { Strcpy(msg, "The tree's roots glow then fade."); return false; }
+  else if (closed_door(cc.x, cc.y) || room.typ === SDOOR) { msg = foundation_msg; return false; }
+  else if (IS_WALL(ltyp)) { msg = foundation_msg; return false; }
+  else if (IS_TREE(ltyp)) { msg = "The tree's roots glow then fade."; return false; }
   else if (ltyp === STONE || ltyp === SCORR) {
-    if (room.wall_info & W_NONDIGGABLE) { Strcpy(msg, "The rock glows then fades."); return false; }
+    if (room.wall_info & W_NONDIGGABLE) { msg = "The rock glows then fades."; return false; }
   }
   else if (ltyp === IRONBARS) {
-    Strcpy(msg, "The bars go much deeper than your pit.");
+    msg = "The bars go much deeper than your pit.";
     return false;
   }
   else if (IS_SINK(ltyp)) {
-    Strcpy(msg, "A tangled mass of plumbing remains below the sink.");
+    msg = "A tangled mass of plumbing remains below the sink.";
     return false;
   }
-  else if (await On_ladder(cc.x, cc.y)) { Strcpy(msg, "The ladder is unaffected."); return false; }
+  else if (await On_ladder(cc.x, cc.y)) { msg = "The ladder is unaffected."; return false; }
   else {
     let supporting =  0;
     if (IS_FOUNTAIN(ltyp)) supporting = "fountain";
@@ -1750,7 +1750,7 @@ export async function adj_pit_checks(cc, msg, map) {
     else if (await On_stairs(cc.x, cc.y)) supporting = "stairs";
     else if (ltyp === DRAWBRIDGE_DOWN   || ltyp === DBWALL) supporting = "drawbridge";
     if (supporting) {
-      Sprintf(msg, "The %s supporting structures remain intact.", s_suffix(supporting));
+      msg = `The ${s_suffix(supporting)} supporting structures remain intact.`;
       return false;
     }
   }

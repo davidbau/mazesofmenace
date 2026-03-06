@@ -436,12 +436,11 @@ export async function pick_obj(otmp, player) {
   newsym(ox, oy);
   if (robshop) {
     let saveushops, fakeshop;
-    Strcpy(saveushops, player.ushops);
-    fakeshop[0] = in_rooms(ox, oy, SHOPBASE);
-    fakeshop[1] = '\0';
-    Strcpy(player.ushops, fakeshop);
+    saveushops = player.ushops;
+    fakeshop = String.fromCharCode(in_rooms(ox, oy, SHOPBASE));
+    player.ushops = fakeshop;
     addtobill(otmp, true, false, false);
-    Strcpy(player.ushops, saveushops);
+    player.ushops = saveushops;
     robshop = otmp.unpaid && !strchr(player.ushops, fakeshop);
   }
   result = await addinv(otmp, player);
@@ -1049,29 +1048,29 @@ export async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, 
   win = create_nhwindow(NHW_MENU);
   start_menu(win, MENU_BEHAVE_STANDARD);
   any.a_int = 1;
-  Sprintf(buf, "Look inside %s", thesimpleoname(obj));
+  buf = `Look inside ${thesimpleoname(obj)}`;
   add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   if (outokay) {
     any.a_int = 2;
-    Sprintf(buf, "take %s out", something);
+    buf = `take ${something} out`;
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   }
   if (inokay) {
     any.a_int = 3;
-    Sprintf(buf, "put %s in", something);
+    buf = `put ${something} in`;
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   }
   if (outokay) {
     any.a_int = 4;
-    Sprintf(buf, "%stake out, then put in", inokay ? "both; " : "");
+    buf = `${inokay ? "both; " : ""}take out, then put in`;
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   }
   if (inokay) {
     any.a_int = 5;
-    Sprintf(buf, "%sput in, then take out", outokay ? "both reversed; " : "");
+    buf = `${outokay ? "both reversed; " : ""}put in, then take out`;
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     any.a_int = 6;
-    Sprintf(buf, "stash one item into %s", thesimpleoname(obj));
+    buf = `stash one item into ${thesimpleoname(obj)}`;
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   }
   add_menu_str(win, "");
@@ -1080,7 +1079,7 @@ export async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused, 
     add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, "loot next container", MENU_ITEMFLAGS_SELECTED);
   }
   any.a_int = 8;
-  Strcpy(buf, alreadyused ? "done" : "do nothing");
+  buf = alreadyused ? "done" : "do nothing";
   add_menu(win, nul_glyphinfo, any, menuselector[any.a_int], 0, ATR_NONE, clr, buf, more_containers ? MENU_ITEMFLAGS_NONE : MENU_ITEMFLAGS_SELECTED);
   end_menu(win, prompt);
   n = await select_menu(win, PICK_ONE, pick_list);

@@ -1865,7 +1865,7 @@ export function insane_obj_bits(obj, mon) {
   o_boulder = (obj.otyp === BOULDER && obj.next_boulder);
   if (o_in_use || o_bypass || o_nomerge || o_boulder) {
     let infobuf;
-    Sprintf(infobuf, "flagged%s%s%s%s", o_in_use ? " in_use" : "", o_bypass ? " bypass" : "", o_nomerge ? " nomerge" : "", o_boulder ? " nxtbldr" : "");
+    infobuf = `flagged${o_in_use ? " in_use" : ""}${o_bypass ? " bypass" : ""}${o_nomerge ? " nomerge" : ""}${o_boulder ? " nxtbldr" : ""}`;
     insane_object(obj, ofmt0, infobuf, mon);
   }
 }

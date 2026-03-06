@@ -50,11 +50,11 @@ export async function genl_outrip(tmpwin, how, when) {
     dp[x] = dupstr(rip_txt[x]);
   }
   dp[x] =  0;
-  Sprintf(buf, "%.*s",  STONE_LINE_LEN, svp.plname);
+  buf = svp.plname.slice(0, STONE_LINE_LEN);
   center(NAME_LINE, buf);
   cash = Math.max(gd.done_money, 0);
   if (cash > 999999999) cash = 999999999;
-  Sprintf(buf, "%ld Au", cash);
+  buf = `${cash} Au`;
   center(GOLD_LINE, buf);
   formatkiller(buf, buf.length, how, false);
   for (line = DEATH_LINE, dpx = buf; line < YEAR_LINE; line++) {
@@ -74,7 +74,7 @@ export async function genl_outrip(tmpwin, how, when) {
     }
   }
   year =  ((yyyymmdd(when) / 10000) % 10000);
-  Sprintf(buf, "%4d", year);
+  buf = String(year).padStart(4);
   center(YEAR_LINE, buf);
   await putstr(tmpwin, 0, "");
   for ( dp; dp++; ) {

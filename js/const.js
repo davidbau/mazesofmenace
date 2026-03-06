@@ -5124,7 +5124,7 @@ export function savedsym_add(name, val, which_set) {
 export function savedsym_strbuf(sbuf) {
   let tmp = saved_symbols, buf;
   while (tmp) {
-    Sprintf(buf, "%sSYMBOLS=%s:%s\n", (tmp.which_set === ROGUESET) ? "ROGUE" : "", tmp.name, tmp.val);
+    buf = `${(tmp.which_set === ROGUESET) ? "ROGUE" : ""}SYMBOLS=${tmp.name}:${tmp.val}\n`;
     strbuf_append(sbuf, buf);
     tmp = tmp.next;
   }
@@ -5176,7 +5176,7 @@ export function parsesymbols(opts, which_set) {
     if (symp.range && symp.range !== SYM_CONTROL) {
       if (gs.symset[which_set].handling === H_UTF8 || (lowc(strval[0]) === 'u' && strval[1] === '+')) {
         let buf, glyph;
-        Snprintf(buf, buf.length, "%s:%s", opts, strval);
+        buf = `${opts}:${strval}`;
         glyphrep_to_custom_map_entries(buf, glyph);
       }
       else {

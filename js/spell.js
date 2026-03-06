@@ -1565,13 +1565,13 @@ export function spellretention(idx, outbuf) {
   skill = Math.max(skill, P_UNSKILLED);
   turnsleft = spellknow(idx);
    outbuf = '\0';
-  if (turnsleft < 1) { Strcpy(outbuf, "(gone)"); }
-  else if (turnsleft >=  KEEN) { Strcpy(outbuf, "100%"); }
+  if (turnsleft < 1) { outbuf = "(gone)"; }
+  else if (turnsleft >=  KEEN) { outbuf = "100%"; }
   else {
     percent = (turnsleft - 1) / ( KEEN / 100) + 1;
     accuracy = (skill === P_EXPERT) ? 2 : (skill === P_SKILLED) ? 5 : (skill === P_BASIC) ? 10 : 25;
     percent = accuracy * ((percent - 1) / accuracy + 1);
-    Sprintf(outbuf, "%ld%%-%ld%%", percent - accuracy + 1, percent);
+    outbuf = `${percent - accuracy + 1}%-${percent}%`;
   }
   return outbuf;
 }

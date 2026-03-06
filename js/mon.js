@@ -1769,7 +1769,7 @@ export function copy_mextra(mtmp2, mtmp1) {
   if (!mtmp2.mextra) mtmp2.mextra = newmextra();
   if (MGIVENNAME(mtmp1)) {
     new_mgivenname(mtmp2, MGIVENNAME(mtmp1).length + 1);
-    Strcpy(MGIVENNAME(mtmp2), MGIVENNAME(mtmp1));
+    MGIVENNAME(mtmp2) = MGIVENNAME(mtmp1);
   }
   if (EGD(mtmp1)) {
     if (!EGD(mtmp2)) newegd(mtmp2);
@@ -1840,7 +1840,7 @@ export function logdeadmon(mtmp, mndx, game) {
     shkdetail = '\0';
     if (mtmp.isshk) {
       howmany = 1;
-      Snprintf(shkdetail, shkdetail.length, ", the %s %s%s", shtypes[ESHK(mtmp).shoptype - SHOPBASE].name,   mtmp.female ? "proprietrix" : "proprietor", herodidit ? "" : ",");
+      shkdetail = `, the ${shtypes[ESHK(mtmp).shoptype - SHOPBASE].name} ${mtmp.female ? "proprietrix" : "proprietor"}${herodidit ? "" : ","}`;
     }
     else if (mndx === PM_HIGH_CLERIC) { howmany = 1; }
     if (howmany <= 3 || howmany === 5 || howmany === 10 || howmany === 25 || (howmany % 50) === 0) {
@@ -1850,7 +1850,7 @@ export function logdeadmon(mtmp, mndx, game) {
       }
       xtra = '\0';
       if (howmany > 1) {
-        Sprintf(xtra, " (%d%s time)", howmany, ordin(howmany));
+        xtra = ` (${howmany}${ordin(howmany)} time)`;
       }
       mkilled = nonliving(mtmp.data) ? "destroyed" : "killed";
       if (herodidit) livelog_printf(llevent_type, "%s %s%s%s", mkilled, livelog_mon_nam(mtmp), shkdetail, xtra);

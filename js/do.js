@@ -59,10 +59,6 @@ function encumber_msg(_player) {}
 function Wounded_legs(player) { return !!(player?.woundedLegs); }
 function EWounded_legs(player) { return Number(player?.eWoundedLegs || 0); }
 function HWounded_legs(player) { return Number(player?.hWoundedLegs || 0); }
-function Sprintf(fmt, ...args) {
-    let i = 0;
-    return String(fmt || '').replace(/%[sd]/g, () => String(args[i++] ?? ''));
-}
 function strchr(s, ch) {
     if (s == null || ch == null) return null;
     const text = String(s);

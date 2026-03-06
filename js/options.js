@@ -315,15 +315,6 @@ import { strchr } from './hacklib.js';
 // Minimal C-compat helper surface for translator-stitched options.c functions.
 // ---------------------------------------------------------------------------
 
-function Sprintf(fmt, ...args) {
-    let i = 0;
-    return String(fmt || '').replace(/%[lds]/g, () => String(args[i++] ?? ''));
-}
-
-function Strcpy(_dst, src) {
-    return String(src || '');
-}
-
 function pline(_fmt, ..._args) {}
 
 function impossible(_fmt, ..._args) {}
@@ -398,12 +389,12 @@ export function optfn_alignment(optidx, req, negated, opts, op, game) {
     return optn_ok;
   }
   if (req === get_val) {
-    Sprintf(opts, "%s", rolestring(game.flags.initalign, aligns, adj));
+    opts = rolestring(game.flags.initalign, aligns, adj);
     return optn_ok;
   }
   if (req === get_cnf_val) {
     op = get_cnf_role_opt(optidx);
-    Strcpy(opts, op ? op : "none");
+    opts = op ? op : "none";
     return optn_ok;
   }
   return optn_ok;
@@ -460,7 +451,7 @@ export function optfn_dogname(optidx, req, negated, opts, op) {
 export function optfn_dungeon(optidx, req, negated, opts, op) {
   if (req === do_init) { return optn_ok; }
   if (req === do_set) { return optn_ok; }
-  if (req === get_val) { Sprintf(opts, "%s", to_be_done); return optn_ok; }
+  if (req === get_val) { opts = to_be_done; return optn_ok; }
   if (req === get_cnf_val) { opts = '\0'; return optn_ok; }
   return optn_ok;
 }
@@ -469,7 +460,7 @@ export function optfn_dungeon(optidx, req, negated, opts, op) {
 export function optfn_effects(optidx, req, negated, opts, op) {
   if (req === do_init) { return optn_ok; }
   if (req === do_set) { return optn_ok; }
-  if (req === get_val) { Sprintf(opts, "%s", to_be_done); return optn_ok; }
+  if (req === get_val) { opts = to_be_done; return optn_ok; }
   if (req === get_cnf_val) { opts = '\0'; return optn_ok; }
   return optn_ok;
 }
@@ -540,12 +531,12 @@ export function optfn_gender(optidx, req, negated, opts, op, game) {
     return optn_ok;
   }
   if (req === get_val) {
-    Sprintf(opts, "%s", rolestring(game.flags.initgend, genders, adj));
+    opts = rolestring(game.flags.initgend, genders, adj);
     return optn_ok;
   }
   if (req === get_cnf_val) {
     op = get_cnf_role_opt(optidx);
-    Strcpy(opts, op ? op : "none");
+    opts = op ? op : "none";
     return optn_ok;
   }
   return optn_ok;
@@ -564,7 +555,7 @@ export function optfn_glyph(optidx, req, negated, opts, op) {
     if (!glyphrep_to_custom_map_entries(op, glyph)) return optn_err;
     return optn_ok;
   }
-  if (req === get_val) { Sprintf(opts, "%s", to_be_done); return optn_ok; }
+  if (req === get_val) { opts = to_be_done; return optn_ok; }
   if (req === get_cnf_val) { opts = '\0'; return optn_ok; }
   return optn_ok;
 }
@@ -657,7 +648,7 @@ export function optfn_name(optidx, req, negated, opts, op) {
     }
     return optn_ok;
   }
-  if (req === get_val || req === get_cnf_val) { Sprintf(opts, "%s", svp.plname); return optn_ok; }
+  if (req === get_val || req === get_cnf_val) { opts = svp.plname; return optn_ok; }
   return optn_ok;
 }
 
@@ -665,7 +656,7 @@ export function optfn_name(optidx, req, negated, opts, op) {
 export function optfn_objects(optidx, req, negated, opts, op) {
   if (req === do_init) { return optn_ok; }
   if (req === do_set) { return optn_ok; }
-  if (req === get_val) { Sprintf(opts, "%s", to_be_done); return optn_ok; }
+  if (req === get_val) { opts = to_be_done; return optn_ok; }
   if (req === get_cnf_val) { opts = '\0'; return optn_ok; }
   return optn_ok;
 }
@@ -681,7 +672,7 @@ export function optfn_packorder(optidx, req, negated, opts, op, game) {
   if (req === get_val || req === get_cnf_val) {
     let ocl;
     oc_to_str(game.flags.inv_order, ocl);
-    Sprintf(opts, "%s", ocl);
+    opts = ocl;
     return optn_ok;
   }
   return optn_ok;
@@ -700,7 +691,7 @@ export function optfn_pile_limit(optidx, req, negated, opts, op, game) {
     if (game.flags.pile_limit < 0) game.flags.pile_limit = PILE_LIMIT_DFLT;
     return optn_ok;
   }
-  if (req === get_val || req === get_cnf_val) { Sprintf(opts, "%d", game.flags.pile_limit); return optn_ok; }
+  if (req === get_val || req === get_cnf_val) { opts = `${game.flags.pile_limit}`; return optn_ok; }
   return optn_ok;
 }
 
@@ -720,7 +711,7 @@ export function optfn_playmode(optidx, req, negated, opts, op) {
     return optn_ok;
   }
   if (req === get_val || req === get_cnf_val) {
-    Strcpy(opts, wizard ? "debug" : discover ? "explore" : "normal");
+    opts = wizard ? "debug" : discover ? "explore" : "normal";
     return optn_ok;
   }
   return optn_ok;
@@ -742,12 +733,12 @@ export function optfn_race(optidx, req, negated, opts, op, game) {
     return optn_ok;
   }
   if (req === get_val) {
-    Sprintf(opts, "%s", rolestring(game.flags.initrace, races, noun));
+    opts = rolestring(game.flags.initrace, races, noun);
     return optn_ok;
   }
   if (req === get_cnf_val) {
     op = get_cnf_role_opt(optidx);
-    Strcpy(opts, op ? op : "none");
+    opts = op ? op : "none";
     return optn_ok;
   }
   return optn_ok;
@@ -769,12 +760,12 @@ export function optfn_role(optidx, req, negated, opts, op, game) {
     return optn_ok;
   }
   if (req === get_val) {
-    Sprintf(opts, "%s", rolestring(game.flags.initrole, roles, name.m));
+    opts = rolestring(game.flags.initrole, roles, name.m);
     return optn_ok;
   }
   if (req === get_cnf_val) {
     op = get_cnf_role_opt(optidx);
-    Strcpy(opts, op ? op : "none");
+    opts = op ? op : "none";
     return optn_ok;
   }
   return optn_ok;
@@ -803,9 +794,9 @@ export async function optfn_sortvanquished(optidx, req, negated, opts, op, game)
     return optn_ok;
   }
   if (req === get_val || req === get_cnf_val) {
-    Strcpy(opts, vanqorders[game.flags.vanq_sortmode][0]);
+    opts = vanqorders[game.flags.vanq_sortmode][0];
     if (req === get_val) {
-      Sprintf(eos(opts), ": %s", vanqorders[game.flags.vanq_sortmode][1]);
+      opts += `: ${vanqorders[game.flags.vanq_sortmode][1]}`;
     }
     return optn_ok;
   }
@@ -830,10 +821,10 @@ export function optfn_suppress_alert(optidx, req, negated, opts, op, game, playe
   if (req === get_val || req === get_cnf_val) {
     if (req === get_cnf_val && game.flags.suppress_alert === 0) opts = '\0';
     else if (game.flags.suppress_alert === 0) {
-      Strcpy(opts, none);
+      opts = none;
     }
     else {
-      Sprintf(opts, "%lplayer.%lplayer.%lu", FEATURE_NOTICE_VER_MAJ, FEATURE_NOTICE_VER_MIN, FEATURE_NOTICE_VER_PATCH);
+      opts = `${FEATURE_NOTICE_VER_MAJ}.${FEATURE_NOTICE_VER_MIN}.${FEATURE_NOTICE_VER_PATCH}`;
     }
     return optn_ok;
   }
@@ -844,7 +835,7 @@ export function optfn_suppress_alert(optidx, req, negated, opts, op, game, playe
 export function optfn_traps(optidx, req, negated, opts, op) {
   if (req === do_init) { return optn_ok; }
   if (req === do_set) { return optn_ok; }
-  if (req === get_val) { Sprintf(opts, "%s", to_be_done); return optn_ok; }
+  if (req === get_val) { opts = to_be_done; return optn_ok; }
   if (req === get_cnf_val) { opts = '\0'; return optn_ok; }
   return optn_ok;
 }
@@ -900,7 +891,7 @@ export function complain_about_duplicate(optidx) {
   let buf;
   buf = '\0';
   if (using_alias) {
-    Sprintf(buf, " (via alias: %s)", allopt[optidx].alias);
+    buf = ` (via alias: ${allopt[optidx].alias})`;
   }
   config_error_add("%s option specified multiple times: %s%s", (allopt[optidx].opttyp === CompOpt) ? "compound" : "boolean", allopt[optidx].name, buf);
   return;
@@ -952,7 +943,7 @@ export function change_inv_order(op, game) {
     }
   }
   buf = '\0';
-  Strcpy(game.flags.inv_order, buf);
+  game.flags.inv_order = buf;
   return retval;
 }
 
@@ -1120,7 +1111,7 @@ export async function optfn_o_autopickup_exceptions(optidx, req, negated, opts, 
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_apes());
+    opts = `${count_apes()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) { return handler_autopickup_exception(); }
@@ -1134,7 +1125,7 @@ export function optfn_o_bind_keys(optidx, req, negated, opts, op) {
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_bind_keys());
+    opts = `${count_bind_keys()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) { handler_rebind_keys(); }
@@ -1148,7 +1139,7 @@ export function optfn_o_autocomplete(optidx, req, negated, opts, op) {
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_autocompletions());
+    opts = `${count_autocompletions()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) { handler_change_autocompletions(); }
@@ -1162,7 +1153,7 @@ export async function optfn_o_menu_colors(optidx, req, negated, opts, op) {
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_menucolors());
+    opts = `${count_menucolors()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) { return handler_menu_colors(); }
@@ -1176,7 +1167,7 @@ export async function optfn_o_message_types(optidx, req, negated, opts, op) {
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, msgtype_count());
+    opts = `${msgtype_count()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) { return handler_msgtype(); }
@@ -1190,7 +1181,7 @@ export function optfn_o_status_cond(optidx, req, negated, opts, op) {
   }
   if (req === get_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_cond());
+    opts = `${count_cond()} currently set`;
     return optn_ok;
   }
   if (req === get_cnf_val) {
@@ -1206,7 +1197,7 @@ export function optfn_o_status_hilites(optidx, req, negated, opts, op) {
   }
   if (req === get_val || req === get_cnf_val) {
     if (!opts) return optn_err;
-    Sprintf(opts, n_currently_set, count_status_hilites());
+    opts = `${count_status_hilites()} currently set`;
     return optn_ok;
   }
   if (req === do_handler) {
@@ -1243,12 +1234,12 @@ export function doset_add_menu(win, option, fmtstr, idx, indexoffset) {
   else {
     any.a_int = 0;
     if (!buf2) {
-      Strcpy(buf2, "unknown");
+      buf2 = "unknown";
     }
     value =  buf2;
   }
   indent = !any.a_int ? " " : "";
-  Sprintf(buf, fmtstr, indent, option, value);
+  buf = `${indent}${option.toString().padEnd(33)} [${value}]`;
   add_menu(win, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
 }
 
@@ -1256,7 +1247,7 @@ export function doset_add_menu(win, option, fmtstr, idx, indexoffset) {
 export async function show_menu_controls(win, dolist) {
   let desc;
   let hardcoded = [ [ "Return", "Accept current choice(s) and dismiss menu" ], [ "Enter", "Same as Return" ], [ "Space", "If not on last page, advance one page;" ], [ " ", "when on last page, treat like Return" ], [ "Escape", "Cancel menu without making any choice(s)" ], [  0,  0] ];
-  let mc_fmt = "%8s %-6s %s", mc_altfmt = "%9s %-6s %s", buf, fmt, arg, xcp;
+  let buf, fmt, arg, xcp;
   let has_menu_shift = wc2_supported("menu_shift");
   await putstr(win, 0, "Menu control keys:");
   if (dolist) {
@@ -1267,7 +1258,7 @@ export async function show_menu_controls(win, dolist) {
       if ((ch === MENU_SHIFT_RIGHT || ch === MENU_SHIFT_LEFT) && !has_menu_shift) {
         continue;
       }
-      Sprintf(buf, fmt, visctrl(get_menu_cmd_key(ch)), default_menu_cmd_info[i].desc);
+      buf = `${visctrl(get_menu_cmd_key(ch)).toString().padEnd(7)} ${default_menu_cmd_info[i].desc}`;
       await putstr(win, 0, buf);
     }
     fmt = "%s%-7s %s";
@@ -1275,40 +1266,44 @@ export async function show_menu_controls(win, dolist) {
   }
   else {
     await putstr(win, 0, "");
-    Sprintf(buf, mc_altfmt, "", "Whole", "Current");
+    buf = `${"".padStart(9)} ${"Whole".padEnd(6)} Current`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_altfmt, "", " Menu", " Page");
+    buf = `${"".padStart(9)} ${" Menu".padEnd(6)} ${"Page"}`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "Select", visctrl(get_menu_cmd_key(MENU_SELECT_ALL)), visctrl(get_menu_cmd_key(MENU_SELECT_PAGE)));
+    buf = `${"Select".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_SELECT_ALL)).toString().padEnd(6)} ${visctrl(get_menu_cmd_key(MENU_SELECT_PAGE))}`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "Invert", visctrl(get_menu_cmd_key(MENU_INVERT_ALL)), visctrl(get_menu_cmd_key(MENU_INVERT_PAGE)));
+    buf = `${"Invert".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_INVERT_ALL)).toString().padEnd(6)} ${visctrl(get_menu_cmd_key(MENU_INVERT_PAGE))}`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "Deselect", visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)), visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE)));
+    buf = `${"Deselect".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)).toString().padEnd(6)} ${visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE))}`;
     await putstr(win, 0, buf);
     await putstr(win, 0, "");
-    Sprintf(buf, mc_fmt, "Go to", visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)), "Next page");
+    buf = `${"Go to".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)).toString().padEnd(6)} Next page`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "", visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)), "Previous page");
+    buf = `${"".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)).toString().padEnd(6)} Previous page`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "", visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)), "First page");
+    buf = `${"".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)).toString().padEnd(6)} First page`;
     await putstr(win, 0, buf);
-    Sprintf(buf, mc_fmt, "", visctrl(get_menu_cmd_key(MENU_LAST_PAGE)), "Last page");
+    buf = `${"".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_LAST_PAGE)).toString().padEnd(6)} Last page`;
     await putstr(win, 0, buf);
     if (has_menu_shift) {
-      Sprintf(buf, mc_fmt, "Pan view", visctrl(get_menu_cmd_key(MENU_SHIFT_RIGHT)), "Right (perm_invent only)");
+      buf = `${"Pan view".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_SHIFT_RIGHT)).toString().padEnd(6)} Right (perm_invent only)`;
       await putstr(win, 0, buf);
-      Sprintf(buf, mc_fmt, "", visctrl(get_menu_cmd_key(MENU_SHIFT_LEFT)), "Left");
+      buf = `${"".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_SHIFT_LEFT)).toString().padEnd(6)} Left`;
       await putstr(win, 0, buf);
     }
     await putstr(win, 0, "");
-    Sprintf(buf, mc_fmt, "Search", visctrl(get_menu_cmd_key(MENU_SEARCH)), "Exter a target string and invert all matching entries");
+    buf = `${"Search".padStart(8)} ${visctrl(get_menu_cmd_key(MENU_SEARCH)).toString().padEnd(6)} Exter a target string and invert all matching entries`;
     await putstr(win, 0, buf);
     await putstr(win, 0, "");
     fmt = "%9s %-8s %s";
     arg = "Other ";
   }
   for (xcp = hardcoded; xcp.key; ++xcp) {
-    Sprintf(buf, fmt, arg, xcp.key, xcp.desc);
+    if (dolist) {
+      buf = `${arg}${xcp.key.toString().padEnd(7)} ${xcp.desc}`;
+    } else {
+      buf = `${arg.padStart(9)} ${xcp.key.toString().padEnd(8)} ${xcp.desc}`;
+    }
     await putstr(win, 0, buf);
     arg = "";
   }
@@ -1326,7 +1321,7 @@ export function all_options_menucolors(sbuf, game) {
   for (i = ncolors; i > 0; i--) {
     tmp = arr;
     let sattr = attr2attrname(tmp.attr), sclr = clr2colorname(tmp.color);
-    Sprintf(buf, "MENUCOLOR=\"%s\"=%s%s%s\n", tmp.origstr, sclr, (tmp.attr !== ATR_NONE) ? "&" : "", (tmp.attr !== ATR_NONE) ? sattr : "");
+    buf = `MENUCOLOR="${tmp.origstr}"=${sclr}${(tmp.attr !== ATR_NONE) ? "&" : ""}${(tmp.attr !== ATR_NONE) ? sattr : ""}\n`;
     strbuf_append(sbuf, buf);
   }
   (arr, 0);
@@ -1337,7 +1332,7 @@ export function all_options_msgtypes(sbuf) {
   let tmp = gp.plinemsg_types, buf;
   while (tmp) {
     let mtype = msgtype2name(tmp.msgtype);
-    Sprintf(buf, "MSGTYPE=%s \"%s\"\n", mtype, tmp.pattern);
+    buf = `MSGTYPE=${mtype} "${tmp.pattern}"\n`;
     strbuf_append(sbuf, buf);
     tmp = tmp.next;
   }
@@ -1405,7 +1400,7 @@ export async function handler_disclose(game) {
   start_menu(tmpwin, MENU_BEHAVE_STANDARD);
   any = cg.zeroany;
   for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
-    Sprintf(buf, "%-12s[%c%c]", disclosure_names[i], game.flags.end_disclose[i], disclosure_options[i]);
+    buf = `${disclosure_names[i].toString().padEnd(12)}[${game.flags.end_disclose[i]}${disclosure_options[i]}]`;
     any.a_int = i + 1;
     add_menu(tmpwin, nul_glyphinfo, any, disclosure_options[i], 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     disc_cat[i] = 0;
@@ -1424,7 +1419,7 @@ export async function handler_disclose(game) {
   for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
     if (disc_cat[i]) {
       c = game.flags.end_disclose[i];
-      Sprintf(buf, "Disclosure options for %s:", disclosure_names[i]);
+      buf = `Disclosure options for ${disclosure_names[i]}:`;
       tmpwin = create_nhwindow(NHW_MENU);
       start_menu(tmpwin, MENU_BEHAVE_STANDARD);
       any = cg.zeroany;
@@ -1490,7 +1485,7 @@ export function oc_to_str(src, dest) {
 // Autotranslated from options.c:10026
 export function wc_set_window_colors(op) {
   let j, clr, buf, wn, tfg, tbg, newop;
-  Strcpy(buf, op);
+  buf = op;
   newop = mungspaces(buf);
   while ( newop) {
     wn = tfg = tbg =  0;

@@ -366,9 +366,9 @@ export function disco_typename(otyp) {
     let actualn = (((otyp !== MAGIC_HARP && otyp !== WOODEN_HARP) || objectData[otyp].oc_name_known) ? OBJ_NAME(objectData[otyp]) : "harp");
     if (!actualn) {
     }
-    else if (strstri(result, " called")) { Sprintf(buf, " [%s] called", actualn); strsubst(result, " called", buf); }
-    else if (strstri(result, " (")) { Sprintf(buf, " [%s] (", actualn); strsubst(result, " (", buf); }
-    else { Sprintf(eos(result), " [%s]", actualn); }
+    else if (strstri(result, " called")) { buf = ` [${actualn}] called`; strsubst(result, " called", buf); }
+    else if (strstri(result, " (")) { buf = ` [${actualn}] (`; strsubst(result, " (", buf); }
+    else { result += ` [${actualn}]`; }
   }
   return result;
 }
@@ -398,10 +398,10 @@ export function get_sortdisco(opts, cnf, game) {
   let p = strchr(disco_order_let, game.flags.discosort);
   if (!p) game.flags.discosort = 'o', p = disco_order_let;
   if (cnf) {
-    Sprintf(opts, "%c", game.flags.discosort);
+    opts = `${game.flags.discosort}`;
   }
   else {
-    Strcpy(opts, disco_orders_descr[p - disco_order_let]);
+    opts = disco_orders_descr[p - disco_order_let];
   }
 }
 

@@ -1607,7 +1607,7 @@ export function display_stinking_cloud_positions(on_off, player) {
 export async function create_particular() {
   let d, bufp, buf, prompt, tryct = CP_TRYLIM, altmsg = 0;
   buf[0] = '\x00';
-  Strcpy(prompt, "Create what kind of monster?");
+  prompt = "Create what kind of monster?";
   do {
     await getlin(prompt, buf);
     bufp = mungspaces(buf);

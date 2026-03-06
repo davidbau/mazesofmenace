@@ -843,7 +843,7 @@ export async function do_mgivenname(player) {
     if (glyph_is_swallow(glyph)) { mtmp = player.ustuck; do_swallow = true; }
   }
   if (!do_swallow && (!mtmp || (!sensemon(mtmp) && (!(cansee(cx, cy) || see_with_infrared(mtmp)) || mtmp.mundetected || M_AP_TYPE(mtmp) === M_AP_FURNITURE || M_AP_TYPE(mtmp) === M_AP_OBJECT || (mtmp.minvis && !See_invisible))))) { await pline("I see no monster there."); return; }
-  Sprintf(qbuf, "What do you want to call %s?", distant_monnam(mtmp, ARTICLE_THE, monnambuf));
+  qbuf = `What do you want to call ${distant_monnam(mtmp, ARTICLE_THE, monnambuf)}?`;
   if (!name_from_player(buf, qbuf, has_mgivenname(mtmp) ? MGIVENNAME(mtmp) : null)) return;
   if ((mtmp.data.geno & G_UNIQ) && !mtmp.ispriest) {
     if (!alreadynamed(mtmp, monnambuf, buf)) await pline("%s doesn't like being called names!", upstart(monnambuf));
@@ -871,7 +871,7 @@ export async function oname(obj, name, oflgs, player) {
   if (obj.oartifact || (lth && exist_artifact(obj.otyp, name))) return obj;
   new_oname(obj, lth);
   if (lth) {
-    Strcpy(ONAME(obj), name);
+    ONAME(obj) = name;
   }
   if (lth) artifact_exists(obj, name, true, oflgs);
   if (obj.oartifact) {
@@ -926,7 +926,7 @@ export async function docall(obj) {
   if (!obj.dknown) return;
   flush_screen(1);
   if (obj.oclass === POTION_CLASS && obj.fromsink) {
-    Sprintf(qbuf, "Call a stream of %s fluid:", OBJ_DESCR(objectData[obj.otyp]));
+    qbuf = `Call a stream of ${OBJ_DESCR(objectData[obj.otyp])} fluid:`;
   }
   else {
     safe_qbuf(qbuf, "Call ", ":", obj, docall_xname, simpleonames, "thing");

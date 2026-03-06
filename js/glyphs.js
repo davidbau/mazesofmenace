@@ -192,7 +192,7 @@ export function glyphid_cache_status() {
 // Autotranslated from glyphs.c:455
 export function match_glyph(buf) {
   let workbuf;
-  Snprintf(workbuf, workbuf.length, "%s", buf);
+  workbuf = buf;
   return glyphrep(workbuf);
 }
 
@@ -292,7 +292,7 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
   let slash = false, colon = false;
   if (!glyphid_cache) reslt = 1;
   nhUse(reslt);
-  Snprintf(buf, buf.length, "%s", op);
+  buf = op;
   c_unicode = c_colorval =  0;
   c_glyphid = cp = buf;
   while ( cp) {

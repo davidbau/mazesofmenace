@@ -904,13 +904,13 @@ export function monhealthdescr(mon, addspace, outbuf) {
 // Autotranslated from pager.c:166
 export function trap_description(outbuf, tnum, x, y) {
   if (trapped_chest_at(tnum, x, y)) {
-    Strcpy(outbuf, "trapped chest");
+    outbuf = "trapped chest";
   }
   else if (trapped_door_at(tnum, x, y)) {
-    Strcpy(outbuf, "trapped door");
+    outbuf = "trapped door";
   }
   else {
-    Strcpy(outbuf, trapname(tnum, false));
+    outbuf = trapname(tnum, false);
   }
   return;
 }
@@ -919,10 +919,10 @@ export function trap_description(outbuf, tnum, x, y) {
 export async function look_at_object(buf, x, y, glyph, map) {
   let otmp = 0, fakeobj = object_from_map(glyph, x, y, otmp);
   if (otmp) {
-    Strcpy(buf, (otmp.otyp !== STRANGE_OBJECT) ? await distant_name(otmp, otmp.dknown ? doname_with_price : doname_vague_quan) : objectData[STRANGE_OBJECT].oc_name);
+    buf = (otmp.otyp !== STRANGE_OBJECT) ? await distant_name(otmp, otmp.dknown ? doname_with_price : doname_vague_quan) : objectData[STRANGE_OBJECT].oc_name;
     if (fakeobj) { otmp.where = OBJ_FREE; dealloc_obj(otmp), otmp = null; }
   }
-  else { Strcpy(buf, something); }
+  else { buf = something; }
   if (otmp && otmp.where === OBJ_BURIED) {
     Strcat(buf, " (buried)");
   }
@@ -991,8 +991,8 @@ export async function dowhatdoes_core(q, cbuf) {
   let buf, ec_desc;
   if ((ec_desc = key2extcmddesc(q)) !== null) {
     let keybuf;
-    Sprintf(buf, "%-8s%s.", key2txt(q, keybuf), ec_desc);
-    Strcpy(cbuf, buf);
+    buf = `${key2txt(q, keybuf).padEnd(8)}${ec_desc}.`;
+    cbuf = buf;
     return cbuf;
   }
   return 0;

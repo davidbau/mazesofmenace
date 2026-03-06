@@ -2249,19 +2249,19 @@ export async function otransit_msg(otmp, nodrop, chainthere, num) {
     optr = upstart(corpse_xname(otmp,  0, CXN_PFX_THE));
   }
   else { optr = Tobjnam(otmp,  0); }
-  Strcpy(obuf, optr);
+  obuf = optr;
   if (num || chainthere) {
     if (num) {
-      Sprintf(xbuf, " %s %s object%s", otense(otmp, "hit"), (num === 1) ? "another" : "other", (num > 1) ? "s" : "");
+      xbuf = ` ${otense(otmp, "hit")} ${(num === 1) ? "another" : "other"} object${(num > 1) ? "s" : ""}`;
     }
     else {
-      Sprintf(xbuf, " %s your chain", otense(otmp, "rattle"));
+      xbuf = ` ${otense(otmp, "rattle")} your chain`;
     }
     if (nodrop) {
-      Sprintf(eos(xbuf), ".");
+      xbuf += ".";
     }
     else {
-      Sprintf(eos(xbuf), " and %s %s.", otense(otmp, "fall"), gg.gate_str);
+      xbuf += ` and ${otense(otmp, "fall")} ${gg.gate_str}.`;
     }
     await pline("%s%s", obuf, xbuf);
   }

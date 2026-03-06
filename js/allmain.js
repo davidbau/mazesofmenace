@@ -2048,7 +2048,7 @@ export async function dump_enums() {
       nmprefix = (j >= edmp[i].szd - edmp[i].unprefixed_count) ? "" : edmp[i].pfx;
       nmwidth = 27 - nmprefix.length;
       if (edmp[i].dumpflgs > 0) {
-        Snprintf(comment, comment.length, "  ", (ed[i][j].val >= 32 && ed[i][j].val <= 126) ? ed[i][j].val : ' ');
+        comment = `  ${(ed[i][j].val >= 32 && ed[i][j].val <= 126) ? String.fromCharCode(ed[i][j].val) : ' '}`;
       }
       else { comment = '\0'; }
       await raw_printf(" %s% s.value = %3d,%s", nmprefix, -nmwidth, ed[i][j].nm, ed[i][j].val, comment);

@@ -739,18 +739,18 @@ export function known_vibrating_square_at(x, y) {
 // Autotranslated from getpos.c:556
 export function dxdy_to_dist_descr(dx, dy, fulldir) {
   let buf, dst;
-  if (!dx && !dy) { Sprintf(buf, "here"); }
-  else if ((dst = xytod(dx, dy)) !== -1) { Sprintf(buf, "%s", directionname(dst)); }
+  if (!dx && !dy) { buf = "here"; }
+  else if ((dst = xytod(dx, dy)) !== -1) { buf = directionname(dst); }
   else {
     let dirnames = [ [ "n", "north" ], [ "s", "south" ], [ "w", "west" ], [ "e", "east" ] ];
-    buf = '\0';
+    buf = '';
     if (dy) {
       if (Math.abs(dy) > 9999) dy = sgn(dy) * 9999;
-      Sprintf(eos(buf), "%d%s%s", Math.abs(dy), dirnames[(dy > 0)][fulldir], dx ? "," : "");
+      buf += `${Math.abs(dy)}${dirnames[(dy > 0)][fulldir]}${dx ? "," : ""}`;
     }
     if (dx) {
       if (Math.abs(dx) > 9999) dx = sgn(dx) * 9999;
-      Sprintf(eos(buf), "%d%s", Math.abs(dx), dirnames[2 + (dx > 0)][fulldir]);
+      buf += `${Math.abs(dx)}${dirnames[2 + (dx > 0)][fulldir]}`;
     }
   }
   return buf;

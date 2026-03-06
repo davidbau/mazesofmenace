@@ -5068,7 +5068,7 @@ export function tport_menu(win, entry, lchoices, lvl_p, cannotreach) {
   lchoices.dgn = lvl_p.dnum;
   lchoices.playerlev = depth(lvl_p);
   any = cg.zeroany;
-  if (cannotreach) { Sprintf(tmpbuf, " %s", entry); entry = tmpbuf; }
+  if (cannotreach) { tmpbuf = ` ${entry}`; entry = tmpbuf; }
   else { any.a_int = lchoices.idx + 1; }
   add_menu(win, nul_glyphinfo, any, lchoices.menuletter, 0, ATR_NONE, clr, entry, MENU_ITEMFLAGS_NONE);
   if (lchoices.menuletter === 'z') lchoices.menuletter = 'A';
@@ -5232,7 +5232,7 @@ export function endgamelevelname(outbuf, indx) {
    outbuf = '\0';
   switch (indx) {
     case -5:
-      Strcpy(outbuf, "Astral Plane");
+      outbuf = "Astral Plane";
     break;
     case -4:
       planename = "Water";
@@ -5248,10 +5248,10 @@ export function endgamelevelname(outbuf, indx) {
     break;
   }
   if (planename) {
-    Sprintf(outbuf, "Plane of %s", planename);
+    outbuf = `Plane of ${planename}`;
   }
   else if (!outbuf) {
-    Sprintf(outbuf, "unknown plane #%d", indx);
+    outbuf = `unknown plane #${indx}`;
   }
   return outbuf;
 }

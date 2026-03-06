@@ -838,7 +838,7 @@ export function random_engraving(outbuf, pristine_copy) {
   if (!rn2(4) || !(rumor = getrumor(0, pristine_copy, true)) || !rumor) {
     get_rnd_text(ENGRAVEFILE, pristine_copy, rn2, MD_PAD_RUMORS);
   }
-  Strcpy(outbuf, pristine_copy);
+  outbuf = pristine_copy;
   wipeout_text(outbuf, (outbuf.length / 4) | 0, 0);
   return outbuf;
 }

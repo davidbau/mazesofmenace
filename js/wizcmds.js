@@ -473,7 +473,7 @@ export async function wiz_show_seenv(map, player) {
         v = map.locations[x][y].seenv & 0xff;
         if (v === 0) row = row = ' ';
         else {
-          Sprintf( row, "%02x", v);
+          row = v.toString(16).padStart(2, '0');
         }
       }
     }
@@ -552,7 +552,7 @@ export async function mon_invent_chain(win, src, chain, total_count, total_size)
   if (count || size) {
      total_count += count;
      total_size += size;
-    Sprintf(buf, template, src, count, size);
+    buf = `  ${src}: count = ${count}, size = ${size}`;
     await putstr(win, 0, buf);
   }
 }
@@ -601,7 +601,7 @@ export async function mon_chain(win, src, chain, force, total_count, total_size,
   if (count || size || force) {
      total_count += count;
      total_size += size;
-    Sprintf(buf, template, src, count, size);
+    buf = `  ${src}: count = ${count}, size = ${size}`;
     await putstr(win, 0, buf);
   }
 }
@@ -701,17 +701,17 @@ export async function wiz_display_macros() {
       test = glyph_to_cmap(glyph);
       if (test === no_glyph) {
         if (!trouble++) await putstr(win, 0, display_issues);
-        Sprintf(buf, "glyph_is_cmap() / glyph_to_cmap(glyph=%d)" + " sync failure, returned NO_GLYPH (%d)", glyph, test);
+        buf = `glyph_is_cmap() / glyph_to_cmap(glyph=${glyph}) sync failure, returned NO_GLYPH (${test})`;
         await putstr(win, 0, buf);
       }
       if (glyph_is_cmap_zap(glyph) && !(test >= S_vbeam && test <= S_rslant)) {
         if (!trouble++) await putstr(win, 0, display_issues);
-        Sprintf(buf, "glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d", glyph, test);
+        buf = `glyph_is_cmap_zap(glyph=${glyph}) returned non-zap cmap ${test}`;
         await putstr(win, 0, buf);
       }
       if (!IndexOk(test, defsyms)) {
         if (!trouble++) await putstr(win, 0, display_issues);
-        Sprintf(buf, "glyph_to_cmap(glyph=%d) returns %d" + " exceeds defsyms[%d] bounds (MAX_GLYPH = %d)", glyph, test, SIZE(defsyms), max_glyph);
+        buf = `glyph_to_cmap(glyph=${glyph}) returns ${test} exceeds defsyms[${SIZE(defsyms)}] bounds (MAX_GLYPH = ${max_glyph})`;
         await putstr(win, 0, buf);
       }
     }
@@ -719,7 +719,7 @@ export async function wiz_display_macros() {
       test = glyph_to_mon(glyph);
       if (test < 0 || test >= NUMMONS) {
         if (!trouble++) await putstr(win, 0, display_issues);
-        Sprintf(buf, "glyph_to_mon(glyph=%d) returns %d" + " exceeds mons[%d] bounds", glyph, test, NUMMONS);
+        buf = `glyph_to_mon(glyph=${glyph}) returns ${test} exceeds mons[${NUMMONS}] bounds`;
         await putstr(win, 0, buf);
       }
     }
@@ -727,7 +727,7 @@ export async function wiz_display_macros() {
       test = glyph_to_obj(glyph);
       if (test < 0 || test > NUM_OBJECTS) {
         if (!trouble++) await putstr(win, 0, display_issues);
-        Sprintf(buf, "glyph_to_obj(glyph=%d) returns %d" + " exceeds objects[%d] bounds", glyph, test, NUM_OBJECTS);
+        buf = `glyph_to_obj(glyph=${glyph}) returns ${test} exceeds objects[${NUM_OBJECTS}] bounds`;
         await putstr(win, 0, buf);
       }
     }
@@ -753,7 +753,7 @@ export async function wiz_mon_diff() {
       if (!trouble++) await putstr(win, 0, window_title);
       mlev =  ptr.mlevel;
       if (mlev > 50) mlev = 50;
-      Snprintf(buf, buf.length, "%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)", ptr.pmnames[NEUTRAL], cnt, mlev, mcalculated, mhardcoded, mdiff);
+      buf = `${ptr.pmnames[NEUTRAL].padEnd(18)} [${String(cnt).padStart(3)}:${String(mlev).padStart(2)}]: calculated: ${String(mcalculated).padStart(2)}, hardcoded: ${String(mhardcoded).padStart(2)} (${mdiff > 0 ? '+' : ''}${mdiff})`;
       await putstr(win, 0, buf);
     }
   }

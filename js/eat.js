@@ -284,13 +284,13 @@ export async function choke(food, player) {
     svk.killer.format = KILLED_BY_AN;
     if (food) {
       await You("choke over your %s.", foodword(food));
-      if (food.oclass === COIN_CLASS) { Strcpy(svk.killer.name, "very rich meal"); }
+      if (food.oclass === COIN_CLASS) { svk.killer.name = "very rich meal"; }
       else {
         svk.killer.format = KILLED_BY;
-        Strcpy(svk.killer.name, killer_xname(food));
+        svk.killer.name = killer_xname(food);
       }
     }
-    else { await You("choke over it."); Strcpy(svk.killer.name, "quick snack"); }
+    else { await You("choke over it."); svk.killer.name = "quick snack"; }
     await You("die...");
     await done(CHOKING);
   }
@@ -1190,10 +1190,10 @@ export async function consume_oeaten(obj, amt, game) {
   if (!obj_nutrition(obj)) {
     let itembuf, otyp = obj.otyp;
     if (otyp === CORPSE || otyp === EGG || otyp === TIN) {
-      Strcpy(itembuf, (otyp === CORPSE) ? "corpse" : (otyp === EGG) ? "egg" : (otyp === TIN) ? "tin" : "other?");
-      Sprintf(eos(itembuf), " [%d]", obj.corpsenm);
+      itembuf = (otyp === CORPSE) ? "corpse" : (otyp === EGG) ? "egg" : (otyp === TIN) ? "tin" : "other?";
+      itembuf += ` [${obj.corpsenm}]`;
     }
-    else { Sprintf(itembuf, "%d", otyp); }
+    else { itembuf = `${otyp}`; }
     impossible( "oeaten: attempting to set 0 nutrition food (%s) partially eaten", itembuf);
     return;
   }

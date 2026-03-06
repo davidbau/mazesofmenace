@@ -173,12 +173,6 @@ function u_at(player, x, y) {
     return !!(player && player.x === x && player.y === y);
 }
 
-function Sprintf(fmt, ...args) {
-    // Minimal C-style formatter bridge used by translated helper candidates.
-    const conv = String(fmt || '').replace(/%[lds]/g, '%s');
-    let i = 0;
-    return conv.replace(/%s/g, () => String(args[i++] ?? ''));
-}
 
 // ========================================================================
 // seetrap — C ref: trap.c seetrap()
@@ -1773,7 +1767,7 @@ export async function sink_into_lava(player) {
     player.utrap -= (1 << 8);
     if (player.utrap < (1 << 8)) {
       svk.killer.format = KILLED_BY;
-      Strcpy(svk.killer.name, "molten lava");
+      svk.killer.name = "molten lava";
       await urgent_pline("You sink below the surface and die.");
       burn_away_slime();
       await done(DISSOLVED);

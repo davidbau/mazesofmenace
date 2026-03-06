@@ -91,17 +91,17 @@ export function get_strength_str(player) {
   let buf, st = acurr(player,A_STR);
   if (st > 18) {
     if (st > STR18(100)) {
-      Sprintf(buf, "%2d", st - 100);
+      buf = `${st - 100}`.padStart(2);
     }
     else if (st < STR18(100)) {
-      Sprintf(buf, "18/%02d", st - 18);
+      buf = `18/${String(st - 18).padStart(2, '0')}`;
     }
     else {
-      Sprintf(buf, "18/**");
+      buf = "18/**";
     }
   }
   else {
-    Sprintf(buf, "%-1d", st);
+    buf = `${st}`;
   }
   return buf;
 }
@@ -359,12 +359,12 @@ export function conditionbitmask2str(ul) {
   }
   for (i = 0; i < SIZE(conditions); i++) {
     if ((conditions[i].mask & ul) !== 0) {
-      Sprintf(eos(buf), "%s%s", (first) ? "" : "+", conditions[i].text[0]);
+      buf += `${first ? "" : "+"}${conditions[i].text[0]}`;
       first = false;
     }
   }
   if (!first && alias) {
-    Sprintf(buf, "%s", alias);
+    buf = alias;
   }
   return buf;
 }
@@ -404,7 +404,7 @@ export function hlattr2attrname(attrib, buf, bufsz) {
   if (attrib && buf) {
     let attbuf, first = 0, k;
     attbuf = '\0';
-    if (attrib === HL_NONE) { Strcpy(buf, "normal"); return buf; }
+    if (attrib === HL_NONE) { buf = "normal"; return buf; }
     if (attrib & HL_BOLD) {
       Strcat(attbuf, first++ ? "+bold" : "bold");
     }
@@ -425,7 +425,7 @@ export function hlattr2attrname(attrib, buf, bufsz) {
     }
     k = attbuf.length;
     if (k < (bufsz - 1)) {
-      Strcpy(buf, attbuf);
+      buf = attbuf;
     }
     return buf;
   }
@@ -507,7 +507,7 @@ export async function status_hilite_menu_choose_behavior(fld) {
   if (fld !== BL_CONDITION) {
     any = cg.zeroany;
     any.a_int = onlybeh = BL_TH_ALWAYS_HILITE;
-    Sprintf(buf, "Always highlight %s", initblstats[fld].fldname);
+    buf = `Always highlight ${initblstats[fld].fldname}`;
     add_menu(tmpwin, nul_glyphinfo, any, 'a', 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     nopts++;
   }
@@ -520,7 +520,7 @@ export async function status_hilite_menu_choose_behavior(fld) {
   if (fld !== BL_CONDITION && fld !== BL_VERS) {
     any = cg.zeroany;
     any.a_int = onlybeh = BL_TH_UPDOWN;
-    Sprintf(buf, "%s value changes", initblstats[fld].fldname);
+    buf = `${initblstats[fld].fldname} value changes`;
     add_menu(tmpwin, nul_glyphinfo, any, 'c', 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     nopts++;
   }
@@ -539,18 +539,18 @@ export async function status_hilite_menu_choose_behavior(fld) {
   if (fld === BL_HP) {
     any = cg.zeroany;
     any.a_int = onlybeh = BL_TH_CRITICALHP;
-    Sprintf(buf, "Highlight critically low %s", initblstats[fld].fldname);
+    buf = `Highlight critically low ${initblstats[fld].fldname}`;
     add_menu(tmpwin, nul_glyphinfo, any, 'C', 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     nopts++;
   }
   if (initblstats[fld].anytype === ANY_STR || fld === BL_CAP || fld === BL_HUNGER) {
     any = cg.zeroany;
     any.a_int = onlybeh = BL_TH_TEXTMATCH;
-    Sprintf(buf, "%s text match", initblstats[fld].fldname);
+    buf = `${initblstats[fld].fldname} text match`;
     add_menu(tmpwin, nul_glyphinfo, any, 't', 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     nopts++;
   }
-  Sprintf(buf, "Select %s field hilite behavior:", initblstats[fld].fldname);
+  buf = `Select ${initblstats[fld].fldname} field hilite behavior:`;
   end_menu(tmpwin, buf);
   if (nopts > 1) {
     res = await select_menu(tmpwin, PICK_ONE, picks);
@@ -570,48 +570,48 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
   start_menu(tmpwin, MENU_BEHAVE_STANDARD);
   if (ltok) {
     if (str) {
-      Sprintf(buf, "%s than %s", (fld === BL_AC) ? "Better (lower)" : "Less", str);
+      buf = `${(fld === BL_AC) ? "Better (lower)" : "Less"} than ${str}`;
     }
     else {
-      Sprintf(buf, "Value goes down");
+      buf = "Value goes down";
     }
     any = cg.zeroany;
     any.a_int = 10 + LT_VALUE;
     add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     if (str) {
-      Sprintf(buf, "%s or %s", str, (fld === BL_AC) ? "better (lower)" : "less");
+      buf = `${str} or ${(fld === BL_AC) ? "better (lower)" : "less"}`;
       any = cg.zeroany;
       any.a_int = 10 + LE_VALUE;
       add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
   }
   if (str) {
-    Sprintf(buf, "Exactly %s", str);
+    buf = `Exactly ${str}`;
   }
   else {
-    Sprintf(buf, "Value changes");
+    buf = "Value changes";
   }
   any = cg.zeroany;
   any.a_int = 10 + EQ_VALUE;
   add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   if (gtok) {
     if (str) {
-      Sprintf(buf, "%s or %s", str, (fld === BL_AC) ? "worse (higher)" : "more");
+      buf = `${str} or ${(fld === BL_AC) ? "worse (higher)" : "more"}`;
       any = cg.zeroany;
       any.a_int = 10 + GE_VALUE;
       add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
     if (str) {
-      Sprintf(buf, "%s than %s", (fld === BL_AC) ? "Worse (higher)" : "More", str);
+      buf = `${(fld === BL_AC) ? "Worse (higher)" : "More"} than ${str}`;
     }
     else {
-      Sprintf(buf, "Value goes up");
+      buf = "Value goes up";
     }
     any = cg.zeroany;
     any.a_int = 10 + GT_VALUE;
     add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
   }
-  Sprintf(buf, "Select field %s value:", initblstats[fld].fldname);
+  buf = `Select field ${initblstats[fld].fldname} value:`;
   end_menu(tmpwin, buf);
   res = await select_menu(tmpwin, PICK_ONE, picks);
   destroy_nhwindow(tmpwin);
@@ -682,7 +682,7 @@ export async function status_hilites_viewall() {
   let datawin, hlstr = status_hilite_str, buf;
   datawin = create_nhwindow(NHW_TEXT);
   while (hlstr) {
-    Sprintf(buf, "OPTIONS=hilite_status: %.*s", Math.trunc(BUFSZ - ("OPTIONS=hilite_status: ").length - 1), hlstr.str);
+    buf = `OPTIONS=hilite_status: ${hlstr.str}`;
     await putstr(datawin, 0, buf);
     hlstr = hlstr.next;
   }
@@ -697,7 +697,7 @@ export function all_options_statushilites(sbuf) {
   status_hilite_linestr_gather();
   hlstr = status_hilite_str;
   while (hlstr) {
-    Sprintf(buf, "OPTIONS=hilite_status: %.*s\n", Math.trunc(BUFSZ - ("OPTIONS=hilite_status: ").length - 1), hlstr.str);
+    buf = `OPTIONS=hilite_status: ${hlstr.str}\n`;
     strbuf_append(sbuf, buf);
     hlstr = hlstr.next;
   }

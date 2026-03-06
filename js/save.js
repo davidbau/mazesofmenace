@@ -161,7 +161,7 @@ export async function tricked_fileremoved(nhfp, whynot) {
     pushRngLogEntry(`^trick[${whynot ? String(whynot) : ''}]`);
     pline1(whynot);
     await pline("Probably someone removed it.");
-    Strcpy(svk.killer.name, whynot);
+    svk.killer.name = whynot;
     await done(TRICKED);
     return true;
   }

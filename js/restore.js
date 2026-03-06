@@ -252,7 +252,7 @@ export async function trickery(reason) {
   await pline("Strange, this map is not as I remember it.");
   await pline("Somebody is trying some trickery here...");
   await pline("This game is void.");
-  Strcpy(svk.killer.name, reason ? reason : "");
+  svk.killer.name = reason ? reason : "";
   await done(TRICKED);
 }
 

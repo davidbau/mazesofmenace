@@ -41,14 +41,6 @@ import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
          performWaitSearch, dist2 } from './hack.js';
 
-function Sprintf(fmt, ...args) {
-    let i = 0;
-    return String(fmt || '').replace(/%[lds]/g, () => String(args[i++] ?? ''));
-}
-
-function Strcpy(_dst, src) {
-    return String(src || '');
-}
 
 function t_at(x, y, map) {
     if (!map || !Array.isArray(map.traps)) return null;
@@ -1055,11 +1047,11 @@ export async function wiz_dumpobj() {
 // Autotranslated from cmd.c:1387
 export async function wiz_dumpsnap() {
   let phasebuf;
-  Sprintf(phasebuf, "manual");
+  phasebuf = "manual";
   await getlin("Checkpoint phase tag:", phasebuf);
   mungspaces(phasebuf);
   if (!phasebuf) {
-    Strcpy(phasebuf, "manual");
+    phasebuf = "manual";
   }
   harness_dump_checkpoint(phasebuf);
   await pline("Snapshot appended (%s).", phasebuf);
@@ -1264,7 +1256,7 @@ export async function handler_change_autocompletions() {
       continue;
     }
     any.a_int = (i + 1);
-    Sprintf(buf, "%c %s: %s", (ec.flags & AUTOCOMP_ADJ) ? '*' : ' ', ec.ef_txt, ec.ef_desc);
+    buf = `${(ec.flags & AUTOCOMP_ADJ) ? '*' : ' '} ${ec.ef_txt}: ${ec.ef_desc}`;
     add_menu(win, nul_glyphinfo, any, '\0', 0, ATR_NONE, clr, buf, (ec.flags & AUTOCOMPLETE) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
   }
   end_menu(win, "Which commands autocomplete?");
@@ -1280,7 +1272,7 @@ export async function handler_change_autocompletions() {
       if (ec.ef_txt.length < 2) {
         continue;
       }
-      Sprintf(buf, "%s", ec.ef_txt);
+      buf = ec.ef_txt;
       for (j = 0; j < n; ++j) {
         if (ec === extcmdlist[(picks[j].item.a_int - 1)]) {
           parseautocomplete(buf, true);
@@ -1317,7 +1309,7 @@ export function all_options_autocomplete(sbuf) {
   let efp, buf;
   for (efp = extcmdlist; efp.ef_txt; efp++) {
     if ((efp.flags & AUTOCOMP_ADJ) !== 0) {
-      Sprintf(buf, "AUTOCOMPLETE=%s%s\n", (efp.flags & AUTOCOMPLETE) ? "" : "!", efp.ef_txt);
+      buf = `AUTOCOMPLETE=${(efp.flags & AUTOCOMPLETE) ? "" : "!"}${efp.ef_txt}\n`;
       strbuf_append(sbuf, buf);
     }
   }
@@ -1373,23 +1365,23 @@ export async function show_direction_keys(win, centerchar, nodiag) {
   let buf;
   if (!centerchar) centerchar = ' ';
   if (nodiag) {
-    Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_north)));
+    buf = ` ${visctrl(cmd_from_func(do_move_north))} `;
     await putstr(win, 0, buf);
     await putstr(win, 0, " | ");
-    Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
+    buf = ` ${visctrl(cmd_from_func(do_move_west))}- ${centerchar} -${visctrl(cmd_from_func(do_move_east))}`;
     await putstr(win, 0, buf);
     await putstr(win, 0, " | ");
-    Sprintf(buf, " %s ", visctrl(cmd_from_func(do_move_south)));
+    buf = ` ${visctrl(cmd_from_func(do_move_south))} `;
     await putstr(win, 0, buf);
   }
   else {
-    Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_northwest)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_northeast)));
+    buf = ` ${visctrl(cmd_from_func(do_move_northwest))} ${visctrl(cmd_from_func(do_move_north))} ${visctrl(cmd_from_func(do_move_northeast))}`;
     await putstr(win, 0, buf);
     await putstr(win, 0, " \\ | / ");
-    Sprintf(buf, " %s- %c -%s", visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)));
+    buf = ` ${visctrl(cmd_from_func(do_move_west))}- ${centerchar} -${visctrl(cmd_from_func(do_move_east))}`;
     await putstr(win, 0, buf);
     await putstr(win, 0, " / | \\ ");
-    Sprintf(buf, " %s %s %s", visctrl(cmd_from_func(do_move_southwest)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_southeast)));
+    buf = ` ${visctrl(cmd_from_func(do_move_southwest))} ${visctrl(cmd_from_func(do_move_south))} ${visctrl(cmd_from_func(do_move_southeast))}`;
     await putstr(win, 0, buf);
   }
 }
@@ -1427,7 +1419,7 @@ export function there_cmd_menu_next2u(win, x, y, mod, act, map, player) {
       key_or_pick = (carrying(SKELETON_KEY) || carrying(LOCK_PICK));
       card = (carrying(CREDIT_CARD) !== 0);
       if (key_or_pick || card) {
-        Sprintf(buf, "%sunlock the door", key_or_pick ? "lock or " : "");
+        buf = `${key_or_pick ? "lock or " : ""}unlock the door`;
         mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;
       }
       mcmd_addmenu(win, MCMD_UNTRAP_DOOR, "Search the door for a trap"), ++K;
@@ -1448,24 +1440,24 @@ export function there_cmd_menu_next2u(win, x, y, mod, act, map, player) {
   if (mtmp && !canspotmon(mtmp)) mtmp = 0;
   if (mtmp && which_armor(mtmp, W_SADDLE)) {
     let mnam = x_monnam(mtmp, ARTICLE_THE,  0, SUPPRESS_SADDLE, false);
-    if (!player.usteed) { Sprintf(buf, "Ride %s", mnam); mcmd_addmenu(win, MCMD_RIDE, buf), ++K; }
-    Sprintf(buf, "Remove saddle from %s", mnam);
+    if (!player.usteed) { buf = `Ride ${mnam}`; mcmd_addmenu(win, MCMD_RIDE, buf), ++K; }
+    buf = `Remove saddle from ${mnam}`;
     mcmd_addmenu(win, MCMD_REMOVE_SADDLE, buf), ++K;
   }
   if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE) && carrying(SADDLE)) {
-    Sprintf(buf, "Put saddle on %s", mon_nam(mtmp));
+    buf = `Put saddle on ${mon_nam(mtmp)}`;
     mcmd_addmenu(win, MCMD_APPLY_SADDLE, buf), ++K;
   }
   if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
-    Sprintf(buf, "Talk to %s", mon_nam(mtmp));
+    buf = `Talk to ${mon_nam(mtmp)}`;
     mcmd_addmenu(win, MCMD_TALK, buf), ++K;
-    Sprintf(buf, "Swap places with %s", mon_nam(mtmp));
+    buf = `Swap places with ${mon_nam(mtmp)}`;
     mcmd_addmenu(win, MCMD_MOVE_DIR, buf), ++K;
-    Sprintf(buf, "%s %s", !has_mgivenname(mtmp) ? "Name" : "Rename", mon_nam(mtmp));
+    buf = `${!has_mgivenname(mtmp) ? "Name" : "Rename"} ${mon_nam(mtmp)}`;
     mcmd_addmenu(win, MCMD_NAME, buf), ++K;
   }
   if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame)) || glyph_is_invisible(glyph_at(x, y))) {
-    Sprintf(buf, "Attack %s", mtmp ? mon_nam(mtmp) : "unseen creature");
+    buf = `Attack ${mtmp ? mon_nam(mtmp) : "unseen creature"}`;
     mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, buf), ++K;
      act = MCMD_ATTACK_NEXT2U;
   }
@@ -1528,19 +1520,19 @@ export function extcmds_getentry(i) {
 // Autotranslated from cmd.c:3338
 export function key2txt(c, txt) {
   if (c === ' ') {
-    Sprintf(txt, "<space>");
+    txt = "<space>";
   }
   else if (c === '\x1b') {
-    Sprintf(txt, "<esc>");
+    txt = "<esc>";
   }
   else if (c === '\n') {
-    Sprintf(txt, "<enter>");
+    txt = "<enter>";
   }
   else if (c === '\x7f') {
-    Sprintf(txt, "<del>");
+    txt = "<del>";
   }
   else {
-    Strcpy(txt, visctrl( c));
+    txt = visctrl( c);
   }
   return txt;
 }
@@ -1576,7 +1568,7 @@ export function doc_extcmd_flagstr(menuwin, efp) {
   if (!efp) {
     let qbuf;
     add_menu_str(menuwin, "[A] Command autocompletes");
-    Sprintf(qbuf, "[m] Command accepts '%s' prefix", visctrl(cmd_from_func(do_reqmenu)));
+    qbuf = `[m] Command accepts '${visctrl(cmd_from_func(do_reqmenu))}' prefix`;
     add_menu_str(menuwin, qbuf);
     return  0;
   }
