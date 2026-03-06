@@ -17,6 +17,8 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
          FIRE_RES, COLD_RES, SHOCK_RES, POISON_RES, SLEEP_RES,
          TELEPORT_CONTROL, INFRAVISION, DRAIN_RES,
          FIXED_ABIL, INTRINSIC, TIMEOUT,
+         CLAIRVOYANT, REGENERATION, SICK, VOMITING,
+         CONFUSION, HALLUC, FUMBLING, STUNNED,
          FROM_ROLE as FROMEXPER_BIT, FROM_RACE as FROMRACE_BIT,
          FROM_FORM as FROMFORM_BIT, FROMOUTSIDE } from './const.js';
 import { A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF } from './const.js';
@@ -730,28 +732,28 @@ async function exerper(player) {
     // Status checks
     if (!(moves % 5)) {
         // Clairvoyant check
-        const clairIntr = getIntrinsic(player, 51 /* CLAIRVOYANT */);
-        const clairBlocked = player.uprops && player.uprops[51] && player.uprops[51].blocked;
+        const clairIntr = getIntrinsic(player, CLAIRVOYANT);
+        const clairBlocked = player.uprops && player.uprops[CLAIRVOYANT] && player.uprops[CLAIRVOYANT].blocked;
         if ((clairIntr & (INTRINSIC | TIMEOUT)) && !clairBlocked)
             await exercise(player, A_WIS, true);
         // Regeneration
-        if (getIntrinsic(player, 48 /* REGENERATION */))
+        if (getIntrinsic(player, REGENERATION))
             await exercise(player, A_STR, true);
 
         // Sick or Vomiting
-        const sick = getIntrinsic(player, 7 /* SICK */);
-        const vomiting = getIntrinsic(player, 12 /* VOMITING */);
+        const sick = getIntrinsic(player, SICK);
+        const vomiting = getIntrinsic(player, VOMITING);
         if (sick || vomiting)
             await exercise(player, A_CON, false);
         // Confusion or Hallucination
-        const confused = getIntrinsic(player, 13 /* CONFUSION */);
-        const hallu = getIntrinsic(player, 16 /* HALLUC */);
+        const confused = getIntrinsic(player, CONFUSION);
+        const hallu = getIntrinsic(player, HALLUC);
         if (confused || hallu)
             await exercise(player, A_WIS, false);
         // Wounded legs / Fumbling / Stun
         const wlegs = player.woundedLegs;
-        const fumbling = getIntrinsic(player, 37 /* FUMBLING */);
-        const stun = getIntrinsic(player, 15 /* STUNNED */);
+        const fumbling = getIntrinsic(player, FUMBLING);
+        const stun = getIntrinsic(player, STUNNED);
         if ((wlegs && !player.usteed) || fumbling || stun)
             await exercise(player, A_DEX, false);
     }

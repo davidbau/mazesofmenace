@@ -32,6 +32,7 @@ import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, LAST_PROP,
          CONFLICT, LEVITATION, INVIS, W_ARM, PROTECTION,
          STEALTH, REGENERATION, TELEPORT_CONTROL,
          ENERGY_REGENERATION, HALF_SPDAM, HALF_PHDAM, REFLECTING,
+         WARN_OF_MON, WARNING, HALLUC_RES,
          ONAME_NO_FLAGS, ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT,
          ONAME_VIA_DIP, ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM, ONAME_KNOW_ARTI,
        } from './const.js';
@@ -753,13 +754,13 @@ export async function set_artifact_intrinsic(otmp, on, wp_mask, player) {
   // SPFX_WARN: warn_of_mon vs generic warning
   if (spfx & SPFX_WARN) {
     if (spec_m2(otmp)) {
-      const p = ensureProp(29); // WARN_OF_MON
+      const p = ensureProp(WARN_OF_MON);
       if (p) {
         if (on) p.extrinsic |= wp_mask;
         else p.extrinsic &= ~wp_mask;
       }
     } else {
-      const p = ensureProp(30); // WARNING
+      const p = ensureProp(WARNING);
       if (p) {
         if (on) p.extrinsic |= wp_mask;
         else p.extrinsic &= ~wp_mask;
@@ -769,7 +770,7 @@ export async function set_artifact_intrinsic(otmp, on, wp_mask, player) {
 
   // SPFX_HALRES: hallucination resistance
   if (spfx & SPFX_HALRES) {
-    const p = ensureProp(23); // HALLUC_RES
+    const p = ensureProp(HALLUC_RES);
     if (p) {
       if (on) p.extrinsic |= wp_mask;
       else p.extrinsic &= ~wp_mask;

@@ -15,7 +15,7 @@ import {
     SCR_BLANK_PAPER,
     CANDY_BAR,
 } from './objects.js';
-import { A_STR, A_INT, A_WIS, A_CON, SDOOR, COLNO, ROWNO, MM_EDOG, MM_ADJACENTOK } from './const.js';
+import { A_STR, A_INT, A_WIS, A_CON, SDOOR, COLNO, ROWNO, MM_EDOG, MM_ADJACENTOK, CONFUSION } from './const.js';
 import { doname } from './mkobj.js';
 import { exercise } from './attrib_exercise.js';
 import { discoverObject, isObjectNameKnown } from './o_init.js';
@@ -685,7 +685,7 @@ async function seffect_confuse_monster(sobj, player, display) {
             await display.putstr_message('You feel confused.');
         }
         await make_confused(player, (player.getPropTimeout
-            ? (player.getPropTimeout(13 /*CONFUSION*/) || 0) : 0) + rnd(100), false);
+            ? (player.getPropTimeout(CONFUSION) || 0) : 0) + rnd(100), false);
         return false;
     }
 
@@ -693,7 +693,7 @@ async function seffect_confuse_monster(sobj, player, display) {
         if (!sblessed) {
             await display.putstr_message('Your hands begin to glow purple.');
             await make_confused(player, (player.getPropTimeout
-                ? (player.getPropTimeout(13) || 0) : 0) + rnd(100), false);
+                ? (player.getPropTimeout(CONFUSION) || 0) : 0) + rnd(100), false);
         } else {
             await display.putstr_message('A red glow surrounds your head.');
             await make_confused(player, 0, true);

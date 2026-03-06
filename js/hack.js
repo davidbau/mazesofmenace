@@ -21,7 +21,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID } from './const.js';
 import { SQKY_BOARD, SLP_GAS_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, ANTI_MAGIC, TELEP_TRAP,
          ARROW_TRAP, DART_TRAP, ROCKTRAP } from './const.js';
-import { defsyms, trap_to_defsym } from './const.js';
+import { defsyms, trap_to_defsym, PASSES_WALLS } from './const.js';
 import { rn2, rnd, rnl, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -373,7 +373,7 @@ export function cant_squeeze_thru(player, map) {
     if (!player) return 0;
     // Passes_walls (phasing) always allows squeeze
     if (player.passesWalls || player.phasing
-        || (player.uprops && player.uprops[62])) return 0; // 62 = PASSES_WALLS
+        || (player.uprops && player.uprops[PASSES_WALLS])) return 0;
     // bigmonst check: msize >= MZ_LARGE (3)
     const mdat = player.type;
     const msize = mdat ? (mdat.msize ?? 0) : 0;
