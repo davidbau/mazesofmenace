@@ -850,7 +850,13 @@ async function apply_dochug_postmove(mon, map, player, display, fov, game, omx, 
     if (mon.mx !== omx || mon.my !== omy) {
         await m_postmove_effect(mon, map, player, game, omx, omy);
     }
+    // C ref: monmove.c postmov(): update old position before mintrap().
+    newsym(omx, omy);
     const trapResult = await mintrap_postmove(mon, map, player, display, fov);
+    // C ref: postmov() refreshes current location if trap left monster on-level.
+    if (Number.isInteger(mon.mx) && Number.isInteger(mon.my) && mon.mx > 0 && mon.my >= 0) {
+        newsym(mon.mx, mon.my);
+    }
     if (trapResult === 2 || trapResult === 3) {
         return MMOVE_DIED;
     }
@@ -1825,11 +1831,10 @@ async function m_move(mon, map, player, display = null, fov = null) {
 
         // C ref: monmove.c:2065 — mon_track_add(mtmp, omx, omy)
         mon_track_add(mon, omx, omy);
-        // C ref: remove_monster/place_monster → newsym at old+new positions
+        // C ref: monmove.c m_move() remove/place only updates monster grid.
+        // Visible redraw happens in postmov() around mintrap/newsym ordering.
         mon.mx = nix;
         mon.my = niy;
-        newsym(omx, omy);
-        newsym(nix, niy);
 
         // C ref: monmove.c:1704 (postmov) — maybe_spin_web called AFTER position update (at new cell).
         if (!mon.dead) await maybe_spin_web(mon, map);

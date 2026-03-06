@@ -2856,3 +2856,25 @@ hard-won wisdom:
     now completes without timeout and produces full comparable metrics.
   - Direct run also completes (no timeout):
     `node test/comparison/session_test_runner.js --verbose --session-timeout-ms=12000 --sessions=seed325_knight_wizard_gameplay.session.json`.
+
+### postmov redraw ordering: avoid eager new-tile newsym in m_move (2026-03-06)
+
+- Root cause:
+  - `js/monmove.js:m_move()` eagerly called `newsym(omx,omy)` and
+    `newsym(nix,niy)` immediately after coordinate update.
+  - In C (`monmove.c`), `postmov()` owns redraw sequencing around traps:
+    it updates old position first, runs `mintrap()`, then refreshes current
+    location if still on-level.
+  - The eager JS redraw exposed transient monster glyphs at `--More--` pause
+    boundaries (seed328), producing screen-only drift with matching RNG/events.
+- C-faithful fix:
+  - Removed eager old/new `newsym` calls from `m_move()` movement branch.
+  - Moved redraw sequencing into shared postmove helper:
+    - `newsym(omx,omy)` before `mintrap_postmove(...)`
+    - refresh `newsym(mon.mx,mon.my)` after trap resolution when still on-level.
+- Validation:
+  - `seed328_ranger_wizard_gameplay` improved:
+    first screen divergence moved from step `219` to step `231`
+    with RNG/events still 100% matched.
+  - `scripts/run-and-report.sh --failures` remains `27/34` gameplay passing
+    (no failing-session count regression).
