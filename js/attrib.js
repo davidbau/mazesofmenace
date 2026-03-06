@@ -13,7 +13,7 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, NUM_ATTRS,
          PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER,
          PM_KNIGHT, PM_MONK, PM_PRIEST, PM_ROGUE, PM_RANGER,
          PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
-         FAST, STEALTH, SEARCHING, SEE_INVIS, WARNING,
+         FAST, STEALTH, SEARCHING, SEE_INVIS, WARNING, JUMPING,
          FIRE_RES, COLD_RES, SHOCK_RES, POISON_RES, SLEEP_RES,
          TELEPORT_CONTROL, INFRAVISION, DRAIN_RES,
          FIXED_ABIL, INTRINSIC, TIMEOUT,
@@ -967,7 +967,7 @@ export function is_innate(player, propidx) {
         return FROM_NONE;
     if ((innateness = innately(player, propidx)) !== FROM_NONE)
         return innateness;
-    if (propidx === 47 /* JUMPING */ && player.roleIndex === PM_KNIGHT
+    if (propidx === JUMPING && player.roleIndex === PM_KNIGHT
         && !getExtrinsic(player, propidx))
         return FROM_ROLE_REASON;
     return FROM_NONE;

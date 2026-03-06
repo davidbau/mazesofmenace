@@ -48,7 +48,7 @@ import { mons, G_FREQ, MZ_TINY, MZ_HUMAN, M1_NOEYES,
          PM_IRON_GOLEM, PM_STONE_GOLEM, PM_FLESH_GOLEM, PM_WOOD_GOLEM,
          PM_LEATHER_GOLEM, PM_ROPE_GOLEM, PM_SKELETON, PM_GOLD_GOLEM,
          PM_GLASS_GOLEM, PM_PAPER_GOLEM, PM_STRAW_GOLEM,
-         PM_LONG_WORM, S_TROLL, S_ZOMBIE, S_EEL, S_GOLEM, S_MIMIC } from './monsters.js';
+         PM_LONG_WORM, PM_GREMLIN, S_TROLL, S_ZOMBIE, S_EEL, S_GOLEM, S_MIMIC } from './monsters.js';
 import {
   rndmonnum, makemon,
 } from './makemon.js';
@@ -2293,7 +2293,7 @@ export async function lightdamage(obj, playerOrUwep, amt, ordinary = true) {
   const player = (playerOrUwep && playerOrUwep.hp != null) ? playerOrUwep : null;
   let dmg = Number.isFinite(amt) ? Math.max(0, Math.floor(amt)) : 0;
   if (!player || !dmg) return dmg;
-  if (player.umonnum === 133 /* PM_GREMLIN */ || player.formName === 'gremlin') {
+  if (player.umonnum === PM_GREMLIN || player.formName === 'gremlin') {
     dmg = rnd(dmg);
     if (dmg > 10) dmg = 10 + rnd(dmg - 10);
     if (dmg > 20) dmg = 20;

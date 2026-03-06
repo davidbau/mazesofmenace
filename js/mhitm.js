@@ -34,7 +34,7 @@ import {
     AT_SPIT, AT_BOOM, G_NOCORPSE,
     AD_PHYS, AD_ACID, AD_BLND, AD_STUN, AD_PLYS, AD_COLD, AD_FIRE,
     AD_ELEC, AD_WRAP, AD_STCK, AD_DGST, AD_RUST, AD_CORR,
-    MZ_HUGE, NON_PM,
+    MZ_HUGE, NON_PM, PM_GRID_BUG,
 } from './monsters.js';
 import { corpse_chance, zombie_maker, zombie_form } from './mon.js';
 import { mkcorpstat, xname } from './mkobj.js';
@@ -855,7 +855,7 @@ export function mdisplacem(magr, mdef, quietly, map) {
     if (!rn2(7)) return M_ATTK_MISS;
 
     // Grid bugs can't displace diagonally
-    if (magr.mndx === 116 /* PM_GRID_BUG */ && fx !== tx && fy !== ty)
+    if (magr.mndx === PM_GRID_BUG && fx !== tx && fy !== ty)
         return M_ATTK_MISS;
 
     if (mdef.mundetected) mdef.mundetected = false;

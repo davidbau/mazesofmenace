@@ -53,7 +53,7 @@ import { can_teleport, noeyes, perceives, nohands,
          webmaker, tunnels, needspick } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN, PM_GREMLIN, PM_STALKER,
-         PM_XORN,
+         PM_XORN, PM_GELATINOUS_CUBE,
          PM_DISPLACER_BEAST,
          PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
          PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
@@ -2092,7 +2092,7 @@ export function mon_would_consume_item(mon, obj) {
     // Rust monsters / rock moles eat metal
     if (mdat.metallivorous) return true;
     // Gelatinous cubes eat organic
-    if (mon.mndx === 8 /* PM_GELATINOUS_CUBE */) return true;
+    if (mon.mndx === PM_GELATINOUS_CUBE) return true;
     return false;
 }
 

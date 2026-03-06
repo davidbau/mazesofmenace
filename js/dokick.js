@@ -175,10 +175,9 @@ function martial(player) {
 
 // C ref: weapon.c martial_bonus() — check if player has martial arts bonus
 function martial_bonus(player) {
-    // In the C code, this checks if player's role grants martial arts
-    // Monks and Samurai get this
+    // C ref: weapon.c martial_bonus() — Role_if(PM_MONK) || Role_if(PM_SAMURAI)
     const role = player.role;
-    return role === 'Monk' || role === 10; // PM_MONK index
+    return role === 'Monk' || role === 'Samurai';
 }
 
 function bigmonst(ptr) { return (ptr.msize || 0) >= MZ_LARGE; }
