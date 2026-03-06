@@ -45,17 +45,19 @@ import { PM_CAVEMAN, PM_VALKYRIE, PM_WIZARD,
          REGENERATION, CONFLICT, PROTECTION, HUNGER, STRANGLED, CONFUSION,
          W_RINGL, W_RINGR, W_ARTI, W_WEP, FROMFORM,
          CHOKING, A_LAWFUL, PM_KNIGHT, PM_MONK,
-         STARVING, KILLED_BY, KILLED_BY_AN } from './const.js';
+         STARVING, KILLED_BY, KILLED_BY_AN,
+         BY_COOKIE } from './const.js';
 import { game as _gstate } from './gstate.js';
 import { applyMonflee } from './mhitu.js';
 import { obj_resists } from './objdata.js';
 import { compactInvletPromptChars } from './invent.js';
 import { pline, You, Your, You_feel, You_cant, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
-import { acurr, ensureAttrArrays } from './attrib.js';
+import { acurr, ensureAttrArrays, gainstr } from './attrib.js';
 import { nomul, end_running, near_capacity } from './hack.js';
 import { incr_itimeout } from './potion.js';
 import { done, setKillerName, setKillerFormat } from './end.js';
+import { outrumor } from './rumors.js';
 import { stop_occupation } from './allmain.js';
 import { pluslvl } from './exper.js';
 import { is_rider, is_giant, acidic, poisonous, flesh_petrifies,
@@ -825,15 +827,29 @@ function corpse_intrinsic(ptr) {
 // 6. Corpse prefix / postfix effects
 // ============================================================
 
-// cf. eat.c maybe_cannibal() — check/apply cannibalism effects
+// cf. eat.c your_race() — check if monster is same race as player
+function your_race(player, ptr) {
+    // Simplified: check human race only (most common case)
+    const race = player.race || 0;
+    if (race === 0 && ptr && ptr.mlet === 'h') return true; // human
+    if (race === RACE_ELF && is_elf(ptr)) return true;
+    if (race === RACE_ORC && is_orc(ptr)) return true;
+    if (race === RACE_DWARF && is_dwarf(ptr)) return true;
+    return false;
+}
+
+// cf. eat.c:758-787 maybe_cannibal() — check/apply cannibalism effects
+// C: static ate_brains tracking omitted (only matters for poly'd mind flayer multi-hit)
 async function maybe_cannibal(player, pm, allowmsg) {
-    if (!CANNIBAL_ALLOWED(player)) {
-        // Simplified: check if eating own race
-        // In full version this checks your_race() etc.
+    if (!CANNIBAL_ALLOWED(player)
+        && your_race(player, mons[pm])) {
         if (allowmsg) {
             await You('cannibal!  You will regret this!');
         }
-        // Would apply luck penalty: change_luck(-rn1(4, 2))
+        // C: HAggravate_monster |= FROMOUTSIDE
+        // C: change_luck(-rn1(4, 2)) — luck penalty (-5..-2)
+        const luckPenalty = -rn1(4, 2);
+        if (player.luck !== undefined) player.luck += luckPenalty;
         return true;
     }
     return false;
@@ -854,10 +870,8 @@ export async function fix_petrification() {
 
 // cf. eat.c cprefx() — corpse prefix effects (before eating)
 async function cprefx(player, pm) {
-    // In full C version: calls maybe_cannibal, checks flesh_petrifies,
-    // handles dogs/cats penalty, lizard un-stoning, rider death, green slime
-    // Stub: consume RNG as C does but skip most side effects
-    // maybe_cannibal is called by eatcorpse in the tainted path
+    // C eat.c:793: (void) maybe_cannibal(pm, TRUE);
+    await maybe_cannibal(player, pm, true);
 
     if (flesh_petrifies(mons[pm])) {
         // Would check Stone_resistance, polymon, etc.
@@ -986,7 +1000,8 @@ async function cpostfx(player, pm, display) {
         tmp = corpse_intrinsic(ptr);
 
         if (tmp === -1) {
-            // gainstr - would increase strength from giant
+            // C eat.c:1318: gainstr((struct obj *) 0, 0, TRUE)
+            await gainstr(player, null, 0, true);
         } else if (tmp > 0) {
             await givit(player, tmp, ptr);
         }
@@ -1307,7 +1322,7 @@ async function fprefx(player, otmp, reqtime, map) {
 }
 
 // cf. eat.c fpostfx() — food postfix effects (non-corpse)
-function fpostfx(player, otmp) {
+async function fpostfx(player, otmp) {
     switch (otmp.otyp) {
     case SPRIG_OF_WOLFSBANE:
         // Would cure lycanthropy
@@ -1316,7 +1331,11 @@ function fpostfx(player, otmp) {
         // Would cure blindness
         break;
     case FORTUNE_COOKIE:
-        // Would display rumor
+        // C eat.c:2517-2518: outrumor(bcsign(otmp), BY_COOKIE)
+        {
+            const bcs = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
+            await outrumor(bcs, BY_COOKIE, player);
+        }
         break;
     case LUMP_OF_ROYAL_JELLY:
         // Would grant strength, heal
@@ -1961,28 +1980,24 @@ async function handleEat(player, display, game) {
         // First bite (turn 1) — mirrors C start_eating() + bite()
         eatState.usedtime++;
         await doBite();
-        // cf. eat.c start_eating() — fprefx() is called for fresh
-        // (not already partly eaten) non-corpse food, producing flavor
-        // messages and RNG calls for specific food types.
+        // cf. eat.c doeat():3022-3041 — non-corpse rotten check + fprefx
         if (!isCorpse) {
-            // cf. eat.c fprefx() (partial)
-            if (eatenItem.otyp === TRIPE_RATION) {
-                // cf. eat.c fprefx() tripe — carnivorous non-humanoid: "surprisingly good!"
-                // orc: "Mmm, tripe..." (no RNG)
-                // else: "Yak - dog food!" + rn2(2) vomit check
-                const isOrc = player.race === RACE_ORC;
-                if (!isOrc) {
-                    const cannibalAllowed = (player.roleIndex === PM_CAVEMAN || isOrc);
-                    if (rn2(2) && !cannibalAllowed) {
-                        rn1(reqtime, 14); // make_vomiting duration
-                    }
+            // C eat.c:3022-3031: rotten food check before fprefx
+            const isFortuneCookie = eatenItem.otyp === FORTUNE_COOKIE;
+            const isRotten = !isFortuneCookie
+                && (eatenItem.cursed
+                    || (!nonrotting_food(eatenItem.otyp)
+                        && game && game.moves && eatenItem.age
+                        && (game.moves - eatenItem.age)
+                            > (eatenItem.blessed ? 50 : 30)
+                        && (eatenItem.orotten || !rn2(7))));
+            if (isRotten) {
+                if (await rottenfood(player, eatenItem)) {
+                    eatenItem.orotten = true;
                 }
+            } else {
+                await fprefx(player, eatenItem, reqtime, map);
             }
-            // C ref: eat.c fprefx() for non-corpse food prints flavor messages
-            // based on hunger level (e.g. "This food really hits the spot!") but
-            // does NOT print "You begin eating X." — that message is only for
-            // already_partly_eaten resumption (eat.c:3038-3040). Fresh food has
-            // no generic "You begin eating" message in C.
         }
         let consumedInventoryItem = false;
         const consumeInventoryItem = () => {
@@ -2015,25 +2030,11 @@ async function handleEat(player, display, game) {
                     // cf. eat.c done_eating() generic multi-turn completion line.
                     await display.putstr_message("You're finally finished.");
                 }
-                if (isCorpse && cnum === PM_NEWT) {
-                    // cf. eat.c eye_of_newt_buzz() from cpostfx(PM_NEWT) (partial).
-                    if (rn2(3) || (3 * (player.pw || 0) <= 2 * (player.pwmax || 0))) {
-                        const oldPw = player.pw || 0;
-                        player.pw = (player.pw || 0) + rnd(3);
-                        if ((player.pw || 0) > (player.pwmax || 0)) {
-                            if (!rn2(3)) {
-                                player.pwmax = (player.pwmax || 0) + 1;
-                            }
-                            player.pw = player.pwmax || 0;
-                        }
-                        if ((player.pw || 0) !== oldPw) {
-                            if (gameCtx) {
-                                gameCtx.pendingToplineMessage = 'You feel a mild buzz.';
-                            } else {
-                                await display.putstr_message('You feel a mild buzz.');
-                            }
-                        }
-                    }
+                // cf. eat.c done_eating():562-565 — dispatch to cpostfx/fpostfx
+                if (isCorpse) {
+                    await cpostfx(player, cnum, display);
+                } else {
+                    await fpostfx(player, eatenItem);
                 }
             };
             // cf. eat.c eatfood() / start_eating() — set_occupation
@@ -2104,6 +2105,12 @@ async function handleEat(player, display, game) {
                         applyMonflee(mon, 0, false);
                     }
                 }
+            }
+            // cf. eat.c done_eating():562-565 — dispatch to cpostfx/fpostfx
+            if (isCorpse) {
+                await cpostfx(player, cnum, display);
+            } else {
+                await fpostfx(player, eatenItem);
             }
         }
         return { moved: false, tookTime: true };

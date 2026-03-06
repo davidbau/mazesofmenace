@@ -470,16 +470,16 @@ export async function adjattrib(player, ndx, incr, msgflg) {
 
 // cf. attrib.c:199 — gainstr(otmp, incr, givemsg)
 // Autotranslated from attrib.c:199
-export async function gainstr(otmp, incr, givemsg) {
+export async function gainstr(player, otmp, incr, givemsg) {
   let num = incr;
   if (!num) {
-    if (ABASE(A_STR) < 18) num = (rn2(4) ? 1 : rnd(6));
-    else if (ABASE(A_STR) < STR18(85)) num = rnd(10);
+    if (ABASE(player, A_STR) < 18) num = (rn2(4) ? 1 : rnd(6));
+    else if (ABASE(player, A_STR) < STR18(85)) num = rnd(10);
     else {
       num = 1;
     }
   }
-  await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num, givemsg ? -1 : 1);
+  await adjattrib(player, A_STR, (otmp && otmp.cursed) ? -num : num, givemsg ? -1 : 1);
 }
 
 // cf. attrib.c:218 — losestr(num, knam, k_format)
