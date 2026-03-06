@@ -32,18 +32,26 @@ import { mons, PM_LIZARD, PM_LICHEN, PM_NEWT,
          AT_MAGC, AD_STUN, AD_HALU,
          MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC,
          MR_POISON, MR_ACID, MR_STONE } from './monsters.js';
-import { PM_CAVEMAN, RACE_ORC, RACE_ELF, RACE_DWARF,
+import { PM_CAVEMAN, PM_VALKYRIE, PM_WIZARD,
+         RACE_ORC, RACE_ELF, RACE_DWARF,
          A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, ACID_RES, STONE_RES,
          TELEPORT, TELEPORT_CONTROL, TELEPAT, LAST_PROP,
          FROMOUTSIDE, INTRINSIC, TIMEOUT,
-         SLT_ENCUMBER } from './const.js';
+         SLT_ENCUMBER, DEAF,
+         STARVING, KILLED_BY } from './const.js';
+import { game as _gstate } from './gstate.js';
 import { applyMonflee } from './mhitu.js';
 import { obj_resists } from './objdata.js';
 import { compactInvletPromptChars } from './invent.js';
 import { pline, You, Your, You_feel, You_cant, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
+import { acurr, ensureAttrArrays } from './attrib.js';
+import { nomul, end_running } from './hack.js';
+import { incr_itimeout } from './potion.js';
+import { done, setKillerName, setKillerFormat } from './end.js';
+import { stop_occupation } from './allmain.js';
 import { pluslvl } from './exper.js';
 import { is_rider, is_giant, acidic, poisonous, flesh_petrifies,
          vegan, vegetarian, carnivorous, herbivorous,
@@ -215,22 +223,40 @@ export async function morehungry(player, num) {
     await newuhs(player, true);
 }
 
-// cf. eat.c lesshungry() — decrease hunger by amount
-async function lesshungry(player, num, opts = null) {
+// cf. eat.c:3284 lesshungry() — decrease hunger by amount
+async function lesshungry(player, num) {
+    const game = _gstate;
+    // C: iseating = (occupation == eatfood) || force_save_hs
+    const iseating = (game && game.occupation && game.occupation.isEating)
+        || gf.force_save_hs;
+
     player.hunger += num;
     if (player.hunger >= 2000) {
-        // choking territory - simplified
-        await choke(player, null);
+        // C:3291-3299 — choking check with iseating guard
+        const victual = game && game.svc && game.svc.context && game.svc.context.victual;
+        if (!iseating || (victual && victual.canchoke)) {
+            if (iseating) {
+                await choke(victual && victual.piece, player);
+                reset_eat(game);
+            } else {
+                await choke(null, player);
+            }
+        }
     } else if (player.hunger >= 1500) {
-        // C ref: eat.c lesshungry() emits this warning once per meal and sets
-        // gn.nomovemsg to "You're finally finished." for meal completion.
-        const satietyState = opts && typeof opts === 'object' ? opts.satietyState : null;
-        const shouldWarn = !(satietyState && satietyState.warned);
-        if (shouldWarn) {
+        // C:3305-3325 — nearly full warning
+        // C: u.uhunger >= 1500 && !Hunger && (!victual.eating || !victual.fullwarn)
+        const victual = game && game.svc && game.svc.context && game.svc.context.victual;
+        const victualEating = victual && victual.eating;
+        const fullwarn = victual && victual.fullwarn;
+        if (!(player.Hunger) && (!victualEating || !fullwarn)) {
             await pline("You're having a hard time getting all of it down.");
-            if (satietyState) {
-                satietyState.warned = true;
-                satietyState.nomovemsg = "You're finally finished.";
+            if (game) game.nomovemsg = "You're finally finished.";
+            if (!victualEating) {
+                // C: multi = -2 (not eating occupation, e.g. drinking juice)
+                if (game) game.multi = -2;
+            } else {
+                // C: victual.fullwarn = 1
+                if (victual) victual.fullwarn = 1;
             }
         }
     }
@@ -243,34 +269,184 @@ function canchoke(player) {
 }
 
 // cf. eat.c newuhs() — update hunger state and messages
+// Module-level static state for meal-in-progress message suppression (C: save_hs, saved_hs)
+var _save_hs = false;
+var _saved_hs = NOT_HUNGRY;
+
+// C: gf.force_save_hs — set TRUE in bite() to suppress messages during first bite
+// before occupation is established (C eat.c:3391)
+var gf = { force_save_hs: false };
+
+// Reset hunger module state between test replays
+export function resetHungerState() {
+    _save_hs = false;
+    _saved_hs = NOT_HUNGRY;
+    gf.force_save_hs = false;
+}
+
+// cf. eat.c:3357-3508 newuhs() — faithfully ported line-by-line
 async function newuhs(player, incr) {
+    const game = _gstate;
     const h = player.hunger;
     let newhs;
-    if (h > 1000) newhs = SATIATED;
-    else if (h > 150) newhs = NOT_HUNGRY;
-    else if (h > 50) newhs = HUNGRY;
-    else if (h > 0) newhs = WEAK;
-    else newhs = FAINTING;
 
-    const oldhs = player.hungerState || NOT_HUNGRY;
-    if (newhs !== oldhs) {
-        if (newhs >= WEAK && oldhs < WEAK) {
-            // temporary strength loss
-            // cf. eat.c ATEMP(A_STR) = -1
-        } else if (newhs < WEAK && oldhs >= WEAK) {
-            // repair temporary strength loss
+    // C:3364-3367 — determine new hunger state
+    newhs = (h > 1000) ? SATIATED
+          : (h > 150) ? NOT_HUNGRY
+          : (h > 50) ? HUNGRY
+          : (h > 0) ? WEAK
+          : FAINTING;
+
+    // C:3391-3403 — meal-in-progress message suppression
+    // Must come BEFORE fainting check (C order)
+    // C: go.occupation == eatfood || gf.force_save_hs
+    const isEating = (game && game.occupation && game.occupation.isEating)
+        || gf.force_save_hs;
+    if (isEating) {
+        if (!_save_hs) {
+            _saved_hs = player.uhs !== undefined ? player.uhs : NOT_HUNGRY;
+            _save_hs = true;
         }
+        player.uhs = newhs;
+        player.hungerState = newhs;
+        return;
+    } else {
+        if (_save_hs) {
+            player.uhs = _saved_hs;
+            _save_hs = false;
+        }
+    }
+
+    // C:3405-3443 — fainting and starvation
+    if (newhs === FAINTING) {
+        const uhunger_div_by_10 = Math.sign(h)
+            * Math.floor((Math.abs(h) + 5) / 10);
+
+        if (player.uhs === FAINTED)
+            newhs = FAINTED;
+
+        // C:3411 — u.uhs <= WEAK || rn2(20 - uhunger_div_by_10) >= 19
+        const oldUhs = player.uhs !== undefined ? player.uhs : NOT_HUNGRY;
+        if (oldUhs <= WEAK || rn2(20 - uhunger_div_by_10) >= 19) {
+            // C:3412 — if (!is_fainted() && multi >= 0)
+            if (player.uhs !== FAINTED
+                && (game ? (game.multi || 0) : 0) >= 0) {
+                const duration = 10 - uhunger_div_by_10;
+
+                // C:3416-3424 — stop, faint, go deaf
+                if (game) await stop_occupation(game);
+                await You("faint from lack of food.");
+                // C: incr_itimeout(&HDeaf, duration)
+                if (player.ensureUProp) incr_itimeout(player, DEAF, duration);
+                if (game) {
+                    game.disp = game.disp || {};
+                    game.disp.botl = true;
+                }
+                if (game) nomul(-duration, game);
+                if (game) game.multi_reason = "fainted from lack of food";
+                // C: nomovemsg = "You regain consciousness."
+                if (game) game.nomovemsg = "You regain consciousness.";
+                // C: afternmv = unfaint — TODO when occupation system supports it
+                newhs = FAINTED;
+                // C:3425-3426 — selftouch if not levitating — omitted for now
+            }
+        // C:3432-3441 — starvation death (else if of faint check)
+        } else if (h < -(100 + 10 * acurr(player, A_CON))) {
+            player.uhs = STARVED;
+            player.hungerState = STARVED;
+            if (game) {
+                game.disp = game.disp || {};
+                game.disp.botl = true;
+            }
+            await You("die from starvation.");
+            setKillerFormat(KILLED_BY);
+            setKillerName("starvation");
+            await done(STARVING, game);
+            // C: if we return, we lifesaved, and that calls newuhs
+            return;
+        }
+
+        // C: if still FAINTING after checks, revert to previous state
+        if (newhs === FAINTING) {
+            if (player.uhs !== FAINTING && player.uhs !== FAINTED)
+                newhs = player.uhs;
+        }
+    }
+
+    // C:3445 — if (newhs != u.uhs)
+    const oldhs = player.uhs !== undefined ? player.uhs
+                : (player.hungerState !== undefined ? player.hungerState : NOT_HUNGRY);
+
+    if (newhs !== oldhs) {
+        // C:3446-3461 — ATEMP(A_STR) transitions
+        if (newhs >= WEAK && oldhs < WEAK) {
+            ensureAttrArrays(player);
+            player.atemp[A_STR] = -1; // temporary strength penalty
+            // defer botl until after message
+        } else if (newhs < WEAK && oldhs >= WEAK) {
+            ensureAttrArrays(player);
+            player.atemp[A_STR] = 0; // repair strength loss
+            // defer botl until after message
+        }
+
+        // C:3463-3496 — state transition messages
         switch (newhs) {
         case HUNGRY:
-            await You(incr ? 'are beginning to feel hungry.'
-                     : 'only feel hungry now.');
+            if (player.hallucinating) {
+                await You(!incr ? "now have a lesser case of the munchies."
+                         : "are getting the munchies.");
+            } else {
+                await You("%s.", !incr ? "only feel hungry now"
+                           : (h < 145) ? "feel hungry"
+                           : "are beginning to feel hungry");
+            }
+            // C:3472-3475 — stop non-eating occupation
+            if (incr && game && game.occupation && !game.occupation.isEating) {
+                await stop_occupation(game);
+            }
+            if (game) end_running(true, game);
             break;
         case WEAK:
-            await You(incr ? 'are beginning to feel weak.'
-                     : 'are still weak.');
+            if (player.hallucinating) {
+                await pline(!incr ? "You still have the munchies."
+                    : "The munchies are interfering with your motor capabilities.");
+            } else if (incr && (player.roleIndex === PM_WIZARD
+                || player.race === RACE_ELF
+                || player.roleIndex === PM_VALKYRIE)) {
+                const name = (player.roleIndex === PM_WIZARD
+                    || player.roleIndex === PM_VALKYRIE)
+                    ? (player.roleName || "Adventurer") : "Elf";
+                await pline("%s needs food, badly!", name);
+            } else {
+                await You("%s weak.", !incr ? "are still"
+                    : (h < 45) ? "feel"
+                    : "are beginning to feel");
+            }
+            // C:3491-3494 — stop non-eating occupation
+            if (incr && game && game.occupation && !game.occupation.isEating) {
+                await stop_occupation(game);
+            }
+            if (game) end_running(true, game);
             break;
         }
+
+        // C:3497-3499 — update state
+        player.uhs = newhs;
         player.hungerState = newhs;
+        if (game) {
+            game.disp = game.disp || {};
+            game.disp.botl = true;
+        }
+
+        // C:3500-3505 — death from exhaustion after strength change
+        const hp = player.uhp !== undefined ? player.uhp : (player.hp || 0);
+        if (hp < 1) {
+            await You("die from hunger and exhaustion.");
+            setKillerFormat(KILLED_BY);
+            setKillerName("exhaustion");
+            await done(STARVING, game);
+            return;
+        }
     }
 }
 
@@ -1489,15 +1665,22 @@ async function handleEat(player, display, game) {
             : (baseNutr >= reqtime) ? -Math.floor(baseNutr / reqtime)
             : reqtime % baseNutr;
         const eatState = { usedtime: 0, reqtime };
-        const satietyState = { warned: false, nomovemsg: null };
-
+        // Initialize victual context for C-faithful lesshungry/newuhs paths
+        if (game && game.svc && game.svc.context) {
+            if (!game.svc.context.victual) game.svc.context.victual = {};
+            game.svc.context.victual.eating = 1;
+            game.svc.context.victual.fullwarn = 0;
+            game.svc.context.victual.piece = eatenItem;
+            game.svc.context.victual.canchoke = (player.uhs === SATIATED);
+            game.svc.context.victual.nmod = nmod;
+        }
         // cf. eat.c bite() — apply incremental nutrition (partial)
         async function doBite() {
             if (nmod < 0) {
-                await lesshungry(player, -nmod, { satietyState });
+                await lesshungry(player, -nmod);
                 player.nutrition += (-nmod);
             } else if (nmod > 0 && (eatState.usedtime % nmod)) {
-                await lesshungry(player, 1, { satietyState });
+                await lesshungry(player, 1);
                 player.nutrition += 1;
             }
         }
@@ -1540,6 +1723,10 @@ async function handleEat(player, display, game) {
                 // cf. eat.c done_eating()/cpostfx() runs from eatfood() when
                 // occupation reaches completion, before moveloop's next monster turn.
                 consumeInventoryItem();
+                // Clear victual eating state
+                if (game && game.svc && game.svc.context && game.svc.context.victual) {
+                    game.svc.context.victual.eating = 0;
+                }
                 if (isCorpse && corpseTasteIdx !== null) {
                     const tastes = ['okay', 'stringy', 'gamey', 'fatty', 'tough'];
                     const idx = Math.max(0, Math.min(tastes.length - 1, corpseTasteIdx));
@@ -1548,8 +1735,9 @@ async function handleEat(player, display, game) {
                         `This ${eatenItem.name} ${verb} ${tastes[idx]}.  `
                         + `You finish eating the ${eatenItem.name}.--More--`
                     );
-                } else if (satietyState.nomovemsg) {
-                    await display.putstr_message(satietyState.nomovemsg);
+                } else if (game && game.nomovemsg) {
+                    await display.putstr_message(game.nomovemsg);
+                    game.nomovemsg = null;
                 } else {
                     // cf. eat.c done_eating() generic multi-turn completion line.
                     await display.putstr_message("You're finally finished.");
@@ -1700,18 +1888,21 @@ export async function use_tin_opener(obj) {
   return ECMD_TIME;
 }
 
-// Autotranslated from eat.c:3127
+// cf. eat.c:3127 bite() — take one bite during eating occupation
 export async function bite(game, player) {
-  sa_victual( game.svc.context.victual);
-  if (game.svc.context.victual.canchoke && player.uhunger >= 2000) { await choke(game.svc.context.victual.piece); return 1; }
+  sa_victual(game.svc.context.victual);
+  if (game.svc.context.victual.canchoke && player.uhunger >= 2000) {
+    await choke(game.svc.context.victual.piece, player);
+    return 1;
+  }
   if (game.svc.context.victual.doreset) { await do_reset_eat(); return 0; }
   gf.force_save_hs = true;
   if (game.svc.context.victual.nmod < 0) {
-    await lesshungry(adj_victual_nutrition( ));
+    await lesshungry(player, adj_victual_nutrition(player, game.svc.context.victual.nmod));
     await consume_oeaten(game.svc.context.victual.piece, game.svc.context.victual.nmod);
   }
   else if (game.svc.context.victual.nmod > 0 && (game.svc.context.victual.usedtime % game.svc.context.victual.nmod)) {
-    await lesshungry(1);
+    await lesshungry(player, 1);
     await consume_oeaten(game.svc.context.victual.piece, -1);
   }
   gf.force_save_hs = false;

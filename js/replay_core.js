@@ -6,13 +6,10 @@
 
 import { enableRngLog, getRngLog, disableRngLog } from './rng.js';
 import { pushInput } from './input.js';
-import { initrack } from './monmove.js';
 import { NetHackGame, run_command, execute_repeat_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 import { consumeHarnessMapdumpPayloads } from './dungeon.js';
 import { hasActiveTextPopupWindow, redrawActiveTextPopupWindows } from './windows.js';
-import { resetPlineState } from './pline.js';
-import { resetNoisesState } from './mhitm.js';
 import { envFlag } from './runtime_env.js';
 
 export { HeadlessDisplay };
@@ -127,9 +124,6 @@ export async function replaySession(seed, opts, keys) {
     if (typeof globalThis.window === 'undefined') {
         globalThis.window = {};
     }
-    initrack();
-    resetPlineState();
-    resetNoisesState();
     enableRngLog();
 
     const display = new HeadlessDisplay();

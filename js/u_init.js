@@ -16,6 +16,9 @@
 import { rn2, rnd, rn1, rne, d, getRngLog } from './rng.js';
 import { newhp, newpw } from './exper.js';
 import { initrack } from './monmove.js';
+import { resetPlineState } from './pline.js';
+import { resetNoisesState } from './mhitm.js';
+import { resetHungerState } from './eat.js';
 import { skill_init_from_inventory } from './weapon.js';
 import { withMakemonPlayerOverride } from './makemon.js';
 import { initLevelGeneration, mklev } from './dungeon.js';
@@ -1272,6 +1275,9 @@ export function simulatePostLevelInit(player, map, depth, opts = {}) {
 export async function initFirstLevel(player, roleIndex, wizard, opts = {}) {
     const startDlevel = opts.startDlevel ?? 1;
     initrack();
+    resetPlineState();
+    resetNoisesState();
+    resetHungerState();
     const { enadv_roll, rightHanded } = initLevelGeneration(roleIndex, wizard, {
         alignment: player.alignment,
         race: player.race,
