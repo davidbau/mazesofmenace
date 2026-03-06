@@ -907,15 +907,19 @@ async function cpostfx(player, pm, display) {
         check_intrinsics = true;
         break;
     case PM_STALKER:
-        // Would grant temporary invisibility
-        // Falls through to yellow light / bat stun
-        // FALLTHROUGH
+        // C: set_itimeout(&HInvis, rn1(100, 50))
+        {
+            const invisDuration = rn1(100, 50);
+            // TODO: apply temporary invisibility when invis system ported
+        }
+        // FALLTHROUGH to stun
     case PM_YELLOW_LIGHT:
     case PM_GIANT_BAT:
-        // Would make_stunned
+        // C: make_stunned((HStun & TIMEOUT) + 30L, FALSE)
+        // TODO: apply stun when status system ported
         // FALLTHROUGH
     case PM_BAT:
-        // Would make_stunned
+        // C: make_stunned((HStun & TIMEOUT) + 30L, FALSE)
         break;
     case PM_GIANT_MIMIC:
         tmp += 10;
@@ -1203,27 +1207,49 @@ export async function garlic_breath(mtmp) {
   if (olfaction(mtmp.data) && distu(mtmp.mx, mtmp.my) < 7) await monflee(mtmp, 0, false, false);
 }
 
-// cf. eat.c fprefx() — food prefix effects (non-corpse)
+// cf. eat.c:2093-2212 fprefx() — food prefix effects (non-corpse)
 async function fprefx(player, otmp, reqtime, map) {
+    const game = _gstate;
+    let giveFeedback = false;
     switch (otmp.otyp) {
     case EGG:
-        // Simplified: skip pyrolisk explosion, stale egg checks
+        if (otmp.corpsenm === PM_PYROLISK) {
+            // C: explode(u.ux, u.uy, -11, d(3,6), 0, EXPL_FIERY)
+            d(3, 6); // consume RNG for explosion damage
+            // TODO: actual explosion when explode() is ported
+            return false; // abort eating
+        }
+        // C: stale_egg(otmp) check
+        if (otmp.age && game && game.moves && (game.moves - otmp.age) > 250) {
+            await pline('Ugh.  Rotten egg.');
+            // C: make_vomiting((Vomiting & TIMEOUT) + d(10, 4), TRUE)
+            const vomDuration = d(10, 4);
+            // TODO: apply make_vomiting when ported
+        } else {
+            giveFeedback = true;
+        }
         break;
     case FOOD_RATION:
-        if (player.hunger <= 200)
-            await pline('This food really hits the spot!');
-        else if (player.hunger < 700)
+        if (player.hunger <= 200) {
+            await pline(player.Hallucination
+                ? 'Oh wow, like, superior, man!'
+                : 'This food really hits the spot!');
+        } else if (player.hunger < 700) {
             await pline('This satiates your stomach!');
+        }
         break;
     case TRIPE_RATION:
-        if (carnivorous(mons[0] || {}) && !is_humanoid(mons[0] || {})) {
-            await pline('This tripe ration is surprisingly good!');
-        } else if (player.race === RACE_ORC) {
-            await pline('Mmm, tripe... not bad!');
+        // C: carnivorous(youmonst.data) && !humanoid — polymorph-only
+        if (player.race === RACE_ORC) {
+            await pline(player.Hallucination ? 'Tastes great!  Less filling!'
+                : 'Mmm, tripe... not bad!');
         } else {
             await pline('Yak - dog food!');
+            // C: more_experienced(1, 0); newexplevel()
+            // TODO: grant 1 XP when experience system is ported
             if (rn2(2) && !CANNIBAL_ALLOWED(player)) {
-                rn1(reqtime, 14); // make_vomiting duration
+                const vomDuration = rn1(reqtime, 14);
+                // TODO: make_vomiting(vomDuration, FALSE)
             }
         }
         break;
@@ -1233,18 +1259,49 @@ async function fprefx(player, otmp, reqtime, map) {
         } else if (player.race === RACE_ELF) {
             await pline('A little goes a long way.');
         } else {
-            // give_feedback
-            await pline(`This ${otmp.oname || 'food'} is delicious!`);
+            giveFeedback = true;
         }
         break;
+    case MEATBALL: case MEAT_STICK: case ENORMOUS_MEATBALL: case MEAT_RING:
+        giveFeedback = true;
+        break;
     case CLOVE_OF_GARLIC:
-        await garlic_breath(player, map);
-        // FALLTHROUGH to default
-        await pline(`This ${otmp.oname || 'food'} is delicious!`);
-        break;
+        if (is_undead(mons[0] || {})) {
+            // C: make_vomiting(rn1(reqtime, 5), FALSE)
+            const vomDuration = rn1(reqtime, 5);
+            // TODO: apply vomiting
+            break;
+        }
+        // C: iter_mons(garlic_breath) — scare all olfaction monsters
+        // TODO: iterate all monsters on level
+        // FALLTHROUGH
     default:
-        await pline(`This ${otmp.oname || 'food'} is delicious!`);
+        // C: cursed apple — skip core joke, feedback deferred to fpostfx
+        if (otmp.otyp === APPLE && otmp.cursed) {
+            ; // no message here; fpostfx handles sleep
+        } else if ((otmp.otyp === APPLE || otmp.otyp === PEAR)
+                   && player.Hallucination) {
+            // C: rnd(100) for hallucination message variant
+            const x = rnd(100);
+            await pline(`${x <= 75 ? 'Segmentation fault' : x <= 99 ? 'Bus error' : "Yo' mama"} -- core dumped.`);
+        } else if (otmp.otyp === APPLE || otmp.otyp === PEAR) {
+            await pline('Core dumped.');
+        } else {
+            giveFeedback = true;
+        }
         break;
+    }
+
+    if (giveFeedback) {
+        // C: give_feedback label
+        const name = foodword(otmp);
+        const taste = otmp.cursed
+            ? (player.Hallucination ? 'grody!' : 'terrible!')
+            : (otmp.otyp === CRAM_RATION || otmp.otyp === K_RATION
+                || otmp.otyp === C_RATION)
+                ? 'bland.'
+                : (player.Hallucination ? 'gnarly!' : 'delicious!');
+        await pline(`This ${name} is ${taste}`);
     }
     return true;
 }
