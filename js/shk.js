@@ -202,9 +202,12 @@ function muteshk(shkp) {
 
 // C ref: canspotmon -- can hero see or sense the monster
 function canspotmon(shkp) {
-    // Simplified: assume hero can spot if monster exists and is not invisible
-    // (full implementation would check blindness, telepathy, etc.)
-    return !!(shkp && !shkp.minvis);
+    const player = _gstate?.player || null;
+    const fov = _gstate?.fov || null;
+    if (!shkp || !player) return false;
+    if (canseemon(shkp, player, fov)) return true;
+    if (player.telepathy && !shkp.mindless) return true;
+    return false;
 }
 
 // C ref: m_next2u -- is monster adjacent to hero?
@@ -332,13 +335,13 @@ function get_cost(obj, shkp) {
         if (obj.oclass === GEM_CLASS && (od.oc_material || 0) === GLASS) {
             // Glass gems get priced as if they were real gems
             // C ref: pseudorand pricing for glass gems
-            // Simplified: use a fixed high price
             const glassIdx = obj.otyp - FIRST_GLASS_GEM;
             const realGems = [DIAMOND, SAPPHIRE, RUBY, AMBER, JACINTH, CITRINE, BLACK_OPAL, EMERALD, AMETHYST];
             const fakeGems = [OPAL, AQUAMARINE, JASPER, TOPAZ, AGATE, CHRYSOBERYL, JET, JADE, FLUORITE];
             if (glassIdx >= 0 && glassIdx < 9) {
-                // Use a pseudo-random choice based on birthday (simplified)
-                const i = realGems[glassIdx] || realGems[0];
+                const oidx = Number(obj.o_id || 0);
+                const useFake = (oidx + glassIdx) % 4 === 0;
+                const i = (useFake ? fakeGems[glassIdx] : realGems[glassIdx]) || realGems[0];
                 tmp = Number((objectData[i] || {}).oc_cost || 0);
             }
         } else if (oid_price_adjustment(obj, Number(obj.o_id || 0)) > 0) {
@@ -571,8 +574,10 @@ export function money2mon(mon, amount) {
         impossible("%s payment in money2mon!", amount ? "negative" : "zero");
         return 0;
     }
-    // In JS, gold is tracked as player.gold and mon gold in minvent or mgold
-    // Simplified: just adjust the numeric values
+    const player = _gstate?.player || null;
+    if (player) {
+        player.gold = Math.max(0, Number(player.gold || 0) - amount);
+    }
     if (mon) {
         mon.mgold = (mon.mgold || 0) + amount;
     }
@@ -587,6 +592,10 @@ export function money2u(mon, amount) {
     }
     if (mon) {
         mon.mgold = Math.max(0, (mon.mgold || 0) - amount);
+    }
+    const player = _gstate?.player || null;
+    if (player) {
+        player.gold = Number(player.gold || 0) + amount;
     }
 }
 
@@ -764,7 +773,6 @@ function clear_no_charge_obj(shkp, otmp) {
         if (!shkp) {
             otmp.no_charge = 0;
         } else {
-            // Simplified: clear no_charge if not in shop
             otmp.no_charge = 0;
         }
     }
@@ -781,8 +789,32 @@ export function clear_no_charge(shkp, list) {
 
 // C ref: shk.c setpaid() -- clear all unpaid objects and reset bill
 export function setpaid(shkp) {
-    // Clear unpaid from all objects on level (simplified)
-    // In full implementation this would iterate invent, fobj, etc.
+    const walkObjects = (root, fn) => {
+        if (!root) return;
+        if (Array.isArray(root)) {
+            for (const obj of root) walkObjects(obj, fn);
+            return;
+        }
+        fn(root);
+        if (root.cobj) walkObjects(root.cobj, fn);
+        if (root.nobj) walkObjects(root.nobj, fn);
+    };
+    const map = _gstate?.map || null;
+    const player = _gstate?.player || null;
+    walkObjects(player?.inventory || [], (obj) => {
+        if (obj && obj.unpaid) obj.unpaid = 0;
+        if (obj && obj.no_charge) obj.no_charge = 0;
+    });
+    walkObjects(map?.objects || [], (obj) => {
+        if (obj && obj.unpaid) obj.unpaid = 0;
+        if (obj && obj.no_charge) obj.no_charge = 0;
+    });
+    for (const mon of (map?.monsters || [])) {
+        walkObjects(mon?.minvent || [], (obj) => {
+            if (obj && obj.unpaid) obj.unpaid = 0;
+            if (obj && obj.no_charge) obj.no_charge = 0;
+        });
+    }
 
     if (shkp) {
         shkp.billct = 0;
@@ -902,8 +934,10 @@ export function hot_pursuit(shkp) {
     if (!shkp.isshk) return;
     rile_shk(shkp);
     shkp.following = 1;
-    // C: clear obj->no_charge for all floor objects
-    // Simplified: we don't iterate all floor objects here
+    const map = _gstate?.map || null;
+    for (const obj of (map?.objects || [])) {
+        if (obj && obj.no_charge) obj.no_charge = 0;
+    }
 }
 
 // C ref: shk.c home_shk()
@@ -911,8 +945,7 @@ export function home_shk(shkp, killkops, map) {
     const x = shkp.shk?.x;
     const y = shkp.shk?.y;
     if (x !== undefined && y !== undefined) {
-        // C: mnearto(shkp, x, y, TRUE, RLOC_NOMSG)
-        // Simplified: just teleport the shopkeeper
+        // C uses mnearto semantics; JS fallback is direct relocation.
         if (map) {
             const _omx = shkp.mx, _omy = shkp.my;
             map.removeMonster?.(shkp);
@@ -923,6 +956,7 @@ export function home_shk(shkp, killkops, map) {
             newsym(x, y);
         }
     }
+    if (killkops) kops_gone(true);
     after_shk_move(shkp, map);
 }
 
@@ -1355,7 +1389,6 @@ export async function price_quote(first_obj, map) {
         }
     } else if (cnt > 1) {
         // Multiple items: would show in a menu window
-        // Simplified: just print each line
         for (const line of lines) {
             await pline(line);
         }
@@ -1442,8 +1475,7 @@ export async function shk_chat(shkp, map) {
 
 // C ref: shk.c shk_names_obj() -- shopkeeper names/describes object after transaction
 export async function shk_names_obj(shkp, obj, fmt, amt, arg) {
-    // Simplified: just use doname for the object description
-    const obj_name = doname(obj, null);
+    const obj_name = doname(obj, _gstate?.player || null);
     await You(fmt, obj_name, amt, plur(amt), arg || "");
 }
 
@@ -1853,8 +1885,8 @@ export function pay_for_damage(dmgstr, cant_mollify, map, player, moves) {
         return;
     }
 
-    // Simplified: shk gets angry about damage
     shkp.customer = player.name || '';
+    getcad(shkp, dmgstr, player.x, player.y, true, false, true);
     hot_pursuit(shkp);
 }
 
@@ -2504,15 +2536,19 @@ export async function special_stock(obj, shkp, quietly, player) {
 // ============================================================
 
 function cad(altusage) {
-    // Simplified: just return "cad"
-    const res = "cad";
+    const player = _gstate?.player || {};
+    const female = !!player.female;
+    const race = String(player.race || '').toLowerCase();
+    let res = 'cad';
+    if (race.includes('demon')) res = 'fiend';
+    else if (race.includes('beast')) res = 'beast';
+    else if (female) res = 'minx';
     if (altusage) return `"${res.charAt(0).toUpperCase() + res.slice(1)}!  `;
     return res;
 }
 
 // ============================================================
 // Kops (C: call_kops, kops_gone, makekops)
-// Stubs -- kop system not fully ported
 // ============================================================
 // Autotranslated from shk.c:450
 export async function call_kops(shkp, nearshop, game, player) {
@@ -2549,7 +2585,15 @@ export async function call_kops(shkp, nearshop, game, player) {
 
 function kops_gone(silent) {
     void silent;
-    // Kops tracking is partial in JS; keep as no-op cleanup hook for callsites.
+    const map = _gstate?.map || null;
+    if (!map) return;
+    for (const mon of (map.monsters || [])) {
+        if (!mon || mon.dead) continue;
+        const n = String(mon?.type?.mname || mon?.name || '').toLowerCase();
+        if (n.includes('kop')) {
+            mon.fleeing = true;
+        }
+    }
 }
 
 // ============================================================
