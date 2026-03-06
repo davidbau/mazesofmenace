@@ -1650,7 +1650,7 @@ export class NetHackGame {
         // C ref: docrt() puts cursor on player, but if a --More-- is pending
         // on the topline (player fell down shaft, etc.), the cursor must sit
         // at the end of the --More-- text, not on the player tile.
-        if ((this.display._pendingMore || this.display._nonBlockingMore)
+        if (this.display._nonBlockingMore
             && !this.display._pendingMoreNoCursor
             && typeof this.display.renderMoreMarker === 'function') {
             this.display.renderMoreMarker();

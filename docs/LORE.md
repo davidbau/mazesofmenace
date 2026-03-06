@@ -3001,15 +3001,16 @@ hard-won wisdom:
   - Added stair-specific pending-more mode in `js/do.js`:
     sets `display._pendingMore = true` and `display._pendingMoreNoCursor = true`
     (no marker rendering).
-  - `docrt()` now skips `renderMoreMarker()` when `_pendingMoreNoCursor` is set.
+  - `docrt()` now treats only `_nonBlockingMore` as a forced topline-cursor mode;
+    plain `_pendingMore` no longer re-forces `renderMoreMarker()`/topline cursor.
+    This preserves map cursor during normal pending `--More--` replay frames
+    (including quest telepathy message pages after stair transitions).
   - `Display`/`Headless` clear `_pendingMoreNoCursor` in constructors and `_clearMore()`.
   - `run_command()` now refreshes status + cursor-to-player in the pending-more
     early-return branch after consuming the dismiss key.
 - Validation:
   - `seed325_knight_wizard_gameplay`:
-    - current: `screens=326/422`, `cursor=322/325`
-    - remaining cursor mismatch is still at step `302` (`expected [3,3,1]`,
-      `actual [64,0,1]`)
+    - current: `screens=326/422`, `cursor=325/325` (cursor fully aligned)
     - first RNG divergence remains at step `309` (`rn2(12)` vs `rn2(100)`).
   - Companion checks show no frontier regression:
     - `seed327_priest_wizard_gameplay` first RNG divergence still step `390`.
