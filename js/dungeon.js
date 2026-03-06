@@ -31,6 +31,7 @@ import {
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, DUNGEON_ALIGN_BY_DNUM,
     MM_NOGRP, FILL_NONE, FILL_NORMAL, RUMOR_PAD_LENGTH, RANDOM_CLASS, TAINT_AGE,
     XLIM, YLIM,
+    W_NONDIGGABLE,
 } from './const.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1, d, getRngCallCount, advanceRngRaw, pushRngLogEntry } from './rng.js';
@@ -4294,7 +4295,6 @@ export function get_level_extends(map) {
         }
     }
     ymax += (nonwall || !is_maze_lev) ? 2 : 1;
-    if (ymax >= ROWNO) ymax = ROWNO - 1;
 
     return { xmin, xmax, ymin, ymax };
 }
@@ -4312,7 +4312,8 @@ export function bound_digging(map) {
             const loc = map.at(x, y);
             if (loc && IS_STWALL(loc.typ)
                 && (y <= ymin || y >= ymax || x <= xmin || x >= xmax)) {
-                loc.nondiggable = true;
+                loc.wall_info = (Number(loc.wall_info || 0) | W_NONDIGGABLE);
+                loc.nondiggable = true; // compatibility mirror
             }
         }
     }
@@ -4398,7 +4399,8 @@ export function mineralize(map, depth, opts = null) {
                 if (DEBUG) {
                     const cur = map.at(x, y);
                     let wouldEligible = false;
-                    if (cur && cur.typ === STONE && !cur.nondiggable) {
+                    const curWallInfo = Number(cur?.wall_info ?? cur?.flags ?? 0);
+                    if (cur && cur.typ === STONE && !(curWallInfo & W_NONDIGGABLE)) {
                         const n7ok = map.at(x,y-1)?.typ===STONE && map.at(x+1,y-1)?.typ===STONE
                             && map.at(x-1,y-1)?.typ===STONE && map.at(x+1,y)?.typ===STONE
                             && map.at(x-1,y)?.typ===STONE && map.at(x+1,y+1)?.typ===STONE
@@ -4420,7 +4422,8 @@ export function mineralize(map, depth, opts = null) {
             }
             // C ref: mklev.c:1496-1503 — check W_NONDIGGABLE and all 8 neighbors
             const skipNondigDebug = hasEnv('DEBUG_SKIP_NONDIG');
-            if (!skipNondigDebug && loc.nondiggable) { if (DEBUG) { debug_nondig++; } continue; }
+            const locWallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
+            if (!skipNondigDebug && (locWallInfo & W_NONDIGGABLE)) { if (DEBUG) { debug_nondig++; } continue; }
             if (map.at(x, y - 1)?.typ !== STONE
                 || map.at(x + 1, y - 1)?.typ !== STONE
                 || map.at(x - 1, y - 1)?.typ !== STONE

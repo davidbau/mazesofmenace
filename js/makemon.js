@@ -12,6 +12,7 @@ import {
     SHOPBASE, ROOMOFFSET, IS_POOL, IS_LAVA, IS_STWALL, IS_DOOR, IS_WALL, ACCESSIBLE,
     VAULT, ZOO, DELPHI, TEMPLE,
     D_LOCKED, D_CLOSED, SDOOR, SCORR, isok, COLNO, ROWNO,
+    W_NONPASSWALL,
     ALL_TRAPS, HOLE, TRAPDOOR, NO_MM_FLAGS, NO_MINVENT, MAXMONNO, MM_NOWAIT,
     MM_NOCOUNTBIRTH, MM_IGNOREWATER, MM_ADJACENTOK, MM_NONAME, MM_MALE,
     MM_FEMALE, MM_EDOG, MM_ASLEEP, MM_NOGRP, MM_NOMSG, MM_NOEXCLAM,
@@ -1987,9 +1988,8 @@ function mayPasswallAt(map, x, y) {
     const loc = map?.at?.(x, y);
     if (!loc) return false;
     // C ref: hack.c may_passwall() checks W_NONPASSWALL on stone walls.
-    // JS map doesn't currently track nonpasswall separately, so only
-    // enforce the terrain side of the check.
-    return !IS_STWALL(loc.typ) || !loc.nonpasswall;
+    const wallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
+    return !IS_STWALL(loc.typ) || !(wallInfo & W_NONPASSWALL);
 }
 
 // C ref: teleport.c goodpos() subset used by makemon paths.

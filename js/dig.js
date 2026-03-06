@@ -32,6 +32,7 @@ import {
     IS_FURNITURE, ACCESSIBLE,
     DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR,
     DB_MOAT, DB_LAVA, DB_ICE, DB_UNDER,
+    W_NONDIGGABLE,
     BEAR_TRAP, LANDMINE, HOLE, TRAPDOOR, PIT, SPIKED_PIT,
     SHOPBASE,
     DIGTYP_UNDIGGABLE, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_TREE,
@@ -104,7 +105,9 @@ function sobj_at(otyp, x, y, map) {
 export function may_dig(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
-    return !loc.nondiggable;
+    const wallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
+    return !((IS_STWALL(loc.typ) || IS_TREE(loc.typ))
+             && (wallInfo & W_NONDIGGABLE));
 }
 
 // C ref: in_rooms(x, y, SHOPBASE) — is (x,y) inside a shop?
@@ -196,7 +199,6 @@ export async function mdig_tunnel(mtmp, map, player) {
     if (!here) return false;
 
     const pile = rnd(12); // C: int pile = rnd(12);
-
     // C: cvt_sdoor_to_door — normalize secret door flags before digging branch.
     if (here.typ === SDOOR) cvt_sdoor_to_door(here, map);
 
@@ -239,7 +241,8 @@ export async function mdig_tunnel(mtmp, map, player) {
     }
 
     // Only rock, trees, and walls fall through to this point.
-    if (here.nondiggable) {
+    const hereWallInfo = Number(here.wall_info ?? here.flags ?? 0);
+    if (hereWallInfo & W_NONDIGGABLE) {
         // C: impossible("mdig_tunnel: ... is undiggable")
         return false; // still alive
     }
@@ -842,7 +845,8 @@ export async function zap_dig(map, player) {
                 if (maze_dig) break;
             } else if (maze_dig) {
                 if (IS_WALL(room.typ)) {
-                    if (!room.nondiggable) {
+                    const roomWallInfo = Number(room.wall_info ?? room.flags ?? 0);
+                    if (!(roomWallInfo & W_NONDIGGABLE)) {
                         if (in_rooms_shopbase(zx, zy, map)) {
                             add_damage(zx, zy, 500, map, _gstate?.moves || 0);
                             shopwall = true;
@@ -855,7 +859,8 @@ export async function zap_dig(map, player) {
                     }
                     break;
                 } else if (IS_TREE(room.typ)) {
-                    if (!room.nondiggable) {
+                    const roomWallInfo = Number(room.wall_info ?? room.flags ?? 0);
+                    if (!(roomWallInfo & W_NONDIGGABLE)) {
                         room.typ = ROOM;
                         room.flags = 0;
                         unblock_point(zx, zy);
@@ -864,7 +869,8 @@ export async function zap_dig(map, player) {
                     }
                     break;
                 } else if (room.typ === STONE || room.typ === SCORR) {
-                    if (!room.nondiggable) {
+                    const roomWallInfo = Number(room.wall_info ?? room.flags ?? 0);
+                    if (!(roomWallInfo & W_NONDIGGABLE)) {
                         room.typ = CORR;
                         room.flags = 0;
                         unblock_point(zx, zy);
@@ -1486,7 +1492,8 @@ export function dig_check(madeby, x, y, map, player) {
         }
     }
 
-    if (IS_OBSTRUCTED(loc.typ) && loc.typ !== SDOOR && loc.nondiggable) {
+    const locWallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
+    if (IS_OBSTRUCTED(loc.typ) && loc.typ !== SDOOR && (locWallInfo & W_NONDIGGABLE)) {
         return DIGCHECK_FAIL_TOOHARD;
     }
 
@@ -2027,7 +2034,8 @@ export async function adj_pit_checks(cc, msg, map) {
         out = foundation_msg;
     } else if (IS_TREE(ltyp)) {
         out = "The tree's roots glow then fade.";
-    } else if ((ltyp === STONE || ltyp === SCORR) && room.nondiggable) {
+    } else if ((ltyp === STONE || ltyp === SCORR)
+        && (Number(room.wall_info ?? room.flags ?? 0) & W_NONDIGGABLE)) {
         out = "The rock glows then fades.";
     } else if (ltyp === IRONBARS) {
         out = "The bars go much deeper than your pit.";

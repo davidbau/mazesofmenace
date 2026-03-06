@@ -20,6 +20,7 @@ import {
     IS_DRAWBRIDGE, IS_WATERWALL, IS_WALL,
     DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR,
     DB_MOAT, DB_LAVA, DB_ICE, DB_UNDER,
+    W_NONDIGGABLE,
     D_NODOOR,
 } from './const.js';
 import { rnd, rn2 } from './rng.js';
@@ -192,7 +193,8 @@ export function create_drawbridge(x, y, dir, flag, map) {
     } else {
         loc.typ = DRAWBRIDGE_UP;
         wallLoc.typ = DBWALL;
-        wallLoc.nondiggable = true;
+        wallLoc.wall_info = (Number(wallLoc.wall_info || 0) | W_NONDIGGABLE);
+        wallLoc.nondiggable = true; // compatibility mirror
     }
     loc.horizontal = !horiz;
     wallLoc.horizontal = horiz;
@@ -453,7 +455,8 @@ export function close_drawbridge(x, y, map, player) {
         case DB_WEST: case DB_EAST:
             wallLoc.horizontal = false; break;
         }
-        wallLoc.nondiggable = true;
+        wallLoc.wall_info = (Number(wallLoc.wall_info || 0) | W_NONDIGGABLE);
+        wallLoc.nondiggable = true; // compatibility mirror
     }
 
     // Entity handling (cf. dbridge.c:789-793)

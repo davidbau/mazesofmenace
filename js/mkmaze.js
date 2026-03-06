@@ -6,6 +6,7 @@ import {
     POOL, TLWALL, TRWALL, TUWALL, TDWALL, BRCORNER, BLCORNER, TRCORNER, TLCORNER,
     IS_WALL, IS_POOL, isok, PM_PRIEST as ROLE_PRIEST,
     QUEST, GNOMISH_MINES, RANDOM_CLASS,
+    W_NONDIGGABLE,
 } from './const.js';
 import { rn1, rn2, rnd } from './rng.js';
 import {
@@ -42,6 +43,11 @@ import { envFlag } from './runtime_env.js';
 
 function at(map, x, y) {
     return map && map.at ? map.at(x, y) : null;
+}
+
+function hasNondiggableWallFlag(loc) {
+    const wallInfo = Number(loc?.wall_info ?? loc?.flags ?? 0);
+    return (wallInfo & W_NONDIGGABLE) !== 0;
 }
 
 async function vision_call(fn, x, y) {
@@ -726,7 +732,7 @@ export function baalz_fixup(map, state = {}) {
     let inX1 = COLNO;
     for (let x = 0; x < COLNO; x++) {
         const loc = at(map, x, midY);
-        if (loc && loc.nondiggable) {
+        if (loc && hasNondiggableWallFlag(loc)) {
             if (!lastX) inX1 = x + 1;
             lastX = x;
         }
@@ -737,7 +743,7 @@ export function baalz_fixup(map, state = {}) {
     const probeX = Math.min(Math.max(inX1, 0), COLNO - 1);
     for (let y = 0; y < ROWNO; y++) {
         const loc = at(map, probeX, y);
-        if (loc && loc.nondiggable) {
+        if (loc && hasNondiggableWallFlag(loc)) {
             if (!lastY) inY1 = y + 1;
             lastY = y;
         }
@@ -760,14 +766,22 @@ export function baalz_fixup(map, state = {}) {
             } else if (loc.typ === IRONBARS) {
                 const left = at(map, x - 1, y);
                 const right = at(map, x + 1, y);
-                if (left && left.nondiggable) {
-                    left.nondiggable = false;
+                if (left && hasNondiggableWallFlag(left)) {
+                    left.wall_info = Number(left.wall_info || 0) & ~W_NONDIGGABLE;
+                    left.nondiggable = false; // compatibility mirror
                     const left2 = at(map, x - 2, y);
-                    if (left2) left2.nondiggable = false;
-                } else if (right && right.nondiggable) {
-                    right.nondiggable = false;
+                    if (left2) {
+                        left2.wall_info = Number(left2.wall_info || 0) & ~W_NONDIGGABLE;
+                        left2.nondiggable = false; // compatibility mirror
+                    }
+                } else if (right && hasNondiggableWallFlag(right)) {
+                    right.wall_info = Number(right.wall_info || 0) & ~W_NONDIGGABLE;
+                    right.nondiggable = false; // compatibility mirror
                     const right2 = at(map, x + 2, y);
-                    if (right2) right2.nondiggable = false;
+                    if (right2) {
+                        right2.wall_info = Number(right2.wall_info || 0) & ~W_NONDIGGABLE;
+                        right2.nondiggable = false; // compatibility mirror
+                    }
                 }
             }
         }

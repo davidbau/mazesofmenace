@@ -57,6 +57,7 @@ import {
     MAGIC_PORTAL, WEB, ANTI_MAGIC, POLY_TRAP, STATUE_TRAP, MAGIC_TRAP,
     VIBRATING_SQUARE, NO_TRAP, TRAPNUM, is_pit, is_hole,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_SECRET,
+    W_NONDIGGABLE, W_NONPASSWALL,
     COLNO, ROWNO, IS_ROOM, IS_OBSTRUCTED, IS_WALL, IS_STWALL, IS_POOL, IS_LAVA,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, Align2amask,
     NO_MM_FLAGS,
@@ -4874,8 +4875,13 @@ export function sel_set_wall_property(x, y, propKind) {
     if (!loc) return;
     // C ref: sel_set_wall_property() only applies to walls, trees, and iron bars.
     if (!(IS_WALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) return;
-    if (propKind === 'nondiggable') loc.nondiggable = true;
-    else if (propKind === 'nonpasswall') loc.nonpasswall = true;
+    if (propKind === 'nondiggable') {
+        loc.wall_info = (Number(loc.wall_info || 0) | W_NONDIGGABLE);
+        loc.nondiggable = true; // compatibility mirror
+    } else if (propKind === 'nonpasswall') {
+        loc.wall_info = (Number(loc.wall_info || 0) | W_NONPASSWALL);
+        loc.nonpasswall = true; // compatibility mirror
+    }
 }
 
 // C ref: sp_lev.c set_wallprop_in_selection()
@@ -6773,8 +6779,11 @@ export function solidify_map(map) {
             const loc = map.locations[x][y];
             if (!loc) continue;
             if (IS_STWALL(loc.typ) && !spLevMap[x]?.[y]) {
-                loc.nondiggable = true;
-                loc.nonpasswall = true;
+                loc.wall_info = (Number(loc.wall_info || 0)
+                    | W_NONDIGGABLE
+                    | W_NONPASSWALL);
+                loc.nondiggable = true; // compatibility mirror
+                loc.nonpasswall = true; // compatibility mirror
             }
         }
     }
@@ -8399,7 +8408,11 @@ export function drawbridge(opts) {
         const wallLoc = levelState.map.locations[wx][wy];
         wallLoc.typ = isOpen ? DOOR : DBWALL;
         if (isOpen) wallLoc.flags = D_NODOOR;
-        else { wallLoc.flags = 0; wallLoc.nondiggable = true; }
+        else {
+            wallLoc.flags = 0;
+            wallLoc.wall_info = (Number(wallLoc.wall_info || 0) | W_NONDIGGABLE);
+            wallLoc.nondiggable = true; // compatibility mirror
+        }
         wallLoc.horizontal = horiz;
         markSpLevMap(wx, wy);
         markSpLevTouched(wx, wy);

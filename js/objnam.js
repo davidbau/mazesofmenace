@@ -52,6 +52,7 @@ import {
     STONE, POOL, LAVAPOOL, WATER, AIR, CLOUD, ROOM, CORR, VWALL, HWALL, DOOR,
     FOUNTAIN, THRONE, SINK, ALTAR, GRAVE, TREE, IRONBARS, ICE, SDOOR, SCORR,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_SECRET,
+    W_NONDIGGABLE, W_NONPASSWALL,
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, Align2amask,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT,
@@ -480,11 +481,12 @@ export function wizterrainwish(ctx) {
 
     const setWallProps = () => {
         if (result.wallprops.includes('nondiggable')) {
-            loc.nondiggable = true;
-            loc.wall_info = (loc.wall_info || 0) | 0x01;
+            loc.wall_info = (Number(loc.wall_info || 0) | W_NONDIGGABLE);
+            loc.nondiggable = true; // compatibility mirror
         }
         if (result.wallprops.includes('nonpasswall')) {
-            loc.wall_info = (loc.wall_info || 0) | 0x02;
+            loc.wall_info = (Number(loc.wall_info || 0) | W_NONPASSWALL);
+            loc.nonpasswall = true; // compatibility mirror
         }
     };
 

@@ -16,6 +16,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
          NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
          HOLE, TRAPDOOR,
+         W_NONDIGGABLE, W_NONPASSWALL,
          DIRECTION_KEYS, RUN_KEYS,
          DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP,
          TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID } from './const.js';
@@ -1790,8 +1791,9 @@ export function invocation_pos(x, y, map) {
 export function may_dig(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
+    const wallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
     return !((IS_STWALL(loc.typ) || loc.typ === TREE)
-             && (loc.wall_info & 1)); // W_NONDIGGABLE = 1
+             && (wallInfo & W_NONDIGGABLE));
 }
 
 // C ref: hack.c may_passwall() — can phase through wall at (x,y)?
@@ -1799,7 +1801,8 @@ export function may_dig(x, y, map) {
 export function may_passwall(x, y, map) {
     const loc = map.at(x, y);
     if (!loc) return false;
-    return !(IS_STWALL(loc.typ) && (loc.wall_info & 2)); // W_NONPASSWALL = 2
+    const wallInfo = Number(loc.wall_info ?? loc.flags ?? 0);
+    return !(IS_STWALL(loc.typ) && (wallInfo & W_NONPASSWALL));
 }
 
 // C ref: hack.c bad_rock() — is (x,y) impassable rock for given monster?
