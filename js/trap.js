@@ -622,9 +622,9 @@ async function trapeffect_hole_mon(mon, trap, trflags, map, player) {
     return await trapeffect_level_telep_mon(mon, trap, trflags, map, player);
 }
 
-function trapeffect_telep_trap_mon(mon, trap, map, player, display, fov) {
+async function trapeffect_telep_trap_mon(mon, trap, map, player, display, fov) {
     const in_sight = true; // simplified
-    mtele_trap(mon, trap, in_sight, map, player, display, fov);
+    await mtele_trap(mon, trap, in_sight, map, player, display, fov);
     return Trap_Moved_Mon;
 }
 
@@ -967,7 +967,7 @@ async function trapeffect_selector_mon(mon, trap, trflags, map, player, display,
     case TRAPDOOR:
         return await trapeffect_hole_mon(mon, trap, trflags, map, player);
     case TELEP_TRAP:
-        return trapeffect_telep_trap_mon(mon, trap, map, player, display, fov);
+        return await trapeffect_telep_trap_mon(mon, trap, map, player, display, fov);
     case LEVEL_TELEP:
         return await trapeffect_level_telep_mon(mon, trap, trflags, map, player);
     case MAGIC_PORTAL:
