@@ -37,7 +37,8 @@ import { PM_CAVEMAN, RACE_ORC, RACE_ELF, RACE_DWARF,
          FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, ACID_RES, STONE_RES,
          TELEPORT, TELEPORT_CONTROL, TELEPAT, LAST_PROP,
-         FROMOUTSIDE, INTRINSIC, TIMEOUT } from './const.js';
+         FROMOUTSIDE, INTRINSIC, TIMEOUT,
+         SLT_ENCUMBER } from './const.js';
 import { applyMonflee } from './mhitu.js';
 import { obj_resists } from './objdata.js';
 import { compactInvletPromptChars } from './invent.js';
@@ -170,13 +171,41 @@ export async function init_uhunger(game, player) {
 // 3. Hunger system
 // ============================================================
 
-// cf. eat.c gethungry() — process hunger each turn
+// cf. eat.c:3158 gethungry() — process hunger each turn
+// Ported faithfully for RNG parity. Accessory hunger (rings/amulets)
+// is simplified since intrinsic sources aren't fully tracked.
 async function gethungry(player) {
-    // Simplified: basic hunger decrement (the real version checks
-    // poly form, rings, amulets, regeneration, etc.)
-    player.hunger--;
-    // cf. eat.c: accessorytime = rn2(20)
-    rn2(20);
+    if (player.uinvulnerable) return; // C: no hunger when invulnerable
+
+    // C: (!Unaware || !rn2(10)) — slow metabolism while asleep
+    // Unaware = sleeping or unconscious. Normal play: always true.
+    const unaware = player.Unaware || false;
+    const canEat = !unaware || !rn2(10);
+    // C: (carnivorous || herbivorous || metallivorous) && !Slow_digestion
+    // Humans are omnivorous (carnivorous|herbivorous), so canEat is usually true.
+    const slowDigestion = player.Slow_digestion || false;
+    if (canEat && !slowDigestion)
+        player.hunger--; // ordinary food consumption
+
+    // C: accessorytime = rn2(20) — randomized ring/amulet hunger trigger
+    const accessorytime = rn2(20);
+    if (accessorytime % 2) { // odd — regeneration/encumbrance hunger
+        // C: (HRegeneration & ~FROMFORM) || (ERegeneration & ~(W_ARTI|W_WEP))
+        if (player.regeneration)
+            player.hunger--;
+        // C: near_capacity() > SLT_ENCUMBER
+        // Avoid circular import (hack.js↔eat.js); use player.encumbrance if tracked
+        if ((player.encumbrance || 0) > SLT_ENCUMBER)
+            player.hunger--;
+    } else { // even — conflict/hunger intrinsic + ring/amulet accessory hunger
+        if (player.Hunger)
+            player.hunger--;
+        if (player.Conflict)
+            player.hunger--;
+        // C: ring/amulet accessory hunger on specific even values (0,4,6,8,10,12)
+        // Simplified: not fully tracked which rings are worn.
+        // TODO: port full ring/amulet hunger when equipment tracking is complete.
+    }
     await newuhs(player, true);
 }
 

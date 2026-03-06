@@ -36,7 +36,7 @@ import { A_STR, A_DEX, A_CON, A_INT, A_WIS, ROOMOFFSET, SHOPBASE,
 import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
-import { maybe_finished_meal } from './eat.js';
+import { maybe_finished_meal, gethungry } from './eat.js';
 import { exerper, exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
@@ -351,23 +351,7 @@ export async function moveloop_turnend(game) {
     }
 
     // C ref: allmain.c:353 gethungry()
-    // eat.c:3186 — rn2(20) for accessory hunger timing
-    rn2(20);
-    (game.u || game.player).hunger--;
-    if ((game.u || game.player).hunger <= 0) {
-        await game.display.putstr_message('You faint from lack of food.');
-        (game.u || game.player).hunger = 1;
-        (game.u || game.player).hp -= rnd(3);
-        if ((game.u || game.player).hp <= 0) {
-            (game.u || game.player).deathCause = 'starvation';
-        }
-    }
-    if ((game.u || game.player).hunger === 150) {
-        await game.display.putstr_message('You are beginning to feel weak.');
-    }
-    if ((game.u || game.player).hunger === 300) {
-        await game.display.putstr_message('You are beginning to feel hungry.');
-    }
+    await gethungry((game.u || game.player));
 
     // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
     ageSpells((game.u || game.player));
