@@ -20,7 +20,7 @@ import { pline, pline_The, You, Your, You_hear, You_feel, You_cant,
          Norep, impossible } from './pline.js';
 import { Monnam, mon_nam, a_monnam, x_monnam, Amonnam } from './do_name.js';
 import { SUPPRESS_SADDLE, PM_ARCHEOLOGIST } from './const.js';
-import { Tobjnam, yname, Yname2, xname, thesimpleoname, an } from './objnam.js';
+import { Tobjnam, yname, Yname2, xname, thesimpleoname, an, the } from './objnam.js';
 import { unique_corpstat, is_mindless, canseemon, is_mercenary,
          is_flyer, is_clinger, is_humanoid, slithy, nolimbs,
          ceiling_hider, can_blow } from './mondata.js';
@@ -473,7 +473,8 @@ async function do_earthquake(force, map, player, fov) {
                 // falls through to DOOR case
             case DOOR: // make the door collapse
                 // if already doorless, treat like room or corridor
-                if ((loc.doormask || loc.flags || 0) === D_NODOOR) {
+                /* Use ?? not || since D_NODOOR=0 is falsy */
+                if ((loc.doormask ?? loc.flags ?? 0) === D_NODOOR) {
                     await do_pit(x, y, tu_pit, map, player, fov);
                     break;
                 }
@@ -615,7 +616,8 @@ async function do_improvisation(instr, player, map, display, fov) {
         await exercise(player, A_DEX, true);
         break;
     case WOODEN_FLUTE: // May charm snakes
-        do_spec = do_spec && (rn2(ACURR(player, A_DEX)) + ulevel > 25);
+        /* C: do_spec &= (...) — must not short-circuit, rn2() always consumed */
+        do_spec = do_spec & (rn2(ACURR(player, A_DEX)) + ulevel > 25);
         if (!player.Deaf)
             await pline(`${Tobjnam(instr, do_spec ? 'trill' : 'toot')}${same_old_song ? ' a familiar tune' : ''}.`);
         else
@@ -662,7 +664,8 @@ async function do_improvisation(instr, player, map, display, fov) {
         await exercise(player, A_DEX, true);
         break;
     case WOODEN_HARP: // May calm Nymph
-        do_spec = do_spec && (rn2(ACURR(player, A_DEX)) + ulevel > 25);
+        /* C: do_spec &= (...) — must not short-circuit, rn2() always consumed */
+        do_spec = do_spec & (rn2(ACURR(player, A_DEX)) + ulevel > 25);
         if (!player.Deaf) {
             const msg = (do_spec && same_old_song)
                 ? 'produces a familiar, lilting melody'
@@ -773,8 +776,8 @@ export async function do_play_instrument(instr, player, map, display, fov) {
     }
 
     await You(!player.Deaf
-        ? `extract a strange sound from ${xname(instr)}!`
-        : `can feel ${xname(instr)} emitting vibrations.`);
+        ? `extract a strange sound from ${the(xname(instr))}!`
+        : `can feel ${the(xname(instr))} emitting vibrations.`);
     // Hero_playnotes — sound library, no-op in JS
 
     // Check if there was the Stronghold drawbridge near
