@@ -501,8 +501,10 @@ function _generatelevel_attempt(dlevel) {
     }
   }
 
-  // Mark end of room array
-  lev_room.push({ lx: 0, hx: -1, ly: 0, hy: 0 }); // sentinel with hx=-1
+  // Mark end of room array (C sets croom->hx=-1 BEFORE qsort; sentinel stays at end)
+  // In JS we push AFTER sorting later, or give lx=999 so it sorts last.
+  // Push sentinel now with lx=999 so sort keeps it at end.
+  lev_room.push({ lx: 999, hx: -1, ly: 0, hy: 0 }); // sentinel
 
   // Place downstairs
   let dnx, dny;

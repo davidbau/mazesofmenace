@@ -5,8 +5,8 @@ import { game } from './gstate.js';
 import { makeObj } from './game.js';
 import { pline, bot, nscr, cls, panic, losehp } from './pri.js';
 import { setsee, unsee, seeoff, domove, movecm, tele, parse, nomul, doname } from './hack.js';
-import { movemon, makemon, rloc, delmon, dosearch, mnexto } from './mon.js';
-import { dosave, dosearch as do1search } from './do1.js';
+import { movemon, makemon, rloc, delmon, mnexto } from './mon.js';
+import { dosave, dosearch } from './do1.js';
 import { mklev } from './lev.js';
 import { savelev, getlev } from './lev.js';
 import { docrt } from './pri.js';
@@ -156,7 +156,7 @@ async function rhack(cmd) {
     return;
   }
   switch (cmd) {
-    case 's': await do1search(); break;
+    case 's': await dosearch(); break;
     case 'Q': await done1(); break;
     case '>':
       if (game.u.ustuck || game.u.ux !== game.xdnstair || game.u.uy !== game.ydnstair) {
@@ -264,7 +264,7 @@ export async function gameLoop(seed) {
       // Teleportitis
       if (game.u.utel && !rn2(85)) tele();
       // Auto-search
-      if (game.u.usearch) await do1search();
+      if (game.u.usearch) await dosearch();
 
       // Hunger
       if (game.u.uhunger < 151 && game.u.uhs === 0) {
@@ -279,6 +279,7 @@ export async function gameLoop(seed) {
     }
 
     game.flags.move = true;
+    game.flags.mdone = false;
 
     if (!game.multi) {
       if (game.flags.dscr) nscr();

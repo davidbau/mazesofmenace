@@ -11,9 +11,8 @@ import { _setDo1Deps } from './do1.js';
 import { newsym, newsym as newsym_fn } from './pri.js';
 import { setRhack, gameLoop, GameOver, losestr, ndaminc, dodown, doup } from './main.js';
 import { rhack } from './do.js';
-import { killed, rloc, mnexto, newcham, dosearch as monDosearch } from './mon.js';
+import { killed, rloc, mnexto, newcham, poisoned } from './mon.js';
 import { dosearch } from './do1.js';
-import { poisoned } from './mon.js';
 import { docrt } from './pri.js';
 
 async function startGame() {
