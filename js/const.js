@@ -567,6 +567,18 @@ export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
 // Runtime fields: rot/revive scheduling bound for corpse timers.
 export const TAINT_AGE = 50;
 
+// Artifact naming/origin flags (src/artifact.c)
+// Runtime fields: oname()/artifact_origin() provenance bits.
+export const ONAME_NO_FLAGS = 0;
+export const ONAME_VIA_NAMING = 0x0001;
+export const ONAME_WISH = 0x0002;
+export const ONAME_GIFT = 0x0004;
+export const ONAME_VIA_DIP = 0x0008;
+export const ONAME_LEVEL_DEF = 0x0010;
+export const ONAME_BONES = 0x0020;
+export const ONAME_RANDOM = 0x0040;
+export const ONAME_KNOW_ARTI = 0x0100;
+
 // seenv octants and wall-info bits (include/rm.h)
 export const SV0 = 0x01;
 export const SV1 = 0x02;

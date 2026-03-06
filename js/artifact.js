@@ -30,6 +30,8 @@ import {
 } from './monsters.js';
 import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, LAST_PROP,
          CONFLICT, LEVITATION, INVIS, W_ARM,
+         ONAME_NO_FLAGS, ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT,
+         ONAME_VIA_DIP, ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM, ONAME_KNOW_ARTI,
        } from './const.js';
 import { SILVER } from './objects.js';
 import { pline, pline_The, You, You_feel, You_cant } from './pline.js';
@@ -154,17 +156,6 @@ export function artifact_exists(otmp, name, mod, flgs = 0) {
     }
   }
 }
-
-// ONAME flags
-export const ONAME_NO_FLAGS = 0;
-export const ONAME_VIA_NAMING = 0x0001;
-export const ONAME_WISH = 0x0002;
-export const ONAME_GIFT = 0x0004;
-export const ONAME_VIA_DIP = 0x0008;
-export const ONAME_LEVEL_DEF = 0x0010;
-export const ONAME_BONES = 0x0020;
-export const ONAME_RANDOM = 0x0040;
-export const ONAME_KNOW_ARTI = 0x0100;
 
 // cf. artifact.c:478 — artifact_origin(arti, aflags)
 export function artifact_origin(otmp, aflags) {
