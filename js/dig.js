@@ -76,6 +76,7 @@ import { s_suffix } from './hacklib.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { expels } from './mhitu.js';
 import { hard_helmet } from './do_wear.js';
+import { You_hear } from './pline.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)
@@ -245,8 +246,8 @@ export async function mdig_tunnel(mtmp, map, player) {
 
     if (IS_WALL(here.typ)) {
         // C: if (flags.verbose && !rn2(5)) You_hear("crashing rock.");
-        if (_gstate?.flags?.verbose && !rn2(5)) {
-            _gstate?.display?.putstr_message('You hear crashing rock.');
+        if (!rn2(5)) {
+            await You_hear('crashing rock.');
         }
         // C: if (*in_rooms(..., SHOPBASE)) add_damage(...)
         // Shop damage not yet wired

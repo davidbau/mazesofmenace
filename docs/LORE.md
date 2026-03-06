@@ -2669,3 +2669,21 @@ hard-won wisdom:
     - C: `rn2(2)=0 @ morgue_mon_sound(sounds.c:96)`
   - Nearby screen/map drift still appears around step `218` (`·` vs `─` tile),
     and should be treated as likely upstream state cause of later event drift.
+
+### seed325 regression correction: wall-dig sound RNG gating (2026-03-06)
+
+- During rebase conflict resolution, `mdig_tunnel()` wall-sound path had become
+  gated by `_gstate?.flags?.verbose`, which can suppress the C `rn2(5)` roll in
+  replay/headless contexts.
+- C behavior for this tracked seed required that wall branch roll to happen; when
+  skipped, first divergence moved earlier (step `208`) with:
+  - missing topline `You hear crashing rock.`
+  - post-dig `distfleeck` brave roll skew (`brave=1` JS vs `brave=0` C).
+- Corrective change in `js/dig.js`:
+  - wall-dig path now always executes the `rn2(5)` roll and emits message via
+    `await You_hear('crashing rock.')`.
+- Validation on tracked seeds:
+  - `seed325_knight_wizard_gameplay`: first divergence moved back later from
+    step `208` to step `218`, RNG matched prefix improved `9725 -> 10781`.
+  - `seed327_priest_wizard_gameplay` and `seed328_ranger_wizard_gameplay` first
+    divergence steps remained unchanged (`226` and `220` respectively).
