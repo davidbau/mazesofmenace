@@ -2420,3 +2420,30 @@ hard-won wisdom:
   `finalize_level()`. (4) Update `terrainSymbol()` to use `wall_info`
   instead of `loc.flags` for wall type determination.
 - **Status**: Research complete, implementation deferred (complex multi-file change).
+
+---
+
+### mcanmove/mcansee Default Initialization
+
+- **Discovery**: C's `makemon.c:1293` sets `mtmp->mcansee = mtmp->mcanmove = 1`
+  for every newly created monster. JS `makemon()` never initialized these fields,
+  leaving them `undefined`.
+- **Impact**: JS code checking `!mon.mcanmove` treated all monsters as immobile
+  (since `!undefined` is `true`). Code checking `mon.mcansee` treated all monsters
+  as blind (since `undefined` is falsy). Affected:
+  - `priest.js` local `helpless()` → all priests treated as helpless
+  - `monmove.js:264` → flee message always "flinch" instead of "turns to flee"
+  - `dothrow.js:1139,1200` → hitting/missing immobile targets
+  - `mhitu.js:1753-1839` → monster gaze attacks disabled (mcansee falsy)
+  - `region.js:628` → blinding regions never triggered
+  - `dogmove.js:892` → dog vision checks always failed
+- **Why only mcanmove/mcansee?** C's `*mtmp = cg.zeromonst` zero-initializes all
+  fields. In JS, `undefined` behaves like `0` for truthy/falsy checks (`!undefined`
+  = `true`, `undefined & flag` = `0`). The ONLY fields that need explicit init are
+  those that C defaults to **non-zero** values. `mcanmove` and `mcansee` are the
+  only such fields (both default to 1).
+- **Fix**: Added `mcanmove: 1, mcansee: 1` to the monster object in `makemon()`.
+  Also fixed `muse.js` local `helpless()` which was missing the `!mcanmove` check.
+- **Lesson**: When porting C code that uses `*mtmp = zeromonst` initialization,
+  check for any fields explicitly set to non-zero values afterward — those are
+  the dangerous ones in JS where `undefined` silently differs from the C default.
