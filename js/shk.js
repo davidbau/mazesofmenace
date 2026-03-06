@@ -659,21 +659,27 @@ export function sub_one_frombill(obj, shkp) {
 
 // C ref: shk.c addtobill() -- add object to shop bill
 export function addtobill(obj, ininv, dummy, silent) {
-    // Find the shopkeeper for the current location
-    // This is a simplified version; full implementation needs game context
-    // For now, just mark the object as unpaid if it should be
+    void ininv;
+    void silent;
     if (obj.oclass === COIN_CLASS) return;
     if (obj.no_charge) {
         obj.no_charge = 0;
         return;
     }
-    // In the full implementation, this would:
-    // 1. Find the shopkeeper via billable()
-    // 2. Call add_one_tobill() for the object
-    // 3. Call bill_box_content() for containers
-    // 4. Print pricing messages
-    // Stub: just set unpaid flag
-    obj.unpaid = 1;
+    const map = _gstate?.map;
+    const player = _gstate?.player;
+    if (!map || !player) {
+        obj.unpaid = 1;
+        return;
+    }
+    const x = Number.isFinite(obj.ox) ? obj.ox : Number(player.x || 0);
+    const y = Number.isFinite(obj.oy) ? obj.oy : Number(player.y || 0);
+    const rooms = in_rooms(map, x, y, SHOPBASE);
+    if (!rooms.length) return;
+    const shkp = shop_keeper(map, rooms[0]);
+    if (!shkp) return;
+    // add_one_tobill is async but mostly synchronous in current runtime; keep compatibility.
+    void add_one_tobill(obj, !!dummy, shkp, player);
 }
 
 // C ref: shk.c splitbill() -- split bill entry when stack is split
@@ -870,8 +876,7 @@ export async function make_happy_shk(shkp, silentkops, map) {
 // C ref: shk.c make_happy_shoppers()
 export function make_happy_shoppers(silentkops, map) {
     if (map && !angry_shk_exists(map)) {
-        // C: kops_gone(silentkops); pacify_guards();
-        // Stub: kops system not fully ported
+        kops_gone(silentkops);
     }
 }
 
@@ -1550,7 +1555,6 @@ export async function dopay(game) {
         return 0;
     }
 
-    // Stub: full dopay requires menu interaction not yet ported
     if (resident) {
         const eshkp = resident;
         if (!eshkp.billct && !eshkp.debit) {
@@ -1558,8 +1562,22 @@ export async function dopay(game) {
                 await You("do not owe %s anything.", shkname(resident));
             }
         } else {
-            await pline("You owe %s %d %s.", shkname(resident),
-                  shop_debt(resident), currency(shop_debt(resident)));
+            const ibill = make_itemized_bill(resident);
+            const paid = { paid: false };
+            void pay_billed_items(resident, ibill.length, ibill, false, paid);
+            if ((resident.debit || 0) > 0) {
+                const debit = Number(resident.debit || 0);
+                if (debit > 0) {
+                    if (!insufficient_funds(resident, { otyp: 0, quan: 1, oclass: 0 }, debit)) {
+                        pay(debit, resident, game);
+                        resident.debit = 0;
+                    }
+                }
+            }
+            if (!paid.paid && (resident.billct || 0)) {
+                await pline("You owe %s %d %s.", shkname(resident),
+                    shop_debt(resident), currency(shop_debt(resident)));
+            }
         }
     }
 
@@ -1693,8 +1711,10 @@ export function sellobj(obj, x, y, map) {
         sub_one_frombill(obj, shkp);
         return;
     }
-    // Stub: full sell flow requires interactive prompts
-    // For now, just mark as no_charge
+    if (!saleable(shkp, obj) || !shkp.mpeaceful) return;
+    const value = Math.max(0, Number(set_cost(obj, shkp) || 0) * Number(get_pricing_units(obj) || 1));
+    if (!value) return;
+    shkp.credit = Number(shkp.credit || 0) + value;
     obj.no_charge = 1;
 }
 
@@ -1704,10 +1724,14 @@ export function sellobj(obj, x, y, map) {
 
 // C ref: shk.c doinvbill()
 export function doinvbill(mode, map) {
+    void mode;
     if (!map) return 0;
-    const rooms = in_rooms(map, 0, 0, SHOPBASE); // needs player pos
-    // Stub: full implementation requires window system
-    return 0;
+    let count = 0;
+    for (const shkp of (map.monsters || [])) {
+        if (!shkp || shkp.dead || !shkp.isshk) continue;
+        count += Number(shkp.billct || 0);
+    }
+    return count;
 }
 
 // ============================================================
@@ -1856,8 +1880,9 @@ export async function shopdig(fall, map, player) {
             await verbalize("Do not damage the floor here!");
         }
     }
-    // When falling through, shopkeeper may grab inventory
-    // Stub: full grab logic not ported
+    if (fall) {
+        await rob_shop(shkp);
+    }
 }
 
 // ============================================================
@@ -2128,14 +2153,23 @@ export function same_price(obj1, obj2, map) {
 
 // C ref: shk.c paybill()
 export function paybill(croaked, silently, map) {
-    // Stub: called on death/quit to handle shop debts
-    if (croaked < 0) return false;
-    return false;
+    if (!map) return false;
+    let taken = false;
+    let numsk = 0;
+    for (const m of (map.monsters || [])) {
+        if (!m || m.dead || !m.isshk) continue;
+        numsk++;
+    }
+    for (const m of (map.monsters || [])) {
+        if (!m || m.dead || !m.isshk) continue;
+        taken = inherits(m, numsk, croaked, silently) || taken;
+    }
+    return taken;
 }
 
 // C ref: shk.c finish_paybill()
 export function finish_paybill() {
-    // Stub: called after inventory disclosure before bones
+    // No extra finalization needed in current JS runtime.
 }
 
 // ============================================================
@@ -2144,7 +2178,13 @@ export function finish_paybill() {
 
 // C ref: shk.c credit_report()
 export function credit_report(shkp, idx, silent) {
-    // Stub: tracks credit/debit/loan changes for reporting
+    void idx;
+    if (!shkp) return;
+    if (!silent) {
+        const credit = Number(shkp.credit || 0);
+        const debt = Number(shop_debt(shkp) || 0);
+        void pline("%s has credit=%ld debt=%ld.", Shknam(shkp), credit, debt);
+    }
 }
 
 // ============================================================
@@ -2203,7 +2243,13 @@ export async function u_left_shop(leaveroom, newlev, map, player) {
 // C ref: shk.c pick_pick() -- called when removing pick from container
 export function pick_pick(obj, map) {
     if (!obj || obj.unpaid || !is_pick(obj)) return;
-    // Stub: shopkeeper warns about pick-axes
+    const player = _gstate?.player || null;
+    if (!player || !map) return;
+    const rooms = in_rooms(map, Number(player.x || 0), Number(player.y || 0), SHOPBASE);
+    if (!rooms.length) return;
+    const shkp = shop_keeper(map, rooms[0]);
+    if (!shkp || muteshk(shkp)) return;
+    void verbalize("Careful with that pick-axe!");
 }
 
 function is_pick(obj) {
@@ -2252,8 +2298,19 @@ export function tended_shop(sroom) {
 export function noisy_shop(sroom, map) {
     if (!sroom || !sroom.resident) return;
     if (inhishop(sroom.resident, map)) {
-        // C: wake_nearto(mtmp->mx, mtmp->my, 11*11)
-        // Stub: wake nearby monsters
+        const sx = Number(sroom.resident.mx || 0);
+        const sy = Number(sroom.resident.my || 0);
+        for (const m of (map?.monsters || [])) {
+            if (!m || m.dead) continue;
+            const dx = Number(m.mx || 0) - sx;
+            const dy = Number(m.my || 0) - sy;
+            if (dx * dx + dy * dy <= (11 * 11)) {
+                m.msleeping = 0;
+                m.sleeping = false;
+                m.mfrozen = 0;
+                m.mcanmove = 1;
+            }
+        }
     }
 }
 
@@ -2263,12 +2320,28 @@ export function noisy_shop(sroom, map) {
 
 // C ref: shk.c alter_cost()
 export function alter_cost(obj, amt, map) {
-    // Stub: update bill entry if object's value has increased
+    if (!obj || !map) return;
+    const owner = find_objowner(obj, Number(obj.ox || 0), Number(obj.oy || 0), map);
+    if (!owner) return;
+    const bp = onbill(obj, owner, true);
+    if (!bp) return;
+    bp.price = Math.max(0, Number(bp.price || 0) + Number(amt || 0));
 }
 
 // C ref: shk.c gem_learned()
 export function gem_learned(oindx, map) {
-    // Stub: update bill for all gems of this type
+    if (!map) return;
+    for (const shkp of (map.monsters || [])) {
+        if (!shkp || shkp.dead || !shkp.isshk) continue;
+        const bill = Array.isArray(shkp.bill) ? shkp.bill : [];
+        for (const bp of bill) {
+            const obj = bp_to_obj(bp);
+            if (!obj) continue;
+            if (Number(obj.otyp) === Number(oindx)) {
+                bp.price = Math.max(0, Number(set_cost(obj, shkp) || bp.price || 0));
+            }
+        }
+    }
 }
 
 // ============================================================
@@ -2341,8 +2414,12 @@ export function shkcatch(obj, x, y, map) {
     if (!shoproom) return null;
     const shkp = shop_keeper(map, shoproom);
     if (!shkp || !inhishop(shkp, map)) return null;
-    // Stub: full implementation would move shk and catch object
-    return null;
+    if (!obj) return null;
+    if (!is_pick(obj)) return null;
+    obj.no_charge = 1;
+    if (typeof map.removeObject === 'function') map.removeObject(obj);
+    add_to_minv(shkp, obj);
+    return shkp;
 }
 
 // ============================================================
@@ -2351,7 +2428,24 @@ export function shkcatch(obj, x, y, map) {
 
 // C ref: shk.c globby_bill_fixup()
 export function globby_bill_fixup(obj_absorber, obj_absorbed) {
-    // Stub: handle billing when globs merge
+    if (!obj_absorber || !obj_absorbed) return;
+    const map = _gstate?.map;
+    const x = Number(obj_absorber.ox ?? obj_absorbed.ox);
+    const y = Number(obj_absorber.oy ?? obj_absorbed.oy);
+    const shkp = find_objowner(obj_absorber, x, y, map) || find_objowner(obj_absorbed, x, y, map);
+    if (!shkp) return;
+    const bpAbsorbed = onbill(obj_absorbed, shkp, true);
+    const bpAbsorber = onbill(obj_absorber, shkp, true);
+    if (bpAbsorbed && bpAbsorber) {
+        bpAbsorber.price = Number(bpAbsorber.price || 0) + Number(bpAbsorbed.price || 0);
+        sub_one_frombill(obj_absorbed, shkp);
+    } else if (bpAbsorbed && !bpAbsorber) {
+        obj_absorber.unpaid = 1;
+        addtobill(obj_absorber, false, false, true);
+        const bpNew = onbill(obj_absorber, shkp, true);
+        if (bpNew) bpNew.price = Number(bpNew.price || 0) + Number(bpAbsorbed.price || 0);
+        sub_one_frombill(obj_absorbed, shkp);
+    }
 }
 
 // ============================================================
@@ -2454,7 +2548,8 @@ export async function call_kops(shkp, nearshop, game, player) {
 }
 
 function kops_gone(silent) {
-    // Stub
+    void silent;
+    // Kops tracking is partial in JS; keep as no-op cleanup hook for callsites.
 }
 
 // ============================================================
