@@ -53,6 +53,7 @@ import { makemon, mkclass } from './makemon.js';
 import {
     BOULDER, ROCK, STATUE, HEAVY_IRON_BALL, CORPSE,
     APPLE, ORANGE, PEAR, BANANA, EUCALYPTUS_LEAF,
+    PICK_AXE, DWARVISH_MATTOCK, AXE, BATTLE_AXE, WEAPON_CLASS,
 } from './objects.js';
 import { S_ZOMBIE, S_MUMMY } from './monsters.js';
 import {
@@ -137,9 +138,9 @@ export function dig_typ(otmp, x, y, map) {
     if (!isok(x, y) || !otmp) return DIGTYP_UNDIGGABLE;
 
     // C: is_pick(otmp) / is_axe(otmp)
-    const isPick = otmp.otyp === 880 || otmp.otyp === 881; // PICK_AXE, DWARVISH_MATTOCK
-    const isAxe = !!(otmp.oclass === 3 /* WEAPON_CLASS */ &&
-        otmp.otyp >= 362 && otmp.otyp <= 365); // axes range — simplified
+    const isPick = otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK;
+    const isAxe = !!(otmp.oclass === WEAPON_CLASS &&
+        (otmp.otyp === AXE || otmp.otyp === BATTLE_AXE));
     // More robust: check by name or by object properties
     // For now, treat the tool as a pick if it has the 'pick' property
     // Fallback: if neither pick nor axe, undiggable
@@ -776,7 +777,7 @@ export function holeable_floor(x, y, map) {
 export function use_pick_axe(obj, map, player) {
     if (!obj || !player) return 0;
 
-    const isPick = (obj.otyp === 257 || obj.otyp === 71); // PICK_AXE, DWARVISH_MATTOCK
+    const isPick = (obj.otyp === PICK_AXE || obj.otyp === DWARVISH_MATTOCK); // PICK_AXE, DWARVISH_MATTOCK
     const verb = isPick ? 'dig' : 'chop';
 
     // Check: wielded?
@@ -802,7 +803,7 @@ export function use_pick_axe(obj, map, player) {
 export function use_pick_axe2(obj, map, player) {
     if (!obj || !player) return 1;
 
-    const isPick = (obj.otyp === 257 || obj.otyp === 71);
+    const isPick = (obj.otyp === PICK_AXE || obj.otyp === DWARVISH_MATTOCK);
     const verbing = isPick ? 'digging' : 'chopping';
     const dx = player.dx || 0;
     const dy = player.dy || 0;
@@ -946,7 +947,7 @@ export function dig(map, player) {
     const ctx = player.context.digging;
     const dpx = ctx.pos.x, dpy = ctx.pos.y;
     const uwep = player.weapon;
-    const isPick = uwep && (uwep.otyp === 257 || uwep.otyp === 71); // PICK_AXE, DWARVISH_MATTOCK
+    const isPick = uwep && (uwep.otyp === PICK_AXE || uwep.otyp === DWARVISH_MATTOCK);
     const isAxeWep = uwep && !isPick && uwep.otyp >= 0; // simplified axe check
     const verb = (!uwep || isPick) ? 'dig into' : 'chop through';
     let dcresult = DIGCHECK_PASSED;

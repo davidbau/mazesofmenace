@@ -126,6 +126,7 @@ import { s_suffix } from './hacklib.js';
 import { dist2 } from './hack.js';
 import { killed, wakeup, setmangry } from './mon.js';
 import { mksobj } from './mkobj.js';
+import { AMULET_OF_STRANGULATION } from './objects.js';
 import { were_summon } from './were.js';
 import {
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
@@ -653,7 +654,7 @@ async function check_strangling(player, on) {
     if (on) {
         // on -- maybe resume strangling
         const was_strangled = !!(player.strangled);
-        if (player.uamul && player.uamul.otyp === 201 /* AMULET_OF_STRANGULATION */
+        if (player.uamul && player.uamul.otyp === AMULET_OF_STRANGULATION
             && can_be_strangled(player.type || mons[PM_HUMAN])) {
             player.strangled = 6;
             await Your("%s %s your %s!",

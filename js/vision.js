@@ -1067,7 +1067,7 @@ export function getActiveFov() {
 // Could the player see this position (LOS only, ignoring lighting)
 // C ref: vision.h #define couldsee(x, y) ((gv.viz_array[y][x] & COULD_SEE) != 0)
 export function couldsee(map, player, x, y) {
-    if (player && player.utrap && Number(player.utraptype) === 1) { // TT_PIT
+    if (player && player.utrap && Number(player.utraptype) === TT_PIT) {
         return Math.abs((player.x | 0) - (x | 0)) <= 1
             && Math.abs((player.y | 0) - (y | 0)) <= 1;
     }

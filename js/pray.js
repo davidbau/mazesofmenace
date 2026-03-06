@@ -45,7 +45,7 @@ import { PM_PRIEST, PM_KNIGHT, PM_WIZARD, PM_MONK } from './const.js';
 import { CORPSE, STATUE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
          POT_WATER, POTION_CLASS, LOADSTONE, LEVITATION_BOOTS, FUMBLE_BOOTS,
          GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT,
-         AMULET_OF_STRANGULATION, RIN_LEVITATION, RIN_SUSTAIN_ABILITY,
+         AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, RIN_LEVITATION, RIN_SUSTAIN_ABILITY,
          SADDLE, LONG_SWORD, RUNESWORD, MAGIC_MARKER,
          WEAPON_CLASS, SPBOOK_CLASS, STRANGE_OBJECT, BOULDER,
          SPE_FINGER_OF_DEATH, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD,
@@ -221,7 +221,7 @@ function bimanual(obj) {
 // Helper: unchanger -- returns amulet of unchanging if worn
 function unchanger(player) {
     // C: returns the item conferring Unchanging
-    if (player.amulet && player.amulet.otyp === 199) return player.amulet; // AMULET_OF_UNCHANGING
+    if (player.amulet && player.amulet.otyp === AMULET_OF_UNCHANGING) return player.amulet;
     return null;
 }
 

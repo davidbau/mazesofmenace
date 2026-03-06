@@ -1986,7 +1986,7 @@ export async function postmov(mon, map, player, mmoved) {
         if (objects.length > 0 && !mon.dead) {
             // Hiding under objects
             const mdat = mon.data || mon.type || {};
-            if (hides_under(mdat) || mdat.mlet === 57 /* S_EEL */) {
+            if (hides_under(mdat) || mdat.mlet === S_EEL) {
                 if (mon.mundetected || rn2(5)) {
                     // hideunder logic — simplified
                 }

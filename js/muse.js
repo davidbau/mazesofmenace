@@ -59,7 +59,7 @@ import { CORPSE, TIN, EGG, BOULDER,
          SHIELD_OF_REFLECTION, AMULET_OF_REFLECTION,
          AMULET_OF_LIFE_SAVING, AMULET_OF_GUARDING,
          SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL,
-         PICK_AXE, TIN_OPENER, ICE_BOX,
+         PICK_AXE, TIN_OPENER, ICE_BOX, LARGE_BOX,
          GLOB_OF_GREEN_SLIME,
          objectData, CLOTH } from './objects.js';
 import { bcsign, doname, splitobj, Is_container } from './mkobj.js';
@@ -388,7 +388,7 @@ function Has_contents(obj) {
     return obj && Array.isArray(obj.cobj) && obj.cobj.length > 0;
 }
 function SchroedingersBox(obj) {
-    return !!(obj && obj.spe === 1 && obj.otyp === 214); // LARGE_BOX
+    return !!(obj && obj.spe === 1 && obj.otyp === LARGE_BOX);
 }
 
 // C ref: WAND_BACKFIRE_CHANCE (100)

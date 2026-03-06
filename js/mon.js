@@ -46,7 +46,8 @@ import { rloc, tele_restrict, enexto } from './teleport.js';
 import { in_your_sanctuary } from './priest.js';
 
 import { rn2, rnd, d, pushRngLogEntry, withRngTag } from './rng.js';
-import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC } from './objects.js';
+import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC,
+         AMULET_OF_STRANGULATION, RIN_SLOW_DIGESTION } from './objects.js';
 import { couldsee, m_cansee } from './vision.js';
 import { is_hider, hides_under, is_mindless, is_displacer, perceives,
          is_human, is_elf, is_dwarf, is_gnome, is_orc, is_shapeshifter,
@@ -1174,8 +1175,8 @@ export function meatmetal(mon, map) {
         if (mon.mndx === PM_RUST_MONSTER && !is_rustprone(otmp))
             continue;
         // Skip strangulation amulet, slow digestion ring
-        if (otmp.otyp === 209 /* AMULET_OF_STRANGULATION */ ||
-            otmp.otyp === 164 /* RIN_SLOW_DIGESTION */)
+        if (otmp.otyp === AMULET_OF_STRANGULATION ||
+            otmp.otyp === RIN_SLOW_DIGESTION)
             continue;
         // Skip poisoned items for non-resistant monsters
         if (otmp.opoisoned && !resists_poison(mon))

@@ -10,7 +10,8 @@ import { ROOM, THRONE, SINK, ALTAR, GRAVE, STAIRS, LADDER,
          SEE_INVIS, INVIS, TELEPORT, TELEPAT,
          FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
          isok, W_SADDLE,
-         TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
+         TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+         S_DRAGON } from './const.js';
 import { COIN_CLASS, SADDLE } from './objects.js';
 import { pline, You, Your, You_feel, You_cant, pline_The,
          verbalize } from './pline.js';
@@ -400,7 +401,7 @@ export async function dosit(player, map, display) {
     if (objs.length > 0 && !(trap && (trap.ttyp === 7 || trap.ttyp === 8))) {
         // Not teetering at a pit — sit on objects
         const obj = objs[0]; // top object
-        if (playerType.mlet === 30 /* S_DRAGON */ && obj.oclass === COIN_CLASS) {
+        if (playerType.mlet === S_DRAGON && obj.oclass === COIN_CLASS) {
             await You("coil up around your hoard.");
         } else {
             if (slithy(playerType))

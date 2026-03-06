@@ -12,7 +12,7 @@ import {
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS, VENOM_CLASS,
     ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK, ARM_SHIRT,
     GEMSTONE, MINERAL,
-    CORPSE, SLIME_MOLD, STRANGE_OBJECT,
+    CORPSE, SLIME_MOLD, STRANGE_OBJECT, STATUE,
     AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, GOLD_PIECE, BELL_OF_OPENING,
     SPE_NOVEL, SPE_BOOK_OF_THE_DEAD, POT_WATER,
     SHORT_SWORD, BROADSWORD, FLAIL, GLAIVE, LOCK_PICK, WOODEN_HARP,
@@ -661,7 +661,7 @@ export function not_fully_identified(otmp) {
     if (!otmp.known || !otmp.dknown || !otmp.bknown
         || !isObjectNameKnown(otmp.otyp))
         return true;
-    if ((!otmp.cknown && (Is_container(otmp) || otmp.otyp === 270 /* STATUE */))
+    if ((!otmp.cknown && (Is_container(otmp) || otmp.otyp === STATUE))
         || (!otmp.lknown && Is_box(otmp)))
         return true;
     if (otmp.oartifact && undiscovered_artifact(otmp.oartifact))

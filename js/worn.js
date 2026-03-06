@@ -4,7 +4,7 @@
 import { objectData, ARMOR_CLASS, AMULET_CLASS, RING_CLASS, WEAPON_CLASS,
          TOOL_CLASS, FOOD_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
          BLINDFOLD, TOWEL, LENSES, SADDLE, MEAT_RING, SPEED_BOOTS,
-         MUMMY_WRAPPING, AMULET_OF_GUARDING,
+         MUMMY_WRAPPING, AMULET_OF_GUARDING, TIN_OPENER,
        } from './objects.js';
 import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns,
          is_humanoid, breakarm, sliparm, is_whirly, noncorporeal,
@@ -270,7 +270,7 @@ export function wearslot(obj) {
     case TOOL_CLASS:
         if (obj.otyp === BLINDFOLD || obj.otyp === TOWEL || obj.otyp === LENSES)
             return W_TOOL;
-        if (od.weptool || obj.otyp === 185 /* TIN_OPENER */)
+        if (od.weptool || obj.otyp === TIN_OPENER)
             return W_WEP | W_SWAPWEP;
         if (obj.otyp === SADDLE)
             return W_SADDLE;
