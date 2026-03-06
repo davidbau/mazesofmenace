@@ -520,6 +520,39 @@ def _resolve_const_candidates(
     return emitted, pending
 
 
+def _unresolved_dependency_details(
+    unresolved: list[tuple[str, str, str]],
+    known_names: set[str],
+) -> list[tuple[str, str, list[str], list[str], str]]:
+    unresolved_expr: dict[str, str] = {name: expr for name, _src, expr in unresolved}
+    unresolved_deps: dict[str, set[str]] = {}
+    for name, _src, expr in unresolved:
+        unresolved_deps[name] = {d for d in _expr_identifiers(expr) if d != name and d not in known_names}
+
+    def root_blockers(name: str, visiting: set[str] | None = None) -> set[str]:
+        visiting = visiting or set()
+        if name in visiting:
+            return set()
+        visiting = set(visiting)
+        visiting.add(name)
+        roots: set[str] = set()
+        for dep in unresolved_deps.get(name, set()):
+            if dep in known_names:
+                continue
+            if dep in unresolved_expr:
+                roots.update(root_blockers(dep, visiting))
+            else:
+                roots.add(dep)
+        return roots
+
+    details: list[tuple[str, str, list[str], list[str], str]] = []
+    for name, src, expr in unresolved:
+        missing = sorted(unresolved_deps.get(name, set()))
+        roots = sorted(root_blockers(name))
+        details.append((name, src, missing, roots, expr))
+    return details
+
+
 def _emit_header_block(
     *,
     title: str,
@@ -555,10 +588,7 @@ def _emit_header_block(
         lines.append(f"export const {name} = {expr};")
     lines.append("")
     if include_deferred:
-        unresolved_details: list[tuple[str, str, list[str], str]] = []
-        for name, src, expr in unresolved:
-            deps = sorted({d for d in _expr_identifiers(expr) if d != name and d not in known_names})
-            unresolved_details.append((name, src, deps, expr))
+        unresolved_details = _unresolved_dependency_details(unresolved, known_names)
 
         lines.append("export const DEFERRED_HEADER_CONST_MACROS = Object.freeze([")
         for name, src in unresolved_names:
@@ -566,13 +596,15 @@ def _emit_header_block(
         lines.append("]);")
         lines.append("")
         lines.append("export const DEFERRED_HEADER_CONST_MACRO_DETAILS = Object.freeze([")
-        for name, src, deps, expr in unresolved_details:
+        for name, src, deps, roots, expr in unresolved_details:
             deps_js = ", ".join(f'"{d}"' for d in deps)
+            roots_js = ", ".join(f'"{d}"' for d in roots)
             expr_js = expr.replace("\\", "\\\\").replace('"', '\\"')
             lines.append("    Object.freeze({")
             lines.append(f'        name: "{name}",')
             lines.append(f'        source: "{src}",')
             lines.append(f"        missingDeps: Object.freeze([{deps_js}]),")
+            lines.append(f"        rootMissingDeps: Object.freeze([{roots_js}]),")
             lines.append(f'        expr: "{expr_js}",')
             lines.append("    }),")
         lines.append("]);")
@@ -723,19 +755,29 @@ def main() -> None:
 
     if args.report_deferred:
         dep_counts: dict[str, int] = {}
+        root_counts: dict[str, int] = {}
+        details = _unresolved_dependency_details(post_pending, post_known)
         print(f"Deferred macro count: {len(post_pending)}")
-        for name, src, expr in post_pending:
-            missing = sorted({d for d in _expr_identifiers(expr) if d != name and d not in post_known})
+        for name, src, missing, roots, expr in details:
             if not missing:
                 missing = ["<unknown>"]
+            if not roots:
+                roots = ["<unknown>"]
             for dep in missing:
                 dep_counts[dep] = dep_counts.get(dep, 0) + 1
+            for dep in roots:
+                root_counts[dep] = root_counts.get(dep, 0) + 1
             print(f"{name} ({src})")
             print(f"  missing: {', '.join(missing)}")
+            print(f"  roots: {', '.join(roots)}")
             print(f"  expr: {expr}")
         print("")
-        print("Top missing dependencies:")
+        print("Top missing dependencies (immediate):")
         for dep, count in sorted(dep_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"  {dep}: {count}")
+        print("")
+        print("Top root blockers (transitive):")
+        for dep, count in sorted(root_counts.items(), key=lambda kv: (-kv[1], kv[0])):
             print(f"  {dep}: {count}")
         return
 
