@@ -28,8 +28,7 @@ import {
     resists_elec, resists_acid, resists_sleep, resists_ston,
     nonliving, sticks, attacktype, dmgtype, is_whirly,
 } from './mondata.js';
-import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_BURN,
-         EF_GREASE, EF_VERBOSE } from './trap.js';
+import { erode_obj } from './trap.js';
 import {
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_TUCH, AT_BUTT, AT_STNG,
     AT_HUGS, AT_TENT, AT_WEAP, AT_GAZE, AT_ENGL, AT_EXPL, AT_BREA,
@@ -43,13 +42,15 @@ import { mkcorpstat, xname } from './mkobj.js';
 import { CORPSE, WEAPON_CLASS, objectData } from './objects.js';
 import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+    W_ARMG, W_ARMF, W_ARMH,
+    ERODE_RUST, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_VERBOSE,
 } from './const.js';
 import {
     mhitm_adtyping,
 } from './uhitm.js';
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { mhurtle, will_hurtle } from './dothrow.js';
-import { find_mac, W_ARMG, W_ARMF, W_ARMH } from './worn.js';
+import { find_mac } from './worn.js';
 import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON, hitval } from './weapon.js';
 import { spec_dbon } from './artifact.js';
 import { canonicalizeAttackFields } from './attack_fields.js';

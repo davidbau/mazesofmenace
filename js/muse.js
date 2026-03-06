@@ -16,7 +16,8 @@ import { isok, STAIRS, LADDER, SCORR, CORR, ACCESSIBLE,
          POLY_TRAP, FIRE_TRAP,
          is_pit, is_hole,
          IS_FURNITURE, IS_DRAWBRIDGE,
-         XKILL_NOMSG, XKILL_NOCONDUCT } from './const.js';
+         XKILL_NOMSG, XKILL_NOCONDUCT,
+         W_ARM, W_ARMH, W_ARMS, W_AMUL, W_WEP, W_ARMG } from './const.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { pline, pline_mon, You_hear, verbalize } from './pline.js';
 import { dist2, distmin, BOLT_LIM, mondead, mpickobj, mdrop_obj,
@@ -62,7 +63,6 @@ import { bcsign, doname, splitobj, Is_container } from './mkobj.js';
 import { m_carrying } from './weapon.js';
 import { cansee, couldsee, mark_vision_dirty } from './vision.js';
 import { which_armor, extract_from_minvent,
-         W_ARM, W_ARMH, W_ARMS, W_AMUL, W_WEP, W_ARMG,
          mon_set_minvis, mon_adjust_speed } from './worn.js';
 import { find_mac } from './worn.js';
 import { noteleport_level, tele_restrict, rloc, enexto } from './teleport.js';

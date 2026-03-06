@@ -32,7 +32,7 @@ import { sleep_monst, slept_monst } from './mhitm.js';
 import { newsym } from './monutil.js';
 import { dist2, highc, mungspaces } from './hacklib.js';
 import { consume_obj_charge, sobj_at } from './invent.js';
-import { selftouch, mselftouch, TT_NONE, TT_PIT, TT_BURIEDBALL } from './trap.js';
+import { selftouch, mselftouch } from './trap.js';
 import { losehp } from './hack.js';
 import { in_rooms } from './hack.js';
 import { maketrap } from './dungeon.js';
@@ -56,7 +56,7 @@ import { isok, COLNO, ROWNO, PIT, SPIKED_PIT, is_pit,
          SDOOR, DOOR, D_NODOOR,
          AM_MASK, AM_SANCTUM, Amask2align,
          DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, SHOPBASE,
-         IS_DRAWBRIDGE, XKILL_NOMSG } from './const.js';
+         IS_DRAWBRIDGE, XKILL_NOMSG, TT_NONE, TT_PIT, TT_BURIEDBALL } from './const.js';
 import { getlin, ynFunction } from './input.js';
 
 // ============================================================================

@@ -10,8 +10,8 @@ import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
     W_AMUL, W_WEP, W_SWAPWEP, W_QUIVER,
-} from './worn.js';
-import { S_NYMPH } from './const.js';
+    S_NYMPH,
+} from './const.js';
 
 function isWornForSteal(obj, player) {
     if (!obj || !player) return false;

@@ -5,7 +5,8 @@ import { nhgetch, ynFunction } from './input.js';
 import { COLNO, ROWNO, STAIRS,
          CORR, ROOM, AIR, A_DEX,
          IS_FURNITURE, IS_LAVA, IS_POOL, MAGIC_PORTAL, VIBRATING_SQUARE,
-         PM_TOURIST, I_SPECIAL, TIMEOUT } from './const.js';
+         PM_TOURIST, I_SPECIAL, TIMEOUT,
+         W_ARMOR, W_ACCESSORY, W_SADDLE } from './const.js';
 import { rn1, rn2, rnd, c_d } from './rng.js';
 import { deltrap, enexto, mklev, assign_level, resolveBranchDestinationForStair } from './dungeon.js';
 import { depth as dungeonDepth } from './dungeon.js';
@@ -42,7 +43,6 @@ import { digests, touch_petrifies, is_rider, is_reviver, throws_rocks, passes_wa
 import { mons, S_ZOMBIE, NON_PM, PM_DEATH, PM_PESTILENCE, PM_FAMINE,
          PM_GREEN_SLIME, PM_WRAITH, PM_NURSE } from './monsters.js';
 import { zombie_form } from './mon.js';
-import { W_ARMOR, W_ACCESSORY, W_SADDLE } from './worn.js';
 import { revive } from './zap.js';
 import { cansee } from './vision.js';
 import { canseemon } from './mondata.js';

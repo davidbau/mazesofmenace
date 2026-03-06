@@ -25,7 +25,8 @@ import {
     IS_DOOR, IS_STWALL, IS_OBSTRUCTED,
     SLT_ENCUMBER, HVY_ENCUMBER,
     PIT, SPIKED_PIT, WEB, HOLE, TRAPDOOR, STATUE_TRAP,
-    is_pit, is_hole,
+    is_pit, is_hole, W_ARMF,
+    TT_PIT, TT_WEB, TT_BEARTRAP,
 } from './const.js';
 import {
     IS_TREE, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR,
@@ -92,7 +93,6 @@ import {
     addtobill, subfrombill, pay_for_damage, add_damage,
     hot_pursuit, contained_gold, donate_gold, picked_container,
 } from './shk.js';
-import { W_ARMF } from './worn.js';
 import { use_skill } from './weapon.js';
 import { check_caitiff, attack_checks, damageum, missum, passive } from './uhitm.js';
 import { is_art } from './artifact.js';
@@ -111,7 +111,7 @@ import { maybe_unhide_at } from './mon.js';
 import { finish_meating } from './dogmove.js';
 import { is_watch } from './mondata.js';
 import { map_invisible, canSpotMonsterForMap } from './monutil.js';
-import { water_damage, mintrap_postmove, TT_PIT, TT_WEB, TT_BEARTRAP } from './trap.js';
+import { water_damage, mintrap_postmove } from './trap.js';
 
 // ============================================================================
 // Constants

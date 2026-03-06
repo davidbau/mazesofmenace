@@ -9,7 +9,8 @@ import { ROOM, THRONE, SINK, ALTAR, GRAVE, STAIRS, LADDER,
          FIRE_RES, COLD_RES, POISON_RES, SHOCK_RES,
          SEE_INVIS, INVIS, TELEPORT, TELEPAT,
          FAST, STEALTH, PROTECTION, AGGRAVATE_MONSTER,
-         isok } from './const.js';
+         isok, W_SADDLE,
+         TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { COIN_CLASS, SADDLE } from './objects.js';
 import { pline, You, Your, You_feel, You_cant, pline_The,
          verbalize } from './pline.js';
@@ -17,7 +18,7 @@ import { exercise } from './attrib_exercise.js';
 import { is_pool, is_lava, is_ice } from './dbridge.js';
 import { is_prince, slithy, is_hider, lays_eggs, likes_lava,
          amorphous, is_humanoid, eggs_in_water, sticks } from './mondata.js';
-import { W_SADDLE, which_armor } from './worn.js';
+import { which_armor } from './worn.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { spec_ability } from './artifact.js';
 import { ART_MAGICBANE, SPFX_INTEL } from './artifacts.js';
@@ -25,7 +26,6 @@ import { make_confused, make_blinded } from './potion.js';
 import { makemon } from './makemon.js';
 import { unbless, curse as curseObj } from './mkobj.js';
 import { mark_vision_dirty } from './vision.js';
-import { TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 
 // cf. sit.c:14 -- take_gold(): remove all gold coins from hero inventory
 export async function take_gold(player, display) {

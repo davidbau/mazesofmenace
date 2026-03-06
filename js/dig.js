@@ -55,7 +55,7 @@ import {
 } from './dbridge.js';
 import { deltrap } from './dungeon.js';
 import { tmp_at, nh_delay_output, DISP_BEAM, DISP_END } from './animation.js';
-import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './trap.js';
+import { TT_NONE, TT_PIT, TT_WEB, TT_BURIEDBALL } from './const.js';
 
 // ============================================================================
 // Constants (cf. dig.c:19-27)

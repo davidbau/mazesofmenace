@@ -7,7 +7,7 @@ import { objectData, WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, ARMOR_CLASS,
          WORM_TOOTH, CRYSKNIFE, LOADSTONE } from './objects.js';
 import { doname, weight, splitobj, xname } from './mkobj.js';
 import { rn2, rnd } from './rng.js';
-import { W_WEP } from './worn.js';
+import { W_WEP } from './const.js';
 import { is_plural, otense } from './objnam.js';
 import { Shk_Your } from './shk.js';
 

@@ -30,7 +30,8 @@ import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
          PM_BALROG, AT_WEAP,
        } from './monsters.js';
 import { mons } from './monsters.js';
-import { W_ARMS, W_ARMG, W_WEP, which_armor } from './worn.js';
+import { W_ARMS, W_ARMG, W_WEP } from './const.js';
+import { which_armor } from './worn.js';
 import { dist2 } from './monutil.js';
 import { couldsee } from './vision.js';
 

@@ -9,6 +9,7 @@ import {
     A_STR, A_DEX, PM_MONK, PM_SAMURAI, PM_BARBARIAN,
     FIRE_RES, COLD_RES, SHOCK_RES, ACID_RES, FREE_ACTION,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
+    ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, EF_GREASE, EF_VERBOSE,
 } from './const.js';
 import { spec_dbon } from './artifact.js';
 import {
@@ -56,8 +57,7 @@ import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { find_mac } from './worn.js';
 import { make_stunned } from './potion.js';
 import {
-    erode_obj, erode_obj_player, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
-    EF_GREASE, EF_VERBOSE,
+    erode_obj, erode_obj_player,
 } from './trap.js';
 import { tmp_at, nh_delay_output, DISP_ALWAYS, DISP_END } from './animation.js';
 import { canonicalizeAttackFields } from './attack_fields.js';

@@ -11,6 +11,7 @@ import {
     MALE, FEMALE, DISPLACED,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     XKILL_NOMSG,
+    ERODE_RUST, ERODE_CORRODE, ERODE_ROT, EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED, ER_DESTROYED,
 } from './const.js';
 import {
     G_UNIQ, M2_NEUTER, M2_MALE, M2_FEMALE, M2_PNAME,
@@ -46,8 +47,7 @@ import { exercise } from './attrib_exercise.js';
 import { make_confused, make_stunned, make_blinded, make_hallucinated } from './potion.js';
 import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
-import { erode_obj, ERODE_RUST, ERODE_CORRODE, ERODE_ROT,
-         EF_GREASE, EF_VERBOSE, ER_NOTHING, ER_DAMAGED, ER_DESTROYED } from './trap.js';
+import { erode_obj } from './trap.js';
 import { xkilled } from './mon.js';
 import { mondead, flush_screen } from './monutil.js';
 import { mon_explodes } from './explode.js';

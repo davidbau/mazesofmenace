@@ -5,7 +5,8 @@
 import { COLNO, ROWNO, IS_ROOM, IS_DOOR, IS_POOL, IS_LAVA,
          D_CLOSED, D_LOCKED,
          POOL, STAIRS, LADDER, isok,
-         DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT, UNDEF } from './const.js';
+         DOGFOOD, CADAVER, ACCFOOD, MANFOOD, APPORT, UNDEF,
+         W_ARMS, W_WEP } from './const.js';
 import { rn2, rnd, pushRngLogEntry } from './rng.js';
 import { M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { mattacku } from './mhitu.js';
@@ -47,7 +48,6 @@ import { MAGIC_PORTAL } from './const.js';
 import { gettrack } from './track.js';
 import { helpless } from './monutil.js';
 import { onscary } from './mon.js';
-import { W_ARMS, W_WEP } from './worn.js';
 
 // Shared utilities from monmove.js
 import { dist2, distmin, monnear, mfndpos, mon_allowflags,

@@ -37,7 +37,7 @@ import { find_mac } from './worn.js';
 import { pline } from './pline.js';
 import { showPager } from './pager.js';
 import { is_pool_or_lava } from './dbridge.js';
-import { TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
+import { TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 // Window system imports available for future use (e.g., menu-based display)
 // import { create_nhwindow, destroy_nhwindow, putstr, start_menu, add_menu,
 //          end_menu, select_menu, display_nhwindow,

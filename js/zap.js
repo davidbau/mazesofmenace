@@ -10,6 +10,9 @@ import {
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     TELEP_TRAP, LEVEL_TELEP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, MAGIC_PORTAL, VIBRATING_SQUARE,
     MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
+    W_ARMOR, W_ACCESSORY, W_WEP, W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMG,
+    W_ARMF, W_ARMS, W_AMUL, W_TOOL, W_RING, W_RINGL, W_RINGR,
+    TT_NONE,
 } from './const.js';
 import { exercise } from './attrib_exercise.js';
 import { objectData, WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS,
@@ -68,9 +71,6 @@ import {
   find_mac,
   mon_adjust_speed,
   mon_set_minvis,
-  W_ARMOR, W_ACCESSORY, W_WEP,
-  W_ARMC, W_ARM, W_ARMU, W_ARMH, W_ARMG, W_ARMF, W_ARMS,
-  W_AMUL, W_TOOL, W_RING, W_RINGL, W_RINGR,
 } from './worn.js';
 import { W_ART } from './artifact.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
@@ -94,7 +94,6 @@ import { is_db_wall, find_drawbridge, open_drawbridge, close_drawbridge, destroy
 import { HOLE, TRAPDOOR } from './const.js';
 import { engr_at, del_engr_at, wipe_engr_at, rloc_engr, make_engr_at } from './engrave.js';
 import { random_engraving_rng, deltrap } from './dungeon.js';
-import { TT_NONE } from './trap.js';
 import { discoverObject } from './discovery.js';
 import { u_teleport_mon, rloco, enexto } from './teleport.js';
 import { boxlock } from './lock.js';

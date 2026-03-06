@@ -9,7 +9,7 @@ import { COLNO, ROWNO, DOOR, SDOOR, POOL,
          WATER, CLOUD, LAVAWALL, MOAT, ROOMOFFSET, PM_ROGUE,
          CROSSWALL, TRWALL } from './const.js';
 import { BOULDER } from './objects.js';
-import { TT_PIT } from './trap.js';
+import { TT_PIT } from './const.js';
 
 // Vision bit flags (C ref: vision.h)
 const COULD_SEE = 0x1;

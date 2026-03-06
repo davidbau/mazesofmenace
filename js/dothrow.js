@@ -18,7 +18,8 @@
 //   hurtle(): move hero through air after kick or impact.
 //   breakobj()/breaktest(): object breakage mechanics.
 
-import { ACCESSIBLE, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, isok, xdir, ydir, W_WEP, W_QUIVER, W_SWAPWEP,
+         ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED } from './const.js';
 import { IS_SOFT, ZAP_POS, S_boomleft, S_boomright, defsyms } from './const.js';
 import { rn2, rnd } from './rng.js';
 import { nhgetch } from './input.js';
@@ -48,9 +49,9 @@ import { Monnam, a_monnam, mon_nam } from './do_name.js';
 import { wakeup, setmangry } from './mon.js';
 import { MZ_MEDIUM, MZ_HUGE, PM_HOMUNCULUS, PM_IMP, mons } from './monsters.js';
 import { hitval, dmgval, weapon_hit_bonus, weapon_type } from './weapon.js';
-import { find_mac, W_WEP, W_QUIVER, W_SWAPWEP } from './worn.js';
+import { find_mac } from './worn.js';
 import { spec_abon } from './artifact.js';
-import { erode_obj, ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED } from './trap.js';
+import { erode_obj } from './trap.js';
 import { goodpos } from './teleport.js';
 import { mpickobj, newsym, flush_screen, canSeeMonsterForMap } from './monutil.js';
 import { makemon } from './makemon.js';

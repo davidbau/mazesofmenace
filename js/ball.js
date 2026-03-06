@@ -13,14 +13,14 @@ import { movobj, near_capacity, losehp, nomul, spoteffects } from './hack.js';
 import { flooreffects } from './do.js';
 import { placeFloorObject } from './stackobj.js';
 import { IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, POOL,
-         is_pit, is_hole, A_STR, SLT_ENCUMBER } from './const.js';
+         is_pit, is_hole, A_STR, SLT_ENCUMBER,
+         W_BALL, W_CHAIN, W_WEAPONS,
+         TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { xname } from './objnam.js';
 import { HEAVY_IRON_BALL, IRON_CHAIN } from './objects.js';
-import { W_BALL, W_CHAIN, W_WEAPONS } from './worn.js';
 import { NO_KILLER_PREFIX, KILLED_BY_AN, KILLED_BY } from './end.js';
 import { exercise } from './attrib_exercise.js';
 import { maybe_unhide_at } from './mon.js';
-import { TT_NONE, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
 
 // cf. ball.c:17 — static restriction state
 let bcrestriction = 0;

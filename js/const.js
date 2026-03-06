@@ -406,6 +406,63 @@ export const M_POISONGAS_BAD = 0;
 // C ref: include/global.h MAXMONNO
 export const MAXMONNO = 120;
 
+// Wornmask bit flags (include/prop.h and include/youprop.h)
+export const W_ARM = 0x00000001;
+export const W_ARMC = 0x00000002;
+export const W_ARMH = 0x00000004;
+export const W_ARMS = 0x00000008;
+export const W_ARMG = 0x00000010;
+export const W_ARMF = 0x00000020;
+export const W_ARMU = 0x00000040;
+export const W_ARMOR = W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU;
+export const W_WEP = 0x00000100;
+export const W_QUIVER = 0x00000200;
+export const W_SWAPWEP = 0x00000400;
+export const W_WEAPONS = W_WEP | W_SWAPWEP | W_QUIVER;
+export const W_AMUL = 0x00010000;
+export const W_RINGL = 0x00020000;
+export const W_RINGR = 0x00040000;
+export const W_RING = W_RINGL | W_RINGR;
+export const W_TOOL = 0x00080000;
+export const W_ACCESSORY = W_RING | W_AMUL | W_TOOL;
+export const W_SADDLE = 0x00100000;
+export const W_BALL = 0x00200000;
+export const W_CHAIN = 0x00400000;
+
+// Hero trap state enum (include/you.h enum utraptype)
+export const TT_NONE = 0;
+export const TT_BEARTRAP = 1;
+export const TT_PIT = 2;
+export const TT_WEB = 3;
+export const TT_LAVA = 4;
+export const TT_INFLOOR = 5;
+export const TT_BURIEDBALL = 6;
+
+// Trap trigger flags (include/hack.h; src/trap.c trigger_trap())
+export const FORCETRAP = 0x01;
+export const NOWEBMSG = 0x02;
+export const FORCEBUNGLE = 0x04;
+export const RECURSIVETRAP = 0x08;
+export const TOOKPLUNGE = 0x10;
+export const VIASITTING = 0x20;
+export const FAILEDUNTRAP = 0x40;
+
+// Item erosion kinds/results/flags (src/trap.c erode_obj*)
+export const ERODE_BURN = 0;
+export const ERODE_RUST = 1;
+export const ERODE_ROT = 2;
+export const ERODE_CORRODE = 3;
+export const ERODE_CRACK = 4;
+export const ER_NOTHING = 0;
+export const ER_GREASED = 1;
+export const ER_DAMAGED = 2;
+export const ER_DESTROYED = 3;
+export const EF_NONE = 0;
+export const EF_GREASE = 0x01;
+export const EF_DESTROY = 0x02;
+export const EF_VERBOSE = 0x04;
+export const EF_PAY = 0x08;
+
 // Trap types (trap.h)
 export const ALL_TRAPS = -1;
 export const NO_TRAP = 0;

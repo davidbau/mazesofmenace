@@ -92,7 +92,7 @@ import { makedog, mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
     W_WEP, W_SWAPWEP, W_QUIVER,
-} from './worn.js';
+} from './const.js';
 export { mon_arrive, MON_ARRIVE_WITH_YOU } from './dog.js';
 
 // ========================================================================

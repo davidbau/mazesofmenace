@@ -6,7 +6,13 @@ import {
     COLNO, ROWNO, ACCESSIBLE, isok,
     IS_DOOR, IS_STWALL, IRONBARS, TREE,
     D_BROKEN, D_CLOSED, D_LOCKED, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT,
-    A_STR, A_DEX, A_CON
+    A_STR, A_DEX, A_CON,
+    W_ARMH, W_ARMC, W_ARM, W_ARMU, W_ARMS, W_ARMG, W_ARMF,
+    TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
+    FORCETRAP, NOWEBMSG, FORCEBUNGLE, RECURSIVETRAP, TOOKPLUNGE, VIASITTING, FAILEDUNTRAP,
+    ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
+    ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
+    EF_NONE, EF_GREASE, EF_DESTROY, EF_VERBOSE, EF_PAY,
 } from './const.js';
 import { rn2, rnd, rnl, d, c_d, rn1 } from './rng.js';
 import { is_mindless, touch_petrifies, resists_ston,
@@ -20,9 +26,7 @@ import { mon_knows_traps, mon_learns_traps, mons_see_trap } from './mondata.js';
 import { mondead, newsym, helpless as monHelpless } from './monutil.js';
 import { monkilled, m_in_air, setmangry } from './mon.js';
 import { sleep_monst } from './mhitm.js';
-import { find_mac, which_armor,
-         W_ARMH, W_ARMC, W_ARM, W_ARMU, W_ARMS, W_ARMG, W_ARMF
-       } from './worn.js';
+import { find_mac, which_armor } from './worn.js';
 import { mtele_trap, mlevel_tele_trap,
          tele_trap, level_tele_trap, domagicportal } from './teleport.js';
 import { rloco } from './teleport.js';
@@ -74,28 +78,6 @@ import { exercise } from './attrib_exercise.js';
 import { poisoned } from './attrib.js';
 import { wake_nearby } from './mon.js';
 import { set_wounded_legs } from './do.js';
-
-// ========================================================================
-// Canonical trap type constants — C ref: you.h enum utraptype
-// NOTE: some older JS files used shifted values (TT_PIT=1 instead of 2).
-//       All JS files should import these and use them exclusively.
-// ========================================================================
-export const TT_NONE       = 0;  // no trap type (utrap=0 means untrapped)
-export const TT_BEARTRAP   = 1;  // caught in bear trap (C: TT_BEARTRAP=1)
-export const TT_PIT        = 2;  // trapped in pit     (C: TT_PIT=2)
-export const TT_WEB        = 3;  // caught in spider web (C: TT_WEB=3)
-export const TT_LAVA       = 4;  // sinking in lava    (C: TT_LAVA=4)
-export const TT_INFLOOR    = 5;  // embedded in floor  (C: TT_INFLOOR=5)
-export const TT_BURIEDBALL = 6;  // punishment ball buried (C: TT_BURIEDBALL=6)
-
-// Trap trigger flags — C ref: hack.h
-export const FORCETRAP     = 0x01;  // triggering not left to chance
-export const NOWEBMSG      = 0x02;  // suppress stumble into web message
-export const FORCEBUNGLE   = 0x04;  // adjustments appropriate for bungling
-export const RECURSIVETRAP = 0x08;  // trap changed type this same turn
-export const TOOKPLUNGE    = 0x10;  // used '>' to enter pit
-export const VIASITTING    = 0x20;  // #sit while at trap location
-export const FAILEDUNTRAP  = 0x40;  // activated by failed untrap attempt
 
 // C ref: trap.c static string arrays
 const a_your = ['a', 'your'];
@@ -1089,26 +1071,6 @@ export async function mintrap_postmove(mon, map, player, display, fov) {
     }
     return trap_result;
 }
-
-// ========================================================================
-// Erosion constants — C ref: hack.h
-// ========================================================================
-export const ERODE_BURN = 0;
-export const ERODE_RUST = 1;
-export const ERODE_ROT = 2;
-export const ERODE_CORRODE = 3;
-export const ERODE_CRACK = 4;
-
-export const ER_NOTHING = 0;
-export const ER_GREASED = 1;
-export const ER_DAMAGED = 2;
-export const ER_DESTROYED = 3;
-
-export const EF_NONE = 0;
-export const EF_GREASE = 0x01;
-export const EF_DESTROY = 0x02;
-export const EF_VERBOSE = 0x04;
-export const EF_PAY = 0x08;
 
 const MAX_ERODE = 3;
 

@@ -53,6 +53,7 @@ import { look_here, dfeature_at } from './invent.js';
 import { maybe_unhide_at } from './mon.js';
 import { safe_teleds } from './teleport.js';
 import { TELEDS_ALLOW_DRAG, TELEDS_TELEPORT } from './const.js';
+import { TT_PIT } from './const.js';
 import { MZ_LARGE, PM_GRID_BUG } from './monsters.js';
 import { stackobj } from './stackobj.js';
 import { thitu } from './mthrowu.js';
@@ -60,7 +61,7 @@ import { dmgval } from './weapon.js';
 import { poisoned, acurr, acurrstr } from './attrib.js';
 import { intemple } from './priest.js';
 import { t_missile, seetrap, conjoined_pits, adj_nonconjoined_pit, into_vs_onto,
-         TT_PIT } from './trap.js';
+       } from './trap.js';
 
 // Run direction keys (shift = run)
 export const RUN_KEYS = {

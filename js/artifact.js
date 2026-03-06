@@ -20,7 +20,6 @@ import {
 import { rn2, rnd, d, rnz } from './rng.js';
 import { objectData, LUCKSTONE, WEAPON_CLASS, STRANGE_OBJECT,
          GOLD_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALES } from './objects.js';
-import { W_ARM } from './worn.js';
 import {
   NON_PM, AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRLI,
   AD_STUN, AD_BLND, AD_WERE, AD_DISN, AD_STON,
@@ -30,7 +29,7 @@ import {
   mons,
 } from './monsters.js';
 import { A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, LAST_PROP,
-         CONFLICT, LEVITATION, INVIS,
+         CONFLICT, LEVITATION, INVIS, W_ARM,
        } from './const.js';
 import { SILVER } from './objects.js';
 import { pline, pline_The, You, You_feel, You_cant } from './pline.js';

@@ -28,7 +28,7 @@
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_MASK, AM_SHRINE, AM_CHAOTIC,
          AM_SANCTUM, ALTAR, ROOM, SDOOR, SCORR, isok, Amask2align, Align2amask,
          A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
-         HVY_ENCUMBER, EXT_ENCUMBER } from './const.js';
+         HVY_ENCUMBER, EXT_ENCUMBER, W_SADDLE, TT_NONE, TT_LAVA, TT_BURIEDBALL } from './const.js';
 import { roles, godForRoleAlign, isGoddess } from './player.js';
 import { rn2, rnd, rn1, rnl, rnz, d } from './rng.js';
 import { rn2_on_display_rng } from './rng.js';
@@ -60,12 +60,11 @@ import { is_undead, is_demon, is_human, is_unicorn, nohands, throws_rocks,
 import { exercise } from './attrib_exercise.js';
 import { upstart, s_suffix, sgn } from './hacklib.js';
 import { body_part, rehumanize } from './polyself.js';
-import { which_armor, W_SADDLE } from './worn.js';
+import { which_armor } from './worn.js';
 import { killed, wake_nearby } from './mon.js';
 import { losexp } from './exper.js';
 import { rndcurse, attrcurse } from './sit.js';
 import { safe_teleds } from './teleport.js';
-import { TT_NONE, TT_LAVA, TT_BURIEDBALL } from './trap.js';
 import { summon_minion, dlord } from './minion.js';
 import { makemon } from './makemon.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';

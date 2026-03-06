@@ -60,9 +60,9 @@ import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
          TELEPORT, TELEPORT_CONTROL, POLYMORPH, POLYMORPH_CONTROL,
          PROT_FROM_SHAPE_CHANGERS,
          DRAIN_RES, SICK_RES, STONE_RES, INFRAVISION,
-         TIMEOUT } from './const.js';
+         TIMEOUT, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
-import { float_down, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './trap.js';
+import { float_down } from './trap.js';
 import { float_vs_flight } from './polyself.js';
 import { mark_vision_dirty } from './vision.js';
 import { nohands, nolimbs, cantweararm, slithy, has_horns, has_head, is_humanoid } from './mondata.js';

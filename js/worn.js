@@ -10,7 +10,13 @@ import { nohands, is_animal, is_mindless, cantweararm, slithy, has_horns,
          is_humanoid, breakarm, sliparm, is_whirly, noncorporeal,
          attacktype, canseemon,
        } from './mondata.js';
-import { S_MUMMY, S_CENTAUR } from './const.js';
+import {
+    S_MUMMY, S_CENTAUR,
+    W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
+    W_WEP, W_QUIVER, W_SWAPWEP, W_WEAPONS,
+    W_AMUL, W_RINGL, W_RINGR, W_RING, W_TOOL, W_ACCESSORY,
+    W_SADDLE, W_BALL, W_CHAIN,
+} from './const.js';
 import { PM_SKELETON, PM_HOBBIT, MZ_TINY, MZ_SMALL, MZ_HUMAN, MZ_HUGE,
          AT_WEAP,
        } from './monsters.js';
@@ -18,31 +24,6 @@ import { mons } from './monsters.js';
 import { newsym } from './monutil.js';
 import { You_hear } from './pline.js';
 import { placeFloorObject } from './stackobj.js';
-
-// ============================================================================
-// Wornmask constants — cf. prop.h
-// ============================================================================
-export const W_ARM    = 0x00000001;  // Body armor (suit)
-export const W_ARMC   = 0x00000002;  // Cloak
-export const W_ARMH   = 0x00000004;  // Helmet/hat
-export const W_ARMS   = 0x00000008;  // Shield
-export const W_ARMG   = 0x00000010;  // Gloves/gauntlets
-export const W_ARMF   = 0x00000020;  // Footwear (boots)
-export const W_ARMU   = 0x00000040;  // Undershirt
-export const W_ARMOR  = W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU;
-export const W_WEP    = 0x00000100;  // Wielded weapon
-export const W_QUIVER = 0x00000200;  // Quiver for (f)iring ammo
-export const W_SWAPWEP = 0x00000400; // Secondary weapon
-export const W_WEAPONS = W_WEP | W_SWAPWEP | W_QUIVER;
-export const W_AMUL   = 0x00010000;  // Amulet
-export const W_RINGL  = 0x00020000;  // Left ring
-export const W_RINGR  = 0x00040000;  // Right ring
-export const W_RING   = W_RINGL | W_RINGR;
-export const W_TOOL   = 0x00080000;  // Eyewear (blindfold/towel/lenses)
-export const W_ACCESSORY = W_RING | W_AMUL | W_TOOL;
-export const W_SADDLE = 0x00100000;  // Saddle (riding)
-export const W_BALL   = 0x00200000;  // Punishment ball
-export const W_CHAIN  = 0x00400000;  // Punishment chain
 
 // Armor category constants — cf. objclass.h
 const ARM_SUIT   = 0;

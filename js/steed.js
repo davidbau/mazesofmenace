@@ -2,7 +2,7 @@
 // cf. steed.c -- saddle application, mounting/dismounting, steed movement and kicks
 
 import { rn2, rnd, rn1 } from './rng.js';
-import { isok, A_WIS, A_DEX, A_CHA } from './const.js';
+import { isok, A_WIS, A_DEX, A_CHA, W_SADDLE } from './const.js';
 import { pline, You, Your, You_feel, You_cant, pline_The } from './pline.js';
 import { exercise } from './attrib_exercise.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -12,7 +12,7 @@ import { is_humanoid, slithy, amorphous, noncorporeal, is_whirly,
 import { MZ_MEDIUM, MZ_SMALL, MZ_LARGE } from './monsters.js';
 import { S_QUADRUPED, S_UNICORN, S_ANGEL, S_CENTAUR, S_DRAGON,
          S_JABBERWOCK } from './const.js';
-import { W_SADDLE, which_armor } from './worn.js';
+import { which_armor } from './worn.js';
 import { SADDLE } from './objects.js';
 
 // C ref: verysmall(ptr) = msize < MZ_SMALL
