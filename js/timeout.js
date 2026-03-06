@@ -761,6 +761,18 @@ export async function hatch_egg(egg) {
         }
         if (hatched > 0 && Number.isInteger(egg.quan)) {
             egg.quan = Math.max(0, egg.quan - hatched);
+            if (egg.quan <= 0) {
+                if (map?.objects?.includes(egg)) {
+                    if (typeof map.removeObject === 'function') {
+                        map.removeObject(egg);
+                    } else {
+                        const idx = map.objects.indexOf(egg);
+                        if (idx >= 0) map.objects.splice(idx, 1);
+                    }
+                } else if (player?.inventory?.includes(egg) && typeof player.removeFromInventory === 'function') {
+                    player.removeFromInventory(egg);
+                }
+            }
         }
     }
     if (typeof pline === 'function') {

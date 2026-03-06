@@ -2606,3 +2606,21 @@ hard-won wisdom:
     - screens `408/410` (was `393/410`)
     - events `5714/6595` (was `5709/6595`)
     - first remaining divergence is non-RNG (screen/event), not RNG drift.
+
+### seed332 hatch egg lifecycle cleanup: event parity closure (2026-03-06)
+
+- Follow-up on post-RNG seed332 drift: after hatch placement parity, JS still
+  kept depleted egg stacks in place (`egg.quan` reached 0 without object removal),
+  so C `^remove[...]` events were missing.
+- C-faithful cleanup added in `js/timeout.js:hatch_egg()`:
+  - when successful hatching reduces quantity to zero, remove the egg object
+    from floor inventory (`map.removeObject`) or hero inventory
+    (`player.removeFromInventory`) as appropriate.
+- Validation:
+  - tracked seeds (`325/327/328`) unchanged on first divergence.
+  - `seed332_valkyrie_wizard_gameplay` now has full event parity:
+    - events `6595/6595` (was `5714/6595` after RNG closure),
+    - RNG remains `17821/17821`.
+  - remaining seed332 gap is now screen/color-only at step ~204
+    (`Unknown command ' '.` capture artifact class), with metrics
+    screens `408/410`, colors `9838/9840`.
