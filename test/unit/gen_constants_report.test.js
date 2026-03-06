@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const GEN_CONSTANTS = path.resolve(process.cwd(), 'scripts/generators/gen_constants.py');
+const CONST_JS_URL = pathToFileURL(path.resolve(process.cwd(), 'js/const.js')).href;
 
 function loadDeferredReport() {
     const raw = execFileSync('python3', [GEN_CONSTANTS, '--report-deferred-json'], {
@@ -11,6 +13,11 @@ function loadDeferredReport() {
         maxBuffer: 8 * 1024 * 1024,
     });
     return JSON.parse(raw);
+}
+
+async function loadConstRootBlockers() {
+    const mod = await import(CONST_JS_URL);
+    return mod.DEFERRED_HEADER_CONST_ROOT_BLOCKERS;
 }
 
 test('gen_constants deferred report JSON shape is stable', () => {
@@ -63,5 +70,21 @@ test('deferred constants inventory does not regress beyond current envelope', ()
         report.unknownOwnerBlockers,
         [],
         `unknown owner hints for root blockers: ${report.unknownOwnerBlockers.join(', ')}`,
+    );
+});
+
+test('generator root-blocker report matches generated const.js export', async () => {
+    const report = loadDeferredReport();
+    const constRootBlockers = await loadConstRootBlockers();
+    assert.ok(Array.isArray(constRootBlockers));
+
+    const norm = (arr) => arr
+        .map((x) => ({ name: x.name, count: x.count, ownerHint: x.ownerHint }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    assert.deepEqual(
+        norm(report.rootBlockers),
+        norm(constRootBlockers),
+        'generator report rootBlockers must match const.js DEFERRED_HEADER_CONST_ROOT_BLOCKERS',
     );
 });
