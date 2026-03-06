@@ -59,7 +59,7 @@ no build step. Open the page. Pick a role. Descend.
 - **Special level event logic** — all 132 levels generate correctly as maps, but their unique triggers, quest mechanics, and scripted monster placements are mostly missing
 - **Player trap effects** — monster traps are fully ported; the player `dotrap()` path is not yet implemented, so arrow traps, dart traps, rolling boulders, landmines, and others are present in maps but do not trigger for the player
 - **Some artifact invocations** — taming, healing, and energy-boost invocations work; portal creation, ammo creation, demon banishment, and a few others are stubs
-- **And more** — NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions; so far, this port covers the core engine and most major gameplay systems with 157,000+ lines of JavaScript
+- **And more** — NetHack 3.7 has ~420,000 lines of C, headers, and Lua across ~8,600 functions; so far, this port covers the core engine and most major gameplay systems with 175,000+ lines of JavaScript
 
 The Hive is aware of this.
 
@@ -133,12 +133,16 @@ throughout. See the full architecture and design documents:
 - **Faithful C references** — Comments like `// C ref: uhitm.c find_roll_to_hit()`
   link every function to its C source counterpart.
 
-## Data Generation
+## Data Generation and Metaprogramming
 
 *You read the scroll of generate data. Your objects.js glows blue!*
 
-Monster, object, and artifact data are auto-generated from the NetHack C source
-headers via Python scripts:
+Several parts of the codebase are generated or converted from NetHack's C source
+rather than hand-ported:
+
+**Data tables from C headers:** Monster, object, and artifact data are auto-generated
+from NetHack `monsters.h`, `objects.h`, and `artilist.h` by Python scripts that parse
+C macro calls and emit equivalent JS:
 
 ```bash
 python3 scripts/generators/gen_monsters.py   # patches js/monsters.js between markers
@@ -146,6 +150,29 @@ python3 scripts/generators/gen_objects.py    # patches js/objects.js between mar
 python3 scripts/generators/gen_artifacts.py  # patches js/artifacts.js between markers
 python3 scripts/generators/gen_constants.py  # patches js/const.js generated constants blocks
 ```
+
+**Special levels from Lua:** All 132 NetHack special levels are defined in Lua in
+the C source. Each was converted to an equivalent JS module (e.g. `Arc-fila.lua`
+→ `js/levels/Arc-fila.js`) that calls a JS implementation of the `sp_lev` API —
+the same room-placement, monster-placement, and map-painting calls, just in JS syntax.
+
+**ISAAC64 BigInt port:** The PRNG is a direct port of `isaac64.c` using JS BigInt
+for exact 64-bit unsigned arithmetic — bit-identical to the C implementation including
+seeding and the interleaved refill/consumption pattern.
+
+**xcrypt decryption:** The rumor and epitaph data files are XOR-encrypted binary
+blobs in the NetHack distribution. A JS port of the C `xcrypt` algorithm decrypts
+them at startup, identical to the C behavior.
+
+**C-parity test harness:** A Python harness runs the real NetHack C binary and
+records every RNG call, screen frame, cursor position, and map state into session
+JSON files. The JS test suite replays these sessions step-by-step and asserts
+parity on all channels. Test results are stored as git notes on commits, enabling
+retroactive comparison across the development history.
+
+**Translator annotations:** Every ported function carries a `// C ref: file.c function()`
+comment linking it to its C source counterpart, keeping the port navigable as the
+C source evolves.
 
 ## Project Structure
 
@@ -167,7 +194,7 @@ python3 scripts/generators/gen_constants.py  # patches js/const.js generated con
 │   ├── levels/             132 special level modules
 │   └── ...
 ├── test/
-│   ├── unit/               159 unit test files
+│   ├── unit/               183 unit test files
 │   ├── comparison/         C-vs-JS golden session tests
 │   ├── e2e/                Puppeteer browser tests
 │   └── selfplay/           Self-play harness tests
@@ -286,7 +313,7 @@ In February 2025, Andrej Karpathy coined the term **"vibe coding"** to describe 
 
 This project is a test of that proposition at scale. Can AI agents, directed by a non-expert human, produce a faithful port of one of the most complex single-player codebases in gaming history? Not a toy demo or a weekend throwaway, but a real, playable, parity-correct reimplementation — over one hundred fifty thousand lines of readable JavaScript that match NetHack's behavior down to the random number generator?
 
-The entire codebase — 147 JavaScript modules, 3,100+ passing tests, 150 golden C-comparison sessions, and a suite of Python test harness scripts — was produced through natural-language conversation with AI agents. The human provided direction and taste; the agents wrote the code, tests, and documentation.
+The entire codebase — 141 JavaScript modules, 2,400+ passing unit tests, 156 golden C-comparison sessions, and a suite of Python test harness scripts — was produced through natural-language conversation with AI agents. The human provided direction and taste; the agents wrote the code, tests, and documentation.
 
 ## License
 
