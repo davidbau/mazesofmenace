@@ -18,7 +18,7 @@ import {
     MZ_HUMAN, MZ_HUGE,
     AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_TENT, AT_WEAP, AT_ENGL, AT_NONE, AT_BOOM, AT_EXPL, AT_GAZE, AT_SPIT, AT_BREA, AT_MAGC,
-    S_NYMPH, PM_AMOROUS_DEMON, PM_MEDUSA, PM_BALROG,
+    S_NYMPH, S_EEL, PM_AMOROUS_DEMON, PM_MEDUSA, PM_BALROG,
     AD_PHYS, AD_FIRE, AD_COLD, AD_SLEE, AD_ELEC, AD_DRST, AD_SLOW,
     AD_PLYS, AD_DRLI, AD_DREN, AD_STON, AD_STCK, AD_TLPT, AD_CONF,
     AD_DRIN, AD_ACID, AD_BLND, AD_STUN, AD_WRAP, AD_RUST, AD_CORR,
@@ -31,7 +31,7 @@ import {
 import { objectData, BULLWHIP, CLOAK_OF_DISPLACEMENT } from './objects.js';
 import { xname } from './mkobj.js';
 import {
-    x_monnam, is_humanoid, thick_skinned,
+    x_monnam, is_humanoid, thick_skinned, hides_under,
     resists_fire, resists_cold, resists_elec, resists_acid, resists_ston,
     sticks, unsolid, attacktype, is_demon, is_were, is_human,
     is_animal, digests, enfolds, is_whirly, haseyes, perceives,
@@ -50,7 +50,7 @@ import { losexp } from './exper.js';
 import { stealgold, steal } from './steal.js';
 import { erode_obj } from './trap.js';
 import { xkilled, mondead } from './mon.js';
-import { flush_screen } from './display.js';
+import { flush_screen, newsym } from './display.js';
 import { mon_explodes } from './explode.js';
 import { spec_dbon } from './artifact.js';
 import { msummon } from './minion.js';
@@ -1147,6 +1147,16 @@ export async function mattacku(monster, player, display, game = null, opts = {})
         // ================================================================
         // Hit! — hitmu() equivalent
         // ================================================================
+
+        // C ref: mhitu.c hitmu() — if a hides-under/eel monster was
+        // undetected when it hits the hero, reveal it.
+        const mdat = monster.data || monster.type || {};
+        if (monster.mundetected && (hides_under(mdat) || mdat.mlet === S_EEL)) {
+            monster.mundetected = false;
+            if (Number.isInteger(monster.mx) && Number.isInteger(monster.my)) {
+                newsym(monster.mx, monster.my, map || game?.map || null);
+            }
+        }
 
         // cf. mhitu.c:1182 — base damage: d(dice, sides)
         const mhm = {

@@ -2907,3 +2907,20 @@ hard-won wisdom:
   - `node scripts/test-unit-core.mjs --runInBand` passes (`2483/2483`).
   - `scripts/run-and-report.sh --failures` unchanged (`27/34` gameplay passing,
     same 7 failing sessions).
+
+### mhitu parity: reveal hider/eel attacker on hit (2026-03-06)
+
+- Root cause:
+  - C `hitmu()` clears `mtmp->mundetected` for hides-under/eel attackers that
+    successfully hit the hero (`mhitu.c:1157`), then redraws that square.
+  - JS `mattacku`/hit path had no equivalent branch, leaving this state update
+    missing.
+- Fix:
+  - Added C-faithful unhide branch in `js/mhitu.js` hit path:
+    - if `monster.mundetected && (hides_under(mdat) || mdat.mlet == S_EEL)`
+    - clear `mundetected` and call `newsym(monster.mx, monster.my, ...)`.
+- Validation:
+  - Targeted `seed328` replay remains non-regressed (still isolated screen-only
+    mismatch at step `231`; RNG/events 100%).
+  - `scripts/run-and-report.sh --failures` unchanged (`27/34` gameplay passing,
+    same 7 failing sessions).
