@@ -671,7 +671,15 @@ export function watch_dig(mtmp, x, y, zap, map) {
     }
     if (!mon) return;
 
-    const diggingCtx = player.context?.digging || null;
+    const playerCtx = (player.context = player.context || {});
+    const diggingCtx = (playerCtx.digging = playerCtx.digging || {
+        down: false,
+        chew: false,
+        warned: false,
+        pos: { x: 0, y: 0 },
+        effort: 0,
+        level: { dnum: 0, dlevel: -1 },
+    });
     const warned = !!diggingCtx?.warned;
     if (zap || warned) {
         _gstate?.display?.putstr_message?.("Halt, vandal!  You're under arrest!");
@@ -681,9 +689,12 @@ export function watch_dig(mtmp, x, y, zap, map) {
         else if (IS_TREE(lev.typ)) str = 'tree';
         else if (IS_OBSTRUCTED(lev.typ)) str = 'wall';
         _gstate?.display?.putstr_message?.(`Hey, stop damaging that ${str}!`);
-        if (diggingCtx) diggingCtx.warned = true;
+        diggingCtx.warned = true;
     }
 
+    if (_gstate?.occupation) {
+        _gstate.occupation = null;
+    }
     if (is_digging(player)) {
         player.occupation = null;
     }
@@ -752,7 +763,6 @@ export async function zap_dig(map, player) {
     let zx = u.x + (u.dx || 0);
     let zy = u.y + (u.dy || 0);
     let shopdoor = false, shopwall = false;
-    let razedVisibleDoor = false;
     let trap_with_u = null;
     let diridx = 8;
     let pitdig = false;
@@ -821,8 +831,8 @@ export async function zap_dig(map, player) {
                 }
                 if (wasSdoor) {
                     cvt_sdoor_to_door(room, map);
-                } else {
-                    razedVisibleDoor = !!cansee(map, player, _gstate?.fov || null, zx, zy);
+                } else if (cansee(map, player, _gstate?.fov || null, zx, zy)) {
+                    _gstate?.display?.putstr_message?.('The door is razed!');
                 }
                 watch_dig(null, zx, zy, true, map);
                 room.flags = D_NODOOR;
@@ -832,6 +842,10 @@ export async function zap_dig(map, player) {
             } else if (maze_dig) {
                 if (IS_WALL(room.typ)) {
                     if (!room.nondiggable) {
+                        if (in_rooms_shopbase(zx, zy, map)) {
+                            add_damage(zx, zy, 500, map, _gstate?.moves || 0);
+                            shopwall = true;
+                        }
                         room.typ = ROOM;
                         room.flags = 0;
                         unblock_point(zx, zy);
@@ -887,11 +901,6 @@ export async function zap_dig(map, player) {
                 }
                 unblock_point(zx, zy);
             }
-            if (razedVisibleDoor) {
-                _gstate?.display?.putstr_message?.('The door is razed!');
-                razedVisibleDoor = false;
-            }
-
             newsym(zx, zy);
             zx += (u.dx || 0);
             zy += (u.dy || 0);
@@ -1173,7 +1182,7 @@ export function dig(map, player) {
             break;
         case 1:
             // "Bang! You hit with the broad side!"
-            // wake_nearby(FALSE)
+            wake_nearby(false, player);
             break;
         default:
             // "Your swing misses its mark."
@@ -1491,7 +1500,7 @@ export function dig_check(madeby, x, y, map, player) {
     }
 
     // Can_dig_down check
-    const canDigDown = !!(map.flags && map.flags.can_dig_down) || !!(loc.candig);
+    const canDigDown = !!Can_dig_down(map) || !!(loc.candig);
     if (!canDigDown) {
         if (ttmp) {
             const is_hole = (ttmp.ttyp === HOLE || ttmp.ttyp === TRAPDOOR);
