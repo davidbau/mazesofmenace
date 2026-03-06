@@ -2147,7 +2147,7 @@ export function find_pmmonst(pm, game, map) {
       if (DEADMONSTER(mtmp)) {
         continue;
       }
-      if (mtmp.data === mons) {
+      if (mtmp.data === mons[pm]) {
         break;
       }
     }

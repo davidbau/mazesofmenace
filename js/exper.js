@@ -6,6 +6,7 @@ import { roles, races } from './player.js';
 import { A_CON, A_WIS,
          PM_PRIEST, PM_WIZARD, PM_HEALER, PM_KNIGHT,
          PM_BARBARIAN, PM_VALKYRIE } from './const.js';
+import { mons, PM_ACID_BLOB } from './monsters.js';
 
 const MAXULEV = 30;
 
@@ -244,7 +245,7 @@ export function experience(mtmp, nk) {
   if (mtmp.m_lev > 8) {
     tmp += 50;
   }
-  if (mtmp.data === mons) tmp = 1;
+  if (mtmp.data === mons[PM_ACID_BLOB]) tmp = 1;
   if (mtmp.mrevived || mtmp.mcloned) {
     for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
       tmp = (tmp + 1) / 2;

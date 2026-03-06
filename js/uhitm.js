@@ -1475,7 +1475,7 @@ export function stumble_onto_mimic(mtmp) {
 export function disguised_as_non_mon(mtmp) {
     // C: M_AP_TYPE(mtmp) && M_AP_TYPE(mtmp) != M_AP_MONSTER
     const M_AP_NOTHING = 0;
-    const M_AP_MONSTER = 2;
+    const M_AP_MONSTER = 3; // C: M_AP_MONSTER=3, not 2 (2 is M_AP_OBJECT)
     const ap = mtmp.m_ap_type || M_AP_NOTHING;
     return ap !== M_AP_NOTHING && ap !== M_AP_MONSTER;
 }
@@ -1484,7 +1484,7 @@ export function disguised_as_non_mon(mtmp) {
 //   Check if monster is disguised as another monster.
 //   Returns true if mtmp's appearance type is M_AP_MONSTER.
 export function disguised_as_mon(mtmp) {
-    const M_AP_MONSTER = 2;
+    const M_AP_MONSTER = 3; // C: M_AP_MONSTER=3, not 2 (2 is M_AP_OBJECT)
     return (mtmp.m_ap_type || 0) === M_AP_MONSTER;
 }
 

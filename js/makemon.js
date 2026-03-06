@@ -2625,7 +2625,7 @@ export function create_critters(cnt, mptr, neverask, player) {
     }
     x = player.x, y = player.y;
     if (!mptr && player.uinwater && enexto( c, x, y, mons[PM_GIANT_EEL])) x = c.x, y = c.y;
-    if ((mon = makemon(mptr, x, y, NO_MM_FLAGS)) === 0) {
+    if ((mon = makemon(mptr, x, y, NO_MM_FLAGS)) == null) {
       continue;
     }
     if ((canseemon(mon, player, null, player?.map || null) && (M_AP_TYPE(mon) === M_AP_NOTHING || M_AP_TYPE(mon) === M_AP_MONSTER))
@@ -2671,7 +2671,7 @@ export async function grow_up(mtmp, victim, game) {
   else if (lev_limit < 5) lev_limit = 5;
   else if (lev_limit > 49) lev_limit = (ptr.mlevel > 49 ? 50 : 49);
   if ( ++mtmp.m_lev >= mons[newtype].mlevel && newtype !== oldtype) {
-    ptr = mons;
+    ptr = mons[newtype];
     fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : mtmp.female;
     if (game.mvitals[newtype].mvflags & G_GENOD) {
       if (canspotmon(mtmp)) await pline("As %s grows up into %s, %s %s!", mon_nam(mtmp), an(pmname(ptr, Mgender(mtmp))), mhe(mtmp), nonliving(ptr) ? "expires" : "dies");

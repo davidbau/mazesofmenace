@@ -1696,7 +1696,7 @@ export function save_mtraits(obj, mtmp) {
   if (!has_omonst(obj)) newomonst(obj);
   if (has_omonst(obj)) {
     let baselevel = mtmp.data.mlevel, mtmp2 = OMONST(obj);
-     mtmp2 = mtmp;
+    Object.assign(mtmp2, mtmp); // C: *mtmp2 = *mtmp (struct copy into omonst storage)
     mtmp2.mextra =  0;
     mtmp2.mnum = monsndx(mtmp.data);
     mtmp2.nmon =  0;
@@ -1720,12 +1720,12 @@ export function get_mtraits(obj, copyof) {
   if (mtmp) {
     if (copyof) {
       mnew = newmonst();
-       mnew = mtmp;
+      Object.assign(mnew, mtmp); // C: *mnew = *mtmp (struct copy)
       mnew.mextra =  0;
       if (mtmp.mextra) copy_mextra(mnew, mtmp);
     }
     else { mnew = mtmp; }
-    mnew.data = mons;
+    mnew.data = mons[mnew.mnum];
   }
   return mnew;
 }

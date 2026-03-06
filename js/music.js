@@ -93,7 +93,7 @@ function has_mgivenname(mon) {
 
 // C: M_AP_TYPE(mtmp) — appearance type constants
 const M_AP_NOTHING = 0;
-const M_AP_MONSTER = 2;
+const M_AP_MONSTER = 3; // C: M_AP_MONSTER=3 (2 is M_AP_OBJECT)
 
 function M_AP_TYPE(mtmp) {
     return mtmp.m_ap_type || M_AP_NOTHING;

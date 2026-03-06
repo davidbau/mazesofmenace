@@ -1271,8 +1271,8 @@ export function dig_check(madeby, x, y, map, player) {
     // undestroyable trap check
     if (ttmp && ttmp.ttyp !== undefined) {
         // C: undestroyable_trap — magic portal, vibrating square
-        const MAGIC_PORTAL = 23; // from config
-        const VIBRATING_SQUARE = 24;
+        const MAGIC_PORTAL = 17; // C trap type enum
+        const VIBRATING_SQUARE = 23;
         if (ttmp.ttyp === MAGIC_PORTAL || ttmp.ttyp === VIBRATING_SQUARE) {
             return DIGCHECK_FAIL_UNDESTROYABLETRAP;
         }

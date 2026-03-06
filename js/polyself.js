@@ -1739,10 +1739,11 @@ export async function dospinweb(player, map) {
 
     if (ttmp) {
         // Handle various trap types as in C
-        const PIT = 0, SPIKED_PIT = 1, SQKY_BOARD = 4;
-        const TELEP_TRAP = 5, LEVEL_TELEP = 6, MAGIC_PORTAL = 21;
-        const VIBRATING_SQUARE = 22, WEB = 12, HOLE = 2, TRAPDOOR = 3;
-        const ROLLING_BOULDER_TRAP = 19;
+        // C trap type enum values (from const.js)
+        const PIT = 11, SPIKED_PIT = 12, SQKY_BOARD = 4;
+        const TELEP_TRAP = 15, LEVEL_TELEP = 16, MAGIC_PORTAL = 17;
+        const VIBRATING_SQUARE = 23, WEB = 18, HOLE = 13, TRAPDOOR = 14;
+        const ROLLING_BOULDER_TRAP = 7;
         const ttyp = ttmp.ttyp !== undefined ? ttmp.ttyp : ttmp.type;
 
         switch (ttyp) {
@@ -1787,7 +1788,7 @@ export async function dospinweb(player, map) {
 
     // Create a web trap
     if (map.maketrap) {
-        const newTrap = map.maketrap(x, y, 12 /* WEB */);
+        const newTrap = map.maketrap(x, y, 18 /* WEB */);
         if (newTrap) {
             newTrap.madeby_u = 1;
         }

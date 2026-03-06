@@ -86,7 +86,8 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          G_FREQ, G_NOCORPSE, G_UNIQ,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_MIMIC, S_UNICORN,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
-         S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN } from './monsters.js';
+         S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
+         PM_FLESH_GOLEM, PM_STONE_GOLEM, PM_ERINYS } from './monsters.js';
 import { PIT, SPIKED_PIT, HOLE, S_poisoncloud } from './const.js';
 import { m_harmless_trap } from './trap.js';
 import { dist2, distmin } from './hack.js';
@@ -1861,14 +1862,14 @@ export function logdeadmon(mtmp, mndx, game) {
 
 // Autotranslated from mon.c:3070
 export function anger_quest_guardians(mtmp, player) {
-  if (mtmp.data === mons) setmangry(mtmp, true);
+  if (mtmp.data === mons) setmangry(mtmp, true); // TODO: C checks &mons[urole.guardnum]
 }
 
 // Autotranslated from mon.c:3746
 export async function mon_to_stone(mtmp) {
   if (mtmp.data.mlet === S_GOLEM) {
     if (canseemon(mtmp)) await pline_mon(mtmp, "%s solidifies...", Monnam(mtmp));
-    if (newcham(mtmp, mons, NO_NC_FLAGS)) {
+    if (newcham(mtmp, mons[PM_STONE_GOLEM], NO_NC_FLAGS)) {
       if (canseemon(mtmp)) await pline("Now it's %s.", an(pmname(mtmp.data, Mgender(mtmp))));
     }
     else {
@@ -1897,8 +1898,8 @@ export async function vamp_stone(mtmp, game) {
         if (enexto( new_xy, mtmp.mx, mtmp.my, mons[mndx])) { rloc_to(mtmp, new_xy.x, new_xy.y); }
       }
       if (canspotmon(mtmp)) { await pline_mon(mtmp, "%s!", buf); await display_nhwindow(WIN_MESSAGE, false); }
-      newcham(mtmp, mons, NO_NC_FLAGS);
-      if (mtmp.data === mons) mtmp.cham = NON_PM;
+      newcham(mtmp, mons[mndx], NO_NC_FLAGS);
+      if (mtmp.data === mons[mndx]) mtmp.cham = NON_PM;
       else {
         mtmp.cham = mndx;
       }
@@ -1966,7 +1967,7 @@ export async function m_respond(mtmp) {
 
 // Autotranslated from mon.c:4133
 export async function qst_guardians_respond(map, player) {
-  let mon, q_guardian =  mons, got_mad = 0;
+  let mon, q_guardian = mons, got_mad = 0; // TODO: C uses &mons[urole.guardnum]
   for (mon = (map?.fmon || null); mon; mon = mon.nmon) {
     if (DEADMONSTER(mon)) {
       continue;
@@ -2036,11 +2037,11 @@ export function valid_vampshiftform(base, form) {
 export async function accept_newcham_form(mon, mndx, game) {
   let mdat;
   if (mndx === NON_PM) return 0;
-  mdat = mons;
+  mdat = mons[mndx];
   if ((game.mvitals[mndx].mvflags & G_GENOD) !== 0) return 0;
   if (is_placeholder(mdat)) return 0;
   if (is_mplayer(mdat)) return mdat;
-  if (is_shapeshifter(mdat) && ismnum(mon.cham) && mdat === mons) return mdat;
+  if (is_shapeshifter(mdat) && ismnum(mon.cham) && mdat === mons[mon.cham]) return mdat;
   return polyok(mdat) ? mdat : 0;
 }
 
@@ -2075,11 +2076,11 @@ export function kill_eggs(obj_list) {
 // Autotranslated from mon.c:5676
 export async function golemeffects(mon, damtype, dam) {
   let heal = 0, slow = 0;
-  if (mon.data === mons) {
+  if (mon.data === mons[PM_FLESH_GOLEM]) {
     if (damtype === AD_ELEC) heal = (dam + 5) / 6;
     else if (damtype === AD_FIRE || damtype === AD_COLD) slow = 1;
   }
-  else if (mon.data === mons) {
+  else if (mon.data === mons[PM_IRON_GOLEM]) {
     if (damtype === AD_ELEC) slow = 1;
     else if (damtype === AD_FIRE) heal = dam;
   }
@@ -2166,7 +2167,7 @@ export async function mimic_hit_msg(mtmp, otyp) {
 
 // Autotranslated from mon.c:5918
 export function adj_erinys(abuse, game, player) {
-  let pm =  mons;
+  let pm = mons[PM_ERINYS];
   if (abuse > 5) { pm.mflags1 |= M1_SEE_INVIS; }
   if (abuse > 10) { pm.mflags1 |= M1_AMPHIBIOUS; }
   if (abuse > 15) { pm.mflags1 |= M1_FLY; }

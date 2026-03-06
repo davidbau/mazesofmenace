@@ -553,10 +553,10 @@ export async function pick_familiar_pm(otmp, quietly, game) {
   if (otmp) {
     let mndx = otmp.corpsenm;
     assert(ismnum(mndx));
-    pm = mons;
+    pm = mons[mndx];
     if ((game.mvitals[mndx].mvflags & G_EXTINCT) && mbirth_limit(mndx) !== MAXMONNO) { if (!quietly) await pline("... into a pile of dust."); return  0; }
   }
-  else if (!rn2(3)) { pm = mons; }
+  else if (!rn2(3)) { pm = mons[rndmonst()]; }
   else {
     let skill = spell_skilltype(SPE_CREATE_FAMILIAR), max = 3 * P_SKILL(skill);
     pm = rndmonst_adj(0, max);

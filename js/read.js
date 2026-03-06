@@ -22,7 +22,7 @@ import { discoverObject, isObjectNameKnown } from './o_init.js';
 import { make_confused, make_stunned } from './potion.js';
 import { makemon } from './makemon.js';
 import { NO_MINVENT } from './const.js';
-import { mons, PM_ACID_BLOB, PM_YELLOW_LIGHT, PM_BLACK_LIGHT, S_HUMAN } from './monsters.js';
+import { mons, PM_ACID_BLOB, PM_YELLOW_LIGHT, PM_BLACK_LIGHT, PM_GREMLIN, S_HUMAN } from './monsters.js';
 import { resist } from './zap.js';
 import { monflee } from './monmove.js';
 import { Yobjnam2, Yname2, makeplural, an } from './objnam.js';
@@ -1560,7 +1560,7 @@ export function set_lit(x, y, val, map) {
   let mtmp, gremlin;
   if (val) {
     map.locations[x][y].lit = 1;
-    if ((mtmp = m_at(x, y)) != null && mtmp.data === mons) {
+    if ((mtmp = m_at(x, y)) != null && mtmp.data === mons[PM_GREMLIN]) {
       gremlin =  alloc(gremlin.length);
       gremlin.mon = mtmp;
       gremlin.nxt = gremlins;

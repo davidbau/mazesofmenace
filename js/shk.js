@@ -451,8 +451,9 @@ export function set_cost(obj, shkp, player) {
 // Autotranslated from shk.c:1076
 export function onbill(obj, shkp, silent) {
   if (shkp) {
-    let bp, ct;
-    for (ct = ESHK(shkp).billct, bp = ESHK(shkp).bill_p; ct > 0; --ct, ++bp) {
+    const eshkp = ESHK(shkp);
+    for (let i = 0; i < eshkp.billct; i++) {
+      const bp = eshkp.bill[i];
       if (bp.bo_id === obj.o_id) {
         if (!obj.unpaid) impossible("onbill: paid obj on bill?");
         return bp;
@@ -488,10 +489,10 @@ export function next_shkp(shkp, withbill) {
 // C ref: shk.c addupbill() -- total of all items on bill
 // Autotranslated from shk.c:436
 export function addupbill(shkp) {
-  let ct = ESHK(shkp).billct, bp = ESHK(shkp).bill_p, total = 0;
-  while (ct--) {
-    total += bp.price * bp.bquan;
-    bp++;
+  const eshkp = ESHK(shkp);
+  let total = 0;
+  for (let i = 0; i < eshkp.billct; i++) {
+    total += eshkp.bill[i].price * eshkp.bill[i].bquan;
   }
   return total;
 }
@@ -499,9 +500,9 @@ export function addupbill(shkp) {
 // C ref: shk.c shop_debt() -- total debt to shopkeeper
 // Autotranslated from shk.c:930
 export function shop_debt(eshkp) {
-  let bp, ct, debt = eshkp.debit;
-  for (bp = eshkp.bill_p, ct = eshkp.billct; ct > 0; bp++, ct--) {
-    debt += bp.price * bp.bquan;
+  let debt = eshkp.debit;
+  for (let i = 0; i < eshkp.billct; i++) {
+    debt += eshkp.bill[i].price * eshkp.bill[i].bquan;
   }
   return debt;
 }
@@ -584,7 +585,7 @@ function ensureBill(shkp) {
 export async function add_one_tobill(obj, dummy, shkp, player) {
   let eshkp, bp, bct, unbilled = false;
   eshkp = ESHK(shkp);
-  if (!eshkp.bill_p) eshkp.bill_p = eshkp.bill[0];
+  if (!eshkp.bill_p) eshkp.bill_p = eshkp.bill; // C: bill_p = &bill[0] (pointer to array start)
   if (!billable( shkp, obj, player.ushops, true)) { unbilled = true; }
   else if (eshkp.billct === BILLSZ) { await You("got that for free!"); unbilled = true; }
   if (unbilled) { if (obj.where === OBJ_FREE) dealloc_obj(obj); return; }
@@ -615,7 +616,7 @@ export function sub_one_frombill(obj, shkp) {
     obj.unpaid = 0;
     if (bp.bquan > obj.quan) {
       otmp = newobj();
-       otmp = obj;
+      Object.assign(otmp, obj); // C: *otmp = *obj (struct copy)
       otmp.oextra =  0;
       bp.bo_id = otmp.o_id = next_ident();
       otmp.where = OBJ_FREE;
@@ -627,7 +628,7 @@ export function sub_one_frombill(obj, shkp) {
     }
     eshkp = ESHK(shkp);
     eshkp.billct--;
-     bp = eshkp.bill_p[eshkp.billct];
+    Object.assign(bp, eshkp.bill[eshkp.billct]); // C: *bp = bill_p[billct] (compact array)
     return;
   }
   else if (obj.unpaid) {
@@ -806,12 +807,11 @@ export function rile_shk(shkp) {
 export function pacify_shk(shkp, clear_surcharge) {
   NOTANGRY(shkp) = true;
   if (clear_surcharge && ESHK(shkp).surcharge) {
-    let bp = ESHK(shkp).bill_p, ct = ESHK(shkp).billct;
-    ESHK(shkp).surcharge = false;
-    while (ct-- > 0) {
-      let reduction = (bp.price + 3) / 4;
-      bp.price -= reduction;
-      bp++;
+    const eshkp = ESHK(shkp);
+    eshkp.surcharge = false;
+    for (let i = 0; i < eshkp.billct; i++) {
+      let reduction = Math.floor((eshkp.bill[i].price + 3) / 4);
+      eshkp.bill[i].price -= reduction;
     }
   }
 }
@@ -2250,7 +2250,7 @@ export function clear_no_charge_pets(shkp, map) {
 export function restshk(shkp, ghostly, map) {
   if (map.uz.dlevel) {
     let eshkp = ESHK(shkp);
-    if (eshkp.bill_p !==  -1000) eshkp.bill_p = eshkp.bill[0];
+    if (eshkp.bill_p !==  -1000) eshkp.bill_p = eshkp.bill; // C: bill_p = &bill[0]
     if (ghostly) {
       assign_level( eshkp.shoplevel, map.uz);
       if (ANGRY(shkp) && strncmpi(eshkp.customer, svp.plname, PL_NSIZ)) pacify_shk(shkp, true);
@@ -2301,7 +2301,7 @@ export function obfree(obj, merge, player) {
       let eshkp = ESHK(shkp);
       bpm.bquan += bp.bquan;
       eshkp.billct--;
-       bp = eshkp.bill_p[eshkp.billct];
+      Object.assign(bp, eshkp.bill[eshkp.billct]); // C: *bp = bill_p[billct] (compact)
     }
   }
   else {
@@ -2336,9 +2336,11 @@ export function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
     paiditem.unpaid = 0;
     if (paiditem.where === OBJ_ONBILL) { obj_extract_self(paiditem); dealloc_obj(paiditem); }
     newebillct = eshkp.billct - 1;
-     bp = eshkp.bill_p[newebillct];
+    // C: *bp = bill_p[newebillct] — compact array by moving last entry into bp's slot
+    const bpIdx = eshkp.bill.indexOf(bp);
+    Object.assign(bp, eshkp.bill[newebillct]);
     for (j = 0; j < ibillct; ++j) {
-      if (ibill[j].bidx === newebillct) ibill[j].bidx = Math.trunc(bp - eshkp.bill_p);
+      if (ibill[j].bidx === newebillct) ibill[j].bidx = bpIdx;
     }
     eshkp.billct = newebillct;
   }

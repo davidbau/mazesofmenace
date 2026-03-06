@@ -202,9 +202,11 @@ function spellet(spell) {
 // Autotranslated from spell.c:114
 export function spell_let_to_idx(ilet) {
   let indx;
-  indx = ilet - 'a';
+  // C: char subtraction is integer arithmetic; JS needs charCodeAt
+  const code = (typeof ilet === 'string') ? ilet.charCodeAt(0) : ilet;
+  indx = code - 97; // 'a' = 97
   if (indx >= 0 && indx < 26) return indx;
-  indx = ilet - 'A';
+  indx = code - 65; // 'A' = 65
   if (indx >= 0 && indx < 26) return indx + 26;
   return -1;
 }

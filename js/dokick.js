@@ -190,7 +190,7 @@ function canspotmon(mon, player, map, fov) {
 function M_AP_TYPE(mon) {
     return mon.m_ap_type || 0;
 }
-const M_AP_MONSTER = 2;
+const M_AP_MONSTER = 3; // C: M_AP_MONSTER=3 (2 is M_AP_OBJECT)
 
 // OBJ_AT — check if objects exist at position
 function OBJ_AT(x, y, map) {
