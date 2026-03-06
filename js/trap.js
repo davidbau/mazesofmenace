@@ -5,7 +5,7 @@
 import {
     COLNO, ROWNO, ACCESSIBLE, isok,
     IS_DOOR, IS_STWALL, IRONBARS, TREE,
-    D_BROKEN, D_CLOSED, D_LOCKED,
+    D_BROKEN, D_CLOSED, D_LOCKED, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT,
     A_STR, A_DEX, A_CON
 } from './const.js';
 import { rn2, rnd, rnl, d, c_d, rn1 } from './rng.js';

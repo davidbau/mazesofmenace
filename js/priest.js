@@ -28,7 +28,8 @@ import { s_suffix, sgn } from './hacklib.js';
 import { body_part, SPINE } from './polyself.js';
 import { a_gname_at, halu_gname } from './pray.js';
 import { adjalign } from './attrib.js';
-import { rloc, RLOC_NOMSG } from './teleport.js';
+import { rloc } from './teleport.js';
+import { RLOC_NOMSG } from './const.js';
 import { buzz } from './zap.js';
 
 // cf. priest.c:9-10 — alignment thresholds

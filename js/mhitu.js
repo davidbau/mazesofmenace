@@ -57,7 +57,8 @@ import { new_were, were_summon } from './were.js';
 import { Mgender, Monnam } from './do_name.js';
 import { resists_blnd } from './zap.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
-import { rloc, RLOC_MSG, tele_restrict } from './teleport.js';
+import { rloc, tele_restrict } from './teleport.js';
+import { RLOC_MSG } from './const.js';
 import { find_ac } from './do_wear.js';
 
 const PIERCE = 1;

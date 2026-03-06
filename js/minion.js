@@ -26,7 +26,8 @@ import {
 } from './mondata.js';
 import { Monnam, Amonnam } from './do_name.js';
 import { newsym } from './monutil.js';
-import { enexto, RLOC_MSG } from './teleport.js';
+import { enexto } from './teleport.js';
+import { RLOC_MSG } from './const.js';
 
 // cf. minion.c:11 — elementals[] for neutral minion summoning
 const elementals = [

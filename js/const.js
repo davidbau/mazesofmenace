@@ -364,6 +364,24 @@ export const MM_NOMSG = 0x00020000;
 export const MM_NOEXCLAM = 0x00040000;
 export const MM_IGNORELAVA = 0x00080000;
 
+// Teleport target search flags (include/hack.h; src/teleport.c goodpos/enexto)
+export const GP_CHECKSCARY = 0x00000100;
+export const GP_ALLOW_U = 0x00000200;
+export const GP_AVOID_MONPOS = 0x00000400;
+export const GP_ALLOW_XY = 0x00000800;
+
+// Monster relocation flags (include/hack.h; src/teleport.c rloc/rloc_to)
+export const RLOC_NONE = 0x0000;
+export const RLOC_NOMSG = 0x0001;
+export const RLOC_MSG = 0x0002;
+export const RLOC_TELE = 0x0004;
+export const RLOC_ERR = 0x0100;
+
+// Hero teleport placement flags (include/hack.h; src/teleport.c teleds)
+export const TELEDS_NO_FLAGS = 0;
+export const TELEDS_ALLOW_DRAG = 1;
+export const TELEDS_TELEPORT = 2;
+
 // Dogfood classification enum (include/mextra.h dogfood_types; used by src/dog.c/dogmove.c)
 export const DOGFOOD = 0;
 export const CADAVER = 1;

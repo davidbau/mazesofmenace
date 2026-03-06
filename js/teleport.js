@@ -16,6 +16,10 @@ import {
     MAGIC_PORTAL,
     HOLE, TRAPDOOR,
     is_pit, is_hole,
+    NO_MM_FLAGS, MM_IGNOREWATER, MM_IGNORELAVA,
+    GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, GP_ALLOW_XY,
+    RLOC_NONE, RLOC_NOMSG, RLOC_MSG, RLOC_TELE, RLOC_ERR,
+    TELEDS_TELEPORT,
 } from './const.js';
 import { BOULDER } from './objects.js';
 import { M1_SWIM, M1_AMPHIBIOUS, M1_FLY, M1_WALLWALK, M1_AMORPHOUS, M2_ROCKTHROW, S_EEL } from './monsters.js';
@@ -37,24 +41,6 @@ import { couldsee } from './vision.js';
 // Flags (cf. hack.h)
 // ============================================================================
 
-// MM flags (shared with makemon.js)
-export const NO_MM_FLAGS = 0;
-export const MM_IGNOREWATER = 0x00000008;
-export const MM_IGNORELAVA = 0x00080000;
-
-// GP flags for goodpos
-export const GP_CHECKSCARY = 0x00000100;
-export const GP_ALLOW_U = 0x00000200;
-export const GP_AVOID_MONPOS = 0x00000400;
-export const GP_ALLOW_XY = 0x00000800;
-
-// RLOC flags
-export const RLOC_NONE = 0x0000;
-export const RLOC_NOMSG = 0x0001;
-export const RLOC_MSG = 0x0002;
-export const RLOC_TELE = 0x0004;
-export const RLOC_ERR = 0x0100;
-
 // CC flags for collect_coords
 const CC_NO_FLAGS = 0;
 const CC_INCL_CENTER = 0x01;
@@ -63,11 +49,6 @@ const CC_RING_PAIRS = 0x04;
 const CC_SKIP_MONS = 0x08;
 const CC_SKIP_INACCS = 0x10;
 const STRAT_APPEARMSG = 0x80000000;
-
-// TELEDS flags
-export const TELEDS_NO_FLAGS = 0;
-export const TELEDS_ALLOW_DRAG = 1;
-export const TELEDS_TELEPORT = 2;
 
 // ============================================================================
 // noteleport_level — cf. teleport.c:29
