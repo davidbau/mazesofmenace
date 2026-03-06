@@ -528,7 +528,7 @@ function captureCheckpoint(phase) {
  * @param {GameMap} map - The procedural dungeon map to operate on
  * @param {number} depth - Current dungeon depth (for level_difficulty)
  */
-export function setLevelContext(map, depth) {
+function applyLevelContext(map, depth) {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_LUA_RNG === '1';
 
     levelState.map = map;
@@ -559,7 +559,7 @@ export function setLevelContext(map, depth) {
  * Clear the level context after themed room generation completes.
  * Always call this to prevent state leakage between levels.
  */
-export function clearLevelContext() {
+function clearLevelContext() {
     levelState.map = null;
     levelState.depth = 1;
     levelState.levelDepth = undefined;
@@ -575,6 +575,15 @@ export function clearLevelContext() {
     levelState.ysize = 0;
     levelState.finalizeContext = null;
     levelState.inThemerooms = false;
+}
+
+export async function withLevelContext(map, depth, fn) {
+    applyLevelContext(map, depth);
+    try {
+        return await fn();
+    } finally {
+        clearLevelContext();
+    }
 }
 
 /**

@@ -80,7 +80,7 @@ import {
     initQuestLevels,
 } from './special_levels.js';
 import { litstate_rnd } from './mkmap.js';
-import { setLevelContext, clearLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
+import { withLevelContext, initLuaMT, setSpecialLevelDepth, setFinalizeContext, resetLevelState } from './sp_lev.js';
 import {
     themerooms_generate as themermsGenerate,
     themerooms_post_level_generate,
@@ -163,27 +163,23 @@ import { makeroguerooms } from './extralev.js';
 async function themerooms_generate(map, depth) {
     const DEBUG = typeof process !== 'undefined' && process.env.DEBUG_THEMEROOMS === '1';
 
-    try {
-        // Bridge: Point sp_lev's levelState.map at our procedural map
-        setLevelContext(map, depth);
+    // NOTE: MT initialization happens LAZILY during themed room generation,
+    // NOT here. In C, MT init is triggered by the first nhl_rn2 call during
+    // themed room selection (reservoir sampling). We'll init MT in the same
+    // place - see themerms.js reservoir sampling loop.
 
-        // NOTE: MT initialization happens LAZILY during themed room generation,
-        // NOT here. In C, MT init is triggered by the first nhl_rn2 call during
-        // themed room selection (reservoir sampling). We'll init MT in the same
-        // place - see themerms.js reservoir sampling loop.
+    // Call ported themerms (uses des.* API internally)
+    const result = await withLevelContext(
+        map,
+        depth,
+        async () => await themermsGenerate(map, depth)
+    );
 
-        // Call ported themerms (uses des.* API internally)
-        const result = await themermsGenerate(map, depth);
-
-        if (DEBUG) {
-            console.log(`themerooms_generate: result=${result}, nroom=${map.nroom}`);
-        }
-
-        return result;
-    } finally {
-        // Always cleanup levelState, even on error
-        clearLevelContext();
+    if (DEBUG) {
+        console.log(`themerooms_generate: result=${result}, nroom=${map.nroom}`);
     }
+
+    return result;
 }
 
 import { parseEncryptedDataFile } from './hacklib.js';
@@ -4848,12 +4844,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
 
     // C ref: mklev.c:1409 — run themed-room post-level callbacks (e.g. garden wall->tree).
     // These callbacks operate on the active level map through sp_lev levelState.
-    setLevelContext(map, depth);
-    try {
-        await themerooms_post_level_generate();
-    } finally {
-        clearLevelContext();
-    }
+    await withLevelContext(map, depth, async () => await themerooms_post_level_generate());
 
     // C ref: mklev.c:1533-1539,1558,1561-1562 — level_finalize_topology().
     level_finalize_topology(map, depth);
