@@ -55,6 +55,7 @@ import { is_hider, hides_under, is_mindless, is_displacer, perceives,
          mon_knows_traps, passes_bars, nohands, is_clinger,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          is_golem, is_rider, is_mplayer, canseemon } from './mondata.js';
+import { y_monnam, locomotion } from './mondata.js';
 import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          PM_FLOATING_EYE, PM_MINOTAUR,
          PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
@@ -94,6 +95,7 @@ import { m_harmless_trap } from './trap.js';
 import { dist2, distmin } from './hack.js';
 import { monmoveTrace, monmoveStepLabel } from './monmove.js';
 import { monsterAtWithSegments } from './worm.js';
+import { ansimpleoname } from './objnam.js';
 
 // ========================================================================
 // Monster speed constants — C ref: include/monsym.h
@@ -1028,11 +1030,14 @@ export function maybe_unhide_at(x, y, map) {
 }
 
 // C ref: mon.c:4721 hideunder() — monster tries to hide under something
-export function hideunder(mon, map, player = null, fov = null) {
+export function hideunder(mon, map, player = null, fov = null, display = null) {
     if (!mon || !map) return false;
     const mdat = mon.data || mon.type || {};
     const x = mon.mx, y = mon.my;
     let undetected = false;
+    let seenobj = null;
+    let locomo = null;
+    const seeit = !!(player && canseemon(mon, player, fov));
     const trap = map.trapAt ? map.trapAt(x, y) : null;
     const trappedOutsidePit = !!((mon.mtrapped || false)
         || (trap && trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT));
@@ -1046,17 +1051,30 @@ export function hideunder(mon, map, player = null, fov = null) {
         undetected = IS_POOL(map.at(x, y)?.typ)
             && !isWaterLevel
             && (!heroUnderwater || !(fov?.canSee ? fov.canSee(x, y) : couldsee(map, player, x, y)));
+        if (seeit) {
+            seenobj = 'the water';
+            locomo = 'dive';
+        }
     } else if (hides_under(mdat)) {
         // C ref: mon.c hideunder() requires hideable floor objects and no pool/lava.
+        const objectsHere = map.objectsAt ? map.objectsAt(x, y) : [];
         if (can_hide_under_obj_at(map, x, y)
             && !IS_POOL(map.at(x, y)?.typ)
             && !IS_LAVA(map.at(x, y)?.typ)) {
             undetected = true;
+            if (seeit && objectsHere.length > 0) {
+                seenobj = ansimpleoname(objectsHere[0]);
+            }
         }
     }
 
     const old = !!mon.mundetected;
     mon.mundetected = undetected;
+    if (undetected && seeit && seenobj && display) {
+        const seenmon = y_monnam(mon);
+        const movement = locomo || locomotion(mdat, 'hide');
+        display.putstr_message(`You see ${seenmon} ${movement} under ${seenobj}.`);
+    }
     if (undetected !== old) {
         newsym(x, y);
     }
@@ -1684,7 +1702,7 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
                 && (mon.mflee || distmin(mon.mx, mon.my, player.x, player.y) > 1)
                 && !canseemon(mon, player, fov)
                 && !rn2(4)) {
-                if (hideunder(mon, map, player, fov))
+                if (hideunder(mon, map, player, fov, display))
                     continue;
             }
             // TODO: fightm() — Conflict not implemented

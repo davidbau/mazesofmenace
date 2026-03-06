@@ -832,11 +832,11 @@ async function m_respond(mon, map, player, display = null, game = null) {
 // mind_blast — C ref: monmove.c:582-646
 // Mind flayer psychic blast. RNG-faithful implementation.
 // ========================================================================
-function maybe_postmove_hideunder(mon, map, player, fov) {
+function maybe_postmove_hideunder(mon, map, player, fov, display = null) {
     const mdat = mon?.type || {};
     if (!(hides_under(mdat) || mdat.mlet === S_EEL)) return;
     if (mon.mundetected || (!helpless(mon) && rn2(5))) {
-        hideunder(mon, map, player, fov);
+        hideunder(mon, map, player, fov, display);
     }
     newsym(mon.mx, mon.my);
 }
@@ -1336,7 +1336,7 @@ async function dochug(mon, map, player, display, fov, game = null) {
                     mmoved = false;
                 }
                 if (!trapDied && !mon.dead && movedThisTurn) {
-                    maybe_postmove_hideunder(mon, map, player, fov);
+                    maybe_postmove_hideunder(mon, map, player, fov, display);
                 }
             }
             if (trapDied) return;
