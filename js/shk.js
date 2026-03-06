@@ -3,7 +3,8 @@
 // Handles shop pricing, billing, entry messages, shopkeeper queries,
 // payment, selling, damage tracking, and shopkeeper movement hooks.
 
-import { SHOPBASE, ROOMOFFSET, COLNO, ROWNO, DOOR, CORR, A_CHA, A_WIS, isok, PM_TOURIST } from './const.js';
+import { SHOPBASE, ROOMOFFSET, COLNO, ROWNO, DOOR, CORR, A_CHA, A_WIS, isok, PM_TOURIST,
+         COST_CONTENTS, COST_SINGLEOBJ, OBJ_ONBILL, OBJ_CONTAINED } from './const.js';
 import { objectData, WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS, POTION_CLASS, TOOL_CLASS,
          COIN_CLASS, GEM_CLASS, FOOD_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
          BALL_CLASS, CHAIN_CLASS, RING_CLASS, AMULET_CLASS,
@@ -1594,18 +1595,18 @@ export async function dopay(game) {
                 await You("do not owe %s anything.", shkname(resident));
             }
         } else {
-            const ibill = make_itemized_bill(resident);
-            const paid = { paid: false };
-            void pay_billed_items(resident, ibill.length, ibill, false, paid);
             if ((resident.debit || 0) > 0) {
                 const debit = Number(resident.debit || 0);
                 if (debit > 0) {
                     if (!insufficient_funds(resident, { otyp: 0, quan: 1, oclass: 0 }, debit)) {
-                        pay(debit, resident, game);
+                        await pay(debit, resident, game);
                         resident.debit = 0;
                     }
                 }
             }
+            const ibill = make_itemized_bill(resident);
+            const paid = { paid: false };
+            await pay_billed_items(resident, ibill.length, ibill, false, paid);
             if (!paid.paid && (resident.billct || 0)) {
                 await pline("You owe %s %d %s.", shkname(resident),
                     shop_debt(resident), currency(shop_debt(resident)));
@@ -1620,18 +1621,78 @@ export async function dopay(game) {
 function make_itemized_bill(shkp) {
     const eshkp = shkp || {};
     const bill = Array.isArray(eshkp.bill) ? eshkp.bill : [];
+    const ebillct = Number(eshkp.billct || bill.length);
+    const player = _gstate?.player || null;
+    const isOnBill = (obj) => {
+        const where = String(obj?.where ?? '').toUpperCase();
+        return where === 'OBJ_ONBILL' || Number(obj?.where) === OBJ_ONBILL;
+    };
+    const isContained = (obj) => {
+        const where = String(obj?.where ?? '').toUpperCase();
+        return where === 'OBJ_CONTAINED' || Number(obj?.where) === OBJ_CONTAINED;
+    };
     const ibill = [];
-    for (let i = 0; i < bill.length; i++) {
+    for (let i = 0; i < ebillct; i++) {
         const bp = bill[i];
         if (!bp) continue;
-        const obj = bp_to_obj(bp);
+        let obj = bp_to_obj(bp);
         if (!obj) continue;
+
+        let bidx = i;
+        const bquan = Number(bp.bquan || 0);
+        const oquan = Number(obj.quan || 0);
+        if (oquan === 0 || isOnBill(obj)) {
+            obj.quan = bquan;
+            bp.useup = 1;
+        } else if (oquan < bquan) {
+            ibill.push({
+                obj,
+                cost: Number(bp.price || 0) * (bquan - oquan),
+                quan: bquan - oquan,
+                bidx,
+                usedup: PartlyUsedUp,
+                queuedpay: false,
+            });
+        }
+
+        let quan;
+        let cost;
+        let used;
+        if (isOnBill(obj)) {
+            quan = bquan;
+            cost = Number(bp.price || 0) * quan;
+            used = FullyUsedUp;
+        } else if (isContained(obj) || Has_contents(obj)) {
+            const item = obj;
+            let cknown = true;
+            while (isContained(obj) && obj.ocontainer) {
+                obj = obj.ocontainer;
+                if (!obj.cknown) cknown = false;
+            }
+            const existing = ibill.find((entry) => entry.obj === obj);
+            if (existing) {
+                if (existing.usedup === FullyIntact) {
+                    existing.usedup = cknown ? KnownContainer : UndisclosedContainer;
+                }
+                continue;
+            }
+            quan = 1;
+            cost = unpaid_cost(obj, COST_CONTENTS, player);
+            if (!obj.unpaid) bidx = -1;
+            used = (obj === item)
+                ? FullyIntact
+                : (cknown ? KnownContainer : UndisclosedContainer);
+        } else {
+            quan = Number(obj.quan || 0);
+            cost = Number(bp.price || 0) * quan;
+            used = (quan < bquan) ? PartlyIntact : FullyIntact;
+        }
         ibill.push({
             obj,
-            cost: Number(bp.price || 0) * Number(bp.bquan || obj.quan || 1),
-            quan: Number(bp.bquan || obj.quan || 1),
-            bidx: i,
-            usedup: bp.useup ? PartlyUsedUp : FullyIntact,
+            cost,
+            quan,
+            bidx,
+            usedup: used,
             queuedpay: false,
         });
     }
@@ -1657,47 +1718,135 @@ function reject_purchase(shkp, obj, quantity) {
 // C ref: shk.c insufficient_funds()
 function insufficient_funds(shkp, obj, ltmp) {
     const player = _gstate?.player || null;
-    const cash = Number(player?.gold || 0);
+    let cash = Number(player?.gold || 0);
+    if (!cash && Array.isArray(player?.inventory)) {
+        for (const otmp of player.inventory) {
+            if (!otmp) continue;
+            if (otmp.oclass === COIN_CLASS || otmp.otyp === GOLD_PIECE) {
+                cash += Number(otmp.quan || 0);
+            }
+        }
+    }
     const credit = Number(shkp?.credit || 0);
-    const needed = Number(ltmp || get_pricing_units(obj) * get_cost(obj, shkp));
-    return (cash + credit) < needed;
+    if (!ltmp) return (cash + credit) <= 0;
+    return (cash + credit) < Number(ltmp);
 }
 
 // C ref: shk.c dopayobj()
-function dopayobj(shkp, bp, obj, _pass, _itemize, _sightunseen) {
+async function dopayobj(shkp, bp, obj, which, itemize, _sightunseen) {
     if (!shkp || !bp || !obj) return PAY_SKIP;
-    const units = get_pricing_units(obj);
-    const cost = Number(bp.price || get_cost(obj, shkp)) * units;
-    if (insufficient_funds(shkp, obj, cost)) {
-        reject_purchase(shkp, obj, units);
-        return PAY_CANT;
+    if (!obj.unpaid && !bp.useup && !(Has_contents(obj) && unpaid_cost(obj, COST_CONTENTS, _gstate?.player || null))) {
+        impossible("Paid object on bill??");
+        return PAY_BUY;
     }
-    pay(cost, shkp, _gstate);
-    update_bill(-1, 0, [], shkp, bp, obj);
-    return PAY_BUY;
+    if (itemize && insufficient_funds(shkp, obj, 0)) return PAY_BROKE;
+
+    const consumed = which === 0;
+    const saveQuan = Number(obj.quan || 0);
+    let quan = consumed ? Number(bp.bquan || 0) : saveQuan;
+    if (consumed && quan > saveQuan) quan -= saveQuan;
+    const ltmp = Number(bp.price || 0) * quan;
+
+    obj.quan = quan;
+
+    let buy = PAY_BUY;
+    if (quan < Number(bp.bquan || 0) && !consumed) {
+        reject_purchase(shkp, obj, Number(bp.bquan || 0));
+        buy = PAY_SKIP;
+    }
+    if (buy === PAY_BUY && insufficient_funds(shkp, obj, ltmp)) {
+        buy = itemize ? PAY_SKIP : PAY_CANT;
+    }
+    if (buy === PAY_BUY) {
+        await pay(ltmp, shkp, _gstate);
+    }
+    obj.quan = saveQuan;
+
+    return buy;
 }
 
 // C ref: shk.c buy_container()
-function buy_container(shkp, indx, ibillct, ibill) {
-    if (!Array.isArray(ibill) || indx < 0 || indx >= ibill.length) return PAY_SKIP;
+async function buy_container(shkp, indx, ibillct, ibill) {
+    if (!Array.isArray(ibill) || indx < 0 || indx >= ibill.length) return 2;
     const item = ibill[indx];
-    if (!item?.obj) return PAY_SKIP;
-    const bp = (Array.isArray(shkp?.bill) && Number.isInteger(item.bidx)) ? shkp.bill[item.bidx] : null;
-    if (!bp) return PAY_SKIP;
-    return dopayobj(shkp, bp, item.obj, 1, true, false);
+    const container = item?.obj;
+    const eshkp = shkp || {};
+    const ebillct = Number(eshkp.billct || 0);
+    const bill = Array.isArray(eshkp.bill) ? eshkp.bill : [];
+    if (!container || !ebillct) return 2;
+
+    const totalcost = Number(item.cost || 0);
+    if (insufficient_funds(shkp, container, 0) || insufficient_funds(shkp, container, totalcost)) return 1;
+
+    const boids = [];
+    const unpaidContainer = !!container.unpaid;
+
+    for (let i = 0; i < ebillct; i++) {
+        const bp = bill[i];
+        const otmp = bp_to_obj(bp);
+        if (!bp || !otmp) continue;
+        const owhere = String(otmp.where ?? '').toUpperCase();
+        const isContained = (owhere === 'OBJ_CONTAINED' || Number(otmp.where) === OBJ_CONTAINED);
+        if (!isContained && !Has_contents(otmp)) continue;
+        let top = otmp;
+        while (top?.where === OBJ_CONTAINED && top.ocontainer) top = top.ocontainer;
+        if (top !== container) continue;
+        if (Number(otmp.quan || 0) < Number(bp.bquan || 0)) {
+            reject_purchase(shkp, otmp, Number(bp.bquan || 0));
+            return 1;
+        }
+        if (bp.bo_id !== container.o_id) boids.push(bp.bo_id);
+    }
+    if (unpaidContainer) boids.push(container.o_id);
+
+    let bought = 0;
+    for (const boid of boids) {
+        let bidx = -1;
+        for (let i = 0; i < ebillct; i++) {
+            if (bill[i]?.bo_id === boid) {
+                bidx = i;
+                break;
+            }
+        }
+        if (bidx < 0) continue;
+        const bp = bill[bidx];
+        const otmp = bp_to_obj(bp);
+        const buy = await dopayobj(shkp, bp, otmp, 1, false, false);
+        if (buy !== PAY_BUY) continue;
+        update_bill((boid === container.o_id) ? indx : -1, ibillct, ibill, eshkp, bp, otmp);
+        bought++;
+    }
+    return bought ? 0 : 2;
 }
 
 // C ref: shk.c pay_billed_items()
-function pay_billed_items(shkp, ibillct, ibill, _stashedGold, paidRef = { paid: false }) {
+async function pay_billed_items(shkp, ibillct, ibill, _stashedGold, paidRef = { paid: false }) {
+    const eshkp = shkp || {};
     if (!menu_pick_pay_items(ibillct, ibill)) return false;
     let paidAny = false;
     for (let i = 0; i < ibill.length; i++) {
         const item = ibill[i];
         if (!item?.queuedpay) continue;
-        const bp = (Array.isArray(shkp?.bill) && Number.isInteger(item.bidx)) ? shkp.bill[item.bidx] : null;
-        if (!bp || !item.obj) continue;
-        const result = dopayobj(shkp, bp, item.obj, 1, true, false);
-        if (result === PAY_BUY) paidAny = true;
+        let buy;
+        if (Number(item.usedup || 0) >= KnownContainer) {
+            const boxbagResult = await buy_container(shkp, i, ibillct, ibill);
+            buy = (boxbagResult === 0) ? PAY_BUY : PAY_CANT;
+        } else {
+            const bidx = Number(item.bidx);
+            const bp = (Array.isArray(eshkp.bill) && Number.isInteger(bidx) && bidx >= 0)
+                ? eshkp.bill[bidx]
+                : null;
+            if (!bp || !item.obj) continue;
+            const pass = (Number(item.usedup || 0) <= PartlyUsedUp) ? 0 : 1;
+            buy = await dopayobj(shkp, bp, item.obj, pass, false, false);
+            if (buy === PAY_BUY) update_bill(i, ibillct, ibill, eshkp, bp, item.obj);
+        }
+        if (buy === PAY_CANT) return false;
+        if (buy === PAY_BROKE) {
+            paidRef.paid = true;
+            return true;
+        }
+        if (buy === PAY_BUY) paidAny = true;
     }
     paidRef.paid = paidAny;
     return true;
