@@ -44,6 +44,7 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     W_ARMG, W_ARMF, W_ARMH,
     ERODE_RUST, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_VERBOSE,
+    NEED_WEAPON, NEED_HTH_WEAPON,
 } from './const.js';
 import {
     mhitm_adtyping,
@@ -51,7 +52,7 @@ import {
 import { monsterWeaponSwingVerb, monsterPossessive } from './mhitu.js';
 import { mhurtle, will_hurtle } from './dothrow.js';
 import { find_mac } from './worn.js';
-import { mon_wield_item, possibly_unwield, NEED_WEAPON, NEED_HTH_WEAPON, hitval } from './weapon.js';
+import { mon_wield_item, possibly_unwield, hitval } from './weapon.js';
 import { spec_dbon } from './artifact.js';
 import { canonicalizeAttackFields } from './attack_fields.js';
 

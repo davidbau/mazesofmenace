@@ -30,88 +30,25 @@ import { MZ_LARGE, S_EEL, S_SNAKE, S_XORN, S_DRAGON, S_JABBERWOCK,
          PM_BALROG, AT_WEAP,
        } from './monsters.js';
 import { mons } from './monsters.js';
-import { W_ARMS, W_ARMG, W_WEP } from './const.js';
+import {
+    W_ARMS, W_ARMG, W_WEP,
+    P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_BROAD_SWORD,
+    P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER, P_CLUB, P_MACE, P_MORNING_STAR,
+    P_FLAIL, P_HAMMER, P_QUARTERSTAFF, P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE,
+    P_BOW, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN, P_BOOMERANG, P_WHIP,
+    P_UNICORN_HORN, P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL,
+    P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
+    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING, P_NUM_SKILLS,
+    P_FIRST_WEAPON, P_LAST_WEAPON, P_FIRST_SPELL, P_LAST_SPELL,
+    P_FIRST_H_TO_H, P_LAST_H_TO_H, P_MARTIAL_ARTS, P_SKILL_LIMIT,
+    P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT, P_MASTER,
+    P_GRAND_MASTER, NO_WEAPON_WANTED, NEED_WEAPON, NEED_RANGED_WEAPON,
+    NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+    BOLT_LIM, AKLYS_LIM,
+} from './const.js';
 import { which_armor } from './worn.js';
 import { dist2 } from './monutil.js';
 import { couldsee } from './vision.js';
-
-// ============================================================================
-// Skill constants — cf. objclass.h
-// ============================================================================
-// AUTO-IMPORT-BEGIN: WEAPON_CONSTANTS
-// Auto-imported weapon constants from C headers
-// Sources: skills.h, monst.h
-
-// Skill constants — cf. skills.h enum p_skills
-const P_NONE = 0;
-const P_DAGGER = 1;
-const P_KNIFE = 2;
-const P_AXE = 3;
-const P_PICK_AXE = 4;
-const P_SHORT_SWORD = 5;
-const P_BROAD_SWORD = 6;
-const P_LONG_SWORD = 7;
-const P_TWO_HANDED_SWORD = 8;
-const P_SABER = 9;
-const P_CLUB = 10;
-const P_MACE = 11;
-const P_MORNING_STAR = 12;
-const P_FLAIL = 13;
-const P_HAMMER = 14;
-const P_QUARTERSTAFF = 15;
-const P_POLEARMS = 16;
-const P_SPEAR = 17;
-const P_TRIDENT = 18;
-const P_LANCE = 19;
-export const P_BOW = 20;
-const P_SLING = 21;
-const P_CROSSBOW = 22;
-const P_DART = 23;
-const P_SHURIKEN = 24;
-const P_BOOMERANG = 25;
-const P_WHIP = 26;
-const P_UNICORN_HORN = 27;
-export const P_ATTACK_SPELL = 28;
-export const P_HEALING_SPELL = 29;
-export const P_DIVINATION_SPELL = 30;
-export const P_ENCHANTMENT_SPELL = 31;
-export const P_CLERIC_SPELL = 32;
-export const P_ESCAPE_SPELL = 33;
-export const P_MATTER_SPELL = 34;
-export const P_BARE_HANDED_COMBAT = 35;
-export const P_TWO_WEAPON_COMBAT = 36;
-export const P_RIDING = 37;
-export const P_NUM_SKILLS = 38;
-
-export const P_FIRST_WEAPON = P_DAGGER;
-export const P_LAST_WEAPON = P_UNICORN_HORN;
-export const P_FIRST_SPELL = P_ATTACK_SPELL;
-export const P_LAST_SPELL = P_MATTER_SPELL;
-export const P_FIRST_H_TO_H = P_BARE_HANDED_COMBAT;
-export const P_LAST_H_TO_H = P_RIDING;
-
-// Skill levels — cf. skills.h enum skill_levels
-export const P_ISRESTRICTED = 0;
-export const P_UNSKILLED = 1;
-export const P_BASIC = 2;
-export const P_SKILLED = 3;
-export const P_EXPERT = 4;
-export const P_MASTER = 5;
-export const P_GRAND_MASTER = 6;
-
-// Monster weapon_check states — cf. monst.h enum wpn_chk_flags
-export const NO_WEAPON_WANTED = 0;
-export const NEED_WEAPON = 1;
-export const NEED_RANGED_WEAPON = 2;
-export const NEED_HTH_WEAPON = 3;
-export const NEED_PICK_AXE = 4;
-export const NEED_AXE = 5;
-export const NEED_PICK_OR_AXE = 6;
-
-// BOLT_LIM for distance checks (hack.h)
-const BOLT_LIM = 8;
-const AKLYS_LIM = BOLT_LIM / 2;
-// AUTO-IMPORT-END: WEAPON_CONSTANTS
 
 // Hero skill state (C: P_SKILL/P_MAX_SKILL/P_ADVANCE).
 let skillSystemActive = false;

@@ -183,7 +183,7 @@ headers via Python scripts:
 python3 scripts/generators/gen_monsters.py   # patches js/monsters.js between markers
 python3 scripts/generators/gen_objects.py    # patches js/objects.js between markers
 python3 scripts/generators/gen_artifacts.py  # patches js/artifacts.js between markers
-python3 scripts/generators/gen_weapon_constants.py  # patches js/weapon.js constants block
+python3 scripts/generators/gen_constants.py  # patches js/const.js generated constants blocks
 ```
 
 ## Project Structure

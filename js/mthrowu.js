@@ -41,7 +41,8 @@ import { add_to_minv } from './monutil.js';
 import { placeFloorObject } from './stackobj.js';
 import { corpse_chance } from './mon.js';
 import { select_rwep as weapon_select_rwep,
-    mon_wield_item, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, dmgval, P_BOW } from './weapon.js';
+    mon_wield_item, dmgval } from './weapon.js';
+import { NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, P_BOW } from './const.js';
 import { ammo_and_launcher, multishot_class_bonus } from './dothrow.js';
 import { breaks, harmless_missile } from './dothrow.js';
 import { should_mulch_missile } from './dothrow.js';

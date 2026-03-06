@@ -9,19 +9,15 @@ export const VERSION_MINOR = 7;
 export const PATCHLEVEL = 0;
 export const VERSION_STRING = `NetHack ${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL} Royal Jelly #${COMMIT_NUMBER} — vibe-coded by The Hive`;
 
-// Map dimensions (global.h)
-export const COLNO = 80;   // number of columns
-export const ROWNO = 21;   // number of rows (map area)
+// AUTO-IMPORT-BEGIN: CONST_GLOBAL_RM
+// Auto-imported global/rm constants from C headers
+// Sources: global.h, rm.h, permonst.h
 
-// Display dimensions
-export const TERMINAL_COLS = 80;
-export const TERMINAL_ROWS = 24;  // message + map + 2 status lines
-export const MESSAGE_ROW = 0;
-export const MAP_ROW_START = 1;
-export const STATUS_ROW_1 = 22;
-export const STATUS_ROW_2 = 23;
+// Map dimensions — cf. global.h
+export const COLNO = 80;
+export const ROWNO = 21;
 
-// Level location types (rm.h:55-97)
+// Level location types — cf. rm.h enum levl_typ_types
 export const STONE = 0;
 export const VWALL = 1;
 export const HWALL = 2;
@@ -61,17 +57,27 @@ export const AIR = 35;
 export const CLOUD = 36;
 export const MAX_TYPE = 37;
 
-// Door states (rm.h)
-export const D_NODOOR = 0;
-export const D_BROKEN = 1;
-export const D_ISOPEN = 2;
-export const D_CLOSED = 4;
-export const D_LOCKED = 8;
-export const D_TRAPPED = 16;
-export const D_SECRET = 32;
+// Door states — cf. rm.h
+export const D_NODOOR = 0x00;
+export const D_BROKEN = 0x01;
+export const D_ISOPEN = 0x02;
+export const D_CLOSED = 0x04;
+export const D_LOCKED = 0x08;
+export const D_TRAPPED = 0x10;
+export const D_SECRET = 0x20;
 
-// Movement speed (hack.h)
+// Movement speed — cf. permonst.h
 export const NORMAL_SPEED = 12;
+// AUTO-IMPORT-END: CONST_GLOBAL_RM
+
+// Display dimensions
+export const TERMINAL_COLS = 80;
+export const TERMINAL_ROWS = 24;  // message + map + 2 status lines
+export const MESSAGE_ROW = 0;
+export const MAP_ROW_START = 1;
+export const STATUS_ROW_1 = 22;
+export const STATUS_ROW_2 = 23;
+
 
 // Direction arrays (decl.h, hack.c)
 // Index: 0=W, 1=NW, 2=N, 3=NE, 4=E, 5=SE, 6=S, 7=SW, 8=up, 9=down
@@ -410,7 +416,6 @@ export const TRAVP_VALID = 2;
 export const MTSZ = 4;
 export const SQSRCHRADIUS = 5;
 export const FARAWAY = 127;
-export const BOLT_LIM = 8;
 
 // Dungeon branch indices (include/dungeon.h / src/dungeon.c)
 // Runtime fields:
@@ -2092,3 +2097,79 @@ export function parsesymbols(opts, which_set) {
   savedsym_add(opts, strval, which_set);
   return true;
 }
+// AUTO-IMPORT-BEGIN: CONST_WEAPON_SKILLS
+// Auto-imported weapon/skill constants from C headers
+// Sources: skills.h, monst.h
+
+// Skill constants — cf. skills.h enum p_skills
+export const P_NONE = 0;
+export const P_DAGGER = 1;
+export const P_KNIFE = 2;
+export const P_AXE = 3;
+export const P_PICK_AXE = 4;
+export const P_SHORT_SWORD = 5;
+export const P_BROAD_SWORD = 6;
+export const P_LONG_SWORD = 7;
+export const P_TWO_HANDED_SWORD = 8;
+export const P_SABER = 9;
+export const P_CLUB = 10;
+export const P_MACE = 11;
+export const P_MORNING_STAR = 12;
+export const P_FLAIL = 13;
+export const P_HAMMER = 14;
+export const P_QUARTERSTAFF = 15;
+export const P_POLEARMS = 16;
+export const P_SPEAR = 17;
+export const P_TRIDENT = 18;
+export const P_LANCE = 19;
+export const P_BOW = 20;
+export const P_SLING = 21;
+export const P_CROSSBOW = 22;
+export const P_DART = 23;
+export const P_SHURIKEN = 24;
+export const P_BOOMERANG = 25;
+export const P_WHIP = 26;
+export const P_UNICORN_HORN = 27;
+export const P_ATTACK_SPELL = 28;
+export const P_HEALING_SPELL = 29;
+export const P_DIVINATION_SPELL = 30;
+export const P_ENCHANTMENT_SPELL = 31;
+export const P_CLERIC_SPELL = 32;
+export const P_ESCAPE_SPELL = 33;
+export const P_MATTER_SPELL = 34;
+export const P_BARE_HANDED_COMBAT = 35;
+export const P_TWO_WEAPON_COMBAT = 36;
+export const P_RIDING = 37;
+export const P_NUM_SKILLS = 38;
+
+export const P_FIRST_WEAPON = P_DAGGER;
+export const P_LAST_WEAPON = P_UNICORN_HORN;
+export const P_FIRST_SPELL = P_ATTACK_SPELL;
+export const P_LAST_SPELL = P_MATTER_SPELL;
+export const P_FIRST_H_TO_H = P_BARE_HANDED_COMBAT;
+export const P_LAST_H_TO_H = P_RIDING;
+export const P_MARTIAL_ARTS = P_BARE_HANDED_COMBAT;
+export const P_SKILL_LIMIT = 60;
+
+// Skill levels — cf. skills.h enum skill_levels
+export const P_ISRESTRICTED = 0;
+export const P_UNSKILLED = 1;
+export const P_BASIC = 2;
+export const P_SKILLED = 3;
+export const P_EXPERT = 4;
+export const P_MASTER = 5;
+export const P_GRAND_MASTER = 6;
+
+// Monster weapon_check states — cf. monst.h enum wpn_chk_flags
+export const NO_WEAPON_WANTED = 0;
+export const NEED_WEAPON = 1;
+export const NEED_RANGED_WEAPON = 2;
+export const NEED_HTH_WEAPON = 3;
+export const NEED_PICK_AXE = 4;
+export const NEED_AXE = 5;
+export const NEED_PICK_OR_AXE = 6;
+
+// Distance limits (hack.h)
+export const BOLT_LIM = 8;
+export const AKLYS_LIM = BOLT_LIM / 2;
+// AUTO-IMPORT-END: CONST_WEAPON_SKILLS

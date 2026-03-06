@@ -896,7 +896,7 @@ The monster and object tables are auto-generated from C headers:
 python3 scripts/generators/gen_monsters.py
 python3 scripts/generators/gen_objects.py
 python3 scripts/generators/gen_artifacts.py
-python3 scripts/generators/gen_weapon_constants.py
+python3 scripts/generators/gen_constants.py
 ```
 
 ### Converting Lua special levels to JavaScript

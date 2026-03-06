@@ -26,7 +26,7 @@ import {
     SLT_ENCUMBER, HVY_ENCUMBER,
     PIT, SPIKED_PIT, WEB, HOLE, TRAPDOOR, STATUE_TRAP,
     is_pit, is_hole, W_ARMF,
-    TT_PIT, TT_WEB, TT_BEARTRAP,
+    TT_PIT, TT_WEB, TT_BEARTRAP, P_NONE, P_MARTIAL_ARTS,
 } from './const.js';
 import {
     IS_TREE, IS_THRONE, IS_FOUNTAIN, IS_SINK, IS_GRAVE, IS_ALTAR,
@@ -141,10 +141,6 @@ const MIGR_WITH_HERO = 9;
 const MIGR_NOBREAK = 1024;
 const MIGR_NOSCATTER = 2048;
 const MIGR_TO_SPECIES = 4096;
-
-// Kick skill
-const P_NONE = 0;
-const P_MARTIAL_ARTS = 46; // from C include/skills.h
 
 // Trap result
 const Trap_Killed_Mon = 2;

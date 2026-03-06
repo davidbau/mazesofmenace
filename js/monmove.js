@@ -108,7 +108,8 @@ import { mdig_tunnel, may_dig } from './dig.js';
 import { IS_TREE } from './const.js';
 import { stairway_at } from './stairs.js';
 import { mwelded } from './wield.js';
-import { mon_wield_item, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './weapon.js';
+import { mon_wield_item } from './weapon.js';
+import { NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE } from './const.js';
 
 // C ref: monst.h strategy bits used by monmove.c:717 early dochug gate
 const STRAT_WAITFORU = 0x20000000;

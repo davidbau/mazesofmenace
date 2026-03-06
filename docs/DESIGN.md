@@ -43,7 +43,7 @@ webhack/
 ├── scripts/generators/gen_monsters.py          Code generator: C monsters.h → JS monsters.js
 ├── scripts/generators/gen_objects.py           Code generator: C objects.h → JS objects.js
 ├── scripts/generators/gen_artifacts.py         Code generator: C artilist.h → JS artifacts.js
-├── scripts/generators/gen_weapon_constants.py  Code generator: C skills.h/monst.h → JS weapon constants
+├── scripts/generators/gen_constants.py         Code generator: C header constants → JS const.js blocks
 │
 ├── js/                        ── Game Source (32 modules) ──
 │   │

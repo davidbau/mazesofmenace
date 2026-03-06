@@ -4,7 +4,7 @@
 
 import { A_STR, A_DEX, A_CON, A_WIS, STATUS_ROW_1,
          PM_CAVEMAN, PM_ROGUE, RACE_ORC, SQKY_BOARD,
-         DIRECTION_KEYS, RUN_KEYS, CQ_REPEAT } from './const.js';
+         DIRECTION_KEYS, RUN_KEYS, CQ_REPEAT, P_NUM_SKILLS } from './const.js';
 import { rn2 } from './rng.js';
 import { handleWizLoadDes, wizLevelChange, wizMap, wizTeleport, wizGenesis, wizWish } from './wizcmds.js';
 import { handleThrow, handleFire } from './dothrow.js';
@@ -32,7 +32,7 @@ import { handleSave } from './storage.js';
 import { handleForce, handleOpen, handleClose } from './lock.js';
 import { handlePickup, handleLoot, handlePay, handleTogglePickup } from './pickup.js';
 import { dotalk } from './sounds.js';
-import { add_skills_to_menu, can_advance, skill_advance, skill_level_name, P_NUM_SKILLS } from './weapon.js';
+import { add_skills_to_menu, can_advance, skill_advance, skill_level_name } from './weapon.js';
 import { handleSet } from './options_menu.js';
 import { pline, impossible } from './pline.js';
 import { domove, do_run, do_rush, findPath, dotravel, dotravel_target,
