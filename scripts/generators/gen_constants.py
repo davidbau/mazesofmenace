@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-gen_constants.py — Parse C headers and patch generated constants blocks.
+gen_constants.py — Parse C headers and patch generated constants blocks in js/const.js.
 
 Sources:
-- nethack-c/include/skills.h
-- nethack-c/include/monst.h (weapon_check enum)
-- nethack-c/include/global.h, rm.h, permonst.h
+- include/global.h, rm.h, permonst.h (map/global block)
+- include/skills.h, monst.h (weapon/skills block)
+- include/*.h (all const-style object macros)
 """
 
 from __future__ import annotations
@@ -20,44 +20,47 @@ from marker_patch import MarkerSpec, patch_between_markers
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-_SKILLS_H_CANDIDATES = [
+
+def _pick_existing(*candidates: str) -> str:
+    return next((p for p in candidates if os.path.exists(p)), candidates[0])
+
+
+SKILLS_H = _pick_existing(
     os.path.join(SCRIPT_DIR, "nethack-c", "include", "skills.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "skills.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "skills.h"),
-]
-SKILLS_H = next((p for p in _SKILLS_H_CANDIDATES if os.path.exists(p)), _SKILLS_H_CANDIDATES[0])
-
-_MONST_H_CANDIDATES = [
+)
+MONST_H = _pick_existing(
     os.path.join(SCRIPT_DIR, "nethack-c", "include", "monst.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "monst.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "monst.h"),
-]
-MONST_H = next((p for p in _MONST_H_CANDIDATES if os.path.exists(p)), _MONST_H_CANDIDATES[0])
-
-_GLOBAL_H_CANDIDATES = [
+)
+GLOBAL_H = _pick_existing(
     os.path.join(SCRIPT_DIR, "nethack-c", "include", "global.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "global.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "global.h"),
-]
-GLOBAL_H = next((p for p in _GLOBAL_H_CANDIDATES if os.path.exists(p)), _GLOBAL_H_CANDIDATES[0])
-
-_RM_H_CANDIDATES = [
+)
+RM_H = _pick_existing(
     os.path.join(SCRIPT_DIR, "nethack-c", "include", "rm.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "rm.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "rm.h"),
-]
-RM_H = next((p for p in _RM_H_CANDIDATES if os.path.exists(p)), _RM_H_CANDIDATES[0])
-
-_PERMONST_H_CANDIDATES = [
+)
+PERMONST_H = _pick_existing(
     os.path.join(SCRIPT_DIR, "nethack-c", "include", "permonst.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "permonst.h"),
     os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "permonst.h"),
-]
-PERMONST_H = next((p for p in _PERMONST_H_CANDIDATES if os.path.exists(p)), _PERMONST_H_CANDIDATES[0])
+)
+HACK_H = _pick_existing(
+    os.path.join(SCRIPT_DIR, "nethack-c", "include", "hack.h"),
+    os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "patched", "include", "hack.h"),
+    os.path.join(SCRIPT_DIR, "..", "..", "nethack-c", "include", "hack.h"),
+)
+INCLUDE_DIR = os.path.dirname(HACK_H)
 
 OUTPUT_PATH = os.path.join(SCRIPT_DIR, "..", "..", "js", "const.js")
-MARKER_WEAPON = MarkerSpec("CONST_WEAPON_SKILLS")
 MARKER_GLOBAL_RM = MarkerSpec("CONST_GLOBAL_RM")
+MARKER_ALL_HEADERS = MarkerSpec("CONST_ALL_HEADERS")
+MARKER_WEAPON = MarkerSpec("CONST_WEAPON_SKILLS")
 
 
 def _read(path: str) -> str:
@@ -65,39 +68,59 @@ def _read(path: str) -> str:
         return f.read()
 
 
-def _parse_enum_block(text: str, enum_name: str) -> list[tuple[str, str]]:
-    m = re.search(rf"enum\s+{re.escape(enum_name)}\s*\{{(.*?)\}};", text, re.DOTALL)
-    if not m:
-        return []
-    body = re.sub(r"/\*.*?\*/", "", m.group(1), flags=re.DOTALL)
-    out: list[tuple[str, str]] = []
-    for raw in body.split(","):
-        line = raw.strip()
-        if not line:
+def _strip_c_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return text
+
+
+def _strip_cpp_comment_outside_quotes(line: str) -> str:
+    out: list[str] = []
+    in_single = False
+    in_double = False
+    escaped = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        nxt = line[i + 1] if i + 1 < len(line) else ""
+        if escaped:
+            out.append(ch)
+            escaped = False
+            i += 1
             continue
-        if "=" not in line:
+        if ch == "\\":
+            out.append(ch)
+            escaped = True
+            i += 1
             continue
-        name, val = line.split("=", 1)
-        out.append((name.strip(), val.strip()))
-    return out
+        if not in_double and ch == "'":
+            in_single = not in_single
+            out.append(ch)
+            i += 1
+            continue
+        if not in_single and ch == '"':
+            in_double = not in_double
+            out.append(ch)
+            i += 1
+            continue
+        if not in_single and not in_double and ch == "/" and nxt == "/":
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _collapse_line_continuations(text: str) -> str:
+    return re.sub(r"\\\n", "", text)
 
 
 def _parse_defines(text: str, names: list[str]) -> dict[str, str]:
+    cleaned = _strip_c_comments(_collapse_line_continuations(text))
     result: dict[str, str] = {}
     for n in names:
-        m = re.search(rf"^\s*#define\s+{re.escape(n)}\s+(.+?)\s*$", text, re.MULTILINE)
+        m = re.search(rf"^\s*#define\s+{re.escape(n)}\s+(.+?)\s*$", cleaned, re.MULTILINE)
         if m:
-            value = m.group(1)
-            value = re.sub(r"/\*.*?\*/", "", value)
-            value = re.sub(r"//.*$", "", value)
-            result[n] = value.strip()
+            result[n] = _strip_cpp_comment_outside_quotes(m.group(1)).strip()
     return result
-
-
-def _strip_c_comments(text: str) -> str:
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    text = re.sub(r"//[^\n]*", "", text)
-    return text
 
 
 def _parse_define_int(text: str, name: str) -> str | None:
@@ -107,25 +130,107 @@ def _parse_define_int(text: str, name: str) -> str | None:
     return m.group(1).strip()
 
 
-def _parse_enum_int_pairs(text: str, enum_name: str) -> list[tuple[str, str]]:
+def _parse_enum_block(text: str, enum_name: str) -> list[tuple[str, str]]:
     m = re.search(rf"enum\s+{re.escape(enum_name)}\s*\{{(.*?)\}};", text, re.DOTALL)
     if not m:
         return []
     body = _strip_c_comments(m.group(1))
     out: list[tuple[str, str]] = []
-    current = None
     for raw in body.split(","):
         line = raw.strip()
+        if not line or "=" not in line:
+            continue
+        name, val = line.split("=", 1)
+        out.append((name.strip(), val.strip()))
+    return out
+
+
+def _parse_object_defines(text: str, *, ignore: set[str] | None = None) -> list[tuple[str, str]]:
+    ignore = ignore or set()
+    cleaned = _strip_c_comments(_collapse_line_continuations(text))
+    out: list[tuple[str, str]] = []
+    for raw in cleaned.splitlines():
+        line = _strip_cpp_comment_outside_quotes(raw).strip()
         if not line:
             continue
-        if "=" not in line:
+        m = re.match(r"^#define\s+([A-Z][A-Z0-9_]*)(\(([^)]*)\))?\s+(.+)$", line)
+        if not m:
             continue
-        name, value = line.split("=", 1)
-        name = name.strip()
-        value = value.strip()
-        current = value
-        out.append((name, value))
+        name = m.group(1)
+        if name in ignore:
+            continue
+        is_function_like = bool(m.group(2))
+        if is_function_like:
+            continue
+        value = m.group(4).strip()
+        if value:
+            out.append((name, value))
     return out
+
+
+def _sanitize_c_expr_for_js(expr: str) -> str:
+    expr = expr.strip()
+    # Remove C integer suffixes (U/L/UL/...) from literals.
+    expr = re.sub(r"\b(0[xX][0-9A-Fa-f]+|\d+)([uUlL]+)\b", r"\1", expr)
+    # Convert legacy C-style octal integer literals (e.g., 011) to JS 0o11 form.
+    expr = re.sub(
+        r"(?<![A-Za-z0-9_])0([0-7]{2,})(?![A-Za-z0-9_])",
+        lambda m: f"0o{m.group(1)}",
+        expr,
+    )
+    return expr
+
+
+def _expr_identifiers(expr: str) -> list[str]:
+    no_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', expr)
+    no_strings = re.sub(r"'(?:[^'\\]|\\.)*'", "''", no_strings)
+    return re.findall(r"\b[A-Za-z_]\w*\b", no_strings)
+
+
+def _is_potential_const_style(expr: str) -> bool:
+    if any(tok in expr for tok in ("{", "}", ";", "->", "sizeof", "#")):
+        return False
+    if re.search(r"\b[A-Za-z_]\w*\s*\(", expr):
+        return False
+    # identifiers must be macro-style (all caps/underscore)
+    for ident in _expr_identifiers(expr):
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", ident):
+            return False
+    return True
+
+
+def _existing_export_names_before_marker(path: str, marker_tag: str) -> set[str]:
+    text = _read(path)
+    begin = f"// AUTO-IMPORT-BEGIN: {marker_tag}"
+    names: set[str] = set()
+    for line in text.splitlines():
+        if begin in line:
+            break
+        m = re.match(r"^\s*export const\s+([A-Z][A-Z0-9_]*)\b", line)
+        if m:
+            names.add(m.group(1))
+    return names
+
+
+def _existing_export_names_outside_marker(path: str, marker_tag: str) -> set[str]:
+    text = _read(path)
+    begin = f"// AUTO-IMPORT-BEGIN: {marker_tag}"
+    end = f"// AUTO-IMPORT-END: {marker_tag}"
+    in_marker = False
+    names: set[str] = set()
+    for line in text.splitlines():
+        if begin in line:
+            in_marker = True
+            continue
+        if end in line:
+            in_marker = False
+            continue
+        if in_marker:
+            continue
+        m = re.match(r"^\s*export const\s+([A-Z][A-Z0-9_]*)\b", line)
+        if m:
+            names.add(m.group(1))
+    return names
 
 
 def generate_global_rm_block() -> str:
@@ -139,7 +244,7 @@ def generate_global_rm_block() -> str:
     if not colno or not rowno or not normal_speed:
         raise RuntimeError("Failed parsing COLNO/ROWNO/NORMAL_SPEED from C headers.")
 
-    levl_types = _parse_enum_int_pairs(rm_h, "levl_typ_types")
+    levl_types = _parse_enum_block(rm_h, "levl_typ_types")
     if not levl_types:
         raise RuntimeError("Failed parsing enum levl_typ_types from rm.h")
 
@@ -173,6 +278,70 @@ def generate_global_rm_block() -> str:
     return "\n".join(lines)
 
 
+def generate_all_headers_block(existing_exports_before: set[str], existing_exports_outside: set[str]) -> str:
+    header_paths = sorted(
+        os.path.join(INCLUDE_DIR, name)
+        for name in os.listdir(INCLUDE_DIR)
+        if name.endswith(".h")
+    )
+
+    merged: dict[str, tuple[str, str]] = {}
+    for path in header_paths:
+        header_name = os.path.basename(path)
+        guard_guess = os.path.splitext(header_name)[0].upper() + "_H"
+        for name, value in _parse_object_defines(_read(path), ignore={guard_guess}):
+            merged.setdefault(name, (header_name, _sanitize_c_expr_for_js(value)))
+
+    # Candidate constants: const-style macros not already exported elsewhere.
+    candidates: dict[str, tuple[str, str]] = {}
+    for name, (src, expr) in merged.items():
+        if name in existing_exports_outside:
+            continue
+        if _is_potential_const_style(expr):
+            candidates[name] = (src, expr)
+
+    # Resolve dependency order: identifiers must already be known or emitted earlier.
+    known = set(existing_exports_before)
+    emitted: list[tuple[str, str, str]] = []
+    pending = dict(candidates)
+    while pending:
+        progress = False
+        for name in sorted(list(pending.keys())):
+            src, expr = pending[name]
+            deps = set(_expr_identifiers(expr))
+            if deps.issubset(known | {name}):
+                emitted.append((name, expr, src))
+                known.add(name)
+                del pending[name]
+                progress = True
+        if not progress:
+            break
+
+    unresolved = sorted((name, src) for name, (src, _expr) in pending.items())
+
+    lines: list[str] = []
+    lines.append("// Auto-imported const-style object macros from C include headers")
+    lines.append(f"// Source dir: {INCLUDE_DIR}")
+    lines.append("//")
+    lines.append("// Rules:")
+    lines.append("// - include only object-like #define macros (not function-like)")
+    lines.append("// - include only const-style expressions (no runtime/lowercase identifiers)")
+    lines.append("// - emit only when dependencies are already resolvable at this marker location")
+    lines.append("")
+    lines.append(f"// Added direct exports: {len(emitted)}")
+    lines.append(f"// Deferred unresolved const-style macros: {len(unresolved)}")
+    for name, expr, src in emitted:
+        lines.append(f"// {src}")
+        lines.append(f"export const {name} = {expr};")
+    lines.append("")
+    lines.append("export const DEFERRED_HEADER_CONST_MACROS = Object.freeze([")
+    for name, src in unresolved:
+        lines.append(f'    "{name} ({src})",')
+    lines.append("]);")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_weapon_constants_block() -> str:
     skills = _read(SKILLS_H)
     monst = _read(MONST_H)
@@ -201,7 +370,6 @@ def generate_weapon_constants_block() -> str:
     lines.append(f"// Sources: {os.path.basename(SKILLS_H)}, {os.path.basename(MONST_H)}")
     lines.append("")
     lines.append("// Skill constants — cf. skills.h enum p_skills")
-
     for name, value in p_skills:
         lines.append(f"export const {name} = {value};")
     lines.append("")
@@ -225,28 +393,37 @@ def generate_weapon_constants_block() -> str:
     lines.append("export const BOLT_LIM = 8;")
     lines.append("export const AKLYS_LIM = BOLT_LIM / 2;")
     lines.append("")
-
     return "\n".join(lines)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Patch generated constants blocks in js/const.js")
-    parser.add_argument("--stdout", action="store_true", help="Print generated constants block to stdout.")
+    parser.add_argument("--stdout", action="store_true", help="Print generated constants blocks to stdout.")
     parser.add_argument("--output", default=OUTPUT_PATH, help="Target js file (default: js/const.js).")
     args = parser.parse_args()
 
-    weapon_block = generate_weapon_constants_block()
     global_rm_block = generate_global_rm_block()
+    before = _existing_export_names_before_marker(args.output, MARKER_ALL_HEADERS.tag)
+    outside = _existing_export_names_outside_marker(args.output, MARKER_ALL_HEADERS.tag)
+    all_headers_block = generate_all_headers_block(before, outside)
+    weapon_block = generate_weapon_constants_block()
+
     if args.stdout:
         print(f"/* {MARKER_GLOBAL_RM.tag} */")
         print(global_rm_block)
+        print(f"/* {MARKER_ALL_HEADERS.tag} */")
+        print(all_headers_block)
         print(f"/* {MARKER_WEAPON.tag} */")
         print(weapon_block)
         return
 
     patch_between_markers(args.output, MARKER_GLOBAL_RM, global_rm_block)
+    patch_between_markers(args.output, MARKER_ALL_HEADERS, all_headers_block)
     patch_between_markers(args.output, MARKER_WEAPON, weapon_block)
-    print(f"Patched {args.output} ({MARKER_GLOBAL_RM.tag}, {MARKER_WEAPON.tag})", file=sys.stderr)
+    print(
+        f"Patched {args.output} ({MARKER_GLOBAL_RM.tag}, {MARKER_ALL_HEADERS.tag}, {MARKER_WEAPON.tag})",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

@@ -2421,6 +2421,22 @@ hard-won wisdom:
   instead of `loc.flags` for wall type determination.
 - **Status**: Research complete, implementation deferred (complex multi-file change).
 
+### const.js auto-import now covers include/*.h const-style macros (2026-03-06)
+
+- `scripts/generators/gen_constants.py` now scans all C headers under
+  `nethack-c/patched/include/*.h` for object-style `#define` constants.
+- Generated constants now use one unified marker block in `js/const.js`:
+  `CONST_ALL_HEADERS` (instead of a separate role-only block).
+- Emission rules:
+  - only object-like macros (no function-like macros),
+  - only const-style expressions (no runtime/lowercase identifiers),
+  - only dependency-resolvable macros at marker position are emitted.
+- C-to-JS numeric literal normalization is required:
+  - strip C integer suffixes (`U`, `L`, `UL`, etc.),
+  - convert C legacy octal literals (`011`) to JS `0o11`.
+- Non-emitted const-style names are listed in
+  `DEFERRED_HEADER_CONST_MACROS` for explicit follow-up.
+
 ---
 
 ### mcanmove/mcansee Default Initialization

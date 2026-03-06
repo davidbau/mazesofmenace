@@ -441,14 +441,2358 @@ export const DUNGEON_ALIGN_BY_DNUM = {
     [TUTORIAL]: A_NONE,
 };
 
-// Role/race selection sentinels and chooser policy (src/role.c)
-// Runtime fields:
-// - flags.initrole/initrace/initgend/initalign unresolved-state sentinels
-// - rigid/random chooser mode for role-picking helpers
-export const ROLE_NONE = -1;
-export const ROLE_RANDOM = -2;
+// AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS
+// Auto-imported const-style object macros from C include headers
+// Source dir: /share/u/davidbau/git/mazesofmenace/game/scripts/generators/../../nethack-c/patched/include
+//
+// Rules:
+// - include only object-like #define macros (not function-like)
+// - include only const-style expressions (no runtime/lowercase identifiers)
+// - emit only when dependencies are already resolvable at this marker location
+
+// Added direct exports: 1140
+// Deferred unresolved const-style macros: 57
+// you.h
+export const AC_MAX = 99;
+// monattk.h
+export const AD_ACID = 8;
+// monattk.h
+export const AD_ANY = (-1);
+// monattk.h
+export const AD_BLND = 11;
+// monattk.h
+export const AD_CLRC = 240;
+// monattk.h
+export const AD_COLD = 3;
+// monattk.h
+export const AD_CONF = 25;
+// monattk.h
+export const AD_CORR = 42;
+// monattk.h
+export const AD_CURS = 253;
+// monattk.h
+export const AD_DCAY = 34;
+// monattk.h
+export const AD_DETH = 37;
+// monattk.h
+export const AD_DGST = 26;
+// monattk.h
+export const AD_DISE = 33;
+// monattk.h
+export const AD_DISN = 5;
+// monattk.h
+export const AD_DRCO = 31;
+// monattk.h
+export const AD_DRDX = 30;
+// monattk.h
+export const AD_DREN = 16;
+// monattk.h
+export const AD_DRIN = 32;
+// monattk.h
+export const AD_DRLI = 15;
+// monattk.h
+export const AD_DRST = 7;
+// monattk.h
+export const AD_ELEC = 6;
+// monattk.h
+export const AD_ENCH = 41;
+// monattk.h
+export const AD_FAMN = 39;
+// monattk.h
+export const AD_FIRE = 2;
+// monattk.h
+export const AD_HALU = 36;
+// monattk.h
+export const AD_HEAL = 27;
+// monattk.h
+export const AD_LEGS = 17;
+// monattk.h
+export const AD_MAGM = 1;
+// monattk.h
+export const AD_PEST = 38;
+// monattk.h
+export const AD_PHYS = 0;
+// monattk.h
+export const AD_PLYS = 14;
+// monattk.h
+export const AD_POLY = 43;
+// monattk.h
+export const AD_RBRE = 242;
+// monattk.h
+export const AD_RUST = 24;
+// monattk.h
+export const AD_SAMU = 252;
+// monattk.h
+export const AD_SEDU = 22;
+// monattk.h
+export const AD_SGLD = 20;
+// monattk.h
+export const AD_SITM = 21;
+// monattk.h
+export const AD_SLEE = 4;
+// monattk.h
+export const AD_SLIM = 40;
+// monattk.h
+export const AD_SLOW = 13;
+// monattk.h
+export const AD_SPC1 = 9;
+// monattk.h
+export const AD_SPC2 = 10;
+// monattk.h
+export const AD_SPEL = 241;
+// monattk.h
+export const AD_SSEX = 35;
+// monattk.h
+export const AD_STCK = 19;
+// monattk.h
+export const AD_STON = 18;
+// monattk.h
+export const AD_STUN = 12;
+// monattk.h
+export const AD_TLPT = 23;
+// monattk.h
+export const AD_WERE = 29;
+// monattk.h
+export const AD_WRAP = 28;
+// global.h
+export const ALIGNWEIGHT = 4;
+// winprocs.h
+export const ALIGN_BOTTOM = 4;
+// winprocs.h
+export const ALIGN_LEFT = 1;
+// winprocs.h
+export const ALIGN_RIGHT = 2;
+// winprocs.h
+export const ALIGN_TOP = 3;
+// hack.h
+export const ALL_FINISHED = 0x01;
+// spell.h
+export const ALL_MAP = 0x1;
+// spell.h
+export const ALL_SPELLS = 0x2;
+// hack.h
+export const ALL_TYPES = 0x0020;
+// hack.h
+export const ALL_TYPES_SELECTED = -2;
+// unixconf.h
+export const AMS_MAILBOX = "/Mailbox";
+// align.h
+export const AM_SPLEV_CO = 0x20;
+// align.h
+export const AM_SPLEV_NONCO = 0x40;
+// align.h
+export const AM_SPLEV_RANDOM = 0x80;
+// trap.h
+export const ANIMATE_NORMAL = 0;
+// trap.h
+export const ANIMATE_SHATTER = 1;
+// trap.h
+export const ANIMATE_SPELL = 2;
+// sp_lev.h
+export const ANY_LOC = 0x10;
+// mkroom.h
+export const ANY_SHOP = (-2);
+// mkroom.h
+export const ANY_TYPE = (-1);
+// sp_lev.h
+export const ARBOREAL = 0x00000010;
+// trap.h
+export const AS_MON_IS_UNIQUE = 2;
+// trap.h
+export const AS_NO_MON = 1;
+// trap.h
+export const AS_OK = 0;
+// wintype.h
+export const ATR_DIM = 2;
+// wintype.h
+export const ATR_ITALIC = 3;
+// monattk.h
+export const AT_ANY = (-1);
+// monattk.h
+export const AT_BITE = 2;
+// monattk.h
+export const AT_BOOM = 14;
+// monattk.h
+export const AT_BREA = 12;
+// monattk.h
+export const AT_BUTT = 4;
+// monattk.h
+export const AT_CLAW = 1;
+// monattk.h
+export const AT_ENGL = 11;
+// monattk.h
+export const AT_EXPL = 13;
+// monattk.h
+export const AT_GAZE = 15;
+// monattk.h
+export const AT_HUGS = 7;
+// monattk.h
+export const AT_KICK = 3;
+// monattk.h
+export const AT_MAGC = 255;
+// monattk.h
+export const AT_NONE = 0;
+// monattk.h
+export const AT_SPIT = 10;
+// monattk.h
+export const AT_STNG = 6;
+// monattk.h
+export const AT_TENT = 16;
+// monattk.h
+export const AT_TUCH = 5;
+// monattk.h
+export const AT_WEAP = 254;
+// func_tab.h
+export const AUTOCOMPLETE = 0x0002;
+// func_tab.h
+export const AUTOCOMP_ADJ = 0x2000;
+// hack.h
+export const AUTOSELECT_SINGLE = 0x0004;
+// flag.h
+export const AUTOUNLOCK_APPLY_KEY = 2;
+// flag.h
+export const AUTOUNLOCK_FORCE = 8;
+// flag.h
+export const AUTOUNLOCK_KICK = 4;
+// flag.h
+export const AUTOUNLOCK_UNTRAP = 1;
+// align.h
+export const A_COALIGNED = 1;
+// you.h
+export const A_CURRENT = 0;
+// align.h
+export const A_OPALIGNED = (-1);
+// you.h
+export const A_ORIGINAL = 1;
+// hack.h
+export const BASICENLIGHTENMENT = 1;
+// botl.h
+export const BEFORE = 0;
+// hack.h
+export const BILLED_TYPES = 0x0040;
+// mextra.h
+export const BILLSZ = 200;
+// botl.h
+export const BL_HILITE_BLINK = -6;
+// botl.h
+export const BL_HILITE_BOLD = -2;
+// botl.h
+export const BL_HILITE_DIM = -3;
+// botl.h
+export const BL_HILITE_INVERSE = -7;
+// botl.h
+export const BL_HILITE_ITALIC = -4;
+// botl.h
+export const BL_HILITE_NONE = -1;
+// botl.h
+export const BL_HILITE_ULINE = -5;
+// botl.h
+export const BL_MASK_BAREH = 0x00000001;
+// botl.h
+export const BL_MASK_BITS = 30;
+// botl.h
+export const BL_MASK_BLIND = 0x00000002;
+// botl.h
+export const BL_MASK_BUSY = 0x00000004;
+// botl.h
+export const BL_MASK_CONF = 0x00000008;
+// botl.h
+export const BL_MASK_DEAF = 0x00000010;
+// botl.h
+export const BL_MASK_ELF_IRON = 0x00000020;
+// botl.h
+export const BL_MASK_FLY = 0x00000040;
+// botl.h
+export const BL_MASK_FOODPOIS = 0x00000080;
+// botl.h
+export const BL_MASK_GLOWHANDS = 0x00000100;
+// botl.h
+export const BL_MASK_GRAB = 0x00000200;
+// botl.h
+export const BL_MASK_HALLU = 0x00000400;
+// botl.h
+export const BL_MASK_HELD = 0x00000800;
+// botl.h
+export const BL_MASK_HOLDING = 0x20000000;
+// botl.h
+export const BL_MASK_ICY = 0x00001000;
+// botl.h
+export const BL_MASK_INLAVA = 0x00002000;
+// botl.h
+export const BL_MASK_LEV = 0x00004000;
+// botl.h
+export const BL_MASK_PARLYZ = 0x00008000;
+// botl.h
+export const BL_MASK_RIDE = 0x00010000;
+// botl.h
+export const BL_MASK_SLEEPING = 0x00020000;
+// botl.h
+export const BL_MASK_SLIME = 0x00040000;
+// botl.h
+export const BL_MASK_SLIPPERY = 0x00080000;
+// botl.h
+export const BL_MASK_STONE = 0x00100000;
+// botl.h
+export const BL_MASK_STRNGL = 0x00200000;
+// botl.h
+export const BL_MASK_STUN = 0x00400000;
+// botl.h
+export const BL_MASK_SUBMERGED = 0x00800000;
+// botl.h
+export const BL_MASK_TERMILL = 0x01000000;
+// botl.h
+export const BL_MASK_TETHERED = 0x02000000;
+// botl.h
+export const BL_MASK_TRAPPED = 0x04000000;
+// botl.h
+export const BL_MASK_UNCONSC = 0x08000000;
+// botl.h
+export const BL_MASK_WOUNDEDL = 0x10000000;
+// botl.h
+export const BL_TH_ALWAYS_HILITE = 105;
+// botl.h
+export const BL_TH_CONDITION = 103;
+// botl.h
+export const BL_TH_CRITICALHP = 106;
+// botl.h
+export const BL_TH_NONE = 0;
+// botl.h
+export const BL_TH_TEXTMATCH = 104;
+// botl.h
+export const BL_TH_UPDOWN = 102;
+// botl.h
+export const BL_TH_VAL_ABSOLUTE = 101;
+// botl.h
+export const BL_TH_VAL_PERCENTAGE = 100;
+// global.h
+export const BOGUSMONFILE = "bogusmon";
+// fnamesiz.h
+export const BONESINIT = "bonesnn.xxx.le";
+// hack.h
+export const BONESPREFIX = 3;
+// global.h
+export const BOOL_RANDOM = (-1);
+// hack.h
+export const BP_ALIGN = 0;
+// hack.h
+export const BP_GEND = 1;
+// hack.h
+export const BP_RACE = 2;
+// hack.h
+export const BP_ROLE = 3;
+// dgn_file.h
+export const BRANCH_LIMIT = 32;
+// hack.h
+export const BRK_BY_HERO = 0x01;
+// hack.h
+export const BRK_FROM_INV = 0x02;
+// hack.h
+export const BRK_KNOWN2BREAK = 0x04;
+// hack.h
+export const BRK_KNOWN2NOTBREAK = 0x08;
+// hack.h
+export const BRK_KNOWN_OUTCOME = (BRK_KNOWN2BREAK | BRK_KNOWN2NOTBREAK);
+// hack.h
+export const BRK_MELEE = 0x10;
+// dungeon.h
+export const BR_NO_END1 = 1;
+// dungeon.h
+export const BR_NO_END2 = 2;
+// dungeon.h
+export const BR_PORTAL = 3;
+// dungeon.h
+export const BR_STAIR = 0;
+// global.h
+export const BUFSZ = 256;
+// date.h
+export const BUILD_DATE = "Tue Mar  3 14:40:51 2026";
+// date.h
+export const BUILD_TIME = (1772566851);
+// obj.h
+export const BURIED_TOO = 0x2;
+// engrave.h
+export const BURN = 3;
+// hack.h
+export const BY_COOKIE = 1;
+// hack.h
+export const BY_NEXTHERE = 0x0001;
+// hack.h
+export const BY_ORACLE = 0;
+// hack.h
+export const BY_OTHER = 9;
+// hack.h
+export const BY_PAPER = 2;
+// hack.h
+export const CC_INCL_CENTER = 0x01;
+// hack.h
+export const CC_NO_FLAGS = 0x00;
+// hack.h
+export const CC_RING_PAIRS = 0x04;
+// hack.h
+export const CC_SKIP_INACCS = 0x10;
+// hack.h
+export const CC_SKIP_MONS = 0x08;
+// hack.h
+export const CC_UNSHUFFLED = 0x02;
+// sp_lev.h
+export const CHECK_INACCESSIBLES = 0x00001000;
+// hack.h
+export const CHOOSE_ALL = 0x0080;
+// wintype.h
+export const CLICK_1 = 1;
+// wintype.h
+export const CLICK_2 = 2;
+// global.h
+export const CMDHELPFILE = "cmdhelp";
+// func_tab.h
+export const CMD_INSANE = 0x1000;
+// func_tab.h
+export const CMD_M_PREFIX = 0x0080;
+// func_tab.h
+export const CMD_NOT_AVAILABLE = 0x0010;
+// global.h
+export const COLBUFSZ = BUFSZ;
+// config.h
+export const COMPRESS = "/usr/bin/compress";
+// config.h
+export const COMPRESS_EXTENSION = ".Z";
+// hack.h
+export const CONFIGPREFIX = 8;
+// pcconf.h
+export const CONFIG_FILE = "defaults.nh";
+// windconf.h
+export const CONFIG_TEMPLATE = "nethackrc.template";
+// hack.h
+export const CONTAINED_SYM = '>';
+// obj.h
+export const CONTAINED_TOO = 0x1;
+// context.h
+export const CONTEXTVERBSZ = 30;
+// you.h
+export const CONVERT = 2;
+// hack.h
+export const CONVERTING = 0x08;
+// patchlevel.h
+export const COPYRIGHT_BANNER_A = "NetHack, Copyright 1985-2026";
+// patchlevel.h
+export const COPYRIGHT_BANNER_B = "         By Stichting Mathematisch Centrum and M. Stephenson.";
+// date.h
+export const COPYRIGHT_BANNER_C = "         Version 3.7.0-132 Unix Work-in-progress, built Tue Mar  3 14:40:51 2026.";
+// patchlevel.h
+export const COPYRIGHT_BANNER_D = "         See license for details.";
+// hack.h
+export const CORPSTAT_BURIED = 0x10;
+// hack.h
+export const CORPSTAT_FEMALE = 1;
+// hack.h
+export const CORPSTAT_GENDER = 0x03;
+// hack.h
+export const CORPSTAT_HISTORIC = 0x04;
+// hack.h
+export const CORPSTAT_INIT = 0x08;
+// hack.h
+export const CORPSTAT_MALE = 2;
+// hack.h
+export const CORPSTAT_NEUTER = 3;
+// hack.h
+export const CORPSTAT_NONE = 0x00;
+// hack.h
+export const CORPSTAT_RANDOM = 0;
+// hack.h
+export const CORPSTAT_SPE_VAL = 0x07;
+// sp_lev.h
+export const CORRMAZE = 0x00000800;
+// vision.h
+export const COULD_SEE = 0x1;
+// hack.h
+export const COUNTING = 0x01;
+// wincurs.h
+export const CURSES_DARK_GRAY = 17;
+// sp_lev.h
+export const CUSTOM_INVENT = 0x01;
+// hack.h
+export const CVT_BUF_SIZE = 64;
+// hack.h
+export const CXN_ARTICLE = 8;
+// hack.h
+export const CXN_NOCORPSE = 16;
+// hack.h
+export const CXN_NORMAL = 0;
+// hack.h
+export const CXN_NO_PFX = 2;
+// hack.h
+export const CXN_PFX_THE = 4;
+// hack.h
+export const CXN_SINGULAR = 1;
+// global.h
+export const DATAFILE = "data";
+// hack.h
+export const DATAPREFIX = 4;
+// global.h
+export const DEBUGHELP = "wizhelp";
+// sym.h
+export const DEFAULT_GRAPHICS = 0;
+// sp_lev.h
+export const DEFAULT_INVENT = 0x02;
+// winX.h
+export const DEFAULT_LINES_DISPLAYED = 12;
+// winX.h
+export const DEFAULT_MESSAGE_WIDTH = 60;
+// config.h
+export const DEFAULT_WINDOW_SYS = "mac";
+// hack.h
+export const DEFUNCT_MONSTER = (-100);
+// unixconf.h
+export const DEF_MAILREADER = "/usr/bin/mail";
+// hack.h
+export const DEF_NOTHING = ' ';
+// hack.h
+export const DEVTEAM_EMAIL = "devteam@nethack.org";
+// hack.h
+export const DEVTEAM_URL = "https://www.nethack.org/";
+// hack.h
+export const DF_ALL = 0x04;
+// hack.h
+export const DF_NONE = 0x00;
+// hack.h
+export const DF_RANDOM = 0x01;
+// flag.h
+export const DISCLOSE_NO_WITHOUT_PROMPT = '-';
+// flag.h
+export const DISCLOSE_PROMPT_DEFAULT_NO = 'n';
+// flag.h
+export const DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?';
+// flag.h
+export const DISCLOSE_PROMPT_DEFAULT_YES = 'y';
+// flag.h
+export const DISCLOSE_YES_WITHOUT_PROMPT = '+';
+// winX.h
+export const DISPLAY_FILE_SIZE = 35;
+// dlb.h
+export const DLBBASENAME = "nhdat";
+// dlb.h
+export const DLBFILE = "nhdat";
+// decl.h
+export const DOMOVE_RUSH = 0x00000002;
+// decl.h
+export const DOMOVE_WALK = 0x00000001;
+// global.h
+export const DOORINC = 20;
+// sp_lev.h
+export const DRY = 0x01;
+// config.h
+export const DUMPLOG_FILE = "/tmp/nethack.%n.%d.log";
+// config.h
+export const DUMPLOG_MSG_COUNT = 50;
+// engrave.h
+export const DUST = 1;
+// dgn_file.h
+export const D_ALIGN_CHAOTIC = (AM_CHAOTIC << 4);
+// dgn_file.h
+export const D_ALIGN_LAWFUL = (AM_LAWFUL << 4);
+// dgn_file.h
+export const D_ALIGN_MASK = 0x70;
+// dgn_file.h
+export const D_ALIGN_NEUTRAL = (AM_NEUTRAL << 4);
+// dgn_file.h
+export const D_ALIGN_NONE = 0;
+// mkroom.h
+export const D_SCATTER = 0;
+// mkroom.h
+export const D_SHOP = 1;
+// mkroom.h
+export const D_TEMPLE = 2;
+// rm.h
+export const D_WARNED = 16;
+// hack.h
+export const ECMD_CANCEL = 0x02;
+// hack.h
+export const ECMD_FAIL = 0x04;
+// hack.h
+export const ECMD_OK = 0x00;
+// hack.h
+export const ECMD_TIME = 0x01;
+// func_tab.h
+export const ECM_EXACTMATCH = 0x02;
+// func_tab.h
+export const ECM_IGNOREAC = 0x01;
+// func_tab.h
+export const ECM_NO1CHARCMD = 0x04;
+// func_tab.h
+export const ECM_NOFLAGS = 0;
+// patchlevel.h
+export const EDITLEVEL = 132;
+// engrave.h
+export const ENGRAVE = 2;
+// global.h
+export const ENGRAVEFILE = "engrave";
+// engrave.h
+export const ENGR_BLOOD = 5;
+// hack.h
+export const ENL_GAMEINPROGRESS = 0;
+// hack.h
+export const ENL_GAMEOVERALIVE = 1;
+// hack.h
+export const ENL_GAMEOVERDEAD = 2;
+// hack.h
+export const ENTITIES = 2;
+// config.h
+export const ENTRYMAX = 100;
+// global.h
+export const EPITAPHFILE = "epitaph";
+// global.h
+export const EXIT_FAILURE = 1;
+// winX.h
+export const EXIT_ON_EXIT = 2;
+// winX.h
+export const EXIT_ON_KEY_OR_BUTTON_PRESS = 1;
+// winX.h
+export const EXIT_ON_KEY_PRESS = 0;
+// winX.h
+export const EXIT_ON_SENT_EVENT = 3;
+// global.h
+export const EXIT_SUCCESS = 0;
+// pcconf.h
+export const FCMASK = 0o660;
+// mextra.h
+export const FCSIZ = (ROWNO + COLNO);
+// hack.h
+export const FEEL_COCKATRICE = 0x0080;
+// pcconf.h
+export const FILENAME = 80;
+// mkroom.h
+export const FILL_LVFLAGS = 2;
+// hack.h
+export const FLING = 0x02;
+// winami.h
+export const FLMAP_CURSUP = 2;
+// winami.h
+export const FLMAP_INGLYPH = 1;
+// winami.h
+export const FLMAP_SKIP = 4;
+// winami.h
+export const FLMSG_FIRST = 1;
+// hack.h
+export const FM_FMON = 0x01;
+// hack.h
+export const FM_MIGRATE = 0x02;
+// hack.h
+export const FM_MYDOGS = 0x04;
+// hack.h
+export const FM_YOU = 0x08;
+// hack.h
+export const FQN_MAX_FILENAME = 512;
+// hack.h
+export const FREEING = 0x04;
+// prop.h
+export const FROMFORM = 0x10000000;
+// prop.h
+export const FROMRACE = 0x02000000;
+// flag.h
+export const FULL_MOON = 4;
+// rm.h
+export const F_LOOTED = 1;
+// rm.h
+export const F_WARNED = 2;
+// hack.h
+export const GC_CONDHIST = 2;
+// hack.h
+export const GC_ECHOFIRST = 4;
+// hack.h
+export const GC_NOFLAGS = 0;
+// hack.h
+export const GC_SAVEHIST = 1;
+// config.h
+export const GDBPATH = "/usr/bin/gdb";
+// func_tab.h
+export const GENERALCMD = 0x0008;
+// hack.h
+export const GOLD_TYPES = 0x0008;
+// flag.h
+export const GPCOORDS_COMFULL = 'f';
+// flag.h
+export const GPCOORDS_COMPASS = 'c';
+// flag.h
+export const GPCOORDS_MAP = 'm';
+// flag.h
+export const GPCOORDS_NONE = 'n';
+// flag.h
+export const GPCOORDS_SCREEN = 's';
+// sp_lev.h
+export const GRAVEYARD = 0x00000100;
+// config.h
+export const GREPPATH = "/bin/grep";
+// pcconf.h
+export const GUIDEBOOK_FILE = "Guidebook.txt";
+// monflag.h
+export const G_EXTINCT = 0x01;
+// monflag.h
+export const G_FREQ = 0x0007;
+// monflag.h
+export const G_GENO = 0x0020;
+// monflag.h
+export const G_GENOD = 0x02;
+// monflag.h
+export const G_GONE = (G_GENOD | G_EXTINCT);
+// monflag.h
+export const G_HELL = 0x0400;
+// monflag.h
+export const G_IGNORE = 0x8000;
+// monflag.h
+export const G_KNOWN = 0x04;
+// monflag.h
+export const G_LGROUP = 0x0040;
+// monflag.h
+export const G_NOCORPSE = 0x0010;
+// monflag.h
+export const G_NOGEN = 0x0200;
+// monflag.h
+export const G_NOHELL = 0x0800;
+// monflag.h
+export const G_SGROUP = 0x0080;
+// monflag.h
+export const G_UNIQ = 0x1000;
+// config.h
+export const HACKDIR = "/boot/apps/NetHack";
+// hack.h
+export const HACKPREFIX = 0;
+// hack.h
+export const HANDS_SYM = '-';
+// sp_lev.h
+export const HARDFLOOR = 0x00000002;
+// engrave.h
+export const HEADSTONE = 6;
+// hack.h
+export const HEALTHY_TIN = (-3);
+// dgn_file.h
+export const HELLISH = 0x02;
+// global.h
+export const HELP = "help";
+// global.h
+export const HISTORY = "history";
+// pcconf.h
+export const HLOCK = "NHPERM";
+// hack.h
+export const HOMEMADE_TIN = 1;
+// sp_lev.h
+export const HOT = 0x04;
+// hack.h
+export const HURTLING = 0x80;
+// sp_lev.h
+export const ICEDPOOLS = 0x00000200;
+// rm.h
+export const ICED_MOAT = 16;
+// rm.h
+export const ICED_POOL = 8;
+// func_tab.h
+export const IFBURIED = 0x0001;
+// date.h
+export const IGNORED_FEATURES = 0x40080000;
+// objclass.h
+export const IMMEDIATE = 2;
+// hack.h
+export const INCLUDE_HERO = 0x0100;
+// hack.h
+export const INCLUDE_VENOM = 0x0002;
+// fnamesiz.h
+export const INDEXT = ".xxxxxx";
+// windconf.h
+export const INTERJECT_PANIC = 0;
+// func_tab.h
+export const INTERNALCMD = 0x0040;
+// hack.h
+export const INVORDER_SORT = 0x0010;
+// wincurs.h
+export const INV_WIN = 4;
+// vision.h
+export const IN_SIGHT = 0x2;
+// isaac64.h
+export const ISAAC64_SZ_LOG = (8);
+// hack.h
+export const JUSTPICKED = 0x1000;
+// global.h
+export const KEYHELP = "keyhelp";
+// wincurs.h
+export const KEY_ESC = 0x1b;
+// global.h
+export const LARGEST_INT = 32767;
+// hack.h
+export const LAUNCH_KNOWN = 0x80;
+// hack.h
+export const LAUNCH_UNSEEN = 0x40;
+// rm.h
+export const LA_DOWN = 2;
+// rm.h
+export const LA_UP = 1;
+// you.h
+export const LEFT_HANDED = 0x01;
+// hack.h
+export const LEVELPREFIX = 1;
+// global.h
+export const LEV_EXT = ".lua";
+// dgn_file.h
+export const LEV_LIMIT = 50;
+// dungeon.h
+export const LFILE_EXISTS = 0x04;
+// global.h
+export const LICENSE = "license";
+// config.h
+export const LIVELOGFILE = "livelog";
+// global.h
+export const LL_ACHIEVE = 0x0002;
+// global.h
+export const LL_ALIGNMENT = 0x0200;
+// global.h
+export const LL_ARTIFACT = 0x0040;
+// global.h
+export const LL_CONDUCT = 0x0020;
+// global.h
+export const LL_DEBUG = 0x8000;
+// global.h
+export const LL_DIVINEGIFT = 0x0008;
+// global.h
+export const LL_DUMP = 0x4000;
+// global.h
+export const LL_DUMP_ALL = 0x0800;
+// global.h
+export const LL_DUMP_ASC = 0x0400;
+// global.h
+export const LL_GENOCIDE = 0x0080;
+// global.h
+export const LL_KILLEDPET = 0x0100;
+// global.h
+export const LL_LIFESAVE = 0x0010;
+// global.h
+export const LL_MINORAC = 0x1000;
+// global.h
+export const LL_NONE = 0x0000;
+// global.h
+export const LL_SPOILER = 0x2000;
+// global.h
+export const LL_UMONST = 0x0004;
+// global.h
+export const LL_WISH = 0x0001;
+// fnamesiz.h
+export const LOCKNAMEINIT = "1lock";
+// hack.h
+export const LOCKPREFIX = 6;
+// config.h
+export const LOGFILE = "logfile";
+// hack.h
+export const LOOKHERE_NOFLAGS = 0;
+// hack.h
+export const LOOKHERE_PICKED_SOME = 1;
+// hack.h
+export const LOOKHERE_SKIP_DFEATURE = 2;
+// obj.h
+export const LOSTOVERRIDEMASK = 0x3;
+// obj.h
+export const LOST_DROPPED = 2;
+// obj.h
+export const LOST_EXPLODING = 4;
+// obj.h
+export const LOST_NONE = 0;
+// obj.h
+export const LOST_STOLEN = 3;
+// obj.h
+export const LOST_THROWN = 1;
+// hack.h
+export const LUA_COPYRIGHT_BUFSIZ = 120;
+// hack.h
+export const LUA_VER_BUFSIZ = 20;
+// you.h
+export const LUCKADD = 3;
+// you.h
+export const LUCKMAX = 10;
+// you.h
+export const LUCKMIN = (-10);
+// monflag.h
+export const M1_ACID = 0x08000000;
+// monflag.h
+export const M1_AMORPHOUS = 0x00000004;
+// monflag.h
+export const M1_AMPHIBIOUS = 0x00000200;
+// monflag.h
+export const M1_ANIMAL = 0x00040000;
+// monflag.h
+export const M1_BREATHLESS = 0x00000400;
+// monflag.h
+export const M1_CARNIVORE = 0x20000000;
+// monflag.h
+export const M1_CLING = 0x00000010;
+// monflag.h
+export const M1_CONCEAL = 0x00000080;
+// monflag.h
+export const M1_FLY = 0x00000001;
+// monflag.h
+export const M1_HERBIVORE = 0x40000000;
+// monflag.h
+export const M1_HIDE = 0x00000100;
+// monflag.h
+export const M1_HUMANOID = 0x00020000;
+// monflag.h
+export const M1_METALLIVORE = 0x80000000;
+// monflag.h
+export const M1_MINDLESS = 0x00010000;
+// monflag.h
+export const M1_NEEDPICK = 0x00000040;
+// monflag.h
+export const M1_NOEYES = 0x00001000;
+// monflag.h
+export const M1_NOHANDS = 0x00002000;
+// monflag.h
+export const M1_NOHEAD = 0x00008000;
+// monflag.h
+export const M1_NOLIMBS = 0x00006000;
+// monflag.h
+export const M1_NOTAKE = 0x00000800;
+// monflag.h
+export const M1_OMNIVORE = 0x60000000;
+// monflag.h
+export const M1_OVIPAROUS = 0x00400000;
+// monflag.h
+export const M1_POIS = 0x10000000;
+// monflag.h
+export const M1_REGEN = 0x00800000;
+// monflag.h
+export const M1_SEE_INVIS = 0x01000000;
+// monflag.h
+export const M1_SLITHY = 0x00080000;
+// monflag.h
+export const M1_SWIM = 0x00000002;
+// monflag.h
+export const M1_THICK_HIDE = 0x00200000;
+// monflag.h
+export const M1_TPORT = 0x02000000;
+// monflag.h
+export const M1_TPORT_CNTRL = 0x04000000;
+// monflag.h
+export const M1_TUNNEL = 0x00000020;
+// monflag.h
+export const M1_UNSOLID = 0x00100000;
+// monflag.h
+export const M1_WALLWALK = 0x00000008;
+// monflag.h
+export const M2_COLLECT = 0x40000000;
+// monflag.h
+export const M2_DEMON = 0x00000100;
+// monflag.h
+export const M2_DOMESTIC = 0x00400000;
+// monflag.h
+export const M2_DWARF = 0x00000020;
+// monflag.h
+export const M2_ELF = 0x00000010;
+// monflag.h
+export const M2_FEMALE = 0x00020000;
+// monflag.h
+export const M2_GIANT = 0x00002000;
+// monflag.h
+export const M2_GNOME = 0x00000040;
+// monflag.h
+export const M2_GREEDY = 0x10000000;
+// monflag.h
+export const M2_HOSTILE = 0x00100000;
+// monflag.h
+export const M2_HUMAN = 0x00000008;
+// monflag.h
+export const M2_JEWELS = 0x20000000;
+// monflag.h
+export const M2_LORD = 0x00000400;
+// monflag.h
+export const M2_MAGIC = 0x80000000;
+// monflag.h
+export const M2_MALE = 0x00010000;
+// monflag.h
+export const M2_MERC = 0x00000200;
+// monflag.h
+export const M2_MINION = 0x00001000;
+// monflag.h
+export const M2_NASTY = 0x02000000;
+// monflag.h
+export const M2_NEUTER = 0x00040000;
+// monflag.h
+export const M2_NOPOLY = 0x00000001;
+// monflag.h
+export const M2_ORC = 0x00000080;
+// monflag.h
+export const M2_PEACEFUL = 0x00200000;
+// monflag.h
+export const M2_PNAME = 0x00080000;
+// monflag.h
+export const M2_PRINCE = 0x00000800;
+// monflag.h
+export const M2_ROCKTHROW = 0x08000000;
+// monflag.h
+export const M2_SHAPESHIFTER = 0x00004000;
+// monflag.h
+export const M2_STALK = 0x01000000;
+// monflag.h
+export const M2_STRONG = 0x04000000;
+// monflag.h
+export const M2_UNDEAD = 0x00000002;
+// monflag.h
+export const M2_WANDER = 0x00800000;
+// monflag.h
+export const M2_WERE = 0x00000004;
+// monflag.h
+export const M3_CLOSE = 0x0080;
+// monflag.h
+export const M3_COVETOUS = 0x001f;
+// monflag.h
+export const M3_DISPLACES = 0x0400;
+// monflag.h
+export const M3_INFRAVISIBLE = 0x0200;
+// monflag.h
+export const M3_INFRAVISION = 0x0100;
+// monflag.h
+export const M3_WAITFORU = 0x0040;
+// monflag.h
+export const M3_WAITMASK = 0x00c0;
+// monflag.h
+export const M3_WANTSALL = 0x001f;
+// monflag.h
+export const M3_WANTSAMUL = 0x0001;
+// monflag.h
+export const M3_WANTSARTI = 0x0010;
+// monflag.h
+export const M3_WANTSBELL = 0x0002;
+// monflag.h
+export const M3_WANTSBOOK = 0x0004;
+// monflag.h
+export const M3_WANTSCAND = 0x0008;
+// hack.h
+export const MAGICENLIGHTENMENT = 2;
+// unixconf.h
+export const MAILCKFREQ = 50;
+// winprocs.h
+export const MAP_MODE_ASCII_FIT_TO_SCREEN = 10;
+// winprocs.h
+export const MAP_MODE_TILES = 0;
+// winprocs.h
+export const MAP_MODE_TILES_FIT_TO_SCREEN = 11;
+// wincurs.h
+export const MAP_WIN = 3;
+// sp_lev.h
+export const MAP_X_LIM = 76;
+// sp_lev.h
+export const MAP_Y_LIM = 21;
+// engrave.h
+export const MARK = 4;
+// botl.h
+export const MAXCO = 200;
+// global.h
+export const MAXSTAIRS = 1;
+// global.h
+export const MAXULEV = 30;
+// botl.h
+export const MAXVALWIDTH = 80;
+// winami.h
+export const MAXWIN = 20;
+// winami.h
+export const MAXWINTAGS = 5;
+// flag.h
+export const MAX_ALTKEYHANDLING = 25;
+// hack.h
+export const MAX_BMASK = 4;
+// dlb.h
+export const MAX_DLB_FILENAME = 256;
+// obj.h
+export const MAX_EGG_HATCH_TIME = 200;
+// obj.h
+export const MAX_ERODE = 3;
+// winX.h
+export const MAX_KEY_STRING = 64;
+// windconf.h
+export const MAX_LAN_USERNAME = 20;
+// hack.h
+export const MAX_MENU_MAPPED_CMDS = 32;
+// global.h
+export const MAX_MSG_HISTORY = 128;
+// sp_lev.h
+export const MAX_NESTED_ROOMS = 5;
+// monst.h
+export const MAX_NUM_WORMS = 32;
+// obj.h
+export const MAX_OIL_IN_FLASK = 400;
+// vision.h
+export const MAX_RADIUS = 15;
+// spell.h
+export const MAX_SPELL_STUDY = 3;
+// global.h
+export const MAX_SUBROOMS = 24;
+// winX.h
+export const MAX_WINDOWS = 20;
+// sp_lev.h
+export const MAZELEVEL = 0x00000020;
+// dgn_file.h
+export const MAZELIKE = 0x04;
+// global.h
+export const MD_PAD_BOGONS = 20;
+// global.h
+export const MD_PAD_RUMORS = 60;
+// hack.h
+export const MENU_COMBINATION = 1;
+// wintype.h
+export const MENU_FIRST_PAGE = '^';
+// hack.h
+export const MENU_FULL = 2;
+// wintype.h
+export const MENU_INVERT_ALL = '@';
+// wintype.h
+export const MENU_INVERT_PAGE = '~';
+// wintype.h
+export const MENU_ITEMFLAGS_NONE = 0x0000000;
+// wintype.h
+export const MENU_ITEMFLAGS_SELECTED = 0x0000001;
+// wintype.h
+export const MENU_ITEMFLAGS_SKIPINVERT = 0x0000002;
+// wintype.h
+export const MENU_ITEMFLAGS_SKIPMENUCOLORS = 0x0000004;
+// wintype.h
+export const MENU_LAST_PAGE = '|';
+// wintype.h
+export const MENU_NEXT_PAGE = '>';
+// hack.h
+export const MENU_PARTIAL = 3;
+// wintype.h
+export const MENU_PREVIOUS_PAGE = '<';
+// wintype.h
+export const MENU_SEARCH = ':';
+// wintype.h
+export const MENU_SELECT_ALL = '.';
+// wintype.h
+export const MENU_SELECT_PAGE = ',';
+// hack.h
+export const MENU_TRADITIONAL = 0;
+// wintype.h
+export const MENU_UNSELECT_ALL = '-';
+// wintype.h
+export const MENU_UNSELECT_PAGE = '\\';
+// wincurs.h
+export const MENU_WIN = 6;
+// wincurs.h
+export const MESSAGE_WIN = 1;
+// monst.h
+export const MFAST = 2;
+// display.h
+export const MG_BADXY = 0x04000;
+// display.h
+export const MG_BW_ENGR = 0x00200;
+// display.h
+export const MG_BW_ICE = 0x00200;
+// display.h
+export const MG_BW_LAVA = 0x00100;
+// display.h
+export const MG_BW_SINK = 0x00200;
+// display.h
+export const MG_CORPSE = 0x00002;
+// display.h
+export const MG_DETECT = 0x00008;
+// display.h
+export const MG_FEMALE = 0x02000;
+// display.h
+export const MG_FLAG_NOOVERRIDE = 0x01;
+// display.h
+export const MG_FLAG_NORMAL = 0x00;
+// display.h
+export const MG_HERO = 0x00001;
+// display.h
+export const MG_INVIS = 0x00004;
+// display.h
+export const MG_MALE = 0x01000;
+// display.h
+export const MG_NOTHING = 0x00400;
+// display.h
+export const MG_OBJPILE = 0x00080;
+// display.h
+export const MG_PET = 0x00010;
+// display.h
+export const MG_RIDDEN = 0x00020;
+// display.h
+export const MG_STATUE = 0x00040;
+// display.h
+export const MG_UNEXPL = 0x00800;
+// hack.h
+export const MHID_ALTMON = 4;
+// hack.h
+export const MHID_ARTICLE = 2;
+// hack.h
+export const MHID_PREFIX = 1;
+// hack.h
+export const MHID_REGION = 8;
+// global.h
+export const MHPMAX = 500;
+// monflag.h
+export const MH_DWARF = M2_DWARF;
+// monflag.h
+export const MH_ELF = M2_ELF;
+// monflag.h
+export const MH_GNOME = M2_GNOME;
+// monflag.h
+export const MH_HUMAN = M2_HUMAN;
+// monflag.h
+export const MH_ORC = M2_ORC;
+// dungeon.h
+export const MIGR_APPROX_XY = 1;
+// dungeon.h
+export const MIGR_EXACT_XY = 2;
+// dungeon.h
+export const MIGR_LADDER_DOWN = 6;
+// dungeon.h
+export const MIGR_LADDER_UP = 5;
+// dungeon.h
+export const MIGR_LEFTOVERS = 8192;
+// dungeon.h
+export const MIGR_NOBREAK = 1024;
+// dungeon.h
+export const MIGR_NOSCATTER = 2048;
+// dungeon.h
+export const MIGR_NOWHERE = (-1);
+// dungeon.h
+export const MIGR_PORTAL = 8;
+// dungeon.h
+export const MIGR_RANDOM = 0;
+// dungeon.h
+export const MIGR_SSTAIRS = 7;
+// dungeon.h
+export const MIGR_STAIRS_DOWN = 4;
+// dungeon.h
+export const MIGR_STAIRS_UP = 3;
+// dungeon.h
+export const MIGR_TO_SPECIES = 4096;
+// dungeon.h
+export const MIGR_WITH_HERO = 9;
+// hack.h
+export const MIM_OMIT_WAIT = 2;
+// hack.h
+export const MIM_REVEAL = 1;
+// monst.h
+export const MINV_ALL = 0x08;
+// monst.h
+export const MINV_NOLET = 0x04;
+// monst.h
+export const MINV_PICKMASK = 0x03;
+// quest.h
+export const MIN_QUEST_ALIGN = 20;
+// quest.h
+export const MIN_QUEST_LEVEL = 14;
+// hack.h
+export const MMOVE_DIED = 2;
+// hack.h
+export const MMOVE_DONE = 3;
+// hack.h
+export const MMOVE_MOVED = 1;
+// hack.h
+export const MMOVE_NOMOVES = 4;
+// hack.h
+export const MMOVE_NOTHING = 0;
+// hack.h
+export const MM_ANGRY = 0x00000020;
+// hack.h
+export const MM_EGD = 0x00000080;
+// hack.h
+export const MM_EMIN = 0x00000400;
+// hack.h
+export const MM_EPRI = 0x00000100;
+// hack.h
+export const MM_ESHK = 0x00000200;
+// hack.h
+export const MM_MINVIS = 0x00100000;
+// hack.h
+export const MM_NOTAIL = 0x00004000;
+// vision.h
+export const MONSEEN_DETECT = 0x0020;
+// vision.h
+export const MONSEEN_INFRAVIS = 0x0004;
+// vision.h
+export const MONSEEN_NORMAL = 0x0001;
+// vision.h
+export const MONSEEN_SEEINVIS = 0x0002;
+// vision.h
+export const MONSEEN_TELEPAT = 0x0008;
+// vision.h
+export const MONSEEN_WARNMON = 0x0040;
+// vision.h
+export const MONSEEN_XRAYVIS = 0x0010;
+// region.h
+export const MONST_INC = 5;
+// monst.h
+export const MON_BUBBLEMOVE = 0x10;
+// monst.h
+export const MON_DETACH = 0x02;
+// monst.h
+export const MON_ENDGAME_FREE = 0x20;
+// monst.h
+export const MON_ENDGAME_MIGR = 0x40;
+// monst.h
+export const MON_FLOOR = 0x00;
+// monst.h
+export const MON_LIMBO = 0x08;
+// monst.h
+export const MON_MIGRATING = 0x04;
+// monst.h
+export const MON_OBLITERATE = 0x80;
+// monst.h
+export const MON_OFFMAP = 0x01;
+// hack.h
+export const MON_POLE_DIST = 5;
+// func_tab.h
+export const MOUSECMD = 0x0800;
+// func_tab.h
+export const MOVEMENTCMD = 0x0400;
+// monflag.h
+export const MR2_DISPLACED = 0x1000;
+// monflag.h
+export const MR2_FUMBLING = 0x4000;
+// monflag.h
+export const MR2_LEVITATE = 0x0200;
+// monflag.h
+export const MR2_MAGBREATH = 0x0800;
+// monflag.h
+export const MR2_SEE_INVIS = 0x0100;
+// monflag.h
+export const MR2_STRENGTH = 0x2000;
+// monflag.h
+export const MR2_WATERWALK = 0x0400;
+// monflag.h
+export const MR_ACID = 0x40;
+// monflag.h
+export const MR_COLD = 0x02;
+// monflag.h
+export const MR_DISINT = 0x08;
+// monflag.h
+export const MR_ELEC = 0x10;
+// monflag.h
+export const MR_FIRE = 0x01;
+// monflag.h
+export const MR_POISON = 0x20;
+// monflag.h
+export const MR_SLEEP = 0x04;
+// monflag.h
+export const MR_STONE = 0x80;
+// align.h
+export const MSA_NONE = 0;
+// hack.h
+export const MSGTYP_NOREP = 1;
+// hack.h
+export const MSGTYP_NORMAL = 0;
+// hack.h
+export const MSGTYP_NOSHOW = 2;
+// hack.h
+export const MSGTYP_STOP = 3;
+// mail.h
+export const MSG_CALL = 2;
+// mail.h
+export const MSG_MAIL = 1;
+// mail.h
+export const MSG_OTHER = 0;
+// monst.h
+export const MSLOW = 1;
+// monflag.h
+export const MV_KNOWS_EGG = 0x08;
+// monflag.h
+export const MZ_GIGANTIC = 7;
+// monflag.h
+export const MZ_HUGE = 4;
+// monflag.h
+export const MZ_LARGE = 3;
+// monflag.h
+export const MZ_MEDIUM = 2;
+// monflag.h
+export const MZ_SMALL = 1;
+// monflag.h
+export const MZ_TINY = 0;
+// monst.h
+export const M_AP_F_DKNOWN = 0x8;
+// monst.h
+export const M_AP_TYPMASK = 0x7;
+// obj.h
+export const NAMED_KEEP = 1;
+// obj.h
+export const NAMED_PLAIN = 0;
+// permonst.h
+export const NATTK = 6;
+// hack.h
+export const NC_SHOW_MSG = 0x01;
+// hack.h
+export const NC_VIA_WAND_OR_SPELL = 0x02;
+// config.h
+export const NEWS = "news";
+// flag.h
+export const NEW_MOON = 0;
+// hack.h
+export const NHF_BONESFILE = 3;
+// hack.h
+export const NHF_LEVELFILE = 1;
+// hack.h
+export const NHF_SAVEFILE = 2;
+// global.h
+export const NHL_SBRV_ACCEPT = 2;
+// global.h
+export const NHL_SBRV_DENY = 1;
+// global.h
+export const NHL_SBRV_FAIL = 3;
+// global.h
+export const NHL_SB_ALL = 0x0000ffff;
+// global.h
+export const NHL_SB_BASEMASK = 0x00000f80;
+// global.h
+export const NHL_SB_BASE_BASE = 0x00000080;
+// global.h
+export const NHL_SB_BASE_ERROR = 0x00000100;
+// global.h
+export const NHL_SB_BASE_GC = 0x00000400;
+// global.h
+export const NHL_SB_BASE_META = 0x00000200;
+// global.h
+export const NHL_SB_BASE_UNSAFE = 0x00000800;
+// global.h
+export const NHL_SB_COROUTINE = 0x00000004;
+// global.h
+export const NHL_SB_DBMASK = 0x00003000;
+// global.h
+export const NHL_SB_DB_DB = 0x00001000;
+// global.h
+export const NHL_SB_DB_SAFE = 0x00002000;
+// global.h
+export const NHL_SB_DEBUGGING = 0x08000000;
+// global.h
+export const NHL_SB_IO = 0x00000020;
+// global.h
+export const NHL_SB_MATH = 0x00000008;
+// global.h
+export const NHL_SB_OS = 0x00000040;
+// global.h
+export const NHL_SB_OSMASK = 0x0000c000;
+// global.h
+export const NHL_SB_OS_FILES = 0x00008000;
+// global.h
+export const NHL_SB_OS_TIME = 0x00004000;
+// global.h
+export const NHL_SB_SAFE = 0x80000000;
+// global.h
+export const NHL_SB_STEPSIZE = 1000;
+// global.h
+export const NHL_SB_STRING = 0x00000001;
+// global.h
+export const NHL_SB_TABLE = 0x00000002;
+// global.h
+export const NHL_SB_UTF8 = 0x00000010;
+// global.h
+export const NHL_SB_VERSION = 0x40000000;
+// nhmd4.h
+export const NHMD4_DIGEST_LENGTH = 128;
+// nhmd4.h
+export const NHMD4_RESULTLEN = (128 / 8);
+// sfprocs.h
+export const NHTYPE_COMPLEX = 2;
+// sfprocs.h
+export const NHTYPE_SIMPLE = 1;
+// wincurs.h
+export const NHWIN_MAX = 7;
+// winami.h
+export const NHW_BASE = 6;
+// wincurs.h
+export const NHW_END = 19;
+// wintype.h
+export const NHW_LAST_TYPE = NHW_PERMINVENT;
+// winX.h
+export const NHW_NONE = 0;
+// winami.h
+export const NHW_OVER = 7;
+// color.h
+export const NH_ALTPALETTE = 0x2000000;
+// color.h
+export const NH_BASIC_COLOR = 0x1000000;
+// tradstdc.h
+export const NH_C = 202300;
+// tradstdc.h
+export const NH_PRAGMA_MESSAGE = 1;
+// patchlevel.h
+export const NH_STATUS_BETA = 2;
+// patchlevel.h
+export const NH_STATUS_POSTRELEASE = 3;
+// patchlevel.h
+export const NH_STATUS_RELEASED = 0;
+// patchlevel.h
+export const NH_STATUS_WIP = 1;
+// obj.h
+export const NOBJ_STATES = 10;
+// objclass.h
+export const NODIR = 1;
+// func_tab.h
+export const NOFUZZERCMD = 0x0020;
+// sp_lev.h
+export const NOMMAP = 0x00000004;
+// wincurs.h
+export const NONE = -1;
+// sp_lev.h
+export const NOTELEPORT = 0x00000001;
+// hack.h
+export const NOTELL = 0;
+// botl.h
+export const NOW = 1;
+// winX.h
+export const NO_CLICK = 0;
+// hack.h
+export const NO_CURS_ON_U = 64;
+// sp_lev.h
+export const NO_INVENT = 0;
+// sp_lev.h
+export const NO_LOC_WARN = 0x20;
+// hack.h
+export const NO_NC_FLAGS = 0;
+// mkroom.h
+export const NO_ROOM = 0;
+// spell.h
+export const NO_SPELL = 0;
+// hack.h
+export const NO_TRAP_FLAGS = 0x00;
+// hack.h
+export const NUM_BP = 4;
+// flag.h
+export const NUM_DISCLOSURE_OPTIONS = 6;
+// wintype.h
+export const NUM_MOUSE_BUTTONS = 2;
+// hack.h
+export const NUM_RACES = (5);
+// hack.h
+export const NUM_ROLES = (13);
+// display.h
+export const NUM_ZAP = 8;
+// engrave.h
+export const N_ENGRAVE = 6;
+// obj.h
+export const OBJ_BURIED = 6;
+// obj.h
+export const OBJ_CONTAINED = 2;
+// obj.h
+export const OBJ_DELETED = 9;
+// obj.h
+export const OBJ_FLOOR = 1;
+// obj.h
+export const OBJ_FREE = 0;
+// obj.h
+export const OBJ_INVENT = 3;
+// obj.h
+export const OBJ_LUAFREE = 8;
+// obj.h
+export const OBJ_MIGRATING = 5;
+// obj.h
+export const OBJ_MINVENT = 4;
+// obj.h
+export const OBJ_ONBILL = 7;
+// hack.h
+export const OFF = 0;
+// hack.h
+export const ON = 1;
+// hack.h
+export const ONAME_SKIP_INVUPD = 0x0200;
+// global.h
+export const OPTIONFILE = "opthelp";
+// global.h
+export const OPTIONS_USED = "options";
+// global.h
+export const OPTMENUHELP = "optmenu";
+// global.h
+export const ORACLEFILE = "oracles";
+// hack.h
+export const OVERRIDE_MSGTYPE = 2;
+// vmsconf.h
+export const O_CREAT = 0x200;
+// vmsconf.h
+export const O_RDONLY = 0;
+// vmsconf.h
+export const O_RDWR = 2;
+// vmsconf.h
+export const O_TRUNC = 0x400;
+// vmsconf.h
+export const O_WRONLY = 1;
+// config.h
+export const PANICLOG = "paniclog";
+// flag.h
+export const PARANOID_AUTOALL = 0x1000;
+// flag.h
+export const PARANOID_BONES = 0x0008;
+// flag.h
+export const PARANOID_BREAKWAND = 0x0080;
+// flag.h
+export const PARANOID_CONFIRM = 0x0001;
+// flag.h
+export const PARANOID_DIE = 0x0004;
+// flag.h
+export const PARANOID_EATING = 0x0200;
+// flag.h
+export const PARANOID_HIT = 0x0010;
+// flag.h
+export const PARANOID_PRAY = 0x0020;
+// flag.h
+export const PARANOID_QUIT = 0x0002;
+// flag.h
+export const PARANOID_REMOVE = 0x0040;
+// flag.h
+export const PARANOID_SWIM = 0x0400;
+// flag.h
+export const PARANOID_TRAP = 0x0800;
+// flag.h
+export const PARANOID_WERECHANGE = 0x0100;
+// pcconf.h
+export const PATHLEN = 64;
+// config.h
+export const PERSMAX = 3;
+// config.h
+export const PERS_IS_UID = 1;
+// hack.h
+export const PET_MISSILE_RANGE2 = 36;
+// hack.h
+export const PHYS_EXPL_TYPE = -1;
+// hack.h
 export const PICK_RANDOM = 0;
+// hack.h
 export const PICK_RIGID = 1;
+// objclass.h
+export const PIERCE = 1;
+// hack.h
+export const PLINE_NOREPEAT = 1;
+// hack.h
+export const PLINE_SPEECH = 32;
+// hack.h
+export const PLINE_VERBALIZE = 16;
+// global.h
+export const PL_CSIZ = 32;
+// global.h
+export const PL_FSIZ = 32;
+// global.h
+export const PL_NSIZ = 32;
+// global.h
+export const PL_NSIZ_PLUS = (PL_NSIZ + 4 * (1 + 3) + 1);
+// global.h
+export const PL_PSIZ = 63;
+// config.h
+export const POINTSMIN = 1;
+// pcconf.h
+export const PORT_HELP = "msdoshlp.txt";
+// global.h
+export const PORT_ID = "Amiga";
+// global.h
+export const PORT_SUB_ID = "djgpp";
+// obj.h
+export const POTHIT_HERO_BASH = 0;
+// obj.h
+export const POTHIT_HERO_THROW = 1;
+// obj.h
+export const POTHIT_MONST_THROW = 2;
+// obj.h
+export const POTHIT_OTHER_THROW = 3;
+// func_tab.h
+export const PREFIXCMD = 0x0200;
+// hack.h
+export const PREFIX_COUNT = 10;
+// sp_lev.h
+export const PREMAPPED = 0x00000040;
+// you.h
+export const PRONOUN_HALLU = 2;
+// you.h
+export const PRONOUN_NORMAL = 0;
+// you.h
+export const PRONOUN_NO_IT = 1;
+// global.h
+export const QBUFSZ = 128;
+// hack.h
+export const RANDOM_TIN = (-2);
+// timeout.h
+export const RANGE_GLOBAL = 1;
+// timeout.h
+export const RANGE_LEVEL = 0;
+// objclass.h
+export const RAY = 3;
+// dlb.h
+export const RDBMODE = "rb";
+// dlb.h
+export const RDTMODE = "r";
+// hack.h
+export const READING = 0x0;
+// global.h
+export const RECORD = "record";
+// region.h
+export const REG_HERO_INSIDE = 0x01;
+// region.h
+export const REG_NOT_HEROS = 0x02;
+// mextra.h
+export const REPAIR_DELAY = 5;
+// you.h
+export const RIGHT_HANDED = 0x00;
+// dgn_file.h
+export const ROGUELIKE = 0x08;
+// you.h
+export const ROLE_ALIGNMASK = AM_MASK;
+// you.h
+export const ROLE_ALIGNS = 3;
+// you.h
+export const ROLE_CHAOTIC = AM_CHAOTIC;
+// you.h
+export const ROLE_FEMALE = 0x2000;
+// you.h
+export const ROLE_GENDERS = 2;
+// you.h
+export const ROLE_GENDMASK = 0xf000;
+// you.h
+export const ROLE_LAWFUL = AM_LAWFUL;
+// you.h
+export const ROLE_MALE = 0x1000;
+// you.h
+export const ROLE_NEUTER = 0x4000;
+// you.h
+export const ROLE_NEUTRAL = AM_NEUTRAL;
+// you.h
+export const ROLE_NONE = (-1);
+// you.h
+export const ROLE_RACEMASK = 0x0ff8;
+// you.h
+export const ROLE_RANDOM = (-2);
+// hack.h
+export const ROLL = 0x01;
+// hack.h
+export const ROTTEN_TIN = 0;
+// hack.h
+export const ROT_AGE = (250);
+// winprocs.h
+export const RS_ALGNMNT = 4;
+// winprocs.h
+export const RS_GENDER = 3;
+// winprocs.h
+export const RS_NAME = 0;
+// winprocs.h
+export const RS_RACE = 2;
+// winprocs.h
+export const RS_ROLE = 1;
+// global.h
+export const RUMORFILE = "rumors";
+// hack.h
+export const SAVEPREFIX = 2;
+// fnamesiz.h
+export const SAVEX = "save/99999.e";
+// fnamesiz.h
+export const SAVE_EXTENSION = "";
+// hack.h
+export const SCOREPREFIX = 5;
+// dlb.h
+export const SEEK_CUR = 1;
+// dlb.h
+export const SEEK_END = 2;
+// dlb.h
+export const SEEK_SET = 0;
+// hack.h
+export const SELL_DELIBERATE = (1);
+// hack.h
+export const SELL_DONTSELL = (2);
+// hack.h
+export const SELL_NORMAL = (0);
+// sp_lev.h
+export const SEL_GRADIENT_RADIAL = 0;
+// sp_lev.h
+export const SEL_GRADIENT_SQUARE = 1;
+// unixconf.h
+export const SERVER_ADMIN_MSG_CKFREQ = 25;
+// rm.h
+export const SET_LIT_NOCHANGE = -2;
+// rm.h
+export const SET_LIT_RANDOM = -1;
+// global.h
+export const SFCTOOL_BIT = (1 << 30);
+// hack.h
+export const SF_CRITICAL_BYTE_COUNT_MISMATCH = 2;
+// hack.h
+export const SF_DM_I32LP64_ON_IL32LLP64 = 7;
+// hack.h
+export const SF_DM_I32LP64_ON_ILP32LL64 = 4;
+// hack.h
+export const SF_DM_IL32LLP64_ON_I32LP64 = 8;
+// hack.h
+export const SF_DM_IL32LLP64_ON_ILP32LL64 = 3;
+// hack.h
+export const SF_DM_ILP32LL64_ON_I32LP64 = 5;
+// hack.h
+export const SF_DM_ILP32LL64_ON_IL32LLP64 = 6;
+// hack.h
+export const SF_DM_MISMATCH = 9;
+// hack.h
+export const SF_OUTDATED = 1;
+// hack.h
+export const SF_UPTODATE = 0;
+// mkroom.h
+export const SHARED = 1;
+// mkroom.h
+export const SHARED_PLUS = 2;
+// global.h
+export const SHELP = "hh";
+// display.h
+export const SHIELD_COUNT = 21;
+// hack.h
+export const SHIFT_MSG = 0x02;
+// hack.h
+export const SHIFT_SEENMSG = 0x01;
+// hack.h
+export const SHOP_BARS_COST = 300;
+// hack.h
+export const SHOP_DOOR_COST = 400;
+// hack.h
+export const SHOP_HOLE_COST = 200;
+// hack.h
+export const SHOP_PIT_COST = 100;
+// hack.h
+export const SHOP_WALL_COST = 200;
+// hack.h
+export const SHOP_WEB_COST = 30;
+// sp_lev.h
+export const SHORTSIGHTED = 0x00000008;
+// sp_lev.h
+export const SHROUD = 0x00000080;
+// you.h
+export const SICK_ALL = 0x03;
+// hack.h
+export const SIGNAL_ESCAPE = 0x0040;
+// hack.h
+export const SIGNAL_NOMENU = 0x0020;
+// objclass.h
+export const SLASH = 2;
+// sp_lev.h
+export const SOLID = 0x08;
+// sp_lev.h
+export const SOLIDIFY = 0x00000400;
+// hack.h
+export const SORTLOOT_INUSE = 0x08;
+// hack.h
+export const SORTLOOT_INVLET = 0x02;
+// hack.h
+export const SORTLOOT_LOOT = 0x04;
+// hack.h
+export const SORTLOOT_PACK = 0x01;
+// hack.h
+export const SORTLOOT_PETRIFY = 0x20;
+// sndprocs.h
+export const SOUND_TRIGGER_ACHIEVEMENTS = 0x0004;
+// sndprocs.h
+export const SOUND_TRIGGER_AMBIENCE = 0x0010;
+// sndprocs.h
+export const SOUND_TRIGGER_HEROMUSIC = 0x0002;
+// sndprocs.h
+export const SOUND_TRIGGER_SOUNDEFFECTS = 0x0008;
+// sndprocs.h
+export const SOUND_TRIGGER_USERSOUNDS = 0x0001;
+// sndprocs.h
+export const SOUND_TRIGGER_VERBAL = 0x0020;
+// sp_lev.h
+export const SPACELOC = 0x40;
+// obj.h
+export const SPE_LIM = 99;
+// artifact.h
+export const SPFX_ATTK = 0x00000040;
+// artifact.h
+export const SPFX_BEHEAD = 0x00000400;
+// artifact.h
+export const SPFX_DALIGN = 0x01000000;
+// artifact.h
+export const SPFX_DBONUS = 0x01F00000;
+// artifact.h
+export const SPFX_DCLAS = 0x00200000;
+// artifact.h
+export const SPFX_DEFN = 0x00000080;
+// artifact.h
+export const SPFX_DFLAG1 = 0x00400000;
+// artifact.h
+export const SPFX_DFLAG2 = 0x00800000;
+// artifact.h
+export const SPFX_DMONS = 0x00100000;
+// artifact.h
+export const SPFX_DRLI = 0x00000100;
+// artifact.h
+export const SPFX_EREGEN = 0x00008000;
+// artifact.h
+export const SPFX_ESP = 0x00001000;
+// artifact.h
+export const SPFX_HALRES = 0x00000800;
+// artifact.h
+export const SPFX_HPHDAM = 0x00020000;
+// artifact.h
+export const SPFX_HSPDAM = 0x00010000;
+// artifact.h
+export const SPFX_INTEL = 0x00000004;
+// artifact.h
+export const SPFX_LUCK = 0x00080000;
+// artifact.h
+export const SPFX_NOGEN = 0x00000001;
+// artifact.h
+export const SPFX_NONE = 0x00000000;
+// artifact.h
+export const SPFX_PROTECT = 0x08000000;
+// artifact.h
+export const SPFX_REFLECT = 0x04000000;
+// artifact.h
+export const SPFX_REGEN = 0x00004000;
+// artifact.h
+export const SPFX_RESTR = 0x00000002;
+// artifact.h
+export const SPFX_SEARCH = 0x00000200;
+// artifact.h
+export const SPFX_SEEK = 0x00000010;
+// artifact.h
+export const SPFX_SPEAK = 0x00000008;
+// artifact.h
+export const SPFX_STLTH = 0x00002000;
+// artifact.h
+export const SPFX_TCTRL = 0x00040000;
+// artifact.h
+export const SPFX_WARN = 0x00000020;
+// artifact.h
+export const SPFX_XRAY = 0x02000000;
+// hack.h
+export const SPINACH_TIN = (-1);
+// sp_lev.h
+export const SPOFILTER_MAPCHAR = 2;
+// sp_lev.h
+export const SPOFILTER_PERCENT = 0;
+// sp_lev.h
+export const SPOFILTER_SELECTION = 1;
+// sp_lev.h
+export const SP_COORD_IS_RANDOM = 0x01000000;
+// sp_lev.h
+export const SP_OBJ_CONTAINER = 0x2;
+// sp_lev.h
+export const SP_OBJ_CONTENT = 0x1;
+// winX.h
+export const START_SIZE = 512;
+// wincurs.h
+export const STATUS_WIN = 2;
+// pcconf.h
+export const STKSIZ = 5 * 1024;
+// monst.h
+export const STRAT_APPEARMSG = 0x80000000;
+// monst.h
+export const STRAT_ARRIVE = 0x40000000;
+// monst.h
+export const STRAT_CLOSE = 0x10000000;
+// monst.h
+export const STRAT_GOAL = 0x000000ff;
+// monst.h
+export const STRAT_GROUND = 0x04000000;
+// monst.h
+export const STRAT_HEAL = 0x08000000;
+// monst.h
+export const STRAT_MONSTR = 0x02000000;
+// monst.h
+export const STRAT_NONE = 0x00000000;
+// monst.h
+export const STRAT_PLAYER = 0x01000000;
+// monst.h
+export const STRAT_STRATMASK = 0x0f000000;
+// monst.h
+export const STRAT_WAITFORU = 0x20000000;
+// monst.h
+export const STRAT_WAITMASK = (STRAT_CLOSE | STRAT_WAITFORU);
+// hack.h
+export const SUPPRESS_HISTORY = 4;
+// global.h
+export const SYMBOLS = "symbols";
+// windconf.h
+export const SYMBOLS_TEMPLATE = "symbols.template";
+// hack.h
+export const SYM_OFF_P = (0);
+// config.h
+export const SYSCF_FILE = "sysconf";
+// windconf.h
+export const SYSCF_TEMPLATE = "sysconf.template";
+// hack.h
+export const SYSCONFPREFIX = 7;
+// rm.h
+export const S_LDWASHER = 2;
+// rm.h
+export const S_LPUDDING = 1;
+// rm.h
+export const S_LRING = 4;
+// dgn_file.h
+export const TBR_NO_DOWN = 2;
+// dgn_file.h
+export const TBR_NO_UP = 1;
+// dgn_file.h
+export const TBR_PORTAL = 3;
+// dgn_file.h
+export const TBR_STAIR = 0;
+// global.h
+export const TBUFSZ = 300;
+// hack.h
+export const TELL = 1;
+// vision.h
+export const TEMP_LIT = 0x4;
+// flag.h
+export const TER_DETECT = 0x20;
+// flag.h
+export const TER_FULL = 0x10;
+// flag.h
+export const TER_MAP = 0x01;
+// flag.h
+export const TER_MON = 0x08;
+// flag.h
+export const TER_OBJ = 0x04;
+// flag.h
+export const TER_TRP = 0x02;
+// wincurs.h
+export const TEXT_WIN = 5;
+// tile2x11.h
+export const TILES_PER_ROW = (40);
+// wintty.h
+export const TOPLINE_EMPTY = 0;
+// wintty.h
+export const TOPLINE_NEED_MORE = 1;
+// wintty.h
+export const TOPLINE_NON_EMPTY = 2;
+// wintty.h
+export const TOPLINE_SPECIAL_PROMPT = 3;
+// dgn_file.h
+export const TOWN = 0x01;
+// rm.h
+export const TREE_LOOTED = 1;
+// rm.h
+export const TREE_SWARM = 2;
+// global.h
+export const TRIBUTEFILE = "tribute";
+// hack.h
+export const TROLL_REVIVE_CHANCE = 37;
+// hack.h
+export const TROUBLEPREFIX = 9;
+// rm.h
+export const T_LOOTED = 1;
+// dgn_file.h
+export const UNCONNECTED = 0x10;
+// hack.h
+export const UNCONVERTING = 0x10;
+// hack.h
+export const UNDEFINED_VALUE = 0;
+// spell.h
+export const UNKNOWN_SPELL = (-1);
+// hack.h
+export const UNPAID_TYPES = 0x0004;
+// hack.h
+export const URGENT_MESSAGE = 8;
+// global.h
+export const USAGEHELP = "usagehlp";
+// hack.h
+export const USE_INVLET = 0x0008;
+// hack.h
+export const UTD_CHECKFIELDCOUNTS = 0x02;
+// hack.h
+export const UTD_CHECKSIZES = 0x01;
+// hack.h
+export const UTD_QUIETLY = 0x20;
+// hack.h
+export const UTD_SKIP_SANITY1 = 0x04;
+// hack.h
+export const UTD_SKIP_SAVEFILEINFO = 0x08;
+// hack.h
+export const UTD_WITHOUT_WAITSYNCH_PERFILE = 0x10;
+// date.h
+export const VERSION_FEATURES = 0x00060040;
+// date.h
+export const VERSION_ID = "Unix NetHack Version 3.7.0-132 Work-in-progress - last build Tue Mar  3 14:40:51 2026.";
+// date.h
+export const VERSION_NUMBER = 0x03070084;
+// date.h
+export const VERSION_SANITY1 = 0x211de17f;
+// winprocs.h
+export const VIA_DIALOG = 0;
+// winprocs.h
+export const VIA_PROMPTS = 1;
+// dungeon.h
+export const VISITED = 0x01;
+// hack.h
+export const VIS_EFFECTS = 0x01;
+// flag.h
+export const VI_BRANCH = 4;
+// flag.h
+export const VI_NAME = 2;
+// flag.h
+export const VI_NUMBER = 1;
+// hack.h
+export const WAND_BACKFIRE_CHANCE = 100;
+// hack.h
+export const WAND_WREST_CHANCE = 121;
+// winprocs.h
+export const WC2_DARKGRAY = 0x0020;
+// winprocs.h
+export const WC2_EXTRACOLORS = 0x040000;
+// winprocs.h
+export const WC2_FLUSH_STATUS = 0x0080;
+// winprocs.h
+export const WC2_FULLSCREEN = 0x0001;
+// winprocs.h
+export const WC2_GUICOLOR = 0x2000;
+// winprocs.h
+export const WC2_HILITE_STATUS = 0x0008;
+// winprocs.h
+export const WC2_HITPOINTBAR = 0x0040;
+// winprocs.h
+export const WC2_MENU_SHIFT = 0x010000;
+// winprocs.h
+export const WC2_PETATTR = 0x1000;
+// winprocs.h
+export const WC2_RESET_STATUS = 0x0100;
+// winprocs.h
+export const WC2_SELECTSAVED = 0x0010;
+// winprocs.h
+export const WC2_SOFTKEYBOARD = 0x0002;
+// winprocs.h
+export const WC2_STATUSLINES = 0x0400;
+// winprocs.h
+export const WC2_SUPPRESS_HIST = 0x8000;
+// winprocs.h
+export const WC2_TERM_SIZE = 0x0200;
+// winprocs.h
+export const WC2_URGENT_MESG = 0x4000;
+// winprocs.h
+export const WC2_U_UTF8STR = 0x020000;
+// winprocs.h
+export const WC2_WINDOWBORDERS = 0x0800;
+// winprocs.h
+export const WC2_WRAPTEXT = 0x0004;
+// winprocs.h
+export const WC_ALIGN_MESSAGE = 0x00000200;
+// winprocs.h
+export const WC_ALIGN_STATUS = 0x00000400;
+// winprocs.h
+export const WC_ASCII_MAP = 0x00000004;
+// winprocs.h
+export const WC_COLOR = 0x00000001;
+// winprocs.h
+export const WC_EIGHT_BIT_IN = 0x04000000;
+// winprocs.h
+export const WC_FONTSIZ_MAP = 0x00020000;
+// winprocs.h
+export const WC_FONTSIZ_MENU = 0x00100000;
+// winprocs.h
+export const WC_FONTSIZ_MESSAGE = 0x040000;
+// winprocs.h
+export const WC_FONTSIZ_STATUS = 0x0080000;
+// winprocs.h
+export const WC_FONTSIZ_TEXT = 0x00200000;
+// winprocs.h
+export const WC_FONT_MAP = 0x00001000;
+// winprocs.h
+export const WC_FONT_MENU = 0x00008000;
+// winprocs.h
+export const WC_FONT_MESSAGE = 0x00002000;
+// winprocs.h
+export const WC_FONT_STATUS = 0x00004000;
+// winprocs.h
+export const WC_FONT_TEXT = 0x00010000;
+// winprocs.h
+export const WC_HILITE_PET = 0x00000002;
+// winprocs.h
+export const WC_INVERSE = 0x00000100;
+// winprocs.h
+export const WC_MAP_MODE = 0x10000000;
+// winprocs.h
+export const WC_MOUSE_SUPPORT = 0x80000000;
+// winprocs.h
+export const WC_PERM_INVENT = 0x08000000;
+// winprocs.h
+export const WC_PLAYER_SELECTION = 0x40000000;
+// winprocs.h
+export const WC_POPUP_DIALOG = 0x01000000;
+// winprocs.h
+export const WC_PRELOAD_TILES = 0x00000010;
+// winprocs.h
+export const WC_SCROLL_AMOUNT = 0x02000000;
+// winprocs.h
+export const WC_SCROLL_MARGIN = 0x00400000;
+// winprocs.h
+export const WC_SPLASH_SCREEN = 0x00800000;
+// winprocs.h
+export const WC_TILED_MAP = 0x00000008;
+// winprocs.h
+export const WC_TILE_FILE = 0x00000080;
+// winprocs.h
+export const WC_TILE_HEIGHT = 0x00000040;
+// winprocs.h
+export const WC_TILE_WIDTH = 0x00000020;
+// winprocs.h
+export const WC_VARY_MSGCOUNT = 0x00000800;
+// winprocs.h
+export const WC_WINDOWCOLORS = 0x20000000;
+// sp_lev.h
+export const WET = 0x02;
+// objclass.h
+export const WHACK = 4;
+// winprocs.h
+export const WINCHAIN_ALLOC = 0;
+// winprocs.h
+export const WINCHAIN_INIT = 1;
+// winprocs.h
+export const WININIT = 0;
+// winprocs.h
+export const WININIT_UNDO = 1;
+// hack.h
+export const WINTYPELEN = 16;
+// wintty.h
+export const WIN_CANCELLED = 1;
+// wintty.h
+export const WIN_LOCKHISTORY = 2;
+// wintty.h
+export const WIN_NOSTOP = 4;
+// wintty.h
+export const WIN_STOP = 1;
+// config.h
+export const WIZARD_NAME = "wizard";
+// hack.h
+export const WIZKIT_MAX = 128;
+// func_tab.h
+export const WIZMODECMD = 0x0004;
+// rm.h
+export const WM_T_BL = 2;
+// rm.h
+export const WM_T_BR = 3;
+// rm.h
+export const WM_T_LONG = 1;
+// rm.h
+export const WM_W_LEFT = 1;
+// rm.h
+export const WM_W_RIGHT = 2;
+// rm.h
+export const WM_W_TOP = WM_W_LEFT;
+// rm.h
+export const WM_X_BL = 3;
+// rm.h
+export const WM_X_BLTR = 6;
+// rm.h
+export const WM_X_BR = 4;
+// rm.h
+export const WM_X_TL = 1;
+// rm.h
+export const WM_X_TLBR = 5;
+// rm.h
+export const WM_X_TR = 2;
+// hack.h
+export const WORN_TYPES = 0x0010;
+// dlb.h
+export const WRBMODE = "w+b";
+// hack.h
+export const WRITING = 0x02;
+// dlb.h
+export const WRTMODE = "w+b";
+// prop.h
+export const W_ART = 0x00001000;
+// prop.h
+export const W_ARTI = 0x00002000;
+// sp_lev.h
+export const W_EAST = 4;
+// rm.h
+export const W_NONDIGGABLE = 0x08;
+// rm.h
+export const W_NONPASSWALL = 0x10;
+// sp_lev.h
+export const W_NORTH = 1;
+// sp_lev.h
+export const W_RANDOM = -1;
+// sp_lev.h
+export const W_SOUTH = 2;
+// sp_lev.h
+export const W_WEST = 8;
+// config.h
+export const XLOGFILE = "xlogfile";
+// winX.h
+export const YN_NORMAL = 0;
+// winX.h
+export const YN_NO_DEFAULT = 2;
+// winX.h
+export const YN_NO_LOGMESG = 1;
+// objects.h
+export const B = WHACK;
+// hack.h
+export const FM_EVERYWHERE = (FM_YOU | FM_FMON | FM_MIGRATE | FM_MYDOGS);
+// windconf.h
+export const INTERJECTION_TYPES = (INTERJECT_PANIC + 1);
+// isaac64.h
+export const ISAAC64_SZ = (1<<ISAAC64_SZ_LOG);
+// fnamesiz.h
+export const LOCKNAMESIZE = (PL_NSIZ + 14);
+// hack.h
+export const MSGTYP_MASK_REP_SHOW = ((1 << MSGTYP_NOREP) | (1 << MSGTYP_NOSHOW));
+// monflag.h
+export const MZ_HUMAN = MZ_MEDIUM;
+// patchlevel.h
+export const NH_DEVEL_STATUS = NH_STATUS_WIP;
+// windconf.h
+export const OPTIONS_FILE = OPTIONS_USED;
+// objects.h
+export const P = PIERCE;
+// objects.h
+export const S = SLASH;
+// rm.h
+export const WM_W_BOTTOM = WM_W_RIGHT;
+// sp_lev.h
+export const W_ANY = (W_NORTH | W_SOUTH | W_EAST | W_WEST);
+// isaac64.h
+export const ISAAC64_SEED_SZ_MAX = (ISAAC64_SZ<<3);
+
+export const DEFERRED_HEADER_CONST_MACROS = Object.freeze([
+    "ALERT_BORDER_COLOR (wincurs.h)",
+    "A_ITALIC (wincurs.h)",
+    "A_LEFTLINE (wincurs.h)",
+    "A_RIGHTLINE (wincurs.h)",
+    "BL_ATTCLR_MAX (botl.h)",
+    "BOTH_SIDES (prop.h)",
+    "BUCX_TYPES (hack.h)",
+    "BUC_ALLBKNOWN (hack.h)",
+    "DIALOG_BORDER_COLOR (wincurs.h)",
+    "GLYPH_INVISIBLE (display.h)",
+    "GLYPH_NOTHING (display.h)",
+    "GLYPH_UNEXPLORED (display.h)",
+    "HIGHLIGHT_COLOR (wincurs.h)",
+    "HL_ATTCLR_BLINK (botl.h)",
+    "HL_ATTCLR_BOLD (botl.h)",
+    "HL_ATTCLR_DIM (botl.h)",
+    "HL_ATTCLR_INVERSE (botl.h)",
+    "HL_ATTCLR_ITALIC (botl.h)",
+    "HL_ATTCLR_NONE (botl.h)",
+    "HL_ATTCLR_ULINE (botl.h)",
+    "LEFTBUTTON (windconf.h)",
+    "LEFT_RING (prop.h)",
+    "LEFT_SIDE (prop.h)",
+    "MAXLINFO (hack.h)",
+    "MAXRTYPE (mkroom.h)",
+    "MIDBUTTON (windconf.h)",
+    "MORECOLOR (wincurs.h)",
+    "MOUSEMASK (windconf.h)",
+    "NO_GLYPH (display.h)",
+    "PAPER (objects.h)",
+    "REASSESS_ONLY (botl.h)",
+    "RIGHTBUTTON (windconf.h)",
+    "RIGHT_RING (prop.h)",
+    "RIGHT_SIDE (prop.h)",
+    "SCROLLBAR_BACK_COLOR (wincurs.h)",
+    "SCROLLBAR_COLOR (wincurs.h)",
+    "SHOP_WALL_DMG (hack.h)",
+    "SOUNDLIBONLY (sndprocs.h)",
+    "STAT_DOWN_COLOR (wincurs.h)",
+    "STAT_UP_COLOR (wincurs.h)",
+    "SYM_MAX (hack.h)",
+    "SYM_OFF_M (hack.h)",
+    "SYM_OFF_O (hack.h)",
+    "SYM_OFF_W (hack.h)",
+    "SYM_OFF_X (hack.h)",
+    "UNDEFINED_PTR (hack.h)",
+    "UNIQUESHOP (mkroom.h)",
+    "VOICEONLY (sndprocs.h)",
+    "WORN_AMUL (prop.h)",
+    "WORN_ARMOR (prop.h)",
+    "WORN_BLINDF (prop.h)",
+    "WORN_BOOTS (prop.h)",
+    "WORN_CLOAK (prop.h)",
+    "WORN_GLOVES (prop.h)",
+    "WORN_HELMET (prop.h)",
+    "WORN_SHIELD (prop.h)",
+    "WORN_SHIRT (prop.h)",
+]);
+// AUTO-IMPORT-END: CONST_ALL_HEADERS
 
 // Digging target classification and digcheck return codes (src/dig.c)
 // Runtime fields:
