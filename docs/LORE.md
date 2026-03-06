@@ -2762,3 +2762,24 @@ hard-won wisdom:
   - `seed328_ranger_wizard_gameplay`:
     - first RNG divergence remains step `220` (no regression).
   - `node scripts/test-unit-core.mjs --runInBand` passes.
+
+### Recorder datetime parity guard for Luck-sensitive replays (2026-03-06)
+
+- Problem:
+  - Running `recordGameplaySessionFromInputs()` directly (outside
+    `session_test_runner`) did not pin `NETHACK_FIXED_DATETIME`.
+  - Date-sensitive Luck modifiers (full moon / Friday-13th preamble) could
+    change `Luck` and shift early `rnl(...)` callsites (for example kick-door
+    paths), producing misleading first-divergence results in ad-hoc triage.
+- Fix:
+  - `test/comparison/session_recorder.js` now applies the same datetime
+    resolution policy as the session runner:
+    - resolve from session metadata via `resolveSessionFixedDatetime(...)`
+    - fallback to prior env value
+    - fallback to canonical default `20000110090000`
+  - The helper restores prior env state after replay.
+- Validation:
+  - Direct recorder/comparator triage for `seed325` now reproduces the
+    canonical first divergence at step `238` (`rnd(12)` vs `rnd(79)`) instead
+    of drifting to a date-dependent Luck split.
+  - `node scripts/test-unit-core.mjs --runInBand` passes.

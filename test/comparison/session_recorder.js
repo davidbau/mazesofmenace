@@ -4,6 +4,9 @@
 import { replaySession } from '../../js/replay_core.js';
 import { prepareReplayArgs, stripAnsiSequences } from '../../js/replay_compare.js';
 import { DEFAULT_FLAGS } from '../../js/storage.js';
+import { resolveSessionFixedDatetime } from './session_datetime.js';
+
+const DEFAULT_FIXED_DATETIME = '20000110090000';
 
 function ensureSessionGlobals() {
     if (typeof globalThis.window === 'undefined') {
@@ -55,47 +58,63 @@ function splitScreen(screenStr) {
 
 export async function recordGameplaySessionFromInputs(session, opts = {}) {
     ensureSessionGlobals();
-    const flags = opts.flags || buildGameplayReplayFlags(session);
-    const tutorial = typeof opts.tutorial === 'boolean'
-        ? opts.tutorial
-        : (
-            session?.meta?.regen?.tutorial === true
-            || session?.meta?.options?.tutorial === true
-            || session?.raw?.options?.tutorial === true
+
+    const prevDatetime = process.env.NETHACK_FIXED_DATETIME;
+    const sourcePref = process.env.NETHACK_SESSION_DATETIME_SOURCE || 'session';
+    const sessionDatetime = resolveSessionFixedDatetime(session, sourcePref);
+    const chosenDatetime = sessionDatetime || prevDatetime || DEFAULT_FIXED_DATETIME;
+    if (chosenDatetime) process.env.NETHACK_FIXED_DATETIME = chosenDatetime;
+    else delete process.env.NETHACK_FIXED_DATETIME;
+
+    let jsSession;
+    let stepBoundaries;
+    try {
+        const flags = opts.flags || buildGameplayReplayFlags(session);
+        const tutorial = typeof opts.tutorial === 'boolean'
+            ? opts.tutorial
+            : (
+                session?.meta?.regen?.tutorial === true
+                || session?.meta?.options?.tutorial === true
+                || session?.raw?.options?.tutorial === true
+            );
+        const replayTutorialStartupPrompts = Array.isArray(session?.raw?.replayTutorialStartupPrompts)
+            ? session.raw.replayTutorialStartupPrompts
+            : [];
+        const tutorialStartupEnterAfterPromptCount = Number.isInteger(session?.raw?.tutorialStartupEnterAfterPromptCount)
+            ? session.raw.tutorialStartupEnterAfterPromptCount
+            : undefined;
+        const emitProgress = (typeof globalThis.__SESSION_PROGRESS_EMIT === 'function')
+            ? globalThis.__SESSION_PROGRESS_EMIT
+            : null;
+        const args = prepareReplayArgs(
+            session.meta.seed, session.raw, {
+                captureScreens: true,
+                flags,
+                tutorial,
+                replayTutorialStartupPrompts,
+                tutorialStartupEnterAfterPromptCount,
+                onKey: emitProgress ? ({ index, ch, game }) => {
+                    let topline = '';
+                    if (typeof game?.display?.getScreenLines === 'function') {
+                        const lines = game.display.getScreenLines() || [];
+                        topline = String(lines[0] || '');
+                    }
+                    emitProgress({
+                        step: index + 1,
+                        key: ch,
+                        topline: topline.slice(0, 160),
+                        pendingPrompt: !!game?.pendingPrompt,
+                        multi: Number.isInteger(game?.multi) ? game.multi : 0,
+                    });
+                } : undefined,
+            }
         );
-    const replayTutorialStartupPrompts = Array.isArray(session?.raw?.replayTutorialStartupPrompts)
-        ? session.raw.replayTutorialStartupPrompts
-        : [];
-    const tutorialStartupEnterAfterPromptCount = Number.isInteger(session?.raw?.tutorialStartupEnterAfterPromptCount)
-        ? session.raw.tutorialStartupEnterAfterPromptCount
-        : undefined;
-    const emitProgress = (typeof globalThis.__SESSION_PROGRESS_EMIT === 'function')
-        ? globalThis.__SESSION_PROGRESS_EMIT
-        : null;
-    const { seed: replaySeed, opts: replayOpts, keys, stepBoundaries } = prepareReplayArgs(
-        session.meta.seed, session.raw, {
-            captureScreens: true,
-            flags,
-            tutorial,
-            replayTutorialStartupPrompts,
-            tutorialStartupEnterAfterPromptCount,
-            onKey: emitProgress ? ({ index, ch, game }) => {
-                let topline = '';
-                if (typeof game?.display?.getScreenLines === 'function') {
-                    const lines = game.display.getScreenLines() || [];
-                    topline = String(lines[0] || '');
-                }
-                emitProgress({
-                    step: index + 1,
-                    key: ch,
-                    topline: topline.slice(0, 160),
-                    pendingPrompt: !!game?.pendingPrompt,
-                    multi: Number.isInteger(game?.multi) ? game.multi : 0,
-                });
-            } : undefined,
-        }
-    );
-    const jsSession = await replaySession(replaySeed, replayOpts, keys);
+        stepBoundaries = args.stepBoundaries;
+        jsSession = await replaySession(args.seed, args.opts, args.keys);
+    } finally {
+        if (prevDatetime == null) delete process.env.NETHACK_FIXED_DATETIME;
+        else process.env.NETHACK_FIXED_DATETIME = prevDatetime;
+    }
 
     // Adapt V3 session for the comparator.
     // jsSession.steps[0] is startup, jsSession.steps[1..] are per-keystroke.
@@ -111,7 +130,7 @@ export async function recordGameplaySessionFromInputs(session, opts = {}) {
     const gameplaySteps = jsSession.steps.slice(1);
     const steps = [];
     let keyIdx = 0;
-    for (const len of stepBoundaries) {
+    for (const len of (stepBoundaries || [])) {
         const stepSlice = gameplaySteps.slice(keyIdx, keyIdx + len);
         const lastStep = stepSlice.length > 0 ? stepSlice[stepSlice.length - 1] : null;
         const scr = splitScreen(lastStep?.screen);
