@@ -28,7 +28,8 @@ import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
          W_AMUL, W_ARMG, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMF, W_ARMU, W_WEP,
          BOLT_LIM, LS_MONSTER,
-         RANDOM_CLASS, FOOD_CLASS, M2_COLLECT, IS_ALTAR } from './const.js';
+         RANDOM_CLASS, FOOD_CLASS, M2_COLLECT, IS_ALTAR,
+         STRAT_WAITMASK } from './const.js';
 import { NORMAL_SPEED } from './monsters.js';
 import { AMULET_OF_LIFE_SAVING, CORPSE, FIGURINE, STATUE, objectData,
          GRAY_DRAGON_SCALES, UNICORN_HORN, WORM_TOOTH,
@@ -55,7 +56,7 @@ import { delobj } from './invent.js';
 import { stackobj } from './invent.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
-import { in_your_sanctuary, inhistemple } from './priest.js';
+import { in_your_sanctuary, inhistemple, p_coaligned } from './priest.js';
 
 import { rn2, rnd, rnl, d, pushRngLogEntry, withRngTag } from './rng.js';
 import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC,
@@ -1257,13 +1258,18 @@ export function setmangry(mon, via_attack, map, player) {
         del_engr_at(map, player.x, player.y);
     }
 
+    // C ref: mon.c:4282 — clear wait strategy
+    mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_WAITMASK;
+
     if (!mon.peaceful) return;
     if (mon.tame) return;
     mon.peaceful = false;
     // C ref: mon.c:4291-4297 — alignment penalty
     if (mon.ispriest) {
-        // C: p_coaligned check simplified — always penalize
-        adjalign(player, -5);
+        if (player && p_coaligned(mon, player))
+            adjalign(player, -5); // very bad — attacking coaligned priest
+        else
+            adjalign(player, 2);  // bonus for attacking enemy priest
     } else {
         adjalign(player, -1);
     }
