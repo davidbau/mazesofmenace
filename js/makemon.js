@@ -117,11 +117,12 @@ import { roles, races, initialAlignmentRecordForRole } from './player.js';
 import { mpickobj } from './steal.js';
 import { dist2 } from './hack.js';
 import { newsym, senseMonsterForMap } from './display.js';
-import { canseemon, mon_learns_traps } from './mondata.js';
+import { canseemon, mon_learns_traps, emits_light } from './mondata.js';
 import { Amonnam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { Norep, set_msg_xy } from './pline.js';
 import { get_wormno, initworm, place_worm_tail_randomly } from './worm.js';
+import { new_light_source } from './light.js';
 import { PIT, SPIKED_PIT } from './const.js';
 import { In_sokoban, Is_stronghold } from './dungeon.js';
 
@@ -2464,6 +2465,13 @@ export function makemon(ptr_or_null, x, y, mmflags, depth, map) {
     // C ref: makemon.c shapechanger path (pm_to_cham/newcham).
     const allowMinvent = allow_minvent && !maybe_apply_newcham(mon, mndx, depth || 1, map || null);
 
+    // C ref: makemon.c + light.c integration — monster light sources are
+    // attached to the live monster pointer so do_light_sources() can follow movement.
+    const monLightRange = emits_light(mon.data);
+    if (monLightRange > 0) {
+        new_light_source(mon.mx, mon.my, monLightRange, LS_MONSTER, mon);
+    }
+
     // Group formation
     // C ref: makemon.c:1427-1435 — only for anymon (random monster)
     if (anymon && !(mmflags & MM_NOGRP)) {
@@ -2848,7 +2856,7 @@ export function clone_mon(mon, x, y, game, player) {
   m2.ispriest = 0;
   mon_track_clear(m2);
   place_monster(m2, m2.mx, m2.my);
-  if (emits_light(m2.data)) new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER, monst_to_any(m2));
+  if (emits_light(m2.data)) new_light_source(m2.mx, m2.my, emits_light(m2.data), LS_MONSTER, m2);
   if (has_mgivenname(mon)) { m2 = christen_monst(m2, MGIVENNAME(mon)); }
   else if (mon.isshk) { m2 = christen_monst(m2, shkname(mon)); }
   if (!game.svc.context.mon_moving && mon.mpeaceful) {

@@ -35,7 +35,7 @@ import { isok, SEE_INVIS, DETECT_MONSTERS, TELEPAT, INFRAVISION, WARNING, WARN_O
          BOLT_LIM } from './const.js';
 import { cansee, couldsee, clear_vision_full_recalc } from './vision.js';
 import { do_light_sources } from './light.js';
-import { infravisible, is_mindless } from './mondata.js';
+import { emits_light, infravisible, is_mindless } from './mondata.js';
 import { worm_known } from './worm.js';
 export { mark_vision_dirty } from './vision.js';
 
@@ -556,6 +556,17 @@ span.nh-cursor {
                 const col = x - 1;
 
                 if (!fov || !fov.canSee(x, y)) {
+                    const mon = gameMap.monsterAt(x, y);
+                    const monVisibleByOwnLight = !!(mon
+                        && emits_light(mon.data || mon.type || {}) > 0
+                        && couldsee(gameMap, player, x, y)
+                        && monVisibleForMap(mon, player));
+                    if (monVisibleByOwnLight) {
+                        const hallu = !!player?.hallucinating;
+                        const glyph = monsterMapGlyph(mon, hallu);
+                        this.setCell(col, row, glyph.ch, glyph.color);
+                        continue;
+                    }
                     // Show remembered terrain or nothing
                     const loc = gameMap.at(x, y);
                     // C ref: map_invisible() uses show_glyph() directly,
@@ -1653,6 +1664,17 @@ export function newsym(x, y, ctxOrMap = null) {
 
     // --- Not visible (out of FOV) ---
     if (!fov || !fov.canSee(x, y)) {
+        const mon = map.monsterAt(x, y);
+        const monVisibleByOwnLight = !!(mon
+            && emits_light(mon.data || mon.type || {}) > 0
+            && couldsee(map, player, x, y)
+            && monVisibleForMap(mon, player));
+        if (monVisibleByOwnLight) {
+            const hallu = !!player?.hallucinating;
+            const glyph = monsterMapGlyph(mon, hallu);
+            display.setCell(col, row, glyph.ch, glyph.color);
+            return;
+        }
         if (loc.mem_invis) {
             display.setCell(col, row, 'I', CLR_GRAY);
             return;

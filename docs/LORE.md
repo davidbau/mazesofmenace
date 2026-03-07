@@ -3312,3 +3312,24 @@ hard-won wisdom:
     at step `378` (`'#y#'` visibility row diff).
   - failure count remains `28/34` passing (`6` failing), with improved
     channel totals: PRNG `31/34`, Events `30/34`.
+
+## Lesson: monster light sources must attach to live monster pointers (not `anything` wrappers)
+
+- Dynamic monster lighting in C (`light.c`) tracks sources by monster pointer
+  and re-reads monster position every vision pass.
+- JS had two gaps:
+  - main `makemon()` flow did not register monster light sources at spawn;
+  - clone/replacement paths passed `monst_to_any(...)` instead of monster
+    pointers to `new_light_source`/`del_light_source`, breaking pointer identity.
+- Fixes:
+  - `js/makemon.js`: register monster light sources in main spawn flow;
+  - `js/makemon.js` and `js/mon.js`: use direct monster pointers for
+    LS_MONSTER light-source add/remove updates.
+- Rendering follow-up:
+  - `js/display.js`: in out-of-FOV rendering, allow self-luminous monsters to
+    be drawn when line-of-sight (`couldsee`) exists and the monster is otherwise
+    visible (`monVisibleForMap`), matching C-style dark-square luminous monster
+    visibility.
+- Validation impact:
+  - `seed331` screen frontier moved later from map-row mismatch at step `378`
+    to death-message staging at step `379`, while RNG/event parity remained full.

@@ -2279,8 +2279,8 @@ export function replmon(mtmp, mtmp2, game, player) {
   if (mtmp !== player.usteed) place_monster(mtmp2, mtmp2.mx, mtmp2.my);
   if (mtmp2.wormno) place_wsegs(mtmp2, mtmp);
   if (emits_light(mtmp2.data)) {
-    new_light_source(mtmp2.mx, mtmp2.my, emits_light(mtmp2.data), LS_MONSTER, monst_to_any(mtmp2));
-    del_light_source(LS_MONSTER, monst_to_any(mtmp));
+    new_light_source(mtmp2.mx, mtmp2.my, emits_light(mtmp2.data), LS_MONSTER, mtmp2);
+    del_light_source(LS_MONSTER, mtmp);
   }
   mtmp2.nmon = fmon;
   fmon = mtmp2;
