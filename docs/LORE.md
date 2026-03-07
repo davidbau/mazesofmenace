@@ -3479,3 +3479,19 @@ hard-won wisdom:
 - Validation:
   - targeted seeds unchanged (`seed325`, `seed327`, `seed328` non-regressing);
   - full failure suite unchanged at `28/34` passing (`6` failing).
+
+### postmov parity slice: trapped-door and doorbuster handling in moved-cell phase (2026-03-07)
+
+- Extended `js/monmove.js` non-pet moved-cell postmove branch to better match C
+  door semantics:
+  - trapped-door disarm via `has_magic_key(mon)` before open/unlock handling;
+  - trapped-door explosion path via `mb_trapped(...)` for unlock/open/bust cases;
+  - explicit doorbuster branch (`BUSTDOOR`) with C-style `rn2(2)` broken-vs-nodoor
+    decision and shop damage tracking via `add_damage(...)`.
+- This keeps door handling inside the C-aligned postmov order (after `mintrap`,
+  before bars/dig/tail).
+- Validation:
+  - `seed325`/`seed327` keep full RNG+event parity;
+  - `seed328` remains full pass;
+  - `./scripts/run-and-report.sh --failures` unchanged at `28/34` passing
+    (`6` failing).

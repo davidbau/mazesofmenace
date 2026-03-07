@@ -21,7 +21,7 @@
 // - mon_allowflags: Conflict ALLOW_U not implemented
 
 import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
-         ACCESSIBLE, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
+         ACCESSIBLE, CORR, DOOR, D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, D_BROKEN,
          SHOPBASE, ROOM, ROOMOFFSET,
          isok, WEB, IS_OBSTRUCTED, IS_STWALL, A_STR,
          IRONBARS, STAIRS, LADDER, W_NONDIGGABLE,
@@ -77,8 +77,9 @@ import { pointInShop, monsterInShop } from './shknam.js';
 import { stop_occupation } from './allmain.js';
 import { in_your_sanctuary } from './priest.js';
 import { artifact_light } from './artifact.js';
+import { has_magic_key } from './artifact.js';
 import { envFlag } from './runtime_env.js';
-import { after_shk_move, shk_move } from './shk.js';
+import { add_damage, after_shk_move, shk_move } from './shk.js';
 
 // Shared utilities — re-exported for consumers
 import { dist2, distmin } from './hack.js';
@@ -883,18 +884,55 @@ async function run_dochug_postmove_pipeline_current_js(
             // door/bars handling before tunneling; tail effects (web) after.
             const here = map.at(mon.mx, mon.my);
             if (here && IS_DOOR(here.typ)) {
+                const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
+                const canSeeMon = canSpotMonsterForMap(mon, map, player, fov);
                 const wasLocked = !!(here.flags & D_LOCKED);
                 const wasClosed = !!(here.flags & D_CLOSED);
-                if ((wasLocked && can_unlock) || (wasClosed && can_open)) {
-                    here.flags &= ~(D_LOCKED | D_CLOSED);
-                    here.flags |= D_ISOPEN;
-                    if (display) {
-                        const canSeeDoor = fov?.canSee ? fov.canSee(mon.mx, mon.my) : couldsee(map, player, mon.mx, mon.my);
-                        if (canSeeDoor && mon.name) {
+                let btrapped = !!(here.flags & D_TRAPPED);
+                // C ref: postmov() disarms trapped door if monster has MKoT.
+                if (btrapped && has_magic_key(mon)) {
+                    here.flags &= ~D_TRAPPED;
+                    btrapped = false;
+                }
+                if (wasLocked && can_unlock) {
+                    here.flags = btrapped ? D_NODOOR : D_ISOPEN;
+                    if (btrapped) {
+                        if (mb_trapped(mon, map, player)) return MMOVE_DIED;
+                    } else if (display) {
+                        if (canSeeDoor && canSeeMon) {
+                            await display.putstr_message(`${Monnam(mon)} unlocks and opens a door.`);
+                        } else if (!canSeeDoor) {
+                            await display.putstr_message('You hear a door unlock and open.');
+                        }
+                    }
+                } else if (wasClosed && can_open) {
+                    here.flags = btrapped ? D_NODOOR : D_ISOPEN;
+                    if (btrapped) {
+                        if (mb_trapped(mon, map, player)) return MMOVE_DIED;
+                    } else if (display) {
+                        if (canSeeDoor && canSeeMon) {
                             await display.putstr_message(`${Monnam(mon)} opens a door.`);
-                        } else {
+                        } else if (!canSeeDoor) {
                             await display.putstr_message('You hear a door open.');
                         }
+                    }
+                } else if ((here.flags & (D_LOCKED | D_CLOSED)) && (allowflags & BUSTDOOR)) {
+                    // C ref: postmov() doorbuster branch.
+                    const breakMask = (btrapped || (wasLocked && !rn2(2))) ? D_NODOOR : D_BROKEN;
+                    here.flags = breakMask;
+                    if (btrapped) {
+                        if (mb_trapped(mon, map, player)) return MMOVE_DIED;
+                    } else if (display) {
+                        if (canSeeDoor && canSeeMon) {
+                            await display.putstr_message(`${Monnam(mon)} smashes down a door.`);
+                        } else if (canSeeDoor) {
+                            await display.putstr_message('You see a door crash open.');
+                        } else {
+                            await display.putstr_message('You hear a door crash open.');
+                        }
+                    }
+                    if (pointInShop(mon.mx, mon.my, map)) {
+                        add_damage(mon.mx, mon.my, 0, map, game?.moves ?? player?.moves ?? 0);
                     }
                 }
             } else if (here && here.typ === IRONBARS) {
