@@ -39,7 +39,7 @@ import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage, u_left_shop
 import { observeObject } from './o_init.js';
 import { place_object } from './mkobj.js';
 import { xname, an, The } from './objnam.js';
-import { hliquid } from './do_name.js';
+import { hliquid, m_monnam } from './do_name.js';
 import { dosearch0 } from './detect.js';
 import { newsym, mark_vision_dirty, vision_recalc, canSpotMonsterForMap } from './display.js';
 import { helpless, monnear } from './mon.js';
@@ -416,7 +416,7 @@ export async function domove_bump_mon(mon, _glyph, _nopick, game, display) {
     // C: m-prefix bump into known/visible monster consumes a turn and stops.
     if (_nopick && !ctx.travel && visibleEnough) {
         if (mon.peaceful && !game?.flags?.hallucination) {
-            await display?.putstr_message(`Pardon me, ${y_monnam(mon)}.`);
+            await display?.putstr_message(`Pardon me, ${m_monnam(mon)}.`);
         } else {
             await display?.putstr_message(`You move right into ${y_monnam(mon)}.`);
         }
