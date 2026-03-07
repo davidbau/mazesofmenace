@@ -55,7 +55,10 @@ import { nhgetch, getCount, setInputRuntime, cmdq_clear, cmdq_add_int, cmdq_add_
          cmdq_copy, cmdq_peek, cmdq_restore, setCmdqInputMode,
          setCmdqRepeatRecordMode } from './input.js';
 import { CQ_CANNED, CQ_REPEAT, CMDQ_INT, CMDQ_KEY } from './const.js';
-import { init_nhwindows, create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu } from './windows.js';
+import {
+    init_nhwindows, create_nhwindow, destroy_nhwindow, start_menu, add_menu, end_menu, select_menu,
+    hasActiveTextPopupWindow, redrawActiveTextPopupWindows,
+} from './windows.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './const.js';
 import { initFirstLevel } from './u_init.js';
 import { movebubbles } from './mkmaze.js';
@@ -1686,6 +1689,14 @@ export class NetHackGame {
         } else {
             this.display.cursorOnPlayer(this.player);
         }
+    }
+
+    // Render input-blocked UI state (for example active text popups) without
+    // replay-side rendering policy logic.
+    renderInputBlockedState() {
+        if (!hasActiveTextPopupWindow()) return;
+        this.docrt();
+        redrawActiveTextPopupWindows();
     }
 
     _renderAll() {

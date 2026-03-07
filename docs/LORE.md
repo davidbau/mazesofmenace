@@ -3386,3 +3386,13 @@ hard-won wisdom:
 - Validation impact:
   - targeted seeds (`seed301`, `seed306`, `seed331`) pass in this configuration.
   - full failure burndown remained non-regressing at `29/34` passing (`5` failing).
+
+### Refinement: move popup-specific pending-state rendering behind runtime API
+
+- To reduce replay ownership further, replay no longer imports popup/windowing
+  helpers directly.
+- Added `NetHackGame.renderInputBlockedState()` in `js/allmain.js` to own
+  input-blocked UI rendering (`docrt` + popup overlay redraw when applicable).
+- `js/replay_core.js` now calls only this runtime API while a command is
+  pending, instead of making window-specific decisions itself.
+- Validation remained non-regressing (`29/34` gameplay passing; same 5 failures).

@@ -9,7 +9,6 @@ import { pushInput } from './input.js';
 import { NetHackGame, run_command, execute_repeat_command } from './allmain.js';
 import { HeadlessDisplay, createHeadlessInput } from './headless.js';
 import { consumeHarnessMapdumpPayloads } from './dungeon.js';
-import { hasActiveTextPopupWindow, redrawActiveTextPopupWindows } from './windows.js';
 import { envFlag } from './runtime_env.js';
 
 export { HeadlessDisplay };
@@ -201,13 +200,8 @@ export async function replaySession(seed, opts, keys) {
 
         // Rendering ownership lives in run_command/game runtime paths.
         // Replay captures the already-rendered screen after each consumed key.
-        // Compatibility hook: while a command is pending input and a text popup
-        // is active, redraw the popup surface so capture reflects tty overlay.
-        if (pendingCommand && hasActiveTextPopupWindow()) {
-            if (typeof game?.docrt === 'function') {
-                game.docrt();
-            }
-            redrawActiveTextPopupWindows();
+        if (pendingCommand && typeof game?.renderInputBlockedState === 'function') {
+            game.renderInputBlockedState();
         }
         const postMap = game.lev || game.map || null;
         if (postMap) postMap._replayStepIndex = i;
