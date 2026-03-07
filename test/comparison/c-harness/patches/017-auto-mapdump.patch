@@ -9,6 +9,7 @@ diff --git a/src/mklev.c b/src/mklev.c
 +staticfn void harness_mapdump_emit_run(FILE *, int, int);
 +staticfn void harness_mapdump_rle_grid(FILE *, int);
 +staticfn void harness_mapdump_sparse_lists(FILE *);
++staticfn int harness_mapdump_minvent_count(struct monst *);
  
  staticfn boolean finddpos(coord *, int, struct mkroom *);
  
@@ -109,6 +110,29 @@ diff --git a/src/mklev.c b/src/mklev.c
 +    }
 +    (void) fputc('\n', fp);
 +
++    (void) fputc('Q', fp);
++    first = TRUE;
++    for (otmp = fobj; otmp; otmp = otmp->nobj) {
++        if (!isok(otmp->ox, otmp->oy))
++            continue;
++        (void) fprintf(fp, "%s%u,%d,%d,%d,%ld,%d,%d,%d,%u,%d,%d,%d,%d,%d",
++                       first ? "" : ";",
++                       otmp->o_id,
++                       (int) otmp->ox, (int) otmp->oy,
++                       (int) otmp->otyp, (long) otmp->quan,
++                       (int) otmp->where,
++                       otmp->cursed ? 1 : 0,
++                       otmp->blessed ? 1 : 0,
++                       (unsigned) otmp->owt,
++                       (int) otmp->invlet,
++                       otmp->olocked ? 1 : 0,
++                       otmp->obroken ? 1 : 0,
++                       otmp->otrapped ? 1 : 0,
++                       otmp->no_charge ? 1 : 0);
++        first = FALSE;
++    }
++    (void) fputc('\n', fp);
++
 +    (void) fputc('M', fp);
 +    first = TRUE;
 +    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
@@ -118,6 +142,30 @@ diff --git a/src/mklev.c b/src/mklev.c
 +                       first ? "" : ";",
 +                       (int) mtmp->mx, (int) mtmp->my,
 +                       (int) monsndx(mtmp->data), (int) mtmp->mhp);
++        first = FALSE;
++    }
++    (void) fputc('\n', fp);
++
++    (void) fputc('N', fp);
++    first = TRUE;
++    for (mtmp = fmon; mtmp; mtmp = mtmp->nmon) {
++        if (!isok(mtmp->mx, mtmp->my))
++            continue;
++        (void) fprintf(fp, "%s%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%u,%u,%d",
++                       first ? "" : ";",
++                       mtmp->m_id,
++                       (int) mtmp->mx, (int) mtmp->my,
++                       (int) monsndx(mtmp->data),
++                       (int) mtmp->mhp, (int) mtmp->mhpmax,
++                       (int) mtmp->mtame,
++                       mtmp->mpeaceful ? 1 : 0,
++                       mtmp->msleeping ? 1 : 0,
++                       (int) mtmp->mfrozen,
++                       mtmp->mcanmove ? 1 : 0,
++                       mtmp->mtrapped ? 1 : 0,
++                       (unsigned) mtmp->m_ap_type,
++                       (unsigned) mtmp->mappearance,
++                       harness_mapdump_minvent_count(mtmp));
 +        first = FALSE;
 +    }
 +    (void) fputc('\n', fp);
@@ -133,6 +181,35 @@ diff --git a/src/mklev.c b/src/mklev.c
 +        first = FALSE;
 +    }
 +    (void) fputc('\n', fp);
++
++    (void) fputc('J', fp);
++    first = TRUE;
++    for (ttmp = gf.ftrap; ttmp; ttmp = ttmp->ntrap) {
++        if (!isok(ttmp->tx, ttmp->ty))
++            continue;
++        (void) fprintf(fp, "%s%d,%d,%d,%d,%d,%d,%d,%d",
++                       first ? "" : ";",
++                       (int) ttmp->tx, (int) ttmp->ty, (int) ttmp->ttyp,
++                       ttmp->tseen ? 1 : 0,
++                       ttmp->once ? 1 : 0,
++                       ttmp->madeby_u ? 1 : 0,
++                       (int) ttmp->teledest.x, (int) ttmp->teledest.y);
++        first = FALSE;
++    }
++    (void) fputc('\n', fp);
++}
++
++staticfn int
++harness_mapdump_minvent_count(struct monst *mtmp)
++{
++    int n = 0;
++    struct obj *otmp;
++
++    if (!mtmp)
++        return 0;
++    for (otmp = mtmp->minvent; otmp; otmp = otmp->nobj)
++        n++;
++    return n;
 +}
 +
 +staticfn void
@@ -161,6 +238,17 @@ diff --git a/src/mklev.c b/src/mklev.c
 +    (void) fputc('H', fp); harness_mapdump_rle_grid(fp, 2); (void) fputc('\n', fp);
 +    (void) fputc('L', fp); harness_mapdump_rle_grid(fp, 3); (void) fputc('\n', fp);
 +    (void) fputc('R', fp); harness_mapdump_rle_grid(fp, 4); (void) fputc('\n', fp);
++    (void) fputc('W', fp); harness_mapdump_rle_grid(fp, 1); (void) fputc('\n', fp);
++    (void) fprintf(fp, "U%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%ld,%d,%d,%d,%d,%d\n",
++                   (int) u.ux, (int) u.uy,
++                   (int) u.uhp, (int) u.uhpmax,
++                   (int) u.uen, (int) u.uenmax,
++                   (int) gm.multi, (int) u.utrap, (int) u.utraptype,
++                   (int) svc.context.move, (long) svm.moves,
++                   Confusion ? 1 : 0, Stunned ? 1 : 0,
++                   Blind ? 1 : 0, Hallucination ? 1 : 0,
++                   Fumbling ? 1 : 0);
++    (void) fprintf(fp, "A%ld,%ld\n", (long) svm.moves, (long) gh.hero_seq);
 +    harness_mapdump_sparse_lists(fp);
 +    (void) fclose(fp);
 +

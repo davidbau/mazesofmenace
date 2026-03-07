@@ -354,6 +354,30 @@ function buildHarnessMapdumpPayload(map) {
     lines.push(`H${buildHarnessMapdumpGrid(map, 2)}`);
     lines.push(`L${buildHarnessMapdumpGrid(map, 3)}`);
     lines.push(`R${buildHarnessMapdumpGrid(map, 4)}`);
+    // Explicit wall_info mirror (C rm.wall_info aliases flags bits).
+    lines.push(`W${buildHarnessMapdumpGrid(map, 1)}`);
+    const hero = map?.player || map?.u || null;
+    const heroX = hero ? (hero.x | 0) : 0;
+    const heroY = hero ? (hero.y | 0) : 0;
+    const hp = Number.isFinite(hero?.hp) ? Math.trunc(hero.hp) : (Number(hero?.uhp) || 0);
+    const hpmax = Number.isFinite(hero?.hpmax) ? Math.trunc(hero.hpmax) : (Number(hero?.uhpmax) || 0);
+    const en = Number.isFinite(hero?.en) ? Math.trunc(hero.en) : (Number(hero?.uen) || 0);
+    const enmax = Number.isFinite(hero?.enmax) ? Math.trunc(hero.enmax) : (Number(hero?.uenmax) || 0);
+    const multi = Number.isFinite(hero?.multi) ? Math.trunc(hero.multi) : 0;
+    const utrap = Number.isFinite(hero?.utrap) ? Math.trunc(hero.utrap) : 0;
+    const utraptype = Number.isFinite(hero?.utraptype) ? Math.trunc(hero.utraptype) : 0;
+    const move = Number.isFinite(hero?.move) ? Math.trunc(hero.move) : 0;
+    const moves = Number.isFinite(hero?.moves) ? Math.trunc(hero.moves) : 0;
+    const conf = !!(hero?.confused || hero?.Confusion) ? 1 : 0;
+    const stun = !!(hero?.stunned || hero?.Stunned) ? 1 : 0;
+    const blind = !!(hero?.blind || hero?.Blind) ? 1 : 0;
+    const hallu = !!(hero?.hallucinating || hero?.Hallucination) ? 1 : 0;
+    const fumbling = !!(hero?.fumbling || hero?.Fumbling) ? 1 : 0;
+    lines.push(
+        `U${heroX},${heroY},${hp},${hpmax},${en},${enmax},${multi},${utrap},${utraptype},${move},${moves},${conf},${stun},${blind},${hallu},${fumbling}`
+    );
+    const anchorHeroSeq = Number.isFinite(hero?.heroSeq) ? Math.trunc(hero.heroSeq) : 0;
+    lines.push(`A${moves},${anchorHeroSeq}`);
 
     const objParts = [];
     for (const obj of (Array.isArray(map?.objects) ? map.objects : [])) {
@@ -366,6 +390,32 @@ function buildHarnessMapdumpPayload(map) {
     }
     lines.push(`O${objParts.join(';')}`);
 
+    const objDetailParts = [];
+    for (const obj of (Array.isArray(map?.objects) ? map.objects : [])) {
+        const ox = Number(obj?.ox);
+        const oy = Number(obj?.oy);
+        if (!isok(ox, oy)) continue;
+        const id = Number.isFinite(obj?.o_id) ? Math.trunc(obj.o_id) : 0;
+        const otyp = Number.isFinite(obj?.otyp) ? Math.trunc(obj.otyp) : 0;
+        const quan = Number.isFinite(obj?.quan) ? Math.trunc(obj.quan) : 0;
+        const where = Number.isFinite(obj?.where) ? Math.trunc(obj.where) : 0;
+        const cursed = obj?.cursed ? 1 : 0;
+        const blessed = obj?.blessed ? 1 : 0;
+        const owt = Number.isFinite(obj?.owt) ? Math.trunc(obj.owt) : 0;
+        const invlet = (typeof obj?.invlet === 'string' && obj.invlet.length > 0)
+            ? obj.invlet.charCodeAt(0)
+            : 0;
+        const olocked = obj?.olocked ? 1 : 0;
+        const obroken = obj?.obroken ? 1 : 0;
+        const otrapped = obj?.otrapped ? 1 : 0;
+        const noCharge = obj?.no_charge ? 1 : 0;
+        objDetailParts.push(
+            `${id},${ox},${oy},${otyp},${quan},${where},${cursed},${blessed},${owt},${invlet},${olocked},${obroken},${otrapped},${noCharge}`
+        );
+    }
+    objDetailParts.sort();
+    lines.push(`Q${objDetailParts.join(';')}`);
+
     const monParts = [];
     for (const mon of (Array.isArray(map?.monsters) ? map.monsters : [])) {
         const mx = Number(mon?.mx);
@@ -377,6 +427,31 @@ function buildHarnessMapdumpPayload(map) {
     }
     lines.push(`M${monParts.join(';')}`);
 
+    const monDetailParts = [];
+    for (const mon of (Array.isArray(map?.monsters) ? map.monsters : [])) {
+        const mx = Number(mon?.mx);
+        const my = Number(mon?.my);
+        if (!isok(mx, my)) continue;
+        const id = Number.isFinite(mon?.m_id) ? Math.trunc(mon.m_id) : 0;
+        const mndx = Number.isFinite(mon?.mndx) ? Math.trunc(mon.mndx) : 0;
+        const mhp = Number.isFinite(mon?.mhp) ? Math.trunc(mon.mhp) : 0;
+        const mhpmax = Number.isFinite(mon?.mhpmax) ? Math.trunc(mon.mhpmax) : 0;
+        const mtame = Number.isFinite(mon?.tame) ? Math.trunc(mon.tame) : 0;
+        const peaceful = mon?.peaceful ? 1 : 0;
+        const sleeping = mon?.sleeping ? 1 : 0;
+        const frozen = Number.isFinite(mon?.mfrozen) ? Math.trunc(mon.mfrozen) : 0;
+        const canmove = mon?.mcanmove === false ? 0 : 1;
+        const trapped = mon?.mtrapped ? 1 : 0;
+        const mappearanceType = Number.isFinite(mon?.m_ap_type) ? Math.trunc(mon.m_ap_type) : 0;
+        const mappearance = Number.isFinite(mon?.mappearance) ? Math.trunc(mon.mappearance) : 0;
+        const minventCount = Array.isArray(mon?.minvent) ? mon.minvent.length : 0;
+        monDetailParts.push(
+            `${id},${mx},${my},${mndx},${mhp},${mhpmax},${mtame},${peaceful},${sleeping},${frozen},${canmove},${trapped},${mappearanceType},${mappearance},${minventCount}`
+        );
+    }
+    monDetailParts.sort();
+    lines.push(`N${monDetailParts.join(';')}`);
+
     const trapParts = [];
     for (const trap of (Array.isArray(map?.traps) ? map.traps : [])) {
         const tx = Number(trap?.tx);
@@ -386,6 +461,26 @@ function buildHarnessMapdumpPayload(map) {
         trapParts.push(`${tx},${ty},${ttyp}`);
     }
     lines.push(`K${trapParts.join(';')}`);
+
+    const trapDetailParts = [];
+    for (const trap of (Array.isArray(map?.traps) ? map.traps : [])) {
+        const tx = Number(trap?.tx);
+        const ty = Number(trap?.ty);
+        if (!isok(tx, ty)) continue;
+        const ttyp = Number.isFinite(trap?.ttyp) ? Math.trunc(trap.ttyp) : 0;
+        const tseen = trap?.tseen ? 1 : 0;
+        const once = trap?.once ? 1 : 0;
+        const madeByU = trap?.madeby_u ? 1 : 0;
+        const teledestX = Number.isFinite(trap?.teledest_x) ? Math.trunc(trap.teledest_x)
+            : (Number.isFinite(trap?.teledest?.x) ? Math.trunc(trap.teledest.x) : -1);
+        const teledestY = Number.isFinite(trap?.teledest_y) ? Math.trunc(trap.teledest_y)
+            : (Number.isFinite(trap?.teledest?.y) ? Math.trunc(trap.teledest.y) : -1);
+        trapDetailParts.push(
+            `${tx},${ty},${ttyp},${tseen},${once},${madeByU},${teledestX},${teledestY}`
+        );
+    }
+    trapDetailParts.sort();
+    lines.push(`J${trapDetailParts.join(';')}`);
 
     return `${lines.join('\n')}\n`;
 }

@@ -228,6 +228,15 @@ function parseCompactSparseList(str, fieldCount) {
     });
 }
 
+function parseCompactSparseListVariable(str, minFieldCount = 1) {
+    if (!str || !str.trim()) return [];
+    return str.split(';').filter(Boolean).map((item) => {
+        const parts = item.split(',').map(Number);
+        if (parts.length < minFieldCount) return null;
+        return parts;
+    }).filter(Boolean);
+}
+
 /**
  * Parse a compact mapdump file content string into a structured checkpoint.
  * Returns { typGrid, flagsGrid, horizontalGrid, litGrid, roomnoGrid, objects, monsters, traps }.
@@ -248,6 +257,12 @@ export function parseCompactMapdump(content) {
             case 'O': result.objects = parseCompactSparseList(data, 4); break;  // x,y,otyp,quan
             case 'M': result.monsters = parseCompactSparseList(data, 4); break; // x,y,mndx,mhp
             case 'K': result.traps = parseCompactSparseList(data, 3); break;    // x,y,ttyp
+            case 'W': result.wallInfoGrid = decodeCompactRleGrid(data); break;
+            case 'U': result.hero = data.split(',').map(Number); break;
+            case 'A': result.anchor = data.split(',').map(Number); break;
+            case 'Q': result.objectDetails = parseCompactSparseListVariable(data, 4); break;
+            case 'N': result.monsterDetails = parseCompactSparseListVariable(data, 4); break;
+            case 'J': result.trapDetails = parseCompactSparseListVariable(data, 3); break;
         }
     }
     return result;

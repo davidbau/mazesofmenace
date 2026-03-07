@@ -612,6 +612,18 @@ function compareMapdumpSparse(jsList = [], sessionList = []) {
     return { match: true, diff: null };
 }
 
+function hasNonEmptySparse(value) {
+    return Array.isArray(value) && value.length > 0;
+}
+
+function hasNonEmptyGrid(value) {
+    return Array.isArray(value) && value.length > 0;
+}
+
+function hasNonEmptyVector(value) {
+    return Array.isArray(value) && value.length > 0;
+}
+
 export function compareMapdumpCheckpoints(jsCheckpoints = null, sessionCheckpoints = null) {
     // If the session has no mapdump data (recorded before patch 017), skip comparison.
     if (!sessionCheckpoints || typeof sessionCheckpoints !== 'object'
@@ -648,8 +660,15 @@ export function compareMapdumpCheckpoints(jsCheckpoints = null, sessionCheckpoin
             ['horizontalGrid', 'H'],
             ['litGrid', 'L'],
             ['roomnoGrid', 'R'],
+            // Optional richer grid for explicit wall_info export.
+            ['wallInfoGrid', 'W'],
         ];
         for (const [field, section] of gridSections) {
+            // Optional sections only compare when both sides provide data.
+            if (section === 'W'
+                && !(hasNonEmptyGrid(jParsed[field]) && hasNonEmptyGrid(sParsed[field]))) {
+                continue;
+            }
             const diff = findFirstGridDiff(jParsed[field] || [], sParsed[field] || []);
             if (diff) {
                 idMatch = false;
@@ -665,8 +684,16 @@ export function compareMapdumpCheckpoints(jsCheckpoints = null, sessionCheckpoin
             ['objects', 'O'],
             ['monsters', 'M'],
             ['traps', 'K'],
+            // Optional richer sparse sections.
+            ['objectDetails', 'Q'],
+            ['monsterDetails', 'N'],
+            ['trapDetails', 'J'],
         ];
         for (const [field, section] of sparseSections) {
+            if ((section === 'Q' || section === 'N' || section === 'J')
+                && !(hasNonEmptySparse(jParsed[field]) && hasNonEmptySparse(sParsed[field]))) {
+                continue;
+            }
             // C's fmon list retains dead monsters (mhp=0) until dmonsfree(), which runs
             // after harness_auto_mapdump(). JS removes dead monsters immediately from
             // map.monsters. Filter out mhp=0 entries from the M section to avoid
@@ -684,6 +711,30 @@ export function compareMapdumpCheckpoints(jsCheckpoints = null, sessionCheckpoin
                     firstDivergence = {
                         checkpointId: id,
                         kind: 'sparse',
+                        section,
+                        ...sparseCmp.diff,
+                    };
+                }
+                break;
+            }
+        }
+
+        // Optional vector sections.
+        const vectorSections = [
+            ['hero', 'U'],
+            ['anchor', 'A'],
+        ];
+        for (const [field, section] of vectorSections) {
+            if (!(hasNonEmptyVector(jParsed[field]) && hasNonEmptyVector(sParsed[field]))) {
+                continue;
+            }
+            const sparseCmp = compareMapdumpSparse([jParsed[field]], [sParsed[field]]);
+            if (!sparseCmp.match) {
+                idMatch = false;
+                if (!firstDivergence) {
+                    firstDivergence = {
+                        checkpointId: id,
+                        kind: 'vector',
                         section,
                         ...sparseCmp.diff,
                     };

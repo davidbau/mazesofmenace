@@ -449,6 +449,38 @@ Common phases during level generation:
 - `after_wallification` - after wall type assignment
 - `after_levregions_fixup` - after stairs/portals placed
 
+### Compact Mapdump Checkpoints
+
+Session files may also include top-level compact mapdump checkpoints:
+
+```json
+{
+  "checkpoints": {
+    "d0l1_001": "T...\\nF...\\nH...\\nL...\\nR...\\nW...\\nU...\\nA...\\nO...\\nQ...\\nM...\\nN...\\nK...\\nJ...\\n"
+  }
+}
+```
+
+Each checkpoint payload is newline-delimited sections. Base sections are:
+- `T` terrain (`typ`)
+- `F` flags low bits
+- `H` horizontal/alias byte
+- `L` lit
+- `R` roomno
+- `O` object sparse list (`x,y,otyp,quan`)
+- `M` monster sparse list (`x,y,mndx,mhp`)
+- `K` trap sparse list (`x,y,ttyp`)
+
+Extended sections (new writers should emit; comparison is backward-compatible if absent in old fixtures):
+- `W` wall info mirror (C `rm.wall_info` alias of low `flags` bits)
+- `U` hero vector
+  format: `ux,uy,uhp,uhpmax,uen,uenmax,multi,utrap,utraptype,move,moves,conf,stun,blind,hallu,fumbling`
+- `A` anchor vector
+  format: `moves,hero_seq`
+- `Q` object detail sparse list
+- `N` monster detail sparse list
+- `J` trap detail sparse list
+
 ## Terrain Type Grid
 
 The `typGrid` captures terrain types matching C's `levl[x][y].typ`.
