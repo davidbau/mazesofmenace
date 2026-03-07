@@ -358,18 +358,21 @@ span.nh-cursor {
         // C ref: win/tty/topl.c:262-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when deciding whether to concatenate.
         const notDied = !msg.startsWith('You die');
-        if (this.topMessage && this.messageNeedsMore && notDied) {
-            const combined = this.topMessage + '  ' + msg;
-            // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
-            if (combined.length + 9 < this.cols) {
-                this.clearRow(MESSAGE_ROW);
-                this.putstr(0, MESSAGE_ROW, combined, CLR_WHITE);
-                this.topMessage = combined;
-                this.setCursor(Math.min(combined.length, this.cols - 1), 0);
-                return;
+        if (this.topMessage && this.messageNeedsMore) {
+            if (notDied) {
+                const combined = this.topMessage + '  ' + msg;
+                // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
+                if (combined.length + 9 < this.cols) {
+                    this.clearRow(MESSAGE_ROW);
+                    this.putstr(0, MESSAGE_ROW, combined, CLR_WHITE);
+                    this.topMessage = combined;
+                    this.setCursor(Math.min(combined.length, this.cols - 1), 0);
+                    return;
+                }
             }
-            // Overflow: show --More--. In blocking mode, wait for a key
-            // immediately (headless parity path); otherwise queue for later.
+            // C ref: win/tty/topl.c update_topl():
+            // - concat overflow triggers more()
+            // - "You die..." also forces more() before the new message
             this.renderMoreMarker();
             if (this._moreBlockingEnabled && this._nhgetch) {
                 await this._waitForMoreDismissKey(this._nhgetch);

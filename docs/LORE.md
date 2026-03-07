@@ -2781,6 +2781,21 @@ hard-won wisdom:
   - failure suite count remained stable (no broad regression),
   - seed325 still needs one additional boundary fix for the remaining
     throw/topline capture skew.
+
+### `"You die..."` forces `more()` before prompt concatenation (2026-03-07)
+
+- C `topl.c:update_topl()` explicitly treats `"You die..."` as non-concatenable:
+  if topline is in `NEED_MORE`, it runs `more()` before displaying the death
+  line.
+- JS previously skipped this branch and could collapse death-phase messaging
+  into one topline (for example `"You die...  Die? [yn] (n)"`) too early.
+- C-faithful fix in both display backends:
+  - when `topMessage && messageNeedsMore`, `putstr_message("You die...")` now
+    forces a `--More--` boundary before showing the new line (same path used
+    for concat-overflow `more()`).
+- Safety:
+  - no RNG/event regressions in targeted checks (`seed100`, `seed325`) and
+    failure-suite count remained stable.
       `9944/20304` -> `9954/20304`.
   - `seed328_ranger_wizard_gameplay`:
     - first RNG divergence remains step `220` (no regression).

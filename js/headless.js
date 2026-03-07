@@ -598,18 +598,22 @@ export class HeadlessDisplay {
         // can be concatenated.  When the combined message plus --More-- would
         // exceed the line width, C shows --More-- and blocks on input first.
         const notDied = !msg.startsWith('You die');
-        if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore && notDied) {
-            const combined = this.topMessage + '  ' + msg;
-            // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
-            if (combined.length + 9 < this.cols) {
-                this.clearRow(0);
-                this.putstr(0, 0, combined.substring(0, this.cols));
-                this.topMessage = combined;
-                this.messageNeedsMore = true;
-                this.setCursor(Math.min(combined.length, this.cols - 1), 0);
-                return;
+        if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore) {
+            if (notDied) {
+                const combined = this.topMessage + '  ' + msg;
+                // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
+                if (combined.length + 9 < this.cols) {
+                    this.clearRow(0);
+                    this.putstr(0, 0, combined.substring(0, this.cols));
+                    this.topMessage = combined;
+                    this.messageNeedsMore = true;
+                    this.setCursor(Math.min(combined.length, this.cols - 1), 0);
+                    return;
+                }
             }
-            // Overflow: show --More-- and block until a key is pressed.
+            // C ref: win/tty/topl.c update_topl():
+            // - concat overflow triggers more()
+            // - "You die..." also forces more() before the new message
             // C ref: topl.c more() → flush_screen(1) → bot() before xwaitforspace().
             // Update status line so HP/Pw reflect current state at the --More-- prompt.
             if (this._lastMapState?.player) {
