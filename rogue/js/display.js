@@ -32,7 +32,7 @@ export class Display {
     const pre = document.createElement('pre');
     pre.id = 'rogue-screen';
     pre.style.cssText = [
-      'font-family: "Courier New", Courier, monospace',
+      'font-family: "DejaVu Sans Mono", "Bitstream Vera Sans Mono", "Liberation Mono", monospace',
       'font-size: 16px',
       'line-height: 1.2',
       'background: #000',
