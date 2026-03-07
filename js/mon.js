@@ -733,7 +733,7 @@ export function handleHiderPremove(mon, map, player, fov) {
 // Returns true if corpse should be created. CRITICAL: several early-return paths
 // do NOT consume rn2(), so callers must use this instead of rolling directly.
 export function corpse_chance(mon) {
-    const mdat = mon?.type || (Number.isInteger(mon?.mndx) ? mons[mon.mndx] : {});
+    const mdat = mon?.data || mon?.type || (Number.isInteger(mon?.mndx) ? mons[mon.mndx] : {});
     if (!mdat) return false;
 
     // C ref: mon.c:3190-3194 — Vlad and liches crumble to dust (no corpse, no RNG)
