@@ -3159,3 +3159,10 @@ hard-won wisdom:
   - `seed327`/`seed328` unchanged
   - failing suite remained `27/34` passing, `7` failing
 - This reduces branch fragmentation and makes subsequent C-ordering audits easier.
+
+## Lesson: include after_shk_move in shared postmov tail
+
+- C `postmov()` runs `after_shk_move()` for shopkeepers in moved/done tail.
+- We added this call to the shared JS tail helper so shopkeeper bookkeeping is
+  applied uniformly after post-move processing.
+- Validation stayed stable on target seeds and failing-suite count stayed at `7`.

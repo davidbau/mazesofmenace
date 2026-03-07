@@ -77,7 +77,7 @@ import { stop_occupation } from './allmain.js';
 import { in_your_sanctuary } from './priest.js';
 import { artifact_light } from './artifact.js';
 import { envFlag } from './runtime_env.js';
-import { shk_move } from './shk.js';
+import { after_shk_move, shk_move } from './shk.js';
 
 // Shared utilities — re-exported for consumers
 import { dist2, distmin } from './hack.js';
@@ -943,6 +943,11 @@ async function run_dochug_postmove_tail_current_js(
     // monster ended up staying on the same square.
     if (!mon.dead && (moveStatus === MMOVE_MOVED || moveStatus === MMOVE_DONE)) {
         maybe_postmove_hideunder(mon, map, player, fov, display);
+    }
+
+    if (!mon.dead && mon.isshk && (moveStatus === MMOVE_MOVED || moveStatus === MMOVE_DONE)) {
+        // C ref: postmov() tail — after_shk_move for shopkeepers.
+        after_shk_move(mon, map);
     }
 
     return { moveStatus, mmoved };
