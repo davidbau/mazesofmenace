@@ -3421,3 +3421,16 @@ hard-won wisdom:
   - Guard checks stayed green:
     - `seed100_multidigit_gameplay` pass (RNG/events full)
     - `seed328_ranger_wizard_gameplay` pass (RNG/events/screens full)
+
+### Manual-direct seed032: stepped-trap seen-escape parity moved frontier (2026-03-07)
+
+- Problem: `seed032_manual_direct` still diverged when JS immediately applied
+  teleport-trap effects from `hack.js` stepped-trap handling, while C consumed
+  `rn2(5)` in `dotrap()` seen-trap escape gating (`trap.c:2962-2970`) and often
+  escaped trap effects.
+- Fix: added C-style seen-trap escape branch to `hack.js` stepped-trap path,
+  including `rn2(5)` consume and early return when escaping.
+- Impact:
+  - `seed032_manual_direct` first RNG divergence moved later `73 -> 88`.
+  - `seed031_manual_direct` remained at step `78` (non-regressed).
+  - Guard sessions remained green (`seed100`, `seed328`).

@@ -14,7 +14,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, SDOOR, SCORR, STAIRS, LADDER, FOUNTAIN
          ROOMOFFSET, SHOPBASE, OROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
          BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
          UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED,
-         NO_TRAP, VIBRATING_SQUARE, is_pit, BEAR_TRAP, WEB,
+         NO_TRAP, VIBRATING_SQUARE, MAGIC_PORTAL, is_pit, BEAR_TRAP, WEB,
          HOLE, TRAPDOOR,
          W_NONDIGGABLE, W_NONPASSWALL,
          DIRECTION_KEYS, RUN_KEYS,
@@ -32,7 +32,7 @@ import { WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
 import { nhgetch } from './input.js';
 import { do_attack } from './uhitm.js';
 import { formatGoldPickupMessage, formatInventoryPickupMessage, schedule_goto } from './do.js';
-import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm, mon_learns_traps, mons_see_trap, is_hider, noattacks, is_human, is_rider } from './mondata.js';
+import { x_monnam, y_monnam, YMonnam, Monnam, mon_nam, canseemon, passes_walls, is_longworm, mon_learns_traps, mons_see_trap, is_hider, noattacks, is_human, is_rider, is_clinger } from './mondata.js';
 import { engr_at, read_engr_at, maybeSmudgeEngraving, u_wipe_engr } from './engrave.js';
 import { gethungry } from './eat.js';
 import { describeGroundObjectForPlayer, maybeHandleShopEntryMessage, u_left_shop, inhishop } from './shk.js';
@@ -913,6 +913,28 @@ export async function domove_core(dir, player, map, display, game) {
     async function applySteppedTrap(trap) {
         if (!trap) return null;
         const wasSeen = !!trap.tseen;
+        const trapType = trap.ttyp;
+        // C ref: trap.c dotrap() seen-trap escape gate (trap.c:2962-2970).
+        // Without this, JS can apply full trap effects (e.g. teleport) where C
+        // spends rn2(5) and escapes the trap instead.
+        const undestroyable = (trapType === MAGIC_PORTAL || trapType === VIBRATING_SQUARE);
+        const fumbling = !!(player?.Fumbling || player?.fumbling);
+        const oldTrap = map?.trapAt?.(oldX, oldY) || null;
+        const conjPit = !!(oldTrap && conjoined_pits(trap, oldTrap, true, player));
+        const adjPit = !!adj_nonconjoined_pit(trap, player);
+        const youdata = player.youmonst
+            ? (player.youmonst.type || mons[player.youmonst.mndx]) : null;
+        const clinging = !!(youdata && is_clinger(youdata));
+        if (wasSeen && !fumbling && !undestroyable && trapType !== ANTI_MAGIC
+            && !conjPit && !adjPit
+            && (!rn2(5) || (is_pit(trapType) && clinging))) {
+            const trapDesc = defsyms[trap_to_defsym(trapType)]?.explanation
+                || defsyms[trap_to_defsym(trapType)]?.desc
+                || 'trap';
+            const det = trap.madeby_u ? 'your' : 'that';
+            await You(`escape ${det} ${trapDesc}.`);
+            return trap;
+        }
         // C ref: trap.c seetrap() — mark trap as discovered
         if (!trap.tseen) {
             trap.tseen = true;
