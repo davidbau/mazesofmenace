@@ -98,6 +98,8 @@ import { monmoveTrace, monmoveStepLabel } from './monmove.js';
 import { monsterAtWithSegments } from './worm.js';
 import { ansimpleoname } from './objnam.js';
 import { game as _gstate } from './gstate.js';
+import { sengr_at, del_engr_at } from './engrave.js';
+import { adjalign } from './attrib.js';
 import { envFlag, writeStderr } from './runtime_env.js';
 
 // ========================================================================
@@ -978,13 +980,29 @@ export function wake_nearby(petcall, player, map) {
   wake_nearto_core(player.x, player.y, player.ulevel * 20, petcall, map);
 }
 
-// C ref: mon.c setmangry() — make peaceful monster hostile
+// C ref: mon.c:4259-4312 setmangry() — make peaceful monster hostile
 export function setmangry(mon, via_attack, map, player) {
+    // C ref: mon.c:4261-4279 — Elbereth hypocrisy (MUST come before mpeaceful check)
+    if (via_attack && map && player
+        && sengr_at(map, "Elbereth", player.x, player.y, true)
+        && (onscary(map, player.x, player.y, mon) || mon.peaceful)) {
+        // C: You_feel("like a hypocrite.");
+        const record = player.ualign?.record ?? 0;
+        adjalign(player, (record > 5) ? -5 : -rnd(5));
+        // C: del_engr_at(u.ux, u.uy) — remove the Elbereth
+        del_engr_at(map, player.x, player.y);
+    }
+
     if (!mon.peaceful) return;
     if (mon.tame) return;
     mon.peaceful = false;
-    // C ref: adjalign(-1) — alignment penalty simplified
-    // C ref: rnd(5) for Elbereth hypocrisy
+    // C ref: mon.c:4291-4297 — alignment penalty
+    if (mon.ispriest) {
+        // C: p_coaligned check simplified — always penalize
+        adjalign(player, -5);
+    } else {
+        adjalign(player, -1);
+    }
 }
 
 
