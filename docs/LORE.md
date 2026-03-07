@@ -3854,3 +3854,19 @@ hard-won wisdom:
     failing trio unchanged (`seed031`, `seed032`, `seed033`) and improved
     `seed033` frontier (`175/1400`);
   - `node scripts/test-unit-core.mjs` passes.
+
+### trap confirm uses pre-cleared `nopick` command prefix (2026-03-07)
+
+- C-faithful movement fix in [`js/hack.js`](/share/u/davidbau/git/mazesofmenace/mazes/js/hack.js):
+  - known-trap confirmation in `domove_core()` now checks the per-command
+    saved `nopick` value (captured before context prefix reset), not
+    `ctx.nopick` after it has already been cleared.
+- Why this matters:
+  - C checks `svc.context.nopick` for the active command prefix at the trap
+    prompt decision point; using the post-clear field in JS silently loses
+    `m`-prefix suppression semantics.
+- Validation:
+  - `node test/comparison/session_test_runner.js --parallel=1 --verbose test/comparison/sessions/seed032_manual_direct.session.json`
+    remains stable (`5430/29894` RNG match; first divergence unchanged);
+  - `./scripts/run-and-report.sh --failures` remains stable at `31/34`
+    passing with the same three failing sessions.

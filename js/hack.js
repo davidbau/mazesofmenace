@@ -870,7 +870,7 @@ export async function domove_core(dir, player, map, display, game) {
     // Respect 'm' (nopick) prefix suppression unless moving recklessly (run).
     if (steppingTrap && steppingTrap.tseen
         && !player.stunned && !player.confused
-        && (!ctx.nopick || ctx.run)) {
+        && (!nopick || ctx.run)) {
         const trapType = steppingTrap.ttyp;
         const trapDesc = defsyms[trap_to_defsym(trapType)]?.explanation
             || defsyms[trap_to_defsym(trapType)]?.desc
