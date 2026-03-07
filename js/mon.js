@@ -897,8 +897,8 @@ export function xkilled(mon, xkill_flags, map, player) {
 
 // C ref: mon.c killed() — wrapper for xkilled with XKILL_GIVEMSG
 // Autotranslated from mon.c:3468
-export async function killed(mtmp) {
-  await xkilled(mtmp, XKILL_GIVEMSG);
+export async function killed(mtmp, map, player) {
+  await xkilled(mtmp, XKILL_GIVEMSG, map, player);
 }
 
 // C ref: mon.c make_corpse() — per-monster corpse/drop creation
