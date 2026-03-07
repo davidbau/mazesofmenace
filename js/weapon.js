@@ -47,6 +47,7 @@ import {
     BOLT_LIM, AKLYS_LIM,
 } from './const.js';
 import { which_armor } from './worn.js';
+import { spec_abon, artifact_light } from './artifact.js';
 import { dist2 } from './hack.js';
 import { couldsee } from './vision.js';
 import { game as _gstate } from './gstate.js';
@@ -84,6 +85,10 @@ export function hitval(otmp, mon) {
         if (info.oc_subtyp === P_PICK_AXE && ptr.passes_walls && ptr.thick_skinned)
             tmp += 2;
     }
+
+    // C ref: weapon.c:182-184 — artifact to-hit bonus
+    if (otmp.oartifact)
+        tmp += spec_abon(otmp, mon);
 
     return tmp;
 }
@@ -157,6 +162,9 @@ export function dmgval(otmp, mon) {
             bonus += rnd(4);
         if (mon && info.oc_material === 14 /* SILVER */ && mon_hates_silver(mon))
             bonus += rnd(20);
+        // C ref: weapon.c:333-334 — artifact light bonus vs light-hating
+        if (artifact_light(otmp) && otmp.lamplit && mon_hates_light(mon))
+            bonus += rnd(8);
         tmp += bonus;
     }
 
