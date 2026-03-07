@@ -17,6 +17,8 @@
     "constants:report:write": "python3 scripts/generators/export_deferred_constants_report.py",
     "translator:check-policy": "node scripts/check-translator-file-policy.mjs",
     "translator:check-annotations": "node scripts/check-translator-annotations.mjs",
+    "coverage:rogue": "bash rogue/scripts/run-coverage.sh --text",
+    "coverage:hack": "bash hack/scripts/run-coverage.sh --text",
     "serve": "python3 -m http.server 8080",
     "postinstall": "./scripts/setup-testing.sh"
   },
