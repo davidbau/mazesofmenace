@@ -914,6 +914,11 @@ export async function domove_core(dir, player, map, display, game) {
 
     async function applySteppedTrap(trap) {
         if (!trap) return null;
+        // C ref: trap.c dotrap() starts with nomul(0), which stops running/
+        // multi-turn continuation before any trap branch (including early
+        // seen-trap escape and in-air bypass returns).
+        if (ctx) ctx.run = 0;
+        if (game && Number.isFinite(game.multi)) game.multi = 0;
         const wasSeen = !!trap.tseen;
         const trapType = trap.ttyp;
         const teleDestX = Number.isInteger(trap?.teledest_x) ? trap.teledest_x

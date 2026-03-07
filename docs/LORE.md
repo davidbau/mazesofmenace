@@ -3734,3 +3734,17 @@ hard-won wisdom:
     - colors matched `6110 -> 6156`
     - first divergence index moved `10149 -> 10150`.
   - Remaining earliest mismatch is one subsequent missing `exercise` roll before `distfleeck`.
+
+### stepped-trap path now clears run/multi like C `dotrap()` `nomul(0)` (2026-03-07)
+
+- C ref: `trap.c:dotrap()` begins with `nomul(0)` before trap-branch checks
+  (including in-air bypass and seen-trap escape).
+- JS `domove_core()->applySteppedTrap()` did not clear run/multi state at trap
+  entry, which was less faithful to C control flow around trap interactions.
+- Fix in `js/hack.js`:
+  - at stepped-trap entry, clear `svc.context.run` and `game.multi` before
+    evaluating trap branches.
+- Validation:
+  - `./scripts/run-and-report.sh --failures` remained stable at `31/34`
+    passing with the same failing trio (`seed031_manual_direct`,
+    `seed032_manual_direct`, `seed033_manual_direct`).
