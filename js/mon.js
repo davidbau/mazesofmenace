@@ -391,7 +391,7 @@ export function monlineu(mon, player, nx, ny) {
 // C ref: mon.c mm_displacement() — can attacker displace defender?
 export function mm_displacement(mon, monAtPos) {
     const monLevel = (m) => Number.isInteger(m?.m_lev) ? m.m_lev
-        : (Number.isInteger(m?.type?.mlevel) ? m.type.mlevel : 0);
+        : (Number.isInteger((m?.data || m?.type)?.mlevel) ? (m.data || m.type).mlevel : 0);
     if (!is_displacer(mon.data || mon.type || {})) return false;
     const defenderIsDisplacer = is_displacer(monAtPos.data || monAtPos.type || {});
     const attackerHigherLevel = monLevel(mon) > monLevel(monAtPos);
@@ -992,13 +992,13 @@ export function setmangry(mon, via_attack, map, player) {
 
 // C ref: mon.c:2113 m_in_air() — monster is up in the air/on the ceiling
 export function m_in_air(mon) {
-    const mdat = mon?.type || {};
+    const mdat = mon?.data || mon?.type || {};
     return is_flyer(mdat) || is_floater(mdat)
         || (is_clinger(mdat) && !!mon.mundetected);
 }
 
 export function m_poisongas_ok(mon) {
-    const mdat = mon?.type || {};
+    const mdat = mon?.data || mon?.type || {};
     if (nonliving(mdat) || (mdat.mflags1 & M1_BREATHLESS))
         return M_POISONGAS_OK;
     // C ref: is_swimmer eels in pools
