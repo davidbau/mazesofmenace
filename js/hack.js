@@ -1252,12 +1252,9 @@ export async function domove_core(dir, player, map, display, game) {
         }
     }
 
-    // C ref: hack.c domove() calls maybe_smudge_engr() after domove_core()
-    // succeeds, so read_engr_at() sees pre-smudge text for the current step.
-    // Keep the existing run-step suppression for continued multi-run turns.
-    if (!ctx.skip_smudge_engr) {
-        await maybe_smudge_engr(map, oldX, oldY, player.x, player.y, player);
-    }
+    // C ref: hack.c:2682 — domove() calls maybe_smudge_engr() after every
+    // successful domove_core(), including intermediate run steps.
+    await maybe_smudge_engr(map, oldX, oldY, player.x, player.y, player);
 
     await runmode_delay_output(game, display);
 
@@ -1290,11 +1287,9 @@ export async function do_run(dir, player, map, display, fov, game, runStyle = 'r
     ctx.run = runModeValue;
     game.running = true;
     while (steps < 80) { // safety limit
-        ctx.skip_smudge_engr = steps > 0 ? 1 : 0;
         const beforeX = player.x;
         const beforeY = player.y;
         const result = await domove(runDir, player, map, display, game);
-        ctx.skip_smudge_engr = 0;
         if (result.tookTime) timedTurns++;
         runTrace(
             `step=${replayStepLabel(map)}`,
