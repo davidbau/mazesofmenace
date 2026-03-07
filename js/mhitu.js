@@ -1736,7 +1736,7 @@ export async function gazemu(mtmp, mattk, player, map, display) {
     switch (adtyp) {
     case AD_STON: {
         // Medusa stoning gaze
-        if (cancelled || !mtmp.mcansee) {
+        if (cancelled || mtmp.mcansee === 0 || mtmp.mcansee === false) {
             // Ineffective
             if (display) await display.putstr_message(`The ${x_monnam(mtmp)} gazes ineffectually.`);
             break;

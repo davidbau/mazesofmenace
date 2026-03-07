@@ -1140,7 +1140,7 @@ export function omon_adj(mon, obj, mon_notices) {
     const data = mon.data || (mons ? mons[mon.mndx] : null) || {};
     tmp += ((data.msize || MZ_MEDIUM) - MZ_MEDIUM);
     if (mon.msleeping) tmp += 2;
-    if (!mon.mcanmove || !(data.mmove || 0)) {
+    if (mon.mcanmove === false || mon.mcanmove === 0 || !(data.mmove || 0)) {
         tmp += 4;
         if (mon_notices && (data.mmove || 0) && !rn2(10)) {
             mon.mcanmove = 1; mon.mfrozen = 0;
@@ -1201,7 +1201,7 @@ export async function thitmonst(mon, obj, player, map, game) {
     // Unicorn gem acceptance
     if (obj.oclass === GEM_CLASS && is_unicorn(data)
         && (objectData[obj.otyp]?.oc_material ?? 0) !== MINERAL && !uslinging_check(player)) {
-        if (mon.msleeping || !mon.mcanmove) { await tmiss(obj, mon, false, player, map); return 0; }
+        if (mon.msleeping || mon.mcanmove === false || mon.mcanmove === 0) { await tmiss(obj, mon, false, player, map); return 0; }
         else if (mon.mtame) { await pline(`${Monnam(mon)} catches and drops the ${xname(obj)}.`); return 0; }
         else { await pline(`${Monnam(mon)} catches the ${xname(obj)}.`); return await gem_accept(mon, obj, player, map); }
     }

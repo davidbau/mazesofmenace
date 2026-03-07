@@ -533,7 +533,7 @@ export function mcould_eat_tin(mon) {
 
 // C ref: mcureblindness(mon, verbos)
 export async function mcureblindness(mon, verbos, player) {
-    if (!mon.mcansee) {
+    if (mon.mcansee === 0 || mon.mcansee === false) {
         mon.mcansee = 1;
         mon.mblinded = 0;
         if (verbos && haseyes(mon.data || mon.type || {})) {

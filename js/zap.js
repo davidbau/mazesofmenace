@@ -860,7 +860,7 @@ export async function bhitm(mon, otmp, map, player) {
         mon.msleeping = 0;
         mon.sleeping = false;
     }
-    if (!mon.mcanmove) { mon.mcanmove = 1; mon.mfrozen = 0; }
+    if (mon.mcanmove === false || mon.mcanmove === 0) { mon.mcanmove = 1; mon.mfrozen = 0; }
   }
 
   return ret;

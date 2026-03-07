@@ -195,13 +195,13 @@ export async function mstatusline(mtmp, game) {
         info += ', cancelled';
     if (mtmp.mconf)
         info += ', confused';
-    if (mtmp.mblinded || !mtmp.mcansee)
+    if (mtmp.mblinded || mtmp.mcansee === 0 || mtmp.mcansee === false)
         info += ', blind';
     if (mtmp.mstun)
         info += ', stunned';
     if (mtmp.msleeping)
         info += ', asleep';
-    else if (mtmp.mfrozen || !mtmp.mcanmove)
+    else if (mtmp.mfrozen || mtmp.mcanmove === false || mtmp.mcanmove === 0)
         info += ", can't move";
     else if ((mtmp.mstrategy & 0x20000000) !== 0) // STRAT_WAITMASK
         info += ', meditating';

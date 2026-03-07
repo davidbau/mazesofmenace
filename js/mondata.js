@@ -1442,7 +1442,7 @@ export function mons_see_trap(ttmp, map) {
   for (const mtmp of map.monsters) {
     if (!mtmp || mtmp.dead) continue;
     const mdat = mtmp.data || mtmp.type || {};
-    if (is_animal(mdat) || is_mindless(mdat) || !haseyes(mdat) || !mtmp.mcansee) {
+    if (is_animal(mdat) || is_mindless(mdat) || !haseyes(mdat) || mtmp.mcansee === 0 || mtmp.mcansee === false) {
       continue;
     }
     const dx = mtmp.mx - tx;
