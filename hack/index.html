@@ -471,6 +471,26 @@
       padding-left: 1.5em;
     }
 
+    #docs-content img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1.5em auto;
+      border: 1px solid #ddd;
+    }
+
+    #docs-content figure {
+      margin: 1.5em 0;
+      text-align: center;
+    }
+
+    #docs-content figcaption {
+      font-size: 0.82em;
+      color: var(--color-text-muted);
+      font-style: italic;
+      margin-top: 0.4em;
+    }
+
     #docs-content li {
       margin: 0.3em 0;
     }
@@ -836,7 +856,7 @@
       }
 
       function processInline(text) {
-        text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+        text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<figure><img alt="$1" src="$2"><figcaption>$1</figcaption></figure>');
         text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
         text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
         text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');

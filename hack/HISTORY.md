@@ -1,19 +1,58 @@
 # The History of Hack
 
-> *"This is export hack, my first semester programming project."*
-> -- Jay Fenlason, READ_ME, 1982
+*In the beginning was Rogue, and Rogue was without source, and the source was denied.*
+
+In the summer of 1982, a high school junior from Sudbury, Massachusetts put his game on a USENIX conference tape and sent it out into the world. He included his home phone number and apologized in advance about his modem and his teenage sister. He called the game "my first semester programming project." He called it "my silly game."
+
+That game was Hack. Its direct descendant, NetHack, is still under active development. The dungeon turned out to go deeper than anyone expected.
+
+---
+
+## Lincoln-Sudbury
+
+In 1979, [Brian Harvey](https://en.wikipedia.org/wiki/Brian_Harvey_(lecturer)) was hired as Computer Director at [Lincoln-Sudbury Regional High School](https://en.wikipedia.org/wiki/Lincoln-Sudbury_Regional_High_School) in Sudbury, Massachusetts. The school had a [PDP-8](https://en.wikipedia.org/wiki/PDP-8) run by the math department. Harvey had grander ambitions. He wanted to create an environment "as similar as possible" to the MIT and Stanford AI labs: a powerful computer system, lots of software tools, an informal community spirit.
+
+He obtained a [PDP-11/70](https://en.wikipedia.org/wiki/PDP-11) running [Version 7 Unix](https://en.wikipedia.org/wiki/Version_7_Unix), funded 75% by a grant from [Digital Equipment Corporation](https://en.wikipedia.org/wiki/Digital_Equipment_Corporation) and 25% by a school bond issue. DEC's headquarters was in Maynard, Massachusetts, a few miles down the road, and its co-founder [Ken Olsen](https://en.wikipedia.org/wiki/Ken_Olsen) had come out of MIT Lincoln Laboratory. The geography helped.
+
+![Brian Harvey at Lincoln-Sudbury, 1981. He arrived in 1979 with a vision of building an AI Lab for high school students.](images/dyadlincolnsudbu1981linc_0133-harvey.jpg)
+
+The PDP-11/70 was one of the most powerful minicomputers of its era. Lincoln-Sudbury became a Unix source licensee and an alpha test site for [2.9BSD](https://en.wikipedia.org/wiki/History_of_the_Berkeley_Software_Distribution), the PDP-11 version of Berkeley Unix. The installation, testing, and debugging was handled entirely by students.
+
+Harvey deliberately modeled the culture on the MIT AI Lab ethos. About 50 students and teachers ran the facility through the Computer Users Society. Members had keys to the machine room and could use it evenings and weekends without adult supervision. Courses weren't graded. Students connected from home by modem. Membership was open to anyone who used the computer, the yearbook explained, "be it for typing out English papers, playing Star Trek, or remembering friends' birthdays." The yearbook added: "or even 'Dungeons and Dragons'."
+
+![Computer Users Society, Lincoln-Sudbury, 1981. Jay Fenlason is in the middle row (fourth from right); Kenny Woodland is in the top row (far right). The caption mentions Dungeons and Dragons.](images/dyadlincolnsudbu1981linc_0242-computer-users-society.jpg)
+
+Most American high schools had no computers in 1980. Lincoln-Sudbury had a multi-user Unix system running the same operating system used at Bell Labs and UC Berkeley, maintained by students who were alpha-testing the latest BSD release.
+
+It was, by the standards of 1980, an extraordinary place. It was about to produce something extraordinary.
+
+---
+
+## The Game
+
+[Seymour Papert](https://en.wikipedia.org/wiki/Seymour_Papert) at MIT had built [Logo](https://en.wikipedia.org/wiki/Logo_(programming_language)) and the movement around it. Brian Harvey was a committed participant, connected with Logo communities around the country, including the SFSU Logo Workshop at San Francisco State University, where Lincoln-Sudbury students participated.
+
+It was through this SFSU connection that [Jay Fenlason](https://nethackwiki.com/wiki/Jay_Fenlason) first encountered [Rogue](https://en.wikipedia.org/wiki/Rogue_(video_game)).
+
+Rogue had been created in 1980 by [Michael Toy](https://en.wikipedia.org/wiki/Michael_Toy) and [Glenn Wichman](https://en.wikipedia.org/wiki/Glenn_Wichman) at UC Santa Cruz. It was a dungeon-crawling game where the computer generated a new dungeon each time you played, which meant even its creators could be surprised by it. Fenlason was a junior at Lincoln-Sudbury when he found it. He asked for the source code. The authors said no.
+
+So he wrote his own.
+
+The result was approximately 6,200 lines of C across ten source files: 56 monster types, procedurally generated levels, items, combat, and a persistent dungeon with multiple floors. The game had a sense of character that Rogue lacked. Monsters had names. The chameleon could change its form. Wands shot beams.
+
+Three classmates contributed. **Kenny Woodland** wrote the original `BUZZ()` function, which handles the beam weapons fired by wands. **Mike Thome** wrote the chameleon monster. **[Jon Payne](https://en.wikipedia.org/wiki/JOVE)** wrote the cursor-positioning display code, which Fenlason credited as "the massive CURS()" and appears to have regarded with some reverence.
+
+![Computer Users Society, Lincoln-Sudbury, 1983 — the year after Hack was distributed. Mike Thome (fourth from left) and Jay Fenlason (sixth from left).](images/dyadlincolnsudbu1983linc_0205-thome-fenlason.jpg)
+
+By the first half of 1982, Hack was ready to go. Brian Harvey submitted it to USENIX. It went out on the USENIX 82-1 tape at the Summer 1982 conference in Boston. Fenlason later described it as "my silly game."
+
+Within two years it was rewritten and distributed across Usenet. Within five, it had become NetHack.
 
 ---
 
 ## The Original README
 
-The original `READ_ME` distributed with Hack is reproduced here in full, because
-its voice captures the era perfectly -- a teenager sharing his work with the
-world, giving his home phone number but warning you about his modem and his
-teenage sister. The source text is preserved in
-[`hack-c/upstream/READ_ME`](hack-c/upstream/READ_ME) and in the
-[GitHub mirror](https://github.com/Sustainable-Games/fenlason-hack) of the
-original USENIX distribution:
+The `READ_ME` distributed with Hack is preserved here because no description of what Hack was, or what the era was, captures it half as well as the author's own words.
 
 ```
 This is export hack, my first semester programming project.
@@ -96,266 +135,45 @@ I would never have gotten to play ROGUE.
 			Good Luck...
 ```
 
+The misspellings are original. The numbered list skips from 7 to 7. The parenthetical "(One that works!)" suggests Fenlason already knew the save function was broken. The author was seventeen.
+
 ---
 
-## The Machine
-
-In 1979, [Brian Harvey](https://en.wikipedia.org/wiki/Brian_Harvey_(lecturer))
-was hired as Computer Director at
-[Lincoln-Sudbury Regional High School](https://en.wikipedia.org/wiki/Lincoln-Sudbury_Regional_High_School)
-(LSRHS) in Sudbury, Massachusetts. The school already had a
-[PDP-8](https://en.wikipedia.org/wiki/PDP-8) run by the math department, but
-Harvey had a grander vision: he wanted to create an environment "as similar as
-possible" to the MIT and Stanford AI labs -- "a powerful computer system, with
-lots of software tools, an informal community spirit."
-([Harvey, "Case Study: LSRHS"](https://people.eecs.berkeley.edu/~bh/lsrhs.html))
-
-He obtained a **[PDP-11/70](https://en.wikipedia.org/wiki/PDP-11) running
-[Version 7 Unix](https://en.wikipedia.org/wiki/Version_7_Unix)**. The cost was
-covered 75% by a grant from
-[Digital Equipment Corporation](https://en.wikipedia.org/wiki/Digital_Equipment_Corporation)
-and 25% by a special school bond issue.
-([Harvey, "Case Study: LSRHS"](https://people.eecs.berkeley.edu/~bh/lsrhs.html))
-DEC's headquarters was in
-[Maynard, Massachusetts](https://en.wikipedia.org/wiki/Maynard,_Massachusetts)
--- just a few miles from Lincoln and Sudbury. DEC's co-founder
-[Ken Olsen](https://en.wikipedia.org/wiki/Ken_Olsen) had worked at
-[MIT Lincoln Laboratory](https://en.wikipedia.org/wiki/MIT_Lincoln_Laboratory)
-before founding DEC in 1957, and lived in Lincoln until his death in 2011.
-The proximity made DEC unusually generous with local schools, and Lincoln-Sudbury
-was the beneficiary.
-
-The [PDP-11/70](https://gunkies.org/wiki/PDP-11/70) was a serious machine --
-one of the most powerful minicomputers of its era, with a 2KB cache and support
-for up to 4MB of main memory. Over 600,000 PDP-11s of all models were
-manufactured; the PDP-11/70 was the top of the line. Lincoln-Sudbury became a
-Unix source licensee and served as an **alpha test site for
-[2.9BSD](https://en.wikipedia.org/wiki/History_of_the_Berkeley_Software_Distribution)**,
-the PDP-11 version of Berkeley Unix. The installation, testing, and debugging of
-2.9BSD was carried out entirely by students.
-([Harvey](https://people.eecs.berkeley.edu/~bh/lsrhs.html))
-
-## The Culture
-
-Harvey deliberately built a culture modeled on the
-[MIT AI Lab](https://en.wikipedia.org/wiki/MIT_Computer_Science_and_Artificial_Intelligence_Laboratory)
-ethos of the era. The Computer Center Users Society, a group of about 50
-students and teachers, administered the facility. Members had keys to the
-computer room and could use it evenings and weekends without adult supervision.
-Courses weren't graded. Students connected remotely via modems from home. The
-result was a place where teenagers taught themselves Unix systems programming,
-wrote production software, and distributed it to the world.
-([Harvey](https://people.eecs.berkeley.edu/~bh/lsrhs.html);
-[LS Alumni Association, "Computer Pioneers"](http://www.lincolnsudburyalumni.org/lsrhs/publications/bitsnpieces/computerpioneers.html))
-
-This was extraordinary for 1980. Most American high schools had no computers at
-all. Those that did typically had a single terminal connected to a time-sharing
-service, or perhaps an [Apple II](https://en.wikipedia.org/wiki/Apple_II) running
-BASIC. Lincoln-Sudbury had a multi-user Unix system running the same operating
-system used at [Bell Labs](https://en.wikipedia.org/wiki/Bell_Labs) and
-UC Berkeley, with students who were alpha-testing the latest BSD release. It was,
-by any measure, one of the most advanced high school computing environments in
-the country.
-
-## The Era
-
-The early 1980s were a pivotal moment in the history of computing and education.
-[Seymour Papert](https://en.wikipedia.org/wiki/Seymour_Papert) at MIT had
-co-created the [Logo](https://en.wikipedia.org/wiki/Logo_(programming_language))
-programming language in 1967 (with
-[Wally Feurzeig](https://en.wikipedia.org/wiki/Wally_Feurzeig) and
-[Cynthia Solomon](https://en.wikipedia.org/wiki/Cynthia_Solomon) at
-[Bolt, Beranek and Newman](https://en.wikipedia.org/wiki/BBN_Technologies)),
-and by the late 1970s Logo was being used to introduce children to programming
-through "[turtle graphics](https://en.wikipedia.org/wiki/Turtle_graphics)" --
-commanding a cursor (or a physical robot) to draw shapes on screen. Papert's
-1980 book
-[*Mindstorms: Children, Computers, and Powerful Ideas*](https://en.wikipedia.org/wiki/Mindstorms_(book))
-argued that computers could fundamentally transform how children learn. Brian
-Harvey was deeply influenced by this movement. He would later write the
-three-volume
-[*Computer Science Logo Style*](https://people.eecs.berkeley.edu/~bh/logo.html)
-(MIT Press), develop
-[Berkeley Logo](https://people.eecs.berkeley.edu/~bh/logo.html), and co-create
-the [Snap!](https://en.wikipedia.org/wiki/Snap!_(programming_language)) visual
-programming language -- a "Scheme disguised as Scratch" -- used in UC Berkeley's
-[*Beauty and Joy of Computing*](https://bjc.edc.org/) course.
-
-At the same time, the MIT AI Lab and the broader
-[hacker culture](https://en.wikipedia.org/wiki/Hacker_culture) were at their
-peak. [Richard Stallman](https://en.wikipedia.org/wiki/Richard_Stallman) was
-still at the AI Lab (he would leave MIT in 1984 and found the
-[Free Software Foundation](https://en.wikipedia.org/wiki/Free_Software_Foundation)
-in 1985). The culture of sharing code, building tools, and treating software as
-a communal resource was the water these students swam in. When Jay Fenlason
-finished Hack, it was natural to give it away on a
-[USENIX](https://en.wikipedia.org/wiki/USENIX) tape -- not because of any
-licensing ideology, but because that was simply what you did with software you
-wrote.
-
-## The Game
-
-[Jay Fenlason](https://nethackwiki.com/wiki/Jay_Fenlason) was a junior at
-Lincoln-Sudbury when he began writing Hack in 1981.
-([NetHack Wiki](https://nethackwiki.com/wiki/Jay_Fenlason%27s_Hack))
-The inspiration was
-**[Rogue](https://en.wikipedia.org/wiki/Rogue_(video_game))**, the
-procedurally generated dungeon game created in 1980 by
-[Michael Toy](https://en.wikipedia.org/wiki/Michael_Toy) and
-[Glenn Wichman](https://en.wikipedia.org/wiki/Glenn_Wichman) at UC Santa Cruz
-(later improved by [Ken Arnold](https://en.wikipedia.org/wiki/Ken_Arnold) at
-UC Berkeley). Fenlason encountered Rogue through a connection to the SFSU Logo
-Workshop -- a San Francisco State University program where Lincoln-Sudbury
-students participated. As he wrote in the README: "This entire program would not
-have been possible without the SFSU Logo Workshop. I am eternally grateful to
-all of our students (Especially K.L.), without whom I would never have seen
-Rogue."
-
-Fenlason's account from a
-[2000 interview](https://www.linux.com/news/train-life-nethacks-papa/) fills
-in the story: after being denied access to Rogue's source code, he decided to
-write his own version. The result was Hack -- approximately 6,200 lines of C
-across 10 source files, implementing a dungeon-crawling game with 56 monster
-types, items, combat, and procedurally generated levels.
-
-Three classmates contributed
-([LS Alumni Association](http://www.lincolnsudburyalumni.org/lsrhs/publications/bitsnpieces/computerpioneers.html)):
-
-- **Kenny Woodland** -- "general random things including the original BUZZ()"
-  (the wand/beam zapping function)
-- **Mike Thome** -- "The original chamelian" (the chameleon monster, which could
-  change form)
-- **[Jon Payne](https://en.wikipedia.org/wiki/JOVE)** -- "The original lock
-  file kludge and the massive CURS()" (the cursor-positioning display routine)
-
-By the first half of 1982, Hack was complete enough to distribute. Brian Harvey
-submitted it to USENIX, and it was included on the **USENIX 82-1 software
-distribution tape** -- distributed at the Summer 1982 USENIX conference in
-Boston.
-([Hack 1.0.3 page](https://homepages.cwi.nl/~aeb/games/hack/hack.html);
-[Wikipedia](https://en.wikipedia.org/wiki/Hack_(video_game)))
-Fenlason described it as "my silly game"
-([Linux.com interview](https://www.linux.com/news/train-life-nethacks-papa/)).
-It would become the ancestor of one of the most complex and long-lived games
-in computing history.
-
-## What Happened Next
+## After Hack
 
 ### Hack's Descendants
 
-In December 1984,
-[Andries Brouwer](https://en.wikipedia.org/wiki/Andries_Brouwer), a Dutch
-mathematician at [CWI Amsterdam](https://en.wikipedia.org/wiki/Centrum_Wiskunde_%26_Informatica),
-obtained Fenlason's source code, substantially rewrote it, and posted
-**[Hack 1.0](https://nethackwiki.com/wiki/Hack_1.0)** to the Usenet newsgroup
-`net.sources`.
+In December 1984, [Andries Brouwer](https://en.wikipedia.org/wiki/Andries_Brouwer), a Dutch mathematician at [CWI Amsterdam](https://en.wikipedia.org/wiki/Centrum_Wiskunde_%26_Informatica), obtained Fenlason's source code, substantially rewrote it, and posted [Hack 1.0](https://nethackwiki.com/wiki/Hack_1.0) to the Usenet newsgroup `net.sources`. Brouwer added player roles, the Amulet of Yendor, a pet system, and shops.
 ([Brouwer's Hack page](https://homepages.cwi.nl/~aeb/games/hack/hack.html))
-Brouwer's version added player roles, the Amulet of Yendor, a pet system,
-shops, and many new mechanics.
-([NetHack Wiki](https://nethackwiki.com/wiki/Hack_1.0))
-The response was overwhelming. Multiple variant versions proliferated: Don
-Kneller's PC HACK for MS-DOS, R. Black's ST Hack for the Atari ST, and others.
-([Game history, NetHack Wiki](https://nethackwiki.com/wiki/Game_history))
 
-Mike Stephenson then merged the variants together, incorporating many added
-features, and -- collaborating with Izchak Miller and Janet Walz over the
-Internet -- published **[NetHack](https://en.wikipedia.org/wiki/NetHack)
-version 1.4** on July 28, 1987.
-([NetHack Wiki: Game history](https://nethackwiki.com/wiki/Game_history))
-They called themselves the
-[DevTeam](https://nethackwiki.com/wiki/DevTeam), and the name "NetHack"
-reflected their collaboration over the nascent Internet. Nearly four decades
-later, NetHack remains under active development, with the 3.7 branch -- the
-most ambitious set of gameplay changes in the game's history -- still unreleased
-as of early 2026.
+The response was overwhelming. Variants proliferated: Don Kneller's PC Hack for MS-DOS, R. Black's ST Hack for the Atari ST, and others.
+([NetHack Wiki](https://nethackwiki.com/wiki/Game_history))
+
+Mike Stephenson merged the variants, collaborating with Izchak Miller and Janet Walz over the Internet, and published [NetHack](https://en.wikipedia.org/wiki/NetHack) version 1.4 on July 28, 1987. They called themselves the [DevTeam](https://nethackwiki.com/wiki/DevTeam). The name "NetHack" reflected their collaboration over the nascent Internet. Nearly four decades later, NetHack remains under active development, with the 3.7 branch still unreleased as of 2026.
 
 ### Jay Fenlason
 
 After Lincoln-Sudbury, Fenlason attended UC Berkeley.
 ([Linux.com](https://www.linux.com/news/train-life-nethacks-papa/))
-He went on to work at the
-**[Free Software Foundation](https://en.wikipedia.org/wiki/Free_Software_Foundation)**
-for five years, where he became a significant contributor to the GNU ecosystem.
-He is the original author of the
-**[GNU implementation of gprof](https://sourceware.org/binutils/docs/gprof/)**
-(the profiler, written in 1988 with
-[Richard Stallman](https://en.wikipedia.org/wiki/Richard_Stallman)),
-co-authored **[gawk](https://www.gnu.org/software/gawk/)** (with Paul Rubin,
-in 1986), drafted the first
-**[GNU tar](https://www.gnu.org/software/tar/manual/html_node/Authors.html)**
-manual, and served as maintainer of both GNU tar and GNU sed.
-He departed the FSF over disagreements about the organization's commitment to
-the [Hurd](https://en.wikipedia.org/wiki/GNU_Hurd) kernel project versus
-building on BSD.
-([Linux.com interview](https://www.linux.com/news/train-life-nethacks-papa/))
-As of that 2000 interview, he was working as a software engineer in the
-Boston area.
+He worked at the [Free Software Foundation](https://en.wikipedia.org/wiki/Free_Software_Foundation) for five years. He is the original author of the [GNU implementation of gprof](https://sourceware.org/binutils/docs/gprof/) (with [Richard Stallman](https://en.wikipedia.org/wiki/Richard_Stallman), 1988), co-authored [gawk](https://www.gnu.org/software/gawk/) (with Paul Rubin, 1986), drafted the first [GNU tar](https://www.gnu.org/software/tar/manual/html_node/Authors.html) manual, and served as maintainer of both GNU tar and GNU sed. He left the FSF over disagreements about the Hurd kernel project versus building on BSD.
+([Linux.com](https://www.linux.com/news/train-life-nethacks-papa/))
+As of a 2000 interview, he was working as a software engineer in the Boston area.
 
 ### Jonathan Payne
 
-Jon Payne -- credited in the README for "the massive CURS()" -- went on to write
-**[JOVE](https://en.wikipedia.org/wiki/JOVE)** (Jonathan's Own Version of Emacs)
-during his senior year at Lincoln-Sudbury, also on the PDP-11.
-([Wikipedia](https://en.wikipedia.org/wiki/JOVE);
-[GitHub](https://github.com/jonmacs/jove))
-JOVE was a fast, small Emacs clone that was distributed with several releases
-of BSD Unix
-([2.9BSD](https://en.wikipedia.org/wiki/History_of_the_Berkeley_Software_Distribution),
-4.3BSD-Reno, 4.4BSD-Lite2) and brought Payne recognition from around the world
-while still a teenager.
+Jon Payne, credited for "the massive CURS()", went on during his senior year at Lincoln-Sudbury to write [JOVE](https://en.wikipedia.org/wiki/JOVE) (Jonathan's Own Version of Emacs), also on the PDP-11. JOVE was distributed with several BSD releases and brought Payne recognition from around the world while he was still a teenager.
 
-After Lincoln-Sudbury, Payne worked at
-[Bolt, Beranek and Newman](https://en.wikipedia.org/wiki/BBN_Technologies),
-then the University of Rochester, and then
-**[Sun Microsystems](https://en.wikipedia.org/wiki/Sun_Microsystems)**, where
-in 1992 he joined the secret
-**["Green" project](https://en.wikipedia.org/wiki/Java_(programming_language)#History)**
--- the team led by [James Gosling](https://en.wikipedia.org/wiki/James_Gosling)
-that produced the
-**[Java programming language](https://en.wikipedia.org/wiki/Java_(programming_language))**.
-([LS Alumni Association](http://www.lincolnsudburyalumni.org/lsrhs/publications/bitsnpieces/computerpioneers.html))
-In 1996, he co-founded
-**[Marimba](https://en.wikipedia.org/wiki/Marimba_(software))**, one of the
-first Internet-based software management companies, with former Sun colleagues
-[Arthur van Hoff](https://en.wikipedia.org/wiki/Arthur_van_Hoff),
-[Sami Shaio](https://en.wikipedia.org/wiki/Sami_Shaio), and
-[Kim Polese](https://en.wikipedia.org/wiki/Kim_Polese). Marimba grew to 300+
-employees and went public in 1999.
-([Wikipedia](https://en.wikipedia.org/wiki/Arthur_van_Hoff))
-He later worked at [TiVo](https://en.wikipedia.org/wiki/TiVo) and
-[Flipboard](https://en.wikipedia.org/wiki/Flipboard).
-From a high school game's cursor routine to the Java programming language: not
-a bad trajectory.
+After Lincoln-Sudbury, Payne worked at Bolt, Beranek and Newman, then the University of Rochester, then [Sun Microsystems](https://en.wikipedia.org/wiki/Sun_Microsystems), where in 1992 he joined the secret ["Green" project](https://en.wikipedia.org/wiki/Java_(programming_language)#History), the team led by [James Gosling](https://en.wikipedia.org/wiki/James_Gosling) that produced the [Java programming language](https://en.wikipedia.org/wiki/Java_(programming_language)). In 1996 he co-founded [Marimba](https://en.wikipedia.org/wiki/Marimba_(software)), one of the first Internet software management companies, which went public in 1999. He later worked at TiVo and Flipboard.
+
+From a high school game's cursor routine to the Java programming language. Not bad.
 
 ### Brian Harvey
 
-Harvey left Lincoln-Sudbury in the early 1980s to pursue his PhD at UC Berkeley,
-where he stayed for the rest of his career as a Teaching Professor in the
-[EECS department](https://www2.eecs.berkeley.edu/Faculty/Homepages/harvey.html).
-He wrote
-[*Computer Science Logo Style*](https://people.eecs.berkeley.edu/~bh/logo.html)
-(MIT Press, three volumes), developed
-**[Berkeley Logo](https://people.eecs.berkeley.edu/~bh/logo.html)**, and
-co-created the
-**[Snap!](https://en.wikipedia.org/wiki/Snap!_(programming_language))** visual
-programming language with
-[Jens Moenig](https://github.com/jmoenig/Snap).
-He co-developed
-**[The Beauty and Joy of Computing](https://bjc.edc.org/)**, a widely adopted
-CS breadth course. In 2025, ACM recognized him as a
-[Person of ACM](https://www.acm.org/articles/people-of-acm/2025/brian-harvey)
-for his contributions to computing education. His proudest achievement, he has
-said, remains the computer center he built at Lincoln-Sudbury -- "where courses
-weren't graded and kids had keys to the room."
-([Harvey](https://people.eecs.berkeley.edu/~bh/lsrhs.html))
+Harvey left Lincoln-Sudbury in the early 1980s for his PhD at UC Berkeley, where he remained for the rest of his career as a Teaching Professor in EECS. He wrote [*Computer Science Logo Style*](https://people.eecs.berkeley.edu/~bh/logo.html) (MIT Press, three volumes), developed [Berkeley Logo](https://people.eecs.berkeley.edu/~bh/logo.html), co-created the [Snap!](https://en.wikipedia.org/wiki/Snap!_(programming_language)) visual programming language, and co-developed [The Beauty and Joy of Computing](https://bjc.edc.org/). In 2025, ACM recognized him as a [Person of ACM](https://www.acm.org/articles/people-of-acm/2025/brian-harvey). His proudest achievement, he has said, remains the computer center he built at Lincoln-Sudbury: "where courses weren't graded and kids had keys to the room."
 
 ### Kenny Woodland and Mike Thome
 
-Less is known about the subsequent careers of Kenny Woodland and Mike Thome.
-Their contributions to Hack -- the beam-zapping code and the chameleon monster --
-are preserved in the [source code](https://github.com/Sustainable-Games/fenlason-hack)
-and in Fenlason's README acknowledgment. If you know more about their stories,
-the dungeon would welcome an update.
+Less is known about the subsequent careers of Kenny Woodland and Mike Thome. Their contributions to Hack — the beam-zapping code and the chameleon monster — are preserved in the [source code](https://github.com/Sustainable-Games/fenlason-hack) and in Fenlason's acknowledgment. If you know more about their stories, the dungeon would welcome an update.
 
 ---
 
@@ -363,69 +181,52 @@ the dungeon would welcome an update.
 
 ### Primary Sources
 
-- Jay Fenlason, `READ_ME`, Hack source distribution (USENIX 82-1 tape, 1982) --
+- Jay Fenlason, `READ_ME`, Hack source distribution (USENIX 82-1 tape, 1982) —
   preserved in [`hack-c/upstream/READ_ME`](hack-c/upstream/READ_ME)
 - Brian Harvey,
-  ["Case Study: LSRHS"](https://people.eecs.berkeley.edu/~bh/lsrhs.html) --
+  ["Case Study: LSRHS"](https://people.eecs.berkeley.edu/~bh/lsrhs.html) —
   Harvey's own account of the Lincoln-Sudbury computer center
 - ["On the Train of Life with NetHack's Papa"](https://www.linux.com/news/train-life-nethacks-papa/),
-  Linux.com, 2000 -- the only known published interview with Jay Fenlason
+  Linux.com, 2000 — the only known published interview with Jay Fenlason
 - Lincoln-Sudbury Alumni Association,
-  ["Computer Pioneers of Lincoln-Sudbury"](http://www.lincolnsudburyalumni.org/lsrhs/publications/bitsnpieces/computerpioneers.html) --
-  alumni retrospective naming Fenlason, Payne, and Harvey
-- [Andries Brouwer, Hack 1.0.3 page](https://homepages.cwi.nl/~aeb/games/hack/hack.html) --
-  Brouwer's own account of obtaining and rewriting Hack
+  ["Computer Pioneers of Lincoln-Sudbury"](http://www.lincolnsudburyalumni.org/lsrhs/publications/bitsnpieces/computerpioneers.html)
+- [Andries Brouwer, Hack 1.0.3 page](https://homepages.cwi.nl/~aeb/games/hack/hack.html)
 
 ### Source Code
 
-- [Sustainable-Games/fenlason-hack](https://github.com/Sustainable-Games/fenlason-hack) --
+- [Sustainable-Games/fenlason-hack](https://github.com/Sustainable-Games/fenlason-hack) —
   GitHub mirror of the original USENIX 82-1 tape source
-- [Critlist/protoHack](https://github.com/Critlist/protoHack) --
+- [Critlist/protoHack](https://github.com/Critlist/protoHack) —
   restoration of Fenlason's Hack to run on modern Linux
-- [Hack v1.03 on Internet Archive](https://archive.org/details/HACK103) --
+- [Hack v1.03 on Internet Archive](https://archive.org/details/HACK103) —
   Andries Brouwer's expanded version
 
-### Wiki and Encyclopedia Articles
+### Wiki and Encyclopedia
 
 - [NetHack Wiki: Jay Fenlason](https://nethackwiki.com/wiki/Jay_Fenlason)
 - [NetHack Wiki: Jay Fenlason's Hack](https://nethackwiki.com/wiki/Jay_Fenlason%27s_Hack)
 - [NetHack Wiki: Hack 1.0](https://nethackwiki.com/wiki/Hack_1.0)
 - [NetHack Wiki: Game history](https://nethackwiki.com/wiki/Game_history)
-- [NetHack Wiki: Andries Brouwer](https://nethackwiki.com/wiki/Andries_Brouwer)
 - [Wikipedia: Hack (video game)](https://en.wikipedia.org/wiki/Hack_(video_game))
 - [Wikipedia: NetHack](https://en.wikipedia.org/wiki/NetHack)
 - [Wikipedia: Rogue (video game)](https://en.wikipedia.org/wiki/Rogue_(video_game))
 - [Wikipedia: JOVE](https://en.wikipedia.org/wiki/JOVE)
 - [Wikipedia: Brian Harvey (lecturer)](https://en.wikipedia.org/wiki/Brian_Harvey_(lecturer))
-- [Wikipedia: Andries Brouwer](https://en.wikipedia.org/wiki/Andries_Brouwer)
-- [Wikipedia: Digital Equipment Corporation](https://en.wikipedia.org/wiki/Digital_Equipment_Corporation)
-- [Wikipedia: Ken Olsen](https://en.wikipedia.org/wiki/Ken_Olsen)
-- [Wikipedia: Logo (programming language)](https://en.wikipedia.org/wiki/Logo_(programming_language))
-- [Wikipedia: Mindstorms (book)](https://en.wikipedia.org/wiki/Mindstorms_(book))
-- [Wikipedia: Snap! (programming language)](https://en.wikipedia.org/wiki/Snap!_(programming_language))
 - [Wikipedia: Java (programming language)](https://en.wikipedia.org/wiki/Java_(programming_language))
 - [Wikipedia: Arthur van Hoff](https://en.wikipedia.org/wiki/Arthur_van_Hoff)
 
-### Biographical and Career Sources
+### Biographical
 
 - [ACM People of ACM: Brian Harvey](https://www.acm.org/articles/people-of-acm/2025/brian-harvey) (2025)
 - [Brian Harvey, UC Berkeley EECS](https://www2.eecs.berkeley.edu/Faculty/Homepages/harvey.html)
-- [Brian Harvey home page](https://people.eecs.berkeley.edu/~bh/)
-- [JOVE on GitHub](https://github.com/jonmacs/jove) -- Jonathan Payne's editor, maintained since 1983
-- [GNU gprof manual](https://sourceware.org/binutils/docs/gprof/) -- credits Jay Fenlason
-- [GNU tar Authors](https://www.gnu.org/software/tar/manual/html_node/Authors.html) -- credits Jay Fenlason
-- [GNU Awk (gawk)](https://www.gnu.org/software/gawk/) -- co-authored by Paul Rubin and Jay Fenlason
+- [JOVE on GitHub](https://github.com/jonmacs/jove)
+- [GNU gprof manual](https://sourceware.org/binutils/docs/gprof/)
+- [GNU tar Authors](https://www.gnu.org/software/tar/manual/html_node/Authors.html)
 - [Jay Fenlason on GitHub](https://github.com/dajt)
-- [Jonathan Payne on Keybase](https://keybase.io/jpayne)
 
 ### Historical Context
 
-- [Computer History Museum: PDP-11/70](https://www.computerhistory.org/collections/catalog/102670832)
-- [Computer History Museum: Ken Olsen](https://computerhistory.org/profile/ken-olsen/)
-- [Logo Foundation: Logo History](https://el.media.mit.edu/logo-foundation/what_is_logo/history.html)
 - [History of the Berkeley Software Distribution](https://en.wikipedia.org/wiki/History_of_the_Berkeley_Software_Distribution)
 - [NetHack license history](https://www.nethack.org/download/LICENSE_HISTORY.html)
-- [IEEE-USA: "Going Rogue: A Brief History of the Computerized Dungeon Crawl"](https://insight.ieeeusa.org/articles/going-rogue-a-brief-history-of-the-computerized-dungeon-crawl/)
 - [Hack on RogueBasin](https://www.roguebasin.com/index.php/Hack)
-- [The CRPG Addict: Game 186: Hack (1984)](http://crpgaddict.blogspot.com/2015/04/game-186-hack-1984.html) --
-  detailed play-through and historical analysis
+- [The CRPG Addict: Game 186: Hack (1984)](http://crpgaddict.blogspot.com/2015/04/game-186-hack-1984.html)
