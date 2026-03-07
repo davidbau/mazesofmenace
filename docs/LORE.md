@@ -2758,6 +2758,29 @@ hard-won wisdom:
     - cursor parity at compared steps improved to `243/243`.
   - `seed327_priest_wizard_gameplay`:
     - first RNG divergence remains at step `288`, matched prefix improved
+
+### Throw/topline freeze boundary: C `more()` blocks before throw cleanup (2026-03-07)
+
+- Seed325 throw-window investigation confirmed a screen-only boundary mismatch
+  mode: RNG/events match fully while projectile glyph timing differs.
+- C behavior source:
+  - `mthrowu.c` resolves throw/hit messaging inside the flight loop, and only
+    later clears projectile display (`tmp_at(DISP_END, 0)`).
+  - tty `topl.c` `more()` blocks in `xwaitforspace("\\033 ")`, so when a
+    `--More--` pause is active, non-dismissal keys do not advance processing
+    and the current projectile frame can remain visible.
+- JS replay trace (env-gated in `js/mthrowu.js`) showed:
+  - projectile `)` appears during `tmp_at` flight and after miss message,
+  - then gets cleared in the same step when no `--More--` boundary is active.
+- C-faithful hardening implemented:
+  - `js/display.js` and `js/headless.js` now treat `--More--` dismissal as
+    `Space`/`Esc`/`Enter`, matching `xwaitforspace("\\033 ")` semantics.
+  - `js/allmain.js` pending-`--More--` command path now ignores non-dismissal
+    keys rather than consuming them.
+- Validation snapshot:
+  - failure suite count remained stable (no broad regression),
+  - seed325 still needs one additional boundary fix for the remaining
+    throw/topline capture skew.
       `9944/20304` -> `9954/20304`.
   - `seed328_ranger_wizard_gameplay`:
     - first RNG divergence remains step `220` (no regression).

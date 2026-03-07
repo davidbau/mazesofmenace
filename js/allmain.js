@@ -489,6 +489,12 @@ export async function run_command(game, ch, opts = {}) {
     // command.  This handles --More-- for turns where nhgetch is not
     // called (normal combat/movement turns without prompts).
     if (game.display && game.display._pendingMore) {
+        // C ref: win/tty/topl.c more() -> xwaitforspace("\033 "):
+        // Space, Esc, or Enter dismisses --More--; other keys are ignored.
+        const dismissesMore = (chCode === 32 || chCode === 27 || chCode === 10 || chCode === 13);
+        if (!dismissesMore) {
+            return { tookTime: false };
+        }
         const prevMoreBlocking = game.display._moreBlockingEnabled;
         if (typeof prevMoreBlocking === 'boolean') {
             game.display._moreBlockingEnabled = false;
