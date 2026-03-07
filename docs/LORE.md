@@ -4068,3 +4068,17 @@ hard-won wisdom:
     - `rng=3680/14973`, `events=482/10678`, first RNG divergence at step `47`
   - to:
     - `rng=3744/17510`, `events=508/13503`, first RNG divergence at step `54`.
+
+### kick_ouch parity: subtract from current HP (`uhp`), not max HP (`uhpmax`) (2026-03-07)
+
+- Divergence risk:
+  - JS `kick_ouch` damage was applied as `uhp = uhpmax - dmg`, which is not C behavior.
+  - C `losehp()` always subtracts from current HP; using max HP can silently heal or overstate HP after repeated kicks.
+- Fix:
+  - In [`js/kick.js`](/share/u/davidbau/git/mazesofmenace/mazes/js/kick.js), changed kick-wall damage application to:
+    - `player.uhp = max(1, player.uhp - dmg)`.
+- Validation:
+  - Added focused unit test:
+    - [`test/unit/kick_ouch_hp_current.test.js`](/share/u/davidbau/git/mazesofmenace/mazes/test/unit/kick_ouch_hp_current.test.js)
+    - asserts wall-kick damage is deducted from current HP, not max HP.
+  - `seed033_manual_direct` first divergence remains step `54` (no frontier regression from this correctness fix).
