@@ -3524,3 +3524,16 @@ hard-won wisdom:
   - `seed325`/`seed327` RNG+event full-match unchanged;
   - `seed328` full pass unchanged;
   - failure suite remains `28/34` passing (`6` failing).
+
+### postmov parity slice: amorphous-under-door branch restored (2026-03-07)
+
+- Added the missing C postmov door branch for amorphous monsters:
+  when entering a locked/closed door tile, amorphous monsters now "flow/ooze
+  under the door" without mutating door state, before unlock/open/bust logic.
+- This restored C branch ordering and prevented JS from incorrectly forcing
+  open/unlock behavior in those cases.
+- Validation:
+  - `seed327_priest_wizard_gameplay` now reaches full RNG+event+screen parity
+    (remaining mismatch is cursor-only),
+  - global gameplay burndown improved from `28/34` to `29/34` passing
+    (`5` failing).

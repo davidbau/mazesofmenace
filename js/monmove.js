@@ -49,7 +49,7 @@ import { can_teleport, noeyes, perceives, nohands,
          mon_knows_traps, is_rider, is_mind_flayer,
          is_mindless, telepathic,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
-         passes_walls, corpse_eater,
+         passes_walls, corpse_eater, amorphous,
          passes_bars, is_human, canseemon, monsdat,
          webmaker, tunnels, needspick,
          dmgtype, is_metallivore } from './mondata.js';
@@ -896,7 +896,14 @@ async function run_dochug_postmove_pipeline_current_js(
                     here.flags &= ~D_TRAPPED;
                     btrapped = false;
                 }
-                if (wasLocked && can_unlock) {
+                if ((here.flags & (D_LOCKED | D_CLOSED)) && amorphous(mdat)) {
+                    // C ref: postmov() amorphous branch: move through closed/locked
+                    // door without changing door state.
+                    if (display && canSeeMon) {
+                        const flowVerb = (mon.mndx === PM_FOG_CLOUD || mdat.mlet === S_LIGHT) ? 'flows' : 'oozes';
+                        await display.putstr_message(`${YMonnam(mon)} ${flowVerb} under the door.`);
+                    }
+                } else if (wasLocked && can_unlock) {
                     here.flags = btrapped ? D_NODOOR : D_ISOPEN;
                     if (btrapped) {
                         if (mb_trapped(mon, map, player)) return MMOVE_DIED;
