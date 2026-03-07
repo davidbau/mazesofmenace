@@ -1326,7 +1326,8 @@ export function mk_trap_statue(x, y, game, player) {
   do {
     mptr = mons[rndmonnum()]; // C: &mons[rndmonnum()]
   } while (--trycount > 0 && is_unicorn(mptr) && sgn(player.ualigame.gn.type) === sgn(mptr.maligntyp));
-  statue = mkcorpstat(STATUE,  0, mptr, x, y, CORPSTAT_NONE);
+  const mndx = Number.isInteger(mptr?.mndx) ? mptr.mndx : mons.indexOf(mptr);
+  statue = mkcorpstat(STATUE, mndx, false, x, y, game?.lev || game?.map || null);
   mtmp = makemon(mptr, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
   if (!mtmp) return;
   while (mtmp.minvent) {

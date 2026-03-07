@@ -1040,8 +1040,8 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null, op
     _zombifyContext = prevZombifyContext || !!opts.zombify;
     try {
         const otmp = mksobj(objtype, init, false);
-        // C: when x,y are non-zero, mkcorpstat calls mksobj_at which places via place_object
-        if (x && y && map) {
+        // C: random placement only when x==0 && y==0; y=0 is a valid coordinate.
+        if ((x !== 0 || y !== 0) && map) {
             otmp.ox = x;
             otmp.oy = y;
             place_object(otmp, otmp.ox, otmp.oy, map);
@@ -1062,7 +1062,8 @@ export function mkcorpstat(objtype, ptr_mndx, init, x = 0, y = 0, map = null, op
                 });
             }
         }
-        pushRngLogEntry(`^corpse[${otmp.corpsenm},${otmp.ox || 0},${otmp.oy || 0}]`);
+        // C logs mkcorpstat() input coordinates, not object floor coordinates.
+        pushRngLogEntry(`^corpse[${otmp.corpsenm},${x || 0},${y || 0}]`);
         return otmp;
     } finally {
         _zombifyContext = prevZombifyContext;
