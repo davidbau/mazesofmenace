@@ -2561,11 +2561,9 @@ export function wrong_elem_type(ptr, map) {
 
 // Autotranslated from makemon.c:80
 export function m_initgrp(mtmp, x, y, n, mmflags, player) {
-  let mm, cnt = rnd(n), mon;
-  cnt /= (player.ulevel < 3) ? 4 : (player.ulevel < 5) ? 2 : 1;
+  let mm = {x, y}, cnt = rnd(n), mon;
+  cnt = Math.floor(cnt / ((player.ulevel < 3) ? 4 : (player.ulevel < 5) ? 2 : 1));
   if (!cnt) cnt++;
-  mm.x = x;
-  mm.y = y;
   while (cnt--) {
     if (peace_minded(mtmp.data)) {
       continue;
@@ -2808,20 +2806,21 @@ export function summon_furies(limit, player) {
 
 // Autotranslated from makemon.c:838
 export function clone_mon(mon, x, y, game, player) {
-  let mm, m2;
-  if (mon.mhp <= 1 || (game.mvitals[monsndx(mon.data)].mvflags & G_EXTINCT) !== 0) return  0;
+  let mm = {x: 0, y: 0}, m2;
+  if (mon.mhp <= 1 || (game.mvitals[monsndx(mon.data)].mvflags & G_EXTINCT) !== 0) return null;
   if (x === 0) { mm.x = mon.mx; mm.y = mon.my; }
   else { mm.x = x; mm.y = y; }
   if (!isok(mm.x, mm.y)) {
     impossible("clone_mon trying to create a monster at <%d,%d>?", mm.x, mm.y);
-    return  0;
+    return null;
   }
   if (MON_AT(mm.x, mm.y)) {
-    if (!enexto( mm, mm.x, mm.y, mon.data) || MON_AT(mm.x, mm.y)) return  0;
+    if (!enexto( mm, mm.x, mm.y, mon.data) || MON_AT(mm.x, mm.y)) return null;
   }
-  m2 = newmonst();
-   m2 = mon;
-  m2.mextra =  0;
+  // C: m2 = newmonst(); *m2 = *mon; (alloc + struct copy)
+  // JS: Object.assign copies fields; skip newmonst() to avoid spurious RNG
+  m2 = Object.assign({}, mon);
+  m2.mextra = null;
   m2.nmon = fmon;
   fmon = m2;
   m2.m_id = next_ident();

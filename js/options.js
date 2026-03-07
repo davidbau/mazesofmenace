@@ -1084,20 +1084,18 @@ export async function add_menu_cmd_alias(from_ch, to_ch, game) {
 
 // Autotranslated from options.c:8108
 export function get_menu_cmd_key(ch, game) {
-  let found = strchr(game.mapped_menu_op, ch);
-  if (found) {
-    let idx = Math.trunc(found - game.mapped_menu_op);
-    ch = game.mapped_menu_cmds;
+  let idx = game.mapped_menu_op ? game.mapped_menu_op.indexOf(ch) : -1;
+  if (idx >= 0) {
+    ch = game.mapped_menu_cmds[idx];
   }
   return ch;
 }
 
 // Autotranslated from options.c:8125
 export function map_menu_cmd(ch, game) {
-  let found = strchr(game.mapped_menu_cmds, ch);
-  if (found) {
-    let idx = Math.trunc(found - game.mapped_menu_cmds);
-    ch = game.mapped_menu_op;
+  let idx = game.mapped_menu_cmds ? game.mapped_menu_cmds.indexOf(ch) : -1;
+  if (idx >= 0) {
+    ch = game.mapped_menu_op[idx];
   }
   return ch;
 }
