@@ -884,7 +884,7 @@ export function redist_attr() {
     AMAX(i) += (rn2(5) - 2);
     if (AMAX(i) > ATTRMAX(i)) AMAX(i) = ATTRMAX(i);
     if (AMAX(i) < ATTRMIN(i)) AMAX(i) = ATTRMIN(i);
-    ABASE(i) = ABASE(i) * AMAX(i) / tmp;
+    ABASE(i) = Math.floor(ABASE(i) * AMAX(i) / tmp);
     if (ABASE(i) < ATTRMIN(i)) ABASE(i) = ATTRMIN(i);
   }
 }

@@ -3071,7 +3071,7 @@ export function saving_grace(dmg, player, game) {
     if (!player.usaving_grace
         && Number.isFinite(hpAtStart)
         && heroHpMax > 0
-        && (hpAtStart * 100 / heroHpMax) >= 90) {
+        && Math.floor(hpAtStart * 100 / heroHpMax) >= 90) {
         dmg = heroHp - 1;
         player.usaving_grace = 1;
         game.saving_grace_turn = true;

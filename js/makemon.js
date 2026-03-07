@@ -2582,7 +2582,7 @@ export function m_initgrp(mtmp, x, y, n, mmflags, player) {
 // Autotranslated from makemon.c:987
 export function monhp_per_lvl(mon) {
   let ptr = mon.data, hp = rnd(8);
-  if (is_golem(ptr)) { hp = golemhp(monsndx(ptr)) /  ptr.mlevel; }
+  if (is_golem(ptr)) { hp = Math.floor(golemhp(monsndx(ptr)) /  ptr.mlevel); }
   else if (ptr.mlevel > 49) { hp = 4 + rnd(4); }
   else if (ptr.mlet === S_DRAGON && monsndx(ptr) >= PM_GRAY_DRAGON) { hp = 4 + rn2(5); }
   else if (!mon.m_lev) { hp = rnd(4); }

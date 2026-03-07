@@ -883,7 +883,7 @@ export async function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee, spec_
   const youdefend = !!(mdef && mdef.isPlayer);
   let resisted = false, do_stun, do_confuse, result;
   let attack_indx;
-  let scare_dieroll = MB_MAX_DIEROLL / 2;
+  let scare_dieroll = Math.floor(MB_MAX_DIEROLL / 2);
 
   result = false;
   if (mb.spe >= 3)
@@ -903,7 +903,7 @@ export async function Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis, hittee, spec_
     attack_indx = MB_INDEX_SCARE;
     dmgptr.value += rnd(4);
   }
-  if (dieroll <= (scare_dieroll / 2)) {
+  if (dieroll <= Math.floor(scare_dieroll / 2)) {
     attack_indx = MB_INDEX_CANCEL;
     dmgptr.value += rnd(4);
   }
