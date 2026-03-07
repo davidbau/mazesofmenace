@@ -1670,23 +1670,21 @@ export function meatobj(mon, map) {
             if (touch_petrifies(cptr) && !resists_ston(mon)) continue;
         }
 
-        // Decide: eat (organic) vs engulf (inorganic)
-        if (is_organic(otmp) && !obj_resists(otmp, 5, 95)) {
-            // Eat it
-            ++count;
-            m_consume_obj(mon, otmp, map);
-            if (mon.dead || (mon.mhp || 0) <= 0) return 2;
-        } else {
+        // C ref: mon.c:1567-1612 — eat organic, engulf inorganic
+        // C: `!is_organic || obj_resists(5,95)` → engulf; else → eat
+        // obj_resists is only called for organic items (short-circuit)
+        if (!is_organic(otmp) || obj_resists(otmp, 5, 95)) {
             // Engulf it — move to monster inventory
-            if (obj_resists(otmp, 5, 95)) {
-                // obj_resists already consumed RNG above for organic check;
-                // for inorganic items we need to consume it here
-            }
             ++ecount;
             if (map && typeof map.removeObject === 'function') {
                 map.removeObject(otmp);
             }
             mpickobj(mon, otmp);
+        } else {
+            // Eat it
+            ++count;
+            m_consume_obj(mon, otmp, map);
+            if (mon.dead || (mon.mhp || 0) <= 0) return 2;
         }
 
         if (mon.minvis) newsym(mon.mx, mon.my);
