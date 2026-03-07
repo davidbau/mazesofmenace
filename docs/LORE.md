@@ -3396,6 +3396,17 @@ hard-won wisdom:
   pending, instead of making window-specific decisions itself.
 - Validation remained non-regressing (`29/34` gameplay passing; same 5 failures).
 
+### Guardrail: architecture contract test for replay render ownership
+
+- Added `test/unit/replay_core_render_architecture.test.js` to prevent
+  replay-render ownership regressions.
+- Test asserts:
+  - no direct `windows.js` popup-helper imports in `replay_core`,
+  - no generic replay-side rerender helper or direct `game.docrt()` call in
+    `replay_core`,
+  - replay uses runtime-owned APIs (`renderAfterCommand` path and
+    `renderInputBlockedState()`).
+
 ## Manual-direct early drift reduction: `#untrap` + trap object map wiring + autounlock occupation ordering (2026-03-07)
 
 - Target: issue `#263` (`seed031_manual_direct`, `seed032_manual_direct`) where JS diverged early into monster turns before expected trap/lock handling.
