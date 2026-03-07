@@ -121,7 +121,7 @@ function metallivorous(mptr) {
 }
 
 // C ref: resists_magm — approximation since full version not ported
-function resists_magm(mon) {
+export function resists_magm(mon) {
     const mdat = mon?.type || mons[mon?.mndx] || {};
     return (mdat.mr || 0) > 50;
 }

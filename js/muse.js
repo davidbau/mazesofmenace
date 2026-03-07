@@ -95,6 +95,7 @@ import { pushRngLogEntry } from './rng.js';
 import { Can_dig_down, Can_fall_thru, Can_rise_up } from './dungeon.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_BEAM, DISP_END } from './const.js';
+import { resists_magm } from './trap.js';
 
 const STRAT_WAITFORU = 0x20000000; // C ref: mon.h
 
@@ -1636,7 +1637,9 @@ async function mbhitm(mtmp, otmp, map, player) {
             }
         } else {
             // Monster hit by striking wand
-            if (rnd(20) < 10 + find_mac(mtmp)) {
+            if (resists_magm(mtmp)) {
+                learnit = true;
+            } else if (rnd(20) < 10 + find_mac(mtmp)) {
                 tmp = d(2, 12);
                 mtmp.mhp -= tmp;
                 resist(mtmp, WAND_CLASS);
@@ -1665,7 +1668,7 @@ async function mbhitm(mtmp, otmp, map, player) {
             if (unturn_dead(mtmp)) wake = true;
             if (is_undead(mtmp.data || mtmp.type || {}) || is_vampshifter(mtmp)) {
                 wake = reveal_invis = true;
-                resist(mtmp, WAND_CLASS);
+                resist(mtmp, WAND_CLASS, rnd(8));
             }
             if (wake) {
                 if (!DEADMONSTER(mtmp))
@@ -1887,7 +1890,7 @@ export function rnd_offensive_item(mtmp) {
   let pm = mtmp.data, difficulty = mons[(monsndx(pm))].difficulty;
   if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(mtmp.data) || pm.mlet === S_GHOST || pm.mlet === S_KOP) return 0;
   if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
-  switch (rn2(9 - (difficulty < 4) + 4 (difficulty > 6))) {
+  switch (rn2(9 - (difficulty < 4) + 4 * (difficulty > 6))) {
     case 0:
       let mtmp_helmet = which_armor(mtmp, W_ARMH);
       if (hard_helmet(mtmp_helmet) || amorphous(pm) || passes_walls(pm) || noncorporeal(pm) || unsolid(pm)) return SCR_EARTH;
