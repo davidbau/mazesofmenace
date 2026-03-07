@@ -490,8 +490,7 @@ function hmon_hitmon_misc_obj(hmd, mon, obj) {
             hmd.get_dmg_bonus = false;
             break;
         }
-        hmd.dmg = Math.floor((obj.owt || 0) + 99) / 100;
-        hmd.dmg = Math.floor(hmd.dmg);
+        hmd.dmg = Math.floor(((obj.owt || 0) + 99) / 100);
         hmd.dmg = (hmd.dmg <= 1) ? 1 : rnd(hmd.dmg);
         if (hmd.dmg > 6) hmd.dmg = 6;
         if (material === SILVER && mon_hates_silver(mon)) {

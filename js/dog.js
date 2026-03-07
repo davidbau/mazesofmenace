@@ -567,7 +567,7 @@ export async function pick_familiar_pm(otmp, quietly, game) {
 
 // Autotranslated from dog.c:137
 export async function make_familiar(otmp, x, y, quietly) {
-  let pm, mtmp = 0, chance, trycnt = 100, reallytame = true;
+  let pm, mtmp = null, chance, trycnt = 100, reallytame = true;
   do {
     let mmflags, cgend;
     if (!(pm = await pick_familiar_pm(otmp, quietly))) {
@@ -646,9 +646,9 @@ export async function mon_catchup_elapsed_time(mtmp, nmv, game) {
       mtmp.mfleetim -= imv;
     }
   }
-  if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2) mtmp.mtrapped = 0;
-  if (mtmp.mconf && rn2(imv + 1) > 50 / 2) mtmp.mconf = 0;
-  if (mtmp.mstun && rn2(imv + 1) > 10 / 2) mtmp.mstun = 0;
+  if (mtmp.mtrapped && rn2(imv + 1) > 20) mtmp.mtrapped = 0;
+  if (mtmp.mconf && rn2(imv + 1) > 25) mtmp.mconf = 0;
+  if (mtmp.mstun && rn2(imv + 1) > 5) mtmp.mstun = 0;
   if (mtmp.meating) {
     if (imv > mtmp.meating) finish_meating(mtmp);
     else {
@@ -660,7 +660,7 @@ export async function mon_catchup_elapsed_time(mtmp, nmv, game) {
     mtmp.mspec_used -= imv;
   }
   if (mtmp.mtame) {
-    let wilder = (imv + 75) / 150;
+    let wilder = Math.floor((imv + 75) / 150);
     if (mtmp.mtame > wilder) {
       mtmp.mtame -= wilder;
     }

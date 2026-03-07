@@ -2153,7 +2153,7 @@ export function kill_eggs(obj_list) {
 export async function golemeffects(mon, damtype, dam) {
   let heal = 0, slow = 0;
   if (mon.data === mons[PM_FLESH_GOLEM]) {
-    if (damtype === AD_ELEC) heal = (dam + 5) / 6;
+    if (damtype === AD_ELEC) heal = Math.floor((dam + 5) / 6);
     else if (damtype === AD_FIRE || damtype === AD_COLD) slow = 1;
   }
   else if (mon.data === mons[PM_IRON_GOLEM]) {

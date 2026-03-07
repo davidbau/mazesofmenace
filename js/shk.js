@@ -3386,9 +3386,9 @@ export function makekops(mm, game, map) {
   let k_mndx = [ PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN ];
   let k_cnt, cnt, mndx, k;
   k_cnt[0] = cnt = Math.abs(depth(map.uz)) + rnd(5);
-  k_cnt[1] = (cnt / 3) + 1;
-  k_cnt[2] = (cnt / 6);
-  k_cnt[3] = (cnt / 9);
+  k_cnt[1] = Math.floor(cnt / 3) + 1;
+  k_cnt[2] = Math.floor(cnt / 6);
+  k_cnt[3] = Math.floor(cnt / 9);
   for (k = 0; k < 4; k++) {
     if ((cnt = k_cnt[k]) === 0) {
       break;

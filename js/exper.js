@@ -248,7 +248,7 @@ export function experience(mtmp, nk) {
   if (mtmp.data === mons[PM_ACID_BLOB]) tmp = 1;
   if (mtmp.mrevived || mtmp.mcloned) {
     for (i = 0, tmp2 = 20; nk > tmp2 && tmp > 1; ++i) {
-      tmp = (tmp + 1) / 2;
+      tmp = Math.floor((tmp + 1) / 2);
       nk -= tmp2;
       if (i & 1) {
         tmp2 += 20;

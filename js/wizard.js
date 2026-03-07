@@ -295,7 +295,7 @@ export function target_on(mask, mtmp, player) {
       mtmp.mgoal.y = otmp.oy;
       return (STRAT_GROUND | mask);
     }
-    else if ((mtmp2 = other_mon_has_arti(mtmp, otyp)) !== 0   && (otyp !== AMULET_OF_YENDOR || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
+    else if ((mtmp2 = other_mon_has_arti(mtmp, otyp)) != null   && (otyp !== AMULET_OF_YENDOR || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
       mtmp.mgoal.x = mtmp2.mx;
       mtmp.mgoal.y = mtmp2.my;
       return (STRAT_MONSTR | mask);

@@ -1544,7 +1544,7 @@ export async function spelleffects_check(spell, res, energy, game, player) {
   chance = percent_success(spell);
   if (confused || (rnd(100) > chance)) {
     await You("fail to cast the spell correctly.");
-    player.uen -= energy / 2;
+    player.uen -= Math.floor(energy / 2);
     game.disp.botl = true;
      res = ECMD_TIME;
     return true;
@@ -1569,9 +1569,9 @@ export function spellretention(idx, outbuf) {
   if (turnsleft < 1) { outbuf = "(gone)"; }
   else if (turnsleft >=  KEEN) { outbuf = "100%"; }
   else {
-    percent = (turnsleft - 1) / ( KEEN / 100) + 1;
+    percent = Math.floor((turnsleft - 1) / ( KEEN / 100)) + 1;
     accuracy = (skill === P_EXPERT) ? 2 : (skill === P_SKILLED) ? 5 : (skill === P_BASIC) ? 10 : 25;
-    percent = accuracy * ((percent - 1) / accuracy + 1);
+    percent = accuracy * (Math.floor((percent - 1) / accuracy) + 1);
     outbuf = `${percent - accuracy + 1}%-${percent}%`;
   }
   return outbuf;

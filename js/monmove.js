@@ -2343,7 +2343,7 @@ export async function m_break_boulder(mtmp, x, y, player) {
 
 // Autotranslated from monmove.c:375
 export function find_pmmonst(pm, game, map) {
-  let mtmp = 0;
+  let mtmp = null;
   if ((game.mvitals[pm].mvflags & G_GENOD) === 0) {
     for (mtmp = (map?.fmon || null); mtmp; mtmp = mtmp.nmon) {
       if (DEADMONSTER(mtmp)) {

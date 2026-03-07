@@ -98,7 +98,7 @@ export function phase_of_the_moon() {
   goldn = (lt.tm_year % 19) + 1;
   epact = (11 * goldn + 18) % 30;
   if ((epact === 25 && goldn > 11) || epact === 24) epact++;
-  return ((((((diy + epact) * 6) + 11) % 177) / 22) & 7);
+  return (Math.floor((((((diy + epact) * 6) + 11) % 177) / 22)) & 7);
 }
 
 // cf. calendar.c:215

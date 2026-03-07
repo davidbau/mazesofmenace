@@ -179,10 +179,10 @@ export function o_in(obj, oclass) {
   if (Has_contents(obj) && !SchroedingersBox(obj)) {
     for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
       if (otmp.oclass === oclass) return otmp;
-      else if (Has_contents(otmp) && (temp = o_in(otmp, oclass)) !== 0) return temp;
+      else if (Has_contents(otmp) && (temp = o_in(otmp, oclass)) != null) return temp;
     }
   }
-  return  0;
+  return  null;
 }
 
 // ========================================================================
@@ -195,10 +195,10 @@ export function o_material(obj, material) {
   if (Has_contents(obj)) {
     for (otmp = obj.cobj; otmp; otmp = otmp.nobj) {
       if (objects[otmp.otyp].oc_material === material) return otmp;
-      else if (Has_contents(otmp) && (temp = o_material(otmp, material)) !== 0) return temp;
+      else if (Has_contents(otmp) && (temp = o_material(otmp, material)) != null) return temp;
     }
   }
-  return  0;
+  return  null;
 }
 
 // ========================================================================

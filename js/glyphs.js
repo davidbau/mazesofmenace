@@ -186,7 +186,7 @@ export function find_glyphid_in_cache_by_glyphnum(glyphnum) {
 
 // Autotranslated from glyphs.c:449
 export function glyphid_cache_status() {
-  return (glyphid_cache !== 0);
+  return (glyphid_cache != null);
 }
 
 // Autotranslated from glyphs.c:455

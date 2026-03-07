@@ -1225,7 +1225,7 @@ export async function invoke_healing(obj, player) {
 // cf. artifact.c:1818 — invoke_energy_boost(obj, player)
 // Autotranslated from artifact.c:1817
 export async function invoke_energy_boost(obj, game, player) {
-  let epboost = (player.uenmax + 1 - player.uen) / 2;
+  let epboost = Math.floor((player.uenmax + 1 - player.uen) / 2);
   if (epboost > 120) epboost = 120;
   else if (epboost < 12) epboost = player.uenmax - player.uen;
   if (epboost) {

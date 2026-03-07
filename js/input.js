@@ -32,7 +32,7 @@ import {
  * Useful for both browser and headless test adapters.
  * @returns {InputRuntime}
  */
-export function createInputQueue() {
+export function createInputQueue({ throwOnEmpty = false } = {}) {
     const inputQueue = [];
     let inputResolver = null;
     let waitEpoch = 0;
@@ -79,6 +79,9 @@ export function createInputQueue() {
             }
             if (inputResolver) {
                 throw new Error('Concurrent nhgetch() wait detected: existing input read is still pending');
+            }
+            if (throwOnEmpty) {
+                throw new Error('Input queue empty - test may be missing keystrokes');
             }
             notifyWaitStarted();
             return new Promise((resolve) => {

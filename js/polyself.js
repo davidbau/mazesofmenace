@@ -396,7 +396,7 @@ export async function ugolemeffects(damtype, dam, game, player) {
   if (player.umonnum !== PM_FLESH_GOLEM && player.umonnum !== PM_IRON_GOLEM) return;
   switch (damtype) {
     case AD_ELEC:
-      if (player.umonnum === PM_FLESH_GOLEM) heal = (dam + 5) / 6;
+      if (player.umonnum === PM_FLESH_GOLEM) heal = Math.floor((dam + 5) / 6);
     break;
     case AD_FIRE:
       if (player.umonnum === PM_IRON_GOLEM) heal = dam;

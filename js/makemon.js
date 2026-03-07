@@ -2665,11 +2665,11 @@ export async function grow_up(mtmp, victim, game) {
   if (victim) {
     hp_threshold = mtmp.m_lev * 8;
     if (!mtmp.m_lev) hp_threshold = 4;
-    else if (is_golem(ptr)) hp_threshold = ((mtmp.mhpmax / 10) + 1) * 10 - 1;
+    else if (is_golem(ptr)) hp_threshold = (Math.floor(mtmp.mhpmax / 10) + 1) * 10 - 1;
     else if (is_home_elemental(ptr)) {
       hp_threshold *= 3;
     }
-    lev_limit = 3 *  ptr.mlevel / 2;
+    lev_limit = Math.floor(3 *  ptr.mlevel / 2);
     if (oldtype !== newtype && mons[newtype].mlevel > lev_limit) lev_limit =  mons[newtype].mlevel;
     max_increase = rnd( victim.m_lev + 1);
     if (mtmp.mhpmax + max_increase > hp_threshold + 1) max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
@@ -2838,10 +2838,10 @@ export function clone_mon(mon, x, y, game, player) {
   m2.mundetected = 0;
   m2.mtrapped = 0;
   m2.mcloned = 1;
-  m2.minvent =  0;
+  m2.minvent =  null;
   m2.mleashed = 0;
   m2.mhpmax = mon.mhpmax;
-  m2.mhp = mon.mhp / 2;
+  m2.mhp = Math.floor(mon.mhp / 2);
   mon.mhp -= m2.mhp;
   m2.isshk = 0;
   m2.isgd = 0;

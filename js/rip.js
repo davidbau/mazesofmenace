@@ -73,7 +73,7 @@ export async function genl_outrip(tmpwin, how, when) {
       dpx = dpx[i0 + 1];
     }
   }
-  year =  ((yyyymmdd(when) / 10000) % 10000);
+  year =  (Math.floor(yyyymmdd(when) / 10000) % 10000);
   buf = String(year).padStart(4);
   center(YEAR_LINE, buf);
   await putstr(tmpwin, 0, "");

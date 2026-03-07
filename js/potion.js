@@ -131,7 +131,7 @@ async function make_sick(player, xtime, cause, talk, type) {
         } else {
             // already sick
             if (talk)
-                await You_feel("%s worse.", xtime <= old / 2 ? "much" : "even");
+                await You_feel("%s worse.", xtime <= Math.floor(old / 2) ? "much" : "even");
         }
         set_itimeout(player, SICK, xtime);
         player.usick_type |= type;

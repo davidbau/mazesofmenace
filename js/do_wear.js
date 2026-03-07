@@ -2321,7 +2321,7 @@ export async function Ring_gone(obj) {
 
 // Autotranslated from do_wear.c:1868
 export async function doremring() {
-  let otmp = 0;
+  let otmp = null;
   count_worn_stuff( otmp, true);
   if (!Naccessories && !Narmorpieces) { await pline("Not wearing any accessories or armor."); return ECMD_OK; }
   if (Naccessories !== 1 || ParanoidRemove || cmdq_peek(CQ_CANNED)) otmp = getobj("remove", remove_ok, GETOBJ_NOFLAGS);

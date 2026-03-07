@@ -108,7 +108,7 @@ export function get_strength_str(player) {
 
 // Autotranslated from botl.c:300
 export function xlev_to_rank(xlev) {
-  return (xlev <= 2) ? 0 : (xlev <= 30) ? ((xlev + 2) / 4) : 8;
+  return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.floor((xlev + 2) / 4) : 8;
 }
 
 // Autotranslated from botl.c:317

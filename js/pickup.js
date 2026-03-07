@@ -1282,8 +1282,6 @@ async function announceLootedItems(display, player, items, verb) {
 async function containerMenu(game, container) {
     const { player, display } = game;
     let tookTime = false;
-    let pendingAction = null; // For 'r'/'b': auto-trigger next phase
-    let chainedAction = null; // For 'b': chain 'i' after 'o' completes
     const clearMenuOptionRows = () => {
         if (typeof display?.clearRow !== 'function') return;
         for (let r = 2; r <= 10; r++) display.clearRow(r);
@@ -1302,6 +1300,218 @@ async function containerMenu(game, container) {
         if (display) display.noConcatenateMessages = true;
         await display.putstr_message(msg);
         if (display) display.noConcatenateMessages = prevNoConcat;
+    };
+
+    // Helper: take items out of container (the 'o' flow).
+    // cf. pickup.c traditional_loot(FALSE) / menu_loot(FALSE).
+    // Returns true if any items were taken (tookTime).
+    const doTakeOut = async () => {
+        const currentContents = getContainerContents(container);
+        if (!currentContents.length) {
+            await display.putstr_message('It is empty.');
+            container.cknown = true;
+            return false;
+        }
+        const letters = 'abcdefghijklmnopqrstuvwxyz';
+        const seenClasses = new Set();
+        for (const o of cContainerOrder(currentContents)) {
+            const sym = CLASS_SYMBOLS[o?.oclass];
+            if (sym) seenClasses.add(sym);
+        }
+        let allowedClasses = null; // null => all classes
+        const numBucTypes = countBucTypes(currentContents);
+        if (seenClasses.size > 1 || numBucTypes > 1) {
+            const classOrder = [...seenClasses];
+            const classPrompt = 'Take out what type of objects?';
+            const classPad = centeredPad(classPrompt, 23);
+            const hasUnknownBUC = currentContents.some((o) => !o?.bknown);
+            clearMenuOptionRows();
+            await putMenuPrompt(`${' '.repeat(classPad)}${classPrompt}`);
+            drawMenuOptionLine(classPad, 2, 'A - Auto-select every relevant item');
+            drawMenuOptionLine(classPad + 4, 3, '(ignored unless some other choices are also picked)');
+            const menuItems = new Map();
+            const accelMap = new Map();
+            let nextRow = 5;
+            const showAll = seenClasses.size > 1;
+            if (showAll) {
+                menuItems.set('a', { row: nextRow, label: 'All types', value: 'ALL' });
+                drawMenuOptionLine(classPad, nextRow++, 'a - All types');
+            }
+            for (let i = 0; i < classOrder.length; i++) {
+                const letter = showAll
+                    ? String.fromCharCode('b'.charCodeAt(0) + i)
+                    : String.fromCharCode('a'.charCodeAt(0) + i);
+                const sym = classOrder[i];
+                const label = classSymbolLabel(sym);
+                menuItems.set(letter, { row: nextRow, label, value: sym });
+                accelMap.set(sym, letter);
+                drawMenuOptionLine(classPad, nextRow++, `${letter} - ${label}`);
+            }
+            if (hasUnknownBUC) {
+                nextRow++;
+                menuItems.set('X', { row: nextRow, label: 'Items of unknown Bless/Curse status', value: 'X' });
+                drawMenuOptionLine(classPad, nextRow++, 'X - Items of unknown Bless/Curse status');
+            }
+            menuItems.set('A', { row: 2, label: 'Auto-select every relevant item', value: 'A' });
+            drawMenuOptionLine(classPad, nextRow, '(end)');
+            const selections = new Set();
+            while (true) {
+                const ch = await nhgetch();
+                if (ch === 27) { selections.clear(); break; }
+                if (ch === 10 || ch === 13 || ch === 32) break;
+                let key = String.fromCharCode(ch);
+                if (accelMap.has(key)) key = accelMap.get(key);
+                if (!menuItems.has(key)) continue;
+                if (selections.has(key)) {
+                    selections.delete(key);
+                } else {
+                    selections.add(key);
+                }
+                const mi = menuItems.get(key);
+                const indicator = selections.has(key) ? '+' : '-';
+                drawMenuOptionLine(classPad, mi.row, `${key} ${indicator} ${mi.label}`);
+            }
+            if (selections.size === 0) {
+                return false; // No selection or ESC
+            }
+            let hasAll = false;
+            let autopick = false;
+            const selectedClassSyms = new Set();
+            for (const key of selections) {
+                const mi = menuItems.get(key);
+                if (!mi) continue;
+                if (mi.value === 'A') {
+                    autopick = true;
+                    hasAll = true;
+                } else if (mi.value === 'ALL') {
+                    hasAll = true;
+                } else if (mi.value === 'X') {
+                    hasAll = true;
+                } else {
+                    selectedClassSyms.add(mi.value);
+                }
+            }
+            if (autopick) {
+                const cname = xname(container);
+                const taken = [...cContainerOrder(currentContents)];
+                let didTake = false;
+                for (const item of taken) {
+                    player.addToInventory(item); observeObject(item);
+                    setContainerContents(container,
+                        getContainerContents(container).filter((o) => o !== item));
+                    await pline(`${item.invlet || '-'} - ${doname(item, player)}.`);
+                    didTake = true;
+                }
+                container.cknown = true;
+                return didTake;
+            }
+            if (hasAll) {
+                allowedClasses = null;
+            } else if (selectedClassSyms.size > 0) {
+                allowedClasses = selectedClassSyms;
+            } else {
+                return false;
+            }
+        }
+        const selected = new Set();
+        let didTake = false;
+        while (true) {
+            const cur = getContainerContents(container);
+            if (!cur.length) break;
+            const visible = cContainerOrder(cur).filter((o) => {
+                if (allowedClasses === null) return true;
+                return allowedClasses.has(CLASS_SYMBOLS[o?.oclass]);
+            });
+            if (!visible.length) break;
+            const available = letters.slice(0, visible.length);
+            await putMenuPrompt('Take out what?');
+            const tch = await nhgetch();
+            if (tch === 27) break;
+            const tchar = String.fromCharCode(tch).toLowerCase();
+            if (tch === 10 || tch === 13) {
+                const chosen = visible.filter((o) => selected.has(o));
+                if (!chosen.length) break;
+                for (const item of chosen) {
+                    player.addToInventory(item); observeObject(item);
+                    setContainerContents(container, getContainerContents(container).filter((o) => o !== item));
+                    await display.putstr_message(`You take out ${doname(item, player)}.`);
+                    didTake = true;
+                }
+                selected.clear();
+                continue;
+            }
+            if (tchar === '@' || tchar === '*') {
+                for (const item of visible) selected.add(item);
+                continue;
+            }
+            if (tchar === '.' || tchar === '-') {
+                selected.clear();
+                continue;
+            }
+            const tidx = letters.indexOf(tchar);
+            if (tidx < 0 || tidx >= visible.length) continue;
+            const item = visible[tidx];
+            if (selected.has(item)) selected.delete(item);
+            else selected.add(item);
+        }
+        return didTake;
+    };
+
+    // Helper: put items into container (the 'i' flow).
+    // cf. pickup.c traditional_loot(TRUE) / menu_loot(TRUE).
+    // Returns true if any items were put in (tookTime).
+    const doPutIn = async () => {
+        const inv = (player.inventory || []).filter(
+            (o) => o && o.invlet && o !== container);
+        if (!inv.length) {
+            await display.putstr_message(
+                "You don't have anything" + (player.inventory?.length ? ' else' : '') + ' to put in.');
+            return false;
+        }
+        const seenClasses = new Set();
+        for (const o of inv) {
+            const sym = CLASS_SYMBOLS[o.oclass];
+            if (sym) seenClasses.add(sym);
+        }
+        const classStr = [...seenClasses].join('');
+        let selectedClasses = null;
+        let oneByOne = false;
+        if (seenClasses.size > 1) {
+            const prompt = `What kinds of things do you want to put in? [${classStr} a A]`;
+            const userInput = await getlin(prompt, display);
+            if (userInput === null || userInput.trim() === '\x1b') return false; // ESC
+            const trimmed = userInput.trim();
+            if (trimmed === '' || trimmed.includes('a')) {
+                selectedClasses = null;
+            } else if (trimmed.includes('A')) {
+                selectedClasses = null;
+                oneByOne = true;
+            } else {
+                selectedClasses = new Set(trimmed.split('').filter((ch) => seenClasses.has(ch)));
+                if (selectedClasses.size === 0) return false;
+            }
+        }
+        const candidates = inv.filter((o) => {
+            if (selectedClasses === null) return true;
+            return selectedClasses.has(CLASS_SYMBOLS[o.oclass]);
+        });
+        const cname = xname(container);
+        let didPut = false;
+        for (const item of candidates) {
+            if (oneByOne) {
+                const ans = await ynFunction(
+                    `Put in ${doname(item, player)}?`, 'ynaq', 'n'.charCodeAt(0), display);
+                const ansC = String.fromCharCode(ans);
+                if (ansC === 'q') break;
+                if (ansC === 'n') continue;
+            }
+            player.inventory = player.inventory.filter((o) => o !== item);
+            const cur = getContainerContents(container);
+            setContainerContents(container, [...cur, item]);
+            await display.putstr_message(`You put ${doname(item, player)} into the ${cname}.`);
+            didPut = true;
+        }
+        return didPut;
     };
 
     while (true) {
@@ -1332,15 +1542,8 @@ async function containerMenu(game, container) {
             drawMenuOptionLine(pad, 10, '(end)');
         }
 
-        let c;
-        if (pendingAction) {
-            c = pendingAction;
-            pendingAction = chainedAction;
-            chainedAction = null;
-        } else {
-            const ch = await nhgetch();
-            c = String.fromCharCode(ch);
-        }
+        const ch = await nhgetch();
+        const c = String.fromCharCode(ch);
 
         if (c === '\x1b' || c === 'q') break;
 
@@ -1357,185 +1560,25 @@ async function containerMenu(game, container) {
                 }
                 container.cknown = true;
             }
-        } else if (c === 'b') {
-            // 'b' = both: take out interactively, then put in interactively.
-            // cf. pickup.c use_container() 'b' case: menu_loot(FALSE) then menu_loot(TRUE).
-            pendingAction = 'o';
-            chainedAction = 'i';
-            continue;
         } else if (c === 'o') {
-            // 'o' = take out — per-item selection loop.
-            // cf. pickup.c traditional_loot(FALSE): first asks class filter,
-            // then prompts "Take out what?" for matching letters.
-            // loops until ESC, then returns to outer "Do what?" menu.
-            if (!hasContents) {
-                await display.putstr_message('It is empty.');
-                container.cknown = true;
-                continue;
-            }
-            const currentContents = getContainerContents(container);
-            const letters = 'abcdefghijklmnopqrstuvwxyz';
-            const seenClasses = new Set();
-            for (const o of cContainerOrder(currentContents)) {
-                const sym = CLASS_SYMBOLS[o?.oclass];
-                if (sym) seenClasses.add(sym);
-            }
-            let allowedClasses = null; // null => all classes
-            // C ref: pickup.c menu_loot() → query_category() → select_menu(PICK_ANY)
-            // C's select_menu requires: toggle letter(s) to select, then Enter to confirm.
-            // We must consume the same keystrokes: selection key + Enter.
-            const numBucTypes = countBucTypes(currentContents);
-            if (seenClasses.size > 1 || numBucTypes > 1) {
-                const classOrder = [...seenClasses];
-                const classPrompt = 'Take out what type of objects?';
-                const classPad = centeredPad(classPrompt, 23);
-                const hasUnknownBUC = currentContents.some((o) => !o?.bknown);
-                clearMenuOptionRows();
-                await putMenuPrompt(`${' '.repeat(classPad)}${classPrompt}`);
-                drawMenuOptionLine(classPad, 2, 'A - Auto-select every relevant item');
-                drawMenuOptionLine(classPad + 4, 3, '(ignored unless some other choices are also picked)');
-                // C ref: pickup.c query_category() — build menu items.
-                // Each entry has a canonical letter (invlet) and optionally
-                // a class-symbol accelerator (e.g. ')' for weapons).
-                // menuItems maps canonical letter → {row, label, value}
-                // accelMap maps accelerator → canonical letter
-                const menuItems = new Map();
-                const accelMap = new Map(); // symbol accelerator → canonical letter
-                let nextRow = 5;
-                const showAll = seenClasses.size > 1;
-                if (showAll) {
-                    // C: a_int = ALL_TYPES_SELECTED
-                    menuItems.set('a', { row: nextRow, label: 'All types', value: 'ALL' });
-                    drawMenuOptionLine(classPad, nextRow++, 'a - All types');
-                }
-                for (let i = 0; i < classOrder.length; i++) {
-                    const letter = showAll
-                        ? String.fromCharCode('b'.charCodeAt(0) + i)
-                        : String.fromCharCode('a'.charCodeAt(0) + i);
-                    const sym = classOrder[i]; // class symbol like ), [, +
-                    const label = classSymbolLabel(sym);
-                    // C ref: each class entry has accelerator = def_oc_syms[oclass].sym
-                    menuItems.set(letter, { row: nextRow, label, value: sym });
-                    accelMap.set(sym, letter); // map class symbol → menu letter
-                    drawMenuOptionLine(classPad, nextRow++, `${letter} - ${label}`);
-                }
-                // C ref: pickup.c:1379-1383 — blank separator before BUC/unpaid items
-                if (hasUnknownBUC) {
-                    nextRow++; // blank separator row (matches C's add_menu_str(win, ""))
-                    menuItems.set('X', { row: nextRow, label: 'Items of unknown Bless/Curse status', value: 'X' });
-                    drawMenuOptionLine(classPad, nextRow++, 'X - Items of unknown Bless/Curse status');
-                }
-                menuItems.set('A', { row: 2, label: 'Auto-select every relevant item', value: 'A' });
-                drawMenuOptionLine(classPad, nextRow, '(end)');
-                // C select_menu(PICK_ANY): toggle selections, then Enter to confirm.
-                // Supports both menu letters and class-symbol accelerators.
-                const selections = new Set(); // set of canonical letters
-                while (true) {
-                    const ch = await nhgetch();
-                    if (ch === 27) { selections.clear(); break; } // ESC → cancel
-                    if (ch === 10 || ch === 13 || ch === 32) break; // Enter/Space → confirm
-                    let key = String.fromCharCode(ch);
-                    // Map accelerator to canonical letter if applicable
-                    if (accelMap.has(key)) key = accelMap.get(key);
-                    if (!menuItems.has(key)) continue; // unknown key — ignore
-                    if (selections.has(key)) {
-                        selections.delete(key); // toggle off
-                    } else {
-                        selections.add(key); // toggle on
-                    }
-                    // Update menu display to show toggled state
-                    const mi = menuItems.get(key);
-                    const indicator = selections.has(key) ? '+' : '-';
-                    drawMenuOptionLine(classPad, mi.row, `${key} ${indicator} ${mi.label}`);
-                }
-                if (selections.size === 0) {
-                    // No selection or ESC → back to "Do what?"
-                    // C: query_category returns 0 → menu_loot returns ECMD_OK
-                    continue;
-                }
-                // C ref: pickup.c menu_loot() — process category selections.
-                let hasAll = false;
-                let autopick = false;
-                const selectedClassSyms = new Set();
-                for (const key of selections) {
-                    const mi = menuItems.get(key);
-                    if (!mi) continue;
-                    if (mi.value === 'A') {
-                        autopick = true;
-                        hasAll = true;
-                    } else if (mi.value === 'ALL') {
-                        hasAll = true;
-                    } else if (mi.value === 'X') {
-                        // BUC unknown filter — match C's allow_category BUC filtering
-                        hasAll = true; // TODO: proper BUC filter
-                    } else {
-                        // mi.value is the class symbol (e.g. ')', '[', '+')
-                        selectedClassSyms.add(mi.value);
-                    }
-                }
-                if (autopick) {
-                    // C ref: menu_loot autopick path — take all items, skip item menu
-                    const taken = [...cContainerOrder(currentContents)];
-                    for (const item of taken) {
-                        player.addToInventory(item); observeObject(item);
-                        setContainerContents(container,
-                            getContainerContents(container).filter((o) => o !== item));
-                        await pline(`${item.invlet || '-'} - ${doname(item, player)}.`);
-                        tookTime = true;
-                    }
-                    container.cknown = true;
-                    return { moved: false, tookTime };
-                }
-                if (hasAll) {
-                    allowedClasses = null;
-                } else if (selectedClassSyms.size > 0) {
-                    allowedClasses = selectedClassSyms;
-                } else {
-                    continue; // no valid selection
-                }
-            }
-            const selected = new Set();
-            while (true) {
-                const cur = getContainerContents(container);
-                if (!cur.length) break;
-                const visible = cContainerOrder(cur).filter((o) => {
-                    if (allowedClasses === null) return true;
-                    return allowedClasses.has(CLASS_SYMBOLS[o?.oclass]);
-                });
-                if (!visible.length) break;
-                const available = letters.slice(0, visible.length);
-                await putMenuPrompt('Take out what?');
-                const tch = await nhgetch();
-                if (tch === 27) break; // ESC → back to "Do what?" menu
-                const tchar = String.fromCharCode(tch).toLowerCase();
-                if (tch === 10 || tch === 13) {
-                    // C-style menu flow: selection letters mark items; Enter commits.
-                    const chosen = visible.filter((o) => selected.has(o));
-                    if (!chosen.length) break;
-                    for (const item of chosen) {
-                        player.addToInventory(item); observeObject(item);
-                        setContainerContents(container, getContainerContents(container).filter((o) => o !== item));
-                        await display.putstr_message(`You take out ${doname(item, player)}.`);
-                        tookTime = true;
-                    }
-                    selected.clear();
-                    continue;
-                }
-                if (tchar === '@' || tchar === '*') {
-                    for (const item of visible) selected.add(item);
-                    continue;
-                }
-                if (tchar === '.' || tchar === '-') {
-                    selected.clear();
-                    continue;
-                }
-                const tidx = letters.indexOf(tchar);
-                if (tidx < 0 || tidx >= visible.length) continue;
-                const item = visible[tidx];
-                if (selected.has(item)) selected.delete(item);
-                else selected.add(item);
-            }
-            // Taking things out is a complete loot action in C flow; return to gameplay.
+            // 'o' = take out. cf. pickup.c menu_loot(FALSE).
+            if (await doTakeOut()) tookTime = true;
+            return { moved: false, tookTime };
+        } else if (c === 'i') {
+            // 'i' = put in. cf. pickup.c menu_loot(TRUE).
+            if (await doPutIn()) tookTime = true;
+            return { moved: false, tookTime };
+        } else if (c === 'b') {
+            // 'b' = both: take out, then put in (sequential).
+            // cf. pickup.c use_container() 'b': menu_loot(FALSE) then menu_loot(TRUE).
+            if (await doTakeOut()) tookTime = true;
+            if (await doPutIn()) tookTime = true;
+            return { moved: false, tookTime };
+        } else if (c === 'r') {
+            // 'r' = reversed: put in first, then take out.
+            // cf. pickup.c use_container() 'r': loot_in_first = TRUE.
+            if (await doPutIn()) tookTime = true;
+            if (await doTakeOut()) tookTime = true;
             return { moved: false, tookTime };
         } else if (c === 's') {
             // Stash one item — cf. pickup.c "Stash: put one item in".
@@ -1558,120 +1601,6 @@ async function containerMenu(game, container) {
                 tookTime = true;
             }
             return { moved: false, tookTime }; // 's' exits menu (C behavior)
-        } else if (c === 'i') {
-            // Put things in — cf. pickup.c traditional_loot(put_in=TRUE).
-            // query_classes() shows available object-class chars from inventory.
-            // User types class letters (or 'a'=all, 'A'=one-at-a-time, ESC=cancel).
-            const inv = (player.inventory || []).filter(
-                (o) => o && o.invlet && o !== container);
-            if (!inv.length) {
-                await display.putstr_message(
-                    "You don't have anything" + (player.inventory?.length ? ' else' : '') + ' to put in.');
-                continue;
-            }
-            // Build sorted unique class-symbol string from inventory.
-            const seenClasses = new Set();
-            for (const o of inv) {
-                const sym = CLASS_SYMBOLS[o.oclass];
-                if (sym) seenClasses.add(sym);
-            }
-            const classStr = [...seenClasses].join('');
-            // cf. pickup.c query_classes(): if only one class present, auto-select it.
-            let selectedClasses = null; // null = all
-            let oneByOne = false;
-            if (seenClasses.size > 1) {
-                // Multiple classes: ask user to choose.
-                const prompt = `What kinds of things do you want to put in? [${classStr} a A]`;
-                const userInput = await getlin(prompt, display);
-                if (userInput === null || userInput.trim() === '\x1b') continue; // ESC
-                const trimmed = userInput.trim();
-                if (trimmed === '' || trimmed.includes('a')) {
-                    selectedClasses = null; // all
-                } else if (trimmed.includes('A')) {
-                    selectedClasses = null;
-                    oneByOne = true;
-                } else {
-                    selectedClasses = new Set(trimmed.split('').filter((ch) => seenClasses.has(ch)));
-                    if (selectedClasses.size === 0) continue; // no valid class selected
-                }
-            }
-            // Filter inventory items by selected classes.
-            const candidates = inv.filter((o) => {
-                if (selectedClasses === null) return true;
-                return selectedClasses.has(CLASS_SYMBOLS[o.oclass]);
-            });
-            // Put matching items into container, asking per-item if oneByOne.
-            for (const item of candidates) {
-                if (oneByOne) {
-                    const ans = await ynFunction(
-                        `Put in ${doname(item, player)}?`, 'ynaq', 'n'.charCodeAt(0), display);
-                    const ansC = String.fromCharCode(ans);
-                    if (ansC === 'q') break;
-                    if (ansC === 'n') continue;
-                }
-                player.inventory = player.inventory.filter((o) => o !== item);
-                const cur = getContainerContents(container);
-                setContainerContents(container, [...cur, item]);
-                await display.putstr_message(`You put ${doname(item, player)} into the ${cname}.`);
-                tookTime = true;
-            }
-            // C: after menu_loot(TRUE), always returns regardless of items moved
-            return { moved: false, tookTime };
-        } else if (c === 'r') {
-            // 'r' = reversed: put in first, then take out.
-            // cf. pickup.c use_container() 'r' case: loot_in_first = TRUE.
-            // Run the 'i' flow inline, then set flag to auto-trigger 'o'.
-            const inv = (player.inventory || []).filter(
-                (o) => o && o.invlet && o !== container);
-            if (inv.length) {
-                const seenClasses = new Set();
-                for (const o of inv) {
-                    const sym = CLASS_SYMBOLS[o.oclass];
-                    if (sym) seenClasses.add(sym);
-                }
-                let selectedClasses = null;
-                let oneByOne = false;
-                if (seenClasses.size > 1) {
-                    const classStr = [...seenClasses].join('');
-                    const prompt = `What kinds of things do you want to put in? [${classStr} a A]`;
-                    const userInput = await getlin(prompt, display);
-                    if (userInput === null || userInput.trim() === '\x1b') {
-                        // ESC on class prompt → skip put-in, still do take-out
-                    } else {
-                        const trimmed = userInput.trim();
-                        if (trimmed === '' || trimmed.includes('a')) {
-                            selectedClasses = null;
-                        } else if (trimmed.includes('A')) {
-                            selectedClasses = null;
-                            oneByOne = true;
-                        } else {
-                            selectedClasses = new Set(trimmed.split('').filter((ch) => seenClasses.has(ch)));
-                            if (selectedClasses.size === 0) selectedClasses = null;
-                        }
-                        const candidates = inv.filter((o) => {
-                            if (selectedClasses === null) return true;
-                            return selectedClasses.has(CLASS_SYMBOLS[o.oclass]);
-                        });
-                        for (const item of candidates) {
-                            if (oneByOne) {
-                                const ans = await ynFunction(
-                                    `Put in ${doname(item, player)}?`, 'ynaq', 'n'.charCodeAt(0), display);
-                                const ansC = String.fromCharCode(ans);
-                                if (ansC === 'q') break;
-                                if (ansC === 'n') continue;
-                            }
-                            player.inventory = player.inventory.filter((o) => o !== item);
-                            const cur = getContainerContents(container);
-                            setContainerContents(container, [...cur, item]);
-                            await display.putstr_message(`You put ${doname(item, player)} into the ${cname}.`);
-                            tookTime = true;
-                        }
-                    }
-                }
-            }
-            // Set pending action to auto-trigger 'o' (take out) on next iteration.
-            pendingAction = 'o';
-            continue;
         } else if (c === '?') {
             await display.putstr_message(
                 'Container actions: : look, o take out, i put in, b bring all, s stash one, q quit');

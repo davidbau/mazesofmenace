@@ -918,7 +918,7 @@ export function trap_description(outbuf, tnum, x, y) {
 
 // Autotranslated from pager.c:379
 export async function look_at_object(buf, x, y, glyph, map) {
-  let otmp = 0, fakeobj = object_from_map(glyph, x, y, otmp);
+  let otmp = null, fakeobj = object_from_map(glyph, x, y, otmp);
   if (otmp) {
     buf = (otmp.otyp !== STRANGE_OBJECT) ? await distant_name(otmp, otmp.dknown ? doname_with_price : doname_vague_quan) : objectData[STRANGE_OBJECT].oc_name;
     if (fakeobj) { otmp.where = OBJ_FREE; dealloc_obj(otmp), otmp = null; }

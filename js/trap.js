@@ -1769,7 +1769,7 @@ export async function sink_into_lava(player) {
   }
   else if (!is_lava(player.x, player.y)) { await reset_utrap(false); }
   else if (!player.uinvulnerable) {
-    if (!Fire_resistance) player.hp = (player.hp + 2) / 3;
+    if (!Fire_resistance) player.hp = Math.floor((player.hp + 2) / 3);
     player.utrap -= (1 << 8);
     if (player.utrap < (1 << 8)) {
       svk.killer.format = KILLED_BY;

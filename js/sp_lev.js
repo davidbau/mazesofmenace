@@ -7787,9 +7787,9 @@ export const selection = {
         const sel = selection.new();
         let x = 0, y = b;
         const a2 = a * a, b2 = b * b;
-        let crit1 = -(a2 / 4 + a % 2 + b2);
-        let crit2 = -(b2 / 4 + b % 2 + a2);
-        let crit3 = -(b2 / 4 + b % 2);
+        let crit1 = -(Math.floor(a2 / 4) + a % 2 + b2);
+        let crit2 = -(Math.floor(b2 / 4) + b % 2 + a2);
+        let crit3 = -(Math.floor(b2 / 4) + b % 2);
         let t = -a2 * y;
         let dxt = 2 * b2 * x, dyt = -2 * a2 * y;
         const d2xt = 2 * b2, d2yt = 2 * a2;
