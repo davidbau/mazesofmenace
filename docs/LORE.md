@@ -3446,4 +3446,25 @@ hard-won wisdom:
 - Impact:
   - `seed032_manual_direct` first RNG divergence moved later `73 -> 88`.
   - `seed031_manual_direct` remained at step `78` (non-regressed).
-  - Guard sessions remained green (`seed100`, `seed328`).
+- Guard sessions remained green (`seed100`, `seed328`).
+
+### seed327 vault/Knox parity: floating Ludios source and mk_knox_portal gate ordering (2026-03-07)
+
+- Root cause of early seed327 event drift was a C/JS modeling mismatch in
+  Ludios branch source handling during vault generation:
+  - C keeps Ludios branch source floating (`end1.dnum == n_dgns`) until
+    `mk_knox_portal()` decides to bind it.
+  - JS had pre-bound Ludios source in branch topology, which changed
+    `mk_knox_portal()` gate behavior and RNG/event ordering.
+- Fixes in `js/dungeon.js`:
+  - `init_dungeons()` now marks Ludios source as floating (`end1.dnum = n_dgns`
+    equivalent via current dungeon count sentinel).
+  - `mk_knox_portal()` now follows C gate order more closely:
+    source-side selection, branch-level disallow, already-set/defer check,
+    main-dungeon/depth/quest-entrance checks, then placement.
+  - On successful portal setup, branch source is bound to current level.
+- Validation:
+  - `seed327` step-222 `rng_step_diff`: RNG comparable entries now match.
+  - `seed327` session parity reached full RNG/events match
+    (`20304/20304`, `12214/12214`).
+  - Failure burndown improved to `28/34` passing, `6` failing.

@@ -3265,16 +3265,50 @@ function getWallifyProtectedArea(map) {
 }
 
 // C ref: mklev.c mk_knox_portal()
-export function mk_knox_portal(map, x, y, depth) {
-    // Current parity scope keeps the RNG-visible deferral check.
-    if (depth <= 1) return false;
+export function mk_knox_portal(map, x, y, levelDepth) {
+    if (levelDepth <= 1) return false;
+
+    const br = dungeon_branch("Fort Ludios");
+    if (!br) return false;
+
     const dnum = Number.isInteger(map?._genDnum) ? map._genDnum : DUNGEONS_OF_DOOM;
-    const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : depth;
-    if (isBranchLevel(dnum, dlevel)) return false;
-    // C ref: mklev.c:2647 — (rn2(3) && !wizard): defer 2/3 of the time,
-    // but in wizard mode always place the portal.
-    if (rn2(3) && !_wizardMode) return false;
-    return !!maketrap(map, x, y, MAGIC_PORTAL, depth);
+    const dlevel = Number.isInteger(map?._genDlevel) ? map._genDlevel : levelDepth;
+
+    let source;
+    if (on_level({ dnum, dlevel }, br.end1)) {
+        source = br.end2;
+    } else {
+        // C: disallow Knox branch on a level with one branch already.
+        if (isBranchLevel(dnum, dlevel)) return false;
+        source = br.end1;
+    }
+
+    // C ref: mklev.c:2646-2647 — skip if source already set.
+    // Floating Knox source uses sentinel dnum == n_dgns in C; any source
+    // with dnum < n_dgns is considered already assigned.
+    const nDungeons = _dungeonLevelCounts.size || (TUTORIAL + 1);
+    if ((Number.isInteger(source?.dnum) && source.dnum < nDungeons)
+        || (rn2(3) && !_wizardMode)) {
+        return false;
+    }
+
+    // C ref: mklev.c:2636-2639.
+    const questBranch = dungeon_branch("The Quest");
+    const atQuestEntrance = !!questBranch
+        && on_level({ dnum, dlevel }, questBranch.end1);
+    const uDepth = depth({ dnum, dlevel });
+    if (!(dnum === DUNGEONS_OF_DOOM
+        && !atQuestEntrance
+        && uDepth > 10
+        && uDepth < _medusaDepth)) {
+        return false;
+    }
+
+    // C ref: mklev.c:2642-2644 — source becomes current level once portal is set.
+    source.dnum = dnum;
+    source.dlevel = dlevel;
+
+    return !!maketrap(map, x, y, MAGIC_PORTAL, levelDepth);
 }
 
 // C ref: mklev.c mkinvk_check_wall()
@@ -4127,6 +4161,13 @@ export function init_dungeons(roleIndex, wizard = true) {
     for (const [jsDnum, layout] of dungeonLayouts.entries()) {
         if (!layout || !Number.isInteger(layout.numLevels)) continue;
         _dungeonLevelCounts.set(jsDnum, layout.numLevels);
+    }
+    // C ref: dungeon.c kludge for floating Knox entrance:
+    // set end1.dnum to n_dgns so Ludios source stays unset until mk_knox_portal().
+    const knoxBranch = dungeon_branch("Fort Ludios");
+    const nDungeons = _dungeonLevelCounts.size || (TUTORIAL + 1);
+    if (knoxBranch?.end1) {
+        knoxBranch.end1.dnum = nDungeons;
     }
 
     // 3. init_castle_tune: 5 × rn2(7)
