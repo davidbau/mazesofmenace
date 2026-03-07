@@ -160,9 +160,33 @@ static unsigned int seed_override = 42;
 static int has_seed_override = 0;
 
 /* Per-step RNG accumulation buffer */
-#define MAX_RNG_PER_STEP 512
+#define MAX_RNG_PER_STEP 2048
 static int current_rng_buf[MAX_RNG_PER_STEP];
 int current_rng_count = 0;
+
+/* forward reference — defined in screen capture section below */
+static int step_count;
+
+/* Event buffer: inline ^event markers in the RNG stream */
+#define MAX_TOTAL_EVENTS 4096
+#define MAX_EVT_LEN 256
+static struct {
+  int step;     /* step index this event belongs to */
+  int rng_pos;  /* current_rng_count at time of event */
+  char msg[MAX_EVT_LEN];
+} g_events[MAX_TOTAL_EVENTS];
+static int g_event_count = 0;
+
+void harness_log_event(const char *fmt, ...) {
+  va_list ap;
+  if (g_event_count >= MAX_TOTAL_EVENTS) return;
+  g_events[g_event_count].step = step_count;
+  g_events[g_event_count].rng_pos = current_rng_count;
+  va_start(ap, fmt);
+  vsnprintf(g_events[g_event_count].msg, MAX_EVT_LEN, fmt, ap);
+  va_end(ap);
+  g_event_count++;
+}
 
 void harness_srand(unsigned int seed) {
   rng_seed = has_seed_override ? seed_override : seed;
@@ -318,7 +342,7 @@ static void json_escape(FILE *out, const char *s) {
 }
 
 static void emit_session_json(FILE *out, unsigned int seed) {
-  int i, r, j;
+  int i, r, j, ei;
   fprintf(out, "{\n");
   fprintf(out, "  \"seed\": %u,\n", seed);
   fprintf(out, "  \"steps\": [\n");
@@ -331,10 +355,33 @@ static void emit_session_json(FILE *out, unsigned int seed) {
     else if (k >= 32 && k < 127) fputc(k, out);
     else                fprintf(out, "\\u%04x", (unsigned char)k);
     fprintf(out, "\",\n");
+    /* Emit rng array interleaved with ^events for this step */
     fprintf(out, "      \"rng\": [");
+    ei = 0;
+    /* find first event for this step */
+    while (ei < g_event_count && g_events[ei].step < i) ei++;
+    int first_ei = ei;
+    int any = 0;
+    int rng_pos = 0;
+    ei = first_ei;
     for (j = 0; j < steps[i].rng_count; j++) {
-      if (j > 0) fputc(',', out);
+      /* emit any events whose rng_pos <= j */
+      while (ei < g_event_count && g_events[ei].step == i && g_events[ei].rng_pos <= j) {
+        if (any) fputc(',', out);
+        fprintf(out, "\"^%s\"", g_events[ei].msg);
+        any = 1;
+        ei++;
+      }
+      if (any) fputc(',', out);
       fprintf(out, "%d", steps[i].rng[j]);
+      any = 1;
+    }
+    /* emit trailing events after last rng value */
+    while (ei < g_event_count && g_events[ei].step == i) {
+      if (any) fputc(',', out);
+      fprintf(out, "\"^%s\"", g_events[ei].msg);
+      any = 1;
+      ei++;
     }
     fprintf(out, "],\n");
     fprintf(out, "      \"screen\": [\n");
@@ -447,8 +494,6 @@ int main(int argc, char **argv) {
   key_pos = 0;
 
   /* Run the game. It will call harness_exit() when done. */
-  fprintf(stderr, "[harness] calling game_main\n");
-  fflush(stderr);
   game_main();
 
   /* Reached if game_main returns without calling exit (shouldn't happen) */

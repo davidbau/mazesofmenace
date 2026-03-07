@@ -1,7 +1,7 @@
 // C ref: mklev.c — dungeon level generator
 // Called as generatelevel(dlevel) instead of a separate process.
 import { WALL, SDOOR, DOOR, CORR, ROOM, TRAPNUM } from './const.js';
-import { rn1, rn2, rnd, d } from './rng.js';
+import { rn1, rn2, rnd, d, logEvent } from './rng.js';
 import { game } from './gstate.js';
 import { makeCell, makeMonst, makeObj, makeGen } from './game.js';
 import { mon } from './data.js';
@@ -232,10 +232,15 @@ function dodoor(x, y) {
 
 // C ref: newloc()
 function newloc() {
-  lev_croom = lev_room[lev_room.indexOf(lev_croom) + 1];
-  lev_troom = lev_room[lev_room.indexOf(lev_troom) + 1];
+  const ci0 = lev_room.indexOf(lev_croom);
+  const ti0 = lev_room.indexOf(lev_troom);
+  lev_croom = lev_room[ci0 + 1];
+  lev_troom = lev_room[ti0 + 1];
   if (lev_nxcor || !lev_croom || lev_croom.hx < 0 || !lev_troom || lev_troom.hx < 0) {
-    if (lev_nxcor++ > rn1(lev_nroom, 4)) {
+    const oldNxcor = lev_nxcor;
+    const limit = rn1(lev_nroom, 4);
+    if (lev_nxcor++ > limit) {
+      logEvent(`newloc[sentinel,nxcor=${oldNxcor},limit=${limit}]`);
       lev_croom = lev_room[lev_nroom]; // sentinel
       return;
     }
@@ -246,6 +251,9 @@ function newloc() {
       lev_croom = lev_room[a];
       lev_troom = lev_room[b];
     } while (lev_croom === lev_troom || (lev_troom === lev_room[a + 1] && !rn2(3)));
+    logEvent(`newloc[pick,nxcor=${lev_nxcor},limit=${limit},a=${a},b=${b}]`);
+  } else {
+    logEvent(`newloc[seq,ci=${ci0+1},ti=${ti0+1}]`);
   }
   mkpos();
 }
@@ -274,6 +282,7 @@ function mkpos() {
     lev_tx = lev_troom.lx + rnd(lev_troom.hx - lev_troom.lx) - 1;
     lev_ty = lev_troom.ly - 1;
   }
+  logEvent(`mkpos[x=${lev_x},y=${lev_y},dx=${lev_dx},dy=${lev_dy},tx=${lev_tx},ty=${lev_ty}]`);
   if (lev_levl[lev_x + lev_dx][lev_y + lev_dy].typ) {
     if (lev_nxcor) newloc();
     else { dodoor(lev_x, lev_y); lev_x += lev_dx; lev_y += lev_dy; }
@@ -284,7 +293,7 @@ function mkpos() {
 
 // C ref: makecor(nx,ny)
 function makecor(nx, ny) {
-  if (lev_nxcor && !rn2(35)) { newloc(); return; }
+  if (lev_nxcor && !rn2(35)) { logEvent(`makecor[dead_end,nx=${nx},ny=${ny}]`); newloc(); return; }
   const dix = Math.abs(nx - lev_tx);
   const diy = Math.abs(ny - lev_ty);
   if (nx === 79 || nx === 0 || ny === 0 || ny === 21) {
@@ -302,18 +311,20 @@ function makecor(nx, ny) {
     lev_x = nx; lev_y = ny;
     return;
   }
-  if (crm.typ === CORR) { lev_x = nx; lev_y = ny; return; }
+  // NOTE: No CORR advance branch — C's int:3 bitfield stores CORR=4 as -4,
+  // so crm->typ==CORR is always false. CORR cells act as obstacles like WALL.
   if (nx === lev_tx && ny === lev_ty) { dodoor(nx, ny); newloc(); return; }
-  if (lev_x + lev_dx !== nx || lev_y + lev_dy !== ny) return;
+  if (lev_x + lev_dx !== nx || lev_y + lev_dy !== ny) { logEvent(`makecor[stop,nx=${nx},ny=${ny},crm=${crm.typ},x=${lev_x},y=${lev_y},dx=${lev_dx},dy=${lev_dy}]`); return; }
   if (lev_dx) {
-    if (lev_ty < ny) lev_dy = -1;
-    else lev_dy = lev_levl[nx + lev_dx][ny - 1].typ === ROOM ? 1 : -1;
+    // C: ROOM check always false (ROOM=5 stored as -3 in int:3), so always dy=-1
+    lev_dy = -1;
     lev_dx = 0;
   } else {
-    if (lev_tx < nx) lev_dx = -1;
-    else lev_dx = lev_levl[nx - 1][ny + lev_dy].typ === ROOM ? 1 : -1;
+    // C: ROOM check always false, so always dx=-1
+    lev_dx = -1;
     lev_dy = 0;
   }
+  logEvent(`makecor[redir,nx=${nx},ny=${ny},crm=${crm.typ},x=${lev_x},y=${lev_y},dx=${lev_dx},dy=${lev_dy}]`);
 }
 
 // C ref: maker(lowx,hix,lowy,hiy)
@@ -489,14 +500,16 @@ function _generatelevel_attempt(dlevel) {
   tryMaker(rn1(9,59), 70, rn1(5,9), 16, 67,70, 13,16);
 
   // Fill in more rooms
+  // C ref: the inner loop mutates `lowy` (the outer loop variable) in place.
+  // Each inner iteration: lowy += (rand()%5)-2, then clamp. This is intentional.
   outer: while (lev_nroom < 6) {
     for (let lowy = rn1(3,3); lowy < 15; lowy += rn1(2,4)) {
       for (let lowx = rn1(3,4); lowx < 70; lowx += rn1(2,7)) {
-        let ly = lowy + (rn2(5) - 2);
-        if (ly < 3) ly = 3;
-        else if (ly > 16) ly = 16;
-        if (lev_levl[lowx][ly].typ) continue;
-        if (maker(lowx, rn1(10, lowx+2), ly, rn1(4, ly+2)) && lev_nroom > 13) break outer;
+        lowy += rn2(5) - 2; // C: lowy+=(rand()%5)-2 — mutates outer loop variable
+        if (lowy < 3) lowy = 3;
+        else if (lowy > 16) lowy = 16;
+        if (lev_levl[lowx][lowy].typ) continue;
+        if (maker(lowx, rn1(10, lowx+2), lowy, rn1(4, lowy+2)) && lev_nroom > 13) break outer;
       }
     }
   }
@@ -506,6 +519,7 @@ function _generatelevel_attempt(dlevel) {
   // Push sentinel now with lx=999 so sort keeps it at end.
   lev_room.push({ lx: 999, hx: -1, ly: 0, hy: 0 }); // sentinel
 
+  logEvent('mklev_rooms');
   // Place downstairs
   let dnx, dny;
   if (tspe === 'n') {
@@ -522,6 +536,7 @@ function _generatelevel_attempt(dlevel) {
   lev_levl[dnx][dny].scrsym = '>';
   lev_xdnstair = dnx; lev_ydnstair = dny;
 
+  logEvent('mklev_dn');
   // Place upstairs (in a different room)
   const troom_save = lev_croom;
   do {
@@ -531,6 +546,7 @@ function _generatelevel_attempt(dlevel) {
   lev_levl[upx][upy].scrsym = '<';
   lev_xupstair = upx; lev_yupstair = upy;
 
+  logEvent('mklev_up');
   // Populate rooms
   for (let ri = 0; ri < lev_nroom; ri++) {
     lev_croom = lev_room[ri];
@@ -558,15 +574,27 @@ function _generatelevel_attempt(dlevel) {
     }
   }
 
+  logEvent('mklev_populate');
   // Sort rooms by lx, then draw corridors
   lev_room.sort(comp);
+  // Log room layout for parity comparison
+  logEvent(`rooms[${lev_room.map((r,i) => `${i}:${r.lx}-${r.hx},${r.ly}-${r.hy}`).join('|')}]`);
   lev_croom = lev_room[0];
   lev_troom = lev_room[1];
   lev_nxcor = 0;
+  if (game._corTrace) {
+    process.stderr.write(`corridor start: nroom=${lev_nroom} rooms=[${lev_room.map(r=>r.lx+'..'+r.hx).join(',')}]\n`);
+    process.stderr.write(`initial rooms: c=${lev_room.indexOf(lev_croom)} t=${lev_room.indexOf(lev_troom)}\n`);
+  }
   mkpos();
+  if (game._corTrace) process.stderr.write(`after initial mkpos: x=${lev_x},y=${lev_y} dx=${lev_dx},dy=${lev_dy} tx=${lev_tx},ty=${lev_ty}\n`);
+  let _corIter = 0;
   while (lev_croom && lev_croom.hx > 0 && lev_troom && lev_troom.hx > 0) {
     makecor(lev_x + lev_dx, lev_y + lev_dy);
+    if (++_corIter > 200000) lev_panic('stuck');
   }
+  logEvent('mklev_corridors');
+  if (game._corTrace) process.stderr.write(`corridor done: total_rng=${game.rawRngLog?game.rawRngLog.length:'?'}\n`);
 
   return packageLevel();
 }

@@ -44,10 +44,6 @@ char *argv[];
 	char lowy,lowx;
 	register unsigned tries =0;
 	register struct gen *gtmp;
-#ifdef HARNESS
-	harness_debug("[mklev] entering mklev_main\n");
-#endif
-
 #ifdef DEBUG
 	if(getenv("OUT")) {
 		tfoo=fopen("mkout","a");
@@ -60,9 +56,6 @@ char *argv[];
 	tfile=argv[1];
 	tspe=argv[2];
 	dlevel=atoi(argv[3]);
-#ifdef HARNESS
-	harness_debug("[mklev] args set\n");
-#endif
 	if(argc<4) panic("Too few arguments!!");
 	else if(argc==5) {
 		srand(atoi(argv[4]));
@@ -85,14 +78,8 @@ char *argv[];
 		makemaz();
 		savelev();
 	}
-#ifdef HARNESS
-	harness_debug("[mklev] before croom/maker\n");
-#endif
 	croom=room;
 	if(!maker(3,rn1(5,5),4,rn1(5,7))) maker(3,5,4,7);
-#ifdef HARNESS
-	harness_debug("[mklev] after first maker\n");
-#endif
 	if(!maker(rn1(9,59),70,4,rn1(4,7))) maker(67,70,4,7);
 	if(!maker(3,rn1(5,5),rn1(5,9),16)) maker(3,5,13,16);
 	if(!maker(rn1(9,59),70,rn1(5,9),16)) maker(67,70,13,16);
@@ -111,7 +98,7 @@ char *argv[];
 	}
 jumpout:
 #ifdef HARNESS
-	{ char _buf[64]; snprintf(_buf,sizeof(_buf),"[mklev] rooms done rng=%d\n",current_rng_count); harness_debug(_buf); }
+	harness_log_event("mklev_rooms");
 #endif
 	croom->hx= -1;	/* the only goto in hack */
 #ifdef DEBUG
@@ -133,7 +120,7 @@ g_at(xdnstair,ydnstair,ftrap));
 	}
 	levl[xdnstair][ydnstair].scrsym='>';
 #ifdef HARNESS
-	{ char _buf[64]; snprintf(_buf,sizeof(_buf),"[mklev] dn done rng=%d\n",current_rng_count); harness_debug(_buf); }
+	harness_log_event("mklev_dn");
 #endif
 #ifdef DEBUG
 	out("dn @%d,%d\n",xdnstair,ydnstair);
@@ -146,7 +133,7 @@ g_at(xdnstair,ydnstair,ftrap));
 	} while(croom==troom);
 	levl[xupstair][yupstair].scrsym='<';
 #ifdef HARNESS
-	{ char _buf[64]; snprintf(_buf,sizeof(_buf),"[mklev] up done rng=%d\n",current_rng_count); harness_debug(_buf); }
+	harness_log_event("mklev_up");
 #endif
 #ifdef DEBUG
 	out("up @%d,%d\n",xupstair,yupstair);
@@ -205,12 +192,23 @@ g_at(xdnstair,ydnstair,ftrap));
 		}
 	}
 #ifdef HARNESS
-	{ char _buf[64]; snprintf(_buf,sizeof(_buf),"[mklev] populate done rng=%d\n",current_rng_count); harness_debug(_buf); }
+	harness_log_event("mklev_populate");
 #endif
 #ifdef DEBUG
 	out("Past loop\n");
 #endif
 	qsort(room,nroom,sizeof(struct mkroom),comp);
+#ifdef HARNESS
+	{
+		char _rbuf[512]; int _ri=0, _rn;
+		for(_rn=0; _rn<nroom && _ri<480; _rn++) {
+			_ri += snprintf(_rbuf+_ri,sizeof(_rbuf)-_ri,
+				_rn?"|%d:%d-%d,%d-%d":"%d:%d-%d,%d-%d",
+				_rn,room[_rn].lx,room[_rn].hx,room[_rn].ly,room[_rn].hy);
+		}
+		harness_log_event("rooms[%s]",_rbuf);
+	}
+#endif
 	croom=room;
 	troom=croom+1;
 	nxcor=0;
@@ -221,7 +219,7 @@ g_at(xdnstair,ydnstair,ftrap));
 	do makecor(x+dx,y+dy);
 	while (croom->hx>0 && troom->hx>0);
 #ifdef HARNESS
-	{ char _buf[64]; snprintf(_buf,sizeof(_buf),"[mklev] corridors done rng=%d\n",current_rng_count); harness_debug(_buf); }
+	harness_log_event("mklev_corridors");
 #endif
 	savelev();
 }
@@ -357,6 +355,9 @@ mkpos()
 	if(tfoo) fprintf(tfoo,"%d,%d to %d,%d by %d,%d\n",x,y,tx,ty,
  dx,dy);
 #endif
+#ifdef HARNESS
+	harness_log_event("mkpos[x=%d,y=%d,dx=%d,dy=%d,tx=%d,ty=%d]",x,y,dx,dy,tx,ty);
+#endif
 	if(levl[x+dx][y+dy].typ) {
 		if(nxcor) newloc();
 		else {
@@ -387,30 +388,31 @@ newloc()
 	register a,b;
 	int ci0 = croom - room;
 	int ti0 = troom - room;
-
 	++croom;
 	++troom;
-	fprintf(stderr, "newloc: ci=%d->%d ti=%d->%d nxcor=%d cansee=%d\n",
-		ci0, (int)(croom-room), ti0, (int)(troom-room), nxcor, croom->hx);
 	if(nxcor||croom->hx<0||troom->hx<0) {
 		int oldnx = nxcor;
 		int limit = rn1(nroom,4);
-		fprintf(stderr, "  check: %d > %d ?\n", oldnx, limit);
-		if(oldnx > limit) {
-			nxcor++;
-			fprintf(stderr, "  sentinel set!\n");
+		if(nxcor++>limit) {
+#ifdef HARNESS
+			harness_log_event("newloc[sentinel,nxcor=%d,limit=%d]",oldnx,limit);
+#endif
 			croom= &room[nroom];
 			return;
 		}
-		nxcor++;
-		fprintf(stderr, "  picking new rooms (nxcor now %d)\n", nxcor);
 		do {
 			a=rn2(nroom);
 			b=rn2(nroom);
 			croom= &room[a];
 			troom= &room[b];
 		} while(croom==troom || (troom==(croom+1) && !rn2(3)));
-		fprintf(stderr, "  new rooms: a=%d b=%d\n", a, b);
+#ifdef HARNESS
+		harness_log_event("newloc[pick,nxcor=%d,limit=%d,a=%d,b=%d]",nxcor,limit,a,b);
+#endif
+	} else {
+#ifdef HARNESS
+		harness_log_event("newloc[seq,ci=%d,ti=%d]",ci0+1,ti0+1);
+#endif
 	}
 	mkpos();
 }
@@ -674,10 +676,10 @@ register nx,ny;
 	out("corr %d %d ",nx,ny);
 #endif
 	if(nxcor && !rn2(35)) {
-		newloc();
-#ifdef DEBUG
-		out("dead end\n");
+#ifdef HARNESS
+		harness_log_event("makecor[dead_end,nx=%d,ny=%d]",nx,ny);
 #endif
+		newloc();
 		return;
 	}
 	dix=abs(nx-tx);
@@ -739,8 +741,8 @@ register nx,ny;
 		return;
 	}
 	if(x+dx!=nx || y+dy!=ny) {
-#ifdef DEBUG
-		out("stop.\n");
+#ifdef HARNESS
+		harness_log_event("makecor[stop,nx=%d,ny=%d,crm=%d,x=%d,y=%d,dx=%d,dy=%d]",nx,ny,crm->typ,x,y,dx,dy);
 #endif
 		return;
 	}
@@ -753,8 +755,8 @@ register nx,ny;
 		else dx=levl[nx-1][ny+dy].typ==ROOM?1:-1;
 		dy=0;
 	}
-#ifdef DEBUG
-	out("--> %d %d\n",dx,dy);
+#ifdef HARNESS
+	harness_log_event("makecor[redir,nx=%d,ny=%d,crm=%d,x=%d,y=%d,dx=%d,dy=%d]",nx,ny,crm->typ,x,y,dx,dy);
 #endif
 }
 #ifdef DEBUG
