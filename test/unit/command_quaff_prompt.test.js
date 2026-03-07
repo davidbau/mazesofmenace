@@ -6,6 +6,7 @@ import { GameMap } from '../../js/game.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
 import { POT_EXTRA_HEALING, POTION_CLASS } from '../../js/objects.js';
+import { setGame } from '../../js/gstate.js';
 
 function makeGame() {
     const map = new GameMap();
@@ -50,6 +51,7 @@ describe('quaff prompt', () => {
 
     it('extra healing at full HP increases max HP like C healup overflow', async () => {
         const game = makeGame();
+        setGame(game);
         game.player.hp = 10;
         game.player.hpmax = 10;
         game.player.inventory.push({

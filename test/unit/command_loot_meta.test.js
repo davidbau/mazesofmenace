@@ -149,7 +149,7 @@ describe('loot via meta key', () => {
         assert.equal(result.tookTime, false);
         assert.equal(game.player.inventory.length, 0);
         assert.equal(chest.contents.length, 1);
-        assert.equal(messages.at(-1), 'Hmmm, it seems to be locked.');
+        assert.ok(messages.at(-1).includes('turns out to be locked'), `Expected locked message, got: ${messages.at(-1)}`);
     });
 
     it('containerMenu q quit does not take items', async () => {

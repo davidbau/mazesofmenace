@@ -72,10 +72,17 @@ test('message display: death messages never concatenate', () => {
     display.putstr_message('The orc hits!');
     assert.strictEqual(display.topMessage, 'The orc hits!');
 
-    // "You die" should NOT concatenate even if it fits
+    // "You die" should NOT concatenate — it triggers --More-- first
     display.putstr_message('You die...');
+    // Death message staged behind --More--
+    assert.strictEqual(display._pendingMore, true,
+        'Death messages should trigger --More-- boundary');
+    assert.strictEqual(display._messageQueue[0], 'You die...',
+        'Death message should be queued');
+    // After clearing --More--, death message appears
+    display._clearMore();
     assert.strictEqual(display.topMessage, 'You die...',
-        'Death messages should not concatenate');
+        'Death message should show after --More-- dismissed');
 });
 
 test('message display: topMessage tracks current message state', () => {

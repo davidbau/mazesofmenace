@@ -17,6 +17,8 @@ test('secret door symbols: vertical secret door uses - (walls E/W)', () => {
     const x = 10, y = 10;
     map.at(x - 1, y).typ = HWALL;    // west
     map.at(x, y).typ = SDOOR;
+    map.at(x, y).horizontal = true;  // C: horizontal wall appearance
+    map.at(x, y).seenv = 0xFF;       // fully seen
     map.at(x + 1, y).typ = HWALL;    // east
 
     const sym = display.terrainSymbol(map.at(x, y), map, x, y);
@@ -35,6 +37,8 @@ test('secret door symbols: horizontal secret door uses | (walls N/S)', () => {
     const x = 10, y = 10;
     map.at(x, y - 1).typ = VWALL;    // north
     map.at(x, y).typ = SDOOR;
+    map.at(x, y).horizontal = false; // C: vertical wall appearance
+    map.at(x, y).seenv = 0xFF;       // fully seen
     map.at(x, y + 1).typ = VWALL;    // south
 
     const sym = display.terrainSymbol(map.at(x, y), map, x, y);
@@ -49,6 +53,8 @@ test('secret door symbols: DECgraphics uses Unicode box-drawing', () => {
 
     const x = 10, y = 10;
     map.at(x, y).typ = SDOOR;
+    map.at(x, y).horizontal = true;  // C: horizontal wall appearance
+    map.at(x, y).seenv = 0xFF;       // fully seen
     map.at(x - 1, y).typ = HWALL;  // horizontal secret door
     map.at(x + 1, y).typ = HWALL;
 

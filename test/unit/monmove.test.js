@@ -51,6 +51,7 @@ describe('Monster movement', () => {
             confused: false, peaceful: false,
             tame: false, flee: false,
             isshk: false, ispriest: false,
+            mcanmove: true, mcansee: true,
             mux: player.x, muy: player.y,
             minvent: [],
             mtrack: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],

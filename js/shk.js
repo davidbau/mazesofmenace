@@ -199,7 +199,8 @@ function helpless(shkp) {
 
 // C ref: muteshk(shkp) -- check if shk is unable to speak
 function muteshk(shkp) {
-    return helpless(shkp) || (shkp?.type?.msound !== undefined && shkp.type.msound <= 1);
+    const mdat = shkp?.data || shkp?.type;
+    return helpless(shkp) || (mdat?.msound !== undefined && mdat.msound <= 1);
 }
 
 // C ref: canspotmon -- can hero see or sense the monster

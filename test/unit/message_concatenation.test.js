@@ -43,8 +43,14 @@ test('message concatenation: "You die" never concatenates', () => {
     display.putstr_message('The orc hits!');
     assert.strictEqual(display.topMessage, 'The orc hits!');
 
-    // "You die" should NOT concatenate even if it fits
+    // "You die" should NOT concatenate even if it fits — it triggers --More-- first
     display.putstr_message('You die...');
+    // Death message is staged behind --More--, so topMessage stays as the prior message
+    assert.strictEqual(display._pendingMore, true, 'death message should trigger --More--');
+    assert.strictEqual(display._messageQueue.length, 1, 'death message should be queued');
+    assert.strictEqual(display._messageQueue[0], 'You die...');
+    // After clearing --More--, death message appears
+    display._clearMore();
     assert.strictEqual(display.topMessage, 'You die...');
 });
 
