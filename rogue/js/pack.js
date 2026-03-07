@@ -68,7 +68,7 @@ export async function add_pack(item, silent) {
       if (op.o_group === obj.o_group) {
         op.o_count++;
         if (from_floor) {
-          if (_detach) _detach(g.lvl_obj, item);
+          if (_detach) _detach(item);
           mvaddch(g.player.t_pos.y, g.player.t_pos.x,
             roomin(g.player.t_pos) === null ? PASSAGE : FLOOR);
           if (_discard) _discard(item);
@@ -90,7 +90,7 @@ export async function add_pack(item, silent) {
   if (obj.o_type === SCROLL && obj.o_which === S_SCARE) {
     if (obj.o_flags & 0x40 /* ISFOUND */) {
       await _msg('The scroll turns to dust as you pick it up.');
-      if (_detach) _detach(g.lvl_obj, item);
+      if (_detach) _detach(item);
       mvaddch(g.player.t_pos.y, g.player.t_pos.x, FLOOR);
       return;
     } else {
@@ -100,7 +100,7 @@ export async function add_pack(item, silent) {
 
   g.inpack++;
   if (from_floor) {
-    if (_detach) _detach(g.lvl_obj, item);
+    if (_detach) _detach(item);
     mvaddch(g.player.t_pos.y, g.player.t_pos.x,
       roomin(g.player.t_pos) === null ? PASSAGE : FLOOR);
   }

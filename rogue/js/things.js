@@ -9,7 +9,7 @@ import { mvaddch, mvwinch, waddch } from './curses.js';
 import {
   SCROLL, POTION, FOOD, WEAPON, ARMOR, RING, STICK, AMULET,
   LEFT, RIGHT, GOLD, FLOOR, PASSAGE,
-  R_ADDSTR, R_SEEINVIS,
+  R_PROTECT, R_ADDSTR, R_ADDHIT, R_ADDDAM, R_AGGR, R_TELEPORT, R_SEEINVIS,
   ISKNOW, ISCURSED, ISMANY, ISMISL,
   S_SCARE, CALLABLE,
   NUMTHINGS, MAXPOTIONS, MAXSCROLLS, MAXRINGS, MAXSTICKS, MAXWEAPONS, MAXARMORS,
@@ -341,15 +341,15 @@ export function new_thing() {
       cur.o_type = RING;
       cur.o_which = pick_one(g.r_magic, MAXRINGS);
       switch (cur.o_which) {
-        case 0: // R_ADDSTR
-        case 5: // R_PROTECT
-        case 6: // R_ADDHIT
-        case 7: // R_ADDDAM
+        case R_PROTECT:  // 0
+        case R_ADDSTR:   // 1
+        case R_ADDHIT:   // 7
+        case R_ADDDAM:   // 8
           cur.o_ac = rnd(3);
           if (cur.o_ac === 0) { cur.o_ac = -1; cur.o_flags |= ISCURSED; }
           break;
-        case 1: // R_AGGR
-        case 9: // R_TELEPORT
+        case R_AGGR:     // 6
+        case R_TELEPORT: // 11
           cur.o_flags |= ISCURSED;
           break;
       }
