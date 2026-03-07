@@ -14,6 +14,7 @@ import { makemon } from './makemon.js';
 import { mons, PM_WATER_MOCCASIN, PM_WATER_DEMON, PM_WATER_NYMPH,
          PM_WATER_ELEMENTAL, PM_SEWER_RAT } from './monsters.js';
 import { mksobj, mkobj, bless, curse, uncurse, xname } from './mkobj.js';
+import { rnd_class } from './objnam.js';
 import { newsym, mark_vision_dirty } from './display.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { distmin } from './hacklib.js';
@@ -208,8 +209,8 @@ export async function dofindgem(player, map, display) {
         await You("spot a gem in the sparkling waters!");
     else
         await You_feel("a gem here!");
-    // mksobj_at: create a random gem (DILITHIUM_CRYSTAL to LUCKSTONE-1)
-    const gemtype = DILITHIUM_CRYSTAL + rn2(LUCKSTONE - DILITHIUM_CRYSTAL);
+    // cf. fountain.c:171 — mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), ...)
+    const gemtype = rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1);
     const gem = mksobj(gemtype, false, false);
     if (gem && map.addObject) {
         gem.ox = player.x;

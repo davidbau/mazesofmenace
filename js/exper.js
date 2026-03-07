@@ -195,7 +195,23 @@ export async function pluslvl(player, display, incr) {
 }
 
 // cf. exper.c:377 — rndexp(): random XP for potions/polyself
-// TODO: exper.c:377 — rndexp(gaining): needs LARGEST_INT handling, rn2 with large diff
+export function rndexp(player, gaining) {
+    const LARGEST_INT = 0x7fffffff;
+    let minexp = (player.ulevel === 1) ? 0 : newuexp(player.ulevel - 1);
+    let maxexp = newuexp(player.ulevel);
+    let diff = maxexp - minexp, factor = 1;
+    while (diff >= LARGEST_INT) {
+        diff = Math.floor(diff / 2);
+        factor *= 2;
+    }
+    let result = minexp + factor * rn2(Math.max(1, diff));
+    if (player.ulevel === MAXULEV && gaining) {
+        result += ((player.uexp || 0) - minexp);
+        if (result < (player.uexp || 0))
+            result = player.uexp || 0;
+    }
+    return result;
+}
 
 // Autotranslated from exper.c:84
 export function experience(mtmp, nk) {

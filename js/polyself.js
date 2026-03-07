@@ -50,6 +50,7 @@
 import { rn1, rn2, rnd, d } from './rng.js';
 import { mark_vision_dirty } from './vision.js';
 import { exercise } from './attrib_exercise.js';
+import { newhp, newpw, rndexp } from './exper.js';
 import {
     mons, NON_PM, LOW_PM, SPECIAL_PM,
     S_ANT, S_BLOB, S_COCKATRICE, S_DOG, S_EYE, S_FELINE, S_FUNGUS,
@@ -805,11 +806,8 @@ async function newman(player) {
     // adjabil(oldlvl, newlvl) — ability adjustments for level change
     if (player.adjabil) await player.adjabil(oldlvl, newlvl);
 
-    // rndexp(FALSE) — random experience points for new level
-    // In C, rndexp consumes RNG. We call it if available.
-    if (player.rndexp) {
-        player.uexp = player.rndexp(false);
-    }
+    // cf. polyself.c:363 — rndexp(FALSE) — random XP for new level
+    player.uexp = rndexp(player, false);
 
     // redist_attr() — set up new attribute points
     if (player.redist_attr) player.redist_attr();
@@ -824,16 +822,10 @@ async function newman(player) {
     // hpmax * rn1(4,8) / 10; ~0.95*hpmax on average
     const hpScale = rn1(4, 8);
     hpmax = Math.round(hpmax * hpScale / 10);
-    // newhp() per level — each call consumes RNG
-    // newhp() returns role-dependent HP gain; approximate with rnd(8)
-    // (exact newhp() depends on role which we don't have here)
+    // cf. polyself.c:387 — newhp() per level, role-dependent HP gain
     for (let i = 0; i < newlvl; i++) {
-        if (player.newhp) {
-            player.ulevel = i;
-            hpmax += player.newhp();
-        } else {
-            hpmax += rnd(8);
-        }
+        player.ulevel = i;
+        hpmax += newhp(player);
     }
     if (hpmax < newlvl)
         hpmax = newlvl;
@@ -854,13 +846,10 @@ async function newman(player) {
     }
     const enScale = rn1(4, 8);
     enmax = Math.round(enmax * enScale / 10);
+    // cf. polyself.c:401 — newpw() per level, role-dependent PW gain
     for (let i = 0; i < newlvl; i++) {
-        if (player.newpw) {
-            player.ulevel = i;
-            enmax += player.newpw();
-        } else {
-            enmax += rnd(8);
-        }
+        player.ulevel = i;
+        enmax += newpw(player);
     }
     if (enmax < newlvl)
         enmax = newlvl;
@@ -1036,7 +1025,7 @@ export async function polyself(player, psflags, map) {
     // sex_change_ok for newman/polymon
     player._sex_change_ok = (player._sex_change_ok || 0) + 1;
 
-    if (!polyok(mons[mntmp]) || !rn2(5)
+    if (!polyok(mons[mntmp]) || (!forcecontrol && !rn2(5))
         || (mons[mntmp] && player.umonster !== undefined
             && mons[mntmp] === mons[player.umonster])) {
         await newman(player);
@@ -1828,7 +1817,7 @@ export async function dogaze(player, map) {
     if (!player || !player.type) return 0;
 
     let adtyp = 0;
-    const attacks = player.type.attacks || [];
+    const attacks = player.type.mattk || player.type.attacks || [];
     for (let i = 0; i < attacks.length; i++) {
         if (attacks[i].aatyp === AT_GAZE) {
             adtyp = attacks[i].adtyp;
