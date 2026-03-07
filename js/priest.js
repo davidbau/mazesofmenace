@@ -196,9 +196,9 @@ export function mon_aligntyp(mon) {
 export function priestname(mon, article, reveal_high_priest, player) {
     const do_hallu = player && player.hallucinating;
     const aligned_priest = (mon.mndx === PM_ALIGNED_CLERIC)
-        || (mon.type === mons[PM_ALIGNED_CLERIC]);
+        || ((mon.data || mon.type) === mons[PM_ALIGNED_CLERIC]);
     const high_priest = (mon.mndx === PM_HIGH_CLERIC)
-        || (mon.type === mons[PM_HIGH_CLERIC]);
+        || ((mon.data || mon.type) === mons[PM_HIGH_CLERIC]);
     let what = do_hallu ? rndmonnam() : mon_pmname(mon);
 
     if (!mon.ispriest && !mon.isminion) {
@@ -397,7 +397,7 @@ export async function intemple(roomno, map, player, display, fov) {
 
         const epri_p = priest.epri;
         const shrined = has_shrine(priest, map);
-        const sanctum = (priest.mndx === PM_HIGH_CLERIC || priest.type === mons[PM_HIGH_CLERIC])
+        const sanctum = (priest.mndx === PM_HIGH_CLERIC || (priest.data || priest.type) === mons[PM_HIGH_CLERIC])
             && (Is_sanctum() || In_endgame());
         const can_speak = !helpless(priest);
         const moves = player.turns || 0;
