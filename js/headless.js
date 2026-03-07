@@ -593,23 +593,30 @@ export class HeadlessDisplay {
             return;
         }
 
+        const isDeathMessage = msg.startsWith('You die...');
+        // C-faithful death staging: if a death line arrives while another
+        // message is pending acknowledgement, force a --More-- boundary first.
+        if (this.topMessage && this.messageNeedsMore && isDeathMessage) {
+            this.renderMoreMarker();
+            this._pendingMore = true;
+            this._messageQueue.push(msg);
+            return;
+        }
+
         // C ref: win/tty/topl.c:264-267 — Concatenate messages if they fit.
         // C reserves space for " --More--" (9 chars) when checking if messages
         // can be concatenated.  When the combined message plus --More-- would
         // exceed the line width, C shows --More-- and blocks on input first.
-        const notDied = !msg.startsWith('You die');
         if (!this.noConcatenateMessages && this.topMessage && this.messageNeedsMore) {
-            if (notDied) {
-                const combined = this.topMessage + '  ' + msg;
-                // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
-                if (combined.length + 9 < this.cols) {
-                    this.clearRow(0);
-                    this.putstr(0, 0, combined.substring(0, this.cols));
-                    this.topMessage = combined;
-                    this.messageNeedsMore = true;
-                    this.setCursor(Math.min(combined.length, this.cols - 1), 0);
-                    return;
-                }
+            const combined = this.topMessage + '  ' + msg;
+            // C ref: win/tty/topl.c update_topl() uses strict '<' for fit check.
+            if (combined.length + 9 < this.cols) {
+                this.clearRow(0);
+                this.putstr(0, 0, combined.substring(0, this.cols));
+                this.topMessage = combined;
+                this.messageNeedsMore = true;
+                this.setCursor(Math.min(combined.length, this.cols - 1), 0);
+                return;
             }
             // C ref: win/tty/topl.c update_topl():
             // - concat overflow triggers more()
@@ -638,6 +645,10 @@ export class HeadlessDisplay {
             this.putstr(0, 0, msg.substring(0, this.cols));
             this.topMessage = msg;
             this.messageNeedsMore = true;
+            if (isDeathMessage) {
+                this.renderMoreMarker();
+                this._pendingMore = true;
+            }
             this.setCursor(Math.min(msg.length, this.cols - 1), 0);
             return;
         }

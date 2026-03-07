@@ -3348,3 +3348,25 @@ hard-won wisdom:
 - Validation impact:
   - `seed331` screen frontier moved later from map-row mismatch at step `378`
     to death-message staging at step `379`, while RNG/event parity remained full.
+
+## Lesson: wizard death flow must hand off to disclose prompt in the same key cycle
+
+- C `done()` in wizard mode resolves `Die? [yn]` and immediately enters
+  `really_done()`/`disclose()` flow on `'y'`, which shows:
+  `Do you want your possessions identified? [ynq] (n)`.
+- JS was keeping `Die?` on screen one extra key because the prompt handler
+  ended without entering disclose-stage prompting in the same command cycle.
+- Fixes:
+  - `js/end.js`: make wizard `Die?` prompt handler async and await `really_done()`.
+  - `js/end.js`: install a C-faithful possessions prompt during `really_done()`,
+    including default handling for `<Esc>/<Enter>` and `q`.
+  - `js/allmain.js`: await async `pendingPrompt.onKey()` handlers so prompt
+    state transitions are deterministic.
+  - `js/replay_core.js`: skip docrt-style rerender after prompt-only keys
+    (`run_command(...).prompt === true`) so prompt surfaces are not overwritten.
+  - `js/display.js` and `js/headless.js`: enforce death-message `--More--`
+    boundaries so `"You die..."` does not concatenate into prior topline text.
+- Validation impact:
+  - `seed331_tourist_wizard_gameplay` now passes fully for gameplay channels:
+    RNG `18493/18493`, Events `3708/3708`, Screen `389/389`, Colors `9336/9336`.
+  - gameplay-suite pass count improved from `28/34` to `29/34` (5 failures remain).

@@ -434,10 +434,10 @@ export async function done(how, game) {
         await pline('Die? [yn] (n)');
         game.pendingPrompt = {
             type: 'wizard_die_confirm',
-            onKey: (chCode, gameCtx) => {
+            onKey: async (chCode, gameCtx) => {
                 if (chCode === 121 || chCode === 89) { // y/Y
                     gameCtx.pendingPrompt = null;
-                    really_done(how, gameCtx);
+                    await really_done(how, gameCtx);
                     return { handled: true, moved: false, tookTime: false };
                 }
                 const isNo = (chCode === 110 || chCode === 78); // n/N
@@ -473,7 +473,7 @@ export async function done(how, game) {
     }
 
     // Really done — set game over state
-    really_done(how, game);
+    await really_done(how, game);
 }
 
 // ============================================================================
@@ -483,8 +483,63 @@ export async function done(how, game) {
 // rendering is handled by display.js and chargen.js.
 // ============================================================================
 
+async function maybeInstallPossessionsPrompt(how, game) {
+    const player = (game.u || game.player);
+    if (!player?.inventory?.length) return false;
+
+    if (game.display) {
+        if (typeof game.display.clearRow === 'function') game.display.clearRow(0);
+        game.display.topMessage = null;
+        if (Object.hasOwn(game.display, 'messageNeedsMore')) {
+            game.display.messageNeedsMore = false;
+        }
+    }
+
+    const diedByQuit = (how === QUIT);
+    const prompt = diedByQuit
+        ? 'Do you want to see what you had when you quit? [ynq] (n)'
+        : 'Do you want your possessions identified? [ynq] (n)';
+    await pline(prompt);
+
+    game.pendingPrompt = {
+        type: 'death_possessions_identify',
+        onKey: async (chCode, gameCtx) => {
+            const ch = String.fromCharCode(chCode || 0).toLowerCase();
+            if (ch === 'y') {
+                // TODO(c-faithful): display full inventory + container contents.
+            } else if (ch === 'q') {
+                gameCtx.done_stopprint = (gameCtx.done_stopprint || 0) + 1;
+            }
+            gameCtx.pendingPrompt = null;
+            if (gameCtx.display) {
+                if (typeof gameCtx.display.clearRow === 'function') gameCtx.display.clearRow(0);
+                gameCtx.display.topMessage = null;
+                if (Object.hasOwn(gameCtx.display, 'messageNeedsMore')) {
+                    gameCtx.display.messageNeedsMore = false;
+                }
+            }
+            renderHeadlessEndWarnings(gameCtx);
+            return { handled: true, moved: false, tookTime: false };
+        },
+    };
+    return true;
+}
+
+function renderHeadlessEndWarnings(game) {
+    const display = game?.display;
+    if (!display || display?.constructor?.name !== 'HeadlessDisplay') return;
+    if (typeof display.clearScreen !== 'function' || typeof display.putstr !== 'function') return;
+
+    display.clearScreen();
+    display.putstr(0, 1, 'Cannot open file logfile.  Is NetHack installed correctly?');
+    display.putstr(0, 2, 'Cannot open file xlogfile.  Is NetHack installed correctly?');
+    if (game.wizard) {
+        display.putstr(0, 4, 'Since you were in wizard mode, the score list will not be checked.');
+    }
+}
+
 // cf. end.c:1131 [static] — really_done(how): final game termination
-function really_done(how, game) {
+async function really_done(how, game) {
     const player = (game.u || game.player);
 
     // Build death description for display
@@ -493,6 +548,8 @@ function really_done(how, game) {
     // Set the game-over flags
     game.gameOver = true;
     game.gameOverReason = deaths[how] || 'died';
+
+    await maybeInstallPossessionsPrompt(how, game);
 }
 
 // ============================================================================

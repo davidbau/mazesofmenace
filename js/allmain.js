@@ -540,7 +540,7 @@ export async function run_command(game, ch, opts = {}) {
     // Prompt handlers (e.g., eat.c "Continue eating? [yn]") consume input
     // without advancing time until a terminating answer is provided.
     if (game.pendingPrompt && typeof game.pendingPrompt.onKey === 'function') {
-        const promptResult = game.pendingPrompt.onKey(chCode, game);
+        const promptResult = await Promise.resolve(game.pendingPrompt.onKey(chCode, game));
         if (promptResult && promptResult.handled) {
             if (game._pendingPromptTask) {
                 await game._pendingPromptTask;

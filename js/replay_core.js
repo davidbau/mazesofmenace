@@ -181,6 +181,7 @@ export async function replaySession(seed, opts, keys) {
         const prevCount = getRngLog().length;
         const ch = keys.charCodeAt(i);
         let commandSettled = false;
+        let commandResult = null;
         // Expose current replay step to runtime diagnostics (run/monmove traces).
         // This is debug-only metadata and does not affect game logic.
         if (game?.map) game.map._replayStepIndex = i;
@@ -193,6 +194,7 @@ export async function replaySession(seed, opts, keys) {
             if (settled.done) {
                 pendingCommand = null;
                 commandSettled = true;
+                commandResult = settled.value;
                 replayPendingTrace(`step=${i + 1}`, 'resume=done');
             } else {
                 replayPendingTrace(`step=${i + 1}`, 'resume=waiting');
@@ -212,13 +214,14 @@ export async function replaySession(seed, opts, keys) {
                 );
             } else {
                 commandSettled = true;
+                commandResult = settled.value;
             }
         }
 
         // C ref: allmain.c handleInput loop re-renders after each consumed key.
         // Replay normally rerenders after settled commands. For pending commands,
         // rerender only when a NHW text popup is active and redraw that popup.
-        if (commandSettled) {
+        if (commandSettled && !commandResult?.prompt) {
             rerenderLikeMainLoop(game);
         } else if (pendingCommand && hasActiveTextPopupWindow()) {
             rerenderLikeMainLoop(game);
