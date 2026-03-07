@@ -3480,8 +3480,7 @@ function onscary(map, x, y, mon = null) {
     for (const obj of objects) {
         if (!obj || obj.buried) continue;
         if (obj.ox === x && obj.oy === y
-            && obj.otyp === SCR_SCARE_MONSTER
-            && !obj.cursed) {
+            && obj.otyp === SCR_SCARE_MONSTER) {
             return true;
         }
     }

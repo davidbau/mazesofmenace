@@ -236,12 +236,12 @@ export function onscary(map, x, y, mon = null) {
     }
 
     // C ref: monmove.c:280-281 — scare monster scroll (own source of power)
+    // C's sobj_at checks otyp only; BUC status doesn't affect scaring
     if (map) {
         for (const obj of map.objects || []) {
             if (obj.buried) continue;
             if (obj.ox === x && obj.oy === y
-                && obj.otyp === SCR_SCARE_MONSTER
-                && !obj.cursed) {
+                && obj.otyp === SCR_SCARE_MONSTER) {
                 return true;
             }
         }
