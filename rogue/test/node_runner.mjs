@@ -252,6 +252,51 @@ async function giveStartingEquipment(g) {
 }
 
 /**
+ * Run one game session driven by an AI callback.
+ * keyProvider(screen: string[], stepNum: number) => string
+ * Called each time the game needs a key; returns the key to press.
+ * When it returns null/undefined the session ends.
+ */
+export async function runSessionWithAI(seed, keyProvider) {
+  const display = new MockDisplay();
+  const input   = new MockInput();
+
+  const g = new GameState();
+  g.display = display; g.input = input; g.rawRngLog = [];
+  setGame(g);
+  resetStatus(); resetGrpnum(); resetCursorState();
+  wireDeps(g);
+  srand(seed); g.seed = seed; g.dnum = seed;
+  init_player(); init_things(); init_names(); init_colors(); init_stones(); init_materials();
+  clear();
+  await new_level();
+  daemon(doctor, 0, AFTER); fuse(swander, 0, WANDERTIME, AFTER);
+  daemon(stomach, 0, AFTER); daemon(runners, 0, AFTER);
+  await giveStartingEquipment(g);
+
+  const keys = [];
+  let stepNum = 0;
+
+  input.getKey = async function () {
+    const screen = display.getRows();
+    const key = keyProvider(screen, stepNum++, display);
+    if (key == null) throw new SessionDone();
+    keys.push(key);
+    return key;
+  };
+
+  try {
+    g.oldpos = { x: g.player.t_pos.x, y: g.player.t_pos.y };
+    g.oldrp = roomin(g.player.t_pos);
+    while (g.playing) await command();
+  } catch (e) {
+    if (!(e instanceof SessionDone)) throw e;
+  }
+
+  return keys;
+}
+
+/**
  * Run one game session and return steps array.
  */
 export async function runSession(seed, keys) {

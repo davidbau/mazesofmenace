@@ -96,12 +96,7 @@ function newgrp() { return ++_grpnum; }
  * fix_stick(cur): set up stick charges.
  */
 function fix_stick(cur) {
-  const g = game();
   cur.o_charges = rnd(5) + 3;
-  if (cur.o_which !== undefined) {
-    // ws_type[0] = 'staff', ws_type[1] = 'wand', etc.
-    cur.o_type = 'WS_TYPE_INDEX';  // placeholder
-  }
 }
 
 /**
