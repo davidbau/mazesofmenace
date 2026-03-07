@@ -4,6 +4,7 @@
 import { rn2, rn1 } from './rng.js';
 import { A_STR, A_INT, A_CHA, A_DEX, A_CON, A_WIS,
     MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, PM_MONK } from './const.js';
+import { acurr } from './attrib.js';
 
 // Lazy import to avoid circular dependency (hack.js imports from attrib_exercise.js)
 var _near_capacity = null;
@@ -34,8 +35,7 @@ export function exercise(player, attr, increase) {
     if (Math.abs(cur) >= EXERCISE_LIMIT) return;
     // C ref: attrib.c:506 — AEXE(i) += (inc) ? (rn2(19) > ACURR(i)) : -rn2(2);
     if (increase) {
-        const acurr = (player.attributes && player.attributes[attr]) || 10;
-        if (rn2(19) > acurr) {
+        if (rn2(19) > acurr(player, attr)) {
             player.aexercise[attr] = cur + 1;
         }
     } else {

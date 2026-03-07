@@ -177,6 +177,9 @@ const hum_abil = [];
 
 // Ensure player has attrMax, abon, atemp, atime arrays initialized
 function ensureAttrArrays(player) {
+    if (!player.attributes || player.attributes.length < NUM_ATTRS) {
+        player.attributes = new Array(NUM_ATTRS).fill(10);
+    }
     if (!player.attrMax || player.attrMax.length < NUM_ATTRS) {
         player.attrMax = player.attributes.slice();
     }
