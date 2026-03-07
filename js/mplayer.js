@@ -114,7 +114,8 @@ export function mk_mplayer_armor(mon, typ) {
 // Autotranslated from mplayer.c:326
 export function create_mplayers(num, special) {
   let pm, x, y, fakemon;
-  fakemon = cg.zeromonst;
+  // C ref: fakemon = cg.zeromonst (zero-init struct)
+  fakemon = {};
   while (num) {
     let tryct = 0;
     pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);

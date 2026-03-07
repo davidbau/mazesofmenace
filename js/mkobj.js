@@ -1554,9 +1554,9 @@ export function dealloc_oextra(o) {
 export function newomonst(otmp) {
   if (!otmp.oextra) otmp.oextra = newoextra();
   if (!OMONST(otmp)) {
-    let m = newmonst();
-     m = cg.zeromonst;
-    OMONST(otmp) = m;
+    // C ref: m = newmonst(); *m = cg.zeromonst; (alloc + zero-init)
+    // JS: empty object suffices; C's zeromonst is all-zeros.
+    OMONST(otmp) = {};
   }
 }
 
@@ -1625,8 +1625,10 @@ export function bill_dummy_object(otmp, player) {
     cost = unpaid_cost(otmp, COST_SINGLEOBJ);
     subfrombill(otmp, shop_keeper( player.ushops));
   }
-  dummy = newobj();
-   dummy = otmp;
+  // C ref: dummy = newobj(); *dummy = *otmp;  (alloc + struct copy)
+  // JS: Object.assign copies all fields. Don't call newobj() — C's newobj()
+  // is pure alloc (no RNG), but JS newobj() consumes rnd(2) via next_ident().
+  dummy = Object.assign({}, otmp);
   dummy.oextra =  0;
   dummy.where = OBJ_FREE;
   dummy.o_id = nextoid(otmp, dummy);

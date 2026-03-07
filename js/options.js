@@ -670,9 +670,7 @@ export function optfn_packorder(optidx, req, negated, opts, op, game) {
     return optn_ok;
   }
   if (req === get_val || req === get_cnf_val) {
-    let ocl;
-    oc_to_str(game.flags.inv_order, ocl);
-    opts = ocl;
+    opts = oc_to_str(game.flags.inv_order);
     return optn_ok;
   }
   return optn_ok;
@@ -1471,15 +1469,17 @@ export function illegal_menu_cmd_key(c) {
 }
 
 // Autotranslated from options.c:8076
-export function oc_to_str(src, dest) {
-  let i;
-  while ((i =  src++) !== 0) {
-    if (i < 0 || i >= MAXOCLASSES) impossible("oc_to_str: illegal object class_ %d", i);
-    else {
-       dest = def_oc_syms[i].sym;
-    }
+export function oc_to_str(src) {
+  // C ref: iterates uchar *src, converts each class index to its symbol char.
+  // JS: src is an array of class indices; returns the symbol string.
+  let result = '';
+  for (let idx = 0; idx < src.length; idx++) {
+    const i = typeof src[idx] === 'number' ? src[idx] : src.charCodeAt(idx);
+    if (i === 0) break;
+    if (i < 0 || i >= MAXOCLASSES) { impossible("oc_to_str: illegal object class_ %d", i); }
+    else if (def_oc_syms[i]) { result += def_oc_syms[i].sym; }
   }
-   dest = '\x00';
+  return result;
 }
 
 // Autotranslated from options.c:10026

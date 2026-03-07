@@ -1900,8 +1900,7 @@ export function dealloc_monst(mon) {
   buf = '\0';
   if (mon.nmon) { describe_level(buf, 2); panic("dealloc_monst with nmon on %s", buf); }
   if (mon.mextra) dealloc_mextra(mon);
-   mon = cg.zeromonst;
-  (mon, 0);
+  // C ref: *mon = cg.zeromonst; free(mon); — JS: garbage collected
 }
 
 // Autotranslated from mon.c:2995
