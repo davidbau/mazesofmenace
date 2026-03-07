@@ -37,6 +37,7 @@ import { ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS, objectData,
          WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL,
          SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL } from './objects.js';
 import { doname, is_crackable } from './mkobj.js';
+import { acurr, extremeattr } from './attrib.js';
 import { armor_simple_name, suit_simple_name, cloak_simple_name, helm_simple_name, gloves_simple_name, boots_simple_name } from './objnam.js';
 import { is_metallic, obj_resists } from './objdata.js';
 import {
@@ -2229,14 +2230,16 @@ async function handleRemove(player, display, game = null) {
 
 export { handleWear, handlePutOn, handleTakeOff, handleRemove, canwearobj, cursed_check, Boots_on, Boots_off, Cloak_on, Cloak_off, Helmet_on, Helmet_off, Gloves_on, Gloves_off, Shield_on, Shield_off, Shirt_on, Shirt_off, Amulet_on, Amulet_off, wielding_corpse, dragon_armor_handling, set_wear, donning, doffing, cancel_doff, cancel_don, stop_donning, glibr, some_armor, stuck_ring, count_worn_stuff, select_off, remarm_swapwep, menu_remarm, wornarm_destroyed, inaccessible_equipment, equip_ok, any_worn_armor_ok };
 
-// Autotranslated from do_wear.c:1217
+// C ref: do_wear.c:1217 adjust_attrib() — adjust ABON for ring/amulet
 export function adjust_attrib(obj, which, val, game, player) {
-  let old_attrib, observable;
-  old_attrib = acurr(player,which);
-  ABON(which) += val;
-  observable = (old_attrib !== acurr(player,which));
-  if (observable || !extremeattr(which)) learnring(obj, observable);
-  game.disp.botl = true;
+  const old_attrib = acurr(player, which);
+  if (!player.abon || player.abon.length < 7) {
+      player.abon = new Array(7).fill(0);
+  }
+  player.abon[which] = (player.abon[which] || 0) + val;
+  const observable = (old_attrib !== acurr(player, which));
+  if (observable || !extremeattr(player, which)) learnring(obj, observable);
+  if (game.disp) game.disp.botl = true;
 }
 
 // Autotranslated from do_wear.c:1341
