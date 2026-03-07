@@ -169,6 +169,7 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
     let resolver = null;
     let waitEpoch = 0;
     const waitListeners = [];
+    let onWaitStarted = null;
 
     function abortError() {
         const err = new Error('waitForInputWait aborted');
@@ -183,6 +184,9 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
 
     function notifyWaitStarted() {
         waitEpoch += 1;
+        if (typeof onWaitStarted === 'function') {
+            onWaitStarted(waitEpoch);
+        }
         for (let i = waitListeners.length - 1; i >= 0; i--) {
             const listener = waitListeners[i];
             if (waitEpoch > listener.afterEpoch) {
@@ -211,6 +215,9 @@ export function createHeadlessInput({ throwOnEmpty = false } = {}) {
         },
         setDisplay(display) {
             this.display = display || null;
+        },
+        setOnWaitStarted(fn) {
+            onWaitStarted = (typeof fn === 'function') ? fn : null;
         },
         getDisplay() {
             return this.display;

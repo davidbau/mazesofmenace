@@ -3407,6 +3407,19 @@ hard-won wisdom:
   - replay uses runtime-owned APIs (`renderAfterCommand` path and
     `renderInputBlockedState()`).
 
+### Hardening: move blocked-popup redraw trigger to input-wait boundary
+
+- Deeper cleanup moved pending-popup redraw trigger off replay step loop and
+  onto runtime input-wait transitions.
+- `createHeadlessInput()` now exposes `setOnWaitStarted(fn)` and fires it when
+  `nhgetch()` enters a waiting state.
+- `NetHackGame.init()` wires this callback to `renderInputBlockedState()`.
+- `replay_core` no longer calls `renderInputBlockedState()` directly.
+- Validation:
+  - architecture unit guard passes;
+  - sensitive seeds (`seed301`, `seed306`, `seed331`) pass;
+  - full failure burndown non-regressing (`29/34` passing, same 5 failures).
+
 ## Manual-direct early drift reduction: `#untrap` + trap object map wiring + autounlock occupation ordering (2026-03-07)
 
 - Target: issue `#263` (`seed031_manual_direct`, `seed032_manual_direct`) where JS diverged early into monster turns before expected trap/lock handling.

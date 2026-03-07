@@ -1252,6 +1252,13 @@ export class NetHackGame {
         if (this.input && typeof this.input.setDisplay === 'function') {
             this.input.setDisplay(this.display);
         }
+        if (this.input && typeof this.input.setOnWaitStarted === 'function') {
+            this.input.setOnWaitStarted(() => {
+                if (typeof this.renderInputBlockedState === 'function') {
+                    this.renderInputBlockedState();
+                }
+            });
+        }
 
         // Wire up nhwindow infrastructure
         init_nhwindows(this.display, nhgetch, () => this._rerenderGame());

@@ -24,8 +24,9 @@ describe('replay render architecture contracts', () => {
 
         assert.match(replaySrc, /run_command\(game, ch, \{\s*renderAfterCommand:\s*true\s*\}\)/);
         assert.match(replaySrc, /execute_repeat_command\(game, \{\s*renderAfterCommand:\s*true\s*\}\)/);
-        assert.match(replaySrc, /game\?\.renderInputBlockedState\s*===\s*'function'/);
+        assert.doesNotMatch(replaySrc, /renderInputBlockedState/);
 
         assert.match(mainSrc, /renderInputBlockedState\(\)\s*\{/);
+        assert.match(mainSrc, /setOnWaitStarted\(\(\)\s*=>\s*\{/);
     });
 });

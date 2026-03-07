@@ -200,9 +200,6 @@ export async function replaySession(seed, opts, keys) {
 
         // Rendering ownership lives in run_command/game runtime paths.
         // Replay captures the already-rendered screen after each consumed key.
-        if (pendingCommand && typeof game?.renderInputBlockedState === 'function') {
-            game.renderInputBlockedState();
-        }
         const postMap = game.lev || game.map || null;
         if (postMap) postMap._replayStepIndex = i;
 
