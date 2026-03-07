@@ -1958,22 +1958,31 @@ export async function zapyourself(obj, player, ordinary = true, map = null) {
       await exercise(player, A_CON, false);
     }
     break;
-  case WAN_FIRE:
+  case WAN_FIRE: {
+    const orig_dmg = d(12, 6);
     if (player.fire_resistance) {
       await pline('You feel rather warm.');
     } else {
       await pline("You've set yourself afire!");
-      damage = d(12, 6);
+      damage = orig_dmg;
     }
+    // C ref: zap.c:2755-2757 — unconditional burnarmor + destroy_items
+    burnarmor(player, player);
+    // destroy_items(&youmonst, AD_FIRE, orig_dmg) — stub
     break;
-  case WAN_COLD:
+  }
+  case WAN_COLD: {
+    const orig_dmg = d(12, 6);
     if (player.cold_resistance) {
       await pline('You feel a little chill.');
     } else {
       await pline('You imitate a popsicle!');
-      damage = d(12, 6);
+      damage = orig_dmg;
     }
+    // C ref: zap.c:2775 — unconditional destroy_items
+    // destroy_items(&youmonst, AD_COLD, orig_dmg) — stub
     break;
+  }
   case WAN_MAGIC_MISSILE:
   case SPE_MAGIC_MISSILE:
     if (player.antimagic) {
