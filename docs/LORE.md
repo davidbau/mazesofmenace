@@ -3218,3 +3218,17 @@ hard-won wisdom:
 - Impact:
   - `seed325` first RNG/event divergence moved later from step `309` to `365`
   - failing suite remained `27/34` passing, `7` failing (no regression in count)
+
+## Lesson: hatch_egg must gate RNG on get_obj_location eligibility
+
+- New `seed325` frontier at step `365` showed JS timer RNG (`rnd(1)` from
+  `hatch_egg`) occurring where C consumed hunger RNG (`rn2(20)` in `gethungry`).
+- Root cause: JS `timeout.hatch_egg()` consumed `rnd(quan)` unconditionally,
+  while C `hatch_egg()` only rolls hatchcount after `get_obj_location()` succeeds
+  (eligible locations: `OBJ_INVENT`, `OBJ_FLOOR`, `OBJ_MINVENT`).
+- Fix: add location eligibility gate in `hatch_egg()` before hatchcount RNG.
+- Impact on current baseline:
+  - `seed325_knight_wizard_gameplay`: RNG/events became full-match (`422/422`);
+    now screen-only divergence remains at step `306`.
+  - `seed327` unchanged.
+  - Full gameplay-suite failure count stayed stable on current main baseline.

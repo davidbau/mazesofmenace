@@ -739,18 +739,55 @@ export function kill_egg(egg) {
 export async function hatch_egg(egg) {
     if (!egg || egg._deadHatching) return;
     egg._deadHatching = true;
-    // C ref: timeout.c hatch_egg() performs hatchcount = rnd((int) egg->quan)
-    // before hatching attempts.
-    const qty = Math.max(1, Math.trunc(Number(egg.quan) || 1));
-    const hatchcount = rnd(qty);
     const map = _timeoutContext.map;
     const player = _timeoutContext.player;
+    let canHatch = false;
+    let x = 0;
+    let y = 0;
+    // C ref: timeout.c hatch_egg() uses get_obj_location() with locflags=0.
+    // Only INVENT/FLOOR/MINVENT are eligible; otherwise it returns early
+    // without consuming hatchcount RNG.
+    switch (egg.where) {
+    case 'OBJ_INVENT':
+    case 'invent':
+    case 3:
+        if (player && Number.isInteger(player.x) && Number.isInteger(player.y)) {
+            x = player.x;
+            y = player.y;
+            canHatch = true;
+        }
+        break;
+    case 'OBJ_FLOOR':
+    case 'floor':
+    case 1:
+        if (Number.isInteger(egg.ox) && Number.isInteger(egg.oy)) {
+            x = egg.ox;
+            y = egg.oy;
+            canHatch = true;
+        }
+        break;
+    case 'OBJ_MINVENT':
+    case 'minvent':
+    case 4:
+        if (egg.ocarry && Number(egg.ocarry.mx) > 0) {
+            x = Number(egg.ocarry.mx);
+            y = Number(egg.ocarry.my);
+            canHatch = true;
+        }
+        break;
+    default:
+        break;
+    }
+    if (!canHatch) return;
+
+    // C ref: timeout.c hatch_egg() performs hatchcount = rnd((int) egg->quan)
+    // only after location eligibility succeeds.
+    const qty = Math.max(1, Math.trunc(Number(egg.quan) || 1));
+    const hatchcount = rnd(qty);
     const mnum = big_to_little(Number.isInteger(egg.corpsenm) ? egg.corpsenm : -1);
     const mdat = Number.isInteger(mnum) && mnum >= 0 ? mons[mnum] : null;
     if (map && mdat) {
         const { makemon } = await import('./makemon.js');
-        const x = Number.isInteger(egg.ox) ? egg.ox : (player?.x || 0);
-        const y = Number.isInteger(egg.oy) ? egg.oy : (player?.y || 0);
         const depth = Number(player?.dungeonLevel || 1);
         let hatched = 0;
         for (let i = 0; i < hatchcount; i++) {
