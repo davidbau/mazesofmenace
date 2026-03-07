@@ -219,6 +219,13 @@ export async function replaySession(seed, opts, keys) {
                     'start=waiting',
                     pendingWaitSite(game.input)
                 );
+            } else {
+                replayPendingTrace(
+                    `step=${i + 1}`,
+                    `key=${JSON.stringify(String.fromCharCode(ch))}`,
+                    'mode=start',
+                    'start=done'
+                );
             }
         }
 
