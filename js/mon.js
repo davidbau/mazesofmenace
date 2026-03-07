@@ -30,7 +30,14 @@ import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          BOLT_LIM, LS_MONSTER,
          RANDOM_CLASS, FOOD_CLASS, M2_COLLECT } from './const.js';
 import { NORMAL_SPEED } from './monsters.js';
-import { AMULET_OF_LIFE_SAVING, CORPSE, FIGURINE, objectData } from './objects.js';
+import { AMULET_OF_LIFE_SAVING, CORPSE, FIGURINE, STATUE, objectData,
+         GRAY_DRAGON_SCALES, UNICORN_HORN, WORM_TOOTH,
+         IRON_CHAIN, ROCK as OBJ_ROCK, FIRST_GLASS_GEM, NUM_GLASS_GEMS,
+         QUARTERSTAFF, SMALL_SHIELD, CLUB, ELVEN_SPEAR, BOOMERANG,
+         LEASH, BULLWHIP, GRAPPLING_HOOK,
+         LEATHER_ARMOR, LEATHER_CLOAK, SADDLE,
+         SCR_BLANK_PAPER,
+         GLOB_OF_BLACK_PUDDING } from './objects.js';
 import { which_armor } from './worn.js';
 import { nonliving, resists_ston, resists_fire, resists_poison,
          is_flyer, is_floater,
@@ -38,7 +45,7 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          mon_hates_silver, touch_petrifies, flesh_petrifies,
          is_male, is_female, is_neuter,
          dmgtype, attacktype } from './mondata.js';
-import { mkcorpstat, weight, is_rustprone, mkobj, mksobj_at, place_object } from './mkobj.js';
+import { mkcorpstat, weight, is_rustprone, mkobj, mksobj_at, mkgold, place_object } from './mkobj.js';
 import { impossible } from './pline.js';
 import { next_ident } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists, hasPoisonTrapBit } from './objdata.js';
@@ -50,7 +57,7 @@ import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
 import { in_your_sanctuary } from './priest.js';
 
-import { rn2, rnd, d, pushRngLogEntry, withRngTag } from './rng.js';
+import { rn2, rnd, rnl, d, pushRngLogEntry, withRngTag } from './rng.js';
 import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC,
          AMULET_OF_STRANGULATION, RIN_SLOW_DIGESTION } from './objects.js';
 import { couldsee, m_cansee } from './vision.js';
@@ -79,8 +86,16 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_HEALER,
          PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER, PM_ROGUE,
          PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
-         PM_IRON_GOLEM, PM_GREMLIN, PM_GELATINOUS_CUBE, PM_RUST_MONSTER,
+         PM_IRON_GOLEM, PM_GLASS_GOLEM, PM_CLAY_GOLEM, PM_WOOD_GOLEM,
+         PM_ROPE_GOLEM, PM_LEATHER_GOLEM, PM_GOLD_GOLEM, PM_PAPER_GOLEM,
+         PM_GREMLIN, PM_GELATINOUS_CUBE, PM_RUST_MONSTER,
          PM_STALKER, PM_GREEN_SLIME,
+         PM_GRAY_DRAGON, PM_GOLD_DRAGON, PM_SILVER_DRAGON,
+         PM_RED_DRAGON, PM_ORANGE_DRAGON, PM_WHITE_DRAGON,
+         PM_BLACK_DRAGON, PM_BLUE_DRAGON, PM_GREEN_DRAGON, PM_YELLOW_DRAGON,
+         PM_WHITE_UNICORN, PM_GRAY_UNICORN, PM_BLACK_UNICORN,
+         PM_LONG_WORM,
+         PM_GRAY_OOZE, PM_BROWN_PUDDING, PM_BLACK_PUDDING,
          NON_PM, NUMMONS,
          mons,
          AT_NONE, AT_BOOM, AT_ENGL, AT_HUGS, AD_PHYS, AD_ACID, AD_ENCH, AD_STCK,
@@ -94,7 +109,8 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
          PM_FLESH_GOLEM, PM_STONE_GOLEM, PM_ERINYS } from './monsters.js';
-import { PIT, SPIKED_PIT, HOLE, S_poisoncloud, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER } from './const.js';
+import { PIT, SPIKED_PIT, HOLE, S_poisoncloud, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
+         TAINT_AGE } from './const.js';
 import { m_harmless_trap } from './trap.js';
 import { dist2, distmin } from './hack.js';
 import { monmoveTrace, monmoveStepLabel } from './monmove.js';
@@ -926,24 +942,202 @@ export async function killed(mtmp, map, player) {
   await xkilled(mtmp, XKILL_GIVEMSG, map, player);
 }
 
-// C ref: mon.c make_corpse() — per-monster corpse/drop creation
+// C ref: mon.c:545-714 make_corpse() — per-monster corpse/drop creation
 export function make_corpse(mon, corpseflags, map) {
     const mndx = mon.mndx ?? 0;
+    const mdat = mon?.data || mon?.type || mons[mndx] || {};
     const x = mon.mx, y = mon.my;
+    let obj = null;
+    let num;
 
-    // C ref: golem drops, dragon scales, unicorn horns handled via switch
-    // Simplified: create a standard corpse for non-special cases
-    // The mkcorpstat call handles corpse creation with RNG
-    const obj = mkcorpstat(CORPSE, mndx, true, x, y, map);
-    // C ref: mon.c make_corpse() sets CORPSTAT gender bits from the source
-    // monster so revive() can pass MM_MALE/MM_FEMALE without an extra rn2(2).
-    const ptr = mon?.type || mons[mndx] || null;
+    // C ref: mon.c:557-560 — gender bits
     const CORPSTAT_FEMALE = 1;
     const CORPSTAT_MALE = 2;
     const CORPSTAT_NEUTER = 3;
-    if (is_neuter(ptr)) obj.spe = CORPSTAT_NEUTER;
-    else if (is_female(ptr) || mon?.female === true) obj.spe = CORPSTAT_FEMALE;
-    else if (is_male(ptr) || mon?.female === false) obj.spe = CORPSTAT_MALE;
+    const CORPSTAT_INIT = 4;
+    let corpstatflags = corpseflags;
+    if (mon.female) corpstatflags |= CORPSTAT_FEMALE;
+    else if (!is_neuter(mdat)) corpstatflags |= CORPSTAT_MALE;
+
+    // C ref: mon.c:562-714 — switch on monster type for special drops
+    let makeDefaultCorpse = true;
+    switch (mndx) {
+    case PM_GRAY_DRAGON:
+    case PM_GOLD_DRAGON:
+    case PM_SILVER_DRAGON:
+    case PM_RED_DRAGON:
+    case PM_ORANGE_DRAGON:
+    case PM_WHITE_DRAGON:
+    case PM_BLACK_DRAGON:
+    case PM_BLUE_DRAGON:
+    case PM_GREEN_DRAGON:
+    case PM_YELLOW_DRAGON:
+        // C ref: mon.c:578-583 — dragon scales
+        if (!rn2(mon.mrevived ? 20 : 3)) {
+            num = GRAY_DRAGON_SCALES + mndx - PM_GRAY_DRAGON;
+            obj = mksobj_at(num, x, y, false, false);
+            if (obj) { obj.spe = 0; obj.cursed = false; obj.blessed = false; }
+        }
+        break; // goto default_1 — still makes corpse
+
+    case PM_WHITE_UNICORN:
+    case PM_GRAY_UNICORN:
+    case PM_BLACK_UNICORN:
+        // C ref: mon.c:588-597 — unicorn horn
+        if (mon.mrevived && rn2(2)) {
+            // horn crumbles to dust — no item
+        } else {
+            obj = mksobj_at(UNICORN_HORN, x, y, true, false);
+            if (obj && mon.mrevived) obj.degraded_horn = 1;
+        }
+        break; // goto default_1 — still makes corpse
+
+    case PM_LONG_WORM:
+        // C ref: mon.c:600 — worm tooth
+        mksobj_at(WORM_TOOTH, x, y, true, false);
+        break; // goto default_1 — still makes corpse
+
+    case PM_VAMPIRE:
+    case PM_VAMPIRE_LEADER: {
+        // C ref: mon.c:602-609 — old corpse of living counterpart
+        num = undead_to_corpse(mndx);
+        obj = mkcorpstat(CORPSE, num, true, x, y, map);
+        if (obj) obj.age -= (TAINT_AGE + 1);
+        makeDefaultCorpse = false;
+        break;
+    }
+    case PM_KOBOLD_MUMMY:
+    case PM_DWARF_MUMMY:
+    case PM_GNOME_MUMMY:
+    case PM_ORC_MUMMY:
+    case PM_ELF_MUMMY:
+    case PM_HUMAN_MUMMY:
+    case PM_GIANT_MUMMY:
+    case PM_ETTIN_MUMMY:
+    case PM_KOBOLD_ZOMBIE:
+    case PM_DWARF_ZOMBIE:
+    case PM_GNOME_ZOMBIE:
+    case PM_ORC_ZOMBIE:
+    case PM_ELF_ZOMBIE:
+    case PM_HUMAN_ZOMBIE:
+    case PM_GIANT_ZOMBIE:
+    case PM_ETTIN_ZOMBIE: {
+        // C ref: mon.c:626-630 — old corpse of living counterpart
+        num = undead_to_corpse(mndx);
+        obj = mkcorpstat(CORPSE, num, true, x, y, map);
+        if (obj) obj.age -= (TAINT_AGE + 1);
+        makeDefaultCorpse = false;
+        break;
+    }
+    case PM_IRON_GOLEM:
+        // C ref: mon.c:631-636 — iron chains
+        num = d(2, 6);
+        while (num-- > 0)
+            obj = mksobj_at(IRON_CHAIN, x, y, true, false);
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_GLASS_GOLEM:
+        // C ref: mon.c:637-643 — glass gems
+        num = d(2, 4);
+        while (num-- > 0)
+            obj = mksobj_at(FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS), x, y, true, false);
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_CLAY_GOLEM:
+        // C ref: mon.c:644-649 — rocks
+        obj = mksobj_at(OBJ_ROCK, x, y, false, false);
+        if (obj) {
+            obj.quan = rn2(20) + 50;
+            obj.owt = weight(obj);
+        }
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_STONE_GOLEM:
+        // C ref: mon.c:650-654 — statue
+        obj = mkcorpstat(STATUE, mndx, false, x, y, map);
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_WOOD_GOLEM:
+        // C ref: mon.c:655-666 — wooden items
+        num = d(2, 4);
+        while (num-- > 0) {
+            obj = mksobj_at(
+                rn2(2) ? QUARTERSTAFF
+                : rn2(3) ? SMALL_SHIELD
+                : rn2(3) ? CLUB
+                : rn2(3) ? ELVEN_SPEAR : BOOMERANG,
+                x, y, true, false);
+        }
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_ROPE_GOLEM:
+        // C ref: mon.c:667-675 — rope items
+        num = rn2(3);
+        while (num-- > 0) {
+            obj = mksobj_at(
+                rn2(2) ? LEASH
+                : rn2(3) ? BULLWHIP : GRAPPLING_HOOK,
+                x, y, true, false);
+        }
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_LEATHER_GOLEM:
+        // C ref: mon.c:676-683 — leather items
+        num = d(2, 4);
+        while (num-- > 0)
+            obj = mksobj_at(
+                rn2(4) ? LEATHER_ARMOR
+                : rn2(3) ? LEATHER_CLOAK : SADDLE,
+                x, y, true, false);
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_GOLD_GOLEM:
+        // C ref: mon.c:684-688 — gold
+        obj = mkgold(200 - rnl(101), x, y);
+        makeDefaultCorpse = false;
+        break;
+
+    case PM_PAPER_GOLEM:
+        // C ref: mon.c:689-694 — blank scrolls
+        num = rnd(4);
+        while (num-- > 0)
+            obj = mksobj_at(SCR_BLANK_PAPER, x, y, true, false);
+        makeDefaultCorpse = false;
+        break;
+
+    // C ref: mon.c:697-709 — pudding globs
+    case PM_GRAY_OOZE:
+    case PM_BROWN_PUDDING:
+    case PM_GREEN_SLIME:
+    case PM_BLACK_PUDDING:
+        obj = mksobj_at(GLOB_OF_BLACK_PUDDING - (PM_BLACK_PUDDING - mndx),
+                        x, y, true, false);
+        makeDefaultCorpse = false;
+        newsym(x, y);
+        return obj;
+
+    default:
+        break;
+    }
+
+    // C ref: mon.c:712-714 — default_1: create standard corpse
+    if (makeDefaultCorpse) {
+        obj = mkcorpstat(CORPSE, mndx, true, x, y, map);
+    }
+
+    // C ref: mon.c make_corpse() sets CORPSTAT gender bits
+    if (obj) {
+        if (is_neuter(mdat)) obj.spe = CORPSTAT_NEUTER;
+        else if (is_female(mdat) || mon?.female === true) obj.spe = CORPSTAT_FEMALE;
+        else if (is_male(mdat) || mon?.female === false) obj.spe = CORPSTAT_MALE;
+    }
     return obj;
 }
 
