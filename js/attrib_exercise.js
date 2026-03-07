@@ -5,15 +5,27 @@ import { rn2, rn1 } from './rng.js';
 import { A_STR, A_INT, A_CHA, A_DEX, A_CON, A_WIS,
     MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, PM_MONK,
     CLAIRVOYANT, REGENERATION, INTRINSIC, TIMEOUT } from './const.js';
-import { acurr } from './attrib.js';
+import { acurr, adjattrib, AVAL } from './attrib.js';
+import { sgn } from './hacklib.js';
+import { You } from './pline.js';
+import { races } from './player.js';
 
 // Lazy import to avoid circular dependency (hack.js imports from attrib_exercise.js)
 var _near_capacity = null;
 export function registerNearCapacity(fn) { _near_capacity = fn; }
 
-const EXERCISE_LIMIT = 50;
 const DEFAULT_NEXT_CHECK = 600;
 const ATTR_COUNT = 6;
+
+// C: exertext[A_MAX][2] — attrib.c:585-591
+const exertext = [
+    ["exercising diligently", "exercising properly"],           // Str
+    [null, null],                                                // Int
+    ["very observant", "paying attention"],                     // Wis
+    ["working on your reflexes", "working on reflexes lately"], // Dex
+    ["leading a healthy life-style", "watching your health"],   // Con
+    [null, null],                                                // Cha
+];
 
 function ensureExerciseState(player) {
     if (!player) return;
@@ -25,15 +37,37 @@ function ensureExerciseState(player) {
     }
 }
 
-// C ref: attrib.c exercise()
+// C: Upolyd — player is polymorphed
+function Upolyd(player) {
+    return !!(player.Upolyd || (player.mtimedone && player.mtimedone > 0));
+}
+
+// C: ABASE(i) — base attribute value
+function ABASE(player, i) { return player.attributes[i]; }
+
+// C: ATTRMIN(i) — racial minimum for attribute
+function ATTRMIN(player, i) {
+    const race = races[player.race];
+    return race ? race.attrmin[i] : 3;
+}
+
+// C: ATTRMAX(i) — racial maximum for attribute
+function ATTRMAX(player, i) {
+    const race = races[player.race];
+    return race ? race.attrmax[i] : 18;
+}
+
+// C ref: attrib.c:486 — exercise(i, inc_or_dec)
 export function exercise(player, attr, increase) {
     // C ref: attrib.c:489-490 — A_INT and A_CHA can't be exercised; no RNG consumed.
     if (attr === A_INT || attr === A_CHA) return;
     if (!player) return;
+    // C ref: attrib.c:493-494 — Upolyd skips exercise for all but WIS
+    if (Upolyd(player) && attr !== A_WIS) return;
     ensureExerciseState(player);
     const cur = player.aexercise[attr] || 0;
     // C ref: attrib.c:496 — if (abs(AEXE(i)) < AVAL) — skip when at exercise cap
-    if (Math.abs(cur) >= EXERCISE_LIMIT) return;
+    if (Math.abs(cur) >= AVAL) return;
     // C ref: attrib.c:506 — AEXE(i) += (inc) ? (rn2(19) > ACURR(i)) : -rn2(2);
     if (increase) {
         if (rn2(19) > acurr(player, attr)) {
@@ -44,30 +78,64 @@ export function exercise(player, attr, increase) {
     }
 }
 
-// C ref: attrib.c exerchk()
-export function exerchk(player, moves) {
+// C ref: attrib.c:595-674 — exerchk()
+// Checks exercise accumulation and potentially adjusts attributes.
+// Calls exerper() internally (C attrib.c:601).
+export async function exerchk(player, moves) {
     if (!player || !Number.isInteger(moves)) return;
     ensureExerciseState(player);
+
+    // C ref: attrib.c:601 — exerper() called at start of exerchk
+    await exerper(player, moves);
+
     if (moves < player.nextAttrCheck) return;
+    // C ref: attrib.c:610 — if (multi) return; (skip while multi-turn action)
+    if (player.multi) return;
 
     for (let i = 0; i < ATTR_COUNT; i++) {
-        const ex = player.aexercise[i] || 0;
-        if (!ex) continue;
+        let ax = player.aexercise[i] || 0;
+        if (!ax) continue;
 
-        // C ref: if (i == A_STR || !rn2(50)) ...
-        if (i === A_STR || rn2(50) < Math.abs(ex)) {
-            // Attribute mutation side effects are not modeled here yet.
+        const mod_val = sgn(ax);
+        let lolim = ATTRMIN(player, i);
+        let hilim = ATTRMAX(player, i);
+        if (hilim > 18) hilim = 18;
+
+        // C ref: attrib.c:625-630 — skip rn2 when ABASE at limit
+        if ((ax < 0) ? (ABASE(player, i) <= lolim) : (ABASE(player, i) >= hilim)) {
+            // nextattrib: decay exercise
+            player.aexercise[i] = Math.floor(Math.abs(ax) / 2) * mod_val;
+            continue;
+        }
+        // C ref: attrib.c:631-635 — skip rn2 when polymorphed (except WIS)
+        if (Upolyd(player) && i !== A_WIS) {
+            player.aexercise[i] = Math.floor(Math.abs(ax) / 2) * mod_val;
+            continue;
         }
 
-        // C ref: AEXE(i) += (AEXE(i) > 0) ? -1 : 1;
-        player.aexercise[i] += ex > 0 ? -1 : 1;
-    }
+        // C ref: attrib.c:637-641 — RNG gate
+        // rn2(AVAL) > ((i != A_WIS) ? abs(ax)*2/3 : abs(ax))
+        if (rn2(AVAL) > ((i !== A_WIS) ? Math.floor(Math.abs(ax) * 2 / 3) : Math.abs(ax))) {
+            player.aexercise[i] = Math.floor(Math.abs(ax) / 2) * mod_val;
+            continue;
+        }
 
-    // C ref: next_check += rn1(200, 800)
+        // C ref: attrib.c:643-653 — adjattrib on success
+        if (await adjattrib(player, i, mod_val, -1)) {
+            player.aexercise[i] = 0;
+            ax = 0;
+            await You("%s %s.",
+                (mod_val > 0) ? "must have been" : "haven't been",
+                exertext[i][(mod_val > 0) ? 0 : 1]);
+        }
+        // C ref: attrib.c:655 — decay remaining exercise
+        player.aexercise[i] = Math.floor(Math.abs(ax) / 2) * mod_val;
+    }
+    // C ref: attrib.c:671 — next_check += rn1(200, 800)
     player.nextAttrCheck += rn1(200, 800);
 }
 
-// C ref: attrib.c exerper() — periodic exercise accumulation
+// C ref: attrib.c:518 — exerper() — periodic exercise accumulation
 export async function exerper(player, moves) {
     if (!player || !Number.isInteger(moves)) return;
 

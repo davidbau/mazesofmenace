@@ -873,31 +873,27 @@ export function init_attr(player, np) {
 }
 
 // cf. attrib.c:737 — redist_attr()
-// Autotranslated from attrib.c:736
-export function redist_attr() {
-  let i, tmp;
-  for (i = 0; i < A_MAX; i++) {
+export function redist_attr(player) {
+  for (let i = 0; i < NUM_ATTRS; i++) {
     if (i === A_INT || i === A_WIS) {
       continue;
     }
-    tmp = AMAX(i);
-    AMAX(i) += (rn2(5) - 2);
-    if (AMAX(i) > ATTRMAX(i)) AMAX(i) = ATTRMAX(i);
-    if (AMAX(i) < ATTRMIN(i)) AMAX(i) = ATTRMIN(i);
-    ABASE(i) = Math.floor(ABASE(i) * AMAX(i) / tmp);
-    if (ABASE(i) < ATTRMIN(i)) ABASE(i) = ATTRMIN(i);
+    const tmp = AMAX(player, i);
+    setAMAX(player, i, AMAX(player, i) + (rn2(5) - 2));
+    if (AMAX(player, i) > ATTRMAX(player, i)) setAMAX(player, i, ATTRMAX(player, i));
+    if (AMAX(player, i) < ATTRMIN(player, i)) setAMAX(player, i, ATTRMIN(player, i));
+    setABASE(player, i, Math.floor(ABASE(player, i) * AMAX(player, i) / tmp));
+    if (ABASE(player, i) < ATTRMIN(player, i)) setABASE(player, i, ATTRMIN(player, i));
   }
 }
 
 // cf. attrib.c:761 — vary_init_attr()
-// Autotranslated from attrib.c:760
-export async function vary_init_attr() {
-  let i;
-  for (i = 0; i < A_MAX; i++) {
+export async function vary_init_attr(player) {
+  for (let i = 0; i < NUM_ATTRS; i++) {
     if (!rn2(20)) {
       let xd = rn2(7) - 2;
-      await adjattrib(i, xd, true);
-      if (ABASE(i) < AMAX(i)) AMAX(i) = ABASE(i);
+      await adjattrib(player, i, xd, true);
+      if (ABASE(player, i) < AMAX(player, i)) setAMAX(player, i, ABASE(player, i));
     }
   }
 }

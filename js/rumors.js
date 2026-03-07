@@ -19,7 +19,8 @@ import { rn2 } from './rng.js';
 import { parseRumorsFile, parseEncryptedDataFile } from './hacklib.js';
 import { RUMORS_FILE_TEXT } from './rumor_data.js';
 import { EPITAPH_FILE_TEXT } from './epitaph_data.js';
-import { RUMOR_PAD_LENGTH } from './const.js';
+import { RUMOR_PAD_LENGTH, A_WIS } from './const.js';
+import { exercise } from './attrib_exercise.js';
 
 // Rumor data — parsed at module load from the compiled-in encrypted constant.
 // cf. rumors.c init_rumors() + global gt/gf structs (true_rumor_size etc.)
@@ -214,6 +215,10 @@ export async function outrumor(truth, mechanism, player) {
     }
   }
   line = getrumor(truth, buf, reading ? false : true);
+  // C ref: rumors.c:175 — exercise(A_WIS, adjtruth > 0) after reading rumor
+  // Note: C uses adjtruth (truth+rn2(2)) computed inside getrumor; here we
+  // approximate with truth>0 which matches for blessed/cursed but not uncursed.
+  if (player) exercise(player, A_WIS, truth > 0);
   if (!line) line = "NetHack rumors file closed for renovation.";
   switch (mechanism) {
     case BY_ORACLE:

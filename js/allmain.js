@@ -37,7 +37,7 @@ import { ageSpells } from './spell.js';
 import { wipe_engr_at } from './engrave.js';
 import { dosearch0 } from './detect.js';
 import { maybe_finished_meal, gethungry } from './eat.js';
-import { exerper, exerchk } from './attrib_exercise.js';
+import { exerchk } from './attrib_exercise.js';
 import { rhack } from './cmd.js';
 import { FOV, get_vision_full_recalc } from './vision.js';
 import { monsterNearby, nomul, unmul, near_capacity } from './hack.js';
@@ -349,14 +349,9 @@ export async function moveloop_turnend(game) {
     // C ref: allmain.c:354 age_spells() — decrement spell retention each turn
     ageSpells((game.u || game.player));
 
-    // C ref: attrib.c exerper() — periodic exercise updates.
-    // C's svm.moves starts at 1 and increments before exerper/exerchk.
-    // NOTE: exerchk() also calls exerper() internally — this double call
-    // is a known divergence from C, but sessions are aligned with it.
+    // C ref: allmain.c:355 exerchk() — exercise attribute checks.
+    // C's exerchk() calls exerper() internally (attrib.c:601).
     const moves = game.turnCount + 1;
-    await exerper((game.u || game.player), moves);
-
-    // C ref: attrib.c exerchk()
     await exerchk((game.u || game.player), moves);
 
     // C ref: allmain.c:362 — invault() between exerchk and u_wipe_engr

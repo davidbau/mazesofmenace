@@ -469,6 +469,8 @@ export function discoverObject(otyp, markAsKnown, markAsEncountered) {
         pushDisco(otyp);
         if (markAsEncountered) ocEncountered[otyp] = true;
         if (!ocNameKnown[otyp] && markAsKnown) ocNameKnown[otyp] = true;
+        // TODO: C ref: o_init.c:477 — exercise(A_WIS, TRUE) on object discovery
+        // Needs C-faithful guard: only when mark_as_known && ct>0 (class has other known items)
     }
 }
 
