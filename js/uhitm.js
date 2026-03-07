@@ -5,6 +5,7 @@
 import { rn2, rnd, d, c_d } from './rng.js';
 import { exercise } from './attrib_exercise.js';
 import { corpse_chance } from './mon.js';
+import { m_move } from './monmove.js';
 import {
     A_STR, A_DEX, PM_MONK, PM_SAMURAI, PM_BARBARIAN,
     FIRE_RES, COLD_RES, SHOCK_RES, ACID_RES, FREE_ACTION,
@@ -16,7 +17,7 @@ import { spec_dbon } from './artifact.js';
 import {
     G_FREQ, G_NOCORPSE, MZ_TINY, MZ_HUMAN, MZ_LARGE, M2_COLLECT,
     S_ZOMBIE, S_MUMMY, S_VAMPIRE, S_WRAITH, S_LICH, S_GHOST, S_DEMON, S_KOP,
-    S_LIGHT, S_MIMIC, S_NYMPH, S_GOLEM,
+    S_LIGHT, S_MIMIC, S_NYMPH, S_GOLEM, S_LEPRECHAUN,
     PM_SHADE, PM_FLOATING_EYE, PM_GREMLIN,
     PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_IRON_GOLEM,
     AD_PHYS, AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE, AD_DISN, AD_ELEC,
@@ -290,7 +291,16 @@ export async function do_attack(player, mtmp, display, map, opts = {}) {
     // C ref: uhitm.c:550-552 — pre-attack exercise and engrave wipe
     await exercise(player, A_STR, true);
     await u_wipe_engr(player, map, 3);
-    // TODO: C uhitm.c:555-562 — leprechaun dodge (rn2(7) + m_move)
+    // C ref: uhitm.c:555-562 — leprechaun dodge
+    const mdat = mtmp.data || mtmp.type || {};
+    if (mdat.mlet === S_LEPRECHAUN
+        && !mtmp.mfrozen && !mtmp.msleeping && !mtmp.mconf
+        && mtmp.mcansee !== 0 && mtmp.mcansee !== false
+        && !rn2(7)) {
+        await m_move(mtmp, map, player);
+        if (mtmp.mx !== player.x || mtmp.my !== player.y)
+            return false; // leprechaun dodged away
+    }
     // TODO: C uhitm.c:564-567 — Upolyd hmonas() dispatch
     // Delegate to hmon for the normal case
     return await do_attack_core(player, mtmp, display, map, game);

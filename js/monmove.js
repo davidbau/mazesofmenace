@@ -1677,7 +1677,7 @@ async function m_digweapon_check(mon, nix, niy, map, player, display, fov) {
     return false;
 }
 
-async function m_move(mon, map, player, display = null, fov = null) {
+export async function m_move(mon, map, player, display = null, fov = null) {
     // Transient handoff state consumed by dochug postmove pipeline.
     mon._m_move_postmove_ctx = null;
 
