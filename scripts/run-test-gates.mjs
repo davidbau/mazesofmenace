@@ -189,23 +189,47 @@ async function runUnitTests() {
 // ── Session tests ─────────────────────────────────────────────
 
 async function runSessionTests() {
-    const { runSessionBundle } = await import(
-        join(projectRoot, 'test', 'comparison', 'session_test_runner.js')
-    );
+    return new Promise((resolve, reject) => {
+        const runnerPath = join(projectRoot, 'test', 'comparison', 'session_test_runner.js');
+        const child = spawn(process.execPath, [runnerPath], {
+            cwd: projectRoot,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env },
+        });
 
-    const bundle = await runSessionBundle({
-        verbose: false,
-        useGolden: false,
-        onProgress(done, total, result) {
-            if (done === 1) globalTotal += total;
-            globalDone++;
-            const status = result.passed ? `${c.green}ok${c.reset}` : `${c.red}FAIL${c.reset}`;
-            const name = result.session?.replace('.session.json', '') ?? '';
-            showProgress(`${c.cyan}session${c.reset} ${status} ${c.dim}${name}${c.reset}`);
-        },
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (buf) => { stdout += String(buf); });
+        child.stderr.on('data', (buf) => { stderr += String(buf); });
+
+        child.on('error', (err) => reject(err));
+        child.on('close', (code) => {
+            const marker = '__RESULTS_JSON__';
+            const idx = stdout.lastIndexOf(marker);
+            if (idx < 0) {
+                const errPreview = (stdout + '\n' + stderr).trim().slice(-2000);
+                return reject(new Error(`session_test_runner output missing ${marker} marker\n${errPreview}`));
+            }
+            const jsonText = stdout.slice(idx + marker.length).trim();
+            let parsed;
+            try {
+                parsed = JSON.parse(jsonText);
+            } catch (err) {
+                const errPreview = jsonText.slice(0, 2000);
+                return reject(new Error(`failed to parse session_test_runner JSON: ${err.message}\n${errPreview}`));
+            }
+
+            const results = Array.isArray(parsed?.results) ? parsed.results : [];
+            globalTotal += results.length;
+            globalDone += results.length;
+            showProgress(`${c.cyan}session${c.reset} ${c.dim}complete${c.reset}`);
+            if (code !== 0) {
+                // Keep summary behavior deterministic: failures are represented in results.
+                // Non-zero here is expected when any session fails.
+            }
+            resolve(results);
+        });
     });
-
-    return bundle?.results || [];
 }
 
 // ── Summary table ─────────────────────────────────────────────

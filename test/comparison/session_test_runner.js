@@ -1005,14 +1005,52 @@ export async function runSessionBundle({
     }
 
     let results;
+    const sessionType = (s) => {
+        const t = String(s?.meta?.type || '').trim().toLowerCase();
+        return t || 'other';
+    };
+    const uniqueTypes = new Set(filteredSessions.map(sessionType));
+    const shouldTypeBatchParallel = parallel > 0
+        && !failFast
+        && filteredSessions.length > 1
+        && uniqueTypes.size > 1;
     if (parallel > 0 && !failFast && filteredSessions.length > 1) {
-        // Run in parallel using worker threads
-        results = await runSessionsParallel(filteredSessions, {
-            numWorkers: parallel,
-            verbose,
-            onProgress,
-            sessionTimeoutMs,
-        });
+        if (shouldTypeBatchParallel) {
+            // Run session types in separate worker pools so module state from
+            // one type (notably map generation) can't leak into another type.
+            const typeOrder = ['gameplay', 'chargen', 'interface', 'special', 'map', 'other'];
+            const groups = new Map();
+            for (const session of filteredSessions) {
+                const t = sessionType(session);
+                if (!groups.has(t)) groups.set(t, []);
+                groups.get(t).push(session);
+            }
+            const orderedTypes = [...typeOrder.filter((t) => groups.has(t)),
+                ...[...groups.keys()].filter((t) => !typeOrder.includes(t))];
+            const resultByFile = new Map();
+            for (const type of orderedTypes) {
+                const batch = groups.get(type) || [];
+                if (batch.length === 0) continue;
+                const batchResults = await runSessionsParallel(batch, {
+                    numWorkers: parallel,
+                    verbose,
+                    onProgress,
+                    sessionTimeoutMs,
+                });
+                for (const r of batchResults) resultByFile.set(r.session, r);
+            }
+            results = filteredSessions
+                .map((s) => resultByFile.get(s.file))
+                .filter(Boolean);
+        } else {
+            // Run in parallel using worker threads
+            results = await runSessionsParallel(filteredSessions, {
+                numWorkers: parallel,
+                verbose,
+                onProgress,
+                sessionTimeoutMs,
+            });
+        }
     } else {
         // Run sequentially
         results = [];
