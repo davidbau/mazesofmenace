@@ -27,9 +27,10 @@ import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
          M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
          W_AMUL, W_ARMG, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMF, W_ARMU, W_WEP,
-         BOLT_LIM, LS_MONSTER } from './const.js';
+         BOLT_LIM, LS_MONSTER,
+         RANDOM_CLASS, FOOD_CLASS, M2_COLLECT } from './const.js';
 import { NORMAL_SPEED } from './monsters.js';
-import { AMULET_OF_LIFE_SAVING, CORPSE } from './objects.js';
+import { AMULET_OF_LIFE_SAVING, CORPSE, FIGURINE, objectData } from './objects.js';
 import { which_armor } from './worn.js';
 import { nonliving, resists_ston, resists_fire, resists_poison,
          is_flyer, is_floater,
@@ -37,12 +38,14 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          mon_hates_silver, touch_petrifies, flesh_petrifies,
          is_male, is_female, is_neuter,
          dmgtype, attacktype } from './mondata.js';
-import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
+import { mkcorpstat, weight, is_rustprone, mkobj, mksobj_at, place_object } from './mkobj.js';
 import { impossible } from './pline.js';
 import { next_ident } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists, hasPoisonTrapBit } from './objdata.js';
 import { newsym, canSpotMonsterForMap } from './display.js';
 import { mpickobj, mdrop_obj } from './steal.js';
+import { delobj } from './invent.js';
+import { stackobj } from './invent.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
 import { in_your_sanctuary } from './priest.js';
@@ -84,7 +87,7 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          M1_FLY, M1_SWIM, M1_AMPHIBIOUS, M1_AMORPHOUS, M1_WALLWALK,
          M1_BREATHLESS, M1_TUNNEL, M1_NEEDPICK,
          M1_SLITHY, M1_UNSOLID,
-         MZ_TINY, MZ_MEDIUM, MZ_LARGE,
+         MZ_TINY, MZ_MEDIUM, MZ_LARGE, MZ_HUMAN,
          MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON,
          G_FREQ, G_NOCORPSE, G_UNIQ,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_MIMIC, S_UNICORN,
@@ -882,10 +885,29 @@ export function xkilled(mon, xkill_flags, map, player) {
 
     if (nocorpse) return;
 
-    // C ref: treasure drop — rn2(6)
-    if (map && !rn2(6) && (x !== (player?.x || 0) || y !== (player?.y || 0))) {
-        // Simplified: skip treasure drop (would need mkobj with RANDOM_CLASS)
-        // RNG consumed for parity
+    // C ref: mon.c:3580-3607 — "illogical but traditional" treasure drop
+    const mdat = mon?.data || mon?.type || {};
+    const mndx = mon.mndx ?? 0;
+    const game = _gstate;
+    if (map && !rn2(6)
+        && !(game?.mvitals?.[mndx]?.mvflags & G_NOCORPSE)
+        && (x !== (player?.x || 0) || y !== (player?.y || 0))
+        && mdat.mlet !== S_KOP
+        && !mon.mcloned) {
+        const otmp = mkobj(RANDOM_CLASS, true);
+        if (otmp) {
+            const otyp = otmp.otyp;
+            if (otmp.oclass === FOOD_CLASS && !(mdat.mflags2 & M2_COLLECT)
+                && !otmp.oartifact) {
+                delobj(otmp);
+            } else if ((mdat.msize || 0) < MZ_HUMAN && otyp !== FIGURINE
+                && (otmp.owt > 30 || objectData[otyp]?.oc_big)) {
+                delobj(otmp);
+            } else {
+                place_object(otmp, x, y, map);
+                stackobj(otmp, map);
+            }
+        }
     }
 
     // Corpse
