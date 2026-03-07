@@ -2181,7 +2181,13 @@ function setnotworn(obj, player) {
 
 // Autotranslated from invent.c:390
 export function invletter_value(c) {
-  return ('a' <= c && c <= 'z') ? (c - 'a' + 2) : ('A' <= c && c <= 'Z') ? (c - 'A' + 2 + 26) : (c === '$') ? 1 : (c === '#') ? 1 + invlet_basic + 1 : 1 + invlet_basic + 1 + 1;
+  // C ref: char arithmetic — 'a' <= c <= 'z' → c - 'a' + 2
+  const code = c.charCodeAt(0);
+  return ('a' <= c && c <= 'z') ? (code - 0x61 + 2)
+       : ('A' <= c && c <= 'Z') ? (code - 0x41 + 2 + 26)
+       : (c === '$') ? 1
+       : (c === '#') ? 1 + invlet_basic + 1
+       : 1 + invlet_basic + 1 + 1;
 }
 
 // Autotranslated from invent.c:1626
