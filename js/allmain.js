@@ -19,7 +19,7 @@ import { movemon, settrack, mon_regen } from './monmove.js';
 import { savebones } from './bones.js';
 import { setGame } from './gstate.js';
 import { hasEnv, getEnv, writeStderr } from './runtime_env.js';
-import { nh_timeout } from './timeout.js';
+import { nh_timeout, do_storms } from './timeout.js';
 import { pline } from './pline.js';
 import { runtimeDecideToShapeshift, makemon, withMakemonPlayerOverrideAsync } from './makemon.js';
 import { M2_WERE, NORMAL_SPEED } from './monsters.js';
@@ -61,11 +61,12 @@ import {
 } from './windows.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, ATR_NONE } from './const.js';
 import { initFirstLevel } from './u_init.js';
-import { movebubbles } from './mkmaze.js';
+import { movebubbles, fumaroles } from './mkmaze.js';
 import { initAnimation, configureAnimation, setAnimationMode } from './animation.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { change_luck, acurr } from './attrib.js';
 import { invault } from './vault.js';
+import { amulet } from './wizard.js';
 import { dosounds } from './sounds.js';
 import { find_ac } from './do_wear.js';
 
@@ -339,6 +340,9 @@ export async function moveloop_turnend(game) {
     // C ref: allmain.c:351 dosounds() — ambient sounds
     await moveloop_dosounds(game);
 
+    // C ref: allmain.c:358 do_storms()
+    do_storms();
+
     // C ref: allmain.c:353 gethungry()
     await gethungry((game.u || game.player));
 
@@ -347,6 +351,8 @@ export async function moveloop_turnend(game) {
 
     // C ref: attrib.c exerper() — periodic exercise updates.
     // C's svm.moves starts at 1 and increments before exerper/exerchk.
+    // NOTE: exerchk() also calls exerper() internally — this double call
+    // is a known divergence from C, but sessions are aligned with it.
     const moves = game.turnCount + 1;
     await exerper((game.u || game.player), moves);
 
@@ -355,6 +361,11 @@ export async function moveloop_turnend(game) {
 
     // C ref: allmain.c:362 — invault() between exerchk and u_wipe_engr
     await invault((game.lev || game.map), (game.u || game.player), game.fov || FOV);
+
+    // C ref: allmain.c:363-364 — amulet() when carrying Amulet of Yendor
+    if ((game.u || game.player).uhave?.amulet) {
+        await amulet((game.lev || game.map), (game.u || game.player), game.display);
+    }
 
     // C ref: allmain.c:359 — engrave wipe check (ACURR(A_DEX))
     const dex = acurr((game.u || game.player), A_DEX);
@@ -382,6 +393,9 @@ export async function moveloop_turnend(game) {
             };
         }
         await movebubbles((game.lev || game.map));
+    } else if ((game.lev || game.map)?.flags?.fumaroles) {
+        // C ref: allmain.c:381-382 — fumaroles on fire/lava levels
+        await fumaroles((game.lev || game.map));
     }
 
     // C ref: allmain.c:385-393 — immobile turn countdown and unmul().
