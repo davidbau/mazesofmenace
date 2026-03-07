@@ -75,6 +75,7 @@ import {
   which_armor,
 } from './worn.js';
 import { erode_obj } from './trap.js';
+import { game as _gstate } from './gstate.js';
 import { ERODE_BURN, EF_GREASE } from './const.js';
 import { W_ART } from './artifact.js';
 import { sleep_monst, slept_monst } from './mhitm.js';
@@ -239,7 +240,7 @@ export function resist(mon, oclass) {
     case SCROLL_CLASS:  alev = 9; break;
     case POTION_CLASS:  alev = 6; break;
     case RING_CLASS:    alev = 5; break;
-    default:            alev = 10; break; // spell: u.ulevel, simplified
+    default:            alev = _gstate?.player?.ulevel || 1; break; // C: u.ulevel for spells
     }
 
     // C ref: zap.c:6104-6109 — defense level
@@ -345,8 +346,9 @@ function zhitm(mon, type, nd, map) {
 
     switch (damgtype) {
     case ZT_MAGIC_MISSILE:
-        if (mdat.mresists & MR_FIRE) { // resists_magm approximation
-            // magic resistance — no damage
+        // C: resists_magm(mon) || defended(mon, AD_MAGM)
+        // Approximation: mr > 50 (high magic resistance score)
+        if ((mdat.mr || 0) > 50) {
             break;
         }
         tmp = d(nd, 6);
@@ -847,9 +849,13 @@ export async function bhitm(mon, otmp, map, player) {
   }
   case WAN_POLYMORPH:
   case SPE_POLYMORPH:
-    // C ref: zap.c:288 — rn2(25) system shock
-    if (!resist(mon, otmp.oclass)) {
-      if (!rn2(25)) {
+    // C: resists_magm gate (no RNG) before resist() call
+    if ((mons[mon.mndx]?.mr || 0) > 50) {
+      // magic resistance blocks polymorph — no RNG consumed
+    } else if (!resist(mon, otmp.oclass)) {
+      // C: rn2(25) only for natural (non-shapechanger) monsters
+      const NON_PM = -1;
+      if ((mon.cham === undefined || mon.cham === NON_PM) && !rn2(25)) {
         // system shock — kills the monster
         mon.mhp = 0;
       }
@@ -862,9 +868,8 @@ export async function bhitm(mon, otmp, map, player) {
     break;
   case WAN_TELEPORTATION:
   case SPE_TELEPORT_AWAY:
-    if (!resist(mon, otmp.oclass)) {
-      u_teleport_mon(mon, true, map, player, null, null);
-    }
+    // C: no resist() check — just teleport directly
+    u_teleport_mon(mon, true, map, player, null, null);
     break;
   case WAN_MAKE_INVISIBLE:
     mon_set_minvis(mon, map);
@@ -1949,15 +1954,21 @@ export async function zapyourself(obj, player, ordinary = true, map = null) {
       await exercise(player, A_STR, false);
     }
     break;
-  case WAN_LIGHTNING:
+  case WAN_LIGHTNING: {
+    // C: orig_dmg = d(12, 6) consumed unconditionally (before resistance check)
+    const orig_dmg = d(12, 6);
     if (player.shock_resistance) {
       await pline('You zap yourself, but seem unharmed.');
     } else {
       await pline('You shock yourself!');
-      damage = d(12, 6);
+      damage = orig_dmg;
       await exercise(player, A_CON, false);
     }
+    // C: destroy_items(&youmonst, AD_ELEC, orig_dmg) — stub
+    // C: flashburn(rnd(100), TRUE)
+    rnd(100); // flashburn duration — RNG consumed unconditionally
     break;
+  }
   case WAN_FIRE: {
     const orig_dmg = d(12, 6);
     if (player.fire_resistance) {
