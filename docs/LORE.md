@@ -3231,4 +3231,20 @@ hard-won wisdom:
   - `seed325_knight_wizard_gameplay`: RNG/events became full-match (`422/422`);
     now screen-only divergence remains at step `306`.
   - `seed327` unchanged.
-  - Full gameplay-suite failure count stayed stable on current main baseline.
+- Full gameplay-suite failure count stayed stable on current main baseline.
+
+## Lesson: treat mcanmove as C boolean (0 and false both immobile)
+
+- C uses boolean checks for `mcanmove`; both `0` and `FALSE` are immobile.
+- JS had strict checks (`=== false` / `!== false`) in several `movemon`/`dochug`
+  gates, which let numeric `0` monsters act and consume extra RNG.
+- We normalized these to boolean checks in movement-critical paths:
+  - `movemon` equip/occupation gates (`js/mon.js`)
+  - `dochug` immobile gate and postmove tail gate (`js/monmove.js`)
+  - helper logic using monster helplessness (`js/monmove.js`)
+- We also aligned pet path pre-move trap handling with C `m_move()` ordering by
+  running trapped resolution before `dog_move`.
+- Validation impact:
+  - `seed327_priest_wizard_gameplay`: RNG parity improved from `390/429` to
+    `429/429` (now event/screen-only divergence frontier).
+  - gameplay failures remained stable at `6` total.

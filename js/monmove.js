@@ -715,7 +715,7 @@ function m_search_items_goal(mon, map, player, fov, ggx, ggy, appr) {
             if (occ && occ !== mon) {
                 const occHelpless = !!occ.sleeping
                     || (Number(occ.mfrozen || 0) > 0)
-                    || occ.mcanmove === false;
+                    || !occ.mcanmove;
                 const occHidden = !!occ.mundetected;
                 const occMimicDisguise = !!occ.mappearance && !occ.iswiz;
                 const occImmobile = Number((occ.data || occ.type)?.mmove || 0) <= 0;
@@ -812,7 +812,7 @@ function aggravate(map) {
         mtmp.mstrategy = Number(mtmp.mstrategy || 0) & ~STRAT_WAITFORU;
         if (mtmp.waiting) mtmp.waiting = false;
         mtmp.sleeping = false;
-        if (mtmp.mcanmove === false && !rn2(5)) {
+        if (!mtmp.mcanmove && !rn2(5)) {
             mtmp.mfrozen = 0;
             mtmp.mcanmove = true;
         }
@@ -913,7 +913,7 @@ async function run_dochug_postmove_tail_current_js(
         return { moveStatus, mmoved };
     }
 
-    if (mon.mcanmove !== false && (mmoved || moveStatus === MMOVE_DONE)) {
+    if (!!mon.mcanmove && (mmoved || moveStatus === MMOVE_DONE)) {
         const objectsHere = map.objectsAt(mon.mx, mon.my);
         if (objectsHere.length > 0) {
             const ptr = mon.data || mon.type || mons[mon.mndx] || {};
@@ -1180,12 +1180,12 @@ async function dochug(mon, map, player, display, fov, game = null) {
 
     // C ref: monmove.c:717-724 — immobile/waiting monsters cannot act.
     // Preserve Hallucination newsym side effect when represented.
-    if (mon.mcanmove === false || (((mon.mstrategy || 0) & STRAT_WAITMASK) !== 0)) {
+    if (!mon.mcanmove || (((mon.mstrategy || 0) & STRAT_WAITMASK) !== 0)) {
         monmoveTrace('dochug-skip',
             `step=${monmoveStepLabel(map)}`,
             `id=${mon.m_id ?? '?'}`,
             `mndx=${mon.mndx ?? '?'}`,
-            `reason=${mon.mcanmove === false ? 'mcanmove0' : 'waitmask'}`,
+            `reason=${!mon.mcanmove ? 'mcanmove0' : 'waitmask'}`,
             `mstrategy=0x${Number(mon.mstrategy || 0).toString(16)}`);
         if (player?.hallucinating) newsym(mon.mx, mon.my);
         return;
@@ -1407,25 +1407,39 @@ async function dochug(mon, map, player, display, fov, game = null) {
             mon.meating--;
             moveStatus = MMOVE_DONE; // eating uses up the action
         } else if (mon_is_tame(mon)) {
-            const omx = mon.mx, omy = mon.my;
-            const petMoveStatus = await dog_move(mon, map, player, display, fov, false, game);
-            // C ref: MMOVE_DIED == 2. dog_move can kill or remove the pet before post-move.
-            if (petMoveStatus === 2 || mon.dead) {
-                return;
+            // C ref: monmove.c m_move():1731-1740 — trapped check happens
+            // before pet/non-pet branching, so tame monsters can skip dog_move
+            // when still trapped this turn.
+            let trappedNoMove = false;
+            if (mon.mtrapped) {
+                await mintrap_postmove(mon, map, player, display, fov);
+                if (mon.dead) return;
+                if (mon.mtrapped) {
+                    trappedNoMove = true;
+                    moveStatus = MMOVE_NOTHING;
+                }
             }
-            moveStatus = Number.isInteger(petMoveStatus) ? petMoveStatus : MMOVE_NOTHING;
-            // C ref: monmove.c postmov() runs when mmoved == MMOVE_MOVED
-            // regardless of whether the dog actually changed position.
-            // dog_move returns MMOVE_MOVED even when the dog stays put,
-            // so postmov (mdig_tunnel, mintrap, etc.) must always run.
-            if (!mon.dead && moveStatus === MMOVE_MOVED) {
-                const postmoveStatus = await run_dochug_postmove_pipeline_current_js(
-                    mon, map, player, display, fov, game, omx, omy, { preTrapDig: true }
-                );
-                if (postmoveStatus === MMOVE_DIED) {
+            const omx = mon.mx, omy = mon.my;
+            if (!trappedNoMove) {
+                const petMoveStatus = await dog_move(mon, map, player, display, fov, false, game);
+                // C ref: MMOVE_DIED == 2. dog_move can kill or remove the pet before post-move.
+                if (petMoveStatus === 2 || mon.dead) {
                     return;
                 }
-                mmoved = true;
+                moveStatus = Number.isInteger(petMoveStatus) ? petMoveStatus : MMOVE_NOTHING;
+                // C ref: monmove.c postmov() runs when mmoved == MMOVE_MOVED
+                // regardless of whether the dog actually changed position.
+                // dog_move returns MMOVE_MOVED even when the dog stays put,
+                // so postmov (mdig_tunnel, mintrap, etc.) must always run.
+                if (!mon.dead && moveStatus === MMOVE_MOVED) {
+                    const postmoveStatus = await run_dochug_postmove_pipeline_current_js(
+                        mon, map, player, display, fov, game, omx, omy, { preTrapDig: true }
+                    );
+                    if (postmoveStatus === MMOVE_DIED) {
+                        return;
+                    }
+                    mmoved = true;
+                }
             }
             ({ moveStatus, mmoved } = await run_dochug_postmove_tail_current_js(
                 mon, map, player, display, fov, moveStatus, mmoved

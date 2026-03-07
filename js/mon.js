@@ -152,7 +152,9 @@ export function mcalcmove(mon, m_moving = true) {
 // ========================================================================
 export async function allocateMonsterMovement(map) {
     for (const mon of map.monsters) {
-        if (mon.dead) continue;
+        // C ref: mon.c movemon_singlemon() uses DEADMONSTER(mtmp), which
+        // includes both explicit death flag and non-positive hp.
+        if (mon.dead || Number(mon.mhp || 0) <= 0) continue;
         const oldMv = mon.movement;
         mon.movement += await withRngTag('allocateMonsterMovement(mon.js:145)', () => mcalcmove(mon));
         const mmove = Number.isFinite(mon?.data?.mmove)
@@ -1678,7 +1680,7 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
             somebodyCanMove = false;
             break;
         }
-        if (mon.dead) continue;
+        if (mon.dead || Number(mon.mhp || 0) <= 0) continue;
         // C ref: mon.c movemon_singlemon() skips monsters not on this map.
         if (!isok(mon.mx, mon.my)) continue;
         // C ref: parked vault guards at (0,0) don't take normal turns.
@@ -1732,7 +1734,7 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
                             }
                         }
                     }
-                    if (mon.misc_worn_check !== oldworn || mon.mcanmove === false) {
+                    if (mon.misc_worn_check !== oldworn || !mon.mcanmove) {
                         continue; // spent this turn equipping
                     }
                 }
@@ -1766,7 +1768,7 @@ export async function movemon(map, player, display, fov, game = null, { dochug, 
                     && (!alreadySawMon || !couldSeeOld || oldDist > threatRangeSq)
                     && canSpotMonsterForMap(mon, map, player, fov)
                     && canSeeNow
-                    && mon.mcanmove !== false
+                    && !!mon.mcanmove
                     && !onscary(map, player.x, player.y)) {
                     if (typeof game.stopOccupation === 'function') await game.stopOccupation();
                     else {
