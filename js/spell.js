@@ -36,6 +36,7 @@ import { NHW_MENU } from './const.js';
 import { rn2, rnd, rn1, rnl } from './rng.js';
 import { pline, You, Your, You_feel, pline_The, You_hear } from './pline.js';
 import { exercise } from './attrib_exercise.js';
+import { acurr } from './attrib.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_BEAM, DISP_CHANGE, DISP_END } from './const.js';
 import { getpos_sethilite, getpos_async } from './getpos.js';
@@ -578,7 +579,7 @@ export async function study_book(spellbook, player) {
             too_hard = true;
         } else {
             // Uncursed: check read ability
-            const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
+            const intel = acurr(player, A_INT);
             const lensBonus = (player.blindfolded?.otyp === LENSES) ? 2 : 0;
             const read_ability = intel + 4 + Math.floor((player.ulevel || 1) / 2)
                                  - 2 * ocLevel + lensBonus;
@@ -926,7 +927,7 @@ async function cast_chain_lightning(player, map) {
 // C ref: zap.c spell_damage_bonus() — augment spell damage based on intelligence
 export function spell_damage_bonus(dmg, player) {
     if (!player) return dmg;
-    const intell = (player.attributes ? player.attributes[A_INT] : 10) || 10;
+    const intell = acurr(player, A_INT);
     const level = player.ulevel || 1;
 
     if (intell <= 9) {
@@ -1109,7 +1110,7 @@ export async function spelleffects(spell_otyp, atme, player, map, display) {
     }
 
     // Strength check
-    const str = player.attributes ? player.attributes[A_STR] : 10;
+    const str = acurr(player, A_STR);
     if ((str || 10) < 4 && spell_otyp !== SPE_RESTORE_ABILITY) {
         await You("lack the strength to cast spells.");
         return 0;

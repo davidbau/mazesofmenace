@@ -70,6 +70,7 @@ import { IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR, D_BROKEN,
          isok, COLNO, ROWNO, IS_OBSTRUCTED } from './const.js';
 import { rn2, rnd, rn1, d, rnl, shuffle_int_array } from './rng.js';
 import { exercise } from './attrib_exercise.js';
+import { acurr } from './attrib.js';
 import { pline, You, Your, You_feel, You_cant, You_hear, You_see,
          pline_The, There, pline_mon, verbalize, impossible } from './pline.js';
 import { Monnam, mon_nam, a_monnam, l_monnam, y_monnam } from './do_name.js';
@@ -368,7 +369,7 @@ export async function check_leash(player, x, y, map) {
 
 // cf. apply.c:992 -- beautiful: charisma adjective
 export function beautiful(player) {
-    const cha = player.attributes ? player.attributes[A_CHA] : 11;
+    const cha = acurr(player, A_CHA);
     if (cha >= 25) return "sublime";
     if (cha >= 19) return "splendorous";
     if (cha >= 16) return "handsome";
@@ -547,7 +548,7 @@ export async function use_unicorn_horn(obj, player) {
         rn1(90, 10); // lcount
         const effect = Math.floor(rn2(13) / 2);
         switch (effect) {
-        case 0: rn1(player.attributes ? player.attributes[A_CON] : 10, 20); break;
+        case 0: rn1(acurr(player, A_CON), 20); break;
         default: break;
         }
         return;
@@ -904,7 +905,7 @@ export async function handleApply(player, map, display, game) {
                 'n'.charCodeAt(0), display);
             if (String.fromCharCode(ans) !== 'y')
                 return { moved: false, tookTime: false };
-            const dex = player.attributes ? player.attributes[A_DEX] : 11;
+            const dex = acurr(player, A_DEX);
             const isRogue = (player.roleIndex === PM_ROGUE) ? 1 : 0;
             let chance;
             if (selected.otyp === CREDIT_CARD) chance = 2 * dex + 20 * isRogue;

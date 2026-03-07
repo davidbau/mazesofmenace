@@ -6,7 +6,7 @@ import { IS_DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_BROKEN, D_NODOOR,
          IS_WALL, A_STR, A_DEX, A_CON, SHOPBASE, ROOMOFFSET } from './const.js';
 import { rn2, rnd, rnl } from './rng.js';
 import { exercise } from './attrib_exercise.js';
-import { Luck } from './attrib.js';
+import { Luck, acurr } from './attrib.js';
 import { x_monnam, is_watch } from './mondata.js';
 import { KICKING_BOOTS } from './objects.js';
 import { mondead, angry_guards } from './mon.js';
@@ -79,9 +79,9 @@ export async function handleKick(player, map, display, game) {
     // Kick a closed or locked door (C kick_door handles both the same way).
     if (IS_DOOR(loc.typ) && (loc.flags & (D_LOCKED | D_CLOSED))) {
         await exercise(player, A_DEX, true);
-        const str = player.attributes ? player.attributes[A_STR] : 18;
-        const dex = player.attributes ? player.attributes[A_DEX] : 11;
-        const con = player.attributes ? player.attributes[A_CON] : 18;
+        const str = acurr(player, A_STR);
+        const dex = acurr(player, A_DEX);
+        const con = acurr(player, A_CON);
         const avrgAttrib = Math.floor((str + dex + con) / 3);
         const roomno = Number(loc.roomno);
         const room = (Number.isInteger(roomno) && roomno >= ROOMOFFSET)
@@ -143,7 +143,7 @@ export async function handleKick(player, map, display, game) {
             }
         }
         // C ref: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5)
-        const con = player.attributes?.[A_CON] || 10;
+        const con = acurr(player, A_CON);
         const dmg = rnd(con > 15 ? 3 : 5);
         player.uhp = Math.max(1, (player.uhpmax || 1) - Math.max(1, dmg));
         return { moved: false, tookTime: true };

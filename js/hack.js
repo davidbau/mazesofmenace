@@ -836,9 +836,9 @@ export async function domove_core(dir, player, map, display, game) {
             await pline("This door is locked.");
             return { moved: false, tookTime: false };
         }
-        const str = player.attributes ? player.attributes[A_STR] : 18;
-        const dex = player.attributes ? player.attributes[A_DEX] : 11;
-        const con = player.attributes ? player.attributes[A_CON] : 18;
+        const str = acurr(player, A_STR);
+        const dex = acurr(player, A_DEX);
+        const con = acurr(player, A_CON);
         const threshold = Math.floor((str + dex + con) / 3);
         const luck = (player.uluck ?? player.luck) || 0;
         if (rnl(20, luck) < threshold) {
@@ -3302,7 +3302,7 @@ export async function dosinkfall(player, map, display) {
         return;
     }
     if (display) await display.putstr_message('You crash to the floor!');
-    const con = player.attributes ? player.attributes[A_CON] : 10;
+    const con = acurr(player, A_CON);
     const dmg = rn2(8) + Math.max(1, 25 - con); // rn1(8, 25-CON)
     if (typeof player.takeDamage === 'function') {
         player.takeDamage(dmg, 'fell onto a sink');

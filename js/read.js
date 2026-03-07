@@ -18,6 +18,7 @@ import {
 import { A_STR, A_INT, A_WIS, A_CON, SDOOR, COLNO, ROWNO, MM_EDOG, MM_ADJACENTOK, CONFUSION, STUNNED } from './const.js';
 import { doname } from './mkobj.js';
 import { exercise } from './attrib_exercise.js';
+import { acurr } from './attrib.js';
 import { discoverObject, isObjectNameKnown } from './o_init.js';
 import { make_confused, make_stunned } from './potion.js';
 import { makemon } from './makemon.js';
@@ -377,7 +378,7 @@ async function handleRead(player, display, game) {
                         return { moved: false, tookTime: true };
                     }
                     // Uncursed: roll difficulty
-                    const intel = (player.attributes ? player.attributes[A_INT] : 12) || 12;
+                    const intel = acurr(player, A_INT);
                     const readAbility = intel + 4 + Math.floor((player.ulevel || 1) / 2) - 2 * ocLevel;
                     if (rnd(20) > readAbility) {
                         await display.putstr_message("You can't make heads or tails of this.");
