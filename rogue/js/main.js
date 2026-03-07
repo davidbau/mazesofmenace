@@ -27,7 +27,7 @@ import { daemon, kill_daemon, do_daemons, fuse, lengthen, extinguish, do_fuses }
 import { doctor, swander, rollwand, unconfuse, unsee, sight, nohaste, stomach,
          _setDaemonsDeps } from './daemons.js';
 import { command, quit, d_level, u_level, help, identify, _setCommandDeps } from './command.js';
-import { msg, addmsg, endmsg, status, readchar, step_ok, wait_for, resetStatus, _setIODeps } from './io.js';
+import { msg, addmsg, endmsg, status, readchar, step_ok, wait_for, resetStatus } from './io.js';
 import { look, search, secretdoor, find_obj, eat, chg_str, vowelstr, is_current, get_dir,
          _setMiscDeps } from './misc.js';
 import { _setRoomsDeps } from './rooms.js';
@@ -148,8 +148,6 @@ export async function initGame(seed, display, input_obj) {
   setGame(g);
 
   // Set up dependencies between modules
-  _setIODeps({ game: () => game() });
-
   _setMonsterDeps({
     msg, runto, save, unconfuse, fuse, lengthen, attack,
     ISWEARING, step_ok: step_ok_fn, cansee,
