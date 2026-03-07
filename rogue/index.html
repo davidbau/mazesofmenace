@@ -817,6 +817,14 @@
       var lines = md.split('\n');
       var inPre = false, inList = false;
       var bqLines = [], inBlockquote = false;
+      var paraLines = [];
+
+      function flushPara() {
+        if (paraLines.length) {
+          html += '<p>' + processInline(paraLines.join(' ')) + '</p>\n';
+          paraLines = [];
+        }
+      }
 
       function flushBq() {
         if (bqLines.length) {
@@ -839,25 +847,28 @@
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         if (line.match(/^```/)) {
-          if (!inPre) { flushBq(); if (inList) { html += '</ul>\n'; inList = false; } html += '<pre><code>'; inPre = true; }
+          flushPara(); flushBq();
+          if (!inPre) { if (inList) { html += '</ul>\n'; inList = false; } html += '<pre><code>'; inPre = true; }
           else { html += '</code></pre>\n'; inPre = false; }
           continue;
         }
         if (inPre) { html += line.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '\n'; continue; }
-        if (line.trim() === '') { flushBq(); if (inList) { html += '</ul>\n'; inList = false; } continue; }
+        if (line.trim() === '') { flushPara(); flushBq(); if (inList) { html += '</ul>\n'; inList = false; } continue; }
         if (line.match(/^>\s?/)) {
+          flushPara();
           inBlockquote = true;
           var bqText = line.replace(/^>\s?/, '');
           if (bqText.trim() === '') { flushBq(); } else { bqLines.push(bqText); }
           continue;
         } else if (inBlockquote) { flushBq(); }
         var hMatch = line.match(/^(#{1,6})\s+(.+)/);
-        if (hMatch) { if (inList) { html += '</ul>\n'; inList = false; } html += '<h' + hMatch[1].length + '>' + processInline(hMatch[2]) + '</h' + hMatch[1].length + '>\n'; continue; }
-        if (line.match(/^---+\s*$/)) { if (inList) { html += '</ul>\n'; inList = false; } html += '<hr>\n'; continue; }
-        if (line.match(/^[-*]\s+/)) { if (!inList) { html += '<ul>\n'; inList = true; } html += '<li>' + processInline(line.replace(/^[-*]\s+/, '')) + '</li>\n'; continue; }
+        if (hMatch) { flushPara(); if (inList) { html += '</ul>\n'; inList = false; } html += '<h' + hMatch[1].length + '>' + processInline(hMatch[2]) + '</h' + hMatch[1].length + '>\n'; continue; }
+        if (line.match(/^---+\s*$/)) { flushPara(); if (inList) { html += '</ul>\n'; inList = false; } html += '<hr>\n'; continue; }
+        if (line.match(/^[-*]\s+/)) { flushPara(); if (!inList) { html += '<ul>\n'; inList = true; } html += '<li>' + processInline(line.replace(/^[-*]\s+/, '')) + '</li>\n'; continue; }
         if (inList) { html += '</ul>\n'; inList = false; }
-        html += '<p>' + processInline(line) + '</p>\n';
+        paraLines.push(line.trim());
       }
+      flushPara();
       if (inPre) html += '</code></pre>\n';
       if (inList) html += '</ul>\n';
       flushBq();
