@@ -9,7 +9,7 @@ import { exercise } from './attrib_exercise.js';
 import { Luck, acurr } from './attrib.js';
 import { x_monnam, is_watch } from './mondata.js';
 import { KICKING_BOOTS } from './objects.js';
-import { mondead, angry_guards } from './mon.js';
+import { mondead, angry_guards, wake_nearto } from './mon.js';
 import { newsym } from './display.js';
 import { nhgetch } from './input.js';
 import { DIRECTION_KEYS } from './const.js';
@@ -142,6 +142,8 @@ export async function handleKick(player, map, display, game) {
                 player.attributes[A_DEX] = Math.max(1, player.attributes[A_DEX] - 1);
             }
         }
+        // C ref: dokick.c kick_ouch() — wake nearby monsters after impact.
+        wake_nearto(nx, ny, 5 * 5, map);
         // C ref: dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5)
         const con = acurr(player, A_CON);
         const dmg = rnd(con > 15 ? 3 : 5);

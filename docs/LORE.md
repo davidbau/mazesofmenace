@@ -4077,8 +4077,11 @@ hard-won wisdom:
 - Fix:
   - In [`js/kick.js`](/share/u/davidbau/git/mazesofmenace/mazes/js/kick.js), changed kick-wall damage application to:
     - `player.uhp = max(1, player.uhp - dmg)`.
+  - Added missing C side-effect in the same `kick_ouch` branch:
+    - `wake_nearto(nx, ny, 5 * 5, map)` after impact.
 - Validation:
   - Added focused unit test:
     - [`test/unit/kick_ouch_hp_current.test.js`](/share/u/davidbau/git/mazesofmenace/mazes/test/unit/kick_ouch_hp_current.test.js)
-    - asserts wall-kick damage is deducted from current HP, not max HP.
+    - asserts wall-kick damage is deducted from current HP, not max HP,
+    - and nearby sleepers are awakened while distant sleepers remain asleep.
   - `seed033_manual_direct` first divergence remains step `54` (no frontier regression from this correctness fix).
