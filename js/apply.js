@@ -1029,22 +1029,16 @@ export async function handleApply(player, map, display, game) {
             const showList = c === '*'
                 ? inventory.filter((item) => item?.invlet)
                 : candidates;
-            let picked = null;
             for (const item of showList) {
                 replacePromptMessage();
                 await display.putstr_message(
-                    `${item.invlet} - ${doname(item, player)}  --More--`);
-                const ack = await nhgetch();
-                const ackC = String.fromCharCode(ack);
-                if (ack === 27 || ack === 10 || ack === 13 || ackC === ' ')
-                    break;
-                const sel = candidateByInvlet.get(ackC)
-                    || (c === '*'
-                        ? inventory.find((o) => o?.invlet === ackC)
-                        : null);
-                if (sel) { picked = sel; break; }
+                    `${item.invlet} - ${doname(item, player)}.`);
+                if (typeof display?.renderMoreMarker === 'function') {
+                    display.renderMoreMarker();
+                    display._pendingMore = true;
+                }
+                await nhgetch();
             }
-            if (picked) return await resolveApplySelection(picked);
             continue;
         }
 
