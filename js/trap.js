@@ -67,10 +67,10 @@ import { stackobj } from './invent.js';
 import { tmp_at, nh_delay_output } from './animation.js';
 import { DISP_FLASH, DISP_END, xdir, ydir, N_DIRS, DIR_180, DIR_ERR } from './const.js';
 import { cansee, couldsee } from './vision.js';
-import { pline, You, pline_mon, You_hear } from './pline.js';
+import { pline, You, pline_mon, You_hear, You_feel } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { dist2, losehp } from './hack.js';
-import { an } from './objnam.js';
+import { an, xname, the, Tobjnam } from './objnam.js';
 import { float_vs_flight } from './polyself.js';
 import { LEVITATION, TIMEOUT, HALLUC } from './const.js';
 import { fall_asleep } from './timeout.js';
@@ -80,6 +80,7 @@ import { poisoned } from './attrib.js';
 import { sgn } from './hacklib.js';
 import { wake_nearby } from './mon.js';
 import { set_wounded_legs } from './do.js';
+import { rndcolor } from './do_name.js';
 
 // C ref: trap.c static string arrays
 const a_your = ['a', 'your'];
@@ -1642,6 +1643,118 @@ export async function disarm_shooting_trap(ttmp, otyp) {
   await You("disarm %s trap.", the_your[ttmp.madeby_u]);
   await cnv_trap_obj(otyp, 50 - rnl(50), ttmp, false);
   return 1;
+}
+
+// C ref: trap.c:6202 chest_trap(obj, bodypart, disarm)
+// Note: this is the trap resolution entry used by lock-picking and untrapping.
+export async function chest_trap(obj, bodypart, disarm, game = null, playerArg = null) {
+  const player = playerArg || game?.player || game?.u || {};
+  const luck = (player.uluck ?? player.luck ?? 0);
+
+  obj.tknown = 0;
+  obj.otrapped = 0;
+  await You(disarm ? "set it off!" : "trigger a trap!");
+
+  if (luck > -13 && rn2(13 + luck) > 7) {
+    let msg = null;
+    switch (rn2(13)) {
+      case 12:
+      case 11:
+        msg = "explosive charge is a dud";
+        break;
+      case 10:
+      case 9:
+        msg = "electric charge is grounded";
+        break;
+      case 8:
+      case 7:
+        msg = "flame fizzles out";
+        break;
+      case 6:
+      case 5:
+      case 4:
+        msg = "poisoned needle misses";
+        break;
+      case 3:
+      case 2:
+      case 1:
+      case 0:
+        msg = "gas cloud blows away";
+        break;
+      default:
+        msg = null;
+        break;
+    }
+    if (msg) {
+      await pline(`But luckily the ${msg}!`);
+    }
+  } else {
+    const traproll = rn2(20) ? ((luck >= 13) ? 0 : rn2(13 - luck)) : rn2(26);
+    switch (traproll) {
+      case 25:
+      case 24:
+      case 23:
+      case 22:
+      case 21:
+        await pline(`${Tobjnam(obj, "explode")}!`);
+        await losehp(d(6, 6), `exploding ${xname(obj)}`, "KILLED_BY_AN", player, null, game);
+        await exercise(player, A_STR, false);
+        return true;
+      case 20:
+      case 19:
+      case 18:
+      case 17:
+        await pline(`A cloud of noxious gas billows from ${the(xname(obj))}.`);
+        if (rn2(3)) {
+          await poisoned(player, "gas cloud", A_STR, "cloud of poison gas", 15, false);
+        }
+        await exercise(player, A_CON, false);
+        break;
+      case 16:
+      case 15:
+      case 14:
+      case 13:
+        await You_feel("a needle prick your finger.");
+        await poisoned(player, "needle", A_CON, "poisoned needle", 10, false);
+        await exercise(player, A_CON, false);
+        break;
+      case 12:
+      case 11:
+      case 10:
+      case 9:
+        await dofiretrap(obj, player, game, game?.map || game?.lev);
+        break;
+      case 8:
+      case 7:
+      case 6:
+        await You("are jolted by a surge of electricity!");
+        await losehp(d(4, 4), "electric shock", "KILLED_BY_AN", player, null, game);
+        break;
+      case 5:
+      case 4:
+      case 3:
+        if (!player.Free_action) {
+          await pline("Suddenly you are frozen in place!");
+          player.multi = -(d(5, 6));
+        } else {
+          await You("momentarily stiffen.");
+        }
+        break;
+      case 2:
+      case 1:
+      case 0:
+        await pline(`A cloud of ${rndcolor()} gas billows from ${the(xname(obj))}.`);
+        // Keep RNG/order parity from C status-duration rolls.
+        rn1(7, 16);
+        rn1(5, 16);
+        break;
+      default:
+        break;
+    }
+  }
+
+  obj.tknown = 1;
+  return false;
 }
 
 // Autotranslated from trap.c:5701

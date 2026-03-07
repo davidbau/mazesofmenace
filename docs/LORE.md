@@ -3648,3 +3648,20 @@ hard-won wisdom:
   - `seed031_manual_direct` now reaches the C lock occupation/trapped-chest area.
   - first RNG divergence moved to `chest_trap(trap.c:6220)` vs missing JS trapped-box handling in `picklock_fn`,
     giving a tighter next implementation target.
+
+### trapped-box lockflow now calls `chest_trap` before dex exercise (2026-03-07)
+
+- In C `lock.c:picklock()`, successful container lock/unlock calls:
+  - toggle `olocked`,
+  - set `lknown`,
+  - then `chest_trap(box, FINGER, FALSE)` when `otrapped`,
+  - then `exercise(A_DEX, TRUE)`.
+- JS had skipped the `chest_trap` call entirely, which shifted RNG immediately
+  after autounlock/lock occupation success.
+- Fix:
+  - added `trap.js` `chest_trap(...)` entry and wired `lock.js` `picklock_fn`
+    to call it in the same location as C.
+- Validation on `seed031_manual_direct`:
+  - RNG matched improved `10127 -> 10189`,
+  - events matched improved `3547 -> 3601`,
+  - first divergence moved later (`step 140 -> 152`).

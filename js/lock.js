@@ -15,7 +15,7 @@
 
 import { IS_DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, D_NODOOR, D_BROKEN, D_TRAPPED,
          SDOOR, DOOR, A_STR, A_DEX, A_CON, A_WIS,
-         SHOPBASE,
+         SHOPBASE, FINGER,
          PM_ROGUE, PM_WIZARD } from './const.js';
 import { rn2, rnl, rnd } from './rng.js';
 import { nhgetch, ynFunction } from './input.js';
@@ -43,6 +43,7 @@ import { stackobj } from './invent.js';
 import { add_damage } from './shk.js';
 import { mon_nam, some_mon_nam } from './do_name.js';
 import { canseemon } from './mondata.js';
+import { chest_trap } from './trap.js';
 
 // ============================================================================
 // Local helpers (cf. obj.h macros)
@@ -411,8 +412,10 @@ async function makePicklockOccupation(game) {
         } else if (xlock.box) {
             xlock.box.olocked = !xlock.box.olocked;
             xlock.box.lknown = true;
-            // C: if (xlock.box->otrapped) chest_trap(box, FINGER, FALSE)
-            // chest_trap not ported
+            // C lock.c: if trapped, chest_trap() runs before exercise().
+            if (xlock.box.otrapped) {
+                await chest_trap(xlock.box, FINGER, false, game, player);
+            }
         }
         await exercise(player, A_DEX, true);
         xlock.usedtime = 0;
