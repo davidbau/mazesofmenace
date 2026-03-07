@@ -3468,3 +3468,14 @@ hard-won wisdom:
   - `seed327` session parity reached full RNG/events match
     (`20304/20304`, `12214/12214`).
   - Failure burndown improved to `28/34` passing, `6` failing.
+
+### postmov parity slice: iron-bars handling before mdig_tunnel (2026-03-07)
+
+- Added a missing C `postmov()` branch in `js/monmove.js` for monsters that
+  can eat through `IRONBARS` (rust/corrosion/metallivore path), ordered before
+  `mdig_tunnel()` in the shared non-pet postmove pipeline.
+- Hardened `dissolve_bars()` so it no longer depends on undefined symbols and
+  safely updates terrain + wall info + redraw.
+- Validation:
+  - targeted seeds unchanged (`seed325`, `seed327`, `seed328` non-regressing);
+  - full failure suite unchanged at `28/34` passing (`6` failing).

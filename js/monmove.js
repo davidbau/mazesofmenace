@@ -24,7 +24,7 @@ import { COLNO, ROWNO, IS_WALL, IS_DOOR, IS_ROOM,
          ACCESSIBLE, CORR, DOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN,
          SHOPBASE, ROOM, ROOMOFFSET,
          isok, WEB, IS_OBSTRUCTED, IS_STWALL, A_STR,
-         IRONBARS, STAIRS, LADDER,
+         IRONBARS, STAIRS, LADDER, W_NONDIGGABLE,
          INVIS, DISPLACED,
          MTSZ, SQSRCHRADIUS, FARAWAY, BOLT_LIM } from './const.js';
 import { rn2, rnd, d, c_d, pushRngLogEntry } from './rng.js';
@@ -51,7 +51,8 @@ import { can_teleport, noeyes, perceives, nohands,
          is_giant, is_undead, is_unicorn, is_minion, throws_rocks,
          passes_walls, corpse_eater,
          passes_bars, is_human, canseemon, monsdat,
-         webmaker, tunnels, needspick } from './mondata.js';
+         webmaker, tunnels, needspick,
+         dmgtype, is_metallivore } from './mondata.js';
 import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_LEPRECHAUN, PM_GREMLIN, PM_STALKER,
          PM_TENGU,
@@ -61,7 +62,7 @@ import { PM_GRID_BUG, PM_SHOPKEEPER, PM_MINOTAUR, mons,
          PM_SHRIEKER, PM_PURPLE_WORM, PM_MEDUSA, PM_ERINYS,
          PM_HEZROU, PM_STEAM_VORTEX, PM_FOG_CLOUD, PM_GIANT_SPIDER,
          AT_WEAP, AT_BREA, AT_SPIT, AT_MAGC,
-         AD_SPEL, AD_CLRC,
+         AD_SPEL, AD_CLRC, AD_RUST, AD_CORR,
          S_MIMIC, S_GHOST, S_BAT, S_LIGHT, S_EEL,
          S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
          M1_WALLWALK, M1_AMORPHOUS, M1_UNSOLID,
@@ -895,6 +896,19 @@ async function run_dochug_postmove_pipeline_current_js(
                             await display.putstr_message('You hear a door open.');
                         }
                     }
+                }
+            } else if (here && here.typ === IRONBARS) {
+                // C ref: monmove.c postmov() bars handling (before mdig_tunnel()).
+                const mdat = mon.data || mon.type || mons[mon.mndx] || {};
+                const wallInfo = Number(here.wall_info ?? 0);
+                const canEatBars = !(wallInfo & W_NONDIGGABLE)
+                    && (dmgtype(mdat, AD_RUST) || dmgtype(mdat, AD_CORR) || is_metallivore(mdat));
+                if (canEatBars) {
+                    if (display && canSpotMonsterForMap(mon, map, player, fov)) {
+                        await display.putstr_message(`${Monnam(mon)} eats through the iron bars.`);
+                    }
+                    await dissolve_bars(mon.mx, mon.my, map);
+                    return MMOVE_DONE;
                 }
             }
             if ((allowflags & ALLOW_DIG) && may_dig(mon.mx, mon.my, map)) {
@@ -2498,8 +2512,12 @@ export function monmoveStepLabel(map) {
 
 // Autotranslated from monmove.c:2172
 export async function dissolve_bars(x, y, map) {
-  map.locations[x][y].typ = (map.locations[x][y].edge === 1) ? DOOR : (Is_special(map.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
-  map.locations[x][y].flags = 0;
+  if (!map || !isok(x, y)) return;
+  const loc = map.locations?.[x]?.[y];
+  if (!loc) return;
+  // C ref: dissolve_bars() chooses DOOR for edge bars, else ROOM/CORR by context.
+  loc.typ = (loc.edge === 1) ? DOOR : ((Number(loc.roomno || 0) >= ROOMOFFSET) ? ROOM : CORR);
+  loc.flags = 0;
+  loc.wall_info = 0;
   newsym(x, y);
-  if (u_at(x, y)) await switch_terrain();
 }
