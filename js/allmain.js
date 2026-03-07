@@ -234,9 +234,26 @@ export async function moveloop_turnend(game) {
         await game.display.putstr_message('Your leg feels better.');
     }
 
-    // C ref: mon.c m_calcdistress() — temporary flee timeout handling.
+    // C ref: mon.c m_calcdistress() — per-monster distress timers.
     for (const mon of (game.lev || game.map).monsters) {
         if (mon.dead) continue;
+        // C ref: mon.c:1178-1183 — mblinded timeout
+        if (mon.mblinded && typeof mon.mblinded === 'number') {
+            mon.mblinded--;
+            if (mon.mblinded <= 0) {
+                mon.mblinded = 0;
+                mon.mcansee = true;
+            }
+        }
+        // C ref: mon.c:1185-1190 — mfrozen timeout
+        if (mon.mfrozen && typeof mon.mfrozen === 'number') {
+            mon.mfrozen--;
+            if (mon.mfrozen <= 0) {
+                mon.mfrozen = 0;
+                mon.mcanmove = true;
+            }
+        }
+        // C ref: mon.c:1192-1197 — mfleetim timeout
         if (mon.mfleetim && mon.mfleetim > 0) {
             mon.mfleetim--;
             if (mon.mfleetim <= 0) {
