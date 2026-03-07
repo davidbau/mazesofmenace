@@ -1799,13 +1799,13 @@ export function curr_mon_load(mtmp) {
 // Autotranslated from mon.c:1911
 export function max_mon_load(mtmp) {
   let maxload;
-  if (!mtmp.data.cwt) maxload = (MAX_CARR_CAP *  mtmp.data.msize) / MZ_HUMAN;
-  else if (!strongmonst(mtmp.data) || (strongmonst(mtmp.data) && (mtmp.data.cwt > WT_HUMAN))) maxload = (MAX_CARR_CAP *  mtmp.data.cwt) / WT_HUMAN;
+  if (!mtmp.data.cwt) maxload = Math.floor((MAX_CARR_CAP *  mtmp.data.msize) / MZ_HUMAN);
+  else if (!strongmonst(mtmp.data) || (strongmonst(mtmp.data) && (mtmp.data.cwt > WT_HUMAN))) maxload = Math.floor((MAX_CARR_CAP *  mtmp.data.cwt) / WT_HUMAN);
   else {
     maxload = MAX_CARR_CAP;
   }
   if (!strongmonst(mtmp.data)) {
-    maxload /= 2;
+    maxload = Math.floor(maxload / 2);
   }
   if (maxload < 1) maxload = 1;
   return  maxload;

@@ -233,9 +233,9 @@ function max_mon_load(mon) {
     let maxload;
 
     if (!cwt) {
-        maxload = (MAX_CARR_CAP * msize) / MZ_HUMAN;
+        maxload = Math.floor((MAX_CARR_CAP * msize) / MZ_HUMAN);
     } else if (!strong || cwt > WT_HUMAN) {
-        maxload = (MAX_CARR_CAP * cwt) / WT_HUMAN;
+        maxload = Math.floor((MAX_CARR_CAP * cwt) / WT_HUMAN);
     } else {
         maxload = MAX_CARR_CAP;
     }

@@ -1677,7 +1677,7 @@ export function eaten_stat(base, obj) {
     impossible( "partly eaten food (%ld) more nutritious than untouched food (%ld)", uneaten_amt, full_amount);
     uneaten_amt = full_amount;
   }
-  base =  (full_amount ?  base * uneaten_amt / full_amount : 0);
+  base =  (full_amount ? Math.floor(base * uneaten_amt / full_amount) : 0);
   return (base < 1) ? 1 : base;
 }
 
