@@ -1688,7 +1688,7 @@ export function is_treefruit(otmp) {
 export function mkgold(amount, x, y, map) {
   let gold = g_at(x, y);
   if (amount <= 0) {
-    let mul = rnd(30 / Math.max(12-depth(map.uz), 2));
+    let mul = rnd(Math.max(Math.floor(30 / Math.max(12-depth(map.uz), 2)), 1));
     amount =  (1 + rnd(level_difficulty() + 2) * mul);
   }
   if (gold) { gold.quan += amount; }

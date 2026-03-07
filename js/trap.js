@@ -1651,7 +1651,7 @@ export async function disarm_box(box, force, confused, player) {
     if (Role_if(PM_ROGUE)) {
       ch *= 2;
     }
-    if (!force && (confused || Fumbling || rnd(75 + level_difficulty() / 2) > ch)) { await chest_trap(box, FINGER, true); }
+    if (!force && (confused || Fumbling || rnd(75 + Math.floor(level_difficulty() / 2)) > ch)) { await chest_trap(box, FINGER, true); }
     else {
       await You("disarm it!");
       box.otrapped = 0;
