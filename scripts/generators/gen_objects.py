@@ -822,9 +822,10 @@ def process_calls(calls):
             color = resolve_color(args[12])
             sn = args[13].strip()
             hardgem = 1 if mohs >= 8 else 0
+            # C: ROCK macro sets oc_skill = -P_SLING for all rocks/flint
             bits = {'known': kn, 'merge': 1, 'uses_known': 0, 'container': 0,
                     'magic': mgc, 'charged': 0, 'unique': 0, 'no_wish': 0,
-                    'big': 0, 'tough': hardgem, 'dir': 0, 'sub': 0, 'material': glass}
+                    'big': 0, 'tough': hardgem, 'dir': 0, 'sub': -WEAPON_SKILLS['P_SLING'], 'material': glass}
             add_object(name, desc, bits, 0, OC_CLASSES['GEM_CLASS'], prob, 0, wt,
                        gval, sdam, ldam, 0, 0, nutr, color, sn)
 

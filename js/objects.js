@@ -9048,7 +9048,7 @@ export const objectData = [
         merge: 1, magic: 1,
         oc_dir: 0, oc_subtyp: 0,
     },
-    { // [470] FLINT
+    { // [470] FLINT — C: ROCK macro sets oc_skill = -P_SLING
         oc_name: "flint",
         oc_descr: "gray",
         oc_class: 12, // GEM_CLASS
@@ -9064,9 +9064,9 @@ export const objectData = [
         oc_material: 21,
         oc_oprop: 0,
         merge: 1,
-        oc_dir: 0, oc_subtyp: 0,
+        oc_dir: 0, oc_subtyp: -21,
     },
-    { // [471] ROCK
+    { // [471] ROCK — C: ROCK macro sets oc_skill = -P_SLING
         oc_name: "rock",
         oc_descr: null,
         oc_class: 12, // GEM_CLASS
@@ -9082,7 +9082,7 @@ export const objectData = [
         oc_material: 21,
         oc_oprop: 0,
         known: 1, merge: 1,
-        oc_dir: 0, oc_subtyp: 0,
+        oc_dir: 0, oc_subtyp: -21,
     },
     { // [472] BOULDER
         oc_name: "boulder",
