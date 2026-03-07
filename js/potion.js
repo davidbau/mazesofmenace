@@ -493,45 +493,42 @@ export async function peffect_speed(player, otmp, display) {
 
 // cf. potion.c peffect_sleeping()
 export async function peffect_sleeping(player, otmp, display) {
-    // C ref: check FREE_ACTION resistance
-    const freeAct = player.uprops[FREE_ACTION];
-    if (freeAct && (freeAct.intrinsic || freeAct.extrinsic)) {
+    // C ref: potion.c:899-906 — Sleep_resistance OR Free_action prevents sleep
+    const sr = player.uprops?.[SLEEP_RES];
+    const sleepRes = sr && (sr.intrinsic || sr.extrinsic);
+    const freeAct = player.uprops?.[FREE_ACTION];
+    const hasFreeAction = freeAct && (freeAct.intrinsic || freeAct.extrinsic);
+    if (sleepRes || hasFreeAction) {
         await You("yawn.");
         return false;
     }
-    if (otmp.cursed || !otmp.blessed) {
-        await You("fall asleep.");
-        const duration = rnd(otmp.cursed ? 25 : 15);
-        player.sleeping = true;
-        player.sleepTimeout = duration;
-        player.sleepWakeupMessage = 'You wake up.';
-        return true;
-    }
-    await You_feel("wide awake.");
-    return false;
+    // C ref: potion.c:905 — rn1(10, 25 - 12*bcsign) always consumed
+    const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
+    const duration = rn1(10, 25 - 12 * bcsign);
+    await You("suddenly fall asleep!");
+    player.sleeping = true;
+    player.sleepTimeout = duration;
+    player.sleepWakeupMessage = 'You wake up.';
+    return true;
 }
 
 // cf. potion.c peffect_paralysis()
 export async function peffect_paralysis(player, otmp, display) {
-    // C ref: check FREE_ACTION resistance
-    const freeAct = player.uprops[FREE_ACTION];
+    // C ref: potion.c:879-893 — Free_action prevents paralysis
+    const freeAct = player.uprops?.[FREE_ACTION];
     if (freeAct && (freeAct.intrinsic || freeAct.extrinsic)) {
         await You("stiffen momentarily.");
         return false;
     }
-    if (otmp.blessed) {
-        await You_feel("limber.");
-        return false;
-    }
-    if (player.getPropTimeout(CONFUSION) || player.getPropTimeout(STUNNED)) {
-        await You("are motionlessly confused.");
-    } else {
-        await You_cant("move!");
-    }
-    const duration = rnd(otmp.cursed ? 25 : 10);
+    // C ref: potion.c:889 — rn1(10, 25 - 12*bcsign) for ALL BUC states
+    const bcsign = otmp.blessed ? 1 : (otmp.cursed ? -1 : 0);
+    const duration = rn1(10, 25 - 12 * bcsign);
+    await You_cant("move!");
     player.sleeping = true;
     player.sleepTimeout = duration;
     player.sleepWakeupMessage = 'You can move again.';
+    // C ref: potion.c:892 — exercise(A_DEX, FALSE)
+    await exercise(player, A_DEX, false);
     return true;
 }
 
