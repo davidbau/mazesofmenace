@@ -27,7 +27,7 @@ import {
     AMULET_OF_STRANGULATION, RIN_SLOW_DIGESTION,
 } from './objects.js';
 
-import { obj_resists, is_organic, is_metallic, is_rustprone } from './objdata.js';
+import { obj_resists, is_organic, is_metallic, is_rustprone, hasPoisonTrapBit } from './objdata.js';
 import {
     carnivorous, herbivorous, is_undead, is_elf,
     is_humanoid, acidic, poisonous, is_metallivore,
@@ -121,7 +121,7 @@ export function dogfood(mon, obj, moves) {
     const carni = carnivorous(mptr);
     const herbi = herbivorous(mptr);
 
-    if (obj.opoisoned && !resists_poison(mon))
+    if (hasPoisonTrapBit(obj) && !resists_poison(mon))
         return POISON;
 
     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95))

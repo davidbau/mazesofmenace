@@ -1882,7 +1882,11 @@ async function handleEat(player, display, game) {
                 rn2(7);  // rottenfood gate (when no prior taste effect triggered)
             }
             rn2(10); // palatable taste gate
-            corpseTasteIdx = rn2(5);  // palatable message choice index
+            if (cnum >= 0 && cnum < mons.length && vegetarian(mons[cnum])) {
+                corpseTasteIdx = 0; // C: vegetarian corpses use fixed "okay" index.
+            } else {
+                corpseTasteIdx = rn2(5);  // palatable message choice index
+            }
         }
         const od = objectData[eatenItem.otyp];
         const cnum = Number.isInteger(eatenItem.corpsenm) ? eatenItem.corpsenm : -1;

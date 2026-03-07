@@ -39,7 +39,7 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          dmgtype, attacktype } from './mondata.js';
 import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
 import { next_ident } from './mkobj.js';
-import { is_metallic, is_organic, obj_resists } from './objdata.js';
+import { is_metallic, is_organic, obj_resists, hasPoisonTrapBit } from './objdata.js';
 import { newsym, canSpotMonsterForMap } from './display.js';
 import { mpickobj, mdrop_obj } from './steal.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
@@ -1238,7 +1238,7 @@ export function meatmetal(mon, map) {
             otmp.otyp === RIN_SLOW_DIGESTION)
             continue;
         // Skip poisoned items for non-resistant monsters
-        if (otmp.opoisoned && !resists_poison(mon))
+        if (hasPoisonTrapBit(otmp) && !resists_poison(mon))
             continue;
         if (!is_metallic(otmp)) continue;
         if (obj_resists(otmp, 5, 95)) continue;  // consumes rn2(100)

@@ -101,6 +101,12 @@ export function is_metallic(obj) {
 // C ref: #define is_rustprone(otmp) (objects[(otmp)->otyp].oc_material == IRON)
 export function is_rustprone(obj) { return oc_material(obj) === IRON; }
 
+// C ref: include/obj.h -- `#define opoisoned otrapped`
+// JS keeps separate fields; parity-sensitive reads should treat either as set.
+export function hasPoisonTrapBit(obj) {
+    return !!(obj && (obj.opoisoned || obj.otrapped));
+}
+
 // C ref: #define is_flammable(otmp) — material < DRAGON_HIDE and not liquid/wax
 export function is_flammable(obj) {
     const mat = oc_material(obj);

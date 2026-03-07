@@ -3577,5 +3577,27 @@ hard-won wisdom:
 - Validation:
   - `scripts/run-and-report.sh --failures` now reports `30/34` passing (`4`
     failing), matching current team frontier.
-  - Remaining `seed325` divergence is later screen-only (`step 306`, missing
+- Remaining `seed325` divergence is later screen-only (`step 306`, missing
     floor `)` glyph) with RNG/events still full-match.
+
+### dogfood poison/trap bit alias + vegetarian corpse taste index (2026-03-07)
+
+- `seed031_manual_direct` had persistent dog-goal drift where C logged
+  `food=5` (POISON) for a floor large box while JS logged `food=4` (APPORT),
+  causing an extra JS `obj_resists()` `rn2(100)` in `dogfood`.
+- Root cause: C aliases object bits (`#define opoisoned otrapped`), but JS
+  stores `opoisoned` and `otrapped` separately.
+  - For trapped boxes (`otrapped=1`), C `dogfood()` sees poison-bit set and
+    returns `POISON` before `obj_resists()`.
+  - JS previously only checked `obj.opoisoned`, so it missed this branch.
+- Fix:
+  - Added `hasPoisonTrapBit(obj)` in `js/objdata.js`.
+  - Switched parity-sensitive reads in `js/dog.js` (`dogfood`) and `js/mon.js`
+    (`meatmetal`) to use the shared-bit helper.
+- Additional C-faithful parity fix in `js/eat.js`:
+  - corpse palatability message index now follows C:
+    vegetarian corpses use fixed index `0`, non-vegetarian corpses use `rn2(5)`.
+- Validation:
+  - Gameplay failure set remains stable (`31/34` passing).
+  - `seed031` first RNG divergence moved later (`step 131 -> 139`), confirming
+    forward progress without regressions.
