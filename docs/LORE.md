@@ -3537,3 +3537,25 @@ hard-won wisdom:
     (remaining mismatch is cursor-only),
   - global gameplay burndown improved from `28/34` to `29/34` passing
     (`5` failing).
+
+### makelevel branch snapshot parity (seed332) (2026-03-07)
+
+- `seed332_valkyrie_wizard_gameplay` regressed with first RNG drift at step 203:
+  JS consumed `rn2(4)` in `find_branch_room()` while C consumed `rn2(6)` in
+  `makelevel(mklev.c:1403)`.
+- Root cause in `js/dungeon.js makelevel()`:
+  - JS recomputed branch presence late (right before `place_branch()`),
+    after vault/`mk_knox_portal()` could mutate Ludios branch source.
+  - C snapshots `branchp = Is_branchlev(&u.uz)` early and uses that snapshot for
+    both `room_threshold` and later `place_branch(branchp, ...)`.
+  - On this seed, late recompute falsely treated `d0l25` as branch level and
+    triggered extra `find_branch_room()` RNG.
+- Fix:
+  - Snapshot branch placement once at makelevel start:
+    `branchPlacementAtStart = resolveBranchPlacementForLevel(...)`.
+  - Use `hasBranchAtStart` for room threshold (`4` vs `3`).
+  - Use `branchPlacementAtStart` for `place_branch` instead of late recompute.
+- Validation:
+  - `seed332` now full pass: RNG/events/screen/mapdump all 100%.
+  - `scripts/run-and-report.sh --failures` improved from `29/34` to `30/34`
+    passing gameplay sessions; no new failures introduced.

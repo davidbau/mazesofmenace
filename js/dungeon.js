@@ -4679,6 +4679,15 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
     map._heroHasAmulet = heroHasAmulet;
     map._genDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
     map._genDlevel = Number.isInteger(dlevel) ? dlevel : depth;
+    const branchDnum = map._genDnum;
+    const branchDlevel = map._genDlevel;
+    // C ref: mklev.c computes branchp = Is_branchlev(&u.uz) once before
+    // vault/Knox portal logic; later place_branch() uses that snapshot.
+    // Keep the same snapshot so branch topology mutations inside this makelevel
+    // call (e.g., mk_knox_portal source assignment) do not retroactively
+    // create a branch on the current level.
+    const branchPlacementAtStart = resolveBranchPlacementForLevel(branchDnum, branchDlevel);
+    const hasBranchAtStart = !!branchPlacementAtStart.found;
     map.is_invocation_lev = !!opts.invocationLevel
         || (dnum === GEHENNOM && dlevel === 9);
     map._isInvocationLevel = map.is_invocation_lev; // IRON_PARITY_ALIAS_BRIDGE (retire by M6)
@@ -4787,7 +4796,7 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
         // For deeper depths, the chain consumes rn2() calls for each check.
         if (depth > 1) {
             // C ref: mklev.c room_threshold = branchp ? 4 : 3
-            const room_threshold = isBranchLevel(dnum, dlevel) ? 4 : 3;
+            const room_threshold = hasBranchAtStart ? 4 : 3;
             const mktempleOpts = {
                 induced_align_fn: induced_align,
                 dungeon_align_by_dnum: DUNGEON_ALIGN_BY_DNUM,
@@ -4840,13 +4849,10 @@ export async function makelevel(depth, dnum, dlevel, opts = {}) {
         // C always calls find_branch_room() to consume RNG even for BR_NO_END1 (no stair placed).
         // Use branchResult.found (not placement !== 'none') to match C's RNG consumption.
         if (depth > 1) {
-            const branchDnum = Number.isInteger(dnum) ? dnum : DUNGEONS_OF_DOOM;
-            const branchDlevel = Number.isInteger(dlevel) ? dlevel : depth;
-            const branchResult = resolveBranchPlacementForLevel(branchDnum, branchDlevel);
-            if (_branchTopology.length && branchResult.found) {
+            if (_branchTopology.length && hasBranchAtStart) {
                 const { pos } = find_branch_room(map);
                 if (pos) {
-                    place_branch(map, pos.x, pos.y, branchResult.placement);
+                    place_branch(map, pos.x, pos.y, branchPlacementAtStart.placement);
                 }
             }
         }
