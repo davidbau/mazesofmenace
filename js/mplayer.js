@@ -124,7 +124,7 @@ export function create_mplayers(num, special) {
       y = rnd(ROWNO - 2);
     } while (!goodpos(x, y, fakemon, 0) && tryct++ <= 50);
     if (tryct > 50) return;
-    mk_mplayer( mons,  x,  y, special);
+    mk_mplayer( mons[pm],  x,  y, special);
     num--;
   }
 }

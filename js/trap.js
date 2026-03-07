@@ -65,7 +65,7 @@ import { CORPSE, WEAPON_CLASS, ARMOR_CLASS,
          ARROW, DART, ROCK, BOULDER, WAND_CLASS } from './objects.js';
 import { stackobj } from './invent.js';
 import { tmp_at, nh_delay_output } from './animation.js';
-import { DISP_FLASH, DISP_END } from './const.js';
+import { DISP_FLASH, DISP_END, xdir, ydir, N_DIRS, DIR_180, DIR_ERR } from './const.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, You, pline_mon, You_hear } from './pline.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -77,6 +77,7 @@ import { fall_asleep } from './timeout.js';
 import { thitu } from './mthrowu.js';
 import { exercise } from './attrib_exercise.js';
 import { poisoned } from './attrib.js';
+import { sgn } from './hacklib.js';
 import { wake_nearby } from './mon.js';
 import { set_wounded_legs } from './do.js';
 
@@ -1688,6 +1689,14 @@ export function count_traps(ttyp) {
   return ret;
 }
 
+// C ref: cmd.c xytod() — local copy to avoid circular import with cmd.js
+function xytod(x, y) {
+  for (let dd = 0; dd < N_DIRS; dd++) {
+    if (x === xdir[dd] && y === ydir[dd]) return dd;
+  }
+  return DIR_ERR;
+}
+
 // Autotranslated from trap.c:6460
 export function conjoined_pits(trap2, trap1, u_entering_trap2, player) {
   let dx, dy, diridx, adjidx;
@@ -1709,8 +1718,8 @@ export function clear_conjoined_pits(trap) {
   if (trap && is_pit(trap.ttyp)) {
     for (diridx = 0; diridx < N_DIRS; ++diridx) {
       if (trap.conjoined & (1 << diridx)) {
-        x = trap.tx + xdir;
-        y = trap.ty + ydir;
+        x = trap.tx + xdir[diridx];
+        y = trap.ty + ydir[diridx];
         if (isok(x, y) && (t = t_at(x, y)) != null && is_pit(t.ttyp)) { adjidx = DIR_180(diridx); t.conjoined &= ~(1 << adjidx); }
         trap.conjoined &= ~(1 << diridx);
       }
