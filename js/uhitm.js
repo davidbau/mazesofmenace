@@ -1956,6 +1956,7 @@ export async function do_attack_core(player, monster, display, map, game = null)
         || player.weapon.oclass === GEM_CLASS
     );
     const rangedMelee = usesRangedMeleeDamage(player.weapon);
+    let applyDmgBonus = !rangedMelee;
     if (player.weapon && rangedMelee) {
         // cf. uhitm.c:884 hmon_hitmon_weapon_ranged() — rnd(2) base
         damage = rnd(2);
@@ -1977,7 +1978,7 @@ export async function do_attack_core(player, monster, display, map, game = null)
     }
 
     // cf. uhitm.c:1414 hmon_hitmon_dmg_recalc() — add strength and skill bonuses
-    if (!rangedMelee) {
+    if (applyDmgBonus) {
         damage += dbon(acurr(player, A_STR));
         if (weaponLike) {
             damage += weapon_dam_bonus(player.weapon); // skill-based (stub: returns 0)
