@@ -228,7 +228,7 @@ export function restcemetery(nhfp, cemeteryaddr) {
   if (((nhfp.mode & CONVERTING) !== 0) || ((nhfp.mode & UNCONVERTING) !== 0)) {
     let thisbones, nextbones;
     nextbones = cemeteryaddr;
-    while ((thisbones = nextbones) !== 0) {
+    while ((thisbones = nextbones) != null) {
       nextbones = thisbones.next;
       (thisbones, 0);
     }

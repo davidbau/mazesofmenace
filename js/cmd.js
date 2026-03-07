@@ -1433,7 +1433,7 @@ export function there_cmd_menu_next2u(win, x, y, mod, act, map, player) {
     if ((dm & (D_CLOSED | D_LOCKED))) {
       mcmd_addmenu(win, MCMD_OPEN_DOOR, "Open the door"), ++K;
       key_or_pick = (carrying(SKELETON_KEY) || carrying(LOCK_PICK));
-      card = (carrying(CREDIT_CARD) !== 0);
+      card = (carrying(CREDIT_CARD) != null);
       if (key_or_pick || card) {
         buf = `${key_or_pick ? "lock or " : ""}unlock the door`;
         mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;

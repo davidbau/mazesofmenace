@@ -194,7 +194,7 @@ export function savecemetery(nhfp, cemeteryaddr) {
   flag = cemeteryaddr ? 0 : -1;
   if (update_file(nhfp)) { Sfo_int(nhfp, flag, "cemetery-cemetery_flag"); }
   nextbones = cemeteryaddr;
-  while ((thisbones = nextbones) !== 0) {
+  while ((thisbones = nextbones) != null) {
     nextbones = thisbones.next;
     if (update_file(nhfp)) {
       Sfo_cemetery(nhfp, thisbones, "cemetery-bonesinfo");

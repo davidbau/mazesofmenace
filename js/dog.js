@@ -826,21 +826,21 @@ export function losedogs(game, map) {
     if (mtmp.isshk) { if (!mtmp.mpeaceful) dismissKops = -1; }
   }
   if (dismissKops > 0) make_happy_shoppers(true);
-  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+  for (mprev = game.migrating_mons; (mtmp = mprev) != null; ) {
     xyloc = mtmp.mtrack[0].x;
     if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc === MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, Before_you); }
     else { mprev = mtmp.nmon; }
   }
-  while ((mtmp = game.mydogs) !== 0) {
+  while ((mtmp = game.mydogs) != null) {
     game.mydogs = mtmp.nmon;
     mon_arrive(mtmp, With_you);
   }
-  for (mprev = game.migrating_mons; (mtmp = mprev) !== 0; ) {
+  for (mprev = game.migrating_mons; (mtmp = mprev) != null; ) {
     xyloc = mtmp.mtrack[0].x;
     if (mtmp.mux === map.uz.dnum && mtmp.muy === map.uz.dlevel && xyloc !== MIGR_EXACT_XY) { mprev = mtmp.nmon; mon_arrive(mtmp, After_you); }
     else { mprev = mtmp.nmon; }
   }
-  while ((mtmp = failed_arrivals) !== 0) {
+  while ((mtmp = failed_arrivals) != null) {
     failed_arrivals = mtmp.nmon;
     mtmp.nmon = fmon;
     fmon = mtmp;

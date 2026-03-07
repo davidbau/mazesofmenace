@@ -806,7 +806,7 @@ export function clear_bypass(objchn) {
 // Autotranslated from worn.c:1148
 export function nxt_unbypassed_loot(lootarray, listhead) {
   let o, obj;
-  while ((obj = lootarray.obj) !== 0) {
+  while ((obj = lootarray.obj) != null) {
     for (o = listhead; o; o = o.nobj) {
       if (o === obj) {
         break;
