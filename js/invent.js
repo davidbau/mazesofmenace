@@ -34,6 +34,7 @@ import { newsym } from './display.js';
 import { observeObject, discoverObject, isObjectNameKnown } from './o_init.js';
 import { exercise } from './attrib_exercise.js';
 import { acurr, acurrstr } from './attrib.js';
+import { game as _gstate } from './gstate.js';
 
 
 // ============================================================
@@ -2243,16 +2244,17 @@ export function adjust_gold_ok(obj) {
 // removed.  This matches merged(&obj, &otmp) where obj (new) accumulates
 // otmp's (old) quantity.
 export function stackobj(obj, map) {
-    if (!map || !map.objects) return;
-    for (const otmp of map.objects) {
+    const mapRef = map || _gstate?.lev || _gstate?.map;
+    if (!mapRef || !mapRef.objects) return;
+    for (const otmp of mapRef.objects) {
         if (otmp !== obj && otmp.ox === obj.ox && otmp.oy === obj.oy
             && !otmp.buried && !obj.buried && mergable(otmp, obj)) {
             // C ref: merged() — new obj survives, old otmp is extracted/removed
             obj.quan = (obj.quan || 1) + (otmp.quan || 1);
             obj.owt = weight(obj);
             // Remove otmp (old) from map — matches C obj_extract_self(obj) in merged()
-            const idx = map.objects.indexOf(otmp);
-            if (idx >= 0) map.objects.splice(idx, 1);
+            const idx = mapRef.objects.indexOf(otmp);
+            if (idx >= 0) mapRef.objects.splice(idx, 1);
             pushRngLogEntry(`^remove[${otmp.otyp},${otmp.ox},${otmp.oy}]`);
             return;
         }

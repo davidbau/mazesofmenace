@@ -1551,21 +1551,22 @@ export async function dountrap() {
 }
 
 // Autotranslated from trap.c:5248
-export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it, player) {
+export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it, player, mapRef = null) {
   let otmp = mksobj(otyp, true, false), mtmp;
+  const map = mapRef || player?.lev || player?.map || null;
   otmp.quan = cnt;
   otmp.owt = weight(otmp);
   if (otyp !== DART) otmp.opoisoned = 0;
-  place_object(otmp, ttmp.tx, ttmp.ty);
+  place_object(otmp, ttmp.tx, ttmp.ty, map);
   if (bury_it) { bury_an_obj(otmp, null); }
   else {
     if (ttmp.madeby_u) sellobj(otmp, ttmp.tx, ttmp.ty);
-    stackobj(otmp);
+    stackobj(otmp, map);
   }
   newsym(ttmp.tx, ttmp.ty);
   if (player.utrap && u_at(ttmp.tx, ttmp.ty)) await reset_utrap(true);
   if (((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) && mtmp.mtrapped) mtmp.mtrapped = 0;
-  deltrap(ttmp);
+  deltrap(map, ttmp);
 }
 
 // Autotranslated from trap.c:5282

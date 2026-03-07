@@ -3370,7 +3370,6 @@ hard-won wisdom:
   - `seed331_tourist_wizard_gameplay` now passes fully for gameplay channels:
     RNG `18493/18493`, Events `3708/3708`, Screen `389/389`, Colors `9336/9336`.
   - gameplay-suite pass count improved from `28/34` to `29/34` (5 failures remain).
-
 ## Lesson: replay should not own generic per-key rerender policy
 
 - `replay_core` previously forced a generic `docrt`-style rerender after most
@@ -3396,3 +3395,18 @@ hard-won wisdom:
 - `js/replay_core.js` now calls only this runtime API while a command is
   pending, instead of making window-specific decisions itself.
 - Validation remained non-regressing (`29/34` gameplay passing; same 5 failures).
+
+## Manual-direct early drift reduction: `#untrap` + trap object map wiring + autounlock occupation ordering (2026-03-07)
+
+- Target: issue `#263` (`seed031_manual_direct`, `seed032_manual_direct`) where JS diverged early into monster turns before expected trap/lock handling.
+- Root causes fixed:
+  - `#untrap` direction parsing in `js/cmd.js` did not accept `.`/`s` ("here"), so replay consumed later keys and skipped the intended disarm branch.
+  - `cnv_trap_obj()` trap-object conversion in `js/trap.js` was calling `place_object()` without map context and `deltrap()` with wrong argument order, so JS consumed part of object RNG but missed `^place/^dtrap` state/event effects.
+  - Several object placement/stacking call paths relied on implicit global-map semantics, while JS helpers required explicit `map`; added C-style active-map fallback in `place_object()`/`stackobj()`.
+  - Locked-door autounlock (`js/hack.js`) needed one immediate lock-picking occupation tick after `pick_lock()` to align with observed C ordering around `picklock(lock.c:98)`.
+- Validation:
+  - `seed032_manual_direct`: first RNG divergence moved later from step `52` to step `73`; event matches improved `1558 -> 1956`.
+  - `seed031_manual_direct`: first RNG divergence moved later from step `57` to step `78`; event matches improved `1229 -> 1840`.
+  - Guard checks stayed green:
+    - `seed100_multidigit_gameplay` pass (RNG/events full)
+    - `seed328_ranger_wizard_gameplay` pass (RNG/events/screens full)

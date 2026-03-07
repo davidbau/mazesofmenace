@@ -899,6 +899,8 @@ async function handleExtendedCommandUntrap(game) {
         }
         const c = String.fromCharCode(dirCh).toLowerCase();
         dir = DIRECTION_KEYS[c] || null;
+        // C getdir() accepts '.'/s as "here" for commands like #untrap.
+        if (!dir && (c === '.' || c === 's')) dir = [0, 0];
     }
 
     // Until full trap.c untrap mechanics are ported, consume the command flow
@@ -931,7 +933,7 @@ async function handleExtendedCommandUntrap(game) {
         const which = trap.madeby_u ? 'your' : 'the';
         await display.putstr_message(`You disarm ${which} trap.`);
         const otyp = (trap.ttyp === DART_TRAP) ? DART : ARROW;
-        await cnv_trap_obj(otyp, 50 - rnl(50), trap, false, player);
+        await cnv_trap_obj(otyp, 50 - rnl(50), trap, false, player, map);
         return { moved: false, tookTime: true };
     }
 

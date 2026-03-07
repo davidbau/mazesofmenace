@@ -814,6 +814,15 @@ export async function domove_core(dir, player, map, display, game) {
                     const unlocktool = autokey(player, true);
                     if (unlocktool) {
                         const res = await pick_lock(game, unlocktool, nx, ny, null);
+                        // C behavior: lock-picking occupation can run immediately
+                        // on this command cycle before the next monster turn.
+                        if (res !== 0 && game?.occupation && typeof game.occupation.fn === 'function') {
+                            const cont = await game.occupation.fn(game);
+                            if (!cont) {
+                                game.occupation = null;
+                                game.pendingPrompt = null;
+                            }
+                        }
                         return { moved: false, tookTime: res !== 0 };
                     }
                 }

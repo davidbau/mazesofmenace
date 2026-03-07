@@ -56,13 +56,14 @@ import { start_timer, stop_timer, attach_egg_hatch_timeout } from './timeout.js'
 
 // C ref: mkobj.c place_object() — place object on floor at (x,y)
 export function place_object(obj, x, y, map) {
-    if (!obj || !map?.objects) return obj;
+    const mapRef = map || _gstate?.lev || _gstate?.map;
+    if (!obj || !mapRef?.objects) return obj;
     obj.ox = x;
     obj.oy = y;
     // C ref: place_object() puts object on floor chain (OBJ_FLOOR).
     obj.where = 'OBJ_FLOOR';
     pushRngLogEntry(`^place[${obj.otyp},${obj.ox},${obj.oy}]`);
-    map.objects.push(obj);
+    mapRef.objects.push(obj);
     return obj;
 }
 
