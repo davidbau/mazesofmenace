@@ -489,13 +489,25 @@ export function cap_spe(obj) {
     if (obj.spe < -99) obj.spe = -99;
 }
 
-// cf. C some_armor() — pick a random piece of worn armor
+// cf. C some_armor() — priority-based armor selection (do_wear.c:2625)
+// C algorithm: start with cloak/armor/shirt, then each extremity slot
+// has a 25% chance to replace the current pick (via rn2(4))
 function some_armor(player) {
-    const slots = [player.armor, player.cloak, player.shield, player.helmet,
-                   player.gloves, player.boots, player.shirt];
-    const worn = slots.filter(Boolean);
-    if (!worn.length) return null;
-    return worn[rn2(worn.length)];
+    // Priority: cloak > armor > shirt
+    let otmph = player.cloak || null;
+    if (!otmph) otmph = player.armor || null;
+    if (!otmph) otmph = player.shirt || null;
+    // Each extremity slot: if worn, replace if nothing yet OR 25% chance
+    let otmp;
+    otmp = player.helmet;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = player.gloves;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = player.boots;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    otmp = player.shield;
+    if (otmp && (!otmph || !rn2(4))) otmph = otmp;
+    return otmph;
 }
 
 // cf. C bcsign(obj)
@@ -857,13 +869,16 @@ export async function seffect_enchant_weapon(sobj, player, display) {
     if (!uwep) {
         // No weapon wielded
         await display.putstr_message("You feel a strange vibration.");
+        // C: exercise(A_DEX, amount >= 0)
+        await exercise(player, A_DEX, amount >= 0);
         return false;
     }
 
-    if (amount === 0 && uwep.spe >= 9) {
+    // C: evaporation check — (spe > 5 && amount >= 0) || (spe < -5 && amount < 0)
+    if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
+        && rn2(3)) {
         // Evaporate — weapon too highly enchanted
         await display.putstr_message(`${doname(uwep, player)} violently glows then evaporates!`);
-        // C: remove and destroy weapon — simplified
         player.weapon = null;
         player.removeFromInventory(uwep);
         return false;
@@ -887,6 +902,12 @@ export async function seffect_enchant_weapon(sobj, player, display) {
         if (!uwep.cursed) {
             uwep.cursed = true;
         }
+    }
+    // C: elven weapons vibrate warningly when enchanted beyond a limit
+    // C: (spe > 5) && (is_elven_weapon || oartifact || !rn2(7))
+    // rn2(7) only consumed when not elven and not artifact (short-circuit)
+    if (uwep.spe > 5 && !uwep.oartifact) {
+        rn2(7); // vibration check — is_elven_weapon not implemented, safe approximation
     }
     return false;
 }
@@ -1175,6 +1196,8 @@ async function seffect_amnesia(sobj, player, display) {
             spell.sp_know = 0;
         }
     }
+    // C: drain_weapon_skill(rnd(howmuch ? 5 : 3)) — always consumed
+    rnd(!sblessed ? 5 : 3);
 
     if (player.hallucinating) {
         await display.putstr_message('Your mind releases itself from mundane concerns.');
