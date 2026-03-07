@@ -46,7 +46,7 @@ import { near_capacity, overexertion } from './hack.js';
 import { u_wipe_engr } from './engrave.js';
 import {
     nonliving, x_monnam, y_monnam, is_undead, is_demon,
-    magic_negation,
+    magic_negation, attacktype,
     resists_fire, resists_cold, resists_elec, resists_acid,
     resists_poison, resists_sleep, resists_ston,
     thick_skinned, mon_hates_silver, mon_hates_light,
@@ -998,12 +998,16 @@ export function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
 
 // cf. uhitm.c:3457 — sleep handler
 // m-vs-m branch: uhitm.c:3486-3500
+// C: if (!mdef->msleeping && sleep_monst(mdef, rnd(10), -1)
+//        && sleep_monst(mdef, rnd(10), -1))
+// rnd(10) is consumed as argument before sleep_monst checks resists_sleep
 export function mhitm_ad_slee(magr, mattk, mdef, mhm) {
-    if (!mdef.msleeping && !resists_sleep(mdef)) {
-        const amt = rnd(10);
-        if (mdef.mcanmove !== false) {
+    if (!mdef.msleeping) {
+        const amt = rnd(10); // C: argument to first sleep_monst
+        if (!resists_sleep(mdef) && mdef.mcanmove !== false) {
             mdef.mcanmove = false;
             mdef.mfrozen = Math.min((mdef.mfrozen || 0) + amt, 127);
+            rnd(10); // C: argument to second sleep_monst (consumed, result unused)
         }
     }
 }
@@ -1062,14 +1066,19 @@ export function mhitm_ad_slow(magr, mattk, mdef, mhm) {
 }
 
 // cf. uhitm.c:2396 — energy drain handler
-// m-vs-m branch: simplified
+// m-vs-m branch: uhitm.c:2413-2418
 export function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     const negated = mhitm_mgc_atk_negated(magr, mdef);
-    if (negated) mhm.damage = 0;
-    // C ref: xdrainenergym — increases mspec_used
-    if (!negated && (mdef.mspec_used || 0) < 20) {
-        mdef.mspec_used = (mdef.mspec_used || 0) + c_d(2, 2);
+    // C: xdrainenergym gated by !rn2(4) — 25% chance
+    if (!negated && !rn2(4)) {
+        // C ref: xdrainenergym — increases mspec_used if monster has magic/breath
+        const mdat = mdef.data || mdef.type || {};
+        if ((mdef.mspec_used || 0) < 20
+            && (attacktype(mdat, AT_MAGC) || attacktype(mdat, AT_BREA))) {
+            mdef.mspec_used = (mdef.mspec_used || 0) + c_d(2, 2);
+        }
     }
+    mhm.damage = 0;
 }
 
 // cf. uhitm.c:3146 — brain drain (mind flayer)

@@ -581,7 +581,15 @@ async function precheck(mon, obj, map, player) {
         if (desc.includes('milky') && !rn2(POTION_OCCUPANT_CHANCE(4))) {
             makemon(mons[PM_GHOST], mon.mx, mon.my, 0, 0, map);
         } else if (desc.includes('smoky') && !rn2(POTION_OCCUPANT_CHANCE(4))) {
-            makemon(mons[PM_DJINNI], mon.mx, mon.my, 0, 0, map);
+            const mtmp = makemon(mons[PM_DJINNI], mon.mx, mon.my, 0, 0, map);
+            if (mtmp) {
+                // C: rn2(2) decides peaceful ("You freed me!") vs vanish
+                if (rn2(2)) {
+                    mtmp.mpeaceful = 1;
+                } else {
+                    mongone(mtmp, map);
+                }
+            }
         }
     }
 
