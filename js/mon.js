@@ -28,7 +28,7 @@ import { COLNO, ROWNO, IS_DOOR, IS_POOL, IS_LAVA, IS_OBSTRUCTED, ACCESSIBLE,
          M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
          W_AMUL, W_ARMG, W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMF, W_ARMU, W_WEP,
          BOLT_LIM, LS_MONSTER,
-         RANDOM_CLASS, FOOD_CLASS, M2_COLLECT } from './const.js';
+         RANDOM_CLASS, FOOD_CLASS, M2_COLLECT, IS_ALTAR } from './const.js';
 import { NORMAL_SPEED } from './monsters.js';
 import { AMULET_OF_LIFE_SAVING, CORPSE, FIGURINE, STATUE, objectData,
          GRAY_DRAGON_SCALES, UNICORN_HORN, WORM_TOOTH,
@@ -55,7 +55,7 @@ import { delobj } from './invent.js';
 import { stackobj } from './invent.js';
 import { water_damage_chain, fire_damage_chain } from './trap.js';
 import { rloc, tele_restrict, enexto } from './teleport.js';
-import { in_your_sanctuary } from './priest.js';
+import { in_your_sanctuary, inhistemple } from './priest.js';
 
 import { rn2, rnd, rnl, d, pushRngLogEntry, withRngTag } from './rng.js';
 import { BOULDER, COIN_CLASS, SCR_SCARE_MONSTER, CLOVE_OF_GARLIC,
@@ -107,12 +107,12 @@ import { PM_ANGEL, PM_GRID_BUG, PM_FIRE_ELEMENTAL, PM_SALAMANDER,
          G_FREQ, G_NOCORPSE, G_UNIQ,
          S_EYE, S_LIGHT, S_EEL, S_PIERCER, S_MIMIC, S_UNICORN,
          S_ZOMBIE, S_LICH, S_KOBOLD, S_ORC, S_GIANT, S_HUMANOID, S_GNOME, S_KOP,
-         S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN,
+         S_DOG, S_NYMPH, S_LEPRECHAUN, S_HUMAN, S_VAMPIRE,
          PM_FLESH_GOLEM, PM_STONE_GOLEM, PM_ERINYS } from './monsters.js';
 import { PIT, SPIKED_PIT, HOLE, S_poisoncloud, M_AP_NOTHING, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
          TAINT_AGE } from './const.js';
 import { m_harmless_trap } from './trap.js';
-import { dist2, distmin } from './hack.js';
+import { dist2, distmin, in_rooms } from './hack.js';
 import { monmoveTrace, monmoveStepLabel } from './monmove.js';
 import { monsterAtWithSegments } from './worm.js';
 import { ansimpleoname } from './objnam.js';
@@ -196,31 +196,79 @@ export async function allocateMonsterMovement(map) {
 // onscary — C ref: mon.c onscary()
 // ========================================================================
 export function onscary(map, x, y, mon = null) {
-    // C ref: mon.c:252-264 — monster immunity checks
+    // C ref: monmove.c:241-303 onscary()
+    // <0,0> is used by musical scaring — doesn't care about scrolls/engravings
+    const auditory_scare = (x === 0 && y === 0);
+    const magical_scare = !auditory_scare;
+
     if (mon) {
         const mdat = mon.data || mon.type || {};
-        if (mon.iswiz) return false;
-        if (is_rider(mdat)) return false;
+        // C ref: monmove.c:251-253 — direct resistance: Rodney, lminion, Angel, Riders
+        if (mon.iswiz || is_rider(mdat)) return false;
         // C: is_lminion — skip (minion system not ported)
         if (mdat.mndx === PM_ANGEL) return false;
-        // C: magical scare (not auditory) has additional immunities
-        if (is_human(mdat) || (mdat.geno & G_UNIQ)
-            || mon.isshk || mon.ispriest) return false;
-        // C: blind, minotaur, Gehennom plane checks — skip for now
+
+        // C ref: monmove.c:259-261 — magical scare: humans, uniques
+        if (magical_scare
+            && (mdat.mlet === S_HUMAN || (mdat.geno & G_UNIQ)))
+            return false;
+
+        // C ref: monmove.c:266-268 — shopkeepers in shop, priests in temple
+        if (mon.isshk && map) {
+            // Inline inhishop check (shk.js→mon.js circular import)
+            const roomno = Number(mon.shoproom || 0);
+            if (roomno >= ROOMOFFSET) {
+                const rooms = in_rooms(mon.mx, mon.my, SHOPBASE, map);
+                if (rooms.includes(roomno)) return false;
+            }
+        }
+        if (mon.ispriest && inhistemple(mon)) return false;
     }
 
-    for (const obj of map.objects || []) {
-        if (obj.buried) continue;
-        if (obj.ox === x && obj.oy === y
-            && obj.otyp === SCR_SCARE_MONSTER
-            && !obj.cursed) {
+    if (auditory_scare) return true;
+
+    // C ref: monmove.c:274-276 — altar scares vampires
+    if (map && mon) {
+        const loc = map.at?.(x, y) || map.locations?.[x]?.[y];
+        const mdat = mon.data || mon.type || {};
+        if (loc && IS_ALTAR(loc.typ) && mdat.mlet === S_VAMPIRE)
             return true;
+    }
+
+    // C ref: monmove.c:280-281 — scare monster scroll (own source of power)
+    if (map) {
+        for (const obj of map.objects || []) {
+            if (obj.buried) continue;
+            if (obj.ox === x && obj.oy === y
+                && obj.otyp === SCR_SCARE_MONSTER
+                && !obj.cursed) {
+                return true;
+            }
         }
     }
-    for (const engr of map.engravings || []) {
-        if (!engr || engr.x !== x || engr.y !== y) continue;
-        if (/elbereth/i.test(String(engr.text || ''))) return true;
+
+    // C ref: monmove.c:295-302 — Elbereth with additional restrictions
+    if (map) {
+        const ep = sengr_at(map, "Elbereth", x, y, true);
+        if (ep) {
+            const player = _gstate?.player;
+            const atHero = player && x === player.x && y === player.y;
+            if (atHero) {
+                // C ref: monmove.c:299-302 — Elbereth exclusions
+                if (mon) {
+                    if (mon.isshk || mon.isgd || !mon.mcansee
+                        || mon.peaceful
+                        || (mon.data || mon.type || {}).mndx === PM_MINOTAUR)
+                        return false;
+                }
+                // C ref: Inhell || In_endgame — Elbereth doesn't work there
+                const flags = map.flags || {};
+                if (flags.inhell || flags.endgame) return false;
+                return true;
+            }
+        }
     }
+
     return false;
 }
 
