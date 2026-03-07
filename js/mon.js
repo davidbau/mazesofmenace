@@ -38,6 +38,7 @@ import { nonliving, resists_ston, resists_fire, resists_poison,
          is_male, is_female, is_neuter,
          dmgtype, attacktype } from './mondata.js';
 import { mkcorpstat, weight, is_rustprone } from './mkobj.js';
+import { impossible } from './pline.js';
 import { next_ident } from './mkobj.js';
 import { is_metallic, is_organic, obj_resists, hasPoisonTrapBit } from './objdata.js';
 import { newsym, canSpotMonsterForMap } from './display.js';
@@ -1896,9 +1897,9 @@ export function dealloc_mextra(m) {
 
 // Autotranslated from mon.c:2660
 export function dealloc_monst(mon) {
-  let buf;
-  buf = '\0';
-  if (mon.nmon) { describe_level(buf, 2); panic("dealloc_monst with nmon on %s", buf); }
+  if (mon.nmon) {
+    console.error("dealloc_monst: monster still on fmon chain");
+  }
   if (mon.mextra) dealloc_mextra(mon);
   // C ref: *mon = cg.zeromonst; free(mon); — JS: garbage collected
 }
