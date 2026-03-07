@@ -533,10 +533,14 @@ export async function ynFunction(query, choices, def, display) {
 
     if (disp) await disp.putstr_message(prompt);
 
+    // C ref: tty_yn_function() lowercases responses unless choices contain
+    // explicit uppercase entries, in which case case is preserved.
+    const preserveCase = !!(choices && /[A-Z]/.test(choices));
+
     while (true) {
         const ch = await nhgetch();
-        // Space or Enter returns default
-        if ((ch === 32 || ch === 13) && def) {
+        // C quitchars handling for yn prompts: Space/CR/LF use default.
+        if ((ch === 32 || ch === 13 || ch === 10) && def) {
             return def;
         }
         // ESC returns 'q' or 'n' or default
@@ -547,9 +551,10 @@ export async function ynFunction(query, choices, def, display) {
             return 27;
         }
         // Check if this is a valid choice
-        const c = String.fromCharCode(ch);
+        let c = String.fromCharCode(ch);
+        if (!preserveCase) c = c.toLowerCase();
         if (!choices || choices.includes(c)) {
-            return ch;
+            return c.charCodeAt(0);
         }
     }
 }

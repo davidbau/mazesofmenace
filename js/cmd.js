@@ -217,8 +217,12 @@ export async function rhack(ch, game) {
     // Movement keys
     if (DIRECTION_KEYS[c]) {
         // Check if 'G' or 'g' prefix was used (run/rush mode)
-        if (getRunMode()) {
+        const prefRunMode = getRunMode();
+        if (prefRunMode) {
             clearRunMode();
+            if (prefRunMode === 2) {
+                return do_rush(DIRECTION_KEYS[c], player, map, display, fov, game);
+            }
             return do_run(DIRECTION_KEYS[c], player, map, display, fov, game);
         }
         return await domove(DIRECTION_KEYS[c], player, map, display, game);

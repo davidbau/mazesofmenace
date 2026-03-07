@@ -3619,3 +3619,16 @@ hard-won wisdom:
 - Validation:
   - on `seed031_manual_direct`, first RNG divergence remained at the later
     post-fix boundary (`step 139`) after rebasing onto latest `main`.
+
+### yn prompt + rush prefix command fidelity fixes (2026-03-07)
+
+- `ynFunction` now matches tty `yn_function` case handling:
+  - lowercases input unless choices include uppercase letters;
+  - treats `LF/CR/space` as default-answer keys.
+- `rhack` movement dispatch now routes stored `g` (rush) prefix to `do_rush`
+  (previously it incorrectly routed all stored run prefixes to `do_run`).
+- Validation:
+  - targeted command unit tests:
+    - `test/unit/command_run_prefix_invalid.test.js`
+    - `test/unit/command_run_timing.test.js`
+    both pass.
