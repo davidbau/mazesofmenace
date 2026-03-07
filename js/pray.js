@@ -49,7 +49,7 @@ import { CORPSE, STATUE, AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR,
          SADDLE, LONG_SWORD, RUNESWORD, MAGIC_MARKER,
          WEAPON_CLASS, SPBOOK_CLASS, STRANGE_OBJECT, BOULDER,
          SPE_FINGER_OF_DEATH, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD,
-         SPE_BLANK_PAPER, objectData } from './objects.js';
+         SPE_BLANK_PAPER, objectData, bases } from './objects.js';
 import { ART_EXCALIBUR, ART_VORPAL_BLADE, ART_STORMBRINGER } from './artifacts.js';
 import { artiname, exist_artifact, nartifact_exist, mk_artifact,
          artifact_origin, is_art, confers_luck, discover_artifact } from './artifact.js';
@@ -1515,7 +1515,8 @@ async function give_spell(player, map) {
         } else {
             break;
         }
-        otmp.otyp = rnd_class(otmp.otyp, SPE_BLANK_PAPER);
+        // C: rnd_class(svb.bases[SPBOOK_CLASS], SPE_BLANK_PAPER) — always full range
+        otmp.otyp = rnd_class(bases[SPBOOK_CLASS], SPE_BLANK_PAPER);
     }
 
     // 25% chance of learning directly
@@ -1533,6 +1534,10 @@ async function give_spell(player, map) {
         }
         obfree(otmp);
     } else {
+        // C: if (otmp->otyp == SPE_BLANK_PAPER || !rn2(100)) makeknown(otmp->otyp)
+        if (otmp.otyp === SPE_BLANK_PAPER || !rn2(100)) {
+            // makeknown — RNG consumed above
+        }
         bless_obj(otmp);
         await at_your_feet(upstart(ansimpleoname(otmp)), player);
         place_object(otmp, player.x, player.y, map);
@@ -1711,7 +1716,12 @@ async function pleased(g_align, player, map) {
             } else if (!player.stealth) {
                 await pline(msg, "Stealth");
             } else {
-                player.ublessed = (player.ublessed || 0) + 1;
+                // C: if !(HProtection & INTRINSIC): ublessed = rn1(3, 2), else ublessed++
+                if (!player.ublessed) {
+                    player.ublessed = rn1(3, 2);
+                } else {
+                    player.ublessed = (player.ublessed || 0) + 1;
+                }
                 await pline(msg, "my protection");
             }
             await verbalize("Use it wisely in my name!");
