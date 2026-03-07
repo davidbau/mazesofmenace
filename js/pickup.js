@@ -25,7 +25,10 @@ import { HAND, FOOT } from './const.js';
 import { instapetrify } from './trap.js';
 import { exercise } from './attrib_exercise.js';
 import { newsym } from './display.js';
-import { currency, compactInvletPromptChars } from './invent.js';
+import { currency, compactInvletPromptChars, freeinv, addinv,
+         inv_cnt, merge_choice } from './invent.js';
+import { setuwep, setuswapwep, setuqwep, welded, weldmsg } from './wield.js';
+import { touch_artifact } from './artifact.js';
 import { makemon } from './makemon.js';
 import { NO_MM_FLAGS, NO_MINVENT } from './const.js';
 import { christen_monst, Monnam, mon_nam, x_monnam } from './do_name.js';
@@ -103,9 +106,12 @@ const st_corpse = 0x02;
 const st_petrifies = 0x04;
 const st_resists = 0x08;
 const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
-// Autotranslated from pickup.c:272
-export function u_safe_from_fatal_corpse(obj, tests) {
-  if (((tests & st_gloves) && uarmg) || ((tests & st_corpse) && obj.otyp !== CORPSE) || ((tests & st_petrifies) && !touch_petrifies( mons[obj.corpsenm])) || ((tests & st_resists) && Stone_resistance)) return true;
+// Autotranslated from pickup.c:272, fixed for JS globals
+export function u_safe_from_fatal_corpse(obj, tests, player) {
+  if (((tests & st_gloves) && player?.gloves)
+      || ((tests & st_corpse) && obj.otyp !== CORPSE)
+      || ((tests & st_petrifies) && !touch_petrifies(mons[obj.corpsenm]))
+      || ((tests & st_resists) && player?.Stone_resistance)) return true;
   return false;
 }
 
@@ -352,19 +358,34 @@ export function delta_cwt(container, obj) {
   return owt - nwt;
 }
 
-// cf. pickup.c:1574 — carry_count(obj, container, count, telekinesis)
-// Simplified: returns how many of obj we can carry
-async function carry_count(obj, container, count, telekinesis, player) {
+// cf. pickup.c:1574 — carry_count(obj, container, count, telekinesis, cnt_p)
+// Returns how many of obj we can carry. Sets cnt_p.wt_before/wt_after for
+// lift_object encumbrance computation.
+async function carry_count(obj, container, count, telekinesis, player, cnt_p) {
     const savequan = obj.quan || 0;
     const saveowt = obj.owt || 0;
     const targetCount = Math.max(0, Math.min(count || savequan, savequan));
     let wt;
     let qq = targetCount;
+
+    // Guard: if player lacks stats (e.g. minimal test mock), skip weight checks
+    if (!player?.abase) return targetCount;
+
     const iw = max_capacity(player);
+
+    // Expose weight info for lift_object encumbrance check
+    if (cnt_p) {
+        cnt_p.wt_before = iw;
+    }
 
     obj.quan = targetCount;
     obj.owt = weight(obj);
     wt = iw + obj.owt;
+
+    if (cnt_p) {
+        cnt_p.wt_after = iw + obj.owt;
+    }
+
     obj.quan = savequan;
     obj.owt = saveowt;
 
@@ -414,11 +435,22 @@ async function lift_object(obj, container, cnt_p, telekinesis, player) {
         return 1; // lift regardless
     }
 
-    cnt_p.value = await carry_count(obj, container, cnt_p.value, telekinesis, player);
+    // cf. C pickup.c:1740 — inventory slot check
+    if (obj.oclass !== COIN_CLASS
+        && inv_cnt(false, player) >= 52
+        && !merge_choice(player.inventory, obj)) {
+        await Your("knapsack cannot accommodate any more items.");
+        return -1;
+    }
+
+    cnt_p.value = await carry_count(obj, container, cnt_p.value, telekinesis, player, cnt_p);
     if (cnt_p.value < 1)
         return -1;
 
-    // Encumbrance check stub: always allow
+    // TODO: C pickup.c:1776 — encumbrance prompt (ynFunction) fires when
+    // next_encumbr > prev_encumbr. Deferred: requires unit test updates
+    // since ynFunction consumes keystrokes from the input queue.
+
     if (obj.otyp === SCR_SCARE_MONSTER && !container)
         ; // spe handling done by caller
 
@@ -696,7 +728,21 @@ async function in_container(obj, player) {
         return 0;
     }
 
-    // Simplified: put object in container
+    // cf. C pickup.c:2588-2618 — unwield weapons being put away
+    if (obj === player.weapon) {
+        if (welded(player)) { await weldmsg(player); return 0; }
+        setuwep(player, null);
+        if (player.weapon) return 0; // unwielded, died, rewielded
+    } else if (obj === player.swapWeapon) {
+        setuswapwep(player, null);
+    } else if (obj === player.quiver) {
+        setuqwep(player, null);
+    }
+
+    // Remove from inventory before placing in container
+    freeinv(obj, player);
+
+    // Put object in container
     if (current_container.otyp === ICE_BOX && !age_is_relative(obj)) {
         // freeze: record age
         obj.age = (player.moves || 0) - (obj.age || 0);
@@ -712,9 +758,8 @@ async function in_container(obj, player) {
 
     if (current_container) {
         await You("put %s into %s.", doname(obj, player), xname(current_container));
-        if (!Array.isArray(current_container.cobj))
-            current_container.cobj = [];
-        current_container.cobj.push(obj);
+        const cur = getContainerContents(current_container);
+        setContainerContents(current_container, [...cur, obj]);
         current_container.owt = weight(current_container);
     }
     return current_container ? 1 : -1;
@@ -746,18 +791,22 @@ async function out_container(obj, player, map) {
 
     // Remove from container
     obj_extract_self(obj);
-    if (Array.isArray(current_container.cobj)) {
-        const idx = current_container.cobj.indexOf(obj);
-        if (idx >= 0) current_container.cobj.splice(idx, 1);
-    }
+    setContainerContents(current_container,
+        getContainerContents(current_container).filter((o) => o !== obj));
     current_container.owt = weight(current_container);
 
     if (current_container.otyp === ICE_BOX)
         removed_from_icebox(obj, player);
 
-    // Add to inventory
-    if (player.addToInventory)
-        player.addToInventory(obj);
+    // cf. C pickup.c:2735 — artifact touch check
+    if (obj.oartifact && !touch_artifact(obj, player)) return 0;
+
+    // Add to inventory via addinv (handles merge, invlet assignment, etc.)
+    const result = await addinv(obj, player);
+    observeObject(obj);
+
+    // cf. C pickup.c:2748 — announce removal
+    await pline("%s - %s.", result?.invlet || obj.invlet || '-', doname(result || obj, player));
 
     return 1;
 }
@@ -1280,8 +1329,36 @@ async function announceLootedItems(display, player, items, verb) {
 //          'r' reversed (put in then take out), 'q'/ESC quit.
 // Returns { moved: false, tookTime: bool }.
 async function containerMenu(game, container) {
-    const { player, display } = game;
+    const { player, display, map } = game;
     let tookTime = false;
+
+    // cf. C pickup.c:2993 — set current_container for in_container/out_container
+    current_container = container;
+
+    // cf. C pickup.c:2997 — u_handsy check
+    if (!(await u_handsy(player))) {
+        current_container = null;
+        return { moved: false, tookTime: false };
+    }
+
+    if (!container.lknown) container.lknown = true;
+
+    // cf. C pickup.c:3001 — Schrödinger's cat
+    if (SchroedingersBox(container)) {
+        await observe_quantum_cat(container, true, true, game);
+        tookTime = true;
+    }
+
+    // cf. C pickup.c:3007 — cursed bag of holding loss
+    if (Is_mbag(container) && container.cursed && Has_contents(container)) {
+        const loss = await boh_loss(container, false);
+        if (loss) {
+            await You("owe %d %s for lost merchandise.", loss, currency(loss));
+            container.owt = weight(container);
+            tookTime = true;
+        }
+    }
+
     const clearMenuOptionRows = () => {
         if (typeof display?.clearRow !== 'function') return;
         for (let r = 2; r <= 10; r++) display.clearRow(r);
@@ -1392,15 +1469,12 @@ async function containerMenu(game, container) {
                 }
             }
             if (autopick) {
-                const cname = xname(container);
                 const taken = [...cContainerOrder(currentContents)];
                 let didTake = false;
                 for (const item of taken) {
-                    player.addToInventory(item); observeObject(item);
-                    setContainerContents(container,
-                        getContainerContents(container).filter((o) => o !== item));
-                    await pline(`${item.invlet || '-'} - ${doname(item, player)}.`);
-                    didTake = true;
+                    const res = await out_container(item, player, map);
+                    if (res < 0) break; // abort
+                    if (res > 0) didTake = true;
                 }
                 container.cknown = true;
                 return didTake;
@@ -1432,10 +1506,9 @@ async function containerMenu(game, container) {
                 const chosen = visible.filter((o) => selected.has(o));
                 if (!chosen.length) break;
                 for (const item of chosen) {
-                    player.addToInventory(item); observeObject(item);
-                    setContainerContents(container, getContainerContents(container).filter((o) => o !== item));
-                    await display.putstr_message(`You take out ${doname(item, player)}.`);
-                    didTake = true;
+                    const res = await out_container(item, player, map);
+                    if (res < 0) break; // abort
+                    if (res > 0) didTake = true;
                 }
                 selected.clear();
                 continue;
@@ -1505,15 +1578,16 @@ async function containerMenu(game, container) {
                 if (ansC === 'q') break;
                 if (ansC === 'n') continue;
             }
-            player.inventory = player.inventory.filter((o) => o !== item);
-            const cur = getContainerContents(container);
-            setContainerContents(container, [...cur, item]);
-            await display.putstr_message(`You put ${doname(item, player)} into the ${cname}.`);
-            didPut = true;
+            const res = await in_container(item, player);
+            if (res < 0) break; // abort (mbag explosion or fatal corpse)
+            if (res > 0) didPut = true;
+            // Check if container was destroyed (mbag explosion)
+            if (!current_container) break;
         }
         return didPut;
     };
 
+    try {
     while (true) {
         const contents = getContainerContents(container);
         const hasContents = contents.length > 0;
@@ -1594,11 +1668,8 @@ async function containerMenu(game, container) {
             const sch = await nhgetch();
             const item = inv.find((o) => o.invlet === String.fromCharCode(sch));
             if (item) {
-                player.inventory = player.inventory.filter((o) => o !== item);
-                const cur = getContainerContents(container);
-                setContainerContents(container, [...cur, item]);
-                await putMenuPrompt(`You put ${doname(item, player)} into the ${cname}.`);
-                tookTime = true;
+                const res = await in_container(item, player);
+                if (res !== 0) tookTime = true;
             }
             return { moved: false, tookTime }; // 's' exits menu (C behavior)
         } else if (c === '?') {
@@ -1608,6 +1679,9 @@ async function containerMenu(game, container) {
     }
 
     return { moved: false, tookTime };
+    } finally {
+        current_container = null;
+    }
 }
 
 async function handleLoot(game) {

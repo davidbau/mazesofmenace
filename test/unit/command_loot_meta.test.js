@@ -6,6 +6,7 @@ import { GameMap } from '../../js/game.js';
 import { Player } from '../../js/player.js';
 import { clearInputQueue, pushInput } from '../../js/input.js';
 import { CHEST, objectData } from '../../js/objects.js';
+import { setGame } from '../../js/gstate.js';
 
 function makeGame() {
     const map = new GameMap();
@@ -26,21 +27,20 @@ function makeGame() {
         },
     };
 
-    return {
-        game: {
-            player,
-            map,
-            display,
-            fov: null,
-            flags: { verbose: false },
-            menuRequested: false,
-            forceFight: false,
-            runMode: 0,
-            commandCount: 0,
-            multi: 0,
-        },
-        messages,
+    const game = {
+        player,
+        map,
+        display,
+        fov: null,
+        flags: { verbose: false },
+        menuRequested: false,
+        forceFight: false,
+        runMode: 0,
+        commandCount: 0,
+        multi: 0,
     };
+    setGame(game);
+    return { game, messages };
 }
 
 function makeTestItem(otyp = 18) {
@@ -272,8 +272,9 @@ describe('loot via meta key', () => {
         assert.equal(chest.contents.length, 1);          // one item remains
         assert.ok(messages.some((m) => m.includes('Take out what')),
             `expected "Take out what?" prompt, got: ${JSON.stringify(messages)}`);
-        assert.ok(messages.some((m) => m.includes('You take out')),
-            `expected "You take out" message, got: ${JSON.stringify(messages)}`);
+        // out_container uses C-style invlet announcement ("a - <item>.")
+        assert.ok(messages.some((m) => /^[a-z] - /.test(m) || m.includes('You take out')),
+            `expected take-out message, got: ${JSON.stringify(messages)}`);
     });
 
     it('containerMenu o take-out ESC immediately leaves items untouched', async () => {
