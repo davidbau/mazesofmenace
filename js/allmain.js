@@ -640,6 +640,10 @@ export async function run_command(game, ch, opts = {}) {
         await advanceTimedTurn();
     };
 
+    // C ref: allmain.c:517 — u.umoved = FALSE; reset before each command
+    const player = (game.u || game.player);
+    if (player) player.umoved = false;
+
     // Execute command
     const enableRepeatCapture = !skipRepeatRecord && !game.inDoAgain && chCode !== '#'.charCodeAt(0);
     setCmdqInputMode(!!game.inDoAgain);
@@ -829,24 +833,22 @@ async function _drainOccupation(game, coreOpts, onTimedTurn) {
 // Ported from C's regen_hp() (allmain.c:623-681).
 // Simplified: no polymorph HP (u.mh), no eel-out-of-water.
 // U_CAN_REGEN: Regeneration intrinsic or Sleepy+asleep.
-// GAP: Missing encumbrance gate. C checks:
-//   encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved);
-//   if (u.uhp < u.uhpmax && (encumbrance_ok || U_CAN_REGEN())) ...
-// JS doesn't track wtcap or umoved, so we skip the gate.
-// This causes rn2(100) to be consumed when C would skip it in overencumbered+moved cases.
+// Ported from C's regen_hp() (allmain.c:621-675).
+// Simplified: no polymorph HP (u.mh), no eel-out-of-water.
 async function regen_hp(game) {
     const player = (game.u || game.player);
-    // C ref: allmain.c:656-660 — non-polymorph branch, encumbrance-gated
-    if (player.uhp < player.uhpmax) {
-        const con = player.attributes ? player.attributes[A_CON] : 10;
-        // C ref: allmain.c:661 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
-        let heal = (player.ulevel + con) > rn2(100) ? 1 : 0;
-        // C ref: allmain.c:663 — U_CAN_REGEN bonus: +1 heal
-        if (player.regeneration) {
+    // C ref: allmain.c:625 — encumbrance_ok = (wtcap < MOD_ENCUMBER || !u.umoved)
+    const wtcap = near_capacity(player);
+    const encumbrance_ok = (wtcap < MOD_ENCUMBER || !player.umoved);
+    const can_regen = player.regeneration; // U_CAN_REGEN: Regeneration || (Sleepy && asleep)
+    // C ref: allmain.c:654 — non-polymorph branch, encumbrance-gated
+    if (player.uhp < player.uhpmax && (encumbrance_ok || can_regen)) {
+        // C ref: allmain.c:655 — heal = (ulevel + ACURR(A_CON)) > rn2(100)
+        let heal = ((player.ulevel || 1) + acurr(player, A_CON)) > rn2(100) ? 1 : 0;
+        // C ref: allmain.c:657 — U_CAN_REGEN bonus: +1 heal
+        if (can_regen) {
             heal += 1;
         }
-        // C ref: allmain.c:665 — Sleepy+asleep bonus: +1 heal
-        // (not tracked in JS yet)
         if (heal) {
             player.uhp += heal;
             if (player.uhp > player.uhpmax)
