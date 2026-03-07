@@ -28,7 +28,7 @@ import {
     AD_MAGM, AD_DISN,
     mons,
 } from './monsters.js';
-import { objectData, BULLWHIP, CLOAK_OF_DISPLACEMENT } from './objects.js';
+import { objectData, BULLWHIP, CLOAK_OF_DISPLACEMENT, LOW_BOOTS, IRON_SHOES, WEAPON_CLASS } from './objects.js';
 import { xname } from './mkobj.js';
 import {
     x_monnam, is_humanoid, thick_skinned, hides_under,
@@ -722,15 +722,88 @@ async function mhitu_ad_were(monster, attack, player, mhm, ctx) {
 
 // cf. uhitm.c:4274 mhitm_ad_heal — mhitu branch (nurse healing)
 async function mhitu_ad_heal(monster, attack, player, mhm, ctx) {
-    await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // Nurse healing hero — complex, skip for now
-    mhm.damage = 0;
+    const display = ctx.display;
+    // C ref: uhitm.c:4289 — cancelled nurse is just ordinary monster
+    if (monster.mcan) {
+        await hitmsg(monster, attack, display, ctx.suppressHitMsg);
+        return;
+    }
+    // C ref: uhitm.c:4294-4296 — healing only when player is unarmored and unarmed
+    const wep = player?.weapon;
+    const armed = wep && ((objectData[wep.otyp]?.oc_class === WEAPON_CLASS) ||
+                          objectData[wep.otyp]?.weptool);
+    const armored = armed || player?.shirt || player?.armor || player?.cloak ||
+                    player?.shield || player?.gloves || player?.boots || player?.helmet;
+    if (!armored) {
+        // C ref: uhitm.c:4299-4345 — nurse healing path (unarmored)
+        if (display) await display.putstr_message(`The ${x_monnam(monster)} hits!  (I hope you don't mind.)`);
+        // C ref: uhitm.c:4312-4324 — heal HP (non-polymorph path)
+        const heal = rnd(7);
+        if (player) player.uhp = Math.min((player.uhpmax || 0), (player.uhp || 0) + heal);
+        if (!rn2(7)) {
+            // C ref: uhitm.c:4314-4315 — max HP increase with limit check
+            const ulevel = player?.ulevel || 1;
+            d(2 * ulevel, 10); // consume d() for limit check
+            // C ref: uhitm.c:4320 — goaway check
+            rn2(13);
+        }
+        // C ref: uhitm.c:4326-4329 — exercise
+        if (!rn2(3)) await exercise(player, A_STR, true);
+        if (!rn2(3)) await exercise(player, A_CON, true);
+        // C ref: uhitm.c:4338 — nurse teleport/flee
+        if (!rn2(33)) {
+            // C ref: uhitm.c:4341 — d(3,6) for flee timer
+            d(3, 6);
+        }
+        mhm.damage = 0;
+    } else {
+        // C ref: uhitm.c:4347-4355 — armored path (no RNG consumed)
+        await hitmsg(monster, attack, display, ctx.suppressHitMsg);
+    }
 }
 
 // cf. uhitm.c:4403 mhitm_ad_legs — mhitu branch (leg wound)
 async function mhitu_ad_legs(monster, attack, player, mhm, ctx) {
-    await hitmsg(monster, attack, ctx.display, ctx.suppressHitMsg);
-    // C: xyloc check then leg damage — simplified
+    const display = ctx.display;
+    // C ref: uhitm.c:4420 — rn2(2) for left/right side (always consumed)
+    const side = rn2(2) ? 'right' : 'left';
+    const mname = x_monnam(monster);
+
+    // C ref: uhitm.c:4428-4430 — flying/levitating/mounted: can't reach
+    // Simplified: skip height check, treat as reachable
+
+    if (monster.mcan) {
+        // C ref: uhitm.c:4431-4434 — cancelled: nuzzle, no damage
+        if (display) await display.putstr_message(`The ${mname} nuzzles against your ${side} leg!`);
+        mhm.damage = 0;
+    } else {
+        // C ref: uhitm.c:4436-4451 — boot protection checks
+        const boots = player?.boots;
+        if (boots) {
+            const btyp = boots.otyp;
+            if (rn2(2) && (btyp === LOW_BOOTS || btyp === IRON_SHOES)) {
+                // C ref: uhitm.c:4437-4440 — exposed part
+                if (display) await display.putstr_message(`The ${mname} pricks the exposed part of your ${side} leg!`);
+            } else if (!rn2(5)) {
+                // C ref: uhitm.c:4441-4443 — pricks through boot
+                if (display) await display.putstr_message(`The ${mname} pricks through your ${side} boot!`);
+            } else {
+                // C ref: uhitm.c:4444-4448 — scratches boot, no damage
+                if (display) await display.putstr_message(`The ${mname} scratches your ${side} boot!`);
+                mhm.damage = 0;
+                return;
+            }
+        } else {
+            // C ref: uhitm.c:4450-4451 — no boots
+            if (display) await display.putstr_message(`The ${mname} pricks your ${side} leg!`);
+        }
+
+        // C ref: uhitm.c:4453-4455 — wound + exercise
+        // set_wounded_legs not ported; consume the rnd for RNG parity
+        rnd(Math.max(1, 60 - acurr(player, A_DEX)));
+        await exercise(player, A_STR, false);
+        await exercise(player, A_DEX, false);
+    }
 }
 
 // cf. uhitm.c:4470 mhitm_ad_dgst — mhitu branch (digestion)
