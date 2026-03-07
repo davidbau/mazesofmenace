@@ -1176,8 +1176,13 @@ export function make_corpse(mon, corpseflags, map) {
         break;
     }
 
-    // C ref: mon.c:712-714 — default_1: create standard corpse
+    // C ref: mon.c:874-880 — default_1: create standard corpse
     if (makeDefaultCorpse) {
+        // C ref: mon.c:874 — G_NOCORPSE check (genocide, etc.)
+        const game = _gstate;
+        if (game?.mvitals?.[mndx]?.mvflags & G_NOCORPSE) {
+            return null;
+        }
         obj = mkcorpstat(CORPSE, mndx, true, x, y, map);
     }
 
