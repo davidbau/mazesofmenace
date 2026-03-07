@@ -3495,3 +3495,20 @@ hard-won wisdom:
   - `seed328` remains full pass;
   - `./scripts/run-and-report.sh --failures` unchanged at `28/34` passing
     (`6` failing).
+
+### SDOOR wall-angle rendering parity (2026-03-07)
+
+- Root cause for `seed327` screen-only drift (`row12 col34`, extra `│`) was in
+  `js/render.js`: secret doors (`SDOOR`) were always rendered as wall glyphs via
+  neighbor-derived wall type, ignoring C `wall_angle()` visibility gating.
+- C `display.c wall_angle()` treats `SDOOR` as horizontal/vertical wall and
+  applies `seenv + wall_info` mode checks; when the angle/mode fails, glyph is
+  `S_stone` (blank), not wall.
+- Fix in JS:
+  - `SDOOR` now follows C shape selection (`arboreal_sdoor -> TREE`,
+    else `horizontal ? HWALL : VWALL`);
+  - applies `wallIsVisible(...)` with `loc.seenv` and `loc.flags` (`WM_MASK`)
+    and falls back to `STONE` when not visible by angle.
+- Validation:
+  - `seed327_priest_wizard_gameplay` now passes;
+  - gameplay burndown improved from `28/34` to `29/34` passing.

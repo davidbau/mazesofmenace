@@ -230,10 +230,18 @@ export function terrainSymbol(loc, gameMap = null, x = -1, y = -1, flags = {}) {
         return { ch: altarCh, color: CLR_GRAY };
     }
 
-    // Secret door: render as the wall type implied by neighbors
-    // C ref: display.c SDOOR falls through to wall rendering
+    // C ref: display.c wall_angle() SDOOR case:
+    // - arboreal secret door -> tree
+    // - otherwise horizontal ? HWALL : VWALL
+    // - apply wall visibility angle/mode; may render as stone
     if (typ === SDOOR) {
-        const wallType = determineWallType(gameMap, x, y);
+        if (loc.arboreal_sdoor) {
+            return TERRAIN_SYMBOLS[TREE] || { ch: '#', color: CLR_GREEN };
+        }
+        const wallType = loc.horizontal ? HWALL : VWALL;
+        if (!wallIsVisible(wallType, loc.seenv || 0, loc.flags || 0)) {
+            return TERRAIN_SYMBOLS[STONE] || { ch: ' ', color: CLR_GRAY };
+        }
         return TERRAIN_SYMBOLS[wallType] || TERRAIN_SYMBOLS[VWALL];
     }
 
