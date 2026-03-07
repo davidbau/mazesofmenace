@@ -567,6 +567,23 @@ export async function run_command(game, ch, opts = {}) {
                 await game._pendingPromptTask;
                 game._pendingPromptTask = null;
             }
+            const promptTookTime = !!promptResult.tookTime;
+            const promptMoved = !!promptResult.moved;
+            if (promptTookTime && !skipTurnEnd && !game._pendingDeferredTurnAfterMore) {
+                const coreOpts = {};
+                if (skipMonsterMove) coreOpts.skipMonsterMove = true;
+                await moveloop_core(game, coreOpts);
+                const moves = game.turnCount + 1;
+                if (moves >= game.seerTurn) {
+                    game.seerTurn = moves + rn1(31, 15);
+                }
+                find_ac(game.u || game.player);
+                see_monsters(game.map);
+                if (onTimedTurn) {
+                    await onTimedTurn();
+                }
+                await _drainOccupation(game, coreOpts, onTimedTurn);
+            }
             if (!game.pendingPrompt && game._pendingTutorialStrip
                 && typeof game._applyTutorialStrip === 'function') {
                 game._applyTutorialStrip();
@@ -588,8 +605,8 @@ export async function run_command(game, ch, opts = {}) {
                 }
             }
             return {
-                tookTime: false,
-                moved: false,
+                tookTime: promptTookTime,
+                moved: promptMoved,
                 prompt: true,
             };
         }

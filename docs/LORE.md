@@ -3748,3 +3748,23 @@ hard-won wisdom:
   - `./scripts/run-and-report.sh --failures` remained stable at `31/34`
     passing with the same failing trio (`seed031_manual_direct`,
     `seed032_manual_direct`, `seed033_manual_direct`).
+
+### prompt-handled keys now honor time consumption in `run_command()` (2026-03-07)
+
+- Root cause:
+  - `run_command()` short-circuited on `pendingPrompt.onKey(...).handled` and
+    always returned `{ tookTime: false }`, even when the prompt action itself
+    consumed time.
+- C-faithful fix in `js/allmain.js`:
+  - propagate `promptResult.tookTime` / `promptResult.moved`;
+  - when prompt handling consumes time, run the normal timed-turn pipeline
+    (`moveloop_core`, seer scheduling, `find_ac`, `see_monsters`,
+    occupation-drain) before returning.
+- Why this matters:
+  - prompt completion paths (for example pickup continuation prompts) can be
+    true turn-consuming actions; forcing them non-timed creates silent
+    command-boundary drift.
+- Validation:
+  - `node scripts/test-unit-core.mjs` passes;
+  - `./scripts/run-and-report.sh --failures` remains stable at `31/34`
+    passing (same failing trio: `seed031`, `seed032`, `seed033`).
