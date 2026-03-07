@@ -1,6 +1,6 @@
 # The History of Hack
 
-*In the beginning was Rogue, and Rogue was without source, and the source was denied.*
+*You see here a USENIX tape. It is dated 1982.*
 
 In the summer of 1982, a high school junior from Sudbury, Massachusetts put his game on a USENIX conference tape and sent it out into the world. He included his home phone number and apologized in advance about his modem and his teenage sister. He called the game "my first semester programming project." He called it "my silly game."
 
@@ -14,8 +14,6 @@ In 1979, [Brian Harvey](https://en.wikipedia.org/wiki/Brian_Harvey_(lecturer)) w
 
 He obtained a [PDP-11/70](https://en.wikipedia.org/wiki/PDP-11) running [Version 7 Unix](https://en.wikipedia.org/wiki/Version_7_Unix), funded 75% by a grant from [Digital Equipment Corporation](https://en.wikipedia.org/wiki/Digital_Equipment_Corporation) and 25% by a school bond issue. DEC's headquarters was in Maynard, Massachusetts, a few miles down the road, and its co-founder [Ken Olsen](https://en.wikipedia.org/wiki/Ken_Olsen) had come out of MIT Lincoln Laboratory. The geography helped.
 
-![Brian Harvey at Lincoln-Sudbury, 1981. He arrived in 1979 with a vision of building an AI Lab for high school students.](images/dyadlincolnsudbu1981linc_0133-harvey.jpg)
-
 The PDP-11/70 was one of the most powerful minicomputers of its era. Lincoln-Sudbury became a Unix source licensee and an alpha test site for [2.9BSD](https://en.wikipedia.org/wiki/History_of_the_Berkeley_Software_Distribution), the PDP-11 version of Berkeley Unix. The installation, testing, and debugging was handled entirely by students.
 
 Harvey deliberately modeled the culture on the MIT AI Lab ethos. About 50 students and teachers ran the facility through the Computer Users Society. Members had keys to the machine room and could use it evenings and weekends without adult supervision. Courses weren't graded. Students connected from home by modem. Membership was open to anyone who used the computer, the yearbook explained, "be it for typing out English papers, playing Star Trek, or remembering friends' birthdays." The yearbook added: "or even 'Dungeons and Dragons'."
@@ -24,7 +22,9 @@ Harvey deliberately modeled the culture on the MIT AI Lab ethos. About 50 studen
 
 Most American high schools had no computers in 1980. Lincoln-Sudbury had a multi-user Unix system running the same operating system used at Bell Labs and UC Berkeley, maintained by students who were alpha-testing the latest BSD release.
 
-It was, by the standards of 1980, an extraordinary place. It was about to produce something extraordinary.
+![The Lincoln-Sudbury computer community, 1982 — the year Hack was distributed at USENIX. Brian Harvey, Jon Payne, Kenny Woodland, and Jay Fenlason are all pictured.](images/dyadlincolnsudbu1982linc_0205-payne-woodland-fenalson-harvey.jpg)
+
+It was, by the standards of 1980, an extraordinary place. It was about to produce something extraordinary. Lincoln-Sudbury had a multi-user Unix system running the same operating system used at Bell Labs and UC Berkeley, maintained by students who were alpha-testing the latest BSD release.
 
 ---
 
@@ -42,7 +42,7 @@ The result was approximately 6,200 lines of C across ten source files: 56 monste
 
 Three classmates contributed. **Kenny Woodland** wrote the original `BUZZ()` function, which handles the beam weapons fired by wands. **Mike Thome** wrote the chameleon monster. **[Jon Payne](https://en.wikipedia.org/wiki/JOVE)** wrote the cursor-positioning display code, which Fenlason credited as "the massive CURS()" and appears to have regarded with some reverence.
 
-![Computer Users Society, Lincoln-Sudbury, 1983 — the year after Hack was distributed. Mike Thome (fourth from left) and Jay Fenlason (sixth from left).](images/dyadlincolnsudbu1983linc_0205-thome-fenlason.jpg)
+![Computer Users Society, Lincoln-Sudbury, 1983. Mike Thome (fourth from left) and Jay Fenlason (sixth from left). Harvey had already left for Berkeley by this point.](images/dyadlincolnsudbu1983linc_0205-thome-fenlason.jpg)
 
 By the first half of 1982, Hack was ready to go. Brian Harvey submitted it to USENIX. It went out on the USENIX 82-1 tape at the Summer 1982 conference in Boston. Fenlason later described it as "my silly game."
 
