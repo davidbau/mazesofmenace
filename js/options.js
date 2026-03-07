@@ -778,8 +778,8 @@ export async function optfn_sortvanquished(optidx, req, negated, opts, op, game)
     if (negated) { game.flags.vanq_sortmode = VANQ_MLVL_MNDX; }
     else if (op !== empty_optstr) {
       let p, vndx = 0;
-      if ((p = strchr(vanqmodes, op)) != null) { vndx = Math.trunc(p - vanqmodes); }
-      else if (strchr("01234567", op)) { vndx = op - '0'; }
+      if ((p = vanqmodes.indexOf(op)) >= 0) { vndx = p; }
+      else if ("01234567".includes(op)) { vndx = op.charCodeAt(0) - '0'.charCodeAt(0); }
       else {
         config_error_add("Unknown %s parameter '%s'", optname, op);
         return optn_silenterr;
