@@ -4013,3 +4013,16 @@ hard-won wisdom:
   - section-to-callchain mapping,
   - interpretation heuristics,
   - guardrails aligned with parity policy.
+
+### apply/getobj invalid-letter parity: preserve repeated invalid-object --More-- loop (2026-03-07)
+
+- Divergence:
+  - `seed032_manual_direct` had a degraded frontier (`rng=4165/9127`) when invalid apply letters were handled with a plain `continue` (or by dropping out of prompt context), causing command-boundary skew before the step-212 dog turn.
+- Fix:
+  - In [`js/apply.js`](/share/u/davidbau/git/mazesofmenace/game/js/apply.js), invalid inventory letters in `handleApply()` now emit `You don't have that object.` and explicitly render a `--More--` marker while staying in the same apply loop.
+- Why this is correct:
+  - C `getobj()` (`invent.c`) keeps prompting on invalid letters via `continue;` and does not exit command context.
+  - Session captures in this path show repeated invalid-object `--More--` frames before dismissal.
+- Validation:
+  - `seed032_manual_direct`: improved from `rng=4165/9127, screens=164/678, events=1233/5854` to `rng=4188/8237, screens=197/678, events=1220/5832` (first shared divergence still step 212).
+  - `seed031_manual_direct`: no regression at first divergence (still step 166), with improved totals (`rng total 9132 -> 9122`, `events total 3335 -> 3320`).

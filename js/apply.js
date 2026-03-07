@@ -1032,7 +1032,19 @@ export async function handleApply(player, map, display, game) {
         }
 
         const selected = inventory.find((obj) => obj.invlet === c);
-        if (!selected) continue;
+        if (!selected) {
+            // C ref: getobj() invalid invlet path used by doapply():
+            // emit "You don't have that object.", pause at --More--, then
+            // continue prompting within this same doapply command.
+            // Keep current prompt state so topline concatenation/--More--
+            // behavior matches C getobj() overflow handling.
+            await display.putstr_message("You don't have that object.");
+            if (typeof display?.renderMoreMarker === 'function') {
+                display.renderMoreMarker();
+                display._pendingMore = true;
+            }
+            continue;
+        }
         return await resolveApplySelection(selected);
     }
 }
