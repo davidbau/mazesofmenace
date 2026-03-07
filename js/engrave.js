@@ -433,7 +433,7 @@ export async function read_engr_at(map, x, y, player, game = null) {
 // Returns TRUE if player has a free hand to engrave with.
 export function freehand(player) {
     if (!player) return true;
-    const uwep = player.uwep;
+    const uwep = player.weapon || player.uwep;
     if (!uwep) return true;
     // C: (!uwep || !welded(uwep) || (!bimanual(uwep) && (!uarms || !uarms->cursed)))
     // Simplified: if weapon is welded (cursed and worn), check bimanual

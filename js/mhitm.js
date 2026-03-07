@@ -163,7 +163,7 @@ async function missmm(magr, mdef, mattk, display, vis, map, ctx) {
 
 // cf. mhitm.c:596 — failed_grab(magr, mdef, mattk)
 export function failed_grab(magr, mdef, mattk) {
-    const pd = mdef.type || {};
+    const pd = mdef.data || mdef.type || {};
     if (unsolid(pd)
         && (mattk.aatyp === AT_HUGS || mattk.adtyp === AD_WRAP
             || mattk.adtyp === AD_STCK || mattk.adtyp === AD_DGST)) {
@@ -235,7 +235,7 @@ export function slept_monst(mon) {
 // C ref: mhitm.c:1260 rustm() — erode attacker's weapon from defender's body
 export function rustm(mdef, obj) {
     if (!mdef || !obj) return;
-    const mdat = mdef.type || {};
+    const mdat = mdef.data || mdef.type || {};
     let dmgtyp = -1, chance = 1;
 
     // AD_ACID and AD_ENCH handled elsewhere (passivemm/passiveum)
@@ -271,7 +271,7 @@ export function xdrainenergym(mon, vis) {
 
 // cf. mhitm.c:1303 — passivemm(magr, mdef, mhitb, mdead, mwep)
 export function passivemm(magr, mdef, mhitb, mdead, mwep, map) {
-    const mddat = mdef.type || {};
+    const mddat = mdef.data || mdef.type || {};
     const attacks = mddat.attacks || [];
     let mhit = mhitb ? M_ATTK_HIT : M_ATTK_MISS;
 
@@ -475,14 +475,14 @@ async function mhitm_knockback_mm(magr, mdef, mattk, mwep, vis, display, map, ct
     }
 
     // C ref: uhitm.c:5288 — attacker engulfs/hugs → no knockback
-    const pa = magr.type || {};
+    const pa = magr.data || magr.type || {};
     if (attacktype(pa, AT_ENGL) || attacktype(pa, AT_HUGS) || sticks(pa)) {
         return 0;
     }
 
     // C ref: uhitm.c:5298 — size check: agr must be much larger
     const agrSize = pa.msize ?? 0;
-    const defSize = (mdef.type || {}).msize ?? 0;
+    const defSize = (mdef.data || mdef.type || {}).msize ?? 0;
     if (!(agrSize > defSize + 1)) return 0;
 
     // C ref: uhitm.c:5303 — unsolid attacker can't knockback
@@ -541,7 +541,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx
     };
 
     // C ref: mhitm.c:1032-1057 — petrification check for touching cockatrice
-    const pd = mdef.type || {};
+    const pd = mdef.data || mdef.type || {};
     if (touch_petrifies(pd) && !resists_ston(magr)) {
         // Simplified: no glove/weapon check; just die
         // C ref: if attacker has no protective gear, turns to stone
@@ -604,7 +604,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx
 
         // cf. mhitm.c:1115 — grow_up(magr, mdef)
         const victimLevel = mdef.m_lev ?? (pd.mlevel || 0);
-        const agrLevel = magr.m_lev ?? ((magr.type || {}).mlevel || 0);
+        const agrLevel = magr.m_lev ?? ((magr.data || magr.type || {}).mlevel || 0);
         const hp_threshold = agrLevel > 0 ? agrLevel * 8 : 4;
         let max_increase = rnd(Math.max(1, victimLevel + 1));
         if ((magr.mhpmax || 0) + max_increase > hp_threshold + 1) {
@@ -615,7 +615,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll, display, vis, map, ctx
         magr.mhp = (magr.mhp || 0) + cur_increase;
         // C ref: makemon.c grow_up() — if hpmax crosses threshold, gain one level.
         if ((magr.mhpmax || 0) > hp_threshold) {
-            const baseSpeciesLevel = ((magr.type || {}).mlevel || 0);
+            const baseSpeciesLevel = ((magr.data || magr.type || {}).mlevel || 0);
             let lev_limit = Math.floor((3 * baseSpeciesLevel) / 2);
             if (lev_limit < 5) lev_limit = 5;
             else if (lev_limit > 49) lev_limit = (baseSpeciesLevel > 49 ? 50 : 49);
@@ -643,8 +643,8 @@ export async function mattackm(magr, mdef, display, vis, map, ctx) {
     if (!magr || !mdef) return M_ATTK_MISS;
     if (helpless(magr)) return M_ATTK_MISS;
 
-    const pa = magr.type || {};
-    const pd = mdef.type || {};
+    const pa = magr.data || magr.type || {};
+    const pd = mdef.data || mdef.type || {};
     const attacks = pa.attacks || [];
 
 
@@ -865,7 +865,7 @@ export function mdisplacem(magr, mdef, quietly, map) {
     }
 
     // Petrification check: aggressor touching cockatrice
-    const pd = mdef.type || {};
+    const pd = mdef.data || mdef.type || {};
     if (touch_petrifies(pd) && !resists_ston(magr)) {
         const gloves = magr.misc_worn_check & W_ARMG;
         if (!gloves) {
@@ -891,8 +891,8 @@ export function mdisplacem(magr, mdef, quietly, map) {
 // C ref: mhitm.c:807 engulf_target() — check if engulf is possible
 export function engulf_target(magr, mdef) {
     if (!magr || !mdef) return false;
-    const adat = magr.type || {};
-    const ddat = mdef.type || {};
+    const adat = magr.data || magr.type || {};
+    const ddat = mdef.data || mdef.type || {};
     // Can't swallow something too big
     if ((ddat.msize || 0) >= MZ_HUGE) return false;
     if ((adat.msize || 0) < (ddat.msize || 0) && !is_whirly(adat)) return false;

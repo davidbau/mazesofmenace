@@ -291,7 +291,7 @@ export function corpsenm_price_adj(obj) {
     }
     val = Math.max(1, ((ptr.mlevel - 1) * 2));
     if (obj.otyp === CORPSE) {
-      val += Math.max(1, (ptr.cnutrit / 30));
+      val += Math.max(1, Math.floor(ptr.cnutrit / 30));
     }
     val = val * tmp;
   }

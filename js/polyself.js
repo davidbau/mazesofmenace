@@ -1469,7 +1469,7 @@ export async function break_armor(player) {
     // No hands or very small — lose gloves, shield, helmet
     if (nohands(uptr) || (uptr.msize !== undefined && uptr.msize <= MZ_SMALL)) {
         if (player.uarmg) {
-            await You("drop your gloves%s!", player.uwep ? " and weapon" : "");
+            await You("drop your gloves%s!", player.weapon ? " and weapon" : "");
             await drop_weapon(player, 0);
             removeArmor('uarmg', 'Gloves_off');
         }
@@ -1514,7 +1514,7 @@ export async function drop_weapon(player, alone) {
     // Drop weapon when polymorphed into a form that can't wield.
     if (!player) return;
 
-    if (player.uwep) {
+    if (player.weapon) {
         if (!alone || cantwield(player.type)) {
             if (alone) {
                 await You("find you must drop your weapon!");
@@ -1525,8 +1525,8 @@ export async function drop_weapon(player, alone) {
                 player.uswapwep = null;
                 if (player.dropx) await player.dropx(swapwep);
             }
-            const wep = player.uwep;
-            player.uwep = null;
+            const wep = player.weapon;
+            player.weapon = null;
             if (player.dropx) await player.dropx(wep);
             if (player.update_inventory) player.update_inventory();
         }

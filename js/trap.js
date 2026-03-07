@@ -2332,7 +2332,7 @@ async function trapeffect_rust_trap_you(trap, trflags, player, game, map) {
         break;
     case 2:
         await pline('%s your right arm!', A_gush_of_water_hits);
-        water_damage(player.uwep || player.weapon, null, true);
+        water_damage(player.weapon, null, true);
         water_damage(player.uarmg || player.gloves, 'gloves', true);
         break;
     default:
