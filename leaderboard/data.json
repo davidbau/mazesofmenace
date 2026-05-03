@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-03T14:11:53.281Z",
+  "timestamp": "2026-05-03T18:19:12.864Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "davidbau",
       "fork": "davidbau/teleport-contest",
-      "lastScored": "2026-05-03T14:11:53.216Z",
+      "lastScored": "2026-05-03T18:19:12.801Z",
       "public": {
         "passing": 0,
         "total": 88,
@@ -26,6 +26,11 @@
         },
         {
           "ts": "2026-05-03T14:11:53.216Z",
+          "passing": 0,
+          "rngPct": 2.1421352699894385
+        },
+        {
+          "ts": "2026-05-03T18:19:12.801Z",
           "passing": 0,
           "rngPct": 2.1421352699894385
         }
