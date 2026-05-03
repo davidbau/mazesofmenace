@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Teleport Coding Challenge — Leaderboard</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --fg: #e0e0e0;
+  --accent: #4ecca3;
+  --dim: #666;
+  --border: #333;
+  --pass: #4ecca3;
+  --fail: #e74c3c;
+  --partial: #f39c12;
+  --card-bg: #16213e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: 'SF Mono', 'Consolas', monospace; padding: 20px; }
+h1 { color: var(--accent); font-size: 1.4em; margin-bottom: 4px; }
+.subtitle { color: var(--dim); font-size: 0.85em; margin-bottom: 20px; }
+.updated { color: var(--dim); font-size: 0.75em; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--accent); font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; }
+td { padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 0.85em; }
+tr:hover { background: var(--card-bg); }
+.rank { color: var(--dim); width: 40px; }
+.team a { color: var(--accent); text-decoration: none; }
+.team a:hover { text-decoration: underline; }
+.pass { color: var(--pass); font-weight: bold; }
+.fail { color: var(--fail); }
+.partial { color: var(--partial); }
+.hidden { color: var(--dim); font-style: italic; }
+.pct { text-align: right; }
+.sparkline { width: 120px; }
+.sparkline canvas { vertical-align: middle; }
+.session-detail { font-size: 0.7em; color: var(--dim); }
+.legend { margin-top: 20px; font-size: 0.75em; color: var(--dim); }
+.legend span { margin-right: 16px; }
+.legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h1>The Teleport Coding Challenge</h1>
+<div class="subtitle">Port NetHack 3.7 C → JavaScript with bit-exact parity</div>
+<div class="updated" id="updated">Loading...</div>
+
+<table id="leaderboard">
+<thead>
+<tr>
+  <th class="rank">#</th>
+  <th>Team</th>
+  <th class="pct">Passing</th>
+  <th class="pct">RNG%</th>
+  <th class="pct">Screen%</th>
+  <th class="pct">Hidden</th>
+  <th class="sparkline">Progress</th>
+  <th>Updated</th>
+</tr>
+</thead>
+<tbody id="tbody">
+</tbody>
+</table>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--pass)"></span> 100% match</span>
+  <span><span class="dot" style="background:var(--partial)"></span> Partial match</span>
+  <span><span class="dot" style="background:var(--fail)"></span> &lt;50%</span>
+  <span class="hidden">Hidden sessions scored periodically, revealed at contest end</span>
+</div>
+
+<script>
+const DATA_URL = 'data.json';
+
+function timeAgo(ts) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return mins + 'm ago';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + 'h ago';
+  return Math.floor(hours / 24) + 'd ago';
+}
+
+function pctClass(pct) {
+  if (pct >= 100) return 'pass';
+  if (pct >= 50) return 'partial';
+  return 'fail';
+}
+
+function drawSparkline(canvas, history) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!history || history.length < 2) return;
+
+  const max = Math.max(...history.map(h => h.passing), 1);
+  ctx.strokeStyle = '#4ecca3';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < history.length; i++) {
+    const x = (i / (history.length - 1)) * w;
+    const y = h - (history[i].passing / max) * (h - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Current value dot
+  const last = history[history.length - 1];
+  const lx = w - 1;
+  const ly = h - (last.passing / max) * (h - 4) - 2;
+  ctx.fillStyle = '#4ecca3';
+  ctx.beginPath();
+  ctx.arc(lx, ly, 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+async function loadLeaderboard() {
+  try {
+    const resp = await fetch(DATA_URL);
+    const data = await resp.json();
+
+    document.getElementById('updated').textContent =
+      'Last scored: ' + new Date(data.timestamp).toLocaleString();
+
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    // Sort by passing (desc), then rngPct (desc)
+    const teams = (data.teams || []).sort((a, b) =>
+      (b.public.passing - a.public.passing)
+      || (b.public.rngPct - a.public.rngPct)
+    );
+
+    teams.forEach((team, i) => {
+      const tr = document.createElement('tr');
+      const pub = team.public;
+      const rngPct = pub.rngPct?.toFixed(1) || '0.0';
+      const scrPct = pub.screenPct?.toFixed(1) || '0.0';
+
+      tr.innerHTML = `
+        <td class="rank">${i + 1}</td>
+        <td class="team"><a href="https://github.com/${team.fork}" target="_blank">${team.name}</a></td>
+        <td class="pct"><span class="${pctClass(pub.passing / pub.total * 100)}">${pub.passing}/${pub.total}</span></td>
+        <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
+        <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
+        <td class="pct hidden">?/?</td>
+        <td class="sparkline"><canvas width="120" height="24" id="spark-${i}"></canvas></td>
+        <td class="session-detail">${team.lastScored ? timeAgo(team.lastScored) : '—'}</td>
+      `;
+      tbody.appendChild(tr);
+
+      // Draw sparkline from history
+      if (team.history && team.history.length > 0) {
+        requestAnimationFrame(() => {
+          const canvas = document.getElementById('spark-' + i);
+          if (canvas) drawSparkline(canvas, team.history);
+        });
+      }
+    });
+  } catch (e) {
+    document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
+  }
+}
+
+loadLeaderboard();
+// Auto-refresh every 5 minutes
+setInterval(loadLeaderboard, 300000);
+</script>
+</body>
+</html>
