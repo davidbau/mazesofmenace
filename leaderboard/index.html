@@ -3,49 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="The Teleport Coding Challenge — Leaderboard">
+<meta name="theme-color" content="#f9f7f1">
 <title>The Teleport Coding Challenge — Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #1a1a2e;
-  --fg: #e0e0e0;
-  --accent: #4ecca3;
-  --dim: #666;
-  --border: #333;
-  --pass: #4ecca3;
-  --fail: #e74c3c;
-  --partial: #f39c12;
-  --card-bg: #16213e;
+    --color-bg: #f9f7f1;
+    --color-text: #333;
+    --color-text-muted: #888;
+    --color-accent: #6b2c2c;
+    --color-accent-dark: #4a2020;
+    --color-border: #d0c8b8;
+    --color-row-hover: #f0ece3;
+    --color-pass: #2a7a3a;
+    --color-partial: #b8860b;
+    --color-fail: #a03030;
+    --color-sparkline: #6b2c2c;
+    --font-serif: 'EB Garamond', Georgia, serif;
+    --font-mono: 'DejaVu Sans Mono', 'Consolas', monospace;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: var(--bg); color: var(--fg); font-family: 'SF Mono', 'Consolas', monospace; padding: 20px; }
-h1 { color: var(--accent); font-size: 1.4em; margin-bottom: 4px; }
-.subtitle { color: var(--dim); font-size: 0.85em; margin-bottom: 20px; }
-.updated { color: var(--dim); font-size: 0.75em; margin-bottom: 16px; }
-table { width: 100%; border-collapse: collapse; }
-th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--accent); font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; }
-td { padding: 6px 12px; border-bottom: 1px solid var(--border); font-size: 0.85em; }
-tr:hover { background: var(--card-bg); }
-.rank { color: var(--dim); width: 40px; }
-.team a { color: var(--accent); text-decoration: none; }
+body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-serif);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2em 1em;
+    min-height: 100vh;
+}
+.container {
+    max-width: 56em;
+    width: 100%;
+}
+.nav {
+    display: flex;
+    gap: 1.5em;
+    margin-bottom: 1.5em;
+    font-size: 1em;
+}
+.nav a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.nav a:hover { text-decoration: underline; }
+h1 {
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--color-accent-dark);
+    margin-bottom: 0.15em;
+}
+.subtitle {
+    font-size: 1.1em;
+    font-style: italic;
+    color: var(--color-text-muted);
+    margin-bottom: 0.6em;
+}
+.updated {
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+    margin-bottom: 1.2em;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95em;
+}
+thead th {
+    text-align: left;
+    padding: 0.5em 0.7em;
+    border-bottom: 2px solid var(--color-accent-dark);
+    color: var(--color-accent-dark);
+    font-weight: 600;
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-family: var(--font-serif);
+}
+td {
+    padding: 0.45em 0.7em;
+    border-bottom: 1px solid var(--color-border);
+}
+tr:hover td { background: var(--color-row-hover); }
+.rank { color: var(--color-text-muted); width: 2em; text-align: center; }
+.team a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+}
 .team a:hover { text-decoration: underline; }
-.pass { color: var(--pass); font-weight: bold; }
-.fail { color: var(--fail); }
-.partial { color: var(--partial); }
-.hidden { color: var(--dim); font-style: italic; }
-.pct { text-align: right; }
-.sparkline { width: 120px; }
+.pct {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+}
+.pass { color: var(--color-pass); font-weight: 600; }
+.partial { color: var(--color-partial); }
+.fail { color: var(--color-fail); }
+.hidden { color: var(--color-text-muted); font-style: italic; }
+.sparkline { width: 100px; }
 .sparkline canvas { vertical-align: middle; }
-.session-detail { font-size: 0.7em; color: var(--dim); }
-.legend { margin-top: 20px; font-size: 0.75em; color: var(--dim); }
-.legend span { margin-right: 16px; }
-.legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.time {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+}
+.legend {
+    margin-top: 1.5em;
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2em;
+}
+.legend .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.phase-badge {
+    display: inline-block;
+    font-size: 0.75em;
+    font-family: var(--font-mono);
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+    background: var(--color-accent-dark);
+    color: var(--color-bg);
+    margin-left: 0.5em;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
 </style>
 </head>
 <body>
 
-<h1>The Teleport Coding Challenge</h1>
-<div class="subtitle">Port NetHack 3.7 C → JavaScript with bit-exact parity</div>
-<div class="updated" id="updated">Loading...</div>
+<div class="container">
+
+<div class="nav">
+    <a href="/">Home</a>
+    <a href="/play/">Play the Skeleton</a>
+    <a href="https://github.com/davidbau/teleport-contest#readme">Enter the Contest</a>
+</div>
+
+<h1>Leaderboard <span class="phase-badge" id="phase">open</span></h1>
+<div class="subtitle">Port NetHack 5.0 C &rarr; JavaScript with bit-exact parity</div>
+<div class="updated" id="updated">Loading&hellip;</div>
 
 <table id="leaderboard">
 <thead>
@@ -53,8 +163,8 @@ tr:hover { background: var(--card-bg); }
   <th class="rank">#</th>
   <th>Team</th>
   <th class="pct">Passing</th>
-  <th class="pct">RNG%</th>
-  <th class="pct">Screen%</th>
+  <th class="pct">RNG</th>
+  <th class="pct">Screen</th>
   <th class="pct">Hidden</th>
   <th class="sparkline">Progress</th>
   <th>Updated</th>
@@ -65,108 +175,114 @@ tr:hover { background: var(--card-bg); }
 </table>
 
 <div class="legend">
-  <span><span class="dot" style="background:var(--pass)"></span> 100% match</span>
-  <span><span class="dot" style="background:var(--partial)"></span> Partial match</span>
-  <span><span class="dot" style="background:var(--fail)"></span> &lt;50%</span>
-  <span class="hidden">Hidden sessions scored periodically, revealed at contest end</span>
+  <span><span class="dot" style="background:var(--color-pass)"></span> 100% match</span>
+  <span><span class="dot" style="background:var(--color-partial)"></span> 50&ndash;99%</span>
+  <span><span class="dot" style="background:var(--color-fail)"></span> &lt;50%</span>
+  <span class="hidden">Hidden sessions revealed at contest end</span>
+</div>
+
 </div>
 
 <script>
 const DATA_URL = 'data.json';
 
 function timeAgo(ts) {
-  const diff = Date.now() - new Date(ts).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return mins + 'm ago';
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + 'h ago';
-  return Math.floor(hours / 24) + 'd ago';
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    return Math.floor(hours / 24) + 'd ago';
 }
 
 function pctClass(pct) {
-  if (pct >= 100) return 'pass';
-  if (pct >= 50) return 'partial';
-  return 'fail';
+    if (pct >= 100) return 'pass';
+    if (pct >= 50) return 'partial';
+    return 'fail';
 }
 
 function drawSparkline(canvas, history) {
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  if (!history || history.length < 2) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!history || history.length < 2) return;
 
-  const max = Math.max(...history.map(h => h.passing), 1);
-  ctx.strokeStyle = '#4ecca3';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  for (let i = 0; i < history.length; i++) {
-    const x = (i / (history.length - 1)) * w;
-    const y = h - (history[i].passing / max) * (h - 4) - 2;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
+    const max = Math.max(...history.map(h => h.passing), 1);
+    ctx.strokeStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-sparkline').trim();
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < history.length; i++) {
+        const x = (i / (history.length - 1)) * w;
+        const y = h - (history[i].passing / max) * (h - 4) - 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
 
-  // Current value dot
-  const last = history[history.length - 1];
-  const lx = w - 1;
-  const ly = h - (last.passing / max) * (h - 4) - 2;
-  ctx.fillStyle = '#4ecca3';
-  ctx.beginPath();
-  ctx.arc(lx, ly, 2, 0, Math.PI * 2);
-  ctx.fill();
+    // Current value dot
+    const last = history[history.length - 1];
+    const ly = h - (last.passing / max) * (h - 4) - 2;
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.arc(w - 1, ly, 2.5, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 async function loadLeaderboard() {
-  try {
-    const resp = await fetch(DATA_URL);
-    const data = await resp.json();
+    try {
+        const resp = await fetch(DATA_URL + '?t=' + Date.now());
+        const data = await resp.json();
 
-    document.getElementById('updated').textContent =
-      'Last scored: ' + new Date(data.timestamp).toLocaleString();
+        document.getElementById('phase').textContent = data.contestPhase || 'open';
+        document.getElementById('updated').textContent =
+            'Last scored: ' + new Date(data.timestamp).toLocaleString();
 
-    const tbody = document.getElementById('tbody');
-    tbody.innerHTML = '';
+        const tbody = document.getElementById('tbody');
+        tbody.innerHTML = '';
 
-    // Sort by passing (desc), then rngPct (desc)
-    const teams = (data.teams || []).sort((a, b) =>
-      (b.public.passing - a.public.passing)
-      || (b.public.rngPct - a.public.rngPct)
-    );
+        const teams = (data.teams || []).sort((a, b) =>
+            (b.public.passing - a.public.passing)
+            || (b.public.rngPct - a.public.rngPct)
+        );
 
-    teams.forEach((team, i) => {
-      const tr = document.createElement('tr');
-      const pub = team.public;
-      const rngPct = pub.rngPct?.toFixed(1) || '0.0';
-      const scrPct = pub.screenPct?.toFixed(1) || '0.0';
+        teams.forEach((team, i) => {
+            const tr = document.createElement('tr');
+            const pub = team.public;
+            const rngPct = pub.rngPct?.toFixed(1) || '0.0';
+            const scrPct = pub.screenPct?.toFixed(1) || '0.0';
+            const passPct = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
 
-      tr.innerHTML = `
-        <td class="rank">${i + 1}</td>
-        <td class="team"><a href="https://github.com/${team.fork}" target="_blank">${team.name}</a></td>
-        <td class="pct"><span class="${pctClass(pub.passing / pub.total * 100)}">${pub.passing}/${pub.total}</span></td>
-        <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
-        <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
-        <td class="pct hidden">?/?</td>
-        <td class="sparkline"><canvas width="120" height="24" id="spark-${i}"></canvas></td>
-        <td class="session-detail">${team.lastScored ? timeAgo(team.lastScored) : '—'}</td>
-      `;
-      tbody.appendChild(tr);
+            tr.innerHTML = `
+                <td class="rank">${i + 1}</td>
+                <td class="team"><a href="https://github.com/${team.fork}" target="_blank">${team.name}</a></td>
+                <td class="pct"><span class="${pctClass(passPct)}">${pub.passing}/${pub.total}</span></td>
+                <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
+                <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
+                <td class="pct hidden">?/?</td>
+                <td class="sparkline"><canvas width="100" height="20" id="spark-${i}"></canvas></td>
+                <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
+            `;
+            tbody.appendChild(tr);
 
-      // Draw sparkline from history
-      if (team.history && team.history.length > 0) {
-        requestAnimationFrame(() => {
-          const canvas = document.getElementById('spark-' + i);
-          if (canvas) drawSparkline(canvas, team.history);
+            if (team.history && team.history.length > 0) {
+                requestAnimationFrame(() => {
+                    const canvas = document.getElementById('spark-' + i);
+                    if (canvas) drawSparkline(canvas, team.history);
+                });
+            }
         });
-      }
-    });
-  } catch (e) {
-    document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
-  }
+
+        if (teams.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://mazesofmenace.ai/contest/">Get started!</a></td></tr>';
+        }
+    } catch (e) {
+        document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
+    }
 }
 
 loadLeaderboard();
-// Auto-refresh every 5 minutes
 setInterval(loadLeaderboard, 300000);
 </script>
 </body>
