@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-04T07:03:30.625Z",
+  "timestamp": "2026-05-04T09:56:30.197Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "davidbau",
       "fork": "davidbau/teleport-contest",
-      "lastScored": "2026-05-04T07:03:13.179Z",
+      "lastScored": "2026-05-04T09:56:12.614Z",
       "public": {
         "passing": 0,
         "total": 88,
@@ -41,6 +41,11 @@
         },
         {
           "ts": "2026-05-04T07:03:13.179Z",
+          "passing": 0,
+          "rngPct": 2.1421951764514886
+        },
+        {
+          "ts": "2026-05-04T09:56:12.614Z",
           "passing": 0,
           "rngPct": 2.1421951764514886
         }
@@ -1107,7 +1112,7 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-04T07:03:30.572Z",
+      "lastScored": "2026-05-04T09:56:30.143Z",
       "public": {
         "passing": 0,
         "total": 88,
@@ -1123,6 +1128,11 @@
         },
         {
           "ts": "2026-05-04T07:03:30.572Z",
+          "passing": 0,
+          "rngPct": 2.1421352699894385
+        },
+        {
+          "ts": "2026-05-04T09:56:30.143Z",
           "passing": 0,
           "rngPct": 2.1421352699894385
         }
