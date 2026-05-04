@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-04T09:59:37.643Z",
+  "timestamp": "2026-05-04T12:35:08.593Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-04T09:59:37.580Z",
+      "lastScored": "2026-05-04T12:35:08.521Z",
       "public": {
         "passing": 0,
         "total": 88,
@@ -31,6 +31,11 @@
         },
         {
           "ts": "2026-05-04T09:59:37.580Z",
+          "passing": 0,
+          "rngPct": 2.1421352699894385
+        },
+        {
+          "ts": "2026-05-04T12:35:08.521Z",
           "passing": 0,
           "rngPct": 2.1421352699894385
         }
