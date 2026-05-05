@@ -97,10 +97,29 @@ tr:hover td { background: var(--color-row-hover); }
     font-weight: 500;
 }
 .team a:hover { text-decoration: underline; }
+.play { width: 4em; text-align: center; }
+.play-btn {
+    display: inline-block;
+    padding: 0.15em 0.6em;
+    background: var(--color-accent);
+    color: var(--color-bg);
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+    text-decoration: none;
+}
+.play-btn:hover { background: var(--color-accent-dark); text-decoration: none; }
 .pct {
     text-align: right;
     font-family: var(--font-mono);
     font-size: 0.88em;
+}
+.pct a { color: inherit; text-decoration: none; }
+.pct a:hover { text-decoration: underline; }
+.hint {
+    margin-top: 1em;
+    font-size: 0.9em;
+    color: var(--color-text-muted);
 }
 .pass { color: var(--color-pass); font-weight: 600; }
 .partial { color: var(--color-partial); }
@@ -162,6 +181,7 @@ tr:hover td { background: var(--color-row-hover); }
 <tr>
   <th class="rank">#</th>
   <th>Team</th>
+  <th class="play"></th>
   <th class="pct">Passing</th>
   <th class="pct">RNG</th>
   <th class="pct">Screen</th>
@@ -173,6 +193,12 @@ tr:hover td { background: var(--color-row-hover); }
 <tbody id="tbody">
 </tbody>
 </table>
+<p class="hint">
+  <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
+  Click a <strong>score</strong> to open the Session Viewer and scrub
+  through each public session, frame by frame, to see where it diverges
+  from C.
+</p>
 
 <div class="legend">
   <span><span class="dot" style="background:var(--color-pass)"></span> 100% match</span>
@@ -254,12 +280,16 @@ async function loadLeaderboard() {
             const scrPct = pub.screenPct?.toFixed(1) || '0.0';
             const passPct = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
 
+            const playUrl   = '/play/' + team.name + '/';
+            const viewerUrl = '/play/' + team.name + '/tools/session-viewer/';
+
             tr.innerHTML = `
                 <td class="rank">${i + 1}</td>
-                <td class="team"><a href="https://github.com/${team.fork}" target="_blank">${team.name}</a></td>
-                <td class="pct"><span class="${pctClass(passPct)}">${pub.passing}/${pub.total}</span></td>
-                <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
-                <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
+                <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
+                <td class="play"><a class="play-btn" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+                <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${pctClass(passPct)}">${pub.passing}/${pub.total}</span></a></td>
+                <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></a></td>
+                <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></a></td>
                 <td class="pct hidden">?/?</td>
                 <td class="sparkline"><canvas width="100" height="20" id="spark-${i}"></canvas></td>
                 <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
@@ -275,7 +305,7 @@ async function loadLeaderboard() {
         });
 
         if (teams.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://mazesofmenace.ai/contest/">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
     } catch (e) {
         document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
