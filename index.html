@@ -326,7 +326,9 @@ footer a { color: var(--color-text-muted); }
         'Last scored ' + TIME_AGO(data.timestamp);
 
     const teams = (data.teams || []).slice().sort((a, b) =>
-        (b.public.passing - a.public.passing) || (b.public.rngPct - a.public.rngPct)
+        ((b.public.points  || 0) - (a.public.points  || 0))
+        || ((b.public.passing || 0) - (a.public.passing || 0))
+        || ((b.public.rngPct  || 0) - (a.public.rngPct  || 0))
     );
 
     const tbody = document.getElementById('lb-tbody');
