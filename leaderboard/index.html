@@ -112,6 +112,14 @@ tr:hover td { background: var(--color-row-hover); }
 .lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
 .lb-btn.tests  { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
 .lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
+.pts {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.95em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.pts .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; }
 .pct {
     text-align: right;
     font-family: var(--font-mono);
@@ -183,9 +191,10 @@ tr:hover td { background: var(--color-row-hover); }
   <th class="rank">#</th>
   <th>Team</th>
   <th class="actions" colspan="2"></th>
-  <th class="pct">Passing</th>
-  <th class="pct">RNG</th>
+  <th class="pts">Points</th>
+  <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
+  <th class="pct">Sessions</th>
   <th class="pct">Hidden</th>
   <th class="sparkline">Progress</th>
   <th>Updated</th>
@@ -235,14 +244,17 @@ function drawSparkline(canvas, history) {
     ctx.clearRect(0, 0, w, h);
     if (!history || history.length < 2) return;
 
-    const max = Math.max(...history.map(h => h.passing), 1);
+    // Plot points-over-time. Older history rows wrote `passing`; newer
+    // rows write `points` + `maxPoints`. Fall back gracefully.
+    const valueOf = (h) => (h.points != null ? h.points : (h.passing || 0));
+    const max = Math.max(...history.map(valueOf), 1);
     ctx.strokeStyle = getComputedStyle(document.documentElement)
         .getPropertyValue('--color-sparkline').trim();
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i < history.length; i++) {
         const x = (i / (history.length - 1)) * w;
-        const y = h - (history[i].passing / max) * (h - 4) - 2;
+        const y = h - (valueOf(history[i]) / max) * (h - 4) - 2;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
@@ -250,7 +262,7 @@ function drawSparkline(canvas, history) {
 
     // Current value dot
     const last = history[history.length - 1];
-    const ly = h - (last.passing / max) * (h - 4) - 2;
+    const ly = h - (valueOf(last) / max) * (h - 4) - 2;
     ctx.fillStyle = ctx.strokeStyle;
     ctx.beginPath();
     ctx.arc(w - 1, ly, 2.5, 0, Math.PI * 2);
@@ -270,16 +282,22 @@ async function loadLeaderboard() {
         tbody.innerHTML = '';
 
         const teams = (data.teams || []).sort((a, b) =>
-            (b.public.passing - a.public.passing)
-            || (b.public.rngPct - a.public.rngPct)
+            ((b.public.points || 0) - (a.public.points || 0))
+            || ((b.public.passing || 0) - (a.public.passing || 0))
+            || ((b.public.rngPct || 0) - (a.public.rngPct || 0))
         );
+
+        const fmt = (n) => Number(n || 0).toLocaleString();
 
         teams.forEach((team, i) => {
             const tr = document.createElement('tr');
             const pub = team.public;
             const rngPct = pub.rngPct?.toFixed(1) || '0.0';
             const scrPct = pub.screenPct?.toFixed(1) || '0.0';
-            const passPct = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+            const points    = pub.points || 0;
+            const maxPoints = pub.maxPoints || 0;
+            const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
+            const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
 
             const playUrl   = '/play/' + team.name + '/';
             const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
@@ -289,9 +307,13 @@ async function loadLeaderboard() {
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                 <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pct"><span class="${pctClass(passPct)}">${pub.passing}/${pub.total}</span></td>
+                <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
+                    <span class="${pctClass(pointsPct)}">${fmt(points)}</span>
+                    <span class="pts-max">/ ${fmt(maxPoints)}</span>
+                </td>
                 <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
                 <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
+                <td class="pct"><span class="${pctClass(sessPct)}">${pub.passing}/${pub.total}</span></td>
                 <td class="pct hidden">?/?</td>
                 <td class="sparkline"><canvas width="100" height="20" id="spark-${i}"></canvas></td>
                 <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
@@ -307,7 +329,7 @@ async function loadLeaderboard() {
         });
 
         if (teams.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
     } catch (e) {
         document.getElementById('updated').textContent = 'Failed to load: ' + e.message;

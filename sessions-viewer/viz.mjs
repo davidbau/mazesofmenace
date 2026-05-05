@@ -362,7 +362,26 @@ async function loadAndCompute(sessionData, name) {
         const mod = await import(jsUrl);
         runSegment = mod.runSegment;
     } catch (err) {
-        status(`could not import ${jsUrl}: ${err.message}`, 'error');
+        // Friendlier message for the common cases. The browser raises
+        // "Failed to resolve module specifier" when a fork imports a
+        // bare module name we don't have an import-map entry for —
+        // typically a Node-only API like `fs/promises` or some npm
+        // package. (Contestant code is supposed to be vanilla ESM
+        // runnable in browsers; the import map at index.html shims
+        // the common Node built-ins, but anything else won't load.)
+        const msg = String(err?.message || err);
+        let hint = msg;
+        if (/Failed to resolve module specifier/i.test(msg)) {
+            const m = msg.match(/specifier ["']([^"']+)["']/);
+            const bad = m ? m[1] : '?';
+            hint = `this fork imports "${bad}" which the browser can't resolve. ` +
+                   `It probably uses Node-only or npm modules — those work in ` +
+                   `the judge's Node sandbox but not in the in-browser viewer. ` +
+                   (HUB_MODE
+                    ? `Try the GitHub link above to read the source directly.`
+                    : `Run with ?js=<url> pointing at a browser-compatible build.`);
+        }
+        status(`couldn't load ${jsUrl}: ${hint}`, 'error');
         return;
     }
 

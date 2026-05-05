@@ -122,6 +122,8 @@ a:hover { text-decoration: underline; }
 .lb-table td.rank { width: 2.4em; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .lb-table td.team a { font-weight: 600; }
 .lb-table td.action { width: 4em; text-align: center; padding-left: 0.3em; padding-right: 0.3em; }
+.lb-table td.pts    { font-family: var(--font-mono); font-size: 0.95em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lb-table td.pts .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; }
 .lb-table td.pct    { font-family: var(--font-mono); font-size: 0.92em; text-align: right; font-variant-numeric: tabular-nums; }
 .lb-table td.time   { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
 .lb-table tr:hover td { background: var(--color-row-hover); }
@@ -229,9 +231,10 @@ footer a { color: var(--color-text-muted); }
                 <th class="rank">#</th>
                 <th class="team">Team</th>
                 <th class="actions" colspan="2"></th>
-                <th class="pct">Passing</th>
+                <th class="pts">Points</th>
                 <th class="pct">PRNG</th>
                 <th class="pct">Screen</th>
+                <th class="pct">Sessions</th>
                 <th class="time">Last</th>
             </tr>
         </thead>
@@ -241,9 +244,13 @@ footer a { color: var(--color-text-muted); }
         No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
     </p>
     <p class="lb-hint">
-        <strong>Play</strong> opens the contestant&rsquo;s build in your browser.
-        Click a <strong>score</strong> to open the Session Viewer and scrub through
-        each public session, frame by frame, to see where it diverges from C.
+        Each step earns up to two points &mdash; one for matching C&rsquo;s PRNG
+        call sequence and one for matching the rendered 24&times;80 screen.
+        The 44 public sessions contain 10,902 steps for
+        <strong>21,804 points</strong> max. <em>Sessions</em> tallies whole
+        sessions where both channels hit 100%. <strong>Play</strong> opens
+        that build in your browser; <strong>Tests</strong> opens the Session
+        Viewer scoped to it.
     </p>
 </section>
 
@@ -332,11 +339,15 @@ footer a { color: var(--color-text-muted); }
     }
     table.hidden = false;
 
+    const fmt = (n) => Number(n || 0).toLocaleString();
     teams.forEach((team, i) => {
         const pub = team.public;
-        const passPct = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
-        const rngPct  = pub.rngPct  || 0;
-        const scrPct  = pub.screenPct || 0;
+        const points    = pub.points || 0;
+        const maxPoints = pub.maxPoints || 0;
+        const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
+        const rngPct    = pub.rngPct  || 0;
+        const scrPct    = pub.screenPct || 0;
+        const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
         const playUrl   = '/play/' + team.name + '/';
         const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
@@ -346,9 +357,13 @@ footer a { color: var(--color-text-muted); }
             <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
             <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-            <td class="pct"><span class="${PCT_CLASS(passPct)}">${pub.passing}/${pub.total}</span></td>
+            <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
+                <span class="${PCT_CLASS(pointsPct)}">${fmt(points)}</span>
+                <span class="pts-max">/ ${fmt(maxPoints)}</span>
+            </td>
             <td class="pct"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
             <td class="pct"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+            <td class="pct"><span class="${PCT_CLASS(sessPct)}">${pub.passing}/${pub.total}</span></td>
             <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
         `;
         tbody.appendChild(tr);

@@ -4,6 +4,31 @@
 <meta charset="utf-8">
 <title>Session Viewer — Teleport Coding Challenge</title>
 <link rel="stylesheet" href="style.css">
+<!-- Shim Node built-ins so contestant forks that import 'fs' / 'path' /
+     'module' (etc.) don't fail at the browser's module resolver before
+     any of their browser-safe code can run. The shim throws a clearer
+     error from the call site if the contestant actually invokes one
+     of these — see /shim/node-builtins.mjs. -->
+<script type="importmap">
+{
+    "imports": {
+        "module":           "/shim/node-builtins.mjs",
+        "node:module":      "/shim/node-builtins.mjs",
+        "fs":               "/shim/node-builtins.mjs",
+        "node:fs":          "/shim/node-builtins.mjs",
+        "fs/promises":      "/shim/node-builtins.mjs",
+        "node:fs/promises": "/shim/node-builtins.mjs",
+        "path":             "/shim/node-builtins.mjs",
+        "node:path":        "/shim/node-builtins.mjs",
+        "url":              "/shim/node-builtins.mjs",
+        "node:url":         "/shim/node-builtins.mjs",
+        "os":               "/shim/node-builtins.mjs",
+        "node:os":          "/shim/node-builtins.mjs",
+        "process":          "/shim/node-builtins.mjs",
+        "node:process":     "/shim/node-builtins.mjs"
+    }
+}
+</script>
 </head>
 <body>
 <header>
