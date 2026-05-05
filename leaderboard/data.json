@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-05T18:32:04.099Z",
+  "timestamp": "2026-05-05T23:33:14.743Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-05T18:31:45.720Z",
+      "lastScored": "2026-05-05T23:32:57.078Z",
       "public": {
         "points": 6935,
         "maxPoints": 21964,
@@ -14,7 +14,14 @@
         "rngPct": 4.660989721047459,
         "screenPct": 0.7102531415042798
       },
-      "heldOut": null,
+      "heldOut": {
+        "points": 7315,
+        "maxPoints": 20975,
+        "passing": 0,
+        "total": 44,
+        "rngPct": 3.555809342226083,
+        "screenPct": 0.33377837116154874
+      },
       "history": [
         {
           "ts": "2026-05-05T14:43:39.794Z",
@@ -56,6 +63,12 @@
         },
         {
           "ts": "2026-05-05T18:31:45.720Z",
+          "points": 6935,
+          "maxPoints": 21964,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-05T23:32:57.078Z",
           "points": 6935,
           "maxPoints": 21964,
           "passing": 0
@@ -771,16 +784,23 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-05T18:32:03.996Z",
+      "lastScored": "2026-05-05T23:33:14.632Z",
       "public": {
-        "points": 6877,
+        "points": 6886,
         "maxPoints": 21964,
         "passing": 0,
         "total": 44,
-        "rngPct": 5.440776430997266,
+        "rngPct": 6.40524633549035,
         "screenPct": 0.13658714259697685
       },
-      "heldOut": null,
+      "heldOut": {
+        "points": 7282,
+        "maxPoints": 20975,
+        "passing": 0,
+        "total": 44,
+        "rngPct": 5.3139944664289835,
+        "screenPct": 0
+      },
       "history": [
         {
           "ts": "2026-05-05T14:43:57.755Z",
@@ -825,6 +845,12 @@
           "points": 6877,
           "maxPoints": 21964,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-05T23:33:14.632Z",
+          "points": 6886,
+          "maxPoints": 21964,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -832,11 +858,11 @@
           "name": "seed0002-healer-reflection-drummer.session.json",
           "passed": false,
           "rng": {
-            "matched": 90,
+            "matched": 1008,
             "total": 27158
           },
           "rngSteps": {
-            "matched": 256,
+            "matched": 257,
             "total": 595
           },
           "screen": {
@@ -848,11 +874,11 @@
           "name": "seed0004-feeding-pony.session.json",
           "passed": false,
           "rng": {
-            "matched": 108,
+            "matched": 544,
             "total": 12084
           },
           "rngSteps": {
-            "matched": 155,
+            "matched": 156,
             "total": 409
           },
           "screen": {
@@ -864,11 +890,11 @@
           "name": "seed0006-wizard-water-demon.session.json",
           "passed": false,
           "rng": {
-            "matched": 138,
+            "matched": 1215,
             "total": 6736
           },
           "rngSteps": {
-            "matched": 76,
+            "matched": 78,
             "total": 123
           },
           "screen": {
@@ -880,11 +906,11 @@
           "name": "seed0007-rogue-snake-swamp.session.json",
           "passed": false,
           "rng": {
-            "matched": 190,
+            "matched": 1409,
             "total": 16373
           },
           "rngSteps": {
-            "matched": 107,
+            "matched": 109,
             "total": 302
           },
           "screen": {
@@ -896,11 +922,11 @@
           "name": "seed0009-swimmer-mforce.session.json",
           "passed": false,
           "rng": {
-            "matched": 126,
+            "matched": 529,
             "total": 3713
           },
           "rngSteps": {
-            "matched": 36,
+            "matched": 37,
             "total": 73
           },
           "screen": {
@@ -912,7 +938,7 @@
           "name": "seed0012-monk-vault-escort.session.json",
           "passed": false,
           "rng": {
-            "matched": 515,
+            "matched": 1118,
             "total": 13878
           },
           "rngSteps": {
@@ -960,11 +986,11 @@
           "name": "seed0014-dequa-fountain-explore.session.json",
           "passed": false,
           "rng": {
-            "matched": 78,
+            "matched": 1517,
             "total": 59178
           },
           "rngSteps": {
-            "matched": 210,
+            "matched": 211,
             "total": 714
           },
           "screen": {
@@ -1056,11 +1082,11 @@
           "name": "seed0077-rogue-chargen.session.json",
           "passed": false,
           "rng": {
-            "matched": 445,
+            "matched": 2445,
             "total": 3242
           },
           "rngSteps": {
-            "matched": 26,
+            "matched": 27,
             "total": 33
           },
           "screen": {
@@ -1424,7 +1450,7 @@
           "name": "seed1800-tourist-eat-throw.session.json",
           "passed": false,
           "rng": {
-            "matched": 833,
+            "matched": 842,
             "total": 2458
           },
           "rngSteps": {
@@ -1472,7 +1498,7 @@
           "name": "seed4500-knight-coverage.session.json",
           "passed": false,
           "rng": {
-            "matched": 1235,
+            "matched": 1236,
             "total": 108275
           },
           "rngSteps": {

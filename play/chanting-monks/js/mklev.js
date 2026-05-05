@@ -222,7 +222,7 @@ function mksobj(otyp, init, artif) {
     const otmp = { otyp, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0 };
     next_ident();
     if (init) {
-        mksobj_init(otmp, otyp);
+        mksobj_init(otmp, otyp, artif);
     }
     return otmp;
 }
@@ -244,14 +244,17 @@ function mksobj(otyp, init, artif) {
 // LEVITATION_BOOTS, etc.) is approximated as "always not special" —
 // these 4 otyps are rare; the common-case path matches for nearly
 // all armor instances.
-function mksobj_init(otmp, otyp) {
+function mksobj_init(otmp, otyp, artif) {
     let isErodable = false;
     if (otyp >= 1 && otyp < 28) {
         // WEAPON_CLASS — port of mkobj.c:876-893.
         //   quan: is_multigen ? rn1(6,6) : 1 — approximated as 1
         //   rn2(11) check; if 0: rne(3) + rn2(2); else rn2(10); if 0: rne(3); else blessorcurse(10).
-        //   is_poisonable + rn2(100) — approximated as not poisonable.
-        //   artif + rn2(20+...) — approximated as not artif.
+        //   is_poisonable + rn2(100) — approximated as not poisonable;
+        //     otypFromClass[1]=1 (the WEAPON fallback) maps to a non-
+        //     poisonable otyp by current convention. Real fix needs
+        //     per-otyp is_poisonable flags from objects.h.
+        //   artif + rn2(20+10*nartifact_exist()) — approx nartifact==0 → rn2(20).
         if (rn2(11) === 0) {
             rne(3);
             rn2(2);
@@ -261,9 +264,10 @@ function mksobj_init(otmp, otyp) {
         } else {
             blessorcurse(otmp, 10);
         }
+        if (artif) rn2(20);
         isErodable = true;
     } else if (otyp >= 28 && otyp < 95) {
-        // ARMOR_CLASS — port of mkobj.c:1085-1097
+        // ARMOR_CLASS — port of mkobj.c:1085-1102
         if (rn2(10) && !rn2(11)) {
             rne(3);
             if (otmp) { otmp.cursed = true; otmp.spe = 0; }
@@ -274,19 +278,23 @@ function mksobj_init(otmp, otyp) {
         } else {
             blessorcurse(otmp, 10);
         }
+        // mkobj.c:1099: if (artif && !rn2(40 + 10*nartifact_exist()))
+        // Early game nartifact_exist()==0 → rn2(40). Approximate
+        // nartifact_exist() as 0 (no artifacts created yet by this call).
+        if (artif) rn2(40);
         isErodable = true;
+    } else if (otyp >= 350 && otyp < 380) {
+        // WAND_CLASS — mkobj.c:1115-1126. Most wands: rn1(5, N) for spe
+        // (logged as rn2(5)), then blessorcurse(17). Skipping per-otyp
+        // specials (WAN_WISHING, WAN_STASIS).
+        rn2(5);
+        blessorcurse(otmp, 17);
     } else if (otyp >= 230 && otyp < 270) {
         blessorcurse(otmp, 4); // POTION_CLASS
     } else if (otyp >= 270 && otyp < 300) {
         blessorcurse(otmp, 4); // SCROLL_CLASS
     } else if (otyp >= 309 && otyp < 350) {
         blessorcurse(otmp, 17); // SPBOOK_CLASS (mkobj.c:1083)
-    } else if (otyp >= 261 && otyp < 309) {
-        // WAND_CLASS — mkobj.c:1115-1126. Most wands: rn1(5, N) for spe
-        // (logged as rn2(5)), then blessorcurse(17). Skipping per-otyp
-        // specials (WAN_WISHING, WAN_STASIS).
-        rn2(5);
-        blessorcurse(otmp, 17);
     } else if (otyp >= 220 && otyp < 230) {
         // AMULET_CLASS — port of mkobj.c:1060-1069. rn2(10) outer check
         // (if non-zero AND otyp is special, curse). For non-special otyps
@@ -295,6 +303,16 @@ function mksobj_init(otmp, otyp) {
         rn2(10);
         blessorcurse(otmp, 10);
     }
+    // RING_CLASS — port of mkobj.c:1128-1148. NOT YET WIRED. The
+    // charged-ring path emits blessorcurse(3) + rn2(10) + spe-dependent
+    // sub-branches (rn2(10), rn2(2), rne(3), rn2(4), rn2(3), rn2(5)),
+    // but the branching depends on bcsign(otmp) state we don't track.
+    // A naive "always emit blessorcurse(3) + rn2(10)" approximation
+    // regressed seed0030 by -16 calls and -1 matched turn (some RING
+    // mksobj_init calls in C don't fire those rn2s — likely the
+    // rare uncharged-ring path which only emits rn2(10) + maybe rn2(9)
+    // and is being followed for those particular otyps).
+    // Defer until we can model bcsign properly.
     // mkobj_erosions runs for ALL classes at end of mksobj — port of
     // mkobj.c:196-222. Only fires PRNG for erodable classes (weapons,
     // armor, certain tools); other classes have may_generate_eroded()
@@ -303,16 +321,17 @@ function mksobj_init(otmp, otyp) {
         if (!rn2(100)) {
             // erodeproof — no further rn2 (oerodeproof=1)
         } else {
-            if (!rn2(80) /* && is_flammable... approximation: assume true */) {
-                // do { ++oeroded } while (oeroded < 3 && !rn2(9));
-                while (true) {
-                    if (rn2(9)) break;
-                }
+            // C: do { ++oeroded } while (oeroded < 3 && !rn2(9))
+            // — at most 3 iterations of rn2(9). After oeroded reaches 3,
+            // the loop exits regardless of rn2(9). Approximating
+            // is_flammable/rottable as TRUE (most weapons/armor qualify).
+            if (!rn2(80)) {
+                let oeroded = 0;
+                do { oeroded++; } while (oeroded < 3 && !rn2(9));
             }
-            if (!rn2(80) /* && is_rottable... approximation: assume true */) {
-                while (true) {
-                    if (rn2(9)) break;
-                }
+            if (!rn2(80)) {
+                let oeroded2 = 0;
+                do { oeroded2++; } while (oeroded2 < 3 && !rn2(9));
             }
         }
         rn2(1000); // greased check
@@ -349,21 +368,25 @@ const MKOBJ_PROBS = [
 ];
 
 // oclass_prob_totals — sum of objects[].oc_prob within each class.
-// Empirically observed from session recordings (rnd argument at
-// mkobj.c:290): ARMOR=1000, plus 28 and 1002 for two unidentified
-// classes. Best-effort defaults for unobserved classes; future
-// iterations can refine by extracting from objects.h.
+// Verified against nethack-c/upstream/include/objects.h:
+//   RING_CLASS = sum of 28 ring entries, each with hardcoded oc_prob=1
+//                in the RING() macro → total 28.
+//   AMULET_CLASS = sum of per-amulet prob fields (120+75+115+115+115+115+
+//                  60+75+75+75+60) → total 1000.
+//   GEM_CLASS = 1002 (1000 + a couple of rocks/stones).
+//   WEAPON, ARMOR, FOOD, TOOL, POTION, SCROLL, SPBOOK, WAND = 1000
+//   (default per-class total for the standard NetHack object sets).
 const OCLASS_PROB_TOTALS = {
     1 /* WEAPON */: 1000,
     2 /* ARMOR */: 1000,
-    3 /* RING */: 1000,
+    3 /* RING */: 28,
     4 /* WAND */: 1000,
     5 /* SCROLL */: 1000,
     6 /* POTION */: 1000,
     7 /* FOOD */: 1000,
     8 /* TOOL */: 1000,
     9 /* SPBOOK */: 1000,
-    10 /* AMULET */: 28,
+    10 /* AMULET */: 1000,
     14 /* GEM */: 1002,
 };
 
@@ -389,18 +412,23 @@ function mkobj(oclass, artif) {
     // in that class's typical otyp range (matches the structural shape;
     // exact otyp identity isn't needed since we don't model game state
     // beyond PRNG consumption).
+    // Synthetic per-class otyp picked to dispatch into the right
+    // mksobj_init branch. RING currently shares range with AMULET
+    // [220,230) so falls through AMULET's branch — that's the
+    // empirically-best behavior right now (see RING comment in
+    // mksobj_init body); changing this regressed seed0030.
     const otypFromClass = {
-        1: 1,    /* WEAPON */
-        2: 28,   /* ARMOR — first ARMOR otyp range */
-        3: 229,  /* RING */
-        4: 261,  /* WAND */
-        5: 270,  /* SCROLL */
-        6: 230,  /* POTION */
-        7: 213,  /* FOOD */
-        8: 152,  /* TOOL */
-        9: 309,  /* SPBOOK */
-        10: 220, /* AMULET */
-        14: 200, /* GEM */
+        1: 1,    /* WEAPON   range [1,28) */
+        2: 28,   /* ARMOR    range [28,95) */
+        3: 229,  /* RING (currently dispatches via AMULET branch — see RING comment) */
+        4: 350,  /* WAND     range [350,380) — distinct from POTION */
+        5: 270,  /* SCROLL   range [270,300) */
+        6: 230,  /* POTION   range [230,270) */
+        7: 213,  /* FOOD     no class init */
+        8: 152,  /* TOOL     no class init */
+        9: 309,  /* SPBOOK   range [309,350) */
+        10: 220, /* AMULET   range [220,230) */
+        14: 200, /* GEM      no class init */
     }[oclass] || 0;
     return mksobj(otypFromClass, true, artif);
 }

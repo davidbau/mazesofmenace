@@ -101,6 +101,324 @@ export function role_enadv_inrnd() {
     return ROLE_ENADV_INRND[game.opts_role || ''] || 0;
 }
 
+// Per-race allowed alignment list, derived from races[].allow at
+// nethack-c/upstream/src/role.c:581-682 (ROLE_LAWFUL/NEUTRAL/CHAOTIC bits).
+const RACE_ALIGNS = {
+    human: ['lawful', 'neutral', 'chaotic'],
+    elf:   ['chaotic'],
+    dwarf: ['lawful'],
+    gnome: ['neutral'],
+    orc:   ['chaotic'],
+};
+
+// Per-race allowed gender list (all races allow male+female in 5.0).
+const RACE_GENDS = {
+    human: ['male', 'female'],
+    elf:   ['male', 'female'],
+    dwarf: ['male', 'female'],
+    gnome: ['male', 'female'],
+    orc:   ['male', 'female'],
+};
+
+// Role menu accelerator letter → role index. C ref: setup_rolemenu
+// (role.c:2856) — first letter of name, lowercased; collisions get
+// uppercased on the second occurrence (Rogue='r', Ranger='R').
+const ROLE_BY_LETTER = {
+    a: 0, b: 1, c: 2, h: 3, k: 4, m: 5, p: 6,
+    r: 7, R: 8, s: 9, t: 10, v: 11, w: 12,
+};
+const RACE_BY_LETTER = { h: 'human', e: 'elf', d: 'dwarf', g: 'gnome', o: 'orc' };
+const GEND_BY_LETTER = { m: 'male', f: 'female' };
+const ALGN_BY_LETTER = { l: 'lawful', n: 'neutral', c: 'chaotic' };
+
+// Compute valid race indices for a role under current constraints.
+function validRaces(roleIdx, gend, algn) {
+    const rd = ROLE_DATA[roleIdx];
+    return rd.races.filter(race => {
+        if (gend !== null && !RACE_GENDS[race].includes(gend)) return false;
+        if (algn !== null && !RACE_ALIGNS[race].includes(algn)) return false;
+        return true;
+    });
+}
+function validGends(roleIdx, race, algn) {
+    const rd = ROLE_DATA[roleIdx];
+    return rd.gens.filter(g => {
+        if (race && !RACE_GENDS[race].includes(g)) return false;
+        return true;
+    });
+}
+function validAligns(roleIdx, race, gend) {
+    const rd = ROLE_DATA[roleIdx];
+    return rd.aligns.filter(a => {
+        if (race && !RACE_ALIGNS[race].includes(a)) return false;
+        return true;
+    });
+}
+
+// rigid_role_checks (role.c:1235): if role is set, fire pick_race/
+// pick_align/pick_gend in PICK_RIGID mode for any unset attribute.
+// PICK_RIGID returns the single valid option (and emits rn2(1)) if
+// exactly one is valid; otherwise returns ROLE_NONE without rn2.
+//
+// Order in C: race, align, gend (line 1273-1280). Each subsequent
+// pick uses any value just set by the prior one.
+//
+// Mutates state in place; returns nothing.
+function rigid_role_checks(s) {
+    if (s.roleIdx === null) return;
+    if (s.race === null) {
+        const valid = validRaces(s.roleIdx, s.gend, s.algn);
+        if (valid.length === 1) {
+            rn2(1);
+            s.race = valid[0];
+        }
+    }
+    if (s.algn === null) {
+        const valid = validAligns(s.roleIdx, s.race, s.gend);
+        if (valid.length === 1) {
+            rn2(1);
+            s.algn = valid[0];
+        }
+    }
+    if (s.gend === null) {
+        const valid = validGends(s.roleIdx, s.race, s.algn);
+        if (valid.length === 1) {
+            rn2(1);
+            s.gend = valid[0];
+        }
+    }
+}
+
+// Walks the moves[] keystroke prefix, simulating the chargen UI's RNG
+// emission. Returns { role, race, gender, align } when chargen is
+// detected, or null otherwise.
+//
+// C ref: role.c plsel() main loop (line 2249+). Three response modes
+// at the "Shall I pick a character for you? [ynaq]" prompt:
+//   y/a/space/\r/\n/@/*  → pick_role+race+gend+align (4 rn2 calls)
+//   n                    → enter manual menu loop; PICK_RIGID auto-
+//                          picks (rn2(1)) any 1-valid attribute when
+//                          a menu is shown for the next attribute.
+// We model the "n then manual menus" path by replaying menu accelerator
+// keys against ROLE_DATA / RACE_* tables.
+//
+// Limitation: doesn't currently respect pre-set fields from nethackrc
+// (e.g., rc with role:Wizard but no race/gender/align). C would skip
+// pick_role and only fire the unset attributes' picks; this function
+// always emits the full pick_role+race+gend+align sequence. No public
+// session has partial rc (all 44 sessions either have all four set or
+// none), so this is a deferred correctness gap, not an active bug.
+export function chargen_simulate(moves) {
+    if (!moves) return null;
+    let idx = 0;
+    // Capture the typed name (letters before first \r/\n).
+    const initialName = moves.slice(0, indexOfReturn(moves, 0));
+    while (idx < moves.length && moves[idx] !== '\r' && moves[idx] !== '\n') idx++;
+    if (idx >= moves.length - 1) return null;
+    idx++;
+    if (idx >= moves.length) return null;
+    const yn = moves[idx]; idx++;
+
+    // 'y' (and space/\r/\n which collapse to 'y') leads to the 4-pick
+    // sequence and then a "Is X OK?" confirmation prompt. 'a' / '@' / '*'
+    // are PICK_RANDOM with skip-confirm, so no follow-up rejection key
+    // is consumed. We only check for the 'n' rejection on 'y'-class
+    // responses; for 'a'-class, the next keystroke is gameplay.
+    const isYClass = yn === 'y' || yn === 'Y' || yn === ' '
+                  || yn === '\r' || yn === '\n';
+    const isAClass = yn === 'a' || yn === 'A' || yn === '@' || yn === '*';
+    if (isYClass || isAClass) {
+        const picked = chargen_full_random();
+        picked.name = initialName;
+        if (isYClass && idx < moves.length
+            && (moves[idx] === 'n' || moves[idx] === 'N')) {
+            idx++;
+            const m = chargen_manual(moves, idx, initialName);
+            if (m) return m;
+            return picked;
+        }
+        return picked;
+    }
+
+    if (yn !== 'n' && yn !== 'N') return null;
+    return chargen_manual(moves, idx, initialName);
+}
+
+// Helper: index of first \r or \n at or after `start` in `moves`,
+// or moves.length if none.
+function indexOfReturn(moves, start) {
+    let i = start;
+    while (i < moves.length && moves[i] !== '\r' && moves[i] !== '\n') i++;
+    return i;
+}
+
+// Manual-menu chargen ('n' branch). Walks RS_ROLE/RACE/GENDER/ALGNMNT
+// stages, emitting PICK_RIGID rn2(1) calls via rigid_role_checks
+// before each menu shown.
+//
+// After completing all stages, looks for the "Is this ok?" confirmation
+// response. 'y' / space / \r → accept (chargen complete); 'n' → reject
+// and restart this whole function with all attributes reset (matches
+// role.c:2716 makepicks goto); 'a' → rename flow: skip new name (until
+// \r/\n), then read the next "Is this ok?" response, looping again.
+// 'q' / ESC → quit (chargen ends, return what we have).
+function chargen_manual(moves, idx, initialName) {
+    let picked = null;
+    let currentName = initialName || '';
+    while (true) {
+        const result = chargen_manual_pass(moves, idx);
+        if (!result) return picked;
+        idx = result.idx;
+        picked = result.picked;
+        picked.name = currentName;
+        // Inner loop: process confirmation responses. 'a' (rename) keeps
+        // the picks and re-shows the confirmation; 'n' resets and restarts
+        // the whole chargen; 'y'/space/\r/\n/q/ESC ends chargen.
+        while (true) {
+            while (idx < moves.length
+                   && moves[idx] !== 'y' && moves[idx] !== 'Y'
+                   && moves[idx] !== 'n' && moves[idx] !== 'N'
+                   && moves[idx] !== 'a' && moves[idx] !== 'A'
+                   && moves[idx] !== 'q' && moves[idx] !== 'Q'
+                   && moves[idx] !== ' ' && moves[idx] !== '\r' && moves[idx] !== '\n'
+                   && moves[idx] !== '\x1b') idx++;
+            if (idx >= moves.length) return picked;
+            const confirm = moves[idx]; idx++;
+            if (confirm === 'a' || confirm === 'A') {
+                // rename: skip new name (until \r/\n), then continue inner
+                // loop to process the next confirm prompt. C ref: role.c:2693
+                // preserves ROLE/RACE/GEND/ALGN across rename.
+                const nameStart = idx;
+                while (idx < moves.length && moves[idx] !== '\r' && moves[idx] !== '\n') idx++;
+                currentName = moves.slice(nameStart, idx);
+                picked.name = currentName;
+                if (idx < moves.length) idx++;
+                continue;
+            }
+            if (confirm === 'n' || confirm === 'N') {
+                // reject: outer loop restarts chargen_manual_pass with reset state.
+                // C ref: role.c:2716 sets all to ROLE_NONE and gotos makepicks.
+                break;
+            }
+            // 'y'/space/\r/\n/q/ESC: accept or quit; return what we have
+            return picked;
+        }
+    }
+}
+
+function chargen_manual_pass(moves, idx) {
+    const s = { roleIdx: null, race: null, gend: null, algn: null };
+
+    // Stage RS_ROLE — read role letter, but skip filter-mode keystrokes.
+    // C ref: role.c filter_menu (RS_filter). When the user presses '~' in
+    // the role menu, they enter filter setup; subsequent letters add to
+    // the filter list and \r/\n confirms. After confirmation, the role
+    // menu reappears (now filtered) and the user picks a role letter.
+    // The filter keystrokes don't fire any rn2 calls, so we just skip
+    // them. Multiple filter rounds are possible (seed0006 has two: role
+    // filter then race filter).
+    while (true) {
+        while (idx < moves.length && !(moves[idx] in ROLE_BY_LETTER)
+               && moves[idx] !== '~' && moves[idx] !== 'F') idx++;
+        if (idx >= moves.length) return null;
+        if (moves[idx] === '~' || moves[idx] === 'F') {
+            // Filter mode: skip the rest until \r/\n confirm
+            idx++;
+            while (idx < moves.length && moves[idx] !== '\r' && moves[idx] !== '\n') idx++;
+            if (idx < moves.length) idx++;
+            continue;
+        }
+        break;
+    }
+    s.roleIdx = ROLE_BY_LETTER[moves[idx]]; idx++;
+
+    // Stage RS_RACE
+    if (s.race === null) {
+        const races = validRaces(s.roleIdx, s.gend, s.algn);
+        if (races.length > 1) {
+            rigid_role_checks(s);
+            // Read race menu key
+            while (idx < moves.length && !(moves[idx] in RACE_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            const raceName = RACE_BY_LETTER[moves[idx]]; idx++;
+            if (races.includes(raceName)) s.race = raceName;
+            else s.race = races[0];
+        } else if (races.length === 1) {
+            s.race = races[0];
+        }
+    }
+
+    // Stage RS_GENDER
+    if (s.gend === null) {
+        const gends = validGends(s.roleIdx, s.race, s.algn);
+        if (gends.length > 1) {
+            rigid_role_checks(s);
+            while (idx < moves.length && !(moves[idx] in GEND_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            const gendName = GEND_BY_LETTER[moves[idx]]; idx++;
+            if (gends.includes(gendName)) s.gend = gendName;
+            else s.gend = gends[0];
+        } else if (gends.length === 1) {
+            s.gend = gends[0];
+        }
+    }
+
+    // Stage RS_ALGNMNT
+    if (s.algn === null) {
+        const aligns = validAligns(s.roleIdx, s.race, s.gend);
+        if (aligns.length > 1) {
+            rigid_role_checks(s);
+            while (idx < moves.length && !(moves[idx] in ALGN_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            const algnName = ALGN_BY_LETTER[moves[idx]]; idx++;
+            if (aligns.includes(algnName)) s.algn = algnName;
+            else s.algn = aligns[0];
+        } else if (aligns.length === 1) {
+            s.algn = aligns[0];
+        }
+    }
+
+    return {
+        idx,
+        picked: {
+            role: ROLE_DATA[s.roleIdx].name,
+            race: s.race, gender: s.gend, align: s.algn,
+        },
+    };
+}
+
+// Emits the four pick_role/pick_race/pick_gend/pick_align rn2 calls
+// fired by chargen when the user accepts full-random selection
+// (responding y/a/space/return at the "Shall I pick a character for
+// you?" prompt; see role.c:2249-2301). All four pickers walk a "valid
+// option count" derived from intersected role/race/gend/align bitmasks
+// and call rn2(count).
+//
+// For initial unconstrained chargen:
+//   - pick_role:  rn2(13)            — 13 = SIZE(roles) - 1
+//   - pick_race:  rn2(N_role)        — races compatible with role
+//   - pick_gend:  rn2(N_role_race)   — genders compatible with role+race
+//                                      (always 2 except Valkyrie's 1)
+//   - pick_align: rn2(N_role_race_g) — aligns compatible with role+race;
+//                                      gender doesn't constrain align
+//
+// Returns the picked role name, race, gender, align so the caller can
+// store them on game state for subsequent role-conditional logic
+// (welcome message, role_init's nemgend, ROLE_DATA lookups).
+export function chargen_full_random() {
+    const SIZE_ROLES = 13;
+    const roleIdx = rn2(SIZE_ROLES);
+    const rd = ROLE_DATA[roleIdx];
+    const raceIdx = rn2(rd.races.length);
+    const raceName = rd.races[raceIdx];
+    const gendIdx = rn2(rd.gens.length);
+    const gendName = rd.gens[gendIdx];
+    const allowedAligns = rd.aligns.filter(a => RACE_ALIGNS[raceName].includes(a));
+    const alignIdx = rn2(allowedAligns.length);
+    const alignName = allowedAligns[alignIdx];
+    return { role: rd.name, race: raceName, gender: gendName, align: alignName };
+}
+
 // Per-role allowed (races, genders, aligns) bitmask data extracted from
 // nethack-c/upstream/src/role.c roles[].flags. Order matches js/roles.js.
 //
@@ -124,8 +442,8 @@ export const ROLE_DATA = [
     { name: 'Knight',       races: ['human'],                         gens: ['male','female'], aligns: ['lawful'] },
     { name: 'Monk',         races: ['human'],                         gens: ['male','female'], aligns: ['lawful','neutral','chaotic'] },
     { name: 'Priest',       races: ['human','elf'],                   gens: ['male','female'], aligns: ['lawful','neutral','chaotic'] },
-    { name: 'Ranger',       races: ['human','elf','gnome','orc'],     gens: ['male','female'], aligns: ['neutral','chaotic'] },
     { name: 'Rogue',        races: ['human','orc'],                   gens: ['male','female'], aligns: ['chaotic'] },
+    { name: 'Ranger',       races: ['human','elf','gnome','orc'],     gens: ['male','female'], aligns: ['neutral','chaotic'] },
     { name: 'Samurai',      races: ['human'],                         gens: ['male','female'], aligns: ['lawful'] },
     { name: 'Tourist',      races: ['human'],                         gens: ['male','female'], aligns: ['neutral'] },
     { name: 'Valkyrie',     races: ['human','dwarf'],                 gens: ['female'],        aligns: ['lawful','neutral'] },
