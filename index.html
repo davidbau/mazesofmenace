@@ -213,8 +213,7 @@ footer a { color: var(--color-text-muted); }
        create hundreds of thousands of lines of code that humans would actually want to own
        afterwards?</p>
     <div class="cta">
-        <a class="btn" href="/play/">Play the skeleton &rarr;</a>
-        <a class="btn secondary" href="https://github.com/davidbau/teleport-contest#readme">Enter the contest</a>
+        <a class="btn" href="https://github.com/davidbau/teleport-contest#readme">Enter the contest &rarr;</a>
     </div>
 </header>
 
@@ -244,21 +243,26 @@ footer a { color: var(--color-text-muted); }
         No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
     </p>
     <p class="lb-hint">
-        Each step earns up to two points &mdash; one for matching C&rsquo;s PRNG
-        call sequence and one for matching the rendered 24&times;80 screen.
-        The 44 public sessions contain 10,902 steps for
-        <strong>21,804 points</strong> max. <em>Sessions</em> tallies whole
-        sessions where both channels hit 100%. <strong>Play</strong> opens
-        that build in your browser; <strong>Tests</strong> opens the Session
-        Viewer scoped to it.
+        Each step in each session earns up to two points &mdash; one for
+        matching C&rsquo;s PRNG call sequence into that step and one for
+        matching the rendered 24&times;80 screen at that step. The
+        <strong>Points</strong> column is your fork&rsquo;s total over the
+        44 public sessions; the <strong>Sessions</strong> column tallies
+        whole sessions where both channels hit 100%. PRNG and Screen are
+        the same totals expressed as overall match percentages.
+        <strong>Play</strong> opens the build in your browser;
+        <strong>Tests</strong> opens the Session Viewer scoped to it.
     </p>
 </section>
 
 <section id="play">
     <h2>Play it in your browser</h2>
-    <p><a href="/play/">Play the skeleton</a> right now &mdash; the official upstream port,
-       running entirely client-side. As contestants submit forks, you&rsquo;ll be able to
-       play any contestant&rsquo;s port from this page and compare two of them side by side.</p>
+    <p>Hit any <strong>Play</strong> button on the leaderboard above to open
+       that contestant&rsquo;s port directly in your browser &mdash; running
+       entirely client-side, no install. <strong>Tests</strong> opens the
+       Session Viewer scoped to that same fork: scrub through any of the 44
+       public sessions and see, frame by frame, where the JS port diverges
+       from the official C trace.</p>
 </section>
 
 <section id="phases">
