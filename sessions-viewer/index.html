@@ -29,6 +29,38 @@
     }
 }
 </script>
+<script>
+// Browser stub for the Node `process` global. `process` is a Node
+// runtime *global*, not an importable module — when contestant code
+// reads `process.cwd()`, `process.env`, etc. at module-init, no
+// importmap can save it. Define a minimal shim before any module
+// loads so the import phase finishes; calls that need a real Node
+// runtime throw a clearer error from their call site.
+(function () {
+    if (typeof globalThis.process !== 'undefined') return;
+    const fail = (name) => () => {
+        throw new Error(name + ' was called in the browser; this fork uses Node-only APIs');
+    };
+    globalThis.process = {
+        env:      {},
+        argv:     [],
+        platform: 'browser',
+        version:  'browser',
+        versions: { node: '0.0.0' },
+        cwd:      () => '/',
+        nextTick: (fn, ...a) => Promise.resolve().then(() => fn(...a)),
+        stdout:   { write: (s) => console.log(String(s)) },
+        stderr:   { write: (s) => console.error(String(s)) },
+        exit:     fail('process.exit()'),
+        kill:     fail('process.kill()'),
+        chdir:    fail('process.chdir()'),
+    };
+    // Don't shim Buffer / __dirname / __filename — leaving them
+    // undefined keeps `typeof Buffer === 'undefined'` guards working
+    // correctly. Code that reads them unguarded will fail at the
+    // use site, which is the right outcome.
+})();
+</script>
 </head>
 <body>
 <header>
