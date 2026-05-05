@@ -63,12 +63,14 @@ header {
     align-items: baseline;
     padding: 12px 22px 8px;
 }
-.title strong {
-    font-size: 1.45em;
+.title strong, .title h1 {
+    font-size: 1.7em;
     font-weight: 600;
     color: var(--accent-dark);
-    margin-right: 14px;
+    margin: 0 14px 0 0;
     letter-spacing: 0.01em;
+    line-height: 1.1;
+    display: inline;
 }
 .hint {
     color: var(--fg-2);
@@ -366,45 +368,53 @@ main {
 }
 .toggle-btn:hover { background: var(--bg-2); }
 
-/* ── PRNG hidden by default ────────────────────────────────────────────
-   When body lacks .show-rng:
-     · the canon and js timeline rows + their labels are clipped out of
-       view (canvas is shrunk via wrapper overflow + negative margin so
-       only the screen-diff row remains)
-     · the rng-detail aside block hides
-     · PRNG-only legend swatches hide
-   The "Show PRNG" button toggles .show-rng on body; viz.mjs persists
-   the choice in localStorage. */
-.rng-hint {
-    margin: 6px 22px 4px;
-    padding: 6px 10px;
-    border-left: 3px solid var(--rule);
-    background: rgba(0,0,0,0.025);
+/* ── PRNG fly-out ─────────────────────────────────────────────────────
+   The timeline above is the at-a-glance PRNG view (canon vs js bands)
+   and is ALWAYS visible. The drill-down — the rn2(N)=M / rnd(N)=M /…
+   listing for the current step — used to live inline in the aside,
+   but most of the time the user is reading the screen diff and that
+   listing is just visual noise. So it became a fly-out: hidden by
+   default, slides in from the right when the "Show PRNG" header
+   button is clicked. The choice is persisted in localStorage. */
+#rng-flyout {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 380px;
+    max-width: 90vw;
+    background: var(--bg-2);
+    border-left: 1px solid var(--rule);
+    box-shadow: -6px 0 18px rgba(0,0,0,0.10);
+    padding: 16px 18px;
+    overflow: auto;
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    z-index: 50;
+    box-sizing: border-box;
+}
+body.show-rng #rng-flyout { transform: translateX(0); }
+body.show-rng #rng-flyout-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.04);
+    z-index: 40;
+}
+.rng-flyout-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.rng-flyout-head .detail-label { margin-bottom: 0; }
+#close-rng {
+    font-size: 1.3em;
+    line-height: 1;
+    padding: 0 8px;
+    background: transparent;
+    border: none;
     color: var(--fg-2);
-    font-style: italic;
-    font-size: 0.88em;
+    cursor: pointer;
 }
-body.show-rng .rng-hint { display: none; }
-
-/* The prng (this step) block is the second .detail-block in the aside.
-   Hiding the entire block (label + value) keeps the aside compact. */
-body:not(.show-rng) #detail-pane > .detail-block:nth-child(2) { display: none; }
-
-body:not(.show-rng) #timeline-wrap {
-    height: 22px;
-    overflow: hidden;
-}
-body:not(.show-rng) #timeline {
-    height: 130px;          /* preserve internal pixel mapping */
-    margin-top: -110px;     /* slide canon+js out of the wrapper viewport */
-}
-body:not(.show-rng) .row-labels .row-label.canon,
-body:not(.show-rng) .row-labels .row-label.js {
-    display: none;
-}
-body:not(.show-rng) .row-labels .row-label.screen { top: 6px; }
-
-body:not(.show-rng) .legend-item.rng-only,
-body:not(.show-rng) .legend-sep {
-    display: none;
-}
+#close-rng:hover { color: var(--accent-dark); }

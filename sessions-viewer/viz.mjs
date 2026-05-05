@@ -39,15 +39,17 @@ const PATHS = HUB_MODE ? {
     forkName:        null,
 };
 
-// In hub mode, surface which fork is being inspected in the page title
-// and header so the user always sees the context.
+// In hub mode, surface which fork is being inspected: prominent h1
+// + a smaller context line with cross-links.
 if (HUB_MODE) {
     document.title = `${HUB_FORK} — Session Viewer`;
     document.documentElement.classList.add('hub-mode');
     addEventListener('DOMContentLoaded', () => {
+        const h = document.querySelector('#page-title');
+        if (h) h.textContent = HUB_FORK;
         const ctx = document.querySelector('#fork-context');
         if (ctx) {
-            ctx.innerHTML = `inspecting <strong>${HUB_FORK}</strong> &middot; ` +
+            ctx.innerHTML = `Session Viewer &middot; ` +
                 `<a href="https://github.com/${HUB_FORK}/teleport-contest" target="_blank" rel="noopener">github</a> &middot; ` +
                 `<a href="/play/${HUB_FORK}/" target="_blank" rel="noopener">play</a> &middot; ` +
                 `<a href="/">leaderboard</a>`;
@@ -55,25 +57,36 @@ if (HUB_MODE) {
     });
 }
 
-// PRNG side-panel visibility. Hidden by default so the screen-diff
-// view is the first thing a visitor sees; toggle remembers across
-// reloads via localStorage.
+// PRNG fly-out toggle. The timeline (canon/js/screen bands) stays
+// visible always — that's the at-a-glance PRNG comparison view. The
+// fly-out is the per-step drill-down (rn2(N)=M etc.), hidden by
+// default so the screen diff is the first thing a visitor sees.
+// Choice is persisted in localStorage.
 const RNG_VISIBLE_KEY = 'sessionViewer.rngVisible';
 const _rngStartShown = localStorage.getItem(RNG_VISIBLE_KEY) === '1';
 addEventListener('DOMContentLoaded', () => {
     if (_rngStartShown) document.body.classList.add('show-rng');
-    const btn = document.querySelector('#toggle-rng');
-    if (btn) {
-        const sync = () => btn.textContent =
-            document.body.classList.contains('show-rng') ? 'Hide PRNG' : 'Show PRNG';
+    const btn   = document.querySelector('#toggle-rng');
+    const close = document.querySelector('#close-rng');
+    const scrim = document.querySelector('#rng-flyout-scrim');
+    const sync = () => {
+        const on = document.body.classList.contains('show-rng');
+        if (btn) btn.textContent = on ? 'Hide PRNG' : 'Show PRNG';
+        const flyout = document.querySelector('#rng-flyout');
+        if (flyout) flyout.setAttribute('aria-hidden', on ? 'false' : 'true');
+    };
+    const setShown = (on) => {
+        document.body.classList.toggle('show-rng', on);
+        localStorage.setItem(RNG_VISIBLE_KEY, on ? '1' : '0');
         sync();
-        btn.addEventListener('click', () => {
-            const on = !document.body.classList.contains('show-rng');
-            document.body.classList.toggle('show-rng', on);
-            localStorage.setItem(RNG_VISIBLE_KEY, on ? '1' : '0');
-            sync();
-        });
-    }
+    };
+    sync();
+    if (btn)   btn.addEventListener('click',   () => setShown(!document.body.classList.contains('show-rng')));
+    if (close) close.addEventListener('click', () => setShown(false));
+    if (scrim) scrim.addEventListener('click', () => setShown(false));
+    addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('show-rng')) setShown(false);
+    });
 });
 
 const $ = (sel) => document.querySelector(sel);
