@@ -93,6 +93,46 @@ kbd {
     box-shadow: 0 1px 0 #aaa;
 }
 </style>
+<!-- PLAY_NODE_SHIMS — injected so contestant code that targets Node
+     still loads in a browser. Calls into shimmed APIs throw a clearer
+     error from their call site. -->
+<script type="importmap">
+{ "imports": {
+    "module":           "/shim/node-builtins.mjs",
+    "node:module":      "/shim/node-builtins.mjs",
+    "fs":               "/shim/node-builtins.mjs",
+    "node:fs":          "/shim/node-builtins.mjs",
+    "fs/promises":      "/shim/node-builtins.mjs",
+    "node:fs/promises": "/shim/node-builtins.mjs",
+    "path":             "/shim/node-builtins.mjs",
+    "node:path":        "/shim/node-builtins.mjs",
+    "url":              "/shim/node-builtins.mjs",
+    "node:url":         "/shim/node-builtins.mjs",
+    "os":               "/shim/node-builtins.mjs",
+    "node:os":          "/shim/node-builtins.mjs",
+    "process":          "/shim/node-builtins.mjs",
+    "node:process":     "/shim/node-builtins.mjs"
+} }
+</script>
+<script>
+(function () {
+    if (typeof globalThis.process !== 'undefined') return;
+    const fail = (n) => () => {
+        throw new Error(n + ' was called in the browser; this fork uses Node-only APIs');
+    };
+    globalThis.process = {
+        env: {}, argv: [], platform: 'browser', version: 'browser',
+        versions: { node: '0.0.0' },
+        cwd: () => '/',
+        nextTick: (fn, ...a) => Promise.resolve().then(() => fn(...a)),
+        stdout: { write: (s) => console.log(String(s)) },
+        stderr: { write: (s) => console.error(String(s)) },
+        exit:  fail('process.exit()'),
+        kill:  fail('process.kill()'),
+        chdir: fail('process.chdir()'),
+    };
+})();
+</script>
 </head>
 <body>
 

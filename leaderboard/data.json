@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-05T16:11:26.129Z",
+  "timestamp": "2026-05-05T16:28:49.922Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-05T16:11:08.854Z",
+      "lastScored": "2026-05-05T16:28:31.149Z",
       "public": {
         "points": 6935,
         "maxPoints": 21964,
@@ -44,6 +44,12 @@
         },
         {
           "ts": "2026-05-05T16:11:08.854Z",
+          "points": 6935,
+          "maxPoints": 21964,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-05T16:28:31.149Z",
           "points": 6935,
           "maxPoints": 21964,
           "passing": 0
@@ -759,7 +765,7 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-05T16:11:26.053Z",
+      "lastScored": "2026-05-05T16:28:49.808Z",
       "public": {
         "points": 6877,
         "maxPoints": 21964,
@@ -798,6 +804,12 @@
         },
         {
           "ts": "2026-05-05T16:11:26.053Z",
+          "points": 6877,
+          "maxPoints": 21964,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-05T16:28:49.808Z",
           "points": 6877,
           "maxPoints": 21964,
           "passing": 0
