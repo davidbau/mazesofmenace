@@ -1,4 +1,4 @@
-// viz.mjs — PS Visualizer main controller.
+// viz.mjs — Session Viewer main controller.
 //
 // Loads a session, drives the JS port to compute screens/cursors/rng for
 // every step, and renders:
@@ -7,9 +7,74 @@
 //     with diff overlay vs the canonical screen
 //   - cursor / message-line / rng detail
 //
+// Two modes:
+//   - HUB MODE (URL has `?fork=<owner>`): runs the contestant fork's
+//     js/ from /play/<owner>/, comparing against the canonical /sessions/
+//     and using /leaderboard/data.json to pick the most interesting
+//     non-passing session by default.
+//   - LOCAL MODE (no `?fork=`): the original local-dev behavior — sessions
+//     and JS at the contestant repo's relative paths (`../../sessions/`,
+//     `../../js/jsmain.js`), with `?js=...` to override.
+//
 // All work happens up-front after loading; scrubbing is pure DOM update.
 
 import { decodeScreen, renderCell, colorToCss, diffCell, ROWS_24, COLS_80 } from '../../frozen/screen-decode.mjs';
+
+// --- Mode + paths ---------------------------------------------------------
+const _params = new URLSearchParams(location.search);
+const HUB_FORK = _params.get('fork');
+const HUB_MODE = !!HUB_FORK;
+
+const PATHS = HUB_MODE ? {
+    sessionsRoot:    '/sessions/',
+    sessionsManifest:'/sessions/manifest.json',
+    jsUrl:           `/play/${HUB_FORK}/js/jsmain.js`,
+    leaderboardUrl:  '/leaderboard/data.json',
+    forkName:        HUB_FORK,
+} : {
+    sessionsRoot:    '../../sessions/',
+    sessionsManifest:'../../sessions/manifest.json',
+    jsUrl:           _params.get('js') || '../../js/jsmain.js',
+    leaderboardUrl:  null,
+    forkName:        null,
+};
+
+// In hub mode, surface which fork is being inspected in the page title
+// and header so the user always sees the context.
+if (HUB_MODE) {
+    document.title = `${HUB_FORK} — Session Viewer`;
+    document.documentElement.classList.add('hub-mode');
+    addEventListener('DOMContentLoaded', () => {
+        const ctx = document.querySelector('#fork-context');
+        if (ctx) {
+            ctx.innerHTML = `inspecting <strong>${HUB_FORK}</strong> &middot; ` +
+                `<a href="https://github.com/${HUB_FORK}/teleport-contest" target="_blank" rel="noopener">github</a> &middot; ` +
+                `<a href="/play/${HUB_FORK}/" target="_blank" rel="noopener">play</a> &middot; ` +
+                `<a href="/">leaderboard</a>`;
+        }
+    });
+}
+
+// PRNG side-panel visibility. Hidden by default so the screen-diff
+// view is the first thing a visitor sees; toggle remembers across
+// reloads via localStorage.
+const RNG_VISIBLE_KEY = 'sessionViewer.rngVisible';
+const _rngStartShown = localStorage.getItem(RNG_VISIBLE_KEY) === '1';
+addEventListener('DOMContentLoaded', () => {
+    if (_rngStartShown) document.body.classList.add('show-rng');
+    const btn = document.querySelector('#toggle-rng');
+    if (btn) {
+        const sync = () => btn.textContent =
+            document.body.classList.contains('show-rng') ? 'Hide PRNG' : 'Show PRNG';
+        sync();
+        btn.addEventListener('click', () => {
+            const on = !document.body.classList.contains('show-rng');
+            document.body.classList.toggle('show-rng', on);
+            localStorage.setItem(RNG_VISIBLE_KEY, on ? '1' : '0');
+            sync();
+        });
+    }
+});
 
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, cls = '') => {
@@ -79,11 +144,11 @@ async function listSessions() {
     // Fall back to a hardcoded list if absent. Either way, the file picker
     // is also wired so the user can load any session.json.
     try {
-        const r = await fetch('../../sessions/manifest.json', { cache: 'no-store' });
+        const r = await fetch(PATHS.sessionsManifest, { cache: 'no-store' });
         if (r.ok) return await r.json();
     } catch {}
     try {
-        const r = await fetch('../../sessions/', { cache: 'no-store' });
+        const r = await fetch(PATHS.sessionsRoot, { cache: 'no-store' });
         if (r.ok) {
             const html = await r.text();
             const matches = [...html.matchAll(/href="([^"?]*\.session\.json)"/g)]
@@ -95,11 +160,31 @@ async function listSessions() {
     return [];
 }
 
-// Optional advisory: a session-results bundle written by whatever local
-// runner the user has (the maud-side `scripts/pes-report.mjs`, or the
-// contest-side equivalent). Lives at `.cache/session-results.json`,
-// which is gitignored. If present we surface pass/fail in the picker.
+// Optional advisory: a session-results bundle.
+//
+// In HUB MODE: pull the per-session results from /leaderboard/data.json
+// (the judge-published canonical record of how each fork scored against
+// each public session) and look up the slice for HUB_FORK.
+//
+// In LOCAL MODE: read the local advisory file (.cache/session-results.json)
+// which the maud-side `scripts/pes-report.mjs` or the contest-side
+// equivalent writes after a self-test run.
 async function loadResultsAdvisory() {
+    if (HUB_MODE) {
+        try {
+            const r = await fetch(PATHS.leaderboardUrl, { cache: 'no-store' });
+            if (!r.ok) return null;
+            const data = await r.json();
+            const team = (data.teams || []).find(t => t.name === HUB_FORK);
+            if (!team || !Array.isArray(team.sessions)) return null;
+            const map = new Map();
+            for (const s of team.sessions) {
+                if (!s.name) continue;
+                map.set(s.name, { passed: s.passed, rng: s.rng, screen: s.screen });
+            }
+            return map;
+        } catch { return null; }
+    }
     for (const url of ['/.cache/session-results.json', '../../.cache/session-results.json']) {
         try {
             const r = await fetch(url, { cache: 'no-store' });
@@ -123,6 +208,31 @@ async function loadResultsAdvisory() {
     return null;
 }
 
+// "Most interesting" pick: the non-passing session with the highest
+// combined PRNG+Screen match ratio — the one that's closest to passing.
+// If the fork has no recorded results yet, return null and let the user
+// pick. If every session is passing (we should be so lucky), return the
+// first one.
+function pickMostInterestingSession(statusMap, names) {
+    if (!statusMap || !statusMap.size) return null;
+    const score = (s) => {
+        const denom = (s.rng?.total || 0) + (s.screen?.total || 0);
+        const num   = (s.rng?.matched || 0) + (s.screen?.matched || 0);
+        return denom > 0 ? num / denom : 0;
+    };
+    const candidates = [];
+    for (const n of names) {
+        const s = statusMap.get(n);
+        if (!s) continue;
+        if (!s.passed) candidates.push({ name: n, sc: score(s) });
+    }
+    if (candidates.length) {
+        candidates.sort((a, b) => b.sc - a.sc);
+        return candidates[0].name;
+    }
+    return names[0] || null;
+}
+
 function resultGlyph(s) {
     if (!s) return '·';
     if (s.passed) return '✓';
@@ -139,7 +249,7 @@ const select = $('#session-select');
 Promise.all([listSessions(), loadResultsAdvisory()]).then(([names, statusMap]) => {
     for (const n of names) {
         const opt = document.createElement('option');
-        opt.value = '../../sessions/' + n;
+        opt.value = PATHS.sessionsRoot + n;
         const status = statusMap?.get(n);
         opt.textContent = `${resultGlyph(status)}  ${n}`;
         if (status) {
@@ -163,6 +273,17 @@ Promise.all([listSessions(), loadResultsAdvisory()]).then(([names, statusMap]) =
         if (opt) {
             select.value = opt.value;
             loadFromUrl(opt.value);
+            return;
+        }
+    }
+    // No explicit session in the URL. In hub mode, auto-load the most
+    // interesting non-passing session for this fork — that's almost
+    // always what a visitor wants to see.
+    if (HUB_MODE) {
+        const auto = pickMostInterestingSession(statusMap, names);
+        if (auto) {
+            select.value = PATHS.sessionsRoot + auto;
+            loadFromUrl(select.value);
         }
     }
 });
@@ -219,9 +340,10 @@ async function loadFromUrl(url) {
 
 async function loadAndCompute(sessionData, name) {
     status(`running JS port on ${name} …`);
-    // Default JS port lives at ../../js/jsmain.js (the contest skeleton).
-    // Override via ?js=<url> for ad-hoc testing against a different port.
-    const jsUrl = new URLSearchParams(location.search).get('js') || '../../js/jsmain.js';
+    // jsUrl was resolved at startup based on URL params:
+    //   - HUB MODE: /play/<fork>/js/jsmain.js
+    //   - LOCAL MODE: ../../js/jsmain.js, or ?js=<url> override.
+    const jsUrl = PATHS.jsUrl;
     let runSegment;
     try {
         const mod = await import(jsUrl);

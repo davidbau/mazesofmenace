@@ -19,10 +19,11 @@
 //   stderr — per-session PASS/FAIL line, then "N/M passing" summary
 //   stdout — __RESULTS_JSON__\n{...} machine-readable bundle
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
-import { join, basename } from 'path';
+import { readFileSync, readdirSync, existsSync, statSync, writeFileSync, mkdirSync } from 'fs';
+import { join, basename, dirname } from 'path';
 import { execSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { decodeScreen, diffCell, ROWS_24, COLS_80 } from './screen-decode.mjs';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PROJECT_ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
@@ -162,6 +163,35 @@ function translateDecSpans(s) {
     return out;
 }
 
+// Pre-decode normalization: rewrite recording-variant lines (build banner,
+// wall-clock timestamps) so they don't surface as char diffs. These are
+// out-of-game cosmetic differences the comparator deliberately tolerates
+// regardless of bit-exactness elsewhere.
+function preDecode(s) {
+    let cur = String(s);
+    for (const re of STARTUP_VARIANT_LINES) {
+        cur = cur.replace(re, '<<VERSION_BANNER>>');
+    }
+    cur = cur.replace(/^\d{2}:\d{2}:\d{2}\.$/gm, '<time>.');
+    return cur;
+}
+
+// Decode-then-compare: render both sides to a 24×80 cell grid (the same
+// way the Session Viewer does) and check cell-by-cell equality. Picks
+// up bit-different SGR encodings as equal when the rendered pixels are
+// the same — and ignores attr/color differences on glyphless spaces
+// (where they produce no visible pixels).
+function screensVisuallyEqual(a, b) {
+    const ga = decodeScreen(preDecode(a));
+    const gb = decodeScreen(preDecode(b));
+    for (let r = 0; r < ROWS_24; r++) {
+        for (let c = 0; c < COLS_80; c++) {
+            if (diffCell(ga[r][c], gb[r][c])) return false;
+        }
+    }
+    return true;
+}
+
 function normalizeScreen(s) {
     let cur = String(s);
     for (const re of STARTUP_VARIANT_LINES) {
@@ -257,7 +287,7 @@ async function runSession(sessionPath) {
     const screenTotal = cScreens.length;
     let screenMatched = 0;
     for (let i = 0; i < screenTotal; i++) {
-        if (normalizeScreen(jsScreens[i] || '') === normalizeScreen(cScreens[i] || '')) screenMatched++;
+        if (screensVisuallyEqual(jsScreens[i] || '', cScreens[i] || '')) screenMatched++;
     }
 
     return {
@@ -361,8 +391,20 @@ async function main() {
         commit = execSync('git rev-parse --short HEAD', { cwd: PROJECT_ROOT }).toString().trim();
     } catch (_) { /* not a git checkout */ }
 
+    const bundle = { timestamp: new Date().toISOString(), commit, results };
     console.log('__RESULTS_JSON__');
-    console.log(JSON.stringify({ timestamp: new Date().toISOString(), commit, results }));
+    console.log(JSON.stringify(bundle));
+
+    // Also write a known advisory copy so the Session Viewer (and other
+    // tools) can show pass/fail without re-running. `.cache/` is the
+    // standard "transient artifact" location and should be gitignored.
+    try {
+        const advisory = join(PROJECT_ROOT, '.cache', 'session-results.json');
+        mkdirSync(dirname(advisory), { recursive: true });
+        writeFileSync(advisory, JSON.stringify(bundle, null, 2));
+    } catch (e) {
+        process.stderr.write(`(could not write .cache/session-results.json: ${e.message})\n`);
+    }
 }
 
 main().catch(e => {

@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "score": "bash frozen/score.sh",
-    "play": "echo 'Open index.html in a browser to play'",
-    "test": "node --test"
+    "play": "echo 'Open index.html in a browser to play'"
   },
   "engines": {
     "node": ">=22.0.0"

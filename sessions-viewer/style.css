@@ -340,3 +340,71 @@ main {
 .rng-line.diff     { color: var(--err); }
 .rng-line.missing  { color: var(--tl-canon-only); }
 .rng-line.extra    { color: var(--tl-js-only); }
+
+/* ── Hub-mode header annotation ─────────────────────────────────────── */
+.fork-context {
+    display: block;
+    color: var(--fg-2);
+    font-size: 0.88em;
+    margin-top: 3px;
+    font-style: italic;
+}
+.fork-context strong { font-style: normal; color: var(--accent-dark); }
+.fork-context a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--rule); }
+.fork-context a:hover { color: var(--accent-dark); }
+
+/* ── PRNG-toggle button ─────────────────────────────────────────────── */
+.toggle-btn {
+    font-family: var(--font-serif);
+    font-size: 0.92em;
+    color: var(--accent-dark);
+    background: var(--bg-3);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 4px 11px;
+    cursor: pointer;
+}
+.toggle-btn:hover { background: var(--bg-2); }
+
+/* ── PRNG hidden by default ────────────────────────────────────────────
+   When body lacks .show-rng:
+     · the canon and js timeline rows + their labels are clipped out of
+       view (canvas is shrunk via wrapper overflow + negative margin so
+       only the screen-diff row remains)
+     · the rng-detail aside block hides
+     · PRNG-only legend swatches hide
+   The "Show PRNG" button toggles .show-rng on body; viz.mjs persists
+   the choice in localStorage. */
+.rng-hint {
+    margin: 6px 22px 4px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--rule);
+    background: rgba(0,0,0,0.025);
+    color: var(--fg-2);
+    font-style: italic;
+    font-size: 0.88em;
+}
+body.show-rng .rng-hint { display: none; }
+
+/* The prng (this step) block is the second .detail-block in the aside.
+   Hiding the entire block (label + value) keeps the aside compact. */
+body:not(.show-rng) #detail-pane > .detail-block:nth-child(2) { display: none; }
+
+body:not(.show-rng) #timeline-wrap {
+    height: 22px;
+    overflow: hidden;
+}
+body:not(.show-rng) #timeline {
+    height: 130px;          /* preserve internal pixel mapping */
+    margin-top: -110px;     /* slide canon+js out of the wrapper viewport */
+}
+body:not(.show-rng) .row-labels .row-label.canon,
+body:not(.show-rng) .row-labels .row-label.js {
+    display: none;
+}
+body:not(.show-rng) .row-labels .row-label.screen { top: 6px; }
+
+body:not(.show-rng) .legend-item.rng-only,
+body:not(.show-rng) .legend-sep {
+    display: none;
+}

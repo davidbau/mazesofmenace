@@ -9,7 +9,8 @@
 <header>
     <div class="title">
         <strong>Session Viewer</strong>
-        <span class="hint"><span class="nowrap">PRNG + Screen divergence</span> — <span class="nowrap">drag the timeline, watch the map</span></span>
+        <span class="hint"><span class="nowrap">Screen divergence</span> &mdash; <span class="nowrap">scrub the timeline, watch the map</span></span>
+        <span class="fork-context" id="fork-context"></span>
     </div>
     <div class="picker">
         <select id="session-select">
@@ -19,8 +20,16 @@
             <input type="file" id="session-file" accept=".json">
             <span class="nowrap">or load file…</span>
         </label>
+        <button type="button" id="toggle-rng" class="toggle-btn" title="Show / hide the PRNG comparison panel">Show PRNG</button>
     </div>
 </header>
+
+<aside class="rng-hint" id="rng-hint">
+    <strong>PRNG diff hidden.</strong> Click <em>Show PRNG</em> above to see
+    canon-vs-JS PRNG calls per step. Most divergences surface in the screen
+    diff first; PRNG is helpful when the screen looks fine but you're
+    chasing a deeper structural drift.
+</aside>
 
 <section id="status">Pick a session to begin.</section>
 
@@ -36,10 +45,10 @@
     <div class="timeline-meta">
         <span class="legend">
             <span class="legend-group">
-                <span class="legend-item"><span class="swatch sw-match"></span> match</span>
-                <span class="legend-item"><span class="swatch sw-diff"></span> value diff</span>
-                <span class="legend-item"><span class="swatch sw-canon-only"></span> canon-only call</span>
-                <span class="legend-item"><span class="swatch sw-js-only"></span> js-only call</span>
+                <span class="legend-item rng-only"><span class="swatch sw-match"></span> match</span>
+                <span class="legend-item rng-only"><span class="swatch sw-diff"></span> value diff</span>
+                <span class="legend-item rng-only"><span class="swatch sw-canon-only"></span> canon-only call</span>
+                <span class="legend-item rng-only"><span class="swatch sw-js-only"></span> js-only call</span>
             </span>
             <span class="legend-sep"></span>
             <span class="legend-group">
