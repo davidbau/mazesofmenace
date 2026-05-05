@@ -121,25 +121,27 @@ a:hover { text-decoration: underline; }
 }
 .lb-table td.rank { width: 2.4em; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .lb-table td.team a { font-weight: 600; }
-.lb-table td.play  { width: 4em; text-align: center; }
-.lb-table td.pct   { font-family: var(--font-mono); font-size: 0.92em; text-align: right; font-variant-numeric: tabular-nums; }
-.lb-table td.pct a { font-weight: 500; }
-.lb-table td.time  { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
+.lb-table td.action { width: 4em; text-align: center; padding-left: 0.3em; padding-right: 0.3em; }
+.lb-table td.pct    { font-family: var(--font-mono); font-size: 0.92em; text-align: right; font-variant-numeric: tabular-nums; }
+.lb-table td.time   { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
 .lb-table tr:hover td { background: var(--color-row-hover); }
 .lb-table .pass    { color: var(--color-pass);    font-weight: 600; }
 .lb-table .partial { color: var(--color-partial); font-weight: 500; }
 .lb-table .fail    { color: var(--color-fail);                    }
-.lb-play {
+.lb-btn {
     display: inline-block;
-    padding: 0.15em 0.55em;
-    background: var(--color-accent);
-    color: var(--color-bg);
+    padding: 0.15em 0.6em;
     border-radius: 3px;
     font-size: 0.85em;
     font-weight: 500;
     text-decoration: none;
+    border: 1px solid transparent;
+    min-width: 3em;
 }
-.lb-play:hover { background: var(--color-accent-dark); text-decoration: none; }
+.lb-btn.play  { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent-dark); }
+.lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
+.lb-btn.tests { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
+.lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
 .lb-empty {
     border: 1px dashed var(--color-border);
     background: #fbfaf5;
@@ -226,7 +228,7 @@ footer a { color: var(--color-text-muted); }
             <tr>
                 <th class="rank">#</th>
                 <th class="team">Team</th>
-                <th class="play"></th>
+                <th class="actions" colspan="2"></th>
                 <th class="pct">Passing</th>
                 <th class="pct">PRNG</th>
                 <th class="pct">Screen</th>
@@ -336,16 +338,17 @@ footer a { color: var(--color-text-muted); }
         const rngPct  = pub.rngPct  || 0;
         const scrPct  = pub.screenPct || 0;
         const playUrl   = '/play/' + team.name + '/';
-        const viewerUrl = '/play/' + team.name + '/tools/session-viewer/';
+        const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="rank">${i + 1}</td>
             <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
-            <td class="play"><a class="lb-play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
-            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(passPct)}">${pub.passing}/${pub.total}</span></a></td>
-            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></a></td>
-            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></a></td>
+            <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+            <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
+            <td class="pct"><span class="${PCT_CLASS(passPct)}">${pub.passing}/${pub.total}</span></td>
+            <td class="pct"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
+            <td class="pct"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
             <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
         `;
         tbody.appendChild(tr);
