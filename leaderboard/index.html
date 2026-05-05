@@ -204,10 +204,13 @@ tr:hover td { background: var(--color-row-hover); }
 </tbody>
 </table>
 <p class="hint">
-  <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
-  <strong>Tests</strong> opens the Session Viewer pointed at that fork
-  &mdash; scrub through each public session frame by frame and see exactly
-  where it diverges from C.
+  <strong>Points</strong> = matched 24&times;80 screens; one point per
+  recorded step where the fork&rsquo;s render matches C exactly.
+  <strong>PRNG</strong> is advisory &mdash; the structural prerequisite
+  for screens to match, but no points on its own. <strong>Play</strong>
+  opens that contestant&rsquo;s build in your browser. <strong>Tests</strong>
+  opens the Session Viewer scoped to the fork &mdash; scrub through each
+  public session frame by frame and see where it diverges from C.
 </p>
 
 <div class="legend">

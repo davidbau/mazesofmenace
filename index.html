@@ -243,15 +243,17 @@ footer a { color: var(--color-text-muted); }
         No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
     </p>
     <p class="lb-hint">
-        Each step in each session earns up to two points &mdash; one for
-        matching C&rsquo;s PRNG call sequence into that step and one for
-        matching the rendered 24&times;80 screen at that step. The
-        <strong>Points</strong> column is your fork&rsquo;s total over the
-        44 public sessions; the <strong>Sessions</strong> column tallies
-        whole sessions where both channels hit 100%. PRNG and Screen are
-        the same totals expressed as overall match percentages.
-        <strong>Play</strong> opens the build in your browser;
-        <strong>Tests</strong> opens the Session Viewer scoped to it.
+        <strong>Points</strong> = matched screens across the 44 public
+        sessions. Each step where your fork&rsquo;s rendered 24&times;80
+        terminal exactly matches the C reference is one point; the max
+        is the total number of recorded screens. <strong>PRNG</strong>
+        is shown as advisory progress &mdash; it&rsquo;s the structural
+        prerequisite for screens to match (if your PRNG drifts, the
+        game state drifts and screens can&rsquo;t line up). The
+        <strong>Sessions</strong> column tallies sessions where every
+        screen and PRNG call matched. <strong>Play</strong> opens the
+        build in your browser; <strong>Tests</strong> opens the Session
+        Viewer scoped to it.
     </p>
 </section>
 
