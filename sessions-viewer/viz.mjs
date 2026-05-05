@@ -89,6 +89,37 @@ addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// #detail-pane (cursor + message-line aside) is also a slide-out
+// fly-out: hidden by default so the 24x80 terminal grid stays
+// centered. The edge-handle button (#open-detail) on the right
+// slides it in; the × inside slides it out. Esc and the scrim also
+// close. Choice persisted in localStorage.
+const DETAIL_VISIBLE_KEY = 'sessionViewer.detailVisible';
+const _detailStartShown = localStorage.getItem(DETAIL_VISIBLE_KEY) === '1';
+addEventListener('DOMContentLoaded', () => {
+    if (_detailStartShown) document.body.classList.add('show-detail');
+    const open  = document.querySelector('#open-detail');
+    const close = document.querySelector('#close-detail');
+    const scrim = document.querySelector('#detail-scrim');
+    const pane  = document.querySelector('#detail-pane');
+    const sync = () => {
+        const on = document.body.classList.contains('show-detail');
+        if (pane) pane.setAttribute('aria-hidden', on ? 'false' : 'true');
+    };
+    const setShown = (on) => {
+        document.body.classList.toggle('show-detail', on);
+        localStorage.setItem(DETAIL_VISIBLE_KEY, on ? '1' : '0');
+        sync();
+    };
+    sync();
+    if (open)  open.addEventListener('click',  () => setShown(true));
+    if (close) close.addEventListener('click', () => setShown(false));
+    if (scrim) scrim.addEventListener('click', () => setShown(false));
+    addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('show-detail')) setShown(false);
+    });
+});
+
 const $ = (sel) => document.querySelector(sel);
 const status = (msg, cls = '') => {
     const el = $('#status');

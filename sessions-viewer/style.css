@@ -312,13 +312,86 @@ main {
 .map-cell.cursor-canon { box-shadow: inset 0 0 0 2px var(--diff-cursor); }
 .map-cell.cursor-js    { outline: 2px dashed rgba(110, 168, 254, 0.85); outline-offset: -2px; }
 
+/* The details aside (cursor + message-line) is a slide-out fly-out by
+   default — keeps the 24x80 terminal grid centered when the user
+   isn't actively reading the diagnostics. Edge handle (#open-detail)
+   on the right slides it in; the × inside or Esc / scrim slides it
+   out. Choice persisted in localStorage. */
 #detail-pane {
-    flex: 0 0 360px;
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    width: 340px;
+    max-width: 90vw;
     background: var(--bg-2);
+    border-left: 1px solid var(--rule);
+    box-shadow: -6px 0 18px rgba(0,0,0,0.10);
     padding: 16px 18px;
     overflow: auto;
     font-size: 0.9em;
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    z-index: 50;
+    box-sizing: border-box;
 }
+body.show-detail #detail-pane { transform: translateX(0); }
+body.show-detail #detail-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.04);
+    z-index: 40;
+}
+.detail-pane-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.detail-pane-head .detail-label { margin-bottom: 0; }
+#close-detail {
+    font-size: 1.3em;
+    line-height: 1;
+    padding: 0 8px;
+    background: transparent;
+    border: none;
+    color: var(--fg-2);
+    cursor: pointer;
+}
+#close-detail:hover { color: var(--accent-dark); }
+
+/* Edge handle: a small parchment-colored tab anchored to the right
+   edge of the viewport. Hidden when the fly-out is open (the × in
+   the fly-out is the close affordance). */
+.edge-handle {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 56px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    box-shadow: -2px 0 6px rgba(0, 0, 0, 0.05);
+    color: var(--accent-dark);
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    transition: background 0.12s ease, transform 0.18s ease;
+}
+.edge-handle:hover { background: var(--bg-3); }
+.edge-handle-glyph {
+    font-size: 1.4em;
+    line-height: 1;
+    color: var(--accent-dark);
+}
+body.show-detail .edge-handle { transform: translate(100%, -50%); }
 .detail-block { margin-bottom: 16px; }
 .detail-label {
     text-transform: uppercase;

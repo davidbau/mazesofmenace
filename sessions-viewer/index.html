@@ -125,7 +125,11 @@
             <pre id="map-grid"><!-- 24×80 cells injected here --></pre>
         </div>
     </div>
-    <aside id="detail-pane">
+    <aside id="detail-pane" aria-hidden="true">
+        <div class="detail-pane-head">
+            <div class="detail-label">details</div>
+            <button type="button" id="close-detail" class="toggle-btn" aria-label="Close details">×</button>
+        </div>
         <div class="detail-block">
             <div class="detail-label">cursor</div>
             <div id="cursor-detail">—</div>
@@ -136,6 +140,14 @@
         </div>
     </aside>
 </main>
+
+<!-- Edge handle: tab on the right side of the viewport that toggles
+     the details fly-out open. Hidden when the fly-out is open
+     (its × is the close affordance). -->
+<button type="button" id="open-detail" class="edge-handle" title="Show cursor + message-line details" aria-label="Show details">
+    <span class="edge-handle-glyph">‹</span>
+</button>
+<div id="detail-scrim" hidden></div>
 
 <!-- PRNG fly-out: list of rn2/rnd/d/... calls for the current step,
      with canon vs JS diff. Hidden by default; the "Show PRNG" button
