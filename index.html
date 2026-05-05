@@ -95,8 +95,52 @@ p { margin-bottom: 0.7em; }
 a { color: var(--color-accent); text-decoration: none; font-weight: 500; }
 a:hover { text-decoration: underline; }
 
-/* Leaderboard placeholder */
-.leaderboard-placeholder {
+/* Leaderboard */
+.lb-meta {
+    color: var(--color-text-muted);
+    font-size: 0.95em;
+    margin-bottom: 0.6em;
+}
+.lb-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.6em 0 0.5em;
+    font-size: 0.98em;
+}
+.lb-table th, .lb-table td {
+    padding: 0.45em 0.7em;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+}
+.lb-table th {
+    font-weight: 600;
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.lb-table td.rank { width: 2.4em; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+.lb-table td.team a { font-weight: 600; }
+.lb-table td.play  { width: 4em; text-align: center; }
+.lb-table td.pct   { font-family: var(--font-mono); font-size: 0.92em; text-align: right; font-variant-numeric: tabular-nums; }
+.lb-table td.pct a { font-weight: 500; }
+.lb-table td.time  { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
+.lb-table tr:hover td { background: var(--color-row-hover); }
+.lb-table .pass    { color: var(--color-pass);    font-weight: 600; }
+.lb-table .partial { color: var(--color-partial); font-weight: 500; }
+.lb-table .fail    { color: var(--color-fail);                    }
+.lb-play {
+    display: inline-block;
+    padding: 0.15em 0.55em;
+    background: var(--color-accent);
+    color: var(--color-bg);
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+    text-decoration: none;
+}
+.lb-play:hover { background: var(--color-accent-dark); text-decoration: none; }
+.lb-empty {
     border: 1px dashed var(--color-border);
     background: #fbfaf5;
     padding: 2em;
@@ -104,6 +148,11 @@ a:hover { text-decoration: underline; }
     color: var(--color-text-muted);
     font-style: italic;
     border-radius: 4px;
+}
+.lb-hint {
+    color: var(--color-text-muted);
+    font-size: 0.92em;
+    margin-top: 0.6em;
 }
 
 /* Phase grid */
@@ -167,9 +216,33 @@ footer a { color: var(--color-text-muted); }
 
 <section id="leaderboard">
     <h2>Leaderboard</h2>
-    <p><a href="/leaderboard/">Live leaderboard &rarr;</a> &mdash; updated every six hours.
-       Public + held-out scores combined; the official upstream skeleton is included as a
-       baseline reference.</p>
+    <p class="lb-meta">
+        <span id="lb-updated">Loading&hellip;</span> &middot;
+        Re-scored every six hours &middot;
+        <a href="/leaderboard/">Full view &rarr;</a>
+    </p>
+    <table class="lb-table" id="lb-table" hidden>
+        <thead>
+            <tr>
+                <th class="rank">#</th>
+                <th class="team">Team</th>
+                <th class="play"></th>
+                <th class="pct">Passing</th>
+                <th class="pct">PRNG</th>
+                <th class="pct">Screen</th>
+                <th class="time">Last</th>
+            </tr>
+        </thead>
+        <tbody id="lb-tbody"></tbody>
+    </table>
+    <p class="lb-empty" id="lb-empty" hidden>
+        No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
+    </p>
+    <p class="lb-hint">
+        <strong>Play</strong> opens the contestant&rsquo;s build in your browser.
+        Click a <strong>score</strong> to open the Session Viewer and scrub through
+        each public session, frame by frame, to see where it diverges from C.
+    </p>
 </section>
 
 <section id="play">
@@ -213,5 +286,72 @@ footer a { color: var(--color-text-muted); }
 </footer>
 
 </main>
+
+<script>
+// Inline leaderboard renderer. Fetches /leaderboard/data.json (which the
+// judge mirrors here every 6 hours) and paints the table above. Each row
+// links to /play/<owner>/ for the playable build and to the Session
+// Viewer for per-session inspection — both are mirrored from each fork
+// at scoring time. See judge/scripts/score-fork.sh.
+(async function () {
+    const PCT_CLASS = (pct) => pct >= 100 ? 'pass' : (pct >= 50 ? 'partial' : 'fail');
+    const TIME_AGO = (ts) => {
+        const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+        if (m < 1)  return 'just now';
+        if (m < 60) return m + 'm ago';
+        const h = Math.floor(m / 60);
+        if (h < 24) return h + 'h ago';
+        return Math.floor(h / 24) + 'd ago';
+    };
+
+    let data;
+    try {
+        const r = await fetch('/leaderboard/data.json?t=' + Date.now(), { cache: 'no-store' });
+        data = await r.json();
+    } catch (e) {
+        document.getElementById('lb-updated').textContent = 'Failed to load leaderboard';
+        return;
+    }
+
+    document.getElementById('lb-updated').textContent =
+        'Last scored ' + TIME_AGO(data.timestamp);
+
+    const teams = (data.teams || []).slice().sort((a, b) =>
+        (b.public.passing - a.public.passing) || (b.public.rngPct - a.public.rngPct)
+    );
+
+    const tbody = document.getElementById('lb-tbody');
+    const table = document.getElementById('lb-table');
+    const empty = document.getElementById('lb-empty');
+
+    if (teams.length === 0) {
+        empty.hidden = false;
+        return;
+    }
+    table.hidden = false;
+
+    teams.forEach((team, i) => {
+        const pub = team.public;
+        const passPct = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+        const rngPct  = pub.rngPct  || 0;
+        const scrPct  = pub.screenPct || 0;
+        const playUrl   = '/play/' + team.name + '/';
+        const viewerUrl = '/play/' + team.name + '/tools/session-viewer/';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="rank">${i + 1}</td>
+            <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
+            <td class="play"><a class="lb-play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(passPct)}">${pub.passing}/${pub.total}</span></a></td>
+            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></a></td>
+            <td class="pct"><a href="${viewerUrl}" title="Open Session Viewer"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></a></td>
+            <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+})();
+</script>
+
 </body>
 </html>
