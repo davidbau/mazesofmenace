@@ -221,7 +221,7 @@ footer a { color: var(--color-text-muted); }
     <h2>Leaderboard</h2>
     <p class="lb-meta">
         <span id="lb-updated">Loading&hellip;</span> &middot;
-        Re-scored every six hours &middot;
+        Re-scored every two hours &middot;
         <a href="/leaderboard/">Full view &rarr;</a>
     </p>
     <table class="lb-table" id="lb-table" hidden>
@@ -302,7 +302,7 @@ footer a { color: var(--color-text-muted); }
 
 <script>
 // Inline leaderboard renderer. Fetches /leaderboard/data.json (which the
-// judge mirrors here every 6 hours) and paints the table above. Each row
+// judge mirrors here every 2 hours) and paints the table above. Each row
 // links to /play/<owner>/ for the playable build and to the Session
 // Viewer for per-session inspection — both are mirrored from each fork
 // at scoring time. See judge/scripts/score-fork.sh.

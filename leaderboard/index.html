@@ -191,11 +191,11 @@ tr:hover td { background: var(--color-row-hover); }
   <th class="rank">#</th>
   <th>Team</th>
   <th class="actions" colspan="2"></th>
-  <th class="pts">Points</th>
+  <th class="pts">Public points</th>
   <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
   <th class="pct">Sessions</th>
-  <th class="pct">Hidden</th>
+  <th class="pts">Held-out points</th>
   <th class="sparkline">Progress</th>
   <th>Updated</th>
 </tr>
@@ -214,7 +214,7 @@ tr:hover td { background: var(--color-row-hover); }
   <span><span class="dot" style="background:var(--color-pass)"></span> 100% match</span>
   <span><span class="dot" style="background:var(--color-partial)"></span> 50&ndash;99%</span>
   <span><span class="dot" style="background:var(--color-fail)"></span> &lt;50%</span>
-  <span class="hidden">Hidden sessions revealed at contest end</span>
+  <span class="hidden">Held-out totals public; per-session breakdown released at contest end</span>
 </div>
 
 </div>
@@ -302,6 +302,11 @@ async function loadLeaderboard() {
             const playUrl   = '/play/' + team.name + '/';
             const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
+            const held = team.heldOut || {};
+            const heldPoints    = held.points || 0;
+            const heldMaxPoints = held.maxPoints || 0;
+            const heldPct       = heldMaxPoints > 0 ? (heldPoints / heldMaxPoints * 100) : 0;
+
             tr.innerHTML = `
                 <td class="rank">${i + 1}</td>
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
@@ -314,7 +319,11 @@ async function loadLeaderboard() {
                 <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
                 <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
                 <td class="pct"><span class="${pctClass(sessPct)}">${pub.passing}/${pub.total}</span></td>
-                <td class="pct hidden">?/?</td>
+                <td class="pts" title="${heldPct.toFixed(2)}% of ${fmt(heldMaxPoints)} possible held-out points">
+                    ${heldMaxPoints > 0
+                        ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
+                        : '<span class="hidden">—</span>'}
+                </td>
                 <td class="sparkline"><canvas width="100" height="20" id="spark-${i}"></canvas></td>
                 <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
             `;
