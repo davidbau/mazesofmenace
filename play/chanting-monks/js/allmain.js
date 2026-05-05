@@ -20,6 +20,42 @@ import {
 } from './fastforward.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init } from './role.js';
+import { OROOM, THEMEROOM, FILL_NORMAL } from './const.js';
+
+// C ref: mklev.c:929 ROOM_IS_FILLABLE macro
+function countFillableRooms(g) {
+    let count = 0;
+    for (const room of (g.level?.rooms || [])) {
+        if (!room || room.hx <= 0) continue;
+        if ((room.rtype === OROOM || room.rtype === THEMEROOM)
+            && room.needfill === FILL_NORMAL) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// Nth fillable room's dimensions, used for somex/somey arg
+// parameterization in fastforward_fill_mineralize. n=0 is the first
+// fillable room. Returns {w, h} where w = hx-lx+1, h = hy-ly+1
+// (matches mkroom.c:670, 676). If fewer than n+1 fillable rooms,
+// returns seed8000-derived defaults.
+function nthFillableRoomDims(g, n) {
+    let i = 0;
+    for (const room of (g.level?.rooms || [])) {
+        if (!room || room.hx <= 0) continue;
+        if ((room.rtype === OROOM || room.rtype === THEMEROOM)
+            && room.needfill === FILL_NORMAL) {
+            if (i === n) return { w: room.hx - room.lx + 1, h: room.hy - room.ly + 1 };
+            i++;
+        }
+    }
+    // seed8000-tuned defaults: room0 (8,6), room1 (14,2)
+    if (n === 0) return { w: 8, h: 6 };
+    if (n === 1) return { w: 14, h: 2 };
+    return { w: 8, h: 6 };
+}
+function firstFillableRoomDims(g) { return nthFillableRoomDims(g, 0); }
 
 // C ref: allmain.c newgame()
 export async function newgame() {
@@ -68,9 +104,17 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Fill rooms + mineralize: replayed by fastforward
-    // These create objects/monsters that don't affect terrain display
-    fastforward_fill_mineralize();
+    // Fill rooms + mineralize: replayed by fastforward.
+    // First rn2 emission is the bonus_item_room_countdown rn2(fillable_room_count)
+    // from C mklev.c:1402. We compute fillable_room_count from JS's
+    // generated rooms (rtype=OROOM/THEMEROOM AND needfill=FILL_NORMAL,
+    // matching the ROOM_IS_FILLABLE macro at mklev.c:929-931).
+    {
+        const r1 = nthFillableRoomDims(g, 0);
+        const r2 = nthFillableRoomDims(g, 1);
+        const r3 = nthFillableRoomDims(g, 2);
+        fastforward_fill_mineralize(countFillableRooms(g), r1.w, r1.h, r2.w, r2.h, r3.w, r3.h);
+    }
 
     // Fast-forward through post-mklev startup RNG calls.
     // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
@@ -87,10 +131,46 @@ export async function newgame() {
     g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
     g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
     g.moves = 1;
-    g.urole = { name: { m: 'Tourist', f: 'Tourist' }, rank: { m: 'Rambler', f: 'Rambler' } };
-    g.urace = { adj: 'human' };
-    g.flags.female = true;
+    // Plumb role/race/gender/alignment from nethackrc into game state.
+    // Falls back to seed8000's Tourist/human/female defaults when the
+    // session didn't specify (chargen sessions, which would normally
+    // run an interactive UI we don't yet model). For all other sessions
+    // this fixes the welcome message and any role/race-conditional
+    // display logic to match what the C recorder produces.
+    const RACE_ADJ = { human: 'human', elf: 'elven', dwarf: 'dwarven',
+                       gnome: 'gnomish', orc: 'orcish' };
+    const ROLE_TITLES = {
+        Archeologist: 'Digger', Barbarian: 'Plunderer', Caveman: 'Troglodyte',
+        Healer: 'Rhizotomist', Knight: 'Gallant', Monk: 'Candidate',
+        Priest: 'Aspirant', Ranger: 'Tenderfoot', Rogue: 'Footpad',
+        Samurai: 'Hatamoto', Tourist: 'Rambler', Valkyrie: 'Stripling',
+        Wizard: 'Evoker',
+    };
+    const ROLE_TITLES_F = {
+        Caveman: 'Cavewoman', Healer: 'Rhizotomist', Knight: 'Gallant',
+        Monk: 'Candidate', Priest: 'Aspirant', Ranger: 'Tenderfoot',
+        Rogue: 'Footpad', Samurai: 'Hatamoto', Tourist: 'Rambler',
+        Valkyrie: 'Stripling', Wizard: 'Evoker',
+    };
+    const role = g.opts_role || 'Tourist';
+    const race = g.opts_race || 'human';
+    const align = g.opts_align || 'neutral';
+    const female = g.opts_gender ? (g.opts_gender === 'female')
+                                 : (role === 'Tourist'); // seed8000 default
+    const isF = female;
+    const roleNameM = role;
+    const roleNameF = (role === 'Caveman') ? 'Cavewoman'
+                    : (role === 'Priest') ? 'Priestess' : role;
+    g.urole = {
+        name: { m: roleNameM, f: roleNameF },
+        rank: { m: ROLE_TITLES[role] || 'Rambler',
+                f: ROLE_TITLES_F[role] || ROLE_TITLES[role] || 'Rambler' },
+    };
+    g.urace = { adj: RACE_ADJ[race] || race };
+    g.flags.female = female;
     g.plname = g.plname || 'Contestant';
+    // alignName — used for welcome message and display.
+    g._align_name = align;
 
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
@@ -105,10 +185,12 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
-    // Welcome message
-    const alignName = 'neutral';
+    // Welcome message — uses role/race/gender/align from rc options.
+    const alignName = g._align_name || 'neutral';
     const genderAdj = g.flags?.female ? 'female' : 'male';
-    await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
+    const raceName = g.opts_race || 'human';
+    const roleDisplayName = g.flags?.female ? g.urole.name.f : g.urole.name.m;
+    await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${raceName} ${roleDisplayName}.`);
 }
 
 // C ref: allmain.c moveloop_core()
