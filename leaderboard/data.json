@@ -1,25 +1,27 @@
 {
-  "timestamp": "2026-05-05T23:33:14.743Z",
+  "timestamp": "2026-05-05T23:56:06.405Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-05T23:32:57.078Z",
+      "lastScored": "2026-05-05T23:55:48.912Z",
       "public": {
-        "points": 6935,
-        "maxPoints": 21964,
+        "points": 78,
+        "maxPoints": 10982,
         "passing": 0,
         "total": 44,
         "rngPct": 4.660989721047459,
+        "rngStepsPct": 62.43853578583136,
         "screenPct": 0.7102531415042798
       },
       "heldOut": {
-        "points": 7315,
-        "maxPoints": 20975,
+        "points": 35,
+        "maxPoints": 10486,
         "passing": 0,
         "total": 44,
         "rngPct": 3.555809342226083,
+        "rngStepsPct": 69.40604442749547,
         "screenPct": 0.33377837116154874
       },
       "history": [
@@ -71,6 +73,12 @@
           "ts": "2026-05-05T23:32:57.078Z",
           "points": 6935,
           "maxPoints": 21964,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-05T23:55:48.912Z",
+          "points": 78,
+          "maxPoints": 10982,
           "passing": 0
         }
       ],
@@ -784,21 +792,23 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-05T23:33:14.632Z",
+      "lastScored": "2026-05-05T23:56:06.299Z",
       "public": {
-        "points": 6886,
-        "maxPoints": 21964,
+        "points": 15,
+        "maxPoints": 10982,
         "passing": 0,
         "total": 44,
         "rngPct": 6.40524633549035,
+        "rngStepsPct": 62.56601711892187,
         "screenPct": 0.13658714259697685
       },
       "heldOut": {
-        "points": 7282,
-        "maxPoints": 20975,
+        "points": 0,
+        "maxPoints": 10486,
         "passing": 0,
         "total": 44,
         "rngPct": 5.3139944664289835,
+        "rngStepsPct": 69.42511202211841,
         "screenPct": 0
       },
       "history": [
@@ -850,6 +860,12 @@
           "ts": "2026-05-05T23:33:14.632Z",
           "points": 6886,
           "maxPoints": 21964,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-05T23:56:06.299Z",
+          "points": 15,
+          "maxPoints": 10982,
           "passing": 0
         }
       ],
