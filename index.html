@@ -149,6 +149,14 @@ a:hover { text-decoration: underline; }
 .lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
 .lb-btn.tests { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
 .lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
+.you-cta { text-align: center; font-style: italic; }
+.you-cta a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+    font-style: normal;
+}
+.you-cta a:hover { text-decoration: underline; }
 .lb-empty {
     border: 1px dashed var(--color-border);
     background: #fbfaf5;
@@ -250,7 +258,7 @@ footer a { color: var(--color-text-muted); }
     </p>
     <p class="lb-hint">
         <strong>Points</strong> = matched screens across the 44 public
-        sessions. Each step where your fork&rsquo;s rendered 24&times;80
+        sessions. Each step where your fork&rsquo;s rendered 80&times;24
         terminal exactly matches the C reference is one point; the max
         is the total number of recorded screens. <strong>PRNG</strong>
         is shown as advisory progress &mdash; it&rsquo;s the structural
@@ -382,6 +390,16 @@ footer a { color: var(--color-text-muted); }
         `;
         tbody.appendChild(tr);
     });
+
+    const youTr = document.createElement('tr');
+    youTr.innerHTML = `
+        <td class="rank"></td>
+        <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
+        <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
+        <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
+        <td class="you-cta" colspan="5"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+    `;
+    tbody.appendChild(youTr);
 })();
 </script>
 

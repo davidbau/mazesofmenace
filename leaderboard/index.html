@@ -112,14 +112,7 @@ tr:hover td { background: var(--color-row-hover); }
 .lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
 .lb-btn.tests  { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
 .lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
-.you-row { border-top: 2px solid var(--color-border); }
-.you-row td { background: var(--color-row-hover); }
-.team.you {
-    color: var(--color-text-muted);
-    font-style: italic;
-    font-weight: 500;
-}
-.you-cta { font-style: italic; }
+.you-cta { text-align: center; font-style: italic; }
 .you-cta a {
     color: var(--color-accent);
     text-decoration: none;
@@ -219,7 +212,7 @@ tr:hover td { background: var(--color-row-hover); }
 </tbody>
 </table>
 <p class="hint">
-  <strong>Points</strong> = matched 24&times;80 screens; one point per
+  <strong>Points</strong> = matched 80&times;24 screens; one point per
   recorded step where the fork&rsquo;s render matches C exactly.
   <strong>PRNG</strong> is advisory &mdash; the structural prerequisite
   for screens to match, but no points on its own. <strong>Play</strong>
@@ -395,10 +388,9 @@ async function loadLeaderboard() {
         }
 
         const youTr = document.createElement('tr');
-        youTr.className = 'you-row';
         youTr.innerHTML = `
             <td class="rank"></td>
-            <td class="team you">you</td>
+            <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
             <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
             <td class="you-cta" colspan="7"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
