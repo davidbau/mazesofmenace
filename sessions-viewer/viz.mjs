@@ -18,7 +18,28 @@
 //
 // All work happens up-front after loading; scrubbing is pure DOM update.
 
-import { decodeScreen, renderCell, colorToCss, diffCell, ROWS_24, COLS_80 } from '../../frozen/screen-decode.mjs';
+import { decodeScreen as _rawDecodeScreen, renderCell, colorToCss, diffCell, ROWS_24, COLS_80 } from '../../frozen/screen-decode.mjs';
+
+// Match the judge's pre-decode pass: any "Version X.Y.Z … built …"
+// banner line gets collapsed to a sentinel before decoding so the
+// build-date stamp doesn't surface as a per-cell diff. The judge's
+// comparator does this in frozen/ps_test_runner.mjs / sandbox/
+// verifier.mjs; mirroring it here means the viewer shows what the
+// judge actually scores, not noise from a recorder-rebuild that
+// changed the banner timestamp. Wall-clock timestamps in the corner
+// also normalize.
+const STARTUP_VARIANT_LINES = [
+    /Version\s+\d+\.\d+\.\d+[^\n]*/,
+];
+function preDecode(s) {
+    let cur = String(s);
+    for (const re of STARTUP_VARIANT_LINES) {
+        cur = cur.replace(re, '<<VERSION_BANNER>>');
+    }
+    cur = cur.replace(/^\d{2}:\d{2}:\d{2}\.$/gm, '<time>.');
+    return cur;
+}
+function decodeScreen(s) { return _rawDecodeScreen(preDecode(s)); }
 
 // --- Mode + paths ---------------------------------------------------------
 const _params = new URLSearchParams(location.search);
