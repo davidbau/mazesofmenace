@@ -112,6 +112,21 @@ tr:hover td { background: var(--color-row-hover); }
 .lb-btn.play:hover  { background: var(--color-accent-dark); text-decoration: none; }
 .lb-btn.tests  { background: transparent; color: var(--color-accent); border-color: var(--color-border); }
 .lb-btn.tests:hover { background: var(--color-row-hover); color: var(--color-accent-dark); text-decoration: none; }
+.you-row { border-top: 2px solid var(--color-border); }
+.you-row td { background: var(--color-row-hover); }
+.team.you {
+    color: var(--color-text-muted);
+    font-style: italic;
+    font-weight: 500;
+}
+.you-cta { font-style: italic; }
+.you-cta a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+    font-style: normal;
+}
+.you-cta a:hover { text-decoration: underline; }
 .pts {
     text-align: right;
     font-family: var(--font-mono);
@@ -378,6 +393,17 @@ async function loadLeaderboard() {
         if (teams.length === 0) {
             tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
+
+        const youTr = document.createElement('tr');
+        youTr.className = 'you-row';
+        youTr.innerHTML = `
+            <td class="rank"></td>
+            <td class="team you">you</td>
+            <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
+            <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
+            <td class="you-cta" colspan="7"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+        `;
+        tbody.appendChild(youTr);
     } catch (e) {
         document.getElementById('updated').textContent = 'Failed to load: ' + e.message;
     }
