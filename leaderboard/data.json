@@ -1,28 +1,28 @@
 {
-  "timestamp": "2026-05-06T10:45:50.218Z",
+  "timestamp": "2026-05-06T11:43:07.093Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-06T10:45:50.129Z",
+      "lastScored": "2026-05-06T11:43:07.002Z",
       "public": {
         "points": 105,
-        "maxPoints": 10982,
+        "maxPoints": 11284,
         "passing": 0,
         "total": 44,
-        "rngPct": 6.4075072766606604,
-        "rngStepsPct": 62.56601711892187,
-        "screenPct": 0.9561099981788381
+        "rngPct": 6.7911487794572984,
+        "rngStepsPct": 62.947536334633114,
+        "screenPct": 0.9305210918114143
       },
       "heldOut": {
         "points": 52,
-        "maxPoints": 10486,
+        "maxPoints": 10538,
         "passing": 0,
         "total": 44,
-        "rngPct": 5.313147614721187,
-        "rngStepsPct": 69.42511202211841,
-        "screenPct": 0.49589929429715807
+        "rngPct": 5.271066623459235,
+        "rngStepsPct": 69.39569300825349,
+        "screenPct": 0.4934522679825394
       },
       "history": [
         {
@@ -109,6 +109,12 @@
           "ts": "2026-05-06T10:45:50.129Z",
           "points": 105,
           "maxPoints": 10982,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T11:43:07.002Z",
+          "points": 105,
+          "maxPoints": 11284,
           "passing": 0
         }
       ],
@@ -518,15 +524,15 @@
           "passed": false,
           "rng": {
             "matched": 1226,
-            "total": 133910
+            "total": 120639
           },
           "rngSteps": {
-            "matched": 484,
-            "total": 618
+            "matched": 683,
+            "total": 833
           },
           "screen": {
             "matched": 0,
-            "total": 618
+            "total": 833
           }
         },
         {
@@ -534,15 +540,15 @@
           "passed": false,
           "rng": {
             "matched": 1280,
-            "total": 70975
+            "total": 53865
           },
           "rngSteps": {
-            "matched": 242,
-            "total": 294
+            "matched": 275,
+            "total": 366
           },
           "screen": {
             "matched": 0,
-            "total": 294
+            "total": 366
           }
         },
         {
@@ -550,15 +556,15 @@
           "passed": false,
           "rng": {
             "matched": 887,
-            "total": 67217
+            "total": 50125
           },
           "rngSteps": {
             "matched": 252,
-            "total": 309
+            "total": 324
           },
           "screen": {
             "matched": 0,
-            "total": 309
+            "total": 324
           }
         },
         {
@@ -822,24 +828,24 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-06T10:45:35.097Z",
+      "lastScored": "2026-05-06T11:42:50.589Z",
       "public": {
         "points": 78,
-        "maxPoints": 10982,
+        "maxPoints": 11284,
         "passing": 0,
         "total": 44,
-        "rngPct": 4.660989721047459,
-        "rngStepsPct": 62.43853578583136,
-        "screenPct": 0.7102531415042798
+        "rngPct": 4.94006066453521,
+        "rngStepsPct": 62.82346685572492,
+        "screenPct": 0.6912442396313364
       },
       "heldOut": {
         "points": 35,
-        "maxPoints": 10486,
+        "maxPoints": 10538,
         "passing": 0,
         "total": 44,
-        "rngPct": 3.555809342226083,
-        "rngStepsPct": 69.40604442749547,
-        "screenPct": 0.33377837116154874
+        "rngPct": 3.5276467552419017,
+        "rngStepsPct": 69.37671947633052,
+        "screenPct": 0.33213133421901686
       },
       "history": [
         {
@@ -926,6 +932,12 @@
           "ts": "2026-05-06T10:45:35.097Z",
           "points": 78,
           "maxPoints": 10982,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T11:42:50.589Z",
+          "points": 78,
+          "maxPoints": 11284,
           "passing": 0
         }
       ],
@@ -1335,15 +1347,15 @@
           "passed": false,
           "rng": {
             "matched": 1054,
-            "total": 133910
+            "total": 120639
           },
           "rngSteps": {
-            "matched": 484,
-            "total": 618
+            "matched": 683,
+            "total": 833
           },
           "screen": {
             "matched": 0,
-            "total": 618
+            "total": 833
           }
         },
         {
@@ -1351,15 +1363,15 @@
           "passed": false,
           "rng": {
             "matched": 258,
-            "total": 70975
+            "total": 53865
           },
           "rngSteps": {
-            "matched": 242,
-            "total": 294
+            "matched": 275,
+            "total": 366
           },
           "screen": {
             "matched": 0,
-            "total": 294
+            "total": 366
           }
         },
         {
@@ -1367,15 +1379,15 @@
           "passed": false,
           "rng": {
             "matched": 0,
-            "total": 67217
+            "total": 50125
           },
           "rngSteps": {
             "matched": 252,
-            "total": 309
+            "total": 324
           },
           "screen": {
             "matched": 0,
-            "total": 309
+            "total": 324
           }
         },
         {
