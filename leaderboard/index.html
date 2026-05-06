@@ -135,7 +135,7 @@ tr:hover td { background: var(--color-row-hover); }
 .fail { color: var(--color-fail); }
 .hidden { color: var(--color-text-muted); font-style: italic; }
 .sparkline { width: 100px; }
-.sparkline canvas { vertical-align: middle; }
+.sparkline svg { display: inline-block; vertical-align: middle; width: 100px; height: 20px; }
 .time {
     font-size: 0.85em;
     color: var(--color-text-muted);
@@ -241,46 +241,70 @@ function pctClass(pct) {
     return 'fail';
 }
 
-// Scoring-rule cutoff. The metric changed on 2026-05-05 evening (UTC):
-// before this, points = matched-PRNG-calls + matched-screens (max ~850k);
-// after, points = matched-screens only (max ~11k). Plotting both eras on
-// one sparkline would let the old era visually dominate, so the chart
-// drops anything older than this. Older history is still in git
-// (judge repo's leaderboard/data.json log) and in the live `history[]`
-// array up to MAX_HISTORY entries; this only filters the rendered line.
-const RULES_CUTOFF_MS = Date.parse('2026-05-05T23:00:00Z');
+// Scoring-rule cutoff. The metric stabilised on 2026-05-05T23:56Z
+// (judge commit b012071 — the first scoring run after the
+// screens-only switch). Before that we tried two intermediate
+// schemes: matched-PRNG-calls + matched-screens (max ~850k) and
+// rngSteps + screens (max ~22k). Both produced wildly larger
+// point values than the current screens-only metric (max ~11k),
+// so plotting them on the same sparkline made the post-cutoff
+// line look like a flat zero near the x-axis. Older history is
+// still in `team.history[]` (up to MAX_HISTORY) and in the
+// judge repo's git log; this only filters the rendered line.
+const RULES_CUTOFF_MS = Date.parse('2026-05-05T23:55:00Z');
 
-function drawSparkline(canvas, history) {
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
+// Sparkline as SVG (crisp at any device pixel ratio — canvas at 100×20
+// looked chunky on retina). The SVG's viewBox is the natural 100×20
+// coordinate space; CSS controls the rendered size. Right padding
+// keeps the end-of-line dot fully inside the viewport.
+const SPARK_W = 100;
+const SPARK_H = 20;
+const SPARK_PAD_R = 4;     // reserve room for the dot on the right
+const SPARK_PAD_V = 2.5;   // top/bottom padding for the line
+const SPARK_DOT_R = 2.5;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function drawSparkline(svg, history) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
     if (!history) return;
     history = history.filter(p => Date.parse(p.ts) >= RULES_CUTOFF_MS);
     if (history.length < 2) return;
 
-    // Plot points-over-time. Older history rows wrote `passing`; newer
-    // rows write `points` + `maxPoints`. Fall back gracefully.
-    const valueOf = (h) => (h.points != null ? h.points : (h.passing || 0));
+    // Older entries wrote `passing`; newer entries write `points` /
+    // `maxPoints`. Fall back gracefully across the schema bump.
+    const valueOf = (p) => (p.points != null ? p.points : (p.passing || 0));
     const max = Math.max(...history.map(valueOf), 1);
-    ctx.strokeStyle = getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-sparkline').trim();
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i < history.length; i++) {
-        const x = (i / (history.length - 1)) * w;
-        const y = h - (valueOf(history[i]) / max) * (h - 4) - 2;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
 
-    // Current value dot
+    const stroke = getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-sparkline').trim();
+
+    const innerW = SPARK_W - SPARK_PAD_R;
+    const innerH = SPARK_H - 2 * SPARK_PAD_V;
+
+    const pts = history.map((p, i) => {
+        const x = (i / (history.length - 1)) * innerW;
+        const y = SPARK_H - SPARK_PAD_V - (valueOf(p) / max) * innerH;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+
+    const line = document.createElementNS(SVG_NS, 'polyline');
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', stroke);
+    line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('stroke-linejoin', 'round');
+    line.setAttribute('points', pts);
+    svg.appendChild(line);
+
     const last = history[history.length - 1];
-    const ly = h - (valueOf(last) / max) * (h - 4) - 2;
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.beginPath();
-    ctx.arc(w - 1, ly, 2.5, 0, Math.PI * 2);
-    ctx.fill();
+    const lx = innerW;
+    const ly = SPARK_H - SPARK_PAD_V - (valueOf(last) / max) * innerH;
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    dot.setAttribute('cx', lx.toFixed(2));
+    dot.setAttribute('cy', ly.toFixed(2));
+    dot.setAttribute('r', String(SPARK_DOT_R));
+    dot.setAttribute('fill', stroke);
+    svg.appendChild(dot);
 }
 
 async function loadLeaderboard() {
@@ -338,7 +362,7 @@ async function loadLeaderboard() {
                         ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
                         : '<span class="hidden">—</span>'}
                 </td>
-                <td class="sparkline"><canvas width="100" height="20" id="spark-${i}"></canvas></td>
+                <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${i}" class="spark-svg" aria-hidden="true"></svg></td>
                 <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
             `;
             tbody.appendChild(tr);
