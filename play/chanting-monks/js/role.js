@@ -208,6 +208,395 @@ function rigid_role_checks(s) {
 // always emits the full pick_role+race+gend+align sequence. No public
 // session has partial rc (all 44 sessions either have all four set or
 // none), so this is a deferred correctness gap, not an active bug.
+// Renders the NetHack chargen banner + "Who are you?" prompt onto the
+// terminal grid at the same row positions C tty_putstr writes to. C
+// writes the banner on rows 4-7 (cols 0 and 9) and "Who are you? " on
+// row 12. Replicating these positions is what makes JS's serialized
+// terminal grid match C's screen capture cell-for-cell.
+//
+// C ref: tty_init_nhwindows + tty_player_selection. The version line
+// is normalized to <<VERSION_BANNER>> by frozen/ps_test_runner.mjs's
+// STARTUP_VARIANT_LINES regex, so the exact version string doesn't
+// matter — only the row + leading-9-cols positioning.
+// NO_COLOR = 8 in terminal.js / const.js — matches C's tty_putstr
+// default of CLR_GRAY mapped to NO_COLOR in the recorder. terminal.js
+// putstr defaults to CLR_GRAY=7 which renders as ANSI fg 37; C emits
+// no SGR (color 8 = default). We pass 8 explicitly so the cell color
+// matches C's screen capture cell-for-cell.
+const CHARGEN_NO_COLOR = 8;
+
+// Reset every cell to ' ' with NO_COLOR=8 (default fg). terminal.js's
+// clearScreen() and clearRow() set cells to CLR_GRAY=7, which makes
+// serialize() emit SGR fg=37 for cells in the [firstCol,lastCol] gap
+// of any row that has content on both sides. C's blank cells decode to
+// fg=8 (default), so JS's color=7 blanks fail cell-by-cell comparison.
+function clearScreenNoColor(display) {
+    for (let r = 0; r < 24; r++) {
+        for (let c = 0; c < 80; c++) {
+            display.setCell(c, r, ' ', CHARGEN_NO_COLOR);
+        }
+    }
+}
+
+function clearRowNoColor(display, row) {
+    for (let c = 0; c < 80; c++) {
+        display.setCell(c, row, ' ', CHARGEN_NO_COLOR);
+    }
+}
+
+function drawChargenBanner(display) {
+    clearScreenNoColor(display);
+    display.putstr(0, 4, "NetHack, Copyright 1985-2026", CHARGEN_NO_COLOR);
+    display.putstr(9, 5, "By Stichting Mathematisch Centrum and M. Stephenson.", CHARGEN_NO_COLOR);
+    display.putstr(9, 6, "Version 5.0.0 (Teleport JS port).", CHARGEN_NO_COLOR);
+    display.putstr(9, 7, "See license for details.", CHARGEN_NO_COLOR);
+}
+
+function drawNamePromptOnRow12(display, nameSoFar) {
+    clearRowNoColor(display, 12);
+    display.putstr(0, 12, "Who are you? " + nameSoFar, CHARGEN_NO_COLOR);
+}
+
+// Async wrapper around chargen_simulate that renders chargen-phase
+// screens to the terminal. Calls await nhgetch() once per name letter
+// (consuming from the input queue, triggering screen capture via the
+// _preNhgetchHook), so chargen-phase screens are captured with banner
+// + "Who are you? <typed>" content matching C's screen layout.
+//
+// After name capture, falls through to the existing chargen_simulate
+// logic for picking role/race/gender/align (those screens are still
+// captured as gameplay states for now; rendering chargen menus is a
+// future increment).
+const CHARGEN_PROMPT_ROW0 = "Shall I pick character's race, role, gender and alignment for you? [ynaq]";
+
+function drawChargenPromptRow0(display) {
+    clearRowNoColor(display, 0);
+    display.putstr(0, 0, CHARGEN_PROMPT_ROW0, CHARGEN_NO_COLOR);
+}
+
+// Renders the "Is this ok?" confirmation menu shown after y-class
+// chargen response. C ref: role.c:2654 plsel_startmenu(RS_filter)
+// puts the prompt on row 0 with inverse SGR, the picked character
+// description on row 2, and 4 action lines (y/n/a/q) on rows 4-7.
+// Each is positioned at col 41 (right half of screen).
+// Renders the "Pick a race or species" menu shown after role is
+// picked manually. C ref: role.c:2407 plsel_startmenu(RS_RACE).
+// Right-half menu at col 41+, rows 0..N.
+//
+// Items vary by role:
+//   - Title (inverse) on row 0
+//   - Description on row 2: "<role> <race> <gender> <align>"
+//     with picked role and remaining attributes as placeholders.
+//   - Race accelerators on rows 4..4+N-1: each race the role allows.
+//   - "* * Random" after races.
+//   - Blank row.
+//   - "? - Pick another role first"
+//   - "\" - Pick gender first"
+//   - "[ - Pick alignment first" (only if role has > 1 valid align)
+//   - "role forces <align>" (only if role+race forces 1 align — but
+//     at race-menu stage, race not yet picked, so this is shown only
+//     when the role itself is align-constrained: Rogue=chaotic only,
+//     Knight=lawful, Samurai=lawful, etc.)
+//   - "~ - Set role/race/&c filtering"
+//   - "q - Quit"
+//   - "(end)"
+const RACE_LABEL = { human: 'human', elf: 'elf', dwarf: 'dwarf',
+                     gnome: 'gnome', orc: 'orc' };
+const RACE_LETTER_FOR_NAME = { human: 'h', elf: 'e', dwarf: 'd',
+                               gnome: 'g', orc: 'o' };
+
+function drawPickRaceMenu(display, role) {
+    clearScreenNoColor(display);
+    const rd = ROLE_DATA.find(r => r.name === role);
+    if (!rd) return;
+    // role-only constraints applied by rigid_role_checks at race-menu setup
+    const genderForced = rd.gens.length === 1 ? rd.gens[0] : null;  // Valkyrie
+    const alignForced = rd.aligns.length === 1 ? rd.aligns[0] : null; // Rogue/Knight/etc.
+    const genderText = genderForced || '<gender>';
+    const alignText = alignForced || '<alignment>';
+    const COL = 41;
+    display.putstr(COL, 0, "Pick a race or species", CHARGEN_NO_COLOR, 1);
+    display.putstr(COL, 2, `${role} <race> ${genderText} ${alignText}`, CHARGEN_NO_COLOR);
+    let row = 4;
+    for (const race of rd.races) {
+        display.putstr(COL, row++, `${RACE_LETTER_FOR_NAME[race]} - ${RACE_LABEL[race]}`, CHARGEN_NO_COLOR);
+    }
+    display.putstr(COL, row++, "* * Random", CHARGEN_NO_COLOR);
+    row++; // blank row
+    display.putstr(COL, row++, "? - Pick another role first", CHARGEN_NO_COLOR);
+    if (genderForced) {
+        display.putstr(COL + 4, row++, `role forces ${genderForced}`, CHARGEN_NO_COLOR);
+    } else {
+        display.putstr(COL, row++, "\" - Pick gender first", CHARGEN_NO_COLOR);
+    }
+    if (alignForced) {
+        display.putstr(COL + 4, row++, `role forces ${alignForced}`, CHARGEN_NO_COLOR);
+    } else {
+        display.putstr(COL, row++, "[ - Pick alignment first", CHARGEN_NO_COLOR);
+    }
+    display.putstr(COL, row++, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "(end)", CHARGEN_NO_COLOR);
+}
+
+// Renders the "Pick a gender or sex" menu shown after race is picked.
+// C ref: role.c:2495 plsel_startmenu(RS_GENDER).
+function drawPickGenderMenu(display, role, race) {
+    clearScreenNoColor(display);
+    const rd = ROLE_DATA.find(r => r.name === role);
+    if (!rd) return;
+    const roleAlign = rd.aligns.length === 1 ? rd.aligns[0] :
+                      (RACE_ALIGNS[race]?.length === 1 ? RACE_ALIGNS[race][0] :
+                       (rd.aligns.filter(a => RACE_ALIGNS[race]?.includes(a)).length === 1
+                        ? rd.aligns.filter(a => RACE_ALIGNS[race]?.includes(a))[0]
+                        : '<alignment>'));
+    const raceAdj = { human: 'human', elf: 'elven', dwarf: 'dwarven',
+                       gnome: 'gnomish', orc: 'orcish' }[race] || race;
+    const COL = 41;
+    display.putstr(COL, 0, "Pick a gender or sex", CHARGEN_NO_COLOR, 1);
+    display.putstr(COL, 2, `${role} ${race} <gender> ${roleAlign}`, CHARGEN_NO_COLOR);
+    let row = 4;
+    for (const g of rd.gens) {
+        const letter = g === 'male' ? 'm' : 'f';
+        display.putstr(COL, row++, `${letter} - ${g}`, CHARGEN_NO_COLOR);
+    }
+    display.putstr(COL, row++, "* * Random", CHARGEN_NO_COLOR);
+    row++;
+    display.putstr(COL, row++, "? - Pick another role first", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "/ - Pick another race first", CHARGEN_NO_COLOR);
+    // align-constraint message
+    const validAligns = rd.aligns.filter(a => (RACE_ALIGNS[race] || []).includes(a));
+    if (validAligns.length === 1) {
+        const reason = rd.aligns.length === 1 ? 'role' : 'race';
+        display.putstr(COL + 4, row++, `${reason} forces ${validAligns[0]}`, CHARGEN_NO_COLOR);
+    } else {
+        display.putstr(COL, row++, "[ - Pick alignment first", CHARGEN_NO_COLOR);
+    }
+    display.putstr(COL, row++, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "(end)", CHARGEN_NO_COLOR);
+}
+
+// Renders the "Pick a role or profession" menu shown when user selects
+// 'n' (manual chargen). Full-screen menu starting at col 1, rows 0-23.
+// C ref: role.c:2310 plsel_startmenu(RS_ROLE) + setup_rolemenu.
+function drawPickRoleMenu(display) {
+    clearScreenNoColor(display);
+    // Title with inverse SGR (attr=1)
+    display.putstr(1, 0, "Pick a role or profession", CHARGEN_NO_COLOR, 1);
+    display.putstr(1, 2, "<role> <race> <gender> <alignment>", CHARGEN_NO_COLOR);
+    display.putstr(1, 4, "a - an Archeologist", CHARGEN_NO_COLOR);
+    display.putstr(1, 5, "b - a Barbarian", CHARGEN_NO_COLOR);
+    display.putstr(1, 6, "c - a Caveman/Cavewoman", CHARGEN_NO_COLOR);
+    display.putstr(1, 7, "h - a Healer", CHARGEN_NO_COLOR);
+    display.putstr(1, 8, "k - a Knight", CHARGEN_NO_COLOR);
+    display.putstr(1, 9, "m - a Monk", CHARGEN_NO_COLOR);
+    display.putstr(1, 10, "p - a Priest/Priestess", CHARGEN_NO_COLOR);
+    display.putstr(1, 11, "r - a Rogue", CHARGEN_NO_COLOR);
+    display.putstr(1, 12, "R - a Ranger", CHARGEN_NO_COLOR);
+    display.putstr(1, 13, "s - a Samurai", CHARGEN_NO_COLOR);
+    display.putstr(1, 14, "t - a Tourist", CHARGEN_NO_COLOR);
+    display.putstr(1, 15, "v - a Valkyrie", CHARGEN_NO_COLOR);
+    display.putstr(1, 16, "w - a Wizard", CHARGEN_NO_COLOR);
+    display.putstr(1, 17, "* * Random", CHARGEN_NO_COLOR);
+    display.putstr(1, 18, "/ - Pick race first", CHARGEN_NO_COLOR);
+    display.putstr(1, 19, "\" - Pick gender first", CHARGEN_NO_COLOR);
+    display.putstr(1, 20, "[ - Pick alignment first", CHARGEN_NO_COLOR);
+    display.putstr(1, 21, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
+    display.putstr(1, 22, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(1, 23, "(end)", CHARGEN_NO_COLOR);
+}
+
+function drawIsThisOkMenu(display, charDesc, withBanner = true) {
+    // For n-branch (no banner): clear entire screen first since
+    // the previous race/gender menu had right-half content that
+    // would otherwise bleed through the Is-this-ok layout.
+    if (!withBanner) {
+        clearScreenNoColor(display);
+    }
+    // Compute menu_col per C tty_end_menu (line 2729): cw->cols = max
+    // over all menu items of (strlen(str) + 2). Empirically the floor
+    // is 38 (for short descs the menu always uses a min width of 38),
+    // and the offset is desc+1 for longer descs. C: offx = max(10,
+    // ttyDisplay->cols - cw->cols - 1) = 79 - max(38, desc+1) for
+    // desc-dominated menus.
+    const COL = 79 - Math.max(38, charDesc.length + 1);
+    clearRowNoColor(display, 0);
+    clearRowNoColor(display, 2);
+    // C ref: role.c plsel_startmenu narrows the banner display to the
+    // left half (cols 0-40) when a menu is shown on the right (col 41+).
+    // Re-write banner rows 4-7 with truncated text so cells 9-39
+    // (banner) + 40 (menu leading space) + 41+ (menu) match C exactly.
+    // Clear ALL cells on rows 4-8 (banner + menu zone) to NO_COLOR ' '.
+    // This removes banner remnants beyond the menu's right edge that
+    // would otherwise leak into cells 60+ from drawChargenBanner's
+    // unclamped writes (e.g., "Stephenson." period at col 60).
+    for (let r = 4; r <= 8; r++) {
+        for (let c = 0; c < 80; c++) {
+            display.setCell(c, r, ' ', CHARGEN_NO_COLOR);
+        }
+    }
+    // For y-branch (banner still visible), re-render banner truncated
+    // to fit within cols 0..COL-1. For n-branch (role menu was
+    // full-screen, banner is gone), leave rows 4-7 as cleared.
+    if (withBanner) {
+        const bannerLine = (text, indent) => {
+            const max = COL - 1 - indent;
+            return text.slice(0, Math.max(0, max));
+        };
+        display.putstr(0, 4, bannerLine("NetHack, Copyright 1985-2026", 0), CHARGEN_NO_COLOR);
+        display.putstr(9, 5, bannerLine("By Stichting Mathematisch Centrum and M. Stephenson.", 9), CHARGEN_NO_COLOR);
+        display.putstr(9, 6, bannerLine("Version 5.0.0 (Teleport JS port).", 9), CHARGEN_NO_COLOR);
+        display.putstr(9, 7, bannerLine("See license for details.", 9), CHARGEN_NO_COLOR);
+    }
+    // Title with inverse attribute (1)
+    display.putstr(COL, 0, "Is this ok? [ynaq]", CHARGEN_NO_COLOR, 1);
+    // Character description on row 2
+    display.putstr(COL, 2, charDesc, CHARGEN_NO_COLOR);
+    // y/n/a/q menu items on rows 4-7
+    display.putstr(COL, 4, "y * Yes; start game", CHARGEN_NO_COLOR);
+    display.putstr(COL, 5, "n - No; choose role again", CHARGEN_NO_COLOR);
+    display.putstr(COL, 6, "a - Not yet; choose another name", CHARGEN_NO_COLOR);
+    display.putstr(COL, 7, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(COL, 8, "(end)", CHARGEN_NO_COLOR);
+}
+
+// Build the character description string used in the confirmation menu.
+// Format: "<plname> the <align> <gend> <race> <role>"
+function chargenCharDesc(plname, role, race, gender, align) {
+    const RACE_ADJ = { human: 'human', elf: 'elven', dwarf: 'dwarven',
+                       gnome: 'gnomish', orc: 'orcish' };
+    const adj = RACE_ADJ[race] || race;
+    const roleName = (gender === 'female' && role === 'Caveman') ? 'Cavewoman'
+                  : (gender === 'female' && role === 'Priest') ? 'Priestess'
+                  : role;
+    return `${plname} the ${align} ${gender} ${adj} ${roleName}`;
+}
+
+export async function chargen_simulate_async(moves, display) {
+    if (!moves) return null;
+    if (display) drawChargenBanner(display);
+    let nameIdx = 0;
+    // Render name prompt with empty name BEFORE first nhgetch, so
+    // screen 0 captures "Who are you?".
+    if (display) drawNamePromptOnRow12(display, '');
+    // Consume name letters (each nhgetch captures a screen).
+    const { nhgetch } = await import('./input.js');
+    while (nameIdx < moves.length && moves[nameIdx] !== '\r' && moves[nameIdx] !== '\n') {
+        await nhgetch(); // captures screen, returns char (we use moves[] for logic)
+        nameIdx++;
+        if (display) {
+            drawNamePromptOnRow12(display, moves.slice(0, nameIdx));
+        }
+    }
+    // Consume the \r. Then render "Shall I pick?" prompt and consume
+    // the chargen response key so its screen is captured during chargen
+    // (rather than later in moveloop where terminal state has changed).
+    if (nameIdx < moves.length) {
+        await nhgetch();
+        nameIdx++;
+        // Render the chargen prompt on row 0 before the response nhgetch.
+        if (display) drawChargenPromptRow0(display);
+    }
+    if (nameIdx < moves.length) {
+        await nhgetch(); // chargen response (y/n/a/space/return)
+        const yn = moves[nameIdx];
+        const isYClass = yn === 'y' || yn === 'Y' || yn === ' '
+                      || yn === '\r' || yn === '\n';
+        const isNClass = yn === 'n' || yn === 'N';
+        // For y-class: emit the y-branch full-random picks NOW (4 rn2
+        // calls). Use those picks to render the Is-this-ok menu — this
+        // ensures the description shows the y-branch's initial pick
+        // even if the user later rejects ('n') and runs through manual
+        // menus that pick differently.
+        let picked = null;
+        let yBranchPicked = null;
+        const initialName = moves.slice(0, indexOfReturn(moves, 0));
+        if (isYClass) {
+            yBranchPicked = chargen_full_random();
+            yBranchPicked.name = initialName;
+            picked = yBranchPicked;
+        }
+        if (isYClass && picked && display) {
+            const desc = chargenCharDesc(initialName, picked.role,
+                                         picked.race, picked.gender, picked.align);
+            drawIsThisOkMenu(display, desc);
+        } else if (isNClass && display) {
+            // n-branch: role menu (full-screen) shown next.
+            drawPickRoleMenu(display);
+        }
+        // Consume the confirmation key (or first menu key for n-branch).
+        // Detect a 'y'-branch + 'n' rejection: this triggers manual mode
+        // and the role menu is shown next.
+        let confirmKey = null;
+        if (nameIdx + 1 < moves.length) {
+            await nhgetch();
+            confirmKey = moves[nameIdx + 1];
+        }
+        const enteredManual = isNClass
+            || (isYClass && (confirmKey === 'n' || confirmKey === 'N'));
+        // For manual mode (n-branch, or y+n rejection): call
+        // chargen_manual directly to emit manual rn2 calls and get
+        // final picks. For pure y-branch (no rejection), picked is
+        // already the y-branch full-random result.
+        if (enteredManual) {
+            // chargen_manual starts AFTER the chargen response key.
+            // For y+n: also after the rejection 'n'.
+            const manualStartIdx = isYClass ? nameIdx + 2 : nameIdx + 1;
+            const finalPicked = chargen_manual(moves, manualStartIdx, initialName);
+            if (finalPicked) picked = finalPicked;
+        } else if (!isYClass && !isAClass(yn) && !isNClass) {
+            // Other response (q/escape/etc.): fall back to chargen_simulate
+            // for backward compatibility, though it shouldn't fire any rn2.
+            picked = chargen_simulate(moves);
+        }
+
+        if (enteredManual && picked && display) {
+            // For y+n rejection, the role menu hasn't been rendered yet.
+            if (isYClass) {
+                drawPickRoleMenu(display);
+                if (!(await drainOneIfAny())) return picked;
+            }
+            drawPickRaceMenu(display, picked.role);
+            if (await drainOneIfAny()) {
+                // Determine if gender menu fires. Skip if role forces
+                // gender (Valkyrie, female only) — the gender was
+                // auto-set by rigid_role_checks during race menu setup.
+                const rd = ROLE_DATA.find(r => r.name === picked.role);
+                const genderForced = rd && rd.gens.length === 1;
+                if (!genderForced) {
+                    drawPickGenderMenu(display, picked.role, picked.race);
+                    if (!(await drainOneIfAny())) return picked;
+                }
+                const desc = chargenCharDesc(picked.name || '',
+                                             picked.role, picked.race,
+                                             picked.gender, picked.align);
+                // n-branch: role menu was full-screen, banner is gone.
+                drawIsThisOkMenu(display, desc, false);
+                await drainOneIfAny();
+            }
+        }
+        return picked;
+    }
+    return chargen_simulate(moves);
+}
+
+function isAClass(yn) {
+    return yn === 'a' || yn === 'A' || yn === '@' || yn === '*';
+}
+
+async function drainOneIfAny() {
+    const { nhgetch } = await import('./input.js');
+    // Try to consume one key — but only if queue has any. If not, the
+    // chargen UI rendering ends here.
+    try {
+        await nhgetch();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 export function chargen_simulate(moves) {
     if (!moves) return null;
     let idx = 0;
