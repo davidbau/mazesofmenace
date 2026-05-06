@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-06T18:40:41.871Z",
+  "timestamp": "2026-05-06T20:36:10.962Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-06T18:40:41.758Z",
+      "lastScored": "2026-05-06T20:36:10.877Z",
       "public": {
         "points": 127,
         "maxPoints": 11284,
@@ -137,6 +137,12 @@
         },
         {
           "ts": "2026-05-06T18:40:41.758Z",
+          "points": 127,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T20:36:10.877Z",
           "points": 127,
           "maxPoints": 11284,
           "passing": 0
@@ -852,7 +858,7 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-06T18:40:24.231Z",
+      "lastScored": "2026-05-06T20:35:53.785Z",
       "public": {
         "points": 78,
         "maxPoints": 11284,
@@ -984,6 +990,12 @@
         },
         {
           "ts": "2026-05-06T18:40:24.231Z",
+          "points": 78,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T20:35:53.785Z",
           "points": 78,
           "maxPoints": 11284,
           "passing": 0
@@ -1699,7 +1711,7 @@
     {
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
-      "lastScored": "2026-05-06T18:40:06.766Z",
+      "lastScored": "2026-05-06T20:35:35.217Z",
       "public": {
         "points": 15,
         "maxPoints": 11284,
@@ -1721,6 +1733,12 @@
       "history": [
         {
           "ts": "2026-05-06T18:40:06.766Z",
+          "points": 15,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T20:35:35.217Z",
           "points": 15,
           "maxPoints": 11284,
           "passing": 0
