@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="The Teleport Contest — port NetHack 5.0 from C to JavaScript with bit-exact parity. Announcement and field report from David Bau.">
+<meta name="theme-color" content="#f3e9cf">
+<title>The Teleport Contest — Mazes of Menace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --parchment:        #f3e9cf;
+    --parchment-dark:   #e7d9b3;
+    --parchment-edge:   #d6c189;
+    --ink:              #2b2114;
+    --ink-soft:         #5a4632;
+    --ink-faint:        #8a755a;
+    --accent:           #6b2c2c;
+    --accent-dark:      #4a2020;
+    --rule:             #c5b187;
+    --font-serif:       'EB Garamond', 'Adobe Garamond Pro', Garamond, Georgia, serif;
+    --font-mono:        'DejaVu Sans Mono', 'Consolas', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: #d6c189; }
+
+body {
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 19px;
+    line-height: 1.62;
+    background:
+        /* subtle warm vignette darkening the corners */
+        radial-gradient(ellipse at top, rgba(255,250,225,0.55), transparent 65%),
+        radial-gradient(ellipse at bottom, rgba(120,90,40,0.18), transparent 70%),
+        /* SVG paper grain */
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.35  0 0 0 0 0.18  0 0 0 0.085 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+        var(--parchment);
+    min-height: 100vh;
+    padding: 0;
+}
+
+main {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 4em 1.5em 6em;
+    position: relative;
+}
+
+/* Top nav */
+.topnav {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 1.4em 1.5em 0;
+    font-size: 0.92em;
+    color: var(--ink-faint);
+    font-style: italic;
+}
+.topnav a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.topnav a:hover { text-decoration: underline; }
+
+/* Header */
+header.post-header {
+    text-align: center;
+    margin-bottom: 2.6em;
+    padding-bottom: 1.6em;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+}
+header.post-header::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 18px;
+    margin: 0.9em auto -1.7em;
+    background: var(--parchment);
+    /* fleuron-ish ornament: three dots */
+    background-image:
+        radial-gradient(circle at 8px 9px, var(--accent) 2px, transparent 2.5px),
+        radial-gradient(circle at 20px 9px, var(--accent) 2.5px, transparent 3px),
+        radial-gradient(circle at 32px 9px, var(--accent) 2px, transparent 2.5px);
+}
+header.post-header h1 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 2.4em;
+    line-height: 1.15;
+    color: var(--accent-dark);
+    letter-spacing: 0.005em;
+    margin-bottom: 0.45em;
+}
+header.post-header .byline {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02em;
+}
+header.post-header .byline a { color: var(--ink-soft); }
+header.post-header .byline a:hover { color: var(--accent); }
+
+/* Body text */
+article p {
+    margin-bottom: 1.05em;
+    text-align: left;
+    hyphens: auto;
+}
+article p.lead {
+    font-size: 1.08em;
+    color: var(--ink-soft);
+    font-style: italic;
+}
+
+/* Drop cap on the first paragraph after the header */
+article > p.lead:first-of-type::first-letter {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-style: normal;
+    font-size: 3.6em;
+    line-height: 0.85;
+    float: left;
+    padding: 0.04em 0.12em 0 0;
+    margin-top: 0.05em;
+    color: var(--accent-dark);
+}
+
+/* Headings */
+article h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.55em;
+    color: var(--accent-dark);
+    margin: 2.2em 0 0.55em;
+    padding-bottom: 0.18em;
+    border-bottom: 1px solid var(--rule);
+    letter-spacing: 0.01em;
+}
+article h2 small {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-faint);
+    font-size: 0.7em;
+    margin-left: 0.4em;
+}
+
+/* Links */
+article a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(107,44,44,0.45);
+    transition: border-color 0.15s, background 0.15s;
+}
+article a:hover {
+    border-bottom-color: var(--accent);
+    background: rgba(107,44,44,0.06);
+}
+
+/* Emphasis */
+article strong { color: var(--ink); font-weight: 600; }
+article em { font-style: italic; }
+
+/* Blockquote — looks like a quoted scrap from the agent */
+article blockquote {
+    margin: 1.4em 0;
+    padding: 0.8em 1.2em 0.8em 1.4em;
+    border-left: 3px solid var(--accent);
+    background: rgba(214, 193, 137, 0.25);
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 0.96em;
+}
+article blockquote p { margin-bottom: 0.6em; }
+article blockquote p:last-child { margin-bottom: 0; }
+article blockquote code { font-style: normal; }
+
+/* Inline + block code */
+article code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--accent-dark);
+    background: rgba(214, 193, 137, 0.35);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+}
+
+/* Lists */
+article ul, article ol {
+    margin: 0.6em 0 1.2em 1.4em;
+    padding-left: 0.4em;
+}
+article li { margin-bottom: 0.35em; }
+article ul li::marker { color: var(--accent); }
+
+/* Figures */
+article figure {
+    margin: 1.6em 0 1.8em;
+    text-align: center;
+}
+article figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--parchment-edge);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.5) inset,
+        0 6px 18px rgba(80, 50, 10, 0.18);
+    background: #fff;
+    border-radius: 2px;
+}
+article figure figcaption {
+    margin-top: 0.7em;
+    font-size: 0.92em;
+    font-style: italic;
+    color: var(--ink-faint);
+}
+
+/* "Advice" callouts get a subtle parchment-darker panel */
+article p.advice {
+    margin: 1.4em 0;
+    padding: 0.95em 1.2em 0.85em;
+    background: rgba(214, 193, 137, 0.25);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 2px 2px 0;
+}
+
+/* Footer */
+footer.post-footer {
+    margin-top: 4em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.95em;
+}
+footer.post-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+footer.post-footer a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+    body { font-size: 17px; }
+    header.post-header h1 { font-size: 1.9em; }
+    main { padding: 2em 1em 4em; }
+    article > p.lead:first-of-type::first-letter { font-size: 3em; }
+}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+    <a href="/">← Mazes of Menace</a>
+</nav>
+
+<main>
+
+<header class="post-header">
+    <h1>The Teleport Contest<br><em>(and Dealing With LLM Religion)</em></h1>
+    <div class="byline">By <a href="https://davidbau.com/">David Bau</a> · May 6, 2026</div>
+</header>
+
+<article>
+
+<p class="lead">I am opening an LLM coding contest, and I want you to enter it. Phase 2 specifically rewards methods that generalize, so this is less a measurement of code than a measurement of agent harnesses.</p>
+
+<p>Four days ago <a href="https://nethack.org/">NetHack</a> 5.0 was released, a 46-year-old open-source roguelike game, 442,901 lines of C and Lua that have accumulated layers of intricate and ingenious gameplay rules.</p>
+
+<p>The contest is to port it to simple, readable JavaScript so that the game can run in the browser while playing <em>bit-exactly</em> like the original. Same screen at every keystroke.</p>
+
+<p>You can use any approach: LLM agents, hand-coded JavaScript, a C-to-JS transpiler, or any hybrid. The contest is linked from <a href="https://mazesofmenace.ai/">mazesofmenace.ai</a>, and the leaderboard is live. Phase 1 freezes on Sunday November 29, 2026. Then there is a Phase 2 sprint in December: a slightly newer C target is revealed, and your score is your parity against that new target <em>divided by</em> a penalty proportional to how much you changed your port to chase it. Methods that generalize win; hand-tuned ports that overfit to the Phase 1 code paths get crushed.</p>
+
+<p>We start you off with a contest skeleton that implements a bit of the game in JavaScript, enough to score a few points. You get 44 ground-truth gameplay sessions to test your port against; official scoring also uses a set of secret held-out sessions. Through November, the maximum score is about 22,000 points: roughly 11,000 from the public sessions and 11,000 from the secret ones. Every point is earned by producing exactly the right 80&times;24 tty output as the original C game in response to a keystroke.</p>
+
+<p>To play, just fork the <a href="https://github.com/davidbau/teleport-contest">teleport-contest repo</a>. Each time you push code, the judge scores you automatically. The full rules are in that repo.</p>
+
+<p>Why is this interesting? Porting a piece of code seems so simple for an LLM: it is exactly the kind of easily-verified task that they excel at.</p>
+
+<p>I am writing this announcement because I have spent four months trying to port NetHack myself, using a swarm of AI agents as best I know how, and the experience has humbled me. I think it will make the contest more fun if you know what I faced before going in. So this is part announcement and part field report.</p>
+
+<h2>What You Are Walking Into</h2>
+
+<p>Last December I wrote about <a href="https://davidbau.com/archives/2025/12/16/vibe_coding.html">two rules for vibe coding</a>: <em>test</em>, and <em>test the tests</em>. Have your AI agents write automated tests so they can check their own work. Then make sure the tests are honest. These rules work well for small projects. I used them to guide a single agent to port <a href="https://mazesofmenace.net/rogue/">Rogue</a> in eighty-five minutes. <a href="https://mazesofmenace.net/hack/">Hack</a> took a few hours. Play them by clicking on the links.</p>
+
+<p>Then I pointed the agents at NetHack 3.7. Forty-six years of accumulated, intricate gameplay rules. My <a href="https://mazesofmenace.net/">Mazes of Menace</a> project (the older research site, distinct from the contest at mazesofmenace.ai) records deterministic sessions from the original C game and replays them in JavaScript, comparing every random number call and every onscreen detail. Given the same seed and the same keystrokes, every event must match, in order. I gave the LLMs a test framework and this objective, and I let them grind away.</p>
+
+<p>This worked at first. Within two weeks the agents had a playable game in the browser and a growing suite of test sessions. Dozens of gameplay sessions matched perfectly. Twenty more to go, and each day the gap was closing. The trajectory felt right.</p>
+
+<p>Then it stopped. And I discovered that <em>test and test the tests</em> is necessary but not sufficient. I needed three more principles. They are now baked into the contest skeleton, but I want to tell you about them because the skeleton will not protect you from them entirely.</p>
+
+<h2>Tip One: Be Skeptical</h2>
+
+<p>For three weeks, from mid-February to early March, the number of failing sessions refused to move. Eighteen. Sometimes seventeen! Then eighteen again. The agents were working hard, a hundred commits a day, thousands of lines of code. And yet the bottom line did not budge. In the plot below, each x-axis pixel is a commit, and the y-axis shows the number of failing tests. It is a picture of a project that is terribly stuck.</p>
+
+<figure>
+    <img src="img/stuck-at-18.png" alt="Failing sessions stuck at 18 for three weeks">
+    <figcaption>Failing sessions stuck at 18 for three weeks.</figcaption>
+</figure>
+
+<p>The agents had total access to the original C source and were reading it carefully while tracing through the tests. They understood the sequencing: this function runs before that function, the monster moves before the player sees the result. But when they tested the JavaScript, the sequencing was different. The random numbers were consumed in the wrong order.</p>
+
+<p>A human programmer encountering this would think: there is a bug in my code. I have the sequencing wrong.</p>
+
+<p>Yet after hours of failing to find solutions, the agents began to think something else more fundamental. They hypothesized that the <em>measurements</em> were wrong. They proposed that the test infrastructure was creating artificial boundaries that distorted the apparent order of events. In that case, to work better, the game replay system needed to queue certain actions and defer them across iteration boundaries to align the tests properly.</p>
+
+<p>The agents built machinery to implement this idea, orchestrating the event queuing in a file called <code>replay_core.js</code>. When I asked an agent to explain this code, the agent responded with a whole treatise: <strong>"Explaining sparse boundary frames,"</strong> with complete authority:</p>
+
+<blockquote>
+    <p>A "sparse boundary frame" is a replay step that sits on a turn boundary but contains very little direct signal. In this project, that usually means a captured step with zero or very few RNG calls, often only prompt/<code>--More--</code>/ack UI, while the rest of the logical turn's RNG/state updates appear in an adjacent step.</p>
+</blockquote>
+
+<p>So I sat down to read it. After trying very hard to understand what the AI had in mind, I can tell you: there are no sparse boundary frames. The concept in <code>replay_core.js</code> was invented to explain away bugs, and the agent defended it with the confidence of a textbook. It had created its own religion, and it was trying to indoctrinate me into it.</p>
+
+<p>The <em>actual</em> problem was straightforward: JavaScript's <code>async</code>/<code>await</code> was not wired correctly through the codebase, so the game couldn't properly wait for user input the way the C implementation does.</p>
+
+<p>When I asked the agents to delete the workarounds entirely, they would try. They would remove the code, run the tests, see the regressions, and instantly revert. From their perspective, the removal was destructive: huge numbers of passing tests suddenly failed. But in reality, those tests had been passing for the wrong reason. The regressions that frightened the AI were real bugs, finally visible.</p>
+
+<p class="advice"><strong>Advice for contestants:</strong> Be prepared to question the wisdom of your agents. There are two basic ways to run an LLM coding project: maximize agent autonomy (and accept that most of your effort will go into breaking the agents out of self-built religions), or stay hands-on (and accept that you will personally read a lot of AI-written code). In both cases, your main challenge will be dealing with elaborate, large-scale, but oddly well-reasoned hallucinations and agent-created fallacies. Autonomous agents will need prompts and harnesses you trust to detect and unwind their own delusions. Hands-on approaches will need tools that make a 100,000-line AI-written codebase legible to one human, so a person can step in and overrule the AI when its confident reasoning is wrong.</p>
+
+<p>In my port, I used lots of human guidance to explicitly guide the agents to refactor the code to fix the problem. After some intensive hand-holding, including building compilation tools to apply layers of systematic code analysis on the vast codebase, we got the async plumbing right. We knocked <code>replay_core.js</code> down. We were able to demolish the false religion of "sparse boundary frames," and the line started moving again. Eighteen failures became fourteen, then ten, then seven, then three.</p>
+
+<figure>
+    <img src="img/stuck-at-3.png" alt="Failing sessions drop from 18 to 3 after the intervention">
+    <figcaption>Failing sessions drop from 18 to 3 after the intervention.</figcaption>
+</figure>
+
+<h2>Tip Two: Strategy Matters</h2>
+
+<p>Then the project got stuck again. The plot above looks like success, but it is not. That low level of test failures is not zero: it is three failures. We were stuck at three failing games for weeks. Thousands of commits, and again, almost no progress.</p>
+
+<p>And the problem was the same "old religion" again. Even though we had destroyed <code>replay_core.js</code>, the underlying pattern of flawed thinking remained in the codebase. 200,000 lines is a lot of code, and expunging an <em>idea</em> from it is a pretty intractable problem. The meme of unhealthy asynchronous event management was not just in <code>replay_core</code> but had spread everywhere in the code, in the structure of the core loop, in the ways basic utility functions were defined, in the arguments passed down through the callchain, in comments, even in the variable names themselves.</p>
+
+<p>Each time the agents worked on a new difficult bug, they would rediscover the old flawed way of thinking about asynchronous events, subtly encoded everywhere throughout the codebase. This would send them down a spiral of unproductive thinking. Even though they were now operating under prompts that prohibited them from bringing the bad architecture back, they could not avoid thinking about it. The old religion was a stubborn meme, and it had not really been squashed.</p>
+
+<p>Unable to reason their way out of the mess, the agents resorted to another tactic: they began to spend all their time on easy problems rather than the hard ones. By mid-March, three specific sessions had been failing for weeks. The agents knew exactly which ones. But instead of working on them, they decided to spend their time recording new tests designed to pass on the first try. A huge volume of easy tests had become the most convenient way to grow testing statistics. The dashboard numbers kept going up. Yet the hard problems sat unsolved.</p>
+
+<p>In the end, the resolution was not a fix but a restart — the full story is in the last section of this post.</p>
+
+<p>You can play my original failed port at <a href="https://mazesofmenace.net/">mazesofmenace.net</a> (the older research site, not the contest hub): despite all the effort, you will find the ported game woefully incomplete, with lots of missing features and obvious bugs.</p>
+
+<p>But I am sure that you can do better!</p>
+
+<p class="advice"><strong>Advice for contestants:</strong> Think strategically about what your agents are doing, not just what numbers go up. The contest scores you on matching screens, but an agent that spends all its time chasing easy points will plateau hard. If you can successfully start off right by identifying and tackling the fundamental architectural issues — if you can begin by creating systematic processes and tools for addressing systematic problems from the beginning — your solution will scale better. You will need a way to look beyond the metrics to understand what the root problems are. You will need a strategy to make your agents work on those fundamental problems early.</p>
+
+<p>One thing that will almost certainly help is to actually begin by creating better, more stringent tests than the ones provided by the contest. You will need a way to turn difficult long-term problems into more tractable short-term problems. Often, a set of well-designed tests is a good way to do that.</p>
+
+<h2>Tip Three: Invest in Human-AI Tooling</h2>
+
+<p>The most interesting discovery was what went right. I found that the most productive investments were in tools that expanded shared human-AI insights. For example, I found it very useful to create code analysis tools to help myself understand the hundreds of thousands of lines of AI-generated code, to make it feasible with my limited human perspective to track and discuss vast numbers of details that the AI had generated. And I found it very useful to create game board analysis tools to help an AI better understand what is happening in a NetHack game, cataloging what can be seen on the map, and explaining what is reachable from where and how. Without such assistance, the AI is oddly blind, with very weak commonsense knowledge about what is actually happening on the gameboard.</p>
+
+<p>The contest is built around one tool that I found very useful: the deterministic gameplay session, together with a session viewer. You can see this viewer on the <a href="https://mazesofmenace.ai/">contest leaderboard</a> by pressing the "Tests" button next to any contestant.</p>
+
+<figure>
+    <img src="img/timeline-8000-12.png" alt="PRNG and screen-diff timeline for seed8000, step 12 — the contest session viewer">
+    <figcaption>PRNG and screen-diff timeline for <code>seed8000</code>, step 12 — the contest session viewer.</figcaption>
+</figure>
+
+<p>The top of the viewer shows the timeline of a single game playthrough. You can scrub through a game by dragging your mouse horizontally over the timeline. The bumpy shape shows the profile of PRNG calls; this provides some intuition about game logic intensity within each step. Here we have shown three timeseries in parallel: there is a canonical profile of the PRNG behavior of the C implementation, a line for the JS behavior, and then another line that indicates how much the screens agree (or disagree). Colors indicate different types of agreement or divergences.</p>
+
+<p>Underneath the timeline you can see the 80&times;24 gameboard at any step. The default view shows your JavaScript port's output after a given keystroke, with diff highlighting overlaid:</p>
+
+<figure>
+    <img src="img/tty-js-8000-12.png" alt="JS output with diff highlighting, seed8000 step 12">
+    <figcaption>JS output with diff highlighting, <code>seed8000</code> step 12.</figcaption>
+</figure>
+
+<p>Color legend:</p>
+
+<ul>
+    <li><strong>Purple</strong> — JS drew the wrong character (symbol mismatch).</li>
+    <li><strong>Red</strong> — JS drew nothing where C drew a symbol (missing character).</li>
+    <li><strong>Yellow background</strong> — right character, wrong color.</li>
+    <li><strong>Blue box</strong> — cursor placed in the wrong cell.</li>
+</ul>
+
+<p>The screenshot above shows many rows of red blanks: a lot of missing text. What is it? Click the "canon" button to see what C produced:</p>
+
+<figure>
+    <img src="img/tty-canon-8000-12.png" alt="Canon C output revealing an inventory listing, seed8000 step 12">
+    <figcaption>Canon C output revealing an inventory listing, <code>seed8000</code> step 12.</figcaption>
+</figure>
+
+<p>Ah — an inventory listing. The user pressed the "i" key, the command to show inventory, and the original C NetHack rendered it on the screen. Our embryonic JS port has not yet implemented "i", so it is missing all this text. The dungeon map looks correct so far, but several monsters that should be in the dungeon are missing too (purple), and the cursor is in the wrong place (blue box).</p>
+
+<p>This visualizer lets you see in detail what the agent is dealing with when it debugs. The agent's job is to make one screen match the other, character by character, step by step, aligning the logic so that the same random numbers are consumed in the same order to produce the same screen output.</p>
+
+<p>Some of the sessions are more complex, spanning multiple games where a player saves and loads, or where multiple players die, leaving "bones" that persist in the dungeon that a subsequent player can encounter. A NetHack port is not complete unless it implements all this logic as well.</p>
+
+<p class="advice"><strong>Advice for contestants:</strong> Invest in tooling. As you develop your port, I recommend that you consider supplementing the basic test sessions with more tests with more stringent assertions. And that you also consider creating more tools to visualize and understand both strategy and tactics as your agents create their port. To help you with this, the contest skeleton comes with the full details of the patches and scripts you use with the original NetHack 5.0 code to create detailed session recordings.</p>
+
+<h2>Why I Restarted the Project</h2>
+
+<p>The deepest problem after months of work was that the codebase was contaminated. No matter how quickly I got the AI agents to iterate, they kept circling back to the old ideas. The "boundary alignment" religious dictates were in the comments, in the variable names, in the architectural assumptions baked into the whole <em>culture</em> of the code. I could knock down the central church that AI had built, but the meme had spread far and wide, and it lived on.</p>
+
+<p>Eventually I decided to do something that experienced software engineers consider almost universally unwise. I threw away over 200,000 lines of code and started over.</p>
+
+<p>In human software projects, starting fresh is usually a disaster. The old code, however ugly, embodies thousands of decisions that cost real effort to re-derive. But when the agents ported smaller games like Hack and Rogue, they worked cleanly and fast. The problem with the big project might not be their ability. It could be the accumulated weight of wrong decisions in the codebase. And unlike a human team, a fresh start could be both idealistic and wise. We can totally control the information diet of an AI. We can let it start fresh while requiring it to study the best knowledge from the old masters. You make them study a very long prompt before they write a single line of code.</p>
+
+<p>So before restarting, I spent days extracting lessons from the failed attempt. Documents summarizing debugging discoveries. A distillation of architectural decisions that worked. A coding conventions document. The project plan started with the insight that had been hardest to learn: get the game loop ordering right on day one.</p>
+
+<p>The contest skeleton is born of <em>that</em> project, frozen at a starting point. It comes with basic testing infrastructure, a healthy embryonic starting codebase, a working browser game you can drive with the keys. You inherit what I learned.</p>
+
+<p>You will still fight some of the same battles, because your agents will doubtless invent their own religions in your fork, but you are now equipped and prepared.</p>
+
+<h2>How to Enter</h2>
+
+<p>Fork the <a href="https://github.com/davidbau/teleport-contest">teleport-contest repo</a>. Read its <code>README.md</code>. Open <code>index.html</code> in a browser to play the skeleton. Run <code>bash frozen/score.sh</code> to score yourself locally. Pick a session. Read the C source for the function you need to port. Implement it in JavaScript. Score yourself. Push.</p>
+
+<p>The leaderboard is linked from <a href="https://mazesofmenace.ai/">mazesofmenace.ai</a>. A judge runs every two hours, scores every fork, and updates the public board.</p>
+
+<p><strong>Timeline:</strong></p>
+
+<ul>
+    <li>May 2, 2026 — NetHack 5.0 is released</li>
+    <li>May 6, 2026 — The Teleport contest opens</li>
+    <li>November 29, 2026 — Phase 1 leaderboard freezes (top 10 advance)</li>
+    <li>November 30, 2026 — Phase 2: new C target announced</li>
+    <li>December 31, 2026 — Phase 2 final submissions due</li>
+</ul>
+
+<p><strong>Rules</strong> are simple: any approach is allowed (LLM agents, manual, hybrid, transpiler — whatever works); submissions must be ES6 JavaScript runnable in Chrome and Node 22+ with no build step; the frozen files cannot be modified (the judge overwrites them); no network access during scoring; and the C source is your reference — port it faithfully, including its bugs.</p>
+
+<h2>Why You Might Want To Enter</h2>
+
+<p>The honest answer is that I do not know whether AI agents can faithfully port a 442,901-line C and Lua codebase. I have one data point — my own project, which is going better since the restart but is still running into challenges.</p>
+
+<p>If your fork uses a different LLM than I do, or a different agent harness, or a manual approach, you will follow a different path than I did. Show off what you can do by submitting to the leaderboard. When somebody pulls ahead, it will inspire the rest of us to learn how to manage our LLMs better.</p>
+
+<p>The role of the programmer in the age of AI coding has become clearer to me over these months. You do not write the code. You do not review every line. You maintain a skeptical eye, you manage the strategy, and you invest in tools to expand the common understanding of humans and AIs. And you decide when to start over.</p>
+
+<p>As a human in an AI world, you defend the meaning of the work.</p>
+
+<p><em>Come defend it with me.</em></p>
+
+</article>
+
+<footer class="post-footer">
+    <a href="/">Mazes of Menace</a> · <a href="/leaderboard/">Leaderboard</a> · <a href="https://github.com/davidbau/teleport-contest">teleport-contest</a>
+</footer>
+
+</main>
+
+</body>
+</html>
