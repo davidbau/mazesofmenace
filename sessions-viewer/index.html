@@ -77,7 +77,6 @@
             <input type="file" id="session-file" accept=".json">
             <span class="nowrap">or load file…</span>
         </label>
-        <button type="button" id="toggle-rng" class="toggle-btn" title="Show / hide the PRNG calls listing for the current step">Show PRNG</button>
     </div>
 </header>
 
@@ -138,31 +137,21 @@
             <div class="detail-label">message line</div>
             <div id="msg-detail">—</div>
         </div>
+        <div class="detail-block detail-block-rng">
+            <div class="detail-label">prng (this step)</div>
+            <div id="rng-detail">—</div>
+        </div>
     </aside>
 </main>
 
 <!-- Edge handle: tab on the right side of the viewport that toggles
-     the details fly-out open. Hidden when the fly-out is open
-     (its × is the close affordance). -->
-<button type="button" id="open-detail" class="edge-handle" title="Show cursor + message-line details" aria-label="Show details">
+     the details fly-out open. The fly-out shows cursor + message-line
+     + the per-step PRNG diff (canon vs JS), all in one place. Hidden
+     when the fly-out is open (its × is the close affordance). -->
+<button type="button" id="open-detail" class="edge-handle" title="Show cursor, message-line, and per-step PRNG diff" aria-label="Show details">
     <span class="edge-handle-glyph">‹</span>
 </button>
 <div id="detail-scrim" hidden></div>
-
-<!-- PRNG fly-out: list of rn2/rnd/d/... calls for the current step,
-     with canon vs JS diff. Hidden by default; the "Show PRNG" button
-     in the header toggles `body.show-rng`, which slides this panel in
-     from the right. The timeline above stays visible regardless — its
-     canon/js bands are the at-a-glance PRNG view; this fly-out is the
-     drill-down for a single step. -->
-<aside id="rng-flyout" aria-hidden="true">
-    <div class="rng-flyout-head">
-        <div class="detail-label">prng (this step)</div>
-        <button type="button" id="close-rng" class="toggle-btn" aria-label="Close PRNG fly-out">×</button>
-    </div>
-    <div id="rng-detail">—</div>
-</aside>
-<div id="rng-flyout-scrim" hidden></div>
 
 <script type="module" src="viz.mjs"></script>
 </body>

@@ -57,39 +57,7 @@ if (HUB_MODE) {
     });
 }
 
-// PRNG fly-out toggle. The timeline (canon/js/screen bands) stays
-// visible always — that's the at-a-glance PRNG comparison view. The
-// fly-out is the per-step drill-down (rn2(N)=M etc.), hidden by
-// default so the screen diff is the first thing a visitor sees.
-// Choice is persisted in localStorage.
-const RNG_VISIBLE_KEY = 'sessionViewer.rngVisible';
-const _rngStartShown = localStorage.getItem(RNG_VISIBLE_KEY) === '1';
-addEventListener('DOMContentLoaded', () => {
-    if (_rngStartShown) document.body.classList.add('show-rng');
-    const btn   = document.querySelector('#toggle-rng');
-    const close = document.querySelector('#close-rng');
-    const scrim = document.querySelector('#rng-flyout-scrim');
-    const sync = () => {
-        const on = document.body.classList.contains('show-rng');
-        if (btn) btn.textContent = on ? 'Hide PRNG' : 'Show PRNG';
-        const flyout = document.querySelector('#rng-flyout');
-        if (flyout) flyout.setAttribute('aria-hidden', on ? 'false' : 'true');
-    };
-    const setShown = (on) => {
-        document.body.classList.toggle('show-rng', on);
-        localStorage.setItem(RNG_VISIBLE_KEY, on ? '1' : '0');
-        sync();
-    };
-    sync();
-    if (btn)   btn.addEventListener('click',   () => setShown(!document.body.classList.contains('show-rng')));
-    if (close) close.addEventListener('click', () => setShown(false));
-    if (scrim) scrim.addEventListener('click', () => setShown(false));
-    addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && document.body.classList.contains('show-rng')) setShown(false);
-    });
-});
-
-// #detail-pane (cursor + message-line aside) is also a slide-out
+// #detail-pane (cursor + message-line + per-step PRNG diff) is a slide-out
 // fly-out: hidden by default so the 24x80 terminal grid stays
 // centered. The edge-handle button (#open-detail) on the right
 // slides it in; the × inside slides it out. Esc and the scrim also
@@ -1113,6 +1081,14 @@ function render(stepIdx) {
         + (canon[0].map(renderCell).join('') === js[0].map(renderCell).join('') ? '' : '\n  js: ' + (js[0].map(renderCell).join('').trimEnd() || '(empty)'));
 }
 
+// Extract the "@ caller(file:line)" annotation from an RNG log entry,
+// or '' if absent. Both canon and JS may carry it.
+function callerOf(call) {
+    if (!call) return '';
+    const at = call.indexOf(' @ ');
+    return at < 0 ? '' : call.slice(at + 3);
+}
+
 function renderRngDetail(canonRng, jsRng) {
     const out = $('#rng-detail');
     out.innerHTML = '';
@@ -1123,29 +1099,118 @@ function renderRngDetail(canonRng, jsRng) {
         return;
     }
     const max = Math.max(ap.length, bp.length);
+
+    // First pass: classify every position.
+    const rows = [];
     for (let i = 0; i < max; i++) {
-        const a = ap[i];
-        const b = bp[i];
+        const a = ap[i], b = bp[i];
+        const aKey = callKey(a), bKey = callKey(b);
+        if (a && b && aKey === bKey)       rows.push({ i, kind: 'match',   a, b });
+        else if (a && !b)                  rows.push({ i, kind: 'missing', a, b });
+        else if (b && !a)                  rows.push({ i, kind: 'extra',   a, b });
+        else                               rows.push({ i, kind: 'diff',    a, b });
+    }
+
+    // Locate the first non-match — that's the "first mismatch" row we
+    // expand with full canon/js annotations + caller context.
+    const firstMismatchIdx = rows.findIndex(r => r.kind !== 'match');
+
+    // Second pass: emit. Collapse runs of consecutive matches into a
+    // single italic gray "... N matching ..." indicator. Render the
+    // first mismatch with both sides spelled out and any caller info
+    // visible. Subsequent mismatches keep the compact one-line form.
+    let i = 0;
+    while (i < rows.length) {
+        const r = rows[i];
+        if (r.kind === 'match') {
+            // Greedy run.
+            let j = i;
+            while (j < rows.length && rows[j].kind === 'match') j++;
+            const runLen = j - i;
+            if (runLen >= 3) {
+                const sum = document.createElement('span');
+                sum.className = 'rng-line match-run';
+                sum.textContent = `… ${runLen} matching …`;
+                sum.title = `calls ${rows[i].i} – ${rows[j - 1].i}`;
+                out.appendChild(sum);
+            } else {
+                // Tiny runs — show inline so the user sees what they
+                // matched. Same look as the old per-call match line.
+                for (let k = i; k < j; k++) {
+                    const r2 = rows[k];
+                    const line = document.createElement('span');
+                    line.className = 'rng-line match';
+                    line.textContent = `${r2.i.toString().padStart(3, ' ')}  ${callKey(r2.a)}`;
+                    line.title = `canon: ${r2.a}\njs:    ${r2.b}`;
+                    out.appendChild(line);
+                }
+            }
+            i = j;
+            continue;
+        }
+
+        // Mismatch row.
         const line = document.createElement('span');
-        line.className = 'rng-line';
-        const aKey = callKey(a);
-        const bKey = callKey(b);
-        if (a && b && aKey === bKey) {
-            line.classList.add('match');
-            // Show the short form; full annotation lives in the title attr.
-            line.textContent = `${i.toString().padStart(3, ' ')}  ${aKey}`;
-            line.title = `canon: ${a}\njs:    ${b}`;
-        } else if (a && !b) {
-            line.classList.add('missing');
-            line.textContent = `${i.toString().padStart(3, ' ')}  canon: ${a}`;
-        } else if (b && !a) {
-            line.classList.add('extra');
-            line.textContent = `${i.toString().padStart(3, ' ')}  js:    ${b}`;
+        line.className = `rng-line ${r.kind}`;
+        const isFirst = i === firstMismatchIdx;
+        if (isFirst) line.classList.add('first-mismatch');
+
+        const idxLabel = r.i.toString().padStart(3, ' ');
+        if (r.kind === 'missing') {
+            line.textContent = `${idxLabel}  canon: ${callKey(r.a)}    js: (missing)`;
+            const caller = callerOf(r.a);
+            if (isFirst && caller) {
+                const c = document.createElement('span');
+                c.className = 'rng-caller';
+                c.textContent = `@ ${caller}`;
+                line.appendChild(document.createElement('br'));
+                line.appendChild(c);
+            }
+        } else if (r.kind === 'extra') {
+            line.textContent = `${idxLabel}  js: ${callKey(r.b)}    canon: (none)`;
+            const caller = callerOf(r.b);
+            if (isFirst && caller) {
+                const c = document.createElement('span');
+                c.className = 'rng-caller';
+                c.textContent = `@ ${caller}`;
+                line.appendChild(document.createElement('br'));
+                line.appendChild(c);
+            }
         } else {
-            line.classList.add('diff');
-            line.textContent = `${i.toString().padStart(3, ' ')}  canon: ${a}\n     js:    ${b}`;
+            // diff: both sides exist and disagree.
+            const compact = `${idxLabel}  canon: ${callKey(r.a)}\n     js:    ${callKey(r.b)}`;
+            line.textContent = compact;
+            if (isFirst) {
+                const cCaller = callerOf(r.a);
+                const jCaller = callerOf(r.b);
+                if (cCaller || jCaller) {
+                    line.appendChild(document.createElement('br'));
+                    if (cCaller) {
+                        const c = document.createElement('span');
+                        c.className = 'rng-caller';
+                        c.textContent = `canon @ ${cCaller}`;
+                        line.appendChild(c);
+                    }
+                    if (jCaller) {
+                        const j = document.createElement('span');
+                        j.className = 'rng-caller';
+                        j.textContent = `js    @ ${jCaller}`;
+                        line.appendChild(j);
+                    }
+                    if (!jCaller && cCaller) {
+                        // Soft hint when the JS port doesn't annotate
+                        // its rng calls — common in the contestant skeleton.
+                        const note = document.createElement('span');
+                        note.className = 'rng-caller';
+                        note.style.opacity = '0.6';
+                        note.textContent = '(js side: no caller annotation in rng log)';
+                        line.appendChild(note);
+                    }
+                }
+            }
         }
         out.appendChild(line);
+        i++;
     }
 }
 

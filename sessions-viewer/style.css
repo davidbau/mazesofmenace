@@ -428,7 +428,7 @@ body.show-detail .edge-handle { transform: translate(100%, -50%); }
 .fork-context a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--rule); }
 .fork-context a:hover { color: var(--accent-dark); }
 
-/* ── PRNG-toggle button ─────────────────────────────────────────────── */
+/* ── Close button (× inside the unified details fly-out) ──────────── */
 .toggle-btn {
     font-family: var(--font-serif);
     font-size: 0.92em;
@@ -441,53 +441,26 @@ body.show-detail .edge-handle { transform: translate(100%, -50%); }
 }
 .toggle-btn:hover { background: var(--bg-2); }
 
-/* ── PRNG fly-out ─────────────────────────────────────────────────────
-   The timeline above is the at-a-glance PRNG view (canon vs js bands)
-   and is ALWAYS visible. The drill-down — the rn2(N)=M / rnd(N)=M /…
-   listing for the current step — used to live inline in the aside,
-   but most of the time the user is reading the screen diff and that
-   listing is just visual noise. So it became a fly-out: hidden by
-   default, slides in from the right when the "Show PRNG" header
-   button is clicked. The choice is persisted in localStorage. */
-#rng-flyout {
-    position: fixed;
-    top: 0;
-    right: 0;
-    height: 100vh;
-    width: 380px;
-    max-width: 90vw;
-    background: var(--bg-2);
-    border-left: 1px solid var(--rule);
-    box-shadow: -6px 0 18px rgba(0,0,0,0.10);
-    padding: 16px 18px;
-    overflow: auto;
-    transform: translateX(100%);
-    transition: transform 0.18s ease;
-    z-index: 50;
-    box-sizing: border-box;
-}
-body.show-rng #rng-flyout { transform: translateX(0); }
-body.show-rng #rng-flyout-scrim {
+/* ── PRNG section inside the details fly-out ───────────────────────── */
+.detail-block-rng .rng-line.match-run {
+    color: var(--fg-3);
+    font-style: italic;
+    font-size: 0.85em;
+    opacity: 0.7;
     display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.04);
-    z-index: 40;
+    padding: 2px 0;
 }
-.rng-flyout-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
+.detail-block-rng .rng-line.first-mismatch {
+    background: rgba(192, 57, 43, 0.06);
+    border-left: 3px solid var(--err);
+    padding: 6px 8px;
+    margin: 4px 0;
+    border-radius: 0 3px 3px 0;
 }
-.rng-flyout-head .detail-label { margin-bottom: 0; }
-#close-rng {
-    font-size: 1.3em;
-    line-height: 1;
-    padding: 0 8px;
-    background: transparent;
-    border: none;
+.detail-block-rng .rng-caller {
+    display: block;
     color: var(--fg-2);
-    cursor: pointer;
+    font-size: 0.82em;
+    margin-top: 3px;
+    opacity: 0.85;
 }
-#close-rng:hover { color: var(--accent-dark); }
