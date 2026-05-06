@@ -11,35 +11,29 @@
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
 <style>
 :root {
-    --parchment:        #f3e9cf;
-    --parchment-dark:   #e7d9b3;
-    --parchment-edge:   #d6c189;
+    --parchment:        #f9f7f1;
+    --parchment-dark:   #f0ece3;
+    --parchment-edge:   #d0c8b8;
     --ink:              #2b2114;
-    --ink-soft:         #5a4632;
-    --ink-faint:        #8a755a;
+    --ink-soft:         #555;
+    --ink-faint:        #888;
     --accent:           #6b2c2c;
     --accent-dark:      #4a2020;
-    --rule:             #c5b187;
+    --rule:             #d0c8b8;
     --font-serif:       'EB Garamond', 'Adobe Garamond Pro', Garamond, Georgia, serif;
     --font-mono:        'DejaVu Sans Mono', 'Consolas', monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html { background: #d6c189; }
+html { background: var(--parchment); }
 
 body {
     color: var(--ink);
     font-family: var(--font-serif);
     font-size: 19px;
     line-height: 1.62;
-    background:
-        /* subtle warm vignette darkening the corners */
-        radial-gradient(ellipse at top, rgba(255,250,225,0.55), transparent 65%),
-        radial-gradient(ellipse at bottom, rgba(120,90,40,0.18), transparent 70%),
-        /* SVG paper grain */
-        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.35  0 0 0 0 0.18  0 0 0 0.085 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
-        var(--parchment);
+    background: var(--parchment);
     min-height: 100vh;
     padding: 0;
 }
@@ -116,19 +110,6 @@ article p.lead {
     font-style: italic;
 }
 
-/* Drop cap on the first paragraph after the header */
-article > p.lead:first-of-type::first-letter {
-    font-family: var(--font-serif);
-    font-weight: 600;
-    font-style: normal;
-    font-size: 3.6em;
-    line-height: 0.85;
-    float: left;
-    padding: 0.04em 0.12em 0 0;
-    margin-top: 0.05em;
-    color: var(--accent-dark);
-}
-
 /* Headings */
 article h2 {
     font-family: var(--font-serif);
@@ -169,7 +150,7 @@ article blockquote {
     margin: 1.4em 0;
     padding: 0.8em 1.2em 0.8em 1.4em;
     border-left: 3px solid var(--accent);
-    background: rgba(214, 193, 137, 0.25);
+    background: var(--parchment-dark);
     color: var(--ink-soft);
     font-style: italic;
     font-size: 0.96em;
@@ -183,7 +164,7 @@ article code {
     font-family: var(--font-mono);
     font-size: 0.85em;
     color: var(--accent-dark);
-    background: rgba(214, 193, 137, 0.35);
+    background: var(--parchment-dark);
     padding: 0.05em 0.35em;
     border-radius: 2px;
 }
@@ -222,7 +203,7 @@ article figure figcaption {
 article p.advice {
     margin: 1.4em 0;
     padding: 0.95em 1.2em 0.85em;
-    background: rgba(214, 193, 137, 0.25);
+    background: var(--parchment-dark);
     border-left: 3px solid var(--accent);
     border-radius: 0 2px 2px 0;
 }
@@ -247,7 +228,6 @@ footer.post-footer a:hover { text-decoration: underline; }
     body { font-size: 17px; }
     header.post-header h1 { font-size: 1.9em; }
     main { padding: 2em 1em 4em; }
-    article > p.lead:first-of-type::first-letter { font-size: 3em; }
 }
 </style>
 </head>
@@ -271,6 +251,11 @@ footer.post-footer a:hover { text-decoration: underline; }
 <p>Four days ago <a href="https://nethack.org/">NetHack</a> 5.0 was released, a 46-year-old open-source roguelike game, 442,901 lines of C and Lua that have accumulated layers of intricate and ingenious gameplay rules.</p>
 
 <p>The contest is to port it to simple, readable JavaScript so that the game can run in the browser while playing <em>bit-exactly</em> like the original. Same screen at every keystroke.</p>
+
+<figure>
+    <img src="img/slasher-barks.png" alt="A NetHack 5.0 game in progress: dungeon level with the @ hero, monsters, and a corridor">
+    <figcaption>NetHack 5.0 — the game we are porting.</figcaption>
+</figure>
 
 <p>You can use any approach: LLM agents, hand-coded JavaScript, a C-to-JS transpiler, or any hybrid. The contest is linked from <a href="https://mazesofmenace.ai/">mazesofmenace.ai</a>, and the leaderboard is live. Phase 1 freezes on Sunday November 29, 2026. Then there is a Phase 2 sprint in December: a slightly newer C target is revealed, and your score is your parity against that new target <em>divided by</em> a penalty proportional to how much you changed your port to chase it. Methods that generalize win; hand-tuned ports that overfit to the Phase 1 code paths get crushed.</p>
 

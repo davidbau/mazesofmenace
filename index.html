@@ -52,8 +52,13 @@ main { max-width: 56em; width: 100%; }
     margin-bottom: 1em;
 }
 .hero p { margin-bottom: 0.8em; font-size: 1.05em; }
-.hero .cta {
+.hero p.hero-about {
     margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    font-style: italic;
+}
+.hero .cta {
+    margin-top: 0.4em;
     display: flex;
     gap: 1em;
     flex-wrap: wrap;
@@ -212,8 +217,8 @@ footer a { color: var(--color-text-muted); }
        a single person to work with a program of this scale and complexity?</strong> Can agents
        create hundreds of thousands of lines of code that humans would actually want to own
        afterwards?</p>
+    <p class="hero-about"><a href="/announcement/">About the contest &rarr;</a></p>
     <div class="cta">
-        <a class="btn secondary" href="/announcement/">About the contest</a>
         <a class="btn" href="https://github.com/davidbau/teleport-contest#readme">Enter the contest &rarr;</a>
     </div>
 </header>
