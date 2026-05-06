@@ -267,7 +267,8 @@ main {
     border-radius: 2px;
     border: 1px solid rgba(0,0,0,0.15);
 }
-.swatch.ch-diff       { background: var(--diff-char); }
+.swatch.ch-missing    { background: var(--diff-char); }
+.swatch.ch-wrong      { background: #7b3fa3; }
 .swatch.attr-diff     { background: var(--diff-attr); }
 .swatch.cursor-diff   { background: var(--diff-cursor); }
 .swatch.sw-match      { background: var(--tl-match); }
@@ -302,8 +303,16 @@ main {
     white-space: pre;
     background: transparent;
 }
-.map-cell.ch-diff   { background: rgba(192, 57, 43, 0.55); }
-.map-cell.attr-diff { background: rgba(184, 134, 11, 0.40); }
+/* ch-missing: canon drew a glyph, JS is blank (the JS port forgot to
+   render something that should be there). Red — the bigger-deal
+   error.
+   ch-wrong:   JS rendered a glyph but it doesn't match canon, including
+   the case where canon is blank and JS drew extra. Purple — visually
+   distinct so the user can tell at a glance which kind of mistake
+   this is. */
+.map-cell.ch-missing { background: rgba(192, 57, 43, 0.55); }
+.map-cell.ch-wrong   { background: rgba(123, 63, 163, 0.55); }
+.map-cell.attr-diff  { background: rgba(184, 134, 11, 0.40); }
 .map-cell.cursor-diff::after {
     content: '';
     position: relative;

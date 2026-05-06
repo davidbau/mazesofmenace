@@ -1016,6 +1016,18 @@ function render(stepIdx) {
             const span = document.createElement('span');
             span.className = 'map-cell';
 
+            // Classify a char-diff as "missing" (canon drew a char, JS
+            // is blank) vs "wrong" (JS drew SOMETHING, but it doesn't
+            // match canon — including the canon-blank-and-JS-extra case).
+            // The two cases get different colors below — red for missing
+            // (you forgot to draw a glyph that should be there), purple
+            // for wrong (you drew something canon disagrees with).
+            const jsBlank    = (jsRender === ' ' || jsRender === '');
+            const canonBlank = (canonRender === ' ' || canonRender === '');
+            const chKind = d === 'ch'
+                ? (jsBlank && !canonBlank ? 'missing' : 'wrong')
+                : null;
+
             // Choose which side to draw and whether to overlay the diff.
             // canon mode: canonical recording, with diff overlay so you
             //             can see WHERE the JS port diverges
@@ -1034,7 +1046,7 @@ function render(stepIdx) {
                 // diff overlay (the original behavior): for char-diffs where
                 // JS rendered whitespace, surface the CANON char so the user
                 // can see what's missing.
-                const showCanon = (d === 'ch' && (jsRender === ' ' || jsRender === ''));
+                const showCanon = (d === 'ch' && jsBlank);
                 cell = showCanon ? cc : jc;
                 text = showCanon ? canonRender : jsRender;
                 if (d === 'ch')   mark = 'ch';
@@ -1049,8 +1061,10 @@ function render(stepIdx) {
                 span.style.color = '#000';
             }
             if (mark === 'ch') {
-                span.classList.add('ch-diff');
-                span.title = `expected '${canonRender}', js produced '${jsRender}'`;
+                span.classList.add(chKind === 'missing' ? 'ch-missing' : 'ch-wrong');
+                span.title = chKind === 'missing'
+                    ? `missing: canon has '${canonRender}', js is blank`
+                    : `wrong char: canon '${canonRender || '(blank)'}', js '${jsRender || '(blank)'}'`;
             } else if (mark === 'attr') {
                 span.classList.add('attr-diff');
                 span.title = `attr/color differs: canon=${cc.color}/${cc.attr} js=${jc.color}/${jc.attr}`;
