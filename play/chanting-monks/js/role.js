@@ -387,31 +387,99 @@ function drawPickGenderMenu(display, role, race) {
 // Renders the "Pick a role or profession" menu shown when user selects
 // 'n' (manual chargen). Full-screen menu starting at col 1, rows 0-23.
 // C ref: role.c:2310 plsel_startmenu(RS_ROLE) + setup_rolemenu.
-function drawPickRoleMenu(display) {
+// Renders the "Pick an alignment or creed" menu (right-half, col 41+).
+// C ref: role.c:2580 plsel_startmenu(RS_ALGNMNT) when invoked by '['
+// from another menu. The menu layout has all 3 align letters l/n/c
+// (no role/race filtering applied yet since alignment is being
+// chosen first).
+function drawPickAlignMenu(display, role = null, race = null, gender = null) {
     clearScreenNoColor(display);
-    // Title with inverse SGR (attr=1)
-    display.putstr(1, 0, "Pick a role or profession", CHARGEN_NO_COLOR, 1);
-    display.putstr(1, 2, "<role> <race> <gender> <alignment>", CHARGEN_NO_COLOR);
-    display.putstr(1, 4, "a - an Archeologist", CHARGEN_NO_COLOR);
-    display.putstr(1, 5, "b - a Barbarian", CHARGEN_NO_COLOR);
-    display.putstr(1, 6, "c - a Caveman/Cavewoman", CHARGEN_NO_COLOR);
-    display.putstr(1, 7, "h - a Healer", CHARGEN_NO_COLOR);
-    display.putstr(1, 8, "k - a Knight", CHARGEN_NO_COLOR);
-    display.putstr(1, 9, "m - a Monk", CHARGEN_NO_COLOR);
-    display.putstr(1, 10, "p - a Priest/Priestess", CHARGEN_NO_COLOR);
-    display.putstr(1, 11, "r - a Rogue", CHARGEN_NO_COLOR);
-    display.putstr(1, 12, "R - a Ranger", CHARGEN_NO_COLOR);
-    display.putstr(1, 13, "s - a Samurai", CHARGEN_NO_COLOR);
-    display.putstr(1, 14, "t - a Tourist", CHARGEN_NO_COLOR);
-    display.putstr(1, 15, "v - a Valkyrie", CHARGEN_NO_COLOR);
-    display.putstr(1, 16, "w - a Wizard", CHARGEN_NO_COLOR);
-    display.putstr(1, 17, "* * Random", CHARGEN_NO_COLOR);
-    display.putstr(1, 18, "/ - Pick race first", CHARGEN_NO_COLOR);
-    display.putstr(1, 19, "\" - Pick gender first", CHARGEN_NO_COLOR);
-    display.putstr(1, 20, "[ - Pick alignment first", CHARGEN_NO_COLOR);
-    display.putstr(1, 21, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
-    display.putstr(1, 22, "q - Quit", CHARGEN_NO_COLOR);
-    display.putstr(1, 23, "(end)", CHARGEN_NO_COLOR);
+    const COL = 41;
+    display.putstr(COL, 0, "Pick an alignment or creed", CHARGEN_NO_COLOR, 1);
+    const roleText = role || '<role>';
+    const raceText = race || '<race>';
+    const genderText = gender || '<gender>';
+    display.putstr(COL, 2, `${roleText} ${raceText} ${genderText} <alignment>`, CHARGEN_NO_COLOR);
+    display.putstr(COL, 4, "l - lawful", CHARGEN_NO_COLOR);
+    display.putstr(COL, 5, "n - neutral", CHARGEN_NO_COLOR);
+    display.putstr(COL, 6, "c - chaotic", CHARGEN_NO_COLOR);
+    display.putstr(COL, 7, "* * Random", CHARGEN_NO_COLOR);
+    display.putstr(COL, 9, "? - Pick role first", CHARGEN_NO_COLOR);
+    display.putstr(COL, 10, "/ - Pick race first", CHARGEN_NO_COLOR);
+    display.putstr(COL, 11, "\" - Pick gender first", CHARGEN_NO_COLOR);
+    display.putstr(COL, 12, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
+    display.putstr(COL, 13, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(COL, 14, "(end)", CHARGEN_NO_COLOR);
+}
+
+// All 13 roles with their menu accelerator and label (in C order).
+const ROLE_MENU_ITEMS = [
+    { ch: 'a', label: 'an Archeologist', name: 'Archeologist' },
+    { ch: 'b', label: 'a Barbarian', name: 'Barbarian' },
+    { ch: 'c', label: 'a Caveman/Cavewoman', name: 'Caveman' },
+    { ch: 'h', label: 'a Healer', name: 'Healer' },
+    { ch: 'k', label: 'a Knight', name: 'Knight' },
+    { ch: 'm', label: 'a Monk', name: 'Monk' },
+    { ch: 'p', label: 'a Priest/Priestess', name: 'Priest' },
+    { ch: 'r', label: 'a Rogue', name: 'Rogue' },
+    { ch: 'R', label: 'a Ranger', name: 'Ranger' },
+    { ch: 's', label: 'a Samurai', name: 'Samurai' },
+    { ch: 't', label: 'a Tourist', name: 'Tourist' },
+    { ch: 'v', label: 'a Valkyrie', name: 'Valkyrie' },
+    { ch: 'w', label: 'a Wizard', name: 'Wizard' },
+];
+
+// When the user picks an attribute (align/race/gender) before role,
+// the role list is filtered to only compatible roles. The label format
+// also changes (e.g., "Caveman" instead of "Caveman/Cavewoman" when
+// gender=male picked, since the female-form is irrelevant).
+function drawPickRoleMenu(display, race = null, gender = null, align = null) {
+    clearScreenNoColor(display);
+    // C tty positions menu at col 41+ (right-half) when the menu fits
+    // there (filtered list); col 1 (full-screen) otherwise. When ANY
+    // constraint is set, the role list is filtered and small enough.
+    const constrained = !!(race || gender || align);
+    const COL = constrained ? 41 : 1;
+    display.putstr(COL, 0, "Pick a role or profession", CHARGEN_NO_COLOR, 1);
+    const roleText = '<role>';
+    const raceText = race || '<race>';
+    const genderText = gender || '<gender>';
+    const alignText = align || '<alignment>';
+    display.putstr(COL, 2, `${roleText} ${raceText} ${genderText} ${alignText}`, CHARGEN_NO_COLOR);
+    let row = 4;
+    for (const item of ROLE_MENU_ITEMS) {
+        const rd = ROLE_DATA.find(r => r.name === item.name);
+        if (!rd) continue;
+        // Filter by align/race/gender constraint
+        if (align && !rd.aligns.includes(align)) continue;
+        if (race && !rd.races.includes(race)) continue;
+        if (gender && !rd.gens.includes(gender)) continue;
+        // Adjust label based on gender (e.g., "Caveman" not "Caveman/Cavewoman")
+        let label = item.label;
+        if (gender) {
+            if (item.name === 'Caveman') {
+                label = gender === 'female' ? 'a Cavewoman' : 'a Caveman';
+            } else if (item.name === 'Priest') {
+                label = gender === 'female' ? 'a Priestess' : 'a Priest';
+            }
+        }
+        display.putstr(COL, row++, `${item.ch} - ${label}`, CHARGEN_NO_COLOR);
+    }
+    display.putstr(COL, row++, "* * Random", CHARGEN_NO_COLOR);
+    // C role menu has a BLANK line between "* Random" and "Pick X
+    // first" options when shown on right-half (constrained), but NO
+    // blank when full-screen (unfiltered). Empirical: seed0006 step 9
+    // (full-screen) has no blank; seed0012 step 10 (right-half) has blank.
+    if (constrained) row++;
+    // When an attribute is already picked, C shows "Pick another X
+    // first" (allowing the user to revise); when unset, just "Pick X
+    // first". The line is always present for navigation.
+    display.putstr(COL, row++, race ? "/ - Pick another race first" : "/ - Pick race first", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, gender ? "\" - Pick another gender first" : "\" - Pick gender first", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, align ? "[ - Pick another alignment first" : "[ - Pick alignment first", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "~ - Set role/race/&c filtering", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "q - Quit", CHARGEN_NO_COLOR);
+    display.putstr(COL, row++, "(end)", CHARGEN_NO_COLOR);
 }
 
 function drawIsThisOkMenu(display, charDesc, withBanner = true) {
@@ -564,6 +632,31 @@ export async function chargen_simulate_async(moves, display) {
                 drawPickRoleMenu(display);
                 if (!(await drainOneIfAny())) return picked;
             }
+            // The next key after role menu may be a navigation key:
+            // '[' = Pick alignment first → align menu next
+            // (other navigation: '/'/'"'/'?' deferred)
+            // Find the role-pick key from moves.
+            const roleMenuStartIdx = isYClass ? nameIdx + 2 : nameIdx + 1;
+            let rolePickKey = null;
+            for (let i = roleMenuStartIdx; i < moves.length; i++) {
+                const ch = moves[i];
+                if ((ch in ROLE_BY_LETTER) || ch === '[' || ch === '/' ||
+                    ch === '"' || ch === '?' || ch === '~') {
+                    rolePickKey = ch;
+                    break;
+                }
+            }
+            if (rolePickKey === '[') {
+                // Align menu rendered next, no role/race/gender set yet.
+                drawPickAlignMenu(display);
+                if (!(await drainOneIfAny())) return picked;
+                // After align pick (e.g., 'l' lawful), C re-shows the
+                // role menu filtered by the picked align. Now that
+                // chargen_simulate correctly handles '[' nav and sets
+                // picked.align, we can use it.
+                drawPickRoleMenu(display, null, null, picked.align);
+                if (!(await drainOneIfAny())) return picked;
+            }
             drawPickRaceMenu(display, picked.role);
             // Read the race-menu key. If it's '"' (Pick gender first),
             // race isn't set yet for the next gender menu.
@@ -605,7 +698,21 @@ export async function chargen_simulate_async(moves, display) {
                                              picked.gender, picked.align);
                 // n-branch: role menu was full-screen, banner is gone.
                 drawIsThisOkMenu(display, desc, false);
-                await drainOneIfAny();
+                const confirmCode = await drainOneIfAny();
+                // 'a' rename: re-render "Who are you?" prompt at row 10
+                // (NOT row 12 like initial chargen) and echo new name
+                // letters via additional nhgetch calls.
+                // C ref: role.c:2693 — clears svp.plname, asks again.
+                if (confirmCode === 0x61 || confirmCode === 0x41) {
+                    if (display) drawRenamePromptOnRow10(display, '');
+                    await renderRenameNameCapture(display);
+                    // Note: post-rename Is-this-ok could be rendered
+                    // here, but consuming an extra key via drainOneIfAny
+                    // shifts PRNG alignment for seed0006 (regressed
+                    // -23 calls without screen gain). Deferred until
+                    // we can model the full post-rename flow including
+                    // re-entry to manual mode + filter ('~') menus.
+                }
             }
         }
         return picked;
@@ -617,15 +724,37 @@ function isAClass(yn) {
     return yn === 'a' || yn === 'A' || yn === '@' || yn === '*';
 }
 
+function drawRenamePromptOnRow10(display, nameSoFar) {
+    clearScreenNoColor(display);
+    display.putstr(0, 10, "Who are you? " + nameSoFar, CHARGEN_NO_COLOR);
+}
+
+// After 'a' rename at confirmation, read new name letters via nhgetch
+// (each capturing a screen with banner-free row-10 prompt + echoed
+// letters). Stops at \r/\n. Returns the captured new name.
+async function renderRenameNameCapture(display) {
+    const { nhgetch } = await import('./input.js');
+    const newName = [];
+    while (true) {
+        let code;
+        try { code = await nhgetch(); } catch (e) { return newName.join(''); }
+        if (code === 13 || code === 10) return newName.join('');
+        const ch = String.fromCharCode(code);
+        newName.push(ch);
+        if (display) drawRenamePromptOnRow10(display, newName.join(''));
+    }
+}
+
 async function drainOneIfAny() {
     const { nhgetch } = await import('./input.js');
     // Try to consume one key — but only if queue has any. If not, the
-    // chargen UI rendering ends here.
+    // chargen UI rendering ends here. Returns the key code (1-based: 0
+    // means nothing consumed; otherwise the char code).
     try {
-        await nhgetch();
-        return true;
+        const code = await nhgetch();
+        return code || -1;  // 0 might be a valid code; use -1 sentinel
     } catch (e) {
-        return false;
+        return 0;
     }
 }
 
@@ -754,23 +883,50 @@ function chargen_manual(moves, idx, initialName) {
 function chargen_manual_pass(moves, idx) {
     const s = { roleIdx: null, race: null, gend: null, algn: null };
 
-    // Stage RS_ROLE — read role letter, but skip filter-mode keystrokes.
-    // C ref: role.c filter_menu (RS_filter). When the user presses '~' in
-    // the role menu, they enter filter setup; subsequent letters add to
-    // the filter list and \r/\n confirms. After confirmation, the role
-    // menu reappears (now filtered) and the user picks a role letter.
-    // The filter keystrokes don't fire any rn2 calls, so we just skip
-    // them. Multiple filter rounds are possible (seed0006 has two: role
-    // filter then race filter).
+    // Pre-scan for "Pick X first" navigation keys and filter mode.
+    // C ref: role.c filter_menu (RS_filter). When the user presses '~'
+    // in the role menu, they enter filter setup; subsequent letters
+    // add to the filter list and \r/\n confirms.
+    // '[' = Pick alignment first → consume align letter
+    // '/' = Pick race first → consume race letter (role still chosen later)
+    // '"' = Pick gender first → consume gender letter
+    // (Multiple navigation rounds possible: seed0012 uses '[','"','/')
     while (true) {
         while (idx < moves.length && !(moves[idx] in ROLE_BY_LETTER)
-               && moves[idx] !== '~' && moves[idx] !== 'F') idx++;
+               && moves[idx] !== '~' && moves[idx] !== 'F'
+               && moves[idx] !== '[' && moves[idx] !== '/' && moves[idx] !== '"') idx++;
         if (idx >= moves.length) return null;
-        if (moves[idx] === '~' || moves[idx] === 'F') {
+        const ch = moves[idx];
+        if (ch === '~' || ch === 'F') {
             // Filter mode: skip the rest until \r/\n confirm
             idx++;
             while (idx < moves.length && moves[idx] !== '\r' && moves[idx] !== '\n') idx++;
             if (idx < moves.length) idx++;
+            continue;
+        }
+        if (ch === '[') {
+            // Pick alignment first: read align letter (l/n/c) next.
+            idx++;
+            while (idx < moves.length && !(moves[idx] in ALGN_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            s.algn = ALGN_BY_LETTER[moves[idx]]; idx++;
+            continue;
+        }
+        if (ch === '/') {
+            // Pick race first: read race letter next. Race may be
+            // role-constrained later; for now just capture user choice.
+            idx++;
+            while (idx < moves.length && !(moves[idx] in RACE_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            s.race = RACE_BY_LETTER[moves[idx]]; idx++;
+            continue;
+        }
+        if (ch === '"') {
+            // Pick gender first: read gender letter next.
+            idx++;
+            while (idx < moves.length && !(moves[idx] in GEND_BY_LETTER)) idx++;
+            if (idx >= moves.length) return null;
+            s.gend = GEND_BY_LETTER[moves[idx]]; idx++;
             continue;
         }
         break;
