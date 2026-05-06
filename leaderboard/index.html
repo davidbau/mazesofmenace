@@ -241,11 +241,22 @@ function pctClass(pct) {
     return 'fail';
 }
 
+// Scoring-rule cutoff. The metric changed on 2026-05-05 evening (UTC):
+// before this, points = matched-PRNG-calls + matched-screens (max ~850k);
+// after, points = matched-screens only (max ~11k). Plotting both eras on
+// one sparkline would let the old era visually dominate, so the chart
+// drops anything older than this. Older history is still in git
+// (judge repo's leaderboard/data.json log) and in the live `history[]`
+// array up to MAX_HISTORY entries; this only filters the rendered line.
+const RULES_CUTOFF_MS = Date.parse('2026-05-05T23:00:00Z');
+
 function drawSparkline(canvas, history) {
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    if (!history || history.length < 2) return;
+    if (!history) return;
+    history = history.filter(p => Date.parse(p.ts) >= RULES_CUTOFF_MS);
+    if (history.length < 2) return;
 
     // Plot points-over-time. Older history rows wrote `passing`; newer
     // rows write `points` + `maxPoints`. Fall back gracefully.
