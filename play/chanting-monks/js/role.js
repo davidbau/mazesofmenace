@@ -305,15 +305,16 @@ const RACE_LABEL = { human: 'human', elf: 'elf', dwarf: 'dwarf',
 const RACE_LETTER_FOR_NAME = { human: 'h', elf: 'e', dwarf: 'd',
                                gnome: 'g', orc: 'o' };
 
-function drawPickRaceMenu(display, role) {
+function drawPickRaceMenu(display, role, gender = null) {
     clearScreenNoColor(display);
     const rd = ROLE_DATA.find(r => r.name === role);
     if (!rd) return;
     // role-only constraints applied by rigid_role_checks at race-menu setup
     const genderForced = rd.gens.length === 1 ? rd.gens[0] : null;  // Valkyrie
     const alignForced = rd.aligns.length === 1 ? rd.aligns[0] : null; // Rogue/Knight/etc.
-    const genderText = genderForced || '<gender>';
+    const genderText = gender || genderForced || '<gender>';
     const alignText = alignForced || '<alignment>';
+    const genderShown = !!(gender || genderForced);
     const COL = 41;
     display.putstr(COL, 0, "Pick a race or species", CHARGEN_NO_COLOR, 1);
     display.putstr(COL, 2, `${role} <race> ${genderText} ${alignText}`, CHARGEN_NO_COLOR);
@@ -327,7 +328,9 @@ function drawPickRaceMenu(display, role) {
     if (genderForced) {
         display.putstr(COL + 4, row++, `role forces ${genderForced}`, CHARGEN_NO_COLOR);
     } else {
-        display.putstr(COL, row++, "\" - Pick gender first", CHARGEN_NO_COLOR);
+        // "Pick another gender first" if gender already picked, else "Pick gender first"
+        const label = genderShown ? "\" - Pick another gender first" : "\" - Pick gender first";
+        display.putstr(COL, row++, label, CHARGEN_NO_COLOR);
     }
     if (alignForced) {
         display.putstr(COL + 4, row++, `role forces ${alignForced}`, CHARGEN_NO_COLOR);
@@ -345,16 +348,18 @@ function drawPickGenderMenu(display, role, race) {
     clearScreenNoColor(display);
     const rd = ROLE_DATA.find(r => r.name === role);
     if (!rd) return;
+    // race may be null when user selected "Pick gender first" before
+    // race; in that case render the row-2 placeholder and the "Pick
+    // race first" option instead of "Pick another race first".
+    const racePicked = !!race;
     const roleAlign = rd.aligns.length === 1 ? rd.aligns[0] :
-                      (RACE_ALIGNS[race]?.length === 1 ? RACE_ALIGNS[race][0] :
-                       (rd.aligns.filter(a => RACE_ALIGNS[race]?.includes(a)).length === 1
+                      (race && RACE_ALIGNS[race]?.length === 1 ? RACE_ALIGNS[race][0] :
+                       (race && rd.aligns.filter(a => RACE_ALIGNS[race]?.includes(a)).length === 1
                         ? rd.aligns.filter(a => RACE_ALIGNS[race]?.includes(a))[0]
                         : '<alignment>'));
-    const raceAdj = { human: 'human', elf: 'elven', dwarf: 'dwarven',
-                       gnome: 'gnomish', orc: 'orcish' }[race] || race;
     const COL = 41;
     display.putstr(COL, 0, "Pick a gender or sex", CHARGEN_NO_COLOR, 1);
-    display.putstr(COL, 2, `${role} ${race} <gender> ${roleAlign}`, CHARGEN_NO_COLOR);
+    display.putstr(COL, 2, `${role} ${racePicked ? race : '<race>'} <gender> ${roleAlign}`, CHARGEN_NO_COLOR);
     let row = 4;
     for (const g of rd.gens) {
         const letter = g === 'male' ? 'm' : 'f';
@@ -363,9 +368,11 @@ function drawPickGenderMenu(display, role, race) {
     display.putstr(COL, row++, "* * Random", CHARGEN_NO_COLOR);
     row++;
     display.putstr(COL, row++, "? - Pick another role first", CHARGEN_NO_COLOR);
-    display.putstr(COL, row++, "/ - Pick another race first", CHARGEN_NO_COLOR);
-    // align-constraint message
-    const validAligns = rd.aligns.filter(a => (RACE_ALIGNS[race] || []).includes(a));
+    display.putstr(COL, row++, racePicked ? "/ - Pick another race first" : "/ - Pick race first", CHARGEN_NO_COLOR);
+    // align-constraint message — only role-only for unset race
+    const validAligns = racePicked
+        ? rd.aligns.filter(a => (RACE_ALIGNS[race] || []).includes(a))
+        : rd.aligns;
     if (validAligns.length === 1) {
         const reason = rd.aligns.length === 1 ? 'role' : 'race';
         display.putstr(COL + 4, row++, `${reason} forces ${validAligns[0]}`, CHARGEN_NO_COLOR);
@@ -558,6 +565,21 @@ export async function chargen_simulate_async(moves, display) {
                 if (!(await drainOneIfAny())) return picked;
             }
             drawPickRaceMenu(display, picked.role);
+            // Read the race-menu key. If it's '"' (Pick gender first),
+            // race isn't set yet for the next gender menu.
+            const raceMenuStartIdx = isYClass ? nameIdx + 2 : nameIdx + 1;
+            // Find which key was just consumed by drainOneIfAny
+            // (the key that picked race or jumped to gender menu).
+            let racePickKey = null;
+            for (let i = raceMenuStartIdx + 1; i < moves.length; i++) {
+                const ch = moves[i];
+                if (ch in RACE_LETTER_FOR_NAME ||
+                    (ch in {h:1,e:1,d:1,g:1,o:1}) ||
+                    ch === '"' || ch === '/' || ch === '[' || ch === '?') {
+                    racePickKey = ch;
+                    break;
+                }
+            }
             if (await drainOneIfAny()) {
                 // Determine if gender menu fires. Skip if role forces
                 // gender (Valkyrie, female only) — the gender was
@@ -565,7 +587,17 @@ export async function chargen_simulate_async(moves, display) {
                 const rd = ROLE_DATA.find(r => r.name === picked.role);
                 const genderForced = rd && rd.gens.length === 1;
                 if (!genderForced) {
-                    drawPickGenderMenu(display, picked.role, picked.race);
+                    // If user pressed '"' (Pick gender first), race
+                    // isn't set when gender menu shows.
+                    const racePassed = racePickKey === '"' ? null : picked.race;
+                    drawPickGenderMenu(display, picked.role, racePassed);
+                    if (!(await drainOneIfAny())) return picked;
+                }
+                // After gender pick, if race wasn't set yet (Pick gender
+                // first path), C shows the race menu next. Otherwise
+                // proceed to Is-this-ok.
+                if (racePickKey === '"') {
+                    drawPickRaceMenu(display, picked.role, picked.gender);
                     if (!(await drainOneIfAny())) return picked;
                 }
                 const desc = chargenCharDesc(picked.name || '',

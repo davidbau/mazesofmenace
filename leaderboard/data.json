@@ -1,19 +1,19 @@
 {
-  "timestamp": "2026-05-06T03:13:18.630Z",
+  "timestamp": "2026-05-06T05:10:58.503Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-06T03:13:18.519Z",
+      "lastScored": "2026-05-06T05:10:58.393Z",
       "public": {
-        "points": 93,
+        "points": 96,
         "maxPoints": 10982,
         "passing": 0,
         "total": 44,
-        "rngPct": 6.408340254986565,
+        "rngPct": 6.4075072766606604,
         "rngStepsPct": 62.56601711892187,
-        "screenPct": 0.8468402841012567
+        "screenPct": 0.874157712620652
       },
       "heldOut": {
         "points": 52,
@@ -98,6 +98,12 @@
           "points": 93,
           "maxPoints": 10982,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-06T05:10:58.393Z",
+          "points": 96,
+          "maxPoints": 10982,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -153,7 +159,7 @@
           "name": "seed0007-rogue-snake-swamp.session.json",
           "passed": false,
           "rng": {
-            "matched": 1416,
+            "matched": 1409,
             "total": 16373
           },
           "rngSteps": {
@@ -161,7 +167,7 @@
             "total": 302
           },
           "screen": {
-            "matched": 11,
+            "matched": 14,
             "total": 302
           }
         },
@@ -810,7 +816,7 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-06T03:13:00.805Z",
+      "lastScored": "2026-05-06T05:10:40.901Z",
       "public": {
         "points": 78,
         "maxPoints": 10982,
@@ -900,6 +906,12 @@
         },
         {
           "ts": "2026-05-06T03:13:00.805Z",
+          "points": 78,
+          "maxPoints": 10982,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T05:10:40.901Z",
           "points": 78,
           "maxPoints": 10982,
           "passing": 0
