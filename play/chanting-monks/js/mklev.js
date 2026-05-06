@@ -373,7 +373,20 @@ const MKOBJ_PROBS = [
 //                in the RING() macro → total 28.
 //   AMULET_CLASS = sum of per-amulet prob fields (120+75+115+115+115+115+
 //                  60+75+75+75+60) → total 1000.
-//   GEM_CLASS = 1002 (1000 + a couple of rocks/stones).
+//   GEM_CLASS = 1000 (recomputed at level-init by o_init.c:setgemprobs;
+//                level 1 has lev/3 == 0 so the lower 9 real gems are
+//                zeroed.  Remaining 13 real gems get formula prob
+//                (171 + j - first) / 13 → sum 171.  9 worthless-glass
+//                pieces keep their initial oc_prob of 76-77 → sum 691.
+//                5 rocks (luckstone/loadstone/touchstone/flint/rock)
+//                keep initial oc_prob 10/10/8/10/100 → sum 138.
+//                Total = 171 + 691 + 138 = 1000.  Empirically matches
+//                C's seed0030 mkobj rnd(go.oclass_prob_totals[GEM])
+//                at call 4981 = rnd(1000).
+//                NOTE: deeper levels recompute via the formula (lev/3
+//                changes the zero count); a real `o_init.js` port is
+//                needed to handle Dlvl > 1, which all 44 public
+//                sessions avoid in their first nh_getch capture.
 //   WEAPON, ARMOR, FOOD, TOOL, POTION, SCROLL, SPBOOK, WAND = 1000
 //   (default per-class total for the standard NetHack object sets).
 const OCLASS_PROB_TOTALS = {
@@ -387,7 +400,7 @@ const OCLASS_PROB_TOTALS = {
     8 /* TOOL */: 1000,
     9 /* SPBOOK */: 1000,
     10 /* AMULET */: 1000,
-    14 /* GEM */: 1002,
+    14 /* GEM */: 1000,
 };
 
 const RANDOM_CLASS_OCLASS = 0;

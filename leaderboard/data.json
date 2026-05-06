@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-05-06T12:45:04.450Z",
+  "timestamp": "2026-05-06T14:59:19.341Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-06T12:45:04.353Z",
+      "lastScored": "2026-05-06T14:59:19.236Z",
       "public": {
         "points": 127,
         "maxPoints": 11284,
         "passing": 0,
         "total": 44,
-        "rngPct": 6.788878588950478,
+        "rngPct": 6.789004710645302,
         "rngStepsPct": 62.947536334633114,
         "screenPct": 1.1254874158099966
       },
@@ -119,6 +119,12 @@
         },
         {
           "ts": "2026-05-06T12:45:04.353Z",
+          "points": 127,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T14:59:19.236Z",
           "points": 127,
           "maxPoints": 11284,
           "passing": 0
@@ -321,7 +327,7 @@
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 5108,
+            "matched": 5109,
             "total": 105529
           },
           "rngSteps": {
@@ -834,7 +840,7 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-06T12:44:47.206Z",
+      "lastScored": "2026-05-06T14:59:01.882Z",
       "public": {
         "points": 78,
         "maxPoints": 11284,
@@ -948,6 +954,12 @@
         },
         {
           "ts": "2026-05-06T12:44:47.206Z",
+          "points": 78,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-06T14:59:01.882Z",
           "points": 78,
           "maxPoints": 11284,
           "passing": 0
