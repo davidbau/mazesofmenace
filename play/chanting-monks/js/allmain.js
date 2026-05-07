@@ -157,7 +157,6 @@ export async function newgame() {
     g.u.uhp = 10; g.u.uhpmax = 10;
     g.u.uen = 2; g.u.uenmax = 2;
     g.u.uac = 10; g.u.uexp = 0;
-    g.u.ualign = { type: 0, record: 0 };
     g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
     g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
     g.moves = 1;
@@ -206,6 +205,28 @@ export async function newgame() {
     g.plname = g.plname || 'Contestant';
     // alignName — used for welcome message and display.
     g._align_name = align;
+    // u.ualign.type drives the status-line alignment word (Lawful /
+    // Neutral / Chaotic at row 22).  C uses +1/0/-1.  Previously
+    // hardcoded to 0 from seed8000's neutral default — broke status
+    // for every Lawful / Chaotic session.
+    const alignType = align === 'lawful' ? 1
+                    : align === 'chaotic' ? -1 : 0;
+    g.u.ualign = { type: alignType, record: 0 };
+
+    // Initial HP at level 1 = role.hpinit.lofix + race.hpinit.lofix.
+    // Both values are role/race constants (no RNG at level 1), so HP
+    // is deterministic per (role, race) pair.  C ref: role.c roles[]
+    // and races[] hpinit struct.  Was hardcoded to 10 from seed8000's
+    // Tourist+human default — wrong for every other role.
+    const ROLE_HPBASE = {
+        Archeologist: 11, Barbarian: 14, Caveman: 14, Healer: 11,
+        Knight: 14, Monk: 12, Priest: 12, Rogue: 10, Ranger: 13,
+        Samurai: 13, Tourist: 8, Valkyrie: 14, Wizard: 10,
+    };
+    const RACE_HPBASE = { human: 2, elf: 1, dwarf: 4, gnome: 1, orc: 1 };
+    const computedHP = (ROLE_HPBASE[role] || 8) + (RACE_HPBASE[race] || 2);
+    g.u.uhp = computedHP;
+    g.u.uhpmax = computedHP;
 
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
