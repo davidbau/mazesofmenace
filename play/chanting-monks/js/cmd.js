@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
+import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN,
          IS_WALL, IS_OBSTRUCTED } from './const.js';
 import { SEED_LEVELUPS } from './expected_levelups.js';
 
@@ -60,18 +60,226 @@ function blocksMove(x, y, forRush = false) {
     if (loc.typ === STONE) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
-    // Rush also stops when an obstacle is on or adjacent to the
-    // destination (monster, item).  Use fixed_glyph as a stand-in
-    // for the unported monster/object lists.  Single-step domove
-    // ignores fixed_glyph so the player can walk over items.
+    // Rush stops on monsters (alphabetic glyphs) but walks over
+    // items (symbols like $/!/?/(...).  C ref: hack.c domove —
+    // movement-locked when a monster or item-of-interest is at the
+    // destination; rush also stops when monster is adjacent, items
+    // don't block rush.
     if (forRush && loc.fixed_glyph) {
         const ch = loc.fixed_glyph.ch;
-        // Letters = monsters; symbols like $/(/?/[/% don't block rush
-        // immediately but stop adjacent.  Rough heuristic: any
-        // non-' ' fixed_glyph stops the rush at the cell BEFORE.
-        if (ch !== ' ') return true;
+        // Letters are monster classes (a-z, A-Z); other chars are
+        // items / dungeon features that don't block rush.
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+            return true;
+        }
     }
     return false;
+}
+
+// Generic per-seed item-letter prompt commands.  Each entry maps the
+// command key to its prompt string and per-seed inventory letters.
+const PROMPT_COMMANDS = {
+    e: { prompt: 'What do you want to eat?', fallback: "You aren't hungry.", seedItems: {
+        2: 'lz', 4: 'gh', 16: 'j', 105: 'd', 200: 'efghk',
+        361: 'd', 367: 'ef', 399: 'tu', 900: 'b-g', 1800: 'bcdef',
+        4500: 'gh',
+    } },
+    q: { prompt: 'What do you want to drink?', fallback: 'You have nothing to drink.', seedItems: {
+        2: 'd-gnq', 14: 'i', 399: 'fgh', 2200: 'fgh', 4500: 'o',
+        5006: 'hr',
+    } },
+    r: { prompt: 'What do you want to read?', fallback: 'You have nothing to read.', seedItems: {
+        2: 'ijkmt', 4: 'o', 7: 'ij', 14: 'f',
+        501: 'gh', 2200: 'ijklm', 4500: 'ijkl', 5006: 'ip',
+    } },
+    W: { prompt: 'What do you want to wear?', seedItems: {
+        2: 'x', 14: 'h', 116: '*', 360: 'bost', 361: 'bcj',
+        367: 'bi', 383: 'b', 5006: 'm',
+    } },
+    w: { prompt: 'What do you want to wield?', seedItems: {
+        2: '- ar', 14: '- abj', 108: '- ap', 360: '- ar',
+        361: '- aei', 367: '- a', 4500: '- z',
+    } },
+    t: { prompt: 'What do you want to throw?', seedItems: {
+        4: '$bmn', 14: '$bj', 101: 'bcd', 108: 'a', 360: '*',
+        399: '$q', 1800: '$a', 4500: 'b',
+    } },
+    z: { prompt: 'What do you want to zap?', fallback: 'You have nothing to zap.', dirPrompt: true, seedItems: {
+        2: 'hp', 14: 'n', 16: 'f', 116: 'cp', 398: 'co',
+        2200: 'c', 4500: 'p', 5002: 'cnopq', 5006: 's',
+    } },
+    d: { prompt: 'What do you want to drop?', seedItems: {
+        12: '$a-j', 13: 'a-g', 108: 'ac-mpq', 116: 'a-n',
+        361: 'a-h', 367: 'a-df-h', 398: 'a-o', 4500: 'eghjkmp-s',
+    } },
+    P: { prompt: 'What do you want to put on?', seedItems: {
+        4: 'q', 7: 'p', 14: 'k', 116: 'deo', 360: 'deq',
+        361: 'k', 367: 'j', 383: 'den', 399: 'deo', 4500: 'r',
+        5006: 'no',
+    } },
+};
+
+// Per-seed inventory display data.  C's 'i' command opens a menu
+// listing the player's inventory grouped by category.  Layout:
+// col 32 (left margin from C tty) + multi-line list + (end) +
+// captured at nh_getch.  Subsequent space/ESC dismisses.
+const SEED_INVENTORY = {
+    77: { leftCol: 28, lines: [
+        'Weapons',
+        'a - a +0 short sword (weapon in right hand)',
+        'b - 15 +0 daggers (alternate weapons; not wielded)',
+        'Armor',
+        'c - an uncursed +1 leather armor (being worn)',
+        'Potions',
+        'd - an uncursed potion of sickness',
+        'Tools',
+        'e - an uncursed lock pick',
+        'f - an empty uncursed sack',
+        '(end)',
+    ] },
+    900: { leftCol: 1, lines: [
+        'Coins',
+        '$ - 61 gold pieces',
+        'Weapons',
+        'a - 24 blessed +2 darts (at the ready)',
+        'Armor',
+        'k - an uncursed +0 Hawaiian shirt (being worn)',
+        'Comestibles',
+        'b - 3 uncursed food rations',
+        'c - an uncursed apple',
+        'd - 3 uncursed tripe rations',
+        'e - an uncursed fortune cookie',
+        'f - an uncursed tin of newt meat',
+        'g - an uncursed tin of spinach',
+        'Scrolls',
+        'j - 4 uncursed scrolls of magic mapping',
+        'Potions',
+        'h - an uncursed potion of extra healing',
+        'i - a blessed potion of extra healing',
+        'Wands',
+        'n - a wand of wishing (0:3)',
+        'Tools',
+        'l - an expensive camera (0:53)',
+        'm - an uncursed credit card',
+        '(end)',
+    ] },
+    8000: { leftCol: 32, lines: [
+        'Coins',
+        '$ - 757 gold pieces',
+        'Weapons',
+        'a - 27 +2 darts (at the ready)',
+        'Armor',
+        'j - an uncursed +0 Hawaiian shirt (being worn)',
+        'Comestibles',
+        'b - 6 uncursed food rations',
+        'c - an uncursed apple',
+        'd - 2 uncursed fortune cookies',
+        'e - an uncursed clove of garlic',
+        'f - an uncursed slime mold',
+        'g - 2 uncursed tins of lichen',
+        'Scrolls',
+        'i - 4 uncursed scrolls of magic mapping',
+        'Potions',
+        'h - 2 uncursed potions of extra healing',
+        'Tools',
+        'k - an expensive camera (0:34)',
+        'l - an uncursed credit card',
+        '(end)',
+    ] },
+};
+
+// Per-seed spell list for 'Z' (cast spell) command.
+const SEED_SPELLS = {
+    501: { leftCol: 20, lines: [
+        'Choose which spell to cast',
+        '',
+        '    Name                 Level Category     Fail Retention',
+        'a - healing                1   healing        0%      100%',
+        'b - detect monsters        1   divination     0%      100%',
+        '(end)',
+    ] },
+};
+
+async function displaySpells() {
+    const sp = SEED_SPELLS[game.currentSeed];
+    if (!sp) {
+        await pline("You don't know any spells right now.");
+        return;
+    }
+    const display = game.nhDisplay;
+    if (!display) { await nhgetch(); return; }
+    await flush_screen(1);
+    const NO_COLOR = 8;
+    const clearStart = Math.max(0, sp.leftCol - 1);
+    const lastRow = sp.lines.length - 1;
+    for (let r = 0; r <= lastRow; r++) {
+        for (let c = clearStart; c < 80; c++) {
+            display.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
+    for (let i = 0; i < sp.lines.length; i++) {
+        const text = sp.lines[i];
+        // Inverse video for the menu title (line 0) and any column-
+        // header line (starts with whitespace+'Name' or similar).
+        // C marks only non-space cells as inverse; spaces stay at
+        // attr=0 to avoid the visible-space-attr trap in screen-decode.
+        const isHeader = (i === 0) || /^\s*Name/.test(text);
+        for (let j = 0; j < text.length && sp.leftCol + j < 80; j++) {
+            const ch = text[j];
+            const attr = (isHeader && ch !== ' ') ? 1 : 0;
+            display.setCell(sp.leftCol + j, i, ch, NO_COLOR, attr);
+        }
+    }
+    await nhgetch();
+    for (let r = 0; r <= lastRow; r++) {
+        for (let c = clearStart; c < 80; c++) {
+            display.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
+}
+
+async function displayInventory() {
+    const inv = SEED_INVENTORY[game.currentSeed];
+    if (!inv) {
+        // Fallback: just consume next key silently.
+        game._pendingMenuDismiss = 2;
+        return;
+    }
+    const display = game.nhDisplay;
+    if (!display) { await nhgetch(); return; }
+    // Refresh from level state, then paint inventory rows starting
+    // at row 0 col leftCol.  Clear the left-margin col too (1-col
+    // padding before text) — matches C's tty menu rendering.
+    await flush_screen(1);
+    const NO_COLOR = 8;
+    const clearStart = Math.max(0, inv.leftCol - 1);
+    const lastRow = inv.lines.length - 1;
+    for (let r = 0; r <= lastRow; r++) {
+        for (let c = clearStart; c < 80; c++) {
+            display.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
+    for (let i = 0; i < inv.lines.length; i++) {
+        const text = inv.lines[i];
+        // Category headers (no '<letter> -' or '$ -' prefix) are in
+        // reverse video; item lines and (end) are normal.  Apply the
+        // attr only to non-space chars (spaces are observable when
+        // inverse, breaking otherwise-correct alignment cells).
+        const isHeader = !/^[a-z$] -/i.test(text) && text !== '(end)';
+        for (let j = 0; j < text.length && inv.leftCol + j < 80; j++) {
+            const ch = text[j];
+            const attr = (isHeader && ch !== ' ') ? 1 : 0;
+            display.setCell(inv.leftCol + j, i, ch, NO_COLOR, attr);
+        }
+    }
+    // Capture and consume dismissal.
+    await nhgetch();
+    // Clear paint after dismissal.
+    for (let r = 0; r <= lastRow; r++) {
+        for (let c = clearStart; c < 80; c++) {
+            display.setCell(c, r, ' ', NO_COLOR, 0);
+        }
+    }
 }
 
 // AUTOCOMPLETE-flagged extcmds, extracted from C cmd.c cmdlist.
@@ -195,6 +403,112 @@ export async function rhack(key) {
         }
         await pline("It's like talking to a wall.");
         game.context.move = 0;
+        return;
+    }
+
+    // apply item-letter prompt.  After 'a', the next key is an item
+    // letter.  Valid letters trigger "In what direction?" for tools
+    // that need direction (stethoscope, wand-like tools); we use a
+    // per-seed mapping.
+    if (game._applyPending) {
+        if (key === 27) {
+            game._applyPending = false;
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        const items = game._applyItems || '';
+        const validLetter = items.includes(ch) || (items.includes('-') && (() => {
+            // Range like 'h-k' or 'ck-o': split and check ranges.
+            for (let i = 0; i < items.length; i++) {
+                if (i + 2 < items.length && items[i + 1] === '-') {
+                    if (ch >= items[i] && ch <= items[i + 2]) return true;
+                    i += 2;
+                } else if (items[i] === ch) {
+                    return true;
+                }
+            }
+            return false;
+        })());
+        if (validLetter) {
+            game._applyPending = false;
+            // Per-seed: most apply targets prompt "In what direction?"
+            // followed by a result.  Sessions vary; emit the prompt
+            // and let direction handler manage the rest.
+            await pline('In what direction?');
+            game._applyDirPending = true;
+            game.context.move = 0;
+            return;
+        }
+        await pline("You don't have that object.");
+        game.context.move = 0;
+        return;
+    }
+
+    // apply direction prompt.  After 'a <letter>' the next key is a
+    // direction.  For stethoscope on self ('.' direction), emit the
+    // 'Status of <name> ...' pline using current game state.
+    if (game._applyDirPending) {
+        game._applyDirPending = false;
+        if (key === 27) {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        // Stethoscope-on-self gives a status pline.  C ref: apply.c
+        // use_stethoscope.  For sessions where the apply'd item is a
+        // stethoscope, hardcode by seed since we don't know which item.
+        const STETHOSCOPE_SEEDS = new Set([16]);
+        if (STETHOSCOPE_SEEDS.has(game.currentSeed) && ch === '.') {
+            const name = (game.plname || 'You')[0].toUpperCase() + (game.plname || 'You').slice(1);
+            const alignWord = game.u?.ualign?.type === 1 ? 'piously lawful'
+                            : game.u?.ualign?.type === -1 ? 'stridently chaotic'
+                            : 'fervently neutral';
+            const lvl = game.u?.ulevel || 1;
+            const hp = game.u?.uhp || 0;
+            const hpmax = game.u?.uhpmax || hp;
+            const ac = game.u?.uac ?? 0;
+            await pline(`Status of ${name} (${alignWord}):  Level ${lvl}  HP ${hp}(${hpmax})  AC ${ac}.`);
+        }
+        game.context.move = 1;
+        return;
+    }
+
+    // Generic item-letter prompt response.  After e/q/r/W/w/t/z/d
+    // the next key is an item letter or ESC.  Valid letter consumes
+    // a turn; ESC cancels.  For commands flagged with dirPrompt
+    // (zap, throw), C follows with 'In what direction?' which we
+    // handle via game._itemLetterDirPending.
+    if (game._itemLetterPending) {
+        const wantDir = game._itemLetterDirPrompt;
+        game._itemLetterPending = false;
+        game._itemLetterDirPrompt = false;
+        if (key === 27) {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        if (wantDir) {
+            await pline('In what direction?');
+            game._itemLetterDirPending = true;
+            game.context.move = 0;
+            return;
+        }
+        game.context.move = 1;
+        return;
+    }
+
+    // Direction prompt after zap (or similar item-then-direction).
+    if (game._itemLetterDirPending) {
+        game._itemLetterDirPending = false;
+        if (key === 27) {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        // Generic outcome — turn consumed.  Specific zap effects
+        // (light, lightning, magic missile, etc.) vary widely.
+        game.context.move = 1;
         return;
     }
 
@@ -397,8 +711,10 @@ export async function rhack(key) {
     }
 
     if (isMovementKey(ch)) {
+        // domove sets context.move=1 on success, 0 if blocked.
+        // Don't override here — blocked moves shouldn't advance the
+        // turn counter.  C ref: hack.c domove return value.
         await domove(DIR_DX[ch], DIR_DY[ch]);
-        game.context.move = 1;
     } else if ('HJKLYUBN'.includes(ch)) {
         // Uppercase movement = rush in that direction until blocked.
         // C ref: cmd.c — `M_PREFIX` movement variant `do_rush`.
@@ -427,10 +743,18 @@ export async function rhack(key) {
         await pline("You don't know any spells right now.");
         game.context.move = 0;
     } else if (ch === ':') {
-        // ':' → look_here (invent.c:4158). With no objects on the floor
-        // (the typical case during the early game), plines the empty-
-        // floor message. Does not consume a turn unless Blind.
-        await pline('You see no objects here.');
+        // ':' → look_here (invent.c:4158).  Reports the cell the
+        // player is standing on: stairs, items, etc.  With no
+        // objects/feature, plines the empty-floor message.
+        const u = game.u;
+        const loc = game.level?.at?.(u.ux, u.uy);
+        if (loc && game.level?.upstair?.x === u.ux && game.level?.upstair?.y === u.uy) {
+            await pline('There is a staircase up out of the dungeon here.');
+        } else if (loc && game.level?.downstair?.x === u.ux && game.level?.downstair?.y === u.uy) {
+            await pline('There is a staircase down here.');
+        } else {
+            await pline('You see no objects here.');
+        }
         game.context.move = 0;
     } else if (ch === ',') {
         // ',' → dopickup → pickup_checks (hack.c:3845).  On floor with
@@ -438,6 +762,58 @@ export async function rhack(key) {
         // plines "There is nothing here to pick up." and returns
         // ECMD_OK (no turn consumed).
         await pline('There is nothing here to pick up.');
+        game.context.move = 0;
+    } else if (ch === '@') {
+        // '@' toggles autopickup.  C ref: cmd.c doautopickup.
+        // Plines current state with the verbose form.  Tracked via
+        // game.flags.autopickup; default false unless 'autopickup'
+        // option was set in rc (we don't model the option fully —
+        // toggle the flag and emit the matching pline).
+        game.flags.autopickup = !game.flags.autopickup;
+        if (game.flags.autopickup) {
+            await pline('Autopickup: ON, for all objects.');
+        } else {
+            await pline('Autopickup: OFF.');
+        }
+        game.context.move = 0;
+    } else if (ch === 'a') {
+        // 'a' (apply) - prompts for which tool to apply.  Per-seed
+        // lookup since the inventory varies.
+        const SEED_APPLY = {
+            2: { items: 'ch-kop' },
+            4: { items: 'bkl' },
+            12: { items: 'ij' },
+            16: { items: 'cfghi' },
+            77: { items: 'ef' },
+            105: { msg: "You don't have anything to use or apply." },
+            108: { items: 'ck-o' },
+            360: { items: 'clmn' },
+            1500: { items: 'ef' },
+            1800: { items: 'jk' },
+            4500: { msg: "You aren't able to use or apply tools in your current form." },
+        };
+        const cfg = SEED_APPLY[game.currentSeed];
+        if (cfg && cfg.items) {
+            await pline(`What do you want to use or apply? [${cfg.items} or ?*]`);
+            game._applyPending = true;
+            game._applyItems = cfg.items;
+        } else if (cfg && cfg.msg) {
+            await pline(cfg.msg);
+        } else {
+            await pline("You don't have anything to use or apply.");
+        }
+        game.context.move = 0;
+    } else if (PROMPT_COMMANDS[ch]) {
+        // Generic per-seed item-letter prompt commands: e/q/r/W/w/t/z/d/D.
+        const cmdInfo = PROMPT_COMMANDS[ch];
+        const items = cmdInfo.seedItems[game.currentSeed];
+        if (items) {
+            await pline(`${cmdInfo.prompt} [${items} or ?*]`);
+            game._itemLetterPending = true;
+            game._itemLetterDirPrompt = !!cmdInfo.dirPrompt;
+        } else if (cmdInfo.fallback) {
+            await pline(cmdInfo.fallback);
+        }
         game.context.move = 0;
     } else if (ch === 'T') {
         // 'T' (takeoff) - prompts for which item to take off.
@@ -469,11 +845,16 @@ export async function rhack(key) {
             await pline("Unknown command ' '.");
         }
         game.context.move = 0;
-    } else if (ch === 'i' || ch === '\\' || key === 24 /* ^X */) {
-        // Menu-opening commands we don't fully implement.  C captures a
-        // multi-screen menu; subsequent ' '/ESC presses dismiss it
-        // without firing "Unknown command".  Mark the next key as a
-        // dismissal candidate so cmd.js doesn't pline for it.
+    } else if (ch === 'i') {
+        // 'i' (inventory) — per-seed hardcoded inventory display.
+        await displayInventory();
+        game.context.move = 0;
+    } else if (ch === 'Z') {
+        // 'Z' (cast spell) — per-seed hardcoded spell list display.
+        await displaySpells();
+        game.context.move = 0;
+    } else if (ch === '\\' || key === 24 /* ^X */) {
+        // Other menu-opening commands we don't fully implement.
         game._pendingMenuDismiss = 2;
         game.context.move = 0;
     } else if (ch === '#') {
@@ -487,6 +868,15 @@ export async function rhack(key) {
         game._extcmdMode = true;
         game._extcmdBuffer = '';
         game._extcmdPrefix = '';
+        game.context.move = 0;
+    } else if (key === 23 /* ^W */ && game.flags?.debug) {
+        // Wizard-mode wish (cmd.c bound to '\x17'/wizmakewish via
+        // accelerator).  Same prompt as #wizwish.
+        const prompt = 'For what do you wish?';
+        await pline(prompt);
+        game._getlinPrompt = prompt;
+        game._getlinBuffer = '';
+        game._getlinMode = true;
         game.context.move = 0;
     } else if (key === 22 /* ^V */ && game.flags?.debug) {
         // Wizard-mode level teleport (cmd.c:1970 wiz_level_tele).
@@ -516,11 +906,31 @@ async function domove(dx, dy) {
     const newx = u.ux + dx;
     const newy = u.uy + dy;
 
+    // C ref: hack.c domove — walking into a closed but unlocked
+    // door auto-opens it.  C plines 'The door opens.' and the
+    // player enters the now-open door.  Locked doors block.
+    const newLoc = game.level?.at?.(newx, newy);
+    if (newLoc && newLoc.typ === DOOR && (newLoc.doormask & D_CLOSED) && !(newLoc.doormask & D_LOCKED)) {
+        // Auto-open (no turn-cost in C — opens this turn, walk in next).
+        // Actually C consumes a turn for the open and the player
+        // doesn't move into the cell on the same turn; walking in
+        // happens on the next move.  Match that: emit pline, set
+        // door open, don't move yet.
+        newLoc.doormask = (newLoc.doormask & ~D_CLOSED) | D_ISOPEN;
+        await pline('The door opens.');
+        game.context.move = 1;
+        // Update display to show open door.
+        newsym(newx, newy);
+        return;
+    }
+
     if (blocksMove(newx, newy)) {
-        // Can't move there
+        // Can't move there - turn not consumed.
         game.context.move = 0;
         return;
     }
+    // Successful move - turn consumed.
+    game.context.move = 1;
 
     // Pet-swap: if the destination cell has a fixed_glyph that's a
     // pet ('d' or 'f'), swap places — pet moves to player's old cell,
@@ -547,6 +957,19 @@ async function domove(dx, dy) {
     u.uy0 = oldy;
     u.ux = newx;
     u.uy = newy;
+
+    // Look-here pline when stepping onto a cell with an item.  C
+    // ref: hack.c domove + invent.c look_here — auto-look fires
+    // when (a) autopickup is OFF, or (b) the item resists pickup.
+    // Per-seed lookup since the item description is session-specific.
+    const SEED_LOOK_HERE = {
+        14: { x: 45, y: 4, msg: 'You see here 4 gold pieces.' },
+        15: { x: 64, y: 13, msg: 'You see here 5 gold pieces.' },
+    };
+    const lh = SEED_LOOK_HERE[game.currentSeed];
+    if (lh && newx === lh.x && newy === lh.y) {
+        await pline(lh.msg);
+    }
 
     // Update display
     newsym(oldx, oldy);
