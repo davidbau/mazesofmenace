@@ -20,6 +20,7 @@ import {
 } from './fastforward.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init, chargen_simulate, chargen_simulate_async } from './role.js';
+import { display_legacy } from './legacy.js';
 import { OROOM, THEMEROOM, FILL_NORMAL } from './const.js';
 
 // C ref: mklev.c:929 ROOM_IS_FILLABLE macro
@@ -216,6 +217,14 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
+    // Legacy book — C ref: allmain.c:831-833.  Renders the role +
+    // alignment-specific intro story as a centered overlay with a
+    // --More-- prompt, captured at the next nh_getch.  Skipped when
+    // OPTIONS=!legacy (default ON per optlist.h:411).
+    if (g.flags?.legacy !== false) {
+        await display_legacy();
+    }
+
     // Welcome message — C ref: allmain.c:880-916.
     // buf assembly: " <align> [gender] <race-adj> <role>"
     // gender word is suppressed when (a) role allows only one gender or
@@ -256,11 +265,13 @@ export async function moveloop_core() {
     await bot();
     await flush_screen(1);
 
-    // Read and execute one command
+    // Read and execute one command.  rhack may pline a result (e.g. '+'
+    // dovspell, ':' look_here) that needs to appear in the *next*
+    // iteration's screen.  The pline buffer is cleared inside
+    // _preNhgetchHook right after each capture, so any pline that
+    // follows the capture stays in _pending_message until the next
+    // flush_screen renders it.
     await rhack(0);
-
-    // Clear message after command is processed
-    g._pending_message = '';
 
     // Advance turn
     if (g.context?.move) {

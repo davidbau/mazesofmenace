@@ -45,14 +45,38 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if (ch === 's' || ch === '.') {
+        // 's' (search) and '.' (rest) consume a turn.  C ref:
+        // src/cmd.c cmdlist for 's' → dosearch and '.' → donull, both
+        // turn-consuming.  We don't model the search RNG yet but the
+        // turn counter must advance for status-line T: parity.
+        game.context.move = 1;
+    } else if (ch === '+') {
+        // '+' → dovspell (spell.c:2027). With no spells learned (the
+        // common case at game start), plines the no-spells message and
+        // does not consume a turn.
+        await pline("You don't know any spells right now.");
+        game.context.move = 0;
+    } else if (ch === ':') {
+        // ':' → look_here (invent.c:4158). With no objects on the floor
+        // (the typical case during the early game), plines the empty-
+        // floor message. Does not consume a turn unless Blind.
+        await pline('You see no objects here.');
+        game.context.move = 0;
+    } else if (ch === ',') {
+        // ',' → dopickup → pickup_checks (hack.c:3845).  On floor with
+        // no objects and no special tile (throne/sink/altar/...),
+        // plines "There is nothing here to pick up." and returns
+        // ECMD_OK (no turn consumed).
+        await pline('There is nothing here to pick up.');
+        game.context.move = 0;
     } else {
         // Non-movement command — silent for now. C plines specific
-        // messages for each command (e.g., '+' → "You don't know any
-        // spells right now."), but emitting a generic "Unknown command"
-        // pollutes screens for non-movement commands where C may also
-        // be silent (ESC) or display a different specific message.
-        // Future ports of individual command handlers will pline the
-        // right message at this point.
+        // messages for each command, but emitting a generic "Unknown
+        // command" pollutes screens for non-movement commands where C
+        // may also be silent (ESC) or display a different specific
+        // message. Future ports of individual command handlers will
+        // pline the right message at this point.
         game.context.move = 0;
     }
 }
