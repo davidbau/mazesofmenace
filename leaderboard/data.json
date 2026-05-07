@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-07T07:11:03.735Z",
+  "timestamp": "2026-05-07T09:02:52.706Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "serteal",
       "fork": "serteal/teleport-contest",
-      "lastScored": "2026-05-07T07:10:10.216Z",
+      "lastScored": "2026-05-07T09:01:59.991Z",
       "public": {
         "points": 11284,
         "maxPoints": 11284,
@@ -27,6 +27,12 @@
       "history": [
         {
           "ts": "2026-05-07T07:10:10.216Z",
+          "points": 11284,
+          "maxPoints": 11284,
+          "passing": 44
+        },
+        {
+          "ts": "2026-05-07T09:01:59.991Z",
           "points": 11284,
           "maxPoints": 11284,
           "passing": 44
@@ -742,7 +748,7 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-07T07:11:03.626Z",
+      "lastScored": "2026-05-07T09:02:52.599Z",
       "public": {
         "points": 131,
         "maxPoints": 11284,
@@ -910,6 +916,12 @@
         },
         {
           "ts": "2026-05-07T07:11:03.626Z",
+          "points": 131,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-07T09:02:52.599Z",
           "points": 131,
           "maxPoints": 11284,
           "passing": 0
@@ -1625,7 +1637,7 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-07T07:10:45.900Z",
+      "lastScored": "2026-05-07T09:02:35.072Z",
       "public": {
         "points": 78,
         "maxPoints": 11284,
@@ -1793,6 +1805,12 @@
         },
         {
           "ts": "2026-05-07T07:10:45.900Z",
+          "points": 78,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-07T09:02:35.072Z",
           "points": 78,
           "maxPoints": 11284,
           "passing": 0
@@ -2508,7 +2526,7 @@
     {
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
-      "lastScored": "2026-05-07T07:10:28.129Z",
+      "lastScored": "2026-05-07T09:02:17.525Z",
       "public": {
         "points": 15,
         "maxPoints": 11284,
@@ -2566,6 +2584,12 @@
         },
         {
           "ts": "2026-05-07T07:10:28.129Z",
+          "points": 15,
+          "maxPoints": 11284,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-07T09:02:17.525Z",
           "points": 15,
           "maxPoints": 11284,
           "passing": 0
