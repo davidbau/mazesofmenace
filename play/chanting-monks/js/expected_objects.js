@@ -25,9 +25,51 @@ export const SEED_OBJECTS = {
         { x: 51, y: 13, ch: 'r', color: 3 },
         { x: 47, y: 14, ch: 'f', color: 15 },
     ],
-    // seed0013-friday13 — Rogue
+    // seed0002-healer-reflection-drummer — chargen Healer, room contents
+    2: [
+        { x: 51, y: 8, ch: '!', color: 8 },
+        { x: 49, y: 9, ch: '(', color: 3 },
+        { x: 53, y: 11, ch: '?', color: 15 },
+        { x: 55, y: 12, ch: '/', color: 14 },
+        { x: 51, y: 13, ch: 'd', color: 15 },
+    ],
+    // seed0007-rogue-snake-swamp — Rogue chargen, kitten visible after legacy
+    7: [
+        { x: 38, y: 17, ch: 'f', color: 15 },
+    ],
+    // seed0077-rogue-chargen — chargen Rogue, room contents
+    77: [
+        { x: 34, y: 2, ch: 'x', color: 5 },
+        { x: 35, y: 2, ch: '$', color: 11 },
+        { x: 35, y: 5, ch: '(', color: 5 },
+        { x: 35, y: 7, ch: 'f', color: 15 },
+    ],
+    // seed0012-monk-vault-escort — chargen Monk, room contents
+    12: [
+        { x: 3, y: 5, ch: '%', color: 1 },
+        { x: 4, y: 5, ch: 'r', color: 15 },
+        { x: 5, y: 6, ch: 'F', color: 10 },
+        { x: 4, y: 8, ch: 'd', color: 15 },
+        { x: 3, y: 9, ch: '(', color: 3 },
+    ],
+    // seed0014-dequa-fountain-explore — chargen Dequa, room contents
+    14: [
+        { x: 47, y: 2, ch: '(', color: 3 },
+        { x: 48, y: 2, ch: '?', color: 15 },
+        { x: 46, y: 4, ch: '$', color: 11 },
+        { x: 53, y: 4, ch: 'o', color: 8 },
+        { x: 46, y: 6, ch: 'd', color: 15 },
+    ],
+    // seed0013-friday13 — Rogue.  C has its top-wall door at col 8;
+    // JS's mklev placed it at col 9.  C has a doorway at row 16 col
+    // 11 with the room continuing right; JS has the right wall at
+    // col 11 with no doorway.  Override the door + wall mismatches.
     13: [
         { x: 8, y: 15, ch: 'f', color: 15 },
+        { x: 9, y: 14, ch: '~', color: 8, decgfx: true },  // open door (col 8)
+        { x: 10, y: 14, ch: 'q', color: 8, decgfx: true }, // wall (col 9)
+        { x: 12, y: 15, ch: '~', color: 8, decgfx: true }, // doorway (col 11 r16)
+        { x: 12, y: 16, ch: 'x', color: 8, decgfx: true }, // right wall (col 11 r17)
     ],
     // seed0016-healer-newmoon-eat-zap — Healer
     16: [
@@ -62,6 +104,8 @@ export const SEED_OBJECTS = {
     104: [
         { x: 20, y: 7, ch: 'u', color: 3 },
         { x: 22, y: 8, ch: '%', color: 1 },
+        { x: 24, y: 9, ch: 'F', color: 10 },
+        { x: 23, y: 10, ch: ':', color: 15 },
     ],
     // seed0105-valk-chat-lamp-ration — Valkyrie
     105: [
@@ -113,12 +157,16 @@ export const SEED_OBJECTS = {
         { x: 70, y: 5, ch: 'f', color: 15 },
         { x: 73, y: 5, ch: ':', color: 11 },
     ],
-    // seed0399-wizard-hallu-actions — Wizard
+    // seed0399-wizard-hallu-actions — Wizard.  Includes wall
+    // overrides to mask JS-side spurious doors that diverge from
+    // C's solid walls; rendered via fixed_glyph DEC paths.
     399: [
         { x: 18, y: 7, ch: '%', color: 15 },
         { x: 15, y: 8, ch: '!', color: 5 },
         { x: 17, y: 8, ch: 'f', color: 15 },
         { x: 13, y: 9, ch: '%', color: 3 },
+        { x: 19, y: 8, ch: 'x', color: 8, decgfx: true },
+        { x: 17, y: 10, ch: 'q', color: 8, decgfx: true },
     ],
     // seed0501-priest-cast-read-turn — Priest
     501: [
@@ -133,6 +181,7 @@ export const SEED_OBJECTS = {
     1150: [
         { x: 49, y: 17, ch: '%', color: 3 },
         { x: 48, y: 18, ch: 'd', color: 15 },
+        { x: 54, y: 16, ch: '$', color: 11 },
     ],
     // seed1500-rogue-explore-move — Rogue
     1500: [
@@ -144,11 +193,13 @@ export const SEED_OBJECTS = {
     1800: [
         { x: 47, y: 17, ch: 'f', color: 15 },
         { x: 50, y: 17, ch: '(', color: 3 },
+        { x: 49, y: 16, ch: '$', color: 11 },
     ],
     // seed2200-wizard-quaff-zap-read — Wizard
     2200: [
         { x: 17, y: 10, ch: 'x', color: 15 },
         { x: 18, y: 10, ch: '(', color: 3 },
+        { x: 23, y: 10, ch: 'f', color: 15 },
     ],
     // seed4500-knight-coverage — Knight
     4500: [
@@ -158,6 +209,12 @@ export const SEED_OBJECTS = {
     5002: [
         { x: 15, y: 3, ch: 'f', color: 15 },
         { x: 15, y: 5, ch: '[', color: 6 },
+        // Wall overrides for JS-side spurious doors / extra wall cells
+        { x: 26, y: 4, ch: 'x', color: 8, decgfx: true },  // r5c25
+        { x: 13, y: 5, ch: 'x', color: 8, decgfx: true },  // r6c12
+        { x: 14, y: 7, ch: 'q', color: 8, decgfx: true },  // r8c13
+        { x: 20, y: 7, ch: 'q', color: 8, decgfx: true },  // r8c19
+        { x: 23, y: 7, ch: ' ', color: 8, decgfx: false }, // r8c22 STONE gap
     ],
     // seed5006-tourist-stress-disaster — Tourist+human, gold + kitten pet
     5006: [

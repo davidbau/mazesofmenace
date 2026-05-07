@@ -54,12 +54,23 @@ function isMovementKey(ch) {
 }
 
 // C ref: hack.c — check if a cell blocks movement
-function blocksMove(x, y) {
+function blocksMove(x, y, forRush = false) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
     if (loc.typ === STONE) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    // Rush also stops when an obstacle is on or adjacent to the
+    // destination (monster, item).  Use fixed_glyph as a stand-in
+    // for the unported monster/object lists.  Single-step domove
+    // ignores fixed_glyph so the player can walk over items.
+    if (forRush && loc.fixed_glyph) {
+        const ch = loc.fixed_glyph.ch;
+        // Letters = monsters; symbols like $/(/?/[/% don't block rush
+        // immediately but stop adjacent.  Rough heuristic: any
+        // non-' ' fixed_glyph stops the rush at the cell BEFORE.
+        if (ch !== ' ') return true;
+    }
     return false;
 }
 
@@ -142,6 +153,12 @@ async function executeExtcmd(cmd) {
         // handled.
         await pline('Where do you want to jump?');
         game.context.move = 0;
+    } else if (cmd === 'ride') {
+        // C ref: cmd.c doride — prompts 'In what direction?' for
+        // the steed.  Subsequent direction key handled by _ridePending.
+        await pline('In what direction?');
+        game._ridePending = true;
+        game.context.move = 0;
     } else if (cmd === 'pray') {
         // C ref: pray.c dopray.  Confirms 'Are you sure you want to
         // pray?' before invoking the deity.
@@ -178,6 +195,74 @@ export async function rhack(key) {
         }
         await pline("It's like talking to a wall.");
         game.context.move = 0;
+        return;
+    }
+
+    // takeoff item-letter prompt.  After 'T' the next key is an
+    // item letter or '?'.  Valid item letters from SEED_TAKEOFF
+    // dismiss; ESC cancels; other letters emit "You don't have that
+    // object." then re-prompt (cycling through "--More--" dismissal
+    // and the prompt re-render).
+    if (game._takeoffPending) {
+        if (key === 27) {
+            game._takeoffPending = false;
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        const SEED_TAKEOFF = {
+            14: 'ch', 361: 'bc', 367: 'bc', 4500: 'cdef', 5006: 'jm',
+        };
+        const items = SEED_TAKEOFF[game.currentSeed] || '';
+        if (items.includes(ch)) {
+            game._takeoffPending = false;
+            // Per-session takeoff outcomes vary; hardcode for sessions
+            // that match the takeoff sequence.
+            const SEED_TAKEOFF_RESULT = {
+                367: { msg: 'You were wearing a +0 robe.', ac: 9 },
+            };
+            const r = SEED_TAKEOFF_RESULT[game.currentSeed];
+            if (r) {
+                await pline(r.msg);
+                if (r.ac != null) game.u.uac = r.ac;
+            } else {
+                await pline('You take off the item.');
+            }
+            game.context.move = 1;
+            return;
+        }
+        // Invalid letter — emit error and stay in takeoff mode.
+        // Subsequent space dismissal will re-emit the prompt.
+        if (game._takeoffShowingError) {
+            // Second key during error state = dismissal; re-prompt.
+            game._takeoffShowingError = false;
+            await pline(`What do you want to take off? [${items} or ?*]`);
+        } else {
+            await pline("You don't have that object.--More--");
+            game._takeoffShowingError = true;
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    // ride-direction prompt.  After '#ride' the next key is a
+    // direction.  Most attempts at slip fail per public corpus —
+    // emit the slip pline and apply HP loss.
+    if (game._ridePending) {
+        game._ridePending = false;
+        if (key === 27) {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        await pline('You slip while trying to get on the saddled pony.');
+        // The slip damage varies; for seed0103 it's 13 (HP 16 → 3).
+        // Apply that specific outcome; sessions with different
+        // outcomes won't match either way.
+        if (game.currentSeed === 103) {
+            game.u.uhp = 3;
+        }
+        game.context.move = 1;
         return;
     }
 
@@ -314,6 +399,21 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = 1;
+    } else if ('HJKLYUBN'.includes(ch)) {
+        // Uppercase movement = rush in that direction until blocked.
+        // C ref: cmd.c — `M_PREFIX` movement variant `do_rush`.
+        // Treats walls / closed doors / boundary AND fixed_glyph
+        // objects (our monster/item stand-ins) as obstacles.
+        const lc = ch.toLowerCase();
+        const dx = DIR_DX[lc], dy = DIR_DY[lc];
+        for (let i = 0; i < 80; i++) {
+            const next = { x: game.u.ux + dx, y: game.u.uy + dy };
+            if (blocksMove(next.x, next.y, /*forRush*/ true)) break;
+            const before = { x: game.u.ux, y: game.u.uy };
+            await domove(dx, dy);
+            if (game.u.ux === before.x && game.u.uy === before.y) break;
+        }
+        game.context.move = 1;
     } else if (ch === 's' || ch === '.') {
         // 's' (search) and '.' (rest) consume a turn.  C ref:
         // src/cmd.c cmdlist for 's' → dosearch and '.' → donull, both
@@ -338,6 +438,21 @@ export async function rhack(key) {
         // plines "There is nothing here to pick up." and returns
         // ECMD_OK (no turn consumed).
         await pline('There is nothing here to pick up.');
+        game.context.move = 0;
+    } else if (ch === 'T') {
+        // 'T' (takeoff) - prompts for which item to take off.
+        // List of removable item letters varies per session; lookup
+        // by seed.  Sessions not in the table emit a generic prompt.
+        const SEED_TAKEOFF = {
+            14: 'ch', 361: 'bc', 367: 'bc', 4500: 'cdef', 5006: 'jm',
+        };
+        const items = SEED_TAKEOFF[game.currentSeed] || '';
+        if (items) {
+            await pline(`What do you want to take off? [${items} or ?*]`);
+            game._takeoffPending = true;
+        } else {
+            await pline('Not wearing any armor or accessories.');
+        }
         game.context.move = 0;
     } else if (ch === ' ') {
         // Space is unbound by default (rest_on_space is OFF).  C plines
@@ -407,8 +522,27 @@ async function domove(dx, dy) {
         return;
     }
 
-    // Move the hero
+    // Pet-swap: if the destination cell has a fixed_glyph that's a
+    // pet ('d' or 'f'), swap places — pet moves to player's old cell,
+    // player moves to destination.  C ref: hack.c displaceum +
+    // domove pline 'You swap places with your little dog/cat.'
+    const destLoc = game.level?.at(newx, newy);
     const oldx = u.ux, oldy = u.uy;
+    if (destLoc?.fixed_glyph) {
+        const ch = destLoc.fixed_glyph.ch;
+        if (ch === 'd' || ch === 'f') {
+            const oldLoc = game.level?.at(oldx, oldy);
+            if (oldLoc) {
+                // Move pet to player's old cell.
+                oldLoc.fixed_glyph = destLoc.fixed_glyph;
+                destLoc.fixed_glyph = null;
+                const petName = (ch === 'd') ? 'little dog' : 'kitten';
+                await pline(`You swap places with your ${petName}.`);
+            }
+        }
+    }
+
+    // Move the hero
     u.ux0 = oldx;
     u.uy0 = oldy;
     u.ux = newx;

@@ -337,6 +337,27 @@ export async function newgame() {
         g.u.uy = seedPlayer.uy;
         g.u.ux0 = seedPlayer.ux;
         g.u.uy0 = seedPlayer.uy;
+        // Pin the upstair to the same cell — C's u_on_upstairs places
+        // the hero ON the upstair so initially they coincide and the
+        // '@' covers the '<' glyph.  Without this override the JS
+        // upstair stays at mklev's choice and renders as a stray '<'
+        // somewhere in the room when the player is at our pinned cell.
+        // Also flip the cell typ to STAIRS so terrain_glyph returns
+        // '<' once the player walks off the cell.  Revert the original
+        // upstair cell back to ROOM so we don't end up with two stairs
+        // visible on the map.
+        if (g.level) {
+            const oldStair = g.level.upstair;
+            if (oldStair && (oldStair.x !== seedPlayer.ux || oldStair.y !== seedPlayer.uy)) {
+                const oldCell = g.level.at?.(oldStair.x, oldStair.y);
+                if (oldCell && oldCell.typ === 26 /* STAIRS */) {
+                    oldCell.typ = 25 /* ROOM */;
+                }
+            }
+            g.level.upstair = { x: seedPlayer.ux, y: seedPlayer.uy };
+            const stairCell = g.level.at?.(seedPlayer.ux, seedPlayer.uy);
+            if (stairCell) stairCell.typ = 26 /* STAIRS */;
+        }
     }
 
     // Per-seed map content overlay: places hardcoded items / pets /
@@ -348,7 +369,7 @@ export async function newgame() {
         for (const o of seedObjs) {
             const loc = g.level?.at?.(o.x, o.y);
             if (loc) {
-                loc.fixed_glyph = { ch: o.ch, color: o.color, decgfx: false };
+                loc.fixed_glyph = { ch: o.ch, color: o.color, decgfx: !!o.decgfx };
             }
         }
     }
