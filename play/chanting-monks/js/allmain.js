@@ -21,6 +21,9 @@ import {
 import { init_dungeons } from './dungeon.js';
 import { role_init, chargen_simulate, chargen_simulate_async } from './role.js';
 import { display_legacy } from './legacy.js';
+import { display_tutorial_menu } from './tutorial_menu.js';
+import { preamble_will_pline, preamble_plines } from './moonphase.js';
+import { nhgetch } from './input.js';
 import { OROOM, THEMEROOM, FILL_NORMAL } from './const.js';
 
 // C ref: mklev.c:929 ROOM_IS_FILLABLE macro
@@ -246,8 +249,100 @@ export async function newgame() {
         Valkyrie: 'Velkommen',
     };
     const helloWord = HELLO_BY_ROLE[g.opts_role] || 'Hello';
-    await pline(`${helloWord} ${g.plname}, welcome to NetHack!  You are a${descBuf}.`);
+    const welcomeMsg = `${helloWord} ${g.plname}, welcome to NetHack!  You are a${descBuf}.`;
+    await pline(welcomeMsg);
+
+    // moveloop_preamble (allmain.c:48-68) — moon phase + friday13
+    // status messages that fire BEFORE moveloop_core's first iter.
+    // These come AFTER welcome and AFTER notice_all_mons (which we
+    // don't yet model).  Each pline either appends to topl or, if
+    // the topl is full / next pline can't fit, forces --More--.
+    //
+    // C's tty pline (toplines.c) places --More-- on the same row as
+    // the message when it fits (row width >= msg.length + 8 [or +9
+    // with separator] for "--More--"), else drops to row 1 col 0.
+    // Empirically:
+    //   seed0007 welcome (71 chars) + --More-- (8) = 79 → r0 col 71.
+    //   seed5006 welcome (74 chars) + --More-- (8) = 82 → r1 col 0.
+    const preamblePlines = preamble_plines(g.datetime);
+    // Explore-mode notice (sys/unix/unixmain.c:673):
+    //   You("are in non-scoring explore/discovery mode.");
+    // Plined when `discover` is true.  In our model that maps to
+    // OPTIONS=playmode:explore (= flags.explore set by options.js).
+    // Captured order in C sessions has this AFTER welcome and
+    // AFTER moon/friday13, so we append it to the preamble queue.
+    if (g.flags?.explore) {
+        preamblePlines.push('You are in non-scoring explore/discovery mode.');
+    }
+    // Tutorial menu fires after preamble plines when tutorial wasn't
+    // explicit in rc (ask_do_tutorial at allmain.c:574).  When it's
+    // queued, the LAST pline before the menu must force --More-- to
+    // clear topl before the menu renders.
+    const tutorialQueued = !g.tutorial_set_in_config;
+    // Welcome itself needs --More-- if any subsequent pline OR the
+    // tutorial menu is queued — anything that would force topl to
+    // clear before its content renders.
+    const welcomeNeedsMore = preamblePlines.length > 0 || tutorialQueued;
+
+    if (welcomeNeedsMore) {
+        // welcome's pline overflow: paint --More-- after welcome (or
+        // on row 1) and consume the dismiss key.  Then clear --More--
+        // so the next pline (moon) renders cleanly.
+        await flush_screen(1);
+        await render_topl_more_after(welcomeMsg, 0);
+        // Pline preamble messages, with --More-- between consecutive
+        // plines and after the last one if tutorial is queued.
+        for (let i = 0; i < preamblePlines.length; i++) {
+            const msg = preamblePlines[i];
+            await pline(msg);
+            const isLast = i === preamblePlines.length - 1;
+            const moreNeeded = !isLast || tutorialQueued;
+            if (moreNeeded) {
+                await flush_screen(1);
+                await render_topl_more_after(msg, 0);
+            }
+        }
+    }
+
+    // ask_do_tutorial — C ref: options.c:430, called from
+    // allmain.c:574 maybe_do_tutorial() (just after moveloop_preamble).
+    // Fires when tutorial wasn't explicitly set in rc; renders a
+    // 2-option menu and consumes one keystroke.
+    if (tutorialQueued) {
+        await display_tutorial_menu();
+    }
 }
+
+// Render "--More--" after a topl message of length `msgLen` on the
+// given row.  If msg + " " + "--More--" fits in 80 cols, --More--
+// lands at col msgLen on the same row (no separator — C concatenates
+// directly per the captured screen format); otherwise it goes to
+// row+1 col 0.  Captures via nhgetch, then clears the painted cells.
+async function render_topl_more_after(msg, row) {
+    const display = game.nhDisplay;
+    if (!display) { await nhgetch(); return; }
+    const more = '--More--';
+    const NO_COLOR = 8;
+    // C tty's pline puts --More-- on the same row only when there's
+    // strict room (msg.length + 8 < 80, i.e. msg.length < 72).  At
+    // exactly 72-char welcome the message ends at col 72, --More--
+    // would need cols 72-79, leaving no trailing column for cursor —
+    // C drops to the next row.  Verified empirically:
+    //   seed0007 welcome (71 chars) → same row, --More-- at col 71.
+    //   seed0013 welcome (72 chars) → next row, --More-- at col 0.
+    //   seed5006 welcome (74 chars) → next row.
+    const onSameRow = (msg.length + more.length) < 80;
+    const paintRow = onSameRow ? row : row + 1;
+    const paintCol = onSameRow ? msg.length : 0;
+    for (let i = 0; i < more.length && paintCol + i < 80; i++) {
+        display.setCell(paintCol + i, paintRow, more[i], NO_COLOR, 0);
+    }
+    await nhgetch();
+    for (let c = paintCol; c < paintCol + more.length && c < 80; c++) {
+        display.setCell(c, paintRow, ' ', NO_COLOR, 0);
+    }
+}
+
 
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
