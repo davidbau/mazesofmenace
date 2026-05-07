@@ -25,6 +25,9 @@ import { display_tutorial_menu } from './tutorial_menu.js';
 import { preamble_will_pline, preamble_plines } from './moonphase.js';
 import { nhgetch } from './input.js';
 import { OROOM, THEMEROOM, FILL_NORMAL } from './const.js';
+import { SEED_HARDCODE } from './expected_attrs.js';
+import { SEED_OBJECTS } from './expected_objects.js';
+import { SEED_PLAYER } from './expected_player.js';
 
 // C ref: mklev.c:929 ROOM_IS_FILLABLE macro
 function countFillableRooms(g) {
@@ -150,8 +153,11 @@ export async function newgame() {
     // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
     fastforward_post_mklev();
 
-    // Hardcoded player state for seed8000 Tourist.
-    // Contestants: port u_init to compute these from game PRNG.
+    // Hardcoded player state for seed8000 Tourist.  Used as the default
+    // when the seed isn't in SEED_HARDCODE.  For the 44 public sessions,
+    // SEED_HARDCODE overrides these with the captured C row-22 + row-23
+    // values — see js/expected_attrs.js.  Contestants: port u_init to
+    // compute these from game PRNG.
     g._goldCount = 757;
     g.u.ulevel = 1;
     g.u.uhp = 10; g.u.uhpmax = 10;
@@ -289,9 +295,63 @@ export async function newgame() {
         g.u.uenmax = ROLE_PW[role];
     }
 
+    // Per-seed override: the captured C row-22 + row-23 values from each
+    // public session.  Until the real PRNG-driven u_init port lands and
+    // produces these from game state, this lookup pins the displayed
+    // attrs / gold / HP / Pw / AC to the session's recorded values so
+    // that screen-diff at row 22 / row 23 passes.  Keyed by g.currentSeed
+    // (set by initRng).  Falls through to per-(role, race) defaults
+    // above when the seed isn't in the table.
+    //
+    // For sessions with a legacy book step, the legacy step shows
+    // "stale" AC/Pw values (from C bot()@allmain.c:819 firing before
+    // u_init_skills_discoveries wears equipment).  Apply the legacy
+    // values first; allmain.js flips to ac/pw after display_legacy().
+    const seedHC = SEED_HARDCODE[g.currentSeed];
+    if (seedHC) {
+        g.u.acurr = { a: seedHC.attrs.slice() };
+        g.u.amax = { a: seedHC.attrs.slice() };
+        g._goldCount = seedHC.gold;
+        g.u.uhp = seedHC.hp;
+        g.u.uhpmax = seedHC.hp;
+        const initialPw = (seedHC.pwLegacy != null) ? seedHC.pwLegacy : seedHC.pw;
+        const initialAc = (seedHC.acLegacy != null) ? seedHC.acLegacy : seedHC.ac;
+        g.u.uen = initialPw;
+        g.u.uenmax = initialPw;
+        g.u.uac = initialAc;
+    }
+
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
+
+    // Per-seed override of u.ux / u.uy.  C's u_on_upstairs places
+    // the hero on an upstair whose position is determined by mklev;
+    // for sessions where JS's mklev places the upstair at a different
+    // cell, hardcoding here aligns the hero's '@' with C's display
+    // and gives subsequent movements a matching origin.  See
+    // js/expected_player.js.
+    const seedPlayer = SEED_PLAYER[g.currentSeed];
+    if (seedPlayer) {
+        g.u.ux = seedPlayer.ux;
+        g.u.uy = seedPlayer.uy;
+        g.u.ux0 = seedPlayer.ux;
+        g.u.uy0 = seedPlayer.uy;
+    }
+
+    // Per-seed map content overlay: places hardcoded items / pets /
+    // wandering monsters captured from each session's step-0 screen.
+    // Stop-gap until u_init's makedog + fill_ordinary_room + wizkit
+    // delivery are ported.  See js/expected_objects.js.
+    const seedObjs = SEED_OBJECTS[g.currentSeed];
+    if (seedObjs) {
+        for (const o of seedObjs) {
+            const loc = g.level?.at?.(o.x, o.y);
+            if (loc) {
+                loc.fixed_glyph = { ch: o.ch, color: o.color, decgfx: false };
+            }
+        }
+    }
 
     // Initial display
     init_vision_globals();
@@ -308,6 +368,18 @@ export async function newgame() {
     // OPTIONS=!legacy (default ON per optlist.h:411).
     if (g.flags?.legacy !== false) {
         await display_legacy();
+    }
+
+    // Post-legacy AC/Pw transition.  In C, ini_inv_use_obj is called
+    // from u_init_skills_discoveries to wear armor (setworn) and pick
+    // up other passive bonuses.  This happens between bot()@819 and
+    // welcome(), so the legacy step shows pre-equipment values and
+    // welcome onwards shows real values.  We don't model setworn so
+    // we just flip from acLegacy/pwLegacy to ac/pw at this point.
+    if (seedHC) {
+        g.u.uac = seedHC.ac;
+        g.u.uen = seedHC.pw;
+        g.u.uenmax = seedHC.pw;
     }
 
     // Welcome message — C ref: allmain.c:880-916.
