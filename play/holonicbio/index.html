@@ -49,7 +49,16 @@ h1 {
     font-style: italic;
     color: var(--color-text-muted);
     margin-bottom: 1.5em;
+    text-align: center;
+    line-height: 1.5;
 }
+.subtitle a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 500;
+    font-style: normal;
+}
+.subtitle a:hover { text-decoration: underline; }
 
 #game-container {
     border: 2px solid var(--color-terminal-border);
@@ -137,10 +146,30 @@ kbd {
 <body>
 
 <h1>The Teleport Coding Challenge</h1>
-<p class="subtitle">Port NetHack 5.0 from C to JavaScript with bit-exact parity.<br>
-    <a href="https://mazesofmenace.ai/guidebook/">How to Play NetHack</a> &middot;
-    <a href="https://mazesofmenace.ai/spoilers/">Traveler&rsquo;s Companion to NetHack</a>
+<p class="subtitle" id="play-subtitle">
+    JavaScript port of NetHack 5.0.<br>
+    <a href="https://mazesofmenace.net/#spoilers">Traveler&rsquo;s Companion to NetHack</a>
 </p>
+<script>
+// Per-fork credits: load /play/<owner>/snapshot.json and substitute the
+// owner name + GitHub link into the subtitle. Falls back to the static
+// generic subtitle (above) if snapshot.json is missing or malformed.
+(async () => {
+    try {
+        const r = await fetch('./snapshot.json', { cache: 'no-store' });
+        if (!r.ok) return;
+        const s = await r.json();
+        const el = document.getElementById('play-subtitle');
+        if (!el || !s.owner || !s.fork) return;
+        el.innerHTML =
+            'JavaScript port of NetHack 5.0 submitted by ' +
+            '<a href="https://github.com/' + s.fork + '"><strong>' +
+            s.owner + '</strong></a>.<br>' +
+            '<a href="https://github.com/' + s.fork + '">GitHub source</a> ' +
+            '&middot; <a href="https://mazesofmenace.net/#spoilers">Traveler&rsquo;s Companion to NetHack</a>';
+    } catch {}
+})();
+</script>
 
 <div id="game-container"></div>
 

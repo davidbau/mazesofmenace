@@ -148,10 +148,12 @@ kbd {
 <h1>The Teleport Coding Challenge</h1>
 <p class="subtitle" id="play-subtitle">
     JavaScript port of NetHack 5.0.<br>
-    <a href="https://mazesofmenace.ai/guidebook/">How to Play NetHack</a> &middot;
-    <a href="https://mazesofmenace.ai/spoilers/">Traveler&rsquo;s Companion to NetHack</a>
+    <a href="https://mazesofmenace.net/#spoilers">Traveler&rsquo;s Companion to NetHack</a>
 </p>
 <script>
+// Per-fork credits: load /play/<owner>/snapshot.json and substitute the
+// owner name + GitHub link into the subtitle. Falls back to the static
+// generic subtitle (above) if snapshot.json is missing or malformed.
 (async () => {
     try {
         const r = await fetch('./snapshot.json', { cache: 'no-store' });
@@ -164,8 +166,7 @@ kbd {
             '<a href="https://github.com/' + s.fork + '"><strong>' +
             s.owner + '</strong></a>.<br>' +
             '<a href="https://github.com/' + s.fork + '">GitHub source</a> ' +
-            '&middot; <a href="https://mazesofmenace.ai/guidebook/">How to Play NetHack</a> ' +
-            '&middot; <a href="https://mazesofmenace.ai/spoilers/">Traveler&rsquo;s Companion to NetHack</a>';
+            '&middot; <a href="https://mazesofmenace.net/#spoilers">Traveler&rsquo;s Companion to NetHack</a>';
     } catch {}
 })();
 </script>
