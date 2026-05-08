@@ -647,10 +647,44 @@ handle the fight.
 **Beehives.** A room full of killer bees and royal jelly. The bees
 are dangerous in numbers, but royal jelly is excellent food.
 
-**Themed rooms.** Newer editions of the dungeon include a variety
-of themed rooms: collections of specific monster types, item caches,
-and environmental setups. These are too varied to catalog completely
-here, but they add welcome variety to the standard layout.
+**Themed rooms.** New in current editions and the most visible
+change to ordinary level generation: scattered through the
+Dungeons of Doom, you'll occasionally walk into rooms that
+aren't shops, aren't zoos, and aren't anything else from the
+list above — but are also clearly not random. They're called
+**themed rooms**, and there are dozens of them. Some have
+unusual *shapes* (L-shaped, T-shaped, S-shaped, circular,
+cross-shaped, four-leaf-clover-shaped, with pillars, with a
+room-inside-a-room). Some have unusual *contents* (a buried-
+treasure cache; a buried-zombies field that wakes up when
+disturbed; a small massacre of statues and old corpses; a
+mausoleum; a teleportation hub of stacked traps; a "fake
+Delphi" room with a non-Oracle pretending to be one; a garden;
+a spider nest; an ice room; a cloud room; a boulder room).
+
+The interesting ones for the player:
+
+- **Light source rooms** — they reliably contain a usable lit
+  candle, lantern, or lamp. Free torches.
+- **Buried treasure** — the floor needs digging, but the haul
+  is real. A pick-axe earns its weight here.
+- **Massacre / mausoleum** — leave a few corpses for sacrifice.
+  Old corpses sometimes carry surprises (a wraith corpse for the
+  level boost is the famous one).
+- **Spider nest, buried zombies, teleportation hub** — these
+  are traps in everything but name. The encounter scales with
+  level difficulty, so what looks innocuous on Dlvl 4 is rough
+  on Dlvl 18. Recognize the pattern, retreat, prepare, return.
+- **Fake Delphi** — the "Oracle" inside is just a regular human.
+  Don't pay for advice.
+- **Light-and-frame rooms (pillars, room-in-a-room, blocked
+  center)** — tactically excellent for setting up Elbereth
+  squares or anchoring a polearm fight.
+
+Themed rooms are mixed in with ordinary rooms; you can have
+several on a single level. They make the early dungeon less
+predictable in a friendly way: more terrain types to fight in,
+more item discovery, and the occasional educational ambush.
 
 ---
 
@@ -1309,7 +1343,7 @@ by how early you might encounter them:
 | `A`    | Angels            | Powerful, usually aligned. Don't fight your own.                                                     |
 | `C`    | Centaurs          | Fast archers who now back away when you approach to maintain range. Use corners to cut off their retreat. Mountain centaurs are the worst. |
 | `E`    | Elementals        | Hard to kill. Air elementals engulf; earth elementals phase through walls.                           |
-| `f`    | Displacer beast   | Its apparent position is offset from where it stands. Aim at the empty square where the image *isn't*. |
+| `f`    | Displacer beast   | Cat-class, but vicious — three-attack heavy melee with a permanent displacement aura. Eat the corpse for temporary displacement of your own. |
 | `F`    | Fungi             | Yellow mold, green mold, shriekers. Shriekers summon other monsters.                                 |
 | `G`    | Gnome lords/kings | Tougher gnomes. Still fairly manageable.                                                             |
 | `H`    | Giants            | Strong melee, throw boulders. Giants carry gems.                                                     |
@@ -1350,11 +1384,21 @@ make you regret trying.
 **Silver** dragon scale mail grants reflection. The second pillar of not
 dying to wands.
 
-**Gold** dragons are new in current editions and come with a surprise:
-their scale mail provides a built-in light source (2-square radius).
-Wearing gold dragon scale mail means you never need a lamp again. It
-also provides two resistances. If your lamp budget is eating into your
-ascension kit, gold dragon scale mail is the solution.
+**Gold** dragons are new in current editions and breathe **fire** —
+the same breath weapon as red dragons, so the same defenses apply.
+Their scale mail is what makes them interesting. Worn gold dragon
+scale mail is permanently lit: blessed glows *radiantly* (radius 4),
+uncursed *brilliantly* (radius 3), cursed merely *brightly* (radius
+2). It is the only body-slot light source in the game, and it lets
+you abandon torches, lamps, and oil for the rest of the run. The
+mail also confers **hallucination resistance** — modest in
+combat, useful against violet fungi, the rare ill-timed potion
+spill, and the late-game caster who thinks one of those is a good
+finisher. Gold dragons themselves carry fire resistance as a
+breath defense and drop scales just like any other color, so the
+material costs the same hunt as the rest. If your lamp budget is
+eating into your ascension kit, gold dragon scale mail is the
+solution.
 
 **Black** dragon breath disintegrates — and disintegrates everything
 you're wearing along with you, including your magic resistance. Carry
@@ -1560,26 +1604,99 @@ kills you over a few turns. **Cure:** remove the amulet (requires
 uncursing it first, since cursed amulets can't be removed — use a
 scroll of remove curse, holy water, or prayer).
 
-#### The Genetic Engineer
+#### The Displacer Beast
 
-The genetic engineer is a humanoid you encounter in the deeper dungeon,
-and alone it is not the problem. The problem is what it does with time.
-Genetic engineers create chimeras — hybrid monsters that inherit the
-attacks, abilities, and temperament of two different creature types.
-The combinations are theoretically bounded by what monsters are
-available on that level. In practice, this means that a level with a
-genetic engineer on it contains both a threat and a factory for worse
-threats.
+The **displacer beast** (`f`, blue) is a current-edition addition
+to the bestiary, and on first sight you might mistake it for a
+hostile pet. It is not. It is an animal of roughly tiger weight
+with cat-class agility, three attacks per turn (two clawing,
+one biting), and an evasive base AC of −10. Two of those claws
+can hit for up to four-times-four damage and the bite for up
+to two-times-ten. The full attack from one displacer beast can
+remove half your hit points before you've finished registering
+that the square you aimed at was empty.
 
-A chimera's danger depends entirely on what got combined. Some
-combinations are merely annoying. Others — a floating eye's paralysis
-attached to a fast body, a disenchanter's inventory-stripping reach on
-a creature that can fly — are the kind of thing that ends runs in ways
-that take a paragraph to explain to other players afterward.
+The headline trick is right there in the name. A displacer beast
+is *always* displaced — its visible image and its actual square
+are not the same, and the offset reshuffles every turn. When you
+attack the square the beast appears to occupy, you are by default
+attacking the square next to it. Targeting works the way it always
+does — you choose a square and the game rolls — but until the
+displacement is broken (by a successful melee hit, or by you
+becoming able to see through it), you should expect missed swings
+that look correct.
 
-Kill the genetic engineer first. Always. It is not a hard rule to
-remember, because the reason is self-evident the moment you see what it
-made.
+**What works.** Ranged weapons that don't require precise aim:
+spells that fill an area, scrolls of fire or stinking cloud,
+breath weapons. Wands of digging tunnel beneath them and don't
+care where the image is. *See invisible* doesn't help — the beast
+isn't invisible, it's displaced. *Telepathy* lets you sense its
+real position when you're blind, which is a real edge.
+
+**What's worth it afterward.** Eating a displacer beast corpse
+grants temporary intrinsic Displacement to *you*, lasting on the
+order of half a hundred turns. This is the only on-demand source
+of displacement in the early-to-mid game. A late-game ascender
+walking into a level full of casters will thank you for the
+detour, and the corpse is fresh exactly as long as you can carry
+it before it rots — which means: tin it.
+
+
+
+The **genetic engineer** is a green humanoid that appears as `Q`,
+sharing the symbol class with the quantum mechanic — but where a
+quantum mechanic's claw *teleports* you (random short-range
+relocation, mostly an inconvenience), the genetic engineer's claw
+*polymorphs* you. One touch and, unless you have *Unchanging*, you
+become something else. The flavor text reads "you undergo a freakish
+metamorphosis," which is the engineer's signature; the quieter "you
+feel a change coming over you" is reserved for tin-eating, doppelganger
+corpses, and other ambient polymorph sources.
+
+What you turn into is the same uncontrolled roll any other polymorph
+source would give you: usually something fine, occasionally something
+disastrous, rarely something strictly better. The danger isn't
+creative — it's that the dice are now choosing your next several
+turns. Genetic engineers also have intrinsic teleport, so they can
+close the gap on you whether you wanted to fight at melee range or
+not.
+
+A small mercy: an engineer that hits you successfully has a short
+cooldown before it can polymorph you again, so the fight is survivable
+if you have a plan. The plan is one of: wear an *amulet of unchanging*
+(immune), kill it from range before it closes, or accept that you're
+playing a different role for a while. Genetic engineers appear on the
+deeper levels, which is also when you should already be carrying
+contingencies — *unchanging* is one of the classic "carry it before
+you need it" amulets.
+
+**Polymorph isn't only a punishment.** With *polymorph control* (the
+ring, or the intrinsic), or in 5.0 a *blessed* potion of polymorph,
+you choose what you become — and what you become can be very strong
+indeed (a master mind flayer for an interlude, a chickatrice when
+you'd rather turn the dungeon to stone, an Archon when the form-class
+roll permits). With a *wand of polymorph* aimed at yourself, you have
+an on-demand version of the same.
+
+This is what makes the genetic engineer's **corpse** interesting.
+Eating it is mechanically identical to eating a doppelganger corpse:
+the same `polyself` call with the same flags, just with the more
+dramatic message. The flavor differs; the effect doesn't. **Tin** the
+corpse and you have a portable, shelf-stable polymorph source in your
+pack. Combine a tin with polymorph control and you have a controlled
+polymorph for the cost of a tinning kit — at least as efficient as
+carrying a stack of polymorph potions, and immune to Gehennom's hot
+ground. The first time a genetic engineer kills you, this trade looks
+unfair. The second time you're the one with the tinned engineer in
+your bag, it looks like balance.
+
+If you do polymorph against your will and don't have control, don't
+panic. Read a scroll of remove curse if your current form has cursed
+your old gear off, check whether your new form can wield your weapon,
+and notice that the new shape may have intrinsics you didn't have
+before. If the new form is a clear downgrade, polyself again from a
+wand, potion, or another tin. The dungeon will give you several
+rolls; you only need one to land somewhere acceptable.
 
 #### The Essential Kit
 
@@ -3720,8 +3837,17 @@ The Castle contains:
   [Points of Interest](#points-of-interest)).
 - **Barracks** full of soldiers carrying decent equipment, which is
   to say *your* equipment once you've dealt with them.
-- **Four outer rooms** along the north and south walls. One contains
-  the **wand of wishing** in a chest. *Search them all.*
+- **Four outer rooms** along the north and south walls. One — and
+  only one, randomly — contains the **wand of wishing** in a
+  locked chest. *Search them all.* In current editions, that chest
+  also holds a **potion of gain level**, included as a small make-
+  good for the wand's charge changes (see below). The chest's
+  square is protected by a burned-in *Elbereth* engraving and
+  sealed with a cursed scroll of scare monster on top of it. The
+  Elbereth keeps shopkeeper-class wanderers from stealing the
+  treasure; the cursed scroll is a known gotcha (don't try to read
+  it casually). The locked chest itself can be opened by force, by
+  a key, or by a wand of opening.
 - A **maze section** with a minotaur guarding it. The minotaur hits
   hard but isn't especially resistant to having a wand pointed at it.
 
@@ -3731,6 +3857,25 @@ the soldiers solve your monster problem for you. Loot everything.
 Then use your wand of wishing to fill critical gaps in your
 equipment (gray dragon scale mail, silver dragon scale mail,
 gauntlets of power, speed boots — whatever you're missing).
+
+**A 5.0-era warning about the chest.** Intelligent monsters in
+the current edition can pick up containers and rummage through
+unlocked ones, and monsters carrying keys can unlock locked ones.
+The Castle chest is an inviting target. If you breach the Castle,
+take time off the level to recover or fetch a wish, and come back,
+do not assume the chest is still there. Clear the room before
+abandoning it, or carry the chest with you. There are stories.
+
+**About the wand itself.** The Castle's wand of wishing arrives
+with a single charge in 5.0, and the standard recharge formula
+will only restore it to (1:1). The old strategy of recharging it
+to (0:7) and getting a stack of wishes off one wand is gone. You
+will need to plan a *small* wishlist — three or four items at
+most, with the gain-level potion as a free fifth — and accept
+that further wishes have to come from other guaranteed sources
+(Vlad's throne, the Amulet pickup, Orcus-town's lamp/marker, fountain
+luck, or wresting a final wish from a 0:0 wand on the way down).
+The era of the bottomless wishing wand is over.
 
 Once you're fully equipped, the staircase down leads to Gehennom.
 Take a moment before descending. Sit down. Have a snack. Check your
@@ -3785,6 +3930,20 @@ ascenders. Everything you've prepared for has been leading here.
 - **Mazes.** Nearly every level is a maze. A wand of digging or
   pickaxe isn't optional here—it's as essential as your weapon.
   Dig straight lines to the stairs and don't look back
+- **Orcus-town.** Orcus's own level is a "ghost town" — the shops
+  and shopkeepers are gone, but the town layout remains, and the
+  buildings are stocked with random objects rather than for-sale
+  inventory. Two of those objects are worth the trip: somewhere on
+  the level, the dungeon guarantees either a **magic lamp** or a
+  **magic marker** (50/50). The level itself is studded with fire
+  traps and magic traps, so don't sprint. Walk it carefully, deal
+  with the residents (Orcus himself plus an honor guard of liches
+  and ghouls), and lift the lamp or marker on your way out. The
+  guarantee is the dungeon's compensation for the wand of wishing
+  generating with only one charge in current editions — call it a
+  consolation prize, in the form of either one djinni wish (rub
+  the lamp; the lamp becomes ordinary afterward) or however many
+  high-value scrolls you can write before the marker runs dry.
 
 #### Key Objectives in Gehennom
 
@@ -3794,6 +3953,33 @@ dangerous robbery:
 1. **Vlad's Tower.** A three-level tower where Vlad the Impaler
    (a vampire lord) guards the Candelabrum of Invocation at the
    top. Kill Vlad. Take the Candelabrum. Don't linger.
+
+   The tower also contains a **special throne**, and current
+   editions have made it both more rewarding and more painful.
+   The good news: it never disintegrates from sheer use the way
+   ordinary thrones do. You can sit on it again and again. The
+   bad news: you will, because the prize is rare. Each sit rolls
+   one of thirteen effects. Four of them grant a wish (the throne
+   does disintegrate after the wish, having spent its power). The
+   other nine are bad: permanent level drain, an inventory-coating
+   layer of grease (your weapon will slip, your shield will fall
+   off), a stripped intrinsic, a forced level teleport to the
+   vibrating-square level (sometimes useful, often not), three
+   summoned demons, a confused-blessed remove curse on your gear,
+   forced polymorph, acid damage in eighty-hp gulps if you don't
+   have acid resistance, or a randomized stat shuffle that will
+   probably make several of your scores worse.
+
+   The arithmetic: 4/13 chance per sit of the wish ending it, so
+   on average you sit ~3 times before the wish (and absorb two
+   of the bad effects on the way). Plan accordingly. Stand at full
+   HP, don't carry potions you can't afford to grease, and have
+   acid resistance or magic resistance ready before you sit. If
+   you don't want a forced wish — say, you've already used your
+   Castle wish and Amulet wish and want to keep this one for your
+   ascension kit — you can sit at any time, you don't have to do
+   it right now. The throne stays put until something on the
+   level destroys it.
 
 2. **The Wizard's Tower.** The Wizard of Yendor waits here with
    the Book of the Dead. He is the most dangerous enemy in the
