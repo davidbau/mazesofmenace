@@ -105,7 +105,7 @@ could pray — read on. We'll do our best to keep you alive.
 31. [Sokoban Solutions](#sokoban-solutions) — All eight level variants, solved
 32. [Voluntary Challenges](#voluntary-challenges) — Conducts and self-imposed restrictions
 33. [Shopping and Shopkeeper Pricing](#shopping-and-shopkeeper-pricing) — Commerce in the dungeon
-34. [What Changed Since Last Time](#what-changed-since-last-time) — What's new in 3.7.0 vs 3.6.x
+34. [What Changed Since Last Time](#what-changed-since-last-time) — What's new in 5.0 vs 3.6.x
 35. [If You've Been Here Before](#if-youve-been-here-before) — For travelers returning from 3.6.x
 36. [Acknowledgements](#acknowledgements) — Standing on the shoulders of giants
 
@@ -1205,7 +1205,7 @@ Elbereth has rules:
   protection ends.
 - **Attacking a monster erases it.** If you fight in melee while
   standing on Elbereth, the word smudges and you lose protection.
-  In version 3.6.1 and later, this also costs you −5 alignment as
+  In current editions this also costs you −5 alignment as
   punishment for defiling the sacred word with violence. Elbereth
   is defensive only — use it to buy time, not to fight from.
 - **Some monsters ignore it.** Anything represented by `@` (humans,
@@ -1356,8 +1356,12 @@ Wearing gold dragon scale mail means you never need a lamp again. It
 also provides two resistances. If your lamp budget is eating into your
 ascension kit, gold dragon scale mail is the solution.
 
-**Black** dragons now have a passive disintegration attack in melee —
-stay ranged. Their scale mail grants drain resistance.
+**Black** dragon breath disintegrates — and disintegrates everything
+you're wearing along with you, including your magic resistance. Carry
+reflection or eat enough black dragons to grow disintegration
+resistance before going where they live. Their scale mail grants
+disintegration resistance plus drain resistance — the latter is a
+new 5.0 bonus and a rare extrinsic source.
 
 **Green** dragon scale mail grants sickness immunity, which is niche but
 occasionally the niche that saves you.
@@ -1458,9 +1462,14 @@ editions, mind flayers no longer cause amnesia, but the Intelligence
 drain is still lethal if unchecked.
 
 **Defenses:** Wear a greased helmet to prevent tentacle attacks
-from connecting. Kill mind flayers at range (wands, spells). Use a
-unicorn horn or other means to restore lost Intelligence before it
-reaches critical levels.
+from connecting. Kill mind flayers at range (wands, spells). In
+current editions the unicorn horn no longer restores lost
+attributes — to recover drained Intelligence you need a *potion
+of restore ability* (uncursed restores one random ability;
+blessed restores all of them), the spell of restore ability, or
+prayer when you're in good standing. A blessed potion of full
+healing also restores ability scores. Stockpile at least one
+restore ability before pushing into mind flayer territory.
 
 #### Choking
 
@@ -1483,9 +1492,7 @@ of the first intrinsics worth acquiring.
 #### Disintegration
 
 A black dragon's breath weapon disintegrates you. Touching a
-wide-angle disintegration beam also kills. In current editions,
-black dragons also have a passive disintegration attack — hitting
-one in melee can disintegrate the attacker.
+wide-angle disintegration beam also kills.
 
 **Defenses:** Disintegration resistance (from eating a black dragon
 corpse or wearing black dragon scale mail). Reflection bounces the
@@ -2869,11 +2876,19 @@ but no special effects—useful only for confusing the issue.
 | Bell of Opening    | Invocation item (found in Vlad's Tower area)  |
 | Leash              | Tie a pet to you so it follows through stairs |
 
-The **unicorn horn** is arguably the single most important tool in
-the game. Apply it to cure confusion, blindness, sickness,
-hallucination, and nausea—basically every status ailment that
-matters. Carry one at all times. If you don't have one, getting
+The **unicorn horn** is one of the most important tools in the
+game. Apply it to cure confusion, blindness, sickness,
+hallucination, and stunning — most of the status ailments that
+matter. Carry one at all times. If you don't have one, getting
 one should be near the top of your priority list.
+
+A current-editions caveat: the unicorn horn **no longer
+restores lost ability scores** the way it used to. Drained
+Strength, Intelligence, Wisdom, and so on now require a *potion
+of restore ability* (or its spell) to bring back. The horn
+remains the universal cure for *status* problems, but not for
+attribute drain. Earlier guides that described it as a complete
+cure-all are out of date; budget for restore ability separately.
 
 The **magic marker** is a printing press for scrolls. Write scrolls
 of identify, enchant weapon, enchant armor, or anything else on
@@ -5060,9 +5075,11 @@ possible before spending your gold on scrolls of identify.
 ### What Changed Since Last Time
 
 If you're an experienced traveler returning after some time away, the
-current edition of the Mazes includes several notable changes from
-3.6.x — the last widely-played version before this one. The most
-significant:
+current edition of the Mazes (NetHack 5.0.0, released May 2, 2026) includes
+several notable changes from 3.6.x — the last widely-played version before
+this one. (NetHack 3.7 was a long-running development branch and never
+shipped as a numbered public release; 3.6.x is the natural comparison
+point.) The most significant:
 
 - **Themed rooms** are now a regular feature of dungeon generation.
   You'll encounter rooms with specific monster or item themes that
@@ -5101,8 +5118,9 @@ significant:
 - **Touch of death** has been reworked: instead of binary kill,
   it now deals heavy damage and drains max HP. Magic resistance
   reduces but no longer fully prevents it.
-- **Black dragons** now have a passive disintegration attack.
-  Black dragon scale mail also grants drain resistance.
+- **Black dragon scale mail** now grants drain resistance in
+  addition to disintegration resistance — a second extrinsic that
+  was historically hard to find outside artifacts.
 - **Green dragon scale mail** now grants sickness immunity.
 - **New wish sources**: Vlad's throne is guaranteed, and the
   Amulet of Yendor grants a wish on pickup. Either a magic lamp
@@ -5502,14 +5520,18 @@ Geoffrey Eadon, Roger Broadbent, Sebastian Haas, Jukka Lahtinen,
 and the countless anonymous posters on RGRN who asked "has anyone
 tried..." and then reported back.
 
-**The NetHack Wiki** (nethackwiki.com) has been an indispensable
-reference for this guide. Founded as "WikiHack" by Sgeo in 2005,
-it migrated to its own domain in 2010 and now contains over five
-thousand articles documenting every corner of the game. Its
-creators and maintainers include Pasi Kallinen, Drew Streib,
-Alex Smith, Shawn Moore, George Koehler, Tjr, ZeroOne, and
-Ray Chason. The wiki is hosted alongside nethack.alt.org, the
-longest-running public NetHack server.
+**The [NetHack Wiki](https://nethackwiki.com/)** has been an
+indispensable reference for this guide. Founded as "WikiHack" by
+Sgeo in 2005, it migrated to its own domain in 2010 and now
+contains over five thousand articles documenting every corner of
+the game. Its creators and maintainers include Pasi Kallinen,
+Drew Streib, Alex Smith, Shawn Moore, George Koehler, Tjr,
+ZeroOne, and Ray Chason. The wiki's
+[NetHack 5.0.0 page](https://nethackwiki.com/wiki/NetHack_5.0.0)
+is the community's living changelog and was a major reference
+for the 5.0 update of this guide. The wiki is hosted alongside
+[nethack.alt.org](https://alt.org/nethack/), the longest-running
+public NetHack server.
 
 **The r/nethack community** on Reddit has kept NetHack discussion
 alive for a new generation of players. Its moderators over the

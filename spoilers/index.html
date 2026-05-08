@@ -158,7 +158,7 @@ and self-imposed restrictions</li>
 <li><a href="#shopping-and-shopkeeper-pricing">Shopping and Shopkeeper
 Pricing</a> — Commerce in the dungeon</li>
 <li><a href="#what-changed-since-last-time">What Changed Since Last
-Time</a> — What’s new in 3.7.0 vs 3.6.x</li>
+Time</a> — What’s new in 5.0 vs 3.6.x</li>
 <li><a href="#if-youve-been-here-before">If You’ve Been Here Before</a>
 — For travelers returning from 3.6.x</li>
 <li><a href="#acknowledgements">Acknowledgements</a> — Standing on the
@@ -1385,8 +1385,8 @@ you wrote it or found it already engraved.</p>
 the protection ends.</li>
 <li><strong>Attacking a monster erases it.</strong> If you fight in
 melee while standing on Elbereth, the word smudges and you lose
-protection. In version 3.6.1 and later, this also costs you −5 alignment
-as punishment for defiling the sacred word with violence. Elbereth is
+protection. In current editions this also costs you −5 alignment as
+punishment for defiling the sacred word with violence. Elbereth is
 defensive only — use it to buy time, not to fight from.</li>
 <li><strong>Some monsters ignore it.</strong> Anything represented by
 <code>@</code> (humans, elves, player-like creatures), the Riders on the
@@ -1796,9 +1796,12 @@ with a surprise: their scale mail provides a built-in light source
 lamp again. It also provides two resistances. If your lamp budget is
 eating into your ascension kit, gold dragon scale mail is the
 solution.</p>
-<p><strong>Black</strong> dragons now have a passive disintegration
-attack in melee — stay ranged. Their scale mail grants drain
-resistance.</p>
+<p><strong>Black</strong> dragon breath disintegrates — and
+disintegrates everything you’re wearing along with you, including your
+magic resistance. Carry reflection or eat enough black dragons to grow
+disintegration resistance before going where they live. Their scale mail
+grants disintegration resistance plus drain resistance — the latter is a
+new 5.0 bonus and a rare extrinsic source.</p>
 <p><strong>Green</strong> dragon scale mail grants sickness immunity,
 which is niche but occasionally the niche that saves you.</p>
 <p>All other colors follow the same logic: kill them for their scales,
@@ -1889,9 +1892,14 @@ Intelligence reaches zero, you die instantly. In current editions, mind
 flayers no longer cause amnesia, but the Intelligence drain is still
 lethal if unchecked.</p>
 <p><strong>Defenses:</strong> Wear a greased helmet to prevent tentacle
-attacks from connecting. Kill mind flayers at range (wands, spells). Use
-a unicorn horn or other means to restore lost Intelligence before it
-reaches critical levels.</p>
+attacks from connecting. Kill mind flayers at range (wands, spells). In
+current editions the unicorn horn no longer restores lost attributes —
+to recover drained Intelligence you need a <em>potion of restore
+ability</em> (uncursed restores one random ability; blessed restores all
+of them), the spell of restore ability, or prayer when you’re in good
+standing. A blessed potion of full healing also restores ability scores.
+Stockpile at least one restore ability before pushing into mind flayer
+territory.</p>
 </section>
 <section id="choking" class="level4">
 <h4>Choking</h4>
@@ -1912,9 +1920,7 @@ one of the first intrinsics worth acquiring.</p>
 <section id="disintegration" class="level4">
 <h4>Disintegration</h4>
 <p>A black dragon’s breath weapon disintegrates you. Touching a
-wide-angle disintegration beam also kills. In current editions, black
-dragons also have a passive disintegration attack — hitting one in melee
-can disintegrate the attacker.</p>
+wide-angle disintegration beam also kills.</p>
 <p><strong>Defenses:</strong> Disintegration resistance (from eating a
 black dragon corpse or wearing black dragon scale mail). Reflection
 bounces the beam back. Magic resistance does NOT protect against
@@ -4086,11 +4092,18 @@ but no special effects—useful only for confusing the issue.</p>
 </tr>
 </tbody>
 </table>
-<p>The <strong>unicorn horn</strong> is arguably the single most
-important tool in the game. Apply it to cure confusion, blindness,
-sickness, hallucination, and nausea—basically every status ailment that
-matters. Carry one at all times. If you don’t have one, getting one
-should be near the top of your priority list.</p>
+<p>The <strong>unicorn horn</strong> is one of the most important tools
+in the game. Apply it to cure confusion, blindness, sickness,
+hallucination, and stunning — most of the status ailments that matter.
+Carry one at all times. If you don’t have one, getting one should be
+near the top of your priority list.</p>
+<p>A current-editions caveat: the unicorn horn <strong>no longer
+restores lost ability scores</strong> the way it used to. Drained
+Strength, Intelligence, Wisdom, and so on now require a <em>potion of
+restore ability</em> (or its spell) to bring back. The horn remains the
+universal cure for <em>status</em> problems, but not for attribute
+drain. Earlier guides that described it as a complete cure-all are out
+of date; budget for restore ability separately.</p>
 <p>The <strong>magic marker</strong> is a printing press for scrolls.
 Write scrolls of identify, enchant weapon, enchant armor, or anything
 else on blank paper or blank scrolls. Charges are limited and precious:
@@ -6491,9 +6504,11 @@ possible before spending your gold on scrolls of identify.</p>
 <section id="what-changed-since-last-time" class="level3">
 <h3>What Changed Since Last Time</h3>
 <p>If you’re an experienced traveler returning after some time away, the
-current edition of the Mazes includes several notable changes from 3.6.x
-— the last widely-played version before this one. The most
-significant:</p>
+current edition of the Mazes (NetHack 5.0.0, released May 2, 2026)
+includes several notable changes from 3.6.x — the last widely-played
+version before this one. (NetHack 3.7 was a long-running development
+branch and never shipped as a numbered public release; 3.6.x is the
+natural comparison point.) The most significant:</p>
 <ul>
 <li><strong>Themed rooms</strong> are now a regular feature of dungeon
 generation. You’ll encounter rooms with specific monster or item themes
@@ -6536,8 +6551,9 @@ permadeaf, and Sokoban (no cheating).</li>
 <li><strong>Touch of death</strong> has been reworked: instead of binary
 kill, it now deals heavy damage and drains max HP. Magic resistance
 reduces but no longer fully prevents it.</li>
-<li><strong>Black dragons</strong> now have a passive disintegration
-attack. Black dragon scale mail also grants drain resistance.</li>
+<li><strong>Black dragon scale mail</strong> now grants drain resistance
+in addition to disintegration resistance — a second extrinsic that was
+historically hard to find outside artifacts.</li>
 <li><strong>Green dragon scale mail</strong> now grants sickness
 immunity.</li>
 <li><strong>New wish sources</strong>: Vlad’s throne is guaranteed, and
@@ -6906,14 +6922,18 @@ calculations.</p>
 Geoffrey Eadon, Roger Broadbent, Sebastian Haas, Jukka Lahtinen, and the
 countless anonymous posters on RGRN who asked “has anyone tried…” and
 then reported back.</p>
-<p><strong>The NetHack Wiki</strong> (nethackwiki.com) has been an
-indispensable reference for this guide. Founded as “WikiHack” by Sgeo in
-2005, it migrated to its own domain in 2010 and now contains over five
-thousand articles documenting every corner of the game. Its creators and
-maintainers include Pasi Kallinen, Drew Streib, Alex Smith, Shawn Moore,
-George Koehler, Tjr, ZeroOne, and Ray Chason. The wiki is hosted
-alongside nethack.alt.org, the longest-running public NetHack
-server.</p>
+<p><strong>The <a href="https://nethackwiki.com/">NetHack
+Wiki</a></strong> has been an indispensable reference for this guide.
+Founded as “WikiHack” by Sgeo in 2005, it migrated to its own domain in
+2010 and now contains over five thousand articles documenting every
+corner of the game. Its creators and maintainers include Pasi Kallinen,
+Drew Streib, Alex Smith, Shawn Moore, George Koehler, Tjr, ZeroOne, and
+Ray Chason. The wiki’s <a
+href="https://nethackwiki.com/wiki/NetHack_5.0.0">NetHack 5.0.0 page</a>
+is the community’s living changelog and was a major reference for the
+5.0 update of this guide. The wiki is hosted alongside <a
+href="https://alt.org/nethack/">nethack.alt.org</a>, the longest-running
+public NetHack server.</p>
 <p><strong>The r/nethack community</strong> on Reddit has kept NetHack
 discussion alive for a new generation of players. Its moderators over
 the years have maintained a welcoming space where veterans and newcomers
