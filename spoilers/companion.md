@@ -1141,12 +1141,12 @@ to hit you like it's a buffet.
 Counterintuitive enough to mislead returning players. The trap
 drains spell energy as before, but in current editions, having
 *magic resistance* now also triggers an "anti-magic implosion"
-that costs you HP. The damage is small base (1d4) but stacks for
+that costs you HP. The base damage is small, but it stacks for
 each source of magic resistance you carry — wielding Magicbane
-adds dice, carrying a non-quest artifact with `defends AD_MAGM`
-adds dice. Late-game ascenders trip into the field with three or
-four magic-resistance sources stacked and lose a frightening
-amount of HP at once. The defense is finding the trap first
+adds to it, and carrying any other artifact whose protection
+covers magic missile adds to it again. Late-game ascenders walk
+into the field with three or four magic-resistance sources
+stacked and lose a frightening amount of HP at once. The defense is finding the trap first
 (search), or destroying it from range — current editions let you
 zap *cancellation* at magical traps to defuse them without
 setting them off.
@@ -1515,19 +1515,138 @@ management slide.
 #### Brainlessness
 
 Mind flayers drain Intelligence with their tentacle attacks. If
-your Intelligence reaches zero, you die instantly. In current
-editions, mind flayers no longer cause amnesia, but the Intelligence
-drain is still lethal if unchecked.
+your Intelligence reaches zero, you die instantly. A regular mind
+flayer has three tentacle attacks per turn; the **master mind
+flayer** has *five*, plus a heavier weapon strike, and is widely
+called the most lethal non-boss monster in the dungeon. A single
+unprepared turn next to a master mind flayer can drop your Int
+by ten. In current editions, mind flayers no longer cause
+amnesia, but the Intelligence drain is still lethal if unchecked.
 
 **Defenses:** Wear a greased helmet to prevent tentacle attacks
-from connecting. Kill mind flayers at range (wands, spells). In
-current editions the unicorn horn no longer restores lost
-attributes — to recover drained Intelligence you need a *potion
-of restore ability* (uncursed restores one random ability;
-blessed restores all of them), the spell of restore ability, or
-prayer when you're in good standing. A blessed potion of full
-healing also restores ability scores. Stockpile at least one
-restore ability before pushing into mind flayer territory.
+from connecting. Kill them at range (wands, spells). In current
+editions the unicorn horn no longer restores lost attributes —
+to recover drained Intelligence you need a *potion of restore
+ability* (uncursed restores one random ability; blessed restores
+all of them), the spell of restore ability, or prayer when you're
+in good standing. A blessed potion of full healing also restores
+ability scores. Stockpile at least one restore ability before
+pushing into mind flayer territory.
+
+#### Level Drain
+
+A recurring theme in the bestiary: certain monsters reduce your
+experience level on a hit, taking the HP and power gains that came
+with each lost level. Wraiths, barrow wights, Nazgul, vampires,
+vampire bats, vampire leaders, and Vlad himself all carry
+level-drain attacks. Stormbringer in an enemy's hand
+does the same. So does the bite of a hostile incubus or succubus
+(see Seduction below). Drained levels do not come back on their
+own; you have to kill enough monsters to re-earn them.
+
+**Defenses:** *Drain resistance* makes you immune. The classic
+sources are wearing a Mitre of Holiness, wielding Stormbringer,
+or — new in current editions — wearing **black dragon scale mail**
+(disintegration resistance plus drain resistance, both in one
+slot). Eating a fresh wraith corpse restores one experience level
+and is one of the better reasons to carry a stack of them; tin
+them if you can't eat now.
+
+#### Enchantment Drain
+
+**Disenchanters** (`R`, blue) are widely cursed online as the
+silent ascension-killer. Their claw drains *enchantment*: each
+hit picks a random charged or enchanted object — including your
+artifact weapon, including your dragon scale mail — and lowers
+its enchantment by one. The damage is invisible during the
+fight (no announcement) and permanent. Three or four hits will
+take a +7 sword to +3 and you won't notice until you check.
+
+**Defenses:** Artifacts that protect against level drain also
+soak up enchantment-drain attempts on themselves, and well-made
+items have a chance to resist on their own. There's no
+hard immunity. The reliable solution is to keep disenchanters out
+of melee — kill them with wands, spells, or thrown weapons. A
+ring of conflict is also helpful in disenchanter territory, since
+they'll attack each other before they reach you.
+
+#### Engulfment from Hiding
+
+Two monsters hide in plain sight until you walk into them. The
+**lurker above** (`t`, gray, level 10) hides on the ceiling and
+drops onto whoever passes underneath; the **trapper** (`t`,
+green, level 12) hides on the floor and engulfs whoever steps
+onto it. Both look like ordinary terrain until they trigger.
+Engulfment in current editions wraps and crushes rather than
+digesting — a 5.0 retcon, since the lurker doesn't actually have
+a stomach — but you still take damage
+every turn until you cut your way out, with limited movement
+options while inside.
+
+**Defenses:** Searching reveals hidden monsters. *Telepathy*
+shows them through the deception. Wearing a *ring of warning* or
+a *helm of caution* tips you off before you step. Once engulfed,
+attack the host repeatedly; weapons still work from inside.
+
+#### Light Bursts
+
+**Yellow lights** and **black lights** (`y`, level 3-5) attack by
+exploding the moment you're adjacent. Yellow lights blind you;
+black lights confuse you and add hallucination. Both lights die
+in the explosion, so the encounter resolves immediately — but
+you spend the next handful of turns blind or hallucinating, which
+is exactly the wrong state to be in if there's a follow-up fight.
+Black lights are also invisible until they hit you (unless you
+have *see invisible*).
+
+**Defenses:** Kill them at range — wands, thrown daggers, breath
+weapons, anything that doesn't bring you adjacent. Telepathy or
+warning helps you see black lights coming. If you do get blinded,
+a *unicorn horn* still cures it.
+
+#### Seduction
+
+The **amorous demon** (`&`, gray) is the 5.0 unification of the
+old succubus and incubus into one species — same monster
+internally, three names depending on gender (incubus / succubus /
+amorous demon). The seduction attack does no HP damage, but it
+drains experience levels and steals one item per encounter, and
+the only way to refuse is to kill the demon outright before it
+acts. Meeting one without preparation can erase several levels of
+character growth and remove an irreplaceable artifact in the
+same turn.
+
+**Defenses:** Drain resistance (see Level Drain above) blocks the
+level loss. Killing at range (wand, spell, ranged weapon) is
+the cleanest answer; the amorous demon flies, so corridors and
+chokepoints don't help as much as they normally would.
+
+#### The Riders
+
+On the Astral Plane, three unique `&`-class demons guard the way
+to the high altars: **Death**, **Famine**, and **Pestilence** —
+the Riders. They are level 30, regenerate while you fight, are
+permanently displaced (your swings will miss until the
+displacement breaks, like a displacer beast), see invisible, and
+ignore magic resistance for their signature attacks. Death's
+touch is a heavy hit named for what it does. Pestilence inflicts
+the disease that turns into food poisoning over the next several
+turns. Famine drives you instantly to Weak or Fainting from
+nutrition. Eating their corpses is fatal in different ways for
+each. A current-edition mercy: if Pestilence or Famine connect
+with their first attack on a turn, the second attack downgrades
+to a stun rather than another full dose — without that, they'd
+be near-instakill machines.
+
+**Defenses:** An **amulet of life saving** is the best insurance
+on Astral, full stop. Drain resistance handles a lot of the
+incidental damage. Magic resistance does *not* save you from
+Death's touch — only life saving will. Carry plenty of food
+(Famine's drain bypasses normal nutrition) and a unicorn horn
+for the hallucination/stun secondary effects. The Riders are
+slow at choosing targets in a crowd, so a ring of conflict on
+the Astral Plane can sometimes redirect them while you reach an
+altar.
 
 #### Choking
 
@@ -1657,8 +1776,8 @@ between successful polymorph hits, so the encounter is survivable
 even without unchanging if you can finish quickly.
 
 **The corpse is a tool.** Eating a genetic engineer corpse is
-mechanically identical to eating a doppelganger corpse — same
-uncontrolled `polyself`, just with louder flavor text. The
+mechanically identical to eating a doppelganger corpse — the
+same uncontrolled polymorph, just with louder flavor text. The
 practical use is the same as the doppelganger's: tin it, and you
 have a portable polymorph source. Pair a tin with *polymorph
 control* and you have a controlled polymorph that survives
@@ -2793,7 +2912,7 @@ In current editions, a blessed potion of polymorph grants you polymorph
 control for that specific transformation — you choose the form, no ring
 required. This makes the ring of polymorph control less of a critical
 acquisition: you no longer need to find it or wish for it just to do a
-single controlled polyself. The ring remains useful if you want ongoing
+single controlled polymorph. The ring remains useful if you want ongoing
 control for repeated transformations, but it's no longer a hard
 prerequisite for the opening act of any polymorph strategy. Save that
 wish for something else.
@@ -5445,7 +5564,7 @@ real.
 #### New Strategies Worth Building Around
 
 **A blessed potion of polymorph is now a self-contained controlled
-polyself.**
+polymorph.**
 
 No ring of polymorph control required. A blessed potion of polymorph
 grants control for that specific transformation: you pick the form,
@@ -5459,7 +5578,7 @@ It's still useful for ongoing or repeated polymorphing. But for a single
 planned transformation, one blessed potion does everything the ring
 would have done.
 
-**Vampire polyself now supports genuine form cycling.**
+**Vampire polymorph now supports genuine form cycling.**
 
 A hero polymorphed into a vampire can use `#monster` to switch between
 vampire, bat, and fog cloud forms. This used to be a one-way door:
