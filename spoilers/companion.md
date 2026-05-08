@@ -1120,7 +1120,7 @@ above them.
 | Sleeping gas trap | Puts you to sleep (helpless for several turns)       |
 | Fire trap         | Burns you, destroys scrolls and potions in inventory |
 | Magic trap        | Random magical effects (some good, some very bad)    |
-| Anti-magic field  | Drains your magical energy to zero                   |
+| Anti-magic field  | Drains magical energy; **much more dangerous in current editions** if you have magic resistance (see below) |
 | Polymorph trap    | Polymorphs you into a random creature                |
 
 Fire traps are the sleeper threat. The fire itself hurts, but
@@ -1136,6 +1136,20 @@ random—possibly a newt that can't use any of its equipment.
 Sleeping gas is murder in monster-rich areas. You can't fight, you
 can't run, you can't even wake up on purpose. Monsters line up
 to hit you like it's a buffet.
+
+**Anti-magic fields hit harder if you're magic-resistant.**
+Counterintuitive enough to mislead returning players. The trap
+drains spell energy as before, but in current editions, having
+*magic resistance* now also triggers an "anti-magic implosion"
+that costs you HP. The damage is small base (1d4) but stacks for
+each source of magic resistance you carry — wielding Magicbane
+adds dice, carrying a non-quest artifact with `defends AD_MAGM`
+adds dice. Late-game ascenders trip into the field with three or
+four magic-resistance sources stacked and lose a frightening
+amount of HP at once. The defense is finding the trap first
+(search), or destroying it from range — current editions let you
+zap *cancellation* at magical traps to defuse them without
+setting them off.
 
 #### Searching and Detection
 
@@ -1325,7 +1339,7 @@ by how early you might encounter them:
 | `a`    | Ants      | Come in groups. Soldier ants are fast and hit hard.                                     |
 | `b`    | Blobs     | Acidic or gelatinous. Don't hit acid blobs in melee.                                    |
 | `d`    | Dogs      | Often your starting pet. Tame dogs are loyal. Wild ones are manageable.                 |
-| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. |
+| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. Spheres (flaming/freezing/shocking) explode in a 3×3 area in current editions — kill them at range; melee finishes them but you eat the blast. |
 | `f`    | Cats      | Like dogs, often starting pets. Felines can be tamed with tripe.                        |
 | `g`    | Gnomes    | Common in the Mines. Usually peaceful if you're a gnome.                                |
 | `h`    | Humanoids | Dwarves, bugbears, mind flayers. Wide range of difficulty.                              |
@@ -1370,7 +1384,7 @@ by how early you might encounter them:
 | `;`    | Sea monsters     | Drowning is an instadeath. Don't fight in water without a plan.                                          |
 | `&`    | Demons           | Major demons (Orcus, Demogorgon, Asmodeus) are boss-level threats.                                       |
 | `@`    | Humans (hostile) | Includes the Wizard of Yendor, who is the most persistent nuisance in the game.                          |
-| `@`    | Genetic engineer | Alone, manageable. Given time, a factory for chimeras — hybrid monsters combining attacks of two species. |
+| `Q`    | Genetic engineer | Polymorphs you on a successful hit, like a quantum mechanic's nastier cousin. Wear *unchanging* or kill from range. |
 
 **A note on dragons.** Dragons deserve a full briefing. Each color has
 its own breath weapon, resistance, scale mail property, and degree of
@@ -1606,97 +1620,50 @@ scroll of remove curse, holy water, or prayer).
 
 #### The Displacer Beast
 
-The **displacer beast** (`f`, blue) is a current-edition addition
-to the bestiary, and on first sight you might mistake it for a
-hostile pet. It is not. It is an animal of roughly tiger weight
-with cat-class agility, three attacks per turn (two clawing,
-one biting), and an evasive base AC of −10. Two of those claws
-can hit for up to four-times-four damage and the bite for up
-to two-times-ten. The full attack from one displacer beast can
-remove half your hit points before you've finished registering
-that the square you aimed at was empty.
+The **displacer beast** (`f`, blue) is a 5.0 addition to the
+bestiary — tiger-weight, three attacks per turn, AC −10, and
+*always* displaced: its visible image isn't where it really is,
+and the offset reshuffles every turn. Swing at the image and you
+hit empty floor. Until the displacement is broken (a successful
+melee hit, or a sense that ignores sight), expect misses that
+look correct.
 
-The headline trick is right there in the name. A displacer beast
-is *always* displaced — its visible image and its actual square
-are not the same, and the offset reshuffles every turn. When you
-attack the square the beast appears to occupy, you are by default
-attacking the square next to it. Targeting works the way it always
-does — you choose a square and the game rolls — but until the
-displacement is broken (by a successful melee hit, or by you
-becoming able to see through it), you should expect missed swings
-that look correct.
+**What works.** Area-effect spells, scrolls of fire or stinking
+cloud, wands of digging that go through the floor. *Telepathy*
+lets you locate it when you're blind. *See invisible* does not
+help; the beast isn't invisible, it's displaced.
 
-**What works.** Ranged weapons that don't require precise aim:
-spells that fill an area, scrolls of fire or stinking cloud,
-breath weapons. Wands of digging tunnel beneath them and don't
-care where the image is. *See invisible* doesn't help — the beast
-isn't invisible, it's displaced. *Telepathy* lets you sense its
-real position when you're blind, which is a real edge.
+**What's worth it afterward.** Eating its corpse grants temporary
+intrinsic Displacement to *you* — the only on-demand source in
+the early-to-mid game. A late-game caster level becomes much
+friendlier with displacement up. The corpse rots like any other,
+so if you can't eat it now, tin it.
 
-**What's worth it afterward.** Eating a displacer beast corpse
-grants temporary intrinsic Displacement to *you*, lasting on the
-order of half a hundred turns. This is the only on-demand source
-of displacement in the early-to-mid game. A late-game ascender
-walking into a level full of casters will thank you for the
-detour, and the corpse is fresh exactly as long as you can carry
-it before it rots — which means: tin it.
+#### The Genetic Engineer
 
+The **genetic engineer** (`Q`, green) shares its symbol class
+with the quantum mechanic but plays differently: where a quantum
+mechanic *teleports* its target on a hit, a genetic engineer
+*polymorphs* its target. One claw and, unless you have
+*Unchanging*, you become something else — same roll as any other
+uncontrolled polymorph source, with the dramatic message "you
+undergo a freakish metamorphosis." Engineers also teleport on
+their own, so range alone won't save you forever.
 
+**Defenses:** an *amulet of unchanging* (immune), kill it before
+it closes, or accept the next several turns of the dungeon
+playing as something else. The engineer has a short cooldown
+between successful polymorph hits, so the encounter is survivable
+even without unchanging if you can finish quickly.
 
-The **genetic engineer** is a green humanoid that appears as `Q`,
-sharing the symbol class with the quantum mechanic — but where a
-quantum mechanic's claw *teleports* you (random short-range
-relocation, mostly an inconvenience), the genetic engineer's claw
-*polymorphs* you. One touch and, unless you have *Unchanging*, you
-become something else. The flavor text reads "you undergo a freakish
-metamorphosis," which is the engineer's signature; the quieter "you
-feel a change coming over you" is reserved for tin-eating, doppelganger
-corpses, and other ambient polymorph sources.
-
-What you turn into is the same uncontrolled roll any other polymorph
-source would give you: usually something fine, occasionally something
-disastrous, rarely something strictly better. The danger isn't
-creative — it's that the dice are now choosing your next several
-turns. Genetic engineers also have intrinsic teleport, so they can
-close the gap on you whether you wanted to fight at melee range or
-not.
-
-A small mercy: an engineer that hits you successfully has a short
-cooldown before it can polymorph you again, so the fight is survivable
-if you have a plan. The plan is one of: wear an *amulet of unchanging*
-(immune), kill it from range before it closes, or accept that you're
-playing a different role for a while. Genetic engineers appear on the
-deeper levels, which is also when you should already be carrying
-contingencies — *unchanging* is one of the classic "carry it before
-you need it" amulets.
-
-**Polymorph isn't only a punishment.** With *polymorph control* (the
-ring, or the intrinsic), or in 5.0 a *blessed* potion of polymorph,
-you choose what you become — and what you become can be very strong
-indeed (a master mind flayer for an interlude, a chickatrice when
-you'd rather turn the dungeon to stone, an Archon when the form-class
-roll permits). With a *wand of polymorph* aimed at yourself, you have
-an on-demand version of the same.
-
-This is what makes the genetic engineer's **corpse** interesting.
-Eating it is mechanically identical to eating a doppelganger corpse:
-the same `polyself` call with the same flags, just with the more
-dramatic message. The flavor differs; the effect doesn't. **Tin** the
-corpse and you have a portable, shelf-stable polymorph source in your
-pack. Combine a tin with polymorph control and you have a controlled
-polymorph for the cost of a tinning kit — at least as efficient as
-carrying a stack of polymorph potions, and immune to Gehennom's hot
-ground. The first time a genetic engineer kills you, this trade looks
-unfair. The second time you're the one with the tinned engineer in
-your bag, it looks like balance.
-
-If you do polymorph against your will and don't have control, don't
-panic. Read a scroll of remove curse if your current form has cursed
-your old gear off, check whether your new form can wield your weapon,
-and notice that the new shape may have intrinsics you didn't have
-before. If the new form is a clear downgrade, polyself again from a
-wand, potion, or another tin. The dungeon will give you several
-rolls; you only need one to land somewhere acceptable.
+**The corpse is a tool.** Eating a genetic engineer corpse is
+mechanically identical to eating a doppelganger corpse — same
+uncontrolled `polyself`, just with louder flavor text. The
+practical use is the same as the doppelganger's: tin it, and you
+have a portable polymorph source. Pair a tin with *polymorph
+control* and you have a controlled polymorph that survives
+Gehennom's hot ground. The first engineer that kills you is a
+loss; the second one in your bag is a kit.
 
 #### The Essential Kit
 
@@ -3033,12 +3000,22 @@ The key armor slots:
 
 | Slot   | Best mundane options                       | Best magical options                  |
 | ------ | ------------------------------------------ | ------------------------------------- |
-| Body   | Splint mail, banded mail                   | Dragon scale mail (two resistances!)  |
+| Body   | Splint mail, banded mail                   | Dragon scale mail (two extrinsics)    |
 | Cloak  | Cloak of protection                        | Cloak of magic resistance             |
-| Helmet | Helm of brilliance                         | Helm of telepathy                     |
+| Helmet | Helm of caution (early game)               | Helm of telepathy / helm of brilliance |
 | Gloves | Gauntlets of power                         | Gauntlets of dexterity                |
 | Boots  | Speed boots                                | Water walking boots, levitation boots |
 | Shield | Shield of reflection                       | Small shield (for spellcasters)       |
+
+The **helm of caution** is new in current editions: it grants
+*warning*, the same intrinsic the ring provides, in the helmet
+slot. Warning fills the screen with colored markers indicating
+nearby threats by danger level — yellow for moderate, red for
+deadly — without you having to see the monsters yet. It is the
+ideal early-game helm slot: cheap (50 zm), light, and a real
+edge against ambushes. Late game it competes with helm of
+brilliance (Wizards) and helm of telepathy (everyone), but the
+warning bonus stays useful all the way down.
 
 **Dragon scale mail** is the endgame body armor of choice. In
 current editions, each color provides two extrinsic resistances.
@@ -3418,7 +3395,11 @@ are the time-tested tactics that keep adventurers breathing:
 - **Use conflict.** A ring of conflict makes monsters fight each
   other. Walk into a room full of enemies, put on the ring, and
   watch them destroy each other while you enjoy the show from the
-  doorway. Nature is beautiful.
+  doorway. Nature is beautiful. Two current-edition caveats: a
+  monster has to *see* you for conflict to affect it (so blind or
+  out-of-sight monsters keep their wits), and the chance scales
+  with your **Charisma** — a high Cha makes it noticeably more
+  reliable, a low Cha makes it flaky.
 - **Elbereth for emergencies.** Write it, stand on it, recover.
   The monsters will mill around you looking confused and angry,
   which is exactly how you want them.
