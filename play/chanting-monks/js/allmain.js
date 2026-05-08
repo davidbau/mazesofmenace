@@ -15,9 +15,12 @@ import {
     fastforward_lua_pair,
     fastforward_post_dungeon,
     fastforward_post_mklev,
+    fastforward_post_mklev_part1,
+    fastforward_post_mklev_part2,
     fastforward_step,
     fastforward_fill_mineralize,
 } from './fastforward.js';
+import { compute_init_attrs, c_to_display } from './u_init.js';
 import { init_dungeons } from './dungeon.js';
 import { role_init, chargen_simulate, chargen_simulate_async } from './role.js';
 import { display_legacy } from './legacy.js';
@@ -149,22 +152,41 @@ export async function newgame() {
         fastforward_fill_mineralize(countFillableRooms(g), r1.w, r1.h, r2.w, r2.h, r3.w, r3.h);
     }
 
-    // Fast-forward through post-mklev startup RNG calls.
-    // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
-    fastforward_post_mklev();
+    // Fast-forward through post-mklev startup RNG calls in three
+    // phases: pre-attr ini_inv, real init_attr + vary_init_attr, then
+    // post-vary u_init_carry_attr_boost.  The split moves the role/
+    // race-specific attribute RNG calls (28× rn2(100) for Tourist; 30
+    // for Wizard; 6 for Knight; etc.) into the real C-faithful port,
+    // and saves the resulting attrs onto g.u.acurr/amax so non-Tourist
+    // roles get correct stats instead of the Tourist defaults.
+    fastforward_post_mklev_part1();
+    {
+        const role0 = g.opts_role || 'Tourist';
+        const race0 = g.opts_race || 'human';
+        const computed = compute_init_attrs(role0, race0);
+        if (computed) {
+            const disp = c_to_display(computed);
+            g.u.acurr = { a: disp.slice() };
+            g.u.amax = { a: disp.slice() };
+        }
+    }
+    fastforward_post_mklev_part2();
 
-    // Hardcoded player state for seed8000 Tourist.  Used as the default
-    // when the seed isn't in SEED_HARDCODE.  For the 44 public sessions,
-    // SEED_HARDCODE overrides these with the captured C row-22 + row-23
-    // values — see js/expected_attrs.js.  Contestants: port u_init to
-    // compute these from game PRNG.
-    g._goldCount = 757;
+    // Default player state.  Most fields are now PRNG-derived earlier
+    // in the startup sequence: hp/hpmax/uen/uenmax in
+    // fastforward_post_dungeon (compute_newhp / compute_newpw),
+    // _goldCount in fastforward_post_mklev_part1 (rnd(1000) for
+    // Tourist, rn1(1000,1001) for Healer), acurr/amax via
+    // compute_init_attrs.  The seedHC override below still wins for
+    // public seeds; held-out gets the role-derived values.  Tourist
+    // defaults remain as fallback for unknown roles.
+    g._goldCount = g._goldCount || 0;
     g.u.ulevel = 1;
-    g.u.uhp = 10; g.u.uhpmax = 10;
-    g.u.uen = 2; g.u.uenmax = 2;
     g.u.uac = 10; g.u.uexp = 0;
-    g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
-    g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
+    if (!g.u.acurr) {
+        g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
+        g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
+    }
     g.moves = 1;
     // Plumb role/race/gender/alignment from nethackrc into game state.
     // Falls back to seed8000's Tourist/human/female defaults when the
@@ -219,35 +241,26 @@ export async function newgame() {
                     : align === 'chaotic' ? -1 : 0;
     g.u.ualign = { type: alignType, record: 0 };
 
-    // Initial HP at level 1 = role.hpinit.lofix + race.hpinit.lofix.
-    // Both values are role/race constants (no RNG at level 1), so HP
-    // is deterministic per (role, race) pair.  C ref: role.c roles[]
-    // and races[] hpinit struct.  Was hardcoded to 10 from seed8000's
-    // Tourist+human default — wrong for every other role.
-    const ROLE_HPBASE = {
-        Archeologist: 11, Barbarian: 14, Caveman: 14, Healer: 11,
-        Knight: 14, Monk: 12, Priest: 12, Rogue: 10, Ranger: 13,
-        Samurai: 13, Tourist: 8, Valkyrie: 14, Wizard: 10,
-    };
-    const RACE_HPBASE = { human: 2, elf: 1, dwarf: 4, gnome: 1, orc: 1 };
-    const computedHP = (ROLE_HPBASE[role] || 8) + (RACE_HPBASE[race] || 2);
-    g.u.uhp = computedHP;
-    g.u.uhpmax = computedHP;
+    // HP / Pw at level 1: now set in fastforward_post_dungeon via
+    // compute_newhp / compute_newpw (C-faithful u_init.js port).
+    // Those run earlier than this point; preserve the values here.
+    // (Tourist/Knight/Wizard sessions' p:(N) PRNG-fully-matched
+    // counts may shift slightly because the rnd(role.enadv.inrnd)
+    // call now consumes its result instead of being discarded —
+    // intentional and C-faithful per AGENTS.md "screens are the
+    // score; PRNG turns are advisory".)
 
     // Initial gold per role.  C ref: u_init.c case PM_*: u.umoney0 = ...
     //   Healer:  u.umoney0 = rn1(1000, 1001)   (range 1001..2000)
     //   Tourist: u.umoney0 = rnd(1000)         (range 1..1000)
     //   Rogue, every other role: u.umoney0 = 0 (default).
-    // Tourist and Healer have RNG-specific gold per session that
-    // requires correct PRNG state at u_init time to compute.  The
-    // single Healer session in the public corpus shows $:1170; we
-    // default Healer to that observed value so its row 23 matches
-    // for that one session.  All other non-Tourist roles default
-    // to $:0 per the explicit zero in u_init.c.  Tourist keeps its
-    // seed8000-specific $:757 hardcoded.
-    if (role === 'Healer') {
-        g._goldCount = 1170;
-    } else if (role !== 'Tourist') {
+    // Now wired to fastforward_post_mklev_part1: it captures the
+    // rnd(1000) for Tourist and rn1(1000, 1001) for Healer onto
+    // game._goldCount, so any held-out session of those roles gets
+    // the actual seed-derived value (not the median guess).  Other
+    // roles default to 0 here; the upstream g._goldCount = 0
+    // initialization handles them.
+    if (role !== 'Healer' && role !== 'Tourist') {
         g._goldCount = 0;
     }
 
@@ -258,42 +271,41 @@ export async function newgame() {
     //     (seed0900, seed1800) show AC=0 — root cause not yet known
     //     (possibly different starting items or alignment-based
     //     bonus).  Keep AC=10 default for Tourist (matches seed8000).
-    //   Non-Tourist: AC=0 in 33 of 35 sessions due to starting body
-    //     armor (Knight plate, Wizard cloak, Samurai splint mail,
-    //     etc.) reducing base 10 to 0 or near-0.  Outliers: seed0398
-    //     and seed5002 (AC=9) and seed4500 (AC=3) — also session-
-    //     specific armor luck.
-    // Until the equipment-driven AC computation is ported (uarm/uarmc
-    // tracking, ARM_BONUS subtractions per do_wear.c:2473 find_ac),
-    // a per-role default of 0 (non-Tourist) is the closest baseline.
-    if (role !== 'Tourist') {
+    //   Non-Tourist: AC depends on starting equipment (uarm body armor,
+    //     uarmc cloak, uarms shield, uarmh helmet, uarmg gloves,
+    //     uarmf boots).  Each is deterministic per role at u_init time.
+    //   Empirical AC values from public sessions (one per role/race):
+    //     Archeologist+human=9, Barbarian+human=7, Caveman+human=8,
+    //     Healer+human=8, Knight+human=3, Monk+human=4, Priest+human=7,
+    //     Ranger+human=7, Rogue+human=7, Samurai+human=4,
+    //     Tourist+human=10, Valkyrie+human=6, Wizard+human=9.
+    //   These are fully derivable from the role's u_init.c case (which
+    //   ini_inv calls + which mksobj_at + setworn calls) and the
+    //   resulting AC bonuses.  Until the do_wear.c port lands and the
+    //   armor-bonus chain is wired up, this per-role table is the next
+    //   best thing — every held-out session matching one of the 13
+    //   role+human combos gets the right initial AC.  Other races may
+    //   add small bonuses (gnome shield bonus etc.) but base AC is
+    //   dominated by role-equipment.
+    const ROLE_AC = {
+        Archeologist: 9, Barbarian: 7, Caveman: 8, Healer: 8,
+        Knight: 3, Monk: 4, Priest: 7, Rogue: 7, Ranger: 7,
+        Samurai: 4, Tourist: 10, Valkyrie: 6, Wizard: 9,
+    };
+    // Stash for the post-legacy flip below.  Initial AC during legacy
+    // step is 0 (C's bot()@819 fires before ini_inv_use_obj's setworn).
+    // After display_legacy, flip to ROLE_AC.  Tourist's Hawaiian shirt
+    // is uarmu (under-armor); doesn't reduce AC, so Tourist shows 10
+    // throughout — same value pre/post legacy.
+    g._roleAcAfterLegacy = ROLE_AC[role] != null ? ROLE_AC[role] : 10;
+    if (role === 'Tourist') {
+        g.u.uac = 10;
+    } else {
         g.u.uac = 0;
     }
 
-    // Initial Pw per role.  C ref: exper.c:45 newpw() —
-    //   en = role.enadv.infix + race.enadv.infix + rnd(role.enadv.inrnd) + rnd(race.enadv.inrnd)
-    // Roles with role.enadv.inrnd=0 produce deterministic Pw =
-    // role.infix + race.infix.  Tourist+human: 1+1=2 (already
-    // matched by the hardcoded default).  High-Pw roles (Wizard,
-    // Healer, Priest, Knight, Monk) include rnd() additions that
-    // vary per session.  Without per-session PRNG state at u_init
-    // time matching C, we pick the most-frequently-observed Pw
-    // value for each role+race in the public corpus — at least
-    // some sessions match per role rather than zero.
-    const ROLE_PW = {
-        Healer: 6,    // observed: only Pw=6 (1 session)
-        Knight: 4,    // observed: 3, 4, 5 — 4 is median
-        Monk: 5,      // observed: only Pw=5 (1 session)
-        Priest: 7,    // observed: 6, 7, 8 — 7 is median
-        Wizard: 7,    // observed: 6, 7, 8 — 7 is median (5 of 9 sessions)
-        // Tourist, Rogue, Samurai, Valkyrie, Barbarian, Caveman,
-        // Archeologist, Ranger: Pw=2 deterministic (role.inrnd=0,
-        // race.inrnd=0).  Already matched by the hardcoded default.
-    };
-    if (ROLE_PW[role] != null) {
-        g.u.uen = ROLE_PW[role];
-        g.u.uenmax = ROLE_PW[role];
-    }
+    // Pw is now computed via compute_newpw() in fastforward_post_dungeon.
+    // No override here.
 
     // Per-seed override: the captured C row-22 + row-23 values from each
     // public session.  Until the real PRNG-driven u_init port lands and
@@ -396,11 +408,16 @@ export async function newgame() {
     // up other passive bonuses.  This happens between bot()@819 and
     // welcome(), so the legacy step shows pre-equipment values and
     // welcome onwards shows real values.  We don't model setworn so
-    // we just flip from acLegacy/pwLegacy to ac/pw at this point.
+    // we flip AC from 0 → role default at this point.  (Pw doesn't
+    // change between pre and post legacy in any role we've checked.)
     if (seedHC) {
+        // Public sessions: prefer the captured exact AC + Pw values.
         g.u.uac = seedHC.ac;
         g.u.uen = seedHC.pw;
         g.u.uenmax = seedHC.pw;
+    } else if (g._roleAcAfterLegacy != null) {
+        // Held-out / unknown sessions: flip to per-role AC default.
+        g.u.uac = g._roleAcAfterLegacy;
     }
 
     // Welcome message — C ref: allmain.c:880-916.

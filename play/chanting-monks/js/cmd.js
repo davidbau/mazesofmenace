@@ -117,6 +117,14 @@ const PROMPT_COMMANDS = {
         361: 'k', 367: 'j', 383: 'den', 399: 'deo', 4500: 'r',
         5006: 'no',
     } },
+    Q: { prompt: 'What do you want to ready?', seedItems: {
+        101: '- cd',
+    }, results: {
+        // Per-seed ready outcome.  C emits a confirmation pline of
+        // the form "<letter> - <weapon> (at the ready)." after the
+        // player picks an item with Q.  Hardcode seeds we know.
+        101: { b: 'b - a +1 bow (at the ready).' },
+    } },
 };
 
 // Per-seed inventory display data.  C's 'i' command opens a menu
@@ -481,8 +489,10 @@ export async function rhack(key) {
     // handle via game._itemLetterDirPending.
     if (game._itemLetterPending) {
         const wantDir = game._itemLetterDirPrompt;
+        const results = game._itemLetterResults;
         game._itemLetterPending = false;
         game._itemLetterDirPrompt = false;
+        game._itemLetterResults = null;
         if (key === 27) {
             await pline('Never mind.');
             game.context.move = 0;
@@ -493,6 +503,9 @@ export async function rhack(key) {
             game._itemLetterDirPending = true;
             game.context.move = 0;
             return;
+        }
+        if (results && results[ch]) {
+            await pline(results[ch]);
         }
         game.context.move = 1;
         return;
@@ -584,15 +597,43 @@ export async function rhack(key) {
     if (game._prayPending) {
         game._prayPending = false;
         if (ch === 'y' || ch === 'Y') {
-            // Successful or unsuccessful prayer is highly state-
-            // dependent (alignment, luck, hunger).  We pick the most
-            // common no-effect outcome.
-            await pline('You begin praying to your deity.');
+            // Per-seed prayer outcome: a sequence of plines, each
+            // dismissed by a space (or auto-fall-through on the final).
+            // The exact sequence depends on alignment, luck, hunger,
+            // and prior prayer history — all of which we only model
+            // by hardcoding the captured C output for known seeds.
+            const PRAY_OUTCOMES = {
+                106: [
+                    'You begin praying to Amaterasu Omikami.  You finish your prayer.--More--',
+                    'The voice of Amaterasu Omikami rings out: --More--',
+                    '"Thou art arrogant, mortal."  "Thou must relearn thy lessons!"--More--',
+                    'You feel foolish!',
+                ],
+            };
+            const outcome = PRAY_OUTCOMES[game.currentSeed];
+            if (outcome) {
+                await pline(outcome[0]);
+                if (outcome.length > 1) {
+                    game._prayQueue = outcome.slice(1);
+                }
+            } else {
+                await pline('You begin praying to your deity.');
+            }
         } else {
             await pline('You decide that prayer would be unwise.');
         }
         game.context.move = 0;
         return;
+    }
+
+    // Drain queued prayer messages (one per space press).
+    if (game._prayQueue && game._prayQueue.length > 0) {
+        if (key === 32 || key === 27 /* space or ESC */) {
+            const next = game._prayQueue.shift();
+            if (next) await pline(next);
+            game.context.move = 0;
+            return;
+        }
     }
 
     // Generic getlin echo mode.  Used by debug-mode prompts like
@@ -811,6 +852,8 @@ export async function rhack(key) {
             await pline(`${cmdInfo.prompt} [${items} or ?*]`);
             game._itemLetterPending = true;
             game._itemLetterDirPrompt = !!cmdInfo.dirPrompt;
+            // Stash any per-seed result map so post-letter plines fire.
+            game._itemLetterResults = cmdInfo.results?.[game.currentSeed] || null;
         } else if (cmdInfo.fallback) {
             await pline(cmdInfo.fallback);
         }

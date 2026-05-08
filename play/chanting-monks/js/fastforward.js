@@ -53,15 +53,28 @@ export function fastforward_lua_pair() {
     rn2(3); rn2(2);
 }
 
-// Pre-mklev post-dungeon: role-specific newpw rnd(role.enadv.inrnd) +
-// u_init_misc rn2(10). The newpw is part of u_init_misc in C (it's
-// called from u_init_misc before the rn2(10) for u.uhandedness); we
-// emit it here at the same call-order point.
-import { role_enadv_inrnd } from './role.js';
+// Pre-mklev post-dungeon: real newpw call (consumes role-specific
+// rnd(role.enadv.inrnd) and saves result on game.u.uen) + u_init_misc
+// rn2(10) for u.uhandedness.  The newpw is part of C's u_init_misc.
+// C ref: u_init.c:1031  u.uhandedness = rn2(10) ? RIGHT_HANDED : LEFT_HANDED;
+import { game } from './gstate.js';
+import { compute_newpw, compute_newhp } from './u_init.js';
 export function fastforward_post_dungeon() {
-    const inrnd = role_enadv_inrnd();
-    if (inrnd > 0) rnd(inrnd);
-    rn2(10);
+    const role = game.opts_role || 'Tourist';
+    const race = game.opts_race || 'human';
+    const en = compute_newpw(role, race);
+    const hp = compute_newhp(role, race);
+    game.u = game.u || {};
+    game.u.uen = en;
+    game.u.uenmax = en;
+    game.u.uenpeak = en;
+    game.u.uhp = hp;
+    game.u.uhpmax = hp;
+    game.u.uhppeak = hp;
+    // Capture handedness from rn2(10) result.  ~10% chance of LEFT.
+    // Surfaces on the ^X enlightenment menu's "You are left/right-handed"
+    // line for any session that opens that menu.
+    game.u.uhandedness = rn2(10) ? 'right' : 'left';
 }
 
 // Pre-mklev startup: o_init shuffles, dungeon init, u_init_misc
@@ -183,8 +196,50 @@ export function fastforward_pre_mklev() {
 
 // Post-mklev startup: u_init_role, ini_inv, attributes, moveloop_preamble
 // 124 leaf RNG calls (regenerated from session data)
-export function fastforward_post_mklev() {
-    rnd(1000); rn2(20); rnd(2); rn2(6); rn2(11); rn2(10); rn2(10); rn2(100); rn2(20); rn2(1);
+//
+// SPLIT into three phases so the attribute init can be computed by
+// the real compute_init_attrs() port (js/u_init.js):
+//
+//   fastforward_post_mklev_part1()  — pre-attr: 87 ini_inv calls
+//   <real init_attr + vary_init_attr>  — role/race-specific count
+//   fastforward_post_mklev_part2()  — post-vary: u_init_carry_attr_boost
+//
+// The intermediate phase MUST be the real compute_init_attrs.  The
+// number of rn2(100) calls in init_attr is `75 - sum(role.attrbase)`
+// — Tourist 28, Wizard 30, Knight 6, etc.  And vary_init_attr's rn2(7)
+// count varies 0..6 per session.  Hardcoding the seed8000 Tourist
+// counts (28 + 6×rn2(20) + 1×rn2(7)) silently mis-aligns PRNG state
+// for every other role.
+export function fastforward_post_mklev_part1() {
+    // First call is u_init_role's gold initialization.  C ref:
+    //   case PM_TOURIST: u.umoney0 = rnd(1000);
+    //   case PM_HEALER:  u.umoney0 = rn1(1000, 1001);  /* 1001..2000 */
+    //   case PM_ROGUE:   u.umoney0 = 0;  /* no rnd call */
+    //   default:         u.umoney0 = 0;  /* no rnd call */
+    // Capture the result for Tourist + Healer; emit the same call shape
+    // C uses (rnd(1000) for Tourist, rn1(1000, 1001) for Healer) so PRNG
+    // state advances correctly.  For roles with no umoney0 call, this
+    // emission is too many — a future role-aware fastforward port should
+    // skip it.  Rogue/Knight/Wizard etc. currently consume one extra
+    // rnd(1000) here; not new — the old code did the same.
+    const role = game.opts_role || 'Tourist';
+    if (role === 'Healer') {
+        // rn1(1000, 1001) → rn2(1000) + 1001.  Logged as rn2(1000).
+        const g = rn2(1000) + 1001;
+        game.u = game.u || {};
+        game._goldCount = g;
+    } else if (role === 'Tourist') {
+        const g = rnd(1000);
+        game.u = game.u || {};
+        game._goldCount = g;
+    } else {
+        // Other roles: no umoney0 rnd call in C.  We still emit one
+        // rnd(1000) to maintain back-compat with the rest of this
+        // hardcoded sequence; PRNG state is already wrong for these
+        // roles and a single extra call is the smaller of two evils.
+        rnd(1000);
+    }
+    rn2(20); rnd(2); rn2(6); rn2(11); rn2(10); rn2(10); rn2(100); rn2(20); rn2(1);
     rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000);
     rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2);
     rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6);
@@ -192,11 +247,24 @@ export function fastforward_post_mklev() {
     rn2(6); rn2(1); rnd(2); rn2(4); rn2(2); rnd(2); rn2(4); rn2(2); rn2(1); rnd(2); rn2(4);
     rnd(2); rn2(4); rnd(2); rn2(4); rnd(2); rn2(4); rn2(1); rnd(2); rn2(10); rn2(11); rn2(10);
     rn2(10); rn2(1); rnd(2); rn2(70); rn2(1); rn2(1); rnd(2); rn2(1); rn2(25); rn2(25); rn2(25);
-    rn2(20); rn2(1); rnd(2); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
-    rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
-    rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
-    rn2(100); rn2(100); rn2(100); rn2(20); rn2(20); rn2(20); rn2(7); rn2(20); rn2(20); rn2(20);
+    rn2(20); rn2(1); rnd(2);
+}
+export function fastforward_post_mklev_part2() {
     rnd(9000); rnd(30);
+}
+
+// Back-compat shim — keeps the old call sites working for now.  Calls
+// part1 + the original Tourist-specific attr/vary inline + part2.
+// allmain.js should switch to the split form once it's wired up.
+export function fastforward_post_mklev() {
+    fastforward_post_mklev_part1();
+    // Tourist seed8000 attr fingerprint (28× rn2(100) + 6× rn2(20) + 1× rn2(7)).
+    rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
+    rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
+    rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
+    rn2(100); rn2(100); rn2(100);
+    rn2(20); rn2(20); rn2(20); rn2(7); rn2(20); rn2(20); rn2(20);
+    fastforward_post_mklev_part2();
 }
 
 // Per-step leaf RNG calls

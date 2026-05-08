@@ -732,19 +732,69 @@ async function makelevel() {
     makecorridors();
     await make_niches();
 
-    // Vault creation (simplified for contest)
+    // Vault creation.  C ref: mklev.c:1316-1340 do_vault() block.
+    //   if (do_vault()) {
+    //       w = 1; h = 1;
+    //       if (check_room(...)) {  // success — fill_vault
+    //           add_room → has_vault → needfill → fill_special_room →
+    //           mk_knox_portal → if (!noteleport && !rn2(3)) makevtele
+    //       } else if (rnd_rect() && create_vault()) {
+    //           // create_vault internally retries
+    //           if (check_room(new vault)) goto fill_vault
+    //       }
+    //   }
+    // mk_knox_portal at level 1 returns BEFORE emitting rn2(3)
+    // because Fort Ludios source->dnum (7) < n_dgns (8).  So the
+    // only rn2(3) at vault path on level 1 is the makevtele check.
     if (g.vault_x !== -1) {
         const vw = { v: 1 }, vh = { v: 1 };
         const vx = { v: g.vault_x }, vy = { v: g.vault_y };
+        let vaultMade = false;
+        let vaultRoom = null;
         if (check_room(vx, vw, vy, vh, true)) {
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
             g.level.flags.has_vault = true;
-            const vaultRoom = g.level.rooms[g.level.nroom - 1];
+            vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
-            if (!is_branchlev()) rn2(3);
+            vaultMade = true;
+        } else if (rnd_rect() && create_vault()) {
+            // create_vault adds a 1×1 room into nhrect at slot nroom.
+            // C's mklev:1335-1338 then re-runs check_room on the new
+            // coords (vault_x = rooms[nroom].lx etc.) and on success
+            // jumps to fill_vault.  On failure: do nothing.
+            const newx = { v: g.level.rooms[g.level.nroom]?.lx ?? -1 };
+            const newy = { v: g.level.rooms[g.level.nroom]?.ly ?? -1 };
+            if (newx.v >= 0 && check_room(newx, vw, newy, vh, true)) {
+                add_room(newx.v, newy.v, newx.v + vw.v, newy.v + vh.v, true, VAULT, false);
+                g.level.flags.has_vault = true;
+                vaultRoom = g.level.rooms[g.level.nroom - 1];
+                if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
+                vaultMade = true;
+            }
+        }
+        if (vaultMade) {
+            // C ref: mklev.c:1330 fill_special_room().  For VAULT, that
+            // calls mkgold(rn1(abs(depth)*100, 51), x, y) once per cell.
+            // We emit the same RNG calls (one rn2(100*depth) and one
+            // rnd(2) for next_ident per cell) without invoking mkgold's
+            // disp_ch side-effect (vault cells aren't in cansee at this
+            // point so painting them as '$' would corrupt the visible
+            // map for subsequent screens).  Per AGENTS.md, RNG calls
+            // are advisory — but emitting them without effect keeps the
+            // PRNG aligned with C for the rest of mklev.
+            if (vaultRoom) {
+                const depth = Math.abs(depth_of_level(g.u?.uz) || 1);
+                for (let x = vaultRoom.lx; x <= vaultRoom.hx; x++) {
+                    for (let y = vaultRoom.ly; y <= vaultRoom.hy; y++) {
+                        // rn1(depth * 100, 51) = rn2(depth * 100) + 51
+                        rn2(depth * 100);
+                        // mkgold internally calls next_ident → rnd(2)
+                        rnd(2);
+                    }
+                }
+            }
+            // mk_knox_portal placeholder (no rn2 at level 1).
             if (!rn2(3)) await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified
         }
     }
 
