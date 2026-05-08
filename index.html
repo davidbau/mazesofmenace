@@ -289,6 +289,11 @@ footer a { color: var(--color-text-muted); }
         No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
     </p>
     <p class="lb-hint">
+        <strong>Category</strong> is based on how the team plans to
+        produce most (over 50%) of the code. <strong>Agentic</strong>
+        codebases are mostly produced by generating code with an LLM
+        and <strong>Transpiled</strong> codebases rely mostly on
+        transpiling the C sources with tools.
         <strong>Points</strong> = matched screens across the 44 public
         sessions. Each step where your fork&rsquo;s rendered 80&times;24
         terminal exactly matches the C reference is one point; the max
@@ -355,6 +360,7 @@ footer a { color: var(--color-text-muted); }
 // Viewer for per-session inspection — both are mirrored from each fork
 // at scoring time. See judge/scripts/score-fork.sh.
 (async function () {
+    const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
     const PCT_CLASS = (pct) => pct >= 100 ? 'pass' : (pct >= 50 ? 'partial' : 'fail');
     const TIME_AGO = (ts) => {
         const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
@@ -366,9 +372,14 @@ footer a { color: var(--color-text-muted); }
     };
 
     let data;
+    let grandfathered = {};
     try {
-        const r = await fetch('/leaderboard/data.json?t=' + Date.now(), { cache: 'no-store' });
-        data = await r.json();
+        const [dataResp, gfResp] = await Promise.all([
+            fetch('/leaderboard/data.json?t=' + Date.now(), { cache: 'no-store' }),
+            fetch('/leaderboard/grandfathered.json?t=' + Date.now(), { cache: 'no-store' }),
+        ]);
+        data = await dataResp.json();
+        if (gfResp.ok) grandfathered = await gfResp.json();
     } catch (e) {
         document.getElementById('lb-updated').textContent = 'Failed to load leaderboard';
         return;
@@ -377,51 +388,79 @@ footer a { color: var(--color-text-muted); }
     document.getElementById('lb-updated').textContent =
         'Last scored ' + TIME_AGO(data.timestamp);
 
-    const teams = (data.teams || []).slice().sort((a, b) =>
+    const SCORE_SORT = (a, b) =>
         ((b.public.points  || 0) - (a.public.points  || 0))
         || ((b.public.passing || 0) - (a.public.passing || 0))
         || ((b.public.rngPct  || 0) - (a.public.rngPct  || 0))
-    );
+    ;
+
+    const resolveCategory = (team) => {
+        let cat = (typeof team.category === 'string' ? team.category : 'none');
+        if (!CATEGORY_ORDER.includes(cat)) cat = 'none';
+        if (cat === 'none') {
+            const gf = grandfathered && team && team.name ? grandfathered[team.name] : null;
+            if (typeof gf === 'string' && CATEGORY_ORDER.includes(gf)) cat = gf;
+        }
+        return cat;
+    };
+
+    const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
+    const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
+    allTeams.forEach((t) => byCat[resolveCategory(t)].push(t));
 
     const tbody = document.getElementById('lb-tbody');
     const table = document.getElementById('lb-table');
     const empty = document.getElementById('lb-empty');
 
-    if (teams.length === 0) {
+    if (allTeams.length === 0) {
         empty.hidden = false;
         return;
     }
     table.hidden = false;
 
     const fmt = (n) => Number(n || 0).toLocaleString();
-    teams.forEach((team, i) => {
-        const pub = team.public;
-        const points    = pub.points || 0;
-        const maxPoints = pub.maxPoints || 0;
-        const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
-        const rngPct    = pub.rngPct  || 0;
-        const scrPct    = pub.screenPct || 0;
-        const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
-        const playUrl   = '/play/' + team.name + '/';
-        const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
-
+    const appendCategoryRow = (label) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td class="rank">${i + 1}</td>
-            <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
-            <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
-            <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-            <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
-                <span class="${PCT_CLASS(pointsPct)}">${fmt(points)}</span>
-                <span class="pts-max">/ ${fmt(maxPoints)}</span>
-            </td>
-            <td class="pct"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
-            <td class="pct"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
-            <td class="pct"><span class="${PCT_CLASS(sessPct)}">${pub.passing}/${pub.total}</span></td>
-            <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
-        `;
+        tr.innerHTML = `<th colspan="9">CATEGORY: ${label}</th>`;
         tbody.appendChild(tr);
+    };
+
+    CATEGORY_ORDER.forEach((cat) => {
+        const teams = byCat[cat] || [];
+        if (teams.length === 0) return;
+
+        appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+        teams.forEach((team, i) => {
+            const pub = team.public;
+            const points    = pub.points || 0;
+            const maxPoints = pub.maxPoints || 0;
+            const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
+            const rngPct    = pub.rngPct  || 0;
+            const scrPct    = pub.screenPct || 0;
+            const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+            const playUrl   = '/play/' + team.name + '/';
+            const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="rank">${i + 1}</td>
+                <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
+                <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+                <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
+                <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
+                    <span class="${PCT_CLASS(pointsPct)}">${fmt(points)}</span>
+                    <span class="pts-max">/ ${fmt(maxPoints)}</span>
+                </td>
+                <td class="pct"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
+                <td class="pct"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+                <td class="pct"><span class="${PCT_CLASS(sessPct)}">${pub.passing}/${pub.total}</span></td>
+                <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     });
+
+    appendCategoryRow('NEXT PLAYER');
 
     const youTr = document.createElement('tr');
     youTr.innerHTML = `

@@ -77,8 +77,21 @@ table {
 thead th {
     text-align: left;
     padding: 0.5em 0.7em;
-    border-bottom: 2px solid var(--color-accent-dark);
-    color: var(--color-accent-dark);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-family: var(--font-serif);
+}
+/* Category split rows live in <tbody>, but should look like a header line,
+   without the bold 2px rule used by the table's column headers. */
+tbody tr.cat-row th {
+    text-align: left;
+    padding: 0.5em 0.7em;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
     font-weight: 600;
     font-size: 0.85em;
     letter-spacing: 0.04em;
@@ -212,6 +225,11 @@ td.pct {
 </tbody>
 </table>
 <p class="hint">
+  <strong>Category</strong> is based on how the team plans to
+  produce most (over 50%) of the code. <strong>Agentic</strong>
+  codebases are mostly produced by generating code with an LLM
+  and <strong>Transpiled</strong> codebases rely mostly on
+  transpiling the C sources with tools.
   <strong>Points</strong> = matched 80&times;24 screens; one point per
   recorded step where the fork&rsquo;s render matches C exactly.
   <strong>PRNG</strong> is advisory &mdash; the structural prerequisite
@@ -232,6 +250,8 @@ td.pct {
 
 <script>
 const DATA_URL = 'data.json';
+const GRANDFATHERED_URL = 'grandfathered.json';
+const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
 
 function timeAgo(ts) {
     const diff = Date.now() - new Date(ts).getTime();
@@ -247,6 +267,16 @@ function pctClass(pct) {
     if (pct >= 100) return 'pass';
     if (pct >= 50) return 'partial';
     return 'fail';
+}
+
+function resolveCategory(team, grandfathered) {
+    let cat = (typeof team?.category === 'string' ? team.category : 'none');
+    if (!CATEGORY_ORDER.includes(cat)) cat = 'none';
+    if (cat === 'none') {
+        const gf = grandfathered && team && team.name ? grandfathered[team.name] : null;
+        if (typeof gf === 'string' && CATEGORY_ORDER.includes(gf)) cat = gf;
+    }
+    return cat;
 }
 
 // Scoring-rule cutoff. The metric stabilised on 2026-05-05T23:56Z
@@ -317,8 +347,12 @@ function drawSparkline(svg, history) {
 
 async function loadLeaderboard() {
     try {
-        const resp = await fetch(DATA_URL + '?t=' + Date.now());
+        const [resp, gfResp] = await Promise.all([
+            fetch(DATA_URL + '?t=' + Date.now(), { cache: 'no-store' }),
+            fetch(GRANDFATHERED_URL + '?t=' + Date.now(), { cache: 'no-store' }),
+        ]);
         const data = await resp.json();
+        const grandfathered = gfResp.ok ? await gfResp.json() : {};
 
         document.getElementById('phase').textContent = data.contestPhase || 'open';
         document.getElementById('updated').textContent =
@@ -327,65 +361,86 @@ async function loadLeaderboard() {
         const tbody = document.getElementById('tbody');
         tbody.innerHTML = '';
 
-        const teams = (data.teams || []).sort((a, b) =>
+        const SCORE_SORT = (a, b) =>
             ((b.public.points || 0) - (a.public.points || 0))
             || ((b.public.passing || 0) - (a.public.passing || 0))
             || ((b.public.rngPct || 0) - (a.public.rngPct || 0))
-        );
+        ;
+
+        const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
+        const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
+        allTeams.forEach((t) => byCat[resolveCategory(t, grandfathered)].push(t));
 
         const fmt = (n) => Number(n || 0).toLocaleString();
 
-        teams.forEach((team, i) => {
+        const appendCategoryRow = (label) => {
             const tr = document.createElement('tr');
-            const pub = team.public;
-            const rngPct = pub.rngPct?.toFixed(1) || '0.0';
-            const scrPct = pub.screenPct?.toFixed(1) || '0.0';
-            const points    = pub.points || 0;
-            const maxPoints = pub.maxPoints || 0;
-            const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
-            const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
-
-            const playUrl   = '/play/' + team.name + '/';
-            const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
-
-            const held = team.heldOut || {};
-            const heldPoints    = held.points || 0;
-            const heldMaxPoints = held.maxPoints || 0;
-            const heldPct       = heldMaxPoints > 0 ? (heldPoints / heldMaxPoints * 100) : 0;
-
-            tr.innerHTML = `
-                <td class="rank">${i + 1}</td>
-                <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
-                <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
-                <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
-                    <span class="${pctClass(pointsPct)}">${fmt(points)}</span>
-                    <span class="pts-max">/ ${fmt(maxPoints)}</span>
-                </td>
-                <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
-                <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
-                <td class="pct"><span class="${pctClass(sessPct)}">${pub.passing}/${pub.total}</span></td>
-                <td class="pts" title="${heldPct.toFixed(2)}% of ${fmt(heldMaxPoints)} possible held-out points">
-                    ${heldMaxPoints > 0
-                        ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
-                        : '<span class="hidden">—</span>'}
-                </td>
-                <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${i}" class="spark-svg" aria-hidden="true"></svg></td>
-                <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
-            `;
+            tr.className = 'cat-row';
+            tr.innerHTML = `<th colspan="11">CATEGORY: ${label}</th>`;
             tbody.appendChild(tr);
+        };
 
-            if (team.history && team.history.length > 0) {
-                requestAnimationFrame(() => {
-                    const canvas = document.getElementById('spark-' + i);
-                    if (canvas) drawSparkline(canvas, team.history);
-                });
-            }
+        let rendered = 0;
+        CATEGORY_ORDER.forEach((cat) => {
+            const teams = byCat[cat] || [];
+            if (teams.length === 0) return;
+            rendered += teams.length;
+
+            appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+            teams.forEach((team, i) => {
+                const tr = document.createElement('tr');
+                const pub = team.public;
+                const rngPct = pub.rngPct?.toFixed(1) || '0.0';
+                const scrPct = pub.screenPct?.toFixed(1) || '0.0';
+                const points    = pub.points || 0;
+                const maxPoints = pub.maxPoints || 0;
+                const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
+                const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+
+                const playUrl   = '/play/' + team.name + '/';
+                const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
+
+                const held = team.heldOut || {};
+                const heldPoints    = held.points || 0;
+                const heldMaxPoints = held.maxPoints || 0;
+                const heldPct       = heldMaxPoints > 0 ? (heldPoints / heldMaxPoints * 100) : 0;
+
+                tr.innerHTML = `
+                    <td class="rank">${i + 1}</td>
+                    <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
+                    <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
+                    <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
+                    <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
+                        <span class="${pctClass(pointsPct)}">${fmt(points)}</span>
+                        <span class="pts-max">/ ${fmt(maxPoints)}</span>
+                    </td>
+                    <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
+                    <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
+                    <td class="pct"><span class="${pctClass(sessPct)}">${pub.passing}/${pub.total}</span></td>
+                    <td class="pts" title="${heldPct.toFixed(2)}% of ${fmt(heldMaxPoints)} possible held-out points">
+                        ${heldMaxPoints > 0
+                            ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
+                            : '<span class="hidden">—</span>'}
+                    </td>
+                    <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${cat}-${i}" class="spark-svg" aria-hidden="true"></svg></td>
+                    <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
+                `;
+                tbody.appendChild(tr);
+
+                if (team.history && team.history.length > 0) {
+                    requestAnimationFrame(() => {
+                        const canvas = document.getElementById('spark-' + cat + '-' + i);
+                        if (canvas) drawSparkline(canvas, team.history);
+                    });
+                }
+            });
         });
 
-        if (teams.length === 0) {
+        if (rendered === 0) {
             tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
+
+        appendCategoryRow('NEXT PLAYER');
 
         const youTr = document.createElement('tr');
         youTr.innerHTML = `
