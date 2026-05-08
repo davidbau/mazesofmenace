@@ -28,7 +28,19 @@ echo "    → index.html"
 
 if [ -x "$WEASYPRINT" ]; then
   echo "=== Building PDF ==="
-  "$WEASYPRINT" index.html companion.pdf 2>&1 | grep -v "^$" || true
+  # Print version drops web-only asides ("or more likely scrolling
+  # through" — true in a browser, false on paper). Anything that's
+  # accurate-on-screen-only-and-wrong-in-print belongs in this sed.
+  sed -e 's/ (or more likely scrolling through)//' companion.md > .companion-print.md
+  pandoc .companion-print.md \
+    --from=markdown \
+    --to=html5 \
+    --template=template.html \
+    --section-divs \
+    --syntax-highlighting=none \
+    --output=.companion-print.html
+  "$WEASYPRINT" .companion-print.html companion.pdf 2>&1 | grep -v "^$" || true
+  rm -f .companion-print.md .companion-print.html
   echo "    → companion.pdf"
 else
   echo "(PDF skipped: weasyprint not found in .venv. To enable:"
