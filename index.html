@@ -100,6 +100,27 @@ p { margin-bottom: 0.7em; }
 a { color: var(--color-accent); text-decoration: none; font-weight: 500; }
 a:hover { text-decoration: underline; }
 
+/* News banner above the leaderboard */
+.news-banner {
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-row-hover);
+    padding: 0.8em 1em 0.7em;
+    margin-bottom: 1em;
+    font-size: 0.98em;
+    line-height: 1.5;
+    border-radius: 0 3px 3px 0;
+}
+.news-banner strong.tag {
+    color: var(--color-accent-dark);
+    text-transform: uppercase;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    margin-right: 0.4em;
+}
+.news-banner em {
+    font-style: italic;
+}
+
 /* Leaderboard */
 .lb-meta {
     color: var(--color-text-muted);
@@ -234,6 +255,15 @@ footer a { color: var(--color-text-muted); }
 
 <section id="leaderboard">
     <h2>Leaderboard</h2>
+    <div class="news-banner">
+        <strong class="tag">News:</strong>
+        <strong>serteal</strong> has submitted the first transpiled solution &mdash;
+        an Emscripten compilation of the C source into a JavaScript state machine
+        running over a simulated C heap. Click serteal&rsquo;s name on the leaderboard
+        to inspect the build. It&rsquo;s not yet a readable JS port &mdash; and there&rsquo;s
+        still plenty of time to write one. <em>Can you build a port that beats the transpiler
+        in Phase 2?</em>
+    </div>
     <p class="lb-meta">
         <span id="lb-updated">Loading&hellip;</span> &middot;
         Re-scored every two hours &middot;
