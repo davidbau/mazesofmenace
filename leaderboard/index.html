@@ -190,6 +190,39 @@ td.pct {
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
+
+/* News feed */
+.news-feed {
+    margin: 0.5em 0 1.5em;
+}
+.news-feed h2 {
+    color: var(--color-accent-dark);
+    text-transform: uppercase;
+    font-size: 0.85em;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+}
+.news-item {
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-row-hover, rgba(0,0,0,0.03));
+    padding: 0.7em 1em 0.6em;
+    margin-bottom: 0.6em;
+    font-size: 0.98em;
+    line-height: 1.5;
+    border-radius: 0 3px 3px 0;
+}
+.news-item time {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.82em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25em;
+}
+.news-item p { margin-bottom: 0.5em; }
+.news-item p:last-child { margin-bottom: 0; }
+.news-item em { font-style: italic; }
 </style>
 </head>
 <body>
@@ -205,6 +238,37 @@ td.pct {
 <h1>Leaderboard <span class="phase-badge" id="phase">open</span></h1>
 <div class="subtitle">Port NetHack 5.0 C &rarr; JavaScript with bit-exact parity</div>
 <div class="updated" id="updated">Loading&hellip;</div>
+
+<section class="news-feed" aria-label="News feed">
+    <h2>News</h2>
+    <article class="news-item">
+        <time datetime="2026-05-09">May 9, 2026</time>
+        <p>
+            <strong>Contest updates:</strong> Found and fixed a few omissions
+            in the contest scoring framework, including some instrumentation
+            errors and a difficult test that had been zeroed. The session
+            corpus has been re-recorded with some modifications to exercise
+            the issues. We have also clarified Phase 2, which is designed as
+            a test of maintainability. The judges will design a
+            &ldquo;NetHack 5.1&rdquo; challenge that goes beyond a straight
+            port of C code, so contestants who arrive at the end of Phase 1
+            with a clean, well-factored, easy-to-modify JavaScript codebase
+            will have a strong advantage.
+        </p>
+    </article>
+    <article class="news-item">
+        <time datetime="2026-05-08">May 8, 2026</time>
+        <p>
+            <strong>serteal</strong> has submitted the first transpiled solution &mdash;
+            an Emscripten compilation of the C source into a JavaScript emulation of
+            the C state machine, including a simulated C heap. Click serteal&rsquo;s
+            name to inspect the JavaScript, and <strong>Play</strong> to play the
+            working game in the browser. It is not yet a readable JS port, and there
+            is still plenty of time to write one! <em>Can you build a port that beats
+            the transpiler in Phase 2?</em>
+        </p>
+    </article>
+</section>
 
 <table id="leaderboard">
 <thead>
