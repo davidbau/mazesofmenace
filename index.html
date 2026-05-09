@@ -272,16 +272,18 @@ footer a { color: var(--color-text-muted); }
         <article class="news-item">
             <time datetime="2026-05-09">May 9, 2026</time>
             <p>
-                <strong>Contest updates:</strong> Found and fixed a few omissions
-                in the contest scoring framework, including some instrumentation
-                errors and a difficult test that had been zeroed. The session
-                corpus has been re-recorded with some modifications to exercise
-                the issues. We have also clarified Phase 2, which is designed as
-                a test of maintainability. The judges will design a
-                &ldquo;NetHack 5.1&rdquo; challenge that goes beyond a straight
-                port of C code, so contestants who arrive at the end of Phase 1
-                with a clean, well-factored, easy-to-modify JavaScript codebase
-                will have a strong advantage.
+                <strong>Contest updates:</strong> several QoL and realism
+                improvements. <a href="/play/">/play/&lt;owner&gt;/</a> now
+                supports saving, loading, and an in-browser options editor at
+                <a href="/nethackrc/">/nethackrc/</a>. Animation-frame parity
+                is scored as a supplemental metric. The persistence API was
+                simplified to a single <code>opts.storage</code> handle so
+                save/restore actually survives a browser reload &mdash; making
+                the browser demo materially more playable. (serteal&rsquo;s
+                port hasn&rsquo;t regressed; their multi-segment sessions just
+                need a small migration to fit the new API.) The corpus was
+                re-recorded with instrumentation fixes. Phase 2 is clarified
+                as a test of maintainability.
             </p>
         </article>
         <article class="news-item">

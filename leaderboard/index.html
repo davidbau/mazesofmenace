@@ -140,6 +140,16 @@ td.pts {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+/* Supplemental columns are de-emphasised: lighter color + a small dagger
+ * footnote symbol in the header.  Same data shape as a percent cell, but
+ * never folded into the headline points/passing/RNG/Screen ranking. */
+.supplemental {
+    color: var(--color-text-muted);
+    font-style: italic;
+    opacity: 0.85;
+}
+.supplemental sup { font-size: 0.7em; }
+.supplemental.pct span { font-style: normal; }
 .pts .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; }
 .pct { text-align: right; }
 td.pct {
@@ -244,16 +254,18 @@ td.pct {
     <article class="news-item">
         <time datetime="2026-05-09">May 9, 2026</time>
         <p>
-            <strong>Contest updates:</strong> Found and fixed a few omissions
-            in the contest scoring framework, including some instrumentation
-            errors and a difficult test that had been zeroed. The session
-            corpus has been re-recorded with some modifications to exercise
-            the issues. We have also clarified Phase 2, which is designed as
-            a test of maintainability. The judges will design a
-            &ldquo;NetHack 5.1&rdquo; challenge that goes beyond a straight
-            port of C code, so contestants who arrive at the end of Phase 1
-            with a clean, well-factored, easy-to-modify JavaScript codebase
-            will have a strong advantage.
+            <strong>Contest updates:</strong> several QoL and realism
+            improvements. <a href="/play/">/play/&lt;owner&gt;/</a> now
+            supports saving, loading, and an in-browser options editor at
+            <a href="/nethackrc/">/nethackrc/</a>. Animation-frame parity is
+            scored as a supplemental metric. The persistence API was
+            simplified to a single <code>opts.storage</code> handle so
+            save/restore actually survives a browser reload &mdash; making
+            the browser demo materially more playable. (serteal&rsquo;s port
+            hasn&rsquo;t regressed; their multi-segment sessions just need
+            a small migration to fit the new API.) The corpus was
+            re-recorded with instrumentation fixes. Phase 2 is clarified
+            as a test of maintainability.
         </p>
     </article>
     <article class="news-item">
@@ -281,6 +293,7 @@ td.pct {
   <th class="pct">Screen</th>
   <th class="pct">Sessions</th>
   <th class="pts">Held-out points</th>
+  <th class="pct supplemental" title="Supplemental score for animation-frame parity. Not included in the official ranking.">Anim<sup>†</sup></th>
   <th class="sparkline">Progress</th>
   <th>Updated</th>
 </tr>
@@ -440,7 +453,7 @@ async function loadLeaderboard() {
         const appendCategoryRow = (label) => {
             const tr = document.createElement('tr');
             tr.className = 'cat-row';
-            tr.innerHTML = `<th colspan="11">CATEGORY: ${label}</th>`;
+            tr.innerHTML = `<th colspan="12">CATEGORY: ${label}</th>`;
             tbody.appendChild(tr);
         };
 
@@ -486,6 +499,11 @@ async function loadLeaderboard() {
                             ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
                             : '<span class="hidden">—</span>'}
                     </td>
+                    <td class="pct supplemental" title="Supplemental: ${pub.animMatched ?? 0}/${pub.animTotal ?? 0} animation frames matched. Not part of the official ranking.">
+                        ${pub.animPct != null
+                            ? `<span class="${pctClass(pub.animPct)}">${pub.animPct.toFixed(1)}%</span>`
+                            : '<span class="hidden">—</span>'}
+                    </td>
                     <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${cat}-${i}" class="spark-svg" aria-hidden="true"></svg></td>
                     <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
                 `;
@@ -501,7 +519,7 @@ async function loadLeaderboard() {
         });
 
         if (rendered === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
 
         appendCategoryRow('NEXT PLAYER');
@@ -512,7 +530,7 @@ async function loadLeaderboard() {
             <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
             <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
-            <td class="you-cta" colspan="7"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+            <td class="you-cta" colspan="8"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
         `;
         tbody.appendChild(youTr);
     } catch (e) {
