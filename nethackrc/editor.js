@@ -21,6 +21,73 @@ const STATUS_ROW = 23;
 const MAX_LINE = COLS - 1;     // hard cap on line length
 const RC_KEY = 'teleport:nethackrc';
 
+// Recognised .nethackrc directives, mirroring NetHack 5.0's
+// config_line_stmt[] table in src/cfgfiles.c. Each entry is
+// [NAME, minLen]: the user must type at least minLen chars (any case)
+// of the prefix; the typed text must be a case-insensitive prefix of
+// NAME. Used by the editor only to syntax-highlight recognised LHS
+// (the actual parsing happens C-side).
+const RC_DIRECTIVES = [
+    ['OPTIONS', 4],
+    ['AUTOPICKUP_EXCEPTION', 5],
+    ['BINDINGS', 4],
+    ['AUTOCOMPLETE', 5],
+    ['MSGTYPE', 7],
+    ['HACKDIR', 4],
+    ['LEVELDIR', 4],
+    ['LEVELS', 4],
+    ['SAVEDIR', 4],
+    ['BONESDIR', 5],
+    ['DATADIR', 4],
+    ['SCOREDIR', 4],
+    ['LOCKDIR', 4],
+    ['CONFIGDIR', 4],
+    ['TROUBLEDIR', 4],
+    ['NAME', 4],
+    ['ROLE', 4],
+    ['CHARACTER', 4],
+    ['DOGNAME', 3],
+    ['CATNAME', 3],
+    ['BOULDER', 3],
+    ['MENUCOLOR', 9],
+    ['HILITE_STATUS', 6],
+    ['WARNINGS', 5],
+    ['ROGUESYMBOLS', 4],
+    ['SYMBOLS', 4],
+    ['WIZKIT', 6],
+    ['SOUNDDIR', 8],
+    ['SOUND', 5],
+    ['CHOOSE', 6],
+];
+
+// Returns the LHS length [0..line.length] if `line` begins with a
+// recognised rc directive followed by '=' (or ':' for some forms);
+// returns 0 otherwise. Highlight runs from col 0 to that length.
+function rcDirectiveSpan(line) {
+    if (!line) return 0;
+    // Locate the separator: '=' is canonical; ':' appears in a few
+    // less-common forms (e.g. CHOOSE has its own parser but typically
+    // uses '=' too). Stop at first whitespace too — directive names
+    // never contain spaces.
+    let sep = -1;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '=' || ch === ':' || ch === ' ' || ch === '\t') {
+            sep = i;
+            break;
+        }
+    }
+    if (sep <= 0) return 0;
+    const lhs = line.slice(0, sep);
+    const upper = lhs.toUpperCase();
+    for (const [name, minLen] of RC_DIRECTIVES) {
+        if (upper.length < minLen) continue;
+        if (upper.length > name.length) continue;
+        if (name.startsWith(upper)) return sep;
+    }
+    return 0;
+}
+
 // Sensible hardfought-flavored defaults: line-drawing walls, autopickup
 // only for gold, status line shows XP/score/turn, full end-of-game disclosure.
 // Identity options are commented out so players can uncomment what they want.
@@ -547,19 +614,23 @@ class Editor {
         for (let v = 0; v < EDIT_ROWS; v++) {
             const lr = this.scroll + v;
             const line = this.lines[lr] || '';
+            // Compute per-line highlights once; per-cell loop just
+            // checks ranges. directiveSpan = LHS length if the line
+            // starts with a recognised rc directive (e.g. OPTIONS=,
+            // SYMBOLS=, MENUCOLOR=, BINDINGS=, MSGTYPE=, …); 0 otherwise.
+            const trimmed = line.trimStart();
+            const isComment = line.length > 0 && trimmed.startsWith('#');
+            const commentStart = isComment ? line.indexOf('#') : -1;
+            const directiveSpan = isComment ? 0 : rcDirectiveSpan(line);
             for (let c = 0; c < COLS; c++) {
                 const inSel = this.inSelection(lr, c);
                 const attr = inSel ? ATR_INVERSE : 0;
                 let ch = line[c] || ' ';
                 let color = CLR_GRAY;
 
-                // Comment lines / inline comments → green.
-                const trimmed = line.trimStart();
-                if (line.length > 0 && trimmed.startsWith('#') && c >= line.indexOf('#')) {
+                if (isComment && c >= commentStart) {
                     color = CLR_BRIGHT_GREEN;
-                }
-                // OPTIONS=... key prefix → cyan.
-                if (line.startsWith('OPTIONS=') && c < 8) {
+                } else if (directiveSpan > 0 && c < directiveSpan) {
                     color = CLR_BRIGHT_CYAN;
                 }
 
