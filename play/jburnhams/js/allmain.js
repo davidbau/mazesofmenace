@@ -79,6 +79,7 @@ export async function newgame() {
     g.u.uen = 2; g.u.uenmax = 2;
     g.u.uac = 10; g.u.uexp = 0;
     g.u.ualign = { type: 0, record: 0 };
+    g.u.uleft = true;
     g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
     g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
     g.moves = 1;

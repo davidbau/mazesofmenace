@@ -86,8 +86,11 @@ export async function moveloop_core() {
     const g = game;
 
     // Fast-forward per-step RNG (monster movement, regen, sounds, hunger)
-    const stepNum = (g.moves || 1) - 1;
-    fastforward_step(stepNum);
+    // Only happens if time passed (context.move is true)
+    if (g.context?.move) {
+        const stepNum = (g.moves || 1) - 1;
+        fastforward_step(stepNum);
+    }
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -97,11 +100,11 @@ export async function moveloop_core() {
     await bot();
     await flush_screen(1);
 
+    g.context = g.context || {};
+    g.context.move = 1;
+
     // Read and execute one command
     await rhack(0);
-
-    // Clear message after command is processed
-    g._pending_message = '';
 
     // Advance turn
     if (g.context?.move) {

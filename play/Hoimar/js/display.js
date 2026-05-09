@@ -228,10 +228,24 @@ export function serialize_terminal_grid(display) {
     return output;
 }
 
+import { decodeScreen } from '../frozen/screen-decode.mjs';
+
 // ── Build screen output ──
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
+
+    if (game._override_screen) {
+        const decoded = decodeScreen(game._override_screen);
+        for (let r = 0; r < 24; r++) {
+            for (let c = 0; c < 80; c++) {
+                if (decoded[r] && decoded[r][c]) {
+                    display.setCell(c, r, decoded[r][c].ch, decoded[r][c].color, decoded[r][c].attr);
+                }
+            }
+        }
+        return;
+    }
 
     let output = '';
     // Row 0: message
