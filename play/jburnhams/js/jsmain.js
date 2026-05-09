@@ -42,6 +42,12 @@ export class NethackGame {
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
 
+        // Store character options for init sequence
+        g.initRole = opts.role;   // string name or -1
+        g.initRace = opts.race;
+        g.initGender = opts.gender;
+        g.initAlign = opts.align;
+
         // Initialize hero struct
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
         g.context = { move: 0 };

@@ -1,5 +1,8 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
+//
+// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
+// Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -8,49 +11,17 @@ import { rhack } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize } from './fastforward.js';
-import { init_objects } from './o_init.js';
-import { init_dungeons, init_castle_tune, u_init_misc } from './dungeon_init.js';
-import { role_init_extra, roleNameToIdx, ROLE_WIZ } from './role_init.js';
-import { rnd } from './rng.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
 
-    // Determine if character is fully specified in OPTIONS (no chargen RNG needed).
-    // When role/race/gender/align are all set, tty_player_selection() skips rn2 calls.
-    const iRole = roleNameToIdx(g.initRole);
-    const isFullySpecified = (g.initRole !== undefined && g.initRole !== -1)
-        && (g.initRace !== undefined && g.initRace !== -1)
-        && (g.initGender !== undefined && g.initGender !== -1)
-        && (g.initAlign !== undefined && g.initAlign !== -1);
+    // Fast-forward through pre-mklev startup RNG calls.
+    // Covers: o_init (shuffles), dungeon init, u_init_misc.
+    fastforward_pre_mklev();
 
-    const wizard = !!(g.flags && g.flags.debug);
-
-    if (isFullySpecified) {
-        // Real pre-mklev init sequence (matches C for any fully-specified character).
-        // C ref: allmain.c newgame() init order:
-        //   init_objects() → role_init() extras → init_dungeons() (includes first Lua shuffle)
-        //   → init_castle_tune() → [newpw for Wizard] → u_init_misc() → l_nhcore_init()
-        init_objects();
-        role_init_extra(iRole);
-
-        // newpw() is called only for roles/races with enadv.inrnd > 0 at ulevel=0.
-        // Wizard has inrnd=3 → rnd(3); Tourist and others have inrnd=0.
-        // C ref: exper.c newpw() called from u_init() at ulevel==0.
-        // NOTE: In the C code, newpw() is called AFTER init_dungeons/castle_tune
-        // but BEFORE u_init_misc. Wizard is the only role with role.enadv.inrnd > 0.
-        const needsNewpw = (iRole === ROLE_WIZ); // Wizard
-        init_dungeons(wizard);
-        init_castle_tune();
-        if (needsNewpw) rnd(3);
-        u_init_misc();
-    } else {
-        // Chargen RNG not yet implemented — fall back to fastforward (seed8000 only).
-        fastforward_pre_mklev();
-    }
-
-    // C ref: allmain.c l_nhcore_init() — second Lua shuffle (nhcore.lua)
+    // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
+    // Consumes rn2(3), rn2(2) matching session indices 309-310
     l_nhcore_init();
 
     // Set up game state needed by mklev
@@ -64,15 +35,19 @@ export async function newgame() {
     ];
 
     // Real mklev generates the level with correct room positions
+    // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Fill rooms + mineralize (fastforward — seed8000 only for now)
+    // Fill rooms + mineralize: replayed by fastforward
+    // These create objects/monsters that don't affect terrain display
     fastforward_fill_mineralize();
 
-    // Post-mklev startup (fastforward — seed8000 only for now)
+    // Fast-forward through post-mklev startup RNG calls.
+    // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
     fastforward_post_mklev();
 
     // Hardcoded player state for seed8000 Tourist.
+    // Contestants: port u_init to compute these from game PRNG.
     g._goldCount = 757;
     g.u.ulevel = 1;
     g.u.uhp = 10; g.u.uhpmax = 10;
@@ -88,6 +63,7 @@ export async function newgame() {
     g.plname = g.plname || 'Contestant';
 
     // C ref: allmain.c newgame() → u_on_upstairs()
+    // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
 
     // Initial display
