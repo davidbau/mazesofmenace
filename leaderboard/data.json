@@ -1,29 +1,28 @@
 {
-  "timestamp": "2026-05-09T20:23:10.908Z",
+  "timestamp": "2026-05-09T22:22:43.078Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "serteal",
       "fork": "serteal/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:22:15.533Z",
+      "lastScored": "2026-05-09T22:21:47.855Z",
       "public": {
-        "points": 11284,
-        "maxPoints": 11284,
-        "passing": 44,
+        "points": 11164,
+        "maxPoints": 11405,
+        "passing": 40,
         "total": 44,
-        "rngPct": 100,
-        "rngStepsPct": 100,
-        "screenPct": 100
+        "rngPct": 99.90565537978755,
+        "rngStepsPct": 99.87724682156949,
+        "screenPct": 97.88689171416046
       },
       "heldOut": {
-        "points": 10538,
-        "maxPoints": 10538,
-        "passing": 43,
+        "points": 11061,
+        "maxPoints": 11265,
+        "passing": 39,
         "total": 44,
-        "rngPct": 100,
-        "rngStepsPct": 100,
-        "screenPct": 100
+        "rngPct": 99.18775999771535,
+        "rngStepsPct": 99.63613773517926,
+        "screenPct": 98.18908122503329
       },
       "history": [
         {
@@ -217,6 +216,12 @@
           "points": 11284,
           "maxPoints": 11284,
           "passing": 44
+        },
+        {
+          "ts": "2026-05-09T22:21:47.855Z",
+          "points": 11164,
+          "maxPoints": 11405,
+          "passing": 40
         }
       ],
       "sessions": [
@@ -234,6 +239,10 @@
           "screen": {
             "matched": 595,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -250,6 +259,10 @@
           "screen": {
             "matched": 409,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -266,6 +279,10 @@
           "screen": {
             "matched": 123,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -282,6 +299,10 @@
           "screen": {
             "matched": 302,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -298,6 +319,10 @@
           "screen": {
             "matched": 73,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -314,22 +339,30 @@
           "screen": {
             "matched": 308,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
-          "passed": true,
+          "passed": false,
           "rng": {
-            "matched": 4804,
+            "matched": 4803,
             "total": 4804
           },
           "rngSteps": {
-            "matched": 99,
+            "matched": 98,
             "total": 99
           },
           "screen": {
-            "matched": 99,
+            "matched": 50,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -346,6 +379,10 @@
           "screen": {
             "matched": 59,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -362,6 +399,10 @@
           "screen": {
             "matched": 714,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -378,6 +419,10 @@
           "screen": {
             "matched": 44,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -394,38 +439,50 @@
           "screen": {
             "matched": 36,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
           "name": "seed0017-samurai-altar-pray.session.json",
-          "passed": true,
+          "passed": false,
           "rng": {
             "matched": 3465,
             "total": 3465
           },
           "rngSteps": {
-            "matched": 59,
-            "total": 59
+            "matched": 67,
+            "total": 67
           },
           "screen": {
-            "matched": 59,
-            "total": 59
+            "matched": 65,
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
           "name": "seed0030-ten-diverse-deaths.session.json",
-          "passed": true,
+          "passed": false,
           "rng": {
-            "matched": 105529,
+            "matched": 105007,
             "total": 105529
           },
           "rngSteps": {
-            "matched": 1953,
+            "matched": 1946,
             "total": 1953
           },
           "screen": {
-            "matched": 1953,
+            "matched": 1814,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -442,6 +499,10 @@
           "screen": {
             "matched": 41,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -458,6 +519,10 @@
           "screen": {
             "matched": 33,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -474,6 +539,10 @@
           "screen": {
             "matched": 27,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -490,6 +559,10 @@
           "screen": {
             "matched": 25,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -506,6 +579,10 @@
           "screen": {
             "matched": 60,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -522,6 +599,10 @@
           "screen": {
             "matched": 43,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -538,6 +619,10 @@
           "screen": {
             "matched": 30,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -554,6 +639,10 @@
           "screen": {
             "matched": 267,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -570,6 +659,10 @@
           "screen": {
             "matched": 98,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -586,6 +679,10 @@
           "screen": {
             "matched": 303,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -602,6 +699,10 @@
           "screen": {
             "matched": 127,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -618,6 +719,10 @@
           "screen": {
             "matched": 40,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -634,6 +739,10 @@
           "screen": {
             "matched": 833,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -650,6 +759,10 @@
           "screen": {
             "matched": 366,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -666,6 +779,10 @@
           "screen": {
             "matched": 324,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -682,6 +799,10 @@
           "screen": {
             "matched": 124,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -698,6 +819,10 @@
           "screen": {
             "matched": 219,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -714,6 +839,10 @@
           "screen": {
             "matched": 87,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -730,6 +859,10 @@
           "screen": {
             "matched": 532,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -746,6 +879,10 @@
           "screen": {
             "matched": 28,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -762,6 +899,10 @@
           "screen": {
             "matched": 51,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -778,6 +919,10 @@
           "screen": {
             "matched": 84,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -794,6 +939,10 @@
           "screen": {
             "matched": 51,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -810,6 +959,10 @@
           "screen": {
             "matched": 40,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -826,6 +979,10 @@
           "screen": {
             "matched": 26,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -842,6 +999,10 @@
           "screen": {
             "matched": 230,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -858,6 +1019,10 @@
           "screen": {
             "matched": 38,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -874,38 +1039,50 @@
           "screen": {
             "matched": 1814,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": true,
           "rng": {
-            "matched": 12214,
-            "total": 12214
+            "matched": 12167,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 297,
-            "total": 297
+            "matched": 410,
+            "total": 410
           },
           "screen": {
-            "matched": 297,
-            "total": 297
+            "matched": 410,
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
           "name": "seed5006-tourist-stress-disaster.session.json",
-          "passed": true,
+          "passed": false,
           "rng": {
-            "matched": 13923,
+            "matched": 13698,
             "total": 13923
           },
           "rngSteps": {
-            "matched": 249,
+            "matched": 243,
             "total": 249
           },
           "screen": {
-            "matched": 249,
+            "matched": 198,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -922,32 +1099,36 @@
           "screen": {
             "matched": 23,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:23:10.806Z",
+      "lastScored": "2026-05-09T22:22:42.984Z",
       "public": {
-        "points": 619,
-        "maxPoints": 11284,
+        "points": 617,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 6.891289405147026,
-        "rngStepsPct": 62.9386742289968,
-        "screenPct": 5.485643388869196
+        "rngPct": 6.890815021479797,
+        "rngStepsPct": 63.349408154318276,
+        "screenPct": 5.409907935116178
       },
       "heldOut": {
         "points": 55,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 5.302752073356618,
-        "rngStepsPct": 69.386206242292,
-        "screenPct": 0.5219206680584552
+        "rngPct": 5.421636569600853,
+        "rngStepsPct": 70.77564785232516,
+        "screenPct": 0.4882379050155349
       },
       "history": [
         {
@@ -1287,6 +1468,12 @@
           "points": 619,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:22:42.984Z",
+          "points": 617,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -1304,6 +1491,10 @@
           "screen": {
             "matched": 13,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -1320,6 +1511,10 @@
           "screen": {
             "matched": 9,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -1336,6 +1531,10 @@
           "screen": {
             "matched": 40,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -1352,6 +1551,10 @@
           "screen": {
             "matched": 20,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -1368,6 +1571,10 @@
           "screen": {
             "matched": 11,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1384,6 +1591,10 @@
           "screen": {
             "matched": 21,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
@@ -1400,6 +1611,10 @@
           "screen": {
             "matched": 1,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -1416,6 +1631,10 @@
           "screen": {
             "matched": 1,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -1432,6 +1651,10 @@
           "screen": {
             "matched": 16,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -1448,6 +1671,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1464,22 +1691,30 @@
           "screen": {
             "matched": 15,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
           "name": "seed0017-samurai-altar-pray.session.json",
           "passed": false,
           "rng": {
-            "matched": 1382,
+            "matched": 1383,
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
-            "matched": 2,
-            "total": 59
+            "matched": 0,
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
@@ -1496,6 +1731,10 @@
           "screen": {
             "matched": 4,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -1512,6 +1751,10 @@
           "screen": {
             "matched": 3,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -1528,6 +1771,10 @@
           "screen": {
             "matched": 17,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1544,6 +1791,10 @@
           "screen": {
             "matched": 2,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1560,6 +1811,10 @@
           "screen": {
             "matched": 1,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1576,6 +1831,10 @@
           "screen": {
             "matched": 19,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1592,6 +1851,10 @@
           "screen": {
             "matched": 11,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -1608,6 +1871,10 @@
           "screen": {
             "matched": 17,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1624,6 +1891,10 @@
           "screen": {
             "matched": 11,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -1640,6 +1911,10 @@
           "screen": {
             "matched": 17,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1656,6 +1931,10 @@
           "screen": {
             "matched": 28,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -1672,6 +1951,10 @@
           "screen": {
             "matched": 10,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -1688,6 +1971,10 @@
           "screen": {
             "matched": 1,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1704,6 +1991,10 @@
           "screen": {
             "matched": 1,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -1720,6 +2011,10 @@
           "screen": {
             "matched": 41,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -1736,6 +2031,10 @@
           "screen": {
             "matched": 54,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1752,6 +2051,10 @@
           "screen": {
             "matched": 41,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1768,6 +2071,10 @@
           "screen": {
             "matched": 41,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -1784,6 +2091,10 @@
           "screen": {
             "matched": 27,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1800,6 +2111,10 @@
           "screen": {
             "matched": 41,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1816,6 +2131,10 @@
           "screen": {
             "matched": 4,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1832,6 +2151,10 @@
           "screen": {
             "matched": 7,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1848,6 +2171,10 @@
           "screen": {
             "matched": 7,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -1864,6 +2191,10 @@
           "screen": {
             "matched": 6,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -1880,6 +2211,10 @@
           "screen": {
             "matched": 9,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1896,6 +2231,10 @@
           "screen": {
             "matched": 7,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1912,6 +2251,10 @@
           "screen": {
             "matched": 6,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1928,6 +2271,10 @@
           "screen": {
             "matched": 3,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1944,22 +2291,30 @@
           "screen": {
             "matched": 6,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 536,
-            "total": 12214
+            "matched": 528,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 4,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -1976,6 +2331,10 @@
           "screen": {
             "matched": 4,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -1992,32 +2351,36 @@
           "screen": {
             "matched": 20,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:22:50.145Z",
+      "lastScored": "2026-05-09T22:22:22.791Z",
       "public": {
-        "points": 78,
-        "maxPoints": 11284,
+        "points": 86,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 4.94006066453521,
-        "rngStepsPct": 62.82346685572492,
-        "screenPct": 0.6912442396313364
+        "rngPct": 5.017670696914124,
+        "rngStepsPct": 63.23542306006138,
+        "screenPct": 0.7540552389302937
       },
       "heldOut": {
-        "points": 35,
-        "maxPoints": 10538,
+        "points": 46,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 3.5276467552419017,
-        "rngStepsPct": 69.37671947633052,
-        "screenPct": 0.33213133421901686
+        "rngPct": 4.384263534160249,
+        "rngStepsPct": 70.7667731629393,
+        "screenPct": 0.40834442964935647
       },
       "history": [
         {
@@ -2357,6 +2720,12 @@
           "points": 78,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:22:22.791Z",
+          "points": 86,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -2374,6 +2743,10 @@
           "screen": {
             "matched": 7,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -2390,6 +2763,10 @@
           "screen": {
             "matched": 7,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -2406,6 +2783,10 @@
           "screen": {
             "matched": 10,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -2422,6 +2803,10 @@
           "screen": {
             "matched": 8,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -2438,6 +2823,10 @@
           "screen": {
             "matched": 9,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2454,13 +2843,17 @@
           "screen": {
             "matched": 9,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
           "passed": false,
           "rng": {
-            "matched": 74,
+            "matched": 522,
             "total": 4804
           },
           "rngSteps": {
@@ -2470,6 +2863,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -2486,6 +2883,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -2502,6 +2903,10 @@
           "screen": {
             "matched": 8,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -2518,6 +2923,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2534,6 +2943,10 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -2544,12 +2957,16 @@
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
+            "matched": 8,
+            "total": 67
+          },
+          "animFrames": {
             "matched": 0,
-            "total": 59
+            "total": 33
           }
         },
         {
@@ -2566,6 +2983,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -2582,6 +3003,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -2598,6 +3023,10 @@
           "screen": {
             "matched": 20,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2614,6 +3043,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2630,6 +3063,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2646,6 +3083,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2662,6 +3103,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -2678,6 +3123,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2694,6 +3143,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -2710,6 +3163,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2726,6 +3183,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -2742,6 +3203,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -2758,6 +3223,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2774,6 +3243,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -2790,6 +3263,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -2806,6 +3283,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2822,6 +3303,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2838,6 +3323,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -2854,6 +3343,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2870,6 +3363,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2886,6 +3383,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2902,6 +3403,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2918,6 +3423,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -2934,6 +3443,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -2950,6 +3463,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2966,6 +3483,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2982,6 +3503,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -2998,6 +3523,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3014,22 +3543,30 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 85,
-            "total": 12214
+            "matched": 250,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -3046,6 +3583,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3062,31 +3603,35 @@
           "screen": {
             "matched": 0,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "jburnhams",
       "fork": "jburnhams/teleport-contest",
-      "category": "agentic",
-      "lastScored": "2026-05-09T20:19:15.473Z",
+      "lastScored": "2026-05-09T22:18:57.815Z",
       "public": {
         "points": 21,
-        "maxPoints": 11284,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 4.678105904387143,
-        "rngStepsPct": 62.858915278270125,
-        "screenPct": 0.18610421836228289
+        "rngPct": 5.559647746450095,
+        "rngStepsPct": 63.27049539675581,
+        "screenPct": 0.1841297676457694
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 4.0019683385542315,
-        "rngStepsPct": 69.33877241248459,
+        "rngPct": 4.770987824729412,
+        "rngStepsPct": 70.73127440539582,
         "screenPct": 0
       },
       "history": [
@@ -3137,6 +3682,12 @@
           "points": 21,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:18:57.815Z",
+          "points": 21,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -3154,6 +3705,10 @@
           "screen": {
             "matched": 0,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -3170,6 +3725,10 @@
           "screen": {
             "matched": 0,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -3186,6 +3745,10 @@
           "screen": {
             "matched": 0,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -3202,6 +3765,10 @@
           "screen": {
             "matched": 0,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -3218,6 +3785,10 @@
           "screen": {
             "matched": 0,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3234,13 +3805,17 @@
           "screen": {
             "matched": 0,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
           "passed": false,
           "rng": {
-            "matched": 73,
+            "matched": 523,
             "total": 4804
           },
           "rngSteps": {
@@ -3250,6 +3825,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -3266,6 +3845,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -3282,6 +3865,10 @@
           "screen": {
             "matched": 0,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -3298,6 +3885,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3314,29 +3905,37 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
           "name": "seed0017-samurai-altar-pray.session.json",
           "passed": false,
           "rng": {
-            "matched": 1368,
+            "matched": 1367,
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
             "matched": 0,
-            "total": 59
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 87,
+            "matched": 5102,
             "total": 105529
           },
           "rngSteps": {
@@ -3346,6 +3945,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -3362,6 +3965,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -3378,6 +3985,10 @@
           "screen": {
             "matched": 0,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3394,6 +4005,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3410,6 +4025,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3426,6 +4045,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3442,6 +4065,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -3458,6 +4085,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3474,6 +4105,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -3490,6 +4125,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3506,6 +4145,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -3522,6 +4165,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -3538,6 +4185,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3554,6 +4205,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -3570,6 +4225,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -3586,6 +4245,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3602,6 +4265,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3618,6 +4285,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -3634,6 +4305,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3650,6 +4325,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3666,6 +4345,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3682,6 +4365,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3698,6 +4385,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -3714,6 +4405,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -3730,6 +4425,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3746,6 +4445,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3762,6 +4465,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3778,6 +4485,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3794,29 +4505,37 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 93,
-            "total": 12214
+            "matched": 529,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
           "name": "seed5006-tourist-stress-disaster.session.json",
           "passed": false,
           "rng": {
-            "matched": 94,
+            "matched": 1181,
             "total": 13923
           },
           "rngSteps": {
@@ -3826,6 +4545,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -3842,31 +4565,35 @@
           "screen": {
             "matched": 21,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "holonicbio",
       "fork": "holonicbio/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:19:32.699Z",
+      "lastScored": "2026-05-09T22:19:14.916Z",
       "public": {
         "points": 15,
-        "maxPoints": 11284,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 2.4478959748261095,
-        "rngStepsPct": 62.86777738390642,
-        "screenPct": 0.13293158454448778
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 1.8031901487055775,
-        "rngStepsPct": 69.33877241248459,
+        "rngPct": 2.1166312863520833,
+        "rngStepsPct": 70.73127440539582,
         "screenPct": 0
       },
       "history": [
@@ -3971,6 +4698,12 @@
           "points": 15,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:19:14.916Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -3988,6 +4721,10 @@
           "screen": {
             "matched": 0,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -4004,6 +4741,10 @@
           "screen": {
             "matched": 0,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -4020,6 +4761,10 @@
           "screen": {
             "matched": 0,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -4036,6 +4781,10 @@
           "screen": {
             "matched": 0,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -4052,6 +4801,10 @@
           "screen": {
             "matched": 0,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4068,13 +4821,17 @@
           "screen": {
             "matched": 0,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
           "passed": false,
           "rng": {
-            "matched": 64,
+            "matched": 291,
             "total": 4804
           },
           "rngSteps": {
@@ -4084,6 +4841,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -4100,6 +4861,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -4116,6 +4881,10 @@
           "screen": {
             "matched": 0,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -4132,6 +4901,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4148,6 +4921,10 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -4158,19 +4935,23 @@
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
             "matched": 0,
-            "total": 59
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 102,
+            "matched": 5089,
             "total": 105529
           },
           "rngSteps": {
@@ -4180,6 +4961,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -4196,6 +4981,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -4212,6 +5001,10 @@
           "screen": {
             "matched": 0,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4228,6 +5021,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4244,6 +5041,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4260,6 +5061,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4276,6 +5081,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -4292,6 +5101,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4308,6 +5121,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -4324,6 +5141,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4340,6 +5161,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -4356,6 +5181,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -4372,6 +5201,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4388,6 +5221,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -4404,6 +5241,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -4420,6 +5261,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4436,6 +5281,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4452,6 +5301,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -4468,6 +5321,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4484,6 +5341,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4500,6 +5361,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4516,6 +5381,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4532,6 +5401,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -4548,6 +5421,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -4564,6 +5441,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4580,6 +5461,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4596,6 +5481,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4612,6 +5501,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4628,29 +5521,37 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 52,
-            "total": 12214
+            "matched": 360,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
           "name": "seed5006-tourist-stress-disaster.session.json",
           "passed": false,
           "rng": {
-            "matched": 57,
+            "matched": 555,
             "total": 13923
           },
           "rngSteps": {
@@ -4660,6 +5561,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -4676,31 +5581,35 @@
           "screen": {
             "matched": 15,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:22:32.658Z",
+      "lastScored": "2026-05-09T22:22:05.075Z",
       "public": {
         "points": 15,
-        "maxPoints": 11284,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 2.4478959748261095,
-        "rngStepsPct": 62.86777738390642,
-        "screenPct": 0.13293158454448778
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 1.8031901487055775,
-        "rngStepsPct": 69.33877241248459,
+        "rngPct": 2.1166312863520833,
+        "rngStepsPct": 70.73127440539582,
         "screenPct": 0
       },
       "history": [
@@ -4931,6 +5840,12 @@
           "points": 15,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:22:05.075Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -4948,6 +5863,10 @@
           "screen": {
             "matched": 0,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -4964,6 +5883,10 @@
           "screen": {
             "matched": 0,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -4980,6 +5903,10 @@
           "screen": {
             "matched": 0,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -4996,6 +5923,10 @@
           "screen": {
             "matched": 0,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -5012,6 +5943,10 @@
           "screen": {
             "matched": 0,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5028,13 +5963,17 @@
           "screen": {
             "matched": 0,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
           "passed": false,
           "rng": {
-            "matched": 64,
+            "matched": 291,
             "total": 4804
           },
           "rngSteps": {
@@ -5044,6 +5983,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -5060,6 +6003,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -5076,6 +6023,10 @@
           "screen": {
             "matched": 0,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -5092,6 +6043,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5108,6 +6063,10 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -5118,19 +6077,23 @@
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
             "matched": 0,
-            "total": 59
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 102,
+            "matched": 5089,
             "total": 105529
           },
           "rngSteps": {
@@ -5140,6 +6103,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -5156,6 +6123,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -5172,6 +6143,10 @@
           "screen": {
             "matched": 0,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5188,6 +6163,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5204,6 +6183,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5220,6 +6203,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5236,6 +6223,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -5252,6 +6243,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5268,6 +6263,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -5284,6 +6283,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5300,6 +6303,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -5316,6 +6323,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -5332,6 +6343,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5348,6 +6363,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -5364,6 +6383,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -5380,6 +6403,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5396,6 +6423,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5412,6 +6443,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -5428,6 +6463,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5444,6 +6483,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5460,6 +6503,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5476,6 +6523,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5492,6 +6543,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -5508,6 +6563,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -5524,6 +6583,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5540,6 +6603,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5556,6 +6623,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5572,6 +6643,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5588,29 +6663,37 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 52,
-            "total": 12214
+            "matched": 360,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
           "name": "seed5006-tourist-stress-disaster.session.json",
           "passed": false,
           "rng": {
-            "matched": 57,
+            "matched": 555,
             "total": 13923
           },
           "rngSteps": {
@@ -5620,6 +6703,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5636,31 +6723,35 @@
           "screen": {
             "matched": 15,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "xeophon",
       "fork": "xeophon/teleport-contest",
-      "category": "none",
-      "lastScored": "2026-05-09T20:18:58.028Z",
+      "lastScored": "2026-05-09T22:18:40.730Z",
       "public": {
         "points": 15,
-        "maxPoints": 11284,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 2.4478959748261095,
-        "rngStepsPct": 62.86777738390642,
-        "screenPct": 0.13293158454448778
+        "rngPct": 3.207338699709146,
+        "rngStepsPct": 63.279263480929416,
+        "screenPct": 0.131521262604121
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 1.8031901487055775,
-        "rngStepsPct": 69.33877241248459,
+        "rngPct": 2.1166312863520833,
+        "rngStepsPct": 70.73127440539582,
         "screenPct": 0
       },
       "history": [
@@ -5693,6 +6784,12 @@
           "points": 15,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:18:40.730Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -5710,6 +6807,10 @@
           "screen": {
             "matched": 0,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -5726,6 +6827,10 @@
           "screen": {
             "matched": 0,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -5742,6 +6847,10 @@
           "screen": {
             "matched": 0,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -5758,6 +6867,10 @@
           "screen": {
             "matched": 0,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -5774,6 +6887,10 @@
           "screen": {
             "matched": 0,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5790,13 +6907,17 @@
           "screen": {
             "matched": 0,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
           "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
           "passed": false,
           "rng": {
-            "matched": 64,
+            "matched": 291,
             "total": 4804
           },
           "rngSteps": {
@@ -5806,6 +6927,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -5822,6 +6947,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -5838,6 +6967,10 @@
           "screen": {
             "matched": 0,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -5854,6 +6987,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5870,6 +7007,10 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -5880,19 +7021,23 @@
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
             "matched": 0,
-            "total": 59
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 102,
+            "matched": 5089,
             "total": 105529
           },
           "rngSteps": {
@@ -5902,6 +7047,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -5918,6 +7067,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -5934,6 +7087,10 @@
           "screen": {
             "matched": 0,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5950,6 +7107,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5966,6 +7127,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5982,6 +7147,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -5998,6 +7167,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -6014,6 +7187,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6030,6 +7207,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -6046,6 +7227,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6062,6 +7247,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -6078,6 +7267,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -6094,6 +7287,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6110,6 +7307,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -6126,6 +7327,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -6142,6 +7347,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6158,6 +7367,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6174,6 +7387,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -6190,6 +7407,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6206,6 +7427,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6222,6 +7447,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6238,6 +7467,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6254,6 +7487,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -6270,6 +7507,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -6286,6 +7527,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6302,6 +7547,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6318,6 +7567,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6334,6 +7587,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6350,29 +7607,37 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 52,
-            "total": 12214
+            "matched": 360,
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
           "name": "seed5006-tourist-stress-disaster.session.json",
           "passed": false,
           "rng": {
-            "matched": 57,
+            "matched": 555,
             "total": 13923
           },
           "rngSteps": {
@@ -6382,6 +7647,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6398,31 +7667,35 @@
           "screen": {
             "matched": 15,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     },
     {
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
-      "category": "agentic",
-      "lastScored": "2026-05-09T20:18:40.679Z",
+      "lastScored": "2026-05-09T22:18:23.559Z",
       "public": {
         "points": 0,
-        "maxPoints": 11284,
+        "maxPoints": 11405,
         "passing": 0,
         "total": 44,
         "rngPct": 0,
-        "rngStepsPct": 62.76143211627082,
+        "rngStepsPct": 63.17404647084612,
         "screenPct": 0
       },
       "heldOut": {
         "points": 0,
-        "maxPoints": 10538,
+        "maxPoints": 11265,
         "passing": 0,
         "total": 44,
         "rngPct": 0,
-        "rngStepsPct": 69.3197988805616,
+        "rngStepsPct": 70.71352502662407,
         "screenPct": 0
       },
       "history": [
@@ -6449,6 +7722,12 @@
           "points": 0,
           "maxPoints": 11284,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-09T22:18:23.559Z",
+          "points": 0,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -6466,6 +7745,10 @@
           "screen": {
             "matched": 0,
             "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
           }
         },
         {
@@ -6482,6 +7765,10 @@
           "screen": {
             "matched": 0,
             "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
           }
         },
         {
@@ -6498,6 +7785,10 @@
           "screen": {
             "matched": 0,
             "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -6514,6 +7805,10 @@
           "screen": {
             "matched": 0,
             "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
           }
         },
         {
@@ -6530,6 +7825,10 @@
           "screen": {
             "matched": 0,
             "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6546,6 +7845,10 @@
           "screen": {
             "matched": 0,
             "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
           }
         },
         {
@@ -6562,6 +7865,10 @@
           "screen": {
             "matched": 0,
             "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -6578,6 +7885,10 @@
           "screen": {
             "matched": 0,
             "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -6594,6 +7905,10 @@
           "screen": {
             "matched": 0,
             "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
           }
         },
         {
@@ -6610,6 +7925,10 @@
           "screen": {
             "matched": 0,
             "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6626,6 +7945,10 @@
           "screen": {
             "matched": 0,
             "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -6636,12 +7959,16 @@
             "total": 3465
           },
           "rngSteps": {
-            "matched": 35,
-            "total": 59
+            "matched": 43,
+            "total": 67
           },
           "screen": {
             "matched": 0,
-            "total": 59
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
           }
         },
         {
@@ -6658,6 +7985,10 @@
           "screen": {
             "matched": 0,
             "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
           }
         },
         {
@@ -6674,6 +8005,10 @@
           "screen": {
             "matched": 0,
             "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -6690,6 +8025,10 @@
           "screen": {
             "matched": 0,
             "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6706,6 +8045,10 @@
           "screen": {
             "matched": 0,
             "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6722,6 +8065,10 @@
           "screen": {
             "matched": 0,
             "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6738,6 +8085,10 @@
           "screen": {
             "matched": 0,
             "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6754,6 +8105,10 @@
           "screen": {
             "matched": 0,
             "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
           }
         },
         {
@@ -6770,6 +8125,10 @@
           "screen": {
             "matched": 0,
             "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6786,6 +8145,10 @@
           "screen": {
             "matched": 0,
             "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -6802,6 +8165,10 @@
           "screen": {
             "matched": 0,
             "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6818,6 +8185,10 @@
           "screen": {
             "matched": 0,
             "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
           }
         },
         {
@@ -6834,6 +8205,10 @@
           "screen": {
             "matched": 0,
             "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -6850,6 +8225,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6866,6 +8245,10 @@
           "screen": {
             "matched": 0,
             "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
           }
         },
         {
@@ -6882,6 +8265,10 @@
           "screen": {
             "matched": 0,
             "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
           }
         },
         {
@@ -6898,6 +8285,10 @@
           "screen": {
             "matched": 0,
             "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6914,6 +8305,10 @@
           "screen": {
             "matched": 0,
             "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6930,6 +8325,10 @@
           "screen": {
             "matched": 0,
             "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
           }
         },
         {
@@ -6946,6 +8345,10 @@
           "screen": {
             "matched": 0,
             "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6962,6 +8365,10 @@
           "screen": {
             "matched": 0,
             "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6978,6 +8385,10 @@
           "screen": {
             "matched": 0,
             "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -6994,6 +8405,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7010,6 +8425,10 @@
           "screen": {
             "matched": 0,
             "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
           }
         },
         {
@@ -7026,6 +8445,10 @@
           "screen": {
             "matched": 0,
             "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
           }
         },
         {
@@ -7042,6 +8465,10 @@
           "screen": {
             "matched": 0,
             "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7058,6 +8485,10 @@
           "screen": {
             "matched": 0,
             "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7074,6 +8505,10 @@
           "screen": {
             "matched": 0,
             "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7090,6 +8525,10 @@
           "screen": {
             "matched": 0,
             "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7106,6 +8545,10 @@
           "screen": {
             "matched": 0,
             "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
           }
         },
         {
@@ -7113,15 +8556,19 @@
           "passed": false,
           "rng": {
             "matched": 0,
-            "total": 12214
+            "total": 12167
           },
           "rngSteps": {
-            "matched": 254,
-            "total": 297
+            "matched": 369,
+            "total": 410
           },
           "screen": {
             "matched": 0,
-            "total": 297
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
           }
         },
         {
@@ -7138,6 +8585,10 @@
           "screen": {
             "matched": 0,
             "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         },
         {
@@ -7154,9 +8605,14 @@
           "screen": {
             "matched": 0,
             "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
           }
         }
-      ]
+      ],
+      "bitcomplexity": null
     }
   ]
 }

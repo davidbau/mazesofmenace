@@ -21,7 +21,8 @@ const MAXPCHARS = 105; // from symbols.js
 import { COMMIT_NUMBER, TELEPORT_BUILD_DATE } from './version.js';
 // No imports from non-constant files — const.js is a leaf in the DAG
 import { game } from './gstate.js';
-import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
+export {   CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR   } from './terminal.js';
+import {   CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR   } from './terminal.js';
 
 // C macro: SIZE(arr) = sizeof(arr)/sizeof(arr[0]) → JS: arr.length
 export function SIZE(arr) { return arr.length; }
@@ -2918,3 +2919,34 @@ export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (u
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
 export function Is_juiblex_level(uz) { return false; /* TODO */ }
+
+export const PIERCE = 1;
+export const SLASH = 2;
+export const WHACK = 4;
+
+export const LIQUID = 1;
+export const WAX = 2;
+export const VEGGY = 3;
+export const FLESH = 4;
+export const PAPER = 5;
+export const CLOTH = 6;
+export const LEATHER = 7;
+export const WOOD = 8;
+export const BONE = 9;
+export const DRAGON_HIDE = 10;
+export const IRON = 11;
+export const METAL = 12;
+export const COPPER = 13;
+export const SILVER = 14;
+export const GOLD = 15;
+export const PLATINUM = 16;
+export const MITHRIL = 17;
+export const PLASTIC = 18;
+export const GLASS = 19;
+export const GEMSTONE = 20;
+export const MINERAL = 21;
+
+// P_DART etc already exist in const.js or we'll make sure they do
+export const CHAIN_CLASS = 15;
+export const VENOM_CLASS = 16;
+export const MAXOCLASSES = 17;
