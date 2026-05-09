@@ -35,15 +35,16 @@ export async function newgame() {
         init_objects();
         role_init_extra(iRole);
 
-        // newpw() is called only for roles/races with enadv.inrnd > 0 at ulevel=0.
-        // Wizard has inrnd=3 → rnd(3); Tourist and others have inrnd=0.
+        // newpw() calls rnd(urole.enadv.inrnd) if inrnd > 0, then rnd(urace.enadv.inrnd) if > 0.
+        // All race inrnd values are 0, so only the role matters.
         // C ref: exper.c newpw() called from u_init() at ulevel==0.
-        // NOTE: In the C code, newpw() is called AFTER init_dungeons/castle_tune
-        // but BEFORE u_init_misc. Wizard is the only role with role.enadv.inrnd > 0.
-        const needsNewpw = (iRole === ROLE_WIZ); // Wizard
+        // Role enadv.inrnd values (from role.c): Arc=0, Bar=0, Cav=0, Hea=4, Kni=4,
+        //   Mon=2, Pri=3, Rog=0, Ran=0, Sam=0, Tou=0, Val=0, Wiz=3.
+        const ROLE_ENADV_INRND = [0, 0, 0, 4, 4, 2, 3, 0, 0, 0, 0, 0, 3];
+        const newpwInrnd = ROLE_ENADV_INRND[iRole] ?? 0;
         init_dungeons(wizard);
         init_castle_tune();
-        if (needsNewpw) rnd(3);
+        if (newpwInrnd > 0) rnd(newpwInrnd);
         u_init_misc();
     } else {
         // Chargen RNG not yet implemented — fall back to fastforward (seed8000 only).
