@@ -5,6 +5,7 @@
     {
       "name": "xeophon",
       "fork": "xeophon/teleport-contest",
+      "category": "agentic",
       "lastScored": "2026-05-10T12:29:20.210Z",
       "public": {
         "points": 11271,
@@ -7973,6 +7974,7 @@
     {
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
+      "category": "agentic",
       "lastScored": "2026-05-10T12:25:11.035Z",
       "public": {
         "points": 0,
