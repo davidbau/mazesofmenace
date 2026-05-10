@@ -264,7 +264,7 @@ export function pick_align(rolenum, racenum, gendnum, pickhow) {
 // C ref: role.c rigid_role_checks() line 1235
 // Updates state in-place. Only PICK_RIGID block fires for our sessions
 // (no ROLE_RANDOM handling needed — those sessions use the fully-specified path).
-function rigid_role_checks(st) {
+export function rigid_role_checks(st) {
     if (st.role !== ROLE_NONE) {
         if (st.race === ROLE_NONE) {
             const r = pick_race(st.role, st.gend, st.align, PICK_RIGID);
@@ -285,7 +285,7 @@ function rigid_role_checks(st) {
 async function getch() { return String.fromCharCode(await nhgetch()); }
 
 // C ref: win/tty/wintty.c tty_askname() — show banner + "Who are you?" + echo chars
-async function askname(g) {
+export async function askname(g) {
     const display = game?.nhDisplay;
     // Show initial startup screen (banner + empty name prompt)
     if (display) {

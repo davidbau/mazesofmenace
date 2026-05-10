@@ -4,6 +4,6 @@
 export let game = {};
 
 export function resetGame() {
-    game = {};
+    for (const key in game) delete game[key];
     return game;
 }

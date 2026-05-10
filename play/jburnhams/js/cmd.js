@@ -45,7 +45,6 @@ export async function rhack(key) {
 
     if (isMovementKey(ch)) {
         await domove(DIR_DX[ch], DIR_DY[ch]);
-        game.context.move = 1;
     } else if (ch === 's') {
         // search adjacent cells — consumes a turn, no display change when nothing found
         game.context.move = 1;
@@ -184,4 +183,5 @@ async function domove(dx, dy) {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+    game.context.move = 1;
 }

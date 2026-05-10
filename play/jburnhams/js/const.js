@@ -2967,7 +2967,7 @@ export const GEMSTONE = 20;
 export const MINERAL = 21;
 
 
-// P_DART etc already exist in const.js or we'll make sure they do
+
 
 export const S_DEMON = 8;
 

@@ -982,7 +982,7 @@ function source_text_lines(text) {
 function read_dat_text(name) {
     const fs = globalThis.process?.getBuiltinModule?.('fs');
     if (!fs) return null;
-    return fs.readFileSync(new URL(`../nethack-c/upstream/dat/${name}`, import.meta.url), 'utf8');
+    return fs.readFileSync(new URL(`./dat/${name}`, import.meta.url), 'utf8');
 }
 
 const GREP_VARS = new Map([['MAIL', true]]);

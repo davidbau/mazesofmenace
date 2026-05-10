@@ -3290,9 +3290,9 @@ const EXTENDED_COMMAND_LINES = [
 async function readDatFile(name) {
     if (globalThis.process?.versions?.node) {
         const { readFile } = await import('node:fs/promises');
-        return readFile(new URL(`../nethack-c/upstream/dat/${name}`, import.meta.url), 'utf8');
+        return readFile(new URL(`./dat/${name}`, import.meta.url), 'utf8');
     }
-    const response = await fetch(`nethack-c/upstream/dat/${name}`);
+    const response = await fetch(`js/dat/${name}`);
     return response.text();
 }
 
