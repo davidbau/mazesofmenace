@@ -2,6 +2,23 @@
 // C ref: u_init.c
 
 import { rn2, rnd } from './rng.js';
+import {
+    P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_BROAD_SWORD,
+    P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER, P_CLUB, P_MACE, P_MORNING_STAR,
+    P_FLAIL, P_HAMMER, P_QUARTERSTAFF, P_POLEARMS, P_SPEAR, P_TRIDENT, P_LANCE,
+    P_BOW, P_SLING, P_CROSSBOW, P_DART, P_SHURIKEN, P_BOOMERANG, P_WHIP,
+    P_UNICORN_HORN, P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL,
+    P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
+    P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING, P_NUM_SKILLS,
+    P_MARTIAL_ARTS, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
+    P_EXPERT, P_MASTER, P_GRAND_MASTER, PM_ARCHEOLOGIST, PM_BARBARIAN,
+    PM_CAVE_DWELLER, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC,
+    PM_ROGUE, PM_RANGER, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD
+} from './const.js';
+import { objects } from './objects.js';
+import { PM_PONY } from './monst.js';
+import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS } from './const.js';
+import { invent } from './decl.js';
 import { game } from './gstate.js';
 import { init_attr, vary_init_attr, acurrstr } from './attrib.js';
 import { newhp, newpw, adjabil } from './exper.js';
@@ -180,7 +197,439 @@ export function u_init_inventory_attrs() {
 export function u_init_skills_discoveries() {
     // We do skill init here, but we can stub it out since it only consumes rng
     // if there is some randomization. `skill_init` does not call `rn2`.
+    skill_init(skills_for_role());
 }
+
+
+export const Skill_A = [
+    { skill: P_DAGGER, skmax: P_BASIC },
+    { skill: P_KNIFE, skmax: P_BASIC },
+    { skill: P_PICK_AXE, skmax: P_EXPERT },
+    { skill: P_SHORT_SWORD, skmax: P_BASIC },
+    { skill: P_SABER, skmax: P_EXPERT },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_QUARTERSTAFF, skmax: P_SKILLED },
+    { skill: P_SLING, skmax: P_SKILLED },
+    { skill: P_DART, skmax: P_BASIC },
+    { skill: P_BOOMERANG, skmax: P_EXPERT },
+    { skill: P_WHIP, skmax: P_EXPERT },
+    { skill: P_UNICORN_HORN, skmax: P_SKILLED },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_HEALING_SPELL, skmax: P_BASIC },
+    { skill: P_DIVINATION_SPELL, skmax: P_EXPERT },
+    { skill: P_MATTER_SPELL, skmax: P_BASIC },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_BASIC },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_EXPERT },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_B = [
+    { skill: P_DAGGER, skmax: P_BASIC },
+    { skill: P_AXE, skmax: P_EXPERT },
+    { skill: P_PICK_AXE, skmax: P_SKILLED },
+    { skill: P_SHORT_SWORD, skmax: P_EXPERT },
+    { skill: P_BROAD_SWORD, skmax: P_SKILLED },
+    { skill: P_LONG_SWORD, skmax: P_SKILLED },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_EXPERT },
+    { skill: P_SABER, skmax: P_SKILLED },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_MACE, skmax: P_SKILLED },
+    { skill: P_MORNING_STAR, skmax: P_SKILLED },
+    { skill: P_FLAIL, skmax: P_BASIC },
+    { skill: P_HAMMER, skmax: P_EXPERT },
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_SPEAR, skmax: P_SKILLED },
+    { skill: P_TRIDENT, skmax: P_SKILLED },
+    { skill: P_BOW, skmax: P_BASIC },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_ESCAPE_SPELL, skmax: P_BASIC },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_BASIC },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_MASTER },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_C = [
+    { skill: P_DAGGER, skmax: P_BASIC },
+    { skill: P_KNIFE, skmax: P_SKILLED },
+    { skill: P_AXE, skmax: P_SKILLED },
+    { skill: P_PICK_AXE, skmax: P_BASIC },
+    { skill: P_CLUB, skmax: P_EXPERT },
+    { skill: P_MACE, skmax: P_EXPERT },
+    { skill: P_MORNING_STAR, skmax: P_BASIC },
+    { skill: P_FLAIL, skmax: P_SKILLED },
+    { skill: P_HAMMER, skmax: P_SKILLED },
+    { skill: P_QUARTERSTAFF, skmax: P_EXPERT },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_EXPERT },
+    { skill: P_TRIDENT, skmax: P_SKILLED },
+    { skill: P_BOW, skmax: P_SKILLED },
+    { skill: P_SLING, skmax: P_EXPERT },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_MATTER_SPELL, skmax: P_BASIC },
+    { skill: P_BOOMERANG, skmax: P_EXPERT },
+    { skill: P_UNICORN_HORN, skmax: P_BASIC },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_MASTER },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_H = [
+    { skill: P_DAGGER, skmax: P_SKILLED },
+    { skill: P_KNIFE, skmax: P_EXPERT },
+    { skill: P_SHORT_SWORD, skmax: P_SKILLED },
+    { skill: P_SABER, skmax: P_BASIC },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_MACE, skmax: P_BASIC },
+    { skill: P_QUARTERSTAFF, skmax: P_EXPERT },
+    { skill: P_POLEARMS, skmax: P_BASIC },
+    { skill: P_SPEAR, skmax: P_BASIC },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_SLING, skmax: P_SKILLED },
+    { skill: P_DART, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_SKILLED },
+    { skill: P_UNICORN_HORN, skmax: P_EXPERT },
+    { skill: P_HEALING_SPELL, skmax: P_EXPERT },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_BASIC },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_K = [
+    { skill: P_DAGGER, skmax: P_BASIC },
+    { skill: P_KNIFE, skmax: P_BASIC },
+    { skill: P_AXE, skmax: P_SKILLED },
+    { skill: P_PICK_AXE, skmax: P_BASIC },
+    { skill: P_SHORT_SWORD, skmax: P_SKILLED },
+    { skill: P_BROAD_SWORD, skmax: P_SKILLED },
+    { skill: P_LONG_SWORD, skmax: P_EXPERT },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_SKILLED },
+    { skill: P_SABER, skmax: P_SKILLED },
+    { skill: P_CLUB, skmax: P_BASIC },
+    { skill: P_MACE, skmax: P_SKILLED },
+    { skill: P_MORNING_STAR, skmax: P_SKILLED },
+    { skill: P_FLAIL, skmax: P_BASIC },
+    { skill: P_HAMMER, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_EXPERT },
+    { skill: P_SPEAR, skmax: P_SKILLED },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_LANCE, skmax: P_EXPERT },
+    { skill: P_BOW, skmax: P_BASIC },
+    { skill: P_CROSSBOW, skmax: P_SKILLED },
+    { skill: P_ATTACK_SPELL, skmax: P_SKILLED },
+    { skill: P_HEALING_SPELL, skmax: P_SKILLED },
+    { skill: P_CLERIC_SPELL, skmax: P_SKILLED },
+    { skill: P_RIDING, skmax: P_EXPERT },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_SKILLED },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_EXPERT },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_Mon = [
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_SPEAR, skmax: P_BASIC },
+    { skill: P_CROSSBOW, skmax: P_BASIC },
+    { skill: P_SHURIKEN, skmax: P_BASIC },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_HEALING_SPELL, skmax: P_EXPERT },
+    { skill: P_DIVINATION_SPELL, skmax: P_BASIC },
+    { skill: P_ENCHANTMENT_SPELL, skmax: P_BASIC },
+    { skill: P_CLERIC_SPELL, skmax: P_SKILLED },
+    { skill: P_ESCAPE_SPELL, skmax: P_SKILLED },
+    { skill: P_MATTER_SPELL, skmax: P_BASIC },
+    { skill: P_MARTIAL_ARTS, skmax: P_GRAND_MASTER },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_P = [
+    { skill: P_CLUB, skmax: P_EXPERT },
+    { skill: P_MACE, skmax: P_EXPERT },
+    { skill: P_MORNING_STAR, skmax: P_EXPERT },
+    { skill: P_FLAIL, skmax: P_EXPERT },
+    { skill: P_HAMMER, skmax: P_EXPERT },
+    { skill: P_QUARTERSTAFF, skmax: P_EXPERT },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_SKILLED },
+    { skill: P_TRIDENT, skmax: P_SKILLED },
+    { skill: P_LANCE, skmax: P_BASIC },
+    { skill: P_BOW, skmax: P_BASIC },
+    { skill: P_SLING, skmax: P_BASIC },
+    { skill: P_CROSSBOW, skmax: P_BASIC },
+    { skill: P_DART, skmax: P_BASIC },
+    { skill: P_SHURIKEN, skmax: P_BASIC },
+    { skill: P_BOOMERANG, skmax: P_BASIC },
+    { skill: P_UNICORN_HORN, skmax: P_BASIC },
+    { skill: P_HEALING_SPELL, skmax: P_EXPERT },
+    { skill: P_DIVINATION_SPELL, skmax: P_EXPERT },
+    { skill: P_CLERIC_SPELL, skmax: P_EXPERT },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_BASIC },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_R = [
+    { skill: P_DAGGER, skmax: P_EXPERT },
+    { skill: P_KNIFE, skmax: P_EXPERT },
+    { skill: P_SHORT_SWORD, skmax: P_EXPERT },
+    { skill: P_BROAD_SWORD, skmax: P_SKILLED },
+    { skill: P_LONG_SWORD, skmax: P_SKILLED },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_BASIC },
+    { skill: P_SABER, skmax: P_SKILLED },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_MACE, skmax: P_SKILLED },
+    { skill: P_MORNING_STAR, skmax: P_BASIC },
+    { skill: P_FLAIL, skmax: P_BASIC },
+    { skill: P_HAMMER, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_BASIC },
+    { skill: P_SPEAR, skmax: P_BASIC },
+    { skill: P_CROSSBOW, skmax: P_EXPERT },
+    { skill: P_DART, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_SKILLED },
+    { skill: P_DIVINATION_SPELL, skmax: P_SKILLED },
+    { skill: P_ESCAPE_SPELL, skmax: P_SKILLED },
+    { skill: P_MATTER_SPELL, skmax: P_SKILLED },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_EXPERT },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_EXPERT },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_Ran = [
+    { skill: P_DAGGER, skmax: P_EXPERT },
+    { skill: P_KNIFE, skmax: P_SKILLED },
+    { skill: P_AXE, skmax: P_SKILLED },
+    { skill: P_PICK_AXE, skmax: P_BASIC },
+    { skill: P_SHORT_SWORD, skmax: P_BASIC },
+    { skill: P_MORNING_STAR, skmax: P_BASIC },
+    { skill: P_FLAIL, skmax: P_SKILLED },
+    { skill: P_HAMMER, skmax: P_BASIC },
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_EXPERT },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_BOW, skmax: P_EXPERT },
+    { skill: P_SLING, skmax: P_EXPERT },
+    { skill: P_CROSSBOW, skmax: P_EXPERT },
+    { skill: P_DART, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_SKILLED },
+    { skill: P_BOOMERANG, skmax: P_EXPERT },
+    { skill: P_WHIP, skmax: P_BASIC },
+    { skill: P_HEALING_SPELL, skmax: P_BASIC },
+    { skill: P_DIVINATION_SPELL, skmax: P_EXPERT },
+    { skill: P_ESCAPE_SPELL, skmax: P_BASIC },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_BASIC },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_S = [
+    { skill: P_DAGGER, skmax: P_BASIC },
+    { skill: P_KNIFE, skmax: P_SKILLED },
+    { skill: P_SHORT_SWORD, skmax: P_EXPERT },
+    { skill: P_BROAD_SWORD, skmax: P_SKILLED },
+    { skill: P_LONG_SWORD, skmax: P_EXPERT },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_EXPERT },
+    { skill: P_SABER, skmax: P_BASIC },
+    { skill: P_FLAIL, skmax: P_SKILLED },
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_SKILLED },
+    { skill: P_LANCE, skmax: P_SKILLED },
+    { skill: P_BOW, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_EXPERT },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_DIVINATION_SPELL, skmax: P_BASIC }, /* special spell is clairvoyance */
+    { skill: P_CLERIC_SPELL, skmax: P_SKILLED },
+    { skill: P_RIDING, skmax: P_SKILLED },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_EXPERT },
+    { skill: P_MARTIAL_ARTS, skmax: P_MASTER },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_T = [
+    { skill: P_DAGGER, skmax: P_EXPERT },
+    { skill: P_KNIFE, skmax: P_SKILLED },
+    { skill: P_AXE, skmax: P_BASIC },
+    { skill: P_PICK_AXE, skmax: P_BASIC },
+    { skill: P_SHORT_SWORD, skmax: P_EXPERT },
+    { skill: P_BROAD_SWORD, skmax: P_BASIC },
+    { skill: P_LONG_SWORD, skmax: P_BASIC },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_BASIC },
+    { skill: P_SABER, skmax: P_SKILLED },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_MACE, skmax: P_BASIC },
+    { skill: P_MORNING_STAR, skmax: P_BASIC },
+    { skill: P_FLAIL, skmax: P_BASIC },
+    { skill: P_HAMMER, skmax: P_BASIC },
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_BASIC },
+    { skill: P_SPEAR, skmax: P_BASIC },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_LANCE, skmax: P_BASIC },
+    { skill: P_BOW, skmax: P_BASIC },
+    { skill: P_SLING, skmax: P_BASIC },
+    { skill: P_CROSSBOW, skmax: P_BASIC },
+    { skill: P_DART, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_BASIC },
+    { skill: P_BOOMERANG, skmax: P_BASIC },
+    { skill: P_WHIP, skmax: P_BASIC },
+    { skill: P_UNICORN_HORN, skmax: P_SKILLED },
+    { skill: P_DIVINATION_SPELL, skmax: P_BASIC },
+    { skill: P_ENCHANTMENT_SPELL, skmax: P_BASIC },
+    { skill: P_ESCAPE_SPELL, skmax: P_SKILLED },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_SKILLED },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_SKILLED },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_V = [
+    { skill: P_DAGGER, skmax: P_EXPERT },
+    { skill: P_AXE, skmax: P_EXPERT },
+    { skill: P_PICK_AXE, skmax: P_SKILLED },
+    { skill: P_SHORT_SWORD, skmax: P_SKILLED },
+    { skill: P_BROAD_SWORD, skmax: P_SKILLED },
+    { skill: P_LONG_SWORD, skmax: P_EXPERT },
+    { skill: P_TWO_HANDED_SWORD, skmax: P_EXPERT },
+    { skill: P_SABER, skmax: P_BASIC },
+    { skill: P_HAMMER, skmax: P_EXPERT },
+    { skill: P_QUARTERSTAFF, skmax: P_BASIC },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_SKILLED },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_LANCE, skmax: P_SKILLED },
+    { skill: P_SLING, skmax: P_BASIC },
+    { skill: P_ATTACK_SPELL, skmax: P_BASIC },
+    { skill: P_ESCAPE_SPELL, skmax: P_BASIC },
+    { skill: P_RIDING, skmax: P_SKILLED },
+    { skill: P_TWO_WEAPON_COMBAT, skmax: P_SKILLED },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_EXPERT },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export const Skill_W = [
+    { skill: P_DAGGER, skmax: P_EXPERT },
+    { skill: P_KNIFE, skmax: P_SKILLED },
+    { skill: P_AXE, skmax: P_SKILLED },
+    { skill: P_SHORT_SWORD, skmax: P_BASIC },
+    { skill: P_CLUB, skmax: P_SKILLED },
+    { skill: P_MACE, skmax: P_BASIC },
+    { skill: P_QUARTERSTAFF, skmax: P_EXPERT },
+    { skill: P_POLEARMS, skmax: P_SKILLED },
+    { skill: P_SPEAR, skmax: P_BASIC },
+    { skill: P_TRIDENT, skmax: P_BASIC },
+    { skill: P_SLING, skmax: P_SKILLED },
+    { skill: P_DART, skmax: P_EXPERT },
+    { skill: P_SHURIKEN, skmax: P_BASIC },
+    { skill: P_ATTACK_SPELL, skmax: P_EXPERT },
+    { skill: P_HEALING_SPELL, skmax: P_SKILLED },
+    { skill: P_DIVINATION_SPELL, skmax: P_EXPERT },
+    { skill: P_ENCHANTMENT_SPELL, skmax: P_SKILLED },
+    { skill: P_CLERIC_SPELL, skmax: P_SKILLED },
+    { skill: P_ESCAPE_SPELL, skmax: P_EXPERT },
+    { skill: P_MATTER_SPELL, skmax: P_EXPERT },
+    { skill: P_RIDING, skmax: P_BASIC },
+    { skill: P_BARE_HANDED_COMBAT, skmax: P_BASIC },
+    { skill: P_NONE, skmax: 0 }
+];
+
+export function skills_for_role() {
+    switch (game.urole.mnum) {
+        case PM_ARCHEOLOGIST: return Skill_A;
+        case PM_BARBARIAN: return Skill_B;
+        case PM_CAVE_DWELLER: return Skill_C;
+        case PM_HEALER: return Skill_H;
+        case PM_KNIGHT: return Skill_K;
+        case PM_MONK: return Skill_Mon;
+        case PM_CLERIC: return Skill_P;
+        case PM_ROGUE: return Skill_R;
+        case PM_RANGER: return Skill_Ran;
+        case PM_SAMURAI: return Skill_S;
+        case PM_TOURIST: return Skill_T;
+        case PM_VALKYRIE: return Skill_V;
+        case PM_WIZARD: return Skill_W;
+        default: return Skill_T; // Fallback
+    }
+}
+
+function practice_needed_to_advance(level) {
+    return level * level * 20;
+}
+
+function weapon_type(obj) {
+    if (!obj) return P_BARE_HANDED_COMBAT;
+    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS && obj.oclass !== GEM_CLASS) {
+        // Not a weapon, weapon-tool, or ammo
+        return P_NONE;
+    }
+    let type = objects[obj.otyp].oc_subtyp; // oc_skill is mapped to oc_subtyp
+    return type < 0 ? -type : type;
+}
+
+export function skill_init(class_skill) {
+    game.u.weapon_skills = [];
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
+        game.u.weapon_skills[skill] = {
+            skill: P_ISRESTRICTED,
+            max_skill: P_ISRESTRICTED,
+            advance: 0
+        };
+    }
+
+    // Set skill for all weapons in inventory to be basic
+    for (let obj = invent; obj; obj = obj.nobj) {
+        let oc_skill = objects[obj.otyp].oc_subtyp;
+        // is_ammo(otmp) from obj.h
+        let is_ammo = (obj.oclass === WEAPON_CLASS || obj.oclass === GEM_CLASS) &&
+                      (oc_skill >= -P_CROSSBOW && oc_skill <= -P_BOW);
+        if (is_ammo || obj.oclass === GEM_CLASS) continue;
+
+        let skill = weapon_type(obj);
+        if (skill !== P_NONE) {
+            game.u.weapon_skills[skill].skill = P_BASIC;
+        }
+    }
+
+    if (game.urole.mnum === PM_HEALER || game.urole.mnum === PM_MONK) {
+        game.u.weapon_skills[P_HEALING_SPELL].skill = P_BASIC;
+    } else if (game.urole.mnum === PM_CLERIC) {
+        game.u.weapon_skills[P_CLERIC_SPELL].skill = P_BASIC;
+    } else if (game.urole.mnum === PM_WIZARD) {
+        game.u.weapon_skills[P_ATTACK_SPELL].skill = P_BASIC;
+        game.u.weapon_skills[P_ENCHANTMENT_SPELL].skill = P_BASIC;
+    }
+
+    for (let i = 0; i < class_skill.length; i++) {
+        let skmax = class_skill[i].skmax;
+        let skill = class_skill[i].skill;
+
+        if (skill === P_NONE) break;
+
+        game.u.weapon_skills[skill].max_skill = skmax;
+        if (game.u.weapon_skills[skill].skill === P_ISRESTRICTED) {
+            game.u.weapon_skills[skill].skill = P_UNSKILLED;
+        }
+    }
+
+    if (game.u.weapon_skills[P_BARE_HANDED_COMBAT].max_skill > P_EXPERT) {
+        game.u.weapon_skills[P_BARE_HANDED_COMBAT].skill = P_BASIC;
+    }
+
+    // Roles that start with a horse know how to ride it
+    if (game.urole.petnum === PM_PONY) game.u.weapon_skills[P_RIDING].skill = P_BASIC;
+
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
+        if (game.u.weapon_skills[skill].skill !== P_ISRESTRICTED) {
+            if (game.u.weapon_skills[skill].max_skill < game.u.weapon_skills[skill].skill) {
+                game.u.weapon_skills[skill].max_skill = game.u.weapon_skills[skill].skill;
+            }
+            game.u.weapon_skills[skill].advance = practice_needed_to_advance(game.u.weapon_skills[skill].skill);
+        }
+    }
+
+    // unrestrict_weapon_skill(spell_skilltype(gu.urole.spelspec));
+    // skill_based_spellbook_id();
+}
+
+
 
 
 function trquan(trop) {
