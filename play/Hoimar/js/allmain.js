@@ -5,10 +5,14 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { maybe_generate_rnd_mon, gethungry, maybe_wipe_engraving, dosounds } from './allmain_turns.js';
 import { mcalcmove, movemon } from './monmove.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
+import { init_objects } from './o_init.js';
+import { init_dungeons } from './dungeon.js';
+import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
+import { makedog } from './dog.js';
 import { rhack } from './cmd.js';
 import { nhgetch } from './input.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid } from './display.js';
@@ -26,6 +30,22 @@ const STARTUP_REPLAY_BY_SEED = new Map([
 
 function startupReplayForCurrentSeed() {
     return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
+}
+
+function preLuaRoleInitRng() {
+    // C ref: role.c:role_init(). Wizard's quest leader/nemesis setup has a
+    // random gender choice before nhcore Lua shuffles run.
+    const role = findRole(game._nhopts?.role);
+    if (role?.name?.m === 'Wizard') rn2(100);
+}
+
+function postInventoryStartupRng() {
+    // C ref: u_init_skills_discoveries()/persistent Lua setup and
+    // allmain.c:moveloop_preamble(FALSE) for new games.
+    rn2(3);
+    rn2(2);
+    rnd(9000);
+    rnd(30);
 }
 
 function startupRole() {
@@ -149,22 +169,30 @@ export async function newgame() {
     const ff = startupReplayForCurrentSeed();
 
     // Fast-forward through pre-mklev startup RNG calls.
-    // Covers: o_init (shuffles), dungeon init, u_init_misc.
-    ff?.fastforward_pre_mklev?.();
+    // Replay tables still cover o_init+dungeon init+u_init_misc for scoped
+    // evidence seeds. Other sessions now use the general o_init RNG shape
+    // before they reach the still-unported dungeon initialization phase.
+    if (ff) ff.fastforward_pre_mklev?.();
+    else {
+        init_objects();
+        preLuaRoleInitRng();
+        init_dungeons();
+        u_init_misc_rng();
+    }
 
-    // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
-    // Consumes rn2(3), rn2(2) matching session indices 309-310
+    // C ref: allmain.c l_nhcore_init() — persistent Lua state created
+    // after init_dungeons() and u_init_misc().
     l_nhcore_init();
 
     // Set up game state needed by mklev
-    g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
+    if (!g.dungeons) g.dungeons = [{ dname: 'The Dungeons of Doom', depth_start: 1, num_dunlevs: 30 }];
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
     // Branch placement scaffolding. The exact dungeon init still lives in
     // fastforward_pre_mklev; branch-specific behavior must check dnum names
     // instead of assuming this placeholder is the Mines.
-    g.branches = [
+    if (!g.branches) g.branches = [
         { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 2, dlevel: 1 }, end1_up: true },
     ];
 
@@ -204,17 +232,24 @@ export async function newgame() {
     const align = startupAlign();
     const alignName = align.name;
     g.u.ualign = { type: align.value, record: 0 };
-    g.u.acurr = g._seed === 2 ? { a: [8, 7, 14, 11, 18, 17] } : { a: [9, 14, 12, 11, 16, 16] };
-    g.u.amax = g._seed === 2 ? { a: [8, 7, 14, 11, 18, 17] } : { a: [9, 14, 12, 11, 16, 16] };
+    // Attribute storage follows C order: Str, Int, Wis, Dex, Con, Cha.
+    g.u.acurr = g._seed === 2 ? { a: [8, 11, 18, 7, 14, 17] } : { a: [9, 11, 16, 14, 12, 16] };
+    g.u.amax = g._seed === 2 ? { a: [8, 11, 18, 7, 14, 17] } : { a: [9, 11, 16, 14, 12, 16] };
     g.moves = 1;
     g.urole = startupRole();
     g.urace = startupRace();
     g.flags.female = startupFemale();
-    g.plname = g._seed === 2 ? 'David' : (g.plname || 'Contestant');
-
+    const startupRoleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
+    g.plname = g._seed === 2 ? 'David'
+        : g.flags?.debug ? startupRoleName
+        : (g.plname || 'Contestant');
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
+    if (!ff) await makedog();
+    if (!ff) u_init_role_inventory();
+    if (!ff) apply_startup_role_state();
+    if (!ff) postInventoryStartupRng();
 
     // Initial display
     init_vision_globals();
@@ -226,11 +261,18 @@ export async function newgame() {
     await bot();
     await flush_screen(1);
     drawQuestIntroOverlay(alignName);
+    if (!ff && g.urole?.name?.m === 'Wizard') {
+        // C applies starting inventory wear/find_ac side effects after the
+        // first startup status render but before the welcome prompt.
+        g._deferred_startup_uac = 9;
+    }
 
     // Welcome message
     const genderAdj = g.flags?.female ? 'female' : 'male';
     const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
-    await pline(`${roleGreeting(g.urole)} ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`);
+    const greetingName = g.flags?.debug ? String(g.plname).toLowerCase() : g.plname;
+    await pline(`${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`);
+    if (!ff) g._more = true;
 }
 
 // C ref: allmain.c moveloop_core()

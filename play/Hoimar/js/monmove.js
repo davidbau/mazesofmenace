@@ -2,13 +2,22 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 
 const NORMAL_SPEED = 12;
+const MSLOW = 1;
+const MFAST = 2;
 
 export function mcalcmove(mtmp, m_moving) {
     let mmove = mtmp.data.mmove;
-    
-    // Simplified speed logic
+
+    // C ref: mon.c:mcalcmove() speed adjustments.
+    if (mtmp.mspeed === MSLOW) {
+        if (mmove < NORMAL_SPEED) mmove = Math.trunc((2 * mmove + 1) / 3);
+        else mmove = 4 + Math.trunc(mmove / 3);
+    } else if (mtmp.mspeed === MFAST) {
+        mmove = Math.trunc((4 * mmove + 2) / 3);
+    }
+
     if (m_moving) {
-        let mmove_adj = mmove % NORMAL_SPEED;
+        const mmove_adj = mmove % NORMAL_SPEED;
         mmove -= mmove_adj;
         if (rn2(NORMAL_SPEED) < mmove_adj) {
             mmove += NORMAL_SPEED;

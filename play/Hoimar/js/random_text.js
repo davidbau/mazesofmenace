@@ -1,12 +1,11 @@
 // random_text.js — NetHack random text data selection.
 // C refs: rumors.c:getrumor/get_rnd_line/get_rnd_text, engrave.c:random_engraving.
 
-import { readFileSync } from 'fs';
 import { rn2 } from './rng.js';
+import { ENGRAVINGS_TEXT, RUMORS_FALSE_TEXT, RUMORS_TRUE_TEXT } from './random_text_data.js';
 
 const MD_PAD_RUMORS = 60;
 const COOKIE_MARKER = '[cookie] ';
-const DATA_ROOT = '../nethack-c/upstream/dat/';
 
 let rumorData = null;
 let engraveData = null;
@@ -72,8 +71,8 @@ function readLineAt(text, pos, endpos) {
 
 function loadRumors() {
     if (rumorData) return rumorData;
-    const trueText = compilePlainLines(readDataFile('rumors.tru'), () => true);
-    const falseText = compilePlainLines(readDataFile('rumors.fal'), () => true);
+    const trueText = compilePlainLines(RUMORS_TRUE_TEXT);
+    const falseText = compilePlainLines(RUMORS_FALSE_TEXT);
     rumorData = { trueText, falseText };
     return rumorData;
 }
@@ -81,7 +80,7 @@ function loadRumors() {
 function loadEngravings() {
     if (engraveData) return engraveData;
     const lines = [`No matter where you go, there you are.\n`];
-    lines.push(...plainLines(readDataFile('engrave.txt'))
+    lines.push(...plainLines(ENGRAVINGS_TEXT)
         .filter((line) => line[0] !== '#' && line !== '\n'));
     engraveData = lines.map((line) => xcrypt(padline(line))).join('');
     return engraveData;
@@ -168,10 +167,6 @@ function wipeoutText(text, cnt, seed) {
     }
     while (lth && chars[lth - 1] === ' ') lth--;
     return chars.slice(0, lth).join('');
-}
-
-function readDataFile(name) {
-    return readFileSync(new URL(`${DATA_ROOT}${name}`, import.meta.url), 'utf8');
 }
 
 const RUBOUTS = new Map([

@@ -2,11 +2,48 @@
 // C ref: o_init.c — shuffle gem colors, potion descriptions, etc.
 
 import { rn2 } from './rng.js';
+import { objects, NUM_OBJECTS } from './objects.js';
+import { MAXOCLASSES, ILLOBJ_CLASS } from './const.js';
+
+export const bases = new Int32Array(MAXOCLASSES + 2);
+export const oclass_prob_totals = new Int32Array(MAXOCLASSES);
 
 // C ref: o_init.c randomize_gem_colors() + shuffle() + init_objects()
 // Exact shuffle sizes are constant across all seeds (compile-time object table).
 // Total: 199 rn2 calls.
 export function init_objects() {
+    let first = MAXOCLASSES;
+    let prevoclass = -1;
+
+    while (first < NUM_OBJECTS) {
+        let oclass = objects[first].oc_class;
+        if (oclass < prevoclass) throw new Error("objects class not in order!");
+        let last = first + 1;
+        while (last < NUM_OBJECTS && objects[last].oc_class === oclass) last++;
+        bases[oclass] = first;
+        first = last;
+        prevoclass = oclass;
+    }
+
+    bases[MAXOCLASSES] = bases[MAXOCLASSES + 1] = NUM_OBJECTS;
+    for (let last = MAXOCLASSES - 1; last >= 0; --last) {
+        if (!bases[last]) bases[last] = bases[last + 1];
+    }
+
+    for (let oclass = 0; oclass < MAXOCLASSES; ++oclass) {
+        let sum = 0;
+        for (let i = bases[oclass]; i < bases[oclass + 1]; ++i) {
+            sum += objects[i].oc_prob;
+        }
+        if (sum <= 0 && oclass !== ILLOBJ_CLASS && bases[oclass] !== bases[oclass + 1]) {
+            for (let i = bases[oclass]; i < bases[oclass + 1]; ++i) {
+                objects[i].oc_prob = 1;
+                sum++;
+            }
+        }
+        oclass_prob_totals[oclass] = sum;
+    }
+
     // randomize_gem_colors: 3 calls
     rn2(2); rn2(2); rn2(4);
 

@@ -41,7 +41,17 @@ export const roles = [
       title: [{ m: 'Stripling', f: 'Stripling' }] },
     { name: { m: 'Wizard', f: 'Wizard' }, mnum: 12,
       gods: { lawful: 'Ptah', neutral: 'Thoth', chaotic: 'Anhur' },
-      title: [{ m: 'Evoker', f: 'Evoker' }] },
+      title: [
+          { m: 'Evoker', f: 'Evoker' },
+          { m: 'Conjurer', f: 'Conjurer' },
+          { m: 'Thaumaturge', f: 'Thaumaturge' },
+          { m: 'Magician', f: 'Magician' },
+          { m: 'Enchanter', f: 'Enchantress' },
+          { m: 'Sorcerer', f: 'Sorceress' },
+          { m: 'Necromancer', f: 'Necromancer' },
+          { m: 'Wizard', f: 'Wizard' },
+          { m: 'Mage', f: 'Mage' },
+      ] },
 ];
 
 export const races = [
@@ -108,6 +118,20 @@ export function roleWithStartingRank(role) {
             f: title.f || title.m,
         },
     };
+}
+
+export function rankIndexForLevel(level) {
+    const xlev = Number(level) || 1;
+    if (xlev <= 2) return 0;
+    if (xlev <= 30) return Math.trunc((xlev + 2) / 4);
+    return 8;
+}
+
+export function roleRankForLevel(role, level, female = false) {
+    if (!role) return null;
+    const title = role.title?.[rankIndexForLevel(level)];
+    if (!title) return female ? (role.name?.f || role.name?.m) : role.name?.m;
+    return female ? (title.f || title.m) : title.m;
 }
 
 export function roleGod(role, alignName = 'neutral') {

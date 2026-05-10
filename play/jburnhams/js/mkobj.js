@@ -2,8 +2,8 @@
 import { game } from './gstate.js';
 import { fobj, set_fobj } from './decl.js';
 import { COIN_CLASS } from './const.js';
-import { BOULDER, GOLD_PIECE } from './objects.js';
-import { rnd } from './rng.js';
+import { BOULDER, GOLD_PIECE, STRANGE_OBJECT, objects } from './objects.js';
+import { rnd, rn2, rn1 } from './rng.js';
 import { depth, level_difficulty } from './hacklib.js';
 
 export const OBJ_FREE = 0;
@@ -238,4 +238,136 @@ export function next_ident() {
     if (game.context.ident === 0)
         game.context.ident = rnd(2) + 1;   /* id 1 is reserved */
     return res;
+}
+
+
+// C ref: mkobj.c
+export function bless(otmp) {
+    let old_light = 0;
+
+    if (otmp.oclass === COIN_CLASS)
+        return;
+    // if (otmp.lamplit)
+    //     old_light = arti_light_radius(otmp);
+    otmp.cursed = 0;
+    otmp.blessed = 1;
+    // if (carried(otmp) && confers_luck(otmp))
+    //     set_moreluck();
+    // else if (otmp.otyp === BAG_OF_HOLDING)
+    //     otmp.owt = weight(otmp);
+    // else if (otmp.otyp === FIGURINE && otmp.timed)
+    //     stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
+    // if (otmp.lamplit)
+    //     maybe_adjust_light(otmp, old_light);
+    return;
+}
+
+export function unbless(otmp) {
+    let old_light = 0;
+
+    // if (otmp.lamplit)
+    //     old_light = arti_light_radius(otmp);
+    otmp.blessed = 0;
+    // if (carried(otmp) && confers_luck(otmp))
+    //     set_moreluck();
+    // else if (otmp.otyp === BAG_OF_HOLDING)
+    //     otmp.owt = weight(otmp);
+    // if (otmp.lamplit)
+    //     maybe_adjust_light(otmp, old_light);
+}
+
+export function curse(otmp) {
+    let already_cursed;
+    let old_light = 0;
+
+    if (otmp.oclass === COIN_CLASS)
+        return;
+    // if (otmp.lamplit)
+    //     old_light = arti_light_radius(otmp);
+    already_cursed = otmp.cursed;
+    otmp.blessed = 0;
+    otmp.cursed = 1;
+    /* welded two-handed weapon interferes with some armor removal */
+    // if (otmp === uwep && bimanual(uwep))
+    //     reset_remarm();
+    /* rules at top of wield.c state that twoweapon cannot be done
+       with cursed alternate weapon */
+    // if (otmp === uswapwep && u.twoweap)
+    //     drop_uswapwep();
+    /* some cursed items need immediate updating */
+    // if (carried(otmp) && confers_luck(otmp)) {
+    //     set_moreluck();
+    // } else if (otmp.otyp === BAG_OF_HOLDING) {
+    //     otmp.owt = weight(otmp);
+    // } else if (otmp.otyp === FIGURINE) {
+    //     if (otmp.corpsenm !== NON_PM && !dead_species(otmp.corpsenm, true)
+    //         && (carried(otmp) || mcarried(otmp)))
+    //         attach_fig_transform_timeout(otmp);
+    // } else if (otmp.oclass === SPBOOK_CLASS) {
+    //     /* if book hero is reading becomes cursed, interrupt */
+    //     if (!already_cursed)
+    //         book_cursed(otmp);
+    // }
+    // if (otmp.lamplit)
+    //     maybe_adjust_light(otmp, old_light);
+    return;
+}
+
+export function uncurse(otmp) {
+    let old_light = 0;
+
+    // if (otmp.lamplit)
+    //     old_light = arti_light_radius(otmp);
+    otmp.cursed = 0;
+    // if (carried(otmp) && confers_luck(otmp))
+    //     set_moreluck();
+    // else if (otmp.otyp === BAG_OF_HOLDING)
+    //     otmp.owt = weight(otmp);
+    // else if (otmp.otyp === FIGURINE && otmp.timed)
+    //     stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
+    // if (otmp.lamplit)
+    //     maybe_adjust_light(otmp, old_light);
+    return;
+}
+
+export function blessorcurse(otmp, chance) {
+    if (otmp.blessed || otmp.cursed)
+        return;
+
+    if (!rn2(chance)) {
+        if (!rn2(2)) {
+            curse(otmp);
+        } else {
+            bless(otmp);
+        }
+    }
+    return;
+}
+
+export function bcsign(otmp) {
+    return (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
+}
+
+// C ref: objnam.c
+export function rnd_class(first, last) {
+    let sum = 0;
+
+    if (last > first) {
+        for (let i = first; i <= last; i++) {
+            sum += objects[i].oc_prob;
+        }
+        if (!sum) {
+            /* all zero, so equal probability */
+            return rn1(last - first + 1, first);
+        }
+
+        let x = rnd(sum);
+        for (let i = first; i <= last; i++) {
+            x -= objects[i].oc_prob;
+            if (x <= 0) {
+                return i;
+            }
+        }
+    }
+    return (first === last) ? first : STRANGE_OBJECT;
 }
