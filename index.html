@@ -281,7 +281,11 @@ footer a { color: var(--color-text-muted); }
                 save/restore actually survives a browser reload &mdash; making
                 the browser demo materially more playable. (serteal&rsquo;s
                 port hasn&rsquo;t regressed; their multi-segment sessions just
-                need a small migration to fit the new API.) The corpus was
+                need a small migration to fit the new API.) Forks now declare
+                a category &mdash; <em>agentic</em>, <em>transpiled</em>, or
+                <em>other</em> &mdash; by running
+                <code>bash frozen/set-category.sh &lt;CATEGORY&gt;</code> once
+                before <code>frozen/score.sh</code> will score. The corpus was
                 re-recorded with instrumentation fixes. Phase 2 is clarified
                 as a test of maintainability.
             </p>
