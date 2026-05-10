@@ -330,17 +330,20 @@ footer a { color: var(--color-text-muted); }
         codebases are mostly produced by generating code with an LLM
         and <strong>Transpiled</strong> codebases rely mostly on
         transpiling the C sources with tools.
-        <strong>Points</strong> = matched screens across the 44 public
-        sessions. Each step where your fork&rsquo;s rendered 80&times;24
-        terminal exactly matches the C reference is one point; the max
-        is the total number of recorded screens. <strong>PRNG</strong>
+        <strong>Points</strong> = matched screens across 88 sessions
+        (44 public + 44 held-out). Each step where your fork&rsquo;s
+        rendered 80&times;24 terminal exactly matches the C reference is
+        one point; the max is the total number of recorded screens.
+        <strong>PRNG</strong>
         is shown as advisory progress &mdash; it&rsquo;s the structural
         prerequisite for screens to match (if your PRNG drifts, the
         game state drifts and screens can&rsquo;t line up). The
-        <strong>Sessions</strong> column tallies sessions where every
-        screen and PRNG call matched. <strong>Play</strong> opens the
-        build in your browser; <strong>Tests</strong> opens the Session
-        Viewer scoped to it.
+        <strong>Sessions</strong> column tallies fully-matching
+        sessions (public + held-out). In <strong>Points</strong>
+        and <strong>Sessions</strong>, the two numbers are from
+        the public and the held-out sessions respectively. 
+        <strong>Play</strong> opens the build in your browser;
+        <strong>Tests</strong> opens the Session Viewer scoped to it.
     </p>
 </section>
 
@@ -425,9 +428,9 @@ footer a { color: var(--color-text-muted); }
         'Last scored ' + TIME_AGO(data.timestamp);
 
     const SCORE_SORT = (a, b) =>
-        ((b.public.points  || 0) - (a.public.points  || 0))
-        || ((b.public.passing || 0) - (a.public.passing || 0))
-        || ((b.public.rngPct  || 0) - (a.public.rngPct  || 0))
+        (((b.public?.points || 0) + (b.heldOut?.points || 0)) - ((a.public?.points || 0) + (a.heldOut?.points || 0)))
+        || (((b.public?.passing || 0) + (b.heldOut?.passing || 0)) - ((a.public?.passing || 0) + (a.heldOut?.passing || 0)))
+        || ((b.public?.rngPct  || 0) - (a.public?.rngPct  || 0))
     ;
 
     const resolveCategory = (team) => {
@@ -461,19 +464,30 @@ footer a { color: var(--color-text-muted); }
         tbody.appendChild(tr);
     };
 
-    CATEGORY_ORDER.forEach((cat) => {
-        const teams = byCat[cat] || [];
-        if (teams.length === 0) return;
+        CATEGORY_ORDER.forEach((cat) => {
+            const teams = byCat[cat] || [];
+            if (teams.length === 0) return;
 
-        appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
-        teams.forEach((team, i) => {
-            const pub = team.public;
-            const points    = pub.points || 0;
-            const maxPoints = pub.maxPoints || 0;
-            const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
-            const rngPct    = pub.rngPct  || 0;
-            const scrPct    = pub.screenPct || 0;
-            const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+            appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+            teams.forEach((team, i) => {
+                const pub = team.public;
+                const held = team.heldOut || {};
+                const pubPoints    = pub.points || 0;
+                const pubMaxPoints = pub.maxPoints || 0;
+                const heldPoints    = held.points || 0;
+                const heldMaxPoints = held.maxPoints || 0;
+                const totalPoints = pubPoints + heldPoints;
+                const totalMaxPoints = pubMaxPoints + heldMaxPoints;
+                const pointsPct = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
+            const pubRngPct = pub.rngPct || 0;
+            const heldRngPct = held.rngPct || 0;
+            const rngPct = totalMaxPoints > 0
+                ? ((pubRngPct * pubMaxPoints) + (heldRngPct * heldMaxPoints)) / totalMaxPoints
+                : 0;
+            const scrPct    = pointsPct;
+            const totalPassing = (pub.passing || 0) + (held.passing || 0);
+            const totalSessions = (pub.total || 0) + (held.total || 0);
+            const sessPct   = totalSessions > 0 ? (totalPassing / totalSessions * 100) : 0;
             const playUrl   = '/play/' + team.name + '/';
             const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
@@ -483,13 +497,19 @@ footer a { color: var(--color-text-muted); }
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                 <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
-                    <span class="${PCT_CLASS(pointsPct)}">${fmt(points)}</span>
-                    <span class="pts-max">/ ${fmt(maxPoints)}</span>
+                <td class="pts" title="Total points (public + held-out): ${pointsPct.toFixed(2)}% of ${fmt(totalMaxPoints)}. First number is public; second is held-out.">
+                    <span class="${PCT_CLASS(pointsPct)}">${fmt(pubPoints)} + ${fmt(heldPoints)}</span>
+                    <span class="pts-max">/ ${fmt(totalMaxPoints)}</span>
                 </td>
-                <td class="pct"><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
-                <td class="pct"><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
-                <td class="pct"><span class="${PCT_CLASS(sessPct)}">${pub.passing}/${pub.total}</span></td>
+                <td class="pct" title="PRNG match across public + held-out sessions (weighted by recorded steps).">
+                    <span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span>
+                </td>
+                <td class="pct" title="Screen match across public + held-out sessions.">
+                    <span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span>
+                </td>
+                <td class="pct" title="Sessions fully matched (public + held-out). First number is public; second is held-out.">
+                    <span class="${PCT_CLASS(sessPct)}">${pub.passing || 0} + ${held.passing || 0} / ${fmt(totalSessions)}</span>
+                </td>
                 <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
             `;
             tbody.appendChild(tr);

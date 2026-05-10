@@ -156,6 +156,7 @@ td.pct {
     font-family: var(--font-mono);
     font-size: 0.88em;
 }
+.pct.sessions { min-width: 9em; }
 .hint {
     margin-top: 1em;
     font-size: 0.9em;
@@ -290,11 +291,10 @@ td.pct {
   <th class="rank">#</th>
   <th>Team</th>
   <th class="actions" colspan="2"></th>
-  <th class="pts">Public points</th>
+  <th class="pts">Points</th>
   <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
-  <th class="pct">Sessions</th>
-  <th class="pts">Held-out points</th>
+  <th class="pct sessions">Sessions</th>
   <th class="pct supplemental" title="Supplemental score for animation-frame parity. Not included in the official ranking.">Anim<sup>†</sup></th>
   <th class="sparkline">Progress</th>
   <th>Updated</th>
@@ -316,6 +316,8 @@ td.pct {
   opens that contestant&rsquo;s build in your browser. <strong>Tests</strong>
   opens the Session Viewer scoped to the fork &mdash; scrub through each
   public session frame by frame and see where it diverges from C.
+  In <strong>Points</strong> and <strong>Sessions</strong>, the two
+  numbers are from the public and the held-out sessions respectively. 
 </p>
 
 <div class="legend">
@@ -441,9 +443,9 @@ async function loadLeaderboard() {
         tbody.innerHTML = '';
 
         const SCORE_SORT = (a, b) =>
-            ((b.public.points || 0) - (a.public.points || 0))
-            || ((b.public.passing || 0) - (a.public.passing || 0))
-            || ((b.public.rngPct || 0) - (a.public.rngPct || 0))
+            (((b.public?.points || 0) + (b.heldOut?.points || 0)) - ((a.public?.points || 0) + (a.heldOut?.points || 0)))
+            || (((b.public?.passing || 0) + (b.heldOut?.passing || 0)) - ((a.public?.passing || 0) + (a.heldOut?.passing || 0)))
+            || ((b.public?.rngPct || 0) - (a.public?.rngPct || 0))
         ;
 
         const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
@@ -455,7 +457,7 @@ async function loadLeaderboard() {
         const appendCategoryRow = (label) => {
             const tr = document.createElement('tr');
             tr.className = 'cat-row';
-            tr.innerHTML = `<th colspan="12">CATEGORY: ${label}</th>`;
+            tr.innerHTML = `<th colspan="11">CATEGORY: ${label}</th>`;
             tbody.appendChild(tr);
         };
 
@@ -469,37 +471,44 @@ async function loadLeaderboard() {
             teams.forEach((team, i) => {
                 const tr = document.createElement('tr');
                 const pub = team.public;
-                const rngPct = pub.rngPct?.toFixed(1) || '0.0';
-                const scrPct = pub.screenPct?.toFixed(1) || '0.0';
-                const points    = pub.points || 0;
-                const maxPoints = pub.maxPoints || 0;
-                const pointsPct = maxPoints > 0 ? (points / maxPoints * 100) : 0;
-                const sessPct   = pub.total > 0 ? (pub.passing / pub.total * 100) : 0;
+                const held = team.heldOut || {};
+                const pubPoints    = pub.points || 0;
+                const pubMaxPoints = pub.maxPoints || 0;
+                const heldPoints    = held.points || 0;
+                const heldMaxPoints = held.maxPoints || 0;
+                const totalPoints = pubPoints + heldPoints;
+                const totalMaxPoints = pubMaxPoints + heldMaxPoints;
+                const pointsPct = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
+                const pubRngPct = pub.rngPct || 0;
+                const heldRngPct = held.rngPct || 0;
+                const rngPct = totalMaxPoints > 0
+                    ? ((pubRngPct * pubMaxPoints) + (heldRngPct * heldMaxPoints)) / totalMaxPoints
+                    : 0;
+                const scrPct = pointsPct;
+                const totalPassing = (pub.passing || 0) + (held.passing || 0);
+                const totalSessions = (pub.total || 0) + (held.total || 0);
+                const sessPct   = totalSessions > 0 ? (totalPassing / totalSessions * 100) : 0;
 
                 const playUrl   = '/play/' + team.name + '/';
                 const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
-
-                const held = team.heldOut || {};
-                const heldPoints    = held.points || 0;
-                const heldMaxPoints = held.maxPoints || 0;
-                const heldPct       = heldMaxPoints > 0 ? (heldPoints / heldMaxPoints * 100) : 0;
 
                 tr.innerHTML = `
                     <td class="rank">${i + 1}</td>
                     <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                     <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                    <td class="pts" title="${pointsPct.toFixed(2)}% of ${fmt(maxPoints)} possible points">
-                        <span class="${pctClass(pointsPct)}">${fmt(points)}</span>
-                        <span class="pts-max">/ ${fmt(maxPoints)}</span>
+                    <td class="pts" title="Total points (public + held-out): ${pointsPct.toFixed(2)}% of ${fmt(totalMaxPoints)}. First number is public; second is held-out.">
+                        <span class="${pctClass(pointsPct)}">${fmt(pubPoints)} + ${fmt(heldPoints)}</span>
+                        <span class="pts-max">/ ${fmt(totalMaxPoints)}</span>
                     </td>
-                    <td class="pct"><span class="${pctClass(parseFloat(rngPct))}">${rngPct}%</span></td>
-                    <td class="pct"><span class="${pctClass(parseFloat(scrPct))}">${scrPct}%</span></td>
-                    <td class="pct"><span class="${pctClass(sessPct)}">${pub.passing}/${pub.total}</span></td>
-                    <td class="pts" title="${heldPct.toFixed(2)}% of ${fmt(heldMaxPoints)} possible held-out points">
-                        ${heldMaxPoints > 0
-                            ? `<span class="${pctClass(heldPct)}">${fmt(heldPoints)}</span><span class="pts-max">/ ${fmt(heldMaxPoints)}</span>`
-                            : '<span class="hidden">—</span>'}
+                    <td class="pct" title="PRNG match across public + held-out sessions (weighted by recorded steps).">
+                        <span class="${pctClass(rngPct)}">${rngPct.toFixed(1)}%</span>
+                    </td>
+                    <td class="pct" title="Screen match across public + held-out sessions.">
+                        <span class="${pctClass(scrPct)}">${scrPct.toFixed(1)}%</span>
+                    </td>
+                    <td class="pct sessions" title="Sessions fully matched (public + held-out). First number is public; second is held-out.">
+                        <span class="${pctClass(sessPct)}">${pub.passing || 0} + ${held.passing || 0} / ${fmt(totalSessions)}</span>
                     </td>
                     <td class="pct supplemental" title="Supplemental: ${pub.animMatched ?? 0}/${pub.animTotal ?? 0} animation frames matched. Not part of the official ranking.">
                         ${pub.animPct != null
@@ -521,7 +530,7 @@ async function loadLeaderboard() {
         });
 
         if (rendered === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
 
         appendCategoryRow('NEXT PLAYER');
@@ -532,7 +541,7 @@ async function loadLeaderboard() {
             <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
             <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
-            <td class="you-cta" colspan="8"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+            <td class="you-cta" colspan="7"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
         `;
         tbody.appendChild(youTr);
     } catch (e) {
