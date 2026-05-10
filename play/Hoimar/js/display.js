@@ -7,9 +7,10 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+    FOUNTAIN, SINK, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './const.js';
-import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, DEC_TO_UNICODE } from './terminal.js';
+import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE, DEC_TO_UNICODE } from './terminal.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -62,6 +63,10 @@ function terrain_glyph(loc, x, y) {
     case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
     case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
     case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
+    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
+    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+    case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -254,12 +259,16 @@ function _buildScreenOutput() {
 
     if (game._override_screen) {
         const decoded = decodeScreen(game._override_screen);
+        if (display.clearScreen) display.clearScreen();
         for (let r = 0; r < 24; r++) {
             for (let c = 0; c < 80; c++) {
                 if (decoded[r] && decoded[r][c]) {
                     display.setCell(c, r, decoded[r][c].ch, decoded[r][c].color, decoded[r][c].attr);
                 }
             }
+        }
+        if (game._override_cursor && display.setCursor) {
+            display.setCursor(game._override_cursor[0], game._override_cursor[1]);
         }
         return;
     }
@@ -329,4 +338,9 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
+}
+
+export function clear_pending_message() {
+    game._pending_message = '';
+    game._more = false;
 }

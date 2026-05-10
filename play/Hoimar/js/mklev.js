@@ -514,8 +514,17 @@ async function makelevel() {
         place_branch(branchp);
     }
 
-    // Fill rooms + mineralize: consumed by fastforward_fill_mineralize
-    // Called externally from allmain.js after mklev structural phase
+    // Fill rooms
+    const fillable_rooms = g.level.rooms.filter(r => 
+        (r.rtype === OROOM || r.rtype === THEMEROOM) && r.needfill === FILL_NORMAL);
+    let bonus_item_room_idx = fillable_rooms.length ? rn2(fillable_rooms.length) : -1;
+
+    for (let i = 0; i < g.level.nroom; i++) {
+        const croom = g.level.rooms[i];
+        const is_fillable = (croom.rtype === OROOM || croom.rtype === THEMEROOM) && croom.needfill === FILL_NORMAL;
+        await fill_ordinary_room(croom, is_fillable && bonus_item_room_idx === 0);
+        if (is_fillable) bonus_item_room_idx--;
+    }
 }
 
 // C ref: mklev.c makerooms()
@@ -1646,6 +1655,14 @@ function mkgrave_room(croom) {
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
+
+    // C ref: mklev.c:955 — Fill subrooms first
+    if (croom.sbrooms) {
+        for (const subroom of croom.sbrooms) {
+            await fill_ordinary_room(subroom, false);
+        }
+    }
+
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
