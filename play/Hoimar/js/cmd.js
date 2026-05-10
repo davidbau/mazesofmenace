@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, clear_pending_message, docrt } from './display.js';
+import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { mklev, place_lregion } from './mklev.js';
 import { pet_arrive_with_you } from './dog.js';
@@ -73,7 +73,7 @@ async function showTutorialPrompt(invalidChoice = false) {
         display.putstr(21, 6, '(end)', NO_COLOR, 0);
     }
 
-    const screen = display.terminal.serialize();
+    const screen = serialize_terminal_grid(display);
     game._tutorial_prompt_screen = screen;
     game._tutorial_prompt_done = true;
     showOverride(screen, invalidChoice ? [27, 7] : [27, 6]);

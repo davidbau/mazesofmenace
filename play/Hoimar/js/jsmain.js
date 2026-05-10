@@ -14,7 +14,7 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen } from './display.js';
+import { flush_screen, serialize_terminal_grid } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { friday13, midnight, night, parseDatetime, phaseOfMoon } from './hacklib.js';
 
@@ -139,7 +139,9 @@ export class NethackGame {
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
 
-            // Capture screen from the terminal grid.
+            // Capture the raw wire screen when available. display.js builds
+            // a C-like screen buffer for ordinary map/status frames; override
+            // screens already carry their own raw string.
             const disp = game?.nhDisplay;
             const term = disp?.terminal || disp;
             if (game._override_screen) {
@@ -152,7 +154,7 @@ export class NethackGame {
                 game._override_screen = null;
             } else {
                 game._override_prev = null;
-                nhGame._screens.push(term?.serialize ? term.serialize() : '');
+                nhGame._screens.push(serialize_terminal_grid(disp));
                 const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
                 nhGame._cursors.push(cursor);
             }

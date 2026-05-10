@@ -18,6 +18,7 @@ import { nhgetch } from './input.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
+import { NO_COLOR } from './terminal.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -102,7 +103,7 @@ function drawQuestIntroOverlay(alignName) {
         [23, 16, `of us all:  Go bravely with ${god}!`],
         [23, 17, '--More--'],
     ];
-    for (const [col, row, text] of lines) display.putstr(col, row, text);
+    for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
     g._override_screen = serialize_terminal_grid(display);
     g._override_cursor = [31, 17, 1];
 }

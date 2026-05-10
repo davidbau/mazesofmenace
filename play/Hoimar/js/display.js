@@ -13,6 +13,40 @@ import {
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE, DEC_TO_UNICODE } from './terminal.js';
 import { roleRankForLevel } from './roles.js';
 
+const UNICODE_TO_DEC = Object.fromEntries(
+    Object.entries(DEC_TO_UNICODE).map(([k, v]) => [v, k])
+);
+
+function wireToDecSpans(s) {
+    let out = '';
+    let dec = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (ch === '\x1b' && s[i + 1] === '[') {
+            if (dec) { out += '\x0f'; dec = false; }
+            const start = i;
+            i += 2;
+            while (i < s.length) {
+                const c = s.charCodeAt(i);
+                if (c >= 0x40 && c <= 0x7e) break;
+                i++;
+            }
+            out += s.slice(start, i + 1);
+            continue;
+        }
+        const decCh = UNICODE_TO_DEC[ch];
+        if (decCh) {
+            if (!dec) { out += '\x0e'; dec = true; }
+            out += decCh;
+        } else {
+            if (dec) { out += '\x0f'; dec = false; }
+            out += ch;
+        }
+    }
+    if (dec) out += '\x0f';
+    return out;
+}
+
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
 // C ref: wintty.c term_start_color
@@ -231,29 +265,9 @@ function _statusLine2() {
 
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
-    let output = '';
-    let lastRow = 0;
-    for (let r = 0; r < display.rows; r++) {
-        for (let c = 0; c < display.cols; c++) {
-            if (display.grid[r][c].ch !== ' ') { lastRow = r; break; }
-        }
-    }
-    for (let r = 0; r <= lastRow; r++) {
-        let lastCol = -1;
-        for (let c = display.cols - 1; c >= 0; c--) {
-            if (display.grid[r][c].ch !== ' ') { lastCol = c; break; }
-        }
-        if (lastCol < 0) { if (r < lastRow) output += '\n'; continue; }
-        let firstCol = 0;
-        for (let c = 0; c <= lastCol; c++) {
-            if (display.grid[r][c].ch !== ' ') { firstCol = c; break; }
-        }
-        if (firstCol > 4) output += `\x1b[${firstCol}C`;
-        else if (firstCol > 0) output += ' '.repeat(firstCol);
-        for (let c = firstCol; c <= lastCol; c++) output += display.grid[r][c].ch;
-        if (r < lastRow) output += '\n';
-    }
-    return output;
+    const term = display?.terminal || display;
+    if (term?.serialize) return wireToDecSpans(term.serialize());
+    return '';
 }
 
 import { decodeScreen } from '../frozen/screen-decode.mjs';
