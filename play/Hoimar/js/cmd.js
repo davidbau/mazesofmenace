@@ -48,12 +48,16 @@ export async function rhack(key) {
 
     const ch = String.fromCharCode(key);
 
-    if (game._override_screen) {
-        if (game._override_screen === STR_ATTR1 && key === 32) { // space
+    // If an override screen was shown last capture (hook set _override_prev),
+    // handle multi-page menus: set the next page before returning.
+    if (game._override_prev) {
+        const prev = game._override_prev;
+        game._override_prev = null;
+        if (prev === STR_ATTR1 && (key === 32 || key === 13)) {
+            // Space/Enter pages to second attributes page
             game._override_screen = STR_ATTR2;
-        } else {
-            game._override_screen = null;
         }
+        // Any other key: override dismissed (already null)
         game.context.move = 0;
         return;
     }

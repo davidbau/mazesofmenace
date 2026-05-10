@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-09T22:22:43.078Z",
+  "timestamp": "2026-05-10T00:56:27.622Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "serteal",
       "fork": "serteal/teleport-contest",
-      "lastScored": "2026-05-09T22:21:47.855Z",
+      "lastScored": "2026-05-10T00:55:30.022Z",
       "public": {
         "points": 11164,
         "maxPoints": 11405,
@@ -219,6 +219,12 @@
         },
         {
           "ts": "2026-05-09T22:21:47.855Z",
+          "points": 11164,
+          "maxPoints": 11405,
+          "passing": 40
+        },
+        {
+          "ts": "2026-05-10T00:55:30.022Z",
           "points": 11164,
           "maxPoints": 11405,
           "passing": 40
@@ -1111,7 +1117,7 @@
     {
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
-      "lastScored": "2026-05-09T22:22:42.984Z",
+      "lastScored": "2026-05-10T00:56:27.508Z",
       "public": {
         "points": 617,
         "maxPoints": 11405,
@@ -1471,6 +1477,12 @@
         },
         {
           "ts": "2026-05-09T22:22:42.984Z",
+          "points": 617,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:56:27.508Z",
           "points": 617,
           "maxPoints": 11405,
           "passing": 0
@@ -2363,7 +2375,7 @@
     {
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
-      "lastScored": "2026-05-09T22:22:22.791Z",
+      "lastScored": "2026-05-10T00:56:06.065Z",
       "public": {
         "points": 86,
         "maxPoints": 11405,
@@ -2723,6 +2735,12 @@
         },
         {
           "ts": "2026-05-09T22:22:22.791Z",
+          "points": 86,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:56:06.065Z",
           "points": 86,
           "maxPoints": 11405,
           "passing": 0
@@ -3615,7 +3633,7 @@
     {
       "name": "jburnhams",
       "fork": "jburnhams/teleport-contest",
-      "lastScored": "2026-05-09T22:18:57.815Z",
+      "lastScored": "2026-05-10T00:52:27.807Z",
       "public": {
         "points": 21,
         "maxPoints": 11405,
@@ -3685,6 +3703,12 @@
         },
         {
           "ts": "2026-05-09T22:18:57.815Z",
+          "points": 21,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:52:27.807Z",
           "points": 21,
           "maxPoints": 11405,
           "passing": 0
@@ -4577,7 +4601,7 @@
     {
       "name": "holonicbio",
       "fork": "holonicbio/teleport-contest",
-      "lastScored": "2026-05-09T22:19:14.916Z",
+      "lastScored": "2026-05-10T00:52:45.794Z",
       "public": {
         "points": 15,
         "maxPoints": 11405,
@@ -4701,6 +4725,12 @@
         },
         {
           "ts": "2026-05-09T22:19:14.916Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:52:45.794Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -5593,7 +5623,7 @@
     {
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
-      "lastScored": "2026-05-09T22:22:05.075Z",
+      "lastScored": "2026-05-10T00:55:47.816Z",
       "public": {
         "points": 15,
         "maxPoints": 11405,
@@ -5843,6 +5873,12 @@
         },
         {
           "ts": "2026-05-09T22:22:05.075Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:55:47.816Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -6735,7 +6771,7 @@
     {
       "name": "xeophon",
       "fork": "xeophon/teleport-contest",
-      "lastScored": "2026-05-09T22:18:40.730Z",
+      "lastScored": "2026-05-10T00:52:09.514Z",
       "public": {
         "points": 15,
         "maxPoints": 11405,
@@ -6787,6 +6823,12 @@
         },
         {
           "ts": "2026-05-09T22:18:40.730Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:52:09.514Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -7679,7 +7721,7 @@
     {
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
-      "lastScored": "2026-05-09T22:18:23.559Z",
+      "lastScored": "2026-05-10T00:51:51.547Z",
       "public": {
         "points": 0,
         "maxPoints": 11405,
@@ -7725,6 +7767,12 @@
         },
         {
           "ts": "2026-05-09T22:18:23.559Z",
+          "points": 0,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-10T00:51:51.547Z",
           "points": 0,
           "maxPoints": 11405,
           "passing": 0

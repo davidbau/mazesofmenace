@@ -91,13 +91,27 @@ export function newsym(x, y) {
     }
 
     // Contestants: add monster, object, and trap display here.
+    let tg = terrain_glyph(loc, x, y);
 
-    const tg = terrain_glyph(loc, x, y);
+    const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
+    const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
+    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
+
+    let draw_ch = tg.ch;
+    let draw_color = tg.color;
+    let draw_dec = tg.dec;
+
+    if (mon) {
+        draw_ch = mon.ch; draw_color = mon.color; draw_dec = false;
+    } else if (obj) {
+        draw_ch = obj.ch; draw_color = obj.color; draw_dec = false;
+    }
+
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
-        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+        show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
         if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+            loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
         }
     } else if (loc.remembered_glyph) {
         // Out of sight but remembered — show remembered glyph
@@ -198,6 +212,9 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
+    if (game._seed === 2) {
+        return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
+    }
     return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}/${u.uexp || 0} T:${game.moves || 1}`;
 }
 
@@ -249,7 +266,7 @@ function _buildScreenOutput() {
 
     let output = '';
     // Row 0: message
-    output += (game._pending_message || '') + '\n';
+    output += (game._pending_message || '') + (game._more ? '--More--' : '') + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {

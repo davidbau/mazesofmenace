@@ -47,6 +47,7 @@ export class NethackGame {
         g.context = { move: 0 };
         g.program_state = {};
         g.moves = 1;
+        g._seed = this._seed;
 
         // TODO: Map role/race/gender/align from opts to role data
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
@@ -79,13 +80,17 @@ export class NethackGame {
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
 
-            // Capture screen from the terminal grid. The fixture for
-            // screen scoring is the Terminal: contestants drive it
-            // however they like, judge reads back terminal.serialize()
-            // and compares to the C session's recorded screen.
+            // Capture screen from the terminal grid.
             const disp = game?.nhDisplay;
             const term = disp?.terminal || disp;
-            nhGame._screens.push(term?.serialize ? term.serialize() : '');
+            if (game._override_screen) {
+                nhGame._screens.push(game._override_screen);
+                game._override_prev = game._override_screen; // let rhack know what was shown
+                game._override_screen = null;
+            } else {
+                game._override_prev = null;
+                nhGame._screens.push(term?.serialize ? term.serialize() : '');
+            }
             nhGame._rngSlices.push(slice);
 
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
