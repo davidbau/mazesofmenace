@@ -66,6 +66,7 @@ const WAND_CLASS = 11;
 
 const QUARTERSTAFF = 79;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
+const BLINDFOLD = 220;
 const MAGIC_MARKER = 229;
 const SPE_FORCE_BOLT = 383;
 
@@ -79,6 +80,10 @@ const WIZARD_INVENTORY = [
     { typ: SPE_FORCE_BOLT, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SPBOOK_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
     { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const BLINDFOLD_INVENTORY = [
+    { typ: BLINDFOLD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
 function trquan(trop) {
@@ -123,8 +128,7 @@ export function u_init_role_inventory() {
     if (role?.name?.m === 'Wizard') {
         ini_inv(WIZARD_INVENTORY);
         if (!rn2(5)) {
-            // Blindfold optional inventory; use the general tool path once
-            // broader tool constants are imported.
+            ini_inv(BLINDFOLD_INVENTORY);
         }
     }
 }

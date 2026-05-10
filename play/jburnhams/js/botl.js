@@ -2,7 +2,7 @@ import { game } from './gstate.js';
 import { BOTL_NSIZ, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, COLNO, A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA } from './const.js';
 
 function get_strength_str() {
-    const st = game.u?.acurr?.a?.[A_STR] || 0;
+    const st = game.u?.acurr?.a?.[0] || 0;
     if (st > 18) {
         if (st > 118) {
             return (st - 100).toString().padStart(2, ' ');
@@ -35,7 +35,8 @@ export function bot1() {
     const gap = Math.max(1, 31 - title.length);
     let output = '';
 
-    const statsStr = `St:${get_strength_str()} Dx:${game.u.acurr?.a?.[A_DEX]||0} Co:${game.u.acurr?.a?.[A_CON]||0} In:${game.u.acurr?.a?.[A_INT]||0} Wi:${game.u.acurr?.a?.[A_WIS]||0} Ch:${game.u.acurr?.a?.[A_CHA]||0}`;
+    const u = game.u;
+    const statsStr = `St:${get_strength_str()} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
 
     const alignType = game.u.ualign?.type ?? 0;
     const alignStr = alignType === A_CHAOTIC ? " Chaotic" : alignType === A_NEUTRAL ? " Neutral" : " Lawful";

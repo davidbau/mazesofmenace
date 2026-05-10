@@ -8,7 +8,10 @@
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { next_ident } from './mkobj.js';
+import {
+    next_ident, mkobj, mksobj, mksobj_at, mkobj_at, mkgold,
+    blessorcurse_simple as blessorcurse, place_object, curse, weight
+} from './mkobj.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, level_difficulty } from './hacklib.js';
 import {
@@ -178,79 +181,11 @@ function oinit() { /* no-op for contest */ }
 
 
 // ============================================================
-// Stub functions for object/monster/trap creation
+// Stub functions for monster/trap creation
 // These consume the exact RNG calls that C makes.
 // ============================================================
 
-let _nextObjId = 1;
-
-
-// C ref: mkobj.c blessorcurse — rn2(4) BUC selection
-function blessorcurse(otmp) {
-    const r = rn2(4);
-    if (otmp) {
-        otmp.cursed = (r === 0);
-        otmp.blessed = false;
-    }
-}
-
-// C ref: mkobj.c mksobj — create a specific object
-// Minimal stub: consumes RNG for next_ident + type-specific init
-function mksobj(otyp, init, artif) {
-    const otmp = { otyp, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0 };
-    next_ident();
-    if (init) {
-        mksobj_init(otmp, otyp);
-    }
-    return otmp;
-}
-
-// C ref: mkobj.c mksobj initialization RNG consumption
-// This varies by object class. For the contest, we need enough to match
-// the session's RNG pattern for objects created during mklev.
-function mksobj_init(otmp, otyp) {
-    // For BOULDER, GOLD_PIECE: no extra init RNG
-    // For scrolls: blessorcurse
-    // For potions: blessorcurse
-    // For general objects: varies
-    // We just do blessorcurse for scrolls/potions
-    if (otyp >= 270 && otyp < 300) { // scrolls
-        blessorcurse(otmp);
-    } else if (otyp >= 230 && otyp < 270) { // potions
-        blessorcurse(otmp);
-    }
-}
-
-function mksobj_at(otyp, x, y, init, artif) {
-    return mksobj(otyp, init, artif);
-}
-
-function mkobj(oclass, artif) {
-    // Class-based random object creation
-    // For contest, just consume the right RNG
-    return mksobj(0, false, artif);
-}
-
-function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
-}
-
-function mkgold(amount, x, y) {
-    // C ref: mkobj.c mkgold()
-    if (amount <= 0) {
-        // C ref: mkobj.c:2008-2010
-        const depthVal = depth_of_level(game.u?.uz);
-        const mul = rnd(Math.trunc(30 / Math.max(12 - depthVal, 2)));
-        amount = 1 + rnd(level_difficulty() + 2) * mul;
-    }
-    // mksobj_at(GOLD_PIECE) calls next_ident
-    next_ident();
-}
-
-function place_object(otmp, x, y) { /* stub */ }
 function dealloc_obj(otmp) { /* stub */ }
-function curse(otmp) { if (otmp) otmp.cursed = true; }
-function weight(otmp) { return otmp?.owt || 1; }
 function add_to_container(container, otmp) { /* stub */ }
 function sobj_at(otyp, x, y) { return false; }
 
@@ -543,6 +478,24 @@ async function makerooms() {
     }
 }
 
+const THEMEROOM_FILLS_META = [
+    { name: "Ice room", frequency: 1 },
+    { name: "Cloud room", frequency: 1 },
+    { name: "Boulder room", frequency: 1, mindiff: 4 },
+    { name: "Spider nest", frequency: 1 },
+    { name: "Trap room", frequency: 1 },
+    { name: "Garden", frequency: 1, req_lit: true },
+    { name: "Buried treasure", frequency: 1 },
+    { name: "Buried zombies", frequency: 1 },
+    { name: "Massacre", frequency: 1 },
+    { name: "Statuary", frequency: 1 },
+    { name: "Light source", frequency: 1, req_lit: false },
+    { name: "Temple of the gods", frequency: 1 },
+    { name: "Ghost of an Adventurer", frequency: 1 },
+    { name: "Storeroom", frequency: 1 },
+    { name: "Teleportation hub", frequency: 1 }
+];
+
 // Themed room metadata — must match C's themerms.lua frequency table exactly.
 // Generated from themeroom_meta.js (31 rooms).
 const THEMEROOM_META = [
@@ -551,9 +504,9 @@ const THEMEROOM_META = [
     { name: 'Room in a room', frequency: 1 },
     { name: 'Huge room with another room inside', frequency: 1 },
     { name: 'Nesting rooms', frequency: 1 },
-    { name: 'Default room with themed fill', frequency: 6 },
-    { name: 'Unlit room with themed fill', frequency: 2 },
-    { name: 'Room with both normal contents and themed fill', frequency: 2 },
+    { name: 'Default room with themed fill', frequency: 6, has_fill: true },
+    { name: 'Unlit room with themed fill', frequency: 2, has_fill: true },
+    { name: 'Room with both normal contents and themed fill', frequency: 2, has_fill: true },
     { name: 'Pillars', frequency: 1 },
     { name: 'Mausoleum', frequency: 1 },
     { name: 'Random dungeon feature', frequency: 1 },
@@ -600,13 +553,13 @@ async function themerooms_generate(difficulty) {
         }
     }
     if (!pick) return false;
-    // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
-    const chance = 100;
-    if (pick.name !== 'ordinary') {
-        // Themed room — not expected for seed8000, but handle RNG correctly
-        rn2(100); // chance check (build_room)
-    }
+
+    // All themed rooms go through create_room for placement via build_room.
+    // In C, build_room has: xint16 rtype = (!r->chance || rn2(100) < r->chance) ? r->rtype : OROOM;
+    // `chance` defaults to 100 in Lua parsing (get_table_int_opt(L, "chance", 100)).
+    // Thus `!r->chance` is false (100 != 0), so `rn2(100)` is evaluated!
+    rn2(100);
+
     // All themed rooms go through create_room for placement
     const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
     if (ok) {
@@ -615,6 +568,30 @@ async function themerooms_generate(difficulty) {
         if (aroom) {
             topologize(aroom);
             aroom.needfill = FILL_NORMAL;
+
+            // Check if we also need to do a fill reservoir sampling
+            if (pick.has_fill) {
+                let fill_pick = null;
+                let fill_total_frequency = 0;
+
+                for (const fmeta of THEMEROOM_FILLS_META) {
+                    // Check mindiff / maxdiff
+                    if (fmeta.mindiff != null && difficulty < fmeta.mindiff) continue;
+                    if (fmeta.maxdiff != null && difficulty > fmeta.maxdiff) continue;
+
+                    // Check lit reqs now that we have aroom.rlit
+                    if (fmeta.req_lit === true && !aroom.rlit) continue;
+                    if (fmeta.req_lit === false && aroom.rlit) continue;
+
+                    const this_frequency = fmeta.frequency || 1;
+                    fill_total_frequency += this_frequency;
+                    if (this_frequency > 0) {
+                        if (rn2(fill_total_frequency) < this_frequency) {
+                            fill_pick = fmeta;
+                        }
+                    }
+                }
+            }
         }
     }
     return ok;

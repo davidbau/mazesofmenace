@@ -29,7 +29,7 @@ import {
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, A_NONE, Align2amask,
-    LR_UPTELE, NO_MINVENT, MM_IGNOREWATER, GP_CHECKSCARY, GP_AVOID_MONPOS,
+    LR_UPTELE, NO_MINVENT, MM_IGNOREWATER, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -47,7 +47,25 @@ const WAND_CLASS = 11;
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
 const ROCK_CLASS = 14;
+const ARROW = 18;
+const SHURIKEN = 25;
 const BOULDER = 475;
+const ELVEN_ARROW = 19;
+const ELVEN_SPEAR = 28;
+const ELVEN_DAGGER = 35;
+const BATTLE_AXE = 45;
+const ELVEN_SHORT_SWORD = 47;
+const ELVEN_BROADSWORD = 53;
+const TWO_HANDED_SWORD = 55;
+const CLUB = 77;
+const ELVEN_BOW = 84;
+const ELVEN_LEATHER_HELM = 89;
+const ELVEN_MITHRIL_COAT = 127;
+const ELVEN_CLOAK = 139;
+const ELVEN_SHIELD = 153;
+const ELVEN_BOOTS = 169;
+const CRYSTAL_BALL = 231;
+const PICK_AXE = 259;
 const GOLD_PIECE = 438;
 const ROCK = 474;
 const KELP_FROND = 275;
@@ -62,12 +80,17 @@ const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 // Supply chest items
 const POT_HEALING = 307;
 const POT_EXTRA_HEALING = 308;
+const POT_FULL_HEALING = 315;
+const POT_SICKNESS = 319;
 const POT_SPEED = 302;
 const POT_GAIN_ENERGY = 313;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_ENCHANT_ARMOR = 323;
 const SCR_CONFUSE_MONSTER = 325;
 const SCR_SCARE_MONSTER = 326;
+const SCR_CREATE_MONSTER = 329;
+const WAN_CREATE_MONSTER = 418;
+const WAN_TELEPORTATION = 425;
 const WAN_DIGGING = 428;
 const SPE_HEALING = 374;
 const LARGE_BOX = 214;
@@ -83,6 +106,8 @@ const G_NOGEN = 0x0200;
 const G_HELL = 0x0400;
 const G_UNIQ = 0x1000;
 const G_NOCORPSE = 0x0010;
+const G_LGROUP = 0x0040;
+const G_SGROUP = 0x0080;
 
 const LIQUID = 1;
 const WOOD = 8;
@@ -688,6 +713,7 @@ function mksobj_init(otmp, otyp, artif) {
         }
         break;
     case WEAPON_CLASS:
+        if (is_multigen_weapon(otyp)) otmp.quan = rn1(6, 6);
         if (!rn2(11)) {
             otmp.spe = rne(3);
             otmp.blessed = !!rn2(2);
@@ -737,6 +763,10 @@ function is_poisonable_weapon(otyp) {
     return otyp >= 18 && otyp <= 26;
 }
 
+function is_multigen_weapon(otyp) {
+    return otyp >= ARROW && otyp <= SHURIKEN;
+}
+
 function is_special_cursed_armor(otyp) {
     // C hard-curses these armor types without the ordinary !rn2(11) gate.
     // These ids cover helm of opposite alignment, gauntlets of fumbling,
@@ -744,8 +774,35 @@ function is_special_cursed_armor(otyp) {
     return otyp === 99 || otyp === 144 || otyp === 171 || otyp === 172;
 }
 
+const OBJECT_CLASS_GLYPH = {
+    [WEAPON_CLASS]: { ch: ')', color: 7 },
+    [ARMOR_CLASS]: { ch: '[', color: 6 },
+    [RING_CLASS]: { ch: '=', color: 14 },
+    [AMULET_CLASS]: { ch: '"', color: 14 },
+    [TOOL_CLASS]: { ch: '(', color: 7 },
+    [FOOD_CLASS]: { ch: '%', color: 3 },
+    [POTION_CLASS]: { ch: '!', color: 7 },
+    [SCROLL_CLASS]: { ch: '?', color: 15 },
+    [SPBOOK_CLASS]: { ch: '+', color: 3 },
+    [WAND_CLASS]: { ch: '/', color: 14 },
+    [COIN_CLASS]: { ch: '$', color: 14 },
+    [GEM_CLASS]: { ch: '*', color: 7 },
+    [ROCK_CLASS]: { ch: '`', color: 7 },
+};
+
+function place_object(otmp, x, y) {
+    if (!otmp || !game.level?.objects) return otmp;
+    const glyph = OBJECT_CLASS_GLYPH[otmp.oclass] || { ch: '?', color: 7 };
+    otmp.ox = x;
+    otmp.oy = y;
+    otmp.ch = glyph.ch;
+    otmp.color = glyph.color;
+    game.level.objects.push(otmp);
+    return otmp;
+}
+
 function mksobj_at(otyp, x, y, init, artif) {
-    return mksobj(otyp, init, artif);
+    return place_object(mksobj(otyp, init, artif), x, y);
 }
 
 export function mkobj(oclass, artif) {
@@ -758,7 +815,7 @@ export function mkobj(oclass, artif) {
 }
 
 function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
+    return place_object(mkobj(oclass, artif), x, y);
 }
 
 function mkgold(amount, x, y) {
@@ -787,7 +844,6 @@ function mkgold(amount, x, y) {
     }
 }
 
-function place_object(otmp, x, y) { /* stub */ }
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
 function weight(otmp) { return otmp?.owt || 1; }
@@ -899,15 +955,98 @@ function m_initinv_for(ptr) {
     }
     if (ptr.name === 'SOLDIER' && rn2(13)) return;
     if (ptr.mlevel > rn2(50)) {
-        // rnd_defensive_item() is not modeled yet.
+        const defensive = rnd_defensive_item_for(ptr);
+        if (defensive) mksobj(defensive, true, false);
     }
     if (ptr.mlevel > rn2(100)) {
         // rnd_misc_item() is not modeled yet.
     }
 }
 
+function rnd_defensive_item_for(ptr) {
+    const difficulty = ptr?.difficulty ?? 0;
+    switch (rn2(8 + (difficulty > 3 ? 1 : 0) + (difficulty > 6 ? 1 : 0) + (difficulty > 8 ? 1 : 0))) {
+    case 6:
+    case 9:
+        if (!rn2(3)) return WAN_TELEPORTATION;
+        return SCR_TELEPORTATION;
+    case 0:
+    case 1:
+        return SCR_TELEPORTATION;
+    case 8:
+    case 10:
+        if (!rn2(3)) return WAN_CREATE_MONSTER;
+        return SCR_CREATE_MONSTER;
+    case 2:
+        return SCR_CREATE_MONSTER;
+    case 3:
+        return POT_HEALING;
+    case 4:
+        return POT_EXTRA_HEALING;
+    case 5:
+        return ptr?.name !== 'PESTILENCE' ? POT_FULL_HEALING : POT_SICKNESS;
+    case 7:
+        return WAN_DIGGING;
+    default:
+        return 0;
+    }
+}
+
+function m_initthrow_for(otyp, oquan) {
+    mksobj(otyp, true, false);
+    rn1(oquan, 3);
+}
+
+function is_elf_mon(ptr) {
+    return ptr?.mlet === 'S_HUMAN' && (ptr.name?.includes('ELF') || ptr.name?.includes('ELVEN'));
+}
+
+function maybe_init_offensive_item_for(ptr) {
+    if ((ptr.mlevel ?? 0) > rn2(75)) {
+        // rnd_offensive_item() is not modeled yet.
+    }
+}
+
 function m_initweap_for(ptr) {
     if (!ptr) return;
+    if (ptr.mlet === 'S_GIANT') {
+        if (rn2(2)) mksobj(ptr.name !== 'ETTIN' ? BOULDER : CLUB, true, false);
+        if (ptr.name !== 'ETTIN' && !rn2(5)) {
+            mksobj(rn2(2) ? TWO_HANDED_SWORD : BATTLE_AXE, true, false);
+        }
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
+    if (is_elf_mon(ptr)) {
+        if (rn2(2)) mksobj(rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK, true, false);
+        if (rn2(2)) mksobj(ELVEN_LEATHER_HELM, true, false);
+        else if (!rn2(4)) mksobj(ELVEN_BOOTS, true, false);
+        if (rn2(2)) mksobj(ELVEN_DAGGER, true, false);
+        switch (rn2(3)) {
+        case 0:
+            if (!rn2(4)) mksobj(ELVEN_SHIELD, true, false);
+            if (rn2(3)) mksobj(ELVEN_SHORT_SWORD, true, false);
+            mksobj(ELVEN_BOW, true, false);
+            m_initthrow_for(ELVEN_ARROW, 12);
+            break;
+        case 1:
+            mksobj(ELVEN_BROADSWORD, true, false);
+            if (rn2(2)) mksobj(ELVEN_SHIELD, true, false);
+            break;
+        case 2:
+            if (rn2(2)) {
+                mksobj(ELVEN_SPEAR, true, false);
+                mksobj(ELVEN_SHIELD, true, false);
+            }
+            break;
+        }
+        if (ptr.name === 'ELVENKING') {
+            if (rn2(3)) mksobj(PICK_AXE, true, false);
+            if (!rn2(50)) mksobj(CRYSTAL_BALL, true, false);
+        }
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
     if (ptr.mlet === 'S_KOBOLD') {
         if (!rn2(4)) {
             // m_initthrow(DART, 12) quantity/details are not modeled yet.
@@ -935,6 +1074,35 @@ function peace_minded_for(ptr) {
         && !!rn2(2 + Math.abs(mal));
 }
 
+function special_group_context() {
+    const proto = currentSpecialLevel()?.proto || '';
+    return proto.startsWith('bigrm');
+}
+
+function m_initgrp(mon, x, y, n, mmflags) {
+    let cnt = rnd(n);
+    const ulev = game.u?.ulevel ?? 1;
+    cnt = Math.trunc(cnt / (ulev < 3 ? 4 : ulev < 5 ? 2 : 1));
+    if (!cnt) cnt++;
+
+    let origin = { x, y };
+    while (cnt-- > 0) {
+        if (peace_minded_for(mon.data)) continue;
+        const cc = enexto_core(origin.x, origin.y, mon.data, mmflags);
+        if (!cc) continue;
+        origin = cc;
+        const created = makemon(mon.data, cc.x, cc.y, mmflags | MM_NOGRP);
+        if (created?.then) {
+            // makemon has no asynchronous boundary before side effects, but
+            // keep the call browser-safe if that ever changes.
+        }
+        const head = game.level?.monsters?.[0];
+        if (head && head.data?.name === mon.data?.name && head.mx === cc.x && head.my === cc.y) {
+            head.mpeaceful = 0;
+        }
+    }
+}
+
 // makemon stub
 export async function makemon(mdat, x, y, mmflags = 0) {
     const ptr = (mdat === null) ? rndmonst_adj(0, 0) : mdat;
@@ -953,11 +1121,7 @@ export async function makemon(mdat, x, y, mmflags = 0) {
     const hp = newmonhp_for(ptr);
     const female = init_mon_gender_for(ptr);
     let peaceful = false;
-    if (!(mmflags & NO_MINVENT)) {
-        m_initweap_for(ptr);
-        m_initinv_for(ptr);
-        rn2(100); // saddle chance gate; type predicates may short-circuit after it
-    } else {
+    if (mmflags & NO_MINVENT) {
         peaceful = peace_minded_for(ptr);
     }
     const display = {
@@ -981,6 +1145,20 @@ export async function makemon(mdat, x, y, mmflags = 0) {
     // action order depend on this list order because each monster consumes
     // its own speed-rounding roll.
     if (game.level?.monsters) game.level.monsters.unshift(mon);
+    const anymon = mdat === null;
+    if (anymon && !(mmflags & MM_NOGRP) && special_group_context()) {
+        if ((ptr.geno & G_SGROUP) && rn2(2)) {
+            m_initgrp(mon, mon.mx, mon.my, 3, mmflags);
+        } else if (ptr.geno & G_LGROUP) {
+            if (rn2(3)) m_initgrp(mon, mon.mx, mon.my, 10, mmflags);
+            else m_initgrp(mon, mon.mx, mon.my, 3, mmflags);
+        }
+    }
+    if (!(mmflags & NO_MINVENT)) {
+        m_initweap_for(ptr);
+        m_initinv_for(ptr);
+        rn2(100); // saddle chance gate; type predicates may short-circuit after it
+    }
     return mon;
 }
 
@@ -2856,7 +3034,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     const pos = { x: 0, y: 0 };
     // Sleeping monster (33%)
     if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, 2); // MM_NOGRP
+        await makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps
     const u_depth = g.u?.uz?.dlevel ?? 1;

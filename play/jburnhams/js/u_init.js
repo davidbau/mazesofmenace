@@ -23,9 +23,14 @@ import {
 } from './const.js';
 import { invent } from './decl.js';
 import { game } from './gstate.js';
+import { objects } from './objects.js';
+import {
+    SPBOOK_CLASS, POTION_CLASS, SCROLL_CLASS, RING_CLASS,
+    SPE_FORCE_BOLT, POT_HEALING, SCR_LIGHT, RIN_SEARCHING
+} from './const.js';
 import { init_attr, vary_init_attr, acurrstr } from './attrib.js';
 import { newhp, newpw, adjabil } from './exper.js';
-import { next_ident } from './mkobj.js';
+import { next_ident, mkobj, mksobj } from './mkobj.js';
 
 import {
     BULLWHIP, LEATHER_JACKET, FEDORA, FOOD_RATION,
@@ -38,7 +43,10 @@ import {
     LOCK_PICK, KATANA, YUMI, YA, SPLINT_MAIL, DART, SCR_MAGIC_MAPPING,
     HAWAIIAN_SHIRT, EXPENSIVE_CAMERA, CREDIT_CARD, SPEAR, QUARTERSTAFF, CLOAK_OF_MAGIC_RESISTANCE,
     SPE_FORCE_BOLT, MAGIC_MARKER, SPE_PROTECTION, SPE_CONFUSE_MONSTER, TIN_OPENER, ORANGE, FORTUNE_COOKIE, MACE, GOLD_PIECE,
-    OIL_LAMP, BLINDFOLD, LEASH, TOWEL, WAN_WISHING, SHURIKEN
+    OIL_LAMP, BLINDFOLD, LEASH, TOWEL, WAN_WISHING, SHURIKEN,
+    RIN_LEVITATION, POT_HALLUCINATION, POT_ACID, SCR_AMNESIA, SCR_FIRE,
+    SCR_BLANK_PAPER, SPE_BLANK_PAPER, RIN_AGGRAVATE_MONSTER, RIN_HUNGER,
+    WAN_NOTHING, PANCAKE
 } from './objects.js';
 
 // Also UNDEF_TYP is 0
@@ -644,32 +652,47 @@ function trquan(trop) {
 export function ini_inv(trop) {
     if (!trop) return;
 
+    let got_sp1 = false;
+
     // We iterate through the array of items.
     for (let i = 0; i < trop.length; i++) {
         let t = trop[i];
         if (t.trotyp === 0 && t.trclass === 0 && t.quan_min === 0) break; // null terminator
 
         let quan = trquan(t);
-        let otyp = t.trotyp;
-        let obj = null;
 
-        if (otyp !== UNDEF_TYP) {
-            // In C: obj = mksobj(otyp, TRUE, FALSE);
-            next_ident(); // next_ident
-            // mksobj_init for scrolls and potions does blessorcurse -> rn2(4)
-            if ((otyp >= 270 && otyp < 300) || (otyp >= 230 && otyp < 270)) {
-                rn2(4);
+        while (quan > 0) {
+            let otyp = t.trotyp;
+            let obj = null;
+
+            if (otyp !== UNDEF_TYP) {
+                // In C: obj = mksobj(otyp, TRUE, FALSE);
+                rnd(2); // next_ident
+                // mksobj_init for scrolls and potions does blessorcurse -> rn2(4)
+                if (objects[otyp]) {
+                    let objClass = objects[otyp].oc_class;
+                    if (objClass === SCROLL_CLASS || objClass === POTION_CLASS) {
+                        rn2(4);
+                    }
+                }
+            } else {
+                // UNDEF_TYP -> randomly generated object class
+                // obj = mkobj(t.trclass, FALSE);
+                let filter_otyp = ini_inv_mkobj_filter(t.trclass, got_sp1);
+                otyp = filter_otyp;
             }
-        } else {
-            // UNDEF_TYP -> randomly generated object class
-            // obj = mkobj(t.trclass, FALSE);
-            next_ident();
-            // Since mkobj returns something, if it returns scroll/potion, it would consume rn2(4)
-            // But we don't know the exact class returned by the stub.
-        }
 
-        if (t.trspe !== 'UNDEF_SPE' && t.trotyp === MAGIC_MARKER) {
-            rn2(4);
+            if (t.trspe !== 'UNDEF_SPE' && t.trotyp === MAGIC_MARKER) {
+                rn2(4); // from adjustment
+            }
+
+            // we simulate use_obj and adjustment but don't do real logic yet
+
+            if (otyp !== UNDEF_TYP && objects[otyp] && objects[otyp].oc_class === SPBOOK_CLASS && objects[otyp].oc_oc2 === 1) {
+                got_sp1 = true;
+            }
+
+            quan--;
         }
     }
 }

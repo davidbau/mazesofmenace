@@ -2,6 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
+import { bot1, bot2 } from './botl.js';
 import { cansee } from './vision.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -180,27 +181,6 @@ function render_map_row(y) {
 }
 
 // ── Status lines ──
-function _statusLine1() {
-    const u = game.u;
-    if (!u) return '';
-    const name = game.plname || 'Hero';
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
-    const title = `${name} the ${role}`;
-    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
-    const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
-    // C uses cursor-forward for gap between title and stats
-    // C pads to align stats starting at a fixed column
-    const gap = Math.max(1, 31 - title.length);
-    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
-}
-
-function _statusLine2() {
-    const u = game.u;
-    if (!u) return '';
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}/${u.uexp || 0} T:${game.moves || 1}`;
-}
-
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
     let output = '';
@@ -243,8 +223,8 @@ function _buildScreenOutput() {
     }
 
     // Row 22-23: status
-    output += _statusLine1() + '\n';
-    output += _statusLine2();
+    output += bot1() + '\n';
+    output += bot2();
 
     game._screen_output = output;
 
@@ -265,11 +245,11 @@ function _buildScreenOutput() {
             }
         }
         // Status lines
-        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
+        const s1 = bot1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
             m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)
             display.setCell(c, 22, s1[c], NO_COLOR, 0);
-        const s2 = _statusLine2();
+        const s2 = bot2();
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
         // Cursor at hero
