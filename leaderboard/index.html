@@ -254,18 +254,21 @@ td.pct {
     <article class="news-item">
         <time datetime="2026-05-09">May 9, 2026</time>
         <p>
-            <strong>Contest updates:</strong> several QoL and realism
-            improvements. <a href="/play/">/play/&lt;owner&gt;/</a> now
-            supports saving, loading, and an in-browser options editor at
-            <a href="/nethackrc/">/nethackrc/</a>. Animation-frame parity is
-            scored as a supplemental metric. The persistence API was
-            simplified to a single <code>opts.storage</code> handle so
-            save/restore actually survives a browser reload &mdash; making
-            the browser demo materially more playable. (serteal&rsquo;s port
-            hasn&rsquo;t regressed; their multi-segment sessions just need
-            a small migration to fit the new API.) The corpus was
-            re-recorded with instrumentation fixes. Phase 2 is clarified
-            as a test of maintainability.
+            <strong>Contest updates:</strong> several improvements. Forks
+            now declare a category &mdash; <em>agentic</em>,
+            <em>transpiled</em>, or <em>other</em> &mdash; by running
+            <code>bash frozen/set-category.sh &lt;CATEGORY&gt;</code> once
+            before <code>frozen/score.sh</code> will score. Animation-frame
+            parity is scored as a supplemental metric, supported by a new
+            API. <a href="/play/">/play/&lt;owner&gt;/</a> now supports
+            saving, loading, and an in-browser options editor at
+            <a href="/nethackrc/">/nethackrc/</a>, and the persistence API
+            was simplified to a single <code>opts.storage</code> handle so
+            save/restore survives a browser reload. (serteal&rsquo;s port
+            hasn&rsquo;t regressed; their sessions just need a small
+            migration to fit the new API.) The corpus was re-recorded with
+            instrumentation fixes. Phase 2 is clarified as a test of
+            maintainability.
         </p>
     </article>
     <article class="news-item">
