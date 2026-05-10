@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty } from './hacklib.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -182,12 +182,6 @@ export function u_on_upstairs() {
 // oinit stub (level-dependent object probability reset)
 function oinit() { /* no-op for contest */ }
 
-// level_difficulty stub
-function level_difficulty() {
-    const uz = game.u?.uz;
-    const d = depth_of_level(uz);
-    return d;
-}
 
 // ============================================================
 // Stub functions for object/monster/trap creation

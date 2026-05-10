@@ -41,7 +41,7 @@ export class GameMap {
         this.nroom = 0;
         this.doors = [];
         this.doorindex = 0;
-        this.objects = [];
+        this.objects = Array.from({length: COLNO}, () => new Array(ROWNO).fill(null));
         this.monsters = [];
         this.traps = [];
         this.flags = {

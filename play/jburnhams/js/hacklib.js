@@ -31,4 +31,17 @@ export function depth(uz) {
     return (dungeon.depth_start || 1) + dlevel - 1;
 }
 
+export function level_difficulty() {
+    let res;
+
+    // TODO: if (In_endgame(&u.uz)) { ... }
+    // TODO: else if (u.uhave.amulet) { ... }
+    res = depth(game.u?.uz);
+
+    // If it builds up, adjust
+    // TODO: if (builds_up(&u.uz)) res += 2 * (game.dungeons[u.uz.dnum].entry_lev - u.uz.dlevel + 1);
+
+    return res;
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed
