@@ -154,11 +154,11 @@ td.pts {
     color: var(--color-text-muted);
     opacity: 0.85;
 }
-.supplemental sup {
+/* Daggers/footnotes: position instead of vertical-align so they don't expand
+   the line box (otherwise ANIM baseline drops a couple pixels in the header,
+   and the surrounding line gets extra space wherever Anim† appears in prose). */
+sup {
     font-size: 0.7em;
-    /* Position the dagger instead of using vertical-align so the line box
-       doesn't grow — otherwise ANIM baseline drops a couple pixels relative
-       to neighboring headers. */
     vertical-align: baseline;
     position: relative;
     top: -0.45em;
