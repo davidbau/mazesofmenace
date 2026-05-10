@@ -5,7 +5,8 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline } from './display.js';
+import { docrt, cls, bot, flush_screen } from './display.js';
+import { pline } from "./pline.js";
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize } from './fastforward.js';
 import { init_objects } from './o_init.js';
@@ -130,6 +131,7 @@ export async function moveloop_core() {
 
     // Clear message after command is processed
     g._pending_message = '';
+    if (g.nhDisplay) { g.nhDisplay.topMessage = null; g.nhDisplay.toplin = 0; }
 
     // Advance turn
     if (g.context?.move) {

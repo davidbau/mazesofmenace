@@ -8,6 +8,7 @@
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
+import { next_ident } from './mkobj.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, level_difficulty } from './hacklib.js';
 import {
@@ -23,26 +24,19 @@ import {
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
     LR_UPTELE,
+    RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, FOOD_CLASS,
+    SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS, SPBOOK_CLASS
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
-const RANDOM_CLASS = 0;
-const WEAPON_CLASS = 1;
-const ARMOR_CLASS = 2;
-const RING_CLASS = 3;
-const FOOD_CLASS = 7;
-const SCROLL_CLASS = 8;
-const POTION_CLASS = 9;
-const TOOL_CLASS = 12;
-const GEM_CLASS = 14;
-const BOULDER = 465;
-const GOLD_PIECE = 466;
-const ROCK = 467;
+const BOULDER = 384;
+const GOLD_PIECE = 347;
+const ROCK = 383;
 const KELP_FROND = 172;
 const SCR_TELEPORTATION = 287;
 const BELL = 358;
 const CORPSE = 471;
-const STATUE = 472;
+const STATUE = 385;
 const SPBOOK_no_NOVEL = 11;
 
 // Supply chest items
@@ -190,8 +184,6 @@ function oinit() { /* no-op for contest */ }
 
 let _nextObjId = 1;
 
-// C ref: mkobj.c next_ident — rnd(2) for item identification
-function next_ident() { rnd(2); }
 
 // C ref: mkobj.c blessorcurse — rn2(4) BUC selection
 function blessorcurse(otmp) {

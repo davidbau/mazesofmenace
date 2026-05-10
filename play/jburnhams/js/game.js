@@ -42,8 +42,9 @@ export class GameMap {
         this.doors = [];
         this.doorindex = 0;
         this.objects = Array.from({length: COLNO}, () => new Array(ROWNO).fill(null));
-        this.monsters = [];
+        this.monsters = Array.from({length: COLNO}, () => new Array(ROWNO).fill(null));
         this.traps = [];
+        this.fmon = null;
         this.flags = {
             nfountains: 0,
             nsinks: 0,

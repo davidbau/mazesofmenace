@@ -16,6 +16,7 @@ import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { friday13, midnight, night, parseDatetime, phaseOfMoon } from './hacklib.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -87,6 +88,9 @@ export class NethackGame {
 
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
+        g._nhopts = opts;
+        g._datetime = this._datetime;
+        g._lt = parseDatetime(this._datetime);
         g.plname = opts.name || 'Hero';
         g.flags = { verbose: true, ...opts.flags };
         g.iflags = { ...opts.iflags };
@@ -99,6 +103,10 @@ export class NethackGame {
         g.program_state = {};
         g.moves = 1;
         g._seed = this._seed;
+        g.flags.moonphase = phaseOfMoon(g._lt);
+        g.flags.friday13 = friday13(g._lt);
+        g.iflags.at_night = night(g._lt);
+        g.iflags.at_midnight = midnight(g._lt);
 
         // TODO: Map role/race/gender/align from opts to role data
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
@@ -150,9 +158,6 @@ export class NethackGame {
             }
             nhGame._rngSlices.push(slice);
 
-            const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
-            nhGame._cursors.push(cursor);
-
             // Commit animation frames accumulated since the previous
             // input boundary as belonging to this step.  Frames are
             // captured by animationFrame() into _pendingAnimFrames; we
@@ -201,10 +206,10 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, nethackrc, storage } = input;
+    const { seed, datetime, nethackrc, storage } = input;
     const moves = input.moves || '';
 
-    const nhGame = new NethackGame({ seed, nethackrc, storage });
+    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };

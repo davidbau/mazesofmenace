@@ -8,7 +8,7 @@ import { pline } from './display.js';
 export async function dosounds() {
     const g = game;
     // Deaf or acoustics disabled
-    if (g.u?.uprops?.deaf || (g.flags && !g.flags.acoustics) || g.u?.uswallow || g.u?.uprops?.underwater)
+    if (g.u?.uprops?.deaf || g.flags?.acoustics === false || g.u?.uswallow || g.u?.uprops?.underwater)
         return;
 
     const hallu = (g.u?.uprops?.hallucination) ? 1 : 0;

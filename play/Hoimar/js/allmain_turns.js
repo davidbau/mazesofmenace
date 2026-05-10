@@ -12,4 +12,10 @@ export function gethungry() {
     rn2(20);
 }
 
+export function maybe_wipe_engraving() {
+    // C ref: allmain.c:360 — !rn2(40 + ACURR(A_DEX) * 3)
+    const dex = game.u?.acurr?.a?.[1] ?? 10;
+    rn2(40 + dex * 3);
+}
+
 export { dosounds };

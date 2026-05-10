@@ -1,7 +1,8 @@
 // C ref: obj.h
 import { game } from './gstate.js';
 import { fobj, set_fobj } from './decl.js';
-import { BOULDER, COIN_CLASS, GOLD_PIECE } from './objects.js';
+import { COIN_CLASS } from './const.js';
+import { BOULDER, GOLD_PIECE } from './objects.js';
 import { rnd } from './rng.js';
 import { depth, level_difficulty } from './hacklib.js';
 
@@ -226,4 +227,15 @@ export function obj_extract_self(obj) {
             // console.warn(`obj_extract_self: unhandled where=${obj.where}`);
             break;
     }
+}
+
+
+
+
+export function next_ident() {
+    let res = game.context.ident;
+    game.context.ident = (game.context.ident + rnd(2)) >>> 0; /* ready for next new object or monster */
+    if (game.context.ident === 0)
+        game.context.ident = rnd(2) + 1;   /* id 1 is reserved */
+    return res;
 }

@@ -252,7 +252,7 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = game._pending_message || '';
+        const msg = display.topMessage || game._pending_message || '';
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
@@ -296,6 +296,3 @@ export async function bot() {
 }
 
 // ── pline ──
-export async function pline(msg) {
-    game._pending_message = msg;
-}

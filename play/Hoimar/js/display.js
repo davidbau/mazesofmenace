@@ -203,7 +203,9 @@ function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.plname || 'Hero';
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
+    const role = game.flags?.female
+        ? (game.urole?.rank?.f || game.urole?.name?.f || game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer')
+        : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer');
     const title = `${name} the ${role}`;
     const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
@@ -217,10 +219,11 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    if (game._seed === 2) {
-        return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}`;
-    }
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}/${u.uexp || 0} T:${game.moves || 1}`;
+    const xp = game.flags?.showexp
+        ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
+        : `Xp:${u.ulevel || 1}`;
+    const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──

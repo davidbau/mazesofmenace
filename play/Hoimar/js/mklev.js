@@ -7,9 +7,14 @@
 
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
+import { randomEngraving } from './random_text.js';
+import {
+    OBJECT_CLASS, OBJECT_PROB, OBJECT_CHARGED, OBJECT_DIR, OBJECT_MATERIAL,
+    CLASS_BASES, CLASS_TOTALS,
+} from './object_data.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -27,45 +32,94 @@ import {
 
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
-const WEAPON_CLASS = 1;
-const ARMOR_CLASS = 2;
-const RING_CLASS = 3;
+const WEAPON_CLASS = 2;
+const ARMOR_CLASS = 3;
+const RING_CLASS = 4;
+const AMULET_CLASS = 5;
+const TOOL_CLASS = 6;
 const FOOD_CLASS = 7;
-const SCROLL_CLASS = 8;
-const POTION_CLASS = 9;
-const TOOL_CLASS = 12;
-const GEM_CLASS = 14;
-const BOULDER = 465;
-const GOLD_PIECE = 466;
-const ROCK = 467;
-const KELP_FROND = 172;
-const SCR_TELEPORTATION = 287;
-const BELL = 358;
-const CORPSE = 471;
-const STATUE = 472;
-const SPBOOK_no_NOVEL = 11;
+const POTION_CLASS = 8;
+const SCROLL_CLASS = 9;
+const SPBOOK_CLASS = 10;
+const WAND_CLASS = 11;
+const COIN_CLASS = 12;
+const GEM_CLASS = 13;
+const ROCK_CLASS = 14;
+const BOULDER = 475;
+const GOLD_PIECE = 438;
+const ROCK = 474;
+const KELP_FROND = 275;
+const SCR_TELEPORTATION = 333;
+const BELL = 263;
+const CORPSE = 265;
+const EGG = 266;
+const MEAT_RING = 270;
+const STATUE = 476;
+const SPBOOK_no_NOVEL = -SPBOOK_CLASS;
 
 // Supply chest items
-const POT_HEALING = 235;
-const POT_EXTRA_HEALING = 236;
-const POT_SPEED = 245;
-const POT_GAIN_ENERGY = 250;
-const SCR_ENCHANT_WEAPON = 275;
-const SCR_ENCHANT_ARMOR = 276;
-const SCR_CONFUSE_MONSTER = 278;
-const SCR_SCARE_MONSTER = 279;
-const WAN_DIGGING = 305;
-const SPE_HEALING = 327;
+const POT_HEALING = 307;
+const POT_EXTRA_HEALING = 308;
+const POT_SPEED = 302;
+const POT_GAIN_ENERGY = 313;
+const SCR_ENCHANT_WEAPON = 328;
+const SCR_ENCHANT_ARMOR = 323;
+const SCR_CONFUSE_MONSTER = 325;
+const SCR_SCARE_MONSTER = 326;
+const WAN_DIGGING = 428;
+const SPE_HEALING = 374;
 const LARGE_BOX = 214;
 const CHEST = 215;
-const FOOD_RATION = 143;
-const CRAM_RATION = 145;
-const LEMBAS_WAFER = 146;
+const FOOD_RATION = 293;
+const CRAM_RATION = 292;
+const LEMBAS_WAFER = 291;
 const DUST = 3;
 const MARK = 6;
 
+const G_FREQ = 0x0007;
+const G_NOGEN = 0x0200;
+const G_HELL = 0x0400;
+const G_UNIQ = 0x1000;
+const G_GENO = 0x0080;
+const G_SGROUP = 0x0020;
+const G_NOCORPSE = 0x0800;
+
+const LIQUID = 1;
+const WOOD = 8;
+const DRAGON_HIDE = 10;
+const IRON = 11;
+const COPPER = 13;
+const PLASTIC = 18;
+const GLASS = 19;
+
 const XLIM = 4;
 const YLIM = 3;
+
+const mkobjprobs = [
+    { iprob: 10, iclass: WEAPON_CLASS },
+    { iprob: 11, iclass: ARMOR_CLASS },
+    { iprob: 20, iclass: FOOD_CLASS },
+    { iprob: 8, iclass: TOOL_CLASS },
+    { iprob: 7, iclass: GEM_CLASS },
+    { iprob: 16, iclass: POTION_CLASS },
+    { iprob: 16, iclass: SCROLL_CLASS },
+    { iprob: 4, iclass: SPBOOK_CLASS },
+    { iprob: 4, iclass: WAND_CLASS },
+    { iprob: 3, iclass: RING_CLASS },
+    { iprob: 1, iclass: AMULET_CLASS },
+];
+
+const boxiprobs = [
+    { iprob: 18, iclass: GEM_CLASS },
+    { iprob: 15, iclass: FOOD_CLASS },
+    { iprob: 18, iclass: POTION_CLASS },
+    { iprob: 18, iclass: SCROLL_CLASS },
+    { iprob: 12, iclass: SPBOOK_CLASS },
+    { iprob: 7, iclass: COIN_CLASS },
+    { iprob: 6, iclass: WAND_CLASS },
+    { iprob: 5, iclass: RING_CLASS },
+    { iprob: 1, iclass: AMULET_CLASS },
+];
 
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
@@ -77,29 +131,55 @@ const TRAPNUM = 26;
 const ARROW_TRAP = 1;
 const DART_TRAP = 2;
 const ROCKTRAP = 3;
-const SLP_GAS_TRAP = 6;
+const SQKY_BOARD = 4;
+const BEAR_TRAP = 5;
+const LANDMINE = 6;
 const ROLLING_BOULDER_TRAP = 7;
-const RUST_TRAP = 4;
-const SQKY_BOARD = 5;
-const FIRE_TRAP = 8;
-const PIT = 9;
-const SPIKED_PIT = 10;
-const HOLE = 11;
+const SLP_GAS_TRAP = 8;
+const RUST_TRAP = 9;
+const FIRE_TRAP = 10;
+const PIT = 11;
+const SPIKED_PIT = 12;
+const HOLE = 13;
 const TRAPDOOR = 14;
 const TELEP_TRAP = 15;
 const LEVEL_TELEP = 16;
-const WEB = 17;
-const STATUE_TRAP = 18;
-const MAGIC_TRAP = 19;
-const LANDMINE = 20;
-const POLY_TRAP = 21;
-const VIBRATING_SQUARE = 22;
-const TRAPPED_DOOR = 23;
-const TRAPPED_CHEST = 24;
-const MAGIC_PORTAL = 25;
+const MAGIC_PORTAL = 17;
+const WEB = 18;
+const STATUE_TRAP = 19;
+const MAGIC_TRAP = 20;
+const ANTI_MAGIC = 21;
+const POLY_TRAP = 22;
+const VIBRATING_SQUARE = 23;
+const TRAPPED_DOOR = 24;
+const TRAPPED_CHEST = 25;
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
+
+// C ref: monsters.h + makemon.c rndmonst_adj(), difficulty 1 candidates.
+const EARLY_RANDOM_MONSTERS = [
+    { name: 'JACKAL', mlet: 'S_DOG', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | G_SGROUP | 3 },
+    { name: 'FOX', mlet: 'S_DOG', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | 1 },
+    { name: 'KOBOLD', mlet: 'S_KOBOLD', mlevel: 0, difficulty: 1, maligntyp: -2, geno: G_GENO | 1 },
+    { name: 'GOBLIN', mlet: 'S_ORC', mlevel: 0, difficulty: 1, maligntyp: -3, geno: G_GENO | 2 },
+    { name: 'SEWER_RAT', mlet: 'S_RODENT', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | G_SGROUP | 1 },
+    { name: 'GRID_BUG', mlet: 'S_XAN', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | G_SGROUP | G_NOCORPSE | 3, verysmall: true, neuter: true },
+    { name: 'LICHEN', mlet: 'S_FUNGUS', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | 4, neuter: true },
+    { name: 'KOBOLD_ZOMBIE', mlet: 'S_ZOMBIE', mlevel: 0, difficulty: 1, maligntyp: -2, geno: G_GENO | G_NOCORPSE | 1 },
+    { name: 'NEWT', mlet: 'S_LIZARD', mlevel: 0, difficulty: 1, maligntyp: 0, geno: G_GENO | 5 },
+];
+
+const EARLY_MONSTER_DISPLAY = {
+    S_DOG: { ch: 'd', color: 6, mmove: 12 },
+    S_KOBOLD: { ch: 'k', color: 2, mmove: 6 },
+    S_ORC: { ch: 'o', color: 2, mmove: 9 },
+    S_RODENT: { ch: 'r', color: 6, mmove: 12 },
+    S_XAN: { ch: 'x', color: 14, mmove: 12 },
+    S_FUNGUS: { ch: 'F', color: 2, mmove: 1 },
+    S_ZOMBIE: { ch: 'Z', color: 7, mmove: 6 },
+    S_LIZARD: { ch: ':', color: 10, mmove: 6 },
+};
 
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
@@ -199,22 +279,194 @@ let _nextObjId = 1;
 // C ref: mkobj.c next_ident — rnd(2) for item identification
 function next_ident() { rnd(2); }
 
-// C ref: mkobj.c blessorcurse — rn2(4) BUC selection
-function blessorcurse(otmp) {
-    const r = rn2(4);
+function bless(otmp) {
     if (otmp) {
-        otmp.cursed = (r === 0);
-        otmp.blessed = false;
+        otmp.blessed = true;
+        otmp.cursed = false;
+    }
+}
+
+// C ref: mkobj.c blessorcurse()
+function blessorcurse(otmp, chance) {
+    if (!otmp || otmp.blessed || otmp.cursed) return;
+    if (!rn2(chance)) {
+        if (!rn2(2)) curse(otmp);
+        else bless(otmp);
+    }
+}
+
+function nartifact_exist() {
+    return game._nartifact_exist ?? 0;
+}
+
+function maybe_artifact(otmp, chance) {
+    if (!otmp || otmp.oartifact) return;
+    if (!rn2(chance + (10 * nartifact_exist()))) {
+        // Full mk_artifact() selection/origin tracking is not ported yet.
+        game._nartifact_exist = nartifact_exist() + 1;
+        otmp.oartifact = true;
+    }
+}
+
+function object_material(otyp) {
+    return OBJECT_MATERIAL[otyp] ?? 0;
+}
+
+function is_flammable(otmp) {
+    const mat = object_material(otmp.otyp);
+    return (mat <= WOOD && mat !== LIQUID) || mat === PLASTIC;
+}
+
+function is_rottable(otmp) {
+    const mat = object_material(otmp.otyp);
+    return (mat <= WOOD && mat !== LIQUID) || mat === DRAGON_HIDE;
+}
+
+function is_rustprone(otmp) {
+    return object_material(otmp.otyp) === IRON;
+}
+
+function is_crackable(otmp) {
+    return object_material(otmp.otyp) === GLASS && otmp.oclass === ARMOR_CLASS;
+}
+
+function is_corrodeable(otmp) {
+    const mat = object_material(otmp.otyp);
+    return mat === COPPER || mat === IRON;
+}
+
+function erosion_matters(otmp) {
+    return otmp.oclass === WEAPON_CLASS || otmp.oclass === ARMOR_CLASS;
+}
+
+function is_damageable(otmp) {
+    return is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
+        || is_corrodeable(otmp) || is_crackable(otmp);
+}
+
+function may_generate_eroded(otmp) {
+    return !!otmp && !otmp.oerodeproof && !otmp.oartifact
+        && erosion_matters(otmp) && is_damageable(otmp);
+}
+
+function mkobj_erosions(otmp) {
+    if (!may_generate_eroded(otmp)) return;
+
+    if (!rn2(100)) {
+        otmp.oerodeproof = true;
+        return;
+    }
+
+    if (!rn2(80) && (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))) {
+        do {
+            otmp.oeroded = (otmp.oeroded ?? 0) + 1;
+        } while (otmp.oeroded < 3 && !rn2(9));
+    }
+
+    if (!rn2(80) && (is_rottable(otmp) || is_corrodeable(otmp))) {
+        do {
+            otmp.oeroded2 = (otmp.oeroded2 ?? 0) + 1;
+        } while (otmp.oeroded2 < 3 && !rn2(9));
+    }
+
+    if (!rn2(1000)) otmp.greased = true;
+}
+
+function object_class(otyp) {
+    return OBJECT_CLASS[otyp] ?? RANDOM_CLASS;
+}
+
+function class_base(oclass) {
+    for (let i = 18; i < OBJECT_CLASS.length; i++) {
+        if (OBJECT_CLASS[i] === oclass) return i;
+    }
+    return CLASS_BASES[oclass] ?? -1;
+}
+
+function pick_prob_entry(entries, total) {
+    let remaining = total ?? 100;
+    if (total == null) remaining = rnd(100);
+    else remaining = rnd(total);
+    for (const entry of entries) {
+        remaining -= entry.iprob;
+        if (remaining <= 0) return entry;
+    }
+    return entries[entries.length - 1];
+}
+
+function rnd_class(first, last) {
+    if (last <= first) return first;
+    let sum = 0;
+    for (let i = first; i <= last; i++) sum += OBJECT_PROB[i] ?? 0;
+    if (!sum) return rn1(last - first + 1, first);
+    let remaining = rnd(sum);
+    for (let i = first; i <= last; i++) {
+        remaining -= OBJECT_PROB[i] ?? 0;
+        if (remaining <= 0) return i;
+    }
+    return first;
+}
+
+function pick_object_type_for_class(oclass) {
+    if (oclass === SPBOOK_no_NOVEL) {
+        return rnd_class(class_base(SPBOOK_CLASS), 407);
+    }
+
+    const base = class_base(oclass);
+    if (base == null || base < 0) return 0;
+
+    const total = CLASS_TOTALS[oclass] ?? 0;
+    if (total <= 0) return base;
+    let remaining = rnd(total);
+    let i = base;
+    while (i < OBJECT_CLASS.length && OBJECT_CLASS[i] === oclass) {
+        remaining -= OBJECT_PROB[i] ?? 0;
+        if (remaining <= 0) return i;
+        i++;
+    }
+    return base;
+}
+
+function mkbox_cnts(box) {
+    let n = 0;
+    switch (box?.otyp) {
+    case CHEST:
+        n = box.olocked ? 7 : 5;
+        break;
+    case LARGE_BOX:
+        n = box.olocked ? 5 : 3;
+        break;
+    default:
+        break;
+    }
+
+    for (n = rn2(n + 1); n > 0; n--) {
+        const chosen = pick_prob_entry(boxiprobs);
+        mkobj(chosen.iclass, false);
     }
 }
 
 // C ref: mkobj.c mksobj — create a specific object
 // Minimal stub: consumes RNG for next_ident + type-specific init
 function mksobj(otyp, init, artif) {
-    const otmp = { otyp, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0 };
+    const otmp = {
+        otyp,
+        oclass: object_class(otyp),
+        ox: 0,
+        oy: 0,
+        quan: 1,
+        owt: 1,
+        cursed: false,
+        blessed: false,
+        olocked: false,
+        otrapped: false,
+        tknown: false,
+        spe: 0,
+        corpsenm: null,
+    };
     next_ident();
     if (init) {
-        mksobj_init(otmp, otyp);
+        mksobj_init(otmp, otyp, artif);
     }
     return otmp;
 }
@@ -222,16 +474,119 @@ function mksobj(otyp, init, artif) {
 // C ref: mkobj.c mksobj initialization RNG consumption
 // This varies by object class. For the contest, we need enough to match
 // the session's RNG pattern for objects created during mklev.
-function mksobj_init(otmp, otyp) {
-    // For BOULDER, GOLD_PIECE: no extra init RNG
-    // For scrolls: blessorcurse
-    // For potions: blessorcurse
-    // For general objects: varies
-    // We just do blessorcurse for scrolls/potions
-    if (otyp >= 270 && otyp < 300) { // scrolls
-        blessorcurse(otmp);
-    } else if (otyp >= 230 && otyp < 270) { // potions
-        blessorcurse(otmp);
+function mksobj_init(otmp, otyp, artif) {
+    switch (object_class(otyp)) {
+    case FOOD_CLASS:
+        if (otyp === CORPSE) {
+            if (!otmp.corpsenm) otmp.corpsenm = rndmonnum();
+        } else if (otyp === EGG) {
+            otmp.corpsenm = null;
+            if (!rn2(3)) {
+                for (let tryct = 200; tryct > 0; tryct--) {
+                    const mndx = rndmonnum();
+                    if (mndx) {
+                        otmp.corpsenm = mndx;
+                        break;
+                    }
+                }
+            }
+        } else if (otyp === KELP_FROND) {
+            otmp.quan = rnd(2);
+        }
+        if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND && !rn2(6)) {
+            otmp.quan = 2;
+        }
+        break;
+    case GEM_CLASS:
+        if (!rn2(6)) {
+            otmp.quan = 2;
+        }
+        break;
+    case ROCK_CLASS:
+        if (otyp === ROCK) {
+            otmp.quan = rn1(6, 6);
+        } else if (otyp === STATUE) {
+            otmp.corpsenm = rndmonnum();
+            if (otmp.corpsenm && !otmp.corpsenm.verysmall) {
+                if (rn2(Math.trunc(level_difficulty() / 2) + 10) > 10) {
+                    mkobj(SPBOOK_no_NOVEL, false);
+                }
+            }
+        }
+        break;
+    case TOOL_CLASS:
+        if (otyp === CHEST || otyp === LARGE_BOX) {
+            otmp.olocked = !!rn2(5);
+            otmp.otrapped = !rn2(10);
+            otmp.tknown = otmp.otrapped && !rn2(100);
+            mkbox_cnts(otmp);
+        }
+        break;
+    case POTION_CLASS:
+    case SCROLL_CLASS:
+        blessorcurse(otmp, 4);
+        break;
+    case SPBOOK_CLASS:
+        blessorcurse(otmp, 17);
+        break;
+    case WAND_CLASS:
+        otmp.spe = rn1(5, (OBJECT_DIR[otyp] === 1) ? 11 : 4);
+        blessorcurse(otmp, 17);
+        break;
+    case RING_CLASS:
+        if (OBJECT_CHARGED[otyp]) {
+            blessorcurse(otmp, 3);
+            if (rn2(10)) {
+                if (rn2(2)) rne(3);
+                else rne(3);
+            }
+            if (rn2(4) === rn2(3)) {
+                // Keep the RNG shape for +0 ring avoidance without
+                // trying to model the full signed result yet.
+            }
+            if (otmp.spe < 0 && rn2(5)) curse(otmp);
+        }
+        break;
+    case WEAPON_CLASS:
+        if (!rn2(11)) {
+            otmp.spe = rne(3);
+            otmp.blessed = !!rn2(2);
+        } else if (!rn2(10)) {
+            curse(otmp);
+            otmp.spe = -rne(3);
+        } else {
+            blessorcurse(otmp, 10);
+        }
+        if (!rn2(100)) otmp.opoisoned = 1;
+        if (artif) maybe_artifact(otmp, 20);
+        break;
+    case ARMOR_CLASS:
+        if (rn2(10) && !rn2(11)) {
+            curse(otmp);
+            otmp.spe = -rne(3);
+        } else if (!rn2(10)) {
+            otmp.blessed = !!rn2(2);
+            otmp.spe = rne(3);
+        } else {
+            blessorcurse(otmp, 10);
+        }
+        if (artif) maybe_artifact(otmp, 40);
+        break;
+    case AMULET_CLASS:
+        blessorcurse(otmp, 10);
+        break;
+    default:
+        break;
+    }
+
+    mkobj_erosions(otmp);
+
+    if ((otyp === STATUE || otyp === CORPSE) && otmp.corpsenm && !otmp.corpsenm.neuter
+        && !otmp.corpsenm.male && !otmp.corpsenm.female) {
+        rn2(2);
+    }
+    if (otyp === CORPSE && otmp.corpsenm?.name !== 'LICHEN') {
+        rnz(25);
     }
 }
 
@@ -240,9 +595,12 @@ function mksobj_at(otyp, x, y, init, artif) {
 }
 
 function mkobj(oclass, artif) {
-    // Class-based random object creation
-    // For contest, just consume the right RNG
-    return mksobj(0, false, artif);
+    let chosenClass = oclass;
+    if (chosenClass === RANDOM_CLASS) {
+        chosenClass = pick_prob_entry(mkobjprobs).iclass;
+    }
+    const otyp = pick_object_type_for_class(chosenClass);
+    return mksobj(otyp, true, artif);
 }
 
 function mkobj_at(oclass, x, y, artif) {
@@ -274,41 +632,114 @@ function set_corpsenm(otmp, pm) { /* stub */ }
 // mkcorpstat stub
 function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
-    // For STATUE: mksobj(STATUE, false, false) then set corpse identity.
+    // For STATUE/CORPSE: mksobj(..., init, false) may pick a random
+    // corpsenm before mkcorpstat's caller-supplied type overrides it.
     // RNG: next_ident from mksobj
-    const otmp = mksobj(objtyp, false, false);
-    if (pm === null) {
+    const otmp = mksobj(objtyp, !!(flags & 8), false);
+    if (pm !== null && pm !== undefined) {
+        otmp.corpsenm = pm;
+    } else if (!otmp.corpsenm) {
         // rndmonnum — pick random monster
-        rndmonnum();
+        otmp.corpsenm = rndmonnum();
     }
     return otmp;
 }
 
-// rndmonnum stub — consumes rn2 for random monster selection
+function monmin_difficulty(levdif) { return Math.trunc(levdif / 6); }
+function monmax_difficulty(levdif) {
+    const ulevel = game.u?.ulevel || 1;
+    return Math.trunc((levdif + ulevel) / 2);
+}
+
+function align_shift(ptr) {
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const align = dungeon?.flags?.align ?? null;
+    if (align == null) return 0;
+    if (align === A_LAWFUL) return Math.trunc((ptr.maligntyp + 20) / (2 * 4));
+    if (align === 0) return Math.trunc((20 - Math.abs(ptr.maligntyp)) / 4);
+    return Math.trunc((-(ptr.maligntyp - 20)) / (2 * 4));
+}
+
+function uncommon_monster(ptr) {
+    if (!ptr) return true;
+    if (ptr.geno & (G_NOGEN | G_UNIQ)) return true;
+    return !!(ptr.geno & G_HELL);
+}
+
+function rndmonst_adj(minadj = 0, maxadj = 0) {
+    const zlevel = level_difficulty();
+    const minmlev = monmin_difficulty(zlevel) + minadj;
+    const maxmlev = monmax_difficulty(zlevel) + maxadj;
+    let totalweight = 0;
+    let selected = null;
+
+    for (const ptr of EARLY_RANDOM_MONSTERS) {
+        if (ptr.difficulty < minmlev || ptr.difficulty > maxmlev) continue;
+        if (uncommon_monster(ptr)) continue;
+        const weight = (ptr.geno & G_FREQ) + align_shift(ptr);
+        if (weight <= 0) continue;
+        totalweight += weight;
+        if (rn2(totalweight) < weight) selected = ptr;
+    }
+    return selected;
+}
+
+// rndmonnum — select a random common monster type.
 function rndmonnum() {
-    // C: picks a random monster class then random within class
-    // For contest, this is called from mkcorpstat when pm=null.
-    // The actual RNG depends on monster database, but for statues
-    // created by fill_ordinary_room, it consumes at least rn2 calls.
-    rn2(398); // approximate: rn2(NUMMONS)
-    return 0;
+    const ptr = rndmonst_adj(0, 0);
+    return ptr ? ptr.name : null;
+}
+
+function newmonhp_for(ptr) {
+    if (!ptr) return 0;
+    if (!ptr.mlevel) return rnd(4);
+    let hp = d(ptr.mlevel, 8);
+    if (hp === ptr.mlevel) hp++;
+    return hp;
+}
+
+function init_mon_gender_for(ptr) {
+    if (!ptr || ptr.neuter || ptr.male || ptr.female) return false;
+    return !!rn2(2);
+}
+
+function m_initinv_for(ptr) {
+    if (!ptr) return;
+    if (ptr.mlet === 'S_GNOME' && !rn2(60)) {
+        mksobj(rn2(4) ? 370 : 371, true, false);
+    }
+    if (ptr.name === 'SOLDIER' && rn2(13)) return;
+    if (ptr.mlevel > rn2(50)) {
+        // rnd_defensive_item() is not modeled yet.
+    }
+    if (ptr.mlevel > rn2(100)) {
+        // rnd_misc_item() is not modeled yet.
+    }
 }
 
 // makemon stub
 async function makemon(mdat, x, y, mmflags) {
-    // C: makemon consumes RNG for monster HP, inventory, etc.
-    // For fill_ordinary_room: makemon(null, ...) = random monster
-    if (mdat === null) {
-        // rndmonst_adj + selection
-        rn2(398);
-    }
-    // newmonhp
-    const hp = rnd(8);
-    // m_initinv — monster inventory
-    // For random monsters this varies widely. Since fill_ordinary_room
-    // and mineralize calls are in fastforward, this stub won't be called
-    // for those. It's only needed if mklev structural code calls makemon.
-    return { mx: x, my: y, mhp: hp, msleeping: 0, mpeaceful: 0 };
+    const ptr = (mdat === null) ? rndmonst_adj(0, 0) : mdat;
+    if (!ptr) return null;
+    next_ident();
+    const hp = newmonhp_for(ptr);
+    const female = init_mon_gender_for(ptr);
+    m_initinv_for(ptr);
+    rn2(100); // saddle chance gate; type predicates may short-circuit after it
+    const display = EARLY_MONSTER_DISPLAY[ptr.mlet] ?? { ch: 'm', color: 15, mmove: 12 };
+    const mon = {
+        mx: x, my: y,
+        ch: display.ch,
+        color: display.color,
+        data: { ...ptr, mmove: ptr.mmove ?? display.mmove },
+        mhp: hp,
+        female,
+        msleeping: 0,
+        mpeaceful: 0,
+        movement: 0,
+    };
+    if (game.level?.monsters) game.level.monsters.push(mon);
+    return mon;
 }
 
 // maketrap stub
@@ -326,23 +757,6 @@ function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
 function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = GRAVE;
-}
-
-// random_engraving stub — consumes rn2 for text selection
-function random_engraving() {
-    // C: reads from engrave data file, consumes rn2 for selection
-    const idx = rn2(48); // approximate: rn2(num_engravings)
-    return { text: 'placeholder', pristine: 'placeholder' };
-}
-
-// wipeout_text stub — consumes rn2 for character corruption
-function wipeout_text(text) {
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] !== ' ') {
-            rn2(1 + 27 / (text.length - i));
-        }
-    }
-    return text;
 }
 
 // in_rooms stub
@@ -1201,6 +1615,7 @@ function somexy(croom, c) {
 function occupied(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
+    if (game.level.traps?.some(t => t.tx === x && t.ty === y)) return true;
     return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
 }
 
@@ -1405,6 +1820,11 @@ function is_branchlev() {
         if (br?.end2?.dnum === (g.u?.uz?.dnum ?? 0) && br?.end2?.dlevel === (g.u?.uz?.dlevel ?? 1)) return br;
     }
     return null;
+}
+
+function branch_to_dnum(branchp, dnum) {
+    return !!branchp && dnum != null
+        && (branchp.end1?.dnum === dnum || branchp.end2?.dnum === dnum);
 }
 
 function find_branch_room(mp) {
@@ -1705,8 +2125,10 @@ async function fill_ordinary_room(croom, bonus_items) {
     let skip_chests = false;
     if (bonus_items && somexyspace(croom, pos)) {
         const branchp = is_branchlev();
+        const mines_dnum = g.mines_dnum;
         const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
-        if (branchp) {
+        if (branchp && mines_dnum != null && (g.u?.uz?.dnum ?? 0) !== mines_dnum
+            && branch_to_dnum(branchp, mines_dnum)) {
             // Mines entrance bonus food
             mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
                 pos.x, pos.y, true, false);
@@ -1756,7 +2178,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     // Graffiti
     const depth = g.u?.uz?.dlevel ?? 1;
     if (!rn2(27 + 3 * Math.abs(depth))) {
-        const { text: engrText } = random_engraving();
+        const { text: engrText } = randomEngraving();
         if (engrText) {
             do {
                 somexyspace(croom, pos);
@@ -1818,11 +2240,13 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
                     otmp.quan = 1 + rnd(goldprob * 3);
+                    rn2(3);
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
-                        mkobj(GEM_CLASS, false);
+                        const otmp = mkobj(GEM_CLASS, false);
+                        if (otmp?.otyp !== ROCK) rn2(3);
                     }
                 }
             }
@@ -1889,7 +2313,7 @@ function set_wall_state() { /* no-op for contest */ }
 
 function level_finalize_topology() {
     bound_digging();
-    // mineralize is consumed by fastforward_fill_mineralize
+    mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;

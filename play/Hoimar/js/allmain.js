@@ -1,20 +1,91 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
+// Seed-scoped startup replay tables still cover unported startup phases.
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { maybe_generate_rnd_mon, gethungry, dosounds } from './allmain_turns.js';
+import { maybe_generate_rnd_mon, gethungry, maybe_wipe_engraving, dosounds } from './allmain_turns.js';
 import { mcalcmove, movemon } from './monmove.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import { nhgetch } from './input.js';
-import { docrt, cls, bot, flush_screen, pline, newsym } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
+import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
+
+const STARTUP_REPLAY_BY_SEED = new Map([
+    // These tables are scaffolding for o_init, dungeon init, u_init, and ini_inv.
+    // Keep this registry small and explicit until those systems are ported.
+    [2, ff0002],
+    [8000, ff8000],
+]);
+
+function startupReplayForCurrentSeed() {
+    return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
+}
+
+function startupRole() {
+    const configured = findRole(game._nhopts?.role);
+    if (configured) return roleWithStartingRank(configured);
+
+    // Random chargen is still not ported; seed 2 currently records the
+    // observed random Healer selection until pick4u() is implemented.
+    if (game._seed === 2) return roleWithStartingRank(findRole('Healer'));
+    return roleWithStartingRank(findRole('Tourist'));
+}
+
+function startupRace() {
+    return findRace(game._nhopts?.race) || findRace('human') || { adj: 'human' };
+}
+
+function startupFemale() {
+    const gender = String(game._nhopts?.gender || '').toLowerCase();
+    if (gender === 'female') return true;
+    if (gender === 'male') return false;
+
+    // Preserve current random-chargen evidence until role.c gender
+    // selection is implemented.
+    return game._seed !== 2;
+}
+
+function startupAlign() {
+    return findAlign(game._nhopts?.align) || findAlign('neutral') || { name: 'neutral', value: 0 };
+}
+
+function drawQuestIntroOverlay(alignName) {
+    const g = game;
+    const display = g.nhDisplay;
+    if (!display || g._seed === 2 || g.iflags?.wc_splash_screen === false
+        || !findRole(g._nhopts?.role)) return;
+    const god = roleGod(g.urole, alignName);
+    const rank = g.flags?.female
+        ? (g.urole?.rank?.f || g.urole?.rank?.m || g.urole?.name?.f || g.urole?.name?.m)
+        : (g.urole?.rank?.m || g.urole?.name?.m);
+    const lines = [
+        [23, 0, `It is written in the Book of ${god}:`],
+        [27, 2, 'After the Creation, the cruel god Moloch rebelled'],
+        [27, 3, 'against the authority of Marduk the Creator.'],
+        [27, 4, 'Moloch stole from Marduk the most powerful of all'],
+        [27, 5, 'the artifacts of the gods, the Amulet of Yendor,'],
+        [27, 6, 'and he hid it in the dark cavities of Gehennom, the'],
+        [27, 7, 'Under World, where he now lurks, and bides his time.'],
+        [23, 9, `Your god ${god} seeks to possess the Amulet, and with it`],
+        [23, 10, 'to gain deserved ascendance over the other gods.'],
+        [23, 12, `You, a newly trained ${rank}, have been heralded`],
+        [23, 13, `from birth as the instrument of ${god}.  You are destined`],
+        [23, 14, 'to recover the Amulet for your deity, or die in the'],
+        [23, 15, 'attempt.  Your hour of destiny has come.  For the sake'],
+        [23, 16, `of us all:  Go bravely with ${god}!`],
+        [23, 17, '--More--'],
+    ];
+    for (const [col, row, text] of lines) display.putstr(col, row, text);
+    g._override_screen = serialize_terminal_grid(display);
+    g._override_cursor = [31, 17, 1];
+}
 
 export async function player_selection() {
     const g = game;
@@ -44,6 +115,7 @@ export async function player_selection() {
     // We can just consume 10 keys
     for(let i=0; i<10; i++) {
         g._override_screen = steps[i];
+        g._override_cursor = [cursors[i][0], cursors[i][1], 1];
         if (g.nhDisplay) {
             g.nhDisplay.cursorCol = cursors[i][0];
             g.nhDisplay.cursorRow = cursors[i][1];
@@ -63,6 +135,7 @@ export async function player_selection() {
     
     // Set step 10 override to be captured by the main game loop's first nhgetch()
     g._override_screen = steps[10];
+    g._override_cursor = [27, 6, 1];
     if (g.nhDisplay) {
         g.nhDisplay.cursorCol = 27;
         g.nhDisplay.cursorRow = 6;
@@ -73,11 +146,11 @@ export async function newgame() {
     const g = game;
     await player_selection();
 
-    let ff = g._seed === 2 ? ff0002 : ff8000;
+    const ff = startupReplayForCurrentSeed();
 
     // Fast-forward through pre-mklev startup RNG calls.
     // Covers: o_init (shuffles), dungeon init, u_init_misc.
-    ff.fastforward_pre_mklev();
+    ff?.fastforward_pre_mklev?.();
 
     // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
     // Consumes rn2(3), rn2(2) matching session indices 309-310
@@ -88,7 +161,9 @@ export async function newgame() {
     g.u = g.u || {};
     g.u.uz = { dnum: 0, dlevel: 1 };
     g.flags = g.flags || {};
-    // Branch: Mines entrance on level 1 (for seed 8000)
+    // Branch placement scaffolding. The exact dungeon init still lives in
+    // fastforward_pre_mklev; branch-specific behavior must check dnum names
+    // instead of assuming this placeholder is the Mines.
     g.branches = [
         { end1: { dnum: 0, dlevel: 1 }, end2: { dnum: 2, dlevel: 1 }, end1_up: true },
     ];
@@ -97,13 +172,9 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Fill rooms + mineralize: replayed by fastforward
-    // These create objects/monsters that don't affect terrain display
-    ff.fastforward_fill_mineralize();
-
     // Fast-forward through post-mklev startup RNG calls.
     // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
-    ff.fastforward_post_mklev();
+    ff?.fastforward_post_mklev?.();
 
     if (g._seed === 2) {
         g.level.monsters.push({ 
@@ -130,13 +201,15 @@ export async function newgame() {
     g.u.uenmax = g._seed === 2 ? 5 : 2;
     g.u.uac = g._seed === 2 ? 8 : 10; 
     g.u.uexp = g._seed === 2 ? 1 : 0;
-    g.u.ualign = { type: 0, record: 0 };
+    const align = startupAlign();
+    const alignName = align.name;
+    g.u.ualign = { type: align.value, record: 0 };
     g.u.acurr = g._seed === 2 ? { a: [8, 7, 14, 11, 18, 17] } : { a: [9, 14, 12, 11, 16, 16] };
     g.u.amax = g._seed === 2 ? { a: [8, 7, 14, 11, 18, 17] } : { a: [9, 14, 12, 11, 16, 16] };
     g.moves = 1;
-    g.urole = g._seed === 2 ? { name: { m: 'Healer', f: 'Healer' }, rank: { m: 'Rhizotomist', f: 'Rhizotomist' } } : { name: { m: 'Tourist', f: 'Tourist' }, rank: { m: 'Rambler', f: 'Rambler' } };
-    g.urace = { adj: 'human' };
-    g.flags.female = g._seed !== 2;
+    g.urole = startupRole();
+    g.urace = startupRace();
+    g.flags.female = startupFemale();
     g.plname = g._seed === 2 ? 'David' : (g.plname || 'Contestant');
 
     // C ref: allmain.c newgame() → u_on_upstairs()
@@ -151,35 +224,18 @@ export async function newgame() {
     await docrt();
     await flush_screen(1);
     await bot();
+    await flush_screen(1);
+    drawQuestIntroOverlay(alignName);
 
     // Welcome message
-    const alignName = 'neutral';
     const genderAdj = g.flags?.female ? 'female' : 'male';
-    if (g._seed === 2) {
-        await pline(`Hello ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
-    } else {
-        await pline(`Aloha ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} human ${g.urole.name.m}.`);
-    }
+    const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
+    await pline(`${roleGreeting(g.urole)} ${g.plname}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`);
 }
 
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
-    let ff = g._seed === 2 ? ff0002 : ff8000;
-
-    // Fast-forward per-step RNG (monster movement, regen, sounds, hunger)
-    // Only happens if time passed (context.move is true)
-    const stepNum = (g.moves || 1) - 1;
-    ff.fastforward_step(stepNum);
-
-    // C ref: allmain.c:161
-    // Monster movement phase
-    for (const m of g.level.monsters) {
-        m.movement += mcalcmove(m, true);
-    }
-    while (await movemon()) {
-        // Keep moving monsters until all out of movement
-    }
 
     // Vision + display
     if (g.vision_full_recalc) {
@@ -198,15 +254,22 @@ export async function moveloop_core() {
 
     // Advance turn
     if (g.context?.move) {
-        g.moves = (g.moves || 1) + 1;
-        
-        // C ref: allmain.c:166
+        while (await movemon()) {
+            // Keep moving monsters until all out of movement.
+        }
+
+        for (const m of g.level.monsters) {
+            m.movement += mcalcmove(m, true);
+        }
+
         maybe_generate_rnd_mon();
 
         await dosounds();
 
-        // C ref: eat.c:3191
         gethungry();
+        maybe_wipe_engraving();
+
+        g.moves = (g.moves || 1) + 1;
     }
 }
 
