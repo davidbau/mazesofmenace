@@ -29,6 +29,29 @@ python3 -m http.server 8080
 # then open http://localhost:8080/tools/session-viewer/ in a browser
 ```
 
+## Bisect mode
+
+Eyeballing where a 4000-step session first diverges takes effort. Two
+controls sit next to the step readout to compress that loop:
+
+- **jump to first divergence** (also bound to `d`) — scans the loaded
+  session for the first step whose PRNG calls, screen cells, or cursor
+  position disagree with canon. Renders that step and shows the kind
+  of divergence (`prng`, `screen-char`, `screen-attr`, or `cursor`) in
+  the readout pill.
+- **export slice** — downloads a trimmed `session.json` containing
+  only the first N steps (current step + 5), with the same schema as
+  the source. Drop it back into the picker (or feed it to the judge)
+  to iterate against a 30-step focused test instead of the full
+  recording.
+
+A typical bisect loop:
+
+1. Load the failing session.
+2. Press `d` — viewer lands on step 47 with `first divergence: step 47 (prng)`.
+3. Click `export slice` — downloads `<session>-slice-52.json`.
+4. Run the slice locally, fix the PRNG call that caused step 47, repeat.
+
 Pick a public session from the dropdown, or use **load file…** to
 load any `.session.json` you have on disk. The viewer:
 
