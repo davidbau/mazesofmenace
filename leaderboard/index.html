@@ -69,6 +69,13 @@ h1 {
     color: var(--color-text-muted);
     margin-bottom: 1.2em;
 }
+.table-caption {
+    font-size: 0.85em;
+    color: var(--color-text-muted);
+    text-align: right;
+    margin: 0.4em 0 1.2em;
+    font-style: italic;
+}
 table {
     width: 100%;
     border-collapse: collapse;
@@ -145,12 +152,20 @@ td.pts {
  * never folded into the headline points/passing/RNG/Screen ranking. */
 .supplemental {
     color: var(--color-text-muted);
-    font-style: italic;
     opacity: 0.85;
 }
-.supplemental sup { font-size: 0.7em; }
-.supplemental.pct span { font-style: normal; }
-.pts .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; }
+.supplemental sup {
+    font-size: 0.7em;
+    /* Position the dagger instead of using vertical-align so the line box
+       doesn't grow — otherwise ANIM baseline drops a couple pixels relative
+       to neighboring headers. */
+    vertical-align: baseline;
+    position: relative;
+    top: -0.45em;
+    line-height: 0;
+}
+.pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
+thead th .pts-max { font-style: normal; }
 .pct { text-align: right; }
 td.pct {
     font-family: var(--font-mono);
@@ -291,33 +306,37 @@ td.pct {
   <th class="rank">#</th>
   <th>Team</th>
   <th class="actions" colspan="2"></th>
-  <th class="pts">Points</th>
+  <th class="pts">Points <span class="pts-max">/ <span id="pts-total">22,670</span></span></th>
   <th class="pct">PRNG</th>
   <th class="pct">Screen</th>
-  <th class="pct sessions">Sessions</th>
-  <th class="pct supplemental" title="Supplemental score for animation-frame parity. Not included in the official ranking.">Anim<sup>†</sup></th>
+  <th class="pct supplemental" title="Supplemental score for animation-frame parity. Not part of the official ranking.">Anim<sup>†</sup></th>
+  <th class="pct sessions">Sessions <span class="pts-max">/ <span id="sess-total">88</span></span></th>
   <th class="sparkline">Progress</th>
-  <th>Updated</th>
 </tr>
 </thead>
 <tbody id="tbody">
 </tbody>
 </table>
+<p class="table-caption" id="table-caption">Loading&hellip;</p>
 <p class="hint">
   <strong>Category</strong> is based on how the team plans to
   produce most (over 50%) of the code. <strong>Agentic</strong>
   codebases are mostly produced by generating code with an LLM
   and <strong>Transpiled</strong> codebases rely mostly on
   transpiling the C sources with tools.
-  <strong>Points</strong> = matched 80&times;24 screens; one point per
-  recorded step where the fork&rsquo;s render matches C exactly.
-  <strong>PRNG</strong> is advisory &mdash; the structural prerequisite
-  for screens to match, but no points on its own. <strong>Play</strong>
-  opens that contestant&rsquo;s build in your browser. <strong>Tests</strong>
-  opens the Session Viewer scoped to the fork &mdash; scrub through each
-  public session frame by frame and see where it diverges from C.
-  In <strong>Points</strong> and <strong>Sessions</strong>, the two
-  numbers are from the public and the held-out sessions respectively. 
+  <strong>Points</strong> shown as <em>public + held-out</em>: matched 80&times;24
+  screens, one point per recorded step where the fork&rsquo;s render matches
+  C exactly. The 88 sessions split 44/44 across the public corpus and a held-out
+  set kept private until contest end. <strong>PRNG</strong> is advisory &mdash;
+  the structural prerequisite for screens to match, but no points on its own.
+  <strong>Anim<sup>&dagger;</sup></strong> is a supplemental score for
+  animation-frame parity: forks that opt in via the new animation API render
+  in-between frames (dart trajectories, explosion expansion, etc.) and earn one
+  point per matched frame. Not part of the official ranking.
+  <strong>Play</strong> opens that contestant&rsquo;s build in your browser.
+  <strong>Tests</strong> opens the Session Viewer scoped to the fork &mdash;
+  scrub through each public session frame by frame and see where it diverges
+  from C.
 </p>
 
 <div class="legend">
@@ -438,6 +457,8 @@ async function loadLeaderboard() {
         document.getElementById('phase').textContent = data.contestPhase || 'open';
         document.getElementById('updated').textContent =
             'Last scored: ' + new Date(data.timestamp).toLocaleString();
+        document.getElementById('table-caption').textContent =
+            'Updated ' + timeAgo(data.timestamp);
 
         const tbody = document.getElementById('tbody');
         tbody.innerHTML = '';
@@ -454,10 +475,21 @@ async function loadLeaderboard() {
 
         const fmt = (n) => Number(n || 0).toLocaleString();
 
+        // Lift per-row denominators into the headers. Every fork scores against
+        // the same session pool, so any team's max values are the totals.
+        // Anim total isn't yet in any team's data (no fork has implemented the
+        // animation API), so we fall back to a constant computed from the
+        // public session corpus (1,480 frames across the 44 sessions).
+        const ref = allTeams[0] || { public: {}, heldOut: {} };
+        const totalMax  = (ref.public.maxPoints || 0) + ((ref.heldOut && ref.heldOut.maxPoints) || 0);
+        const totalSess = (ref.public.total     || 0) + ((ref.heldOut && ref.heldOut.total)     || 0);
+        if (totalMax  > 0) document.getElementById('pts-total').textContent  = fmt(totalMax);
+        if (totalSess > 0) document.getElementById('sess-total').textContent = fmt(totalSess);
+
         const appendCategoryRow = (label) => {
             const tr = document.createElement('tr');
             tr.className = 'cat-row';
-            tr.innerHTML = `<th colspan="11">CATEGORY: ${label}</th>`;
+            tr.innerHTML = `<th colspan="10">CATEGORY: ${label}</th>`;
             tbody.appendChild(tr);
         };
 
@@ -472,22 +504,34 @@ async function loadLeaderboard() {
                 const tr = document.createElement('tr');
                 const pub = team.public;
                 const held = team.heldOut || {};
-                const pubPoints    = pub.points || 0;
+
+                const pubPoints    = pub.points    || 0;
                 const pubMaxPoints = pub.maxPoints || 0;
-                const heldPoints    = held.points || 0;
+                const heldPoints    = held.points    || 0;
                 const heldMaxPoints = held.maxPoints || 0;
-                const totalPoints = pubPoints + heldPoints;
+                const totalPoints    = pubPoints + heldPoints;
                 const totalMaxPoints = pubMaxPoints + heldMaxPoints;
-                const pointsPct = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
-                const pubRngPct = pub.rngPct || 0;
+                const combinedPct    = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
+
+                // PRNG and Screen rendered as combined percentages across both pools.
+                // PRNG is weighted by recorded steps (approximated via maxPoints).
+                // Screen percentage is by definition the same as combined-points
+                // percentage (points = matched screens, maxPoints = total screens).
+                const pubRngPct  = pub.rngPct  || 0;
                 const heldRngPct = held.rngPct || 0;
                 const rngPct = totalMaxPoints > 0
                     ? ((pubRngPct * pubMaxPoints) + (heldRngPct * heldMaxPoints)) / totalMaxPoints
                     : 0;
-                const scrPct = pointsPct;
-                const totalPassing = (pub.passing || 0) + (held.passing || 0);
-                const totalSessions = (pub.total || 0) + (held.total || 0);
-                const sessPct   = totalSessions > 0 ? (totalPassing / totalSessions * 100) : 0;
+                const scrPct = combinedPct;
+
+                const heldPassing     = held.passing || 0;
+                const heldTotal       = held.total || 0;
+                const combinedPass    = (pub.passing || 0) + heldPassing;
+                const combinedTotal   = (pub.total   || 0) + heldTotal;
+                const combinedSessPct = combinedTotal > 0 ? (combinedPass / combinedTotal * 100) : 0;
+
+                const animMatched  = (pub.animMatched || 0) + (held.animMatched || 0);
+                const animTotalRow = (pub.animTotal   || 0) + (held.animTotal   || 0);
 
                 const playUrl   = '/play/' + team.name + '/';
                 const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
@@ -497,26 +541,22 @@ async function loadLeaderboard() {
                     <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                     <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
                     <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                    <td class="pts" title="Total points (public + held-out): ${pointsPct.toFixed(2)}% of ${fmt(totalMaxPoints)}. First number is public; second is held-out.">
-                        <span class="${pctClass(pointsPct)}">${fmt(pubPoints)} + ${fmt(heldPoints)}</span>
-                        <span class="pts-max">/ ${fmt(totalMaxPoints)}</span>
+                    <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
+                        <span class="${pctClass(combinedPct)}">${fmt(pubPoints)}</span>
+                        <span class="pts-max">+ ${fmt(heldPoints)}</span>
                     </td>
-                    <td class="pct" title="PRNG match across public + held-out sessions (weighted by recorded steps).">
-                        <span class="${pctClass(rngPct)}">${rngPct.toFixed(1)}%</span>
+                    <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${pctClass(rngPct)}">${rngPct.toFixed(1)}%</span></td>
+                    <td class="pct" title="Screen match across public + held-out sessions."><span class="${pctClass(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+                    <td class="pct supplemental" title="${animMatched} of ${animTotalRow || 'no'} animation frames matched (supplemental, not part of the official ranking).">
+                        ${animTotalRow > 0
+                            ? `<span class="${pctClass(animMatched / animTotalRow * 100)}">${(animMatched / animTotalRow * 100).toFixed(1)}%</span>`
+                            : '<span class="hidden">0.0%</span>'}
                     </td>
-                    <td class="pct" title="Screen match across public + held-out sessions.">
-                        <span class="${pctClass(scrPct)}">${scrPct.toFixed(1)}%</span>
-                    </td>
-                    <td class="pct sessions" title="Sessions fully matched (public + held-out). First number is public; second is held-out.">
-                        <span class="${pctClass(sessPct)}">${pub.passing || 0} + ${held.passing || 0} / ${fmt(totalSessions)}</span>
-                    </td>
-                    <td class="pct supplemental" title="Supplemental: ${pub.animMatched ?? 0}/${pub.animTotal ?? 0} animation frames matched. Not part of the official ranking.">
-                        ${pub.animPct != null
-                            ? `<span class="${pctClass(pub.animPct)}">${pub.animPct.toFixed(1)}%</span>`
-                            : '<span class="hidden">—</span>'}
+                    <td class="pct sessions" title="Sessions fully matched (public + held-out).">
+                        <span class="${pctClass(combinedSessPct)}">${pub.passing || 0}</span>
+                        <span class="pts-max">+ ${heldPassing}</span>
                     </td>
                     <td class="sparkline"><svg viewBox="0 0 100 20" id="spark-${cat}-${i}" class="spark-svg" aria-hidden="true"></svg></td>
-                    <td class="time">${team.lastScored ? timeAgo(team.lastScored) : '\u2014'}</td>
                 `;
                 tbody.appendChild(tr);
 
@@ -530,7 +570,7 @@ async function loadLeaderboard() {
         });
 
         if (rendered === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--color-text-muted);padding:2em">No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Get started!</a></td></tr>';
         }
 
         appendCategoryRow('NEXT PLAYER');
@@ -541,7 +581,7 @@ async function loadLeaderboard() {
             <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
             <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
             <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
-            <td class="you-cta" colspan="7"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+            <td class="you-cta" colspan="6"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
         `;
         tbody.appendChild(youTr);
     } catch (e) {

@@ -162,7 +162,8 @@ a:hover { text-decoration: underline; }
 .lb-table td.action { width: 4em; text-align: center; padding-left: 0.3em; padding-right: 0.3em; }
 .lb-table .pts, .lb-table .pct { text-align: right; }
 .lb-table td.pts    { font-family: var(--font-mono); font-size: 0.95em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.lb-table td.pts .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; }
+.lb-table .pts-max { color: var(--color-text-muted); font-size: 0.85em; margin-left: 0.15em; font-weight: normal; text-transform: none; letter-spacing: 0; }
+.lb-updated-caption { font-size: 0.85em; color: var(--color-text-muted); text-align: right; margin: 0.4em 0 1.2em; font-style: italic; }
 .lb-table td.pct    { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
 .lb-table td.time   { color: var(--color-text-muted); font-size: 0.9em; white-space: nowrap; }
 .lb-table tr:hover td { background: var(--color-row-hover); }
@@ -302,7 +303,6 @@ footer a { color: var(--color-text-muted); }
         </article>
     </section>
     <p class="lb-meta">
-        <span id="lb-updated">Loading&hellip;</span> &middot;
         Re-scored every two hours &middot;
         <a href="/leaderboard/">Full view &rarr;</a>
     </p>
@@ -312,15 +312,15 @@ footer a { color: var(--color-text-muted); }
                 <th class="rank">#</th>
                 <th class="team">Team</th>
                 <th class="actions" colspan="2"></th>
-                <th class="pts">Points</th>
+                <th class="pts">Points <span class="pts-max">/ <span id="lb-pts-total">22,670</span></span></th>
                 <th class="pct">PRNG</th>
                 <th class="pct">Screen</th>
-                <th class="pct">Sessions</th>
-                <th class="time">Last</th>
+                <th class="pct">Sessions <span class="pts-max">/ <span id="lb-sess-total">88</span></span></th>
             </tr>
         </thead>
         <tbody id="lb-tbody"></tbody>
     </table>
+    <p class="lb-updated-caption" id="lb-updated">Loading&hellip;</p>
     <p class="lb-empty" id="lb-empty" hidden>
         No contestants yet. <a href="https://github.com/davidbau/teleport-contest#readme">Be the first &rarr;</a>
     </p>
@@ -330,18 +330,15 @@ footer a { color: var(--color-text-muted); }
         codebases are mostly produced by generating code with an LLM
         and <strong>Transpiled</strong> codebases rely mostly on
         transpiling the C sources with tools.
-        <strong>Points</strong> = matched screens across 88 sessions
-        (44 public + 44 held-out). Each step where your fork&rsquo;s
-        rendered 80&times;24 terminal exactly matches the C reference is
-        one point; the max is the total number of recorded screens.
-        <strong>PRNG</strong>
-        is shown as advisory progress &mdash; it&rsquo;s the structural
-        prerequisite for screens to match (if your PRNG drifts, the
-        game state drifts and screens can&rsquo;t line up). The
-        <strong>Sessions</strong> column tallies fully-matching
-        sessions (public + held-out). In <strong>Points</strong>
-        and <strong>Sessions</strong>, the two numbers are from
-        the public and the held-out sessions respectively. 
+        <strong>Points</strong> shown as <em>public + held-out</em>:
+        matched 80&times;24 screens, one point per recorded step where
+        the fork&rsquo;s render matches C exactly. The 88 sessions
+        split 44/44 across the public corpus and a held-out set kept
+        private until contest end. <strong>PRNG</strong> is shown as
+        advisory progress &mdash; it&rsquo;s the structural prerequisite
+        for screens to match. The <strong>Sessions</strong> column
+        tallies sessions where every screen and PRNG call matched
+        (public + held-out).
         <strong>Play</strong> opens the build in your browser;
         <strong>Tests</strong> opens the Session Viewer scoped to it.
     </p>
@@ -425,7 +422,7 @@ footer a { color: var(--color-text-muted); }
     }
 
     document.getElementById('lb-updated').textContent =
-        'Last scored ' + TIME_AGO(data.timestamp);
+        'Updated ' + TIME_AGO(data.timestamp);
 
     const SCORE_SORT = (a, b) =>
         (((b.public?.points || 0) + (b.heldOut?.points || 0)) - ((a.public?.points || 0) + (a.heldOut?.points || 0)))
@@ -458,9 +455,18 @@ footer a { color: var(--color-text-muted); }
     table.hidden = false;
 
     const fmt = (n) => Number(n || 0).toLocaleString();
+
+    // Lift per-row denominators into the header. All forks score against the
+    // same pool, so any team's max values are the totals.
+    const ref = allTeams[0] || { public: {}, heldOut: {} };
+    const totalMax  = (ref.public.maxPoints || 0) + ((ref.heldOut && ref.heldOut.maxPoints) || 0);
+    const totalSess = (ref.public.total     || 0) + ((ref.heldOut && ref.heldOut.total)     || 0);
+    if (totalMax  > 0) document.getElementById('lb-pts-total').textContent  = fmt(totalMax);
+    if (totalSess > 0) document.getElementById('lb-sess-total').textContent = fmt(totalSess);
+
     const appendCategoryRow = (label) => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<th colspan="9">CATEGORY: ${label}</th>`;
+        tr.innerHTML = `<th colspan="8">CATEGORY: ${label}</th>`;
         tbody.appendChild(tr);
     };
 
@@ -468,26 +474,34 @@ footer a { color: var(--color-text-muted); }
             const teams = byCat[cat] || [];
             if (teams.length === 0) return;
 
-            appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
-            teams.forEach((team, i) => {
-                const pub = team.public;
-                const held = team.heldOut || {};
-                const pubPoints    = pub.points || 0;
-                const pubMaxPoints = pub.maxPoints || 0;
-                const heldPoints    = held.points || 0;
-                const heldMaxPoints = held.maxPoints || 0;
-                const totalPoints = pubPoints + heldPoints;
-                const totalMaxPoints = pubMaxPoints + heldMaxPoints;
-                const pointsPct = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
-            const pubRngPct = pub.rngPct || 0;
+        appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+        teams.forEach((team, i) => {
+            const pub = team.public;
+            const held = team.heldOut || {};
+
+            const pubPoints    = pub.points    || 0;
+            const pubMaxPoints = pub.maxPoints || 0;
+            const heldPoints    = held.points    || 0;
+            const heldMaxPoints = held.maxPoints || 0;
+            const totalPoints    = pubPoints + heldPoints;
+            const totalMaxPoints = pubMaxPoints + heldMaxPoints;
+            const combinedPct    = totalMaxPoints > 0 ? (totalPoints / totalMaxPoints * 100) : 0;
+
+            // Combined PRNG + Screen across pools (PRNG weighted by recorded steps).
+            // scrPct == combinedPct by definition (points = matched screens).
+            const pubRngPct  = pub.rngPct  || 0;
             const heldRngPct = held.rngPct || 0;
             const rngPct = totalMaxPoints > 0
                 ? ((pubRngPct * pubMaxPoints) + (heldRngPct * heldMaxPoints)) / totalMaxPoints
                 : 0;
-            const scrPct    = pointsPct;
-            const totalPassing = (pub.passing || 0) + (held.passing || 0);
-            const totalSessions = (pub.total || 0) + (held.total || 0);
-            const sessPct   = totalSessions > 0 ? (totalPassing / totalSessions * 100) : 0;
+            const scrPct = combinedPct;
+
+            const heldPassing = held.passing || 0;
+            const heldTotal   = held.total   || 0;
+            const combinedPass    = (pub.passing || 0) + heldPassing;
+            const combinedTotal   = (pub.total   || 0) + heldTotal;
+            const combinedSessPct = combinedTotal > 0 ? (combinedPass / combinedTotal * 100) : 0;
+
             const playUrl   = '/play/' + team.name + '/';
             const viewerUrl = '/sessions-viewer/?fork=' + encodeURIComponent(team.name);
 
@@ -497,20 +511,16 @@ footer a { color: var(--color-text-muted); }
                 <td class="team"><a href="https://github.com/${team.fork}" target="_blank" rel="noopener">${team.name}</a></td>
                 <td class="action"><a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a></td>
                 <td class="action"><a class="lb-btn tests" href="${viewerUrl}" title="Open the Session Viewer for this fork">Tests</a></td>
-                <td class="pts" title="Total points (public + held-out): ${pointsPct.toFixed(2)}% of ${fmt(totalMaxPoints)}. First number is public; second is held-out.">
-                    <span class="${PCT_CLASS(pointsPct)}">${fmt(pubPoints)} + ${fmt(heldPoints)}</span>
-                    <span class="pts-max">/ ${fmt(totalMaxPoints)}</span>
+                <td class="pts" title="Total points: ${combinedPct.toFixed(2)}% of ${fmt(totalMaxPoints)} (public + held-out).">
+                    <span class="${PCT_CLASS(combinedPct)}">${fmt(pubPoints)}</span>
+                    <span class="pts-max">+ ${fmt(heldPoints)}</span>
                 </td>
-                <td class="pct" title="PRNG match across public + held-out sessions (weighted by recorded steps).">
-                    <span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span>
+                <td class="pct" title="PRNG match across public + held-out sessions (weighted)."><span class="${PCT_CLASS(rngPct)}">${rngPct.toFixed(1)}%</span></td>
+                <td class="pct" title="Screen match across public + held-out sessions."><span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span></td>
+                <td class="pct" title="Sessions fully matched (public + held-out).">
+                    <span class="${PCT_CLASS(combinedSessPct)}">${pub.passing || 0}</span>
+                    <span class="pts-max">+ ${heldPassing}</span>
                 </td>
-                <td class="pct" title="Screen match across public + held-out sessions.">
-                    <span class="${PCT_CLASS(scrPct)}">${scrPct.toFixed(1)}%</span>
-                </td>
-                <td class="pct" title="Sessions fully matched (public + held-out). First number is public; second is held-out.">
-                    <span class="${PCT_CLASS(sessPct)}">${pub.passing || 0} + ${held.passing || 0} / ${fmt(totalSessions)}</span>
-                </td>
-                <td class="time">${team.lastScored ? TIME_AGO(team.lastScored) : '\u2014'}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -524,7 +534,7 @@ footer a { color: var(--color-text-muted); }
         <td class="team"><a href="https://github.com/davidbau/teleport-contest/fork">you</a></td>
         <td class="action"><a class="lb-btn play" href="/play/skeleton/" title="Play the contest skeleton in your browser">Play</a></td>
         <td class="action"><a class="lb-btn tests" href="https://github.com/davidbau/teleport-contest#readme" title="Read the contest rules">Rules</a></td>
-        <td class="you-cta" colspan="5"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
+        <td class="you-cta" colspan="4"><a href="https://github.com/davidbau/teleport-contest/fork">Create your fork on GitHub &rarr;</a></td>
     `;
     tbody.appendChild(youTr);
 })();
