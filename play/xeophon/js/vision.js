@@ -79,6 +79,16 @@ function _blocks(level, x, y) {
     return false;
 }
 
+function adjacent_visible(level, ux, uy, x, y) {
+    const dx = x - ux;
+    const dy = y - uy;
+    if (Math.abs(dx) !== 1 || Math.abs(dy) !== 1) return true;
+    const horizontalClear = !_blocks(level, ux + dx, uy);
+    const verticalClear = !_blocks(level, ux, uy + dy);
+    if (_blocks(level, x, y)) return horizontalClear && verticalClear;
+    return horizontalClear || verticalClear;
+}
+
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
 export function vision_reset() {
     const level = game.level;
@@ -427,7 +437,8 @@ export function vision_recalc(control = 0) {
 
             // Night vision: adjacent cells always IN_SIGHT
             if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
-                next[row][col] |= IN_SIGHT;
+                if (adjacent_visible(level, ux, uy, col, row))
+                    next[row][col] |= IN_SIGHT;
                 continue;
             }
 

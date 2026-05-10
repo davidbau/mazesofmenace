@@ -1,32 +1,57 @@
 // rng.js — PRNG wrappers around ISAAC64.
-// C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: only core context is used for parity.
+// C ref: src/rnd.c — core and display RNG contexts.
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
+let _displayRngLogEnabled = false;
 
-export function initRng(seed) {
-    game.currentSeed = seed;
-    // Convert seed to 8 little-endian bytes
+function seedBytes(seed) {
     let s = BigInt(seed) & 0xFFFFFFFFFFFFFFFFn;
     const bytes = new Uint8Array(8);
     for (let i = 0; i < 8; i++) {
         bytes[i] = Number(s & 0xFFn);
         s >>= 8n;
     }
-    game.coreCtx = isaac64_init(bytes);
-    _rngLog = [];
+    return bytes;
 }
 
-export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
+export function initRng(seed, { resetLog = true } = {}) {
+    game.currentSeed = seed;
+    const bytes = seedBytes(seed);
+    game.coreCtx = isaac64_init(bytes);
+    game.displayCtx = isaac64_init(bytes);
+    game.rng = { core: game.coreCtx, display: game.displayCtx };
+    if (resetLog) _rngLog = [];
+}
+
+export function enableRngLog({ reset = true } = {}) {
+    _rngLogEnabled = true;
+    if (reset) _rngLog = [];
+}
 export function getRngLog() { return _rngLog; }
+export function truncateRngLog(length) { _rngLog.length = length; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
+export function enableDisplayRngLog(enabled = true) { _displayRngLogEnabled = !!enabled; }
+
+function logRng(name, args, value) {
+    if (_rngLogEnabled) _rngLog.push(`${name}(${args})=${value}`);
+}
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
+    return Number(val % BigInt(x));
+}
+
+export function consumeCoreRng(x) {
+    if (x <= 0) return 0;
+    return RND(x);
+}
+
+function DISPLAY_RND(x) {
+    const val = isaac64_next_uint64(game.displayCtx);
     return Number(val % BigInt(x));
 }
 
@@ -34,7 +59,7 @@ function RND(x) {
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
+    logRng('rn2', `${x}`, val);
     return val;
 }
 
@@ -42,7 +67,7 @@ export function rn2(x) {
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
-    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
+    logRng('rnd', `${x}`, val);
     return val;
 }
 
@@ -51,19 +76,36 @@ export function rn1(x, y) { return rn2(x) + y; }
 
 // C ref: d(n, x) — roll n dice of x sides
 export function d(n, x) {
-    let sum = 0;
-    for (let i = 0; i < n; i++) sum += rnd(x);
-    return sum;
+    const origN = n;
+    let tmp = n;
+    while (n-- > 0) tmp += RND(x);
+    logRng('d', `${origN},${x}`, tmp);
+    return tmp;
+}
+
+// C ref: rnl(x) — random number biased by Luck
+export function rnl(x) {
+    let adjustment = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
+    if (x <= 15) adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
+
+    let i = RND(x);
+    if (adjustment && rn2(37 + Math.abs(adjustment))) {
+        i -= adjustment;
+        if (i < 0) i = 0;
+        else if (i >= x) i = x - 1;
+    }
+    logRng('rnl', `${x}`, i);
+    return i;
 }
 
 // C ref: rne(x) — exponentially distributed
 // Internal rn2 calls are logged (matching C's PRNG log format).
-export function rne(x) {
+export function rne(x, traceInternal = true) {
     const ulevel = game.u?.ulevel || 1;
     const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
     let tmp = 1;
-    while (tmp < utmp && !rn2(x)) tmp++;
-    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}`);
+    while (tmp < utmp && !(traceInternal ? rn2(x) : RND(x))) tmp++;
+    logRng('rne', `${x}`, tmp);
     return tmp;
 }
 
@@ -76,8 +118,18 @@ export function rnz(i) {
     tmp *= rne(4);
     if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
     else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}`);
+    logRng('rnz', `${i}`, x);
     return x;
+}
+
+export function rn2_on_display_rng(x) {
+    const val = DISPLAY_RND(x);
+    if (_rngLogEnabled && _displayRngLogEnabled) _rngLog.push(`~drn2(${x})=${val}`);
+    return val;
+}
+
+export function rnd_on_display_rng(x) {
+    return rn2_on_display_rng(x) + 1;
 }
 
 export const c_d = d;

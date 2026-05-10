@@ -6,13 +6,19 @@ import { game } from './gstate.js';
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
-        flags: {}, iflags: {},
+        flags: {}, iflags: {}, keyBindings: {},
     };
     if (!rc) return result;
 
     for (const rawLine of rc.split('\n')) {
         const line = rawLine.trim();
         if (!line || line.startsWith('#')) continue;
+
+        const bindMatch = line.match(/^BIND=(.+?):(.+)$/i);
+        if (bindMatch) {
+            result.keyBindings[bindMatch[1]] = bindMatch[2].trim().toLowerCase();
+            continue;
+        }
 
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
@@ -35,6 +41,7 @@ export function parseNethackrc(rc) {
                 else if (key === 'gender') result.gender = val;
                 else if (key === 'align') result.align = val;
                 else if (key === 'playmode' && val === 'debug') result.flags.debug = true;
+                else if (key === 'playmode' && val === 'explore') result.flags.explore = true;
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     if (val === 'none' || val === 'n') result.preferred_pet = 'n';

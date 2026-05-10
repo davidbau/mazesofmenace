@@ -12,6 +12,7 @@ import { init_objects } from './o_init.js';
 import { init_dungeons, init_castle_tune, u_init_misc } from './dungeon_init.js';
 import { role_init_extra, roleNameToIdx, ROLE_WIZ } from './role_init.js';
 import { rnd } from './rng.js';
+import { tty_player_selection } from './chargen.js';
 
 // C ref: allmain.c newgame()
 export async function newgame() {
@@ -27,29 +28,30 @@ export async function newgame() {
 
     const wizard = !!(g.flags && g.flags.debug);
 
-    if (isFullySpecified) {
-        // Real pre-mklev init sequence (matches C for any fully-specified character).
-        // C ref: allmain.c newgame() init order:
-        //   init_objects() → role_init() extras → init_dungeons() (includes first Lua shuffle)
-        //   → init_castle_tune() → [newpw for Wizard] → u_init_misc() → l_nhcore_init()
-        init_objects();
-        role_init_extra(iRole);
+    // newpw() calls rnd(urole.enadv.inrnd) if inrnd > 0, then rnd(urace.enadv.inrnd) if > 0.
+    // All race inrnd values are 0, so only the role matters.
+    // C ref: exper.c newpw() called from u_init() at ulevel==0.
+    // Role enadv.inrnd values (from role.c): Arc=0, Bar=0, Cav=0, Hea=4, Kni=4,
+    //   Mon=2, Pri=3, Rog=0, Ran=0, Sam=0, Tou=0, Val=0, Wiz=3.
+    const ROLE_ENADV_INRND = [0, 0, 0, 4, 4, 2, 3, 0, 0, 0, 0, 0, 3];
 
-        // newpw() calls rnd(urole.enadv.inrnd) if inrnd > 0, then rnd(urace.enadv.inrnd) if > 0.
-        // All race inrnd values are 0, so only the role matters.
-        // C ref: exper.c newpw() called from u_init() at ulevel==0.
-        // Role enadv.inrnd values (from role.c): Arc=0, Bar=0, Cav=0, Hea=4, Kni=4,
-        //   Mon=2, Pri=3, Rog=0, Ran=0, Sam=0, Tou=0, Val=0, Wiz=3.
-        const ROLE_ENADV_INRND = [0, 0, 0, 4, 4, 2, 3, 0, 0, 0, 0, 0, 3];
-        const newpwInrnd = ROLE_ENADV_INRND[iRole] ?? 0;
-        init_dungeons(wizard);
-        init_castle_tune();
-        if (newpwInrnd > 0) rnd(newpwInrnd);
-        u_init_misc();
-    } else {
-        // Chargen RNG not yet implemented — fall back to fastforward (seed8000 only).
-        fastforward_pre_mklev();
+    let charRole = iRole;
+    if (!isFullySpecified) {
+        const chargen = await tty_player_selection(g);
+        if (!chargen) return; // user quit chargen
+        charRole = chargen.role;
     }
+
+    // C ref: allmain.c newgame() init order:
+    //   init_objects() → role_init() extras → init_dungeons() (includes first Lua shuffle)
+    //   → init_castle_tune() → [newpw for Wizard] → u_init_misc() → l_nhcore_init()
+    init_objects();
+    role_init_extra(charRole);
+    const newpwInrnd = ROLE_ENADV_INRND[charRole] ?? 0;
+    init_dungeons(wizard);
+    init_castle_tune();
+    if (newpwInrnd > 0) rnd(newpwInrnd);
+    u_init_misc();
 
     // C ref: allmain.c l_nhcore_init() — second Lua shuffle (nhcore.lua)
     l_nhcore_init();

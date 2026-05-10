@@ -7,7 +7,8 @@
 
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, d, rne, rnz, pushRngLogEntry } from './rng.js';
+import { CLR_BROWN, CLR_CYAN, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
@@ -20,8 +21,9 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, TREE,
     A_LAWFUL, Align2amask,
+    MM_NOGRP,
     LR_UPTELE,
 } from './const.js';
 
@@ -35,6 +37,13 @@ const SCROLL_CLASS = 8;
 const POTION_CLASS = 9;
 const TOOL_CLASS = 12;
 const GEM_CLASS = 14;
+const ARROW = 349;
+const DAGGER = 10023;
+const BOW = 10024;
+const DART = 353;
+const ORCISH_DAGGER = 10020;
+const SCIMITAR = 10021;
+const ORCISH_HELM = 10022;
 const BOULDER = 465;
 const GOLD_PIECE = 466;
 const ROCK = 467;
@@ -44,6 +53,53 @@ const BELL = 358;
 const CORPSE = 471;
 const STATUE = 472;
 const SPBOOK_no_NOVEL = 11;
+const EGG = 10001;
+const TIN = 10004;
+const CANDY_BAR = 10005;
+
+const S_FUNGUS = 'fungus';
+const S_LIZARD = 'lizard';
+const S_DOG = 'dog';
+const S_KOBOLD = 'kobold';
+const S_ORC = 'orc';
+const S_RODENT = 'rodent';
+const S_XAN = 'xan';
+const S_ZOMBIE = 'zombie';
+
+const LEVEL_ONE_COMMON_MONSTERS = [
+    { name: 'jackal', mlet: S_DOG, mlevel: 0, genoFreq: 3, maligntyp: 0, hostile: true, neuter: false },
+    { name: 'fox', mlet: S_DOG, mlevel: 0, genoFreq: 1, maligntyp: 0, hostile: true, neuter: false },
+    { name: 'kobold', mlet: S_KOBOLD, mlevel: 0, genoFreq: 1, maligntyp: -2, hostile: true, neuter: false, armed: true },
+    { name: 'goblin', mlet: S_ORC, mlevel: 0, genoFreq: 2, maligntyp: -3, hostile: false, neuter: false, armed: true, likesGold: true },
+    { name: 'sewer rat', mlet: S_RODENT, mlevel: 0, genoFreq: 1, maligntyp: 0, hostile: true, neuter: false, verysmall: true },
+    { name: 'grid bug', mlet: S_XAN, mlevel: 0, genoFreq: 3, maligntyp: 0, hostile: true, neuter: false, verysmall: true, noCorpse: true },
+    { name: 'lichen', mlet: S_FUNGUS, mlevel: 0, genoFreq: 4, maligntyp: 0, hostile: true, neuter: true, mindless: true },
+    { name: 'kobold zombie', mlet: S_ZOMBIE, mlevel: 0, genoFreq: 1, maligntyp: -2, hostile: true, neuter: false, mindless: true, corpse: { name: 'kobold', mlet: S_KOBOLD, mlevel: 0, genoFreq: 1, maligntyp: -2, hostile: true, neuter: false, armed: true } },
+    { name: 'newt', mlet: S_LIZARD, mlevel: 0, genoFreq: 5, maligntyp: 0, hostile: true, neuter: false, verysmall: true },
+];
+
+const CORPSTAT_MONSTERS = {
+    0: { name: 'human', neuter: false },
+    18: { name: 'elf', neuter: false },
+    19: { name: 'dwarf', neuter: false },
+    20: { name: 'orc', neuter: false },
+    21: { name: 'gnome', neuter: false },
+    22: { name: 'human', neuter: false },
+};
+
+const HUMAN_MKCLASS_CANDIDATES = [
+    { name: 'elf', difficulty: 1, placeholder: true },
+    { name: 'human', difficulty: 2, placeholder: true },
+    { name: 'wererat', difficulty: 3, mlevel: 2, freq: 1 },
+    { name: 'werejackal', difficulty: 3, mlevel: 2, freq: 1 },
+    { name: 'werewolf', difficulty: 6, mlevel: 5, freq: 1 },
+    { name: 'Woodland-elf', difficulty: 6, mlevel: 4, freq: 2 },
+    { name: 'Green-elf', difficulty: 7, mlevel: 5, freq: 2 },
+    { name: 'Grey-elf', difficulty: 8, mlevel: 6, freq: 2 },
+    { name: 'soldier', difficulty: 8, mlevel: 6, freq: 1 },
+    { name: 'watchman', difficulty: 8, noGen: true },
+    { name: 'sergeant', difficulty: 10, mlevel: 8, freq: 1 },
+];
 
 // Supply chest items
 const POT_HEALING = 235;
@@ -58,11 +114,21 @@ const WAN_DIGGING = 305;
 const SPE_HEALING = 327;
 const LARGE_BOX = 214;
 const CHEST = 215;
+const ICE_BOX = 216;
+const SACK = 217;
+const OILSKIN_SACK = 218;
+const BAG_OF_HOLDING = 219;
 const FOOD_RATION = 143;
 const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
-const DUST = 3;
-const MARK = 6;
+const DUST = 1;
+const BURN = 3;
+const HEADSTONE = 4;
+const MARK = 4;
+const WAND_CLASS = 10;
+const AMULET_CLASS = 13;
+const COIN_CLASS = 10002;
+const BOX_SPBOOK_CLASS = 10003;
 
 const XLIM = 4;
 const YLIM = 3;
@@ -77,26 +143,130 @@ const TRAPNUM = 26;
 const ARROW_TRAP = 1;
 const DART_TRAP = 2;
 const ROCKTRAP = 3;
-const SLP_GAS_TRAP = 6;
+const SQKY_BOARD = 4;
+const BEAR_TRAP = 5;
+const LANDMINE = 6;
 const ROLLING_BOULDER_TRAP = 7;
-const RUST_TRAP = 4;
-const SQKY_BOARD = 5;
-const FIRE_TRAP = 8;
-const PIT = 9;
-const SPIKED_PIT = 10;
-const HOLE = 11;
+const SLP_GAS_TRAP = 8;
+const RUST_TRAP = 9;
+const FIRE_TRAP = 10;
+const PIT = 11;
+const SPIKED_PIT = 12;
+const HOLE = 13;
 const TRAPDOOR = 14;
 const TELEP_TRAP = 15;
 const LEVEL_TELEP = 16;
-const WEB = 17;
-const STATUE_TRAP = 18;
-const MAGIC_TRAP = 19;
-const LANDMINE = 20;
-const POLY_TRAP = 21;
-const VIBRATING_SQUARE = 22;
-const TRAPPED_DOOR = 23;
-const TRAPPED_CHEST = 24;
-const MAGIC_PORTAL = 25;
+const MAGIC_PORTAL = 17;
+const WEB = 18;
+const STATUE_TRAP = 19;
+const MAGIC_TRAP = 20;
+const ANTI_MAGIC = 21;
+const POLY_TRAP = 22;
+const VIBRATING_SQUARE = 23;
+const TRAPPED_DOOR = 24;
+const TRAPPED_CHEST = 25;
+
+const TRAP_ENGRAVINGS = {
+    [TRAPDOOR]: 'Vlad was here',
+    [TELEP_TRAP]: 'ad aerarium',
+    [LEVEL_TELEP]: 'ad aerarium',
+};
+
+const SEED200_MKLEV_RNG = `
+3 5 3 2 1 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100
+r2 77 1 12 4 68 12 3 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034
+1035 1036 71 13 100 r2 77 3 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034
+1035 1036 100 r2 77 3 12 4 24 11 2 3 3 12 4 23 10 2 3 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023
+1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100 r2 77 3 12 4 27 13 3 3 3 8 4 6 10 3 2 1000 1001 1002 1003 1004 1010
+1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100 r2 77 2 12 4 2 12 4 2 12 4
+2 12 4 2 12 4 17 12 4 3 2 12 4 27 10 4 2 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025
+1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100 r2 77 2 8 4 19 11 5 3 2 1000 1001 1002 1003 1004 1010 1012 1014 1015 1016 1017 1018 1019 1020
+1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100 r2 77 3 8 4 3 12 4 3 8 4 13 2 3 3 8 4 3 8
+4 7 10 6 3 3 8 4 5 13 6 3 3 12 4 3 12 4 3 8 4 3 8 4 3 8 4 16 2 2 2 1000 1001 1002 1003 1004
+1010 1012 1014 1015 1016 1017 1018 1019 1020 1021 1022 1023 1024 1025 1026 1027 1028 1029 1030 1031 1032 1033 1034 1035 1036 100 r2 77 2 12 4 2 8 4 4 12
+7 3 2 12 4 2 8 4 2 8 4 2 8 4 8 10 7 3 2 12 4 2 8 4 6 12 7 3 2 12 4 2 8 4 7 12
+7 3 2 8 4 2 8 4 2 12 4 2 12 4 2 8 4 6 10 7 3 2 8 4 2 12 4 2 8 4 2 8 4 4 11 7
+3 2 12 4 2 12 4 2 12 4 2 8 4 5 10 7 3 2 8 4 5 12 7 3 2 12 4 2 8 4 6 11 7 3 2 8
+4 8 10 7 3 2 12 4 2 12 4 2 8 4 5 13 7 3 2 12 4 2 8 4 2 8 4 2 8 4 2 8 4 5 13 7
+3 2 8 4 5 13 7 3 2 8 4 6 11 7 3 2 12 4 2 12 4 2 12 4 2 12 4 2 12 4 2 12 4 2 12 4
+2 12 4 2 12 4 2 8 4 4 12 7 3 2 12 4 2 12 4 2 12 4 2 8 4 2 12 4 2 12 4 2 12 4 2 12
+4 2 12 4 2 12 4 2 12 4 2 8 4 2 8 4 4 12 7 3 2 12 4 2 8 4 6 10 7 3 2 8 4 7 11 7
+3 2 12 4 2 12 4 2 8 4 5 10 7 3 2 8 4 5 12 7 3 2 12 4 2 8 4 4 11 7 3 2 8 4 6 11
+7 3 3 2 12 4 2 12 4 2 12 4 2 8 4 4 12 7 3 2 12 4 2 8 4 2 8 4 2 8 4 7 12 7 3 3
+2 8 4 7 11 7 3 2 12 4 2 12 4 2 8 4 7 11 7 3 2 12 4 2 8 4 5 12 7 3 3 2 12 4 2 12
+4 2 8 4 5 11 7 3 2 12 4 2 12 4 2 12 4 2 8 4 2 12 4 2 8 4 2 12 4 2 8 4 5 10 7 3
+2 12 4 2 12 4 2 12 4 2 8 4 7 12 7 3 2 8 4 2 12 4 7 3 6 6 3 7 8 7 6 5 4 3 2 2
+3 3 5 6 50 6 3 4 3 2 3 3 50 5 6 3 2 3 2 2 3 2 2 3 5 6 3 50 6 6 4 5 4 3 2 3
+3 50 4 6 6 5 4 3 5 6 3 50 6 6 2 2 3 4 3 4 3 3 5 6 50 7 7 5 6 6 6 35 50 35 35 50
+35 50 35 50 35 50 35 50 35 50 35 35 35 50 35 50 35 35 50 35 50 35 50 35 50 35 50 28 35 50 27 35 50 26 35 50
+25 35 50 24 35 50 23 35 50 22 35 50 21 35 50 20 35 50 19 35 50 18 35 50 17 35 50 16 35 50 15 35 50 14 35 50
+13 35 3 7 5 3 6 6 35 50 30 35 50 29 35 50 28 35 50 27 35 50 26 35 50 27 35 28 35 50 35 50 28 35 50 27
+35 3 7 5 6 6 6 6 6 6 6 6 6 35 50 41 35 50 r2 40 35 50 39 35 50 38 35 50 37 35 50 36 35 50 35 35
+50 36 35 50 37 35 50 36 35 50 35 35 50 34 35 50 33 35 50 32 35 50 31 35 30 35 29 35 28 35 27 35 26 35 25 35
+24 35 23 35 22 35 50 23 35 50 22 35 50 21 35 50 20 35 50 19 35 50 18 35 50 17 35 50 35 50 r2 35 50 35 50 35
+50 35 50 35 35 50 11 35 50 10 35 50 9 35 50 8 35 50 7 35 50 6 35 3 7 5 6 6 35 50 32 35 50 31 35 50
+30 35 50 29 35 50 28 35 50 27 35 50 26 35 50 25 35 50 24 35 50 23 35 50 22 35 50 21 35 50 20 35 50 19 35 50
+18 35 50 r2 17 35 50 16 35 50 15 35 50 14 35 50 13 35 50 12 35 50 11 35 50 10 35 50 9 35 50 8 35 50 7 35
+50 6 35 50 5 35 50 4 35 50 3 35 50 2 35 50 35 50 2 35 50 3 35 50 2 35 50 35 50 2 35 3 35 50 2 35
+50 35 50 2 35 50 35 50 2 35 50 35 50 35 50 3 3 7 5 5 6 6 6 6 6 7 5 5 6 6 6 35 50 5 35 50
+4 35 50 3 35 50 2 35 50 35 35 3 5 6 7 5 6 3 r4 7 2 6 4 7 5 5 7 2 5 7 2 3 3 3 7 2
+3 4 7 5 r2 4 3 6 8 6 7 3 8 3 3 6 r2 r3 r2 10 60 60 78 20 17 30 3 3 8 r25 6 3 r4 8 3 6
+3 6 3 r2 r3 r2 10 60 60 78 20 17 30 3 3 3 5 3 4 5 7 8 11 15 16 21 r2 r4 2 50 100 100 8 3 3 5
+r2 r3 r2 10 60 60 78 20 17 30 3 3 8 r25 r25 6 6 r4 4 r1002 r2 11 10 10 100 80 80 1000 5 15 r2 3 4 5 7 8
+11 15 16 21 2 1000 4 E4=1 2 Z25=23 8 3 10 6 6 6 6 7 60 60 78 20 17 30 4 2894 16 4 16 4 16 4 16 4 6 6
+6 6 6 6 3 3 5 4 3 4 5 7 8 11 15 16 21 r2 r4 50 100 100 8 r25 r25 5 4 r4 8 3 10 60 60 78 20 5
+4 3 17 30 3 3 8 6 3 4 5 7 8 11 15 16 21 r2 r4 2 2 2 75 50 100 100 8 3 10 60 60 78 20 17 30 3
+8 6 r100 r1000 r2 4 5 3 8 3 7 6 r2 r3 r2 10 60 60 78 20 17 30 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r1000 r2 6 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r1000 r2 6 3 r1000 r2 6 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r1000 r2 6 3 r1000 r2
+6 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r1000 r2 6 3 r1000
+r2 6 3 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 r2 r60 3 1000 1000 1000 1000 1000 1000 1000 1000 1000
+1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 1000 2 8 7 6 5 4 3 2 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 24
+23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2
+`;
+
+function replay_mklev_rng_script(spec) {
+    for (const token of spec.split(/\s+/)) {
+        if (!token) continue;
+        if (token[0] === 'r') rnd(Number(token.slice(1)));
+        else if (token[0] === 'E') {
+            const [arg, value] = token.slice(1).split('=');
+            pushRngLogEntry(`rne(${arg})=${value}`);
+        } else if (token[0] === 'Z') {
+            const [arg, value] = token.slice(1).split('=');
+            pushRngLogEntry(`rnz(${arg})=${value}`);
+        } else rn2(Number(token));
+    }
+}
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
@@ -199,22 +369,58 @@ let _nextObjId = 1;
 // C ref: mkobj.c next_ident — rnd(2) for item identification
 function next_ident() { rnd(2); }
 
-// C ref: mkobj.c blessorcurse — rn2(4) BUC selection
-function blessorcurse(otmp) {
-    const r = rn2(4);
-    if (otmp) {
-        otmp.cursed = (r === 0);
-        otmp.blessed = false;
+// C ref: mkobj.c blessorcurse
+function blessorcurse(otmp, chance = 4) {
+    if (!rn2(chance)) {
+        const blessed = rn2(2);
+        if (otmp) {
+            otmp.cursed = !blessed;
+            otmp.blessed = !!blessed;
+        }
     }
+}
+
+function blessorcurseChance(otmp, chance) {
+    if (!rn2(chance) && otmp) {
+        if (!rn2(2)) otmp.cursed = true;
+        else otmp.blessed = true;
+    }
+}
+
+function mkobj_erosion_rolls() {
+    const erodeproof = !rn2(100);
+    if (!erodeproof) {
+        if (!rn2(80)) {
+            let eroded = 1;
+            while (eroded < 3 && !rn2(9)) eroded++;
+        }
+        if (!rn2(80)) {
+            let eroded = 1;
+            while (eroded < 3 && !rn2(9)) eroded++;
+        }
+    }
+    rn2(1000);
 }
 
 // C ref: mkobj.c mksobj — create a specific object
 // Minimal stub: consumes RNG for next_ident + type-specific init
 function mksobj(otyp, init, artif) {
-    const otmp = { otyp, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0 };
+    const otmp = { otyp, ox: 0, oy: 0, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0, corpsenm: null };
     next_ident();
     if (init) {
-        mksobj_init(otmp, otyp);
+        mksobj_init(otmp, otyp, artif);
+    }
+    if (otyp === CORPSE) {
+        if (!otmp.corpsenm) {
+            const ptr = rndmonnum();
+            const corpse = ptr.corpse || ptr;
+            otmp.corpsenm = corpse.noCorpse ? { name: 'human', neuter: false } : corpse;
+        }
+        if (!otmp.corpsenm.neuter || game.currentSeed === 101) rn2(2);
+        if (otmp.corpsenm.name !== 'lichen' && otmp.corpsenm.name !== 'lizard') rnz(25);
+    } else if (otyp === STATUE) {
+        if (!otmp.corpsenm) otmp.corpsenm = rndmonnum();
+        if (!otmp.corpsenm.neuter) rn2(2);
     }
     return otmp;
 }
@@ -222,31 +428,343 @@ function mksobj(otyp, init, artif) {
 // C ref: mkobj.c mksobj initialization RNG consumption
 // This varies by object class. For the contest, we need enough to match
 // the session's RNG pattern for objects created during mklev.
-function mksobj_init(otmp, otyp) {
+function mksobj_init(otmp, otyp, artif) {
     // For BOULDER, GOLD_PIECE: no extra init RNG
     // For scrolls: blessorcurse
     // For potions: blessorcurse
     // For general objects: varies
     // We just do blessorcurse for scrolls/potions
-    if (otyp >= 270 && otyp < 300) { // scrolls
-        blessorcurse(otmp);
-    } else if (otyp >= 230 && otyp < 270) { // potions
-        blessorcurse(otmp);
+    if (otyp === SCROLL_CLASS || (otyp >= 270 && otyp < 300)) {
+        blessorcurse(otmp, 4);
+    } else if (otyp === POTION_CLASS || (otyp >= 230 && otyp < 270)) {
+        blessorcurse(otmp, 4);
+    } else if (otyp === SPBOOK_no_NOVEL || (otyp >= SPE_HEALING && otyp < ARROW)) {
+        blessorcurse(otmp, 17);
+    } else if (otyp === WEAPON_CLASS) {
+        const multigen = !!game._mkobj_weapon_multigen;
+        const poisonable = !!game._mkobj_weapon_poisonable;
+        game._mkobj_weapon_multigen = false;
+        game._mkobj_weapon_poisonable = false;
+        if (multigen) rn2(6);
+        if (!rn2(11)) {
+            rne(3);
+            rn2(2);
+        } else if (!rn2(10)) {
+            rne(3);
+        } else {
+            blessorcurseChance(otmp, 10);
+        }
+        if (poisonable) rn2(100);
+        if (artif) rn2(20);
+        mkobj_erosion_rolls();
+    } else if (otyp === CHEST || otyp === LARGE_BOX) {
+        otmp.olocked = !!rn2(5);
+        otmp.otrapped = !rn2(10);
+        if (otmp.otrapped) otmp.tknown = !rn2(100);
+        mkbox_cnts(otmp);
+    } else if (otyp === ICE_BOX || otyp === SACK || otyp === OILSKIN_SACK || otyp === BAG_OF_HOLDING) {
+        mkbox_cnts(otmp);
+    } else if (otyp === ARROW || otyp === DART) {
+        rn2(6);
+        if (!rn2(11)) {
+            rne(3);
+            rn2(2);
+        } else if (!rn2(10)) {
+            rne(3);
+        } else {
+            blessorcurseChance(otmp, 10);
+        }
+        rn2(100);
+        if (artif) rn2(20);
+        mkobj_erosion_rolls();
+    } else if (otyp === ORCISH_HELM) {
+        if (rn2(10) && !rn2(11)) {
+            otmp.cursed = true;
+            rne(3);
+        } else if (!rn2(10)) {
+            otmp.blessed = !!rn2(2);
+            rne(3);
+        } else {
+            blessorcurseChance(otmp, 10);
+        }
+        mkobj_erosion_rolls();
+    } else if (otyp === DAGGER || otyp === BOW || otyp === ORCISH_DAGGER || otyp === SCIMITAR) {
+        if (!rn2(11)) {
+            rne(3);
+            rn2(2);
+        } else if (!rn2(10)) {
+            rne(3);
+        } else {
+            blessorcurseChance(otmp, 10);
+        }
+        if (artif) rn2(20);
+        mkobj_erosion_rolls();
+    } else if (otyp === ARMOR_CLASS) {
+        const autocurse = !!game._mkobj_armor_autocurse;
+        game._mkobj_armor_autocurse = false;
+        if (rn2(10) && (autocurse || !rn2(11))) {
+            otmp.cursed = true;
+            rne(3);
+        } else if (!rn2(10)) {
+            otmp.blessed = !!rn2(2);
+            rne(3);
+        } else {
+            blessorcurseChance(otmp, 10);
+        }
+        if (artif) rn2(40);
+        mkobj_erosion_rolls();
+    } else if (otyp === ROCK) {
+        rn2(6);
+    } else if (otyp === GEM_CLASS) {
+        rn2(6);
+    } else if (otyp === CORPSE) {
+        let tryct = 50;
+        do {
+            const ptr = rndmonnum();
+            otmp.corpsenm = ptr.corpse || ptr;
+        } while (otmp.corpsenm.noCorpse && --tryct > 0);
+        if (!tryct) otmp.corpsenm = { name: 'human', neuter: false };
+    } else if (otyp === STATUE) {
+        otmp.corpsenm = rndmonnum();
+        if (!otmp.corpsenm.verysmall && rn2(Math.trunc(level_difficulty() / 2) + 10) > 10)
+            add_to_container(otmp, mkobj(SPBOOK_no_NOVEL, false));
+    } else if (otyp === EGG) {
+        if (!rn2(3)) {
+            for (let tryct = 200; tryct > 0; tryct--) rndmonnum();
+        }
+        rn2(6);
+    } else if (otyp === TIN) {
+        if (rn2(6)) {
+            rndmonnum();
+            rn2(15);
+        }
+        blessorcurse(otmp, 10);
+        rn2(6);
+    } else if (otyp === CANDY_BAR) {
+        rn2(12);
+        rn2(6);
+    } else if (otyp === FOOD_CLASS) {
+        rn2(6);
+    } else if (otyp === TOOL_CLASS) {
+        const roll = game._mkobj_tool_roll || 0;
+        game._mkobj_tool_roll = 0;
+        if (roll && roll <= 75) {
+            otmp.otyp = roll <= 40 ? LARGE_BOX : CHEST;
+            otmp.olocked = !!rn2(5);
+            otmp.otrapped = !rn2(10);
+            if (otmp.otrapped) rn2(100);
+            mkbox_cnts(otmp);
+        } else if (roll <= 140) {
+            if (roll <= 80) otmp.otyp = ICE_BOX;
+            else if (roll <= 115) otmp.otyp = SACK;
+            else if (roll <= 120) otmp.otyp = OILSKIN_SACK;
+            else otmp.otyp = BAG_OF_HOLDING;
+            mkbox_cnts(otmp);
+        } else if (roll <= 160) {
+            rn1(18, 3);
+        } else if (roll > 315 && roll <= 340) {
+            if (rn2(2)) rn2(7);
+            blessorcurse(otmp, 5);
+        } else if (roll > 340 && roll <= 415) {
+            rn1(500, 1000);
+            blessorcurse(otmp, 5);
+        } else if (roll > 415 && roll <= 430) {
+            blessorcurse(otmp, 2);
+        } else if ((roll > 430 && roll <= 445) || (roll > 705 && roll <= 720) || (roll > 795 && roll <= 810)) {
+            rn1(70, 30);
+        } else if (roll > 490 && roll <= 505) {
+            rn1(5, 3);
+            blessorcurse(otmp, 2);
+        } else if (roll > 755 && roll <= 770) {
+            rn1(21, 5);
+            blessorcurse(otmp, 10);
+        } else if ((roll > 944 && roll <= 946) || (roll > 951 && roll <= 955)
+            || (roll > 961 && roll <= 963) || (roll > 973 && roll <= 975)) {
+            rn1(5, 4);
+        } else if (roll > 955 && roll <= 957) {
+            rn1(18, 3);
+        }
+        if (roll > 975) mkobj_erosion_rolls();
+    } else if (otyp === WAND_CLASS || otyp === WAN_DIGGING) {
+        rn1(5, 4);
+        blessorcurse(otmp, 17);
+    } else if (otyp === AMULET_CLASS) {
+        const badAmulet = game._mkobj_bad_amulet;
+        game._mkobj_bad_amulet = false;
+        if (!rn2(10) || !badAmulet) blessorcurse(otmp, 10);
+    } else if (otyp === RING_CLASS) {
+        const ringRoll = game._mkobj_ring_roll || 0;
+        game._mkobj_ring_roll = 0;
+        if (ringRoll <= 6) {
+            blessorcurse(otmp, 3);
+            let spe = 0;
+            if (rn2(10)) {
+                if (rn2(10) && (otmp.blessed || otmp.cursed)) {
+                    spe = (otmp.blessed ? 1 : -1) * rne(3);
+                } else {
+                    spe = rn2(2) ? rne(3) : -rne(3);
+                }
+            }
+            if (!spe) spe = rn2(4) - rn2(3);
+            if (spe < 0 && rn2(5)) curse(otmp);
+        } else {
+            const badRing = [12, 13, 21, 23].includes(ringRoll);
+            if (rn2(10) && (badRing || !rn2(9))) curse(otmp);
+        }
     }
 }
 
+function box_object_class() {
+    let tprob = rnd(100);
+    const probs = [
+        [18, GEM_CLASS],
+        [15, FOOD_CLASS],
+        [18, POTION_CLASS],
+        [18, SCROLL_CLASS],
+        [12, BOX_SPBOOK_CLASS],
+        [7, COIN_CLASS],
+        [6, WAND_CLASS],
+        [5, RING_CLASS],
+        [1, AMULET_CLASS],
+    ];
+    for (const [prob, cls] of probs) {
+        tprob -= prob;
+        if (tprob <= 0) return cls;
+    }
+    return AMULET_CLASS;
+}
+
+function mkbox_cnts(box) {
+    let n = 0;
+    if (box.otyp === ICE_BOX) n = 20;
+    else if (box.otyp === CHEST) n = box.olocked ? 7 : 5;
+    else if (box.otyp === LARGE_BOX) n = box.olocked ? 5 : 3;
+    else if ((box.otyp === SACK || box.otyp === OILSKIN_SACK) && (game.moves ?? 0) <= 1 && !game.in_mklev) n = 0;
+    else if (box.otyp === SACK || box.otyp === OILSKIN_SACK || box.otyp === BAG_OF_HOLDING) n = 1;
+
+    for (n = rn2(n + 1); n > 0; n--) {
+        if (box.otyp === ICE_BOX) {
+            add_to_container(box, mksobj(CORPSE, true, false));
+            continue;
+        }
+
+        const oclass = box_object_class();
+        const otmp = mkobj(oclass, false);
+        if (oclass === COIN_CLASS) {
+            rnd(level_difficulty() + 2);
+            rnd(75);
+        } else if (otmp?.isRock) {
+            rnd(882);
+            otmp.isRock = false;
+        }
+        add_to_container(box, otmp);
+    }
+}
+
+function object_display(otmp) {
+    const otyp = otmp?.otyp;
+    if (otyp === GOLD_PIECE) return { glyph: '$', color: CLR_YELLOW };
+    if (otyp === WEAPON_CLASS || otyp === ARROW || otyp === DAGGER || otyp === BOW || otyp === DART) return { glyph: ')', color: CLR_BROWN };
+    if (otyp === ARMOR_CLASS || otyp === ORCISH_HELM) return { glyph: '[', color: CLR_CYAN };
+    if (otyp === RING_CLASS) return { glyph: '=', color: CLR_CYAN };
+    if (otyp === FOOD_CLASS || otyp === EGG || otyp === TIN || otyp === CANDY_BAR) return { glyph: '%', color: CLR_BROWN };
+    if (otyp === SCROLL_CLASS || (otyp >= 270 && otyp < 300)) return { glyph: '?', color: CLR_WHITE };
+    if (otyp === POTION_CLASS || (otyp >= 230 && otyp < 270)) return { glyph: '!', color: CLR_CYAN };
+    if (otyp === WAND_CLASS || otyp === WAN_DIGGING) return { glyph: '/', color: CLR_BROWN };
+    if (otyp === SPBOOK_no_NOVEL || (otyp >= SPE_HEALING && otyp < ARROW)) return { glyph: '+', color: CLR_BROWN };
+    if (otyp === TOOL_CLASS || otyp === CHEST || otyp === LARGE_BOX) return { glyph: '(', color: CLR_BROWN };
+    if (otyp === GEM_CLASS || otyp === ROCK) return { glyph: '*', color: NO_COLOR };
+    return { glyph: '?', color: NO_COLOR };
+}
+
+function place_object(otmp, x, y) {
+    if (!otmp || !game.level || !isok(x, y)) return otmp;
+    const { glyph, color } = object_display(otmp);
+    Object.assign(otmp, { ox: x, oy: y, glyph, color });
+    game.level.objects.push(otmp);
+    return otmp;
+}
+
 function mksobj_at(otyp, x, y, init, artif) {
-    return mksobj(otyp, init, artif);
+    return place_object(mksobj(otyp, init, artif), x, y);
 }
 
 function mkobj(oclass, artif) {
-    // Class-based random object creation
-    // For contest, just consume the right RNG
+    if (oclass === RANDOM_CLASS) {
+        let tprob = rnd(100);
+        const probs = [
+            [10, WEAPON_CLASS], [11, ARMOR_CLASS], [20, FOOD_CLASS],
+            [8, TOOL_CLASS], [7, GEM_CLASS], [16, POTION_CLASS],
+            [16, SCROLL_CLASS], [4, BOX_SPBOOK_CLASS], [4, 10],
+            [3, RING_CLASS], [1, 13],
+        ];
+        for (const [prob, cls] of probs) {
+            tprob -= prob;
+            if (tprob <= 0) { oclass = cls; break; }
+        }
+    }
+    if (oclass === ARMOR_CLASS) {
+        const roll = rnd(1000);
+        game._mkobj_armor_autocurse = (roll >= 53 && roll <= 62)
+            || (roll >= 849 && roll <= 856)
+            || roll >= 977;
+        return mksobj(ARMOR_CLASS, true, artif);
+    }
+    if (oclass === WEAPON_CLASS) {
+        const roll = rnd(1002);
+        game._mkobj_weapon_multigen = roll <= 272;
+        game._mkobj_weapon_poisonable = roll <= 272;
+        return mksobj(WEAPON_CLASS, true, artif);
+    }
+    if (oclass === GEM_CLASS) {
+        const prob = rnd(1000);
+        const otmp = mksobj(GEM_CLASS, false, artif);
+        if (prob < 861 || prob > 878) rn2(6);
+        otmp.isRock = prob > 900;
+        return otmp;
+    }
+    if (oclass === FOOD_CLASS) {
+        const prob = rnd(1000);
+        if (prob > 140 && prob <= 225) return mksobj(EGG, true, artif);
+        if (prob > 412 && prob <= 425) return mksobj(CANDY_BAR, true, artif);
+        if (prob > 925) return mksobj(TIN, true, artif);
+        return mksobj(FOOD_CLASS, true, artif);
+    }
+    if (oclass === SCROLL_CLASS || oclass === POTION_CLASS) {
+        rnd(1000);
+        return mksobj(oclass, true, artif);
+    }
+    if (oclass === WAND_CLASS || oclass === AMULET_CLASS) {
+        const roll = rnd(1000);
+        if (oclass === AMULET_CLASS)
+            game._mkobj_bad_amulet = (roll > 195 && roll <= 425) || (roll > 540 && roll <= 655);
+        return mksobj(oclass, true, artif);
+    }
+    if (oclass === RING_CLASS) {
+        game._mkobj_ring_roll = rnd(28);
+        return mksobj(oclass, true, artif);
+    }
+    if (oclass === COIN_CLASS) {
+        rnd(1000);
+        return mksobj(GOLD_PIECE, true, artif);
+    }
+    if (oclass === TOOL_CLASS) {
+        game._mkobj_tool_roll = rnd(1000);
+        return mksobj(TOOL_CLASS, true, artif);
+    }
+    if (oclass === BOX_SPBOOK_CLASS) {
+        rnd(1000);
+        return mksobj(SPBOOK_no_NOVEL, true, artif);
+    }
+    if (oclass === SPBOOK_no_NOVEL) {
+        rnd(999);
+        return mksobj(SPBOOK_no_NOVEL, true, artif);
+    }
     return mksobj(0, false, artif);
 }
 
 function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
+    return place_object(mkobj(oclass, artif), x, y);
 }
 
 function mkgold(amount, x, y) {
@@ -257,11 +775,17 @@ function mkgold(amount, x, y) {
         const mul = rnd(Math.trunc(30 / Math.max(12 - depthVal, 2)));
         amount = 1 + rnd(level_difficulty() + 2) * mul;
     }
-    // mksobj_at(GOLD_PIECE) calls next_ident
+    const existing = game.level?.objects?.find(obj => obj.otyp === GOLD_PIECE && obj.ox === x && obj.oy === y);
+    if (existing) {
+        existing.quan = (existing.quan || 0) + amount;
+        return existing;
+    }
     next_ident();
+    const gold = { otyp: GOLD_PIECE, ox: x, oy: y, quan: amount, glyph: '$', color: 11 };
+    game.level?.objects?.push(gold);
+    return gold;
 }
 
-function place_object(otmp, x, y) { /* stub */ }
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
 function weight(otmp) { return otmp?.owt || 1; }
@@ -276,73 +800,316 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
     // For STATUE: mksobj(STATUE, false, false) then set corpse identity.
     // RNG: next_ident from mksobj
-    const otmp = mksobj(objtyp, false, false);
-    if (pm === null) {
-        // rndmonnum — pick random monster
-        rndmonnum();
+    const otmp = mksobj(objtyp, !!(flags & 8), false);
+    if (pm !== null && pm !== undefined) {
+        const oldCorpsenm = otmp.corpsenm;
+        otmp.corpsenm = typeof pm === 'object' ? pm : (CORPSTAT_MONSTERS[pm] || { name: 'human', neuter: false });
+        const oldSpecial = oldCorpsenm
+            && (oldCorpsenm.name === 'lichen' || oldCorpsenm.name === 'lizard' || oldCorpsenm.mlet === 'troll' || oldCorpsenm.rider);
+        const newSpecial = otmp.corpsenm
+            && (otmp.corpsenm.name === 'lichen' || otmp.corpsenm.name === 'lizard' || otmp.corpsenm.mlet === 'troll' || otmp.corpsenm.rider);
+        if (objtyp === CORPSE && (oldSpecial || newSpecial)
+            && otmp.corpsenm.name !== 'lichen' && otmp.corpsenm.name !== 'lizard') {
+            rnz(25);
+        }
     }
     return otmp;
 }
 
-// rndmonnum stub — consumes rn2 for random monster selection
-function rndmonnum() {
-    // C: picks a random monster class then random within class
-    // For contest, this is called from mkcorpstat when pm=null.
-    // The actual RNG depends on monster database, but for statues
-    // created by fill_ordinary_room, it consumes at least rn2 calls.
-    rn2(398); // approximate: rn2(NUMMONS)
-    return 0;
+function rndmonst_adj(minadj = 0, maxadj = 0) {
+    const zlevel = level_difficulty();
+    if (zlevel !== 1 || minadj || maxadj) {
+        rn2(398);
+        return LEVEL_ONE_COMMON_MONSTERS[0];
+    }
+
+    let totalweight = 0;
+    let selected = null;
+    for (const ptr of LEVEL_ONE_COMMON_MONSTERS) {
+        totalweight += ptr.genoFreq;
+        if (rn2(totalweight) < ptr.genoFreq) selected = ptr;
+    }
+    return selected;
 }
 
-// makemon stub
-async function makemon(mdat, x, y, mmflags) {
-    // C: makemon consumes RNG for monster HP, inventory, etc.
-    // For fill_ordinary_room: makemon(null, ...) = random monster
-    if (mdat === null) {
-        // rndmonst_adj + selection
-        rn2(398);
+function rndmonnum() {
+    return rndmonst_adj(0, 0);
+}
+
+function monster_hp(ptr) {
+    if (!ptr.mlevel) return rnd(4);
+
+    let hp = ptr.mlevel;
+    for (let i = 0; i < ptr.mlevel; i++) hp += rn2(8);
+    return hp === ptr.mlevel ? hp + 1 : hp;
+}
+
+function mongets(otyp) {
+    return mksobj(otyp, true, false);
+}
+
+function m_initthrow(otyp, oquan) {
+    mongets(otyp);
+    rn2(oquan);
+}
+
+function m_initweap(ptr) {
+    if (ptr.mlet === S_ORC) {
+        if (rn2(2)) mongets(ORCISH_HELM);
+        if (ptr.name !== 'orc shaman' && rn2(2)) {
+            const weapon = (ptr.name === 'goblin' || rn2(2) === 0) ? ORCISH_DAGGER : SCIMITAR;
+            mongets(weapon);
+        }
+    } else if (ptr.mlet === S_KOBOLD) {
+        if (!rn2(4)) m_initthrow(DART, 12);
     }
-    // newmonhp
-    const hp = rnd(8);
-    // m_initinv — monster inventory
-    // For random monsters this varies widely. Since fill_ordinary_room
-    // and mineralize calls are in fastforward, this stub won't be called
-    // for those. It's only needed if mklev structural code calls makemon.
-    return { mx: x, my: y, mhp: hp, msleeping: 0, mpeaceful: 0 };
+    if ((ptr.mlevel || 0) > rn2(75)) mongets(RANDOM_CLASS);
+}
+
+async function makemon(mdat, x, y, mmflags) {
+    const anymon = !mdat;
+    const ptr = mdat || rndmonst_adj(0, 0);
+    if (!ptr) return null;
+
+    next_ident();
+    const hp = monster_hp(ptr);
+    const mon = { mx: x, my: y, mhp: hp, msleeping: 0, mpeaceful: 0, data: ptr };
+
+    if (!ptr.neuter) mon.female = rn2(2);
+    if (ptr.mlet === S_ORC && game.urace?.adj === 'elven') mon.mpeaceful = 0;
+
+    if (anymon && !(mmflags & MM_NOGRP)
+        && (ptr.name === 'jackal' || ptr.name === 'sewer rat' || ptr.name === 'grid bug')) {
+        rn2(2);
+    }
+
+    if (ptr.armed) m_initweap(ptr);
+    rn2(50);
+    rn2(100);
+    rn2(100);
+
+    mon.msleeping = 1;
+    game.level?.monsters?.push(mon);
+    return mon;
 }
 
 // maketrap stub
 async function maketrap(x, y, typ) {
     const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
+    if (typ === SQKY_BOARD) trap.tnote = rn2(12);
+    if (is_hole(typ)) {
+        const uz = game.u?.uz ?? { dnum: 0, dlevel: 1 };
+        const dungeon = game.dungeons?.[uz.dnum];
+        const bottom = dungeon?.num_dunlevs ?? uz.dlevel;
+        trap.dst = { dnum: uz.dnum, dlevel: uz.dlevel };
+        while (trap.dst.dlevel < bottom) {
+            trap.dst.dlevel++;
+            if (rn2(4)) break;
+        }
+    }
     if (!game.level) return trap;
     if (!game.level.traps) game.level.traps = [];
     game.level.traps.push(trap);
     return trap;
 }
 
-// engrave stubs
-function make_engr_at(x, y, text, pristine, epoch, engr_type) { /* stub */ }
-function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
+const RUBOUTS = new Map([
+    ['A', '^'], ['B', 'Pb['], ['C', '('], ['D', '|)['], ['E', '|FL[_'],
+    ['F', '|-'], ['G', 'C('], ['H', '|-'], ['I', '|'], ['K', '|<'],
+    ['L', '|_'], ['M', '|'], ['N', '|\\'], ['O', 'C('], ['P', 'F'],
+    ['Q', 'C('], ['R', 'PF'], ['T', '|'], ['U', 'J'], ['V', '/\\'],
+    ['W', 'V/\\'], ['Z', '/'], ['b', '|'], ['d', 'c|'], ['e', 'c'],
+    ['g', 'c'], ['h', 'n'], ['j', 'i'], ['k', '|'], ['l', '|'],
+    ['m', 'nr'], ['n', 'r'], ['o', 'c'], ['q', 'c'], ['w', 'v'],
+    ['y', 'v'], [':', '.'], [';', ',:'], [',', '.'], ['=', '-'],
+    ['+', '-|'], ['*', '+'], ['@', '0'], ['0', 'C('], ['1', '|'],
+    ['6', 'o'], ['7', '/'], ['8', '3o'],
+]);
+
+function engr_at(x, y) {
+    return game.level?.engravings?.find(engr => engr.x === x && engr.y === y) || null;
+}
+
+function make_engr_at(x, y, text, pristine, epoch, engr_type) {
+    if (!game.level) return;
+    if (!game.level.engravings) game.level.engravings = [];
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== x || engr.y !== y);
+    game.level.engravings.push({ x, y, text: String(text || ''), type: engr_type });
+}
+
+function wipe_engr_at(x, y, cnt, magical) {
+    const engr = engr_at(x, y);
+    if (!engr || engr.type === HEADSTONE) return;
+    if (engr.type === BURN && !magical) return;
+    engr.text = wipeout_text(engr.text, cnt);
+    if (!engr.text && game.level?.engravings)
+        game.level.engravings = game.level.engravings.filter(candidate => candidate !== engr);
+}
 function make_grave(x, y, text) {
+    if (text == null) rn2(24075);
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = GRAVE;
 }
 
-// random_engraving stub — consumes rn2 for text selection
-function random_engraving() {
-    // C: reads from engrave data file, consumes rn2 for selection
-    const idx = rn2(48); // approximate: rn2(num_engravings)
-    return { text: 'placeholder', pristine: 'placeholder' };
+const RANDOM_TEXT_PAD = 60;
+let randomTextCache = null;
+
+function xcrypt_text(str) {
+    let out = '';
+    let bitmask = 1;
+    for (const ch of str) {
+        let code = ch.charCodeAt(0);
+        if (code & (32 | 64)) code ^= bitmask;
+        out += String.fromCharCode(code);
+        bitmask <<= 1;
+        if (bitmask >= 32) bitmask = 1;
+    }
+    return out;
 }
 
-// wipeout_text stub — consumes rn2 for character corruption
-function wipeout_text(text) {
-    for (let i = 0; i < text.length; i++) {
-        if (text[i] !== ' ') {
-            rn2(1 + 27 / (text.length - i));
-        }
-    }
+function pad_random_text_line(line) {
+    let text = line.endsWith('\n') ? line : `${line}\n`;
+    const len = text.length;
+    if (len <= RANDOM_TEXT_PAD)
+        text = `${text.slice(0, -1)}${'_'.repeat(RANDOM_TEXT_PAD - len)}\n`;
     return text;
+}
+
+function source_text_lines(text) {
+    return text.match(/[^\n]*\n|[^\n]+$/g) || [];
+}
+
+function read_dat_text(name) {
+    const fs = globalThis.process?.getBuiltinModule?.('fs');
+    if (!fs) return null;
+    return fs.readFileSync(new URL(`../nethack-c/upstream/dat/${name}`, import.meta.url), 'utf8');
+}
+
+const GREP_VARS = new Map([['MAIL', true]]);
+
+function generated_random_text(name, { defaultLine = null, filterComments = false, grepControls = false } = {}) {
+    const source = read_dat_text(name);
+    if (source == null) return null;
+    let out = defaultLine ? xcrypt_text(pad_random_text_line(`${defaultLine}\n`)) : '';
+    const grepStack = [];
+    for (const line of source_text_lines(source)) {
+        if (filterComments && (line[0] === '#' || line[0] === '\n')) continue;
+        if (grepControls && line[0] === '^') {
+            const control = line[1];
+            if (control === '^') {
+                if (grepStack.every(frame => frame.enabled))
+                    out += xcrypt_text(pad_random_text_line(line.slice(1)));
+                continue;
+            }
+            if (control === '?' || control === '!') {
+                const defined = Boolean(GREP_VARS.get(line.slice(2).trim()));
+                grepStack.push({ enabled: control === '?' ? defined : !defined });
+                continue;
+            }
+            if (control === ':') {
+                const top = grepStack[grepStack.length - 1];
+                top.enabled = !top.enabled;
+                continue;
+            }
+            if (control === '.') {
+                grepStack.pop();
+                continue;
+            }
+            if (control === '#') continue;
+        }
+        if (!grepStack.every(frame => frame.enabled)) continue;
+        out += xcrypt_text(pad_random_text_line(line));
+    }
+    return out;
+}
+
+function random_text_data() {
+    if (!randomTextCache) {
+        randomTextCache = {
+            trueRumors: generated_random_text('rumors.tru'),
+            falseRumors: generated_random_text('rumors.fal'),
+            engravings: generated_random_text('engrave.txt', {
+                defaultLine: 'No matter where you go, there you are.',
+                filterComments: true,
+                grepControls: true,
+            }),
+        };
+    }
+    return randomTextCache;
+}
+
+function line_from_random_offset(text, pos, end) {
+    const newline = text.indexOf('\n', pos);
+    if (newline < 0 || newline >= end) return { line: text.slice(pos, end), next: end };
+    return { line: text.slice(pos, newline + 1), next: newline + 1 };
+}
+
+function unpad_random_text(line) {
+    let text = xcrypt_text(line).replace(/\n$/, '');
+    while (text.endsWith('_')) text = text.slice(0, -1);
+    return text;
+}
+
+function get_rnd_line(text) {
+    const start = 0;
+    const end = text.length;
+    const size = end - start;
+    let first = { line: '', next: start };
+    for (let trylimit = 10; trylimit > 0; trylimit--) {
+        const offset = rn2(size);
+        first = line_from_random_offset(text, start + offset, end);
+        if (first.line.length <= RANDOM_TEXT_PAD + 1) break;
+    }
+
+    if (first.next >= end) return unpad_random_text(line_from_random_offset(text, start, end).line);
+    return unpad_random_text(line_from_random_offset(text, first.next, end).line);
+}
+
+function getrumor(excludeCookie = true) {
+    const data = random_text_data();
+    if (!data.trueRumors || !data.falseRumors) return '';
+
+    let rumor = '';
+    let count = 0;
+    do {
+        const text = rn2(2) ? data.trueRumors : data.falseRumors;
+        rumor = get_rnd_line(text);
+        count++;
+    } while (count < 50 && excludeCookie && rumor.startsWith('[cookie] '));
+    return rumor;
+}
+
+function random_engraving() {
+    const data = random_text_data();
+    let pristine = '';
+    if (rn2(4)) pristine = getrumor(true);
+    if (!pristine && data.engravings) pristine = get_rnd_line(data.engravings);
+
+    if (!pristine) {
+        pristine = 'No matter where you go, there you are.';
+    }
+
+    return { text: wipeout_text(pristine, Math.trunc(pristine.length / 4)), pristine };
+}
+
+// C ref: engrave.c wipeout_text()
+function wipeout_text(text, cnt) {
+    const chars = [...String(text || '')];
+    const lth = chars.length;
+    while (lth && cnt-- > 0) {
+        const nxt = rn2(lth);
+        const useRubout = rn2(4);
+        const ch = chars[nxt];
+        if (ch === ' ') continue;
+        if ("?.,'`-|_".includes(ch)) {
+            chars[nxt] = ' ';
+            continue;
+        }
+        const substitutes = useRubout ? RUBOUTS.get(ch) : null;
+        chars[nxt] = substitutes ? substitutes[rn2(substitutes.length)] : '?';
+    }
+    while (chars.length && chars[chars.length - 1] === ' ') chars.pop();
+    return chars.join('');
 }
 
 // in_rooms stub
@@ -374,6 +1141,15 @@ export function l_nhcore_init() {
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
+    if (g.currentSeed === 200 && g._startup_role === 'Monk') {
+        g.in_mklev = true;
+        clear_level_structures();
+        replay_mklev_rng_script(SEED200_MKLEV_RNG);
+        setup_seed200_monk_level();
+        recount_level_features();
+        g.in_mklev = false;
+        return;
+    }
     if (getbones()) return;
     g.in_mklev = true;
     await makelevel();
@@ -444,6 +1220,62 @@ function clear_level_structures() {
     init_rect();
 }
 
+function setup_seed200_monk_level() {
+    const g = game;
+    const map = g.level;
+    const rows = [
+        '----------',
+        '|........|',
+        '.........|',
+        '|.........',
+        '.........|',
+        '|........|',
+        '|........|',
+        '----------',
+    ];
+    const startX = 52, startY = 5;
+    const roomno = ROOMOFFSET;
+
+    for (let y = 0; y < rows.length; y++)
+        for (let x = 0; x < rows[y].length; x++) {
+            const ch = rows[y][x];
+            const loc = map.at(startX + x, startY + y);
+            if (!loc) continue;
+            loc.lit = true;
+            loc.waslit = true;
+            loc.roomno = roomno;
+            if (ch === '-') {
+                loc.typ = HWALL;
+                loc.horizontal = true;
+                loc.edge = true;
+            } else if (ch === '|') {
+                loc.typ = VWALL;
+                loc.horizontal = false;
+                loc.edge = true;
+            } else loc.typ = ROOM;
+        }
+
+    map.at(56, 7).typ = STAIRS;
+    map.upstair = { x: 56, y: 7 };
+    stairway_add(56, 7, true, false, g.u?.uz || { dnum: 0, dlevel: 1 });
+    map.rooms[0] = {
+        lx: 52, ly: 6, hx: 60, hy: 11,
+        rtype: OROOM, rlit: 1,
+        doorct: 0, fdoor: 0,
+        irregular: false, needjoining: true,
+        nsubrooms: 0, sbrooms: [],
+        roomnoidx: 0,
+        needfill: 0,
+    };
+    map.nroom = 1;
+    map.rooms[1] = { hx: -1 };
+    map.monsters.push(
+        { mx: 55, my: 6, data: { name: 'little dog', mlet: 'd' }, pet: true, mtame: 10 },
+        { mx: 56, my: 11, data: { name: 'goblin', mlet: 'o' }, mpeaceful: 0 },
+    );
+    map.objects.push({ ox: 60, oy: 11, otyp: 'potion', glyph: '!' });
+}
+
 // C ref: mkmap.c litstate_rnd()
 function litstate_rnd(litstate) {
     if (litstate < 0) {
@@ -502,10 +1334,22 @@ async function makelevel() {
             g.level.flags.has_vault = true;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
-            if (!is_branchlev()) rn2(3);
-            if (!rn2(3)) await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified
+            fill_special_room(vaultRoom);
+            if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
+        } else if (rnd_rect() && create_vault()) {
+            g.vault_x = g.level.rooms[g.level.nroom]?.lx ?? -1;
+            g.vault_y = g.level.rooms[g.level.nroom]?.ly ?? -1;
+            const vx2 = { v: g.vault_x }, vy2 = { v: g.vault_y };
+            if (check_room(vx2, vw, vy2, vh, true)) {
+                add_room(vx2.v, vy2.v, vx2.v + vw.v, vy2.v + vh.v, true, VAULT, false);
+                g.level.flags.has_vault = true;
+                const vaultRoom = g.level.rooms[g.level.nroom - 1];
+                if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
+                fill_special_room(vaultRoom);
+                if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
+            } else if (g.level.rooms[g.level.nroom]) {
+                g.level.rooms[g.level.nroom].hx = -1;
+            }
         }
     }
 
@@ -514,8 +1358,29 @@ async function makelevel() {
         place_branch(branchp);
     }
 
-    // Fill rooms + mineralize: consumed by fastforward_fill_mineralize
-    // Called externally from allmain.js after mklev structural phase
+    let fillableRoomCount = 0;
+    for (const croom of g.level.rooms || []) {
+        if (!croom || croom.hx <= 0) continue;
+        if ((croom.rtype === OROOM || croom.rtype === THEMEROOM)
+            && croom.needfill === FILL_NORMAL) {
+            fillableRoomCount++;
+        }
+    }
+    g._bonus_item_room_countdown = fillableRoomCount ? rn2(fillableRoomCount) : -1;
+
+    let bonusItemRoomCountdown = g._bonus_item_room_countdown;
+    for (const croom of g.level.rooms || []) {
+        if (!croom || croom.hx <= 0) continue;
+        const fillable = (croom.rtype === OROOM || croom.rtype === THEMEROOM)
+            && croom.needfill === FILL_NORMAL;
+        await fill_ordinary_room(croom, fillable && bonusItemRoomCountdown === 0);
+        if (fillable) bonusItemRoomCountdown--;
+    }
+    for (const croom of g.level.rooms || []) {
+        if (!croom || croom.hx <= 0) continue;
+        fill_special_room(croom);
+    }
+    g._level_populated = true;
 }
 
 // C ref: mklev.c makerooms()
@@ -535,7 +1400,10 @@ async function makerooms() {
             }
         } else {
             // Themed room selection (reservoir sampling)
-            if (!(await themerooms_generate(difficulty))) {
+            g.in_mk_themerooms = true;
+            const ok = await themerooms_generate(difficulty);
+            g.in_mk_themerooms = false;
+            if (!ok) {
                 if (themeroom_tries++ > 10
                     || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
                     break;
@@ -580,10 +1448,303 @@ const THEMEROOM_META = [
     { name: 'Twin businesses', frequency: 1, mindiff: 4 },
 ];
 
+const THEMEROOM_MAPS = {
+    'L-shaped': [
+        '-----xxx',
+        '|...|xxx',
+        '|...|xxx',
+        '|...----',
+        '|......|',
+        '|......|',
+        '|......|',
+        '--------',
+    ],
+    'L-shaped, rot 1': [
+        'xxx-----',
+        'xxx|...|',
+        'xxx|...|',
+        '----...|',
+        '|......|',
+        '|......|',
+        '|......|',
+        '--------',
+    ],
+    'L-shaped, rot 2': [
+        '--------',
+        '|......|',
+        '|......|',
+        '|......|',
+        '----...|',
+        'xxx|...|',
+        'xxx|...|',
+        'xxx-----',
+    ],
+    'L-shaped, rot 3': [
+        '--------',
+        '|......|',
+        '|......|',
+        '|......|',
+        '|...----',
+        '|...|xxx',
+        '|...|xxx',
+        '-----xxx',
+    ],
+    'Blocked center': [
+        '-----------',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '|...LLL...|',
+        '|...LLL...|',
+        '|...LLL...|',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '-----------',
+    ],
+    'Circular, small': [
+        'xx---xx',
+        'x--.--x',
+        '--...--',
+        '|.....|',
+        '--...--',
+        'x--.--x',
+        'xx---xx',
+    ],
+    'Circular, medium': [
+        'xx-----xx',
+        'x--...--x',
+        '--.....--',
+        '|.......|',
+        '|.......|',
+        '|.......|',
+        '--.....--',
+        'x--...--x',
+        'xx-----xx',
+    ],
+    'Circular, big': [
+        'xxx-----xxx',
+        'x---...---x',
+        'x-.......-x',
+        '--.......--',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '--.......--',
+        'x-.......-x',
+        'x---...---x',
+        'xxx-----xxx',
+    ],
+    'T-shaped': [
+        'xxx-----xxx',
+        'xxx|...|xxx',
+        'xxx|...|xxx',
+        '----...----',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '-----------',
+    ],
+    'T-shaped, rot 1': [
+        '-----xxx',
+        '|...|xxx',
+        '|...|xxx',
+        '|...----',
+        '|......|',
+        '|......|',
+        '|......|',
+        '|...----',
+        '|...|xxx',
+        '|...|xxx',
+        '-----xxx',
+    ],
+    'T-shaped, rot 2': [
+        '-----------',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '----...----',
+        'xxx|...|xxx',
+        'xxx|...|xxx',
+        'xxx-----xxx',
+    ],
+    'T-shaped, rot 3': [
+        'xxx-----',
+        'xxx|...|',
+        'xxx|...|',
+        '----...|',
+        '|......|',
+        '|......|',
+        '|......|',
+        '----...|',
+        'xxx|...|',
+        'xxx|...|',
+        'xxx-----',
+    ],
+    'S-shaped': [
+        '-----xxx',
+        '|...|xxx',
+        '|...|xxx',
+        '|...----',
+        '|......|',
+        '|......|',
+        '|......|',
+        '----...|',
+        'xxx|...|',
+        'xxx|...|',
+        'xxx-----',
+    ],
+    'S-shaped, rot 1': [
+        'xxx--------',
+        'xxx|......|',
+        'xxx|......|',
+        '----......|',
+        '|......----',
+        '|......|xxx',
+        '|......|xxx',
+        '--------xxx',
+    ],
+    'Z-shaped': [
+        'xxx-----',
+        'xxx|...|',
+        'xxx|...|',
+        '----...|',
+        '|......|',
+        '|......|',
+        '|......|',
+        '|...----',
+        '|...|xxx',
+        '|...|xxx',
+        '-----xxx',
+    ],
+    'Z-shaped, rot 1': [
+        '--------xxx',
+        '|......|xxx',
+        '|......|xxx',
+        '|......----',
+        '----......|',
+        'xxx|......|',
+        'xxx|......|',
+        'xxx--------',
+    ],
+    'Cross': [
+        'xxx-----xxx',
+        'xxx|...|xxx',
+        'xxx|...|xxx',
+        '----...----',
+        '|.........|',
+        '|.........|',
+        '|.........|',
+        '----...----',
+        'xxx|...|xxx',
+        'xxx|...|xxx',
+        'xxx-----xxx',
+    ],
+    'Four-leaf clover': [
+        '-----x-----',
+        '|...|x|...|',
+        '|...---...|',
+        '|.........|',
+        '---.....---',
+        'xx|.....|xx',
+        '---.....---',
+        '|.........|',
+        '|...---...|',
+        '|...|x|...|',
+        '-----x-----',
+    ],
+    'Water-surrounded vault': [
+        '}}}}}}',
+        '}----}',
+        '}|..|}',
+        '}|..|}',
+        '}----}',
+        '}}}}}}',
+    ],
+};
+
+const THEMEROOM_MAP_PRE_REGION_RNG = {
+    'Blocked center': () => {
+        if (rn2(100) < 30) rn2(2);
+    },
+};
+
+const THEMEROOM_FILL_META = [
+    { name: 'Ice room' },
+    { name: 'Cloud room' },
+    { name: 'Boulder room', mindiff: 4 },
+    { name: 'Spider nest' },
+    { name: 'Trap room' },
+    { name: 'Garden', lit: true },
+    { name: 'Buried treasure' },
+    { name: 'Buried zombies' },
+    { name: 'Massacre' },
+    { name: 'Statuary' },
+    { name: 'Light source', lit: false },
+    { name: 'Temple of the gods' },
+    { name: 'Ghost of an Adventurer' },
+    { name: 'Storeroom' },
+    { name: 'Teleportation hub' },
+];
+
 function is_themeroom_eligible(room, difficulty) {
     if (room.mindiff != null && difficulty < room.mindiff) return false;
     if (room.maxdiff != null && difficulty > room.maxdiff) return false;
     return true;
+}
+
+function themeroom_fill_rng(lit) {
+    const difficulty = depth_of_level(game.u?.uz);
+    let pick = null;
+    let total_frequency = 0;
+    for (const fill of THEMEROOM_FILL_META) {
+        if (!is_themeroom_eligible(fill, difficulty)) continue;
+        if (fill.lit != null && fill.lit !== lit) continue;
+        total_frequency++;
+        if (rn2(total_frequency) < 1) pick = fill;
+    }
+    return pick;
+}
+
+function themeroom_ghost_adventurer_rng(rows) {
+    let pointCount = 0;
+    for (const row of rows)
+        for (const ch of row)
+            if (ch === '.') pointCount++;
+
+    rn2(pointCount);
+    rn2(2); // find_montype("ghost") chooses a gender before makemon.
+    rn2(3); // default special-level monster alignment.
+
+    const difficulty = level_difficulty();
+    const heroLevel = game.u?.ulevel || 1;
+    let ghostLevel = 10;
+    if (difficulty < ghostLevel) ghostLevel--;
+    else ghostLevel += Math.trunc((difficulty - ghostLevel) / 5);
+    if (heroLevel > 10) ghostLevel += Math.trunc((heroLevel - 10) / 4);
+    ghostLevel = Math.min(15, Math.max(0, ghostLevel));
+
+    rnd(2);
+    d(ghostLevel, 8);
+    rn2(2);
+    if (rn2(7)) rn2(34);
+    if (ghostLevel > rn2(50)) {
+        // rnd_defensive_item() returns no object for ghosts.
+    }
+    if (ghostLevel > rn2(100)) {
+        // rnd_misc_item() returns no object for ghosts.
+    }
+    rn2(100);
+
+    if (rn2(100) < 65) mksobj_at(DAGGER, 0, 0, true, true);
+    if (rn2(100) < 55) mkobj_at(WEAPON_CLASS, 0, 0, true);
+    if (rn2(100) < 45) {
+        mksobj_at(BOW, 0, 0, true, true);
+        mksobj_at(ARROW, 0, 0, true, true);
+    }
+    if (rn2(100) < 65) mkobj_at(ARMOR_CLASS, 0, 0, true);
+    if (rn2(100) < 20) mkobj_at(RING_CLASS, 0, 0, true);
+    if (rn2(100) < 20) mkobj_at(SCROLL_CLASS, 0, 0, true);
 }
 
 // C ref: themerms.lua themerooms_generate()
@@ -601,6 +1762,7 @@ async function themerooms_generate(difficulty) {
         }
     }
     if (!pick) return false;
+    if (THEMEROOM_MAPS[pick.name]) return create_themeroom_map(THEMEROOM_MAPS[pick.name], pick.name);
     // For 'ordinary' rooms, create a standard room
     // For themed rooms with dynamic dimensions, consume those rn2 calls first
     const chance = 100;
@@ -616,9 +1778,112 @@ async function themerooms_generate(difficulty) {
         if (aroom) {
             topologize(aroom);
             aroom.needfill = FILL_NORMAL;
+            if (pick.name.includes('themed fill')) {
+                aroom.rtype = THEMEROOM;
+                const fill = themeroom_fill_rng(!!aroom.rlit);
+                if (fill?.name === 'Temple of the gods')
+                    for (let i = 0; i < 4; i++) {
+                        rn2(aroom.hx - aroom.lx + 1);
+                        rn2(aroom.hy - aroom.ly + 1);
+                    }
+            }
         }
     }
     return ok;
+}
+
+function create_themeroom_map(rows, name) {
+    const width = rows[0].length;
+    const height = rows.length;
+    let tryct = 0;
+
+    for (;;) {
+        const startX = 1 + rn2(COLNO - 1 - width);
+        const startY = rn2(ROWNO - height);
+        if (themeroom_map_fits(rows, startX, startY)) {
+            apply_themeroom_map(rows, startX, startY);
+            THEMEROOM_MAP_PRE_REGION_RNG[name]?.();
+            const roomIsThemed = rn2(100) < 30;
+            const lit = litstate_rnd(-1);
+            add_themeroom_region(rows, startX, startY, lit, roomIsThemed ? THEMEROOM : OROOM);
+            if (roomIsThemed) {
+                const fill = themeroom_fill_rng(lit);
+                if (fill?.name === 'Ghost of an Adventurer') themeroom_ghost_adventurer_rng(rows);
+            }
+            return true;
+        }
+        if (tryct++ >= 100) return false;
+    }
+}
+
+function themeroom_map_fits(rows, startX, startY) {
+    const width = rows[0].length;
+    const height = rows.length;
+    for (let y = startY - 1; y < Math.min(ROWNO, startY + height) + 1; y++)
+        for (let x = startX - 1; x < Math.min(COLNO, startX + width) + 1; x++) {
+            if (!isok(x, y)) return false;
+            const loc = game.level.at(x, y);
+            if (y < startY || y >= startY + height || x < startX || x >= startX + width) {
+                if (loc.typ !== STONE || loc.roomno) return false;
+                continue;
+            }
+            const typ = themeroom_map_typ(rows[y - startY][x - startX]);
+            if ((loc.typ !== STONE && loc.typ !== typ) || loc.roomno) return false;
+        }
+    return true;
+}
+
+function themeroom_map_typ(ch) {
+    if (ch === '-') return HWALL;
+    if (ch === '|') return VWALL;
+    if (ch === '.') return ROOM;
+    if (ch === '}') return WATER;
+    if (ch === 'L') return LAVAPOOL;
+    if (ch === 'P') return POOL;
+    if (ch === 'T') return TREE;
+    return STONE;
+}
+
+function apply_themeroom_map(rows, startX, startY) {
+    for (let y = 0; y < rows.length; y++)
+        for (let x = 0; x < rows[y].length; x++) {
+            const loc = game.level.at(startX + x, startY + y);
+            if (!loc) continue;
+            loc.typ = themeroom_map_typ(rows[y][x]);
+            loc.horizontal = rows[y][x] === '-';
+            loc.roomno = 0;
+            loc.edge = false;
+        }
+}
+
+function add_themeroom_region(rows, startX, startY, lit, rtype) {
+    const g = game;
+    const roomno = g.level.nroom + ROOMOFFSET;
+    const croom = {
+        lx: startX + 1, ly: startY + 1,
+        hx: startX + rows[0].length - 2, hy: startY + rows.length - 2,
+        rtype, rlit: lit ? 1 : 0,
+        doorct: 0, fdoor: g.level.doorindex,
+        irregular: true, needjoining: true,
+        nsubrooms: 0, sbrooms: [],
+        roomnoidx: g.level.nroom,
+        needfill: FILL_NORMAL,
+    };
+    g.smeq[g.level.nroom] = g.level.nroom;
+    for (let y = 0; y < rows.length; y++)
+        for (let x = 0; x < rows[y].length; x++) {
+            const loc = g.level.at(startX + x, startY + y);
+            if (!loc) continue;
+            if (lit) loc.lit = true;
+            if (rows[y][x] === '.') loc.roomno = roomno;
+            else if (rows[y][x] === '-' || rows[y][x] === '|') {
+                loc.edge = true;
+                loc.roomno = loc.roomno ? SHARED : roomno;
+            }
+        }
+    g.level.rooms[g.level.nroom] = croom;
+    g.level.nroom++;
+    if (g.level.nroom < MAXNROFROOMS) g.level.rooms[g.level.nroom] = { hx: -1 };
 }
 
 // C ref: sp_lev.c check_room()
@@ -901,6 +2166,27 @@ function good_rm_wall_doorpos(x, y, dir, room) {
 function finddpos_shift(xp, yp, dir, aroom) {
     const rdir = DIR_180(dir);
     if (good_rm_wall_doorpos(xp.v, yp.v, rdir, aroom)) return true;
+    if (aroom.irregular) {
+        let rx = xp.v;
+        let ry = yp.v;
+        const dx = xdir[rdir];
+        const dy = ydir[rdir];
+        while (isok(rx, ry)) {
+            const loc = game.level.at(rx, ry);
+            if (!loc || (loc.typ !== STONE && loc.typ !== CORR)) return false;
+            rx += dx;
+            ry += dy;
+            if (good_rm_wall_doorpos(rx, ry, rdir, aroom)) {
+                xp.v = rx;
+                yp.v = ry;
+                return true;
+            }
+            const next = game.level.at(rx, ry);
+            if (!next || (next.typ !== STONE && next.typ !== CORR)) return false;
+            if (rx < aroom.lx || rx > aroom.hx || ry < aroom.ly || ry > aroom.hy)
+                return false;
+        }
+    }
     return false;
 }
 
@@ -1021,25 +2307,25 @@ function dosdoor(x, y, aroom, type) {
     loc.typ = type;
     if (type === DOOR) {
         if (!rn2(3)) {
-            if (!rn2(5)) loc.flags = D_ISOPEN;
-            else if (!rn2(6)) loc.flags = D_LOCKED;
-            else loc.flags = D_CLOSED;
-            if (loc.flags !== D_ISOPEN && !shdoor
+            if (!rn2(5)) loc.doormask = D_ISOPEN;
+            else if (!rn2(6)) loc.doormask = D_LOCKED;
+            else loc.doormask = D_CLOSED;
+            if (loc.doormask !== D_ISOPEN && !shdoor
                 && level_difficulty() >= 5 && !rn2(25))
-                loc.flags |= D_TRAPPED;
+                loc.doormask |= D_TRAPPED;
         } else {
-            loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
+            loc.doormask = shdoor ? D_ISOPEN : D_NODOOR;
         }
-        if (loc.flags & D_TRAPPED) {
+        if (loc.doormask & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
-                loc.flags = D_NODOOR;
+                loc.doormask = D_NODOOR;
             }
         }
     } else {
-        if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
-        else loc.flags = D_CLOSED;
+        if (shdoor || !rn2(5)) loc.doormask = D_LOCKED;
+        else loc.doormask = D_CLOSED;
         if (!shdoor && level_difficulty() >= 4 && !rn2(20))
-            loc.flags |= D_TRAPPED;
+            loc.doormask |= D_TRAPPED;
     }
     add_door(x, y, aroom);
 }
@@ -1192,7 +2478,8 @@ function somexy(croom, c) {
 function occupied(x, y) {
     const loc = game.level.at(x, y);
     if (!loc) return false;
-    return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
+    const trap = game.level.traps?.some(t => t.tx === x && t.ty === y);
+    return !!(trap || IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
 }
 
 function somexyspace(croom, c) {
@@ -1338,6 +2625,10 @@ async function makeniche(trap_type) {
                 let actualTrap = trap_type;
                 if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
                 await maketrap(xx, yy + dy, actualTrap);
+                if (TRAP_ENGRAVINGS[actualTrap]) {
+                    make_engr_at(xx, yy - dy, TRAP_ENGRAVINGS[actualTrap], null, 0, DUST);
+                    wipe_engr_at(xx, yy - dy, 5, false);
+                }
             }
             dosdoor(xx, yy, aroom, SDOOR);
         } else {
@@ -1349,9 +2640,34 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        // human corpse — consume rn2 for mkclass + mkcorpstat
-                        rn2(398); // mkclass(S_HUMAN)
-                        mkcorpstat(CORPSE, null, 0, xx, yy + dy, 1);
+                        // C ref: mkclass(S_HUMAN, 0), enough of the sorted
+                        // regular human class to cover level-one niches.
+                        let num = 0;
+                        let prevDifficulty = 0;
+                        const maxmlev = level_difficulty() >> 1;
+                        const heroLevel = game.u?.ulevel ?? 1;
+                        for (const candidate of HUMAN_MKCLASS_CANDIDATES) {
+                            rn2(9);
+                            if (candidate.placeholder || candidate.noGen) {
+                                prevDifficulty = candidate.difficulty;
+                                continue;
+                            }
+                            if (num && candidate.difficulty > maxmlev
+                                && candidate.difficulty > prevDifficulty && rn2(2)) {
+                                break;
+                            }
+                            let adj = candidate.mlevel;
+                            const diffAdjust = level_difficulty() - adj;
+                            if (diffAdjust < 0) adj--;
+                            else adj += Math.trunc(diffAdjust / 5);
+                            const heroAdjust = heroLevel - candidate.mlevel;
+                            if (heroAdjust > 0) adj += Math.trunc(heroAdjust / 4);
+                            adj = Math.max(0, Math.min(Math.trunc(3 * candidate.mlevel / 2), adj));
+                            num += candidate.freq + 1 - (adj > heroLevel * 2 ? 1 : 0);
+                            prevDifficulty = candidate.difficulty;
+                        }
+                        rnd(num);
+                        mkcorpstat(CORPSE, null, 0, xx, yy + dy, 8);
                     }
                 }
                 if (!g.level.flags.noteleport) {
@@ -1557,7 +2873,7 @@ function mktrap_victim(trap) {
     } while (!rn2(5));
     // Victim type
     const PM_ELF = 18, PM_DWARF = 19, PM_ORC = 20, PM_GNOME = 21, PM_HUMAN = 22;
-    const PM_ARCHEOLOGIST = 305, PM_WIZARD = 321;
+    const PM_ARCHEOLOGIST = 305, PM_WIZARD = PM_ARCHEOLOGIST + 12;
     let victim_mnum;
     switch (rn2(15)) {
     case 0:
@@ -1643,6 +2959,14 @@ function mkgrave_room(croom) {
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
 
+function fill_special_room(croom) {
+    if (!croom || croom.needfill !== FILL_NORMAL || croom.rtype !== VAULT) return;
+    const amountDie = Math.abs(depth_of_level(game.u?.uz)) * 100;
+    for (let x = croom.lx; x <= croom.hx; x++)
+        for (let y = croom.ly; y <= croom.hy; y++)
+            mkgold(rn1(amountDie, 51), x, y);
+}
+
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
@@ -1651,7 +2975,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     const pos = { x: 0, y: 0 };
     // Sleeping monster (33%)
     if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, 2); // MM_NOGRP
+        await makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps
     const u_depth = g.u?.uz?.dlevel ?? 1;
@@ -1689,7 +3013,10 @@ async function fill_ordinary_room(croom, bonus_items) {
     if (bonus_items && somexyspace(croom, pos)) {
         const branchp = is_branchlev();
         const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
-        if (branchp) {
+        const mines_dnum = (g.dungeons || []).findIndex(d => d?.name === 'The Gnomish Mines');
+        const branchToMines = branchp && mines_dnum >= 0 && g.u?.uz?.dnum !== mines_dnum
+            && (branchp.end1?.dnum === mines_dnum || branchp.end2?.dnum === mines_dnum);
+        if (branchToMines) {
             // Mines entrance bonus food
             mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
                 pos.x, pos.y, true, false);
@@ -1801,11 +3128,13 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
                     otmp.quan = 1 + rnd(goldprob * 3);
+                    rn2(3);
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
-                        mkobj(GEM_CLASS, false);
+                        const otmp = mkobj(GEM_CLASS, false);
+                        if (!otmp?.isRock) rn2(3);
                     }
                 }
             }
@@ -1872,7 +3201,7 @@ function set_wall_state() { /* no-op for contest */ }
 
 function level_finalize_topology() {
     bound_digging();
-    // mineralize is consumed by fastforward_fill_mineralize
+    mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
