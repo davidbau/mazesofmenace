@@ -7,45 +7,9 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    FOUNTAIN, SINK, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './const.js';
-import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE, DEC_TO_UNICODE } from './terminal.js';
-import { roleRankForLevel } from './roles.js';
-
-const UNICODE_TO_DEC = Object.fromEntries(
-    Object.entries(DEC_TO_UNICODE).map(([k, v]) => [v, k])
-);
-
-function wireToDecSpans(s) {
-    let out = '';
-    let dec = false;
-    for (let i = 0; i < s.length; i++) {
-        const ch = s[i];
-        if (ch === '\x1b' && s[i + 1] === '[') {
-            if (dec) { out += '\x0f'; dec = false; }
-            const start = i;
-            i += 2;
-            while (i < s.length) {
-                const c = s.charCodeAt(i);
-                if (c >= 0x40 && c <= 0x7e) break;
-                i++;
-            }
-            out += s.slice(start, i + 1);
-            continue;
-        }
-        const decCh = UNICODE_TO_DEC[ch];
-        if (decCh) {
-            if (!dec) { out += '\x0e'; dec = true; }
-            out += decCh;
-        } else {
-            if (dec) { out += '\x0f'; dec = false; }
-            out += ch;
-        }
-    }
-    if (dec) out += '\x0f';
-    return out;
-}
+import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, DEC_TO_UNICODE } from './terminal.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -98,10 +62,6 @@ function terrain_glyph(loc, x, y) {
     case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
     case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
     case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
-    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
-    case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
-    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
-    case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -131,27 +91,13 @@ export function newsym(x, y) {
     }
 
     // Contestants: add monster, object, and trap display here.
-    let tg = terrain_glyph(loc, x, y);
 
-    const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
-    const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
-    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
-
-    let draw_ch = tg.ch;
-    let draw_color = tg.color;
-    let draw_dec = tg.dec;
-
-    if (mon) {
-        draw_ch = mon.ch; draw_color = mon.color; draw_dec = false;
-    } else if (obj) {
-        draw_ch = obj.ch; draw_color = obj.color; draw_dec = false;
-    }
-
+    const tg = terrain_glyph(loc, x, y);
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
-        show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
+        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
         if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
+            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
         }
     } else if (loc.remembered_glyph) {
         // Out of sight but remembered — show remembered glyph
@@ -238,13 +184,9 @@ function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.plname || 'Hero';
-    const role = roleRankForLevel(game.urole, u.ulevel || 1, !!game.flags?.female)
-        || (game.flags?.female
-            ? (game.urole?.rank?.f || game.urole?.name?.f || game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer')
-            : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer'));
+    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
     const title = `${name} the ${role}`;
-    const attrs = u.acurr?.a || [];
-    const stats = `St:${attrs[0] || '?'} Dx:${attrs[3] || '?'} Co:${attrs[4] || '?'} In:${attrs[1] || '?'} Wi:${attrs[2] || '?'} Ch:${attrs[5] || '?'}`;
+    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column
@@ -256,46 +198,44 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    const xp = game.flags?.showexp
-        ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
-        : `Xp:${u.ulevel || 1}`;
-    const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
+    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}/${u.uexp || 0} T:${game.moves || 1}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
-    const term = display?.terminal || display;
-    if (term?.serialize) return wireToDecSpans(term.serialize());
-    return '';
+    let output = '';
+    let lastRow = 0;
+    for (let r = 0; r < display.rows; r++) {
+        for (let c = 0; c < display.cols; c++) {
+            if (display.grid[r][c].ch !== ' ') { lastRow = r; break; }
+        }
+    }
+    for (let r = 0; r <= lastRow; r++) {
+        let lastCol = -1;
+        for (let c = display.cols - 1; c >= 0; c--) {
+            if (display.grid[r][c].ch !== ' ') { lastCol = c; break; }
+        }
+        if (lastCol < 0) { if (r < lastRow) output += '\n'; continue; }
+        let firstCol = 0;
+        for (let c = 0; c <= lastCol; c++) {
+            if (display.grid[r][c].ch !== ' ') { firstCol = c; break; }
+        }
+        if (firstCol > 4) output += `\x1b[${firstCol}C`;
+        else if (firstCol > 0) output += ' '.repeat(firstCol);
+        for (let c = firstCol; c <= lastCol; c++) output += display.grid[r][c].ch;
+        if (r < lastRow) output += '\n';
+    }
+    return output;
 }
-
-import { decodeScreen } from '../frozen/screen-decode.mjs';
 
 // ── Build screen output ──
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
 
-    if (game._override_screen) {
-        const decoded = decodeScreen(game._override_screen);
-        if (display.clearScreen) display.clearScreen();
-        for (let r = 0; r < 24; r++) {
-            for (let c = 0; c < 80; c++) {
-                if (decoded[r] && decoded[r][c]) {
-                    display.setCell(c, r, decoded[r][c].ch, decoded[r][c].color, decoded[r][c].attr);
-                }
-            }
-        }
-        if (game._override_cursor && display.setCursor) {
-            display.setCursor(game._override_cursor[0], game._override_cursor[1]);
-        }
-        return;
-    }
-
     let output = '';
     // Row 0: message
-    output += (game._pending_message || '') + (game._more ? '--More--' : '') + '\n';
+    output += (game._pending_message || '') + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
@@ -312,7 +252,7 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = (game._pending_message || '') + (game._more ? '--More--' : '');
+        const msg = game._pending_message || '';
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
@@ -333,9 +273,7 @@ function _buildScreenOutput() {
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
         // Cursor at hero
-        if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
-        else if (msg && game._more) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
-        else if (game.u?.ux > 0)
+        if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
     }
 }
@@ -360,10 +298,4 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
-}
-
-export function clear_pending_message() {
-    game._pending_message = '';
-    game._more = false;
-    game._prompt_cursor = null;
 }
