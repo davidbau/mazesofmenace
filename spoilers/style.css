@@ -384,12 +384,9 @@ body { position: relative; }
      top-right, bottom-left). The diagonal hypotenuse is the
      fold-line. */
   clip-path: polygon(0 0, 100% 0, 0 100%);
-  /* Slightly darker/warmer parchment for the underside of the
-     fold, with a soft inner shadow along the fold line.
-     Linear gradient runs perpendicular to the fold (135deg) so
-     the underside is darker near the fold edge — that's where
-     the curl would catch shadow. */
-  background: #6e5021;
+  /* Burgundy underside of the fold, matching the accent color
+     used for highlights throughout the document. */
+  background: var(--color-accent);
   box-shadow:
     /* fold's drop shadow onto the page below it */
     0.15em 0.15em 0.6em rgba(40, 25, 8, 0.35);

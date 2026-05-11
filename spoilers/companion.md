@@ -1523,11 +1523,15 @@ to zero. This means a high-level character with many hit points
 can survive a touch that would have been instantly fatal in older
 editions.
 
-**Defenses:** Magic resistance blocks the instadeath component of
-the touch of death and the wand/spell, but in current editions you
-still take damage and max HP drain even with magic resistance.
-Death himself (the Rider) is a special case and ignores magic
-resistance entirely. An amulet of life saving will revive you once.
+**Defenses:** Magic resistance fully blocks the *spell* version of
+touch of death cast by demons or liches (the cast is gated by
+`!Antimagic`), and it also blocks the full 8d6+50 hit on Death the
+Rider's most-dangerous rolls (rolls 17-19 of 20). On Death's more
+common rolls (5-16 of 20, ~60%) you still take a permdmg life-drain
+even with magic resistance — so MR substantially mitigates Death's
+touch but doesn't fully neutralize it. An amulet of life saving will
+revive you once. The wand and Finger of Death spell, like the spell
+version, are blocked by MR.
 
 #### Starvation
 
@@ -3071,9 +3075,11 @@ of these—the weight is negligible and the utility is constant.
 
 **Oil lamps** and **candles** light dark corridors, which is
 pleasant but not essential. The real prize is the **magic lamp**:
-rub it while blessed and there's an 80% chance a djinni emerges
-and grants you a wish. Never, ever use a magic lamp for light.
-That's like using a winning lottery ticket as a bookmark.
+rub it while blessed and there's a 1-in-3 chance the djinni emerges,
+and *if* it does there's an 80% chance it grants you a wish (so
+~27% wish per rub overall). Try again on the same lamp until the
+djinni shows. Never, ever use a magic lamp for light. That's like
+using a winning lottery ticket as a bookmark.
 
 The **Candelabrum of Invocation** is a unique candelabra found in
 Vlad's Tower. It's one of three items needed for the invocation
@@ -3148,10 +3154,11 @@ spellbook's paper survives but the writing fades.
 The big-ticket writes for an ascension kit are scrolls of
 **genocide** (three of these wipe the worst dangerous monster
 letters — L, &, h — out of the game), **charging** (a blessed one
-gives a wand of wishing two more wishes, ~16 charges very well
-spent), and **enchant weapon / enchant armor** for the +7 ascension
-kit. A well-used marker can produce a meaningful share of your
-ascension kit.
+restores one additional wish to an empty wand of wishing — ~16
+charges very well spent — though a second charging attempt always
+explodes the wand), and **enchant weapon / enchant armor** for the
++7 ascension kit. A well-used marker can produce a meaningful share
+of your ascension kit.
 
 ---
 
@@ -3630,11 +3637,15 @@ travelers realize:
 <!-- src/allmain.c: u.uhave.amulet && !u.uevent.amulet_wish -->
 - **The Amulet of Yendor:** Grants a wish when you first pick
   it up. A reward for reaching the bottom of the dungeon.
-- **Magic lamp:** Rub a blessed lamp for an 80% chance of a wish.
-  Either a magic lamp or a magic marker is guaranteed in
-  Orcus-town.
-- **Fountain:** ~1 in 30 chance of a wish per quaff. Far more
-  likely to produce snakes.
+- **Magic lamp:** Rubbing a blessed lamp summons the djinni 1-in-3
+  times; *if* it appears, it grants a wish 80% of the time — so
+  roughly 27% wish per rub. Keep rubbing. Either a magic lamp or a
+  magic marker is guaranteed in Orcus-town.
+- **Fountain:** roughly 1 in 30 quaffs summons a water demon, and
+  *that* demon grants a wish only about 1-in-5 times on shallow
+  floors (less on deeper ones) — so a true wish chance closer to
+  1 in 150 per quaff. Far more likely to produce snakes, nymphs,
+  curses, or vomiting.
 - **Throne:** Very rare chance of a wish when sitting. Also a very
   real chance of everything going wrong.
 - **Djinni from smoky potion:** Rare (1 in 13 base probability),
