@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-05-11T20:48:02.166Z",
+  "timestamp": "2026-05-11T22:36:13.930Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "serteal",
       "fork": "serteal/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-05-11T20:47:05.626Z",
+      "lastScored": "2026-05-11T22:35:15.871Z",
       "public": {
         "points": 11405,
         "maxPoints": 11405,
@@ -352,6 +352,12 @@
         },
         {
           "ts": "2026-05-11T20:47:05.626Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-05-11T22:35:15.871Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -1245,7 +1251,7 @@
       "name": "xeophon",
       "fork": "xeophon/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-05-11T20:43:46.869Z",
+      "lastScored": "2026-05-11T22:31:56.669Z",
       "public": {
         "points": 11272,
         "maxPoints": 11405,
@@ -1432,6 +1438,12 @@
           "points": 11272,
           "maxPoints": 11405,
           "passing": 30
+        },
+        {
+          "ts": "2026-05-11T22:31:56.669Z",
+          "points": 11272,
+          "maxPoints": 11405,
+          "passing": 30
         }
       ],
       "sessions": [
@@ -1467,7 +1479,7 @@
             "total": 409
           },
           "screen": {
-            "matched": 405,
+            "matched": 407,
             "total": 409
           },
           "animFrames": {
@@ -1687,7 +1699,7 @@
             "total": 1953
           },
           "screen": {
-            "matched": 1865,
+            "matched": 1862,
             "total": 1953
           },
           "animFrames": {
@@ -1987,7 +1999,7 @@
             "total": 324
           },
           "screen": {
-            "matched": 321,
+            "matched": 323,
             "total": 324
           },
           "animFrames": {
@@ -2027,7 +2039,7 @@
             "total": 219
           },
           "screen": {
-            "matched": 218,
+            "matched": 217,
             "total": 219
           },
           "animFrames": {
@@ -2322,7 +2334,7 @@
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
       "category": "none",
-      "lastScored": "2026-05-11T20:48:02.056Z",
+      "lastScored": "2026-05-11T22:36:13.821Z",
       "public": {
         "points": 617,
         "maxPoints": 11405,
@@ -2814,6 +2826,12 @@
         },
         {
           "ts": "2026-05-11T20:48:02.056Z",
+          "points": 617,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:36:13.821Z",
           "points": 617,
           "maxPoints": 11405,
           "passing": 0
@@ -3707,7 +3725,7 @@
       "name": "jburnhams",
       "fork": "jburnhams/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-05-11T20:44:07.103Z",
+      "lastScored": "2026-05-11T22:32:17.051Z",
       "public": {
         "points": 88,
         "maxPoints": 11405,
@@ -3909,6 +3927,12 @@
         },
         {
           "ts": "2026-05-11T20:44:07.103Z",
+          "points": 88,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:32:17.051Z",
           "points": 88,
           "maxPoints": 11405,
           "passing": 0
@@ -4802,7 +4826,7 @@
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-05-11T20:47:41.134Z",
+      "lastScored": "2026-05-11T22:35:52.623Z",
       "public": {
         "points": 86,
         "maxPoints": 11405,
@@ -5294,6 +5318,12 @@
         },
         {
           "ts": "2026-05-11T20:47:41.134Z",
+          "points": 86,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:35:52.623Z",
           "points": 86,
           "maxPoints": 11405,
           "passing": 0
@@ -6187,14 +6217,14 @@
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-05-11T20:39:28.373Z",
+      "lastScored": "2026-05-11T22:27:37.643Z",
       "public": {
         "points": 50,
         "maxPoints": 11405,
         "passing": 0,
         "total": 44,
-        "rngPct": 7.581119976590426,
-        "rngStepsPct": 63.41955282770715,
+        "rngPct": 8.377499564854359,
+        "rngStepsPct": 63.46339324857519,
         "screenPct": 0.4384042086804033
       },
       "heldOut": {
@@ -6202,8 +6232,8 @@
         "maxPoints": 11265,
         "passing": 0,
         "total": 44,
-        "rngPct": 6.662502676850596,
-        "rngStepsPct": 70.74902378416755,
+        "rngPct": 6.6590525138601375,
+        "rngStepsPct": 70.74014909478169,
         "screenPct": 0
       },
       "history": [
@@ -6368,6 +6398,12 @@
           "points": 50,
           "maxPoints": 11405,
           "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:27:37.643Z",
+          "points": 50,
+          "maxPoints": 11405,
+          "passing": 0
         }
       ],
       "sessions": [
@@ -6375,7 +6411,7 @@
           "name": "seed0002-healer-reflection-drummer.session.json",
           "passed": false,
           "rng": {
-            "matched": 1317,
+            "matched": 1314,
             "total": 27158
           },
           "rngSteps": {
@@ -6395,7 +6431,7 @@
           "name": "seed0004-feeding-pony.session.json",
           "passed": false,
           "rng": {
-            "matched": 194,
+            "matched": 207,
             "total": 12084
           },
           "rngSteps": {
@@ -6415,7 +6451,7 @@
           "name": "seed0006-wizard-water-demon.session.json",
           "passed": false,
           "rng": {
-            "matched": 93,
+            "matched": 90,
             "total": 6736
           },
           "rngSteps": {
@@ -6435,7 +6471,7 @@
           "name": "seed0007-rogue-snake-swamp.session.json",
           "passed": false,
           "rng": {
-            "matched": 211,
+            "matched": 214,
             "total": 16373
           },
           "rngSteps": {
@@ -6455,7 +6491,7 @@
           "name": "seed0009-swimmer-mforce.session.json",
           "passed": false,
           "rng": {
-            "matched": 133,
+            "matched": 134,
             "total": 3713
           },
           "rngSteps": {
@@ -6475,7 +6511,7 @@
           "name": "seed0012-monk-vault-escort.session.json",
           "passed": false,
           "rng": {
-            "matched": 531,
+            "matched": 529,
             "total": 13878
           },
           "rngSteps": {
@@ -6535,7 +6571,7 @@
           "name": "seed0014-dequa-fountain-explore.session.json",
           "passed": false,
           "rng": {
-            "matched": 228,
+            "matched": 240,
             "total": 59178
           },
           "rngSteps": {
@@ -6615,7 +6651,7 @@
           "name": "seed0030-ten-diverse-deaths.session.json",
           "passed": false,
           "rng": {
-            "matched": 5367,
+            "matched": 5417,
             "total": 105529
           },
           "rngSteps": {
@@ -6635,7 +6671,7 @@
           "name": "seed0060-orc-rogue-kick-search.session.json",
           "passed": false,
           "rng": {
-            "matched": 1053,
+            "matched": 1052,
             "total": 3626
           },
           "rngSteps": {
@@ -6655,7 +6691,7 @@
           "name": "seed0077-rogue-chargen.session.json",
           "passed": false,
           "rng": {
-            "matched": 103,
+            "matched": 96,
             "total": 3242
           },
           "rngSteps": {
@@ -6695,7 +6731,7 @@
           "name": "seed0102-ranger-name-cancel.session.json",
           "passed": false,
           "rng": {
-            "matched": 1303,
+            "matched": 1308,
             "total": 4485
           },
           "rngSteps": {
@@ -6795,7 +6831,7 @@
           "name": "seed0107-samurai-twoweapon-enhance.session.json",
           "passed": false,
           "rng": {
-            "matched": 2582,
+            "matched": 2581,
             "total": 2902
           },
           "rngSteps": {
@@ -6835,7 +6871,7 @@
           "name": "seed0116-wizard-wear-shop.session.json",
           "passed": false,
           "rng": {
-            "matched": 5713,
+            "matched": 5650,
             "total": 12562
           },
           "rngSteps": {
@@ -6855,7 +6891,7 @@
           "name": "seed0200-monk-north-search.session.json",
           "passed": false,
           "rng": {
-            "matched": 427,
+            "matched": 426,
             "total": 3822
           },
           "rngSteps": {
@@ -6875,7 +6911,7 @@
           "name": "seed0360-wizard-world-tour.session.json",
           "passed": false,
           "rng": {
-            "matched": 2714,
+            "matched": 2718,
             "total": 120639
           },
           "rngSteps": {
@@ -6895,7 +6931,7 @@
           "name": "seed0361-archeologist-tour.session.json",
           "passed": false,
           "rng": {
-            "matched": 363,
+            "matched": 377,
             "total": 53865
           },
           "rngSteps": {
@@ -6915,7 +6951,7 @@
           "name": "seed0367-priest-quest-tour.session.json",
           "passed": false,
           "rng": {
-            "matched": 404,
+            "matched": 449,
             "total": 50125
           },
           "rngSteps": {
@@ -6935,7 +6971,7 @@
           "name": "seed0373-barbarian-quest-tour.session.json",
           "passed": false,
           "rng": {
-            "matched": 2271,
+            "matched": 2264,
             "total": 35386
           },
           "rngSteps": {
@@ -6955,11 +6991,11 @@
           "name": "seed0383-wizard-hallucinate.session.json",
           "passed": false,
           "rng": {
-            "matched": 5788,
+            "matched": 9889,
             "total": 16915
           },
           "rngSteps": {
-            "matched": 186,
+            "matched": 191,
             "total": 219
           },
           "screen": {
@@ -6995,7 +7031,7 @@
           "name": "seed0399-wizard-hallu-actions.session.json",
           "passed": false,
           "rng": {
-            "matched": 694,
+            "matched": 690,
             "total": 11409
           },
           "rngSteps": {
@@ -7035,7 +7071,7 @@
           "name": "seed0700-samurai-explore-descend.session.json",
           "passed": false,
           "rng": {
-            "matched": 1738,
+            "matched": 1732,
             "total": 3230
           },
           "rngSteps": {
@@ -7095,7 +7131,7 @@
           "name": "seed1500-rogue-explore-move.session.json",
           "passed": false,
           "rng": {
-            "matched": 1126,
+            "matched": 2222,
             "total": 2768
           },
           "rngSteps": {
@@ -7115,7 +7151,7 @@
           "name": "seed1800-tourist-eat-throw.session.json",
           "passed": false,
           "rng": {
-            "matched": 883,
+            "matched": 2006,
             "total": 2458
           },
           "rngSteps": {
@@ -7135,7 +7171,7 @@
           "name": "seed2200-wizard-quaff-zap-read.session.json",
           "passed": false,
           "rng": {
-            "matched": 2461,
+            "matched": 2451,
             "total": 3018
           },
           "rngSteps": {
@@ -7155,7 +7191,7 @@
           "name": "seed2600-wizard-custom-binds.session.json",
           "passed": false,
           "rng": {
-            "matched": 1310,
+            "matched": 1308,
             "total": 11647
           },
           "rngSteps": {
@@ -7175,7 +7211,7 @@
           "name": "seed4500-knight-coverage.session.json",
           "passed": false,
           "rng": {
-            "matched": 1724,
+            "matched": 1685,
             "total": 108275
           },
           "rngSteps": {
@@ -7195,7 +7231,7 @@
           "name": "seed5002-wizard-coverage-pair.session.json",
           "passed": false,
           "rng": {
-            "matched": 551,
+            "matched": 545,
             "total": 12167
           },
           "rngSteps": {
@@ -7215,7 +7251,7 @@
           "name": "seed5006-tourist-stress-disaster.session.json",
           "passed": false,
           "rng": {
-            "matched": 2348,
+            "matched": 2350,
             "total": 13923
           },
           "rngSteps": {
@@ -7258,7 +7294,7 @@
       "name": "holonicbio",
       "fork": "holonicbio/teleport-contest",
       "category": "none",
-      "lastScored": "2026-05-11T20:44:24.864Z",
+      "lastScored": "2026-05-11T22:32:35.046Z",
       "public": {
         "points": 15,
         "maxPoints": 11405,
@@ -7514,6 +7550,12 @@
         },
         {
           "ts": "2026-05-11T20:44:24.864Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:32:35.046Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -8407,7 +8449,7 @@
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-05-11T20:47:23.228Z",
+      "lastScored": "2026-05-11T22:35:33.869Z",
       "public": {
         "points": 15,
         "maxPoints": 11405,
@@ -8789,6 +8831,12 @@
         },
         {
           "ts": "2026-05-11T20:47:23.228Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-05-11T22:35:33.869Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0

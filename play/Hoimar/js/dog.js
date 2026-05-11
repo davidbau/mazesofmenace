@@ -5,17 +5,29 @@ import { game } from './gstate.js';
 import { enexto_core, makemon } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
 import {
-    APPORT, DOGFOOD, MANFOOD, TABU, UNDEF,
+    ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, TABU, UNDEF,
     D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
-    IS_ROOM, MM_EDOG, NO_MINVENT, SPACE_POS,
+    IS_LAVA, IS_POOL, IS_ROOM, MM_EDOG, NO_MINVENT, SPACE_POS,
     isok,
 } from './const.js';
 import { rn2 } from './rng.js';
+import { clear_path } from './vision.js';
 
 const FOOD_CLASS = 7;
 const ROCK_CLASS = 14;
+const TRIPE_RATION = 264;
 const BOULDER = 475;
 const CORPSE = 265;
+const EGG = 266;
+const MEATBALL = 267;
+const MEAT_STICK = 268;
+const ENORMOUS_MEATBALL = 269;
+const GLOB_OF_GREEN_SLIME = 273;
+const BANANA = 281;
+const CARROT = 282;
+const CLOVE_OF_GARLIC = 284;
+const SLIME_MOLD = 285;
+const TIN = 296;
 const BELL_OF_OPENING = 263;
 const CANDELABRUM_OF_INVOCATION = 262;
 
@@ -95,7 +107,10 @@ export async function makedog() {
 }
 
 function hero_charisma() {
-    return Math.max(1, game.u?.acurr?.a?.[5] ?? 10);
+    const cha = game.u?.acurr?.a?.[5] ?? 0;
+    if (cha <= 3) return 3;
+    if (cha >= 25) return 25;
+    return cha;
 }
 
 function init_edog(mon) {
@@ -113,7 +128,9 @@ function init_edog(mon) {
 }
 
 export function pet_arrive_with_you() {
-    let pet = game.pet_type || configuredPetType();
+    const migrating = game._migrating_pet || null;
+    game._migrating_pet = null;
+    let pet = migrating?.data || game.pet_type || configuredPetType();
     if (!pet) return null;
     game.pet_type = pet;
 
@@ -132,16 +149,17 @@ export function pet_arrive_with_you() {
     const ch = pet === PM_KITTEN ? 'f' : pet === PM_PONY ? 'u' : 'd';
     const mon = {
         mx: x, my: y,
-        ch,
-        color: 15,
+        ch: migrating?.ch || ch,
+        color: migrating?.color ?? 15,
         data: { ...pet },
-        mhp: 1,
-        female: false,
-        msleeping: 0,
-        mpeaceful: 1,
-        mtame: 10,
-        movement: 12,
+        mhp: migrating?.mhp ?? 1,
+        female: migrating?.female ?? false,
+        msleeping: migrating?.msleeping ?? 0,
+        mpeaceful: migrating?.mpeaceful ?? 1,
+        mtame: migrating?.mtame ?? 10,
+        movement: migrating?.movement ?? 0,
     };
+    if (migrating?.edog) mon.edog = { ...migrating.edog };
     init_edog(mon);
     if (game.level?.monsters) game.level.monsters.unshift(mon);
     return mon;
@@ -189,17 +207,50 @@ function obj_resists(obj, ochance, achance) {
     return chance < (obj.oartifact ? achance : ochance);
 }
 
+function pet_diet(mtmp) {
+    if (mtmp.data?.mlet === 'S_UNICORN') return { carni: false, herbi: true };
+    return { carni: true, herbi: false };
+}
+
 function dogfood(mtmp, obj) {
     // C ref: dog.c:dogfood().  The object-resistance check is deliberately
     // first; it is a common hidden RNG consumer before pet goal selection.
     if (obj_resists(obj, 0, 95)) return obj.cursed ? TABU : APPORT;
-    if (object_class(obj.otyp) === FOOD_CLASS) return obj.cursed ? TABU : DOGFOOD;
+    if (object_class(obj.otyp) === FOOD_CLASS) {
+        const { carni, herbi } = pet_diet(mtmp);
+        switch (obj.otyp) {
+        case TRIPE_RATION:
+        case MEATBALL:
+        case MEAT_STICK:
+        case ENORMOUS_MEATBALL:
+            return carni ? DOGFOOD : MANFOOD;
+        case CORPSE:
+            return carni ? CADAVER : MANFOOD;
+        case EGG:
+            return carni ? CADAVER : MANFOOD;
+        case GLOB_OF_GREEN_SLIME:
+            return MANFOOD;
+        case CLOVE_OF_GARLIC:
+            return herbi ? ACCFOOD : MANFOOD;
+        case TIN:
+            return MANFOOD;
+        case BANANA:
+            return herbi ? ACCFOOD : MANFOOD;
+        case CARROT:
+            return herbi ? DOGFOOD : MANFOOD;
+        default:
+            if (obj.otyp > SLIME_MOLD) return carni ? ACCFOOD : MANFOOD;
+            return herbi ? ACCFOOD : MANFOOD;
+        }
+    }
     return obj.cursed ? UNDEF : APPORT;
 }
 
 function could_reach_item(mtmp, x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
+    if (IS_POOL(loc.typ) && !mtmp.data?.swimmer) return false;
+    if (IS_LAVA(loc.typ) && !mtmp.data?.likes_lava) return false;
     if (is_boulder_at(x, y) && !mtmp.data?.throws_rocks) return false;
     return true;
 }
@@ -231,6 +282,10 @@ function can_carry(mtmp, obj) {
     return Math.max(1, obj.quan || 1);
 }
 
+function pet_can_see_object(mtmp, x, y) {
+    return clear_path(mtmp.mx, mtmp.my, x, y);
+}
+
 function pet_can_step(mtmp, x, y) {
     if (!isok(x, y)) return false;
     if (x === game.u?.ux && y === game.u?.uy) return false;
@@ -245,6 +300,7 @@ function pet_goal(mtmp, after, udist) {
     const gx = game.u?.ux ?? mtmp.mx;
     const gy = game.u?.uy ?? mtmp.my;
     const loc = game.level?.at(gx, gy);
+    const petLoc = game.level?.at(mtmp.mx, mtmp.my);
     const edog = init_edog(mtmp);
     let goalType = UNDEF;
     let goalX = 0;
@@ -279,7 +335,8 @@ function pet_goal(mtmp, after, udist) {
                 goalType = foodType;
             }
         } else if (goalType === UNDEF && inMastersSight && !dogHasMinvent
-                   && (foodType === MANFOOD || true)
+                   && (!petLoc?.lit || loc?.lit)
+                   && (foodType === MANFOOD || pet_can_see_object(mtmp, nx, ny))
                    && edog.apport > rn2(8)
                    && can_carry(mtmp, obj) > 0) {
             goalX = nx;

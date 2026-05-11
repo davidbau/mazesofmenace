@@ -218,6 +218,18 @@ function q4_path(srow, scol, y2, x2) {
     return 1;
 }
 
+// C ref: vision.c clear_path(), used by m_cansee().
+export function clear_path(col1, row1, col2, row2) {
+    if (col1 < col2) {
+        return row1 > row2
+            ? !!q1_path(row1, col1, row2, col2)
+            : !!q4_path(row1, col1, row2, col2);
+    }
+    if (row1 > row2) return !!q2_path(row1, col1, row2, col2);
+    if (row1 === row2 && col1 === col2) return true;
+    return !!q3_path(row1, col1, row2, col2);
+}
+
 // C ref: vision.c right_side()
 function right_side(row, left, right_mark, limitsIdx) {
     const nrow = row + game.vis_step;

@@ -43,6 +43,12 @@ function is_wanderer(mtmp) {
     return !!mtmp.data?.m2_wander;
 }
 
+function m_everyturn_effect(mtmp) {
+    if (mtmp.data?.name === 'FOG_CLOUD') {
+        rn2(3); // create_gas_cloud(..., 1, 0) TTL via rn1(3, 4)
+    }
+}
+
 export async function movemon() {
     const g = game;
     let somebody_can_move = false;
@@ -50,6 +56,9 @@ export async function movemon() {
     // In a real engine, we'd iterate over all monsters.
     // For now, let's just handle the monsters we have.
     for (const mtmp of g.level.monsters) {
+        // C ref: mon.c:movemon_singlemon() runs this before the movement
+        // budget check, so zero-budget fog clouds still leave vapor.
+        m_everyturn_effect(mtmp);
         if (mtmp.movement < NORMAL_SPEED) continue;
 
         mtmp.movement -= NORMAL_SPEED;

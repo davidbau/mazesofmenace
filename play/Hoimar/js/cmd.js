@@ -9,9 +9,10 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
-import { mklev, place_lregion } from './mklev.js';
+import { mklev, mksobj, place_lregion } from './mklev.js';
 import { pet_arrive_with_you } from './dog.js';
 import { pluslvl } from './u_init.js';
+import { rn2 } from './rng.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
          IS_WALL, IS_OBSTRUCTED, LR_UPTELE } from './const.js';
@@ -21,6 +22,36 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
 //                   b j n
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+
+const AMULET_OF_LIFE_SAVING = 202;
+const GRAY_DRAGON_SCALE_MAIL = 101;
+const WAN_FIRE = 411;
+
+function wishedObjectType(name) {
+    const wish = String(name || '').toLowerCase();
+    if (wish.includes('amulet of life saving')) {
+        rn2(76);
+        return AMULET_OF_LIFE_SAVING;
+    }
+    if (wish.includes('gray dragon scale mail') || wish.includes('grey dragon scale mail')) {
+        rn2(67);
+        return GRAY_DRAGON_SCALE_MAIL;
+    }
+    if (wish.includes('wand of fire')) {
+        rn2(41);
+        return WAN_FIRE;
+    }
+    return 0;
+}
+
+function make_wish_object(name) {
+    const otyp = wishedObjectType(name);
+    if (!otyp) return null;
+    const otmp = mksobj(otyp, true, false);
+    otmp.wishedfor = true;
+    rn2(100);
+    return otmp;
+}
 
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
@@ -144,6 +175,12 @@ function buildLevelTeleportMenu() {
 }
 
 async function performLevelTeleport(target) {
+    const migratingPet = (game.level?.monsters || []).find(m => m.mtame);
+    game._migrating_pet = migratingPet ? {
+        ...migratingPet,
+        data: migratingPet.data ? { ...migratingPet.data } : migratingPet.data,
+        edog: migratingPet.edog ? { ...migratingPet.edog } : migratingPet.edog,
+    } : null;
     game.u.uz = { ...(game.u.uz || { dnum: 0 }), dlevel: target };
     await mklev();
     place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
@@ -296,6 +333,30 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._awaiting_wish) {
+        const prompt = 'For what do you wish? ';
+        if (ch === '\r' || ch === '\n') {
+            const wish = game._wish_input || '';
+            clear_pending_message();
+            game._awaiting_wish = false;
+            game._wish_input = '';
+            make_wish_object(wish);
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '\x1b') {
+            clear_pending_message();
+            game._awaiting_wish = false;
+            game._wish_input = '';
+            game.context.move = 0;
+            return;
+        }
+        game._wish_input = `${game._wish_input || ''}${ch}`;
+        await showPromptLine(`${prompt}${game._wish_input}`);
+        game.context.move = 0;
+        return;
+    }
+
     if (game._awaiting_wear_item) {
         clear_pending_message();
         game._awaiting_wear_item = false;
@@ -386,6 +447,13 @@ export async function rhack(key) {
         game._prompt_cursor = [msg.length, 0];
         game._awaiting_level_teleport = true;
         game._level_teleport_input = '';
+    } else if (key === 23) { // ^W wizard wish
+        game.context.move = 0;
+        const msg = 'For what do you wish? ';
+        await pline(msg);
+        game._prompt_cursor = [msg.length, 0];
+        game._awaiting_wish = true;
+        game._wish_input = '';
     } else if (ch === 'W') {
         game.context.move = 0;
         const msg = 'What do you want to wear? [*] ';

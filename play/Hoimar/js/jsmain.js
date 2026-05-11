@@ -85,6 +85,7 @@ export class NethackGame {
 
     async start() {
         const g = resetGame();
+        if (this._storage) g.mockStorage = this._storage;
 
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
@@ -166,7 +167,7 @@ export class NethackGame {
 
     getScreens() { return this._screens; }
     getCursors() { return this._cursors; }
-    getRngLog() { return getRngLog(); }
+    getRngLog() { return this._rngLogOverride || getRngLog(); }
     // Per-step PRNG slices, parallel to getScreens(). Each entry is the
     // log of PRNG calls that fired since the previous capture (i.e.
     // since the previous nhgetch). Useful for tooling like the PS
@@ -180,6 +181,24 @@ export class NethackGame {
     // for steps that didn't animate.  SUPPLEMENTAL metric — not part
     // of the official ranking; see API.md.
     getAnimationFramesByStep() { return this._animFramesByStep; }
+}
+
+function createMemoryStorage() {
+    const data = new Map();
+    return {
+        getItem(key) { return data.has(key) ? data.get(key) : null; },
+        setItem(key, value) { data.set(key, String(value)); },
+        removeItem(key) { data.delete(key); },
+        get length() { return data.size; },
+        key(index) {
+            let i = 0;
+            for (const key of data.keys()) {
+                if (i === index) return key;
+                i++;
+            }
+            return null;
+        },
+    };
 }
 
 // ── Per-segment runner — the contest contract ──
@@ -202,9 +221,13 @@ export class NethackGame {
 // getRngLog() / getCursors() / getAnimationFramesByStep() cover ONLY
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
-export async function runSegment(input) {
-    const { seed, datetime, nethackrc, storage } = input;
+export async function runSegment(input, prevGame = null) {
+    const viewerCompatMode = arguments.length >= 2;
+    const { seed, datetime, nethackrc } = input;
     const moves = input.moves || '';
+    const storage = input.storage
+        || prevGame?._teleportStorage
+        || (viewerCompatMode ? createMemoryStorage() : null);
 
     const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
@@ -227,6 +250,28 @@ export async function runSegment(input) {
             if (String(e?.message || '').includes('Input queue empty')) break;
             throw e;
         }
+    }
+
+    if (viewerCompatMode) {
+        const prevScreens = prevGame?._teleportCumulativeScreens || [];
+        const prevCursors = prevGame?._teleportCumulativeCursors || [];
+        const prevRngSlices = prevGame?._teleportCumulativeRngSlices || [];
+        const prevAnimFrames = prevGame?._teleportCumulativeAnimFrames || [];
+        const prevRngLog = prevGame?._teleportCumulativeRngLog || [];
+        const segmentRngLog = (getRngLog() || []).slice();
+
+        nhGame._teleportStorage = storage;
+        nhGame._teleportCumulativeScreens = prevScreens.concat(nhGame._screens);
+        nhGame._teleportCumulativeCursors = prevCursors.concat(nhGame._cursors);
+        nhGame._teleportCumulativeRngSlices = prevRngSlices.concat(nhGame._rngSlices);
+        nhGame._teleportCumulativeAnimFrames = prevAnimFrames.concat(nhGame._animFramesByStep);
+        nhGame._teleportCumulativeRngLog = prevRngLog.concat(segmentRngLog);
+
+        nhGame._screens = nhGame._teleportCumulativeScreens;
+        nhGame._cursors = nhGame._teleportCumulativeCursors;
+        nhGame._rngSlices = nhGame._teleportCumulativeRngSlices;
+        nhGame._animFramesByStep = nhGame._teleportCumulativeAnimFrames;
+        nhGame._rngLogOverride = nhGame._teleportCumulativeRngLog;
     }
 
     return nhGame;

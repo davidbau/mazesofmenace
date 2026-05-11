@@ -247,10 +247,17 @@ export async function newgame() {
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
-    if (!ff) await makedog();
-    if (!ff) u_init_role_inventory();
-    if (!ff) apply_startup_role_state();
-    if (!ff) postInventoryStartupRng();
+    if (!ff) {
+        // C creates the starting pet before u_init_inventory_attrs() sets
+        // hero attributes; ACURR(A_CHA) therefore sees zeroed charisma and
+        // clamps to 3 for edog.apport.
+        g.u.acurr = { a: [0, 0, 0, 0, 0, 0] };
+        g.u.amax = { a: [0, 0, 0, 0, 0, 0] };
+        await makedog();
+        u_init_role_inventory();
+        apply_startup_role_state();
+        postInventoryStartupRng();
+    }
 
     // Initial display
     init_vision_globals();
