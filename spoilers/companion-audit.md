@@ -345,3 +345,269 @@ combinations.
   buries it; otherwise (76/100) `useup`. RIN_SEARCHING/SLOW_DIGESTION
   exit early via `goto giveback` at `do.c:510-518`.
 - **Verdict**: Correct
+
+---
+
+## 2026-05-11 — second systematic pass
+
+Audit by Claude Opus 4.7. Covered version-change claims, quest artifact
+assignments, branch entry levels, weapon damages, artifact bonuses,
+specific mechanics flagged after first pass. Source: NetHack 5.0 HEAD.
+
+### Version-change claims
+
+**Claim**: Themed rooms "new in current editions".
+- **Spoiler line**: 669
+- **Source ref**: `dat/themerms.lua` plus infrastructure in
+  `dungeon.c:1003-1071` and `mklev.c:375-389`.
+- **Verdict**: Correct (new in 5.0)
+
+**Claim**: Mummies cause withering, curable by prayer.
+- **Spoiler line**: 1394
+- **Source ref**: `include/monsters.h:1901-1965` — all 9 mummy variants
+  have only `ATTK(AT_CLAW, AD_PHYS, ...)` attacks. There is no
+  `AD_WTHR` attack type anywhere in the codebase.
+- **Verdict**: Wrong
+- **Notes**: Mummies in 5.0 deal physical damage only. The "withering"
+  mechanic and prayer cure do not exist for mummies.
+
+**Claim**: Mind flayers no longer cause amnesia (only Int drain).
+- **Spoiler line**: 1556-1557
+- **Source ref**: `uhitm.c:3168-3260` `mhitm_ad_drin` and
+  `eat.c:603-700` `eat_brains`. Int drain via `adjattrib(A_INT, -rnd(2))`.
+  No `forget_levels`/amnesia call in the AD_DRIN path.
+- **Verdict**: Correct
+- **Notes**: `detect.c:1189` comment "amnesia no longer causes levels
+  to be forgotten" confirms the broader retcon.
+
+**Claim**: Black dragon scale mail grants drain resistance ("new in
+current editions").
+- **Spoiler line**: 1582
+- **Source ref**: `do_wear.c:810-815`:
+  `case BLACK_DRAGON_SCALES: case BLACK_DRAGON_SCALE_MAIL:
+  EDrain_resistance |= W_ARM;` and the corresponding takeoff clears it.
+- **Verdict**: Correct
+- **Notes**: This is in addition to the disintegration resistance the
+  scale mail provides via the `DRGN_ARMR(... DISINT_RES ...)` macro.
+
+**Claim**: Engulfment "wraps and crushes rather than digesting" in
+current editions.
+- **Spoiler line**: 1613-1614
+- **Source ref**: `mhitu.c:1289-1340` `gulpmu` — message varies by
+  engulfer type. For lurker above/trapper (enfolders) the message is
+  "folds itself around you"; for digesters "swallows you whole"; for
+  amorphous (Juiblex) "oozes" or "engulfs". The 5.0 code already
+  treats lurkers/trappers as enfolders, not digesters.
+- **Verdict**: Defensible
+- **Notes**: Editorial paraphrase. The mechanic is real (different
+  engulfer types behave differently) but "wraps and crushes" is the
+  spoiler's framing, not the literal code text.
+
+**Claim**: Pestilence/Famine "mercy in current editions" — second-attack
+becomes less severe.
+- **Spoiler line**: 1665
+- **Source ref**: `mhitu.c` second-attack downgrade —
+  `if (... && (attk->adtyp == AD_DISE || AD_PEST || AD_FAMN) &&
+  attk->adtyp == mptr->mattk[indx - 1].adtyp) { attk->adtyp = AD_STUN; }`
+- **Verdict**: Correct
+- **Notes**: Riders' subsequent attacks of the same type on the same
+  turn drop to AD_STUN rather than compound the disease/pest/famine.
+
+**Claim**: Helm of caution "new in current editions" — grants warning.
+- **Spoiler line**: 3189
+- **Source ref**: `include/objects.h:479-481`
+  (`HELM("helm of caution", "etched helmet", ... WARNING, ...)`),
+  `do_wear.c:448` (`case HELM_OF_CAUTION: see_monsters(); break;`)
+- **Verdict**: Correct
+
+**Claim**: Wand of speed monster "no longer grants permanent speed
+when self-zapped".
+- **Spoiler line**: 2543
+- **Source ref**: `zap.c` (self-zap case for WAN_SPEED_MONSTER):
+  `case WAN_SPEED_MONSTER: /* no longer gives intrinsic, but gives
+  very fast speed instead */ speed_up(rn1(25, 50));`
+- **Verdict**: Correct (the code comment confirms the change)
+
+### Quest artifacts (role.c)
+
+**Claim**: Valkyrie → Orb of Fate.
+- **Spoiler line**: 916
+- **Source ref**: `role.c:516` `ART_ORB_OF_FATE`.
+- **Verdict**: Correct
+
+**Claim**: Wizard → Eye of the Aethiopica.
+- **Spoiler line**: 917
+- **Source ref**: `role.c:556` `ART_EYE_OF_THE_AETHIOPICA`.
+- **Verdict**: Correct
+
+**Claim**: Tourist → Platinum Yendorian Express Card.
+- **Spoiler line**: 918
+- **Source ref**: `role.c:476` `ART_YENDORIAN_EXPRESS_CARD`;
+  `artilist.h: A("The Platinum Yendorian Express Card", ...)`.
+- **Verdict**: Correct
+
+**Claim**: Monk → Eyes of the Overworld (lenses).
+- **Spoiler line**: 3325-3326
+- **Source ref**: `role.c:257` `ART_EYES_OF_THE_OVERWORLD`;
+  `artilist.h: A("The Eyes of the Overworld", LENSES, ...)`.
+- **Verdict**: Correct
+
+**Claim**: Mitre of Holiness is a classic source of drain resistance.
+- **Spoiler line**: 1581
+- **Source ref**: `artilist.h:265-269` Mitre entry has `NO_DFNS`. The
+  artifacts that defend against `AD_DRLI` (drain) are Excalibur
+  (PHYS attack + DRLI defense), Stormbringer (DRLI attack + DRLI
+  defense), and Staff of Aesculapius (DRLI defense).
+- **Verdict**: Wrong
+- **Notes**: Mitre grants fire resistance (carry), energy boost
+  (invoke), and bonus damage vs undead — not drain resistance.
+  Correct list of drain-resistance sources: Excalibur, Stormbringer,
+  Staff of Aesculapius, and black dragon scale mail.
+
+### Artifact damage bonuses (artilist.h)
+
+The general formula in `artifact.c:1090-1106` (`spec_dbon`) treats
+`damn` as the bonus-to-hit roll (`rnd(damn)`) and `damd` as the
+bonus-damage roll (`rnd(damd)`). So `PHYS(5, 10)` = +d5 to hit, +d10
+to damage.
+
+**Claim**: Excalibur "+d5 to hit and damage".
+- **Spoiler line**: 3305
+- **Source ref**: `artilist.h: A("Excalibur", ..., PHYS(5, 10), ...)`
+- **Verdict**: Wrong (damage portion)
+- **Notes**: +d5 to hit is correct, +d10 to damage (not +d5).
+
+**Claim**: Grayswandir "+d5 to hit and damage, double damage dealt".
+- **Spoiler line**: 3309
+- **Source ref**: `artilist.h: A("Grayswandir", ..., PHYS(5, 0), ...)`
+- **Verdict**: Partially wrong
+- **Notes**: +d5 hit is correct, but `damd=0` means no extra-damage
+  roll on top of base silver saber damage; the "double damage dealt"
+  claim relates to the silver-against-undead bonus, not a separate
+  doubling mechanic. Worth re-checking.
+
+**Claim**: Mjollnir "+d5 hit and +d24 damage; returns at STR 25".
+- **Spoiler lines**: 3313-3314 (and 238)
+- **Source refs**: `artilist.h: A("Mjollnir", ..., ELEC(5, 24), ...)`;
+  `dothrow.c:127, 327` checks `ACURR(A_STR) >= STR19(25)`;
+  `include/attrib.h: STR19(x) = 100 + x`.
+- **Verdict**: Correct
+
+**Claim**: Magicbane "+d3 to hit and damage".
+- **Spoiler line**: 3317
+- **Source ref**: `artilist.h: A("Magicbane", ..., STUN(3, 4), ...)`
+- **Verdict**: Partially wrong
+- **Notes**: +d3 hit is correct, +d4 damage (not +d3).
+
+**Claim**: Stormbringer "+d5 to hit and damage".
+- **Spoiler line**: 3321
+- **Source ref**: `artilist.h: A("Stormbringer", ..., DRLI(5, 2), ...)`
+- **Verdict**: Partially wrong
+- **Notes**: +d5 hit is correct, +d2 damage (not +d5).
+
+**Claim**: Misaligned intelligent artifact rejection = 8d6 damage.
+- **Spoiler line**: 3298
+- **Source ref**: `artifact.c:947-952` `touch_artifact` —
+  `dmg = d((Antimagic ? 2 : 4), (self_willed ? 10 : 4));`
+  → 4d10 for self-willed (intelligent) when not magic-resistant.
+- **Verdict**: Wrong
+- **Notes**: Actual is 4d10 (range 4-40), not 8d6 (range 8-48).
+  The non-intelligent value of 4d4 in the spoiler is correct.
+
+**Claim**: Non-intelligent misaligned artifact rejection = 4d4 damage,
+1/4 chance.
+- **Spoiler line**: 3300
+- **Source ref**: same `touch_artifact:947` plus the condition
+  `(badalign && (!yours || !rn2(4)))` for non-self-willed artifacts.
+- **Verdict**: Correct
+
+### Branch / dungeon entry levels
+
+**Claim**: Gnomish Mines at "level 2-4".
+- **Spoiler line**: 541
+- **Source ref**: `dat/dungeon.lua`: Mines `base = 2, range = 3`.
+- **Verdict**: Correct
+
+**Claim**: Sokoban branch around dungeon levels 5-9.
+- **Spoiler line**: 545
+- **Source ref**: `dat/dungeon.lua`: Sokoban `chainlevel = "oracle",
+  base = 1, direction = "up"`; Oracle is `base = 5, range = 5` → 5-9.
+  Sokoban entrance is one level above Oracle, so 6-10.
+- **Verdict**: Slightly off
+- **Notes**: Entrance is on levels 6-10, not 5-9.
+
+**Claim**: Quest portal "around level 11-16".
+- **Spoiler line**: 548
+- **Source ref**: `dat/dungeon.lua`: Quest `chainlevel = "oracle",
+  base = 6, range = 2`. Oracle 5-9 + 6-7 = 11-16... wait, base = 6
+  range = 2 means Oracle level + (6..7), so 11-15 (Oracle 5 + 6 = 11
+  through Oracle 9 + 6 = 15; range 2 = base..base+1).
+- **Verdict**: Slightly off
+- **Notes**: 11-15, not 11-16. Off by one at the upper end.
+
+**Claim**: Quest minimum experience level 14.
+- **Spoiler line**: 911
+- **Source ref**: `include/quest.h:45 #define MIN_QUEST_LEVEL 14`.
+- **Verdict**: Correct
+
+### Sokoban prize
+
+**Claim**: Sokoban top prize is bag of holding or amulet of reflection.
+- **Spoiler lines**: 891-893
+- **Source ref**: `dat/soko1-1.lua:103-109` and `soko1-2.lua:106-112` —
+  both variants use `if percent(75) then bag-of-holding else
+  amulet-of-reflection end`.
+- **Verdict**: Correct (item list)
+
+**Claim**: "Which prize you get is weighted by the level variant".
+- **Spoiler line**: 893
+- **Source ref**: Same as above — both variants use the same 75/25
+  weighting; variant has no effect on which prize spawns.
+- **Verdict**: Wrong
+- **Notes**: The weighting is per-roll (75% bag, 25% amulet),
+  independent of the level variant.
+
+### Mine's End
+
+**Claim**: "One of its level variants contains a guaranteed luckstone".
+- **Spoiler line**: 874
+- **Source ref**: `minend-1.lua:77`, `minend-2.lua:116`, `minend-3.lua:67`
+  — all three variants place a guaranteed luckstone with
+  `achievement=1` flag.
+- **Verdict**: Misleading
+- **Notes**: All three Mine's End variants have the luckstone, not
+  just one. The luckstone is always present at Mine's End.
+
+### Other 5.0 mechanics
+
+**Claim**: Wraith corpse grants an experience level.
+- **Spoiler line**: 2475
+- **Source ref**: `eat.c:1141` `case PM_WRAITH: pluslvl(FALSE);`
+- **Verdict**: Correct
+
+**Claim**: Restful sleep amulet grants "+1 HP/turn regen while asleep".
+- **Spoiler line**: 2977
+- **Source ref**: `allmain.c:621` `#define U_CAN_REGEN() (Regeneration
+  || (Sleepy && u.usleep))`; `allmain.c:660-665`:
+  base regen chance `(XL + CON > rn2(100))` plus `+1` from
+  `U_CAN_REGEN()` plus `+1` from explicit `Sleepy && u.usleep` check.
+- **Verdict**: Approximately correct (slightly understates)
+- **Notes**: While asleep wearing restful sleep, you get +1 from
+  U_CAN_REGEN and another +1 from the explicit Sleepy check =
+  effectively +2 HP/turn on top of the base regen chance.
+
+**Claim**: HP regeneration uses formula (experience level +
+Constitution)% chance per turn.
+- **Spoiler line**: 5512-5514
+- **Source ref**: `allmain.c:660` —
+  `heal = (u.ulevel + (int)ACURR(A_CON)) > rn2(100);`. With
+  Regeneration intrinsic, an unconditional +1 HP is also granted.
+- **Verdict**: Correct
+
+**Claim**: Tsurugi damage d16 / d8+2d6, Battle-axe d8+d4 / d6+2d4.
+- **Spoiler lines**: 3236-3238
+- **Source refs**: `objects.h: WEAPON("tsurugi", ... 16, 8, ...)`;
+  `WEAPON("battle-axe", ... 8, 6, ...)`. `weapon.c:255-261` adds
+  `d(2, 6)` to TSURUGI vs large; `weapon.c:283-291` adds `rnd(4)`
+  to BATTLE_AXE for the base + `d(2, 4)` vs large.
+- **Verdict**: Correct

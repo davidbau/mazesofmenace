@@ -250,7 +250,7 @@ physical combat is terrible, but you have access to the deepest magic
 in the game. Wizards are extremely powerful in the late game but very
 fragile early on. You'll lean heavily on your spells and need to find
 ways to avoid melee combat until you're strong enough to dominate it.
-One bookkeeping advantage that's easy to overlook: in current editions,
+One bookkeeping advantage that's easy to overlook: in 5.0,
 advancing a spell school skill automatically reveals the appearances of
 spellbooks in that school. Reach Expert in attack magic and you'll know
 what every attack spellbook looks like at a glance. This means training
@@ -542,10 +542,10 @@ the **Astral Plane**, where your god awaits your offering.
     │     ├── Minetown (shops and a temple)
     │     └── Mine's End (bottom: luckstone)
     │
-    ├── Sokoban (branch around level 5-9, goes UP)
-    │     └── Top: bag of holding or amulet of reflection
+    ├── Sokoban (branch around level 6-10, goes UP)
+    │     └── Top: bag of holding (75%) or amulet of reflection (25%)
     │
-    ├── Your Quest (portal around level 11-16)
+    ├── Your Quest (portal around level 11-15)
     │     └── Unique to your role. Get your quest artifact.
     │
     ├── Fort Ludios (portal, if you find it)
@@ -666,7 +666,7 @@ handle the fight.
 **Beehives.** A room full of killer bees and royal jelly. The bees
 are dangerous in numbers, but royal jelly is excellent food.
 
-**Themed rooms.** New in current editions and the most visible
+**Themed rooms.** New in 5.0 and the most visible
 change to ordinary level generation: scattered through the
 Dungeons of Doom, you'll occasionally walk into rooms that
 aren't shops, aren't zoos, and aren't anything else from the
@@ -870,32 +870,33 @@ Watch out for the Minetown watch (when it exists). The guards are
 peaceful unless you steal from a shop or attack a peaceful creature.
 If you anger them, they'll call for reinforcements.
 
-**Mine's End** is the bottom of the Mines. One of its level variants
-contains a guaranteed luckstone, which you very much want. A
-luckstone in your open inventory prevents your luck from timing out
-toward zero, which affects everything from combat to fountain wishes.
-Grab it and carry it for the rest of the game.
+**Mine's End** is the bottom of the Mines. All three Mine's End
+variants contain a guaranteed (not-cursed) luckstone, so you'll get
+one wherever you arrive. A luckstone in your open inventory prevents
+your luck from timing out toward zero, which affects everything from
+combat to fountain wishes. Grab it and carry it for the rest of the
+game.
 
 #### Sokoban
 
-The entrance appears somewhere around dungeon levels 5 through 9,
-and it goes up. Sokoban is a set of four puzzle levels where you
-push boulders onto holes or into place to open a path. No teleport
-works here, and you can't dig through the floors.
+The entrance appears somewhere around dungeon levels 6 through 10
+(one level above the Oracle), and it goes up. Sokoban is a set of
+four puzzle levels where you push boulders onto holes or into place
+to open a path. No teleport works here, and you can't dig through
+the floors.
 
 The puzzles are fixed (two variants per level, randomly chosen).
 Each level has exactly one correct solution. If you push a boulder
 into a corner where it blocks your progress, you're stuck and will
 need to start the level over. The game won't warn you about this.
 
-The prize at the top is either a **bag of holding** or an
-**amulet of reflection**, both extremely valuable. In current
-editions, which prize you get is weighted by the level variant
-(one variant favors the bag, the other the amulet, but either can
-appear in either). A cursed scroll of scare monster is also placed
-under the prize. A bag of holding lets you carry far more inventory
-at reduced weight. An amulet of reflection bounces ray attacks back
-at their casters. Either one is worth the detour.
+The prize at the top is either a **bag of holding** (75% chance) or
+an **amulet of reflection** (25%), both extremely valuable. The roll
+is per-game, not per-variant — both level variants use the same
+weighting. A cursed scroll of scare monster is placed under the prize
+as bait. A bag of holding lets you carry far more inventory at
+reduced weight. An amulet of reflection bounces ray attacks back at
+their casters. Either one is worth the detour.
 
 One important rule: the Sokoban levels penalize you for "cheating."
 Breaking or polymorphing boulders, reading scrolls of earth, or
@@ -973,7 +974,7 @@ The level has three challenges stacked together:
 
 There is a downward staircase (or ladder) on the island itself
 that leads toward the Castle. The level has four possible layouts
-(two added in version 3.6.0), so don't rely on memorizing a
+(two added in 3.6), so don't rely on memorizing a
 single map.
 
 > **Arien Malec's Medusa Checklist**
@@ -1139,7 +1140,7 @@ above them.
 | Sleeping gas trap | Puts you to sleep (helpless for several turns)       |
 | Fire trap         | Burns you, destroys scrolls and potions in inventory |
 | Magic trap        | Random magical effects (some good, some very bad)    |
-| Anti-magic field  | Drains magical energy; **much more dangerous in current editions** if you have magic resistance (see below) |
+| Anti-magic field  | Drains magical energy; **much more dangerous in 5.0** if you have magic resistance (see below) |
 | Polymorph trap    | Polymorphs you into a random creature                |
 
 Fire traps are the sleeper threat. The fire itself hurts, but
@@ -1158,7 +1159,7 @@ to hit you like it's a buffet.
 
 **Anti-magic fields hit harder if you're magic-resistant.**
 Counterintuitive enough to mislead returning players. The trap
-drains spell energy as before, but in current editions, having
+drains spell energy as before, but in 5.0, having
 *magic resistance* now also triggers an "anti-magic implosion"
 that costs you HP. The base damage is small, but it stacks for
 each source of magic resistance you carry — wielding Magicbane
@@ -1166,7 +1167,7 @@ adds to it, and carrying any other artifact whose protection
 covers magic missile adds to it again. Late-game ascenders walk
 into the field with three or four magic-resistance sources
 stacked and lose a frightening amount of HP at once. The defense is finding the trap first
-(search), or destroying it from range — current editions let you
+(search), or destroying it from range — 5.0 let you
 zap *cancellation* at magical traps to defuse them without
 setting them off.
 
@@ -1282,7 +1283,7 @@ Elbereth has rules:
   protection ends.
 - **Attacking a monster erases it.** If you fight in melee while
   standing on Elbereth, the word smudges and you lose protection.
-  In current editions this also costs you −5 alignment as
+  In 5.0 this also costs you −5 alignment as
   punishment for defiling the sacred word with violence. Elbereth
   is defensive only — use it to buy time, not to fight from.
 - **Some monsters ignore it.** Anything represented by `@` (humans,
@@ -1297,13 +1298,12 @@ Elbereth has rules:
 - **It must be the only text on the square.** If there's already
   an engraving, you need to overwrite it. Adding Elbereth to an
   existing message won't work.
-- **Engraving is an interruptible occupation.** In current
-  editions, writing with anything other than a wand takes multiple
+- **Engraving is an interruptible occupation.** In 5.0, writing with anything other than a wand takes multiple
   turns (one per letter). If you're interrupted mid-word — by an
   attack, a teleport trap, or anything else — you get a partial
   engraving that does nothing. This makes wands (which write the
   whole word instantly) far more valuable for emergency Elbereth.
-- **Durability varies by method.** In current editions, the
+- **Durability varies by method.** In 5.0, the
   engraving is not gradually eroded by scaring monsters. Instead,
   it persists until you take a hostile action (which destroys it
   instantly) or, for dust engravings, until monsters walk over it.
@@ -1368,7 +1368,7 @@ by how early you might encounter them:
 | `a`    | Ants      | Come in groups. Soldier ants are fast and hit hard.                                     |
 | `b`    | Blobs     | Acidic or gelatinous. Don't hit acid blobs in melee.                                    |
 | `d`    | Dogs      | Often your starting pet. Tame dogs are loyal. Wild ones are manageable.                 |
-| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. Spheres (flaming/freezing/shocking) explode in a 3×3 area in current editions — kill them at range; melee finishes them but you eat the blast. |
+| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. Spheres (flaming/freezing/shocking) explode in a 3×3 area in 5.0 — kill them at range; melee finishes them but you eat the blast. |
 | `f`    | Cats      | Like dogs, often starting pets. Felines can be tamed with tripe.                        |
 | `g`    | Gnomes    | Common in the Mines. Usually peaceful if you're a gnome.                                |
 | `h`    | Humanoids | Dwarves, bugbears, mind flayers. Wide range of difficulty.                              |
@@ -1391,7 +1391,7 @@ by how early you might encounter them:
 | `G`    | Gnome lords/kings | Tougher gnomes. Still fairly manageable.                                                             |
 | `H`    | Giants            | Strong melee, throw boulders. Giants carry gems.                                                     |
 | `L`    | Liches            | Spellcasters. Arch-liches are among the most dangerous monsters in the game.                         |
-| `M`    | Mummies           | In current editions, cause withering (curable by prayer). Mummy wrappings are useless.               |
+| `M`    | Mummies           | Aggressive undead with physical claw attacks. Their corpses are dangerous to eat (age you). Mummy wrappings are useless. |
 | `N`    | Nymphs            | Steal items from your inventory, then teleport away. Fight from range.                               |
 | `O`    | Ogres             | Strong melee fighters. Ogre lords and kings are tougher.                                             |
 | `P`    | Puddings          | Black puddings split when hit with iron weapons. Don't use iron.                                     |
@@ -1427,7 +1427,7 @@ make you regret trying.
 **Silver** dragon scale mail grants reflection. The second pillar of not
 dying to wands.
 
-**Gold** dragons are new in current editions and breathe **fire** —
+**Gold** dragons are new in 5.0 and breathe **fire** —
 the same breath weapon as red dragons, so the same defenses apply.
 Their scale mail is what makes them interesting. Worn gold dragon
 scale mail is permanently lit: blessed glows *radiantly* (radius 4),
@@ -1515,7 +1515,7 @@ Some monsters, most notably Death (one of the Riders on the Astral
 Plane), can kill you with a single touch. The Finger of Death spell
 and the wand of death work similarly.
 
-In current editions, the touch of death has been reworked. It now
+In 5.0, the touch of death has been reworked. It now
 deals heavy damage (8d6 + 50) and permanently drains your maximum
 HP by half the damage dealt, rather than being a simple binary
 kill. You only die outright if the drain would reduce your max HP
@@ -1553,12 +1553,11 @@ flayer has three tentacle attacks per turn; the **master mind
 flayer** has *five*, plus a heavier weapon strike, and is widely
 called the most lethal non-boss monster in the dungeon. A single
 unprepared turn next to a master mind flayer can drop your Int
-by ten. In current editions, mind flayers no longer cause
+by ten. In 5.0, mind flayers no longer cause
 amnesia, but the Intelligence drain is still lethal if unchecked.
 
 **Defenses:** Wear a greased helmet to prevent tentacle attacks
-from connecting. Kill them at range (wands, spells). In current
-editions the unicorn horn no longer restores lost attributes —
+from connecting. Kill them at range (wands, spells). In 5.0 the unicorn horn no longer restores lost attributes —
 to recover drained Intelligence you need a *potion of restore
 ability* (uncursed restores one random ability; blessed restores
 all of them), the spell of restore ability, or prayer when you're
@@ -1578,8 +1577,9 @@ does the same. So does the bite of a hostile incubus or succubus
 own; you have to kill enough monsters to re-earn them.
 
 **Defenses:** *Drain resistance* makes you immune. The classic
-sources are wearing a Mitre of Holiness, wielding Stormbringer,
-or — new in current editions — wearing **black dragon scale mail**
+sources are wielding Excalibur (Lawful), Stormbringer (Chaotic), or
+the Staff of Aesculapius (Healer's quest artifact), or — new in 5.0
+— wearing **black dragon scale mail**
 (disintegration resistance plus drain resistance, both in one
 slot). Eating a fresh wraith corpse restores one experience level
 and is one of the better reasons to carry a stack of them; tin
@@ -1610,7 +1610,7 @@ Two monsters hide in plain sight until you walk into them. The
 drops onto whoever passes underneath; the **trapper** (`t`,
 green, level 12) hides on the floor and engulfs whoever steps
 onto it. Both look like ordinary terrain until they trigger.
-Engulfment in current editions wraps and crushes rather than
+Engulfment in 5.0 wraps and crushes rather than
 digesting — a 5.0 retcon, since the lurker doesn't actually have
 a stomach — but you still take damage
 every turn until you cut your way out, with limited movement
@@ -1666,7 +1666,7 @@ touch is a heavy hit named for what it does. Pestilence inflicts
 the disease that turns into food poisoning over the next several
 turns. Famine drives you instantly to Weak or Fainting from
 nutrition. Eating their corpses is fatal in different ways for
-each. A current-edition mercy: if Pestilence or Famine connect
+each. A 5.0 mercy: if Pestilence or Famine connect
 with their first attack on a turn, the second attack downgrades
 to a stun rather than another full dose — without that, they'd
 be near-instakill machines.
@@ -1876,7 +1876,7 @@ gods quietly rearranging your prayer odds. Experienced players learned
 to route around peacefuls, treat them as furniture to navigate rather
 than obstacles to solve.
 
-In current editions, this has been addressed. You can now displace
+In 5.0, this has been addressed. You can now displace
 peaceful monsters by walking into them — you and the monster swap
 positions, exactly as with your pet. No attack, no offense taken, no
 alignment consequence. The townsfolk of Minetown are finally navigable.
@@ -1963,7 +1963,7 @@ write it off. The dungeon kept this secret for a long time. Now you know.
 
 > *Much of the item data in Part Four has been verified against
 > Kevin Hugo and Dylan O'Donnell's comprehensive 3.4.3 spoiler
-> files, updated where the current edition of the game has changed.
+> files, updated where 5.0 of the game has changed.
 > Identification methods owe a debt to David Damerell's Object
 > Identification FAQ and Kieron Dunbar's wand ID guide, both
 > cornerstones of the RGRN community spoiler tradition.*
@@ -2155,7 +2155,7 @@ With one zap you can sort most wands into clear categories. For BEAM
 wands (which just write in the dust like a finger), you'll need
 further testing: try zapping them at a monster or in a safe direction.
 
-**Warning:** In current editions, cursed wands may **explode** when
+**Warning:** In 5.0, cursed wands may **explode** when
 used to engrave. BUC-test your wands before engraving with them.
 
 Crucially, engraving with a wand of wishing does nothing special.
@@ -2539,7 +2539,7 @@ one until you can bless it.
 rest of the game. Speed is arguably the single most important buff
 in NetHack; the difference between moving at normal speed and fast
 speed is the difference between trading blows and hitting twice
-before they swing once. In current editions, the wand of speed
+before they swing once. In 5.0, the wand of speed
 monster no longer grants permanent speed when self-zapped—only a
 temporary burst of 50–74 turns. The potion is the real prize.
 
@@ -2740,7 +2740,7 @@ area around you.
 #### Key Wands
 
 **Wishing.** The most valuable item in the game. Each zap grants one
-wish. In current editions, wands of wishing generate with only **1
+wish. In 5.0, wands of wishing generate with only **1
 charge** and can be recharged once (and only once) to a maximum of
 1 additional charge. This means the Castle wand of wishing typically
 yields 2 wishes plus a possible wrested third — a significant
@@ -2778,7 +2778,7 @@ but powerful.
 **Make invisible.** Turns a target — or yourself, if you zap it
 reflexively — invisible. In older editions, self-zapping granted a
 permanent invisibility intrinsic, which made this a coveted find. In
-current editions, it gives you 31–45 turns of temporary invisibility.
+5.0, it gives you 31–45 turns of temporary invisibility.
 Still useful for slipping through a dangerous area or turning a fight
 in your favor, but not a permanent upgrade. For lasting invisibility,
 you want a ring of invisibility or a cloak. The wand is now a tactical
@@ -2798,8 +2798,7 @@ result when used to engrave on the floor.
 > narrowing down wand identity through controlled experiments. The
 > approach below is adapted from his checklist.*
 
-One precaution before you start writing on the floor: in current
-editions, a *cursed* wand used for engraving may explode. This puts
+One precaution before you start writing on the floor: in 5.0, a *cursed* wand used for engraving may explode. This puts
 a premium on knowing a wand's BUC status before you test it. A scroll
 of identify spent on an unknown wand you're about to engrave-test is
 not a waste — it's cheaper than the alternative, which is standing in
@@ -2922,7 +2921,7 @@ slip on a ring and can't remove it, you've just learned what
 auto-curse means the hard way.
 
 **Ring of aggravate monster** deserves a footnote in the "niche uses
-of terrible things" category. In current editions, wearing it roughly
+of terrible things" category. In 5.0, wearing it roughly
 doubles the effective dungeon level for purposes of monster generation —
 so creatures well above your current depth start appearing. This is
 obviously catastrophic if you forget you're wearing it. But for a
@@ -2941,7 +2940,7 @@ Conflict makes monsters attack each other instead of you, which
 is devastating on crowded levels (though it also turns your pets
 hostile). Slow digestion lets you go indefinitely between meals.
 
-In current editions, a blessed potion of polymorph grants you polymorph
+In 5.0, a blessed potion of polymorph grants you polymorph
 control for that specific transformation — you choose the form, no ring
 required. This makes the ring of polymorph control less of a critical
 acquisition: you no longer need to find it or wish for it just to do a
@@ -2971,8 +2970,8 @@ your life" to "slowly strangles you to death":
 | ESP                    | Detect monsters via telepathy               |
 | Unchanging             | Prevents involuntary polymorph              |
 | Versus poison          | Poison resistance                           |
-| Flying                 | Grants flight (new in current editions)     |
-| Guarding               | +2 AC and +2 MC (new in current editions)   |
+| Flying                 | Grants flight (new in 5.0)     |
+| Guarding               | +2 AC and +2 MC (new in 5.0)   |
 | Strangulation          | Slowly kills you (always cursed)            |
 | Restful sleep          | Puts you to sleep randomly (usually cursed); grants +1 HP/turn regen while asleep |
 
@@ -2986,7 +2985,7 @@ from Perseus's statue or elsewhere. Wearing it as an amulet frees
 up your shield slot for a small shield or two-weapon fighting.
 
 **Guarding** provides +2 AC and +2 magic cancellation (MC). This
-is a new addition in current editions that neatly solves the MC
+is a new addition in 5.0 that neatly solves the MC
 puzzle: pair it with a cloak of magic resistance (MC1) and you
 reach MC3, freeing you from needing the less versatile cloak of
 protection.
@@ -2997,7 +2996,7 @@ Water (entirely underwater). Then it's existential.
 
 **Restful sleep** puts you to sleep randomly and is usually cursed,
 which should tell you everything you need to know about when to put it
-on unexamined. However, in current editions, wearing it while asleep
+on unexamined. However, in 5.0, wearing it while asleep
 grants +1 HP per turn via accelerated regeneration — stacking with your
 normal healing. In a fully secured room with the door spiked shut and
 nothing actively trying to kill you, this turns a nearly useless item
@@ -3052,7 +3051,7 @@ inventory across the floor. In older editions it *destroyed*
 everything. Either way, it's a game-ending mistake that every
 veteran has made exactly once.
 
-One current-edition hazard that the adventuring community is still
+One 5.0 hazard that the adventuring community is still
 adjusting to: intelligent monsters can now loot unlocked containers.
 They can remove items, carry containers away, and unlock chests with
 keys. If you've been leaving your secondary stash in an unlocked chest
@@ -3186,7 +3185,7 @@ The key armor slots:
 | Boots  | Speed boots                                | Water walking boots, levitation boots |
 | Shield | Shield of reflection                       | Small shield (for spellcasters)       |
 
-The **helm of caution** is new in current editions: it grants
+The **helm of caution** is new in 5.0: it grants
 *warning*, the same intrinsic the ring provides, in the helmet
 slot. Warning fills the screen with colored markers indicating
 nearby threats by danger level — yellow for moderate, red for
@@ -3197,7 +3196,7 @@ brilliance (Wizards) and helm of telepathy (everyone), but the
 warning bonus stays useful all the way down.
 
 **Dragon scale mail** is the endgame body armor of choice. In
-current editions, each color provides two extrinsic resistances.
+5.0, each color provides two extrinsic resistances.
 Gray dragon scale mail provides magic resistance and is the most
 popular wish target. Silver provides reflection. Black provides
 disintegration resistance and drain resistance (the only
@@ -3215,7 +3214,7 @@ means more chances to attack, cast spells, or run away.
 
 **Cloak of magic resistance** provides magic resistance in the cloak
 slot and frees up other slots for different resistances. However,
-be aware that since 3.6.0, **magic cancellation (MC) values were
+be aware that since 3.6, **magic cancellation (MC) values were
 overhauled**: the cloak of magic resistance now provides only MC1,
 not MC3. The **cloak of protection** is now the only single item
 that provides MC3, which blocks 90% of monster special attacks (down
@@ -3295,39 +3294,75 @@ hands:
 Each artifact has an alignment. If you try to handle an artifact
 that doesn't match your alignment:
 
-- **Intelligent artifacts** (most quest artifacts): 8d6 damage and
-  you drop the item. You cannot wield these.
-- **Other misaligned artifacts**: 4d4 damage on first touch, 1/4
-  chance of being blasted each subsequent touch.
+- **Intelligent artifacts** (most quest artifacts and certain
+  alignment-restricted artifacts): 4d10 damage (or 2d10 with magic
+  resistance) and the item evades your grasp. You cannot wield these.
+- **Other misaligned artifacts**: 4d4 damage on first touch (2d4 with
+  magic resistance), 1/4 chance of being blasted on each subsequent
+  touch.
 
 #### Key Artifacts
 
-**Excalibur** (Lawful, long sword): +d5 to hit and damage, level
-drain resistance, automatic searching. The go-to weapon for Lawful
-characters.
+Bonus damage is rolled fresh on each hit (e.g. `+d10` means roll 1d10).
+The "extra" column is the damage rolled *on top of* the base weapon's
+own damage. Most artifacts also carry intrinsic resistances or
+properties not shown here — see the narrative below.
 
-**Grayswandir** (Lawful, silver saber): +d5 to hit and damage,
-double damage dealt, halved physical damage received. One of the
-best weapons in the game. Wishable.
+| Artifact          | Align    | Base weapon       | To-hit | Extra damage     | Notable                                           |
+|-------------------|----------|-------------------|--------|------------------|---------------------------------------------------|
+| Excalibur         | Lawful   | long sword        | +d5    | +d10 physical    | drain resistance, automatic searching             |
+| Grayswandir       | Lawful   | silver saber      | +d5    | (base only)      | half physical damage received, hallucination res. |
+| Mjollnir          | Neutral  | war hammer        | +d5    | +d24 shock       | returns when thrown if STR 25                     |
+| Magicbane         | Neutral  | athame            | +d3    | +d4 magic (stun) | curse protection while carried, MR vs magic       |
+| Stormbringer      | Chaotic  | runesword         | +d5    | +d2 drain life   | drains a level (you gain it); attacks peacefuls   |
+| Vorpal Blade      | any      | long sword        | +d5    | +d1 physical     | chance to behead on hit                           |
+| Frost Brand       | any      | long sword        | +d5    | (base only) cold | fire resistance + cold defense                    |
+| Fire Brand        | any      | long sword        | +d5    | (base only) fire | cold resistance + fire defense                    |
+| Sting             | Chaotic  | elven dagger      | +d5    | (base only)      | warns of orcs (the dagger glows blue)             |
+| Orcrist           | Chaotic  | elven broadsword  | +d5    | (base only)      | warns of orcs                                     |
+| Cleaver           | Neutral  | battle-axe        | +d3    | +d6 physical     | Barbarian quest artifact                          |
+| Demonbane         | Lawful   | silver mace       | +d5    | (base only)      | banishes demons, Priest's first sacrifice gift    |
+| Sunsword          | Lawful   | long sword        | +d5    | (base only)      | blinding ray vs undead, lights area when wielded  |
+| Snickersnee       | Lawful   | katana            | —      | +d8 physical     | Samurai-specific bonus damage                     |
 
-**Mjollnir** (Neutral, war hammer): Can be thrown and returns like
-a boomerang (if STR 25). +d5 to hit and +d24 damage against non-
-shock-resistant targets. Requires high strength to use effectively.
+**Excalibur** is the go-to weapon for Lawful characters; the drain
+resistance alone is worth carrying it, even after you have a stronger
+weapon. Knights start aligned to it and have unique 1-in-6 fountain-dip
+odds; every other Lawful role faces 1-in-30.
 
-**Magicbane** (Neutral, athame): +d3 to hit and damage, protects
-against curses while carried, cancels monsters on hit. Useful as
-a secondary weapon. Can be obtained by sacrifice.
+**Grayswandir** is one of the best weapons in the game and is wishable.
+It's silver (extra damage to many monsters), reduces incoming physical
+damage by half, and grants hallucination resistance.
 
-**Stormbringer** (Chaotic, runesword): +d5 to hit and damage,
-drains one level from hit targets (you gain it). Attacks peaceful
-monsters automatically, which can cause alignment problems.
+**Mjollnir** is the Valkyrie's signature throw-and-return weapon — but
+only with Strength 25 (gauntlets of power or rings of gain strength
+get you there). Its +d24 shock damage is brutal against anything not
+shock-resistant.
 
-**The Eyes of the Overworld** (Neutral, lenses): Magic resistance,
-astral vision. A quest artifact for Monks.
+**Magicbane** the Wizard's quest-adjacent athame. The combined effect of
+its stun damage, curse protection while held, and magic resistance
+makes it valuable to carry even as a secondary weapon. Often the first
+gift from a Neutral sacrifice.
+
+**Stormbringer** is dangerous to use because it attacks peaceful
+monsters automatically — which can cause alignment problems. But each
+hit drains a level from the target and gives it to you, which is huge
+in the early-to-mid game.
+
+**The Eyes of the Overworld** (Monk quest artifact, lenses): magic
+resistance and astral vision (lets you see invisible monsters and
+through walls, among other things). Worth carrying even when not
+worn for the MR alone.
 
 **Quest artifacts** vary wildly by role but most provide magic
 resistance, which makes them important to carry even if you don't
-wield them. Check your specific role's artifact.
+wield them. Check your specific role's artifact:
+Barbarian → Heart of Ahriman; Caveman → Sceptre of Might; Healer →
+Staff of Aesculapius (drain res!); Knight → Magic Mirror of Merlin;
+Monk → Eyes of the Overworld; Priest → Mitre of Holiness; Rogue →
+Master Key of Thievery; Samurai → Tsurugi of Muramasa; Tourist →
+Platinum Yendorian Express Card; Valkyrie → Orb of Fate;
+Wizard → Eye of the Aethiopica.
 
 ---
 
@@ -3336,7 +3371,7 @@ wield them. Check your specific role's artifact.
 > *Part Five draws on Matthew Lahut's RGRN prayer guide, Steven
 > Bush's spellbook reading tables, and the Hugo/O'Donnell files on
 > gods, combat, gems, and luck mechanics, all updated for the
-> current edition.*
+> 5.0.*
 
 ---
 
@@ -3439,7 +3474,7 @@ subsequent gifts require substantially more. Gift artifacts are
 always aligned to your god and always match a weapon skill you can
 use.
 
-There is a minimum. In current editions, not every corpse you drop on
+There is a minimum. In 5.0, not every corpse you drop on
 the altar moves you toward the next artifact gift — the gods have
 opinions about what constitutes a worthy offering, and a kobold doesn't
 make the cut. Fresh corpses of appropriately challenging monsters are
@@ -3510,12 +3545,12 @@ apparently dungeon physics care about monster volume.) Added to base:
 - Strength bonus (up to +6 for STR 18/xx, or more)
 - Weapon skill bonus (depends on skill level)
 - Special bonuses (silver damage, artifact bonuses, etc.)
-- In current editions, **two-handed weapons** get a 50% bonus to
+- In 5.0, **two-handed weapons** get a 50% bonus to
   the strength damage component, which is the Mazes' way of
   rewarding you for giving up your shield
 
 Two-handed weapons also receive a 50% bonus to the strength damage
-modifier, which is new in current editions. This narrows the gap between
+modifier, which is new in 5.0. This narrows the gap between
 two-handed builds and dual-wielding considerably. A Barbarian with a
 two-handed sword and respectable Strength is not just accepting the
 trade-off of foregoing a shield — they're dealing genuinely more damage
@@ -3548,7 +3583,7 @@ impressive and gives more attacks per turn. The catch: it splits
 your skill bonuses and you can't use a shield. Two-weapon combat
 is powerful for roles with high skill caps in it (Rangers,
 Barbarians) but a trap for everyone else. If you're not sure, just
-use one really good weapon. In current editions, two-handed weapons
+use one really good weapon. In 5.0, two-handed weapons
 got a buff that makes them a compelling alternative to dual-wielding.
 
 #### Fighting Smart
@@ -3574,7 +3609,7 @@ are the time-tested tactics that keep adventurers breathing:
 - **Use conflict.** A ring of conflict makes monsters fight each
   other. Walk into a room full of enemies, put on the ring, and
   watch them destroy each other while you enjoy the show from the
-  doorway. Nature is beautiful. Two current-edition caveats: a
+  doorway. Nature is beautiful. Two 5.0 caveats: a
   monster has to *see* you for conflict to affect it (so blind or
   out-of-sight monsters keep their wits), and the chance scales
   with your **Charisma** — a high Cha makes it noticeably more
@@ -3602,7 +3637,7 @@ are the time-tested tactics that keep adventurers breathing:
 - **Monster spellcasters no longer get a free extra step after
   casting.** This was a 3.6.x quirk that made casters feel
   unpredictably aggressive — they'd cast a spell and then *also* move.
-  Fixed in current editions. Combat near spellcasters is now more
+  Fixed in 5.0. Combat near spellcasters is now more
   predictable, which is the dungeon's way of making you feel better
   before introducing something else that isn't.
 
@@ -3737,7 +3772,7 @@ and experience level. If you have 18 Intelligence and are level 14,
 your sum is 32, and you can reliably read up to level 6 spells. A
 blessed book effectively adds 2-3 to this number.)
 
-**Wizards identify books by training.** In current editions, advancing
+**Wizards identify books by training.** In 5.0, advancing
 a spell school skill to each rank automatically reveals the appearances
 of spellbooks in that school — unskilled unlocks level-1 appearances,
 basic level-3, skilled level-5, expert level-7. A Wizard starts knowing
@@ -3987,7 +4022,7 @@ easy part. Everything below is worse.
 
 The Castle sits at the bottom of the Dungeons of Doom, guarded by a
 drawbridge and whatever the dungeon decided to stuff inside this
-time. (In current editions, you're at least spared the welcoming
+time. (In 5.0, you're at least spared the welcoming
 committee of arch-liches that used to greet you. Small mercies.) We
 covered how to find and enter it in
 [Branches and Landmarks](#branches-and-landmarks). Here's what
@@ -4003,7 +4038,7 @@ The Castle contains:
   to say *your* equipment once you've dealt with them.
 - **Four outer rooms** along the north and south walls. One — and
   only one, randomly — contains the **wand of wishing** in a
-  locked chest. *Search them all.* In current editions, that chest
+  locked chest. *Search them all.* In 5.0, that chest
   also holds a **potion of gain level**, included as a small make-
   good for the wand's charge changes (see below). The chest's
   square is protected by a burned-in *Elbereth* engraving and
@@ -4023,7 +4058,7 @@ equipment (gray dragon scale mail, silver dragon scale mail,
 gauntlets of power, speed boots — whatever you're missing).
 
 **A 5.0-era warning about the chest.** Intelligent monsters in
-the current edition can pick up containers and rummage through
+5.0 can pick up containers and rummage through
 unlocked ones, and monsters carrying keys can unlock locked ones.
 The Castle chest is an inviting target. If you breach the Castle,
 take time off the level to recover or fetch a wish, and come back,
@@ -4080,14 +4115,14 @@ ascenders. Everything you've prepared for has been leading here.
 - **Fire everywhere.** Fire traps litter the corridors. Demons
   breathe fire as casually as you breathe air. If you don't have
   fire resistance by now, turn around
-- **Hot ground.** In current editions, the ground itself is hot
+- **Hot ground.** In 5.0, the ground itself is hot
   enough to shatter potions dropped on the floor. Keep everything
   in a bag at all times
 - **Demon lords.** Named demon lords—Orcus, Baalzebub, Asmodeus,
   Juiblex, Yeenoghu, and if you're very unlucky, Demogorgon—hold
   court on specific levels. Each is a major battle. Several can
   summon reinforcements. All of them are angry you're here
-- **Teleportation restrictions.** In current editions, teleportation
+- **Teleportation restrictions.** In 5.0, teleportation
   is blocked on a demon lord's lair level while that lord still
   lives. Kill or banish them and the restriction lifts. In older
   editions, most Gehennom levels permanently blocked teleportation
@@ -4104,7 +4139,7 @@ ascenders. Everything you've prepared for has been leading here.
   with the residents (Orcus himself plus an honor guard of liches
   and ghouls), and lift the lamp or marker on your way out. The
   guarantee is the dungeon's compensation for the wand of wishing
-  generating with only one charge in current editions — call it a
+  generating with only one charge in 5.0 — call it a
   consolation prize, in the form of either one djinni wish (rub
   the lamp; the lamp becomes ordinary afterward) or however many
   high-value scrolls you can write before the marker runs dry.
@@ -4118,8 +4153,7 @@ dangerous robbery:
    (a vampire lord) guards the Candelabrum of Invocation at the
    top. Kill Vlad. Take the Candelabrum. Don't linger.
 
-   The tower also contains a **special throne**, and current
-   editions have made it both more rewarding and more painful.
+   The tower also contains a **special throne**, and 5.0 have made it both more rewarding and more painful.
    The good news: it never disintegrates from sheer use the way
    ordinary thrones do. You can sit on it again and again. The
    bad news: you will, because the prize is rare. Each sit rolls
@@ -4468,7 +4502,7 @@ After solving a level, push leftover boulders into corners so they
 can't block you if you return later. Items sometimes hide under
 boulders.
 
-**A note on mirroring.** In the current edition of the game,
+**A note on mirroring.** In 5.0 of the game,
 Sokoban levels may be flipped horizontally and/or vertically.
 The solutions still work — just mirror the directions.
 
@@ -5033,7 +5067,7 @@ to the treasure zoo.
 
 > *The conduct system is documented in Dion Nicolaas's Conduct
 > Spoiler, originally posted to RGRN and archived at steelypips.org.
-> The information below has been updated for the current edition of
+> The information below has been updated for 5.0 of
 > the Mazes.*
 
 The game tracks a set of optional self-imposed restrictions called
@@ -5198,11 +5232,11 @@ conducts:
 **Nudist.** Never wear any armor, shirt, cloak, gloves, boots,
 helmet, or shield. Set the `nudist` option at game start. You
 fight the entire dungeon in your underwear. Officially tracked
-since version 3.6.0.
+since 3.6.
 
 **Blind (Zen).** Play the entire game without sight. Set the
 `blind` option at game start. You'll need telepathy and other
-senses to navigate. Officially tracked since version 3.6.0.
+senses to navigate. Officially tracked since 3.6.
 
 #### Pauper
 
@@ -5302,7 +5336,7 @@ see depends on several modifiers applied in sequence.
 - **Angry shopkeeper:** If you've angered the shopkeeper (by
   stealing, attacking, or similar offenses), prices increase by 33%.
 - **Random variation:** About one time in four, an unidentified
-  non-gem item gets a 33% random surcharge. In current editions,
+  non-gem item gets a 33% random surcharge. In 5.0,
   this surcharge is fixed per shopkeeper — the same shopkeeper
   will always give you the same price for the same unidentified
   item, so you can't exploit price variation by repeatedly dropping
@@ -5425,7 +5459,7 @@ possible before spending your gold on scrolls of identify.
 ### What Changed Since Last Time
 
 If you're an experienced traveler returning after some time away, the
-current edition of the Mazes (NetHack 5.0.0, released May 2, 2026) includes
+5.0 of the Mazes (NetHack 5.0.0, released May 2, 2026) includes
 several notable changes from 3.6.x — the last widely-played version before
 this one. (NetHack 3.7 was a long-running development branch and never
 shipped as a numbered public release; 3.6.x is the natural comparison
@@ -5483,7 +5517,7 @@ point.) The most significant:
   a spear, making the Excalibur strategy less immediate.
 - **Excalibur** fountain dipping is much harder for non-Knights:
   1/30 chance per dip instead of the Knight's 1/6.
-- **Magic cancellation** was overhauled in 3.6.0. The cloak of
+- **Magic cancellation** was overhauled in 3.6. The cloak of
   magic resistance is now MC1 (was MC3). The cloak of protection is
   the only single item providing MC3. MC3 now blocks 90% (was 98%).
 - **New amulets**: the amulet of flying grants flight, and the
@@ -5530,7 +5564,7 @@ point.) The most significant:
   and eggs possible.
 - **Monsters** no longer drop food items as death drops (except
   their own corpse), reducing food availability in the early game.
-- **Iron bars** are a dungeon feature (since 3.6.0). You can't break
+- **Iron bars** are a dungeon feature (since 3.6). You can't break
   them with a weapon or dig through them; the practical way past is
   to dig around the side through the adjacent wall, or polymorph into
   something with acid breath. (Potions of acid don't work on bars.)
@@ -5554,7 +5588,7 @@ changed — not just what changed, but what to do about it.*
 
 In 3.6.x, zapping yourself with a wand of speed monster granted a
 permanent speed intrinsic. It was efficient, elegant, and a reliable
-early priority. In current editions, self-zapping gives 50–74 turns of
+early priority. In 5.0, self-zapping gives 50–74 turns of
 *very fast* speed. Good in a fight. Gone afterward.
 
 Speed boots are now the primary path to permanent speed. Put them on
@@ -5575,7 +5609,7 @@ you permanent invisibility through a single lucky wand find.
 
 The altar has gotten selective. In 3.6.x, a stack of kobold corpses and
 a co-aligned altar could push your luck to maximum through sheer volume
-of sacrifice. In current editions, if your current luck score already
+of sacrifice. In 5.0, if your current luck score already
 exceeds the difficulty rating of the monster you're sacrificing, you
 gain zero luck. The gods will accept your kobold, bless the corpse, and
 give you nothing, because your luck is already better than a kobold
@@ -5590,8 +5624,7 @@ retired.
 **Elbereth does not pacify a monster that has nowhere to go.**
 
 Writing Elbereth and standing on it still works — the monsters mill
-around, refuse to approach, and look frustrated. The catch in current
-editions is that a scared monster with no escape route will turn and
+around, refuse to approach, and look frustrated. The catch in 5.0 is that a scared monster with no escape route will turn and
 fight rather than stand helplessly while you regenerate. If you've
 carved Elbereth in a tight corridor and then backed a monster against
 the dead end of it, expect it to make a decision. Keep the monster's
@@ -5601,7 +5634,7 @@ exit clear, or finish the fight before it makes that decision for you.
 
 The production-line approach — dilute a large stack of healing potions,
 then convert the whole diluted stack in a single dip — hit a wall in
-current editions. Only two potions alchemize per dip from a diluted
+5.0. Only two potions alchemize per dip from a diluted
 stack now. The healing → extra healing → full healing → gain ability
 chain still works perfectly. You just do it in small batches with
 undiluted inputs. Think of it as quality craft work rather than factory
@@ -5648,8 +5681,7 @@ would have done.
 
 A hero polymorphed into a vampire can use `#monster` to switch between
 vampire, bat, and fog cloud forms. This used to be a one-way door:
-enter bat form and stay there until the polymorph expired. In current
-editions it's a loop.
+enter bat form and stay there until the polymorph expired. In 5.0 it's a loop.
 
 Fog cloud form passes through doors and certain barriers, making
 navigation through heavily-gated areas practical. Bat form offers
@@ -5908,7 +5940,7 @@ newly-documented ways. That the accumulated community wisdom from
 those twelve silent years remained useful, that the game was deep
 enough to sustain a decade of fresh analysis without adding a line
 of new code, tells you something about what kind of artifact
-NetHack is. Version 3.6.0 arrived in December 2015, and active
+NetHack is. Version 3.6 arrived in December 2015, and active
 development has continued since.
 
 The current team, including Michael Allison, Ken Arromdee, David
