@@ -116,3 +116,125 @@ export function m_at(x, y) {
     // svl.level.monsters[x][y] != (struct monst *) 0
     return game.level.monsters[x]?.[y] || null;
 }
+
+import { mons } from './monst.js';
+import * as C from './const.js';
+import * as hacklib from './hacklib.js';
+import * as mondata from './mondata.js';
+import { rn1, rn2 } from './rng.js';
+
+export function uncommon(mndx) {
+    if ((mons[mndx].geno & (C.G_NOGEN | C.G_UNIQ)) !== 0)
+        return true;
+    if ((game.mvitals[mndx].mvflags & C.G_GONE) !== 0)
+        return true;
+    if (hacklib.Inhell())
+        return mons[mndx].maligntyp > C.A_NEUTRAL;
+    else
+        return (mons[mndx].geno & C.G_HELL) !== 0;
+}
+
+export function align_shift(ptr) {
+    let alshift = 0;
+    let align = game.dungeons[game.u.uz.dnum]?.flags?.align ?? C.AM_NONE;
+
+    switch (align) {
+        default:
+        case C.AM_NONE:
+            alshift = 0;
+            break;
+        case C.AM_LAWFUL:
+            alshift = Math.trunc((ptr.maligntyp + 20) / (2 * C.ALIGNWEIGHT));
+            break;
+        case C.AM_NEUTRAL:
+            alshift = Math.trunc((20 - Math.abs(ptr.maligntyp)) / C.ALIGNWEIGHT);
+            break;
+        case C.AM_CHAOTIC:
+            alshift = Math.trunc((-(ptr.maligntyp - 20)) / (2 * C.ALIGNWEIGHT));
+            break;
+    }
+    return alshift;
+}
+
+export function temperature_shift(ptr) {
+    if (game.level.flags.temperature
+        && mondata.pm_resistance(ptr, (game.level.flags.temperature > 0)
+                         ? C.MR_FIRE : C.MR_COLD))
+        return 3;
+    return 0;
+}
+
+export function isupper_monsym(ptr) {
+    return ptr.mlet >= C.S_ANGEL && ptr.mlet <= C.S_ZOMBIE;
+}
+
+import { PM_LONG_WORM_TAIL } from './monst.js';
+
+export function rndmonst() {
+    return rndmonst_adj(0, 0);
+}
+
+export function rndmonst_adj(minadj, maxadj) {
+    let ptr;
+    let weight, totalweight = 0, selected_mndx = C.NON_PM;
+
+    let zlevel = hacklib.level_difficulty();
+    let minmlev = mondata.monmin_difficulty(zlevel) + minadj;
+    let maxmlev = mondata.monmax_difficulty(zlevel) + maxadj;
+    let upper = C.Is_rogue_level();
+    let elemlevel = C.In_endgame() && !C.Is_astralevel();
+
+    for (let mndx = C.LOW_PM; mndx < PM_LONG_WORM_TAIL; ++mndx) {
+        ptr = mons[mndx];
+
+        if (mondata.montooweak(mndx, minmlev) || mondata.montoostrong(mndx, maxmlev))
+            continue;
+        if (upper && !isupper_monsym(ptr))
+            continue;
+        if (elemlevel && mondata.wrong_elem_type(ptr))
+            continue;
+        if (uncommon(mndx))
+            continue;
+        if (hacklib.Inhell() && (ptr.geno & C.G_NOHELL) !== 0)
+            continue;
+
+        weight = (ptr.geno & C.G_FREQ) + align_shift(ptr);
+        weight += temperature_shift(ptr);
+
+        if (weight < 0 || weight > 127) {
+            weight = 0;
+        }
+
+        if (weight > 0) {
+            for (let count = 0; count < weight; count++) {
+                totalweight++;
+                if (rn2(totalweight) === 0)
+                    selected_mndx = mndx;
+            }
+        }
+    }
+
+    if (selected_mndx === C.NON_PM || uncommon(selected_mndx)) {
+        return null;
+    }
+    return mons[selected_mndx];
+}
+
+export function rndmonnum() {
+    return rndmonnum_adj(0, 0);
+}
+
+export function rndmonnum_adj(minadj, maxadj) {
+    let ptr = rndmonst_adj(minadj, maxadj);
+    if (ptr)
+        return mondata.monsndx(ptr);
+
+    let excludeflags = C.G_UNIQ | C.G_NOGEN | (hacklib.Inhell() ? C.G_NOHELL : C.G_HELL);
+    let i;
+    do {
+        i = rn1(PM_LONG_WORM_TAIL - C.LOW_PM, C.LOW_PM);
+        ptr = mons[i];
+    } while ((ptr.geno & excludeflags) !== 0);
+
+    return i;
+}

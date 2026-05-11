@@ -85,3 +85,72 @@ export function is_animal(ptr) {
 export function nohands(ptr) {
     return (ptr.mflags1 & C.M1_NOHANDS) !== 0;
 }
+
+import { game } from './gstate.js';
+
+export function montooweak(monindx, lev) {
+    return mons[monindx].difficulty < lev;
+}
+
+export function montoostrong(monindx, lev) {
+    return mons[monindx].difficulty > lev;
+}
+
+export function monmin_difficulty(levdif) {
+    return Math.floor(levdif / 6);
+}
+
+export function monmax_difficulty(levdif) {
+    return Math.floor((levdif + game.u.ulevel) / 2);
+}
+
+export function is_home_elemental(ptr) {
+    if (ptr.mlet === C.S_ELEMENTAL) {
+        const mndx = monsndx(ptr);
+        switch (mndx) {
+            case C.PM_AIR_ELEMENTAL:
+                return C.Is_airlevel();
+            case C.PM_FIRE_ELEMENTAL:
+                return C.Is_firelevel();
+            case C.PM_EARTH_ELEMENTAL:
+                return C.Is_earthlevel();
+            case C.PM_WATER_ELEMENTAL:
+                return C.Is_waterlevel();
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
+export function wrong_elem_type(ptr) {
+    if (ptr.mlet === C.S_ELEMENTAL) {
+        return !is_home_elemental(ptr);
+    } else if (C.Is_earthlevel()) {
+        /* no restrictions? */
+    } else if (C.Is_waterlevel()) {
+        /* just monsters that can swim */
+        if (!is_swimmer(ptr))
+            return true;
+    } else if (C.Is_firelevel()) {
+        if (!pm_resistance(ptr, C.MR_FIRE))
+            return true;
+    } else if (C.Is_airlevel()) {
+        if (!(is_flyer(ptr) && ptr.mlet !== C.S_TRAPPER) && !is_floater(ptr)
+            && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr))
+            return true;
+    }
+    return false;
+}
+
+export function pm_resistance(ptr, typ) {
+    return (ptr.mresists & typ) !== 0;
+}
+
+export function noncorporeal(ptr) {
+    return ptr.mlet === C.S_GHOST;
+}
+
+export function is_whirly(ptr) {
+    return ptr.mlet === C.S_VORTEX || ptr === mons[C.PM_AIR_ELEMENTAL];
+}

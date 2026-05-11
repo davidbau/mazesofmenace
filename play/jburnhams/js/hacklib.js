@@ -31,6 +31,11 @@ export function depth(uz) {
     return (dungeon.depth_start || 1) + dlevel - 1;
 }
 
+export function Inhell(uz) {
+    const lev = uz ?? game?.u?.uz;
+    return !!lev && !!game?.dungeons?.[lev.dnum]?.flags?.hellish;
+}
+
 export function level_difficulty() {
     let res;
 
