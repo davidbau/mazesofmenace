@@ -7,9 +7,14 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
+    FOUNTAIN, SINK, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
 } from './const.js';
-import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, DEC_TO_UNICODE } from './terminal.js';
+import {
+    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE, DEC_TO_UNICODE,
+} from './terminal.js';
+import { roleRankForLevel } from './roles.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -33,6 +38,7 @@ const ANSI_COLOR = [
     96,  // CLR_BRIGHT_CYAN   14
     97,  // CLR_WHITE     15
 ];
+const COLOR_BY_ANSI = new Map(ANSI_COLOR.map((ansi, color) => [ansi, color]));
 
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
@@ -62,6 +68,10 @@ function terrain_glyph(loc, x, y) {
     case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
     case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
     case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
+    case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
+    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+    case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -91,13 +101,27 @@ export function newsym(x, y) {
     }
 
     // Contestants: add monster, object, and trap display here.
+    let tg = terrain_glyph(loc, x, y);
 
-    const tg = terrain_glyph(loc, x, y);
+    const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
+    const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
+    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
+
+    let draw_ch = tg.ch;
+    let draw_color = tg.color;
+    let draw_dec = tg.dec;
+
+    if (mon) {
+        draw_ch = mon.ch; draw_color = mon.color; draw_dec = false;
+    } else if (obj) {
+        draw_ch = obj.ch; draw_color = obj.color; draw_dec = false;
+    }
+
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (cansee(x, y)) {
-        show_glyph_cell(x, y, tg.ch, tg.color, tg.dec);
+        show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
         if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
+            loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
         }
     } else if (loc.remembered_glyph) {
         // Out of sight but remembered — show remembered glyph
@@ -184,9 +208,13 @@ function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.plname || 'Hero';
-    const role = game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer';
+    const role = roleRankForLevel(game.urole, u.ulevel || 1, !!game.flags?.female)
+        || (game.flags?.female
+            ? (game.urole?.rank?.f || game.urole?.name?.f || game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer')
+            : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer'));
     const title = `${name} the ${role}`;
-    const stats = `St:${u.acurr?.a?.[0] || '?'} Dx:${u.acurr?.a?.[1] || '?'} Co:${u.acurr?.a?.[2] || '?'} In:${u.acurr?.a?.[3] || '?'} Wi:${u.acurr?.a?.[4] || '?'} Ch:${u.acurr?.a?.[5] || '?'}`;
+    const attrs = u.acurr?.a || [];
+    const stats = `St:${attrs[0] || '?'} Dx:${attrs[3] || '?'} Co:${attrs[4] || '?'} In:${attrs[1] || '?'} Wi:${attrs[2] || '?'} Ch:${attrs[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column
@@ -198,34 +226,99 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} Xp:${u.ulevel || 1}/${u.uexp || 0} T:${game.moves || 1}`;
+    const xp = game.flags?.showexp
+        ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
+        : `Xp:${u.ulevel || 1}`;
+    const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
-    let output = '';
-    let lastRow = 0;
-    for (let r = 0; r < display.rows; r++) {
-        for (let c = 0; c < display.cols; c++) {
-            if (display.grid[r][c].ch !== ' ') { lastRow = r; break; }
+    const term = display?.terminal || display;
+    if (term?.serialize) return term.serialize();
+    return '';
+}
+
+function applySgr(params, state) {
+    const values = params.length ? params : [0];
+    for (const value of values) {
+        if (value === 0) {
+            state.color = NO_COLOR;
+            state.attr = 0;
+        } else if (value === 1) {
+            state.attr |= ATR_BOLD;
+        } else if (value === 22) {
+            state.attr &= ~ATR_BOLD;
+        } else if (value === 4) {
+            state.attr |= ATR_UNDERLINE;
+        } else if (value === 24) {
+            state.attr &= ~ATR_UNDERLINE;
+        } else if (value === 7) {
+            state.attr |= ATR_INVERSE;
+        } else if (value === 27) {
+            state.attr &= ~ATR_INVERSE;
+        } else if (value === 39) {
+            state.color = NO_COLOR;
+        } else if (COLOR_BY_ANSI.has(value)) {
+            state.color = COLOR_BY_ANSI.get(value);
         }
     }
-    for (let r = 0; r <= lastRow; r++) {
-        let lastCol = -1;
-        for (let c = display.cols - 1; c >= 0; c--) {
-            if (display.grid[r][c].ch !== ' ') { lastCol = c; break; }
+}
+
+function renderOverrideScreen(display, screen) {
+    if (display.clearScreen) display.clearScreen();
+    const state = { row: 0, col: 0, color: NO_COLOR, attr: 0, dec: false };
+    const text = String(screen || '');
+
+    for (let i = 0; i < text.length && state.row < 24; i++) {
+        const ch = text[i];
+        if (ch === '\n') {
+            state.row++;
+            state.col = 0;
+            continue;
         }
-        if (lastCol < 0) { if (r < lastRow) output += '\n'; continue; }
-        let firstCol = 0;
-        for (let c = 0; c <= lastCol; c++) {
-            if (display.grid[r][c].ch !== ' ') { firstCol = c; break; }
+        if (ch === '\x0e') {
+            state.dec = true;
+            continue;
         }
-        if (firstCol > 4) output += `\x1b[${firstCol}C`;
-        else if (firstCol > 0) output += ' '.repeat(firstCol);
-        for (let c = firstCol; c <= lastCol; c++) output += display.grid[r][c].ch;
-        if (r < lastRow) output += '\n';
+        if (ch === '\x0f') {
+            state.dec = false;
+            continue;
+        }
+        if (ch === '\x1b' && text[i + 1] === '[') {
+            let j = i + 2;
+            while (j < text.length) {
+                const code = text.charCodeAt(j);
+                if (code >= 0x40 && code <= 0x7e) break;
+                j++;
+            }
+            const final = text[j];
+            const body = text.slice(i + 2, j);
+            if (final === 'C') {
+                state.col += Number.parseInt(body || '1', 10) || 1;
+            } else if (final === 'm') {
+                applySgr(body.split(';').filter(Boolean).map((v) => Number.parseInt(v, 10)), state);
+            }
+            i = j;
+            continue;
+        }
+
+        if (state.col < 80) {
+            display.setCell(
+                state.col,
+                state.row,
+                state.dec ? (DEC_TO_UNICODE[ch] || ch) : ch,
+                state.color,
+                state.attr,
+            );
+        }
+        state.col++;
     }
-    return output;
+
+    if (game._override_cursor && display.setCursor) {
+        display.setCursor(game._override_cursor[0], game._override_cursor[1]);
+    }
 }
 
 // ── Build screen output ──
@@ -233,9 +326,14 @@ function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
 
+    if (game._override_screen) {
+        renderOverrideScreen(display, game._override_screen);
+        return;
+    }
+
     let output = '';
     // Row 0: message
-    output += (game._pending_message || '') + '\n';
+    output += (game._pending_message || '') + (game._more ? '--More--' : '') + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
@@ -252,7 +350,7 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = game._pending_message || '';
+        const msg = (game._pending_message || '') + (game._more ? '--More--' : '');
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
@@ -273,7 +371,9 @@ function _buildScreenOutput() {
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
         // Cursor at hero
-        if (game.u?.ux > 0)
+        if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
+        else if (msg && game._more) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
+        else if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
     }
 }
@@ -298,4 +398,10 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
+}
+
+export function clear_pending_message() {
+    game._pending_message = '';
+    game._more = false;
+    game._prompt_cursor = null;
 }

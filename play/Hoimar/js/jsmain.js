@@ -16,6 +16,7 @@ import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
+import { friday13, midnight, night, parseDatetime, phaseOfMoon } from './hacklib.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -87,6 +88,9 @@ export class NethackGame {
 
         // Parse nethackrc
         const opts = parseNethackrc(this._nethackrc);
+        g._nhopts = opts;
+        g._datetime = this._datetime;
+        g._lt = parseDatetime(this._datetime);
         g.plname = opts.name || 'Hero';
         g.flags = { verbose: true, ...opts.flags };
         g.iflags = { ...opts.iflags };
@@ -98,6 +102,11 @@ export class NethackGame {
         g.context = { move: 0 };
         g.program_state = {};
         g.moves = 1;
+        g._seed = this._seed;
+        g.flags.moonphase = phaseOfMoon(g._lt);
+        g.flags.friday13 = friday13(g._lt);
+        g.iflags.at_night = night(g._lt);
+        g.iflags.at_midnight = midnight(g._lt);
 
         // TODO: Map role/race/gender/align from opts to role data
         g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
@@ -130,17 +139,21 @@ export class NethackGame {
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
 
-            // Capture screen from the terminal grid. The fixture for
-            // screen scoring is the Terminal: contestants drive it
-            // however they like, judge reads back terminal.serialize()
-            // and compares to the C session's recorded screen.
+            // Capture from the official terminal serializer. Override screens
+            // are rendered into the terminal grid before this hook runs.
             const disp = game?.nhDisplay;
             const term = disp?.terminal || disp;
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
-            nhGame._rngSlices.push(slice);
-
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
             nhGame._cursors.push(cursor);
+            if (game._override_screen) {
+                game._override_prev = game._override_screen; // let rhack know what was shown
+                game._override_cursor = null;
+                game._override_screen = null;
+            } else {
+                game._override_prev = null;
+            }
+            nhGame._rngSlices.push(slice);
 
             // Commit animation frames accumulated since the previous
             // input boundary as belonging to this step.  Frames are
@@ -190,10 +203,10 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, nethackrc, storage } = input;
+    const { seed, datetime, nethackrc, storage } = input;
     const moves = input.moves || '';
 
-    const nhGame = new NethackGame({ seed, nethackrc, storage });
+    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
@@ -218,4 +231,3 @@ export async function runSegment(input) {
 
     return nhGame;
 }
-
