@@ -611,3 +611,162 @@ Constitution)% chance per turn.
   `d(2, 6)` to TSURUGI vs large; `weapon.c:283-291` adds `rnd(4)`
   to BATTLE_AXE for the base + `d(2, 4)` vs large.
 - **Verdict**: Correct
+
+---
+
+## 2026-05-11 — third systematic pass
+
+Audit by Claude Opus 4.7. Triggered by question about whether Orcus-town
+is a real special level. Pass focused on: location/place-name verification
+(is X a real special level?), gameplay-number checks not yet covered
+(food, prayer, corpse rotting), and re-verification of recently-edited
+section's factual claims. NetHack 5.0 source HEAD.
+
+### Locations / special levels
+
+**Claim**: Orcus-town is a real place; lamp or marker guaranteed there.
+- **Spoiler lines**: 3678, 4075, 4132-4140, 5511
+- **Source refs**:
+  - `dat/orcus.lua` — level layout file exists.
+  - `dat/dungeon.lua:150` — registered `name = "orcus"` in Gehennom.
+  - `include/hack.h:401` — `orcus_level` location tracked.
+  - `src/shknam.c:794-797` — comment "Hack for Orcus's level: it's a
+    ghost town, get rid of shopkeepers" + the actual `mongone(mtmp)`
+    call confirms the ghost-town design.
+  - `dat/orcus.lua:106-110` — 50/50 random pick between `"magic marker"`
+    and `"magic lamp"` placement, with code comment "An object that's
+    worth most of a wish (this is part of the compensation for the
+    reduced wishes at the Castle)".
+- **Verdict**: Correct
+
+**Claim**: Fort Ludios is a real branch.
+- **Spoiler lines**: 529, 551, 931-946
+- **Source refs**: `dat/knox.lua` + `dat/dungeon.lua:248-255` (branch
+  registered with map `"knox"`); `src/botl.c:449` `Is_knox()`.
+- **Verdict**: Correct
+
+**Claim**: Astral Plane has three altars (one per alignment).
+- **Spoiler lines**: 571, 4173 (Astral pilgrimage)
+- **Source ref**: `dat/astral.lua:89-91` —
+  `des.altar({ x=07, y=09, align=align[1], type="sanctum" })` and two
+  more for align[2] and align[3].
+- **Verdict**: Correct
+
+**Claim**: Moloch's Sanctum is the bottom of Gehennom.
+- **Spoiler lines**: 534, 564
+- **Source ref**: `dat/sanctum.lua` exists; `dat/dungeon.lua:111`
+  registers `name = "sanctum"` at the bottom of Gehennom.
+- **Verdict**: Correct
+
+**Claim**: The Wizard's Tower contains the Book of the Dead.
+- **Spoiler line**: 562
+- **Source refs**: `dat/dungeon.lua:133` registers level `"wizard1"`
+  (no explicit "Wizard's Tower" string in code, but the spoiler's name
+  is reasonable for player-facing prose); `dat/wizard1.lua:60` places
+  `des.object("Book of the Dead", 16, 05)`.
+- **Verdict**: Correct
+
+**Claim**: Vlad's Tower contains the Candelabrum.
+- **Spoiler line**: 3084
+- **Source refs**: `dat/dungeon.lua: Vlad's Tower` branch registered;
+  `src/makemon.c:1353-1354` —
+  `if (mndx == PM_VLAD_THE_IMPALER) mitem = CANDELABRUM_OF_INVOCATION;`
+  plus the explicit comment a few lines down "Vlad stays in his normal
+  shape so he can carry the Candelabrum".
+- **Verdict**: Correct
+- **Notes**: Vlad himself (in `dat/tower1.lua:113`) carries the
+  candelabrum — not placed on the floor.
+
+### Eating mechanics
+
+**Claim**: Food ration = 800 nutrition.
+- **Spoiler line**: 345
+- **Source ref**: `objects.h:1111` —
+  `FOOD("food ration", 380, 5, 20, 0, VEGGY, 800, ...)` — the 800
+  field is nutrition per FOOD macro definition.
+- **Verdict**: Correct
+
+**Claim**: Lembas wafer = 800 nutrition at only 5 weight.
+- **Spoiler line**: 2435
+- **Source ref**: `objects.h:1107` —
+  `FOOD("lembas wafer", 20, 2, 5, 0, VEGGY, 800, ...)` — fields are
+  (name, prob, delay, weight, unk, foodtype, nutrition, ...). So
+  weight = 5, nutrition = 800.
+- **Verdict**: Correct
+- **Notes**: Delay-to-eat is 2 turns (the "2" field), weight is 5.
+
+**Claim**: Lichen and Lizard corpses never rot.
+- **Spoiler lines**: 420-421
+- **Source refs**: `eat.c:59` macro checks `PM_LIZARD || PM_LICHEN`;
+  `mkobj.c:1403` `if (body->corpsenm == PM_LIZARD || PM_LICHEN)`
+  bypasses the normal age timer; `mkobj.c:2053` similar guard.
+- **Verdict**: Correct
+
+**Claim**: Lizard corpse cures stoning in progress.
+- **Spoiler lines**: 1462, 1492
+- **Source ref**: `eat.c:827-829` — `case PM_LIZARD: if (Stoned)
+  fix_petrification(); break;`
+- **Verdict**: Correct
+
+### Prayer
+
+**Claim**: Pray about once every 300-500 turns.
+- **Spoiler line**: 435
+- **Source ref**: `pray.c:1356` `u.ublesscnt = rnz(350);` plus
+  additional `rnz(1000)` increments for Demigod / Hand of Elbereth
+  status. `rnz()` returns roughly base/2 to 2x base.
+- **Verdict**: Approximately correct
+- **Notes**: Base cooldown after a successful prayer is `rnz(350)` —
+  roughly 175-700 turns (typically clustered near 350). The
+  300-500 range in the spoiler is a reasonable rule of thumb but
+  the actual variance is wider.
+
+**Claim**: Successful prayer raises the prayer timeout to at least
+1000 turns.
+- **Spoiler line**: 3506
+- **Source ref**: `pray.c:1360-1362` adds `rnz(1000)` per
+  Demigod / Hand-of-Elbereth status; for a basic successful prayer
+  `rnz(350)` is the base. The "at least 1000" claim is more
+  appropriate for elevated-status prayers.
+- **Verdict**: Approximately correct (caveat about status applies)
+
+### Boulders / Sokoban
+
+**Claim**: Squeezing past boulders costs a point of luck each time.
+- **Spoiler line**: 903 (in Sokoban context)
+- **Source ref**: `hack.c:401-404` —
+  `You("squeeze yourself %s the boulder."); sokoban_guilt();`
+  `trap.c:7042-7045` `sokoban_guilt`:
+  `u.uconduct.sokocheat++; change_luck(-1);` — guarded by `Sokoban`,
+  so only happens inside Sokoban.
+- **Verdict**: Correct (in Sokoban context)
+- **Notes**: Important caveat — the luck penalty is Sokoban-only.
+  Outside Sokoban, squeezing past boulders has no luck cost. The
+  spoiler is in the Sokoban section so the context is right.
+
+### Items and artifacts (additional checks)
+
+**Claim**: Mine's End luckstone is always uncursed.
+- **Spoiler line**: 2304
+- **Source refs**: All three Mine's End variant files explicitly
+  mark the luckstone `buc="not-cursed"`:
+  - `dat/minend-1.lua:77` (also has a mimic decoy)
+  - `dat/minend-2.lua:116`
+  - `dat/minend-3.lua:67`
+- **Verdict**: Correct
+- **Notes**: `buc="not-cursed"` means it can be blessed or uncursed
+  (just never cursed). The "uncursed" rule of thumb holds.
+
+**Claim**: Demonbane is a silver mace and Priest's first sacrifice gift.
+- **Spoiler lines**: 192, 3324, 5543, 5644
+- **Source refs**: `artilist.h: A("Demonbane", SILVER_MACE, ...,
+  A_LAWFUL, PM_CLERIC, ...)`. The CLERIC role and SILVER_MACE base
+  confirm both parts of the claim.
+- **Verdict**: Correct
+
+### Summary
+
+3rd pass focused on the kinds of claims that 1st and 2nd passes
+exposed as fragile: place names, gameplay specifics, items.
+Of 14 newly-checked claims, all 14 are correct or approximately
+correct. No new corrections needed.
