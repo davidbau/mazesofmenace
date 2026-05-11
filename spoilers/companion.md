@@ -164,12 +164,17 @@ situations that would kill other roles. You can also see whether
 potions of sickness are safe, which streamlines identification
 considerably. *Alignment: Neutral.*
 
-**Knight.** You start mounted on a pony, which is both a blessing
-and a liability. The pony is a decent combatant early on but will get
-you into trouble if it wanders into a shop. Knights follow a code of
-conduct that penalizes attacking fleeing or peaceful monsters. You get
-a lance for jousting from horseback, which is very effective when it
-works. *Alignment: Lawful.*
+**Knight.** You start mounted on a saddled pony, with a +1 long sword
+and a +0 lance among your gear. The pony is a decent combatant early
+on and the basis of your unique trick: jousting from horseback with
+the lance is devastating when it connects, though the lance is largely
+useless on foot. As a Lawful character with a starting long sword, you
+also have the best odds in the game at Excalibur — dip your long sword
+in a fountain at experience level 5+ and Knights get a 1-in-6 chance
+per dip, far better than the 1-in-30 every other Lawful role faces.
+Knights follow a code of conduct that imposes alignment penalties for
+attacking fleeing or peaceful monsters, so pick your fights carefully.
+*Alignment: Lawful.*
 
 **Monk.** You fight best with bare hands and start with no weapon at
 all, which is the point. Monks gain martial arts abilities as they
@@ -198,9 +203,14 @@ get stealth and see invisible early. Your elven racial option gives
 you sleep resistance on top of that. If you enjoy picking off enemies
 from a distance, this is your role. *Alignment: Neutral or Chaotic.*
 
-**Rogue.** You start with a short sword, daggers for throwing, and a
-sack. You get stealth from the beginning and your backstab ability
-deals extra damage when you attack from hiding. Rogues are excellent
+**Rogue.** NetHack's thief class — sneaky combat, lockpicking, and
+backstabs. You start with a short sword, six daggers for throwing,
+leather armor, a lock pick, a sack, and a potion of sickness (handy
+for poisoning blades or for tossing at an enemy). The lock pick is a
+quiet superpower: every locked door, chest, and box is openable from
+turn one without needing a key or a kick. You get stealth from the
+beginning and your backstab ability deals extra damage when you
+attack from hiding. Rogues are excellent
 at avoiding trouble, which is often better than being good at
 surviving it. *Alignment: Chaotic.*
 
@@ -223,13 +233,15 @@ people who have ascended before and want a challenge.
 resistance. Valkyries are widely considered one of the most
 beginner-friendly roles: strong combat stats, good starting equipment,
 and cold resistance covers one of the more common damage types. If
-you're lawful, you can find a long sword and dip it in a fountain at
-experience level 5 or higher for a chance at Excalibur — but "a chance"
-is doing some work in that sentence. Non-Knights get a 1-in-30 probability
-per dip. Knights get 1-in-6. If you're a lawful Valkyrie with a long sword
-and nothing but time and fountains, budget for a long afternoon. If
-Excalibur doesn't materialize, keep moving; a well-enchanted mundane long
-sword will carry you through the early game just fine.
+you're Neutral, your artifact prize is **Mjollnir**, a +d5/+d24 war
+hammer that's brutal in melee against anything not shock-resistant and
+returns when thrown if you can reach Strength 25. It's not free —
+you'll need to sacrifice corpses on a co-aligned altar and hope for
+the gift, or wish for it later — but it's one of the best weapons in
+the game once acquired. Lawful Valkyries can instead pursue Excalibur
+via fountain dipping (see the Knight section for the dip mechanics,
+though Valkyries don't share the Knight's 1-in-6 odds — it's the
+standard 1-in-30 for everyone else).
 This is the recommendation for your first serious attempt.
 *Alignment: Lawful or Neutral. Female only.*
 
@@ -467,21 +479,28 @@ pet is.
 
 #### Supply Containers
 
-Somebody has been leaving care packages.
+New in NetHack 5.0: somebody has been leaving care packages.
 
-In current editions, the upper dungeon levels occasionally generate
-supply containers — chests or boxes placed with better-than-average
-early-game contents. Healing potions, scrolls of enchantment,
-occasionally something more interesting. They look like any other
-container, which is the point: the Mazes are not in the habit of
-labeling things "useful, open me."
+Every level above the Oracle has a 2/3 chance of hosting a "supply
+chest" — usually a chest (sometimes a large box), usually locked,
+seeded with at least one survivability item. The contents pool:
+potion of healing (about a 50% chance per chest, sometimes a pair),
+or otherwise potion of extra healing / speed / gain energy, scroll
+of enchant weapon, enchant armor, confuse monster, or scare monster,
+wand of digging, or spellbook of healing. There's also a 2/3 chance
+of an extra random item, biased toward low-level spellbooks. The
+Mines branch level gets a different gift: a guaranteed food ration,
+cram ration, or lembas wafer.
 
-On your first ten levels, check every container you find. A locked one
-will yield to a credit card, a key, a wand of opening, or patience with
-a pickaxe. The contents aren't guaranteed to change your run, but
-finding a stack of healing potions on level 4 before you've learned the
-hard way how much you need them is the dungeon's occasional act of
-goodwill. Accept it graciously and move on.
+These look like ordinary containers — no special marking — which is
+the point: the Mazes are not in the habit of labeling things "useful,
+open me." On your first ten levels, check every chest and large box
+you find. A locked one will yield to a credit card, a key, a wand of
+opening, or patience with a pickaxe (a Rogue's starting lock pick is
+a quiet superpower here). The contents aren't guaranteed to change
+your run, but finding a stack of healing potions on level 4 before
+you've learned the hard way how much you need them is the dungeon's
+frequent act of goodwill. Accept it graciously and move on.
 
 ---
 
@@ -1169,19 +1188,29 @@ spiked pit.
 
 #### Iron Bars
 
-Iron bars block doorways and passages like impassable walls, except
-that unlike walls, they can be removed. The options: pour acid on them
-(a potion of acid works; so will the acidic blood of an appropriate
-monster if you get creative and messy), or beat them with a war hammer
-until they give up. Standard digging spells, picks, and sheer
-frustration have no effect.
+Iron bars look like a barrier but aren't solid — light passes through,
+you can see what's on the other side, and small creatures can squeeze
+between. What they resist is almost everything the player can throw
+at them: a pick-axe bounces off ("Clang!"), a wand of digging does
+nothing, hitting with a weapon does nothing, and kicking just hurts
+your foot. Despite long-running advice to the contrary, **throwing or
+otherwise applying a potion of acid does not dissolve iron bars** —
+the bars-corrode code only fires for acid *breath* (from a monster,
+or from you if polymorphed into a yellow dragon, acid blob, black
+naga, etc.).
 
-They're most often encountered blocking access to special areas or
-vaults, which is the dungeon's way of asking whether you have a potion
-of acid. If you do, the bar becomes an obstacle you've already solved.
-If you don't, the bar is a reminder to carry one next time. Your pet
-may be able to squeeze through in some configurations, which is one
-more reason to keep the animal well-fed and close.
+The practical early-game answer is to **dig around** them. Iron bars
+sit in a single tile of wall with ordinary stone on the flanks, so a
+pick-axe through the adjacent wall tunnels into the niche from the
+side and the bars stay standing as decoration. Mid-game, polymorph
+into something that breathes acid, passes walls (xorn, earth
+elemental), or is small enough to slip between. A small pet can
+occasionally retrieve loot from behind bars on its own.
+
+What's typically behind them: a scroll of teleportation (guaranteed
+if teleport isn't suppressed on the level), occasionally a random
+item or a previous adventurer's corpse. The scroll is a joke — you'd
+need one already to read it from outside the bars.
 
 #### Finding Secret Doors
 
@@ -3080,25 +3109,49 @@ but no special effects—useful only for confusing the issue.
 | Leash              | Tie a pet to you so it follows through stairs |
 
 The **unicorn horn** is one of the most important tools in the
-game. Apply it to cure confusion, blindness, sickness,
-hallucination, and stunning — most of the status ailments that
-matter. Carry one at all times. If you don't have one, getting
-one should be near the top of your priority list.
+game. Apply it to cure confusion, blindness, sickness, hallucination,
+stunning, vomiting, and (new in 5.0) deafness — most of the status
+ailments that matter. Carry one at all times. If you don't have one,
+getting one should be near the top of your priority list.
 
-A current-editions caveat: the unicorn horn **no longer
-restores lost ability scores** the way it used to. Drained
-Strength, Intelligence, Wisdom, and so on now require a *potion
-of restore ability* (or its spell) to bring back. The horn
-remains the universal cure for *status* problems, but not for
-attribute drain. Earlier guides that described it as a complete
-cure-all are out of date; budget for restore ability separately.
+Bless your horn. A blessed horn can fix up to seven ailments in a
+single application; an uncursed horn maxes out at three, with a 35%
+chance of doing nothing even when you have troubles to fix. A cursed
+horn will *inflict* a random ailment from the same list (including
+the new deafness one), so be sure of bless status before applying —
+horns don't get used up, so a non-emergency test apply is free.
 
-The **magic marker** is a printing press for scrolls. Write scrolls
-of identify, enchant weapon, enchant armor, or anything else on
-blank paper or blank scrolls. Charges are limited and precious:
-writing a scroll you've already identified costs fewer charges, so
-identify first, write second. A well-used magic marker can produce
-half your ascension kit.
+A 5.0 caveat: the unicorn horn **no longer restores lost ability
+scores** the way it used to. Drained Strength, Intelligence, Wisdom,
+and so on now require a *potion of restore ability* (or its spell)
+to bring back. The horn remains the universal cure for *status*
+problems, but not for attribute drain. Earlier guides that described
+it as a complete cure-all are out of date; budget for restore ability
+separately.
+
+The **magic marker** is a printing press for scrolls (and, more
+expensively, spellbooks). A fresh marker has 30-99 charges; one
+blessed scroll of charging restores it to at least 50, but only
+once — the second recharge attempt always fails. Each write costs
+roughly half to all of the target scroll's basecost: magic mapping
+4-7 charges, identify 7-13, enchant weapon / enchant armor /
+charging 8-15, teleportation 10-19, and **genocide 15-29**.
+Spellbooks cost about 10 × spell level — a level-3 book averages
+~22 charges, a level-7 ~52.
+
+To write a scroll intentionally you must have **identified** it
+first — writing by appearance gives a random scroll of that
+appearance, which is usually wasted charges. If charges run out
+mid-write, scrolls disappear entirely (paper + charges wasted); a
+spellbook's paper survives but the writing fades.
+
+The big-ticket writes for an ascension kit are scrolls of
+**genocide** (three of these wipe the worst dangerous monster
+letters — L, &, h — out of the game), **charging** (a blessed one
+gives a wand of wishing two more wishes, ~16 charges very well
+spent), and **enchant weapon / enchant armor** for the +7 ascension
+kit. A well-used marker can produce a meaningful share of your
+ascension kit.
 
 ---
 
@@ -5466,8 +5519,10 @@ point.) The most significant:
   and eggs possible.
 - **Monsters** no longer drop food items as death drops (except
   their own corpse), reducing food availability in the early game.
-- **Iron bars** are a dungeon feature (since 3.6.0). They can be
-  dissolved with acid or broken with a war hammer.
+- **Iron bars** are a dungeon feature (since 3.6.0). You can't break
+  them with a weapon or dig through them; the practical way past is
+  to dig around the side through the adjacent wall, or polymorph into
+  something with acid breath. (Potions of acid don't work on bars.)
 - **Mummies** now cause withering instead of draining experience.
   Withering can be cured by prayer.
 
