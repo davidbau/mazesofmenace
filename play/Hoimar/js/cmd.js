@@ -50,6 +50,8 @@ function make_wish_object(name) {
     const otmp = mksobj(otyp, true, false);
     otmp.wishedfor = true;
     rn2(100);
+    game.inventory = game.inventory || [];
+    game.inventory.push(otmp);
     return otmp;
 }
 

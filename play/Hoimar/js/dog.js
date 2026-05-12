@@ -243,6 +243,7 @@ function dogfood(mtmp, obj) {
             return herbi ? ACCFOOD : MANFOOD;
         }
     }
+    if (object_class(obj.otyp) === ROCK_CLASS) return UNDEF;
     return obj.cursed ? UNDEF : APPORT;
 }
 
@@ -400,6 +401,7 @@ export function dog_move(mtmp, after = true) {
                 nix = nx;
                 niy = ny;
                 nidist = ndist;
+                if (j < 0) chcnt = 0;
             }
         }
     }
