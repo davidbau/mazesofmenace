@@ -43,6 +43,18 @@ function is_wanderer(mtmp) {
     return !!mtmp.data?.m2_wander;
 }
 
+function dist2(x0, y0, x1, y1) {
+    const dx = x0 - x1;
+    const dy = y0 - y1;
+    return dx * dx + dy * dy;
+}
+
+function monnear_hero(mtmp) {
+    // C ref: mon.c:monnear().  dochug() short-circuits before the
+    // is_wanderer() RNG gate when the pet is not near its target.
+    return dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) < 3;
+}
+
 function m_everyturn_effect(mtmp) {
     if (mtmp.data?.name === 'FOG_CLOUD') {
         rn2(3); // create_gas_cloud(..., 1, 0) TTL via rn1(3, 4)
@@ -70,8 +82,9 @@ export async function movemon() {
         // C ref: monmove.c:dochug() delegates tame monsters to
         // dogmove.c:dog_move() after the shared distfleeck() phase.
         if (mtmp.mtame) {
-            if (is_wanderer(mtmp) && !rn2(4)) continue;
+            if (is_wanderer(mtmp) && monnear_hero(mtmp)) rn2(4);
             dog_move(mtmp, false);
+            distfleeck(mtmp);
         }
     }
     

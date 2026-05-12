@@ -13,7 +13,7 @@ import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { rhack } from './cmd.js';
+import { continueRunStep, rhack } from './cmd.js';
 import { nhgetch } from './input.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
@@ -283,6 +283,27 @@ export async function newgame() {
     if (!ff) g._more = true;
 }
 
+export async function advanceTurn() {
+    const g = game;
+
+    while (await movemon()) {
+        // Keep moving monsters until all out of movement.
+    }
+
+    for (const m of g.level.monsters) {
+        m.movement += mcalcmove(m, true);
+    }
+
+    maybe_generate_rnd_mon();
+
+    await dosounds();
+
+    gethungry();
+    maybe_wipe_engraving();
+
+    g.moves = (g.moves || 1) + 1;
+}
+
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
@@ -302,24 +323,13 @@ export async function moveloop_core() {
     // Read and execute one command
     await rhack(key);
 
-    // Advance turn
+    // Advance turn; run/rush movement may consume multiple turns before
+    // returning to the input boundary.
     if (g.context?.move) {
-        while (await movemon()) {
-            // Keep moving monsters until all out of movement.
+        await advanceTurn();
+        while (g.context?.run && await continueRunStep()) {
+            await advanceTurn();
         }
-
-        for (const m of g.level.monsters) {
-            m.movement += mcalcmove(m, true);
-        }
-
-        maybe_generate_rnd_mon();
-
-        await dosounds();
-
-        gethungry();
-        maybe_wipe_engraving();
-
-        g.moves = (g.moves || 1) + 1;
     }
 }
 

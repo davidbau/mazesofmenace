@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { enexto_core, makemon } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
+import { newsym } from './display.js';
 import {
     ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, TABU, UNDEF,
     D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
@@ -119,6 +120,7 @@ function init_edog(mon) {
             apport: hero_charisma(),
             hungrytime: 1000,
             mhpmax_penalty: 0,
+            whistletime: 0,
             ogoal: { x: 0, y: 0 },
         };
     } else if (!mon.edog.apport || mon.edog.apport <= 0) {
@@ -295,7 +297,7 @@ function pet_can_step(mtmp, x, y) {
     return !!loc && SPACE_POS(loc.typ);
 }
 
-function pet_goal(mtmp, after, udist) {
+function pet_goal(mtmp, after, udist, whappr) {
     // C ref: dogmove.c:dog_goal().  This partial path scans nearby floor
     // objects before falling back to the common "follow the hero" goal.
     const gx = game.u?.ux ?? mtmp.mx;
@@ -351,7 +353,7 @@ function pet_goal(mtmp, after, udist) {
     }
 
     if (after && udist <= 4) return { abort: true, gx, gy, appr };
-    if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4)
+    if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4) || whappr
         || (dogHasMinvent && rn2(edog.apport)))) appr = 1;
     if (appr === 0) {
         for (const obj of game.inventory || []) {
@@ -369,7 +371,9 @@ export function dog_move(mtmp, after = true) {
     const udist = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
     if (!udist) return 0;
 
-    const goal = pet_goal(mtmp, after, udist);
+    const edog = init_edog(mtmp);
+    const whappr = (game.moves || 0) - (edog.whistletime || 0) < 5;
+    const goal = pet_goal(mtmp, after, udist, whappr);
     if (goal.abort) return 0;
 
     // C ref: mon.c:mfndpos() scans x first, then y.  dogmove.c then applies
@@ -397,7 +401,8 @@ export function dog_move(mtmp, after = true) {
             const j = (ndist - nidist) * goal.appr;
             if ((j === 0 && !rn2(++chcnt))
                 || j < 0
-                || (j > 0 && ((mtmp.mx === nix && mtmp.my === niy && !rn2(3)) || !rn2(12)))) {
+                || (j > 0 && !whappr
+                    && ((mtmp.mx === nix && mtmp.my === niy && !rn2(3)) || !rn2(12)))) {
                 nix = nx;
                 niy = ny;
                 nidist = ndist;
@@ -407,7 +412,11 @@ export function dog_move(mtmp, after = true) {
     }
 
     if (nix === mtmp.mx && niy === mtmp.my) return 0;
+    const oldx = mtmp.mx;
+    const oldy = mtmp.my;
     mtmp.mx = nix;
     mtmp.my = niy;
+    newsym(oldx, oldy);
+    newsym(nix, niy);
     return 1;
 }

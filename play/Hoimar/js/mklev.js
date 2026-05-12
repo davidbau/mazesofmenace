@@ -3476,13 +3476,23 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
                     otmp.quan = 1 + rnd(goldprob * 3);
-                    rn2(3);
+                    if (!rn2(3)) {
+                        // Buried object chain is not modeled yet.
+                    } else {
+                        place_object(otmp, x, y);
+                    }
                 }
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
                         const otmp = mkobj(GEM_CLASS, false);
-                        if (otmp?.otyp !== ROCK) rn2(3);
+                        if (otmp?.otyp !== ROCK) {
+                            if (!rn2(3)) {
+                                // Buried object chain is not modeled yet.
+                            } else {
+                                place_object(otmp, x, y);
+                            }
+                        }
                     }
                 }
             }

@@ -22,6 +22,7 @@ import { COLNO, ROWNO, STONE, DOOR, D_CLOSED, D_LOCKED,
 //                   b j n
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
+const RUN_KEY = { H: 'h', L: 'l', J: 'j', K: 'k', Y: 'y', U: 'u', B: 'b', N: 'n' };
 
 const AMULET_OF_LIFE_SAVING = 202;
 const GRAY_DRAGON_SCALE_MAIL = 101;
@@ -57,6 +58,10 @@ function make_wish_object(name) {
 
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
+}
+
+function runDirectionForKey(ch) {
+    return RUN_KEY[ch] || null;
 }
 
 // C ref: hack.c — check if a cell blocks movement
@@ -425,8 +430,12 @@ export async function rhack(key) {
     clear_pending_message();
 
     if (isMovementKey(ch)) {
-        await domove(DIR_DX[ch], DIR_DY[ch]);
-        game.context.move = 1;
+        game.context.move = await domove(DIR_DX[ch], DIR_DY[ch]) ? 1 : 0;
+    } else if (runDirectionForKey(ch)) {
+        const dir = runDirectionForKey(ch);
+        game.context.run = { dx: DIR_DX[dir], dy: DIR_DY[dir], mode: 1, steps: 0 };
+        game.context.move = await domove(DIR_DX[dir], DIR_DY[dir]) ? 1 : 0;
+        if (!game.context.move) game.context.run = null;
     } else if (ch === '.') {
         game.context.move = 1;
     } else if (ch === 's') {
@@ -492,7 +501,22 @@ export async function rhack(key) {
 }
 
 // C ref: hack.c domove — execute a movement
-async function domove(dx, dy) {
+export async function continueRunStep() {
+    const run = game.context?.run;
+    if (!run) return false;
+    if (run.steps++ > COLNO * ROWNO) {
+        game.context.run = null;
+        game.context.move = 0;
+        return false;
+    }
+    game.context.move = 0;
+    const moved = await domove(run.dx, run.dy);
+    game.context.move = moved ? 1 : 0;
+    if (!moved) game.context.run = null;
+    return moved;
+}
+
+export async function domove(dx, dy) {
     const u = game.u;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
@@ -500,7 +524,7 @@ async function domove(dx, dy) {
     if (blocksMove(newx, newy)) {
         // Can't move there
         game.context.move = 0;
-        return;
+        return false;
     }
 
     const is_diag = dx !== 0 && dy !== 0;
@@ -510,7 +534,7 @@ async function domove(dx, dy) {
         if (target.typ === DOOR || source.typ === DOOR) {
             await pline(`You can't move diagonally into an intact doorway.`);
             game.context.move = 0;
-            return;
+            return false;
         }
     }
 
@@ -525,4 +549,5 @@ async function domove(dx, dy) {
     newsym(oldx, oldy);
     vision_recalc(1);
     newsym(newx, newy);
+    return true;
 }
