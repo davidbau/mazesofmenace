@@ -770,3 +770,124 @@ section's factual claims. NetHack 5.0 source HEAD.
 exposed as fragile: place names, gameplay specifics, items.
 Of 14 newly-checked claims, all 14 are correct or approximately
 correct. No new corrections needed.
+
+---
+
+## Artifact-table expansion pass (2026-05-12)
+
+The "Key Artifacts" table had 14 of 34 artifacts (5.0 ships 33 active
+entries; one is the STRANGE_OBJECT terminator and one — Palantir of
+Westernesse — is `#if 0`'d out). Three big gaps:
+
+1. The six "bane" weapons (Grimtooth, Dragonbane, Werebane,
+   Giantslayer, Ogresmasher, Trollsbane) weren't in the table at all.
+2. Cleaver's three-square spin attack wasn't mentioned anywhere.
+3. The 13 quest artifacts only appeared as a single comma-separated
+   prose line at the end of the section.
+
+This pass verifies each of those facts against `artilist.h` and
+relevant code, then expands the table.
+
+**Claim**: Grimtooth = orcish dagger, anti-elf, poison defense.
+- **Source**: `artilist.h:123-132` `A("Grimtooth", ORCISH_DAGGER,
+  (SPFX_RESTR | SPFX_WARN | SPFX_DFLAG2), 0, M2_ELF, PHYS(2, 6),
+  DFNS(AD_DRST), ...)`. PHYS(2,6) → +d2 to-hit, +d6 damage. Chaotic.
+- **Verdict**: Correct (added).
+
+**Claim**: Dragonbane = broadsword, vs S_DRAGON, grants reflection.
+- **Source**: `artilist.h:157-160` `A("Dragonbane", BROADSWORD,
+  (SPFX_RESTR | SPFX_DCLAS | SPFX_REFLECT), 0, S_DRAGON, PHYS(5, 0),
+  ...)`. SPFX_REFLECT is in the s1 (wield-flag) bitset.
+- **Verdict**: Correct (added).
+
+**Claim**: Werebane = silver saber, vs M2_WERE, defends vs AD_WERE.
+- **Source**: `artilist.h:166-168` `A("Werebane", SILVER_SABER,
+  (SPFX_RESTR | SPFX_DFLAG2), 0, M2_WERE, PHYS(5, 0), DFNS(AD_WERE),
+  ...)`.
+- **Verdict**: Correct (added).
+
+**Claim**: Giantslayer = long sword, Neutral, vs M2_GIANT.
+- **Source**: `artilist.h:174-176` `A("Giantslayer", LONG_SWORD,
+  (SPFX_RESTR | SPFX_DFLAG2), 0, M2_GIANT, PHYS(5, 0), ...,
+  A_NEUTRAL, ...)`.
+- **Verdict**: Correct (added).
+
+**Claim**: Ogresmasher = war hammer, vs S_OGRE.
+- **Source**: `artilist.h:178-180` `A("Ogresmasher", WAR_HAMMER,
+  (SPFX_RESTR | SPFX_DCLAS), 0, S_OGRE, PHYS(5, 0), ...)`.
+- **Verdict**: Correct (added).
+
+**Claim**: Trollsbane = morning star, vs S_TROLL, regeneration.
+- **Source**: `artilist.h:182-184` `A("Trollsbane", MORNING_STAR,
+  (SPFX_RESTR | SPFX_DCLAS | SPFX_REGEN), 0, S_TROLL, PHYS(5, 0),
+  ...)`. SPFX_REGEN is in the wield-flag set (effective while wielded).
+- **Verdict**: Correct (added).
+
+**Claim**: Bane weapons deal "×2 base" damage on a class match.
+- **Source**: `artifact.c:1091` (`spec_dbon`): returns `rnd(damd)` if
+  the artifact has a positive `damd` extra-damage die; otherwise
+  returns `max(tmp, 1)` where `tmp` is the *base weapon's* damage
+  roll. For weapons with `damd == 0` (every bane weapon except
+  Grimtooth, which has its own +d6), this effectively doubles the
+  base damage against a matching target. Grimtooth has PHYS(2,6), so
+  it still benefits from the +d6 extra against elves *plus* the
+  doubled base — i.e. base + base + d6.
+- **Verdict**: Mechanics documented correctly in the new table prose.
+
+**Claim**: Cleaver hits two flanking squares when wielded
+one-handed.
+- **Source**: `uhitm.c:766` comment `/* Cleaver attacks three spots,
+  'mon' and one on either side of 'mon'. */` and the code at lines
+  766-..., gated on `u_wield_art(ART_CLEAVER) && !u.twoweap`. So
+  two-weapon configuration *suppresses* the spin. Added to the table
+  notable column and called out in narrative.
+- **Verdict**: Correct (added).
+
+**Claim**: Palantir of Westernesse is not active in 5.0.
+- **Source**: `artilist.h:237-246` is bracketed by `#if 0 ... #endif`
+  with a comment block explaining the Elf role was retired in 3.3
+  and the artifact "is a bit overpowered to be an ordinary artifact
+  so leave it excluded". So 5.0 has exactly 13 quest artifacts, not
+  14.
+- **Verdict**: Adjusted the spoiler narrative to mention this rather
+  than implying a 14th race artifact exists.
+
+**Claim**: Quest artifact damage formulas and passives.
+- **Source**: `artilist.h:219-307`. Each row in the new quest-artifact
+  table was traced individually:
+  - Orb of Detection: CARY(AD_MAGM) + SPFX_ESP + SPFX_HSPDAM, INVIS.
+  - Heart of Ahriman: SPFX_LUCK (via the luckstone otyp), SPFX_STLTH,
+    LEVITATION, with the explicit comment "this stone does double
+    damage if used as a projectile weapon" (artilist.h:227).
+  - Sceptre of Might: PHYS(5,0), SPFX_DALIGN (×2 vs different align),
+    DFNS(AD_MAGM), CONFLICT.
+  - Staff of Aesculapius: DRLI attack & defense (drain-resistance),
+    SPFX_REGEN, HEALING invoke.
+  - Magic Mirror of Merlin: CARY(AD_MAGM) + SPFX_ESP + SPFX_SPEAK,
+    no invoke.
+  - Eyes of the Overworld: DFNS(AD_MAGM), SPFX_XRAY, ENLIGHTENING.
+  - Mitre of Holiness: SPFX_DFLAG2 vs M2_UNDEAD, SPFX_PROTECT,
+    CARY(AD_FIRE), ENERGY_BOOST. No drain resistance — corrected
+    elsewhere in 2nd-pass audit.
+  - Longbow of Diana: PHYS(5,0), SPFX_REFLECT + SPFX_ESP, CREATE_AMMO.
+  - Master Key of Thievery: SPFX_WARN + SPFX_TCTRL + SPFX_HPHDAM,
+    UNTRAP. Comment at artilist.h:276-278 documents the extra
+    `#untrap` bonus when curse state matches role.
+  - Tsurugi of Muramasa: PHYS(0,8), SPFX_BEHEAD, SPFX_LUCK,
+    SPFX_PROTECT.
+  - Platinum Yendorian Express Card: CARY(AD_MAGM) + SPFX_ESP +
+    SPFX_HSPDAM, CHARGE_OBJ invoke.
+  - Orb of Fate: SPFX_LUCK + SPFX_WARN + SPFX_HSPDAM + SPFX_HPHDAM,
+    LEV_TELE invoke.
+  - Eye of the Aethiopica: DFNS(AD_MAGM) + SPFX_EREGEN + SPFX_HSPDAM,
+    CREATE_PORTAL.
+- **Verdict**: All 13 entries match.
+
+### Summary
+
+Expanded the artifact section from 14 rows + a comma-list to a full
+20-row wishable/random table plus a 13-row quest table with per-
+artifact discussion. The 6 bane weapons and Cleaver's spin attack
+were entirely new content; the quest artifacts were upgraded from
+prose-list to first-class table + per-role notes. Numbers and
+passives traced through `artilist.h`, `artifact.c`, and `uhitm.c`.

@@ -2053,26 +2053,53 @@ narrow down the possibilities enormously, sometimes to just two or
 three candidates.
 
 Here's how to do it. Pick up an item in a shop and note the price
-quoted. The quote will be higher than base price (shopkeepers mark
-up). With average Charisma, the sell price is typically one third of
-base and the buy price is roughly double. You don't need to memorize
-exact formulas. What matters is grouping: items quoted at similar
-prices are in the same price tier.
+quoted. With average Charisma (11-15) the quoted **buy** price equals
+the base price exactly, while the **sell** offer is half of base. Low
+Charisma pushes buy prices up sharply (×2 at Cha ≤ 5); high Charisma
+pulls them down (×½ at Cha ≥ 19). Sell prices are mostly unaffected
+by Charisma — they only shift when the player looks like a mark, in
+which case sell drops to a third of base and buy rises to 4/3. Three
+visible cues count as "looking like a mark," and they all have the
+same effect (and don't stack): wearing a **dunce cap**, playing a
+**Tourist** below experience level 15, or wearing a **Hawaiian shirt
+visibly** (no body armor or cloak over it). The widget below collapses
+these three triggers into one button, labeled *Tourist* because that's
+the one most players will encounter. You don't need to memorize exact
+formulas. What matters is grouping: items quoted at similar prices
+are in the same price tier.
+
+Two further wrinkles for unidentified items. (1) About 25% of unID'd
+items carry an extra 4/3 buy surcharge — fixed per-item, so the same
+scroll's surcharge status is consistent across shops. (2) About 25%
+of shopkeepers are "unfamiliar" with unID'd merchandise and offer 3/4
+of normal on sell — fixed per-shopkeeper, so once you've tested one
+unID item you know the rule for all unID sales to that shop. Either
+of these can shift a quoted price into an adjacent tier, so when in
+doubt, check the surrounding tiers too.
+
+One more state worth knowing about: **Angry**. If you've previously
+done something to anger a shopkeeper — fired a wand from a doorway,
+attacked them, picked up an unpaid item while broke — and then made
+amends (paid the bill, fled and let them calm down), the shopkeeper
+becomes peaceful again but keeps a permanent +33% buy surcharge on
+every item until you leave the level. Sell prices are unaffected.
 
 The price tables for each item class follow. These are your
 field reference for shopping trips.
 
 ##### Scroll Prices
 
-| Base Price | Scrolls                                                                                                           |
-| ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| $20        | identify                                                                                                          |
-| $50        | light                                                                                                             |
-| $60        | blank paper, enchant weapon                                                                                       |
-| $80        | enchant armor, remove curse                                                                                       |
-| $100       | confuse monster, destroy armor, fire, food detection, gold detection, magic mapping, scare monster, teleportation |
-| $200       | amnesia, create monster, earth, taming                                                                            |
-| $300       | charging, genocide, punishment, stinking cloud                                                                    |
+| Price | Scrolls                                                                                                           |
+| ----- | ----------------------------------------------------------------------------------------------------------------- |
+|    20 | identify                                                                                                          |
+|    50 | light                                                                                                             |
+|    60 | blank paper, enchant weapon                                                                                       |
+|    80 | enchant armor, remove curse                                                                                       |
+|   100 | confuse monster, destroy armor, fire, food detection, gold detection, magic mapping, scare monster, teleportation |
+|   200 | amnesia, create monster, earth, taming                                                                            |
+|   300 | charging, genocide, punishment, stinking cloud                                                                    |
+
+<div class="price-id-toolbar"></div>
 
 The $100 group is crowded, which makes scroll price-ID less precise
 than other categories. But you can still narrow things down. If a
@@ -2081,15 +2108,19 @@ most useful scrolls in the game and you just found it for free.
 
 ##### Potion Prices
 
-| Base Price | Potions                                                                            |
-| ---------- | ---------------------------------------------------------------------------------- |
-| $50        | booze, fruit juice, see invisible, sickness                                        |
-| $100       | confusion, extra healing, hallucination, healing, restore ability, sleeping, water |
-| $150       | blindness, gain energy, invisibility, monster detection, object detection          |
-| $200       | enlightenment, full healing, levitation, polymorph, speed                          |
-| $250       | acid, oil                                                                          |
-| $300       | gain ability, gain level, paralysis                                                |
+| Price | Potions                                                                     |
+| ----- | --------------------------------------------------------------------------- |
+|    20 | healing                                                                     |
+|    50 | booze, fruit juice, see invisible, sickness                                 |
+|   100 | confusion, extra healing, hallucination, restore ability, sleeping, water   |
+|   150 | blindness, gain energy, invisibility, monster detection, object detection   |
+|   200 | enlightenment, full healing, levitation, polymorph, speed                   |
+|   250 | acid, oil                                                                   |
+|   300 | gain ability, gain level, paralysis                                         |
 
+<div class="price-id-toolbar"></div>
+
+Healing sits alone at $20 — uniquely identifiable from the price tag.
 Water is always the "clear" potion, so if you see "clear potion" you
 know what it is without even checking the price. The $50 group is
 tricky because sickness and see invisible are in there together (one
@@ -2098,12 +2129,14 @@ potions.
 
 ##### Ring Prices
 
-| Base Price | Rings                                                                                                                                                                      |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| $100       | adornment, hunger, protection, protection from shape changers, stealth, sustain ability, warning                                                                           |
-| $150       | aggravate monster, cold resistance, gain constitution, gain strength, increase accuracy, increase damage, invisibility, poison resistance, see invisible, shock resistance |
-| $200       | fire resistance, free action, levitation, regeneration, searching, slow digestion, teleportation                                                                           |
-| $300       | conflict, polymorph, polymorph control, teleport control                                                                                                                   |
+| Price | Rings                                                                                                                                                                      |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   100 | adornment, hunger, protection, protection from shape changers, stealth, sustain ability, warning                                                                           |
+|   150 | aggravate monster, cold resistance, gain constitution, gain strength, increase accuracy, increase damage, invisibility, poison resistance, see invisible, shock resistance |
+|   200 | fire resistance, free action, levitation, regeneration, searching, slow digestion, teleportation                                                                           |
+|   300 | conflict, polymorph, polymorph control, teleport control                                                                                                                   |
+
+<div class="price-id-toolbar"></div>
 
 The $300 group is extremely informative: only four rings live there,
 and three of them (conflict, polymorph control, teleport control) are
@@ -2111,13 +2144,15 @@ among the most powerful in the game.
 
 ##### Wand Prices
 
-| Base Price | Wands                                                                                                                                                          |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| $100       | light, nothing                                                                                                                                                 |
-| $150       | digging, enlightenment, locking, magic missile, make invisible, opening, probing, secret door detection, slow monster, speed monster, striking, undead turning |
-| $175       | cold, fire, lightning, sleep                                                                                                                                   |
-| $200       | cancellation, create monster, polymorph, teleportation                                                                                                         |
-| $500       | death, wishing                                                                                                                                                 |
+| Price | Wands                                                                                                                                                          |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|   100 | light, nothing                                                                                                                                                 |
+|   150 | digging, enlightenment, locking, magic missile, make invisible, opening, probing, secret door detection, slow monster, speed monster, stasis, striking, undead turning |
+|   175 | cold, fire, lightning, sleep                                                                                                                                   |
+|   200 | cancellation, create monster, polymorph, teleportation                                                                                                         |
+|   500 | death, wishing                                                                                                                                                 |
+
+<div class="price-id-toolbar"></div>
 
 If a wand costs $500, you are having a very good day.
 
@@ -2126,6 +2161,136 @@ If a wand costs $500, you are having a very good day.
 All amulets have a base price of $150 except the cheap Amulet of
 Yendor imitations ($0). Price doesn't help here. You'll need to rely
 on other methods.
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var toolbars = document.querySelectorAll('.price-id-toolbar');
+  if (!toolbars.length) return;
+  var CHA_BUY = {
+    'lt5':    [2, 1],
+    '6to7':   [3, 2],
+    '8to10':  [4, 3],
+    '11to15': [1, 1],
+    '16to17': [3, 4],
+    '18':     [2, 3],
+    'ge19':   [1, 2]
+  };
+  var state = {cha: '11to15', sell: false, touristy: false, angry: false};
+
+  // Populate each toolbar with the same compact button set.
+  // Cha bracket on the left, then independent toggles: Sell, Tourist, Dunce.
+  var btnHTML =
+    '<span class="price-id-label">Cha</span>' +
+    '<button data-group="cha" data-val="lt5">≤5</button>' +
+    '<button data-group="cha" data-val="6to7">6-7</button>' +
+    '<button data-group="cha" data-val="8to10">8-10</button>' +
+    '<button data-group="cha" data-val="11to15">11-15</button>' +
+    '<button data-group="cha" data-val="16to17">16-17</button>' +
+    '<button data-group="cha" data-val="18">18</button>' +
+    '<button data-group="cha" data-val="ge19">≥19</button>' +
+    '<span class="price-id-sep">·</span>' +
+    '<button data-group="toggle" data-val="sell">Sell</button>' +
+    '<button data-group="toggle" data-val="touristy">Tourist</button>' +
+    '<button data-group="toggle" data-val="angry">Angry</button>';
+  toolbars.forEach(function(tb) {
+    tb.innerHTML = btnHTML;
+    tb.classList.add('price-id-widget');
+  });
+
+  function adj(base, m, d) {
+    var n = base * m;
+    if (d > 1) n = Math.floor((n * 10 / d + 5) / 10);
+    return Math.max(1, n);
+  }
+  function computeBuy(base, surcharge) {
+    // Replicates shk.c get_cost. Default Cha 11-15 no penalty: buy = base.
+    var m = 1, d = 1;
+    var cha = CHA_BUY[state.cha];
+    m *= cha[0]; d *= cha[1];
+    if (state.touristy) { m *= 4; d *= 3; }
+    if (surcharge) { m *= 4; d *= 3; }
+    var n = adj(base, m, d);
+    // Angry-shopkeeper surcharge: added AFTER mult/div in shk.c:2986
+    // (tmp + (tmp + 2) / 3, ~+33%). Stacks with Tourist. Buy-side only.
+    if (state.angry) n = n + Math.floor((n + 2) / 3);
+    return n;
+  }
+  function computeSell(base, unfamiliar) {
+    // Replicates shk.c set_cost. Default no penalty: sell = base / 2.
+    var m = 1, d = 1;
+    if (state.touristy) d *= 3; else d *= 2;
+    if (unfamiliar) { m *= 3; d *= 4; }
+    return adj(base, m, d);
+  }
+  function pair(n1, n2) {
+    return n1 === n2
+      ? '' + n1
+      : n1 + '<span class="pi-alt"> / ' + n2 + '</span>';
+  }
+
+  // Find every table whose first column header is "Price". Stash the base
+  // price (which is what shows initially, since default state quotes buy =
+  // base) on each row's price cell. We also tolerate "Sell" as a header
+  // (e.g. after a previous render).
+  var priceTables = [];
+  document.querySelectorAll('table').forEach(function(t) {
+    var hdrs = t.querySelectorAll('thead th');
+    if (!hdrs.length) return;
+    if (!/^(Price|Sell)$/i.test(hdrs[0].textContent.trim())) return;
+    hdrs[0].classList.add('pi-col');
+    t.querySelectorAll('tbody tr').forEach(function(tr) {
+      var firstTd = tr.querySelector('td');
+      if (!firstTd) return;
+      var m = firstTd.textContent.trim().match(/^\$?(\d+)/);
+      if (!m) return;
+      if (!firstTd.dataset.basePrice) firstTd.dataset.basePrice = m[1];
+      firstTd.classList.add('pi-price', 'pi-col');
+    });
+    priceTables.push(t);
+  });
+
+  function renderTables() {
+    priceTables.forEach(function(t) {
+      var hdr = t.querySelector('thead th.pi-col');
+      if (hdr) hdr.textContent = state.sell ? 'Sell' : 'Price';
+      t.querySelectorAll('td.pi-price').forEach(function(td) {
+        var base = parseInt(td.dataset.basePrice, 10);
+        if (state.sell) {
+          td.innerHTML = pair(computeSell(base, false), computeSell(base, true));
+        } else {
+          td.innerHTML = pair(computeBuy(base, false), computeBuy(base, true));
+        }
+      });
+    });
+  }
+
+  function syncToolbars() {
+    toolbars.forEach(function(tb) {
+      tb.querySelectorAll('button[data-group="cha"]').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.val === state.cha);
+      });
+      tb.querySelectorAll('button[data-group="toggle"]').forEach(function(b) {
+        b.classList.toggle('active', !!state[b.dataset.val]);
+      });
+    });
+  }
+
+  toolbars.forEach(function(tb) {
+    tb.addEventListener('click', function(ev) {
+      var btn = ev.target.closest('button');
+      if (!btn) return;
+      var g = btn.dataset.group, v = btn.dataset.val;
+      if (g === 'cha') state.cha = v;
+      else state[v] = !state[v];
+      syncToolbars();
+      renderTables();
+    });
+  });
+
+  syncToolbars();
+  renderTables();
+});
+</script>
 
 #### The Engrave Test (Wands)
 
@@ -2243,38 +2408,78 @@ reveals itself if you go blind while wearing it (you'll see monsters
 as brain-shapes). Amulet of reflection is trickier to detect, but
 you'll notice it when a ray bounces off you.
 
-**Armor.** Try it on (after checking it's not cursed). Magical armor
-reveals itself immediately: speed boots make you faster, a cloak of
-invisibility makes you invisible. Mundane armor is identifiable by
-its appearance (the "old gloves" are leather gloves, "riding boots"
-are fumble boots, and so on).
+**Armor.** Magical armor reveals itself when worn: speed boots make
+you faster, a cloak of invisibility makes you invisible. But trying
+on unknown armor is **dangerous in a shop**: if the item is cursed,
+it welds itself to you, you can't drop it, and the shopkeeper still
+expects payment. Worse, the most commonly auto-cursed armor types —
+fumble boots, levitation boots, gauntlets of fumbling — are exactly
+the ones that masquerade as desirable boots and gloves. **Always
+verify BUC before wearing unknown armor in a shop.** Shops don't
+have altars, so the standard altar-drop BUC check isn't available
+in-store; the in-shop options are the pet-step test (your pet
+refuses to walk over cursed items, so lure it past the suspect
+square), Priest intrinsic BUC sense, or a scroll of identify from
+your own inventory.
 
-Here's a useful table of boot and helmet appearances:
+A common misconception: armor appearances are **not** a fixed
+mapping. Each type of special armor has several randomized
+appearances, so the same "snow boots" that were safe levitation in
+your last game might be jumping or fumble boots this time. The
+four shuffled pools are:
 
-| Appearance       | Possible identity                      |
-| ---------------- | -------------------------------------- |
-| mud boots        | elven boots (stealth)                  |
-| buckled boots    | kicking boots                          |
-| riding boots     | fumble boots (often cursed!)           |
-| snow boots       | levitation boots (often cursed!)       |
-| hiking boots     | jumping boots                          |
-| combat boots     | speed boots                            |
-| jungle boots     | water walking boots                    |
-| conical hat      | dunce cap OR cornuthaum                |
-| crystal helmet   | helm of brilliance (fixed appearance)  |
-| plumed, etched, crested, or visored helmet | one of: regular helmet, helm of caution, helm of opposite alignment, helm of telepathy (randomized each game) |
+- 4 magical **helms** share 4 appearances: plumed / etched /
+  crested / visored helmet → one of helmet, helm of caution, helm
+  of opposite alignment, helm of telepathy. (Helm of brilliance is
+  always "crystal helmet"; dunce cap and cornuthaum both look like
+  "conical hat" — that pair *is* a fixed pun.)
+- 4 magical **cloaks** share 4 appearances: tattered cape / opera
+  cloak / ornamental cope / piece of cloth → one of cloak of
+  protection, invisibility, magic resistance, or displacement.
+- 4 **gloves** share 4 appearances: old / padded / riding / fencing
+  gloves → leather gloves or one of the three gauntlet types
+  (fumbling, power, dexterity).
+- 7 magical **boots** share 7 appearances: combat / jungle / hiking
+  / mud / buckled / riding / snow boots → one of speed, water
+  walking, jumping, elven, kicking, fumble, or levitation boots.
+
+The good news: prices *don't* shuffle, and prices within each pool
+fall into informative tiers.
+
+##### Armor Prices
+
+| Price | Type     | Possibilities                                                    |
+| ----- | -------- | ---------------------------------------------------------------- |
+|     8 | Boots    | elven (stealth), kicking                                         |
+|    30 | Boots    | fumble, levitation — both commonly cursed!                       |
+|    50 | Boots    | speed, water walking, jumping — all desirable                    |
+|     8 | Gloves   | leather gloves (only)                                            |
+|    50 | Gloves   | gauntlets of fumbling, power, or dexterity                       |
+|    50 | Cloaks   | cloak of protection or displacement                              |
+|    60 | Cloaks   | cloak of invisibility or magic resistance                        |
+
+<div class="price-id-toolbar"></div>
+
+A $30 boot is the warning sign — both candidates are common
+auto-curse items and putting them on without BUC-checking can ruin
+a run. A $50 boot is almost always one you want. A $60 cloak is one
+of two excellent cloaks, but you still need BUC and a free body
+before wearing. $8 boots and $50 gauntlets are the cases where you
+can't tell stealth-from-kicking or fumbling-from-power by price
+alone — try them on (BUC-checked) and watch for the messages.
 
 #### Gray Stones: Four Stones, One Correct Answer
 
 Gray stones deserve their own section because they look identical
 but have wildly different value. There are four types:
 
-| Stone      | Base Price | Effect                                     |
-| ---------- | ---------- | ------------------------------------------ |
-| Flint      | $1         | Ammunition. Useless to carry around.       |
-| Luckstone  | $60        | Preserves luck. Essential.                 |
-| Touchstone | $45        | Identifies gems when rubbed. Very useful.  |
-| Loadstone  | $1         | Weighs 500 units. Usually cursed. Confers steadfastness. A trap. |
+| Price | Stone                | Effect                                     |
+| ----- | -------------------- | ------------------------------------------ |
+|     1 | flint **or** loadstone | flint is useless ammunition; loadstone weighs 500 units, usually cursed, and won't drop once carried. Use the kick test (loadstones don't scoot). |
+|    45 | touchstone           | Identifies gems when rubbed. Very useful.  |
+|    60 | luckstone            | Preserves luck. Essential.                 |
+
+<div class="price-id-toolbar"></div>
 
 The problem: all four look like "a gray stone" until identified.
 Here's how to tell them apart:
@@ -2509,16 +2714,19 @@ As with all randomized items, price is your best friend. A shop
 visit narrows a mysterious bottle from "could be anything" to a
 short list of candidates:
 
-| Price | Potions at this price                                                              |
-| ----- | ---------------------------------------------------------------------------------- |
-| $50   | Booze, fruit juice, see invisible, sickness                                        |
-| $100  | Confusion, extra healing, hallucination, healing, restore ability, sleeping, water |
-| $150  | Blindness, gain energy, invisibility, monster detection, object detection          |
-| $200  | Enlightenment, full healing, levitation, polymorph, speed                          |
-| $250  | Acid, oil                                                                          |
-| $300  | Gain ability, gain level, paralysis                                                |
+| Price | Potions                                                                     |
+| ----- | --------------------------------------------------------------------------- |
+|    20 | healing                                                                     |
+|    50 | booze, fruit juice, see invisible, sickness                                 |
+|   100 | confusion, extra healing, hallucination, restore ability, sleeping, water   |
+|   150 | blindness, gain energy, invisibility, monster detection, object detection   |
+|   200 | enlightenment, full healing, levitation, polymorph, speed                   |
+|   250 | acid, oil                                                                   |
+|   300 | gain ability, gain level, paralysis                                         |
 
-Water is the oddity in the $100 group—it always appears as "clear
+<div class="price-id-toolbar"></div>
+
+Water is the oddity in the $100 group — it always appears as "clear
 potion," identifiable on sight. Don't underestimate it; water is
 the raw material for holy water, which is the foundation of
 everything.
@@ -2561,20 +2769,28 @@ and you might create something better—or you might cause an
 explosion. Most combinations are duds, but the useful recipes are
 worth memorizing:
 
-| Dip this            | Into this           | Result         |
-| ------------------- | ------------------- | -------------- |
-| Healing             | Gain energy/level   | Extra healing  |
-| Extra healing       | Gain energy/level   | Full healing   |
-| Full healing        | Gain energy/level   | Gain ability   |
-| Fruit juice         | Gain energy/level   | See invisible  |
-| Speed               | Healing             | Extra healing  |
-| Speed               | Extra healing       | Levitation     |
+| Dip this            | Into this           | Result               |
+| ------------------- | ------------------- | -------------------- |
+| Healing             | Gain energy/level   | Extra healing        |
+| Extra healing       | Gain energy/level   | Full healing         |
+| Full healing        | Gain energy/level   | Gain ability         |
+| Fruit juice         | Gain energy/level   | See invisible        |
+| Speed               | Healing             | Extra healing        |
+| Booze               | Gain energy/level   | Hallucination        |
+| Levitation          | Enlightenment       | Gain level (2/3)     |
 
 The chain from healing → extra healing → full healing → gain ability
 via gain energy or gain level is the core alchemy sequence, and it's
 extraordinarily powerful. A handful of common healing potions and a
 gain energy or two can be transmuted into the rarest potions in the
 game. Treat every gain energy potion like the catalyst it is.
+
+A side-loop worth knowing: **Levitation + Enlightenment → Gain level
+(2/3 chance, or nothing 1/3)**. Both inputs are reasonably common
+and individually low-value, but the output is one of the catalysts
+that feeds the main healing chain. If you find a stack of each, this
+is a way to manufacture gain-level potions rather than wait for the
+dungeon to drop them.
 
 **A note on the current state of dungeon chemistry.** The old alchemy
 trick — dilute a large stack of potions by dipping them in water, then
@@ -2616,17 +2832,19 @@ the charm. You'll develop superstitious favorites.
 #### The Scroll Table
 
 Price-identification is especially powerful for scrolls, because the
-cheapest scroll ($20) is always identify—the one you need most:
+cheapest scroll (base 20) is always identify—the one you need most:
 
-| Price | Scrolls at this price                                                                                             |
+| Price | Scrolls                                                                                                           |
 | ----- | ----------------------------------------------------------------------------------------------------------------- |
-| $20   | Identify                                                                                                          |
-| $50   | Light                                                                                                             |
-| $60   | Blank paper, enchant weapon                                                                                       |
-| $80   | Enchant armor, remove curse                                                                                       |
-| $100  | Confuse monster, destroy armor, fire, food detection, gold detection, magic mapping, scare monster, teleportation |
-| $200  | Amnesia, create monster, earth, taming                                                                            |
-| $300  | Charging, genocide, punishment, stinking cloud                                                                    |
+|    20 | identify                                                                                                          |
+|    50 | light                                                                                                             |
+|    60 | blank paper, enchant weapon                                                                                       |
+|    80 | enchant armor, remove curse                                                                                       |
+|   100 | confuse monster, destroy armor, fire, food detection, gold detection, magic mapping, scare monster, teleportation |
+|   200 | amnesia, create monster, earth, taming                                                                            |
+|   300 | charging, genocide, punishment, stinking cloud                                                                    |
+
+<div class="price-id-toolbar"></div>
 
 The $60 group is treasure (enchant weapon lurks there alongside
 innocent blank paper). The $80 group is equally good: enchant armor
@@ -2712,30 +2930,32 @@ area around you.
 
 | Price | Wand                    | Type  | Max Charges |
 | ----- | ----------------------- | ----- | ----------- |
-| $100  | Light                   | NODIR | 15          |
-| $100  | Nothing                 | BEAM  | 15          |
-| $150  | Digging                 | RAY   | 8           |
-| $150  | Enlightenment           | NODIR | 15          |
-| $150  | Magic missile           | RAY   | 8           |
-| $150  | Make invisible          | BEAM  | 8           |
-| $150  | Opening                 | BEAM  | 8           |
-| $150  | Probing                 | BEAM  | 8           |
-| $150  | Secret door detection   | NODIR | 15          |
-| $150  | Slow monster            | BEAM  | 8           |
-| $150  | Speed monster           | BEAM  | 8           |
-| $150  | Striking                | BEAM  | 8           |
-| $150  | Undead turning          | BEAM  | 8           |
-| $150  | Locking                 | BEAM  | 8           |
-| $175  | Cold                    | RAY   | 8           |
-| $175  | Fire                    | RAY   | 8           |
-| $175  | Lightning               | RAY   | 8           |
-| $175  | Sleep                   | RAY   | 8           |
-| $200  | Cancellation            | BEAM  | 8           |
-| $200  | Create monster          | NODIR | 15          |
-| $200  | Polymorph               | BEAM  | 8           |
-| $200  | Teleportation           | BEAM  | 8           |
-| $500  | Death                   | RAY   | 8           |
-| $500  | Wishing                 | NODIR | 3           |
+|   100 | Light                   | NODIR | 15          |
+|   100 | Nothing                 | BEAM  | 15          |
+|   150 | Digging                 | RAY   | 8           |
+|   150 | Enlightenment           | NODIR | 15          |
+|   150 | Magic missile           | RAY   | 8           |
+|   150 | Make invisible          | BEAM  | 8           |
+|   150 | Opening                 | BEAM  | 8           |
+|   150 | Probing                 | BEAM  | 8           |
+|   150 | Secret door detection   | NODIR | 15          |
+|   150 | Slow monster            | BEAM  | 8           |
+|   150 | Speed monster           | BEAM  | 8           |
+|   150 | Striking                | BEAM  | 8           |
+|   150 | Undead turning          | BEAM  | 8           |
+|   150 | Locking                 | BEAM  | 8           |
+|   175 | Cold                    | RAY   | 8           |
+|   175 | Fire                    | RAY   | 8           |
+|   175 | Lightning               | RAY   | 8           |
+|   175 | Sleep                   | RAY   | 8           |
+|   200 | Cancellation            | BEAM  | 8           |
+|   200 | Create monster          | NODIR | 15          |
+|   200 | Polymorph               | BEAM  | 8           |
+|   200 | Teleportation           | BEAM  | 8           |
+|   500 | Death                   | RAY   | 8           |
+|   500 | Wishing                 | NODIR | 3           |
+
+<div class="price-id-toolbar"></div>
 
 #### Key Wands
 
@@ -2848,7 +3068,7 @@ after engraving, zap them at safe targets:
 
 **Step 3: When in doubt, check the price.** If testing hasn't
 resolved the wand, its shop price narrows the field further. A
-$150 wand is one of twelve types. A $200 wand is one of four.
+$150 wand is one of thirteen types. A $200 wand is one of four.
 A $500 wand is death or wishing — and you should be very careful
 with it either way.
 
@@ -2887,34 +3107,36 @@ unassuming descriptions like "granite ring" or "circular amulet."
 
 | Price | Ring                           | Notes                          |
 | ----- | ------------------------------ | ------------------------------ |
-| $100  | Adornment                      | +CHA, chargeable               |
-| $100  | Hunger                         | Increases hunger (auto-curse)  |
-| $100  | Protection                     | +AC, chargeable                |
-| $100  | Protection from shape changers | Useful against werebeasts      |
-| $100  | Stealth                        | Reduces noise                  |
-| $100  | Sustain ability                | Prevents stat drain            |
-| $100  | Warning                        | Shows nearby monsters          |
-| $150  | Aggravate monster              | Bad (auto-curse)               |
-| $150  | Cold resistance                | Resist cold attacks            |
-| $150  | Gain constitution              | +CON, chargeable               |
-| $150  | Gain strength                  | +STR, chargeable               |
-| $150  | Increase accuracy              | +hit, chargeable               |
-| $150  | Increase damage                | +dmg, chargeable               |
-| $150  | Invisibility                   | You become invisible           |
-| $150  | Poison resistance              | Immune to poison               |
-| $150  | See invisible                  | See invisible creatures        |
-| $150  | Shock resistance               | Resist electric attacks        |
-| $200  | Fire resistance                | Resist fire attacks            |
-| $200  | Free action                    | Immune to paralysis            |
-| $200  | Levitation                     | Float in the air               |
-| $200  | Regeneration                   | Heal faster (costs hunger)     |
-| $200  | Searching                      | Auto-search each turn          |
-| $200  | Slow digestion                 | Reduces hunger                 |
-| $200  | Teleportation                  | Random teleports (auto-curse)  |
-| $300  | Conflict                       | Monsters fight each other      |
-| $300  | Polymorph                      | Random polymorphs (auto-curse) |
-| $300  | Polymorph control              | Choose polymorph form          |
-| $300  | Teleport control               | Choose teleport destination    |
+|   100 | Adornment                      | +CHA, chargeable               |
+|   100 | Hunger                         | Increases hunger (auto-curse)  |
+|   100 | Protection                     | +AC, chargeable                |
+|   100 | Protection from shape changers | Useful against werebeasts      |
+|   100 | Stealth                        | Reduces noise                  |
+|   100 | Sustain ability                | Prevents stat drain            |
+|   100 | Warning                        | Shows nearby monsters          |
+|   150 | Aggravate monster              | Bad (auto-curse)               |
+|   150 | Cold resistance                | Resist cold attacks            |
+|   150 | Gain constitution              | +CON, chargeable               |
+|   150 | Gain strength                  | +STR, chargeable               |
+|   150 | Increase accuracy              | +hit, chargeable               |
+|   150 | Increase damage                | +dmg, chargeable               |
+|   150 | Invisibility                   | You become invisible           |
+|   150 | Poison resistance              | Immune to poison               |
+|   150 | See invisible                  | See invisible creatures        |
+|   150 | Shock resistance               | Resist electric attacks        |
+|   200 | Fire resistance                | Resist fire attacks            |
+|   200 | Free action                    | Immune to paralysis            |
+|   200 | Levitation                     | Float in the air               |
+|   200 | Regeneration                   | Heal faster (costs hunger)     |
+|   200 | Searching                      | Auto-search each turn          |
+|   200 | Slow digestion                 | Reduces hunger                 |
+|   200 | Teleportation                  | Random teleports (auto-curse)  |
+|   300 | Conflict                       | Monsters fight each other      |
+|   300 | Polymorph                      | Random polymorphs (auto-curse) |
+|   300 | Polymorph control              | Choose polymorph form          |
+|   300 | Teleport control               | Choose teleport destination    |
+
+<div class="price-id-toolbar"></div>
 
 Rings marked "auto-curse" generate cursed 90% of the time. If you
 slip on a ring and can't remove it, you've just learned what
@@ -3301,29 +3523,47 @@ that doesn't match your alignment:
   magic resistance), 1/4 chance of being blasted on each subsequent
   touch.
 
-#### Key Artifacts
+#### Wishable / random artifacts
 
-Bonus damage is rolled fresh on each hit (e.g. `+d10` means roll 1d10).
-The "extra" column is the damage rolled *on top of* the base weapon's
-own damage. Most artifacts also carry intrinsic resistances or
-properties not shown here — see the narrative below.
+These are the artifacts you can find, get from a sacrifice gift,
+fountain-dip up (Excalibur), or wish for. Bonus damage is rolled fresh
+on each hit (e.g. `+d10` means roll 1d10). The "extra" column is the
+damage rolled *on top of* the base weapon's own damage. A weapon
+listed as "×2 vs X" rolls its base damage *twice* against any member
+of that monster class.
 
-| Artifact          | Align    | Base weapon       | To-hit | Extra damage     | Notable                                           |
-|-------------------|----------|-------------------|--------|------------------|---------------------------------------------------|
-| Excalibur         | Lawful   | long sword        | +d5    | +d10 physical    | drain resistance, automatic searching             |
-| Grayswandir       | Lawful   | silver saber      | +d5    | (base only)      | half physical damage received, hallucination res. |
-| Mjollnir          | Neutral  | war hammer        | +d5    | +d24 shock       | returns when thrown if STR 25                     |
-| Magicbane         | Neutral  | athame            | +d3    | +d4 magic (stun) | curse protection while carried, MR vs magic       |
-| Stormbringer      | Chaotic  | runesword         | +d5    | +d2 drain life   | drains a level (you gain it); attacks peacefuls   |
-| Vorpal Blade      | any      | long sword        | +d5    | +d1 physical     | chance to behead on hit                           |
-| Frost Brand       | any      | long sword        | +d5    | (base only) cold | fire resistance + cold defense                    |
-| Fire Brand        | any      | long sword        | +d5    | (base only) fire | cold resistance + fire defense                    |
-| Sting             | Chaotic  | elven dagger      | +d5    | (base only)      | warns of orcs (the dagger glows blue)             |
-| Orcrist           | Chaotic  | elven broadsword  | +d5    | (base only)      | warns of orcs                                     |
-| Cleaver           | Neutral  | battle-axe        | +d3    | +d6 physical     | Barbarian quest artifact                          |
-| Demonbane         | Lawful   | silver mace       | +d5    | (base only)      | banishes demons, Priest's first sacrifice gift    |
-| Sunsword          | Lawful   | long sword        | +d5    | (base only)      | blinding ray vs undead, lights area when wielded  |
-| Snickersnee       | Lawful   | katana            | —      | +d8 physical     | Samurai-specific bonus damage                     |
+| Artifact          | Align    | Base weapon       | To-hit | Extra damage                | Notable                                                |
+|-------------------|----------|-------------------|--------|-----------------------------|--------------------------------------------------------|
+| Excalibur         | Lawful   | long sword        | +d5    | +d10 physical               | drain resistance, automatic searching                  |
+| Grayswandir       | Lawful   | silver saber      | +d5    | (base only)                 | half physical damage received, hallucination res.      |
+| Mjollnir          | Neutral  | war hammer        | +d5    | +d24 shock                  | returns when thrown if STR 25                          |
+| Magicbane         | Neutral  | athame            | +d3    | +d4 magic (stun)            | curse protection while carried, MR vs magic            |
+| Stormbringer      | Chaotic  | runesword         | +d5    | +d2 drain life              | drains a level (you gain it); attacks peacefuls        |
+| Vorpal Blade      | any      | long sword        | +d5    | +d1 physical                | chance to behead on hit                                |
+| Frost Brand       | any      | long sword        | +d5    | (base only) cold            | fire resistance + cold defense                         |
+| Fire Brand        | any      | long sword        | +d5    | (base only) fire            | cold resistance + fire defense                         |
+| Sunsword          | Lawful   | long sword        | +d5    | (base only); ×2 vs undead   | blinding ray vs undead; lights area when wielded       |
+| Snickersnee       | Lawful   | katana            | —      | +d8 physical                | Samurai-specific bonus damage                          |
+| Cleaver           | Neutral  | battle-axe        | +d3    | +d6 physical                | one-handed wield → strikes target *and* both flanks    |
+| Demonbane         | Lawful   | silver mace       | +d5    | (base only); ×2 vs demons   | banishes demons; Priest's first sacrifice gift         |
+| Sting             | Chaotic  | elven dagger      | +d5    | (base only); ×2 vs orcs     | warns of orcs (the dagger glows blue)                  |
+| Orcrist           | Chaotic  | elven broadsword  | +d5    | (base only); ×2 vs orcs     | warns of orcs                                          |
+| Grimtooth         | Chaotic  | orcish dagger     | +d2    | +d6 physical; ×2 vs elves   | warns of elves; defends vs poison                      |
+| Dragonbane        | any      | broadsword        | +d5    | (base only); ×2 vs dragons  | reflection while wielded                               |
+| Werebane          | any      | silver saber      | +d5    | (base only); ×2 vs were-    | defends against lycanthropy                            |
+| Giantslayer       | Neutral  | long sword        | +d5    | (base only); ×2 vs giants   | —                                                      |
+| Ogresmasher       | any      | war hammer        | +d5    | (base only); ×2 vs ogres    | —                                                      |
+| Trollsbane        | any      | morning star      | +d5    | (base only); ×2 vs trolls   | regeneration while wielded                             |
+
+Not every entry is equally desirable. **Grayswandir** and **Magicbane**
+are the artifacts most players try to wish for first; **Mjollnir** is
+the Valkyrie's archetypal wish; **Excalibur** is usually fountain-dipped
+rather than wished. **Frost Brand**, **Vorpal Blade**, and **Stormbringer**
+are common second wishes. The remaining entries — the bane weapons,
+Snickersnee, Sunsword, Fire Brand, Cleaver — are usually accepted as
+sacrifice gifts or wields-of-opportunity rather than spent wishes on,
+though some (Sunsword for Demonbane-style undead clearing, Cleaver
+for a Barbarian who lost the quest gift) have specific niches.
 
 **Excalibur** is the go-to weapon for Lawful characters; the drain
 resistance alone is worth carrying it, even after you have a stronger
@@ -3339,30 +3579,143 @@ only with Strength 25 (gauntlets of power or rings of gain strength
 get you there). Its +d24 shock damage is brutal against anything not
 shock-resistant.
 
-**Magicbane** the Wizard's quest-adjacent athame. The combined effect of
-its stun damage, curse protection while held, and magic resistance
-makes it valuable to carry even as a secondary weapon. Often the first
-gift from a Neutral sacrifice.
+**Magicbane** is the Wizard's go-to athame. The combined effect of its
+stun damage, curse protection while held, and magic resistance makes
+it valuable to carry even as a secondary weapon. Often the first gift
+from a Neutral sacrifice.
 
 **Stormbringer** is dangerous to use because it attacks peaceful
 monsters automatically — which can cause alignment problems. But each
 hit drains a level from the target and gives it to you, which is huge
 in the early-to-mid game.
 
-**The Eyes of the Overworld** (Monk quest artifact, lenses): magic
-resistance and astral vision (lets you see invisible monsters and
-through walls, among other things). Worth carrying even when not
-worn for the MR alone.
+**Cleaver** is the Barbarian quest artifact. When wielded one-handed
+(not two-weaponing), every swing strikes the primary target *and* one
+square on each side of it — three monsters per attack when packed in
+a corridor mouth or against a diagonal pair. The two-weapon penalty
+suppresses the spin, so most Barbarians keep Cleaver as their primary
+and a shield in the off slot.
 
-**Quest artifacts** vary wildly by role but most provide magic
-resistance, which makes them important to carry even if you don't
-wield them. Check your specific role's artifact:
-Barbarian → Heart of Ahriman; Caveman → Sceptre of Might; Healer →
-Staff of Aesculapius (drain res!); Knight → Magic Mirror of Merlin;
-Monk → Eyes of the Overworld; Priest → Mitre of Holiness; Rogue →
-Master Key of Thievery; Samurai → Tsurugi of Muramasa; Tourist →
-Platinum Yendorian Express Card; Valkyrie → Orb of Fate;
-Wizard → Eye of the Aethiopica.
+**Bane weapons** (Sunsword, Demonbane, Sting, Orcrist, Grimtooth,
+Dragonbane, Werebane, Giantslayer, Ogresmasher, Trollsbane) deal
+double base damage against their target class and are otherwise just
+their base weapon — usually disappointing as a primary weapon, but
+Sting and Orcrist are notable because elves can start with elven
+daggers and broadswords. The defensive riders are sometimes the real
+reason to swap one in: Trollsbane regenerates while wielded,
+Dragonbane reflects, Werebane neutralizes lycanthropy, Grimtooth
+defends against poison.
+
+#### Quest artifacts
+
+Each role has exactly one quest artifact, awarded for completing the
+role's quest. They are intelligent (only the rightful owner can
+safely wield them; anyone else gets blasted) and cannot be wished
+for. Most of the non-weapon ones grant magic resistance just by
+sitting in your inventory, so roles whose quest artifact is a
+passive object still benefit from carrying it.
+
+`#invoke` (default `^A`) activates each artifact's special power; the
+cost is some energy plus a wear-out interval before it can be used
+again.
+
+| Role        | Artifact                            | Form         | Wield/wear bonus               | Carry bonus            | `#invoke`         |
+|-------------|-------------------------------------|--------------|--------------------------------|------------------------|-------------------|
+| Archeologist| The Orb of Detection                | crystal ball | —                              | MR, ESP, ½ spell dmg   | invisibility      |
+| Barbarian   | The Heart of Ahriman                | luckstone    | ×2 dmg as a projectile         | stealth, +luck         | levitation        |
+| Caveman     | The Sceptre of Might                | mace         | +d5 hit; ×2 vs non-lawful      | magic resistance       | conflict          |
+| Healer      | The Staff of Aesculapius            | quarterstaff | drain-life on hit              | drain res., regen      | full heal + cure  |
+| Knight      | The Magic Mirror of Merlin          | mirror       | (speaks to you)                | MR, ESP                | —                 |
+| Monk        | The Eyes of the Overworld           | lenses       | astral vision (when worn)      | magic resistance       | enlightenment     |
+| Priest      | The Mitre of Holiness               | helm         | ×2 vs undead, +1 prot.         | fire res.              | energy boost      |
+| Ranger      | The Longbow of Diana                | bow          | +d5 hit; reflection            | ESP                    | conjure arrows    |
+| Rogue       | The Master Key of Thievery          | skeleton key | —                              | warn, t-ctrl, ½ phys   | guaranteed untrap |
+| Samurai     | The Tsurugi of Muramasa             | tsurugi      | +d8 phys; chance to behead     | +luck, +1 prot.        | —                 |
+| Tourist     | Platinum Yendorian Express Card     | credit card  | —                              | MR, ESP, ½ spell dmg   | charge an item    |
+| Valkyrie    | The Orb of Fate                     | crystal ball | —                              | +luck, warn, ½ all dmg | levitate/teleport |
+| Wizard      | The Eye of the Aethiopica           | amulet       | —                              | MR, ½ spell, +energy   | create portal     |
+
+**The Orb of Detection** (Archeologist): a crystal ball that grants
+ESP and magic resistance just by being carried. `#invoke` toggles
+invisibility. Archeologists are already exceptional at stealth, and
+this turns them into a ghost.
+
+**The Heart of Ahriman** (Barbarian): a luckstone that doubles as a
++1 luck talisman with stealth. Critically, it counts as a luckstone
+for *all* the luckstone mechanics (mine's-end protection, gem-throw
+luck math, luck cap +13 instead of +10). It's also a projectile
+weapon — Barbarians can throw it for double damage and pick it back
+up. `#invoke` is levitation.
+
+**The Sceptre of Might** (Caveman): mace base, +d5 to-hit, double
+damage against any monster whose alignment differs from the artifact's
+(the Sceptre itself is Lawful, so it deals doubled damage against
+chaotic and unaligned monsters — i.e. most of the dungeon's hostiles
+once you reach Gehennom). It also grants magic resistance while held.
+`#invoke` casts conflict (monsters fight each other) at a steep
+energy cost.
+
+**The Staff of Aesculapius** (Healer): the Healer's salvation. Each
+hit drains life (one of only three drain-life weapons; the others
+are Stormbringer and the rider Death) and gives you regeneration
+plus drain resistance just by carrying it. `#invoke` heals fully and
+cures nearly every bad status. Few artifacts change a role's late
+game as much as this one.
+
+**The Magic Mirror of Merlin** (Knight): doesn't fight — it's a
+mirror — but grants ESP and magic resistance, and occasionally
+*speaks*, dropping hints. Knights already have Excalibur for combat,
+so the Mirror is pure passive utility.
+
+**The Eyes of the Overworld** (Monk): lenses that, when worn, give
+astral vision — see invisible, see through walls, spot secret doors.
+Carried (not worn) they still give magic resistance. `#invoke`
+enlightens you. For a Monk who can't safely wear body armor, a
+powerful passive on a slot they actually fill.
+
+**The Mitre of Holiness** (Priest): a helm of brilliance that grants
+double damage vs undead while worn, plus the brilliance bonus to
+intelligence and wisdom (so spell-cast more reliably), plus fire
+resistance while carried, plus a free `-1` to AC. `#invoke` for an
+energy boost — useful for spell-heavy Priests. Note: despite what
+older spoilers say, it does **not** grant drain resistance.
+
+**The Longbow of Diana** (Ranger): a real artifact bow — +d5 to hit
+plus reflection while wielded, ESP while carried. `#invoke` conjures
+free arrows out of thin air. Combined with the Ranger's ranged
+specialization this is the role's centerpiece.
+
+**The Master Key of Thievery** (Rogue): doesn't fight, but the carry
+package is enormous: warning, teleport control, half physical damage
+taken, and `#invoke` instantly untraps a nearby trap. For a non-
+cursed Key carried by a Rogue (or non-blessed Key carried by anyone
+else), `#untrap` also gains a perfect-detection bonus on doors and
+chests.
+
+**The Tsurugi of Muramasa** (Samurai): a katana-grade two-handed
+sword with +d8 damage *and* a behead chance (like Vorpal Blade) *and*
+a +1 protection bonus, and it acts as a luckstone, and it grants
+magic resistance. One of the strongest artifacts in the game —
+Samurai's reward for a hard quest.
+
+**The Platinum Yendorian Express Card** (Tourist): the Tourist's
+get-out-of-jail card. Carry grants ESP, magic resistance, and half
+spell damage; `#invoke` charges an item (a wand, ring, or marker),
+which in the Tourist's hands is roughly "a free wish per ~1000
+turns." Pairs especially well with marker-stockpiling strategies.
+
+**The Orb of Fate** (Valkyrie): the most generous passive in the
+game — counts as a luckstone, grants warning, halves both spell *and*
+physical damage taken. `#invoke` is levitate-or-teleport (a toggle —
+very useful in the Sanctum). Valkyries also have Mjollnir to throw,
+so the Orb sits in inventory as pure carry value.
+
+**The Eye of the Aethiopica** (Wizard): worn or carried, it grants
+magic resistance, half spell damage taken, and *extra energy
+regeneration* — a Wizard's most precious resource. `#invoke` opens a
+portal that drops you in Vlad's Tower (one-way; useful for
+shortcutting the Castle → Vlad's traversal). For a spell-caster this
+is irreplaceable.
 
 ---
 
@@ -3952,22 +4305,72 @@ from Mine's End is one of the first things every experienced player
 does. It's a small gray stone that makes the universe remember you
 fondly.
 
+**Bless state matters.** A **blessed** luckstone not only freezes
+drift but also adds **+3 to your effective Luck on most rolls** (the
+`LUCKADD` bonus, applied silently on top of your visible score). An
+uncursed luckstone freezes drift but gives no bonus. A **cursed
+luckstone is actively dangerous**: it subtracts 3 from your effective
+Luck *and reverses the drift*, so positive Luck slides down even
+faster than without any stone at all. Always BUC-check a luckstone
+before carrying it, and bless it on an altar if you can.
+
+**The Heart of Ahriman, Tsurugi of Muramasa, and Orb of Fate all
+count as luckstones.** Barbarian, Samurai, and Valkyrie quest
+artifacts confer the same drift-freeze and bless-state bonus — so
+those three roles get a "free luckstone" from their quest reward.
+Carrying both a blessed luckstone *and* one of these artifacts
+doesn't stack the +3 bonus (the bonus is binary, not additive), but
+it does add an extra unit of "blessed" to the count if you somehow
+end up with a cursed luckstone, partially offsetting it.
+
+**Calendar Luck.** The drift target isn't always 0:
+
+- On a **full moon** night, baseline Luck is +1 — Luck drifts toward
+  +1 instead of 0. If you started the session on a full moon, you
+  have +1 Luck for free.
+- On **Friday the 13th**, baseline Luck is −1. Avoid stair-up runs
+  on this day if you can; your accumulated good Luck will sap toward
+  −1 even if you've been virtuous.
+
+(NetHack uses your computer's real date for this — set your clock
+back if you've planned an ascension on the 13th and don't want the
+penalty, though most players just embrace the theme.)
+
 #### Gaining and Losing Luck
 
-| Action                                   | Luck change |
-| ---------------------------------------- | ----------- |
-| Sacrificing on your own altar            | +1          |
-| Identifying gems for a shopkeeper        | +1          |
-| Sitting on a throne (lucky outcome)      | +1          |
-| Going down stairs in Sokoban             | -1          |
-| Breaking Sokoban rules (scroll of earth) | -1          |
-| Killing a peaceful creature              | -1 to -5    |
-| Attacking your pet                       | -1          |
-| Cannibalism                              | -2 to -5    |
+| Action                                              | Luck change |
+| --------------------------------------------------- | ----------- |
+| Throw identified real gem to co-aligned unicorn     | **+5**      |
+| Throw named-but-unidentified real gem to co-aligned | +2          |
+| Throw unknown real gem to co-aligned unicorn        | +1          |
+| Throw real gem to cross-aligned unicorn             | -3 to +3 (random) |
+| Sacrificing on your own altar                       | +1          |
+| Identifying gems for a shopkeeper                   | +1          |
+| Sitting on a throne (lucky outcome)                 | +1          |
+| Going down stairs in Sokoban                        | -1          |
+| Breaking Sokoban rules (scroll of earth)            | -1          |
+| Killing a peaceful creature                         | -1 to -5    |
+| Attacking your pet                                  | -1          |
+| Cannibalism                                         | -2 to -5    |
 
 The pattern is consistent: be virtuous and the numbers smile on you.
 Be a monster and they frown. The Mazes have a moral compass, and
 it's embedded in the math.
+
+**Unicorn gem-throwing is the strongest active Luck source in the
+game.** Throw a properly-identified real gem (not glass) at a unicorn
+whose alignment matches yours and you gain +5 Luck immediately. The
+unicorn turns peaceful, accepts the gift, and teleports away — and
+will accept another later if you find it again. Identify your gems
+*first* (touchstone or scroll of identify); the bonus drops from
++5 to +1 if you don't actually know what you're throwing. Glass
+gems are harmless but yield nothing; throwing them is a safe way
+to pacify an unwanted unicorn without spending real gems. Avoid
+throwing real gems at cross-aligned unicorns — the result is a
+random Luck change between -3 and +3 and is rarely worth the
+gamble. Archeologists begin with all gems identified, which is
+why their class description mentions "unicorn negotiation" as a
+class perk.
 
 There is a ceiling on the luck you can harvest from any given corpse.
 If your current luck score already exceeds the difficulty rating of the
@@ -4431,11 +4834,15 @@ This is an alternative to capital letters. `Gh` runs west. `H` also runs west. U
 
 ##### Modify Prefix (`m`)
 
-**What It Does:** Modifies the next command. For movement, it means "move without attacking" (when implemented). For other commands, it may request a menu instead of a default action (when implemented).
+**What It Does:** Modifies the next command.
 
-**Current Status:** The `m` prefix is recognized but doesn't fully affect behavior yet. It's here for completeness and will be fully functional soon.
+For **movement**, `m` + direction means "move there without grabbing anything and without attacking":
 
-**When It Will Matter:** Once pets are more common, `m` will let you swap places with them without accidentally attacking. Once autopickup exists, `m` will let you move over items without picking them up.
+- Items on the destination square are *not* autopicked up — useful when autopickup is on but you want to step past a heap.
+- A peaceful or tame creature on the destination square gets swapped with instead of attacked — "Pardon me, Fido." A hostile creature you can see costs you a turn ("You move right into the kobold") instead of triggering an attack. This is the safe way to walk past your pet or a peaceful shopkeeper without accidentally striking them.
+- A known dangerous square (pool, lava without safe walking) is refused outright; you don't step in.
+
+For **other commands**, `m` requests a menu instead of the default single-target prompt. `me` brings up an "what do you want to eat?" menu rather than auto-selecting from your inventory; `ma` brings up a menu of applyable tools; `m,` lets you pick items from the floor pile explicitly; and so on. Commands that accept this are flagged internally; most "act on one thing" commands are eligible.
 
 #### Navigation Tips
 
@@ -4457,8 +4864,6 @@ Press **Ctrl+P** to see the last message. Press it again to see the one before t
 
 Press **Ctrl+R** to redraw the screen. Useful if your terminal gets garbled or if you suspect a display bug.
 
-**When to Use It:** Rarely. But when you need it, you really need it.
-
 #### The Learning Curve
 
 You don't need to memorize all of these at once. Start with command counts (`10s`) and repeat last command (Ctrl+A). Those two alone will save you thousands of keystrokes over the course of a game.
@@ -4473,7 +4878,7 @@ Several options affect how commands and controls work. Access them with the `O` 
 
 **`number_pad`**: Enables numeric keypad for movement (1-9 for directions). Off by default. If you enable this, digit prefixes for command counts work differently — you'll need to press `n` first to enter a count.
 
-**`autopickup`**: When implemented, this will make you automatically pick up certain items when you walk over them. The `m` prefix will let you move over items without triggering autopickup. Currently not yet implemented in this version.
+**`autopickup`**: Automatically picks up items when you walk over them, filtered by the `pickup_types` option (e.g. `pickup_types:$?!` to grab gold, scrolls, and potions). The `m` prefix on a movement command suppresses autopickup for that step.
 
 **`DECgraphics`**: Changes how walls and corridors are drawn. Doesn't affect controls, but might affect how quickly you can read the map.
 
@@ -5240,33 +5645,51 @@ senses to navigate. Officially tracked since 3.6.
 
 #### Pauper
 
-Never spend gold. Purchases, shop fees, bribes, and any other payment
-breaks it. You can carry gold — the coins in your pocket aren't the
-problem. It's giving them to someone else. In a game where shops provide
-identification services, healing supplies, and blessed items for those
-willing to pay, walking past every shopkeeper with a polite wave requires
-creative use of every other resource you have. Price identification
-becomes more valuable, not less — you want to know what something is
-before you carry it home for free rather than learning the hard way.
+Start with absolutely nothing — no gold, no inventory, no armor. Set
+`OPTIONS=pauper` in your rcfile (or `pauper:true` in the in-game `O`
+menu). The game enforces it at character creation: your starting
+inventory is empty, your pockets are empty, and the option implicitly
+sets `nudist:true` so you also begin without armor. From there you
+build up your kit by what the dungeon hands you. End-of-game
+enlightenment shows "you started out without possessions" as a
+permanent conduct, set at birth and never lost.
+
+A practical note: pauper does not forbid acquiring or spending gold
+later — the conduct is about *starting* empty, not about staying
+penniless. But because shops are inherently a late-pauper resource
+(you have nothing to sell early), price identification becomes
+proportionally more valuable. The traditional roleplaying version,
+"never spend gold," is not tracked by the game in 5.0 — it lives on
+only as a self-imposed extension of the pauper start.
 
 #### Petless
 
-Never have a pet. Decline your starting companion, don't tame anything,
-and try not to wander into magic traps that have opinions about your
-social calendar. You lose the curse-detection trick, the combat assist,
-the shoplifting option, and the companionship. What you gain is the
-particular satisfaction of knowing that everything that died did so by
-your hand, and that you never had to feel guilty about leading something
-loyal into a polymorph trap.
+Never have a pet. Set `OPTIONS=pettype:none` in your rcfile to skip
+the starting companion entirely (this overrides per-role defaults).
+After that the conduct enforces itself: don't tame anything via
+scrolls of taming, charm-monster spells, dairy products to foocubi,
+or magic-trap accidents. You lose the curse-detection trick, the
+combat assist, the shoplifting option, and the companionship. What
+you gain is the particular satisfaction of knowing that everything
+that died did so by your hand, and that you never had to feel guilty
+about leading something loyal into a polymorph trap.
 
 #### Permadeaf
 
-Never hear anything — enforced by the game tracking your entire run for
-sound events and never reversing magical deafness. Many monster warnings,
-environmental cues, and status messages arrive as sounds. Permadeaf
-requires navigating the dungeon by sight and logic alone, which turns out
-to be possible and occasionally educational about how much information you
-normally get for free.
+Never hear anything. Set `OPTIONS=!acoustics` in your rcfile (or
+`acoustics:false` in the in-game `O` menu) — the game then runs
+exactly as if you had the `Deaf` intrinsic for the entire game and
+never recovered. `You_hear()` returns silently in every code path,
+so all the "you hear water falling," "you hear someone counting
+money," "you hear a door open" messages — and the ambient
+monster-type "you hear a slurp" sounds from `dosounds()` — are
+suppressed.
+
+Many monster warnings, environmental cues (vaults, fountains, doors
+opening off-screen), and status messages arrive as sounds. Permadeaf
+requires navigating the dungeon by sight and logic alone, which turns
+out to be possible and occasionally educational about how much
+information you normally get for free.
 
 #### Sokoban
 
@@ -5274,8 +5697,9 @@ Complete Sokoban without cheating. No digging through the puzzle levels,
 no teleportation to skip steps, no picking up boulders and carrying them
 to impossible positions. Solve it the way the puzzle designers intended,
 by actually solving the puzzle. The game now tracks violations
-automatically. This is the conduct for players who found Sokoban's
-boulder-shoving too easy and want to be told they did it properly.
+automatically. This is the conduct for players who genuinely enjoy
+Sokoban's boulder-shoving sequences and want their playthrough to
+acknowledge a clean solve.
 
 Your `#conduct` screen also tracks whether you've used an amulet
 of life saving, which some players consider an informal conduct
@@ -5292,146 +5716,170 @@ of its own.
 > strategies below draw from both sources, updated for current
 > editions.*
 
-Shops are one of the most useful features of the dungeon. Beyond
-buying and selling items, their pricing system provides a powerful
-identification tool: by comparing what a shopkeeper charges for an
-unidentified item against known base prices, you can often determine
-exactly what it is.
-
-#### How Prices Work
-
-Every item in the game has a **base price** in zorkmids. This is
-the starting point for all shop transactions. The actual price you
-see depends on several modifiers applied in sequence.
-
-**List price** starts with the base price, then adjusts for:
-
-- **Enchantment:** Each point of positive enchantment adds 10 zm to
-  the base price. Negative enchantment has no effect on price.
-- **Charges:** An empty wand (0 charges) is worth less. A wand that
-  has been recharged reduces the base price in proportion.
-- **Erosion:** Rusted, corroded, burnt, or rotted items sell for
-  less.
-- **Artifacts:** Artifact items have their base price multiplied by
-  25. This makes them extraordinarily expensive to buy but also
-  easy to identify by price.
-
-**Buying price** adds further markups to the list price:
-
-- **Tourist surcharge:** Tourists pay a 33% markup (the "sucker"
-  tax). This applies only to the Tourist class.
-- **Charisma modifier:** Your Charisma stat adjusts prices
-  significantly:
-
-| Charisma | Buy modifier | Sell modifier |
-|----------|-------------|---------------|
-| 3–5      | ×2.00       | ×0.50         |
-| 6–7      | ×1.67       | ×0.60         |
-| 8–10     | ×1.33       | ×0.75         |
-| 11–15    | ×1.00       | ×1.00         |
-| 16–17    | ×0.75       | ×1.33         |
-| 18       | ×0.67       | ×1.50         |
-| 19+      | ×0.50       | ×2.00         |
-
-- **Angry shopkeeper:** If you've angered the shopkeeper (by
-  stealing, attacking, or similar offenses), prices increase by 33%.
-- **Random variation:** About one time in four, an unidentified
-  non-gem item gets a 33% random surcharge. In 5.0,
-  this surcharge is fixed per shopkeeper — the same shopkeeper
-  will always give you the same price for the same unidentified
-  item, so you can't exploit price variation by repeatedly dropping
-  and picking up items.
-
-**Selling price** is simpler. Identified items sell for half the
-list price. Unidentified items sell for one-third. This means
-identifying items before selling them is worth a 50% profit
-increase.
-
-#### Price Identification
-
-The most valuable use of shop pricing is identifying unknown items.
-When you pick up an unidentified item in a shop, the shopkeeper
-announces a price. Working backward from that price to the base
-price tells you what the item is.
-
-The process:
-
-1. Note the shopkeeper's asking price.
-2. Divide by your Charisma modifier (from the table above).
-3. Account for the tourist surcharge if applicable.
-4. If the result doesn't match a known base price, the item may have
-   the 33% random surcharge. Divide by 1.33 and check again.
-5. Compare the resulting base price to the known prices for that item
-   class.
-
-For example: a shopkeeper asks 80 zm for an unidentified scroll,
-and your Charisma is 12 (modifier ×1.00). The base price is either
-80 zm or, after removing a possible 33% surcharge, 60 zm. Checking
-the scroll price table: 80 zm scrolls are enchant armor and
-remove curse—both excellent. A 60 zm scroll is blank paper or
-enchant weapon. Either way, you've narrowed the possibilities
-dramatically.
-
-**Common base prices by item class:**
-
-*Scrolls:* 20 zm (identify), 50 zm (light), 60 zm (blank paper,
-enchant weapon), 80 zm (enchant armor, remove curse), 100 zm
-(confuse monster, destroy armor, fire, food detection, gold
-detection, magic mapping, scare monster, teleportation), 200 zm
-(amnesia, create monster, earth, taming), 300 zm (charging,
-genocide, punishment, stinking cloud).
-
-*Potions:* 50 zm (booze, fruit juice, see invisible, sickness),
-100 zm (confusion, extra healing, hallucination, healing, restore
-ability, sleeping, water), 150 zm
-(blindness, gain energy, invisibility, monster detection, object
-detection), 200 zm (enlightenment, full healing, levitation,
-polymorph, speed), 250 zm (acid, oil), 300 zm (gain ability, gain
-level, paralysis).
-
-*Wands:* 100 zm (light, nothing), 150 zm (digging, enlightenment,
-locking, magic missile, make invisible, opening, probing, secret
-door detection, slow monster, speed monster, striking, undead
-turning), 175 zm (cold, fire, lightning, sleep), 200 zm
-(cancellation, create monster, polymorph, teleportation), 500 zm
-(death, wishing).
-
-*Rings:* 100 zm (adornment, hunger, protection, protection from
-shape changers, stealth, sustain ability, warning), 150 zm
-(aggravate monster, cold resistance, gain constitution, gain
-strength, increase accuracy, increase damage, invisibility, poison
-resistance, see invisible, shock resistance), 200 zm (fire
-resistance, free action, levitation, regeneration, searching, slow
-digestion, teleportation), 300 zm (conflict, polymorph,
-polymorph control, teleport control).
+Shops do more than sell — their pricing system is your most
+powerful identification tool. The full mechanics, the interactive
+price tables for every item class, and the live buy/sell calculator
+all live in [The Price Is Right](#the-price-is-right). This section
+covers the rest of the shopkeeper interaction: credit, debt,
+combat, and a few non-obvious rules.
 
 #### Gem Identification Through Selling
 
-Gems deserve special mention. When you sell unidentified gems to a
-shopkeeper, the price depends on whether the gem is valuable or
-worthless glass. More importantly, different shopkeepers pay slightly
-different amounts for the same worthless glass, while valuable gems
-always sell consistently. By selling the same unidentified gem at
-two different shops and comparing prices, you can determine whether
-it's genuine.
+Selling unidentified gems is **not** a reliable price-ID method. The
+shopkeeper's offer for any unidentified gem (real *or* glass) is
+computed by `shk.c` as roughly `(otyp_offset % shopkeeper_modulus) + 3`
+zm per gem — a small number between 3 and 8, varying by both the
+gem's true identity and the shopkeeper. So both real diamonds and
+worthless glass diamonds offer 3-8 zm; you cannot tell them apart by
+price. Selling the same gem at two different shops gives different
+prices for *any* unidentified gem, not just glass.
 
-Alternatively, a touchstone (gray stone, base price 45 zm)
-identifies gems directly: rubbing a hard gem against it produces
-a streak that names the gem.
+The practical method is a **touchstone** (gray stone, base price 45,
+guaranteed at Mine's End and sometimes found elsewhere). Rubbing an
+unidentified hard gem against a non-cursed touchstone produces a
+streak that names the gem. Once identified, real gems sell for their
+real value (often hundreds of zm each) while glass sells for almost
+nothing.
+
+##### Real-gem prices
+
+Once you know what a gem is, its base price determines whether it's
+worth carrying. All gems weigh 1, so the only cost of hoarding is
+inventory slot pressure — but real gems are tiny piles of liquid
+gold by weight. The table below lists every real gem in the game by
+base price (the price an unangry, unbiased shopkeeper would charge
+for a buy). Sell prices are typically ½ of the base for a generic
+shopkeeper, less for shops outside the gem-buying class.
+
+| Gem                   | Color           | Base price | Mohs | Notes                          |
+|-----------------------|-----------------|-----------:|-----:|--------------------------------|
+| Dilithium crystal     | white           |       4500 |    5 | rarest white gem               |
+| Diamond               | white           |       4000 |   10 | hardest material in the game   |
+| Ruby                  | red             |       3500 |    9 |                                |
+| Jacinth               | orange          |       3250 |    9 | one of two orange gems         |
+| Sapphire              | blue            |       3000 |    9 |                                |
+| Black opal            | black           |       2500 |    8 |                                |
+| Emerald               | green           |       2500 |    8 |                                |
+| Turquoise             | green           |       2000 |    6 |                                |
+| Citrine               | yellow          |       1500 |    6 |                                |
+| Aquamarine            | green           |       1500 |    8 |                                |
+| Amber                 | yellowish brown |       1000 |    2 | softest, can't be touchstoned  |
+| Topaz                 | yellowish brown |        900 |    8 |                                |
+| Jet                   | black           |        850 |    7 |                                |
+| Opal                  | white           |        800 |    6 |                                |
+| Chrysoberyl           | yellow          |        700 |    5 |                                |
+| Garnet                | red             |        700 |    7 |                                |
+| Amethyst              | violet          |        600 |    7 | useful in alchemy (booze→see-i)|
+| Jasper                | red             |        500 |    7 |                                |
+| Fluorite              | violet          |        400 |    4 |                                |
+| Jade                  | green           |        300 |    6 |                                |
+| Obsidian              | black           |        200 |    6 |                                |
+| Agate                 | orange          |        200 |    6 |                                |
+| (worthless glass)     | any color       |          0 |    5 | sells for 0–8 zm unidentified  |
+
+Carrying every real gem is almost free: each gem weighs 1, and gems
+of the same identified type stack into a single inventory slot
+regardless of count. The decision is rarely "carry or drop" — it's
+"if I'm slot-pressed and have to thin the gem heap, which colors do
+I drop first."
+
+A few rules of thumb:
+
+- **Every real gem is equally good for unicorn luck.** A 200 zm agate
+  throws at an orange unicorn for the same +5 luck as a 3250 zm
+  jacinth. Don't sell off your "junk" gems before you've found an
+  alignment-matching unicorn to feed them to.
+- **The price column matters only when selling or wishing.** If
+  you're not in a shop and not weight-pressed, the price ranking is
+  irrelevant.
+- **If you must drop some gems** (you're in a Mine's End slot-crunch,
+  or you're consolidating before a stash), drop *duplicates of the
+  cheap colors first*. Keep at least one of every identified type,
+  because the touchstone work is already done.
+- **Top tier** (≥ 2500: dilithium, diamond, ruby, jacinth, sapphire,
+  black opal, emerald) are worth selling individually as you find
+  shops that buy them — 3000+ zm per gem is a real bankroll. Don't
+  fire-sale them to a non-gem-buying shop for half price.
+- **Amethyst** is a special case at any price tier: it's an alchemy
+  reagent (booze + amethyst dispels hallucination; the
+  α-μέθυστος "anti-drunkenness" pun is the joke).
+- **Worthless glass** of a unicorn's matching color *subtracts* luck
+  on a throw, so it's slightly worse than nothing in your stockpile.
+  But a glass gem matching the wrong color is just dead weight you
+  can drop.
+
+So the table above is best read as a **selling guide** rather than a
+discard guide: real gems near the top of the table are the ones worth
+making time to sell at a gem dealer, and the ones worth wishing for
+if you're flush on wishes. Lower-priced gems are not "trash" — they
+still feed unicorns and still touchstone-identify other gems by
+hardness comparison.
 
 #### Credit and Debt
 
-Shopkeepers maintain a credit and debt system:
+Each shopkeeper keeps a per-customer ledger with three numbers:
+credit, debit, and loan. The most common confusion is around credit,
+so spell out exactly when it appears.
 
-- **Credit** accumulates when you sell items or drop gold in the
-  shop. Credit applies against future purchases.
-- **Debt** accrues if you use unpaid items within the shop (reading
-  a scroll, quaffing a potion, zapping a wand). You're charged a
-  fraction of the item's purchase price.
-- Leaving the shop with unpaid items makes the shopkeeper hostile.
-  The Keystone Kops will pursue you through the dungeon. The
-  shopkeeper is a formidable fighter and should not be engaged
-  lightly.
+**How you get credit.** Two ways, neither automatic for a successful
+sale:
+
+1. **Shopkeeper runs short of gold while paying you.** When you sell
+   an item, the shopkeeper pays in gold by default. If they don't
+   have enough gold to cover the offer, the game prompts:
+   "Shopkeeper cannot pay you at present. Will you accept *N*
+   zorkmids in credit for that?" Answering yes converts the
+   shortfall (or the whole price, if they have zero gold) into
+   credit. A *normal* sale where the shopkeeper has enough gold
+   just pays you in cash, no credit involved.
+2. **You drop gold on a shop floor square.** Any gold you drop or
+   throw inside the shop is added to your credit balance (after
+   paying off any existing debt first). This is the "shop as
+   safe-deposit box" trick — credit can't be stolen by nymphs,
+   can't fall into pits, and can't be lost to a polymorph trap.
+
+**How credit gets used.** When you buy something, the shopkeeper
+applies your credit against the purchase price first ("the price is
+deducted from your credit"). Any remainder comes out of your gold.
+Credit is per-shop and per-shopkeeper — you can't carry it between
+shops, withdraw it back to gold, or hand it to a different
+shopkeeper.
+
+**Is paying from credit better or worse than paying in gold?** The
+price itself is identical — credit is deducted from the *post-
+Charisma, post-Tourist, post-angry* cost at a strict 1:1 ratio, with
+no markup or discount either way. The differences are about how
+*safe* and *liquid* your money is, not how far it stretches:
+
+- **Better** in that credit can't be stolen by nymphs, can't fall
+  into a pit when you die, can't be lost to a polymorph trap, and
+  doesn't bog you down with carry weight. A shop you'll come back
+  to is a strong bank.
+- **Worse** in that credit is locked to one shopkeeper. If you
+  over-accumulate at a shop that doesn't have items you want — or
+  the shopkeeper dies, or you anger them and they go hostile —
+  the credit evaporates. You also can't tip altar donations, can't
+  pay shrine fees, and can't bribe a demon out of credit.
+
+Practical balance: park spare gold as credit at a shop you intend
+to keep visiting (the Gnomish Mines general store is a popular
+choice), but don't deposit more than you expect to spend there.
+
+**Debit** is the inverse: it accrues when you *use* an unpaid item
+inside the shop (read a scroll, quaff a potion, zap a wand) and you
+haven't completed the purchase. You're charged a fraction of the
+item's price as a usage fee; future gold drops or sales pay it down
+before any new credit accumulates.
+
+**Loan** appears only in the unusual case where the shopkeeper has
+*lent* you gold — you carry their coins as part of your inventory.
+Dropping gold in the shop pays this off before adding credit.
+
+**Walk-out hazard.** Leaving the shop with unpaid items or unpaid
+debt turns the shopkeeper hostile. The Keystone Kops will pursue
+you through the dungeon, and the shopkeeper themselves is one of
+the toughest melee NPCs in the game — high HP, low AC, and
+unfazed by Elbereth. Pay the bill at the door.
 
 #### Shopkeeper Behavior
 
@@ -5441,14 +5889,35 @@ know:
 
 - Shopkeepers block the door when you have unpaid items.
 - They track everything you pick up and everything that enters their
-  shop.
+  shop, even when you're invisible.
 - If you break something in the shop (a potion, a wand), you pay
   for it.
-- Telepathically, shopkeepers know their inventory. Even invisible
-  theft is detected.
+- Elbereth doesn't help — shopkeepers ignore it.
+- Shop walls are non-diggable from inside; you can't tunnel out
+  with unpaid items.
+- Artifact items are priced at **25× base** when on the shop floor.
+  An unidentified artifact long sword for 100,000 zm is not
+  something to glance over; that price tag is the give-away.
 - Shopkeepers can be killed for their entire stock and gold
   inventory, but this carries significant penalties (Keystone Kops,
   alignment loss) and forfeits all future service from that shop.
+  Their AC and HP are typically out of reach early game; even
+  late-game players usually leave them alone.
+
+A few useful tactical points:
+
+- **Drop everything at the door.** Standing on the door square,
+  drop your whole inventory. Anything that lights up in the bill
+  belongs to the shop. This is the simplest way to recall what
+  you've picked up.
+- **Sell to build credit.** Credit acts as gold you can spend in
+  that shop, and credit doesn't get stolen by nymphs or fall into
+  pits. Selling a stack of useless daggers to a weapon shop is a
+  way to "bank" gold safely while you're shopping in town.
+- **Bones-shop gotcha.** When you find a shop in someone's bones
+  file, all the items inside still belong to the dead adventurer's
+  ghost shopkeeper; pick up anything and you owe the new
+  shopkeeper full price. The shop floor is not free loot.
 
 The best strategy is usually to play fair: sell what you don't need,
 buy what you do, and use the pricing system to identify as much as
