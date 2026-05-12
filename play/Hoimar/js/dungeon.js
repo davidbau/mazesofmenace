@@ -349,6 +349,13 @@ function fixupLevelLocations(pd) {
     game.wiz1_level = map.get('wizard1') || null;
 }
 
+function fixupDummySurfaceLevel(pd) {
+    const dummy = pd.specialLevels.find((lev) => lev.proto === 'dummy');
+    if (!dummy?.dlevel) return;
+    const dgn = pd.dungeons[dummy.dlevel.dnum];
+    if (dgn && dgn.num_dunlevs > 1 - dgn.depth_start) dgn.depth_start -= 1;
+}
+
 export function init_dungeons() {
     luaCoreShuffle();
     const pd = {
@@ -410,6 +417,7 @@ export function init_dungeons() {
     }
 
     initCastleTune();
+    fixupDummySurfaceLevel(pd);
     game.dungeons = pd.dungeons;
     game.branches = pd.branches;
     game.specialLevels = pd.specialLevels;

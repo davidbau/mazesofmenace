@@ -44,6 +44,7 @@ export class GameMap {
         this.objects = [];
         this.monsters = [];
         this.traps = [];
+        this.engravings = [];
         this.flags = {
             nfountains: 0,
             nsinks: 0,

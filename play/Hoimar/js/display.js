@@ -9,9 +9,11 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     FOUNTAIN, SINK, ALTAR, GRAVE,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
+    HOLE, TRAPDOOR, M_AP_OBJECT,
 } from './const.js';
+import { depth, distmin, dist2 } from './hacklib.js';
 import {
-    NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    NO_COLOR, CLR_BLACK, CLR_BLUE, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
     ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE, DEC_TO_UNICODE,
 } from './terminal.js';
 import { roleRankForLevel } from './roles.js';
@@ -40,8 +42,52 @@ const ANSI_COLOR = [
 ];
 const COLOR_BY_ANSI = new Map(ANSI_COLOR.map((ansi, color) => [ansi, color]));
 
+const POTION_CLASS = 8;
+const SPBOOK_CLASS = 10;
+const GEM_CLASS = 13;
+const FIRST_REAL_GEM = 439;
+const LAST_GLASS_GEM = 469;
+const FIRST_SPELL = 366;
+const LAST_SPELL = 407;
+const BOULDER = 475;
+
+const GENERIC_OBJECT_GLYPH = {
+    [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
+    [SPBOOK_CLASS]: { ch: '+', color: CLR_GRAY },
+    [GEM_CLASS]: { ch: '*', color: CLR_GRAY },
+};
+
 function tty_color(color) {
-    return color === CLR_GRAY ? NO_COLOR : color;
+    return color === CLR_GRAY || color === CLR_BLACK ? NO_COLOR : color;
+}
+
+function obj_is_generic(obj) {
+    if (!obj || obj.dknown) return false;
+    const otyp = obj.otyp ?? -1;
+    return obj.oclass === POTION_CLASS
+        || (otyp >= FIRST_REAL_GEM && otyp <= LAST_GLASS_GEM)
+        || (otyp >= FIRST_SPELL && otyp <= LAST_SPELL);
+}
+
+function observe_object(obj) {
+    if (obj) obj.dknown = true;
+}
+
+function object_glyph_for_display(obj, x, y, visible) {
+    let generic = obj_is_generic(obj);
+    if (generic && visible && !game.u?.uhallucination) {
+        const r = Math.max(game.u?.xray_range || 0, 2);
+        const neardist = (r * r) * 2 - r;
+        if (dist2(x, y, game.u?.ux ?? 0, game.u?.uy ?? 0) <= neardist) {
+            observe_object(obj);
+            generic = false;
+        }
+    }
+
+    if (generic) {
+        return GENERIC_OBJECT_GLYPH[obj.oclass] || { ch: obj.ch || '?', color: obj.color ?? NO_COLOR };
+    }
+    return { ch: obj.ch || '?', color: obj.color ?? NO_COLOR };
 }
 
 function is_branch_stair(x, y) {
@@ -53,6 +99,7 @@ function is_branch_stair(x, y) {
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
+    const wallColor = game.level?.flags?.sokoban_rules ? CLR_BLUE : NO_COLOR;
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
@@ -69,22 +116,47 @@ function terrain_glyph(loc, x, y) {
             return { ch: '>', color, dec: false };
         }
     // Wall types → DEC line-drawing characters
-    case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true };  // ─
-    case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true };  // │
-    case TLCORNER:  return { ch: 'l', color: NO_COLOR, dec: true };  // ┌
-    case TRCORNER:  return { ch: 'k', color: NO_COLOR, dec: true };  // ┐
-    case BLCORNER:  return { ch: 'm', color: NO_COLOR, dec: true };  // └
-    case BRCORNER:  return { ch: 'j', color: NO_COLOR, dec: true };  // ┘
-    case CROSSWALL: return { ch: 'n', color: NO_COLOR, dec: true };  // ┼
-    case TUWALL:    return { ch: 'v', color: NO_COLOR, dec: true };  // ┴
-    case TDWALL:    return { ch: 'w', color: NO_COLOR, dec: true };  // ┬
-    case TLWALL:    return { ch: 'u', color: NO_COLOR, dec: true };  // ┤
-    case TRWALL:    return { ch: 't', color: NO_COLOR, dec: true };  // ├
+    case HWALL:     return { ch: 'q', color: wallColor, dec: true };  // ─
+    case VWALL:     return { ch: 'x', color: wallColor, dec: true };  // │
+    case TLCORNER:  return { ch: 'l', color: wallColor, dec: true };  // ┌
+    case TRCORNER:  return { ch: 'k', color: wallColor, dec: true };  // ┐
+    case BLCORNER:  return { ch: 'm', color: wallColor, dec: true };  // └
+    case BRCORNER:  return { ch: 'j', color: wallColor, dec: true };  // ┘
+    case CROSSWALL: return { ch: 'n', color: wallColor, dec: true };  // ┼
+    case TUWALL:    return { ch: 'v', color: wallColor, dec: true };  // ┴
+    case TDWALL:    return { ch: 'w', color: wallColor, dec: true };  // ┬
+    case TLWALL:    return { ch: 'u', color: wallColor, dec: true };  // ┤
+    case TRWALL:    return { ch: 't', color: wallColor, dec: true };  // ├
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
+    }
+}
+
+function trap_glyph(trap) {
+    if (!trap) return null;
+    const color = (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) ? CLR_BROWN : CLR_GRAY;
+    return { ch: '^', color, dec: false };
+}
+
+function monster_glyph(mon) {
+    if (mon?.m_ap_type === M_AP_OBJECT && mon.mappearance === BOULDER) {
+        return { ch: '`', color: CLR_GRAY, dec: false };
+    }
+    return { ch: mon.ch, color: mon.color, dec: false };
+}
+
+function show_premapped_mimics() {
+    if (!game.level?.flags?.premapped) return;
+    for (const mon of game.level.monsters || []) {
+        if (mon.m_ap_type !== M_AP_OBJECT) continue;
+        const loc = game.level.at(mon.mx, mon.my);
+        if (!loc?.lit || distmin(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) > 2) continue;
+        const mg = monster_glyph(mon);
+        loc.remembered_glyph = { ch: mg.ch, color: mg.color, decgfx: mg.dec };
+        show_glyph_cell(mon.mx, mon.my, mg.ch, mg.color, mg.dec);
     }
 }
 
@@ -118,19 +190,26 @@ export function newsym(x, y) {
     const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
     const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
     const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
+    const visible = cansee(x, y);
 
     let draw_ch = tg.ch;
     let draw_color = tg.color;
     let draw_dec = tg.dec;
 
+    if (trap?.tseen) {
+        const tr = trap_glyph(trap);
+        draw_ch = tr.ch; draw_color = tr.color; draw_dec = tr.dec;
+    }
     if (mon) {
-        draw_ch = mon.ch; draw_color = mon.color; draw_dec = false;
+        const mg = monster_glyph(mon);
+        draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
     } else if (obj) {
-        draw_ch = obj.ch; draw_color = obj.color; draw_dec = false;
+        const og = object_glyph_for_display(obj, x, y, visible);
+        draw_ch = og.ch; draw_color = og.color; draw_dec = false;
     }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
-    if (cansee(x, y)) {
+    if (visible) {
         show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
@@ -153,6 +232,10 @@ export async function docrt() {
                     loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
             }
         }
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 1; x < COLNO; x++)
+            if (cansee(x, y)) newsym(x, y);
+    show_premapped_mimics();
     if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
 }
 
@@ -242,7 +325,7 @@ function _statusLine2() {
         ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
         : `Xp:${u.ulevel || 1}`;
     const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
-    return `Dlvl:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
+    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──

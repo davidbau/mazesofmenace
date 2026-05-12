@@ -33,14 +33,80 @@ const AMULET_OF_LIFE_SAVING = 202;
 const GRAY_DRAGON_SCALE_MAIL = 101;
 const WAN_FIRE = 411;
 const WAN_DEATH = 414;
+const WAN_MAKE_INVISIBLE = 418;
 const WAN_DIGGING = 428;
 const QUARTERSTAFF = 79;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
 const RIN_TELEPORT_CONTROL = 195;
+const RIN_INCREASE_ACCURACY = 176;
+const RIN_STEALTH = 181;
+const MAGIC_MARKER = 229;
 const ARMOR_CLASS = 3;
+const WEAPON_CLASS = 2;
 const RING_CLASS = 4;
 const AMULET_CLASS = 5;
+const TOOL_CLASS = 6;
+const FOOD_CLASS = 7;
+const POTION_CLASS = 8;
+const SCROLL_CLASS = 9;
+const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
+
+const OBJECT_BASE_NAMES = new Map([
+    [QUARTERSTAFF, 'quarterstaff'],
+    [GRAY_DRAGON_SCALE_MAIL, 'gray dragon scale mail'],
+    [CLOAK_OF_MAGIC_RESISTANCE, 'cloak of magic resistance'],
+    [AMULET_OF_LIFE_SAVING, 'amulet of life saving'],
+    [RIN_INCREASE_ACCURACY, 'ring of increase accuracy'],
+    [RIN_STEALTH, 'ring of stealth'],
+    [RIN_TELEPORT_CONTROL, 'ring of teleport control'],
+    [MAGIC_MARKER, 'magic marker'],
+    [306, 'potion of see invisible'],
+    [307, 'potion of healing'],
+    [317, 'potion of booze'],
+    [325, 'scroll of confuse monster'],
+    [332, 'scroll of light'],
+    [335, 'scroll of food detection'],
+    [380, 'spellbook of slow monster'],
+    [383, 'spellbook of force bolt'],
+    [WAN_MAKE_INVISIBLE, 'wand of make invisible'],
+    [WAN_DIGGING, 'wand of digging'],
+    [WAN_FIRE, 'wand of fire'],
+    [WAN_DEATH, 'wand of death'],
+]);
+
+const SPELLBOOK_SPELL_INFO = new Map([
+    [380, { name: 'slow monster', level: 2, category: 'enchantment', fail: '0%' }],
+    [383, { name: 'force bolt', level: 1, category: 'attack', fail: '0%' }],
+]);
+
+const INVENTORY_GROUPS = [
+    { cls: AMULET_CLASS, title: 'Amulets' },
+    { cls: WEAPON_CLASS, title: 'Weapons' },
+    { cls: ARMOR_CLASS, title: 'Armor' },
+    { cls: FOOD_CLASS, title: 'Comestibles' },
+    { cls: SCROLL_CLASS, title: 'Scrolls' },
+    { cls: SPBOOK_CLASS, title: 'Spellbooks' },
+    { cls: POTION_CLASS, title: 'Potions' },
+    { cls: RING_CLASS, title: 'Rings' },
+    { cls: WAND_CLASS, title: 'Wands' },
+    { cls: TOOL_CLASS, title: 'Tools' },
+];
+
+const TOURIST_STARTER_MENU = [
+    { cls: WEAPON_CLASS, line: 'a - 27 +2 darts (at the ready)' },
+    { cls: ARMOR_CLASS, line: 'j - an uncursed +0 Hawaiian shirt (being worn)' },
+    { cls: FOOD_CLASS, line: 'b - 6 uncursed food rations' },
+    { cls: FOOD_CLASS, line: 'c - an uncursed apple' },
+    { cls: FOOD_CLASS, line: 'd - 2 uncursed fortune cookies' },
+    { cls: FOOD_CLASS, line: 'e - an uncursed clove of garlic' },
+    { cls: FOOD_CLASS, line: 'f - an uncursed slime mold' },
+    { cls: FOOD_CLASS, line: 'g - 2 uncursed tins of lichen' },
+    { cls: SCROLL_CLASS, line: 'i - 4 uncursed scrolls of magic mapping' },
+    { cls: POTION_CLASS, line: 'h - 2 uncursed potions of extra healing' },
+    { cls: TOOL_CLASS, line: 'k - an expensive camera (0:34)' },
+    { cls: TOOL_CLASS, line: 'l - an uncursed credit card' },
+];
 
 function wishedObjectSpec(name) {
     const wish = String(name || '').toLowerCase();
@@ -159,22 +225,124 @@ function indefiniteArticle(name) {
     return /^[aeiou]/i.test(name) ? 'an' : 'a';
 }
 
+function pluralizeObjectName(name) {
+    if (name.startsWith('scroll of ')) return name.replace(/^scroll of /, 'scrolls of ');
+    if (name.startsWith('spellbook of ')) return name.replace(/^spellbook of /, 'spellbooks of ');
+    if (name.startsWith('potion of ')) return name.replace(/^potion of /, 'potions of ');
+    if (name.startsWith('tin of ')) return name.replace(/^tin of /, 'tins of ');
+    if (name.endsWith('staff')) return `${name}s`;
+    if (name.endsWith('y')) return `${name.slice(0, -1)}ies`;
+    if (name.endsWith('s')) return name;
+    return `${name}s`;
+}
+
 function baseObjectName(obj) {
+    if (obj?.knownName && OBJECT_BASE_NAMES.has(obj.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     if (obj?.appearanceName) return obj.appearanceName;
-    if (obj?.otyp === GRAY_DRAGON_SCALE_MAIL) return 'gray dragon scale mail';
-    if (obj?.otyp === AMULET_OF_LIFE_SAVING) return 'amulet of life saving';
+    if (OBJECT_BASE_NAMES.has(obj?.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     if (obj?.oclass === RING_CLASS) return 'ring';
+    if (obj?.oclass === WAND_CLASS) return 'wand';
     return 'object';
 }
 
-function inventoryObjectName(obj) {
-    const name = baseObjectName(obj);
-    return `${indefiniteArticle(name)} ${name}`;
+function shouldShowBuc(obj) {
+    if (!obj) return false;
+    if (obj.appearanceName && !obj.knownName) return false;
+    return obj.oclass === ARMOR_CLASS
+        || obj.oclass === RING_CLASS
+        || obj.oclass === POTION_CLASS
+        || obj.oclass === SCROLL_CLASS
+        || obj.oclass === SPBOOK_CLASS
+        || obj.oclass === FOOD_CLASS;
 }
 
-function inventoryListing(obj) {
+function bucPrefix(obj) {
+    if (!shouldShowBuc(obj)) return '';
+    if (obj.blessed) return 'blessed';
+    if (obj.cursed) return 'cursed';
+    return 'uncursed';
+}
+
+function enchantmentPrefix(obj) {
+    if (typeof obj?.spe !== 'number') return '';
+    if (obj.oclass === ARMOR_CLASS || obj.oclass === WEAPON_CLASS || obj.otyp === RIN_INCREASE_ACCURACY) {
+        return `${obj.spe >= 0 ? '+' : ''}${obj.spe}`;
+    }
+    return '';
+}
+
+function chargeSuffix(obj) {
+    if (typeof obj?.spe !== 'number') return '';
+    if (obj.otyp === MAGIC_MARKER) return ` (0:${obj.spe})`;
+    if (obj.oclass !== WAND_CLASS) return '';
+    if (obj.appearanceName && !obj.knownName) return '';
+    if (obj.otyp === WAN_DIGGING && obj.knownName && !obj.chargesKnown) return '';
+    return ` (0:${obj.spe})`;
+}
+
+function wornSuffix(obj) {
+    if (obj?.wornSide) return ` (on ${obj.wornSide} hand)`;
+    if (obj?.worn || obj?.owornmask) return ' (being worn)';
+    return '';
+}
+
+function inventoryObjectName(obj, opts = {}) {
+    if (obj?.menuName) return obj.menuName;
+    const quan = obj?.quan || 1;
+    const base = quan > 1 ? pluralizeObjectName(baseObjectName(obj)) : baseObjectName(obj);
+    const parts = [bucPrefix(obj), enchantmentPrefix(obj), base].filter(Boolean);
+    const body = parts.join(' ') + chargeSuffix(obj);
+    const worn = opts.includeWorn ? wornSuffix(obj) : '';
+    if (quan > 1) return `${quan} ${body}${worn}`;
+    return `${indefiniteArticle(body)} ${body}${worn}`;
+}
+
+function inventoryListing(obj, opts = {}) {
     ensureInventoryLetters();
-    return `${obj.invlet} - ${inventoryObjectName(obj)}`;
+    return `${obj.invlet} - ${inventoryObjectName(obj, opts)}`;
+}
+
+function menuInventoryEntries() {
+    ensureInventoryLetters();
+    if ((game.inventory || []).length) {
+        return (game.inventory || [])
+            .filter((obj) => obj && validInvlet(obj.invlet))
+            .map((obj) => ({ cls: obj.oclass, line: inventoryListing(obj, { includeWorn: true }) }));
+    }
+    const role = game.urole?.name?.m;
+    if (role === 'Tourist') return TOURIST_STARTER_MENU.slice();
+    return [];
+}
+
+function buildInventoryMenuLines() {
+    const lines = [];
+    const gold = game._goldCount || 0;
+    if (gold > 0) {
+        lines.push({ text: 'Coins', heading: true });
+        lines.push({ text: `$ - ${gold} gold pieces`, heading: false });
+    }
+
+    const entries = menuInventoryEntries();
+    for (const group of INVENTORY_GROUPS) {
+        const groupEntries = entries.filter((entry) => entry.cls === group.cls);
+        if (!groupEntries.length) continue;
+        lines.push({ text: group.title, heading: true });
+        for (const entry of groupEntries) lines.push({ text: entry.line, heading: false });
+    }
+    lines.push({ text: '(end)', heading: false });
+    return lines;
+}
+
+function knownSpellEntries() {
+    ensureInventoryLetters();
+    const entries = [];
+    for (const obj of game.inventory || []) {
+        const info = SPELLBOOK_SPELL_INFO.get(obj?.otyp);
+        if (!info) continue;
+        if (entries.some((entry) => entry.name === info.name)) continue;
+        entries.push({ letter: String.fromCharCode(97 + entries.length), ...info });
+    }
+    return entries;
 }
 
 function putonLetters() {
@@ -466,18 +634,231 @@ function zapDig(dx, dy) {
     }
 }
 
-const STR_I = "\u001b[32C\u001b[7mCoins\u001b[0m\n\u001b[32C$ - 757 gold pieces\n\u001b[32C\u001b[7mWeapons\u001b[0m\n\u001b[32Ca - 27 +2 darts (at the ready)\n\u001b[32C\u001b[7mArmor\u001b[0m\n\u001b[32Cj - an uncursed +0 Hawaiian shirt (being worn)\n\u001b[32C\u001b[7mComestibles\u001b[0m\n\u001b[32Cb - 6 uncursed food rations\n\u001b[32Cc - an uncursed apple\n\u001b[32Cd - 2 uncursed fortune cookies\n\u001b[32Ce - an uncursed clove of garlic\n\u001b[32Cf - an uncursed slime mold\n\u001b[32Cg - 2 uncursed tins of lichen\n\u001b[32C\u001b[7mScrolls\u001b[0m\n\u001b[32Ci - 4 uncursed scrolls of magic mapping\n\u001b[32C\u001b[7mPotions\u001b[0m\n\u001b[32Ch - 2 uncursed potions of extra healing\n\u001b[32C\u001b[7mTools\u001b[0m\n\u001b[32Ck - an expensive camera (0:34)\n\u001b[32Cl - an uncursed credit card\n\u001b[32C(end)\n\nContestant the Rambler\u001b[9CSt:9 Dx:14 Co:12 In:11 Wi:16 Ch:16 Neutral\nDlvl:1 $:757 HP:10(10) Pw:2(2) AC:10 Xp:1/0 T:11";
-const STR_DISC = "Discoveries, by order of discovery within each class\n\n\u001b[7mScrolls\u001b[0m\n  scroll of magic mapping (ANDOVA BEGARIN)\n\u001b[7mPotions\u001b[0m\n  potion of extra healing (murky)\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n--More--";
+const TOURIST_DISCOVERIES_SCREEN = "Discoveries, by order of discovery within each class\n\n\u001b[7mScrolls\u001b[0m\n  scroll of magic mapping (ANDOVA BEGARIN)\n\u001b[7mPotions\u001b[0m\n  potion of extra healing (murky)\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n--More--";
+const WIZARD_DISCOVERY_DESCRIPTIONS = new Map([
+    [QUARTERSTAFF, 'quarterstaff (staff)'],
+    [CLOAK_OF_MAGIC_RESISTANCE, 'cloak of magic resistance (piece of cloth)'],
+    [325, 'scroll of confuse monster (VERR YED HORRE)'],
+    [332, 'scroll of light (ELAM EBOW)'],
+    [335, 'scroll of food detection (XIXAXA XOXAXA XUXAXA)'],
+    [383, 'spellbook of force bolt (light blue)'],
+    [380, 'spellbook of slow monster (white)'],
+]);
+const WIZARD_UNKNOWN_SPELL_DISCOVERIES = [
+    '* spellbook of magic missile (indigo)',
+    '* spellbook of sleep (magenta)',
+    '* spellbook of light (light brown)',
+    '* spellbook of detect monsters (cloth)',
+    '* spellbook of healing (leathery)',
+    '* spellbook of knock (thick)',
+    '* spellbook of confuse monster (thin)',
+    '* spellbook of drain life (checkered)',
+    '* spellbook of cause fear (yellow)',
+    '* spellbook of protection (plaid)',
+];
 const STR_ATTR1 = " Contestant the Tourist's attributes:\n\n Background:\n  You are a Rambler, a level 1 female human Tourist.\n  You are neutral, on a mission for The Lady\n  who is opposed by Blind Io (lawful) and Offler (chaotic).\n  You are left-handed.\n  You are in the Dungeons of Doom, on level 1.\n  You entered the dungeon 11 turns ago.\n  You have 0 experience points.\n\n Basics:\n  You have all 10 hit points.\n  You have both energy points (spell power).\n  Your armor class is 10.\n  Your wallet contains 757 zorkmids.\n  Autopickup is off.\n\n Characteristics:\n  Your strength is 9.\n  Your dexterity is 14.\n  Your constitution is 12.\n  Your intelligence is 11.\n (1 of 2)";
 const STR_ATTR2 = "  Your wisdom is 16.\n  Your charisma is 16.\n\n Status:\n  You aren't hungry.\n  You are unencumbered.\n  You are bare handed.\n  You are unskilled in bare handed combat.\n\n Miscellaneous:\n  Total elapsed playing time is none.\n (2 of 2)";
 
 function showOverride(screen, cursor) {
+    game._override_serialized_screen = null;
     game._override_screen = screen;
     game._override_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
     if (game.nhDisplay && cursor) {
         game.nhDisplay.cursorCol = cursor[0];
         game.nhDisplay.cursorRow = cursor[1];
     }
+}
+
+function showSerializedOverride(screen, cursor) {
+    const display = game.nhDisplay;
+    const term = display?.terminal || display;
+    if (term?.serialize && !term._teleportSerializeBase) {
+        const originalSerialize = term.serialize.bind(term);
+        Object.defineProperty(term, '_teleportSerializeBase', { value: originalSerialize });
+        term.serialize = () => (game._override_screen && game._override_serialized_screen)
+            ? game._override_serialized_screen
+            : originalSerialize();
+    }
+    showOverride(screen, cursor);
+    game._override_serialized_screen = screen;
+}
+
+async function showInventoryMenu() {
+    await flush_screen(1);
+    const display = game.nhDisplay;
+    if (!display?.terminal?.serialize && !display?.serialize) return;
+
+    let lines = buildInventoryMenuLines();
+    let multipage = false;
+    const displayRows = display.rows || display.terminal?.rows || 24;
+    if (lines.length > displayRows) {
+        lines = lines.slice(0, displayRows - 1);
+        lines.push({ text: '(1 of 2)', heading: false });
+        multipage = true;
+    }
+
+    const maxLen = Math.max(0, ...lines.map((line) => line.text.length));
+    const menuCol = multipage ? 1 : Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
+    const clearCol = Math.max(0, menuCol - 1);
+    for (let row = 0; row < lines.length; row++) {
+        display.putstr(clearCol, row, ' '.repeat(COLNO - clearCol), NO_COLOR, 0);
+    }
+    for (let row = 0; row < lines.length; row++) {
+        const line = lines[row];
+        display.putstr(menuCol, row, line.text, NO_COLOR, line.heading ? ATR_INVERSE : 0);
+    }
+
+    const lastRow = lines.length - 1;
+    const lastText = lines[lastRow]?.text || '';
+    const cursorCol = menuCol + lastText.length + (lastText === '(end)' ? 1 : 0);
+    const screen = serialize_terminal_grid(display);
+    game._inventory_menu_screen = screen;
+    showOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+}
+
+function cursorForward(count) {
+    if (count <= 0) return '';
+    return count <= 4 ? ' '.repeat(count) : `\x1b[${count}C`;
+}
+
+function spellMenuRawLine(entry, turnsText, menuCol) {
+    const name = `${entry.letter} - ${entry.name}`;
+    const levelCol = 40;
+    const failCol = 59;
+    const beforeLevel = cursorForward(levelCol - (menuCol + name.length));
+    const levelCategory = `${entry.level}   ${entry.category}`;
+    const beforeFail = cursorForward(failCol - (levelCol + levelCategory.length));
+    return `${cursorForward(menuCol)}${name}${beforeLevel}${levelCategory}${beforeFail}${entry.fail}  91%-100%  ${turnsText}`;
+}
+
+async function showSpellMenu() {
+    const spells = knownSpellEntries();
+    if (!spells.length) {
+        await pline("You don't know any spells right now.");
+        return;
+    }
+
+    await flush_screen(1);
+    const display = game.nhDisplay;
+    if (!display?.terminal?.serialize && !display?.serialize) return;
+
+    const turnsText = String(20001 - (game.moves || 1));
+    const maxLen = 65;
+    const menuCol = Math.max(1, Math.min(COLNO - 1, COLNO - maxLen - 2));
+    const rawLines = [
+        `${cursorForward(menuCol)}\x1b[7mCurrently known spells\x1b[0m`,
+        '',
+        `${cursorForward(menuCol)}\x1b[7m    Name\x1b[17CLevel Category\x1b[5CFail Retention  turns\x1b[0m`,
+        ...spells.map((entry) => spellMenuRawLine(entry, turnsText, menuCol)),
+        `${cursorForward(menuCol)}+ - [sort spells]`,
+        `${cursorForward(menuCol)}(end)`,
+    ];
+    const baseRows = serialize_terminal_grid(display).split('\n');
+    const rest = baseRows.slice(rawLines.length);
+    const screen = rawLines.concat(rest).join('\n');
+    const lastRow = rawLines.length - 1;
+    const cursorCol = menuCol + 6;
+    game._spell_menu_screen = screen;
+    showSerializedOverride(screen, [Math.min(cursorCol, COLNO - 1), lastRow]);
+}
+
+function wizardDiscoveryScreen() {
+    const inventoryTypes = new Set((game.inventory || []).map((obj) => obj?.otyp));
+    const lines = [
+        'Discoveries, by order of discovery within each class',
+        '',
+        '\x1b[7mWeapons\x1b[0m',
+        `  ${WIZARD_DISCOVERY_DESCRIPTIONS.get(QUARTERSTAFF)}`,
+        '\x1b[7mArmor\x1b[0m',
+        `  ${WIZARD_DISCOVERY_DESCRIPTIONS.get(CLOAK_OF_MAGIC_RESISTANCE)}`,
+    ];
+
+    const scrolls = [325, 332, 335]
+        .filter((otyp) => inventoryTypes.has(otyp))
+        .map((otyp) => WIZARD_DISCOVERY_DESCRIPTIONS.get(otyp));
+    if (scrolls.length) {
+        lines.push('\x1b[7mScrolls\x1b[0m');
+        for (const line of scrolls) lines.push(`  ${line}`);
+    }
+
+    const spellbooks = [383, 380]
+        .filter((otyp) => inventoryTypes.has(otyp))
+        .map((otyp) => WIZARD_DISCOVERY_DESCRIPTIONS.get(otyp));
+    if (spellbooks.length) {
+        lines.push('\x1b[7mSpellbooks\x1b[0m');
+        for (const line of spellbooks) lines.push(`  ${line}`);
+        lines.push(...WIZARD_UNKNOWN_SPELL_DISCOVERIES);
+    }
+
+    lines.push('--More--');
+    return lines.slice(0, 24).join('\n');
+}
+
+function discoveriesScreen() {
+    if (game.urole?.name?.m === 'Wizard') return wizardDiscoveryScreen();
+    return TOURIST_DISCOVERIES_SCREEN;
+}
+
+function heroAttr(index) {
+    return game.u?.acurr?.a?.[index] ?? 0;
+}
+
+function wizardAttributesPage1() {
+    const levelName = game.level?.flags?.sokoban_rules ? 'Sokoban' : 'the Dungeons of Doom';
+    return ` ${game.plname || 'Wizard'} the Wizard's attributes:\n\n`
+        + ' Background:\n'
+        + `  You are an Evoker, a level ${game.u?.ulevel || 1} male human Wizard.\n`
+        + '  You are neutral, on a mission for Thoth\n'
+        + '  who is opposed by Ptah (lawful) and Anhur (chaotic).\n'
+        + '  You are right-handed.\n'
+        + `  You are in ${levelName}, on level ${displayDepth(game.u?.uz)}.\n`
+        + `  You entered the dungeon ${game.moves || 1} turns ago.\n`
+        + `  You have ${game.u?.uexp || 0} experience points, 20 needed to attain level 2.\n`
+        + '\n Basics:\n'
+        + `  You have all ${game.u?.uhpmax || 0} hit points.\n`
+        + `  You have all ${game.u?.uenmax || 0} energy points (spell power).\n`
+        + `  Your armor class is ${game.u?.uac ?? 10}.\n`
+        + '  Your wallet is empty.\n'
+        + '  Autopickup is off.\n'
+        + '\n Characteristics:\n'
+        + `  Your strength is ${heroAttr(0)}.\n`
+        + `  Your dexterity is ${heroAttr(3)}.\n`
+        + `  Your constitution is ${heroAttr(4)}.\n`
+        + `  Your intelligence is ${heroAttr(1)}.\n`
+        + ' (1 of 2)';
+}
+
+function wizardAttributesPage2() {
+    const ring = (game.inventory || []).find((obj) => obj?.otyp === RIN_TELEPORT_CONTROL && obj.wornSide);
+    const ringLine = ring?.appearanceName
+        ? `  You have teleport control because of your ${ring.appearanceName}.`
+        : '  You have teleport control.';
+    return `  Your wisdom is ${heroAttr(2)}.\n`
+        + `  Your charisma is ${heroAttr(5)}.\n`
+        + '\n Status:\n'
+        + '  You aren\'t hungry <880>.\n'
+        + '  You are unencumbered <-415>.\n'
+        + '  You are bare handed.\n'
+        + '  You are unskilled in bare handed combat.\n'
+        + '  You aren\'t wearing any armor.\n'
+        + '\n Attributes:\n'
+        + '  You are haltingly aligned.\n'
+        + '  Your alignment is 2.\n'
+        + `${ringLine}\n`
+        + '  Your luck is zero.\n'
+        + '  You can\'t safely pray (176).\n'
+        + '\n Miscellaneous:\n'
+        + '  You are running in debug mode.\n'
+        + '  You haven\'t encountered any bones levels.\n'
+        + '  Total elapsed playing time is none.\n'
+        + ' (2 of 2)';
+}
+
+function buildAttributesScreens() {
+    if (game.urole?.name?.m === 'Wizard') {
+        return { page1: wizardAttributesPage1(), page2: wizardAttributesPage2() };
+    }
+    return { page1: STR_ATTR1, page2: STR_ATTR2 };
 }
 
 function shouldAskTutorial() {
@@ -519,9 +900,18 @@ function dlevelOf(proto, fallback) {
     return lev?.dlevel ? displayDepth(lev.dlevel) : fallback;
 }
 
+function dlevelForProto(proto) {
+    const lev = game.specialLevels?.find((l) => l.proto === proto);
+    return lev?.dlevel || null;
+}
+
 function displayDepth(dlevel) {
     const dun = game.dungeons?.[dlevel?.dnum ?? 0];
     return (dun?.depth_start ?? 1) + (dlevel?.dlevel ?? 1) - 1;
+}
+
+function currentLevelMarker(dlevel) {
+    return game.u?.uz?.dnum === dlevel?.dnum && game.u?.uz?.dlevel === dlevel?.dlevel ? '*' : ' ';
 }
 
 function branchFromDoom(dname, fallback) {
@@ -531,11 +921,25 @@ function branchFromDoom(dname, fallback) {
     return branch?.end1 ? displayDepth(branch.end1) : fallback;
 }
 
+function branchFromDoomLevel(dname) {
+    const dnum = game.dungeons?.findIndex((d) => d.dname === dname);
+    if (dnum < 0) return null;
+    const branch = game.branches?.find((br) => br.end1?.dnum === 0 && br.end2?.dnum === dnum);
+    return branch?.end1 || null;
+}
+
 function branchEntranceDepth(dname, fallback) {
     const dnum = game.dungeons?.findIndex((d) => d.dname === dname);
     if (dnum < 0) return fallback;
     const branch = game.branches?.find((br) => br.end2?.dnum === dnum);
     return branch?.end1 ? displayDepth(branch.end1) : fallback;
+}
+
+function branchEntranceLevel(dname) {
+    const dnum = game.dungeons?.findIndex((d) => d.dname === dname);
+    if (dnum < 0) return null;
+    const branch = game.branches?.find((br) => br.end2?.dnum === dnum);
+    return branch?.end1 || null;
 }
 
 function targetForProto(proto, fallback) {
@@ -561,30 +965,50 @@ function buildLevelTeleportMenu() {
         i: branchFromDoom('Gehennom', doomMax),
         j: dlevelOf('castle', doomMax),
     };
+    const levels = {
+        b: branchFromDoomLevel('The Gnomish Mines'),
+        c: dlevelForProto('oracle'),
+        d: branchFromDoomLevel('Sokoban'),
+        e: dlevelForProto('bigrm'),
+        f: branchFromDoomLevel('The Quest'),
+        g: dlevelForProto('rogue'),
+        h: dlevelForProto('medusa'),
+        i: branchFromDoomLevel('Gehennom'),
+        j: dlevelForProto('castle'),
+        k: dlevelForProto('valley'),
+        l: dlevelForProto('juiblex'),
+        m: dlevelForProto('asmodeus'),
+        n: dlevelForProto('baalz'),
+        o: branchEntranceLevel("Vlad's Tower"),
+        p: dlevelForProto('orcus'),
+        q: dlevelForProto('wizard1'),
+        r: dlevelForProto('wizard2'),
+        s: dlevelForProto('wizard3'),
+    };
     const lines = [
         ' \x1b[7mLevel teleport to where:\x1b[0m',
         '',
         ` \x1b[7mThe Dungeons of Doom: levels 1 to ${doomMax}\x1b[0m`,
         ' a -   One way stair to The Elemental Planes: 1',
-        ` b -   Stair to The Gnomish Mines: ${choices.b}`,
-        ` c -   oracle: ${choices.c}`,
-        ` d -   Stair to Sokoban: ${choices.d}`,
-        ` e -   bigrm: ${choices.e}`,
-        ` f -   Portal to The Quest: ${choices.f}`,
-        ` g -   rogue: ${choices.g}`,
-        ` h -   medusa: ${choices.h}`,
-        ` i -   Connection to Gehennom: ${choices.i}`,
-        ` j -   castle: ${choices.j} (tune ${tune})`,
+        ` b - ${currentLevelMarker(levels.b)} Stair to The Gnomish Mines: ${choices.b}`,
+        ` c - ${currentLevelMarker(levels.c)} oracle: ${choices.c}`,
+        ` d - ${currentLevelMarker(levels.d)} Stair to Sokoban: ${choices.d}`,
+        ` e - ${currentLevelMarker(levels.e)} bigrm: ${choices.e}`,
+        ` f - ${currentLevelMarker(levels.f)} Portal to The Quest: ${choices.f}`,
+        ` g - ${currentLevelMarker(levels.g)} rogue: ${choices.g}`,
+        ` h - ${currentLevelMarker(levels.h)} medusa: ${choices.h}`,
+        ` i - ${currentLevelMarker(levels.i)} Connection to Gehennom: ${choices.i}`,
+        ` j - ${currentLevelMarker(levels.j)} castle: ${choices.j} (tune ${tune})`,
         ` \x1b[7mGehennom: levels ${gehStart} to ${gehEnd}\x1b[0m`,
-        ` k -   valley: ${dlevelOf('valley', gehStart)}`,
-        ` l -   juiblex: ${dlevelOf('juiblex', gehStart + 3)}`,
-        ` m -   asmodeus: ${dlevelOf('asmodeus', gehStart + 5)}`,
-        ` n -   baalz: ${dlevelOf('baalz', gehStart + 6)}`,
-        ` o -   Stair to Vlad's Tower: ${branchEntranceDepth("Vlad's Tower", gehStart + 9)}`,
-        ` p -   orcus: ${dlevelOf('orcus', gehStart + 9)}`,
-        ` q -   wizard1: ${dlevelOf('wizard1', gehStart + 14)}`,
-        ` r -   wizard2: ${dlevelOf('wizard2', gehStart + 15)}`,
-        ` s -   wizard3: ${dlevelOf('wizard3', gehStart + 16)}`,
+        ` k - ${currentLevelMarker(levels.k)} valley: ${dlevelOf('valley', gehStart)}`,
+        ` l - ${currentLevelMarker(levels.l)} juiblex: ${dlevelOf('juiblex', gehStart + 3)}`,
+        ` m - ${currentLevelMarker(levels.m)} asmodeus: ${dlevelOf('asmodeus', gehStart + 5)}`,
+        ` n - ${currentLevelMarker(levels.n)} baalz: ${dlevelOf('baalz', gehStart + 6)}`,
+        ` o - ${currentLevelMarker(levels.o)} Stair to Vlad's Tower: ${branchEntranceDepth("Vlad's Tower", gehStart + 9)}`,
+        ` p - ${currentLevelMarker(levels.p)} orcus: ${dlevelOf('orcus', gehStart + 9)}`,
+        ` q - ${currentLevelMarker(levels.q)} wizard1: ${dlevelOf('wizard1', gehStart + 14)}`,
+        ` r - ${currentLevelMarker(levels.r)} wizard2: ${dlevelOf('wizard2', gehStart + 15)}`,
+        ` s - ${currentLevelMarker(levels.s)} wizard3: ${dlevelOf('wizard3', gehStart + 16)}`,
         ' (1 of 3)',
     ];
     return { screen: lines.join('\n'), choices };
@@ -997,6 +1421,8 @@ export async function rhack(key) {
         if (typeof obj.spe === 'number' && obj.spe > 0) obj.spe--;
         exercise(A_WIS, true);
         if (obj.otyp === WAN_DIGGING) {
+            obj.knownName = true;
+            obj.chargesKnown = false;
             zapDig(DIR_DX[ch] || 0, DIR_DY[ch] || 0);
             exercise(A_WIS, true);
         }
@@ -1046,9 +1472,10 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
-        if (prev === STR_ATTR1 && (key === 32 || key === 13)) {
-            // Space/Enter pages to second attributes page
-            showOverride(STR_ATTR2, [9, 11]);
+        if (prev === game._attributes_page1_screen && (key === 32 || key === 13)) {
+            // Space/Enter pages to second attributes page.
+            const row = Math.max(0, (game._attributes_page2_screen || '').split('\n').length - 1);
+            showOverride(game._attributes_page2_screen, [9, row]);
         }
         if (game._deferred_startup_uac != null) {
             game.u.uac = game._deferred_startup_uac;
@@ -1109,10 +1536,10 @@ export async function rhack(key) {
         await showPromptLine('#');
     } else if (ch === 'i') {
         game.context.move = 0;
-        showOverride(STR_I, [38, 20]);
+        await showInventoryMenu();
     } else if (ch === '+') {
         game.context.move = 0;
-        await pline("You don't know any spells right now.");
+        await showSpellMenu();
     } else if (key === 22) { // ^V wizard level teleport
         game.context.move = 0;
         const msg = 'To what level do you want to teleport? ';
@@ -1141,10 +1568,13 @@ export async function rhack(key) {
         await pline('You were wearing an uncursed +0 cloak of magic resistance.');
     } else if (ch === '\\') {
         game.context.move = 0;
-        showOverride(STR_DISC, [8, 23]);
+        showOverride(discoveriesScreen(), [8, 23]);
     } else if (key === 24) { // ^X
         game.context.move = 0;
-        showOverride(STR_ATTR1, [9, 23]);
+        const screens = buildAttributesScreens();
+        game._attributes_page1_screen = screens.page1;
+        game._attributes_page2_screen = screens.page2;
+        showOverride(screens.page1, [9, 23]);
     } else if (ch === ':') {
         game.context.move = 0;
         await pline("You see no objects here.");

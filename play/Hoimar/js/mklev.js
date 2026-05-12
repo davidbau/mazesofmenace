@@ -26,11 +26,12 @@ import {
     ROOMOFFSET, MAXNROFROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_ROOM,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, A_NONE, Align2amask,
-    LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MINVENT, MM_IGNOREWATER, MM_ANGRY, MM_ASLEEP, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS,
+    LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MINVENT, MM_IGNOREWATER, MM_IGNORELAVA, MM_ANGRY, MM_ASLEEP, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS,
+    MARK as ENGR_MARK, N_ENGRAVE,
     M_AP_OBJECT,
 } from './const.js';
 
@@ -178,6 +179,9 @@ const M2_PEACEFUL = 0x00200000;
 const M2_NASTY = 0x02000000;
 const M2_STRONG = 0x04000000;
 const M2_GREEDY = 0x10000000;
+const M1_FLY = 0x00000001;
+const M1_SWIM = 0x00000002;
+const M1_NOEYES = 0x00001000;
 const M1_MINDLESS = 0x00010000;
 const M1_ANIMAL = 0x00040000;
 const M1_UNSOLID = 0x00100000;
@@ -396,26 +400,79 @@ export function collect_coords(cx, cy, maxradius = 0, cc_flags = 0, filter = nul
     return coords;
 }
 
-function goodpos(x, y, entflags = 0) {
+function mon_in_air_for(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_FLY);
+}
+
+function mon_swims_for(ptr) {
+    return !!((ptr?.mflags1 ?? 0) & M1_SWIM) || !!ptr?.swimmer;
+}
+
+function mon_likes_lava_for(ptr) {
+    return !!ptr?.likes_lava;
+}
+
+function engr_at(x, y) {
+    return (game.level?.engravings || []).find(ep => ep.x === x && ep.y === y) || null;
+}
+
+function sengr_at(text, x, y, strict = false) {
+    const ep = engr_at(x, y);
+    if (!ep) return null;
+    const actual = String(ep.text || '');
+    const needle = String(text || '');
+    if (strict) {
+        return actual.toLowerCase() === needle.toLowerCase() ? ep : null;
+    }
+    return actual.toLowerCase().includes(needle.toLowerCase()) ? ep : null;
+}
+
+function goodpos_onscary(x, y, ptr) {
+    if (!ptr) return false;
+    // C ref: teleport.c:goodpos_onscary(), the fake-monster approximation
+    // used by enexto() and monster creation.
+    if (ptr.mlet === 'S_HUMAN' || ptr.mlet === 'S_ANGEL') return false;
+    if (ptr.name === 'MINOTAUR' || ((ptr.mflags1 ?? 0) & M1_NOEYES)) return false;
+    if (game.level?.at(x, y)?.typ === ALTAR && ptr.mlet === 'S_VAMPIRE') return true;
+    if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
+    return !!sengr_at('Elbereth', x, y, true);
+}
+
+function goodpos(x, y, entflags = 0, ptr = null) {
     if (!isok(x, y)) return false;
     if (!(entflags & 0x00400000) && u_at(x, y)) return false; // GP_ALLOW_U
     if (m_at(x, y)) return false;
     const loc = game.level?.at(x, y);
-    if (!loc || !SPACE_POS(loc.typ)) return false;
-    if (!(entflags & MM_IGNOREWATER) && IS_POOL(loc.typ)) return false;
+    if (!loc) return false;
+    const isPool = IS_POOL(loc.typ);
+    const isLava = IS_LAVA(loc.typ);
+    if (isPool) {
+        if (!(entflags & MM_IGNOREWATER)
+            && !(ptr && (mon_swims_for(ptr) || mon_in_air_for(ptr)))) {
+            return false;
+        }
+    } else if (isLava) {
+        if (!(entflags & MM_IGNORELAVA)
+            && !(ptr && (mon_in_air_for(ptr) || mon_likes_lava_for(ptr)))) {
+            return false;
+        }
+    } else if (!SPACE_POS(loc.typ)) {
+        return false;
+    }
+    if ((entflags & GP_CHECKSCARY) && goodpos_onscary(x, y, ptr)) return false;
     return true;
 }
 
 export function enexto_core(cx, cy, ptr, entflags) {
     const near = collect_coords(cx, cy, 3, 0, null);
     for (const cc of near)
-        if (goodpos(cc.x, cc.y, entflags)) return cc;
+        if (goodpos(cc.x, cc.y, entflags, ptr)) return cc;
 
     const all = collect_coords(cx, cy, 0, 0, null);
     for (let i = near.length; i < all.length; i++)
-        if (goodpos(all[i].x, all[i].y, entflags)) return all[i];
+        if (goodpos(all[i].x, all[i].y, entflags, ptr)) return all[i];
 
-    if ((entflags & 0x00200000) && goodpos(cx, cy, entflags)) return { x: cx, y: cy }; // GP_ALLOW_XY
+    if ((entflags & 0x00200000) && goodpos(cx, cy, entflags, ptr)) return { x: cx, y: cy }; // GP_ALLOW_XY
     return null;
 }
 
@@ -1557,8 +1614,23 @@ function maketrap(x, y, typ) {
     return trap;
 }
 
-// engrave stubs
-function make_engr_at(x, y, text, pristine, epoch, engr_type) { /* stub */ }
+function make_engr_at(x, y, text, pristine, epoch, engr_type) {
+    if (!game.level) return null;
+    game.level.engravings = (game.level.engravings || [])
+        .filter(ep => ep.x !== x || ep.y !== y);
+    const actual = String(text || '');
+    const ep = {
+        x,
+        y,
+        text: actual,
+        pristine: pristine == null ? actual : String(pristine),
+        epoch: epoch || 0,
+        type: engr_type > 0 ? engr_type : rnd(N_ENGRAVE - 1),
+        guardobjects: game.in_mklev && actual.toLowerCase() === 'elbereth',
+    };
+    game.level.engravings.unshift(ep);
+    return ep;
+}
 function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
 function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
@@ -1960,6 +2032,10 @@ function flip_level(flp) {
         flipPoint(st, flp, minx, miny, maxx, maxy, 'sx', 'sy');
     flipPoint(map.upstair, flp, minx, miny, maxx, maxy);
     flipPoint(map.dnstair, flp, minx, miny, maxx, maxy);
+
+    // JS stores display-oriented wall spines directly in terrain; C derives
+    // the rendered wall angle from seenv, so rebuild spines after transposing.
+    fix_wall_spines(minx, miny, maxx, maxy);
 }
 
 function flip_level_rnd(allow_flips) {
@@ -2089,6 +2165,68 @@ function rememberWallsInRect(x1, y1, x2, y2) {
             loc.remembered_glyph = { ch, color: 8, decgfx: true };
         }
     }
+}
+
+function premapGlyphForLoc(loc, x, y) {
+    switch (loc?.typ) {
+    case ROOM: return { ch: '~', color: 8, decgfx: true };
+    case CORR: return { ch: '#', color: 8, decgfx: false };
+    case DOOR:
+        if (loc.doormask & D_ISOPEN) return { ch: '|', color: 3, decgfx: false };
+        if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: 3, decgfx: false };
+        return { ch: '~', color: 8, decgfx: true };
+    case STAIRS:
+        return {
+            ch: game.level?.upstair?.x === x && game.level?.upstair?.y === y ? '<' : '>',
+            color: 7,
+            decgfx: false,
+        };
+    case HWALL: return { ch: 'q', color: 4, decgfx: true };
+    case VWALL: return { ch: 'x', color: 4, decgfx: true };
+    case TLCORNER: return { ch: 'l', color: 4, decgfx: true };
+    case TRCORNER: return { ch: 'k', color: 4, decgfx: true };
+    case BLCORNER: return { ch: 'm', color: 4, decgfx: true };
+    case BRCORNER: return { ch: 'j', color: 4, decgfx: true };
+    case CROSSWALL: return { ch: 'n', color: 4, decgfx: true };
+    case TUWALL: return { ch: 'v', color: 4, decgfx: true };
+    case TDWALL: return { ch: 'w', color: 4, decgfx: true };
+    case TLWALL: return { ch: 'u', color: 4, decgfx: true };
+    case TRWALL: return { ch: 't', color: 4, decgfx: true };
+    default: return null;
+    }
+}
+
+function premapSokoban() {
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            const bg = premapGlyphForLoc(loc, x, y);
+            if (!bg) continue;
+            loc.seenv = 0xff;
+            loc.waslit = true;
+            loc.remembered_glyph = bg;
+            const boulder = sobj_at(BOULDER, x, y);
+            if (boulder) {
+                loc.remembered_glyph = {
+                    ch: boulder.ch || '`',
+                    color: boulder.color ?? 7,
+                    decgfx: false,
+                };
+            }
+        }
+    }
+
+    for (const trap of game.level?.traps || []) {
+        const loc = game.level?.at(trap.tx, trap.ty);
+        if (!loc) continue;
+        trap.tseen = true;
+        loc.remembered_glyph = {
+            ch: '^',
+            color: (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) ? 3 : 7,
+            decgfx: false,
+        };
+    }
+    game.level.flags.premapped = true;
 }
 
 function loadBigrm2Special() {
@@ -2242,10 +2380,8 @@ function loadSoko1Special(protofile) {
     createSokoReward(spec);
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3);
+    premapSokoban();
     fill_special_room(zooRoom);
-    rememberWallsInRect(SOKO1_XSTART, SOKO1_YSTART,
-        SOKO1_XSTART + spec.map[0].length - 1,
-        SOKO1_YSTART + spec.map.length - 1);
     return true;
 }
 
@@ -4145,12 +4281,15 @@ async function fill_ordinary_room(croom, bonus_items) {
     // Graffiti
     const depth = g.u?.uz?.dlevel ?? 1;
     if (!rn2(27 + 3 * Math.abs(depth))) {
-        const { text: engrText } = randomEngraving();
+        const { text: engrText, pristine } = randomEngraving();
         if (engrText) {
             do {
                 somexyspace(croom, pos);
                 if (g.level?.at(pos.x, pos.y)?.typ === ROOM) break;
             } while (!rn2(40));
+            if (g.level?.at(pos.x, pos.y)?.typ === ROOM) {
+                make_engr_at(pos.x, pos.y, engrText, pristine, 0, ENGR_MARK);
+            }
         }
     }
     // Random objects

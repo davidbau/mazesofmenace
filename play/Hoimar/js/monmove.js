@@ -1,11 +1,12 @@
 import { game } from './gstate.js';
-import { d, rn2, rnd } from './rng.js';
+import { d, rn2, rnd, pushRngLogEntry } from './rng.js';
 import { dog_move } from './dog.js';
 import { enexto_core } from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DELAY } from './object_data.js';
 import {
     D_CLOSED, D_LOCKED, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL,
     IS_WATERWALL, I_SPECIAL, M_AP_FURNITURE, M_AP_OBJECT, W_ARMF,
+    GP_CHECKSCARY,
     isok, SPACE_POS,
 } from './const.js';
 import { newsym } from './display.js';
@@ -43,6 +44,16 @@ const WAND_CLASS = 11;
 const GEM_CLASS = 13;
 const ROCK = 474;
 const BASIC_MELEE_ATTACKS = new Set(['AT_CLAW', 'AT_KICK', 'AT_BITE', 'AT_STNG', 'AT_TUCH', 'AT_BUTT', 'AT_TENT']);
+
+function traceMonMove(msg) {
+    if (globalThis.__teleportTraceMonMove) {
+        pushRngLogEntry(`TRACE monmove move=${game.moves} ${msg}`);
+    }
+}
+
+function monsterTraceName(mtmp) {
+    return mtmp.data?.name || mtmp.ch || '?';
+}
 
 export function mcalcmove(mtmp, m_moving) {
     let mmove = mtmp.data.mmove;
@@ -326,7 +337,7 @@ function attack_is_basic_physical(attack) {
 
 function basic_physical_attacks(mtmp) {
     const attacks = mtmp.data?.mattk || [];
-    if (attacks.filter(Boolean).length < 2) return null;
+    if (!attacks.filter(Boolean).length) return null;
     if (!attacks.every(attack_is_basic_physical)) return null;
     return attacks;
 }
@@ -342,6 +353,17 @@ function basic_engulf_attack(mtmp) {
     return attack;
 }
 
+function cooldown_replacement_attack(mtmp) {
+    if (!mtmp.mspec_used) return null;
+    const attack = basic_engulf_attack(mtmp);
+    if (!attack) return null;
+    const [, adtyp] = attack;
+    if (['AD_COLD', 'AD_FIRE', 'AD_ELEC', 'AD_ACID'].includes(adtyp)) {
+        return ['AT_TUCH', adtyp, 1, 6];
+    }
+    return ['AT_CLAW', 'AD_PHYS', 1, 6];
+}
+
 function hero_ac_value() {
     const uac = game.u?.uac ?? 10;
     return uac >= 0 ? uac : -rnd(-uac);
@@ -353,6 +375,38 @@ function reduce_damage_by_negative_ac(damage) {
         damage -= rnd(-uac);
         if (damage < 1) damage = 1;
     }
+    return damage;
+}
+
+function hero_magic_negation() {
+    // Full armor `a_can` state is not modeled yet.  Keep the C call shape
+    // centralized so worn-armor cancellation can be plugged in here.
+    return game.u?.magic_negation ?? 0;
+}
+
+function mhitm_mgc_atk_negated_basic(mtmp) {
+    if (mtmp.mcan) return true;
+    const armpro = hero_magic_negation();
+    return !(rn2(10) >= 3 * armpro);
+}
+
+function destroy_items_shape(_adtyp, damage) {
+    const scale = 5; // C ref: zap.c DMG_DESTROY_SCALE
+    let limit = Math.trunc(damage / scale);
+    if ((damage % scale) > rn2(scale)) limit++;
+    if (limit < 1) return 0;
+    // Inventory destruction and eligible-stack reservoir selection are not
+    // modeled yet.  Current evidence only needs the damage-limit front door.
+    return 0;
+}
+
+function elemental_hit_side_effects(mtmp, adtyp, damage) {
+    if (!['AD_COLD', 'AD_FIRE', 'AD_ELEC'].includes(adtyp)) return damage;
+    const negated = mhitm_mgc_atk_negated_basic(mtmp);
+    if (negated) return 0;
+    // C ref: mhitm_ad_cold/fire/elec() gates inventory destruction on
+    // attacker level after a non-negated elemental hit.
+    if (monster_level(mtmp) > rn2(20)) destroy_items_shape(adtyp, damage);
     return damage;
 }
 
@@ -378,6 +432,7 @@ function apply_hero_damage(damage) {
 
 function unstuck_swallowed_hero(mtmp) {
     if (!game.u?.uswallow || game.u.ustuck !== mtmp) return;
+    traceMonMove(`expel-start ${monsterTraceName(mtmp)} @${mtmp.mx},${mtmp.my} hero=${game.u.ux},${game.u.uy} timer=${game.u.uswldtim || 0}`);
     game.u.uswallow = false;
     game.u.ustuck = null;
     game.u.uswldtim = 0;
@@ -386,12 +441,14 @@ function unstuck_swallowed_hero(mtmp) {
     if (!mtmp.mspec_used && basic_engulf_attack(mtmp)) {
         mtmp.mspec_used = rnd(2);
     }
-    const spot = enexto_core(game.u.ux, game.u.uy, mtmp.data, 0);
+    const spot = enexto_core(game.u.ux, game.u.uy, mtmp.data, GP_CHECKSCARY)
+        || enexto_core(game.u.ux, game.u.uy, mtmp.data, 0);
     if (spot) {
         const omx = mtmp.mx;
         const omy = mtmp.my;
         mtmp.mx = spot.x;
         mtmp.my = spot.y;
+        traceMonMove(`expel-spot ${monsterTraceName(mtmp)} ${omx},${omy} -> ${mtmp.mx},${mtmp.my}`);
         newsym(omx, omy);
         newsym(mtmp.mx, mtmp.my);
     }
@@ -400,6 +457,7 @@ function unstuck_swallowed_hero(mtmp) {
 
 function engulf_attack(mtmp, attack, toHit) {
     const [, adtyp, damn, damd] = attack;
+    traceMonMove(`attack-engulf ${monsterTraceName(mtmp)} ad=${adtyp} damn=${damn} damd=${damd} toHit=${toHit} heroAC=${game.u?.uac}`);
     const alreadySwallowed = game.u?.uswallow && game.u?.ustuck === mtmp;
     if (!alreadySwallowed && !(toHit > rnd(20))) return true;
     let damage = d(damn, damd);
@@ -438,12 +496,14 @@ function engulf_attack(mtmp, attack, toHit) {
 }
 
 function physical_melee_attacks(mtmp, attacks, toHit) {
+    traceMonMove(`attack-physical ${monsterTraceName(mtmp)} attacks=${JSON.stringify(attacks)} toHit=${toHit} heroAC=${game.u?.uac}`);
     for (let i = 0; i < attacks.length; i++) {
         const attack = attacks[i];
         if (!attack) continue;
-        const [, , damn, damd] = attack;
+        const [, adtyp, damn, damd] = attack;
         if (toHit > rnd(20 + i)) {
             let damage = d(damn, damd);
+            damage = elemental_hit_side_effects(mtmp, adtyp, damage);
             mhitm_knockback_frontdoor();
             damage = reduce_damage_by_negative_ac(damage);
             apply_hero_damage(damage);
@@ -459,6 +519,10 @@ function mattacku_basic(mtmp, state) {
     if ((game._occupation_turns_remaining || 0) > 1 || game._occupation_finish_uac != null) return false;
     if ((game.u?.uhp ?? 1) <= 0) return false;
 
+    const cooldownAttack = cooldown_replacement_attack(mtmp);
+    if (cooldownAttack) {
+        return physical_melee_attacks(mtmp, [cooldownAttack], mattacku_to_hit(mtmp));
+    }
     const engulf = basic_engulf_attack(mtmp);
     const physical = engulf ? null : basic_physical_attacks(mtmp);
     if (!engulf && !physical) return false;
@@ -500,16 +564,26 @@ function m_move_basic(mtmp) {
             if (appr === -1) appr = 1;
         }
     }
+    traceMonMove(`start ${monsterTraceName(mtmp)} @${omx},${omy} target=${ggx},${ggy} appr=${appr} flee=${mtmp.mflee ? 1 : 0} peaceful=${mtmp.mpeaceful ? 1 : 0} tame=${mtmp.mtame ? 1 : 0} track=${JSON.stringify(mtmp.mtrack || [])}`);
     const candidates = [];
+    const traceCells = [];
     const maxx = Math.min(omx + 1, 79);
     const maxy = Math.min(omy + 1, 20);
     for (let nx = Math.max(1, omx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, omy - 1); ny <= maxy; ny++) {
-            if (nx === omx && ny === omy) continue;
-            if (!can_mon_step(mtmp, nx, ny)) continue;
+            let reason = 'ok';
+            if (nx === omx && ny === omy) reason = 'origin';
+            else if (nx === game.u?.ux && ny === game.u?.uy) reason = 'hero';
+            else if (mon_at(nx, ny, mtmp)) reason = `mon:${monsterTraceName(mon_at(nx, ny, mtmp))}:typ${game.level?.at(nx, ny)?.typ}`;
+            else if (!mfndpos_terrain_ok(mtmp, nx, ny)) reason = `terrain:${game.level?.at(nx, ny)?.typ}`;
+            if (globalThis.__teleportTraceMonMove) {
+                traceCells.push(`${nx},${ny}:${reason}`);
+            }
+            if (reason !== 'ok') continue;
             candidates.push({ x: nx, y: ny });
         }
     }
+    traceMonMove(`candidates ${monsterTraceName(mtmp)} @${omx},${omy} cnt=${candidates.length} cells=${traceCells.join('|')}`);
     if (!candidates.length) return MMOVE_NOTHING;
 
     let nix = omx;
@@ -524,8 +598,12 @@ function m_move_basic(mtmp) {
         if (appr !== 0) {
             for (let j = 0; j < jcnt; j++) {
                 const trk = mtmp.mtrack[j];
-                if (cand.x === trk.x && cand.y === trk.y && rn2(4 * (candidates.length - j))) {
-                    continue candidateLoop;
+                if (cand.x === trk.x && cand.y === trk.y) {
+                    const denom = 4 * (candidates.length - j);
+                    traceMonMove(`backtrack ${monsterTraceName(mtmp)} @${omx},${omy} cand=${cand.x},${cand.y} j=${j} cnt=${candidates.length} denom=${denom}`);
+                    if (rn2(denom)) {
+                        continue candidateLoop;
+                    }
                 }
             }
         }
@@ -544,6 +622,7 @@ function m_move_basic(mtmp) {
     }
 
     if (!moved || (nix === omx && niy === omy)) return MMOVE_NOTHING;
+    traceMonMove(`select ${monsterTraceName(mtmp)} @${omx},${omy} -> ${nix},${niy} target=${ggx},${ggy} nidist=${nidist}`);
     const engulfingHero = game.u?.uswallow && game.u?.ustuck === mtmp;
     mtmp.mx = nix;
     mtmp.my = niy;
