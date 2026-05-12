@@ -289,29 +289,19 @@ footer a { color: var(--color-text-muted); }
         <article class="news-item">
             <time datetime="2026-05-12">May 12, 2026</time>
             <p>
-                <strong>Several teleport-contest bugs fixed.</strong> Thanks to
+                <strong>Several teleport-contest bugs fixed</strong>
+                thanks to careful reports from
                 <a href="https://github.com/xeophon">@xeophon</a>
                 (<a href="https://github.com/davidbau/teleport-contest/issues/5">#5</a>)
                 and <a href="https://github.com/serteal">@serteal</a>
-                (<a href="https://github.com/davidbau/teleport-contest/issues/6">#6</a>)
-                for the bug reports.
-            </p>
-            <p>
-                The contest template's public sessions had drifted out of
-                sync with the judge's &mdash; 38 of 44 are now re-recorded
-                and byte-identical between the two repos.
-                <code>seed0030</code>'s first segment had a stale recording
-                (Healer instead of Tourist) and now matches its declared
-                <code>OPTIONS=role:Tourist</code>.
-            </p>
-            <p>
-                Both scorers also now fold <em>cursor position</em> into
-                the screen match: a correctly-rendered screen with the
-                cursor in the wrong place is now a missed screen. Forks
-                that had silent cursor bugs will see a small score
-                adjustment on the next scoring run. Pull the latest
-                template and re-run <code>bash frozen/score.sh</code> to
-                pick up the corrections.
+                (<a href="https://github.com/davidbau/teleport-contest/issues/6">#6</a>):
+                the public session corpus is back in sync between contest
+                and judge (38 files re-recorded), <code>seed0030</code>'s
+                seg-0 character mismatch is fixed, and the scorer now
+                requires the cursor to land in the recorded position for a
+                screen to count as matched. Pull the latest template and
+                re-run <code>bash frozen/score.sh</code> to pick up the
+                corrections.
             </p>
         </article>
         <details class="news-older">
