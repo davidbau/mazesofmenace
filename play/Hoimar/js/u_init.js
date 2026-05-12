@@ -59,10 +59,13 @@ const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
 const RING_CLASS = 4;
 const TOOL_CLASS = 6;
+const FOOD_CLASS = 7;
 const POTION_CLASS = 8;
 const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
+const COIN_CLASS = 12;
+const GEM_CLASS = 13;
 
 const QUARTERSTAFF = 79;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
@@ -91,8 +94,48 @@ function trquan(trop) {
     return trop.min + rn2(trop.max - trop.min + 1);
 }
 
+function sameObjField(a, b, field, fallback = null) {
+    return (a?.[field] ?? fallback) === (b?.[field] ?? fallback);
+}
+
+function stackableInventoryClass(oclass) {
+    return oclass === FOOD_CLASS || oclass === POTION_CLASS || oclass === SCROLL_CLASS
+        || oclass === COIN_CLASS || oclass === GEM_CLASS;
+}
+
+export function mergeable_inventory_object(into, obj) {
+    if (!into || !obj || into === obj) return false;
+    if (into.otyp !== obj.otyp || into.oclass !== obj.oclass) return false;
+    if (!stackableInventoryClass(obj.oclass)) return false;
+    if (!!into.blessed !== !!obj.blessed || !!into.cursed !== !!obj.cursed) return false;
+    if (!sameObjField(into, obj, 'spe', 0)) return false;
+    if (!sameObjField(into, obj, 'corpsenm', null)) return false;
+    if (!sameObjField(into, obj, 'appearanceName', null)) return false;
+    if (!sameObjField(into, obj, 'opoisoned', false)) return false;
+    if (!sameObjField(into, obj, 'oeroded', 0) || !sameObjField(into, obj, 'oeroded2', 0)) return false;
+    if (!sameObjField(into, obj, 'greased', false)) return false;
+    if ((into.wornSide || into.owornmask) || (obj.wornSide || obj.owornmask)) return false;
+    return true;
+}
+
+export function merge_inventory_object(obj) {
+    game.inventory = game.inventory || [];
+    const target = game.inventory.find((into) => mergeable_inventory_object(into, obj));
+    if (!target) return null;
+    target.quan = (target.quan || 1) + (obj.quan || 1);
+    return target;
+}
+
+export function add_inventory_object(obj) {
+    const target = merge_inventory_object(obj);
+    if (target) return target;
+    game.inventory.push(obj);
+    return obj;
+}
+
 function ini_inv_adjust_obj(trop, obj) {
     let stop = false;
+    obj.cursed = false;
     if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
         obj.quan = trquan(trop);
         stop = true;
@@ -116,7 +159,7 @@ function ini_inv(trobs) {
             ? mksobj(trop.typ, true, false)
             : mkobj(trop.cls, false);
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
-        game.inventory.push(obj);
+        add_inventory_object(obj);
         if (--quan) continue;
         idx++;
         if (idx < trobs.length) quan = trquan(trobs[idx]);

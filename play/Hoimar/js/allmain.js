@@ -6,8 +6,11 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { maybe_generate_rnd_mon, gethungry, maybe_wipe_engraving, dosounds } from './allmain_turns.js';
-import { mcalcmove, movemon } from './monmove.js';
+import {
+    maybe_generate_rnd_mon, regen_hp, gethungry, exerchk,
+    maybe_wipe_engraving, maybe_update_seer_turn, dosounds,
+} from './allmain_turns.js';
+import { mcalcdistress, mcalcmove, movemon } from './monmove.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -46,7 +49,8 @@ function postInventoryStartupRng() {
     rn2(3);
     rn2(2);
     rnd(9000);
-    rnd(30);
+    game.context = game.context || {};
+    game.context.seer_turn = rnd(30);
 }
 
 function startupRole() {
@@ -286,9 +290,20 @@ export async function newgame() {
 export async function advanceTurn() {
     const g = game;
 
+    // C ref: hack.c:domove_core() and monmove.c keep a swallowed hero's
+    // coordinates pinned to the engulfing monster.  Command paths in this
+    // partial port can temporarily drift them, so restore the invariant
+    // before monster movement and pet goal logic observe the master square.
+    if (g.u?.uswallow && g.u?.ustuck) {
+        g.u.ux = g.u.ustuck.mx;
+        g.u.uy = g.u.ustuck.my;
+    }
+
     while (await movemon()) {
         // Keep moving monsters until all out of movement.
     }
+
+    mcalcdistress();
 
     for (const m of g.level.monsters) {
         m.movement += mcalcmove(m, true);
@@ -296,12 +311,23 @@ export async function advanceTurn() {
 
     maybe_generate_rnd_mon();
 
+    regen_hp();
+
     await dosounds();
 
     gethungry();
+    exerchk();
     maybe_wipe_engraving();
+    maybe_update_seer_turn();
 
     g.moves = (g.moves || 1) + 1;
+}
+
+function applyOccupationFinalTurnState(g) {
+    if ((g._occupation_turns_remaining || 0) <= 1 && g._occupation_finish_uac != null) {
+        g.u.uac = g._occupation_finish_uac;
+        g._occupation_finish_uac = null;
+    }
 }
 
 // C ref: allmain.c moveloop_core()
@@ -326,7 +352,31 @@ export async function moveloop_core() {
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.
     if (g.context?.move) {
+        applyOccupationFinalTurnState(g);
         await advanceTurn();
+        while ((g._occupation_turns_remaining || 0) > 0) {
+            g._occupation_turns_remaining--;
+            applyOccupationFinalTurnState(g);
+            await advanceTurn();
+        }
+        if (g._occupation_finish_message) {
+            if (g._occupation_finish_uac != null) {
+                g.u.uac = g._occupation_finish_uac;
+                g._occupation_finish_uac = null;
+            }
+            await pline(g._occupation_finish_message);
+            g._occupation_finish_message = null;
+        }
+        while ((g._prayer_turns_remaining || 0) > 0) {
+            g._prayer_turns_remaining--;
+            await advanceTurn();
+        }
+        if (g.u?.uinvulnerable && g._pending_message === 'You are surrounded by a shimmering light.') {
+            g._pending_message = 'You are surrounded by a shimmering light.  You finish your prayer.';
+            g._more = true;
+            g._awaiting_prayer_done_more = true;
+            g.u.uinvulnerable = false;
+        }
         while (g.context?.run && await continueRunStep()) {
             await advanceTurn();
         }

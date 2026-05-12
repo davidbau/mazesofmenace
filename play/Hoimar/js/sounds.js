@@ -23,5 +23,10 @@ export async function dosounds() {
         const msg = ["a slow drip.", "a gurgling noise.", "dishes being washed!"];
         await pline("You hear " + msg[rn2(2) + hallu]);
     }
+    if (lvl.flags.has_zoo && !rn2(200)) {
+        // Ambient zoo monster sounds are not rendered yet.  The gate belongs
+        // here so the turn tail keeps the same RNG ownership as sounds.c.
+        return;
+    }
     // TODO: Implement more sounds (throne, swamp, vault, beehive, etc.)
 }

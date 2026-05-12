@@ -40,6 +40,16 @@ const ANSI_COLOR = [
 ];
 const COLOR_BY_ANSI = new Map(ANSI_COLOR.map((ansi, color) => [ansi, color]));
 
+function tty_color(color) {
+    return color === CLR_GRAY ? NO_COLOR : color;
+}
+
+function is_branch_stair(x, y) {
+    for (let st = game.stairs; st; st = st.next)
+        if (st.sx === x && st.sy === y && st.isbranch) return true;
+    return false;
+}
+
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = loc.typ;
@@ -52,10 +62,12 @@ function terrain_glyph(loc, x, y) {
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
     case STAIRS:
-        // Check upstair vs downstair
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: CLR_YELLOW, dec: false };
-        return { ch: '>', color: CLR_YELLOW, dec: false };
+        {
+            const color = is_branch_stair(x, y) ? CLR_YELLOW : CLR_GRAY;
+            if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
+                return { ch: '<', color, dec: false };
+            return { ch: '>', color, dec: false };
+        }
     // Wall types → DEC line-drawing characters
     case HWALL:     return { ch: 'q', color: NO_COLOR, dec: true };  // ─
     case VWALL:     return { ch: 'x', color: NO_COLOR, dec: true };  // │
@@ -81,7 +93,7 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
-    loc.disp_color = color;
+    loc.disp_color = tty_color(color);
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
