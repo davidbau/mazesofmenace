@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid } from './display.js';
+import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { mklev, mksobj, place_lregion, place_object } from './mklev.js';
 import { OBJECT_DELAY } from './object_data.js';
@@ -19,7 +19,7 @@ import { rn1, rn2, rnd, rnz } from './rng.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
-    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, LR_UPTELE, A_DEX, A_WIS,
+    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, A_DEX, A_WIS,
 } from './const.js';
 
 // Direction deltas: y u k
@@ -528,6 +528,8 @@ async function heroMeleeAttack(mon) {
     if (typeof mon.mhp === 'number') {
         mon.mhp -= damage;
         if (mon.mhp <= 0) {
+            game._hero_melee_message_pending = true;
+            queue_more_prompt();
             heroKilledMonster(mon);
             game.context.run = null;
             return;
@@ -569,7 +571,12 @@ function corpseChance(mon) {
 }
 
 function heroKilledMonster(mon) {
-    if (mon.mtame) abuseDog(mon);
+    if (mon.mtame) {
+        abuseDog(mon);
+        // C ref: mon.c:xkilled(); killing a tame monster is a major
+        // alignment abuse and feeds later peace_minded() RNG gates.
+        adjalign(-15);
+    }
     if (!rn2(6)) {
         // Treasure-drop object creation is still future work; current
         // evidence only needs the C front-door gate.
@@ -1502,6 +1509,28 @@ export async function rhack(key) {
         game.context.move = 1;
         return;
     }
+    if (game._more && (game._more_dismissals_remaining || 0) > 0
+        && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b')) {
+        // Queued topl.c more prompts represent nested message pauses that
+        // occurred inside a command or turn already consumed by this port.
+        game._more_dismissals_remaining--;
+        if (game._more_dismissals_remaining <= 0) clear_pending_message();
+        game.context.move = 0;
+        return;
+    }
+    if (game._avoid_pool_tip_pending && game._more
+        && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b')) {
+        game._avoid_pool_tip_pending = false;
+        game._more = false;
+        await pline("(Tip: use 'm' prefix to step in if you really want to.)");
+        game.context.move = 0;
+        return;
+    }
+    if (game._more && ch !== ' ' && ch !== '\r' && ch !== '\n' && ch !== '\x1b') {
+        // C ref: win/tty/topl.c:more(); non-dismissal keys do not reach rhack().
+        game.context.move = 0;
+        return;
+    }
 
     // Message lines persist while waiting for input, then clear when the
     // next command begins unless the command prints a replacement.
@@ -1646,9 +1675,20 @@ export async function domove(dx, dy) {
 
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+    const target = game.level.at(newx, newy);
 
     if (blocksMove(newx, newy)) {
         // Can't move there
+        game.context.move = 0;
+        return false;
+    }
+
+    if (target && IS_POOL(target.typ)) {
+        // C ref: hack.c:domove_core(); paranoid movement into known liquid
+        // is a zero-time prompt gate.
+        await pline('You avoid stepping into the pool of purified water.');
+        game._more = true;
+        game._avoid_pool_tip_pending = true;
         game.context.move = 0;
         return false;
     }
@@ -1661,7 +1701,6 @@ export async function domove(dx, dy) {
 
     const is_diag = dx !== 0 && dy !== 0;
     if (is_diag) {
-        const target = game.level.at(newx, newy);
         const source = game.level.at(u.ux, u.uy);
         if (target.typ === DOOR || source.typ === DOOR) {
             await pline(`You can't move diagonally into an intact doorway.`);

@@ -140,7 +140,8 @@ function init_edog(mon) {
 export function pet_arrive_with_you() {
     const migrating = game._migrating_pet || null;
     game._migrating_pet = null;
-    let pet = migrating?.data || game.pet_type || configuredPetType();
+    if (!migrating) return null;
+    let pet = migrating.data;
     if (!pet) return null;
     game.pet_type = pet;
 

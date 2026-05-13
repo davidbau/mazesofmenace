@@ -309,7 +309,7 @@ export async function advanceTurn() {
         m.movement += mcalcmove(m, true);
     }
 
-    maybe_generate_rnd_mon();
+    await maybe_generate_rnd_mon();
 
     regen_hp();
 

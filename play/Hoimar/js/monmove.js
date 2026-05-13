@@ -1,16 +1,19 @@
 import { game } from './gstate.js';
-import { d, rn2, rnd, pushRngLogEntry } from './rng.js';
+import { d, rn2, rnd } from './rng.js';
 import { dog_move } from './dog.js';
 import { enexto_core } from './mklev.js';
-import { OBJECT_CLASS, OBJECT_DELAY } from './object_data.js';
+import { OBJECT_CLASS, OBJECT_DIR } from './object_data.js';
 import {
-    D_CLOSED, D_LOCKED, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL,
-    IS_WATERWALL, I_SPECIAL, M_AP_FURNITURE, M_AP_OBJECT, W_ARMF,
-    GP_CHECKSCARY,
+    D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED,
+    IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_STWALL, IS_WATERWALL,
+    I_SPECIAL, M_AP_FURNITURE, M_AP_OBJECT,
+    NEED_HTH_WEAPON, NEED_RANGED_WEAPON, NEED_WEAPON, W_WEP,
+    GP_CHECKSCARY, W_NONPASSWALL,
     isok, SPACE_POS,
 } from './const.js';
-import { newsym } from './display.js';
+import { newsym, queue_more_prompt } from './display.js';
 import { clear_path } from './vision.js';
+import { m_dowear_basic } from './mon_wear.js';
 
 const NORMAL_SPEED = 12;
 const BOLT_LIM = 8;
@@ -19,6 +22,7 @@ const M2_HUMAN = 0x00000008;
 const M2_WANDER = 0x00800000;
 const M1_FLY = 0x00000001;
 const M1_SWIM = 0x00000002;
+const M1_WALLWALK = 0x00000008;
 const M1_HIDE = 0x00000100;
 const M1_NOHANDS = 0x00002000;
 const M1_MINDLESS = 0x00010000;
@@ -31,6 +35,7 @@ const MSLOW = 1;
 const MFAST = 2;
 const MMOVE_NOTHING = 0;
 const MMOVE_MOVED = 1;
+const MMOVE_DIED = 2;
 const MMOVE_DONE = 3;
 const WEAPON_CLASS = 2;
 const ARMOR_CLASS = 3;
@@ -43,17 +48,35 @@ const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
 const GEM_CLASS = 13;
 const ROCK = 474;
+const RAY = 3;
+const AMULET_OF_LIFE_SAVING = 202;
+const AMULET_OF_REFLECTION = 208;
+const AMULET_OF_GUARDING = 210;
+const POT_CONFUSION = 299;
+const POT_BLINDNESS = 300;
+const POT_PARALYSIS = 301;
+const POT_SPEED = 302;
+const POT_INVISIBILITY = 305;
+const POT_HEALING = 307;
+const POT_EXTRA_HEALING = 308;
+const POT_GAIN_LEVEL = 309;
+const POT_SLEEPING = 314;
+const POT_FULL_HEALING = 315;
+const POT_POLYMORPH = 316;
+const POT_ACID = 320;
+const SCR_CREATE_MONSTER = 329;
+const SCR_TELEPORTATION = 333;
+const SCR_FIRE = 339;
+const SCR_EARTH = 340;
+const WAN_CREATE_MONSTER = 413;
+const WAN_STRIKING = 417;
+const WAN_MAKE_INVISIBLE = 418;
+const WAN_SPEED_MONSTER = 420;
+const WAN_UNDEAD_TURNING = 421;
+const WAN_POLYMORPH = 422;
+const WAN_TELEPORTATION = 424;
+const WAN_DIGGING = 428;
 const BASIC_MELEE_ATTACKS = new Set(['AT_CLAW', 'AT_KICK', 'AT_BITE', 'AT_STNG', 'AT_TUCH', 'AT_BUTT', 'AT_TENT']);
-
-function traceMonMove(msg) {
-    if (globalThis.__teleportTraceMonMove) {
-        pushRngLogEntry(`TRACE monmove move=${game.moves} ${msg}`);
-    }
-}
-
-function monsterTraceName(mtmp) {
-    return mtmp.data?.name || mtmp.ch || '?';
-}
 
 export function mcalcmove(mtmp, m_moving) {
     let mmove = mtmp.data.mmove;
@@ -146,8 +169,24 @@ function mon_swims(mtmp) {
     return !!((mtmp.data?.mflags1 ?? 0) & M1_SWIM) || !!mtmp.data?.swimmer;
 }
 
+function mon_passes_walls(mtmp) {
+    return !!((mtmp.data?.mflags1 ?? 0) & M1_WALLWALK);
+}
+
+function mon_can_open_doors(mtmp) {
+    return !((mtmp.data?.mflags1 ?? 0) & M1_NOHANDS);
+}
+
 function mon_likes_lava(mtmp) {
     return !!mtmp.data?.likes_lava;
+}
+
+function may_passwall(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    // C ref: hack.c:may_passwall() only blocks special wall types that
+    // explicitly carry W_NONPASSWALL.
+    return !(IS_STWALL(loc.typ) && (loc.wall_info & W_NONPASSWALL));
 }
 
 function mfndpos_terrain_ok(mtmp, x, y) {
@@ -155,19 +194,24 @@ function mfndpos_terrain_ok(mtmp, x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     const typ = loc.typ;
+    const passwallOk = IS_OBSTRUCTED(typ) && mon_passes_walls(mtmp) && may_passwall(x, y);
 
-    // C ref: mon.c:mfndpos().  Obstructed rock/walls are blocked here
-    // until ALLOW_WALL/ALLOW_DIG are ported.
-    if (IS_OBSTRUCTED(typ)) return false;
+    // C ref: mon.c:mfndpos().  Obstructed rock/walls are blocked unless
+    // the monster has ALLOW_WALL-style phasing. Digging remains future work.
+    if (IS_OBSTRUCTED(typ) && !passwallOk) return false;
     if (IS_WATERWALL(typ) && !mon_swims(mtmp)) return false;
-    if (IS_DOOR(typ)) return !(loc.doormask & (D_CLOSED | D_LOCKED));
+    if (IS_DOOR(typ)) {
+        if (loc.doormask & D_LOCKED) return false;
+        if (loc.doormask & D_CLOSED) return mon_can_open_doors(mtmp);
+        return true;
+    }
 
     const wantpool = mtmp.data?.mlet === 'S_EEL';
     const poolok = mon_in_air(mtmp) || (mon_swims(mtmp) && !wantpool);
     const lavaok = mon_in_air(mtmp) || mon_likes_lava(mtmp);
     if (!poolok && (IS_POOL(typ) !== wantpool)) return false;
     if (!lavaok && IS_LAVA(typ)) return false;
-    return SPACE_POS(typ) || IS_POOL(typ) || IS_LAVA(typ);
+    return passwallOk || SPACE_POS(typ) || IS_POOL(typ) || IS_LAVA(typ);
 }
 
 function can_mon_step(mtmp, x, y) {
@@ -176,8 +220,27 @@ function can_mon_step(mtmp, x, y) {
     return mfndpos_terrain_ok(mtmp, x, y);
 }
 
+function door_blocks_diagonal(x, y) {
+    const loc = game.level?.at(x, y);
+    return loc && IS_DOOR(loc.typ) && (loc.doormask & ~D_BROKEN);
+}
+
 function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
+}
+
+function lined_up_basic(mtmp) {
+    const tx = mtmp.mux ?? game.u?.ux ?? mtmp.mx;
+    const ty = mtmp.muy ?? game.u?.uy ?? mtmp.my;
+    const dx = Math.abs(tx - mtmp.mx);
+    const dy = Math.abs(ty - mtmp.my);
+    if ((dx && dy && dx !== dy) || Math.max(dx, dy) >= BOLT_LIM) return false;
+    return clear_path(tx, ty, mtmp.mx, mtmp.my);
+}
+
+function hero_throw_range_basic() {
+    const str = game.u?.ustr ?? game.u?.strength ?? 12;
+    return Math.trunc(str / 2) + 1;
 }
 
 function object_class(obj) {
@@ -208,8 +271,65 @@ function mon_is_animal(mtmp) {
     return !!((mtmp.data?.mflags1 ?? 0) & M1_ANIMAL);
 }
 
-function mon_has_hands(mtmp) {
-    return !((mtmp.data?.mflags1 ?? 0) & M1_NOHANDS);
+function mon_is_ghost(mtmp) {
+    return mtmp.data?.name === 'GHOST';
+}
+
+function mon_has_attack_type(mtmp, atyp) {
+    return (mtmp.data?.mattk || []).some((attack) => attack?.[0] === atyp);
+}
+
+function hth_weapon_candidate(mtmp) {
+    return (mtmp.inventory || []).find((obj) => object_class(obj) === WEAPON_CLASS);
+}
+
+function mon_wield_item_basic(mtmp) {
+    let obj = null;
+    if (mtmp.weapon_check === NEED_HTH_WEAPON) {
+        obj = hth_weapon_candidate(mtmp);
+    } else if (mtmp.weapon_check === NEED_RANGED_WEAPON) {
+        // C ref: weapon.c:mon_wield_item() with NEED_RANGED_WEAPON uses
+        // select_rwep()'s launcher result. Ranged selection is not modeled
+        // yet, so failed selection only resets weapon_check below.
+        obj = null;
+    }
+    if (!obj) {
+        mtmp.weapon_check = NEED_WEAPON;
+        return false;
+    }
+    if (mtmp.mw && mtmp.mw.otyp === obj.otyp) {
+        mtmp.weapon_check = NEED_WEAPON;
+        return false;
+    }
+    if (mtmp.mw) mtmp.mw.owornmask = (mtmp.mw.owornmask || 0) & ~W_WEP;
+    mtmp.mw = obj;
+    obj.owornmask = (obj.owornmask || 0) | W_WEP;
+    mtmp.weapon_check = NEED_WEAPON;
+    return true;
+}
+
+function can_attack_after_move_basic(mtmp, state) {
+    // C ref: monmove.c:dochug() lets monsters that moved still reach
+    // mattacku() when they are in range for a weapon/ranged attack.
+    if (!state?.inrange || state.nearby) return false;
+    return mon_has_attack_type(mtmp, 'AT_WEAP');
+}
+
+function maybe_wield_hth_before_move(mtmp, state) {
+    // C ref: monmove.c:dochug() phase two lets close hostile weapon users
+    // spend their move switching to a hand-to-hand weapon before m_move().
+    if (mtmp.mpeaceful || mtmp.mtame || !state?.inrange || state.scared) return false;
+    const targetX = mtmp.mux ?? game.u?.ux ?? mtmp.mx;
+    const targetY = mtmp.muy ?? game.u?.uy ?? mtmp.my;
+    if (dist2(mtmp.mx, mtmp.my, targetX, targetY) > 8) return false;
+    if (!mon_has_attack_type(mtmp, 'AT_WEAP')) return false;
+    if (mtmp.weapon_check !== NEED_WEAPON) return false;
+    mtmp.weapon_check = NEED_HTH_WEAPON;
+    return mon_wield_item_basic(mtmp);
+}
+
+function mon_is_floater(mtmp) {
+    return mtmp.data?.mlet === 'S_EYE' || mtmp.data?.mlet === 'S_LIGHT';
 }
 
 function current_mon_load(mtmp) {
@@ -227,12 +347,49 @@ function can_carry(mtmp, obj) {
 }
 
 function searches_for_item_basic(mtmp, obj) {
+    if (mon_is_animal(mtmp) || mon_is_mindless(mtmp) || mon_is_ghost(mtmp)) return false;
+
     const cls = object_class(obj);
-    // Full muse.c:searches_for_item() has many type-specific consumables.
-    // This front door keeps general collectors interested in practical
-    // equipment without inventing RNG or seed-specific targets.
-    if (cls === WAND_CLASS) return (obj.spe ?? 1) > 0;
-    if (cls === POTION_CLASS || cls === SCROLL_CLASS || cls === AMULET_CLASS) return true;
+    const typ = obj?.otyp;
+    // C ref: muse.c:searches_for_item().  Ordinary collectors only chase
+    // specific usable magic; broad M2_MAGIC collection is handled separately.
+    if (typ === WAN_MAKE_INVISIBLE || typ === POT_INVISIBILITY) {
+        return !mtmp.minvis && !mtmp.invis_blkd && !mon_has_attack_type(mtmp, 'AT_GAZE');
+    }
+    if (typ === WAN_SPEED_MONSTER || typ === POT_SPEED) return mtmp.mspeed !== MFAST;
+
+    if (cls === WAND_CLASS) {
+        if ((obj.spe ?? 1) <= 0) return false;
+        if (typ === WAN_DIGGING) return !mon_is_floater(mtmp);
+        if (typ === WAN_POLYMORPH) return (mtmp.data?.difficulty ?? mtmp.data?.mlevel ?? 0) < 6;
+        return OBJECT_DIR[typ] === RAY
+            || typ === WAN_STRIKING
+            || typ === WAN_UNDEAD_TURNING
+            || typ === WAN_TELEPORTATION
+            || typ === WAN_CREATE_MONSTER;
+    }
+    if (cls === POTION_CLASS) {
+        return typ === POT_HEALING
+            || typ === POT_EXTRA_HEALING
+            || typ === POT_FULL_HEALING
+            || typ === POT_POLYMORPH
+            || typ === POT_GAIN_LEVEL
+            || typ === POT_PARALYSIS
+            || typ === POT_SLEEPING
+            || typ === POT_ACID
+            || typ === POT_CONFUSION
+            || (typ === POT_BLINDNESS && !mon_has_attack_type(mtmp, 'AT_GAZE'));
+    }
+    if (cls === SCROLL_CLASS) {
+        return typ === SCR_TELEPORTATION
+            || typ === SCR_CREATE_MONSTER
+            || typ === SCR_EARTH
+            || typ === SCR_FIRE;
+    }
+    if (cls === AMULET_CLASS) {
+        if (typ === AMULET_OF_LIFE_SAVING) return true;
+        return typ === AMULET_OF_REFLECTION || typ === AMULET_OF_GUARDING;
+    }
     return false;
 }
 
@@ -298,22 +455,55 @@ function mpickstuff_basic(mtmp) {
     return false;
 }
 
-function is_boots(obj) {
-    return obj?.otyp >= 163 && obj?.otyp <= 172;
+function set_door_mask_basic(loc, mask) {
+    loc.flags = mask;
+    loc.doormask = mask;
 }
 
-function m_dowear_basic(mtmp, creation = false) {
-    if (mtmp.mfrozen) return;
-    if (!mon_has_hands(mtmp) || mon_is_animal(mtmp) || mon_is_mindless(mtmp)) return;
-    if (mtmp.misc_worn_check & W_ARMF) return;
-    const boots = (mtmp.inventory || []).find((obj) => is_boots(obj) && !obj.owornmask);
-    if (!boots) return;
-    mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_ARMF;
-    boots.owornmask = (boots.owornmask || 0) | W_ARMF;
-    if (!creation) {
-        mtmp.mfrozen = OBJECT_DELAY[boots.otyp] || 0;
-        if (mtmp.mfrozen) mtmp.mcanmove = 0;
+function remove_dead_monster(mtmp) {
+    const monsters = game.level?.monsters || [];
+    const idx = monsters.indexOf(mtmp);
+    if (idx >= 0) monsters.splice(idx, 1);
+    newsym(mtmp.mx, mtmp.my);
+}
+
+function mb_trapped_basic(mtmp) {
+    // C ref: monmove.c:mb_trapped(). Messages, wakeup, and trap memory have
+    // no RNG in the current evidence; the required ownership is rnd(15).
+    mtmp.mstun = 1;
+    if (typeof mtmp.mhp === 'number') {
+        mtmp.mhp -= rnd(15);
+        if (mtmp.mhp <= 0) {
+            remove_dead_monster(mtmp);
+            return true;
+        }
+    } else {
+        rnd(15);
     }
+    return false;
+}
+
+function postmove_door_basic(mtmp) {
+    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    if (!loc || !IS_DOOR(loc.typ) || mon_passes_walls(mtmp)) return MMOVE_MOVED;
+    const trapped = !!(loc.doormask & D_TRAPPED);
+    if ((loc.doormask & D_LOCKED) && trapped) {
+        set_door_mask_basic(loc, D_NODOOR);
+        newsym(mtmp.mx, mtmp.my);
+        game.vision_full_recalc = 1;
+        return mb_trapped_basic(mtmp) ? MMOVE_DIED : MMOVE_MOVED;
+    }
+    if (loc.doormask === D_CLOSED && mon_can_open_doors(mtmp)) {
+        set_door_mask_basic(loc, D_ISOPEN);
+        newsym(mtmp.mx, mtmp.my);
+        game.vision_full_recalc = 1;
+    } else if ((loc.doormask & D_CLOSED) && trapped) {
+        set_door_mask_basic(loc, D_NODOOR);
+        newsym(mtmp.mx, mtmp.my);
+        game.vision_full_recalc = 1;
+        return mb_trapped_basic(mtmp) ? MMOVE_DIED : MMOVE_MOVED;
+    }
+    return MMOVE_MOVED;
 }
 
 function mon_track_add(mtmp, x, y) {
@@ -432,7 +622,6 @@ function apply_hero_damage(damage) {
 
 function unstuck_swallowed_hero(mtmp) {
     if (!game.u?.uswallow || game.u.ustuck !== mtmp) return;
-    traceMonMove(`expel-start ${monsterTraceName(mtmp)} @${mtmp.mx},${mtmp.my} hero=${game.u.ux},${game.u.uy} timer=${game.u.uswldtim || 0}`);
     game.u.uswallow = false;
     game.u.ustuck = null;
     game.u.uswldtim = 0;
@@ -448,7 +637,6 @@ function unstuck_swallowed_hero(mtmp) {
         const omy = mtmp.my;
         mtmp.mx = spot.x;
         mtmp.my = spot.y;
-        traceMonMove(`expel-spot ${monsterTraceName(mtmp)} ${omx},${omy} -> ${mtmp.mx},${mtmp.my}`);
         newsym(omx, omy);
         newsym(mtmp.mx, mtmp.my);
     }
@@ -457,7 +645,6 @@ function unstuck_swallowed_hero(mtmp) {
 
 function engulf_attack(mtmp, attack, toHit) {
     const [, adtyp, damn, damd] = attack;
-    traceMonMove(`attack-engulf ${monsterTraceName(mtmp)} ad=${adtyp} damn=${damn} damd=${damd} toHit=${toHit} heroAC=${game.u?.uac}`);
     const alreadySwallowed = game.u?.uswallow && game.u?.ustuck === mtmp;
     if (!alreadySwallowed && !(toHit > rnd(20))) return true;
     let damage = d(damn, damd);
@@ -496,7 +683,6 @@ function engulf_attack(mtmp, attack, toHit) {
 }
 
 function physical_melee_attacks(mtmp, attacks, toHit) {
-    traceMonMove(`attack-physical ${monsterTraceName(mtmp)} attacks=${JSON.stringify(attacks)} toHit=${toHit} heroAC=${game.u?.uac}`);
     for (let i = 0; i < attacks.length; i++) {
         const attack = attacks[i];
         if (!attack) continue;
@@ -515,25 +701,37 @@ function physical_melee_attacks(mtmp, attacks, toHit) {
 
 function mattacku_basic(mtmp, state) {
     if (game.u?.uswallow && game.u?.ustuck !== mtmp) return false;
-    if (!state?.nearby || state.scared || mtmp.mpeaceful || mtmp.mtame) return false;
+    const rangeWeapon = state?.inrange && !state.nearby && mon_has_attack_type(mtmp, 'AT_WEAP');
+    if ((!state?.nearby && !rangeWeapon) || state.scared || mtmp.mpeaceful || mtmp.mtame) return false;
     if ((game._occupation_turns_remaining || 0) > 1 || game._occupation_finish_uac != null) return false;
     if ((game.u?.uhp ?? 1) <= 0) return false;
 
     const cooldownAttack = cooldown_replacement_attack(mtmp);
     if (cooldownAttack) {
+        if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
         return physical_melee_attacks(mtmp, [cooldownAttack], mattacku_to_hit(mtmp));
     }
     const engulf = basic_engulf_attack(mtmp);
     const physical = engulf ? null : basic_physical_attacks(mtmp);
-    if (!engulf && !physical) return false;
+    if (!engulf && !physical && !rangeWeapon) return false;
     const toHit = mattacku_to_hit(mtmp);
+    if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
+    // C ref: mhitu.c:mattacku() computes AC_VALUE() before AT_WEAP range
+    // dispatch. The actual thrwmu()/select_rwep path is still future work.
+    if (rangeWeapon && !physical) {
+        if (mtmp.weapon_check === NEED_WEAPON || !mtmp.mw) {
+            mtmp.weapon_check = NEED_RANGED_WEAPON;
+            mon_wield_item_basic(mtmp);
+        }
+        return false;
+    }
     return engulf ? engulf_attack(mtmp, engulf, toHit) : physical_melee_attacks(mtmp, physical, toHit);
 }
 
 function m_move_basic(mtmp) {
     // C ref: monmove.c:m_move().  This is a narrow ordinary-monster
     // movement skeleton: adjacent candidates, mtrack backtracking rolls, and
-    // deterministic approach/flee selection.  Item pickup, doors, tunneling,
+    // deterministic approach/flee selection.  Tunneling, most traps, full
     // attacks, and special monsters remain future subsystem work.
     const omx = mtmp.mx;
     const omy = mtmp.my;
@@ -551,7 +749,11 @@ function m_move_basic(mtmp) {
     }
     let getitems = false;
     if (!mtmp.mpeaceful || !rn2(10)) {
-        getitems = true;
+        // C ref: monmove.c:m_move().  Monsters already lined up for a
+        // weapon/ranged attack do not detour into m_search_items().
+        const inLine = lined_up_basic(mtmp)
+            && distmin(mtmp.mx, mtmp.my, mtmp.mux ?? ggx, mtmp.muy ?? ggy) <= hero_throw_range_basic();
+        if (appr !== 1 || !inLine) getitems = true;
     }
     if (getitems) {
         const itemGoal = m_search_items_basic(mtmp, ggx, ggy, appr);
@@ -564,26 +766,22 @@ function m_move_basic(mtmp) {
             if (appr === -1) appr = 1;
         }
     }
-    traceMonMove(`start ${monsterTraceName(mtmp)} @${omx},${omy} target=${ggx},${ggy} appr=${appr} flee=${mtmp.mflee ? 1 : 0} peaceful=${mtmp.mpeaceful ? 1 : 0} tame=${mtmp.mtame ? 1 : 0} track=${JSON.stringify(mtmp.mtrack || [])}`);
     const candidates = [];
-    const traceCells = [];
     const maxx = Math.min(omx + 1, 79);
     const maxy = Math.min(omy + 1, 20);
     for (let nx = Math.max(1, omx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, omy - 1); ny <= maxy; ny++) {
-            let reason = 'ok';
-            if (nx === omx && ny === omy) reason = 'origin';
-            else if (nx === game.u?.ux && ny === game.u?.uy) reason = 'hero';
-            else if (mon_at(nx, ny, mtmp)) reason = `mon:${monsterTraceName(mon_at(nx, ny, mtmp))}:typ${game.level?.at(nx, ny)?.typ}`;
-            else if (!mfndpos_terrain_ok(mtmp, nx, ny)) reason = `terrain:${game.level?.at(nx, ny)?.typ}`;
-            if (globalThis.__teleportTraceMonMove) {
-                traceCells.push(`${nx},${ny}:${reason}`);
+            if (nx === omx && ny === omy) continue;
+            // C ref: mon.c:mfndpos() rejects diagonal movement from or into
+            // any door state except no-door/broken-door.
+            if (nx !== omx && ny !== omy
+                && (door_blocks_diagonal(omx, omy) || door_blocks_diagonal(nx, ny))) {
+                continue;
             }
-            if (reason !== 'ok') continue;
+            if (!can_mon_step(mtmp, nx, ny)) continue;
             candidates.push({ x: nx, y: ny });
         }
     }
-    traceMonMove(`candidates ${monsterTraceName(mtmp)} @${omx},${omy} cnt=${candidates.length} cells=${traceCells.join('|')}`);
     if (!candidates.length) return MMOVE_NOTHING;
 
     let nix = omx;
@@ -600,7 +798,6 @@ function m_move_basic(mtmp) {
                 const trk = mtmp.mtrack[j];
                 if (cand.x === trk.x && cand.y === trk.y) {
                     const denom = 4 * (candidates.length - j);
-                    traceMonMove(`backtrack ${monsterTraceName(mtmp)} @${omx},${omy} cand=${cand.x},${cand.y} j=${j} cnt=${candidates.length} denom=${denom}`);
                     if (rn2(denom)) {
                         continue candidateLoop;
                     }
@@ -622,7 +819,6 @@ function m_move_basic(mtmp) {
     }
 
     if (!moved || (nix === omx && niy === omy)) return MMOVE_NOTHING;
-    traceMonMove(`select ${monsterTraceName(mtmp)} @${omx},${omy} -> ${nix},${niy} target=${ggx},${ggy} nidist=${nidist}`);
     const engulfingHero = game.u?.uswallow && game.u?.ustuck === mtmp;
     mtmp.mx = nix;
     mtmp.my = niy;
@@ -636,8 +832,10 @@ function m_move_basic(mtmp) {
     mon_track_add(mtmp, omx, omy);
     newsym(omx, omy);
     newsym(nix, niy);
+    const doorStatus = postmove_door_basic(mtmp);
+    if (doorStatus === MMOVE_DIED) return MMOVE_DIED;
     if (mpickstuff_basic(mtmp)) return MMOVE_DONE;
-    return MMOVE_MOVED;
+    return doorStatus;
 }
 
 function m_everyturn_effect(mtmp) {
@@ -739,10 +937,16 @@ export async function movemon() {
             continue;
         }
 
+        // C ref: monmove.c:dochug().  Awake movable monsters roll confusion
+        // and stun recovery before targeting, fleeing, or ordinary movement.
+        if (mtmp.mconf && !rn2(50)) mtmp.mconf = 0;
+        if (mtmp.mstun && !rn2(10)) mtmp.mstun = 0;
+
         // dochugw -> dochug
         set_apparxy_basic(mtmp);
         const fleeState = distfleeck(mtmp); // consuming rn2(5)
-        
+        if (!mtmp.mtame && maybe_wield_hth_before_move(mtmp, fleeState)) continue;
+
         // C ref: monmove.c:dochug() delegates tame monsters to
         // dogmove.c:dog_move() after the shared distfleeck() phase.
         if (mtmp.mtame) {
@@ -754,11 +958,15 @@ export async function movemon() {
             let moveStatus = 0;
             if (non_tame_movement_opportunity(mtmp, fleeState)) {
                 moveStatus = m_move_basic(mtmp);
+                if (moveStatus === MMOVE_DIED) continue;
                 // C calls distfleeck() again after m_move() returns for ordinary
                 // movement, even when the monster is off-screen.
                 postMoveState = distfleeck(mtmp);
             }
-            if (moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE) mattacku_basic(mtmp, postMoveState);
+            if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE)
+                || (moveStatus === MMOVE_MOVED && can_attack_after_move_basic(mtmp, postMoveState))) {
+                mattacku_basic(mtmp, postMoveState);
+            }
         }
     }
 

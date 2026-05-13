@@ -495,8 +495,15 @@ export async function pline(msg) {
     game._pending_message = msg;
 }
 
+export function queue_more_prompt(count = 1) {
+    game._more_dismissals_remaining = (game._more_dismissals_remaining || 0) + Math.max(1, count);
+    game._more = true;
+}
+
 export function clear_pending_message() {
     game._pending_message = '';
     game._more = false;
+    game._more_dismissals_remaining = 0;
+    game._hero_melee_message_pending = false;
     game._prompt_cursor = null;
 }

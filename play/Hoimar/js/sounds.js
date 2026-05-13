@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { pline } from './display.js';
+import { Is_oracle_level } from './const.js';
 
 export async function dosounds() {
     const g = game;
@@ -26,6 +27,11 @@ export async function dosounds() {
     if (lvl.flags.has_zoo && !rn2(200)) {
         // Ambient zoo monster sounds are not rendered yet.  The gate belongs
         // here so the turn tail keeps the same RNG ownership as sounds.c.
+        return;
+    }
+    if (Is_oracle_level(g.u?.uz) && !rn2(400)) {
+        // C ref: sounds.c:dosounds(); Oracle level has a final ambient
+        // sound gate after ordinary feature/special-room sound gates.
         return;
     }
     // TODO: Implement more sounds (throne, swamp, vault, beehive, etc.)
