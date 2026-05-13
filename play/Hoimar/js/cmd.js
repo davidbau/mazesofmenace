@@ -1370,7 +1370,7 @@ export async function rhack(key) {
                 game._awaiting_levelchange_value = true;
                 game._levelchange_input = '';
             } else if (cmd === 'pray') {
-                await pline('Are you sure you want to pray? [yn] (n) ');
+                await showPromptLine('Are you sure you want to pray? [yn] (n) ');
                 game._awaiting_pray_confirm = true;
                 game.context.move = 0;
             } else if (cmd === 'wizintrinsic') {
@@ -1396,6 +1396,7 @@ export async function rhack(key) {
             game._extended_command_input = typed;
             game._extended_command = completeExtendedCommand(typed);
             await showPromptLine(`# ${game._extended_command}`);
+            game._prompt_cursor = [Math.min(typed.length + 2, 79), 0];
             game.context.move = 0;
             return;
         }
@@ -1717,7 +1718,7 @@ export async function rhack(key) {
         game._awaiting_extended_command = true;
         game._extended_command_input = '';
         game._extended_command = '';
-        await showPromptLine('#');
+        await showPromptLine('# ');
     } else if (ch === 'i') {
         game.context.move = 0;
         await showInventoryMenu();
