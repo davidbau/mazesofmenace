@@ -4,16 +4,19 @@
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
+    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    FOUNTAIN, SINK, ALTAR, GRAVE,
+    FOUNTAIN, SINK, ALTAR, GRAVE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
-    HOLE, TRAPDOOR, M_AP_OBJECT,
+    HOLE, TRAPDOOR, M_AP_OBJECT, IS_POOL,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
+    WARNCOUNT, def_warnsyms,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
-    NO_COLOR, CLR_BLACK, CLR_BLUE, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    NO_COLOR, CLR_BLACK, CLR_BLUE, CLR_GREEN, CLR_GRAY, CLR_BROWN, CLR_RED,
+    CLR_WHITE, CLR_ORANGE, CLR_YELLOW, CLR_BRIGHT_BLUE,
     ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE, DEC_TO_UNICODE,
 } from './terminal.js';
 import { roleRankForLevel } from './roles.js';
@@ -98,7 +101,7 @@ function is_branch_stair(x, y) {
 
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
-    const typ = loc.typ;
+    const typ = display_wall_type(loc);
     const wallColor = game.level?.flags?.sokoban_rules ? CLR_BLUE : NO_COLOR;
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
@@ -108,6 +111,12 @@ function terrain_glyph(loc, x, y) {
         if (loc.doormask & D_ISOPEN) return { ch: '|', color: CLR_BROWN, dec: false };
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
+    case SDOOR:
+        // C ref: display.c:wall_angle().  Undiscovered secret doors render
+        // as their underlying wall orientation until they are revealed.
+        return loc.horizontal
+            ? { ch: 'q', color: wallColor, dec: true }
+            : { ch: 'x', color: wallColor, dec: true };
     case STAIRS:
         {
             const color = is_branch_stair(x, y) ? CLR_YELLOW : CLR_GRAY;
@@ -131,8 +140,54 @@ function terrain_glyph(loc, x, y) {
     case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+    case POOL:
+    case MOAT:
+        // C ref: display.c:back_to_glyph() S_pool.  The tty DECgraphics wire
+        // glyph for liquid surfaces is the backtick diamond byte.
+        return { ch: '`', color: CLR_BLUE, dec: false };
+    case WATER:
+        return { ch: '`', color: CLR_BRIGHT_BLUE, dec: false };
+    case LAVAPOOL:
+        return { ch: '`', color: CLR_RED, dec: false };
+    case LAVAWALL:
+        return { ch: '`', color: CLR_ORANGE, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
+}
+
+function display_wall_type(loc) {
+    // C ref: display.c:wall_angle(). For wallification glyphs, NetHack
+    // derives the visible wall character from terrain type plus seenv.
+    const seenv = (loc.seenv || 0) & 0xff;
+    if (!seenv || ((loc.wall_info || 0) & WM_MASK)) return loc.typ;
+    let rotated = seenv;
+    let row = null;
+    switch (loc.typ) {
+    case TDWALL:
+        row = [STONE, TLCORNER, TRCORNER, HWALL, TDWALL];
+        break;
+    case TLWALL:
+        rotated = ((seenv >> 2) | (seenv << 6)) & 0xff;
+        row = [STONE, TRCORNER, BRCORNER, VWALL, TLWALL];
+        break;
+    case TUWALL:
+        rotated = ((seenv >> 4) | (seenv << 4)) & 0xff;
+        row = [STONE, BRCORNER, BLCORNER, HWALL, TUWALL];
+        break;
+    case TRWALL:
+        rotated = ((seenv >> 6) | (seenv << 2)) & 0xff;
+        row = [STONE, BLCORNER, TLCORNER, VWALL, TRWALL];
+        break;
+    default:
+        return loc.typ;
+    }
+
+    let col = 0;
+    if (rotated === SV4) col = 1;
+    else if (rotated === SV6) col = 2;
+    else if ((rotated & (SV3 | SV5 | SV7)) || ((rotated & SV4) && (rotated & SV6))) col = 4;
+    else if (rotated & (SV0 | SV1 | SV2)) col = (rotated & (SV4 | SV6)) ? 4 : 3;
+    return row[col];
 }
 
 function trap_glyph(trap) {
@@ -148,6 +203,21 @@ function monster_glyph(mon) {
     return { ch: mon.ch, color: mon.color, dec: false };
 }
 
+function warning_glyph(mon) {
+    // C ref: display.h:_mon_warning(), display.c:warning_of() and
+    // display_warning(). Warning floats over unseen hostile monsters.
+    if (!game.u?.uprops?.warning || mon?.mpeaceful) return null;
+    if (dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) >= 100) return null;
+    const level = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    if (level < (game.context?.warnlevel ?? 1)) return null;
+    return def_warnsyms[Math.min(WARNCOUNT - 1, Math.max(0, level))] || null;
+}
+
+export function refresh_warning_monsters() {
+    if (!game.u?.uprops?.warning) return;
+    for (const mon of game.level?.monsters || []) newsym(mon.mx, mon.my);
+}
+
 function show_premapped_mimics() {
     if (!game.level?.flags?.premapped) return;
     for (const mon of game.level.monsters || []) {
@@ -160,6 +230,13 @@ function show_premapped_mimics() {
     }
 }
 
+function terrain_covers_objects(loc) {
+    // C ref: display.h:covers_objects(). Pools cover objects unless the hero
+    // is underwater; lava always covers objects and traps.
+    const underwater = !!(game.u?.uprops?.underwater || game.u?.underwater || game.Underwater);
+    return ((IS_POOL(loc.typ) && !underwater) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL);
+}
+
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
     const loc = game.level?.at(x, y);
@@ -169,6 +246,26 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.disp_decgfx = !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
+}
+
+const SWALLOW_CHARS = [
+    ['/', 'o', '\\'],
+    ['│', '@', '│'],
+    ['\\', 's', '/'],
+];
+
+function swallowed_glyph_at(x, y) {
+    if (!game._swallowed_map_active || !game.u?.ustuck) return null;
+    const ux = game.u.ux;
+    const uy = game.u.uy;
+    const dx = x - ux;
+    const dy = y - uy;
+    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) return null;
+    const ch = SWALLOW_CHARS[dy + 1][dx + 1];
+    return {
+        ch,
+        color: ch === '@' ? CLR_WHITE : (game.u.ustuck.data?.color ?? CLR_GREEN),
+    };
 }
 
 // ── newsym ──
@@ -191,19 +288,20 @@ export function newsym(x, y) {
     const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
     const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
     const visible = cansee(x, y);
+    const covered = terrain_covers_objects(loc);
 
     let draw_ch = tg.ch;
     let draw_color = tg.color;
     let draw_dec = tg.dec;
 
-    if (trap?.tseen) {
+    if (trap?.tseen && !covered) {
         const tr = trap_glyph(trap);
         draw_ch = tr.ch; draw_color = tr.color; draw_dec = tr.dec;
     }
     if (mon) {
         const mg = monster_glyph(mon);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
-    } else if (obj) {
+    } else if (obj && !covered) {
         const og = object_glyph_for_display(obj, x, y, visible);
         draw_ch = og.ch; draw_color = og.color; draw_dec = false;
     }
@@ -214,10 +312,15 @@ export function newsym(x, y) {
         if (game.level?.flags?.hero_memory) {
             loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
         }
+    } else if (mon) {
+        const wg = warning_glyph(mon);
+        if (wg) show_glyph_cell(x, y, wg.ch, wg.color, false);
     } else if (loc.remembered_glyph) {
         // Out of sight but remembered — show remembered glyph
         show_glyph_cell(x, y, loc.remembered_glyph.ch,
             loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+    } else {
+        show_glyph_cell(x, y, ' ', NO_COLOR, false);
     }
 }
 
@@ -242,6 +345,29 @@ export async function docrt() {
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
 function render_map_row(y) {
     if (!game.level) return '';
+    if (game._swallowed_map_active) {
+        const ux = game.u?.ux ?? 0;
+        const uy = game.u?.uy ?? 0;
+        if (y < uy - 1 || y > uy + 1) return '';
+        const firstCol = Math.max(1, ux - 1);
+        const lastCol = Math.min(COLNO - 1, ux + 1);
+        let output = '';
+        const gap = firstCol - 1;
+        if (gap > 4) output += `\x1b[${gap}C`;
+        else if (gap > 0) output += ' '.repeat(gap);
+        let activeColor = ANSI_DEFAULT;
+        for (let x = firstCol; x <= lastCol; x++) {
+            const sg = swallowed_glyph_at(x, y) || { ch: ' ', color: NO_COLOR };
+            const wantAnsi = ANSI_COLOR[sg.color] ?? ANSI_DEFAULT;
+            if (wantAnsi !== activeColor) {
+                output += `\x1b[${wantAnsi}m`;
+                activeColor = wantAnsi;
+            }
+            output += sg.ch;
+        }
+        if (activeColor !== ANSI_DEFAULT) output += `\x1b[${ANSI_DEFAULT}m`;
+        return output;
+    }
     let firstCol = -1, lastCol = -1;
     for (let x = 1; x < COLNO; x++) {
         const loc = game.level.at(x, y);
@@ -449,12 +575,22 @@ function _buildScreenOutput() {
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — write characters to grid (DEC → Unicode for browser display)
-        for (let y = 0; y < ROWNO; y++) {
-            for (let x = 1; x < COLNO; x++) {
-                const loc = game.level?.at(x, y);
-                if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
-                const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
-                display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+        if (!game._swallowed_map_active) {
+            for (let y = 0; y < ROWNO; y++) {
+                for (let x = 1; x < COLNO; x++) {
+                    const loc = game.level?.at(x, y);
+                    if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+                    const ch = loc.disp_decgfx ? (DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch) : loc.disp_ch;
+                    display.setCell(x - 1, y + 1, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+                }
+            }
+        } else {
+            for (let y = 0; y < ROWNO; y++) {
+                for (let x = 1; x < COLNO; x++) {
+                    const sg = swallowed_glyph_at(x, y);
+                    if (!sg) continue;
+                    display.setCell(x - 1, y + 1, sg.ch, sg.color, 0);
+                }
             }
         }
         // Status lines

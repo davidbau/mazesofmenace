@@ -830,6 +830,10 @@ export function mksobj(otyp, init, artif) {
         olocked: false,
         otrapped: false,
         tknown: false,
+        known: false,
+        bknown: false,
+        rknown: false,
+        dknown: false,
         spe: 0,
         corpsenm: null,
     };
@@ -2247,6 +2251,10 @@ function loadBigrm12Terrain() {
         for (let x = 0; x < BIGRM_12_MAP[y].length; x++) {
             const loc = game.level.at(x + BIGRM_12_XSTART, y + BIGRM_12_YSTART);
             if (!loc) continue;
+            // C ref: dat/bigrm-12.lua des.region(selection.area(...), "lit")
+            // runs before des.wallify(), so the whole scripted selection,
+            // including stone that can become wall, participates in lit vision.
+            loc.lit = true;
             switch (BIGRM_12_MAP[y][x]) {
             case '.': loc.typ = ROOM; break;
             case 'P': loc.typ = POOL; break;
@@ -2916,6 +2924,10 @@ function makemaz_special(slev) {
     }
     if (game._last_special_protofile === 'bigrm-12') {
         loadBigrm12Special();
+        // C ref: sp_lev.c:lspo_final_map_cleanup() runs final
+        // wallification() after the Lua script's des.wallify() pass and
+        // before the post-load flip gate.
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
         flip_level_rnd(2); // des.level_flags("noflipy") leaves horizontal flipping enabled.
         return;
     }

@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     IS_WALL,
@@ -72,6 +72,9 @@ function _blocks(level, x, y) {
     if (!loc) return true;
     const typ = loc.typ ?? 0;
     if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    // C ref: vision.c:does_block(). Waterwall terrain, lava walls, and
+    // cloud terrain are not obstructed for movement, but they block sight.
+    if (typ === WATER || typ === LAVAWALL || typ === CLOUD) return true;
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;

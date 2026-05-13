@@ -11,6 +11,7 @@ import {
     maybe_wipe_engraving, maybe_update_seer_turn, dosounds,
 } from './allmain_turns.js';
 import { mcalcdistress, mcalcmove, movemon } from './monmove.js';
+import { initrack, settrack } from './track.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -18,7 +19,7 @@ import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from
 import { makedog } from './dog.js';
 import { continueRunStep, rhack } from './cmd.js';
 import { nhgetch } from './input.js';
-import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid, refresh_warning_monsters, clear_pending_message, queue_more_prompt } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
@@ -107,6 +108,12 @@ function drawQuestIntroOverlay(alignName) {
         [23, 16, `of us all:  Go bravely with ${god}!`],
         [23, 17, '--More--'],
     ];
+    // C ref: allmain.c:newgame() -> com_pager("legacy"). The role-history
+    // text is a pager window, not sparse text over the map, so clear the
+    // map/message area while preserving the already-rendered status lines.
+    for (let row = 0; row < 22; row++)
+        for (let col = 0; col < display.cols; col++)
+            display.setCell(col, row, ' ', NO_COLOR, 0);
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
     g._override_screen = serialize_terminal_grid(display);
     g._override_cursor = [31, 17, 1];
@@ -169,6 +176,7 @@ export async function player_selection() {
 
 export async function newgame() {
     const g = game;
+    initrack();
     await player_selection();
 
     const ff = startupReplayForCurrentSeed();
@@ -310,6 +318,7 @@ export async function advanceTurn() {
     }
 
     await maybe_generate_rnd_mon();
+    settrack();
 
     regen_hp();
 
@@ -330,6 +339,52 @@ function applyOccupationFinalTurnState(g) {
     }
 }
 
+function occupationPending(g) {
+    return (g._occupation_turns_remaining || 0) > 0 || !!g._occupation_finish_message;
+}
+
+async function runSwallowedPreFinishTurn(g) {
+    if (!g._occupation_finish_message || !g.u?.uswallow || !g.u?.ustuck) return;
+    if (g._occupation_pre_finish_swallowed_turn_done) return;
+    // C ref: allmain.c:moveloop_core().  `unmul()` and `nomovemsg` happen
+    // after the "hero can't move" loop has finished.  A swallowed, slow or
+    // otherwise movement-starved hero can therefore take another monster/turn
+    // pass before the delayed occupation finish line is printed.
+    g._occupation_pre_finish_swallowed_turn_done = true;
+    await advanceTurn();
+}
+
+async function continueOccupationTurns(g) {
+    // C ref: allmain.c:moveloop_core()/occupation.  Delayed occupations keep
+    // consuming turns, but tty --More-- pauses can split them across inputs.
+    while ((g._occupation_turns_remaining || 0) > 0) {
+        g._occupation_turns_remaining--;
+        applyOccupationFinalTurnState(g);
+        await advanceTurn();
+        if (g._more && occupationPending(g)) {
+            g._occupation_paused_for_more = true;
+            return false;
+        }
+    }
+    if (g._occupation_finish_message) {
+        if (g._occupation_finish_uac != null) {
+            g.u.uac = g._occupation_finish_uac;
+            g._occupation_finish_uac = null;
+        }
+        await runSwallowedPreFinishTurn(g);
+        if (g._pending_message) {
+            if (!g._more) queue_more_prompt();
+            await flush_screen(1);
+            await nhgetch();
+            clear_pending_message();
+        }
+        await pline(g._occupation_finish_message);
+        g._occupation_finish_message = null;
+        g._occupation_pre_finish_swallowed_turn_done = false;
+    }
+    return true;
+}
+
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
@@ -339,6 +394,7 @@ export async function moveloop_core() {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
+    if (g.u?.uprops?.warning) refresh_warning_monsters();
     await bot();
     await flush_screen(1);
 
@@ -352,20 +408,17 @@ export async function moveloop_core() {
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.
     if (g.context?.move) {
-        applyOccupationFinalTurnState(g);
-        await advanceTurn();
-        while ((g._occupation_turns_remaining || 0) > 0) {
-            g._occupation_turns_remaining--;
+        if (g._occupation_resume) {
+            g._occupation_resume = false;
+            if (!await continueOccupationTurns(g)) return;
+        } else {
             applyOccupationFinalTurnState(g);
             await advanceTurn();
-        }
-        if (g._occupation_finish_message) {
-            if (g._occupation_finish_uac != null) {
-                g.u.uac = g._occupation_finish_uac;
-                g._occupation_finish_uac = null;
+            if (g._more && occupationPending(g)) {
+                g._occupation_paused_for_more = true;
+                return;
             }
-            await pline(g._occupation_finish_message);
-            g._occupation_finish_message = null;
+            if (!await continueOccupationTurns(g)) return;
         }
         while ((g._prayer_turns_remaining || 0) > 0) {
             g._prayer_turns_remaining--;

@@ -14,8 +14,10 @@ import { OBJECT_DELAY } from './object_data.js';
 import { pet_arrive_with_you } from './dog.js';
 import { merge_inventory_object, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry } from './allmain_turns.js';
+import { initrack } from './track.js';
 import { roleGod } from './roles.js';
 import { rn1, rn2, rnd, rnz } from './rng.js';
+import { getObjectDescription } from './o_init.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
@@ -31,8 +33,8 @@ const RUN_KEY = { H: 'h', L: 'l', J: 'j', K: 'k', Y: 'y', U: 'u', B: 'b', N: 'n'
 
 const AMULET_OF_LIFE_SAVING = 202;
 const GRAY_DRAGON_SCALE_MAIL = 101;
-const WAN_FIRE = 411;
-const WAN_DEATH = 414;
+const WAN_FIRE = 430;
+const WAN_DEATH = 433;
 const WAN_MAKE_INVISIBLE = 418;
 const WAN_DIGGING = 428;
 const QUARTERSTAFF = 79;
@@ -51,28 +53,36 @@ const POTION_CLASS = 8;
 const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
+const LEVELCHANGE_MORE_LEN = '--More--'.length;
 
 const OBJECT_BASE_NAMES = new Map([
     [QUARTERSTAFF, 'quarterstaff'],
     [GRAY_DRAGON_SCALE_MAIL, 'gray dragon scale mail'],
     [CLOAK_OF_MAGIC_RESISTANCE, 'cloak of magic resistance'],
     [AMULET_OF_LIFE_SAVING, 'amulet of life saving'],
+    [178, 'ring of protection'],
     [RIN_INCREASE_ACCURACY, 'ring of increase accuracy'],
     [RIN_STEALTH, 'ring of stealth'],
     [RIN_TELEPORT_CONTROL, 'ring of teleport control'],
+    [200, 'ring of protection from shape changers'],
     [MAGIC_MARKER, 'magic marker'],
     [306, 'potion of see invisible'],
     [307, 'potion of healing'],
+    [308, 'potion of extra healing'],
+    [309, 'potion of gain level'],
     [317, 'potion of booze'],
     [325, 'scroll of confuse monster'],
+    [328, 'scroll of enchant weapon'],
     [332, 'scroll of light'],
     [335, 'scroll of food detection'],
     [380, 'spellbook of slow monster'],
     [383, 'spellbook of force bolt'],
+    [397, 'spellbook of identify'],
     [WAN_MAKE_INVISIBLE, 'wand of make invisible'],
     [WAN_DIGGING, 'wand of digging'],
     [WAN_FIRE, 'wand of fire'],
     [WAN_DEATH, 'wand of death'],
+    [421, 'wand of undead turning'],
 ]);
 
 const SPELLBOOK_SPELL_INFO = new Map([
@@ -108,6 +118,66 @@ const TOURIST_STARTER_MENU = [
     { cls: TOOL_CLASS, line: 'l - an uncursed credit card' },
 ];
 
+// C ref: attrib.c role innate ability tables plus adjabil().  Level-gain
+// messages are ordinary plines emitted after pluslvl()'s welcome message.
+const ROLE_INNATE_ABILITIES = new Map([
+    ['Archeologist', [
+        { level: 5, prop: 'stealth', gain: 'stealthy' },
+        { level: 10, prop: 'fast', gain: 'quick' },
+    ]],
+    ['Barbarian', [
+        { level: 7, prop: 'fast', gain: 'quick' },
+        { level: 15, prop: 'stealth', gain: 'stealthy' },
+    ]],
+    ['Caveman', [
+        { level: 7, prop: 'fast', gain: 'quick' },
+        { level: 15, prop: 'warning', gain: 'sensitive' },
+    ]],
+    ['Healer', [
+        { level: 15, prop: 'warning', gain: 'sensitive' },
+    ]],
+    ['Knight', [
+        { level: 7, prop: 'fast', gain: 'quick' },
+    ]],
+    ['Monk', [
+        { level: 3, prop: 'poison_resistance', gain: 'healthy' },
+        { level: 5, prop: 'stealth', gain: 'stealthy' },
+        { level: 7, prop: 'warning', gain: 'sensitive' },
+        { level: 9, prop: 'searching', gain: 'perceptive' },
+        { level: 11, prop: 'fire_resistance', gain: 'cool' },
+        { level: 13, prop: 'cold_resistance', gain: 'warm' },
+        { level: 15, prop: 'shock_resistance', gain: 'insulated' },
+        { level: 17, prop: 'teleport_control', gain: 'controlled' },
+    ]],
+    ['Priest', [
+        { level: 15, prop: 'warning', gain: 'sensitive' },
+        { level: 20, prop: 'fire_resistance', gain: 'cool' },
+    ]],
+    ['Ranger', [
+        { level: 7, prop: 'stealth', gain: 'stealthy' },
+    ]],
+    ['Rogue', [
+        { level: 10, prop: 'searching', gain: 'perceptive' },
+    ]],
+    ['Samurai', [
+        { level: 15, prop: 'stealth', gain: 'stealthy' },
+    ]],
+    ['Tourist', [
+        { level: 10, prop: 'searching', gain: 'perceptive' },
+        { level: 20, prop: 'poison_resistance', gain: 'hardy' },
+    ]],
+    ['Wizard', [
+        { level: 15, prop: 'warning', gain: 'sensitive' },
+        { level: 17, prop: 'teleport_control', gain: 'controlled' },
+    ]],
+]);
+
+const RACE_INNATE_ABILITIES = new Map([
+    ['elf', [
+        { level: 4, prop: 'sleep_resistance', gain: 'awake' },
+    ]],
+]);
+
 function wishedObjectSpec(name) {
     const wish = String(name || '').toLowerCase();
     const spec = {};
@@ -137,11 +207,11 @@ function wishedObjectSpec(name) {
     }
     if (wish.includes('wand of death')) {
         rn2(41);
-        return { ...spec, otyp: WAN_DEATH, appearanceName: 'curved wand' };
+        return { ...spec, otyp: WAN_DEATH };
     }
     if (wish.includes('wand of digging')) {
         rn2(41);
-        return { ...spec, otyp: WAN_DIGGING, appearanceName: 'curved wand' };
+        return { ...spec, otyp: WAN_DIGGING };
     }
     if (wish.includes('ring of teleport control')) {
         rn2(2);
@@ -227,6 +297,7 @@ function indefiniteArticle(name) {
 
 function pluralizeObjectName(name) {
     if (name.startsWith('scroll of ')) return name.replace(/^scroll of /, 'scrolls of ');
+    if (name.startsWith('scroll labeled ')) return name.replace(/^scroll labeled /, 'scrolls labeled ');
     if (name.startsWith('spellbook of ')) return name.replace(/^spellbook of /, 'spellbooks of ');
     if (name.startsWith('potion of ')) return name.replace(/^potion of /, 'potions of ');
     if (name.startsWith('tin of ')) return name.replace(/^tin of /, 'tins of ');
@@ -236,9 +307,28 @@ function pluralizeObjectName(name) {
     return `${name}s`;
 }
 
+function unknownAppearanceName(obj) {
+    if (!obj || obj.knownName) return '';
+    if (obj?.appearanceName) return obj.appearanceName;
+    const shuffledDescription = getObjectDescription(obj?.otyp);
+    if (shuffledDescription && !obj?.knownName) {
+        // C ref: objnam.c:xname() uses OBJ_DESCR() for undiscovered objects.
+        if (obj?.oclass === AMULET_CLASS) return `${shuffledDescription} amulet`;
+        if (obj?.oclass === RING_CLASS) return `${shuffledDescription} ring`;
+        if (obj?.oclass === POTION_CLASS) return `${shuffledDescription} potion`;
+        if (obj?.oclass === SCROLL_CLASS) {
+            if (shuffledDescription === 'unlabeled') return 'unlabeled scroll';
+            return `scroll labeled ${shuffledDescription}`;
+        }
+        if (obj?.oclass === WAND_CLASS) return `${shuffledDescription} wand`;
+    }
+    return '';
+}
+
 function baseObjectName(obj) {
     if (obj?.knownName && OBJECT_BASE_NAMES.has(obj.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
-    if (obj?.appearanceName) return obj.appearanceName;
+    const appearanceName = unknownAppearanceName(obj);
+    if (appearanceName) return appearanceName;
     if (OBJECT_BASE_NAMES.has(obj?.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     if (obj?.oclass === RING_CLASS) return 'ring';
     if (obj?.oclass === WAND_CLASS) return 'wand';
@@ -247,7 +337,8 @@ function baseObjectName(obj) {
 
 function shouldShowBuc(obj) {
     if (!obj) return false;
-    if (obj.appearanceName && !obj.knownName) return false;
+    if (unknownAppearanceName(obj)) return false;
+    if (!obj.bknown) return false;
     return obj.oclass === ARMOR_CLASS
         || obj.oclass === RING_CLASS
         || obj.oclass === POTION_CLASS
@@ -265,6 +356,7 @@ function bucPrefix(obj) {
 
 function enchantmentPrefix(obj) {
     if (typeof obj?.spe !== 'number') return '';
+    if (!obj.known && !obj.knownName) return '';
     if (obj.oclass === ARMOR_CLASS || obj.oclass === WEAPON_CLASS || obj.otyp === RIN_INCREASE_ACCURACY) {
         return `${obj.spe >= 0 ? '+' : ''}${obj.spe}`;
     }
@@ -275,7 +367,7 @@ function chargeSuffix(obj) {
     if (typeof obj?.spe !== 'number') return '';
     if (obj.otyp === MAGIC_MARKER) return ` (0:${obj.spe})`;
     if (obj.oclass !== WAND_CLASS) return '';
-    if (obj.appearanceName && !obj.knownName) return '';
+    if (unknownAppearanceName(obj)) return '';
     if (obj.otyp === WAN_DIGGING && obj.knownName && !obj.chargesKnown) return '';
     return ` (0:${obj.spe})`;
 }
@@ -973,6 +1065,7 @@ function buildLevelTeleportMenu() {
         j: dlevelOf('castle', doomMax),
     };
     const levels = {
+        a: { dnum: 0, dlevel: 1 },
         b: branchFromDoomLevel('The Gnomish Mines'),
         c: dlevelForProto('oracle'),
         d: branchFromDoomLevel('Sokoban'),
@@ -996,7 +1089,9 @@ function buildLevelTeleportMenu() {
         ' \x1b[7mLevel teleport to where:\x1b[0m',
         '',
         ` \x1b[7mThe Dungeons of Doom: levels 1 to ${doomMax}\x1b[0m`,
-        ' a -   One way stair to The Elemental Planes: 1',
+        // C ref: teleport.c level_tele() menu marks the current dungeon level
+        // with '*' even for the synthetic Dungeons-of-Doom level-1 entry.
+        ` a - ${currentLevelMarker(levels.a)} One way stair to The Elemental Planes: 1`,
         ` b - ${currentLevelMarker(levels.b)} Stair to The Gnomish Mines: ${choices.b}`,
         ` c - ${currentLevelMarker(levels.c)} oracle: ${choices.c}`,
         ` d - ${currentLevelMarker(levels.d)} Stair to Sokoban: ${choices.d}`,
@@ -1073,6 +1168,36 @@ function buildLevelTeleportMenuPage2() {
     return { screen: lines.join('\n'), choices };
 }
 
+function appendLevelchangeTopline(line, msg) {
+    if (!line) return msg;
+    const candidate = `${line}  ${msg}`;
+    return candidate.length + LEVELCHANGE_MORE_LEN <= 80 ? candidate : null;
+}
+
+function applyLevelchangeInnates(oldLevel, newLevel) {
+    const uprops = game.u.uprops = game.u.uprops || {};
+    const roleName = game.urole?.name?.m;
+    const raceName = String(game.urace?.name || game._nhopts?.race || '').toLowerCase();
+    const abilities = [
+        ...(ROLE_INNATE_ABILITIES.get(roleName) || []),
+        ...(RACE_INNATE_ABILITIES.get(raceName) || []),
+    ];
+    const messages = [];
+    for (const ability of abilities) {
+        if (!(oldLevel < ability.level && newLevel >= ability.level)) continue;
+        const alreadyIntrinsic = !!uprops[ability.prop];
+        uprops[ability.prop] = true;
+        if (!alreadyIntrinsic && ability.gain) messages.push(`You feel ${ability.gain}!`);
+    }
+    return messages;
+}
+
+function enqueueLevelchangePostMessages(oldLevel, newLevel) {
+    const queue = game._levelchange_message_queue = game._levelchange_message_queue || [];
+    queue.push(`Welcome to experience level ${newLevel}.`);
+    queue.push(...applyLevelchangeInnates(oldLevel, newLevel));
+}
+
 async function performLevelTeleport(target) {
     const migratingPet = (game.level?.monsters || []).find(m => m.mtame);
     game._migrating_pet = migratingPet ? {
@@ -1086,6 +1211,7 @@ async function performLevelTeleport(target) {
     await mklev();
     place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
     pet_arrive_with_you();
+    initrack();
     vision_reset();
     vision_recalc(0);
     await docrt();
@@ -1094,23 +1220,49 @@ async function performLevelTeleport(target) {
 
 async function applyPendingLevelChange() {
     const target = Math.min(30, Math.max(1, Number(game._levelchange_target || 0)));
-    if (!target || (game.u?.ulevel || 1) >= target) {
+    const queue = game._levelchange_message_queue = game._levelchange_message_queue || [];
+    if (!target || ((game.u?.ulevel || 1) >= target && queue.length === 0)) {
         game._levelchange_target = 0;
+        game._levelchange_message_queue = [];
         game.context.move = 0;
         game._more = false;
         return;
     }
 
-    const newLevel = pluslvl();
-    let msg = `You feel more experienced.  Welcome to experience level ${newLevel}.`;
-    if (game.urole?.name?.m === 'Wizard' && newLevel === 16) {
-        msg = 'You feel more experienced.  Welcome to experience level 16.  You feel sensitive!';
-    } else if (game.urole?.name?.m === 'Wizard' && newLevel === 17) {
-        msg = 'You feel more experienced.  Welcome to experience level 17.  You feel controlled!';
+    let line = '';
+    while (true) {
+        let msg;
+        let preLevelGain = false;
+        if (queue.length > 0) {
+            msg = queue.shift();
+        } else if ((game.u?.ulevel || 1) < target) {
+            msg = 'You feel more experienced.';
+            preLevelGain = true;
+        } else {
+            break;
+        }
+
+        const nextLine = appendLevelchangeTopline(line, msg);
+        if (nextLine == null) {
+            if (!preLevelGain) queue.unshift(msg);
+            break;
+        }
+
+        line = nextLine;
+        if (preLevelGain) {
+            const oldLevel = game.u?.ulevel || 1;
+            const newLevel = pluslvl();
+            enqueueLevelchangePostMessages(oldLevel, newLevel);
+        }
     }
-    await pline(msg);
-    game._more = newLevel < target;
-    if (!game._more) game._levelchange_target = 0;
+
+    if (line) await pline(line);
+    const hasPending = queue.length > 0 || (game.u?.ulevel || 1) < target;
+    game._more = hasPending;
+    if (!hasPending) {
+        game._levelchange_target = 0;
+        game._levelchange_message_queue = [];
+    }
     game.context.move = 0;
 }
 
@@ -1193,6 +1345,7 @@ export async function rhack(key) {
             game._levelchange_input = '';
             if (target > 0) {
                 game._levelchange_target = target;
+                game._levelchange_message_queue = [];
                 await applyPendingLevelChange();
             } else {
                 await pline('Never mind.');
@@ -1500,15 +1653,17 @@ export async function rhack(key) {
         && game._pending_message.includes('welcome to NetHack')
         && (ch === ' ' || ch === '\r' || ch === '\n');
 
-    const swallowedWearMore = ch === ' '
-        && game.u?.uswallow
-        && typeof game._pending_message === 'string'
-        && game._pending_message.includes('finish your dressing maneuver');
-    if (swallowedWearMore) {
+    const occupationMore = ch === ' '
+        && game._occupation_paused_for_more
+        && game._more;
+    if (occupationMore) {
         clear_pending_message();
+        game._occupation_paused_for_more = false;
+        game._occupation_resume = true;
         game.context.move = 1;
         return;
     }
+
     if (game._more && (game._more_dismissals_remaining || 0) > 0
         && (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b')) {
         // Queued topl.c more prompts represent nested message pauses that

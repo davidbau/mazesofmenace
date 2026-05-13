@@ -136,6 +136,13 @@ export function add_inventory_object(obj) {
 function ini_inv_adjust_obj(trop, obj) {
     let stop = false;
     obj.cursed = false;
+    // C ref: u_init.c:ini_inv_adjust_obj(). Starting inventory is known to
+    // the hero; later wished/floor objects keep their own unknown flags.
+    obj.known = true;
+    obj.knownName = true;
+    obj.dknown = true;
+    obj.bknown = true;
+    obj.rknown = true;
     if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
         obj.quan = trquan(trop);
         stop = true;

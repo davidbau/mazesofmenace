@@ -4,7 +4,8 @@
 import { game } from './gstate.js';
 import { enexto_core, makemon, place_object } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, queue_more_prompt, flush_screen, clear_pending_message } from './display.js';
+import { nhgetch } from './input.js';
 import {
     ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, TABU, UNDEF,
     D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
@@ -344,6 +345,62 @@ function object_name(obj) {
     return 'an object';
 }
 
+function monster_name(mon) {
+    return String(mon?.data?.name || 'monster').toLowerCase().replace(/_/g, ' ');
+}
+
+function pet_name(mtmp) {
+    return String(mtmp?.data?.name || 'pet').toLowerCase().replace(/_/g, ' ');
+}
+
+function occupation_message_boundary_active() {
+    return (game._occupation_turns_remaining || 0) > 0 || !!game._occupation_finish_message;
+}
+
+async function append_topline_message(line) {
+    if (game._pending_message?.startsWith('You start putting on ')) game._pending_message = '';
+    if (game._pending_message) {
+        game._pending_message = `${game._pending_message}  ${line}`;
+        queue_more_prompt();
+        if (occupation_message_boundary_active()) {
+            // C ref: tty topline handling via pline()/--More--.  A second
+            // visible pet-combat pline can block inside the monster turn,
+            // before mdamagem()/mondead() apply visible death side effects.
+            if (game._occupation_finish_uac != null) game.u.uac = game._occupation_finish_uac;
+            await flush_screen(1);
+            await nhgetch();
+            clear_pending_message();
+        }
+    } else {
+        await pline(line);
+    }
+}
+
+async function pet_combat_message(mtmp, text) {
+    // C ref: mhitm.c:missmm()/hitmm(). Multiple pet-combat plines can land
+    // during a delayed occupation turn; tty pauses the occupation on --More--.
+    await append_topline_message(`The ${pet_name(mtmp)} ${text}`);
+}
+
+function refresh_pet_attack_symbols(mtmp, target) {
+    // C ref: mhitm.c:pre_mm_attack(). Refresh visible attacker and defender
+    // positions before missmm()/hitmm() writes the combat pline.
+    newsym(mtmp.mx, mtmp.my);
+    newsym(target.mx, target.my);
+}
+
+async function finish_pet_kill(mtmp, target) {
+    // C ref: mon.c:monkilled(). Monster-vs-monster death announces the
+    // visible defender before corpse/death side effects run.
+    await append_topline_message(`The ${monster_name(target)} is killed!`);
+    rn2(3); // corpse_chance
+    grow_up_from_kill(mtmp, target);
+    const monsters = game.level?.monsters || [];
+    const idx = monsters.indexOf(target);
+    if (idx >= 0) monsters.splice(idx, 1);
+    newsym(target.mx, target.my);
+}
+
 function dog_invent(mtmp, udist) {
     if (mtmp.meating || !game.level?.objects) return 0;
     const edog = init_edog(mtmp);
@@ -523,7 +580,7 @@ function grow_up_from_kill(mtmp, victim) {
     if (currentLevel < levelLimit) mtmp.m_lev = currentLevel + 1;
 }
 
-function pet_melee_attack(mtmp, target) {
+async function pet_melee_attack(mtmp, target) {
     if (!pet_should_attack(mtmp, target)) return false;
     // C ref: dogmove.c calls mattackm() for ALLOW_M candidates before
     // ranged attacks.  This is a narrow mhitm.c front door for the current
@@ -531,22 +588,21 @@ function pet_melee_attack(mtmp, target) {
     // plus death/growth follow-up RNG.
     const dieroll = rnd(20);
     if (dieroll > 10) {
+        refresh_pet_attack_symbols(mtmp, target);
+        await pet_combat_message(mtmp, `misses the ${monster_name(target)}.`);
         rn2(3);
         return true;
     }
 
     const damage = d(1, 6);
+    refresh_pet_attack_symbols(mtmp, target);
+    await pet_combat_message(mtmp, `bites the ${monster_name(target)}.`);
     const effectiveHp = Math.min(target.mhp ?? 1, Math.max(1, target.data?.mlevel ?? 1));
     target.mhp = effectiveHp - damage;
     rn2(3); // mhitm_knockback chance
     rn2(6); // mhitm_knockback distance/side gate
     if (target.mhp < 1) {
-        rn2(3); // corpse_chance
-        grow_up_from_kill(mtmp, target);
-        const monsters = game.level?.monsters || [];
-        const idx = monsters.indexOf(target);
-        if (idx >= 0) monsters.splice(idx, 1);
-        newsym(target.mx, target.my);
+        await finish_pet_kill(mtmp, target);
     } else {
         rn2(3);
     }
@@ -625,7 +681,7 @@ function pet_goal(mtmp, after, udist, whappr) {
     return { abort: false, gx, gy, appr };
 }
 
-export function dog_move(mtmp, after = true) {
+export async function dog_move(mtmp, after = true) {
     const udist = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
     if (!udist) return 0;
 
@@ -650,7 +706,7 @@ export function dog_move(mtmp, after = true) {
             const target = mon_at(nx, ny, mtmp);
             if (!pet_can_enter_square(mtmp, nx, ny, { ignoreMonster: !!target })) continue;
             if (target) {
-                if (pet_melee_attack(mtmp, target)) return 0;
+                if (await pet_melee_attack(mtmp, target)) return 0;
                 continue;
             }
             if (avoid_soko_push_loc(mtmp, nx, ny)) continue;
