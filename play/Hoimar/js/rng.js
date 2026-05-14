@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
+let _displayCtx = null;
 
 export function initRng(seed) {
     game.currentSeed = seed;
@@ -18,6 +19,7 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
+    _displayCtx = isaac64_init(bytes);
     _rngLog = [];
 }
 
@@ -30,6 +32,12 @@ function RND(x) {
     return Number(val % BigInt(x));
 }
 
+function DISPLAY_RND(x) {
+    if (!_displayCtx || x <= 0) return 0;
+    const val = isaac64_next_uint64(_displayCtx);
+    return Number(val % BigInt(x));
+}
+
 // C ref: rn2(x) — random number 0..x-1
 export function rn2(x) {
     if (x <= 0) return 0;
@@ -38,12 +46,20 @@ export function rn2(x) {
     return val;
 }
 
+export function rn2Display(x) {
+    return DISPLAY_RND(x);
+}
+
 // C ref: rnd(x) — random number 1..x
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
     if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
     return val;
+}
+
+export function rndDisplay(x) {
+    return DISPLAY_RND(x) + 1;
 }
 
 // C ref: rn1(x, y) — random number y..y+x-1

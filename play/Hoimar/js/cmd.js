@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt } from './display.js';
+import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt, refresh_swallowed_overlay } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { mklev, mksobj, place_lregion, place_object } from './mklev.js';
 import { OBJECT_DELAY } from './object_data.js';
@@ -19,6 +19,7 @@ import { roleGod } from './roles.js';
 import { rn1, rn2, rnd, rnz } from './rng.js';
 import { getObjectDescription } from './o_init.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
+import * as C from './const.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
     SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, A_DEX, A_WIS,
@@ -53,6 +54,10 @@ const POTION_CLASS = 8;
 const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
+const FIRST_SPELL = 366;
+const LAST_SPELL = 407;
+const SPE_NOVEL = 408;
+const SPE_BOOK_OF_THE_DEAD = 409;
 const LEVELCHANGE_MORE_LEN = '--More--'.length;
 
 const OBJECT_BASE_NAMES = new Map([
@@ -78,6 +83,8 @@ const OBJECT_BASE_NAMES = new Map([
     [380, 'spellbook of slow monster'],
     [383, 'spellbook of force bolt'],
     [397, 'spellbook of identify'],
+    [SPE_NOVEL, 'novel'],
+    [SPE_BOOK_OF_THE_DEAD, 'Book of the Dead'],
     [WAN_MAKE_INVISIBLE, 'wand of make invisible'],
     [WAN_DIGGING, 'wand of digging'],
     [WAN_FIRE, 'wand of fire'],
@@ -320,6 +327,16 @@ function unknownAppearanceName(obj) {
             if (shuffledDescription === 'unlabeled') return 'unlabeled scroll';
             return `scroll labeled ${shuffledDescription}`;
         }
+        if (obj?.oclass === SPBOOK_CLASS && obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL) {
+            return `${shuffledDescription} spellbook`;
+        }
+        if (obj?.oclass === SPBOOK_CLASS && obj.otyp === SPE_NOVEL) {
+            return `${shuffledDescription} book`;
+        }
+        if (obj?.oclass === SPBOOK_CLASS && obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+            return `${shuffledDescription} spellbook`;
+        }
+        if (obj?.oclass === ARMOR_CLASS) return shuffledDescription;
         if (obj?.oclass === WAND_CLASS) return `${shuffledDescription} wand`;
     }
     return '';
@@ -780,6 +797,200 @@ function showSerializedOverride(screen, cursor) {
     }
     showOverride(screen, cursor);
     game._override_serialized_screen = screen;
+}
+
+const DEFAULT_TIMEOUT_INCR = 30;
+const MENU_ROWS_PER_PAGE = C.TERMINAL_ROWS - 1;
+const MENU_SELECTOR_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+const WIZ_INTRINSIC_PROPERTIES = [
+    { prop: C.INVULNERABLE, stateKey: 'invulnerable', label: 'invulnerable' },
+    { prop: C.STONED, stateKey: 'stoned', label: 'petrifying' },
+    { prop: C.SLIMED, stateKey: 'slimed', label: 'becoming slime' },
+    { prop: C.STRANGLED, stateKey: 'strangled', label: 'strangling' },
+    { prop: C.SICK, stateKey: 'sick', label: 'fatally sick' },
+    { prop: C.STUNNED, stateKey: 'stunned', label: 'stunned' },
+    { prop: C.CONFUSION, stateKey: 'confusion', label: 'confused' },
+    { prop: C.HALLUC, stateKey: 'hallucination', label: 'hallucinating' },
+    { prop: C.BLINDED, stateKey: 'blinded', label: 'blinded' },
+    { prop: C.DEAF, stateKey: 'deaf', label: 'deafness' },
+    { prop: C.VOMITING, stateKey: 'vomiting', label: 'vomiting' },
+    { prop: C.GLIB, stateKey: 'glib', label: 'slippery fingers' },
+    { prop: C.WOUNDED_LEGS, stateKey: 'wounded_legs', label: 'wounded legs' },
+    { prop: C.SLEEPY, stateKey: 'sleepy', label: 'sleepy' },
+    { prop: C.TELEPORT, stateKey: 'teleporting', label: 'teleporting' },
+    { prop: C.POLYMORPH, stateKey: 'polymorphing', label: 'polymorphing' },
+    { prop: C.LEVITATION, stateKey: 'levitation', label: 'levitating' },
+    { prop: C.FAST, stateKey: 'fast', label: 'very fast' },
+    { prop: C.CLAIRVOYANT, stateKey: 'clairvoyant', label: 'clairvoyant' },
+    { prop: C.DETECT_MONSTERS, stateKey: 'monster_detection', label: 'monster detection' },
+    { prop: C.SEE_INVIS, stateKey: 'see_invisible', label: 'see invisible' },
+    { prop: C.INVIS, stateKey: 'invisible', label: 'invisible' },
+    { prop: C.ACID_RES, stateKey: 'acid_resistance', label: 'acid resistance' },
+    { prop: C.STONE_RES, stateKey: 'stoning_resistance', label: 'stoning resistance' },
+    { prop: C.DISPLACED, stateKey: 'displaced', label: 'displaced' },
+    { prop: C.PASSES_WALLS, stateKey: 'pass_thru_walls', label: 'pass thru walls' },
+    { prop: C.MAGICAL_BREATHING, stateKey: 'magical_breathing', label: 'magical breathing' },
+    { prop: C.WWALKING, stateKey: 'water_walking', label: 'water walking' },
+    { prop: C.FIRE_RES, stateKey: 'fire_resistance', label: 'fire resistance' },
+    { prop: C.COLD_RES, stateKey: 'cold_resistance', label: 'cold resistance' },
+    { prop: C.SLEEP_RES, stateKey: 'sleep_resistance', label: 'sleep resistance' },
+    { prop: C.DISINT_RES, stateKey: 'disintegration_resistance', label: 'disintegration resistance' },
+    { prop: C.SHOCK_RES, stateKey: 'shock_resistance', label: 'shock resistance' },
+    { prop: C.POISON_RES, stateKey: 'poison_resistance', label: 'poison resistance' },
+    { prop: C.DRAIN_RES, stateKey: 'drain_resistance', label: 'drain resistance' },
+    { prop: C.SICK_RES, stateKey: 'sickness_resistance', label: 'sickness resistance' },
+    { prop: C.ANTIMAGIC, stateKey: 'magic_resistance', label: 'magic resistance' },
+    { prop: C.HALLUC_RES, stateKey: 'hallucination_resistance', label: 'hallucination resistance' },
+    { prop: C.BLND_RES, stateKey: 'light_induced_blindness_resistance', label: 'light-induced blindness resistance' },
+    { prop: C.FUMBLING, stateKey: 'fumbling', label: 'fumbling' },
+    { prop: C.HUNGER, stateKey: 'voracious_hunger', label: 'voracious hunger' },
+    { prop: C.TELEPAT, stateKey: 'telepathic', label: 'telepathic' },
+    { prop: C.WARNING, stateKey: 'warning', label: 'warning' },
+    { prop: C.WARN_OF_MON, stateKey: 'warn_monster_type_or_class', label: 'warn: monster type or class' },
+    { prop: C.WARN_UNDEAD, stateKey: 'warn_undead', label: 'warn: undead' },
+    { prop: C.SEARCHING, stateKey: 'searching', label: 'searching' },
+    { prop: C.INFRAVISION, stateKey: 'infravision', label: 'infravision' },
+    { prop: C.ADORNED, stateKey: 'adorned', label: 'adorned (+/- Cha)' },
+    { prop: C.STEALTH, stateKey: 'stealth', label: 'stealthy' },
+    { prop: C.AGGRAVATE_MONSTER, stateKey: 'monster_aggravation', label: 'monster aggravation' },
+    { prop: C.CONFLICT, stateKey: 'conflict', label: 'conflict' },
+    { prop: C.JUMPING, stateKey: 'jumping', label: 'jumping' },
+    { prop: C.TELEPORT_CONTROL, stateKey: 'teleport_control', label: 'teleport control' },
+    { prop: C.FLYING, stateKey: 'flying', label: 'flying' },
+    { prop: C.SWIMMING, stateKey: 'swimming', label: 'swimming' },
+    { prop: C.SLOW_DIGESTION, stateKey: 'slow_digestion', label: 'slow digestion' },
+    { prop: C.HALF_SPDAM, stateKey: 'half_spell_damage', label: 'half spell damage' },
+    { prop: C.HALF_PHDAM, stateKey: 'half_physical_damage', label: 'half physical damage' },
+    { prop: C.REGENERATION, stateKey: 'hp_regeneration', label: 'HP regeneration' },
+    { prop: C.ENERGY_REGENERATION, stateKey: 'energy_regeneration', label: 'energy regeneration' },
+    { prop: C.PROTECTION, stateKey: 'extra_protection', label: 'extra protection' },
+    { prop: C.PROT_FROM_SHAPE_CHANGERS, stateKey: 'protection_from_shape_changers', label: 'protection from shape changers' },
+    { prop: C.POLYMORPH_CONTROL, stateKey: 'polymorph_control', label: 'polymorph control' },
+    { prop: C.UNCHANGING, stateKey: 'unchanging', label: 'unchanging' },
+    { prop: C.REFLECTING, stateKey: 'reflecting', label: 'reflecting' },
+    { prop: C.FREE_ACTION, stateKey: 'free_action', label: 'free action' },
+    { prop: C.FIXED_ABIL, stateKey: 'fixed_abilities', label: 'fixed abilities' },
+    { prop: C.LIFESAVED, stateKey: 'life_will_be_saved', label: 'life will be saved' },
+];
+
+function intrinsicTimeoutValue(row) {
+    const value = game.u?.uprops?.[row.stateKey];
+    return typeof value === 'number' && value > 0 ? value : 0;
+}
+
+function intrinsicMenuRows() {
+    const rows = [
+        { kind: 'text', text: ' \x1b[7mWhich intrinsics?\x1b[0m' },
+        { kind: 'blank' },
+    ];
+    if (game.iflags?.cmdassist !== false) {
+        rows.push({
+            kind: 'text',
+            text: ` [Precede any selection with a count to increment by other than ${DEFAULT_TIMEOUT_INCR}.]`,
+        });
+    }
+    for (const row of WIZ_INTRINSIC_PROPERTIES) {
+        if (row.prop === C.HALLUC_RES) continue;
+        if (row.prop === C.FIRE_RES) {
+            rows.push({ kind: 'text', text: ' --' });
+        }
+        rows.push({ kind: 'selectable', ...row });
+    }
+    return rows;
+}
+
+function renderIntrinsicMenu(menu) {
+    const rows = menu.rows;
+    const start = menu.page * MENU_ROWS_PER_PAGE;
+    const pageRows = rows.slice(start, start + MENU_ROWS_PER_PAGE);
+    const lines = [];
+    let selectorIndex = 0;
+    for (const row of pageRows) {
+        if (row.kind === 'selectable') {
+            const selector = MENU_SELECTOR_CHARS[selectorIndex++] || '?';
+            row.selector = selector;
+            const indicator = row.count > 0 ? '#' : (row.selected ? '+' : '-');
+            const timeout = intrinsicTimeoutValue(row);
+            const tail = timeout ? ` [${timeout}]` : '';
+            lines.push(` ${selector} ${indicator} ${row.label}${tail}`);
+        } else {
+            lines.push(row.text || '');
+        }
+    }
+    const footer = menu.pages.length > 1
+        ? ` (${menu.page + 1} of ${menu.pages.length})`
+        : ' (end)';
+    lines.push(footer);
+    const screen = lines.join('\n');
+    showSerializedOverride(screen, [footer.length, lines.length - 1]);
+}
+
+function beginIntrinsicMenu() {
+    game._intrinsic_menu = {
+        kind: 'wizintrinsic',
+        rows: intrinsicMenuRows(),
+        page: 0,
+        pages: [],
+        count: '',
+    };
+    game._intrinsic_menu.pages = [];
+    for (let i = 0; i < game._intrinsic_menu.rows.length; i += MENU_ROWS_PER_PAGE) {
+        game._intrinsic_menu.pages.push(game._intrinsic_menu.rows.slice(i, i + MENU_ROWS_PER_PAGE));
+    }
+    renderIntrinsicMenu(game._intrinsic_menu);
+}
+
+function intrinsicRowForSelector(menu, ch) {
+    const start = menu.page * MENU_ROWS_PER_PAGE;
+    let selectorIndex = 0;
+    for (const row of menu.rows.slice(start, start + MENU_ROWS_PER_PAGE)) {
+        if (row.kind !== 'selectable') continue;
+        const selector = MENU_SELECTOR_CHARS[selectorIndex++] || '?';
+        if (selector === ch) return row;
+    }
+    return null;
+}
+
+function updateIntrinsicMenuSelection(menu, row, count) {
+    if (!row) return;
+    const togglingOff = row.selected && !count;
+    if (togglingOff) {
+        row.selected = false;
+        row.count = -1;
+    } else {
+        row.selected = true;
+        row.count = count > 0 ? count : -1;
+    }
+}
+
+async function commitIntrinsicMenuSelection(menu) {
+    const selected = menu.rows.filter((row) => row.kind === 'selectable' && row.selected);
+    game._intrinsic_menu = null;
+    game._override_screen = null;
+    game._override_serialized_screen = null;
+    game._override_cursor = null;
+    game._override_prev = null;
+    if (!selected.length) {
+        return;
+    }
+    for (const row of selected) {
+        const oldtimeout = intrinsicTimeoutValue(row);
+        const amt = row.count > 0 ? row.count : DEFAULT_TIMEOUT_INCR;
+        const newtimeout = oldtimeout + amt;
+        game.u = game.u || {};
+        game.u.uprops = game.u.uprops || {};
+        if (row.prop === C.HALLUC) {
+            game.u.uprops.hallucination = newtimeout;
+            game.u.uhallucination = newtimeout;
+            refresh_swallowed_overlay();
+            await pline('Oh wow!  Everything looks so cosmic!');
+            queue_more_prompt();
+            continue;
+        }
+        game.u.uprops[row.stateKey] = newtimeout;
+        await pline(`Timeout for ${row.label} set to ${amt}.`);
+    }
 }
 
 async function showInventoryMenu() {
@@ -1374,8 +1585,8 @@ export async function rhack(key) {
                 game._awaiting_pray_confirm = true;
                 game.context.move = 0;
             } else if (cmd === 'wizintrinsic') {
-                await showPromptLine('Which intrinsics?');
-                game._awaiting_wizintrinsic = true;
+                beginIntrinsicMenu();
+                game._intrinsic_menu.count = '';
                 game.context.move = 0;
             } else {
                 await pline(`Unknown extended command: ${cmd || '#'}.`);
@@ -1404,18 +1615,81 @@ export async function rhack(key) {
         return;
     }
 
-    if (game._awaiting_wizintrinsic) {
-        if (ch === 'h' || ch === 'H') {
-            game._awaiting_wizintrinsic = false;
-            game.u = game.u || {};
-            game.u.uprops = game.u.uprops || {};
-            game.u.uprops.hallucination = 30;
-            await pline('Timeout for hallucination set to 30.');
+    if (game._intrinsic_menu) {
+        const menu = game._intrinsic_menu;
+        game._override_prev = null;
+        if (ch >= '0' && ch <= '9') {
+            menu.count = `${menu.count || ''}${ch}`;
+            renderIntrinsicMenu(menu);
             game.context.move = 0;
             return;
         }
-        if (ch === '\r' || ch === '\n' || ch === ' ' || ch === '\x1b') {
-            game._awaiting_wizintrinsic = false;
+        if (ch === '\x1b') {
+            game._intrinsic_menu = null;
+            game._override_screen = null;
+            game._override_serialized_screen = null;
+            game._override_cursor = null;
+            await docrt();
+            game.context.move = 0;
+            return;
+        }
+        if (ch === ' ' || ch === '>' || ch === '<' || ch === '^' || ch === '|') {
+            if (ch === ' ' && menu.page < menu.pages.length - 1) {
+                menu.page++;
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+                game.context.move = 0;
+                return;
+            }
+            if (ch === '>' && menu.page < menu.pages.length - 1) {
+                menu.page++;
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+                game.context.move = 0;
+                return;
+            }
+            if (ch === '<' && menu.page > 0) {
+                menu.page--;
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+                game.context.move = 0;
+                return;
+            }
+            if (ch === '^' && menu.page > 0) {
+                menu.page = 0;
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+                game.context.move = 0;
+                return;
+            }
+            if (ch === '|' && menu.page < menu.pages.length - 1) {
+                menu.page = menu.pages.length - 1;
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+                game.context.move = 0;
+                return;
+            }
+            if (ch !== ' ') {
+                game.context.move = 0;
+                return;
+            }
+            await commitIntrinsicMenuSelection(menu);
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '\r' || ch === '\n') {
+            await commitIntrinsicMenuSelection(menu);
+            game.context.move = 0;
+            return;
+        }
+        if (/^[A-Za-z]$/.test(ch)) {
+            const row = intrinsicRowForSelector(menu, ch);
+            if (row) {
+                const count = menu.count ? Number.parseInt(menu.count, 10) : 0;
+                updateIntrinsicMenuSelection(menu, row, count);
+                menu.count = '';
+                renderIntrinsicMenu(menu);
+            }
             game.context.move = 0;
             return;
         }

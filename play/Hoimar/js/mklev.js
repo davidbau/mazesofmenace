@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin, dist2 } from './hacklib.js';
-import { randomEngraving } from './random_text.js';
+import { randomEngraving, randomEpitaph } from './random_text.js';
 import {
     OBJECT_CLASS, OBJECT_PROB, OBJECT_CHARGED, OBJECT_DIR,
     CLASS_BASES, CLASS_TOTALS,
@@ -127,6 +127,8 @@ const PICK_AXE = 259;
 const GRAPPLING_HOOK = 260;
 const UNICORN_HORN = 261;
 const GOLD_PIECE = 438;
+const LUCKSTONE = 470;
+const LOADSTONE = 471;
 const ROCK = 474;
 const KELP_FROND = 275;
 const SCR_TELEPORTATION = 333;
@@ -899,9 +901,11 @@ function mksobj_init(otmp, otyp, artif) {
         }
         break;
     case GEM_CLASS:
-        if (!rn2(6)) {
-            otmp.quan = 2;
-        }
+        otmp.corpsenm = 0;
+        if (otyp === LOADSTONE) curse(otmp);
+        else if (otyp === ROCK) otmp.quan = rn1(6, 6);
+        else if (otyp !== LUCKSTONE && !rn2(6)) otmp.quan = 2;
+        else otmp.quan = 1;
         break;
     case ROCK_CLASS:
         if (otyp === ROCK) {
@@ -1131,6 +1135,32 @@ function set_corpsenm(otmp, pm) {
     if (otmp) otmp.corpsenm = pm;
 }
 
+function monster_ptr(ref) {
+    if (typeof ref === 'number') return MONSTERS[ref] || null;
+    if (typeof ref === 'string') return MONSTERS.find((mon) => mon.name === ref) || null;
+    return ref?.name ? ref : null;
+}
+
+function is_rider_ref(ref) {
+    const name = monster_ptr(ref)?.name;
+    return name === 'DEATH' || name === 'FAMINE' || name === 'PESTILENCE';
+}
+
+function special_corpse(ref) {
+    const ptr = monster_ptr(ref);
+    if (!ptr) return false;
+    return ptr.name === 'LIZARD' || ptr.name === 'LICHEN'
+        || ptr.mlet === 'S_TROLL' || is_rider_ref(ptr);
+}
+
+function start_corpse_timeout(body) {
+    // C ref: mkobj.c:start_corpse_timeout(). Timer storage is still future
+    // work; this preserves the RNG shape for ordinary rotting corpses.
+    const ptr = monster_ptr(body?.corpsenm);
+    if (!ptr || ptr.name === 'LIZARD' || ptr.name === 'LICHEN') return;
+    rnz(game.in_mklev ? 25 : 10);
+}
+
 // mkcorpstat stub
 function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
@@ -1138,8 +1168,12 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // corpsenm before mkcorpstat's caller-supplied type overrides it.
     // RNG: next_ident from mksobj
     const otmp = mksobj(objtyp, !!(flags & 8), false);
+    const oldCorpsenm = otmp.corpsenm;
     if (pm !== null && pm !== undefined) {
         otmp.corpsenm = pm;
+        if (otmp.otyp === CORPSE && (special_corpse(oldCorpsenm) || special_corpse(otmp.corpsenm))) {
+            start_corpse_timeout(otmp);
+        }
     } else if (!otmp.corpsenm) {
         // rndmonnum — pick random monster
         otmp.corpsenm = rndmonnum();
@@ -1966,6 +2000,7 @@ function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
 function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
     if (loc) loc.typ = GRAVE;
+    if (text == null) randomEpitaph();
 }
 
 // in_rooms stub
@@ -3283,6 +3318,20 @@ const THEMED_MAPS = new Map([
             '-----xxx',
         ],
     }],
+    ['Circular, medium', {
+        filler: [4, 4],
+        map: [
+            'xx-----xx',
+            'x--...--x',
+            '--.....--',
+            '|.......|',
+            '|.......|',
+            '|.......|',
+            '--.....--',
+            'x--...--x',
+            'xx-----xx',
+        ],
+    }],
     ['S-shaped', {
         filler: [2, 2],
         map: [
@@ -3427,15 +3476,98 @@ function themed_map_typ(ch) {
     }
 }
 
+function themed_map_origin_ok(rows, width, height, xstart, ystart) {
+    const xmax = Math.min(COLNO, xstart + width);
+    const ymax = Math.min(ROWNO, ystart + height);
+    for (let y = ystart - 1; y < ymax + 1; y++) {
+        for (let x = xstart - 1; x < xmax + 1; x++) {
+            if (!isok(x, y)) return false;
+            const loc = game.level.at(x, y);
+            if (y < ystart || y >= ystart + height || x < xstart || x >= xstart + width) {
+                if (loc.typ !== STONE || loc.roomno !== 0) return false;
+                continue;
+            }
+            const ch = rows[y - ystart]?.[x - xstart] || 'x';
+            const typ = themed_map_typ(ch);
+            if (((loc.typ !== STONE && loc.typ !== typ) || loc.roomno !== 0)) return false;
+        }
+    }
+    return true;
+}
+
+function lua_shuffle(values) {
+    for (let i = values.length; i > 1; i--) {
+        const j = rn2(i);
+        [values[i - 1], values[j]] = [values[j], values[i - 1]];
+    }
+}
+
+function choose_themeroom_fill(croom) {
+    const diff = level_difficulty();
+    const fills = [
+        { name: 'Ice room' },
+        { name: 'Cloud room' },
+        { name: 'Boulder room', eligible: () => diff >= 4 },
+        { name: 'Spider nest' },
+        { name: 'Trap room' },
+        { name: 'Garden', eligible: () => !!croom.rlit },
+        { name: 'Buried treasure' },
+        { name: 'Buried zombies' },
+        { name: 'Massacre' },
+        { name: 'Statuary' },
+        { name: 'Light source', eligible: () => !croom.rlit },
+        { name: 'Temple of the gods' },
+        { name: 'Ghost of an Adventurer' },
+        { name: 'Storeroom' },
+        { name: 'Teleportation hub' },
+    ];
+    let pick = null;
+    let total = 0;
+    for (const fill of fills) {
+        if (fill.eligible && !fill.eligible()) continue;
+        const frequency = fill.frequency ?? 1;
+        total += frequency;
+        if (frequency > 0 && rn2(total) < frequency) pick = fill;
+    }
+    return pick?.name || null;
+}
+
+function apply_themeroom_fill(croom) {
+    const fill = choose_themeroom_fill(croom);
+    if (fill !== 'Buried zombies') return;
+
+    const diff = level_difficulty();
+    const zombifiable = ['kobold', 'gnome', 'orc', 'dwarf'];
+    if (diff > 3) zombifiable.push('elf', 'human');
+    if (diff > 6) zombifiable.push('ettin', 'giant');
+
+    const count = Math.trunc(((croom.hx - croom.lx + 1) * (croom.hy - croom.ly + 1)) / 2);
+    for (let i = 0; i < count; i++) {
+        lua_shuffle(zombifiable);
+        const x = somex(croom);
+        const y = somey(croom);
+        mkcorpstat(CORPSE, null, zombifiable[0], x, y, 8);
+    }
+}
+
 function create_themed_map_room(spec) {
     const rows = spec.map;
     const height = rows.length;
     const width = Math.max(...rows.map(row => row.length));
-    const xstart = 1 + rn2(COLNO - 1 - width);
-    const ystart = rn2(ROWNO - height);
+    let xstart = 0;
+    let ystart = 0;
+    let ok = false;
+    for (let tryct = 0; tryct <= 100; tryct++) {
+        xstart = 1 + rn2(COLNO - 1 - width);
+        ystart = rn2(ROWNO - height);
+        if (themed_map_origin_ok(rows, width, height, xstart, ystart)) {
+            ok = true;
+            break;
+        }
+    }
+    if (!ok) return false;
 
-    // C ref: themerms.lua filler_region() percent(30). The selected fill
-    // handler is not wired yet, but the RNG decision belongs here.
+    // C ref: themerms.lua:filler_region() after mapped themed rooms.
     const themedFill = rn2(100) < 30;
     const lit = litstate_rnd(-1);
 
@@ -3499,10 +3631,9 @@ function create_themed_map_room(spec) {
             }
     }
 
-    const rtype = themedFill ? THEMEROOM : OROOM;
     const croom = {
         lx: minx, ly: miny, hx: maxx, hy: maxy,
-        rtype, rlit: lit ? 1 : 0,
+        rtype: themedFill ? THEMEROOM : OROOM, rlit: lit ? 1 : 0,
         doorct: 0, fdoor: game.level.doorindex,
         irregular: true, needjoining: true,
         nsubrooms: 0, sbrooms: [],
@@ -3513,6 +3644,7 @@ function create_themed_map_room(spec) {
     game.level.rooms[game.level.nroom] = croom;
     game.level.nroom++;
     if (game.level.nroom < MAXNROFROOMS) game.level.rooms[game.level.nroom] = { hx: -1 };
+    if (themedFill) apply_themeroom_fill(croom);
     return true;
 }
 
@@ -4707,8 +4839,8 @@ function mktrap_victim(trap) {
     // Object based on trap type
     let otmp = null;
     switch (kind) {
-    case ARROW_TRAP: otmp = mksobj(349, true, false); break; // ARROW
-    case DART_TRAP: otmp = mksobj(353, true, false); break; // DART
+    case ARROW_TRAP: otmp = mksobj(ARROW, true, false); break;
+    case DART_TRAP: otmp = mksobj(DART, true, false); break;
     case ROCKTRAP: otmp = mksobj(ROCK, true, false); break;
     default: break;
     }

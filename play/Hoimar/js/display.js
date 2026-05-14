@@ -3,6 +3,8 @@
 
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
+import { rn2Display } from './rng.js';
+import { MONSTER_DATA } from './monster_data.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -26,7 +28,7 @@ import { roleRankForLevel } from './roles.js';
 // C ref: wintty.c term_start_color
 const ANSI_DEFAULT = 39;
 const ANSI_COLOR = [
-    30,  // CLR_BLACK     0
+    90,  // CLR_BLACK     0 (tty wc2_darkgray)
     31,  // CLR_RED       1
     32,  // CLR_GREEN     2
     33,  // CLR_BROWN     3
@@ -58,6 +60,24 @@ const GENERIC_OBJECT_GLYPH = {
     [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
     [SPBOOK_CLASS]: { ch: '+', color: CLR_GRAY },
     [GEM_CLASS]: { ch: '*', color: CLR_GRAY },
+};
+
+const MONSTER_SYMBOLS = {
+    S_ANT: 'a', S_BLOB: 'b', S_COCKATRICE: 'c', S_DOG: 'd',
+    S_EYE: 'e', S_FELINE: 'f', S_GREMLIN: 'g', S_HUMANOID: 'h',
+    S_IMP: 'i', S_JELLY: 'j', S_KOBOLD: 'k', S_LEPRECHAUN: 'l',
+    S_MIMIC: 'm', S_NYMPH: 'n', S_ORC: 'o', S_PIERCER: 'p',
+    S_QUADRUPED: 'q', S_RODENT: 'r', S_SPIDER: 's', S_TRAPPER: 't',
+    S_UNICORN: 'u', S_VORTEX: 'v', S_WORM: 'w', S_XAN: 'x',
+    S_LIGHT: 'y', S_ZRUTY: 'z', S_ANGEL: 'A', S_BAT: 'B',
+    S_CENTAUR: 'C', S_DRAGON: 'D', S_ELEMENTAL: 'E', S_FUNGUS: 'F',
+    S_GNOME: 'G', S_GIANT: 'H', S_JABBERWOCK: 'J', S_KOP: 'K',
+    S_LICH: 'L', S_MUMMY: 'M', S_NAGA: 'N', S_OGRE: 'O',
+    S_PUDDING: 'P', S_QUANTMECH: 'Q', S_RUSTMONST: 'R', S_SNAKE: 'S',
+    S_TROLL: 'T', S_UMBER: 'U', S_VAMPIRE: 'V', S_WRAITH: 'W',
+    S_XORN: 'X', S_YETI: 'Y', S_ZOMBIE: 'Z', S_GOLEM: '\'',
+    S_HUMAN: '@', S_GHOST: ' ', S_DEMON: '&', S_EEL: ';',
+    S_LIZARD: ':', S_WORM_TAIL: '~',
 };
 
 function tty_color(color) {
@@ -200,6 +220,17 @@ function monster_glyph(mon) {
     if (mon?.m_ap_type === M_AP_OBJECT && mon.mappearance === BOULDER) {
         return { ch: '`', color: CLR_GRAY, dec: false };
     }
+    if (game.u?.uprops?.hallucination || game.u?.uhallucination) {
+        // C ref: display.h:mon_to_glyph() -> what_mon(..., rn2_on_display_rng).
+        const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
+        if (mdat) {
+            return {
+                ch: MONSTER_SYMBOLS[mdat[1]] ?? 'm',
+                color: mdat[7] ?? NO_COLOR,
+                dec: false,
+            };
+        }
+    }
     return { ch: mon.ch, color: mon.color, dec: false };
 }
 
@@ -254,18 +285,52 @@ const SWALLOW_CHARS = [
     ['\\', 's', '/'],
 ];
 
-function swallowed_glyph_at(x, y) {
+function swallowed_overlay_key() {
     if (!game._swallowed_map_active || !game.u?.ustuck) return null;
+    return `${game.u.ux},${game.u.uy}`;
+}
+
+function build_swallowed_overlay() {
+    const key = swallowed_overlay_key();
+    if (!key) return null;
+    if (game._swallowed_overlay?.key === key) return game._swallowed_overlay;
+
     const ux = game.u.ux;
     const uy = game.u.uy;
-    const dx = x - ux;
-    const dy = y - uy;
-    if (dx < -1 || dx > 1 || dy < -1 || dy > 1) return null;
-    const ch = SWALLOW_CHARS[dy + 1][dx + 1];
-    return {
-        ch,
-        color: ch === '@' ? CLR_WHITE : (game.u.ustuck.data?.color ?? CLR_GREEN),
-    };
+    const overlay = new Map();
+
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            const x = ux + dx;
+            const y = uy + dy;
+            if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) continue;
+            const ch = SWALLOW_CHARS[dy + 1][dx + 1];
+            if (ch === '@') {
+                overlay.set(`${x},${y}`, { ch, color: CLR_WHITE });
+                continue;
+            }
+            let color = game.u.ustuck.data?.color ?? CLR_GREEN;
+            if (game.u?.uprops?.hallucination) {
+                const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
+                color = mdat ? (mdat[7] ?? NO_COLOR) : color;
+            }
+            overlay.set(`${x},${y}`, { ch, color });
+        }
+    }
+
+    game._swallowed_overlay = { key, cells: overlay };
+    return game._swallowed_overlay;
+}
+
+export function refresh_swallowed_overlay() {
+    game._swallowed_overlay = null;
+    return build_swallowed_overlay();
+}
+
+function swallowed_glyph_at(x, y) {
+    const overlay = build_swallowed_overlay();
+    if (!overlay) return null;
+    return overlay.cells.get(`${x},${y}`) || null;
 }
 
 // ── newsym ──
@@ -346,6 +411,7 @@ export async function docrt() {
 function render_map_row(y) {
     if (!game.level) return '';
     if (game._swallowed_map_active) {
+        build_swallowed_overlay();
         const ux = game.u?.ux ?? 0;
         const uy = game.u?.uy ?? 0;
         if (y < uy - 1 || y > uy + 1) return '';
@@ -451,7 +517,10 @@ function _statusLine2() {
         ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
         : `Xp:${u.ulevel || 1}`;
     const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
-    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}`;
+    const conditions = [];
+    if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
+    const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
+    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -546,7 +615,6 @@ function renderOverrideScreen(display, screen) {
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
-
     if (game._override_screen) {
         renderOverrideScreen(display, game._override_screen);
         return;
@@ -572,8 +640,14 @@ function _buildScreenOutput() {
         display.clearScreen();
         // Message line
         const msg = (game._pending_message || '') + (game._more ? '--More--' : '');
-        for (let c = 0; c < Math.min(msg.length, display.cols); c++)
-            display.setCell(c, 0, msg[c], NO_COLOR, 0);
+        const pending = game._pending_message || '';
+        if (game._more && game._more_next_message_row) {
+            for (let c = 0; c < Math.min(pending.length, display.cols); c++)
+                display.setCell(c, 0, pending[c], NO_COLOR, 0);
+        } else {
+            for (let c = 0; c < Math.min(msg.length, display.cols); c++)
+                display.setCell(c, 0, msg[c], NO_COLOR, 0);
+        }
         // Map — write characters to grid (DEC → Unicode for browser display)
         if (!game._swallowed_map_active) {
             for (let y = 0; y < ROWNO; y++) {
@@ -601,8 +675,13 @@ function _buildScreenOutput() {
         const s2 = _statusLine2();
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
+        if (game._more && game._more_next_message_row) {
+            const more = '--More--';
+            for (let c = 0; c < more.length; c++) display.setCell(c, 1, more[c], NO_COLOR, 0);
+        }
         // Cursor at hero
         if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
+        else if (game._more && game._more_next_message_row) display.setCursor('--More--'.length, 1);
         else if (msg && game._more) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
         else if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -618,6 +697,7 @@ export async function flush_screen(mode) {
 export async function cls() {
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
+    game._swallowed_overlay = null;
     game._pending_message = '';
 }
 
@@ -639,6 +719,7 @@ export function queue_more_prompt(count = 1) {
 export function clear_pending_message() {
     game._pending_message = '';
     game._more = false;
+    game._more_next_message_row = false;
     game._more_dismissals_remaining = 0;
     game._hero_melee_message_pending = false;
     game._prompt_cursor = null;

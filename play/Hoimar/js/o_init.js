@@ -137,6 +137,76 @@ OBJECT_DESCRIPTION[363] = 'STRC PRST SKRZ KRK';
 OBJECT_DESCRIPTION[364] = 'stamped';
 OBJECT_DESCRIPTION[365] = 'unlabeled';
 
+// C ref: objects.h ARMOR desc rows for the subranges shuffled by
+// o_init.c:shuffle_all() via HELMET, LEATHER_GLOVES, CLOAK_OF_PROTECTION,
+// and SPEED_BOOTS.
+OBJECT_DESCRIPTION[97] = 'plumed helmet';
+OBJECT_DESCRIPTION[98] = 'etched helmet';
+OBJECT_DESCRIPTION[99] = 'crested helmet';
+OBJECT_DESCRIPTION[100] = 'visored helmet';
+OBJECT_DESCRIPTION[146] = 'tattered cape';
+OBJECT_DESCRIPTION[147] = 'opera cloak';
+OBJECT_DESCRIPTION[148] = 'ornamental cope';
+OBJECT_DESCRIPTION[149] = 'piece of cloth';
+OBJECT_DESCRIPTION[159] = 'old gloves';
+OBJECT_DESCRIPTION[160] = 'padded gloves';
+OBJECT_DESCRIPTION[161] = 'riding gloves';
+OBJECT_DESCRIPTION[162] = 'fencing gloves';
+OBJECT_DESCRIPTION[166] = 'combat boots';
+OBJECT_DESCRIPTION[167] = 'jungle boots';
+OBJECT_DESCRIPTION[168] = 'hiking boots';
+OBJECT_DESCRIPTION[169] = 'mud boots';
+OBJECT_DESCRIPTION[170] = 'buckled boots';
+OBJECT_DESCRIPTION[171] = 'riding boots';
+OBJECT_DESCRIPTION[172] = 'snow boots';
+
+// C ref: objects.h SPELL(name, desc, ...).  Magical spellbook descriptions
+// are shuffled by o_init.c:shuffle_all(); blank paper stays fixed.
+OBJECT_DESCRIPTION[366] = 'parchment';
+OBJECT_DESCRIPTION[367] = 'vellum';
+OBJECT_DESCRIPTION[368] = 'ragged';
+OBJECT_DESCRIPTION[369] = 'dog eared';
+OBJECT_DESCRIPTION[370] = 'mottled';
+OBJECT_DESCRIPTION[371] = 'stained';
+OBJECT_DESCRIPTION[372] = 'cloth';
+OBJECT_DESCRIPTION[373] = 'leathery';
+OBJECT_DESCRIPTION[374] = 'white';
+OBJECT_DESCRIPTION[375] = 'pink';
+OBJECT_DESCRIPTION[376] = 'red';
+OBJECT_DESCRIPTION[377] = 'orange';
+OBJECT_DESCRIPTION[378] = 'yellow';
+OBJECT_DESCRIPTION[379] = 'velvet';
+OBJECT_DESCRIPTION[380] = 'light green';
+OBJECT_DESCRIPTION[381] = 'dark green';
+OBJECT_DESCRIPTION[382] = 'turquoise';
+OBJECT_DESCRIPTION[383] = 'cyan';
+OBJECT_DESCRIPTION[384] = 'light blue';
+OBJECT_DESCRIPTION[385] = 'dark blue';
+OBJECT_DESCRIPTION[386] = 'indigo';
+OBJECT_DESCRIPTION[387] = 'magenta';
+OBJECT_DESCRIPTION[388] = 'purple';
+OBJECT_DESCRIPTION[389] = 'violet';
+OBJECT_DESCRIPTION[390] = 'tan';
+OBJECT_DESCRIPTION[391] = 'plaid';
+OBJECT_DESCRIPTION[392] = 'light brown';
+OBJECT_DESCRIPTION[393] = 'dark brown';
+OBJECT_DESCRIPTION[394] = 'gray';
+OBJECT_DESCRIPTION[395] = 'wrinkled';
+OBJECT_DESCRIPTION[396] = 'dusty';
+OBJECT_DESCRIPTION[397] = 'bronze';
+OBJECT_DESCRIPTION[398] = 'copper';
+OBJECT_DESCRIPTION[399] = 'silver';
+OBJECT_DESCRIPTION[400] = 'gold';
+OBJECT_DESCRIPTION[401] = 'glittering';
+OBJECT_DESCRIPTION[402] = 'shining';
+OBJECT_DESCRIPTION[403] = 'dull';
+OBJECT_DESCRIPTION[404] = 'thin';
+OBJECT_DESCRIPTION[405] = 'thick';
+OBJECT_DESCRIPTION[406] = 'checkered';
+OBJECT_DESCRIPTION[407] = 'plain';
+OBJECT_DESCRIPTION[408] = 'paperback';
+OBJECT_DESCRIPTION[409] = 'papyrus';
+
 // C ref: objects.h wand OBJ(name, typ) entries.  The usable wand range and
 // the extra wand descriptions are shuffled together by o_init.c.
 OBJECT_DESCRIPTION[410] = 'glass';
@@ -167,6 +237,11 @@ OBJECT_DESCRIPTION[434] = 'curved';
 OBJECT_DESCRIPTION[435] = 'forked';
 OBJECT_DESCRIPTION[436] = 'spiked';
 OBJECT_DESCRIPTION[437] = 'jeweled';
+
+// C ref: objects.h VENOM_CLASS objects.  Both venom entries share the same
+// appearance descriptor, but they still participate in the C shuffle range.
+OBJECT_DESCRIPTION[479] = 'splash of venom';
+OBJECT_DESCRIPTION[480] = 'splash of venom';
 
 // C ref: o_init.c:shuffle_all() ranges after obj_shuffle_range().
 const SHUFFLE_RANGES = [

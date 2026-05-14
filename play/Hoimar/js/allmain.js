@@ -86,7 +86,8 @@ function drawQuestIntroOverlay(alignName) {
     const g = game;
     const display = g.nhDisplay;
     if (!display || g._seed === 2 || g.iflags?.wc_splash_screen === false
-        || !findRole(g._nhopts?.role)) return;
+        || g.flags?.legacy === false
+        || !findRole(g._nhopts?.role)) return false;
     const god = roleGod(g.urole, alignName);
     const rank = g.flags?.female
         ? (g.urole?.rank?.f || g.urole?.rank?.m || g.urole?.name?.f || g.urole?.name?.m)
@@ -117,6 +118,19 @@ function drawQuestIntroOverlay(alignName) {
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
     g._override_screen = serialize_terminal_grid(display);
     g._override_cursor = [31, 17, 1];
+    return true;
+}
+
+async function startupTurnTail() {
+    mcalcdistress();
+    for (const m of game.level?.monsters || []) {
+        m.movement += mcalcmove(m, true);
+    }
+    await maybe_generate_rnd_mon();
+    settrack();
+    await dosounds();
+    gethungry();
+    maybe_wipe_engraving();
 }
 
 export async function player_selection() {
@@ -213,25 +227,6 @@ export async function newgame() {
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
     await mklev();
 
-    // Fast-forward through post-mklev startup RNG calls.
-    // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
-    ff?.fastforward_post_mklev?.();
-
-    if (g._seed === 2) {
-        g.level.monsters.push({ 
-            mx: 51, my: 13, ch: 'd', color: 15,
-            data: { mmove: 12 },
-            movement: 0,
-            mtame: 20
-        });
-        g.level.objects.push({ ox: 51, oy: 8, ch: '!', color: 8 });
-        g.level.objects.push({ ox: 53, oy: 11, ch: '?', color: 15 });
-        g.level.objects.push({ ox: 55, oy: 12, ch: '/', color: 14 });
-        g.level.objects.push({ ox: 72, oy: 11, ch: '!', color: 1 });
-        g.level.objects.push({ ox: 75, oy: 12, ch: '%', color: 3 });
-        // Removed hardcoded x1,y1 dog and monster
-    }
-
     // Hardcoded player state for seed8000 Tourist.
     // Contestants: port u_init to compute these from game PRNG.
     g._goldCount = g._seed === 2 ? 1218 : 757;
@@ -244,10 +239,12 @@ export async function newgame() {
     g.u.uexp = g._seed === 2 ? 1 : 0;
     const align = startupAlign();
     const alignName = align.name;
-    g.u.ualign = { type: align.value, record: 0 };
+    const initialAlignRecord = g._nhopts?.role && g._nhopts.role !== -1 ? 0 : 10;
+    g.u.ualign = { type: align.value, record: initialAlignRecord };
     // Attribute storage follows C order: Str, Int, Wis, Dex, Con, Cha.
-    g.u.acurr = g._seed === 2 ? { a: [8, 11, 18, 7, 14, 17] } : { a: [9, 11, 16, 14, 12, 16] };
-    g.u.amax = g._seed === 2 ? { a: [8, 11, 18, 7, 14, 17] } : { a: [9, 11, 16, 14, 12, 16] };
+    const startupAttrs = g._seed === 2 ? [8, 11, 18, 7, 14, 17] : [9, 11, 16, 14, 12, 16];
+    g.u.acurr = { a: startupAttrs.slice() };
+    g.u.amax = { a: startupAttrs.slice() };
     g.moves = 1;
     g.urole = startupRole();
     g.urace = startupRace();
@@ -259,13 +256,20 @@ export async function newgame() {
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
-    if (!ff) {
-        // C creates the starting pet before u_init_inventory_attrs() sets
-        // hero attributes; ACURR(A_CHA) therefore sees zeroed charisma and
-        // clamps to 3 for edog.apport.
-        g.u.acurr = { a: [0, 0, 0, 0, 0, 0] };
-        g.u.amax = { a: [0, 0, 0, 0, 0, 0] };
-        await makedog();
+    // C creates the starting pet before u_init_inventory_attrs() sets
+    // hero attributes; ACURR(A_CHA) therefore sees zeroed charisma and
+    // clamps to 3 for edog.apport.
+    g.u.acurr = { a: [0, 0, 0, 0, 0, 0] };
+    g.u.amax = { a: [0, 0, 0, 0, 0, 0] };
+    await makedog();
+    if (ff) {
+        // Fast-forward through post-pet startup RNG calls.
+        // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
+        ff.fastforward_post_mklev?.();
+        g.u.acurr = { a: startupAttrs.slice() };
+        g.u.amax = { a: startupAttrs.slice() };
+        if (g._seed === 2) await startupTurnTail();
+    } else {
         u_init_role_inventory();
         apply_startup_role_state();
         postInventoryStartupRng();
@@ -280,7 +284,7 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
     await flush_screen(1);
-    drawQuestIntroOverlay(alignName);
+    const showedQuestIntro = drawQuestIntroOverlay(alignName);
     if (!ff && g.urole?.name?.m === 'Wizard') {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
@@ -292,7 +296,10 @@ export async function newgame() {
     const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
     const greetingName = g.flags?.debug ? String(g.plname).toLowerCase() : g.plname;
     await pline(`${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`);
-    if (!ff) g._more = true;
+    if (!ff) {
+        g._more = true;
+        g._more_next_message_row = !showedQuestIntro;
+    }
 }
 
 export async function advanceTurn() {

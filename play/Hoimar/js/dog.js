@@ -42,8 +42,8 @@ const OBJECT_WEIGHT_OVERRIDES = new Map([
 ]);
 
 // These ids come from the generated object table used by mklev.js.
-const AMULET_OF_YENDOR = 185;
-const SPE_BOOK_OF_THE_DEAD = 373;
+const AMULET_OF_YENDOR = 213;
+const SPE_BOOK_OF_THE_DEAD = 409;
 
 const PM_LITTLE_DOG = {
     name: 'LITTLE_DOG',
@@ -662,7 +662,11 @@ function pet_goal(mtmp, after, udist, whappr) {
         }
     }
 
-    if (goalType !== UNDEF) {
+    // C ref: dogmove.c:dog_goal(). Non-apport/non-dogfood goals are ignored
+    // while the pet is not hungry enough, so the pet falls through to the
+    // ordinary follow-the-hero logic.
+    if (goalType !== UNDEF && (goalType === DOGFOOD || goalType === APPORT
+        || (game.moves || 0) >= (edog.hungrytime || 0))) {
         return { abort: false, gx: goalX, gy: goalY, appr: 1 };
     }
 

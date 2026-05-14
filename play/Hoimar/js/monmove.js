@@ -130,6 +130,11 @@ function is_wanderer(mtmp) {
     return !!mtmp.data?.m2_wander || !!(mtmp.data?.mflags2 & M2_WANDER);
 }
 
+function no_diagonal_movement(mtmp) {
+    // C ref: hack.h:NODIAG().
+    return mtmp.data?.name === 'GRID_BUG';
+}
+
 function dist2(x0, y0, x1, y1) {
     const dx = x0 - x1;
     const dy = y0 - y1;
@@ -568,6 +573,7 @@ async function flush_pending_more_before_monster_message() {
         // screens show the blank engulfed map rather than the old room.
         game._swallowed_display_pending = false;
         game._swallowed_map_active = true;
+        game._swallowed_overlay = null;
     }
 }
 
@@ -762,6 +768,7 @@ function unstuck_swallowed_hero(mtmp) {
     game.u.uswldtim = 0;
     game._swallowed_display_pending = false;
     game._swallowed_map_active = false;
+    game._swallowed_overlay = null;
     game.u.ux = mtmp.mx;
     game.u.uy = mtmp.my;
     if (!mtmp.mspec_used && basic_engulf_attack(mtmp)) {
@@ -967,6 +974,7 @@ async function m_move_basic(mtmp) {
     for (let nx = Math.max(1, omx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, omy - 1); ny <= maxy; ny++) {
             if (nx === omx && ny === omy) continue;
+            if (no_diagonal_movement(mtmp) && nx !== omx && ny !== omy) continue;
             // C ref: mon.c:mfndpos() rejects diagonal movement from or into
             // any door state except no-door/broken-door.
             if (nx !== omx && ny !== omy

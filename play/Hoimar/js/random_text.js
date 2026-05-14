@@ -21,6 +21,15 @@ export function randomEngraving() {
     return { text: wipeoutText(pristine, Math.trunc(pristine.length / 4), 0), pristine };
 }
 
+export function randomEpitaph() {
+    // C ref: engrave.c:make_grave() -> rumors.c:get_rnd_text(EPITAPHFILE).
+    // The padded epitaph data is 24075 bytes in NetHack 5.0. The actual
+    // headstone text is not displayed in current evidence, but the data-file
+    // offset roll is part of the core RNG stream.
+    rn2(24075);
+    return '';
+}
+
 function getRumor(truth, excludeCookie) {
     const data = loadRumors();
     let rumor = '';
