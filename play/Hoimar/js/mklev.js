@@ -28,7 +28,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL, FILL_NONE,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, A_NONE, Align2amask,
     LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MINVENT, MM_IGNOREWATER, MM_IGNORELAVA, MM_ANGRY, MM_ASLEEP, MM_NOGRP, GP_CHECKSCARY, GP_AVOID_MONPOS,
@@ -64,6 +64,7 @@ const DWARVISH_SPEAR = 30;
 const DAGGER = 34;
 const ELVEN_DAGGER = 35;
 const ORCISH_DAGGER = 36;
+const ATHAME = 38;
 const KNIFE = 40;
 const WORM_TOOTH = 42;
 const AXE = 44;
@@ -74,15 +75,22 @@ const ELVEN_SHORT_SWORD = 47;
 const ORCISH_SHORT_SWORD = 48;
 const DWARVISH_SHORT_SWORD = 49;
 const SCIMITAR = 50;
+const SILVER_SABER = 51;
+const BROADSWORD = 52;
 const ELVEN_BROADSWORD = 53;
 const LONG_SWORD = 54;
 const TWO_HANDED_SWORD = 55;
+const KATANA = 56;
+const RUNESWORD = 58;
 const PARTISAN = 56;
 const RANSEUR = 57;
 const SPETUM = 58;
 const GLAIVE = 59;
 const LUCERN_HAMMER = 66;
 const DWARVISH_MATTOCK = 71;
+const SILVER_MACE = 74;
+const MORNING_STAR = 75;
+const WAR_HAMMER = 76;
 const CLUB = 77;
 const AKLYS = 80;
 const BOW = 83;
@@ -121,6 +129,7 @@ const LEATHER_CLOAK = 144;
 const ELVEN_SHIELD = 153;
 const ELVEN_BOOTS = 169;
 const TIN_WHISTLE = 215;
+const SKELETON_KEY = 221;
 const MIRROR = 230;
 const CRYSTAL_BALL = 231;
 const PICK_AXE = 259;
@@ -129,9 +138,11 @@ const UNICORN_HORN = 261;
 const GOLD_PIECE = 438;
 const LUCKSTONE = 470;
 const LOADSTONE = 471;
+const TOUCHSTONE = 472;
 const ROCK = 474;
 const KELP_FROND = 275;
 const SCR_TELEPORTATION = 333;
+const SCR_CHARGING = 342;
 const BELL = 263;
 const CORPSE = 265;
 const EGG = 266;
@@ -160,11 +171,13 @@ const SCR_CONFUSE_MONSTER = 325;
 const SCR_SCARE_MONSTER = 326;
 const SCR_CREATE_MONSTER = 329;
 const WAN_CREATE_MONSTER = 413;
+const WAN_STRIKING = 417;
 const WAN_MAKE_INVISIBLE = 418;
 const WAN_SPEED_MONSTER = 420;
 const WAN_POLYMORPH = 422;
 const WAN_TELEPORTATION = 424;
 const WAN_DIGGING = 428;
+const WAN_MAGIC_MISSILE = 429;
 const SPE_HEALING = 374;
 const LARGE_BOX = 214;
 const CHEST = 215;
@@ -176,6 +189,9 @@ const K_RATION = 294;
 const C_RATION = 295;
 const TIN = 296;
 const AMULET_OF_LIFE_SAVING = 202;
+const AMULET_OF_STRANGULATION = 203;
+const AMULET_OF_RESTFUL_SLEEP = 204;
+const AMULET_OF_CHANGE = 206;
 const AMULET_OF_REFLECTION = 208;
 const DUST = 3;
 const MARK = 6;
@@ -341,7 +357,9 @@ function monsterPtr(mon) {
 }
 
 function verysmall_monster(mon) {
-    return VERY_SMALL_MONSTERS.has(monsterName(mon));
+    const ptr = monsterPtr(mon);
+    if (ptr && ptr.mlet === 'S_HUMAN') return false;
+    return VERY_SMALL_MONSTERS.has(monsterName(ptr || mon));
 }
 
 // Stairway list management
@@ -663,10 +681,28 @@ function nartifact_exist() {
     return game._nartifact_exist ?? 0;
 }
 
+const RANDOM_ARTIFACT_BASE_COUNTS = new Map([
+    [RUNESWORD, 1],
+    [WAR_HAMMER, 2],
+    [BATTLE_AXE, 1],
+    [ORCISH_DAGGER, 1],
+    [ELVEN_BROADSWORD, 1],
+    [ELVEN_DAGGER, 1],
+    [ATHAME, 1],
+    [LONG_SWORD, 5],
+    [BROADSWORD, 1],
+    [SILVER_MACE, 1],
+    [SILVER_SABER, 2],
+    [MORNING_STAR, 1],
+    [KATANA, 1],
+]);
+
 function maybe_artifact(otmp, chance) {
     if (!otmp || otmp.oartifact) return;
     if (!rn2(chance + (10 * nartifact_exist()))) {
-        // Full mk_artifact() selection/origin tracking is not ported yet.
+        const eligible = RANDOM_ARTIFACT_BASE_COUNTS.get(otmp.otyp) ?? 0;
+        if (!eligible) return;
+        rn2(eligible); // C ref: artifact.c:mk_artifact() eligible[] selection.
         game._nartifact_exist = nartifact_exist() + 1;
         otmp.oartifact = true;
     }
@@ -725,19 +761,18 @@ function mkobj_erosions(otmp) {
 
     if (!rn2(100)) {
         otmp.oerodeproof = true;
-        return;
-    }
+    } else {
+        if (!rn2(80) && (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))) {
+            do {
+                otmp.oeroded = (otmp.oeroded ?? 0) + 1;
+            } while (otmp.oeroded < 3 && !rn2(9));
+        }
 
-    if (!rn2(80) && (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))) {
-        do {
-            otmp.oeroded = (otmp.oeroded ?? 0) + 1;
-        } while (otmp.oeroded < 3 && !rn2(9));
-    }
-
-    if (!rn2(80) && (is_rottable(otmp) || is_corrodeable(otmp))) {
-        do {
-            otmp.oeroded2 = (otmp.oeroded2 ?? 0) + 1;
-        } while (otmp.oeroded2 < 3 && !rn2(9));
+        if (!rn2(80) && (is_rottable(otmp) || is_corrodeable(otmp))) {
+            do {
+                otmp.oeroded2 = (otmp.oeroded2 ?? 0) + 1;
+            } while (otmp.oeroded2 < 3 && !rn2(9));
+        }
     }
 
     if (!rn2(1000)) otmp.greased = true;
@@ -1006,8 +1041,12 @@ function mksobj_init(otmp, otyp, artif) {
         if (artif) maybe_artifact(otmp, 40);
         break;
     case AMULET_CLASS:
-        rn2(10); // cursed-amulet gate; only specific amulets use the result
-        blessorcurse(otmp, 10);
+        if (rn2(10) && (otyp === AMULET_OF_STRANGULATION
+            || otyp === AMULET_OF_CHANGE || otyp === AMULET_OF_RESTFUL_SLEEP)) {
+            curse(otmp);
+        } else {
+            blessorcurse(otmp, 10);
+        }
         break;
     default:
         break;
@@ -1112,13 +1151,15 @@ function mkgold(amount, x, y) {
     // mksobj_at(GOLD_PIECE) calls next_ident
     next_ident();
     if (game.level?.objects) {
-        game.level.objects.unshift({
+        const gold = {
             otyp: GOLD_PIECE,
+            oclass: COIN_CLASS,
             ox: x, oy: y,
             quan: amount,
             ch: '$',
-            color: 14,
-        });
+        };
+        gold.color = object_display_color(gold);
+        game.level.objects.unshift(gold);
     }
 }
 
@@ -1139,6 +1180,11 @@ function monster_ptr(ref) {
     if (typeof ref === 'number') return MONSTERS[ref] || null;
     if (typeof ref === 'string') return MONSTERS.find((mon) => mon.name === ref) || null;
     return ref?.name ? ref : null;
+}
+
+export function monster_by_user_name(name) {
+    const key = String(name || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    return MONSTERS.find((mon) => mon.name === key) || null;
 }
 
 function is_rider_ref(ref) {
@@ -1391,6 +1437,19 @@ function m_initinv_for(ptr, mon = null) {
             if (!rn2(2)) mksobj(C_RATION, true, false);
         }
     }
+    if (ptr.name === 'SHOPKEEPER') {
+        mksobj(SKELETON_KEY, true, false);
+        switch (rn2(4)) {
+        case 0:
+            mksobj(WAN_MAGIC_MISSILE, true, false);
+        case 1:
+            mksobj(POT_EXTRA_HEALING, true, false);
+        case 2:
+            mksobj(POT_HEALING, true, false);
+        case 3:
+            mksobj(WAN_STRIKING, true, false);
+        }
+    }
     if (ptr.name === 'SOLDIER' && rn2(13)) return;
     if (monLevel > rn2(50)) {
         const defensive = rnd_defensive_item_for(ptr);
@@ -1529,6 +1588,10 @@ function m_initweap_general_for(ptr) {
 
 function m_initweap_for(ptr) {
     if (!ptr) return;
+    if (ptr.name === 'SHOPKEEPER') {
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
     if (ptr.mlet === 'S_GIANT') {
         if (rn2(2)) mksobj(ptr.name !== 'ETTIN' ? BOULDER : CLUB, true, false);
         if (ptr.name !== 'ETTIN' && !rn2(5)) {
@@ -1784,6 +1847,31 @@ function set_mimic_sym(mon) {
             mon.m_ap_type = M_AP_FURNITURE;
             mon.mappearance = FOUNTAIN;
         }
+        return;
+    }
+    if (rt >= SHOPBASE) {
+        if (rn2(10) >= depth_of_level(game.u?.uz)) {
+            mon.m_ap_type = M_AP_OBJECT;
+            mon.mappearance = STRANGE_OBJECT;
+            return;
+        }
+        let s_sym = get_shop_item(rt - SHOPBASE);
+        if (s_sym < 0) {
+            mon.m_ap_type = M_AP_OBJECT;
+            mon.mappearance = -s_sym;
+            return;
+        }
+        if (s_sym === RANDOM_CLASS) {
+            const syms = [
+                RING_CLASS, WAND_CLASS, WEAPON_CLASS, FOOD_CLASS, COIN_CLASS,
+                SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS, AMULET_CLASS,
+                TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
+            ];
+            s_sym = syms[rn2(syms.length)];
+        }
+        mon.m_ap_type = M_AP_OBJECT;
+        if (s_sym === COIN_CLASS) mon.mappearance = GOLD_PIECE;
+        else mon.mappearance = mkobj(s_sym, false)?.otyp ?? STRANGE_OBJECT;
         return;
     }
 
@@ -3447,6 +3535,10 @@ async function themerooms_generate(difficulty) {
     if (!pick) return false;
     const themedMap = THEMED_MAPS.get(pick.name);
     if (themedMap) return create_themed_map_room(themedMap);
+    const wantsThemedFill = pick.name === 'Default room with themed fill'
+        || pick.name === 'Unlit room with themed fill'
+        || pick.name === 'Room with both normal contents and themed fill';
+    const normalAndThemedFill = pick.name === 'Room with both normal contents and themed fill';
     // For 'ordinary' rooms, create a standard room
     // For themed rooms with dynamic dimensions, consume those rn2 calls first
     const chance = 100;
@@ -3455,13 +3547,16 @@ async function themerooms_generate(difficulty) {
         rn2(100); // chance check (build_room)
     }
     // All themed rooms go through create_room for placement
-    const ok = create_room(-1, -1, -1, -1, -1, -1, OROOM, -1);
+    const ok = create_room(-1, -1, -1, -1, -1, -1,
+        wantsThemedFill ? THEMEROOM : OROOM,
+        pick.name === 'Unlit room with themed fill' ? 0 : -1);
     if (ok) {
         // C ref: sp_lev.c:2824 — build_room calls topologize after create_room
         const aroom = game.level.rooms[game.level.nroom - 1];
         if (aroom) {
             topologize(aroom);
-            aroom.needfill = FILL_NORMAL;
+            aroom.needfill = (!wantsThemedFill || normalAndThemedFill) ? FILL_NORMAL : FILL_NONE;
+            if (wantsThemedFill) apply_themeroom_fill(aroom);
         }
     }
     return ok;
@@ -3534,6 +3629,22 @@ function choose_themeroom_fill(croom) {
 
 function apply_themeroom_fill(croom) {
     const fill = choose_themeroom_fill(croom);
+    if (fill === 'Storeroom') {
+        const locs = [];
+        for (let y = croom.ly; y <= croom.hy; y++)
+            for (let x = croom.lx; x <= croom.hx; x++)
+                if (rn2(100) < 30) locs.push([x, y]);
+        for (const _loc of locs) {
+            if (rn2(100) < 25) {
+                mksobj_at(CHEST, somex(croom), somey(croom), true, false);
+            } else {
+                rn2(3); // C ref: dungeon.c:induced_align() before mkclass().
+                const ptr = mkclass_aligned('S_MIMIC', 0);
+                if (ptr) makemon(ptr, somex(croom), somey(croom), NO_MINVENT);
+            }
+        }
+        return;
+    }
     if (fill !== 'Buried zombies') return;
 
     const diff = level_difficulty();
@@ -4539,6 +4650,18 @@ async function make_niches() {
 }
 
 const SHOP_TYPE_PROBS = [42, 14, 10, 10, 5, 5, 3, 3, 3, 2];
+const SHOP_ITEM_PROBS = [
+    [{ iprob: 100, itype: RANDOM_CLASS }],
+    [{ iprob: 90, itype: ARMOR_CLASS }, { iprob: 10, itype: WEAPON_CLASS }],
+    [{ iprob: 90, itype: SCROLL_CLASS }, { iprob: 10, itype: SPBOOK_CLASS }],
+    [{ iprob: 100, itype: POTION_CLASS }],
+    [{ iprob: 90, itype: WEAPON_CLASS }, { iprob: 10, itype: ARMOR_CLASS }],
+    [{ iprob: 83, itype: FOOD_CLASS }],
+    [{ iprob: 85, itype: RING_CLASS }, { iprob: 10, itype: GEM_CLASS }, { iprob: 5, itype: AMULET_CLASS }],
+    [{ iprob: 90, itype: WAND_CLASS }, { iprob: 5, itype: -LEATHER_GLOVES }, { iprob: 5, itype: -ELVEN_CLOAK }],
+    [{ iprob: 100, itype: TOOL_CLASS }],
+    [{ iprob: 90, itype: SPBOOK_CLASS }, { iprob: 10, itype: SCROLL_CLASS }],
+];
 
 function inside_room(croom, x, y) {
     if (croom.irregular) {
@@ -4606,7 +4729,7 @@ function mkshop() {
     let i = 0;
     while (i < SHOP_TYPE_PROBS.length && (j -= SHOP_TYPE_PROBS[i]) > 0) i++;
     if ((sroom.hx - sroom.lx + 1) * (sroom.hy - sroom.ly + 1) > 20
-        && (i === 6 || i === 8)) {
+        && (i === 7 || i === 9)) {
         i = 0;
     }
     sroom.rtype = SHOPBASE + i;
@@ -4618,6 +4741,88 @@ function do_mkroom(roomtype) {
     if (roomtype >= SHOPBASE) {
         mkshop();
     }
+}
+
+function shopkeeper_pos(sroom) {
+    const door = sroom?.doorct ? game.level?.doors?.[sroom.fdoor] : null;
+    if (!door) return null;
+    if (door.x < sroom.lx) return { x: sroom.lx, y: door.y };
+    if (door.x > sroom.hx) return { x: sroom.hx, y: door.y };
+    if (door.y < sroom.ly) return { x: door.x, y: sroom.ly };
+    if (door.y > sroom.hy) return { x: door.x, y: sroom.hy };
+    return { x: door.x, y: door.y };
+}
+
+function shkinit(shopIndex, sroom) {
+    const pos = shopkeeper_pos(sroom);
+    const shopkeeper = MONSTERS.find(m => m.name === 'SHOPKEEPER');
+    if (!pos || !shopkeeper) return -1;
+    makemon(shopkeeper, pos.x, pos.y, 0);
+    const shk = game.level?.monsters?.[0];
+    if (shk) {
+        shk.isshk = 1;
+        shk.mpeaceful = 1;
+        shk.msleeping = 0;
+    }
+    rnd(100); // C ref: shknam.c:mkmonmoney() initial capital amount.
+    next_ident();
+    if (shopIndex === 6) mksobj(TOUCHSTONE, true, false);
+    if (shopIndex === 7 || shopIndex === 8 || (shopIndex === 6 && rn2(2))
+        || (shopIndex === 0 && rn2(5))) {
+        mksobj(SCR_CHARGING, true, false);
+    }
+    return sroom.fdoor ?? 0;
+}
+
+function stock_room_goodpos(sroom, sh, sx, sy) {
+    const door = sroom?.doorct ? game.level?.doors?.[sh] : null;
+    const loc = game.level?.at(sx, sy);
+    if (!loc || !IS_ROOM(loc.typ)) return false;
+    if (sroom.irregular) {
+        const rmno = game.level.rooms.indexOf(sroom) + ROOMOFFSET;
+        return !loc.edge && loc.roomno === rmno
+            && (!door || distmin(sx, sy, door.x, door.y) > 1);
+    }
+    return !(door && ((sx === sroom.lx && door.x === sx - 1)
+        || (sx === sroom.hx && door.x === sx + 1)
+        || (sy === sroom.ly && door.y === sy - 1)
+        || (sy === sroom.hy && door.y === sy + 1)));
+}
+
+function get_shop_item(shopIndex) {
+    const probs = SHOP_ITEM_PROBS[shopIndex] || SHOP_ITEM_PROBS[0];
+    let j = rnd(100);
+    for (const entry of probs) {
+        j -= entry.iprob;
+        if (j <= 0) return entry.itype;
+    }
+    return probs[probs.length - 1].itype;
+}
+
+function mkshobj_at(shopIndex, sx, sy) {
+    if (rn2(100) < depth_of_level(game.u?.uz) && !m_at(sx, sy)) {
+        const ptr = mkclass_aligned('S_MIMIC', 0);
+        if (ptr && makemon(ptr, sx, sy, 0)) return;
+    }
+    const atype = get_shop_item(shopIndex);
+    if (atype < 0) mksobj_at(-atype, sx, sy, true, true);
+    else mkobj_at(atype, sx, sy, true);
+}
+
+function stock_room(croom) {
+    const shopIndex = croom.rtype - SHOPBASE;
+    const sh = shkinit(shopIndex, croom);
+    if (sh < 0) return;
+    let stockcount = 0;
+    for (let sx = croom.lx; sx <= croom.hx; sx++)
+        for (let sy = croom.ly; sy <= croom.hy; sy++)
+            if (stock_room_goodpos(croom, sh, sx, sy)) stockcount++;
+    if (stockcount) rnd(stockcount);
+    for (let sx = croom.lx; sx <= croom.hx; sx++)
+        for (let sy = croom.ly; sy <= croom.hy; sy++)
+            if (stock_room_goodpos(croom, sh, sx, sy))
+                mkshobj_at(shopIndex, sx, sy);
+    game.level.flags.has_shop = true;
 }
 
 function fill_zoo(croom) {
@@ -4670,6 +4875,8 @@ function fill_special_room(croom) {
     } else if (croom.rtype === ZOO || croom.rtype === LEPREHALL) {
         fill_zoo(croom);
         if (croom.rtype === ZOO) game.level.flags.has_zoo = true;
+    } else if (croom.rtype >= SHOPBASE) {
+        stock_room(croom);
     }
 }
 

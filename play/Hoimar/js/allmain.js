@@ -23,6 +23,7 @@ import { docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid, 
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
+import { COLNO } from './const.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -46,9 +47,25 @@ function preLuaRoleInitRng() {
 
 function postInventoryStartupRng() {
     // C ref: u_init_skills_discoveries()/persistent Lua setup and
-    // allmain.c:moveloop_preamble(FALSE) for new games.
-    rn2(3);
-    rn2(2);
+    // allmain.c:moveloop_preamble(FALSE) for new games.  The late nhlib.lua
+    // shuffle is tied to the legacy quest-intro pager path; !legacy startup
+    // evidence skips it and proceeds directly to moveloop_preamble().
+    if (game.flags?.legacy !== false) {
+        rn2(3);
+        rn2(2);
+    }
+    const messages = [];
+    if (game.flags?.moonphase === 4) {
+        messages.push('You are lucky!  Full moon tonight.');
+        game.u.uluck = (game.u.uluck || 0) + 1;
+    } else if (game.flags?.moonphase === 0) {
+        messages.push('Be careful!  New moon tonight.');
+    }
+    if (game.flags?.friday13) {
+        messages.push('Watch out!  Bad things can happen on Friday the 13th.');
+        game.u.uluck = (game.u.uluck || 0) - 1;
+    }
+    if (messages.length) game._startup_preamble_messages = messages;
     rnd(9000);
     game.context = game.context || {};
     game.context.seer_turn = rnd(30);
@@ -273,6 +290,9 @@ export async function newgame() {
         u_init_role_inventory();
         apply_startup_role_state();
         postInventoryStartupRng();
+        if (g.flags?.legacy === false && g.urole?.name?.m === 'Wizard') {
+            g.u.uac = 9;
+        }
     }
 
     // Initial display
@@ -285,7 +305,7 @@ export async function newgame() {
     await bot();
     await flush_screen(1);
     const showedQuestIntro = drawQuestIntroOverlay(alignName);
-    if (!ff && g.urole?.name?.m === 'Wizard') {
+    if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Wizard') {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
         g._deferred_startup_uac = 9;
@@ -295,8 +315,9 @@ export async function newgame() {
     const genderAdj = g.flags?.female ? 'female' : 'male';
     const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
     const greetingName = g.flags?.debug ? String(g.plname).toLowerCase() : g.plname;
-    await pline(`${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`);
-    if (!ff) {
+    const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`;
+    await pline(welcome);
+    if (!ff && (showedQuestIntro || welcome.length + '--More--'.length > COLNO)) {
         g._more = true;
         g._more_next_message_row = !showedQuestIntro;
     }

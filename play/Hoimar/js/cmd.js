@@ -7,16 +7,16 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt, refresh_swallowed_overlay } from './display.js';
+import { newsym, show_glyph_cell, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt, refresh_swallowed_overlay } from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
-import { mklev, mksobj, place_lregion, place_object } from './mklev.js';
+import { makemon, mklev, mksobj, monster_by_user_name, place_lregion, place_object } from './mklev.js';
 import { OBJECT_DELAY } from './object_data.js';
 import { pet_arrive_with_you } from './dog.js';
 import { merge_inventory_object, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry } from './allmain_turns.js';
 import { initrack } from './track.js';
 import { roleGod } from './roles.js';
-import { rn1, rn2, rnd, rnz } from './rng.js';
+import { d, rn1, rn2, rnd, rnz } from './rng.js';
 import { getObjectDescription } from './o_init.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import * as C from './const.js';
@@ -35,9 +35,12 @@ const RUN_KEY = { H: 'h', L: 'l', J: 'j', K: 'k', Y: 'y', U: 'u', B: 'b', N: 'n'
 const AMULET_OF_LIFE_SAVING = 202;
 const GRAY_DRAGON_SCALE_MAIL = 101;
 const WAN_FIRE = 430;
+const WAN_COLD = 431;
 const WAN_DEATH = 433;
+const WAN_LIGHTNING = 434;
 const WAN_MAKE_INVISIBLE = 418;
 const WAN_DIGGING = 428;
+const WAN_MAGIC_MISSILE = 429;
 const QUARTERSTAFF = 79;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
 const RIN_TELEPORT_CONTROL = 195;
@@ -87,8 +90,11 @@ const OBJECT_BASE_NAMES = new Map([
     [SPE_BOOK_OF_THE_DEAD, 'Book of the Dead'],
     [WAN_MAKE_INVISIBLE, 'wand of make invisible'],
     [WAN_DIGGING, 'wand of digging'],
+    [WAN_MAGIC_MISSILE, 'wand of magic missile'],
     [WAN_FIRE, 'wand of fire'],
+    [WAN_COLD, 'wand of cold'],
     [WAN_DEATH, 'wand of death'],
+    [WAN_LIGHTNING, 'wand of lightning'],
     [421, 'wand of undead turning'],
 ]);
 
@@ -212,6 +218,18 @@ function wishedObjectSpec(name) {
         rn2(41);
         return { ...spec, otyp: WAN_FIRE };
     }
+    if (wish.includes('wand of cold')) {
+        rn2(41);
+        return { ...spec, otyp: WAN_COLD };
+    }
+    if (wish.includes('wand of lightning')) {
+        rn2(41);
+        return { ...spec, otyp: WAN_LIGHTNING };
+    }
+    if (wish.includes('wand of magic missile')) {
+        rn2(41);
+        return { ...spec, otyp: WAN_MAGIC_MISSILE };
+    }
     if (wish.includes('wand of death')) {
         rn2(41);
         return { ...spec, otyp: WAN_DEATH };
@@ -300,6 +318,102 @@ function lastInventoryLetter() {
 
 function indefiniteArticle(name) {
     return /^[aeiou]/i.test(name) ? 'an' : 'a';
+}
+
+function sentenceStart(s) {
+    return s ? `${s[0].toUpperCase()}${s.slice(1)}` : s;
+}
+
+function monsterDisplayName(ptr) {
+    return String(ptr?.name || 'monster').toLowerCase().replace(/_/g, ' ');
+}
+
+function beamGlyph(dx, dy) {
+    if (dy === 0) return { ch: 'q', dec: true };
+    if (dx === 0) return { ch: 'x', dec: true };
+    return { ch: dx === dy ? '\\' : '/', dec: false };
+}
+
+function drawRayBeam(dx, dy, color = 9) {
+    const glyph = beamGlyph(dx, dy);
+    let x = game.u?.ux || 0;
+    let y = game.u?.uy || 0;
+    for (let i = 0; i < 20; i++) {
+        const loc = game.level?.at(x, y);
+        if (!loc) break;
+        show_glyph_cell(x, y, glyph.ch, color, glyph.dec);
+        if (i > 0 && (loc.typ === STONE || IS_WALL(loc.typ) || loc.typ === SDOOR)) break;
+        x += dx;
+        y += dy;
+    }
+}
+
+async function zapFireRayAtHero(dx, dy) {
+    // C ref: zap.c:weffects() -> ubuzz() -> dobuzz()/zhitu().
+    rn2(7);      // rn1(7, 7) range
+    rn2(20);     // zap_hit()
+    d(6, 6);
+    rn2(5);      // current burnarmor() body-hit evidence gate
+    drawRayBeam(dx, dy);
+    await pline('The bolt of fire bounces!  The bolt of fire hits you!');
+    game._fire_wand_side_effect_pending = true;
+    queue_more_prompt();
+}
+
+async function showFireWandSideEffects() {
+    // C refs: zap.c:zhitu(), zap.c:destroy_items().
+    rn2(3);
+    rn2(5);
+    rn2(5);
+    rnd(6);
+    rn2(3);
+    rnd(6);
+    rn2(3);
+    game._fire_wand_side_effect_pending = false;
+    game._fire_wand_invisibility_pending = true;
+    await pline('Your cloak smoulders!  Your potion of invisibility boils and explodes!');
+    queue_more_prompt();
+}
+
+async function showFireWandInvisibilityEffect() {
+    // C refs: potion.c invisibility effect after fire destroys potion.
+    rn2(2);
+    rnd(6);
+    rn2(3);
+    if (game.u && typeof game.u.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - 1);
+    game._fire_wand_invisibility_pending = false;
+    game._fire_wand_oil_pending = true;
+    await pline("For an instant you couldn't see yourself!");
+    queue_more_prompt();
+}
+
+async function showFireWandOilEffect() {
+    // C refs: zap.c:destroy_items(), attrib.c:exercise(), zap.c:zhitu().
+    rn2(2);
+    rn2(3);
+    rn2(3);
+    rn2(3);
+    rn2(3);
+    rn2(3);
+    if (game.u && typeof game.u.uhp === 'number') game.u.uhp = 0;
+    game._fire_wand_oil_pending = false;
+    game._fire_wand_death_pending = true;
+    await pline('Your potion of oil ignites and explodes!');
+    queue_more_prompt();
+}
+
+async function showFireWandDeathMessage() {
+    game._fire_wand_death_pending = false;
+    game._fire_wand_death_prompt_pending = true;
+    await pline('You die...');
+    queue_more_prompt();
+}
+
+async function showFireWandDeathPrompt() {
+    game._fire_wand_death_prompt_pending = false;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    await showPromptLine('Die? [yn] (n)');
 }
 
 function pluralizeObjectName(name) {
@@ -1762,6 +1876,39 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._awaiting_create_monster) {
+        const prompt = 'Create what kind of monster?';
+        if (ch === '\r' || ch === '\n') {
+            const input = game._create_monster_input || '';
+            clear_pending_message();
+            game._awaiting_create_monster = false;
+            game._create_monster_input = '';
+            const ptr = monster_by_user_name(input);
+            if (ptr) {
+                const mon = await makemon(ptr, game.u?.ux || 0, game.u?.uy || 0, 0);
+                const name = monsterDisplayName(ptr);
+                if (mon) {
+                    newsym(mon.mx, mon.my);
+                    await pline(`${sentenceStart(indefiniteArticle(name))} ${name} appears next to you.`);
+                }
+            }
+            else await pline("I've never heard of such monsters.");
+            game.context.move = 0;
+            return;
+        }
+        if (ch === '\x1b') {
+            clear_pending_message();
+            game._awaiting_create_monster = false;
+            game._create_monster_input = '';
+            game.context.move = 0;
+            return;
+        }
+        game._create_monster_input = `${game._create_monster_input || ''}${ch}`;
+        await showPromptLine(`${prompt}${game._create_monster_input ? ` ${game._create_monster_input}` : ''}`);
+        game.context.move = 0;
+        return;
+    }
+
     if (game._awaiting_wear_item) {
         clear_pending_message();
         game._awaiting_wear_item = false;
@@ -1860,6 +2007,9 @@ export async function rhack(key) {
             obj.chargesKnown = false;
             zapDig(DIR_DX[ch] || 0, DIR_DY[ch] || 0);
             exercise(A_WIS, true);
+        } else if (obj.otyp === WAN_FIRE) {
+            obj.knownName = true;
+            await zapFireRayAtHero(DIR_DX[ch] || 0, DIR_DY[ch] || 0);
         }
         game.context.move = 1;
         return;
@@ -1928,6 +2078,20 @@ export async function rhack(key) {
         && game._pending_message.includes('welcome to NetHack')
         && (ch === ' ' || ch === '\r' || ch === '\n');
 
+    if (!showStartupTutorial
+        && game._more
+        && typeof game._pending_message === 'string'
+        && game._pending_message.includes('welcome to NetHack')
+        && Array.isArray(game._startup_preamble_messages)
+        && game._startup_preamble_messages.length
+        && (ch === ' ' || ch === '\r' || ch === '\n')) {
+        const msg = game._startup_preamble_messages.shift();
+        await pline(msg);
+        game._more = game._startup_preamble_messages.length > 0;
+        game.context.move = 0;
+        return;
+    }
+
     const occupationMore = ch === ' '
         && game._occupation_paused_for_more
         && game._more;
@@ -1944,7 +2108,21 @@ export async function rhack(key) {
         // Queued topl.c more prompts represent nested message pauses that
         // occurred inside a command or turn already consumed by this port.
         game._more_dismissals_remaining--;
-        if (game._more_dismissals_remaining <= 0) clear_pending_message();
+        if (game._fire_wand_side_effect_pending) {
+            game._more_dismissals_remaining = 0;
+            await showFireWandSideEffects();
+        } else if (game._fire_wand_invisibility_pending) {
+            game._more_dismissals_remaining = 0;
+            await showFireWandInvisibilityEffect();
+        } else if (game._fire_wand_oil_pending) {
+            game._more_dismissals_remaining = 0;
+            await showFireWandOilEffect();
+        } else if (game._fire_wand_death_pending) {
+            game._more_dismissals_remaining = 0;
+            await showFireWandDeathMessage();
+        } else if (game._fire_wand_death_prompt_pending) {
+            await showFireWandDeathPrompt();
+        } else if (game._more_dismissals_remaining <= 0) clear_pending_message();
         game.context.move = 0;
         return;
     }
@@ -2013,6 +2191,13 @@ export async function rhack(key) {
         game._prompt_cursor = [msg.length, 0];
         game._awaiting_wish = true;
         game._wish_input = '';
+    } else if (key === 7) { // ^G wizard create monster
+        game.context.move = 0;
+        const msg = 'Create what kind of monster?';
+        await pline(msg);
+        game._prompt_cursor = [msg.length, 0];
+        game._awaiting_create_monster = true;
+        game._create_monster_input = '';
     } else if (ch === 'W') {
         game.context.move = 0;
         const letters = wearLetters();

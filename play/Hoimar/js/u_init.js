@@ -2,9 +2,10 @@
 // C ref: u_init.c:u_init_misc(), exper.c:newpw().
 
 import { game } from './gstate.js';
-import { rnd, rn2, rn1 } from './rng.js';
+import { rnd, rn2, rn1, rne } from './rng.js';
 import { findRole } from './roles.js';
 import { mkobj, mksobj } from './mklev.js';
+import { OBJECT_CHARGED } from './object_data.js';
 
 const ROLE_INIT = new Map([
     ['Healer', {
@@ -72,6 +73,34 @@ const CLOAK_OF_MAGIC_RESISTANCE = 139;
 const BLINDFOLD = 220;
 const MAGIC_MARKER = 229;
 const SPE_FORCE_BOLT = 383;
+const RIN_LEVITATION = 183;
+const RIN_HUNGER = 184;
+const RIN_AGGRAVATE_MONSTER = 185;
+const RIN_POLYMORPH = 196;
+const RIN_POLYMORPH_CONTROL = 197;
+const POT_HALLUCINATION = 304;
+const POT_POLYMORPH = 316;
+const POT_ACID = 320;
+const SCR_ENCHANT_WEAPON = 328;
+const SCR_AMNESIA = 338;
+const SCR_FIRE = 339;
+const SCR_BLANK_PAPER = 365;
+const SPE_POLYMORPH = 399;
+const SPE_BLANK_PAPER = 407;
+const SPE_NOVEL = 408;
+const WAN_WISHING = 414;
+const WAN_NOTHING = 416;
+const WAN_POLYMORPH = 422;
+
+const SPELLBOOK_LEVEL = new Map([
+    [366, 5], [367, 2], [368, 4], [369, 4], [370, 3], [371, 7],
+    [372, 1], [373, 1], [374, 1], [375, 1], [376, 1], [377, 1],
+    [378, 2], [379, 2], [380, 2], [381, 2], [382, 2], [383, 2],
+    [384, 3], [385, 3], [386, 3], [387, 5], [388, 3], [389, 3],
+    [390, 4], [391, 3], [392, 4], [393, 4], [394, 4], [395, 3],
+    [396, 5], [397, 3], [398, 6], [399, 6], [400, 6], [401, 6],
+    [402, 7], [403, 1], [404, 1], [405, 3], [406, 2], [407, 0],
+]);
 
 const WIZARD_INVENTORY = [
     { typ: QUARTERSTAFF, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1 },
@@ -92,6 +121,43 @@ const BLINDFOLD_INVENTORY = [
 function trquan(trop) {
     if (!trop.min) return 1;
     return trop.min + rn2(trop.max - trop.min + 1);
+}
+
+function starting_spell_level(otyp) {
+    if (otyp === SPE_FORCE_BOLT) return 1;
+    return SPELLBOOK_LEVEL.get(otyp) ?? 0;
+}
+
+function rejected_starting_object(obj, noCreate, gotLevel1Spellbook, roleName) {
+    const otyp = obj?.otyp;
+    if (otyp == null) return false;
+    if (otyp === WAN_WISHING || otyp === noCreate.nocreate
+        || otyp === noCreate.nocreate2 || otyp === noCreate.nocreate3
+        || otyp === noCreate.nocreate4 || otyp === RIN_LEVITATION
+        || otyp === POT_HALLUCINATION || otyp === POT_ACID
+        || otyp === SCR_AMNESIA || otyp === SCR_FIRE
+        || otyp === SCR_BLANK_PAPER || otyp === SPE_BLANK_PAPER
+        || otyp === RIN_AGGRAVATE_MONSTER || otyp === RIN_HUNGER
+        || otyp === WAN_NOTHING || otyp === SPE_NOVEL) {
+        return true;
+    }
+    if (roleName === 'Wizard' && otyp === SPE_FORCE_BOLT) return true;
+    if (obj.oclass === SPBOOK_CLASS) {
+        const maxLevel = gotLevel1Spellbook ? 3 : 1;
+        return starting_spell_level(otyp) > maxLevel;
+    }
+    return false;
+}
+
+function ini_inv_mkobj_filter(oclass, gotLevel1Spellbook, noCreate, roleName) {
+    // C ref: u_init.c:ini_inv_mkobj_filter().
+    let obj = mkobj(oclass, false);
+    let trycnt = 0;
+    while (rejected_starting_object(obj, noCreate, gotLevel1Spellbook, roleName)) {
+        if (++trycnt > 1000) return obj;
+        obj = mkobj(oclass, false);
+    }
+    return obj;
 }
 
 function sameObjField(a, b, field, fallback = null) {
@@ -150,23 +216,47 @@ function ini_inv_adjust_obj(trop, obj) {
     if (trop.spe !== UNDEF_SPE) {
         obj.spe = trop.spe;
         if (trop.typ === MAGIC_MARKER && obj.spe < 96) obj.spe += rn2(4);
+    } else if (obj.oclass === RING_CLASS && OBJECT_CHARGED[obj.otyp] && (obj.spe || 0) <= 0) {
+        obj.spe = rne(3);
     }
     if (trop.bless !== UNDEF_BLESS) obj.blessed = !!trop.bless;
     return stop;
 }
 
-function ini_inv(trobs) {
+function ini_inv(trobs, noCreate, roleName) {
     if (!trobs.length) return;
     game.inventory = game.inventory || [];
     let idx = 0;
     let quan = trquan(trobs[idx]);
+    let gotLevel1Spellbook = false;
     while (idx < trobs.length) {
         const trop = trobs[idx];
-        const obj = trop.typ !== UNDEF_TYP
-            ? mksobj(trop.typ, true, false)
-            : mkobj(trop.cls, false);
+        let obj;
+        if (trop.typ !== UNDEF_TYP) {
+            obj = mksobj(trop.typ, true, false);
+        } else {
+            obj = ini_inv_mkobj_filter(trop.cls, gotLevel1Spellbook, noCreate, roleName);
+            switch (obj.otyp) {
+            case WAN_POLYMORPH:
+            case RIN_POLYMORPH:
+            case POT_POLYMORPH:
+                noCreate.nocreate = RIN_POLYMORPH_CONTROL;
+                break;
+            case RIN_POLYMORPH_CONTROL:
+                noCreate.nocreate = RIN_POLYMORPH;
+                noCreate.nocreate2 = SPE_POLYMORPH;
+                noCreate.nocreate3 = POT_POLYMORPH;
+                break;
+            }
+            if (obj.oclass === RING_CLASS || obj.oclass === SPBOOK_CLASS) {
+                noCreate.nocreate4 = obj.otyp;
+            }
+        }
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
-        add_inventory_object(obj);
+        const invObj = add_inventory_object(obj);
+        if (invObj.oclass === SPBOOK_CLASS && starting_spell_level(invObj.otyp) === 1) {
+            gotLevel1Spellbook = true;
+        }
         if (--quan) continue;
         idx++;
         if (idx < trobs.length) quan = trquan(trobs[idx]);
@@ -175,10 +265,16 @@ function ini_inv(trobs) {
 
 export function u_init_role_inventory() {
     const role = findRole(game._nhopts?.role);
+    const noCreate = {
+        nocreate: UNDEF_TYP,
+        nocreate2: UNDEF_TYP,
+        nocreate3: UNDEF_TYP,
+        nocreate4: UNDEF_TYP,
+    };
     if (role?.name?.m === 'Wizard') {
-        ini_inv(WIZARD_INVENTORY);
+        ini_inv(WIZARD_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {
-            ini_inv(BLINDFOLD_INVENTORY);
+            ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
         }
     }
 }
@@ -222,8 +318,14 @@ function varyInitAttr(attrs, maxes) {
     for (let i = 0; i < attrs.length; i++) {
         if (!rn2(20)) {
             const xd = rn2(7) - 2;
-            attrs[i] = Math.max(3, Math.min(maxes[i], attrs[i] + xd));
-            if (attrs[i] < maxes[i]) maxes[i] = attrs[i];
+            attrs[i] += xd;
+            if (xd > 0 && attrs[i] > maxes[i]) {
+                maxes[i] = Math.min(HUMAN_ATTRMAX[i], attrs[i]);
+                attrs[i] = maxes[i];
+            } else if (xd < 0) {
+                attrs[i] = Math.max(3, attrs[i]);
+                if (attrs[i] < maxes[i]) maxes[i] = attrs[i];
+            }
         }
     }
 }
