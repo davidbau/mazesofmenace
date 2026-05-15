@@ -6624,6 +6624,9 @@ it stacks. Play fair.</p>
 can reference them. The <code>^</code> symbols mark pits;
 <code>&lt;</code> marks the upstairs. Your starting position is marked
 <code>@</code>.</p>
+<p>The arrows mark rolling boulder traps. In sokoban, a boulder pushed
+onto one keeps rolling in the direction you pushed until it falls into a
+hole or hits something.</p>
 <p>After solving a level, push leftover boulders into corners so they
 can’t block you if you return later. Items sometimes hide under
 boulders.</p>
@@ -6633,8 +6636,8 @@ still work — just mirror the directions.</p>
 <blockquote>
 <p><em>Solutions originally compiled by Boudewijn Waijers, with
 contributions by Jukka Lahtinen and others, for the steelypips.org
-NetHack archive maintained by Kate Nepveu. Adapted and reformatted for
-this guide.</em></p>
+NetHack archive maintained by Kate Nepveu. Adapted for 5.0 and
+reformatted for this guide.</em></p>
 </blockquote>
 <section id="level-1-version-a" class="level4">
 <h4>Level 1, Version A</h4>
@@ -6645,12 +6648,12 @@ this guide.</em></p>
  3 │·A··└──┘·B·│
  4 │·C······D··│
  5 │··┌─┐@┌─┐E·│
- 6 ├──────┼─┘·──┐
- 7 │··^^^&lt;│·····│
- 8 │··┌───│F····│
+ 6 ├──┴─┴─┼─┘·─┴┐
+ 7 │·^·^·&lt;│·····│
+ 8 │·^┌───┤F····│
  9 └┐^│   │·G···│
-10  │^└───┘·H···│
-11  │··^^^^I·J··│
+10  │↑└───┘·H···│
+11  │^^^^^←I·J··│
 12  │··┌────────┘
 13  └──┘</code></pre>
 <ol type="1">
@@ -6668,12 +6671,12 @@ this guide.</em></p>
  3 │·CA·└──┘·B·│
  4 │··D········│
  5 │··┌─┐&gt;┌─┐··│
- 6 ├──────┼─┘·──┐
+ 6 ├──┴─┴─┼─┘·─┴┐
  7 │··^^^&lt;│··@··│
- 8 │··┌───│F·E··│
+ 8 │··┌───┤F·E··│
  9 └┐^│   │·G···│
-10  │^└───┘·H···│
-11  │··^^^^I·J··│
+10  │↑└───┘·H···│
+11  │··^^^←I·J··│
 12  │··┌────────┘
 13  └──┘</code></pre>
 <ol start="6" type="1">
@@ -6687,15 +6690,15 @@ always scrolls of earth.</p>
 <h4>Level 1, Version B</h4>
 <pre><code>            111111
    123456789012345
- 1 ┌──────┐ ┌────┐
+ 1 ┌─┬────┐ ┌────┐
  2 │&lt;│@···└─┘····│
- 3 │^│┐·AB····C··│
+ 3 │^├┐·AB····C··│
  4 │^││··DE│·F·G·│
  5 │^││····│·····│
- 6 │^│┴────┘H────│
+ 6 │^├┴───┬┘H────┤
  7 │^│    │······│
- 8 │^└────┘······│
- 9 │··^^^^IJKL···│
+ 8 │↑└────┘······│
+ 9 │^^^^^←IJKL···│
 10 │··┌───┐······│
 11 └──┘   └──────┘</code></pre>
 <ol type="1">
@@ -6710,15 +6713,15 @@ always scrolls of earth.</p>
 <p>The map now looks like this:</p>
 <pre><code>            111111
    123456789012345
- 1 ┌──────┐ ┌────┐
+ 1 ┌─┬────┐ ┌────┐
  2 │&lt;│&gt;···└─┘····│
- 3 │^│┐······BC··│
+ 3 │^├┐······BC··│
  4 │^││·ADE│·F·G·│
  5 │^││····│·····│
- 6 │^│┴────┘·────│
+ 6 │^├┴───┬┘·────┤
  7 │^│    │······│
- 8 │·└────┘······│
- 9 │@············│
+ 8 │↑└────┘······│
+ 9 │@····←·······│
 10 │··┌───┐······│
 11 └──┘   └──────┘</code></pre>
 <ol start="8" type="1">
@@ -6740,18 +6743,18 @@ are always scrolls of earth.</p>
 <h4>Level 2, Version A</h4>
 <pre><code>            11111111112222222222
    12345678901234567890123456789
- 1 ┌─────────┐       ┌─────────┐
+ 1 ┌────┬────┐       ┌─────────┐
  2 │····│····└─┐     │·········│
  3 │··AB│CD···@│     │·········│
  4 │·····E···┌─┘     │·········│
  5 │····│····│       │····&lt;····│
- 6 ├─·──┼─────┐      │·········│
+ 6 ├─·──┼────┴┐      │·········│
  7 │··F·│·····│      │·········│
  8 │·GH·│I·J·K│      │·········│
  9 │··L·····M·│      │·········│
-10 │·NOP│Q··R·└───────────────+│
-11 │····│··S·T·^^^^^^^^^^^^^^^·│
-12 └───────────────────────────┘</code></pre>
+10 │·NOP│Q··R·└──────┴────────+┤
+11 │····│··S·T→^^^^^^^^^^^^^^^·│
+12 └────┴──────────────────────┘</code></pre>
 <ol type="1">
 <li>Push E left to (3,4).</li>
 <li>Push L right to (9,9).</li>
@@ -6774,15 +6777,15 @@ are always scrolls of earth.</p>
  3 │··········│   │·········│
  4 │·A┌───┐B─·│   │·········│
  5 │··│···│·C·│   │····&lt;····│
- 6 │·D·E····F─│   │·········│
+ 6 │·D·E····F─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────I·└┐·│   │·········│
  9 │··J···K·│·└┐  │·········│
-10 │·──┐L─···M·└───────────+│
-11 │···│··N─·O·^^^^^^^^^^^^·│
+10 │·──┐L─···M·└──┴────────+┤
+11 │···│··N─·O→^^^^^^^^^^^^·│
 12 │··P······┌──────────────┘
 13 └───┐··│··│
-14     └─────┘</code></pre>
+14     └──┴──┘</code></pre>
 <ol type="1">
 <li>Push B down two squares.</li>
 <li>Push C left one square.</li>
@@ -6802,15 +6805,15 @@ are always scrolls of earth.</p>
  3 │··········│   │·········│
  4 │·A┌───┐·─·│   │·········│
  5 │··│···│CF·│   │····&lt;····│
- 6 │·D·E·B···─│   │·········│
+ 6 │·D·E·B···─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────I·└┐·│   │·········│
  9 │··J·····│·└┐  │·········│
-10 │·──┐L─@·M··└───────────+│
-11 │···│·PK─····^^^^^^^^^^^·│
+10 │·──┐L─@·M··└──┴────────+┤
+11 │···│·PK─··→·^^^^^^^^^^^·│
 12 │·N·······┌──────────────┘
 13 └───┐··│··│
-14     └─────┘</code></pre>
+14     └──┴──┘</code></pre>
 <ol start="10" type="1">
 <li>Push M right one square, then down to (11,11). Finish M.</li>
 <li>Push N right to (10,12), then up to (10,10). Finish N like M.</li>
@@ -6829,15 +6832,15 @@ Finish I like N.</li>
  3 │··········│   │·········│
  4 │·A┌───┐·─·│   │·········│
  5 │··│···│CF·│   │····&lt;····│
- 6 │·D·E·B···─│   │·········│
+ 6 │·D·E·B···─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────··└┐·│   │·········│
  9 │········│·└┐  │·········│
-10 │·──┐·─·····└───────────+│
-11 │···│···─·········@·^^^^·│
+10 │·──┐·─·····└──┴────────+┤
+11 │···│···─@·→······^·^^^^·│
 12 │·········┌──────────────┘
 13 └───┐··│··│
-14     └─────┘</code></pre>
+14     └──┴──┘</code></pre>
 <ol start="17" type="1">
 <li>Push H left one square.</li>
 <li>Push B down one square, then right one square, then down to (8,12).
@@ -6855,18 +6858,18 @@ Finish F like C.</li>
 <h4>Level 3, Version A</h4>
 <pre><code>            11111111112
    12345678901234567890
- 1 ┌──────────────────┐
+ 1 ┌────────┬───┬─────┐
  2 │········│···│·····│
  3 │·AB··─CD│·─·│·····│
  4 │··│·E·F·│GH·│·····│
- 5 │─·│··─··│·─·│··&lt;··│
+ 5 ├─·│··─··│·─·│··&lt;··│
  6 │···┌─·······│·····│
- 7 │···│·I·─···┌│·····│
- 8 │·J·│K·│···┌┼│·····│
- 9 │─L·│··└──────────+│
-10 │··M····^^^^^^^^^^·│
+ 7 │···│·I·─···─┤·····│
+ 8 │·J·│K·│···──┤·····│
+ 9 ├─L·│··└─────┴────+┤
+10 │··M···→^^^^^^^^^^·│
 11 │···│·@┌───────────┘
-12 └──────┘</code></pre>
+12 └───┴──┘</code></pre>
 <ol type="1">
 <li>Push M left one square. Finish M.</li>
 <li>Push J right one square.</li>
@@ -6887,21 +6890,21 @@ like E.</li>
 </section>
 <section id="level-3-version-b" class="level4">
 <h4>Level 3, Version B</h4>
-<pre><code>            11111111112
-   12345678901234567890
- 1   ┌──────┐
- 2 ┌─┘·│····│
- 3 │···A····├─────────┐
- 4 │·─·BC─DE│·│·······│
- 5 │·FG─······│·······│
- 6 │·─··H·│···│·······│
- 7 │····─I└─J─│·······│
- 8 │··KL··M···│···&lt;···│
- 9 │·──···│···│·······│
-10 │····─N├───│·······│
-11 └─┐··O·└──────────+│
-12   │··P@^^^^^^^^^^^·│
-13   └────────────────┘</code></pre>
+<pre><code>            1111111111222
+   1234567890123456789012
+ 1   ┌─┬────┐  
+ 2 ┌─┘·│····│  
+ 3 │···A····├─┬───────┐  
+ 4 │·─·BC─DE│·│·······│  
+ 5 │·FG─······│·······│  
+ 6 │·─··H·│···│·······│  
+ 7 │····─I└─J─┤·······│  
+ 8 │··KL··M···│···&lt;···│  
+ 9 │·──···│···│·······├─┐
+10 │····─N├───┤·······+·│
+11 └─┐··O·└───┴───────┤·│
+12   │··P@→^^^^^^^^^^^+·│
+13   └────────────────┴─┘</code></pre>
 <ol type="1">
 <li>Push O left two squares, to (4,11).</li>
 <li>Finish P and N.</li>
@@ -6912,21 +6915,21 @@ like E.</li>
 <li>Push O right one square, to (5,10). Finish O.</li>
 </ol>
 <p>The map now looks like this:</p>
-<pre><code>            11111111112
-   12345678901234567890
- 1   ┌──────┐
- 2 ┌─┘·│····│
- 3 │···A····├─────────┐
- 4 │·─·BC─DE│·│·······│
- 5 │·FG─······│·······│
- 6 │·─··H·│···│·······│
- 7 │····─I└─J─│·······│
- 8 │······M···│···&lt;···│
- 9 │·──···│···│·······│
-10 │····─·├───│·······│
-11 └─┐····└──────────+│
-12   │···&gt;···@·^^^^^^·│
-13   └────────────────┘</code></pre>
+<pre><code>            1111111111222
+   1234567890123456789012
+ 1   ┌─┬────┐  
+ 2 ┌─┘·│····│  
+ 3 │···A····├─┬───────┐  
+ 4 │·─·BC─DE│·│·······│  
+ 5 │·FG─······│·······│  
+ 6 │·─··H·│···│·······│  
+ 7 │····─I└─J─┤·······│  
+ 8 │······M···│···&lt;···│  
+ 9 │·──···│···│·······├─┐
+10 │····─·├───┤·······+·│
+11 └─┐····└───┴───────┤·│
+12   │··@&gt;→····^^^^^^·+·│
+13   └────────────────┴─┘</code></pre>
 <ol start="8" type="1">
 <li>Push G down to (4,8), then one square right, to (5,8). Finish
 G.</li>
@@ -6941,27 +6944,30 @@ M.</li>
 </ol>
 <p>Five boulders (A, B, D, E, and J) remain.</p>
 </section>
-<section id="level-4-version-a-prize-bag-of-holding" class="level4">
-<h4>Level 4, Version A (prize: bag of holding)</h4>
+<section
+id="level-4-version-a-prize-usually-bag-of-holding-25-amulet-of-reflection"
+class="level4">
+<h4>Level 4, Version A (prize: usually bag of holding, 25% amulet of
+reflection)</h4>
 <pre><code>            11111111112222222
    12345678901234567890123456
  1 ┌────────────────────────┐
- 2 │@······^^^^^^^^^^^^^^^^·│
+ 2 │@·····^→^^^^^^^^^^^^^^^·│
  3 │·······┌──────────────┐·│
- 4 └──────·└────┤         │·│
+ 4 └┬─────·└────┐         │·│
  5  │···········│         │·│
  6  │·A·B·C·D·E·│         │·│
- 7 ┌───────·────│         │·│
+ 7 ┌┴──────·────┤         │·│
  8 │···F·G··H·I·│         │·│
  9 │···J········│         │·│
-10 └────·───────┘   ┌─────│·│
-11  │··K·L·M···│  ┌─│·····│·│
+10 └┬───·──────┬┘   ┌─────┤·│
+11  │··K·L·M···│  ┌─┤·····│·│
 12  │·····N····│  │·+·····│·│
-13  │·O·P···Q·┌┘  ├─│·····│·│
-14 ┌──────·───┘   │·+·····+·│
-15 │··R·····│     ├─│·····├─┘
+13  │·O·P···Q·┌┘  ├─┤·····│·│
+14 ┌┴─────·─┬─┘   │·+·····+·│
+15 │··R·····│     ├─┤·····├─┘
 16 │········│     │·+·····│
-17 │···┌────┘     └─│·····│
+17 │···┌────┘     └─┤·····│
 18 └───┘            └─────┘</code></pre>
 <ol type="1">
 <li>Push A left one square.</li>
@@ -6984,22 +6990,22 @@ like L.</li>
 <pre><code>            11111111112222222
    12345678901234567890123456
  1 ┌────────────────────────┐
- 2 │&gt;············@·^^^^^^^^·│
+ 2 │&gt;·····@→·······^^^^^^^^·│
  3 │·······┌──────────────┐·│
- 4 └──────·└────┤         │·│
+ 4 └┬─────·└────┐         │·│
  5  │···········│         │·│
  6  │A·B·C···D·E│         │·│
- 7 ┌───────·────│         │·│
+ 7 ┌┴──────·────┤         │·│
  8 │············│         │·│
  9 │·J··········│         │·│
-10 └────·───────┘   ┌─────│·│
-11  │··········│  ┌─│·····│·│
+10 └┬───·──────┬┘   ┌─────┤·│
+11  │··········│  ┌─┤·····│·│
 12  │··········│  │·+·····│·│
-13  │·O·P···Q·┌┘  ├─│·····│·│
-14 ┌──────·───┘   │·+·····+·│
-15 │··R·····│     ├─│·····├─┘
+13  │·O·P···Q·┌┘  ├─┤·····│·│
+14 ┌┴─────·─┬─┘   │·+·····+·│
+15 │··R·····│     ├─┤·····├─┘
 16 │········│     │·+·····│
-17 │···┌────┘     └─│·····│
+17 │···┌────┘     └─┤·····│
 18 └───┘            └─────┘</code></pre>
 <ol start="14" type="1">
 <li>Push R to (8,15), then up four squares. Finish R like L.</li>
@@ -7014,28 +7020,30 @@ Q up one square. Finish Q like R.</li>
 the small chambers ((17,12), (17,14), or (17,16)) next to the treasure
 zoo.</p>
 </section>
-<section id="level-4-version-b-prize-amulet-of-reflection"
+<section
+id="level-4-version-b-prize-usually-amulet-of-reflection-25-bag-of-holding"
 class="level4">
-<h4>Level 4, Version B (prize: amulet of reflection)</h4>
+<h4>Level 4, Version B (prize: usually amulet of reflection, 25% bag of
+holding)</h4>
 <pre><code>            11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │··^^^^^^^^^^^^^^^^^^··│
+ 2   │··→^^^^^^^^^^^^^^^^^^·│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│A└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·BC··│··│··O·│        │·│
  8 └┐··DE│···PQ·┌┘        │·│
- 9  │F··G···│R··│   ┌─────│·│
-10  │·HI·│··│··S│ ┌─│·····│·│
-11  │·J·K└──│·T·│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │F··G···│R··│   ┌─────┤·│
+10  │·HI·│··│··S│ ┌─┤·····│·│
+11  │·J·K└──┤·T·│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·M···│   │·+·····│
-16      │@·│··│   └─│·····│
-17      └─────┘     └─────┘</code></pre>
+16      │@·│··│   └─┤·····│
+17      └──┴──┘     └─────┘</code></pre>
 <ol type="1">
 <li>Push M right three squares, then up four squares.</li>
 <li>Push T up one square.</li>
@@ -7053,22 +7061,22 @@ class="level4">
 <pre><code>            11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │····^^^^^^^^^^^^^^^^··│
+ 2   │··→·^^^^^^^^^^^^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·@D··├──│·N··│        │·│
+ 6 │·@D··├──┤·N··│        │·│
  7 │·B···│··│·QO·│        │·│
  8 └┐···E│P····S┌┘        │·│
- 9  │FG·····│R··│   ┌─────│·│
-10  │·HI·│··│·T·│ ┌─│·····│·│
-11  │·J·K└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │FG·····│R··│   ┌─────┤·│
+10  │·HI·│··│·T·│ ┌─┤·····│·│
+11  │·J·K└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │&gt;·│··│   └─│·····│
-17      └─────┘     └─────┘</code></pre>
+16      │&gt;·│··│   └─┤·····│
+17      └──┴──┘     └─────┘</code></pre>
 <ol start="12" type="1">
 <li>Push D right one square. Finish D.</li>
 <li>Push B right two squares. Finish B.</li>
@@ -7080,22 +7088,22 @@ class="level4">
 <pre><code>            11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │·······@·^^^^^^^^^^^··│
+ 2   │·@→······^^^^^^^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·····│··│·QO·│        │·│
  8 └┐····│P····S┌┘        │·│
- 9  │·G·····│R··│   ┌─────│·│
-10  │·H··│··│·T·│ ┌─│·····│·│
-11  │·J·K└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │·G·····│R··│   ┌─────┤·│
+10  │·H··│··│·T·│ ┌─┤·····│·│
+11  │·J·K└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │&gt;·│··│   └─│·····│
-17      └─────┘     └─────┘</code></pre>
+16      │&gt;·│··│   └─┤·····│
+17      └──┴──┘     └─────┘</code></pre>
 <ol start="17" type="1">
 <li>Push G right one square. Finish G.</li>
 <li>Finish H and J like G.</li>
@@ -7109,22 +7117,22 @@ Finish L like K.</li>
 <pre><code>            11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │·············@·^^^^^··│
+ 2   │·@→············^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·····│··│·QO·│        │·│
  8 └┐····│·····S┌┘        │·│
- 9  │·······│R··│   ┌─────│·│
-10  │····│··│·T·│ ┌─│·····│·│
-11  │····└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │·······│R··│   ┌─────┤·│
+10  │····│··│·T·│ ┌─┤·····│·│
+11  │····└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐····│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │&gt;·│··│   └─│·····│
-17      └─────┘     └─────┘</code></pre>
+16      │&gt;·│··│   └─┤·····│
+17      └──┴──┘     └─────┘</code></pre>
 <ol start="22" type="1">
 <li>Push T down one square.</li>
 <li>Push R to (11,8), then left three squares. Finish R like P.</li>
@@ -7299,9 +7307,13 @@ tracked since 3.6.</p>
 <p><strong>Blind (Zen).</strong> Play the entire game without sight. Set
 the <code>blind</code> option at game start. You’ll need telepathy and
 other senses to navigate. Officially tracked since 3.6.</p>
+<p>Mazes 5.0 added five more tracked conducts — Pauper, Petless,
+Permadeaf, Sokoban, and Bonesless. The first three are start-of-game
+options; the latter two are tracked automatically based on what you do
+during the run.</p>
 </section>
-<section id="pauper" class="level4">
-<h4>Pauper</h4>
+<section id="pauper-new-in-5.0" class="level4">
+<h4>Pauper (new in 5.0)</h4>
 <p>Start with absolutely nothing — no gold, no inventory, no armor. Set
 <code>OPTIONS=pauper</code> in your rcfile (or <code>pauper:true</code>
 in the in-game <code>O</code> menu). The game enforces it at character
@@ -7318,8 +7330,8 @@ more valuable. The traditional roleplaying version, “never spend gold,”
 is not tracked by the game in 5.0 — it lives on only as a self-imposed
 extension of the pauper start.</p>
 </section>
-<section id="petless" class="level4">
-<h4>Petless</h4>
+<section id="petless-new-in-5.0" class="level4">
+<h4>Petless (new in 5.0)</h4>
 <p>Never have a pet. Set <code>OPTIONS=pettype:none</code> in your
 rcfile to skip the starting companion entirely (this overrides per-role
 defaults). After that the conduct enforces itself: don’t tame anything
@@ -7330,8 +7342,8 @@ the particular satisfaction of knowing that everything that died did so
 by your hand, and that you never had to feel guilty about leading
 something loyal into a polymorph trap.</p>
 </section>
-<section id="permadeaf" class="level4">
-<h4>Permadeaf</h4>
+<section id="permadeaf-new-in-5.0" class="level4">
+<h4>Permadeaf (new in 5.0)</h4>
 <p>Never hear anything. Set <code>OPTIONS=!acoustics</code> in your
 rcfile (or <code>acoustics:false</code> in the in-game <code>O</code>
 menu) — the game then runs exactly as if you had the <code>Deaf</code>
@@ -7346,8 +7358,8 @@ requires navigating the dungeon by sight and logic alone, which turns
 out to be possible and occasionally educational about how much
 information you normally get for free.</p>
 </section>
-<section id="sokoban-1" class="level4">
-<h4>Sokoban</h4>
+<section id="sokoban-new-in-5.0" class="level4">
+<h4>Sokoban (new in 5.0)</h4>
 <p>Complete Sokoban without cheating. No digging through the puzzle
 levels, no teleportation to skip steps, no picking up boulders and
 carrying them to impossible positions. Solve it the way the puzzle
@@ -7355,6 +7367,17 @@ designers intended, by actually solving the puzzle. The game now tracks
 violations automatically. This is the conduct for players who genuinely
 enjoy Sokoban’s boulder-shoving sequences and want their playthrough to
 acknowledge a clean solve.</p>
+</section>
+<section id="bonesless-new-in-5.0" class="level4">
+<h4>Bonesless (new in 5.0)</h4>
+<p>Never inherit from another player’s grave. 5.0 records the number of
+bones files loaded during your run; if it stays at zero through the
+entire game, the bonesless conduct is preserved. You can keep it by
+playing a fresh dungeon directory (no bones files to load), by running a
+fully fresh-seed session, or simply by being lucky enough that no level
+you generate hits a stored bones state. Self-imposed practice is to
+avoid commands or downloads that would import bones, but most of the
+time the conduct just happens.</p>
 <p>Your <code>#conduct</code> screen also tracks whether you’ve used an
 amulet of life saving, which some players consider an informal conduct
 of its own.</p>
@@ -7395,199 +7418,216 @@ for their real value (often hundreds of zm each) while glass sells for
 almost nothing.</p>
 <section id="real-gem-prices" class="level5">
 <h5>Real-gem prices</h5>
-<p>Once you know what a gem is, its base price determines whether it’s
-worth carrying. All gems weigh 1, so the only cost of hoarding is
-inventory slot pressure — but real gems are tiny piles of liquid gold by
-weight. The table below lists every real gem in the game by base price
-(the price an unangry, unbiased shopkeeper would charge for a buy). Sell
-prices are typically ½ of the base for a generic shopkeeper, less for
-shops outside the gem-buying class.</p>
+<p>Once you know what a gem is, its type determines its base price. Real
+gems are tiny piles of liquid gold by weight — every gem weighs just 1,
+and gems of the same identified type stack into a single inventory slot
+regardless of count, so the only cost of hoarding a heap of identified
+rubies is one slot’s worth of clutter.</p>
+<p>The table below lists every real gem in the game. The Price column
+shows what an unangry shopkeeper would charge to buy from you; adjust it
+with the Cha/Sell/Tourist/Angry toolbar to see how the modifiers shift
+things.</p>
+<p>The Mohs column is real-world mineral hardness on the Mohs scale
+(talc 1 … diamond 10), and the game uses it in two specific places. Mohs
+≥ 8 makes a gem <strong>“hard”</strong> (<code>HARDGEM</code> in
+<code>include/objects.h</code>). Hard gems can be used as a stylus to
+<em>engrave</em> Elbereth and other messages directly into the dungeon
+floor — a permanent ENGRAVE instead of the dust-only writing soft gems
+and fingers leave (see <code>src/engrave.c:755</code>, “diamonds &amp;
+other hard gems should work”). Hard gems also have a 50% chance to
+<em>survive</em> being thrown rather than shattering on impact
+(<code>src/dothrow.c:1996</code>, “Flint and hard gems don’t break
+easily”). Below Mohs 8, the gem only writes in dust and breaks on impact
+like glass. Hardness does <em>not</em> affect touchstoning — every gem
+can be identified by a blessed touchstone regardless of hardness.</p>
+<div class="price-id-toolbar">
+
+</div>
 <table>
 <colgroup>
-<col style="width: 25%" />
-<col style="width: 18%" />
-<col style="width: 13%" />
-<col style="width: 6%" />
-<col style="width: 35%" />
+<col style="width: 8%" />
+<col style="width: 27%" />
+<col style="width: 20%" />
+<col style="width: 7%" />
+<col style="width: 37%" />
 </colgroup>
 <thead>
 <tr>
+<th style="text-align: right;">Price</th>
 <th>Gem</th>
 <th>Color</th>
-<th style="text-align: right;">Base price</th>
 <th style="text-align: right;">Mohs</th>
 <th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td style="text-align: right;">4500</td>
 <td>Dilithium crystal</td>
 <td>white</td>
-<td style="text-align: right;">4500</td>
 <td style="text-align: right;">5</td>
 <td>rarest white gem</td>
 </tr>
 <tr>
+<td style="text-align: right;">4000</td>
 <td>Diamond</td>
 <td>white</td>
-<td style="text-align: right;">4000</td>
 <td style="text-align: right;">10</td>
 <td>hardest material in the game</td>
 </tr>
 <tr>
+<td style="text-align: right;">3500</td>
 <td>Ruby</td>
 <td>red</td>
-<td style="text-align: right;">3500</td>
 <td style="text-align: right;">9</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">3250</td>
 <td>Jacinth</td>
 <td>orange</td>
-<td style="text-align: right;">3250</td>
 <td style="text-align: right;">9</td>
 <td>one of two orange gems</td>
 </tr>
 <tr>
+<td style="text-align: right;">3000</td>
 <td>Sapphire</td>
 <td>blue</td>
-<td style="text-align: right;">3000</td>
 <td style="text-align: right;">9</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">2500</td>
 <td>Black opal</td>
 <td>black</td>
-<td style="text-align: right;">2500</td>
 <td style="text-align: right;">8</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">2500</td>
 <td>Emerald</td>
 <td>green</td>
-<td style="text-align: right;">2500</td>
 <td style="text-align: right;">8</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">2000</td>
 <td>Turquoise</td>
 <td>green</td>
-<td style="text-align: right;">2000</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">1500</td>
 <td>Citrine</td>
 <td>yellow</td>
-<td style="text-align: right;">1500</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">1500</td>
 <td>Aquamarine</td>
 <td>green</td>
-<td style="text-align: right;">1500</td>
 <td style="text-align: right;">8</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">1000</td>
 <td>Amber</td>
 <td>yellowish brown</td>
-<td style="text-align: right;">1000</td>
 <td style="text-align: right;">2</td>
-<td>softest, can’t be touchstoned</td>
+<td>softest gem; only dust-writes</td>
 </tr>
 <tr>
+<td style="text-align: right;">900</td>
 <td>Topaz</td>
 <td>yellowish brown</td>
-<td style="text-align: right;">900</td>
 <td style="text-align: right;">8</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">850</td>
 <td>Jet</td>
 <td>black</td>
-<td style="text-align: right;">850</td>
 <td style="text-align: right;">7</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">800</td>
 <td>Opal</td>
 <td>white</td>
-<td style="text-align: right;">800</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">700</td>
 <td>Chrysoberyl</td>
 <td>yellow</td>
-<td style="text-align: right;">700</td>
 <td style="text-align: right;">5</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">700</td>
 <td>Garnet</td>
 <td>red</td>
-<td style="text-align: right;">700</td>
 <td style="text-align: right;">7</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">600</td>
 <td>Amethyst</td>
 <td>violet</td>
-<td style="text-align: right;">600</td>
 <td style="text-align: right;">7</td>
 <td>useful in alchemy (booze→see-i)</td>
 </tr>
 <tr>
+<td style="text-align: right;">500</td>
 <td>Jasper</td>
 <td>red</td>
-<td style="text-align: right;">500</td>
 <td style="text-align: right;">7</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">400</td>
 <td>Fluorite</td>
 <td>violet</td>
-<td style="text-align: right;">400</td>
 <td style="text-align: right;">4</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">300</td>
 <td>Jade</td>
 <td>green</td>
-<td style="text-align: right;">300</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">200</td>
 <td>Obsidian</td>
 <td>black</td>
-<td style="text-align: right;">200</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">200</td>
 <td>Agate</td>
 <td>orange</td>
-<td style="text-align: right;">200</td>
 <td style="text-align: right;">6</td>
 <td></td>
 </tr>
 <tr>
+<td style="text-align: right;">0</td>
 <td>(worthless glass)</td>
 <td>any color</td>
-<td style="text-align: right;">0</td>
 <td style="text-align: right;">5</td>
 <td>sells for 0–8 zm unidentified</td>
 </tr>
 </tbody>
 </table>
-<p>Carrying every real gem is almost free: each gem weighs 1, and gems
-of the same identified type stack into a single inventory slot
-regardless of count. The decision is rarely “carry or drop” — it’s “if
-I’m slot-pressed and have to thin the gem heap, which colors do I drop
-first.”</p>
+<p>The decision is rarely “carry or drop” — it’s “if I’m slot-pressed
+and have to thin the heap, which colors do I drop first.” Black opals,
+emeralds, and rubies are usually keepers; agate and obsidian first to
+go.</p>
 <p>A few rules of thumb:</p>
 <ul>
 <li><strong>Every real gem is equally good for unicorn luck.</strong> A

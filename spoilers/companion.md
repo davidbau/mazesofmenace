@@ -4903,6 +4903,10 @@ In the maps below, boulders are labeled A through T so the
 solutions can reference them. The `^` symbols mark pits; `<` marks
 the upstairs. Your starting position is marked `@`.
 
+The arrows mark rolling boulder traps. In sokoban, a boulder pushed
+onto one keeps rolling in the direction you pushed until it falls
+into a hole or hits something.
+
 After solving a level, push leftover boulders into corners so they
 can't block you if you return later. Items sometimes hide under
 boulders.
@@ -4913,7 +4917,7 @@ The solutions still work — just mirror the directions.
 
 > *Solutions originally compiled by Boudewijn Waijers, with
 > contributions by Jukka Lahtinen and others, for the steelypips.org
-> NetHack archive maintained by Kate Nepveu. Adapted and reformatted
+> NetHack archive maintained by Kate Nepveu. Adapted for 5.0 and reformatted
 > for this guide.*
 
 #### Level 1, Version A
@@ -4926,12 +4930,12 @@ The solutions still work — just mirror the directions.
  3 │·A··└──┘·B·│
  4 │·C······D··│
  5 │··┌─┐@┌─┐E·│
- 6 ├──────┼─┘·──┐
- 7 │··^^^<│·····│
- 8 │··┌───│F····│
+ 6 ├──┴─┴─┼─┘·─┴┐
+ 7 │·^·^·<│·····│
+ 8 │·^┌───┤F····│
  9 └┐^│   │·G···│
-10  │^└───┘·H···│
-11  │··^^^^I·J··│
+10  │↑└───┘·H···│
+11  │^^^^^←I·J··│
 12  │··┌────────┘
 13  └──┘
 ```
@@ -4952,12 +4956,12 @@ The map now looks like this:
  3 │·CA·└──┘·B·│
  4 │··D········│
  5 │··┌─┐>┌─┐··│
- 6 ├──────┼─┘·──┐
+ 6 ├──┴─┴─┼─┘·─┴┐
  7 │··^^^<│··@··│
- 8 │··┌───│F·E··│
+ 8 │··┌───┤F·E··│
  9 └┐^│   │·G···│
-10  │^└───┘·H···│
-11  │··^^^^I·J··│
+10  │↑└───┘·H···│
+11  │··^^^←I·J··│
 12  │··┌────────┘
 13  └──┘
 ```
@@ -4973,15 +4977,15 @@ are always scrolls of earth.
 ```
             111111
    123456789012345
- 1 ┌──────┐ ┌────┐
+ 1 ┌─┬────┐ ┌────┐
  2 │<│@···└─┘····│
- 3 │^│┐·AB····C··│
+ 3 │^├┐·AB····C··│
  4 │^││··DE│·F·G·│
  5 │^││····│·····│
- 6 │^│┴────┘H────│
+ 6 │^├┴───┬┘H────┤
  7 │^│    │······│
- 8 │^└────┘······│
- 9 │··^^^^IJKL···│
+ 8 │↑└────┘······│
+ 9 │^^^^^←IJKL···│
 10 │··┌───┐······│
 11 └──┘   └──────┘
 ```
@@ -4999,15 +5003,15 @@ The map now looks like this:
 ```
             111111
    123456789012345
- 1 ┌──────┐ ┌────┐
+ 1 ┌─┬────┐ ┌────┐
  2 │<│>···└─┘····│
- 3 │^│┐······BC··│
+ 3 │^├┐······BC··│
  4 │^││·ADE│·F·G·│
  5 │^││····│·····│
- 6 │^│┴────┘·────│
+ 6 │^├┴───┬┘·────┤
  7 │^│    │······│
- 8 │·└────┘······│
- 9 │@············│
+ 8 │↑└────┘······│
+ 9 │@····←·······│
 10 │··┌───┐······│
 11 └──┘   └──────┘
 ```
@@ -5031,18 +5035,18 @@ Two boulders (D and E) remain. The two scrolls at (2,10) and
 ```
             11111111112222222222
    12345678901234567890123456789
- 1 ┌─────────┐       ┌─────────┐
+ 1 ┌────┬────┐       ┌─────────┐
  2 │····│····└─┐     │·········│
  3 │··AB│CD···@│     │·········│
  4 │·····E···┌─┘     │·········│
  5 │····│····│       │····<····│
- 6 ├─·──┼─────┐      │·········│
+ 6 ├─·──┼────┴┐      │·········│
  7 │··F·│·····│      │·········│
  8 │·GH·│I·J·K│      │·········│
  9 │··L·····M·│      │·········│
-10 │·NOP│Q··R·└───────────────+│
-11 │····│··S·T·^^^^^^^^^^^^^^^·│
-12 └───────────────────────────┘
+10 │·NOP│Q··R·└──────┴────────+┤
+11 │····│··S·T→^^^^^^^^^^^^^^^·│
+12 └────┴──────────────────────┘
 ```
 
 1. Push E left to (3,4).
@@ -5067,15 +5071,15 @@ Five boulders (B, C, D, I, and Q) remain.
  3 │··········│   │·········│
  4 │·A┌───┐B─·│   │·········│
  5 │··│···│·C·│   │····<····│
- 6 │·D·E····F─│   │·········│
+ 6 │·D·E····F─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────I·└┐·│   │·········│
  9 │··J···K·│·└┐  │·········│
-10 │·──┐L─···M·└───────────+│
-11 │···│··N─·O·^^^^^^^^^^^^·│
+10 │·──┐L─···M·└──┴────────+┤
+11 │···│··N─·O→^^^^^^^^^^^^·│
 12 │··P······┌──────────────┘
 13 └───┐··│··│
-14     └─────┘
+14     └──┴──┘
 ```
 
 1. Push B down two squares.
@@ -5098,15 +5102,15 @@ The map now looks like this:
  3 │··········│   │·········│
  4 │·A┌───┐·─·│   │·········│
  5 │··│···│CF·│   │····<····│
- 6 │·D·E·B···─│   │·········│
+ 6 │·D·E·B···─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────I·└┐·│   │·········│
  9 │··J·····│·└┐  │·········│
-10 │·──┐L─@·M··└───────────+│
-11 │···│·PK─····^^^^^^^^^^^·│
+10 │·──┐L─@·M··└──┴────────+┤
+11 │···│·PK─··→·^^^^^^^^^^^·│
 12 │·N·······┌──────────────┘
 13 └───┐··│··│
-14     └─────┘
+14     └──┴──┘
 ```
 
 10. Push M right one square, then down to (11,11). Finish M.
@@ -5133,15 +5137,15 @@ The map now looks like this:
  3 │··········│   │·········│
  4 │·A┌───┐·─·│   │·········│
  5 │··│···│CF·│   │····<····│
- 6 │·D·E·B···─│   │·········│
+ 6 │·D·E·B···─┤   │·········│
  7 │·G··H··│··│   │·········│
  8 │·────··└┐·│   │·········│
  9 │········│·└┐  │·········│
-10 │·──┐·─·····└───────────+│
-11 │···│···─·········@·^^^^·│
+10 │·──┐·─·····└──┴────────+┤
+11 │···│···─@·→······^·^^^^·│
 12 │·········┌──────────────┘
 13 └───┐··│··│
-14     └─────┘
+14     └──┴──┘
 ```
 
 17. Push H left one square.
@@ -5161,18 +5165,18 @@ Four boulders (A, D, G, and H) remain.
 ```
             11111111112
    12345678901234567890
- 1 ┌──────────────────┐
+ 1 ┌────────┬───┬─────┐
  2 │········│···│·····│
  3 │·AB··─CD│·─·│·····│
  4 │··│·E·F·│GH·│·····│
- 5 │─·│··─··│·─·│··<··│
+ 5 ├─·│··─··│·─·│··<··│
  6 │···┌─·······│·····│
- 7 │···│·I·─···┌│·····│
- 8 │·J·│K·│···┌┼│·····│
- 9 │─L·│··└──────────+│
-10 │··M····^^^^^^^^^^·│
+ 7 │···│·I·─···─┤·····│
+ 8 │·J·│K·│···──┤·····│
+ 9 ├─L·│··└─────┴────+┤
+10 │··M···→^^^^^^^^^^·│
 11 │···│·@┌───────────┘
-12 └──────┘
+12 └───┴──┘
 ```
 
 1. Push M left one square. Finish M.
@@ -5195,21 +5199,21 @@ Three boulders (F, G, and H) remain.
 #### Level 3, Version B
 
 ```
-            11111111112
-   12345678901234567890
- 1   ┌──────┐
- 2 ┌─┘·│····│
- 3 │···A····├─────────┐
- 4 │·─·BC─DE│·│·······│
- 5 │·FG─······│·······│
- 6 │·─··H·│···│·······│
- 7 │····─I└─J─│·······│
- 8 │··KL··M···│···<···│
- 9 │·──···│···│·······│
-10 │····─N├───│·······│
-11 └─┐··O·└──────────+│
-12   │··P@^^^^^^^^^^^·│
-13   └────────────────┘
+            1111111111222
+   1234567890123456789012
+ 1   ┌─┬────┐  
+ 2 ┌─┘·│····│  
+ 3 │···A····├─┬───────┐  
+ 4 │·─·BC─DE│·│·······│  
+ 5 │·FG─······│·······│  
+ 6 │·─··H·│···│·······│  
+ 7 │····─I└─J─┤·······│  
+ 8 │··KL··M···│···<···│  
+ 9 │·──···│···│·······├─┐
+10 │····─N├───┤·······+·│
+11 └─┐··O·└───┴───────┤·│
+12   │··P@→^^^^^^^^^^^+·│
+13   └────────────────┴─┘
 ```
 
 1. Push O left two squares, to (4,11).
@@ -5223,21 +5227,21 @@ Three boulders (F, G, and H) remain.
 The map now looks like this:
 
 ```
-            11111111112
-   12345678901234567890
- 1   ┌──────┐
- 2 ┌─┘·│····│
- 3 │···A····├─────────┐
- 4 │·─·BC─DE│·│·······│
- 5 │·FG─······│·······│
- 6 │·─··H·│···│·······│
- 7 │····─I└─J─│·······│
- 8 │······M···│···<···│
- 9 │·──···│···│·······│
-10 │····─·├───│·······│
-11 └─┐····└──────────+│
-12   │···>···@·^^^^^^·│
-13   └────────────────┘
+            1111111111222
+   1234567890123456789012
+ 1   ┌─┬────┐  
+ 2 ┌─┘·│····│  
+ 3 │···A····├─┬───────┐  
+ 4 │·─·BC─DE│·│·······│  
+ 5 │·FG─······│·······│  
+ 6 │·─··H·│···│·······│  
+ 7 │····─I└─J─┤·······│  
+ 8 │······M···│···<···│  
+ 9 │·──···│···│·······├─┐
+10 │····─·├───┤·······+·│
+11 └─┐····└───┴───────┤·│
+12   │··@>→····^^^^^^·+·│
+13   └────────────────┴─┘
 ```
 
 8. Push G down to (4,8), then one square right, to (5,8).
@@ -5253,28 +5257,28 @@ The map now looks like this:
 
 Five boulders (A, B, D, E, and J) remain.
 
-#### Level 4, Version A (prize: bag of holding)
+#### Level 4, Version A (prize: usually bag of holding, 25% amulet of reflection)
 
 ```
             11111111112222222
    12345678901234567890123456
  1 ┌────────────────────────┐
- 2 │@······^^^^^^^^^^^^^^^^·│
+ 2 │@·····^→^^^^^^^^^^^^^^^·│
  3 │·······┌──────────────┐·│
- 4 └──────·└────┤         │·│
+ 4 └┬─────·└────┐         │·│
  5  │···········│         │·│
  6  │·A·B·C·D·E·│         │·│
- 7 ┌───────·────│         │·│
+ 7 ┌┴──────·────┤         │·│
  8 │···F·G··H·I·│         │·│
  9 │···J········│         │·│
-10 └────·───────┘   ┌─────│·│
-11  │··K·L·M···│  ┌─│·····│·│
+10 └┬───·──────┬┘   ┌─────┤·│
+11  │··K·L·M···│  ┌─┤·····│·│
 12  │·····N····│  │·+·····│·│
-13  │·O·P···Q·┌┘  ├─│·····│·│
-14 ┌──────·───┘   │·+·····+·│
-15 │··R·····│     ├─│·····├─┘
+13  │·O·P···Q·┌┘  ├─┤·····│·│
+14 ┌┴─────·─┬─┘   │·+·····+·│
+15 │··R·····│     ├─┤·····├─┘
 16 │········│     │·+·····│
-17 │···┌────┘     └─│·····│
+17 │···┌────┘     └─┤·····│
 18 └───┘            └─────┘
 ```
 
@@ -5300,22 +5304,22 @@ The map now looks like this:
             11111111112222222
    12345678901234567890123456
  1 ┌────────────────────────┐
- 2 │>············@·^^^^^^^^·│
+ 2 │>·····@→·······^^^^^^^^·│
  3 │·······┌──────────────┐·│
- 4 └──────·└────┤         │·│
+ 4 └┬─────·└────┐         │·│
  5  │···········│         │·│
  6  │A·B·C···D·E│         │·│
- 7 ┌───────·────│         │·│
+ 7 ┌┴──────·────┤         │·│
  8 │············│         │·│
  9 │·J··········│         │·│
-10 └────·───────┘   ┌─────│·│
-11  │··········│  ┌─│·····│·│
+10 └┬───·──────┬┘   ┌─────┤·│
+11  │··········│  ┌─┤·····│·│
 12  │··········│  │·+·····│·│
-13  │·O·P···Q·┌┘  ├─│·····│·│
-14 ┌──────·───┘   │·+·····+·│
-15 │··R·····│     ├─│·····├─┘
+13  │·O·P···Q·┌┘  ├─┤·····│·│
+14 ┌┴─────·─┬─┘   │·+·····+·│
+15 │··R·····│     ├─┤·····├─┘
 16 │········│     │·+·····│
-17 │···┌────┘     └─│·····│
+17 │···┌────┘     └─┤·····│
 18 └───┘            └─────┘
 ```
 
@@ -5331,28 +5335,28 @@ Two boulders (A and E) remain. There is a bag of holding in one
 of the small chambers ((17,12), (17,14), or (17,16)) next to the
 treasure zoo.
 
-#### Level 4, Version B (prize: amulet of reflection)
+#### Level 4, Version B (prize: usually amulet of reflection, 25% bag of holding)
 
 ```
             11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │··^^^^^^^^^^^^^^^^^^··│
+ 2   │··→^^^^^^^^^^^^^^^^^^·│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│A└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·BC··│··│··O·│        │·│
  8 └┐··DE│···PQ·┌┘        │·│
- 9  │F··G···│R··│   ┌─────│·│
-10  │·HI·│··│··S│ ┌─│·····│·│
-11  │·J·K└──│·T·│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │F··G···│R··│   ┌─────┤·│
+10  │·HI·│··│··S│ ┌─┤·····│·│
+11  │·J·K└──┤·T·│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·M···│   │·+·····│
-16      │@·│··│   └─│·····│
-17      └─────┘     └─────┘
+16      │@·│··│   └─┤·····│
+17      └──┴──┘     └─────┘
 ```
 
 1. Push M right three squares, then up four squares.
@@ -5373,22 +5377,22 @@ The map now looks like this:
             11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │····^^^^^^^^^^^^^^^^··│
+ 2   │··→·^^^^^^^^^^^^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·@D··├──│·N··│        │·│
+ 6 │·@D··├──┤·N··│        │·│
  7 │·B···│··│·QO·│        │·│
  8 └┐···E│P····S┌┘        │·│
- 9  │FG·····│R··│   ┌─────│·│
-10  │·HI·│··│·T·│ ┌─│·····│·│
-11  │·J·K└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │FG·····│R··│   ┌─────┤·│
+10  │·HI·│··│·T·│ ┌─┤·····│·│
+11  │·J·K└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │>·│··│   └─│·····│
-17      └─────┘     └─────┘
+16      │>·│··│   └─┤·····│
+17      └──┴──┘     └─────┘
 ```
 
 12. Push D right one square. Finish D.
@@ -5403,22 +5407,22 @@ The map now looks like this:
             11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │·······@·^^^^^^^^^^^··│
+ 2   │·@→······^^^^^^^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·····│··│·QO·│        │·│
  8 └┐····│P····S┌┘        │·│
- 9  │·G·····│R··│   ┌─────│·│
-10  │·H··│··│·T·│ ┌─│·····│·│
-11  │·J·K└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │·G·····│R··│   ┌─────┤·│
+10  │·H··│··│·T·│ ┌─┤·····│·│
+11  │·J·K└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐·L··│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │>·│··│   └─│·····│
-17      └─────┘     └─────┘
+16      │>·│··│   └─┤·····│
+17      └──┴──┘     └─────┘
 ```
 
 17. Push G right one square. Finish G.
@@ -5435,22 +5439,22 @@ The map now looks like this:
             11111111112222222
    12345678901234567890123456
  1   ┌──────────────────────┐
- 2   │·············@·^^^^^··│
+ 2   │·@→············^^^^^··│
  3   │··┌─────────────────┐·│
- 4 ┌──┐·│    ├───┤        │·│
+ 4 ┌─┴┐·│    ┌───┐        │·│
  5 │··│·└┐  ┌┘···│        │·│
- 6 │·····├──│·N··│        │·│
+ 6 │·····├──┤·N··│        │·│
  7 │·····│··│·QO·│        │·│
  8 └┐····│·····S┌┘        │·│
- 9  │·······│R··│   ┌─────│·│
-10  │····│··│·T·│ ┌─│·····│·│
-11  │····└──│M··│ │·+·····│·│
-12  │·······│··┌┘ ├─│·····│·│
+ 9  │·······│R··│   ┌─────┤·│
+10  │····│··│·T·│ ┌─┤·····│·│
+11  │····└──┤M··│ │·+·····│·│
+12  │·······│··┌┘ ├─┤·····│·│
 13  └──┐····│·┌┘  │·+·····+·│
-14     └──·─┘·│   ├─│·····├─┘
+14     └┬─·─┘·│   ├─┤·····├─┘
 15      │·····│   │·+·····│
-16      │>·│··│   └─│·····│
-17      └─────┘     └─────┘
+16      │>·│··│   └─┤·····│
+17      └──┴──┘     └─────┘
 ```
 
 22. Push T down one square.
@@ -5643,7 +5647,12 @@ since 3.6.
 `blind` option at game start. You'll need telepathy and other
 senses to navigate. Officially tracked since 3.6.
 
-#### Pauper
+Mazes 5.0 added five more tracked conducts — Pauper, Petless,
+Permadeaf, Sokoban, and Bonesless. The first three are start-of-game
+options; the latter two are tracked automatically based on what you
+do during the run.
+
+#### Pauper (new in 5.0)
 
 Start with absolutely nothing — no gold, no inventory, no armor. Set
 `OPTIONS=pauper` in your rcfile (or `pauper:true` in the in-game `O`
@@ -5662,7 +5671,7 @@ proportionally more valuable. The traditional roleplaying version,
 "never spend gold," is not tracked by the game in 5.0 — it lives on
 only as a self-imposed extension of the pauper start.
 
-#### Petless
+#### Petless (new in 5.0)
 
 Never have a pet. Set `OPTIONS=pettype:none` in your rcfile to skip
 the starting companion entirely (this overrides per-role defaults).
@@ -5674,7 +5683,7 @@ you gain is the particular satisfaction of knowing that everything
 that died did so by your hand, and that you never had to feel guilty
 about leading something loyal into a polymorph trap.
 
-#### Permadeaf
+#### Permadeaf (new in 5.0)
 
 Never hear anything. Set `OPTIONS=!acoustics` in your rcfile (or
 `acoustics:false` in the in-game `O` menu) — the game then runs
@@ -5691,7 +5700,7 @@ requires navigating the dungeon by sight and logic alone, which turns
 out to be possible and occasionally educational about how much
 information you normally get for free.
 
-#### Sokoban
+#### Sokoban (new in 5.0)
 
 Complete Sokoban without cheating. No digging through the puzzle levels,
 no teleportation to skip steps, no picking up boulders and carrying them
@@ -5700,6 +5709,17 @@ by actually solving the puzzle. The game now tracks violations
 automatically. This is the conduct for players who genuinely enjoy
 Sokoban's boulder-shoving sequences and want their playthrough to
 acknowledge a clean solve.
+
+#### Bonesless (new in 5.0)
+
+Never inherit from another player's grave. 5.0 records the number of
+bones files loaded during your run; if it stays at zero through the
+entire game, the bonesless conduct is preserved. You can keep it by
+playing a fresh dungeon directory (no bones files to load), by
+running a fully fresh-seed session, or simply by being lucky enough
+that no level you generate hits a stored bones state. Self-imposed
+practice is to avoid commands or downloads that would import bones,
+but most of the time the conduct just happens.
 
 Your `#conduct` screen also tracks whether you've used an amulet
 of life saving, which some players consider an informal conduct
@@ -5743,45 +5763,62 @@ nothing.
 
 ##### Real-gem prices
 
-Once you know what a gem is, its base price determines whether it's
-worth carrying. All gems weigh 1, so the only cost of hoarding is
-inventory slot pressure — but real gems are tiny piles of liquid
-gold by weight. The table below lists every real gem in the game by
-base price (the price an unangry, unbiased shopkeeper would charge
-for a buy). Sell prices are typically ½ of the base for a generic
-shopkeeper, less for shops outside the gem-buying class.
+Once you know what a gem is, its type determines its base price.
+Real gems are tiny piles of liquid gold by weight — every gem weighs
+just 1, and gems of the same identified type stack into a single
+inventory slot regardless of count, so the only cost of hoarding a
+heap of identified rubies is one slot's worth of clutter.
 
-| Gem                   | Color           | Base price | Mohs | Notes                          |
-|-----------------------|-----------------|-----------:|-----:|--------------------------------|
-| Dilithium crystal     | white           |       4500 |    5 | rarest white gem               |
-| Diamond               | white           |       4000 |   10 | hardest material in the game   |
-| Ruby                  | red             |       3500 |    9 |                                |
-| Jacinth               | orange          |       3250 |    9 | one of two orange gems         |
-| Sapphire              | blue            |       3000 |    9 |                                |
-| Black opal            | black           |       2500 |    8 |                                |
-| Emerald               | green           |       2500 |    8 |                                |
-| Turquoise             | green           |       2000 |    6 |                                |
-| Citrine               | yellow          |       1500 |    6 |                                |
-| Aquamarine            | green           |       1500 |    8 |                                |
-| Amber                 | yellowish brown |       1000 |    2 | softest, can't be touchstoned  |
-| Topaz                 | yellowish brown |        900 |    8 |                                |
-| Jet                   | black           |        850 |    7 |                                |
-| Opal                  | white           |        800 |    6 |                                |
-| Chrysoberyl           | yellow          |        700 |    5 |                                |
-| Garnet                | red             |        700 |    7 |                                |
-| Amethyst              | violet          |        600 |    7 | useful in alchemy (booze→see-i)|
-| Jasper                | red             |        500 |    7 |                                |
-| Fluorite              | violet          |        400 |    4 |                                |
-| Jade                  | green           |        300 |    6 |                                |
-| Obsidian              | black           |        200 |    6 |                                |
-| Agate                 | orange          |        200 |    6 |                                |
-| (worthless glass)     | any color       |          0 |    5 | sells for 0–8 zm unidentified  |
+The table below lists every real gem in the game. The Price column
+shows what an unangry shopkeeper would charge to buy from you;
+adjust it with the Cha/Sell/Tourist/Angry toolbar to see how the
+modifiers shift things.
 
-Carrying every real gem is almost free: each gem weighs 1, and gems
-of the same identified type stack into a single inventory slot
-regardless of count. The decision is rarely "carry or drop" — it's
-"if I'm slot-pressed and have to thin the gem heap, which colors do
-I drop first."
+The Mohs column is real-world mineral hardness on the Mohs scale
+(talc 1 ... diamond 10), and the game uses it in two specific places.
+Mohs ≥ 8 makes a gem **"hard"** (`HARDGEM` in `include/objects.h`).
+Hard gems can be used as a stylus to *engrave* Elbereth and other
+messages directly into the dungeon floor — a permanent ENGRAVE
+instead of the dust-only writing soft gems and fingers leave (see
+`src/engrave.c:755`, "diamonds & other hard gems should work").
+Hard gems also have a 50% chance to *survive* being thrown rather
+than shattering on impact (`src/dothrow.c:1996`, "Flint and hard
+gems don't break easily"). Below Mohs 8, the gem only writes in
+dust and breaks on impact like glass. Hardness does *not* affect
+touchstoning — every gem can be identified by a blessed touchstone
+regardless of hardness.
+
+<div class="price-id-toolbar"></div>
+
+| Price | Gem                   | Color           | Mohs | Notes                          |
+|------:|-----------------------|-----------------|-----:|--------------------------------|
+|  4500 | Dilithium crystal     | white           |    5 | rarest white gem               |
+|  4000 | Diamond               | white           |   10 | hardest material in the game   |
+|  3500 | Ruby                  | red             |    9 |                                |
+|  3250 | Jacinth               | orange          |    9 | one of two orange gems         |
+|  3000 | Sapphire              | blue            |    9 |                                |
+|  2500 | Black opal            | black           |    8 |                                |
+|  2500 | Emerald               | green           |    8 |                                |
+|  2000 | Turquoise             | green           |    6 |                                |
+|  1500 | Citrine               | yellow          |    6 |                                |
+|  1500 | Aquamarine            | green           |    8 |                                |
+|  1000 | Amber                 | yellowish brown |    2 | softest gem; only dust-writes  |
+|   900 | Topaz                 | yellowish brown |    8 |                                |
+|   850 | Jet                   | black           |    7 |                                |
+|   800 | Opal                  | white           |    6 |                                |
+|   700 | Chrysoberyl           | yellow          |    5 |                                |
+|   700 | Garnet                | red             |    7 |                                |
+|   600 | Amethyst              | violet          |    7 | useful in alchemy (booze→see-i)|
+|   500 | Jasper                | red             |    7 |                                |
+|   400 | Fluorite              | violet          |    4 |                                |
+|   300 | Jade                  | green           |    6 |                                |
+|   200 | Obsidian              | black           |    6 |                                |
+|   200 | Agate                 | orange          |    6 |                                |
+|     0 | (worthless glass)     | any color       |    5 | sells for 0–8 zm unidentified  |
+
+The decision is rarely "carry or drop" — it's "if I'm slot-pressed
+and have to thin the heap, which colors do I drop first." Black opals,
+emeralds, and rubies are usually keepers; agate and obsidian first to go.
 
 A few rules of thumb:
 
