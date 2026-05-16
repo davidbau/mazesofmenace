@@ -1,14 +1,23 @@
 // random_text.js — NetHack random text data selection.
 // C refs: rumors.c:getrumor/get_rnd_line/get_rnd_text, engrave.c:random_engraving.
 
-import { rn2 } from './rng.js';
+import { rn2, rn2Display } from './rng.js';
+import { BOGUSMON_LINES } from './bogusmon_data.js';
+import { MONSTER_DATA } from './monster_data.js';
 import { ENGRAVINGS_TEXT, RUMORS_FALSE_TEXT, RUMORS_TRUE_TEXT } from './random_text_data.js';
 
 const MD_PAD_RUMORS = 60;
+const MD_PAD_BOGONS = 20;
 const COOKIE_MARKER = '[cookie] ';
+const BOGUSMONSIZE = 100;
+const BOGON_CODES = '-_+|=';
+const G_NOGEN = 0x0200;
+const M2_PNAME = 0x00080000;
+const SPECIAL_PM = MONSTER_DATA.findIndex((m) => m?.[0] === 'LONG_WORM_TAIL');
 
 let rumorData = null;
 let engraveData = null;
+let bogusMonData = null;
 
 export function randomEngraving() {
     let pristine = '';
@@ -37,24 +46,24 @@ function getRumor(truth, excludeCookie) {
     do {
         const adjtruth = truth + rn2(2);
         const chunk = adjtruth > 0 ? data.trueText : data.falseText;
-        rumor = getRndLine(chunk, 0, chunk.length, MD_PAD_RUMORS);
+        rumor = getRndLine(chunk, 0, chunk.length, MD_PAD_RUMORS, rn2);
     } while (count++ < 50 && excludeCookie && rumor.startsWith(COOKIE_MARKER));
     return rumor.startsWith(COOKIE_MARKER) ? rumor.slice(COOKIE_MARKER.length) : rumor;
 }
 
 function getRndEngravingText() {
     const text = loadEngravings();
-    return getRndLine(text, 0, text.length, MD_PAD_RUMORS);
+    return getRndLine(text, 0, text.length, MD_PAD_RUMORS, rn2);
 }
 
-function getRndLine(text, startpos, endpos, padlength) {
+function getRndLine(text, startpos, endpos, padlength, rng) {
     const filechunksize = endpos - startpos;
     if (filechunksize < 1) return '';
 
     let firstLine = '';
     let firstEnd = startpos;
     for (let trylimit = 10; trylimit > 0; --trylimit) {
-        const chunkoffset = rn2(filechunksize);
+        const chunkoffset = rng(filechunksize);
         const pos = startpos + chunkoffset;
         const line = readLineAt(text, pos, endpos);
         firstLine = line.value;
@@ -99,6 +108,12 @@ function compilePlainLines(text) {
     return plainLines(text).map((line) => xcrypt(padline(line))).join('');
 }
 
+function loadBogusMonsters() {
+    if (bogusMonData) return bogusMonData;
+    bogusMonData = BOGUSMON_LINES.map((line) => xcrypt(padline(line, MD_PAD_BOGONS))).join('');
+    return bogusMonData;
+}
+
 function plainLines(text) {
     const normalized = text.replace(/\r\n/g, '\n');
     const parts = normalized.split('\n');
@@ -122,6 +137,44 @@ function unpadline(line) {
 
 function stripNewline(line) {
     return line.endsWith('\n') ? line.slice(0, -1) : line;
+}
+
+export function randomHallucinatedMonsterName(article = '') {
+    if (SPECIAL_PM < 0) return applyArticle(bogusmon(), article);
+    let index = 0;
+    do {
+        index = rn2Display(SPECIAL_PM + BOGUSMONSIZE);
+    } while (index < SPECIAL_PM && isHallucinationSuppressedMonster(index));
+
+    if (index >= SPECIAL_PM) return applyArticle(bogusmon(), article);
+    rn2Display(2);
+    return applyArticle({ name: monsterDataName(MONSTER_DATA[index]), personal: false }, article);
+}
+
+function isHallucinationSuppressedMonster(index) {
+    const mdat = MONSTER_DATA[index];
+    return !mdat || !!(mdat[13] & M2_PNAME) || !!(mdat[5] & G_NOGEN);
+}
+
+function bogusmon() {
+    const text = loadBogusMonsters();
+    let name = getRndLine(text, 0, text.length, MD_PAD_BOGONS, rn2Display);
+    if (!name) name = 'bogon';
+    const code = BOGON_CODES.includes(name[0]) ? name[0] : '';
+    if (code) name = name.slice(1);
+    return { name, code, personal: !!code && '-+='.includes(code) };
+}
+
+function applyArticle(entry, article) {
+    if (!article || (entry.personal && article !== 'your')) return entry.name;
+    if (article === 'the') return `the ${entry.name}`;
+    if (article === 'your') return `your ${entry.name}`;
+    if (article === 'a') return `${/^[aeiou]/i.test(entry.name) ? 'an' : 'a'} ${entry.name}`;
+    return entry.name;
+}
+
+function monsterDataName(mdat) {
+    return String(mdat?.[0] || 'monster').toLowerCase().replaceAll('_', ' ');
 }
 
 function xcrypt(str) {

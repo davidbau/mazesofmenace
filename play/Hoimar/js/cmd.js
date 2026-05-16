@@ -7,7 +7,11 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, show_glyph_cell, flush_screen, pline, clear_pending_message, docrt, serialize_terminal_grid, queue_more_prompt, refresh_swallowed_overlay } from './display.js';
+import {
+    newsym, show_glyph_cell, flush_screen, pline, clear_pending_message, docrt,
+    serialize_terminal_grid, queue_more_prompt,
+    apply_hallucination_display_transition, refresh_swallowed_overlay,
+} from './display.js';
 import { vision_recalc, vision_reset } from './vision.js';
 import { makemon, mklev, mksobj, monster_by_user_name, place_lregion, place_object } from './mklev.js';
 import { OBJECT_DELAY } from './object_data.js';
@@ -18,6 +22,8 @@ import { initrack } from './track.js';
 import { roleGod } from './roles.js';
 import { d, rn1, rn2, rnd, rnz } from './rng.js';
 import { getObjectDescription } from './o_init.js';
+import { randomHallucinatedMonsterName } from './random_text.js';
+import { finish_pending_swallowed_expulsion } from './monmove.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import * as C from './const.js';
 import {
@@ -734,6 +740,14 @@ function monsterName(mon) {
     return String(mon?.data?.name || 'monster').toLowerCase().replaceAll('_', ' ');
 }
 
+function monsterHitName(mon) {
+    if (game.u?.uhallucination || game.u?.uprops?.hallucination) {
+        // C ref: do_name.c:x_monnam(ARTICLE_THE) -> rndmonnam().
+        return randomHallucinatedMonsterName('the');
+    }
+    return `the ${monsterName(mon)}`;
+}
+
 async function attackMonster(mon) {
     // C ref: hack.c:domove() enters uhitm() instead of moving onto
     // occupied monster squares.  Reuse the current narrow uhitm() RNG front
@@ -747,7 +761,7 @@ async function heroMeleeAttack(mon) {
     rnd(20);
     exercise(A_DEX, true);
     const damage = rnd(6);
-    await pline(`You hit the ${monsterName(mon)}.`);
+    await pline(`You hit ${monsterHitName(mon)}.`);
     if (typeof mon.mhp === 'number') {
         mon.mhp -= damage;
         if (mon.mhp <= 0) {
@@ -1078,8 +1092,15 @@ function updateIntrinsicMenuSelection(menu, row, count) {
     }
 }
 
+function refreshSwallowedHallucinationAfterMore() {
+    if (!(game.u?.uhallucination || game.u?.uprops?.hallucination)) return;
+    if (game.u?.uswallow && game.u?.ustuck && game._swallowed_map_active)
+        refresh_swallowed_overlay();
+}
+
 async function commitIntrinsicMenuSelection(menu) {
     const selected = menu.rows.filter((row) => row.kind === 'selectable' && row.selected);
+    const wasHallucinating = !!(game.u?.uprops?.hallucination || game.u?.uhallucination);
     game._intrinsic_menu = null;
     game._override_screen = null;
     game._override_serialized_screen = null;
@@ -1097,7 +1118,8 @@ async function commitIntrinsicMenuSelection(menu) {
         if (row.prop === C.HALLUC) {
             game.u.uprops.hallucination = newtimeout;
             game.u.uhallucination = newtimeout;
-            refresh_swallowed_overlay();
+            const isHallucinating = !!(game.u.uhallucination || game.u.uprops.hallucination);
+            apply_hallucination_display_transition(wasHallucinating, isHallucinating);
             await pline('Oh wow!  Everything looks so cosmic!');
             queue_more_prompt();
             continue;
@@ -2122,7 +2144,14 @@ export async function rhack(key) {
             await showFireWandDeathMessage();
         } else if (game._fire_wand_death_prompt_pending) {
             await showFireWandDeathPrompt();
-        } else if (game._more_dismissals_remaining <= 0) clear_pending_message();
+        } else if (game._more_dismissals_remaining <= 0) {
+            clear_pending_message();
+            // C ref: topl.c:more() returns to the interrupted command before
+            // allmain.c's next input prompt; swallowed Hallucination redraws
+            // once in that resumed path and again at the input boundary.
+            if (!await finish_pending_swallowed_expulsion())
+                refreshSwallowedHallucinationAfterMore();
+        }
         game.context.move = 0;
         return;
     }
@@ -2156,6 +2185,7 @@ export async function rhack(key) {
     } else if (runDirectionForKey(ch)) {
         const dir = runDirectionForKey(ch);
         game.context.run = { dx: DIR_DX[dir], dy: DIR_DY[dir], mode: 1, steps: 0 };
+        game.context.mv = 1;
         game.context.move = await domove(DIR_DX[dir], DIR_DY[dir]) ? 1 : 0;
         if (!game.context.move) game.context.run = null;
     } else if (ch === 'F') {
@@ -2275,6 +2305,7 @@ export async function continueRunStep() {
         return false;
     }
     game.context.move = 0;
+    game.context.mv = 1;
     const moved = await domove(run.dx, run.dy);
     game.context.move = moved ? 1 : 0;
     if (!moved) game.context.run = null;

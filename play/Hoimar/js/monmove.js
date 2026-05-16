@@ -11,7 +11,7 @@ import {
     GP_CHECKSCARY, W_NONPASSWALL,
     isok, SPACE_POS,
 } from './const.js';
-import { newsym, queue_more_prompt, pline, flush_screen, clear_pending_message } from './display.js';
+import { newsym, queue_more_prompt, pline, flush_screen, clear_pending_message, docrt } from './display.js';
 import { nhgetch } from './input.js';
 import { clear_path, cansee, couldsee } from './vision.js';
 import { m_dowear_basic } from './mon_wear.js';
@@ -761,7 +761,7 @@ function apply_hero_damage(damage) {
     if (damage > 0) game.u.uhp = Math.max(0, (game.u.uhp ?? 0) - damage);
 }
 
-function unstuck_swallowed_hero(mtmp) {
+async function unstuck_swallowed_hero(mtmp) {
     if (!game.u?.uswallow || game.u.ustuck !== mtmp) return;
     game.u.uswallow = false;
     game.u.ustuck = null;
@@ -785,6 +785,25 @@ function unstuck_swallowed_hero(mtmp) {
         newsym(mtmp.mx, mtmp.my);
     }
     game.vision_full_recalc = 1;
+    await docrt();
+}
+
+export async function finish_pending_swallowed_expulsion() {
+    if (!game._pending_swallowed_display_clear) return false;
+    game._pending_swallowed_display_clear = false;
+    if (game.u) {
+        game.u.uswallow = false;
+        game.u.ustuck = null;
+        game.u.uswldtim = 0;
+    }
+    game._swallowed_display_pending = false;
+    game._swallowed_map_active = false;
+    game._swallowed_latched_overlay = null;
+    game._swallowed_overlay = null;
+    game._latched_status_uhp = null;
+    game.vision_full_recalc = 1;
+    await docrt();
+    return true;
 }
 
 async function engulf_attack(mtmp, attack, toHit) {
@@ -834,7 +853,13 @@ async function engulf_attack(mtmp, attack, toHit) {
     apply_hero_damage(damage);
     if (damage > 0) game._occupation_turns_remaining = 0;
     if (game.u?.uswallow && (game.u.uswldtim || 0) <= 0) {
-        unstuck_swallowed_hero(mtmp);
+        await append_swallowed_damage_message('You get expelled!');
+        queue_more_prompt();
+        game._latched_status_uhp = game.u?.uhp ?? null;
+        const latchedOverlay = game._swallowed_overlay;
+        await unstuck_swallowed_hero(mtmp);
+        game._swallowed_latched_overlay = latchedOverlay;
+        game._pending_swallowed_display_clear = true;
     }
     return true;
 }

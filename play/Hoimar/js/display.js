@@ -290,6 +290,10 @@ function swallowed_overlay_key() {
     return `${game.u.ux},${game.u.uy}`;
 }
 
+function current_swallowed_overlay() {
+    return game._swallowed_latched_overlay || build_swallowed_overlay();
+}
+
 function build_swallowed_overlay() {
     const key = swallowed_overlay_key();
     if (!key) return null;
@@ -310,7 +314,7 @@ function build_swallowed_overlay() {
                 continue;
             }
             let color = game.u.ustuck.data?.color ?? CLR_GREEN;
-            if (game.u?.uprops?.hallucination) {
+            if (game.u?.uhallucination || game.u?.uprops?.hallucination) {
                 const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
                 color = mdat ? (mdat[7] ?? NO_COLOR) : color;
             }
@@ -327,8 +331,21 @@ export function refresh_swallowed_overlay() {
     return build_swallowed_overlay();
 }
 
+export function apply_hallucination_display_transition(wasHallucinating, isHallucinating) {
+    if (wasHallucinating === isHallucinating) return;
+    if (!game.u?.uswallow || !game._swallowed_map_active || !game.u?.ustuck) {
+        game._swallowed_overlay = null;
+        return;
+    }
+    // C ref: potion.c:make_hallucinated() -> swallowed(0).
+    // Use a fresh swallowed overlay so swallowed display RNG is consumed on
+    // the same visual edge as the C path.
+    game._swallowed_overlay = null;
+    build_swallowed_overlay();
+}
+
 function swallowed_glyph_at(x, y) {
-    const overlay = build_swallowed_overlay();
+    const overlay = current_swallowed_overlay();
     if (!overlay) return null;
     return overlay.cells.get(`${x},${y}`) || null;
 }
@@ -337,6 +354,15 @@ function swallowed_glyph_at(x, y) {
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+
+    // C ref: display.c:newsym(). While swallowed, ordinary map newsym()
+    // calls do not redraw external monsters/objects/traps; swallowed()
+    // owns the visible 3x3 stomach display.
+    if (game.u?.uswallow) {
+        if (game.u?.ux === x && game.u?.uy === y)
+            show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        return;
+    }
 
     if (game.u?.ux === x && game.u?.uy === y) {
         // Hero
@@ -410,10 +436,10 @@ export async function docrt() {
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
 function render_map_row(y) {
     if (!game.level) return '';
-    if (game._swallowed_map_active) {
-        build_swallowed_overlay();
-        const ux = game.u?.ux ?? 0;
-        const uy = game.u?.uy ?? 0;
+    if (game._swallowed_map_active || game._swallowed_latched_overlay) {
+        const overlay = current_swallowed_overlay();
+        if (!overlay) return '';
+        const [ux, uy] = overlay.key.split(',').map((v) => Number.parseInt(v, 10));
         if (y < uy - 1 || y > uy + 1) return '';
         const firstCol = Math.max(1, ux - 1);
         const lastCol = Math.min(COLNO - 1, ux + 1);
@@ -520,7 +546,10 @@ function _statusLine2() {
     const conditions = [];
     if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
-    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
+    const hp = game._latched_status_uhp != null && game._more
+        ? game._latched_status_uhp
+        : (u.uhp || 0);
+    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -649,7 +678,7 @@ function _buildScreenOutput() {
                 display.setCell(c, 0, msg[c], NO_COLOR, 0);
         }
         // Map — write characters to grid (DEC → Unicode for browser display)
-        if (!game._swallowed_map_active) {
+        if (!game._swallowed_map_active && !game._swallowed_latched_overlay) {
             for (let y = 0; y < ROWNO; y++) {
                 for (let x = 1; x < COLNO; x++) {
                     const loc = game.level?.at(x, y);
@@ -663,7 +692,7 @@ function _buildScreenOutput() {
                 for (let x = 1; x < COLNO; x++) {
                     const sg = swallowed_glyph_at(x, y);
                     if (!sg) continue;
-                    display.setCell(x - 1, y + 1, sg.ch, sg.color, 0);
+                    display.setCell(x - 1, y + 1, sg.ch, tty_color(sg.color), 0);
                 }
             }
         }
