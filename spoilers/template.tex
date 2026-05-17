@@ -1,4 +1,4 @@
-% LaTeX template for "The Traveler's Companion to the Mazes of Menace"
+% LaTeX template for "A Traveler's Companion to the Mazes of Menace"
 % 5" × 8" handbook format, used with pandoc and latex-filter.lua
 \documentclass[openany,10pt]{book}
 
@@ -149,6 +149,29 @@
 % Reduce table font size to fit 5-inch pages
 \AtBeginEnvironment{longtable}{\footnotesize}
 
+% Suppress phantom longtable headers. longtable's pagination
+% sometimes emits a fresh \endhead at the top of the page after the
+% table actually ended, leaving a ghost column header floating
+% before the next section. Loading ltablex with \keepXColumns
+% patches the longtable environment, the \null acts as a marker
+% that the table is genuinely complete, and the trailing
+% \vspace*{-\baselineskip} pulls back the visible empty row that
+% the \null would otherwise leave.
+%
+% Separately, \LTpre and \LTpost (the glue before/after each
+% longtable) default to \bigskipamount = 12pt, which combined with
+% the surrounding paragraph skip leaves a chunk of empty space
+% above and below every table. Tighten them so tables sit closer
+% to the surrounding prose.
+\usepackage{ltablex}
+\keepXColumns
+\setlength\LTpre{\smallskipamount}
+\setlength\LTpost{\smallskipamount}
+% The ghost-header marker goes AFTER \end{longtable} (via
+% \AfterEndEnvironment) so it doesn't get treated as a phantom
+% trailing row inside the table itself.
+\AfterEndEnvironment{longtable}{\null\vspace*{-\baselineskip}}
+
 % --- Code blocks ---
 \usepackage{fancyvrb}
 \usepackage{fvextra}
@@ -206,6 +229,21 @@ $endif$
 \usepackage{graphicx}
 \usepackage{grffile}
 
+% Pandoc 3.5+ wraps every \includegraphics in \pandocbounded, which
+% scales the image down to fit within \linewidth x \textheight. We
+% accept that behaviour but define it as a passthrough so older
+% pandocs (or our own definition) keep working.
+\providecommand{\pandocbounded}[1]{%
+  \begingroup
+    \setbox0=\hbox{#1}%
+    \ifdim\wd0>\linewidth
+      \resizebox{\linewidth}{!}{\box0}%
+    \else
+      \box0%
+    \fi
+  \endgroup
+}
+
 % --- Widows and orphans ---
 \widowpenalty=10000
 \clubpenalty=10000
@@ -244,7 +282,7 @@ $endif$
 \thispagestyle{empty}
 \vspace*{2in}
 \begin{center}
-{\huge\bfseries The Traveler's Companion to the\\[0.3em]Mazes of Menace}
+{\huge\bfseries A Traveler's Companion to the\\[0.3em]Mazes of Menace}
 \end{center}
 \end{titlepage}
 
