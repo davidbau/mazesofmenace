@@ -112,7 +112,7 @@ function surfaceTypAtForGoodposLikeC(x, y, g = game) {
  * @param {number} y
  * @param {Record<string, unknown>} [g]
  */
-function accessibleAtLikeC(x, y, g = game) {
+export function accessibleAtMonmoveLikeC(x, y, g = game) {
     const loc = g.level?.at(x | 0, y | 0);
     if (!loc) return false;
     if (!ACCESSIBLE(surfaceTypAtForGoodposLikeC(x, y, g))) return false;
@@ -133,7 +133,7 @@ export function goodposNullMonLikeC(x, y, g = game) {
     if (u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0)) return false;
     const loc = g.level?.at(x | 0, y | 0);
     if (!loc) return false;
-    if (!accessibleAtLikeC(x, y, g)) return false;
+    if (!accessibleAtMonmoveLikeC(x, y, g)) return false;
     if (sobjAtBoulder(x, y, g)) return false;
     return true;
 }

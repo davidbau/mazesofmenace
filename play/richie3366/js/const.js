@@ -2936,6 +2936,46 @@ export function Is_airlevel(uz) { const lev = uz ?? game?.u?.uz; const al = game
 export function In_mines(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.mines_dnum; }
 export function In_sokoban(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.sokoban_dnum; }
 export function In_V_tower(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.tower_dnum; }
+
+/**
+ * C: dungeon.c `On_W_tower_level` — `Is_wiz1_level || Is_wiz2_level || Is_wiz3_level` (Lcheck vs `wiz*_level`).
+ * JS: when **`game.wiz1_level`** / **`wiz2_level`** / **`wiz3_level`** are set (init_dungeons parity).
+ * @param {{ dnum?: number, dlevel?: number }|null|undefined} [uz]
+ */
+export function onWTowerLevelLikeC(uz) {
+    const g = game;
+    const lev = uz ?? g?.u?.uz;
+    if (!lev) return false;
+    /** @param {unknown} ref */
+    const same = (ref) =>
+        !!ref &&
+        typeof ref === 'object' &&
+        (lev.dnum | 0) === (/** @type {{ dnum?: number }} */ (ref).dnum | 0) &&
+        (lev.dlevel | 0) === (/** @type {{ dlevel?: number }} */ (ref).dlevel | 0);
+    return same(g?.wiz1_level) || same(g?.wiz2_level) || same(g?.wiz3_level);
+}
+
+/**
+ * C: dungeon.c `In_W_tower(x,y,lev)` — `On_W_tower_level(lev)` && `within_bounded_area` vs **`svd.dndest`**.
+ * JS: **`game.dndest`** `{ nlx, nly, nhx, nhy }` when tower bounds are wired.
+ * @param {number} x
+ * @param {number} y
+ * @param {Record<string, unknown>} [g]
+ */
+export function inWTowerLikeC(x, y, g = game) {
+    const lev = g?.u?.uz;
+    if (!onWTowerLevelLikeC(lev)) return false;
+    const d = /** @type {{ nlx?: number, nly?: number, nhx?: number, nhy?: number }|undefined} */ (g?.dndest);
+    const nlx = d?.nlx | 0;
+    if (!nlx) return false;
+    const nly = d?.nly | 0;
+    const nhx = d?.nhx | 0;
+    const nhy = d?.nhy | 0;
+    const xi = x | 0;
+    const yi = y | 0;
+    return xi >= nlx && xi <= nhx && yi >= nly && yi <= nhy;
+}
+
 export function Is_stronghold(uz) { const g = game; return g?.stronghold_level && (uz ?? g?.u?.uz)?.dnum === g.stronghold_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.stronghold_level.dlevel; }
 /** C: dungeon.h **`Is_sanctum(x)`** — **`Lcheck(x, &sanctum_level)`**; JS when **`game.sanctum_level`** is set. */
 export function Is_sanctum(uz) { const g = game; return g?.sanctum_level && (uz ?? g?.u?.uz)?.dnum === g.sanctum_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.sanctum_level.dlevel; }
@@ -2971,10 +3011,20 @@ export const OTYP_BOULDER = 465;
 export const OTYP_HEAVY_IRON_BALL = 473;
 /** C: objects.h `OBJ("iron chain", …)` — follows heavy iron ball in `OBJECTS_ENUM`. */
 export const OTYP_IRON_CHAIN = 474;
-/** C: `monsters.h` `MON()` order (NH 5.0 upstream) — zero-based `mons[]` index. */
-export const PM_GRID_BUG = 115;
+/** C: `monsters.h` `MON()` order (NH 5.0 upstream) — zero-based `mons[]` index; purple worm line (**`LITTLE_TO_BIG`** **[115,117]**). */
+export const PM_BABY_PURPLE_WORM = 115;
+export const PM_PURPLE_WORM = 117;
+export const PM_GRID_BUG = 118;
 /** C: `monsters.h` — gremlin. */
 export const PM_GREMLIN = 42;
+/** C: `monsters.h` MON() order — displacer beast (`set_apparxy` displacement exception). */
+export const PM_DISPLACER_BEAST = 41;
+/** C: `monsters.h` MON() order — xorn (`set_apparxy` smell-gold when blind to hero). */
+export const PM_XORN = 238;
+/** C: `monsters.h` MON() order — Medusa (`mon.c` `m_respond` gaze). */
+export const PM_MEDUSA = 290;
+/** C: `monsters.h` MON() order — Erinys (`m_respond` → `aggravate`). */
+export const PM_ERINYS = 299;
 /** C: `monsters.h` — incubus/succubus (`MON(NAMS(..., AMOROUS_DEMON)`); `#if 0` blocks skipped vs `MON()` count). */
 export const PM_AMOROUS_DEMON = 292;
 /** C: `monsters.h` MON() order — lichen/lizard corpses skip **`start_corpse_timeout`**. */

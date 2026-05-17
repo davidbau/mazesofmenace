@@ -32,6 +32,7 @@ import {
     Is_waterlevel,
     NON_PM,
     LOW_PM,
+    MON_FLOOR,
 } from './const.js';
 
 /**
@@ -86,7 +87,7 @@ export const AD_CORR = 42;
 export const NATTK = 6;
 
 /** @typedef {{ adtyp: number, aatyp: number }} Mattack */
-/** @typedef {{ mlet: number, mflags1: number, mflags2?: number, msize: number, mmove: number, mlevel?: number, ac?: number, mvflags?: number, mresists?: number, mnum?: number, mattk?: readonly Mattack[], msound?: number, geno?: number, maligntyp?: number }} Permonst */
+/** @typedef {{ mlet: number, mflags1: number, mflags2?: number, mflags3?: number, msize: number, mmove: number, mlevel?: number, ac?: number, mvflags?: number, mresists?: number, mnum?: number, mattk?: readonly Mattack[], msound?: number, geno?: number, maligntyp?: number }} Permonst */
 
 /** C: monflag.h `G_NOCORPSE` — no ordinary corpse (mon.c make_corpse; genocided / unique rules). */
 export const G_NOCORPSE = 0x0010;
@@ -402,6 +403,19 @@ export function halfGasDamageHeroLikeC(g) {
 /** C: mondata.h passes_walls */
 export function passesWalls(/** @type {Permonst} */ ptr) {
     return (ptr.mflags1 & M1_WALLWALK) !== 0;
+}
+
+/** C: monflag.h `M3_COVETOUS` — any `M3_WANTS*` artifact drive (wizard.c `strategy` / `tactics`). */
+export const M3_COVETOUS = 0x001f;
+
+/** C: mondata.h `is_covetous(ptr)` — covetous monsters get `tactics` + second `set_apparxy` before `distfleeck`. */
+export function isCovetousPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags3 ?? 0) & M3_COVETOUS) !== 0;
+}
+
+/** C: monst.h `mon_offmap(mon)` — `(mon)->mstate != MON_FLOOR` (monmove.c after `m_move`). */
+export function monOffmapLikeC(/** @type {{ mstate?: number }|null|undefined} */ mtmp) {
+    return (mtmp?.mstate | 0) !== MON_FLOOR;
 }
 
 /** C: mondata.h throws_rocks — giants, xorns, titans, … (goodpos boulder tile). */

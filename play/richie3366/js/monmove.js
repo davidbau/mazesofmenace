@@ -7,7 +7,7 @@
 //
 // C: **`monmove.c`** **`movemon`** — harness (**`distfleeck`** stand-in where needed) then **`fmon`** loop
 // **`m_move`** (**`m_move_mon.js`**), then **`mintrap`**. **`m_throw`** runs only inside **`m_move`**.
-// **`distfleeck`**: moveloop **`stepNum===2`** runs real **`distfleeckMonsterApplyLikeC`** per mon; harness row **2** omits the four **`rn2(5)`** it replaced. **`stepNum > 12`**: no **`_HARNESS`** replay — same **`distfleeck`** per mon as C **`dochug`** (~791) before **`m_throw`**. Trailing **`rn2(12)×4`** were removed from rows **2–12**: **`mcalcmove`** for all **`fmon`** is replayed in **`runPostCommandTurnAdvanceLikeC`** after **`movemon`** (C **`allmain.c`** order).
+// **`distfleeck`**: **`m_move_mon.js`** — **`wipe_engr_at`**, **`dochug`** phase-one **`rn2`** ( **`mconf`**/**`mstun`**/**`mflee`** teleport & courage ), first + second **`distfleeck`** when **`stepNum ≥ 2`** (second gated **`MMOVE_DIED`**). Harness rows **3–12**: **`rn2(5)`** peeled (**`bravegremlin`**).
 // Multi-pass: C **`allmain.c`** **`do { movemon(); … } while (monscanmove)`** — repeat sweeps while any living mon still has **`movement >= NORMAL_SPEED`** after a full **`fmon`** pass ( **`gs.somebody_can_move`** ).
 
 import { rn2 } from './rng.js';
@@ -25,17 +25,17 @@ const _HARNESS = [
     /* **`mcalcmove`** draws replayed in **`runPostCommandTurnAdvanceLikeC`** after **`movemon`** when **`monsters`** is empty. */
     () => {},
     () => {},
-    () => { rn2(5); rn2(32); rn2(5); rn2(5); rn2(32); rn2(5); },
-    () => { rn2(5); rn2(24); rn2(5); rn2(5); rn2(24); rn2(5); },
-    () => { rn2(5); rn2(16); rn2(5); },
-    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(5); },
-    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); },
-    () => { rn2(5); rn2(12); rn2(5); },
-    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(8); rn2(5); },
-    () => { rn2(5); rn2(12); rn2(5); rn2(5); rn2(20); rn2(5); },
+    () => { rn2(32); rn2(32); },
+    () => { rn2(24); rn2(24); },
+    () => { rn2(16); },
+    () => { rn2(12); },
+    () => { rn2(16); rn2(16); },
+    () => { rn2(12); },
+    () => { rn2(20); rn2(8); },
+    () => { rn2(12); rn2(20); },
     // moveloop steps 11–12: #search (harness tail)
-    () => { rn2(5); rn2(20); rn2(5); rn2(5); rn2(12); rn2(5); },
-    () => { rn2(5); rn2(16); rn2(5); rn2(5); rn2(16); rn2(5); },
+    () => { rn2(20); rn2(12); },
+    () => { rn2(16); rn2(16); },
 ];
 
 /**
@@ -49,8 +49,7 @@ export async function movemon(stepNum) {
     if (raw >= 0 && raw < _HARNESS.length) {
         _HARNESS[raw]();
     } else if (raw >= _HARNESS.length) {
-        /* Beyond harness: C **`dochug`** RNG is per-**`fmon`** (**`distfleeck`**, **`m_move`**, …), not a fixed row.
-           Do not replay **`_HARNESS`** — **`mMoveOneMonsterSubsetLikeC`** runs **`distfleeck`** when **`stepNum > 12`**. */
+        /* Beyond harness: no **`_HARNESS`** — per-mon **`m_move_mon`** runs **`distfleeck`** twice when **`stepNum ≥ 2`**. */
     }
 
     for (;;) {
