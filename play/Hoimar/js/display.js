@@ -11,7 +11,7 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    FOUNTAIN, SINK, ALTAR, GRAVE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     HOLE, TRAPDOOR, M_AP_OBJECT, IS_POOL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
@@ -239,6 +239,7 @@ function terrain_glyph(loc, x, y) {
     case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+    case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
     case POOL:
     case MOAT:
         // C ref: display.c:back_to_glyph() S_pool.  The tty DECgraphics wire

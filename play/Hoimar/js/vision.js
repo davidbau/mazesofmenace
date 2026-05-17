@@ -15,6 +15,16 @@ import { newsym } from './display.js';
 const BOULDER = 475;
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
+const TEMP_LIT = 0x4;
+
+const LIGHT_EMITTING_MONSTERS = new Set([
+    'FLAMING_SPHERE',
+    'SHOCKING_SPHERE',
+    'BABY_GOLD_DRAGON',
+    'FIRE_VORTEX',
+    'FIRE_ELEMENTAL',
+    'GOLD_DRAGON',
+]);
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -409,6 +419,35 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
     }
 }
 
+function monster_light_range(mon) {
+    const data = mon?.data;
+    if (!data) return 0;
+    if (data.mlet === 'S_LIGHT' || LIGHT_EMITTING_MONSTERS.has(data.name)) return 1;
+    return 0;
+}
+
+function apply_monster_light_sources(next) {
+    // C ref: makemon.c:makemon() registers emits_light() monsters as
+    // LS_MONSTER, then vision.c:vision_recalc() calls light.c:do_light_sources().
+    for (const mon of game.level?.monsters || []) {
+        if (mon.dead || mon.mhp <= 0) continue;
+        const range = monster_light_range(mon);
+        if (!range) continue;
+        const limitsIdx = circle_start[range];
+        const minY = Math.max(0, mon.my - range);
+        const maxY = Math.min(ROWNO - 1, mon.my + range);
+        for (let y = minY; y <= maxY; y++) {
+            const offset = circle_data[limitsIdx + Math.abs(y - mon.my)];
+            const minX = Math.max(1, mon.mx - offset);
+            const maxX = Math.min(COLNO - 1, mon.mx + offset);
+            for (let x = minX; x <= maxX; x++) {
+                if ((x === mon.mx && y === mon.my) || clear_path(mon.mx, mon.my, x, y))
+                    next[y][x] |= TEMP_LIT;
+            }
+        }
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -431,6 +470,8 @@ export function vision_recalc(control = 0) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
 
+    apply_monster_light_sources(next);
+
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
@@ -449,13 +490,13 @@ export function vision_recalc(control = 0) {
             }
 
             // Lit cells
-            if (loc.lit) {
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    if (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
                 } else {
@@ -497,12 +538,12 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];

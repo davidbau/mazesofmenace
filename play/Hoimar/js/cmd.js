@@ -1257,6 +1257,7 @@ function blocksMove(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return true;
     if (loc.typ === STONE) return true;
+    if (loc.typ === SDOOR || loc.typ === SCORR) return true;
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;

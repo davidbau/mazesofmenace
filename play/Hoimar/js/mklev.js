@@ -26,7 +26,7 @@ import {
     OROOM, VAULT, THEMEROOM, COURT, BARRACKS, ZOO, LEPREHALL, SHOPBASE, DELPHI, MORGUE, TEMPLE,
     CANDLESHOP, TOOLSHOP, FOODSHOP,
     ROOMOFFSET, MAXNROFROOMS, SHARED,
-    SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
+    SDOOR, SCORR, IRONBARS, TREE, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL, FILL_NONE, FILL_LVFLAGS,
@@ -221,6 +221,7 @@ const SCR_CONFUSE_MONSTER = 325;
 const SCR_SCARE_MONSTER = 326;
 const SCR_CREATE_MONSTER = 329;
 const SCR_EARTH = 340;
+const SCR_BLANK_PAPER = 365;
 const WAN_CREATE_MONSTER = 413;
 const WAN_WISHING = 414;
 const WAN_STRIKING = 417;
@@ -266,6 +267,7 @@ const G_IGNORE = 0x8000;
 const G_NOCORPSE = 0x0010;
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
+const MR_STONE = 0x80;
 const G_LGROUP = 0x0040;
 const G_SGROUP = 0x0080;
 const CORPSTAT_HISTORIC = 0x04;
@@ -311,6 +313,7 @@ const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
 const MS_PRIEST = 41;
 const MM_EMIN = 0x00000400;
+const MM_NOCOUNTBIRTH = 0x00000004;
 const MM_NOMSG = 0x00020000;
 
 const LIQUID = 1;
@@ -459,14 +462,20 @@ const VERY_SMALL_MONSTERS = new Set([
 ]);
 
 function monsterName(mon) {
+    if (Number.isInteger(mon)) return MONSTERS[mon]?.name ?? null;
     if (!mon) return null;
     return typeof mon === 'string' ? mon : mon.name;
 }
 
 export function monsterPtr(mon) {
+    if (Number.isInteger(mon)) return MONSTERS[mon] || null;
     if (!mon) return null;
     if (typeof mon === 'object') return mon;
     return MONSTERS.find(ptr => ptr.name === mon) || null;
+}
+
+function monsterIndex(ptr) {
+    return MONSTERS.indexOf(ptr);
 }
 
 function verysmall_monster(mon) {
@@ -1135,7 +1144,7 @@ function mksobj_init(otmp, otyp, artif) {
             otmp.quan = rn1(6, 6);
         } else if (otyp === STATUE) {
             const ptr = rndmonnum_ptr();
-            otmp.corpsenm = ptr ? ptr.name : null;
+            otmp.corpsenm = ptr ? monsterIndex(ptr) : null;
             if (ptr && !verysmall_monster(ptr)) {
                 if (rn2(Math.trunc(level_difficulty() / 2) + 10) > 10) {
                     mkobj(SPBOOK_no_NOVEL, false);
@@ -1522,7 +1531,7 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
         if (otmp.otyp === CORPSE && (special_corpse(oldCorpsenm) || special_corpse(otmp.corpsenm))) {
             start_corpse_timeout(otmp);
         }
-    } else if (!otmp.corpsenm) {
+    } else if (otmp.corpsenm == null) {
         // rndmonnum — pick random monster
         otmp.corpsenm = rndmonnum();
     }
@@ -1539,12 +1548,22 @@ function Inhell(uz = game.u?.uz) {
     return !!game.dungeons?.[uz?.dnum ?? 0]?.flags?.hellish;
 }
 
+let alignShiftOldMoves = null;
+let alignShiftSeed = null;
+let alignShiftSpecial = null;
+
 function align_shift(ptr) {
     const uz = game.u?.uz;
-    const special = (game.specialLevels || []).find((lev) =>
-        lev?.dlevel?.dnum === uz?.dnum && lev?.dlevel?.dlevel === uz?.dlevel);
+    // C ref: makemon.c:align_shift() caches Is_special(&u.uz) until moves
+    // changes; same-move level generation reuses that cached special.
+    if (alignShiftOldMoves !== (game.moves ?? 0) || alignShiftSeed !== game.currentSeed) {
+        alignShiftSpecial = (game.specialLevels || []).find((lev) =>
+            lev?.dlevel?.dnum === uz?.dnum && lev?.dlevel?.dlevel === uz?.dlevel) || null;
+        alignShiftOldMoves = game.moves ?? 0;
+        alignShiftSeed = game.currentSeed;
+    }
     const dungeon = game.dungeons?.[uz?.dnum ?? 0];
-    const align = special ? (special.flags?.align ?? A_NONE) : (dungeon?.flags?.align ?? null);
+    const align = alignShiftSpecial ? (alignShiftSpecial.flags?.align ?? A_NONE) : (dungeon?.flags?.align ?? null);
     if (align == null || align === A_NONE) return 0;
     if (align === A_LAWFUL) return Math.trunc((ptr.maligntyp + 20) / (2 * 4));
     if (align === 0) return Math.trunc((20 - Math.abs(ptr.maligntyp)) / 4);
@@ -1770,9 +1789,17 @@ function random_poly_shape_for() {
 function pick_doppelganger_shape_for(mon) {
     if (!rn2(7)) return pick_nasty_for((monsterPtr('JABBERWOCK')?.difficulty ?? 0) - 1);
     if (rn2(3)) {
-        // Role-monster `tt_doppel()` remains future work; current evidence
-        // takes the general humanoid fallback.
-        return null;
+        // C ref: mon.c:select_newcham_form(), topten.c:tt_doppel().
+        // The local harness has no usable score entry for this branch, so
+        // tt_doppel() falls back to a random role monster after the score
+        // rank probe.
+        if (rn2(13)) rnd(10);
+        const roles = [
+            'ARCHEOLOGIST', 'BARBARIAN', 'CAVEMAN', 'HEALER', 'KNIGHT',
+            'MONK', 'PRIEST', 'RANGER', 'ROGUE', 'SAMURAI', 'TOURIST',
+            'VALKYRIE', 'WIZARD',
+        ];
+        return monsterPtr(roles[rn2(roles.length)]);
     }
     if (!rn2(3)) {
         const guardians = [
@@ -2376,7 +2403,13 @@ function m_initweap_for(ptr) {
         maybe_init_offensive_item_for(ptr);
         return;
     }
-    if (ptr.mlet !== 'S_ORC') return;
+    if (ptr.mlet !== 'S_ORC') {
+        // C ref: makemon.c:m_initweap() always runs the offensive-item
+        // chance after type-specific weapon handling, even when there was
+        // no type-specific case for an armed monster.
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
     if (rn2(2)) mksobj(ORCISH_HELM, true, false);
     let orcKind = ptr.name;
     if (orcKind === 'ORC_CAPTAIN') orcKind = rn2(2) ? 'MORDOR_ORC' : 'URUK_HAI';
@@ -3136,6 +3169,32 @@ const TOWER3_MAP = [
     '  |.............|  ',
     '  ---------------  ',
 ];
+
+const MEDUSA3_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}T..T.}}}}}}}}}}}}}}}}}}}}..}}}}}}}}.}}}...}}}}}}}.}}}}}......}}}}}}}',
+    '}}}}}}.......T.}}}}}}}}}}}..}}}}..T.}}}}}}...T...T..}}...T..}}..-----..}}}}}',
+    '}}}...-----....}}}}}}}}}}.T..}}}}}...}}}}}.....T..}}}}}......T..|...|.T..}}}',
+    '}}}.T.|...|...T.}}}}}}}.T......}}}}..T..}}.}}}.}}...}}}}}.T.....+...|...}}}}',
+    '}}}}..|...|.}}.}}}}}.....}}}T.}}}}.....}}}}}}.T}}}}}}}}}}}}}..T.|...|.}}}}}}',
+    '}}}}}.|...|.}}}}}}..T..}}}}}}}}}}}}}T.}}}}}}}}..}}}}}}}}}}}.....-----.}}}}}}',
+    '}}}}}.--+--..}}}}}}...}}}}}}}}}}}}}}}}}}}T.}}}}}}}}}}}}}}}}.T.}........}}}}}',
+    '}}}}}.......}}}}}}..}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.}}}.}}.T.}}}}}}',
+    '}}.T...T...}}}}T}}}}}}}}}}}....}}}}}}}}}}T}}}}}.T}}...}}}}}}}}}}}}}}...}}}}}',
+    '}}}...T}}}}}}}..}}}}}}}}}}}.T...}}}}}}}}.T.}.T.....T....}}}}}}}}}}}}}.}}}}}}',
+    '}}}}}}}}}}}}}}}....}}}}}}}...}}.}}}}}}}}}}............T..}}}}}.T.}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}..T..}}}}}}}}}}}}}}..}}}}}..------+--...T.}}}....}}}}}}}}}}}',
+    '}}}}.}..}}}}}}}.T.....}}}}}}}}}}}..T.}}}}.T.|...|...|....}}}}}.}}}}}...}}}}}',
+    '}}}.T.}...}..}}}}T.T.}}}}}}.}}}}}}}....}}...|...+...|.}}}}}}}}}}}}}..T...}}}',
+    '}}}}..}}}.....}}...}}}}}}}...}}}}}}}}}}}}}T.|...|...|}}}}}}}}}}}....T..}}}}}',
+    '}}}}}..}}}.T..}}}.}}}}}}}}.T..}}}}}}}}}}}}}}---S-----}}}}}}}}}}}}}....}}}}}}',
+    '}}}}}}}}}}}..}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}T..T}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+const MEDUSA3_PLACE_WIDTH = 76;
+const MEDUSA3_X = 3;
+const MEDUSA3_Y = 1;
 
 const SOKO_LEVELS = {
     'soko1-1': {
@@ -4662,10 +4721,9 @@ function loadTower2Special() {
     mksobj(AMULET_OF_STRANGULATION, true, false);
 
     loc = tower1Abs(place[6][0], place[6][1]);
-    mksobj_at(WATER_WALKING_BOOTS, loc.x, loc.y, true, false);
+    mksobj_at(WATER_WALKING_BOOTS, loc.x, loc.y, true, true);
     loc = tower1Abs(place[7][0], place[7][1]);
-    mksobj_at(CRYSTAL_PLATE_MAIL, loc.x, loc.y, true, false);
-    rn2(40); // C ref: sp_lev.c:create_object() permits artifact promotion for scripted armor.
+    mksobj_at(CRYSTAL_PLATE_MAIL, loc.x, loc.y, true, true);
 
     const spbooks = [
         SPE_INVISIBILITY, SPE_CONE_OF_COLD, SPE_CREATE_FAMILIAR,
@@ -4736,6 +4794,277 @@ function loadTower3Special() {
         inarea: branch,
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     }];
+    fixup_special();
+}
+
+function medusa3SetTerrain() {
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.shortsighted = true;
+    for (let y = 0; y < MEDUSA3_MAP.length; y++) {
+        const row = MEDUSA3_MAP[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
+            if (!loc) continue;
+            loc.lit = false;
+            switch (row[x]) {
+            case '.':
+                loc.typ = ROOM;
+                break;
+            case '}':
+                loc.typ = MOAT;
+                break;
+            case 'T':
+                loc.typ = TREE;
+                break;
+            case '-':
+                loc.typ = HWALL;
+                break;
+            case '|':
+                loc.typ = VWALL;
+                break;
+            case '+':
+                loc.typ = DOOR;
+                set_door_mask(loc, D_CLOSED);
+                break;
+            case 'S':
+                loc.typ = SDOOR;
+                loc.horizontal = row[x - 1] === '-' || row[x + 1] === '-';
+                set_door_mask(loc, D_CLOSED);
+                break;
+            default:
+                loc.typ = STONE;
+                break;
+            }
+        }
+    }
+}
+
+function medusa3ApplyLitRegion(x1, y1, x2, y2, lit) {
+    for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
+            if (loc) loc.lit = !!lit;
+        }
+    }
+}
+
+function medusa3SetDoor(x, y, mask) {
+    const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
+    if (!loc) return;
+    loc.typ = DOOR;
+    set_door_mask(loc, mask);
+}
+
+function medusa3RandomDoor(x, y) {
+    const states = [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED];
+    medusa3SetDoor(x, y, states[rn2(states.length)]);
+}
+
+function medusa3PickCoord(points) {
+    const idx = rn2(points.length);
+    const [pt] = points.splice(idx, 1);
+    return { x: MEDUSA3_X + pt.x, y: MEDUSA3_Y + pt.y };
+}
+
+function medusa3DryLocation() {
+    return specialRandomDryLocation(MEDUSA3_PLACE_WIDTH, MEDUSA3_MAP.length, MEDUSA3_X, MEDUSA3_Y);
+}
+
+function medusa3MonsterLocation(ptr) {
+    let x = 0, y = 0;
+    let trycnt = 0;
+    do {
+        x = MEDUSA3_X + rn2(MEDUSA3_PLACE_WIDTH);
+        y = MEDUSA3_Y + rn2(MEDUSA3_MAP.length);
+        if (specialMonsterLocationOk(x, y, ptr)) return { x, y };
+    } while (++trycnt < 100);
+    return medusa3DryLocation();
+}
+
+function medusa3Object(otyp = null, x = null, y = null) {
+    const loc = x == null ? medusa3DryLocation() : { x, y };
+    if (otyp == null) mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    else mksobj_at(otyp, loc.x, loc.y, true, true);
+}
+
+function medusa3ContainedObject(otyp) {
+    // C ref: sp_lev.c:create_object() resolves a DRY coordinate even when
+    // the object is immediately moved into a special container/statue.
+    medusa3DryLocation();
+    return mksobj(otyp, true, true);
+}
+
+function medusa3Statue(x = null, y = null, ptr = null) {
+    const loc = x == null ? medusa3DryLocation() : { x, y };
+    const obj = mkcorpstat(STATUE, null, ptr, loc.x, loc.y, 8);
+    if (obj && ptr) {
+        obj.spe = CORPSTAT_HISTORIC;
+        obj.male = 1;
+        obj.onamelth = 'Perseus'.length;
+        obj.name = 'Perseus';
+    }
+    if (obj && !ptr) medusa3PopulateRandomStatue(obj);
+    return obj;
+}
+
+function resists_ston_mon(mon) {
+    return !!((mon?.data?.mresists ?? 0) & MR_STONE);
+}
+
+function poly_when_stoned_ptr(ptr) {
+    // C ref: mondata.c:poly_when_stoned(); non-stone golems petrify into
+    // stone golems and are therefore not valid Medusa statue victims.
+    return ptr?.mlet === 'S_GOLEM' && ptr.name !== 'STONE_GOLEM';
+}
+
+function medusa3PopulateRandomStatue(obj) {
+    // C ref: sp_lev.c:create_object(): Medusa random statues are petrified
+    // monsters and inherit a temporary monster's inventory.
+    let ptr = monster_ptr(obj.corpsenm);
+    for (let i = 0; ptr && i < 1000; i++, ptr = rndmonnum_ptr()) {
+        const was = makemon(ptr, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
+        if (!was) continue;
+        if (!resists_ston_mon(was) && !poly_when_stoned_ptr(ptr)) {
+            obj.corpsenm = monsterIndex(ptr);
+            obj.contents = was.inventory || [];
+            game.level.monsters = (game.level?.monsters || []).filter((mon) => mon !== was);
+            return;
+        }
+        game.level.monsters = (game.level?.monsters || []).filter((mon) => mon !== was);
+    }
+}
+
+function medusa3Trap(kind = null) {
+    const loc = medusa3DryLocation();
+    let actual = kind;
+    if (actual == null) do { actual = traptype_rnd(); } while (actual === NO_TRAP);
+    const trap = maketrap(loc.x, loc.y, actual);
+    maybeTrapVictim(trap);
+}
+
+function medusa3Monster(id, x = null, y = null, mmflags = 0) {
+    const ptr = monster_ptr(id);
+    if (ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    induced_align_80();
+    const loc = x == null ? medusa3MonsterLocation(ptr) : { x, y };
+    if (m_at(loc.x, loc.y)) {
+        const cc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+            || enexto_core(loc.x, loc.y, ptr, 0);
+        if (cc) {
+            loc.x = cc.x;
+            loc.y = cc.y;
+        }
+    }
+    return makemon(ptr, loc.x, loc.y, mmflags);
+}
+
+function registerMedusa3Lregions(flp) {
+    const bounds = { minx: 1, miny: 0, maxx: COLNO - 1, maxy: ROWNO - 1 };
+    const downTele = flipRectForBounds({ x1: MEDUSA3_X + 33, y1: MEDUSA3_Y + 2, x2: MEDUSA3_X + 38, y2: MEDUSA3_Y + 7 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    const upstairs = flipRectForBounds({ x1: MEDUSA3_X + 32, y1: MEDUSA3_Y + 1, x2: MEDUSA3_X + 39, y2: MEDUSA3_Y + 7 }, flp,
+        bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    game._special_lregions = [
+        {
+            rtype: LR_DOWNTELE,
+            inarea: downTele,
+            delarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
+        },
+        {
+            rtype: LR_UPSTAIR,
+            inarea: upstairs,
+            delarea: { x1: 0, y1: 0, x2: 0, y2: 0 },
+        },
+    ];
+}
+
+function loadMedusa3Special() {
+    // C ref: dat/medusa-3.lua loaded via sp_lev.c:load_special().
+    l_nhcore_init();
+    rn2(2); // splev_initlev() random lit state for solidfill.
+    medusa3SetTerrain();
+
+    const places = [{ x: 8, y: 6 }, { x: 66, y: 5 }, { x: 46, y: 15 }];
+    const medloc = medusa3PickCoord(places);
+    const altloc = medusa3PickCoord(places);
+    const othloc = medusa3PickCoord(places);
+
+    medusa3ApplyLitRegion(0, 0, 74, 19, true);
+    litstate_rnd(-1); // arrival_room region {49,14,51,16}, lit=-1.
+    medusa3ApplyLitRegion(7, 5, 9, 7, false);
+    medusa3ApplyLitRegion(65, 4, 67, 6, false);
+    medusa3ApplyLitRegion(45, 14, 47, 16, false);
+
+    for (const [x1, y1, x2, y2] of [
+        [6, 4, 10, 8],
+        [64, 3, 68, 7],
+        [44, 13, 48, 17],
+    ]) {
+        for (let y = y1; y <= y2; y++)
+            for (let x = x1; x <= x2; x++) {
+                const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
+                if (loc) loc.wall_info |= W_NONDIGGABLE;
+            }
+    }
+
+    mkstairs(medloc.x, medloc.y, false, null);
+    medusa3SetDoor(8, 8, D_LOCKED);
+    medusa3SetDoor(64, 5, D_LOCKED);
+    medusa3RandomDoor(50, 13);
+    medusa3SetDoor(48, 15, D_LOCKED);
+    const fountain = game.level?.at(othloc.x, othloc.y);
+    if (fountain) fountain.typ = FOUNTAIN;
+
+    medusa3Statue(medloc.x, medloc.y, monster_ptr('KNIGHT'));
+    if (rn2(100) < 75) {
+        const shield = medusa3ContainedObject(SHIELD_OF_REFLECTION);
+        if (shield) {
+            shield.cursed = true;
+            shield.blessed = false;
+            shield.spe = 0;
+        }
+    }
+    if (rn2(100) < 25) {
+        const boots = medusa3ContainedObject(LEVITATION_BOOTS);
+        if (boots) boots.spe = 0;
+    }
+    if (rn2(100) < 50) {
+        const sword = medusa3ContainedObject(SCIMITAR);
+        if (sword) {
+            sword.blessed = true;
+            sword.cursed = false;
+            sword.spe = 2;
+        }
+    }
+    if (rn2(100) < 50) medusa3ContainedObject(SACK);
+
+    medusa3Statue(altloc.x, altloc.y, null);
+    for (let i = 0; i < 6; i++) medusa3Statue();
+    for (let i = 0; i < 8; i++) medusa3Object();
+    medusa3Object(SCR_BLANK_PAPER, MEDUSA3_X + 48, MEDUSA3_Y + 18);
+    medusa3Object(SCR_BLANK_PAPER, MEDUSA3_X + 48, MEDUSA3_Y + 18);
+
+    medusa3Trap(RUST_TRAP);
+    medusa3Trap(RUST_TRAP);
+    medusa3Trap(SQKY_BOARD);
+    medusa3Trap(SQKY_BOARD);
+    medusa3Trap();
+
+    medusa3Monster('MEDUSA', medloc.x, medloc.y, MM_ASLEEP | MM_NOGRP);
+    medusa3Monster('GIANT_EEL');
+    medusa3Monster('GIANT_EEL');
+    medusa3Monster('JELLYFISH');
+    medusa3Monster('JELLYFISH');
+    medusa3Monster('WOOD_NYMPH');
+    medusa3Monster('WOOD_NYMPH');
+    medusa3Monster('WATER_NYMPH');
+    medusa3Monster('WATER_NYMPH');
+    for (let i = 0; i < 30; i++) medusa3Monster('RAVEN');
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerMedusa3Lregions(flp);
     fixup_special();
 }
 
@@ -6115,6 +6444,10 @@ function makemaz_special(slev) {
     }
     if (game._last_special_protofile === 'tower3') {
         loadTower3Special();
+        return;
+    }
+    if (game._last_special_protofile === 'medusa-3') {
+        loadMedusa3Special();
         return;
     }
     game.level.flags.is_maze_lev = true;
