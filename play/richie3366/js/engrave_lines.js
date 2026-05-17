@@ -1,0 +1,58 @@
+// engrave_lines.js — Plain lines from nethack-c/upstream/dat/engrave.txt
+// (non-empty lines that are not #-comments). Used by randomEngraving() to
+// simulate get_rnd_text(ENGRAVEFILE, …) after the header line is skipped.
+
+/** @type {readonly string[]} */
+export const ENGRAVE_PLAINTEXT_LINES = Object.freeze([
+    'Elbereth',
+    'Vlad was here',
+    'ad aerarium',
+    'Owlbreath',
+    'Galadriel',
+    'Kilroy was here',
+    'Frodo lives',
+    'A.S. ->',
+    '<- A.S.',
+    "You won't get it up the steps",
+    'Lasciate ogni speranza o voi ch\'entrate.',
+    'Well Come',
+    'We apologize for the inconvenience.',
+    'See you next Wednesday',
+    'notary sojak',
+    'For a good time call 8?7-5309',
+    "Please don't feed the animals.",
+    "Madam, in Eden, I'm Adam.",
+    'Two thumbs up!',
+    'Hello, World!',
+    '^?MAIL',
+    "You've got mail!",
+    '^.',
+    'As if!',
+    'BAD WOLF',
+    'Arooo!  Werewolves of Yendor!',
+    'Dig for Victory here',
+    'Gaius Julius Primigenius was here.  Why are you late?',
+    "Don't go this way",
+    'Go left --->',
+    '<--- Go right',
+    'X marks the spot',
+    'X <--- You are here.',
+    'Here be dragons',
+    'Save now, and do your homework!',
+    "There was a hole here.  It's gone now.",
+    'The Vibrating Square',
+    'This is a pit!',
+    'This is not the dungeon you are looking for.',
+    "Watch out, there's a gnome with a wand of death behind that door!",
+    'This square deliberately left blank.',
+    'Haermund Hardaxe carved these runes',
+    "Need a light?  Come visit the Minetown branch of Izchak's Lighting Store!",
+    'Snakes on the Astral Plane - Soon in a dungeon near you',
+    'You are the one millionth visitor to this place!  Please wait 200 turns for your wand of wishing.',
+    'Warning, Exploding runes!',
+    'If you can read these words then you are not only a nerd but probably dead.',
+    'The cake is a lie',
+]);
+
+/** Virtual file body after the “do not edit” header (C: get_rnd_text starttxt…EOF). */
+export const ENGRAVE_FILE_BODY = `${ENGRAVE_PLAINTEXT_LINES.join('\n')}\n`;
