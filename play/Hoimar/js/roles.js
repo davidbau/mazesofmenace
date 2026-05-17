@@ -32,6 +32,7 @@ export const roles = [
     { name: { m: 'Samurai', f: 'Samurai' }, mnum: 9,
       title: [{ m: 'Hatamoto', f: 'Hatamoto' }] },
     { name: { m: 'Tourist', f: 'Tourist' }, mnum: 10,
+      gods: { lawful: 'Blind Io', neutral: 'The Lady', chaotic: 'Offler' },
       title: [
           { m: 'Rambler', f: 'Rambler' },
           { m: 'Sightseer', f: 'Sightseer' },

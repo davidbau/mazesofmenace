@@ -130,12 +130,14 @@ const ELVEN_SHIELD = 153;
 const ELVEN_BOOTS = 169;
 const TIN_WHISTLE = 215;
 const SKELETON_KEY = 221;
+const FIGURINE = 241;
 const MIRROR = 230;
 const CRYSTAL_BALL = 231;
 const PICK_AXE = 259;
 const GRAPPLING_HOOK = 260;
 const UNICORN_HORN = 261;
 const GOLD_PIECE = 438;
+const DILITHIUM_CRYSTAL = 439;
 const LUCKSTONE = 470;
 const LOADSTONE = 471;
 const TOUCHSTONE = 472;
@@ -319,6 +321,9 @@ const MONSTERS = MONSTER_DATA.map(([name, mlet, mlevel, mmove, maligntyp, geno, 
     neuter: !!neuter, male: !!male, female: !!female,
 }));
 
+const SPECIAL_PM = MONSTERS.findIndex(mon => mon.name === 'LONG_WORM_TAIL');
+const MONGEN_ORDER_LIMIT = SPECIAL_PM >= 0 ? SPECIAL_PM : MONSTERS.length;
+
 const MONSTER_SYMBOLS = {
     S_ANT: 'a', S_BLOB: 'b', S_COCKATRICE: 'c', S_DOG: 'd',
     S_EYE: 'e', S_FELINE: 'f', S_GREMLIN: 'g', S_HUMANOID: 'h',
@@ -336,6 +341,17 @@ const MONSTER_SYMBOLS = {
     S_HUMAN: '@', S_GHOST: ' ', S_DEMON: '&', S_EEL: ';',
     S_LIZARD: ':', S_WORM_TAIL: '~',
 };
+
+function monster_mlet_sort_value(ptr) {
+    return (ptr?.difficulty ?? 0) | ((MONSTER_SYMBOLS[ptr?.mlet]?.charCodeAt(0) ?? 0) << 8);
+}
+
+const MONGEN_ORDER = (() => {
+    const order = MONSTERS.map((_, i) => i);
+    const sorted = order.slice(0, MONGEN_ORDER_LIMIT)
+        .sort((a, b) => monster_mlet_sort_value(MONSTERS[a]) - monster_mlet_sort_value(MONSTERS[b]));
+    return sorted.concat(order.slice(MONGEN_ORDER_LIMIT));
+})();
 
 const VERY_SMALL_MONSTERS = new Set([
     'GIANT_ANT', 'KILLER_BEE', 'SOLDIER_ANT', 'FIRE_ANT', 'QUEEN_BEE',
@@ -655,7 +671,7 @@ function level_difficulty() {
 let _nextObjId = 1;
 
 // C ref: mkobj.c next_ident — rnd(2) for item identification
-function next_ident() { rnd(2); }
+export function next_ident() { rnd(2); }
 
 function bless(otmp) {
     if (otmp) {
@@ -848,7 +864,16 @@ function mkbox_cnts(box) {
 
     for (n = rn2(n + 1); n > 0; n--) {
         const chosen = pick_prob_entry(boxiprobs);
-        mkobj(chosen.iclass, false);
+        const otmp = mkobj(chosen.iclass, false);
+        if (otmp?.oclass === COIN_CLASS) {
+            otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
+        } else {
+            while (otmp?.otyp === ROCK) {
+                otmp.otyp = rnd_class(DILITHIUM_CRYSTAL, LOADSTONE);
+                otmp.oclass = object_class(otmp.otyp);
+                if ((otmp.quan || 1) > 2) otmp.quan = 1;
+            }
+        }
     }
 }
 
@@ -1291,15 +1316,16 @@ function mk_gen_ok(ptr, _mv_mask, gn_mask) {
 }
 
 function mkclass_aligned(mlet, spc = 0, atyp = A_NONE) {
-    const first = MONSTERS.findIndex(ptr => ptr.mlet === mlet);
-    if (first < 0) return null;
     const classMons = [];
-    for (let i = first; i < MONSTERS.length && MONSTERS[i].mlet === mlet; i++)
-        classMons.push(MONSTERS[i]);
+    for (let i = 0; i < MONGEN_ORDER_LIMIT; i++) {
+        const ptr = MONSTERS[MONGEN_ORDER[i]];
+        if (ptr.mlet === mlet) classMons.push(ptr);
+        else if (classMons.length) break;
+    }
     if (!classMons.length) return null;
 
     const maxmlev = level_difficulty() >> 1;
-    const zeroFreqForClass = classMons.every(ptr => !(ptr.geno & G_FREQ));
+    const zeroFreqForClass = MONSTERS.every(ptr => ptr.mlet !== mlet || !(ptr.geno & G_FREQ));
     let mvMask = 0x03; // G_GONE; mvitals are not modeled yet.
     if (spc & G_IGNORE) {
         mvMask = 0;
@@ -1308,15 +1334,15 @@ function mkclass_aligned(mlet, spc = 0, atyp = A_NONE) {
 
     let num = 0;
     const weights = new Map();
-    let lastConsidered = null;
-    for (const ptr of classMons) {
+    for (let i = 0; i < classMons.length; i++) {
+        const ptr = classMons[i];
         if (atyp !== A_NONE && Math.sign(ptr.maligntyp || 0) !== Math.sign(atyp)) continue;
         let gnMask = G_NOGEN | G_UNIQ;
         if (rn2(9) || mlet === 'S_LICH') gnMask |= G_HELL;
         gnMask &= ~spc;
         if (!mk_gen_ok(ptr, mvMask, gnMask)) continue;
         if (num && montoostrong(ptr, maxmlev)
-            && lastConsidered && ptr.difficulty > lastConsidered.difficulty
+            && i > 0 && ptr.difficulty > classMons[i - 1].difficulty
             && rn2(2)) {
             break;
         }
@@ -1327,7 +1353,6 @@ function mkclass_aligned(mlet, spc = 0, atyp = A_NONE) {
             weights.set(ptr, weight);
             num += weight;
         }
-        lastConsidered = ptr;
     }
     if (!num) return null;
 
@@ -1810,12 +1835,35 @@ function room_type_at(x, y) {
 
 function set_mimic_sym(mon) {
     if (!mon) return;
+
+    function can_be_hatched(ptr) {
+        return !!ptr && !(ptr.geno & G_NOCORPSE);
+    }
+
+    function assignMonsterBasedObjectShape() {
+        if (mon.m_ap_type !== M_AP_OBJECT
+            || ![STATUE, FIGURINE, CORPSE, EGG, TIN].includes(mon.mappearance)) return;
+        let mndx = rndmonnum();
+        const ptr = monsterPtr(mndx);
+        const nocorpse = !!(ptr?.geno & G_NOCORPSE);
+        if (mon.mappearance === CORPSE && nocorpse) {
+            // C ref: makemon.c:set_mimic_sym() falls back to a role monster
+            // shape when a corpse appearance selected a no-corpse monster.
+            mndx = rn1(13, 0);
+        } else if ((mon.mappearance === EGG && !can_be_hatched(ptr))
+            || (mon.mappearance === TIN && nocorpse)) {
+            mndx = null;
+        }
+        mon.mcorpsenm = mndx;
+    }
+
     const x = mon.mx, y = mon.my;
     const loc = game.level?.at(x, y);
     const obj = (game.level?.objects || []).find(o => o.ox === x && o.oy === y);
     if (obj) {
         mon.m_ap_type = M_AP_OBJECT;
         mon.mappearance = obj.otyp;
+        assignMonsterBasedObjectShape();
         return;
     }
     if (loc && (IS_DOOR(loc.typ) || IS_WALL(loc.typ) || loc.typ === SDOOR || loc.typ === SCORR)) {
@@ -1826,6 +1874,7 @@ function set_mimic_sym(mon) {
     if (game.level?.flags?.is_maze_lev && !isSokobanLevel() && rn2(2)) {
         mon.m_ap_type = M_AP_OBJECT;
         mon.mappearance = STATUE;
+        assignMonsterBasedObjectShape();
         return;
     }
     if (((loc?.roomno ?? 0) - ROOMOFFSET) < 0 && !(game.level?.traps || []).some(t => t.tx === x && t.ty === y)) {
@@ -1859,6 +1908,7 @@ function set_mimic_sym(mon) {
         if (s_sym < 0) {
             mon.m_ap_type = M_AP_OBJECT;
             mon.mappearance = -s_sym;
+            assignMonsterBasedObjectShape();
             return;
         }
         if (s_sym === RANDOM_CLASS) {
@@ -1872,6 +1922,7 @@ function set_mimic_sym(mon) {
         mon.m_ap_type = M_AP_OBJECT;
         if (s_sym === COIN_CLASS) mon.mappearance = GOLD_PIECE;
         else mon.mappearance = mkobj(s_sym, false)?.otyp ?? STRANGE_OBJECT;
+        assignMonsterBasedObjectShape();
         return;
     }
 
@@ -1898,6 +1949,7 @@ function set_mimic_sym(mon) {
             mon.mappearance = otmp?.otyp ?? STRANGE_OBJECT;
         }
     }
+    assignMonsterBasedObjectShape();
 }
 
 function m_initgrp(mon, x, y, n, mmflags) {
@@ -3640,7 +3692,16 @@ function apply_themeroom_fill(croom) {
             } else {
                 rn2(3); // C ref: dungeon.c:induced_align() before mkclass().
                 const ptr = mkclass_aligned('S_MIMIC', 0);
-                if (ptr) makemon(ptr, somex(croom), somey(croom), NO_MINVENT);
+                if (ptr) {
+                    const mx = somex(croom);
+                    const my = somey(croom);
+                    makemon(ptr, mx, my, 0);
+                    const mon = game.level?.monsters?.find(m => m.mx === mx && m.my === my);
+                    if (mon) {
+                        mon.m_ap_type = M_AP_OBJECT;
+                        mon.mappearance = CHEST;
+                    }
+                }
             }
         }
         return;
@@ -4614,9 +4675,8 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        // human corpse — consume rn2 for mkclass + mkcorpstat
-                        rn2(398); // mkclass(S_HUMAN)
-                        mkcorpstat(CORPSE, null, 0, xx, yy + dy, 1);
+                        const ptr = mkclass_aligned('S_HUMAN', 0);
+                        mkcorpstat(CORPSE, null, ptr, xx, yy + dy, 8);
                     }
                 }
                 if (!g.level.flags.noteleport) {
@@ -5061,6 +5121,13 @@ function mktrap_victim(trap) {
     } while (!rn2(5));
     // Victim type
     const PM_ELF = 18, PM_DWARF = 19, PM_ORC = 20, PM_GNOME = 21, PM_HUMAN = 22;
+    const victimCorpseStats = new Map([
+        [PM_ELF, { cwt: 800, cnutrit: 350 }],
+        [PM_DWARF, { cwt: 900, cnutrit: 300 }],
+        [PM_ORC, { cwt: 850, cnutrit: 350 }],
+        [PM_GNOME, { cwt: 650, cnutrit: 100 }],
+        [PM_HUMAN, { cwt: 1450, cnutrit: 400 }],
+    ]);
     // C consumes rn2(PM_WIZARD - PM_ARCHEOLOGIST) here. Local monster ids
     // are still placeholders, so keep the upstream role-monster range shape.
     const PM_ARCHEOLOGIST = 0, ROLE_MONSTER_RANGE_BEFORE_WIZARD = 12;
@@ -5084,7 +5151,15 @@ function mktrap_victim(trap) {
     }
     if (victim_mnum === PM_HUMAN && rn2(25))
         victim_mnum = rn1(ROLE_MONSTER_RANGE_BEFORE_WIZARD, PM_ARCHEOLOGIST);
-    mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    const corpse = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
+    if (corpse) {
+        corpse.trap_victim = true;
+        const stats = victimCorpseStats.get(victim_mnum);
+        if (stats) {
+            corpse.corpse_cwt = stats.cwt;
+            corpse.corpse_cnutrit = stats.cnutrit;
+        }
+    }
 }
 
 async function mktrap_room(croom) {

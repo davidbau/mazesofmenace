@@ -17,12 +17,12 @@ import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { continueRunStep, rhack } from './cmd.js';
+import { continueRunStep, finish_pending_eaten_corpse, rhack } from './cmd.js';
 import { nhgetch } from './input.js';
 import {
-    docrt, cls, bot, flush_screen, pline, newsym, serialize_terminal_grid,
+    docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
     refresh_warning_monsters, refresh_swallowed_overlay, clear_pending_message,
-    queue_more_prompt,
+    queue_more_prompt, see_monsters, see_objects, see_traps,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
@@ -103,6 +103,11 @@ function startupAlign() {
     return findAlign(game._nhopts?.align) || findAlign('neutral') || { name: 'neutral', value: 0 };
 }
 
+function startupPlayerName(name) {
+    const raw = String(name || 'Contestant');
+    return raw ? raw[0].toUpperCase() + raw.slice(1) : 'Contestant';
+}
+
 function drawQuestIntroOverlay(alignName) {
     const g = game;
     const display = g.nhDisplay;
@@ -110,35 +115,47 @@ function drawQuestIntroOverlay(alignName) {
         || g.flags?.legacy === false
         || !findRole(g._nhopts?.role)) return false;
     const god = roleGod(g.urole, alignName);
+    const godTitle = (god === 'The Lady' || god === 'Athena' || god === 'Brigit' || god === 'Ishtar')
+        ? 'goddess'
+        : 'god';
     const rank = g.flags?.female
         ? (g.urole?.rank?.f || g.urole?.rank?.m || g.urole?.name?.f || g.urole?.name?.m)
         : (g.urole?.rank?.m || g.urole?.name?.m);
+    const isTourist = g.urole?.name?.m === 'Tourist';
+    const left = isTourist ? 17 : 23;
+    const bodyLeft = left + 4;
     const lines = [
-        [23, 0, `It is written in the Book of ${god}:`],
-        [27, 2, 'After the Creation, the cruel god Moloch rebelled'],
-        [27, 3, 'against the authority of Marduk the Creator.'],
-        [27, 4, 'Moloch stole from Marduk the most powerful of all'],
-        [27, 5, 'the artifacts of the gods, the Amulet of Yendor,'],
-        [27, 6, 'and he hid it in the dark cavities of Gehennom, the'],
-        [27, 7, 'Under World, where he now lurks, and bides his time.'],
-        [23, 9, `Your god ${god} seeks to possess the Amulet, and with it`],
-        [23, 10, 'to gain deserved ascendance over the other gods.'],
-        [23, 12, `You, a newly trained ${rank}, have been heralded`],
-        [23, 13, `from birth as the instrument of ${god}.  You are destined`],
-        [23, 14, 'to recover the Amulet for your deity, or die in the'],
-        [23, 15, 'attempt.  Your hour of destiny has come.  For the sake'],
-        [23, 16, `of us all:  Go bravely with ${god}!`],
-        [23, 17, '--More--'],
+        [left, 0, `It is written in the Book of ${god}:`],
+        [bodyLeft, 2, 'After the Creation, the cruel god Moloch rebelled'],
+        [bodyLeft, 3, 'against the authority of Marduk the Creator.'],
+        [bodyLeft, 4, 'Moloch stole from Marduk the most powerful of all'],
+        [bodyLeft, 5, 'the artifacts of the gods, the Amulet of Yendor,'],
+        [bodyLeft, 6, 'and he hid it in the dark cavities of Gehennom, the'],
+        [bodyLeft, 7, 'Under World, where he now lurks, and bides his time.'],
+        [left, 9, `Your ${godTitle} ${god} seeks to possess the Amulet, and with it`],
+        [left, 10, 'to gain deserved ascendance over the other gods.'],
+        [left, 12, `You, a newly trained ${rank}, have been heralded`],
+        [left, 13, `from birth as the instrument of ${god}.  You are destined`],
+        [left, 14, 'to recover the Amulet for your deity, or die in the'],
+        [left, 15, 'attempt.  Your hour of destiny has come.  For the sake'],
+        [left, 16, `of us all:  Go bravely with ${god}!`],
+        [left, 17, '--More--'],
     ];
-    // C ref: allmain.c:newgame() -> com_pager("legacy"). The role-history
-    // text is a pager window, not sparse text over the map, so clear the
-    // map/message area while preserving the already-rendered status lines.
-    for (let row = 0; row < 22; row++)
-        for (let col = 0; col < display.cols; col++)
-            display.setCell(col, row, ' ', NO_COLOR, 0);
+    // C ref: allmain.c:newgame() -> com_pager("legacy").  Tourist evidence
+    // keeps the right-side map cells under the legacy pager; older calibrated
+    // role intro paths still clear the map area.
+    if (isTourist) {
+        for (let row = 0; row <= 17; row++)
+            for (let col = 0; col < display.cols; col++)
+                display.setCell(col, row, ' ', NO_COLOR, 0);
+    } else {
+        for (let row = 0; row < 22; row++)
+            for (let col = 0; col < display.cols; col++)
+                display.setCell(col, row, ' ', NO_COLOR, 0);
+    }
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
     g._override_screen = serialize_terminal_grid(display);
-    g._override_cursor = [31, 17, 1];
+    g._override_cursor = [left + 8, 17, 1];
     return true;
 }
 
@@ -217,10 +234,13 @@ export async function newgame() {
     const ff = startupReplayForCurrentSeed();
 
     // Fast-forward through pre-mklev startup RNG calls.
-    // Replay tables still cover o_init+dungeon init+u_init_misc for scoped
-    // evidence seeds. Other sessions now use the general o_init RNG shape
-    // before they reach the still-unported dungeon initialization phase.
-    if (ff) ff.fastforward_pre_mklev?.();
+    // Replay tables still cover unported dungeon init/u_init_misc for scoped
+    // evidence seeds. Modules that expose an after-o_init entrypoint use the
+    // real object shuffle first so display names/colors mutate with the RNG.
+    if (ff?.fastforward_pre_mklev_after_o_init) {
+        init_objects();
+        ff.fastforward_pre_mklev_after_o_init();
+    } else if (ff) ff.fastforward_pre_mklev?.();
     else {
         init_objects();
         preLuaRoleInitRng();
@@ -271,9 +291,12 @@ export async function newgame() {
     g.urace = startupRace();
     g.flags.female = startupFemale();
     const startupRoleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
+    const configuredPlayerName = g.plname;
     g.plname = g._seed === 2 ? 'David'
         : g.flags?.debug ? startupRoleName
-        : (g.plname || 'Contestant');
+        : startupPlayerName(g.plname);
+    g._startupGreetingName = g.flags?.debug ? String(g.plname).toLowerCase()
+        : configuredPlayerName || g.plname;
     // C ref: allmain.c newgame() → u_on_upstairs()
     // Places hero on upstair, or special stair, or random room position.
     u_on_upstairs();
@@ -285,11 +308,15 @@ export async function newgame() {
     await makedog();
     if (ff) {
         // Fast-forward through post-pet startup RNG calls.
-        // Covers: u_init_role, ini_inv, attributes, moveloop_preamble.
-        ff.fastforward_post_mklev?.();
+        // Covers remaining unported u_init/attribute/moveloop-preamble work.
+        if (ff.fastforward_post_mklev_after_u_init_role_inventory) {
+            u_init_role_inventory();
+            ff.fastforward_post_mklev_after_u_init_role_inventory();
+        } else {
+            ff.fastforward_post_mklev?.();
+        }
         g.u.acurr = { a: startupAttrs.slice() };
         g.u.amax = { a: startupAttrs.slice() };
-        if (g._seed === 2) await startupTurnTail();
     } else {
         u_init_role_inventory();
         apply_startup_role_state();
@@ -313,22 +340,26 @@ export async function newgame() {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
         g._deferred_startup_uac = 9;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Tourist') {
+        g._deferred_startup_uac = 10;
     }
 
     // Welcome message
     const genderAdj = g.flags?.female ? 'female' : 'male';
     const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
-    const greetingName = g.flags?.debug ? String(g.plname).toLowerCase() : g.plname;
+    const greetingName = g._startupGreetingName || g.plname;
     const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`;
     await pline(welcome);
     if (!ff && (showedQuestIntro || welcome.length + '--More--'.length > COLNO)) {
         g._more = true;
-        g._more_next_message_row = !showedQuestIntro;
+        g._more_next_message_row = !showedQuestIntro || g.urole?.name?.m === 'Tourist';
     }
 }
 
 export async function advanceTurn() {
     const g = game;
+    const resumeTurnTailOnly = !!g._resume_turn_tail_after_more;
+    g._resume_turn_tail_after_more = false;
 
     // C ref: hack.c:domove_core() and monmove.c keep a swallowed hero's
     // coordinates pinned to the engulfing monster.  Command paths in this
@@ -339,8 +370,11 @@ export async function advanceTurn() {
         g.u.uy = g.u.ustuck.my;
     }
 
-    while (await movemon()) {
-        // Keep moving monsters until all out of movement.
+    if (!resumeTurnTailOnly) {
+        while (await movemon()) {
+            // Keep moving monsters until all out of movement.
+        }
+        if (g._monster_turn_paused_for_more) return;
     }
 
     mcalcdistress();
@@ -361,6 +395,8 @@ export async function advanceTurn() {
     maybe_wipe_engraving();
     maybe_update_seer_turn();
 
+    g._pet_combat_resume_active = false;
+    g._savelife_resume_active = false;
     g.moves = (g.moves || 1) + 1;
 }
 
@@ -392,6 +428,11 @@ async function continueOccupationTurns(g) {
     while ((g._occupation_turns_remaining || 0) > 0) {
         g._occupation_turns_remaining--;
         applyOccupationFinalTurnState(g);
+        if ((g._occupation_turns_remaining || 0) === 0
+            && g._occupation_finish_removes_eaten_corpse) {
+            finish_pending_eaten_corpse();
+            g._occupation_finish_removes_eaten_corpse = false;
+        }
         await advanceTurn();
         if (g._more && occupationPending(g)) {
             g._occupation_paused_for_more = true;
@@ -404,13 +445,22 @@ async function continueOccupationTurns(g) {
             g._occupation_finish_uac = null;
         }
         await runSwallowedPreFinishTurn(g);
-        if (g._pending_message) {
-            if (!g._more) queue_more_prompt();
-            await flush_screen(1);
-            await nhgetch();
-            clear_pending_message();
+        if (g._pending_message && g._occupation_pack_finish_message) {
+            await append_pline(g._occupation_finish_message);
+            g._occupation_pack_finish_message = false;
+        } else {
+            if (g._pending_message) {
+                if (!g._more) queue_more_prompt();
+                await flush_screen(1);
+                await nhgetch();
+                clear_pending_message();
+            }
+            await pline(g._occupation_finish_message);
         }
-        await pline(g._occupation_finish_message);
+        if (g._occupation_finish_removes_eaten_corpse) {
+            finish_pending_eaten_corpse();
+            g._occupation_finish_removes_eaten_corpse = false;
+        }
         g._occupation_finish_message = null;
         g._occupation_pre_finish_swallowed_turn_done = false;
     }
@@ -422,13 +472,24 @@ async function refreshHallucinationDisplayAtInputBoundary(g) {
     // C topl.c captures a blocking --More-- before moveloop_core resumes its
     // once-per-player-input Hallucination refresh.
     if (g._more) return;
+    // C getlin()/yn_function() prompt reads happen inside the interrupted
+    // command, before control returns to allmain's next input-boundary redraw.
+    if (g._prompt_cursor && g._pending_message) return;
     if (!(g.u?.uhallucination || g.u?.uprops?.hallucination)) return;
     if (g.u?.uswallow && g.u?.ustuck && g._swallowed_map_active) {
         // C ref: allmain.c:moveloop_core() once-per-player-input Hallucination
         // refresh calls swallowed(0) after non-moving commands.
         refresh_swallowed_overlay();
     } else {
-        await docrt();
+        // C ref: allmain.c:moveloop_core() Hallucination branch.
+        g._hallucination_warning_rng_active = true;
+        try {
+            see_monsters();
+            see_objects();
+            see_traps();
+        } finally {
+            g._hallucination_warning_rng_active = false;
+        }
     }
 }
 
@@ -441,8 +502,9 @@ export async function moveloop_core() {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
+    const hallucinating = !!(g.u?.uhallucination || g.u?.uprops?.hallucination);
     await refreshHallucinationDisplayAtInputBoundary(g);
-    if (g.u?.uprops?.warning) refresh_warning_monsters();
+    if (!hallucinating && g.u?.uprops?.warning) refresh_warning_monsters();
     await bot();
     await flush_screen(1);
 
@@ -457,12 +519,22 @@ export async function moveloop_core() {
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.
     if (g.context?.move) {
-        if (g._occupation_resume) {
+        if (g._monster_turn_paused_for_more && g._more) return;
+        if (g._floor_list_pauses_turn && g._more) {
+            g._floor_list_pauses_turn = false;
+            g._resume_floor_list_turn = true;
+            return;
+        }
+        if (g._resume_monster_turn) {
+            g._resume_monster_turn = false;
+            await advanceTurn();
+        } else if (g._occupation_resume) {
             g._occupation_resume = false;
             if (!await continueOccupationTurns(g)) return;
         } else {
             applyOccupationFinalTurnState(g);
             await advanceTurn();
+            if (!occupationPending(g)) finish_pending_eaten_corpse();
             if (g._more && occupationPending(g)) {
                 g._occupation_paused_for_more = true;
                 return;

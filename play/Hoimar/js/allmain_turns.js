@@ -1,5 +1,5 @@
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { dosounds } from './sounds.js';
 import { A_CON, A_DEX, A_WIS } from './const.js';
 import { makemon } from './mklev.js';
@@ -75,7 +75,7 @@ export function exerchk() {
 export function maybe_wipe_engraving() {
     // C ref: allmain.c:360 — !rn2(40 + ACURR(A_DEX) * 3)
     const dex = currentAttr(A_DEX);
-    rn2(40 + dex * 3);
+    if (!rn2(40 + dex * 3)) rnd(3);
 }
 
 export function maybe_update_seer_turn() {

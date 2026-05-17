@@ -2,6 +2,7 @@
 // C refs: rumors.c:getrumor/get_rnd_line/get_rnd_text, engrave.c:random_engraving.
 
 import { rn2, rn2Display } from './rng.js';
+import { game } from './gstate.js';
 import { BOGUSMON_LINES } from './bogusmon_data.js';
 import { MONSTER_DATA } from './monster_data.js';
 import { ENGRAVINGS_TEXT, RUMORS_FALSE_TEXT, RUMORS_TRUE_TEXT } from './random_text_data.js';
@@ -14,6 +15,16 @@ const BOGON_CODES = '-_+|=';
 const G_NOGEN = 0x0200;
 const M2_PNAME = 0x00080000;
 const SPECIAL_PM = MONSTER_DATA.findIndex((m) => m?.[0] === 'LONG_WORM_TAIL');
+const HLIQUIDS = [
+    'yoghurt', 'oobleck', 'clotted blood', 'diluted water', 'purified water',
+    'instant coffee', 'tea', 'herbal infusion', 'liquid rainbow',
+    'creamy foam', 'mulled wine', 'bouillon', 'nectar', 'grog', 'flubber',
+    'ketchup', 'slow light', 'oil', 'vinaigrette', 'liquid crystal', 'honey',
+    'caramel sauce', 'ink', 'aqueous humour', 'milk substitute',
+    'fruit juice', 'glowing lava', 'gastric acid', 'mineral water',
+    'cough syrup', 'quicksilver', 'sweet vitriol', 'grey goo', 'pink slime',
+    'cosmic latte', 'bone oil', 'custard', 'lard', 'vinegar', 'creosote',
+];
 
 let rumorData = null;
 let engraveData = null;
@@ -39,7 +50,7 @@ export function randomEpitaph() {
     return '';
 }
 
-function getRumor(truth, excludeCookie) {
+export function getRumor(truth, excludeCookie) {
     const data = loadRumors();
     let rumor = '';
     let count = 0;
@@ -149,6 +160,17 @@ export function randomHallucinatedMonsterName(article = '') {
     if (index >= SPECIAL_PM) return applyArticle(bogusmon(), article);
     rn2Display(2);
     return applyArticle({ name: monsterDataName(MONSTER_DATA[index]), personal: false }, article);
+}
+
+export function hallucinatedLiquidName(liquidpref = '') {
+    const hallucinating = !!((game.u?.uhallucination || game.u?.uprops?.hallucination)
+        && !game.program_state?.gameover);
+    if (hallucinating || !liquidpref) {
+        const count = HLIQUIDS.length + (liquidpref ? 1 : 0);
+        const index = rn2Display(count);
+        if (index >= 0 && index < HLIQUIDS.length) return HLIQUIDS[index];
+    }
+    return liquidpref;
 }
 
 function isHallucinationSuppressedMonster(index) {

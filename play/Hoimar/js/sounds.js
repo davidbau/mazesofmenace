@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { pline } from './display.js';
+import { append_pline } from './display.js';
 import { Is_oracle_level } from './const.js';
 
 export async function dosounds() {
@@ -18,15 +18,24 @@ export async function dosounds() {
 
     if (lvl.flags.nfountains && !rn2(400)) {
         const msg = ["bubbling water.", "water falling on coins.", "the splashing of a naiad.", "a soda fountain!"];
-        await pline("You hear " + msg[rn2(3) + hallu]);
+        await append_pline("You hear " + msg[rn2(3) + hallu]);
     }
     if (lvl.flags.nsinks && !rn2(300)) {
         const msg = ["a slow drip.", "a gurgling noise.", "dishes being washed!"];
-        await pline("You hear " + msg[rn2(2) + hallu]);
+        await append_pline("You hear " + msg[rn2(2) + hallu]);
+    }
+    if (lvl.flags.has_court && !rn2(200)) {
+        // Ambient special-room sounds are not rendered yet.  The gates belong
+        // here so the turn tail keeps the same RNG ownership as sounds.c.
+        return;
+    }
+    if (lvl.flags.has_swamp && !rn2(200)) {
+        return;
+    }
+    if (lvl.flags.has_vault && !rn2(200)) {
+        return;
     }
     if (lvl.flags.has_zoo && !rn2(200)) {
-        // Ambient zoo monster sounds are not rendered yet.  The gate belongs
-        // here so the turn tail keeps the same RNG ownership as sounds.c.
         return;
     }
     if (Is_oracle_level(g.u?.uz) && !rn2(400)) {

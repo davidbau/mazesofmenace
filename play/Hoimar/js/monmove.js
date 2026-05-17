@@ -11,17 +11,22 @@ import {
     GP_CHECKSCARY, W_NONPASSWALL,
     isok, SPACE_POS,
 } from './const.js';
-import { newsym, queue_more_prompt, pline, flush_screen, clear_pending_message, docrt } from './display.js';
+import {
+    newsym, queue_more_prompt, pline, flush_screen, clear_pending_message,
+    docrt, refresh_swallowed_overlay, serialize_terminal_grid, append_pline,
+} from './display.js';
 import { nhgetch } from './input.js';
 import { clear_path, cansee, couldsee } from './vision.js';
 import { m_dowear_basic } from './mon_wear.js';
 import { gettrack } from './track.js';
+import { randomHallucinatedMonsterName } from './random_text.js';
 
 const NORMAL_SPEED = 12;
 const BOLT_LIM = 8;
 const M2_WERE = 0x00000004;
 const M2_HUMAN = 0x00000008;
 const M2_WANDER = 0x00800000;
+const M2_ROCKTHROW = 0x08000000;
 const M1_FLY = 0x00000001;
 const M1_SWIM = 0x00000002;
 const M1_WALLWALK = 0x00000008;
@@ -34,6 +39,8 @@ const M2_STRONG = 0x04000000;
 const M2_COLLECT = 0x40000000;
 const M2_MAGIC = 0x80000000;
 const MTSZ = 4;
+const MS_RIDER = 35;
+const MS_LEADER = 36;
 const MSLOW = 1;
 const MFAST = 2;
 const MMOVE_NOTHING = 0;
@@ -51,6 +58,7 @@ const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
 const GEM_CLASS = 13;
 const ROCK = 474;
+const BOULDER = 475;
 const RAY = 3;
 const AMULET_OF_LIFE_SAVING = 202;
 const AMULET_OF_REFLECTION = 208;
@@ -250,9 +258,23 @@ function mfndpos_terrain_ok(mtmp, x, y) {
 }
 
 function can_mon_step(mtmp, x, y) {
-    if (x === game.u?.ux && y === game.u?.uy) return false;
+    if (x === game.u?.ux && y === game.u?.uy) return !mtmp.mpeaceful && !mtmp.mtame;
     if (mon_at(x, y, mtmp)) return false;
+    // C ref: mon.c:mfndpos()/mon_allowflags(). Boulder squares are not
+    // ordinary movement candidates unless the monster has ALLOW_ROCK.
+    if (boulder_at(x, y) && !mon_allows_boulder_square(mtmp)) return false;
     return mfndpos_terrain_ok(mtmp, x, y);
+}
+
+function mon_allows_boulder_square(mtmp) {
+    const flags2 = mtmp.data?.mflags2 ?? 0;
+    return !!(flags2 & M2_ROCKTHROW) || m_can_break_boulder_basic(mtmp);
+}
+
+function m_can_break_boulder_basic(mtmp) {
+    return mtmp.data?.msound === MS_RIDER
+        || (!mtmp.mspec_used
+            && (mtmp.isshk || mtmp.ispriest || mtmp.data?.msound === MS_LEADER));
 }
 
 function door_blocks_diagonal(x, y) {
@@ -284,6 +306,10 @@ function object_class(obj) {
 
 function objects_at(x, y) {
     return (game.level?.objects || []).filter((obj) => obj.ox === x && obj.oy === y);
+}
+
+function boulder_at(x, y) {
+    return objects_at(x, y).some((obj) => obj.otyp === BOULDER);
 }
 
 function could_reach_item(mtmp, x, y) {
@@ -546,6 +572,7 @@ function remove_dead_monster(mtmp) {
 }
 
 function monster_name(mtmp) {
+    if (hallucinating()) return randomHallucinatedMonsterName();
     return String(mtmp?.data?.name || 'monster').toLowerCase().replace(/_/g, ' ');
 }
 
@@ -558,8 +585,18 @@ function occupation_message_boundary_active() {
     return (game._occupation_turns_remaining || 0) > 0 || !!game._occupation_finish_message;
 }
 
+function hallucinating() {
+    return !!(game.u?.uhallucination || game.u?.uprops?.hallucination);
+}
+
+function is_more_dismiss_key(ch) {
+    if (typeof ch === 'number') ch = String.fromCharCode(ch);
+    return ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
+}
+
 async function flush_pending_more_before_monster_message() {
     if (!game._more || !game._pending_message) return;
+    if (game._pet_combat_more_latched && !hallucinating()) return;
     // C ref: tty topline `--More--` is often serviced when the next pline()
     // wants to print. This lets intervening map updates become visible before
     // the prior message is dismissed, without applying the next message's
@@ -567,6 +604,25 @@ async function flush_pending_more_before_monster_message() {
     await flush_screen(1);
     await nhgetch();
     clear_pending_message();
+    game._hallucination_warning_rng_active = false;
+    if (game._after_more_message) {
+        const msg = game._after_more_message;
+        const needsPrompt = !!game._after_more_needs_prompt;
+        const strictPromptKeys = !!game._after_more_strict_keys;
+        game._after_more_message = '';
+        game._after_more_needs_prompt = false;
+        game._after_more_strict_keys = false;
+        await pline(msg);
+        if (needsPrompt) {
+            queue_more_prompt();
+            let ch;
+            do {
+                await flush_screen(1);
+                ch = await nhgetch();
+            } while (strictPromptKeys && !is_more_dismiss_key(ch));
+            clear_pending_message();
+        }
+    }
     if (game._swallowed_display_pending) {
         // C ref: mhitu.c:gulpmu() calls vision_recalc(2)/swallowed(1) after
         // the initial engulf message is serviced, so later swallowed damage
@@ -574,13 +630,74 @@ async function flush_pending_more_before_monster_message() {
         game._swallowed_display_pending = false;
         game._swallowed_map_active = true;
         game._swallowed_overlay = null;
+        refresh_swallowed_overlay();
+        refresh_swallowed_overlay();
     }
 }
 
 async function show_blocking_monster_message(line) {
     if (!line) return;
+    if (game._pending_message?.startsWith('You hear nothing special.') && !game._more
+        && `${game._pending_message}  ${line}`.length < 80) {
+        game._pending_message = `${game._pending_message}  ${line}`;
+        return;
+    }
+    if (/^You (miss|hit) /.test(game._pending_message || '') && !game._more
+        && `${game._pending_message}  ${line}`.length < 80) {
+        game._pending_message = `${game._pending_message}  ${line}`;
+        return;
+    }
+    if (game._pending_message && !game._more && `${game._pending_message}  ${line}`.length < 80) {
+        if (/^You hear the (?:studio audience applaud|rumble of distant thunder\.\.\.)!$/.test(game._pending_message)) {
+            game._pending_message = `${game._pending_message}  ${line}`;
+            queue_more_prompt();
+            game._monster_attack_more_latched = true;
+            if (game._pending_monster_attack_side_effect) {
+                game._after_more_message = game._pending_monster_attack_side_effect;
+                game._pending_monster_attack_side_effect = '';
+            }
+            return;
+        }
+        if (game._pending_message === "You're covered in frost!") {
+            game._pending_message = `${game._pending_message}  ${line}`;
+            queue_more_prompt();
+            game._monster_attack_more_latched = true;
+            return;
+        }
+        if (/^The .+ is killed!$/.test(game._pending_message)) {
+            game._pending_message = `${game._pending_message}  ${line}`;
+            return;
+        }
+        if (/^The .+ (?:misses|hits|bites|stings|kicks|butts) the .+\.$/.test(game._pending_message)) {
+            game._pending_message = `${game._pending_message}  ${line}`;
+            queue_more_prompt();
+            game._packed_monster_more_candidate = true;
+            return;
+        }
+        queue_more_prompt();
+        game._monster_more_accepts_any_key = true;
+        if (!game._monster_death_pending) {
+            game._after_more_message = line;
+            game._after_more_needs_prompt = true;
+        }
+        return;
+    }
+    if (game._more && game._pending_message && game._pet_combat_more_latched && !hallucinating()) {
+        game._after_more_message = game._after_more_message
+            ? `${game._after_more_message}  ${line}`
+            : line;
+        game._after_more_needs_prompt = true;
+        return;
+    }
     await pline(line);
-    queue_more_prompt();
+    if (game._monster_death_pending || game._fatal_monster_attack_paused) queue_more_prompt();
+}
+
+async function flush_visible_monster_attack_side_effect() {
+    if (!game._pending_monster_attack_side_effect || game._more) return;
+    const msg = game._pending_monster_attack_side_effect;
+    game._pending_monster_attack_side_effect = '';
+    await append_pline(msg);
 }
 
 async function append_swallowed_damage_message(line) {
@@ -590,8 +707,10 @@ async function append_swallowed_damage_message(line) {
     // that forces `--More--`, so don't make every damage message block.
     if (game._pending_message && !game._more) {
         game._pending_message = `${game._pending_message}  ${line}`;
+        return true;
     } else {
         await pline(line);
+        return false;
     }
 }
 
@@ -661,7 +780,7 @@ function attack_is_basic_physical(attack) {
     if (!attack) return true;
     const [aatyp, adtyp, damn, damd] = attack;
     return BASIC_MELEE_ATTACKS.has(aatyp)
-        && adtyp === 'AD_PHYS'
+        && ['AD_PHYS', 'AD_ELEC', 'AD_COLD', 'AD_FIRE', 'AD_ACID'].includes(adtyp)
         && damn > 0
         && damd > 0;
 }
@@ -791,6 +910,14 @@ async function unstuck_swallowed_hero(mtmp) {
 export async function finish_pending_swallowed_expulsion() {
     if (!game._pending_swallowed_display_clear) return false;
     game._pending_swallowed_display_clear = false;
+    const mtmp = game._pending_swallowed_expulsion_mon || null;
+    game._pending_swallowed_expulsion_mon = null;
+    game._swallowed_latched_overlay = null;
+    if (mtmp && game.u?.uswallow && game.u.ustuck === mtmp) {
+        await unstuck_swallowed_hero(mtmp);
+        game._latched_status_uhp = null;
+        return true;
+    }
     if (game.u) {
         game.u.uswallow = false;
         game.u.ustuck = null;
@@ -813,19 +940,22 @@ async function engulf_attack(mtmp, attack, toHit) {
     if (!alreadySwallowed && !(toHit > rnd(20))) return true;
     let damage = d(damn, damd);
     if (!alreadySwallowed) {
-        game.u.uswallow = true;
         game.u.ustuck = mtmp;
         mtmp.mx = game.u.ux;
         mtmp.my = game.u.uy;
-        game.u.uswldtim = Math.max(2, rnd(monster_level(mtmp) + 5));
         newsym(mtmp.mx, mtmp.my);
+        game._pet_combat_more_latched = false;
         await show_blocking_monster_message(`The ${monster_name(mtmp)} engulfs you!`);
+        if (!game._more) queue_more_prompt();
+        game.u.uswallow = true;
+        game.u.uswldtim = Math.max(2, rnd(monster_level(mtmp) + 5));
         game._swallowed_display_pending = true;
     }
     if ((game.u.uswldtim || 0) > 0) {
         game.u.uswldtim--;
     }
 
+    let swallowedDamagePackedWithHeroHit = false;
     switch (adtyp) {
     case 'AD_COLD':
     case 'AD_FIRE':
@@ -834,11 +964,14 @@ async function engulf_attack(mtmp, attack, toHit) {
         if (mtmp.mcan || !rn2(2)) {
             damage = 0;
         } else if (adtyp === 'AD_COLD') {
-            await append_swallowed_damage_message('You are freezing to death!');
+            swallowedDamagePackedWithHeroHit = await append_swallowed_damage_message('You are freezing to death!')
+                && /^You hit /.test(game._pending_message || '');
         } else if (adtyp === 'AD_FIRE') {
-            await append_swallowed_damage_message('You are burning to a crisp!');
+            swallowedDamagePackedWithHeroHit = await append_swallowed_damage_message('You are burning to a crisp!')
+                && /^You hit /.test(game._pending_message || '');
         } else if (adtyp === 'AD_ELEC') {
-            await append_swallowed_damage_message('The air around you crackles with electricity.');
+            swallowedDamagePackedWithHeroHit = await append_swallowed_damage_message('The air around you crackles with electricity.')
+                && /^You hit /.test(game._pending_message || '');
         }
         break;
     case 'AD_PHYS':
@@ -856,31 +989,91 @@ async function engulf_attack(mtmp, attack, toHit) {
         await append_swallowed_damage_message('You get expelled!');
         queue_more_prompt();
         game._latched_status_uhp = game.u?.uhp ?? null;
-        const latchedOverlay = game._swallowed_overlay;
-        await unstuck_swallowed_hero(mtmp);
-        game._swallowed_latched_overlay = latchedOverlay;
+        game._swallowed_latched_overlay = game._swallowed_overlay;
+        game._pending_swallowed_expulsion_mon = mtmp;
         game._pending_swallowed_display_clear = true;
+        swallowedDamagePackedWithHeroHit = false;
+    }
+    if (swallowedDamagePackedWithHeroHit && !game._more
+        && (game._pending_message?.length || 0) >= 54) {
+        queue_more_prompt();
+        game._swallowed_damage_more_latched = true;
     }
     return true;
 }
 
-function physical_melee_attacks(mtmp, attacks, toHit) {
+async function latch_monster_attack_more_frame(line) {
+    if (!line || game._more || game._latched_more_screen) return false;
+    const oldPending = game._pending_message;
+    game._pending_message = line;
+    queue_more_prompt();
+    await flush_screen(1);
+    game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
+    game._latched_more_cursor = [
+        game.nhDisplay?.cursorCol ?? Math.min(`${line}--More--`.length, 79),
+        game.nhDisplay?.cursorRow ?? 0,
+    ];
+    game._pending_message = oldPending;
+    return true;
+}
+
+async function physical_melee_attacks(mtmp, attacks, toHit) {
     const hitMessages = [];
     const attackVerbCounts = new Map();
+    let latchedTailStart = null;
     for (let i = 0; i < attacks.length; i++) {
         const attack = attacks[i];
         if (!attack) continue;
         const [, adtyp, damn, damd] = attack;
-        if (toHit > rnd(20 + i)) {
+        const roll = rnd(20 + i);
+        if (toHit > roll) {
             const verb = monster_attack_verb(attack, attackVerbCounts);
-            hitMessages.push(`The ${monster_name(mtmp)} ${verb}!`);
+            const extra = adtyp === 'AD_ELEC' ? '  You get zapped!' : '';
+            const target = verb === 'touches' ? ' you' : '';
+            const line = `The ${monster_name(mtmp)} ${verb}${target}!${extra}`;
+            if (hitMessages.length
+                && `${hitMessages.join('  ')}  ${line}`.length >= (game.nhDisplay?.cols || 80)) {
+                if (await latch_monster_attack_more_frame(hitMessages.join('  ')))
+                    latchedTailStart = hitMessages.length;
+            }
+            hitMessages.push(line);
             let damage = d(damn, damd);
             damage = elemental_hit_side_effects(mtmp, adtyp, damage);
             mhitm_knockback_frontdoor();
             damage = reduce_damage_by_negative_ac(damage);
+            if (adtyp === 'AD_COLD' && damage > 0)
+                game._pending_monster_attack_side_effect = "You're covered in frost!";
+            const preDamageHp = game.u?.uhp ?? 0;
             apply_hero_damage(damage);
-            if ((game.u?.uhp ?? 0) <= 0) break;
+            if (damage > 0 && /^You hear the studio audience applaud!$/.test(game._pending_message || '')) {
+                game._latched_status_uhp = preDamageHp;
+                game._clear_latched_status_after_more = true;
+            }
+            if ((game.u?.uhp ?? 0) <= 0) {
+                if (!game._pet_combat_resume_active)
+                    game._latched_status_uhp = preDamageHp <= 1 ? Math.max(0, preDamageHp) : 0;
+                game._monster_death_pending = true;
+                if (!game._pet_combat_resume_active) {
+                    game._fatal_monster_attack_paused = true;
+                    game._monster_turn_paused_for_more = true;
+                }
+                break;
+            }
+        } else {
+            const miss = toHit === roll ? 'just misses' : 'misses';
+            const line = `The ${monster_name(mtmp)} ${miss}!`;
+            if (hitMessages.length
+                && `${hitMessages.join('  ')}  ${line}`.length >= (game.nhDisplay?.cols || 80)) {
+                if (await latch_monster_attack_more_frame(hitMessages.join('  ')))
+                    latchedTailStart = hitMessages.length;
+            }
+            hitMessages.push(line);
         }
+    }
+    if (latchedTailStart != null && !game._after_more_message) {
+        game._after_more_message = hitMessages.slice(latchedTailStart).join('  ');
+        game._after_more_needs_prompt = true;
+        game._after_more_strict_keys = true;
     }
     return hitMessages;
 }
@@ -911,8 +1104,9 @@ async function mattacku_basic(mtmp, state) {
     if (cooldownAttack) {
         if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
         await flush_pending_more_before_monster_message();
-        const messages = physical_melee_attacks(mtmp, [cooldownAttack], mattacku_to_hit(mtmp));
+        const messages = await physical_melee_attacks(mtmp, [cooldownAttack], mattacku_to_hit(mtmp));
         if (messages.length) await show_blocking_monster_message(messages.join('  '));
+        await flush_visible_monster_attack_side_effect();
         return true;
     }
     const engulf = basic_engulf_attack(mtmp);
@@ -931,8 +1125,10 @@ async function mattacku_basic(mtmp, state) {
     }
     if (engulf) return engulf_attack(mtmp, engulf, toHit);
     await flush_pending_more_before_monster_message();
-    const messages = physical_melee_attacks(mtmp, physical, toHit);
+    const messages = await physical_melee_attacks(mtmp, physical, toHit);
+    if (messages.length) mtmp.mlstmv = game.moves || 0;
     if (messages.length) await show_blocking_monster_message(messages.join('  '));
+    await flush_visible_monster_attack_side_effect();
     return true;
 }
 
@@ -1050,6 +1246,11 @@ async function m_move_basic(mtmp) {
     }
 
     if (!moved || (nix === omx && niy === omy)) return MMOVE_NOTHING;
+    if (nix === game.u?.ux && niy === game.u?.uy) {
+        mtmp.mux = game.u.ux;
+        mtmp.muy = game.u.uy;
+        return MMOVE_NOTHING;
+    }
     const engulfingHero = game.u?.uswallow && game.u?.ustuck === mtmp;
     mtmp.mx = nix;
     mtmp.my = niy;
@@ -1061,9 +1262,24 @@ async function m_move_basic(mtmp) {
         game.vision_full_recalc = 1;
     }
     mon_track_add(mtmp, omx, omy);
-    newsym(omx, omy);
-    newsym(nix, niy);
-    const doorStatus = postmove_door_basic(mtmp);
+    const previousWarningRng = game._monster_move_warning_rng_active;
+    game._monster_move_warning_rng_active = true;
+    let doorStatus;
+    try {
+        newsym(omx, omy);
+        doorStatus = postmove_door_basic(mtmp);
+        if (doorStatus !== MMOVE_DIED) {
+            if (game._swallowed_expulsion_paused_for_more) {
+                game._swallowed_expulsion_paused_for_more = false;
+            } else {
+                // C ref: monmove.c:postmov() redraws the moved monster's
+                // current square after trap/door handling, before pickup.
+                newsym(mtmp.mx, mtmp.my);
+            }
+        }
+    } finally {
+        game._monster_move_warning_rng_active = previousWarningRng;
+    }
     if (doorStatus === MMOVE_DIED) return MMOVE_DIED;
     if (await mpickstuff_basic(mtmp)) return MMOVE_DONE;
     return doorStatus;
@@ -1129,13 +1345,26 @@ export function mcalcdistress() {
 
 export async function movemon() {
     const g = game;
-    let somebody_can_move = false;
+    let somebody_can_move = !!g._resume_somebody_can_move;
+    g._resume_somebody_can_move = false;
+
+    if (g._resume_tame_post_distfleeck) {
+        distfleeck(g._resume_tame_post_distfleeck);
+        g._resume_tame_post_distfleeck = null;
+    }
+    const resumeAfter = g._resume_movemon_after_mon || null;
+    let skippingResumedPrefix = !!resumeAfter;
+    g._resume_movemon_after_mon = null;
 
     // C ref: mon.c:iter_mons_safe() snapshots fmon before the movement
     // pass so removals or insertions during combat do not shift ownership
     // of later monsters' turns.
     const monsters = [...(g.level.monsters || [])];
     for (const mtmp of monsters) {
+        if (skippingResumedPrefix) {
+            if (mtmp === resumeAfter) skippingResumedPrefix = false;
+            continue;
+        }
         if (!g.level.monsters?.includes(mtmp)) continue;
         // C ref: mon.c:movemon_singlemon() runs this before the movement
         // budget check, so zero-budget fog clouds still leave vapor.
@@ -1183,6 +1412,17 @@ export async function movemon() {
         if (mtmp.mtame) {
             if (is_wanderer(mtmp) && monnear_hero(mtmp)) rn2(4);
             await dog_move(mtmp, false);
+            if (g._more && g._pet_combat_more_latched && !g._savelife_resume_active && !hallucinating()) {
+                if ((!g._after_more_message || !g._after_more_message.includes('  '))
+                    && !/ engulfs you!$/.test(g._after_more_message || ''))
+                    g._after_more_needs_prompt = false;
+                g._resume_tame_post_distfleeck = mtmp;
+                g._resume_movemon_after_mon = mtmp;
+                g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                g._pet_combat_resume_active = true;
+                g._monster_turn_paused_for_more = true;
+                return false;
+            }
             distfleeck(mtmp);
         } else {
             let postMoveState = fleeState;
@@ -1197,6 +1437,50 @@ export async function movemon() {
             if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE)
                 || (moveStatus === MMOVE_MOVED && can_attack_after_move_basic(mtmp, postMoveState))) {
                 await mattacku_basic(mtmp, postMoveState);
+                if (g._swallowed_damage_more_latched && g._more) {
+                    g._swallowed_damage_more_latched = false;
+                    g._resume_movemon_after_mon = mtmp;
+                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._monster_turn_paused_for_more = true;
+                    g._swallowed_damage_more_waiting = true;
+                    return false;
+                }
+                if (g._pending_swallowed_display_clear && g._more) {
+                    g._resume_movemon_after_mon = mtmp;
+                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._monster_turn_paused_for_more = true;
+                    g._swallowed_expulsion_paused_for_more = true;
+                    return false;
+                }
+                if (g._monster_attack_more_latched && g._more) {
+                    // C ref: topl.c:more()/pline_mon(). A queued monster-hit
+                    // More only interrupts immediately when dismissing it must
+                    // expose a delayed side-effect pline. Otherwise it remains
+                    // on the topline while later map updates in the same monster
+                    // pass can happen; the next pline or input-boundary flush
+                    // services the More.
+                    g._monster_attack_more_latched = false;
+                    if (g._after_more_message) {
+                        g._resume_movemon_after_mon = mtmp;
+                        g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                        g._monster_turn_paused_for_more = true;
+                        g._monster_attack_more_waiting = true;
+                        return false;
+                    }
+                    g._hallucination_warning_rng_active = true;
+                }
+                if (g._fatal_monster_attack_paused && g._monster_turn_paused_for_more
+                    && g._more && !hallucinating()) {
+                    g._resume_turn_tail_after_more = true;
+                    return false;
+                }
+                if (g._pet_combat_resume_active && g._more && !hallucinating()) {
+                    g._pet_combat_resume_active = false;
+                    g._resume_movemon_after_mon = mtmp;
+                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._monster_turn_paused_for_more = true;
+                    return false;
+                }
             }
         }
     }
@@ -1208,6 +1492,14 @@ export async function movemon() {
         age_gas_clouds();
         g._gas_clouds_aged_turn = g.moves;
     }
+
+    const packedDeathAndHit = /^The .+ is killed!  The .+ .+!$/.test(g._pending_message || '');
+    if ((!somebody_can_move || packedDeathAndHit) && g._packed_monster_more_candidate
+        && g._more && !g._pet_combat_more_latched && !hallucinating()) {
+        g._more = false;
+        g._more_dismissals_remaining = 0;
+    }
+    g._packed_monster_more_candidate = false;
 
     return somebody_can_move;
 }

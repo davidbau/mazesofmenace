@@ -9,11 +9,11 @@ import { nhgetch } from './input.js';
 import {
     ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, TABU, UNDEF,
     D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
-    IS_LAVA, IS_POOL, IS_ROOM, MM_EDOG, NO_MINVENT, SPACE_POS,
+    IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
     isok,
 } from './const.js';
 import { d, rn2, rnd } from './rng.js';
-import { clear_path } from './vision.js';
+import { cansee, clear_path } from './vision.js';
 
 const FOOD_CLASS = 7;
 const ROCK_CLASS = 14;
@@ -32,13 +32,25 @@ const CLOVE_OF_GARLIC = 284;
 const SLIME_MOLD = 285;
 const TIN = 296;
 const TINNING_KIT = 238;
+const EXPENSIVE_CAMERA = 229;
+const LARGE_BOX = 214;
+const CHEST = 215;
+const MIRROR = 230;
+const STETHOSCOPE = 237;
+const MAGIC_MARKER = 242;
 const BELL_OF_OPENING = 263;
 const CANDELABRUM_OF_INVOCATION = 262;
 const DOG_HUNGRY = 300;
 const M2_STRONG = 0x04000000;
 
 const OBJECT_WEIGHT_OVERRIDES = new Map([
+    [LARGE_BOX, 350],
+    [CHEST, 600],
+    [EXPENSIVE_CAMERA, 200],
+    [MIRROR, 10],
+    [STETHOSCOPE, 75],
     [TINNING_KIT, 100],
+    [MAGIC_MARKER, 2],
 ]);
 
 // These ids come from the generated object table used by mklev.js.
@@ -205,6 +217,12 @@ function objects_at(x, y) {
     return (game.level?.objects || []).filter((obj) => obj.ox === x && obj.oy === y);
 }
 
+function mon_track_add(mtmp, x, y) {
+    if (!mtmp.mtrack) mtmp.mtrack = [];
+    mtmp.mtrack.unshift({ x, y });
+    if (mtmp.mtrack.length > MTSZ) mtmp.mtrack.length = MTSZ;
+}
+
 function cursed_object_at(x, y) {
     return objects_at(x, y).some((obj) => obj.cursed);
 }
@@ -258,6 +276,7 @@ function dogfood(mtmp, obj) {
         case ENORMOUS_MEATBALL:
             return carni ? DOGFOOD : MANFOOD;
         case CORPSE:
+            if (obj.trap_victim) return MANFOOD;
             return carni ? CADAVER : MANFOOD;
         case EGG:
             return carni ? CADAVER : MANFOOD;
@@ -312,6 +331,7 @@ function can_reach_location(mtmp, mx, my, fx, fy, depth = 0) {
 function can_carry(mtmp, obj) {
     if (mtmp === game.u?.usteed) return 0;
     if (obj.cursed) return 0;
+    if (obj.otyp === CORPSE) return 0;
     if (object_class(obj.otyp) === ROCK_CLASS && obj.otyp === BOULDER && !mtmp.data?.throws_rocks) return 0;
     if (current_mon_load(mtmp) + object_weight(obj) > max_mon_load(mtmp)) return 0;
     return Math.max(1, obj.quan || 1);
@@ -349,8 +369,33 @@ function monster_name(mon) {
     return String(mon?.data?.name || 'monster').toLowerCase().replace(/_/g, ' ');
 }
 
+const MONSTER_AC = new Map([
+    ['kitten', 6],
+    ['fox', 7],
+    ['sewer rat', 7],
+    ['giant bat', 7],
+]);
+
+function monster_ac(mon) {
+    const name = monster_name(mon);
+    return mon?.mac ?? mon?.ac ?? mon?.data?.ac ?? MONSTER_AC.get(name) ?? 10;
+}
+
+function mattackm_hits(magr, mdef, dieroll) {
+    const level = magr?.m_lev ?? magr?.data?.mlevel ?? 0;
+    return monster_ac(mdef) + level > dieroll;
+}
+
 function pet_name(mtmp) {
     return String(mtmp?.data?.name || 'pet').toLowerCase().replace(/_/g, ' ');
+}
+
+function monster_article_name(mon) {
+    return `the ${monster_name(mon)}`;
+}
+
+function hallucinating() {
+    return !!(game.u?.uhallucination || game.u?.uprops?.hallucination);
 }
 
 function occupation_message_boundary_active() {
@@ -360,8 +405,17 @@ function occupation_message_boundary_active() {
 async function append_topline_message(line) {
     if (game._pending_message?.startsWith('You start putting on ')) game._pending_message = '';
     if (game._pending_message) {
+        if (game._more && !hallucinating()) {
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = true;
+            game._pet_combat_more_latched = true;
+            return;
+        }
         game._pending_message = `${game._pending_message}  ${line}`;
         queue_more_prompt();
+        game._pet_combat_more_latched = true;
         if (occupation_message_boundary_active()) {
             // C ref: tty topline handling via pline()/--More--.  A second
             // visible pet-combat pline can block inside the monster turn,
@@ -389,7 +443,7 @@ function refresh_pet_attack_symbols(mtmp, target) {
     newsym(target.mx, target.my);
 }
 
-async function finish_pet_kill(mtmp, target) {
+export async function finish_pet_kill(mtmp, target) {
     // C ref: mon.c:monkilled(). Monster-vs-monster death announces the
     // visible defender before corpse/death side effects run.
     await append_topline_message(`The ${monster_name(target)} is killed!`);
@@ -429,7 +483,7 @@ function dog_invent(mtmp, udist) {
                 if (idx >= 0) game.level.objects.splice(idx, 1);
                 mtmp.inventory = mtmp.inventory || [];
                 mtmp.inventory.unshift(obj);
-                pline(`The kitten picks up ${object_name(obj)}.`);
+                if (cansee(omx, omy)) pline(`The kitten picks up ${object_name(obj)}.`);
                 newsym(omx, omy);
             }
         }
@@ -581,24 +635,24 @@ function grow_up_from_kill(mtmp, victim) {
 }
 
 async function pet_melee_attack(mtmp, target) {
-    if (!pet_should_attack(mtmp, target)) return false;
+    if (!pet_should_attack(mtmp, target)) return { attacked: false };
     // C ref: dogmove.c calls mattackm() for ALLOW_M candidates before
     // ranged attacks.  This is a narrow mhitm.c front door for the current
     // pet evidence: one physical attack, miss passive check, or hit damage
     // plus death/growth follow-up RNG.
     const dieroll = rnd(20);
-    if (dieroll > 10) {
+    if (!mattackm_hits(mtmp, target, dieroll)) {
         refresh_pet_attack_symbols(mtmp, target);
         await pet_combat_message(mtmp, `misses the ${monster_name(target)}.`);
         rn2(3);
-        return true;
+        return { attacked: true, hit: false, defenderDied: false };
     }
 
     const damage = d(1, 6);
     refresh_pet_attack_symbols(mtmp, target);
     await pet_combat_message(mtmp, `bites the ${monster_name(target)}.`);
-    const effectiveHp = Math.min(target.mhp ?? 1, Math.max(1, target.data?.mlevel ?? 1));
-    target.mhp = effectiveHp - damage;
+    const currentHp = target.mhp ?? Math.max(1, target.data?.mlevel ?? 1);
+    target.mhp = currentHp - damage;
     rn2(3); // mhitm_knockback chance
     rn2(6); // mhitm_knockback distance/side gate
     if (target.mhp < 1) {
@@ -606,7 +660,31 @@ async function pet_melee_attack(mtmp, target) {
     } else {
         rn2(3);
     }
-    return true;
+    return { attacked: true, hit: true, defenderDied: target.mhp < 1 };
+}
+
+async function monster_melee_attack(mtmp, target) {
+    const dieroll = rnd(20);
+    if (!mattackm_hits(mtmp, target, dieroll)) {
+        refresh_pet_attack_symbols(mtmp, target);
+        await append_topline_message(`The ${monster_name(mtmp)} misses ${monster_article_name(target)}.`);
+        rn2(3);
+        return { attacked: true, hit: false, defenderDied: false };
+    }
+    const damage = d(1, 6);
+    refresh_pet_attack_symbols(mtmp, target);
+    await append_topline_message(`The ${monster_name(mtmp)} bites ${monster_article_name(target)}.`);
+    target.mhp = (target.mhp ?? 1) - damage;
+    rn2(3);
+    rn2(6);
+    if (target.mhp < 1) {
+        if (game._more && !hallucinating()) {
+            game._pet_defender_death_pending = { killer: mtmp, target };
+        } else {
+            await finish_pet_kill(mtmp, target);
+        }
+    }
+    return { attacked: true, hit: true, defenderDied: target.mhp < 1 };
 }
 
 function pet_goal(mtmp, after, udist, whappr) {
@@ -674,11 +752,15 @@ function pet_goal(mtmp, after, udist, whappr) {
     if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4) || whappr
         || (dogHasMinvent && rn2(edog.apport)))) appr = 1;
     if (appr === 0) {
-        for (const obj of game.inventory || []) {
-            if (typeof obj.otyp !== 'number') continue;
-            if (dogfood(mtmp, obj) === DOGFOOD) {
-                appr = 1;
-                break;
+        if (loc?.typ === STAIRS || loc?.typ === LADDER) {
+            appr = 1;
+        } else {
+            for (const obj of game.inventory || []) {
+                if (typeof obj.otyp !== 'number') continue;
+                if (dogfood(mtmp, obj) === DOGFOOD) {
+                    appr = 1;
+                    break;
+                }
             }
         }
     }
@@ -703,6 +785,18 @@ export async function dog_move(mtmp, after = true) {
     let chcnt = 0;
     const maxx = Math.min(mtmp.mx + 1, 79);
     const maxy = Math.min(mtmp.my + 1, 20);
+    let uncursedcnt = 0;
+    let mfndposcnt = 0;
+
+    for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
+        for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
+            if (nx === mtmp.mx && ny === mtmp.my) continue;
+            const target = mon_at(nx, ny, mtmp);
+            if (!pet_can_enter_square(mtmp, nx, ny, { ignoreMonster: !!target })) continue;
+            mfndposcnt++;
+            if (!cursed_object_at(nx, ny)) uncursedcnt++;
+        }
+    }
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
@@ -710,16 +804,32 @@ export async function dog_move(mtmp, after = true) {
             const target = mon_at(nx, ny, mtmp);
             if (!pet_can_enter_square(mtmp, nx, ny, { ignoreMonster: !!target })) continue;
             if (target) {
-                if (await pet_melee_attack(mtmp, target)) return 0;
+                const attack = await pet_melee_attack(mtmp, target);
+                if (attack.attacked) {
+                    if (attack.hit && !attack.defenderDied && rn2(4)
+                        && !game._savelife_resume_active) {
+                        await monster_melee_attack(target, mtmp);
+                    }
+                    return 0;
+                }
                 continue;
             }
             if (avoid_soko_push_loc(mtmp, nx, ny)) continue;
 
             // NetHack lessens backtracking only for pets more than five
-            // squares from the hero.  Track history is not modeled yet.
+            // squares from the hero.
             if (distmin(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) > 5) {
-                // Placeholder for dogmove.c mtrack avoidance; no RNG without
-                // real track state because that would invent consumers.
+                const k = edog ? uncursedcnt : mfndposcnt;
+                const jcnt = Math.min(MTSZ, k - 1, mtmp.mtrack?.length || 0);
+                let backtracking = false;
+                for (let trackIndex = 0; trackIndex < jcnt; trackIndex++) {
+                    const track = mtmp.mtrack[trackIndex];
+                    if (track?.x === nx && track?.y === ny && rn2(MTSZ * (k - trackIndex))) {
+                        backtracking = true;
+                        break;
+                    }
+                }
+                if (backtracking) continue;
             }
 
             const canReachFood = could_reach_item(mtmp, nx, ny);
@@ -755,6 +865,7 @@ export async function dog_move(mtmp, after = true) {
     const oldy = mtmp.my;
     mtmp.mx = nix;
     mtmp.my = niy;
+    mon_track_add(mtmp, oldx, oldy);
     newsym(oldx, oldy);
     newsym(nix, niy);
     return 1;

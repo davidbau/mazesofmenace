@@ -4,6 +4,7 @@
 //
 // Generated from: seed8000-tourist-starter.session.json
 
+import { game } from "./gstate.js";
 import { rn2, rnd } from "./rng.js";
 
 // Pre-mklev startup: o_init shuffles, dungeon init, u_init_misc
@@ -132,5 +133,7 @@ export function fastforward_post_mklev() {
     rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
     rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100); rn2(100);
     rn2(100); rn2(100); rn2(100); rn2(20); rn2(20); rn2(20); rn2(7); rn2(20); rn2(20); rn2(20);
-    rnd(9000); rnd(30);
+    rnd(9000);
+    game.context = game.context || {};
+    game.context.seer_turn = rnd(30);
 }

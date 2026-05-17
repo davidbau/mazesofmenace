@@ -5,6 +5,8 @@ import { game } from './gstate.js';
 import { cansee } from './vision.js';
 import { rn2Display } from './rng.js';
 import { MONSTER_DATA } from './monster_data.js';
+import { OBJECT_CLASS } from './object_data.js';
+import { getObjectColor } from './o_init.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -50,16 +52,39 @@ const COLOR_BY_ANSI = new Map(ANSI_COLOR.map((ansi, color) => [ansi, color]));
 const POTION_CLASS = 8;
 const SPBOOK_CLASS = 10;
 const GEM_CLASS = 13;
+const FIRST_OBJECT = 18;
+const NUM_OBJECTS = OBJECT_CLASS.length - 1;
 const FIRST_REAL_GEM = 439;
 const LAST_GLASS_GEM = 469;
 const FIRST_SPELL = 366;
 const LAST_SPELL = 407;
-const BOULDER = 475;
+const CORPSE = 265;
+const STATUE = 476;
 
 const GENERIC_OBJECT_GLYPH = {
     [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
     [SPBOOK_CLASS]: { ch: '+', color: CLR_GRAY },
     [GEM_CLASS]: { ch: '*', color: CLR_GRAY },
+};
+
+const OBJECT_CLASS_CHARS = {
+    1: ']',
+    2: ')',
+    3: '[',
+    4: '=',
+    5: '"',
+    6: '(',
+    7: '%',
+    8: '!',
+    9: '?',
+    10: '+',
+    11: '/',
+    12: '$',
+    13: '*',
+    14: '`',
+    15: '0',
+    16: '_',
+    17: '.',
 };
 
 const MONSTER_SYMBOLS = {
@@ -96,7 +121,37 @@ function observe_object(obj) {
     if (obj) obj.dknown = true;
 }
 
+function hallucinated_statue_glyph() {
+    // C ref: display.h:statue_to_glyph() consumes random_monster() and rng(2).
+    const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
+    rn2Display(2);
+    if (!mdat) return { ch: '?', color: NO_COLOR };
+    return {
+        ch: MONSTER_SYMBOLS[mdat[1]] ?? 'm',
+        color: mdat[7] ?? NO_COLOR,
+    };
+}
+
+function random_object_glyph_for_display() {
+    // C ref: display.h:random_obj_to_glyph().
+    const otyp = rn2Display(NUM_OBJECTS - FIRST_OBJECT) + FIRST_OBJECT;
+    if (otyp === CORPSE) {
+        const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
+        return { ch: '%', color: mdat?.[7] ?? NO_COLOR };
+    }
+    const oclass = OBJECT_CLASS[otyp];
+    return {
+        ch: OBJECT_CLASS_CHARS[oclass] || '?',
+        color: getObjectColor(otyp) ?? NO_COLOR,
+    };
+}
+
 function object_glyph_for_display(obj, x, y, visible) {
+    if (game.u?.uprops?.hallucination || game.u?.uhallucination) {
+        if (obj?.otyp === STATUE) return hallucinated_statue_glyph();
+        return random_object_glyph_for_display();
+    }
+
     let generic = obj_is_generic(obj);
     if (generic && visible && !game.u?.uhallucination) {
         const r = Math.max(game.u?.xray_range || 0, 2);
@@ -217,9 +272,6 @@ function trap_glyph(trap) {
 }
 
 function monster_glyph(mon) {
-    if (mon?.m_ap_type === M_AP_OBJECT && mon.mappearance === BOULDER) {
-        return { ch: '`', color: CLR_GRAY, dec: false };
-    }
     if (game.u?.uprops?.hallucination || game.u?.uhallucination) {
         // C ref: display.h:mon_to_glyph() -> what_mon(..., rn2_on_display_rng).
         const mdat = MONSTER_DATA[rn2Display(MONSTER_DATA.length)] || null;
@@ -231,6 +283,15 @@ function monster_glyph(mon) {
             };
         }
     }
+    if (mon?.m_ap_type === M_AP_OBJECT) {
+        const otyp = mon.mappearance;
+        const oclass = OBJECT_CLASS[otyp];
+        return {
+            ch: OBJECT_CLASS_CHARS[oclass] || '?',
+            color: getObjectColor(otyp) ?? NO_COLOR,
+            dec: false,
+        };
+    }
     return { ch: mon.ch, color: mon.color, dec: false };
 }
 
@@ -239,7 +300,13 @@ function warning_glyph(mon) {
     // display_warning(). Warning floats over unseen hostile monsters.
     if (!game.u?.uprops?.warning || mon?.mpeaceful) return null;
     if (dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) >= 100) return null;
-    const level = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    let level;
+    if ((game.u?.uprops?.hallucination || game.u?.uhallucination)
+        && (game._hallucination_warning_rng_active || game._monster_move_warning_rng_active)) {
+        level = rn2Display(WARNCOUNT - 1) + 1;
+    } else {
+        level = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    }
     if (level < (game.context?.warnlevel ?? 1)) return null;
     return def_warnsyms[Math.min(WARNCOUNT - 1, Math.max(0, level))] || null;
 }
@@ -247,6 +314,32 @@ function warning_glyph(mon) {
 export function refresh_warning_monsters() {
     if (!game.u?.uprops?.warning) return;
     for (const mon of game.level?.monsters || []) newsym(mon.mx, mon.my);
+}
+
+export function see_monsters() {
+    for (const mon of game.level?.monsters || []) {
+        if (mon.dead || mon.mhp <= 0) continue;
+        newsym(mon.mx, mon.my);
+    }
+    if (game.u?.ux > 0) newsym(game.u.ux, game.u.uy);
+}
+
+export function see_objects() {
+    const seen = new Set();
+    for (const obj of game.level?.objects || []) {
+        const key = `${obj.ox},${obj.oy}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        newsym(obj.ox, obj.oy);
+    }
+}
+
+export function see_traps() {
+    for (const trap of game.level?.traps || []) {
+        const loc = game.level?.at(trap.tx, trap.ty);
+        if (!trap.tseen || loc?.disp_ch !== '^') continue;
+        newsym(trap.tx, trap.ty);
+    }
 }
 
 function show_premapped_mimics() {
@@ -372,13 +465,28 @@ export function newsym(x, y) {
         return;
     }
 
+    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
+    const visible = cansee(x, y);
+
+    if (!visible) {
+        if (mon) {
+            const wg = warning_glyph(mon);
+            if (wg) show_glyph_cell(x, y, wg.ch, wg.color, false);
+        } else if (loc.remembered_glyph) {
+            // Out of sight but remembered - show remembered glyph.
+            show_glyph_cell(x, y, loc.remembered_glyph.ch,
+                loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+        } else {
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
+        }
+        return;
+    }
+
     // Contestants: add monster, object, and trap display here.
     let tg = terrain_glyph(loc, x, y);
 
     const trap = game.level?.traps?.find(t => t.tx === x && t.ty === y);
     const obj = game.level?.objects?.find(o => o.ox === x && o.oy === y);
-    const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
-    const visible = cansee(x, y);
     const covered = terrain_covers_objects(loc);
 
     let draw_ch = tg.ch;
@@ -389,29 +497,22 @@ export function newsym(x, y) {
         const tr = trap_glyph(trap);
         draw_ch = tr.ch; draw_color = tr.color; draw_dec = tr.dec;
     }
-    if (mon) {
-        const mg = monster_glyph(mon);
-        draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
-    } else if (obj && !covered) {
+    if (obj && !covered) {
         const og = object_glyph_for_display(obj, x, y, visible);
         draw_ch = og.ch; draw_color = og.color; draw_dec = false;
     }
+    const memory_ch = draw_ch;
+    const memory_color = draw_color;
+    const memory_dec = draw_dec;
+    if (mon) {
+        const mg = monster_glyph(mon);
+        draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
+    }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
-    if (visible) {
-        show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
-        if (game.level?.flags?.hero_memory) {
-            loc.remembered_glyph = { ch: draw_ch, color: draw_color, decgfx: draw_dec };
-        }
-    } else if (mon) {
-        const wg = warning_glyph(mon);
-        if (wg) show_glyph_cell(x, y, wg.ch, wg.color, false);
-    } else if (loc.remembered_glyph) {
-        // Out of sight but remembered — show remembered glyph
-        show_glyph_cell(x, y, loc.remembered_glyph.ch,
-            loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
-    } else {
-        show_glyph_cell(x, y, ' ', NO_COLOR, false);
+    show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
+    if (game.level?.flags?.hero_memory) {
+        loc.remembered_glyph = { ch: memory_ch, color: memory_color, decgfx: memory_dec };
     }
 }
 
@@ -426,9 +527,7 @@ export async function docrt() {
                     loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
             }
         }
-    for (let y = 0; y < ROWNO; y++)
-        for (let x = 1; x < COLNO; x++)
-            if (cansee(x, y)) newsym(x, y);
+    see_monsters();
     show_premapped_mimics();
     if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
 }
@@ -546,7 +645,7 @@ function _statusLine2() {
     const conditions = [];
     if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
-    const hp = game._latched_status_uhp != null && game._more
+    const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
         : (u.uhp || 0);
     return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
@@ -635,8 +734,9 @@ function renderOverrideScreen(display, screen) {
         state.col++;
     }
 
-    if (game._override_cursor && display.setCursor) {
-        display.setCursor(game._override_cursor[0], game._override_cursor[1]);
+    const cursor = game._override_cursor || game._latched_more_cursor;
+    if (cursor && display.setCursor) {
+        display.setCursor(cursor[0], cursor[1]);
     }
 }
 
@@ -644,14 +744,19 @@ function renderOverrideScreen(display, screen) {
 function _buildScreenOutput() {
     const display = game?.nhDisplay;
     if (!display) return;
+    if (game._latched_more_screen) {
+        renderOverrideScreen(display, game._latched_more_screen);
+        return;
+    }
     if (game._override_screen) {
         renderOverrideScreen(display, game._override_screen);
         return;
     }
 
+    const floorListActive = Array.isArray(game._floor_list_lines) && game._floor_list_lines.length > 0;
     let output = '';
     // Row 0: message
-    output += (game._pending_message || '') + (game._more ? '--More--' : '') + '\n';
+    output += (game._pending_message || '') + (game._more && !floorListActive ? '--More--' : '') + '\n';
 
     // Rows 1-21: map (rendered with DEC + ANSI, per-row SO/SI)
     for (let y = 0; y < ROWNO; y++) {
@@ -668,7 +773,7 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = (game._pending_message || '') + (game._more ? '--More--' : '');
+        const msg = (game._pending_message || '') + (game._more && !floorListActive ? '--More--' : '');
         const pending = game._pending_message || '';
         if (game._more && game._more_next_message_row) {
             for (let c = 0; c < Math.min(pending.length, display.cols); c++)
@@ -676,6 +781,11 @@ function _buildScreenOutput() {
         } else {
             for (let c = 0; c < Math.min(msg.length, display.cols); c++)
                 display.setCell(c, 0, msg[c], NO_COLOR, 0);
+        }
+        if (floorListActive && game._floor_list_show_more === false) {
+            const col = game._floor_list_col ?? 41;
+            for (let c = col; c < Math.min(msg.length, display.cols); c++)
+                display.setCell(c, 0, msg[c], NO_COLOR, ATR_INVERSE);
         }
         // Map — write characters to grid (DEC → Unicode for browser display)
         if (!game._swallowed_map_active && !game._swallowed_latched_overlay) {
@@ -704,6 +814,27 @@ function _buildScreenOutput() {
         const s2 = _statusLine2();
         for (let c = 0; c < Math.min(s2.length, display.cols); c++)
             display.setCell(c, 23, s2[c], NO_COLOR, 0);
+        if (floorListActive) {
+            const col = game._floor_list_col ?? 41;
+            for (let i = 0; i < game._floor_list_lines.length; i++) {
+                const line = game._floor_list_lines[i] || '';
+                const row = i + 1;
+                const inverse = game._floor_list_show_more === false
+                    && line
+                    && line !== '(end)'
+                    && !/^[a-z] [+-] /.test(line);
+                for (let c = 0; c < display.cols - col; c++)
+                    display.setCell(col + c, row, ' ', NO_COLOR, 0);
+                for (let c = 0; c < Math.min(line.length, display.cols - col); c++)
+                    display.setCell(col + c, row, line[c], NO_COLOR, inverse ? ATR_INVERSE : 0);
+            }
+            if (game._floor_list_show_more !== false) {
+                const more = '--More--';
+                const row = Math.min(21, game._floor_list_lines.length + 1);
+                for (let c = 0; c < more.length; c++)
+                    display.setCell(col + c, row, more[c], NO_COLOR, 0);
+            }
+        }
         if (game._more && game._more_next_message_row) {
             const more = '--More--';
             for (let c = 0; c < more.length; c++) display.setCell(c, 1, more[c], NO_COLOR, 0);
@@ -740,6 +871,16 @@ export async function pline(msg) {
     game._pending_message = msg;
 }
 
+export async function append_pline(msg) {
+    if (game._pending_message) {
+        const packed = `${game._pending_message}  ${msg}`;
+        game._pending_message = packed;
+        if (packed.length >= (game.nhDisplay?.cols || COLNO)) queue_more_prompt();
+    } else {
+        await pline(msg);
+    }
+}
+
 export function queue_more_prompt(count = 1) {
     game._more_dismissals_remaining = (game._more_dismissals_remaining || 0) + Math.max(1, count);
     game._more = true;
@@ -751,5 +892,12 @@ export function clear_pending_message() {
     game._more_next_message_row = false;
     game._more_dismissals_remaining = 0;
     game._hero_melee_message_pending = false;
+    game._pet_combat_more_latched = false;
     game._prompt_cursor = null;
+    game._packed_monster_more_candidate = false;
+    game._monster_more_accepts_any_key = false;
+    game._floor_list_lines = null;
+    game._floor_list_col = null;
+    game._floor_list_show_more = true;
+    game._floor_list_pauses_turn = false;
 }

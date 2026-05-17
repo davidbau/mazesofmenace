@@ -24,7 +24,7 @@ const ROLE_INIT = new Map([
         attrbase: [7, 10, 6, 7, 7, 10],
         attrmax: [15, 10, 10, 15, 30, 20],
         attrdist: [15, 10, 10, 15, 30, 20],
-        hp: 10, pwBase: 2, pwRnd: 0, ac: 10, gold: 757,
+        hp: 10, pwBase: 2, pwRnd: 0, ac: 0, gold: 757,
     }],
     ['Wizard', {
         attrbase: [7, 10, 7, 7, 7, 7],
@@ -68,29 +68,48 @@ const WAND_CLASS = 11;
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
 
+const GOLD_PIECE = 438;
+const DART = 23;
 const QUARTERSTAFF = 79;
+const HAWAIIAN_SHIRT = 136;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
-const BLINDFOLD = 220;
-const MAGIC_MARKER = 229;
+const SCALPEL = 39;
+const LEATHER_GLOVES = 159;
+const BLINDFOLD = 233;
+const CREDIT_CARD = 223;
+const EXPENSIVE_CAMERA = 229;
+const TOWEL = 234;
+const LEASH = 236;
+const STETHOSCOPE = 237;
+const TIN_OPENER = 239;
+const MAGIC_MARKER = 242;
 const SPE_FORCE_BOLT = 383;
+const APPLE = 277;
 const RIN_LEVITATION = 183;
 const RIN_HUNGER = 184;
 const RIN_AGGRAVATE_MONSTER = 185;
 const RIN_POLYMORPH = 196;
 const RIN_POLYMORPH_CONTROL = 197;
 const POT_HALLUCINATION = 304;
+const POT_HEALING = 307;
+const POT_EXTRA_HEALING = 308;
 const POT_POLYMORPH = 316;
 const POT_ACID = 320;
 const SCR_ENCHANT_WEAPON = 328;
+const SCR_MAGIC_MAPPING = 337;
 const SCR_AMNESIA = 338;
 const SCR_FIRE = 339;
 const SCR_BLANK_PAPER = 365;
 const SPE_POLYMORPH = 399;
 const SPE_BLANK_PAPER = 407;
+const SPE_HEALING = 374;
+const SPE_EXTRA_HEALING = 391;
+const SPE_STONE_TO_FLESH = 405;
 const SPE_NOVEL = 408;
 const WAN_WISHING = 414;
 const WAN_NOTHING = 416;
 const WAN_POLYMORPH = 422;
+const WAN_SLEEP = 432;
 
 const SPELLBOOK_LEVEL = new Map([
     [366, 5], [367, 2], [368, 4], [369, 4], [370, 3], [371, 7],
@@ -103,8 +122,8 @@ const SPELLBOOK_LEVEL = new Map([
 ]);
 
 const WIZARD_INVENTORY = [
-    { typ: QUARTERSTAFF, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1 },
-    { typ: CLOAK_OF_MAGIC_RESISTANCE, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: QUARTERSTAFF, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1, wielded: true },
+    { typ: CLOAK_OF_MAGIC_RESISTANCE, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: WAND_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: RING_CLASS, min: 2, max: 2, bless: UNDEF_BLESS },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: POTION_CLASS, min: 3, max: 3, bless: UNDEF_BLESS },
@@ -114,8 +133,51 @@ const WIZARD_INVENTORY = [
     { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
+const HEALER_INVENTORY = [
+    { typ: SCALPEL, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: LEATHER_GLOVES, spe: 1, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: STETHOSCOPE, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: POT_HEALING, spe: 0, cls: POTION_CLASS, min: 4, max: 4, bless: UNDEF_BLESS },
+    { typ: POT_EXTRA_HEALING, spe: 0, cls: POTION_CLASS, min: 4, max: 4, bless: UNDEF_BLESS },
+    { typ: WAN_SLEEP, spe: UNDEF_SPE, cls: WAND_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: SPE_HEALING, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: SPE_EXTRA_HEALING, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: SPE_STONE_TO_FLESH, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
+    { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 5, max: 5, bless: 0 },
+];
+
+const TOURIST_INVENTORY = [
+    { typ: DART, spe: 2, cls: WEAPON_CLASS, min: 21, max: 40, bless: UNDEF_BLESS },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
+    { typ: POT_EXTRA_HEALING, spe: 0, cls: POTION_CLASS, min: 2, max: 2, bless: UNDEF_BLESS },
+    { typ: SCR_MAGIC_MAPPING, spe: 0, cls: SCROLL_CLASS, min: 4, max: 4, bless: UNDEF_BLESS },
+    { typ: HAWAIIAN_SHIRT, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: EXPENSIVE_CAMERA, spe: UNDEF_SPE, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: CREDIT_CARD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const MONEY_INVENTORY = [
+    { typ: GOLD_PIECE, spe: 0, cls: COIN_CLASS, min: 1, max: 1, bless: 0 },
+];
+
 const BLINDFOLD_INVENTORY = [
     { typ: BLINDFOLD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const TIN_OPENER_INVENTORY = [
+    { typ: TIN_OPENER, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const LEASH_INVENTORY = [
+    { typ: LEASH, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const TOWEL_INVENTORY = [
+    { typ: TOWEL, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const MAGIC_MARKER_INVENTORY = [
+    { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
 function trquan(trop) {
@@ -199,8 +261,19 @@ export function add_inventory_object(obj) {
     return obj;
 }
 
+function discover_starting_object(obj) {
+    if (!obj?.knownName || typeof obj.otyp !== 'number') return;
+    game.discoveredObjects = game.discoveredObjects || new Set();
+    if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(obj.otyp);
+}
+
 function ini_inv_adjust_obj(trop, obj) {
     let stop = false;
+    if (trop.cls === COIN_CLASS) {
+        obj.quan = game._goldCount || 0;
+        obj.invlet = '$';
+        return false;
+    }
     obj.cursed = false;
     // C ref: u_init.c:ini_inv_adjust_obj(). Starting inventory is known to
     // the hero; later wished/floor objects keep their own unknown flags.
@@ -209,6 +282,7 @@ function ini_inv_adjust_obj(trop, obj) {
     obj.dknown = true;
     obj.bknown = true;
     obj.rknown = true;
+    discover_starting_object(obj);
     if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
         obj.quan = trquan(trop);
         stop = true;
@@ -254,6 +328,8 @@ function ini_inv(trobs, noCreate, roleName) {
         }
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
         const invObj = add_inventory_object(obj);
+        if (trop.wielded) invObj.wielded = true;
+        if (trop.worn) invObj.worn = true;
         if (invObj.oclass === SPBOOK_CLASS && starting_spell_level(invObj.otyp) === 1) {
             gotLevel1Spellbook = true;
         }
@@ -264,18 +340,44 @@ function ini_inv(trobs, noCreate, roleName) {
 }
 
 export function u_init_role_inventory() {
-    const role = findRole(game._nhopts?.role);
+    const role = findRole(game._nhopts?.role) || game.urole;
+    let roleStartingGold = 0;
     const noCreate = {
         nocreate: UNDEF_TYP,
         nocreate2: UNDEF_TYP,
         nocreate3: UNDEF_TYP,
         nocreate4: UNDEF_TYP,
     };
-    if (role?.name?.m === 'Wizard') {
+    if (role?.name?.m === 'Healer') {
+        game._goldCount = rn1(1000, 1001);
+        game._startupRoleGoldInitialized = true;
+        roleStartingGold = game._goldCount;
+        ini_inv(HEALER_INVENTORY, noCreate, role.name.m);
+        if (!rn2(25)) {
+            // C may add an oil lamp here; object creation is still unported.
+        }
+    } else if (role?.name?.m === 'Tourist') {
+        game._goldCount = rnd(1000);
+        game._startupRoleGoldInitialized = true;
+        roleStartingGold = game._goldCount;
+        ini_inv(TOURIST_INVENTORY, noCreate, role.name.m);
+        if (!rn2(25)) {
+            ini_inv(TIN_OPENER_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(25)) {
+            ini_inv(LEASH_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(25)) {
+            ini_inv(TOWEL_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(20)) {
+            ini_inv(MAGIC_MARKER_INVENTORY, noCreate, role.name.m);
+        }
+    } else if (role?.name?.m === 'Wizard') {
         ini_inv(WIZARD_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {
             ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
         }
+    }
+    if (roleStartingGold > 0) {
+        ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);
     }
 }
 
@@ -347,7 +449,7 @@ export function apply_startup_role_state() {
     const init = ROLE_INIT.get(role?.name?.m);
     if (!init) return;
     const { attrs, maxes } = initialAttributes(init);
-    game._goldCount = init.gold;
+    if (!game._startupRoleGoldInitialized) game._goldCount = init.gold;
     game.u.uhp = init.hp;
     game.u.uhpmax = init.hp;
     game.u.uen = game._initialPower ?? init.pwBase;
