@@ -403,6 +403,8 @@ export function init_dungeons() {
             dunlev_ureached: dgn ? 0 : 1,
             flags: dgnFlags(spec),
         };
+        if (spec.name === 'The Gnomish Mines') game.mines_dnum = dgn;
+        if (spec.name === 'The Quest') game.quest_dnum = dgn;
         setDungeonEntry(pd, dgn);
         if (!pd.dungeons[dgn].flags.unconnected && dgn) setDungeonDepth(pd, dgn);
         if (pd.dungeons[dgn].num_dunlevs > 30) pd.dungeons[dgn].num_dunlevs = 30;

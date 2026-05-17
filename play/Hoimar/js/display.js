@@ -146,10 +146,25 @@ function random_object_glyph_for_display() {
     };
 }
 
+function monster_data_for_corpsenm(corpsenm) {
+    if (Number.isInteger(corpsenm)) return MONSTER_DATA[corpsenm] || null;
+    if (typeof corpsenm === 'string') return MONSTER_DATA.find(m => m[0] === corpsenm) || null;
+    return null;
+}
+
 function object_glyph_for_display(obj, x, y, visible) {
     if (game.u?.uprops?.hallucination || game.u?.uhallucination) {
         if (obj?.otyp === STATUE) return hallucinated_statue_glyph();
         return random_object_glyph_for_display();
+    }
+    if (obj?.otyp === STATUE) {
+        const mdat = monster_data_for_corpsenm(obj.corpsenm);
+        if (mdat) {
+            return {
+                ch: MONSTER_SYMBOLS[mdat[1]] ?? (obj.ch || '?'),
+                color: obj.color ?? getObjectColor(STATUE) ?? NO_COLOR,
+            };
+        }
     }
 
     let generic = obj_is_generic(obj);
@@ -168,22 +183,31 @@ function object_glyph_for_display(obj, x, y, visible) {
     return { ch: obj.ch || '?', color: obj.color ?? NO_COLOR };
 }
 
-function is_branch_stair(x, y) {
+function is_known_branch_stair(x, y) {
+    const currentDnum = game.u?.uz?.dnum ?? 0;
     for (let st = game.stairs; st; st = st.next)
-        if (st.sx === x && st.sy === y && st.isbranch) return true;
+        if (st.sx === x && st.sy === y && st.isbranch
+            && st.u_traversed && st.tolev?.dnum !== currentDnum) return true;
     return false;
 }
 
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = display_wall_type(loc);
-    const wallColor = game.level?.flags?.sokoban_rules ? CLR_BLUE : NO_COLOR;
+    const wallColor = game.level?.flags?.red_walls
+        ? CLR_RED
+        : game.level?.flags?.sokoban_rules ? CLR_BLUE
+            : game.level?.flags?.mines_walls ? CLR_BROWN : NO_COLOR;
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
     case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
     case DOOR:
-        if (loc.doormask & D_ISOPEN) return { ch: '|', color: CLR_BROWN, dec: false };
+        if (loc.doormask & D_ISOPEN) {
+            return loc.horizontal
+                ? { ch: '|', color: CLR_BROWN, dec: false }
+                : { ch: 'a', color: CLR_BROWN, dec: true };
+        }
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
     case SDOOR:
@@ -194,7 +218,7 @@ function terrain_glyph(loc, x, y) {
             : { ch: 'x', color: wallColor, dec: true };
     case STAIRS:
         {
-            const color = is_branch_stair(x, y) ? CLR_YELLOW : CLR_GRAY;
+            const color = is_known_branch_stair(x, y) ? CLR_YELLOW : CLR_GRAY;
             if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
                 return { ch: '<', color, dec: false };
             return { ch: '>', color, dec: false };
@@ -300,14 +324,15 @@ function warning_glyph(mon) {
     // display_warning(). Warning floats over unseen hostile monsters.
     if (!game.u?.uprops?.warning || mon?.mpeaceful) return null;
     if (dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) >= 100) return null;
+    const realLevel = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+    if (realLevel < (game.context?.warnlevel ?? 1)) return null;
     let level;
     if ((game.u?.uprops?.hallucination || game.u?.uhallucination)
         && (game._hallucination_warning_rng_active || game._monster_move_warning_rng_active)) {
         level = rn2Display(WARNCOUNT - 1) + 1;
     } else {
-        level = Math.trunc((mon.m_lev ?? mon.data?.mlevel ?? 0) / 4);
+        level = realLevel;
     }
-    if (level < (game.context?.warnlevel ?? 1)) return null;
     return def_warnsyms[Math.min(WARNCOUNT - 1, Math.max(0, level))] || null;
 }
 
@@ -501,9 +526,16 @@ export function newsym(x, y) {
         const og = object_glyph_for_display(obj, x, y, visible);
         draw_ch = og.ch; draw_color = og.color; draw_dec = false;
     }
-    const memory_ch = draw_ch;
-    const memory_color = draw_color;
-    const memory_dec = draw_dec;
+    let memory_ch = draw_ch;
+    let memory_color = draw_color;
+    let memory_dec = draw_dec;
+    if (obj && !covered && obj.otyp === STATUE
+        && (game.u?.uprops?.hallucination || game.u?.uhallucination)) {
+        // C ref: display.c:map_object(). Hallucinated statues are shown as
+        // random monsters but remembered as separate random objects.
+        const mem = random_object_glyph_for_display();
+        memory_ch = mem.ch; memory_color = mem.color; memory_dec = false;
+    }
     if (mon) {
         const mg = monster_glyph(mon);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;

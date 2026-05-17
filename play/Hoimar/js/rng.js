@@ -65,6 +65,15 @@ export function rndDisplay(x) {
 // C ref: rn1(x, y) — random number y..y+x-1
 export function rn1(x, y) { return rn2(x) + y; }
 
+// C ref: rnl(x) -- rn2 adjusted by Luck. Current modeled evidence has
+// neutral Luck, so retain the distinct log shape without adjustment.
+export function rnl(x) {
+    if (x <= 0) return 0;
+    const val = RND(x);
+    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${val}`);
+    return val;
+}
+
 // C ref: d(n, x) — roll n dice of x sides
 export function d(n, x) {
     let sum = 0;

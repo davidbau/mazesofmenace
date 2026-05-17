@@ -8,7 +8,7 @@ import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import {
     maybe_generate_rnd_mon, regen_hp, gethungry, exerchk,
-    maybe_wipe_engraving, maybe_update_seer_turn, dosounds,
+    maybe_wipe_engraving, maybe_update_seer_turn, dosounds, exercise,
 } from './allmain_turns.js';
 import { mcalcdistress, mcalcmove, movemon } from './monmove.js';
 import { initrack, settrack } from './track.js';
@@ -17,7 +17,7 @@ import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { continueRunStep, finish_pending_eaten_corpse, rhack } from './cmd.js';
+import { continueRunStep, finish_pending_eaten_corpse, performLevelTeleport, rhack } from './cmd.js';
 import { nhgetch } from './input.js';
 import {
     docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
@@ -27,7 +27,7 @@ import {
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
-import { COLNO } from './const.js';
+import { A_WIS, COLNO } from './const.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -37,6 +37,8 @@ const STARTUP_REPLAY_BY_SEED = new Map([
     [2, ff0002],
     [8000, ff8000],
 ]);
+
+const SPEED_BOOTS = 166;
 
 function startupReplayForCurrentSeed() {
     return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
@@ -371,10 +373,19 @@ export async function advanceTurn() {
     }
 
     if (!resumeTurnTailOnly) {
-        while (await movemon()) {
-            // Keep moving monsters until all out of movement.
-        }
+        const firstScanCanMove = await movemon();
         if (g._monster_turn_paused_for_more) return;
+        if (g._fast_extra_action_pending) {
+            g._fast_extra_action_pending = false;
+            g._pet_combat_resume_active = false;
+            g._savelife_resume_active = false;
+            return;
+        }
+        let monscanmove = firstScanCanMove;
+        while (monscanmove) {
+            monscanmove = await movemon();
+            if (g._monster_turn_paused_for_more) return;
+        }
     }
 
     mcalcdistress();
@@ -384,6 +395,7 @@ export async function advanceTurn() {
     }
 
     await maybe_generate_rnd_mon();
+    if (g.u?.uprops?.fast) g._fast_extra_action_pending = rn2(3) !== 0;
     settrack();
 
     regen_hp();
@@ -409,6 +421,19 @@ function applyOccupationFinalTurnState(g) {
 
 function occupationPending(g) {
     return (g._occupation_turns_remaining || 0) > 0 || !!g._occupation_finish_message;
+}
+
+function applyOccupationFinishObjectEffects(g) {
+    const obj = g._occupation_finish_object;
+    if (!obj) return;
+    g._occupation_finish_object = null;
+    if (obj.otyp === SPEED_BOOTS) {
+        const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
+        if (!discovered.has(obj.otyp)) {
+            discovered.add(obj.otyp);
+            exercise(A_WIS, true);
+        }
+    }
 }
 
 async function runSwallowedPreFinishTurn(g) {
@@ -445,6 +470,7 @@ async function continueOccupationTurns(g) {
             g._occupation_finish_uac = null;
         }
         await runSwallowedPreFinishTurn(g);
+        applyOccupationFinishObjectEffects(g);
         if (g._pending_message && g._occupation_pack_finish_message) {
             await append_pline(g._occupation_finish_message);
             g._occupation_pack_finish_message = false;
@@ -515,6 +541,13 @@ export async function moveloop_core() {
     const key = await nhgetch();
     // Read and execute one command
     await rhack(key);
+    // C ref: teleport.c:level_tele() schedules the destination; allmain.c
+    // performs deferred_goto() after rhack() returns.
+    if (g._pending_level_teleport_target) {
+        const target = g._pending_level_teleport_target;
+        g._pending_level_teleport_target = null;
+        await performLevelTeleport(target);
+    }
 
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.

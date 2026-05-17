@@ -109,7 +109,7 @@ function loadRumors() {
 function loadEngravings() {
     if (engraveData) return engraveData;
     const lines = [`No matter where you go, there you are.\n`];
-    lines.push(...plainLines(ENGRAVINGS_TEXT)
+    lines.push(...makedefsGrepLines(plainLines(ENGRAVINGS_TEXT))
         .filter((line) => line[0] !== '#' && line !== '\n'));
     engraveData = lines.map((line) => xcrypt(padline(line))).join('');
     return engraveData;
@@ -130,6 +130,40 @@ function plainLines(text) {
     const parts = normalized.split('\n');
     if (parts[parts.length - 1] === '') parts.pop();
     return parts.map((line) => `${line}\n`);
+}
+
+function makedefsGrepLines(lines) {
+    const out = [];
+    const stack = [{ parent: true, writing: true, elseSeen: false }];
+    const isDefined = (id) => id === '1' || id === 'TRUE' || id === 'MAIL';
+
+    for (const raw of lines) {
+        const body = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+        if (body[0] !== '^') {
+            if (stack[stack.length - 1].writing) out.push(raw);
+            continue;
+        }
+
+        const op = body[1] || '';
+        if (op === '^') {
+            if (stack[stack.length - 1].writing) out.push(`${body.slice(1)}\n`);
+        } else if (op === '?' || op === '!') {
+            const parent = stack[stack.length - 1].writing;
+            const id = body.slice(2).trim();
+            const cond = isDefined(id);
+            const active = op === '?' ? cond : !cond;
+            stack.push({ parent, writing: parent && active, elseSeen: false });
+        } else if (op === ':') {
+            const frame = stack[stack.length - 1];
+            if (!frame.elseSeen) {
+                frame.writing = frame.parent && !frame.writing;
+                frame.elseSeen = true;
+            }
+        } else if (op === '.') {
+            if (stack.length > 1) stack.pop();
+        }
+    }
+    return out;
 }
 
 function padline(line, padlength = MD_PAD_RUMORS) {

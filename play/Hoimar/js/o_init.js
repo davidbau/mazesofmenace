@@ -17,6 +17,44 @@ const EMERALD = 445;
 
 const OBJECT_DESCRIPTION = [];
 
+// C ref: objects.h GEM()/ROCK() descriptions.  These are object
+// appearances, not discovery names; randomize_gem_colors() may copy them.
+OBJECT_DESCRIPTION[439] = 'white';
+OBJECT_DESCRIPTION[440] = 'white';
+OBJECT_DESCRIPTION[441] = 'red';
+OBJECT_DESCRIPTION[442] = 'orange';
+OBJECT_DESCRIPTION[443] = 'blue';
+OBJECT_DESCRIPTION[444] = 'black';
+OBJECT_DESCRIPTION[445] = 'green';
+OBJECT_DESCRIPTION[446] = 'green';
+OBJECT_DESCRIPTION[447] = 'yellow';
+OBJECT_DESCRIPTION[448] = 'green';
+OBJECT_DESCRIPTION[449] = 'yellowish brown';
+OBJECT_DESCRIPTION[450] = 'yellowish brown';
+OBJECT_DESCRIPTION[451] = 'black';
+OBJECT_DESCRIPTION[452] = 'white';
+OBJECT_DESCRIPTION[453] = 'yellow';
+OBJECT_DESCRIPTION[454] = 'red';
+OBJECT_DESCRIPTION[455] = 'violet';
+OBJECT_DESCRIPTION[456] = 'red';
+OBJECT_DESCRIPTION[457] = 'violet';
+OBJECT_DESCRIPTION[458] = 'black';
+OBJECT_DESCRIPTION[459] = 'orange';
+OBJECT_DESCRIPTION[460] = 'green';
+OBJECT_DESCRIPTION[461] = 'white';
+OBJECT_DESCRIPTION[462] = 'blue';
+OBJECT_DESCRIPTION[463] = 'red';
+OBJECT_DESCRIPTION[464] = 'yellowish brown';
+OBJECT_DESCRIPTION[465] = 'orange';
+OBJECT_DESCRIPTION[466] = 'yellow';
+OBJECT_DESCRIPTION[467] = 'black';
+OBJECT_DESCRIPTION[468] = 'green';
+OBJECT_DESCRIPTION[469] = 'violet';
+OBJECT_DESCRIPTION[470] = 'gray';
+OBJECT_DESCRIPTION[471] = 'gray';
+OBJECT_DESCRIPTION[472] = 'gray';
+OBJECT_DESCRIPTION[473] = 'gray';
+
 // C ref: objects.h RING(name, stone, ...).  Ring stones are shuffled as
 // appearance descriptors and also carry shuffled color/material state.
 OBJECT_DESCRIPTION[173] = 'wooden';
@@ -286,6 +324,7 @@ export function getObjectDescription(otyp) {
 
 function copy_descr(dst, src) {
     objectColors[dst] = objectColors[src];
+    objectDescriptions[dst] = objectDescriptions[src];
 }
 
 function randomize_gem_colors() {

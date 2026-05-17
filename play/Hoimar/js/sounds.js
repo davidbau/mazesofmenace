@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { append_pline } from './display.js';
-import { Is_oracle_level } from './const.js';
+import { Is_astralevel, Is_oracle_level } from './const.js';
 
 export async function dosounds() {
     const g = game;
@@ -35,8 +35,27 @@ export async function dosounds() {
     if (lvl.flags.has_vault && !rn2(200)) {
         return;
     }
+    if (lvl.flags.has_beehive && !rn2(200)) {
+        return;
+    }
+    if (lvl.flags.has_morgue && !rn2(200)) {
+        return;
+    }
+    if (lvl.flags.has_barracks && !rn2(200)) {
+        return;
+    }
     if (lvl.flags.has_zoo && !rn2(200)) {
         return;
+    }
+    if (lvl.flags.has_shop && !rn2(200)) {
+        return;
+    }
+    if (lvl.flags.has_temple && !rn2(200)) {
+        const isSanctum = (g.specialLevels || []).some((lev) =>
+            lev?.proto === 'sanctum'
+            && lev?.dlevel?.dnum === g.u?.uz?.dnum
+            && lev?.dlevel?.dlevel === g.u?.uz?.dlevel);
+        if (!(Is_astralevel(g.u?.uz) || isSanctum)) return;
     }
     if (Is_oracle_level(g.u?.uz) && !rn2(400)) {
         // C ref: sounds.c:dosounds(); Oracle level has a final ambient

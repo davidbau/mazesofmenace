@@ -8,15 +8,17 @@ import { newsym, pline, queue_more_prompt, flush_screen, clear_pending_message }
 import { nhgetch } from './input.js';
 import {
     ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, TABU, UNDEF,
-    D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
+    D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
-    isok,
+    W_WEP, isok,
 } from './const.js';
 import { d, rn2, rnd } from './rng.js';
 import { cansee, clear_path } from './vision.js';
 
 const FOOD_CLASS = 7;
+const WEAPON_CLASS = 2;
 const ROCK_CLASS = 14;
+const ORCISH_DAGGER = 36;
 const QUARTERSTAFF = 79;
 const TRIPE_RATION = 264;
 const BOULDER = 475;
@@ -188,6 +190,30 @@ export function pet_arrive_with_you() {
     if (migrating?.edog) mon.edog = { ...migrating.edog };
     init_edog(mon);
     if (game.level?.monsters) game.level.monsters.unshift(mon);
+    if (mon.mx === game.u?.ux && mon.my === game.u?.uy) {
+        if (!rn2(2)) {
+            const cc = enexto_core(game.u.ux, game.u.uy, null, GP_CHECKSCARY)
+                || enexto_core(game.u.ux, game.u.uy, null, 0);
+            if (cc && Math.max(Math.abs(cc.x - game.u.ux), Math.abs(cc.y - game.u.uy)) <= 1) {
+                game.u.ux = cc.x;
+                game.u.uy = cc.y;
+            } else {
+                const mc = enexto_core(mon.mx, mon.my, pet, GP_CHECKSCARY)
+                    || enexto_core(mon.mx, mon.my, pet, 0);
+                if (mc) {
+                    mon.mx = mc.x;
+                    mon.my = mc.y;
+                }
+            }
+        } else {
+            const mc = enexto_core(mon.mx, mon.my, pet, GP_CHECKSCARY)
+                || enexto_core(mon.mx, mon.my, pet, 0);
+            if (mc) {
+                mon.mx = mc.x;
+                mon.my = mc.y;
+            }
+        }
+    }
     return mon;
 }
 
@@ -369,6 +395,29 @@ function monster_name(mon) {
     return String(mon?.data?.name || 'monster').toLowerCase().replace(/_/g, ' ');
 }
 
+function monster_has_weapon_attack(mon) {
+    return (mon?.data?.mattk || []).some((attack) => attack?.[0] === 'AT_WEAP');
+}
+
+function monster_weapon_candidate(mon) {
+    return (mon?.inventory || []).find((obj) => OBJECT_CLASS[obj?.otyp] === WEAPON_CLASS);
+}
+
+function monster_weapon_name(obj) {
+    if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
+    return object_name(obj);
+}
+
+function monster_wield_for_pet_counter(mon) {
+    if (!monster_has_weapon_attack(mon) || mon?.mw) return null;
+    const obj = monster_weapon_candidate(mon);
+    if (!obj) return null;
+    mon.mw = obj;
+    obj.owornmask = (obj.owornmask || 0) | W_WEP;
+    mon.weapon_check = 1; // NEED_WEAPON
+    return obj;
+}
+
 const MONSTER_AC = new Map([
     ['kitten', 6],
     ['fox', 7],
@@ -410,6 +459,15 @@ async function append_topline_message(line) {
                 ? `${game._after_more_message}  ${line}`
                 : line;
             game._after_more_needs_prompt = true;
+            game._pet_combat_more_latched = true;
+            return;
+        }
+        if (/^The .+ thrusts .+\.  The .+ (?:hits|misses|just misses)!$/.test(game._pending_message)) {
+            queue_more_prompt();
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = false;
             game._pet_combat_more_latched = true;
             return;
         }
@@ -588,8 +646,17 @@ function pet_ranged_attk(mtmp, forced = false) {
     return 0;
 }
 
+function door_blocks_diagonal(x, y) {
+    const loc = game.level?.at(x, y);
+    return loc && IS_DOOR(loc.typ) && (loc.doormask & ~D_BROKEN);
+}
+
 function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false } = {}) {
     if (!isok(x, y)) return false;
+    if (x !== mtmp.mx && y !== mtmp.my
+        && (door_blocks_diagonal(mtmp.mx, mtmp.my) || door_blocks_diagonal(x, y))) {
+        return false;
+    }
     if (x === game.u?.ux && y === game.u?.uy) return false;
     if (!ignoreMonster && mon_at(x, y, mtmp)) return false;
     if (is_boulder_at(x, y)) return false;
@@ -664,6 +731,12 @@ async function pet_melee_attack(mtmp, target) {
 }
 
 async function monster_melee_attack(mtmp, target) {
+    const wielded = monster_wield_for_pet_counter(mtmp);
+    if (wielded) {
+        refresh_pet_attack_symbols(mtmp, target);
+        await append_topline_message(`The ${monster_name(mtmp)} wields ${monster_weapon_name(wielded)}!`);
+        return { attacked: true, wielded: true, defenderDied: false };
+    }
     const dieroll = rnd(20);
     if (!mattackm_hits(mtmp, target, dieroll)) {
         refresh_pet_attack_symbols(mtmp, target);
@@ -787,6 +860,7 @@ export async function dog_move(mtmp, after = true) {
     const maxy = Math.min(mtmp.my + 1, 20);
     let uncursedcnt = 0;
     let mfndposcnt = 0;
+    let doEat = false;
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
@@ -798,6 +872,7 @@ export async function dog_move(mtmp, after = true) {
         }
     }
 
+    searchCandidates:
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
             if (nx === mtmp.mx && ny === mtmp.my) continue;
@@ -816,6 +891,25 @@ export async function dog_move(mtmp, after = true) {
             }
             if (avoid_soko_push_loc(mtmp, nx, ny)) continue;
 
+            let cursedOnCandidate = false;
+            const canReachFood = could_reach_item(mtmp, nx, ny);
+            for (const obj of objects_at(nx, ny)) {
+                if (obj.cursed) {
+                    cursedOnCandidate = true;
+                } else if (canReachFood) {
+                    const foodType = dogfood(mtmp, obj);
+                    if (foodType < MANFOOD
+                        && (foodType < ACCFOOD || edog.hungrytime <= (game.moves || 1))) {
+                        nix = nx;
+                        niy = ny;
+                        doEat = true;
+                        cursedOnCandidate = false;
+                        break searchCandidates;
+                    }
+                }
+            }
+            if (cursedOnCandidate && uncursedcnt > 0 && rn2(13 * uncursedcnt)) continue;
+
             // NetHack lessens backtracking only for pets more than five
             // squares from the hero.
             if (distmin(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) > 5) {
@@ -832,18 +926,6 @@ export async function dog_move(mtmp, after = true) {
                 if (backtracking) continue;
             }
 
-            const canReachFood = could_reach_item(mtmp, nx, ny);
-            for (const obj of objects_at(nx, ny)) {
-                if (!obj.cursed && canReachFood) {
-                    const foodType = dogfood(mtmp, obj);
-                    if (foodType < MANFOOD
-                        && (foodType < ACCFOOD || init_edog(mtmp).hungrytime <= (game.moves || 1))) {
-                        // Eating/fetching the object is still future work;
-                        // this preserves the candidate-square dogfood probe.
-                    }
-                }
-            }
-
             const ndist = dist2(nx, ny, goal.gx, goal.gy);
             const j = (ndist - nidist) * goal.appr;
             if ((j === 0 && !rn2(++chcnt))
@@ -858,7 +940,7 @@ export async function dog_move(mtmp, after = true) {
         }
     }
 
-    pet_ranged_attk(mtmp, false);
+    if (!doEat) pet_ranged_attk(mtmp, false);
 
     if (nix === mtmp.mx && niy === mtmp.my) return 0;
     const oldx = mtmp.mx;

@@ -12,6 +12,7 @@ import {
 } from './const.js';
 import { newsym } from './display.js';
 
+const BOULDER = 475;
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 
@@ -79,6 +80,7 @@ function _blocks(level, x, y) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
+    if ((level.objects || []).some(o => o.otyp === BOULDER && o.ox === x && o.oy === y)) return true;
     return false;
 }
 

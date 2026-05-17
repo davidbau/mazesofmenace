@@ -21,7 +21,8 @@ import { merge_inventory_object, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry } from './allmain_turns.js';
 import { initrack } from './track.js';
 import { roleGod } from './roles.js';
-import { d, rn1, rn2, rnd, rnz } from './rng.js';
+import { d, rn1, rn2, rnd, rnl, rnz } from './rng.js';
+import { dist2 } from './hacklib.js';
 import { getObjectDescription } from './o_init.js';
 import { getRumor, hallucinatedLiquidName, randomHallucinatedMonsterName } from './random_text.js';
 import { finish_pending_swallowed_expulsion } from './monmove.js';
@@ -29,7 +30,7 @@ import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import * as C from './const.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
-    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, A_DEX, A_WIS,
+    SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, LR_DOWNTELE, A_STR, A_DEX, A_CON, A_WIS,
 } from './const.js';
 
 // Direction deltas: y u k
@@ -50,6 +51,8 @@ const WAN_DIGGING = 428;
 const WAN_MAGIC_MISSILE = 429;
 const QUARTERSTAFF = 79;
 const CLOAK_OF_MAGIC_RESISTANCE = 139;
+const SPEED_BOOTS = 166;
+const LEVITATION_BOOTS = 172;
 const RIN_TELEPORT_CONTROL = 195;
 const RIN_INCREASE_ACCURACY = 176;
 const RIN_STEALTH = 181;
@@ -62,6 +65,7 @@ const GOLD_PIECE = 438;
 const SCALPEL = 39;
 const DART = 23;
 const CORPSE = 265;
+const BOULDER = 475;
 const FORTUNE_COOKIE = 289;
 const LEATHER_GLOVES = 159;
 const ARMOR_CLASS = 3;
@@ -87,6 +91,7 @@ const OBJECT_BASE_NAMES = new Map([
     [QUARTERSTAFF, 'quarterstaff'],
     [GRAY_DRAGON_SCALE_MAIL, 'gray dragon scale mail'],
     [CLOAK_OF_MAGIC_RESISTANCE, 'cloak of magic resistance'],
+    [SPEED_BOOTS, 'speed boots'],
     [LEATHER_GLOVES, 'leather gloves'],
     [AMULET_OF_LIFE_SAVING, 'amulet of life saving'],
     [178, 'ring of protection'],
@@ -249,6 +254,10 @@ function wishedObjectSpec(name) {
     if (wish.includes('gray dragon scale mail') || wish.includes('grey dragon scale mail')) {
         rn2(67);
         return { ...spec, otyp: GRAY_DRAGON_SCALE_MAIL };
+    }
+    if (wish.includes('speed boots')) {
+        rn2(13);
+        return { ...spec, otyp: SPEED_BOOTS };
     }
     if (wish.includes('wand of fire')) {
         rn2(41);
@@ -449,7 +458,7 @@ function compressLetters(letters) {
     for (let i = 0; i < sorted.length; i++) {
         let j = i;
         while (j + 1 < sorted.length && sorted[j + 1].charCodeAt(0) === sorted[j].charCodeAt(0) + 1) j++;
-        if (j - i >= 2) parts.push(`${sorted[i]}-${sorted[j]}`);
+        if (j - i >= 3) parts.push(`${sorted[i]}-${sorted[j]}`);
         else for (let k = i; k <= j; k++) parts.push(sorted[k]);
         i = j;
     }
@@ -748,7 +757,11 @@ function wornSuffix(obj) {
 function inventoryObjectName(obj, opts = {}) {
     if (obj?.menuName) return obj.menuName;
     const quan = obj?.quan || 1;
-    const base = quan > 1 ? pluralizeObjectName(baseObjectName(obj)) : baseObjectName(obj);
+    const rawBase = baseObjectName(obj);
+    const pairObject = /\b(?:boots|gloves)$/.test(rawBase);
+    const base = quan > 1
+        ? (pairObject ? `pairs of ${rawBase}` : pluralizeObjectName(rawBase))
+        : (pairObject ? `pair of ${rawBase}` : rawBase);
     const parts = [bucPrefix(obj), enchantmentPrefix(obj), base].filter(Boolean);
     const body = parts.join(' ') + chargeSuffix(obj, opts);
     const worn = opts.includeWorn ? wornSuffix(obj) : '';
@@ -839,6 +852,7 @@ function armor_base_bonus(obj) {
     case CLOAK_OF_MAGIC_RESISTANCE:
         return 1;
     default:
+        if (obj?.otyp >= SPEED_BOOTS && obj.otyp <= LEVITATION_BOOTS) return 1;
         return 0;
     }
 }
@@ -854,6 +868,14 @@ function calculated_armor_class() {
         if (obj?.oclass === ARMOR_CLASS) uac -= armor_bonus(obj);
     }
     return Math.max(-99, Math.min(99, uac));
+}
+
+function armor_finish_message(obj) {
+    if (obj?.otyp !== SPEED_BOOTS) return 'You finish your dressing maneuver.';
+    const alreadyFast = !!game.u?.uprops?.fast;
+    game.u.uprops = game.u.uprops || {};
+    game.u.uprops.fast = true;
+    return `You finish your dressing maneuver.  You feel yourself speed up${alreadyFast ? ' a bit more' : ''}.`;
 }
 
 function takeoff_worn_cloak() {
@@ -882,8 +904,9 @@ async function start_wearing_object(obj) {
     const delay = OBJECT_DELAY[obj.otyp] || 0;
     if (obj.oclass === ARMOR_CLASS && delay > 1) {
         game._occupation_turns_remaining = Math.max(0, delay - 1);
-        game._occupation_finish_message = 'You finish your dressing maneuver.';
+        game._occupation_finish_message = armor_finish_message(obj);
         game._occupation_finish_uac = calculated_armor_class();
+        game._occupation_finish_object = obj;
         await pline(`You start putting on ${inventoryObjectName(obj)}.`);
     } else {
         if (obj.oclass === ARMOR_CLASS) game.u.uac = calculated_armor_class();
@@ -1239,6 +1262,46 @@ function blocksMove(x, y) {
     return false;
 }
 
+function sobj_at_basic(otyp, x, y) {
+    return (game.level?.objects || []).find(o => o.otyp === otyp && o.ox === x && o.oy === y) || null;
+}
+
+function boulderDestinationBlocked(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    if (IS_OBSTRUCTED(loc.typ) || IS_WALL(loc.typ)) return true;
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    return !!sobj_at_basic(BOULDER, x, y);
+}
+
+async function tryPushBoulder(boulder, sx, sy, dx, dy) {
+    const rx = sx + dx;
+    const ry = sy + dy;
+    if (boulderDestinationBlocked(rx, ry)) {
+        await pline('You try to move the boulder, but in vain.');
+        game.context.move = 0;
+        return false;
+    }
+
+    await pline('With great effort you move the boulder.');
+    exercise(A_STR, true);
+    boulder.ox = rx;
+    boulder.oy = ry;
+    vision_reset();
+
+    const u = game.u;
+    const oldx = u.ux, oldy = u.uy;
+    u.ux0 = oldx;
+    u.uy0 = oldy;
+    u.ux = sx;
+    u.uy = sy;
+    newsym(oldx, oldy);
+    newsym(rx, ry);
+    vision_recalc(1);
+    newsym(sx, sy);
+    return true;
+}
+
 function mon_at(x, y) {
     return (game.level?.monsters || []).find((mon) => mon.mx === x && mon.my === y);
 }
@@ -1321,6 +1384,26 @@ function doorwayBlocksDiagonalForHero(loc) {
     return loc && loc.typ === DOOR && (loc.doormask & ~C.D_BROKEN);
 }
 
+function currentAttr(index) {
+    return game.u?.acurr?.a?.[index] ?? 10;
+}
+
+async function tryAutoOpenDoor(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.typ !== DOOR || !(loc.doormask & D_CLOSED) || (loc.doormask & D_LOCKED)) return false;
+    const threshold = Math.trunc((currentAttr(A_STR) + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
+    if (rnl(20) < threshold) {
+        loc.doormask = C.D_ISOPEN;
+        loc.flags = C.D_ISOPEN;
+        newsym(x, y);
+        await pline('The door opens.');
+    } else {
+        await pline('The door resists!');
+    }
+    game.context.move = 0;
+    return true;
+}
+
 function runShouldStopAfterMove(source, target) {
     return target?.typ === DOOR || (source?.typ === CORR && target?.typ === C.ROOM);
 }
@@ -1344,7 +1427,7 @@ function isSafeMonster(mon) {
 
 function monsterHasNoAttacks(mon) {
     const attacks = mon?.data?.mattk || [];
-    return !attacks.some((attack) => attack && attack[0]);
+    return !attacks.some((attack) => attack && attack[0] && attack[0] !== 'AT_BOOM');
 }
 
 function monsterNearbyForSafety() {
@@ -1357,7 +1440,10 @@ function monsterNearbyForSafety() {
         if (mon.mpeaceful && !(game.u?.uhallucination || game.u?.uprops?.hallucination)) continue;
         if (monsterHasNoAttacks(mon)) continue;
         if (mon.mundetected) continue;
-        if (mon.mfrozen) continue;
+        // C ref: hack.c:monster_nearby() skips helpless(mon), which is
+        // msleeping || !mcanmove.  mfrozen is retained for older JS callers
+        // that may not have synchronized mcanmove yet.
+        if (mon.msleeping || mon.mcanmove === 0 || mon.mfrozen) continue;
         if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) continue;
         return true;
     }
@@ -1411,6 +1497,7 @@ async function swapWithSafeMonster(mon, x, y) {
     mon.mx = oldx;
     mon.my = oldy;
     newsym(oldx, oldy);
+    vision_recalc(1);
     newsym(x, y);
     await pline(`You swap places with ${monsterSwapName(mon)}.`);
 }
@@ -1824,6 +1911,15 @@ async function handleQueuedMore(ch) {
     } else if (game._more_dismissals_remaining <= 0) {
         if (game._cookie_message_queue?.length) {
             const next = game._cookie_message_queue.shift();
+            await pline(next.text);
+            game._more_next_message_row = false;
+            if (next.more) queue_more_prompt();
+            else game._more = false;
+            game.context.move = next.move ? 1 : 0;
+            return true;
+        }
+        if (game._more_message_queue?.length) {
+            const next = game._more_message_queue.shift();
             await pline(next.text);
             game._more_next_message_row = false;
             if (next.more) queue_more_prompt();
@@ -2252,6 +2348,35 @@ function dlevelForProto(proto) {
     return lev?.dlevel || null;
 }
 
+function isHellLevel(uz) {
+    return !!game.dungeons?.[uz?.dnum ?? 0]?.flags?.hellish;
+}
+
+function temperatureChangeAfterLevelChange(prevTemperature, wasInHell) {
+    const temperature = game.level?.flags?.temperature || 0;
+    if (prevTemperature === temperature) return;
+    if (temperature) {
+        return {
+            line: `It is ${temperature > 0 ? 'hot' : 'cold'} here.`,
+            afterMore: isHellLevel(game.u?.uz) && temperature > 0 ? 'You smell smoke...' : '',
+        };
+    }
+    if (prevTemperature > 0) {
+        return { line: `The heat ${wasInHell ? 'and smoke are' : 'is'} gone.` };
+    }
+    if (prevTemperature < 0) {
+        return { line: 'You are out of the cold.' };
+    }
+    return null;
+}
+
+function isSpecialProtoLevel(uz, proto) {
+    return !!game.specialLevels?.some((lev) =>
+        lev?.proto === proto
+        && lev?.dlevel?.dnum === uz?.dnum
+        && lev?.dlevel?.dlevel === uz?.dlevel);
+}
+
 function displayDepth(dlevel) {
     const dun = game.dungeons?.[dlevel?.dnum ?? 0];
     return (dun?.depth_start ?? 1) + (dlevel?.dlevel ?? 1) - 1;
@@ -2312,6 +2437,14 @@ function buildLevelTeleportMenu() {
         i: branchFromDoom('Gehennom', doomMax),
         j: dlevelOf('castle', doomMax),
     };
+    const demonTargets = [
+        { name: 'juiblex', fallback: gehStart + 3 },
+        { name: 'asmodeus', fallback: gehStart + 5 },
+    ].map((entry) => ({
+        ...entry,
+        dlevel: dlevelForProto(entry.name),
+        depth: dlevelOf(entry.name, entry.fallback),
+    })).sort((a, b) => a.depth - b.depth);
     const levels = {
         a: { dnum: 0, dlevel: 1 },
         b: branchFromDoomLevel('The Gnomish Mines'),
@@ -2324,8 +2457,8 @@ function buildLevelTeleportMenu() {
         i: branchFromDoomLevel('Gehennom'),
         j: dlevelForProto('castle'),
         k: dlevelForProto('valley'),
-        l: dlevelForProto('juiblex'),
-        m: dlevelForProto('asmodeus'),
+        l: demonTargets[0]?.dlevel || null,
+        m: demonTargets[1]?.dlevel || null,
         n: dlevelForProto('baalz'),
         o: branchEntranceLevel("Vlad's Tower"),
         p: dlevelForProto('orcus'),
@@ -2351,8 +2484,8 @@ function buildLevelTeleportMenu() {
         ` j - ${currentLevelMarker(levels.j)} castle: ${choices.j} (tune ${tune})`,
         ` \x1b[7mGehennom: levels ${gehStart} to ${gehEnd}\x1b[0m`,
         ` k - ${currentLevelMarker(levels.k)} valley: ${dlevelOf('valley', gehStart)}`,
-        ` l - ${currentLevelMarker(levels.l)} juiblex: ${dlevelOf('juiblex', gehStart + 3)}`,
-        ` m - ${currentLevelMarker(levels.m)} asmodeus: ${dlevelOf('asmodeus', gehStart + 5)}`,
+        ` l - ${currentLevelMarker(levels.l)} ${demonTargets[0].name}: ${demonTargets[0].depth}`,
+        ` m - ${currentLevelMarker(levels.m)} ${demonTargets[1].name}: ${demonTargets[1].depth}`,
         ` n - ${currentLevelMarker(levels.n)} baalz: ${dlevelOf('baalz', gehStart + 6)}`,
         ` o - ${currentLevelMarker(levels.o)} Stair to Vlad's Tower: ${branchEntranceDepth("Vlad's Tower", gehStart + 9)}`,
         ` p - ${currentLevelMarker(levels.p)} orcus: ${dlevelOf('orcus', gehStart + 9)}`,
@@ -2361,7 +2494,7 @@ function buildLevelTeleportMenu() {
         ` s - ${currentLevelMarker(levels.s)} wizard3: ${dlevelOf('wizard3', gehStart + 16)}`,
         ' (1 of 3)',
     ];
-    return { screen: lines.join('\n'), choices };
+    return { screen: lines.join('\n'), choices: levels };
 }
 
 function buildLevelTeleportMenuPage2() {
@@ -2372,7 +2505,18 @@ function buildLevelTeleportMenuPage2() {
     const vlad = game.dungeons?.find((d) => d.dname === "Vlad's Tower");
     const planes = game.dungeons?.find((d) => d.dname === 'The Elemental Planes');
     const roleCode = game.urole?.filecode || 'Wiz';
+    const fakeWizardLevels = [
+        { proto: 'fakewiz1', fallback: 47 },
+        { proto: 'fakewiz2', fallback: 48 },
+    ].map((lev) => ({
+        ...lev,
+        displayLevel: dlevelOf(lev.proto, lev.fallback),
+        target: targetForProto(lev.proto, lev.fallback),
+    })).sort((a, b) => a.displayLevel - b.displayLevel);
     const choices = {
+        t: fakeWizardLevels[0].target,
+        u: fakeWizardLevels[1].target,
+        v: targetForProto('sanctum', 51),
         w: targetForProto('minetn', 6),
         x: targetForProto('minend', 11),
         y: targetForProto('x-strt', 11),
@@ -2388,29 +2532,29 @@ function buildLevelTeleportMenuPage2() {
         J: targetForProto('astral', -5),
     };
     const lines = [
-        ` t -   fakewiz2: ${dlevelOf('fakewiz2', 47)}`,
-        ` u -   fakewiz1: ${dlevelOf('fakewiz1', 48)}`,
-        ` v -   sanctum: ${dlevelOf('sanctum', 51)}`,
+        ` t - ${currentLevelMarker(choices.t)} ${fakeWizardLevels[0].proto}: ${fakeWizardLevels[0].displayLevel}`,
+        ` u - ${currentLevelMarker(choices.u)} ${fakeWizardLevels[1].proto}: ${fakeWizardLevels[1].displayLevel}`,
+        ` v - ${currentLevelMarker(choices.v)} sanctum: ${dlevelOf('sanctum', 51)}`,
         ` \x1b[7mThe Gnomish Mines: levels ${mines?.depth_start ?? 4} to ${(mines?.depth_start ?? 4) + (mines?.num_dunlevs ?? 8) - 1}\x1b[0m`,
-        ` w -   minetn: ${dlevelOf('minetn', 6)}`,
-        ` x -   minend: ${dlevelOf('minend', 11)}`,
+        ` w - ${currentLevelMarker(choices.w)} minetn: ${dlevelOf('minetn', 6)}`,
+        ` x - ${currentLevelMarker(choices.x)} minend: ${dlevelOf('minend', 11)}`,
         ` \x1b[7mThe Quest: levels ${quest?.depth_start ?? 11} to ${(quest?.depth_start ?? 11) + (quest?.num_dunlevs ?? 5) - 1}\x1b[0m`,
-        ` y -   ${roleCode}-strt: ${dlevelOf('x-strt', 11)}`,
-        ` z -   ${roleCode}-loca: ${dlevelOf('x-loca', 13)}`,
-        ` A -   ${roleCode}-goal: ${dlevelOf('x-goal', 15)}`,
+        ` y - ${currentLevelMarker(choices.y)} ${roleCode}-strt: ${dlevelOf('x-strt', 11)}`,
+        ` z - ${currentLevelMarker(choices.z)} ${roleCode}-loca: ${dlevelOf('x-loca', 13)}`,
+        ` A - ${currentLevelMarker(choices.A)} ${roleCode}-goal: ${dlevelOf('x-goal', 15)}`,
         ` \x1b[7mSokoban: levels ${soko?.depth_start ?? 2} to ${(soko?.depth_start ?? 2) + (soko?.num_dunlevs ?? 4) - 1}, entrance from below\x1b[0m`,
-        ` B -   soko1: ${dlevelOf('soko1', 2)}`,
-        ` C -   soko2: ${dlevelOf('soko2', 3)}`,
-        ` D -   soko3: ${dlevelOf('soko3', 4)}`,
-        ` E -   soko4: ${dlevelOf('soko4', 5)}`,
+        ` B - ${currentLevelMarker(choices.B)} soko1: ${dlevelOf('soko1', 2)}`,
+        ` C - ${currentLevelMarker(choices.C)} soko2: ${dlevelOf('soko2', 3)}`,
+        ` D - ${currentLevelMarker(choices.D)} soko3: ${dlevelOf('soko3', 4)}`,
+        ` E - ${currentLevelMarker(choices.E)} soko4: ${dlevelOf('soko4', 5)}`,
         ` \x1b[7mFort Ludios: depth ${ludios?.depth_start ?? 19}\x1b[0m`,
         `       knox: ${dlevelOf('knox', 19)}`,
         ` \x1b[7mVlad's Tower: levels ${vlad?.depth_start ?? 35} to ${(vlad?.depth_start ?? 35) + (vlad?.num_dunlevs ?? 3) - 1}, entrance from below\x1b[0m`,
-        ` G -   tower1: ${dlevelOf('tower1', 35)}`,
-        ` H -   tower2: ${dlevelOf('tower2', 36)}`,
-        ` I -   tower3: ${dlevelOf('tower3', 37)}`,
+        ` G - ${currentLevelMarker(choices.G)} tower1: ${dlevelOf('tower1', 35)}`,
+        ` H - ${currentLevelMarker(choices.H)} tower2: ${dlevelOf('tower2', 36)}`,
+        ` I - ${currentLevelMarker(choices.I)} tower3: ${dlevelOf('tower3', 37)}`,
         ` \x1b[7mThe Elemental Planes: levels -5 to 0, entrance on -1\x1b[0m`,
-        ` J -   astral: ${dlevelOf('astral', -5)}`,
+        ` J - ${currentLevelMarker(choices.J)} astral: ${dlevelOf('astral', -5)}`,
         ' (2 of 3)',
     ];
     return { screen: lines.join('\n'), choices };
@@ -2446,8 +2590,12 @@ function enqueueLevelchangePostMessages(oldLevel, newLevel) {
     queue.push(...applyLevelchangeInnates(oldLevel, newLevel));
 }
 
-async function performLevelTeleport(target) {
-    const migratingPet = (game.level?.monsters || []).find(m => m.mtame);
+export async function performLevelTeleport(target) {
+    const oldUz = { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) };
+    const wasInHell = isHellLevel(oldUz);
+    const prevTemperature = game.level?.flags?.temperature || 0;
+    const migratingPet = (game.level?.monsters || []).find(m =>
+        m.mtame && dist2(m.mx, m.my, game.u?.ux ?? m.mx, game.u?.uy ?? m.my) < 3);
     game._migrating_pet = migratingPet ? {
         ...migratingPet,
         data: migratingPet.data ? { ...migratingPet.data } : migratingPet.data,
@@ -2457,16 +2605,42 @@ async function performLevelTeleport(target) {
         ? { ...target }
         : { ...(game.u.uz || { dnum: 0 }), dlevel: target };
     await mklev();
-    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+    const goingUp = displayDepth(game.u.uz) < displayDepth(oldUz);
+    const dest = goingUp ? game.updest : game.dndest;
+    if (dest?.lx) {
+        place_lregion(dest.lx, dest.ly, dest.hx, dest.hy,
+            dest.nlx, dest.nly, dest.nhx, dest.nhy,
+            goingUp ? LR_UPTELE : LR_DOWNTELE, null);
+    } else {
+        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+    }
     pet_arrive_with_you();
     initrack();
     vision_reset();
     vision_recalc(0);
     await docrt();
+    if (game.u?.uhallucination || game.u?.uprops?.hallucination) see_objects();
     await pline('You materialize on a different level!');
+    if (!wasInHell && isHellLevel(game.u?.uz)
+        && (isSpecialProtoLevel(game.u?.uz, 'valley') || game._last_special_protofile === 'valley')) {
+        queue_more_prompt();
+        game._more_message_queue = [
+            { text: 'You arrive at the Valley of the Dead...', more: true },
+            { text: 'The odor of burnt flesh and decay pervades the air.', more: true },
+            { text: 'You hear groans and moans everywhere.', more: false },
+        ];
+    }
     // C ref: do.c:goto_level() performs docrt()/flush before the deferred
-    // materialize pline; the following input boundary does not immediately
-    // rerandomize the hallucinated new-level map.
+    // materialize pline and temperature-change messages; the following input
+    // boundary does not immediately rerandomize the hallucinated new-level map.
+    const tempMessage = temperatureChangeAfterLevelChange(prevTemperature, wasInHell);
+    if (tempMessage?.line) {
+        await append_pline(tempMessage.line);
+        if (tempMessage.afterMore) {
+            game._after_more_message = tempMessage.afterMore;
+            queue_more_prompt();
+        }
+    }
     game.context.mv = 1;
 }
 
@@ -2829,9 +3003,8 @@ export async function rhack(key) {
         clear_pending_message();
         game._awaiting_level_teleport = false;
         game._level_teleport_input = '';
-        if ((ch === '\r' || ch === '\n') && target > 0) {
-            await performLevelTeleport(target);
-        }
+        if ((ch === '\r' || ch === '\n') && target > 0)
+            game._pending_level_teleport_target = target;
         game.context.move = 0;
         return;
     }
@@ -2900,7 +3073,7 @@ export async function rhack(key) {
         if (ch === '\r' || ch === '\n') {
             clear_pending_message();
             game._awaiting_potion_call_name = null;
-            game.context.move = 1;
+            game.context.move = 0;
             return;
         }
         if (ch === '\x7f' || ch === '\b') {
@@ -3187,12 +3360,17 @@ export async function rhack(key) {
         }
         const idx = inventoryIndexForLetter(ch);
         const obj = idx >= 0 ? game.inventory?.[idx] : null;
-        if (!obj || obj.oclass !== TOOL_CLASS) {
+        if (!obj) {
             game.context.move = 0;
             game._awaiting_apply_item = true;
             game._apply_invalid_more = true;
             await pline("You don't have that object.");
             queue_more_prompt();
+            return;
+        }
+        if (obj.oclass !== TOOL_CLASS) {
+            game.context.move = 0;
+            await pline("Sorry, I don't know how to use that.");
             return;
         }
         if (obj.otyp === EXPENSIVE_CAMERA || obj.otyp === STETHOSCOPE) {
@@ -3304,13 +3482,13 @@ export async function rhack(key) {
                 return;
             }
             const target = game._level_teleport_menu_choices?.[ch];
-            if (target) await performLevelTeleport(target);
+            if (target) game._pending_level_teleport_target = target;
             game.context.move = 0;
             return;
         }
         if (prev === game._level_teleport_menu_page2_screen) {
             const target = game._level_teleport_menu_page2_choices?.[ch];
-            if (target) await performLevelTeleport(target);
+            if (target) game._pending_level_teleport_target = target;
             game.context.move = 0;
             return;
         }
@@ -3448,7 +3626,12 @@ export async function rhack(key) {
         game.context.move = 0;
         game._forcefight_pending = true;
     } else if (ch === '.') {
-        game.context.move = 1;
+        if (!forceCommandPrefix && await cmdSafetyPrevention('Waiting', 'a no-op (to rest)',
+            'Are you waiting to get hit?', '_did_nothing_flag')) {
+            game.context.move = 0;
+        } else {
+            game.context.move = 1;
+        }
     } else if (ch === 's') {
         if (!forceCommandPrefix && await cmdSafetyPrevention('Searching', 'another search',
             'You already found a monster.', '_already_found_flag')) {
@@ -3649,6 +3832,33 @@ export async function domove(dx, dy) {
     const newx = u.ux + dx;
     const newy = u.uy + dy;
     const target = game.level.at(newx, newy);
+    const is_diag = dx !== 0 && dy !== 0;
+
+    if (is_diag && !blocksMove(newx, newy)) {
+        const side1x = u.ux + dx, side1y = u.uy;
+        const side2x = u.ux, side2y = u.uy + dy;
+        const side1Blocked = blocksMove(side1x, side1y) || sobj_at_basic(BOULDER, side1x, side1y);
+        const side2Blocked = blocksMove(side2x, side2y) || sobj_at_basic(BOULDER, side2x, side2y);
+        if (side1Blocked && side2Blocked) {
+            await pline('You cannot pass that way.');
+            game.context.move = 0;
+            return false;
+        }
+    }
+
+    if (is_diag && game.level?.flags?.sokoban_rules && sobj_at_basic(BOULDER, newx, newy)) {
+        await pline('You try to move the boulder, but in vain.');
+        game.context.move = 0;
+        return false;
+    }
+    const boulder = sobj_at_basic(BOULDER, newx, newy);
+    if (boulder && !is_diag) {
+        return tryPushBoulder(boulder, newx, newy, dx, dy);
+    }
+
+    if (target?.typ === DOOR && (target.doormask & (D_CLOSED | D_LOCKED))) {
+        if (await tryAutoOpenDoor(newx, newy)) return false;
+    }
 
     if (blocksMove(newx, newy)) {
         // Can't move there
@@ -3676,11 +3886,10 @@ export async function domove(dx, dy) {
         return true;
     }
 
-    const is_diag = dx !== 0 && dy !== 0;
     if (is_diag) {
         const source = game.level.at(u.ux, u.uy);
         if (doorwayBlocksDiagonalForHero(target) || doorwayBlocksDiagonalForHero(source)) {
-            await pline(`You can't move diagonally into an intact doorway.`);
+            if (game.flags?.mention_walls) await pline(`You can't move diagonally into an intact doorway.`);
             game.context.move = 0;
             return false;
         }

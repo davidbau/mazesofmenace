@@ -3,10 +3,14 @@ import { rn2, rnd } from './rng.js';
 import { dosounds } from './sounds.js';
 import { A_CON, A_DEX, A_WIS } from './const.js';
 import { makemon } from './mklev.js';
+import { depth } from './hacklib.js';
 
 export async function maybe_generate_rnd_mon() {
     // C ref: allmain.c:maybe_generate_rnd_mon().
-    if (!rn2(70)) await makemon(null, 0, 0, 0);
+    const denom = game.u?.uevent?.udemigod ? 25
+        : (game.stronghold_level && depth(game.u?.uz) > depth(game.stronghold_level)) ? 50
+            : 70;
+    if (!rn2(denom)) await makemon(null, 0, 0, 0);
 }
 
 export function regen_hp() {
