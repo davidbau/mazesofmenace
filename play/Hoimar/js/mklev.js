@@ -1065,6 +1065,14 @@ export function mksobj(otyp, init, artif) {
     if (init) {
         mksobj_init(otmp, otyp, artif);
     }
+    // C ref: mkobj.c:mksobj(); statue species metadata is initialized even
+    // when the caller passes init=FALSE.
+    if (otyp === STATUE && !init) {
+        if (otmp.corpsenm == null) otmp.corpsenm = rndmonnum();
+        const ptr = monster_ptr(otmp.corpsenm);
+        if (ptr && !ptr.neuter && !ptr.female && !ptr.male) rn2(2);
+        set_corpsenm(otmp, otmp.corpsenm);
+    }
     if (game._in_monster_init) {
         game._monster_init_item_count = (game._monster_init_item_count || 0) + 1;
         if (otyp === GOLD_PIECE) game._monster_init_has_gold = true;
@@ -1269,7 +1277,7 @@ function is_poisonable_weapon(otyp) {
     // C ref: obj.h is_poisonable(): weapon skill in the multigen missile
     // range, plus permanently poisoned types. The local object table does
     // not expose oc_skill yet, so keep the known early missile id range.
-    return otyp >= 18 && otyp <= 26;
+    return otyp >= ARROW && otyp <= SHURIKEN;
 }
 
 function is_multigen_weapon(otyp) {
@@ -2791,6 +2799,21 @@ function maketrap(x, y, typ) {
         for (let k = 0; k < 12; k++) if (!used.has(k)) available.push(k);
         trap.tnote = available.length ? available[rn2(available.length)] : rn2(12);
     }
+    if (typ === STATUE_TRAP) {
+        // C ref: trap.c:mk_trap_statue().
+        let ptr = null;
+        let trycount = 10;
+        do {
+            ptr = rndmonst_adj(3, 6);
+        } while (--trycount > 0 && ptr?.mlet === 'S_UNICORN'
+            && Math.sign(game.u?.ualign?.type ?? 0) === Math.sign(ptr.maligntyp ?? 0));
+        const statue = mkcorpstat(STATUE, null, ptr, x, y, 0);
+        const was = makemon(ptr, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
+        if (statue && was) {
+            statue.contents = was.inventory || [];
+            game.level.monsters = (game.level?.monsters || []).filter((mon) => mon !== was);
+        }
+    }
     if (is_hole(typ)) {
         trap.dst = holeDestination();
     }
@@ -2892,6 +2915,29 @@ const BIGRM_2_MAP = [
 ];
 const BIGRM_2_XSTART = 3;
 const BIGRM_2_YSTART = 3;
+
+const BIGRM_4_MAP = [
+    '-----------                                                     -----------',
+    '|.........|                                                     |.........|',
+    '|.........-------------                             -------------.........|',
+    '---...................------------       ------------...................---',
+    '  --.............................---------.............................--  ',
+    '   --.................................................................--   ',
+    '    --...............................................................--    ',
+    '     --......LLLLL.......................................LLLLL......--     ',
+    '      --.....LLLLL.......................................LLLLL.....--      ',
+    '      --.....LLLLL.......................................LLLLL.....--      ',
+    '     --......LLLLL.......................................LLLLL......--     ',
+    '    --...............................................................--    ',
+    '   --.................................................................--   ',
+    '  --.............................---------.............................--  ',
+    '---...................------------       ------------...................---',
+    '|.........-------------                             -------------.........|',
+    '|.........|                                                     |.........|',
+    '-----------                                                     -----------',
+];
+const BIGRM_4_XSTART = 3;
+const BIGRM_4_YSTART = 3;
 
 const CASTLE_MAP = [
     '}}}}}}}}}.............................................}}}}}}}}}',
@@ -3376,6 +3422,10 @@ function bigrm12TerrainAt(x, y) {
 
 function bigrm2TerrainAt(x, y) {
     return BIGRM_2_MAP[y]?.[x] || ' ';
+}
+
+function bigrm4TerrainAt(x, y) {
+    return BIGRM_4_MAP[y]?.[x] || ' ';
 }
 
 function sokoXStart(spec) { return spec.xstart ?? SOKO1_XSTART; }
@@ -3988,6 +4038,15 @@ function bigrm2GetFloorLocation() {
     return { x: x + BIGRM_2_XSTART, y: y + BIGRM_2_YSTART };
 }
 
+function bigrm4GetFloorLocation() {
+    let x, y;
+    do {
+        x = rn2(75);
+        y = rn2(18);
+    } while (bigrm4TerrainAt(x, y) !== '.');
+    return { x: x + BIGRM_4_XSTART, y: y + BIGRM_4_YSTART };
+}
+
 function placeSpecialStair(x, y, up) {
     const loc = game.level?.at(x, y);
     if (loc) {
@@ -4211,6 +4270,31 @@ function loadBigrm2Terrain() {
     game.level.flags.is_maze_lev = true;
 }
 
+function bigrmTerrainType(ch) {
+    switch (ch) {
+    case '.': return ROOM;
+    case '-': return HWALL;
+    case '|': return VWALL;
+    case 'P': return POOL;
+    case 'L': return LAVAPOOL;
+    case 'T': return TREE;
+    case 'W': return WATER;
+    case 'Z': return LAVAWALL;
+    default: return STONE;
+    }
+}
+
+function loadBigrm4Terrain() {
+    for (let y = 0; y < BIGRM_4_MAP.length; y++) {
+        for (let x = 0; x < BIGRM_4_MAP[y].length; x++) {
+            const loc = game.level.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(BIGRM_4_MAP[y][x]);
+        }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
 const WALL_MEMORY_GLYPHS = {
     [HWALL]: 'q',
     [VWALL]: 'x',
@@ -4337,6 +4421,58 @@ function loadBigrm2Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm2GetFloorLocation();
+        makemon(null, loc.x, loc.y, 0);
+    }
+}
+
+function loadBigrm4Special() {
+    // C ref: dat/bigrm-4.lua loaded through mkmaze.c:makemaz().
+    loadBigrm4Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev flip state for des.level_flags("noflip")
+
+    const terrains = ['.', '.', '.', '.', 'P', 'L', '-', 'T', 'W', 'Z'];
+    const toterr = terrains[rn2(terrains.length)];
+    if (toterr !== 'L') {
+        for (let y = 0; y < BIGRM_4_MAP.length; y++) {
+            for (let x = 0; x < BIGRM_4_MAP[y].length; x++) {
+                if (BIGRM_4_MAP[y][x] !== 'L') continue;
+                if (rn2(100) < 100) {
+                    const loc = game.level?.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
+                    if (loc) loc.typ = bigrmTerrainType(toterr);
+                }
+            }
+        }
+    }
+
+    for (const [x, y] of [[5, 2], [5, 15], [69, 2], [69, 15]]) {
+        const loc = game.level?.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
+        if (loc) loc.typ = FOUNTAIN;
+    }
+    for (let y = 1; y <= 16; y++)
+        for (let x = 1; x <= 73; x++) {
+            const loc = game.level?.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
+            if (loc) loc.lit = true;
+        }
+
+    let loc = bigrm4GetFloorLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm4GetFloorLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm4GetFloorLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm4GetFloorLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+    for (let i = 0; i < 28; i++) {
+        rn2(3);
+        loc = bigrm4GetFloorLocation();
         makemon(null, loc.x, loc.y, 0);
     }
 }
@@ -4849,6 +4985,18 @@ function medusa3ApplyLitRegion(x1, y1, x2, y2, lit) {
     }
 }
 
+function medusa3ArrivalRoom(lit) {
+    // C ref: dat/medusa-3.lua arrival_room region via sp_lev.c:lspo_region().
+    const before = game.level?.nroom ?? 0;
+    add_room(MEDUSA3_X + 49, MEDUSA3_Y + 14, MEDUSA3_X + 51, MEDUSA3_Y + 16,
+        lit ? 1 : 0, OROOM, true);
+    const croom = game.level?.rooms?.[before];
+    if (croom) {
+        croom.needfill = FILL_NONE;
+        croom.needjoining = true;
+    }
+}
+
 function medusa3SetDoor(x, y, mask) {
     const loc = game.level?.at(MEDUSA3_X + x, MEDUSA3_Y + y);
     if (!loc) return;
@@ -4906,6 +5054,41 @@ function medusa3Statue(x = null, y = null, ptr = null) {
     }
     if (obj && !ptr) medusa3PopulateRandomStatue(obj);
     return obj;
+}
+
+function medusa3FixupStatueAt(x, y, topTen = true) {
+    const obj = topTen
+        ? mksobj_at(STATUE, x, y, false, false)
+        : mkcorpstat(STATUE, null, null, x, y, 0);
+    if (obj && topTen) {
+        // C ref: mkobj.c:mk_tt_object(), topten.c:get_rnd_toptenentry().
+        // The local harness has no readable score entries for this path, so
+        // tt_oname() consumes the rank probe and then mk_tt_object() falls
+        // back to a random role monster.
+        rnd(10);
+        set_corpsenm(obj, monsterIndex(monster_ptr(TOPTEN_CORPSE_ROLES[rn2(TOPTEN_CORPSE_ROLES.length)])));
+    }
+    let tryct = 0;
+    while (++tryct < 100 && obj) {
+        const ptr = monster_ptr(obj.corpsenm);
+        if (!ptr || (!((ptr.mresists ?? 0) & MR_STONE) && !poly_when_stoned_ptr(ptr))) break;
+        set_corpsenm(obj, rndmonnum());
+    }
+    return obj;
+}
+
+function medusa3FixupSpecial() {
+    // C ref: mkmaze.c:fixup_special(); Medusa levels add extra top-ten
+    // statues to the first scripted room after lregions are fixed.
+    const croom = game.level?.rooms?.[0];
+    if (!croom) return;
+    for (let tryct = rnd(4); tryct > 0; tryct--) {
+        const x = somex(croom);
+        const y = somey(croom);
+        if (goodpos(x, y, 0, null)) medusa3FixupStatueAt(x, y, true);
+    }
+    const topTen = !!rn2(2);
+    medusa3FixupStatueAt(somex(croom), somey(croom), topTen);
 }
 
 function resists_ston_mon(mon) {
@@ -4991,7 +5174,7 @@ function loadMedusa3Special() {
     const othloc = medusa3PickCoord(places);
 
     medusa3ApplyLitRegion(0, 0, 74, 19, true);
-    litstate_rnd(-1); // arrival_room region {49,14,51,16}, lit=-1.
+    medusa3ArrivalRoom(litstate_rnd(-1)); // arrival_room region {49,14,51,16}.
     medusa3ApplyLitRegion(7, 5, 9, 7, false);
     medusa3ApplyLitRegion(65, 4, 67, 6, false);
     medusa3ApplyLitRegion(45, 14, 47, 16, false);
@@ -5750,6 +5933,7 @@ function fixup_special() {
     if (!addedBranch && is_branchlev()) {
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
+    if (game._last_special_protofile === 'medusa-3') medusa3FixupSpecial();
 }
 
 function castleMonsterClass(ch) {
@@ -6405,6 +6589,11 @@ function makemaz_special(slev) {
         rememberWallsInRect(BIGRM_2_XSTART, BIGRM_2_YSTART,
             BIGRM_2_XSTART + BIGRM_2_MAP[0].length - 1,
             BIGRM_2_YSTART + BIGRM_2_MAP.length - 1);
+        return;
+    }
+    if (game._last_special_protofile === 'bigrm-4') {
+        loadBigrm4Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
         return;
     }
     if (loadSokoSpecial(game._last_special_protofile)) {
