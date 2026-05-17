@@ -20,6 +20,7 @@ import {
 import { acurr, getStrengthStrLikeC } from './attrib.js';
 import { rankHeroTitleLikeC } from './roles.js';
 import { describeLevelStatusSlotLikeC } from './describe_level.js';
+import { mungspacesLikeC } from './hacklib.js';
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_GREEN, CLR_BLUE, CLR_CYAN, CLR_RED, CLR_MAGENTA, CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_CYAN, DEC_TO_UNICODE } from './terminal.js';
 import { paintInventoryIntoDisplay } from './invent.js';
 import { paintOverlayScreen } from './overlay_screens.js';
@@ -398,7 +399,10 @@ function _statusLine2() {
         expr = `Xp:${u.ulevel || 1}`;
     }
     const timePart = f.time ? ` T:${game.moves | 0}` : '';
-    return `${lvlSlot} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${timePart}`;
+    /* C: botl.c do_statusline2 — Snprintf then mungspaces(newbot2) squeezes dloc+gold joins */
+    return mungspacesLikeC(
+        `${lvlSlot} $:${game._goldCount || 0} HP:${u.uhp || 0}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${expr}${timePart}`
+    );
 }
 
 /** Status rows for full-screen overlays (legacy intro, …). C tty keeps botl on rows 22–23. */

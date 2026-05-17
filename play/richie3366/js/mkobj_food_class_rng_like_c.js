@@ -1,6 +1,6 @@
 // mkobj_food_class_rng_like_c.js — C mkobj.c mkobj(FOOD_CLASS) + mksobj FOOD_CLASS init for u_init ini_inv.
 // C refs: mkobj.c mkobj(), mksobj_init() FOOD_CLASS, rndmonnum/rndmonnum_adj, rndmonst_adj;
-//         makemon.c rndmonst_adj (D:1 !Inhell, AM_NEutral dungeon); mon.c undead_to_corpse, can_be_hatched,
+//         makemon.c rndmonst_adj (D:1 !Inhell, AM_NONE dungeon align); mon.c undead_to_corpse, can_be_hatched,
 //         dead_species; mondata.c little_to_big / big_to_little;
 //         eat.c set_tin_variety RANDOM_TIN / TTSZ; read.c assign_candy_wrapper.
 //
@@ -32,8 +32,11 @@ const LOW_PM = 0;
 
 /** C `align.h` **`A_NEUTRAL`** — **`uncommon()`** vs **`Inhell`**. */
 const A_NEUTRAL = 0;
-/** Main dungeon co-alignment for **`rndmonst_adj`** **`align_shift`** when not **`Is_special`**. */
+/** C **`align.h`** — main dungeon **`flags.align`** for generic **`dungeons[]`** (not special level). */
+const AM_NONE = 0x00;
+const AM_LAWFUL = 0x04;
 const AM_NEUTRAL = 0x02;
+const AM_CHAOTIC = 0x01;
 /** C `global.h` **`ALIGNWEIGHT`**. */
 const ALIGNWEIGHT = 4;
 
@@ -114,11 +117,14 @@ function blessorcurseLikeC(chance) {
  * C: **`u.ulevel`** **1** at **`ini_inv`**.
  */
 function rndmonstIniInvSurfaceLikeC() {
+    /* C: `u_init_misc` sets `u.ulevel = 1` before `u_init_inventory_attrs` → `u_init_role` → `ini_inv`. */
     const zlevel = 1;
     const ulevel = 1;
-    const minmlev = Math.floor(zlevel / 6) + 0;
-    const maxmlev = Math.floor((zlevel + ulevel) / 2) + 0;
+    const minmlev = Math.trunc(zlevel / 6) + 0;
+    const maxmlev = Math.trunc((zlevel + ulevel) / 2) + 0;
     const inhell = false;
+    /* C: `align_shift` — `Is_special(&u.uz)` false on D:1 → `svd.dungeons[u.uz.dnum].flags.align` == AM_NONE. */
+    const dungeonAlign = AM_NONE;
 
     let totalweight = 0;
     /** @type {number} */
@@ -134,17 +140,17 @@ function rndmonstIniInvSurfaceLikeC() {
 
         const mal = MONS_RNDMONST_MALIGNTYP[mndx] | 0;
         let alshift = 0;
-        switch (AM_NEUTRAL) {
-            case 0x00:
+        switch (dungeonAlign) {
+            case AM_NONE:
                 alshift = 0;
                 break;
-            case 0x04:
+            case AM_LAWFUL:
                 alshift = Math.trunc((mal + 20) / (2 * ALIGNWEIGHT));
                 break;
-            case 0x02:
+            case AM_NEUTRAL:
                 alshift = Math.trunc((20 - Math.abs(mal)) / ALIGNWEIGHT);
                 break;
-            case 0x01:
+            case AM_CHAOTIC:
                 alshift = Math.trunc((-(mal - 20)) / (2 * ALIGNWEIGHT));
                 break;
             default:
@@ -401,5 +407,6 @@ export function iniInvOneMkobjFoodUndefDrawLikeC() {
     const otyp = mkobjOtypFoodClassIniInvLikeC();
     nextIdentLikeC();
     mksobjInitFoodClassIniInvAfterOtypLikeC(otyp);
-    rn2(1);
+    /* C **`ini_inv`**: one **`trquan(trop)`** per **`trobj`** row (before the loop);
+     * each extra stack item is **`--quan` / `continue`** with **no** per-item **`trquan`**. */
 }

@@ -3,26 +3,19 @@
 // RNG ordering as a normal moveloop iteration without importing cmd.js (rhack).
 import { bot, flush_screen, pline, clearPendingMessageAndToplineLikeC } from './display.js';
 import { vision_recalc } from './vision.js';
-import { movemon, MOVE_MON_HARNESS_MAX_STEP } from './monmove.js';
+import { movemon } from './monmove.js';
 import { mcalcMoveLikeC } from './mcalc_move.js';
-import { end_of_turn_rng, gethungry } from './moveloop_aux.js';
+import { rn2 } from './rng.js';
+import { end_of_turn_rng, maybe_generate_rnd_mon } from './moveloop_aux.js';
 import { collectNewuhsPlines } from './hunger.js';
-import { collectExerchkPlines } from './attrib.js';
 import { settrack } from './track.js';
 import { pullDueMeltIceAwayTimers } from './level_timers.js';
 import { meltIceAt } from './melt_ice.js';
 import { runDueNhObjTimers } from './obj_timeout_dispatch.js';
 import { contextLeavingTutorialActiveLikeC } from './tutorial_branch.js';
 
-/** C: allmain.c moveloop_core — movemon + end_of_turn_rng + vision + bot before rhack. */
+/** C: allmain.c moveloop_core — vision + bot before rhack (monster/tail advance is in post). */
 export async function runMoveloopPreambleBeforeRhackLikeC(g) {
-    if (g._prevMoveTick) {
-        const stepNum = (g.moves || 1) - 1;
-        if (stepNum > 0 && stepNum <= MOVE_MON_HARNESS_MAX_STEP) {
-            await movemon(stepNum);
-            end_of_turn_rng(stepNum);
-        }
-    }
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
@@ -32,13 +25,27 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
 }
 
 /**
- * C: allmain.c moveloop_core — svm.moves++ block after a time-consuming command.
+ * C: allmain.c moveloop_core — after a time-costing hero command: inner **`movemon`** sweeps,
+ * then new-turn **`mcalcmove`** / **`maybe_generate_rnd_mon`** / **`moves++`** / per-turn tail.
+ * Order matches C: **`movemon()`** before **`fmon`** **`mcalcmove`** allotment (see **`allmain.c`** ~211–244).
  * @param {import('./gstate.js').game} g
  */
 export async function runPostCommandTurnAdvanceLikeC(g) {
-    for (const m of g.level?.monsters ?? []) {
-        m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
+    const stepNum = (g.moves || 1) - 1;
+    if (g._prevMoveTick && stepNum > 0) {
+        await movemon(stepNum);
     }
+
+    const mons = g.level?.monsters ?? [];
+    if (mons.length > 0) {
+        for (const m of mons) {
+            m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
+        }
+    } else {
+        /* C: **`mcalcmove`** over **`fmon`** — **`mklev`** stub may leave **`monsters`** empty while C had four mons on D:1. */
+        for (let i = 0; i < 4; i++) rn2(12);
+    }
+    maybe_generate_rnd_mon();
     settrack();
     g.moves = (g.moves || 1) + 1;
     const dueMeltIce = pullDueMeltIceAwayTimers(g);
@@ -53,9 +60,11 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         }
     }
     runDueNhObjTimers(g);
-    gethungry();
     for (const line of collectNewuhsPlines(true)) await pline(line);
-    for (const line of collectExerchkPlines()) await pline(line);
+
+    if (g._prevMoveTick) {
+        await end_of_turn_rng(stepNum);
+    }
 }
 
 /** C: allmain.c moveloop_core — tutorial exit flag clear in core tail. */

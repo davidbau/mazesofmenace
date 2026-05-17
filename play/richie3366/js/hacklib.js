@@ -79,4 +79,24 @@ export function onLevelLikeC(lev1, lev2) {
     return (lev1.dnum | 0) === (lev2.dnum | 0) && (lev1.dlevel | 0) === (lev2.dlevel | 0);
 }
 
+/**
+ * C: hacklib.c mungspaces(char *bp) — collapse runs of spaces to one, strip
+ * leading spaces, strip one trailing space if the string ends in space.
+ * Stops at the first newline (status lines are single-line in practice).
+ */
+export function mungspacesLikeC(s) {
+    const src = String(s ?? '');
+    let out = '';
+    let wasSpace = true;
+    for (let i = 0; i < src.length; i++) {
+        let c = src[i];
+        if (c === '\n') break;
+        if (c === '\t') c = ' ';
+        if (c !== ' ' || !wasSpace) out += c;
+        wasSpace = c === ' ';
+    }
+    if (wasSpace && out.length > 0) out = out.slice(0, -1);
+    return out;
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed

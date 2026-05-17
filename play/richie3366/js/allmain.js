@@ -225,8 +225,8 @@ export async function newgame() {
     // Welcome message (C: allmain.c welcome(TRUE); pline format + buf like u_init.)
     const hi = welcomeInterjectionLikeC(g);
     const welcomeBuf = welcomeBufLikeC(g);
-    /* C: allmain.c welcome() — `pline(..., "You are a%s.")`; single space after `!` */
-    await pline(`${hi} ${g.plname}, welcome to NetHack! You are a${welcomeBuf}.`);
+    /* C: allmain.c welcome() — `pline(..., "You are a%s.")`; tty recorder emits two spaces after `!` (matches public sessions). */
+    await pline(`${hi} ${g.plname}, welcome to NetHack!  You are a${welcomeBuf}.`);
 
     /* C: allmain.c newgame — after welcome: notice_mon_on(); then dolookaround XOR notice_all_mons */
     noticeMonOnLikeC();

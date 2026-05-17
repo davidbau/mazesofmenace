@@ -871,11 +871,12 @@ export function consumePriestHumanIniInvUinitRoleRngLikeC() {
 export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
     game._touristIniUmoney0Rnd = rnd(1000);
 
-    /* DART +2 — C **`Tourist[]`** **`trquan`** **21..40** (one draw). */
-    const dartQuan = 21 + rn2(20);
+    /* DART +2 — C **`ini_inv`**: **`quan = trquan(trop)`** then **`mksobj`**; **`ini_inv_adjust_obj`**
+     * sets **`obj->quan = trquan(trop)`** again for **`WEAPON_CLASS`** (**`u_init.c`** ~1226–1228), two draws. */
+    trquanMinMaxLikeC(21, 40);
     nextIdentLikeC();
     mksobjInitWeaponLikeC(OTYP_DART, false);
-    game._touristIniDartQuan = dartQuan;
+    game._touristIniDartQuan = trquanMinMaxLikeC(21, 40);
 
     const foodN = trquanMinMaxLikeC(10, 10);
     for (let i = 0; i < foodN; i++) {
@@ -886,29 +887,28 @@ export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
     for (let i = 0; i < potN; i++) {
         nextIdentLikeC();
         mksobjInitPotionLikeC();
-        rn2(1);
     }
 
     const scrN = trquanMinMaxLikeC(4, 4);
     for (let i = 0; i < scrN; i++) {
         nextIdentLikeC();
         mksobjInitScrollIniInvLikeC();
-        rn2(1);
     }
 
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitArmorLikeC(false);
-    rn2(1);
 
+    /* EXPENSIVE_CAMERA — C **`ini_inv`**: advance **`quan = trquan`**, **`mksobj`**, **`ini_inv_adjust_obj`** (**`TOOL_CLASS`**) second **`trquan`**. */
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     game._touristIniCameraSpe = rn1(70, 30);
-    rn2(1);
+    trquanMinMaxLikeC(1, 1);
 
+    /* CREDIT_CARD — same **`TOOL_CLASS`** double-**`trquan`** pattern; plain tool has no extra **`mksobj_init`** draws. */
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
-    rn2(1);
+    trquanMinMaxLikeC(1, 1);
 
     if (!rn2(25)) {
         rn2(1);
@@ -938,6 +938,12 @@ export function consumeTouristHumanIniInvUinitRoleRngLikeC() {
     } else {
         game._touristIniExtra = null;
         game._touristIniMagicmarkerSpe = undefined;
+    }
+
+    /* C: `u_init_inventory_attrs` — after `u_init_role`, `if (u.umoney0) ini_inv(Money)` (`Money[]` one **`trquan`** + **`mksobj`** **`next_ident`**). */
+    if (((game._touristIniUmoney0Rnd ?? 0) | 0) > 0) {
+        trquanMinMaxLikeC(1, 1);
+        nextIdentLikeC();
     }
 }
 

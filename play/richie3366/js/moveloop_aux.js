@@ -1,10 +1,11 @@
 // moveloop_aux.js — End-of-turn RNG after movemon (allmain.c moveloop_core tail).
-// C ref: allmain.c (maybe_generate_rnd_mon, dosounds, …), eat.c gethungry (called from allmain after moves++).
-//
-// `pre_moveloop82_exercise` / `post_moveloop82_exercise` still replay bare `rn2` for session harness.
+// C ref: allmain.c — **`maybe_generate_rnd_mon`** + **`settrack()`** + **`svm.moves++`**, then
+// **`dosounds`**, **`do_storms`**, **`gethungry`**, **`age_spells`**, **`exerchk`**, **`u_wipe_engr`**, …
+// **`runPostCommandTurnAdvanceLikeC`** calls **`maybe_generate_rnd_mon`** before **`moves++`** to match C order.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
+import { pline } from './display.js';
 import {
     A_DEX,
     FROMFORM,
@@ -13,15 +14,49 @@ import {
     OTYP_MEAT_RING,
     OTYP_RIN_PROTECTION,
     OTYP_RIN_SLOW_DIGESTION,
+    NO_SPELL,
     W_ARTI,
     W_RINGL,
     W_RINGR,
     W_WEP,
 } from './const.js';
-import { acurr } from './attrib.js';
+import { acurr, collectExerchkPlines } from './attrib.js';
 import { uWipeEngr } from './engrave.js';
 import { nearCapacity, ENC } from './encumbr.js';
 import { heroEatsOrdinaryFood } from './mondata.js';
+import { MOVE_MON_HARNESS_MAX_STEP } from './monmove.js';
+
+/** C: spell.h MAXSPELL-sized spl_book walk in spell.c age_spells. */
+const MAXSPELL = 52;
+
+/**
+ * C: timeout.c do_storms(void) — `if (!stormy || rn2(8)) return;` short-circuit
+ * (no **`rn2(8)`** when the level is not stormy).
+ * @param {import('./gstate.js').game} g
+ */
+export function doStormsMoveloopTailLikeC(g) {
+    const stormy = g.level?.flags?.stormy | 0;
+    if (!stormy || rn2(8)) return;
+    /* Full cloud/lightning **`buzz`** port TODO — rare levels only. */
+}
+
+/**
+ * C: spell.c age_spells(void) — **`decrnknow`** on known slots; no RNG.
+ * @param {import('./gstate.js').game} g
+ */
+export function ageSpellsMoveloopTailLikeC(g) {
+    const u = g.u;
+    if (!u) return;
+    const book = u.spl_book;
+    if (!Array.isArray(book)) return;
+    const n = Math.min(book.length, MAXSPELL);
+    for (let i = 0; i < n; i++) {
+        const ent = book[i];
+        if (!ent || (ent.sp_id | 0) === NO_SPELL) break;
+        const know = ent.sp_know | 0;
+        if (know) ent.sp_know = know - 1;
+    }
+}
 
 export function maybe_generate_rnd_mon() {
     rn2(70);
@@ -134,27 +169,29 @@ export function maybe_u_wipe_engr() {
     if (!rn2(denom)) uWipeEngr(rnd(3));
 }
 
-/** C: attrib.c exercise — rn2(19) before final moveloop rn2(82) on some turns. */
+/** C: attrib.c exercise — rn2(19) before moveloop u-wipe tail on some harness steps. */
 export function pre_moveloop82_exercise(stepNum) {
     if (stepNum === 9) rn2(19);
 }
 
-/** C: allmain.c moveloop_core — trailing rn2(82) in this session build. */
-export function moveloop_core_rng82() {
-    rn2(82);
-}
-
-/** C: attrib.c exercise — extra rn2(31) after rn2(82) on harness step 6. */
+/** C: attrib.c exercise — extra rn2(31) after u-wipe tail on harness step 6. */
 export function post_moveloop82_exercise(stepNum) {
     if (stepNum === 6) rn2(31);
 }
 
-/** Full tail after movemon for one game-time step (harness range only). */
-export function end_of_turn_rng(stepNum) {
-    maybe_generate_rnd_mon();
+/**
+ * C: allmain.c moveloop_core — per-turn tail **after** **`svm.moves++`**
+ * (**`dosounds`**, **`do_storms`**, **`gethungry`**, **`age_spells`**, **`exerchk`**, … **`u_wipe_engr`**).
+ */
+export async function end_of_turn_rng(stepNum) {
     dosounds();
+    doStormsMoveloopTailLikeC(game);
+    gethungry();
+    ageSpellsMoveloopTailLikeC(game);
+    for (const line of collectExerchkPlines()) await pline(line);
     maybe_u_wipe_engr();
-    pre_moveloop82_exercise(stepNum);
-    moveloop_core_rng82();
-    post_moveloop82_exercise(stepNum);
+    if (stepNum > 0 && stepNum <= MOVE_MON_HARNESS_MAX_STEP) {
+        pre_moveloop82_exercise(stepNum);
+        post_moveloop82_exercise(stepNum);
+    }
 }
