@@ -343,10 +343,19 @@ function initCastleTune() {
 
 function fixupLevelLocations(pd) {
     const map = new Map(pd.specialLevels.map((lev) => [lev.proto, lev.dlevel]));
+    game.rogue_level = map.get('rogue') || null;
     game.oracle_level = map.get('oracle') || null;
     game.medusa_level = map.get('medusa') || null;
     game.stronghold_level = map.get('castle') || null;
     game.wiz1_level = map.get('wizard1') || null;
+}
+
+function fixupKnoxFloatingBranch(pd) {
+    const knox = pd.specialLevels.find((lev) => lev.proto === 'knox');
+    if (!knox?.dlevel) return;
+    const branch = pd.branches.find((br) =>
+        br.end2?.dnum === knox.dlevel.dnum && br.end2?.dlevel === knox.dlevel.dlevel);
+    if (branch) branch.end1.dnum = pd.dungeons.length;
 }
 
 function fixupDummySurfaceLevel(pd) {
@@ -419,6 +428,7 @@ export function init_dungeons() {
     }
 
     initCastleTune();
+    fixupKnoxFloatingBranch(pd);
     fixupDummySurfaceLevel(pd);
     game.dungeons = pd.dungeons;
     game.branches = pd.branches;
