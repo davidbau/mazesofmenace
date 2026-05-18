@@ -1,7 +1,7 @@
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
 import { dog_move } from './dog.js';
-import { adj_lev_for, enexto_core, monsterPtr, MONSTER_SYMBOLS, newmonhp_for } from './mklev.js';
+import { enexto_core, monsterPtr, MONSTER_SYMBOLS, newmonhp_state_for } from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DIR } from './object_data.js';
 import {
     BURN, DUST, ENGR_BLOOD, HEADSTONE,
@@ -1677,14 +1677,13 @@ function pick_vampire_shape(mon) {
 function apply_newcham_basic(mon, ptr) {
     if (!mon || !ptr || mon.data?.name === ptr.name) return false;
     if (!ptr.male && !ptr.female && !ptr.neuter) rn2(10);
-    const monLevel = adj_lev_for(ptr);
-    const hp = newmonhp_for(ptr, monLevel);
+    const monState = newmonhp_state_for(ptr);
     mon.data = { ...ptr, mmove: ptr.mmove ?? 12 };
     mon.ch = MONSTER_SYMBOLS[ptr.mlet] ?? mon.ch ?? 'm';
     mon.color = ptr.color ?? mon.color ?? 15;
-    mon.m_lev = monLevel;
-    mon.mhp = hp;
-    mon.mhpmax = hp;
+    mon.m_lev = monState.level;
+    mon.mhp = monState.hp;
+    mon.mhpmax = monState.hp;
     return true;
 }
 

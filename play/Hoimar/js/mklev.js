@@ -54,6 +54,7 @@ const WAX_CANDLE = 225;
 const BRASS_LANTERN = 226;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
+const MAGIC_MARKER = 242;
 const LOCK_PICK = 222;
 const BLINDFOLD = 233;
 const FOOD_CLASS = 7;
@@ -1425,6 +1426,29 @@ export function monster_by_user_name(name) {
     return MONSTERS.find((mon) => mon.name === key) || null;
 }
 
+function monster_name_gender(name) {
+    switch (String(name || '').trim().toLowerCase()) {
+    case 'vampire lord':
+        return 'male';
+    case 'vampire lady':
+        return 'female';
+    default:
+        return null;
+    }
+}
+
+function monster_name_needs_find_gender_roll(name, ptr) {
+    if (!ptr || ptr.neuter || ptr.male || ptr.female) return false;
+    return monster_name_gender(name) == null;
+}
+
+function apply_monster_name_gender(mon, name) {
+    const gender = monster_name_gender(name);
+    if (!mon || gender == null) return mon;
+    mon.female = gender === 'female' ? 1 : 0;
+    return mon;
+}
+
 function is_rider_ref(ref) {
     const name = monster_ptr(ref)?.name;
     return name === 'DEATH' || name === 'FAMINE' || name === 'PESTILENCE';
@@ -1740,18 +1764,27 @@ export function adj_lev_for(ptr) {
     return tmp > limit ? limit : (tmp > 0 ? tmp : 0);
 }
 
-export function newmonhp_for(ptr, monLevel = adj_lev_for(ptr)) {
-    if (!ptr) return 0;
+export function newmonhp_state_for(ptr, monLevel = adj_lev_for(ptr)) {
+    if (!ptr) return { hp: 0, level: 0 };
     const lev = monLevel;
-    if (ptr.mlet === 'S_GOLEM') return lev;
-    if ((ptr.mlevel ?? 0) > 49) return 2 * (ptr.mlevel - 6);
-    if (ptr.mlet === 'S_DRAGON' && !String(ptr.name || '').startsWith('BABY_')) {
-        return 4 * lev + d(lev, 4);
+    if (ptr.mlet === 'S_GOLEM') return { hp: lev, level: monLevel };
+    if ((ptr.mlevel ?? 0) > 49) {
+        const hp = 2 * (ptr.mlevel - 6);
+        // C ref: makemon.c:newmonhp() stores fixed-HP special monsters
+        // at an approximate level for later m_initinv() item gates.
+        return { hp, level: Math.trunc(hp / 4) };
     }
-    if (!lev) return rnd(4);
+    if (ptr.mlet === 'S_DRAGON' && !String(ptr.name || '').startsWith('BABY_')) {
+        return { hp: 4 * lev + d(lev, 4), level: monLevel };
+    }
+    if (!lev) return { hp: rnd(4), level: monLevel };
     let hp = d(lev, 8);
     if (hp === lev) hp++;
-    return hp;
+    return { hp, level: monLevel };
+}
+
+export function newmonhp_for(ptr, monLevel = adj_lev_for(ptr)) {
+    return newmonhp_state_for(ptr, monLevel).hp;
 }
 
 function init_mon_gender_for(ptr) {
@@ -1900,14 +1933,13 @@ function initial_shapeshift(mon, ptr) {
             : null;
     if (!shape || shape.name === ptr.name) return false;
     mgender_from_permonst_for(mon, shape);
-    const monLevel = adj_lev_for(shape);
-    const hp = newmonhp_for(shape, monLevel);
+    const monState = newmonhp_state_for(shape);
     mon.data = { ...shape, mmove: shape.mmove ?? 12 };
     mon.ch = MONSTER_SYMBOLS[shape.mlet] ?? 'm';
     mon.color = shape.color ?? 15;
-    mon.m_lev = monLevel;
-    mon.mhp = hp;
-    mon.mhpmax = hp;
+    mon.m_lev = monState.level;
+    mon.mhp = monState.hp;
+    mon.mhpmax = monState.hp;
     return true;
 }
 
@@ -1926,7 +1958,7 @@ function roguename() {
 function m_initinv_for(ptr, mon = null) {
     if (!ptr) return;
     if (rogue_level_active()) return;
-    const monLevel = adj_lev_for(ptr);
+    const monLevel = mon?.m_lev ?? adj_lev_for(ptr);
     if (ptr.msound === MS_PRIEST) {
         if (rn2(7)) mksobj(ROBE, true, false);
         mksobj(SMALL_SHIELD, true, false);
@@ -2737,8 +2769,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         } while (++tryct <= 50 && !goodpos(x, y, gpflags, ptr));
     }
     next_ident();
-    const monLevel = adj_lev_for(ptr);
-    const hp = newmonhp_for(ptr, monLevel);
+    const monState = newmonhp_state_for(ptr);
     const female = init_mon_gender_for(ptr);
     const peaceful = (mmflags & MM_ANGRY) ? false : peace_minded_for(ptr);
     const display = {
@@ -2751,9 +2782,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
         ch: display.ch,
         color: display.color,
         data: { ...ptr, mmove: ptr.mmove ?? display.mmove },
-        m_lev: monLevel,
-        mhp: hp,
-        mhpmax: hp,
+        m_lev: monState.level,
+        mhp: monState.hp,
+        mhpmax: monState.hp,
         female,
         msleeping: (mmflags & MM_ASLEEP) ? 1 : 0,
         mpeaceful: peaceful ? 1 : 0,
@@ -4772,7 +4803,7 @@ function towerCreateMonster(id, x, y, opts = {}) {
     const ystart = opts.ystart ?? TOWER1_Y;
     const cls = String(id || '').length === 1 ? towerMonsterClass(id) : null;
     let ptr = cls ? null : monster_by_user_name(id);
-    if (!cls && !opts.waiting && ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (!cls && !opts.waiting && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     rn2(3); // C ref: dungeon.c:induced_align() on unaligned Vlad's Tower levels.
     if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
     const mon = makemon(ptr, towerX(x, xstart), towerY(y, ystart), opts.mmflags || 0);
@@ -4781,14 +4812,13 @@ function towerCreateMonster(id, x, y, opts = {}) {
         mon.mstrategy_waiting = 1;
         if (ptr && mon.data?.name !== ptr.name) {
             mgender_from_permonst_for(mon, ptr);
-            const monLevel = adj_lev_for(ptr);
-            const hp = newmonhp_for(ptr, monLevel);
+            const monState = newmonhp_state_for(ptr);
             mon.data = { ...ptr, mmove: ptr.mmove ?? 12 };
             mon.ch = MONSTER_SYMBOLS[ptr.mlet] ?? mon.ch;
             mon.color = ptr.color ?? mon.color;
-            mon.m_lev = monLevel;
-            mon.mhp = hp;
-            mon.mhpmax = hp;
+            mon.m_lev = monState.level;
+            mon.mhp = monState.hp;
+            mon.mhpmax = monState.hp;
             mon.cham = null;
         }
     }
@@ -5187,7 +5217,7 @@ function medusa3Trap(kind = null) {
 
 function medusa3Monster(id, x = null, y = null, mmflags = 0) {
     const ptr = monster_ptr(id);
-    if (ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     induced_align_80();
     const loc = x == null ? medusa3MonsterLocation(ptr) : { x, y };
     if (m_at(loc.x, loc.y)) {
@@ -5666,7 +5696,7 @@ function valleyMonsterLocation(ptr) {
 function valleyMonster(ref) {
     const cls = String(ref || '').length === 1 ? castleMonsterClass(ref) : null;
     let ptr = cls ? null : monster_ptr(ref);
-    if (!cls && ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (!cls && monster_name_needs_find_gender_roll(ref, ptr)) rn2(2);
     induced_align_80();
     if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
     const loc = valleyMonsterLocation(ptr);
@@ -5993,6 +6023,7 @@ function fixup_special() {
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     }
     if (game._last_special_protofile === 'medusa-3') medusa3FixupSpecial();
+    if (game._last_special_protofile === 'baalz') baalzFixup();
 }
 
 function castleMonsterClass(ch) {
@@ -6023,7 +6054,7 @@ function castleCreateMonster(id, x, y, mmflags = 0) {
     let ptr = cls ? null : castleMonsterPtr(id);
     // C ref: sp_lev.c:find_montype() resolves a gender value for named
     // special monsters before create_monster() applies random alignment.
-    if (!cls && ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     induced_align_80();
     if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
     return makemon(ptr, castleX(x), castleY(y), mmflags);
@@ -6528,7 +6559,7 @@ function sanctumCreateMonster(id, x = null, y = null, peaceful = null) {
     const cls = String(id || '').length === 1 ? castleMonsterClass(id) : null;
     let ptr = cls ? null : sanctumMonsterPtr(id);
     const alignedCleric = String(id || '').toLowerCase() === 'aligned cleric';
-    if (!cls && ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     if (!alignedCleric) induced_align_80();
     if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
     const loc = x == null ? sanctumDryLocation() : { x: sanctumX(x), y: sanctumY(y) };
@@ -6760,7 +6791,7 @@ function asmoCreateMonster(id, x = null, y = null,
     mapRows = ASMO1_MAP, xstart = ASMO1_X, ystart = ASMO1_Y) {
     const cls = String(id || '').length === 1 ? asmoMonsterClass(id) : null;
     let ptr = cls ? null : monster_by_user_name(id);
-    if (!cls && ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     induced_align_80();
     if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
     const loc = x == null ? asmoMonsterLocation(ptr, mapRows, xstart, ystart)
@@ -6773,7 +6804,7 @@ function asmoCreateMonster(id, x = null, y = null,
             loc.y = cc.y;
         }
     }
-    return makemon(ptr, loc.x, loc.y, 0);
+    return apply_monster_name_gender(makemon(ptr, loc.x, loc.y, 0), id);
 }
 
 function asmoMazeWalk(x, y, dirName, xstart = ASMO2_X, ystart = ASMO2_Y) {
@@ -6832,6 +6863,9 @@ function selCoords(set) {
 }
 
 function hellTweaksProtectedOk(x, y) {
+    if (typeof game._hell_tweaks_protected_ok === 'function') {
+        return game._hell_tweaks_protected_ok(x, y);
+    }
     if (x < 3 || x > 77 || y < 3 || y > 19) return false;
     if (x >= ASMO1_X && x < ASMO1_X + ASMO1_MAP[0].length
         && y >= ASMO1_Y && y < ASMO1_Y + ASMO1_MAP.length) return false;
@@ -7283,7 +7317,7 @@ function juibCreateSwampRegion() {
 function juibCreateMonster(id, x, y) {
     let ptr = monster_by_user_name(id);
     if (String(id || '').toLowerCase() === 'lemure') rn2(2);
-    else if (ptr && !ptr.neuter && !ptr.male && !ptr.female) rn2(2);
+    else if (monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
     induced_align_80();
     const loc = juibAbs(x, y);
     return makemon(ptr, loc.x, loc.y, 0);
@@ -7429,8 +7463,79 @@ function loadBaalzTerrain() {
             baalzSetTerrain(x, y, BAALZ_MAP[y][x]);
     markSpecialTouchedRect(BAALZ_X, BAALZ_Y,
         BAALZ_X + BAALZ_MAP[0].length - 1, BAALZ_Y + BAALZ_MAP.length - 1);
+    // C ref: dat/baalz.lua des.non_diggable(selection.area(00,00,47,12)).
+    // The final map column is intentionally left diggable.
+    for (let y = BAALZ_Y; y <= BAALZ_Y + 12; y++) {
+        for (let x = BAALZ_X; x <= BAALZ_X + 47; x++) {
+            const loc = game.level?.at(x, y);
+            if (loc) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
     game.level.flags.is_maze_lev = true;
     game.level.flags.corrmaze = true;
+}
+
+function baalzFixup() {
+    const map = game.level;
+    if (!map) return;
+    const midy = Math.trunc(ROWNO / 2);
+    let x1 = 0, lastx = 0;
+    for (let x = 0; x < COLNO; x++) {
+        if ((map.at(x, midy)?.wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lastx) x1 = x + 1;
+            lastx = x;
+        }
+    }
+    const x2 = ((lastx > x1) ? lastx : COLNO) - 1;
+    let y1 = 0, lasty = 0;
+    for (let y = 0; y < ROWNO; y++) {
+        if ((map.at(x1, y)?.wall_info & W_NONDIGGABLE) !== 0) {
+            if (!lasty) y1 = y + 1;
+            lasty = y;
+        }
+    }
+    const y2 = ((lasty > y1) ? lasty : ROWNO) - 1;
+    const fakePools = [];
+    for (let x = x1; x <= x2; x++) {
+        for (let y = y1; y <= y2; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            if (loc.typ === POOL) {
+                loc.typ = HWALL;
+                fakePools.push({ x, y });
+            } else if (loc.typ === IRONBARS) {
+                for (const dx of [-1, 1]) {
+                    if (isok(x + dx, y)
+                        && (map.at(x + dx, y)?.wall_info & W_NONDIGGABLE) !== 0) {
+                        map.at(x + dx, y).wall_info &= ~W_NONDIGGABLE;
+                        if (isok(x + 2 * dx, y))
+                            map.at(x + 2 * dx, y).wall_info &= ~W_NONDIGGABLE;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    wallification(Math.max(x1 - 2, 1), Math.max(y1 - 2, 0),
+        Math.min(x2 + 2, COLNO - 1), Math.min(y2 + 2, ROWNO - 1));
+
+    const [first, second] = fakePools;
+    if (first) {
+        const loc = map.at(first.x, first.y);
+        const below = map.at(first.x, first.y + 1);
+        if ((loc?.typ === TLWALL || loc?.typ === TRWALL) && below?.typ === TUWALL) {
+            loc.typ = loc.typ === TLWALL ? BRCORNER : BLCORNER;
+            below.typ = HWALL;
+        }
+    }
+    if (second) {
+        const loc = map.at(second.x, second.y);
+        const above = map.at(second.x, second.y - 1);
+        if ((loc?.typ === TLWALL || loc?.typ === TRWALL) && above?.typ === TDWALL) {
+            loc.typ = loc.typ === TLWALL ? TRCORNER : TLCORNER;
+            above.typ = HWALL;
+        }
+    }
 }
 
 function registerBaalzLregions(flp) {
@@ -7471,6 +7576,197 @@ function loadBaalzSpecial() {
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     const flp = flip_level_rnd(3);
     registerBaalzLregions(flp);
+    fixup_special();
+}
+
+const ORCUS_X = 33;
+const ORCUS_Y = 3;
+const ORCUS_MAP = [
+    '.|....|....|....|..............|....|........',
+    '.|....|....|....|..............|....|........',
+    '.|....|....|....|--...-+-------|.............',
+    '.|....|....|....|..............+.............',
+    '.|.........|....|..............|....|........',
+    '.--+-...-+----+--....-------...--------.-+---',
+    '.....................|.....|.................',
+    '.....................|.....|.................',
+    '.--+----....-+---....|.....|...----------+---',
+    '.|....|....|....|....---+---...|......|......',
+    '.|.........|....|..............|......|......',
+    '.----...---------.....-----....+......|......',
+    '.|........................|....|......|......',
+    '.----------+-...--+--|....|....----------+---',
+    '.|....|..............|....+....|.............',
+    '.|....+.......|......|....|....|.............',
+    '.|....|.......|......|....|....|.............',
+];
+
+function orcusX(x) { return ORCUS_X + x; }
+function orcusY(y) { return ORCUS_Y + y; }
+
+function loadOrcusTerrain() {
+    game._special_touched = new Set();
+    for (let x = 2; x <= COLNO - 2; x++) {
+        for (let y = 0; y <= ROWNO - 2; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE : HWALL;
+            loc.lit = false;
+        }
+    }
+    asmoLoadMap(ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.shortsighted = true;
+}
+
+function orcusSetDoor(x, y, mask) {
+    const loc = game.level?.at(orcusX(x), orcusY(y));
+    if (!loc) return;
+    loc.typ = DOOR;
+    set_door_mask(loc, mask);
+}
+
+function orcusCreateRoomRegion(x1, y1, x2, y2, lit, rtype, needfill) {
+    for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(orcusX(x), orcusY(y));
+            if (loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === DOOR || loc.typ === SDOOR))
+                loc.lit = !!lit;
+        }
+    }
+    const before = game.level?.nroom ?? 0;
+    add_room(orcusX(x1), orcusY(y1), orcusX(x2), orcusY(y2), lit ? 1 : 0, rtype, true);
+    const croom = game.level?.rooms?.[before];
+    if (!croom) return null;
+    croom.needjoining = true;
+    croom.needfill = needfill;
+    topologize(croom);
+    for (let x = croom.lx - 1; x <= croom.hx + 1; x++) {
+        for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) add_door(x, y, croom);
+        }
+    }
+    return croom;
+}
+
+function orcusFixedObject(otyp, x, y) {
+    mksobj_at(otyp, orcusX(x), orcusY(y), true, false);
+}
+
+function orcusRandomObject(otyp = null) {
+    const loc = asmoDryLocation(ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    if (otyp == null) mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    else mksobj_at(otyp, loc.x, loc.y, true, false);
+}
+
+function orcusCreateGenericMonster() {
+    let loc = asmoMonsterLocation(null, ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    if (m_at(loc.x, loc.y)) {
+        loc = enexto_core(loc.x, loc.y, null, GP_CHECKSCARY)
+            || enexto_core(loc.x, loc.y, null, 0)
+            || loc;
+    }
+    return makemon(null, loc.x, loc.y, 0);
+}
+
+function registerOrcusLregions(flp, bounds) {
+    const inarea = { x1: 1, y1: 0, x2: 12, y2: 20 };
+    const exclude = { x1: 20, y1: 1, x2: 70, y2: 20 };
+    const area = flipRectForBounds(inarea, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    const delarea = flipRectForBounds(exclude, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy);
+    game._special_lregions = [
+        { rtype: LR_UPSTAIR, inarea: area, delarea },
+        { rtype: LR_BRANCH, inarea: area, delarea },
+        { rtype: LR_TELE, inarea: area, delarea },
+    ];
+}
+
+function hellTweaksOrcus() {
+    const prior = game._hell_tweaks_protected_ok;
+    game._hell_tweaks_protected_ok = (x, y) => {
+        if (x < 2 || x > 76 || y < 1 || y > 21) return false;
+        return !(x >= ORCUS_X && x < ORCUS_X + ORCUS_MAP[0].length
+            && y >= ORCUS_Y && y < ORCUS_Y + ORCUS_MAP.length);
+    };
+    try {
+        hellTweaksAsmodeus();
+    } finally {
+        game._hell_tweaks_protected_ok = prior;
+    }
+}
+
+function loadOrcusSpecial() {
+    // C ref: dat/orcus.lua loaded through sp_lev.c:lspo_map().
+    rn2(3); rn2(2); // nhlib shuffle()
+    loadOrcusTerrain();
+    asmoMazeWalk(0, 6, 'west', ORCUS_X, ORCUS_Y);
+    placeSpecialStair(orcusX(33), orcusY(15), false);
+
+    for (const [x, y] of [
+        [19, 2], [20, 2], [21, 2], [36, 2], [36, 3],
+        [6, 4], [5, 5], [6, 5], [7, 5], [39, 5],
+        [8, 8], [9, 8], [10, 8], [11, 8], [6, 10],
+        [5, 11], [6, 11], [7, 11], [21, 11], [21, 12],
+        [13, 13], [14, 13], [15, 13], [14, 14],
+    ]) orcusFixedObject(BOULDER, x, y);
+
+    for (const [x, y, mask] of [
+        [23, 2, D_CLOSED], [31, 3, D_ISOPEN], [3, 5, D_NODOOR],
+        [9, 5, D_CLOSED], [14, 5, D_CLOSED], [41, 5, D_CLOSED],
+        [3, 8, D_ISOPEN], [13, 8, D_NODOOR], [41, 8, D_ISOPEN],
+        [24, 9, D_CLOSED], [31, 11, D_CLOSED], [11, 13, D_ISOPEN],
+        [18, 13, D_CLOSED], [41, 13, D_CLOSED], [26, 14, D_ISOPEN],
+        [6, 15, D_CLOSED],
+    ]) orcusSetDoor(x, y, mask);
+
+    const altar = game.level?.at(orcusX(24), orcusY(7));
+    if (altar) {
+        altar.typ = ALTAR;
+        altar.altarmask = A_NONE;
+    }
+    orcusCreateRoomRegion(22, 12, 25, 16, 0, MORGUE, FILL_NORMAL);
+    orcusCreateRoomRegion(32, 9, 37, 12, 1, SHOPBASE, FILL_NORMAL);
+    orcusCreateRoomRegion(12, 0, 15, 4, 1, SHOPBASE, FILL_NORMAL);
+
+    for (const kind of [SPIKED_PIT, SLP_GAS_TRAP, ANTI_MAGIC, FIRE_TRAP,
+        FIRE_TRAP, FIRE_TRAP, MAGIC_TRAP, MAGIC_TRAP])
+        asmoTrap(kind, null, null, ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    for (let i = 0; i < 10; i++) orcusRandomObject();
+    orcusRandomObject(rn2(2) === 1 ? MAGIC_MARKER : MAGIC_LAMP);
+
+    for (const [id, x, y] of [
+        ['Orcus', 33, 15],
+        ['human zombie', 32, 15],
+        ['shade', 32, 14],
+        ['shade', 32, 16],
+        ['vampire', 35, 16],
+        ['vampire', 35, 14],
+        ['vampire lord', 36, 14],
+        ['vampire lord', 36, 15],
+    ]) asmoCreateMonster(id, x, y, ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    for (const id of [
+        'skeleton', 'skeleton', 'skeleton', 'skeleton', 'skeleton',
+        'shade', 'shade', 'shade', 'shade',
+        'giant zombie', 'giant zombie', 'giant zombie',
+        'ettin zombie', 'ettin zombie', 'ettin zombie',
+        'human zombie', 'human zombie', 'human zombie',
+        'vampire', 'vampire', 'vampire',
+        'vampire lord', 'vampire lord',
+    ]) asmoCreateMonster(id, null, null, ORCUS_MAP, ORCUS_X, ORCUS_Y);
+    for (let i = 0; i < 5; i++) orcusCreateGenericMonster();
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    hellTweaksOrcus();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerOrcusLregions(flp, bounds);
     fixup_special();
 }
 
@@ -7542,6 +7838,10 @@ function makemaz_special(slev) {
         loadBaalzSpecial();
         return;
     }
+    if (game._last_special_protofile === 'orcus') {
+        loadOrcusSpecial();
+        return;
+    }
     if (game._last_special_protofile === 'tower1') {
         loadTower1Special();
         return;
@@ -7581,6 +7881,7 @@ export async function mklev() {
     if (game._last_special_protofile === 'castle'
         || game._last_special_protofile === 'valley'
         || game._last_special_protofile === 'sanctum'
+        || game._last_special_protofile === 'orcus'
         || game._last_special_protofile === 'minetn-5') {
         for (let i = 0; i < (g.level?.nroom ?? 0); i++) {
             fill_special_room(g.level.rooms[i]);
