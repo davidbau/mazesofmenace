@@ -235,16 +235,18 @@ The darts do train ranged skills fast, though, and the camera can
 blind monsters in a pinch. A good role for players who have ascended
 before and want a real challenge. *Alignment: Neutral.*
 
-**Valkyrie.** You start with a spear, a small shield, and cold
-resistance. Valkyries are the standard recommendation for newer
-players: strong combat stats, good starting equipment, and cold
-resistance covers one of the dungeon's more common damage types.
-Valkyries get **Mjollnir** as a sacrifice gift regardless of
-alignment — a +d5/+d24 war hammer that doubles as a ranged weapon
-(it returns when thrown at Strength 25). **Lawful** Valkyries can
-also dip a long sword in a fountain for Excalibur. Mjollnir hits harder; Excalibur is easier to acquire. Both
-are excellent. This is the recommendation for your first serious
-attempt.
+**Valkyrie.** The standard recommendation for a first serious
+attempt. You start with a spear, a small shield, and cold
+resistance; strong combat stats and good starting equipment do
+the rest. **Mjollnir** (+d5/+d24 war hammer that returns when
+thrown at Strength 25) drops as your role's sacrifice gift
+regardless of alignment. If you pick **Lawful**, you also get a
+shot at **Excalibur** by dipping a long sword in a fountain
+(drain resistance, automatic searching, +d5 to-hit), so a
+fortunate Lawful Valkyrie can finish the game wielding both:
+Mjollnir thrown, Excalibur in hand, and `#twoweapon` for the
+ascension run. Neutral Valkyries get Mjollnir alone, which is
+still plenty.
 *Alignment: Lawful or Neutral. Female only.*
 
 **Wizard.** You start with a quarterstaff and a spellbook or two.
