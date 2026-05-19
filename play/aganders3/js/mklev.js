@@ -5,9 +5,7 @@
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join as pathJoin } from 'path';
+import { RUMORS_B64, ENGRAVE_B64 } from './dat_inline.js';
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1, d, rnz } from './rng.js';
@@ -306,7 +304,13 @@ function mkbox_cnts(box) {
                 tprob -= iprob;
                 if (tprob <= 0) { oclass = iclass; break; }
             }
-            mkobj(oclass, false);
+            const boxItem = mkobj(oclass, false);
+            if (oclass === GEM_CLASS && boxItem && boxItem.otyp > 900) {
+                // ROCK was selected (cumulative boundary at 900): reroll
+                // C ref: mkbox_cnts while(otyp==ROCK) rnd_class(DILITHIUM,LOADSTONE)
+                // rnd_class sum = probs from DILITHIUM_CRYSTAL to LOADSTONE = 882
+                rnd(882);
+            }
             if (oclass === COIN_CLASS) {
                 rnd(level_difficulty() + 2);
                 rnd(75);
@@ -437,11 +441,8 @@ function mksobj_init(otmp, artif) {
     case ROCK_CLASS: {
         // STATUE: rndmonnum() for corpsenm + rn2(level_difficulty/2+10) for optional spellbook
         if (otyp === STATUE) {
-            rndmonnum(); // sets corpsenm
-            otmp.corpsenm = 1; // mark as set (non-NON_PM)
-            // rn2(level_difficulty/2+10) > 10: never true at level 1 (rn2(10) max is 9)
+            otmp.corpsenm = rndmonnum(); // actual monster index
             rn2(Math.trunc(level_difficulty() / 2) + 10);
-            // If result > 10: mkobj(SPBOOK_no_NOVEL, false) — never at level 1
         }
         break;
     }
@@ -547,11 +548,12 @@ function mksobj(otyp, init, artif) {
     // CORPSE: set corpsenm via rndmonnum if still NON_PM, then gender + timeout
     // STATUE: corpsenm set by mksobj_init if init=true; just gender check
     if (otyp === CORPSE && otmp.corpsenm === -1) {
-        rndmonnum();
-        otmp.corpsenm = 1; // mark as set
+        otmp.corpsenm = rndmonnum();
     }
-    if ((otyp === CORPSE || otyp === STATUE) && otmp.corpsenm !== -1) {
-        rn2(2); // gender check (rn2(2) unless clearly gendered)
+    if ((otyp === CORPSE || otyp === STATUE) && otmp.corpsenm >= 0) {
+        const gflags = (otmp.corpsenm >= 0 ? MONS[otmp.corpsenm]?.[3] : 0) ?? 0;
+        const M2_MALE = 0x10000, M2_FEMALE = 0x20000, M2_NEUTER = 0x40000;
+        if (!(gflags & (M2_MALE | M2_FEMALE | M2_NEUTER))) rn2(2);
     }
     if (otyp === CORPSE) {
         start_corpse_timeout(otmp);
@@ -594,7 +596,7 @@ function mkobj_at(oclass, x, y, artif) {
 
 // C ref: mkobj.c rndmonnum → rndmonnum_adj(0,0) → rndmonst_adj(0,0)
 function rndmonnum() {
-    rndmonst_adj(0, 0);
+    return rndmonst_adj(0, 0);
 }
 
 function mkgold(amount, x, y) {
@@ -829,15 +831,21 @@ function make_grave(x, y, text) {
 // C ref: engrave.c random_engraving(), rumors.c getrumor() + get_rnd_line(),
 //        hacklib.c xcrypt(), engrave.c wipeout_text()
 
-const _mklev_dir = dirname(fileURLToPath(import.meta.url));
 let _rumorsData = null, _engraveData = null;
 let _trueRumorStart, _trueRumorEnd, _falseRumorStart, _falseRumorEnd;
 let _engraveFileStart, _engraveFileEnd;
 
+function _b64ToUint8Array(b64) {
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+}
+
 function _ensureRumorFiles() {
     if (_rumorsData) return;
-    _rumorsData = readFileSync(pathJoin(_mklev_dir, 'dat/rumors'));
-    _engraveData = readFileSync(pathJoin(_mklev_dir, 'dat/engrave'));
+    _rumorsData = _b64ToUint8Array(RUMORS_B64);
+    _engraveData = _b64ToUint8Array(ENGRAVE_B64);
 
     // Parse rumors header: "%d,%ld,%lx;%d,%ld,%lx;0,0,%lx\n"
     let nl = _rumorsData.indexOf(0x0a);
@@ -845,7 +853,7 @@ function _ensureRumorFiles() {
     // Actually: line1 = "# don't edit\n", line2 = "count,size,hex_start;...\n"
     const line1end = _rumorsData.indexOf(0x0a);
     const line2end = _rumorsData.indexOf(0x0a, line1end + 1);
-    const hdr = _rumorsData.slice(line1end + 1, line2end).toString('ascii');
+    const hdr = String.fromCharCode(..._rumorsData.slice(line1end + 1, line2end));
     const m = hdr.match(/\d+,(\d+),([0-9a-f]+);\d+,(\d+),([0-9a-f]+);0,0,([0-9a-f]+)/);
     _trueRumorStart  = parseInt(m[2], 16);
     _trueRumorEnd    = _trueRumorStart + parseInt(m[1]);
@@ -887,7 +895,7 @@ function _get_rnd_line(buf, startpos, endpos, padlength) {
     if (curPos >= endpos) curPos = startpos;
     let lineEnd = curPos;
     while (lineEnd < endpos && buf[lineEnd] !== 0x0a) lineEnd++;
-    const decrypted = _xcrypt(buf.slice(curPos, lineEnd).toString('latin1'));
+    const decrypted = _xcrypt(String.fromCharCode(...buf.slice(curPos, lineEnd)));
     return padlength ? decrypted.replace(/_+$/, '') : decrypted;
 }
 
@@ -2512,8 +2520,9 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 if (rn2(1000) < gemprob) {
                     const cnt = rnd(2 + Math.trunc(dunLevel / 3));
                     for (let i = 0; i < cnt; i++) {
-                        mkobj(GEM_CLASS, false);
-                        rn2(3); // C ref: mklev.c:1533 — add_to_buried vs place_object check
+                        const gem = mkobj(GEM_CLASS, false);
+                        // C ref: mklev.c:1530 — ROCK is discarded without rn2(3)
+                        if (!(gem && gem.otyp > 900)) rn2(3);
                     }
                 }
             }
