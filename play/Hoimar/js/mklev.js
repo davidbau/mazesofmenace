@@ -22,8 +22,8 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
-    OROOM, VAULT, THEMEROOM, COURT, BARRACKS, ZOO, LEPREHALL, SHOPBASE, DELPHI, MORGUE, TEMPLE, SWAMP,
+    D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET,
+    OROOM, VAULT, THEMEROOM, COURT, BARRACKS, ZOO, LEPREHALL, SHOPBASE, DELPHI, MORGUE, TEMPLE, SWAMP, BEEHIVE,
     CANDLESHOP, TOOLSHOP, FOODSHOP,
     ROOMOFFSET, MAXNROFROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, TREE, FOUNTAIN, SINK, ALTAR, GRAVE,
@@ -73,6 +73,7 @@ const SPE_INVISIBILITY = 393;
 const SPE_POLYMORPH = 399;
 const SPE_CREATE_FAMILIAR = 401;
 const SPE_STONE_TO_FLESH = 405;
+const SPE_BOOK_OF_THE_DEAD = 409;
 const WAND_CLASS = 11;
 const WAN_LIGHT = 410;
 const COIN_CLASS = 12;
@@ -93,6 +94,7 @@ const ELVEN_DAGGER = 35;
 const ORCISH_DAGGER = 36;
 const ATHAME = 38;
 const KNIFE = 40;
+const STILETTO = 41;
 const WORM_TOOTH = 42;
 const AXE = 44;
 const BATTLE_AXE = 45;
@@ -120,6 +122,8 @@ const SILVER_MACE = 74;
 const MORNING_STAR = 75;
 const WAR_HAMMER = 76;
 const CLUB = 77;
+const RUBBER_HOSE = 78;
+const QUARTERSTAFF = 79;
 const AKLYS = 80;
 const FLAIL = 81;
 const BULLWHIP = 82;
@@ -175,6 +179,7 @@ const PICK_AXE = 259;
 const GRAPPLING_HOOK = 260;
 const UNICORN_HORN = 261;
 const CANDELABRUM_OF_INVOCATION = 262;
+const BELL_OF_OPENING = 263;
 const GOLD_PIECE = 438;
 const DILITHIUM_CRYSTAL = 439;
 const DIAMOND = 440;
@@ -187,6 +192,7 @@ const TOUCHSTONE = 472;
 const FLINT = 473;
 const ROCK = 474;
 const KELP_FROND = 275;
+const CREAM_PIE = 287;
 const SCR_TELEPORTATION = 333;
 const SCR_CHARGING = 342;
 const BELL = 263;
@@ -199,6 +205,7 @@ const RIN_HUNGER = 184;
 const RIN_AGGRAVATE_MONSTER = 185;
 const RIN_TELEPORTATION = 194;
 const RIN_POLYMORPH = 196;
+const RIN_INVISIBILITY = 198;
 
 // Supply chest items
 const POT_HEALING = 307;
@@ -226,6 +233,7 @@ const SCR_EARTH = 340;
 const SCR_BLANK_PAPER = 365;
 const WAN_CREATE_MONSTER = 413;
 const WAN_WISHING = 414;
+const WAN_NOTHING = 416;
 const WAN_STRIKING = 417;
 const WAN_MAKE_INVISIBLE = 418;
 const WAN_SPEED_MONSTER = 420;
@@ -1752,6 +1760,12 @@ function mkclass_aligned(mlet, spc = 0, atyp = A_NONE) {
 
 export function adj_lev_for(ptr) {
     if (!ptr) return 0;
+    if (ptr.name === 'WIZARD_OF_YENDOR') {
+        // C ref: makemon.c:adj_lev() keeps the Wizard at base level plus
+        // prior deaths, independent of dungeon difficulty. Wizard deaths are
+        // not modeled yet, so this is the initial base-level case.
+        return Math.min(ptr.mlevel ?? 0, 49);
+    }
     let tmp = ptr.mlevel ?? 0;
     if (tmp > 49) return 50;
     const tmp2a = level_difficulty() - tmp;
@@ -1984,6 +1998,24 @@ function m_initinv_for(ptr, mon = null) {
                 const otmp = mksobj(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), false, false);
                 otmp.quan = rn1(2, 3);
                 otmp.owt = Math.max(1, otmp.quan);
+            }
+        }
+    }
+    if (ptr.mlet === 'S_WRAITH' && ptr.name === 'NAZGUL') {
+        const ring = mksobj(RIN_INVISIBILITY, false, false);
+        if (ring) curse(ring);
+    }
+    if (ptr.mlet === 'S_LICH') {
+        if (ptr.name === 'MASTER_LICH' && !rn2(13)) {
+            mksobj(rn2(7) ? ATHAME : WAN_NOTHING, true, false);
+        } else if (ptr.name === 'ARCH_LICH' && !rn2(3)) {
+            const otmp = mksobj(rn2(3) ? ATHAME : QUARTERSTAFF, true, !rn2(13));
+            if (otmp) {
+                if ((otmp.spe ?? 0) < 2) otmp.spe = rnd(3);
+                if (!rn2(4)) otmp.oerodeproof = true;
+            } else {
+                rnd(3);
+                rn2(4);
             }
         }
     }
@@ -2440,6 +2472,12 @@ function m_initweap_for(ptr) {
         maybe_init_offensive_item_for(ptr);
         return;
     }
+    if (ptr.mlet === 'S_KOP') {
+        if (!rn2(4)) m_initthrow_for(CREAM_PIE, 2);
+        if (!rn2(3)) mksobj(rn2(2) ? CLUB : RUBBER_HOSE, true, false);
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
     if (ptr.mlet === 'S_KOBOLD') {
         if (!rn2(4)) {
             m_initthrow_for(DART, 12);
@@ -2478,6 +2516,25 @@ function m_initweap_for(ptr) {
                 mksobj(SPETUM, true, false);
                 break;
             }
+        }
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
+    if (ptr.mlet === 'S_WRAITH') {
+        mksobj(KNIFE, true, false);
+        mksobj(LONG_SWORD, true, false);
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
+    if (ptr.mlet === 'S_ZOMBIE') {
+        if (!rn2(4)) mksobj(LEATHER_ARMOR, true, false);
+        if (!rn2(4)) mksobj(rn2(3) ? KNIFE : SHORT_SWORD, true, false);
+        maybe_init_offensive_item_for(ptr);
+        return;
+    }
+    if (ptr.mlet === 'S_LIZARD') {
+        if (ptr.name === 'SALAMANDER') {
+            mksobj(rn2(7) ? SPEAR : (rn2(3) ? TRIDENT : STILETTO), true, false);
         }
         maybe_init_offensive_item_for(ptr);
         return;
@@ -2669,16 +2726,20 @@ function set_mimic_sym(mon) {
             assignMonsterBasedObjectShape();
             return;
         }
-        if (s_sym === RANDOM_CLASS) {
+        if (s_sym === RANDOM_CLASS || s_sym > ROCK_CLASS) {
+            // C ref: makemon.c:set_mimic_sym() chooses
+            // syms[rn2(SIZE(syms) - 2) + 2], excluding only furniture.
             const syms = [
                 RING_CLASS, WAND_CLASS, WEAPON_CLASS, FOOD_CLASS, COIN_CLASS,
                 SCROLL_CLASS, POTION_CLASS, ARMOR_CLASS, AMULET_CLASS,
                 TOOL_CLASS, ROCK_CLASS, GEM_CLASS, SPBOOK_CLASS,
+                MIMIC_STRANGE_OBJECT, MIMIC_STRANGE_OBJECT,
             ];
             s_sym = syms[rn2(syms.length)];
         }
         mon.m_ap_type = M_AP_OBJECT;
-        if (s_sym === COIN_CLASS) mon.mappearance = GOLD_PIECE;
+        if (s_sym === MIMIC_STRANGE_OBJECT) mon.mappearance = STRANGE_OBJECT;
+        else if (s_sym === COIN_CLASS) mon.mappearance = GOLD_PIECE;
         else mon.mappearance = mkobj(s_sym, false)?.otyp ?? STRANGE_OBJECT;
         assignMonsterBasedObjectShape();
         return;
@@ -6230,7 +6291,9 @@ function castleFillEmptyMaze() {
 function specialRndTrap() {
     const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
     const dungeon = game.dungeons?.[uz.dnum];
-    const canDigDown = (uz.dlevel ?? 1) < (dungeon?.num_dunlevs ?? uz.dlevel ?? 1);
+    // C ref: dungeon.c:Can_dig_down() also rejects hardfloor levels.
+    const canDigDown = !game.level?.flags?.hardfloor
+        && (uz.dlevel ?? 1) < (dungeon?.num_dunlevs ?? uz.dlevel ?? 1);
     let kind = rnd(TRAPNUM - 1);
     switch (kind) {
     case HOLE:
@@ -7030,7 +7093,10 @@ function hellTweaksAsmodeus() {
             const floor = hellTweaksFloorSelection();
             const a = hellTweaksRndCoord(floor);
             const b = hellTweaksRndCoord(floor);
-            let lavariver = hellTweaksRandLine(a.x, a.y, b.x, b.y, 10, 4);
+            // C ref: nhlsel.c:l_selection_randline() passes rec=12 to
+            // selection_do_randline(); low-roughness recursion adds points
+            // without consuming additional RNG.
+            let lavariver = hellTweaksRandLine(a.x, a.y, b.x, b.y, 10, 12);
             if (rn2(100) < 50) lavariver = hellTweaksGrow(lavariver, 'north');
             if (rn2(100) < 50) lavariver = hellTweaksGrow(lavariver, 'west');
             allrivers = new Set([...allrivers, ...lavariver]);
@@ -7661,6 +7727,9 @@ function orcusRandomObject(otyp = null) {
 }
 
 function orcusCreateGenericMonster() {
+    // C ref: sp_lev.c:create_monster() resolves AM_SPLEV_RANDOM before
+    // get_location_coord(), even for bare des.monster() random monsters.
+    induced_align_80();
     let loc = asmoMonsterLocation(null, ORCUS_MAP, ORCUS_X, ORCUS_Y);
     if (m_at(loc.x, loc.y)) {
         loc = enexto_core(loc.x, loc.y, null, GP_CHECKSCARY)
@@ -7685,7 +7754,11 @@ function registerOrcusLregions(flp, bounds) {
 function hellTweaksOrcus() {
     const prior = game._hell_tweaks_protected_ok;
     game._hell_tweaks_protected_ok = (x, y) => {
-        if (x < 2 || x > 76 || y < 1 || y > 21) return false;
+        // C ref: dat/orcus.lua computes bounds2 from selection.match("-")
+        // after LVLINIT_MAZEGRID and before des.map(); selection.bounds()
+        // returns absolute coords, then selection.fillrect() treats them as
+        // map-relative and adds gx.xstart (1) via get_location_coord().
+        if (x < 3 || x > 77 || y < 3 || y > 19) return false;
         return !(x >= ORCUS_X && x < ORCUS_X + ORCUS_MAP[0].length
             && y >= ORCUS_Y && y < ORCUS_Y + ORCUS_MAP.length);
     };
@@ -7770,6 +7843,341 @@ function loadOrcusSpecial() {
     fixup_special();
 }
 
+const WIZARD1_X = 25;
+const WIZARD1_Y = 5;
+const WIZARD1_MAP = [
+    '----------------------------x',
+    '|.......|..|.........|.....|x',
+    '|.......S..|.}}}}}}}.|.....|x',
+    '|..--S--|..|.}}---}}.|---S-|x',
+    '|..|....|..|.}--.--}.|..|..|x',
+    '|..|....|..|.}|...|}.|..|..|x',
+    '|..--------|.}--.--}.|..|..|x',
+    '|..|.......|.}}---}}.|..|..|x',
+    '|..S.......|.}}}}}}}.|..|..|x',
+    '|..|.......|.........|..|..|x',
+    '|..|.......|-----------S-S-|x',
+    '|..|.......S...............|x',
+    '----------------------------x',
+];
+const WIZARD3_MAP = [
+    '----------------------------x',
+    '|..|............S..........|x',
+    '|..|..------------------S--|x',
+    '|..|..|.........|..........|x',
+    '|..S..|.}}}}}}}.|..........|x',
+    '|..|..|.}}---}}.|-S--------|x',
+    '|..|..|.}--.--}.|..|.......|x',
+    '|..|..|.}|...|}.|..|.......|x',
+    '|..---|.}--.--}.|..|.......|x',
+    '|.....|.}}---}}.|..|.......|x',
+    '|.....S.}}}}}}}.|..|.......|x',
+    '|.....|.........|..|.......|x',
+    '----------------------------x',
+];
+
+function wizardX(x) { return WIZARD1_X + x; }
+function wizardY(y) { return WIZARD1_Y + y; }
+
+function wizardSetTerrain(x, y, ch, mapRows = WIZARD1_MAP) {
+    if (ch === 'x') return;
+    const loc = game.level?.at(wizardX(x), wizardY(y));
+    if (!loc) return;
+    loc.lit = false;
+    switch (ch) {
+    case '.': loc.typ = ROOM; break;
+    case '}': loc.typ = MOAT; break;
+    case '-': loc.typ = HWALL; break;
+    case '|': loc.typ = VWALL; break;
+    case '+':
+        loc.typ = DOOR;
+        set_door_mask(loc, D_CLOSED);
+        break;
+    case 'S':
+        loc.typ = SDOOR;
+        loc.horizontal = mapRows[y]?.[x - 1] === '-' || mapRows[y]?.[x + 1] === '-';
+        set_door_mask(loc, D_CLOSED);
+        break;
+    default:
+        loc.typ = STONE;
+        break;
+    }
+    game._special_touched = game._special_touched || new Set();
+    game._special_touched.add(specialTouchedKey(wizardX(x), wizardY(y)));
+}
+
+function loadWizardMazegridTerrain(mapRows) {
+    game._special_touched = new Set();
+    for (let x = 2; x <= COLNO - 2; x++) {
+        for (let y = 0; y <= ROWNO - 2; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = (y < 2 || ((x % 2) && (y % 2))) ? STONE : HWALL;
+            loc.lit = false;
+        }
+    }
+    for (let y = 0; y < mapRows.length; y++)
+        for (let x = 0; x < mapRows[y].length; x++)
+            wizardSetTerrain(x, y, mapRows[y][x], mapRows);
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+}
+
+function createWizardRoomRegion(x1, y1, x2, y2, lit, rtype, needfill, arrival = false) {
+    for (let y = y1; y <= y2; y++)
+        for (let x = x1; x <= x2; x++) {
+            const loc = game.level?.at(wizardX(x), wizardY(y));
+            if (loc && (loc.typ === ROOM || loc.typ === CORR || loc.typ === DOOR || loc.typ === SDOOR))
+                loc.lit = !!lit;
+        }
+    const before = game.level?.nroom ?? 0;
+    add_room(wizardX(x1), wizardY(y1), wizardX(x2), wizardY(y2), lit ? 1 : 0, rtype, true);
+    const croom = game.level?.rooms?.[before];
+    if (!croom) return null;
+    croom.needjoining = true;
+    croom.needfill = needfill;
+    croom.arrival = !!arrival;
+    topologize(croom);
+    return croom;
+}
+
+function wizardCreateDoor(croom, wall) {
+    // C ref: sp_lev.c:create_door(), for des.door({ state="secret", wall=... }).
+    for (let trycnt = 0; trycnt < 100; trycnt++) {
+        let x = 0, y = 0;
+        switch (rn2(4)) {
+        case 0:
+            if (wall !== 'north') continue;
+            y = croom.ly - 1;
+            x = croom.lx + rn2(1 + croom.hx - croom.lx);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level?.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1:
+            if (wall !== 'south') continue;
+            y = croom.hy + 1;
+            x = croom.lx + rn2(1 + croom.hx - croom.lx);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level?.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2:
+            if (wall !== 'west') continue;
+            x = croom.lx - 1;
+            y = croom.ly + rn2(1 + croom.hy - croom.ly);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level?.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3:
+            if (wall !== 'east') continue;
+            x = croom.hx + 1;
+            y = croom.ly + rn2(1 + croom.hy - croom.ly);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level?.at(x + 1, y)?.typ)) continue;
+            break;
+        default:
+            break;
+        }
+        if (!okdoor(x, y)) continue;
+        const loc = game.level?.at(x, y);
+        if (!loc) return;
+        loc.typ = SDOOR;
+        loc.doormask = D_SECRET;
+        add_door(x, y, croom);
+        return;
+    }
+}
+
+function wizardDryLocation(mapRows = WIZARD1_MAP) {
+    return specialRandomDryLocation(mapRows[0].length, mapRows.length, WIZARD1_X, WIZARD1_Y);
+}
+
+function wizardMonsterLocation(ptr, mapRows = WIZARD1_MAP) {
+    let x = WIZARD1_X, y = WIZARD1_Y;
+    let trycnt = 0;
+    do {
+        x = WIZARD1_X + rn2(mapRows[0].length);
+        y = WIZARD1_Y + rn2(mapRows.length);
+        if (specialMonsterLocationOk(x, y, ptr)) return { x, y };
+    } while (++trycnt < 100);
+    return wizardDryLocation(mapRows);
+}
+
+function wizardMonsterClass(ch) {
+    if (ch === '&') return 'S_DEMON';
+    return castleMonsterClass(ch);
+}
+
+function wizardCreateMonster(id, x = null, y = null, mmflags = 0, mapRows = WIZARD1_MAP) {
+    const cls = String(id || '').length === 1 ? wizardMonsterClass(id) : null;
+    let ptr = cls ? null : monster_by_user_name(id);
+    if (!cls && monster_name_needs_find_gender_roll(id, ptr)) rn2(2);
+    induced_align_80();
+    if (cls) ptr = mkclass_aligned(cls, G_NOGEN);
+    const loc = x == null ? wizardMonsterLocation(ptr, mapRows) : { x: wizardX(x), y: wizardY(y) };
+    if (m_at(loc.x, loc.y)) {
+        const cc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+            || enexto_core(loc.x, loc.y, ptr, 0);
+        if (cc) {
+            loc.x = cc.x;
+            loc.y = cc.y;
+        }
+    }
+    return apply_monster_name_gender(makemon(ptr, loc.x, loc.y, mmflags), id);
+}
+
+function wizardTrap(kind, x = null, y = null, mapRows = WIZARD1_MAP) {
+    const loc = x == null ? asmoTrapLocation(mapRows, WIZARD1_X, WIZARD1_Y)
+        : { x: wizardX(x), y: wizardY(y) };
+    const trap = maketrap(loc.x, loc.y, kind);
+    maybeTrapVictim(trap);
+}
+
+function wizardObject(ref, x = null, y = null, mapRows = WIZARD1_MAP) {
+    const loc = x == null ? wizardDryLocation(mapRows) : { x: wizardX(x), y: wizardY(y) };
+    const cls = {
+        ')': WEAPON_CLASS,
+        '(': TOOL_CLASS,
+        '"': AMULET_CLASS,
+        '!': POTION_CLASS,
+        '?': SCROLL_CLASS,
+        '+': SPBOOK_CLASS,
+    }[ref] || null;
+    if (cls != null) return mkobj_at(cls, loc.x, loc.y, true);
+    const otyp = String(ref || '').toLowerCase() === 'book of the dead' ? SPE_BOOK_OF_THE_DEAD
+        : String(ref || '').toLowerCase() === 'ruby' ? RUBY
+        : null;
+    if (otyp != null) return mksobj_at(otyp, loc.x, loc.y, true, false);
+    return mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+}
+
+function registerWizardMapLregions(mapRows, flp, bounds) {
+    const inarea = { x1: 1, y1: 0, x2: 79, y2: 20 };
+    const exclude = { x1: WIZARD1_X, y1: WIZARD1_Y,
+        x2: WIZARD1_X + mapRows[0].length - 1, y2: WIZARD1_Y + mapRows.length - 1 };
+    const teleExclude = { x1: WIZARD1_X, y1: WIZARD1_Y,
+        x2: WIZARD1_X + mapRows[0].length - 2, y2: WIZARD1_Y + mapRows.length - 1 };
+    game._special_lregions = [
+        { rtype: LR_UPSTAIR, inarea: flipRectForBounds(inarea, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy),
+          delarea: flipRectForBounds(exclude, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy) },
+        { rtype: LR_DOWNSTAIR, inarea: flipRectForBounds(inarea, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy),
+          delarea: flipRectForBounds(exclude, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy) },
+        { rtype: LR_BRANCH, inarea: flipRectForBounds(inarea, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy),
+          delarea: flipRectForBounds(exclude, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy) },
+        { rtype: LR_TELE, inarea: flipRectForBounds(inarea, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy),
+          delarea: flipRectForBounds(teleExclude, flp, bounds.minx, bounds.miny, bounds.maxx, bounds.maxy) },
+    ];
+}
+
+function hellTweaksWizardMap(mapRows) {
+    const prior = game._hell_tweaks_protected_ok;
+    game._hell_tweaks_protected_ok = (x, y) => {
+        if (x < 3 || x > 77 || y < 3 || y > 19) return false;
+        return !(x >= WIZARD1_X && x < WIZARD1_X + mapRows[0].length
+            && y >= WIZARD1_Y && y < WIZARD1_Y + mapRows.length
+            && mapRows[y - WIZARD1_Y]?.[x - WIZARD1_X] !== 'x');
+    };
+    try {
+        hellTweaksAsmodeus();
+    } finally {
+        game._hell_tweaks_protected_ok = prior;
+    }
+}
+
+function loadWizard1Special() {
+    // C ref: dat/wizard1.lua loaded through sp_lev.c:lspo_map().
+    rn2(3); rn2(2); // nhlib shuffle()
+    loadWizardMazegridTerrain(WIZARD1_MAP);
+
+    const morgue = createWizardRoomRegion(12, 1, 20, 9, 0, MORGUE, FILL_LVFLAGS);
+    if (morgue) {
+        const wall = ['south', 'west', 'east'][rn2(3)];
+        wizardCreateDoor(morgue, wall);
+    }
+    createWizardRoomRegion(1, 1, 10, 11, 0, OROOM, FILL_NONE, true);
+    asmoMazeWalk(28, 5, 'east', WIZARD1_X, WIZARD1_Y);
+    placeSpecialLadder(wizardX(6), wizardY(5), false);
+
+    wizardCreateMonster('Wizard of Yendor', 16, 5, MM_ASLEEP);
+    wizardCreateMonster('hell hound', 15, 5);
+    wizardCreateMonster('vampire lord', 17, 5);
+    wizardObject('Book of the Dead', 16, 5);
+    for (const [id, x, y] of [
+        ['kraken', 14, 2], ['giant eel', 17, 2], ['kraken', 13, 4],
+        ['giant eel', 13, 6], ['kraken', 19, 4], ['giant eel', 19, 6],
+        ['kraken', 15, 8], ['giant eel', 17, 8], ['piranha', 15, 2],
+        ['piranha', 19, 8],
+    ]) wizardCreateMonster(id, x, y);
+    for (const id of ['D', 'H', '&', '&', '&', '&']) wizardCreateMonster(id);
+    for (const [x, y] of [[16, 4], [16, 6], [15, 5], [17, 5]])
+        wizardTrap(SQKY_BOARD, x, y);
+    for (const kind of [SPIKED_PIT, SLP_GAS_TRAP, ANTI_MAGIC, MAGIC_TRAP])
+        wizardTrap(kind);
+    for (const ref of ['ruby', '!', '!', '?', '?', '+', '+', '+'])
+        wizardObject(ref);
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    hellTweaksWizardMap(WIZARD1_MAP);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerWizardMapLregions(WIZARD1_MAP, flp, bounds);
+    fixup_special();
+}
+
+function wizardSetDoor(x, y, mask) {
+    const loc = game.level?.at(wizardX(x), wizardY(y));
+    if (!loc) return;
+    loc.typ = DOOR;
+    set_door_mask(loc, mask);
+}
+
+function loadWizard3Special() {
+    // C ref: dat/wizard3.lua loaded through sp_lev.c:lspo_map().
+    rn2(3); rn2(2); // nhlib shuffle()
+    loadWizardMazegridTerrain(WIZARD3_MAP);
+
+    asmoMazeWalk(28, 9, 'east', WIZARD1_X, WIZARD1_Y);
+    createWizardRoomRegion(7, 3, 15, 11, 0, MORGUE, FILL_LVFLAGS);
+    createWizardRoomRegion(17, 6, 18, 11, 0, BEEHIVE, FILL_NORMAL);
+    const entry = createWizardRoomRegion(20, 6, 26, 11, 0, OROOM, FILL_NONE, true);
+    if (entry) {
+        const wall = rn2(100) < 50 ? 'west' : 'north';
+        wizardCreateDoor(entry, wall);
+    }
+    wizardSetDoor(18, 5, D_CLOSED);
+    placeSpecialLadder(wizardX(11), wizardY(7), true);
+
+    wizardCreateMonster('L', 10, 7, 0, WIZARD3_MAP);
+    wizardCreateMonster('vampire lord', 12, 7, 0, WIZARD3_MAP);
+    for (const [id, x, y] of [
+        ['kraken', 8, 5], ['giant eel', 8, 8],
+        ['kraken', 14, 5], ['giant eel', 14, 8],
+    ]) wizardCreateMonster(id, x, y, 0, WIZARD3_MAP);
+    wizardCreateMonster('L', null, null, 0, WIZARD3_MAP);
+    wizardCreateMonster('D', null, null, 0, WIZARD3_MAP);
+    wizardCreateMonster('D', 26, 9, 0, WIZARD3_MAP);
+    for (const id of ['&', '&', '&']) wizardCreateMonster(id, null, null, 0, WIZARD3_MAP);
+    for (const [x, y] of [[10, 7], [12, 7], [11, 6], [11, 8]])
+        wizardTrap(SQKY_BOARD, x, y, WIZARD3_MAP);
+    for (const ref of [')', '!', '?', '?', '(']) wizardObject(ref, null, null, WIZARD3_MAP);
+    wizardObject('"', 11, 7, WIZARD3_MAP);
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    hellTweaksWizardMap(WIZARD3_MAP);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerWizardMapLregions(WIZARD3_MAP, flp, bounds);
+    fixup_special();
+}
+
 function makemaz_special(slev) {
     const proto = slev?.proto || '';
     if (proto && slev?.rndlevs) {
@@ -7840,6 +8248,14 @@ function makemaz_special(slev) {
     }
     if (game._last_special_protofile === 'orcus') {
         loadOrcusSpecial();
+        return;
+    }
+    if (game._last_special_protofile === 'wizard1') {
+        loadWizard1Special();
+        return;
+    }
+    if (game._last_special_protofile === 'wizard3') {
+        loadWizard3Special();
         return;
     }
     if (game._last_special_protofile === 'tower1') {
@@ -9890,6 +10306,30 @@ function mkshobj_at(shopIndex, sx, sy) {
     else mkobj_at(atype, sx, sy, true);
 }
 
+function obj_resists_discard_rng(obj) {
+    if (!obj || obj.otyp === AMULET_OF_YENDOR
+        || obj.otyp === SPE_BOOK_OF_THE_DEAD
+        || obj.otyp === CANDELABRUM_OF_INVOCATION
+        || obj.otyp === BELL_OF_OPENING) return true;
+    return rn2(100) < (obj.oartifact ? 0 : 0);
+}
+
+function remove_orcus_shopkeeper(croom) {
+    if (game._last_special_protofile !== 'orcus') return;
+    const rmno = game.level.rooms.indexOf(croom) + ROOMOFFSET;
+    const idx = (game.level?.monsters || []).findIndex(mon =>
+        mon.isshk && ((game.level?.at(mon.mx, mon.my)?.roomno ?? 0) === rmno));
+    if (idx < 0) return;
+    const [shk] = game.level.monsters.splice(idx, 1);
+    // C ref: shknam.c:stock_room() Orcus ghost-town hack calls mongone()
+    // after stocking; inventory disposal checks obj_resists() for each item.
+    for (const obj of shk.inventory || []) obj_resists_discard_rng(obj);
+    // JS does not yet materialize the C shopkeeper capital/bill-admin
+    // inventory, but mongone() discards those carried records too.
+    rn2(100);
+    rn2(100);
+}
+
 function stock_room(croom) {
     const shopIndex = croom.rtype - SHOPBASE;
     const sh = shkinit(shopIndex, croom);
@@ -9903,6 +10343,7 @@ function stock_room(croom) {
         for (let sy = croom.ly; sy <= croom.hy; sy++)
             if (stock_room_goodpos(croom, sh, sx, sy))
                 mkshobj_at(shopIndex, sx, sy);
+    remove_orcus_shopkeeper(croom);
     game.level.flags.has_shop = true;
 }
 
