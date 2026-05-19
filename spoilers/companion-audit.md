@@ -6475,3 +6475,2334 @@ Every entry, including every "—" (restricted = not in role's
   re-audit confirms no drift.
 
 ---
+
+## 2026-05-18 — v2 pilot batch — kickoff
+
+Pass 2 of the chapter-by-chapter audit started today, with three
+criteria instead of the prior pass's single criterion:
+
+1. **Accuracy** against NetHack 5.0 C source (same as pass 1, focused
+   on what was missed).
+2. **Wisdom of advice**, cross-checked against community lore (wiki /
+   alt.org / data.base) when the claim goes beyond pure mechanics.
+3. **Voice**: friendly and humorous when fluent, but tighter on
+   punctuation. New rule: prefer periods > commas > colons > semicolons
+   > parentheticals > em-dashes when there is a fluent option. The
+   prior AUDIT.md rule "em-dashes for parentheticals" is superseded.
+
+Pass 2 queue: `companion-audit-queue-2.md` (seed
+`companion-audit-2026-05-18-pass2`, 183 reshuffled units).
+
+The pilot batch (#1-#5 in the new queue) is below.
+
+---
+
+## 2026-05-18 — v2 audit #1: Sokoban Solutions — Level 3, Version A
+
+Source: `spoilers/companion.md` line 6373. No corrections (badge
+backfill only).
+
+### Verified
+- 13-boulder layout and all 13 solution steps verified geometrically
+  against `dat/soko2-1.lua:9-62` (spoiler coords = lua + 1).
+- Boulder positions A-M, rolling-boulder trap (8,10), 10 hole traps
+  row 10 cols 9-18, upstair (17,5), downstair (7,11), locked door
+  (19,9) all match.
+- Final "three boulders remain" tally checks.
+
+### Notes
+- This section had no pass-1 audit badge while its neighbors (Levels
+  2A, 2B, 3B) did. Added a fresh pass-2 badge to close the gap.
+- Step 1 ("Push M left one square") looks counterintuitive but is
+  the only way to reach the west side of M via the row 11 detour.
+  Spoiler doesn't explain this, which is consistent with the rest
+  of the section's terse style. Left as-is.
+
+---
+
+## 2026-05-18 — v2 audit #2: Voluntary Challenges — The Food Conducts
+
+Source: `spoilers/companion.md` line 6707. 3 factual corrections,
+3 wisdom additions, 4 voice tightenings.
+
+### Wrong → fixed
+- **"Permissible corpses (... gray ooze / brown pudding / green
+  slime — all puddings except black — and most others)"**: puddings
+  are G_NOCORPSE per `monsters.h:2081-2113`. They drop **globs**, not
+  corpses. Green slime corpse doesn't exist either; eating its glob
+  slimes you. Reworded to "permissible corpses and globs" with the
+  pudding rows treated as globs, and added a note about green slime.
+- **"They share an internal 'egg-derived' material flag in the C
+  source."**: fabricated. The vegan-violating comestibles are a
+  hardcoded otyp list at `eat.c:3016-3018`, no such flag exists.
+  Replaced with the in-world reason: "They contain eggs."
+- **"And all ghosts."** in the vegan corpse list: S_GHOST is
+  G_NOCORPSE per `monsters.h:2888,2897`. Dead weight. Dropped.
+
+### Verified
+- Vegan / vegetarian macros at `mondata.h:232-241` unchanged: vegan
+  is `S_BLOB|S_JELLY|S_FUNGUS|S_VORTEX|S_LIGHT|S_ELEMENTAL` (except
+  stalker) `|S_GOLEM` (except flesh/leather) and noncorporeal;
+  vegetarian adds `S_PUDDING` (except black pudding).
+- Vegan-violating comestibles list (PANCAKE, FORTUNE_COOKIE,
+  CREAM_PIE, CANDY_BAR, LUMP_OF_ROYAL_JELLY) at `eat.c:3016-3018`.
+- Prayer cures hunger from HUNGRY threshold at `pray.c:275`
+  (TROUBLE_HUNGRY). `init_uhunger()` at `eat.c:126` touches no
+  conduct.
+- Wall/door/boulder chewing breaks foodless at `hack.c:722`.
+- Polymorph itself does not increment `u.uconduct.food` (no such
+  increment in polyself.c).
+
+### Wisdom additions
+- Vegetarian-safe ≠ safe: added warning that yellow mold corpses
+  poison, violet fungus paralyzes, and acid blobs sting going down.
+- Added Monk note: Monks already pay an alignment penalty for meat,
+  so the vegetarian conduct is mostly free for them.
+- Foodless route: added "wishing for the ring is the usual plan if
+  a wand of wishing or magic lamp turns up."
+
+### Voice tightenings
+- Dropped `S_PUDDING` C-identifier from prose.
+- Dropped filler sentence "Among the hardest conducts in the game."
+- Trimmed slow-digestion ring parenthetical from a wordy "the ring
+  itself still costs a tiny amount, but it's effectively a free pass"
+  to "slows hunger almost to a halt."
+- Dropped the orphan "Polymorphing breaks the polyself conduct, not
+  foodless" clarification — no source of confusion in the surrounding
+  text.
+
+### Close calls
+- Verified V2.1 "dairy" hypothesis against `mondata.h` (no comment),
+  `dat/data.base:570-576` (describes puddings as amoeboid slimes,
+  no dairy reference), and `doc/fixes5-0-0.txt` (no relevant entry).
+  The "in-world reason" for puddings breaking vegan is **not** lore-
+  supported, so the spoiler now states the rule without a fabricated
+  reason: "Vegan also excludes puddings."
+
+---
+
+## 2026-05-18 — v2 audit #3: Bestiary Tables — Quadrupeds `q`
+
+Source: `spoilers/companion.md` line 8241. No factual corrections,
+one voice tightening.
+
+### Verified
+All 56 cells across 7 rows verified against `include/monsters.h:831-885`:
+rothe, mumak, leocrotta, wumpus, titanothere, baluchitherium,
+mastodon. Every Lvl, Spd, AC, MR%, color, and attack mode/dice/side-
+effect matches. All attacks are AD_PHYS; no side-effect notes needed.
+
+### Voice tightenings
+- Mumakil lead-in tightened from "slow but extremely sturdy" to
+  "slow but hit for 4d12 and shrug off blows." Cross-references the
+  damage figure already given at L1779 ("solo two-attack bruisers").
+
+### Notes
+- M1_THICK_HIDE on mumak/titanothere/baluchitherium/mastodon is not
+  tagged in the Notes column. Consistent with the spoiler's pattern
+  of not surfacing "thick-hide" anywhere else.
+- Rothe G_SGROUP (pack) is mentioned in the prose lead-ins at L1679
+  and L1777-1778 rather than in the table. Consistent.
+
+---
+
+## 2026-05-18 — v2 audit #4: Armor Tables (appendix)
+
+Source: `spoilers/companion.md` line 7597. 3 factual corrections,
+2 wisdom adjustments, 4 voice tightenings.
+
+### Wrong → fixed
+- **Levitation boots note** ("can't be removed while floating, so
+  you're stuck above pickup..."): `Boots_off()` at `do_wear.c:300-310`
+  handles in-air removal and calls `float_down()`. The actual trap
+  is the 9/10 curse, not floating itself. Reworded to "Levitation.
+  Generated cursed 9 times in 10. Cursed boots can't be taken off,
+  so this is a trap item."
+- **Blue dragon scale mail / scales** "intrinsic speed (Fast)":
+  blue dragon armor grants extrinsic Fast via `EFast`
+  (`do_wear.c:817-828`), putting you in `Very_fast` — the same
+  speed-boots tier, not the slower intrinsic-Fast tier. Reworded
+  to "Shock resistance + speed, same tier as speed boots."
+- **Speed boots** "+1 speed": opaque shorthand that wrongly suggests
+  parity with intrinsic Fast. Replaced with the actual mechanic:
+  "Very fast. Free extra action on 2/3 of turns."
+
+### Verified
+- 100% spot-check of every AC/MC/Wt/Cost/Material cell against
+  `include/objects.h:445-727` (HELM / CLOAK / SHIELD / GLOVES /
+  BOOTS / ARMOR / DRGN_ARMR macros). All numbers match.
+- 9/10-cursed-on-generation armors at `mkobj.c:1086-1090` are
+  FUMBLE_BOOTS, LEVITATION_BOOTS, HELM_OF_OPPOSITE_ALIGNMENT,
+  GAUNTLETS_OF_FUMBLING — flagged correctly in each row.
+- Dunce cap auto-curses on wear at `do_wear.c:475-491`.
+- Helm of brilliance / gauntlets of dexterity linear-in-spe via
+  `adj_abon` (`do_wear.c:3319-3336`).
+- Cornuthaum CHA effect and CLAIRVOYANT block for non-Wizards at
+  `do_wear.c:454-461`, `worn.c:40-44`.
+- Mummy wrapping blocks INVIS while worn at `worn.c:38-39`.
+- Mithril is metallic (`objclass.h:194-196`), so spell casting
+  penalty applies (`spell.c:2191-2193`).
+- All ten dragon-scale-mail dual-property effects match
+  `do_wear.c:806-883`.
+- 5.0 additions (helm of caution, shield of drain resistance, shield
+  of shock resistance) present and correct per
+  `doc/fixes5-0-0.txt:2694, 2927`.
+- Shimmering DSM/scales correctly absent (deferred in C via `#if 0`).
+
+### Wisdom adjustments
+- Chain mail note "Dwarves drop these" dropped — all iron mails are
+  Mines dwarf drops, so singling out chain mail misleads.
+- Robe note "+1 spellcasting effectiveness" replaced with the actual
+  mechanic: "Casting bonus. Cancels most of the metal-armor penalty."
+  The `spell.c:2192-2195` subtraction of `spelarmr` is a much larger
+  shift than "+1."
+
+### Voice tightenings
+- Intro "alongside any tactical caveats" → "and tactical caveats"
+  (meta-language about document structure).
+- Cloak of magic resistance: "Magic resistance. Lightest source of
+  magic resistance." de-duplicated to "Magic resistance. The lightest
+  source."
+- Dunce cap note trimmed: "Auto-curses itself when worn (regardless
+  of starting BUC), so you can't un-wear it without remove curse." →
+  "Auto-curses on wear. Needs remove curse to take off."
+- Helm of opposite alignment trimmed: "Generated cursed 9 times in
+  10 — and cursed means you can't take it off." → "Generated cursed
+  9 times in 10. Trap item."
+
+### Notes / follow-ups
+- `spoilers/build_armor_appendix.py` appears to be out of sync with
+  the committed table (hand-edits added the second hidden property
+  to every dragon scale mail row). Consider syncing the generator's
+  NOTES dict or marking it manually maintained.
+- "yellow dragon scale mail | Rare." annotation may not reflect 5.0
+  generation rules. Not chased in this audit.
+
+---
+
+## 2026-05-18 — v2 audit #5: Branches and Landmarks — The Quest
+
+Source: `spoilers/companion.md` line 984. 3 factual corrections
+(the auditor proposed a 4th — DL 11-17 — that was applied and then
+reverted; see Close calls below), 3 wisdom additions, 4 voice
+tightenings.
+
+### Wrong → fixed
+- **"Only the Tourist's Platinum Yendorian Express Card gives magic
+  resistance just by being carried"**: three carried-MR quest
+  artifacts exist. Orb of Detection at `artilist.h:221` has
+  `CARY(AD_MAGM)`; Magic Mirror of Merlin at `artilist.h:257` has
+  `CARY(AD_MAGM)`; PYEC at `artilist.h:293` has `CARY(AD_MAGM)`.
+  Reworded.
+- **"A few others (Sceptre of Might, Eye of the Aethiopica) block
+  magic attacks only when wielded or worn"**: three not two —
+  `DFNS(AD_MAGM)` at `artilist.h:233` (Sceptre of Might),
+  `artilist.h:261` (Eyes of the Overworld — Monk), and
+  `artilist.h:304` (Eye of the Aethiopica). Reworded.
+- **"The nemesis drops two things, on the floor."**: misleading.
+  Only the Bell of Opening drops from the nemesis's inventory on
+  kill (placed at spawn via `src/makemon.c:1378-1379` —
+  `MS_NEMESIS` gets BELL_OF_OPENING). The quest artifact is placed
+  on the floor under the nemesis at level generation (e.g.
+  `dat/Val-goal.lua:49,76` puts both the Orb of Fate and Lord
+  Surtur at (17,8); `dat/Wiz-goal.lua:73,96` same for Eye and Dark
+  One). Reworded.
+
+### Verified
+- Prerequisite XL 14 (fixed for all roles) at `include/quest.h:45`
+  (`MIN_QUEST_LEVEL 14`).
+- Minimum alignment record 20 to start at `include/quest.h:43`
+  (`MIN_QUEST_ALIGN 20`); enforcement at `src/quest.c:164-176`.
+- Magic-portal trap delivers you to qstart at `src/quest.c:91-103,
+  188-216`.
+- Leader appears on the first Quest level (qstart). E.g., Valkyrie's
+  Norn at `dat/Val-strt.lua:63`.
+- Role/artifact/nemesis pairings confirmed in
+  `include/artilist.h:225-307` and `src/role.c:252,334,431,471,
+  511,551`.
+
+### Wisdom additions
+- Most quest nemeses carry an amulet of life saving; added "expect
+  to kill them twice."
+- Added note that the portal back is on the first Quest level only,
+  so descending underprepared can mean a long climb home.
+
+### Voice tightenings
+- Three short sentences on portal entry trimmed to two; "But you
+  can't enter it immediately" filler dropped.
+- "Milestone that marks the transition from 'surviving' to
+  'preparing for the endgame'" replaced with "major power spike.
+  The late game starts here."
+- "The nemesis drops two things, on the floor." bold sentence
+  rewritten as "Two prizes wait on the nemesis's square."
+- Em-dash parenthetical "(from attacking peacefuls, for instance)"
+  replaced with periods per the punctuation-ladder rule.
+
+### Close calls
+- **Reverted in-flight: "DL 11-16" → "DL 11-17" → "DL 11-16".**
+  The sub-agent's reading of `level_range()` (`src/dungeon.c:380-411`)
+  was off by one. The function returns a *count*: with `randc = 2`
+  the picked level is `base..base+1`, not `base..base+2`. For the
+  Quest portal that gives max `6 + 9 + 1 = 16`, not 17. The wiki
+  (consulted via WebSearch after the initial commit) showed 11-16
+  and prompted the closer reread. The companion text was reverted
+  to "11 through 16" within the same session; the badge notes the
+  transient mis-edit. Lesson for the autonomous phase: when C math
+  involves arithmetic on a count vs. a range, cross-check against
+  the wiki via WebSearch before committing.
+- Wiki direct fetch (WebFetch on `nethackwiki.com`) is blocked by
+  Cloudflare. WebSearch returns Google-summarized wiki content and
+  is the working workaround. alt.org game logs are accessible by
+  WebFetch directly.
+- Some roles quest much earlier than the XL-14 minimum suggests
+  (Valkyrie, Samurai), while others quest much later (Healer,
+  Tourist). Section makes no per-role timing claim, so the
+  softening is consistent.
+
+---
+
+## 2026-05-18 — v2 audit #6: Sokoban Solutions — Level 2, Version A
+
+Source: `spoilers/companion.md` line 6248. No corrections (re-audit).
+
+### Verified
+- Map walls and floor match `dat/soko3-1.lua:10-21` exactly (lua col,row → spoiler col+1,row+1).
+- All 20 boulders A-T mapped to lua placements at `soko3-1.lua:31-53`.
+- Upstair `<` at (24,5), locked door `+` at (28,10), player arrival `@` at (12,3), rolling-boulder trap at (12,11), 15 holes at (13,11)-(27,11): all match `soko3-1.lua:23-25, 58-73`.
+- Steps 1-3 confirmed by the pass-1 audit. v2 extended through steps 4-9.
+- "Push F up to (3,4)" in step 8 is not gratuitous: F at (3,7) seals the only N-S corridor through (3,6), so the only way to access the upper chamber for finishing F and A is to push F upward through the opening, simultaneously moving the player up.
+- Final tally "Five boulders (B, C, D, I, and Q) remain" exact: 20 boulders minus 15 holes filled.
+
+### Notes
+- The pass-1 audit explicitly stated it had only walked steps 1-3. v2 re-audit fills the gap with no corrections found.
+
+---
+
+## 2026-05-18 — v2 audit #7: Weapons Tables — Broadsword
+
+Source: `spoilers/companion.md` line 7302. 2 artifact additions, 1 voice replacement.
+
+### Wrong → fixed
+- **Broadsword row Notes**: previously "+d4 small, +1 large" — formula notation that duplicated the Damage column. No mention of **Dragonbane** (BROADSWORD artifact at `artilist.h:157-160`, SPFX_REFLECT, +d5 vs S_DRAGON). Replaced with "Dragonbane is the artifact form. +d5 vs dragons, grants reflection."
+- **Elven broadsword row Notes**: previously empty. No mention of **Orcrist** (ELVEN_BROADSWORD artifact at `artilist.h:134-136`, A_CHAOTIC, warns of orcs, +d5 damage). Added "Orcrist is the chaotic artifact form. Warns of orcs, +d5 damage."
+- **Runesword row Notes**: previously "Stormbringer is the chaotic-aligned artifact form." Expanded slightly: "Stormbringer is the chaotic artifact form. Drains life on hit." Parallel to peer rows that list the artifact's effect.
+
+### Verified
+- Broadsword stats 1d4+1d4 / 1d6+1, wt 70, cost 10, iron, P_BROAD_SWORD at `include/objects.h:262-265`; +d4/+1 bonus applied at `src/weapon.c:235,285`.
+- Elven broadsword stats 1d6+1d4 / 1d6+1, wt 70, cost 10, wood, prob 4 at `include/objects.h:266-269`.
+- Runesword stats 1d4+1d4 / 1d6+1, wt 40, cost 300, iron, color CLR_BLACK, prob 0 (not randomly generated) at `include/objects.h:287-290`. Stormbringer A_CHAOTIC at `artilist.h:93-96`.
+
+### Notes
+- Strike type for all three (slash via `S` flag at `objects.h:137`) was verified — spoiler doesn't claim a strike type, no issue.
+
+---
+
+## 2026-05-18 — v2 audit #8: Bestiary Tables — Vampires `V`
+
+Source: `spoilers/companion.md` line 8804. 2 factual corrections, 1 voice tightening.
+
+### Wrong → fixed
+- **"All vampires fly, regenerate, have poisonous corpses, are undead..."**: all three V-class monsters carry `G_NOCORPSE` (`include/monsters.h:2282, 2292, 2314`; `include/monflag.h:201`), so they never leave any corpse. "Poisonous corpses" is nonsense. Dropped.
+- **"Shapeshifts to bat or cloud."**: incomplete. Base `PM_VAMPIRE` shifts to fog cloud or vampire bat per `src/mon.c:4956-4967`; `PM_VAMPIRE_LEADER` and Vlad (`PM_VLAD_THE_IMPALER`) can additionally become a wolf. Reworded: "Shapeshifts to bat or fog cloud. Lords and Vlad can also become wolves."
+
+### Verified
+- vampire row Lvl 10, Spd 12, AC 1, MR 25, claw 1d6 + bite 1d6 drain-XL at `include/monsters.h:2281-2290`.
+- vampire lord row Lvl 12, Spd 14, AC 0, MR 50, claw 1d8 + bite 1d8 drain-XL at `include/monsters.h:2291-2300`.
+- Vlad the Impaler Lvl 28, Spd 26, AC -6, MR 80, weapon 2d10 + bite 1d12 drain-XL at `include/monsters.h:2313-2322`. G_UNIQ; `M3_WANTSCAND` → CANDELABRUM_OF_INVOCATION at `src/wizard.c:149-150`.
+- Vampire mage correctly omitted (`#if 0 DEFERRED` at `monsters.h:2301-2312`).
+- Vlad's Tower location verified at `dat/dungeon.lua:98, 262` and `dat/tower1.lua:6, 29`.
+
+### Voice
+- Lead-in "Vlad the Impaler is the vampire boss in his Tower." reworded to "Vlad the Impaler is the boss of Vlad's Tower." — uses the proper noun, avoids the "vampire" repetition from the prior sentence.
+
+---
+
+## 2026-05-18 — v2 audit #9: Spellcasting
+
+Source: `spoilers/companion.md` line 5077. 3 factual corrections, 1 wisdom softening, 2 voice tightenings.
+
+### Wrong → fixed
+- **"Each **successful** read counts toward a fixed total (about five)"**: `MAX_SPELL_STUDY = 3` with the `> MAX_SPELL_STUDY` check at `spell.c:401` caps at **4** successful reads, not "about five." The comment at `spell.c:400` explicitly says "a normal book can be read and re-read a total of 4 times." Reworded to "a fixed total of four."
+- **Charm monster row "Tame nearby creatures (3×3, 5×5 confused)"**: two issues. (1) Confused casting fails outright at `spell.c:1372`, so a "confused area" is unreachable. (2) The scroll-of-taming confused area is 11×11 (`bd = confused ? 5 : 1`, `-bd..bd` inclusive at `read.c:1689,1695`), not 5×5. Reworded to "Tame nearby creatures in a 3×3 area; Skilled+ acts like a blessed scroll."
+- **"Power regenerates over time (faster with higher Wisdom and with a regeneration source)"**: incomplete. Regen amount is `(Wis + Int)/15 + 1` at `allmain.c:607` — Intelligence matters too — and Wizards tick on factor 3 vs the standard 4 at `allmain.c:605`. Reworded.
+
+### Wisdom
+- **"A Valkyrie might manage identify (level 3) but will struggle with anything above level 4."**: Valkyries have *divination restricted* (no entry in `Skill_V` at `u_init.c:525-546`), so even identify is occasional-at-best for them. Softened to "A Valkyrie can occasionally read identify (level 3) if her Intelligence is boosted by gain-ability potions, but non-spellcasters are usually better off with scrolls."
+
+### Voice
+- Full-paragraph parenthetical "(The 'Minimum Int + XL' column means...)" promoted to plain prose.
+- "Each failure also has a 1-in-3 chance of destroying the book on the spot." was duplicated (once in the Learning Spells paragraph, once in the spellbook-fade paragraph). Consolidated to the fade paragraph.
+
+### Close calls / notes
+- Read-success table "Min Int + XL" is approximate. Int 18 + XL 14 = 32 gives a level-6 read score of ~17, an 85% chance — not "always." Acceptable rule-of-thumb but the word "reliably" is loose; not changed.
+- "1-in-3 destruction on failed read" wording could be tightened further but the current phrasing is clear enough.
+
+---
+
+## 2026-05-18 — v2 audit #10: Weapons Tables — Long sword
+
+Source: `spoilers/companion.md` line 7315. 1 factual completion, 1 voice tightening.
+
+### Wrong → fixed
+- **"Artifact forms: Excalibur, Vorpal Blade, Frost Brand, Fire Brand."**: incomplete. `include/artilist.h` defines six LONG_SWORD artifacts: Excalibur (l.85), Frost Brand (l.149), Fire Brand (l.153), Giantslayer (l.174), Vorpal Blade (l.191), Sunsword (l.209). Added Giantslayer and Sunsword.
+
+### Verified
+- long sword stats 1d8/1d12, wt 40, cost 15, iron, P_LONG_SWORD at `include/objects.h:270-272`.
+- katana stats 1d10/1d12, wt 40, cost 80, +1 to-hit, iron, P_LONG_SWORD at `include/objects.h:278-280`.
+- Excalibur dipping: `obj->otyp == LONG_SWORD`, `u.ulevel >= 5`, single non-artifact sword, Excalibur not already extant; rolls `!rn2(Role_if(PM_KNIGHT) ? 6 : 30)`; Lawful gets blessed Excalibur, non-Lawful gets curse plus rustproof strip at `src/fountain.c:404-440`.
+- Snickersnee is a KATANA artifact at `include/artilist.h:203-205`, A_LAWFUL, Samurai-only.
+- Demonbane is now SILVER_MACE (not a long sword) at `include/artilist.h:162-164`. Correctly absent from the list.
+
+### Voice
+- Excalibur dipping line reworked from a semicolon-and-parenthetical chain ("rolls 1-in-30 (1-in-6 for Knights); Lawfuls who roll get Excalibur, others get the sword cursed") into four periods per the punctuation ladder.
+
+### Notes
+- Non-Lawfuls on a successful roll also lose rustproofing and possibly an enchantment point, not just a curse. "Cursed" is shorthand. Not expanded — keeping the table cell concise.
+- The pass-1 audit badge text says "ANY alignment rolls 1-in-30 at XL 5+" — slightly sloppy since Knights are 1-in-6 regardless. Cosmetic only; left.
+
+---
+
+## 2026-05-18 — v2 audit #11: Branches and Landmarks — The Gnomish Mines
+
+Source: `spoilers/companion.md` line 876. **All v2 edits reverted same session — see Reverted below.** Net effect: 0 corrections.
+
+### Verified
+- Mines branch DL 2-4 at `dat/dungeon.lua:14-19`.
+- Seven Minetown variants at `dat/dungeon.lua:178-185`, including the Orcish Town variant at `dat/minetn-1.lua` with no shops, no priest, iron bars, unaligned shrine.
+- All three Mine's End variants seed a not-cursed achievement-flagged luckstone at `dat/minend-{1,2,3}.lua`.
+- Fake-luckstone mimic placement at `dat/minend-1.lua:59` (plus mimics for loadstone, flint, touchstone, and a real loadstone).
+- Race-peaceful gnomes/dwarves for gnomish PCs via `src/role.c:654` lovemask.
+- `dat/minefill.lua:36-44` places 6-8 gnomes plus exactly one guaranteed gnome lord, two dwarves, two random gnome-class slots, and a 50/50 humanoid slot that can rarely roll a mind flayer.
+
+### Reverted (do not re-apply)
+- An attempt to add a mind-flayer warning to the prose used the community jargon term ("minesflayer") and turned the intro into a stat dump. User reaction: *"old introduction was much better"*, *"too much inside baseball and a madeup word 'minesflayer'"*, *"please do not make the text worse!"* The prose was restored verbatim to the pre-v2 wording. **Lesson:** voice fixes should preserve existing rhythm; never introduce community jargon. The Brainlessness section in Part Three already covers mind flayers; the Mines section doesn't need to reiterate.
+- Six "voice tightenings" that sub-agent flagged ("modest but steady stream", "Usually it's a small settlement", "the clean answer", "wherever you arrive", parenthetical-on-mimic promotion, "you've found a safe place to identify items by dropping them on it" → "BUC-tests"): all reverted. The original phrasing has rhythm and flavor that the auditor's terser proposals lack.
+
+### Close calls / notes
+- Mine's End depth (DL ~10-13) is not stated in the section; left as-is.
+
+---
+
+## 2026-05-18 — v2 audit #12: Weapons Tables — Mace
+
+Source: `spoilers/companion.md` line 7386. 2 factual corrections.
+
+### Wrong → fixed
+- **Demonbane row "+d5/+0 silver mace"**: `PHYS(5, 0)` doesn't mean "+5 to-hit, +0 damage." `damn=5` provides `rnd(5)` to-hit via `spec_abon` (`src/artifact.c:1083-1085`), and `damd=0` returns `max(tmp, 1)` in `spec_dbon` (`src/artifact.c:1106-1107`) — which doubles base damage versus demons. Demonbane also has a banish invoke. Reworded to "+1d5 to-hit and double damage versus demons, plus a banish invoke."
+- **Silver mace row "Bonus damage to demons, undead, and shape-changers"**: the silver +1d20 bonus at `src/uhitm.c:1376-1377` fires only on `hates_silver` targets — demons, weres, vampires, shades, and most imps (`src/mondata.c:524-528`). "Undead" is too broad (mummies, zombies, ghosts, liches don't qualify); "shape-changers" is too broad (chameleons don't). Magnitude (+1d20) was unstated. Reworded.
+
+### Verified
+- mace stats 1d6+1 / 1d6, wt 30, cost 5, iron at `include/objects.h:355-358`.
+- silver mace stats 1d6+1 / 1d6, wt 36, cost 60, silver at `include/objects.h:359-361`.
+- Demonbane SILVER_MACE, A_LAWFUL, `role=PM_PRIEST`, banish invoke at `include/artilist.h:162-164`.
+- Sceptre of Might is also a MACE artifact at `include/artilist.h:232-235`. Added to the row notes.
+- Mjollnir is a WAR_HAMMER (correctly excluded from this section).
+- Role caps for P_MACE: Caveman / Priest Expert; Archeologist / Knight / Samurai Skilled; Healer / Tourist / Valkyrie Basic; Wizard not listed.
+
+### Notes
+- The section was missing an audit badge before this pass. Added one.
+
+---
+
+## 2026-05-18 — v2 audit #13: Enhancing Skills
+
+Source: `spoilers/companion.md` line 4810. 3 factual corrections, 2 wisdom adjustments, 5 voice tightenings.
+
+### Wrong → fixed
+- **"Non-weapon skills — spell schools, two-weapon, riding, bare hands, martial arts — cost roughly half as many slots as melee weapons"**: two-weapon is treated as a weapon for slot cost per `src/weapon.c:1141` (`if (skill <= P_LAST_WEAPON || skill == P_TWO_WEAPON_COMBAT)`). The spoiler was repeating pre-3.7 lore. Reworded to drop two-weapon from the non-weapon list, with a parenthetical noting "two-weapon uses the weapon column despite the name."
+- **"A Valkyrie aiming for Expert long sword, Expert two-weapon, and Skilled riding is eleven slots deep"**: with correct two-weapon costs that's 6 + 6 + 2 = **fourteen**, not eleven. The 11 figure assumed two-weapon at non-weapon cost (4) and Basic riding (1). Reworded.
+- **"Bare hands and martial arts bonuses still only apply to 50% and 75% of hits respectively"**: conflates *training rate* with *bonus application*. The bonuses apply on **every** hit per `src/weapon.c:1611-1613`; the 50%/75% is the chance a hit *also trains the skill counter*. The earlier paragraph already says this correctly ("The rank still applies on every hit"); this later contradiction was dropped.
+
+### Verified
+- Skill tiers and the `level²×20` cumulative practice (20/80/180/320/500) match `include/skills.h:90-106`.
+- Weapon slot costs 1/2/3 and unarmed/martial 1/1/2/2/3 at `src/weapon.c:1130-1152`.
+- 2 starting slots, +1 per XL, +1 from crowning, ceiling 32 at `src/u_init.c:884`, `src/attrib.c:1068-1073`, `src/pray.c:992-994`.
+- Skill-bonus tables for weapon (−4/−2 … +3/+2) and two-weapon (−9/−3 … −3/+1) match `src/weapon.c:1559-1600`.
+- Riding -2/-1/0/0 to-hit and +1/+2 damage at Skilled/Expert at `src/weapon.c:1617-1633, 1712-1725`.
+- Practice award gate `train_weapon_skill = (hmd->dmg > 1)` at `src/uhitm.c:849, 946`.
+- Riding-skill training every 100 successful moves at `src/steed.c:393`.
+- Pre-credit of 20 practice at starting Basic at `src/weapon.c:1801`.
+
+### Wisdom adjustments
+- "Knights should advance it on the first opportunity even though Basic still leaves a −1 to-hit penalty in the saddle" was based on a wrong premise (Knights start at Basic riding per `src/weapon.c:1787-1789`; first opportunity is to push to Skilled). Reworded.
+- "Cone of cold and fireball stop being beams and become room-clearing **explosions**" oversells the footprint — at Skilled the cast becomes a cluster of 2-9 sequential 3×3 explosions clustered near a target square. Reworded to "a cluster of 3×3 explosions you can place at range" in both mentions.
+
+### Voice tightenings (kept)
+- "restricted from long swords entirely. Restricted skills don't appear on the `#enhance` menu and can never leave Unskilled" → "restricted from long swords. Restricted skills don't appear on `#enhance` and stay Unskilled." (Minor trim, no flavor lost.)
+- "shouldn't expect anything past level 3" clarified as "spell-level 3" (was ambiguous between game-level and spell-level).
+- Em-dashes in the two-weapon penalty sentence replaced with periods (punctuation ladder).
+
+### Reverted (do not re-apply)
+- "the dungeon's quiet subsidy for magic" was dropped on grounds of "invented in-world reason." Restored. It's a metaphor / editorial gloss, not a factual claim. Voice features like this should stay.
+- "the difference between landing the killing blow and watching the monster shrug" was replaced with "+3 to hit, +2 damage. That's why dedicating to a single weapon matters." Restored. The vivid framing was earning its keep, and the auditor's bare-numbers proposal lost the voice without gaining clarity.
+- "Specialization by decree." was dropped as "meta." Restored. Light editorial flourishes at the end of bullet points are part of the book's register.
+
+---
+
+## 2026-05-18 — v2 audit #14: Branches and Landmarks — Fort Ludios
+
+Source: `spoilers/companion.md` line 1055. 4 factual corrections, 2 wisdom adjustments, 3 voice tightenings.
+
+### Wrong → fixed
+- **"roughly twenty soldiers and a lieutenant"**: `dat/knox.lua:126-142` hard-codes exactly sixteen soldiers and one lieutenant. Reinforcements migrate in via the barracks zoo, so "roughly twenty" is defensible for the live count after a few turns, but the static garrison is sixteen plus one. Reworded.
+- **"a magic portal somewhere around Dlvl 18-22"**: off in two ways. (a) `dat/dungeon.lua:34-38` defines base 18 range 4, so the dungeon.lua hint is DL 18-21 not 18-22. (b) The actual placement code at `src/mklev.c:2647-2651` only requires depth > 10 and above Medusa, so the portal can land as shallow as DL 11. Wiki confirms. Reworded.
+- **"often inside a small vault that requires digging to reach"**: the portal is *always* inside a vault per `src/mklev.c:1331, 2624-2658`. Reworded.
+- **"the only way out is back through the portal or through the walls"**: the level is flagged non-diggable at `dat/knox.lua:35`, so wall-escape doesn't work. `noteleport` only blocks intra-level teleport, so level-teleport (scroll, wand, trap) still works. Reworded.
+
+### Verified
+- Treasury gold: 60 squares at 600-900 zorkmids each, 36000-54000 total at `dat/knox.lua:57-70`.
+- Trap ratio: roughly one in three tiles trapped, mix of land mines and spiked pits at `dat/knox.lua:59-65`.
+- Corner gem caches (diamonds, emeralds, rubies, amethysts) at `dat/knox.lua:155-167`.
+- Four giant eels in the moat, four dragons, stone giant, one lieutenant at `dat/knox.lua:142-154`.
+- Alarm quiets once Croesus dies at `src/do.c:1894-1903`.
+- Croesus G_UNIQ | G_NOGEN, MS_GUARD, hostile, level 20 at `include/monsters.h:2859-2869`.
+
+### Wisdom adjustments
+- "plan to engage him rather than tip-toe around" inverted by community advice: Croesus is covetous and dangerous in melee. Reworded to "shoot or zap him from across the moat."
+- "money for protection rackets or shop purchases" softened — at DL 11-21, protection has gotten very expensive, so Ludios gold is more often spent on identification scrolls or shop stock.
+
+### Voice tightenings
+- "the unique fortress warden and vault guardian" → "Croesus on the throne, the vault guardian himself" (dropped meta "unique").
+- "(a 15×4 treasury holds 36k-54k pieces, though most of the tiles are spiked-pit or land-mine trapped)" promoted to plain prose, with the trapped fraction corrected from "most" to "roughly a third."
+- "decent weapons" → "serviceable weapons."
+
+---
+
+## 2026-05-18 — v2 audit #15: The Apothecary
+
+Source: `spoilers/companion.md` line 3331. 1 factual fix; voice changes mostly reverted (see below).
+
+### Wrong → fixed
+- **"One blessed quaff and you're permanently faster for the rest of the game"**: the intrinsic-Fast grant requires only `!otmp->cursed` per `src/potion.c:1066` — an **uncursed** potion of speed also grants permanent intrinsic speed. Blessing only extends the temporary timer that overlays the intrinsic grant. Reworded inline as a semicolon clause on the same sentence.
+
+### Verified
+- Price table at L3346-3354 matches every entry in `include/objects.h:1125-1177` (healing 20; booze/fruit juice/see invisible/sickness 50; etc.).
+- Water has fixed "clear" appearance per `include/objects.h:1175-1177`.
+- Holy water altar-prayer mechanic at `src/pray.c:1386-1412`.
+- Gain ability blessed-raises-all vs uncursed-raises-one at `src/potion.c:1029-1048`.
+- Extra healing always cures blindness (`cureblind=TRUE`) and non-cursed cures sickness at `src/potion.c:1131-1133`.
+- Maxhp boost on non-cursed extra (2/5) and full healing (4/8) at `src/potion.c:1132, 1147`.
+- Wand of speed monster self-zap grants 50-74 turns of timed speed only at `src/zap.c:2845-2848` (`speed_up(rn1(25, 50))`).
+- All alchemy recipes match `mixtype()` at `src/potion.c:2122-2208`.
+- Explosion rate 1/10 base, 1/30 with alchemy smock at `src/potion.c:2421`.
+- Cursed dipping target always explodes at `src/potion.c:2419`.
+- Diluted-stack cap of 2 per operation at `src/potion.c:2521-2522`.
+- Unicorn horn purification mappings at `src/potion.c:2151-2159`.
+
+### Wisdom adjustments
+- "never use a cursed potion as a dipping target" reworded to "never let the receiving potion (the one you're dipping into) be cursed" — target/source language can confuse readers.
+- "Drop uncursed water on a co-aligned altar" left as the standard play pattern, but the mechanism also blesses cursed water on the altar (water_prayer at `src/pray.c:1395-1402`). Not changed; the standard pattern is what readers should do.
+- "Treat every gain energy potion like the catalyst it is" left as written. Note: gain level is just as good a catalyst and slightly more common per `include/objects.h` (prob 20 vs 40), but this is a soft point.
+
+### Reverted (do not re-apply)
+- Lead-in colon ("Ruby liquids, milky fluids, smoky concoctions: each one a small gamble..."): restored. The colon does rhythmic work that the period flattened.
+- "Water is the oddity in the $100 group: it always appears as 'clear potion'": restored. Same reason.
+- Speed paragraph short-sentence rewrite: restored to the original semicolon-joined "trading blows / hitting twice" phrasing. The factual fix on uncursed speed is now folded in as a semicolon clause on the lead sentence.
+- "Think of it as artisanal alchemy rather than industrial production." restored. The gag earns its keep.
+- "never use a cursed potion as a dipping target" was reworded to "never let the receiving potion (the one you're dipping into) be cursed" on auditor concerns about source/target language. Restored to original wording — clearer and shorter.
+
+### Notes
+- Extra healing also cures hallucination per `src/potion.c:1134`. Not claimed, not wrong, just an omission worth flagging if the chapter expands.
+- Section makes no mention of sink-dip ID, bag-of-holding scatter on explosion, or Gehennom hot-ground potion shatter — those 5.0 changes are absent here. Not wrong, but the chapter could be enriched in a future pass.
+
+---
+
+## 2026-05-18 — v2 audit #16: Weapons Tables — Short sword
+
+Source: `spoilers/companion.md` line 7283. No corrections (re-audit clean).
+
+### Verified
+- short sword 1d6/1d8, wt 30, cost 10, iron at `include/objects.h:244-246`.
+- elven short sword 1d8/1d8, wt 30, cost 10, wood at `include/objects.h:247-249`.
+- orcish short sword 1d5/1d8 (verified the unusual 1d5 die), wt 30, cost 10, iron at `include/objects.h:250-252`.
+- dwarvish short sword 1d7/1d8, wt 30, cost 10, iron at `include/objects.h:253-255`.
+- All four share P_SHORT_SWORD.
+- Rogue starter at `src/u_init.c:134`. Samurai wakizashi alias at `src/u_init.c:144` + `src/objnam.c:106`.
+- No SHORT_SWORD-base artifact exists.
+
+### Notes
+- Auditor flagged "The Rogue's starter" as slightly misleading (the dagger stack is the Rogue's defining weapon), but the short sword is in the starting inventory and the framing is fine. Per preserve-voice, left as-is.
+
+---
+
+## 2026-05-18 — v2 audit #17: Dangerous Encounters — Seduction
+
+Source: `spoilers/companion.md` line 2175. 2 factual fixes, 2 wisdom additions.
+
+### Wrong → fixed
+- **"Depending on its randomly assigned gender"**: incomplete. `could_seduce` at `mhitu.c:1980` requires opposite-sex `genagr`/`gendef`. A same-sex foocubus never seduces and just claws. Reworded.
+- **"Items aren't dropped on floor (just unequipped to inventory)"** was correct from pass 1. v2 verified.
+
+### Verified
+- Random gender assignment at `makemon.c:1279`.
+- Strip order (cloak/suit/boots/gloves/shield/helm/shirt) at `mhitu.c:2119-2128`.
+- Items unequipped to inventory only at `mhitu.c:2351` via `remove_worn_item(obj, TRUE)` at `steal.c:213`.
+- Encounter aborts if cloak or suit still worn at `mhitu.c:2139`.
+- Cha/20 prompt at `mhitu.c:2325`.
+- Cap-32 attribute roll at `mhitu.c:2177-2178` (`rn2(35) > min(attr_tot, 32)`).
+- 6-15 HP damage as `rn1(10,6)` at `mhitu.c:2219`.
+- XL drain blocked by drain resistance at `mhitu.c:2204`.
+- Peaceful demons charge 1/5 at `mhitu.c:2280`. 500+ zm cost at `mhitu.c:2276-2278`.
+- Defense via hard-to-remove suit/cloak; free action is irrelevant (not a paralysis attack).
+
+### Wisdom additions
+- XL 1 farming warning: at experience level 1, the level-drain outcome is fatal. Added.
+- Ring of adornment interactions at `mhitu.c:2019-2110`: succubus pockets a worn ring; incubus slips one from your pack onto your finger. Added a brief note.
+
+### Notes
+- "Defers" wording on the asleep/unresponsive case is slightly loose (the demon abandons the attempt without setting `mspec_used`, so it may retry next turn). Left as-is; the practical effect is similar.
+- The "5 bad vs 5 good outcomes" framing reads like a 10-way die when it's actually a Cha+Int roll for *side* then `rn2(5)` for *which*. Acceptable simplification.
+
+---
+
+## 2026-05-18 — v2 audit #18: Appendices — Spell Tables
+
+Source: `spoilers/companion.md` line 7779. 4 factual corrections.
+
+### Wrong → fixed
+- **flame sphere and freeze sphere rows**: both spells are inside `#if 0 /* DEFERRED */` at `include/objects.h:1413-1422` with no implementation anywhere in 5.0 `src/`. They are SLASH'EM leftovers. Dropped both rows. 41 spells, not 43.
+- **charm monster row (triple error)**:
+  - Type "aimed" → "untargeted": `seffect_taming` at `read.c:1679-1708` is an area centered on the caster, no direction prompt.
+  - Effect "Tames one target" → "Tames monsters in a 3×3 area (11×11 if confused)": the area is `(2·bd+1)²` with `bd = confused ? 5 : 1`, so 3×3 normal and 11×11 confused, not "5×5 confused" — and *all* monsters in the area are tamed, not just one.
+  - Upgrade "3×3 normal, 5×5 confused" → "Blessed-scroll behavior": the P_SKILLED upgrade is more reliable taming, not a radius bump.
+- **cause fear row**: "Blessed: wider radius" was wrong. `seffect_scare_monster` at `read.c:1454-1486` ignores `sobj->blessed` entirely; blessed and uncursed are identical. The loop also hits *every visible monster* on the level, not just "nearby." Dropped the blessed-upgrade, reworded Effect to "Visible monsters flee."
+- **remove curse row**: "Blessed: all worn/wielded" was wrong. `read.c:1514-1577` uncurses every (non-coin) carried item when blessed. Reworded to "all carried items."
+
+### Verified
+- Pw cost = 5 × spell level at `include/spell.h:36`.
+- Fireball / cone of cold P_SKILLED aimed-explosion at `src/spell.c:1419-1452`.
+- Protection P_EXPERT doubles uspmtime at `src/spell.c:1169`.
+- Jumping range scales with `role_skill` at `src/spell.c:1584-1586`.
+- Clairvoyance P_SKILLED extra monster-detect at `src/spell.c:1572-1576`.
+- Restore ability / detect monsters / detect food / detect treasure / haste self / levitation: blessed-potion behavior at P_SKILLED at `src/spell.c:1533-1545`.
+- Confuse monster / identify: blessed-scroll at P_SKILLED at `src/spell.c:1517-1525`.
+
+### Notes
+- Healing's P_SKILLED upgrade (also cures blindness per `src/spell.c:1480-1485` + `src/zap.c:447-448`) is not flagged in the table; minor inconsistency with how other small upgrades are tagged. Left for follow-up.
+- Cross-references: chain lightning's level is correctly 2 in this appendix and in the Spellcasting "Key Spells" table (audited in #9). The audit-1 badge's note about a body-text mismatch is stale.
+
+---
+
+## 2026-05-18 — v2 audit #19: Bestiary Tables — Sea monsters `;`
+
+Source: `spoilers/companion.md` line 9064. 2 factual corrections.
+
+### Wrong → fixed
+- **"Lives in water. Wraps around you and drags you under to drown."**: the intro applied wrap-and-drown to all 6 rows, but only giant eel, electric eel, and kraken have `AT_TUCH`/`AT_HUGS` + `AD_WRAP` per `monsters.h:3230-3256`. Jellyfish, piranha, and shark just bite/sting. The drown mechanic is gated on `AD_WRAP` at `src/uhitm.c:3389-3401`. Reworded.
+- **"sting 3d3 poison"** (jellyfish row): `AD_DRST` drains strength rather than dealing generic poison damage (`src/uhitm.c:3149, 3157`). Changed to "sting 3d3 drain-Str", matching the spoiler's own drain-stat notation.
+
+### Verified
+- jellyfish Lvl 3, Spd 3, AC 6, MR 0, AD_DRST 3d3 + MR_POISON at `monsters.h:3205-3212`.
+- piranha Lvl 5, Spd 18, AC 4, MR 0, bite 2d6 × 2, G_SGROUP at `monsters.h:3213-3220`.
+- shark Lvl 7, Spd 12, AC 2, MR 0, bite 5d6 at `monsters.h:3221-3229`.
+- giant eel Lvl 5, Spd 9, AC -1, MR 0, bite 3d6 + AT_TUCH AD_WRAP at `monsters.h:3230-3238`.
+- electric eel Lvl 7, Spd 10, AC -3, MR 0, bite AD_ELEC 4d6 + AT_TUCH AD_WRAP + MR_ELEC at `monsters.h:3239-3247`.
+- kraken Lvl 20, Spd 3, AC 6, MR 0, claw 2d4 × 2 + AT_HUGS AD_WRAP 2d6 + bite 5d4 at `monsters.h:3248-3256`.
+- All six carry M1_SWIM | M1_AMPHIBIOUS.
+
+### Notes
+- Wand of cold and wand of fire freeze/cook water tiles and strand sea monsters — a standard tactic absent from the section. Could add in a follow-up.
+- Greased outer armor or oilskin cloak blocks the grab. Also absent.
+
+---
+
+## 2026-05-18 — v2 audit #20: Voluntary Challenges — Polymorph Restrictions
+
+Source: `spoilers/companion.md` line 6855. 2 narrow factual fixes. Other proposed edits reverted as scope-creep.
+
+### Wrong → fixed
+- **"surviving a stoning attack (auto-transforms to stone golem)"**: misreads `poly_when_stoned()` at `mondata.c:80-86`, which returns true only for non-stone golems. A normal character petrifies and dies; only a player already polymorphed into a flesh/clay/etc. golem reverts to stone golem. Dropped from the less-obvious list.
+- **"sandestin … corpse"**: sandestins are G_NOCORPSE (`eat.c:1246` comment), so eating one is unreachable. Dropped from the corpse list.
+
+### Reverted (do not re-apply)
+- "The Amulet of Unchanging blocks every path" → reworded into a longer Antimagic-vs-Unchanging blocking chart. **Reverted.** The section is about the conduct, not an encyclopedia of polymorph mechanics. The original sentence is technically loose about Antimagic but is the right level of detail for a beginner deciding whether to attempt the conduct.
+- Lycanthropy added as a less-obvious source. **Reverted.** Real but trivia at this section's level; were-attacks are covered elsewhere.
+- Ring of polymorph clarified as "1/100 per turn random shifts". **Reverted.** The practical advice ("don't wear one") is the same regardless of mechanism.
+- Reality-check sentence ("polyselfless is easy, polypileless is harder"). **Reverted.** Meta-commentary that adds length without changing play.
+- User reaction to the original v2 edit: *"the point of covering the no-polymorph conduct is to talk about that conduct, not to give an exhaustive ways of doing polymorph."*
+
+### Verified
+- `polyselfs++` lives only in `polymon()` at `polyself.c:751` and the eat-a-mimic path at `eat.c:1199`.
+- `polypiles++` ticks at `zap.c:2198` (wand/spell of polymorph) and `potion.c:2476` (dipping into potion of polymorph). Only those two paths.
+- Polymorph trap: blocked by `Antimagic || Unchanging` at `trap.c:2486-2495`.
+- Genetic engineer AD_POLY: blocked by `Antimagic` OR `Unchanging` at `mhitm.c:1127-1144`.
+- Chameleon/doppelganger/genetic engineer corpse eat: only `Unchanging` blocks (`eat.c:1244-1263`).
+- Self-zap of WAN_POLYMORPH/SPE_POLYMORPH: blocked only by `Unchanging` (`zap.c:2804-2809`).
+- Fountain "toxic wastes" calls `polyself()`, blocked only by `Unchanging` (`fountain.c:680-685`).
+- System shock returns early in `polyself()` at `polyself.c:488-495`, so a failed shock does NOT tick the conduct.
+
+---
+
+## 2026-05-18 — v2 audit #21: A Practical Identification Strategy — The Engrave Test (Wands)
+
+Source: `spoilers/companion.md` line 2934. No corrections (re-audit clean).
+
+### Verified
+- "A lit field surrounds you" (light) at `src/zap.c:2549`.
+- "The floor is riddled by bullet holes" (magic missile) at `src/engrave.c:646`.
+- "Gravel flies up from the floor" (digging) at `src/engrave.c:704`.
+- "A few ice cubes drop from the wand" (cold) at `src/engrave.c:660-661`.
+- "Flames fly from the wand" (fire) at `src/engrave.c:716`.
+- "Lightning arcs from the wand" + blind branch (lightning) at `src/engrave.c:727-728`, blind gated at `engrave.c:1248`.
+- "The bugs on the floor stop moving!" — both sleep and death share this message at `src/engrave.c:651-656`.
+- "The wand unsuccessfully fights your attempt to write!" — unique to striking at `src/engrave.c:604`.
+- "The bugs on the floor slow down/speed up!" at `src/engrave.c:608-615`.
+- Polymorph randomizes prior engraving at `src/engrave.c:618-633`.
+- Cancellation / make-invisible / teleportation share "engraving … vanishes" at `src/engrave.c:666-682`.
+- Wand of wishing engrave grants the wish at `src/zap.c:2575-2585`.
+- DUST-class wands (nothing, undead turning, opening, locking, probing) produce no special message at `src/engrave.c:635-640`.
+- Cursed wands explode at 1% per engrave per `WAND_BACKFIRE_CHANCE = 100` (`include/hack.h:1410`, `src/engrave.c:794`).
+
+### Notes
+- Auditor flagged "Apply a wand by engraving" (use of "Apply" vs. the `a` command) as a mild voice ambiguity. Left as-is per preserve-voice; section reads fluently and the surrounding "command: `E`" makes the intent clear.
+
+---
+
+## 2026-05-18 — v2 audit #22: Bestiary Tables — Imps and minor demons `i`
+
+Source: `spoilers/companion.md` line 8116. 2 factual fixes.
+
+### Wrong → fixed
+- **manes "poisonous-corpse"** and **lemure "poisonous-corpse"** tags: both monsters carry `G_NOCORPSE` (`include/monsters.h:545` and `:567`), so M1_POIS is dormant and no corpse ever drops. Replaced "poisonous-corpse" with "No corpse" in both rows.
+- **lemure missing Gehennom-only tag**: lemure has `G_HELL` (`monsters.h:567`), generating only in Gehennom — same shape as the disenchanter row's "Gehennom-only" tag. Added.
+
+### Verified
+- All six rows match `include/monsters.h:544-587` exactly (manes / homunculus / imp / lemure / quasit / tengu).
+- "All except imp are poison-resistant" — confirmed (all carry MR_POISON except imp).
+- "Follow you up and down stairs" — all six carry M2_STALK.
+
+### Notes
+- Tengu corpse confers teleport / teleport-control intrinsic. Worth flagging if/when the bestiary's corpse-intrinsic notation gets a consistency pass. Not added in this pass.
+
+---
+
+## 2026-05-18 — v2 audit #23: Weapons Tables — Morning star
+
+Source: `spoilers/companion.md` line 7406. 0 user-facing corrections. 1 badge correction.
+
+### Verified
+- Damage 1d4+1d4 / 1d6+1, weight 120, cost 10, hit 0, iron, one-handed at `include/objects.h:363-365` plus bonus dice from `src/weapon.c:225-289`.
+- P_MORNING_STAR is a distinct skill class (id 12) at `include/skills.h:35`.
+- Role caps (not shown in section but consistent): Bar/Pri Skilled; Cav Expert; Val/Wiz/Sam/Mon Basic.
+
+### Badge correction
+- The pass-1 badge stated "No artifact morning star exists." That's wrong: **Trollsbane** is a MORNING_STAR artifact at `include/artilist.h:182-184` (regenerates while wielded, +d5 vs S_TROLL, cost 200). Documented in the Artifacts chapter; the user-facing row prose is fine as-is, so no prose change applied — just badge updated.
+
+---
+
+## 2026-05-18 — v2 audit #24: Branches and Landmarks — Sokoban
+
+Source: `spoilers/companion.md` line 926. 2 factual fixes.
+
+### Wrong → fixed
+- **"you can't dig through the floors"**: too broad. The `hardfloor` flag is set only on the entrance level (soko4-{1,2}.lua:38,7); interior soko levels don't carry it. `Can_dig_down` checks the flag (`src/dungeon.c:1648-1654`). In practice digging on interior levels would just drop you onto another soko level (Sokoban is an upward-only branch), so escape is futile either way, but the rule as stated is inaccurate. Narrowed to "you can't dig down off the entrance level (its floor is reinforced)."
+- **"Levitation or flying over unfinished pits is free of penalty"**: technically true (no `sokoban_guilt()` for floating past pits), but misleading. While levitating you cannot push boulders at all — `src/hack.c:415-425` rejects pushes with "you don't have enough leverage." Flying (not levitating) still allows pushing. Split into: "Flying lets you skip unfinished pits without penalty. Levitation avoids pits too, but it also prevents you from pushing boulders at all, so it's useless for solving."
+
+### Verified
+- Entrance DL 6-10, one above Oracle (Oracle DL 5-9 + Sokoban base=1 chainlevel=oracle, direction=up at `dat/dungeon.lua:21-25`, `60-66`).
+- Four puzzle levels, two variants each at `dat/soko*.lua`; branch `nlevels = 2` per layer at `dat/dungeon.lua:225-244`.
+- `noteleport` on every soko file (`dat/soko*.lua:7,38`); teleport blocked via `In_sokoban` at `src/teleport.c:1185-1189`.
+- Prize on soko1 (top): 75% bag of holding / 25% amulet of reflection in soko1-1; 25/75 reversed in soko1-2.
+- Cursed scroll of scare monster under the prize.
+- Conduct triggers: squeeze, polymorph boulder, fracture by striking, scroll of earth — all call `sokoban_guilt()` which does `u.uconduct.sokocheat++; change_luck(-1)` (`src/trap.c:7039-7054`).
+
+---
+
+## 2026-05-18 — v2 audit #25: Bestiary Tables — Nagas `N`
+
+Source: `spoilers/companion.md` line 8669. 4 fixes (3 factual + 1 voice de-duplication).
+
+### Wrong → fixed
+- **guardian naga row Notes: "Friendly to the Healer. Hostile otherwise."**: wrong. The pass-1 badge claimed this line was removed, but it was not. Guardian naga is MS_MUMBLE with maligntyp = +7 (lawful) per `monsters.h:2040`. `peace_minded()` has no special-case path for Healer/Rogue; only `sgn(mal)==sgn(ual)` applies, which means *lawful* PCs may find them peaceful (Knight, Samurai, lawful Valkyrie/Priest/Monk/Archeologist/Caveman). Replaced with "Lawful PCs may find them peaceful."
+- **Intro "varied breath weapons (acid / fire / poison)"**: wrong. Only the red naga has `AT_BREA` (fire) at `monsters.h:2008`. Black naga and guardian naga use `AT_SPIT` (acid and venom respectively). Golden naga has no breath/spit — its second attack is `AT_MAGC AD_SPEL` (`monsters.h:2027`). Narrowed to "with ranged attacks" without enumerating per-color details, per the no-trivia rule.
+- **golden naga row "spell 4d6 spell"**: duplicated word. The attack is `ATTK(AT_MAGC, AD_SPEL, 4, 6)`. Changed to "cast spell 4d6" matching the spoiler's notation elsewhere for AT_MAGC.
+
+### Voice (de-duplication)
+- Intro had "All nagas are poison-resistant" both at the end of the first sentence and again as a standalone one-line paragraph. Dropped the standalone duplicate.
+
+### Verified
+- All 8 rows match `include/monsters.h:1972-2048` exactly. All carry MR_POISON.
+- Black naga corpse confers poison + acid + stoning resistance per `monsters.h:2020` MR_POISON|MR_ACID|MR_STONE — section correctly surfaces this.
+
+---
+
+## 2026-05-18 — v2 rollback: trivia additions from batches 1-4
+
+User feedback during batch 5: *"so instead of making the book more brief and to the point, we are filling it with more rare trivia that isn't actually helpful."*
+
+Six trivia additions from batches 1-4 reverted. Each was technically correct but added completeness rather than saving a beginner's life or changing a strategic decision.
+
+### Reverted
+
+- **v2 audit #5 (The Quest)**: named-artifact lists for carried-MR and wielded/worn-MR collapsed back to "a few grant... a few others block..." with a pointer to the Artifacts chapter. The pass-1 framing was wrong ("only the Tourist's PYEC"); the v2 expansion to three named artifacts on each side was the wrong correction — a generic statement plus a chapter pointer is the right level.
+- **v2 audit #7 (Broadsword)**: dropped the Dragonbane and Orcrist row notes added in v2. Restored Stormbringer to the original short form ("the chaotic artifact form"). The broadsword row's redundant "+d4 small, +1 large" formula note (already encoded in the Damage column) is now empty rather than replaced with an artifact mention.
+- **v2 audit #8 (Vampires)**: dropped "Lords and Vlad can also become wolves" from the intro. The "bat or cloud" gloss is sufficient at the bestiary-row level. (The G_NOCORPSE fix on the "poisonous corpses" claim is kept.)
+- **v2 audit #10 (Long sword)**: artifact list rolled back from 6 names to 4 (Excalibur, Vorpal Blade, Frost Brand, Fire Brand — the pass-1 state). Giantslayer and Sunsword are documented in the Artifacts chapter.
+- **v2 audit #12 (Mace)**: dropped the "Sceptre of Might is the other MACE artifact" addition. Demonbane is the famous one and is already named. (The PHYS(5,0) interpretation fix and the silver-mace `hates_silver` fix are kept.)
+- **v2 audit #17 (Seduction)**: dropped the ring-of-adornment paragraph (succubus pockets / incubus puts on). The XL-1 safety note for the farm strategy is kept — that's a real lifesaver for a beginner attempting the strategy and not trivia.
+
+### Voice fix
+
+- Sea monsters intro em-dash → colon ("drag you under to drown — instadeath" → "drag you under to drown: instadeath") per the punctuation ladder.
+
+### Lesson
+
+Audit additions need a "would a beginner make a different decision with this fact?" test. The Artifacts chapter is the canonical home for artifact details; bestiary and weapon rows should not duplicate it. Saved as a memory rule [feedback-no-trivia] for the autonomous run going forward.
+
+---
+
+## 2026-05-18 — v2 audit #26: Dangerous Encounters — Enchantment Drain
+
+Source: `spoilers/companion.md` line 2106. No corrections (re-audit clean).
+
+### Verified
+- G_HELL gates generation (`monsters.h:2156`; `makemon.c:1935,1998`).
+- Active-claw target via `some_armor()` at `do_wear.c:2629-2653` (cloak > body armor > shirt; 1/4 chance each for helm/gloves/boots/shield). Weapons never targeted by the active attack.
+- If naked, `rn2(5)` may chew ring/ring/amulet/blindfold or nothing at `uhitm.c:3621-3640`. (Note: `drain_item` actually only drains charged objects; the amulet/blindfold branches no-op. The book's wording "It can instead chew a ring, amulet, or blindfold" overstates what actually happens, but the strategic message — "if you're naked, expect to lose enchantment elsewhere" — is right. Skippable trivia.)
+- Passive weapon drain when YOU melee them at `mhitu.c:2508-2515` (silent).
+- Active-claw "less effective" message at `uhitm.c:3642`.
+- MC defense via `mhitm_mgc_atk_negated` at `uhitm.c:3613`; MC3 ~ 90% negation. MC does NOT apply to the passive counter-drain.
+- Artifact / Invocation-item / Rider-corpse resistance at `zap.c:1392-1394, 1462-1467`.
+- Corpse strips one intrinsic via `attrcurse()` at `eat.c:1270-1275`.
+
+### Close calls / notes
+- "Three or four melee strikes will take a +7 sword to +3" is slightly optimistic (90% drain probability, so ~4.4 strikes expected on average). The strategic message ("don't melee them") is right either way. Left as-is.
+
+---
+
+## 2026-05-18 — v2 audit #27: Bestiary Tables — Jabberwocks `J`
+
+Source: `spoilers/companion.md` line 8595. No corrections (re-audit clean).
+
+### Verified
+- jabberwock row LVL(15, 12, -2, 50, 0), bite 2d10 × 2 + claw 2d10 × 2, color orange, M1_FLY, G_GENO|1 — all match `include/monsters.h:1806-1814`.
+- Vorpal Blade auto-behead vs `PM_JABBERWOCK` at `src/artifact.c:1595-1596` confirmed: `dieroll == 1 || mdef->data == &mons[PM_JABBERWOCK]` short-circuits the 1/20 trigger.
+- "Vorpal jabberwock" entry at `monsters.h:1816-1824` is `#if 0 /* DEFERRED */` and correctly excluded.
+- "Player baseline speed" claim correct: `NORMAL_SPEED 12` at `permonst.h:80`.
+
+---
+
+## 2026-05-18 — v2 audit #28: Dangerous Encounters — Drowning
+
+Source: `spoilers/companion.md` line 1979. No corrections (re-audit clean).
+
+### Verified
+- Drown check uses monster's tile (`is_pool(magr->mx, magr->my)`) gated by `!Swimming && !Amphibious && !Breathless` at `src/uhitm.c:3389-3390`. No encumbrance test in the grab-drown path.
+- Three flags that prevent it: Swimming, Amphibious, Breathless (`youprop.h:264-277`). Magical breathing grants both Amphibious and Breathless.
+- Eels use AT_TUCH+AD_WRAP; kraken uses AT_HUGS+AD_WRAP (`monsters.h:3230-3256`). Both route via `mhitm_ad_wrap()`.
+- Castle moat eels at `dat/castle.lua:186-189`. Medusa-4 has eels+kraken; medusa-1/3 only eels. Water plane has both.
+- Swamp room generation: eels + piranha only, no krakens by design (`mkroom.c:557-565`).
+- Pool entry gated by `!Levitation && !Flying` at `hack.c:3272`. The drown/grab path does NOT check Levitation — "doesn't save you from an eel's grab" is right.
+- `emergency_disrobe()` gated by Stressed+ at `trap.c:4897-4941`.
+
+### Close calls / notes
+- "An amulet (or spell) of magical breathing gives you Breathless" — also gives Amphibious; either flag alone defeats the grab-drown. Harmless shorthand.
+- "Eels and krakens at moats around the Castle, in swamp rooms, and on the Water Plane" — krakens are only on Medusa-4 and the Water Plane, not in swamp rooms or castle moats. Defensible as a union ("eels [in some places] and krakens [in others]"), but a careful reader could misread. Borderline; left.
+
+---
+
+## 2026-05-18 — v2 audit #29: A Practical Identification Strategy — The Price Is Right
+
+Source: `spoilers/companion.md` line 2636. 1 factual fix.
+
+### Wrong → fixed
+- **Angry-shopkeeper paragraph "+33% buy surcharge ... until you pay your bill in full"**: backwards. `pacify_shk(shkp, FALSE)` at `shk.c:2663` (the bill-payment path) does NOT clear the `surcharge` flag. The flag is only cleared by `pacify_shk(shkp, TRUE)`, called at `shk.c:302` (bones-load) and `shk.c:793` (new-customer transition). So in a single hero's playthrough, paying the bill never lifts the surcharge — it's effectively permanent for that hero in that shop. The pass-1 close-call note had it right but the body text was never corrected. Reworded.
+
+### Verified
+- Cha multipliers exactly match `shk.c:2953-2964` (Cha ≤5 ×2, 6-7 ×3/2, 8-10 ×4/3, 11-15 ×1, 16-17 ×3/4, 18 ×2/3, ≥19 ×1/2).
+- Tourist / dunce / Hawaiian-shirt cues at `shk.c:2947-2951`: shared ×4/3 markup, mutually exclusive (`if`/`else if`), XL threshold `u.ulevel < MAXULEV/2` = below XL 15.
+- Tourist sell drops to base/3 at `shk.c:3154-3160`.
+- Unfamiliar-shop sell penalty 3/4 (`!(shkp->m_id % 4)`) at `shk.c:3173-3174`.
+- UnID buy surcharge 4/3 (`(oid % 4) == 0`) at `shk.c:2864-2873`.
+- Angry surcharge formula `tmp += (tmp+2)/3` at `shk.c:2985-2986`; JS widget matches.
+- JS `computeBuy`/`computeSell` faithfully replicate the C math including the `(*10/d + 5)/10` rounding step.
+- Sell-offer 1/2 base, 3/8 on unID from unfamiliar shop. Correct.
+- All four price tables (scrolls 22 entries, potions 26, rings 28, wands 22) match `include/objects.h` exactly. Group-size claims ($300 ring group = 4 rings; $500 wand group = 2) verified.
+- Amulets all $150 except the $0 fake Amulet of Yendor (`objects.h:865-869`).
+
+### Close calls / notes
+- "If a scroll is in the $20 group, it's identify. Period." True at base price but the unID 4/3 surcharge plus Cha multipliers can move that to $27 / $30 / etc. The print-only conversion table handles this, but the "Period." is slightly absolute.
+
+---
+
+## 2026-05-18 — v2 audit #30: Bestiary Tables — Piercers `p`
+
+Source: `spoilers/companion.md` line 8238. No corrections (re-audit clean).
+
+### Verified
+- rock piercer Lvl 3, Spd 1, AC 3, MR 0, bite 2d6 at `include/monsters.h:800-808`.
+- iron piercer Lvl 5, Spd 1, AC 0, MR 0, bite 3d6 at `include/monsters.h:809-817`.
+- glass piercer Lvl 7, Spd 1, AC 0, MR 0, bite 4d6, MR_ACID at `include/monsters.h:818-826`.
+- All three carry M1_CLING | M1_HIDE.
+
+---
+
+## 2026-05-18 — v2 audit #31: Bestiary Tables — Vortices `v`
+
+Source: `spoilers/companion.md` line 8346. No corrections (re-audit clean).
+
+### Verified
+- All six rows match `include/monsters.h:1053-1110`: fog cloud (gray, Lvl 3, Spd 1, AC 0, engulf 1d6 AD_PHYS); dust vortex (brown, Lvl 4, Spd 20, MR 30, engulf 2d8 AD_BLND); ice vortex (cyan, Lvl 5, Spd 20, MR 30, engulf 1d6 AD_COLD); energy vortex (HI_ZAP / bright-blue, Lvl 6, Spd 20, MR 30, engulf 1d6 AD_ELEC + 2d6 AD_DREN + AT_NONE 0d4 passive); steam vortex (blue, Lvl 7, Spd 22, MR 30, engulf 1d8 AD_FIRE); fire vortex (yellow, Lvl 8, Spd 22, MR 30, engulf 1d10 AD_FIRE + AT_NONE 0d4 passive).
+- All six carry M1_FLY|M1_MINDLESS|G_NOCORPSE.
+- Intro damage-type list (blinding/cold/shock+drain/fire) accurate; fog cloud's plain physical engulf is implicit.
+
+---
+
+## 2026-05-18 — v2 audit #32: The Castle
+
+Source: `spoilers/companion.md` line 5435. 3 factual corrections.
+
+### Wrong → fixed
+- **"A throne room with a throne and guards"**: the throne room (region 27,05-37,11) is filled with random court monsters from the L/N/E/H/M/O/R/T/X/Z classes per `dat/castle.lua:54, 195-221`. Soldiers and the lieutenant guard the entry hall and tower corners (`castle.lua:162-179`), not the throne room. Reworded to "a random court of high-letter monsters."
+- **"A central hallway with five trap doors at evenly-spaced squares"**: `castle.lua:156-160` places them at columns 40/44/48/52/55 — gaps of 4/4/4/3, not strictly even. Dropped "evenly-spaced."
+- **"Stepping on one drops you to a random Gehennom level"**: wrong. `src/trap.c:669-670` checks `Is_stronghold(&u.uz)` and calls `find_hell()`; `src/dungeon.c:1949-1953` always sets `dlevel = 1` — i.e., the **Valley of the Dead** specifically. Reworded.
+
+### Verified
+- Wand-of-wishing chest mechanics at `dat/castle.lua:142-149` — exactly one chest, locked, in one of four corner alcoves (`place:rndcoord(1)`), containing `wishing` and `potion of gain level`.
+- Elbereth + cursed scroll wards explained by the lua author's own comment at `castle.lua:150` ("Prevent monsters from eating it").
+- Castle chest now locked in 5.0 per `doc/fixes5-0-0.txt:102`.
+- 5.0 no-arch-lich (and master-lich) change at `doc/fixes5-0-0.txt:232-234`.
+- Wand of wishing yields ~2 wishes reliably: `mkobj.c:1116-1117` (spe=1 at creation) + `read.c:738-787` (cap on recharge; second always explodes).
+- Monsters cannot unlock chests in 5.0 per `muse.c:2273`.
+- Castle DL math: `dat/dungeon.lua:7-11, 82-85` — DoD base=25 range=5, Castle base=-1 → DL 25-29.
+
+---
+
+## 2026-05-18 — v2 audit #33: Weapons Tables — Saber
+
+Source: `spoilers/companion.md` line 7298. 1 factual fix.
+
+### Wrong → fixed
+- **Silver saber row "Grayswandir (Lawful, +5 hit, hallucination resistance)"**: PHYS(5, 0) at `artilist.h:172` gives +1d5 to-hit (`artifact.c:1083-1086 spec_abon`) AND doubles damage (`artifact.c:1106-1107 spec_dbon`), same shape as Demonbane (corrected in v2 #12). "+5 hit" is wrong; the full effect set is documented in the Artifacts chapter at line 4219. Per no-trivia, replaced the inline parenthetical with "(see Artifacts)" rather than duplicating the canonical entry.
+
+### Verified
+- scimitar 1d8/1d8, wt 40, cost 15, iron, P_SABER at `include/objects.h:256-258`.
+- silver saber 1d8/1d8, wt 40, cost 75, silver, P_SABER at `include/objects.h:259-261`.
+- P_SCIMITAR-into-P_SABER merge confirmed.
+- Werebane SILVER_SABER artifact at `artilist.h:166-168`.
+- Grayswandir SILVER_SABER artifact at `artilist.h:170-172`.
+
+---
+
+## 2026-05-18 — v2 audit #34: A Practical Identification Strategy — The Sink Test (Rings)
+
+Source: `spoilers/companion.md` line 2966. No corrections (badge added).
+
+### Verified
+- `dosinkring()` at `src/do.c:498-650` — 28 distinct ring-type messages, plus the searching/slow-digestion "goto giveback" branch at `src/do.c:507-516`.
+- 1/20 backup chance and 1/5 buried chance for the consumed branch at `src/do.c:649-660`.
+- Section correctly defers detail to the Sinks subsection.
+
+### Notes
+- "Every other ring is consumed" is a slight simplification (most consumed, but 1/20 back up); section's defer-to-Sinks framing handles the nuance.
+- Section had no audit badge before this pass; one was added.
+
+---
+
+## 2026-05-18 — v2 audit #35: Weapons Tables — Flail
+
+Source: `spoilers/companion.md` line 7415. No corrections (re-audit clean).
+
+### Verified
+- flail 1d6/1d4 + small +1 (`weapon.c:272-275`) + large +1d4 (`weapon.c:239-243`), wt 15, cost 4, iron, P_FLAIL at `include/objects.h:384-386`.
+- grappling hook 1d2/1d6, wt 30, cost 50, iron, P_FLAIL (WEPTOOL) at `include/objects.h:1010-1012`.
+- `use_grapple()` pull mechanic at `src/apply.c:3728-3886`; range 4/4/5/8 by skill at `apply.c:3686-3698`.
+- No FLAIL or GRAPPLING_HOOK artifact in `include/artilist.h`.
+
+---
+
+## 2026-05-18 — v2 audit #36: What to Pack
+
+Source: `spoilers/companion.md` line 327. No corrections (re-audit clean).
+
+### Verified
+- Per-role inventory from `src/u_init.c`.
+- Pet step-around at `src/dogmove.c:145` + 991-1077.
+- Floating-eye paralysis at `src/uhitm.c:6022`.
+- Touchstone gem-ID at `src/apply.c:2742-2750`.
+- Burdened status label at `src/botl.c:12`.
+- Food ration 800 nut / wt 20 at `include/objects.h:1110`.
+
+---
+
+## 2026-05-18 — v2 audit #37: Bestiary Tables — Bats and birds `B`
+
+Source: `spoilers/companion.md` line 8449. 1 voice/factual tightening.
+
+### Wrong → fixed
+- **"Vampire bats drain Strength on the second bite"**: misleading framing. The AD_DRST is the second *attack slot* (not a sequential second bite); both slots roll independently each turn (`!rn2(8)` at `src/uhitm.c:3154`). Reworded to "Vampire bats drain Strength with a poisoned bite (poison resistance blocks it)."
+
+### Verified
+- All four rows (bat / giant bat / raven / vampire bat) match `include/monsters.h:1269-1297` exactly.
+- All carry M1_FLY.
+- Erratic-fly behavior from S_BAT class branch at `src/monmove.c:1870-1871` (1/3 chance to wander).
+- Poison resistance blocks the drain via `poisoned()` at `src/attrib.c:338-343`.
+
+### Notes
+- The auditor flagged that `poisoned()` can also instakill or do HP damage in rare branches; per no-trivia, not added — the practical advice ("get poison resistance") is unchanged.
+
+---
+
+## 2026-05-18 — v2 audit #38: Provisions and Dining
+
+Source: `spoilers/companion.md` line 3190. 3 factual corrections + 1 wisdom adjustment.
+
+### Wrong → fixed
+- **"1–50 | Weak | Movement slowed."**: wrong effect. Weak imposes a -1 Strength penalty via ATEMP (`attrib.c:471` via `eat.c:3455`), not movement slowing. Reworded.
+- **"Blessed tins open instantly."**: incomplete. Only a *blessed tin opener* guarantees instant; with an ordinary tin opener a blessed tin still rolls `rn2(2)` (50/50 between instant and one turn) at `eat.c:1740-1745`. Reworded.
+- **"about 25 turns to vanish"** (globs): misread. 25 turns is the shrink *interval* per `mkobj.c:1487-1490`; a fresh weight-20 glob lasts ~500 turns total (the source comment says "twice as long as the average corpse"). Reworded.
+
+### Wisdom adjustment
+- **"Eat corpses within a few turns of the kill"**: understates the safe window. The rotted check at `eat.c:1887-1895, 1939` uses `(moves - age) / (10 + rn2(20)) > 5` — corpses are safe roughly 50 turns before tainting becomes a real risk. "A few turns" makes beginners discard usable food. Expanded to "30 to 50 turns."
+
+### Verified
+- Hunger thresholds (Satiated >1000, Hungry 51-150, Weak 1-50, Fainting ≤0) at `eat.c:3369-3372`.
+- Base hunger -1/turn, sleep cuts to ~10% at `eat.c:3174-3179`.
+- Encumbrance hunger fires only past Stressed at `eat.c:3197`.
+- Food ration 800/20, lembas 800/5 at `objects.h:1106-1111`.
+- Elven starting inventory swaps cram for lembas at `u_init.c:234`.
+- Cannibalism `-rn1(4,2)` luck + aggravate, Caveman/Orc exempt at `eat.c:51, 770-786`.
+- Prayer cures starvation at Weak or below at `pray.c:216`.
+- Corpse intrinsic table verified against `include/monsters.h` mconveys masks.
+- Vegan/vegetarian macros at `include/mondata.h:232-241`.
+
+### Notes
+- "Never eat cockatrice corpse" is strictly true for unprepared characters; the auditor flagged that stone-resistant + gloved players can sometimes eat cockatrice tins, but per no-trivia this edge case is omitted.
+
+---
+
+## 2026-05-18 — v2 audit #39: Bestiary Tables — Kobolds `k`
+
+Source: `spoilers/companion.md` line 8151. 1 voice/factual fix plus a drive-by on Gnomes.
+
+### Wrong → fixed
+- **kobold shaman row "spell spell"**: implies two attacks. The C source has only one AT_MAGC/AD_SPEL attack at `include/monsters.h:651`. Changed to "cast spell" matching the AT_MAGC convention used elsewhere (Naga golden, etc.).
+- **gnomish wizard row "spell spell"** (line 8569, in the Gnomes section): same bug — single AT_MAGC/AD_SPEL at `monsters.h:1697`. Changed to "cast spell" in a drive-by fix; Gnomes badge updated to note this.
+
+### Verified
+- All four kobold rows match `include/monsters.h:624-656`.
+- All carry M1_POIS|MR_POISON.
+
+---
+
+## 2026-05-18 — v2 audit #40: Bestiary Tables — Felines `f`
+
+Source: `spoilers/companion.md` line 8055. No corrections (re-audit clean).
+
+### Verified
+- All 8 rows match `include/monsters.h:381-444`: kitten, housecat, jaguar, lynx, panther, large cat, tiger, displacer beast.
+- M2_DOMESTIC on kitten/housecat/large cat (tameable); M2_HOSTILE on the wild rows.
+- Displacer beast carries M3_DISPLACES.
+- Wizard always gets kitten via `urole.petnum=PM_KITTEN` (`role.c:548`).
+
+### Notes
+- Intro lists Valkyrie and Tourist as 50/50 kitten/dog, but Archeologist, Healer, Priest, Monk, Rogue, and Ranger also default to 50/50 when `urole.petnum` is `NON_PM` (`dog.c:93-100`). Only Wizard is guaranteed. Phrasing isn't wrong, just slightly partial; left as-is per preserve-voice.
+
+---
+
+## 2026-05-18 — v2 audit #41: Bestiary Tables — Mummies `M`
+
+Source: `spoilers/companion.md` line 8644. 1 factual fix.
+
+### Wrong → fixed
+- **"All mummies have poisonous corpses and are mindless and undead."**: every mummy row carries `G_NOCORPSE` (`monsters.h:1902, 1910, 1918, 1927, 1936, 1944, 1953, 1961`; flag at `monflag.h:201`). Mummies never leave a corpse, so the M1_POIS flag is dormant. Reworded to "All mummies are mindless undead and leave no corpse."
+
+### Verified
+- All 8 rows (kobold/gnome/orc/dwarf/elf/human/ettin/giant mummy) match `include/monsters.h:1901-1968`.
+- All carry MR_COLD | MR_SLEEP | MR_POISON, M1_MINDLESS | M2_UNDEAD.
+- All attacks AD_PHYS only; no AD_DISE / "withering" mechanic (pass-1's removal stayed).
+
+---
+
+## 2026-05-18 — v2 audit #42: Traps and Hazards — Dangerous Traps
+
+Source: `spoilers/companion.md` line 1262. 1 wisdom addition.
+
+### Wisdom addition
+- Sleeping-gas paragraph didn't mention sleep resistance. `trap.c:2772-2773` returns early on Sleep_resistance, so elves and ring-of-sleep-resistance wearers sidestep the trap entirely. Added one short sentence: "Sleep resistance (elven blood, the right ring) sidesteps it." Real strategic info for an elf player wondering if they need to fear sleep traps.
+
+### Verified
+- Anti-magic implosion formula at `trap.c:2351-2370` (rnd(4) base + Half_physical||Half_spell + Magicbane + first carried magic-resistance artifact, max 4d4; quartered for Passes_walls).
+- Polymorph trap blocked by `Antimagic || Unchanging` at `trap.c:2486-2489`. Iron shoes checked first and convert into kicking boots (or vice versa) at `trap.c:2478-2486`.
+- Fire trap damage `d(2,4)`; items still take `destroy_items` regardless of Fire_resistance per `trap.c:4233-4309`.
+- Cancellation on magical trap: `20 + d(3,6)` explosion at `zap.c:3593-3621`.
+
+### Notes
+- Auditor flagged the iron-footwear polymorph-trap conversion as a potential addition; section already covers it ("your shoes shift instead"). Skipped.
+- Auditor flagged "if you carry magic resistance" vs "if you're magic-resistant" wording difference between table cell and body paragraph; minor and not strategic. Left.
+
+---
+
+## 2026-05-18 — v2 audit #43: The Art of Combat
+
+Source: `spoilers/companion.md` line 4685. 2 factual fixes.
+
+### Wrong → fixed
+- **To-hit list "Your Strength bonus (muscles still matter underground)"**: incomplete. `abon()` at `src/weapon.c:950-988` includes BOTH Strength AND Dexterity. Dex 25 yields +11, often the dominant contributor at high levels. Pass-1 missed this. Reworded to "Your Strength and Dexterity bonuses (muscles plus agility, both matter)" — preserves voice without expanding into a list.
+- **"Monster spellcasters no longer get a free extra step after casting"** (full bullet): fabricated 5.0 change. The pass-1 audit flagged this as "plausible but unverified"; the v2 auditor confirmed no such fix exists in git history. Monsters still move via `m_move()` (PHASE THREE) then attack/cast via `mattacku()`/`castmu()` (PHASE FOUR) on the same turn (`monmove.c:911, 943-944, 971`). Bullet dropped entirely.
+
+### Verified
+- d20 + abon + AC + uhitinc + Luck + level formula at `src/uhitm.c:376-378`.
+- Luck contribution cap `(|Luck|+2)/3` (so ±5 at Luck 13).
+- Str damage +6 cap at STR ≥ 18/100.
+- Two-handed Str-damage 50% bonus at `src/uhitm.c:1465-1468`.
+- Two-weapon -9/-7/-5/-3 to-hit and -3/-1/0/+1 damage by skill at `src/weapon.c:1559-1600`.
+- Conflict requires mutual sight at `src/mon.c:1306`; resist formula `rnd(20) > min(19, Cha - m_lev + u.ulevel)` at `src/mondata.c:1607-1612`.
+- Ranged-monster keep-distance behavior new in 5.0/3.7 at `src/monmove.c:1180-1224`.
+- Cornered scared monsters fight via `panicattk` at `src/monmove.c:918-920, 968`.
+
+---
+
+## 2026-05-18 — v2 audit #44: Dangerous Encounters — Level Drain
+
+Source: `spoilers/companion.md` line 2079. 1 factual fix + 1 wisdom addition.
+
+### Wrong → fixed
+- **"the bite of a hostile incubus or succubus (see Seduction below)"**: under default `sysopt.seduce = 1` at `sys.c:100`, the demon's bite is `AD_SSEX`, not `AD_DRLI`. The `AD_SSEX → AD_DRLI` substitution at `mhitu.c:327-334` only fires when SEDUCE is disabled. So under stock options hostile foocubi do not drain levels. Dropped the clause.
+
+### Wisdom addition
+- Existing text said "you have to kill enough monsters to re-earn them" — implies that's the only path. Added: potion of restore ability restores one lost level per quaff, and a blessed one restores all at once (`potion.c:687-691`). Wraith corpse already listed; this rounds out the recovery options for a beginner who just got drained.
+
+### Verified
+- AD_DRLI carriers (wraith, barrow wight, Nazgul, vampire, vampire leader, Vlad) at `monsters.h:2281-2348`.
+- Drain mechanic at `uhitm.c:2479-2488`: 1-in-3 chance, blocked by `Drain_resistance` or `mhitm_mgc_atk_negated`.
+- HP/power loss per `u.uhpinc[u.ulevel]` / `u.ueninc[u.ulevel]` at `exper.c:251-273`.
+- Drain resistance carriers (all wielded only): Excalibur, Stormbringer, Aesculapius at `artilist.h`.
+- Black DSM grants both disintegration and drain resistance at `do_wear.c:809-815`.
+- Shield of drain resistance has DRAIN_RES as its sole `oc_oprop` at `objects.h:656-658`.
+- Wraith corpse +1 level via `pluslvl(FALSE)` at `eat.c:1141-1142`; weight 0 / cnutrit 0 makes it untinnable.
+
+### Notes
+- Synced the vampire-bat parenthetical to match the v2 #37 reword ("poisoned bite" not "second bite").
+
+---
+
+## 2026-05-18 — v2 audit #45: A Practical Identification Strategy — A Practical Strategy
+
+Source: `spoilers/companion.md` line 3152. No corrections (re-audit clean).
+
+### Verified
+- Altar BUC flash at `do.c:379-389`.
+- Engrave-test costs one charge at `engrave.c:792` + `zap.c:2520`.
+- Wand of digging auto-IDs via "Gravel flies up" at `engrave.c:684-704`.
+- WAN_COLD engrave message "A few ice cubes drop from the wand" at `engrave.c:658-661`.
+- All amulets fixed 150gp at `objects.h:834`.
+
+---
+
+## 2026-05-18 — v2 audit #46: Choosing Your Expedition
+
+Source: `spoilers/companion.md` line 132. 2 factual fixes + 2 wisdom adjustments.
+
+### Wrong → fixed
+- **Healer "convert them to fruit juice with an amethyst"**: wrong gemstone. The amethyst converts POT_BOOZE to fruit juice (`potion.c:2161-2163`), not POT_SICKNESS. Sickness → fruit juice is via unicorn horn (`potion.c:2151-2154`). Reworded.
+- **Knight "+0 lance"**: the starting lance is +1, not +0 (`u_init.c:91-92`, `{ LANCE, 1, ... }`). Fixed to "+1 lance."
+
+### Wisdom adjustments
+- **Cave Dweller "You gain speed early"**: misleading. Cave Dweller intrinsic Fast is at XL 7 (`attrib.c:37`), while Samurai and Monk both get speed at XL 1. A beginner reading the section sequentially would reasonably expect "early" to mean what it means in the Samurai paragraph. Softened to "by mid-game."
+- **"Mjollnir waiting at the first altar you can sacrifice on"** (closing recommendation): cross-aligned altars don't deliver sacrifice gifts. Clarified to "first co-aligned altar" — a real beginner gotcha when a new Valkyrie sacrifices at the first altar they find and gets nothing back.
+
+### Verified
+- All 13 role alignments and race availabilities against `src/role.c:55-558`.
+- All 5 race stat caps against `role.c:597-678`.
+- Race hostility / `lovemask` per `role.c` and `include/you.h:273`.
+- Knight code: `-1` align for fleeing-or-helpless (`uhitm.c:336-339`); Samurai's giri at `uhitm.c:342-345`.
+- Knight Excalibur 1/6, others Lawful 1/30 at XL ≥ 5 (`fountain.c:404-405`).
+- Knight intrinsic jumping at char-gen (`u_init.c:691`).
+- Intrinsic-by-XL tables in `attrib.c:27-88`.
+- Elf sleep-res XL 4 (`attrib.c:94-95`); elf Priest/Wizard random instrument (`u_init.c:799-813`).
+- Healer sickness immunity (`potion.c:977`).
+- Priest BUC sense (`invent.c:3553-3555, 3593-3595`).
+- Rogue backstab `+rnd(u.ulevel)` (`uhitm.c:920-964`).
+- Monk veg-conduct alignment penalty (`eat.c:1379-1381`).
+- Mjollnir ELEC(5,24) returns at Str 25, Valkyrie-only; role-gift alignment rewritten to match PC at char-gen (`artifact.c:92-95`), so "regardless of alignment" is correct.
+- Demonbane Priest role-gift, silver mace (`artilist.h:162-164`); Priest mace Expert (`u_init.c:392`).
+- Wizard skill-based spellbook ID is Wizard-only (`spell.c:861-867`).
+
+### Notes
+- Rogue "six daggers for throwing": actual range is 6-15 (`u_init.c:135`). Not corrected per no-trivia — "six" is the minimum and beginner doesn't need the range.
+- Knight "lance is largely useless on foot" is true for melee but the lance can be `#applied` at reach distance. Not corrected per preserve-voice; the absoluteness reads fine for a first-time-player chapter.
+
+---
+
+## 2026-05-18 — v2 audit #47: Bestiary Tables — Jellies `j`
+
+Source: `spoilers/companion.md` line 8131. No corrections (re-audit clean).
+
+### Verified
+- All three rows match `include/monsters.h:591-620`: blue jelly LVL(4,0,8,10) passive 0d6 cold; spotted LVL(5,0,8,10) passive 0d6 acid; ochre LVL(6,3,8,20) engulf 3d6 + passive 3d6 acid.
+- All carry M1_AMORPHOUS | M1_MINDLESS.
+- Blue jelly's MR_COLD|MR_POISON conveys permanently via `should_givit` at `eat.c:983-988`.
+- Spotted/ochre's MR_ACID|MR_STONE conveys TIMED via `temp_givit` at `eat.c:991-997` (chance=3 for acid, chance=6 for stone).
+
+---
+
+## 2026-05-18 — v2 audit #48: Voluntary Challenges — Bonesless
+
+Source: `spoilers/companion.md` line 6988. No corrections (re-audit clean).
+
+### Verified
+- "bonesless" xlogfile achievement set only when `!flags.bones` at `src/topten.c:605`.
+- `bones` is `set_in_config` per `include/optlist.h:213-215` — config file / command line only, not the in-game `O` menu.
+- `!flags.bones` blocks both save (`bones.c:360`) and load (`bones.c:642`).
+- The "didn't encounter any bones levels" enlightenment is distinct (`insight.c:439-441` requires `flags.bones` true + `numbones==0`).
+- 5.0 addition per `doc/fixes5-0-0.txt:2742`.
+
+---
+
+## 2026-05-18 — v2 audit #49: Traps and Hazards — Nuisance Traps
+
+Source: `spoilers/companion.md` line 1226. No corrections (re-audit clean).
+
+### Verified
+- Arrow trap at `trap.c:1190-1248`; 1/15 trap-empty chance once seen.
+- Dart trap with 1-in-6 poisoned dart at `trap.c:1273`.
+- Squeaky board at `trap.c:1402-1476`; wake_nearby/wake_nearto, skipped by Levitation OR Flying.
+- Rust trap default branch (40%) hits cloak/suit/shirt in order and douses lit lamps at `trap.c:1632-1643`.
+- Missed arrows/darts land on the floor via `place_object + stackobj`, confirming "Veterans sometimes trigger them deliberately to stock up."
+
+---
+
+## 2026-05-18 — v2 audit #50: Dangerous Encounters — Petrification (Stoning)
+
+Source: `spoilers/companion.md` line 1949. 1 timing fix + 1 wisdom softening.
+
+### Wrong → fixed
+- **"after that you're paralyzed for three turns and the next message kills you"**: off by two. The dialogue at counter 3 is "Your limbs have turned to stone" (paralysis); two MORE messages appear before death — "You have turned to stone" (counter 2) and "You are a statue" (counter 1) — and `done(STONING)` fires when the counter reaches 0 (`timeout.c:674-684`). Reworded to "the final messages kill you."
+
+### Wisdom adjustment
+- **Unchanging-during-stoning warning**: was over-strong. `poly_when_stoned` (`mondata.c:80-85`) only fires when the player is already polymorphed into a non-stone golem. For an unpolymorphed hero (the typical case), Unchanging doesn't actually block any rescue because there was no rescue to block. Reworded to scope the warning: "If you happen to be polymorphed into a non-stone golem, wearing it during the countdown is actively harmful..."
+
+### Verified
+- 5-turn countdown started by `make_stoned(5L,...)` at `uhitm.c:3937`; dialogue strings at `timeout.c:128-148`.
+- "Your limbs have turned to stone" triggers `nomul(-3)` at `timeout.c:163-165`.
+- Kicking a cockatrice corpse barefoot calls `instapetrify` at `dokick.c:542-554`.
+- Tripping over a cockatrice corpse from Fumbling at `timeout.c:1256-1261`.
+- Acid blob corpse grants `d(3,6)` turns of HStone_resistance at `eat.c:1089-1094`.
+- Yellow dragon scale mail/scales grants EStone_resistance at `do_wear.c:860-872`.
+- Wielded cockatrice corpse: hits call `munstone`/`minstapetrify` at `uhitm.c:1152-1167`; wielding without gloves is fatal at `wield.c:142-150`.
+- Cures: lizard/acidic flesh (`eat.c:3941-3944`); potion of acid (`potion.c:1312`); stone-to-flesh (`zap.c:2974`); prayer (`pray.c:382`).
+
+---
+
+## 2026-05-18 — v2 audit #51: Weapons Tables — Whip
+
+Source: `spoilers/companion.md` line 7526. No corrections (re-audit clean).
+
+### Verified
+- rubber hose 1d4/1d3, wt 20, cost 3, plastic, P_WHIP, prob 0 (never random) at `include/objects.h:374-376`.
+- bullwhip 1d2/1, wt 20, cost 4, leather, P_WHIP at `include/objects.h:390-392`.
+- Archeologist starter +1 proficient at `src/apply.c:2992-2993`.
+- Disarm only when target wielding a weapon at `src/apply.c:3148-3153`.
+- Pit yank anchors at `src/apply.c:3089-3099`.
+- No whip artifacts in `include/artilist.h`.
+
+---
+
+## 2026-05-18 — v2 audit #52: Dangerous Encounters — The Touch of Death
+
+Source: `spoilers/companion.md` line 2016. No corrections (re-audit clean).
+
+### Verified
+- Death the Rider's two AT_TUCH AD_DETH attacks (8d8 each) at `include/monsters.h:3144-3153`.
+- `rn2(20)` roll: 17-19 = full touch (15%), 5-16 = permdrain=1 life drain (60%), 0-4 = miss (25%) at `src/uhitm.c:3858-3882`.
+- Full touch `dmg = 50 + d(8,6)`, permadrain half at `src/mcastu.c:323-353`.
+- `if (!Antimagic)` guard on the 17-19 branch with FALLTHROUGH to default drain at `src/uhitm.c:3862-3868`.
+- Wand/spell self-zap checks only `nonliving || is_demon` (no Antimagic check) at `src/zap.c:2885-2902`; ray-hits-hero path checks both at `src/zap.c:4493-4502`.
+- `nonliving` covers undead/manes/golems/S_VORTEX per `include/mondata.h:219-220`.
+
+---
+
+## 2026-05-18 — v2 audit #53: Traps and Hazards — Engravings
+
+Source: `spoilers/companion.md` line 1419. No corrections (re-audit clean).
+
+### Verified
+- Engraving rate default 10 (instant); slow methods (dulling_wep / RING / GEM) set rate=1 at `engrave.c:1275, 1320-1325`.
+- Uncursed athame skips slow branch and doesn't dull at `engrave.c:1306-1307`.
+- Edged weapon dulling -1 enchantment per ~2 chars at `engrave.c:1357-1382`.
+- Impairment garble (Blind 1/11, Confused 1/7, Stunned 1/4, Hallucinating 1/2) applies universally at `engrave.c:1218-1228`.
+- Wand types: WAN_DIGGING → ENGRAVE, WAN_FIRE/LIGHTNING → BURN at `engrave.c:684-732`.
+- DUST monster-step erodes 1 char per turn at `monmove.c:734` + `engrave.c:271-289`.
+- BURN damage on ice or magical fire @ 50% at `engrave.c:278`.
+- Strict-match Elbereth at `engrave.c:256`.
+- "ad aerarium" niche placement at `mklev.c:728-737`.
+
+---
+
+## 2026-05-18 — v2 audit #54: Voluntary Challenges — Illiterate
+
+Source: `spoilers/companion.md` line 6814. 1 wisdom softening.
+
+### Wisdom softening
+- **"Without spellbooks, you have no spells"**: overstates. Wizards, Priests, Healers, Monks, and Knights start with one pre-learned spell that lasts until `KEEN = 20000` turns expire (`spell.h:17`, `spell.c:2340`). For a casting role attempting Illiterate, the starting spell is a real (if temporary) asset. Reworded to "Without spellbooks, you can't learn new spells or refresh old ones, so any starting spell you have will eventually fade."
+
+### Verified
+- "x"/"X" engraving exemption at `engrave.c:1213` (length-1 with x/X).
+- Blank scrolls/spellbooks exempt at `read.c:600-601`.
+- Book of the Dead exempt at `read.c:600`.
+- Hawaiian shirts exempt at `read.c:392-395` (returns before literate increment).
+- Floor engraving redraw at `engrave.c:1724` (no conduct logic).
+- Scrolls/spellbooks at `read.c:602`; fortune cookies at `eat.c:2525`; T-shirts at `read.c:397`; marker writing at `write.c:245`.
+- Novel-only-on-read at `spell.c:519`.
+
+### Notes
+- Forbidden-reads list is technically incomplete (coins, credit cards, candy bars, magic markers, dunce caps, Orb of Fate signature, naming artifacts, Archeologist scroll auto-decipher), but per no-trivia the headline cases suffice. Tourists attempting Illiterate need to ditch their starting dunce cap; Archeologists must not pick up unknown scrolls — both are role-specific traps that an Illiterate player will discover.
+
+---
+
+## 2026-05-18 — v2 audit #55: Weapons Tables — Shuriken
+
+Source: `spoilers/companion.md` line 7591. No corrections (re-audit clean).
+
+### Verified
+- 1d8/1d6, wt 1, cost 5, +2 hit, iron, PIERCE, missile, P_SHURIKEN at `include/objects.h:163-165`.
+- `is_poisonable` per `include/obj.h:264-268`.
+- Samurai trains to Expert per `src/u_init.c:481`.
+
+---
+
+## 2026-05-18 — v2 audit #56: Sokoban Solutions — Level 2, Version B
+
+Source: `spoilers/companion.md` line 6290. No spoiler-text corrections; 1 badge correction.
+
+### Wrong → fixed (badge only)
+- The pass-1 badge cited "soko2-2.lua" as the source file. The actual source is `dat/soko3-2.lua` (NetHack Sokoban .lua files are numbered from the bottom up, so spoiler "Level 2" = second-from-top = soko3-X). Badge corrected.
+
+### Verified
+- All 16 boulder start coords (A-P) match `dat/soko3-2.lua:33-48` under spoiler = lua+1.
+- Downstair @=(4,2)/lua(3,1), upstair <=(21,5)/lua(20,4), locked door +=(25,10)/lua(24,9), rolling-boulder →=(12,11)/lua(11,10), twelve hole traps at spoiler (13-24,11).
+- All 22 push steps geometrically legal.
+- Both intermediate diagrams (after step 9, after step 16) match simulated boulder positions.
+- Step 17 (H left one) is necessary to clear the pushing position for steps 18 and 22.
+- Final tally "Four boulders (A, D, G, and H) remain" — checks.
+
+### Notes
+- Step 21 ("Push G right one square. Push D up one square.") is gratuitous (the pass-1 badge already flagged this as "harmless"). Left as-is.
+
+---
+
+## 2026-05-18 — v2 audit #57: Weapons Tables — Spear
+
+Source: `spoilers/companion.md` line 7476. 1 factual correction.
+
+### Wrong → fixed
+- **"The Valkyrie ... gets +1 multishot on any thrown spear"**: wrong. Per `src/dothrow.c:47-52` the P_SPEAR class multishot bonus goes to `PM_CAVE_DWELLER` (Caveman), not Valkyrie. Valkyrie has no class-specific spear multishot — she gets only the generic Expert-tier multishot that any Expert spear-user gets. The pass-1 audit asserted this incorrectly. Reworded the strategic framing: Valkyrie still starts with a spear and trains to Expert, but the Caveman is the actual multishot specialist. Updated the javelin Notes cell from "Valkyries can ranged-spam them" to "Cavemen can ranged-spam them."
+
+### Verified
+- All damage/weight/cost stats match `include/objects.h:174-191`.
+- Valkyrie starts with a spear and caps at Expert (`u_init.c:160-161, 537`).
+- Kebab +2 to-hit list (xorn, dragon, jabberwock, naga, giant) at `src/weapon.c:71-73, 167-168`.
+- No spear artifacts in `include/artilist.h`.
+- Stiletto is P_KNIFE, correctly excluded.
+
+---
+
+## 2026-05-18 — v2 audit #58: Voluntary Challenges — Wishing Restrictions
+
+Source: `spoilers/companion.md` line 6874. No corrections (re-audit clean).
+
+### Verified
+- Two separate counters: `u.uconduct.wishes` and `u.uconduct.wisharti` at `include/you.h:157-158`.
+- Two xlogfile achievements: `wishless` / `artiwishless` at `topten.c:596-597`.
+- Wish sources: wand of wishing, smoky-potion djinni, fountain water demon, Vlad's throne, Amulet of Yendor pickup. All routes converge on `makewish()`.
+- Wishing for literal "nothing" returns early without ticking the counter (`zap.c:6369-6373`).
+- `wisharti` ticks even for *denied* artifact wishes (`objnam.c:5362-5365` runs BEFORE the deny branch at 5371-5381).
+
+---
+
+## 2026-05-18 — v2 audit #59: Voluntary Challenges — Petless
+
+Source: `spoilers/companion.md` line 6945. 1 factual correction (fabrication removed).
+
+### Wrong → fixed
+- **"dairy products to foocubi"**: not a NetHack mechanic. Food-throw taming gates on `is_domestic(ptr)` (or monkey/ape + banana) per `include/mondata.h:255-261 befriend_with_obj()`. Foocubi aren't domestic and cannot be tamed by thrown food of any kind. The wiki-known foocubus trick is throwing a ring of adornment (pacification, not taming). Fabricated mechanism. Replaced with the actual food-throw taming path that was missing from the list: "food thrown at hostile dogs and cats."
+
+### Verified
+- `u.uconduct.pets` counter at `include/you.h:161`, incremented in `dog.c:87`.
+- `OPTIONS=pettype:none` short-circuits `makedog()` at `dog.c:225-229`, overriding per-role mandatory pets.
+- 5.0 addition per `doc/fixes5-0-0.txt:2843`.
+- Real taming paths: scrolls of taming (`read.c:1057, 3325`), charm-monster spell (`spell.c:1522`), magic trap (`trap.c:4429`), food-throw at domestic monsters (covered by the fix above), magic flute (`music.c:214`), figurines.
+- `petless` xlogfile achievement at `topten.c:606`.
+
+### Notes
+- The list is still exemplary rather than exhaustive (figurines, magic flute, werecreatures, demon-summoning prayer rewards all missing) — but per no-trivia the four examples in the spoiler suffice.
+
+---
+
+## 2026-05-18 — v2 audit #60: Sokoban Solutions — Level 3, Version B
+
+Source: `spoilers/companion.md` line 6427. No corrections (re-audit clean).
+
+### Verified
+- All 16 boulders A-P map to `dat/soko2-2.lua` coords under spoiler = lua+1.
+- Upstair `<` at (16,7) per pass-1 fix; downstair/start `@` at (7,12); rolling-boulder trap at (8,12); eleven holes at cols 9-19; two locked doors at (20,10) and (20,12).
+- 15 numbered steps faithfully compress Boudewijn Waijers's original 22 steps (the spoiler merges adjacent Push+Finish pairs).
+- Each push geometrically reachable.
+- Intermediate map state after step 7 matches expected boulder positions.
+- Final tally "Five boulders (A, B, D, E, and J) remain" exact (16 − 11 finished).
+
+---
+
+## 2026-05-18 — v2 audit #61: Bestiary Tables — Elementals `E`
+
+Source: `spoilers/companion.md` line 8521. No corrections (re-audit clean).
+
+### Verified
+- All five rows match `include/monsters.h:1566-1610`: stalker (no mindless, sees-invis, M2_STALK); air (AT_ENGL AD_PHYS 1d10); fire (claw 3d6 AD_FIRE + passive 0d4); earth (claw 4d6 + MR_FIRE|MR_COLD|MR_POISON|MR_STONE); water (claw 5d6 + M1_SWIM|M1_AMPHIBIOUS + MR_POISON|MR_STONE).
+- Lead-in "all except stalker also are mindless" matches the M1_MINDLESS flags.
+
+### Notes
+- "Water drowns if you're adjacent in water" is defensible flavor — water elementals don't have a drown attack but spawn only on water tiles, so encountering one already places you near the water-tile drowning risk.
+- "Air engulfs and suffocates" — engulf is AD_PHYS, not AD_DRST; "suffocates" reads as engulf-flavor and is defensible.
+- Air and fire rows could enrich Notes with their resistances (MR_POISON|MR_STONE on air, MR_FIRE|MR_POISON|MR_STONE on fire) to match earth/water rows. Pass-1 already flagged this as a close call; left for now.
+
+---
+
+## 2026-05-18 — v2 audit #64: Bestiary Tables — Xans and fantastic insects `x`
+
+Source: `spoilers/companion.md` line 8387. 1 factual fix.
+
+### Wrong → fixed
+- **"sting your legs and slow you down"**: xan's AD_LEGS / Wounded_legs reduces carrying capacity (`hack.c:4331-4336`) and abuses Dex (`attrib.c:472, 581`) but does NOT reduce movement speed. Reworded to "sting your legs and cut your carrying capacity."
+
+### Verified
+- Grid bug Lvl 0, Spd 12, AC 9, bite 1d1 shock at `monsters.h:1149-1156`.
+- Xan Lvl 7, Spd 18, AC -4, sting 1d4 AD_LEGS, M1_FLY|M1_POIS at `monsters.h:1157-1164`.
+- Both carry MR_POISON.
+
+---
+
+## 2026-05-18 — v2 audit #65: Bestiary Tables — Trolls `T`
+
+Source: `spoilers/companion.md` line 8782. No corrections (re-audit clean).
+
+### Verified
+- All five rows match `include/monsters.h:2225-2266`: troll, ice troll, rock troll, water troll, Olog-hai.
+- All carry M1_REGEN | M2_STALK.
+- S_TROLL class is `is_reviver` per `mondata.h:170`.
+- Revival via `revive_corpse` at `mon.c:1560, 1679`.
+- Trollsbane disables revive via `mkcorpstat_norevive` flag at `monst.h:247-248`, applied at `uhitm.c:1906, 4867` and `mhitm.c:1082`.
+- Stoning leaves a statue (`mon.c:671 mkcorpstat(STATUE,...)`), so no corpse to revive from.
+
+---
+
+## 2026-05-18 — v2 audit #62: Tools of the Trade
+
+Source: `spoilers/companion.md` line 3912. 4 corrections.
+
+### Wrong → fixed
+- **"Bell of Opening ... granted by your quest leader on Quest completion"**: wrong. The Bell is carried by the quest *nemesis* (`makemon.c:1378-1379` — `MS_NEMESIS` gets BELL_OF_OPENING at spawn) and looted from their corpse. The quest leader chides you if you finish without it (`quest.c:267-268 quest_complete_no_bell`) but doesn't grant it. Reworded the Other Notable Tools cell.
+- **"One blessed scroll of charging restores it to at least 50"**: misleading. Uncursed charging also reaches 50 (`read.c:880-883`); blessing pushes the floor to 75. Reworded to "non-cursed scroll of charging restores it to at least 50 (more if blessed)."
+- **Magic lamp "rub it while blessed and there's a 1-in-3 chance the djinni emerges"**: implies blessing affects emergence. The 1/3 emergence is independent of bless (`apply.c:1817`); bless only affects the wish-grant probability (80% blessed, lower otherwise). Reworded.
+- **"~16 charges very well spent"** for writing scroll of charging: that's the basecost. Actual write cost is `rn1(8,8)` = 8-15 charges. Updated to "8-15 charges."
+
+### Wisdom additions
+- Added the G_UNIQ-skip caveat to class genocide: "uniquely-named demon lords survive any class genocide" (`read.c:2998`). Real beginner protection — a player who genocides `&` thinking it'll remove Demogorgon will be unpleasantly surprised.
+
+### Verified
+- Container weights and locked-on-creation rates at `objects.h:899-912`, `mkobj.c:311-336`.
+- BoH scatter-not-destroy per `fixes5-0-0.txt:183`.
+- Intelligent monsters loot containers per `fixes5-0-0.txt:2668`.
+- Skeleton key floors `75 + Dex` boxes / `70 + Dex` doors at `lock.c:528, 640`.
+- Magic marker 30-99 charges at `mkobj.c:1026 rn1(70,30)`.
+- Write costs match per-scroll basecost / 2 to basecost at `write.c:13-57, 256-265`.
+- Mid-write failure (scroll disappears, spellbook paper survives) at `write.c:269-282`.
+- Second marker recharge always fails at `read.c:854-865`.
+- Wand of wishing 2nd charging always explodes at `read.c:761-764`.
+- Unicorn horn 7-status cure list at `apply.c:2312-2327`; no longer restores attribute drain per `fixes5-0-0.txt:190`.
+- Magic flute sleep / harp tame at `music.c:589-669`.
+- Drum of earthquake at `music.c:688-698`.
+- Crystal ball one-glyph-class-per-gaze at `detect.c:1300-1311`.
+
+---
+
+## 2026-05-18 — v2 audit #63: Traps and Hazards — Searching and Detection
+
+Source: `spoilers/companion.md` line 1319. 1 factual fix.
+
+### Wrong → fixed
+- **"Wand of secret door detection reveals everything hidden in a square radius around you"**: wrong shape. The wand uses `do_clear_area` at `vision.c:2107-2148` with `circle_data` at `vision.c:27-45` — a *circular* area of radius `BOLT_LIM = 8` (`hack.h:49`), further gated by `couldsee()` line-of-sight checks at `vision.c:2144`. Walls block detection. Reworded to "a roughly circular area around you (radius about eight, blocked by line of sight)."
+
+### Verified
+- `dosearch0` independent rolls per square at `detect.c:2033-2090`.
+- `rnl` Luck bias at `rnd.c:112-140`; trap roll `!rnl(8)` at `detect.c:2079`.
+- Excalibur is the only SPFX_SEARCH artifact at `artilist.h:85-86`; bonus only on rnl(7-fund) at `detect.c:2043, 2053`, not on trap roll.
+- Wand reveals SDOOR/SCORR/traps/trapped chests/hidden mimics via `findone` at `detect.c:1639-1726`.
+- Crystal ball trap detection scans the level-wide `gf.ftrap` list at `detect.c:1011-1075`.
+- `trap_is_unavoidable` ground-trap list at `trap.c:2810-2898`.
+
+---
+
+## 2026-05-18 — v2 audit #66: Weapons Tables — Club
+
+Source: `spoilers/companion.md` line 7383. 1 voice/factual tightening.
+
+### Wrong → fixed
+- **Club row Notes "What a Caveman starts with — basic but free of curses early"**: wrong. Starting inventory uses `blessorcurse(otmp, 10)` at `mkobj.c:876-885`, so about a 10% chance the starting club is cursed. Trimmed to "Caveman starter." matching the short-sword row's convention.
+
+### Verified
+- Club 1d6/1d3, wt 30, cost 3, wood, P_CLUB at `objects.h:371-373`.
+- Aklys 1d6/1d3, wt 15, cost 4, iron, P_CLUB at `objects.h:381-383`.
+- Caveman starts with club at `u_init.c:68-70`.
+- Aklys return mechanic requires W_WEP per `dothrow.c:30-34 AutoReturn` macro; ~1% misfire at `dothrow.c:1711`.
+- No P_CLUB artifacts in `include/artilist.h`.
+
+---
+
+## 2026-05-18 — v2 audit #67: Bestiary Tables — Nymphs `n`
+
+Source: `spoilers/companion.md` line 8204. No corrections (re-audit clean).
+
+### Verified
+- All three rows (wood / water / mountain) Lvl 3, Spd 12, AC 9, MR 20%, AT_CLAW AD_SITM + AT_CLAW AD_SEDU at `monsters.h:702-723`.
+- Water nymph M1_SWIM at `monsters.h:714`.
+- All three M1_TPORT.
+- AD_SITM steal-and-teleport handled at `uhitm.c:4724, 4798`; AD_SEDU at `uhitm.c:4642`.
+
+---
+
+## 2026-05-18 — v2 audit #68: A Practical Identification Strategy — Blessed, Uncursed, Cursed
+
+Source: `spoilers/companion.md` line 2582. No corrections (re-audit clean).
+
+### Verified
+- Altar flash colors at `do.c:379-388` (amber=blessed, black=cursed).
+- Pet step-around-cursed at `dogmove.c:535-538` (with starvation exception not surfaced in prose).
+- Cursed armor stays welded at `do_wear.c:1900, 2199`.
+- Cursed gain-level "rises through ceiling" at `potion.c:1083-1109`.
+- Cursed scroll of teleportation = level teleport at `read.c:2015-2025`.
+- Holy water making at `pray.c:1387-1411, 2336-2339`.
+- Priests sense BUC naturally at `invent.c:2763, 3545`.
+- Blessed scroll of identify "at least 2 items + 1-in-5 chance whole pack" at `read.c:2086-2092`.
+- Cursed scroll of identify only IDs itself on first cursed read at `read.c:2074-2081`.
+
+### Notes
+- "Uncursed scroll IDs one or two items" is a typical-case simplification — the C code at `read.c:2086` has a 1-in-5 chance to roll `rn2(5)`, so uncursed *can* occasionally identify more, but the modal outcome is 1. Defensible as written.
+
+---
+
+## 2026-05-18 — v2 audit #69: A Practical Identification Strategy — Naming What You've Learned
+
+Source: `spoilers/companion.md` line 3142. No corrections (re-audit clean).
+
+### Verified
+- `#name` / `#call` aliases at `src/cmd.c:1773-1774`.
+- Class-naming via `docall` (sets `objects[otyp].oc_uname`) at `src/do_name.c:571-588`.
+- Renaming-by-overwrite at `src/do_name.c:660-672` (frees old `*uname_p`, assigns new).
+
+---
+
+## 2026-05-18 — v2 audit #70: Bestiary Tables — Leprechauns `l`
+
+Source: `spoilers/companion.md` line 8176. No corrections (re-audit clean).
+
+### Verified
+- Stats (Lvl 5, Spd 15, AC 8, MR 20, green, claw 1d2 AD_SGLD, M1_TPORT) at `monsters.h:660-666`.
+- Stealgold + teleport at `src/steal.c:58-115`.
+
+### Notes
+- Auditor flagged that unseen leprechauns can bury gold (`monmove.c:1152-1171 leppie_stash`), so the corpse doesn't always drop the stolen gold back. Common case still drops gold; per no-trivia, left.
+
+---
+
+## 2026-05-18 — v2 audit #71: Dangerous Encounters — Genocide
+
+Source: `spoilers/companion.md` line 2308. 1 word fix.
+
+### Wrong → fixed
+- **"genocide your own race"**: imprecise. The PLAYER branch at `read.c:2839` uses `mndx = u.umonster` = `gu.urole.mnum` (`u_init.c:991`), the **role's** monster (PM_VALKYRIE, PM_ARCHEOLOGIST, etc.), not the race (PM_HUMAN/PM_ELF/...). Changed "race" to "species."
+
+### Verified
+- Confused-uncursed-scroll path at `read.c:1737 do_genocide((!scursed) | (2 * !!Confusion))`; flags = 3 → killplayer at `read.c:2838-2842` + REALLY branch at `read.c:2968-2972` with killer "genocidal confusion."
+
+---
+
+## 2026-05-18 — v2 audit #72: Voluntary Challenges — Weaponless
+
+Source: `spoilers/companion.md` line 6785. 2 misclassification fixes.
+
+### Wrong → fixed
+- **"iron chain"** in the weapon-tool list: wrong. Iron chain is CHAIN_CLASS (`objects.h:101, 1631`), not TOOL_CLASS. `is_weptool` requires `oclass == TOOL_CLASS`, so swinging a wielded iron chain does NOT break the conduct. Removed from the list.
+- **"aklys"** framed as a weapon-tool: wrong. Aklys is WEAPON_CLASS via the `WEAPON()` macro at `objects.h:381-383`, not a weptool. Still breaks the conduct (via the WEAPON_CLASS branch), just kept in the list reordered to flow with the other weapons.
+
+### Verified
+- Core check at `src/uhitm.c:616-617` requires `weapon && (weapon->oclass == WEAPON_CLASS || is_weptool(weapon))`.
+- Miss revert at `uhitm.c:636-639` (Vorpal hit-converted-to-miss rolls back weaphit).
+- Polearm-via-`#apply` exception at `dothrow.c:2199-2203` is the only weaphit++ outside uhitm.c.
+- Thrown/fired ammo does NOT break (no weaphit++ in those paths).
+- Pick-axe and unicorn horn are weptools (`objects.h:1007-1016` via WEPTOOL macro).
+- Wielded cockatrice corpse (FOOD_CLASS) and wands (WAND_CLASS) don't match the check — correctly listed as safe.
+
+---
+
+## 2026-05-18 — v2 audit #73: Bestiary Tables — Cockatrices `c`
+
+Source: `spoilers/companion.md` line 7997. No corrections (re-audit clean).
+
+### Verified
+- All three rows match `monsters.h:167-195`: chickatrice Lvl 4, cockatrice Lvl 5, pyrolisk Lvl 6.
+- chickatrice/cockatrice carry MR_POISON|MR_STONE; pyrolisk carries MR_POISON|MR_FIRE (no stoning).
+- Wield-corpse rule: bare-handed cockatrice corpse calls `instapetrify` regardless of role at `wield.c:146-152`.
+
+---
+
+## 2026-05-18 — v2 audit #74: Bestiary Tables — Fungi and molds `F`
+
+Source: `spoilers/companion.md` line 8543. No corrections (re-audit clean).
+
+### Verified
+- All 7 rows (lichen, brown/yellow/green/red mold, shrieker, violet fungus) match `monsters.h:1614-1676`.
+- Lichen corpse never rots per `mkobj.c:1402`, `eat.c:59`.
+- Yellow mold has M1_POIS (poisonous-corpse tag correct); other molds have MR_POISON resistance but no M1_POIS (their corpses aren't poisonous).
+
+---
+
+## 2026-05-18 — v2 audit #75: Your First Descent
+
+Source: `spoilers/companion.md` line 378. 2 number fixes.
+
+### Wrong → fixed
+- **Prayer cooldown "about once every 300-500 turns"**: too low. `pray.c:780, 1356, 1819` use `rnz(300)` / `rnz(350)` scaled via `rne(4)` to ~75-2400 turns. Community wisdom is ~1000 turns. New players following 300-500 hit "too soon" rejections. Updated to "about a thousand turns or so."
+- **Corpse rot "guaranteed-safe within 50 turns ... past ~150 turns certainly tainted"**: off in both directions per the `(moves - age) / (10 + rn2(20))` formula at `eat.c:1887, 1939`. Guaranteed-safe-from-HP-loss needs age ≤ 30 (rotted ≤ 3 at all divisors); guaranteed-taint needs age > 174. Updated to 30 / 175.
+
+### Verified
+- Lizard/lichen nonrotting at `eat.c:58-61`. Lizard corpse cures petrification at `eat.c:3941-3944`.
+- Pet step-around-cursed at `dogmove.c:535`.
+- Floating-eye paralysis-on-melee at `mhitu.c:2536-2557`.
+- Stair-falling 1-3 HP at `do.c:1780-1795 losehp(rnd(3),...)`.
+- Killer bee speed 18, G_LGROUP, poisoned at `monsters.h:96-102`.
+- Supply chest mechanics (2/3 above Oracle, 2/3 chest vs 1/3 large box, 5/6 locked, 50% healing potion, Mines-branch food bias) at `mklev.c:1010-1119`.
+- `#force` with dagger at `lock.c:658-670`.
+
+---
+
+## 2026-05-18 — v2 audit #76: Dangerous Encounters — The Displacer Beast
+
+Source: `spoilers/companion.md` line 2366. 1 fabricated-mechanic removal.
+
+### Wrong → fixed
+- **"hostiles meleeing your pet displacer beast trigger the same 50% place-swap, so the attacker often ends up next to *you* instead of biting the pet"**: not supported by source. M3_DISPLACES is only consulted at `hack.c:1972` (hero attacks displacer) and `mon.c:2462` via `mfndpos` (the displacer moves through another monster's square via `ALLOW_MDISP`). There is NO `mhitm.c` path for hostile-attacks-pet-displacer triggering a swap. Fabricated. Removed; the pet is still excellent (AC -10, three attacks, 0% MR for taming) but not for a swap trick.
+
+### Verified
+- Stats AC -10, 4d4/4d4/2d10, speed 12, level 12, MR 0 at `monsters.h:437-444`.
+- 50% melee swap at `hack.c:1972` (`!rn2(2)` for PM_DISPLACER_BEAST, gated by `goodpos`).
+- Ranged bypasses swap (only fires in `domove_attackmon_at` melee path).
+- MR 0 → sleep/paralysis/charm/taming all land.
+- Corpse confers cloak-style Displacement intrinsic at `eat.c:1265-1268` (sets HDisplaced, distinct from the swap mechanic).
+
+---
+
+## 2026-05-18 — v2 audit #77: Bestiary Tables — Unicorns and horses `u`
+
+Source: `spoilers/companion.md` line 8334. 1 factual fix.
+
+### Wrong → fixed
+- **"Horses (pony, horse, warhorse) are usually peaceful in the wild"**: wrong. `makemon.c:1339-1342` sets `mpeaceful` only for `is_unicorn()`, which excludes ponies/horses/warhorses. Wild ponies/horses/warhorses spawn hostile. The 1-in-100 saddled-spawn at `makemon.c:1447-1452` isn't peaceful either. Reworded to "spawn hostile in the wild but can be tamed, saddled, and ridden."
+
+### Verified
+- All 6 rows match `monsters.h:1002-1049`.
+- Alignment-to-color mapping (white/L +7, gray/N 0, black/C -7).
+- Co-aligned unicorns peaceful at `makemon.c:1339-1342`.
+- Killing co-aligned: -5 Luck + "feel guilty" at `mon.c:3666-3669`. Cross-aligned: no Luck change.
+- Gem-throw placation at `dothrow.c:2087-2098, 2309-2382` (unconditional `mpeaceful=1` + teleport).
+- Knight's saddled pony at `dog.c:262-268`.
+- Killed unicorn drops horn at `mon.c:604-613`.
+
+---
+
+## 2026-05-18 — v2 audit #78: Branches and Landmarks — Medusa's Island
+
+Source: `spoilers/companion.md` line 1082. 2 small corrections; badge backfilled (none existed before).
+
+### Wrong → fixed
+- **"downward staircase (or ladder)"**: no medusa-*.lua uses a ladder; all four use `des.stair("down", ...)`. Dropped "(or ladder)."
+- **"Giant eels"** as the only water threat: `dat/medusa-2.lua:99-104` has electric eels (six of them), not giant eels. Same grab-and-drown threat (both carry AT_TUCH+AD_WRAP) plus AD_ELEC bite. Added a one-clause clarifier "(electric eels on one layout)."
+
+### Verified
+- Level placement DL ~20-29 (DoD base 25 range 5, Medusa base -5 range 4) at `dat/dungeon.lua:75-81`.
+- Four layouts at `dat/medusa-{1,2,3,4}.lua`.
+- Perseus loot percentages (75% shield of reflection cursed / 25% levitation boots / 50% blessed +2 scimitar / 50% sack) match all four layouts.
+- Other statues forced empty (`contents = 0`).
+- Gaze stones Medusa via reflection at `src/mhitu.c:1721-1745`.
+- Eel grab uses eel's tile for drown at `src/uhitm.c:3389-3401` — so levitation/water-walking on adjacent dry land does NOT save you. Section correctly captures this.
+- Kraken only on `dat/medusa-4.lua:122`.
+- Oilskin/grease protects against AT_TUCH+AD_WRAP grabs (only excluded for AT_ENGL).
+
+### Notes
+- Stone resistance also blocks the gaze per `mhitu.c:1747-1748` but is rarely attainable pre-Medusa. Omitted per no-trivia.
+
+---
+
+## 2026-05-18 — v2 audit #79: Weapons Tables — Knife
+
+Source: `spoilers/companion.md` line 7277. No corrections (re-audit clean).
+
+### Verified
+- All 5 rows match `include/objects.h:215-233`: scalpel, knife, stiletto, worm tooth, crysknife. P_KNIFE on all.
+- Healer scalpel starter at `u_init.c:77`.
+- Crysknife revert mechanic at `do.c:903-918` (`!obj->oerodeproof || !rn2(10)`).
+- Athame correctly NOT in this table — it's P_DAGGER (`objects.h:212-214`).
+
+---
+
+## 2026-05-18 — v2 audit #80: Voluntary Challenges — Pacifist
+
+Source: `spoilers/companion.md` line 6803. No corrections (re-audit clean).
+
+### Verified
+- `u.uconduct.killer` referenced at `insight.c:2144-2145` and `topten.c:592`.
+- Counter increments only at `mon.c:3500` (xkilled) and `hack.c:2201` (pet pushed into fatal trap).
+- Monster-on-monster kills via `monkilled` (`mon.c:3377`) don't increment — conflict and pet kills are safe.
+- Charm monster spell at `spell.c:1522` exists for the strategy mention.
+
+---
+
+## 2026-05-18 — v2 audit #81: Sokoban Solutions — Level 1, Version B
+
+Source: `spoilers/companion.md` line 6201. No corrections (re-audit clean).
+
+### Verified
+- Map walls, floors, upstair (2,2), branch portal (4,2), all 12 boulders A-L geometry matches `dat/soko4-2.lua:9-21, 29-42`.
+- Pits col 2 rows 3-7 and row 9 cols 2-6, both rolling-boulder traps, both scrolls of earth at (2,10)/(3,10) per `soko4-2.lua:48-64`.
+- All 16 solution steps land on lua floor tiles with reachable cardinal approach squares.
+- Final tally "D and E remain" exact: 10 boulders finished into 10 pits.
+- Intermediate map at line 6231-6245 matches simulated post-step-7 state.
+
+---
+
+## 2026-05-18 — v2 audit #82: Dangerous Encounters — Starvation
+
+Source: `spoilers/companion.md` line 2047. No corrections (re-audit clean).
+
+### Verified
+- Faint at `u.uhunger ≤ 0` per `eat.c:3369-3372`; faint handler at `eat.c:3410-3432`.
+- STARVED death at `u.uhunger < -(100 + 10*Con)` per `eat.c:3437-3447`.
+- Prayer cures hunger via TROUBLE_HUNGRY at `pray.c:216-217` (covers Weak/Fainting).
+
+---
+
+## 2026-05-18 — v2 audit #83: Use-Testing (The Careful Way)
+
+Source: `spoilers/companion.md` line 2982. 4 factual corrections.
+
+### Wrong → fixed
+- **"Dipping a poisonable weapon (dagger, arrow, spear) into a potion of sickness"**: daggers and spears are NOT poisonable. `is_poisonable` at `include/obj.h:264-268` requires `oc_skill` in `[-P_SHURIKEN, -P_BOW]` = `[-24, -20]`, i.e., ranged ammunition only (arrows, crossbow bolts, darts, shurikens, sling stones). Daggers (skill +1) and spears (skill +17) fail. Reworded to list the actual poisonable ammunition.
+- **Confused remove-curse "about half end up blessed, half cursed"**: wrong ratio. `blessorcurse(obj, 2)` at `mkobj.c:1841-1853` gives 1/4 blessed, 1/4 cursed, 1/2 unchanged. Reworded.
+- **Confused remove-curse scope**: a *non-blessed* confused scroll only touches worn/wielded items (plus loadstones, active leashes) per `read.c:1549-1552`. The all-inventory branch only fires when the scroll is blessed. Added the distinction.
+- **Helm of opposite alignment missing from auto-curse warning**: HELM_OF_OPPOSITE_ALIGNMENT is in the same 90% auto-curse branch at `mkobj.c:1087-1090` and shares the etched/crested/visored/plumed helm appearance pool with helm of caution and helm of telepathy. Added to the list of auto-cursed shop traps.
+
+### Verified
+- Unicorn horn dip table at `potion.c:2151-2160`.
+- Throwing potions effects at `potion.c:1625-1820`.
+- Scroll of destroy armor with no armor worn produces "strange feeling" at `read.c:1324-1339`.
+- Armor shuffle pools at `o_init.c:280-287`.
+- Helm of brilliance always "crystal helmet"; dunce cap and cornuthaum both "conical hat" — fixed appearances.
+- All armor price tiers verified vs `objects.h:686-727, 637-650`.
+
+---
+
+## 2026-05-18 — v2 audit batch 18: Humans/elves (#84), Trappers/lurkers (#85), Iron Bars (#86), What Actually Kills (#87), Bow (#88)
+
+### Humans and elves `@` (#84) — `spoilers/companion.md:8920` — 3 corrections
+
+- **Master of Thieves was "Rogue quest nemesis"** — wrong. Per `dat/Rog-strt.lua:106` he is the Rogue quest *leader* (consistent with monsters.h:3559-3568 placing him in the quest-leaders section), and per `dat/Tou-goal.lua:117` plus the `monsters.h:3564` comment "Master of Thieves is also the Tourist's nemesis," he is the Tourist quest *nemesis*. Updated to "Rogue quest leader; also Tourist quest nemesis."
+- **Master Assassin was "Rogue quest nemesis backup"** — wrong. `dat/Rog-goal.lua:72` names him as the *primary* Rogue quest nemesis. Dropped "backup."
+- **Wizard of Yendor row missing** — promised in the section intro and flagged in audit #17's close calls, never added. Inserted between Medusa and Croesus per source order at `monsters.h:2847-2858`: bright-magenta, L30 Spd12 AC-8 MR100, claw 2d12 steal-amulet + spell, flies/regenerates/sees-invis/fire-res/poison-res, covetous, the final boss.
+
+### Trappers and lurkers `t` (#85) — `spoilers/companion.md:8325` — 0 corrections, badge added
+
+Stats verified vs `monsters.h:981-998`. AD_WRAP + AD_PHYS (not AD_DGST, per the 5.0 retcon at `monsters.h:973-980`). Both have M1_HIDE; lurker above has M1_FLY so it's a ceiling hider, trapper is a floor hider (`mondata.h:43-45`). Both M2_STALK = follow you up and down stairs (`monflag.h:146`). Engulf escape and farlook tip are accurate.
+
+### Iron Bars (#86) — `spoilers/companion.md:1346` — 3 corrections
+
+- **"Wand of lightning *will* melt bars"** overstated. `zap.c:5349` has `if (damgtype == ZT_LIGHTNING && rn2(10)) break;`, so each beam-tile only dissolves on a 1-in-10 roll (acid has no such gate). Softened to "can melt them too — though only about one zap in ten actually dissolves the bars."
+- **"Ordinary stone on the flanks"** geometry wrong. Niche bars sit in a room wall with stone *behind* them, but the flanking tiles are room-wall (not stone). The trivial "pick-axe through the adjacent wall tunnels into the niche from the side" framing didn't match the layout — digging the flank reaches stone, not the niche. Reworded to digging diagonally past the bars, or through the wall to the stone behind and back into the niche.
+- **"Scroll of teleportation guaranteed"** overstated. `mklev.c:790-792` skips the scroll on noteleport levels. Reworded to "unless the level is non-teleport, in which case the niche skips it."
+
+### What Actually Kills Adventurers (#87) — `spoilers/companion.md:1737` — 1 correction + 1 agent error caught
+
+- **Scale mails "AC 1 worn"** used the raw `objects.h` `ac` field, inconsistent with the body-armor equipment table (line 7650+) which uses the `+9` AC-bonus convention. Reworded to "+9 AC worn (the best in the body slot)" — matches both the equipment table and the NetHack Wiki convention ("9 base AC" / "+9 base AC", positive integers).
+- **Agent flagged confused-genocide line as wrong** ("Valkyrie, Wizard" examples allegedly impossible because `u.umonster` is supposedly the race). FALSE. `u_init.c:991` sets `u.umonster = gu.urole.mnum` (the role's monster index, per the `Role_if(X)` macro at `role.h:247`). Confused genocide kills your role's species — exactly as the original text said. Original kept; audit comment now documents the agent's error so future passes don't repeat it.
+
+Re-verified all DSM dual-property claims against `do_wear.c:810-880`, mount slip 10-14 (`steed.c:354` `rn1(5, 10)`), water demon 1/30 fountain (`fountain.c:247`), bones items cursed 4/5 (`bones.c:290`), mimic stick MC-gated (`uhitm.c:3310, 3324`), rope golem AT_HUGS, all standard top-killer lore.
+
+### Bow (#88) — `spoilers/companion.md:7549` — 0 corrections, badge updated
+
+All 9 rows (arrow/elven/orcish/silver/ya + bow/elven/orcish/yumi) verified clean vs `objects.h:141-154, 395-402`. Yumi `prob=0` correct (Samurai-only via `u_init.c:142-146`; Rangers get plain BOW). Agent flagged gaps — multishot Str/Ranger/Samurai-yumi bonuses at `dothrow.c:58-77`, Longbow of Diana, role skill caps — but per the no-trivia rule these are additions, not corrections, and intentionally not applied.
+
+### Pass-2 queue
+88/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 19: Dart (#89), The Lay of the Land (#90), Sokoban L4B (#91), Gnomes (#92), Engulfment from Hiding (#93)
+
+### Dart (#89) — `spoilers/companion.md:7598` — 1 correction
+
+Tourist starting dart stack was "~25–60 at +2" — wrong. `u_init.c:150-151` reads `{ DART, 2, WEAPON_CLASS, 21, 40, UNDEF_BLESS }`, so `trquan()` at `u_init.c:1109-1114` yields `21 + rn2(20)` = 21–40. Corrected. Wiki confirms 21–40.
+
+### The Lay of the Land (#90) — `spoilers/companion.md:521` — 5 corrections
+
+- **Sink glyph change (`#` → `{`)**. NetHack 5.0 changed the default sink symbol per `defsym.h:133` and `doc/fixes5-0-0.txt:827` ("change kitchen sink glyph to a white {"). Sink and fountain now share the `{` glyph (white vs. bright blue). The travel/farlook getpos cycle at `getpos.c:1046-1062` matches on the *displayed* symbol, so typing `#` no longer reaches sinks; typing `{` cycles through sinks and fountains together. Map-symbols table at line 564 had `# Sink` row — removed, and merged the fountain row to "Fountain (bright blue) or sink (white)." Sinks section header at line 812 also updated from `#### Sinks \`#\`` to `#### Sinks \`{\``. Confirmed this is the default symset behavior — the IBMgraphics, DECgraphics, RogueLevel symsets either inherit the default `{` or use their own override. Only the legacy IBM symset shows sinks as the same character as fountains (`\xf4`).
+- **Trap room vs. teleportation hub conflation**. Companion lumped them into "a teleportation hub of stacked traps." Source has two distinct themed rooms: `themerms.lua:102-114` (Trap room) places one randomly chosen trap type (arrow / dart / falling rock / bear / land mine / sleep gas / rust / anti-magic) across ~30% of the floor; `themerms.lua:265-279` (Teleportation hub) places 2–4 fixed-destination teleporters. Separated in the prose and in the bullet list.
+- **Fake Delphi fiction**. Companion described it as a room with "a non-Oracle pretending to be one" and a "don't pay for advice" warning. `themerms.lua:291-305` contains **zero monsters** — it's purely a geometric joke: an outer ordinary room with an inner empty 3×3 room laid out like the Oracle's chamber. Rewrote.
+- **Light source room narrowed**. "Lit candle, lantern, or lamp. Free torches." Source at `themerms.lua:205-210` places exactly **a lit oil lamp**, nothing else. Reworded to "a lit oil lamp. Free torch."
+- **Wraith corpse misattribution**. The Massacre/Mausoleum bullet read "Old corpses sometimes carry surprises (a wraith corpse for the level boost is the famous one)." Neither room generates wraith corpses. `themerms.lua:173-188` (Massacre) lists only player-role corpses (apprentice, ninja, valkyrie, etc., from a 27-element role table); `themerms.lua:420-443` (Mausoleum) places an M/V/L/Z monster (mummy, vampire, lich, or zombie) or a human `@` corpse, with a 20% chance of a secret door. Dropped the wraith claim and split Massacre and Mausoleum into separate bullets with accurate contents.
+
+### Sokoban L4B (#91) — `spoilers/companion.md:6579` — 0 corrections
+
+Full 28-step solution simulated against `dat/soko1-2.lua` (note: lua "soko1" = player's Level 4; lua "soko4" = player's Level 1). All three intermediate map states reproduce exactly; final remainder of {O at (13,7), S at (13,8)} matches the closing sentence. Geometry, boulder/hole positions, prize odds (25% BoH / 75% AoR at lua:104-111), hardfloor, noteleport, and no-diagonal-push (`hack.c:441-448`) all verified.
+
+### Gnomes `G` (#92) — `spoilers/companion.md:8575` — 0 corrections
+
+All 22 cells / 4 rows verified vs `monsters.h:1681-1709`. S_GNOME has exactly four entries; no "deep gnome" in 5.0 (correctly omitted). Race peacefulness via `race_peaceful` at `makemon.c:2283` with `MH_GNOME` lovemask confirmed. Gnome lord is the most common Mines gnome (frequency 2 vs. 1 for the others). Drive-by fix from v1 audit (`spell spell` → `cast spell` for gnomish wizard) still correct.
+
+### Engulfment from Hiding (#93) — `spoilers/companion.md:2149` — 0 corrections
+
+Section consistent with the v2 #85 bestiary audit of trappers/lurkers. AD_WRAP+AD_PHYS, M1_HIDE+M1_FLY ceiling-hider lurker / floor-hider trapper, search/telepathy/warning defenses, weapons-still-work-while-swallowed (`uhitm.c:781,805` `mhit = (tmp > dieroll || u.uswallow)`) all verified. 0 corrections.
+
+### Pass-2 queue
+93/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 20: The Armory (#94), Mimics (#95), Making Friends (#96), Ogres (#97), Rust monsters/disenchanters (#98)
+
+### The Armory (#94) — `spoilers/companion.md:4074` — 3 corrections
+
+- **Drain resistance "only non-artifact source"** wrong. The shield of drain resistance (`objects.h:656-658`, new in 5.0) is the second non-artifact source. Reworded to "one of two non-artifact sources, alongside the shield of drain resistance." The drain-life chapter already names both sources; this section was the outlier.
+- **Warning glyph colors** wrong. Companion said "yellow for moderate, red for deadly." Actual color table at `drawing.c:39-52` has six warning levels: white, red, red, red, magenta, bright-magenta. There is no yellow. Reworded to "white for the least threat, through red, with magenta for the worst."
+- **Column labels misleading**. "Best mundane options / Best magical options" — most "mundane" picks (cloak of protection, helm of caution, gauntlets of power, speed boots, shield of reflection) are actually magical (oc_magic=1 in objects.h); the "magical" column's small shield is mundane. Relabeled to "Primary pick / Specialty pick" which honestly describes the use-intent split.
+
+Re-verified: MC formula at `uhitm.c:87` (`negated = !(rn2(10) >= 3 * armpro)` → MC3 = 90% block), helm of caution warning intrinsic at `do_wear.c:448-450`, DSM dual-property pattern across `do_wear.c:806-883` (gray and silver intentionally single-property), DSM scroll transformation at `read.c:1225` (`s >= 0`), small shield as only no-penalty shield at `spell.c:2269`. Base AC 10 from `mons[PM_HUMAN].ac`.
+
+### Mimics `m` (#95) — `spoilers/companion.md:8199` — 0 corrections, badge updated
+
+All 3 rows (small/large/giant) verified clean against `monsters.h:670-698`. AD_STCK on large and giant only (correct in the table); MC-block at `uhitm.c:3310, 3324` consistent with batch 18 v2 #87. M1_AMORPHOUS | M1_HIDE | MR_ACID class trait verified.
+
+### Making Friends (#96) — `spoilers/companion.md:2437` — 2 corrections
+
+- **"You have a sad feeling for a moment" misattributed**. Companion claimed the message fires when you change levels without your pet adjacent ("Your pet is still alive on the previous level"). Actually that case produces **no message** — the pet just isn't with you on the new level, and loyalty decays at 1 per 150 moves apart (`dog.c:689-697`). The sad-feeling message at `mon.c:952` (`mtmp->mtame && !canseemon`, printed at `mon.c:3101` / `mon.c:3495`) fires when a tame pet **dies offscreen**. This was a real beginner trap — a reader hearing the message and thinking the pet was still alive would go back for a corpse. Separated the two cases in the prose. Note: the "What Actually Kills" message table at line 1606 already had this right.
+- **Confused taming radius "5×5"** wrong. `read.c:1689` sets `bd = confused ? 5 : 1`, with the loop spanning `[-bd..bd]` so the area is `(2*bd+1)²`. Normal = 3×3 (correct in the prose), confused = 11×11 (not 5×5). Corrected.
+
+Re-verified pet-curse-avoidance (`dogmove.c:535-538, 1235-1238`), tameness-loss exclusivity to player-initiated abuse, starvation-feral at `dog.c:706-708`, scroll-of-taming and charm-monster routing through the same `seffect_taming` (`read.c:2236-2238`), taming exclusion list at `dog.c:1163-1166, 1244-1247, 1250`, pet revival prayer at `pray.c:2335-2337` calling `pray_revive` at `pray.c:2176`, pet corpse intrinsic absorption at `mon.c:1763-1777`.
+
+### Ogres `O` (#97) — `spoilers/companion.md:8703` — 0 corrections, badge updated
+
+All 3 rows verified clean against `monsters.h:2052-2075`. M2_COLLECT (weapon pickup) verified on all three; MZ_LARGE confirmed. Prior v1 fix (removing "ogre kings throw boulders" — ogres lack M2_ROCKTHROW) holds.
+
+### Rust monsters and disenchanters `R` (#98) — `spoilers/companion.md:8762` — 0 corrections, badge updated
+
+Both rows verified clean against `monsters.h:2147-2161`. AD_RUST erodes iron armor via `uhitm.c:2311 erode_armor`; non-iron weapons (silver, mithril, copper, wood) immune per `is_rustprone` = `oc_material == IRON` at `objclass.h:200`. Disenchanter G_HELL (Gehennom-only generation), AC -10 hard to hit, active claw drains armor at `uhitm.c:3611-3644`, passive drains weapon at `uhitm.c:5992-6011`. Note: disenchanter uses AD_ENCH, not AD_DREN (which is level-drain on vampires etc.) — the prompt-author confused these but the spoiler correctly uses neither.
+
+### Pass-2 queue
+98/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 21: Orcs (#99), Rodents (#100), Snakes (#101), Blobs (#102), Zombies (#103)
+
+### Rodents `r` (#100) — `spoilers/companion.md:8299` — 1 correction
+
+Rock mole row had only "tunnels." in Notes. Added "eats metal. Will chew through your bag of gold or unattended weapons." Rock mole is `M1_METALLIVORE` per `mondata.c:561`, and `hack.c:769-784` is the swallow-metal-object branch. The other places in the book that mention metallivores (Iron Bars in v2 #86, niche-cracker tactics) reference rock moles, but the bestiary row itself was the one place a beginner would look it up and learn nothing. Clears the no-trivia bar (real beginner risk to inventory).
+
+### Orcs `o` (#99) — `spoilers/companion.md:8242` — 0 corrections, badge updated
+
+All 8 rows verified clean against `monsters.h:727-796`. Mordor orc speed 5 is correct for 5.0. Agent flagged plain "orc" having `G_NOGEN | M2_NOPOLY` (corpse-only) as a "why don't I see red `o`s" puzzle, but per the no-trivia rule it doesn't change a beginner's strategic decisions — not noted.
+
+### Snakes `S` (#101) — `spoilers/companion.md:8784` — 0 corrections, badge updated
+
+All 6 rows verified against `monsters.h:2167-2221`. M1_SWIM universal; M1_CONCEAL on all except python; python's AT_HUGS pair (WRAP + PHYS) renders correctly.
+
+### Blobs `b` (#102) — `spoilers/companion.md:7997` — 0 corrections, badge updated
+
+All 3 rows verified against `monsters.h:137-166`. Acid blob passive at `uhitm.c:5906-5933` (50% splash + 1/30 corrode armor + 1/6 weapon/glove erode via `passive_obj`); gelatinous cube paralysis at `uhitm.c:6019-6064` (2/3 rate, free-action blocks). Note: 5.0 gelatinous cube is AT_TUCH only (no AT_ENGL — older versions had engulf, 5.0 doesn't).
+
+### Zombies `Z` (#103) — `spoilers/companion.md:8902` — 0 corrections, badge updated
+
+All 10 rows verified against `monsters.h:2421-2504`. All carry `G_NOCORPSE` (the prior audit's intro rewrite remains correct). Class flag is `M2_UNDEAD` (not "M3_UNDEAD"). `M2_STALK` is universal. Agent flagged that elf and human zombie rows omit cold/sleep/poison-res in Notes despite the MR masks at `monsters.h:2457, 2466` — per no-trivia this is a stat-detail inconsistency that doesn't affect beginner decisions (slow undead die fast enough that resistances rarely matter).
+
+### Pass-2 queue
+103/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 22: Pick-axe (#104), Shopping (#105), Curses (#106), Arachnids (#107), Dagger (#108)
+
+### Shopping and Shopkeeper Pricing (#105) — `spoilers/companion.md:7030` — 3 corrections
+
+- **"Shop walls are non-diggable from inside"** wrong. `dig.c:488-501` converts shop walls to doors normally; the shopkeeper bills you for `SHOP_WALL_DMG` and the chase continues (`shk.c:5061-5078 shopdig` grabs your pack). Reworded to "Digging through a shop wall or floor doesn't escape the bill."
+- **Touchstone identification** had two errors. (1) Full-name identification requires a **blessed** touchstone (or non-cursed for Archeologist/Gnome) per `apply.c:2744-2751`; an uncursed touchstone only gives a streak color (line 2759). (2) Hardness is irrelevant — touchstones work on all gems. Reworded accordingly.
+- **Glass row sells for "0–8 zm"** wrong. The unidentified-gem formula at `shk.c:3168-3172` is `(tmp + 3) * quan` with `tmp = 0..(divisor-1)`, so the minimum is 3 zm, not 0. Corrected to "3–8 zm."
+
+Re-verified: credit/debit/loan ordering (`shk.c:3884-3909`), shop door blocked iff `debit || billct || robbed` (`shk.c:5791-5815`), shopkeeper-ignores-Elbereth (`monmove.c:251-268`), shopkeeper-sees-invisible (`shk.c:5302-5303`), bones-shop reset (`bones.c:51-99`), all 22 gem prices and Mohs hardness against `objects.h:1526-1571`.
+
+### Dagger (#108) — `spoilers/companion.md:7280` — 1 correction
+
+Silver dagger row said "Silver damage to demons, undead, lycanthropes, and shades" — "undead" is too broad. `mon_hates_silver()` at `mondata.c:524-528` covers weres, `S_VAMPIRE`, demons, shades, and imps (except tengu). Other undead — liches, zombies, mummies, wraiths, ghouls, ghosts — are NOT silver-vulnerable. Reworded to "demons, vampires, lycanthropes, shades, and imps."
+
+Re-verified all 5 rows against `objects.h:200-214`. Daggers correctly NOT claimed poisonable (`oc_skill = +1`, outside `is_poisonable` range). Sting at `artilist.h:138`. Rogue Expert multishot to 4 at `dothrow.c:65-66, 178-190`. Athame no-dull engraving at `engrave.c:1306-1307`.
+
+### Pick-axe (#104) — `spoilers/companion.md:7395` — 0 corrections, badge updated
+
+Stats verified against `objects.h:1007-1009` (pick-axe) and `:345-347` (mattock). Mattock bimanual 3/2 Str damage bonus at `uhitm.c:1467-1468`. Dig-down creates pit first then deepens to hole at `dig.c:432-433, 372-374`.
+
+### Curses and How to Break Them (#106) — `spoilers/companion.md:5227` — 0 corrections, badge updated
+
+Re-verified: bones 80% cursed (`bones.c:290`), rings of teleportation/polymorph and amulet of strangulation 90% cursed (`mkobj.c:1063-1066, 1143-1147`), cursed BoH weight doubling (`mkobj.c:1950-1953`), holy water uncursing by dipping (`potion.c:1514-1518`), confused remove-curse 25/25/50 split (consistent with batch 17 v2 #83), blessed-vs-uncursed remove-curse scope (`read.c:1524, 1549`), prayer top-tier reward uncursing all inventory (`pray.c:1283-1308`).
+
+### Arachnids and centipedes `s` (#107) — `spoilers/companion.md:8320` — 0 corrections, badge updated
+
+All 5 rows verified against `monsters.h:940-972, 3713-3722`. Webmaker via `mondata.h:147-148` on cave spider + giant spider only. M1_CONCEAL on all except giant spider. Cave spider/centipede corpses safe (no M1_POIS); giant spider/scorpion poisonous. Scorpius `MR_STONE` confers ston-res.
+
+### Pass-2 queue
+108/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 23: Golems (#109), Attack Wands (#110), Atheist (#111), Zruties (#112), Angelic beings (#113)
+
+### Golems `'` (#109) — `spoilers/companion.md:9063` — 1 correction
+
+Iron golem row had "poisonous-corpse" — wrong. Iron golem carries `G_NOCORPSE` at `monsters.h:2587`, so the M1_POIS flag never produces an eatable corpse. Same v2 pattern as the manes/lemure catch in earlier batches. Changed to "no corpse." Cross-section consistency check: agent flagged that `poly_when_stoned` at `mondata.c:80-85` covers ALL golems except stone (broader than the batch-17 paraphrase suggested), but the spoiler's stoning chapter (audit #172 v2 #50) and polymorph-conduct section (audit #161 v2 #20) both already describe the mechanic correctly — no cross-section fix needed.
+
+Re-verified all 11 rows against `monsters.h:2509-2594`. Clay golem dies on cancellation (`zap.c:3201-3212`); iron golem one-shotted by rust (`uhitm.c:2289, 2316 completelyrusts`). Both interesting but skipped per no-trivia rule.
+
+### Attack Wands and the Warning Shot (#110) — `spoilers/companion.md:2011` — 0 corrections, badge updated
+
+Re-verified `mwandexp` mechanic at `muse.c:1830-1860`: `buzz_force_miss` on first wand zap, flag set TRUE after. Six wands (death/sleep/fire/cold/lightning/magic missile) in the buzzfn dispatch at `muse.c:1842-1847` match the spoiler list. Late-game zone list at `makemon.c:1291-1293` (Stronghold || Knox || endgame || hell || V_tower || quest) matches exactly. The wand-identifies-on-visibility claim correct (`muse.c:1839, 1849-1850 canseemon`).
+
+### Atheist (#111) — `spoilers/companion.md:6785` — 0 corrections, badge updated
+
+All 5 conduct-breaking sites in source verified: `#pray` (`pray.c:2221`), `#offer` corpse (`pray.c:1977`), `#turn` undead (`pray.c:2426`, Knights/Priests only), `#chat` with priest (`priest.c:572`), altar-drop (`do.c:370`). Final Amulet offering exempt (`pray.c:1529-1588` `offer_real_amulet` has no gnostic write).
+
+### Zruties `z` (#112) — `spoilers/companion.md:8445` — 0 corrections, badge updated
+
+Single-row table re-verified vs `monsters.h:1192-1202`. M1_HUMANOID + M2_STRONG, no special abilities beyond raw 3-attack damage.
+
+### Angelic beings `A` (#113) — `spoilers/companion.md:8457` — 0 corrections, badge updated
+
+All 5 rows re-verified vs `monsters.h:1206-1265`. M1_FLY on all except Aleax, M1_SEE_INVIS on all except couatl (correctly reflected in prose), M2_STALK universal. AD_MAGM ("magic", Angel) vs AD_SPEL ("spell", ki-rin/Archon) labels correctly distinguished.
+
+### Pass-2 queue
+113/183 done.
+
+---
+
+## 2026-05-18 — v2 audit batch 24: Combining Conducts (#114), Acknowledgements (#115), Gremlins (#116), Ascension Kit (#117), Sokoban-conduct (#118)
+
+### Combining Conducts (#114) — `spoilers/companion.md:6917` — 1 correction
+
+Summary line misclassified two of the five new-in-5.0 conducts. The corrected split is:
+- **Pauper, Permadeaf, Bonesless**: start-of-game options (`optlist.h:213-215` for `bones`, `:268` for `permadeaf`, `:559` for `pauper`).
+- **Sokoban**: tracked from in-game actions.
+- **Petless**: not a settable option at all. `u.uconduct.pets++` at `dog.c:87` is unconditional, and the comment at `dog.c:77-79` notes the starting pet is created before `in_moveloop` but still bumps the counter. The only way to have `!u.uconduct.pets` is to start without a pet, which requires Pauper (`u_init.c:1308-1309` early-return suppresses the starting pet). So Petless is effectively a Pauper sub-conduct.
+
+The book had Pauper/Petless/Permadeaf as "start-of-game options" and Sokoban/Bonesless as "tracked automatically" — the right partition flips both Petless and Bonesless.
+
+### Acknowledgements (#115) — `spoilers/companion.md:9334` — 2 corrections
+
+- **WCST "(originally the 'World's Encyclopaedia of NetHack')"** parenthetical was never verifiable. The WCST source file at pdwaterman.com doesn't expand the acronym, and Waterman's Wheaton, Illinois distribution address strongly suggests "WC" stands for Wheaton College. User confirmed; replaced with "(distributed from Wheaton, Illinois starting in 1991)" which matches the verifiable WCST v7.00 contact line.
+- **Kevin Hugo missing from current-team list** at line 9478. `dat/history:314` lists him on the 5.0 core team, and the book already credits him above as a 3.2.2 spoiler author. Added between Collet and Kallinen.
+
+Re-verified: 1987 NetHack origin via Stephenson's 1.4 (`dat/history:25-26`), Fenlason→Brouwer→Stephenson lineage, 3.4.3 December 2003 (`dat/history:193`), twelve-year hiatus to 3.6.0 in December 2015, Izchak Miller "founding member" who died between 3.1.3 and 3.2.0 (1994 by community consensus, not in bundled docs), Rogue 1980 by Toy/Wichman, NAO operators Streib + Kallinen (`dat/history:344-346`).
+
+### Ascension Kit (#117) — `spoilers/companion.md:5783` — 2 corrections
+
+- **Mitre of Holiness "fire resistance + see invisible"** wrong. Per `artilist.h:265-269`, Mitre is a `HELM_OF_BRILLIANCE` base with `CARY(AD_FIRE)` (fire resistance), `SPFX_PROTECT` (+1 protection), `M2_UNDEAD` bonus (×2 vs undead), `ENERGY_BOOST` invoke. No see invisible. The artifact-table line at 4386 already had this right. Reworded to "a helm of brilliance that adds fire resistance, +1 protection, and an energy-boost invoke."
+- **"An ascended Monk wore the Eye of the Aethiopica"** wrong. Eye of the Aethiopica is `PM_WIZARD`-restricted with `SPFX_RESTR` at `artilist.h:303-307`. A Monk picking it up triggers the badclass blast at `artifact.c:920-948`. Reworded to "Wizards who survive to their quest can wear the Eye of the Aethiopica instead."
+
+Re-verified: Gray DSM = MR, Silver = reflection, Blue = shock (`objects.h:502, 507, 521`); speed boots = FAST; gauntlets of power lock Str 25 (`attrib.c:1214, 1278`); choking-through-slow-digestion at SATIATED (`eat.c:248`). Wand of death on the High Priest verified clean (`zap.c:4314` sets `type = -1` to skip saving throws; High Priest has no antimagic gear or covered intrinsic).
+
+### Gremlins `g` (#116) — `spoilers/companion.md:8109` — 0 corrections, badge updated
+
+All 3 rows re-verified vs `monsters.h:448-473`. Water/fountain split (`mon.c:987-992`, 2/3) vs. night AD_CURS (`uhitm.c:3037-3058`) correctly distinguished by v2 #152.
+
+### Sokoban-conduct (#118) — `spoilers/companion.md:7002` — 0 corrections, badge updated
+
+All five guilt-triggering sites verified: squeeze (`hack.c:299, 307`), wand-of-striking fracture (`zap.c:5556`), polymorph boulder (`zap.c:1711`), scroll of earth (`read.c:1951`), dismount onto boulder (`steed.c:767`). Conduct reported only if branch was entered (`insight.c:2216 sokoban_in_play`).
+
+### Pass-2 queue
+118/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 25: No Genocide (#119), Wishes (#120), The Castle (#121), Permadeaf (#122), Apelike (#123)
+
+### No Genocide (#119) — `spoilers/companion.md:6848` — 1 correction (real)
+
+The book said: "sitting on **Vlad's throne**, which has one outcome that prompts you to genocide a **class**." Both halves wrong:
+- Not Vlad's throne. Genocide is case 8 of `throne_sit_effect` at `sit.c:125-132`, the **regular** throne switch. Vlad's tower thrones take the early-return at `sit.c:63-66` into `special_throne_effect`, which has no genocide case.
+- Not a class. The throne calls `do_genocide(5)` (REALLY|ONTHRONE) — a single-**species** prompt. Class genocide only comes from a blessed scroll via `do_class_genocide()`.
+
+Reworded to "sitting on a throne" + "single species" + "case 8 of 13." Also updated the "ascend without genociding" line that mentioned "never sit Vlad's throne" to "never roll case 8 on a throne."
+
+### Wishes and Wishing (#120) — `spoilers/companion.md:5005, 5081` — 0 prose corrections, badge updated
+
+Re-verified all wish sources: Vlad's throne 4/13 wish rate (`sit.c:241-256`); Amulet pickup wish (`allmain.c:446-451`, `u.uhave.amulet && !u.uevent.amulet_wish`); magic lamp 1/3 emergence × 80% wish-blessed ≈ 27% (`apply.c:1817 !rn2(3)` × `potion.c:2833-2845` blessed=case 0); smoky potion `POTION_OCCUPANT_CHANCE` base 1-in-13 (`hack.h:1409`); fountain ~1/30 demon × 15/100 shallow-floor wish ≈ 1/200 (`fountain.c:78, 314`); Orcus Town magic lamp OR marker guaranteed (`dat/orcus.lua:107-111`). Bare-wish BUC random (`mkobj.c:1846-1851 blessorcurse(otmp,10)` = 1/10 × 1/2 each direction = ~5%/5%/90%); the v1 audit comment had this as ~10%/10%/80% — corrected the statistic in the comment. Artifact denial probabilistic (`objnam.c:5374`), quest artifacts absolutely blocked, `wisharti` counter increments either way. Five mundane substitutions exact (`objnam.c:5003-5018`).
+
+### The Castle (#121) — `spoilers/companion.md:1183` — 1 correction
+
+Brief Castle entry had "A maze section to each side may contain minotaurs" — fabricated. `castle.lua` has no minotaurs and no internal maze rooms; the `des.mazewalk` calls at lines 223-224 fill entry-approach corridors *outside* the walls. Same error already corrected in the full Castle section at line 5454 (v1 #109). Dropped from the brief entry too.
+
+### Permadeaf (#122) — `spoilers/companion.md:6981` — 1 correction + 1 beginner-relevant addition
+
+- **`-Dpermadeaf` command-line claim** wrong. `-D` is the debug/wizard-mode flag (`sys/unix/unixmain.c:359-365`: `wizard = TRUE, discover = FALSE`). It does not accept option names. There is no `-Dpermadeaf` syntax. Dropped the command-line clause; rcfile (`OPTIONS=permadeaf`) is the path.
+- **Added shrieker note** (per agent's "saves a beginner's life" framing under the no-trivia rule). When Deaf, only the *messages* are suppressed. A shrieker still calls `makemon` and `aggravate()` even when Deaf (`mon.c:4089-4106 m_respond_shrieker`: only the `pline` shriek-message is gated on `!Deaf`; the spawn-and-aggravate run unconditionally). A Permadeaf player who steps next to a shrieker gets the consequences without the warning. Added a paragraph naming this trap.
+
+### Apelike creatures `Y` (#123) — `spoilers/companion.md:8893` — 0 corrections, badge updated
+
+All 6 rows re-verified vs `monsters.h:2372-2417`. monkey AD_SITM, ape AT_BITE third attack (no AT_HUGS), owlbear AT_HUGS 2d8, yeti MR_COLD, carnivorous ape AT_HUGS, sasquatch AT_KICK + M1_SEE_INVIS. All match.
+
+### Pass-2 queue
+123/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 26: Wraiths (#124), Worms (#125), Hammer (#126), Ascension Run (#127), Humanoids (#128)
+
+### Ascension Run (#127) — `spoilers/companion.md:5838` — 1 correction
+
+Mysterious Force paragraph had two related errors:
+- **"dropped back down one to three levels"** overstates the per-alignment max. Per `do.c:1544` `odds = 3 + ualign.type` and `diff = rn2(odds)`: Chaotics (`odds=2`) max -1; Neutrals (`odds=3`) max -2; only Lawfuls (`odds=4`) reach -3.
+- **"A smaller chance just teleports you elsewhere on the same level"** inverts the distribution. Same-level (diff==0) is the *majority* outcome among triggers — 50% for Lawful/Chaotic, 33% for Neutral; only Lawfuls have the -3 tail.
+
+Reworded to: "Often it just shuffles you elsewhere on the same level; sometimes it drops you down a level (Chaotic max), two (Neutral max), or even three (Lawfuls only)." Also dropped the backtick around `Inhell` — was a C-identifier leak; now reads "a hard Gehennom gate."
+
+Re-verified all other claims: Amulet pickup wish (`allmain.c:446-451`), Wizard respawn (`wizard.c:721-757`), Amulet blocks level teleport (`teleport.c:1185-1189`), covetous warp (`wizard.c:274+`), bottom-four-levels exclusion (`do.c:1541` `dunlev < dunlevs_in_dungeon - 3`), Elbereth dead in Gehennom and endgame (`teleport.c:68-70`).
+
+### Wraiths `W` (#124) — `spoilers/companion.md:8865` — 0 corrections, badge updated
+
+All 3 rows re-verified vs `monsters.h:2326-2353`. Only plain wraith leaves an eatable corpse (barrow wight + Nazgul both G_NOCORPSE). Wraith corpse pluslvl at `eat.c:1141-1142`.
+
+### Worms `w` (#125) — `spoilers/companion.md:8405` — 0 corrections, badge updated
+
+All 4 rows re-verified vs `monsters.h:1114-1145`. Worm tooth drop only fires for `PM_LONG_WORM` (not baby long worm) per `mon.c:619` — spoiler row placement correct.
+
+### Hammer (#126) — `spoilers/companion.md:7463` — 0 corrections, badge updated
+
+War hammer 1d4+1/1d4 verified against `objects.h:367-369` ("`+1 small`" comment). Mjollnir Valkyrie role-lock + alignment-fixup verified at `artilist.h:109-112` + `artifact.c:86-95`. Aklys correctly excluded (uses P_CLUB, not P_HAMMER).
+
+### Humanoids `h` (#128) — `spoilers/companion.md:8131` — 0 corrections, badge updated
+
+All 7 rows re-verified vs `monsters.h:477-540`. Helmet-blocks-7/8 of mind flayer tentacles confirmed at `uhitm.c:3235` (`uarmh && rn2(8)`). Bugbear is AT_WEAP only (no bite — spoiler correctly omits).
+
+### Pass-2 queue
+128/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 27: Pauper (#129), Umber hulks (#130), Dogs (#131), Brainlessness (#132), Luck and Fortune (#133)
+
+### Pauper (#129) — `spoilers/companion.md:6949` — 1 correction (+ Bonesless drive-by)
+
+"Rcfile or command line only" was wrong. `pauper` is `set_in_config` at `optlist.h:559`, which means rcfile or `NETHACKOPTIONS` env. Unix command-line option parsing in `unixmain.c:343-426` has no generic `-pauper` handler (same mistake the Permadeaf v2 #122 audit caught for `-Dpermadeaf`). Reworded both Pauper and Bonesless sections — same wording appeared in both.
+
+### Umber hulks `U` (#130) — `spoilers/companion.md:8836` — 1 correction
+
+"The confusion stacks and makes spellcasting impossible" was wrong. Per `spell.c:687-708` `rejectcasting()`, only **Stunned** blocks casting, not Confused. Confusion garbles spellbook study (`spell.c:368, 620`) and worsens spell forgetting when zapped (`spell.c:1778-1782`), but you can still cast confused. Reworded to "wrecks navigation, and confused spellbook study garbles the spell."
+
+### Luck and Fortune (#133) — `spoilers/companion.md:5305` — 4 corrections
+
+- **Killing your quest leader** row said "-4 to baseline luck" but missed the immediate `change_luck(-20)` (floored at LUCKMIN=-10) and `u.ugangr += 7` from `mon.c:3680`. Expanded the row.
+- **"Attacking your pet -1"** mislabeled. `mon.c:3664` fires on *killing* a tame monster, not each attack. Also -15 alignment via `adjalign` at `mon.c:3704`. Changed to "Killing your pet."
+- **"Breaking a mirror or crystal -2"** — only mirror has the luck hook (`uhitm.c:1133`, `dothrow.c:2496`, `dokick.c:445, 1724`). Crystal balls and crystal armor have no luck penalty for breaking. Dropped "or crystal."
+- **"Archeologists begin with all gems identified, which is why their class description mentions 'unicorn negotiation'"** was fabricated. `u_init.c:903` sets TOUCHSTONE knowledge only; the touchstone tool (`u_init.c:50`) lets Archeologists *verify* a gem is real before throwing, but gems themselves aren't pre-identified. The "unicorn negotiation" class-description quote doesn't exist anywhere in source or wiki. Reworded to the actual touchstone mechanic.
+
+Re-verified: Luck range ±10 base / ±13 with luckstone, 600-turn drift (300 with Amulet/u.ugangr>0), full-moon/Friday baselines, set_moreluck ±3 to non-cursed luckstones, identified-gem +5 / +2 / +1 / -3..+3 / -1..+1 unicorn matrix, Sokoban cheat -1 each, prayer fails on any negative Luck, sacrifice cap at corpse difficulty, Heart of Ahriman / Tsurugi / Orb of Fate luck conferral.
+
+### Dogs and canines `d` (#131) — `spoilers/companion.md:8044` — 0 corrections, badge updated
+
+All 16 rows + intro re-verified vs `monsters.h:199-320`. werejackal/werewolf S_DOG vs S_HUMAN are intentionally separate (shape-change machinery, per the source comment at monsters.h:264-266).
+
+### Brainlessness (#132) — `spoilers/companion.md:2062` — 0 corrections, badge updated
+
+Re-verified all mind-flayer mechanics: 3 vs 5 tentacles, 2d1 drain-Int per tentacle (max 10/turn on master), 1-in-5 `losespells()` per hit, brainlessness death at `eat.c:698-715`, restore ability/prayer recovery, unicorn horn no longer restoring stats.
+
+### Pass-2 queue
+133/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 28: Gehennom (#134), Lance (#135), Gray Stones (#136), Keystone Kops (#137), Rings/Amulets (#138)
+
+### Gehennom (#134) — `spoilers/companion.md:5540` — 4 corrections
+
+- **Asmodeus "carries a wand of cold"** — actually wands of cold AND fire (`makemon.c:804-807`).
+- **Asmodeus "cold- and poison-resistant"** — also fire-resistant (`MR_FIRE | MR_COLD | MR_POISON` at `monsters.h:3124`). Updated to "fire-, cold-, and poison-resistant."
+- **Baalzebub "surrounded by a poison-gas cloud, summons swarms of flies"** was fabricated. Per `monsters.h:3110-3119`, his attacks are AT_BITE/AD_DRST (poisonous bite, drains Str) and AT_GAZE/AD_STUN. No gas cloud, no fly summons. The "Lord of the Flies" name + beetle-shaped lair are real (`mkmaze.c:471 baalz_fixup`). Reworded.
+- **Vlad's throne arithmetic** was wrong. Book said "4/13 chance per sit of the wish ending it, so on average you sit ~3 times before the wish (and absorb two of the bad effects)." Per `sit.c:45`, only `rnd(6) > 4` (1/3 of sits) triggers any effect at all; of those, 4/13 are the wish. Unconditional rate is `(1/3) × (4/13) = 4/39 ≈ 10%`, so average ~10 sits with ~7 bad effects absorbed. Reworded.
+
+### Keystone Kops `K` (#137) — `spoilers/companion.md:8651` — 2 corrections
+
+- **Respawn "near up-stairs"** wrong. `mon.c:3148` calls `stairway_find_type_dir(FALSE, FALSE)`; the second `FALSE` is the `up` flag, so it finds **down-stairs** (`stairs.c:89-95`, `mklev.c:2193`).
+- **Respawn odds "1-in-5 stairs / 2-in-5 random / 2-in-5 dead"** wrong arithmetic. `mon.c:3151-3164` rolls `rnd(5)` (1..5 uniform): case 1 → stairs (1/5), case 2 → random (1/5), default 3/4/5 → dead (3/5).
+
+### Gray Stones (#136) — `spoilers/companion.md:3104` — 1 correction
+
+"A loadstone auto-curses itself the moment you pick it up" — wrong. Loadstones are cursed at object creation (`mkobj.c:978-979`); the curse is intrinsic from generation, not an event-triggered curse on pickup. Reworded to "Loadstones are cursed when they generate, and a cursed loadstone refuses to be dropped at all."
+
+### Lance (#135) — `spoilers/companion.md:7552` — 0 corrections, badge updated
+
+Joust bonus and shatter chance re-verified vs `objects.h:351-352`, `uhitm.c:1546, 2123-2125`.
+
+### Rings and Amulets (#138) — `spoilers/companion.md:3779` — 0 prose corrections, badge updated
+
+Re-verified all ring prices, auto-curse list, hunger costs, restful-sleep mechanics. The v1 close call about restful sleep being "always cursed per mkobj.c:1065" was itself wrong (90% per `rn2(10)` at `mkobj.c:1063-1066`); the body text "usually cursed" was correct.
+
+### Pass-2 queue
+138/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 29: Puddings (#139), Sling (#140), Dragons (#141), Scroll Rack (#142), Crossbow (#143)
+
+### The Scroll Rack (#142) — `spoilers/companion.md:3478` — 2 corrections (beginner-saving)
+
+- **Enchant weapon at +6+** was wrong. Companion said "Past +9 the scroll usually does nothing but never destroys the weapon" — but per `wield.c:999-1009 chwepon`, when `uwep->spe > 5` (i.e., +6 or higher) and `amount >= 0`, `rn2(3)` evaluates true 2/3 of the time and destroys the weapon outright. So +6 and above is at 2/3 destruction risk per read. Reworded with "**Safe ceiling: +5**." Real beginner trap.
+- **Charging probability table** was off by one. Source formula `n³/7³` at `read.c:746-758`: 1st 0%, 2nd 0.29%, 3rd 2.33%, 4th 7.87%, 5th 18.66%, 6th 36.44%, 7th 62.97%, 8th 100%. Companion wrote "36% on sixth — and on the seventh, always" — missing the 63% seventh-charge step and labeling the always-explode as 7th instead of 8th. Corrected.
+
+### Puddings and oozes (#139) — `spoilers/companion.md:8744` — 1 correction
+
+"Splits when you hit them with an iron or metal melee weapon" implied all four split. Per `uhitm.c:1609-1610`, only `PM_BLACK_PUDDING || PM_BROWN_PUDDING` split. Gray ooze and green slime don't. Reworded the intro to scope the split to brown/black puddings.
+
+### Sling (#140) — `spoilers/companion.md:7615` — 1 correction (long-overdue)
+
+The Notes cell still read "Trains sling skill from any rock you pick up." The v1 audit comment claimed this was corrected, but the prose wasn't actually updated. Picking up rocks doesn't train any skill (training fires on hit while wielding the launcher, `weapon.c:1750-1761`). Replaced with "Launches rocks, flint stones, and gems. Caveman starting weapon."
+
+### Dragons (#141) — `spoilers/companion.md:8524` — 1 correction
+
+Baby blue dragon Notes cell read "Lightning breath, ditto." — wrong. Baby blue dragon has only bite 2d6 (`monsters.h:1408-1415`, no AT_BREA), and the section intro explicitly states "Babies don't breathe." Appears to be a stray editorial placeholder. Cleared the cell.
+
+### Crossbow (#143) — `spoilers/companion.md:7604` — 1 correction
+
+"Valkyries Skilled" was wrong. `u_init.c:525-547` (Skill_V) has no P_CROSSBOW entry; Valkyries cap at Unskilled. The Skilled role is **Knight** (`u_init.c:366`). Corrected.
+
+### Pass-2 queue
+143/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 30: Genetic Engineer (#144), Two-handed sword (#145), Quantum mechanics (#146), Feelings and Sounds (#147), The Oracle (#148)
+
+All five sections re-audit clean — 0 prose corrections.
+
+- **Genetic Engineer (#144)**: claw + corpse polymorph mechanics, defenses (kill, Antimagic, Unchanging) verified vs mhitm.c:1128-1136, eat.c:1244-1263.
+- **Two-handed sword (#145)**: stats vs objects.h:273-285, 3/2 Str bonus formula at uhitm.c:1467-1468 (technically `(3*|dbon|+1)/2` ceiling, but "1.5x" reads correctly for beginner voice).
+- **Quantum mechanics (#146)**: both rows speed 12 (not 24 as prompt hint had suggested); AD_TLPT vs AD_POLY correctly distinguished.
+- **Feelings and Sounds (#147)**: vault/fountain/oracle/shop sounds, bugle reveille, sad-feeling (a feeling, not gated by Deaf) all verified vs sounds.c.
+- **The Oracle (#148)**: DL 5-9, 4 fountains, minor=50, major=500+50×XL, minor consult always rumors.tru, Sokoban entrance upstairs, 8 centaur statues.
+
+### Pass-2 queue
+148/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 31: Eyes/spheres (#149), Lights (#150), Sokoban L1A (#151), Sokoban L4A (#152), Boomerang (#153)
+
+### Sokoban Level 1, Version A (#151) — `spoilers/companion.md:6172` — 1 correction (v1 regression)
+
+The v1 audit (#30) "corrected" scroll coordinates from (3,12)/(4,12) to (2,12)/(3,12), claiming "column 4 is the ┌ wall character." That was based on a column miscount. Row 12 character-by-character (with the 4-char `12  ` label and col 1 = pos 4 of the line): col 1 = space, col 2 = │ (wall), cols 3-4 = `··` (the two floor squares where scrolls land), col 5 = ┌ (corner), cols 6-13 = `─` (bottom corridor), col 14 = ┘. So scrolls are at companion (3,12) and (4,12), matching `soko4-1.lua:94-95` `des.object("scroll of earth", 02, 11)` and `(03, 11)` under the standard `lua_xy + 1 = spoiler_col,row` mapping. Restored the original v1-incorrect/v0-correct coordinates.
+
+### Eyes and spheres (#149) — `spoilers/companion.md:8077` — 1 correction
+
+Floating eye Notes mentioned "Use ranged, blind yourself, or close eyes first." There's no close-eyes command in NetHack 5.0; the only way to break sight is being Blind (status, or worn blindfold/towel). A beginner could hunt for a non-existent command. Reworded to "Use ranged, or wear a blindfold or towel to break sight."
+
+### Boomerang (#153) — `spoilers/companion.md:7642` — 1 correction (long-overdue)
+
+The Notes cell still read "Returns when thrown. Always." The v1 audit flagged this as false but didn't actually update the prose — same pattern as the Sling fix in batch 29 v2 #140. Per `zap.c:boomhit`, the boomerang flies a 10-step curved path that stops on the first monster, wall, closed door, or sink; catching on return requires a Dex check (auto-fails if Fumbling) and a failed catch hits the thrower. Reworded to "Curves back on a clear path; stops on a monster, wall, door, or sink. Low Dex or Fumbling means you catch it in the face."
+
+### Lights (#150) — `spoilers/companion.md:8443` — 0 corrections, badge updated
+
+Both rows verified vs `monsters.h:1168-1191`. AT_EXPL means the monster dies on attack ("bursts on contact" in prose).
+
+### Sokoban Level 4, Version A (#152) — `spoilers/companion.md:6516` — 0 corrections, badge added
+
+All 19 push steps re-simulated geometrically against `dat/soko1-1.lua`. Intermediate map after step 13 shows exactly 8 holes filled (F, G, H, I, K, L, M, N). Final remainder of 2 boulders (A and E) exact. Prize odds 75% bag of holding / 25% amulet of reflection at lua:102-111. Chamber coordinates (17,12)/(17,14)/(17,16) map to lua (16,11)/(16,13)/(16,15), adjacent to zoo region (18,10,22,16) — "next to the treasure zoo" correct.
+
+### Pass-2 queue
+153/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 32: Rogue Level (#154), Divine Relations (#155), Centaurs (#156), Wands and Staves (#157), Elemental Planes (#158)
+
+### Divine Relations (#155) — `spoilers/companion.md:4495` — 2 corrections
+
+- **Trouble priority list item 10** ("Blindness, confusion, stunning, hallucination") was misclassified as a major trouble. Per `pray.c:95, 99-101`: `TROUBLE_BLIND=-5`, `STUNNED=-9`, `CONFUSED=-10`, `HALLUCINATION=-11` are all MINOR troubles, addressed by `in_trouble()` only after positive-valued troubles. Same parallel mistake as the v1-demoted Punishment, never applied to this row. Moved these afflictions to the "additional blessings" tier and renumbered the list.
+- **Same-race sacrifice "exception"** said it "can convert an altar to your alignment" — wrong. Per `pray.c:1717-1720`, same-race blood always converts a lawful or neutral altar to **chaotic**, not to co-aligned. Only chaotic heroes benefit. On a chaotic altar it summons a demon. Reworded.
+
+### Wands and Staves (#157) — `spoilers/companion.md:3585` — 4 corrections (engrave-test paragraph)
+
+- **Magic missile and death "just write in dust"** — wrong on both. Magic missile prints "The <surface> is riddled by bullet holes!" (`engrave.c:642-648`), a distinctive message. Sleep and death share the same "the bugs on the <surface> stop moving!" message (`engrave.c:651-656`). The price-distinguish hint should be for sleep vs death, not magic missile vs death.
+- **"Striking scatters dust around"** — wrong. Actual message is "The wand unsuccessfully fights your attempt to write!" (`engrave.c:602-605`).
+- **Slow monster and speed monster** were in the "needs zap testing" group — but they produce distinctive engrave messages ("the bugs on the <surface> slow down" / "speed up" at `engrave.c:606-616`). They belong in step 1.
+- Rewrote the engrave-test paragraph to reflect all three.
+
+### The Elemental Planes (#158) — `spoilers/companion.md:5931` — 1 correction
+
+"Wand of teleport on yourself silently fails" was the wrong word. Per `teleport.c:854-855`, scrolltele prints "A mysterious force prevents you from teleporting!" — audible feedback, not silent. Self-zap WAN_TELEPORTATION reaches scrolltele() at line 844 from `zap.c:2876-2878`. Reworded both occurrences to name the actual message in one place and drop "silently" in the other.
+
+### Centaurs (#156) — `spoilers/companion.md:8510` — 2 voice fixes
+
+- "Mounted archers" was wrong — centaurs are half-horse, not riders. Reworded to "Half-horse archers."
+- "They wield bows" was too narrow. Per `makemon.c:474-484`, forest centaurs get BOW+arrows but plains and mountain centaurs get CROSSBOW+bolts. Reworded.
+
+### The Rogue Level (#154) — `spoilers/companion.md:1033` — 0 corrections, badge updated
+
+All claims re-verified vs source. Tile mode off across all 4 GUI ports.
+
+### Pass-2 queue
+158/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 33: Choking (#159), Artifacts (#160), Disintegration (#161), Ants (#162), Light Bursts (#163)
+
+### Artifacts (#160) — `spoilers/companion.md:4210` — 4 corrections
+
+- **Frost Brand / Fire Brand resistance swap.** The book said Frost Brand grants "fire resistance + cold defense" and Fire Brand "cold resistance + fire defense." Per `artilist.h:149-155` and `set_artifact_intrinsic` at `artifact.c:730-736`: Frost Brand `DFNS=COLD` grants COLD resistance; Fire Brand `DFNS=FIRE` grants FIRE resistance. Each defends against its OWN element. Swapped.
+- **Grimtooth ×2-vs-elves.** Wrong. `spec_dbon` at `artifact.c:1099-1102` explicitly bypasses `spec_applies` for Grimtooth so the +d6 damage applies to all targets, not just elves. The warning is elf-specific but the damage is universal.
+- **Mitre of Holiness "×2 vs undead"** is fictional. Mitre's ATTK is NO_ATTK, so `spec_dbon` at `artifact.c:1095-1098` sets `spec_dbon_applies=FALSE` and no damage bonus is ever applied. The M2_UNDEAD flag only enables `shade_glare` on weapons (`artifact.c:554-571`), not on worn helms. Dropped from the table row and rewrote the prose to name the real benefits.
+- **Eye of the Aethiopica "worn or carried" MR.** Wrong. `DFNS(AD_MAGM)` + `NO_CARY` at `artilist.h:303-305` means the MR fires only when worn (an amulet is worn in practice, so this rarely matters strategically — but the prose was inaccurate). The cspfx flags (EREGEN, HSPDAM) work when carried. Reworded.
+
+### Disintegration (#161) — `spoilers/companion.md:2295` — 2 corrections
+
+- **"Reflection ... the bounce often kills it outright"** wrong. Black dragons have MR_DISINT in both attack and defense slots (`monsters.h:1523`); per `resists_disint` at `zap.c:4318` the reflected beam does no damage to them. Reflection protects you but doesn't kill the dragon.
+- **"shield of reflection that fails to reflect"** misleading. Shields of reflection don't have a failure mode. The shield-eats-one-breath behavior applies to *ordinary* shields. Reworded.
+
+### Choking (#159) — `spoilers/companion.md:2259` — 2 corrections
+
+- **"Take it off"** was misleading. The amulet of strangulation is 90% cursed at gen (`mkobj.c:1063`), so a beginner trying to remove it usually can't. Replaced with the real escape: pray, or uncurse with holy water / remove curse.
+- **"Magic resistance doesn't help (it's a physical attack)"** had a wrong rationale. Strangulation isn't an attack — it's a timer death via `done_timeout(DIED, STRANGLED)`. MR-doesn't-help is true, but the reason is "no attack to resist." Reworded.
+
+### Ants and insects (#162) — `spoilers/companion.md:8007` — 0 corrections, badge updated
+
+All 6 rows re-verified vs `monsters.h:89-133`.
+
+### Light Bursts (#163) — `spoilers/companion.md:2165` — 0 corrections, badge updated
+
+All claims re-verified vs `monsters.h:1169-1191` and `mhitu.c:1623-1650`. Note: warning detects yellow/black lights only at adjacent range, which is also their explosion range — so warning is less helpful in practice than the prose implies, but the prose doesn't overstate.
+
+### Pass-2 queue
+163/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 34: Quarterstaff (#164), Deadly Poison (#165), Giant humanoids (#166), Riders (#167), Advanced Controls (#168)
+
+### Giant humanoids `H` (#166) — `spoilers/companion.md:8627` — 3 fixes
+
+- **Cyclops "Caveman quest nemesis"** wrong. Per `role.c:154-172`, Cyclops is the **Healer** quest nemesis; Caveman's is the Chromatic Dragon (`role.c:113-131`).
+- **Lord Surtur "Has Mjollnir if you don't"** unsupported. `M3_WANTSARTI` targets the player's quest artifact (Orb of Fate for Valkyrie per `role.c:516`), and Mjollnir is a sacrifice gift artifact (`artilist.h:109-112`); no code in makemon/mkobj puts Mjollnir on Surtur. Dropped.
+- **Fire giant "Surprisingly poor offensively if you have fire res"** misleading. Fire giant attacks are AD_PHYS (weapon damage), so fire resistance doesn't reduce its melee. Dropped.
+
+### The Riders (#167) — `spoilers/companion.md:2230` — 1 voice fix
+
+"Each hits twice per turn with AT_TUCH 8d8" used a C identifier in beginner-voice prose. Reworded to "a touch attack dealing 8d8 damage."
+
+### Quarterstaff (#164) — `spoilers/companion.md:7490` — 0 corrections, badge updated
+
+Stats vs `objects.h:377-378`, Wizard starter at `u_init.c:168`, bimanual 3/2 Str bonus at `uhitm.c:1467`.
+
+### Deadly Poison (#165) — `spoilers/companion.md:2280` — 0 corrections, badge updated
+
+AD_DRST 1/240 frequency (`rn2(8) × rn2(30)` at `uhitm.c:3154` + `attrib.c:362`); poison resistance grants full immunity; Famine corpse fatal at `eat.c:831-838`.
+
+### Advanced Controls (#168) — `spoilers/companion.md:6034` — 0 corrections, badge updated
+
+All keystrokes, options, and the `verbose`/`autopickup`/`pickup_types` semantics re-verified.
+
+### Pass-2 queue
+168/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 35: Movement Traps (#169), Elbereth (#170), Major demons (#171), Delayed Deaths (#172), What Changed (#173)
+
+### Major demons `&` (#171) — `spoilers/companion.md:9046` — 3 corrections
+
+Three stings mislabeled as "poison" when the C source has AD_DRST (strength-drain, not generic poison): bone devil (`monsters.h:2999`), Orcus (`:3082`), and Geryon (`:3093`) all have `ATTK(AT_STNG, AD_DRST, 2, 4)`. Same drain-Str pattern as the jellyfish fix in batch 30. Beginner trap: a player armored against poison would NOT be protected against these stings — they'd watch Strength drop during combat. Changed all three to "sting 2d4 drain-Str."
+
+### Delayed Deaths (#172) — `spoilers/companion.md:2322` — 3 corrections
+
+- **Sliming "~9-turn transformation"** off by one. Initial timer is 10 (`make_slimed(10L,...)` at `uhitm.c:3199`, `eat.c:854`); the 9-turn impression came from the t/2 message cadence at `timeout.c:391`. Now consistent with the Puddings section (v2 #139).
+- **"polymorph into a flame-bodied or slime-immune form"** overbroad. Per `polyself.c:842-849` the cure requires `flaming()` or `PM_GREEN_SLIME`. Noncorporeal forms (ghost, shade) prevent new infection but don't cure an active timer.
+- **"cancellation negates the touch attack"** wrongly listed under Cures. Cancelling at `uhitm.c:3556-3560` prevents future hits but doesn't clear a running timer.
+
+### What Changed Since Last Time (#173) — `spoilers/companion.md:9156` — 3 corrections
+
+- **Touch of death "Magic resistance reduces but no longer fully prevents it"** wrong. Per `mcastu.c:391-407`, the spell is binary — `!Antimagic && rn2(m_lev) > 12` gates the kill; Antimagic in the else branch triggers `shieldeff()` and "Lucky for you, it didn't work!" Antimagic still fully blocks the spell in 5.0; the 5.0 change is the unprotected outcome (instakill → drain+damage per `fixes5-0-0.txt:538`), not the MR semantics. Reworded.
+- **Iron bars "since 3.6"** wrong date. Iron bars were added in 3.3.0 per `fixes3-3-0.txt:349`. Corrected to "since 3.3."
+- **Gold dragon scale mail "in addition to its two resistances"** wrong. Gold DSM grants only hallucination resistance + innate light (`do_wear.c:846-851`); the DRGN_ARMR slot for gold is 0 (`objects.h:505`). Reworded.
+
+### Movement Traps (#169) — `spoilers/companion.md:1246` — 0 corrections, badge updated
+
+All trapdoor/hole/pit mechanics re-verified.
+
+### Elbereth (#170) — `spoilers/companion.md:1497` — 0 corrections, badge updated
+
+Defile rule, exact-word requirement, S_HUMAN/Rider/Angel/minotaur exclusions, blind/peaceful pass-through, cornered ALLOW_SSM step-through all re-verified.
+
+### Pass-2 queue
+173/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 36: Points of Interest (#174), Axe (#175), Polearms (#176), Field Guide (#177), Xorns (#178)
+
+### Points of Interest (#174) — `spoilers/companion.md:700` — 4 corrections
+
+- **"Occasionally bless" the dipped fountain item** wrong. Per `fountain.c:464-475`, cases 17-20 = uncurse, not bless. No fountain bless outcome exists.
+- **Quaff table treated "Wish granted" and "Water demon" as independent rows** — they're the same case 23 of `rnd(30)` at `fountain.c:314`. Shallow wish odds also overstated: 1/30 is the demon-spawn rate; the wish then requires `rnd(100) > 80 + level_difficulty()` (`fountain.c:78`), so actual shallow wish odds are ~1/150 and zero past DL 20. Merged the rows.
+- **Potion-poly sink transform missing "grave"** — `do.c:416-446` case 3 generates a grave. The ring-drop table at line 873 already lists it; the potion-dip row was inconsistent. Added.
+
+### Polearms (#176) — `spoilers/companion.md:7500` — 1 correction
+
+"the attack is treated as bashing (no strength bonus, no weapon-skill bonus)" — wrong on the Strength half. Adjacent polearm at `uhitm.c:1075-1086` clamps damage to rnd(2), but the strength-bonus branch at `uhitm.c:1447-1469` runs regardless; only `use_weapon_skill` is FALSE. Reworded to: "damage clamps to 1d2 base, weapon-skill bonus doesn't apply (Strength still does)."
+
+### A Field Guide to Dungeon Fauna (#177) — `spoilers/companion.md:1636` — 2 corrections
+
+- **`w` Worms "grow tail segments after each hit"** wrong. Per `worm.c:218-237`, long worms grow on a movement-driven timer (`wgrowtime`), not per hit. Reworded to "grow tail segments as they move."
+- **`P` Puddings "Use silver, dragonhide, or spells"** misleading. No dragonhide weapons exist in 5.0 (DRAGON_HIDE is body-armor-only). Split gate at `uhitm.c:1616-1618` admits IRON|METAL only, so wooden and silver weapons are the actual non-splitters. Reworded to "Use a silver or wooden weapon, or spells."
+
+### Axe (#175) — `spoilers/companion.md:7407` — 0 corrections, badge added
+
+Stats vs `objects.h:236-241`; battle-axe bimanual 3/2 Str at `uhitm.c:1467-1468`; Cleaver = BATTLE_AXE artifact.
+
+### Xorns (#178) — `spoilers/companion.md:8897` — 0 corrections, badge updated
+
+All claims re-verified. Speed 9, M1_WALLWALK (not M1_TUNNEL), AD_PHYS attacks only (worn gear safe).
+
+### Pass-2 queue
+178/183 done.
+
+---
+
+## 2026-05-19 — v2 audit batch 37 (FINAL): Skill Caps (#179), Lizards (#180), Trident (#181), Secret Doors (#182), Liches (#183)
+
+### Trident (#181) — `spoilers/companion.md:7552` — 1 correction
+
+Swimmer bonus labeled "+4 damage / +2" — wrong type. Per `weapon.c:170-176`, the bonus path is inside `hitval()`, not `dmgval()` — it's a **to-hit** bonus, not damage. Reworded.
+
+### Finding Secret Doors (#182) — `spoilers/companion.md:1375` — 1 correction
+
+Excalibur enchantment and lenses don't stack independently. Per `detect.c:2026-2032`, both feed a single `fund` variable that is then capped at +5. So lenses + a +5 Excalibur still gives `fund=5`; lenses only add value if Excalibur's enchantment is below +3. Reworded to make the shared cap explicit.
+
+### Liches `L` (#183) — `spoilers/companion.md:8679` — 1 correction
+
+"The higher tiers can cast touch of death" — wrong; only the arch-lich can. Per `mcastu.c:111`, monster spell selection rolls `rn2(m_lev)` and matches against spell-level thresholds; DEATH_TOUCH is at spell-level 20. Master lich `m_lev=17` means `rn2(17) ≤ 16` — can never reach 20. Only arch-lich (`m_lev=25`) can. The v1 audit caught this and corrected it once; the prose drifted back. Re-corrected.
+
+### Skill Caps (#179) — `spoilers/companion.md:7833` — 0 corrections
+
+All 494 cells exact-match verified: 27 weapon rows + 4 fighting-style rows + 7 spell-school rows × 13 role columns. Cross-section consistent with every other v2 audit that touched skill rows.
+
+### Lizards `:` (#180) — `spoilers/companion.md:9133` — 0 corrections, badge updated
+
+All 8 entries verified vs `monsters.h:3260-3324`. Lizard corpse stoning cure, newt Pw boost, chameleon shape-shifter eat-poly all confirmed.
+
+### Pass-2 queue
+**183/183 done — v2 pass complete.**
+
+---

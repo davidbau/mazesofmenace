@@ -1,0 +1,190 @@
+# Companion-audit work queue
+
+Seed: `companion-audit-2026-05-17-hybrid`
+Total units: 183 (34 chapters + 149 subsections)
+
+Process in numbered order. Mark each `[x]` as it's audited.
+
+- [x] **#  1**  L 3211  (  98 lines) 📖 The Scroll Rack
+- [x] **#  2**  L 2898  (  13 lines)   ↳ A Practical Identification Strategy → Naming What You've Learned
+- [x] **#  3**  L 7877  (  18 lines)   ↳ Bestiary Tables → Trolls `T`
+- [x] **#  4**  L 7740  (  17 lines)   ↳ Bestiary Tables → Liches `L`
+- [x] **#  5**  L  687  ( 155 lines) 📖 Points of Interest
+- [x] **#  6**  L 6747  (  11 lines)   ↳ Weapons Tables → Club
+- [x] **#  7**  L 2087  (  10 lines)   ↳ Dangerous Encounters → Deadly Poison
+- [x] **#  8**  L 7134  (  16 lines)   ↳ Bestiary Tables → Blobs `b`
+- [x] **#  9**  L 7907  (  16 lines)   ↳ Bestiary Tables → Vampires `V`
+- [x] **# 10**  L 2741  (   9 lines)   ↳ A Practical Identification Strategy → The Sink Test (Rings)
+- [x] **# 11**  L 1864  (  11 lines)   ↳ Dangerous Encounters → Drowning
+- [x] **# 12**  L 2174  (  28 lines)   ↳ Dangerous Encounters → The Genetic Engineer
+- [x] **# 13**  L 7923  (  16 lines)   ↳ Bestiary Tables → Wraiths `W`
+- [x] **# 14**  L 7638  (  18 lines)   ↳ Bestiary Tables → Elementals `E`
+- [x] **# 15**  L 5245  (  55 lines) 📖 The Ascension Kit
+- [x] **# 16**  L 7512  (  15 lines)   ↳ Bestiary Tables → Xans and fantastic insects `x`
+- [x] **# 17**  L 7991  (  83 lines)   ↳ Bestiary Tables → Humans and elves `@`
+- [x] **# 18**  L 8376  ( 165 lines) 📖 Acknowledgements
+- [x] **# 19**  L 6799  (  10 lines)   ↳ Weapons Tables → Quarterstaff
+- [x] **# 20**  L 7150  (  16 lines)   ↳ Bestiary Tables → Cockatrices `c`
+- [x] **# 21**  L 1875  (   8 lines)   ↳ Dangerous Encounters → Attack Wands and the Warning Shot
+- [x] **# 22**  L 7676  (  15 lines)   ↳ Bestiary Tables → Gnomes `G`
+- [x] **# 23**  L 6927  (  10 lines)   ↳ Weapons Tables → Shuriken
+- [x] **# 24**  L 8116  (  24 lines)   ↳ Bestiary Tables → Golems `'`
+- [x] **# 25**  L 7428  (  18 lines)   ↳ Bestiary Tables → Arachnids and centipedes `s`
+- [x] **# 26**  L 1147  (  27 lines)   ↳ Traps and Hazards → Nuisance Traps
+- [x] **# 27**  L 7244  (  18 lines)   ↳ Bestiary Tables → Humanoids `h`
+- [x] **# 28**  L 3633  ( 144 lines) 📖 Tools of the Trade
+- [x] **# 29**  L 1623  ( 204 lines) 📖 What Actually Kills Adventurers
+- [x] **# 30**  L 5560  (  82 lines)   ↳ Sokoban Solutions → Level 1, Version A
+- [x] **# 31**  L 6005  ( 137 lines)   ↳ Sokoban Solutions → Level 4, Version B (prize: usually amulet of reflection, 25% bag of holding)
+- [x] **# 32**  L 2414  ( 292 lines)   ↳ A Practical Identification Strategy → The Price Is Right
+- [x] **# 33**  L 2016  (  38 lines)   ↳ Dangerous Encounters → Seduction
+- [x] **# 34**  L 3090  ( 121 lines) 📖 The Apothecary
+- [x] **# 35**  L 7656  (  20 lines)   ↳ Bestiary Tables → Fungi and molds `F`
+- [x] **# 36**  L 2202  ( 142 lines) 📖 Making Friends
+- [x] **# 37**  L 1117  (  30 lines)   ↳ Branches and Landmarks → The Castle
+- [x] **# 38**  L 6681  (  11 lines)   ↳ Weapons Tables → Saber
+- [x] **# 39**  L  947  (  34 lines)   ↳ Branches and Landmarks → The Quest
+- [x] **# 40**  L 7113  (  21 lines)   ↳ Bestiary Tables → Ants and insects `a`
+- [x] **# 41**  L 6809  (  23 lines)   ↳ Weapons Tables → Polearms
+- [x] **# 42**  L 2152  (  22 lines)   ↳ Dangerous Encounters → The Displacer Beast
+- [x] **# 43**  L 1942  (  21 lines)   ↳ Dangerous Encounters → Level Drain
+- [x] **# 44**  L 7411  (  17 lines)   ↳ Bestiary Tables → Rodents `r`
+- [x] **# 45**  L 6789  (  10 lines)   ↳ Weapons Tables → Hammer
+- [x] **# 46**  L 8180  ( 196 lines) 📖 What Changed Since Last Time
+- [x] **# 47**  L 6399  ( 237 lines) 📖 Shopping and Shopkeeper Pricing
+- [x] **# 48**  L 5446  ( 114 lines) 📖 Advanced Controls
+- [x] **# 49**  L 7589  (  14 lines)   ↳ Bestiary Tables → Centaurs `C`
+- [x] **# 50**  L 6341  (  12 lines)   ↳ Voluntary Challenges → Petless (new in 5.0)
+- [x] **# 51**  L 7858  (  19 lines)   ↳ Bestiary Tables → Snakes `S`
+- [x] **# 52**  L 6295  (  27 lines)   ↳ Voluntary Challenges → Combining Conducts
+- [x] **# 53**  L 6224  (  13 lines)   ↳ Voluntary Challenges → Pacifist
+- [x] **# 54**  L 7603  (  35 lines)   ↳ Bestiary Tables → Dragons `D`
+- [x] **# 55**  L 7713  (  12 lines)   ↳ Bestiary Tables → Jabberwocks `J`
+- [x] **# 56**  L 7478  (  19 lines)   ↳ Bestiary Tables → Vortices `v`
+- [x] **# 57**  L 7193  (  18 lines)   ↳ Bestiary Tables → Eyes and spheres `e`
+- [x] **# 58**  L 7393  (  18 lines)   ↳ Bestiary Tables → Quadrupeds `q`
+- [x] **# 59**  L 4598  ( 121 lines) 📖 Spellcasting
+- [x] **# 60**  L 7845  (  13 lines)   ↳ Bestiary Tables → Rust monsters and disenchanters `R`
+- [x] **# 61**  L 7951  (  17 lines)   ↳ Bestiary Tables → Apelike creatures `Y`
+- [x] **# 62**  L 6353  (  17 lines)   ↳ Voluntary Challenges → Permadeaf (new in 5.0)
+- [x] **# 63**  L 1918  (  24 lines)   ↳ Dangerous Encounters → Brainlessness
+- [x] **# 64**  L 6196  (  14 lines)   ↳ Voluntary Challenges → Atheist
+- [x] **# 65**  L  372  ( 140 lines) 📖 Your First Descent
+- [x] **# 66**  L 1998  (  18 lines)   ↳ Dangerous Encounters → Light Bursts
+- [x] **# 67**  L 5007  ( 238 lines) 📖 Gehennom
+- [x] **# 68**  L 2079  (   8 lines)   ↳ Dangerous Encounters → Choking
+- [x] **# 69**  L 7830  (  15 lines)   ↳ Bestiary Tables → Quantum mechanics `Q`
+- [x] **# 70**  L 6779  (  10 lines)   ↳ Weapons Tables → Flail
+- [x] **# 71**  L 2106  (   5 lines)   ↳ Dangerous Encounters → Genocide
+- [x] **# 72**  L 6322  (  19 lines)   ↳ Voluntary Challenges → Pauper (new in 5.0)
+- [x] **# 73**  L 1963  (  18 lines)   ↳ Dangerous Encounters → Enchantment Drain
+- [x] **# 74**  L 1283  (  49 lines)   ↳ Traps and Hazards → Finding Secret Doors
+- [x] **# 75**  L 7939  (  12 lines)   ↳ Bestiary Tables → Xorns `X`
+- [x] **# 76**  L 7326  (  16 lines)   ↳ Bestiary Tables → Mimics `m`
+- [x] **# 77**  L 2950  ( 140 lines) 📖 Provisions and Dining
+- [x] **# 78**  L 6704  (  11 lines)   ↳ Weapons Tables → Long sword
+- [x] **# 79**  L 2750  ( 103 lines)   ↳ A Practical Identification Strategy → Use-Testing (The Careful Way)
+- [x] **# 80**  L 7527  (  15 lines)   ↳ Bestiary Tables → Lights `y`
+- [x] **# 81**  L  512  ( 175 lines) 📖 The Lay of the Land
+- [x] **# 82**  L 4382  ( 127 lines) 📖 The Art of Combat
+- [x] **# 83**  L 6279  (  16 lines)   ↳ Voluntary Challenges → Wishing Restrictions
+- [x] **# 84**  L 7497  (  15 lines)   ↳ Bestiary Tables → Worms `w`
+- [x] **# 85**  L 7799  (  14 lines)   ↳ Bestiary Tables → Ogres `O`
+- [x] **# 86**  L  132  ( 191 lines) 📖 Choosing Your Expedition
+- [x] **# 87**  L 6237  (  13 lines)   ↳ Voluntary Challenges → Illiterate
+- [x] **# 88**  L 2344  (  70 lines)   ↳ A Practical Identification Strategy → Blessed, Uncursed, Cursed
+- [x] **# 89**  L 7358  (  19 lines)   ↳ Bestiary Tables → Orcs `o`
+- [x] **# 90**  L 6907  (  10 lines)   ↳ Weapons Tables → Sling
+- [x] **# 91**  L 7281  (  16 lines)   ↳ Bestiary Tables → Jellies `j`
+- [x] **# 92**  L 1240  (  17 lines)   ↳ Traps and Hazards → Searching and Detection
+- [x] **# 93**  L 2111  (  41 lines)   ↳ Dangerous Encounters → Delayed Deaths
+- [x] **# 94**  L 5731  (  99 lines)   ↳ Sokoban Solutions → Level 2, Version B
+- [x] **# 95**  L 6917  (  10 lines)   ↳ Weapons Tables → Dart
+- [x] **# 96**  L 6937  (  12 lines)   ↳ Weapons Tables → Boomerang
+- [x] **# 97**  L 7554  (  18 lines)   ↳ Bestiary Tables → Angelic beings `A`
+- [x] **# 98**  L 7691  (  22 lines)   ↳ Bestiary Tables → Giant humanoids `H`
+- [x] **# 99**  L 4509  (  89 lines) 📖 Wishes and Wishing
+- [x] **#100**  L 5830  (  36 lines)   ↳ Sokoban Solutions → Level 3, Version A
+- [x] **#101**  L 6692  (  12 lines)   ↳ Weapons Tables → Broadsword
+- [x] **#102**  L 3309  ( 180 lines) 📖 Wands and Staves
+- [x] **#103**  L 7446  (  15 lines)   ↳ Bestiary Tables → Trappers and lurkers `t`
+- [x] **#104**  L 5927  (  78 lines)   ↳ Sokoban Solutions → Level 4, Version A (prize: usually bag of holding, 25% amulet of reflection)
+- [x] **#105**  L 5364  (  82 lines) 📖 The Elemental Planes
+- [x] **#106**  L 1023  (  94 lines)   ↳ Branches and Landmarks → Medusa's Island
+- [x] **#107**  L 6949  ( 164 lines) 📖 Armor Tables
+- [x] **#108**  L 6250  (  13 lines)   ↳ Voluntary Challenges → No Genocide
+- [x] **#109**  L 4932  (  75 lines) 📖 The Castle
+- [x] **#110**  L  894  (  36 lines)   ↳ Branches and Landmarks → Sokoban
+- [x] **#111**  L 3899  ( 271 lines) 📖 Artifacts
+- [x] **#112**  L 5866  (  61 lines)   ↳ Sokoban Solutions → Level 3, Version B
+- [x] **#113**  L 7725  (  15 lines)   ↳ Bestiary Tables → Keystone Kops `K`
+- [x] **#114**  L 6832  (  15 lines)   ↳ Weapons Tables → Spear
+- [x] **#115**  L 4719  (  71 lines) 📖 Curses and How to Break Them
+- [x] **#116**  L 2853  (  45 lines)   ↳ A Practical Identification Strategy → Gray Stones: Four Stones, One Correct Answer
+- [x] **#117**  L 1883  (  23 lines)   ↳ Dangerous Encounters → The Touch of Death
+- [x] **#118**  L 6896  (  11 lines)   ↳ Weapons Tables → Crossbow
+- [x] **#119**  L 6636  (  18 lines)   ↳ Weapons Tables → Dagger
+- [x] **#120**  L 6758  (  11 lines)   ↳ Weapons Tables → Mace
+- [x] **#121**  L 4170  ( 212 lines) 📖 Divine Relations
+- [x] **#122**  L 1398  (  86 lines)   ↳ Traps and Hazards → Elbereth
+- [x] **#123**  L 1174  (  19 lines)   ↳ Traps and Hazards → Movement Traps
+- [x] **#124**  L  842  (  52 lines)   ↳ Branches and Landmarks → The Gnomish Mines
+- [x] **#125**  L  981  (  23 lines)   ↳ Branches and Landmarks → The Rogue Level
+- [x] **#126**  L 7813  (  17 lines)   ↳ Bestiary Tables → Puddings and oozes `P`
+- [x] **#127**  L 6715  (  11 lines)   ↳ Weapons Tables → Two-handed sword
+- [x] **#128**  L 6210  (  14 lines)   ↳ Voluntary Challenges → Weaponless
+- [x] **#129**  L 6847  (  10 lines)   ↳ Weapons Tables → Trident
+- [x] **#130**  L 1524  (  99 lines) 📖 A Field Guide to Dungeon Fauna
+- [x] **#131**  L 7342  (  16 lines)   ↳ Bestiary Tables → Nymphs `n`
+- [x] **#132**  L 1193  (  47 lines)   ↳ Traps and Hazards → Dangerous Traps
+- [x] **#133**  L 7314  (  12 lines)   ↳ Bestiary Tables → Leprechauns `l`
+- [x] **#134**  L 5300  (  64 lines) 📖 The Ascension Run
+- [x] **#135**  L 6380  (  19 lines)   ↳ Voluntary Challenges → Bonesless (new in 5.0)
+- [x] **#136**  L 6726  (  11 lines)   ↳ Weapons Tables → Axe
+- [x] **#137**  L 2097  (   9 lines)   ↳ Dangerous Encounters → Disintegration
+- [x] **#138**  L 1004  (  19 lines)   ↳ Branches and Landmarks → Fort Ludios
+- [x] **#139**  L 3489  ( 144 lines) 📖 Rings and Amulets
+- [x] **#140**  L 1484  (  40 lines) 📖 Feelings and Sounds
+- [x] **#141**  L 7968  (  23 lines)   ↳ Bestiary Tables → Zombies `Z`
+- [x] **#142**  L 6142  (  54 lines)   ↳ Voluntary Challenges → The Food Conducts
+- [x] **#143**  L 7297  (  17 lines)   ↳ Bestiary Tables → Kobolds `k`
+- [x] **#144**  L 4790  ( 142 lines) 📖 Luck and Fortune
+- [x] **#145**  L 6370  (  10 lines)   ↳ Voluntary Challenges → Sokoban (new in 5.0)
+- [x] **#146**  L 8159  (  21 lines)   ↳ Bestiary Tables → Lizards `:`
+- [x] **#147**  L 7211  (  19 lines)   ↳ Bestiary Tables → Felines `f`
+- [x] **#148**  L 6769  (  10 lines)   ↳ Weapons Tables → Morning star
+- [x] **#149**  L 7757  (  21 lines)   ↳ Bestiary Tables → Mummies `M`
+- [x] **#150**  L 2054  (  25 lines)   ↳ Dangerous Encounters → The Riders
+- [x] **#151**  L 2911  (  39 lines)   ↳ A Practical Identification Strategy → A Practical Strategy
+- [x] **#152**  L 7230  (  14 lines)   ↳ Bestiary Tables → Gremlins `g`
+- [x] **#153**  L 5642  (  58 lines)   ↳ Sokoban Solutions → Level 1, Version B
+- [x] **#154**  L 5700  (  31 lines)   ↳ Sokoban Solutions → Level 2, Version A
+- [x] **#155**  L 7542  (  12 lines)   ↳ Bestiary Tables → Zruties `z`
+- [x] **#156**  L 7572  (  17 lines)   ↳ Bestiary Tables → Bats and birds `B`
+- [x] **#157**  L 6878  (  18 lines)   ↳ Weapons Tables → Bow
+- [x] **#158**  L 8140  (  19 lines)   ↳ Bestiary Tables → Sea monsters `;`
+- [x] **#159**  L 7166  (  27 lines)   ↳ Bestiary Tables → Dogs and canines `d`
+- [x] **#160**  L 6737  (  10 lines)   ↳ Weapons Tables → Pick-axe
+- [x] **#161**  L 6263  (  16 lines)   ↳ Voluntary Challenges → Polymorph Restrictions
+- [x] **#162**  L 6867  (  11 lines)   ↳ Weapons Tables → Whip
+- [x] **#163**  L 6668  (  13 lines)   ↳ Weapons Tables → Short sword
+- [x] **#164**  L  930  (  17 lines)   ↳ Branches and Landmarks → The Oracle
+- [x] **#165**  L 6857  (  10 lines)   ↳ Weapons Tables → Lance
+- [x] **#166**  L 7895  (  12 lines)   ↳ Bestiary Tables → Umber hulks `U`
+- [x] **#167**  L 8074  (  42 lines)   ↳ Bestiary Tables → Major demons `&`
+- [x] **#168**  L 7377  (  16 lines)   ↳ Bestiary Tables → Piercers `p`
+- [x] **#169**  L 6654  (  14 lines)   ↳ Weapons Tables → Knife
+- [x] **#170**  L  323  (  49 lines) 📖 What to Pack
+- [x] **#171**  L 7262  (  19 lines)   ↳ Bestiary Tables → Imps and minor demons `i`
+- [x] **#172**  L 1827  (  37 lines)   ↳ Dangerous Encounters → Petrification (Stoning)
+- [x] **#173**  L 7778  (  21 lines)   ↳ Bestiary Tables → Nagas `N`
+- [x] **#174**  L 1906  (  12 lines)   ↳ Dangerous Encounters → Starvation
+- [x] **#175**  L 3777  ( 122 lines) 📖 The Armory
+- [x] **#176**  L 1332  (  66 lines)   ↳ Traps and Hazards → Engravings
+- [x] **#177**  L 1257  (  26 lines)   ↳ Traps and Hazards → Iron Bars
+- [x] **#178**  L 7461  (  17 lines)   ↳ Bestiary Tables → Unicorns and horses `u`
+- [x] **#179**  L 1981  (  17 lines)   ↳ Dangerous Encounters → Engulfment from Hiding
+- [x] **#180**  L 2706  (  35 lines)   ↳ A Practical Identification Strategy → The Engrave Test (Wands)
+- [x] **#181**  L 4644  ( 168 lines) 📖 Enhancing Skills
+- [x] **#182**  L 7458  (  74 lines)   ↳ Appendices → Spell Tables
+- [x] **#183**  L 7532  (  93 lines)   ↳ Appendices → Skill Caps
