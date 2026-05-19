@@ -12,7 +12,7 @@ import {
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, W_ARMS, W_NONDIGGABLE, W_WEP,
     GP_CHECKSCARY, SDOOR, W_NONPASSWALL,
-    isok, SPACE_POS,
+    isok, SPACE_POS, is_pit,
 } from './const.js';
 import {
     newsym, queue_more_prompt, pline, flush_screen, clear_pending_message,
@@ -38,6 +38,7 @@ const M1_WALLWALK = 0x00000008;
 const M1_TUNNEL = 0x00000020;
 const M1_NEEDPICK = 0x00000040;
 const M1_HIDE = 0x00000100;
+const M1_CONCEAL = 0x00000080;
 const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_MINDLESS = 0x00010000;
@@ -235,6 +236,43 @@ function monster_should_see_target(mtmp, omx, omy, ggx, ggy) {
 
 function is_hider(mtmp) {
     return !!(mtmp.data?.mflags1 & M1_HIDE);
+}
+
+function hides_under_basic(mtmp) {
+    return !!(mtmp.data?.mflags1 & M1_CONCEAL);
+}
+
+function can_hide_under_object_basic(x, y) {
+    const obj = (game.level?.objects || []).find((item) => item.ox === x && item.oy === y);
+    if (!obj) return false;
+    const trap = (game.level?.traps || []).find((ttmp) => ttmp.tx === x && ttmp.ty === y);
+    return !trap || is_pit(trap.ttyp);
+}
+
+function hideunder_basic(mtmp) {
+    // C ref: mon.c:hideunder().  Keep the side effect conservative: eels hide
+    // in pool squares; concealers hide under eligible floor objects.
+    let undetected = false;
+    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    if (mtmp.data?.mlet === 'S_EEL') {
+        undetected = !!loc && IS_POOL(loc.typ);
+    } else if (hides_under_basic(mtmp) && can_hide_under_object_basic(mtmp.mx, mtmp.my)
+               && !IS_POOL(loc?.typ) && !IS_LAVA(loc?.typ)) {
+        undetected = true;
+    }
+    const old = !!mtmp.mundetected;
+    mtmp.mundetected = undetected ? 1 : 0;
+    if (old !== !!mtmp.mundetected) newsym(mtmp.mx, mtmp.my);
+    return undetected;
+}
+
+function postmove_hide_under_or_eel_basic(mtmp) {
+    if (!hides_under_basic(mtmp) && mtmp.data?.mlet !== 'S_EEL') return;
+    // C ref: monmove.c:postmov() re-hide gate after moved/done monsters.
+    if (mtmp.mundetected || ((mtmp.mcanmove !== 0 && !mtmp.msleeping) && rn2(5))) {
+        hideunder_basic(mtmp);
+    }
+    newsym(mtmp.mx, mtmp.my);
 }
 
 function non_tame_movement_opportunity(mtmp, state) {
@@ -1449,6 +1487,11 @@ async function m_move_basic(mtmp) {
         rn2(3);
         return MMOVE_NOTHING;
     }
+    if ((mtmp.data?.mflags1 & M1_CONCEAL)
+        && can_hide_under_object_basic(mtmp.mx, mtmp.my)
+        && rn2(10)) {
+        return MMOVE_NOTHING;
+    }
     if (mtmp.mconf) {
         appr = 0;
     } else {
@@ -1595,9 +1638,11 @@ async function m_move_basic(mtmp) {
     if (doorStatus === MMOVE_DIED) return MMOVE_DIED;
     if (await mpickstuff_basic(mtmp)) {
         maybe_spin_web_basic(mtmp);
+        postmove_hide_under_or_eel_basic(mtmp);
         return MMOVE_DONE;
     }
     maybe_spin_web_basic(mtmp);
+    postmove_hide_under_or_eel_basic(mtmp);
     return doorStatus;
 }
 
@@ -1688,7 +1733,12 @@ function apply_newcham_basic(mon, ptr) {
 }
 
 function decide_to_shapeshift_basic(mon) {
-    if (!vampire_shifter_base(mon?.cham)) return;
+    if (!vampire_shifter_base(mon?.cham)) {
+        // C ref: mon.c:decide_to_shapeshift() regular shapeshifter gate.
+        // Full runtime newcham() target selection remains future work.
+        if (!mon?.mspec_used && !rn2(6)) mon.mspec_used = 3 + rn2(10);
+        return;
+    }
     if (mon.data?.mlet !== 'S_VAMPIRE') {
         let ptr = null;
         let change = false;

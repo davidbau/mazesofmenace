@@ -2863,6 +2863,11 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mkobj_at(RANDOM_CLASS, x, y, true);
         mon.mundetected = 1;
     }
+    if (ptr.mlet === 'S_EEL' && game.in_mklev && IS_POOL(game.level?.at(x, y)?.typ)) {
+        // C ref: makemon.c:makemon() calls hideunder() for sea monsters
+        // during level creation, which hides them under water without RNG.
+        mon.mundetected = 1;
+    }
     if (ptr.mlet === 'S_LEPRECHAUN') mon.msleeping = 1;
     if ((ptr.mlet === 'S_NYMPH' || ptr.mlet === 'S_JABBERWOCK')
         && rn2(5) && !game.u?.uhave?.amulet) {
@@ -2941,6 +2946,8 @@ function holeDestination() {
 
 // maketrap stub
 function maketrap(x, y, typ) {
+    // C ref: trap.c:maketrap() - these are door/chest states, not map traps.
+    if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
     const trap = { ttyp: typ, tx: x, ty: y, tseen: false, once: false, launch: { x: 0, y: 0 } };
     if (typ === SQKY_BOARD) {
         const used = new Set((game.level?.traps || [])
@@ -7860,6 +7867,21 @@ const WIZARD1_MAP = [
     '|..|.......S...............|x',
     '----------------------------x',
 ];
+const WIZARD2_MAP = [
+    '----------------------------x',
+    '|.....|.S....|.............|x',
+    '|.....|.-------S--------S--|x',
+    '|.....|.|.........|........|x',
+    '|..-S--S|.........|........|x',
+    '|..|....|.........|------S-|x',
+    '|..|....|.........|.....|..|x',
+    '|-S-----|.........|.....|..|x',
+    '|.......|.........|S--S--..|x',
+    '|.......|.........|.|......|x',
+    '|-----S----S-------.|......|x',
+    '|............|....S.|......|x',
+    '----------------------------x',
+];
 const WIZARD3_MAP = [
     '----------------------------x',
     '|..|............S..........|x',
@@ -8133,6 +8155,39 @@ function wizardSetDoor(x, y, mask) {
     set_door_mask(loc, mask);
 }
 
+function loadWizard2Special() {
+    // C ref: dat/wizard2.lua loaded through sp_lev.c:lspo_map().
+    rn2(3); rn2(2); // nhlib shuffle()
+    loadWizardMazegridTerrain(WIZARD2_MAP);
+
+    createWizardRoomRegion(1, 1, 26, 11, 0, OROOM, FILL_NONE, true);
+    createWizardRoomRegion(9, 3, 17, 9, 0, ZOO, FILL_NORMAL);
+    wizardSetDoor(15, 2, D_CLOSED);
+    wizardSetDoor(11, 10, D_CLOSED);
+    asmoMazeWalk(28, 5, 'east', WIZARD1_X, WIZARD1_Y);
+    placeSpecialLadder(wizardX(12), wizardY(1), true);
+    placeSpecialLadder(wizardX(14), wizardY(11), false);
+
+    for (const kind of [SPIKED_PIT, SLP_GAS_TRAP, ANTI_MAGIC, MAGIC_TRAP])
+        wizardTrap(kind, null, null, WIZARD2_MAP);
+    for (const ref of ['!', '!', '?', '?', '+'])
+        wizardObject(ref, null, null, WIZARD2_MAP);
+    wizardObject('"', 4, 6, WIZARD2_MAP);
+
+    const ext = get_level_extends();
+    const bounds = {
+        minx: Math.max(1, ext.xmin),
+        maxx: Math.min(COLNO - 1, ext.xmax),
+        miny: Math.max(0, ext.ymin),
+        maxy: Math.min(ROWNO - 1, ext.ymax),
+    };
+    hellTweaksWizardMap(WIZARD2_MAP);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flp = flip_level_rnd(3);
+    registerWizardMapLregions(WIZARD2_MAP, flp, bounds);
+    fixup_special();
+}
+
 function loadWizard3Special() {
     // C ref: dat/wizard3.lua loaded through sp_lev.c:lspo_map().
     rn2(3); rn2(2); // nhlib shuffle()
@@ -8254,6 +8309,10 @@ function makemaz_special(slev) {
         loadWizard1Special();
         return;
     }
+    if (game._last_special_protofile === 'wizard2') {
+        loadWizard2Special();
+        return;
+    }
     if (game._last_special_protofile === 'wizard3') {
         loadWizard3Special();
         return;
@@ -8298,7 +8357,10 @@ export async function mklev() {
         || game._last_special_protofile === 'valley'
         || game._last_special_protofile === 'sanctum'
         || game._last_special_protofile === 'orcus'
-        || game._last_special_protofile === 'minetn-5') {
+        || game._last_special_protofile === 'minetn-5'
+        || game._last_special_protofile === 'wizard1'
+        || game._last_special_protofile === 'wizard2'
+        || game._last_special_protofile === 'wizard3') {
         for (let i = 0; i < (g.level?.nroom ?? 0); i++) {
             fill_special_room(g.level.rooms[i]);
         }
@@ -10352,6 +10414,8 @@ function fill_zoo(croom) {
     let goldlim = (type === ZOO || type === LEPREHALL) ? 500 * level_difficulty() : 0;
     const rmno = game.level.rooms.indexOf(croom) + ROOMOFFSET;
     const door = croom.doorct ? game.level.doors?.[croom.fdoor] : null;
+    const beehiveQueenX = type === BEEHIVE ? croom.lx + Math.trunc((croom.hx - croom.lx + 1) / 2) : 0;
+    const beehiveQueenY = type === BEEHIVE ? croom.ly + Math.trunc((croom.hy - croom.ly + 1) / 2) : 0;
     for (let sx = croom.lx; sx <= croom.hx; sx++)
         for (let sy = croom.ly; sy <= croom.hy; sy++) {
             const loc = game.level.at(sx, sy);
@@ -10371,6 +10435,11 @@ function fill_zoo(croom) {
             if (type === LEPREHALL) mdat = MONSTERS.find(m => m.name === 'LEPRECHAUN');
             else if (type === BARRACKS) mdat = squadmon();
             else if (type === MORGUE) mdat = morguemon();
+            else if (type === BEEHIVE) {
+                mdat = MONSTERS.find(m => m.name === (sx === beehiveQueenX && sy === beehiveQueenY
+                    ? 'QUEEN_BEE'
+                    : 'KILLER_BEE'));
+            }
             makemon(mdat, sx, sy, MM_ASLEEP | MM_NOGRP);
             const mon = game.level.monsters?.[0];
             if (mon && mon.mx === sx && mon.my === sy) mon.msleeping = 1;
@@ -10447,10 +10516,12 @@ function fill_special_room(croom) {
         game.level.flags.has_vault = true;
     } else if (croom.needfill === FILL_NORMAL
                && (croom.rtype === ZOO || croom.rtype === LEPREHALL
-               || croom.rtype === BARRACKS || croom.rtype === MORGUE)) {
+               || croom.rtype === BARRACKS || croom.rtype === MORGUE
+               || croom.rtype === BEEHIVE)) {
         fill_zoo(croom);
         if (croom.rtype === ZOO) game.level.flags.has_zoo = true;
         if (croom.rtype === MORGUE) game.level.flags.has_morgue = true;
+        if (croom.rtype === BEEHIVE) game.level.flags.has_beehive = true;
     } else if (croom.needfill === FILL_NORMAL && croom.rtype >= SHOPBASE) {
         stock_room(croom);
     }
@@ -10458,6 +10529,7 @@ function fill_special_room(croom) {
     if (croom.rtype === ZOO) game.level.flags.has_zoo = true;
     if (croom.rtype === COURT) game.level.flags.has_court = true;
     if (croom.rtype === MORGUE) game.level.flags.has_morgue = true;
+    if (croom.rtype === BEEHIVE) game.level.flags.has_beehive = true;
     if (croom.rtype === BARRACKS) game.level.flags.has_barracks = true;
     if (croom.rtype === TEMPLE) game.level.flags.has_temple = true;
 }

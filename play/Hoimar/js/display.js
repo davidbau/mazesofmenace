@@ -239,7 +239,7 @@ function terrain_glyph(loc, x, y) {
     case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
-    case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
+    case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
     case POOL:
     case MOAT:
         // C ref: display.c:back_to_glyph() S_pool.  The tty DECgraphics wire
@@ -318,6 +318,15 @@ function monster_glyph(mon) {
         };
     }
     return { ch: mon.ch, color: mon.color, dec: false };
+}
+
+function monster_visible(mon) {
+    // C ref: display.h:_mon_visible().  newsym() only draws a monster in
+    // physical sight when it is not an undetected hider and not unseen
+    // invisible.
+    if (!mon || mon.mundetected) return false;
+    if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    return true;
 }
 
 function warning_glyph(mon) {
@@ -537,9 +546,14 @@ export function newsym(x, y) {
         const mem = random_object_glyph_for_display();
         memory_ch = mem.ch; memory_color = mem.color; memory_dec = false;
     }
-    if (mon) {
+    if (monster_visible(mon)) {
         const mg = monster_glyph(mon);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
+    } else if (mon) {
+        const wg = warning_glyph(mon);
+        if (wg) {
+            draw_ch = wg.ch; draw_color = wg.color; draw_dec = false;
+        }
     }
 
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
