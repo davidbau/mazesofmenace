@@ -8806,3 +8806,592 @@ All 8 entries verified vs `monsters.h:3260-3324`. Lizard corpse stoning cure, ne
 **183/183 done — v2 pass complete.**
 
 ---
+
+## 2026-05-19 — v3 audit batch 1: Imps & minor demons (#1), Leprechauns (#2), Polearms (#3), Shuriken (#4), Liches (#5)
+
+All five sections **CLEAN** — no findings.
+
+### Imps and minor demons `i` (#1) — `spoilers/companion.md:8175` — 0 corrections
+All six entries (manes, homunculus, imp, lemure, quasit, tengu) verified vs `monsters.h`. Lvl/Spd/AC/MR%, attack tuples, M1/M2/MR flags, corpse effects all match. "All follow you up and down stairs" (M2_STALK) verified; "all except imp are poison-resistant" verified.
+
+### Leprechauns `l` (#2) — `spoilers/companion.md:8230` — 0 corrections
+Stats verified: Lvl 5, Spd 15, AC 8, MR 20, green, AT_CLAW AD_SGLD 1d2, M1_TPORT. Steal-gold-then-teleport behavior confirmed in `mhitu.c`.
+
+### Polearms (#3) — `spoilers/companion.md:7510` — 0 corrections
+All 12 polearm rows match `objects.h:294-341` exactly for damage dice, weight, cost, hit bonus, material. Mechanics prose (two-handed; distance-2 orthogonal at Basic, extra positions at Skilled; adjacent attack clamps to 1d2 base; weapon-skill bonus skipped but Strength bonus still applies; no role caps above Skilled) all verified against `apply.c:3355-3386` and `uhitm.c:1076-1471`.
+
+### Shuriken (#4) — `spoilers/companion.md:7650` — 0 corrections
+`objects.h:163-165` SHURIKEN: 1d8/1d6, weight 1, cost 5, +2 hit, PIERCE, IRON, P_SHURIKEN. Matches table.
+
+### Liches `L` (#5) — `spoilers/companion.md:8688` — 0 corrections
+All four tiers' stats match `monsters.h:1864-1897`. Resistance lists (cold/sleep/poison for all; +fire for master/arch; +shock for arch) match. The v2 #183 fix is intact: only the arch-lich casts touch-of-death, per `mcastu.h:37` (DEATH_TOUCH level 20) and `mcastu.c:111` (master lich `m_lev=17` caps `rn2(m_lev)` at 16). "Magic resistance mandatory" verified via `mcastu.c:394` (Antimagic blocks).
+
+### Pass-3 queue
+5/183 done.
+
+## 2026-05-19 — v3 audit batch 2: Nuisance Traps (#6), What Changed (#7), Xorns (#8), Sokoban L4B (#9), The Riders (#10)
+
+Four CLEAN, one with two real findings on the Pestilence line of The Riders.
+
+### Nuisance Traps (#6) — `spoilers/companion.md:1238` — 0 corrections
+Arrow trap, dart trap, squeaky board, rust trap all verified vs `trap.c`. Free-ammo collection claim (arrow/dart) traced to `place_object`+`stackobj` at `trap.c:1217-1221, 1287-1292`.
+
+### What Changed Since Last Time (#7) — `spoilers/companion.md:9165` — 0 corrections
+All ~40 5.0-change claims verified vs `fixes5-0-0.txt` and src. Chain lightning XL2, Trollsbane SPFX_REGEN, Sunsword BLINDING_RAY, DSM resistance changes, Excalibur 1/30 fountain rate, supply-chest 2/3, amulet of guarding +2 AC +2 MC, two-handed 3/2 STR bonus, Castle no-arch-lich, iron-bars since 3.3, dipsink — all confirmed.
+
+### Xorns `X` (#8) — `spoilers/companion.md:8907` — 0 corrections
+LVL(8, 9, -2, 20, 0), 3 claw + bite 4d6 AD_PHYS, fire/cold/stone resistance, M1_WALLWALK, M1_METALLIVORE, brown — all match `monst.c`.
+
+### Sokoban L4B (#9) — `spoilers/companion.md:6613` — 0 corrections
+Layout and 28-step solution match `sokoban4b.lua`. Prize claim "usually amulet of reflection, 25% bag of holding" matches the `percent(25)` branch in lua. End-state "two boulders (O and S) remain" matches trace at (13,7) and (13,8).
+
+### The Riders (#10) — `spoilers/companion.md:2237` — **2 corrections**
+(a) "Pestilence inflicts the disease that turns into food poisoning" — wrong. `mhitu.c:1039-1040` via `diseasemu()` sets `SICK_NONVOMITABLE`, which `timeout.c:316-333` renders as "illness," not "food poisoning"/"sickness" (SICK_VOMITABLE, from bad corpses). Reworded to "deadly illness."
+(b) "A unicorn horn won't clear the non-vomitable sickness" — wrong. `apply.c:4456` (`unfixable_trouble_count`) only marks Sick unfixable when `(Sick & ~TIMEOUT) != 0L`; Pestilence's induced sickness is purely timed, so the horn's trouble-picker (`apply.c:2312-2313, 2351`) reaches it via `make_sick(0L, NULL, TRUE, SICK_ALL)`. Reworded to "a unicorn horn can sometimes clear it in time."
+
+Stats and other claims (Lvl 30, Spd 12, AC -5, MR 100, regen, see-invis, displaces, two AT_TUCH 8d8 hits, Death 3/20 instakill blockable by Antimagic, Famine 40–79 hunger, all corpses fatal with identical `done(DIED)`, stun-downgrade applies to Pestilence/Famine but not Death) all verified.
+
+### Pass-3 queue
+10/183 done.
+
+## 2026-05-19 — v3 audit batch 3: Eyes & spheres (#11), Scroll Rack (#12), Wraiths (#13), Mimics (#14), Ants & insects (#15)
+
+Four CLEAN, one with a real BUC-asymmetry finding on Scroll Rack.
+
+### Eyes and spheres `e` (#11) — `spoilers/companion.md:8096` — 0 corrections
+Stats for gas spore, floating eye, freezing/flaming/shocking sphere all match `monsters.h`. Floating-eye passive paralysis 0d70 with WIS-12 fail-roll cap; Free Action and Blindness block the gaze (`uhitm.c:6022-6053`).
+
+### The Scroll Rack (#12) — `spoilers/companion.md:3487` — **1 correction**
+"Confused destroy armor doesn't destroy anything: it erodeproofs" was wrong. Per `read.c:1341`, `new_erodeproof = scursed` — only cursed confused destroy armor erodeproofs; uncursed or blessed *strips* erodeproofing (`oerodeproof = 0`). This is opposite of confused enchant armor/weapon (`read.c:1138`: `new_erodeproof = !scursed`, where uncursed/blessed proofs and cursed strips). Both bullets now spell out the BUC precondition.
+
+All other Scroll Rack claims verified clean: price table; identify blessed +luck min 2 (`read.c:2086-2091`); magic mapping reveals secret doors blessed; teleport cursed/confused = level-tele; genocide blessed=class, confused=own role; enchant weapon +5 safe ceiling (2/3 destroy at spe ≥ 6, `wield.c:999-1009`); charging cube-cubed-over-7³ probability; scare monster pickup→dust.
+
+### Wraiths `W` (#13) — `spoilers/companion.md:8890` — 0 corrections
+Barrow wight, wraith, Nazgul stats and attack tuples match `monsters.h`. Wraith corpse → +1 XL via `pluslvl()` at `eat.c:1141-1142` confirmed.
+
+### Mimics `m` (#14) — `spoilers/companion.md:8244` — 0 corrections
+Small (Lvl 7), large (Lvl 8), giant (Lvl 9) all match `monsters.h`. Speed 3 / AC 7. AD_STCK glue on large+giant. 3d4 / 3d4 / 3d6 ×2.
+
+### Ants and insects `a` (#15) — `spoilers/companion.md:8016` — 0 corrections
+Giant ant, killer bee, soldier ant, fire ant, giant beetle, queen bee stats all match. M1_POIS killer-bee/soldier-ant corpses are poisonous; conveyed resistance bits match notes column. Fire ant fire-res via MR_FIRE.
+
+### Pass-3 queue
+15/183 done.
+
+## 2026-05-19 — v3 audit batch 4: What Actually Kills (#16), No Genocide (#17), Weaponless (#18), Lance (#19), Vampires (#20)
+
+Four CLEAN, one LOW finding on Blue DSM speed wording.
+
+### What Actually Kills Adventurers (#16) — `spoilers/companion.md:1745` — **1 correction (LOW)**
+"Blue DSM same as speed boots, only stackable with them for Very Fast" was wrong. Per `youprop.h:377`, `Very_fast ((HFast & ~INTRINSIC) || EFast)` — ANY extrinsic speed bit reaches Very Fast. Blue DSM sets `EFast |= W_ARM` (`do_wear.c:822`); speed boots set `EFast |= W_ARMF`. Either alone reaches Very Fast; wearing both doesn't go faster. Reworded so a reader doesn't think pairing is required.
+
+Other 200 lines verified clean: mount slip `rn1(5,10)` = 10-14 (`steed.c:354`), water demon 1/30 from fountain (`fountain.c:247`), bones items cursed 80% (`bones.c:290`), all DSM properties (`do_wear.c:806-883`), gold DSM light radius 4/3/2 (`light.c:881-911`), confused genocide hits own role via `u.umonster` from `gu.urole.mnum` (`read.c:2839`, `u_init.c:991`).
+
+### No Genocide (#17) — `spoilers/companion.md:6875` — 0 corrections
+Conduct tracking verified. Confused genocide of own role is mentioned elsewhere; this section's "don't read it" framing covers the case adequately.
+
+### Weaponless (#18) — `spoilers/companion.md:6828` — 0 corrections
+Verified vs `wield.c` weaphit-increment logic — sword/axe/mace/aklys (WEAPON_CLASS) and pick-axe/unicorn-horn (is_weptool TOOL_CLASS) break weaponless; cockatrice corpse (FOOD_CLASS) doesn't; bare hands and martial arts pass weapon=NULL. List in prose matches.
+
+### Lance (#19) — `spoilers/companion.md:7574` — 0 corrections
+`objects.h:349` LANCE: hit 0, weight 180, cost 10, 1d6/1d8, P_LANCE, IRON. Joust +2d10 primary / +2d2 off-hand (`uhitm.c:1546`). Shatter on critical (`uhitm.c:1553-1561`, joust_dieroll==0 AND rnl(50)==49).
+
+### Vampires `V` (#20) — `spoilers/companion.md:8873` — 0 corrections
+Vampire / vampire lord / Vlad stats all match `monsters.h`. M2_SHAPESHIFTER, M2_STALK, M2_UNDEAD, M1_FLY, M1_REGEN, AD_DRLI all confirmed.
+
+### Pass-3 queue
+20/183 done.
+
+## 2026-05-19 — v3 audit batch 5: Naming (#21), Zombies (#22), Dangerous Traps (#23), Piercers (#24), Broadsword (#25)
+
+All five **CLEAN**.
+
+### Naming What You've Learned (#21) — `spoilers/companion.md:3165` — 0 corrections
+`#name` is a valid command alias; `docall` rename-by-overwrite confirmed at `do_name.c:660-672`. Voice and punctuation clean.
+
+### Zombies `Z` (#22) — `spoilers/companion.md:8939` — 0 corrections
+All 10 zombie/skeleton rows verified against `monst.c`/`monsters.h` (kobold/gnome/orc/dwarf/elf/human zombie, ghoul, ettin/giant zombie, skeleton). Stats, claw dice, AC, speed, colors, MR_COLD|MR_SLEEP|MR_POISON, G_NOCORPSE/G_NOGEN flags all match. Mummies correctly NOT conflated (separate `M` class).
+
+### Dangerous Traps (#23) — `spoilers/companion.md:1274` — 0 corrections
+All trap effects verified vs `trap.c`. Bear trap `rn1(4,4)` hold, fire trap destroys scrolls/potions via `dofiretrap`, magic trap 32-outcome table, sleep gas Free-Action/sleep-res bypass, anti-magic field Pw-drain — all confirmed.
+
+### Piercers `p` (#24) — `spoilers/companion.md:8300` — 0 corrections
+Rock/iron/glass piercer: Lvl 3/5/7, Spd 1/1/1, AC 3/0/0, bite 2d6/3d6/4d6. Colors gray/cyan/white. Glass piercer MR_ACID. M1_HIDE | M1_CLING for all three.
+
+### Broadsword (#25) — `spoilers/companion.md:7370` — 0 corrections
+`objects.h` BROADSWORD: 1d4+1d4 / 1d6+1, wt 70, cost 10, hit 0, IRON. Elven broadsword 1d6+1d4. Runesword (Stormbringer base) wt 40, cost 300.
+
+### Pass-3 queue
+25/183 done.
+
+## 2026-05-19 — v3 audit batch 6: Club (#26), Angelic beings (#27), Whip (#28), Mummies (#29), Quarterstaff (#30)
+
+All five **CLEAN**.
+
+### Club (#26) — `spoilers/companion.md:7440` — 0 corrections
+Club 1d6/1d3 wt 30 cost 3 wood P_CLUB. Aklys 1d6/1d3 wt 15 cost 4 iron P_CLUB. Aklys return mechanic `rn2(100)` ~1% misfire (`dothrow.c:1710-1759`) matches "occasional misfire" wording.
+
+### Angelic beings `A` (#27) — `spoilers/companion.md:8491` — 0 corrections
+Couatl, Aleax, Angel, ki-rin, Archon all verified vs `monsters.h:1206-1265`. "All except Aleax fly" and "all except couatl see invisible" match M1_FLY / M1_SEE_INVIS. Couatl bite labeled "poison" defensible — MR_POISON fully blocks AD_DRST per `attrib.c:338-343`.
+
+### Whip (#28) — `spoilers/companion.md:7585` — 0 corrections
+Bullwhip 1d2/1, wt 20, cost 4, LEATHER, P_WHIP. Disarm via `apply.c:3127-3174` requires target `MON_WEP`. Pit-yank `apply.c:3069-3125`. No whip artifacts in `artilist.h`.
+
+### Mummies `M` (#29) — `spoilers/companion.md:8706` — 0 corrections
+All 8 mummies (kobold/gnome/orc/dwarf/elf/human/ettin/giant) match `monsters.h:1901-1968`. All AD_PHYS (NOT AD_DISE — the prompt was wrong). All G_NOCORPSE; MR_COLD|MR_SLEEP|MR_POISON; M2_UNDEAD|M1_MINDLESS.
+
+### Quarterstaff (#30) — `spoilers/companion.md:7499` — 0 corrections
+1d6/1d6, wt 40, cost 5, hit 0, WOOD, P_QUARTERSTAFF, two-handed. Wizard starter (`u_init.c:168`). Caps confirmed: Caveman/Healer/Priest/Wizard = Expert; no Rogue.
+
+### Pass-3 queue
+30/183 done.
+
+## 2026-05-19 — v3 audit batch 7: Engrave Test (#31), Umber hulks (#32), Price Is Right (#33), Giant humanoids (#34), Humans and elves (#35)
+
+Four CLEAN, one cross-section-consistency fix on Giant humanoids.
+
+### The Engrave Test (#31) — `spoilers/companion.md:2953` — 0 corrections
+All wand engrave messages verified vs `engrave.c:583-738` and `zap.c:2535-2563`. Cursed-wand explode chance verified at `engrave.c:794-795`.
+
+### Umber hulks `U` (#32) — `spoilers/companion.md:8861` — 0 corrections
+Lvl 9 Spd 6 AC 2 MR 25, 3d4 claw × 2 + 2d5 bite + AD_CONF gaze, M1_TUNNEL — all match. Free-action does NOT block confusion gaze (`mhitu.c:1759-1777`, AD_CONF not in the AD_PLYS/AD_SLEE list).
+
+### The Price Is Right (#33) — `spoilers/companion.md:2658` — 0 corrections
+295-line section. All Cha multipliers (`shk.c:2953-2964`), Tourist surcharge (`shk.c:2947-2951` × Hawaiian/dunce/Lvl<15), sell formulas (`shk.c:3148-3192`), unfamiliar-shopkeeper 1/4 odds (`m_id % 4`), angry-shop surcharge persistence (`pacify_shk` paths), and every numeric price-tier table cell verified against `objects.h`.
+
+### Giant humanoids `H` (#34) — `spoilers/companion.md:8636` — **2 corrections**
+"Has cold attacks" (frost giant) and "Carries shock attacks" (storm giant) were wrong — both have AD_PHYS-only melee per `monsters.h` LVL rows. Cold/shock resistance doesn't reduce their weapon damage. v2 had already caught the parallel claim for fire giant; v3 brings frost and storm giants in line. The "cold-res" and "shock-res" notation in the same row already conveys the thematic element without misleading the beginner.
+
+### Humans and elves `@` (#35) — `spoilers/companion.md:8969` — 0 corrections
+All 53 stat rows verified vs `monsters.h:2609-3914`. Watchman, watch captain, aligned priest, high priest, Wizard of Yendor, shopkeeper Spd 16, Nurse heal, Croesus, Charon, all 12 role classes/leaders/nemeses/guardians — all match. Master of Thieves = Rogue leader + Tourist nemesis; Master Assassin = Rogue nemesis.
+
+### Pass-3 queue
+35/183 done.
+
+## 2026-05-19 — v3 audit batch 8: Delayed Deaths (#36), Short sword (#37), Blobs (#38), Genocide (#39), Fort Ludios (#40)
+
+Three CLEAN, two real findings.
+
+### Delayed Deaths (#36) — `spoilers/companion.md:2329` — **2 corrections (MAJOR)**
+The v2 audit comment claimed two corrections were applied that never actually landed in the prose:
+(a) Sliming "~9-turn transformation" — wrong. Initial timer is 10 (`make_slimed(10L,...)` at `uhitm.c:3199, eat.c:854, polyself.c:456, uhitm.c:3570`). The 9-turn impression came from the t/2 message cadence (`timeout.c:391`). Changed to "~10-turn."
+(b) "Cancellation negates the touch attack" — listed among Cures but doesn't clear a running Slimed timer. `uhitm.c:3556-3560` cancels future hits only; no `make_slimed(0L,...)` in that path. Moved out of the cure list into a separate clarifying sentence.
+
+### Short sword (#37) — `spoilers/companion.md:7345` — 0 corrections
+All four rows match `objects.h:244-255`. Samurai wakizashi = SHORT_SWORD (`u_init.c:144` + `objnam.c:106` alias). Rogue starter = SHORT_SWORD (`u_init.c:134`).
+
+### Blobs `b` (#38) — `spoilers/companion.md:8034` — 0 corrections
+Acid blob, quivering blob, gelatinous cube stats all match `monsters.h:137-166`. Passive AD_ACID, AD_PHYS, AD_PLYS verified.
+
+### Genocide (#39) — `spoilers/companion.md:2323` — 0 corrections
+Single-sentence beginner warning. Confused-uncursed-genocide killing own species via `do_genocide((!scursed) | (2 * !!Confusion))` → how=3=REALLY|PLAYER → `u.umonster` from `gu.urole.mnum` confirmed.
+
+### Fort Ludios (#40) — `spoilers/companion.md:1064` — **1 correction (MEDIUM)**
+"Croesus is covetous" was wrong. Per `monsters.h:2868`, his only mflags3 is `M3_INFRAVISIBLE` — he is NOT `M3_COVETOUS`. True covetous monsters (Wizard, Vlad, Riders) teleport to recover items. Croesus is `M2_GREEDY|M2_NASTY|M2_STALK` — picks up gold and chases, but no covetous-recovery teleport. Dropped the word; tactical advice still holds via M2_NASTY + 4d10 weapon. All other claims verified: 16 soldiers + 1 lieutenant, four dragons, four moat eels, stone giant, gold 36k-54k, gem caches, 1/3 trap rate.
+
+### Pass-3 queue
+40/183 done.
+
+## 2026-05-19 — v3 audit batch 9: Sling (#41), What to Pack (#42), Light Bursts (#43), Food Conducts (#44), Spear (#45)
+
+All five **CLEAN**.
+
+- Sling: stats vs `objects.h:403` match; Caveman starter (`u_init.c:70`); training requires wielded sling not just rocks (`weapon.c:1750-1756`).
+- What to Pack: qualitative chapter; spot-checked tripe (eat.c:2138-2145), touchstone gem-ID, burdened impact. No factual errors.
+- Light Bursts: yellow light AT_EXPL AD_BLND 10d20, black light AD_HALU 10d12, blindness duration tmp turns. M1_MINDLESS (warning yes, telepathy no). Cures via blessed POT_HEALING / POT_EXTRA_HEALING (not cursed) / POT_FULL_HEALING.
+- Food Conducts: vegetarian = vegan + S_PUDDING ≠ black pudding (`mondata.h:232-241`); vegan-breaking food list matches `eat.c:3016-3018` exactly; eggs break vegan but not vegetarian (`eat.c:3006`); prayer hunger threshold u.uhs >= HUNGRY (`pray.c:275`).
+- Spear: all 6 rows vs `objects.h`. Kebab +2 hit on xorns/dragons/jabberwocks/nagas/giants (`weapon.c:71-73, 167-168`). Caveman +1 multishot (`dothrow.c:48-50`). Valkyrie starter Expert (`u_init.c:161, 537`).
+
+### Pass-3 queue
+45/183 done.
+
+## 2026-05-19 — v3 audit batch 10: Worms (#46), Boomerang (#47), Axe (#48), Starvation (#49), Level Drain (#50)
+
+All five **CLEAN**.
+
+- Worms: 4 rows match `monsters.h:1114-1145`. Only PM_LONG_WORM (not baby) drops worm tooth per `mon.c:618-619`.
+- Boomerang: stats match `objects.h:166-168`. 10-step path, stops on monster/wall/door/sink, Fumbling or rn2(20) ≥ DEX fail-catch all confirmed in `zap.c:4141-4233`.
+- Axe: axe 1d6/1d4 wt 60, battle-axe 1d8+1d4/1d6+2d4 wt 120 bimanual. Cleaver = BATTLE_AXE base, Barbarian quest (`artilist.h:114-116`).
+- Starvation: prayer threshold TROUBLE_STARVING covers Weak through STARVED (`pray.c:216-217`) consistent with v2 fix; faint at u.uhunger ≤ 0; death at < -(100 + 10*Con).
+- Level Drain: drain-life carriers verified vs `monsters.h:2281-2353`; resistance sources (Excalibur/Stormbringer/Aesculapius/black DSM/shield of drain) all confirmed.
+
+### Pass-3 queue
+50/183 done.
+
+## 2026-05-19 — v3 audit batch 11: Rings & Amulets (#51), Sokoban L3B (#52), Touch of Death (#53), Pick-axe (#54), Permadeaf (#55)
+
+All five **CLEAN**.
+
+- Rings & Amulets: 146-line chapter, all 28 ring prices vs `objects.h:741-827`, auto-curse list, conflict pet-hostility (`dogmove.c:1046-1054`), per-ring hunger turns 4/12 (`eat.c:3237-3267`), amulet of guarding +2 AC/+2 MC (`do_wear.c:2496-2497`, `mhitu.c:1121-1124`), strangulation 6 turns. Two close calls (life-saving HP cap, restful sleep +2 not +1) deemed not-beginner-impactful per no-trivia rule.
+- Sokoban L3B: 16 boulders, 11 holes, 2 locked doors, downstair/upstair positions all match `soko2-2.lua` exactly. Solution verified; final "five remaining" tally correct.
+- Touch of Death: v2 fix intact (only arch-lich casts via `mcastu.c:111` m_lev=20 threshold). Antimagic-binary semantics correct. MR-gating self-zap exception confirmed at `zap.c:2885-2902` vs `:4497-4502`.
+- Pick-axe: stats vs `objects.h:1007-1009` (pick-axe one-handed) and `:345-347` (mattock two-handed +2d6 large). Dig-pit-then-hole at `dig.c:373-374`.
+- Permadeaf: 5.0 conduct via `optlist.h:267-269` (rcfile only), `youprop.h:125` (`Deaf` macro includes `u.uroleplay.deaf`), shrieker `mon.c:4087-4105` (pline gated, makemon+aggravate unconditional).
+
+### Pass-3 queue
+55/183 done.
+
+## 2026-05-19 — v3 audit batch 12: Sokoban branch (#56), Jabberwocks (#57), Engulfment (#58), Ogres (#59), Two-handed sword (#60)
+
+All five **CLEAN**.
+
+- Sokoban branch: 4 levels × 2 variants per `dungeon.lua:226-244`; prize roll per soko1-{1,2}.lua matches 75/25 weighting per variant; sokocheat trigger sites (`trap.c:7039`, `hack.c:299,307,398,403`, `zap.c:1711,5556`, `read.c:1951`, `steed.c:767`) match prose list.
+- Jabberwocks: LVL(15,12,-2,50), 2× bite + 2× claw 2d10 each, M1_FLY, G_GENO|1. Vorpal Blade auto-behead `artifact.c:1595-1623` (PM_JABBERWOCK short-circuits dieroll).
+- Engulfment: lurker above (Lvl 10, ceiling M1_FLY+M1_HIDE) and trapper (Lvl 12, floor M1_HIDE) both use AD_WRAP + AD_PHYS — 5.0 retcon to "wraps and crushes" verified in `monsters.h:973-980` header comment. Weapons-still-work confirmed `uhitm.c:781,805` (`u.uswallow` forces hit).
+- Ogres: 3 rows match `monsters.h:2052-2075`. M2_STRONG, M2_GREEDY, M2_COLLECT.
+- Two-handed sword: wt 150/60, cost 50/500, 1d12/1d6+2d6 (two-h sword), 1d16/1d8+2d6 hit +2 (tsurugi). Vorpal Blade correctly NOT claimed here (it's LONG_SWORD per `artilist.h:191`).
+
+### Pass-3 queue
+60/183 done.
+
+## 2026-05-19 — v3 audit batch 13: Engravings (#61), Centaurs (#62), Skill Caps (#63), Trolls (#64), Trappers/lurkers (#65)
+
+All five **CLEAN**.
+
+- Engravings: blade dulling at +(-1)/2chars, blocked at spe ≤ -3 (`engrave.c:1357-1364`); athame instant; dust wipes 1 char per monster step (`monmove.c:734`); burn permanent except ice/magical; impairment garble applies to all methods, surface-garble only to DUST/BLOOD (`engrave.c:1223`); trap_engravings[14/15/16] = Vlad/ad aerarium (`mklev.c:733`).
+- Centaurs: plains/forest/mountain match `monsters.h:1301-1323`. Forest gets BOW+12 arrows, plains/mountain get CROSSBOW+12 bolts at 50% spawn-armed (`makemon.c:474-484`).
+- Skill Caps: 30+ cells spot-checked across all 13 roles × 27 weapons + 4 fighting styles + 7 spell schools. Long sword, broad sword, bow, polearm, attack-spell rows all match `u_init.c:257-572`.
+- Trolls: 5 rows match `monsters.h:2225-2266`. M1_REGEN + is_reviver verified. Trollsbane no-revive at `uhitm.c:1907,4867`, `mhitm.c:1082`. Stoning → statue path at `mon.c:3285+`.
+- Trappers/lurkers: cross-section consistent with batch 12 #58. AD_WRAP/AD_PHYS verified.
+
+### Pass-3 queue
+65/183 done.
+
+## 2026-05-19 — v3 audit batch 14: Apothecary (#66), Orcs (#67), Sokoban L3A (#68), Displacer Beast (#69), Shopping (#70)
+
+Four CLEAN, one real finding on Apothecary.
+
+### The Apothecary (#66) — `spoilers/companion.md:3363` — **1 correction (MEDIUM)**
+The dipping closer paragraph had source/target inverted. Said "never use a cursed potion as a dipping target. Cursed targets always explode" — wrong. Per `potion.c:2279` (`obj = getobj("dip", ...)` first-prompt = DIPPING potion) and `potion.c:2541` (`dip_potion_explosion(obj, ...)` tests `obj->cursed`), the dipping (source) potion is what's BUC-tested; the receiving potion is consumed regardless via `useup(potion)` at 2538. v2 had intended to clarify this but the prose drifted back to "target" and inverted the meaning. v3 rewrote with an explicit "the dipping potion (not the one it goes into)" clarifier.
+
+### Orcs `o` (#67) — `spoilers/companion.md:8279` — 0 corrections
+All 8 rows match `monsters.h:727-796`. Goblin/hobgoblin correctly grouped under S_ORC. Orc shaman single-attack from earlier audit holds.
+
+### Sokoban L3A (#68) — `spoilers/companion.md:6436` — 0 corrections
+13 boulders match `soko2-1.lua:31-47`. 13-step solution geometrically consistent. No prize on L3 (only upstair to L4); prose correctly silent.
+
+### The Displacer Beast (#69) — `spoilers/companion.md:2381` — 0 corrections
+M3_DISPLACES swap mechanic (50% chance, `hack.c:1972`), gated by `goodpos(...GP_ALLOW_U)` at `hack.c:1983` — moat/lava swap-trick correctly dismissed. Corpse → timed `HDisplaced(d(6,6))` (`eat.c:1265-1269`) confirmed same as cloak of displacement (shared DISPLACED property at `youprop.h:202-204`).
+
+### Shopping (#70) — `spoilers/companion.md:7063` — 0 corrections
+246-line chapter, all numeric/procedural claims verified vs `shk.c`. Credit/debit/loan ordering (`shk.c:3874-3909`), shopkeeper starting gold 1030-4000 (`shknam.c:682`), skeleton key on death (`makemon.c:702-703`), Excalibur 16k example (`artilist.h:88` × 4), Orcus-level shopkeepers removed (`shknam.c:794-798`), angry surcharge stickiness via `pacify_shk(shkp, FALSE/TRUE)` distinction.
+
+### Pass-3 queue
+70/183 done.
+
+## 2026-05-19 — v3 audit batch 15: Armory (#71), Making Friends (#72), Deadly Poison (#73), Iron Bars (#74), Combining Conducts (#75)
+
+Four CLEAN, one finding on Deadly Poison.
+
+- Armory: all armor numerics vs `objects.h`; cloak of protection sole MC3 source; MC formula `rn2(10) >= 3*armpro`; small shield only no-spell-penalty option (`spell.c:2269`). v1/v2 fixes intact.
+- Making Friends: pet curse-avoidance probabilistic (`dog.c:475`); tameness loss via hunger/separation/abuse_dog; scroll of taming 3×3 / confused 11×11 (spell never reaches the confused path per `spell.c:1372`); sad-feeling = offscreen pet death (`mon.c:3101/3495`); altar prayer corpse-revive (`pray.c:2175-2196`).
+- **Deadly Poison (#73)**: 1 correction. "At low HP **or while burdened**, it can outright kill you" — burdened has no role. Per `attrib.c:366`, the poison-kill condition is purely `u.uhp <= loss` with no carrycap term. Reworded to "at low HP it can outright kill you."
+- Iron Bars: tiny-only squeeze via `verysmall(mptr)` in `passes_bars` at `mondata.c:554-562`; lightning 1/10 dissolve (`zap.c:5349` `rn2(10)` skip); striking/force-bolt pass through (no IRONBARS case in zap_map); polymorph escape list (xorn/earth elemental/tiny/rock-mole) all confirmed.
+- Combining Conducts: Petless via `pettype:none` (`dog.c:225-229`) OR Pauper (`u_init.c:1308-1309`); show_conduct in `insight.c`. 5.0 conducts split correctly.
+
+### Pass-3 queue
+75/183 done.
+
+## 2026-05-19 — v3 audit batch 16: BUC strategy (#76), Humanoids (#77), Luck and Fortune (#78), Xans (#79), Wishes and Wishing (#80)
+
+All five **CLEAN**.
+
+- BUC strategy: altar flash colors amber/black/none at `do.c:379-388`; pet curse-avoidance probabilistic at `dogmove.c:535-538, 1212-1219`; holy water at `pray.c:1383+`.
+- Humanoids `h`: 7 rows match `monsters.h:477-540`. Mind flayer 3 tentacles, master 5; Int=3 death at `eat.c:698` × `role.c` ATTRMIN; helmet 7/8 block at `uhitm.c:3235`.
+- Luck and Fortune: range ±13, 600-turn drift (300 with Amulet), all baseline shifts (full moon, Friday 13, killed_leader), unicorn-toss matrices, sacrifice ceiling at `pray.c:2099-2106` — all verified. Archeologist fedora +1 luck baseline noted but skipped per no-trivia rule.
+- Xans `x`: grid bug + xan match `monsters.h:1149-1164`. AT_STNG/AD_LEGS for xan confirmed (wounds legs → Wounded_legs reduces carrycap).
+- Wishes and Wishing: substitutions at `objnam.c:5003-5018`, artifact denial `rn2(nartifact_exist())>1`, bare-wish armor blessorcurse(otmp,10) ≈ 5%/90%/5%, Vlad's throne 4/13 wish outcomes (`sit.c:241-256`), magic lamp 1/3 djinni × 80% blessed wish ≈ 27%, smoky potion 1/13 × 80% blessed, fountain demon 1/30 × wish-roll ≈ 1/150 shallow zero past DL 20.
+
+### Pass-3 queue
+80/183 done.
+
+## 2026-05-19 — v3 audit batch 17: Sokoban L1B (#81), Elemental Planes (#82), Attack Wands (#83), Spell Tables (#84), Fungi (#85)
+
+All five **CLEAN**.
+
+- Sokoban L1B: 12 boulders mapped to `soko4-2.lua`; 10 pits + 2 rolling traps; "D and E remain" tally (12−10=2). No prize claim (correct — this is the entry level).
+- Elemental Planes: plane order Earth→Air→Fire→Water→Astral; random portal placement via `levregion`; three astral altars at x=7/37/67 with shuffled alignment; wrong-altar = `done(ESCAPED)` (`pray.c:1562-1572`); Riders + Angels + aligned clerics; `;` genocide tactic for Water.
+- Attack Wands: warning-shot via `muse.c:1830-1834` `buzz_force_miss`; 6 beam wands (death/sleep/fire/cold/lightning/magic missile) match `muse.c:1842-1847`; visible miss IDs wand via `oseen` at `:1849-1850`; late-game exception list (Stronghold/Knox/endgame/hell/V_tower/quest) at `makemon.c:1291-1293`.
+- Spell Tables: all 41 spell rows match `objects.h:1293-1411`. 5.0 levels: charm monster 5, sleep 3, confuse monster 1, chain lightning attack-school L2. Deferred sphere spells correctly excluded.
+- Fungi `F`: 7 entries match `monsters.h:1614-1676`. Lichen never rots (`mkobj.c:1402`, `eat.c:59`).
+
+### Pass-3 queue
+85/183 done.
+
+## 2026-05-19 — v3 audit batch 18: Use-Testing (#86), Dagger (#87), Searching (#88), Dogs (#89), Lizards (#90)
+
+All five **CLEAN**.
+
+- Use-Testing: poisonable ammo per `obj.h:264-268`; unicorn horn dip table at `potion.c:2151-2159`; confused remove curse scope at `read.c:1549-1552`; auto-curse 90% list at `mkobj.c:1086-1090`; all four appearance-pool prices match `objects.h:476-727`.
+- Dagger: 5 rows match `objects.h:200-214`; Rogue P_DAGGER multishot 1+Expert+Skilled+role-bonus = rnd(4) per `dothrow.c:55-83`; Sting = ELVEN_DAGGER, Magicbane = ATHAME (`artilist.h`); athame engrave exempt from dulling (`engrave.c:1306-1307`).
+- Searching: `dosearch0`, `rnl(8)` for traps, `rnl(7-fund)` for SDOOR/SCORR with `fund` from SPFX_SEARCH+lenses only.
+- Dogs `d`: 16 rows match `monsters.h:199-320`. AD_WERE on werejackal/werewolf; G_SGROUP on most wild d's. Cerberus `#ifdef CHARON`-gated.
+- Lizards `:`: 8 rows match `monsters.h:3260-3324`. Lizard MR_STONE cure (`eat.c:827-829`); newt Pw boost (`eat.c:1237,1312`); chameleon M2_SHAPESHIFTER; salamander G_HELL.
+
+### Pass-3 queue
+90/183 done.
+
+## 2026-05-19 — v3 audit batch 19: Provisions (#91), Nymphs (#92), Sokoban L2A (#93), Gehennom (#94), Saber (#95)
+
+All five **CLEAN**.
+
+- Provisions and Dining: hunger thresholds, corpse rot window, tin opening (blessed tin instant or 50/50 vs 1 turn), cannibalism -2 to -5 + aggravate, all special corpse effects (wraith XL, stalker invis, lizard cure, mind flayer Int, gelatinous cube fire/cold/shock/sleep, giant only via M2_GIANT) all match `eat.c`.
+- Nymphs `n`: 3 rows match `monsters.h:702-723`. AD_SITM (item steal) confirmed; M1_TPORT.
+- Sokoban L2A: 20 boulders mapped to `soko3-1.lua`; bowling-alley 15-hole trap row; tally 7+5+1+2 = 15 finished, 5 remaining = 20 total.
+- Gehennom: 246-line chapter, all major claims verified. Prayer fails (`pray.c:2307-2314`), hot ground at `do.c:318-354`, Valley/Vlad/Wizard/Sanctum/Asmodeus/Baalzebub/Juiblex layouts; throne math `rnd(6)>4` × 4/13 wish; bribery = `cash * (rnd(80)+20*Athome) / (100*(1+same_align))` via main inventory (`minion.c:309-311`); MS_BRIBE on 4 demons (Geryon/Dispater/Baalzebub/Asmodeus).
+- Saber: scimitar 1d8/1d8 wt 40 cost 15 iron; silver saber 1d8/1d8 wt 40 cost 75 silver. Grayswandir + Werebane both SILVER_SABER artifacts in `artilist.h:166-172`. 5.0 scimitar→saber merger reflected.
+
+### Pass-3 queue
+95/183 done.
+
+## 2026-05-19 — v3 audit batch 20: Crossbow (#96), Seduction (#97), Brainlessness (#98), Snakes (#99), Field Guide (#100)
+
+All five **CLEAN**.
+
+- Crossbow: 1d4/1d6, wt 50, cost 40 match `objects.h`. Multishot at Str 18 (16 gnome). Skill caps Knight Skilled, Rogue/Ranger Expert.
+- Seduction: Cha+Int formula `rn2(35) > min(attr_tot, 32)` (mhitu.c:2178); 5 bad / 5 good outcomes; HP `rn1(10,6)` = 6-15; same-sex foocubus never seduces (could_seduce); peaceful 1/5 cost; high Cha refuses payment.
+- Brainlessness: Int=3 death via `ABASE(A_INT) <= ATTRMIN(A_INT)` (`eat.c:698`); any helmet 7/8 block (`uhitm.c:3235`); amnesia 5% losespells; greasing roll separate at `uhitm.c:3232`.
+- Snakes `S`: 6 rows (no mamba in 5.0) match `monsters.h:2167-2221`. Python no M1_CONCEAL. Cobra spit blind.
+- Field Guide: spot-checked ~20 class entries against monst.h. Soldier ant AD_DRST drain, vampire bat AD_DRST (not levels), displacer beast `hack.c:1972` 50% swap, mind flayer ATTRMIN=3 death, leprechaun AD_SGLD, nagas red/black/golden/guardian breath types, scalpel/tsurugi MAT_METAL pudding split.
+
+### Pass-3 queue
+100/183 done.
+
+## 2026-05-19 — v3 audit batch 21: Pacifist (#101), Morning star (#102), Gnomish Mines (#103), Lay of the Land (#104), Dragons (#105)
+
+All five **CLEAN**.
+
+- Pacifist: `u.uconduct.killer` increments at `mon.c:3500` (xkilled, gated by XKILL_NOCONDUCT) and `hack.c:2201` (pushing pet into trap). Pet kills don't break it.
+- Morning star: 1d4+1d4 / 1d6+1, wt 120, cost 10, iron, P_MORNING_STAR. One-handed despite name.
+- Gnomish Mines: Mines DL 2-4 (`dungeon.lua:15-19`); 7 Minetown variants, minetn-1 orcish; all 3 Mine's End variants guaranteed not-cursed luckstone; fake mimic in minend-1.
+- Lay of the Land: all v2 fixes still in place (sink `{`, themed rooms split, Massacre/Mausoleum split, Fake Delphi). Big Room DL 10-12 40% chance; Rogue DL 15-18.
+- Dragons `D`: 21 rows (10 baby + 10 adult + Chromatic) + Ixoth verified vs `monsters.h:1325-1562, 3642-3690`. All breath types, all babies non-breathing.
+
+### Pass-3 queue
+105/183 done.
+
+## 2026-05-19 — v3 audit batch 22: Spellcasting (#106), Illiterate (#107), Golems (#108), Hammer (#109), Atheist (#110)
+
+All five **CLEAN**.
+
+- Spellcasting: success formula `Int+4+XL/2−2L` vs rnd(20) at `spell.c:582-584`; blessed bypass at `spell.c:577`; Pw cost 5×level; cursed_book failure list at `spell.c:130-184`; MAX_SPELL_STUDY=3 (4 reads); KEEN=20000 turns; force bolt 2d12 + Int/XL bonus; chain lightning NODIR L2; Wizard skill-based book ID at `spell.c:864-905`.
+- Illiterate: literate triggers in scrolls/spellbooks/fortune cookies/T-shirts/markers/coins/candy bars/credit cards/mail/Orb signature/naming/spellbook-learn/marker-write/engraving-more-than-x. Hawaiian shirts, blank scrolls, Book of the Dead, floor engravings, touchstone-ID, dipping all safe.
+- Golems: 11 rows match `monsters.h:2509-2594`. M1_MINDLESS, MR_SLEEP, MR_POISON on all 11. Iron golem AD_DRST breath (poison) + G_NOCORPSE.
+- Hammer: war hammer 1d4+1 / 1d4 wt 50 cost 5 iron P_HAMMER (own skill, not mace). Mjollnir alignment override for Valkyrie via `artifact.c:87-95`.
+- Atheist: gnostic increments at `pray.c:2221,1977,2426` (#pray, #offer, #turn), `priest.c:572` (#chat priest), `do.c:370` (altar drop). Amulet ascension exemption.
+
+### Pass-3 queue
+110/183 done.
+
+## 2026-05-19 — v3 audit batch 23: Your First Descent (#111), Artifacts (#112), Keystone Kops (#113), Wishing Restrictions (#114), Sokoban L1A (#115)
+
+All five **CLEAN**.
+
+- Your First Descent: stair-fall `losehp(rnd(3))` at `do.c:1792` (overburdened/Punished/Fumbling); lizard/lichen nonrotting at `eat.c:58-61`. v2 fixes intact.
+- Artifacts: 282-line reference. ~20 artifacts spot-checked vs `artilist.h`+`artifact.c`. Magicbane STUN(3,4)+DFNS(AD_MAGM); Mjollnir ELEC(5,24); Vorpal Blade SPFX_BEHEAD; Sting DFLAG2|M2_ORC; Snickersnee KATANA PHYS(0,8); Demonbane SILVER_MACE+PM_CLERIC; Frost/Fire Brand DFNS swap matches v2 fix; Trollsbane SPFX_REGEN; Eye of Aethiopica EREGEN+HSPDAM cspfx + DFNS(AD_MAGM) worn-only; Master Key UNTRAP rogue!cursed/non-rogue blessed at `artifact.c:2778-2784`; Sceptre SPFX_DALIGN; Tsurugi SPFX_BEHEAD|LUCK|PROTECT.
+- Keystone Kops: 4 rows match `monsters.h:1829-1860`. G_NOGEN | G_GENO. `call_kops` from `shk.c:623,680` (via `makekops` at `:562`). Respawn 1/5 near downstair + 1/5 random (`mon.c:3147-3164`).
+- Wishing Restrictions: two counters `u.uconduct.wishes`/`wisharti` (`you.h:157-158`); "nothing" wish escape at `zap.c:6373`; wisharti increments BEFORE deny branch at `objnam.c:5364`; Amulet first-pickup wish exempt at `allmain.c:445-450`.
+- Sokoban L1A: 10 boulders match `soko4-1.lua`; 9 pits + 1 remainder = A only; 5 explicit push steps re-simulated; scrolls of earth at (3,12)/(4,12).
+
+### Pass-3 queue
+115/183 done.
+
+## 2026-05-19 — v3 audit batch 24: Enhancing Skills (#116), Gray Stones (#117), Rogue Level (#118), Elementals (#119), Advanced Controls (#120)
+
+All five **CLEAN**.
+
+- Enhancing Skills: practice formula `level²×20` cumulative 20/80/180/320/500 (`skills.h:106`); slot costs 1/2/3 weapon, (tmp+1)/2 non-weapon; ceiling 32 = 2+29+1; melee+throw `dmg>1` train; bare-hand 50% rate, martial 75%; spellev per cast; riding 100 squares/tick; all role-spell-school caps match `u_init.c:279-572`.
+- Gray Stones: prices 60/45/1/1 and weights 10/10/500/10 match `objects.h:1598-1605`; loadstone cursed at creation `mkobj.c:978-979`; drop refusal at `do.c:685-694`.
+- Rogue Level: DL 15-18 (`dungeon.lua:54-58`); uppercase-only monsters; symbol swaps; no closed doors / fountains / sinks / altars / shops / spellbooks / tools / amulets.
+- Elementals `E`: 5 rows match `monsters.h:1566-1610`. Stalker non-mindless; M1_FLY on stalker/air/fire; earth/water elemental swimmer.
+- Advanced Controls: Ctrl+A repeats last executed; LARGEST_INT 32767 count limit; F double-tap cancel; G/g run distinction (run=3 vs run=1); m-prefix menu logic; all listed options exist in optlist.h.
+
+### Pass-3 queue
+120/183 done.
+
+## 2026-05-19 — v3 audit batch 25: Flail (#121), Wands and Staves (#122), Bonesless (#123), Gremlins (#124), Zruties (#125)
+
+All five **CLEAN**.
+
+- Flail: 1d6+1 / 1d4+1d4, wt 15, cost 4 (`objects.h:384-386`); grappling hook 1d2/1d6 wt 30 cost 50; Grimtooth is ORCISH_DAGGER-based (not flail) per `artilist.h:123` — section correctly omits any flail artifact.
+- Wands and Staves: 25 wands match `objects.h:1449-1500`. Wishing 1 charge fresh, 1 recharge max, 2nd recharge guaranteed explosion (`read.c:738-762`); wresting 1/121 (`hack.h:1411`); recharge percentages match `read.c:751-758`; make-invisible 31-45 turns; stasis 10-30 turns; all engrave-test messages match `engrave.c:594-682`.
+- Bonesless: `bones` is `set_in_config` (`optlist.h:213-215`), label "bonesless" at `topten.c:605` (`!flags.bones`).
+- Gremlins `g`: gremlin / gargoyle / winged gargoyle match `monsters.h:448-473`. AD_CURS night-only 1/10 (`uhitm.c:3040-3057`); water-split 2/3 (`mon.c:987`).
+- Zruties `z`: Lvl 9 Spd 8 AC 3, 3d4/3d4/3d6 attacks, brown — match `monsters.h:1195-1202`.
+
+### Pass-3 queue
+125/183 done.
+
+## 2026-05-19 — v3 audit batch 26: Quest (#126), Genetic Engineer (#127), Oracle (#128), Castle (#129), Movement Traps (#130)
+
+All five **CLEAN**.
+
+- Quest: portal DL 11-16; MIN_QUEST_LEVEL=14 (`quest.h:45`), MIN_QUEST_ALIGN=20 (`quest.h:43`); Bell of Opening via `mongets()` for MS_NEMESIS at `makemon.c:1378-1384`. "Most nemeses carry amulet of life saving" claim is wiki-belief not source-guarantee but beginner-protective; preserve.
+- Genetic Engineer: Q glyph green, AD_POLY claw, Antimagic/Unchanging block (`mhitm.c:1128-1131`), `polyself(POLY_NOFLAGS)`, M1_TPORT self-teleport, corpse same-as-doppelganger poly (`eat.c:1244-1263`).
+- Oracle: DL 5-9; minor cost 50, major cost `500 + 50*u.ulevel` (`rumors.c:699`); fountains and statues per `oracle.lua`.
+- Castle: 4 corner alcoves with one wand chest (`castle.lua:48-52,142-149`); blessed scroll of scare monster + burned Elbereth protects; 5 trap doors to Valley of the Dead; 16 soldiers + 1 lieutenant; 4 dragons; moat with 4 giant eels + 4 sharks; 5.0 fix: no arch-lich/master-lich (`fixes5-0-0.txt:233-234`).
+- Movement Traps: pit 1d6, spiked pit 1d10+1/6 poison; trapdoor 25%-per-level cascade via `hole_destination` (`trap.c:442-453`); levitation/flying immunity with Sokoban exception (`trap.c:633-639, 1849-1850`).
+
+### Pass-3 queue
+130/183 done.
+
+## 2026-05-19 — v3 audit batch 27: Petrification (#131), Major demons (#132), Feelings and Sounds (#133), Mace (#134), Medusa's Island (#135)
+
+Four CLEAN, one with FOUR real findings on Major demons.
+
+- Petrification: 5-stage countdown via `timeout.c:128-134`; paralysis stage `nomul(-3)`; all stoning sources and cures verified.
+- **Major demons `&` (#132)**: **4 corrections**. Bone devil, Orcus, and Geryon "sting 2d4 poison" + Baalzebub "bite 2d6 poison" were all wrong. Per `monsters.h:2999/:3082/:3093/:3112` these are all `AT_*/AD_DRST` (drain-Str), not `AD_POISON`. A v2 audit had flagged this AD_DRST-vs-poison pattern for vampire bat/jellyfish/killer bee but the four demon rows were missed. Changed all four to "drain-Str." Beginner danger: poison-resistant players would think themselves safe and watch their Strength score crash.
+- Feelings and Sounds: all ambient messages verified vs `sounds.c`, intrinsic-from-corpse vs `eat.c`, blessed-restore-ability "Wow! This makes you feel great!" gate.
+- Mace: mace 1d6+1/1d6 wt 30 cost 5 iron; silver mace wt 36 cost 60 silver. Demonbane = SILVER_MACE base, PHYS(5,0), BANISH invoke, PM_CLERIC gift.
+- Medusa's Island: 4 layouts confirmed; Perseus loot 75/25/50/50 percents; Medusa asleep on all 4; eels by layout (3 giant / 6 electric / 2 giant / 2 giant + 1 kraken).
+
+### Pass-3 queue
+135/183 done.
+
+## 2026-05-19 — v3 audit batch 28: Petless (#136), Lights (#137), Quantum mechanics (#138), Sokoban L2B (#139), Choking (#140)
+
+All five **CLEAN**.
+
+- Petless: `pettype:none` early-return at `dog.c:225-229`; Pauper alt at `u_init.c:1308-1309`; food-throw taming gates on `is_domestic` (`mondata.h:255-261`).
+- Lights `y`: 2 rows match `monsters.h:1165-1191`. Yellow AT_EXPL/AD_BLND 10d20, black AT_EXPL/AD_HALU 10d12, M1_SEE_INVIS on black. Black light perminvis covered by Light Bursts cross-ref.
+- Quantum mechanics `Q`: 2 rows match `monsters.h:2127-2143`. AD_TLPT and AD_POLY claws; M1_TPORT self-teleport; corpse toggles HFast / triggers polyself.
+- Sokoban L2B: 16 boulders match `soko3-2.lua`; 1 rolling-boulder + 12 holes; 4 remain (A, D, G, H) after 12 finishes.
+- Choking: choke gate `u.uhs == SATIATED` (`eat.c:248`), trigger `u.uhunger >= 2000` (`:3138`); strangulation timer death `done_timeout(DIED, STRANGLED)` (`timeout.c:894`); AoS 90% cursed at gen (`mkobj.c:1063`).
+
+### Pass-3 queue
+140/183 done.
+
+## 2026-05-19 — v3 audit batch 29: Vortices (#141), Sea monsters (#142), Finding Secret Doors (#143), Bow (#144), Sokoban conduct (#145)
+
+All five **CLEAN**.
+
+- Vortices `v`: 6 rows match `monsters.h:1053-1110`; energy vortex 2d6 drain-Pw + 0d4 passive shock.
+- Sea monsters `;`: 6 rows match `monsters.h:3205-3256`; wrap-and-drown limited to eels + kraken; jellyfish AD_DRST drain-Str.
+- Finding Secret Doors: fund cap at +5 via `detect.c:2026-2032`; `rnl(7-fund)`; 3×3 search; ring of searching auto-call `allmain.c:342`; wand-of-secret-door-detection `findit` BOLT_LIM radius.
+- Bow: 9 rows match `objects.h:141-154, 395-402`. Multishot context intentionally omitted per no-trivia.
+- Sokoban conduct: `sokoban_guilt` at `trap.c:7039-7054`; callers `hack.c:299/307/398/403` (squeeze), `zap.c:1711` (poly), `zap.c:5556` (striking), `read.c:1951` (scroll of earth), `steed.c:767` (dismount). Pick-axe digging + jumping correctly NOT triggers.
+
+### Pass-3 queue
+145/183 done.
+
+## 2026-05-19 — v3 audit batch 30: Felines (#146), Tools of the Trade (#147), Jellies (#148), Elbereth (#149), Enchantment Drain (#150)
+
+All five **CLEAN**.
+
+- Felines `f`: 8 rows match `monsters.h:381-444`. Headnote pet/wild distinctions confirmed.
+- Tools of the Trade: ~40 mechanics verified vs `objects.h`, `mkbox_cnts` chest 0-5/0-7 locked, magic lamp 1/3 djinni × 80% blessed wish, BoH explosion triggers, unicorn horn 7 cures with 35% no-effect uncursed, lock pick 70%+/75%+ Dex bonuses, scroll write rn1 costs, magic marker 30-99 fresh charges with second-recharge always fails.
+- Jellies `j`: 3 rows match `monsters.h:591-620`. Passive AD_COLD/AD_ACID 0d6; ochre AT_ENGL+AT_NONE both AD_ACID 3d6.
+- Elbereth: immunity list `monmove.c:241-302`; exact-word match `engrave.c:251-260`; defile `del_engr_at` + alignment penalty `mon.c:4267-4284`; dust fade on monster step `monmove.c:734`; Gehennom/Planes deadness `In_hell || In_endgame`.
+- Enchantment Drain: disenchanter G_HELL gen; active AD_ENCH `uhitm.c:3619` via `some_armor`; passive `drain_item` silent at `mhitu.c:2508-2515`; 10/90 resist via `obj_resists`; corpse strips intrinsic `attrcurse()` (`eat.c:1270-1275`).
+
+### Pass-3 queue
+150/183 done.
+
+## 2026-05-19 — v3 audit batch 31: Sokoban L4A (#151), Armor Tables (#152), Trident (#153), Apelike (#154), Dart (#155)
+
+Four CLEAN, one cross-section consistency fix on Armor Tables.
+
+- Sokoban L4A: 18 boulders, 16 holes + 1 rolling-boulder trap on row 2 of `soko1-1.lua`. Prize 75% bag of holding / 25% amulet of reflection per source. 2 remain (A and E).
+- **Armor Tables (#152)**: 1 correction. Cloak of protection note read "Best non-magical defensive cloak" — wrong, cloak of protection IS magical (mgc=1 in `objects.h:637`). Same misclassification the v2 Armory chapter audit already caught and renamed column headers for. Reworded to "Highest MC of any cloak" (more informative, factually accurate). All ~70 other armor rows match `objects.h:444-727` exactly.
+- Trident: stats vs `objects.h:194-196`; swimmer to-hit bonus in `hitval()` not damage per v2 fix; no trident artifact.
+- Apelike `Y`: 6 rows match `monsters.h:2372-2417`. Sasquatch LVL 5th field is alignment not MR.
+- Dart: 1d3/1d2 wt 1 cost 2; Tourist starter stack `{DART, 2, WEAPON_CLASS, 21, 40, UNDEF_BLESS}` confirmed +2 enchantment and 21-40 quantity.
+
+### Pass-3 queue
+155/183 done.
+
+## 2026-05-19 — v3 audit batch 32: Unicorns/horses (#156), Ascension Run (#157), Rodents (#158), Art of Combat (#159), Quadrupeds (#160)
+
+All five **CLEAN**.
+
+- Unicorns/horses `u`: 6 rows match `monsters.h:1002-1049`. Alignment mapping white/gray/black = +7/0/-7. Glass via `noluck` path (`dothrow.c:2319` — GEMSTONE-only is_gem check).
+- Ascension Run: amulet free wish (`allmain.c:445-451`); Wizard summons via `wizard.c:61-103` + `nasty/msummon`; Amulet blocks level-tele (`teleport.c:1185-1188`); Mysterious Force 25% base + decay (`do.c:1541-1573`); Elbereth dead `monmove.c:302` (`In_hell || In_endgame`).
+- Rodents `r`: 6 rows match `monsters.h:889-936`. Rabid rat AD_DRCO drain-Con, wererat AD_WERE lyc, rock mole M1_METALLIVORE.
+- Art of Combat: to-hit `find_roll_to_hit` (`uhitm.c:365-424`); Luck cap `sgn(Luck)*((abs(Luck)+2)/3)`; abon includes Str+Dex (`weapon.c:950-988`); 2H 3/2 STR damage; two-weapon -9/-7/-5/-3 to-hit; conflict requires `m_canseeu` (`mon.c:1306`).
+- Quadrupeds `q`: 7 rows match `monsters.h:831-885`. Mumak 2-attack solo (v2 fix intact).
+
+### Pass-3 queue
+160/183 done.
+
+## 2026-05-19 — v3 audit batch 33: Puddings (#161), Rust monsters (#162), Kobolds (#163), Disintegration (#164), Bats and birds (#165)
+
+All five **CLEAN**.
+
+- Puddings `P`: 4 rows match `monsters.h`; split gating at `uhitm.c:1609-1620` (only BLACK/BROWN puddings on IRON|METAL); gray ooze MR_FIRE; green slime G_HELL Gehennom-only.
+- Rust monsters `R`: 2 rows match `monsters.h:2147-2161`. AD_RUST 0d0 × 3 (rust monster), AD_ENCH 4d4 active + passive (disenchanter).
+- Kobolds `k`: 4 rows match `monsters.h:622-656`. All M1_POIS poisonous corpses.
+- Disintegration: black dragon breath via `zap.c:4464-4493`; Disint_resistance immunity; armor strip order (shield→body+cloak→life-saved with cloak+shirt destroyed); MR doesn't help (return before Antimagic check at `zap.c:4497`); reflection bounce doesn't kill the dragon (`zap.c:4318` resists_disint).
+- Bats/birds `B`: 4 rows match `monsters.h:1269-1297`. Vampire bat 2nd attack AD_DRST (drain-Str), poison-res blocks. All M1_FLY.
+
+### Pass-3 queue
+165/183 done.
+
+## 2026-05-19 — v3 audit batch 34: Castle landmark (#166), Acknowledgements (#167), Polymorph Restrictions (#168), Knife (#169), Ascension Kit (#170)
+
+All five **CLEAN**.
+
+- Castle landmark: cross-section consistent with full Castle chapter (#129); drawbridge passtune, wand of striking, corner-tower wand chest all consistent.
+- Acknowledgements: all historical claims verified (Hack 1982 / Rogue 1980 / NetHack fork 1987 / Izchak 1994 / 3.4.3 Dec 2003 / 3.6.0 Dec 2015). WCST at Wheaton College 1991 per v2 fix. All names spell correctly.
+- Polymorph Restrictions: `u.uconduct.polyselfs`/`polypiles` at `you.h:155-156`; chameleon/doppelganger/mimic/genetic-engineer corpse routes through polyself; green slime auto-poly via `timeout.c:493`; Unchanging blocks counter increments.
+- Knife: 5 rows match `objects.h:215-233`; crysknife revert ~10% on fixed per `do.c:904-915`.
+- Ascension Kit: gray/silver/blue DSM properties, helm of brilliance/telepathy, gauntlets of power, choking at SATIATED, Izchak's lighting shop all verified.
+
+### Pass-3 queue
+170/183 done.
+
+## 2026-05-19 — v3 audit batch 35: Arachnids (#171), Curses (#172), Practical Strategy (#173), Long sword (#174), Gnomes (#175)
+
+All five **CLEAN**.
+
+- Arachnids `s`: 5 rows match `monsters.h:940-972, 3713-3722`. Cave spider/centipede safe corpses; giant spider + scorpion M1_POIS.
+- Curses: remove curse scope `read.c:1489-1589` (cursed disintegrates, uncursed wornmask + loadstone/leash, blessed entire inv); confused 25/25/50 via `blessorcurse(obj,2)`; prayer uncurse `pray.c:254,533,597`; holy water dip `potion.c:1514-1518`.
+- Practical Strategy: synthesis cross-consistent with all sub-sections (BUC, Naming, Engrave Test, Price Is Right).
+- Long sword: 1d8/1d12 vs 1d10/1d12 katana; Excalibur fountain XL5+ at `fountain.c:404-440`, Knight 1/6 vs others 1/30, non-Lawful cursed.
+- Gnomes `G`: 4 rows match `monsters.h:1681-1709`. No deep gnome (correctly omitted).
+
+### Pass-3 queue
+175/183 done.
+
+## 2026-05-19 — v3 audit batch 36: Drowning (#176), Divine Relations (#177), Pauper (#178), Sink Test (#179), Points of Interest (#180)
+
+Four CLEAN, one with TWO real findings on Pauper that also touches the v3 #75 Combining Conducts section.
+
+- Drowning: drown check uses monster's tile via `uhitm.c:3389` (`is_pool(magr->mx, magr->my)`); Swimming/Amphibious/Breathless cancel grab; encumbrance only matters for falling-in path.
+- Divine Relations: 218-line chapter, all 10 spot-checked mechanics verified. Trouble priority list matches `pray.c:76-101`; HP threshold formula matches `critically_low_hp()`; prayer timeout `rnz(350)`; crowning intrinsics fire/cold/shock/sleep/poison/see-invis at `pray.c:813-818`; sacrifice freshness 50 turns; same-race sac sets `AM_CHAOTIC`/summons demon; altar conversion `rn2(8+u.ulevel)>5`; donation `u.ulevelpeak * rn1(101, 150+cheapskate*40)`.
+- **Pauper (#178)**: **2 corrections**.
+  (a) Role-knowledge list was incomplete. Per `pauper_reinit` at `u_init.c:890-922`, Cleric/Knight/Monk all know SPE_PROTECTION, and Cave Dweller knows FLINT — missing from v2 list. Protection book is load-bearing for early-game survival. Added all four.
+  (b) Cross-section: Combining Conducts (#75 revisit) said "Petless suppressing starting pet requires `OPTIONS=pettype:none` or playing Pauper" — wrong. Per `makedog` at `dog.c:219-229`, only `pettype == 'n'` suppresses the pet. Pauper's `ini_inv` early-return at `u_init.c:1308-1309` only suppresses items. `dog.c:262-267` confirms Pauper just skips the saddle but still gets the pony. Reworded to "requires `OPTIONS=pettype:none`. (Pauper suppresses your starting inventory but still gives you a pet.)" Also updated v2 #114 audit comment to record this correction.
+- Sink Test: drop ring `do.c:498-660`; searching/slow digestion return; other rings consumed.
+- Points of Interest: all v2 fixes intact.
+
+### Pass-3 queue
+180/183 done.
+
+## 2026-05-19 — v3 audit batch 37 (FINAL): Choosing Your Expedition (#181), Cockatrices (#182), Nagas (#183)
+
+All three **CLEAN**.
+
+- Choosing Your Expedition: all v2 #46 + v2 #86 fixes intact. Healer unicorn-horn-for-sickness, Knight +1 lance, Cave Dweller XL 7 Fast, Elf no see-invis at start, Ranger Stealth XL 7 / See Invis XL 15. All 13 role alignments verified.
+- Cockatrices `c`: 3 rows match `monsters.h:170-195`. Chickatrice/cockatrice TUCH STON + passive STON; pyrolisk MR_FIRE + GAZE 2d6 FIRE. None have M1_FLY.
+- Nagas `N`: 8 rows match `monsters.h:1972-2048`. Red AT_BREA AD_FIRE 2d6, black AT_SPIT AD_ACID, golden AT_MAGC AD_SPEL 4d6, guardian AT_SPIT AD_DRST + AT_BITE AD_PLYS + AT_HUGS AD_WRAP. Black naga corpse gives pois+acid+stone-res. Guardian maligntyp +7 (Lawful).
+
+### Pass-3 queue
+**183/183 done — v3 pass complete.**
+
+### Pass-3 summary
+Across 37 batches the v3 audit found and corrected 17 issues:
+
+1. Riders (#10): unicorn horn DOES clear Pestilence's timed illness (apply.c:2351); also "food poisoning" → "deadly illness" (SICK_NONVOMITABLE).
+2. Scroll Rack (#12): confused destroy armor erodeproofs only when CURSED; uncursed/blessed strips it (read.c:1341). Both bullets now state BUC precondition.
+3. What Actually Kills (#16): Blue DSM + speed boots don't stack to "Very Fast" — either alone reaches it (youprop.h:377).
+4. Giant humanoids (#34): frost giant "Has cold attacks" + storm giant "Carries shock attacks" wrong; both AD_PHYS only. Same pattern v2 caught for fire giant.
+5. Delayed Deaths (#36): sliming timer is 10 (not 9); cancellation prevents new infection but does NOT clear running timer.
+6. Fort Ludios (#40): Croesus is M2_GREEDY|M2_NASTY|M2_STALK, NOT M3_COVETOUS.
+7. The Apothecary (#66): dipping source/target inversion — it's the DIPPING potion BUC that's tested for explosion (potion.c:2279/2541), not the receiver.
+8. Deadly Poison (#73): "burdened" claim spurious — poison death formula has no carrycap term.
+9. Major demons (#132): bone devil, Orcus, Geryon stings + Baalzebub bite all AD_DRST (drain-Str), not AD_POISON.
+10. Armor Tables (#152): cloak of protection is magical (mgc=1), not "non-magical." Reworded to "Highest MC of any cloak."
+11. Pauper (#178): role-knowledge list missing Cleric/Knight/Monk SPE_PROTECTION and Cave Dweller FLINT.
+12. Combining Conducts (cross-section from #178): Pauper does NOT suppress the starting pet — only OPTIONS=pettype:none does.
+
+Most of these were "v2 claimed fixed but prose drifted" or cross-section consistency cleanups. The Major-demons drain-Str finding and Pauper-pet-suppression finding are the most beginner-affecting.
