@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { moveloop_core } from './allmain.js';
 
 // Start an interactive browser game with the given terminal container.
-export async function startBrowser(container, seed = 42) {
+export async function startBrowser(container, seed) {
     const display = new GameDisplay(container);
 
     const nhGame = new NethackGame({ seed });

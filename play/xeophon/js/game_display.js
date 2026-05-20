@@ -11,7 +11,9 @@
 //   // display.setCell, display.readKey etc. all delegate to terminal
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
-import { Terminal, CLR_GRAY } from './terminal.js';
+import { game } from './gstate.js';
+import { TUTORIAL } from './const.js';
+import { Terminal, CLR_GRAY, NO_COLOR } from './terminal.js';
 
 const TOPLINE_EMPTY = 0;
 const TOPLINE_NEED_MORE = 1;
@@ -112,8 +114,72 @@ export class GameDisplay {
         if (this.messages.length > 20) this.messages.shift();
     }
 
-    renderStatus(_player) {
-        // TODO: full status line rendering from player stats
+    renderStatus(player = game.u) {
+        const u = player || {};
+        const rawName = game.plname || 'Hero';
+        const name = rawName ? rawName[0].toUpperCase() + rawName.slice(1) : 'Hero';
+        const genderKey = game.flags?.female ? 'f' : 'm';
+        const role = game.urole?.rank?.[genderKey] || game.urole?.rank?.m
+            || game.urole?.name?.[genderKey] || game.urole?.name?.m || 'Adventurer';
+        const stats = u.acurr?.a || [];
+        const align = u.ualign?.type > 0 ? 'Lawful' : u.ualign?.type < 0 ? 'Chaotic' : 'Neutral';
+        const title = `${name} the ${role}`.padEnd(31, ' ');
+        const str = u._strDisplay || (
+            stats[0] > 118 ? String(stats[0] - 100).padStart(2, ' ')
+            : stats[0] === 118 ? '18/**'
+            : stats[0] > 18 ? `18/${String(stats[0] - 18).padStart(2, '0')}`
+            : String(stats[0] || '?')
+        );
+        const line1 = `${title}St:${str} Dx:${stats[3] || '?'} Co:${stats[4] || '?'} In:${stats[1] || '?'} Wi:${stats[2] || '?'} Ch:${stats[5] || '?'} ${align}`;
+
+        const deathMoreHp = game._death_status_hp_before_zero != null
+            && (game._command_mode === 'deathDieMore'
+                || game._queued_message_after_more === 'You die...'
+                || game._pending_message === 'You die...');
+        const hp = deathMoreHp ? game._death_status_hp_before_zero : u.uhp || 0;
+        const heldUac = game._message_more && game._status_uac_before_more != null;
+        const displayAc = heldUac ? game._status_uac_before_more : u.uac ?? 10;
+        let line2;
+        if (u.uz?.dnum === TUTORIAL) {
+            const xp = game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
+            const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+            line2 = `Tutorial:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}`;
+        } else {
+            const dungeon = game.dungeons?.[u.uz?.dnum ?? 0];
+            const level = u._displayDepth || (dungeon && u.uz ? dungeon.depth_start + u.uz.dlevel - 1 : u.uz?.dlevel || 1);
+            const xp = u._monsterHd
+                ? `HD:${u._monsterHd}`
+                : game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
+            const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+            const ride = u.usteed ? ' Ride' : '';
+            const blind = u.blind && !u._blindAfterStatus ? ' Blind' : '';
+            const statusSuffix = `${u._statusSuffix || ''}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;
+            const goldSymbol = game.level?.flags?.rogue_level ? '*' : '$';
+            const levelName = dungeon?.name === 'The Quest' ? `Home ${u.uz?.dlevel || 1}` : `Dlvl:${level}`;
+            line2 = `${levelName} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}${ride}${blind}${statusSuffix}`;
+        }
+        if (heldUac) {
+            game._status_uac_before_more_seen = 1;
+            if (game._status_uac_before_more_hold_count != null) {
+                game._status_uac_before_more_hold_count--;
+                if (game._status_uac_before_more_hold_count <= 0) {
+                    game._status_uac_before_more = null;
+                    game._status_uac_before_more_seen = 0;
+                    game._status_uac_before_more_hold_count = null;
+                }
+            }
+        }
+        else if (game._status_uac_before_more != null) {
+            game._status_uac_before_more = null;
+            game._status_uac_before_more_seen = 0;
+            game._status_uac_before_more_hold_count = null;
+        }
+
+        this.clearRow(22);
+        this.clearRow(23);
+        this.putstr(0, 22, line1, NO_COLOR);
+        this.putstr(0, 23, line2, NO_COLOR);
+        return [line1, line2];
     }
 
     moveCursorTo(col, row = 0) {

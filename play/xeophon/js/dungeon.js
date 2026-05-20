@@ -47,8 +47,8 @@ const DUNGEON_DATA = [
     {
         name: 'The Gnomish Mines', base: 8, range: 2,
         levels: [
-            { name: 'minetn', base: 3, range: 2 },
-            { name: 'minend', base: -1 },
+            { name: 'minetn', base: 3, range: 2, nlevels: 7 },
+            { name: 'minend', base: -1, nlevels: 3 },
         ],
     },
     {
@@ -188,6 +188,10 @@ function placeLevel(pd, dungeons, idx = pd.start) {
 }
 
 export function init_dungeons_rng() {
+    // nhl_init() loads nhlib.lua, which shuffles the Lua align table.
+    rn2(3);
+    rn2(2);
+
     const wizard = !!game.flags?.debug;
     const pd = { dungeons: [], levels: [], branches: [], finalLevels: [], start: 0 };
     const dungeons = [];
@@ -236,7 +240,27 @@ export function init_dungeons_rng() {
         pd.start = pd.levels.length;
     }
 
-    for (let i = 0; i < 5; i++) rn2(7);
+    game.castleTune = '';
+    for (let i = 0; i < 5; i++) game.castleTune += String.fromCharCode('A'.charCodeAt(0) + rn2(7));
     game.dungeons = dungeons;
     game.branches = branches;
+    game.specialLevels = pd.finalLevels.filter(Boolean);
+
+    const dnum = name => dungeons.findIndex(dungeon => dungeon?.name === name);
+    const level = name => game.specialLevels.find(item => item?.name === name);
+    game.mines_dnum = dnum('The Gnomish Mines');
+    game.quest_dnum = dnum('The Quest');
+    game.sokoban_dnum = dnum('Sokoban');
+    game.tower_dnum = dnum("Vlad's Tower");
+    game.rogue_level = level('rogue');
+    game.oracle_level = level('oracle');
+    game.medusa_level = level('medusa');
+    game.stronghold_level = level('castle');
+    game.knox_level = level('knox');
+    game.astral_level = level('astral');
+    game.water_level = level('water');
+    game.fire_level = level('fire');
+    game.air_level = level('air');
+    game.earth_level = level('earth');
+    game.juiblex_level = level('juiblex');
 }

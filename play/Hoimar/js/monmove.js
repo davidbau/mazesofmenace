@@ -10,13 +10,13 @@ import {
     RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR,
     ANTI_MAGIC, DOOR, IRONBARS, LADDER, LAVAWALL, MAGIC_PORTAL, MAGIC_TRAP,
     ROOM, SQKY_BOARD, SLP_GAS_TRAP, STAIRS, STATUE_TRAP, VIBRATING_SQUARE, WEB,
-    ACCESSIBLE, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_STWALL, IS_TREE, IS_WALL, IS_WATERWALL,
+    ACCESSIBLE, IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, IS_WATERWALL,
     I_SPECIAL, M_AP_FURNITURE, M_AP_OBJECT,
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, W_ARMS, W_NONDIGGABLE, W_WEP,
     GP_CHECKSCARY, SDOOR, W_NONPASSWALL,
     STRAT_WAITFORU, STRAT_WAITMASK,
-    COLNO, ROWNO, isok, SPACE_POS, is_pit,
+    COLNO, ROWNO, ROOMOFFSET, SHOPBASE, isok, SPACE_POS, is_pit,
 } from './const.js';
 import {
     newsym, queue_more_prompt, pline, flush_screen, clear_pending_message,
@@ -24,7 +24,7 @@ import {
     show_glyph_cell,
 } from './display.js';
 import { nhgetch } from './input.js';
-import { clear_path, cansee, couldsee } from './vision.js';
+import { clear_path, cansee, couldsee, vision_reset, vision_recalc } from './vision.js';
 import { m_dowear_basic } from './mon_wear.js';
 import { gettrack } from './track.js';
 import { randomHallucinatedMonsterName } from './random_text.js';
@@ -219,6 +219,12 @@ function dist2(x0, y0, x1, y1) {
     const dx = x0 - x1;
     const dy = y0 - y1;
     return dx * dx + dy * dy;
+}
+
+function online2_basic(x0, y0, x1, y1) {
+    const dx = x0 - x1;
+    const dy = y0 - y1;
+    return !dy || !dx || dy === dx || dy === -dx;
 }
 
 function monnear_hero(mtmp) {
@@ -1238,6 +1244,15 @@ function set_door_mask_basic(loc, mask) {
     loc.doormask = mask;
 }
 
+function refresh_monster_door_vision(mtmp) {
+    // C ref: monmove.c:UnblockDoor().  A monster opening or removing a door
+    // updates vision immediately, before later monsters in this same turn move.
+    newsym(mtmp.mx, mtmp.my);
+    vision_reset();
+    vision_recalc(0);
+    game.vision_full_recalc = 0;
+}
+
 function remove_dead_monster(mtmp) {
     const monsters = game.level?.monsters || [];
     const idx = monsters.indexOf(mtmp);
@@ -1846,11 +1861,11 @@ async function postmove_door_basic(mtmp) {
     const loc = game.level?.at(mtmp.mx, mtmp.my);
     if (!loc || !IS_DOOR(loc.typ) || mon_passes_walls(mtmp)) return MMOVE_MOVED;
     const trapped = !!(loc.doormask & D_TRAPPED);
-    const canseeit = cansee(mtmp.mx, mtmp.my);
+    let canseeit = cansee(mtmp.mx, mtmp.my);
     if ((loc.doormask & D_LOCKED) && trapped) {
         set_door_mask_basic(loc, D_NODOOR);
-        newsym(mtmp.mx, mtmp.my);
-        game.vision_full_recalc = 1;
+        refresh_monster_door_vision(mtmp);
+        canseeit = canseeit || cansee(mtmp.mx, mtmp.my);
         return await mb_trapped_basic(mtmp, canseeit) ? MMOVE_DIED : MMOVE_MOVED;
     }
     if (loc.doormask === D_CLOSED && mon_can_open_doors(mtmp)) {
@@ -1858,17 +1873,146 @@ async function postmove_door_basic(mtmp) {
         // C ref: monmove.c:postmov().  The monster has already moved to the
         // door square, but an unseen opener is reported as the door changing.
         mtmp._opened_unseen_door = true;
-        newsym(mtmp.mx, mtmp.my);
-        game.vision_full_recalc = 1;
+        refresh_monster_door_vision(mtmp);
+        canseeit = canseeit || cansee(mtmp.mx, mtmp.my);
         if (canseeit) await append_pline('You see a door open.');
         else await append_pline('You hear a door open.');
     } else if ((loc.doormask & D_CLOSED) && trapped) {
         set_door_mask_basic(loc, D_NODOOR);
-        newsym(mtmp.mx, mtmp.my);
-        game.vision_full_recalc = 1;
+        refresh_monster_door_vision(mtmp);
+        canseeit = canseeit || cansee(mtmp.mx, mtmp.my);
         return await mb_trapped_basic(mtmp, canseeit) ? MMOVE_DIED : MMOVE_MOVED;
     }
     return MMOVE_MOVED;
+}
+
+function eshk_basic(mtmp) {
+    return mtmp?.mextra?.eshk || null;
+}
+
+function room_for_no_basic(roomno) {
+    const idx = (roomno ?? 0) - ROOMOFFSET;
+    return idx >= 0 ? game.level?.rooms?.[idx] : null;
+}
+
+function in_his_shop_basic(mtmp) {
+    const eshk = eshk_basic(mtmp);
+    const loc = game.level?.at(mtmp?.mx, mtmp?.my);
+    const room = room_for_no_basic(eshk?.shoproom);
+    return !!eshk && !!loc && loc.roomno === eshk.shoproom && (room?.rtype ?? 0) >= SHOPBASE;
+}
+
+function hero_in_shop_basic(eshk) {
+    const loc = game.level?.at(game.u?.ux, game.u?.uy);
+    return !!eshk && loc?.roomno === eshk.shoproom;
+}
+
+function shk_move_candidate_ok(mtmp, x, y, omx, omy) {
+    if (!isok(x, y)) return false;
+    if (no_diagonal_movement(mtmp) && x !== omx && y !== omy) return false;
+    if (x !== omx && y !== omy
+        && (door_blocks_diagonal(omx, omy) || door_blocks_diagonal(x, y))) {
+        return false;
+    }
+    return can_mon_step(mtmp, x, y);
+}
+
+function move_special_basic(mtmp, inHisShop, appr, uondoor, avoid, omx, omy, ggx, ggy) {
+    // C ref: priest.c:move_special().  Shared by shopkeepers and priests;
+    // current JS models the shopkeeper branch far enough to preserve the
+    // room-candidate RNG front door and ordinary relocation.
+    if (omx === ggx && omy === ggy) return MMOVE_NOTHING;
+    if (mtmp.mconf) {
+        avoid = false;
+        appr = 0;
+    }
+
+    const candidates = [];
+    const maxx = Math.min(omx + 1, COLNO - 1);
+    const maxy = Math.min(omy + 1, ROWNO - 1);
+    for (let nx = Math.max(1, omx - 1); nx <= maxx; nx++) {
+        for (let ny = Math.max(0, omy - 1); ny <= maxy; ny++) {
+            if (nx === omx && ny === omy) continue;
+            if (!shk_move_candidate_ok(mtmp, nx, ny, omx, omy)) continue;
+            const loc = game.level?.at(nx, ny);
+            if (!IS_ROOM(loc?.typ)
+                && !(mtmp.isshk && (!inHisShop || eshk_basic(mtmp)?.following))) {
+                continue;
+            }
+            const notOnLine = online2_basic(nx, ny, game.u?.ux ?? nx, game.u?.uy ?? ny);
+            candidates.push({ x: nx, y: ny, notOnLine });
+        }
+    }
+
+    let nix = omx;
+    let niy = omy;
+    let chcnt = 0;
+    for (const cand of candidates) {
+        if (avoid && cand.notOnLine) continue;
+        if ((!appr && !rn2(++chcnt))
+            || (appr && dist2(cand.x, cand.y, ggx, ggy) < dist2(nix, niy, ggx, ggy))) {
+            nix = cand.x;
+            niy = cand.y;
+        }
+    }
+
+    if (nix === omx && niy === omy) return MMOVE_NOTHING;
+    if (mon_at(nix, niy, mtmp) || (nix === game.u?.ux && niy === game.u?.uy)) return MMOVE_NOTHING;
+    move_mon_to_basic(mtmp, nix, niy);
+    return MMOVE_MOVED;
+}
+
+function shk_move_basic(mtmp) {
+    // C ref: shk.c:shk_move().  Billing, speech, repairs, and following are
+    // still partial; this keeps the movement-front-door predicates that decide
+    // whether priest.c:move_special() owns RNG on ordinary shop levels.
+    const eshk = eshk_basic(mtmp);
+    if (!eshk) return MMOVE_NOTHING;
+    const omx = mtmp.mx;
+    const omy = mtmp.my;
+    const udist = dist2(omx, omy, game.u?.ux ?? omx, game.u?.uy ?? omy);
+    if (udist < 3 && !mtmp.mpeaceful) return MMOVE_NOTHING;
+
+    let appr = 1;
+    let gtx = eshk.shk?.x ?? omx;
+    let gty = eshk.shk?.y ?? omy;
+    const satdoor = gtx === omx && gty === omy;
+    let avoid = false;
+    const following = !!eshk.following;
+
+    if (following) {
+        if (udist > 4 && !eshk.billct) return MMOVE_NOTHING;
+        gtx = game.u?.ux ?? gtx;
+        gty = game.u?.uy ?? gty;
+    } else if (!mtmp.mpeaceful) {
+        if (mtmp.mcansee !== 0 && m_canseeu_basic(mtmp)) {
+            gtx = game.u?.ux ?? gtx;
+            gty = game.u?.uy ?? gty;
+        }
+    } else {
+        const uondoor = game.u?.ux === eshk.shd?.x && game.u?.uy === eshk.shd?.y;
+        const badinv = false;
+        if (uondoor) {
+            if (satdoor && badinv) return MMOVE_NOTHING;
+            avoid = !badinv;
+        } else {
+            avoid = hero_in_shop_basic(eshk) && dist2(game.u?.ux ?? gtx, game.u?.uy ?? gty, gtx, gty) > 8;
+        }
+        if (((!eshk.robbed && !eshk.billct && !eshk.debit) || avoid)
+            && dist2(omx, omy, gtx, gty) < 3) {
+            if (!badinv && !online2_basic(omx, omy, game.u?.ux ?? omx, game.u?.uy ?? omy)) {
+                return MMOVE_NOTHING;
+            }
+            if (satdoor) {
+                appr = 0;
+                gtx = 0;
+                gty = 0;
+            }
+        }
+        return move_special_basic(mtmp, in_his_shop_basic(mtmp), appr, uondoor, avoid, omx, omy, gtx, gty);
+    }
+
+    return move_special_basic(mtmp, in_his_shop_basic(mtmp), appr, false, avoid, omx, omy, gtx, gty);
 }
 
 function mon_track_add(mtmp, x, y) {
@@ -2387,7 +2531,8 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
     // C ref: monmove.c:m_move().  While swallowed, bystander monsters
     // spend their movement opportunity without ordinary path selection.
     if (game.u?.uswallow && !mtmp.mflee && game.u?.ustuck !== mtmp) return 1;
-    if (mtmp.isshk || mtmp.isgd) return MMOVE_NOTHING;
+    if (mtmp.isshk) return shk_move_basic(mtmp);
+    if (mtmp.isgd) return MMOVE_NOTHING;
     if (mtmp.ispriest) {
         // C ref: priest.c:pri_move().  A priest in their temple mills around
         // the shrine before move_special(); the current front door preserves

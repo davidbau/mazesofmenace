@@ -1256,12 +1256,16 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
+    game._last_topline_message = msg;
+    game._last_topline_can_force_more = false;
 }
 
 export async function append_pline(msg) {
     if (game._pending_message) {
         const packed = `${game._pending_message}  ${msg}`;
         game._pending_message = packed;
+        game._last_topline_message = packed;
+        game._last_topline_can_force_more = false;
         if (packed.length >= (game.nhDisplay?.cols || COLNO)) queue_more_prompt();
     } else {
         await pline(msg);

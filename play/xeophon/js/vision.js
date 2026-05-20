@@ -5,15 +5,16 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, TREE, CLOUD,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_WALL, TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
+const BOULDER = 465;
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -57,8 +58,26 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
+const LIGHT_SOURCE_MONSTERS = new Set([
+    'yellow light', 'black light', 'flaming sphere', 'shocking sphere',
+    'baby gold dragon', 'fire vortex', 'fire elemental', 'gold dragon',
+]);
+
+function markMonsterLightSources(next) {
+    for (const mon of game.level?.monsters || []) {
+        if (!LIGHT_SOURCE_MONSTERS.has(mon.data?.name)) continue;
+        for (let y = Math.max(0, mon.my - 1); y <= Math.min(ROWNO - 1, mon.my + 1); y++)
+            for (let x = Math.max(1, mon.mx - 1); x <= Math.min(COLNO - 1, mon.mx + 1); x++)
+                next[y][x] |= TEMP_LIT;
+    }
+}
+
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    if (game.vis_callback) {
+        for (let i = left; i <= right; i++) game.vis_callback(i, row);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -71,22 +90,19 @@ function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    if (typ < POOL || typ === TREE || typ === WATER || typ === LAVAWALL || typ === CLOUD) return true;
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
+    if ((game.level?.objects || []).some(obj =>
+        !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === x && obj.oy === y))
+        return true;
+    if ((game.level?.regions || []).some(reg =>
+        reg.visible !== false && reg.ttl !== -2
+        && reg.coords?.some(coord => coord.x === x && coord.y === y)))
+        return true;
     return false;
-}
-
-function adjacent_visible(level, ux, uy, x, y) {
-    const dx = x - ux;
-    const dy = y - uy;
-    if (Math.abs(dx) !== 1 || Math.abs(dy) !== 1) return true;
-    const horizontalClear = !_blocks(level, ux + dx, uy);
-    const verticalClear = !_blocks(level, ux, uy + dy);
-    if (_blocks(level, x, y)) return horizontalClear && verticalClear;
-    return horizontalClear || verticalClear;
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -361,7 +377,9 @@ function left_side(row, left_mark, right, limitsIdx) {
 }
 
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+export function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, callback = null) {
+    const savedCallback = game.vis_callback;
+    game.vis_callback = callback;
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
@@ -400,6 +418,19 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
         if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
         if (scol) left_side(nrow_up, left, scol, limitsIdx);
     }
+    game.vis_callback = savedCallback;
+}
+
+function rogue_vision(next, next_rmin, next_rmax) {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    const xmin = Math.max(1, ux - 1);
+    const xmax = Math.min(COLNO - 1, ux + 1);
+    for (let y = Math.max(0, uy - 1); y <= Math.min(ROWNO - 1, uy + 1); y++) {
+        if (next_rmin[y] > xmin) next_rmin[y] = xmin;
+        if (next_rmax[y] < xmax) next_rmax[y] = xmax;
+        for (let x = xmin; x <= xmax; x++) next[y][x] = COULD_SEE | IN_SIGHT;
+    }
 }
 
 // C ref: vision_recalc(control)
@@ -421,7 +452,31 @@ export function vision_recalc(control = 0) {
     }
 
     if (control !== 2) {
-        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        if (game.level?.flags?.rogue_level) rogue_vision(next, next_rmin, next_rmax);
+        else view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+    }
+    markMonsterLightSources(next);
+
+    if (game.u?.blind) {
+        const old_array = game.viz_array;
+        game.viz_array = next;
+        game.active_buf = game.active_buf === 0 ? 1 : 0;
+
+        const old_rmin = game._viz_rmin;
+        const old_rmax = game._viz_rmax;
+        if (old_array && game.level) {
+            for (let row = 0; row < ROWNO; row++) {
+                const start = old_rmin ? Math.min(old_rmin[row], next_rmin[row]) : next_rmin[row];
+                const stop = old_rmax ? Math.max(old_rmax[row], next_rmax[row]) : next_rmax[row];
+                if (start > stop) continue;
+                for (let col = start; col <= stop; col++)
+                    if (old_array[row]?.[col] & IN_SIGHT) newsym(col, row);
+            }
+        }
+
+        game._viz_rmin = next_rmin;
+        game._viz_rmax = next_rmax;
+        return;
     }
 
     // Compute IN_SIGHT from COULD_SEE + lighting
@@ -435,26 +490,57 @@ export function vision_recalc(control = 0) {
             const loc = level?.at(col, row);
             if (!loc) continue;
 
-            // Night vision: adjacent cells always IN_SIGHT
+            // Night vision promotes adjacent COULD_SEE squares to IN_SIGHT.
             if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
-                if (adjacent_visible(level, ux, uy, col, row))
-                    next[row][col] |= IN_SIGHT;
+                next[row][col] |= IN_SIGHT;
                 continue;
             }
 
-            // Lit cells
-            if (loc.lit) {
-                if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
-                    && !viz_clear[row]?.[col]) {
-                    // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
-                    const dx = Math.sign(ux - col);
-                    const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
-                        next[row][col] |= IN_SIGHT;
-                    }
-                } else {
+            const wallOrDoor = loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ);
+            if (wallOrDoor && !viz_clear[row]?.[col]) {
+                const dx = Math.sign(ux - col);
+                const flev = level?.at(col + dx, row + dy);
+                if ((loc.lit || (next[row][col] & TEMP_LIT))
+                    && (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)))
                     next[row][col] |= IN_SIGHT;
-                }
+            } else if (loc.lit || (next[row][col] & TEMP_LIT)) {
+                next[row][col] |= IN_SIGHT;
+            }
+        }
+    }
+
+    for (let row = 0; row < ROWNO; row++) {
+        for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
+            const loc = level?.at(col, row);
+            if (loc?.typ !== DOOR || _blocks(level, col, row) || !(next[row][col] & COULD_SEE)) continue;
+            if (row !== uy && col !== ux) continue;
+            if (Math.max(Math.abs(col - ux), Math.abs(row - uy)) > 1) continue;
+            next[row][col] |= IN_SIGHT;
+            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                const nx = col + dx;
+                const ny = row + dy;
+                const adj = level?.at(nx, ny);
+                if (!adj?.lit || _blocks(level, nx, ny)) continue;
+                next[ny][nx] |= COULD_SEE | IN_SIGHT;
+                if (next_rmin[ny] > nx) next_rmin[ny] = nx;
+                if (next_rmax[ny] < nx) next_rmax[ny] = nx;
+            }
+        }
+    }
+
+    const boulderShadowCells = [];
+    const boulders = (game.level?.objects || [])
+        .filter(obj => !obj.transientProjectile && obj.otyp === BOULDER);
+    for (const boulder of boulders) {
+        const row = boulder.oy;
+        if (row < 0 || row >= ROWNO || row === uy) continue;
+        const dir = Math.sign(boulder.ox - ux);
+        if (!dir) continue;
+        for (let col = boulder.ox + dir; col > 0 && col < COLNO; col += dir) {
+            const monBehindBoulder = game.level?.monsters?.some(mon => mon.mx === col && mon.my === row);
+            if (monBehindBoulder && next[row]?.[col]) {
+                next[row][col] &= ~(COULD_SEE | IN_SIGHT);
+                boulderShadowCells.push({ x: col, y: row });
             }
         }
     }
@@ -491,12 +577,12 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                } else if ((nv & COULD_SEE) && (loc.lit || (next_row[col] & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -524,6 +610,7 @@ export function vision_recalc(control = 0) {
             }
         }
         if (ux > 0) newsym(ux, uy);
+        for (const cell of boulderShadowCells) newsym(cell.x, cell.y);
     }
 
     game._viz_rmin = next_rmin;

@@ -463,7 +463,7 @@ export const DUNGEON_ALIGN_BY_DNUM = {
     [TUTORIAL]: A_CHAOTIC,
 };
 
-// Build-specific constants: hand-pinned for deterministic replay.
+// Build-specific constants: pinned to the C reference build used by scoring.
 // These come from date.h and change every C rebuild, so the generator skips them.
 export const BUILD_DATE = "Sun May  3 01:27:17 2026";
 export const BUILD_TIME = (1777786037);
@@ -690,7 +690,6 @@ export const MAX_LAN_USERNAME = 20;
 export const LOCKNAMEINIT = "1lock";
 export const BONESINIT = "bonesnn.xxx.le";
 export const INDEXT = ".xxxxxx";
-export const SAVEX = "save/99999.e";
 export const SAVE_EXTENSION = "";
 
 // ===== global.h =====
@@ -2560,7 +2559,7 @@ export const SYM_OTH           = 5;
 // DECgraphics Symbol Set
 // C ref: dat/symbols DECgraphics symset
 // These are the raw VT100 alternate-character bytes. display.js wraps them
-// with SO/SI so tty output matches recorded C sessions exactly.
+// with SO/SI so tty output matches NetHack tty output exactly.
 // ==========================================================================
 
 export const decgraphics = [
@@ -2824,9 +2823,9 @@ export const DEFERRED_HEADER_CONST_ROOT_BLOCKERS = Object.freeze([
 
 export const HEADER_MACRO_NON_EMITTABLE = Object.freeze([
     "B: objects.h alias; owned by objects.js with objclass.h direction constants",
-    "BUILD_DATE: build-time string from date.h; hand-pinned for deterministic replay",
-    "BUILD_TIME: build-time integer from date.h; hand-pinned for deterministic replay",
-    "COPYRIGHT_BANNER_C: build-specific version string from date.h; hand-pinned for deterministic replay",
+    "BUILD_DATE: build-time string from date.h; pinned to the scoring C build",
+    "BUILD_TIME: build-time integer from date.h; pinned to the scoring C build",
+    "COPYRIGHT_BANNER_C: build-specific version string from date.h; pinned to the scoring C build",
     "DLBFILE: platform/filesystem path constant; not used in web runtime",
     "DUMPLOG_FILE: platform/filesystem path template; not used in web runtime",
     "HACKDIR: platform/filesystem path constant; not used in web runtime",
@@ -2917,4 +2916,4 @@ export function Is_botlevel(uz) {
 export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
-export function Is_juiblex_level(uz) { return false; /* TODO */ }
+export function Is_juiblex_level(uz) { const g = game; return g?.juiblex_level && (uz ?? g?.u?.uz)?.dnum === g.juiblex_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.juiblex_level.dlevel; }

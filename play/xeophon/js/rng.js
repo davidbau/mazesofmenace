@@ -19,7 +19,6 @@ function seedBytes(seed) {
 }
 
 export function initRng(seed, { resetLog = true } = {}) {
-    game.currentSeed = seed;
     const bytes = seedBytes(seed);
     game.coreCtx = isaac64_init(bytes);
     game.displayCtx = isaac64_init(bytes);
@@ -32,22 +31,16 @@ export function enableRngLog({ reset = true } = {}) {
     if (reset) _rngLog = [];
 }
 export function getRngLog() { return _rngLog; }
-export function truncateRngLog(length) { _rngLog.length = length; }
-export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 export function enableDisplayRngLog(enabled = true) { _displayRngLogEnabled = !!enabled; }
 
 function logRng(name, args, value) {
-    if (_rngLogEnabled) _rngLog.push(`${name}(${args})=${value}`);
+    if (!_rngLogEnabled) return;
+    _rngLog.push(`${name}(${args})=${value}`);
 }
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
     return Number(val % BigInt(x));
-}
-
-export function consumeCoreRng(x) {
-    if (x <= 0) return 0;
-    return RND(x);
 }
 
 function DISPLAY_RND(x) {
@@ -84,8 +77,8 @@ export function d(n, x) {
 }
 
 // C ref: rnl(x) — random number biased by Luck
-export function rnl(x) {
-    let adjustment = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
+export function rnl(x, useLuck = true) {
+    let adjustment = useLuck ? (game.u?.uluck || 0) + (game.u?.moreluck || 0) : 0;
     if (x <= 15) adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
 
     let i = RND(x);

@@ -4,7 +4,10 @@
 import { game } from './gstate.js';
 import { enexto_core, makemon, place_object } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
-import { newsym, pline, queue_more_prompt, flush_screen, clear_pending_message } from './display.js';
+import {
+    newsym, pline, queue_more_prompt, flush_screen, clear_pending_message,
+    serialize_terminal_grid,
+} from './display.js';
 import { nhgetch } from './input.js';
 import {
     ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, TABU, UNDEF,
@@ -20,8 +23,10 @@ const FOOD_CLASS = 7;
 const WEAPON_CLASS = 2;
 const ROCK_CLASS = 14;
 const ORCISH_DAGGER = 36;
+const JAVELIN = 32;
 const QUARTERSTAFF = 79;
 const TRIPE_RATION = 264;
+const FOOD_RATION = 293;
 const BOULDER = 475;
 const CORPSE = 265;
 const EGG = 266;
@@ -408,7 +413,9 @@ function max_mon_load(mtmp) {
 }
 
 function object_name(obj) {
+    if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
+    if (obj?.otyp === FOOD_RATION) return 'a food ration';
     if (obj?.otyp === QUARTERSTAFF) {
         const buc = obj.blessed ? 'blessed ' : obj.cursed ? 'cursed ' : 'uncursed ';
         const spe = typeof obj.spe === 'number' ? `${obj.spe >= 0 ? '+' : ''}${obj.spe} ` : '';
@@ -475,7 +482,32 @@ function pet_inventory_pline(line) {
     if (typeof game._pending_message === 'string'
         && (game._pending_message.startsWith('You see here ')
             || game._pending_message.startsWith('Blecch!  Rotten food!'))) return;
-    pline(line);
+    if (game._more && game._pending_message) {
+        game._after_more_message = game._after_more_message
+            ? `${game._after_more_message}  ${line}`
+            : line;
+        game._after_more_needs_prompt = false;
+        return;
+    }
+    if (game._pending_message) {
+        const packed = `${game._pending_message}  ${line}`;
+        game._pending_message = packed;
+        if (packed.length >= (game.nhDisplay?.cols || COLNO)) queue_more_prompt();
+    } else {
+        pline(line);
+    }
+}
+
+async function latch_more_frame_before_pet_inventory() {
+    if (!game._more || !game._pending_message || game._latched_more_screen) return;
+    await flush_screen(1);
+    game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
+    game._latched_more_cursor = [
+        Math.min(`${game._pending_message}--More--`.length, COLNO - 1),
+        0,
+        1,
+    ];
+    game._latched_more_keep_until_dismiss = true;
 }
 
 function monster_article_name(mon) {
@@ -575,14 +607,19 @@ export async function finish_pet_kill(mtmp, target) {
     newsym(target.mx, target.my);
 }
 
-function dog_invent(mtmp, udist) {
+async function dog_invent(mtmp, udist) {
     if (mtmp.meating || !game.level?.objects) return 0;
     const edog = init_edog(mtmp);
     if (mtmp.inventory?.length) {
         if ((!rn2(udist + 1) || !rn2(edog.apport)) && rn2(10) < edog.apport) {
             const obj = mtmp.inventory.shift();
+            if (cansee(mtmp.mx, mtmp.my)) await latch_more_frame_before_pet_inventory();
             place_object(obj, mtmp.mx, mtmp.my);
-            pet_inventory_pline(`${pet_subject(mtmp)} drops ${object_name(obj)}.`);
+            // C ref: steal.c:mdrop_obj().  Pet inventory drops are only
+            // announced when the drop square is visible.
+            if (cansee(mtmp.mx, mtmp.my)) {
+                pet_inventory_pline(`${pet_subject(mtmp)} drops ${object_name(obj)}.`);
+            }
             if (edog.apport > 1) edog.apport--;
             newsym(mtmp.mx, mtmp.my);
         }
@@ -600,6 +637,7 @@ function dog_invent(mtmp, udist) {
         if (rn2(20) < edog.apport + 3) {
             if (rn2(Math.max(1, udist)) || !rn2(edog.apport)) {
                 if (!obj._defer_pet_pickup) {
+                    if (cansee(omx, omy)) await latch_more_frame_before_pet_inventory();
                     const idx = game.level.objects.indexOf(obj);
                     if (idx >= 0) game.level.objects.splice(idx, 1);
                     mtmp.inventory = mtmp.inventory || [];
@@ -935,7 +973,7 @@ export async function dog_move(mtmp, after = true) {
     if (!udist) return 0;
 
     const edog = init_edog(mtmp);
-    dog_invent(mtmp, udist);
+    await dog_invent(mtmp, udist);
     const whappr = (game.moves || 0) - (edog.whistletime || 0) < 5;
     const goal = pet_goal(mtmp, after, udist, whappr);
     if (goal.abort) return 0;

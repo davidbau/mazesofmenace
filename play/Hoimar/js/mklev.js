@@ -848,6 +848,15 @@ export function u_on_upstairs() {
     place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
 }
 
+// C ref: stairs.c:u_on_dnstairs().
+export function u_on_dnstairs() {
+    const stway = stairway_find_dir(false);
+    if (stway) { u_on_newpos(stway.sx, stway.sy); return; }
+    const special = stairway_find_special_dir(true);
+    if (special) { u_on_newpos(special.sx, special.sy); return; }
+    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_DOWNTELE, null);
+}
+
 // oinit stub (level-dependent object probability reset)
 function oinit() { /* no-op for contest */ }
 
@@ -9157,6 +9166,7 @@ export async function mklev() {
     await makelevel();
     const slev = currentSpecialLevel();
     const loadedSpecial = !!(slev?.proto && slev.proto !== 'rogue');
+    if (!loadedSpecial) wallification(1, 0, COLNO - 1, ROWNO - 1);
     if (loadedSpecial) link_doors_rooms();
     if (loadedSpecial && (game._last_special_protofile === 'castle'
         || game._last_special_protofile === 'valley'
@@ -9324,8 +9334,7 @@ async function makelevel() {
                 const vaultRoom = g.level.rooms[g.level.nroom - 1];
                 if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
                 fill_special_room(vaultRoom);
-                if (!is_branchlev()) rn2(3);
-                if (!rn2(3)) await makeniche(TELEP_TRAP);
+                if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
             } else if (rnd_rect() && create_vault()) {
                 g.vault_x = g.level.rooms[g.level.nroom]?.lx ?? -1;
                 g.vault_y = g.level.rooms[g.level.nroom]?.ly ?? -1;
@@ -9338,8 +9347,7 @@ async function makelevel() {
                     const vaultRoom = g.level.rooms[g.level.nroom - 1];
                     if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
                     fill_special_room(vaultRoom);
-                    if (!is_branchlev()) rn2(3);
-                    if (!rn2(3)) await makeniche(TELEP_TRAP);
+                    if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
                 } else if (g.level.rooms[g.level.nroom]) {
                     g.level.rooms[g.level.nroom].hx = -1;
                 }
@@ -11176,6 +11184,28 @@ function shkinit(shopIndex, sroom) {
         shk.isshk = 1;
         shk.mpeaceful = 1;
         shk.msleeping = 0;
+        const roomIndex = game.level.rooms.indexOf(sroom);
+        const door = sroom?.doorct ? game.level?.doors?.[sroom.fdoor] : null;
+        // C ref: shknam.c:shkinit().  Movement needs the shopkeeper's
+        // usual inside-door square (`shk`) and shop door (`shd`) even before
+        // full billing/customer state exists.
+        shk.mextra = shk.mextra || {};
+        shk.mextra.eshk = {
+            shoproom: roomIndex >= 0 ? roomIndex + ROOMOFFSET : 0,
+            shoptype: sroom.rtype,
+            shoplevel: { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) },
+            shd: door ? { x: door.x, y: door.y } : { x: pos.x, y: pos.y },
+            shk: { x: pos.x, y: pos.y },
+            robbed: 0,
+            credit: 0,
+            debit: 0,
+            loan: 0,
+            following: false,
+            surcharge: false,
+            billct: 0,
+            visitct: 0,
+            customer: '',
+        };
     }
     rnd(100); // C ref: shknam.c:mkmonmoney() initial capital amount.
     next_ident();

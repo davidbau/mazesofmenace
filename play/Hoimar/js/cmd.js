@@ -15,7 +15,7 @@ import {
     object_glyph_for_menu,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
-import { makemon, mklev, mkobj, mkcorpstat, mksobj, monster_by_user_name, monsterPtr, next_ident, place_lregion, place_object } from './mklev.js';
+import { makemon, mklev, mkobj, mkcorpstat, mksobj, monster_by_user_name, monsterPtr, next_ident, place_lregion, place_object, u_on_dnstairs, u_on_upstairs } from './mklev.js';
 import { OBJECT_CHARGED, OBJECT_CLASS, OBJECT_DELAY, OBJECT_MATERIAL } from './object_data.js';
 import { finish_pet_kill, obj_resists, pet_arrive_with_you } from './dog.js';
 import { merge_inventory_object, newuexp, pluslvl } from './u_init.js';
@@ -91,9 +91,12 @@ const DART = 23;
 const ORCISH_DAGGER = 36;
 const CORPSE = 265;
 const G_NOCORPSE = 0x0010;
+const STATUE = 476;
 const RANDOM_CLASS = 0;
 const POT_CONFUSION = 299;
 const POT_PARALYSIS = 301;
+const POT_HEALING = 307;
+const POT_EXTRA_HEALING = 308;
 const POT_BOOZE = 317;
 const POT_FRUIT_JUICE = 319;
 const SCR_REMOVE_CURSE = 327;
@@ -784,6 +787,7 @@ async function doDownCommand() {
     game._pending_level_teleport_target = st.tolev
         ? { ...st.tolev }
         : { ...(game.u?.uz || { dnum: 0, dlevel: 1 }), dlevel: (game.u?.uz?.dlevel ?? 1) + 1 };
+    game._pending_level_change_flags = { atStairs: true, direction: 'down', ladder: !!st.isladder };
     game.context.move = 1;
 }
 
@@ -798,6 +802,7 @@ async function doUpCommand() {
     game._pending_level_teleport_target = st.tolev
         ? { ...st.tolev }
         : { ...(game.u?.uz || { dnum: 0, dlevel: 1 }), dlevel: Math.max(1, (game.u?.uz?.dlevel ?? 1) - 1) };
+    game._pending_level_change_flags = { atStairs: true, direction: 'up', ladder: !!st.isladder };
     game.context.move = 1;
 }
 
@@ -987,6 +992,9 @@ function baseObjectName(obj) {
     if (obj?.otyp === CORPSE) {
         return `${corpseMonsterDisplayName(obj)} corpse`;
     }
+    if (obj?.otyp === STATUE) {
+        return statueObjectName(obj);
+    }
     if ((obj?.knownName || knownObjectType(obj?.otyp)) && OBJECT_BASE_NAMES.has(obj.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     const appearanceName = unknownAppearanceName(obj);
     if (appearanceName) return appearanceName;
@@ -1003,9 +1011,31 @@ function corpseMonsterPtr(obj) {
     return monsterPtr(obj?.corpsenm) || null;
 }
 
-function corpseMonsterDisplayName(obj) {
+function objectMonsterDisplayName(obj) {
     const ptr = corpseMonsterPtr(obj);
     return String(ptr?.name || 'monster').toLowerCase().replace(/_/g, ' ');
+}
+
+function corpseMonsterDisplayName(obj) {
+    return objectMonsterDisplayName(obj);
+}
+
+function statueObjectName(obj) {
+    // C ref: src/objnam.c:xname().  Statues include the monster type stored
+    // in obj->corpsenm; generic statues retain the base object name.
+    const ptr = corpseMonsterPtr(obj);
+    if (!ptr) return 'statue';
+    const name = objectMonsterDisplayName(obj);
+    return `statue of ${indefiniteArticle(name)} ${name}`;
+}
+
+function toplineWouldOverflowWithPrevious(line) {
+    const prev = game._last_topline_message || '';
+    if (!prev || !line || !game._last_topline_can_force_more) return false;
+    const cols = game.nhDisplay?.cols || COLNO;
+    // C ref: win/tty/topl.c:update_topl().  A new topline can be packed
+    // after the previous one only if there remains room for a later --More--.
+    return line.length + prev.length + 3 >= cols - 8;
 }
 
 function shouldShowBuc(obj) {
@@ -1353,7 +1383,13 @@ async function lookHereAfterMove() {
         .filter(o => o.ox === u.ux && o.oy === u.uy);
     if (!objects.length) return;
     if (objects.length === 1) {
-        await pline(`You see here ${inventoryObjectName(objects[0])}.`);
+        const line = `You see here ${inventoryObjectName(objects[0])}.`;
+        const overflow = toplineWouldOverflowWithPrevious(line);
+        await pline(line);
+        if (overflow) {
+            game._floor_list_pauses_turn = true;
+            queue_more_prompt();
+        }
         return;
     }
     game._pending_message = `${' '.repeat(41)}Things that are here:`;
@@ -1600,6 +1636,16 @@ function increaseHeroTimeout(stateKey, amount) {
     return newTimeout;
 }
 
+function healup(nhp, nxtra) {
+    game.u = game.u || {};
+    if (!nhp) return;
+    game.u.uhp = (game.u.uhp || 0) + nhp;
+    if (game.u.uhp > (game.u.uhpmax || 0)) {
+        game.u.uhpmax = (game.u.uhpmax || 0) + nxtra;
+        game.u.uhp = game.u.uhpmax;
+    }
+}
+
 async function drinkPotion(obj, idx) {
     if (!obj || obj.oclass !== POTION_CLASS) {
         game.context.move = 0;
@@ -1633,6 +1679,25 @@ async function drinkPotion(obj, idx) {
         increaseHeroTimeout('confusion', rn1(7, 16 - (8 * bcsign)));
         if (!alreadyConfused && !(game.u?.uhallucination || game.u?.uprops?.hallucination))
             discoverObjectType(obj.otyp);
+        game.context.move = 1;
+        return;
+    }
+    if (obj.otyp === POT_HEALING) {
+        // C ref: potion.c:peffect_healing().
+        const bcsign = obj.blessed ? 1 : (obj.cursed ? -1 : 0);
+        await pline('You feel better.');
+        healup(8 + d(4 + (2 * bcsign), 4), obj.cursed ? 0 : 1);
+        exercise(A_CON, true);
+        game.context.move = 1;
+        return;
+    }
+    if (obj.otyp === POT_EXTRA_HEALING) {
+        // C ref: potion.c:peffect_extra_healing().
+        const bcsign = obj.blessed ? 1 : (obj.cursed ? -1 : 0);
+        await pline('You feel much better.');
+        healup(16 + d(4 + (2 * bcsign), 8), obj.blessed ? 5 : (obj.cursed ? 0 : 2));
+        exercise(A_CON, true);
+        exercise(A_STR, true);
         game.context.move = 1;
         return;
     }
@@ -1673,6 +1738,13 @@ async function drinkSink() {
         await pline('You take a sip of very warm water.');
     } else if (roll === 2) {
         await pline('You take a sip of scalding hot water.');
+    } else if (roll === 9) {
+        // C refs: fountain.c:drinksink(), eat.c:vomit().
+        const hungerLoss = rn1(Math.max(1, 30 - currentAttr(A_CON)), 11);
+        if (game.u) game.u.uhunger = (game.u.uhunger ?? 900) - hungerLoss;
+        game._nomul_turns_remaining = 3;
+        game._nomul_finish_message = 'You can move again.';
+        await pline('Gaggg... this tastes like sewage!  You vomit.');
     } else {
         const temp = rn2(3) ? (rn2(2) ? 'cold' : 'warm') : 'hot';
         await pline(`You take a sip of ${temp} water.`);
@@ -1845,6 +1917,7 @@ const EXTENDED_AUTOCOMPLETE = [
     { name: 'levelchange', min: 2, wizard: true },
     { name: 'loot', min: 1 },
     { name: 'pray', min: 2 },
+    { name: 'quit', min: 1 },
     { name: 'wizintrinsic', min: 4, wizard: true },
 ];
 
@@ -1862,6 +1935,15 @@ function completeExtendedCommand(input) {
     const prefixMatches = commands.filter((cmd) => cmd.name.startsWith(typed));
     const matches = prefixMatches.filter((cmd) => typed.length >= cmd.min);
     return prefixMatches.length === 1 && matches.length === 1 ? matches[0].name : typed;
+}
+
+async function showExtendedCommandInput(typed) {
+    // C ref: win/tty/getline.c:ext_cmd_getlin_hook().  The prompt displays
+    // the unique completion, while the cursor remains after the typed prefix.
+    const input = String(typed || '').toLowerCase();
+    const shown = completeExtendedCommand(input);
+    await showPromptLine(`# ${shown}`);
+    game._prompt_cursor = [Math.min(input.length + 2, 79), 0];
 }
 
 function alignNameForHero() {
@@ -2180,14 +2262,6 @@ function runStepIsOpen(x, y) {
     return !blocksMove(x, y);
 }
 
-function runStepClosedDoorCandidate(x, y) {
-    const u = game.u;
-    const loc = game.level?.at(x, y);
-    return !!u && loc?.typ === DOOR
-        && !!(loc.doormask & (D_CLOSED | D_LOCKED))
-        && (x === u.ux || y === u.uy);
-}
-
 function maybeTurnCorridorRun(run) {
     if (!run || run.travel) return;
     if (!run.allowTurns) return;
@@ -2199,43 +2273,64 @@ function maybeTurnCorridorRun(run) {
     const desiredY = u.uy + run.dy;
     if (runStepIsOpen(desiredX, desiredY)) return;
 
-    let best = null;
-    let tied = false;
+    let corrct = 0;
+    let noturn = false;
+    let x0 = 0;
+    let y0 = 0;
+    let m0 = 1;
+    let i0 = 9;
     for (let nx = u.ux - 1; nx <= u.ux + 1; nx++) {
         for (let ny = u.uy - 1; ny <= u.uy + 1; ny++) {
             if (nx === u.ux && ny === u.uy) continue;
-            if (nx === u.ux0 && ny === u.uy0) continue;
-            if (!runStepIsOpen(nx, ny)) continue;
             const loc = game.level?.at(nx, ny);
-            const isCorridorTurn = loc?.typ === CORR || loc?.typ === SCORR
-                || runStepClosedDoorCandidate(nx, ny)
-                || sobj_at_basic(BOULDER, nx, ny);
-            if (!isCorridorTurn) continue;
-            const score = dist2(nx, ny, desiredX, desiredY);
-            if (!best || score < best.score) {
-                best = { x: nx, y: ny, score };
-                tied = false;
-            } else if (score === best.score) {
-                tied = true;
+            if (!loc || loc.typ === STONE) continue;
+            if (nx === u.ux - run.dx && ny === u.uy - run.dy) continue;
+            const mtmp = mon_at(nx, ny);
+            const closedDoor = loc?.typ === DOOR && !!(loc.doormask & (D_CLOSED | D_LOCKED));
+            let corridorCandidate = false;
+            if (C.IS_OBSTRUCTED(loc.typ) || loc.typ === C.ROOM
+                || C.IS_AIR(loc.typ) || loc.typ === C.ICE) {
+                continue;
+            } else if (closedDoor) {
+                if (nx !== u.ux && ny !== u.uy) continue;
+                corridorCandidate = true;
+            } else if (loc.typ === CORR || loc.typ === SCORR) {
+                corridorCandidate = true;
+            } else if (C.IS_POOL(loc.typ) || C.IS_LAVA(loc.typ)) {
+                continue;
+            } else if (run.mode === 1) {
+                corridorCandidate = true;
             }
+            if (!corridorCandidate) continue;
+            const i = dist2(nx, ny, desiredX, desiredY);
+            if (i > 2) continue;
+            if (corrct === 1 && dist2(nx, ny, x0, y0) !== 1) noturn = true;
+            if (i < i0) {
+                i0 = i;
+                x0 = nx;
+                y0 = ny;
+                m0 = mtmp ? 1 : 0;
+            }
+            corrct++;
         }
     }
-    if (best && !tied) {
-        const nextDx = best.x - u.ux;
-        const nextDy = best.y - u.uy;
+    if ((run.mode === 1 || run.mode === 3 || run.mode === 8)
+        && !noturn && !m0 && i0
+        && (corrct === 1 || (corrct === 2 && i0 === 1))) {
+        const nextDx = x0 - u.ux;
+        const nextDy = y0 - u.uy;
         if (nextDx !== run.dx || nextDy !== run.dy) {
             // C ref: hack.c:lookaround(); repeated corner running is limited
             // by cumulative last_str_turn rather than a one-turn boolean.
-            const i0 = best.score;
             let turn = 0;
             if (i0 === 2) {
-                turn = (run.dx === best.y - u.uy && run.dy === u.ux - best.x) ? 2 : -2;
+                turn = (run.dx === y0 - u.uy && run.dy === u.ux - x0) ? 2 : -2;
             } else if (run.dx && run.dy) {
-                turn = ((run.dx === run.dy && best.y === u.uy)
-                    || (run.dx !== run.dy && best.y !== u.uy)) ? -1 : 1;
+                turn = ((run.dx === run.dy && y0 === u.uy)
+                    || (run.dx !== run.dy && y0 !== u.uy)) ? -1 : 1;
             } else {
-                turn = ((best.x - u.ux === best.y - u.uy && !run.dy)
-                    || (best.x - u.ux !== best.y - u.uy && run.dy)) ? 1 : -1;
+                turn = ((x0 - u.ux === y0 - u.uy && !run.dy)
+                    || (x0 - u.ux !== y0 - u.uy && run.dy)) ? 1 : -1;
             }
             const lastTurn = (run.lastStrTurn || 0) + turn;
             if (lastTurn < -2 || lastTurn > 2) return;
@@ -3471,6 +3566,7 @@ async function handleQueuedMore(ch) {
             return true;
         }
         clear_pending_message();
+        await finishPendingStairArrivalRedraw();
         if (game._restore_message_after_more) {
             const msg = game._restore_message_after_more;
             game._restore_message_after_more = '';
@@ -4168,6 +4264,18 @@ async function showPromptLine(text) {
     game._prompt_cursor = [Math.min(text.length, 79), 0];
 }
 
+async function showDrinkInventoryPrompt() {
+    const letters = drinkLetters();
+    if (letters) {
+        const prompt = `What do you want to drink? [${letters} or ?*]`;
+        await showPromptLine(prompt);
+        game._prompt_cursor = [Math.min(prompt.length + 1, 79), 0];
+        game._awaiting_drink_item = true;
+    } else {
+        await pline('You have nothing to drink.');
+    }
+}
+
 function dlevelOf(proto, fallback) {
     const lev = game.specialLevels?.find((l) => l.proto === proto);
     return lev?.dlevel ? displayDepth(lev.dlevel) : fallback;
@@ -4638,7 +4746,35 @@ function cloneMigratingMonster(mon) {
     };
 }
 
-export async function performLevelTeleport(target) {
+function stairArrivalMessage(options, goingUp) {
+    if (!options?.atStairs) return null;
+    const ladder = !!options.ladder;
+    if (goingUp) return `You climb up${ladder ? ' along' : ''} the ${ladder ? 'ladder' : 'stairs'}.`;
+    if ((game.u?.uencumber || 0) > 0) return `You fall down the ${ladder ? 'ladder' : 'stairs'}.`;
+    return `You ${ladder ? 'climb down the ladder' : 'descend the stairs'}.`;
+}
+
+function applyStairFallDamage(options, goingUp) {
+    if (!options?.atStairs || goingUp || (game.u?.uencumber || 0) <= 0) return;
+    // C ref: do.c:goto_level().  Burdened stair descent tumbles the hero for
+    // rnd(3) damage after placement on the destination upstairs.
+    const damage = rnd(3);
+    if (typeof game.u?.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - damage);
+}
+
+async function finishPendingStairArrivalRedraw() {
+    if (!game._stair_arrival_redraw_pending) return;
+    game._stair_arrival_redraw_pending = false;
+    vision_reset();
+    vision_recalc(2);
+    vision_recalc(0);
+    see_monsters();
+    await docrt();
+    if (game.u?.uhallucination || game.u?.uprops?.hallucination) see_objects();
+    game.context.mv = 1;
+}
+
+export async function performLevelTeleport(target, options = {}) {
     const oldUz = { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) };
     const newUz = typeof target === 'object' && target
         ? { ...target }
@@ -4652,6 +4788,7 @@ export async function performLevelTeleport(target) {
     }
     const wasInHell = isHellLevel(oldUz);
     const prevTemperature = game.level?.flags?.temperature || 0;
+    const preChangeScreen = options?.atStairs ? serialize_terminal_grid(game.nhDisplay) : '';
     const followers = (game.level?.monsters || [])
         .filter((mon) => monNearBasic(mon, game.u?.ux ?? mon.mx, game.u?.uy ?? mon.my)
             && levelFollowerBasic(mon));
@@ -4675,16 +4812,44 @@ export async function performLevelTeleport(target) {
     game.u.uz = newUz;
     if (!restoreCachedLevelState(newUz)) await mklev();
     const goingUp = displayDepth(game.u.uz) < displayDepth(oldUz);
-    const dest = goingUp ? game.updest : game.dndest;
-    if (dest?.lx) {
-        place_lregion(dest.lx, dest.ly, dest.hx, dest.hy,
-            dest.nlx, dest.nly, dest.nhx, dest.nhy,
-            goingUp ? LR_UPTELE : LR_DOWNTELE, null);
+    const arrivalMessage = stairArrivalMessage(options, goingUp);
+    if (options?.atStairs) {
+        // C refs: dungeon.c:next_level(), do.c:goto_level(), stairs.c:u_on_*().
+        // Ordinary stairs land on the corresponding staircase, not in the
+        // level-teleport arrival region.
+        if (goingUp) u_on_dnstairs();
+        else u_on_upstairs();
+        applyStairFallDamage(options, goingUp);
     } else {
-        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+        const dest = goingUp ? game.updest : game.dndest;
+        if (dest?.lx) {
+            place_lregion(dest.lx, dest.ly, dest.hx, dest.hy,
+                dest.nlx, dest.nly, dest.nhx, dest.nhy,
+                goingUp ? LR_UPTELE : LR_DOWNTELE, null);
+        } else {
+            place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+        }
     }
     pet_arrive_with_you();
     initrack();
+    if (arrivalMessage) {
+        // C ref: do.c:goto_level().  Stair arrival messages are generated
+        // before the destination level's docrt() is flushed, so the blocking
+        // tty More still shows the old map while level generation and follower
+        // arrival RNG have already happened.
+        game._stair_arrival_redraw_pending = true;
+        await pline(arrivalMessage);
+        queue_more_prompt();
+        if (preChangeScreen) {
+            const rows = preChangeScreen.split('\n');
+            rows[0] = `${arrivalMessage}--More--`;
+            game._latched_more_screen = rows.join('\n');
+            game._latched_more_cursor = [Math.min(arrivalMessage.length + '--More--'.length, 79), 0, 1];
+            game._latched_more_keep_until_dismiss = true;
+        }
+        game._monster_turn_paused_for_more = true;
+        return;
+    }
     vision_reset();
     // C ref: display.c:docrt() starts with vision_recalc(2), forcing old
     // visible cells through newsym() before the level-change full redraw.
@@ -5047,12 +5212,19 @@ export async function rhack(key) {
             game.context.move = 0;
             return;
         }
+        if (ch === '\x7f' || ch === '\b') {
+            const typed = (game._extended_command_input || '').slice(0, -1);
+            game._extended_command_input = typed;
+            game._extended_command = completeExtendedCommand(typed);
+            await showExtendedCommandInput(typed);
+            game.context.move = 0;
+            return;
+        }
         if (/^[A-Za-z]$/.test(ch)) {
             const typed = `${game._extended_command_input || ''}${ch}`.toLowerCase();
             game._extended_command_input = typed;
             game._extended_command = completeExtendedCommand(typed);
-            await showPromptLine(`# ${game._extended_command}`);
-            game._prompt_cursor = [Math.min(typed.length + 2, 79), 0];
+            await showExtendedCommandInput(typed);
             game.context.move = 0;
             return;
         }
@@ -5495,8 +5667,8 @@ export async function rhack(key) {
         game._awaiting_sink_drink_confirm = false;
         if (ch === 'y' || ch === 'Y') await drinkSink();
         else {
-            await pline('Never mind.');
             game.context.move = 0;
+            await showDrinkInventoryPrompt();
         }
         return;
     }
@@ -6142,7 +6314,7 @@ export async function rhack(key) {
             dy: DIR_DY[dir],
             mode: 1,
             steps: 0,
-            allowTurns: !!(DIR_DX[dir] && DIR_DY[dir]),
+            allowTurns: true,
         };
         game.context.mv = 1;
         game.context.move = await domove(DIR_DX[dir], DIR_DY[dir]) ? 1 : 0;
@@ -6337,13 +6509,7 @@ export async function rhack(key) {
             game._awaiting_sink_drink_confirm = true;
             return;
         }
-        const letters = drinkLetters();
-        if (letters) {
-            await showPromptLine(`What do you want to drink? [${letters} or ?*]`);
-            game._awaiting_drink_item = true;
-        } else {
-            await pline('You have nothing to drink.');
-        }
+        await showDrinkInventoryPrompt();
     } else if (ch === 'e') {
         const corpse = floorCorpseAtHero();
         if (corpse) {

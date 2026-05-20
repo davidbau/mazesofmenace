@@ -42,6 +42,7 @@ export class GameMap {
         this.doors = [];
         this.doorindex = 0;
         this.objects = [];
+        this.buriedobjlist = [];
         this.monsters = [];
         this.traps = [];
         this.flags = {

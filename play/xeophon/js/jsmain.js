@@ -10,15 +10,15 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
-import { initRng, enableRngLog, getRngLog, rn2, truncateRngLog } from './rng.js';
-import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core } from './allmain.js';
-import { replay_rng_script } from './cmd.js';
+import { initRng, enableRngLog, getRngLog, rn2 } from './rng.js';
+import { nhgetch } from './input.js';
+import { newgame, moveloop_core, syncStartupIdentity } from './allmain.js';
+import { bot, docrt, flush_screen, pline } from './display.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { NO_COLOR } from './terminal.js';
-import { findSessionReplay, startSessionReplay } from './session_replays.js';
+import { restoreSaveState, setRestoreCalendar } from './save.js';
+import { vfsDeleteFile, vfsReadFile } from './storage.js';
 
 const ROLE_ORDER = [
     'Archeologist', 'Barbarian', 'Caveman', 'Healer', 'Knight', 'Monk',
@@ -68,12 +68,32 @@ const FILTER_RACE_KEYS = { H: 'human', E: 'elf', D: 'dwarf', G: 'gnome', O: 'orc
 const RACE_MENU_KEYS = { human: 'h', elf: 'e', dwarf: 'd', gnome: 'g', orc: 'o' };
 const RACE_FILTER_KEYS = { human: 'H', elf: 'E', dwarf: 'D', gnome: 'G', orc: 'O' };
 const RACE_ORDER = ['human', 'elf', 'dwarf', 'gnome', 'orc'];
+const DEC_CAPTURE_GLYPHS = [
+    ['┌', 'l'], ['─', 'q'], ['┐', 'k'], ['│', 'x'], ['└', 'm'], ['┘', 'j'],
+    ['├', 't'], ['┤', 'u'], ['┬', 'w'], ['┴', 'v'], ['┼', 'n'], ['▒', 'a'],
+    ['⎺', 'o'], ['⎽', 's'], ['·', '~'],
+];
+
+function normalizeCapturedScreen(screen) {
+    let out = String(screen || '')
+        .replaceAll('◆', '`')
+        .replaceAll('°', 'f')
+        .replaceAll('±', 'g')
+        .replaceAll('≤', 'y')
+        .replaceAll('≥', 'z')
+        .replaceAll('≠', '|')
+        .replaceAll('π', '{');
+    if (game.symset !== 'DECgraphics') return out;
+    for (const [glyph, dec] of DEC_CAPTURE_GLYPHS)
+        out = out.replaceAll(glyph, `\x0e${dec}\x0f`);
+    return out;
+}
 
 // ── NethackGame ──
-// Wraps a single game session with replay infrastructure.
+// Wraps one contest segment and records the live terminal/RNG outputs.
 export class NethackGame {
     constructor(opts = {}) {
-        this._seed = opts.seed || 0;
+        this._seed = opts.seed ?? Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
         this._datetime = opts.datetime || null;
         this._nethackrc = opts.nethackrc || '';
         // Cross-segment persistence handle. The judge sandbox passes a
@@ -124,8 +144,8 @@ export class NethackGame {
         const disp = game?.nhDisplay;
         const term = disp?.terminal || disp;
         this._pendingAnimFrames.push({
-            screen: term?.serialize ? term.serialize() : '',
-            cursor: disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null,
+            screen: normalizeCapturedScreen(term?.serialize ? term.serialize() : ''),
+            cursor: disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, disp.cursorVisible ?? 1] : null,
         });
         if (typeof requestAnimationFrame === 'function') {
             await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -138,6 +158,7 @@ export class NethackGame {
         const oldGame = game;
         const g = resetGame();
         if (this._storage) g.mockStorage = this._storage;
+        g._datetime = this._datetime;
 
         // Parse nethackrc
         const parsedOpts = parseNethackrc(this._nethackrc);
@@ -145,10 +166,13 @@ export class NethackGame {
             ? { ...parsedOpts, ...this._pregameStartOptions, flags: { ...parsedOpts.flags } }
             : parsedOpts;
         g.flags = { verbose: true, legacy: true, ...opts.flags };
+        g._autopickup = g.flags.pickup ?? false;
+        g.flags.pickup = g._autopickup;
         g.plname = g.flags.debug ? 'wizard' : (opts.name || 'Hero');
-        if (String(g.plname).toLowerCase() === 'wizard') g.flags.debug = true;
+        g._savefile = `save/${encodeURIComponent(g.plname)}.e`;
         g.iflags = { ...opts.iflags };
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
+        g.petNames = { dog: opts.dogname || '', cat: opts.catname || '', pony: opts.horsename || '' };
         if (opts.symset) g.symset = opts.symset;
         g.keyBindings = opts.keyBindings || {};
         if (opts.tutorial_set) g.tutorial_set_in_config = true;
@@ -164,14 +188,18 @@ export class NethackGame {
         g.program_state = {};
         g.moves = 1;
 
-        // TODO: Map role/race/gender/align from opts to role data
-        g.urole = { name: { m: 'Rambler', f: 'Rambler' } };
-        g.urace = { adj: 'human' };
+        syncStartupIdentity(g);
+
+        const savedGame = vfsReadFile(g._savefile);
+        if (savedGame) {
+            restoreSaveState(savedGame);
+            if (this._storage) g.mockStorage = this._storage;
+            g._datetime = this._datetime;
+        }
 
         // Initialize PRNG
         const resetRngLog = !this._preserveRngLog && !this._reuseInitializedRng;
         if (this._reuseInitializedRng) {
-            g.currentSeed = oldGame.currentSeed;
             g.coreCtx = oldGame.coreCtx;
             g.displayCtx = oldGame.displayCtx;
             g.rng = { core: g.coreCtx, display: g.displayCtx };
@@ -190,51 +218,46 @@ export class NethackGame {
         // Install capture hook
         this._installCaptureHook();
 
-        const sessionReplay = findSessionReplay(g.currentSeed, opts.name || g.plname, g._startup_role, this._segmentMovesLength);
-        const sessionReplayIndex = this._screens.length;
-        const sessionReplayLogStart = getRngLog().length;
+        if (savedGame) {
+            vfsDeleteFile(g._savefile);
+            rn2(3);
+            rn2(2);
+            setRestoreCalendar(this._datetime);
+            await docrt();
+            await bot();
+            await flush_screen(1);
+            const raceName = g.urace?.adj || g._startup_race || 'human';
+            const roleName = g._startup_role || g.urole?.name?.m || 'Adventurer';
+            await pline(`Hello ${g.plname || 'Hero'}, the ${raceName} ${roleName}, welcome back to NetHack!`);
+            g._command_mode = null;
+            g._welcome_message = 1;
+            g._message_more = 1;
+            g._message_more_line = '';
+            return;
+        }
 
         // Run game startup
         await newgame();
-        if (sessionReplay) {
-            truncateRngLog(sessionReplayLogStart);
-            this._lastRngIdx = sessionReplayLogStart;
-            startSessionReplay(sessionReplay, sessionReplayIndex);
-            const replayIndex = (sessionReplay.startOffset || 0) + sessionReplayIndex;
-            replay_rng_script(sessionReplay.rng[replayIndex] || '');
-        }
     }
 
     _installCaptureHook() {
         const nhGame = this;
         game._preNhgetchHook = async () => {
-            const keyIdx = nhGame._nhgetchCount++;
-
+            const disp = game?.nhDisplay;
+            const term = disp?.terminal || disp;
+            nhGame._nhgetchCount++;
             // Capture RNG slice since last capture
             const fullLog = getRngLog() || [];
             const slice = fullLog.slice(nhGame._lastRngIdx);
             nhGame._lastRngIdx = fullLog.length;
 
-            // Capture screen from the terminal grid. The fixture for
+            // Capture screen from the terminal grid. The comparison format for
             // screen scoring is the Terminal: contestants drive it
             // however they like, judge reads back terminal.serialize()
             // and compares to the C session's recorded screen.
-            const disp = game?.nhDisplay;
-            const term = disp?.terminal || disp;
-            const screen = term?.serialize ? term.serialize() : '';
-            nhGame._screens.push(screen
-                .replaceAll('◆', '`')
-                .replaceAll('°', 'f')
-                .replaceAll('±', 'g')
-                .replaceAll('≤', 'y')
-                .replaceAll('≥', 'z')
-                .replaceAll('≠', '|')
-                .replaceAll('⎺', 'o')
-                .replaceAll('⎽', 's')
-                .replaceAll('π', '{'));
+            nhGame._screens.push(normalizeCapturedScreen(term?.serialize ? term.serialize() : ''));
             nhGame._rngSlices.push(slice);
-
-            const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
+            const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, disp.cursorVisible ?? 1] : null;
             nhGame._cursors.push(cursor);
 
             // Commit animation frames accumulated since the previous
@@ -243,6 +266,7 @@ export class NethackGame {
             // snapshot and reset here so the next step starts empty.
             nhGame._animFramesByStep.push(nhGame._pendingAnimFrames);
             nhGame._pendingAnimFrames = [];
+
         };
     }
 
@@ -258,6 +282,10 @@ export class NethackGame {
             display.setCell(col + i, row, text[i], NO_COLOR, attr);
     }
 
+    _setCursorAfter(row, col, text, extra = 0) {
+        game.nhDisplay.setCursor(col + String(text || '').trimEnd().length + extra, row);
+    }
+
     _renderPregameBanner(extraRows = []) {
         const display = game.nhDisplay;
         display.clearScreen();
@@ -265,8 +293,11 @@ export class NethackGame {
         this._putLine(5, '         By Stichting Mathematisch Centrum and M. Stephenson.');
         this._putLine(6, '         Version 5.0.0 MacOS, built May  2 2026 12:00:00.');
         this._putLine(7, '         See license for details.');
-        this._putLine(12, `Who are you?${this._pregameName ? ` ${this._pregameName}` : ''}`);
+        const nameLine = `Who are you?${this._pregameName ? ` ${this._pregameName}` : ''}`;
+        this._putLine(12, nameLine);
         for (const [row, text] of extraRows) this._putLine(row, text);
+        if (extraRows.length) this._setCursorAfter(extraRows[0][0], 0, extraRows[0][1], 1);
+        else this._setCursorAfter(12, 0, nameLine, this._pregameName ? 0 : 1);
     }
 
     _renderPregameRoleMenu() {
@@ -296,6 +327,7 @@ export class NethackGame {
         rows.push([start + gap + 5, `${lead}(end)`]);
         game.nhDisplay.clearScreen();
         for (const [row, text, attr] of rows) this._putLine(row, text, attr || 0);
+        this._setCursorAfter(start + gap + 5, lead.length, '(end)', 1);
     }
 
     _renderPregameRaceMenu() {
@@ -319,6 +351,7 @@ export class NethackGame {
         this._putLine(start + 5, `${pad}~ - ${filterText} role/race/&c filtering`);
         this._putLine(start + 6, `${pad}q - Quit`);
         this._putLine(start + 7, `${pad}(end)`);
+        this._setCursorAfter(start + 7, pad.length, '(end)', 1);
     }
 
     _renderPregameGenderMenu() {
@@ -346,6 +379,7 @@ export class NethackGame {
         this._putLine(11, `${pad}~ - ${filterText} role/race/&c filtering`);
         this._putLine(12, `${pad}q - Quit`);
         this._putLine(13, `${pad}(end)`);
+        this._setCursorAfter(13, pad.length, '(end)', 1);
     }
 
     _renderPregameAlignMenu() {
@@ -369,6 +403,7 @@ export class NethackGame {
         this._putLine(start + 5, `${pad}~ - ${filterText} role/race/&c filtering`);
         this._putLine(start + 6, `${pad}q - Quit`);
         this._putLine(start + 7, `${pad}(end)`);
+        this._setCursorAfter(start + 7, pad.length, '(end)', 1);
     }
 
     _renderPregameFilterMenu() {
@@ -387,6 +422,7 @@ export class NethackGame {
             this._putLine(18 + i, ` ${RACE_FILTER_KEYS[race]} ${mark} ${race}`);
         }
         this._putLine(23, ' (1 of 2)');
+        this._setCursorAfter(23, 0, ' (1 of 2)');
     }
 
     _renderPregameConfirm() {
@@ -408,6 +444,7 @@ export class NethackGame {
         this._putAt(6, col, 'a - Not yet; choose another name');
         this._putAt(7, col, 'q - Quit');
         this._putAt(8, col, '(end)');
+        this._setCursorAfter(8, col, '(end)', 1);
     }
 
     _forcedGenderText() {
@@ -472,7 +509,31 @@ export class NethackGame {
             && this._allowedRaces(role).length);
     }
 
+    _forceRigidPregameFields() {
+        const sel = this._pregameSelection;
+        if (!sel.role) return;
+
+        if (!sel.race) {
+            const races = this._allowedRaces(sel.role);
+            if (races.length === 1) sel.race = races[rn2(races.length)];
+        }
+        if (!sel.align) {
+            const aligns = this._allowedAligns(sel.role, sel.race);
+            const details = ROLE_DETAILS[sel.role] || ROLE_DETAILS.Healer;
+            if (aligns.length === 1) sel.align = details.genders.length === 1
+                ? aligns[0]
+                : aligns[rn2(aligns.length)];
+        }
+        if (!sel.gender) {
+            const details = ROLE_DETAILS[sel.role] || ROLE_DETAILS.Healer;
+            const genders = details.genders.filter(gender =>
+                this._roleMatchesSelection(sel.role, sel.race, gender, sel.align));
+            if (genders.length === 1) sel.gender = genders[rn2(genders.length)];
+        }
+    }
+
     _advancePregameState() {
+        this._forceRigidPregameFields();
         const sel = this._pregameSelection;
         if (!sel.role) this._pregameState = 'role';
         else if (!sel.race) this._pregameState = 'race';
@@ -485,7 +546,9 @@ export class NethackGame {
     _renderPregame() {
         if (this._pregameState === 'name' && this._pregameRenaming) {
             game.nhDisplay.clearScreen();
-            this._putLine(10, `Who are you?${this._pregameName ? ` ${this._pregameName}` : ''}`);
+            const nameLine = `Who are you?${this._pregameName ? ` ${this._pregameName}` : ''}`;
+            this._putLine(10, nameLine);
+            this._setCursorAfter(10, 0, nameLine, this._pregameName ? 0 : 1);
         } else if (this._pregameState === 'name') this._renderPregameBanner();
         else if (this._pregameState === 'auto') {
             this._renderPregameBanner([[0, "Shall I pick character's race, role, gender and alignment for you? [ynaq]"]]);
@@ -499,15 +562,23 @@ export class NethackGame {
     }
 
     _randomPregameSelection() {
-        const roles = this._allowedRoles();
-        const role = roles[rn2(roles.length)];
-        const details = ROLE_DETAILS[role] || ROLE_DETAILS.Healer;
-        const races = this._allowedRaces(role);
-        const race = races[rn2(races.length)];
-        const gender = details.genders[rn2(details.genders.length)];
-        const aligns = this._allowedAligns(role, race);
-        const align = aligns[rn2(aligns.length)];
-        this._pregameSelection = { role, race, gender, align };
+        const sel = this._pregameSelection;
+        if (!sel.role) {
+            const roles = this._allowedRoles();
+            sel.role = roles[rn2(roles.length)];
+        }
+        if (!sel.race) {
+            const races = this._allowedRaces(sel.role);
+            sel.race = races[rn2(races.length)];
+        }
+        if (!sel.gender) {
+            const details = ROLE_DETAILS[sel.role] || ROLE_DETAILS.Healer;
+            sel.gender = details.genders[rn2(details.genders.length)];
+        }
+        if (!sel.align) {
+            const aligns = this._allowedAligns(sel.role, sel.race);
+            sel.align = aligns[rn2(aligns.length)];
+        }
         this._pregameConfirmOverlay = true;
         this._pregameConfirmNameLine = false;
     }
@@ -525,14 +596,6 @@ export class NethackGame {
         if (sel.race && !details.races.includes(sel.race)) sel.race = null;
         if (sel.gender && !details.genders.includes(sel.gender)) sel.gender = null;
         if (sel.align && !this._allowedAligns(role, sel.race).includes(sel.align)) sel.align = null;
-        if (!sel.gender && details.genders.length === 1) {
-            rn2(1);
-            sel.gender = details.genders[0];
-        }
-        if (!sel.align && details.aligns.length === 1) {
-            rn2(1);
-            sel.align = details.aligns[0];
-        }
         this._pregameConfirmOverlay = false;
         this._advancePregameState();
     }
@@ -545,14 +608,7 @@ export class NethackGame {
         const details = ROLE_DETAILS[sel.role] || ROLE_DETAILS.Healer;
         const aligns = this._allowedAligns(sel.role, race);
         if (!aligns.includes(sel.align)) sel.align = null;
-        if (sel.role && !sel.align && aligns.length === 1) {
-            if (!(sel.role === 'Valkyrie' && race === 'dwarf')) rn2(1);
-            sel.align = aligns[0];
-        }
-        if (sel.role && !sel.gender && details.genders.length === 1) {
-            rn2(1);
-            sel.gender = details.genders[0];
-        }
+        if (sel.gender && !details.genders.includes(sel.gender)) sel.gender = null;
         this._advancePregameState();
     }
 
@@ -584,13 +640,17 @@ export class NethackGame {
                     this._pregameRenaming = false;
                     this._pregameConfirmNameLine = true;
                     this._pregameState = 'confirm';
-            } else if (typeof this._pregameBaseOptions?.role === 'string'
-                && typeof this._pregameBaseOptions?.race === 'string'
-                && typeof this._pregameBaseOptions?.gender === 'string'
-                && typeof this._pregameBaseOptions?.align === 'string') {
+            } else if (this._pregameBaseOptions?.role
+                && this._pregameBaseOptions?.race
+                && this._pregameBaseOptions?.gender
+                && this._pregameBaseOptions?.align) {
                 this._pregameStartOptions = { name: this._pregameName };
                 this._pregameState = 'accepted';
-            } else this._pregameState = 'auto';
+            } else {
+                this._forceRigidPregameFields();
+                const sel = this._pregameSelection;
+                this._pregameState = sel.role && sel.race && sel.gender && sel.align ? 'confirm' : 'auto';
+            }
             }
             else if (key === 8 || key === 127) this._pregameName = this._pregameName.slice(0, -1);
             else if (key >= 32) this._pregameName += ch;
@@ -673,14 +733,23 @@ export class NethackGame {
         initRng(this._seed);
         enableRngLog();
         this._installCaptureHook();
-        this._pregameName = '';
-        this._pregameState = 'name';
-        this._pregameSelection = {};
+        this._pregameName = this._pregameBaseOptions?.name || '';
+        this._pregameSelection = {
+            role: this._pregameBaseOptions?.role || null,
+            race: this._pregameBaseOptions?.race || null,
+            gender: this._pregameBaseOptions?.gender || null,
+            align: this._pregameBaseOptions?.align || null,
+        };
         this._pregameFilterRoles = new Set();
         this._pregameFilterRaces = new Set();
         this._pregameConfirmOverlay = false;
         this._pregameConfirmNameLine = false;
         this._pregameRenaming = false;
+        if (this._pregameName) {
+            this._forceRigidPregameFields();
+            const sel = this._pregameSelection;
+            this._pregameState = sel.role && sel.race && sel.gender && sel.align ? 'confirm' : 'auto';
+        } else this._pregameState = 'name';
 
         for (;;) {
             this._renderPregame();
@@ -735,12 +804,11 @@ export class NethackGame {
 // this segment. The harness concatenates them itself. Cross-segment
 // C-side state (bones, record file, save) lives in `input.storage`.
 export async function runSegment(input) {
-    const { seed, nethackrc, storage } = input;
+    const { seed, datetime, nethackrc, storage } = input;
     const moves = input.moves || '';
     const opts = parseNethackrc(nethackrc);
 
-    const nhGame = new NethackGame({ seed, nethackrc, storage });
-    nhGame._segmentMovesLength = moves.length;
+    const nhGame = new NethackGame({ seed, datetime, nethackrc, storage });
 
     const display = new GameDisplay(null);
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
@@ -763,8 +831,7 @@ export async function runSegment(input) {
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant
     // captured is what gets compared.
-    const maxIter = Math.max(moves.length * 8, 1024);
-    for (let iter = 0; iter < maxIter; iter++) {
+    for (;;) {
         try {
             await moveloop_core();
         } catch (e) {

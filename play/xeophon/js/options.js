@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 
 export function parseNethackrc(rc) {
     const result = {
-        name: '', role: -1, race: -1, gender: -1, align: -1,
+        name: '', role: '', race: '', gender: '', align: '',
         flags: {}, iflags: {}, keyBindings: {},
     };
     if (!rc) return result;
@@ -40,8 +40,11 @@ export function parseNethackrc(rc) {
                 else if (key === 'race') result.race = val;
                 else if (key === 'gender') result.gender = val;
                 else if (key === 'align') result.align = val;
-                else if (key === 'playmode' && val === 'debug') result.flags.debug = true;
-                else if (key === 'playmode' && val === 'explore') result.flags.explore = true;
+                else if (key === 'dogname') result.dogname = val;
+                else if (key === 'catname') result.catname = val;
+                else if (key === 'horsename') result.horsename = val;
+                else if (key === 'playmode' && ['debug', 'wizard'].includes(val.toLowerCase())) result.flags.debug = true;
+                else if (key === 'playmode' && ['explore', 'discovery'].includes(val.toLowerCase())) result.flags.explore = true;
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     if (val === 'none' || val === 'n') result.preferred_pet = 'n';
