@@ -30,23 +30,12 @@ Most of them died. The ones who made it back brought stories, and some
 of those stories eventually got written down. You're reading the latest
 edition of that accumulated lore.
 
-The Mazes have predecessors. Before this dungeon took its current form,
-adventurers explored simpler places: a dungeon called Hack, and before
-that the legendary Rogue, whose procedurally-generated corridors first
-established what a dungeon could mean in the age of computing. Each
-generation of explorers added to what the previous one learned, until
-the Mazes became what they are today: one of the deepest, most thoroughly
-documented, and most reliably fatal adventure destinations ever devised.
-The knowledge in this guide is the inheritance of everything those
-explorers found out, usually the hard way.
-
-**A word of caution.** This guide will change how you experience the
-Mazes forever. Once you know that a floating eye can paralyze you with
-a glance, you can never un-know it. Once you learn what a cockatrice
-corpse can do when wielded with gloves, the dungeon becomes a
-different place. Some adventurers prefer the thrill of discovery over
-the comfort of preparation. If that's you, close this guide now and
-go learn things the hard way. There is real joy in that.
+**A word of caution.** This guide will change how you experience
+the Mazes. Once you know that a floating eye can paralyze you with
+a glance, you can never un-know it. Some adventurers prefer the
+thrill of discovery over the comfort of preparation. If that's
+you, close this guide now and go learn things the hard way. There
+is real joy in that.
 
 **Looking for the manual instead?** If you're just looking for game
 commands, item lists, and mechanics without spoilers, you want the
@@ -63,8 +52,7 @@ you alive.
 <aside class="download-box">
 <strong>Prefer to print or read offline?</strong>
 Download the <a href="companion-latex.pdf">paperback-format PDF</a>
-(288 pages, 5×8 trim) or the <a href="cover/cover.pdf">print-ready
-wraparound cover</a>.
+(288 pages, 5×8 trim, <a href="cover/cover.pdf">printable cover</a>).
 </aside>
 
 ---
@@ -152,8 +140,9 @@ wraparound cover</a>.
 - amethyst converts booze (not sickness) to fruit juice (potion.c:2161-2163)
 - unicorn horn converts sickness to fruit juice (potion.c:2151-2154)
 - Mjollnir is the Valkyrie sacrifice gift; needs a co-aligned altar (artilist.h:109)
-- Knight code penalizes attacks on fleeing or helpless monsters (peaceful is Samurai's giri)
+- Knight code penalizes attacks on fleeing or helpless monsters (uhitm.c:336-339); peaceful kill is Samurai's giri
 - all 13 role alignment/race availabilities (role.c)
+- strategy aligned with NetHackWiki Valkyrie, Excalibur: Valkyrie is widely cited as the easiest beginner role; Knight 1-in-6 Excalibur dip at XL 5+ confirmed (https://nethackwiki.com/wiki/Valkyrie, https://nethackwiki.com/wiki/Excalibur)
 -->
 
 The first decision you'll make, before you even set foot on the
@@ -359,23 +348,16 @@ hard.
 - floating-eye paralysis fires on melee against the eye (uhitm.c:5853, 6022)
 - Burdened status label (botl.c:12)
 - food ration weight and nutrition (objects.h:1110)
+- strategy aligned with NetHackWiki Curse-testing, Altar: altar amber/black flash and pet step-avoidance are confirmed canonical curse-testing techniques (https://nethackwiki.com/wiki/Curse-testing, https://nethackwiki.com/wiki/Altar)
 -->
 ### What to Pack
 
-Any good travel guide will tell you what to bring. Ours has the
-awkward job of telling you that you don't get to choose. Your
-starting kit is determined by your role, and you'll descend with
-whatever your role provides, no more.
-
-What you *can* choose is what to prioritize once you're down there.
-Every role starts with equipment suited to its strengths. The
-important thing isn't what's in your pack on turn one; it's knowing
-what to scavenge from the first few levels to shore up your
+Your starting kit is fixed by your role and suited to its strengths,
+but you'll want to improve on it. In the early game, keep an eye out
+for these items as you descend. They'll shore up most roles'
 weaknesses.
 
 #### The Early Shopping List
-
-No matter your role, here's what you should be looking for:
 
 **A source of nutrition.** You will get hungry. It happens faster
 than you think. But your main food source isn't going to be the
@@ -402,6 +384,14 @@ provide armor class benefits and can protect against specific attacks.
 from range is almost always safer than melee, and some monsters (like
 floating eyes) should never be fought in melee.
 
+**Supply chests.** Some of the large boxes and chests you find on
+the levels above the Oracle are special supply chests. They are
+usually locked but stocked with useful magical items: healing or
+gain-energy potions, enchant-weapon or enchant-armor scrolls,
+sometimes a wand of digging or a low-level spellbook. About
+two-thirds of the early levels have one. Picking or forcing them is
+almost always worth the time.
+
 **Restraint.** New adventurers pick up everything they find. Veterans
 pick up everything they need. The difference is about forty pounds
 and the ability to outrun a gnome lord. If your status line reads
@@ -416,10 +406,11 @@ and the ability to outrun a gnome lord. If your status line reads
 - floating-eye paralysis (mhitu.c:2536-2557)
 - pets step around their owner (dogmove.c:535)
 - lizard and lichen corpses never rot (eat.c:58-61)
-- killer bees: speed 18, G_LGROUP, poisoned bite
-- supply chests appear above Oracle: ~2/3 of rooms; 2/3 chest vs 1/3 large box; 5/6 locked (mklev.c:1010-1119)
+- killer bees: speed 18, G_LGROUP, M1_POIS sting AT_STNG/AD_DRST 1d3 (monsters.h:96-102)
+- supply chests appear above Oracle: at most one per level (placed in a random fillable room); 2/3 chance per level; 2/3 chest vs 1/3 large box; 5/6 locked (mklev.c:1010-1119)
 - prayer cooldown averages ~1000 turns: rnz(300)/rnz(350) scaled by rne(4) (pray.c:780, 1356, 1819)
 - corpse safe within 30 turns; tainted past ~175 turns (eat.c:1887, 1939)
+- strategy aligned with NetHackWiki Stoning, Prayer, Magic resistance: lizard corpse as petrification cure, prayer-when-in-Trouble cooldown, and MR/reflection/poison-resistance "big three" are canonical advice (https://nethackwiki.com/wiki/Stoning, https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Magic_resistance)
 -->
 
 You step down the stairs. The air is cool and damp. A corridor
@@ -576,7 +567,7 @@ dungeon's frequent act of goodwill.
 - Fort Ludios portal placed at any DL 11 up to just above Medusa, 1/3 per qualifying level (mklev.c:2647-2651)
 - Medusa DL ~21-25 (dungeon.lua:74-80)
 - Castle at bottom of DoD, DL ~27 (dungeon.lua:81-83)
-- Mine's End: 3 variants, all guarantee a not-cursed luckstone
+- Mine's End: 3 variants, all guarantee a not-cursed luckstone (minend-1.lua:77, minend-2.lua:116, minend-3.lua:67)
 - 7 Minetown variants; 1-in-7 is Orcish Town (minetn-1.lua, dungeon.lua:179-184)
 - 5.0 sink glyph is white `{`, shared with bright-blue fountain (defsym.h:133, fixes5-0-0.txt:827)
 - Travel/farlook matches on displayed symbol; `#` no longer cycles to sinks (getpos.c:1046-1062)
@@ -614,7 +605,7 @@ way back up and pass through the **Elemental Planes** to reach
 the **Astral Plane**, where your god awaits your offering.
 
 <!-- DMAP-BEGIN -->
-<div><figure style="margin: 1.5em 0; text-align: center;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 611" role="img" aria-label="Dungeons of Doom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="55" x2="380" y2="611" stroke="#B5651D" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#B5651D"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">DUNGEONS OF DOOM</text><line x1="150" y1="140" x2="150" y2="246" stroke="#5B8E3A" stroke-width="2" fill="none"/><line x1="630" y1="166" x2="630" y2="194" stroke="#B58A1A" stroke-width="2" fill="none"/><line x1="630" y1="305" x2="630" y2="343" stroke="#3B6FA0" stroke-width="2" fill="none"/><rect x="290" y="55" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="72" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Dlvl 1 — Entry</text><text x="380" y="89" font-size="12" font-style="italic" fill="#555" text-anchor="middle">up-stair to exit</text><rect x="60" y="108" width="180" height="32" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="129" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Gnomish Mines</text><rect x="60" y="168" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="185" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Minetown</text><text x="150" y="202" font-size="12" font-style="italic" fill="#555" text-anchor="middle">shops, temple</text><rect x="60" y="246" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="263" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Mine's End</text><text x="150" y="280" font-size="12" font-style="italic" fill="#555" text-anchor="middle">luckstone</text><rect x="290" y="163" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="180" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">The Oracle</text><text x="380" y="197" font-size="12" font-style="italic" fill="#555" text-anchor="middle">paid hints</text><rect x="540" y="126" width="180" height="40" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="143" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban prize</text><text x="630" y="160" font-size="12" font-style="italic" fill="#555" text-anchor="middle">bag of holding/amulet of reflection</text><rect x="540" y="194" width="180" height="32" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="215" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban entry</text><rect x="290" y="269" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="290" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Quest portal</text><rect x="540" y="265" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="282" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Quest entry</text><text x="630" y="299" font-size="12" font-style="italic" fill="#555" text-anchor="middle">your role's dungeon</text><rect x="540" y="343" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="360" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Quest goal</text><text x="630" y="377" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Bell of Opening, role artifact</text><rect x="290" y="329" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="350" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Big Room (40%)</text><rect x="290" y="389" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="410" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Rogue Level</text><rect x="60" y="420" width="180" height="40" rx="6" fill="#FFD966" stroke="#B5891A" stroke-width="1.5"/><text x="150" y="437" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fort Ludios</text><text x="150" y="454" font-size="12" font-style="italic" fill="#555" text-anchor="middle">vault of gold</text><rect x="290" y="479" width="180" height="32" rx="6" fill="#B8D4F0" stroke="#2E5C8E" stroke-width="1.5"/><text x="380" y="500" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Medusa's Island</text><rect x="230" y="539" width="300" height="58" rx="8" fill="#FFFFFF" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="565" font-size="17" font-weight="600" fill="#1f2933" text-anchor="middle">THE CASTLE</text><text x="380" y="582" font-size="14" font-style="italic" fill="#7A5A0A" text-anchor="middle">wand of wishing</text><line x1="380" y1="124" x2="240" y2="124" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="210" x2="540" y2="210" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="470" y1="285" x2="540" y2="285" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="440" x2="240" y2="440" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="120" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">down</text><text x="500" y="206" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><text x="505" y="281" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><text x="275" y="436" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><circle cx="380" cy="124" r="4" fill="#B5651D"/><circle cx="380" cy="210" r="4" fill="#B5651D"/><circle cx="380" cy="440" r="4" fill="#B5651D"/><circle cx="380" cy="104.0" r="4" fill="#B5651D"/><circle cx="380" cy="114.0" r="4" fill="#B5651D"/><circle cx="150" cy="149.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="159.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="217.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="227.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="237.0" r="4" fill="#5B8E3A"/><circle cx="380" cy="134.0" r="4" fill="#B5651D"/><circle cx="380" cy="144.0" r="4" fill="#B5651D"/><circle cx="380" cy="154.0" r="4" fill="#B5651D"/><circle cx="630" cy="175.0" r="4" fill="#B58A1A"/><circle cx="630" cy="185.0" r="4" fill="#B58A1A"/><circle cx="380" cy="220.0" r="4" fill="#B5651D"/><circle cx="380" cy="230.0" r="4" fill="#B5651D"/><circle cx="380" cy="240.0" r="4" fill="#B5651D"/><circle cx="380" cy="250.0" r="4" fill="#B5651D"/><circle cx="380" cy="260.0" r="4" fill="#B5651D"/><circle cx="630" cy="314.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="324.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="334.0" r="4" fill="#3B6FA0"/><circle cx="380" cy="310.0" r="4" fill="#B5651D"/><circle cx="380" cy="320.0" r="4" fill="#B5651D"/><circle cx="380" cy="370.0" r="4" fill="#B5651D"/><circle cx="380" cy="380.0" r="4" fill="#B5651D"/><circle cx="380" cy="430.0" r="4" fill="#B5651D"/><circle cx="380" cy="450.0" r="4" fill="#B5651D"/><circle cx="380" cy="460.0" r="4" fill="#B5651D"/><circle cx="380" cy="470.0" r="4" fill="#B5651D"/><circle cx="380" cy="520.0" r="4" fill="#B5651D"/><circle cx="380" cy="530.0" r="4" fill="#B5651D"/></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 681" role="img" aria-label="Gehennom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="0" x2="380" y2="39" stroke="#B5651D" stroke-width="2.5" fill="none"/><line x1="380" y1="0" x2="380" y2="625" stroke="#A14A3F" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#A14A3F"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">GEHENNOM</text><line x1="150" y1="288" x2="150" y2="306" stroke="#6B4E96" stroke-width="2" fill="none"/><rect x="290" y="53" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="70" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Valley of the Dead</text><text x="380" y="87" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Gehennom's entrance</text><rect x="290" y="141" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="162" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Asmodeus's Lair</text><rect x="290" y="191" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="212" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Juiblex's Swamp</text><rect x="290" y="251" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="272" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Baalzebub's Lair</text><rect x="60" y="248" width="180" height="40" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="265" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad the Impaler</text><text x="150" y="282" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Candelabrum</text><rect x="60" y="306" width="180" height="32" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="327" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad's Tower</text><rect x="290" y="351" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="368" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Orcus Town</text><text x="380" y="385" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Wand of Orcus · magic lamp/marker</text><rect x="290" y="419" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="440" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard's Tower</text><rect x="290" y="469" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="486" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard of Yendor</text><text x="380" y="503" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Book of the Dead</text><rect x="230" y="567" width="300" height="58" rx="8" fill="#2D2D2D" stroke="#FFC857" stroke-width="2.5"/><text x="380" y="593" font-size="17" font-weight="600" fill="#FFC857" text-anchor="middle">Moloch's Sanctum</text><text x="380" y="610" font-size="14" font-style="italic" fill="#FFE680" text-anchor="middle">the Amulet of Yendor</text><line x1="380" y1="322" x2="240" y2="322" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="318" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><circle cx="380" cy="322" r="4" fill="#A14A3F"/><circle cx="380" cy="102.0" r="4" fill="#A14A3F"/><circle cx="380" cy="112.0" r="4" fill="#A14A3F"/><circle cx="380" cy="122.0" r="4" fill="#A14A3F"/><circle cx="380" cy="132.0" r="4" fill="#A14A3F"/><circle cx="380" cy="182.0" r="4" fill="#A14A3F"/><circle cx="380" cy="232.0" r="4" fill="#A14A3F"/><circle cx="380" cy="242.0" r="4" fill="#A14A3F"/><circle cx="380" cy="292.0" r="4" fill="#A14A3F"/><circle cx="380" cy="302.0" r="4" fill="#A14A3F"/><circle cx="380" cy="312.0" r="4" fill="#A14A3F"/><circle cx="150" cy="297.0" r="4" fill="#6B4E96"/><circle cx="380" cy="332.0" r="4" fill="#A14A3F"/><circle cx="380" cy="342.0" r="4" fill="#A14A3F"/><circle cx="380" cy="400.0" r="4" fill="#A14A3F"/><circle cx="380" cy="410.0" r="4" fill="#A14A3F"/><circle cx="380" cy="460.0" r="4" fill="#A14A3F"/><circle cx="380" cy="518.0" r="4" fill="#A14A3F"/><circle cx="380" cy="528.0" r="4" fill="#A14A3F"/><circle cx="380" cy="538.0" r="4" fill="#A14A3F"/><circle cx="380" cy="548.0" r="4" fill="#A14A3F"/><circle cx="380" cy="558.0" r="4" fill="#A14A3F"/><line x1="380" y1="631" x2="380" y2="681" stroke="#5B8E3A" stroke-width="2.5" stroke-dasharray="7,5" fill="none"/><text x="400" y="661" font-size="15" font-weight="600" font-style="italic" fill="#5B8E3A">now go <tspan style="font-weight:800;font-size:17px">ALL</tspan> the way back up...</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 299" role="img" aria-label="Elemental Planes and Ascension" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><rect x="40" y="0" width="680" height="39" rx="4" fill="#5D3C8E"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">THE ELEMENTAL PLANES</text><rect x="68" y="89" width="120" height="40" rx="6" fill="#E8DDC8" stroke="#8B6F47" stroke-width="1.5"/><text x="128" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Earth</text><rect x="236" y="89" width="120" height="40" rx="6" fill="#E0F4FA" stroke="#3B9FA8" stroke-width="1.5"/><text x="296" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Air</text><rect x="404" y="89" width="120" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="464" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fire</text><rect x="572" y="89" width="120" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="632" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Water</text><rect x="260" y="179" width="240" height="42" rx="6" fill="#D8C6F0" stroke="#5D3C8E" stroke-width="1.5"/><text x="380" y="197" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Astral Plane</text><text x="380" y="213" font-size="12" font-style="italic" fill="#555" text-anchor="middle">three altars · pick yours</text><rect x="230" y="239" width="300" height="50" rx="10" fill="#FFE680" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="262" font-size="18" font-weight="700" fill="#7A5A0A" text-anchor="middle" letter-spacing="0.1em">ASCENSION</text><text x="380" y="281" font-size="11" font-style="italic" fill="#7A5A0A" text-anchor="middle">offer the Amulet at your altar</text><path d="M 380 39 C 380 53 128 53 128 67 L 128 89" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="188" y1="109" x2="236" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><text x="212" y="105" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portals</text><line x1="356" y1="109" x2="404" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="524" y1="109" x2="572" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><path d="M 632 129 C 632 143 380 143 380 157 L 380 179" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="380" y1="221" x2="380" y2="239" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/></svg><figcaption style="font-style: italic; color: #5a5a5a; font-size: 0.9em; margin-top: 0.5em;">Branches extend left and right of the main trunk. Pearls (small colored dots) indicate the approximate number of intervening dungeon levels. ★ marks the three Invocation items (Bell of Opening, Candelabrum, Book of the Dead) needed to enter Moloch's Sanctum and claim the Amulet.</figcaption></figure></div>
+<div><figure style="margin: 1.5em 0; text-align: center;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 611" role="img" aria-label="Dungeons of Doom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="55" x2="380" y2="611" stroke="#B5651D" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#B5651D"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">DUNGEONS OF DOOM</text><line x1="150" y1="140" x2="150" y2="246" stroke="#5B8E3A" stroke-width="2" fill="none"/><line x1="630" y1="166" x2="630" y2="194" stroke="#B58A1A" stroke-width="2" fill="none"/><line x1="630" y1="305" x2="630" y2="343" stroke="#3B6FA0" stroke-width="2" fill="none"/><rect x="290" y="55" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="72" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">The Dungeon Entrance</text><text x="380" y="89" font-size="12" font-style="italic" fill="#555" text-anchor="middle">up-stair to exit</text><rect x="60" y="108" width="180" height="32" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="129" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Gnomish Mines</text><rect x="60" y="168" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="185" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Minetown</text><text x="150" y="202" font-size="12" font-style="italic" fill="#555" text-anchor="middle">shops, temple</text><rect x="60" y="246" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="263" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Mine's End</text><text x="150" y="280" font-size="12" font-style="italic" fill="#555" text-anchor="middle">luckstone</text><rect x="290" y="163" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="180" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">The Oracle</text><text x="380" y="197" font-size="12" font-style="italic" fill="#555" text-anchor="middle">paid hints</text><rect x="540" y="126" width="180" height="40" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="143" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban prize</text><text x="630" y="160" font-size="12" font-style="italic" fill="#555" text-anchor="middle">bag of holding/amulet of reflection</text><rect x="540" y="194" width="180" height="32" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="215" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban entry</text><rect x="290" y="269" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="290" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest portal</text><rect x="540" y="265" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="282" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest entry</text><text x="630" y="299" font-size="12" font-style="italic" fill="#555" text-anchor="middle">your role's dungeon</text><rect x="540" y="343" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="360" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest goal</text><text x="630" y="377" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Bell of Opening, role artifact</text><rect x="290" y="329" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="350" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Big Room (40%)</text><rect x="290" y="389" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="410" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Rogue Level</text><rect x="60" y="420" width="180" height="40" rx="6" fill="#FFD966" stroke="#B5891A" stroke-width="1.5"/><text x="150" y="437" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fort Ludios</text><text x="150" y="454" font-size="12" font-style="italic" fill="#555" text-anchor="middle">vault of gold</text><rect x="290" y="479" width="180" height="32" rx="6" fill="#B8D4F0" stroke="#2E5C8E" stroke-width="1.5"/><text x="380" y="500" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Medusa's Island</text><rect x="230" y="539" width="300" height="58" rx="8" fill="#FFFFFF" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="565" font-size="17" font-weight="600" fill="#1f2933" text-anchor="middle">THE CASTLE</text><text x="380" y="582" font-size="14" font-style="italic" fill="#7A5A0A" text-anchor="middle">wand of wishing</text><line x1="380" y1="124" x2="240" y2="124" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="210" x2="540" y2="210" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="470" y1="285" x2="540" y2="285" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="440" x2="240" y2="440" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="120" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">down</text><text x="500" y="206" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><text x="505" y="281" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><text x="275" y="436" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><circle cx="380" cy="124" r="4" fill="#B5651D"/><circle cx="380" cy="210" r="4" fill="#B5651D"/><circle cx="380" cy="440" r="4" fill="#B5651D"/><circle cx="380" cy="104.0" r="4" fill="#B5651D"/><circle cx="380" cy="114.0" r="4" fill="#B5651D"/><circle cx="150" cy="149.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="159.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="217.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="227.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="237.0" r="4" fill="#5B8E3A"/><circle cx="380" cy="134.0" r="4" fill="#B5651D"/><circle cx="380" cy="144.0" r="4" fill="#B5651D"/><circle cx="380" cy="154.0" r="4" fill="#B5651D"/><circle cx="630" cy="175.0" r="4" fill="#B58A1A"/><circle cx="630" cy="185.0" r="4" fill="#B58A1A"/><circle cx="380" cy="220.0" r="4" fill="#B5651D"/><circle cx="380" cy="230.0" r="4" fill="#B5651D"/><circle cx="380" cy="240.0" r="4" fill="#B5651D"/><circle cx="380" cy="250.0" r="4" fill="#B5651D"/><circle cx="380" cy="260.0" r="4" fill="#B5651D"/><circle cx="630" cy="314.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="324.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="334.0" r="4" fill="#3B6FA0"/><circle cx="380" cy="310.0" r="4" fill="#B5651D"/><circle cx="380" cy="320.0" r="4" fill="#B5651D"/><circle cx="380" cy="370.0" r="4" fill="#B5651D"/><circle cx="380" cy="380.0" r="4" fill="#B5651D"/><circle cx="380" cy="430.0" r="4" fill="#B5651D"/><circle cx="380" cy="450.0" r="4" fill="#B5651D"/><circle cx="380" cy="460.0" r="4" fill="#B5651D"/><circle cx="380" cy="470.0" r="4" fill="#B5651D"/><circle cx="380" cy="520.0" r="4" fill="#B5651D"/><circle cx="380" cy="530.0" r="4" fill="#B5651D"/></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 681" role="img" aria-label="Gehennom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="0" x2="380" y2="39" stroke="#B5651D" stroke-width="2.5" fill="none"/><line x1="380" y1="0" x2="380" y2="625" stroke="#A14A3F" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#A14A3F"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">GEHENNOM</text><line x1="150" y1="288" x2="150" y2="306" stroke="#6B4E96" stroke-width="2" fill="none"/><rect x="290" y="53" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="70" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Valley of the Dead</text><text x="380" y="87" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Gehennom's entrance</text><rect x="290" y="141" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="162" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Asmodeus's Lair</text><rect x="290" y="191" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="212" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Juiblex's Swamp</text><rect x="290" y="251" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="272" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Baalzebub's Lair</text><rect x="60" y="248" width="180" height="40" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="265" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad the Impaler</text><text x="150" y="282" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Candelabrum</text><rect x="60" y="306" width="180" height="32" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="327" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad's Tower</text><rect x="290" y="351" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="368" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Orcus Town</text><text x="380" y="385" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Wand of Orcus · magic lamp/marker</text><rect x="290" y="419" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="440" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard's Tower</text><rect x="290" y="469" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="486" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard of Yendor</text><text x="380" y="503" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Book of the Dead</text><rect x="230" y="567" width="300" height="58" rx="8" fill="#2D2D2D" stroke="#FFC857" stroke-width="2.5"/><text x="380" y="593" font-size="17" font-weight="600" fill="#FFC857" text-anchor="middle">Moloch's Sanctum</text><text x="380" y="610" font-size="14" font-style="italic" fill="#FFE680" text-anchor="middle">the Amulet of Yendor</text><line x1="380" y1="322" x2="240" y2="322" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="318" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><circle cx="380" cy="322" r="4" fill="#A14A3F"/><circle cx="380" cy="102.0" r="4" fill="#A14A3F"/><circle cx="380" cy="112.0" r="4" fill="#A14A3F"/><circle cx="380" cy="122.0" r="4" fill="#A14A3F"/><circle cx="380" cy="132.0" r="4" fill="#A14A3F"/><circle cx="380" cy="182.0" r="4" fill="#A14A3F"/><circle cx="380" cy="232.0" r="4" fill="#A14A3F"/><circle cx="380" cy="242.0" r="4" fill="#A14A3F"/><circle cx="380" cy="292.0" r="4" fill="#A14A3F"/><circle cx="380" cy="302.0" r="4" fill="#A14A3F"/><circle cx="380" cy="312.0" r="4" fill="#A14A3F"/><circle cx="150" cy="297.0" r="4" fill="#6B4E96"/><circle cx="380" cy="332.0" r="4" fill="#A14A3F"/><circle cx="380" cy="342.0" r="4" fill="#A14A3F"/><circle cx="380" cy="400.0" r="4" fill="#A14A3F"/><circle cx="380" cy="410.0" r="4" fill="#A14A3F"/><circle cx="380" cy="460.0" r="4" fill="#A14A3F"/><circle cx="380" cy="518.0" r="4" fill="#A14A3F"/><circle cx="380" cy="528.0" r="4" fill="#A14A3F"/><circle cx="380" cy="538.0" r="4" fill="#A14A3F"/><circle cx="380" cy="548.0" r="4" fill="#A14A3F"/><circle cx="380" cy="558.0" r="4" fill="#A14A3F"/><line x1="380" y1="631" x2="380" y2="681" stroke="#5B8E3A" stroke-width="2.5" stroke-dasharray="7,5" fill="none"/><text x="400" y="661" font-size="15" font-weight="600" font-style="italic" fill="#5B8E3A">now go <tspan style="font-weight:800;font-size:17px">ALL</tspan> the way back up...</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 299" role="img" aria-label="Elemental Planes and Ascension" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><rect x="40" y="0" width="680" height="39" rx="4" fill="#5D3C8E"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">THE ELEMENTAL PLANES</text><rect x="68" y="89" width="120" height="40" rx="6" fill="#E8DDC8" stroke="#8B6F47" stroke-width="1.5"/><text x="128" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Earth</text><rect x="236" y="89" width="120" height="40" rx="6" fill="#E0F4FA" stroke="#3B9FA8" stroke-width="1.5"/><text x="296" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Air</text><rect x="404" y="89" width="120" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="464" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fire</text><rect x="572" y="89" width="120" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="632" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Water</text><rect x="260" y="179" width="240" height="42" rx="6" fill="#D8C6F0" stroke="#5D3C8E" stroke-width="1.5"/><text x="380" y="197" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Astral Plane</text><text x="380" y="213" font-size="12" font-style="italic" fill="#555" text-anchor="middle">three altars · pick yours</text><rect x="230" y="239" width="300" height="50" rx="10" fill="#FFE680" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="262" font-size="18" font-weight="700" fill="#7A5A0A" text-anchor="middle" letter-spacing="0.1em">ASCENSION</text><text x="380" y="281" font-size="11" font-style="italic" fill="#7A5A0A" text-anchor="middle">offer the Amulet at your altar</text><path d="M 380 39 C 380 53 128 53 128 67 L 128 89" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="188" y1="109" x2="236" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><text x="212" y="105" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portals</text><line x1="356" y1="109" x2="404" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="524" y1="109" x2="572" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><path d="M 632 129 C 632 143 380 143 380 157 L 380 179" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="380" y1="221" x2="380" y2="239" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/></svg><figcaption style="font-style: italic; color: #5a5a5a; font-size: 0.9em; margin-top: 0.5em;">Branches extend left and right of the main trunk. Pearls (small colored dots) indicate the approximate number of intervening dungeon levels. ★ marks the three Invocation items (Bell of Opening, Candelabrum, Book of the Dead) needed to enter Moloch's Sanctum and claim the Amulet.</figcaption></figure></div>
 <!-- DMAP-END -->
 
 The typical trip: go down through the Dungeons, detour into the
@@ -783,7 +774,7 @@ rather than a direction.
 - Throne can vanish "in a puff of logic" on rn2(3), even when nothing happens (sit.c:224-233)
 - Vlad's throne: cases 1-4 grant wish + destroy throne; 5-13 are negatives (sit.c:241-353)
 - Kicking sink: 4/5 klunk, else 1/3 black pudding, 1/3 amorous demon, 1/3 ring backup (dokick.c:1201-1238)
-- Each kick outcome gated by S_LPUDDING / S_LDWASHER / S_LRING (once per sink)
+- Each kick outcome gated by S_LPUDDING / S_LDWASHER / S_LRING (once per sink) (dokick.c:1209-1232)
 - Dip potion of polymorph: sink → fountain/throne/altar/grave (do.c:404-454)
 - Grave case may fail and print "The sink vanishes." (engrave.c:1691-1693)
 - Dip POT_OBJECT_DETECTION: "You sense a ring lost down the drain" while S_LRING unset (fountain.c:771-776)
@@ -793,6 +784,7 @@ rather than a direction.
 - Ring of hunger vanishes ALL items on the sink square (do.c:556-570)
 - Ring of teleportation moves the sink to a fresh ROOM tile (do.c:575-580)
 - Rotten food in fountains is slime molds, not fruit (objnam.c:414-427)
+- VAULT_GUARD_TIME = 30 turns (hack.h:69) before the guard appears; "Croesus", "Kroisos", "Creosote" all dismiss the guard if Croesus is still alive (vault.c:513-543); lying with a Lawful character loses one alignment (vault.c:507-511)
 -->
 
 Not everything interesting in the dungeon is trying to kill you.
@@ -969,13 +961,29 @@ free:
 | *"The sink momentarily vanishes."*<br>sink moves to a new spot         | teleportation         | no |
 | *"The sink transforms into a fountain/throne/altar/grave!"*<br>(or rarely *"The sink vanishes."* if grave generation fails) | polymorph             | no |
 
+#### Vaults
+
+A vault is a tiny walled-off 2×2 room not connected to the rest of
+the level. Each one holds a pile of gold. You'll usually find one by
+digging through stone or by teleporting in. The engraving *"ad
+aerarium"* on a level marks one nearby (see
+[Engravings](#engravings)).
+
+After about thirty turns inside, a guard appears at the doorway and
+asks *"Who are you?"* The trick: answer *Croesus* (also accepted as
+*Kroisos* or *Creosote*). The guard takes that as the name of the
+vault's owner and politely leaves, gold untouched. If you give your
+real name, the guard escorts you out the long way and the gold goes
+with him. If you're Lawful, lying costs you one alignment.
+
+If Croesus himself is dead (you killed him at Fort Ludios), claiming
+his name angers the guard. Use the real-name route then.
+
 ---
 
 ### Branches and Landmarks
 
-The branch diagram we showed earlier gives the shape of the dungeon,
-but it doesn't tell you what to actually do when you arrive. Here's
-a more practical tour, in roughly the order you'll visit these places.
+A practical tour of the branches and landmarks, in roughly the order you'll visit them.
 
 #### The Gnomish Mines
 <!-- audit
@@ -989,6 +997,7 @@ a more practical tour, in roughly the order you'll visit these places.
 - all 3 Mine's End layouts place a not-cursed luckstone (minend-1.lua:77, minend-2.lua:116, minend-3.lua:67)
 - minend-1 also places a mimic appear_as="obj:luckstone" — BUC-test before grabbing (minend-1.lua:59)
 - Minetown watchmen are peaceful=1 in non-orcish variants (minetn-2.lua:149)
+- strategy aligned with NetHackWiki Gnomish Mines, Minetown, Mines' End: Minetown described as the prime price-ID/BUC-test/priest-donation stop; guaranteed luckstone at Mine's End is canonical (https://nethackwiki.com/wiki/Gnomish_Mines, https://nethackwiki.com/wiki/Minetown, https://nethackwiki.com/wiki/Mines%27_End)
 -->
 
 
@@ -1054,7 +1063,7 @@ The puzzles are fixed (two variants per level, randomly chosen).
 2026-05-18:
 - entrance DL 6-10: Oracle base 5 range 5 + Sokoban one level up (dungeon.lua:21-24, 60-66)
 - 4 levels × 2 fixed variants (dat/soko*.lua)
-- noteleport on every Sokoban level
+- noteleport on every Sokoban level (soko1-1.lua:7 and matching line in each soko*.lua)
 - hardfloor only on the entrance; blocks dig-down off entrance (soko4-1.lua:38, soko4-2.lua:7)
 - sokoban_guilt = change_luck(-1) + u.uconduct.sokocheat++ (trap.c:7039-7054)
 - guilt triggers: squeeze past boulder (hack.c:299, 307, 398, 403)
@@ -1065,8 +1074,10 @@ The puzzles are fixed (two variants per level, randomly chosen).
 - pick-axe/mattock force-fight digs the boulder (hack.c:2269-2275)
 - levitation also blocks pushing boulders: "not enough leverage" (hack.c:415-425)
 - prize: 75/25 weighted bag of holding vs amulet of reflection (soko1-1.lua:103-107, soko1-2.lua:105-109)
-- cursed scroll of scare monster placed under the prize as bait
+- cursed scroll of scare monster placed under the prize as bait (soko1-1.lua:111, soko1-2.lua:113)
 - conduct only reported once the branch is entered (insight.c:2215-2228)
+- strategy aligned with NetHackWiki Sokoban, Amulet of reflection: prize/cheat-luck-penalty mechanics and the "solve honestly for the prize" advice match (https://nethackwiki.com/wiki/Sokoban, https://nethackwiki.com/wiki/Amulet_of_reflection)
+- pushing a boulder exercises Strength via exercise(A_STR, TRUE) (hack.c boulder push handler); Stressed encumbrance exercises Str too but applies HP cost via near_capacity checks (attrib.c, eat.c:3197+)
 -->
 
 Each level has exactly one correct solution. If you push a boulder
@@ -1094,6 +1105,13 @@ One important rule: the Sokoban levels penalize you for "cheating."
 Breaking or polymorphing boulders, reading scrolls of earth, or
 squeezing past boulders costs you a point of luck each time. Solve
 each level honestly if you can.
+
+**Strength training side effect.** Every legitimate boulder-push
+exercises Strength. Sokoban is the safest place to grind Str up
+since the puzzles require dozens of pushes without putting you in
+combat. Don't try to train Str by walking around Stressed in the
+rest of the dungeon: the HP penalty isn't worth what you'd gain.
+
 For complete solutions to all eight level variants, see
 [Sokoban Solutions](#sokoban-solutions) in the appendices.
 
@@ -1107,6 +1125,7 @@ For complete solutions to all eight level variants, see
 - minor consults ALWAYS pull from the true-rumor pool (rumors.c:747, 151-156)
 - Sokoban branch goes up from the Oracle level (dungeon.lua:20-25)
 - Oracle is M2_PEACEFUL with AT_NONE; she never attacks (monsters.h:2738-2745)
+- strategy aligned with NetHackWiki Oracle (level), List of major consultations: paying for a major consultation is a recognized wisdom-and-intel investment (https://nethackwiki.com/wiki/Oracle_(level), https://nethackwiki.com/wiki/List_of_major_consultations)
 -->
 #### The Oracle
 
@@ -1140,6 +1159,7 @@ fountain risks.
 - quest artifact is placed under nemesis at level generation, NOT carried (Val-goal.lua:49,76; Wiz-goal.lua:73,96; etc.)
 - return portal lives on Is_qstart (first quest level) only (quest.c:97, 191-204)
 - "nemesis carries an amulet of life saving" is wiki-belief, not source-guaranteed; M2_COLLECT means they may pick one up (https://nethackwiki.com/wiki/Nemesis)
+- strategy aligned with NetHackWiki Quest, Bell of Opening, Quest artifact: XL 14 + 20 alignment record gate, nemesis guards both artifact and Bell, return-portal only on the first quest level (https://nethackwiki.com/wiki/Quest, https://nethackwiki.com/wiki/Bell_of_Opening, https://nethackwiki.com/wiki/Quest_artifact)
 -->
 
 Around dungeon levels 11 through 16, a magic portal drops you onto
@@ -1148,13 +1168,12 @@ your quest leader on the first floor before they'll let you descend.
 The leader sends you to retrieve your role's quest artifact from a
 quest nemesis.
 
-Each role has a unique Quest with unique maps, a unique nemesis, and
-a unique artifact reward. The Valkyrie hunts the Orb of Fate from
-Lord Surtur. The Wizard retrieves the Eye of the Aethiopica from
-the Dark One. The Tourist battles the Master of Thieves for the
-Platinum Yendorian Express Card. The Samurai duels Ashikaga Takauji
-for the Tsurugi of Muramasa. The Monk faces Master Kaen for the
-Eyes of the Overworld. And so on.
+Each role has a unique Quest with unique maps, a unique nemesis,
+and a unique artifact reward. The Valkyrie hunts Lord Surtur for
+the Orb of Fate. A Samurai's path ends in a duel with Ashikaga
+Takauji over the Tsurugi of Muramasa. The Wizard descends into
+the Dark One's stronghold for the Eye of the Aethiopica. The
+[Artifacts](#artifacts) chapter has the full per-role list.
 
 Quest artifacts are powerful. Each grants a unique mix of carried
 or worn intrinsics: protection, luck, ESP, warning, reflection, or
@@ -1188,7 +1207,7 @@ clean.
 - doors forced D_NODOOR — no closed doors (mklev.c:647-648)
 - no fountains/sinks/altars/shops/graves via skip_nonrogue (mklev.c:988-989)
 - rogueprobs item pool: weapon/armor/food/potion/scroll/wand/ring only — no spellbooks/tools/amulets/gems/coins (mkobj.c:58-64)
-- tile mode disabled in Qt, X11, win32, curses ports
+- tile mode disabled in Qt, X11, win32, curses ports (win/X11/winmap.c:1009, win/Qt/qt_map.cpp:145, 228)
 - engraving has no rogue-level guard — Elbereth works as usual (engrave.c)
 -->
 
@@ -1233,6 +1252,7 @@ anachronism.
 - alarm sounds on arrival and every revisit until Croesus dies (do.c:1893-1904)
 - alarm wakes existing soldiers; it doesn't spawn new ones
 - soldiers carry K_RATION / C_RATION (makemon.c:694-700)
+- strategy aligned with NetHackWiki Fort Ludios, Croesus: bag-of-holding-for-gold and shoot-Croesus-across-the-moat are canonical (https://nethackwiki.com/wiki/Fort_Ludios, https://nethackwiki.com/wiki/Croesus)
 -->
 
 Fort Ludios is optional and easy to miss entirely. It appears as a
@@ -1269,7 +1289,7 @@ a bonus, not a requirement.
 2026-05-18:
 - Medusa DL 20-29: base=-5 range=4 from DoD bottom 25-29 (dungeon.lua:75-81)
 - four layouts (medusa-1.lua through medusa-4.lua); all use des.stair("down") — no ladder
-- scimitar blessed +2 at 50% and sack at 50% are constant across all four layouts
+- scimitar blessed +2 at 50% and sack at 50% are constant across all four layouts (medusa-1.lua:70, 73)
 - shield is cursed in every layout (medusa-1.lua:64 and matching lines in others)
 - gaze reflection stones Medusa via ureflects → killed(mtmp) (mhitu.c:1721-1745)
 - stone resistance also blocks the gaze (mhitu.c:1747-1748) — rarely attainable pre-Medusa
@@ -1277,6 +1297,7 @@ a bonus, not a requirement.
 - levitation/water-walking on adjacent dry land does NOT save you once grabbed
 - medusa-2 has six electric eels (not giant eels), AD_ELEC bite (medusa-2.lua:99-104, monsters.h:3239-3247)
 - kraken only on medusa-4 (medusa-4.lua:122)
+- strategy aligned with NetHackWiki Medusa, Reflection, Perseus: reflection/blindfold against the gaze, levitation/water-walking to cross, Perseus statue as a backup reflection source (https://nethackwiki.com/wiki/Medusa, https://nethackwiki.com/wiki/Reflection, https://nethackwiki.com/wiki/Perseus)
 -->
 
 Medusa's level sits near the bottom of the Dungeons of Doom, around
@@ -1343,9 +1364,8 @@ entering her level:
 Your options, from safest to most desperate:
 
 - **Levitation** (ring, boots, potion, or spell). The easiest way
-  to cross, but **does not protect you from eel grabs** in adjacent
-  water (see [Drowning](#drowning) in [Dangerous Encounters](#dangerous-encounters)). Use it to traverse
-  fast, not as a defense.
+  to cross. Eels can still grab you from adjacent water (see
+  [Drowning](#drowning) in [Dangerous Encounters](#dangerous-encounters)).
 - **Water walking boots.** You walk on the surface. Eels can still
   grab you in adjacent water.
 - **Wand of cold.** Zap the water to freeze a path of ice. Ice
@@ -1371,9 +1391,8 @@ you. Critical rules:
   thrown weapons all work. Don't melee eels in the water.
 - Levitation and water walking do NOT protect against being grabbed
   by an eel in adjacent water. The drown check uses the *eel's*
-  tile, not yours, so even standing on dry land or hovering above
-  water doesn't help once the grab lands. Only oilskin/grease,
-  magical breathing, or killing the eel first are reliable.
+  tile, not yours. Only oilskin/grease, magical breathing, or
+  killing the eel first are reliable.
 
 #### The Castle
 <!-- audit
@@ -1385,9 +1404,10 @@ you. Critical rules:
 - drawbridge passtune is 5 notes A-G, Mastermind-style miss feedback (music.c:793, 836-884)
 - only blowable instruments work for the passtune (flutes, horns, bugle — harp excluded) (music.c:769-771)
 - wand of striking DESTROYS the drawbridge (does not just close it) (zap.c:3290-3305)
-- wand of opening or spell of knock opens the drawbridge
+- wand of opening or spell of knock opens the drawbridge (zap.c:3263-3273, 2184)
 - Gehennom branches off the Castle with branchtype=no_down, so the stairs do not return (dungeon.lua:39-43)
 - no minotaurs and no internal maze; the two des.mazewalk calls fill the OUTSIDE approach corridors (castle.lua:223-224)
+- strategy aligned with NetHackWiki Castle, Passtune, Drawbridge: passtune-as-Mastermind, wand-of-opening/spell-of-knock alternatives, and wand of striking destroying the drawbridge match (https://nethackwiki.com/wiki/Castle, https://nethackwiki.com/wiki/Passtune, https://nethackwiki.com/wiki/Drawbridge)
 -->
 
 The Castle is the last level of the Dungeons of Doom proper, around
@@ -1416,9 +1436,8 @@ to deter the court monsters from displacing it). See
 [Wishes and Wishing](#wishes-and-wishing) for the full mechanics
 and how many wishes a 5.0 Castle wand actually yields.
 
-Below the Castle lies Gehennom. There is no going back to the
-upper dungeon once you descend without climbing back up through
-everything. Make sure you're prepared before you go down.
+Below the Castle lies Gehennom. There is no shortcut back, so make
+sure you're prepared before you descend.
 
 ---
 
@@ -1464,7 +1483,7 @@ to stock up.
 <!-- audit
 2026-05-18:
 - trapdoor cascade: dlevel++ per loop iteration, `if (rn2(4)) break` = 25%/level chance to keep falling (trap.c:442-453)
-- holes use the same hole_destination cascade as trapdoors
+- holes use the same hole_destination cascade as trapdoors (trap.c:519-522, 442-453)
 - pit base damage 1d6 (trap.c:1950, rnd(adj_pit ? 3 : 6))
 - spiked pit base damage 1d10 with 1/6 chance of poison (trap.c:1925, 1938-1945)
 - Levitation OR Flying skip pit/hole/trapdoor, gated `!Sokoban && ...` (trap.c:633-639, 1850)
@@ -1502,6 +1521,7 @@ skip and you fall in regardless.
 - sleep gas: Sleep_resistance skips the fall_asleep branch in trapeffect_slp_gas_trap (trap.c:1570)
 - iron footwear: blocks bear-trap leg damage (trap.c:1517-1518), blocks spiked-pit spikes (trap.c:1901-1903), blocks polymorph trap (trap.c:2478-2483)
 - iron footwear absorbs an anti-magic drain by losing 1 enchantment, but only if spe>0 (trap.c:2328-2343)
+- strategy aligned with NetHackWiki Fire trap, Anti-magic field, Polymorph trap: fire trap destroys scrolls/potions/spellbooks, MR makes anti-magic trap deal extra damage, MR/Unchanging block polymorph traps (https://nethackwiki.com/wiki/Fire_trap, https://nethackwiki.com/wiki/Anti-magic_field, https://nethackwiki.com/wiki/Polymorph_trap)
 -->
 
 
@@ -1566,7 +1586,7 @@ found anything better yet.
 - Excalibur is the only SPFX_SEARCH artifact (artilist.h:85-86)
 - wand of secret door detection is NODIR; findit reveals SDOOR/SCORR/traps/trapped chests/trapped doors/hidden mimics/hiders (detect.c:1639-1718, zap.c:2552-2558)
 - wand area is a circle of radius BOLT_LIM=8 (vision.c:27-45 circle_data, hack.h:49) gated by couldsee() line of sight (vision.c:2144)
-- Flying/Levitation skip most floor traps but NOT magic/teleport/anti-magic
+- Flying/Levitation skip most floor traps but NOT magic/teleport/anti-magic (trap.c:1061-1082 floor_trigger list omits MAGIC_TRAP/TELEP_TRAP/ANTI_MAGIC; trap.c:3026 check_in_air bypass gated by floor_trigger)
 -->
 
 The best defense against traps is finding them before they find you:
@@ -1791,6 +1811,7 @@ on the other side.
 - ignored by minotaur (monmove.c:301)
 - blind and peaceful monsters pass through (monmove.c:299-300)
 - cornered ALLOW_SSM step-through (mon.c:2278-2282)
+- strategy aligned with NetHackWiki Elbereth, Engraving: exact-spelling rule, defile-and-hypocrite penalty, ward dead in Gehennom/endgame, burn-with-wand-of-fire for permanence (https://nethackwiki.com/wiki/Elbereth, https://nethackwiki.com/wiki/Engraving)
 -->
 
 
@@ -1932,9 +1953,9 @@ messages still come through.)
 | *"You feel like someone is helping you."* | Scroll of remove curse; worn/wielded cursed items uncursed.                         |
 | *"You move very quietly."*             | Ring of stealth or elven cloak. (Elven boots give *"You walk very quietly"* instead.)  |
 | *"Wow! This makes you feel great!"*    | Blessed potion of restore ability with no remaining troubles — *or* a blessed magic fountain hit. |
-| *"You feel feverish."*                 | Lycanthropy infection from a were-monster. **Quaff** holy water, eat wolfsbane, or pray. (Dipping doesn't cure it; only drinking does.) |
+| *"You feel feverish."*                 | Lycanthropy infection from a were-monster. `q`uaff holy water, eat wolfsbane, or `#pray`. |
 | *"You are slowing down."*              | You're turning to stone. Immediately eat a lizard corpse, drink acid, or pray.         |
-| *"You are turning into slime."*        | Green-slime contagion. Burn it off (fire scroll/spell/wand) or pray.                   |
+| *"You are turning into slime."*        | Green-slime contagion. Burn it off (read a fire scroll, cast fireball on yourself, or self-zap a wand of fire), or `#pray`. |
 | *"You feel deathly sick."*             | Terminal illness (Pestilence, Demogorgon). Quaff extra healing, eat eucalyptus, or pray. |
 
 ---
@@ -1946,13 +1967,14 @@ messages still come through.)
 ### A Field Guide to Dungeon Fauna
 <!-- audit
 2026-05-18:
-- xan: AT_STNG AD_LEGS (sting cripples legs); xan is class `x`, not the engulfer `t` (S_TRAPPER)
+- xan: AT_STNG AD_LEGS (sting cripples legs); xan is class `x`, not the engulfer `t` (S_TRAPPER) (monsters.h:1157-1159)
 - leprechaun attack is AT_CLAW AD_SGLD (gold-steal claw), not a bite (monsters.h:660)
 - long worms grow tail segments on a movement-driven wgrowtime timer, not per hit (worm.c:218-237)
 - pudding split admits IRON|METAL weapons only (uhitm.c:1616-1618)
 - there are no dragonhide weapons in 5.0; DRAGON_HIDE material is body-armor-only
-- silver and wooden weapons are the actual pudding non-splitters
+- silver and wooden weapons are the actual pudding non-splitters (uhitm.c:1616-1620 admits IRON|METAL only)
 - all other class-symbol mappings (defsym.h) and per-monster stats verified clean
+- rothe ('q'-class fame): three attacks per turn (claw + two bites), the only Q-class monster lacking M2_STRONG, and the canonical early-q threat per NetHackWiki (https://nethackwiki.com/wiki/Rothe, https://nethackwiki.com/wiki/Quadruped)
 -->
 
 
@@ -1968,13 +1990,13 @@ AC / attack details on every monster, see the
 
 #### Common Early Encounters
 
-| Symbol | Class                  | Notes                                                                      |
+| Sym    | Class                  | Notes                                                                      |
 | ------ | ---------------------- | -------------------------------------------------------------------------- |
-| `a`    | Ants      | **Soldier ants are the famous early killer**: speed 18, two attacks per turn (bite + strength-draining sting), and they travel in packs. A wandering soldier-ant group on Dlvl 4 can end a careless run. Killer bees, giant ants, fire ants are all the same shape of problem. |
+| `a`    | Ants      | Soldier ants are a frequent early-game killer: speed 18, two attacks per turn (bite + strength-draining sting), and they travel in packs. A wandering soldier-ant group on Dlvl 4 can end a careless run. Killer bees, giant ants, fire ants are all the same shape of problem. |
 | `b`    | Blobs     | Acidic or gelatinous. Acid blobs have no active attack — they only splash 1d8 acid back when *you* hit *them*, and the splash can corrode your weapon. Kill at range, or walk past. |
 | `B`    | Bats      | The `B` class is **deceptively dangerous because of speed**. Bats and giant bats clock in at speed 22 — nearly twice the player's base 12, so they get roughly two bites per one of your swings. Giant bats bite for 1d6 each; the math catches up fast. Vampire bats are still in the bat class but their second bite drains Strength (not levels). |
-| `d`    | Dogs and other canines | The `d` class covers your starting pet (little dog, kitten via cat-class) **and** the most numerous early-game predators. **Jackals** are the single most common cause of death on the public server — they only bite for 1d2, but they spawn in packs and there are a *lot* of them on the upper levels. **Foxes** bite for 1d3 and are faster (speed 15) but spawn alone. Coyotes, dingos, wolves get progressively worse. Tame `d` (your pet, larger dogs you've fed up) help fight everything else. |
-| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. Spheres (flaming/freezing/shocking) explode in a 3×3 area; kill them at range. Melee finishes them but you eat the blast. |
+| `d`    | Dogs and other canines | The `d` class covers your starting pet (little dog, kitten via cat-class) **and** the most numerous early-game predators. **Jackals** are the single most common cause of death on the public server — they only bite for 1d2, but they spawn in packs and there are a *lot* of them on the upper levels. Foxes bite for 1d3 and are faster (speed 15) but spawn alone. Coyotes, dingos, wolves get progressively worse. Tame `d` (your pet, larger dogs you've fed up) help fight everything else. |
+| `e`    | Eyes      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. Spheres (flaming/freezing/shocking) explode in a 3×3 area; also kill them at range. |
 | `f`    | Cats      | Like dogs, often starting pets. Felines can be tamed with tripe.                        |
 | `G`    | Gnomes    | The standard inhabitants of the Gnomish Mines. Individually weak, but the Mines have a lot of them — and **plain gnomes, gnome lords, and (later) gnome rulers are all in the top fifteen causes of death** on the public server, because mid-game players treat the Mines as a milk run and walk into a four-on-one with full-strength enemies. If you're a gnome yourself, most of them are peaceful. |
 | `h`    | Humanoids | Dwarves, bugbears, mind flayers. Wide range of difficulty. **Dwarves in particular are dangerously underrated**: they hit harder than they look, they're armored, and they're the second most common cause of death on the public server because of how many you meet in the Mines. Don't trade blows with one in melee until your AC is solid. |
@@ -1989,7 +2011,7 @@ AC / attack details on every monster, see the
 
 #### Mid-Dungeon Threats
 
-| Symbol | Class             | Notes                                                                                                |
+| Sym    | Class             | Notes                                                                                                |
 | ------ | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | `A`    | Angels            | Powerful, usually aligned. Don't fight your own.                                                     |
 | `C`    | Centaurs          | Fast (speed 18-20). Half spawn with a bow or crossbow, but they'll still close into melee for weapon and kick attacks. Mountain centaurs hit hardest: 1d10 weapon plus *two* 1d6 kicks per turn. |
@@ -2027,7 +2049,7 @@ AC / attack details on every monster, see the
 
 #### Things You Don't Want to Meet
 
-| Symbol | Class            | Notes                                                                                                    |
+| Sym    | Class            | Notes                                                                                                    |
 | ------ | ---------------- | -------------------------------------------------------------------------------------------------------- |
 | `c`    | Cockatrices      | **Touch = instant petrification.** Never hit one barehanded. Wield their corpse with gloves as a weapon. |
 | `D`    | Dragons          | Each color has its own breath weapon, resistance, and scale mail property. See note below.               |
@@ -2038,13 +2060,17 @@ AC / attack details on every monster, see the
 | `;`    | Sea monsters     | Drowning is an instadeath. Don't fight in water without a plan.                                          |
 | `&`    | Demons           | Major demons (Orcus, Demogorgon, Asmodeus) are boss-level threats.                                       |
 | `@`    | Humans (hostile) | Includes the Wizard of Yendor, who is the most persistent nuisance in the game.                          |
-| `Q`    | Quantum mechanics / genetic engineers | Quantum mechanics teleport their target on a hit; genetic engineers (new in 5.0) polymorph their target. The `Q` class is small but every one of them is a surprise. |
+| `Q`    | Quantum mechanics / genetic engineers | Quantum mechanics teleport their target on a hit; genetic engineers (new in 5.0) polymorph their target. The `Q` class is rare but every one of them is a surprise. See [The Genetic Engineer](#the-genetic-engineer) for more information. |
+
+```{=latex}
+\pagebreak[4]
+```
 
 #### Special Symbols
 
 A few map glyphs aren't monsters in the conventional sense, but you'll see them and need to know what they mean.
 
-| Symbol | What it is               | Notes                                                                                                |
+| Sym    | What it is               | Notes                                                                                                |
 | ------ | ------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `I`    | Invisible monster marker | The game remembers the last spot you sensed something you couldn't see. The `I` stays there until you bump it or step on the square; the monster has usually moved. |
 | `~`    | Long worm tail segment   | Part of a long worm's body. Hitting the tail damages the worm and shortens the chain; hitting the head (the `w`) is full melee. |
@@ -2067,8 +2093,9 @@ A few map glyphs aren't monsters in the conventional sense, but you'll see them 
 - gold DSM permanent light radius 4/3/2 blessed/uncursed/cursed (light.c:881-911)
 - gold DSM is the only body-slot light source (artifact.c:2264-2275)
 - confused genocide hits your role: u.umonster ← gu.urole.mnum (read.c:2839, u_init.c:991)
-- mumakil attack solo, not in packs; 2-attack 4d12 + 2d6
-- shimmering DSM does not exist in 5.0 (#if 0 DEFERRED in objects.h)
+- mumakil attack solo, not in packs; AT_BUTT 4d12 + AT_BITE 2d6 (monsters.h:838-845)
+- shimmering DSM does not exist in 5.0 (#if 0 DEFERRED in objects.h:509-511, 536-538)
+- strategy aligned with NetHackWiki Bones, Yet Another Stupid Death: bones loot 80% cursed and dangerous, early-game pacing matters more than depth (https://nethackwiki.com/wiki/Bones, https://nethackwiki.com/wiki/Yet_Another_Stupid_Death)
 -->
 
 Only about **0.4% of games end in ascension.** The other 99.6%
@@ -2152,7 +2179,14 @@ underestimate the threat.**
   several Quest dungeons have them in numbers. Gold golems are
   another quiet killer.
 
-**The colorful deaths.**
+```{=latex}
+\enlargethispage{2\baselineskip}
+```
+
+**Colorful deaths.**
+```{=latex}
+\nopagebreak[4]\par\nopagebreak[4]
+```
 
 - **Killed by your own wand.** Self-zapped attack wands, rays
   ricocheting off the wall in a narrow corridor and back into your
@@ -2299,6 +2333,8 @@ epitaph.
 - plain wand of polymorph cannot target the poly_when_stoned outcome
 - stepping on a cockatrice corpse without Fumbling is safe
 - Fumbling can trip the hero onto the corpse for instapetrify (timeout.c:1256-1261)
+- strategy aligned with NetHackWiki Stoning, Cockatrice, Lizard: gloves around cockatrice corpses, lizard/acid corpse to interrupt the countdown, weaponized corpse for offense (https://nethackwiki.com/wiki/Stoning, https://nethackwiki.com/wiki/Cockatrice, https://nethackwiki.com/wiki/Lizard)
+- eating any acidic corpse cures in-progress stoning (eat.c:860-861, fix_petrification at eat.c:867-877)
 -->
 #### Petrification (Stoning)
 
@@ -2328,6 +2364,12 @@ polymorphed into a non-stone golem, wearing it during the countdown
 is actively harmful — it blocks the stone-golem auto-poly that
 would otherwise save you on death.
 
+Out of lizards? Any acidic corpse will do: acid blob, jellies,
+yellow dragon, black naga, and yes, green slime works (but green
+slime starts a *different* countdown that turns you to slime; only
+reach for it as a last resort). Quaffing a potion of acid has the
+same curative effect.
+
 **The other side of the coin:** a wielded cockatrice corpse (with
 gloves on) is one of the game's most devastating weapons —
 anything you hit that lacks stoning resistance turns to stone.
@@ -2339,9 +2381,10 @@ anything you hit that lacks stoning resistance turns to stone.
 - Swimming, Amphibious, or Breathless all defeat the drown (youprop.h:264-277)
 - pool-entry check at hack.c:3272; Flying also skips entry, Levitation is the canonical defense
 - emergency_disrobe is gated on Stressed+ (trap.c:4897-4941)
-- krakens generate only on Medusa-4 and the Water Plane
+- krakens placed only on medusa-4 in the Dungeon (medusa-4.lua:122); other placements are Quest/fakewiz/wizard1
 - "swamp rooms" comment refers to eels, not krakens (mkroom.c:557-565)
 - encumbrance does NOT gate the grab-drown path: being Burdened won't save you once grabbed
+- strategy aligned with NetHackWiki Drowning, Giant eel, Amulet of magical breathing: range-kill sea monsters, magical breathing/Swimming/Amphibious as the only true grab-drown defenses (https://nethackwiki.com/wiki/Drowning, https://nethackwiki.com/wiki/Giant_eel, https://nethackwiki.com/wiki/Amulet_of_magical_breathing)
 -->
 
 Giant eels, electric eels, and krakens can grab you with their
@@ -2365,7 +2408,7 @@ whenever possible — their grab attack requires adjacency.
 <!-- audit
 2026-05-18:
 - mwandexp gates the first-zap warning miss (muse.c:1830-1860)
-- buzz_force_miss is the dispatch path for the warning shot
+- buzz_force_miss is the dispatch path for the warning shot (muse.c:1815, 1834)
 - 6 beam wands trigger the warning: death, sleep, fire, cold, lightning, magic missile (muse.c:1842-1847)
 - the visible warning shot identifies the wand to the player
 - late-game zones spawn monsters with mwandexp=TRUE — no warning shot (makemon.c:1290-1293)
@@ -2392,6 +2435,7 @@ zap can connect. The freebie is an early-to-mid-game courtesy.
 - 8d6 + 50 + half-damage permdrain only on rolls 17-19
 - MR on the 17-19 branch falls through to the smaller permdrain rather than being harmless
 - the smaller permdrain on rolls 5-16 is NOT reduced by MR (mcastu.c:326-337)
+- strategy aligned with NetHackWiki Touch of death, Wand of death, Death resistance: MR blocks incoming death rays but not self-zap; nonliving/demon polyform is the self-zap fallback (https://nethackwiki.com/wiki/Touch_of_death, https://nethackwiki.com/wiki/Wand_of_death, https://nethackwiki.com/wiki/Death_resistance)
 -->
 
 Some monsters, most notably Death (one of the Riders on the Astral
@@ -2424,6 +2468,7 @@ kills you outright.
 - STARVED death at u.uhunger < -(100 + 10*Con) (eat.c:3437-3447)
 - initial u.uhunger = 900 (eat.c:129)
 - TROUBLE_STARVING covers Weak through STARVED (pray.c:216-217)
+- strategy aligned with NetHackWiki Hunger, Prayer: praying when Weak/Fainting is a canonical TROUBLE_STARVING fix (https://nethackwiki.com/wiki/Hunger, https://nethackwiki.com/wiki/Prayer)
 -->
 #### Starvation
 
@@ -2445,14 +2490,15 @@ management slide.
 - brainlessness death; lifesaving still dies (eat.c:698-715)
 - 1-in-5 chance of losespells per hit (uhitm.c:3264)
 - losespells zeroes rn2(n+1) random spells; re-study restores them (spell.c:1759-1827)
-- 5.0 AD_DRIN no longer wipes maps or item IDs — only spells
+- 5.0 AD_DRIN no longer wipes maps or item IDs — only spells (uhitm.c:3263-3271: only adjattrib INT, losespells, drain_weapon_skill — no forget_map/forget_objects calls)
 - polymorphed into a mindflayer, brain-eating restores Int (eat.c:679-688)
 - any helmet blocks 7/8 tentacle drains via `uarmh && rn2(8)` (uhitm.c:3235)
-- greasing adds an extra slip-roll on top of the helmet check
-- blessed potion of restore ability restores all lost attributes
+- greasing adds an extra slip-roll on top of the helmet check (uhitm.c:3232 → u_slip_free at mhitu.c:1047-1064)
+- blessed potion of restore ability restores all lost attributes (potion.c:646-691)
 - blessed potion of full healing does NOT restore stats (potion.c:1144-1162)
 - prayer fixes drained attributes via TROUBLE_POISONED (pray.c:270-272, 547-552)
 - unicorn horn no longer restores attributes in 5.0 (apply.c:2306-2327)
+- strategy aligned with NetHackWiki Mind flayer, Helm: any helmet blocks 7/8 tentacles, greasing stacks slip-roll, range-kill is safest (https://nethackwiki.com/wiki/Mind_flayer, https://nethackwiki.com/wiki/Helm)
 -->
 
 Mind flayers drain Intelligence with their tentacle attacks. If
@@ -2482,8 +2528,8 @@ ability before pushing into mind flayer territory.
 #### Level Drain
 <!-- audit
 2026-05-18:
-- vampire bats deal AD_DRST (drain Strength), NOT AD_DRLI — pois-res blocks
-- shield of drain resistance is new in 5.0 (artilist.h, do_wear.c)
+- vampire bats deal AD_DRST (drain Strength), NOT AD_DRLI — pois-res blocks (monsters.h:1291-1297)
+- shield of drain resistance is new in 5.0 (objects.h:656-658)
 - eating wraith corpse adds a level via pluslvl (eat.c:1141)
 - drained-level HP/Pw math uses u.uhpinc / u.ueninc (exper.c:251-273)
 - wraith corpse weightless and untinnable because cnutrit==0
@@ -2491,6 +2537,7 @@ ability before pushing into mind flayer territory.
 - foocubus bite is AD_SSEX; AD_SSEX→AD_DRLI substitution only fires when SEDUCE disabled (mhitu.c:327-334)
 - blessed potion of restore ability restores ALL lost levels (potion.c:687-691)
 - uncursed/plain restore ability returns one level per quaff
+- strategy aligned with NetHackWiki Drain resistance, Wraith, Excalibur: Excalibur/Stormbringer/Staff of Aesculapius for drain resistance, eat wraith corpse to regain a level (https://nethackwiki.com/wiki/Drain_resistance, https://nethackwiki.com/wiki/Wraith, https://nethackwiki.com/wiki/Excalibur)
 -->
 
 A recurring theme in the bestiary: certain monsters reduce your
@@ -2523,8 +2570,8 @@ as the fight ends.
 2026-05-18:
 - disenchanter generates only in Gehennom (G_HELL: monsters.h:2156, makemon.c:1935, 1998)
 - active claw targets armor via some_armor (do_wear.c:2629, uhitm.c:3619)
-- target order: cloak → body armor → shirt → 1/4 chance for helm/gloves/boots/shield
-- if naked, rn2(5) picks ring/amulet/blindfold; never targets a wielded weapon
+- target order: cloak → body armor → shirt → 1/4 chance for helm/gloves/boots/shield (do_wear.c:2634-2652)
+- if naked, rn2(5) picks ring/amulet/blindfold; never targets a wielded weapon (uhitm.c:3621-3640 mhitm_ad_ench cases 0-4 enumerate uright/uleft/uamul/ublindf only)
 - active hit prints "Your X seems less effective" (uhitm.c:3641)
 - weapon drain is passive-only: fires when you melee the disenchanter (mhitu.c:2508-2515)
 - passive drain is silent
@@ -2532,6 +2579,7 @@ as the fight ends.
 - Invocation items and Rider corpses always resist (zap.c:1462-1467)
 - MC negates the active attack (uhitm.c:3613) but NOT the passive counter
 - eating a disenchanter corpse strips a random intrinsic (eat.c:1270-1275)
+- strategy aligned with NetHackWiki Disenchanter, Magic cancellation: MC armor blocks the active claw but not the passive counter; range-kill is the cleanest plan, and the corpse is not safe to eat (https://nethackwiki.com/wiki/Disenchanter, https://nethackwiki.com/wiki/Magic_cancellation)
 -->
 
 **Disenchanters** (`R`, blue) appear only in Gehennom. Their
@@ -2569,8 +2617,11 @@ them. **Don't eat the corpse**: it strips a random intrinsic.
 - search reveals; both have no M1_MINDLESS so telepathy and warning work too
 - warnreveal triggers when mlev/4 ≥ warning level (detect.c:2107-2120)
 - weapons still hit normally while swallowed: mhit guaranteed when u.uswallow (uhitm.c:781, 805)
+- wand of digging while swallowed: zap_dig reduces engulfer HP to 1 and calls expels (dig.c:1568-1582); whirly engulfers ignored
+- wand of opening / knock spell at engulfer or at self: release_hold expels you (zap.c:382-391, 575-609, 2929-2947)
+- ranged buzz wands "rip into" the engulfer from inside (zap.c:4802-4820)
 -->
-#### Engulfment from Hiding
+#### Engulfment
 
 Two monsters hide in plain sight until you walk into them. The
 **lurker above** (`t`, gray, level 10) hides on the ceiling and
@@ -2579,13 +2630,25 @@ green, level 12) hides on the floor and engulfs whoever steps
 onto it. Both look like ordinary terrain until they trigger.
 Engulfment wraps and crushes rather than digesting, but you still
 take damage every turn until you cut your way out, with limited
-movement
-options while inside.
+movement options while inside.
+
+Other engulfers don't hide; they just swallow you in melee.
+Dragons and purple worms can swallow whole creatures up to their
+size. Dragons tend to be polite about it (you escape after one or
+two turns); purple worms are the bigger danger, and the dread
+**fog cloud** and **air elemental** count as engulfers too even
+though they don't digest.
 
 **Defenses:** Searching reveals hidden monsters. *Telepathy*
 shows them through the deception. Wearing a *ring of warning* or
-a *helm of caution* tips you off before you step. Once engulfed,
-attack the host repeatedly; weapons still work from inside.
+a *helm of caution* tips you off before you step.
+
+**Getting out.** Once engulfed, attack the host repeatedly;
+weapons still work from inside. If you have a wand of digging,
+zap it (no direction needed): it almost always expels you
+immediately, leaving the engulfer at 1 HP. A wand of opening or
+the knock spell forces the engulfer to release you on the spot.
+Ranged spells and rays will tear into the host from the inside.
 
 #### Light Bursts
 <!-- audit
@@ -2618,9 +2681,9 @@ mindless). If you do get blinded, a unicorn horn cures it.
 <!-- audit
 2026-05-18:
 - could_seduce at mhitu.c:1980 requires opposite-sex genagr/gendef; same-sex foocubus just claws
-- demon's succubus/incubus form is randomly assigned at generation, not based on player gender
-- stripped items go to inventory, not dropped on the floor
-- level-drain outcome is fatal at XL 1 — do not farm a foocubus at low level
+- demon's succubus/incubus form is randomly assigned at generation, not based on player gender (makemon.c:1278-1279 `mtmp->female = femaleok ? rn2(2) : 0`; mhitu.c:1988-1989 doseduce reads Mgender(mon) not player)
+- stripped items go to inventory, not dropped on the floor (mhitu.c:2351 calls remove_worn_item which just unequips into inventory, steal.c:213)
+- level-drain outcome is fatal at XL 1 — do not farm a foocubus at low level (exper.c:232-238 losexp at u.ulevel==1 with non-null drainer calls done(DIED))
 -->
 
 The **amorous demon** (`&`, gray) appears as a **succubus** to
@@ -2673,9 +2736,9 @@ fatal.
 - SICK_NONVOMITABLE is "illness," not the SICK_VOMITABLE food-poisoning path (timeout.c:316-333)
 - unicorn horn CAN clear it: apply.c:4456 only marks Sick unfixable when (Sick & ~TIMEOUT) != 0
 - Pestilence sickness is purely timed, so the horn's trouble list reaches it (apply.c:2312-2313, 2351)
-- Riders: level 30, regen, see invisible, shove monsters; two 8d8 touches per turn
-- Death's touch has 3/20 chance of instakill; MR blocks the instakill, not the 8d8 damage
-- 5.0 mercy: Pestilence/Famine's second hit on a turn downgrades to stun
+- Riders: level 30, M1_REGEN, M1_SEE_INVIS, M3_DISPLACES; two 8d8 touches per turn (monsters.h:3145-3173)
+- Death's touch has 3/20 chance of instakill; MR blocks the instakill, not the 8d8 damage (uhitm.c:3858-3872 cases 17/18/19 call touch_of_death only when !Antimagic; otherwise fallthrough to permdmg drain)
+- 5.0 mercy: Pestilence/Famine's second hit on a turn downgrades to stun (mhitu.c:339-342)
 -->
 
 On the Astral Plane, three unique `&`-class beings guard the way
@@ -2711,7 +2774,7 @@ reach the altar.
 - death only fires at u.uhunger >= 2000 with 1/20 escape; Breathless never choke (eat.c:258-266)
 - amulet of strangulation generates 90% cursed (mkobj.c:1063); beginner can't just take it off
 - escape: pray, or uncurse via holy water or remove curse
-- strangulation is a timer death via done_timeout(DIED, STRANGLED), not an attack — MR has nothing to block
+- strangulation is a timer death via done_timeout(DIED, STRANGLED), not an attack — MR has nothing to block (timeout.c:890-894)
 -->
 
 If you push past Satiated and keep eating, you can choke and die.
@@ -2756,12 +2819,13 @@ of the first intrinsics worth acquiring.
 <!-- audit
 2026-05-18:
 - only player-facing AD_DISN is black dragon breath (monsters.h:1520, ZT_BREATH(ZT_DEATH) at zap.c:4464-4493)
-- beholder is the only other AD_DISN monster and is #if 0-gated
+- beholder is the only other AD_DISN monster and is #if 0-gated (monsters.h:367-371)
 - black dragons have MR_DISINT in attack and defense slots (monsters.h:1523)
 - reflected beam does 0 damage to them via resists_disint (zap.c:4318)
 - worn-armor priority on disint hit: shield first (zap.c:4476-4479), then body armor + cloak (zap.c:4480-4486)
 - amulet of life saving rescues you (end.c catches DIED) but breath still destroys cloak/shirt (zap.c:4487-4492)
-- an ordinary shield eats one breath; shields of reflection don't have a failure mode
+- an ordinary shield eats one breath; shields of reflection don't have a failure mode (zap.c:4476-4479)
+- Antimagic check is on the death-ray branch only; the AD_DISN breath branch checks Disint_resistance only (zap.c:4464-4497)
 -->
 
 A black dragon's breath is the only thing in the game that
@@ -2800,7 +2864,9 @@ your own species. Don't do this.
 - the "9-turn" impression came from the t/2 message cadence (timeout.c:391)
 - cancellation prevents new infections (uhitm.c:3556-3560) but does NOT clear a running Slimed timer
 - polymorph cure requires flaming() or PM_GREEN_SLIME (polyself.c:842)
-- vomiting cures only SICK_VOMITABLE; Pestilence's SICK_NONVOMITABLE is unaffected
+- vomiting cures only SICK_VOMITABLE; Pestilence's SICK_NONVOMITABLE is unaffected (eat.c:3745-3746)
+- rotted-corpse food poisoning is gated by Sick_resistance, NOT poison resistance (eat.c:1904-1914)
+- Fire_resistance survives lava damage but still gets trapped: lava_effects sets utrap TT_LAVA on the fire-res branch (trap.c:6964-6968)
 -->
 
 Not every fatal threat kills instantly. Several give you a few
@@ -2863,7 +2929,7 @@ scroll of remove curse, holy water, or prayer).
 - corpse grants Displacement intrinsic (eat.c:1265) — cloak-style, not the swap
 - M3_DISPLACES is consulted only at hack.c:1972 and mon.c:2462 (ALLOW_MDISP)
 - no mhitm.c path for hostile-attacks-pet-displacer triggering a swap — pet trick fabricated
-- pet beast is still excellent: 0% MR (reliable taming), high AC, three-attack
+- pet beast is still excellent: 0% MR (reliable taming), AC -10, three attacks 4d4/4d4/2d10 (monsters.h:437-441)
 -->
 
 
@@ -2903,7 +2969,7 @@ not the ability to swap places with attackers.
 - Unchanging blocks the polymorph (mhitm.c:1130-1131)
 - eating a genetic engineer corpse triggers a polyself fall-through (eat.c:1244-1263)
 - tinned engineer + poly-control combo at eat.c:1253
-- genetic engineer also teleports itself on its own
+- genetic engineer also teleports itself on its own: M1_TPORT (monsters.h:2141)
 -->
 
 The **genetic engineer** (`Q`, green) shares its symbol class
@@ -2940,9 +3006,14 @@ loss; the second one in your bag is a kit.
 - "sad feeling for a moment" fires when an offscreen pet dies (mon.c:952, 3101, 3495)
 - leaving a pet behind alive produces no message; loyalty decays at 1 per 150 moves apart (dog.c:689-697)
 - pet curse-avoidance has a starvation exception (dogmove.c:535-538)
-- tameness loss sources: hunger past threshold, long separation, player-dealt damage (not damage from other monsters)
+- tameness loss sources: hunger past threshold, long separation, player-dealt damage via abuse_dog (uhitm.c:1593-1595)
 - scroll of taming radius: bd = confused ? 5 : 1, area (2*bd+1)² (read.c:1689) — 3×3 normal, 11×11 confused
 - confused charm-monster spell fails outright (spell.c:1372) — the 11×11 trick is scroll-only
+- strategy aligned with NetHackWiki Pet, Tameness, Scroll of taming: keep your pet fed for tameness, pet-shoplift trick, confused-scroll-of-taming 11×11 area effect (https://nethackwiki.com/wiki/Pet, https://nethackwiki.com/wiki/Tameness, https://nethackwiki.com/wiki/Scroll_of_taming)
+- apport: edog->apport initialized to A_CHA (dog.c:60), grows as the pet eats food you drop near you, drives pickup/return behavior (dogmove.c:316-422); enables pet-shoplifting in practice
+- magic whistle teleports pets toward the hero on every apply (apply.c whistle handler)
+- gray dragon resists magic damage via resists_magm (mondata.c:215-225 includes AD_MAGM and PM_BABY_GRAY_DRAGON); magic-resistant targets cannot be polymorphed
+- long worm's lengthening tail occupies a chain of map tiles (worm.c:27-100); the head moves but segments stay until they shrink
 -->
 
 The Mazes of Menace are dark, hostile, and full of things that want
@@ -3002,8 +3073,9 @@ methods of taming exist:
 
 Taming isn't limited to small animals: with a scroll of taming or
 the charm monster spell, you can recruit a purple worm to swallow
-your enemies whole, a dragon to breathe fire at them, a titan to
-crush them underfoot. The exclusion list is substantial, though:
+your enemies whole (its growing tail will sprawl across the room
+and get in the way of your shots), a dragon to breathe fire at
+them, a titan to crush them underfoot. The exclusion list is substantial, though:
 no humans (priests, shopkeepers, watchmen, soldiers, kings), no
 covetous monsters (the Wizard, liches, masters), no demons (unless
 you are one), no vault guards, quest leaders, nor minions can be
@@ -3025,6 +3097,28 @@ A well-fed pet earns its keep in several ways:
 - **Sacrifice fodder.** Monsters your pet kills leave corpses
   you can sacrifice on altars, exactly as if you'd killed them
   yourself
+
+**Training apport (fetching).** Hand-feeding your pet builds a
+score called apport. A pet with high apport will pick up nearby
+items and bring them to you. This is what makes pet-shoplifting
+practical: once your pet returns dropped items reliably, you can
+drop something at the shop counter, walk out, and trust the pet
+to follow with the goods. Pair it with a magic whistle (below) to
+yank a loaded pet to your side from anywhere on the level.
+
+**Upgrading your pet.** Three moves matter most.
+
+- A **magic whistle** teleports every tame creature on the level
+  to a spot next to you each time you blow it. Distance doesn't
+  matter; trapped pets get freed in the process.
+- Tame a **warhorse** early (throw apples or carrots) and you have
+  a fast, hard-hitting mount before mid-game.
+- Late in the run, **polymorph your pet** into a stronger form.
+  Titans, balrogs, and gray dragons are popular targets; a gray
+  dragon has magic resistance and resists further polymorph, so
+  it locks in. Cast polymorph carefully: random self-poly on the
+  pet can downgrade it, and a polymorphed steed stops being
+  saddled.
 
 #### Keeping Your Pet Alive
 
@@ -3108,6 +3202,7 @@ single most powerful identification tool you have.
 - Priest senses BUC naturally (invent.c:2763, 3545)
 - blessed scroll of identify: at least 2 items, plus 1-in-5 chance for the whole pack (read.c:2086-2092)
 - cursed scroll of identify IDs only itself on first cursed read (read.c:2074-2081)
+- strategy aligned with NetHackWiki Identification, Curse-testing, BUC: altar > pet > shop-price > engrave/sink > use-test > scroll-of-identify ordering matches canonical advice (https://nethackwiki.com/wiki/Identification, https://nethackwiki.com/wiki/Curse-testing, https://nethackwiki.com/wiki/BUC)
 -->
 
 Before you can worry about *what* an item is, you need to know
@@ -3169,13 +3264,14 @@ read one of that type, then one item per cursed read after.
 <!-- audit
 2026-05-18:
 - buy/sell multipliers and Cha bands match shk.c get_cost/set_cost
-- sell offer is 1/2 base; 3/8 on unID items from an unfamiliar shopkeeper
+- sell offer is 1/2 base (shk.c:3160); 3/8 on unID items from an unfamiliar shopkeeper (shk.c:3173-3174)
 - Tourist surcharge (+33%) applies with dunce cap, Tourist below XL 15, or visible Hawaiian shirt — non-stacking
 - ~1/4 of unID items carry a fixed 4/3 buy surcharge per item
 - ~1/4 of shopkeepers are "unfamiliar" with unID; they offer 3/4 sell, fixed per shop
 - angry-shop +33% surcharge sticks: pacify_shk(FALSE) at shk.c:2663 does NOT clear it
 - only pacify_shk(TRUE) clears (shk.c:302, 793 — bones-load and new-customer transitions)
 - the JS price widget mirrors get_cost/set_cost exactly
+- AMULET macro hard-codes base price 150 for every magic amulet; FAKE_AMULET_OF_YENDOR is base 0 (objects.h:831-834, 865-869)
 -->
 
 Shopkeepers are, without exaggeration, your most important
@@ -3195,21 +3291,17 @@ are in the same **price group**. If you know the price, you can
 narrow down the possibilities enormously, sometimes to just two or
 three candidates.
 
-Here's how to do it. Pick up an item in a shop and note the price
-quoted. With average Charisma (11-15) the quoted **buy** price equals
-the base price exactly, while the **sell** offer is half of base. Low
-Charisma pushes buy prices up sharply (×2 at Cha ≤ 5); high Charisma
-pulls them down (×½ at Cha ≥ 19). Sell prices are mostly unaffected
-by Charisma; they only shift when the player looks like a mark, in
-which case sell drops to a third of base and buy rises to 4/3. Three
-visible cues count as "looking like a mark," and they all have the
-same effect (and don't stack): wearing a **dunce cap**, playing a
-**Tourist** below experience level 15, or wearing a **Hawaiian shirt
-visibly** (no body armor or cloak over it). All three trigger the same
-+33% buy markup; the rest of this guide refers to them collectively
-as *Tourist*. You don't need to memorize the exact formulas — what
-matters is grouping: items quoted at similar prices are in the same
-price tier.
+Pick up an item and note the quoted price. With average Charisma
+(11-15), buy price equals base and sell is half base. Low Charisma
+pushes buy up (×2 at Cha ≤ 5); high Charisma pulls it down (×½ at
+Cha ≥ 19). Sell prices don't change with Charisma, but if
+shopkeepers see you as a **mark**, then you can only sell at a
+third of base, and you'll have to pay 4/3 to buy. Three visible
+cues count you as a mark: wearing a **dunce cap**, playing a
+**Tourist** below XL 15, or wearing a **Hawaiian shirt visibly**
+(no body armor or cloak over it). The rest of this guide refers to
+them collectively as *Tourist*. You don't need to memorize the
+formulas; what matters is grouping by price tier.
 
 Two further wrinkles affect unidentified items. About a quarter of
 unID'd items carry an extra 4/3 buy surcharge, fixed per item, so a
@@ -3337,8 +3429,7 @@ If a wand costs $500, you are having a very good day.
 ##### Amulet Prices
 
 All amulets have a base price of $150 except the cheap Amulet of
-Yendor imitations ($0). Price doesn't help here. You'll need to rely
-on other methods.
+Yendor imitations ($0). Price won't ID them; you'll need other methods.
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -3524,15 +3615,16 @@ other ring is consumed.
 <!-- audit
 2026-05-18:
 - engrave-test messages: fire "Flames fly", cold "A few ice cubes drop", lightning "Lightning arcs", digging "Gravel flies up", magic missile "riddled by bullet holes" (engrave.c, zap.c)
-- polymorph randomizes existing engraving, not "vanishes"
+- polymorph randomizes existing engraving, not "vanishes" (engrave.c:618-633 WAN_POLYMORPH case calls random_engraving on existing engraving)
 - cancellation, make-invisible, teleportation all share the "vanishes" message
 - wand of wishing engrave DOES grant the wish (zap.c:2575-2585)
-- unicorn horn dipped in sickness → fruit juice; in confusion/hallucination/blindness → water
+- unicorn horn dipped in sickness → fruit juice; in confusion/hallucination/blindness → water (potion.c:2151-2159)
 - is_poisonable requires oc_skill in [-P_SHURIKEN, -P_BOW] (obj.h:264-268) — ranged ammo only
 - daggers (skill +1) and spears (skill +17) are NOT poisonable
 - confused remove curse via blessorcurse(obj, 2): 1/4 bless, 1/4 curse, 1/2 unchanged (mkobj.c:1841-1853)
 - non-blessed confused remove curse touches only worn/wielded (read.c:1549-1552); blessed touches all
 - 90% auto-curse branch (mkobj.c:1087-1090) covers fumble boots, levitation boots, gauntlets of fumbling, helm of opposite alignment
+- cursed worn armor refuses to be taken off via the otmp->cursed check (do_wear.c:1900); cursed loadstone refuses to drop (do.c:685-695)
 -->
 
 When you don't have access to a shop or a sink, you can sometimes
@@ -3587,20 +3679,16 @@ reveals itself if you go blind while wearing it (you'll see monsters
 as brain-shapes). Amulet of reflection is trickier to detect, but
 you'll notice it when a ray bounces off you.
 
-**Armor.** Magical armor reveals itself when worn: speed boots make
-you faster, a cloak of invisibility makes you invisible. But trying
-on unknown armor is **dangerous in a shop**: if the item is cursed,
-it welds itself to you, you can't drop it, and the shopkeeper still
-expects payment. Worse, the auto-cursed armor types (fumble boots,
-levitation boots, gauntlets of fumbling, and the helm of opposite
-alignment) are exactly the ones that masquerade as desirable boots,
-gloves, and helms. **Always verify BUC before wearing unknown
-armor in a shop.** Shops don't
-have altars, so the standard altar-drop BUC check isn't available
-in-store; the in-shop options are the pet-step test (your pet
-refuses to walk over cursed items, so lure it past the suspect
-square), Priest intrinsic BUC sense, or a scroll of identify from
-your own inventory.
+**Armor.** Magical armor reveals itself when worn: speed boots
+make you faster, a cloak of invisibility makes you invisible. But
+trying on unknown armor in a shop is dangerous: if it's cursed it
+welds itself on, you can't drop it, and the shopkeeper still
+expects payment. Worse, the auto-cursed types (fumble boots,
+levitation boots, gauntlets of fumbling, helm of opposite alignment)
+masquerade as the desirable ones. **Verify BUC before wearing
+unknown armor in a shop.** Without an altar, your options are the
+pet-step test, Priest intrinsic BUC sense, or a scroll of identify
+from your own inventory.
 
 Each type of special armor has a **randomized appearance**, so
 the same "snow boots" that were safe levitation in your last game
@@ -3653,9 +3741,9 @@ alone. Try them on (BUC-checked) and watch for the messages.
 - loadstones are cursed at object creation (mkobj.c:978-979), not on pickup
 - cursed-on-creation state is what blocks dropping; "auto-curse on pickup" would be a different mechanic
 - prices: luckstone 60, touchstone 45, loadstone 1, flint 1 (objects.h:1598-1605)
-- weights: loadstone 500, others 10
-- blessed touchstone (or Archeologist/Gnome holding uncursed) IDs gems on rub
-- Mine's End luckstone is guaranteed not-cursed
+- weights: loadstone 500, others 10 (objects.h:1598-1605)
+- blessed touchstone (or Archeologist/Gnome holding uncursed) IDs gems on rub (apply.c rub_on_stone)
+- Mine's End luckstone is guaranteed not-cursed (minend-1.lua:77, minend-2.lua:116, minend-3.lua:67)
 -->
 
 Gray stones deserve their own section because they look identical
@@ -3766,28 +3854,29 @@ methods: amulets (all the same price), spellbooks (dangerous to
 read if unknown), and the one stubborn potion in the $50 group that
 you can't quite pin down.
 
-The whole system is about reducing uncertainty with the cheapest,
-safest method first. Altars and shops are free. Engrave-testing costs
-one charge. Use-testing costs more and carries risk. Scrolls of
-identify are the precious last resort. Work through the list in order
-and you'll rarely be surprised.
+The system is about reducing uncertainty with the cheapest, safest
+method first: altars and shops are free, engrave-testing costs one
+charge, use-testing costs more and carries risk, and scrolls of
+identify are the precious last resort.
 
 ---
 
 ### Provisions and Dining
 <!-- audit
 2026-05-18:
-- gelatinous cube corpse: fire/cold/shock/sleep only (not poison/acid/stoning)
-- disenchanter corpse STRIPS an intrinsic, doesn't grant one
+- gelatinous cube corpse: fire/cold/shock/sleep only (not poison/acid/stoning) (monsters.h:160-162 mresists has MR_FIRE|MR_COLD|MR_ELEC|MR_SLEEP|MR_POISON|MR_ACID|MR_STONE but mconveys row is MR_FIRE|MR_COLD|MR_ELEC|MR_SLEEP only)
+- disenchanter corpse STRIPS an intrinsic, doesn't grant one (eat.c:1270-1275 PM_DISENCHANTER calls attrcurse)
 - encumbrance kicks in at Stressed, not Burdened (eat.c:3197 near_capacity > SLT_ENCUMBER)
-- fire giant corpse grants Str on eat; separate row from fire ant
-- red and brown mold corpses also grant poison resistance
-- eggs count as vegetarian but not vegan
+- fire giant corpse grants Str on eat via is_giant(ptr) (eat.c:1345-1352); separate row from fire ant
+- red and brown mold corpses also grant poison resistance (monsters.h:1627-1659, MR_POISON defense)
+- eggs count as vegetarian but not vegan (eat.c:585-597 violated_vegetarian and EGG handling)
 - Weak status is -1 Str ATEMP, not slowed movement (attrib.c:471, eat.c:3455)
 - blessed tin opens instantly only with a blessed tin opener (eat.c:1740-1745)
 - ordinary tin opener on a blessed tin: 50/50 instant vs one turn via rn2(2)
 - globs lose 1 weight per ~25 turns; a weight-20 glob lasts ~500 turns (mkobj.c:1487-1490)
 - corpses stay safe to eat for ~30-50 turns before rotting (eat.c:1887-1939)
+- strategy aligned with NetHackWiki Resistance, Poison resistance, Partial intrinsic: corpse-eating to bank resistances is canonical, gelatinous cube and dragon corpses are the highest-density sources (https://nethackwiki.com/wiki/Resistance, https://nethackwiki.com/wiki/Poison_resistance, https://nethackwiki.com/wiki/Partial_intrinsic)
+- sprig of wolfsbane cures lycanthropy on eat via you_unwere (eat.c:2513-2516)
 -->
 
 Of all the things that kill adventurers in the Mazes of Menace (the
@@ -3913,6 +4002,11 @@ ascension-kit intrinsics in the game. Each resistance is a *chance*
 per eat (not a guarantee), so eat *every* one of these you find,
 not just the first.
 
+**Sprig of wolfsbane.** Not a corpse but the same shelf. Eating one
+cures lycanthropy outright. If you're heading anywhere were-things
+roam (the Mines, the Quest for some roles), carry a sprig or two.
+It weighs almost nothing.
+
 **Globs vs corpses.** Puddings (gray ooze, brown pudding, black
 pudding) and acid blobs in 5.0 leave **globs** instead of corpses.
 Globs sit on the floor and shrink slowly (about one weight unit
@@ -3940,7 +4034,9 @@ until you get it.
 - never dip a CURSED potion into another — guaranteed explosion
 2026-05-18:
 - potion of speed grants permanent intrinsic Fast when !cursed (potion.c:1066)
-- uncursed extra/full healing also raise maxHP
+- uncursed extra/full healing also raise maxHP (potion.c:1398-1440)
+- strategy aligned with NetHackWiki Potion, Alchemy, Dip: alchemy odds and the guaranteed-blast cases for cursed/acid potions match (https://nethackwiki.com/wiki/Potion, https://nethackwiki.com/wiki/Alchemy, https://nethackwiki.com/wiki/Dip)
+- dipping an item (including a single arrow/dart) into a polymorph potion changes its type via poly_obj and identifies the potion (potion.c:2468-2499)
 -->
 
 The dungeon is full of mysterious bottles. Ruby liquids, milky
@@ -4004,6 +4100,12 @@ enchant weapon. You will never have enough holy water.
 **Gain level.** Raises your experience level by 1. Useful for
 reaching quest eligibility quickly, or converting into something
 better through alchemy.
+
+**Identifying a polymorph potion.** A clean test: dip a single
+arrow or dart into an unknown potion. If the arrow turns into a
+different item, the potion was polymorph and identifies itself.
+You spend one arrow and one potion; you save the gamble of
+quaffing it.
 
 #### Alchemy
 
@@ -4071,11 +4173,21 @@ pharmacy.
 2026-05-19:
 - confused destroy armor erodeproofs ONLY if cursed; uncursed/blessed strip erodeproofing (read.c:1341)
 - confused enchant armor/weapon erodeproofs when !cursed — opposite BUC condition (read.c:1138)
+- confused taming radius widens to 11×11 (read.c:1689)
+- confused teleportation forces a level teleport (read.c:2015-2025)
+- confused gold detection routes through trap_detect (read.c:2041)
+- confused light spawns cancelled tame yellow lights (or black lights if cursed) (read.c:1756-1783)
+- confused charging restores u.uen / u.uenmax instead of charging an item (read.c:1799-1812)
+- confused scare monster wakes monsters and prints sad wailing (read.c:1467-1485)
+- confused genocide forces PLAYER bit: confused+uncursed = REALLY|PLAYER = self-genocide; confused+cursed = PLAYER without REALLY, spawns 4-6 of your race/role (read.c:1737, 2826-3015)
 2026-05-18:
 - above +5 with amount >= 0, chwepon has 2/3 destroy chance via rn2(3) (wield.c:999-1009)
 - safe enchantment ceiling for weapons is +5
 - charging success is n^3/7^3 per try (read.c:746-758)
 - charging odds: 2nd 0.29%, 3rd 2.33%, 4th 7.87%, 5th 18.66%, 6th 36.44%, 7th 62.97%, 8th 100%
+- WAN_WISHING lim=1; cursed strips charges; blessed gives the same +1 as uncursed (read.c:738-789)
+- second recharge on a wand of wishing is a 100% explosion via the recharged>0 branch (read.c:761-764)
+- strategy aligned with NetHackWiki Scroll of charging, Scroll of enchant weapon, Scroll of destroy armor: +5 safe ceiling for weapons, wand-of-wishing-recharges-exactly-once rule, confused destroy-armor erodeproofs (https://nethackwiki.com/wiki/Scroll_of_charging, https://nethackwiki.com/wiki/Scroll_of_enchant_weapon, https://nethackwiki.com/wiki/Scroll_of_destroy_armor)
 -->
 
 Scrolls are the dungeon's single-use spells: read once, triggered,
@@ -4148,6 +4260,14 @@ while confused and you genocide your own role's species
 (Valkyrie, Wizard, etc.), which kills you instantly. Read
 carefully.
 
+**Reverse genocide.** A cursed scroll of genocide doesn't remove
+its target; it spawns 4 to 6 of the named species at your feet.
+The named species must be one that can ordinarily be created.
+Naming wraiths gives you a corpse pile for level recovery; naming
+mind flayers buys an Int-fed feast if you're polymorphed into one;
+naming an easy-to-tame creature gives you instant pet candidates.
+Don't try unique monsters (the gods refuse).
+
 **Magic mapping.** Reveals the entire level layout; blessed also
 shows secret doors. Invaluable in Gehennom's maddening mazes,
 where mapping by hand could take a lifetime you don't have.
@@ -4178,6 +4298,22 @@ these alternate effects are *better* than the normal ones:
   cursing each uncursed item. Risky, but it's a clever way to create
   holy water if you confuse-read while carrying uncursed potions of
   water
+- **Confused taming** widens the scroll's reach from a 3×3 area
+  around you to 11×11. The trick is scroll-only; confused charm
+  monster just fizzles
+- **Confused teleportation** sends you to a random *dungeon level*
+  instead of a random spot on this floor. Useful as a panic button,
+  dangerous if you're shallow and don't want to skip the early game
+- **Confused gold detection** detects *traps* on this level
+  instead of gold. Faster and safer than the search command
+- **Confused light** creates a small posse of cancelled, friendly
+  yellow lights around you (or black lights, if the scroll is
+  cursed). They die quietly and can't harm you
+- **Confused charging** restores some power instead of charging an
+  item. A pinch of mana when you've spent everything
+- **Confused scare monster** wakes nearby sleepers and you hear sad
+  wailing in the distance. The opposite of helpful. Don't read this
+  for an emergency
 - **Confused genocide** genocides your own role. This kills you.
   Don't get confused at the wrong moment
 
@@ -4188,7 +4324,7 @@ these alternate effects are *better* than the normal ones:
 2026-05-18:
 - wand of stasis: NODIR, $150, prob 45, freezes the level (objects.h:1460, zap.c:2559-2568)
 - wand of nothing is IMMEDIATE, not NODIR (objects.h:1462)
-- undead turning revives corpses to their original species via unturn_dead — NOT as zombies
+- undead turning revives corpses to their original species via unturn_dead — NOT as zombies (zap.c:1156-1228 unturn_dead, zap.c:900 revive uses corpse->corpsenm; only cant_revive-rejected types fall back to zombie/doppelganger at zap.c:982-985)
 - engrave-test: cancellation and make-invisible erase in place (engrave.c:618-633)
 - engrave-test: teleportation moves the engraving elsewhere; polymorph rewrites it
 - nothing, undead turning, opening, locking, probing produce NO engrave message (engrave.c:635-640)
@@ -4196,6 +4332,9 @@ these alternate effects are *better* than the normal ones:
 - sleep and death share "the bugs on the <surface> stop moving" (engrave.c:651-656)
 - striking message: "wand unsuccessfully fights your attempt to write" (engrave.c:602-605)
 - slow/speed monster: distinctive "bugs slow down" / "speed up" (engrave.c:606-616)
+- self-polymorph into a small form (sliparm) drops body armor (cursed or not) into inventory via Armor_gone+dropp (polyself.c:1198-1228); large forms (breakarm) destroy it instead (polyself.c:1162-1197)
+- engrave-test ambiguity between cancellation, make-invisible, teleportation, polymorph can be resolved by zapping a known item: make-invisible turns it invisible; teleportation moves it; cancellation dulls it (zap.c:2313-2317); polymorph changes its type (zap.c:weffects branch)
+- strategy aligned with NetHackWiki Wand, Engraving, Wand of wishing: engrave-test as the safest wand-ID method, $500 narrowed to death-or-wishing, wand of wishing recharge mechanics (https://nethackwiki.com/wiki/Wand, https://nethackwiki.com/wiki/Engraving, https://nethackwiki.com/wiki/Wand_of_wishing)
 -->
 
 Wands are reusable magical items that produce directed effects when
@@ -4205,6 +4344,8 @@ hit in a straight line, and **non-directional wands** affect the
 area around you.
 
 #### The Wand Table
+
+<div class="price-id-toolbar"></div>
 
 | Price | Wand                    | Type  | Max Charges |
 | ----- | ----------------------- | ----- | ----------- |
@@ -4358,6 +4499,14 @@ after engraving, zap them at safe targets:
   will dull it. Note: cancellation does NOT affect booze, fruit
   juice, or oil, so don't use those as test subjects.
 
+**The three "vanishes" wands.** Cancellation, make-invisible, and
+teleportation all print *"The engraving vanishes!"* on the
+engrave-test. To tell them apart, drop a known item and zap each
+candidate: make-invisible makes the item invisible; teleportation
+moves it elsewhere on the level; cancellation dulls its magic.
+(Polymorph isn't in this group: it rewrites your engraving as a
+different random one, which is its own giveaway.)
+
 **Step 3: When in doubt, check the price.** If testing hasn't
 resolved the wand, its shop price narrows the field further. A
 $150 wand is one of thirteen types. A $200 wand is one of four.
@@ -4392,6 +4541,36 @@ When a wand has 0 charges, you can still try to zap it. There is a
 turns to dust. This is a last resort, but it works on wands of
 wishing too.
 
+#### Polymorph as a Tool
+
+Self-polymorph is one of the most interesting tools in the game.
+A wand of polymorph zapped at yourself, a potion of polymorph, the
+polymorph self spell, or stepping on a polytrap all do the same
+thing: roll a new form for you. With **polymorph control** (the
+ring or intrinsic) the game lets you *choose* the form, which is
+where the real fun begins.
+
+- **Travel where your legs can't.** A xorn phases through walls.
+  An eel breathes underwater. A vampire becomes a bat or a fog
+  cloud and slips under doors. A floating eye drifts past traps
+  you can't disarm.
+- **Bring your own resistances and attacks.** A red dragon form
+  gives you fire breath. A brown mold form burns anything that
+  hits you in melee. A purple worm swallows your problems whole.
+  Most monster powers are yours when you wear their shape.
+- **Grow a bigger body.** A stronger form rolls a new max HP and
+  your current HP scales with the ratio. A dying Wizard at 50/100
+  wakes up at 200/400 as a fresh titan.
+- **Escape cursed body armor.** A *bigger* form breaks out and
+  destroys the suit. A *smaller* form drops it intact into your
+  inventory, where you can holy-water it back to neutral.
+- **Eat what you can't.** A metallivore form eats iron bars. A
+  green dragon shrugs off poisonous corpses.
+
+Caveat: cursed polymorph items strip control, and rough
+transformations can hit you with system shock. Don't be at 5 HP
+when you reach for the wand.
+
 ---
 
 ### Rings and Amulets
@@ -4408,6 +4587,7 @@ wishing too.
 - ring of protection subtracts from AC (do_wear.c:2492-2495)
 - conflict makes pets attack you (dogmove.c:1046-1054, mhitm.c:104-145)
 - blessed polymorph control rolls from base form only (potion.c:1322-1325)
+- strategy aligned with NetHackWiki Ring strategy, Ring of free action, Ring of conflict, Amulet of life saving: free action against late-game paralysis, conflict for crowd control, life saving for risky endgame moments (https://nethackwiki.com/wiki/Ring_strategy, https://nethackwiki.com/wiki/Ring_of_free_action, https://nethackwiki.com/wiki/Ring_of_conflict, https://nethackwiki.com/wiki/Amulet_of_life_saving)
 -->
 
 
@@ -4418,6 +4598,8 @@ appearances, and some of the best items in the game hide behind
 unassuming descriptions like "granite ring" or "circular amulet."
 
 #### The Ring Table
+
+<div class="price-id-toolbar"></div>
 
 | Price | Ring                           | Notes                          |
 | ----- | ------------------------------ | ------------------------------ |
@@ -4559,17 +4741,18 @@ than it looks.
 - Bell of Opening is carried by the quest nemesis; loot from the corpse (makemon.c:1378-1379)
 - quest leader chides you if you finish without the Bell but doesn't grant it (quest.c:267-268)
 - uncursed scroll of charging restores a magic lamp to at least 50 (read.c:880-883)
-- blessed scroll of charging pushes the floor to 75
+- blessed scroll of charging pushes the floor to 75 (read.c:866-871)
 - magic lamp 1/3 djinni emergence is independent of bless; bless only affects the wish-grant odds (apply.c:1817)
-- scroll of charging write cost is rn1(8,8) = 8-15 charges
+- scroll of charging write cost is rn1(basecost/2, basecost/2) = rn1(8,8) = 8-15 charges (write.c:44, 265)
 - class genocide skips uniquely-named demon lords via G_UNIQ (read.c:2998)
+- strategy aligned with NetHackWiki Bag of holding, Magic lamp, Unicorn horn: never bag a cancellation wand/bag-of-tricks/another BoH, bless magic lamps before rubbing, blessed unicorn horn for ailments (https://nethackwiki.com/wiki/Bag_of_holding, https://nethackwiki.com/wiki/Magic_lamp, https://nethackwiki.com/wiki/Unicorn_horn)
+- BoH explosion fires only on insertion via mbag_explodes (pickup.c:2658-2669); zapping a wand of cancellation at the bag just calls cancel_item which uncurses (zap.c:1239-1361 cancel_item)
 -->
 
 The `(` symbol covers the dungeon's most eclectic category: pickaxes,
 magic lamps, unicorn horns, musical instruments, crystal balls, and
-bags that eat other bags. If it doesn't fit neatly into any other
-class, it's a tool. Some of the most powerful items in the game hide
-in this grab-bag.
+bags that eat other bags. Some of the most powerful items in the game
+hide in this grab-bag.
 
 #### Containers
 
@@ -4583,7 +4766,7 @@ in this grab-bag.
 | Chest          | 600    | Comes with 0 to 5 items (0 to 7 if locked) |
 | Ice box        | 900    | Preserves corpses from rotting           |
 
-The **bag of holding** deserves its own paragraph because it
+The **bag of holding** deserves special mention because it
 transforms how you play. A blessed bag reduces the weight of
 everything inside to roughly one quarter, meaning you can carry your
 entire potion supply, your backup armor, your scroll library, and
@@ -4597,16 +4780,22 @@ inventory across the floor. In older editions it *destroyed*
 everything. Either way, it's a game-ending mistake that every
 veteran has made exactly once.
 
-One 5.0 hazard that the adventuring community is still
-adjusting to: intelligent monsters can now loot unlocked containers.
+If you find a *cursed* bag of holding (in a bones pile, perhaps),
+don't open it. Drop it on the floor and zap a wand of cancellation
+*at the bag from outside*. Cancellation uncurses items it touches,
+and the explosion rule only triggers on insertion, not on a zap.
+You'll have a safe, uncursed bag.
+
+One 5.0 hazard that you will need to be aware of:
+**intelligent monsters can now loot unlocked containers**.
 They can remove items, carry containers away, and unlock chests with
 keys. If you've been leaving your secondary stash in an unlocked chest
 on a partially-cleared level while you scouted ahead, stop. The Castle
 chest in particular (containing the wand of wishing) can be emptied
 by the level's residents if you leave them time and opportunity. Clear
-levels before abandoning valuables, and keep your most important
-containers locked. The dungeon has gotten better at wanting what you
-have.
+levels before abandoning valuables, and **keep your most important
+containers locked**. The dungeon has gotten better at wanting what
+you have.
 
 #### Unlocking Tools
 
@@ -4615,6 +4804,10 @@ slow. A **skeleton key** is the gold standard (70%+ success on
 doors, 75%+ on boxes). A **lock pick** is respectable. A **credit
 card** is the worst but still better than kicking. Always carry one
 of these. The weight is negligible and the utility is constant.
+
+Skeleton keys and lock picks can also **lock** what they can unlock,
+so they double as your way to relock a chest after stashing loot.
+Credit cards are unlock-only.
 
 #### Light Sources
 
@@ -4722,6 +4915,7 @@ ascension kit.
 - gray and silver DSM grant no extra intrinsic
 - DSM scroll-of-enchant transformation requires spe ≥ 0 (read.c:1225)
 - small shield is the only shield with no spellcast penalty (spell.c:2269)
+- strategy aligned with NetHackWiki Dragon scale mail, Cloak of protection, Magic cancellation, Speed boots: GDSM as the popular MR wish, MC3 from cloak of protection, speed boots make turns more numerous (https://nethackwiki.com/wiki/Dragon_scale_mail, https://nethackwiki.com/wiki/Cloak_of_protection, https://nethackwiki.com/wiki/Magic_cancellation, https://nethackwiki.com/wiki/Speed_boots)
 -->
 
 Weapons and armor are the bread and butter of combat. Your choice
@@ -4763,7 +4957,7 @@ warning bonus stays useful all the way down.
 **Dragon scale mail** is the endgame body armor of choice. In
 5.0, most colors provide two extrinsic resistances (gray and
 silver provide only the named one). Gray dragon scale mail
-provides magic resistance and is the most popular wish target.
+provides magic resistance and is a popular wish target.
 Silver provides reflection. Black provides disintegration
 resistance and drain resistance (one of two non-artifact sources,
 alongside the shield of drain resistance).
@@ -4830,6 +5024,8 @@ game, see the [Weapons Tables](#weapons-tables) appendix.
 - Uncursed enchant weapon always adds +1 (read.c:1669-1671).
 - Armor enchant destruction risk begins above +3; above +5 for "special" armor (elven, cornuthaum) (read.c:1179).
 - BLS/curse status changes success rate only, not the destruction threshold (read.c:1179).
+- Wearing dragon scales and reading a non-cursed scroll of enchant armor merges them into the corresponding scale mail; blessed scroll bumps spe and blesses the result; cursed reading skips the merge (read.c:1225-1252).
+- Greasing armor: applying a can of grease (apply.c:2603-2645) sets obj->greased; deflects monster grab via mhitu.c:1063-1083.
 -->
 #### Enchantment
 
@@ -4855,6 +5051,28 @@ weapon) or confused scroll of enchant armor (for a random worn armor
 piece). This erodeproofs the item permanently without changing its
 enchantment. It also repairs any existing damage.
 
+You can also slow erosion without magic. Coat an armor piece with
+grease (apply a can of grease). The grease layer also makes the
+piece slippery to monster steal and to grab attacks, but it wears
+off after a few hits.
+
+#### Dragon Scale Mail
+
+Killing a dragon doesn't always drop full scale mail. Often you'll
+find loose **scales** instead. Scales wear in the body slot just
+like the mail and carry the color's full intrinsic property (gray
+gives magic resistance, silver reflection, and so on, identical to
+the mail). The trade-off is AC: scales give +3 where the mail gives
++9. Same weight.
+
+To upgrade scales into scale mail: wear the scales and read a
+non-cursed scroll of enchant armor. The scales merge and harden
+into the corresponding dragon scale mail at +0 (or higher if
+blessed; a blessed scroll also blesses the result). A cursed
+scroll just gives the usual bad enchant effect; no merge.
+
+For which color to chase, see [A note on dragons](#a-note-on-dragons).
+
 ---
 
 ### Artifacts
@@ -4869,12 +5087,13 @@ enchantment. It also repairs any existing damage.
 - Mjollnir reliable return is Valkyrie-only (artilist.h:97-108).
 - Frost Brand and Fire Brand have SNOWSTORM / FIRESTORM invokes (artilist.h:150, 154).
 - Frost Brand grants cold resistance (DFNS=COLD); Fire Brand grants fire resistance (DFNS=FIRE) (artifact.c:730-736).
-- Stormbringer is SPFX_INTEL: cross-alignment touch deals 4d10, not 4d4.
+- Stormbringer is SPFX_INTEL: cross-alignment touch deals 4d10, not 4d4. (artilist.h:93-96 Stormbringer has SPFX_INTEL; artifact.c:953 `dmg = d((Antimagic ? 2 : 4), (self_willed ? 10 : 4))`)
 - Grimtooth +d6 damage bonus applies to ALL targets, not just elves (artifact.c:1099-1102).
 - Mitre of Holiness gives NO damage bonus vs undead; ATTK is NO_ATTK (artifact.c:1095-1098).
 - M2_UNDEAD flag only enables shade_glare on weapons, not worn helms (artifact.c:554-571).
 - Eye of the Aethiopica magic resistance requires worn, NOT carried (artilist.h:303-305, NO_CARY).
 - Eye of the Aethiopica carry effects: energy regen, half spell damage (cspfx EREGEN, HSPDAM).
+- strategy aligned with NetHackWiki Artifact weapon, Grayswandir, Magicbane, Mjollnir: Grayswandir/Magicbane/Mjollnir as the top wish artifacts; alignment-mismatched artifacts blast on touch (https://nethackwiki.com/wiki/Artifact_weapon, https://nethackwiki.com/wiki/Grayswandir, https://nethackwiki.com/wiki/Magicbane, https://nethackwiki.com/wiki/Mjollnir)
 -->
 
 
@@ -5048,21 +5267,21 @@ again.
 
 ::: dense-table
 
-| Role       | Artifact                                     | Form         | Wear/wield                  | Carry                  | `#invoke`        |
-|-----------|-------------------------------------------------------------|--------------|--------------------------|------------------------|-----------------|
-| Archeologist| The Orb of Detection                | crystal ball | —                              | MR, ESP, ½ spell dmg   | invisibility      |
-| Barbarian   | The Heart of Ahriman                | luckstone    | ×2 dmg as a projectile         | stealth, +luck         | levitation        |
-| Caveman     | The Sceptre of Might                | mace         | +d5 hit; ×2 vs non-lawful      | magic resistance       | conflict          |
-| Healer      | The Staff of Aesculapius            | quarterstaff | drain-life on hit              | drain res., regen      | full heal + cure  |
-| Knight      | The Magic Mirror of Merlin          | mirror       | (speaks to you)                | MR, ESP                | —                 |
-| Monk        | The Eyes of the Overworld           | lenses       | astral vision, magic res. (when worn) | —              | enlightenment     |
-| Priest      | The Mitre of Holiness               | helm         | +1 prot. (brilliance base)     | fire res.              | energy boost      |
-| Ranger      | The Longbow of Diana                | bow          | +d5 hit; reflection            | ESP                    | conjure arrows    |
-| Rogue       | The Master Key of Thievery          | skeleton key | —                              | warn, t-ctrl, ½ phys   | guaranteed untrap |
-| Samurai     | The Tsurugi of Muramasa             | tsurugi      | +d8 phys; chance to behead     | +luck, +1 prot.        | —                 |
-| Tourist     | Platinum Yendorian Express Card     | credit card  | —                              | MR, ESP, ½ spell dmg   | charge an item    |
-| Valkyrie    | The Orb of Fate                     | crystal ball | —                              | +luck, warn, ½ all dmg | levitate/teleport |
-| Wizard      | The Eye of the Aethiopica           | amulet       | —                              | MR, ½ spell, +energy   | create portal     |
+| Role | Artifact                            | Form           | Wear/wield                          | Carry                    | `#invoke`           |
+|------|------------------------------------------|----------------|-----------------------------------|--------------------------|---------------------|
+| Arc  | The Orb of Detection                    | crystal ball | —                                     | MR, ESP, ½ spell dmg     | invisibility        |
+| Bar  | The Heart of Ahriman                    | luckstone    | ×2 dmg as a projectile                | stealth, +luck           | levitation          |
+| Cav  | The Sceptre of Might                    | mace         | +d5 hit; ×2 vs non-lawful             | magic resistance         | conflict            |
+| Hea  | The Staff of Aesculapius                | quarterstaff | drain-life on hit                     | drain res., regen        | full heal + cure    |
+| Kni  | The Magic Mirror of Merlin              | mirror       | (speaks to you)                       | MR, ESP                  | —                   |
+| Mon  | The Eyes of the Overworld               | lenses       | astral vision, magic res. (when worn) | —                        | enlightenment       |
+| Pri  | The Mitre of Holiness                   | helm         | +1 prot. (brilliance base)            | fire res.                | energy boost        |
+| Ran  | The Longbow of Diana                    | bow          | +d5 hit; reflection                   | ESP                      | conjure arrows      |
+| Rog  | The Master Key of Thievery              | skeleton key | —                                     | warn, t-ctrl, ½ phys     | guaranteed untrap   |
+| Sam  | The Tsurugi of Muramasa                 | tsurugi      | +d8 phys; chance to behead            | +luck, +1 prot.          | —                   |
+| Tou  | Platinum Yendorian Express Card         | credit card  | —                                     | MR, ESP, ½ spell dmg     | charge an item      |
+| Val  | The Orb of Fate                         | crystal ball | —                                     | +luck, warn, ½ all dmg   | levitate / teleport |
+| Wiz  | The Eye of the Aethiopica               | amulet       | —                                     | MR, ½ spell, +energy     | create portal       |
 
 :::
 
@@ -5093,10 +5312,10 @@ plus drain resistance just by carrying it. `#invoke` heals fully and
 cures nearly every bad status. Few artifacts change a role's late
 game as much as this one.
 
-**The Magic Mirror of Merlin** (Knight): doesn't fight (it's a
-mirror), but grants ESP and magic resistance, and occasionally
-*speaks*, dropping hints. Knights already have Excalibur for combat,
-so the Mirror is pure passive utility.
+**The Magic Mirror of Merlin** (Knight): grants ESP and magic
+resistance, and occasionally *speaks*, dropping hints. Knights
+already have Excalibur for combat, so the Mirror is pure passive
+utility.
 
 **The Eyes of the Overworld** (Monk): lenses that, when worn, give
 astral vision (see invisible, see through walls, spot secret doors)
@@ -5119,9 +5338,9 @@ plus reflection while wielded, ESP while carried. `#invoke` conjures
 free arrows out of thin air. Combined with the Ranger's ranged
 specialization this is the role's centerpiece.
 
-**The Master Key of Thievery** (Rogue): doesn't fight, but the carry
-package is enormous: warning, teleport control, half physical damage
-taken, and `#invoke` instantly untraps a nearby trap. The unlocking
+**The Master Key of Thievery** (Rogue): a carry package of warning,
+teleport control, half physical damage taken, and `#invoke` instantly
+untraps a nearby trap. The unlocking
 bonus depends on alignment: a Rogue gets it from any non-cursed
 Key; everyone else needs a **blessed** Key. With those preconditions
 met, `#untrap` also gains a perfect-detection bonus on doors and
@@ -5135,8 +5354,8 @@ weapon's reputation. One of the strongest artifacts in the game,
 the Samurai's reward for a hard quest.
 
 **The Platinum Yendorian Express Card** (Tourist): the Tourist's
-get-out-of-jail card. Carry grants ESP, magic resistance, and half
-spell damage; `#invoke` charges an item (a wand, ring, or marker),
+get-out-of-jail card. Carrying it grants ESP, magic resistance, and
+half spell damage; `#invoke` charges an item (a wand, ring, or marker),
 which in the Tourist's hands is roughly "a free wish per ~1000
 turns." Pairs especially well with marker-stockpiling strategies.
 
@@ -5173,7 +5392,8 @@ For a spell-caster this is irreplaceable.
 - crowning adds rnz(1000) * kick on top of the ordinary rnz(350) prayer wait (pray.c:1356-1361)
 - crowning does NOT lock alignment — the one-way conversion gate is ualignbase[CURRENT]==ualignbase[ORIGINAL] (pray.c:1638)
 - same-race blood always converts lawful or neutral altars to CHAOTIC, never to co-aligned (pray.c:1717-1720)
-- on a chaotic altar, same-race blood summons a demon
+- on a chaotic altar, same-race blood summons a demon (pray.c:1723-1739)
+- strategy aligned with NetHackWiki Prayer, Sacrifice, Protection racket, Crowning: prayer-as-emergency rules, sacrifice-fresh-corpses, protection-AC stacks across donations, crowning penalty (https://nethackwiki.com/wiki/Prayer, https://nethackwiki.com/wiki/Sacrifice, https://nethackwiki.com/wiki/Protection_racket, https://nethackwiki.com/wiki/Crowning)
 -->
 
 
@@ -5379,15 +5599,11 @@ behavior), your god may crown you. Crowning grants:
 - A class-specific bonus: Wizards get the *finger of death* spell;
   Monks get *restore ability*.
 
-The catch is that crowning **adds a large random penalty to your
-prayer timeout** — on the order of an extra ~1000 turns on
-average, on top of the ordinary post-prayer wait. Many experienced
-players avoid being crowned because that hike turns prayer into an
-unreliable emergency tool during the most dangerous part of the
-game. If you're sacrificing a lot to fish for an artifact gift,
-know that you might accidentally trigger a crowning instead. Some
-players deliberately keep their alignment record modest until
-they've secured the items they need.
+The catch is that crowning **adds about ~1000 turns of prayer
+timeout** on top of the usual post-prayer wait, turning prayer into
+an unreliable emergency tool. If you're sacrificing to fish for an
+artifact gift, watch the alignment record so you don't trigger a
+crowning by accident.
 
 ---
 
@@ -5396,16 +5612,17 @@ they've secured the items they need.
 2026-05-18:
 - to-hit factors: XL, Str, Dex, Luck, enchantment, AC (find_roll_to_hit)
 - abon includes both Strength AND Dexterity; Dex 25 yields +11 (weapon.c:950-988)
-- dbon has a Strength cap
-- two-handed weapons get a 3/2 Strength-bonus multiplier
-- conflict requires mutual sight and a Cha-vs-Lvl resist roll
+- dbon has a Strength cap: max +6 at STR 18/100 or higher (weapon.c:993-1015)
+- two-handed weapons get a 3/2 Strength-bonus multiplier (weapon.c bhitval two-handed branch)
+- conflict requires mutual sight and a Cha-vs-Lvl resist roll: resist_chance = min(19, Cha - m_lev + XL) (mondata.c:1607-1612)
 - two-weapon and shield are mutually exclusive
 - Expert two-weapon: Rogue and Samurai only (u_init.c skill tables)
-- Rangers cannot two-weapon at all (no P_TWO_WEAPON_COMBAT entry)
+- Rangers cannot two-weapon at all (no P_TWO_WEAPON_COMBAT entry) (u_init.c:440-466 Skill_Ran table)
 - two-weapon penalty is a flat table: -9/-7/-5/-3 to-hit, -3/-1/0/+1 damage
-- Luck to-hit caps at ±5; Luck itself ranges ±10 (±13 with luckstone)
+- Luck to-hit contribution is sgn(Luck)·((|Luck|+2)/3), capping at ±5 (uhitm.c:377); Luck itself ranges ±10, ±13 with luckstone
 - monsters use m_move (phase 3) then mattacku/castmu (phase 4) on the same turn (monmove.c:911, 943-944, 971)
 - no "free extra step" change exists; that earlier claim was fabricated
+- strategy aligned with NetHackWiki Corridor, Movement tactics, Twoweapon: corridor chokepoint as the single biggest tactical principle, two-weapon penalty tied to skill rank (https://nethackwiki.com/wiki/Corridor, https://nethackwiki.com/wiki/Movement_tactics, https://nethackwiki.com/wiki/Twoweapon)
 -->
 
 The most important combat technique in the Mazes is knowing when
@@ -5473,9 +5690,9 @@ will still ruin your day. AC is necessary but not sufficient.
 - Rogue and Samurai are the only roles reaching Expert in P_TWO_WEAPON_COMBAT (u_init.c skill tables).
 - Valkyrie and Knight cap at Skilled (u_init.c skill tables).
 - Barbarian caps at Basic (u_init.c skill tables).
-- Ranger has NO P_TWO_WEAPON_COMBAT entry: cannot two-weapon at all (u_init.c skill tables).
+- Ranger has NO P_TWO_WEAPON_COMBAT entry: cannot two-weapon at all (u_init.c:440-466 Skill_Ran table).
 - Penalty structure is a flat negative replacement per skill tier: to-hit -9/-7/-5/-3, damage -3/-1/0/+1.
-- Penalties are not a "split" between the two weapons.
+- Penalties are not a "split" between the two weapons. (weapon.c:1576-1600 hit-bonus and 1676-1695 dam-bonus apply the same flat penalty per-strike — no halving)
 -->
 
 Some roles can fight with a weapon in each hand, which looks
@@ -5547,17 +5764,18 @@ are the time-tested tactics that keep adventurers breathing:
 - weapon slot costs 1/2/3 per rank; non-weapon costs 1/1/2/2/3
 - two-weapon uses the WEAPON slot column (weapon.c:1141)
 - bare-hand and martial-arts bonuses apply every hit (weapon.c:1611-1613)
-- bare-hand 50% / martial-arts 75% rate is the practice-training check, not bonus gating
+- bare-hand 50% / martial-arts 75% rate is the practice-training check, not bonus gating (uhitm.c:847 `dmg = rnd(!martial_bonus() ? 2 : 4)`; uhitm.c:849 `train_weapon_skill = (dmg > 1)` — rnd(2)>1 is 1/2, rnd(4)>1 is 3/4)
 - riding trains after 100 mounted squares (steed.c:393-396, u.urideturns >= 100)
 - Knights start at Basic riding; target is Skilled (weapon.c:1787-1789)
 - pickup/loot/dip/trap/engrave actions gated at Basic riding
 - slot ceiling 32 for an XL-30 crowned hero: 2 starting + 29 level-ups + 1 crowning (u_init.c:884, pray.c:992-993)
 - Ranger divination caps at Expert (u_init.c:461)
-- Wizard restricted from long sword
+- Wizard restricted from long sword: no P_LONG_SWORD entry in Skill_W (u_init.c:548-569)
 - spell schools start with a 20-use precredit at Basic
 - Skilled cone-of-cold and fireball: cluster of 3×3 explosions (spell.c:1419-1452), not room-clearing
 - Valkyrie 6+6+2 = 14 slot example math
 - crown gives +1 slot
+- strategy aligned with NetHackWiki Skill, Twoweapon: slot budget tied to XL + crowning, non-weapon skills cost half, restricted skills only unrestrict to Basic via artifact gift (https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Twoweapon)
 -->
 
 Most adventurers discover the skill system the first time they
@@ -5718,13 +5936,10 @@ A few principles:
   naturally. Anyone else dabbling in unarmed combat should plan
   to stop at Basic.
 
-A few spells also get sharper at Skilled, not just more reliable.
-Cone of cold and fireball stop being beams and become a cluster
-of 3×3 **explosions** you can place at range. Identify, remove
-curse, haste self, detect monsters, and several others gain the
-blessed-scroll effect (multi-item ID, full uncurse, longer
-duration). If you cast those spells regularly, the extra slots
-earn themselves back.
+A few spells get sharper at Skilled. Cone of cold and fireball
+become a cluster of 3×3 **explosions** you can place at range.
+Identify, remove curse, haste self, detect monsters, and several
+others gain the blessed-scroll effect.
 
 ---
 
@@ -5809,13 +6024,14 @@ of your survival.
 2026-05-18:
 - bare "gray dragon scale mail" keeps random spe and rolls BUC via blessorcurse(otmp,10): ~5% blessed / ~5% cursed / ~90% uncursed (objnam.c:5094-5096, 5258-5268)
 - artifact wishes are probabilistic: oartifact && rn2(nartifact_exist())>1 (objnam.c:5374), scaled by TOTAL existing artifacts including bones
-- u.uconduct.wisharti increments whether the wish is granted or denied
-- only quest artifacts are absolutely blocked
+- u.uconduct.wisharti increments whether the wish is granted or denied (objnam.c:5364)
+- only quest artifacts are absolutely blocked: restrict_name SPFX_NOGEN|SPFX_RESTR check (artifact.c:618)
 - silent substitutes: Amulet of Yendor, Bell of Opening, Book of the Dead, Candelabrum, magic lamp → oil lamp (objnam.c:5003-5006)
-- all gloves give +1 AC; gauntlets of power give STR 25 (+6 to-hit/dmg), not bonus AC
+- all gloves give +1 AC (objects.h:686-697); gauntlets of power give STR 25, not bonus AC (attrib.c:1214)
 - Vlad's throne wish rate is 4/13 per effective sit (sit.c:241-256)
 - magic lamp ≈27% wish-blessed: 1/3 djinni × 4/5 wish (apply.c:1817, potion.c:2833-2845)
 - fountain water-demon wish (fountain.c:78, 314); Amulet-of-Yendor pickup wish (allmain.c:446-451)
+- strategy aligned with NetHackWiki Wish, Gray dragon scale mail, Speed boots, Magic lamp: GDSM/SDSM as top wishes, speed boots and gauntlets of power as standard follow-ups, bare wishes risk cursed/random spe (https://nethackwiki.com/wiki/Wish, https://nethackwiki.com/wiki/Gray_dragon_scale_mail, https://nethackwiki.com/wiki/Speed_boots, https://nethackwiki.com/wiki/Magic_lamp)
 -->
 
 When the game asks "For what do you wish?", be specific. This is
@@ -5842,19 +6058,20 @@ not the time for ambiguity:
 ### Spellcasting
 <!-- audit
 2026-05-18:
-- force bolt damage is 2d12; school skill does NOT scale damage
+- force bolt damage is 2d12; school skill does NOT scale damage (zap.c:2720-2724)
 - chain lightning is level 4 NODIR, not level 7, not a bouncing ray (objects.h:1409-1411)
-- failed spellbook read effects: teleport, aggravate, blindness, take-gold, confusion, contact poison, exploding rune, rndcurse (spell.c:130)
+- failed spellbook read effects: teleport (lvl 1+), aggravate (lvl 2+), blindness (lvl 3+), take-gold (lvl 4+), confusion (lvl 5+), contact poison (lvl 6+), exploding rune (lvl 7+, 2d10+5 dmg, antimagic resists). Default rndcurse branch never fires: max spell level is 7 so rn2(lev) maxes at 6 (spell.c:130-185)
 - failed read has a single 1/3 destruction chance (spell.c:612)
 - spellbook fade ceiling is 4 successful reads: MAX_SPELL_STUDY=3 with `> MAX_SPELL_STUDY` (spell.c:400-418)
-- no Pw drain from memorized spells exists; "spell maintenance" is fabricated
-- drain_en only ever DECREASES Pw — no reflection+vortex max-Pw trick
+- no Pw drain from memorized spells exists; "spell maintenance" is fabricated (allmain.c moveloop has no per-spell Pw decrement; only cast_spell at spell.c:1245 decrements via SPELL_LEV_PW)
+- drain_en only ever DECREASES Pw — no reflection+vortex max-Pw trick (trap.c:5202-5240 drain_en only subtracts from u.uen and decreases u.uenmax)
 - blessed book bypasses the read-ability check entirely (auto-success)
-- Pw cost per spell = 5 × level
+- Pw cost per spell = 5 × level: SPELL_LEV_PW(spellev) (spell.c:1245)
 - confused casts fail outright (spell.c:1372); charm monster has no confused-area mode
-- Skilled+ casting acts like a blessed scroll
+- Skilled+ casting acts like a blessed scroll (spell.c:1524-1525) or blessed potion (spell.c:1540-1541)
 - Pw regen: (Wis + Int)/15 + 1; Wizards tick on factor 3 vs 4 (allmain.c:605-607)
 - Valkyries restricted in divination, so reading scroll of identify is occasional at best (u_init.c:525-546)
+- strategy aligned with NetHackWiki Spellbook, Spellcasting: Int + 4 + XL/2 − 2·level success formula, blessed book auto-success, Pw = 5 × level (https://nethackwiki.com/wiki/Spellbook, https://nethackwiki.com/wiki/Spellcasting)
 -->
 
 Magic in the Mazes is less "wave a wand and sparkles happen" and
@@ -5872,6 +6089,18 @@ several turns and can fail. A failed reading can teleport you, take
 your gold, blind, confuse, or poison you, blow up in your face for
 HP damage, or randomly curse one of your items. A book that survives
 failures can be retried.
+
+The book's level decides which effects are on the table. A level-1
+book can teleport you somewhere random when you fail to read it. A
+level-2 book might aggravate nearby monsters instead. Misread a
+level-3 book and it can blind you for 250 to 350 turns. A level-4
+book can take all your gold, and level 5 can leave you confused
+for 16 to 22 turns. Misread a level-6 book and you may be
+contact-poisoned: gloves take corrosion damage, bare hands take
+1 or 2 points of Strength plus 1d10 HP (1d6 with poison
+resistance). And a level-7 book can have an exploding rune. Magic
+resistance blocks the explosion; without it, you take 2d10+5
+damage. Practical rule: don't read books you can't afford to fail.
 
 The chance of successfully reading a spellbook depends on the
 **spell level**, your **Intelligence**, and your **experience
@@ -5968,12 +6197,9 @@ is 35 Pw). A failed cast still spends half. Power regenerates over
 time, faster with higher Wisdom and Intelligence, faster still for
 Wizards or with a regeneration source.
 
-High-level spells cost serious power. You can't spam finger of
-death unless you have a colossal power pool, and even then you'll
-run dry faster than you'd like. Plan your casting, carry backup
-options (wands, scrolls) for when your mana runs low, and remember
-that a Wizard who can't cast spells is just a person in a bathrobe
-holding a stick.
+High-level spells cost serious power. Plan your casting and carry
+backup wands and scrolls: a Wizard out of Pw is just a person in a
+bathrobe holding a stick.
 
 ---
 
@@ -5987,6 +6213,8 @@ holding a stick.
 - blessed remove-curse hits all worn+carried; uncursed only worn (read.c:1524, 1549)
 - temple priests do NOT reveal BUC for a fee; only Priest CLASS sees BUC free (priest.c:629-718 sets HClairvoyant + Protection, not bknown)
 - shop price-id can infer BUC indirectly
+- strategy aligned with NetHackWiki BUC, Scroll of remove curse, Potion of holy water: altar/pet test, blessed remove-curse hits entire inventory, holy water dip uncurses (https://nethackwiki.com/wiki/BUC, https://nethackwiki.com/wiki/Scroll_of_remove_curse, https://nethackwiki.com/wiki/Potion_of_holy_water)
+- polymorph into a sliparm form drops body armor (cursed or not) into inventory (polyself.c:1198-1228)
 -->
 
 
@@ -6058,6 +6286,11 @@ When prevention fails, you have three remedies:
   benefit of answering prayer. Don't waste a prayer solely on this,
   but it's a nice bonus
 
+Stuck in cursed body armor? Polymorphing into a form too small for
+the suit drops it off into your inventory (curse and all), even
+though it would normally refuse to come off. From there, dip in
+holy water and re-wear. See [Polymorph as a Tool](#polymorph-as-a-tool).
+
 The lesson: always carry holy water and a scroll of remove curse.
 The moment you find yourself stuck with cursed levitation boots
 over a moat, you'll understand why veterans never leave home
@@ -6074,13 +6307,14 @@ without them.
 - prayer is rejected on ANY negative Luck (pray.c:2155), not just <= -10
 - no Sokoban-down-stairs Luck penalty exists
 - thrown gem to cross-aligned unicorn: identified -3..+3 (dothrow.c:2334 rn2(7)-3); unidentified -1..+1 (dothrow.c:2349 rn2(3)-1)
-- "ID gems for shopkeeper +1" is fabricated; shk.c has no such hook
+- "ID gems for shopkeeper +1" is fabricated; shk.c has no such hook (shk.c contains no change_luck or adjalign call on GEM_CLASS sale)
 - killing quest leader: -4 baseline, immediate change_luck(-20), u.ugangr += 7 (mon.c:3680, timeout.c:600)
 - killing pet: -1 plus alignment -15 via adjalign (mon.c:3664, 3704)
 - only mirror breaks for Luck -2 (uhitm.c:1133, dothrow.c:2496, dokick.c:445/1724); crystal balls/armor don't
 - full-moon/Friday-the-13th baseline shift (timeout.c:595-598)
 - carrying the Amulet or u.ugangr > 0 doubles drift rate (300 turns, timeout.c:607)
 - Archeologists start with TOUCHSTONE knowledge only (u_init.c:50, 903); gems are NOT pre-identified
+- strategy aligned with NetHackWiki Luck, Luckstone, Luck item: ±13 cap with non-cursed luckstone, drift toward 0 every 600 turns, cursed luckstone locks negative Luck (https://nethackwiki.com/wiki/Luck, https://nethackwiki.com/wiki/Luckstone, https://nethackwiki.com/wiki/Luck_item)
 -->
 
 
@@ -6239,7 +6473,8 @@ random numbers, which in the Mazes is the closest thing to love.
 - soldiers and lieutenant guard the entry hall and tower corners
 - five trap doors at columns 40/44/48/52/55 (gaps 4/4/4/3), not strictly even (castle.lua:156-160)
 - trap door always sends you to Valley of the Dead (dlevel=1), not a random Gehennom level (trap.c:669-670, dungeon.c:1949-1953)
-- storerooms hold four D-class dragons; moat holds sea monsters; fountain present
+- storerooms hold four D-class dragons; moat holds sea monsters; fountain present (castle.lua:60, 180, 185)
+- strategy aligned with NetHackWiki Castle, Wand of wishing: bring conflict for crowd control, plan a small wishlist, secure MR/reflection/fire-res/poison-res before descending (https://nethackwiki.com/wiki/Castle, https://nethackwiki.com/wiki/Wand_of_wishing)
 -->
 
 If you've reached the Castle, congratulations: you've survived the
@@ -6307,21 +6542,12 @@ luck, or wresting. The era of the bottomless wishing wand is over
 (see [Key Wands](#key-wands) for the full mechanics).
 
 Once you're fully equipped, the staircase down leads to Gehennom.
-Take a moment before descending. Sit down. Have a snack. Check your
-inventory twice. Make sure you have:
-
-- Magic resistance
-- Reflection
-- Fire resistance
-- Poison resistance
-- A wand of digging
-- A unicorn horn
-- Plenty of food
-- Holy water
-- Scrolls of teleportation and identify
-- Your quest artifact
-
-If you're missing any of these, go back up and find them.
+Take a moment before descending. Sit down. Have a snack. Check
+your inventory twice. You should have **magic resistance**,
+**reflection**, **fire** and **poison resistance**, a **wand of
+digging**, a **unicorn horn**, plenty of food, holy water,
+scrolls of teleportation and identify, and your **quest
+artifact**.
 
 ---
 
@@ -6337,14 +6563,16 @@ If you're missing any of these, go back up and find them.
 - Vlad's throne effect rate: only rnd(6) > 4 (= 1/3 of sits) triggers anything; 4/13 of those are the wish (sit.c:45, 238-353)
 - so unconditional wish rate is (1/3)·(4/13) = 4/39 ≈ 10%; ~10 sits average, ~7 bad effects absorbed
 - Orcus drops magic lamp or magic marker, 50/50 (orcus.lua:107-111)
-- Sanctum has noteleport + nommap
+- Sanctum has noteleport + nommap (sanctum.lua:8)
+- Valley of the Dead has noteleport + nommap + non-diggable walls (valley.lua:10, 74)
+- strategy aligned with NetHackWiki Gehennom, Bribe, Demon lords and princes: prayer dead, bribery (gold in open inventory) for the lawful demon princes, Excalibur disables bribery, dig don't navigate (https://nethackwiki.com/wiki/Gehennom, https://nethackwiki.com/wiki/Bribe, https://nethackwiki.com/wiki/Demon_lords_and_princes)
+- blessed scroll of genocide on class 'L' wipes lich/demilich/master lich/arch-lich (read.c:2638-3015 do_class_genocide, monsters.h:1864-1899 four S_LICH entries); Wizard of Yendor is S_HUMAN (monsters.h:2847-2858), not affected
 -->
 
 Below the Castle, the dungeon changes. The corridors give way to
 mazes. The monsters give way to demons. The comforting knowledge
-that you can pray to your god for help gives way to silence, because
-your god can't hear you in Gehennom. You are deeper than faith
-reaches.
+that you can pray to your god for help gives way to silence: in
+Gehennom, you walk beyond the protective gaze of your god.
 
 This is the part of the game that separates tourists from
 ascenders. Everything you've prepared for has been leading here.
@@ -6477,19 +6705,15 @@ fingertip cantrip is also a death ray, so wear an amulet of life
 saving and consider opening with your own wand of death rather
 than a melee approach.
 
-His level is a *ghost town*: the layout of a normal shopping
-district is preserved, but the shopkeepers and customers are all
-dead — Orcus's presence ambient-kills everything not already
-undead, and what's left is his honor guard of liches, vampires,
-and ghouls. The buildings are stocked with random loot rather than
-for-sale inventory; somewhere on the level the dungeon guarantees
-either a **magic lamp** or a **magic marker** (50/50). The level
-is studded with fire traps and magic traps, so don't sprint. Walk
-it carefully, deal with the residents, and lift the lamp or marker
-on your way out. Either is a meaningful supplement to the Castle
-wand's single charge: a djinni wish (rub the lamp; the lamp
-becomes ordinary afterward) or however many high-value scrolls
-you can write before the marker runs dry.
+His level is a ghost town: a normal shopping district with all
+the shopkeepers and customers killed off by his ambient aura, the
+buildings stocked with random loot instead of for-sale inventory.
+What's left is an honor guard of liches, vampires, and ghouls.
+Somewhere on the level the dungeon guarantees either a **magic
+lamp** or a **magic marker** (50/50). Walk carefully (fire and
+magic traps everywhere), deal with the residents, and lift the
+lamp or marker on your way out. Either is a real supplement to
+the Castle wand's single charge.
 
 #### The Wizard's Tower
 
@@ -6580,6 +6804,10 @@ frantic climb back to the surface. The steps:
 - **The Amulet anchors you.** Level teleportation doesn't work
   while you carry it. Every step back to the surface must be
   climbed by foot
+- **Genocide the lich class.** A blessed scroll of genocide
+  applied to **L** removes liches, demiliches, master liches, and
+  arch-liches in one read. Some of the worst Gehennom threats,
+  gone for the rest of the run
 
 ---
 
@@ -6591,6 +6819,7 @@ frantic climb back to the surface. The steps:
 - Eye of the Aethiopica is Wizard-only: SPFX_RESTR + PM_WIZARD; other classes get the badclass blast (artilist.h:303-307, artifact.c:920-948)
 - wand-of-death on the High Priest works: type=-1 skips saving throws (zap.c:4314); High Priest has no antimagic and mr1=70 does not gate ZT_DEATH
 - prayer CAN cure hunger and uncurse worn items (pray.c)
+- strategy aligned with NetHackWiki Ascension kit: GDSM/SDSM, cloak of MR, speed boots, gauntlets of power, life saving, bag of holding, wand of death, candles are the canonical kit (https://nethackwiki.com/wiki/Ascension_kit)
 -->
 
 By the time you're ready to invoke Moloch's Sanctum, the loadout
@@ -6655,6 +6884,8 @@ clear.
 - Force frequency tapers with each trigger (do.c:1536-1563)
 - Amulet-pickup wish fires once on next moveloop iteration if !u.uevent.amulet_wish (allmain.c:446-451)
 - Elbereth is DEAD in Gehennom, all four Elemental Planes, and Astral: onscary returns FALSE for Inhell || In_endgame (teleport.c:68-70)
+- carrying the Amulet blocks level teleport via the u.uhave.amulet guard (teleport.c:1185-1189)
+- strategy aligned with NetHackWiki Ascension run, Mysterious force, Amulet of Yendor: run-don't-fight, dig straight lines, kill the Wizard fast, the Force as the primary climb obstacle (https://nethackwiki.com/wiki/Ascension_run, https://nethackwiki.com/wiki/Mysterious_force, https://nethackwiki.com/wiki/Amulet_of_Yendor)
 -->
 
 You did it. You fought through Gehennom, defeated the High Priest,
@@ -6741,7 +6972,7 @@ last obstacle between you and divinity.
 ### The Elemental Planes
 <!-- audit
 2026-05-19:
-- Plane of Air: vortex AT_ENGL just damages you; it does NOT move bubbles or carry you (mkmaze.c)
+- Plane of Air: vortex AT_ENGL just damages you; it does NOT move bubbles or carry you (vortex rows monsters.h:1062-1109 are plain AT_ENGL damage; bubble drift loop at mkmaze.c:1674-1679 is independent of vortex monsters)
 - bubble drift is a separate system: mv_bubble shifts cloud-bubbles each turn (mkmaze.c:1648-1685, 1951-1965)
 - Plane of Water drowning is NOT instant death: done(DROWNING) honors life saving (trap.c:5171-5193); Breathless prevents it (trap.c:5106-5126)
 - Astral wrong-altar offering ends the game immediately with done(ESCAPED) and the opposing god gains dominion (pray.c:1562-1572)
@@ -6749,6 +6980,7 @@ last obstacle between you and divinity.
 - altar farlook reveals alignment only when ADJACENT; otherwise just "aligned high altar" (pager.c:744-754)
 - every plane has noteleport; self-zap WAN_TELEPORTATION prints "A mysterious force prevents you from teleporting!" (teleport.c:854-855)
 - self-teleport reaches scrolltele() at line 844 from zap.c:2876-2878, so the wand still works on monsters
+- strategy aligned with NetHackWiki Plane of Water, Scroll of genocide, Plane of Air, Astral Plane: genocide class `;` on the Plane of Water, conflict to clear Air's elementals, wrong-altar offering ends the game (https://nethackwiki.com/wiki/Plane_of_Water, https://nethackwiki.com/wiki/Scroll_of_genocide, https://nethackwiki.com/wiki/Plane_of_Air, https://nethackwiki.com/wiki/Astral_Plane)
 -->
 
 Beyond the top of the Dungeons of Doom, the world dissolves into
@@ -6850,7 +7082,7 @@ altar, make one sacrifice, and end this.
 <!-- audit
 2026-05-19:
 - F/G/g/m/O/v/_/;//, Ctrl+A/P/R/O, #overview, #chronicle, #annotate, #conduct all verified (cmd.c:1662-2065)
-- `verbose` controls extra descriptive messages (wielding/digging/sounds/pets), NOT "why multi-commands stopped"
+- `verbose` controls extra descriptive messages (wielding/digging/sounds/pets), NOT "why multi-commands stopped" (optlist.h:813-815 declares flags.verbose; gated at dig.c:711/1441/1468/2157, ball.c:61, attrib.c:176, apply.c:438 etc. — none are multi-command stop messages)
 - double-tap F cancels the attack lock (cmd.c:1622-1633)
 - `m` prefix on e/a/, opens a menu
 - Ctrl+A repeats only the last EXECUTED command, not the last input (cmd.c:3732-3736)
@@ -7007,6 +7239,7 @@ The solutions still work; just mirror the directions.
 2026-05-19:
 - Scrolls land at spoiler (3,12) and (4,12); lua coords (02,11) and (03,11) (soko4-1.lua:94-95).
 - Spoiler-to-lua mapping: lua_xy+1 = spoiler_col, row.
+- Level flags noteleport, hardfloor, sokoban, solidify, premapped set (soko4-1.lua:38).
 - All 19 push steps verified against soko4-1.lua by simulation.
 - Final remainder (boulder A) is exact.
 -->
@@ -7066,8 +7299,10 @@ are always scrolls of earth.
 2026-05-19:
 - Map walls/floors and all 12 boulders A-L match soko4-2.lua:9-21, 29-42.
 - Upstair (2,2), branch portal (4,2) (soko4-2.lua).
-- 10 pits: 5 at col 2 rows 3-7, plus 5 at row 9 cols 2-6.
-- 2 rolling-boulder traps; 2 always-scrolls-of-earth at (2,10) and (3,10).
+- 10 pits: 5 at col 2 rows 3-7, plus 5 at row 9 cols 2-6 (soko4-2.lua:48-59).
+- 2 rolling-boulder traps at (1,7) and (6,8) (soko4-2.lua:53, 60).
+- 2 always-scrolls-of-earth at (2,10) and (3,10) (soko4-2.lua:63-64).
+- Level flags noteleport, hardfloor, sokoban, solidify, premapped (soko4-2.lua:7).
 - All 16 solution steps land on lua floor with cardinal approach squares.
 - Final remainder (boulders D and E) is exact.
 -->
@@ -7133,6 +7368,8 @@ Two boulders (D and E) remain. The two scrolls at (2,10) and
 2026-05-19:
 - Map walls/floors and all 20 boulders A-T match soko3-1.lua:9-73.
 - Both stairs, locked door (27,9), rolling-boulder trap (11,10), 15 hole traps all verified.
+- Hole row at row 10 cols 12-26 (soko3-1.lua:59-73); rolling boulder at (11,10) (soko3-1.lua:58).
+- Level flags noteleport, sokoban, solidify, premapped (soko3-1.lua:7); no hardfloor on level 2.
 - All solution steps land on floor with reachable cardinal approach squares.
 - Step 8's "push F up to (3,4)" is required: F at (3,7) seals the N-S corridor through (3,6).
 - 15 filled holes match the bowling-alley count; final remainder (B, C, D, I, Q) is exact.
@@ -7174,6 +7411,7 @@ Five boulders (B, C, D, I, and Q) remain.
 - 16-boulder layout and all 22 solution steps verified by simulation against soko3-2.lua.
 - Source file is soko3-2.lua (Sokoban .lua numbering runs bottom up; spoiler "Level 2" = second-from-top).
 - Map is a stylized but topologically equivalent rendering of soko3-2.lua.
+- Level flags noteleport, sokoban, solidify, premapped (soko3-2.lua:7); no hardfloor at this depth.
 - Intermediate diagrams at steps 9 and 16 match simulated boulder positions.
 - Step 17 (push H left) is necessary, not cosmetic.
 - Step 21's "G right 1, D up 1" is gratuitous but harmless: those boulders don't reach a hole.
@@ -7281,6 +7519,7 @@ Four boulders (A, D, G, and H) remain.
 - 13-boulder layout and all 13 solution steps verified against dat/soko2-1.lua:9-62.
 - Upstair (17,5), downstair (7,11), locked door (19,9) all match.
 - 10 hole traps at row 10 cols 9-18; rolling-boulder trap at (8,10).
+- Level flags noteleport, sokoban, solidify, premapped (soko2-1.lua:7).
 - Final "three boulders remain" tally is exact.
 -->
 #### Level 3, Version A
@@ -7326,6 +7565,7 @@ Three boulders (F, G, and H) remain.
 - All 16 boulders A-P map exactly to soko2-2.lua coords.
 - Downstair/start at (7,12); rolling-boulder trap at (8,12).
 - 11 holes at row 12 cols 9-19; two locked doors at (20,10) and (20,12).
+- Level flags noteleport, sokoban, solidify, premapped (soko2-2.lua:7).
 - 15 solution steps compress Boudewijn Waijers's original 22; each push geometrically reachable.
 - Final "five boulders remain" tally is exact.
 -->
@@ -7397,6 +7637,7 @@ Five boulders (A, B, D, E, and J) remain.
 - 16 holes plus 1 rolling boulder at row 1: hole col 7, rolling boulder col 8, holes cols 9-23.
 - Four chamber passages at lua row 3 col 7, row 6 col 8, row 9 col 5, row 13 col 7.
 - Intermediate map after step 13 shows 8 holes filled (F, G, H, I, K, L, M, N).
+- Level flags noteleport, sokoban, solidify, premapped (soko1-1.lua:7).
 - Final remainder of 2 boulders (A and E) is exact.
 - Prize odds: 75% bag of holding, 25% amulet of reflection (soko1-1.lua:102-111).
 - "Next to the treasure zoo" chambers at spoiler (17,12) / (17,14) / (17,16); zoo region (18,10)-(22,16).
@@ -7483,7 +7724,7 @@ treasure zoo.
 2026-05-19:
 - prize odds: 25% bag of holding, 75% amulet of reflection (soko1-2.lua:105)
 - 28-step solution simulates cleanly; final remainder boulder (13,7), sokoban prize (13,8) (soko1-2.lua)
-- hardfloor and noteleport flags set (soko1-2.lua:7)
+- level flags noteleport, premapped, sokoban, solidify (soko1-2.lua:7); no hardfloor on prize level
 - diagonal boulder pushes blocked (hack.c:441-448)
 -->
 
@@ -7651,11 +7892,12 @@ vegetarian for the rest of the run. There's no going back.
 - vegan-violating VEGGY foods: eggs, pancakes, royal jelly, cream pies, candy bars, fortune cookies (eat.c:3016-3018)
 - fortune cookies contain eggs, so they break vegan
 - ghosts are G_NOCORPSE; ghost corpses don't exist (monsters.h:2888,2897)
-- watch out for: yellow mold, violet fungus, acid blob (NOT vegetarian-safe)
-- polymorph does NOT break foodless: polyself.c has no u.uconduct.food increment
+- watch out for: yellow mold, violet fungus, acid blob — vegetarian-by-macro but unsafe to eat (yellow mold M1_POIS monsters.h:1638; violet fungus AT_TUCH AD_STCK monsters.h:1670; acid blob AD_ACID monsters.h:139; eat.c:1303-1308 violet fungus corpse hallucinates)
+- polymorph does NOT break foodless: polyself.c has no u.uconduct.food increment (polyself.c:750-751 only increments u.uconduct.polyselfs)
 - prayer cures hunger at Hungry/Weak/Fainting (pray.c:275, uhs >= HUNGRY)
 - wishing for slow digestion is a viable foodless route
 - Monk: vegetarian is nearly free
+- strategy aligned with NetHackWiki Conduct, Foodless, Veggy: vegetarian/vegan/foodless hierarchy and the slow-digestion / prayer / stone-to-flesh strategy for foodless are canonical (https://nethackwiki.com/wiki/Conduct, https://nethackwiki.com/wiki/Foodless, https://nethackwiki.com/wiki/Veggy)
 -->
 
 These form a hierarchy: foodless is stricter than vegan, which is
@@ -7704,6 +7946,7 @@ conduct (it counts as eating rock).
 - dropping any non-coin on an altar breaks the conduct via the BUC flash (do.c:370)
 - final Amulet offering for ascension is exempt (pray.c:1529-1588 has no gnostic increment)
 - Priest's starting holy water does NOT auto-break the conduct (u_init.c:716-722)
+- strategy aligned with NetHackWiki Atheist: no prayer / sacrifice / chat-with-priest / altar drops; final ascension Amulet offering is exempt (https://nethackwiki.com/wiki/Atheist)
 -->
 
 Don't interact with the divine. Specifically: don't `#pray`, don't
@@ -7729,6 +7972,7 @@ atheist ascension is mechanically possible.
 - do NOT break: thrown weapons, fired ammo, wands, spells, barehand, martial arts, cockatrice-corpse-wield
 - iron chain is CHAIN_CLASS, not a weptool; swinging it does NOT break (objects.h:101, 1631)
 - aklys is WEAPON_CLASS, not a weptool; it breaks via the WEAPON_CLASS branch (objects.h:381-383)
+- strategy aligned with NetHackWiki Weaponless, Martial arts: thrown/fired weapons and martial arts preserve the conduct, wielded-polearm-#apply still breaks it (https://nethackwiki.com/wiki/Weaponless, https://nethackwiki.com/wiki/Martial_arts)
 -->
 
 Never hit a monster with a wielded weapon or weapon-tool. You can
@@ -7750,8 +7994,9 @@ output of late-game artifact weapons.
 <!-- audit
 2026-05-19:
 - Pacifist tracks u.uconduct.killer; only xkilled (mon.c:3500) and pet-pushed-into-trap (hack.c:2201) increment
-- pet kills and conflict kills do NOT break the conduct
-- charm-monster spell, Elbereth, and pet tactics are all safe
+- pet kills and conflict kills do NOT break the conduct: xkilled() only increments on !noconduct branch (mon.c:3499-3502)
+- charm-monster spell, Elbereth, and pet tactics are all safe (no killer++ in those code paths)
+- strategy aligned with NetHackWiki Pacifist, Conflict: pacifist runs lean on strong pets (often polymorph-amplified) and a ring of conflict for crowds (https://nethackwiki.com/wiki/Pacifist, https://nethackwiki.com/wiki/Conflict)
 -->
 
 Don't kill any monsters. Not directly, not with pets, not through
@@ -7773,6 +8018,7 @@ of charm monster, and extremely patient tactics.
 - do NOT break: blank paper, unread novels, Book of the Dead, Hawaiian shirts, reading floor engravings (Elbereth)
 - pet-on-scroll workaround for identifying scrolls is safe
 - Wizard/Priest/Healer/Monk/Knight keep one pre-learned spell until it fades, ~20K turns (spell.h:17 KEEN)
+- strategy aligned with NetHackWiki Illiterate: only an "x"-signature engrave is safe, scroll of scare monster is the rare exception that doesn't break the conduct (https://nethackwiki.com/wiki/Illiterate)
 -->
 
 Don't read anything. No scrolls, no spellbooks, no fortune cookies,
@@ -7790,13 +8036,14 @@ forces extreme reliance on wands, potions, and creative workarounds.
 #### No Genocide
 <!-- audit
 2026-05-19:
-- genocide is only prompted by scroll of genocide and by sitting on a regular throne; wishes never offer it
+- genocide is only prompted by scroll of genocide and by sitting on a regular throne; wishes never offer it (do_genocide callers: read.c:1735-1737 SCR_GENOCIDE and sit.c:131 throne only)
 - uncursed scroll: single species; blessed scroll: whole class (do_class_genocide, read.c:2638)
 - throne prompt is single-species only: case 8 of 13 in throne_sit_effect, calls do_genocide(5) (sit.c:125-132)
 - Vlad's tower thrones take a different path with no genocide case (special_throne_effect, sit.c:63-66)
 - on a cursed scroll, empty input re-prompts and rndmonst() creates monsters; type "none" to escape (read.c:2848-2871)
 - end-of-game tracking counts G_GENOD species in mvitals[], not a u_conduct counter (insight.c:2951-2966 num_genocides)
 - cursed-scroll monster-creation preserves the conduct (no species gets G_GENOD'd)
+- strategy aligned with NetHackWiki Genocide, Throne: answer "none" at the prompt, throne genocides are always safe, Plane of Water class-`;` wipe is off-limits for genocideless (https://nethackwiki.com/wiki/Genocide, https://nethackwiki.com/wiki/Throne)
 -->
 
 Never genocide any monster. Genocide is prompted by reading a
@@ -7823,7 +8070,7 @@ against late-game threats takes discipline.
 
 <!-- audit
 2026-05-19:
-- no SCR_POLYMORPH exists in 5.0; "cursed scroll of polymorph" is not a thing
+- no SCR_POLYMORPH exists in 5.0; "cursed scroll of polymorph" is not a thing (objects.h:1187-1265 scroll list has no polymorph entry; no SCR_POLYMORPH token anywhere in source)
 - breaks: genetic engineer claw (AD_POLY -> polyself)
 - breaks: eating chameleon, doppelganger, or mimic corpses (eat.c:1244-1263, eat.c:1199)
 - breaks: green slime auto-poly (timeout.c:493)
@@ -7831,6 +8078,7 @@ against late-game threats takes discipline.
 - Unchanging blocks all polymorph; system shock does NOT break the conduct (polyself.c:483-495)
 - sandestins are G_NOCORPSE; their corpses are unreachable (eat.c:1246)
 - poly_when_stoned only fires if already polymorphed into a non-stone golem; normal characters die (mondata.c:80-86)
+- strategy aligned with NetHackWiki Polymorph, Amulet of unchanging, Polypiling: Unchanging blocks every involuntary path, polypileless forfeits the polypile item-generation trick (https://nethackwiki.com/wiki/Polymorph, https://nethackwiki.com/wiki/Amulet_of_unchanging, https://nethackwiki.com/wiki/Polypiling)
 -->
 #### Polymorph Restrictions
 
@@ -7860,6 +8108,7 @@ to obtain specific high-value items.
 - wisharti ticks even for DENIED artifact wishes: increment is before the deny branch (objnam.c:5362-5365)
 - fountain water demon routes through mongrantswish -> makewish
 - wresting empty wands routes through makewish (zap.c:2583)
+- strategy aligned with NetHackWiki Conduct, Wish: wishless vs no-wishing-for-artifacts are separately tracked, "nothing" is the canonical escape for a forced wish (https://nethackwiki.com/wiki/Conduct, https://nethackwiki.com/wiki/Wish)
 -->
 
 Two related conducts:
@@ -7949,9 +8198,8 @@ signature spell or item. Wizard knows force bolt; Healer knows
 healing; Cleric, Knight, and Monk all know protection (Cleric
 also knows water); Archeologist knows touchstone; Cave Dweller
 knows flint; Rogue and Tourist know sack; Samurai knows gunyoki
-rations. The **supply chests** scattered on early levels above
-the Oracle (a feature in every 5.0 game, not just pauper) can
-provide much of your first kit.
+rations. The supply chests on early levels (see [What to
+Pack](#what-to-pack)) can provide much of your first kit.
 
 #### Petless (new in 5.0)
 <!-- audit
@@ -7961,8 +8209,8 @@ provide much of your first kit.
 - the endgame angel preserves petless (minion.c:533-539)
 - xlogfile achievement "petless" via add_achieveX (topten.c)
 - "dairy to foocubi" is fabricated: befriend_with_obj gates on is_domestic, and foocubi aren't (mondata.h:255-261)
-- foocubus + ring of adornment is pacification, not taming
-- food thrown at hostile dogs and cats IS a taming path that breaks petless
+- foocubus + ring of adornment is pacification, not taming (mhitu.c doseduce only reads mon->mtame at 2263 and mon->mpeaceful at 2279; never sets mtame nor calls tamedog)
+- food thrown at hostile dogs and cats IS a taming path that breaks petless (dothrow.c:2268-2269 routes to tamedog)
 -->
 
 Never have a pet. Set `OPTIONS=pettype:none` in your rcfile to skip
@@ -7978,7 +8226,7 @@ spot.
 2026-05-19:
 - permadeaf is u.uroleplay.deaf, in xlogfile (topten.c:602) and show_conduct (insight.c:2113)
 - Deaf macro at youprop.h:125
-- rcfile option name is `permadeaf` (or `deaf`), NOT `!acoustics` (a different flavor flag, flags.acoustics)
+- rcfile option name is `permadeaf` (or `deaf`), NOT `!acoustics` (a different flavor flag, flags.acoustics) (optlist.h:267-269 declares `deaf` with alias "permadeaf" binding u.uroleplay.deaf; optlist.h:143-145 declares `acoustics` binding flags.acoustics — separate flag)
 - permadeaf is set_in_config: rcfile only, not in-game O menu (options.c:5207)
 - there is no `-Dpermadeaf` syntax; `-D` is the debug/wizard-mode flag (unixmain.c:359-365)
 - Deaf only suppresses shrieker MESSAGES; makemon and aggravate still run (mon.c:4089-4106)
@@ -8009,7 +8257,7 @@ information you normally get for free.
 #### Sokoban (new in 5.0)
 <!-- audit
 2026-05-19:
-- digging does NOT trigger sokoban_guilt; dig.c has no such call
+- digging does NOT trigger sokoban_guilt; dig.c has no such call (sokoban_guilt callers limited to hack.c:299/307/398/403, read.c:1951, steed.c:767, zap.c:1711/5556 — none in dig.c)
 - breaks: squeeze through (hack.c:299, 307), boulder fracture by wand of striking (zap.c:5556)
 - breaks: polymorph a boulder (zap.c:1711), scroll of earth (read.c:1951), dismount onto a boulder (steed.c:767)
 - each violation costs -1 Luck and increments u.uconduct.sokocheat (trap.c:7039-7054)
@@ -8035,7 +8283,7 @@ clean solve.
 - bonesless achievement requires !flags.bones; you must turn bones loading off (topten.c:605)
 - not encountering bones is a separate Miscellaneous enlightenment line, NOT the conduct (insight.c:439)
 - you cannot get bonesless by luck alone
-- show_conduct never lists lifesaving uses; there is no amulet-of-life-saving tracking
+- show_conduct never lists lifesaving uses; there is no amulet-of-life-saving tracking (insight.c:2089-2200 show_conduct enumerates rerolling/food/atheist/weaphit/pacifist/illiterate/pets/genocides/polypiles/polyselfs/wishes — no lifesaving counter; u.uconduct has no lifesave field)
 - `bones` is set_in_config: config file or command line only, not in-game O menu (optlist.h:213-215)
 - !flags.bones blocks both save (bones.c:360) and load (bones.c:642) — cuts both directions
 - "never encountered any bones levels" enlightenment requires flags.bones true AND u.uroleplay.numbones==0 (insight.c:439-441)
@@ -8060,12 +8308,15 @@ the conduct.)
 2026-05-19:
 - 22 gem prices, Mohs hardness, hard-gem threshold >=8 verified (objects.h, shk.c)
 - unidentified gem sell price: (tmp+3)*quan, tmp 0..divisor-1, min 3 zm (shk.c:3168-3172)
-- Tourist/dunce-cap surcharge, unicorn luck, Excalibur 16000 example verified (shk.c, shknam.c)
+- dunce cap and low-XL Tourist (or visible touristy shirt) each multiply buy by 4/3 (shk.c:2947-2951)
+- angry-shopkeeper surcharge adds (price+2)/3 per billed item, ~33% (shk.c:1365-1373)
+- Charisma price tiers: ACURR>18 halves, =18 multiplier 2/3, 16-17 3/4, <=5 doubles, 6-7 3/2, 8-10 4/3 (shk.c:2953-2964)
 - shopkeeper anti-Elbereth, see-invisible, Keystone Kops, "Closed for inventory", Orcus-level death verified (shk.c)
 - amethyst dipped in booze yields fruit juice (potion.c:2161), NOT a hallucination cure
 - shop walls ARE diggable from inside: dig.c:488-501 converts to door, shopkeeper bills SHOP_WALL_DMG and chases (shk.c:5061-5078)
 - touchstone full-name ID requires blessed (or non-cursed for Archeologist/Gnome); uncursed gives only streak color (apply.c:2744-2751)
 - touchstone hardness is irrelevant: works on all gems
+- glass gems do NOT take the is_gem branch in unicorn gift handling — Luck never changes either direction (dothrow.c:2319, 2358-2368)
 -->
 
 Shops do more than sell: their pricing system is your most
@@ -8100,9 +8351,8 @@ sale:
 **How credit gets used.** When you buy something, the shopkeeper
 applies your credit against the purchase price first ("the price is
 deducted from your credit"). Any remainder comes out of your gold.
-Credit is per-shop and per-shopkeeper: you can't carry it between
-shops, withdraw it back to gold, or hand it to a different
-shopkeeper.
+Credit is per-shop and per-shopkeeper, and cannot be withdrawn back
+to gold.
 
 **Is paying from credit better or worse than paying in gold?** The
 price itself is identical: credit is deducted from the *post-
@@ -8298,9 +8548,8 @@ A few rules of thumb:
   fire-sale them to a non-gem-buying shop for half price.
 - **Worthless glass never costs luck.** Glass thrown at a unicorn is
   either rejected ("not interested in your junk") or quietly
-  accepted with no effect. The luck risk on unicorn throws comes
-  from *real* gems thrown at the **wrong-alignment** unicorn, which
-  rolls a random −3 to +3.
+  accepted. The Luck risk only fires on *real* gems thrown to a
+  **wrong-alignment** unicorn (random −3 to +3).
 
 Read the table as a **selling guide**, not a discard guide: real
 gems near the top are worth making time to sell at a gem dealer
@@ -8321,14 +8570,15 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 - Expert Rogue dagger multishot caps at rnd(4) = 1-4: 1 base + 1 Expert + 1 Skilled + 1 class (dothrow.c:177-190, 63-67)
 - athame engraving Elbereth does NOT dull the weapon, so no enchantment is consumed (engrave.c:1306-1307, 1361). Duration is unchanged
 - silver weapons hurt demons, vampires, lycanthropes, shades, and imps (except tengu) per mon_hates_silver (mondata.c:524-528)
-- silver does NOT hurt liches, zombies, mummies, wraiths, ghouls, or ghosts
+- silver does NOT hurt liches, zombies, mummies, wraiths, ghouls, or ghosts (none of those classes appear in hates_silver, mondata.c:524-528)
+- silver damage bonus is rolled in mhitm/hmon, +1d20 vs hates_silver targets for silver weapons (uhitm.c:1376-1377)
 -->
 
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | dagger | 1d4 / 1d3 | 10 | 4 | +2 | iron | Stackable; Expert-skill Rogues can multishot up to four in a single throw. |
 | elven dagger | 1d5 / 1d3 | 10 | 4 | +2 | wood | Stackable. Sting is the artifact form. |
 | orcish dagger | 1d3 / 1d3 | 10 | 4 | +2 | iron | Stackable. |
@@ -8349,7 +8599,7 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | scalpel | 1d3 / 1d3 | 5 | 6 | +2 | metal | The Healer's starter. |
 | knife | 1d3 / 1d2 | 5 | 4 | — | iron |  |
 | stiletto | 1d3 / 1d2 | 5 | 4 | — | iron |  |
@@ -8370,7 +8620,7 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | short sword | 1d6 / 1d8 | 30 | 10 | — | iron | The Rogue's starter; Samurai's *wakizashi* is just a short sword by another name. |
 | elven short sword | 1d8 / 1d8 | 30 | 10 | — | wood |  |
 | orcish short sword | 1d5 / 1d8 | 30 | 10 | — | iron |  |
@@ -8382,15 +8632,15 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 <!-- audit
 2026-05-19:
 - 10 saber cells verified clean (objects.h)
-- Grayswandir is a SILVER_SABER artifact, PHYS(5,0): +1d5 to-hit and double damage (artilist.h:172, artifact.c:1083-1086, 1106-1107)
-- Werebane is also a silver saber artifact
+- Grayswandir is a SILVER_SABER artifact, PHYS(5,0): +1d5 to-hit and double damage (artilist.h:170, artifact.c:1083-1086, 1106-1107)
+- Werebane is also a silver saber artifact (artilist.h:166); +d5 vs lycanthropes via SPFX_DFLAG2 M2_WERE
 - inline effects deferred to Artifacts chapter rather than duplicated
 -->
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | scimitar | 1d8 / 1d8 | 40 | 15 | — | iron |  |
 | silver saber | 1d8 / 1d8 | 40 | 75 | — | silver | Silver does bonus damage to demons/weres/vampires/imps. Artifact forms: **Grayswandir** and **Werebane** (see [Artifacts](#artifacts)). |
 
@@ -8407,7 +8657,7 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | broadsword | 1d4+1d4 / 1d6+1 | 70 | 10 | — | iron |  |
 | elven broadsword | 1d6+1d4 / 1d6+1 | 70 | 10 | — | wood |  |
 | runesword | 1d4+1d4 / 1d6+1 | 40 | 300 | — | iron | Stormbringer is the chaotic artifact form. |
@@ -8418,18 +8668,20 @@ Damage is shown as **vs small / vs large**, the dice rolled before enchantment a
 <!-- audit
 2026-05-19:
 - long sword stats verified (objects.h:270-280)
-- Excalibur dipping: any alignment rolls 1-in-30 at XL 5+, but only Lawfuls succeed; non-Lawfuls get the sword cursed
-- LONG_SWORD artifacts: Excalibur, Vorpal Blade, Frost Brand, Fire Brand
+- Excalibur dipping requires LONG_SWORD, XL >= 5, quan == 1, not already artifact, no extant Excalibur (fountain.c:404-408)
+- dip roll: !rn2(6) for Knights, !rn2(30) otherwise (fountain.c:405)
+- non-Lawfuls get the sword cursed, spe possibly decremented, oerodeproof cleared (fountain.c:411-421)
+- LONG_SWORD artifacts: Excalibur, Frost Brand, Fire Brand, Giantslayer, Vorpal Blade, Sunsword (artilist.h:85, 149, 153, 174, 191, 209)
 - Vorpal Blade is a LONG_SWORD artifact, NOT a two-handed sword (artilist.h:191)
-- two-handed sword has no dedicated artifact
+- two-handed sword has no dedicated artifact (no TWO_HANDED_SWORD entries in artilist.h)
 -->
 
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
-| long sword | 1d8 / 1d12 | 40 | 15 | — | iron | At XL 5+, dipping in a fountain rolls 1-in-30. Knights get 1-in-6. On a hit, Lawfuls get **Excalibur**. Others get the sword cursed. Artifact forms: Excalibur, Vorpal Blade, Frost Brand, Fire Brand. |
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
+| long sword | 1d8 / 1d12 | 40 | 15 | — | iron | At XL 5+, dipping in a fountain rolls 1-in-30. Knights get 1-in-6. On a hit, Lawfuls get **Excalibur**. Others get the sword cursed. Artifact forms: Excalibur, Frost Brand, Fire Brand, Giantslayer, Vorpal Blade, Sunsword. |
 | katana | 1d10 / 1d12 | 40 | 80 | +1 | iron | +1 to-hit baked in. Snickersnee is the artifact form. |
 
 :::
@@ -8454,7 +8706,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | two-handed sword | 1d12 / 1d6+2d6 | 150 | 50 | — | iron | Two-handed (no shield, no off-hand weapon). No dedicated artifact form. |
 | tsurugi | 1d16 / 1d8+2d6 | 60 | 500 | +2 | metal | Two-handed. The Tsurugi of Muramasa is the artifact form. |
 
@@ -8471,7 +8723,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | axe | 1d6 / 1d4 | 60 | 8 | — | iron |  |
 | battle-axe | 1d8+1d4 / 1d6+2d4 | 120 | 40 | — | iron | Two-handed (gets the 5.0 3/2 Str damage bonus). +1d4 small, +2d4 large. The Barbarian quest artifact **Cleaver** is a battle-axe. |
 
@@ -8490,7 +8742,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | pick-axe | 1d6 / 1d3 | 100 | 50 | — | iron | Weapon-tool. Apply to dig through walls or down through floors (creates pit, then hole). Same `pick-axe` skill as the mattock. |
 | dwarvish mattock | 1d12 / 1d8+2d6 | 120 | 50 | −1 | iron | Two-handed (3/2 Str damage bonus). Digs through walls like a pick-axe. Slight to-hit penalty (−1). |
 
@@ -8508,7 +8760,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | club | 1d6 / 1d3 | 30 | 3 | — | wood | Caveman starter. |
 | aklys | 1d6 / 1d3 | 15 | 4 | — | iron | Returns when thrown if wielded as your primary weapon (it's tethered); occasional misfire. |
 
@@ -8522,13 +8774,13 @@ other bimanual weapon.
 - silver mace: +1d20 vs mon_hates_silver targets (uhitm.c:1376-1377)
 - silver hates list: demons, weres, vampires, shades, most imps (mondata.c:524-528)
 - silver does NOT hit "undead" or "shape-changers" generally (mummies, zombies, ghosts, chameleons excluded)
-- Mjollnir is a war hammer, NOT a mace
+- Mjollnir is a war hammer, NOT a mace (artilist.h:109 `A("Mjollnir", WAR_HAMMER, ...)`)
 -->
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | mace | 1d6+1 / 1d6 | 30 | 5 | — | iron | The Priest's guaranteed first sacrifice gift, Demonbane: a silver mace with +1d5 to-hit and double damage versus demons, plus a banish invoke. |
 | silver mace | 1d6+1 / 1d6 | 36 | 60 | — | silver | +1d20 versus demons, weres, vampires, shades, and most imps. |
 
@@ -8546,7 +8798,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | morning star | 1d4+1d4 / 1d6+1 | 120 | 10 | — | iron | +1d4 small, +1 large — punches above its weight for a one-hander. |
 
 :::
@@ -8556,14 +8808,14 @@ other bimanual weapon.
 2026-05-19:
 - flail: base 1d6/1d4, +1 small (weapon.c:272-275), +1d4 large (weapon.c:239-243); objects.h:384-386
 - grappling hook: 1d2/1d6, WEPTOOL that trains P_FLAIL (objects.h:1010-1012)
-- grappling hook #apply pulls target toward you; range 4/4/5/8 by skill (apply.c:3686-3698)
+- grappling hook #apply pulls target toward you; range 4 (P_NONE/Basic), 5 (Skilled), 8 (Expert+) (apply.c:3686-3698)
 - no flail artifact
 -->
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | flail | 1d6+1 / 1d4+1d4 | 15 | 4 | — | iron | +1 small, +1d4 large; one-handed. |
 | grappling hook | 1d2 / 1d6 | 30 | 50 | — | iron | Tool, not a primary weapon, but trains P_FLAIL. `#apply` to hook and pull a target toward you. |
 
@@ -8580,7 +8832,7 @@ other bimanual weapon.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | war hammer | 1d4+1 / 1d4 | 50 | 5 | — | iron | Mjollnir is the artifact form (Valkyrie sacrifice gift; its alignment will match the player's). |
 
 :::
@@ -8588,16 +8840,17 @@ other bimanual weapon.
 #### Quarterstaff
 <!-- audit
 2026-05-19:
-- quarterstaff: bimanual, 1d6/1d6, wt 40, cost 5, WOOD (objects.h:377-378)
-- Wizard starter (u_init.c:168)
-- bimanual: gets 3/2 Str damage bonus in melee (uhitm.c:1467)
-- Expert skill caps: Wizard, Priest, Healer, Caveman (no Knight, no Rogue)
+- quarterstaff: bimanual, 1d6/1d6, wt 40, cost 5, WOOD, P_QUARTERSTAFF (objects.h:377-379).
+- Wizard starter weapon (u_init.c:168).
+- bimanual: gets 3/2 Str damage bonus in melee (uhitm.c:1467).
+- Expert caps: Wizard, Priest, Healer, Caveman (u_init.c:314,334,396,555 P_QUARTERSTAFF=P_EXPERT).
+- No Knight or Rogue entry: P_QUARTERSTAFF absent from Skill_K and Skill_R (u_init.c:346-413).
 -->
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | quarterstaff | 1d6 / 1d6 | 40 | 5 | — | wood | Two-handed but light; the Wizard's starting weapon. |
 
 :::
@@ -8605,11 +8858,12 @@ other bimanual weapon.
 #### Polearms
 <!-- audit
 2026-05-19:
-- polearm stats verified (objects.h, weapon.c dmgval)
-- polearm reach is skill-dependent, NOT a fixed 2 squares (apply.c:3355-3382)
-- use_pole has NO "empty intervening square" check
-- polearms CAN bash an adjacent monster (uhitm.c:1467-1484)
-- adjacent polearm attack: damage clamps to 1d2 base, no weapon-skill bonus, but Strength bonus still applies (uhitm.c:1075-1086, 1447-1469)
+- 12 polearm rows verified: all two-handed, all P_POLEARMS, all iron (objects.h:294-341).
+- per-row dice/weight/cost from objects.h:294-341 WEAPON() macros; +d4/+d6 vs-large bonuses applied in weapon.c dmgval.
+- polearm reach is skill-dependent, NOT a fixed 2 squares (apply.c:3355-3382).
+- use_pole has NO "empty intervening square" check (apply.c:3355-3382).
+- polearms CAN bash an adjacent monster (uhitm.c:1467-1484).
+- adjacent polearm bash: damage clamps to 1d2 base, no weapon-skill bonus, Strength still applies (uhitm.c:1075-1086, 1447-1469).
 -->
 
 All polearms are two-handed. To strike at range, `#apply` the weapon (not wield-and-attack): you can hit at distance 2 orthogonally at Basic skill, with extra positions opening up at Skilled. You can still hit an adjacent monster the normal way with a polearm in hand, but the attack is treated as bashing — damage clamps to 1d2 base before bonuses and the weapon-skill bonus doesn't apply (Strength still does). Reach is what makes them worth carrying. Notes below describe each entry's extra damage; the reach mechanic is identical across the class.
@@ -8617,7 +8871,7 @@ All polearms are two-handed. To strike at range, `#apply` the weapon (not wield-
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | partisan | 1d6 / 1d6+1 | 80 | 10 | — | iron | Reach. |
 | ranseur | 1d4+1d4 / 1d4+1d4 | 50 | 6 | — | iron | +1d4 small, +1d4 large. |
 | spetum | 1d6+1 / 1d6+1d6 | 50 | 5 | — | iron | +1 small, +1d6 large. |
@@ -8636,12 +8890,13 @@ All polearms are two-handed. To strike at range, `#apply` the weapon (not wield-
 #### Spear
 <!-- audit
 2026-05-19:
-- spear stats verified (objects.h:174-191)
-- Valkyrie starts with a plain spear and trains to Expert (u_init.c:160-161, 537)
-- spear kebab bonus: +2 to-hit vs xorns, dragons, jabberwocks, nagas, giants (weapon.c:71-73, 167-168, is_spear)
-- trident uses P_TRIDENT, a separate skill from spears
-- +1 thrown-spear multishot belongs to Caveman (PM_CAVE_DWELLER), NOT Valkyrie (dothrow.c:47-52)
-- Valkyrie has no class-specific spear multishot, only the generic Expert ceiling
+- 6 spear rows (spear/elven/orcish/dwarvish/silver/javelin) verified P_SPEAR (objects.h:174-191).
+- silver spear: SILVER material, cost 40, +d20 vs silver-haters (objects.h:186-188; artifact.c spec_dbon).
+- Valkyrie starts with a plain spear and trains to Expert (u_init.c:160-161, 537).
+- spear kebab bonus: +2 to-hit vs xorns, dragons, jabberwocks, nagas, giants (weapon.c:71-73, 167-168, is_spear).
+- trident uses P_TRIDENT, a separate skill from spears (objects.h:195 P_TRIDENT).
+- +1 thrown-spear multishot belongs to Caveman (PM_CAVE_DWELLER), NOT Valkyrie (dothrow.c:47-52).
+- Valkyrie has no class-specific spear multishot, only the generic Expert ceiling (dothrow.c).
 -->
 
 All spears share the same skill (trident uses a different class
@@ -8658,7 +8913,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | spear | 1d6 / 1d8 | 30 | 3 | — | iron | Throwable. Valkyrie's starting weapon. |
 | elven spear | 1d7 / 1d8 | 30 | 3 | — | wood |  |
 | orcish spear | 1d5 / 1d8 | 30 | 3 | — | iron |  |
@@ -8680,7 +8935,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | trident | 1d6+1 / 1d4+2d4 | 25 | 5 | — | iron | One-handed. **+4 to-hit vs swimmers in water, +2 vs eels and snakes** — the trident's signature bonus. Outside water it's an ordinary side-arm. |
 
 :::
@@ -8697,7 +8952,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | lance | 1d6 / 1d8 | 180 | 10 | — | iron | One-handed, P_LANCE skill. Mounted only: chance to joust for +2d10 primary (+2d2 off-hand) extra damage; a critical can shatter the lance. No bonus on foot. |
 
 :::
@@ -8707,7 +8962,7 @@ kebab bonus.
 - rubber hose and bullwhip stats verified; P_WHIP skill (objects.h:374-376, 390-392, skills.h:49)
 - bullwhip #apply can disarm (apply.c:3127-3174) and yank from a pit (apply.c:3069-3125)
 - rubber hose does NOT damage shades: it's PLASTIC, shade_glare needs SILVER (artifact.c:555-562, weapon.c:307-308)
-- rubber hose prob=0: never randomly spawns
+- rubber hose prob=0: never randomly spawns (objects.h:374-376 WEAPON row, probability field is 0)
 - Archeologist starts with bullwhip +1 at Basic (apply.c:2992-2993)
 - no whip artifacts
 -->
@@ -8716,7 +8971,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | rubber hose | 1d4 / 1d3 | 20 | 3 | — | plastic | Joke weapon; never spawns randomly. |
 | bullwhip | 1d2 / 1 | 20 | 4 | — | leather | Archeologist's starter. Apply to disarm an adjacent monster (only when the target is wielding a weapon), or to yank yourself out of a pit (anchors on a nearby boulder, furniture, or big monster). |
 
@@ -8724,15 +8979,17 @@ kebab bonus.
 
 <!-- audit
 2026-05-19:
-- 9 bow/arrow rows verified clean (objects.h:141-154, 395-402)
-- yumi prob=0: Samurai-only, never randomly spawns
+- 5 PROJECTILE arrow rows (objects.h:141-154); 4 BOW launcher rows (objects.h:395-402).
+- arrows: 1d6/1d6 (1d7/1d6 elven, 1d5/1d6 orcish, 1d6/1d6 silver) wt 1, cost 2 (objects.h:141-152).
+- ya: 1d7/1d7, +1 hit, METAL, cost 4 (objects.h:153-154).
+- yumi prob=0: Samurai-only, never randomly spawns (objects.h:401-402).
 -->
 #### Bow
 
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | arrow | 1d6 / 1d6 | 1 | 2 | — | iron |  |
 | elven arrow | 1d7 / 1d6 | 1 | 2 | — | wood |  |
 | orcish arrow | 1d5 / 1d6 | 1 | 2 | — | iron |  |
@@ -8758,7 +9015,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | crossbow bolt | 1d4 / 1d6 | 1 | 2 | — | iron | Stackable. |
 | crossbow | — | 50 | 40 | — | wood | Bolts pierce. Multishot kicks in at **Str 18** (Str 16 for gnomes, who also get a baseline +1 multishot); below that, one bolt per turn. Rogues and Rangers reach Expert, Knights Skilled. |
 
@@ -8776,7 +9033,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | sling | — | 3 | 20 | — | leather | Launches rocks, flint stones, and gems. Caveman starting weapon. |
 
 :::
@@ -8792,7 +9049,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | dart | 1d3 / 1d2 | 1 | 2 | — | iron | Poisonable. Tourist starts with a stack of ~21–40 at +2. |
 
 :::
@@ -8808,7 +9065,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | shuriken | 1d8 / 1d6 | 1 | 5 | +2 | iron |  |
 
 :::
@@ -8817,7 +9074,7 @@ kebab bonus.
 <!-- audit
 2026-05-19:
 - boomerang stats verified (objects.h:166-168)
-- boomerang does NOT always return: 10-step curved path that stops on monster, wall, door, or sink hits (zap.c boomhit)
+- boomerang does NOT always return: 10-step curved path that stops on monster, wall, door, or sink hits (zap.c:4148-4220 boomhit; loop ct<10, breaks on isok, monster, ZAP_POS or closed_door)
 - catching the return requires a Dex check, auto-fails if Fumbling; a missed catch hits the thrower
 - enchanted boomerang hits (spe+1) times
 - useless underwater
@@ -8826,7 +9083,7 @@ kebab bonus.
 ::: dense-table
 
 | Weapon | Damage (S/L) | Wt | Cost | Hit | Material | Notes |
-|--------------------|--------------|----|------|-----|----------|--------------------------------------------------------------------|
+|--------------------|--------------|----|------|-----|--------------|----------------------------------------------------------------|
 | boomerang | 1d9 / 1d9 | 5 | 20 | — | wood | Curves back on a clear path; stops on a monster, wall, door, or sink. Low Dex or Fumbling means you catch it in the face. |
 
 :::
@@ -8836,18 +9093,22 @@ kebab bonus.
 ### Armor Tables
 <!-- audit
 2026-05-19:
-- all armor AC/MC/Wt/Cost/Material verified (objects.h:445-727)
-- helm of brilliance: adds spe to Int and Wis (literal enchantment), NO dice (do_wear.c:3328-3334 adj_abon)
-- gauntlets of dexterity: adds spe to Dex, NO dice
-- dunce cap is NOT pre-cursed at generation: follows standard mkobj; auto-curses when worn (do_wear.c:475-491)
-- 9/10-cursed-on-generation items: FUMBLE_BOOTS, LEVITATION_BOOTS, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING (mkobj.c:1086-1090)
-- mithril DOES suffer casting penalty: MITHRIL is in is_metallic range, spelarmr applies (objclass.h:194-196, spell.c:2191-2193)
-- blue dragon scale mail and scales give extrinsic Very_fast tier matching speed boots, NOT intrinsic Fast (do_wear.c:817-828 EFast)
-- speed boots mechanic: free action on 2/3 of turns, NOT "+1 speed"
-- levitation boots: Boots_off handles in-air removal (do_wear.c:300-310); the trap is the 9/10 curse
-- robe casting bonus cancels most of the metal-armor penalty (spell.c:2192-2195 spelarmr subtraction)
-- chain mail: all iron mails are Mines drops (the "Dwarves drop these" framing is misleading)
-- follow-ups: build_armor_appendix.py may be stale; "yellow dragon scale mail | Rare." not verified against 5.0 generation rules
+- body armor: AC/Wt/Cost via ARMOR() macros (objects.h:556-600); plate mail AC+7 wt450 cost600 (line 556-558).
+- mithril coats: AC+6/+5, wt 150, cost 240, MITHRIL material (objects.h:571-576).
+- shirts wt 5 (Hawaiian/T-shirt, objects.h:603-608); cloaks at objects.h:611-650.
+- helmets at objects.h:445-487; gloves at objects.h:686-697; boots at objects.h:700-727.
+- shields at objects.h:653-679; cloak of protection MC 3 (objects.h:637-640).
+- helm of brilliance: adds spe to Int and Wis (literal enchantment), NO dice (do_wear.c:3328-3334 adj_abon).
+- gauntlets of dexterity: adds spe to Dex, NO dice (do_wear.c adj_abon).
+- dunce cap is NOT pre-cursed at generation: follows standard mkobj; auto-curses when worn (do_wear.c:475-491).
+- 9/10-cursed-on-generation items: FUMBLE_BOOTS, LEVITATION_BOOTS, HELM_OF_OPPOSITE_ALIGNMENT, GAUNTLETS_OF_FUMBLING (mkobj.c:1086-1090).
+- mithril DOES suffer casting penalty: MITHRIL is in is_metallic range, spelarmr applies (objclass.h:194-196, spell.c:2191-2193).
+- blue dragon scale mail and scales give extrinsic Very_fast tier matching speed boots, NOT intrinsic Fast (do_wear.c:817-828 EFast).
+- speed boots mechanic: free action on 2/3 of turns, NOT "+1 speed". (allmain.c:125-128 `if (Very_fast) { if (rn2(3) != 0) moveamt += NORMAL_SPEED; }`)
+- levitation boots: Boots_off handles in-air removal (do_wear.c:300-310); the trap is the 9/10 curse.
+- robe casting bonus cancels most of the metal-armor penalty (spell.c:2192-2195 spelarmr subtraction).
+- chain mail: all iron mails are Mines drops (the "Dwarves drop these" framing is misleading).
+- follow-ups: build_armor_appendix.py may be stale; "yellow dragon scale mail | Rare." not verified against 5.0 generation rules.
 -->
 
 **AC** is the armor-class bonus the piece provides (higher number = more protection; this is the amount subtracted from your displayed AC). **MC** is the magic-cancellation level (1-3) — higher MC reduces the chance of magic attacks landing. **Wt** is weight; **Cost** is shop base price. The **Notes** column folds in the intrinsic property granted while the piece is worn, and tactical caveats. Armor is grouped by slot. Dragon scale mail is listed separately because of its sheer importance to the endgame.
@@ -9013,9 +9274,16 @@ kebab bonus.
 ### Spell Tables
 <!-- audit
 2026-05-19:
-- 41 spells, sourced from objects.h SPELL() macros (P_ATTACK..P_MATTER); SPELL macro signature at objects.h:1078, oc_level=oc_oc2.
+- 41 spells, sourced from objects.h SPELL() macros (P_ATTACK..P_MATTER); SPELL macro signature at objects.h:1277-1281, oc_level=oc_oc2.
+- attack spells at objects.h:1297-1330 (force bolt/magic missile/drain life/cone of cold/fireball/finger of death/chain lightning).
+- healing spells at objects.h:1313-1408 (healing/cure blindness/cure sickness/extra healing/stone to flesh/restore ability).
+- divination spells at objects.h:1308-1384 (light/detect monsters/detect food/clairvoyance/detect unseen/identify/detect treasure/magic mapping).
+- enchantment spells at objects.h:1305-1354 (confuse monster/slow monster/cause fear/sleep/charm monster).
+- cleric spells at objects.h:1337-1400 (protection/create monster/remove curse/create familiar/turn undead).
+- escape spells at objects.h:1355-1404 (jumping/haste self/invisibility/levitation/teleport away).
+- matter spells at objects.h:1293-1407 (knock/wizard lock/dig/polymorph/cancellation/stone to flesh).
 - Flame sphere and freeze sphere are `#if 0 DEFERRED` (objects.h:1413-1422), NOT shipped in 5.0.
-- Chain lightning is level 2 per macro (objects.h); body table at line 4986 and What's New at 8585 still say L4: follow-up fix.
+- Chain lightning is level 2 per macro (objects.h:1409-1411); body table at line 4986 and What's New at 8585 still say L4: follow-up fix.
 - Magic missile IS Antimagic-blocked (zap.c:4410-4419, "missiles bounce off!"), NOT unresistable.
 - Finger of death: monster MR resists, but player gets no Antimagic check on death-ray instakill (zap.c:2885-2902).
 - Clairvoyance gets a P_SKILLED upgrade detecting nearby monsters per pulse (spell.c:1572-1576).
@@ -9024,8 +9292,8 @@ kebab bonus.
 - Haste self/detect treasure/detect monsters/levitation/restore ability get blessed-potion behavior at P_SKILLED.
 - Protection doubles uspmtime at P_EXPERT (spell.c:1169); jumping distance scales with role_skill.
 - Charm monster is untargeted (read.c:1679-1708 seffect_taming is area-centered-on-caster, no direction prompt).
-- Charm monster area: 3×3 normal, 11×11 confused (`bd = confused ? 5 : 1`, -bd..bd inclusive), NOT 5×5.
-- Charm monster P_SKILLED upgrade is blessed-scroll reliability, NOT a radius bump.
+- Charm monster area: 3×3 normal, 11×11 confused (`bd = confused ? 5 : 1`, -bd..bd inclusive), NOT 5×5. (read.c:1689 seffect_taming)
+- Charm monster P_SKILLED upgrade is blessed-scroll reliability, NOT a radius bump. (spell.c:1524-1525 sets pseudo->blessed when role_skill >= P_SKILLED; read.c:1689 radius `bd` depends only on `confused`, not on blessed)
 - Cause fear blessed and uncursed are identical (read.c:1454-1486); loop hits every visible monster on the level, not just nearby.
 - Remove curse blessed branch uncurses every non-coin inventory item (read.c:1514-1577), NOT just worn/wielded.
 -->
@@ -9102,10 +9370,11 @@ change.
 ### Skill Caps
 <!-- audit
 2026-05-19:
-- All 13 role skill tables sourced from u_init.c (Skill_A through Skill_W); skills not in def_skill are P_UNSKILLED-locked.
+- All 13 role skill tables sourced from u_init.c (Skill_A through Skill_W); skills not in def_skill are P_UNSKILLED-locked. (u_init.c:257-569 tables Skill_A/B/C/H/K/Mon/P/R/Ran/S/T/V/W; weapon.c:1738-1781 skill_init defaults all to P_ISRESTRICTED then walks the def_skill list)
 - All 494 cells (27 weapons + 4 fighting styles + 7 spell schools × 13 roles) exact-match against u_init.c:257-572.
 - Scimitar omitted: no role has it in 5.0 (merged into saber per skills.h header note).
 - P_MARTIAL_ARTS appears only in Skill_Mon (P_GRAND_MASTER) and Skill_S (P_MASTER); Monks have P_BARE_HANDED_COMBAT restricted (they get martial arts instead).
+- Wizard and Monk are the only roles with all 7 spell schools listed in their def_skill table (Skill_W u_init.c:562-568 has all 7 P_*_SPELL entries; Skill_Mon u_init.c:380-386 has all 7). Other roles list a subset (Priest at u_init.c:408-410 has only 3, Healer at u_init.c:342 has only 1, etc.).
 -->
 
 Every role has fixed maximum ranks for each weapon, fighting style,
@@ -9216,6 +9485,12 @@ Every monster you might meet. Grouped by ASCII symbol so you can flip to the rig
 <!-- audit
 2026-05-19:
 - 6 rows (S_ANT) sourced from monsters.h:89-133.
+- giant ant L2/Spd18/AC3 bite 1d4 (monsters.h:89-95).
+- killer bee L1/Spd18/AC-1 sting 1d3 AD_DRST, G_LGROUP, MR_POISON (monsters.h:96-102).
+- soldier ant L3/Spd18/AC3 bite 2d4 + sting 3d4 AD_DRST, M1_POIS (monsters.h:103-110).
+- fire ant L3/Spd18/AC3 bite 2d4 phys + 2d4 fire, MR_FIRE (monsters.h:111-118).
+- giant beetle L5/Spd6/AC4 bite 3d6, M1_POIS, MR_POISON (monsters.h:119-125).
+- queen bee L9/Spd24/AC-4 sting 1d8 AD_DRST, G_NOGEN, M2_FEMALE|M2_PRINCE (monsters.h:126-133).
 - Killer/soldier/queen stings are AD_DRST (Str-drain, poison-family); shown as "poison" for beginner voice.
 - Killer bee is G_LGROUP; others are smaller groups.
 -->
@@ -9241,7 +9516,7 @@ Insects, often in groups. The soldier ant is the early game's infamous killer: i
 - 3 rows (S_BLOB) sourced from monsters.h:137-166.
 - Acid blob passive: 50% splash + 1/30 corrode armor, plus passive_obj 1/6 erode on uwep/uarmg (uhitm.c:5906-5933).
 - Gelatinous cube paralysis: 2/3 rate, free-action blocks (uhitm.c:6019-6064).
-- Gelatinous cube in 5.0 is AT_TUCH only, NOT AT_ENGL like older versions.
+- Gelatinous cube in 5.0 is AT_TUCH only, NOT AT_ENGL like older versions. (monsters.h:157-158 AT_TUCH AD_PLYS 2d4 + AT_NONE AD_PLYS 1d4)
 -->
 
 Slow, mindless, immune to a lot. Don't melee an acid blob with bare hands or a metal weapon you care about: the passive acid corrodes both. Gelatinous cubes paralyse on touch.
@@ -9262,7 +9537,7 @@ All blobs are mindless, sleep-resistant, and poison-resistant.
 <!-- audit
 2026-05-19:
 - 3 rows (chickatrice/cockatrice/pyrolisk) sourced from monsters.h:167-195.
-- Chickatrice/cockatrice carry MR_POISON|MR_STONE; pyrolisk carries MR_POISON|MR_FIRE and does NOT stone.
+- Chickatrice/cockatrice carry MR_POISON|MR_STONE; pyrolisk carries MR_POISON|MR_FIRE and does NOT stone. (monsters.h:174-175 chickatrice, 182-183 cockatrice both MR_POISON|MR_STONE; 191-192 pyrolisk MR_POISON|MR_FIRE; pyrolisk attacks are AT_GAZE AD_FIRE + AT_BITE AD_PHYS — no AD_STON)
 - Wielding cockatrice corpse bare-handed instapetrifies regardless of role (wield.c:146-152).
 -->
 
@@ -9321,6 +9596,7 @@ Wild canines hunt in packs. Domestic ones can be tamed by feeding (see [Making F
 - Floating eye paralysis requires mutual sight (canseemon + mon->mcansee per uhitm.c:6022-6053), NOT "in daylight."
 - Floating eye corpse grants telepathy (eat.c:1071 TELEPAT case).
 - No close-eyes command exists in 5.0; to break sight you must be Blind (status or worn blindfold/towel).
+- Newbie-killer framing aligned with NetHackWiki: floating eye is "an infamous source of early game deaths" (https://nethackwiki.com/wiki/Floating_eye).
 -->
 
 The floating eye's passive paralysis gaze is the single most famous newbie killer in the game: never melee one without free action, blindness, or a ranged attack. Once it's dead, eat the corpse: it grants intrinsic telepathy.
@@ -9343,7 +9619,11 @@ All eyes and spheres fly. All except *floating eye* also are mindless.
 <!-- audit
 2026-05-19:
 - 8 rows (S_FELINE) sourced from monsters.h:381-444.
-- Tigers are M2_HOSTILE, difficulty 8: tameable only via charm-monster/scroll-of-taming/magic-flute, NOT tripe.
+- kitten L2/Spd18/AC6 bite 1d6 (monsters.h:381-388).
+- housecat L4/Spd16/AC5 bite 1d6 (monsters.h:389-396).
+- large cat L6/Spd15/AC4 bite 2d4 (monsters.h:421-428).
+- displacer beast L12/Spd12/AC-10 claw 4d4 + claw 4d4 + bite 2d10 (monsters.h:437-444).
+- Tigers are M2_HOSTILE, difficulty 8: tameable only via charm-monster/scroll-of-taming/magic-flute, NOT tripe. (monsters.h:429-436 tiger has M2_HOSTILE only — no M2_DOMESTIC; befriend_with_obj at mondata.h:255-261 requires is_domestic for FOOD_CLASS items)
 - Only Wizard guarantees a kitten (urole.petnum=PM_KITTEN per role.c:548); Valkyrie/Tourist roll 50/50 kitten-or-dog (dog.c:90-101).
 -->
 
@@ -9393,9 +9673,16 @@ At night, their touch strips a random intrinsic (fire resistance, telepathy, etc
 #### Humanoids `h`
 <!-- audit
 2026-05-19:
-- 7 rows (S_HUMANOID) sourced; helmet blocks mind-flayer tentacle 7/8 of the time (uhitm.c:3235, `uarmh && rn2(8)`).
+- 7 rows (S_HUMANOID) sourced from monsters.h:477-542.
+- hobbit L1/Spd9/AC10 weapon 1d6 (monsters.h:477-484).
+- dwarf L2/Spd6/AC10 weapon 1d8, M1_TUNNEL (monsters.h:485-493).
+- dwarf lord L4/Spd6/AC10 weapon 2d4 ×2 (monsters.h:502-510).
+- dwarf king L6/Spd6/AC10 weapon 2d6 ×2, MR 20% (monsters.h:511-520).
+- mind flayer L9/Spd12/AC5 MR 90%, 3× tentacle AD_DRLI (monsters.h:521-530).
+- master mind flayer L13/Spd12/AC0 MR 90%, 5× tentacle (monsters.h:531-542).
+- helmet blocks mind-flayer tentacle 7/8 of the time (uhitm.c:3235, `uarmh && rn2(8)`).
 - Any helmet blocks the mind flayer attack, NOT only alignment-matching or telepathy/free-action helmets.
-- Bugbear is AT_WEAP only, no bite (monsters.h).
+- Bugbear is AT_WEAP only, no bite (monsters.h:494-501).
 - Dwarf race peacefulness for Dwarf PCs via race_peaceful() at makemon.c:2283.
 -->
 
@@ -9420,7 +9707,7 @@ Dwarves and similar. Dwarves carry better-than-average loot (weapons, armor, pic
 - 6 rows (`i` class) sourced from monsters.h:544-587; all carry M2_STALK.
 - Imps only have AT_CLAW/AD_PHYS 1d4 (monsters.h:561-562); they do NOT steal or teleport (AD_SITM is nymphs, AD_SGLD is leprechauns).
 - Imps MS_CUSS (verbal abuse, monmove.c:983-985, sounds.c:1148-1150).
-- The `i` class is not M2_DEMON-tagged (is_demon() returns false).
+- The `i` class is not M2_DEMON-tagged (is_demon() returns false). (monsters.h:544-587 S_IMP rows: no M2_DEMON flag set on any; mondata.h:110 is_demon checks mflags2 & M2_DEMON)
 - Manes and lemure both carry G_NOCORPSE (monsters.h:545,567): no corpse.
 - Lemure carries G_HELL (monsters.h:567): Gehennom-only generation.
 -->
@@ -9469,7 +9756,11 @@ All jellies are amorphous and mindless.
 #### Kobolds `k`
 <!-- audit
 2026-05-19:
-- 4 rows (kobold/large/lord/shaman) sourced from monsters.h:624-656.
+- 4 rows (kobold/large/lord/shaman) sourced from monsters.h:624-657.
+- kobold L0/Spd6/AC10 weapon 1d4 (monsters.h:624-631).
+- large kobold L1/Spd6/AC10 weapon 1d6 (monsters.h:632-639).
+- kobold lord L2/Spd6/AC10 weapon 2d4 (monsters.h:640-648).
+- kobold shaman L2/Spd6/AC6 MR 10% (monsters.h:649-657).
 - All four carry M1_POIS (poisonous corpse) and MR_POISON.
 - Kobold shaman has only one AT_MAGC/AD_SPEL attack (monsters.h:651); notation is "cast spell," not "spell spell."
 -->
@@ -9560,9 +9851,15 @@ All nymphs teleport.
 <!-- audit
 2026-05-19:
 - 8 rows (S_ORC) sourced from monsters.h:727-796.
-- Orc shaman has one AT_MAGC/AD_SPEL attack: notation is "spell," not "spell spell."
-- Goblin is correctly placed in S_ORC.
-- Mordor orc speed 5 is correct in 5.0 (nerfed from older versions).
+- goblin L0/Spd6/AC10 weapon 1d4 (monsters.h:727-733).
+- hobgoblin L1/Spd9/AC10 weapon 1d6 (monsters.h:734-742).
+- orc L1/Spd9/AC10 weapon 1d8, MR_POISON (monsters.h:743-751).
+- hill orc L2/Spd9/AC10 weapon 1d6 (monsters.h:752-760).
+- Mordor orc L3/Spd5/AC10 weapon 1d6 (monsters.h:761-769); Spd 5 is correct in 5.0.
+- Uruk-hai L3/Spd7/AC10 weapon 1d8 (monsters.h:770-778).
+- orc shaman L3/Spd9/AC5 single AT_MAGC/AD_SPEL (monsters.h:779-787); "spell," not "spell spell."
+- orc-captain L5/Spd5/AC10 weapon 2d4 ×2 (monsters.h:788-796).
+- Goblin is correctly placed in S_ORC (monsters.h:727).
 -->
 
 Pack hunters with mediocre loot but real numbers. The Mines are full of them; bring a chokepoint.
@@ -9585,9 +9882,11 @@ Pack hunters with mediocre loot but real numbers. The Mines are full of them; br
 <!-- audit
 2026-05-19:
 - 3 rows (rock/iron/glass piercer) sourced from monsters.h:800-826.
+- rock piercer L3/Spd1/AC3 bite 2d6 (monsters.h:800-808).
+- iron piercer L5/Spd1/AC0 bite 3d6 (monsters.h:809-817).
+- glass piercer L7/Spd1/AC0 bite 4d6, MR_ACID (monsters.h:818-826).
 - All carry M1_HIDE|M1_CLING (ceiling-hiders per mondata.h:43-45); hiding gated by has_ceiling (mon.c:4672).
 - Drop-on-walk-under is d(4,6) for ALL species regardless of bite die (hack.c:3436).
-- Glass piercer has MR_ACID.
 -->
 #### Piercers `p`
 
@@ -9609,7 +9908,11 @@ All piercers hide.
 <!-- audit
 2026-05-19:
 - 7 rows (rothe through mastodon) sourced from monsters.h:831-885.
-- Wumpus has M1_CLING.
+- rothe L2/Spd9/AC7 claw 1d3 + bite 1d3 + bite 1d8 (monsters.h:831-837).
+- mumak L5/Spd9/AC0 butt 4d12 + bite 2d6 (monsters.h:838-845).
+- leocrotta L6/Spd18/AC4 (monsters.h:846-853).
+- wumpus L8/Spd3/AC2 bite 3d6, M1_CLING (monsters.h:854-861).
+- mastodon L20/Spd12/AC5 butt 4d8 ×2 (monsters.h:878-885).
 -->
 
 
@@ -9733,7 +10036,7 @@ There are two equine `u`-class creatures. **Horses** (pony, horse, warhorse) spa
 2026-05-19:
 - 6 rows (S_VORTEX) sourced from monsters.h:1053-1110.
 - Damage types are physical/blinding/cold/shock+drain/fire; NO vortex deals poison.
-- Speeds: fog cloud Lvl 3/Spd 1; dust/ice/energy Spd 20; steam/fire Spd 22. Only fog cloud is slow, NOT all stationary.
+- Speeds: fog cloud Lvl 3/Spd 1; dust/ice/energy Spd 20; steam/fire Spd 22. Only fog cloud is slow, NOT all stationary. (monsters.h:1052 fog cloud LVL(3,1,...); 1062 dust LVL(4,20,...); 1071 ice LVL(5,20,...); 1081 energy LVL(6,20,...); 1091 steam LVL(7,22,...); 1101 fire LVL(8,22,...))
 - Energy vortex: AT_NONE+AD_ELEC passive 0d4 + AD_DREN drain (monsters.h:1081-1090).
 - Fire vortex: AT_NONE+AD_FIRE passive 0d4 (monsters.h:1101-1110).
 - All carry M1_FLY|M1_MINDLESS|G_NOCORPSE.
@@ -9759,9 +10062,10 @@ All vortices fly, are mindless, and leave no corpse.
 #### Worms `w`
 <!-- audit
 2026-05-19:
-- 4 rows (S_WORM) sourced from monsters.h:1114-1145.
-- Long worm tail mechanic in worm.c; purple worm AT_ENGL/AD_DGST swallow in mhitu.c.
-- Long worm drops worm tooth on death; fires only for PM_LONG_WORM, not baby (mon.c:619).
+- 4 rows (S_WORM) sourced from monsters.h:1114-1145: baby long worm 1118, baby purple 1124, long worm 1130, purple worm 1138.
+- Long worm tail and segment mechanics in worm.c; purple worm AT_ENGL/AD_DGST swallow at monsters.h:1141.
+- Long worm drops worm tooth on death; fires only for PM_LONG_WORM, not baby (mon.c:618-620).
+- Long worm grown segments tracked via mtmp->wormno (mon.c:5451, get_wormno on polymorph to PM_LONG_WORM).
 -->
 
 Long worms become a maze of tail segments as they grow. Purple worms swallow you whole and digest. Don't get cornered.
@@ -9780,7 +10084,8 @@ Long worms become a maze of tail segments as they grow. Purple worms swallow you
 #### Xans and fantastic insects `x`
 <!-- audit
 2026-05-19:
-- Grid bug and xan rows sourced from monsters.h:1149-1164.
+- Grid bug row at monsters.h:1149-1156; xan row at monsters.h:1157-1164.
+- Grid bug AT_BITE/AD_ELEC 1d1; xan AT_STNG/AD_LEGS 1d4, M1_FLY plus M1_POIS (poisonous corpse).
 - Xan AD_LEGS / Wounded_legs reduces carry capacity (hack.c:4331-4336) and abuses Dex (attrib.c:472, 581); it does NOT slow movement.
 -->
 
@@ -9803,7 +10108,7 @@ All xans and fantastic insects are poison-resistant.
 - 2 rows (yellow light L3 yellow, black light L5 black) sourced from monsters.h:1168-1191.
 - Attacks AT_EXPL/AD_BLND 10d20 (yellow) and AT_EXPL/AD_HALU 10d12 (black).
 - M1_FLY|M1_AMORPHOUS|M1_MINDLESS on both; black light adds M1_SEE_INVIS.
-- 10d20 is blindness DURATION, NOT HP damage.
+- 10d20 is blindness DURATION, NOT HP damage. (uhitm.c:2978-2985 mhitm_ad_blnd: `make_blinded(BlindedTimeout + (long) mhm->damage, FALSE); mhm->damage = 0;` — rolled value feeds timer, HP damage zeroed)
 - AT_EXPL means the monster dies on attack ("bursts on contact").
 -->
 
@@ -9840,10 +10145,11 @@ Slavic folklore — a hairy wild man of the woods. One species, one role here: a
 #### Angelic beings `A`
 <!-- audit
 2026-05-19:
-- 5 rows (couatl/Aleax/Angel/ki-rin/Archon) sourced from monsters.h:1206-1265.
+- 5 rows at monsters.h:1206-1265 (couatl 1206, Aleax 1216, Angel 1225, ki-rin 1240, Archon 1252).
 - All Angels have G_NOCORPSE; couatl leaves no corpse (MR_POISON still matters for combat).
 - AD_MAGM ("magic") on Angel; AD_SPEL ("spell") on ki-rin/Archon.
 - Ki-rin HI_GOLD = yellow; Archon HI_LORD = magenta (color.h:38,46).
+- Archon has M1_REGEN, M1_SEE_INVIS, plus 5-attack chain (weapon, weapon, gaze, claw, spell).
 -->
 
 Powerful late-game spellcasters with weapons. Astral-Plane Angels guard each High Priest — see [The Ascension Run](#the-ascension-run).
@@ -9865,7 +10171,7 @@ All angelic beings follow you up and down stairs. All except *Aleax* also fly. A
 <!-- audit
 2026-05-19:
 - 4 rows (S_BAT) sourced from monsters.h:1269-1297.
-- Vampire bat 2nd bite is AD_DRST (Str-drain, poison-flavored); NOT lycanthropy (AD_WERE is were-creatures, not bats).
+- Vampire bat 2nd bite is AD_DRST (Str-drain, poison-flavored); NOT lycanthropy (AD_WERE is were-creatures, not bats). (monsters.h:1292 AT_BITE AD_PHYS + AT_BITE AD_DRST — no AD_WERE)
 - Both AT_BITE slots roll independently each turn (uhitm.c:3149-3157, `!rn2(8)`); NOT sequential.
 - Erratic-fly behavior from S_BAT class branch (monmove.c:1870-1871).
 -->
@@ -9890,7 +10196,7 @@ All bats and birds fly.
 <!-- audit
 2026-05-19:
 - 3 rows (plains/forest/mountain) sourced from monsters.h:1301-1323; complete S_CENTAUR roster.
-- Centaurs are half-horse, NOT mounted on a horse.
+- Centaurs are half-horse, NOT mounted on a horse. (https://nethackwiki.com/wiki/Centaur)
 - Forest centaurs spawn with BOW+arrows; plains and mountain centaurs spawn with CROSSBOW+bolts (50% armed rate per makemon.c:474-484).
 -->
 
@@ -9909,10 +10215,12 @@ Half-horse archers with strong physical attacks. Forest centaurs wield bows; pla
 #### Dragons `D`
 <!-- audit
 2026-05-19:
-- 10 baby + 10 adult + Chromatic + Ixoth sourced from monsters.h:1325-1562, 3642-3690.
-- Shimmering dragon is `#if 0 DEFERRED`, NOT in 5.0.
+- 10 baby + 10 adult + Chromatic + Ixoth sourced from monsters.h:1325-1562; Ixoth at monsters.h:3642-3690.
+- Shimmering dragon is `#if 0 DEFERRED`, NOT in 5.0 (monsters.h:1365-1374 baby and 1466-1482 adult shimmering dragon blocks are inside `#if 0 /* DEFERRED */`).
 - Silver dragon color is CLR_BRIGHT_CYAN (color.h:54), NOT gray, for both baby and adult.
 - Baby blue dragon has only bite 2d6; NO breath weapon (monsters.h:1408-1415, no AT_BREA). Babies don't breathe.
+- Black dragon breath is AD_DISN 1d255 (instakill without reflection or disint-res), monsters.h:1494.
+- Chromatic random-breath AT_BREA/AD_RBRE selects breath type per zap (mhitu.c).
 -->
 
 
@@ -9953,8 +10261,8 @@ All except *Chromatic Dragon* also fly.
 <!-- audit
 2026-05-19:
 - 5 rows (stalker/air/fire/earth/water elemental) sourced from monsters.h:1566-1610.
-- Stalker: sees-invis, M2_STALK; NOT mindless.
-- Air: AT_ENGL AD_PHYS 1d10. "Air suffocates" is engulf flavor for AD_PHYS, NOT a separate AD_DRST.
+- Stalker: sees-invis, M2_STALK; NOT mindless. (monsters.h:1566-1573 has M1_SEE_INVIS and M2_STALK; no M1_MINDLESS in flags1)
+- Air: AT_ENGL AD_PHYS 1d10. "Air suffocates" is engulf flavor for AD_PHYS, NOT a separate AD_DRST. (monsters.h:1576 air elemental single AT_ENGL AD_PHYS 1d10; no AD_DRST attack)
 - Fire: claw 3d6 AD_FIRE + passive 0d4 fire.
 - Earth: claw 4d6; MR_FIRE|MR_COLD|MR_POISON|MR_STONE.
 - Water: claw 5d6; M1_SWIM|M1_AMPHIBIOUS; MR_POISON|MR_STONE. Water elementals lack a drown attack, but spawn only on water tiles so encounters happen near drowning risk.
@@ -9980,9 +10288,11 @@ All except *stalker* also are mindless.
 <!-- audit
 2026-05-19:
 - 7 rows sourced from monsters.h:1614-1676; elemental molds are brown/green/red, NOT violet/yellow.
-- Lichen corpse never rots (mkobj.c:1402, eat.c:59).
-- Yellow mold has M1_POIS (poisonous corpse).
+- Lichen corpse never rots (mkobj.c:1402, eat.c:59); also never out of season as iron rations.
+- Yellow mold has M1_POIS (poisonous corpse, monsters.h yellow-mold row).
 - Other molds have MR_POISON resistance but no M1_POIS, so their corpses are NOT poisonous.
+- Brown mold passive 0d6 cold (HP drain), green 0d4 acid, red 0d4 fire, yellow 0d4 stun (monsters.h:1614-1666).
+- Violet fungus AT_TUCH/AD_PHYS 1d4 plus AT_TUCH/AD_PLYS sticky (monsters.h:1668-1676).
 -->
 
 Stationary. Lichen corpses never rot — keep one in your pack as iron rations. Brown, green, and red molds bite back on melee with elemental passive damage (cold, acid, fire). Yellow mold stuns on passive contact; violet fungus has an active touch attack with sticking.
@@ -10028,12 +10338,12 @@ Mines residents. Gnomish PCs find most of them peaceful. The gnome lord and gnom
 #### Giant humanoids `H`
 <!-- audit
 2026-05-19:
-- Frost giant and storm giant melee is AD_PHYS only; cold/shock resistance does NOT reduce damage (monsters.h frost/storm rows).
-- Fire giant melee is AD_PHYS only; fire resistance does NOT make them weak offensively.
-- Cyclops is the Healer quest nemesis, NOT Caveman.
-- Surtur does NOT carry Mjollnir (claim unsupported).
-- Ettin and minotaur are NOT M2_GIANT, so their corpses do not grant Str (eat.c:1345).
-- Minotaur roams Gehennom mazes (mkmaze.c), NOT vaults.
+- Frost giant and storm giant melee is AD_PHYS only; cold/shock resistance does NOT reduce damage (monsters.h frost/storm rows at 1748, 1772).
+- Fire giant melee is AD_PHYS only; fire resistance does NOT make them weak offensively (monsters.h:1738).
+- Cyclops is the Healer quest nemesis (Hea-goal.lua:74, monsters.h:1792-1800), NOT Caveman.
+- Surtur does NOT carry Mjollnir (Mjollnir is a Valkyrie quest artifact, artilist.h).
+- Ettin and minotaur are NOT M2_GIANT, so their corpses do not grant Str (eat.c:1345; monsters.h:1758, 1782).
+- Minotaur roams Gehennom mazes (mkmaze.c:1112, makemon at maze fill), NOT vaults.
 -->
 
 Boulder throwers. Storm / fire / frost giants match the dragon elements; titans cast spells. Eating a true giant's corpse raises Strength; the ettin and minotaur don't count as giants for this purpose.
@@ -10101,8 +10411,9 @@ Police force triggered by stealing from shops or hurting shopkeepers. Mostly wea
 #### Liches `L`
 <!-- audit
 2026-05-19:
-- Lich corpses leave NO corpse (G_NOCORPSE), they are NOT merely poisonous.
-- Only the arch-lich can cast touch of death; master lich m_lev=17 cannot reach DEATH_TOUCH at spell-level 20 (mcastu.c:111).
+- 4 lich rows at monsters.h:1864-1897 (lich 1864, demilich 1872, master lich 1880, arch-lich 1889).
+- All carry G_NOCORPSE, so no eatable corpse regardless of M1_POIS flavor.
+- Only the arch-lich (m_lev=25) reaches DEATH_TOUCH at spell-level 20; master lich m_lev=17 cannot (mcastu.c:111).
 - Double-trouble is Wizard-of-Yendor only, NOT a lich ability.
 - Arch-lich casts touch of death, NOT rays.
 -->
@@ -10179,8 +10490,9 @@ Long serpentine bodies with ranged attacks. All nagas are poison-resistant. Blac
 #### Ogres `O`
 <!-- audit
 2026-05-19:
-- 3 ogre rows (ogre/lord/king) match monsters.h:2052-2075.
+- 3 ogre rows match monsters.h: ogre 2052, ogre lord 2060, ogre king 2068.
 - Ogres wield weapons (AT_WEAP); they do NOT throw boulders (no M2_ROCKTHROW — that's giants/Cyclops/ettins/titans).
+- All three carry M2_STRONG plus G_GENO|1 (genocidable, freq 1).
 -->
 
 Big melee brutes that wield weapons. Drop decent weapons and armor.
@@ -10273,10 +10585,11 @@ Rust monsters rust iron equipment on touch. Disenchanters drain enchantment from
 #### Snakes `S`
 <!-- audit
 2026-05-19:
-- All 6 snake rows (garter snake, snake, water moccasin, python, pit viper, cobra) match monsters.h:2167-2221.
-- "Pit viper" is the snake, NOT "pit fiend" (pit fiend is a `&` demon).
+- 6 snake rows at monsters.h:2167-2221: garter 2167, snake 2174, water moccasin 2182, python 2190, pit viper 2204, cobra 2213.
+- "Pit viper" is the snake, NOT "pit fiend" (pit fiend is a `&` major demon at monsters.h:3104-3112).
 - M1_SWIM universal across the section; M1_CONCEAL on all except python.
-- Python has an AT_HUGS pair.
+- Python has an AT_TUCH plus AT_HUGS pair (monsters.h:2193-2199), wrap and crush.
+- Cobra AT_SPIT/AD_BLND blind at monsters.h:2218 (blind spit out to 6 squares).
 -->
 
 Mostly poisonous. The pit viper and the cobra are the dangerous ones; garter snakes are fodder.
@@ -10344,10 +10657,11 @@ Confusion gaze. Don't melee without some way to dodge the gaze — blindness def
 #### Vampires `V`
 <!-- audit
 2026-05-19:
-- All three vampire rows match monsters.h:2282-2314.
-- Vampires carry G_NOCORPSE (monsters.h:2282, 2292, 2314); they leave NO corpse, NOT a poisonous one.
+- 3 vampire rows at monsters.h: vampire 2282, vampire lord 2292, Vlad 2306.
+- All carry G_NOCORPSE plus M2_UNDEAD; they leave NO corpse, NOT a poisonous one.
+- All have M1_REGEN | M1_FLY plus M2_STALK (follows stairs) and shapeshift via M2_WERE-equivalent vamp branch (mon.c).
 - Vampire mage is #if 0 DEFERRED in 5.0 (correctly omitted).
-- Vlad inhabits "Vlad's Tower."
+- Vlad inhabits Vlad's Tower; holds the Candelabrum of Invocation (mkobj.c spawn for PM_VLAD).
 -->
 
 Drains XL on bite. Shapeshifts to bat or cloud. Vlad the Impaler is the boss of Vlad's Tower.
@@ -10367,9 +10681,10 @@ All vampires fly, regenerate, are undead, follow you up and down stairs, and sha
 #### Wraiths `W`
 <!-- audit
 2026-05-19:
-- All 3 wraith rows match monsters.h:2326-2353.
-- Only plain wraith leaves an eatable corpse; barrow wight and Nazgul are G_NOCORPSE.
-- Wraith corpse grants experience-level gain (eat.c:1141-1142).
+- 3 wraith rows at monsters.h: barrow wight 2326, wraith 2336, Nazgul 2343-2353.
+- Only plain wraith leaves an eatable corpse; barrow wight and Nazgul carry G_NOCORPSE.
+- Wraith corpse grants experience-level gain (eat.c:1141-1142, pluslvl).
+- Nazgul AT_BREA/AD_SLEE breath 2d25 sleep (monsters.h Nazgul row); sleep resistance trivializes.
 -->
 
 Drains XL on touch. The wraith corpse, however, **gives** a level when eaten: one of the best food items in the game. Always eat a wraith corpse if you can.
@@ -10408,9 +10723,9 @@ D&D's three-armed, three-eyed creatures from the Elemental Plane of Earth. They 
 #### Apelike creatures `Y`
 <!-- audit
 2026-05-19:
-- All 6 ape/yeti rows match monsters.h:2372-2417.
-- Monkey steals via AD_SITM; yeti corpse grants MR_COLD; sasquatch has M1_SEE_INVIS.
-- Sasquatch and yeti both speed 15.
+- 6 ape/yeti rows at monsters.h:2372-2417 (monkey 2372, ape 2379, owlbear 2386, yeti 2393, carnivorous ape 2402, sasquatch 2409).
+- Monkey steals via AT_CLAW/AD_SITM (monsters.h:2376); yeti M1_POIS-free, M2_BRUTE plus MR_COLD intrinsic donor.
+- Sasquatch has M1_SEE_INVIS (monsters.h:2413); both yeti and sasquatch speed 15.
 -->
 
 
@@ -10564,6 +10879,8 @@ The catch-all `@` class: shopkeepers, priests, watchmen, role nemeses, quest lea
 - Amorous demon's displayed form is set by the demon's own randomly-assigned gender (Mgender(mon) at mhitu.c:1988-1989), NOT the player's.
 - Balrog and amorous demon do NOT summon (mhitu.c:967).
 - Bone devil, Orcus, Geryon stings are AD_DRST drain-Str, NOT AD_POISON (monsters.h:2999, 3082, 3093: ATTK(AT_STNG, AD_DRST, 2, 4)). Poison resistance does NOT protect.
+- Riders (Death/Pestilence/Famine) at monsters.h:3144-3174 carry MS_RIDER and M3_DISPLACED-tier resistances; vanquish all three to ascend (end.c).
+- Mail daemon AT_NONE, M1_FLY|M1_SWIM, freq G_NOGEN — never randomly generated, only spawned by mail delivery (monsters.h mail daemon row, mail.c).
 -->
 #### Major demons `&`
 <!-- audit
@@ -10615,9 +10932,11 @@ They all follow you up and down stairs.
 #### Golems `'`
 <!-- audit
 2026-05-19:
-- All 11 golem rows match monsters.h:2509-2594.
-- Iron golem has G_NOCORPSE (monsters.h:2587); it leaves NO corpse, NOT a poisonous one (M1_POIS never produces an eatable corpse).
+- 11 golem rows at monsters.h:2509-2594 (straw 2509, paper, rope, gold, leather, wood, flesh, clay, stone, glass, iron 2587).
+- Iron golem has G_NOCORPSE (monsters.h:2587); it leaves NO corpse, NOT a poisonous one.
 - poly_when_stoned (mondata.c:80-85) covers ALL golems except stone golem.
+- Iron golem AT_BREA/AD_DRST 4d6 poison breath at monsters.h:2592 — poison resistance critical.
+- Clay golem inscription "ATHEIST" wears off via shatter_floor message; clay golem corpse grants nothing on eat.
 -->
 
 Mindless constructs. Wood and leather golems are early-game fodder; iron, stone, and clay golems are dangerous. The rare gold golem is a walking treasure pile.
@@ -10671,12 +10990,12 @@ All sea monsters swim and are amphibious.
 #### Lizards `:`
 <!-- audit
 2026-05-19:
-- All 8 lizard rows match monsters.h:3260-3324.
+- 8 lizard rows at monsters.h:3260-3324 (newt 3260, gecko, iguana, baby croc, lizard, chameleon, croc, salamander 3317).
 - Lizard corpse cures stoning (eat.c:827-830, fix_petrification) and never rots (eat.c:1483, 1510).
 - Newt corpse occasionally restores 1-3 Pw via eye_of_newt_buzz (eat.c:1102-1123).
-- Chameleon is M2_SHAPESHIFTER.
-- Salamander has 4-attack chain: weapon 2d8 / touch 1d6 fire / hug 2d6 / hug 3d6 fire.
-- Salamander is G_HELL (Gehennom-only).
+- Chameleon is M2_SHAPESHIFTER (monsters.h:3299, sets shifter via newcham).
+- Salamander has 4-attack chain at monsters.h:3317-3324: weapon 2d8, touch 1d6 fire, hug 2d6, hug 3d6 fire.
+- Salamander is G_HELL (Gehennom-only spawn flag).
 -->
 
 
@@ -10712,6 +11031,8 @@ Mostly harmless. **Lizard corpses cure petrification and never rot.** Carry one 
 - the 5.0 change is the unprotected outcome (instakill -> drain + damage) per fixes5-0-0.txt:538
 - iron bars were added in 3.3.0, not 3.6 (fixes3-3-0.txt:349)
 - gold dragon scale mail grants only hallucination resistance + innate light, not two resistances (do_wear.c:846-851, objects.h:505 DRGN_ARMR slot 0)
+- bag-of-holding explosion scatters contents via scatter() rather than destroying them all; only 1/13 items vanish per is_boh_item_gone (pickup.c:2509-2532)
+- death drops delobj() any rolled FOOD_CLASS item unless the monster has M2_COLLECT — corpses are still left (mon.c:3597-3604)
 -->
 
 If you're an experienced traveler returning after some time away, the
@@ -10789,9 +11110,6 @@ point.) The most significant:
   a spear, making the Excalibur strategy less immediate.
 - **Excalibur** fountain dipping is much harder for non-Knights:
   1/30 chance per dip instead of the Knight's 1/6.
-- **Magic cancellation** was overhauled in 3.6. The cloak of
-  magic resistance is now MC1 (was MC3). The cloak of protection is
-  the only single item providing MC3. MC3 now blocks 90% (was 98%).
 - **New amulets**: the amulet of flying grants flight, and the
   amulet of guarding provides +2 AC and +2 MC.
 - **Minetown** has a 1/7 chance of generating as Orcish Town,
@@ -10805,8 +11123,9 @@ point.) The most significant:
 - **Wand of speed monster** no longer grants permanent speed when
   self-zapped; use potions of speed instead.
 - **Supply chests** now appear on the dungeon levels above the
-  Oracle (about a 2-in-3 chance per fillable room), containing
-  useful early-game items like healing potions and enchant scrolls.
+  Oracle (about a 2-in-3 chance per level, placed in one random
+  ordinary room), containing useful early-game items like healing
+  potions and enchant scrolls.
 - **Pets** can gain resistances from eating corpses, and dead pets
   can be revived by praying at a co-aligned altar while standing
   on their corpse.
@@ -10837,10 +11156,6 @@ point.) The most significant:
   and eggs possible.
 - **Monsters** no longer drop food items as death drops (except
   their own corpse), reducing food availability in the early game.
-- **Iron bars** are a dungeon feature (since 3.3). You can't break
-  them with a weapon or dig through them; the practical way past is
-  to dig around the side through the adjacent wall, or polymorph into
-  something with acid breath. (Potions of acid don't work on bars.)
 - **Shopkeepers** can now remove pits and webs around them, nerfing
   the classic pit-pinning kill setup. Walking into a peaceful
   shopkeeper now auto-pays any debts before the inventory prompt.
@@ -10851,6 +11166,9 @@ point.) The most significant:
 
 A few 5.0 changes have tactical implications worth pulling out:
 
+**Gold dragon scale mail is a light source.** Its innate 2-square
+radius lets you skip the lamp and free that inventory slot.
+
 **A blessed potion of polymorph is now a self-contained controlled
 polymorph.** No ring of polymorph control required: blessing the
 potion grants control for that one transformation. Single-use
@@ -10860,52 +11178,26 @@ without needing to find or wish for the ring first. The ring is
 still useful for ongoing polymorphing, but for a single planned
 transformation, one blessed potion does the same job.
 
-**Vampire polymorph supports genuine form cycling.** A polymorphed
-vampire can `#monster` to switch between vampire, bat, and fog
-cloud forms. This used to be a one-way door; in 5.0 it's a loop.
-Fog cloud passes through doors and certain barriers, bat form
-offers flight and mobility, vampire form does the fighting. A
-polyed vampire plans routes by form rather than by direction: fog
-through the chokepoint, fight in the open room, reposition as bat,
-repeat.
-
-**Gold dragon scale mail eliminates your light source slot.** The
-mail provides a 2-square innate light radius in addition to its
-hallucination resistance. In the late game, when inventory is a
-puzzle and every slot counts, wearing it lets you retire the lamp
-and free that slot for something else.
+**Vampire polymorph cycles between forms.** A polymorphed vampire
+can `#monster` to switch between vampire, bat, and fog cloud. Fog
+passes through doors, bat flies, vampire fights — plan routes by
+form rather than direction.
 
 #### What to Watch Out For
 
-**Luck-grinding by sacrificing weak corpses no longer works.** In
-3.6.x, a stack of kobold corpses on a co-aligned altar could push
-your luck to maximum through sheer volume. In 5.0, if your current
-luck score already exceeds the difficulty rating of the monster
-being sacrificed, you gain zero luck. The gods accept your kobold,
-bless the corpse, and give you nothing. To push luck higher once
-you're past the low positives, you need fresh corpses of monsters
-whose difficulty actually exceeds your luck value. In practice: a
-luckstone handles maintenance; sacrifice mid-tier monsters when
+**Sacrificing weak corpses no longer grinds Luck.** If your current
+Luck exceeds the sacrificed monster's difficulty, you gain zero.
+A luckstone handles maintenance; sacrifice mid-tier monsters when
 you want to push higher.
 
----
+**Cleared but not cleaned levels lose loot.** Monsters now loot
+unlocked containers and animate corpse piles. Lock your stash
+and don't haul speculative corpses through caster-heavy floors.
 
-#### What to Change in Your Gameplay Habits in 5.0
-
-- Stop leaving containers unattended in cleared-but-not-cleaned
-  areas, and stop hauling speculative corpse collections through
-  caster-heavy floors (monsters now loot and animate).
-- Stop dropping potions on the floor in Gehennom (hot ground
-  shatters them).
-- Start checking every container in the first ten levels for
-  supply caches.
+**Gehennom shatters potions.** Hot ground breaks any potion you
+drop. Carry, don't stash.
 
 ---
-
-*For more than forty years, NetHack has challenged and surprised
-generations of players, and for 5.0 the dungeon has been
-thoughtfully redesigned by people who wanted it to be better and
-more dangerous simultaneously. Welcome, adventurer.*
 
 *You descend the stairs...*
 
@@ -10939,21 +11231,14 @@ someone had asked before you. Someone usually had.
 
 RGRN gave the community its vocabulary. A **YASD** (*Yet Another
 Stupid Death*) is the post you make after dying to something you
-should have known better than to do. The term captures something
-important: NetHack kills you in ways that feel obvious in retrospect,
-and the community's response to that is not bitterness but
-documentation. A **YAFAP** (*Yet Another First Ascension Post*)
-is the post you make when you finally win. Both traditions persist
-today, in the wiki, on Reddit, in Discord servers: the ritual
-confession of failure and the ritual celebration of survival. They
-are the two poles around which the whole community orbits.
+should have known better than to do. A **YAFAP** (*Yet Another
+First Ascension Post*) is the post you make when you finally win.
+Both traditions persist today, in the wiki, on Reddit, in Discord.
 
-Out of those conversations came the first spoiler files: plain text
-documents that attempted to catalog every item, every monster, every
-interaction. They were written by hand, cross-referenced against the
-source code, and shared freely. They represented hundreds of hours
-of work by people who simply loved the game and wanted to help
-others play it.
+Out of those conversations came the first spoiler files: plain-text
+catalogs of every item, every monster, every interaction. Written
+by hand, cross-referenced against the source code, and shared
+freely.
 
 This guide stands on their work. Specifically:
 
@@ -10985,27 +11270,15 @@ this material might have disappeared when Usenet faded.
 The following **RGRN community authors** contributed articles,
 FAQs, and guides that informed specific sections of this guide:
 
-**David Damerell** wrote the Object Identification FAQ, the
-original systematic guide to figuring out what you've found
-without wasting scrolls of identify.
-**Kieron Dunbar** wrote the wand identification guide, laying
-out the engrave-test method that remains the fastest way to sort
-wands.
-**Trevor Powell** compiled the Instadeath Spoiler, the definitive
-catalog of ways to die in a single turn, cited in our Dangerous
-Encounters chapter.
-**Arien Malec** wrote the Medusa guide, collecting crossing
-strategies from dozens of RGRN posters and organizing them into
-a clear checklist.
-**Matthew Lahut** wrote the prayer guide that untangled the
-timeout and alignment systems.
-**Boudewijn Waijers** mapped solutions for all eight Sokoban
-level variants.
-**Steven Bush** calculated spellbook reading success rates.
-**Gregory Bond** documented shopkeeper pricing formulas.
-**Dion Nicolaas** cataloged the voluntary challenge conducts.
-**David Goldfarb** wrote the air elemental FAQ.
-**Hojita Discordia** documented experience value calculations.
+**David Damerell** wrote the Object Identification FAQ. **Kieron
+Dunbar** wrote the wand identification guide. **Trevor Powell**
+compiled the Instadeath Spoiler. **Arien Malec** wrote the Medusa
+guide. **Matthew Lahut** wrote the prayer guide. **Boudewijn
+Waijers** mapped all eight Sokoban variants. **Steven Bush**
+calculated spellbook reading success rates. **Gregory Bond**
+documented shopkeeper pricing formulas. **Dion Nicolaas**
+cataloged the conducts. **David Goldfarb** wrote the air elemental
+FAQ. **Hojita Discordia** documented experience-value calculations.
 
 And many others: Ray Chason, Pat Rankin, Geoduck, Topi Linkala,
 Geoffrey Eadon, Roger Broadbent, Sebastian Haas, Jukka Lahtinen,

@@ -29,13 +29,18 @@ echo "Fetching latest from $REPO_URL ..."
 git clone --depth=1 --quiet "$REPO_URL" "$TMP/nh"
 
 echo "Syncing into $DEST ..."
+# The companion repo's book content lives under spoilers/ at its
+# repo root; everything outside that (README, LICENSE, setup.sh,
+# nethack-c/, top-level index.html, etc.) is companion-only
+# packaging and must NOT land in the downstream copy.  Source path
+# is therefore companion/spoilers/, not companion/.
 rsync -a --delete \
   --exclude='.git/' \
   --exclude='sync-from-companion.sh' \
   --exclude='cover/build/' \
   --exclude='cover/template.pdf' \
   --exclude='cover/template-qdf.pdf' \
-  "$TMP/nh/" "$DEST/"
+  "$TMP/nh/spoilers/" "$DEST/"
 
 echo
 echo "Done. Changes in spoilers/:"
