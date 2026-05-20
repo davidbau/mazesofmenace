@@ -63,7 +63,7 @@ const WAN_DIGGING = 428;
 const WAN_MAGIC_MISSILE = 429;
 const QUARTERSTAFF = 79;
 const WAR_HAMMER = 76;
-const CLOAK_OF_MAGIC_RESISTANCE = 139;
+const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_PROTECTION = 146;
 const M1_FLY = 0x00000001;
 const M1_CLING = 0x00000010;
@@ -370,6 +370,12 @@ function wishedObjectSpec(name) {
         // gloves description/name pool before readobjnam() creates armor.
         rn2(9);
         return { ...spec, otyp: GAUNTLETS_OF_POWER };
+    }
+    if (wish.includes('cloak of magic resistance')) {
+        // C ref: objnam.c:rnd_otyp_by_namedesc() searches the cloak/armor
+        // description/name pool before mksobj() initializes the cloak.
+        rn2(13);
+        return { ...spec, otyp: CLOAK_OF_MAGIC_RESISTANCE };
     }
     if (wish.includes('cloak of displacement')) {
         // C ref: objnam.c:rnd_otyp_by_namedesc() searches the cloak/armor
