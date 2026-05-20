@@ -8,7 +8,7 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    IS_ROOM, IS_WALL,
 } from './const.js';
 import { newsym } from './display.js';
 
@@ -78,6 +78,10 @@ function mark_visible_range(row, left, right) {
 }
 
 // Simplified blockage check: walls, closed doors, stone
+function has_boulder_at(level, x, y) {
+    return (level.objects || []).some(o => o.otyp === BOULDER && o.ox === x && o.oy === y);
+}
+
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
     if (!loc) return true;
@@ -90,7 +94,7 @@ function _blocks(level, x, y) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
-    if ((level.objects || []).some(o => o.otyp === BOULDER && o.ox === x && o.oy === y)) return true;
+    if (has_boulder_at(level, x, y)) return true;
     return false;
 }
 
@@ -132,8 +136,9 @@ export function vision_reset() {
             viz_clear[y][i] = block ? 0 : 1;
         }
     }
-    game._viz_rmin = null;
-    game._viz_rmax = null;
+    // C ref: vision.c:vision_reset() rebuilds the blockage cache but leaves
+    // gv.viz_rmin/gv.viz_rmax intact; the next vision_recalc(2) uses the
+    // previous visible ranges to redraw old in-sight coordinates.
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
@@ -475,6 +480,8 @@ export function vision_recalc(control = 0) {
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
+    const heroLoc = level?.at(ux, uy);
+    const heroInRoomOrDoor = !!heroLoc && (IS_ROOM(heroLoc.typ) || heroLoc.typ === DOOR);
 
     for (let row = 0; row < ROWNO; row++) {
         const dy = Math.sign(uy - row);
@@ -483,9 +490,15 @@ export function vision_recalc(control = 0) {
             const loc = level?.at(col, row);
             if (!loc) continue;
 
-            // Night vision: adjacent cells always IN_SIGHT
+            // Night vision promotes adjacent clear terrain and closed doors.
+            // Dark-room walls are visible from inside rooms; corridor endpoint
+            // walls still need the lit-wall check below.
             if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
-                next[row][col] |= IN_SIGHT;
+                if (viz_clear[row]?.[col] || loc.typ === DOOR
+                    || has_boulder_at(level, col, row)
+                    || (heroInRoomOrDoor && (IS_WALL(loc.typ) || loc.typ === SDOOR))) {
+                    next[row][col] |= IN_SIGHT;
+                }
                 continue;
             }
 
@@ -513,7 +526,7 @@ export function vision_recalc(control = 0) {
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && control !== 2 && game.level) {
+    if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
             const next_row = next[row];

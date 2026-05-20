@@ -1321,8 +1321,12 @@ function mksobj_init(otmp, otyp, artif) {
         && !corpsePtr.neuter && !corpsePtr.male && !corpsePtr.female) {
         rn2(2);
     }
-    if (otyp === CORPSE && monsterName(otmp.corpsenm) !== 'LICHEN') {
-        rnz(25);
+    if (otyp === CORPSE) {
+        if (game._live_corpse_timeout) {
+            start_corpse_timeout(otmp);
+        } else {
+            if (monsterName(otmp.corpsenm) !== 'LICHEN') rnz(25);
+        }
     }
 }
 
@@ -1604,7 +1608,7 @@ function start_corpse_timeout(body) {
 }
 
 // mkcorpstat stub
-function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
+export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
     // For STATUE/CORPSE: mksobj(..., init, false) may pick a random
     // corpsenm before mkcorpstat's caller-supplied type overrides it.

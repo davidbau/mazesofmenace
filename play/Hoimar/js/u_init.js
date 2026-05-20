@@ -222,6 +222,13 @@ function ini_inv_mkobj_filter(oclass, gotLevel1Spellbook, noCreate, roleName) {
     return obj;
 }
 
+function learn_initial_spell(obj) {
+    // C ref: u_init.c:ini_inv_use_obj() -> spell.c:initialspell().
+    if (obj?.oclass !== SPBOOK_CLASS || obj.otyp === SPE_BLANK_PAPER) return;
+    const known = game.knownSpells || (game.knownSpells = []);
+    if (!known.some((spell) => spell.otyp === obj.otyp)) known.push({ otyp: obj.otyp });
+}
+
 function sameObjField(a, b, field, fallback = null) {
     return (a?.[field] ?? fallback) === (b?.[field] ?? fallback);
 }
@@ -330,6 +337,7 @@ function ini_inv(trobs, noCreate, roleName) {
         const invObj = add_inventory_object(obj);
         if (trop.wielded) invObj.wielded = true;
         if (trop.worn) invObj.worn = true;
+        learn_initial_spell(invObj);
         if (invObj.oclass === SPBOOK_CLASS && starting_spell_level(invObj.otyp) === 1) {
             gotLevel1Spellbook = true;
         }

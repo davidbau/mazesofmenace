@@ -25,6 +25,11 @@ const HLIQUIDS = [
     'cough syrup', 'quicksilver', 'sweet vitriol', 'grey goo', 'pink slime',
     'cosmic latte', 'bone oil', 'custard', 'lard', 'vinegar', 'creosote',
 ];
+const MONSTER_DISPLAY_NAME_OVERRIDES = new Map([
+    // C ref: include/monsters.h uses NAM("Grey-elf"); the enum token loses
+    // the hyphen and capitalization carried by rndmonnam().
+    ['GREY_ELF', 'Grey-elf'],
+]);
 
 let rumorData = null;
 let engraveData = null;
@@ -230,7 +235,9 @@ function applyArticle(entry, article) {
 }
 
 function monsterDataName(mdat) {
-    return String(mdat?.[0] || 'monster').toLowerCase().replaceAll('_', ' ');
+    const token = String(mdat?.[0] || 'monster');
+    return MONSTER_DISPLAY_NAME_OVERRIDES.get(token)
+        || token.toLowerCase().replaceAll('_', ' ');
 }
 
 function xcrypt(str) {
