@@ -73,6 +73,11 @@ export function exerchk() {
         if (game.u?.uprops?.confusion || game.u?.uprops?.hallucination) {
             exercise(A_WIS, false);
         }
+        // C ref: attrib.c:exerper(). Wounded legs, fumbling, and stun abuse
+        // dexterity during the same five-turn status check.
+        if (game.u?.uprops?.wounded_legs || game.u?.uprops?.fumbling || game.u?.uprops?.stunned) {
+            exercise(A_DEX, false);
+        }
     }
 }
 

@@ -10,14 +10,14 @@ import {
     maybe_generate_rnd_mon, regen_hp, gethungry, exerchk,
     maybe_wipe_engraving, maybe_update_seer_turn, dosounds, exercise,
 } from './allmain_turns.js';
-import { mcalcdistress, mcalcmove, movemon } from './monmove.js';
+import { flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon } from './monmove.js';
 import { initrack, settrack } from './track.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { continueRunStep, finish_pending_eaten_corpse, performLevelTeleport, rhack } from './cmd.js';
+import { continueRunStep, finish_pending_eaten_corpse, performLevelTeleport, rhack, shouldStopRunForNearbyMonster } from './cmd.js';
 import { nhgetch } from './input.js';
 import {
     docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
@@ -27,7 +27,7 @@ import {
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
-import { A_WIS, COLNO } from './const.js';
+import { A_DEX, A_STR, A_WIS, COLNO } from './const.js';
 import * as ff8000 from './fastforward.js';
 import * as ff0002 from './fastforward0002.js';
 
@@ -39,6 +39,24 @@ const STARTUP_REPLAY_BY_SEED = new Map([
 ]);
 
 const SPEED_BOOTS = 166;
+const GAUNTLETS_OF_POWER = 161;
+
+async function nhTimeoutBasic() {
+    // C ref: timeout.c:nh_timeout() WOUNDED_LEGS case -> do.c:heal_legs().
+    const u = game.u;
+    const timeout = u?.uprops?.wounded_legs || 0;
+    if (!timeout) return;
+    u.uprops.wounded_legs = Math.max(0, timeout - 1);
+    if (u.uprops.wounded_legs) return;
+
+    if (u.wounded_legs_dex_penalty && Array.isArray(u.acurr?.a)) {
+        u.acurr.a[A_DEX] = (u.acurr.a[A_DEX] ?? 0) + 1;
+    }
+    u.wounded_legs_dex_penalty = false;
+    const legs = u.wounded_legs_side === 'both' ? 'legs' : 'leg';
+    u.wounded_legs_side = null;
+    await pline(`Your ${legs} ${legs === 'legs' ? 'feel' : 'feels'} better.`);
+}
 
 function startupReplayForCurrentSeed() {
     return STARTUP_REPLAY_BY_SEED.get(game._seed) || null;
@@ -375,11 +393,18 @@ export async function advanceTurn() {
     if (!resumeTurnTailOnly) {
         const firstScanCanMove = await movemon();
         if (g._monster_turn_paused_for_more) return;
+        if (g._more && firstScanCanMove && g._scan_more_from_tele_restrict) {
+            g._scan_more_from_tele_restrict = false;
+            g._resume_somebody_can_move = true;
+            g._monster_turn_paused_for_more = true;
+            g._preserve_more_base_for_next_monster_message = true;
+            return;
+        }
         if (g._fast_extra_action_pending) {
             g._fast_extra_action_pending = false;
             g._pet_combat_resume_active = false;
             g._savelife_resume_active = false;
-            return;
+            if (!occupationPending(g)) return;
         }
         let monscanmove = firstScanCanMove;
         while (monscanmove) {
@@ -398,6 +423,7 @@ export async function advanceTurn() {
     if (g.u?.uprops?.fast) g._fast_extra_action_pending = rn2(3) !== 0;
     settrack();
 
+    await nhTimeoutBasic();
     regen_hp();
 
     await dosounds();
@@ -433,6 +459,18 @@ function applyOccupationFinishObjectEffects(g) {
             discovered.add(obj.otyp);
             exercise(A_WIS, true);
         }
+        // C ref: do_wear.c:Boots_on() learns worn boots' enchantment after
+        // the delayed donning action because the status-line AC change reveals it.
+        obj.known = true;
+    } else if (obj.otyp === GAUNTLETS_OF_POWER) {
+        // C ref: do_wear.c:Gloves_on().  Wearing power gauntlets reveals the
+        // object type and recalculates strength before the finish message.
+        const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
+        if (!discovered.has(obj.otyp)) discovered.add(obj.otyp);
+        obj.known = true;
+        obj.knownName = true;
+        if (g.u?.acurr?.a) g.u.acurr.a[A_STR] = 25;
+        exercise(A_STR, true);
     }
 }
 
@@ -519,6 +557,26 @@ async function refreshHallucinationDisplayAtInputBoundary(g) {
     }
 }
 
+async function continueRunTail(g) {
+    // C ref: allmain.c:moveloop_core().  A blocking tty `more()` inside a
+    // run/travel repeat returns to the interrupted repeat loop after dismissal,
+    // without charging a fresh player turn first.
+    g._run_paused_for_more = false;
+    while (g.context?.run) {
+        if (shouldStopRunForNearbyMonster()) {
+            g.context.run = null;
+            break;
+        }
+        if (!await continueRunStep()) break;
+        await advanceTurn();
+        if (g._more) {
+            if (g.context?.run) g._run_paused_for_more = true;
+            return false;
+        }
+    }
+    return true;
+}
+
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
@@ -530,7 +588,10 @@ export async function moveloop_core() {
     }
     const hallucinating = !!(g.u?.uhallucination || g.u?.uprops?.hallucination);
     await refreshHallucinationDisplayAtInputBoundary(g);
-    if (!hallucinating && g.u?.uprops?.warning) refresh_warning_monsters();
+    if (!g._more) {
+        flush_deferred_warning_redraws();
+        if (!hallucinating && g.u?.uprops?.warning) refresh_warning_monsters();
+    }
     await bot();
     await flush_screen(1);
 
@@ -552,6 +613,11 @@ export async function moveloop_core() {
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.
     if (g.context?.move) {
+        if (g._resume_run_after_more) {
+            g._resume_run_after_more = false;
+            if (!g._more) await continueRunTail(g);
+            return;
+        }
         if (g._monster_turn_paused_for_more && g._more) return;
         if (g._floor_list_pauses_turn && g._more) {
             g._floor_list_pauses_turn = false;
@@ -584,9 +650,14 @@ export async function moveloop_core() {
             g._awaiting_prayer_done_more = true;
             g.u.uinvulnerable = false;
         }
-        while (g.context?.run && await continueRunStep()) {
-            await advanceTurn();
+        // C ref: topl.c:pline()/more() blocks the current command before a
+        // run/travel multi can consume another movement turn.  Prayer's
+        // occupation above still reaches gn.nomovemsg in this same command.
+        if (g._more) {
+            if (g.context?.run) g._run_paused_for_more = true;
+            return;
         }
+        await continueRunTail(g);
     }
 }
 

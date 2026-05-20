@@ -148,9 +148,11 @@ export class NethackGame {
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
             nhGame._cursors.push(cursor);
-            if (game._latched_more_screen) {
+            if (game._latched_more_screen
+                && (!game._more || !game._latched_more_keep_until_dismiss)) {
                 game._latched_more_screen = null;
                 game._latched_more_cursor = null;
+                game._latched_more_keep_until_dismiss = false;
             }
             if (game._override_screen) {
                 game._override_prev = game._override_screen; // let rhack know what was shown
@@ -257,6 +259,11 @@ export async function runSegment(input, prevGame = null) {
         }
     }
 
+    // Official scoring calls runSegment(input) without prevGame and aggregates
+    // per-segment getRngLog() results harness-side. Keep cumulative logs scoped
+    // to viewer compatibility only; returning cumulative logs to the scorer
+    // would resend old RNG entries and can trigger the spread-push overflow
+    // tracked in GitHub davidbau/teleport-contest#8.
     if (viewerCompatMode) {
         const prevScreens = prevGame?._teleportCumulativeScreens || [];
         const prevCursors = prevGame?._teleportCumulativeCursors || [];

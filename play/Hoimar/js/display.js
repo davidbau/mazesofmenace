@@ -11,16 +11,18 @@ import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
-    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL,
+    TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, CLOUD,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
-    HOLE, TRAPDOOR, M_AP_OBJECT, IS_POOL,
+    LANDMINE, SLP_GAS_TRAP, HOLE, TRAPDOOR, MAGIC_PORTAL, MAGIC_TRAP, ANTI_MAGIC,
+    M_AP_OBJECT, IS_POOL, IS_WALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
-    WARNCOUNT, def_warnsyms,
+    WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
+    WARNCOUNT, def_warnsyms, Is_rogue_level,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
     NO_COLOR, CLR_BLACK, CLR_BLUE, CLR_GREEN, CLR_GRAY, CLR_BROWN, CLR_RED,
-    CLR_WHITE, CLR_ORANGE, CLR_YELLOW, CLR_BRIGHT_BLUE,
+    CLR_WHITE, CLR_ORANGE, CLR_YELLOW, CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA,
     ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE, DEC_TO_UNICODE,
 } from './terminal.js';
 import { roleRankForLevel } from './roles.js';
@@ -87,6 +89,14 @@ const OBJECT_CLASS_CHARS = {
     17: '.',
 };
 
+const ROGUE_OBJECT_CLASS_CHARS = {
+    ...OBJECT_CLASS_CHARS,
+    3: ']',
+    5: ',',
+    7: ':',
+    12: '*',
+};
+
 const MONSTER_SYMBOLS = {
     S_ANT: 'a', S_BLOB: 'b', S_COCKATRICE: 'c', S_DOG: 'd',
     S_EYE: 'e', S_FELINE: 'f', S_GREMLIN: 'g', S_HUMANOID: 'h',
@@ -109,6 +119,20 @@ function tty_color(color) {
     return color === CLR_GRAY || color === CLR_BLACK ? NO_COLOR : color;
 }
 
+function rogue_level_display() {
+    return Is_rogue_level(game.u?.uz);
+}
+
+function hell_level_display() {
+    const uz = game.u?.uz;
+    return !!game.dungeons?.[uz?.dnum ?? 0]?.flags?.hellish;
+}
+
+function object_class_char(oclass) {
+    const table = rogue_level_display() ? ROGUE_OBJECT_CLASS_CHARS : OBJECT_CLASS_CHARS;
+    return table[oclass] || '?';
+}
+
 function obj_is_generic(obj) {
     if (!obj || obj.dknown) return false;
     const otyp = obj.otyp ?? -1;
@@ -118,7 +142,12 @@ function obj_is_generic(obj) {
 }
 
 function observe_object(obj) {
-    if (obj) obj.dknown = true;
+    if (!obj) return;
+    obj.dknown = true;
+    if (typeof obj.otyp === 'number') {
+        const encountered = game.encounteredObjects || (game.encounteredObjects = new Set());
+        if (typeof encountered.add === 'function') encountered.add(obj.otyp);
+    }
 }
 
 function hallucinated_statue_glyph() {
@@ -141,7 +170,7 @@ function random_object_glyph_for_display() {
     }
     const oclass = OBJECT_CLASS[otyp];
     return {
-        ch: OBJECT_CLASS_CHARS[oclass] || '?',
+        ch: object_class_char(oclass),
         color: getObjectColor(otyp) ?? NO_COLOR,
     };
 }
@@ -149,6 +178,10 @@ function random_object_glyph_for_display() {
 function monster_data_for_corpsenm(corpsenm) {
     if (Number.isInteger(corpsenm)) return MONSTER_DATA[corpsenm] || null;
     if (typeof corpsenm === 'string') return MONSTER_DATA.find(m => m[0] === corpsenm) || null;
+    if (corpsenm && typeof corpsenm === 'object') {
+        return MONSTER_DATA.find(m => m[0] === corpsenm.name)
+            || [corpsenm.name, corpsenm.mlet, 0, 0, 0, 0, 0, corpsenm.color ?? NO_COLOR];
+    }
     return null;
 }
 
@@ -194,7 +227,44 @@ function is_known_branch_stair(x, y) {
 // ── Terrain to display character + color + DEC flag ──
 function terrain_glyph(loc, x, y) {
     const typ = display_wall_type(loc);
-    const wallColor = game.level?.flags?.red_walls
+    if (rogue_level_display()) {
+        switch (typ) {
+        case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
+        case ROOM:      return { ch: '.', color: NO_COLOR, dec: false };
+        case CORR:      return { ch: '#', color: NO_COLOR, dec: false };
+        case DOOR:      return { ch: '+', color: NO_COLOR, dec: false };
+        case SDOOR:     return loc.horizontal
+            ? { ch: '-', color: NO_COLOR, dec: false }
+            : { ch: '|', color: NO_COLOR, dec: false };
+        case STAIRS:    return { ch: '%', color: NO_COLOR, dec: false };
+        case HWALL:
+        case TLCORNER:
+        case TRCORNER:
+        case BLCORNER:
+        case BRCORNER:
+        case CROSSWALL:
+        case TUWALL:
+        case TDWALL:
+            return { ch: '-', color: NO_COLOR, dec: false };
+        case VWALL:
+        case TLWALL:
+        case TRWALL:
+            return { ch: '|', color: NO_COLOR, dec: false };
+        case FOUNTAIN:  return { ch: '{', color: NO_COLOR, dec: false };
+        case SINK:      return { ch: '#', color: NO_COLOR, dec: false };
+        case ALTAR:     return { ch: '_', color: NO_COLOR, dec: false };
+        case GRAVE:     return { ch: '|', color: NO_COLOR, dec: false };
+        case TREE:      return { ch: '#', color: NO_COLOR, dec: false };
+        case POOL:
+        case MOAT:
+        case WATER:
+        case LAVAPOOL:
+        case LAVAWALL:
+            return { ch: '`', color: NO_COLOR, dec: false };
+        default:        return { ch: '?', color: NO_COLOR, dec: false };
+        }
+    }
+    const wallColor = (game.level?.flags?.red_walls || hell_level_display())
         ? CLR_RED
         : game.level?.flags?.sokoban_rules ? CLR_BLUE
             : game.level?.flags?.mines_walls ? CLR_BROWN : NO_COLOR;
@@ -213,7 +283,7 @@ function terrain_glyph(loc, x, y) {
     case SDOOR:
         // C ref: display.c:wall_angle().  Undiscovered secret doors render
         // as their underlying wall orientation until they are revealed.
-        return loc.horizontal
+        return secret_door_horizontal(loc, x, y)
             ? { ch: 'q', color: wallColor, dec: true }
             : { ch: 'x', color: wallColor, dec: true };
     case STAIRS:
@@ -239,6 +309,7 @@ function terrain_glyph(loc, x, y) {
     case SINK:      return { ch: '#', color: CLR_GRAY, dec: false };
     case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+    case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
     case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
     case POOL:
     case MOAT:
@@ -251,6 +322,9 @@ function terrain_glyph(loc, x, y) {
         return { ch: '`', color: CLR_RED, dec: false };
     case LAVAWALL:
         return { ch: '`', color: CLR_ORANGE, dec: false };
+    case CLOUD:
+        // C ref: include/defsym.h:S_cloud.
+        return { ch: '#', color: CLR_GRAY, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
     }
 }
@@ -259,10 +333,12 @@ function display_wall_type(loc) {
     // C ref: display.c:wall_angle(). For wallification glyphs, NetHack
     // derives the visible wall character from terrain type plus seenv.
     const seenv = (loc.seenv || 0) & 0xff;
-    if (!seenv || ((loc.wall_info || 0) & WM_MASK)) return loc.typ;
+    if (!seenv || (((loc.wall_info || 0) & WM_MASK) && loc.typ !== CROSSWALL)) return loc.typ;
     let rotated = seenv;
     let row = null;
     switch (loc.typ) {
+    case CROSSWALL:
+        return display_crosswall_type(loc, seenv);
     case TDWALL:
         row = [STONE, TLCORNER, TRCORNER, HWALL, TDWALL];
         break;
@@ -290,9 +366,100 @@ function display_wall_type(loc) {
     return row[col];
 }
 
+function onlySeenv(seenv, bits) {
+    return !!((seenv & bits) && !(seenv & ~bits));
+}
+
+function display_crosswall_type(loc, seenv) {
+    // C ref: display.c:wall_angle(), CROSSWALL case.
+    const mode = (loc.wall_info || 0) & WM_MASK;
+    switch (mode) {
+    case 0:
+        if (seenv === SV0) return BRCORNER;
+        if (seenv === SV2) return BLCORNER;
+        if (seenv === SV4) return TLCORNER;
+        if (seenv === SV6) return TRCORNER;
+        if (!(seenv & ~(SV0 | SV1 | SV2)) && ((seenv & SV1) || seenv === (SV0 | SV2)))
+            return TUWALL;
+        if (!(seenv & ~(SV2 | SV3 | SV4)) && ((seenv & SV3) || seenv === (SV2 | SV4)))
+            return TRWALL;
+        if (!(seenv & ~(SV4 | SV5 | SV6)) && ((seenv & SV5) || seenv === (SV4 | SV6)))
+            return TDWALL;
+        if (!(seenv & ~(SV0 | SV6 | SV7)) && ((seenv & SV7) || seenv === (SV0 | SV6)))
+            return TLWALL;
+        return CROSSWALL;
+    case WM_X_TL:
+    case WM_X_TR:
+    case WM_X_BL:
+    case WM_X_BR: {
+        const crossMatrix = [
+            [BRCORNER, BLCORNER, TLCORNER, TUWALL, TRWALL, CROSSWALL],
+            [BLCORNER, TLCORNER, TRCORNER, TRWALL, TDWALL, CROSSWALL],
+            [TLCORNER, TRCORNER, BRCORNER, TDWALL, TLWALL, CROSSWALL],
+            [TRCORNER, BRCORNER, BLCORNER, TLWALL, TUWALL, CROSSWALL],
+        ];
+        let rowIdx = 0;
+        let rotated = seenv;
+        if (mode === WM_X_TL) {
+            rowIdx = 1;
+            rotated = ((seenv >> 4) | (seenv << 4)) & 0xff;
+        } else if (mode === WM_X_TR) {
+            rowIdx = 2;
+            rotated = ((seenv >> 6) | (seenv << 2)) & 0xff;
+        } else if (mode === WM_X_BL) {
+            rowIdx = 0;
+            rotated = ((seenv >> 2) | (seenv << 6)) & 0xff;
+        } else {
+            rowIdx = 3;
+        }
+        if (rotated === SV4) return STONE;
+        rotated &= ~SV4;
+        let col = 5; // C_crwall
+        if (rotated === SV0) col = 1;
+        else if (rotated & (SV2 | SV3)) {
+            if (rotated & (SV5 | SV6 | SV7)) col = 5;
+            else if (rotated & (SV0 | SV1)) col = 4;
+            else col = 2;
+        } else if (rotated & (SV5 | SV6)) {
+            if (rotated & (SV1 | SV2 | SV3)) col = 5;
+            else if (rotated & (SV0 | SV7)) col = 3;
+            else col = 0;
+        } else if (rotated & SV1) col = (rotated & SV7) ? 5 : 4;
+        else if (rotated & SV7) col = (rotated & SV1) ? 5 : 3;
+        return crossMatrix[rowIdx][col];
+    }
+    case WM_X_TLBR:
+        if (onlySeenv(seenv, SV1 | SV2 | SV3)) return BLCORNER;
+        if (onlySeenv(seenv, SV5 | SV6 | SV7)) return TRCORNER;
+        if (onlySeenv(seenv, SV0 | SV4)) return STONE;
+        return CROSSWALL;
+    case WM_X_BLTR:
+        if (onlySeenv(seenv, SV0 | SV1 | SV7)) return BRCORNER;
+        if (onlySeenv(seenv, SV3 | SV4 | SV5)) return TLCORNER;
+        if (onlySeenv(seenv, SV2 | SV6)) return STONE;
+        return CROSSWALL;
+    default:
+        return STONE;
+    }
+}
+
+function secret_door_horizontal(loc, x, y) {
+    if (loc.horizontal) return true;
+    const wallish = (spot) => spot && (IS_WALL(spot.typ) || spot.typ === SDOOR);
+    const leftRight = wallish(game.level?.at(x - 1, y)) && wallish(game.level?.at(x + 1, y));
+    const upDown = wallish(game.level?.at(x, y - 1)) && wallish(game.level?.at(x, y + 1));
+    if (leftRight && !upDown) return true;
+    if (upDown && !leftRight) return false;
+    return !!loc.horizontal;
+}
+
 function trap_glyph(trap) {
     if (!trap) return null;
-    const color = (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) ? CLR_BROWN : CLR_GRAY;
+    let color = CLR_GRAY;
+    if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) color = CLR_BROWN;
+    else if (trap.ttyp === LANDMINE) color = CLR_RED;
+    else if (trap.ttyp === SLP_GAS_TRAP || trap.ttyp === ANTI_MAGIC) color = CLR_BRIGHT_BLUE;
+    else if (trap.ttyp === MAGIC_PORTAL || trap.ttyp === MAGIC_TRAP) color = CLR_BRIGHT_MAGENTA;
     return { ch: '^', color, dec: false };
 }
 
@@ -312,7 +479,7 @@ function monster_glyph(mon) {
         const otyp = mon.mappearance;
         const oclass = OBJECT_CLASS[otyp];
         return {
-            ch: OBJECT_CLASS_CHARS[oclass] || '?',
+            ch: object_class_char(oclass),
             color: getObjectColor(otyp) ?? NO_COLOR,
             dec: false,
         };
@@ -396,13 +563,43 @@ function terrain_covers_objects(loc) {
     return ((IS_POOL(loc.typ) && !underwater) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL);
 }
 
+export function map_level_for_wizard() {
+    // C refs: wizcmds.c:wiz_map(), detect.c:do_mapping().
+    if (!game.level) return;
+    const savedHallucination = game.u?.uprops?.hallucination;
+    const savedUHallucination = game.u?.uhallucination;
+    if (game.u?.uprops) game.u.uprops.hallucination = 0;
+    if (game.u) game.u.uhallucination = 0;
+
+    for (const trap of game.level.traps || []) trap.tseen = true;
+
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level.at(x, y);
+            if (!loc) continue;
+            if (IS_WALL(loc.typ) || loc.typ === SDOOR) loc.seenv = 0xff;
+            loc.waslit = true;
+            const trap = (game.level.traps || []).find(t => t.tx === x && t.ty === y);
+            const covered = terrain_covers_objects(loc);
+            let glyph = terrain_glyph(loc, x, y);
+            if (trap?.tseen && !covered) glyph = trap_glyph(trap);
+            loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, decgfx: !!glyph.dec };
+            show_glyph_cell(x, y, glyph.ch, glyph.color, !!glyph.dec);
+        }
+    }
+    see_monsters();
+
+    if (game.u?.uprops) game.u.uprops.hallucination = savedHallucination;
+    if (game.u) game.u.uhallucination = savedUHallucination;
+}
+
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     loc.disp_ch = ch;
-    loc.disp_color = tty_color(color);
-    loc.disp_decgfx = !!decgfx;
+    loc.disp_color = rogue_level_display() ? NO_COLOR : tty_color(color);
+    loc.disp_decgfx = rogue_level_display() ? false : !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
 }
@@ -504,9 +701,9 @@ export function newsym(x, y) {
     const visible = cansee(x, y);
 
     if (!visible) {
-        if (mon) {
-            const wg = warning_glyph(mon);
-            if (wg) show_glyph_cell(x, y, wg.ch, wg.color, false);
+        const wg = mon ? warning_glyph(mon) : null;
+        if (wg) {
+            show_glyph_cell(x, y, wg.ch, wg.color, false);
         } else if (loc.remembered_glyph) {
             // Out of sight but remembered - show remembered glyph.
             show_glyph_cell(x, y, loc.remembered_glyph.ch,
@@ -695,7 +892,12 @@ function _statusLine2() {
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
         : (u.uhp || 0);
-    return `Dlvl:${depth(u.uz)} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
+    const goldSymbol = rogue_level_display() ? '*' : '$';
+    // C ref: botl.c:describe_level().
+    const levelDesc = game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
+        ? `Home ${u.uz?.dlevel || 1}`
+        : `Dlvl:${depth(u.uz)}`;
+    return `${levelDesc} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -883,13 +1085,19 @@ function _buildScreenOutput() {
             }
         }
         if (game._more && game._more_next_message_row) {
-            const more = '--More--';
-            for (let c = 0; c < more.length; c++) display.setCell(c, 1, more[c], NO_COLOR, 0);
+            const more = `${game._message_continuation_row || ''}--More--`;
+            for (let c = 0; c < display.cols; c++)
+                display.setCell(c, 1, ' ', NO_COLOR, 0);
+            for (let c = 0; c < Math.min(more.length, display.cols); c++)
+                display.setCell(c, 1, more[c], NO_COLOR, 0);
         }
-        // Cursor at hero
-        if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
-        else if (game._more && game._more_next_message_row) display.setCursor('--More--'.length, 1);
-        else if (msg && game._more) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
+        // Cursor at the active blocking prompt before any map/prompt cursor.
+        if (game._more && game._more_next_message_row) {
+            const more = `${game._message_continuation_row || ''}--More--`;
+            display.setCursor(Math.min(more.length, display.cols - 1), 1);
+        }
+        else if (msg && game._more && !floorListActive) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
+        else if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
         else if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
     }
@@ -937,6 +1145,7 @@ export function clear_pending_message() {
     game._pending_message = '';
     game._more = false;
     game._more_next_message_row = false;
+    game._message_continuation_row = '';
     game._more_dismissals_remaining = 0;
     game._hero_melee_message_pending = false;
     game._pet_combat_more_latched = false;

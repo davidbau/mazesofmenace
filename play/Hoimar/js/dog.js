@@ -152,15 +152,14 @@ function init_edog(mon) {
     return mon.edog;
 }
 
-export function pet_arrive_with_you() {
-    const migrating = game._migrating_pet || null;
+function arrive_with_hero(migrating) {
     game._migrating_pet = null;
     if (!migrating) return null;
     let pet = migrating.data;
     if (!pet) return null;
-    game.pet_type = pet;
+    if (migrating.mtame) game.pet_type = pet;
 
-    const exact = !rn2(10);
+    const exact = !rn2(migrating.mtame ? 10 : migrating.mpeaceful ? 5 : 2);
     let x = game.u.ux;
     let y = game.u.uy;
     if (!exact) {
@@ -175,6 +174,9 @@ export function pet_arrive_with_you() {
     const ch = pet === PM_KITTEN ? 'f' : pet === PM_PONY ? 'u' : 'd';
     const mon = {
         mx: x, my: y,
+        // C ref: dog.c:mon_arrive().  Arriving pets refresh their apparent
+        // hero target so relocation helpers do not use stale migration data.
+        mux: game.u?.ux ?? 0, muy: game.u?.uy ?? 0,
         ch: migrating?.ch || ch,
         color: migrating?.color ?? 15,
         data: { ...pet },
@@ -215,6 +217,19 @@ export function pet_arrive_with_you() {
         }
     }
     return mon;
+}
+
+export function pet_arrive_with_you() {
+    const followers = game._migrating_followers
+        || (game._migrating_pet ? [game._migrating_pet] : []);
+    game._migrating_followers = null;
+    game._migrating_pet = null;
+    let first = null;
+    for (const migrating of followers) {
+        const arrived = arrive_with_hero(migrating);
+        if (!first) first = arrived;
+    }
+    return first;
 }
 
 function dist2(x0, y0, x1, y1) {

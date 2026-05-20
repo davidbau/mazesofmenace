@@ -24,6 +24,11 @@ export function initRng(seed) {
 }
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
+// Scorer note (GitHub davidbau/teleport-contest#8): this must return the
+// complete per-segment RNG log. The hosted scorer has overflowed while
+// spreading large segment logs into its aggregate list; truncating or hiding
+// entries here would be reward-hacking and breaks parity evidence. Fix real
+// PRNG drift/log growth or the scorer aggregation instead.
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 
