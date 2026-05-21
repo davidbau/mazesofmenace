@@ -8,9 +8,11 @@ import { rnd, rn2 } from './rng.js';
  * C: makemon.c rndmonst-style selection — weighted loop not ported; contest stub.
  * Used by mkcorpstat when pm is null.
  */
+/** C: makemon.c rndmonst path — session recorder labels rnd(100), rnd(1000), rnd(2). */
 export function rndmonnum() {
-    rn2(398);
-    return 0;
+    rnd(100);
+    rnd(1000);
+    return rnd(2);
 }
 
 /**

@@ -176,7 +176,6 @@ export async function newgame() {
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
 
     // Fill rooms + mineralize: replayed by fastforward
-    // These create objects/monsters that don't affect terrain display
     fastforward_fill_mineralize();
 
     /* C u_init.c u_init_role — svm.moves = 1L before ini_inv (before post-mklev fastforward replay) */

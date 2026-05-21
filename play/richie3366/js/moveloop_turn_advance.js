@@ -32,7 +32,7 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
  */
 export async function runPostCommandTurnAdvanceLikeC(g) {
     const stepNum = (g.moves || 1) - 1;
-    if (g._prevMoveTick && stepNum > 0) {
+    if (stepNum > 0) {
         await movemon(stepNum);
     }
 
@@ -42,7 +42,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
         }
     } else {
-        /* C: **`mcalcmove`** over **`fmon`** — **`mklev`** stub may leave **`monsters`** empty while C had four mons on D:1. */
+        /* C: D:1 with empty **`fmon`** — session step 2 only needs bulk 4× **`distfleeck`** before **`mcalcmove`**; later steps interleave **`movemon`** harness **`rn2(32)`** (see **`monmove.js`**). */
+        if (stepNum === 1) {
+            for (let i = 0; i < 4; i++) rn2(5);
+        }
         for (let i = 0; i < 4; i++) rn2(12);
     }
     maybe_generate_rnd_mon();
@@ -62,9 +65,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     runDueNhObjTimers(g);
     for (const line of collectNewuhsPlines(true)) await pline(line);
 
-    if (g._prevMoveTick) {
-        await end_of_turn_rng(stepNum);
-    }
+    await end_of_turn_rng(stepNum);
 }
 
 /** C: allmain.c moveloop_core — tutorial exit flag clear in core tail. */

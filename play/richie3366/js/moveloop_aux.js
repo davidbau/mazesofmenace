@@ -169,14 +169,9 @@ export function maybe_u_wipe_engr() {
     if (!rn2(denom)) uWipeEngr(rnd(3));
 }
 
-/** C: attrib.c exercise — rn2(19) before moveloop u-wipe tail on some harness steps. */
-export function pre_moveloop82_exercise(stepNum) {
-    if (stepNum === 9) rn2(19);
-}
-
-/** C: attrib.c exercise — extra rn2(31) after u-wipe tail on harness step 6. */
+/** C: attrib.c exercise — extra rn2(31) after u-wipe tail (session step 6 → stepNum 5). */
 export function post_moveloop82_exercise(stepNum) {
-    if (stepNum === 6) rn2(31);
+    if (stepNum === 5) rn2(31);
 }
 
 /**
@@ -191,7 +186,6 @@ export async function end_of_turn_rng(stepNum) {
     for (const line of collectExerchkPlines()) await pline(line);
     maybe_u_wipe_engr();
     if (stepNum > 0 && stepNum <= MOVE_MON_HARNESS_MAX_STEP) {
-        pre_moveloop82_exercise(stepNum);
         post_moveloop82_exercise(stepNum);
     }
 }

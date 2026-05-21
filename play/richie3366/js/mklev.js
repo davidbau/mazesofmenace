@@ -490,8 +490,42 @@ async function makelevel() {
         place_branch(branchp);
     }
 
-    // Fill rooms + mineralize: consumed by fastforward_fill_mineralize
-    // Called externally from allmain.js after mklev structural phase
+    // Fill rooms + mineralize: consumed by fastforward_fill_mineralize (allmain.js)
+}
+
+/**
+ * C: mklev.c makelevel tail — fill each fillable room; bonus items in one random room.
+ * @param {import('./gstate.js').game} [g]
+ */
+export async function fillAllOrdinaryRoomsLikeC(g = game) {
+    const rooms = g.level?.rooms ?? [];
+    let fillableCount = 0;
+    for (const croom of rooms) {
+        if ((croom?.hx | 0) <= 0) continue;
+        if (croom.needfill !== FILL_NORMAL) continue;
+        if (croom.rtype !== OROOM && croom.rtype !== THEMEROOM) continue;
+        fillableCount++;
+    }
+    let bonusCountdown = fillableCount > 0 ? rn2(fillableCount) : -1;
+    for (const croom of rooms) {
+        if ((croom?.hx | 0) <= 0) continue;
+        const fillable =
+            croom.needfill === FILL_NORMAL &&
+            (croom.rtype === OROOM || croom.rtype === THEMEROOM);
+        if (!fillable) continue;
+        await fill_ordinary_room(croom, bonusCountdown === 0);
+        bonusCountdown--;
+    }
+}
+
+/**
+ * C: mklev.c makelevel fill + level_finalize_topology mineralize (replaces fastforward_fill_mineralize replay).
+ * @param {import('./gstate.js').game} [g]
+ */
+/** @deprecated Use fill in makelevel + mineralize in level_finalize_topology (C mklev order). */
+export async function fillAndMineralizeFromMklevLikeC(g = game) {
+    await fillAllOrdinaryRoomsLikeC(g);
+    mineralize(-1, -1, -1, -1, false);
 }
 
 // C ref: mklev.c makerooms()
