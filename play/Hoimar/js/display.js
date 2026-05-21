@@ -8,7 +8,7 @@ import { MONSTER_DATA } from './monster_data.js';
 import { OBJECT_CLASS } from './object_data.js';
 import { getObjectColor } from './o_init.js';
 import {
-    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, STAIRS,
+    COLNO, ROWNO, STONE, ROOM, CORR, DOOR, SDOOR, SCORR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     TREE, FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, CLOUD,
@@ -154,6 +154,10 @@ function observe_object(obj) {
     if (!obj) return;
     obj.dknown = true;
     if (typeof obj.otyp === 'number') {
+        const order = Array.isArray(game.discoveryOrder)
+            ? game.discoveryOrder
+            : (game.discoveryOrder = []);
+        if (!order.includes(obj.otyp)) order.push(obj.otyp);
         const encountered = game.encounteredObjects || (game.encounteredObjects = new Set());
         if (typeof encountered.add === 'function') encountered.add(obj.otyp);
     }
@@ -207,6 +211,11 @@ function object_glyph_for_display(obj, x, y, visible) {
                 color: obj.color ?? getObjectColor(STATUE) ?? NO_COLOR,
             };
         }
+    }
+    if (obj?.otyp === CORPSE) {
+        // C ref: include/display.h:corpse_to_glyph().
+        const mdat = monster_data_for_corpsenm(obj.corpsenm);
+        return { ch: '%', color: mdat?.[7] ?? getObjectColor(CORPSE) ?? NO_COLOR };
     }
 
     let generic = obj_is_generic(obj);
@@ -682,28 +691,46 @@ function mapped_location_memory(loc, x, y, visible) {
     return { ch: tg.ch, color: tg.color, decgfx: tg.dec };
 }
 
-export function map_level_for_wizard() {
-    // C refs: wizcmds.c:wiz_map(), detect.c:do_mapping().
+export function map_level_for_wizard(revealTraps = false) {
+    // C refs: wizcmds.c:wiz_map(), detect.c:do_mapping(), detect.c:show_map_spot().
     if (!game.level) return;
     const savedHallucination = game.u?.uprops?.hallucination;
     const savedUHallucination = game.u?.uhallucination;
     if (game.u?.uprops) game.u.uprops.hallucination = 0;
     if (game.u) game.u.uhallucination = 0;
 
-    for (const trap of game.level.traps || []) trap.tseen = true;
+    if (revealTraps) {
+        // C ref: wizcmds.c:wiz_map() marks every trap seen before do_mapping();
+        // ordinary magic mapping does not pre-mark traps.
+        for (const trap of game.level.traps || []) trap.tseen = true;
+    }
 
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
             if (!loc) continue;
+            const old = {
+                ch: loc.disp_ch,
+                color: loc.disp_color,
+                decgfx: loc.disp_decgfx,
+            };
+            const visible = cansee(x, y);
+            if (loc.typ === SCORR) loc.typ = CORR;
             if (IS_WALL(loc.typ) || loc.typ === SDOOR) loc.seenv = 0xff;
-            loc.waslit = true;
             const trap = (game.level.traps || []).find(t => t.tx === x && t.ty === y);
             const covered = terrain_covers_objects(loc);
             let glyph = terrain_glyph(loc, x, y);
             if (trap?.tseen && !covered) glyph = trap_glyph(trap);
-            loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, decgfx: !!glyph.dec };
-            show_glyph_cell(x, y, glyph.ch, glyph.color, !!glyph.dec);
+            else if (!covered) {
+                const obj = (game.level.objects || []).find(o => o.ox === x && o.oy === y);
+                if (obj && old.ch) {
+                    const og = object_glyph_for_display(obj, x, y, visible);
+                    if (old.ch === og.ch && old.color === tty_color(og.color)) glyph = og;
+                }
+            }
+            const decgfx = !!(glyph.dec ?? glyph.decgfx);
+            loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, decgfx };
+            show_glyph_cell(x, y, glyph.ch, glyph.color, decgfx);
         }
     }
     see_monsters();
@@ -989,6 +1016,69 @@ function render_map_row(y) {
     return output;
 }
 
+function render_known_terrain_row(y) {
+    if (!game.level) return '';
+    let firstCol = -1, lastCol = -1;
+    const glyphs = new Map();
+    for (let x = 1; x < COLNO; x++) {
+        const loc = game.level.at(x, y);
+        const known = loc?.disp_ch && loc.disp_ch !== ' ';
+        if (!known) continue;
+        // C ref: cmd.c:doterrain().  The first terrain-view choice shows the
+        // known map without monsters, objects, and traps, so render the base
+        // terrain instead of the remembered object/monster display layer.
+        const glyph = terrain_glyph(loc, x, y);
+        if (glyph.ch === '#' || glyph.ch === '>') glyph.color = NO_COLOR;
+        glyphs.set(x, glyph);
+        if (glyph.ch !== ' ') {
+            if (firstCol < 0) firstCol = x;
+            lastCol = x;
+        }
+    }
+    if (firstCol < 0) return '';
+
+    let output = '';
+    let activeColor = ANSI_DEFAULT;
+    let activeDec = false;
+    const gap = firstCol - 1;
+    if (gap > 4) output += `\x1b[${gap}C`;
+    else if (gap > 0) output += ' '.repeat(gap);
+
+    for (let x = firstCol; x <= lastCol; x++) {
+        const glyph = glyphs.get(x) || { ch: ' ', color: NO_COLOR, dec: false };
+        if (glyph.ch === ' ') {
+            let run = 1;
+            while (x + run <= lastCol && (glyphs.get(x + run)?.ch ?? ' ') === ' ') run++;
+            if (activeDec) { output += '\x0f'; activeDec = false; }
+            if (run > 4) output += `\x1b[${run}C`;
+            else output += ' '.repeat(run);
+            x += run - 1;
+            continue;
+        }
+
+        const wantAnsi = ANSI_COLOR[glyph.color] ?? ANSI_DEFAULT;
+        if (wantAnsi !== activeColor) {
+            output += `\x1b[${wantAnsi}m`;
+            activeColor = wantAnsi;
+        }
+        if (glyph.dec && !activeDec) { output += '\x0e'; activeDec = true; }
+        else if (!glyph.dec && activeDec) { output += '\x0f'; activeDec = false; }
+        output += glyph.ch;
+    }
+
+    if (activeColor !== ANSI_DEFAULT) output += `\x1b[${ANSI_DEFAULT}m`;
+    if (activeDec) output += '\x0f';
+    return output;
+}
+
+export function serialize_known_terrain_view_screen(message = '') {
+    let output = `${message}\n`;
+    for (let y = 0; y < ROWNO; y++) output += `${render_known_terrain_row(y)}\n`;
+    output += `${_statusLine1()}\n`;
+    output += _statusLine2();
+    return output;
+}
+
 // ── Status lines ──
 function _statusLine1() {
     const u = game.u;
@@ -1020,6 +1110,7 @@ function _statusLine2() {
     if ((u.uencumber || 0) > 0) conditions.push('Burdened');
     if (u.uprops?.confusion || u.uconfusion) conditions.push('Conf');
     if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
+    if (u.uprops?.deaf) conditions.push('Deaf');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
@@ -1212,6 +1303,8 @@ function _buildScreenOutput() {
             if (game._floor_list_show_more !== false) {
                 const more = '--More--';
                 const row = Math.min(21, game._floor_list_lines.length + 1);
+                for (let c = 0; c < display.cols - col; c++)
+                    display.setCell(col + c, row, ' ', NO_COLOR, 0);
                 for (let c = 0; c < more.length; c++)
                     display.setCell(col + c, row, more[c], NO_COLOR, 0);
             }
@@ -1228,7 +1321,8 @@ function _buildScreenOutput() {
             const more = `${game._message_continuation_row || ''}--More--`;
             display.setCursor(Math.min(more.length, display.cols - 1), 1);
         }
-        else if (msg && game._more && !floorListActive) display.setCursor(Math.min(msg.length, display.cols - 1), 0);
+        else if (msg && game._more && !floorListActive)
+            display.setCursor(Math.min(terminalCellWidth(msg), display.cols - 1), 0);
         else if (game._prompt_cursor) display.setCursor(game._prompt_cursor[0], game._prompt_cursor[1]);
         else if (game.u?.ux > 0)
             display.setCursor(game.u.ux - 1, game.u.uy + 1);
@@ -1275,6 +1369,26 @@ export async function append_pline(msg) {
 export function queue_more_prompt(count = 1) {
     game._more_dismissals_remaining = (game._more_dismissals_remaining || 0) + Math.max(1, count);
     game._more = true;
+}
+
+function terminalCellWidth(text) {
+    let width = 0;
+    const s = String(text || '');
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (ch === '\x0e' || ch === '\x0f') continue;
+        if (ch === '\x1b' && s[i + 1] === '[') {
+            let j = i + 2;
+            while (j < s.length && !/[A-Za-z]/.test(s[j])) j++;
+            const final = s[j] || '';
+            const body = s.slice(i + 2, j);
+            if (final === 'C') width += Number(body || 1) || 1;
+            i = j;
+            continue;
+        }
+        width++;
+    }
+    return width;
 }
 
 export function clear_pending_message() {

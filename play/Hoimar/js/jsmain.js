@@ -14,9 +14,11 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { parseNethackrc } from './options.js';
-import { flush_screen } from './display.js';
+import { bot, docrt, flush_screen, pline } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { friday13, midnight, night, parseDatetime, phaseOfMoon } from './hacklib.js';
+import { hasSavedGame, restoreSavedGameIntoCurrentState } from './save_restore.js';
+import { l_nhcore_init } from './mklev.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -100,8 +102,10 @@ export class NethackGame {
 
         // Initialize hero struct
         g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
-        g.context = { move: 0 };
+        g.context = { move: 0, ident: 2, next_attrib_check: 600 };
         g.discoveredObjects = new Set();
+        g.discoveryOrder = [];
+        g.discoveryPriceQuotes = new Map();
         g.program_state = {};
         g.moves = 1;
         g._seed = this._seed;
@@ -127,8 +131,42 @@ export class NethackGame {
         // Install capture hook
         this._installCaptureHook();
 
-        // Run game startup
-        await newgame();
+        if (hasSavedGame(this._storage)) {
+            restoreSavedGameIntoCurrentState(this._storage);
+            await this._showRestoreStartup();
+        } else {
+            // Run game startup
+            await newgame();
+        }
+    }
+
+    async _showRestoreStartup() {
+        const g = game;
+        // C refs: restore.c:restore_luadata(), nhlua.c:l_nhcore_init().
+        // Restoring an old game creates a fresh persistent Lua core before
+        // allmain.c:welcome(FALSE), consuming nhlib.lua's alignment shuffle.
+        l_nhcore_init();
+        await docrt();
+        await bot();
+        await flush_screen(1);
+        const race = g.urace?.noun || g.urace?.adj || 'human';
+        const role = g.flags?.female ? (g.urole?.name?.f || g.urole?.name?.m) : g.urole?.name?.m;
+        await pline(`Hello ${g.plname}, the ${race} ${role}, welcome back to NetHack!`);
+        g._more = true;
+        g._more_next_message_row = false;
+
+        const messages = [];
+        if (g.flags?.moonphase === 4) {
+            messages.push('You are lucky!  Full moon tonight.');
+            g.u.uluck = (g.u.uluck || 0) + 1;
+        } else if (g.flags?.moonphase === 0) {
+            messages.push('Be careful!  New moon tonight.');
+        }
+        if (g.flags?.friday13) {
+            messages.push('Watch out!  Bad things can happen on Friday the 13th.');
+            g.u.uluck = (g.u.uluck || 0) - 1;
+        }
+        if (messages.length) g._startup_preamble_messages = messages;
     }
 
     _installCaptureHook() {

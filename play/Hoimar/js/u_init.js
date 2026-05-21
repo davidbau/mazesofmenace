@@ -20,6 +20,12 @@ const ROLE_INIT = new Map([
         attrdist: [20, 10, 10, 30, 20, 10],
         hp: 12, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
     }],
+    ['Ranger', {
+        attrbase: [13, 13, 13, 9, 13, 7],
+        attrmax: [30, 10, 10, 20, 20, 10],
+        attrdist: [30, 10, 10, 20, 20, 10],
+        hp: 15, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
+    }],
     ['Tourist', {
         attrbase: [7, 10, 6, 7, 7, 10],
         attrmax: [15, 10, 10, 15, 30, 20],
@@ -69,22 +75,45 @@ const COIN_CLASS = 12;
 const GEM_CLASS = 13;
 
 const GOLD_PIECE = 438;
-const DART = 23;
+const ARROW = 18;
+const ELVEN_ARROW = 19;
+const ORCISH_ARROW = 20;
+const YA = 22;
+const DART = 24;
+const DAGGER = 34;
+const ELVEN_DAGGER = 35;
+const ORCISH_DAGGER = 36;
+const ELVEN_SPEAR = 28;
+const ORCISH_SPEAR = 29;
+const DWARVISH_SPEAR = 30;
+const JAVELIN = 32;
+const SHORT_SWORD = 46;
 const QUARTERSTAFF = 79;
+const BOW = 83;
+const ELVEN_BOW = 84;
+const ORCISH_BOW = 85;
+const YUMI = 86;
 const HAWAIIAN_SHIRT = 136;
+const LEATHER_ARMOR = 134;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
+const CLOAK_OF_DISPLACEMENT = 149;
 const SCALPEL = 39;
 const LEATHER_GLOVES = 159;
+const LARGE_BOX = 214;
+const BAG_OF_TRICKS = 220;
 const BLINDFOLD = 233;
 const CREDIT_CARD = 223;
 const EXPENSIVE_CAMERA = 229;
+const LOCK_PICK = 222;
 const TOWEL = 234;
 const LEASH = 236;
 const STETHOSCOPE = 237;
 const TIN_OPENER = 239;
+const SACK = 217;
 const MAGIC_MARKER = 242;
 const SPE_FORCE_BOLT = 383;
 const APPLE = 277;
+const CRAM_RATION = 292;
 const RIN_LEVITATION = 183;
 const RIN_HUNGER = 184;
 const RIN_AGGRAVATE_MONSTER = 185;
@@ -93,8 +122,11 @@ const RIN_POLYMORPH_CONTROL = 197;
 const POT_HALLUCINATION = 304;
 const POT_HEALING = 307;
 const POT_EXTRA_HEALING = 308;
+const POT_FULL_HEALING = 315;
 const POT_POLYMORPH = 316;
+const POT_SICKNESS = 318;
 const POT_ACID = 320;
+const STATUE = 476;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_MAGIC_MAPPING = 337;
 const SCR_AMNESIA = 338;
@@ -178,6 +210,34 @@ const TOWEL_INVENTORY = [
 
 const MAGIC_MARKER_INVENTORY = [
     { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const RANGER_INVENTORY = [
+    { typ: DAGGER, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: BOW, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: ARROW, spe: 2, cls: WEAPON_CLASS, min: 50, max: 59, bless: UNDEF_BLESS, quivered: true },
+    { typ: ARROW, spe: 0, cls: WEAPON_CLASS, min: 30, max: 39, bless: UNDEF_BLESS },
+    { typ: CLOAK_OF_DISPLACEMENT, spe: 2, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: CRAM_RATION, spe: 0, cls: FOOD_CLASS, min: 4, max: 4, bless: 0 },
+];
+
+const ROGUE_INVENTORY = [
+    { typ: SHORT_SWORD, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: DAGGER, spe: 0, cls: WEAPON_CLASS, min: 6, max: 15, bless: 0, alternate: true },
+    { typ: LEATHER_ARMOR, spe: 1, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: POT_SICKNESS, spe: 0, cls: POTION_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: LOCK_PICK, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: SACK, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const RANGER_KNOWN_WEAPONS = [
+    ELVEN_ARROW, ORCISH_ARROW, YA,
+    ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR,
+    JAVELIN, ELVEN_BOW, ORCISH_BOW, YUMI,
+];
+
+const ROGUE_KNOWN_WEAPONS = [
+    ELVEN_DAGGER, ORCISH_DAGGER,
 ];
 
 function trquan(trop) {
@@ -270,8 +330,28 @@ export function add_inventory_object(obj) {
 
 function discover_starting_object(obj) {
     if (!obj?.knownName || typeof obj.otyp !== 'number') return;
+    const order = Array.isArray(game.discoveryOrder)
+        ? game.discoveryOrder
+        : (game.discoveryOrder = []);
+    if (!order.includes(obj.otyp)) order.push(obj.otyp);
     game.discoveredObjects = game.discoveredObjects || new Set();
     if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(obj.otyp);
+    game.encounteredObjects = game.encounteredObjects || new Set();
+    if (typeof game.encounteredObjects.add === 'function') game.encounteredObjects.add(obj.otyp);
+}
+
+function discover_role_known_object(otyp) {
+    if (!Number.isInteger(otyp)) return;
+    const order = Array.isArray(game.discoveryOrder)
+        ? game.discoveryOrder
+        : (game.discoveryOrder = []);
+    if (!order.includes(otyp)) order.push(otyp);
+    game.discoveredObjects = game.discoveredObjects || new Set();
+    if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(otyp);
+}
+
+function is_container_type(otyp) {
+    return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
 }
 
 function ini_inv_adjust_obj(trop, obj) {
@@ -289,6 +369,11 @@ function ini_inv_adjust_obj(trop, obj) {
     obj.dknown = true;
     obj.bknown = true;
     obj.rknown = true;
+    if (is_container_type(obj.otyp) || obj.otyp === STATUE) {
+        obj.cknown = true;
+        obj.lknown = true;
+        obj.otrapped = false;
+    }
     discover_starting_object(obj);
     if (obj.oclass === WEAPON_CLASS || obj.oclass === TOOL_CLASS) {
         obj.quan = trquan(trop);
@@ -302,6 +387,16 @@ function ini_inv_adjust_obj(trop, obj) {
     }
     if (trop.bless !== UNDEF_BLESS) obj.blessed = !!trop.bless;
     return stop;
+}
+
+function apply_starting_worn_extrinsic(obj) {
+    if (!obj?.worn) return;
+    game.u.uprops = game.u.uprops || {};
+    // C refs: u_init.c:ini_inv_use_obj(), worn.c:setworn().
+    // Initial worn armor grants extrinsics, but initial_don suppresses the
+    // follow-up Cloak_on()/toggle_displacement() message.
+    if (obj.otyp === CLOAK_OF_DISPLACEMENT) game.u.uprops.displaced = true;
+    if (obj.otyp === CLOAK_OF_MAGIC_RESISTANCE) game.u.uprops.magic_resistance = true;
 }
 
 function ini_inv(trobs, noCreate, roleName) {
@@ -336,7 +431,10 @@ function ini_inv(trobs, noCreate, roleName) {
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
         const invObj = add_inventory_object(obj);
         if (trop.wielded) invObj.wielded = true;
+        if (trop.alternate) invObj.alternate = true;
+        if (trop.quivered) invObj.quivered = true;
         if (trop.worn) invObj.worn = true;
+        apply_starting_worn_extrinsic(invObj);
         learn_initial_spell(invObj);
         if (invObj.oclass === SPBOOK_CLASS && starting_spell_level(invObj.otyp) === 1) {
             gotLevel1Spellbook = true;
@@ -360,6 +458,12 @@ export function u_init_role_inventory() {
         game._goldCount = rn1(1000, 1001);
         game._startupRoleGoldInitialized = true;
         roleStartingGold = game._goldCount;
+        // C ref: u_init.c:u_init_role(); Healers pre-know full healing
+        // before initial inventory side effects mark carried potions seen.
+        game.discoveryOrder = Array.isArray(game.discoveryOrder) ? game.discoveryOrder : [];
+        if (!game.discoveryOrder.includes(POT_FULL_HEALING)) game.discoveryOrder.push(POT_FULL_HEALING);
+        game.discoveredObjects = game.discoveredObjects || new Set();
+        game.discoveredObjects.add(POT_FULL_HEALING);
         ini_inv(HEALER_INVENTORY, noCreate, role.name.m);
         if (!rn2(25)) {
             // C may add an oil lamp here; object creation is still unported.
@@ -383,6 +487,21 @@ export function u_init_role_inventory() {
         if (!rn2(5)) {
             ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
         }
+    } else if (role?.name?.m === 'Ranger') {
+        ini_inv(RANGER_INVENTORY, noCreate, role.name.m);
+        // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
+        // Rangers know launchers, ammo, and spears, but those types have not
+        // been encountered yet, so the discoveries menu marks them with '*'.
+        for (const otyp of RANGER_KNOWN_WEAPONS) discover_role_known_object(otyp);
+    } else if (role?.name?.m === 'Rogue') {
+        ini_inv(ROGUE_INVENTORY, noCreate, role.name.m);
+        // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
+        // Rogues know dagger appearances even before encountering those
+        // object types, so discoveries marks them with '*'.
+        for (const otyp of ROGUE_KNOWN_WEAPONS) discover_role_known_object(otyp);
+        if (!rn2(5)) {
+            ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
+        }
     }
     if (roleStartingGold > 0) {
         ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);
@@ -394,7 +513,7 @@ export function u_init_misc_rng() {
     const init = ROLE_INIT.get(role?.name?.m);
     let initialPower = init?.pwBase ?? 2;
     if ((init?.pwRnd ?? 0) > 0) initialPower += rnd(init.pwRnd);
-    rn2(10); // u.uhandedness, roughly 90% right-handed.
+    if (game.u) game.u.uhandedness = rn2(10) ? 'right' : 'left';
     game._initialPower = initialPower;
 }
 

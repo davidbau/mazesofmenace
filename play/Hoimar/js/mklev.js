@@ -83,8 +83,8 @@ const GEM_CLASS = 13;
 const ROCK_CLASS = 14;
 const ARROW = 18;
 const ORCISH_ARROW = 20;
-const CROSSBOW_BOLT = 20;
-const DART = 23;
+const CROSSBOW_BOLT = 23;
+const DART = 24;
 const SHURIKEN = 25;
 const BOULDER = 475;
 const ELVEN_ARROW = 19;
@@ -456,8 +456,8 @@ function unhideable_trap(t) { return t === HOLE; }
 function undestroyable_trap(t) { return t === MAGIC_PORTAL || t === VIBRATING_SQUARE; }
 function is_xport_trap(t) { return t >= TELEP_TRAP && t <= MAGIC_PORTAL; }
 
-const MONSTERS = MONSTER_DATA.map(([name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, neuter, male, female, msound = 0, mresists = 0, mconveys = 0, mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = []]) => ({
-    name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, msound, mresists, mconveys, mflags1, mflags2, mflags3, mattk,
+const MONSTERS = MONSTER_DATA.map(([name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, neuter, male, female, msound = 0, mresists = 0, mconveys = 0, mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = [], msize = 2]) => ({
+    name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, msound, mresists, mconveys, mflags1, mflags2, mflags3, mattk, msize,
     neuter: !!neuter, male: !!male, female: !!female,
 }));
 
@@ -879,8 +879,16 @@ function level_difficulty() {
 
 let _nextObjId = 1;
 
-// C ref: mkobj.c next_ident — rnd(2) for item identification
-export function next_ident() { rnd(2); }
+// C ref: mkobj.c:next_ident().  Object and monster ids share the same
+// incrementing counter; the caller receives the old value, then rnd(2)
+// advances the next id by one or two.
+export function next_ident() {
+    if (!game.context) game.context = {};
+    const res = game.context.ident ?? 2;
+    game.context.ident = res + rnd(2);
+    if (!game.context.ident) game.context.ident = rnd(2) + 1;
+    return res;
+}
 
 function bless(otmp) {
     if (otmp) {
@@ -1123,7 +1131,7 @@ export function mksobj(otyp, init, artif) {
         spe: 0,
         corpsenm: null,
     };
-    next_ident();
+    otmp.o_id = next_ident();
     if (init) {
         mksobj_init(otmp, otyp, artif);
     }
@@ -1424,12 +1432,13 @@ function mkgold(amount, x, y) {
         return;
     }
     // mksobj_at(GOLD_PIECE) calls next_ident
-    next_ident();
+    const o_id = next_ident();
     if (game.level?.objects) {
         const gold = {
             otyp: GOLD_PIECE,
             oclass: COIN_CLASS,
             ox: x, oy: y,
+            o_id,
             quan: amount,
             ch: '$',
         };
@@ -1447,7 +1456,13 @@ function sobj_at(otyp, x, y) {
 }
 
 function set_corpsenm(otmp, pm) {
-    if (otmp) otmp.corpsenm = pm;
+    if (!otmp) return;
+    if (typeof pm === 'number') {
+        otmp.corpsenm = pm;
+        return;
+    }
+    const ptr = monster_ptr(pm);
+    otmp.corpsenm = ptr ? ptr.name : pm;
 }
 
 function set_corpsenm_restart(otmp, pm) {
@@ -1458,7 +1473,10 @@ function set_corpsenm_restart(otmp, pm) {
 function monster_ptr(ref) {
     if (typeof ref === 'number') return MONSTERS[ref] || null;
     if (ref === 'CAVEWOMAN') return MONSTERS.find((mon) => mon.name === 'CAVEMAN') || null;
-    if (typeof ref === 'string') return MONSTERS.find((mon) => mon.name === ref) || null;
+    if (typeof ref === 'string') {
+        const key = ref.trim().toUpperCase().replace(/[\s-]+/g, '_');
+        return MONSTERS.find((mon) => mon.name === ref || mon.name === key) || null;
+    }
     return ref?.name ? ref : null;
 }
 
@@ -1616,6 +1634,29 @@ function start_corpse_timeout(body) {
     rnz(game.in_mklev ? 25 : 10);
 }
 
+function obj_resists_basic(obj, ochance, achance) {
+    if (!obj || obj.otyp === AMULET_OF_YENDOR
+        || obj.otyp === SPE_BOOK_OF_THE_DEAD
+        || obj.otyp === CANDELABRUM_OF_INVOCATION
+        || obj.otyp === BELL_OF_OPENING
+        || (obj.otyp === CORPSE && is_rider_ref(obj.corpsenm))) return true;
+    return rn2(100) < (obj.oartifact ? achance : ochance);
+}
+
+function remove_level_object(obj) {
+    const idx = game.level?.objects?.indexOf(obj) ?? -1;
+    if (idx >= 0) game.level.objects.splice(idx, 1);
+}
+
+function bury_an_obj_basic(obj) {
+    // C ref: dig.c:bury_an_obj(); burial probes obj_resists(0,0) even when
+    // the object cannot resist, then moves the object off the floor chain.
+    if (obj_resists_basic(obj, 0, 0)) return false;
+    remove_level_object(obj);
+    obj.buried = true;
+    return true;
+}
+
 // mkcorpstat stub
 export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat calls mksobj(objtyp) then set_corpsenm.
@@ -1623,10 +1664,15 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // corpsenm before mkcorpstat's caller-supplied type overrides it.
     // RNG: next_ident from mksobj
     const otmp = mksobj(objtyp, !!(flags & 8), false);
-    const oldCorpsenm = otmp.corpsenm;
     if (pm !== null && pm !== undefined) {
+        const oldCorpsenm = otmp.corpsenm;
         set_corpsenm(otmp, pm);
-        if (otmp.otyp === CORPSE && (special_corpse(oldCorpsenm) || special_corpse(otmp.corpsenm))) {
+        // C ref: mkobj.c:mkcorpstat().  Unlike set_corpsenm(), mkcorpstat()
+        // only restarts timers for zombify/special corpse cases.
+        if (otmp.otyp === CORPSE
+            && (game._mkcorpstat_zombify
+                || special_corpse(oldCorpsenm)
+                || special_corpse(otmp.corpsenm))) {
             start_corpse_timeout(otmp);
         }
     } else if (otmp.corpsenm == null) {
@@ -2950,7 +2996,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
             if (!ptr) return null;
         } while (++tryct <= 50 && !goodpos(x, y, gpflags, ptr));
     }
-    next_ident();
+    const m_id = next_ident();
     const monState = newmonhp_state_for(ptr);
     const female = init_mon_gender_for(ptr);
     const peaceful = (mmflags & MM_ANGRY) ? false : peace_minded_for(ptr);
@@ -2961,6 +3007,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
     };
     const mon = {
         mx: x, my: y,
+        m_id,
         // C ref: makemon.c:makemon().  `zeromonst` clears mux/muy to 0;
         // set_apparxy() must not treat a new monster as already knowing
         // the current hero square.
@@ -10017,9 +10064,17 @@ function apply_themeroom_fill(croom) {
     const count = Math.trunc(((croom.hx - croom.lx + 1) * (croom.hy - croom.ly + 1)) / 2);
     for (let i = 0; i < count; i++) {
         lua_shuffle(zombifiable);
-        const x = somex(croom);
-        const y = somey(croom);
-        mkcorpstat(CORPSE, null, zombifiable[0], x, y, 8);
+        const { x, y } = specialRoomLocation(croom);
+        // C refs: themerms.lua Buried zombies, sp_lev.c:create_object(),
+        // mkobj.c:set_corpsenm().  Scripted corpses use create_object(),
+        // whose set_corpsenm() always restarts the corpse timer; mkcorpstat()
+        // has a narrower restart rule.
+        const corpse = mksobj_at(CORPSE, x, y, true, false);
+        set_corpsenm_restart(corpse, zombifiable[0]);
+        if (corpse) {
+            bury_an_obj_basic(corpse);
+            rn2(21); // C ref: themerms.lua Buried zombies math.random(990,1010).
+        }
     }
 }
 
@@ -10846,6 +10901,22 @@ function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
 function somexy(croom, c) {
+    if (croom.irregular) {
+        const rmno = game.level.rooms.indexOf(croom) + ROOMOFFSET;
+        let try_cnt = 0;
+        while (try_cnt++ < 100) {
+            c.x = somex(croom);
+            c.y = somey(croom);
+            const loc = game.level.at(c.x, c.y);
+            if (loc && !loc.edge && loc.roomno === rmno) return true;
+        }
+        for (c.x = croom.lx; c.x <= croom.hx; c.x++)
+            for (c.y = croom.ly; c.y <= croom.hy; c.y++) {
+                const loc = game.level.at(c.x, c.y);
+                if (loc && !loc.edge && loc.roomno === rmno) return true;
+            }
+        return false;
+    }
     if (!croom.nsubrooms) {
         c.x = somex(croom);
         c.y = somey(croom);
@@ -11059,6 +11130,86 @@ async function make_niches() {
 
 const SHOP_TYPE_PROBS = [42, 14, 10, 10, 5, 5, 3, 3, 3, 2];
 const SHKTOOLS_NAME_COUNT = 40;
+const SHOP_TYPE_NAMES = [
+    'general store',
+    'used armor dealership',
+    'second-hand bookstore',
+    'liquor emporium',
+    'antique weapons outlet',
+    'delicatessen',
+    'jewelers',
+    'quality apparel and accessories',
+    'hardware store',
+    'rare books',
+    'health food store',
+    'lighting store',
+];
+const SHOPKEEPER_NAMES = [
+    null,
+    [
+        'Demirci', 'Kalecik', 'Boyabai', 'Yildizeli', 'Gaziantep',
+        'Siirt', 'Akhalataki', 'Tirebolu', 'Aksaray', 'Ermenak',
+        'Iskenderun', 'Kadirli', 'Siverek', 'Pervari', 'Malasgirt',
+        'Bayburt', 'Ayancik', 'Zonguldak', 'Balya', 'Tefenni',
+        'Artvin', 'Kars', 'Makharadze', 'Malazgirt', 'Midyat',
+        'Birecik', 'Kirikkale', 'Alaca', 'Polatli', 'Nallihan',
+    ],
+];
+
+export function shopTypeName(shoptype) {
+    return SHOP_TYPE_NAMES[(shoptype ?? 0) - SHOPBASE] || 'shop';
+}
+
+function fixedDatetimeEpochSeconds() {
+    const t = game._lt;
+    if (!t) return 0;
+    const y = t.year;
+    const offsetHours = isNewYorkDst(t) ? -4 : -5;
+    return Math.trunc(Date.UTC(y, t.month - 1, t.day, t.hour - offsetHours, t.minute, t.second) / 1000);
+}
+
+function isNewYorkDst(t) {
+    const y = t.year;
+    if (y >= 2007) {
+        if (t.month > 3 && t.month < 11) return true;
+        if (t.month === 3 && t.day >= nthWeekdayOfMonth(y, 3, 0, 2)) return true;
+        if (t.month === 11 && t.day < nthWeekdayOfMonth(y, 11, 0, 1)) return true;
+        return false;
+    }
+    if (t.month > 4 && t.month < 10) return true;
+    if (t.month === 4 && t.day >= nthWeekdayOfMonth(y, 4, 0, 1)) return true;
+    if (t.month === 10 && t.day < lastWeekdayOfMonth(y, 10, 0)) return true;
+    return false;
+}
+
+function nthWeekdayOfMonth(year, month, weekday, nth) {
+    const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    return 1 + ((weekday - first + 7) % 7) + (nth - 1) * 7;
+}
+
+function lastWeekdayOfMonth(year, month, weekday) {
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const last = new Date(Date.UTC(year, month - 1, lastDay)).getUTCDay();
+    return lastDay - ((last - weekday + 7) % 7);
+}
+
+function ledger_no(uz = game.u?.uz) {
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    return (uz?.dlevel ?? 1) + (dungeon?.ledger_start ?? 0);
+}
+
+function shopkeeperName(shopIndex, shk) {
+    const names = SHOPKEEPER_NAMES[shopIndex];
+    if (!names?.length) return '';
+    // C ref: shknam.c:nameshk().  Non-tool shop names are deterministic from
+    // m_id, ledger_no(), and ubirthday; only tool shops randomize here.
+    const nseed = Math.trunc(fixedDatetimeEpochSeconds() / 257);
+    let wanted = (shk?.m_id ?? 0) + ledger_no() + (nseed % 13) - (nseed % 5);
+    if (wanted < 0) wanted += 18;
+    shk.female = !!(wanted & 1);
+    wanted %= names.length;
+    return names[wanted];
+}
 const SHOP_ITEM_PROBS = [
     [{ iprob: 100, itype: RANDOM_CLASS }],
     [{ iprob: 90, itype: ARMOR_CLASS }, { iprob: 10, itype: WEAPON_CLASS }],
@@ -11194,6 +11345,7 @@ function shkinit(shopIndex, sroom) {
             shoproom: roomIndex >= 0 ? roomIndex + ROOMOFFSET : 0,
             shoptype: sroom.rtype,
             shoplevel: { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) },
+            shknam: shopkeeperName(shopIndex, shk),
             shd: door ? { x: door.x, y: door.y } : { x: pos.x, y: pos.y },
             shk: { x: pos.x, y: pos.y },
             robbed: 0,
@@ -11208,7 +11360,7 @@ function shkinit(shopIndex, sroom) {
         };
     }
     rnd(100); // C ref: shknam.c:mkmonmoney() initial capital amount.
-    next_ident();
+    next_ident(); // C ref: mkobj.c:mksobj(GOLD_PIECE) for shopkeeper capital.
     if (shopIndex === 6) mksobj(TOUCHSTONE, true, false);
     if (shopIndex === 7 || shopIndex === 8 || (shopIndex === 6 && rn2(2))
         || (shopIndex === 0 && rn2(5))) {
@@ -11281,6 +11433,22 @@ function stock_room(croom) {
     const shopIndex = croom.rtype - SHOPBASE;
     const sh = shkinit(shopIndex, croom);
     if (sh < 0) return;
+    const door = croom.doorct ? game.level.doors?.[sh] : null;
+    if (door) {
+        const loc = game.level.at(door.x, door.y);
+        if (loc?.doormask === D_NODOOR) {
+            // C ref: shknam.c:stock_room().  Shop doorways without doors are
+            // promoted to open doors before the room is stocked.
+            set_door_mask(loc, D_ISOPEN);
+        }
+        if (loc?.typ === SDOOR) {
+            loc.typ = DOOR;
+            if (!(loc.doormask & (D_ISOPEN | D_CLOSED | D_LOCKED))) {
+                set_door_mask(loc, D_CLOSED);
+            }
+        }
+        if (loc?.doormask & D_TRAPPED) set_door_mask(loc, D_LOCKED);
+    }
     let stockcount = 0;
     for (let sx = croom.lx; sx <= croom.hx; sx++)
         for (let sy = croom.ly; sy <= croom.hy; sy++)
@@ -11612,8 +11780,10 @@ function mktrap_victim(trap) {
         curse(otmp);
         place_object(otmp, x, y);
     } while (!rn2(5));
-    // Victim type
-    const PM_ELF = 18, PM_DWARF = 19, PM_ORC = 20, PM_GNOME = 21, PM_HUMAN = 22;
+    // Victim type.  C uses PM_* enum values here, but this JS table has a
+    // different monster order, so store the resolved monster identity.
+    // C ref: mklev.c:mktrap_victim().
+    const PM_ELF = 'ELF', PM_DWARF = 'DWARF', PM_ORC = 'ORC', PM_GNOME = 'GNOME', PM_HUMAN = 'HUMAN';
     const victimCorpseStats = new Map([
         [PM_ELF, { cwt: 800, cnutrit: 350 }],
         [PM_DWARF, { cwt: 900, cnutrit: 300 }],
@@ -11621,8 +11791,12 @@ function mktrap_victim(trap) {
         [PM_GNOME, { cwt: 650, cnutrit: 100 }],
         [PM_HUMAN, { cwt: 1450, cnutrit: 400 }],
     ]);
-    // C consumes rn2(PM_WIZARD - PM_ARCHEOLOGIST) here. Local monster ids
-    // are still placeholders, so keep the upstream role-monster range shape.
+    const TRAP_VICTIM_ROLE_CORPSES = [
+        'BARBARIAN', 'CAVEMAN', 'HEALER', 'KNIGHT', 'MONK', 'PRIEST',
+        'RANGER', 'ROGUE', 'SAMURAI', 'TOURIST', 'VALKYRIE', 'WIZARD',
+    ];
+    // C consumes rn2(PM_WIZARD - PM_ARCHEOLOGIST) here.  Keep that range
+    // shape, then map the selected enum slot onto the local monster data.
     const PM_ARCHEOLOGIST = 0, ROLE_MONSTER_RANGE_BEFORE_WIZARD = 12;
     let victim_mnum;
     switch (rn2(15)) {
@@ -11642,8 +11816,10 @@ function mktrap_victim(trap) {
         break;
     default: victim_mnum = PM_HUMAN; break;
     }
-    if (victim_mnum === PM_HUMAN && rn2(25))
-        victim_mnum = rn1(ROLE_MONSTER_RANGE_BEFORE_WIZARD, PM_ARCHEOLOGIST);
+    if (victim_mnum === PM_HUMAN && rn2(25)) {
+        const roleOffset = rn1(ROLE_MONSTER_RANGE_BEFORE_WIZARD, PM_ARCHEOLOGIST);
+        victim_mnum = TRAP_VICTIM_ROLE_CORPSES[roleOffset - 1] || PM_HUMAN;
+    }
     const corpse = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8); // CORPSTAT_INIT
     if (corpse) {
         corpse.trap_victim = true;

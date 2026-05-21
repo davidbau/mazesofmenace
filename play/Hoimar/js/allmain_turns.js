@@ -1,7 +1,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { dosounds } from './sounds.js';
-import { A_CON, A_DEX, A_WIS } from './const.js';
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from './const.js';
 import { makemon } from './mklev.js';
 import { depth } from './hacklib.js';
 
@@ -79,6 +79,34 @@ export function exerchk() {
             exercise(A_DEX, false);
         }
     }
+
+    // C ref: attrib.c:exerchk().  The first diminishing-returns check is
+    // scheduled from allmain.c:newgame() at turn 600, and while a run is
+    // still active C sees gm.multi != 0 and defers the check.
+    const context = game.context || (game.context = {});
+    if (context.next_attrib_check == null) context.next_attrib_check = 600;
+    if (moves < context.next_attrib_check || context.run || (context.multi || 0) > 0) return;
+
+    const aexe = game.u?.aexe || [];
+    const attrs = game.u?.acurr?.a || [];
+    for (const i of [A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA]) {
+        let ax = aexe[i] || 0;
+        if (!ax) continue;
+        const mod = Math.sign(ax);
+        const attr = attrs[i] ?? 10;
+        if ((ax < 0 && attr <= 3) || (ax > 0 && attr >= 18)) {
+            aexe[i] = Math.trunc(Math.abs(ax) / 2) * mod;
+            continue;
+        }
+        const threshold = i === A_WIS ? Math.abs(ax) : Math.trunc(Math.abs(ax) * 2 / 3);
+        if (rn2(50) <= threshold) {
+            attrs[i] = Math.max(3, Math.min(18, attr + mod));
+            if (game.u?.amax?.a) game.u.amax.a[i] = Math.max(game.u.amax.a[i] || attrs[i], attrs[i]);
+            ax = 0;
+        }
+        aexe[i] = Math.trunc(Math.abs(ax) / 2) * mod;
+    }
+    context.next_attrib_check += rn2(200) + 800;
 }
 
 export function maybe_wipe_engraving() {
@@ -87,10 +115,10 @@ export function maybe_wipe_engraving() {
     if (!rn2(40 + dex * 3)) rnd(3);
 }
 
-export function maybe_update_seer_turn() {
+export function maybe_update_seer_turn(moveNumber = null) {
     const context = game.context || (game.context = {});
     if (context.seer_turn == null) return;
-    const moves = (game.moves || 1) + 1;
+    const moves = moveNumber ?? ((game.moves || 1) + 1);
     if (moves >= context.seer_turn) {
         context.seer_turn = moves + rn2(31) + 15;
     }

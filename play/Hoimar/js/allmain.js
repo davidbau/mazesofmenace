@@ -149,7 +149,8 @@ function drawQuestIntroOverlay(alignName) {
         || g.flags?.legacy === false
         || !findRole(g._nhopts?.role)) return false;
     const god = roleGod(g.urole, alignName);
-    const godTitle = (god === 'The Lady' || god === 'Athena' || god === 'Brigit' || god === 'Ishtar')
+    const godTitle = (god === 'The Lady' || god === 'Athena' || god === 'Brigit'
+        || god === 'Ishtar' || god === 'Venus' || god === 'Amaterasu Omikami')
         ? 'goddess'
         : 'god';
     const rank = g.flags?.female
@@ -175,16 +176,16 @@ function drawQuestIntroOverlay(alignName) {
         [left, 16, `of us all:  Go bravely with ${god}!`],
         [left, 17, '--More--'],
     ];
-    // C ref: allmain.c:newgame() -> com_pager("legacy").  Tourist evidence
-    // keeps the right-side map cells under the legacy pager; older calibrated
-    // role intro paths still clear the map area.
+    // C ref: allmain.c:newgame() -> com_pager("legacy").  The tty pager
+    // writes text over the already-drawn map instead of clearing the whole
+    // map area.
     if (isTourist) {
         for (let row = 0; row <= 17; row++)
             for (let col = 0; col < display.cols; col++)
                 display.setCell(col, row, ' ', NO_COLOR, 0);
     } else {
         for (let row = 0; row < 22; row++)
-            for (let col = 0; col < display.cols; col++)
+            for (let col = Math.max(0, left - 1); col < display.cols; col++)
                 display.setCell(col, row, ' ', NO_COLOR, 0);
     }
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
@@ -313,7 +314,7 @@ export async function newgame() {
     g.u.uen = g._seed === 2 ? 5 : 2; 
     g.u.uenmax = g._seed === 2 ? 5 : 2;
     g.u.uac = g._seed === 2 ? 8 : 10; 
-    g.u.uexp = g._seed === 2 ? 1 : 0;
+    g.u.uexp = 0;
     const align = startupAlign();
     const alignName = align.name;
     const initialAlignRecord = g._nhopts?.role && g._nhopts.role !== -1 ? 0 : 10;
@@ -378,6 +379,10 @@ export async function newgame() {
         g._deferred_startup_uac = 9;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Tourist') {
         g._deferred_startup_uac = 10;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Ranger') {
+        g._deferred_startup_uac = 7;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Rogue') {
+        g._deferred_startup_uac = 7;
     }
 
     // Welcome message
@@ -386,9 +391,9 @@ export async function newgame() {
     const greetingName = g._startupGreetingName || g.plname;
     const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`;
     await pline(welcome);
-    if (!ff && (showedQuestIntro || welcome.length + '--More--'.length > COLNO)) {
+    if (!ff && (showedQuestIntro || (g._startup_preamble_messages || []).length > 0)) {
         g._more = true;
-        g._more_next_message_row = !showedQuestIntro || g.urole?.name?.m === 'Tourist';
+        g._more_next_message_row = welcome.length + '--More--'.length >= COLNO;
     }
 }
 
@@ -450,11 +455,29 @@ function finishPostDosoundsTurnTail(g) {
     gethungry();
     exerchk();
     maybe_wipe_engraving();
-    maybe_update_seer_turn();
+    if (shouldDeferSeerTurnUpdate(g)) {
+        g._seer_turn_update_pending = true;
+    } else {
+        maybe_update_seer_turn();
+    }
 
     g._pet_combat_resume_active = false;
     g._savelife_resume_active = false;
     g.moves = (g.moves || 1) + 1;
+}
+
+function shouldDeferSeerTurnUpdate(g) {
+    // C ref: allmain.c:moveloop_core().  The seer-turn check belongs to the
+    // once-per-hero-took-time section after the "hero can't move" loop.  When
+    // burdened movement leaves the hero short of NORMAL_SPEED, defer the RNG
+    // until any catch-up monster turn has run.
+    return !!(g.u?.uencumber || g._extra_encumbered_turn_pending);
+}
+
+function finishDeferredSeerTurnUpdate(g) {
+    if (!g._seer_turn_update_pending) return;
+    g._seer_turn_update_pending = false;
+    maybe_update_seer_turn(g.moves || 1);
 }
 
 function applyOccupationFinalTurnState(g) {
@@ -550,6 +573,8 @@ function applyOccupationFinishObjectEffects(g) {
         obj.known = true;
     }
     if (obj.otyp === SPEED_BOOTS) {
+        const order = Array.isArray(g.discoveryOrder) ? g.discoveryOrder : (g.discoveryOrder = []);
+        if (!order.includes(obj.otyp)) order.push(obj.otyp);
         const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
         if (!discovered.has(obj.otyp)) {
             discovered.add(obj.otyp);
@@ -561,6 +586,8 @@ function applyOccupationFinishObjectEffects(g) {
     } else if (obj.otyp === GAUNTLETS_OF_POWER) {
         // C ref: do_wear.c:Gloves_on().  Wearing power gauntlets reveals the
         // object type and recalculates strength before the finish message.
+        const order = Array.isArray(g.discoveryOrder) ? g.discoveryOrder : (g.discoveryOrder = []);
+        if (!order.includes(obj.otyp)) order.push(obj.otyp);
         const discovered = g.discoveredObjects || (g.discoveredObjects = new Set());
         if (!discovered.has(obj.otyp)) discovered.add(obj.otyp);
         obj.known = true;
@@ -732,21 +759,30 @@ async function continueRunTail(g) {
         await advanceTurn();
         if (g._more) {
             if (g.context?.run) g._run_paused_for_more = true;
+            g._run_paused_before_encumbered_check = true;
             return false;
         }
-        if (encumberedDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {
-            // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Automatic
-            // run repeats still obey the hero movement-point accumulator; a
-            // burdened runner can have monster movement catch up before the
-            // next repeated domove().
-            await advanceTurn();
-            if (g._more || g._monster_turn_paused_for_more) {
-                if (g.context?.run) g._run_paused_for_more = true;
-                return false;
-            }
-            creditEncumberedExtraTurn(g);
-        }
+        if (!await continueRunPostTurnChecks(g)) return false;
     }
+    return true;
+}
+
+async function continueRunPostTurnChecks(g) {
+    if (encumberedDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {
+        // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Automatic
+        // run repeats still obey the hero movement-point accumulator; a
+        // burdened runner can have monster movement catch up before the
+        // next repeated domove().
+        await advanceTurn();
+        if (g._more || g._monster_turn_paused_for_more) {
+            if (g.context?.run) g._run_paused_for_more = true;
+            g._run_paused_before_encumbered_check = true;
+            return false;
+        }
+        creditEncumberedExtraTurn(g);
+    }
+    finishDeferredSeerTurnUpdate(g);
+    g._run_paused_before_encumbered_check = false;
     return true;
 }
 
@@ -800,7 +836,11 @@ export async function moveloop_core() {
     if (g.context?.move) {
         if (g._resume_run_after_more) {
             g._resume_run_after_more = false;
-            if (!g._more) await continueRunTail(g);
+            if (!g._more) {
+                if (g._run_paused_before_encumbered_check
+                    && !await continueRunPostTurnChecks(g)) return;
+                await continueRunTail(g);
+            }
             return;
         }
         if (g._monster_turn_paused_for_more && g._more) return;
@@ -826,7 +866,10 @@ export async function moveloop_core() {
             }
             if (!await continueOccupationTurns(g)) return;
         }
-        if (encumberedDebtNeedsExtraTurn(g) && !g._more && !g._monster_turn_paused_for_more) {
+        const skipEncumberedDebt = !!g._skip_encumbered_debt_after_pet_death_more;
+        g._skip_encumbered_debt_after_pet_death_more = false;
+        if (!skipEncumberedDebt
+            && encumberedDebtNeedsExtraTurn(g) && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  A
             // burdened hero does not always recover enough movement for the
             // next input after a time-taking command, so monsters may get a
@@ -835,7 +878,8 @@ export async function moveloop_core() {
             if (g._more || g._monster_turn_paused_for_more) return;
             creditEncumberedExtraTurn(g);
         }
-        if (g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
+        if (!skipEncumberedDebt
+            && g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Becoming
             // slightly encumbered can leave u.umovement below NORMAL_SPEED,
             // so monsters get one more movement allocation before input.
@@ -848,6 +892,7 @@ export async function moveloop_core() {
             g._prayer_turns_remaining--;
             await advanceTurn();
         }
+        finishDeferredSeerTurnUpdate(g);
         if (g.u?.uinvulnerable && g._pending_message === 'You are surrounded by a shimmering light.') {
             g._pending_message = 'You are surrounded by a shimmering light.  You finish your prayer.';
             g._more = true;

@@ -1,7 +1,10 @@
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
 import { dog_move } from './dog.js';
-import { enexto_core, monsterPtr, MONSTER_SYMBOLS, newmonhp_state_for, pick_newcham_shape_for } from './mklev.js';
+import {
+    enexto_core, monsterPtr, MONSTER_SYMBOLS, newmonhp_state_for,
+    pick_newcham_shape_for, mksobj, place_object,
+} from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DIR } from './object_data.js';
 import {
     BURN, DUST, ENGR_BLOOD, HEADSTONE,
@@ -51,6 +54,7 @@ const M1_NOEYES = 0x00001000;
 const M1_NOHANDS = 0x00002000;
 const M1_MINDLESS = 0x00010000;
 const M1_ANIMAL = 0x00040000;
+const M1_REGEN = 0x00800000;
 const M1_SEE_INVIS = 0x01000000;
 const M2_STRONG = 0x04000000;
 const M2_COLLECT = 0x40000000;
@@ -122,6 +126,7 @@ const FLINT = 473;
 const WAN_POLYMORPH = 422;
 const WAN_TELEPORTATION = 424;
 const WAN_DIGGING = 428;
+const ARROW = 18;
 const DART = 24;
 const PARTISAN = 56;
 const RANSEUR = 57;
@@ -829,7 +834,7 @@ function hero_throw_range_basic() {
 }
 
 function object_class(obj) {
-    return obj?.oclass ?? OBJECT_CLASS[obj?.otyp] ?? 0;
+    return obj?.oclass || OBJECT_CLASS[obj?.otyp] || 0;
 }
 
 function objects_at(x, y) {
@@ -1358,6 +1363,10 @@ function wield_object_name(obj) {
 
 function monster_weapon_name(obj) {
     if (obj?.otyp === ORCISH_DAGGER) {
+        const order = Array.isArray(game.discoveryOrder)
+            ? game.discoveryOrder
+            : (game.discoveryOrder = []);
+        if (!order.includes(obj.otyp)) order.push(obj.otyp);
         const encountered = game.encounteredObjects || (game.encounteredObjects = new Set());
         if (typeof encountered.add === 'function') encountered.add(obj.otyp);
         return 'crude dagger';
@@ -1678,6 +1687,12 @@ async function append_swallowed_damage_message(line) {
 }
 
 async function append_monster_topline(line) {
+    if (game.context?.run) {
+        // C ref: hack.c:lookaround()/topl.c:pline().  Monster/trap messages
+        // emitted during a repeated run can split the visible topline from
+        // the next repeated movement boundary.
+        game.context.run.stopBeforeOpenDoor = true;
+    }
     if (game._pending_message) {
         game._pending_message = `${game._pending_message}  ${line}`;
         queue_more_prompt();
@@ -1814,6 +1829,86 @@ function floor_trigger_trap_basic(ttyp) {
     }
 }
 
+function trap_missile_basic(otyp, trap) {
+    // C ref: trap.c:t_missile().
+    const otmp = mksobj(otyp, true, false);
+    otmp.quan = 1;
+    otmp.opoisoned = 0;
+    otmp.ox = trap.tx;
+    otmp.oy = trap.ty;
+    return otmp;
+}
+
+function monster_trap_ac_basic(mtmp) {
+    if (typeof mtmp?.mac === 'number') return mtmp.mac;
+    if (typeof mtmp?.ac === 'number') return mtmp.ac;
+    switch (mtmp?.data?.name) {
+    case 'KITTEN':
+    case 'LITTLE_DOG':
+        return 6;
+    default:
+        return mtmp?.data?.ac ?? 10;
+    }
+}
+
+function trap_projectile_name(obj) {
+    const base = object_base_name(obj);
+    if (base) return object_display_name(obj, base);
+    if (obj?.otyp === ARROW) return object_display_name(obj, 'arrow');
+    if (obj?.otyp === ROCK) return 'a rock';
+    return 'an object';
+}
+
+async function append_trap_topline(line) {
+    if (game._more && game._pending_message) {
+        game._after_more_message = game._after_more_message
+            ? `${game._after_more_message}  ${line}`
+            : line;
+        game._after_more_needs_prompt = false;
+        return;
+    }
+    await append_monster_topline(line);
+}
+
+async function thitm_basic(tlev, mtmp, obj) {
+    // C ref: trap.c:thitm().
+    const strike = monster_trap_ac_basic(mtmp) + tlev + (obj?.spe || 0) <= rnd(20);
+    if (!strike) {
+        if (obj && cansee(mtmp.mx, mtmp.my))
+            await append_trap_topline(`${monster_subject(mtmp)} is almost hit by ${trap_projectile_name(obj)}!`);
+        if (obj) place_object(obj, mtmp.mx, mtmp.my);
+        return false;
+    }
+    if (obj && cansee(mtmp.mx, mtmp.my))
+        await append_trap_topline(`${monster_subject(mtmp)} is hit by ${trap_projectile_name(obj)}!`);
+    mtmp.mhp = (mtmp.mhp ?? mtmp.mhpmax ?? 1) - 1;
+    return mtmp.mhp <= 0;
+}
+
+function delete_trap_basic(trap) {
+    const traps = game.level?.traps;
+    const idx = traps?.indexOf(trap) ?? -1;
+    if (idx >= 0) traps.splice(idx, 1);
+}
+
+async function mintrap_missile_basic(mtmp, trap, otyp, tlev) {
+    if (trap.once && trap.tseen && !rn2(15)) {
+        if (cansee(mtmp.mx, mtmp.my))
+            await append_trap_topline(`${monster_subject(mtmp)} triggers a trap but nothing happens.`);
+        delete_trap_basic(trap);
+        newsym(mtmp.mx, mtmp.my);
+        return MMOVE_MOVED;
+    }
+    trap.once = true;
+    const otmp = trap_missile_basic(otyp, trap);
+    if (otyp === DART && !rn2(6)) otmp.opoisoned = 1;
+    if (cansee(mtmp.mx, mtmp.my)) {
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+    }
+    return (await thitm_basic(tlev, mtmp, otmp)) ? MMOVE_DIED : MMOVE_MOVED;
+}
+
 async function mintrap_basic(mtmp) {
     const trap = trap_at_basic(mtmp.mx, mtmp.my);
     if (!trap) return MMOVE_MOVED;
@@ -1830,6 +1925,8 @@ async function mintrap_basic(mtmp) {
     }
     if (trap.ttyp === SQKY_BOARD) return mintrap_squeaky_board_basic(mtmp, trap);
     if (trap.ttyp === SLP_GAS_TRAP) return mintrap_sleep_gas_basic(mtmp);
+    if (trap.ttyp === ARROW_TRAP) return mintrap_missile_basic(mtmp, trap, ARROW, 8);
+    if (trap.ttyp === DART_TRAP) return mintrap_missile_basic(mtmp, trap, DART, 7);
     return MMOVE_MOVED;
 }
 
@@ -2930,6 +3027,14 @@ function maybe_spin_web_basic(mtmp) {
 
 export function mcalcdistress() {
     for (const mtmp of game.level?.monsters || []) {
+        // C refs: mon.c:m_calcdistress(), monmove.c:mon_regen().
+        // All monsters heal one HP on 20-turn boundaries; regenerating
+        // species heal every turn.
+        if ((game.moves || 0) % 20 === 0 || ((mtmp.data?.mflags1 ?? 0) & M1_REGEN)) {
+            if ((mtmp.mhp ?? 0) < (mtmp.mhpmax ?? 0)) {
+                mtmp.mhp = Math.min(mtmp.mhpmax, (mtmp.mhp ?? 0) + 1);
+            }
+        }
         if (mtmp.mspec_used) mtmp.mspec_used--;
         if (mtmp.cham) decide_to_shapeshift_basic(mtmp);
         were_change(mtmp);
@@ -3041,6 +3146,8 @@ export async function movemon() {
         // teleport gate before can_teleport(); non-teleporting pets still
         // consume the rn2(40) while fleeing.
         if (mtmp.mflee) rn2(40);
+        if (mtmp.mflee && !mtmp.mfleetim && mtmp.mhp === mtmp.mhpmax && !rn2(25))
+            mtmp.mflee = false;
 
         // dochugw -> dochug
         set_apparxy_basic(mtmp);
@@ -3051,7 +3158,11 @@ export async function movemon() {
         // dogmove.c:dog_move() after the shared distfleeck() phase.
         if (mtmp.mtame) {
             if (is_wanderer(mtmp) && monnear_hero(mtmp)) rn2(4);
-            await dog_move(mtmp, false);
+            const dogStatus = await dog_move(mtmp, false);
+            if (dogStatus === MMOVE_MOVED) {
+                const trapStatus = await mintrap_basic(mtmp);
+                if (trapStatus === MMOVE_DIED) continue;
+            }
             if (g._more && g._pet_combat_more_latched && !g._savelife_resume_active && !hallucinating()) {
                 if ((!g._after_more_message || !g._after_more_message.includes('  '))
                     && !/ engulfs you!$/.test(g._after_more_message || ''))

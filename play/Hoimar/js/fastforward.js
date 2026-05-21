@@ -115,7 +115,7 @@ export function fastforward_pre_mklev() {
     // init_castle_tune
     rn2(7); rn2(7); rn2(7); rn2(7); rn2(7);
     // u_init_misc
-    rn2(10);
+    if (game.u) game.u.uhandedness = rn2(10) ? 'right' : 'left';
 }
 
 // Post-mklev startup: u_init_role, ini_inv, attributes, moveloop_preamble

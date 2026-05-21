@@ -4,13 +4,14 @@
 import { game } from './gstate.js';
 import { enexto_core, makemon, place_object } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
+import { MONSTER_DATA } from './monster_data.js';
 import {
     newsym, pline, queue_more_prompt, flush_screen, clear_pending_message,
     serialize_terminal_grid,
 } from './display.js';
 import { nhgetch } from './input.js';
 import {
-    ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, TABU, UNDEF,
+    ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, ROWNO, TABU, UNDEF,
     D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
     W_WEP, isok,
@@ -22,7 +23,10 @@ import { cansee, clear_path, couldsee } from './vision.js';
 const FOOD_CLASS = 7;
 const WEAPON_CLASS = 2;
 const ROCK_CLASS = 14;
+const BALL_CLASS = 15;
+const CHAIN_CLASS = 16;
 const ORCISH_DAGGER = 36;
+const DART = 24;
 const JAVELIN = 32;
 const QUARTERSTAFF = 79;
 const TRIPE_RATION = 264;
@@ -30,7 +34,21 @@ const FOOD_RATION = 293;
 const BOULDER = 475;
 const CORPSE = 265;
 const EGG = 266;
+const PLATE_MAIL = 121;
+const CRYSTAL_PLATE_MAIL = 122;
+const BRONZE_PLATE_MAIL = 123;
+const SPLINT_MAIL = 124;
+const BANDED_MAIL = 125;
+const DWARVISH_MITHRIL_COAT = 126;
+const ELVEN_MITHRIL_COAT = 127;
 const CHAIN_MAIL = 128;
+const ORCISH_CHAIN_MAIL = 129;
+const SCALE_MAIL = 130;
+const STUDDED_LEATHER_ARMOR = 131;
+const RING_MAIL = 132;
+const ORCISH_RING_MAIL = 133;
+const LEATHER_ARMOR = 134;
+const LEATHER_JACKET = 135;
 const MEATBALL = 267;
 const MEAT_STICK = 268;
 const ENORMOUS_MEATBALL = 269;
@@ -51,14 +69,51 @@ const BELL_OF_OPENING = 263;
 const CANDELABRUM_OF_INVOCATION = 262;
 const DOG_HUNGRY = 300;
 const M2_STRONG = 0x04000000;
+const G_FREQ = 0x0007;
 
 const OBJECT_WEIGHT_OVERRIDES = new Map([
     [LARGE_BOX, 350],
     [CHEST, 600],
-    // C refs: objects.h ARMOR("chain mail"), mon.c:can_carry().
+    // C refs: objects.h WEAPON(...), mon.c:can_carry().  mksobj() still
+    // initializes most JS object weights as 1, so pets must consult table
+    // weights for heavy weapons before accepting apport goals.
+    [44, 60], // axe
+    [45, 120], // battle-axe
+    [52, 70], // broadsword
+    [53, 70], // elven broadsword
+    [55, 150], // two-handed sword
+    [57, 60], // tsurugi
+    [59, 80], // partisan
+    [62, 75], // glaive
+    [63, 150], // halberd
+    [64, 120], // bardiche
+    [65, 125], // voulge
+    [66, 60], // fauchard
+    [67, 80], // guisarme
+    [68, 120], // bill-guisarme
+    [69, 150], // lucern hammer
+    [70, 100], // bec de corbin
+    [71, 120], // dwarvish mattock
+    [72, 180], // lance
+    [75, 120], // morning star
+    // C refs: objects.h ARMOR(...), mon.c:can_carry().
     // Generated armor objects can lack owt in the JS state; pets must still
-    // reject heavy mail.
+    // use their table weights before dog_invent() rolls for pickup.
+    [PLATE_MAIL, 450],
+    [CRYSTAL_PLATE_MAIL, 415],
+    [BRONZE_PLATE_MAIL, 450],
+    [SPLINT_MAIL, 400],
+    [BANDED_MAIL, 350],
+    [DWARVISH_MITHRIL_COAT, 150],
+    [ELVEN_MITHRIL_COAT, 150],
     [CHAIN_MAIL, 300],
+    [ORCISH_CHAIN_MAIL, 300],
+    [SCALE_MAIL, 250],
+    [STUDDED_LEATHER_ARMOR, 200],
+    [RING_MAIL, 250],
+    [ORCISH_RING_MAIL, 250],
+    [LEATHER_ARMOR, 150],
+    [LEATHER_JACKET, 30],
     [EXPENSIVE_CAMERA, 200],
     [MIRROR, 10],
     [STETHOSCOPE, 75],
@@ -355,6 +410,13 @@ function dogfood(mtmp, obj) {
     return obj.cursed ? UNDEF : APPORT;
 }
 
+function dog_nofetch(obj) {
+    const oclass = object_class(obj?.otyp);
+    // C ref: src/dogmove.c:nofetch.  dog_invent() skips these classes
+    // before calling dogfood(); dog_goal() still scans them normally.
+    return oclass === BALL_CLASS || oclass === CHAIN_CLASS || oclass === ROCK_CLASS;
+}
+
 function could_reach_item(mtmp, x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
@@ -413,15 +475,43 @@ function max_mon_load(mtmp) {
 }
 
 function object_name(obj) {
+    if (obj?.otyp === DART) return 'a dart';
     if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
     if (obj?.otyp === FOOD_RATION) return 'a food ration';
+    if (obj?.otyp === CORPSE) {
+        const species = corpse_species_name(obj.corpsenm);
+        return `${indefinite_article(species)} ${species} corpse`;
+    }
     if (obj?.otyp === QUARTERSTAFF) {
         const buc = obj.blessed ? 'blessed ' : obj.cursed ? 'cursed ' : 'uncursed ';
         const spe = typeof obj.spe === 'number' ? `${obj.spe >= 0 ? '+' : ''}${obj.spe} ` : '';
         return `a ${buc}${spe}quarterstaff`;
     }
     return 'an object';
+}
+
+function corpse_species_name(corpsenm) {
+    if (Number.isInteger(corpsenm)) {
+        return String(MONSTER_DATA[corpsenm]?.[0] || 'monster').toLowerCase().replace(/_/g, ' ');
+    }
+    if (typeof corpsenm === 'string') return corpsenm.toLowerCase().replace(/_/g, ' ');
+    if (corpsenm?.name) return String(corpsenm.name).toLowerCase().replace(/_/g, ' ');
+    return 'monster';
+}
+
+function indefinite_article(name) {
+    return /^[aeiou]/i.test(String(name || '')) ? 'an' : 'a';
+}
+
+function mark_object_encountered(obj) {
+    if (!Number.isInteger(obj?.otyp)) return;
+    const order = Array.isArray(game.discoveryOrder)
+        ? game.discoveryOrder
+        : (game.discoveryOrder = []);
+    if (!order.includes(obj.otyp)) order.push(obj.otyp);
+    const encountered = game.encounteredObjects || (game.encounteredObjects = new Set());
+    if (typeof encountered.add === 'function') encountered.add(obj.otyp);
 }
 
 function monster_name(mon) {
@@ -474,6 +564,27 @@ function pet_name(mtmp) {
 
 function pet_subject(mtmp) {
     return `The ${pet_name(mtmp)}`;
+}
+
+function pet_noit_subject(mtmp) {
+    return mtmp?.mtame ? `Your ${pet_name(mtmp)}` : `The ${pet_name(mtmp)}`;
+}
+
+async function pet_reluctance_pline(line) {
+    if (game._more && game._pending_message) {
+        game._after_more_message = game._after_more_message
+            ? `${game._after_more_message}  ${line}`
+            : line;
+        game._after_more_needs_prompt = true;
+        return;
+    }
+    if (game._pending_message) {
+        game._pending_message = `${game._pending_message}  ${line}`;
+        queue_more_prompt();
+        return;
+    }
+    await pline(line);
+    queue_more_prompt();
 }
 
 function pet_inventory_pline(line) {
@@ -599,12 +710,23 @@ export async function finish_pet_kill(mtmp, target) {
     // C ref: mon.c:monkilled(). Monster-vs-monster death announces the
     // visible defender before corpse/death side effects run.
     await append_topline_message(`The ${monster_name(target)} is killed!`);
-    rn2(3); // corpse_chance
+    corpse_chance(target);
     grow_up_from_kill(mtmp, target);
     const monsters = game.level?.monsters || [];
     const idx = monsters.indexOf(target);
     if (idx >= 0) monsters.splice(idx, 1);
     newsym(target.mx, target.my);
+}
+
+function corpse_chance(mon) {
+    // C ref: mon.c:corpse_chance(). This pet-kill path only needs the
+    // ordinary corpse RNG gate; corpse object creation is still modeled by
+    // the hero-kill path.
+    const mdat = mon?.data || {};
+    const freq = (mdat.geno ?? 0) & G_FREQ;
+    const verySmall = typeof mdat.msize === 'number' && mdat.msize < 1;
+    const chance = 2 + (freq < 2 ? 1 : 0) + (verySmall ? 1 : 0);
+    return !rn2(chance);
 }
 
 async function dog_invent(mtmp, udist) {
@@ -618,6 +740,7 @@ async function dog_invent(mtmp, udist) {
             // C ref: steal.c:mdrop_obj().  Pet inventory drops are only
             // announced when the drop square is visible.
             if (cansee(mtmp.mx, mtmp.my)) {
+                mark_object_encountered(obj);
                 pet_inventory_pline(`${pet_subject(mtmp)} drops ${object_name(obj)}.`);
             }
             if (edog.apport > 1) edog.apport--;
@@ -630,6 +753,7 @@ async function dog_invent(mtmp, udist) {
     const omy = mtmp.my;
     const obj = game.level.objects.find((item) => item.ox === omx && item.oy === omy);
     if (!obj || typeof obj.otyp !== 'number') return 0;
+    if (dog_nofetch(obj)) return 0;
 
     dogfood(mtmp, obj);
     const carryamt = can_carry(mtmp, obj);
@@ -642,7 +766,10 @@ async function dog_invent(mtmp, udist) {
                     if (idx >= 0) game.level.objects.splice(idx, 1);
                     mtmp.inventory = mtmp.inventory || [];
                     mtmp.inventory.unshift(obj);
-                    if (cansee(omx, omy)) pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(obj)}.`);
+                    if (cansee(omx, omy)) {
+                        mark_object_encountered(obj);
+                        pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(obj)}.`);
+                    }
                     newsym(omx, omy);
                 }
             }
@@ -653,6 +780,39 @@ async function dog_invent(mtmp, udist) {
 
 function pet_can_see_object(mtmp, x, y) {
     return clear_path(mtmp.mx, mtmp.my, x, y);
+}
+
+function nearest_visible_pet_goal(mtmp) {
+    const ux = game.u?.ux ?? mtmp.mx;
+    const uy = game.u?.uy ?? mtmp.my;
+    const range = 9;
+    let best = null;
+
+    const consider = (x, y) => {
+        if (!isok(x, y)) return;
+        if (dist2(mtmp.mx, mtmp.my, x, y) > range * range) return;
+        if (!clear_path(mtmp.mx, mtmp.my, x, y)) return;
+        const heroDist = dist2(x, y, ux, uy);
+        if (!best || heroDist < best.heroDist) best = { x, y, heroDist };
+    };
+
+    // C refs: dogmove.c:dog_goal(), dogmove.c:wantdoor(),
+    // vision.c:do_clear_area().  When the pet cannot see the hero and has
+    // no useful track, it walks toward the visible square nearest the hero.
+    for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
+        consider(x, mtmp.my);
+    const minY = Math.max(0, mtmp.my - range);
+    const maxY = Math.min(ROWNO - 1, mtmp.my + range);
+    for (let dy = 1; dy <= range; dy++) {
+        if (mtmp.my + dy > maxY && mtmp.my - dy < minY) break;
+        for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
+            if (mtmp.my + dy <= maxY) consider(x, mtmp.my + dy);
+        for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
+            if (mtmp.my - dy >= minY) consider(x, mtmp.my - dy);
+    }
+
+    if (!best || (best.x === mtmp.mx && best.y === mtmp.my)) return null;
+    return best;
 }
 
 function pet_master_x(mtmp) {
@@ -932,7 +1092,9 @@ function pet_goal(mtmp, after, udist, whappr) {
         return { abort: false, gx: goalX, gy: goalY, appr: 1 };
     }
 
-    if (after && udist <= 4) return { abort: true, gx, gy, appr };
+    if (after && udist <= 4) {
+        return { abort: true, gx, gy, appr };
+    }
     if (udist > 1 && (!loc || !IS_ROOM(loc.typ) || !rn2(4) || whappr
         || (dogHasMinvent && rn2(edog.apport)))) appr = 1;
     if (appr === 0) {
@@ -961,6 +1123,16 @@ function pet_goal(mtmp, after, udist, whappr) {
             followX = edog.ogoal.x;
             followY = edog.ogoal.y;
             edog.ogoal.x = 0;
+        } else {
+            const visibleGoal = dist2(mtmp.mx, mtmp.my, gx, gy) <= 81
+                ? nearest_visible_pet_goal(mtmp)
+                : null;
+            if (visibleGoal) {
+                followX = visibleGoal.x;
+                followY = visibleGoal.y;
+                edog.ogoal.x = followX;
+                edog.ogoal.y = followY;
+            }
         }
     } else {
         edog.ogoal.x = 0;
@@ -989,6 +1161,7 @@ export async function dog_move(mtmp, after = true) {
     let uncursedcnt = 0;
     let mfndposcnt = 0;
     let doEat = false;
+    let moveReluctant = false;
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
         for (let ny = Math.max(0, mtmp.my - 1); ny <= maxy; ny++) {
@@ -1037,6 +1210,7 @@ export async function dog_move(mtmp, after = true) {
                         nix = nx;
                         niy = ny;
                         doEat = true;
+                        moveReluctant = false;
                         cursedOnCandidate = false;
                         break searchCandidates;
                     }
@@ -1069,6 +1243,7 @@ export async function dog_move(mtmp, after = true) {
                 nix = nx;
                 niy = ny;
                 nidist = ndist;
+                moveReluctant = cursedOnCandidate;
                 if (j < 0) chcnt = 0;
             }
         }
@@ -1084,5 +1259,9 @@ export async function dog_move(mtmp, after = true) {
     mon_track_add(mtmp, oldx, oldy);
     newsym(oldx, oldy);
     newsym(nix, niy);
+    if (moveReluctant) {
+        const topObj = objects_at(nix, niy)[0];
+        await pet_reluctance_pline(`${pet_noit_subject(mtmp)} steps reluctantly onto ${topObj ? object_name(topObj) : 'something'}.`);
+    }
     return 1;
 }
