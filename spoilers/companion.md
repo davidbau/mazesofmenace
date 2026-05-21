@@ -413,6 +413,12 @@ and the ability to outrun a gnome lord. If your status line reads
 
 ### Your First Descent
 <!-- audit
+2026-05-21:
+- poison-resistance corpse list for Rule 6, all with MR_POISON in both mresists and mconveys: killer bee (monsters.h:100), cave spider (monsters.h:944), yellow mold (monsters.h:1636); black pudding glob also conveys MR_POISON via mconveys (monsters.h:2118)
+- puddings carry G_NOCORPSE (monsters.h:2114) so there is no CORPSE object, but on death they drop a GLOB_OF_BLACK_PUDDING / GLOB_OF_BROWN_PUDDING / etc. food item (mon.c:715-734 mksobj_at)
+- eating a glob takes the same intrinsic path as eating a corpse: `piece->otyp == CORPSE || piece->globby` both trigger cpostfx(corpsenm) which calls givit() for each conveyed property (eat.c:562, 2040, 2984)
+- kicking a sink can summon a black pudding: 4/5 outcomes are klunk, otherwise 1/3 chance of black pudding (dokick.c:1201-1238) — the canonical beginner trick to roll cold+shock+poison resistance globs
+- magic resistance and reflection have no intrinsic source for players in 5.0; both come only from extrinsics: GDSM (do_wear.c:806-883), amulet of reflection, cloak of MR, silver shield, silver/gray DSM
 2026-05-18:
 - stair-falling damage is 1-3 HP via rnd(3) (do.c:1780-1795)
 - floating-eye paralysis (mhitu.c:2536-2557)
@@ -464,7 +470,8 @@ to you in single file.
 **Rule 2: Don't eat things you don't understand.** Monster corpses
 can grant powerful intrinsics, or they can poison you, give you food
 poisoning, or worse. Until you know what a corpse does, leave it on
-the ground. The exceptions: you can always safely eat food rations,
+the ground. (Kobold `k` meat, for example, is poisonous and confers
+nothing.) The exceptions: you can always safely eat food rations,
 lembas wafers, cram rations, and fruits. Lichen corpses are safe and
 never rot. Lizard corpses are safe, never rot, and cure
 petrification. Always carry one if you can.
@@ -494,17 +501,19 @@ items you need. The sweet spot is to explore each level fairly
 completely (check rooms, open doors, look for hidden passages) but
 don't grind. When you've found what the level has to offer, move on.
 
-**Rule 6: Build three key defenses.** In the first half of the
-game, your real goal isn't accumulating treasure. It's acquiring
-the resistances and protections that will help you survive the
-late game. The three most important are **magic resistance**,
+**Rule 6: Build your defenses.** In the first half of the game,
+your real goal isn't accumulating treasure. It's acquiring the
+resistances and protections that will help you survive the late
+game. The three most important are **magic resistance**,
 **reflection**, and **poison resistance** (plus a **lizard
 corpse** in your pack for petrification emergencies). Poison
-resistance you can bank as an *intrinsic* by eating the right
-corpse (a killer bee, a quasit). Magic resistance and reflection
-come from gear: dragon scale mail (gray for MR, silver for
-reflection), an amulet of reflection, or an artifact granted by
-your god, won on the Quest, or bestowed by a wish.
+resistance can be acquired as an *intrinsic* by eating the right
+corpse, like a killer bee, a cave spider, a yellow mold, or a
+black pudding kicked from a sink.
+Magic resistance and reflection come from gear: dragon scale
+mail (gray for MR, silver for reflection), an amulet of
+reflection, or an artifact granted by your god, won on the
+Quest, or bestowed by a wish.
 
 #### Things That Kill You (And How Not to Let Them)
 
@@ -557,12 +566,12 @@ cram ration, or lembas wafer.
 These look like ordinary containers, no special marking. On your
 first ten levels, check every chest and large box you find. A
 locked one will yield to a credit card, a key, a wand of opening,
-or — failing those — you can `#force` the issue with a weapon you
-don't mind breaking. An orcish dagger off the first orc you kill is
+or you can `#force` the issue with a weapon you don't mind
+breaking. An orcish dagger off the first orc you kill is
 a perfect tool (pet-test it first: could be cursed). The contents aren't guaranteed
 to change your run, but finding a stack of healing potions on level
 4 before you've learned the hard way how much you need them is the
-dungeon's frequent act of goodwill.
+dungeon's act of goodwill.
 
 ---
 
@@ -1033,11 +1042,12 @@ first.)
 Sinks are the dungeon's most underrated identification tool.
 
 **Kicking a sink** can shake loose a ring (useful!), summon a black
-pudding (terrifying!), summon an *amorous demon* posing as "the dish
-washer" (the same incubus/succubus as [a seduction
-encounter](#seduction) — careful!), or just stub your toe. Each non-stub outcome fires at most
-once per sink. Worth a kick in the early game if you can handle what
-comes out.
+pudding (terrifying, but its glob is a [triple-resistance
+snack](#useful-corpse-effects)), summon an *amorous demon* posing
+as "the dish washer" (the same incubus/succubus as [a seduction
+encounter](#seduction) — careful!), or just stub your toe. Each
+non-stub outcome fires at most once per sink. Worth a kick in the
+early game if you can handle what comes out.
 
 **Pouring potions down a sink** (by dipping) produces telltale
 effects — a clever way to narrow down potion identities without
@@ -1116,8 +1126,8 @@ his name angers the guard. Use the real-name route then.
 A practical tour of the branches and landmarks, in roughly the order you'll visit them.
 
 **Sokoban or Mines first?** The Mines entrance shows up first
-(Dlvl 2 to 4), but the *strategic* answer for most beginners is
-Sokoban. It's a controlled puzzle crawl with mostly trivial
+(Dlvl 2 to 4), but the *strategic* suggestion for most beginners
+is Sokoban. It's a controlled puzzle crawl with mostly trivial
 monsters, and the prize at the top (reflection or a bag of
 holding) materially helps the Mines run afterward. Go
 Mines-first if you specifically want the luckstone at Mine's End
@@ -2611,8 +2621,8 @@ epitaph.
 Touching a cockatrice without gloves, eating a cockatrice corpse,
 catching Medusa's gaze, or **kicking** a cockatrice corpse barefoot
 will turn you to stone. *Stepping* on the corpse is safe so long as
-you don't have Fumbling — Fumbling can trip you over the corpse for
-instant death. The process is sometimes immediate; otherwise a
+you don't have Fumbling (Fumbling can trip you over the corpse for
+instant death). The process is sometimes immediate; otherwise a
 five-turn countdown announces itself with *"You are slowing down,"*
 *"Your limbs are stiffening,"* *"Your limbs have turned to stone"*
 (at which point you are **paralyzed** and can no longer act),
@@ -3676,7 +3686,7 @@ single most powerful identification tool you have.
 
 <div><figure style="margin: 1.5em 0; text-align: center;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 736" role="img" aria-label="The identification flowchart" style="max-width: 760px; width: 100%; height: auto; font-family: 'EB Garamond', 'Garamond', 'Georgia', serif;"><title>The Identification Flowchart</title><defs><marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker><style>.start{fill:#E8F4FD;stroke:#3B6FA0;stroke-width:2}.decision{fill:#FFF4E6;stroke:#B5651D;stroke-width:2}.action{fill:#F0F9E8;stroke:#5B8E3A;stroke-width:2}.final{fill:#FCE8E6;stroke:#A14A3F;stroke-width:2}.label{font-size:18px;fill:#1f2933;text-anchor:middle}.startlbl{font-size:19px;font-weight:600;fill:#1f2933;text-anchor:middle}.branch{font-size:16px;font-style:italic;fill:#5a5a5a}.edge{fill:none;stroke:#5a5a5a;stroke-width:1.5}</style></defs><rect class="start" x="40" y="20" width="320" height="50" rx="25" ry="25"/><text class="startlbl" x="200" y="51">Found an item</text><path class="edge" d="M 200 70 L 200 100" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="100" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="133">Can you reach an altar?</text><path class="edge" d="M 360 128 L 430 128" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="121" text-anchor="middle">yes</text><rect class="action" x="430" y="100" width="290" height="56" rx="8" ry="8"/><text class="label" x="575" y="133">Drop it. Check BUC.</text><text class="branch" x="210" y="172">no</text><path class="edge" d="M 200 156 L 200 190" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="190" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="223">Is your pet nearby?</text><path class="edge" d="M 360 218 L 430 218" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="211" text-anchor="middle">yes</text><rect class="action" x="430" y="184" width="290" height="62" rx="8" ry="8"/><text class="label" x="575" y="210">Drop it. Pet avoids it?</text><text class="label" x="575" y="232" style="font-size: 16px;"><tspan style="font-style: italic; fill:#5a5a5a;">yes</tspan>: it's cursed; <tspan style="font-style: italic; fill:#5a5a5a;">no</tspan>: it's safe</text><text class="branch" x="210" y="262">no</text><path class="edge" d="M 200 246 L 200 290" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="290" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="323">Can you reach a shop?</text><path class="edge" d="M 360 318 L 430 318" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="311" text-anchor="middle">yes</text><rect class="action" x="430" y="290" width="290" height="56" rx="8" ry="8"/><text class="label" x="575" y="323">Check price.</text><text class="branch" x="210" y="362">no</text><path class="edge" d="M 200 346 L 200 380" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="380" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="413">Is it a wand?</text><path class="edge" d="M 360 408 L 430 408" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="401" text-anchor="middle">yes</text><rect class="action" x="430" y="380" width="290" height="56" rx="8" ry="8"/><text class="label" x="575" y="413">Engrave-test it.</text><text class="branch" x="210" y="452">no</text><path class="edge" d="M 200 436 L 200 470" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="470" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="503">Spare ring or potion with a sink?</text><path class="edge" d="M 360 498 L 430 498" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="491" text-anchor="middle">yes</text><rect class="action" x="430" y="470" width="290" height="56" rx="8" ry="8"/><text class="label" x="575" y="503">Drop ring or dip potion.</text><text class="branch" x="210" y="542">no</text><path class="edge" d="M 200 526 L 200 560" marker-end="url(#arrowhead)"/><rect class="decision" x="40" y="560" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="593">Is it safe to use-test?</text><path class="edge" d="M 360 588 L 430 588" marker-end="url(#arrowhead)"/><text class="branch" x="395" y="581" text-anchor="middle">yes</text><rect class="action" x="430" y="560" width="290" height="56" rx="8" ry="8"/><text class="label" x="575" y="593">Try it carefully.</text><text class="branch" x="210" y="632">no</text><path class="edge" d="M 200 616 L 200 660" marker-end="url(#arrowhead)"/><rect class="final" x="40" y="660" width="320" height="56" rx="10" ry="10"/><text class="label" x="200" y="693">Read a scroll of identify.</text></svg><figcaption style="font-style: italic; color: #5a5a5a; font-size: 0.9em; margin-top: 0.5em;">The identification flowchart: cheapest method first, scroll of identify last.</figcaption></figure></div>
 
-#### Blessed, Uncursed, Cursed
+#### Blessed, Uncursed, Cursed (BUC)
 <!-- audit
 2026-05-18:
 - altar flash on drop: amber blessed, black cursed, no flash uncursed (do.c:379-388)
@@ -4348,6 +4358,10 @@ identify are the precious last resort.
 
 ### Provisions and Dining
 <!-- audit
+2026-05-21:
+- vegan classes: S_BLOB, S_JELLY, S_FUNGUS, S_VORTEX, S_LIGHT, S_ELEMENTAL (except stalker), S_GOLEM (except flesh/leather), and noncorporeal (S_GHOST) (mondata.h:232-238)
+- vegetarian = vegan + S_PUDDING except black pudding (mondata.h:239-241); brown pudding and gray ooze are vegetarian, black pudding is not
+- corpse_intrinsic picks one mconveys property uniformly at random per eat, then should_givit rolls mlevel/15 (or mlevel-vs-rn2(15)); killer bee/scorpion poison-res has a 25% boosted-chance branch (eat.c:961-989, 1351-1373)
 2026-05-20:
 - tin opening is an occupation; opentin is called per turn, gives up after svc.context.tin.usedtime >= 50 turns (eat.c:1710-1719, 1794)
 - tin open time by tool: blessed tin opener wielded = 0; uncursed tin opener rn2(2); cursed rn2(3); dagger family = 3; axe/pick-axe = 6; bare hands = rn1(1 + 500/(Dex+Str), 10) which is ~11-26 at avg stats, up to the 50-turn cap (eat.c:1740-1786)
@@ -4465,49 +4479,62 @@ gives the aggravate monster intrinsic. Cavemen and orcs are exempt.
 
 #### Useful Corpse Effects
 
+Eating for intrinsics is the highest-leverage habit in the early
+and mid game. Each resistance is a *chance* per eat, not a
+guarantee, so eat *every* one of these you find, not just the
+first. Two tables follow: meat corpses and vegetarian-safe
+corpses, each ordered roughly by when you'll first meet the
+creature on a typical descent.
+
+**Meat corpses:**
+
 | Corpse                  | Effect                                                                 |
 | ----------------------- | ---------------------------------------------------------------------- |
-| Floating eye            | Telepathy (but paralyzes you too)                                      |
-| Killer bee              | Poison resistance                                                      |
-| Fire giant              | Fire resistance + Strength                                             |
-| Fire ant                | Fire resistance                                                        |
-| Red mold                | Fire resistance + poison resistance                                    |
-| Winter wolf             | Cold resistance                                                        |
-| Blue jelly              | Cold and poison resistance                                             |
-| Brown mold              | Cold resistance + poison resistance                                    |
-| Yeti                    | Cold resistance                                                        |
-| Quivering blob          | Poison resistance                                                      |
-| Acid blob               | Acid and stoning resistance                                            |
-| Gelatinous cube         | Fire, cold, shock, and sleep resistance (chance for each per eat)      |
-| Brown or black pudding  | Cold, shock, and poison resistance                                     |
-| Gray ooze               | Fire, cold, and poison resistance                                      |
-| Wraith                  | Gain an experience level                                               |
-| Giant                   | Increase strength                                                      |
-| Lizard                  | Cures stoning in progress                                              |
 | Newt                    | May restore 1 to 3 mana                                                |
-| Stalker                 | Invisibility (and see invisible)                                       |
+| Killer bee              | Poison resistance                                                      |
+| Lizard                  | Cures stoning in progress                                              |
+| Floating eye            | Telepathy (but paralyzes you too)                                      |
+| Fire ant                | Fire resistance                                                        |
+| Wraith                  | Gain an experience level                                               |
+| Yeti                    | Cold resistance                                                        |
 | Tengu                   | Teleportitis / teleport control                                        |
+| Giant (any)             | Increase strength                                                      |
+| Winter wolf             | Cold resistance                                                        |
+| Stalker                 | Invisibility (and see invisible)                                       |
+| Black pudding (glob)    | Cold, shock, and poison resistance                                     |
+| Fire giant              | Fire resistance + Strength                                             |
 | Disenchanter            | **STRIPS** a random intrinsic. Never eat.                              |
 
-Eating for intrinsics is the highest-leverage habit in the early
-and mid game. Poison resistance should be a top
-priority, and a gelatinous cube is the highest-density source of
-ascension-kit intrinsics in the game. Each resistance is a *chance*
-per eat (not a guarantee), so eat *every* one of these you find,
-not just the first.
+**Vegetarian-safe corpses** (those marked **†** are also vegan):
+
+| Corpse                  | Effect                                                                 |
+| ----------------------- | ---------------------------------------------------------------------- |
+| Acid blob †             | Acid and stoning resistance                                            |
+| Yellow mold †           | Poison resistance                                                      |
+| Brown mold †            | Cold and poison resistance                                             |
+| Red mold †              | Fire and poison resistance                                             |
+| Quivering blob †        | Poison resistance                                                      |
+| Gray ooze (glob)        | Fire, cold, and poison resistance                                      |
+| Blue jelly †            | Cold and poison resistance                                             |
+| Brown pudding (glob)    | Cold, shock, and poison resistance                                     |
+| Gelatinous cube †       | Fire, cold, shock, and sleep resistance                                |
+
+A gelatinous cube is the highest-density source of ascension-kit
+intrinsics in the game; poison resistance off any of the early
+corpses is the most important single intrinsic to bank.
 
 **Sprig of wolfsbane.** Not a corpse but the same shelf. Eating one
 cures lycanthropy outright. If you're heading anywhere were-things
 roam (the Mines, the Quest for some roles), carry a sprig or two.
 It weighs almost nothing.
 
-**Globs vs corpses.** Puddings (gray ooze, brown pudding, black
-pudding) and acid blobs in 5.0 leave **globs** instead of corpses.
-Globs sit on the floor and shrink slowly (about one weight unit
-every 25 turns, so a fresh glob lasts about 500 turns — twice as
-long as a corpse) — and globs of the same color stack, so saving
-up a pile of brown pudding globs lets you re-roll shock resistance
-until you get it.
+**Eat the puddings, cubes, molds, and blobs.** They look like
+inedible terrain, but every one of them yields an intrinsic when
+eaten. Puddings and acid blobs leave **globs** rather than
+corpses (a 5.0 food-handling detail that doesn't change the
+strategy), and the globs of one color stack and shrink slowly,
+so a pile of brown-pudding globs is a re-rollable chance at
+shock resistance.
 
 #### Food Strategy
 
@@ -6858,12 +6885,14 @@ The arithmetic: only one sit in three picks an effect at all
 those that fire, 4/13 are the wish. Unconditional rate is about
 1 in 10, so plan on roughly ten sits before the wish lands, with
 about seven bad effects absorbed along the way. Plan accordingly. Stand at full HP,
-don't carry potions you can't afford to grease, and have acid
+leave any precious gear behind (a grease hit coats your whole
+pack and makes you Glib for 100 to 200 turns, dropping items
+from your hands when you try to use them), and have acid
 resistance or magic resistance ready before you sit. If you don't
 want a forced wish (say, you've already used your Castle wish and
 Amulet wish and want to keep this one for the ascension kit), you
 can sit at any time; you don't have to do it right now. The
-throne stays put until something on the level destroys it.
+throne stays put unless something on the level destroys it.
 
 #### Orcus Town
 
@@ -6889,10 +6918,9 @@ the Castle wand's single charge.
 
 #### The Wizard's Tower
 
-Three sequential Gehennom levels (wizard1 → wizard2 → wizard3,
-each reached by the normal down-stair from the level above) leading
-to the **Wizard of Yendor** himself and the **Book of the Dead**.
-He is the most dangerous enemy in the game — not because he's the
+A sequence of three special Gehennom levels that lead to the
+**Wizard of Yendor** himself and the **Book of the Dead**. He
+is the most dangerous enemy in the game, not because he's the
 strongest fighter, but because he **never stops**. He teleports to
 your location, summons monsters, steals back his Amulet whenever
 you grab it, curses your gear, and once you wake him he *will not
@@ -6914,10 +6942,6 @@ just one more maze. Once the seal breaks, descend to find the
 boss who casts spells, summons minions, and aggrieves anyone in
 melee range — the standard answer is a wand of death or finger of
 death from a safe distance.
-
-The Sanctum's up-stair lets you leave whenever you like, but the
-**Astral plane portal at the top of the Endgame ladder won't open
-without the Amulet** in your inventory.
 
 #### The Heist
 
@@ -7049,6 +7073,10 @@ clear.
 
 ### The Ascension Run
 <!-- audit
+2026-05-21:
+- bones save converts the real Amulet of Yendor to FAKE_AMULET_OF_YENDOR and curses it when a previous adventurer dies carrying it (bones.c:170-173)
+- wish for an Amulet of Yendor silently substitutes a fake (objnam.c:5003-5006 substitution list)
+- Astral altar offering accepts only the real Amulet; fake amulets fail and the death message reads "(with a fake Amulet)" (end.c:1413-1414)
 2026-05-19:
 - Mysterious Force is gated on Gehennom only (do.c:1541); same-level shuffle is the majority outcome
 - odds = 3 + ualign.type; diff = rn2(odds): Chaotics max -1, Neutrals max -2, only Lawfuls reach -3 (do.c:1544)
@@ -7075,6 +7103,18 @@ of the most generous moments in the game. Have your wish list
 ready *before* you reach the Sanctum: gauntlets of power, a
 +5 weapon of your choice, blessed cloak of magic resistance, or
 whatever you're missing for the climb. You only get it once.
+
+**Bring the authentic Amulet.** The climb out is always open:
+every up-stair in the Dungeons of Doom takes you closer to the
+surface regardless of what you carry. The **Astral plane portal**
+at the top of the Endgame ladder, however, won't open without
+the real Amulet of Yendor in your inventory. Only the Amulet you
+took off the High Priest's body in Moloch's Sanctum counts.
+Bones-pile Amulets are fakes (the game converts a dead
+adventurer's real Amulet to a fake when their corpse becomes a
+bones level), and a wish for an Amulet of Yendor silently
+substitutes a fake too. If you didn't pick yours up off the High
+Priest, you don't have the real one.
 
 The Ascension Run is the victory lap that keeps killing even the
 strongest adventurers. You have the most powerful artifact in the

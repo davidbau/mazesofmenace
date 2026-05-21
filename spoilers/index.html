@@ -503,6 +503,12 @@ reads “Burdened,” you’re carrying more than you can use.</p>
 <section id="your-first-descent" class="level3">
 <h3>Your First Descent</h3>
 <!-- audit
+2026-05-21:
+- poison-resistance corpse list for Rule 6, all with MR_POISON in both mresists and mconveys: killer bee (monsters.h:100), cave spider (monsters.h:944), yellow mold (monsters.h:1636); black pudding glob also conveys MR_POISON via mconveys (monsters.h:2118)
+- puddings carry G_NOCORPSE (monsters.h:2114) so there is no CORPSE object, but on death they drop a GLOB_OF_BLACK_PUDDING / GLOB_OF_BROWN_PUDDING / etc. food item (mon.c:715-734 mksobj_at)
+- eating a glob takes the same intrinsic path as eating a corpse: `piece->otyp == CORPSE || piece->globby` both trigger cpostfx(corpsenm) which calls givit() for each conveyed property (eat.c:562, 2040, 2984)
+- kicking a sink can summon a black pudding: 4/5 outcomes are klunk, otherwise 1/3 chance of black pudding (dokick.c:1201-1238) — the canonical beginner trick to roll cold+shock+poison resistance globs
+- magic resistance and reflection have no intrinsic source for players in 5.0; both come only from extrinsics: GDSM (do_wear.c:806-883), amulet of reflection, cloak of MR, silver shield, silver/gray DSM
 2026-05-18:
 - stair-falling damage is 1-3 HP via rnd(3) (do.c:1780-1795)
 - floating-eye paralysis (mhitu.c:2536-2557)
@@ -545,10 +551,11 @@ come to you in single file.</p>
 <p><strong>Rule 2: Don’t eat things you don’t understand.</strong>
 Monster corpses can grant powerful intrinsics, or they can poison you,
 give you food poisoning, or worse. Until you know what a corpse does,
-leave it on the ground. The exceptions: you can always safely eat food
-rations, lembas wafers, cram rations, and fruits. Lichen corpses are
-safe and never rot. Lizard corpses are safe, never rot, and cure
-petrification. Always carry one if you can.</p>
+leave it on the ground. (Kobold <code>k</code> meat, for example, is
+poisonous and confers nothing.) The exceptions: you can always safely
+eat food rations, lembas wafers, cram rations, and fruits. Lichen
+corpses are safe and never rot. Lizard corpses are safe, never rot, and
+cure petrification. Always carry one if you can.</p>
 <p><strong>Rule 3: Your pet is your friend.</strong> Your starting pet
 is more useful than it appears. It will fight alongside you, pick up
 items (which tells you they’re not cursed, since pets avoid cursed items
@@ -571,14 +578,15 @@ for hundreds of turns, you’ll starve. But rushing past rooms means
 missing items you need. The sweet spot is to explore each level fairly
 completely (check rooms, open doors, look for hidden passages) but don’t
 grind. When you’ve found what the level has to offer, move on.</p>
-<p><strong>Rule 6: Build three key defenses.</strong> In the first half
-of the game, your real goal isn’t accumulating treasure. It’s acquiring
-the resistances and protections that will help you survive the late
-game. The three most important are <strong>magic resistance</strong>,
+<p><strong>Rule 6: Build your defenses.</strong> In the first half of
+the game, your real goal isn’t accumulating treasure. It’s acquiring the
+resistances and protections that will help you survive the late game.
+The three most important are <strong>magic resistance</strong>,
 <strong>reflection</strong>, and <strong>poison resistance</strong>
 (plus a <strong>lizard corpse</strong> in your pack for petrification
-emergencies). Poison resistance you can bank as an <em>intrinsic</em> by
-eating the right corpse (a killer bee, a quasit). Magic resistance and
+emergencies). Poison resistance can be acquired as an <em>intrinsic</em>
+by eating the right corpse, like a killer bee, a cave spider, a yellow
+mold, or a black pudding kicked from a sink. Magic resistance and
 reflection come from gear: dragon scale mail (gray for MR, silver for
 reflection), an amulet of reflection, or an artifact granted by your
 god, won on the Quest, or bestowed by a wish.</p>
@@ -630,13 +638,13 @@ different gift: a guaranteed food ration, cram ration, or lembas
 wafer.</p>
 <p>These look like ordinary containers, no special marking. On your
 first ten levels, check every chest and large box you find. A locked one
-will yield to a credit card, a key, a wand of opening, or — failing
-those — you can <code>#force</code> the issue with a weapon you don’t
-mind breaking. An orcish dagger off the first orc you kill is a perfect
-tool (pet-test it first: could be cursed). The contents aren’t
-guaranteed to change your run, but finding a stack of healing potions on
-level 4 before you’ve learned the hard way how much you need them is the
-dungeon’s frequent act of goodwill.</p>
+will yield to a credit card, a key, a wand of opening, or you can
+<code>#force</code> the issue with a weapon you don’t mind breaking. An
+orcish dagger off the first orc you kill is a perfect tool (pet-test it
+first: could be cursed). The contents aren’t guaranteed to change your
+run, but finding a stack of healing potions on level 4 before you’ve
+learned the hard way how much you need them is the dungeon’s act of
+goodwill.</p>
 <hr />
 </section>
 </section>
@@ -1691,11 +1699,13 @@ never vanishes without granting a wish first.)
 <h4>Sinks <code>{</code></h4>
 <p>Sinks are the dungeon’s most underrated identification tool.</p>
 <p><strong>Kicking a sink</strong> can shake loose a ring (useful!),
-summon a black pudding (terrifying!), summon an <em>amorous demon</em>
-posing as “the dish washer” (the same incubus/succubus as <a
-href="#seduction">a seduction encounter</a> — careful!), or just stub
-your toe. Each non-stub outcome fires at most once per sink. Worth a
-kick in the early game if you can handle what comes out.</p>
+summon a black pudding (terrifying, but its glob is a <a
+href="#useful-corpse-effects">triple-resistance snack</a>), summon an
+<em>amorous demon</em> posing as “the dish washer” (the same
+incubus/succubus as <a href="#seduction">a seduction encounter</a> —
+careful!), or just stub your toe. Each non-stub outcome fires at most
+once per sink. Worth a kick in the early game if you can handle what
+comes out.</p>
 <p><strong>Pouring potions down a sink</strong> (by dipping) produces
 telltale effects — a clever way to narrow down potion identities without
 risking a sip. Five potions print unique sink-only messages:</p>
@@ -1876,7 +1886,7 @@ his name angers the guard. Use the real-name route then.</p>
 <p>A practical tour of the branches and landmarks, in roughly the order
 you’ll visit them.</p>
 <p><strong>Sokoban or Mines first?</strong> The Mines entrance shows up
-first (Dlvl 2 to 4), but the <em>strategic</em> answer for most
+first (Dlvl 2 to 4), but the <em>strategic</em> suggestion for most
 beginners is Sokoban. It’s a controlled puzzle crawl with mostly trivial
 monsters, and the prize at the top (reflection or a bag of holding)
 materially helps the Mines run afterward. Go Mines-first if you
@@ -3542,8 +3552,8 @@ standard reference ever since.</em></p>
 <p>Touching a cockatrice without gloves, eating a cockatrice corpse,
 catching Medusa’s gaze, or <strong>kicking</strong> a cockatrice corpse
 barefoot will turn you to stone. <em>Stepping</em> on the corpse is safe
-so long as you don’t have Fumbling — Fumbling can trip you over the
-corpse for instant death. The process is sometimes immediate; otherwise
+so long as you don’t have Fumbling (Fumbling can trip you over the
+corpse for instant death). The process is sometimes immediate; otherwise
 a five-turn countdown announces itself with <em>“You are slowing
 down,”</em> <em>“Your limbs are stiffening,”</em> <em>“Your limbs have
 turned to stone”</em> (at which point you are <strong>paralyzed</strong>
@@ -4625,8 +4635,8 @@ last.
 </figcaption>
 </figure>
 </div>
-<section id="blessed-uncursed-cursed" class="level4">
-<h4>Blessed, Uncursed, Cursed</h4>
+<section id="blessed-uncursed-cursed-buc" class="level4">
+<h4>Blessed, Uncursed, Cursed (BUC)</h4>
 <!-- audit
 2026-05-18:
 - altar flash on drop: amber blessed, black cursed, no flash uncursed (do.c:379-388)
@@ -5695,6 +5705,10 @@ are the precious last resort.</p>
 <section id="provisions-and-dining" class="level3">
 <h3>Provisions and Dining</h3>
 <!-- audit
+2026-05-21:
+- vegan classes: S_BLOB, S_JELLY, S_FUNGUS, S_VORTEX, S_LIGHT, S_ELEMENTAL (except stalker), S_GOLEM (except flesh/leather), and noncorporeal (S_GHOST) (mondata.h:232-238)
+- vegetarian = vegan + S_PUDDING except black pudding (mondata.h:239-241); brown pudding and gray ooze are vegetarian, black pudding is not
+- corpse_intrinsic picks one mconveys property uniformly at random per eat, then should_givit rolls mlevel/15 (or mlevel-vs-rn2(15)); killer bee/scorpion poison-res has a 25% boosted-chance branch (eat.c:961-989, 1351-1373)
 2026-05-20:
 - tin opening is an occupation; opentin is called per turn, gives up after svc.context.tin.usedtime >= 50 turns (eat.c:1710-1719, 1794)
 - tin open time by tool: blessed tin opener wielded = 0; uncursed tin opener rn2(2); cursed rn2(3); dagger family = 3; axe/pick-axe = 6; bare hands = rn1(1 + 500/(Dex+Str), 10) which is ~11-26 at avg stats, up to the 50-turn cap (eat.c:1740-1786)
@@ -5844,6 +5858,12 @@ exempt.</p>
 </section>
 <section id="useful-corpse-effects" class="level4">
 <h4>Useful Corpse Effects</h4>
+<p>Eating for intrinsics is the highest-leverage habit in the early and
+mid game. Each resistance is a <em>chance</em> per eat, not a guarantee,
+so eat <em>every</em> one of these you find, not just the first. Two
+tables follow: meat corpses and vegetarian-safe corpses, each ordered
+roughly by when you’ll first meet the creature on a typical descent.</p>
+<p><strong>Meat corpses:</strong></p>
 <table>
 <colgroup>
 <col style="width: 24%" />
@@ -5857,85 +5877,56 @@ exempt.</p>
 </thead>
 <tbody>
 <tr>
-<td>Floating eye</td>
-<td>Telepathy (but paralyzes you too)</td>
+<td>Newt</td>
+<td>May restore 1 to 3 mana</td>
 </tr>
 <tr>
 <td>Killer bee</td>
 <td>Poison resistance</td>
 </tr>
 <tr>
-<td>Fire giant</td>
-<td>Fire resistance + Strength</td>
+<td>Lizard</td>
+<td>Cures stoning in progress</td>
+</tr>
+<tr>
+<td>Floating eye</td>
+<td>Telepathy (but paralyzes you too)</td>
 </tr>
 <tr>
 <td>Fire ant</td>
 <td>Fire resistance</td>
 </tr>
 <tr>
-<td>Red mold</td>
-<td>Fire resistance + poison resistance</td>
-</tr>
-<tr>
-<td>Winter wolf</td>
-<td>Cold resistance</td>
-</tr>
-<tr>
-<td>Blue jelly</td>
-<td>Cold and poison resistance</td>
-</tr>
-<tr>
-<td>Brown mold</td>
-<td>Cold resistance + poison resistance</td>
+<td>Wraith</td>
+<td>Gain an experience level</td>
 </tr>
 <tr>
 <td>Yeti</td>
 <td>Cold resistance</td>
 </tr>
 <tr>
-<td>Quivering blob</td>
-<td>Poison resistance</td>
+<td>Tengu</td>
+<td>Teleportitis / teleport control</td>
 </tr>
 <tr>
-<td>Acid blob</td>
-<td>Acid and stoning resistance</td>
-</tr>
-<tr>
-<td>Gelatinous cube</td>
-<td>Fire, cold, shock, and sleep resistance (chance for each per
-eat)</td>
-</tr>
-<tr>
-<td>Brown or black pudding</td>
-<td>Cold, shock, and poison resistance</td>
-</tr>
-<tr>
-<td>Gray ooze</td>
-<td>Fire, cold, and poison resistance</td>
-</tr>
-<tr>
-<td>Wraith</td>
-<td>Gain an experience level</td>
-</tr>
-<tr>
-<td>Giant</td>
+<td>Giant (any)</td>
 <td>Increase strength</td>
 </tr>
 <tr>
-<td>Lizard</td>
-<td>Cures stoning in progress</td>
-</tr>
-<tr>
-<td>Newt</td>
-<td>May restore 1 to 3 mana</td>
+<td>Winter wolf</td>
+<td>Cold resistance</td>
 </tr>
 <tr>
 <td>Stalker</td>
 <td>Invisibility (and see invisible)</td>
 </tr>
 <tr>
-<td>Tengu</td>
-<td>Teleportitis / teleport control</td>
+<td>Black pudding (glob)</td>
+<td>Cold, shock, and poison resistance</td>
+</tr>
+<tr>
+<td>Fire giant</td>
+<td>Fire resistance + Strength</td>
 </tr>
 <tr>
 <td>Disenchanter</td>
@@ -5943,22 +5934,71 @@ eat)</td>
 </tr>
 </tbody>
 </table>
-<p>Eating for intrinsics is the highest-leverage habit in the early and
-mid game. Poison resistance should be a top priority, and a gelatinous
-cube is the highest-density source of ascension-kit intrinsics in the
-game. Each resistance is a <em>chance</em> per eat (not a guarantee), so
-eat <em>every</em> one of these you find, not just the first.</p>
+<p><strong>Vegetarian-safe corpses</strong> (those marked
+<strong>†</strong> are also vegan):</p>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 75%" />
+</colgroup>
+<thead>
+<tr>
+<th>Corpse</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Acid blob †</td>
+<td>Acid and stoning resistance</td>
+</tr>
+<tr>
+<td>Yellow mold †</td>
+<td>Poison resistance</td>
+</tr>
+<tr>
+<td>Brown mold †</td>
+<td>Cold and poison resistance</td>
+</tr>
+<tr>
+<td>Red mold †</td>
+<td>Fire and poison resistance</td>
+</tr>
+<tr>
+<td>Quivering blob †</td>
+<td>Poison resistance</td>
+</tr>
+<tr>
+<td>Gray ooze (glob)</td>
+<td>Fire, cold, and poison resistance</td>
+</tr>
+<tr>
+<td>Blue jelly †</td>
+<td>Cold and poison resistance</td>
+</tr>
+<tr>
+<td>Brown pudding (glob)</td>
+<td>Cold, shock, and poison resistance</td>
+</tr>
+<tr>
+<td>Gelatinous cube †</td>
+<td>Fire, cold, shock, and sleep resistance</td>
+</tr>
+</tbody>
+</table>
+<p>A gelatinous cube is the highest-density source of ascension-kit
+intrinsics in the game; poison resistance off any of the early corpses
+is the most important single intrinsic to bank.</p>
 <p><strong>Sprig of wolfsbane.</strong> Not a corpse but the same shelf.
 Eating one cures lycanthropy outright. If you’re heading anywhere
 were-things roam (the Mines, the Quest for some roles), carry a sprig or
 two. It weighs almost nothing.</p>
-<p><strong>Globs vs corpses.</strong> Puddings (gray ooze, brown
-pudding, black pudding) and acid blobs in 5.0 leave
-<strong>globs</strong> instead of corpses. Globs sit on the floor and
-shrink slowly (about one weight unit every 25 turns, so a fresh glob
-lasts about 500 turns — twice as long as a corpse) — and globs of the
-same color stack, so saving up a pile of brown pudding globs lets you
-re-roll shock resistance until you get it.</p>
+<p><strong>Eat the puddings, cubes, molds, and blobs.</strong> They look
+like inedible terrain, but every one of them yields an intrinsic when
+eaten. Puddings and acid blobs leave <strong>globs</strong> rather than
+corpses (a 5.0 food-handling detail that doesn’t change the strategy),
+and the globs of one color stack and shrink slowly, so a pile of
+brown-pudding globs is a re-rollable chance at shock resistance.</p>
 </section>
 <section id="food-strategy" class="level4">
 <h4>Food Strategy</h4>
@@ -9337,13 +9377,14 @@ worse.</p>
 other two roll “you feel out of place” and do nothing); of those that
 fire, 4/13 are the wish. Unconditional rate is about 1 in 10, so plan on
 roughly ten sits before the wish lands, with about seven bad effects
-absorbed along the way. Plan accordingly. Stand at full HP, don’t carry
-potions you can’t afford to grease, and have acid resistance or magic
-resistance ready before you sit. If you don’t want a forced wish (say,
-you’ve already used your Castle wish and Amulet wish and want to keep
-this one for the ascension kit), you can sit at any time; you don’t have
-to do it right now. The throne stays put until something on the level
-destroys it.</p>
+absorbed along the way. Plan accordingly. Stand at full HP, leave any
+precious gear behind (a grease hit coats your whole pack and makes you
+Glib for 100 to 200 turns, dropping items from your hands when you try
+to use them), and have acid resistance or magic resistance ready before
+you sit. If you don’t want a forced wish (say, you’ve already used your
+Castle wish and Amulet wish and want to keep this one for the ascension
+kit), you can sit at any time; you don’t have to do it right now. The
+throne stays put unless something on the level destroys it.</p>
 </section>
 <section id="orcus-town" class="level4">
 <h4>Orcus Town</h4>
@@ -9368,10 +9409,9 @@ charge.</p>
 </section>
 <section id="the-wizards-tower" class="level4">
 <h4>The Wizard’s Tower</h4>
-<p>Three sequential Gehennom levels (wizard1 → wizard2 → wizard3, each
-reached by the normal down-stair from the level above) leading to the
+<p>A sequence of three special Gehennom levels that lead to the
 <strong>Wizard of Yendor</strong> himself and the <strong>Book of the
-Dead</strong>. He is the most dangerous enemy in the game — not because
+Dead</strong>. He is the most dangerous enemy in the game, not because
 he’s the strongest fighter, but because he <strong>never stops</strong>.
 He teleports to your location, summons monsters, steals back his Amulet
 whenever you grab it, curses your gear, and once you wake him he
@@ -9392,9 +9432,6 @@ of Moloch</strong> standing on the <strong>high altar</strong> with the
 non-bribable boss who casts spells, summons minions, and aggrieves
 anyone in melee range — the standard answer is a wand of death or finger
 of death from a safe distance.</p>
-<p>The Sanctum’s up-stair lets you leave whenever you like, but the
-<strong>Astral plane portal at the top of the Endgame ladder won’t open
-without the Amulet</strong> in your inventory.</p>
 </section>
 <section id="the-heist" class="level4">
 <h4>The Heist</h4>
@@ -9599,6 +9636,10 @@ you toward the Sanctum unless every adjacent square is clear.</p>
 <section id="the-ascension-run" class="level3">
 <h3>The Ascension Run</h3>
 <!-- audit
+2026-05-21:
+- bones save converts the real Amulet of Yendor to FAKE_AMULET_OF_YENDOR and curses it when a previous adventurer dies carrying it (bones.c:170-173)
+- wish for an Amulet of Yendor silently substitutes a fake (objnam.c:5003-5006 substitution list)
+- Astral altar offering accepts only the real Amulet; fake amulets fail and the death message reads "(with a fake Amulet)" (end.c:1413-1414)
 2026-05-19:
 - Mysterious Force is gated on Gehennom only (do.c:1541); same-level shuffle is the majority outcome
 - odds = 3 + ualign.type; diff = rn2(odds): Chaotics max -1, Neutrals max -2, only Lawfuls reach -3 (do.c:1544)
@@ -9622,6 +9663,16 @@ most generous moments in the game. Have your wish list ready
 <em>before</em> you reach the Sanctum: gauntlets of power, a +5 weapon
 of your choice, blessed cloak of magic resistance, or whatever you’re
 missing for the climb. You only get it once.</p>
+<p><strong>Bring the authentic Amulet.</strong> The climb out is always
+open: every up-stair in the Dungeons of Doom takes you closer to the
+surface regardless of what you carry. The <strong>Astral plane
+portal</strong> at the top of the Endgame ladder, however, won’t open
+without the real Amulet of Yendor in your inventory. Only the Amulet you
+took off the High Priest’s body in Moloch’s Sanctum counts. Bones-pile
+Amulets are fakes (the game converts a dead adventurer’s real Amulet to
+a fake when their corpse becomes a bones level), and a wish for an
+Amulet of Yendor silently substitutes a fake too. If you didn’t pick
+yours up off the High Priest, you don’t have the real one.</p>
 <p>The Ascension Run is the victory lap that keeps killing even the
 strongest adventurers. You have the most powerful artifact in the
 dungeon in your pack, every covetous monster in the Mazes knows it, and
@@ -21998,26 +22049,175 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
   var searchResults = document.getElementById('search-results');
   var searchIndex = document.getElementById('search-index');
 
-  // Build searchable data from headings and paragraphs
+  // --- Stopwords skipped when normalizing hit position within a sentence ---
+  var STOPWORDS = { 'the':1, 'a':1, 'an':1, 'of':1, 'to':1, 'and':1, 'or':1,
+                    'in':1, 'on':1, 'at':1, 'for':1, 'is':1, 'are':1, 'as':1, 'by':1 };
+
+  // Walk an element and produce its concatenated text together with
+  // the character offset ranges of any bold (strong/b) spans within.
+  function elTextAndBold(el) {
+    var text = '';
+    var ranges = [];
+    function walk(node, inBold) {
+      if (node.nodeType === 3) { text += node.nodeValue; return; }
+      if (node.nodeType !== 1) return;
+      var nowBold = inBold || node.tagName === 'STRONG' || node.tagName === 'B';
+      if (nowBold && !inBold) {
+        var start = text.length;
+        for (var i = 0; i < node.childNodes.length; i++) walk(node.childNodes[i], true);
+        ranges.push([start, text.length]);
+      } else {
+        for (var j = 0; j < node.childNodes.length; j++) walk(node.childNodes[j], nowBold);
+      }
+    }
+    walk(el, false);
+    return { text: text, boldRanges: ranges };
+  }
+
+  // Build searchable data from headings and paragraphs. Each section gets
+  // a list of typed segments so the scorer can weight heading/bold/plain
+  // differently. The flat `text` field is kept for snippet generation.
   var searchData = [];
   var contentSections = document.querySelectorAll('main section[id]');
   contentSections.forEach(function(section) {
     var heading = section.querySelector('h1, h2, h3, h4');
     if (!heading) return;
-    // Gather text from direct child p, li, td elements plus tables
-    // wrapped in pandoc's div.dense-table containers (which the search
-    // would otherwise skip — that's why bestiary entries like
-    // "homunculus" weren't surfacing).
-    var textEls = section.querySelectorAll(':scope > p, :scope > ul > li, :scope > ol > li, :scope > table td, :scope > blockquote p, :scope > div.dense-table table td, :scope > div > table td');
-    var text = '';
-    textEls.forEach(function(el) { text += el.textContent + ' '; });
+    var level = parseInt(heading.tagName.substring(1), 10);
+    var segments = [{ kind: 'heading', level: level,
+                      text: heading.textContent, boldRanges: [] }];
+    // `flat` holds body-only text for snippet generation. The title is
+    // already shown in the search result heading, so excluding it here
+    // keeps the snippet from repeating it back.
+    var flat = '';
+    var textEls = section.querySelectorAll(':scope > p, :scope > ul > li, :scope > ol > li, :scope > pre, :scope > table td, :scope > blockquote p, :scope > div.dense-table table td, :scope > div > table td');
+    textEls.forEach(function(el) {
+      var info = elTextAndBold(el);
+      var kind = (el.tagName === 'TD' || el.tagName === 'TH') ? 'cell' : 'plain';
+      segments.push({ kind: kind, text: info.text, boldRanges: info.boldRanges });
+      flat += info.text + ' ';
+    });
     searchData.push({
       id: section.id,
       title: heading.textContent,
-      text: text.substring(0, 2000),
-      level: heading.tagName
+      level: level,
+      text: flat.substring(0, 4000),
+      segments: segments
     });
   });
+
+  // --- Scoring helpers ---
+  function isInBold(pos, ranges) {
+    for (var i = 0; i < ranges.length; i++) {
+      if (pos >= ranges[i][0] && pos < ranges[i][1]) return true;
+    }
+    return false;
+  }
+  // Scan backward; a hit is inside parentheses if we find an unmatched '('.
+  function isInParens(text, pos) {
+    var depth = 0;
+    for (var j = pos - 1; j >= 0; j--) {
+      var c = text.charCodeAt(j);
+      if (c === 41) depth++;          // ')'
+      else if (c === 40) {            // '('
+        if (depth === 0) return true;
+        depth--;
+      }
+    }
+    return false;
+  }
+  // Find the [start, end) bounds of the sentence containing `pos`.
+  function sentenceContaining(text, pos) {
+    var start = 0;
+    for (var j = pos; j > 0; j--) {
+      var c = text.charCodeAt(j - 1);
+      if (c === 46 || c === 33 || c === 63) {  // .!?
+        start = j;
+        while (start < text.length && /\s/.test(text[start])) start++;
+        break;
+      }
+    }
+    var end = text.length;
+    for (var k = pos + 1; k < text.length; k++) {
+      var cc = text.charCodeAt(k);
+      if (cc === 46 || cc === 33 || cc === 63) { end = k; break; }
+    }
+    return { start: start, end: end };
+  }
+  // Skip a leading run of stopwords from the sentence (returns char count).
+  function stopwordSkip(text, start, end) {
+    var i = start;
+    while (i < end) {
+      while (i < end && !/[a-z]/i.test(text[i])) i++;
+      if (i >= end) break;
+      var wstart = i;
+      while (i < end && /[a-z]/i.test(text[i])) i++;
+      if (!STOPWORDS[text.substring(wstart, i).toLowerCase()]) return wstart - start;
+    }
+    return i - start;
+  }
+
+  // Score consecutive-bigram bonus for a multi-word query.
+  // For every adjacent pair of query words, find occurrences of the
+  // pair as a contiguous substring in any segment (treating runs of
+  // whitespace as a single space) and award a per-occurrence bonus
+  // proportional to the segment's kind weight. Skips pairs where both
+  // words are stopwords so phrases like "in the" don't drown out real
+  // content matches.
+  function scoreBigramsInSection(item, words) {
+    if (words.length < 2) return 0;
+    var total = 0;
+    for (var n = 0; n < words.length - 1; n++) {
+      var w1 = words[n], w2 = words[n + 1];
+      if (STOPWORDS[w1] && STOPWORDS[w2]) continue;
+      var bigram = w1 + ' ' + w2;
+      for (var s = 0; s < item.segments.length; s++) {
+        var seg = item.segments[s];
+        var normalized = seg.text.toLowerCase().replace(/\s+/g, ' ');
+        var weight;
+        if (seg.kind === 'heading') weight = 160 / Math.pow(2, seg.level - 1);
+        else if (seg.kind === 'cell') weight = 3;
+        else weight = 2;
+        var i = 0;
+        while ((i = normalized.indexOf(bigram, i)) !== -1) {
+          total += weight;
+          i += bigram.length;
+        }
+      }
+    }
+    return total;
+  }
+
+  // Score one section against a single (lowercase) query word.
+  function scoreWordInSection(item, word) {
+    var total = 0;
+    for (var s = 0; s < item.segments.length; s++) {
+      var seg = item.segments[s];
+      var t = seg.text;
+      var lt = t.toLowerCase();
+      var i = 0;
+      while ((i = lt.indexOf(word, i)) !== -1) {
+        var weight;
+        if (seg.kind === 'heading') {
+          // h2=80, h3=40, h4=20, h5=10 — higher in the hierarchy weighs more.
+          weight = 160 / Math.pow(2, seg.level - 1);
+        } else if (seg.kind === 'cell') {
+          weight = 3;
+        } else {
+          weight = isInBold(i, seg.boldRanges) ? 6 : 1;
+        }
+        if (seg.kind !== 'heading' && isInParens(t, i)) weight *= 0.6;
+        // Position bonus: 1.0 at sentence start (after stopwords), 0 at end.
+        var sent = sentenceContaining(t, i);
+        var skip = stopwordSkip(t, sent.start, sent.end);
+        var effPos = Math.max(0, (i - sent.start) - skip);
+        var effLen = Math.max(1, (sent.end - sent.start) - skip);
+        var posBonus = Math.max(0, 1 - effPos / effLen);
+        total += weight * (0.5 + posBonus);
+        i += word.length;
+      }
+    }
+    return total;
+  }
 
   var searchClear = document.getElementById('search-clear');
   function updateClearButton() {
@@ -22053,20 +22253,12 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
       var haystack = (item.title + ' ' + item.text).toLowerCase();
       var score = 0;
       var allMatch = true;
-      words.forEach(function(w) {
-        if (haystack.indexOf(w) === -1) {
-          allMatch = false;
-        } else {
-          // Title matches score higher
-          if (item.title.toLowerCase().indexOf(w) !== -1) score += 10;
-          // Count occurrences in text
-          var idx = 0;
-          while ((idx = haystack.indexOf(w, idx)) !== -1) { score++; idx += w.length; }
-        }
-      });
-      if (allMatch && score > 0) {
-        matches.push({ item: item, score: score });
+      for (var w = 0; w < words.length; w++) {
+        if (haystack.indexOf(words[w]) === -1) { allMatch = false; break; }
+        score += scoreWordInSection(item, words[w]);
       }
+      if (allMatch) score += scoreBigramsInSection(item, words);
+      if (allMatch && score > 0) matches.push({ item: item, score: score });
     });
 
     matches.sort(function(a, b) { return b.score - a.score; });
@@ -22226,14 +22418,14 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
 
   // --- Humorous index (shown when search is empty) ---
   var indexEntries = [
-    ['Acid blob, rubber-banded', 'your-first-descent'],
     ['Amorous demon, expensive evening with', 'seduction'],
+    ['BUC, avoiding curses by checking', 'blessed-uncursed-cursed-buc'],
     ['Amulet of Yendor, retrieving', 'the-ascension-run'],
     ['Ascension, how to not die during', 'the-ascension-run'],
     ['Boulders, pushing (see: Sokoban)', 'sokoban-solutions'],
     ['Castle, storming the', 'the-castle'],
     ['Cockatrice corpse, wielding', 'petrification-stoning'],
-    ['Death, causes of (see: everything)', 'dangerous-encounters'],
+    ['Death, causes of (see: everything)', 'ways-to-die'],
     ['Disenchanter, mourning your former +5', 'enchantment-drain'],
     ['Displacer beast, taming', 'the-displacer-beast'],
     ['Drowning, preventable', 'drowning'],
@@ -22244,7 +22436,7 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
     ['Gods, angering', 'altars-and-alignment'],
     ['Identify, never enough scrolls of', 'the-scroll-rack'],
     ['Luck, secretly ruining yours', 'gaining-and-losing-luck'],
-    ['Lurker above, looking up too late', 'engulfment-from-hiding'],
+    ['Lurker above, looking up too late', 'engulfment'],
     ['Mines, gnomish', 'the-gnomish-mines'],
     ['Pet, accidentally killing your', 'keeping-your-pet-alive'],
     ['Prayer, when to', 'prayer'],
