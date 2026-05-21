@@ -249,6 +249,25 @@ td.pct {
 .news-item p { margin-bottom: 0.5em; }
 .news-item p:last-child { margin-bottom: 0; }
 .news-item em { font-style: italic; }
+/* Whole-item link variant: makes the entire news-item clickable while
+   keeping the "title" looking like a link. Used for short news entries
+   that point at a single article. */
+.news-item-link a.news-item-link-wrap {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    font-weight: inherit;
+}
+.news-item-link a.news-item-link-wrap:hover { text-decoration: none; }
+.news-item-link a.news-item-link-wrap strong { color: var(--color-accent); }
+.news-item-link:hover a.news-item-link-wrap strong { text-decoration: underline; }
+.news-item-link .news-arrow {
+    color: var(--color-accent);
+    margin-left: 0.15em;
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+.news-item-link:hover .news-arrow { transform: translateX(3px); }
 .news-older summary {
     cursor: pointer;
     color: var(--color-accent);
@@ -284,26 +303,38 @@ td.pct {
 
 <section class="news-feed" aria-label="News feed">
     <h2>News</h2>
-    <article class="news-item">
-        <time datetime="2026-05-12">May 12, 2026</time>
-        <p>
-            <strong>Several teleport-contest bugs fixed</strong>
-            thanks to careful reports from
-            <a href="https://github.com/xeophon">@xeophon</a>
-            (<a href="https://github.com/davidbau/teleport-contest/issues/5">#5</a>)
-            and <a href="https://github.com/serteal">@serteal</a>
-            (<a href="https://github.com/davidbau/teleport-contest/issues/6">#6</a>):
-            the public session corpus is back in sync between contest
-            and judge (38 files re-recorded), <code>seed0030</code>'s
-            seg-0 character mismatch is fixed, and the scorer now
-            requires the cursor to land in the recorded position for a
-            screen to count as matched. Pull the latest template and
-            re-run <code>bash frozen/score.sh</code> to pick up the
-            corrections.
-        </p>
+    <article class="news-item news-item-link">
+        <a href="/first-mimic/" class="news-item-link-wrap">
+            <time datetime="2026-05-21">May 21, 2026</time>
+            <p>
+                <strong>The First Mimic:</strong>
+                a brief report from Berkeley on serteal&rsquo;s near-perfect
+                transpilation score, the first in the qualifying round, and
+                the unofficial trophy he took home. The full contest remains
+                wide open. <span class="news-arrow" aria-hidden="true">&rarr;</span>
+            </p>
+        </a>
     </article>
     <details class="news-older">
         <summary>Older news</summary>
+        <article class="news-item">
+            <time datetime="2026-05-12">May 12, 2026</time>
+            <p>
+                <strong>Several teleport-contest bugs fixed</strong>
+                thanks to careful reports from
+                <a href="https://github.com/xeophon">@xeophon</a>
+                (<a href="https://github.com/davidbau/teleport-contest/issues/5">#5</a>)
+                and <a href="https://github.com/serteal">@serteal</a>
+                (<a href="https://github.com/davidbau/teleport-contest/issues/6">#6</a>):
+                the public session corpus is back in sync between contest
+                and judge (38 files re-recorded), <code>seed0030</code>'s
+                seg-0 character mismatch is fixed, and the scorer now
+                requires the cursor to land in the recorded position for a
+                screen to count as matched. Pull the latest template and
+                re-run <code>bash frozen/score.sh</code> to pick up the
+                corrections.
+            </p>
+        </article>
         <article class="news-item">
             <time datetime="2026-05-09">May 9, 2026</time>
             <p>
