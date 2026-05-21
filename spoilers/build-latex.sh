@@ -46,13 +46,24 @@ caption = (
     "needed to enter Moloch's Sanctum and claim the Amulet."
 )
 replacement = (
-    '\n\n![](images/dmap-dod.pdf)\n\n'
-    '![](images/dmap-geh.pdf)\n\n'
-    f'![{caption}](images/dmap-planes.pdf)\n\n'
+    '\n\n```{=latex}\n'
+    '\\begingroup\\setlength{\\parskip}{0pt}\n'
+    '\\begin{center}\n'
+    '\\offinterlineskip\n'
+    '\\vbox{%\n'
+    '  \\hbox{\\includegraphics[width=\\linewidth]{images/dmap-dod.pdf}}%\n'
+    '  \\hbox{\\includegraphics[width=\\linewidth]{images/dmap-geh.pdf}}%\n'
+    '  \\hbox{\\includegraphics[width=\\linewidth]{images/dmap-planes.pdf}}%\n'
+    '}\n'
+    '\\end{center}\n'
+    '\\endgroup\n'
+    '\\vspace{0.6em}\n'
+    f'{{\\footnotesize\\itshape\\noindent {caption}\\par}}\n'
+    '```\n\n'
 )
 md = re.sub(
     r'<!-- DMAP-BEGIN -->.*?<!-- DMAP-END -->',
-    replacement, md, flags=re.DOTALL,
+    lambda _m: replacement, md, flags=re.DOTALL,
 )
 Path('.companion-print.md').write_text(md)
 PY

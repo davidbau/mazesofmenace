@@ -59,13 +59,13 @@ you want the <strong><a href="../guidebook/">Guide to the Mazes of
 Menace</a></strong> instead. That’s the reference manual that comes with
 the game. This document is a <em>strategic</em> guide. It assumes you
 already know how to play and want to know how to <em>survive</em>.</p>
-<p>But if you’ve died to one too many floating eyes you hit without
-thinking, or you’re tired of starving on dungeon level four thinking the
-gods had abandoned you, read on. We’ll do our best to keep you
-alive.</p>
+<p>But if you have perished under the deadly gaze of just one too many
+floating eyes, or if you are tired of the gods abandoning you to starve
+with no food rations on level four, read on. We will do our best to keep
+you alive.</p>
 <aside class="download-box">
 <strong>Prefer to read offline?</strong> Print the
-<a href="companion-latex.pdf">book-format PDF</a> (280pp, 5×8 trim,
+<a href="companion-latex.pdf">book-format PDF</a> (285pp, 5×8 trim,
 <a href="cover/cover.pdf">cover</a>).
 </aside>
 <hr />
@@ -100,15 +100,17 @@ messages the dungeon uses to tell you what just happened</li>
 <ol start="10" type="1">
 <li><a href="#the-art-of-combat">The Art of Combat</a> — Hit
 probability, damage, and tactics</li>
-<li><a href="#ways-to-die">Ways to Die</a> — Top-ten killers,
-instadeaths, mimics, dragons</li>
+<li><a href="#things-that-will-kill-you">Things That Will Kill You</a> —
+Top-ten killers, common deaths, mimics, dragons</li>
+<li><a href="#more-ways-to-die">More Ways to Die</a> — Instadeaths and
+how to recognize them</li>
 <li><a href="#divine-relations">Divine Relations</a> — Prayer,
 sacrifice, and altars</li>
 <li><a href="#making-friends">Making Friends</a> — Pets, taming, and
 peaceful coexistence</li>
 </ol>
 <p><strong>Part Four: Gear and Provisions</strong></p>
-<ol start="14" type="1">
+<ol start="15" type="1">
 <li><a href="#a-practical-identification-strategy">A Practical
 Identification Strategy</a> — Figuring out what you’ve found (with
 flowchart)</li>
@@ -127,9 +129,7 @@ to magic lamps</li>
 <li><a href="#the-armory">The Armory</a> — Weapons, armor, and hitting
 things</li>
 <li><a href="#curses-and-how-to-break-them">Curses and How to Break
-Them</a></li>
-<li><a href="#artifacts">Artifacts</a> — Legendary equipment and how to
-obtain it</li>
+Them</a> — Spotting them, undoing them, surviving them</li>
 </ol>
 <p><strong>Part Five: Mastery</strong></p>
 <ol start="24" type="1">
@@ -137,12 +137,15 @@ obtain it</li>
 adventurer</li>
 <li><a href="#luck-and-fortune">Luck and Fortune</a> — The hidden
 numbers that shape your fate</li>
-<li><a href="#enhancing-skills">Enhancing Skills</a></li>
+<li><a href="#enhancing-skills">Enhancing Skills</a> — Mastering
+specific styles of combat and magic</li>
 <li><a href="#wishes-and-wishing">Wishes and Wishing</a> — Getting what
 you want</li>
+<li><a href="#artifacts">Artifacts</a> — Legendary equipment and how to
+obtain it</li>
 </ol>
 <p><strong>Part Six: The Deep Dungeon</strong></p>
-<ol start="28" type="1">
+<ol start="29" type="1">
 <li><a href="#the-castle">The Castle</a> — The gateway to Gehennom</li>
 <li><a href="#gehennom">Gehennom</a> — A travel advisory</li>
 <li><a href="#the-ascension-kit">The Ascension Kit</a> — What the
@@ -153,7 +156,7 @@ out alive</li>
 gauntlet</li>
 </ol>
 <p><strong>Appendices</strong></p>
-<ol start="33" type="1">
+<ol start="34" type="1">
 <li><a href="#advanced-controls">Advanced Controls</a> — Command counts,
 prefixes, and efficiency techniques</li>
 <li><a href="#sokoban-solutions">Sokoban Solutions</a> — All eight level
@@ -165,7 +168,6 @@ Pricing</a> — Commerce in the dungeon</li>
 <li><a href="#weapons-tables">Weapons Tables</a></li>
 <li><a href="#armor-tables">Armor Tables</a></li>
 <li><a href="#spell-tables">Spell Tables</a></li>
-<li><a href="#skill-caps">Skill Caps</a></li>
 <li><a href="#bestiary-tables">Bestiary Tables</a></li>
 <li><a href="#what-changed-since-last-time">What Changed Since Last
 Time</a> — What’s new in 5.0 vs 3.6.x, and what to do about it</li>
@@ -178,6 +180,10 @@ shoulders of giants</li>
 <section id="choosing-your-expedition" class="level3">
 <h3>Choosing Your Expedition</h3>
 <!-- audit
+2026-05-21:
+- Archeologist starts with touchstone (u_init.c:50) and knows_object(TOUCHSTONE) so the tool itself is identified (u_init.c:660-662); does NOT have knows_class(GEM_CLASS) — gems are NOT pre-identified; touchstone identifies gems by rubbing per apply.c:2678-2707 (Ken Arnold)
+- Healer starts with wand of sleep, 4 potions of healing, 4 potions of extra healing, and 3 blessed spellbooks (healing, extra healing, stone-to-flesh) (u_init.c:81-90); the spellbooks are always blessed so reading them always succeeds
+- Tourist starts with 4 scrolls of magic mapping, 2 potions of extra healing, 21-40 +2 darts, Hawaiian shirt, expensive camera, credit card, and 10 random food items (u_init.c:150-159)
 2026-05-18:
 - Knight starts with +1 long sword and +1 lance (u_init.c:91-92)
 - Cave Dweller gains Fast at XL 7 (attrib.c:37)
@@ -216,13 +222,14 @@ different starting equipment, different intrinsic abilities gained at
 various experience levels, and a different quest to complete in the
 mid-game.</p>
 <p><strong>Archeologist.</strong> You start with a bullwhip, a pickaxe,
-and a tinning kit. The pickaxe is the kit’s quiet workhorse: it lets you
-dig through walls and create your own escape routes from the very first
-level. The tinning kit lets you preserve corpses for later.
-Archeologists are capable and flexible, though a bit fragile in early
-combat. You begin knowing what all gems are, which is a nice parlor
-trick and occasionally useful for unicorn negotiation. <em>Alignment:
-Lawful or Neutral.</em></p>
+a tinning kit, and a touchstone. The pickaxe is the kit’s workhorse: it
+lets you dig through walls and create your own escape routes from the
+very first level. The tinning kit lets you preserve corpses for later,
+and the touchstone is your gem-identification edge: rub a gem on it and
+the game tells you whether it’s the real thing or worthless glass.
+Useful for unicorn negotiation and shop pricing. Archeologists are
+capable and flexible, though a bit fragile in early combat.
+<em>Alignment: Lawful or Neutral.</em></p>
 <p><strong>Barbarian.</strong> You start strong. Literally. A two-handed
 sword and good starting strength mean you can hack through early
 monsters with ease. The downside is that two-handed weapons prevent you
@@ -235,14 +242,16 @@ club, a sling, and a pile of flint stones for it. You gain speed by
 mid-game and your hit dice are generous. The Cave Dweller’s simplicity
 is a virtue: fewer tools means fewer things to manage. <em>Alignment:
 Lawful or Neutral.</em></p>
-<p><strong>Healer.</strong> You begin with a stethoscope, healing
-potions, and poison resistance. The stethoscope is remarkable: it lets
-you check a monster’s hit points and your own internal state. Healers
-are fragile fighters, but their medical knowledge keeps them alive
-through situations that would kill other roles. You’re also
-<strong>immune to sickness</strong>, so unknown potions of sickness
-become a free quaff-test (and you can convert them to fruit juice by
-dipping a unicorn horn). <em>Alignment: Neutral.</em></p>
+<p><strong>Healer.</strong> You begin with a stethoscope, four potions
+of healing and four of extra healing, a <strong>wand of sleep</strong>,
+three <strong>blessed spellbooks</strong> (healing, extra healing,
+stone-to-flesh, all guaranteed to read), and poison resistance. The
+stethoscope lets you check a monster’s hit points and your own internal
+state; the wand of sleep makes Healers a stronger early-game combatant
+than the medical kit suggests. You’re also <strong>immune to
+sickness</strong>, so unknown potions of sickness become a free
+quaff-test (dip a unicorn horn into them to convert to fruit juice).
+<em>Alignment: Neutral.</em></p>
 <p><strong>Knight.</strong> You start mounted on a saddled pony, with a
 +1 long sword and a +1 lance among your gear. The pony is a decent
 combatant early on and the basis of your unique trick: jousting from
@@ -291,11 +300,14 @@ yumi bow with arrows. Samurai get speed early and have a strong martial
 kit overall. The katana’s damage output carries you through the early
 game with ease. <em>Alignment: Lawful.</em></p>
 <p><strong>Tourist.</strong> You start with a Hawaiian shirt, a credit
-card, a camera, and a truly absurd number of darts. Tourists have weak
-combat and a fragile early game: this is the hardest of the standard
-roles. The darts do train ranged skills fast, though, and the camera can
-blind monsters in a pinch. A good role for players who have ascended
-before and want a real challenge. <em>Alignment: Neutral.</em></p>
+card, an expensive camera, a truly absurd number of +2 darts, two
+potions of extra healing, and <strong>four scrolls of magic
+mapping</strong>. Tourists have weak combat and a fragile early game
+(this is the hardest of the standard roles), but the mapping scrolls
+take the edge off exploration and the darts train ranged skills fast.
+The camera blinds monsters in a pinch. A good role for players who have
+ascended before and want a real challenge. <em>Alignment:
+Neutral.</em></p>
 <p><strong>Valkyrie.</strong> The standard recommendation for a first
 serious attempt. You start with a spear, a small shield, and cold
 resistance; strong combat stats and good starting equipment do the rest.
@@ -582,18 +594,16 @@ grind. When you’ve found what the level has to offer, move on.</p>
 the game, your real goal isn’t accumulating treasure. It’s acquiring the
 resistances and protections that will help you survive the late game.
 The three most important are <strong>magic resistance</strong>,
-<strong>reflection</strong>, and <strong>poison resistance</strong>
-(plus a <strong>lizard corpse</strong> in your pack for petrification
-emergencies). Poison resistance can be acquired as an <em>intrinsic</em>
-by eating the right corpse, like a killer bee, a cave spider, a yellow
-mold, or a black pudding kicked from a sink. Magic resistance and
-reflection come from gear: dragon scale mail (gray for MR, silver for
-reflection), an amulet of reflection, or an artifact granted by your
-god, won on the Quest, or bestowed by a wish.</p>
+<strong>reflection</strong>, and <strong>poison resistance</strong>.
+Poison resistance can be acquired as an <em>intrinsic</em> by eating the
+right corpse, like a killer bee, a cave spider, a yellow mold, or a
+black pudding kicked from a sink. Magic resistance and reflection come
+from gear: dragon scale mail (gray for MR, silver for reflection), an
+amulet of reflection, or an artifact granted by your god, won on the
+Quest, or bestowed by a wish.</p>
 </section>
-<section id="things-that-kill-you-and-how-not-to-let-them"
-class="level4">
-<h4>Things That Kill You (And How Not to Let Them)</h4>
+<section id="dungeon-hazards-and-how-to-survive-them" class="level4">
+<h4>Dungeon Hazards (and How to Survive Them)</h4>
 <p>Here’s a short list of common early deaths and how to prevent
 them:</p>
 <p><strong>Starvation.</strong> Eat when you’re Hungry (the status
@@ -654,6 +664,9 @@ goodwill.</p>
 <section id="the-lay-of-the-land" class="level3">
 <h3>The Lay of the Land</h3>
 <!-- audit
+2026-05-21:
+- branch staircases render with the S_brupstair / S_brdnstair symbols in CLR_YELLOW (defsym.h:124-125)
+- the brupstair / brdnstair glyph is only selected after known_branch_stairs is true: the stair leads to a different dungeon AND the hero has traversed it (stairs.c:180-183, display.c:2347-2354)
 2026-05-18:
 - DoD is 25-29 levels (rn1(5,25) = rn2(5)+25) (dungeon.lua:10-11, hack.h:1535)
 - Gnomish Mines branch DL 2-4 (dungeon.lua:15-19)
@@ -854,6 +867,11 @@ a class: a red <code>D</code> is a red dragon, while a gray
 <code>D</code> is a gray dragon (see <a
 href="#field-guide-to-dungeon-fauna">Field Guide to Dungeon
 Fauna</a>).</p>
+<p><strong>Color memo: branch staircases turn yellow.</strong>
+Staircases that lead into a sub-branch (Mines, Sokoban, the Quest, and
+so on) display in yellow once you’ve used them. Ordinary main-trunk
+stairs stay default-colored, so on a level with several stairs the
+yellow one is your way back into the branch.</p>
 <p>Item symbols are punctuation marks:</p>
 <table>
 <thead>
@@ -909,7 +927,7 @@ Fauna</a>).</p>
 </tr>
 <tr>
 <td><code>$</code></td>
-<td>Gold</td>
+<td>Gold (zorkmids, abbreviated <strong>zm</strong>)</td>
 </tr>
 </tbody>
 </table>
@@ -1212,6 +1230,14 @@ temporary intrinsic Displacement.</td>
 monsters.</td>
 </tr>
 <tr>
+<td><a href="#gremlins-g"><code>g</code></a></td>
+<td><a href="#gremlins-g">Gremlins / gargoyles</a></td>
+<td>Heavy claws plus a special trick. Gremlins <strong>strip a random
+intrinsic on hit at night</strong> and <strong>multiply when
+wet</strong> (don’t kick one into a fountain). Gargoyles are slow but
+armored (AC −4) with three-attack salvos; winged gargoyles fly.</td>
+</tr>
+<tr>
 <td><a href="#gnomes-g"><code>G</code></a></td>
 <td><a href="#gnomes-g">Gnome lords/kings</a></td>
 <td>Tougher gnomes. Still fairly manageable.</td>
@@ -1258,7 +1284,8 @@ the game.</td>
 <td><a href="#mimics-m"><code>m</code></a></td>
 <td><a href="#mimics-m">Mimics</a></td>
 <td>Disguised as items, walls, doors, fountains, altars, or boulders.
-See the mimics note below.</td>
+See <a href="#a-note-on-mimics">A note on mimics</a> in Ways to
+Die.</td>
 </tr>
 <tr>
 <td><a href="#mummies-m"><code>M</code></a></td>
@@ -1316,7 +1343,8 @@ wielded iron weapon when you hit them. Use non-iron alternatives
 (mithril, silver, dragonhide) or take iron gear off before the fight;
 iron items kept in your inventory aren’t touched.
 <strong>Disenchanters</strong> drain enchantment on hit and have their
-own write-up under <a href="#ways-to-die">Ways to Die</a>.</td>
+own write-up under <a href="#more-ways-to-die">More Ways to
+Die</a>.</td>
 </tr>
 <tr>
 <td><a href="#snakes-s"><code>S</code></a></td>
@@ -1329,7 +1357,7 @@ fountains.</td>
 <td><a href="#trappers-and-lurkers-t">Trappers / lurkers above</a></td>
 <td>Hide in plain sight on floor or ceiling and engulf you when you walk
 under/onto them. See the engulfment write-up under <a
-href="#ways-to-die">Ways to Die</a>.</td>
+href="#more-ways-to-die">More Ways to Die</a>.</td>
 </tr>
 <tr>
 <td><a href="#trolls-t"><code>T</code></a></td>
@@ -1470,9 +1498,7 @@ in the game.</td>
 engineers</a></td>
 <td>Quantum mechanics teleport their target on a hit; genetic engineers
 (new in 5.0) polymorph their target. The <code>Q</code> class is rare
-but every one of them is a surprise. See <a
-href="#the-genetic-engineer">The Genetic Engineer</a> for more
-information.</td>
+but every one of them is a surprise.</td>
 </tr>
 </tbody>
 </table>
@@ -1514,10 +1540,11 @@ melee.</td>
 <td>Strange object</td>
 <td><strong>Always a mimic.</strong> No ordinary item ever displays as
 <code>]</code> (compare <code>[</code>, armor — <code>]</code> is its
-mirror). See the mimics note below.</td>
+mirror). See <a href="#a-note-on-mimics">A note on mimics</a> in Ways to
+Die.</td>
 </tr>
 <tr>
-<td><code></code> (space)</td>
+<td><code>⎕</code><br>(space)</td>
 <td>Ghost</td>
 <td>Ghosts left from bones files. The glyph is a literal space, which
 paints over the floor underneath: in a room, a ghost shows as a
@@ -1588,8 +1615,7 @@ these reels:</p>
 <tbody>
 <tr>
 <td>Water demon</td>
-<td>A water demon appears, hostile (see note below for shallow-level
-wish odds)</td>
+<td>A water demon appears, hostile</td>
 </tr>
 <tr>
 <td>Healing</td>
@@ -1889,9 +1915,10 @@ you’ll visit them.</p>
 first (Dlvl 2 to 4), but the <em>strategic</em> suggestion for most
 beginners is Sokoban. It’s a controlled puzzle crawl with mostly trivial
 monsters, and the prize at the top (reflection or a bag of holding)
-materially helps the Mines run afterward. Go Mines-first if you
-specifically want the luckstone at Mine’s End early, or if a gnomish
-race makes most Mines residents peaceful to you.</p>
+materially helps the Mines run afterward. Slashing through the Mines
+early is exciting and fun, but if you want to play the strategic game,
+skip them until you’ve solved Sokoban and then return to the Mines when
+you are stronger and better equipped.</p>
 <section id="the-gnomish-mines" class="level4">
 <h4>The Gnomish Mines</h4>
 <!-- audit
@@ -1909,7 +1936,21 @@ race makes most Mines residents peaceful to you.</p>
 -->
 <p>The entrance appears somewhere around dungeon levels 2 through 4, as
 a downward staircase. You’ll know you’re in the Mines because the walls
-become rough stone and the corridors get irregular.</p>
+become rough stone and the corridors get irregular, as pictured
+below.</p>
+<pre><code> ··       ┐··G··*······└
+  ··└┐    │··`········
+  ┐··│┌─┐┌┘········
+  │··└┘·└┘······┌
+  ┌─·`·······&lt;·┌
+ └┘·····)······└┐
+┐`···)··········└─┘  └┐
+│··········&gt;··········│
+└─┐·@·················└
+  ┘···┌┐···············└
+ ····h│└─┐···┌┐·········
+ ┐····└  └───┘ ─┐·│····┌
+ │····           ─┘┐··┌┘</code></pre>
 <p>The Mines are populated primarily by gnomes, dwarves, and the
 occasional dwarf lord. If you’re playing a gnomish character, most of
 them will be peaceful, which makes the Mines a relatively comfortable
@@ -2245,8 +2286,8 @@ water. Your options, from safest to most desperate:</p>
 <ul>
 <li><strong>Levitation</strong> (ring, boots, potion, or spell). The
 easiest way to cross. Eels can still grab you from adjacent water (see
-<a href="#drowning">Drowning</a> in <a href="#ways-to-die">Ways to
-Die</a>).</li>
+<a href="#drowning">Drowning</a> in <a href="#more-ways-to-die">More
+Ways to Die</a>).</li>
 <li><strong>Water walking boots.</strong> You walk on the surface. Eels
 can still grab you in adjacent water.</li>
 <li><strong>Wand of cold.</strong> Zap the water to freeze a path of
@@ -2566,44 +2607,6 @@ traps (you’ll still trigger magic, teleport, and anti-magic traps)</li>
 something is wrong: a stray corpse in the middle of an otherwise empty
 room, a scatter of arrows or darts on the floor, a square your pet
 refuses to cross, or a themed room whose gimmick is hidden hazards.</p>
-<!-- audit
-2026-05-18:
-- passes_bars uses verysmall() = msize < MZ_SMALL = TINY only (mondata.c:552-563)
-- grid bug / bat / sewer rat are MZ_TINY (monsters.h:889, 1149, 1269); kitten and little dog are MZ_SMALL and stay out
-- acid (ray/breath/spit) corrodes bars unconditionally (zap.c:5347-5369)
-- lightning shares the acid branch but is gated `rn2(10) break` — melts on roughly 1 zap in 10 (zap.c:5349)
-- striking and force bolt have NO IRONBARS handler — they pass through harmlessly
-- rock moles eat bars via the metallivorous arm (hack.c:769-784)
-- xorns and earth elementals pass walls and so pass bars
-- bars sit on a room-wall tile (mklev.c:783); niche payload one square further into stone
-- scroll of teleportation placed in niche only when `!noteleport` on the level (mklev.c:790-792)
--->
-</section>
-<section id="iron-bars" class="level4">
-<h4>Iron Bars</h4>
-<p>Iron bars look like a barrier but aren’t solid: light passes through,
-you can see what’s on the other side, and <strong>tiny</strong>
-creatures (grid bugs, bats, rats) can squeeze between — kittens and
-little dogs are already too big. What they resist is almost everything
-the player can throw at them: pick-axes bounce off (“Clang!”), wands of
-digging fizzle, weapons swing through harmlessly, and kicking just hurts
-your foot. Wands and spells of <em>striking</em> and <em>force bolt</em>
-pass through the bars without effect. The bars corrode for an acid ray,
-acid breath or spit (if you are polymorphed into a yellow dragon or
-black naga), and a <strong>wand of lightning</strong> can melt them too
-— though only about one zap in ten actually dissolves the bars.</p>
-<p>The practical early-game answer is to <strong>dig around</strong>
-them. Iron bars sit in a niche cut into a room wall, so digging
-diagonally past the bars (or breaking through the wall to the stone
-behind and then back into the niche) reaches the contents without
-touching the bars. Mid-game, polymorph into something that breathes acid
-or lightning, passes walls (xorn, earth elemental), is
-<strong>tiny</strong> enough to slip between, or eats metal (rock mole).
-Starting pets won’t fit, but a polymorphed pet can.</p>
-<p>What’s typically behind them: a scroll of teleportation (unless the
-level is non-teleport, in which case the niche skips it), occasionally a
-random item or a previous adventurer’s corpse. The scroll is a joke:
-you’d need one already to read it from outside the bars.</p>
 </section>
 <section id="finding-secret-doors" class="level4">
 <h4>Finding Secret Doors</h4>
@@ -2897,8 +2900,46 @@ works from above. You’ll see “you gesture toward the floor below you”
 first, but the burn lands anyway. The old finger-in-dust trick from
 earlier editions is gone, but torching Elbereth into the floor from a
 wand of fire while floating still works.</p>
-<hr />
+<!-- audit
+2026-05-18:
+- passes_bars uses verysmall() = msize < MZ_SMALL = TINY only (mondata.c:552-563)
+- grid bug / bat / sewer rat are MZ_TINY (monsters.h:889, 1149, 1269); kitten and little dog are MZ_SMALL and stay out
+- acid (ray/breath/spit) corrodes bars unconditionally (zap.c:5347-5369)
+- lightning shares the acid branch but is gated `rn2(10) break` — melts on roughly 1 zap in 10 (zap.c:5349)
+- striking and force bolt have NO IRONBARS handler — they pass through harmlessly
+- rock moles eat bars via the metallivorous arm (hack.c:769-784)
+- xorns and earth elementals pass walls and so pass bars
+- bars sit on a room-wall tile (mklev.c:783); niche payload one square further into stone
+- scroll of teleportation placed in niche only when `!noteleport` on the level (mklev.c:790-792)
+-->
 </section>
+</section>
+<section id="iron-bars" class="level4">
+<h4>Iron Bars</h4>
+<p>Iron bars look like a barrier but aren’t solid: light passes through,
+you can see what’s on the other side, and <strong>tiny</strong>
+creatures (grid bugs, bats, rats) can squeeze between — kittens and
+little dogs are already too big. What they resist is almost everything
+the player can throw at them: pick-axes bounce off (“Clang!”), wands of
+digging fizzle, weapons swing through harmlessly, and kicking just hurts
+your foot. Wands and spells of <em>striking</em> and <em>force bolt</em>
+pass through the bars without effect. The bars corrode for an acid ray,
+acid breath or spit (if you are polymorphed into a yellow dragon or
+black naga), and a <strong>wand of lightning</strong> can melt them too
+— though only about one zap in ten actually dissolves the bars.</p>
+<p>The practical early-game answer is to <strong>dig around</strong>
+them. Iron bars sit in a niche cut into a room wall, so digging
+diagonally past the bars (or breaking through the wall to the stone
+behind and then back into the niche) reaches the contents without
+touching the bars. Mid-game, polymorph into something that breathes acid
+or lightning, passes walls (xorn, earth elemental), is
+<strong>tiny</strong> enough to slip between, or eats metal (rock mole).
+Starting pets won’t fit, but a polymorphed pet can.</p>
+<p>What’s typically behind them: a scroll of teleportation (unless the
+level is non-teleport, in which case the niche skips it), occasionally a
+random item or a previous adventurer’s corpse. The scroll is a joke:
+you’d need one already to read it from outside the bars.</p>
+<hr />
 </section>
 </section>
 <section id="feelings-and-sounds" class="level3">
@@ -2921,7 +2962,7 @@ wand of fire while floating still works.</p>
 cryptic feelings and sounds. They sound like atmosphere, but most of
 them are specific signals. If you don’t know what they mean, you’ll miss
 the cues entirely. They are worth memorizing.</p>
-<p>(Caveat: being <strong>Deaf</strong>, <strong>swallowed</strong>, or
+<p>(Caveat: being <strong>deaf</strong>, <strong>swallowed</strong>, or
 <strong>underwater</strong> silences the ambient-sound channel
 completely — Permadeaf conducts in particular lose every level-flavor
 cue. The feeling-from-corpse messages still come through.)</p>
@@ -3251,12 +3292,17 @@ penalty for Samurai). The Quest entrance check requires alignment record
 at least 20 <em>and</em> experience level at least 14. A handful of
 careless peaceful kills can lock a Knight or Samurai out of the Quest
 for the rest of the run.</li>
+<li><strong>Doors and diagonals.</strong> You can’t move diagonally
+through a door: approach and leave orthogonally. <strong>Closing a
+door</strong> (<code>c</code> + direction) blocks pets and any monster
+lacking the intelligence or hands to open it; handy when you want to
+slip away from your pet, or when you need a turn or two of quiet.</li>
 </ul>
 <hr />
 </section>
 </section>
-<section id="ways-to-die" class="level3">
-<h3>Ways to Die</h3>
+<section id="things-that-will-kill-you" class="level3">
+<h3>Things That Will Kill You</h3>
 <!-- audit
 2026-05-20:
 - mines residents are class G (gnomes, S_GNOME) and h (humanoids incl. dwarves, S_HUMANOID); g is gremlins/gargoyles (defsym.h:295, 301, 303, 333)
@@ -3436,11 +3482,58 @@ Samurai). You become the genocide. Don’t read scrolls under confusion
 unless you already know what they are.</p>
 <p><strong>Scroll of earth on yourself.</strong> Buried under a pile of
 boulders you summoned on your own head.</p>
-<p>The pattern across the whole list: routine mistakes kill far more
-adventurers than exotic instadeaths. Floating eyes, cockatrices, mind
-flayers, and disenchanters all matter (and they’re catalogued in the
-named-death entries below). But the median death is a preventable swarm
-of jackals on Dlvl 3.</p>
+<p>Routine mistakes kill far more adventurers than exotic instadeaths.
+Floating eyes, cockatrices, mind flayers, and disenchanters all matter
+(and they’re catalogued in <a href="#more-ways-to-die">More Ways to
+Die</a>). But the median death is a preventable swarm of jackals on Dlvl
+3.</p>
+</section>
+<section id="a-note-on-dragons" class="level4">
+<h4>A note on dragons</h4>
+<p>Dragons deserve a full briefing. Each color has its own breath
+weapon, resistance, scale mail property, and degree of desire to kill
+you specifically. The summary:</p>
+<p><strong>Gray</strong> dragon scale mail grants magic resistance, the
+most important defensive property in the game, full stop. Gray dragons
+are the ones you most want to kill for their skin, and also the ones
+most likely to make you regret trying.</p>
+<p><strong>Silver</strong> dragon scale mail grants reflection. The
+second pillar of not dying to wands.</p>
+<p><strong>Black</strong> dragons disintegrate everything you’re wearing
+along with you, including your magic resistance. Carry reflection or eat
+enough black dragons to grow disintegration resistance before going
+where they live. Their scale mail grants disintegration resistance plus
+drain resistance, a rare extrinsic source of the latter.</p>
+<p><strong>Yellow</strong> dragon scale mail is an underrated pick.
+Listed power is acid resistance, but it also grants <strong>stoning
+resistance</strong> — the same outright immunity acid blob corpses give.
+If you find a yellow dragon and don’t already have stone-res, killing it
+is worth the trip. Yellow dragons are rare, though.</p>
+<p><strong>Orange</strong> dragon scale mail grants sleep resistance
+<em>and</em> free action (the ring’s effect), bundled into one slot.</p>
+<p><strong>White</strong> dragon scale mail grants cold resistance
+<em>and</em> slow digestion — a useful nutritional save on long
+descents.</p>
+<p><strong>Red</strong> dragon scale mail grants fire resistance
+<em>and</em> infravision, the same effect as a ring of infravision or
+being elven.</p>
+<p><strong>Green</strong> dragon scale mail grants poison resistance
+<em>and</em> sickness resistance — a pair of niche defenses in one
+slot.</p>
+<p><strong>Blue</strong> dragon scale mail grants shock resistance
+<em>and</em> intrinsic <strong>speed</strong> — same tier as speed
+boots. (Wearing both at once doesn’t make you faster; either alone
+reaches Very Fast.) One of the most powerful body slots in the game.</p>
+<p><strong>Gold</strong> dragons are new in 5.0 and breathe fire. Their
+scale mail has no resistance power but is permanently lit (radius 4
+blessed, 3 uncursed, 2 cursed) — the only body-slot light source in the
+game, and it lets you abandon torches and oil. It also confers
+hallucination resistance.</p>
+<p>All scale mails are dragonhide, body-slot, +9 AC worn (the best in
+the body slot), and resist disenchantment naturally. The choice of which
+color to chase is usually whichever dragon’s territory you can reach
+safely; killing a dragon yields scales you can wear immediately or
+convert to scale mail.</p>
 </section>
 <section id="a-note-on-mimics" class="level4">
 <h4>A note on mimics</h4>
@@ -3473,52 +3566,124 @@ to secure MC before browsing mid-game shops.</p>
 while hallucinating, an orange) for 20 / 40 / 50 turns depending on
 size. Anything that tries to pick “you” up snaps the spell.</p>
 </section>
-<section id="a-note-on-dragons" class="level4">
-<h4>A note on dragons</h4>
-<p>Dragons deserve a full briefing. Each color has its own breath
-weapon, resistance, scale mail property, and degree of desire to kill
-you specifically. The summary:</p>
-<p><strong>Gray</strong> dragon scale mail grants magic resistance, the
-most important defensive property in the game, full stop. Gray dragons
-are the ones you most want to kill for their skin, and also the ones
-most likely to make you regret trying.</p>
-<p><strong>Silver</strong> dragon scale mail grants reflection. The
-second pillar of not dying to wands.</p>
-<p><strong>Black</strong> dragons disintegrate everything you’re wearing
-along with you, including your magic resistance. Carry reflection or eat
-enough black dragons to grow disintegration resistance before going
-where they live. Their scale mail grants disintegration resistance plus
-drain resistance, a rare extrinsic source of the latter.</p>
-<p><strong>Yellow</strong> dragon scale mail is the sleeper pick. Listed
-power is acid resistance, but it also grants <strong>stoning
-resistance</strong> — the same outright immunity acid blob corpses give.
-If you find a yellow dragon and don’t already have stone-res, killing it
-is worth the trip. Yellow dragons are rare, though.</p>
-<p><strong>Orange</strong> dragon scale mail grants sleep resistance
-<em>and</em> free action (the ring’s effect), bundled into one slot.</p>
-<p><strong>White</strong> dragon scale mail grants cold resistance
-<em>and</em> slow digestion — a useful nutritional save on long
-descents.</p>
-<p><strong>Red</strong> dragon scale mail grants fire resistance
-<em>and</em> infravision, the same effect as a ring of infravision or
-being elven.</p>
-<p><strong>Green</strong> dragon scale mail grants poison resistance
-<em>and</em> sickness resistance — a pair of niche defenses in one
-slot.</p>
-<p><strong>Blue</strong> dragon scale mail grants shock resistance
-<em>and</em> intrinsic <strong>speed</strong> — same tier as speed
-boots. (Wearing both at once doesn’t make you faster; either alone
-reaches Very Fast.) One of the most powerful body slots in the game.</p>
-<p><strong>Gold</strong> dragons are new in 5.0 and breathe fire. Their
-scale mail has no resistance power but is permanently lit (radius 4
-blessed, 3 uncursed, 2 cursed) — the only body-slot light source in the
-game, and it lets you abandon torches and oil. It also confers
-hallucination resistance.</p>
-<p>All scale mails are dragonhide, body-slot, +9 AC worn (the best in
-the body slot), and resist disenchantment naturally. The choice of which
-color to chase is usually whichever dragon’s territory you can reach
-safely; killing a dragon yields scales you can wear immediately or
-convert to scale mail.</p>
+<section id="a-note-on-nymphs" class="level4">
+<h4>A note on nymphs</h4>
+<p>The <code>n</code> class (wood, water, mountain) doesn’t want to kill
+you. She wants your inventory. Each successful claw hit lifts a random
+item from your pack, and the nymph then <strong>teleports away</strong>,
+sometimes within the level, sometimes off it entirely. Your bag of
+holding, your amulet of reflection, a freshly-wished cloak of magic
+resistance: gone, often to a level you’ll never revisit. No NetHack
+horror story is more universal than “a nymph walked off the level with
+my bag of holding.”</p>
+<p><strong>The second claw is seduction.</strong> Nymphs get two attacks
+per turn, and the seduction half drains experience levels if the nymph
+is the opposite gender of your character. A successful seduction can
+also strip a ring or amulet you’re wearing. A single bump can rob you,
+drop your XL, and snatch the cloak off your shoulders, all in one
+round.</p>
+<p><strong>Defenses.</strong> Kill at range (darts, force bolt, a wand
+of anything). Engrave <strong>Elbereth</strong>: nymphs respect it. Or
+drop your most irreplaceable items on the floor before approaching.
+Whatever’s not in your pack can’t be stolen.</p>
+<p><strong>Already robbed?</strong> A satiated nymph stays in the
+dungeon somewhere, often a nearby level, and her corpse drops what she
+stole. If you have time, search the floors above and below; sometimes
+you get the bag of holding back.</p>
+<p><strong>Never engage a nymph while carrying the Amulet of
+Yendor</strong> during the Ascension Run. Losing the Amulet to a
+teleporting thief means a return trip to Moloch’s Sanctum, which is
+usually where ascension runs go to die.</p>
+</section>
+<section id="a-note-on-puddings" class="level4">
+<h4>A note on puddings</h4>
+<p>The <code>P</code> class lives in the mid-dungeon and Gehennom.
+<strong>Brown and black puddings split when you hit them with an iron or
+metal weapon</strong>: one becomes two, two becomes four, and your
+long-sword grinding session turns into a swarm. <strong>Black pudding
+additionally corrodes your wielded weapon</strong> on its passive
+return-hit, so each round of splitting is also a step toward your blade
+rusting away. The community consensus: a beginner discovers puddings the
+same way every time — by feeding them their best weapon and watching the
+population graph go up.</p>
+<p><strong>Defenses.</strong> Melee with a <strong>silver or wooden
+weapon</strong> (silver dagger, elven dagger, athame, club,
+quarterstaff). These don’t trigger the split. Mithril also bypasses the
+check. Wands of cold and fire kill puddings outright with no split, and
+most spells work too.</p>
+<p><strong>Gray ooze</strong> doesn’t split, but it rusts armor on a
+hit; don’t engage in your starting iron suit if you can avoid it.</p>
+<p><strong>Eat the globs.</strong> A pudding leaves a
+<strong>glob</strong> rather than a corpse, and the globs are some of
+the best food in the game. They’re slow to spoil (about 500 turns of
+edibility, twice a normal corpse) and packed with resistances. A
+brown-pudding glob grants <strong>cold, shock, and poison
+resistance</strong> over repeated eats; a gray-ooze glob grants
+<strong>fire, cold, and poison resistance</strong>; a black-pudding glob
+also grants <strong>cold, shock, and poison resistance</strong>. Brown
+pudding and gray ooze are <em>vegetarian</em>-safe; black pudding is
+not. Globs of the same color stack and shrink together, so a pile of
+brown-pudding globs is a re-rollable chance at the resistance you don’t
+yet have. The strategic flip-side of the splitting trap: if you can kill
+one pudding cleanly (silver weapon, cold/fire wand, spell), the
+splitting becomes a <em>feature</em> — every divided pudding is one more
+glob to eat. The full intrinsic table is in <a
+href="#useful-corpse-effects">Useful Corpse Effects</a>.</p>
+</section>
+<section id="a-note-on-trolls" class="level4">
+<h4>A note on trolls</h4>
+<p>The <code>T</code> class doesn’t stay dead. After you kill a troll,
+its corpse sits on the floor for a few hidden turns and then stands back
+up — at full HP, fresh and angry. A pile of corpses after a five-troll
+fight is a <em>timer</em>, not a kill count: walk away for twenty turns
+and the same five trolls are coming back. The veteran’s lament — <em>“I
+beat the trolls, I got cocky, the trolls beat me”</em> — is the most
+repeated story on the public boards.</p>
+<p><strong>Stopping the revival.</strong> Eat the corpse (trolls are
+safe to eat for everyone but vegetarians). Tin it with a tin opener.
+Apply a magic whistle to summon a pet who’ll eat it. Zap a wand of
+teleportation at the corpse to send it off-level. Destroy it with a wand
+of striking. In Gehennom, the lava under your feet is the simplest
+solution — kick the corpse onto a lava square and walk on.</p>
+<p><strong>Trolls drop their gear when they die.</strong> If they
+revive, they re-collect what they were carrying, so a
+revive-and-recollect cycle leaves piles of mixed troll-gear and
+dead-troll bodies on the same square. Pick up the gear before they wake
+up; the loot is yours either way.</p>
+<p><strong>Class members.</strong> Plain troll, ice troll, rock troll,
+water troll, and the late-game Olog-hai. All revive; the corpse behaves
+the same way regardless of variant. The Olog-hai is the one to fear — a
+three-attack hitter at level 13, and “fighting the same Olog-hai twice
+in twenty turns” is one of those experiences that turns a careless run
+into a careful one.</p>
+</section>
+<section id="a-note-on-wraiths" class="level4">
+<h4>A note on wraiths</h4>
+<p>The <code>W</code> class has a touch attack that <strong>drains an
+experience level</strong> — one of the few permanent character setbacks
+in the game. You lose stat points, hit points, mana, and the most recent
+skill slot. There is no easy undo, and the wraith can land the touch
+again if you let it. The standard advice on the public boards: fear the
+wraith on first sight, plan the kill from across the room.</p>
+<p><strong>But the corpse is one of the most valuable consumables in the
+game.</strong> Eating a fresh wraith corpse grants you a level — the
+inverse operation. So the recipe: kill the wraith carefully (the touch
+is melee-range only, so engage at distance or from inside a corridor
+where you control the spacing), then eat the corpse the moment it drops.
+Wraith corpses spoil quickly, so hesitation costs you the trade.</p>
+<p><strong>The intentional version.</strong> Mid-to-late-game players
+actively hunt wraiths in the upper Quest and throughout Gehennom for
+free XP. A <em>cursed</em> scroll of genocide naming “wraith” reverse-
+genocides four to six fresh wraiths at your feet — a ready-made banquet,
+if you can drop each one in the turn it arrives. The classic setup is to
+stand on stairs (so you can escape if it goes wrong), drop a stack of
+cursed scrolls, and graze. Some ascending heroes credit a wraith binge
+for the experience levels that carried them through Gehennom.</p>
+<hr />
+</section>
+</section>
+<section id="more-ways-to-die" class="level3">
+<h3>More Ways to Die</h3>
 <p>Some things in the Mazes kill you outright. Not by whittling down
 your hit points, not by wearing you down over time, but by ending your
 life in a single move with no second chance. These are called
@@ -3546,7 +3711,6 @@ standard reference ever since.</em></p>
 - strategy aligned with NetHackWiki Stoning, Cockatrice, Lizard: gloves around cockatrice corpses, lizard/acid corpse to interrupt the countdown, weaponized corpse for offense (https://nethackwiki.com/wiki/Stoning, https://nethackwiki.com/wiki/Cockatrice, https://nethackwiki.com/wiki/Lizard)
 - eating any acidic corpse cures in-progress stoning (eat.c:860-861, fix_petrification at eat.c:867-877)
 -->
-</section>
 <section id="petrification-stoning" class="level4">
 <h4>Petrification (Stoning)</h4>
 <p>Touching a cockatrice without gloves, eating a cockatrice corpse,
@@ -3944,43 +4108,6 @@ dungeon. Some players keep one alive to farm XP and attributes. Don’t
 try this at experience level 1, though: the level-drain outcome is
 fatal.</p>
 </section>
-<section id="the-riders" class="level4">
-<h4>The Riders</h4>
-<!-- audit
-2026-05-19:
-- Pestilence inflicts SICK_NONVOMITABLE via diseasemu (mhitu.c:1039-1040)
-- SICK_NONVOMITABLE is "illness," not the SICK_VOMITABLE food-poisoning path (timeout.c:316-333)
-- unicorn horn CAN clear it: apply.c:4456 only marks Sick unfixable when (Sick & ~TIMEOUT) != 0
-- Pestilence sickness is purely timed, so the horn's trouble list reaches it (apply.c:2312-2313, 2351)
-- Riders: level 30, M1_REGEN, M1_SEE_INVIS, M3_DISPLACES; two 8d8 touches per turn (monsters.h:3145-3173)
-- Death's touch has 3/20 chance of instakill; MR blocks the instakill, not the 8d8 damage (uhitm.c:3858-3872 cases 17/18/19 call touch_of_death only when !Antimagic; otherwise fallthrough to permdmg drain)
-- 5.0 mercy: Pestilence/Famine's second hit on a turn downgrades to stun (mhitu.c:339-342)
--->
-<p>On the Astral Plane, three unique <code>&amp;</code>-class beings
-guard the way to the high altars: <strong>Death</strong>,
-<strong>Famine</strong>, and <strong>Pestilence</strong>, the Riders.
-They are level 30, regenerate while you fight, see invisible, and shove
-monsters out of their path. Each hits twice per turn with a touch attack
-dealing 8d8 damage. <strong>Death’s</strong> touch has a 3-in-20 chance
-of instant-kill on every hit — magic resistance blocks the instakill
-specifically; the regular damage still goes through.
-<strong>Pestilence</strong> inflicts a deadly illness that kills you
-over the next several turns. <strong>Sick resistance</strong> is the
-cleanest defense, though a unicorn horn can sometimes clear it in time.
-<strong>Famine</strong> adds 40–79 hunger units to a normal hit, which
-won’t drop you below Hungry in one swing but will starve you fast across
-an encounter. Eating any Rider corpse is straight-up fatal. A mercy in
-5.0: if Pestilence or Famine land their first attack on a turn, the
-second downgrades to a stun.</p>
-<p><strong>Defenses:</strong> An <strong>amulet of life saving</strong>
-is the best insurance on Astral, full stop. Magic resistance is what
-stops Death’s instakill (but not its 8d8 baseline). Sick resistance
-handles Pestilence. Carry plenty of food (Famine’s drain bypasses normal
-nutrition) and a unicorn horn for the stun secondary effects. In a
-crowd, a ring of conflict can keep the Riders tangled fighting nearby
-monsters instead of chasing you, sometimes long enough to reach the
-altar.</p>
-</section>
 <section id="choking" class="level4">
 <h4>Choking</h4>
 <!-- audit
@@ -4118,86 +4245,13 @@ drown check uses the eel’s tile, so levitation, water walking, and
 encumbrance status are irrelevant once the grab lands.
 <strong>Cures:</strong> magical breathing (amulet or spell), kill or
 teleport the eel before it pulls you under, or avoid water entirely. See
-<a href="#drowning">Drowning</a> in <a href="#ways-to-die">Ways to
-Die</a> for the full picture.</p>
+<a href="#drowning">Drowning</a> in <a href="#more-ways-to-die">More
+Ways to Die</a> for the full picture.</p>
 <p><strong>Strangulation.</strong> Wearing a cursed amulet of
 strangulation slowly kills you over a few turns. <strong>Cure:</strong>
 remove the amulet (requires uncursing it first, since cursed amulets
 can’t be removed: use a scroll of remove curse, holy water, or
 prayer).</p>
-</section>
-<section id="the-displacer-beast" class="level4">
-<h4>The Displacer Beast</h4>
-<!-- audit
-2026-05-18:
-- M3_DISPLACES is barge-through, NOT cloak-style image-offset
-- 50% chance on player melee that the beast swaps places with you (hack.c:1972)
-- swap only fires if destination is survivable for the beast: goodpos(..., GP_ALLOW_U) (teleport.c:134-162)
-- a non-swimmer/non-flier won't swap into water; non-fire-res won't swap into lava
-- corpse grants Displacement intrinsic (eat.c:1265) — cloak-style, not the swap
-- M3_DISPLACES is consulted only at hack.c:1972 and mon.c:2462 (ALLOW_MDISP)
-- no mhitm.c path for hostile-attacks-pet-displacer triggering a swap — pet trick fabricated
-- pet beast is still excellent: 0% MR (reliable taming), AC -10, three attacks 4d4/4d4/2d10 (monsters.h:437-441)
--->
-<p>The <strong>displacer beast</strong> (<code>f</code>, blue, 5.0
-addition) is a tiger-sized feline with AC −10 and three attacks per turn
-(4d4 / 4d4 / 2d10). The misleading name: it isn’t displaced in the
-cloak-of-displacement sense. Its trick is the opposite, when you melee
-it, half the time it <strong>swaps places with you</strong> instead of
-taking the hit, which can pull you off Elbereth, out of a doorway, or
-onto a trap. Ranged attacks (wand, spell, thrown) bypass the swap
-entirely. It also has <strong>MR 0</strong> — extremely unusual for a
-level-12 monster, where most peers carry 10–70% resistance — so sleep,
-paralysis, and charm/taming all land with no save. Speed 12, so a
-speed-boosted hero outpaces it. (Don’t bother trying to swap it into a
-moat or lava — the swap only fires if the destination square is
-survivable for the beast, and water/lava aren’t.)</p>
-<p><strong>Tame one and you have one of the best pets in the
-game.</strong> AC −10, three attacks (4d4 claw / 4d4 claw / 2d10 bite),
-speed 12. Charm monster works first try; a scroll of taming with no MR
-roll to fail is essentially guaranteed. A tame displacer beast will walk
-into late-game fights and walk out, eating tough hostiles while taking
-minimal retaliation.</p>
-<p>Eating the corpse gives you cloak-style displacement for a few turns:
-monsters target a phantom image one square off from where you really are
-and miss accordingly. Note that this is a different mechanic from the
-beast’s own place-swap, despite the shared name: you get the same effect
-as wearing a cloak of displacement, not the ability to swap places with
-attackers.</p>
-</section>
-<section id="the-genetic-engineer" class="level4">
-<h4>The Genetic Engineer</h4>
-<!-- audit
-2026-05-18:
-- AD_POLY claw + polyself(POLY_NOFLAGS) (mhitm.c:1135-1136)
-- Antimagic blocks the polymorph (mhitm.c:1128-1129)
-- Unchanging blocks the polymorph (mhitm.c:1130-1131)
-- eating a genetic engineer corpse triggers a polyself fall-through (eat.c:1244-1263)
-- tinned engineer + poly-control combo at eat.c:1253
-- genetic engineer also teleports itself on its own: M1_TPORT (monsters.h:2141)
--->
-<p>The <strong>genetic engineer</strong> (<code>Q</code>, green) shares
-its symbol class with the quantum mechanic but plays differently: where
-a quantum mechanic <em>teleports</em> its target on a hit, a genetic
-engineer <em>polymorphs</em> its target. One claw and, unless you have
-<em>Unchanging</em> or magic resistance, you become something else: same
-roll as any other uncontrolled polymorph source, with the dramatic
-message “you are subjected to a freakish metamorphosis.” Engineers also
-teleport on their own, so range alone won’t save you forever.</p>
-<p><strong>Defenses:</strong> <em>Unchanging</em> (immune), magic
-resistance (also fully blocks the polymorph), kill it before it closes,
-or accept the next several turns of the dungeon playing as something
-else. The engineer has a short cooldown between successful polymorph
-hits, so the encounter is survivable even without unchanging if you can
-finish quickly.</p>
-<p><strong>The corpse is a tool.</strong> Eating a genetic engineer
-corpse is mechanically identical to eating a doppelganger corpse: the
-same uncontrolled polymorph, just with louder flavor text. The practical
-use is the same as the doppelganger’s: tin it, and you have a portable
-polymorph source. Pair a tin with <em>polymorph control</em> and you
-have a controlled polymorph that survives Gehennom’s hot ground. The
-first engineer that kills you is a loss; the second one in your bag is a
-kit.</p>
 <hr />
 </section>
 </section>
@@ -4424,6 +4478,11 @@ crowning by accident.</p>
 <section id="making-friends" class="level3">
 <h3>Making Friends</h3>
 <!-- audit
+2026-05-21:
+- Titan stats: LVL(16, 18, -3, 70, 9); attacks AT_WEAP 2d8 + AT_MAGC AD_SPEL; M1_FLY, M2_ROCKTHROW, M2_MAGIC; difficulty 20 (monsters.h:1777-1785)
+- Balrog stats: LVL(16, 5, -2, 75, -14); AT_WEAP 8d4 + AT_WEAP 4d6; M1_FLY; MR_FIRE|MR_POISON; difficulty 20 (monsters.h:3043-3051) — speed 5 is the limiter
+- Archon stats: LVL(19, 16, -6, 80, 15); AT_WEAP 2d4 × 2 + AT_GAZE AD_BLND 2d6 + AT_CLAW 1d8 + AT_MAGC AD_SPEL 4d6; MR_FIRE|MR_COLD|MR_ELEC|MR_SLEEP|MR_POISON; M1_FLY|M1_SEE_INVIS|M1_REGEN; M2_NOPOLY (monsters.h:1254-1265)
+- polyok() rejects M2_NOPOLY: #define polyok(ptr) (((ptr)->mflags2 & M2_NOPOLY) == 0L) (mondata.h:93) — Archons cannot be a polymorph result
 2026-05-18:
 - "sad feeling for a moment" fires when an offscreen pet dies (mon.c:952, 3101, 3495)
 - leaving a pet behind alive produces no message; loyalty decays at 1 per 150 moves apart (dog.c:689-697)
@@ -4532,10 +4591,22 @@ matter; trapped pets get freed in the process.</li>
 <li>Tame a <strong>warhorse</strong> early (throw apples or carrots) and
 you have a fast, hard-hitting mount before mid-game.</li>
 <li>Late in the run, <strong>polymorph your pet</strong> into a stronger
-form. Titans, balrogs, and gray dragons are popular targets; a gray
-dragon has magic resistance and resists further polymorph, so it locks
-in. Cast polymorph carefully: random self-poly on the pet can downgrade
-it, and a polymorphed steed stops being saddled.</li>
+form. <strong>Titan</strong> is a popular target: level 16, speed 18,
+flies, throws boulders, and casts spells. Faster than anything else this
+strong, so it keeps up with a speed-boosted hero, and the spell-cast
+attack threatens at range. Balrog hits harder but is speed 5, slow
+enough that anything that runs gets away. Gray dragon is an alternative
+when you specifically want the magic-resistance intrinsic and a body
+that won’t accidentally re-polymorph. Cast carefully: random self-poly
+on the pet can downgrade it, and a polymorphed steed stops being
+saddled.</li>
+<li>If you can tame an <strong>Archon</strong> directly (via a scroll of
+taming on a hostile, magic-whistle recall of one you tamed earlier, or a
+conflict-ring accident), do it. Archons are the consensus ultimate pet:
+level 19, speed 16, AC −6, magic resistance, sees invisible, flies,
+regenerates, and a multi- attack that includes a blinding gaze and a
+spell-cast. You cannot polymorph a pet into an Archon: you must
+encounter one and tame it.</li>
 </ul>
 </section>
 <section id="keeping-your-pet-alive" class="level4">
@@ -4668,12 +4739,12 @@ curse.</li>
 level” in the most literal architectural sense: you rocket through the
 ceiling to the floor above, instead of gaining an experience level.</li>
 </ul>
-<p>The pattern is consistent: blessed items are helpful beyond their
-description, uncursed items work as advertised, and cursed items find
-creative ways to ruin your day. A blessed luckstone passively improves
-your luck; a cursed one drags it down. A cursed scroll of teleportation
-sends you to a random <em>level</em> instead of teleporting within the
-current one. You get the idea.</p>
+<p>Blessed items are helpful beyond their description, uncursed items
+work as advertised, and cursed items find creative ways to ruin your
+day. A blessed luckstone passively improves your luck; a cursed one
+drags it down. A cursed scroll of teleportation sends you to a random
+<em>level</em> instead of teleporting within the current one. You get
+the idea.</p>
 <p>You don’t see BUC status by default (Priests are the exception: they
 sense it naturally, which tells you something about clerical paranoia).
 But there are several reliable ways to check:</p>
@@ -5647,6 +5718,9 @@ first. Check BUC second. Then pick it up.</p>
 <section id="naming-what-youve-learned" class="level4">
 <h4>Naming What You’ve Learned</h4>
 <!-- audit
+2026-05-21:
+- mergable() requires identical otyp, enchantment (spe), BUC, erodeproof state, erosion (oeroded, oeroded2), greased state, oeaten/orotten for food; coins merge unconditionally (invent.c:4379-4460)
+- on merge that propagates a previously-unknown property, the game prints "You learn more about your items by comparing them." (invent.c:938-942); guarded against LOST_THROWN to avoid spam when monsters strip ID
 2026-05-18:
 - `#name` and `#call` aliases at cmd.c:1773-1774
 - class naming at do_name.c:571-588
@@ -5662,6 +5736,17 @@ class to “speed.”</p>
 <p>This habit of annotating your discoveries is what separates
 adventurers who die on level 8 from adventurers who reach the Castle.
 The dungeon doesn’t keep notes for you. You have to do it yourself.</p>
+<p><strong>Identification by stacking.</strong> When you pick up an
+item, the game merges it into an existing slot only if the two are
+<em>identical</em>: same type, same enchantment, same BUC, same
+erodeproofing. So whether a new item stacks with one you already
+understand leaks information for free. When a merge actually teaches you
+something the game says so explicitly: <em>“You learn more about your
+items by comparing them.”</em> That message is your cue that the merge
+propagated a known property (BUC, enchantment, erosion) to the
+previously unknown side. Two same-appearance items that <em>don’t</em>
+merge are a different potion, a different BUC, or one side has been
+diluted or eroded.</p>
 </section>
 <section id="a-practical-strategy" class="level4">
 <h4>A Practical Strategy</h4>
@@ -7122,8 +7207,8 @@ that <strong>your steed flies with you</strong>. A flying warhorse skips
 over moats, fountains, pools, and the Castle’s drawbridge entirely — a
 fast Knight can cross Medusa’s island and the Castle from edge to edge
 without worrying about the water at all. Stack with boots of speed and a
-wand of speed monster on the mount and you have a genuinely terrifying
-cavalry unit.</p>
+wand of speed monster on the mount and you have a terrifying cavalry
+unit.</p>
 <p><strong>Restful sleep</strong> puts you to sleep randomly and is
 usually cursed, which should tell you everything you need to know about
 when to put it on unexamined. However, in 5.0, wearing it while asleep
@@ -7139,6 +7224,17 @@ than it looks.</p>
 </section>
 <section id="tools-of-the-trade" class="level3">
 <h3>Tools of the Trade</h3>
+<!-- audit
+2026-05-21:
+- weight_cap = 25 * (Str + Con) + 50, capped at MAX_CARR_CAP = 1000 (hack.c:4295-4312, weight.h:12-25)
+- encumbrance tier = (excess_weight * 2 / cap) + 1, clamped to OVERLOADED; tier names "Burdened/Stressed/Strained/Overtaxed/Overloaded" (hack.c:4372-4382, botl.c:12-13)
+- Stressed+ encumbrance triggers extra hunger on odd turns (eat.c:3197 near_capacity > SLT_ENCUMBER)
+- Large box base weight 350, chest 600, ice box 900 (objects.h:899-904)
+- door diagonal-move rules: cannot move diagonally INTO an intact doorway (hack.c:1140-1149); cannot move diagonally OUT of one (hack.c:1209-1213)
+- low-intelligence monsters cannot open closed doors; intelligent monsters open/unlock per monmove.c:1567-1585
+- inventory letter limit is invlet_basic = 52 (hack.h:584); inv_cnt(FALSE) >= 52 triggers "Your pack is too full" (invent.c:5246-5251); items in containers are not in gi.invent and don't count against the limit
+- #adjust (doorganize, also M-a binding) swaps items between letters and can force-merge mergable stacks (cmd.c:1673-1674, invent.c:4981)
+-->
 <!-- audit
 2026-05-18:
 - Bell of Opening is carried by the quest nemesis; loot from the corpse (makemon.c:1378-1379)
@@ -7203,6 +7299,10 @@ items in the game hide in this grab-bag.</p>
 </tr>
 </tbody>
 </table>
+<p>Note the weights. Sacks are 15 (carry one). Boxes and chests are
+furniture, not luggage: a large box weighs 350, a chest 600, an ice box
+900 — comparable to your <em>entire</em> carrying capacity. Use them as
+floor stash, not as something to drag from level to level.</p>
 <p>The <strong>bag of holding</strong> deserves special mention because
 it transforms how you play. A blessed bag reduces the weight of
 everything inside to roughly one quarter, meaning you can carry your
@@ -7221,6 +7321,79 @@ perhaps), don’t open it. Drop it on the floor and zap a wand of
 cancellation <em>at the bag from outside</em>. Cancellation uncurses
 items it touches, and the explosion rule only triggers on insertion, not
 on a zap. You’ll have a safe, uncursed bag.</p>
+<section id="carrying-capacity" class="level5">
+<h5>Carrying capacity</h5>
+<p>Your carrying capacity is roughly <strong>25 × (Strength +
+Constitution) + 50</strong>, capped at 1000. Average human stats land
+you near 950; a low-Str spellcaster might start closer to 700. As you
+load up, the status line walks through these tiers:</p>
+<table>
+<colgroup>
+<col style="width: 12%" />
+<col style="width: 41%" />
+<col style="width: 45%" />
+</colgroup>
+<thead>
+<tr>
+<th>Tier</th>
+<th>When</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unencumbered</td>
+<td>weight at or below capacity</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Burdened</td>
+<td>up to about 1.5× capacity</td>
+<td>Status flag, but movement and nutrition fine</td>
+</tr>
+<tr>
+<td>Stressed</td>
+<td>up to about 2× capacity</td>
+<td>Extra hunger every odd turn</td>
+</tr>
+<tr>
+<td>Strained</td>
+<td>up to about 2.5× capacity</td>
+<td>Worse hunger, harder to dodge water</td>
+</tr>
+<tr>
+<td>Overtaxed</td>
+<td>up to about 3× capacity</td>
+<td>Bad</td>
+</tr>
+<tr>
+<td>Overloaded</td>
+<td>beyond 3× capacity</td>
+<td>You can’t even pick anything else up</td>
+</tr>
+</tbody>
+</table>
+<p>Practical rule: stay <strong>Unencumbered</strong> in normal play,
+accept <strong>Burdened</strong> during loot runs, and never linger at
+<strong>Stressed</strong> or worse without a reason. The bag of holding
+is the standard answer to the encumbrance problem; carrying everything
+inside one reduces the effective weight to roughly a quarter, which is
+why veteran players treat finding one as a turning point in the run.</p>
+<p><strong>Running out of inventory letters.</strong> Weight isn’t the
+only limit. Your inventory has <strong>52 slots</strong>
+(<code>a-z</code> plus <code>A-Z</code>), and a 53rd item hits <em>“Your
+pack is too full.”</em> Stackable items consolidate into a single slot
+only when the game can tell they’re the same thing — five identified
+scrolls of identify share one letter, but identified and unidentified
+scrolls of the same type stay in separate slots, and weapons of
+different enchantments don’t merge. So clutter is usually an
+identification problem in disguise: the more you ID, the more your
+inventory consolidates. The bag of holding doubles as the answer here
+too — items inside any container don’t count against your 52, so a stash
+of twenty potions in a BoH costs you a single letter. The
+<code>#adjust</code> command lets you swap items between letters,
+force-merge stacks that didn’t merge, or split a stack to a new letter —
+purely relabeling, no game effect.</p>
 <p>One 5.0 hazard that you will need to be aware of: <strong>intelligent
 monsters can now loot unlocked containers</strong>. They can remove
 items, carry containers away, and unlock chests with keys. If you’ve
@@ -7231,6 +7404,7 @@ level’s residents if you leave them time and opportunity. Clear levels
 before abandoning valuables, and <strong>keep your most important
 containers locked</strong>. The dungeon has gotten better at wanting
 what you have.</p>
+</section>
 </section>
 <section id="unlocking-tools" class="level4">
 <h4>Unlocking Tools</h4>
@@ -7708,9 +7882,1649 @@ but it’s a nice bonus</li>
 the suit drops it off into your inventory (curse and all), even though
 it would normally refuse to come off. From there, dip in holy water and
 re-wear. See <a href="#polymorph-as-a-tool">Polymorph as a Tool</a>.</p>
-<p>The lesson: always carry holy water and a scroll of remove curse. The
-moment you find yourself stuck with cursed levitation boots over a moat,
-you’ll understand why veterans never leave home without them.</p>
+<p>Always carry holy water and a scroll of remove curse. The moment you
+find yourself stuck with cursed levitation boots over a moat, you’ll
+understand why veterans never leave home without them.</p>
+<hr />
+</section>
+</section>
+</section>
+<section id="part-five-mastery" class="level2">
+<h2>Part Five: Mastery</h2>
+<section id="spellcasting" class="level3">
+<h3>Spellcasting</h3>
+<!-- audit
+2026-05-21:
+- spellbook of type SPE_NOVEL appears as "paperback" until read (objects.h:1433-1436)
+- reading the first novel in a game grants more_experienced(20, 0) and the ACH_NOVL achievement; u.uevent.read_tribute gates the once-per-game bonus (spell.c:513-535)
+- 20 XP is the XL 1->2 threshold so a fresh character gains an experience level on the first paperback read
+- novel title is rolled at game start per novelidx; titles come from a list of Terry Pratchett Discworld novels stored in the tribute file (do_name.c:297 noveltitle, files.c:3474 read_tribute)
+2026-05-18:
+- force bolt damage is 2d12; school skill does NOT scale damage (zap.c:2720-2724)
+- chain lightning is level 4 NODIR, not level 7, not a bouncing ray (objects.h:1409-1411)
+- failed spellbook read effects: teleport (lvl 1+), aggravate (lvl 2+), blindness (lvl 3+), take-gold (lvl 4+), confusion (lvl 5+), contact poison (lvl 6+), exploding rune (lvl 7+, 2d10+5 dmg, antimagic resists). Default rndcurse branch never fires: max spell level is 7 so rn2(lev) maxes at 6 (spell.c:130-185)
+- failed read has a single 1/3 destruction chance (spell.c:612)
+- spellbook fade ceiling is 4 successful reads: MAX_SPELL_STUDY=3 with `> MAX_SPELL_STUDY` (spell.c:400-418)
+- no Pw drain from memorized spells exists; "spell maintenance" is fabricated (allmain.c moveloop has no per-spell Pw decrement; only cast_spell at spell.c:1245 decrements via SPELL_LEV_PW)
+- drain_en only ever DECREASES Pw — no reflection+vortex max-Pw trick (trap.c:5202-5240 drain_en only subtracts from u.uen and decreases u.uenmax)
+- blessed book bypasses the read-ability check entirely (auto-success)
+- Pw cost per spell = 5 × level: SPELL_LEV_PW(spellev) (spell.c:1245)
+- confused casts fail outright (spell.c:1372); charm monster has no confused-area mode
+- Skilled+ casting acts like a blessed scroll (spell.c:1524-1525) or blessed potion (spell.c:1540-1541)
+- Pw regen: (Wis + Int)/15 + 1; Wizards tick on factor 3 vs 4 (allmain.c:605-607)
+- Valkyries restricted in divination, so reading scroll of identify is occasional at best (u_init.c:525-546)
+- strategy aligned with NetHackWiki Spellbook, Spellcasting: Int + 4 + XL/2 − 2·level success formula, blessed book auto-success, Pw = 5 × level (https://nethackwiki.com/wiki/Spellbook, https://nethackwiki.com/wiki/Spellcasting)
+-->
+<p>Magic in the Mazes is less “wave a wand and sparkles happen” and more
+“laboriously study a crumbling book, hope it doesn’t go off in your
+face, and then set things on fire with your mind.” Spells are reusable
+abilities learned from spellbooks. Unlike scrolls (consumed on use) or
+wands (limited charges), spells can be cast repeatedly as long as you
+have mana (Pw, power) and the spell hasn’t expired from your
+increasingly overtaxed brain.</p>
+<section id="learning-spells" class="level4">
+<h4>Learning Spells</h4>
+<p>Read a spellbook to learn the spell it contains. Reading takes
+several turns and can fail. A failed reading can teleport you, take your
+gold, blind, confuse, or poison you, blow up in your face for HP damage,
+or randomly curse one of your items. A book that survives failures can
+be retried.</p>
+<p>The book’s level decides which effects are on the table. A level-1
+book can teleport you somewhere random when you fail to read it. A
+level-2 book might aggravate nearby monsters instead. Misread a level-3
+book and it can blind you for 250 to 350 turns. A level-4 book can take
+all your gold, and level 5 can leave you confused for 16 to 22 turns.
+Misread a level-6 book and you may be contact-poisoned: gloves take
+corrosion damage, bare hands take 1 or 2 points of Strength plus 1d10 HP
+(1d6 with poison resistance). And a level-7 book can have an exploding
+rune. Magic resistance blocks the explosion; without it, you take 2d10+5
+damage. Practical rule: don’t read books you can’t afford to fail.</p>
+<p>The chance of successfully reading a spellbook depends on the
+<strong>spell level</strong>, your <strong>Intelligence</strong>, and
+your <strong>experience level</strong>. The exact formula is
+<code>Int + 4 + XL/2 − 2·level</code> versus a roll of 1d20, so read 20
+or more always succeeds, 10 is a coin flip, and anything below that is
+dicey. Reading a level-7 spell at Int 15, XL 2 gives a read score of 6:
+only a 30% chance of success. Lenses add +2. A <strong>blessed</strong>
+spellbook bypasses the check entirely and always succeeds. A
+<strong>cursed</strong> spellbook fails automatically and applies one of
+the failure effects above.</p>
+<p>Here’s a rough guide to what you can safely read:</p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 37%" />
+<col style="width: 45%" />
+</colgroup>
+<thead>
+<tr>
+<th>Spell Level</th>
+<th>Minimum Int + XL needed</th>
+<th>Who can read it reliably</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>~10</td>
+<td>Almost anyone, early game</td>
+</tr>
+<tr>
+<td>2</td>
+<td>~14</td>
+<td>Most characters by mid-game</td>
+</tr>
+<tr>
+<td>3</td>
+<td>~18</td>
+<td>Wizards easily, others with effort</td>
+</tr>
+<tr>
+<td>4</td>
+<td>~22</td>
+<td>Wizards with decent stats</td>
+</tr>
+<tr>
+<td>5</td>
+<td>~26</td>
+<td>Wizards with boosted Int</td>
+</tr>
+<tr>
+<td>6</td>
+<td>~30</td>
+<td>Wizards with serious investment</td>
+</tr>
+<tr>
+<td>7</td>
+<td>~34</td>
+<td>Only well-built Wizards</td>
+</tr>
+</tbody>
+</table>
+<p>The “Minimum Int + XL” column means the sum of your Intelligence and
+experience level. With 18 Intelligence at level 14, your sum is 32, so
+you can reliably read up to level 6 spells. <strong>A blessed book skips
+the difficulty check entirely and always succeeds</strong>, no matter
+what your Int and level are — which is one reason to save holy water for
+your hardest unread spellbooks.</p>
+<p><span id="wizards-identify-books"></span> <strong>Wizards identify
+books by training.</strong> In 5.0, advancing a spell school skill to
+each rank automatically reveals the appearances of spellbooks in that
+school: unskilled unlocks level-1 appearances, basic level-3, skilled
+level-5, expert level-7. A Wizard starts knowing all level-1 appearances
+and level-3 in attack and enchantment, which means they begin the game
+with a meaningful identification advantage in their core schools.</p>
+<p>So training your spell schools pays off twice: better casting
+<em>and</em> free book-ID. The unknown book you’ve been carrying since
+level 5? Train up the right school and suddenly you know what it is.
+Prioritize the schools containing your most-wanted unidentified books,
+not just the ones that improve your current casting.</p>
+<p>Wizards are the undisputed masters of magic: they learn faster, fail
+less, and have the widest range of useful spells. A well-built Wizard
+can eventually learn <em>every</em> spell in the game, which is the
+closest the Mazes come to letting you cheat. Other roles can cast some
+spells but with less panache. A Valkyrie can occasionally read identify
+(level 3) if her Intelligence is boosted by gain-ability potions, but
+non-spellcasters are usually better off with scrolls. Tourists,
+Barbarians, and Cavemen should probably stick to hitting things.</p>
+<p>Each spell stays in memory for about 20,000 turns, then fades and
+must be relearned. The spell list (<code>+</code>) shows time-remaining.
+You can also <code>a</code>pply a spellbook to check how worn it is:
+each <strong>successful</strong> read counts toward a fixed total of
+four before the book fades to blank paper. Failed reads don’t add to
+that counter, but each failure has its own 1-in-3 chance to destroy the
+book outright. Carry important spellbooks with you if you plan to rely
+on their spells in the late game.</p>
+<p><strong>Paperbacks.</strong> A spellbook that appears as a
+<em>paperback</em> is a novel rather than a real spellbook. Read it: the
+first novel you pick up in a game grants 20 XP, which is exactly enough
+to lift a fresh character from experience level 1 to 2. (The 20 XP only
+fires once; subsequent paperbacks just display a quote.) Each paperback
+is a Terry Pratchett <strong>Discworld</strong> title, and reading it
+opens a passage from the novel.</p>
+</section>
+<section id="key-spells" class="level4">
+<h4>Key Spells</h4>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 8%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr>
+<th>Spell</th>
+<th>Level</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Force bolt</td>
+<td>1</td>
+<td>2d12 ranged hit; an Int/XL bonus adjusts by −3 to +3</td>
+</tr>
+<tr>
+<td>Healing</td>
+<td>1</td>
+<td>Restore hit points</td>
+</tr>
+<tr>
+<td>Detect monsters</td>
+<td>1</td>
+<td>Sense nearby monsters</td>
+</tr>
+<tr>
+<td>Identify</td>
+<td>3</td>
+<td>Identify items (saves scrolls)</td>
+</tr>
+<tr>
+<td>Remove curse</td>
+<td>3</td>
+<td>Uncurse worn/wielded items</td>
+</tr>
+<tr>
+<td>Chain lightning</td>
+<td>2</td>
+<td>Shock that spreads from the caster in all directions, chaining to
+nearby monsters</td>
+</tr>
+<tr>
+<td>Magic mapping</td>
+<td>5</td>
+<td>Reveal the level (saves scrolls)</td>
+</tr>
+<tr>
+<td>Charm monster</td>
+<td>5</td>
+<td>Tame nearby creatures in a 3×3 area; Skilled+ acts like a blessed
+scroll</td>
+</tr>
+<tr>
+<td>Finger of death</td>
+<td>7</td>
+<td>Kill in a beam; MR resists</td>
+</tr>
+</tbody>
+</table>
+<p>The other 34 spells, along with their schools, types, and rank-gated
+upgrades, are in the <a href="#spell-tables">Spell Tables</a>
+appendix.</p>
+<p>For Wizards, learning <strong>identify</strong> and <strong>magic
+mapping</strong> as spells dramatically reduces your need for scrolls:
+it’s like having infinite scrolls, except they cost mana instead of
+inventory space. <strong>Finger of death</strong> is the ultimate
+argument-ender. <strong>Charm monster</strong> turns your enemies into
+your friends, which is even better than killing them because friends
+carry things and absorb hits.</p>
+</section>
+<section id="mana-management" class="level4">
+<h4>Mana Management</h4>
+<p>Your power (Pw) pool determines how many spells you can cast before
+you need to sit in a corner and regenerate like a phone battery. Casting
+a spell costs <strong>5 Pw per spell level</strong> (so finger of death
+is 35 Pw). A failed cast still spends half. Power regenerates over time,
+faster with higher Wisdom and Intelligence, faster still for Wizards or
+with a regeneration source.</p>
+<p>High-level spells cost serious power. Plan your casting and carry
+backup wands and scrolls: a Wizard out of Pw is just a person in a
+bathrobe holding a stick.</p>
+<hr />
+</section>
+</section>
+<section id="luck-and-fortune" class="level3">
+<h3>Luck and Fortune</h3>
+<!-- audit
+2026-05-19:
+- cursed luckstone holds NEGATIVE Luck in place, but positive Luck still decays toward baseline (timeout.c:616-619)
+- any non-cursed luckstone (blessed or uncursed) gives +3 max-Luck cap (attrib.c:441-450)
+- killing peaceful: -1 with 50% probability (mon.c:3665); -5 reserved for co-aligned unicorns (mon.c:3667)
+- prayer is rejected on ANY negative Luck (pray.c:2155), not just <= -10
+- no Sokoban-down-stairs Luck penalty exists
+- thrown gem to cross-aligned unicorn: identified -3..+3 (dothrow.c:2334 rn2(7)-3); unidentified -1..+1 (dothrow.c:2349 rn2(3)-1)
+- "ID gems for shopkeeper +1" is fabricated; shk.c has no such hook (shk.c contains no change_luck or adjalign call on GEM_CLASS sale)
+- killing quest leader: -4 baseline, immediate change_luck(-20), u.ugangr += 7 (mon.c:3680, timeout.c:600)
+- killing pet: -1 plus alignment -15 via adjalign (mon.c:3664, 3704)
+- only mirror breaks for Luck -2 (uhitm.c:1133, dothrow.c:2496, dokick.c:445/1724); crystal balls/armor don't
+- full-moon/Friday-the-13th baseline shift (timeout.c:595-598)
+- carrying the Amulet or u.ugangr > 0 doubles drift rate (300 turns, timeout.c:607)
+- Archeologists start with TOUCHSTONE knowledge only (u_init.c:50, 903); gems are NOT pre-identified
+- strategy aligned with NetHackWiki Luck, Luckstone, Luck item: ±13 cap with non-cursed luckstone, drift toward 0 every 600 turns, cursed luckstone locks negative Luck (https://nethackwiki.com/wiki/Luck, https://nethackwiki.com/wiki/Luckstone, https://nethackwiki.com/wiki/Luck_item)
+-->
+<p>The Mazes are rigged. Not unfairly (the dungeon doesn’t <em>hate</em>
+you), but there is a hidden number attached to your character that
+quietly tilts every die roll, every prayer, every scroll, every combat
+swing. It’s called Luck, and it’s one of the most important stats you
+can’t see.</p>
+<p>Players who ignore Luck die to things that “shouldn’t have happened.”
+Players who cultivate it find that the dungeon is mysteriously generous.
+This is not a coincidence.</p>
+<section id="how-luck-works" class="level4">
+<h4>How Luck Works</h4>
+<p>Luck ranges from -13 to +13. It starts at 0, the universe’s way of
+saying “prove yourself.” Left alone, luck drifts back toward zero over
+time; the Mazes don’t give anything for free.</p>
+<p><strong>Luck timeout.</strong> Every 600 turns, your luck moves one
+point toward 0. If you have +5 luck, it will drop to +4 after 600 turns,
+then +3 after 1200, eventually reaching 0. Your good deeds are
+forgotten. Your sins, alas, are also forgiven.</p>
+<p><strong>Luckstone.</strong> Carrying a luckstone in your open
+inventory (not inside a container) freezes the timer. Your luck stays
+wherever it is until something changes it. This is why getting the
+luckstone from Mine’s End is one of the first things every experienced
+player does. It’s a small gray stone that makes the universe remember
+you fondly.</p>
+<p><strong>Bless state matters.</strong> Any <strong>non-cursed</strong>
+luckstone (blessed <em>or</em> uncursed) freezes drift toward your
+baseline and adds <strong>+3 to your effective Luck on most
+rolls</strong>. A <strong>cursed</strong> luckstone is dangerous: it
+subtracts 3 from your effective Luck and holds <em>negative</em> Luck in
+place (preventing the usual drift back toward zero from below). Always
+BUC-check a luckstone before carrying it, and bless it on an altar if
+you can. (The +3 bonus comes from <code>set_moreluck</code>; the curse
+doesn’t speed positive Luck’s decay, but it locks bad Luck in.)</p>
+<p><strong>The Heart of Ahriman, Tsurugi of Muramasa, and Orb of Fate
+all count as luckstones.</strong> Barbarian, Samurai, and Valkyrie quest
+artifacts confer the same drift-freeze and bless-state bonus, so those
+three roles get a “free luckstone” from their quest reward. Carrying
+both a blessed luckstone <em>and</em> one of these artifacts doesn’t
+stack the +3 bonus (the bonus is binary, not additive), but it does add
+an extra unit of “blessed” to the count if you somehow end up with a
+cursed luckstone, partially offsetting it.</p>
+<p><strong>Calendar Luck.</strong> The drift target isn’t always 0:</p>
+<ul>
+<li>On a <strong>full moon</strong> night, baseline Luck is +1: Luck
+drifts toward +1 instead of 0. If you started the session on a full
+moon, you have +1 Luck for free.</li>
+<li>On <strong>Friday the 13th</strong>, baseline Luck is −1. Avoid
+stair-up runs on this day if you can; your accumulated good Luck will
+sap toward −1 even if you’ve been virtuous.</li>
+</ul>
+<p>(NetHack uses your computer’s real date for this; set your clock back
+if you’ve planned an ascension on the 13th and don’t want the penalty,
+though most players just embrace the theme.)</p>
+</section>
+<section id="gaining-and-losing-luck" class="level4">
+<h4>Gaining and Losing Luck</h4>
+<table>
+<colgroup>
+<col style="width: 71%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th>Action</th>
+<th>Luck change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Throw identified real gem to co-aligned unicorn</td>
+<td><strong>+5</strong></td>
+</tr>
+<tr>
+<td>Throw named-but-unidentified real gem to co-aligned</td>
+<td>+2</td>
+</tr>
+<tr>
+<td>Throw unknown real gem to co-aligned unicorn</td>
+<td>+1</td>
+</tr>
+<tr>
+<td>Throw fully-identified real gem to cross-aligned unicorn</td>
+<td>−3 to +3 (random)</td>
+</tr>
+<tr>
+<td>Throw unidentified real gem to cross-aligned unicorn</td>
+<td>−1 to +1 (random)</td>
+</tr>
+<tr>
+<td>Sacrificing on your own altar (varies by corpse value)</td>
+<td>typically +1</td>
+</tr>
+<tr>
+<td>Sitting on a throne (lucky outcome)</td>
+<td>+1</td>
+</tr>
+<tr>
+<td>Breaking a Sokoban rule (squeeze, fracture, polymorph boulder,
+scroll of earth)</td>
+<td>−1 each</td>
+</tr>
+<tr>
+<td>Killing a peaceful creature</td>
+<td>−1 (50% chance per kill)</td>
+</tr>
+<tr>
+<td>Killing a same-alignment unicorn</td>
+<td>−5</td>
+</tr>
+<tr>
+<td>Killing your quest leader</td>
+<td>−20 immediate (floor at −10), +7 god-anger, plus permanent −4 to
+baseline luck</td>
+</tr>
+<tr>
+<td>Killing your pet</td>
+<td>−1 plus −15 alignment</td>
+</tr>
+<tr>
+<td>Cannibalism</td>
+<td>−2 to −5</td>
+</tr>
+<tr>
+<td>Breaking a mirror</td>
+<td>−2</td>
+</tr>
+</tbody>
+</table>
+<p>Be virtuous and the numbers smile on you. Be a monster and they
+frown. The Mazes have a moral compass, and it’s embedded in the
+math.</p>
+<p><strong>Unicorn gem-throwing is the strongest active Luck source in
+the game.</strong> Throw a properly-identified real gem (not glass) at a
+unicorn whose alignment matches yours and you gain +5 Luck immediately.
+The unicorn turns peaceful, accepts the gift, and teleports away, and
+will accept another later if you find it again. Identify your gems
+<em>first</em> (touchstone or scroll of identify); the bonus drops from
++5 to +1 if you don’t actually know what you’re throwing. Glass gems are
+harmless but yield nothing; throwing them is a safe way to pacify an
+unwanted unicorn without spending real gems. Avoid throwing real gems at
+cross-aligned unicorns: the result is a random Luck change between -3
+and +3 and is rarely worth the gamble. Archeologists start with a
+<strong>touchstone</strong>, which lets them verify whether a gem is
+real before throwing it at a unicorn.</p>
+<p>There is a ceiling on the luck you can harvest from any given corpse.
+If your current luck score already exceeds the difficulty rating of the
+monster you just sacrificed, you gain nothing. The altar accepts your
+offering politely and gives you nothing in return, because the gods have
+standards.</p>
+<p>Before 5.0, players used to be able to sit at a co-aligned altar with
+a pile of kobold corpses and grind luck to maximum. That no longer works
+once your luck is already above modest levels. To raise luck via
+sacrifice in the mid-to-late game, you need fresh corpses of monsters
+whose difficulty exceeds your current luck value. In practice: a
+luckstone, occasional mid-tier sacrifices, and not killing peacefuls is
+the standard path to high luck.</p>
+</section>
+<section id="why-luck-matters" class="level4">
+<h4>Why Luck Matters</h4>
+<p>At Luck +5 (or higher, with a luckstone), life is <em>noticeably</em>
+better:</p>
+<ul>
+<li>You hit more often in combat. Swings that would have missed connect
+instead.</li>
+<li>Your prayers are more likely to be answered. Your god likes lucky
+people. (Gods are fickle that way.)</li>
+<li>Scrolls of enchant weapon/armor succeed more often at high
+enchantment levels.</li>
+<li>Wands of wishing are more likely to work perfectly on wresting.</li>
+<li>Fountain wishes become slightly more likely.</li>
+</ul>
+<p>At negative luck, all of these go wrong. <strong>Any</strong>
+negative Luck causes prayer to fail with the “too naughty” rejection
+(<code>pray.c:2155</code>) — not just at the floor of −10. You’ll miss
+attacks you should have hit. Scrolls will backfire. The dungeon becomes
+a place that is trying to kill you even harder than usual, which is
+saying something.</p>
+<p>The practical advice: get a luckstone early, sacrifice occasionally
+to keep luck positive, and don’t kill peacefuls. Treat the universe well
+and it will return the favor, in the form of slightly better random
+numbers, which in the Mazes is the closest thing to love.</p>
+<hr />
+</section>
+</section>
+<section id="enhancing-skills" class="level3">
+<h3>Enhancing Skills</h3>
+<!-- audit
+2026-05-18:
+- skill ranks P_UNSKILLED through P_GRAND_MASTER; practice formula level²×20 (skills.h:92-106)
+- cumulative practice thresholds: 20/80/180/320/500
+- weapon slot costs 1/2/3 per rank; non-weapon costs 1/1/2/2/3
+- two-weapon uses the WEAPON slot column (weapon.c:1141)
+- bare-hand and martial-arts bonuses apply every hit (weapon.c:1611-1613)
+- bare-hand 50% / martial-arts 75% rate is the practice-training check, not bonus gating (uhitm.c:847 `dmg = rnd(!martial_bonus() ? 2 : 4)`; uhitm.c:849 `train_weapon_skill = (dmg > 1)` — rnd(2)>1 is 1/2, rnd(4)>1 is 3/4)
+- riding trains after 100 mounted squares (steed.c:393-396, u.urideturns >= 100)
+- Knights start at Basic riding; target is Skilled (weapon.c:1787-1789)
+- pickup/loot/dip/trap/engrave actions gated at Basic riding
+- slot ceiling 32 for an XL-30 crowned hero: 2 starting + 29 level-ups + 1 crowning (u_init.c:884, pray.c:992-993)
+- Ranger divination caps at Expert (u_init.c:461)
+- Wizard restricted from long sword: no P_LONG_SWORD entry in Skill_W (u_init.c:548-569)
+- spell schools start with a 20-use precredit at Basic
+- Skilled cone-of-cold and fireball: cluster of 3×3 explosions (spell.c:1419-1452), not room-clearing
+- Valkyrie 6+6+2 = 14 slot example math
+- crown gives +1 slot
+- strategy aligned with NetHackWiki Skill, Twoweapon: slot budget tied to XL + crowning, non-weapon skills cost half, restricted skills only unrestrict to Basic via artifact gift (https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Twoweapon)
+-->
+<p>Most adventurers discover the skill system the first time they press
+<code>#enhance</code> and realize the broadsword they’ve been swinging
+for several levels is finally ready to graduate from Basic to Skilled.
+Weapons, fighting styles, and spell schools each track their own
+proficiency, and you train them one slot at a time.</p>
+<section id="the-skill-ladder" class="level4">
+<h4>The Skill Ladder</h4>
+<p>Most skills run <strong>Unskilled → Basic → Skilled →
+Expert</strong>. <strong>Bare hands</strong> and <strong>martial
+arts</strong> alone reach <strong>Master</strong> and <strong>Grand
+Master</strong>. Each rank-up costs both <strong>practice</strong> (uses
+of the skill) and <strong>skill slots</strong> (a finite budget tied to
+your experience level).</p>
+<table>
+<colgroup>
+<col style="width: 19%" />
+<col style="width: 34%" />
+<col style="width: 19%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th>To reach</th>
+<th>Practice (cumulative)</th>
+<th>Weapon slots</th>
+<th>Non-weapon slots</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Basic</td>
+<td>20</td>
+<td>1</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Skilled</td>
+<td>80</td>
+<td>2</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Expert</td>
+<td>180</td>
+<td>3</td>
+<td>2</td>
+</tr>
+<tr>
+<td>Master</td>
+<td>320</td>
+<td>—</td>
+<td>2</td>
+</tr>
+<tr>
+<td>Grand Master</td>
+<td>500</td>
+<td>—</td>
+<td>3</td>
+</tr>
+</tbody>
+</table>
+<p>Non-weapon skills — spell schools, riding, bare hands, martial arts —
+cost roughly half as many slots as melee weapons, the dungeon’s quiet
+subsidy for magic. (Two-weapon uses the weapon column despite the name.)
+You start with 2 slots, gain one per experience level (29 more by XL
+30), and one more if you are crowned, so the absolute ceiling is
+<strong>32 slots</strong> for an XL-30 crowned hero. Lose an experience
+level and you lose a slot, which can demote your most recent
+advancement.</p>
+<p>Each role has a per-skill <strong>cap</strong> beyond which no amount
+of training will help. A Wizard caps at Basic with a mace and is
+restricted from long swords. Restricted skills don’t appear on
+<code>#enhance</code> and stay Unskilled, with one exception: if your
+god grants you an artifact weapon, you’re auto-unrestricted in its skill
+up to Basic. The full role caps are tabled in <a
+href="#per-role-skill-caps">Per-Role Skill Caps</a> below.</p>
+</section>
+<section id="training-a-skill" class="level4">
+<h4>Training a Skill</h4>
+<p>Practice accumulates through use:</p>
+<ul>
+<li><strong>Weapon skills</strong> tick on every melee or thrown hit
+that does <strong>more than 1 damage</strong>. A pillow-soft punch for 1
+point doesn’t count. Spears, javelins, knives, daggers, and aklys train
+the same skill whether you stab with them or throw them.</li>
+<li><strong>Bare hands</strong> counts <strong>50%</strong> of your
+hits; <strong>martial arts</strong> counts <strong>75%</strong>. The
+rank still applies on every hit; this just slows the climb.</li>
+<li><strong>Riding</strong> earns one tick every <strong>100
+squares</strong> ridden.</li>
+<li><strong>Spell schools</strong> earn <strong>N practice per
+successful cast of a level-N spell</strong>. Every school has a level-1
+option to grind. See the schools table below.</li>
+</ul>
+<p>Skills your role starts at Basic come <strong>pre-credited with 20
+practice uses</strong>, so you’re already a quarter of the way to
+Skilled before the first turn.</p>
+<p>When you’ve earned enough practice, the game says <strong>“You feel
+more confident in your skills.”</strong> That’s your cue to type
+<code>#enhance</code>. If more advancements remain after you pick one,
+you’ll see <strong>“You feel you could be more dangerous!”</strong> —
+keep going.</p>
+</section>
+<section id="what-a-rank-buys-you" class="level4">
+<h4>What a Rank Buys You</h4>
+<p>For weapons and fighting styles, each rank shifts your to-hit and
+damage bonuses by a flat amount (the values replace each other, not
+stack):</p>
+<table>
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 12%" />
+<col style="width: 17%" />
+<col style="width: 10%" />
+<col style="width: 17%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Weapon</th>
+<th>Two-weapon</th>
+<th>Riding</th>
+<th>Bare hands</th>
+<th>Martial arts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unskilled</td>
+<td>−4 / −2</td>
+<td>−9 / −3</td>
+<td>−2 / 0</td>
+<td>+1 / 0</td>
+<td>+2 / +1</td>
+</tr>
+<tr>
+<td>Basic</td>
+<td>0 / 0</td>
+<td>−7 / −1</td>
+<td>−1 / 0</td>
+<td>+1 / +1</td>
+<td>+3 / +3</td>
+</tr>
+<tr>
+<td>Skilled</td>
+<td>+2 / +1</td>
+<td>−5 / 0</td>
+<td>0 / +1</td>
+<td>+2 / +1</td>
+<td>+4 / +4</td>
+</tr>
+<tr>
+<td>Expert</td>
+<td>+3 / +2</td>
+<td>−3 / +1</td>
+<td>0 / +2</td>
+<td>+2 / +2</td>
+<td>+5 / +6</td>
+</tr>
+<tr>
+<td>Master</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>+3 / +2</td>
+<td>+6 / +7</td>
+</tr>
+<tr>
+<td>Grand Master</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>+3 / +3</td>
+<td>+7 / +9</td>
+</tr>
+</tbody>
+</table>
+<p>(Each cell is <strong>to-hit / damage</strong>.) Two-weapon penalties
+apply to <strong>each</strong> of the two strikes. A Basic two-weaponer
+hits twice but at −7 each, which is much worse than one solid swing.
+Bare hands and martial arts bonuses apply on every hit; only the
+practice counter is gated by the dmg&gt;1 roll. The Expert weapon line
+(+3 / +2) is why dedicating to a single weapon matters: that’s the
+difference between landing the killing blow and watching the monster
+shrug.</p>
+</section>
+<section id="the-seven-spell-schools" class="level4">
+<h4>The Seven Spell Schools</h4>
+<p>Every spellbook belongs to one of seven schools, and your rank in
+that school determines how reliably you can cast spells from it. Higher
+rank also unlocks some spell upgrades. Cone of cold becomes a cluster of
+3×3 explosions at Skilled, identify IDs the whole stack, haste self
+lasts longer, and so on.</p>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 59%" />
+<col style="width: 23%" />
+</colgroup>
+<thead>
+<tr>
+<th>School</th>
+<th>Focus</th>
+<th>L1 grind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attack</td>
+<td>Direct damage (force bolt, fireball)</td>
+<td>Force bolt</td>
+</tr>
+<tr>
+<td>Healing</td>
+<td>HP restore and cure status</td>
+<td>Healing</td>
+</tr>
+<tr>
+<td>Divination</td>
+<td>Sensing, identifying, mapping</td>
+<td>Light</td>
+</tr>
+<tr>
+<td>Enchantment</td>
+<td>Buffs, debuffs, charm</td>
+<td>Confuse monster</td>
+</tr>
+<tr>
+<td>Cleric</td>
+<td>Divine protection and summoning</td>
+<td>Protection</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>Mobility, evasion, levitation</td>
+<td>Jumping</td>
+</tr>
+<tr>
+<td>Matter</td>
+<td>Manipulation, transmutation, polymorph</td>
+<td>Knock</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="per-role-skill-caps" class="level4">
+<h4>Per-Role Skill Caps</h4>
+<!-- audit
+2026-05-19:
+- All 13 role skill tables sourced from u_init.c (Skill_A through Skill_W); skills not in def_skill are P_UNSKILLED-locked. (u_init.c:257-569 tables Skill_A/B/C/H/K/Mon/P/R/Ran/S/T/V/W; weapon.c:1738-1781 skill_init defaults all to P_ISRESTRICTED then walks the def_skill list)
+- All 494 cells (27 weapons + 4 fighting styles + 7 spell schools × 13 roles) exact-match against u_init.c:257-572.
+- Scimitar omitted: no role has it in 5.0 (merged into saber per skills.h header note).
+- P_MARTIAL_ARTS appears only in Skill_Mon (P_GRAND_MASTER) and Skill_S (P_MASTER); Monks have P_BARE_HANDED_COMBAT restricted (they get martial arts instead).
+- Wizard and Monk are the only roles with all 7 spell schools listed in their def_skill table (Skill_W u_init.c:562-568 has all 7 P_*_SPELL entries; Skill_Mon u_init.c:380-386 has all 7). Other roles list a subset (Priest at u_init.c:408-410 has only 3, Healer at u_init.c:342 has only 1, etc.).
+-->
+<p>Three tables of fixed maxima follow: weapons, fighting styles, and
+spell schools. Skills not listed for a role are
+<strong>restricted</strong>: the rank is locked at Unskilled, with one
+exception (a god-given artifact weapon unrestricts you to Basic in its
+skill). Key: <strong>B</strong>=Basic, <strong>S</strong>=Skilled,
+<strong>E</strong>=Expert, <strong>M</strong>=Master,
+<strong>GM</strong>=Grand Master, <strong>—</strong>=restricted.</p>
+<p>A “—” doesn’t mean the skill is unusable, just locked at Unskilled
+forever. A Healer can still read a spellbook of force bolt and try to
+cast it. A Wizard can still swing a long sword. They’ll just always pay
+the Unskilled penalty from the <a href="#the-skill-ladder">Skill
+Ladder</a> (−4/−2 for a weapon, −9/−3 per strike for two-weapon, the
+Unskilled cast-failure rate for a spell school), with no path to
+improvement. Role abbreviations: Arc=Archeologist, Bar=Barbarian,
+Cav=Caveman, Hea=Healer, Kni=Knight, Mon=Monk, Pri=Priest, Rog=Rogue,
+Ran=Ranger, Sam=Samurai, Tou=Tourist, Val=Valkyrie, Wiz=Wizard.</p>
+<section id="weapon-skill-caps" class="level5">
+<h5>Weapon Skill Caps</h5>
+<div class="dense-table">
+<table style="width:100%;">
+<colgroup>
+<col style="width: 21%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+</colgroup>
+<thead>
+<tr>
+<th>Weapon</th>
+<th>Arc</th>
+<th>Bar</th>
+<th>Cav</th>
+<th>Hea</th>
+<th>Kni</th>
+<th>Mon</th>
+<th>Pri</th>
+<th>Rog</th>
+<th>Ran</th>
+<th>Sam</th>
+<th>Tou</th>
+<th>Val</th>
+<th>Wiz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dagger</td>
+<td>B</td>
+<td>B</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>E</td>
+<td>B</td>
+<td>E</td>
+<td>E</td>
+<td>E</td>
+</tr>
+<tr>
+<td>knife</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>S</td>
+<td>S</td>
+<td>—</td>
+<td>S</td>
+</tr>
+<tr>
+<td>axe</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>S</td>
+</tr>
+<tr>
+<td>pick-axe</td>
+<td>E</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+</tr>
+<tr>
+<td>short sword</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+<td>S</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>E</td>
+<td>E</td>
+<td>S</td>
+<td>B</td>
+</tr>
+<tr>
+<td>broadsword</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+</tr>
+<tr>
+<td>long sword</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+</tr>
+<tr>
+<td>two-handed sword</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+</tr>
+<tr>
+<td>saber</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+</tr>
+<tr>
+<td>club</td>
+<td>S</td>
+<td>S</td>
+<td>E</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+</tr>
+<tr>
+<td>mace</td>
+<td>—</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+</tr>
+<tr>
+<td>morning star</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>flail</td>
+<td>—</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>S</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>hammer</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+</tr>
+<tr>
+<td>quarterstaff</td>
+<td>S</td>
+<td>B</td>
+<td>E</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>B</td>
+<td>B</td>
+<td>B</td>
+<td>E</td>
+</tr>
+<tr>
+<td>polearms</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>S</td>
+</tr>
+<tr>
+<td>spear</td>
+<td>—</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+<td>E</td>
+<td>S</td>
+<td>B</td>
+<td>E</td>
+<td>B</td>
+</tr>
+<tr>
+<td>trident</td>
+<td>—</td>
+<td>S</td>
+<td>S</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>B</td>
+<td>B</td>
+</tr>
+<tr>
+<td>lance</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+</tr>
+<tr>
+<td>bow</td>
+<td>—</td>
+<td>B</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>E</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>sling</td>
+<td>S</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>B</td>
+<td>S</td>
+</tr>
+<tr>
+<td>crossbow</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>B</td>
+<td>E</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>dart</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>E</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>E</td>
+</tr>
+<tr>
+<td>shuriken</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>B</td>
+<td>S</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+</tr>
+<tr>
+<td>boomerang</td>
+<td>E</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>whip</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>unicorn horn</td>
+<td>S</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Scimitar was merged into saber in 5.0; both refer to the same skill
+now.</p>
+</section>
+<section id="fighting-style-caps" class="level5">
+<h5>Fighting Style Caps</h5>
+<div class="dense-table">
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+</colgroup>
+<thead>
+<tr>
+<th>Style</th>
+<th>Arc</th>
+<th>Bar</th>
+<th>Cav</th>
+<th>Hea</th>
+<th>Kni</th>
+<th>Mon</th>
+<th>Pri</th>
+<th>Rog</th>
+<th>Ran</th>
+<th>Sam</th>
+<th>Tou</th>
+<th>Val</th>
+<th>Wiz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bare hands</td>
+<td>E</td>
+<td>M</td>
+<td>M</td>
+<td>B</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+</tr>
+<tr>
+<td>two-weapon</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>S</td>
+<td>—</td>
+</tr>
+<tr>
+<td>riding</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+<td>S</td>
+<td>B</td>
+</tr>
+<tr>
+<td>martial arts</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>GM</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>M</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Only Monks and Samurai have martial arts at all, and only Monks reach
+Grand Master.</p>
+</section>
+<section id="spell-school-caps" class="level5">
+<h5>Spell School Caps</h5>
+<div class="dense-table">
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+<col style="width: 6%" />
+</colgroup>
+<thead>
+<tr>
+<th>School</th>
+<th>Arc</th>
+<th>Bar</th>
+<th>Cav</th>
+<th>Hea</th>
+<th>Kni</th>
+<th>Mon</th>
+<th>Pri</th>
+<th>Rog</th>
+<th>Ran</th>
+<th>Sam</th>
+<th>Tou</th>
+<th>Val</th>
+<th>Wiz</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attack</td>
+<td>B</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+</tr>
+<tr>
+<td>Healing</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+<td>S</td>
+<td>E</td>
+<td>E</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Divination</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>E</td>
+<td>S</td>
+<td>E</td>
+<td>B</td>
+<td>B</td>
+<td>—</td>
+<td>E</td>
+</tr>
+<tr>
+<td>Enchantment</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Cleric</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>S</td>
+<td>E</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+</tr>
+<tr>
+<td>Escape</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>B</td>
+<td>E</td>
+</tr>
+<tr>
+<td>Matter</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>B</td>
+<td>—</td>
+<td>S</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>E</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Healers cap at Expert in healing but are restricted from every other
+school — the only role with this kind of single-school specialization.
+Wizards and Monks are the only roles with access to all seven schools,
+though only Wizards can push four of them to Expert; Monks reach Expert
+only in healing. Barbarians and Valkyries cap at Basic in their two
+available schools (attack and escape) and are restricted from the other
+five.</p>
+</section>
+</section>
+<section id="spending-slots-wisely" class="level4">
+<h4>Spending Slots Wisely</h4>
+<p>Thirty slots sounds like plenty until you start counting. Expert in a
+single weapon costs <strong>6 slots</strong> (1+2+3) by itself. A
+Valkyrie aiming for Expert long sword, Expert two-weapon, and Skilled
+riding is fourteen slots deep before any spell school.</p>
+<p>A few principles:</p>
+<ul>
+<li><strong>Don’t enhance reflexively.</strong> Slots are spent
+permanently (short of losing experience). If you’re not committed to a
+weapon, hold the slot until you are.</li>
+<li><strong>Cap-aware investment.</strong> Pushing a skill to its role
+cap is fine: the menu just stops offering further advances. You can’t
+waste enhancements past the cap because the option never appears.</li>
+<li><strong>Wizards get two benefits from spell schools.</strong> Each
+rank-up improves casting success <em>and</em> reveals more spellbook
+appearances in that school (the <a
+href="#wizards-identify-books">identification payoff</a> covered in the
+Spellcasting chapter). Schools containing your unidentified books
+deserve priority. This double benefit is Wizard-only; other roles only
+get the casting-success benefit.</li>
+<li><strong>Riding is a skill.</strong> Without <strong>Basic
+riding</strong> you can’t pick up items, loot, dip, set or disarm traps,
+or engrave on the floor while mounted. Knights start at Basic. Pushing
+to Skilled erases the −1 to-hit penalty in the saddle and adds +1
+damage.</li>
+<li><strong>Bare hands and martial arts are the domain of
+Monks.</strong> Grand Master needs <strong>9 cumulative non-weapon
+slots</strong>, which Monks reach naturally. Anyone else dabbling in
+unarmed combat should plan to stop at Basic.</li>
+</ul>
+<p>A few spells get sharper at Skilled. Cone of cold and fireball become
+a cluster of 3×3 <strong>explosions</strong> you can place at range.
+Identify, remove curse, haste self, detect monsters, and several others
+gain the blessed-scroll effect.</p>
+<hr />
+</section>
+</section>
+<section id="wishes-and-wishing" class="level3">
+<h3>Wishes and Wishing</h3>
+<p>There is a moment in every successful game where you’re asked, “For
+what do you wish?” It’s the best question in all of gaming. Don’t panic.
+Don’t mistype. And for the love of all that is holy, don’t wish for a +3
+blessed cockatrice. (Actually, that <em>would</em> be something. But
+no.)</p>
+<p>Wishes are rare, powerful, and the difference between a character who
+ascends and one who dies memorably on the Plane of Fire.</p>
+<section id="sources-of-wishes" class="level4">
+<h4>Sources of Wishes</h4>
+<p>The Mazes are stingy, but there are more wish sources than most
+travelers realize:</p>
+<ul>
+<li><strong>Wand of wishing:</strong> found in the Castle treasure room
+(see <a href="#key-wands">Key Wands</a> for the 5.0 charge mechanics).
+The Castle chest also contains a potion of gain level, because the Mazes
+occasionally feel generous.
+<!-- src/sit.c special_throne_effect(): cases 1-4 (of 13) = wish,
+   throne only vanishes on wish, so guaranteed eventual wish. --></li>
+<li><strong>Vlad’s throne:</strong> A special throne that grants a
+guaranteed wish if you keep sitting. Four of thirteen outcomes are a
+wish (which destroys the throne); the other nine are painful but the
+throne survives, so persistence pays off.
+<!-- src/allmain.c: u.uhave.amulet && !u.uevent.amulet_wish --></li>
+<li><strong>The Amulet of Yendor:</strong> Grants a wish when you first
+pick it up. A reward for reaching the bottom of the dungeon. You can
+decline this wish if your kit is already complete; some minimalist
+ascenders skip it entirely on principle.</li>
+<li><strong>Magic lamp:</strong> Rubbing a blessed lamp summons the
+djinni 1-in-3 times; <em>if</em> it appears, it grants a wish 80% of the
+time, so roughly 27% wish per rub. Keep rubbing. Either a magic lamp or
+a magic marker is guaranteed in Orcus Town.</li>
+<li><strong>Fountain:</strong> roughly 1 in 30 quaffs summons a water
+demon, and <em>that</em> demon grants a wish only about 1-in-5 times on
+shallow floors (less on deeper ones), so a true wish chance closer to 1
+in 150 per quaff. Far more likely to produce snakes, nymphs, curses, or
+vomiting.</li>
+<li><strong>Throne:</strong> Very rare chance of a wish when sitting.
+Also a very real chance of everything going wrong.</li>
+<li><strong>Djinni from smoky potion:</strong> Rare (1 in 13 base
+probability), and even then only 20% wish chance (80% if blessed). But
+when it works, you feel like a genius.</li>
+</ul>
+<p>In practice, the number of wishes a run produces varies widely. A
+sensible budget if you take each guaranteed source once is about four
+(Castle wand, Vlad’s throne, Amulet pickup, one magic lamp). Anything
+beyond that is luck (extra lamps, fountain demons, recharge chains) or
+commitment. Don’t waste any of them on food.</p>
+</section>
+<section id="what-to-wish-for" class="level4">
+<h4>What to Wish For</h4>
+<p>Generations of adventurers have argued about optimal wish order.
+Here’s the conventional wisdom, battle-tested by thousands of
+ascensions:</p>
+<ol type="1">
+<li><strong>Gray dragon scale mail</strong> (magic resistance + AC;
+magic resistance is the most important protection in the game, so this
+is highly recommended).</li>
+<li><strong>Silver dragon scale mail</strong> (reflection + AC, the
+second pillar of not dying to wands).</li>
+<li><strong>Speed boots</strong> (being fast gives you more actions per
+turn, excellent for both offense and escape).</li>
+<li><strong>Gauntlets of power</strong> (STR 25 if your role benefits;
+most roles benefit from punching harder).</li>
+<li><strong>Amulet of life saving</strong> (insurance for the endgame,
+when overconfidence kills more adventurers than monsters do).</li>
+<li><strong>A specific artifact</strong> (Grayswandir is a common target
+for the silver damage against everything in Gehennom).</li>
+</ol>
+<p>Don’t wish for consumables (scrolls, potions) unless you’re in dire
+straits. Items you can find through normal play aren’t worth a wish. A
+wish is for things that change the fundamental equation of your
+survival.</p>
+</section>
+<section id="wish-syntax" class="level4">
+<h4>Wish Syntax</h4>
+<!-- audit
+2026-05-18:
+- bare "gray dragon scale mail" keeps random spe and rolls BUC via blessorcurse(otmp,10): ~5% blessed / ~5% cursed / ~90% uncursed (objnam.c:5094-5096, 5258-5268)
+- artifact wishes are probabilistic: oartifact && rn2(nartifact_exist())>1 (objnam.c:5374), scaled by TOTAL existing artifacts including bones
+- u.uconduct.wisharti increments whether the wish is granted or denied (objnam.c:5364)
+- only quest artifacts are absolutely blocked: restrict_name SPFX_NOGEN|SPFX_RESTR check (artifact.c:618)
+- silent substitutes: Amulet of Yendor, Bell of Opening, Book of the Dead, Candelabrum, magic lamp → oil lamp (objnam.c:5003-5006)
+- all gloves give +1 AC (objects.h:686-697); gauntlets of power give STR 25, not bonus AC (attrib.c:1214)
+- Vlad's throne wish rate is 4/13 per effective sit (sit.c:241-256)
+- magic lamp ≈27% wish-blessed: 1/3 djinni × 4/5 wish (apply.c:1817, potion.c:2833-2845)
+- fountain water-demon wish (fountain.c:78, 314); Amulet-of-Yendor pickup wish (allmain.c:446-451)
+- strategy aligned with NetHackWiki Wish, Gray dragon scale mail, Speed boots, Magic lamp: GDSM/SDSM as top wishes, speed boots and gauntlets of power as standard follow-ups, bare wishes risk cursed/random spe (https://nethackwiki.com/wiki/Wish, https://nethackwiki.com/wiki/Gray_dragon_scale_mail, https://nethackwiki.com/wiki/Speed_boots, https://nethackwiki.com/wiki/Magic_lamp)
+-->
+<p>When the game asks “For what do you wish?”, be specific. This is not
+the time for ambiguity:</p>
+<ul>
+<li>“blessed +3 gray dragon scale mail” gets you exactly that.</li>
+<li>“gray dragon scale mail” alone lets the dice pick blessed/ cursed
+and enchantment — a bare wish can roll cursed. You had <em>one</em>
+wish; spell out the BUC and the plus.</li>
+<li>Artifact wishes get <em>harder</em> as artifacts accumulate. The
+denial roll scales with the total artifacts in the world (yours,
+generated, even bones-file ones), and your artifact-wish counter ticks
+whether or not the artifact actually appears. Quest artifacts are
+absolutely blocked.</li>
+<li>A few targets are silently nerfed into mundane substitutes: the
+<strong>Amulet of Yendor</strong> becomes a fake amulet, the
+<strong>Bell of Opening</strong> a plain bell, the <strong>Book of the
+Dead</strong> blank paper, the <strong>Candelabrum</strong> a tallow
+candle, and — relevant after all that lamp-rubbing — a wish for a
+<strong>magic lamp</strong> hands you an ordinary oil lamp.</li>
+</ul>
 <hr />
 </section>
 </section>
@@ -8260,887 +10074,6 @@ damage taken and <em>extra energy regeneration</em>, a Wizard’s most
 precious resource. <code>#invoke</code> opens a portal that drops you in
 Vlad’s Tower (one-way; useful for shortcutting the Castle → Vlad’s
 traversal). For a spell-caster this is irreplaceable.</p>
-<hr />
-</section>
-</section>
-</section>
-<section id="part-five-mastery" class="level2">
-<h2>Part Five: Mastery</h2>
-<section id="spellcasting" class="level3">
-<h3>Spellcasting</h3>
-<!-- audit
-2026-05-18:
-- force bolt damage is 2d12; school skill does NOT scale damage (zap.c:2720-2724)
-- chain lightning is level 4 NODIR, not level 7, not a bouncing ray (objects.h:1409-1411)
-- failed spellbook read effects: teleport (lvl 1+), aggravate (lvl 2+), blindness (lvl 3+), take-gold (lvl 4+), confusion (lvl 5+), contact poison (lvl 6+), exploding rune (lvl 7+, 2d10+5 dmg, antimagic resists). Default rndcurse branch never fires: max spell level is 7 so rn2(lev) maxes at 6 (spell.c:130-185)
-- failed read has a single 1/3 destruction chance (spell.c:612)
-- spellbook fade ceiling is 4 successful reads: MAX_SPELL_STUDY=3 with `> MAX_SPELL_STUDY` (spell.c:400-418)
-- no Pw drain from memorized spells exists; "spell maintenance" is fabricated (allmain.c moveloop has no per-spell Pw decrement; only cast_spell at spell.c:1245 decrements via SPELL_LEV_PW)
-- drain_en only ever DECREASES Pw — no reflection+vortex max-Pw trick (trap.c:5202-5240 drain_en only subtracts from u.uen and decreases u.uenmax)
-- blessed book bypasses the read-ability check entirely (auto-success)
-- Pw cost per spell = 5 × level: SPELL_LEV_PW(spellev) (spell.c:1245)
-- confused casts fail outright (spell.c:1372); charm monster has no confused-area mode
-- Skilled+ casting acts like a blessed scroll (spell.c:1524-1525) or blessed potion (spell.c:1540-1541)
-- Pw regen: (Wis + Int)/15 + 1; Wizards tick on factor 3 vs 4 (allmain.c:605-607)
-- Valkyries restricted in divination, so reading scroll of identify is occasional at best (u_init.c:525-546)
-- strategy aligned with NetHackWiki Spellbook, Spellcasting: Int + 4 + XL/2 − 2·level success formula, blessed book auto-success, Pw = 5 × level (https://nethackwiki.com/wiki/Spellbook, https://nethackwiki.com/wiki/Spellcasting)
--->
-<p>Magic in the Mazes is less “wave a wand and sparkles happen” and more
-“laboriously study a crumbling book, hope it doesn’t go off in your
-face, and then set things on fire with your mind.” Spells are reusable
-abilities learned from spellbooks. Unlike scrolls (consumed on use) or
-wands (limited charges), spells can be cast repeatedly as long as you
-have mana (Pw, power) and the spell hasn’t expired from your
-increasingly overtaxed brain.</p>
-<section id="learning-spells" class="level4">
-<h4>Learning Spells</h4>
-<p>Read a spellbook to learn the spell it contains. Reading takes
-several turns and can fail. A failed reading can teleport you, take your
-gold, blind, confuse, or poison you, blow up in your face for HP damage,
-or randomly curse one of your items. A book that survives failures can
-be retried.</p>
-<p>The book’s level decides which effects are on the table. A level-1
-book can teleport you somewhere random when you fail to read it. A
-level-2 book might aggravate nearby monsters instead. Misread a level-3
-book and it can blind you for 250 to 350 turns. A level-4 book can take
-all your gold, and level 5 can leave you confused for 16 to 22 turns.
-Misread a level-6 book and you may be contact-poisoned: gloves take
-corrosion damage, bare hands take 1 or 2 points of Strength plus 1d10 HP
-(1d6 with poison resistance). And a level-7 book can have an exploding
-rune. Magic resistance blocks the explosion; without it, you take 2d10+5
-damage. Practical rule: don’t read books you can’t afford to fail.</p>
-<p>The chance of successfully reading a spellbook depends on the
-<strong>spell level</strong>, your <strong>Intelligence</strong>, and
-your <strong>experience level</strong>. The exact formula is
-<code>Int + 4 + XL/2 − 2·level</code> versus a roll of 1d20, so read 20
-or more always succeeds, 10 is a coin flip, and anything below that is
-dicey. Reading a level-7 spell at Int 15, XL 2 gives a read score of 6:
-only a 30% chance of success. Lenses add +2. A <strong>blessed</strong>
-spellbook bypasses the check entirely and always succeeds. A
-<strong>cursed</strong> spellbook fails automatically and applies one of
-the failure effects above.</p>
-<p>Here’s a rough guide to what you can safely read:</p>
-<table>
-<colgroup>
-<col style="width: 17%" />
-<col style="width: 37%" />
-<col style="width: 45%" />
-</colgroup>
-<thead>
-<tr>
-<th>Spell Level</th>
-<th>Minimum Int + XL needed</th>
-<th>Who can read it reliably</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>~10</td>
-<td>Almost anyone, early game</td>
-</tr>
-<tr>
-<td>2</td>
-<td>~14</td>
-<td>Most characters by mid-game</td>
-</tr>
-<tr>
-<td>3</td>
-<td>~18</td>
-<td>Wizards easily, others with effort</td>
-</tr>
-<tr>
-<td>4</td>
-<td>~22</td>
-<td>Wizards with decent stats</td>
-</tr>
-<tr>
-<td>5</td>
-<td>~26</td>
-<td>Wizards with boosted Int</td>
-</tr>
-<tr>
-<td>6</td>
-<td>~30</td>
-<td>Wizards with serious investment</td>
-</tr>
-<tr>
-<td>7</td>
-<td>~34</td>
-<td>Only well-built Wizards</td>
-</tr>
-</tbody>
-</table>
-<p>The “Minimum Int + XL” column means the sum of your Intelligence and
-experience level. With 18 Intelligence at level 14, your sum is 32, so
-you can reliably read up to level 6 spells. <strong>A blessed book skips
-the difficulty check entirely and always succeeds</strong>, no matter
-what your Int and level are — which is one reason to save holy water for
-your hardest unread spellbooks.</p>
-<p><strong>Wizards identify books by training.</strong> In 5.0,
-advancing a spell school skill to each rank automatically reveals the
-appearances of spellbooks in that school: unskilled unlocks level-1
-appearances, basic level-3, skilled level-5, expert level-7. A Wizard
-starts knowing all level-1 appearances and level-3 in attack and
-enchantment, which means they begin the game with a meaningful
-identification advantage in their core schools.</p>
-<p>So training your spell schools pays off twice: better casting
-<em>and</em> free book-ID. The unknown book you’ve been carrying since
-level 5? Train up the right school and suddenly you know what it is.
-Prioritize the schools containing your most-wanted unidentified books,
-not just the ones that improve your current casting.</p>
-<p>Wizards are the undisputed masters of magic: they learn faster, fail
-less, and have the widest range of useful spells. A well-built Wizard
-can eventually learn <em>every</em> spell in the game, which is the
-closest the Mazes come to letting you cheat. Other roles can cast some
-spells but with less panache. A Valkyrie can occasionally read identify
-(level 3) if her Intelligence is boosted by gain-ability potions, but
-non-spellcasters are usually better off with scrolls. Tourists,
-Barbarians, and Cavemen should probably stick to hitting things.</p>
-<p>Each spell stays in memory for about 20,000 turns, then fades and
-must be relearned. The spell list (<code>+</code>) shows time-remaining.
-You can also <code>a</code>pply a spellbook to check how worn it is:
-each <strong>successful</strong> read counts toward a fixed total of
-four before the book fades to blank paper. Failed reads don’t add to
-that counter, but each failure has its own 1-in-3 chance to destroy the
-book outright. Carry important spellbooks with you if you plan to rely
-on their spells in the late game.</p>
-</section>
-<section id="key-spells" class="level4">
-<h4>Key Spells</h4>
-<table>
-<colgroup>
-<col style="width: 25%" />
-<col style="width: 8%" />
-<col style="width: 66%" />
-</colgroup>
-<thead>
-<tr>
-<th>Spell</th>
-<th>Level</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Force bolt</td>
-<td>1</td>
-<td>2d12 ranged hit; an Int/XL bonus adjusts by −3 to +3</td>
-</tr>
-<tr>
-<td>Healing</td>
-<td>1</td>
-<td>Restore hit points</td>
-</tr>
-<tr>
-<td>Detect monsters</td>
-<td>1</td>
-<td>Sense nearby monsters</td>
-</tr>
-<tr>
-<td>Identify</td>
-<td>3</td>
-<td>Identify items (saves scrolls)</td>
-</tr>
-<tr>
-<td>Remove curse</td>
-<td>3</td>
-<td>Uncurse worn/wielded items</td>
-</tr>
-<tr>
-<td>Chain lightning</td>
-<td>2</td>
-<td>Shock that spreads from the caster in all directions, chaining to
-nearby monsters</td>
-</tr>
-<tr>
-<td>Magic mapping</td>
-<td>5</td>
-<td>Reveal the level (saves scrolls)</td>
-</tr>
-<tr>
-<td>Charm monster</td>
-<td>5</td>
-<td>Tame nearby creatures in a 3×3 area; Skilled+ acts like a blessed
-scroll</td>
-</tr>
-<tr>
-<td>Finger of death</td>
-<td>7</td>
-<td>Kill in a beam; MR resists</td>
-</tr>
-</tbody>
-</table>
-<p>The other 34 spells, along with their schools, types, and rank-gated
-upgrades, are in the <a href="#spell-tables">Spell Tables</a>
-appendix.</p>
-<p>For Wizards, learning <strong>identify</strong> and <strong>magic
-mapping</strong> as spells dramatically reduces your need for scrolls:
-it’s like having infinite scrolls, except they cost mana instead of
-inventory space. <strong>Finger of death</strong> is the ultimate
-argument-ender. <strong>Charm monster</strong> turns your enemies into
-your friends, which is even better than killing them because friends
-carry things and absorb hits.</p>
-</section>
-<section id="mana-management" class="level4">
-<h4>Mana Management</h4>
-<p>Your power (Pw) pool determines how many spells you can cast before
-you need to sit in a corner and regenerate like a phone battery. Casting
-a spell costs <strong>5 Pw per spell level</strong> (so finger of death
-is 35 Pw). A failed cast still spends half. Power regenerates over time,
-faster with higher Wisdom and Intelligence, faster still for Wizards or
-with a regeneration source.</p>
-<p>High-level spells cost serious power. Plan your casting and carry
-backup wands and scrolls: a Wizard out of Pw is just a person in a
-bathrobe holding a stick.</p>
-<hr />
-</section>
-</section>
-<section id="luck-and-fortune" class="level3">
-<h3>Luck and Fortune</h3>
-<!-- audit
-2026-05-19:
-- cursed luckstone holds NEGATIVE Luck in place, but positive Luck still decays toward baseline (timeout.c:616-619)
-- any non-cursed luckstone (blessed or uncursed) gives +3 max-Luck cap (attrib.c:441-450)
-- killing peaceful: -1 with 50% probability (mon.c:3665); -5 reserved for co-aligned unicorns (mon.c:3667)
-- prayer is rejected on ANY negative Luck (pray.c:2155), not just <= -10
-- no Sokoban-down-stairs Luck penalty exists
-- thrown gem to cross-aligned unicorn: identified -3..+3 (dothrow.c:2334 rn2(7)-3); unidentified -1..+1 (dothrow.c:2349 rn2(3)-1)
-- "ID gems for shopkeeper +1" is fabricated; shk.c has no such hook (shk.c contains no change_luck or adjalign call on GEM_CLASS sale)
-- killing quest leader: -4 baseline, immediate change_luck(-20), u.ugangr += 7 (mon.c:3680, timeout.c:600)
-- killing pet: -1 plus alignment -15 via adjalign (mon.c:3664, 3704)
-- only mirror breaks for Luck -2 (uhitm.c:1133, dothrow.c:2496, dokick.c:445/1724); crystal balls/armor don't
-- full-moon/Friday-the-13th baseline shift (timeout.c:595-598)
-- carrying the Amulet or u.ugangr > 0 doubles drift rate (300 turns, timeout.c:607)
-- Archeologists start with TOUCHSTONE knowledge only (u_init.c:50, 903); gems are NOT pre-identified
-- strategy aligned with NetHackWiki Luck, Luckstone, Luck item: ±13 cap with non-cursed luckstone, drift toward 0 every 600 turns, cursed luckstone locks negative Luck (https://nethackwiki.com/wiki/Luck, https://nethackwiki.com/wiki/Luckstone, https://nethackwiki.com/wiki/Luck_item)
--->
-<p>The Mazes are rigged. Not unfairly (the dungeon doesn’t <em>hate</em>
-you), but there is a hidden number attached to your character that
-quietly tilts every die roll, every prayer, every scroll, every combat
-swing. It’s called Luck, and it’s one of the most important stats you
-can’t see.</p>
-<p>Players who ignore Luck die to things that “shouldn’t have happened.”
-Players who cultivate it find that the dungeon is mysteriously generous.
-This is not a coincidence.</p>
-<section id="how-luck-works" class="level4">
-<h4>How Luck Works</h4>
-<p>Luck ranges from -13 to +13. It starts at 0, the universe’s way of
-saying “prove yourself.” Left alone, luck drifts back toward zero over
-time; the Mazes don’t give anything for free.</p>
-<p><strong>Luck timeout.</strong> Every 600 turns, your luck moves one
-point toward 0. If you have +5 luck, it will drop to +4 after 600 turns,
-then +3 after 1200, eventually reaching 0. Your good deeds are
-forgotten. Your sins, alas, are also forgiven.</p>
-<p><strong>Luckstone.</strong> Carrying a luckstone in your open
-inventory (not inside a container) freezes the timer. Your luck stays
-wherever it is until something changes it. This is why getting the
-luckstone from Mine’s End is one of the first things every experienced
-player does. It’s a small gray stone that makes the universe remember
-you fondly.</p>
-<p><strong>Bless state matters.</strong> Any <strong>non-cursed</strong>
-luckstone (blessed <em>or</em> uncursed) freezes drift toward your
-baseline and adds <strong>+3 to your effective Luck on most
-rolls</strong>. A <strong>cursed</strong> luckstone is dangerous: it
-subtracts 3 from your effective Luck and holds <em>negative</em> Luck in
-place (preventing the usual drift back toward zero from below). Always
-BUC-check a luckstone before carrying it, and bless it on an altar if
-you can. (The +3 bonus comes from <code>set_moreluck</code>; the curse
-doesn’t speed positive Luck’s decay, but it locks bad Luck in.)</p>
-<p><strong>The Heart of Ahriman, Tsurugi of Muramasa, and Orb of Fate
-all count as luckstones.</strong> Barbarian, Samurai, and Valkyrie quest
-artifacts confer the same drift-freeze and bless-state bonus, so those
-three roles get a “free luckstone” from their quest reward. Carrying
-both a blessed luckstone <em>and</em> one of these artifacts doesn’t
-stack the +3 bonus (the bonus is binary, not additive), but it does add
-an extra unit of “blessed” to the count if you somehow end up with a
-cursed luckstone, partially offsetting it.</p>
-<p><strong>Calendar Luck.</strong> The drift target isn’t always 0:</p>
-<ul>
-<li>On a <strong>full moon</strong> night, baseline Luck is +1: Luck
-drifts toward +1 instead of 0. If you started the session on a full
-moon, you have +1 Luck for free.</li>
-<li>On <strong>Friday the 13th</strong>, baseline Luck is −1. Avoid
-stair-up runs on this day if you can; your accumulated good Luck will
-sap toward −1 even if you’ve been virtuous.</li>
-</ul>
-<p>(NetHack uses your computer’s real date for this; set your clock back
-if you’ve planned an ascension on the 13th and don’t want the penalty,
-though most players just embrace the theme.)</p>
-</section>
-<section id="gaining-and-losing-luck" class="level4">
-<h4>Gaining and Losing Luck</h4>
-<table>
-<colgroup>
-<col style="width: 71%" />
-<col style="width: 28%" />
-</colgroup>
-<thead>
-<tr>
-<th>Action</th>
-<th>Luck change</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Throw identified real gem to co-aligned unicorn</td>
-<td><strong>+5</strong></td>
-</tr>
-<tr>
-<td>Throw named-but-unidentified real gem to co-aligned</td>
-<td>+2</td>
-</tr>
-<tr>
-<td>Throw unknown real gem to co-aligned unicorn</td>
-<td>+1</td>
-</tr>
-<tr>
-<td>Throw fully-identified real gem to cross-aligned unicorn</td>
-<td>−3 to +3 (random)</td>
-</tr>
-<tr>
-<td>Throw unidentified real gem to cross-aligned unicorn</td>
-<td>−1 to +1 (random)</td>
-</tr>
-<tr>
-<td>Sacrificing on your own altar (varies by corpse value)</td>
-<td>typically +1</td>
-</tr>
-<tr>
-<td>Sitting on a throne (lucky outcome)</td>
-<td>+1</td>
-</tr>
-<tr>
-<td>Breaking a Sokoban rule (squeeze, fracture, polymorph boulder,
-scroll of earth)</td>
-<td>−1 each</td>
-</tr>
-<tr>
-<td>Killing a peaceful creature</td>
-<td>−1 (50% chance per kill)</td>
-</tr>
-<tr>
-<td>Killing a same-alignment unicorn</td>
-<td>−5</td>
-</tr>
-<tr>
-<td>Killing your quest leader</td>
-<td>−20 immediate (floor at −10), +7 god-anger, plus permanent −4 to
-baseline luck</td>
-</tr>
-<tr>
-<td>Killing your pet</td>
-<td>−1 plus −15 alignment</td>
-</tr>
-<tr>
-<td>Cannibalism</td>
-<td>−2 to −5</td>
-</tr>
-<tr>
-<td>Breaking a mirror</td>
-<td>−2</td>
-</tr>
-</tbody>
-</table>
-<p>The pattern is consistent: be virtuous and the numbers smile on you.
-Be a monster and they frown. The Mazes have a moral compass, and it’s
-embedded in the math.</p>
-<p><strong>Unicorn gem-throwing is the strongest active Luck source in
-the game.</strong> Throw a properly-identified real gem (not glass) at a
-unicorn whose alignment matches yours and you gain +5 Luck immediately.
-The unicorn turns peaceful, accepts the gift, and teleports away, and
-will accept another later if you find it again. Identify your gems
-<em>first</em> (touchstone or scroll of identify); the bonus drops from
-+5 to +1 if you don’t actually know what you’re throwing. Glass gems are
-harmless but yield nothing; throwing them is a safe way to pacify an
-unwanted unicorn without spending real gems. Avoid throwing real gems at
-cross-aligned unicorns: the result is a random Luck change between -3
-and +3 and is rarely worth the gamble. Archeologists start with a
-<strong>touchstone</strong>, which lets them verify whether a gem is
-real before throwing it at a unicorn.</p>
-<p>There is a ceiling on the luck you can harvest from any given corpse.
-If your current luck score already exceeds the difficulty rating of the
-monster you just sacrificed, you gain nothing. The altar accepts your
-offering politely and gives you nothing in return, because the gods have
-standards.</p>
-<p>This closes a beloved old strategy: sitting at a co-aligned altar
-with a pile of kobold corpses and grinding luck to maximum. It no longer
-works once your luck is already above modest levels. To raise luck via
-sacrifice in the mid-to-late game, you need fresh corpses of monsters
-whose difficulty exceeds your current luck value. In practice: a
-luckstone, occasional mid-tier sacrifices, and not killing peacefuls is
-now the standard path to high luck. The dungeon made luck feel like luck
-again.</p>
-</section>
-<section id="why-luck-matters" class="level4">
-<h4>Why Luck Matters</h4>
-<p>At Luck +5 (or higher, with a luckstone), life is <em>noticeably</em>
-better:</p>
-<ul>
-<li>You hit more often in combat. Swings that would have missed connect
-instead.</li>
-<li>Your prayers are more likely to be answered. Your god likes lucky
-people. (Gods are fickle that way.)</li>
-<li>Scrolls of enchant weapon/armor succeed more often at high
-enchantment levels.</li>
-<li>Wands of wishing are more likely to work perfectly on wresting.</li>
-<li>Fountain wishes become slightly more likely.</li>
-</ul>
-<p>At negative luck, all of these go wrong. <strong>Any</strong>
-negative Luck causes prayer to fail with the “too naughty” rejection
-(<code>pray.c:2155</code>) — not just at the floor of −10. You’ll miss
-attacks you should have hit. Scrolls will backfire. The dungeon becomes
-a place that is trying to kill you even harder than usual, which is
-saying something.</p>
-<p>The practical advice: get a luckstone early, sacrifice occasionally
-to keep luck positive, and don’t kill peacefuls. Treat the universe well
-and it will return the favor, in the form of slightly better random
-numbers, which in the Mazes is the closest thing to love.</p>
-<hr />
-</section>
-</section>
-<section id="enhancing-skills" class="level3">
-<h3>Enhancing Skills</h3>
-<!-- audit
-2026-05-18:
-- skill ranks P_UNSKILLED through P_GRAND_MASTER; practice formula level²×20 (skills.h:92-106)
-- cumulative practice thresholds: 20/80/180/320/500
-- weapon slot costs 1/2/3 per rank; non-weapon costs 1/1/2/2/3
-- two-weapon uses the WEAPON slot column (weapon.c:1141)
-- bare-hand and martial-arts bonuses apply every hit (weapon.c:1611-1613)
-- bare-hand 50% / martial-arts 75% rate is the practice-training check, not bonus gating (uhitm.c:847 `dmg = rnd(!martial_bonus() ? 2 : 4)`; uhitm.c:849 `train_weapon_skill = (dmg > 1)` — rnd(2)>1 is 1/2, rnd(4)>1 is 3/4)
-- riding trains after 100 mounted squares (steed.c:393-396, u.urideturns >= 100)
-- Knights start at Basic riding; target is Skilled (weapon.c:1787-1789)
-- pickup/loot/dip/trap/engrave actions gated at Basic riding
-- slot ceiling 32 for an XL-30 crowned hero: 2 starting + 29 level-ups + 1 crowning (u_init.c:884, pray.c:992-993)
-- Ranger divination caps at Expert (u_init.c:461)
-- Wizard restricted from long sword: no P_LONG_SWORD entry in Skill_W (u_init.c:548-569)
-- spell schools start with a 20-use precredit at Basic
-- Skilled cone-of-cold and fireball: cluster of 3×3 explosions (spell.c:1419-1452), not room-clearing
-- Valkyrie 6+6+2 = 14 slot example math
-- crown gives +1 slot
-- strategy aligned with NetHackWiki Skill, Twoweapon: slot budget tied to XL + crowning, non-weapon skills cost half, restricted skills only unrestrict to Basic via artifact gift (https://nethackwiki.com/wiki/Skill, https://nethackwiki.com/wiki/Twoweapon)
--->
-<p>Most adventurers discover the skill system the first time they press
-<code>#enhance</code> and realize the broadsword they’ve been swinging
-for several levels is finally ready to graduate from Basic to Skilled.
-Weapons, fighting styles, and spell schools each track their own
-proficiency, and you train them one slot at a time.</p>
-<section id="the-skill-ladder" class="level4">
-<h4>The Skill Ladder</h4>
-<p>Most skills run <strong>Unskilled → Basic → Skilled →
-Expert</strong>. <strong>Bare hands</strong> and <strong>martial
-arts</strong> alone reach <strong>Master</strong> and <strong>Grand
-Master</strong>. Each rank-up costs both <strong>practice</strong> (uses
-of the skill) and <strong>skill slots</strong> (a finite budget tied to
-your experience level).</p>
-<table>
-<colgroup>
-<col style="width: 19%" />
-<col style="width: 34%" />
-<col style="width: 19%" />
-<col style="width: 26%" />
-</colgroup>
-<thead>
-<tr>
-<th>To reach</th>
-<th>Practice (cumulative)</th>
-<th>Weapon slots</th>
-<th>Non-weapon slots</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Basic</td>
-<td>20</td>
-<td>1</td>
-<td>1</td>
-</tr>
-<tr>
-<td>Skilled</td>
-<td>80</td>
-<td>2</td>
-<td>1</td>
-</tr>
-<tr>
-<td>Expert</td>
-<td>180</td>
-<td>3</td>
-<td>2</td>
-</tr>
-<tr>
-<td>Master</td>
-<td>320</td>
-<td>—</td>
-<td>2</td>
-</tr>
-<tr>
-<td>Grand Master</td>
-<td>500</td>
-<td>—</td>
-<td>3</td>
-</tr>
-</tbody>
-</table>
-<p>Non-weapon skills — spell schools, riding, bare hands, martial arts —
-cost roughly half as many slots as melee weapons, the dungeon’s quiet
-subsidy for magic. (Two-weapon uses the weapon column despite the name.)
-You start with 2 slots, gain one per experience level (29 more by XL
-30), and one more if you are crowned, so the absolute ceiling is
-<strong>32 slots</strong> for an XL-30 crowned hero. Lose an experience
-level and you lose a slot, which can demote your most recent
-advancement.</p>
-<p>Each role has a per-skill <strong>cap</strong> beyond which no amount
-of training will help. A Wizard caps at Basic with a mace and is
-restricted from long swords. Restricted skills don’t appear on
-<code>#enhance</code> and stay Unskilled, with one exception: if your
-god grants you an artifact weapon, you’re auto-unrestricted in its skill
-up to Basic. The full role caps live in the <a href="#skill-caps">Skill
-Caps</a> appendix.</p>
-</section>
-<section id="training-a-skill" class="level4">
-<h4>Training a Skill</h4>
-<p>Practice accumulates through use:</p>
-<ul>
-<li><strong>Weapon skills</strong> tick on every melee or thrown hit
-that does <strong>more than 1 damage</strong>. A pillow-soft punch for 1
-point doesn’t count. Spears, javelins, knives, daggers, and aklys train
-the same skill whether you stab with them or throw them.</li>
-<li><strong>Bare hands</strong> counts <strong>50%</strong> of your
-hits; <strong>martial arts</strong> counts <strong>75%</strong>. The
-rank still applies on every hit — this just slows the climb.</li>
-<li><strong>Riding</strong> earns one tick every <strong>100
-squares</strong> ridden.</li>
-<li><strong>Spell schools</strong> earn <strong>N practice per
-successful cast of a level-N spell</strong>. Every school has a level-1
-option to grind — see the schools table below.</li>
-</ul>
-<p>Skills your role starts at Basic come <strong>pre-credited with 20
-practice uses</strong>, so you’re already a quarter of the way to
-Skilled before the first turn.</p>
-<p>When you’ve earned enough practice, the game says <strong>“You feel
-more confident in your skills.”</strong> That’s your cue to type
-<code>#enhance</code>. If more advancements remain after you pick one,
-you’ll see <strong>“You feel you could be more dangerous!”</strong> —
-keep going.</p>
-</section>
-<section id="what-a-rank-buys-you" class="level4">
-<h4>What a Rank Buys You</h4>
-<p>For weapons and fighting styles, each rank shifts your to-hit and
-damage bonuses by a flat amount (the values replace each other, not
-stack):</p>
-<table>
-<colgroup>
-<col style="width: 21%" />
-<col style="width: 12%" />
-<col style="width: 17%" />
-<col style="width: 10%" />
-<col style="width: 17%" />
-<col style="width: 21%" />
-</colgroup>
-<thead>
-<tr>
-<th>Rank</th>
-<th>Weapon</th>
-<th>Two-weapon</th>
-<th>Riding</th>
-<th>Bare hands</th>
-<th>Martial arts</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Unskilled</td>
-<td>−4 / −2</td>
-<td>−9 / −3</td>
-<td>−2 / 0</td>
-<td>+1 / 0</td>
-<td>+2 / +1</td>
-</tr>
-<tr>
-<td>Basic</td>
-<td>0 / 0</td>
-<td>−7 / −1</td>
-<td>−1 / 0</td>
-<td>+1 / +1</td>
-<td>+3 / +3</td>
-</tr>
-<tr>
-<td>Skilled</td>
-<td>+2 / +1</td>
-<td>−5 / 0</td>
-<td>0 / +1</td>
-<td>+2 / +1</td>
-<td>+4 / +4</td>
-</tr>
-<tr>
-<td>Expert</td>
-<td>+3 / +2</td>
-<td>−3 / +1</td>
-<td>0 / +2</td>
-<td>+2 / +2</td>
-<td>+5 / +6</td>
-</tr>
-<tr>
-<td>Master</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>+3 / +2</td>
-<td>+6 / +7</td>
-</tr>
-<tr>
-<td>Grand Master</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>+3 / +3</td>
-<td>+7 / +9</td>
-</tr>
-</tbody>
-</table>
-<p>(Each cell is <strong>to-hit / damage</strong>.) Two-weapon penalties
-apply to <strong>each</strong> of the two strikes. A Basic two-weaponer
-hits twice but at −7 each, which is much worse than one solid swing.
-Bare hands and martial arts bonuses apply on every hit; only the
-practice counter is gated by the dmg&gt;1 roll. The Expert weapon line
-(+3 / +2) is why dedicating to a single weapon matters: that’s the
-difference between landing the killing blow and watching the monster
-shrug.</p>
-</section>
-<section id="the-seven-spell-schools" class="level4">
-<h4>The Seven Spell Schools</h4>
-<p>Every spellbook belongs to one of seven schools, and your rank in
-that school determines how reliably you can cast spells from it. Higher
-rank also unlocks some spell upgrades. Cone of cold becomes a cluster of
-3×3 explosions at Skilled, identify IDs the whole stack, haste self
-lasts longer, and so on.</p>
-<table>
-<colgroup>
-<col style="width: 17%" />
-<col style="width: 59%" />
-<col style="width: 23%" />
-</colgroup>
-<thead>
-<tr>
-<th>School</th>
-<th>Focus</th>
-<th>L1 grind</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Attack</td>
-<td>Direct damage (force bolt, fireball)</td>
-<td>Force bolt</td>
-</tr>
-<tr>
-<td>Healing</td>
-<td>HP restore and cure status</td>
-<td>Healing</td>
-</tr>
-<tr>
-<td>Divination</td>
-<td>Sensing, identifying, mapping</td>
-<td>Light</td>
-</tr>
-<tr>
-<td>Enchantment</td>
-<td>Buffs, debuffs, charm</td>
-<td>Confuse monster</td>
-</tr>
-<tr>
-<td>Cleric</td>
-<td>Divine protection and summoning</td>
-<td>Protection</td>
-</tr>
-<tr>
-<td>Escape</td>
-<td>Mobility, evasion, levitation</td>
-<td>Jumping</td>
-</tr>
-<tr>
-<td>Matter</td>
-<td>Manipulation, transmutation, polymorph</td>
-<td>Knock</td>
-</tr>
-</tbody>
-</table>
-<p>Role caps vary sharply across schools:</p>
-<ul>
-<li><strong>Wizards</strong> have access to all seven schools and cap at
-Expert in attack, divination, escape, and matter.</li>
-<li><strong>Monks</strong> also have access to all seven, but cap at
-Expert only in healing — Skilled in cleric and escape, Basic
-elsewhere.</li>
-<li><strong>Priests</strong> reach Expert in healing, divination, and
-cleric.</li>
-<li><strong>Healers</strong> cap at Expert in healing and are
-<em>restricted</em> from every other school. Specialization by
-decree.</li>
-<li><strong>Knights</strong> train attack, healing, and cleric to
-Skilled.</li>
-<li><strong>Rangers</strong> push divination to Expert — their one
-specialty school.</li>
-<li><strong>Rogues, Tourists, Samurai</strong> each get two or three
-schools at Skilled or lower, usually built around divination or
-escape.</li>
-<li><strong>Cavemen</strong> reach Skilled in matter and Basic in attack
-— two schools only.</li>
-<li><strong>Barbarians and Valkyries</strong> cap at Basic in their two
-schools (attack and escape) and can’t reliably cast spells past
-spell-level 3.</li>
-</ul>
-<p>Full role caps for every weapon, fighting style, and spell school are
-in the <a href="#skill-caps">Skill Caps</a> appendix; the full list of
-43 spells is in the <a href="#spell-tables">Spell Tables</a>
-appendix.</p>
-</section>
-<section id="spending-slots-wisely" class="level4">
-<h4>Spending Slots Wisely</h4>
-<p>Thirty slots sounds like plenty until you start counting. Expert in a
-single weapon costs <strong>6 slots</strong> (1+2+3) by itself. A
-Valkyrie aiming for Expert long sword, Expert two-weapon, and Skilled
-riding is fourteen slots deep before any spell school.</p>
-<p>A few principles:</p>
-<ul>
-<li><strong>Don’t enhance reflexively.</strong> Slots are spent
-permanently (short of losing experience). If you’re not committed to a
-weapon, hold the slot until you are.</li>
-<li><strong>Cap-aware investment.</strong> Pushing a skill to its role
-cap is fine: the menu just stops offering further advances. Aiming
-beyond the cap costs nothing because the option never appears.</li>
-<li><strong>Wizards train spell schools twice over.</strong> Each rank
-up improves casting success <em>and</em> reveals more spellbook
-appearances in that school (the identification payoff from the <a
-href="#spellcasting">Spellcasting</a> chapter). Schools containing your
-unidentified books deserve priority.</li>
-<li><strong>Riding is a skill.</strong> Without <strong>Basic
-riding</strong> you can’t pick up items, loot, dip, set or disarm traps,
-or engrave on the floor while mounted. Knights start at Basic. Pushing
-to Skilled erases the −1 to-hit penalty in the saddle and adds +1
-damage.</li>
-<li><strong>Bare hands and martial arts are the domain of
-Monks.</strong> Grand Master needs <strong>9 cumulative non-weapon
-slots</strong>, which Monks reach naturally. Anyone else dabbling in
-unarmed combat should plan to stop at Basic.</li>
-</ul>
-<p>A few spells get sharper at Skilled. Cone of cold and fireball become
-a cluster of 3×3 <strong>explosions</strong> you can place at range.
-Identify, remove curse, haste self, detect monsters, and several others
-gain the blessed-scroll effect.</p>
-<hr />
-</section>
-</section>
-<section id="wishes-and-wishing" class="level3">
-<h3>Wishes and Wishing</h3>
-<p>There is a moment in every successful game where you’re asked, “For
-what do you wish?” It’s the best question in all of gaming. Don’t panic.
-Don’t mistype. And for the love of all that is holy, don’t wish for a +3
-blessed cockatrice. (Actually, that <em>would</em> be something. But
-no.)</p>
-<p>Wishes are rare, powerful, and the difference between a character who
-ascends and one who dies memorably on the Plane of Fire.</p>
-<section id="sources-of-wishes" class="level4">
-<h4>Sources of Wishes</h4>
-<p>The Mazes are stingy, but there are more wish sources than most
-travelers realize:</p>
-<ul>
-<li><strong>Wand of wishing:</strong> found in the Castle treasure room
-(see <a href="#key-wands">Key Wands</a> for the 5.0 charge mechanics).
-The Castle chest also contains a potion of gain level, because the Mazes
-occasionally feel generous.
-<!-- src/sit.c special_throne_effect(): cases 1-4 (of 13) = wish,
-   throne only vanishes on wish, so guaranteed eventual wish. --></li>
-<li><strong>Vlad’s throne:</strong> A special throne that grants a
-guaranteed wish if you keep sitting. Four of thirteen outcomes are a
-wish (which destroys the throne); the other nine are painful but the
-throne survives, so persistence pays off.
-<!-- src/allmain.c: u.uhave.amulet && !u.uevent.amulet_wish --></li>
-<li><strong>The Amulet of Yendor:</strong> Grants a wish when you first
-pick it up. A reward for reaching the bottom of the dungeon. You can
-decline this wish if your kit is already complete; some minimalist
-ascenders skip it entirely on principle.</li>
-<li><strong>Magic lamp:</strong> Rubbing a blessed lamp summons the
-djinni 1-in-3 times; <em>if</em> it appears, it grants a wish 80% of the
-time, so roughly 27% wish per rub. Keep rubbing. Either a magic lamp or
-a magic marker is guaranteed in Orcus Town.</li>
-<li><strong>Fountain:</strong> roughly 1 in 30 quaffs summons a water
-demon, and <em>that</em> demon grants a wish only about 1-in-5 times on
-shallow floors (less on deeper ones), so a true wish chance closer to 1
-in 150 per quaff. Far more likely to produce snakes, nymphs, curses, or
-vomiting.</li>
-<li><strong>Throne:</strong> Very rare chance of a wish when sitting.
-Also a very real chance of everything going wrong.</li>
-<li><strong>Djinni from smoky potion:</strong> Rare (1 in 13 base
-probability), and even then only 20% wish chance (80% if blessed). But
-when it works, you feel like a genius.</li>
-</ul>
-<p>In practice, the number of wishes a run produces varies widely. A
-sensible budget if you take each guaranteed source once is about four
-(Castle wand, Vlad’s throne, Amulet pickup, one magic lamp). Anything
-beyond that is luck (extra lamps, fountain demons, recharge chains) or
-commitment. Don’t waste any of them on food.</p>
-</section>
-<section id="what-to-wish-for" class="level4">
-<h4>What to Wish For</h4>
-<p>Generations of adventurers have argued about optimal wish order.
-Here’s the conventional wisdom, battle-tested by thousands of
-ascensions:</p>
-<ol type="1">
-<li><strong>Gray dragon scale mail</strong> (magic resistance + AC;
-magic resistance is the most important protection in the game, so this
-is highly recommended).</li>
-<li><strong>Silver dragon scale mail</strong> (reflection + AC, the
-second pillar of not dying to wands).</li>
-<li><strong>Speed boots</strong> (being fast gives you more actions per
-turn, excellent for both offense and escape).</li>
-<li><strong>Gauntlets of power</strong> (STR 25 if your role benefits;
-most roles benefit from punching harder).</li>
-<li><strong>Amulet of life saving</strong> (insurance for the endgame,
-when overconfidence kills more adventurers than monsters do).</li>
-<li><strong>A specific artifact</strong> (Grayswandir is a common target
-for the silver damage against everything in Gehennom).</li>
-</ol>
-<p>Don’t wish for consumables (scrolls, potions) unless you’re in dire
-straits. Items you can find through normal play aren’t worth a wish. A
-wish is for things that change the fundamental equation of your
-survival.</p>
-</section>
-<section id="wish-syntax" class="level4">
-<h4>Wish Syntax</h4>
-<!-- audit
-2026-05-18:
-- bare "gray dragon scale mail" keeps random spe and rolls BUC via blessorcurse(otmp,10): ~5% blessed / ~5% cursed / ~90% uncursed (objnam.c:5094-5096, 5258-5268)
-- artifact wishes are probabilistic: oartifact && rn2(nartifact_exist())>1 (objnam.c:5374), scaled by TOTAL existing artifacts including bones
-- u.uconduct.wisharti increments whether the wish is granted or denied (objnam.c:5364)
-- only quest artifacts are absolutely blocked: restrict_name SPFX_NOGEN|SPFX_RESTR check (artifact.c:618)
-- silent substitutes: Amulet of Yendor, Bell of Opening, Book of the Dead, Candelabrum, magic lamp → oil lamp (objnam.c:5003-5006)
-- all gloves give +1 AC (objects.h:686-697); gauntlets of power give STR 25, not bonus AC (attrib.c:1214)
-- Vlad's throne wish rate is 4/13 per effective sit (sit.c:241-256)
-- magic lamp ≈27% wish-blessed: 1/3 djinni × 4/5 wish (apply.c:1817, potion.c:2833-2845)
-- fountain water-demon wish (fountain.c:78, 314); Amulet-of-Yendor pickup wish (allmain.c:446-451)
-- strategy aligned with NetHackWiki Wish, Gray dragon scale mail, Speed boots, Magic lamp: GDSM/SDSM as top wishes, speed boots and gauntlets of power as standard follow-ups, bare wishes risk cursed/random spe (https://nethackwiki.com/wiki/Wish, https://nethackwiki.com/wiki/Gray_dragon_scale_mail, https://nethackwiki.com/wiki/Speed_boots, https://nethackwiki.com/wiki/Magic_lamp)
--->
-<p>When the game asks “For what do you wish?”, be specific. This is not
-the time for ambiguity:</p>
-<ul>
-<li>“blessed +3 gray dragon scale mail” gets you exactly that.</li>
-<li>“gray dragon scale mail” alone lets the dice pick blessed/ cursed
-and enchantment — a bare wish can roll cursed. You had <em>one</em>
-wish; spell out the BUC and the plus.</li>
-<li>Artifact wishes get <em>harder</em> as artifacts accumulate. The
-denial roll scales with the total artifacts in the world (yours,
-generated, even bones-file ones), and your artifact-wish counter ticks
-whether or not the artifact actually appears. Quest artifacts are
-absolutely blocked.</li>
-<li>A few targets are silently nerfed into mundane substitutes: the
-<strong>Amulet of Yendor</strong> becomes a fake amulet, the
-<strong>Bell of Opening</strong> a plain bell, the <strong>Book of the
-Dead</strong> blank paper, the <strong>Candelabrum</strong> a tallow
-candle, and — relevant after all that lamp-rubbing — a wish for a
-<strong>magic lamp</strong> hands you an ordinary oil lamp.</li>
-</ul>
 <hr />
 </section>
 </section>
@@ -9794,7 +10727,7 @@ stop to fight anything you don’t have to.</p>
 <p>The entire level is underwater. Without magical breathing (an amulet,
 the Amphibious intrinsic, or a polyform that breathes water) you will
 drown. Drowning calls the standard death path, so an <strong>amulet of
-life saving</strong> will rescue you — but you’ll drown again on your
+life saving</strong> will rescue you, but you’ll drown again on your
 next turn unless something has changed. The level is a labyrinth of
 water-filled chambers with occasional air pockets. Sea monsters prowl
 the corridors.</p>
@@ -9802,12 +10735,12 @@ the corridors.</p>
 <code>;</code>.</strong> Read a scroll of genocide, target the entire
 <code>;</code> class (eels, krakens, sea monsters, sharks, jellyfish,
 piranhas), and the level instantly empties of anything that can drag you
-under. This is the right moment for that scroll — class <code>;</code>
-is almost nowhere else in the game (a kraken in Medusa’s pool, a
-moccasin from a fountain are isolated encounters not worth burning a
-class-wipe on), and on the next plane it’s irrelevant. Spend the scroll
-here. Then find the portal and push through. This is the last barrier
-between you and the gods.</p>
+under. This is the right moment for that scroll. Class <code>;</code> is
+almost nowhere else in the game (a kraken in Medusa’s pool, a moccasin
+from a fountain are isolated encounters not worth burning a class-wipe
+on), and on the next plane it’s irrelevant. Spend the scroll here. Then
+find the portal and push through. This is the last barrier between you
+and the gods.</p>
 </section>
 <section id="the-astral-plane" class="level4">
 <h4>The Astral Plane</h4>
@@ -9816,25 +10749,46 @@ the great temple: Lawful, Neutral, and Chaotic. You must sacrifice the
 Amulet of Yendor on the altar matching your alignment to ascend.
 <strong>Choose wrong and the game ends on the spot</strong>: the
 opposing god gains dominion over your god, and you’ve handed victory to
-the other side. There is no retrieval — pick the right altar the first
-time.</p>
-<p>The plane is swarming with Angels and the three Riders: Death,
-Famine, and Pestilence. The Riders cannot be permanently killed; they
-revive, they pursue, they do not stop. Don’t try to clear the level. You
-are not here to fight. You are here to reach one altar, make one
-sacrifice, and end this.</p>
+the other side. There is no retrying. Pick the right altar the first
+time. Farlook (<code>;</code>) shows an altar’s alignment only when you
+are <em>adjacent</em> to it. From across the room you only see “an
+aligned high altar,” so plan to walk within one square of each in turn
+until one matches yours.</p>
+<p>The plane is swarming with Angels and the three
+<strong>Riders</strong>: Death, Famine, and Pestilence. They are level
+30, regenerate while you fight, see invisible, and shove monsters out of
+their path. Each one hits twice per turn with a touch attack dealing 8d8
+damage.</p>
 <ul>
-<li>Conflict and teleportation wands clear a path through the crowds,
-though note teleportation on <strong>yourself</strong> fails on every
-elemental plane (only monster-targeted teleport works).</li>
-<li>Identify the correct altar by walking adjacent to it: farlook
-(<code>;</code>) reveals an altar’s alignment only when you’re standing
-next to it. From across the room you only see “an aligned high altar.”
-Plan to visit each in turn if necessary.</li>
-<li>The Riders will follow you. Outrun them, don’t outfight them</li>
-<li>When you offer the Amulet on the correct altar: you ascend. The game
-is won. You’ve done what so few have done. Congratulations.</li>
+<li><strong>Death’s</strong> touch has a 3-in-20 chance of instant kill
+on every hit. Magic resistance blocks the instakill, but not the 8d8
+baseline.</li>
+<li><strong>Pestilence</strong> inflicts a deadly illness that kills you
+over the next several turns. Sick resistance is the cleanest defense; a
+unicorn horn can sometimes clear the timer in time if you don’t have
+intrinsic.</li>
+<li><strong>Famine</strong> adds 40 to 79 hunger units to every hit. One
+swing won’t drop you below Hungry, but a few in a row will starve you
+mid-fight.</li>
 </ul>
+<p>A slight mercy that is new to 5.0: if Pestilence or Famine land their
+first attack on a turn, their second downgrades to a stun.</p>
+<p><strong>The Riders cannot be permanently killed.</strong> They
+revive, they pursue, they do not stop. <strong>Eating any Rider corpse
+is instantly fatal.</strong> You are not here to fight; you are here to
+reach one altar, make one sacrifice, and end this.</p>
+<p><strong>Defenses.</strong> An <strong>amulet of life saving</strong>
+is the best insurance on Astral. Magic resistance stops Death’s
+instakill. Sick resistance handles Pestilence. Carry plenty of food
+(Famine bypasses normal nutrition pacing) and a unicorn horn for the
+stun side effects. A ring of <strong>conflict</strong> keeps the Riders
+tangled fighting Angels and minor demons instead of chasing you,
+sometimes long enough to reach the altar. Teleportation wands can clear
+a path through the crowds; note that <strong>self-teleport fails on
+every elemental plane</strong>, so zapping the wand at yourself does
+nothing. Only zapping it at others teleports them.</p>
+<p>When you offer the Amulet on the correct altar: you ascend. The game
+is won. You’ve done what so few have done. Congratulations.</p>
 <hr />
 </section>
 </section>
@@ -14139,8 +15093,8 @@ taken off, so this is a trap item.</td>
 always 5×level. <strong>Type</strong> distinguishes how the spell
 targets:</p>
 <ul>
-<li><strong>aimed</strong> — a single-square IMMEDIATE; you pick a
-direction.</li>
+<li><strong>aimed</strong> — you pick a direction; the spell hits one
+square at that vector.</li>
 <li><strong>ray</strong> — a beam from the caster through every square
 in a line until it stops.</li>
 <li><strong>untargeted</strong> — no direction needed; the effect is on
@@ -14508,784 +15462,7 @@ demon forms are immune.)</td>
 death, and the unskilled forms of cone of cold and fireball) also scales
 with rank, even when the spell’s behavior doesn’t otherwise change.</p>
 <hr />
-</section>
-<section id="skill-caps" class="level3">
-<h3>Skill Caps</h3>
-<!-- audit
-2026-05-19:
-- All 13 role skill tables sourced from u_init.c (Skill_A through Skill_W); skills not in def_skill are P_UNSKILLED-locked. (u_init.c:257-569 tables Skill_A/B/C/H/K/Mon/P/R/Ran/S/T/V/W; weapon.c:1738-1781 skill_init defaults all to P_ISRESTRICTED then walks the def_skill list)
-- All 494 cells (27 weapons + 4 fighting styles + 7 spell schools × 13 roles) exact-match against u_init.c:257-572.
-- Scimitar omitted: no role has it in 5.0 (merged into saber per skills.h header note).
-- P_MARTIAL_ARTS appears only in Skill_Mon (P_GRAND_MASTER) and Skill_S (P_MASTER); Monks have P_BARE_HANDED_COMBAT restricted (they get martial arts instead).
-- Wizard and Monk are the only roles with all 7 spell schools listed in their def_skill table (Skill_W u_init.c:562-568 has all 7 P_*_SPELL entries; Skill_Mon u_init.c:380-386 has all 7). Other roles list a subset (Priest at u_init.c:408-410 has only 3, Healer at u_init.c:342 has only 1, etc.).
--->
-<p>Every role has fixed maximum ranks for each weapon, fighting style,
-and spell school. Skills not listed for a role are
-<strong>restricted</strong> (the rank is locked at Unskilled) — except
-that a god-given artifact weapon unrestricts you to Basic in its skill.
-Key: <strong>B</strong>=Basic, <strong>S</strong>=Skilled,
-<strong>E</strong>=Expert, <strong>M</strong>=Master,
-<strong>GM</strong>=Grand Master, <strong>—</strong>=restricted.</p>
-<p>A “<strong>—</strong>” does <em>not</em> mean the skill is unusable —
-it means the rank is locked at Unskilled forever, so you always pay the
-Unskilled penalty from the <a href="#the-skill-ladder">Skill Ladder</a>
-(−4/−2 for a weapon, −9/−3 per strike for two-weapon, the Unskilled
-cast-failure rate for a spell school) and no rank-gated upgrades ever
-unlock. A Healer can still read a spellbook of force bolt and try to
-cast it; a Wizard can still swing a long sword; they’ll just always do
-it clumsily, with no path to improvement. Roles are abbreviated:
-Arc=Archeologist, Bar=Barbarian, Cav=Caveman, Hea=Healer, Kni=Knight,
-Mon=Monk, Pri=Priest, Rog=Rogue, Ran=Ranger, Sam=Samurai, Tou=Tourist,
-Val=Valkyrie, Wiz=Wizard.</p>
-<section id="weapon-skill-caps" class="level4">
-<h4>Weapon Skill Caps</h4>
-<div class="dense-table">
-<table style="width:100%;">
-<colgroup>
-<col style="width: 21%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-</colgroup>
-<thead>
-<tr>
-<th>Weapon</th>
-<th>Arc</th>
-<th>Bar</th>
-<th>Cav</th>
-<th>Hea</th>
-<th>Kni</th>
-<th>Mon</th>
-<th>Pri</th>
-<th>Rog</th>
-<th>Ran</th>
-<th>Sam</th>
-<th>Tou</th>
-<th>Val</th>
-<th>Wiz</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>dagger</td>
-<td>B</td>
-<td>B</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>E</td>
-<td>B</td>
-<td>E</td>
-<td>E</td>
-<td>E</td>
-</tr>
-<tr>
-<td>knife</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>S</td>
-<td>S</td>
-<td>—</td>
-<td>S</td>
-</tr>
-<tr>
-<td>axe</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>S</td>
-</tr>
-<tr>
-<td>pick-axe</td>
-<td>E</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-</tr>
-<tr>
-<td>short sword</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-<td>S</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>E</td>
-<td>E</td>
-<td>S</td>
-<td>B</td>
-</tr>
-<tr>
-<td>broadsword</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-</tr>
-<tr>
-<td>long sword</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-</tr>
-<tr>
-<td>two-handed sword</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-</tr>
-<tr>
-<td>saber</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-</tr>
-<tr>
-<td>club</td>
-<td>S</td>
-<td>S</td>
-<td>E</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-</tr>
-<tr>
-<td>mace</td>
-<td>—</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-</tr>
-<tr>
-<td>morning star</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>flail</td>
-<td>—</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>S</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>hammer</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-</tr>
-<tr>
-<td>quarterstaff</td>
-<td>S</td>
-<td>B</td>
-<td>E</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>B</td>
-<td>B</td>
-<td>B</td>
-<td>E</td>
-</tr>
-<tr>
-<td>polearms</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>S</td>
-</tr>
-<tr>
-<td>spear</td>
-<td>—</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-<td>E</td>
-<td>S</td>
-<td>B</td>
-<td>E</td>
-<td>B</td>
-</tr>
-<tr>
-<td>trident</td>
-<td>—</td>
-<td>S</td>
-<td>S</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>B</td>
-<td>B</td>
-</tr>
-<tr>
-<td>lance</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-</tr>
-<tr>
-<td>bow</td>
-<td>—</td>
-<td>B</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>E</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>sling</td>
-<td>S</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>B</td>
-<td>S</td>
-</tr>
-<tr>
-<td>crossbow</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>B</td>
-<td>E</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>dart</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>E</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>E</td>
-</tr>
-<tr>
-<td>shuriken</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>B</td>
-<td>S</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-</tr>
-<tr>
-<td>boomerang</td>
-<td>E</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>whip</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>unicorn horn</td>
-<td>S</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Scimitar was merged into saber in 5.0; both refer to the same skill
-now.</p>
-</section>
-<section id="fighting-style-caps" class="level4">
-<h4>Fighting Style Caps</h4>
-<div class="dense-table">
-<table>
-<colgroup>
-<col style="width: 17%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-</colgroup>
-<thead>
-<tr>
-<th>Style</th>
-<th>Arc</th>
-<th>Bar</th>
-<th>Cav</th>
-<th>Hea</th>
-<th>Kni</th>
-<th>Mon</th>
-<th>Pri</th>
-<th>Rog</th>
-<th>Ran</th>
-<th>Sam</th>
-<th>Tou</th>
-<th>Val</th>
-<th>Wiz</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>bare hands</td>
-<td>E</td>
-<td>M</td>
-<td>M</td>
-<td>B</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-</tr>
-<tr>
-<td>two-weapon</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>S</td>
-<td>—</td>
-</tr>
-<tr>
-<td>riding</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-<td>S</td>
-<td>B</td>
-</tr>
-<tr>
-<td>martial arts</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>GM</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>M</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Only Monks and Samurai have martial arts at all, and only Monks reach
-Grand Master.</p>
-</section>
-<section id="spell-school-caps" class="level4">
-<h4>Spell School Caps</h4>
-<div class="dense-table">
-<table style="width:100%;">
-<colgroup>
-<col style="width: 16%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-<col style="width: 6%" />
-</colgroup>
-<thead>
-<tr>
-<th>School</th>
-<th>Arc</th>
-<th>Bar</th>
-<th>Cav</th>
-<th>Hea</th>
-<th>Kni</th>
-<th>Mon</th>
-<th>Pri</th>
-<th>Rog</th>
-<th>Ran</th>
-<th>Sam</th>
-<th>Tou</th>
-<th>Val</th>
-<th>Wiz</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Attack</td>
-<td>B</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-</tr>
-<tr>
-<td>Healing</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-<td>S</td>
-<td>E</td>
-<td>E</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-</tr>
-<tr>
-<td>Divination</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>E</td>
-<td>S</td>
-<td>E</td>
-<td>B</td>
-<td>B</td>
-<td>—</td>
-<td>E</td>
-</tr>
-<tr>
-<td>Enchantment</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-</tr>
-<tr>
-<td>Cleric</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>S</td>
-<td>E</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-</tr>
-<tr>
-<td>Escape</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>B</td>
-<td>E</td>
-</tr>
-<tr>
-<td>Matter</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>B</td>
-<td>—</td>
-<td>S</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-<td>E</td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Healers cap at Expert in healing but are restricted from every other
-school — the only role with this kind of single-school specialization.
-Wizards and Monks are the only roles with access to all seven schools,
-though only Wizards can push four of them to Expert; Monks reach Expert
-only in healing. Barbarians and Valkyries cap at Basic in their two
-available schools (attack and escape) and are restricted from the other
-five.</p>
 <hr />
-</section>
 </section>
 <section id="bestiary-tables" class="level3">
 <h3>Bestiary Tables</h3>
@@ -19268,9 +19445,7 @@ effects. The <strong>quantum mechanic</strong> teleports you on a hit:
 the annoyance is the lost position more than the damage, but in
 dangerous neighbourhoods a random teleport CAN kill. The <strong>genetic
 engineer</strong> polymorphs you: unless you have <em>Unchanging</em> or
-magic resistance, one claw and you become something else. See <a
-href="#the-genetic-engineer">The Genetic Engineer</a> for the full
-treatment.</p>
+magic resistance, one claw and you become something else.</p>
 <p>Both species also teleport themselves at random, and both leave
 poisonous corpses.</p>
 <div class="dense-table">
@@ -21940,7 +22115,8 @@ generous, it’s nerdy, and it’s one of the best things about NetHack.</p>
 source code. Any errors are ours alone.</p>
 <hr />
 <p><em>A Traveler’s Companion to the Mazes of Menace 5.0 Launch
-Edition,</em><br> <em>compiled by David Bau.</em></p>
+Edition,</em><br> <em>compiled by David Bau, using Claude 4.7 Opus to
+collate and check facts.</em></p>
 <p><em>This work is licensed under <a
 href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
 4.0</a>.</em></p>
@@ -22419,13 +22595,13 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
   // --- Humorous index (shown when search is empty) ---
   var indexEntries = [
     ['Amorous demon, expensive evening with', 'seduction'],
-    ['BUC, avoiding curses by checking', 'blessed-uncursed-cursed-buc'],
     ['Amulet of Yendor, retrieving', 'the-ascension-run'],
     ['Ascension, how to not die during', 'the-ascension-run'],
     ['Boulders, pushing (see: Sokoban)', 'sokoban-solutions'],
+    ['BUC, avoiding curses by checking', 'blessed-uncursed-cursed-buc'],
     ['Castle, storming the', 'the-castle'],
     ['Cockatrice corpse, wielding', 'petrification-stoning'],
-    ['Death, causes of (see: everything)', 'ways-to-die'],
+    ['Death, causes of (see: everything)', 'things-that-will-kill-you'],
     ['Disenchanter, mourning your former +5', 'enchantment-drain'],
     ['Displacer beast, taming', 'the-displacer-beast'],
     ['Drowning, preventable', 'drowning'],
@@ -22446,8 +22622,8 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
     ['Tourists, playing as', 'choosing-your-expedition'],
     ['Unicorn horn, no longer a cure-all', 'what-changed-since-last-time'],
     ['Vlad&rsquo;s throne, fourth sit&rsquo;s the charm', 'vlads-tower'],
-    ['Wand of wishing, found with one charge', 'the-castle'],
     ['Wand, identifying by engraving', 'identification-by-engraving'],
+    ['Wand of wishing, found with one charge', 'the-castle'],
     ['Wishes, optimal use of', 'what-to-wish-for'],
     ['YASD, inevitability of', 'your-first-descent'],
   ];
