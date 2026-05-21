@@ -1359,6 +1359,18 @@ your quest leader on the first floor before they'll let you descend.
 The leader sends you to retrieve your role's quest artifact from a
 quest nemesis.
 
+You'll know when you've reached the right level. The first time you
+arrive there, a faint telepathic call from your quest leader breaks
+through:
+
+> *You receive a faint telepathic message from ...: Your help is
+> urgently needed at ...! Look for a ...ic transporter. You
+> couldn't quite make out that last message.*
+
+You are now looking for a magic portal, which renders as a bright
+magenta `^` once you discover it. Like any trap, it stays hidden
+until you step on it (which also triggers it) or search the square.
+
 Each role has a unique Quest with unique maps, a unique nemesis,
 and a unique artifact reward. The Valkyrie hunts Lord Surtur for
 the Orb of Fate. A Samurai's path ends in a duel with Ashikaga
