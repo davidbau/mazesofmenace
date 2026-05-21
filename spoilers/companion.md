@@ -523,9 +523,10 @@ black pudding kicked from a sink.
 Magic resistance and reflection come from special gear: scale
 mail made from the hide of a slain dragon (gray for MR, silver
 for reflection), a special cloak (of MR) or amulet (of
-reflection), or a one-of-a-kind artifact bestowed by your god,
-won on the Quest, or granted as a wish. Your adventure will be
-shaped by the protective items you can obtain.
+reflection), a polished silver shield (reflection too), or a
+one-of-a-kind artifact bestowed by your
+god, won on the Quest, or granted as a wish. Your adventure will be
+shaped by the protective items you obtain.
 
 #### Dungeon Hazards (and How to Survive Them)
 
@@ -1199,7 +1200,7 @@ The Mines are populated primarily by gnomes, dwarves, and the
 occasional dwarf lord. If you're playing a gnomish character, most
 of them will be peaceful, which makes the Mines a relatively
 comfortable detour. Everyone else will need to fight through a
-modest but steady stream of hostile gnomes.
+steady stream of hostile gnomes and dwarves.
 
 **Minetown** appears a few levels into the Mines. Usually it's a small
 settlement with shops and a temple, and it's worth visiting early.
