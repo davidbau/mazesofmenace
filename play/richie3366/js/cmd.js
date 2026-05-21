@@ -12,7 +12,7 @@ import { newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC 
 import { vision_recalc } from './vision.js';
 import { dosearch } from './search.js';
 import { maybeSmudgeEngr } from './engrave.js';
-import { checkHere } from './pickup.js';
+import { dolookHeroLikeC } from './pickup.js';
 import { runExtcmdFromHashPrefix } from './extcmd.js';
 import { doZapCmd } from './dozap.js';
 import { doReadHeroScrollCmdLikeC } from './read_scroll_hero.js';
@@ -153,9 +153,11 @@ export async function rhack(key) {
         game._retainMessageAfterCommand = true;
         await flush_screen(1);
     } else if (ch === ':') {
-        // C: invent.c dolook → pickup.c check_here (look_here / engravings)
+        // C: invent.c dolook → look_here(0, LOOKHERE_NOFLAGS)
         game.context.move = 0;
-        await checkHere(false);
+        await dolookHeroLikeC();
+        game._retainMessageAfterCommand = true;
+        await flush_screen(1);
     } else if (ch === '\\') {
         // C: #discoveries (\\)
         game.context.move = 0;

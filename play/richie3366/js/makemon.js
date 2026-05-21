@@ -34,7 +34,7 @@ export function makemon(mdat, x, y, mmflags) {
         mnum = mdat.mnum | 0;
     }
     const hp = rnd(8);
-    return {
+    const mtmp = {
         mx: px,
         my: py,
         mhp: hp,
@@ -47,5 +47,9 @@ export function makemon(mdat, x, y, mmflags) {
         mfrozen: 0,
         mflee: 0,
         mfleetim: 0,
+        movement: 0,
     };
+    const mons = game.level?.monsters;
+    if (mons) mons.push(mtmp);
+    return mtmp;
 }

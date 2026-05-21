@@ -117,10 +117,6 @@ async function lookHere(objCnt, lhflags) {
     for (let o = ohead; o; o = o.nexthere) {
         if (o !== g.uchain) objs.push(o);
     }
-    if (objs.length === 0) {
-        await readEngrAt(u.ux, u.uy);
-        return;
-    }
 
     let dfeature = dfeatureAt(u.ux, u.uy);
     if (dfeature === 'pool of water' && u.underwater) dfeature = null;
@@ -132,6 +128,8 @@ async function lookHere(objCnt, lhflags) {
         await pline(`There is ${art} here.`);
     }
 
+    const verb = u.ublind ? 'feel' : 'see';
+
     if (u.ublind) {
         /* C: invent.c look_here() blind branch — port feel_location / You() when Blind */
         await readEngrAt(u.ux, u.uy);
@@ -142,10 +140,12 @@ async function lookHere(objCnt, lhflags) {
     const inLavaFeet = IS_LAVA(ltyp);
     const inPoolFeet = IS_POOL(ltyp) && !u.underwater;
 
-    if (inLavaFeet || inPoolFeet) {
+    if (objs.length === 0 || inLavaFeet || inPoolFeet) {
         await plineThereIsDfeature();
         await readEngrAt(u.ux, u.uy);
-        if (!skipObjects) await pline('You see no objects here.');
+        if (!skipObjects && (u.ublind || !dfeature)) {
+            await pline(`You ${verb} no objects here.`);
+        }
         return;
     }
 
@@ -175,6 +175,13 @@ async function lookHere(objCnt, lhflags) {
     await pline('Things that are here:');
     for (const ob of objs) await pline(`  ${doname(ob)}`);
     await readEngrAt(u.ux, u.uy);
+}
+
+/**
+ * C: invent.c dolook() — **`look_here(0, LOOKHERE_NOFLAGS)`** (not pickup.c check_here).
+ */
+export async function dolookHeroLikeC() {
+    await lookHere(0, 0);
 }
 
 /**

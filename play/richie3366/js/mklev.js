@@ -1588,8 +1588,8 @@ async function fill_ordinary_room(croom, bonus_items) {
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
-    // Sleeping monster (33%)
-    if (!rn2(3) && somexyspace(croom, pos)) {
+    // C: (u.uhave.amulet || !rn2(3)) && somexyspace — sleeping monster
+    if ((g.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
         makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps

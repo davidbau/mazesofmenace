@@ -5,7 +5,7 @@
 // **`set_apparxy`** (~778); covetous **`tactics`** + **`mstate`** early out + second **`set_apparxy`** (~782–787);
 // first **`distfleeck`** (~791); **`m_move`**/**`m_throw`**; **`mon_offmap`** early **`return`** (~912–913) before second **`distfleeck`** (~915) when
 // **`status != MMOVE_DIED`** (**`MMOVE_DIED`** vs hero **`thitu`** / future **`m_move`** death).
-// **`stepNum===1`**: harness only (no per-mon **`distfleeck`** in this stub pairing). **`stepNum ≥ 2`**:
+// **`stepNum===0`**: **`movemon`** not called (**`moveloop_turn_advance`** **`stepNum > 0`**). **`stepNum ≥ 2`**:
 // both **`distfleeck`** calls; **`monmove.js`** harness rows **3–12** omit aggregate **`rn2(5)`** from **`distfleeck`**.
 // **`mcalcmove`**: **`allmain.js`** adds **`movement`** each **`context.move`**; this path subtracts **`NORMAL_SPEED`** before **`distfleeck`**/**`m_throw`** (C order: spend then **`dochugw`** subtree).
 // Omits **`minliquid`**, misc_worn, hider/eel, **`fightm`**, grid **`domove`**, vault guard, worm tails.

@@ -105,13 +105,7 @@ export function mRespondMonsterDochugLikeC(g, mtmp) {
         if (!heroDeafLikeC(g)) {
             /* C: pline + stop_occupation — display only; no RNG. */
         }
-        if (!rn2(10)) {
-            const spawned = mRespondShriekerMakemonLikeC(g);
-            if (spawned) {
-                const mons = g.level?.monsters;
-                if (mons) mons.push(spawned);
-            }
-        }
+        if (!rn2(10)) mRespondShriekerMakemonLikeC(g);
         aggravateMonstersLikeC(g);
     }
 

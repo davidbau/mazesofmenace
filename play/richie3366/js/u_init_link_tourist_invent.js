@@ -105,7 +105,8 @@ export function applyTouristHumanLinkedInventAndWearLikeC(g) {
 
     const u = g.u;
     if (u) {
-        u.uwep = darts;
+        /* C: u_init.c ini_inv_use_obj — ammo → setuqwep only, not uwep (insight.c bare handed). */
+        u.uwep = null;
         u.uquiver = darts;
         u.uarmu = shirt;
         u.uswapwep = null;
