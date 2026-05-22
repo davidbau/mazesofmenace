@@ -7,7 +7,10 @@
 
 import { rn2, rnd, d, rne, rnz } from "./rng.js";
 import { init_attr, vary_init_attr } from "./attrib.js";
+import { u_init_inventory_attrs } from "./u_init.js";
+import { nhgetch } from "./input.js";
 import { game } from "./gstate.js";
+import { flush_screen, buildLegacyPagerScreen } from "./display.js";
 
 // o_init: randomize colors, object shuffles, nhlib.lua random calls
 // 201 leaf RNG calls (session indices 0-200)
@@ -70,28 +73,80 @@ export function fastforward_u_init_misc() {
     g.u.uleft = handRoll ? 0 : 1;
     g.u.uhp = g.u.uhpmax = g.u.uhppeak = hp;
     g.u.uen = g.u.uenmax = g.u.uenpeak = en;
+    g.u.ulevel = 1;
 }
 
-// Post-mklev startup: u_init_role, ini_inv, attributes, moveloop_preamble
-// Inventory section (87 calls) is hardcoded for seed8000 Tourist.
-// Attribute section replaced with real init_attr(75) + vary_init_attr().
-// Ends with moveloop_preamble (seed8000 records these in step 0).
-export function fastforward_post_mklev() {
-    // u_init_role + ini_inv: Tourist-specific inventory (87 calls, seed8000 hardcoded)
-    rnd(1000); rn2(20); rnd(2); rn2(6); rn2(11); rn2(10); rn2(10); rn2(100); rn2(20); rn2(1);
-    rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000);
-    rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2);
-    rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6);
-    rn2(3); rn2(4); rn2(5); rn2(7); rn2(8); rn2(11); rn2(15); rn2(16); rn2(21); rn2(15); rn2(10);
-    rn2(6); rn2(1); rnd(2); rn2(4); rn2(2); rnd(2); rn2(4); rn2(2); rn2(1); rnd(2); rn2(4);
-    rnd(2); rn2(4); rnd(2); rn2(4); rnd(2); rn2(4); rn2(1); rnd(2); rn2(10); rn2(11); rn2(10);
-    rn2(10); rn2(1); rnd(2); rn2(70); rn2(1); rn2(1); rnd(2); rn2(1); rn2(25); rn2(25); rn2(25);
-    rn2(20); rn2(1); rnd(2);
+// Pager text for com_pager("legacy").  18 lines; row 17 = "--More--".
+function _buildPagerText(deity, godGoddess, rank) {
+    return [
+        `It is written in the Book of ${deity}:`,
+        '',
+        '    After the Creation, the cruel god Moloch rebelled',
+        '    against the authority of Marduk the Creator.',
+        '    Moloch stole from Marduk the most powerful of all',
+        '    the artifacts of the gods, the Amulet of Yendor,',
+        '    and he hid it in the dark cavities of Gehennom, the',
+        '    Under World, where he now lurks, and bides his time.',
+        '',
+        `Your ${godGoddess} ${deity} seeks to possess the Amulet, and with it`,
+        'to gain deserved ascendance over the other gods.',
+        '',
+        `You, a newly trained ${rank}, have been heralded`,
+        `from birth as the instrument of ${deity}.  You are destined`,
+        'to recover the Amulet for your deity, or die in the',
+        'attempt.  Your hour of destiny has come.  For the sake',
+        `of us all:  Go bravely with ${deity}!`,
+        '--More--',
+    ];
+}
+
+// Post-mklev startup: u_init_role, ini_inv, attributes.
+// C ref: allmain.c newgame() — u_init_inventory_attrs, init_attr, vary_init_attr,
+//   then com_pager("legacy") if flags.legacy (creates a Lua state loading nhlib.lua,
+//   which runs shuffle(align) → rn2(3)+rn2(2)), then com_pager calls nhgetch.
+// Requires docrt() to have been called first so disp_ch is populated for the pager.
+// moveloop_preamble (rnd(9000)+rnd(30)) is NOT called here; it runs at the start
+// of moveloop_core, before the first rhack/nhgetch in the main loop.
+export async function fastforward_post_mklev() {
+    const g = game;
+    // Real inventory initialization: role, race, gold (C: u_init_inventory_attrs)
+    u_init_inventory_attrs();
     // init_attr(75) + vary_init_attr(): real attribute distribution (35 calls)
     init_attr(75);
     vary_init_attr();
-    // moveloop_preamble: seed8000 records these RNG calls in step 0
-    rnd(9000); rnd(30);
+
+    // Set values needed for correct status display before first screen capture
+    g._goldCount = g.u.umoney0 ?? 0;
+    // g.u.ulevel already 1 from fastforward_u_init_misc; g.u.uac already 0 from newgame
+
+    // Build map+status screen (disp_ch populated by docrt() called before us)
+    await flush_screen(1);
+
+    // com_pager("legacy"): creates Lua state loading nhlib.lua → shuffle(align)
+    // → rn2(3)+rn2(2), draws legacy pager overlay, then nhgetch.
+    if (g.flags?.legacy !== false) {
+        const align = g.flags?.initalign ?? 0;
+        const roleData = g.urole_data || {};
+        let rawDeity = align > 0 ? roleData.lgod : align < 0 ? roleData.cgod : roleData.ngod;
+        rawDeity = rawDeity || 'a god';
+        const isGoddess = rawDeity.startsWith('_');
+        const deityName = isGoddess ? rawDeity.slice(1) : rawDeity;
+        const godGoddess = isGoddess ? 'goddess' : 'god';
+        const female = !!g.flags?.female;
+        const titleEntry = (roleData.title || [])[0] || { m: 'Adventurer', f: 'Adventurer' };
+        const rank = female ? (titleEntry.f || titleEntry.m) : titleEntry.m;
+
+        const pagerLines = _buildPagerText(deityName, godGoddess, rank);
+        const maxLen = pagerLines.reduce((m, l) => Math.max(m, l.length), 0);
+        const textCol = Math.min(41, 79 - maxLen);
+
+        buildLegacyPagerScreen(pagerLines, textCol);
+        const disp = g?.nhDisplay;
+        if (disp) disp.setCursor(textCol + 8, 17);
+
+        rn2(3); rn2(2); // nhlib.lua shuffle(align) from com_pager Lua state creation
+        await nhgetch(); // captures pager screen (screen 0)
+    }
 }
 
 // Per-step leaf RNG calls

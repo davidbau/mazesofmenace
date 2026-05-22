@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -48,6 +48,7 @@ const RACE_CANONICAL = new Map(Object.keys(RACE_STATE).map(name => [name.toLower
 const ALIGN_CANONICAL = new Map(Object.keys(ALIGN_TYPE).map(name => [name.toLowerCase(), name]));
 const GENDER_CANONICAL = new Map(['male', 'female'].map(name => [name, name]));
 const EGG = 10001;
+const LUMP_OF_ROYAL_JELLY = 10089;
 const STONED_TEXTS = [
     'You are slowing down.',
     'Your limbs are stiffening.',
@@ -282,6 +283,15 @@ const RACE_INVENTORY_SUBS = {
         arrow: { kind: 'crossbow bolt', plural: 'crossbow bolts' },
     },
 };
+
+function applyRaceInventorySubstitution(obj, raceName) {
+    const substitution = RACE_INVENTORY_SUBS[raceName]?.[obj?.kind];
+    if (!substitution) return obj;
+    const hadSingular = obj.singular !== undefined;
+    Object.assign(obj, substitution);
+    if (hadSingular && substitution.kind) obj.singular = substitution.singular || substitution.kind;
+    return obj;
+}
 
 const OPTIONAL_INVENTORY = {
     Tinopener: [{ cls: 'tool', kind: 'tin opener', blessed: false }],
@@ -1127,6 +1137,7 @@ function initSpecificObject(item) {
 
 function initInventoryObject(item, state, recordInventory = true, stackQuan = 1) {
     const obj = item.random ? initRandomObject(item.cls, state) : initSpecificObject(item);
+    applyRaceInventorySubstitution(obj, state.raceName);
     if ((obj.cls === 'weapon' || obj.cls === 'armor' || obj.kind === 'pick-axe') && obj.spe == null) obj.spe = 0;
     if (obj.cls === 'weapon' || obj.cls === 'armor' || obj.kind === 'pick-axe') obj.known = true;
     if (item.blessed !== undefined) {
@@ -1224,7 +1235,7 @@ function iniInv(items, state) {
 }
 
 function initializeRoleInventory(roleName, raceName) {
-    const state = { roleName, gotSpell1: false, inventory: [], knownSpells: [], nextLetter: 'a'.charCodeAt(0) };
+    const state = { roleName, raceName, gotSpell1: false, inventory: [], knownSpells: [], nextLetter: 'a'.charCodeAt(0) };
     game._discoveries = [];
     const substitutions = RACE_INVENTORY_SUBS[raceName] || {};
     const roleInventory = items => items.map(item =>
@@ -1656,6 +1667,9 @@ function dogFood(mon, obj) {
     }
     if (obj.otyp === FOOD_CLASS || obj.cls === 'food' || obj.foodRoll) {
         const kind = String(obj.kind || '');
+        if ((obj.otyp === LUMP_OF_ROYAL_JELLY || kind === 'lump of royal jelly')
+            && petName === 'killer bee')
+            return levelHasQueenBee() ? TABU : DOGFOOD;
         if (obj.kind === 'tin' || String(obj.kind || '').startsWith('tin:')) return MANFOOD;
         if (foodRoll <= 140 || kind === 'tripe' || kind === 'tripe ration') return carnivore ? DOGFOOD : MANFOOD;
         if (obj.kind === 'egg') return carnivore ? CADAVER : MANFOOD;
@@ -1667,6 +1681,78 @@ function dogFood(mon, obj) {
         return herbivore ? ACCFOOD : MANFOOD;
     }
     return obj.cursed ? UNDEF : APPORT;
+}
+
+function isRoyalJellyObject(obj) {
+    return obj?.otyp === LUMP_OF_ROYAL_JELLY
+        || String(obj?.kind || obj?.actualKind || '').toLowerCase() === 'lump of royal jelly';
+}
+
+function levelHasQueenBee(except = null) {
+    return (game.level?.monsters || []).some(mon =>
+        mon !== except && (mon.mhp == null || mon.mhp > 0) && mon.data?.name === 'queen bee');
+}
+
+function consumeOneFloorObject(obj) {
+    if (!obj || !game.level) return;
+    if ((obj.quan || 1) > 1) {
+        next_ident();
+        obj.quan--;
+    } else {
+        game.level.objects = (game.level.objects || []).filter(other => other !== obj);
+    }
+    newsym(obj.ox, obj.oy);
+}
+
+function maybeKillerBeeEatRoyalJelly(mon) {
+    if (!mon || mon.data?.name !== 'killer bee') return false;
+    const jelly = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile
+        && obj.ox === mon.mx && obj.oy === mon.my
+        && isRoyalJellyObject(obj));
+    if (!jelly || levelHasQueenBee(mon)) return false;
+
+    const visible = !game.u?.blind && !mon.minvis && !mon.mundetected && couldSeeCoord(mon.mx, mon.my);
+    const subject = mon.pet
+        ? mon.givenName || `Your ${mon.data?.name || 'pet'}`
+        : monsterDisplayName(mon);
+    if (visible) {
+        const name = `${jelly.bknown ? (jelly.blessed ? 'blessed ' : jelly.cursed ? 'cursed ' : 'uncursed ') : ''}lump of royal jelly`;
+        addToplineMessage(`${subject} eats a ${name}.`);
+    }
+
+    if (mon.pet) {
+        const edog = mon.mextra?.edog;
+        if (edog) edog.hungrytime = Math.max(edog.hungrytime || 0, game.moves || 1) + 200;
+        mon.mtame = Math.min(20, (mon.mtame || 10) + 1);
+        game._pet_skip_post_move_roll = 1;
+    }
+    const delay = jelly.blessed ? 3 : jelly.cursed ? 7 : 5;
+    consumeOneFloorObject(jelly);
+
+    const queenData = monsterByRndName('queen bee') || RANDOM_MONSTER_BY_NAME.get('queen bee');
+    if ((game._genocided_monsters || []).includes('queen bee') || !queenData) {
+        if (visible) addToplineMessage(`As ${subject.replace(/^The /, 'the ')} grows up into a queen bee, she dies!`);
+        recordVanquished(mon, false);
+        game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+        newsym(mon.mx, mon.my);
+        return true;
+    }
+
+    const queenLevel = queenData.mlevel ?? 9;
+    if ((mon.m_lev ?? mon.data?.mlevel ?? 1) < queenLevel - 1) mon.m_lev = queenLevel - 1;
+    const hpIncrease = rnd(8);
+    mon.mhpmax = (mon.mhpmax || mon.mhp || 1) + hpIncrease;
+    mon.mhp = (mon.mhp || 1) + hpIncrease;
+    mon.m_lev = Math.min(50, (mon.m_lev ?? queenLevel - 1) + 1);
+    if (visible) addToplineMessage(`${subject} grows up into a queen bee.`);
+    mon.data = { ...queenData, hpLevel: mon.m_lev };
+    mon.female = true;
+    mon.mfrozen = delay;
+    mon.mcanmove = false;
+    mon._skip_mfrozen_decrement = 1;
+    newsym(mon.mx, mon.my);
+    return true;
 }
 
 function addToplineMessage(msg) {
@@ -1904,6 +1990,9 @@ function stopStoningOccupations() {
     game._pending_force_lock_start_message = 0;
     game._pick_lock_occupation = null;
     game._pick_lock_continue_time = 0;
+    game._tin_opening_occupation = null;
+    game._tin_finish_after_turn = null;
+    game._tin_opened_pending = null;
     game._spellbook_study_occupation = null;
     game._spellbook_finish_after_topline_more = null;
     game._prayer_occupation = 0;
@@ -2025,7 +2114,8 @@ function processAttributeExercise() {
     game.context.next_attrib_check ??= 600;
     if (turn < game.context.next_attrib_check) return;
     if (game._helpless_time || game._armor_wear_occupation || game._eating_turns_remaining
-        || game._force_lock_occupation || game._pick_lock_occupation || game._prayer_occupation) return;
+        || game._force_lock_occupation || game._pick_lock_occupation || game._tin_opening_occupation
+        || game._prayer_occupation) return;
     if (game._fumble_turn_message_pending || game._pending_fumble_turn_message
         || game._last_fumble_turn_message) {
         game._fumble_delayed_exerchk = 1;
@@ -2192,6 +2282,17 @@ function processPickLockOccupation() {
     rn2(19);
     if (addToplineMessage(`You succeed in ${pick.action}.`))
         game._pick_lock_continue_time = 1;
+}
+
+async function processTinOpeningTurn() {
+    const result = processTinOpeningOccupation();
+    if (!result) return;
+    if (result.message) {
+        addToplineMessage(result.message);
+        return;
+    }
+    if (result.finish)
+        await finishTinOpeningOccupation(result.finish);
 }
 
 const HATCHLING_BY_EGG_MONSTER = new Map([
@@ -3149,6 +3250,14 @@ async function processMonsterTurns() {
                     }
                 }
                 if (resumedAfterPreturn) resumeAfterPreturn = false;
+                if (!resumingPetInventory && !resumedAfterPreturn && maybeKillerBeeEatRoyalJelly(mon)) {
+                    if (game._message_more && !game._process_time_with_more) {
+                        game._monster_resume_index = monIndex + 1;
+                        game._monster_resume_somebody_can_move = somebodyCanMove;
+                        return false;
+                    }
+                    continue;
+                }
                 if (mon.pet) {
                     if (resumingPetInventory) {
                         game._pet_inventory_resume = null;
@@ -3323,7 +3432,8 @@ async function processMonsterTurns() {
                         const targetAc = game.u?.uac ?? 10;
                         let acValue = targetAc;
                         const occupationToHitBonus = game._armor_wear_occupation || game._eating_turns_remaining
-                            || game._force_lock_occupation || game._pick_lock_occupation || game._prayer_occupation ? 4 : 0;
+                            || game._force_lock_occupation || game._pick_lock_occupation || game._tin_opening_occupation
+                            || game._prayer_occupation ? 4 : 0;
                         const attackLevel = mon.m_lev ?? data.hpLevel ?? data.mlevel ?? 0;
 		                        let toHit = Math.max(1, acValue + 10 + attackLevel
                                 + occupationToHitBonus
@@ -5168,7 +5278,8 @@ async function processMonsterTurns() {
 
     for (const mon of mons) {
         if (!liveMons.has(mon)) continue;
-        if (mon.mfrozen && !--mon.mfrozen) mon.mcanmove = true;
+        if (mon._skip_mfrozen_decrement) mon._skip_mfrozen_decrement = 0;
+        else if (mon.mfrozen && !--mon.mfrozen) mon.mcanmove = true;
         if (mon.mspec_used) mon.mspec_used--;
         let mmove = mon.data?.mmove ?? NORMAL_SPEED;
         if (mon.mspeed === 'fast') mmove = Math.trunc((4 * mmove + 2) / 3);
@@ -5349,6 +5460,7 @@ async function finishMonsterTurnTail() {
             && !game._eating_turns_remaining
             && !game._force_lock_occupation
             && !game._pick_lock_occupation
+            && !game._tin_opening_occupation
             && !game._prayer_occupation
             && !game._helpless_time;
         if (canAutoSearch && game.u?.searching && !game.level?.flags?.noautosearch) {
@@ -7318,6 +7430,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         const hereFood = dogFood(mon, hereObj);
         if ((hereFood <= CADAVER || (edog.mhpmax_penalty && hereFood === ACCFOOD))
             && monsterCanReachItem(mon, hereObj.ox, hereObj.oy)) {
+            if (isRoyalJellyObject(hereObj) && maybeKillerBeeEatRoyalJelly(mon)) return;
             const petName = mon.givenName || `Your ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'pet'}`;
             const corpseName = hereObj.corpsenm?.name;
             const foodName = (hereObj.otyp === 'corpse' || hereObj.otyp === CORPSE)
@@ -8164,6 +8277,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         if (!(reluctantObject && mon.saddled)) newsym(mon.mx, mon.my);
         const eatenObj = eatObject;
         if (eatenObj) {
+            if (isRoyalJellyObject(eatenObj) && maybeKillerBeeEatRoyalJelly(mon)) return;
             const petName = mon.givenName || `Your ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'pet'}`;
             const corpseName = eatenObj.corpsenm?.name;
             const foodName = (eatenObj.otyp === 'corpse' || eatenObj.otyp === CORPSE)
@@ -8565,8 +8679,10 @@ export async function moveloop_core() {
 
         const earlyForceLock = g._force_lock_occupation && !g._process_time_with_more;
         const earlyPickLock = g._pick_lock_occupation && !g._process_time_with_more;
+        const earlyTinOpening = g._tin_opening_occupation && !g._process_time_with_more;
         if (earlyForceLock) processForceLockOccupation();
         if (earlyPickLock) processPickLockOccupation();
+        if (earlyTinOpening) await processTinOpeningTurn();
 
         if (g._eating_turns_remaining > 0 && !(g._pending_message && g._message_more && g._process_time_with_more)) {
             g._eating_turns_remaining--;
@@ -8852,6 +8968,7 @@ export async function moveloop_core() {
         }
         if (!earlyForceLock) processForceLockOccupation();
         if (!earlyPickLock) processPickLockOccupation();
+        if (!earlyTinOpening) await processTinOpeningTurn();
         if (g._force_lock_continue_time) {
             g._force_lock_continue_time = 0;
             g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
@@ -8862,6 +8979,8 @@ export async function moveloop_core() {
             g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
             g._continue_monsters_after_more = 1;
         }
+        if (g._tin_opening_occupation && !g._message_more)
+            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
         if (!earlyForceLock
             && g._force_lock_occupation
             && g._process_time_with_more
@@ -8906,7 +9025,8 @@ export async function moveloop_core() {
 	                || g._continue_monsters_after_more
 	                || g._deferred_monster_turn_tail
 	                || g._force_lock_occupation
-                    || g._pick_lock_occupation;
+                    || g._pick_lock_occupation
+                    || g._tin_opening_occupation;
             const completedTurnTailMore = g._turn_tail_topline_more && !moreNeedsTimeResume;
             if (g._armor_finish_after_more) g._armor_finish_after_more = 0;
             else if (g._suppress_more_time_once > 0) g._suppress_more_time_once--;

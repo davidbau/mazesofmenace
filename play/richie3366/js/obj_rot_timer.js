@@ -13,6 +13,7 @@ import {
     TROLL_REVIVE_CHANCE,
 } from './const.js';
 import { isRiderMnum, isTrollCorpsenm } from './mondata.js';
+import { rn2, rnz } from './rng.js';
 
 /** NH5 `objects_nums` corpse **`otyp`** (same as **`mkobj_corpse.js`** **`CORPSE_OTYP`**). */
 const CORPSE_OTYP = 471;

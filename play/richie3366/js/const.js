@@ -3016,6 +3016,8 @@ export const PM_BABY_PURPLE_WORM = 115;
 export const PM_PURPLE_WORM = 117;
 export const PM_GRID_BUG = 118;
 /** C: `monsters.h` — gremlin. */
+/** C: `monsters.h` — `GIANT_SPIDER` (webmaker; mklev fill + `maketrap` WEB). */
+export const PM_GIANT_SPIDER = 101;
 export const PM_GREMLIN = 42;
 /** C: `monsters.h` MON() order — displacer beast (`set_apparxy` displacement exception). */
 export const PM_DISPLACER_BEAST = 41;

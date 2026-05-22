@@ -208,7 +208,7 @@ export function rndmonnumIniInvLikeC() {
 }
 
 /** C: **`mon.c`** **`undead_to_corpse`** (subset by **`mons[]`** index). */
-function undeadToCorpseIniInvLikeC(mndx) {
+export function undeadToCorpseIniInvLikeC(mndx) {
     const m = mndx | 0;
     switch (m) {
         case 237:

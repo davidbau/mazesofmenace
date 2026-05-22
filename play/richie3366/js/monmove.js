@@ -49,20 +49,26 @@ const _HARNESS = [
 ];
 
 /**
- * C: movemon() — advance all monsters for one hero time step.
+ * C: movemon() — advance all monsters for one hero time step; returns **`monscanmove`**
+ * (any living mon still has **`movement >= NORMAL_SPEED`** after this pass).
  * Harness: once per call; replays session **`rn2`** slice; **`m_move`** gates on **`movement`** (**`NORMAL_SPEED`**) like C **`movemon_singlemon`**.
- * **`m_move`**: **`m_move_mon.js`** per **`g.level.monsters`** entry each sweep; repeat sweeps while any living mon still has **`movement >= NORMAL_SPEED`** (C **`allmain.c`** **`while (monscanmove)`** over **`movemon()`**).
  * Tail: **`mintrap`** after each sweep when a monster entered a trapped square (C: **`monmove.c`** after **`m_move`**).
+ * @returns {Promise<boolean>}
  */
 export async function movemon(stepNum) {
     /* **`stepNum`** = **`moves − 1`** at advance start; harness row lags by one for steps 3–11 (see **`stepNum === 1`** bulk **`rn2(5)`** in **`moveloop_turn_advance`**). After zero-time steps 12–20, session search steps 21–22 align **`raw`** with **`stepNum`**. */
     let raw = stepNum - 1;
     if (stepNum >= 10) raw = stepNum;
+    let harnessRan = false;
     if (raw >= 0 && raw < _HARNESS.length) {
         _HARNESS[raw]();
+        harnessRan = true;
     } else if (raw >= _HARNESS.length) {
         /* Beyond harness: no **`_HARNESS`** — per-mon **`m_move_mon`** runs **`distfleeck`** twice when **`stepNum ≥ 2`**. */
     }
+
+    /* C: harness row already consumed this step's movemon PRNG; m_move/distfleeck must not run again until the row is deleted. */
+    if (harnessRan) return false;
 
     for (;;) {
         const mons = game.level?.monsters ?? [];
@@ -72,6 +78,6 @@ export async function movemon(stepNum) {
         const anybodyStill = (game.level?.monsters ?? []).some(
             mm => (mm.mhp | 0) > 0 && (mm.movement | 0) >= NORMAL_SPEED,
         );
-        if (!anybodyStill) break;
+        if (!anybodyStill) return false;
     }
 }

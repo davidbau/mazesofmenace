@@ -1495,6 +1495,7 @@ const SPECIFIC_FOOD_INFO = new Map([
     [SPRIG_OF_WOLFSBANE, ['sprig of wolfsbane', 'sprigs of wolfsbane', CLR_GREEN]],
     [CLOVE_OF_GARLIC, ['clove of garlic', 'cloves of garlic', CLR_WHITE]],
     [SLIME_MOLD, ['slime mold', 'slime molds', CLR_BROWN]],
+    [LUMP_OF_ROYAL_JELLY, ['lump of royal jelly', 'lumps of royal jelly', CLR_YELLOW]],
     [FORTUNE_COOKIE, ['fortune cookie', 'fortune cookies', CLR_YELLOW]],
     [PANCAKE, ['pancake', 'pancakes', CLR_YELLOW]],
 ]);

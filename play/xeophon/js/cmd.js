@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -662,21 +662,44 @@ const SPELL_CATEGORIES = {
     'chain lightning': 'attack',
 };
 const POTION_WISH_BASE = 230;
+const ARROW_TRAP = 1;
 const TELEP_TRAP = 15;
 const DART_TRAP = 2;
+const ROCKTRAP = 3;
+const SQKY_BOARD = 4;
+const LANDMINE = 6;
+const SLP_GAS_TRAP = 8;
 const RUST_TRAP = 9;
+const FIRE_TRAP = 10;
+const HOLE = 13;
+const TRAPDOOR = 14;
+const LEVEL_TELEP = 16;
 const MAGIC_TRAP = 20;
+const ANTI_MAGIC = 21;
+const POLY_TRAP = 22;
 const TRAP_NAMES = {
+    1: 'arrow trap',
     2: 'dart trap',
+    3: 'falling rock trap',
     4: 'squeaky board',
     5: 'bear trap',
+    6: 'land mine',
     7: 'rolling boulder trap',
+    8: 'sleeping gas trap',
     9: 'rust trap',
+    10: 'fire trap',
     11: 'pit',
     12: 'spiked pit',
+    13: 'hole',
+    14: 'trap door',
     15: 'teleportation trap',
+    16: 'level teleporter',
     17: 'magic portal',
+    18: 'spider web',
     20: 'magic trap',
+    21: 'anti-magic field',
+    22: 'polymorph trap',
+    23: 'vibrating square',
 };
 const LARGE_BOX = 214;
 const ICE_BOX = 216;
@@ -704,6 +727,7 @@ const TOUCHSTONE = FLINT_STONE;
 const BLINDFOLD = 10113;
 const MIRROR = 10006;
 const CREAM_PIE = 10081;
+const LUMP_OF_ROYAL_JELLY = 10089;
 const KELP_FROND = 172;
 const EUCALYPTUS_LEAF = 11000;
 const LEMBAS_WAFER = 146;
@@ -779,6 +803,11 @@ const TIN_VARIETY_TEXTS = [
     'boiled', 'smoked', 'dried', 'deep fried', 'szechuan', 'broiled',
     'stir fried', 'sauteed', 'candied', 'pureed',
 ];
+const TIN_VARIETY_NUTRITION = [-50, 50, 20, 40, 40, 50, 50, 55, 60, 70, 80, 80, 95, 100, 500];
+const TIN_GREASY_VARIETIES = new Set([3, 8, 11]);
+const ROTTEN_TIN = 0;
+const HOMEMADE_TIN = 1;
+const SPINACH_TIN = -1;
 const FOOD_NUTRITION = new Map([
     ['tripe ration', 200],
     ['egg', 80],
@@ -804,7 +833,7 @@ const FOOD_NUTRITION = new Map([
     ['c-ration', 300],
     ['tin', 0],
 ]);
-const ROTTABLE_NON_CORPSE_FOODS = new Set(['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond']);
+const ROTTABLE_NON_CORPSE_FOODS = new Set(['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond', 'lump of royal jelly']);
 const POISONABLE_WISH_WEAPONS = new Set([
     'arrow', 'arrows', 'elven arrow', 'elven arrows', 'orcish arrow', 'orcish arrows',
     'silver arrow', 'silver arrows', 'ya', 'crossbow bolt', 'crossbow bolts',
@@ -845,6 +874,7 @@ const WISH_BASE_OBJECTS = new Map([
     ['pickax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
     ['pick-ax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
     ['cream pie', { otyp: CREAM_PIE, cls: 'food', glyph: '%', kind: 'cream pie' }],
+    ['lump of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, cls: 'food', glyph: '%', kind: 'lump of royal jelly', singular: 'lump of royal jelly', plural: 'lumps of royal jelly' }],
     ['eucalyptus leaf', { otyp: EUCALYPTUS_LEAF, cls: 'food', glyph: '%', kind: 'eucalyptus leaf', plural: 'eucalyptus leaves' }],
     ['kelp frond', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond' }],
     ['lembas wafer', { otyp: LEMBAS_WAFER, cls: 'food', glyph: '%', kind: 'lembas wafer', plural: 'lembas wafers' }],
@@ -912,7 +942,7 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['flail', 41], ['glaive', 9],
     ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
     ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
-    ['cream pie', 26], ['eucalyptus leaf', 4], ['kelp frond', 1],
+    ['cream pie', 26], ['lump of royal jelly', 1], ['eucalyptus leaf', 4], ['kelp frond', 1],
     ['lembas wafer', 21], ['fortune cookie', 56], ['fortune cookies', 56],
     ['food ration', 381], ['enormous meatball', 1], ['rock', 101], ['luckstone', 11],
     ['loadstone', 11], ['touchstone', 9], ['flint', 11],
@@ -1834,6 +1864,27 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     }
     await bot();
 	await flush_screen(1);
+    if (options.falling) {
+        const dist = Math.max(1, depth_of_level(targetLevel) - depth_of_level(fromLevel));
+        const damage = d(dist, 6);
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+            if (game.u.uhp <= 0) game._death_cause = 'falling down a mine shaft';
+        }
+        const fallMessage = [options.preMessage, options.arrivalMessage, options.postMessage]
+            .filter(Boolean).join('  ');
+        if (fallMessage) await setMessage(fallMessage, !!options.arrivalMore);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 0;
+        }
+        if (game.u) game.u.umovement = NORMAL_SPEED;
+        game._ignore_safe_wait_once = 1;
+        if (questLevelKind(targetLevel) === 'start')
+            game._skip_periodic_exercise_once = 1;
+        return true;
+    }
     let resetMovementAfterArrival = false;
     const arrivalObjects = (game.level?.objects || [])
         .filter(obj => !obj.hidden && !obj.transientProjectile && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
@@ -2041,6 +2092,20 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
                 if (game.u?.blind) game._blind_arrival_objects_after_more = arrivalObjects;
                 game._queued_message_more_after_more = 1;
             }
+        }
+        if (options.arrivalMessage != null) {
+            arrivalMessage = options.arrivalMessage;
+            arrivalMore = !!options.arrivalMore;
+        }
+        if (options.preMessage)
+            arrivalMessage = arrivalMessage ? `${options.preMessage}  ${arrivalMessage}` : options.preMessage;
+        if (options.postMessage) {
+            if (arrivalMore)
+                game._queued_message_after_more = game._queued_message_after_more
+                    ? `${game._queued_message_after_more}  ${options.postMessage}`
+                    : options.postMessage;
+            else
+                arrivalMessage = arrivalMessage ? `${arrivalMessage}  ${options.postMessage}` : options.postMessage;
         }
         if (arrivalMore && !game._queued_message_after_more && !game._queued_messages_after_more?.length && arrivalObjects.length > 1) {
             const rows = arrivalObjectListRows(arrivalObjects);
@@ -6649,10 +6714,337 @@ function isTinObject(item) {
         || kind.startsWith('tin:');
 }
 
+function isTinOpenerObject(item) {
+    return item?.otyp === TIN_OPENER || objectKindKey(item) === 'tin opener'
+        || String(item?.actualKind || '').toLowerCase() === 'tin opener';
+}
+
 function tinObjectName(item) {
     if (item?.singular) return (item.quan || 1) > 1 ? item.plural || pluralTinName(item.singular) : item.singular;
     if (item?.emptyTin || item?.kind === 'empty tin') return (item.quan || 1) > 1 ? 'empty tins' : 'empty tin';
     return (item?.quan || 1) > 1 ? 'tins' : 'tin';
+}
+
+function tinVariety(item, display = false) {
+    let r;
+    if (item?.spe === 1 || objectKindKey(item) === 'tin:spinach') r = SPINACH_TIN;
+    else if (item?.cursed) r = ROTTEN_TIN;
+    else if ((item?.spe || 0) < 0) r = -item.spe - 1;
+    else r = rn2(TIN_VARIETY_TEXTS.length);
+    if (!display && r === HOMEMADE_TIN && !item?.blessed && !rn2(7)) r = ROTTEN_TIN;
+    return r;
+}
+
+function wieldedItem() {
+    return (game.inventory || []).find(item =>
+        item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')) || null;
+}
+
+function tinOpenerDelayWeapon() {
+    const weapon = wieldedItem();
+    const kind = objectKindKey(weapon);
+    if (!weapon) return { weapon: null, delay: null, message: null, instantMessage: null };
+    if (isTinOpenerObject(weapon)) {
+        const range = weapon.cursed ? 3 : !weapon.blessed ? 2 : 1;
+        return {
+            weapon,
+            delay: rn2(range),
+            message: `Using ${inventoryItemName(weapon)} you try to open the tin.`,
+            instantMessage: 'You easily open the tin.',
+        };
+    }
+    if (weapon.otyp === DAGGER || weapon.otyp === ORCISH_DAGGER || weapon.otyp === KNIFE
+        || /\b(?:dagger|knife|athame|stiletto|crysknife)\b/.test(kind)) {
+        return {
+            weapon,
+            delay: 3,
+            message: `Using ${inventoryItemName(weapon)} you try to open the tin.`,
+            instantMessage: null,
+        };
+    }
+    if (weapon.otyp === PICK_AXE || /\b(?:pick-axe|pick axe|pickaxe|axe|battle-axe)\b/.test(kind)) {
+        return {
+            weapon,
+            delay: 6,
+            message: `Using ${inventoryItemName(weapon)} you try to open the tin.`,
+            instantMessage: null,
+        };
+    }
+    return { weapon, delay: null, message: null, instantMessage: null };
+}
+
+function consumeTinObject(tin, floorObject = false) {
+    if (floorObject) consumeOneFloorObject(tin);
+    else consumeOneInventoryFood(tin);
+    game._tin_opening_occupation = null;
+}
+
+function tinContentName(tin) {
+    const monster = tin?.corpsenm;
+    if (!monster?.name) return 'monster';
+    return monster.name;
+}
+
+function tinSmellName(tin) {
+    const name = tinContentName(tin);
+    if (name === 'cockatrice' || name === 'chickatrice') return 'chicken';
+    return pluralizeMonsterName(name);
+}
+
+function applyTinMonsterSideEffects(tin) {
+    const name = tinContentName(tin);
+    if (name === 'newt' && (rn2(3) || 3 * (game.u?.uen || 0) <= 2 * (game.u?.uenmax || 0))) {
+        const oldEnergy = game.u?.uen || 0;
+        if (game.u) game.u.uen = oldEnergy + rnd(3);
+        if ((game.u?.uen || 0) > (game.u?.uenmax || 0)) {
+            if (!rn2(3) && game.u) game.u.uenmax = (game.u.uenmax || 0) + 1;
+            if (game.u) game.u.uen = game.u.uenmax || 0;
+        }
+        return (game.u?.uen || 0) !== oldEnergy ? 'You feel a mild buzz.' : '';
+    }
+    return '';
+}
+
+function tinTrapDamage() {
+    const difficulty = Math.max(1, level_difficulty());
+    const sides = 5 + (difficulty < 5 ? difficulty : 2 + Math.trunc(difficulty / 2));
+    return rnd(sides);
+}
+
+async function explodeTinTrap(tin, floorObject = false) {
+    const damage = tinTrapDamage();
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        game.u._stunTimeout = (game.u._stunTimeout || 0) + damage;
+        addHeroStatusSuffix('Stun');
+    }
+    exerciseAttribute(A_STR, false);
+    consumeTinObject(tin, floorObject);
+    await setMessage('KABOOM!!  The tin was booby-trapped!', true);
+    game._command_mode = null;
+    game.context.move = 1;
+}
+
+async function finishTinContents(tin, floorObject = false, eat = true, knownVariety = null) {
+    if (!eat) {
+        consumeTinObject(tin, floorObject);
+        await setMessage('You discard the open tin.');
+        game._command_mode = null;
+        game.context.move = 1;
+        return;
+    }
+
+    const r = knownVariety == null ? tinVariety(tin, false) : knownVariety;
+    const messages = [];
+    if (r === SPINACH_TIN) {
+        if (tin.cursed) messages.push('It contains some decaying green substance.');
+        else {
+            messages.push('It contains spinach.');
+            messages.push(`This makes you feel like ${game.u?.fixedAbilities ? (game.flags?.female ? 'Olive Oyl' : 'Bluto') : 'Popeye'}!`);
+            tin.known = true;
+        }
+        if (game.u?.acurr?.a && !game.u.fixedAbilities) {
+            const before = game.u.acurr.a[A_STR] ?? 10;
+            const after = Math.min(118, before + 1);
+            game.u.acurr.a[A_STR] = after;
+            if (game.u.amax?.a) game.u.amax.a[A_STR] = Math.max(game.u.amax.a[A_STR] || after, after);
+        }
+        const nutrition = tin.blessed ? 600 : !tin.cursed ? 400 + rnd(200) : 200 + rnd(400);
+        addHeroNutrition(nutrition);
+        consumeTinObject(tin, floorObject);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game._command_mode = null;
+        game.context.move = 1;
+        return;
+    }
+
+    if (!tin.corpsenm?.name || tin.emptyTin || objectKindKey(tin) === 'empty tin') {
+        tin.known = true;
+        consumeTinObject(tin, floorObject);
+        await setMessage("It turns out to be empty.");
+        game._command_mode = null;
+        game.context.move = 1;
+        return;
+    }
+
+    const varietyText = TIN_VARIETY_TEXTS[r] || '';
+    const monsterName = tinContentName(tin);
+    messages.push(`You consume ${varietyText} ${monsterName}.`);
+    const sideEffect = applyTinMonsterSideEffects(tin);
+    if (sideEffect) messages.push(sideEffect);
+    tin.known = true;
+    if ((TIN_VARIETY_NUTRITION[r] || 0) < 0) {
+        addHeroVomiting(rn1(15, 10));
+    } else {
+        let nutrition = TIN_VARIETY_NUTRITION[r] || 0;
+        if (r === HOMEMADE_TIN)
+            nutrition = Math.min(nutrition, CORPSE_NUTRITION.get(monsterName) || nutrition);
+        addHeroNutrition(nutrition);
+    }
+    if (TIN_GREASY_VARIETIES.has(r)) {
+        const already = game.u?._glibTimeout || 0;
+        if (game.u) game.u._glibTimeout = already + rn1(11, 5);
+        messages.push(`Eating ${varietyText} food made your ${wornGlovesItem() ? 'gloves' : 'fingers'} ${already ? 'even more' : 'very'} slippery.`);
+    }
+    consumeTinObject(tin, floorObject);
+    await setMessage(messages.join('  '), messages.length > 1);
+    game._command_mode = null;
+    game.context.move = 1;
+}
+
+async function consumeOpenedTin(tin, floorObject = false, openMessage = 'You succeed in opening the tin.') {
+    if (!tin) return false;
+    const r = tinVariety(tin, false);
+    if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8))) {
+        await explodeTinTrap(tin, floorObject);
+        return true;
+    }
+
+    if (!tin.corpsenm?.name && r !== SPINACH_TIN) {
+        consumeTinObject(tin, floorObject);
+        await setMessage(`${openMessage}  It turns out to be empty.`, true);
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+
+    const contents = r === SPINACH_TIN ? 'spinach' : tinSmellName(tin);
+    const first = r === SPINACH_TIN
+        ? `${openMessage}  ${tin.cursed ? 'It contains some decaying green substance.' : 'It contains spinach.'}`
+        : `${openMessage}  It smells like ${contents}.`;
+    game._tin_opened_pending = { tin, floorObject, variety: r };
+    await setMessage(`${first}  Eat it? [yn] (n)`, true);
+    game._command_mode = 'tinEatConfirm';
+    game.context.move = 1;
+    return true;
+}
+
+export function processTinOpeningOccupation() {
+    const occ = game._tin_opening_occupation;
+    if (!occ) return null;
+    const tin = occ.tin;
+    if (!tin) {
+        game._tin_opening_occupation = null;
+        return null;
+    }
+    if (occ.floorObject && (!game.level?.objects?.includes(tin)
+        || tin.ox !== game.u?.ux || tin.oy !== game.u?.uy || !heroCanReachFloorForSit().ok)) {
+        game._tin_opening_occupation = null;
+        return null;
+    }
+    if (!occ.floorObject && !(game.inventory || []).includes(tin)) {
+        game._tin_opening_occupation = null;
+        return null;
+    }
+    occ.usedtime ||= 0;
+    if (occ.usedtime++ >= 50) {
+        game._tin_opening_occupation = null;
+        return { message: 'You give up your attempt to open the tin.' };
+    }
+    if (occ.usedtime < occ.reqtime) return null;
+    game._tin_opening_occupation = null;
+    return { finish: { tin, floorObject: !!occ.floorObject } };
+}
+
+export async function finishTinOpeningOccupation(pending) {
+    const info = pending || game._tin_finish_after_turn;
+    game._tin_finish_after_turn = null;
+    if (!info?.tin) return false;
+    return consumeOpenedTin(info.tin, !!info.floorObject, 'You succeed in opening the tin.');
+}
+
+async function startTinOpening(tin, floorObject = false) {
+    if (!tin) return false;
+    const form = polyselfForm();
+    let message = '';
+    let delay = null;
+    let instantMessage = null;
+    if (form?.metallivorous || game.u?.metallivorous) {
+        message = 'You bite right into the metal tin...';
+        delay = 0;
+    } else if (polyselfNoHands() || form?.verysmall) {
+        await setMessage('You cannot handle the tin properly to open it.');
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    } else if (tin.blessed) {
+        delay = isTinOpenerObject(wieldedItem()) && wieldedItem()?.blessed ? 0 : rn2(2);
+        if (!delay) message = 'The tin opens like magic!';
+        else message = 'The tin seems easy to open.';
+    } else {
+        const opener = tinOpenerDelayWeapon();
+        if (opener.delay != null) {
+            delay = opener.delay;
+            message = opener.message;
+            instantMessage = opener.instantMessage;
+        } else {
+            message = 'It is not so easy to open this tin.';
+            if (game.u?._glibTimeout || game.u?.glib || (game.u?._statusSuffix || '').includes('Slippery')) {
+                const slip = `The tin slips from your ${wornGlovesItem() ? 'gloves' : 'fingers'}.`;
+                if (!floorObject) {
+                    if ((tin.quan || 1) > 1) {
+                        tin.quan--;
+                        refreshInventoryObjectLine(tin);
+                    } else {
+                        game.inventory = (game.inventory || []).filter(item => item !== tin);
+                    }
+                    tin = { ...tin, id: next_ident(), quan: 1, ox: game.u?.ux || 0, oy: game.u?.uy || 0 };
+                    game.level.objects ??= [];
+                    game.level.objects.push(tin);
+                    newsym(tin.ox, tin.oy);
+                }
+                await setMessage(`${message}  ${slip}`, true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return true;
+            }
+            const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+            const str = game.u?.acurr?.a?.[A_STR] ?? 10;
+            delay = rn1(1 + Math.trunc(500 / Math.max(1, dex + str)), 10);
+        }
+    }
+
+    if (!delay) {
+        await consumeOpenedTin(tin, floorObject, instantMessage || message || 'You succeed in opening the tin.');
+        return true;
+    }
+    game._tin_opening_occupation = { tin, floorObject, reqtime: delay, usedtime: 0 };
+    await setMessage(message);
+    game._command_mode = null;
+    game.context.move = 1;
+    return true;
+}
+
+function wieldTinOpenerForUse(opener) {
+    if (!opener || opener.wielded || opener.line?.includes('(wielded)') || opener.line?.includes('weapon in')) return;
+    const previous = wieldedItem();
+    if (previous && previous !== opener) {
+        previous.wielded = false;
+        previous.alternate = true;
+        previous.line = `${previous.letter || '?'} - ${inventoryItemName(previous)} (alternate weapon${(previous.quan || 1) > 1 ? 's' : ''}; not wielded)`;
+    }
+    opener.wielded = true;
+    opener.alternate = false;
+    opener.line = `${opener.letter || '?'} - ${inventoryItemName(opener)} (wielded)`;
+}
+
+async function beginTinOpenerUse(opener) {
+    const tins = (game.inventory || []).filter(isTinObject);
+    if (!tins.length) {
+        await setMessage('You have no tin to open.');
+        game._command_mode = null;
+        return true;
+    }
+    wieldTinOpenerForUse(opener);
+    if (tins.length === 1) {
+        await startTinOpening(tins[0], false);
+        return true;
+    }
+    const letters = tins.map(item => item.letter).filter(Boolean).join('');
+    await setMessage(`What do you want to open? [${getobjPromptLetters(letters)} or ?*]`);
+    game._tin_opener_letter = opener?.letter || '';
+    game._command_mode = 'tinOpenerObject';
+    return true;
 }
 
 function parseWishedTinName(lowerName) {
@@ -11596,13 +11988,955 @@ function partialRottenFood(item, floorObject = false) {
 
 function consumeTouchedFood(item, floorObject = false) {
     if (floorObject) consumeOneFloorObject(item);
-    else removeInventoryItem(item);
+    else consumeOneInventoryFood(item);
+}
+
+function isRoyalJelly(item) {
+    return item?.otyp === LUMP_OF_ROYAL_JELLY || objectKindKey(item).replace(/^partly eaten /, '') === 'lump of royal jelly';
+}
+
+function heroHasUnchanging() {
+    return !!game.u?.unchanging || (game.inventory || []).some(item =>
+        item.worn && /amulet of unchanging|unchanging/i.test(String(item.kind || item.actualKind || item.line || '')));
+}
+
+function adjustHeroStrengthFromRoyalJelly(cursed) {
+    const stats = game.u?.acurr?.a;
+    if (!stats) return '';
+    const before = stats[A_STR] ?? 10;
+    const after = Math.max(3, Math.min(125, before + (cursed ? -1 : 1)));
+    stats[A_STR] = after;
+    if (!cursed && game.u?.amax?.a) game.u.amax.a[A_STR] = Math.max(game.u.amax.a[A_STR] || after, after);
+    if (after === before) return '';
+    return cursed ? 'You feel weak!' : 'You feel strong!';
+}
+
+function healWoundedLegsFromRoyalJelly() {
+    if (!game.u) return;
+    if (game.u._woundedDexPenalty && game.u.acurr?.a)
+        game.u.acurr.a[A_DEX] = (game.u.acurr.a[A_DEX] || 9) + 1;
+    game.u._woundedDexPenalty = 0;
+    game.u._woundedLegTurns = 0;
+    game.u._woundedLegSide = '';
+}
+
+function royalJellyPostEffects(item) {
+    if (game.u?._polyself_form?.name === 'killer bee' && !heroHasUnchanging()) {
+        const result = becomeMonster('queen bee');
+        return { messages: result?.message ? [result.message] : [], died: false };
+    }
+
+    const messages = [];
+    const strengthMessage = adjustHeroStrengthFromRoyalJelly(!!item?.cursed);
+    if (strengthMessage) messages.push(strengthMessage);
+
+    if (game.u) {
+        const hpDelta = rnd(20);
+        if (item?.cursed) game.u.uhp = (game.u.uhp || 0) - hpDelta;
+        else game.u.uhp = (game.u.uhp || 0) + hpDelta;
+        if ((game.u.uhp || 0) > (game.u.uhpmax || 1)) {
+            if (!rn2(17)) game.u.uhpmax = (game.u.uhpmax || 1) + 1;
+            game.u.uhp = game.u.uhpmax || 1;
+        } else if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'poisoned by a rotten lump of royal jelly';
+            return { messages, died: true };
+        }
+    }
+
+    if (!item?.cursed) healWoundedLegsFromRoyalJelly();
+    return { messages, died: false };
+}
+
+async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = false, processTimeWithMore = 0 } = {}) {
+    addHeroNutrition(remainingFoodNutrition(item));
+    consumeTouchedFood(item, floorObject);
+    game._pet_food_scan_inventory = game.inventory || [];
+    const result = royalJellyPostEffects(item);
+    const message = [baseMessage, ...result.messages].filter(Boolean).join('  ');
+    if (result.died) {
+        if (consumeLifeSavingAmulet()) {
+            if (game.u) game.u.uhp = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game._command_mode = 'lifeSavingMore';
+            await setMessage(`${message}  You die...  But wait...  Your medallion begins to glow!`, true);
+            return;
+        }
+        if (game.u) game.u.uhp = 0;
+        game._pending_time_passed = 0;
+        game.context.move = 0;
+        game._process_command_time_now = 0;
+        game._run_steps_remaining = 0;
+        game._command_mode = 'deathDieMore';
+        prepareDeathBones();
+        await setMessage(`${message}  You die...`, true);
+        return;
+    }
+    await setMessage(message, more);
+    if (processTimeWithMore) game._process_time_with_more = processTimeWithMore;
+    game._command_mode = null;
+    game.context.move = 1;
+}
+
+async function eatRoyalJelly(item, floorObject = false) {
+    const name = pickupObjectName({ ...(item || {}), quan: 1 });
+    await finishRoyalJellyEating(item, floorObject, `This ${name} is delicious!`);
+}
+
+function royalJellyRubTargetLetters() {
+    return inventoryLetters(item => isEggItem(item));
+}
+
+function royalJellyRubPrompt() {
+    const letters = royalJellyRubTargetLetters();
+    return `What do you want to rub the royal jelly on? [${getobjPromptLetters(letters)} or ?*]`;
+}
+
+function rubObjectLetters() {
+    return inventoryLetters(item => {
+        const name = inventoryItemName(item).toLowerCase();
+        return name.includes('lamp') || isRoyalJelly(item);
+    });
+}
+
+function rubObjectPrompt() {
+    return `What do you want to rub? [${getobjPromptLetters(rubObjectLetters())} or ?*]`;
+}
+
+async function beginRoyalJellyRub(item) {
+    game._royal_jelly_rub_letter = item?.letter || '';
+    await setMessage(royalJellyRubPrompt());
+    game._command_mode = 'rubRoyalJellyTarget';
+}
+
+function eggQuiverVerb(egg) {
+    return (egg?.quan || 1) > 1 ? 'quiver' : 'quivers';
+}
+
+function attachEggHatchTimer(item) {
+    if (!isEggItem(item) || !item.corpsenm?.name || item.eggHatchTurn) return false;
+    for (let i = 151; i <= 200; i++) {
+        if (rnd(i) > 150) {
+            item.eggHatchTurn = (game.moves || 1) + i;
+            item._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
+            break;
+        }
+    }
+    item._egg_hatch_consumed = true;
+    return !!item.eggHatchTurn;
+}
+
+async function rubRoyalJellyOnEgg(jelly, egg) {
+    const oldName = egg?.corpsenm?.name || '';
+    const smearName = pickupObjectName(egg);
+    if (oldName === 'killer bee')
+        egg.corpsenm = monsterByRndName('queen bee') || RANDOM_MONSTER_BY_NAME.get('queen bee') || { name: 'queen bee', oviparous: true, female: true };
+    const changedType = (egg?.corpsenm?.name || '') !== oldName;
+    const effectName = pickupObjectName(egg);
+    const messages = [`You smear royal jelly all over ${smearName}.`];
+
+    if (jelly?.cursed) {
+        if (egg.eggHatchTurn || changedType) messages.push(`The ${effectName} ${eggQuiverVerb(egg)} feebly.`);
+        else messages.push('Nothing seems to happen.');
+        delete egg.eggHatchTurn;
+        delete egg._egg_hatch_seq;
+    } else {
+        const wasTimed = !!egg.eggHatchTurn;
+        if (egg.corpsenm?.name && !egg.eggHatchTurn) attachEggHatchTimer(egg);
+        if (jelly?.blessed && !egg.spe) egg.spe = 2;
+        if ((egg.eggHatchTurn && !wasTimed) || egg.spe === 2 || changedType)
+            messages.push(`The ${effectName} ${eggQuiverVerb(egg)} briefly.`);
+        else messages.push('Nothing seems to happen.');
+    }
+
+    consumeOneInventoryFood(jelly);
+    refreshInventoryObjectLine(egg);
+    game._royal_jelly_rub_letter = '';
+    game._pet_food_scan_inventory = game.inventory || [];
+    await setMessage(messages.join('  '), true);
+    game._command_mode = null;
+    game.context.move = 1;
+}
+
+function eggMonsterFromHeroPolyself() {
+    const form = polyselfForm();
+    if (!form?.oviparous) return null;
+    let name = form.name || '';
+    if (!name) return null;
+    const breederEgg = !rn2(77);
+    if (!breederEgg && name === 'queen bee') name = 'killer bee';
+    else if (!breederEgg && name === 'winged gargoyle') name = 'gargoyle';
+    return monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name) || form;
+}
+
+function createHeroLaidEgg() {
+    const eggMonster = eggMonsterFromHeroPolyself();
+    const egg = mksobj(EGG, false, false);
+    Object.assign(egg, {
+        cls: 'food',
+        glyph: '%',
+        color: CLR_WHITE,
+        kind: 'egg',
+        singular: 'egg',
+        plural: 'eggs',
+        quan: 1,
+        spe: 1,
+        known: true,
+        dknown: true,
+        eggKnown: true,
+        corpsenm: eggMonster,
+        ox: game.u?.ux || 0,
+        oy: game.u?.uy || 0,
+    });
+    if (eggMonster) consumeWishedEggHatchTimer(egg);
+    game.level.objects ??= [];
+    game.level.objects.push(egg);
+    newsym(egg.ox, egg.oy);
+    return egg;
+}
+
+function heroPolyselfEggsInWater() {
+    const form = polyselfForm();
+    return !!form?.oviparous && (form.mlet === ';' || form.glyph === ';') && !!form.swimmer;
+}
+
+async function sitLayEgg() {
+    if (!game.flags?.female) {
+        await setMessage("Males can't lay eggs!");
+        game._command_mode = null;
+        return true;
+    }
+    if ((game.u?.uhunger || 0) < (FOOD_NUTRITION.get('egg') || 80)) {
+        await setMessage("You don't have enough energy to lay an egg.");
+        game._command_mode = null;
+        return true;
+    }
+    if (heroPolyselfEggsInWater()) {
+        if (!(game.u?.underwater || game.u?.uunderwater || Is_waterlevel(game.u?.uz))) {
+            await setMessage('A splash tetra you are not.');
+            game._command_mode = null;
+            return true;
+        }
+        const formName = polyselfForm()?.name || '';
+        if (formName === 'giant eel' || formName === 'electric eel') {
+            await setMessage('You yearn for the Sargasso Sea.');
+            game._command_mode = null;
+            return true;
+        }
+    }
+    createHeroLaidEgg();
+    if (game.u) game.u.uhunger = Math.max(0, (game.u.uhunger || 0) - (FOOD_NUTRITION.get('egg') || 80));
+    await setMessage(heroPolyselfEggsInWater() ? 'You spawn an egg.' : 'You lay an egg.');
+    game._command_mode = null;
+    game.context.move = 1;
+    return true;
+}
+
+function sitSurfaceName(loc) {
+    if (!loc) return 'floor';
+    if (loc.typ === FOUNTAIN) return 'fountain';
+    if (loc.typ === ICE) return 'ice';
+    if (loc.typ === TREE) return 'tree';
+    if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL) return 'lava';
+    if (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT) return 'water';
+    return 'floor';
+}
+
+function heroCanReachFloorForSit() {
+    if (game.u?.uswallow) return { ok: false, message: 'There are no seats in here!' };
+    if (game.u?.levitating && !Is_waterlevel(game.u?.uz)) return { ok: false, message: 'You tumble in place.' };
+    return { ok: true, message: '' };
+}
+
+function finishSitMessage(message, { move = true, more = false } = {}) {
+    game._command_mode = null;
+    if (move) game.context.move = 1;
+    return setMessage(message, more);
+}
+
+function floorObjectForSitting() {
+    return (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile
+        && obj.ox === game.u?.ux && obj.oy === game.u?.uy && obj.otyp !== BOULDER);
+}
+
+async function sitOnFloorObject(obj) {
+    const messages = [];
+    const kind = objectKindKey(obj);
+    const form = polyselfForm() || {};
+    const corpse = obj.otyp === 'corpse' || obj.otyp === CORPSE;
+    const objectName = corpse ? 'corpse' : pickupObjectName(obj);
+    if ((form.mlet === 'D' || form.glyph === 'D') && (obj.cls === 'coin' || obj.glyph === '$')) {
+        const floorGold = obj.quan || 0;
+        const meager = floorGold + (game._goldCount || 0) < (game.u?.ulevel || 1) * 1000;
+        messages.push(`You coil up around your ${meager ? 'meager ' : ''}hoard.`);
+    } else if (kind === 'towel') {
+        messages.push("It's probably not a good time for a picnic...");
+    } else {
+        messages.push(form.slithy ? `You coil up around the ${objectName}.` : `You sit on the ${objectName}.`);
+        if (corpse && obj.corpsenm?.amorphous) {
+            messages.push("It's squishy...");
+        } else if (obj.otyp === CREAM_PIE || kind === 'cream pie') {
+            if (!heroIsDeaf()) messages.push('Squelch!');
+            game.level.objects = (game.level?.objects || []).filter(other => other !== obj);
+            newsym(obj.ox, obj.oy);
+        } else if (!isBoxObject(obj) && obj.otyp !== ICE_BOX && kind !== 'towel'
+            && !/\b(?:cloth|cloak|robe|shirt|smock|apron|blanket)\b/.test(kind)) {
+            messages.push("It's not very comfortable...");
+        }
+    }
+    await finishSitMessage(messages.join('  '));
+    return true;
+}
+
+function sitTrapState() {
+    const type = game.u?.utraptype;
+    if (type === TT_BEARTRAP || type === 'beartrap') return 'beartrap';
+    if (type === TT_PIT || type === 'pit') return 'pit';
+    if (type === TT_WEB || type === 'web') return 'web';
+    if (type === TT_LAVA || type === 'lava') return 'lava';
+    if (type === TT_INFLOOR || type === 'infloor') return 'infloor';
+    if (type === TT_BURIEDBALL || type === 'buriedball') return 'buriedball';
+    return '';
+}
+
+async function sitWhileAlreadyTrapped(trap) {
+    const trapped = sitTrapState();
+    if (!trapped || !(game.u?.utrap > 0)) return false;
+    let message = '';
+    if (trapped === 'beartrap') {
+        game.u.utrap++;
+        message = "You can't sit down with your foot in the bear trap.";
+    } else if (trapped === 'pit') {
+        if (trap?.ttyp === SPIKED_PIT) {
+            message = 'You sit down on a spike.  Ouch!';
+            if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - 1);
+            exerciseAttribute(A_STR, false);
+        } else {
+            message = 'You sit down in the pit.';
+        }
+        game.u.utrap += rn2(5);
+    } else if (trapped === 'web') {
+        game.u.utrap += rn1(10, 5);
+        message = 'You sit in the spider web and get entangled further!';
+    } else if (trapped === 'lava') {
+        game.u.utrap += rnd(4);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - d(2, 10));
+        message = 'You sit in the lava!';
+    } else {
+        game.u.utrap++;
+        message = "You can't maneuver to sit!";
+    }
+    exerciseAttribute(A_WIS, false);
+    await finishSitMessage(message);
+    return true;
+}
+
+function deleteTrap(trap) {
+    game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+}
+
+function sitTrapArticleName(trap) {
+    const name = TRAP_NAMES[trap?.ttyp] || 'trap';
+    if (trap?.madeby_u) return `your ${name}`;
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+function sitTrapEscapeAllowed(trap) {
+    return ![ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE].includes(trap?.ttyp);
+}
+
+function sitTrapNote(trap) {
+    const notes = [
+        'C note', 'D flat', 'D note', 'E flat', 'E note', 'F note',
+        'F sharp', 'G note', 'G sharp', 'A note', 'B flat', 'B note',
+    ];
+    const note = notes[trap?.tnote] || notes[0];
+    return `${/^[aeiou]/i.test(note) ? 'an' : 'a'} ${note}`;
+}
+
+function sameDungeonLevel(a, b) {
+    return !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+
+function clampDungeonLevel(level) {
+    if (!level) return null;
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const dnum = level.dnum ?? current.dnum;
+    const dungeon = game.dungeons?.[dnum];
+    const bottom = Math.max(1, dungeon?.num_dunlevs ?? level.dlevel ?? current.dlevel);
+    return {
+        dnum,
+        dlevel: Math.max(1, Math.min(level.dlevel ?? current.dlevel, bottom)),
+    };
+}
+
+function scheduleSitLevelChange(targetLevel, options = {}) {
+    if (!targetLevel) return false;
+    game._deferred_level_goto = {
+        targetLevel: { dnum: targetLevel.dnum, dlevel: targetLevel.dlevel },
+        options,
+    };
+    return true;
+}
+
+function webTrapTimeFromStrength() {
+    const str = game.u?.acurr?.a?.[A_STR] ?? 10;
+    if (str <= 3) return rn1(6, 6);
+    if (str < 6) return rn1(6, 4);
+    if (str < 9) return rn1(4, 4);
+    if (str < 12) return rn1(4, 2);
+    if (str < 15) return rn1(2, 2);
+    if (str < 18) return rnd(2);
+    if (str < 69) return 1;
+    return 0;
+}
+
+function sitWebTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    const tim = webTrapTimeFromStrength();
+    if (game.u) {
+        game.u.utrap = tim;
+        game.u.utraptype = tim > 0 ? 'web' : null;
+    }
+    if (tim <= 0) {
+        deleteTrap(trap);
+        return `${prefix}  You tear through ${trap.madeby_u ? 'your web' : 'a web'}!`;
+    }
+    return `${prefix}  You are caught by ${sitTrapArticleName(trap)}!`;
+}
+
+function sitFallTargetLevel(trap) {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const rawTarget = trap?.dst || { dnum: current.dnum, dlevel: current.dlevel + 1 };
+    const target = clampDungeonLevel(rawTarget);
+    return sameDungeonLevel(target, current) ? null : target;
+}
+
+function sitFallThroughTrapResult(trap, prefix) {
+    trap.tseen = true;
+    const messages = [prefix, trap.ttyp === TRAPDOOR
+        ? 'A trap door opens up under you!'
+        : "There's a gaping hole under you!"];
+    const target = sitFallTargetLevel(trap);
+    if (!target || game.u?.levitating || game.u?.flying || game.u?.ustuck) {
+        messages.push("You don't fall in.");
+        return { message: messages.join('  '), more: false };
+    }
+    const dist = Math.max(1, depth_of_level(target) - depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 }));
+    if (dist > 1) {
+        const depth = dist > 3 ? 'very deep ' : dist > 2 ? 'deep ' : '';
+        messages.push(`You fall down a ${depth}shaft!`);
+    }
+    scheduleSitLevelChange(target, { falling: true, arrivalMessage: '' });
+    return { message: messages.join('  '), more: true };
+}
+
+function sitLevelTeleportTrapResult(trap, prefix) {
+    trap.tseen = true;
+    const messages = [`${prefix}  You trigger a level teleport trap!`];
+    if (In_endgame(game.u?.uz)) {
+        messages.push('You feel a wrenching sensation.');
+        return { message: messages.join('  '), more: false };
+    }
+    deleteTrap(trap);
+    if (heroHasAmuletOfYendor() || In_sokoban(game.u?.uz)) {
+        messages.push('You feel very disoriented for a moment.');
+        return { message: messages.join('  '), more: false };
+    }
+    if (heroHasTeleportControl() && !heroIsStunned()) {
+        game._read_confused_teleport_prompt_after_more = 1;
+        game._read_level_teleport_confused_prompt = 0;
+        return { message: messages.join('  '), more: true };
+    }
+    const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
+    const targetDepth = randomTeleportDepth();
+    if (targetDepth === currentDepth) {
+        messages.push('You shudder for a moment.');
+        return { message: messages.join('  '), more: false };
+    }
+    let postMessage = '';
+    if (heroHasTeleportControl()) postMessage = 'You briefly feel centered.';
+    else if (heroIsHallucinating()) postMessage = 'You briefly feel oriented.';
+    else {
+        postMessage = 'You feel disoriented.';
+        addHeroConfusion(3);
+    }
+    scheduleSitLevelChange(levelTeleportNumericTarget(targetDepth), {
+        levelTeleport: true,
+        postMessage,
+    });
+    return { message: messages.join('  '), more: true };
+}
+
+function sitMagicPortalResult(trap, prefix) {
+    trap.tseen = true;
+    const messages = [`${prefix}  You activated a magic portal!`];
+    if (In_endgame(game.u?.uz) && !heroHasAmuletOfYendor()) {
+        messages.push('You feel dizzy for a moment, but nothing happens...');
+        return { message: messages.join('  '), more: false };
+    }
+    const target = clampDungeonLevel(trap.dst);
+    if (!target || sameDungeonLevel(target, game.u?.uz)) {
+        messages.push('You shudder for a moment.');
+        return { message: messages.join('  '), more: false };
+    }
+    const alreadyStunned = heroIsStunned();
+    addHeroStun(3);
+    scheduleSitLevelChange(target, {
+        portalArrival: true,
+        preMessage: alreadyStunned ? 'You feel dizzier.' : 'You feel slightly dizzy.',
+    });
+    return { message: messages.join('  '), more: true };
+}
+
+function placeSitTrapProjectile(projectile) {
+    game.level.objects ??= [];
+    game.level.objects.push({
+        quan: 1,
+        blessed: false,
+        cursed: false,
+        ox: game.u?.ux || 0,
+        oy: game.u?.uy || 0,
+        ...projectile,
+    });
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+}
+
+function sitProjectileTrapMessage(trap, prefix, alreadySeen, spec) {
+    if (trap.once && alreadySeen && !rn2(15)) {
+        deleteTrap(trap);
+        return `${prefix}  ${spec.emptyMessage}`;
+    }
+    trap.once = true;
+    trap.tseen = true;
+    const projectile = { ...spec.projectile };
+    if (spec.poisonable) projectile.opoisoned = !rn2(6);
+    const damage = spec.damage();
+    const roll = rnd(20);
+    const misses = (game.u?.uac || 0) + spec.toHit <= roll;
+    if (misses) {
+        placeSitTrapProjectile(projectile);
+        const almost = (game.u?.uac || 0) + spec.toHit > roll - 2;
+        const missText = almost ? `You are almost hit by ${spec.article}.` : `${spec.subject} misses you.`;
+        return `${prefix}  ${spec.shootsMessage}  ${missText}`;
+    }
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+    let hitText = `You are hit by ${spec.article}.`;
+    if (projectile.opoisoned && !heroHasPoisonResistance()) {
+        if (game.u?.acurr?.a) game.u.acurr.a[A_CON] = Math.max(3, (game.u.acurr.a[A_CON] || 10) - 1);
+        hitText += `  The ${spec.name} was poisoned!`;
+    }
+    return `${prefix}  ${spec.shootsMessage}  ${hitText}`;
+}
+
+function sitRockTrapMessage(trap, prefix, alreadySeen) {
+    if (trap.once && alreadySeen && !rn2(15)) {
+        deleteTrap(trap);
+        return `${prefix}  A trap door in the ceiling opens, but nothing falls out!`;
+    }
+    trap.once = true;
+    trap.tseen = true;
+    const damage = d(2, 6);
+    placeSitTrapProjectile({ otyp: ROCK, cls: 'gem', kind: 'rock', singular: 'rock', plural: 'rocks', glyph: '*' });
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+    exerciseAttribute(A_STR, false);
+    return `${prefix}  A trap door in the ceiling opens and a rock falls on your head!`;
+}
+
+function sitSqueakyBoardMessage(trap, prefix) {
+    trap.tseen = true;
+    if (heroIsDeaf()) return `${prefix}  A board beneath you vibrates.`;
+    return `${prefix}  A board beneath you squeaks ${sitTrapNote(trap)} loudly.`;
+}
+
+function sitSleepGasMessage(trap, prefix) {
+    trap.tseen = true;
+    if (game.u?.sleepResistance || polyselfForm()?.breathless) {
+        return `${prefix}  You are enveloped in a cloud of gas!`;
+    }
+    const duration = rnd(25);
+    game._helpless_time = Math.max(game._helpless_time || 0, duration);
+    game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
+    return `${prefix}  A cloud of gas puts you to sleep!`;
+}
+
+function sitRustTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    switch (rn2(5)) {
+    case 0:
+        return `${prefix}  A gush of water hits you on the head!`;
+    case 1:
+        return `${prefix}  A gush of water hits your left arm!`;
+    case 2:
+        return `${prefix}  A gush of water hits your right arm!`;
+    default:
+        return `${prefix}  A gush of water hits you!`;
+    }
+}
+
+function sitFireTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    const origDamage = d(2, 4);
+    const messages = [`${prefix}  A tower of flame erupts from the floor!`];
+    let damage = 0;
+    if (game.u?.fireResistance) {
+        damage = rn2(2);
+        if (!damage) messages.push('You are uninjured.');
+    } else {
+        damage = d(2, 4);
+        const hpLoss = rn2(Math.min(game.u?.uhpmax || 1, damage + 1));
+        if (game.u) {
+            game.u.uhpmax = Math.max(1, (game.u.uhpmax || 1) - hpLoss);
+            game.u.uhp = Math.min(game.u.uhp || 1, game.u.uhpmax);
+        }
+    }
+    const inventoryFire = fireDamageInventory(origDamage);
+    messages.push(...inventoryFire.messages);
+    damage += inventoryFire.damage;
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+    if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
+    return messages.join('  ');
+}
+
+function sitTeleportTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    if (heroHasAntimagic() || In_endgame(game.u?.uz)) {
+        return `${prefix}  You feel a wrenching sensation.`;
+    }
+    if (trap.once) deleteTrap(trap);
+    const materialize = safeTeleportHeroSameLevel();
+    return [prefix, materialize || 'You shudder for a moment.'].join('  ');
+}
+
+function sitAntiMagicTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    const messages = [prefix];
+    if (heroHasAntimagic()) {
+        const damage = rnd(4);
+        const hp = game.u?.uhp || 1;
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        messages.push(`You feel ${damage >= hp ? 'unbearably torpid!' : damage >= hp / 4 ? 'very lethargic.' : 'sluggish.'}`);
+    }
+    let drain = d(2, 6);
+    const halfDrain = rnd(Math.max(1, Math.trunc(drain / 2)));
+    let exclaim = false;
+    if ((game.u?.uenmax || 0) > drain) {
+        game.u.uenmax -= halfDrain;
+        drain -= halfDrain;
+        exclaim = true;
+    }
+    if ((game.u?.uenmax || 0) < 1) {
+        if (game.u) {
+            game.u.uen = 0;
+            game.u.uenmax = 0;
+        }
+        messages.push('You feel momentarily lethargic.');
+    } else {
+        if (drain > ((game.u?.uen || 0) + (game.u?.uenmax || 0)) / 3) drain = rnd(drain);
+        if (game.u) {
+            exclaim = exclaim || drain > (game.u.uen || 0);
+            game.u.uen = (game.u.uen || 0) - drain;
+            if (game.u.uen < 0) {
+                game.u.uenmax = Math.max(0, (game.u.uenmax || 0) - rnd(-game.u.uen));
+                game.u.uen = 0;
+            } else if (game.u.uen > game.u.uenmax) {
+                game.u.uen = game.u.uenmax;
+            }
+        }
+        messages.push(`You feel your magical energy drain away${exclaim ? '!' : '.'}`);
+    }
+    return messages.join('  ');
+}
+
+function sitPolyTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    const messages = [`${prefix}  You trigger a polymorph trap!`];
+    if (heroHasAntimagic() || heroHasUnchanging()) {
+        messages.push('You feel momentarily different.');
+        return messages.join('  ');
+    }
+    deleteTrap(trap);
+    const form = rndmonnum();
+    const result = becomeMonster(form?.name || 'newt');
+    messages.push(result?.message || 'You feel a change coming over you.');
+    if (result?.more) game._topline_after_more = result.more === true ? game._topline_after_more : result.more;
+    return messages.join('  ');
+}
+
+function sitLandmineMessage(trap, prefix) {
+    const damage = rnd(16);
+    const mineName = sitTrapArticleName(trap);
+    trap.tseen = true;
+    trap.ttyp = PIT;
+    trap.madeby_u = false;
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, rn1(35, 41), rn1(35, 41));
+        game.u.utrap = rn1(6, 2);
+        game.u.utraptype = 'pit';
+    }
+    exerciseAttribute(A_DEX, false);
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return `${prefix}  KAABLAMM!!!  You triggered ${mineName}!  You fall into a pit!`;
+}
+
+function sitRollingBoulderMessage(trap, prefix) {
+    trap.tseen = true;
+    const start = trap.launch;
+    const end = trap.launch2;
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === start?.x && obj.oy === start?.y);
+    let released = false;
+    if (boulder && end) {
+        boulder.ox = end.x;
+        boulder.oy = end.y;
+        released = true;
+        vision_reset();
+        vision_recalc(0);
+        newsym(start.x, start.y);
+        newsym(end.x, end.y);
+    }
+    return `${prefix}  Click!  You trigger a rolling boulder trap!  ${released ? 'A boulder misses you.' : 'Fortunately for you, no boulder was released.'}`;
+}
+
+async function sitTriggerTrap(trap) {
+    if (!trap) return false;
+    if (await sitWhileAlreadyTrapped(trap)) return true;
+    const prefix = game.u?.flying ? 'You land.' : 'You sit down.';
+    const alreadySeen = !!trap.tseen;
+    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5)) {
+        await finishSitMessage(`${prefix}  You escape ${sitTrapArticleName(trap)}.`);
+        return true;
+    }
+    if (trap.ttyp === ARROW_TRAP) {
+        await finishSitMessage(sitProjectileTrapMessage(trap, prefix, alreadySeen, {
+            name: 'arrow',
+            subject: 'An arrow',
+            article: 'an arrow',
+            shootsMessage: 'An arrow shoots out at you!',
+            emptyMessage: 'You hear a loud click!',
+            toHit: 8,
+            damage: () => rnd(6),
+            projectile: { cls: 'weapon', kind: 'arrow', singular: 'arrow', plural: 'arrows', glyph: ')' },
+        }));
+        return true;
+    }
+    if (trap.ttyp === DART_TRAP) {
+        await finishSitMessage(sitProjectileTrapMessage(trap, prefix, alreadySeen, {
+            name: 'little dart',
+            subject: 'A little dart',
+            article: 'a little dart',
+            shootsMessage: 'A little dart shoots out at you!',
+            emptyMessage: 'You hear a soft click.',
+            toHit: 7,
+            damage: () => rnd(3),
+            poisonable: true,
+            projectile: { otyp: DART, cls: 'weapon', kind: 'dart', singular: 'dart', plural: 'darts', glyph: ')', color: CLR_CYAN },
+        }));
+        return true;
+    }
+    if (trap.ttyp === ROCKTRAP) {
+        await finishSitMessage(sitRockTrapMessage(trap, prefix, alreadySeen));
+        return true;
+    }
+    if (trap.ttyp === SQKY_BOARD) {
+        await finishSitMessage(sitSqueakyBoardMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === BEAR_TRAP) {
+        trap.tseen = true;
+        const damage = d(2, 4);
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+            game.u.utrap = rn1(4, 4);
+            game.u.utraptype = 'beartrap';
+        }
+        await finishSitMessage(`${prefix}  A bear trap closes on your foot!`);
+        return true;
+    }
+    if (trap.ttyp === LANDMINE) {
+        await finishSitMessage(sitLandmineMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === ROLLING_BOULDER_TRAP) {
+        await finishSitMessage(sitRollingBoulderMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === SLP_GAS_TRAP) {
+        await finishSitMessage(sitSleepGasMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === RUST_TRAP) {
+        await finishSitMessage(sitRustTrapMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === FIRE_TRAP) {
+        await finishSitMessage(sitFireTrapMessage(trap, prefix), { more: true });
+        return true;
+    }
+    if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) {
+        trap.tseen = true;
+        if (game.u) {
+            game.u.utrap = rn1(6, 2);
+            game.u.utraptype = 'pit';
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - rnd(trap.ttyp === SPIKED_PIT ? 10 : 6));
+        }
+        await finishSitMessage(`${prefix}  You fall into ${trap.ttyp === SPIKED_PIT ? 'a spiked pit' : 'a pit'}!`);
+        return true;
+    }
+    if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) {
+        const result = sitFallThroughTrapResult(trap, prefix);
+        await finishSitMessage(result.message, { more: result.more });
+        return true;
+    }
+    if (trap.ttyp === TELEP_TRAP) {
+        await finishSitMessage(sitTeleportTrapMessage(trap, prefix), { more: true });
+        return true;
+    }
+    if (trap.ttyp === LEVEL_TELEP) {
+        const result = sitLevelTeleportTrapResult(trap, prefix);
+        await finishSitMessage(result.message, { more: result.more });
+        return true;
+    }
+    if (trap.ttyp === MAGIC_PORTAL) {
+        const result = sitMagicPortalResult(trap, prefix);
+        await finishSitMessage(result.message, { more: result.more });
+        return true;
+    }
+    if (trap.ttyp === WEB) {
+        await finishSitMessage(sitWebTrapMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === MAGIC_TRAP) {
+        trap.tseen = true;
+        const result = magicTrapResult(trap);
+        const messages = [prefix];
+        if (result.message) messages.push(result.message);
+        if (result.afterMore) game._topline_after_more = result.afterMore;
+        await finishSitMessage(messages.join('  '), { more: result.more || !!result.afterMore });
+        return true;
+    }
+    if (trap.ttyp === ANTI_MAGIC) {
+        await finishSitMessage(sitAntiMagicTrapMessage(trap, prefix));
+        return true;
+    }
+    if (trap.ttyp === POLY_TRAP) {
+        await finishSitMessage(sitPolyTrapMessage(trap, prefix), { more: !!game._topline_after_more });
+        return true;
+    }
+    if (trap.ttyp === VIBRATING_SQUARE) {
+        trap.tseen = true;
+        await finishSitMessage(`${prefix}  You feel a strange vibration beneath you.`);
+        return true;
+    }
+    trap.tseen = true;
+    await finishSitMessage(prefix);
+    return true;
+}
+
+async function sitOnTerrain(loc) {
+    const typ = loc?.typ;
+    const waterEggs = heroPolyselfEggsInWater();
+    if ((game.u?.underwater || game.u?.uunderwater || Is_waterlevel(game.u?.uz)) && !waterEggs) {
+        await finishSitMessage(Is_waterlevel(game.u?.uz)
+            ? 'There are no cushions floating nearby.'
+            : 'You sit down on the muddy bottom.');
+        return true;
+    }
+    if ((IS_POOL(typ) || typ === WATER || typ === MOAT) && !waterEggs) {
+        rn2(10);
+        rn2(10);
+        await finishSitMessage('You sit in the water.');
+        return true;
+    }
+    if (typ === SINK) {
+        const rump = polyselfForm()?.humanoid === false || polyselfForm()?.mlet === ';' ? 'underside' : 'rump';
+        await finishSitMessage(`You sit on the sink.  Your ${rump} gets wet.`);
+        return true;
+    }
+    if (typ === ALTAR) {
+        await finishSitMessage('You sit on the altar.  A voice whispers: "Thou shalt pay, infidel!"', { more: true });
+        return true;
+    }
+    if (typ === GRAVE) {
+        await finishSitMessage('You sit on the grave.');
+        return true;
+    }
+    if (typ === STAIRS) {
+        await finishSitMessage('You sit on the stairs.');
+        return true;
+    }
+    if (typ === LADDER) {
+        await finishSitMessage('You sit on the ladder.');
+        return true;
+    }
+    if (typ === LAVAPOOL || typ === LAVAWALL) {
+        const messages = ['You sit on the lava.'];
+        if (game.u?._statusSuffix?.includes('Slimed')) {
+            game.u._statusSuffix = game.u._statusSuffix.replace(/ Slimed/g, '');
+            game.u.slimed = false;
+        }
+        if (polyselfForm()?.likesLava || game.u?.likesLava) {
+            messages.push('The lava feels warm.');
+        } else {
+            messages.push('The lava burns you!');
+            if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - d(game.u.fireResistance ? 2 : 10, 10));
+        }
+        await finishSitMessage(messages.join('  '), { more: messages.length > 1 });
+        return true;
+    }
+    if (typ === ICE) {
+        const messages = ['You sit on the ice.'];
+        if (!game.u?.coldResistance) messages.push('The ice feels cold.');
+        await finishSitMessage(messages.join('  '));
+        return true;
+    }
+    if (typ === THRONE) {
+        await finishSitMessage('You sit on the opulent throne.  You feel somehow out of place...', { more: true });
+        return true;
+    }
+    return false;
+}
+
+async function doSitCommand() {
+    if (game.u?.usteed) {
+        const steedName = game.u.usteed.givenName || `the ${game.u.usteed.data?.name || 'steed'}`;
+        await finishSitMessage(`You are already sitting on ${steedName}.`, { move: false });
+        return;
+    }
+    if (game.u?.uundetected && polyselfForm()?.ceilingHider) game.u.uundetected = 0;
+
+    const reach = heroCanReachFloorForSit();
+    if (!reach.ok) {
+        await finishSitMessage(reach.message, { move: false });
+        return;
+    }
+
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const loc = game.level?.at(ux, uy);
+    const trap = (game.level?.traps || []).find(item => item.tx === ux && item.ty === uy);
+    const objectHere = floorObjectForSitting();
+    if (objectHere) {
+        await sitOnFloorObject(objectHere);
+        return;
+    }
+    if (await sitWhileAlreadyTrapped(trap)) return;
+    if (trap && await sitTriggerTrap(trap)) return;
+    if (await sitOnTerrain(loc)) return;
+    if (polyselfForm()?.oviparous && await sitLayEgg()) return;
+    await finishSitMessage(`Having fun sitting on the ${sitSurfaceName(loc)}?`);
 }
 
 async function eatRottenNonCorpseFood(item, floorObject = false) {
     const { message, rottenSleepDuration } = rottenFoodEffect();
     const touched = partialRottenFood(item, floorObject);
     if (!rottenSleepDuration) {
+        if (isRoyalJelly(touched)) {
+            await finishRoyalJellyEating(touched, floorObject, message, { more: true, processTimeWithMore: 1 });
+            return;
+        }
         addHeroNutrition(remainingFoodNutrition(touched));
         consumeTouchedFood(touched, floorObject);
     }
@@ -15073,6 +16407,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'readInventoryMore'
         && game._command_mode !== 'throwInvalidMore'
         && game._command_mode !== 'wieldInvalidMore'
+        && game._command_mode !== 'tinEatConfirm'
         && game._command_mode !== 'takeOffInvalidMore'
         && game._command_mode !== 'markerWriteInvalidMore'
         && game._command_mode !== 'engraveToolMore'
@@ -17049,6 +18384,11 @@ export async function rhack(_cmd) {
                 game._process_command_time_now = 1;
                 game._process_time_with_more = 1;
             }
+            if (game._tin_opening_occupation) {
+                game.context.move = 1;
+                game._process_command_time_now = 1;
+                game._process_time_with_more = 1;
+            }
             return;
         }
         game._keep_pending_message = 1;
@@ -17063,6 +18403,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'readInventoryMore'
         && game._command_mode !== 'throwInvalidMore'
         && game._command_mode !== 'wieldInvalidMore'
+        && game._command_mode !== 'tinEatConfirm'
         && game._command_mode !== 'takeOffInvalidMore'
         && game._command_mode !== 'markerWriteInvalidMore'
         && game._command_mode !== 'engraveToolMore'
@@ -21730,6 +23071,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
             }).sort((a, b) => {
                 const section = item => item.cls === 'spellbook' ? 'Spellbooks'
@@ -21766,6 +23108,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
             });
             game._topline_after_more = `What do you want to use or apply? [${getobjPromptLetters(applyLetters)} or ?*]`;
@@ -21787,6 +23130,14 @@ export async function rhack(_cmd) {
             game._cream_pie_after_more_letter = item.letter;
             game._topline_after_more = "You can't see through all the sticky goop on your face.";
             await setMessage('You immerse your face in the cream pie.', true);
+            return;
+        }
+        if (isRoyalJelly(item)) {
+            await beginRoyalJellyRub(item);
+            return;
+        }
+        if (isTinOpenerObject(item)) {
+            await beginTinOpenerUse(item);
             return;
         }
         if (['armor', 'weapon', 'amulet', 'ring', 'gem', 'food'].includes(item.cls)) {
@@ -22733,9 +24084,56 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'rubRoyalJellyTarget') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._royal_jelly_rub_letter = '';
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            const eggs = (game.inventory || []).filter(item => isEggItem(item));
+            const rows = eggs.map((item, index) => [index, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
+            rows.push([rows.length, 40, ' (end)'.padEnd(40, ' ')]);
+            setOverlay(rows, 2, false, 0);
+            return;
+        }
+        const jelly = (game.inventory || []).find(item => item.letter === game._royal_jelly_rub_letter && isRoyalJelly(item));
+        if (!jelly) {
+            game._royal_jelly_rub_letter = '';
+            game._command_mode = null;
+            await setMessage("You don't have that object.");
+            return;
+        }
+        const egg = (game.inventory || []).find(item => item.letter === ch && isEggItem(item));
+        if (!egg) {
+            game._topline_after_more = royalJellyRubPrompt();
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        await rubRoyalJellyOnEgg(jelly, egg);
+        return;
+    }
+
     if (game._command_mode === 'rubObject') {
-        if (ch === 'n') {
-            const lamp = (game.inventory || []).find(item => item.letter === ch);
+        if (ch === '?' || ch === '*') {
+            const rubItems = (game.inventory || []).filter(item => {
+                const name = inventoryItemName(item).toLowerCase();
+                return name.includes('lamp') || isRoyalJelly(item);
+            });
+            const rows = rubItems.map((item, index) => [index, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
+            rows.push([rows.length, 40, ' (end)'.padEnd(40, ' ')]);
+            setOverlay(rows, 2, false, 0);
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (item && isRoyalJelly(item)) {
+            await beginRoyalJellyRub(item);
+            return;
+        }
+        const name = item ? inventoryItemName(item).toLowerCase() : '';
+        if (item && name.includes('lamp')) {
+            const lamp = item;
             for (const invItem of game.inventory || []) {
                 if (invItem.wielded || invItem.line?.includes('weapon in')) {
                     invItem.line = `${invItem.letter || '?'} - ${inventoryItemName(invItem)}`;
@@ -22752,7 +24150,7 @@ export async function rhack(_cmd) {
             game._command_mode = null;
             return;
         }
-        await setMessage('What do you want to rub? [n or ?*]');
+        await setMessage(rubObjectPrompt());
         return;
     }
 
@@ -23842,23 +25240,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'sit') {
-                const objectHere = (game.level?.objects || []).find(obj =>
-                    !obj.hidden && !obj.transientProjectile
-                    && obj.ox === game.u?.ux && obj.oy === game.u?.uy && obj.otyp !== BOULDER);
-                if (objectHere) {
-                    const corpse = objectHere.otyp === 'corpse' || objectHere.otyp === CORPSE;
-                    const box = objectHere.kind === 'chest' || objectHere.otyp === CHEST
-                        || objectHere.kind === 'large box' || objectHere.otyp === LARGE_BOX || objectHere.otyp === ICE_BOX;
-                    const name = corpse ? 'corpse' : pickupObjectName(objectHere);
-                    await setMessage(`You sit on the ${name}.${box ? '' : "  It's not very comfortable..."}`);
-                    game._command_mode = null;
-                    game.context.move = 1;
-                    return;
-                }
-                const loc = game.level?.at(game.u?.ux || 0, game.u?.uy || 0);
-                await setMessage(`Having fun sitting on the ${loc?.typ === FOUNTAIN ? 'fountain' : 'floor'}?`);
-                game._command_mode = null;
-                game.context.move = 1;
+                await doSitCommand();
                 return;
             }
             if (command === 'dip') {
@@ -24166,7 +25548,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'rub') {
-                await setMessage('What do you want to rub? [n or ?*]');
+                await setMessage(rubObjectPrompt());
                 game._command_mode = 'rubObject';
                 return;
             }
@@ -25096,6 +26478,41 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'tinEatConfirm') {
+        const pending = game._tin_opened_pending;
+        if (ch === 'y') {
+            game._tin_opened_pending = null;
+            await finishTinContents(pending?.tin, !!pending?.floorObject, true, pending?.variety);
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === 'n' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._tin_opened_pending = null;
+            await finishTinContents(pending?.tin, !!pending?.floorObject, false, pending?.variety);
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'tinOpenerObject') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game._tin_opener_letter = '';
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (item && isTinObject(item)) {
+            game._tin_opener_letter = '';
+            await startTinOpening(item, false);
+            return;
+        }
+        const letters = (game.inventory || []).filter(isTinObject).map(invItem => invItem.letter).filter(Boolean).join('');
+        await setMessage("You don't have that object.", true);
+        game._topline_after_more = `What do you want to open? [${getobjPromptLetters(letters)} or ?*]`;
+        return;
+    }
+
     if (game._command_mode === 'eatInvalidMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             await setMessage(eatingPrompt());
@@ -25122,6 +26539,10 @@ export async function rhack(_cmd) {
             const name = item.singular || pickupObjectName({ ...item, quan: 1 });
             const fortuneCookie = item.kind === 'fortune cookie';
             const corpse = item.otyp === 'corpse' || item.otyp === CORPSE;
+            if (isTinObject(item)) {
+                await startTinOpening(item, false);
+                return;
+            }
             if (corpse) {
                 const corpseName = item.corpsenm?.name || 'monster';
                 if (corpseName === 'lichen') {
@@ -25171,6 +26592,10 @@ export async function rhack(_cmd) {
                 await eatRottenNonCorpseFood(item);
                 return;
             }
+            if (isRoyalJelly(item)) {
+                await eatRoyalJelly(item);
+                return;
+            }
             if ((item.quan || 1) > 1) next_ident();
             if (item.oeaten > 0) addHeroNutrition(item.oeaten);
             removeInventoryItem(item);
@@ -25201,6 +26626,10 @@ export async function rhack(_cmd) {
             const oldCorpse = floorCorpse && food?.oldCorpse;
             const name = pickupObjectName({ ...(food || {}), quan: 1 });
             game._eat_floor_object = null;
+            if (isTinObject(food)) {
+                await startTinOpening(food, true);
+                return;
+            }
             if ((food?.otyp === 'corpse' || food?.otyp === CORPSE) && food?.corpsenm?.name === 'lichen') {
                 rn2(10);
                 game._eating_turns_remaining = 4;
@@ -25334,6 +26763,10 @@ export async function rhack(_cmd) {
             }
             if (shouldUseGenericRottenFoodPath(food)) {
                 await eatRottenNonCorpseFood(food, true);
+                return;
+            }
+            if (isRoyalJelly(food)) {
+                await eatRoyalJelly(food, true);
                 return;
             }
             if (food.oeaten > 0) addHeroNutrition(food.oeaten);
@@ -26282,6 +27715,7 @@ export async function rhack(_cmd) {
             return item.cls === 'tool' || item.cls === 'wand' || item.kind === 'wand of sleep'
                 || item.otyp === WAND_CLASS || item.cls === 'spellbook'
                 || item.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                || isRoyalJelly(item)
                 || (item.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
         });
         if (!letters) {

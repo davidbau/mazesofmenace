@@ -8,7 +8,7 @@
 import { RUMORS_B64, ENGRAVE_B64 } from './dat_inline.js';
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
-import { rn2, rnd, rn1, d, rnz } from './rng.js';
+import { rn2, rnd, rn1, d, rnz, rne } from './rng.js';
 import { MONS, SPECIAL_PM, MON_FLAGS } from './mondata.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
@@ -94,66 +94,122 @@ const ELVEN_BOW           = 84;
 const ORCISH_BOW          = 85;
 const SLING               = 87;
 const CROSSBOW            = 88;
+// Armor (otyp 89-172) — corrected to NH5.0 objects.h enum order
 const ELVEN_LEATHER_HELM  = 89;
 const ORCISH_HELM         = 90;
 const DWARVISH_IRON_HELM  = 91;
-const DWARVISH_MITHRIL_COAT = 106;
-const ELVEN_MITHRIL_COAT  = 107;
-const CHAIN_MAIL          = 108;
-const ORCISH_CHAIN_MAIL   = 109;
-const LEATHER_ARMOR       = 114;
-const LEATHER_JACKET      = 115;
-const ELVEN_CLOAK         = 119;
-const ORCISH_CLOAK        = 120;
-const DWARVISH_CLOAK      = 121;
-const LEATHER_CLOAK       = 125;
-const ELVEN_SHIELD        = 133;
-const URUK_HAI_SHIELD     = 134;
-const ORCISH_SHIELD       = 135;
-const LARGE_SHIELD        = 136;
-const DWARVISH_ROUNDSHIELD = 137;
-const SHIELD_OF_REFLECTION = 138;
-const LEATHER_GLOVES      = 139;
-const LOW_BOOTS           = 143;
-const IRON_SHOES          = 144;
-const HIGH_BOOTS          = 145;
-const ELVEN_BOOTS         = 149;
+// 92-100: FEDORA, CORNUTHAUM, DUNCE_CAP, DENTED_POT, helms-of-X
+// 101-120: dragon scale mails and dragon scales (NH5 addition)
+const PLATE_MAIL          = 121;
+const SPLINT_MAIL         = 124;
+const BANDED_MAIL         = 125;
+const DWARVISH_MITHRIL_COAT = 126;
+const ELVEN_MITHRIL_COAT  = 127;
+const CHAIN_MAIL          = 128;
+const ORCISH_CHAIN_MAIL   = 129;
+const RING_MAIL           = 132;
+const ORCISH_RING_MAIL    = 133;
+const LEATHER_ARMOR       = 134;
+const LEATHER_JACKET      = 135;
+const HAWAIIAN_SHIRT      = 136;
+const ELVEN_CLOAK         = 139;
+const ORCISH_CLOAK        = 140;
+const DWARVISH_CLOAK      = 141;
+const OILSKIN_CLOAK       = 142;
+const ROBE                = 143;
+const LEATHER_CLOAK       = 145;
+const CLOAK_OF_PROTECTION = 146;
+const CLOAK_OF_INVISIBILITY = 147;
+const CLOAK_OF_MAGIC_RESISTANCE = 148;
+const CLOAK_OF_DISPLACEMENT = 149;
+const SMALL_SHIELD        = 150;
+const ELVEN_SHIELD        = 153;
+const URUK_HAI_SHIELD     = 154;
+const ORCISH_SHIELD       = 155;
+const LARGE_SHIELD        = 156;
+const DWARVISH_ROUNDSHIELD = 157;
+const SHIELD_OF_REFLECTION = 158;
+const LEATHER_GLOVES      = 159;
+const LOW_BOOTS           = 163;
+const IRON_SHOES          = 164;
+const HIGH_BOOTS          = 165;
+const ELVEN_BOOTS         = 169;
+const LEVITATION_BOOTS    = 172;
 const MACE                = 73;
 const MORNING_STAR        = 75;
 const SILVER_MACE         = 74;
-const LARGE_BOX           = 192;
-const CHEST               = 193;
-const ICE_BOX             = 194;
-const SACK                = 195;
-const OILSKIN_SACK        = 196;
-const BAG_OF_HOLDING      = 197;
-const CRYSTAL_BALL        = 209;
-const BELL                = 230;
-const PICK_AXE            = 234;
-const CORPSE              = 238;
-const KELP_FROND          = 247;
-const CREAM_PIE           = 259;
-const LEMBAS_WAFER        = 263;
-const CRAM_RATION         = 264;
-const FOOD_RATION         = 265;
-const POT_SPEED           = 274;
-const POT_HEALING         = 279;
-const POT_EXTRA_HEALING   = 280;
-const POT_GAIN_ENERGY     = 285;
-const SCR_ENCHANT_ARMOR   = 295;
-const SCR_CONFUSE_MONSTER = 297;
-const SCR_SCARE_MONSTER   = 298;
-const SCR_ENCHANT_WEAPON  = 300;
-const SCR_TELEPORTATION   = 305;
-const SPE_HEALING         = 346;
-const WAN_STRIKING        = 389;
-const WAN_DIGGING         = 400;
-const WAN_DEATH           = 405;
-const GOLD_PIECE          = 410;
-const FLINT               = 445;
-const ROCK                = 446;
-const BOULDER             = 447;
-const STATUE              = 448;
+// Tools (otyp 214-263)
+const LARGE_BOX           = 214;
+const CHEST               = 215;
+const ICE_BOX             = 216;
+const SACK                = 217;
+const OILSKIN_SACK        = 218;
+const BAG_OF_HOLDING      = 219;
+const BAG_OF_TRICKS       = 220;
+const SKELETON_KEY        = 221;
+const LOCK_PICK           = 222;
+const CREDIT_CARD         = 223;
+const OIL_LAMP            = 227;
+const MAGIC_LAMP          = 228;
+const EXPENSIVE_CAMERA    = 229;
+const CRYSTAL_BALL        = 231;
+const BLINDFOLD           = 233;
+const TOWEL               = 234;
+const LEASH               = 236;
+const STETHOSCOPE         = 237;
+const TINNING_KIT         = 238;
+const TIN_OPENER          = 239;
+const MAGIC_MARKER        = 242;
+const BELL                = 255;
+const PICK_AXE            = 259;
+// Food (otyp 264-296)
+const TRIPE_RATION        = 264;
+const CORPSE              = 265;
+const KELP_FROND          = 275;
+const APPLE               = 277;
+const ORANGE              = 278;
+const CARROT              = 282;
+const SPRIG_OF_WOLFSBANE  = 283;
+const CLOVE_OF_GARLIC     = 284;
+const CREAM_PIE           = 287;
+const FORTUNE_COOKIE      = 289;
+const LEMBAS_WAFER        = 291;
+const CRAM_RATION         = 292;
+const FOOD_RATION         = 293;
+// Potions (otyp 297-322)
+const POT_SPEED           = 302;
+const POT_HEALING         = 307;
+const POT_EXTRA_HEALING   = 308;
+const POT_GAIN_ENERGY     = 313;
+const POT_SICKNESS        = 318;
+const POT_WATER           = 322;
+// Scrolls (otyp 323-364)
+const SCR_ENCHANT_ARMOR   = 323;
+const SCR_CONFUSE_MONSTER = 325;
+const SCR_SCARE_MONSTER   = 326;
+const SCR_ENCHANT_WEAPON  = 328;
+const SCR_TELEPORTATION   = 333;
+const SCR_MAGIC_MAPPING   = 337;
+// Spellbooks (otyp 365-408)
+const SPE_HEALING         = 373;
+const SPE_FORCE_BOLT      = 375;
+const SPE_CONFUSE_MONSTER = 376;
+const SPE_EXTRA_HEALING   = 390;
+const SPE_PROTECTION      = 402;
+const SPE_STONE_TO_FLESH  = 404;
+// Wands (otyp 409-436)
+const WAN_WISHING         = 413;
+const WAN_STRIKING        = 416;
+const WAN_DIGGING         = 427;
+const WAN_SLEEP           = 431;
+const WAN_DEATH           = 432;
+// Coin / Gems / Rock
+const GOLD_PIECE          = 437;
+const TOUCHSTONE          = 471;
+const FLINT               = 472;
+const ROCK                = 473;
+const BOULDER             = 474;
+const STATUE              = 475;
 const DUST                = 3;
 const MARK                = 6;
 
@@ -311,12 +367,6 @@ function blessorcurse(otmp, chance) {
 
 // C ref: mkobj.c rne(x) — 1..max(ulevel/3,5) enchantment roll
 // ulevel=1 → utmp=5; loop while tmp<5 && !rn2(x)
-function rne(x) {
-    const utmp = 5; // ulevel < 15 → 5
-    let tmp = 1;
-    while (tmp < utmp && !rn2(x)) tmp++;
-    return tmp;
-}
 
 // C ref: mkobj.c mkobj_erosions — erosion/grease random generation
 // Only called when _in_mklev=true and erosion_matters(oclass) and is_damageable.
@@ -366,8 +416,9 @@ function mkbox_cnts(box) {
         n = box.olocked ? 7 : 5;
     } else if (box.otyp === LARGE_BOX) {
         n = box.olocked ? 5 : 3;
-    } else if (box.otyp === SACK || box.otyp === OILSKIN_SACK ||
-               box.otyp === BAG_OF_HOLDING) {
+    } else if (box.otyp === SACK || box.otyp === OILSKIN_SACK) {
+        n = _in_mklev ? 1 : 0; // C: moves<=1 && !in_mklev → n=0 during ini_inv
+    } else if (box.otyp === BAG_OF_HOLDING) {
         n = 1;
     } else {
         n = 0;
@@ -532,13 +583,14 @@ function mksobj_init(otmp, artif) {
         if (otyp === CHEST || otyp === LARGE_BOX) {
             otmp.olocked = !!rn2(5);
             otmp.otrapped = !rn2(10);
-            if (otmp.otrapped) rn2(100); // tknown: obvious trap check
+            if (otmp.otrapped) rn2(100);
             mkbox_cnts(otmp);
         } else if (otyp === ICE_BOX || otyp === SACK || otyp === OILSKIN_SACK ||
                    otyp === BAG_OF_HOLDING) {
             mkbox_cnts(otmp);
+        } else if (otyp === EXPENSIVE_CAMERA || otyp === TINNING_KIT || otyp === MAGIC_MARKER) {
+            otmp.spe = rn1(70, 30); // charges: rn2(70)+30
         }
-        // Other tools (lanterns, candles, etc.) handled as no-RNG for now
         break;
     }
     default:
@@ -599,7 +651,7 @@ const OCLASS_PROB_TOTALS = new Map([
 const WEAPON_MULTIGEN_THRESHOLD = 287;
 
 // C ref: mkobj.c mkobj() — select class then type, create with mksobj
-function mkobj(oclass, artif) {
+export function mkobj(oclass, artif) {
     if (oclass === RANDOM_CLASS) {
         // Select class from mkobjprobs using rnd(100)
         let tprob = rnd(100);
@@ -637,7 +689,7 @@ function mksobj_from_class(oclass, typProb, init_forced, artif) {
 }
 
 // C ref: mkobj.c mksobj — create specific object by type ID
-function mksobj(otyp, init, artif) {
+export function mksobj(otyp, init, artif) {
     const oclass = otyp_to_class(otyp);
     const otmp = {
         oclass, otyp, ox: 0, oy: 0, quan: 1, owt: 1,
@@ -648,6 +700,8 @@ function mksobj(otyp, init, artif) {
     // Mark food subtypes so mksobj_init skips wrong branches
     if (otyp === CORPSE) otmp._food_type = 'CORPSE';
     else if (otyp === KELP_FROND) otmp._food_type = 'KELP_FROND';
+    // Mark multigen weapons (projectiles): ARROW(18)..SHURIKEN(25) use -P_BOW..-P_SHURIKEN
+    else if (oclass === WEAPON_CLASS) otmp._multigen = (otyp >= ARROW && otyp <= SHURIKEN);
     next_ident();
     if (init) mksobj_init(otmp, artif);
     // C ref: mksobj "regardless of init" block — CORPSE/STATUE/FIGURINE
@@ -667,36 +721,45 @@ function mksobj(otyp, init, artif) {
     return otmp;
 }
 
-// Object type → class mapping using actual otyp ranges from objects.h
-// WEAPON:18-88, ARMOR:89-152, RING:153-180, AMULET:181-191, TOOL:192-236,
-// FOOD:237-268, POTION:269-294, SCROLL:295-337, SPBOOK:338-381, WAND:382-409,
-// COIN:410, GEM:411-446, ROCK:447-448, BALL:449, CHAIN:450
+// Object type → class mapping using NH5.0 objects.h enum order (cpp -DOBJECTS_ENUM)
+// WEAPON:18-88, ARMOR:89-172, RING:173-200, AMULET:201-213, TOOL:214-263,
+// FOOD:264-296, POTION:297-322, SCROLL:323-364, SPBOOK:365-408, WAND:409-436,
+// COIN:437, GEM:438-473, ROCK:474-475, BALL:476, CHAIN:477
 function otyp_to_class(otyp) {
-    // Range-based classification from objects.h enumeration
-    if (otyp >= 18 && otyp <= 88)  return WEAPON_CLASS;   // ARROW..CROSSBOW
-    if (otyp >= 89 && otyp <= 152) return ARMOR_CLASS;    // ELVEN_LEATHER_HELM..LEVITATION_BOOTS
-    if (otyp >= 153 && otyp <= 180) return RING_CLASS;    // RIN_ADORNMENT..RIN_PROTECTION_FROM_SHAPE_CHAN
-    if (otyp >= 181 && otyp <= 191) return AMULET_CLASS;  // AMULET_OF_ESP..AMULET_OF_FLYING
-    if (otyp >= 192 && otyp <= 236) return TOOL_CLASS;    // LARGE_BOX..UNICORN_HORN
-    if (otyp >= 237 && otyp <= 268) return FOOD_CLASS;    // TRIPE_RATION..TIN
-    if (otyp >= 269 && otyp <= 294) return POTION_CLASS;  // POT_GAIN_ABILITY..POT_WATER
-    if (otyp >= 295 && otyp <= 337) return SCROLL_CLASS;  // SCR_ENCHANT_ARMOR..SCR_BLANK_PAPER
-    if (otyp >= 338 && otyp <= 381) return SPBOOK_CLASS;  // SPE_DIG..SPE_BLANK_PAPER
-    if (otyp >= 382 && otyp <= 409) return WAND_CLASS;    // WAN_LIGHT..WAN3
-    if (otyp === 410)               return COIN_CLASS;    // GOLD_PIECE
-    if (otyp >= 411 && otyp <= 446) return GEM_CLASS;     // DILITHIUM_CRYSTAL..ROCK (small)
-    if (otyp >= 447 && otyp <= 448) return ROCK_CLASS;    // BOULDER, STATUE
-    if (otyp === 449)               return BALL_CLASS;
-    if (otyp === 450)               return CHAIN_CLASS;
+    if (otyp >= 18  && otyp <= 88)  return WEAPON_CLASS;
+    if (otyp >= 89  && otyp <= 172) return ARMOR_CLASS;
+    if (otyp >= 173 && otyp <= 200) return RING_CLASS;
+    if (otyp >= 201 && otyp <= 213) return AMULET_CLASS;
+    if (otyp >= 214 && otyp <= 263) return TOOL_CLASS;
+    if (otyp >= 264 && otyp <= 296) return FOOD_CLASS;
+    if (otyp >= 297 && otyp <= 322) return POTION_CLASS;
+    if (otyp >= 323 && otyp <= 364) return SCROLL_CLASS;
+    if (otyp >= 365 && otyp <= 408) return SPBOOK_CLASS;
+    if (otyp >= 409 && otyp <= 436) return WAND_CLASS;
+    if (otyp === 437)               return COIN_CLASS;
+    if (otyp >= 438 && otyp <= 473) return GEM_CLASS;
+    if (otyp >= 474 && otyp <= 475) return ROCK_CLASS;
+    if (otyp === 476)               return BALL_CLASS;
+    if (otyp === 477)               return CHAIN_CLASS;
     return FOOD_CLASS;
 }
 
 function mksobj_at(otyp, x, y, init, artif) {
-    return mksobj(otyp, init, artif);
+    const obj = mksobj(otyp, init, artif);
+    if (game.level && x > 0 && y >= 0 && x < COLNO && y < ROWNO) {
+        if (!game.level.floor_items) game.level.floor_items = new Map();
+        game.level.floor_items.set(`${x},${y}`, obj);
+    }
+    return obj;
 }
 
 function mkobj_at(oclass, x, y, artif) {
-    return mkobj(oclass, artif);
+    const obj = mkobj(oclass, artif);
+    if (game.level && x > 0 && y >= 0 && x < COLNO && y < ROWNO) {
+        if (!game.level.floor_items) game.level.floor_items = new Map();
+        game.level.floor_items.set(`${x},${y}`, obj);
+    }
+    return obj;
 }
 
 // Monster indices with MZ_TINY size (verysmall() returns true for these)
@@ -861,7 +924,7 @@ function m_initinv(mtmp) {
 }
 
 // next_ident() — called once per new monster/object, consumes rnd(2)
-function next_ident() {
+export function next_ident() {
     const g = game;
     g.context = g.context || {};
     const prev = g.context.ident ?? 0;
@@ -1800,25 +1863,25 @@ function dosdoor(x, y, aroom, type) {
     loc.typ = type;
     if (type === DOOR) {
         if (!rn2(3)) {
-            if (!rn2(5)) loc.flags = D_ISOPEN;
-            else if (!rn2(6)) loc.flags = D_LOCKED;
-            else loc.flags = D_CLOSED;
-            if (loc.flags !== D_ISOPEN && !shdoor
+            if (!rn2(5)) loc.doormask = D_ISOPEN;
+            else if (!rn2(6)) loc.doormask = D_LOCKED;
+            else loc.doormask = D_CLOSED;
+            if (loc.doormask !== D_ISOPEN && !shdoor
                 && level_difficulty() >= 5 && !rn2(25))
-                loc.flags |= D_TRAPPED;
+                loc.doormask |= D_TRAPPED;
         } else {
-            loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
+            loc.doormask = shdoor ? D_ISOPEN : D_NODOOR;
         }
-        if (loc.flags & D_TRAPPED) {
+        if (loc.doormask & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
-                loc.flags = D_NODOOR;
+                loc.doormask = D_NODOOR;
             }
         }
     } else {
-        if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
-        else loc.flags = D_CLOSED;
+        if (shdoor || !rn2(5)) loc.doormask = D_LOCKED;
+        else loc.doormask = D_CLOSED;
         if (!shdoor && level_difficulty() >= 4 && !rn2(20))
-            loc.flags |= D_TRAPPED;
+            loc.doormask |= D_TRAPPED;
     }
     add_door(x, y, aroom);
 }
@@ -2713,12 +2776,11 @@ function level_finalize_topology() {
     }
 }
 
-// C ref: teleport.c collect_coords() — generate RNG from ring shuffles
+// C ref: teleport.c collect_coords() — generate RNG from ring shuffles and pick position.
 // CC_NO_FLAGS: scramble=true, ring_pairs=false, passend=true per ring.
-// For each radius 1..maxradius, count border cells within map bounds, then
-// Fisher-Yates shuffle calls: rn2(n), rn2(n-1), ..., rn2(2).
+// For each radius 1..maxradius, collect ring border cells, Fisher-Yates shuffle
+// them using rn2 calls, and return the first valid placement position.
 function collect_coords_rng(cx, cy, maxradius) {
-    // expand maxradius to map bounds if 0
     if (maxradius === 0) {
         const rowrange = cy < ROWNO / 2 ? ROWNO - 1 - cy : cy;
         const colrange = cx < COLNO / 2 ? COLNO - 1 - cx : cx;
@@ -2734,9 +2796,52 @@ function collect_coords_rng(cx, cy, maxradius) {
                 n++;
             }
         }
-        // Fisher-Yates shuffle: rn2(n)...rn2(2)
         while (n > 1) { rn2(n); n--; }
     }
+}
+
+// Like collect_coords_rng but also returns the first valid placement position.
+// Consumes identical RNG as collect_coords_rng while tracking shuffled order.
+function enexto_pick(cx, cy, maxradius) {
+    if (maxradius === 0) {
+        const rowrange = cy < ROWNO / 2 ? ROWNO - 1 - cy : cy;
+        const colrange = cx < COLNO / 2 ? COLNO - 1 - cx : cx;
+        maxradius = Math.max(rowrange, colrange);
+    }
+    const allPositions = [];
+    for (let r = 1; r <= maxradius; r++) {
+        const lox = cx - r, hix = cx + r;
+        const loy = cy - r, hiy = cy + r;
+        const ring = [];
+        for (let y = Math.max(loy, 0); y <= hiy && y < ROWNO; y++) {
+            for (let x = Math.max(lox, 1); x <= hix && x < COLNO; x++) {
+                if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+                ring.push({ x, y });
+            }
+        }
+        // C's front-to-back shuffle (teleport.c:697): picks rn2(n..2), swaps
+        // front element with random element, then advances front pointer.
+        // Produces different permutations than standard back-to-front Fisher-Yates
+        // even though both call rn2(n), rn2(n-1), ..., rn2(2).
+        for (let i = 0; i < ring.length - 1; i++) {
+            const k = rn2(ring.length - i);
+            if (k) {
+                const tmp = ring[i]; ring[i] = ring[i + k]; ring[i + k] = tmp;
+            }
+        }
+        for (const pos of ring) allPositions.push(pos);
+    }
+    // Pick first valid position: walkable terrain, not hero, not occupied
+    for (const pos of allPositions) {
+        const loc = game.level?.at(pos.x, pos.y);
+        if (!loc) continue;
+        if (loc.typ !== ROOM && loc.typ !== CORR &&
+            !(loc.typ === DOOR && (loc.doormask & D_ISOPEN))) continue;
+        if (pos.x === cx && pos.y === cy) continue;
+        if (game.level.monsters?.some(m => m.mx === pos.x && m.my === pos.y)) continue;
+        return pos;
+    }
+    return null;
 }
 
 // C ref: makemon.c adj_lev() — adjust monster level for dungeon depth/player level
@@ -2783,15 +2888,13 @@ export function makedog() {
         else petKind = rn2(2) ? 'cat' : 'dog'; // rn2(2): 0=dog, 1=cat
     }
 
-    // enexto_core: collect_coords with maxradius=3 first (covers within 3 steps)
-    // For most starting positions in a dungeon room, this finds a valid spot.
+    // enexto_core: collect_coords with maxradius=3 — shuffles all 3 rings then picks
+    // the first valid position. Identical RNG to old collect_coords_rng(ux,uy,3).
     const ux = g.u?.ux ?? 1, uy = g.u?.uy ?? 1;
-    collect_coords_rng(ux, uy, 3);
-    // Note: if no valid position found within radius 3, a second call with
-    // maxradius=0 would follow. In practice the starting room always has room.
+    const petPos = enexto_pick(ux, uy, 3);
 
     // next_ident() for pet's m_id
-    next_ident();
+    const m_id = next_ident();
 
     // newmonhp: d(adj_lev(mlevel), 8), or rnd(4) if adj_lev=0
     const mlevel = PET_MLEVEL[petKind] ?? 2;
@@ -2805,8 +2908,34 @@ export function makedog() {
     }
 
     // gender check: rn2(2) unless monster is sex-locked
-    // KITTEN and LITTLE_DOG are both-sex-ok; PONY is neuter? Let me check:
-    // PONY M2 flags: M2_DOMESTIC — not M2_MALE or M2_FEMALE, not neuter
-    // So all three pets: femaleok=true, maleok=true → rn2(2)
     rn2(2);
+
+    // peace_minded() called inside makemon() at line 1299 for all monsters.
+    // Cat/dog/pony have maligntyp=A_NEUTRAL=0.
+    // If player alignment != monster alignment (sgn mismatch), returns FALSE early (no rn2).
+    // Otherwise: rn2(16+record); if non-zero, rn2(2+abs(mal)).
+    const petMaligntyp = 0; // A_NEUTRAL for all pets (cat/dog/pony)
+    const ual = g.u?.ualign?.type ?? 0;
+    const sgnPet = petMaligntyp > 0 ? 1 : petMaligntyp < 0 ? -1 : 0;
+    const sgnUal = ual > 0 ? 1 : ual < 0 ? -1 : 0;
+    if (sgnPet === sgnUal) {
+        const record = g.u?.ualign?.record ?? 0;
+        const adjRecord = record < -15 ? -15 : record;
+        const first = rn2(16 + adjRecord);
+        if (first !== 0) {
+            rn2(2 + Math.abs(petMaligntyp));
+        }
+    }
+
+    // Store pet in level monster list for rendering
+    if (petPos && g.level) {
+        const petChars = { cat: 'f', dog: 'd', pony: 'u' };
+        const mtmp = {
+            mx: petPos.x, my: petPos.y, m_id,
+            _petChar: petChars[petKind] || 'd',
+            _petKind: petKind, _pet: true,
+        };
+        if (!g.level.monsters) g.level.monsters = [];
+        g.level.monsters.push(mtmp);
+    }
 }
