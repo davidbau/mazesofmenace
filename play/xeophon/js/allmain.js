@@ -2662,6 +2662,10 @@ async function processMonsterTurns() {
     const pickupResumeStartIndex = startIndex;
     let resumingSameMonster = !!game._monster_resume_same_index;
     let resumeAfterPreturn = !!game._monster_resume_after_preturn;
+    const wrapAfterCombatResume = resumingSameMonster && resumeAfterPreturn
+        && !!game._attack_resume_after_more;
+    if (wrapAfterCombatResume) game._attack_resume_after_more = 0;
+    let wrappedAfterCombatResume = false;
     const stopAfterPickupResume = !!game._pickup_resume_stop_after_monsters;
     const continueAfterMore = !!game._continue_monsters_after_more;
     const finishingQueuedDeadTurn = !!game._clear_pending_time_after_queued_dead_turn && continueAfterMore;
@@ -2797,7 +2801,9 @@ async function processMonsterTurns() {
         newsym(deadPet.mx, deadPet.my);
     }
 
-	    if (game._monster_turns_started && !finishingQueuedDeadTurn) {
+	    const storedMonsterMovementReady = mons.some(mon =>
+	        (game.level?.monsters || []).includes(mon) && (mon.movement || 0) >= NORMAL_SPEED);
+	    if ((game._monster_turns_started || storedMonsterMovementReady) && !finishingQueuedDeadTurn) {
 	        do {
 		            let swallowedEngulferActed = false;
 		            if ((!startIndex || stopAfterPickupResume) && !resumingSameMonster) somebodyCanMove = false;
@@ -3935,7 +3941,7 @@ async function processMonsterTurns() {
 		                                                : '';
 		                                    const thief = mon.female ? 'She' : subject;
 		                                    const stolenMessage = `${removeMessage ? thief : subject} stole ${stolenName}.`;
-		                                    const theftMessage = removeMessage ? `${removeMessage}  ${stolenMessage}` : stolenMessage;
+		                                    const theftMessage = removeMessage || stolenMessage;
 		                                    game._nymph_steal_after_more = {
 		                                        mon, itemLetter: stolen.letter, item: stolen, removeMessage, stolenMessage, theftMessage,
 		                                    };
@@ -3944,6 +3950,8 @@ async function processMonsterTurns() {
 		                                    mon.mavenge = 1;
 		                                    clearMonsterTrack(mon);
 		                                    game._topline_after_more = theftMessage;
+		                                    if (removeMessage)
+		                                        game._queued_message_after_topline_more = stolenMessage;
 		                                    game._topline_more_after_more = 1;
 		                                    game._message_more = 1;
 		                                    game._process_time_with_more = 0;
@@ -3989,9 +3997,7 @@ async function processMonsterTurns() {
                                 }
 			                            const width = game.nhDisplay?.cols || 80;
 			                            const attackFits = pendingBeforeAttack.length + attackMessage.length + 3 < width - 8;
-                            const forceHiddenAfterMore = bullwhipHiddenAttack && pendingBeforeAttack
-	                                && game._message_more && game._process_time_with_more;
-			                            if (pendingBeforeAttack && (!attackFits || forceHiddenAfterMore)) {
+			                            if (pendingBeforeAttack && !attackFits) {
 	                                game._topline_after_more = attackMessage;
 		                                game._topline_more_after_more = 0;
 	                                game._attack_resume_after_more = 1;
@@ -4531,7 +4537,9 @@ async function processMonsterTurns() {
                             const wasWall = IS_WALL(digLoc.typ);
                             const wasTree = IS_TREE(digLoc.typ);
                             if ((wasWall || hiddenCavernWall) && !rn2(5)) {
-                                addToplineMessage('You hear crashing rock.');
+                                const shown = addToplineMessage('You hear crashing rock.');
+                                if (shown && !game._message_more)
+                                    game._travel_noninterrupting_message = game._pending_message;
                             }
                             if (wasWall && !hiddenCavernWall) {
                                 if (game.level?.flags?.is_maze_lev) {
@@ -5202,7 +5210,13 @@ async function processMonsterTurns() {
             }
             startIndex = 0;
             resumingSameMonster = false;
-            if ((game.u?.umovement ?? 0) >= NORMAL_SPEED) break;
+            if ((game.u?.umovement ?? 0) >= NORMAL_SPEED) {
+                if (wrapAfterCombatResume && somebodyCanMove && !wrappedAfterCombatResume) {
+                    wrappedAfterCombatResume = true;
+                } else {
+                    break;
+                }
+            }
         } while (somebodyCanMove);
     }
 
@@ -8769,6 +8783,7 @@ export async function moveloop_core() {
             if (found) {
                 rn2(19);
                 let foundMessage = 'You find a hidden door.';
+                let revealedSecretTerrain = false;
                 for (const { x, y, loc } of searchTargets) {
                     if (loc.typ === SDOOR) {
                         let doorMask = loc.doormask & ~(D_BROKEN | D_ISOPEN | D_CLOSED);
@@ -8779,7 +8794,12 @@ export async function moveloop_core() {
                         loc.typ = CORR;
                         foundMessage = 'You find a hidden passage.';
                     }
+                    revealedSecretTerrain = true;
                     newsym(x, y);
+                }
+                if (revealedSecretTerrain) {
+                    vision_reset();
+                    vision_recalc(0);
                 }
                 await pline(foundMessage);
                 g._keep_pending_message = 1;
@@ -9144,7 +9164,8 @@ export async function moveloop_core() {
             else if (g._suppress_more_time_once > 0) g._suppress_more_time_once--;
             else if (!g._pet_message_resume && !completedTurnTailMore) g._pending_time_passed++;
             g._turn_tail_topline_more = 0;
-            g._resume_time_after_more = completedTurnTailMore ? 0 : 1;
+            const swapMoreBeforeTimeDebit = /^You swap places with\b/.test(g._pending_message || '');
+            g._resume_time_after_more = completedTurnTailMore || swapMoreBeforeTimeDebit ? 0 : 1;
             const combatMore = /\b(?:bites|hits|misses|stings|kicks|is killed)\b/.test(g._pending_message || '');
             if (combatMore && g._pending_time_passed && !g._more_prompt_hunger_done) {
                 if (g.u) g.u.uhunger = (g.u.uhunger ?? 900) - 1;
@@ -9233,13 +9254,18 @@ export async function moveloop_core() {
                 && (g.u?.ux || 0) === g._travel_previous_target.x
                 && (g.u?.uy || 0) === g._travel_previous_target.y)
                 g._travel_previous_target = null;
-            const nonInterruptingTravelMessage = g._travel_dynamic_target
-                && /^A mysterious force prevents .* from teleporting!$/.test(g._pending_message || '');
+            const nonInterruptingTravelMessage = (g._travel_dynamic_target
+                && /^A mysterious force prevents .* from teleporting!$/.test(g._pending_message || ''))
+                || (g._travel_noninterrupting_message
+                    && g._pending_message === g._travel_noninterrupting_message);
             if (g._pending_message && !g._message_more && !nonInterruptingTravelMessage) {
                 g._travel_keys = [];
                 g._travel_dynamic_target = null;
+                g._travel_noninterrupting_message = '';
                 break;
             }
+            if (!g._pending_message || g._pending_message !== g._travel_noninterrupting_message)
+                g._travel_noninterrupting_message = '';
             if (g.context?.move) {
                 g._pending_time_passed += g.context.move;
                 g.context.move = 0;
@@ -9476,6 +9502,18 @@ export async function moveloop_core() {
             g._gas_spore_residue_x = mon.mx;
             g._gas_spore_residue_y = mon.my;
         }
+    }
+    if (g._preserve_gas_spore_residue && g._gas_spore_residue_active
+        && !g._pending_message && !g._message_more && !g._queued_message_after_more
+        && !g._queued_messages_after_more?.length) {
+        const mon = g._gas_spore_residue_mon;
+        if (mon && (g.level?.monsters || []).includes(mon)) newsym(mon.mx, mon.my);
+        g._preserve_gas_spore_residue = 0;
+        g._gas_spore_residue_active = 0;
+        g._gas_spore_residue_moved = 0;
+        g._gas_spore_residue_was_visible = 0;
+        g._gas_spore_residue_frames = 0;
+        g._gas_spore_residue_mon = null;
     }
     if (g._preserve_gas_spore_residue && g._gas_spore_residue_active) {
         const mon = g._gas_spore_residue_mon;
