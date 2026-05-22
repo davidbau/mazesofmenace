@@ -590,6 +590,10 @@ dungeon's act of goodwill.
 
 ## Part Two: Dungeon Sights
 
+```{=latex}
+\vspace*{0.6in}
+```
+
 ### The Lay of the Land
 <!-- audit
 2026-05-21:
@@ -625,11 +629,18 @@ patterns is the first step toward navigating them effectively.
 
 #### The Big Picture
 
-Before we talk about what the symbols mean, here's the overall
-shape of the place. The dungeon is a branching tree with a main
-trunk (the Dungeons of Doom) and several side branches. The
-diagram nearby shows the full layout. Knowing where you are in this
-tree helps you plan your route and know what's coming.
+Even though the dungeon is different every time you play, it is
+not totally random. The layout of any one level is random, but
+the overall map follows a familiar structure, and that structure
+guides the path of your game through a progressively more varied
+and challenging series of adventures.
+
+The dungeon is a branching tree with a main trunk that descends
+through three main phases. Off the trunk are several optional side
+branches that you will want to explore along the way. The exact
+depths and layouts vary from game to game, but the diagram that
+follows shows the typical shape. Knowing where you are in this
+tree helps you know what's coming.
 
 The **Dungeons of Doom** form the upper half, roughly levels 1
 through 27. Along the way you'll find branches leading to the
@@ -738,9 +749,9 @@ wonderful, sometimes terrible. See
 [Points of Interest](#points-of-interest).
 
 **Zoos.** A room packed with sleeping monsters and gold. They wake
-not from opening the door (which is silent) but from the noise of
-you fighting the first few. Fight from the doorway so they wake and
-approach one or two at a time, not all at once.
+**not** when you enter, but from the noise of you fighting the
+first few. Fight from the doorway so they wake one or two at a
+time, not all at once.
 
 **Barracks.** A room full of soldiers. They're organized and armed,
 but they're also carrying good equipment. Worth clearing if you can
@@ -749,23 +760,11 @@ handle the fight.
 **Beehives.** A room full of killer bees and royal jelly. The bees
 are dangerous in numbers, but royal jelly is excellent food.
 
-**Themed rooms.** New in 5.0 and the most visible
-change to ordinary level generation: scattered through the
-Dungeons of Doom, you'll occasionally walk into rooms that
-aren't shops, aren't zoos, and aren't anything else from the
-list above, but are also clearly not random. They're called
-**themed rooms**, and there are dozens of them. Some have
-unusual *shapes* (L-shaped, T-shaped, S-shaped, circular,
-cross-shaped, four-leaf-clover-shaped, with pillars, with a
-room-inside-a-room). Some have unusual *contents* (a buried-
-treasure cache; a buried-zombies field that wakes up when
-disturbed; a small massacre of statues and old corpses; a
-mausoleum; a trap room seeded with one kind of trap; a separate
-teleportation hub of fixed-destination teleporters; an empty
-room shaped like the Oracle's chamber; a garden; a spider nest;
-an ice room; a cloud room; a boulder room).
-
-The interesting ones for the player:
+**Themed Rooms.** You'll occasionally walk into rooms that are
+not from the list above but interesting in other ways. These are
+**Themed Rooms**, a new feature of 5.0, and there are dozens of
+them. Some have unusual *shapes*, and some have unusual
+*contents*. Interesting ones to look out for:
 
 - **Light source rooms.** They reliably contain a lit oil
   lamp. Free torch.
