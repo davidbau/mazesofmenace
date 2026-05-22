@@ -36,7 +36,9 @@ export function createGasCloud(x, y, cloudsize, damage) {
 
     const ttl = Math.trunc((rn1(3, 4) * cloudsize) / coords.length);
     game.level.regions ??= [];
-    game.level.regions.push({ type: 'gas_cloud', damage, visible: true, ttl, coords });
+    const region = { type: 'gas_cloud', damage, visible: true, ttl, coords };
+    game.level.regions.push(region);
     vision_reset();
     game.vision_full_recalc = 1;
+    return region;
 }

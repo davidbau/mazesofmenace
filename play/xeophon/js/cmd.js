@@ -5,8 +5,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, enextoMonsterSpot, make_tutorial1_level, makemon, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MOAT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VWALL, WAND_BACKFIRE_CHANCE, WATER, ZAP_POS } from './const.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MM_EDOG, MM_NOMSG, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -17,6 +17,7 @@ import { prepareVaultGuardEscort } from './vault.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { datFileLines as bundledDatFileLines } from './dat_files.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
+import { createGasCloud } from './region.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -64,6 +65,84 @@ function polyselfNoHands() {
 function isWandItem(item) {
     return item?.cls === 'wand' || item?.glyph === '/' || item?.wandIndex != null
         || item?.kind === 'wand of sleep' || item?.kind === 'sleep';
+}
+const WISHING_WAND_INDEX = 4;
+const WAND_WREST_CHANCE = 121;
+
+function isWishingWand(item) {
+    const wand = String(item?.wand || '').toLowerCase();
+    const kind = String(item?.kind || '').toLowerCase();
+    const actualKind = String(item?.actualKind || '').toLowerCase();
+    return item?.wandIndex === WISHING_WAND_INDEX
+        || wand === 'wishing'
+        || kind === 'wishing'
+        || kind === 'wand of wishing'
+        || actualKind === 'wishing'
+        || actualKind === 'wand of wishing';
+}
+
+function wandCharges(item) {
+    return item?.spe ?? item?.charges ?? 0;
+}
+
+function setWandCharges(item, charges) {
+    item.spe = charges;
+    item.charges = charges;
+}
+
+function refreshWandLine(item) {
+    if (/\(0:\d+\)/.test(String(item.line || ''))) item.chargeKnown = true;
+    item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function setKnownWandLine(item, wand) {
+    item.cls = 'wand';
+    item.glyph = '/';
+    item.wand = wand;
+    item.kind = wand;
+    item.wandIndex = WAND_NAME_TO_INDEX.get(wand);
+    item.known = true;
+    refreshWandLine(item);
+}
+
+function zappableWand(item) {
+    const charges = wandCharges(item);
+    if (charges < 0) return { zapped: false, dust: true };
+    if (charges === 0) {
+        if (rn2(WAND_WREST_CHANCE)) return { zapped: false };
+        setWandCharges(item, -1);
+        return { zapped: true, wrested: true };
+    }
+    setWandCharges(item, charges - 1);
+    return { zapped: true };
+}
+
+function dustWand(item) {
+    const name = pickupObjectName(item);
+    removeInventoryItem(item);
+    return `The ${name} turns to dust.`;
+}
+
+async function beginWishPrompt({ moveCost = 0, dustItem = null, message = 'For what do you wish?' } = {}) {
+    game._wish_text = '';
+    game._wish_move_cost = moveCost;
+    game._wish_dust_item = dustItem;
+    await setMessage(message);
+    game._command_mode = 'wizardWish';
+}
+
+async function setWishResultMessage(message, more = false) {
+    const moveCost = game._wish_move_cost || 0;
+    const dustItem = game._wish_dust_item || null;
+    game._wish_move_cost = 0;
+    game._wish_dust_item = null;
+    game.context.move = moveCost;
+    let text = message;
+    if (dustItem && (game.inventory || []).includes(dustItem)) {
+        const dustMessage = dustWand(dustItem);
+        text = text ? `${text}  ${dustMessage}` : dustMessage;
+    }
+    await setMessage(text, more);
 }
 const GROWNUP_MONSTERS = new Map([
     ['chickatrice', 'cockatrice'],
@@ -391,6 +470,21 @@ const STATUE = 472;
 const FLINT_STONE = 473;
 const HEAVY_IRON_BALL = 474;
 const IRON_CHAIN = 475;
+const ROCK = 467;
+const EGG = 10001;
+const TIN = 10004;
+const GLOB_OF_GRAY_OOZE = 10180;
+const GLOB_OF_BROWN_PUDDING = 10181;
+const GLOB_OF_GREEN_SLIME = 10182;
+const GLOB_OF_BLACK_PUDDING = 10183;
+const GLOB_TYPES = new Map([
+    ['gray ooze', { otyp: GLOB_OF_GRAY_OOZE, name: 'glob of gray ooze', color: CLR_GRAY }],
+    ['brown pudding', { otyp: GLOB_OF_BROWN_PUDDING, name: 'glob of brown pudding', color: CLR_BROWN }],
+    ['green slime', { otyp: GLOB_OF_GREEN_SLIME, name: 'glob of green slime', color: CLR_GREEN }],
+    ['black pudding', { otyp: GLOB_OF_BLACK_PUDDING, name: 'glob of black pudding', color: CLR_BLACK }],
+]);
+GLOB_TYPES.set('grey ooze', GLOB_TYPES.get('gray ooze'));
+const RANDOM_GLOB_MONSTER_NAMES = ['gray ooze', 'brown pudding', 'green slime'];
 const RANDOM_CLASS = 0;
 const WEAPON_CLASS = 1;
 const ARMOR_CLASS = 2;
@@ -400,9 +494,12 @@ const SCROLL_CLASS = 8;
 const SCR_ENCHANT_ARMOR = 277;
 const SCR_BLANK_PAPER = 293;
 const POTION_CLASS = 9;
+const POT_OIL = 252;
+const POT_WATER = 253;
 const WAND_CLASS = 10;
 const SPBOOK_NO_NOVEL = 11;
 const TOOL_CLASS = 12;
+const BOOK_OF_THE_DEAD = 10097;
 const GEM_CLASS = 14;
 const AMULET_CLASS = 15;
 const OBJECT_CLASS_GLYPHS = {
@@ -420,9 +517,18 @@ const OBJECT_CLASS_GLYPHS = {
 };
 const DART = 353;
 const BELL = 358;
+const CANDELABRUM_OF_INVOCATION = 10076;
 const ORCISH_DAGGER = 10020;
 const DAGGER = 10023;
+const KNIFE = 10026;
+const SHORT_SWORD = 10031;
+const BROADSWORD = 10032;
+const PICK_AXE = 10025;
+const GLAIVE = 10057;
+const FLAIL = 10060;
+const DWARVISH_MATTOCK = 10104;
 const SILVER_SABER = 10062;
+const BULLWHIP = 10067;
 const SPE_HEALING = 327;
 const HEALING_SPELLBOOK_APPEARANCE_INDEX = 8;
 const SPELLBOOK_LEVELS = {
@@ -577,17 +683,64 @@ const CHEST = 215;
 const SACK = 217;
 const OILSKIN_SACK = 218;
 const BAG_OF_HOLDING = 219;
+const BRASS_LANTERN = 226;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
+const BAG_OF_TRICKS = 10158;
+const TIN_OPENER = 10159;
+const LAND_MINE = 10160;
+const BEARTRAP = 10161;
+const TOOLED_HORN = 10162;
+const GRAPPLING_HOOK = 10163;
+const MEAT_RING = 10164;
+const LOADSTONE = 10165;
+const FLINT = 10166;
+const LOCK_PICK = 10167;
+const WOODEN_HARP = 10168;
+const MAGIC_HARP = 10169;
+const LUCKSTONE = 10127;
+const TOUCHSTONE = FLINT_STONE;
 const BLINDFOLD = 10113;
 const MIRROR = 10006;
 const CREAM_PIE = 10081;
+const KELP_FROND = 172;
+const EUCALYPTUS_LEAF = 11000;
+const LEMBAS_WAFER = 146;
+const FORTUNE_COOKIE = 11010;
 const EXPENSIVE_CAMERA = 10082;
 const STETHOSCOPE = 10083;
 const MAGIC_MARKER = 10084;
+const TALLOW_CANDLE = 370;
+const WAX_CANDLE = 371;
 const GRAY_DRAGON_SCALE_MAIL = 10085;
 const SILVER_DRAGON_SCALE_MAIL = 10086;
 const SPEED_BOOTS = 10087;
+const SHIELD_OF_REFLECTION = 10074;
+const PLATE_MAIL = 10037;
+const HELMET = 10044;
+const RING_MAIL = 10041;
+const STUDDED_LEATHER_ARMOR = 10042;
+const LEATHER_ARMOR = 10043;
+const ELVEN_MITHRIL_COAT = 10079;
+const GOLD_DRAGON_SCALE_MAIL = 10140;
+const RED_DRAGON_SCALE_MAIL = 10141;
+const WHITE_DRAGON_SCALE_MAIL = 10142;
+const ORANGE_DRAGON_SCALE_MAIL = 10143;
+const BLACK_DRAGON_SCALE_MAIL = 10144;
+const BLUE_DRAGON_SCALE_MAIL = 10145;
+const GREEN_DRAGON_SCALE_MAIL = 10146;
+const YELLOW_DRAGON_SCALE_MAIL = 10147;
+const GRAY_DRAGON_SCALES = 10148;
+const GOLD_DRAGON_SCALES = 10149;
+const SILVER_DRAGON_SCALES = 10150;
+const RED_DRAGON_SCALES = 10151;
+const WHITE_DRAGON_SCALES = 10152;
+const ORANGE_DRAGON_SCALES = 10153;
+const BLACK_DRAGON_SCALES = 10154;
+const BLUE_DRAGON_SCALES = 10155;
+const GREEN_DRAGON_SCALES = 10156;
+const YELLOW_DRAGON_SCALES = 10157;
+const FOOD_RATION = 143;
 const LEATHER_GLOVES = 10050;
 const CLOAK_OF_DISPLACEMENT = 10111;
 const GAUNTLETS_OF_POWER = 10112;
@@ -616,44 +769,168 @@ const BAG_PUT_CLASS_TYPES = [
 ];
 const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const APPLY_WEAPON_NAME_RE = /pick-axe|mattock|\baxe\b|bullwhip|lance|polearm|poleaxe|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge|snickersnee/;
+const WISH_LOCK_QUALIFIER_RE = /^(locked|unlocked|broken)\s+/i;
+const WISH_PROOF_QUALIFIER_RE = /^(rustproof|erodeproof|corrodeproof|fixed|fireproof|rotproof|tempered|crackproof)\s+/i;
+const WISH_PRIMARY_EROSION_RE = /^(rusty|rusted|burnt|burned|cracked)\s+/i;
+const WISH_SECONDARY_EROSION_RE = /^(corroded|rotted)\s+/i;
+const TIN_VARIETY_TEXTS = [
+    'rotten', 'homemade', 'soup made from', 'french fried', 'pickled',
+    'boiled', 'smoked', 'dried', 'deep fried', 'szechuan', 'broiled',
+    'stir fried', 'sauteed', 'candied', 'pureed',
+];
+const FOOD_NUTRITION = new Map([
+    ['tripe ration', 200],
+    ['egg', 80],
+    ['eucalyptus leaf', 1],
+    ['apple', 50],
+    ['orange', 80],
+    ['pear', 50],
+    ['melon', 100],
+    ['banana', 80],
+    ['carrot', 50],
+    ['sprig of wolfsbane', 40],
+    ['clove of garlic', 40],
+    ['slime mold', 250],
+    ['lump of royal jelly', 200],
+    ['cream pie', 100],
+    ['candy bar', 100],
+    ['fortune cookie', 40],
+    ['pancake', 200],
+    ['lembas wafer', 800],
+    ['cram ration', 600],
+    ['food ration', 800],
+    ['k-ration', 400],
+    ['c-ration', 300],
+    ['tin', 0],
+]);
+const POISONABLE_WISH_WEAPONS = new Set([
+    'arrow', 'arrows', 'elven arrow', 'elven arrows', 'orcish arrow', 'orcish arrows',
+    'silver arrow', 'silver arrows', 'ya', 'crossbow bolt', 'crossbow bolts',
+    'dart', 'darts', 'shuriken', 'throwing star', 'throwing stars',
+]);
+const DRAGON_ARMOR_SPECS = [
+    { colorName: 'gray', aliases: ['gray', 'grey'], color: CLR_GRAY, mailOtyp: GRAY_DRAGON_SCALE_MAIL, scalesOtyp: GRAY_DRAGON_SCALES },
+    { colorName: 'gold', aliases: ['gold'], color: CLR_YELLOW, mailOtyp: GOLD_DRAGON_SCALE_MAIL, scalesOtyp: GOLD_DRAGON_SCALES },
+    { colorName: 'silver', aliases: ['silver'], color: CLR_BRIGHT_CYAN, mailOtyp: SILVER_DRAGON_SCALE_MAIL, scalesOtyp: SILVER_DRAGON_SCALES },
+    { colorName: 'red', aliases: ['red'], color: CLR_RED, mailOtyp: RED_DRAGON_SCALE_MAIL, scalesOtyp: RED_DRAGON_SCALES },
+    { colorName: 'white', aliases: ['white'], color: CLR_WHITE, mailOtyp: WHITE_DRAGON_SCALE_MAIL, scalesOtyp: WHITE_DRAGON_SCALES },
+    { colorName: 'orange', aliases: ['orange'], color: CLR_ORANGE, mailOtyp: ORANGE_DRAGON_SCALE_MAIL, scalesOtyp: ORANGE_DRAGON_SCALES },
+    { colorName: 'black', aliases: ['black'], color: CLR_BLACK, mailOtyp: BLACK_DRAGON_SCALE_MAIL, scalesOtyp: BLACK_DRAGON_SCALES },
+    { colorName: 'blue', aliases: ['blue'], color: CLR_BLUE, mailOtyp: BLUE_DRAGON_SCALE_MAIL, scalesOtyp: BLUE_DRAGON_SCALES },
+    { colorName: 'green', aliases: ['green'], color: CLR_GREEN, mailOtyp: GREEN_DRAGON_SCALE_MAIL, scalesOtyp: GREEN_DRAGON_SCALES },
+    { colorName: 'yellow', aliases: ['yellow'], color: CLR_YELLOW, mailOtyp: YELLOW_DRAGON_SCALE_MAIL, scalesOtyp: YELLOW_DRAGON_SCALES },
+];
+const DRAGON_ARMOR_BY_COLOR = new Map();
+for (const spec of DRAGON_ARMOR_SPECS)
+    for (const alias of spec.aliases) DRAGON_ARMOR_BY_COLOR.set(alias, spec);
+
 const WISH_BASE_OBJECTS = new Map([
     ['dart', { otyp: DART, cls: 'weapon', glyph: ')', kind: 'dart', plural: 'darts' }],
     ['darts', { otyp: DART, cls: 'weapon', glyph: ')', kind: 'dart', plural: 'darts' }],
     ['dagger', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
     ['daggers', { otyp: DAGGER, cls: 'weapon', glyph: ')', kind: 'dagger', plural: 'daggers' }],
+    ['knife', { otyp: KNIFE, cls: 'weapon', glyph: ')', kind: 'knife', actualKind: 'knife' }],
+    ['short sword', { otyp: SHORT_SWORD, cls: 'weapon', glyph: ')', kind: 'short sword', actualKind: 'short sword' }],
+    ['broadsword', { otyp: BROADSWORD, cls: 'weapon', glyph: ')', kind: 'broadsword', actualKind: 'broadsword' }],
+    ['flail', { otyp: FLAIL, cls: 'weapon', glyph: ')', kind: 'flail', actualKind: 'flail' }],
+    ['glaive', { otyp: GLAIVE, cls: 'weapon', glyph: ')', kind: 'glaive', actualKind: 'glaive' }],
+    ['bullwhip', { otyp: BULLWHIP, cls: 'weapon', glyph: ')', kind: 'bullwhip', actualKind: 'bullwhip' }],
+    ['silver saber', { otyp: SILVER_SABER, cls: 'weapon', glyph: ')', kind: 'silver saber', actualKind: 'silver saber' }],
+    ['dwarvish mattock', { otyp: DWARVISH_MATTOCK, cls: 'weapon', glyph: ')', kind: 'dwarvish mattock', actualKind: 'dwarvish mattock' }],
+    ['pick-axe', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
+    ['pick axe', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
+    ['pickaxe', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
+    ['pickax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
+    ['pick-ax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
     ['cream pie', { otyp: CREAM_PIE, cls: 'food', glyph: '%', kind: 'cream pie' }],
+    ['eucalyptus leaf', { otyp: EUCALYPTUS_LEAF, cls: 'food', glyph: '%', kind: 'eucalyptus leaf', plural: 'eucalyptus leaves' }],
+    ['kelp frond', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond' }],
+    ['lembas wafer', { otyp: LEMBAS_WAFER, cls: 'food', glyph: '%', kind: 'lembas wafer', plural: 'lembas wafers' }],
+    ['fortune cookie', { otyp: FORTUNE_COOKIE, cls: 'food', glyph: '%', kind: 'fortune cookie', plural: 'fortune cookies' }],
+    ['fortune cookies', { otyp: FORTUNE_COOKIE, cls: 'food', glyph: '%', kind: 'fortune cookie', plural: 'fortune cookies' }],
+    ['food ration', { otyp: FOOD_RATION, cls: 'food', glyph: '%', kind: 'food ration', plural: 'food rations', nutrition: 800 }],
+    ['enormous meatball', { otyp: FOOD_CLASS, cls: 'food', glyph: '%', kind: 'enormous meatball', actualKind: 'enormous meatball', nutrition: 2000 }],
+    ['rock', { otyp: ROCK, cls: 'gem', glyph: '*', kind: 'rock', actualKind: 'rock', plural: 'rocks', gemDescription: 'rock' }],
+    ['luckstone', { otyp: LUCKSTONE, cls: 'gem', glyph: '*', kind: 'luckstone', actualKind: 'luckstone', gemDescription: 'gray stone' }],
+    ['loadstone', { otyp: LOADSTONE, cls: 'gem', glyph: '*', kind: 'loadstone', actualKind: 'loadstone', gemDescription: 'gray stone' }],
+    ['touchstone', { otyp: TOUCHSTONE, cls: 'gem', glyph: '*', kind: 'touchstone', actualKind: 'touchstone', gemDescription: 'gray stone' }],
+    ['flint', { otyp: FLINT, cls: 'gem', glyph: '*', kind: 'flint', actualKind: 'flint', gemDescription: 'gray stone' }],
+    ['heavy iron ball', { otyp: HEAVY_IRON_BALL, cls: 'ball', glyph: '0', kind: 'heavy iron ball', actualKind: 'heavy iron ball' }],
+    ['egg', { otyp: EGG, cls: 'food', glyph: '%', kind: 'egg', plural: 'eggs' }],
+    ['eggs', { otyp: EGG, cls: 'food', glyph: '%', kind: 'egg', plural: 'eggs' }],
     ['large box', { otyp: LARGE_BOX, cls: 'tool', glyph: '(', kind: 'large box' }],
     ['chest', { otyp: CHEST, cls: 'tool', glyph: '(', kind: 'chest' }],
     ['ice box', { otyp: ICE_BOX, cls: 'tool', glyph: '(', kind: 'ice box' }],
     ['sack', { otyp: SACK, cls: 'tool', glyph: '(', kind: 'sack' }],
     ['oilskin sack', { otyp: OILSKIN_SACK, cls: 'tool', glyph: '(', kind: 'oilskin sack' }],
     ['bag of holding', { otyp: BAG_OF_HOLDING, cls: 'tool', glyph: '(', kind: 'bag of holding' }],
+    ['brass lantern', { otyp: BRASS_LANTERN, cls: 'tool', glyph: '(', kind: 'brass lantern', actualKind: 'brass lantern' }],
     ['oil lamp', { otyp: OIL_LAMP, cls: 'tool', glyph: '(', kind: 'oil lamp' }],
     ['magic lamp', { otyp: MAGIC_LAMP, cls: 'tool', glyph: '(', kind: 'magic lamp' }],
+    ['tallow candle', { otyp: TALLOW_CANDLE, cls: 'tool', glyph: '(', kind: 'tallow candle', plural: 'tallow candles', age: 200 }],
+    ['tallow candles', { otyp: TALLOW_CANDLE, cls: 'tool', glyph: '(', kind: 'tallow candle', plural: 'tallow candles', age: 200 }],
+    ['wax candle', { otyp: WAX_CANDLE, cls: 'tool', glyph: '(', kind: 'wax candle', plural: 'wax candles', age: 400 }],
+    ['wax candles', { otyp: WAX_CANDLE, cls: 'tool', glyph: '(', kind: 'wax candle', plural: 'wax candles', age: 400 }],
     ['stethoscope', { otyp: STETHOSCOPE, cls: 'tool', glyph: '(', kind: 'stethoscope' }],
     ['magic marker', { otyp: MAGIC_MARKER, cls: 'tool', glyph: '(', kind: 'magic marker' }],
+    ['lock pick', { otyp: LOCK_PICK, cls: 'tool', glyph: '(', kind: 'lock pick', actualKind: 'lock pick' }],
+    ['wooden harp', { otyp: WOODEN_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'wooden harp', known: false }],
+    ['magic harp', { otyp: MAGIC_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'magic harp', known: false }],
     ['mirror', { otyp: MIRROR, cls: 'tool', glyph: '(', kind: 'looking glass', actualKind: 'mirror' }],
     ['expensive camera', { otyp: EXPENSIVE_CAMERA, cls: 'tool', glyph: '(', kind: 'expensive camera' }],
     ['blindfold', { otyp: BLINDFOLD, cls: 'tool', glyph: '(', kind: 'blindfold' }],
     ['bell of opening', { otyp: BELL, cls: 'tool', glyph: '(', kind: 'silver bell', actualKind: 'bell of opening', known: false }],
+    ['meat ring', { otyp: MEAT_RING, cls: 'food', glyph: '%', kind: 'meat ring', actualKind: 'meat ring', nutrition: 5, quan: 1 }],
+    ['tin opener', { otyp: TIN_OPENER, cls: 'tool', glyph: '(', kind: 'tin opener', actualKind: 'tin opener' }],
+    ['beartrap', { otyp: BEARTRAP, cls: 'tool', glyph: '(', kind: 'beartrap', actualKind: 'beartrap' }],
+    ['land mine', { otyp: LAND_MINE, cls: 'tool', glyph: '(', kind: 'land mine', actualKind: 'land mine' }],
+    ['bag of tricks', { otyp: BAG_OF_TRICKS, cls: 'tool', glyph: '(', kind: 'bag of tricks', actualKind: 'bag of tricks', wishSpeRn1: [18, 3] }],
+    ['tooled horn', { otyp: TOOLED_HORN, cls: 'tool', glyph: '(', kind: 'horn', actualKind: 'tooled horn', known: false }],
+    ['grappling hook', { otyp: GRAPPLING_HOOK, cls: 'tool', glyph: '(', kind: 'grappling hook', actualKind: 'grappling hook' }],
+    ['plate mail', { otyp: PLATE_MAIL, cls: 'armor', glyph: '[', kind: 'plate mail', actualKind: 'plate mail' }],
+    ['helmet', { otyp: HELMET, cls: 'armor', glyph: '[', kind: 'helmet', actualKind: 'helmet', appearance: 'plumed helmet', known: false }],
+    ['ring mail', { otyp: RING_MAIL, cls: 'armor', glyph: '[', kind: 'ring mail', actualKind: 'ring mail' }],
+    ['studded leather armor', { otyp: STUDDED_LEATHER_ARMOR, cls: 'armor', glyph: '[', kind: 'studded leather armor', actualKind: 'studded leather armor' }],
+    ['leather armor', { otyp: LEATHER_ARMOR, cls: 'armor', glyph: '[', kind: 'leather armor', actualKind: 'leather armor' }],
+    ['elven mithril-coat', { otyp: ELVEN_MITHRIL_COAT, cls: 'armor', glyph: '[', kind: 'elven mithril-coat', actualKind: 'elven mithril-coat' }],
+    ['shield of reflection', { otyp: SHIELD_OF_REFLECTION, cls: 'armor', glyph: '[', kind: 'shield of reflection', actualKind: 'shield of reflection', appearance: 'polished silver shield', known: false }],
     ['leather gloves', { otyp: LEATHER_GLOVES, cls: 'armor', glyph: '[', kind: 'leather gloves', actualKind: 'leather gloves', known: false }],
     ['gauntlets of power', { otyp: GAUNTLETS_OF_POWER, cls: 'armor', glyph: '[', kind: 'gauntlets of power', actualKind: 'gauntlets of power', known: false }],
     ['cloak of displacement', { otyp: CLOAK_OF_DISPLACEMENT, cls: 'armor', glyph: '[', kind: 'cloak of displacement', actualKind: 'cloak of displacement', known: false }],
-    ['gray dragon scale mail', { otyp: GRAY_DRAGON_SCALE_MAIL, cls: 'armor', glyph: '[', kind: 'gray dragon scale mail', actualKind: 'gray dragon scale mail' }],
-    ['grey dragon scale mail', { otyp: GRAY_DRAGON_SCALE_MAIL, cls: 'armor', glyph: '[', kind: 'gray dragon scale mail', actualKind: 'gray dragon scale mail' }],
-    ['silver dragon scale mail', { otyp: SILVER_DRAGON_SCALE_MAIL, cls: 'armor', glyph: '[', kind: 'silver dragon scale mail', actualKind: 'silver dragon scale mail' }],
     ['speed boots', { otyp: SPEED_BOOTS, cls: 'armor', glyph: '[', kind: 'speed boots', actualKind: 'speed boots', known: false }],
+]);
+const WIZARD_ONLY_WISH_NAMEDESC_BOUNDS = new Map([
+    ['bell of opening', 1],
+    ['book of the dead', 1],
+    ['candelabrum of invocation', 1],
 ]);
 const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['dart', 61], ['darts', 61], ['dagger', 31], ['daggers', 31],
-    ['cream pie', 26], ['large box', 41], ['chest', 36], ['ice box', 6],
+    ['knife', 21], ['short sword', 9], ['broadsword', 9],
+    ['flail', 41], ['glaive', 9],
+    ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
+    ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
+    ['cream pie', 26], ['eucalyptus leaf', 4], ['kelp frond', 1],
+    ['lembas wafer', 21], ['fortune cookie', 56], ['fortune cookies', 56],
+    ['food ration', 381], ['enormous meatball', 1], ['rock', 101], ['luckstone', 11],
+    ['loadstone', 11], ['touchstone', 9], ['flint', 11],
+    ['heavy iron ball', 1001], ['large box', 41], ['chest', 36], ['ice box', 6],
     ['sack', 36], ['oilskin sack', 6], ['bag of holding', 21],
-    ['oil lamp', 46], ['magic lamp', 16], ['stethoscope', 26],
-    ['magic marker', 16], ['mirror', 46], ['expensive camera', 16],
+    ['brass lantern', 31], ['oil lamp', 46], ['magic lamp', 16],
+    ['tallow candle', 21], ['tallow candles', 21],
+    ['wax candle', 6], ['wax candles', 6], ['stethoscope', 26],
+    ['magic marker', 16], ['lock pick', 61], ['wooden harp', 5],
+    ['magic harp', 3], ['mirror', 46], ['expensive camera', 16],
     ['bell of opening', 1], ['blindfold', 51], ['leather gloves', 16],
+    ['meat ring', 1], ['tin opener', 36], ['beartrap', 1],
+    ['land mine', 1], ['bag of tricks', 21], ['tooled horn', 6],
+    ['grappling hook', 6],
+    ['plate mail', 41], ['helmet', 11], ['helm of telepathy', 5],
+    ['ring mail', 67], ['studded leather armor', 67],
+    ['leather armor', 76], ['elven mithril-coat', 16],
+    ['shield of reflection', 8],
     ['gauntlets of power', 9], ['cloak of displacement', 13],
-    ['gray dragon scale mail', 67], ['grey dragon scale mail', 67],
-    ['silver dragon scale mail', 2], ['speed boots', 13],
+    ['speed boots', 13],
 ]);
 const WISH_TOOL_ROLLS = new Map([
     ['lamp', 415], ['lenses', 510], ['blindfold', 560], ['towel', 610],
@@ -681,7 +958,20 @@ const WISH_FOOD_NAMEDESC_BOUNDS = new Map([
     ['apple', 16], ['fortune cookie', 56], ['fortune cookies', 56],
 ]);
 const WISH_SPELLBOOK_NAMEDESC_BOUNDS = new Map([
-    ['magic missile', 46], ['detect monsters', 44], ['detect food', 31],
+    ['dig', 21], ['magic missile', 46], ['fireball', 21], ['cone of cold', 11],
+    ['sleep', 31], ['finger of death', 6], ['light', 46],
+    ['detect monsters', 44], ['healing', 41], ['knock', 26],
+    ['force bolt', 31], ['confuse monster', 50], ['cure blindness', 26],
+    ['drain life', 11], ['slow monster', 31], ['wizard lock', 26],
+    ['create monster', 36], ['detect food', 31], ['cause fear', 26],
+    ['clairvoyance', 16], ['cure sickness', 33], ['charm monster', 21],
+    ['haste self', 34], ['detect unseen', 21], ['levitation', 21],
+    ['extra healing', 28], ['restore ability', 26], ['invisibility', 21],
+    ['detect treasure', 21], ['remove curse', 26], ['magic mapping', 19],
+    ['identify', 21], ['turn undead', 17], ['polymorph', 11],
+    ['teleport away', 16], ['create familiar', 11], ['cancellation', 16],
+    ['protection', 19], ['jumping', 21], ['stone to flesh', 16],
+    ['chain lightning', 26],
 ]);
 const WATER_DEMON = {
     name: 'water demon',
@@ -867,14 +1157,16 @@ const WAND_NAME_TO_INDEX = new Map([
     ['sleep', 22], ['death', 23], ['lightning', 24],
 ]);
 const WAND_WISH_NAMEDESC_BOUNDS = new Map([
-    ['light', 96], ['secret door detection', 51], ['enlightenment', 16], ['create monster', 51],
-    ['wishing', 6], ['stasis', 46], ['nothing', 26], ['striking', 31], ['make invisible', 46],
-    ['slow monster', 51], ['speed monster', 51], ['undead turning', 51], ['polymorph', 46],
-    ['cancellation', 46], ['teleportation', 46], ['opening', 31], ['locking', 31],
-    ['probing', 31], ['digging', 41], ['magic missile', 51], ['fire', 41], ['cold', 41],
-    ['sleep', 51], ['death', 6], ['lightning', 41],
+    ['light', 95], ['secret door detection', 50], ['enlightenment', 15], ['create monster', 50],
+    ['wishing', 5], ['stasis', 45], ['nothing', 25], ['striking', 30], ['make invisible', 45],
+    ['slow monster', 50], ['speed monster', 50], ['undead turning', 50], ['polymorph', 45],
+    ['cancellation', 45], ['teleportation', 45], ['opening', 30], ['locking', 30],
+    ['probing', 30], ['digging', 40], ['magic missile', 50], ['fire', 40], ['cold', 40],
+    ['sleep', 50], ['death', 5], ['lightning', 40],
 ]);
 const IDENTIFIED_WAND_NAMES = [...WAND_NAME_TO_INDEX.keys()];
+const NO_DIRECTION_WAND_NAMES = new Set(['light', 'secret door detection', 'enlightenment', 'create monster', 'wishing', 'stasis']);
+const SPE_LIM = 99;
 
 function moveloopPreambleOnce() {
     if (game._moveloop_preamble_done) return;
@@ -904,6 +1196,187 @@ function arrivalNearbyCoords(cx, cy, maxRadius = 3) {
         }
     }
     return coords;
+}
+
+function heroHasTeleportControl() {
+    if (game.u?.teleportControl) return true;
+    return (game.inventory || []).some(item => item.worn
+        && (item.actualKind === 'ring of teleport control'
+            || item.kind === 'ring of teleport control'
+            || item.ringRoll === 23));
+}
+
+function heroIsStunned() {
+    return !!(game.u?.stunned || game.u?._stunTimeout || (game.u?._statusSuffix || '').includes('Stun'));
+}
+
+function heroHasAmuletOfYendor() {
+    return !!(game.u?.uhave?.amulet || (game.inventory || []).some(item =>
+        item.realAmuletOfYendor || String(item.actualKind || item.kind || '').toLowerCase() === 'amulet of yendor'));
+}
+
+function heroOnWizardTowerLevel() {
+    return !!(game.level?.flags?.wizard_tower_level || game.level?.wizardTowerBounds);
+}
+
+function heroNoTeleportLevel() {
+    const flags = game.level?.flags || {};
+    return !!(flags.noteleport
+        || flags.demon_court_noteleport
+        || (flags.stasis_until != null && flags.stasis_until >= (game.moves || 0)));
+}
+
+function singleLevelBranch(level = game.u?.uz) {
+    const dungeon = game.dungeons?.[level?.dnum ?? 0];
+    return !!dungeon && (dungeon.num_dunlevs || 1) <= 1;
+}
+
+function randomTeleportDepth() {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const dungeon = game.dungeons?.[current.dnum];
+    const curDepth = depth_of_level(current);
+    if (!rn2(5) || singleLevelBranch(current) || In_endgame(current)) return curDepth;
+
+    let minDepth;
+    let maxDepth;
+    if (In_quest(current)) {
+        minDepth = dungeon?.depth_start ?? curDepth;
+        maxDepth = minDepth + (dungeon?.num_dunlevs ?? 1) - 1;
+    } else {
+        minDepth = 1;
+        maxDepth = (dungeon?.depth_start ?? 1) + (dungeon?.num_dunlevs ?? curDepth) - 1;
+        if ((game.dungeons?.[current.dnum]?.name === 'Gehennom' || game.level?.flags?.gehennom)
+            && !game.u?.uevent?.invoked)
+            maxDepth = Math.max(minDepth, maxDepth - 1);
+    }
+
+    let nlev = rn2(Math.max(1, curDepth + 3 - minDepth)) + minDepth;
+    if (nlev >= curDepth) nlev++;
+    if (nlev > maxDepth) {
+        nlev = maxDepth;
+        if (curDepth >= maxDepth) nlev -= rnd(3);
+    }
+    if (nlev < minDepth) {
+        nlev = minDepth;
+        if (nlev === curDepth) {
+            nlev += rnd(3);
+            if (nlev > maxDepth) nlev = maxDepth;
+        }
+    }
+    return nlev;
+}
+
+function sameLevelTeleportTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y);
+}
+
+function sameLevelTeleportOk(x, y, trapok = false) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (!trapok && sameLevelTeleportTrapAt(x, y)) return false;
+    if (!ACCESSIBLE(loc.typ)) return false;
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return false;
+    if ((game.level?.monsters || []).some(mon => mon.mx === x && mon.my === y)) return false;
+    if ((game.level?.objects || []).some(obj =>
+        obj.otyp === BOULDER && !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y))
+        return false;
+    return true;
+}
+
+function collectSameLevelTeleportCoords(cx, cy) {
+    const coords = [];
+    const rowrange = cy < ROWNO / 2 ? ROWNO - 1 - cy : cy;
+    const colrange = cx < COLNO / 2 ? COLNO - 1 - cx : cx;
+    const maxRadius = Math.max(rowrange, colrange);
+    let passStart = 0;
+    let passCount = 0;
+    for (let radius = 1; radius <= maxRadius; radius++) {
+        const newpass = (radius % 2) !== 0;
+        const passend = (radius % 2) === 0 || radius === maxRadius;
+        if (newpass) {
+            passStart = coords.length;
+            passCount = 0;
+        }
+        const lox = cx - radius, hix = cx + radius;
+        const loy = cy - radius, hiy = cy + radius;
+        for (let y = Math.max(loy, 0); y <= hiy && y < ROWNO; y++)
+            for (let x = Math.max(lox, 1); x <= hix && x < COLNO; x++) {
+                if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+                if ((game.level?.monsters || []).some(mon => mon.mx === x && mon.my === y)) continue;
+                const loc = game.level?.at(x, y);
+                if (!loc || !ZAP_POS(loc.typ)) continue;
+                coords.push({ x, y });
+                passCount++;
+            }
+        if (passend) {
+            for (let pass = passStart, n = passCount; n > 1; pass++, n--) {
+                const k = rn2(n);
+                if (k) [coords[pass], coords[pass + k]] = [coords[pass + k], coords[pass]];
+            }
+        }
+    }
+    return coords;
+}
+
+function teleportHeroSameLevel(x, y) {
+    const oldX = game.u?.ux || 0;
+    const oldY = game.u?.uy || 0;
+    const oldBallX = game.u?.uball?.ox;
+    const oldBallY = game.u?.uball?.oy;
+    const oldChainX = game.u?.uchain?.ox;
+    const oldChainY = game.u?.uchain?.oy;
+    if (game.u) {
+        game.u.ux0 = oldX;
+        game.u.uy0 = oldY;
+        game.u.ux = x;
+        game.u.uy = y;
+    }
+    if (game.u?.usteed) {
+        game.u.usteed.mx = x;
+        game.u.usteed.my = y;
+    }
+    if (game.u?.uball) {
+        game.u.uball.ox = x;
+        game.u.uball.oy = y;
+    }
+    if (game.u?.uchain) {
+        game.u.uchain.ox = x;
+        game.u.uchain.oy = y;
+    }
+    newsym(oldX, oldY);
+    if (oldBallX != null && oldBallY != null) newsym(oldBallX, oldBallY);
+    if (oldChainX != null && oldChainY != null) newsym(oldChainX, oldChainY);
+    newsym(x, y);
+    vision_recalc(0);
+    return `You materialize in ${x === oldX && y === oldY ? 'the same' : 'a different'} location!`;
+}
+
+function safeTeleportHeroSameLevel() {
+    for (let tcnt = 0; tcnt < 40; tcnt++) {
+        const x = rnd(COLNO - 1);
+        const y = rn2(ROWNO);
+        if (sameLevelTeleportOk(x, y, false))
+            return teleportHeroSameLevel(x, y);
+    }
+
+    let backup = null;
+    for (const pos of collectSameLevelTeleportCoords(game.u?.ux || 0, game.u?.uy || 0)) {
+        if (sameLevelTeleportOk(pos.x, pos.y, false))
+            return teleportHeroSameLevel(pos.x, pos.y);
+        if (!backup && sameLevelTeleportTrapAt(pos.x, pos.y) && sameLevelTeleportOk(pos.x, pos.y, true))
+            backup = pos;
+    }
+    return backup ? teleportHeroSameLevel(backup.x, backup.y) : '';
+}
+
+function startControlledTeleportPrompt() {
+    game._farlook_x = game.u?.ux || 0;
+    game._farlook_y = game.u?.uy || 0;
+    game._teleport_cursor_position_mode = 0;
+    game._teleport_dot_described = 0;
+    game._cursor_override = null;
+    game._teleport_from_scroll = 1;
+    game._command_mode = 'teleportCursor';
 }
 
 function resolveArrivalCollision(mon) {
@@ -1609,7 +2082,25 @@ const ARMOR_AC_BONUS = {
     'orcish chain mail': 4,
     'chain mail': 5,
     'gray dragon scale mail': 9,
+    'gold dragon scale mail': 9,
     'silver dragon scale mail': 9,
+    'red dragon scale mail': 9,
+    'white dragon scale mail': 9,
+    'orange dragon scale mail': 9,
+    'black dragon scale mail': 9,
+    'blue dragon scale mail': 9,
+    'green dragon scale mail': 9,
+    'yellow dragon scale mail': 9,
+    'gray dragon scales': 3,
+    'gold dragon scales': 3,
+    'silver dragon scales': 3,
+    'red dragon scales': 3,
+    'white dragon scales': 3,
+    'orange dragon scales': 3,
+    'black dragon scales': 3,
+    'blue dragon scales': 3,
+    'green dragon scales': 3,
+    'yellow dragon scales': 3,
     'studded leather armor': 3,
     'banded mail': 6,
     'splint mail': 6,
@@ -1705,7 +2196,25 @@ const ARMOR_WEAR_DELAY = {
     'ring mail': 5,
     'orcish ring mail': 5,
     'gray dragon scale mail': 5,
+    'gold dragon scale mail': 5,
     'silver dragon scale mail': 5,
+    'red dragon scale mail': 5,
+    'white dragon scale mail': 5,
+    'orange dragon scale mail': 5,
+    'black dragon scale mail': 5,
+    'blue dragon scale mail': 5,
+    'green dragon scale mail': 5,
+    'yellow dragon scale mail': 5,
+    'gray dragon scales': 5,
+    'gold dragon scales': 5,
+    'silver dragon scales': 5,
+    'red dragon scales': 5,
+    'white dragon scales': 5,
+    'orange dragon scales': 5,
+    'black dragon scales': 5,
+    'blue dragon scales': 5,
+    'green dragon scales': 5,
+    'yellow dragon scales': 5,
     'leather armor': 3,
     'studded leather armor': 3,
     'dwarvish mithril-coat': 1,
@@ -1769,6 +2278,30 @@ const ARMOR_WISH_APPEARANCES = {
     'fumble boots': ['boots', 5, 'riding boots'],
     'levitation boots': ['boots', 6, 'snow boots'],
 };
+const MAGICAL_ARMOR_KINDS = new Set([
+    'cloak of displacement', 'cloak of invisibility', 'cloak of magic resistance',
+    'cloak of protection', 'helm of brilliance', 'helm of caution',
+    'helm of opposite alignment', 'helm of telepathy', 'dunce cap',
+    'gauntlets of dexterity', 'gauntlets of fumbling', 'gauntlets of power',
+    'jumping boots', 'fumble boots', 'levitation boots', 'speed boots',
+    'water walking boots', 'shield of reflection',
+    'gray dragon scale mail', 'gold dragon scale mail', 'silver dragon scale mail',
+    'red dragon scale mail', 'white dragon scale mail', 'orange dragon scale mail',
+    'black dragon scale mail', 'blue dragon scale mail', 'green dragon scale mail',
+    'yellow dragon scale mail',
+]);
+const DRAGON_SCALE_MAIL_BY_SCALES = new Map([
+    ['gray dragon scales', 'gray dragon scale mail'],
+    ['gold dragon scales', 'gold dragon scale mail'],
+    ['silver dragon scales', 'silver dragon scale mail'],
+    ['red dragon scales', 'red dragon scale mail'],
+    ['white dragon scales', 'white dragon scale mail'],
+    ['orange dragon scales', 'orange dragon scale mail'],
+    ['black dragon scales', 'black dragon scale mail'],
+    ['blue dragon scales', 'blue dragon scale mail'],
+    ['green dragon scales', 'green dragon scale mail'],
+    ['yellow dragon scales', 'yellow dragon scale mail'],
+]);
 
 export function updateGauntletsOfPowerStrength(kind, worn) {
     if (kind !== 'gauntlets of power' || !game.u?.acurr?.a) return;
@@ -1828,6 +2361,25 @@ const OBJECT_WEIGHTS = {
     'elven shield': 40,
     'fedora': 3,
     'gray dragon scale mail': 40,
+    'gold dragon scale mail': 40,
+    'silver dragon scale mail': 40,
+    'red dragon scale mail': 40,
+    'white dragon scale mail': 40,
+    'orange dragon scale mail': 40,
+    'black dragon scale mail': 40,
+    'blue dragon scale mail': 40,
+    'green dragon scale mail': 40,
+    'yellow dragon scale mail': 40,
+    'gray dragon scales': 40,
+    'gold dragon scales': 40,
+    'silver dragon scales': 40,
+    'red dragon scales': 40,
+    'white dragon scales': 40,
+    'orange dragon scales': 40,
+    'black dragon scales': 40,
+    'blue dragon scales': 40,
+    'green dragon scales': 40,
+    'yellow dragon scales': 40,
     'helmet': 30,
     'high boots': 20,
     'iron shoes': 50,
@@ -1847,7 +2399,6 @@ const OBJECT_WEIGHTS = {
     'ring mail': 250,
     'scale mail': 250,
     'shield of reflection': 50,
-    'silver dragon scale mail': 40,
     'small shield': 30,
     'speed boots': 20,
     'splint mail': 400,
@@ -1980,6 +2531,16 @@ const SHOP_OBJECT_COSTS = {
     'blue dragon scale mail': 900,
     'green dragon scale mail': 900,
     'yellow dragon scale mail': 900,
+    'gray dragon scales': 700,
+    'gold dragon scales': 500,
+    'silver dragon scales': 700,
+    'red dragon scales': 500,
+    'white dragon scales': 500,
+    'orange dragon scales': 500,
+    'black dragon scales': 700,
+    'blue dragon scales': 500,
+    'green dragon scales': 500,
+    'yellow dragon scales': 500,
     'plate mail': 600,
     'crystal plate mail': 820,
     'bronze plate mail': 400,
@@ -4056,13 +4617,17 @@ function inventoryLetterMenu(letters) {
 }
 
 function erosionPrefix(item) {
-    const level = item.oeroded || 0;
-    if (!level) return '';
-    const kind = String(item.kind || pickupObjectName(item)).toLowerCase();
-    const damage = kind.includes('leather') ? 'burnt' : 'rusty';
-    if (level === 1) return `${damage} `;
-    if (level === 2) return `very ${damage} `;
-    return `thoroughly ${damage} `;
+    const profile = wishedDamageProfile(item);
+    const pieces = [];
+    if (item.greased) pieces.push('greased');
+    const primary = Math.min(3, item.oeroded || 0);
+    const secondary = Math.min(3, item.oeroded2 || 0);
+    if (primary && profile.primaryWord)
+        pieces.push(`${primary === 2 ? 'very ' : primary === 3 ? 'thoroughly ' : ''}${profile.primaryWord}`);
+    if (secondary && profile.secondaryWord)
+        pieces.push(`${secondary === 2 ? 'very ' : secondary === 3 ? 'thoroughly ' : ''}${profile.secondaryWord}`);
+    if (item.oerodeproof && profile.proofWord) pieces.push(profile.proofWord);
+    return pieces.length ? `${pieces.join(' ')} ` : '';
 }
 
 function dipItemDescription(item, shortened = false) {
@@ -4156,6 +4721,7 @@ export function inventoryLetterRank(item) {
 }
 
 export function inventoryItemName(item) {
+    if (item?.artifact) return artifactObjectName(item);
     return String(item.line || `${item.letter || '?'} - ${item.quan > 1 ? `${item.quan} ` : ''}${pickupObjectName(item)}`)
         .replace(/^[a-zA-Z$] - /, '')
         .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '');
@@ -4273,7 +4839,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         if (item.artifact || (item.in_use && (item.quan || 1) === 1)) continue;
         if (cls !== 'potion' && cls !== 'scroll' && cls !== 'spellbook') continue;
         const itemName = String(item.actualKind || item.kind || inventoryItemName(item));
-        if (cls === 'scroll' && (item.scrollIndex === 15 || /scroll of fire\b/i.test(itemName))) continue;
+        if (cls === 'scroll' && (item.scrollIndex === 16 || /scroll of fire\b/i.test(itemName))) continue;
         if (cls === 'spellbook' && /(?:spellbook of )?fireball|Book of the Dead/i.test(itemName)) continue;
         const i = eligible < limit ? eligible : rn2(eligible);
         eligible++;
@@ -4318,6 +4884,13 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         } else {
             message = `${subject} ${plural ? 'catch fire and burn' : 'catches fire and burns'}!`;
             removeInventoryItem(item, destroyed);
+            if (!game.u?.fireResistance) {
+                event.damage = 1;
+                damage += 1;
+                deathCause = cls === 'spellbook'
+                    ? 'killed by burning book'
+                    : plural ? 'killed by burning scrolls' : 'killed by burning scroll';
+            }
         }
         if (!joinedArmorMessage && messages.length === 1 && armor.message) {
             messages[0] = `${messages[0]}  ${message}`;
@@ -4386,7 +4959,7 @@ export function finishForceLock(force) {
     return true;
 }
 
-function revealLevelMap() {
+function revealLevelMap({ confusedMap = false, revealSecretDoors = false } = {}) {
     for (const obj of game.level?.objects || []) {
         if (obj.otyp === BOULDER && !obj.seen && !(game.viz_array?.[obj.oy]?.[obj.ox] & IN_SIGHT))
             obj._hide_until_seen = true;
@@ -4394,8 +4967,16 @@ function revealLevelMap() {
     game._revealing_level_map = 1;
     for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
+            if (confusedMap && rn2(7)) continue;
             const loc = game.level?.at(x, y);
             if (!loc || loc.typ === STONE) continue;
+            if (revealSecretDoors && loc.typ === SDOOR) {
+                loc.typ = DOOR;
+                const mask = loc.doormask || 0;
+                loc.doormask = Is_rogue_level(game.u?.uz)
+                    ? D_NODOOR
+                    : (mask & D_LOCKED) ? mask : (mask | D_CLOSED);
+            }
             if (loc.typ === SCORR) loc.typ = CORR;
             loc.waslit = true;
             loc.seenv = 0xff;
@@ -4749,6 +5330,65 @@ async function setMessage(msg, more = false) {
     if (msg !== 'You are caught in a bear trap.') game._last_trapmove_message = '';
 }
 
+function addHeroStatusSuffix(status) {
+    if (!game.u) return;
+    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.includes(status)) parts.push(status);
+    game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+function removeHeroStatusSuffix(status) {
+    if (!game.u) return;
+    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(part => part !== status);
+    game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+function heroIsConfused() {
+    return (game.u?._statusSuffix || '').includes('Conf') || (game.u?._confusionTimeout || 0) > 0;
+}
+
+function heroIsHallucinating() {
+    return !!game.u?.hallucinating || (game.u?._statusSuffix || '').includes('Hallu');
+}
+
+function addHeroConfusion(turns) {
+    if (!game.u || turns <= 0) return;
+    game.u._confusionTimeout = (game.u._confusionTimeout || 0) + turns;
+    addHeroStatusSuffix('Conf');
+}
+
+function addHeroStun(turns) {
+    if (!game.u || turns <= 0) return;
+    game.u._stunTimeout = (game.u._stunTimeout || 0) + turns;
+    game.u.stunned = true;
+    addHeroStatusSuffix('Stun');
+}
+
+function clearHeroConfusion() {
+    if (!game.u) return;
+    game.u._confusionTimeout = 0;
+    removeHeroStatusSuffix('Conf');
+}
+
+function sentenceCase(text) {
+    const value = String(text || '');
+    return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
+function monsterResistanceLevel(mon) {
+    const level = mon?.m_lev ?? mon?.mlevel ?? mon?.data?.mlevel ?? mon?.data?.hpLevel ?? 1;
+    return Math.max(1, Math.min(50, level || 1));
+}
+
+function monsterMagicResistance(mon) {
+    return mon?.mr ?? mon?.data?.mr ?? mon?.data?.mresists ?? 0;
+}
+
+function monsterResistsEffect(mon, attackLevel) {
+    const bound = Math.max(1, 100 + attackLevel - monsterResistanceLevel(mon));
+    return rn2(bound) < monsterMagicResistance(mon);
+}
+
 export function loseExperienceLevel() {
     const u = game.u;
     if (!u) return;
@@ -5028,49 +5668,3981 @@ function godsNoticeWish() {
     game.u.ublesscnt = (game.u.ublesscnt || 0) + rn2(100) + 50;
 }
 
-function wishedObjectFromName(lowerName) {
-    const artifact = lowerName === 'mjollnir' || lowerName === 'war hammer named mjollnir'
-        ? { base: 'war hammer', name: 'Mjollnir' }
-        : lowerName === 'grayswandir' || lowerName === 'silver saber named grayswandir'
-            ? { base: 'silver saber', name: 'Grayswandir' }
-            : null;
-	    if (artifact) {
-	        const otmp = mksobj(artifact.base === 'silver saber' ? SILVER_SABER : WEAPON_CLASS, true, false);
-	        game._artifact_count = (game._artifact_count || 0) + 1;
-	        rn2(Math.max(1, game._artifact_count || 1));
-	        return Object.assign(otmp, {
-            cls: 'weapon',
-            glyph: ')',
-            kind: `${artifact.base} named ${artifact.name}`,
-            actualKind: artifact.base,
-            artifact: artifact.name,
-            wishedfor: true,
+function capWishSpe(spe) {
+    const sign = spe < 0 ? -1 : 1;
+    return sign * Math.min(Math.abs(spe), SPE_LIM);
+}
+
+function wishedSpeForItem(item, spe) {
+    if ((item?.cls === 'wand' || item?.otyp === WAND_CLASS) && !game.flags?.debug) {
+        if (spe < 0) return Math.max(spe, -1);
+        return Math.min(spe, item.spe ?? spe);
+    }
+    return spe;
+}
+
+function applyWishedBuc(item, { wishedBlessed, wishedUncursed, wishedCursed, negativeSpe }) {
+    const badLuck = ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) < 0 && !game.flags?.debug;
+    if (wishedCursed) {
+        item.cursed = true;
+        item.blessed = false;
+    } else if (wishedUncursed) {
+        item.blessed = false;
+        item.cursed = badLuck;
+    } else if (wishedBlessed) {
+        item.blessed = !badLuck;
+        item.cursed = badLuck;
+    } else if (negativeSpe) {
+        item.cursed = true;
+        item.blessed = false;
+    }
+}
+
+function objectKindKey(item) {
+    return String(item?.actualKind || item?.kind || item?.spellName || item?.wand || item?.gemDescription || '').toLowerCase();
+}
+
+function itemClassKey(item) {
+    return item?.cls || (item?.otyp === DART ? 'weapon'
+        : item?.otyp === ARMOR_CLASS ? 'armor'
+            : item?.otyp === WEAPON_CLASS ? 'weapon'
+                : item?.otyp === FOOD_CLASS ? 'food'
+                    : '');
+}
+
+function isPotionObject(item) {
+    return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_WATER;
+}
+
+function isWaterPotion(item) {
+    if (!isPotionObject(item)) return false;
+    const kind = objectKindKey(item).replace(/^potion of /, '');
+    return item?.otyp === POT_WATER || kind === 'water' || kind === 'holy water' || kind === 'unholy water';
+}
+
+function isPotionOfOil(item) {
+    if (!isPotionObject(item)) return false;
+    return item?.otyp === POT_OIL || item?.potionIndex === 24
+        || objectKindKey(item).replace(/^potion of /, '') === 'oil';
+}
+
+function maybeDilutedPotionName(obj, name) {
+    if (!obj?.odiluted || isWaterPotion(obj) || name.startsWith('diluted ')) return name;
+    return `diluted ${name}`;
+}
+
+function isCandleObject(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === TALLOW_CANDLE || item?.otyp === WAX_CANDLE
+        || kind === 'tallow candle' || kind === 'wax candle';
+}
+
+function isLampObject(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === OIL_LAMP || item?.otyp === MAGIC_LAMP || item?.otyp === BRASS_LANTERN
+        || kind === 'oil lamp' || kind === 'magic lamp' || kind === 'brass lantern';
+}
+
+function isWishedLightSource(item) {
+    return isLampObject(item) || isCandleObject(item) || isPotionOfOil(item);
+}
+
+function candleDefaultAge(item) {
+    return item?.otyp === WAX_CANDLE || objectKindKey(item) === 'wax candle' ? 400 : 200;
+}
+
+function applyBurnAgeThreshold(item, thresholds) {
+    const age = item.age ?? thresholds[0];
+    for (const threshold of thresholds) {
+        if (age > threshold) {
+            item._burnTimer = age - threshold;
+            item.age = threshold;
+            return;
+        }
+    }
+    if (age > 0) {
+        item._burnTimer = age;
+        item.age = 0;
+    }
+}
+
+function beginWishedBurn(item) {
+    item.lamplit = true;
+    item.burning = true;
+    if (isPotionOfOil(item)) {
+        const age = item.age ?? 400;
+        item._burnTimer = item.odiluted ? Math.trunc(age * 3 / 4) : age;
+        item.age = 0;
+        item.litRadius = 1;
+    } else if (item.otyp === MAGIC_LAMP || objectKindKey(item) === 'magic lamp') {
+        delete item._burnTimer;
+    } else if (isCandleObject(item)) {
+        if (item.age == null) item.age = candleDefaultAge(item);
+        applyBurnAgeThreshold(item, [75, 15, 0]);
+    } else {
+        if (item.age == null) item.age = 1500;
+        applyBurnAgeThreshold(item, [150, 100, 50, 25, 0]);
+    }
+}
+
+function applyWishedLightState(item, state) {
+    if (!isWishedLightSource(item) || state == null) return;
+    if (state) beginWishedBurn(item);
+    else {
+        item.lamplit = false;
+        item.burning = false;
+        delete item._burnTimer;
+        delete item.litRadius;
+    }
+}
+
+function maybeLitObjectName(obj, name) {
+    if (!(obj?.lamplit || obj?.burning) || name.endsWith(' (lit)')) return name;
+    return `${name} (lit)`;
+}
+
+function foodObjectNutrition(item) {
+    if (!item) return 0;
+    if (item.globby) return item.owt || 20;
+    if (item.otyp === 'corpse' || item.otyp === CORPSE || /\bcorpse$/.test(objectKindKey(item))) {
+        const corpseName = item.corpsenm?.name || objectKindKey(item).replace(/\s+corpse$/, '');
+        return CORPSE_NUTRITION.get(corpseName) || 0;
+    }
+    const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    if (kind.startsWith('tin:')) return 0;
+    return FOOD_NUTRITION.get(kind) ?? 0;
+}
+
+function consumeOeaten(item, amount) {
+    if (!item?.oeaten) return;
+    if (amount > 0) item.oeaten = Math.floor(item.oeaten / (2 ** amount));
+    else item.oeaten -= amount;
+    if (item.oeaten <= 0) item.oeaten = 1;
+}
+
+function applyWishedPartlyEaten(item) {
+    if (!(item?.cls === 'food' || item?.otyp === FOOD_CLASS || item?.otyp === 'corpse' || item?.otyp === CORPSE)) return;
+    const nutrition = foodObjectNutrition(item);
+    if (nutrition <= 1) return;
+    item.oeaten = nutrition;
+    consumeOeaten(item, 1);
+}
+
+function maybePartlyEatenFoodName(obj, name) {
+    if (!(obj?.oeaten > 0) || name.startsWith('partly eaten ')) return name;
+    return `partly eaten ${name}`;
+}
+
+function foodBucPrefix(obj) {
+    if (!(game._startup_role === 'Priest' || obj?.bknown)) return '';
+    return obj?.cursed ? 'cursed ' : obj?.blessed ? 'blessed ' : '';
+}
+
+function eggObjectName(obj) {
+    const buc = foodBucPrefix(obj);
+    const plural = (obj?.quan || 1) > 1;
+    let name = plural ? 'eggs' : 'egg';
+    if (obj?.corpsenm?.name && (obj.known || obj.eggKnown)) {
+        name = `${obj.corpsenm.name} ${plural ? 'eggs' : 'egg'}`;
+        if (!plural && obj.spe === 1) name = `${name} (laid by you)`;
+    }
+    return `${buc}${maybePartlyEatenFoodName(obj, name)}`;
+}
+
+function globSizePrefix(obj) {
+    const weight = obj?.owt ?? 20;
+    return weight <= 100 ? 'small'
+        : weight <= 300 ? 'medium'
+            : weight <= 500 ? 'large'
+                : 'very large';
+}
+
+function globObjectName(obj) {
+    const name = obj?.globName || obj?.kind || 'glob';
+    return maybePartlyEatenFoodName(obj, `${globSizePrefix(obj)} ${name}`);
+}
+
+function makeBlankScrollWishObject() {
+    const otmp = mksobj(SCR_BLANK_PAPER, true, false);
+    return Object.assign(otmp, {
+        cls: 'scroll',
+        glyph: '?',
+        kind: 'blank paper',
+        known: false,
+        wishedfor: true,
+    });
+}
+
+function makeWishedKnownScrollObject(scrollIndex, wishedLabel = '') {
+    const scrollName = IDENTIFIED_SCROLL_NAMES[scrollIndex];
+    const label = game._object_descriptions?.scrolls?.[scrollIndex] || wishedLabel || 'ZELGO MER';
+    const otmp = mksobj(SCROLL_CLASS, true, false);
+    return Object.assign(otmp, {
+        cls: 'scroll',
+        glyph: '?',
+        kind: `scroll labeled ${label}`,
+        actualKind: `scroll of ${scrollName}`,
+        scrollIndex,
+        known: false,
+        wishedfor: true,
+    });
+}
+
+function makeBlankSpellbookWishObject() {
+    const otmp = mksobj(SPBOOK_NO_NOVEL, true, false);
+    return Object.assign(otmp, {
+        cls: 'spellbook',
+        glyph: '+',
+        kind: 'spellbook of blank paper',
+        spellName: '',
+        appearance: 'plain',
+        known: false,
+        wishedfor: true,
+    });
+}
+
+function makeNovelWishObject() {
+    const otmp = mksobj(SPBOOK_NO_NOVEL, true, false);
+    return Object.assign(otmp, {
+        cls: 'spellbook',
+        glyph: '+',
+        kind: 'novel',
+        actualKind: 'novel',
+        spellName: '',
+        appearance: '',
+        known: false,
+        wishedfor: true,
+    });
+}
+
+function makeFakeAmuletOfYendorWishObject() {
+    const otmp = mksobj(AMULET_CLASS, true, false);
+    return Object.assign(otmp, {
+        cls: 'amulet',
+        glyph: '"',
+        kind: 'Amulet of Yendor',
+        actualKind: 'cheap plastic imitation of the Amulet of Yendor',
+        appearance: 'Amulet of Yendor',
+        known: false,
+        fakeAmuletOfYendor: true,
+        unique: true,
+        wishedfor: true,
+    });
+}
+
+function makeRealAmuletOfYendorWishObject() {
+    const otmp = mksobj(AMULET_CLASS, true, false);
+    return Object.assign(otmp, {
+        cls: 'amulet',
+        glyph: '"',
+        kind: 'Amulet of Yendor',
+        actualKind: 'Amulet of Yendor',
+        appearance: 'Amulet of Yendor',
+        known: true,
+        realAmuletOfYendor: true,
+        unique: true,
+        wishedfor: true,
+    });
+}
+
+function makeAmuletOfYendorWishObject(lowerName, qualifiers = {}) {
+    const name = String(lowerName || '').trim();
+    if (!/\bamulet of yendor\b/.test(name)) return null;
+    const fakeNamePrefix = /^(?:cheap|plastic|imitation)\b/.test(name);
+    if (qualifiers.fakeAmulet || fakeNamePrefix || !game.flags?.debug)
+        return makeFakeAmuletOfYendorWishObject();
+    return makeRealAmuletOfYendorWishObject();
+}
+
+const GENDERED_CORPSTAT_MONSTER_NAMES = new Map([
+    ['dwarf leader', { male: 'dwarf lord', female: 'dwarf lady', neutral: 'dwarf leader' }],
+    ['dwarf ruler', { male: 'dwarf king', female: 'dwarf queen', neutral: 'dwarf ruler' }],
+    ['kobold leader', { male: 'kobold lord', female: 'kobold lady', neutral: 'kobold leader' }],
+    ['gnome leader', { male: 'gnome lord', female: 'gnome lady', neutral: 'gnome leader' }],
+    ['gnome ruler', { male: 'gnome king', female: 'gnome queen', neutral: 'gnome ruler' }],
+    ['ogre leader', { male: 'ogre lord', female: 'ogre lady', neutral: 'ogre leader' }],
+    ['ogre tyrant', { male: 'ogre king', female: 'ogre queen', neutral: 'ogre tyrant' }],
+    ['vampire leader', { male: 'vampire lord', female: 'vampire lady', neutral: 'vampire leader' }],
+    ['elf-noble', { male: 'elf-lord', female: 'elf-lady', neutral: 'elf-noble' }],
+    ['elven monarch', { male: 'Elvenking', female: 'Elvenqueen', neutral: 'elven monarch' }],
+    ['amorous demon', { male: 'incubus', female: 'succubus', neutral: 'amorous demon' }],
+]);
+
+const GENDERED_CORPSTAT_MONSTER_ALIASES = new Map();
+for (const [neutral, names] of GENDERED_CORPSTAT_MONSTER_NAMES) {
+    GENDERED_CORPSTAT_MONSTER_ALIASES.set(names.neutral.toLowerCase(), { monsterName: neutral, gender: null });
+    GENDERED_CORPSTAT_MONSTER_ALIASES.set(names.male.toLowerCase(), { monsterName: neutral, gender: 'male' });
+    GENDERED_CORPSTAT_MONSTER_ALIASES.set(names.female.toLowerCase(), { monsterName: neutral, gender: 'female' });
+}
+const RANDOM_MONSTER_BY_LOWER_NAME = new Map(
+    [...RANDOM_MONSTER_BY_NAME.entries()].map(([name, data]) => [String(name).toLowerCase(), data]),
+);
+
+function wishedMonsterByName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (lower === 'elf') return { name: 'elf', weight: 800, mlet: '@', glyph: '@', color: CLR_BRIGHT_GREEN, neuter: false, elf: true };
+    return monsterByRndName(raw)
+        || RANDOM_MONSTER_BY_NAME.get(raw)
+        || RANDOM_MONSTER_BY_LOWER_NAME.get(lower)
+        || RANDOM_MONSTER_BY_LOWER_NAME.get(lower.replace(/\s+/g, '-'))
+        || null;
+}
+
+function stripWishedMonsterGenderPrefix(name) {
+    const trimmed = String(name || '').trim();
+    const match = trimmed.match(/^(female|male|neuter)\s+(.+)$/i);
+    if (!match) return { name: trimmed, gender: null };
+    return { name: match[2].trim(), gender: match[1].toLowerCase() };
+}
+
+function resolveWishedCorpstatMonsterName(monsterName, requestedGender = null) {
+    const lowerName = String(monsterName || '').trim().toLowerCase();
+    const alias = GENDERED_CORPSTAT_MONSTER_ALIASES.get(lowerName);
+    if (!alias) return { monsterName: lowerName, requestedGender };
+    return {
+        monsterName: alias.monsterName,
+        requestedGender: alias.gender || requestedGender,
+    };
+}
+
+function wishedCorpstatSpe(monster, requestedGender = null) {
+    if (monster?.neuter) return CORPSTAT_NEUTER;
+    if (requestedGender === 'female' && !monster?.male) return CORPSTAT_FEMALE;
+    if (requestedGender === 'male' && !monster?.female) return CORPSTAT_MALE;
+    if (monster?.female) return CORPSTAT_FEMALE;
+    if (monster?.male) return CORPSTAT_MALE;
+    return rn2(2) ? CORPSTAT_MALE : CORPSTAT_FEMALE;
+}
+
+function corpstatDisplayMonsterName(obj) {
+    const baseName = String(obj?.corpsenm?.name || 'monster');
+    const genderNames = GENDERED_CORPSTAT_MONSTER_NAMES.get(baseName.toLowerCase());
+    if (!genderNames) return baseName;
+    const gender = (obj.spe || 0) & CORPSTAT_GENDER;
+    if (gender === CORPSTAT_FEMALE) return genderNames.female;
+    if (gender === CORPSTAT_MALE) return genderNames.male;
+    return genderNames.neutral;
+}
+
+function corpseObjectName(obj) {
+    const monsterName = corpstatDisplayMonsterName(obj);
+    return `${monsterName} ${(obj?.quan || 1) > 1 ? 'corpses' : 'corpse'}`;
+}
+
+function monsterIndefiniteName(name) {
+    const monsterName = String(name || 'monster');
+    return `${/^[aeiou]/i.test(monsterName) ? 'an' : 'a'} ${monsterName}`;
+}
+
+function noFittingWishObject() {
+    return {
+        _wish_disappeared: true,
+        _wish_disappear_message: 'Nothing fitting that wish appears.',
+    };
+}
+
+function parseWishedStatueName(lowerName, qualifiers = {}) {
+    const match = String(lowerName || '').trim().match(/^statue(?:\s+of(?:\s+(?:a|an|the))?\s+(.+))?$/);
+    if (!match) return null;
+    const gendered = stripWishedMonsterGenderPrefix(match[1] || '');
+    return {
+        monsterName: gendered.name,
+        requestedGender: gendered.gender || qualifiers.monsterGender || null,
+    };
+}
+
+function makeWishedStatueObject(statueWish, qualifiers = {}) {
+    const resolved = resolveWishedCorpstatMonsterName(
+        statueWish?.monsterName,
+        statueWish?.requestedGender || qualifiers.monsterGender || null,
+    );
+    const monster = resolved.monsterName ? wishedMonsterByName(resolved.monsterName) : null;
+    if (resolved.monsterName && !monster) return null;
+    const otmp = mksobj(STATUE, true, false);
+    if (monster) {
+        otmp.corpsenm = monster;
+        otmp.spe = wishedCorpstatSpe(monster, resolved.requestedGender);
+        if (monster.verysmall) delete otmp.contents;
+    }
+    if (qualifiers.historic) {
+        otmp.spe = (otmp.spe || 0) | CORPSTAT_HISTORIC;
+    }
+    return Object.assign(otmp, {
+        cls: 'rock',
+        glyph: '`',
+        kind: 'statue',
+        wishedfor: true,
+    });
+}
+
+function parseWishedFigurineName(lowerName, qualifiers = {}) {
+    const name = String(lowerName || '').trim();
+    let match = name.match(/^figurines?(?:\s+of(?:\s+(?:a|an|the))?\s+(.+))?$/);
+    if (!match) match = name.match(/^(.+)\s+figurines?$/);
+    if (!match) return null;
+    const gendered = stripWishedMonsterGenderPrefix(match[1] || '');
+    return {
+        monsterName: gendered.name,
+        requestedGender: gendered.gender || qualifiers.monsterGender || null,
+        exact: !!gendered.name,
+    };
+}
+
+function canWishedFigurineUseMonster(monster) {
+    if (!monster || monster.unique || monster.name === 'mail daemon') return false;
+    const human = monster.mlet === '@' || monster.glyph === '@';
+    return !human || monster.wereHuman;
+}
+
+function makeWishedFigurineObject(figurineWish, qualifiers = {}) {
+    const resolved = resolveWishedCorpstatMonsterName(
+        figurineWish?.monsterName,
+        figurineWish?.requestedGender || qualifiers.monsterGender || null,
+    );
+    const monster = resolved.monsterName ? wishedMonsterByName(resolved.monsterName) : null;
+    if (figurineWish?.exact && !monster) return noFittingWishObject();
+    game._mkobj_tool_roll = WISH_TOOL_ROLLS.get('figurine');
+    const otmp = mksobj(TOOL_CLASS, true, false);
+    if (monster) {
+        otmp.spe = wishedCorpstatSpe(monster, resolved.requestedGender);
+        if (canWishedFigurineUseMonster(monster)) otmp.corpsenm = monster;
+    }
+    return Object.assign(otmp, {
+        cls: 'tool',
+        glyph: '(',
+        kind: 'figurine',
+        actualKind: 'figurine',
+        known: true,
+        wishedfor: true,
+    });
+}
+
+function parseWishedCorpseName(lowerName, qualifiers = {}) {
+    const name = String(lowerName || '').trim();
+    let match = name.match(/^corpses?(?:\s+of(?:\s+(?:a|an|the))?\s+(.+))?$/);
+    if (!match) match = name.match(/^(.+)\s+corpses?$/);
+    if (!match) return null;
+    const gendered = stripWishedMonsterGenderPrefix(match[1] || '');
+    return {
+        monsterName: gendered.name,
+        requestedGender: gendered.gender || qualifiers.monsterGender || null,
+        exact: !!gendered.name,
+    };
+}
+
+function parseWishedGlobName(lowerName, qualifiers = {}) {
+    let name = String(lowerName || '').trim();
+    let size = qualifiers.globSize || 0;
+    const sizeMatch = name.match(/^(small|medium|large|very large)\s+(.+)$/);
+    if (sizeMatch) {
+        size = sizeMatch[1] === 'small' ? 1
+            : sizeMatch[1] === 'medium' ? 2
+                : sizeMatch[1] === 'large' ? 3 : 4;
+        name = sizeMatch[2].trim();
+    }
+    const bareMatch = name.match(/^globs?$/);
+    const ofMatch = name.match(/^globs?\s+of\s+(.+)$/);
+    const suffixMatch = name.match(/^(.+)\s+globs?$/);
+    if (!bareMatch && !ofMatch && !suffixMatch) return null;
+    const monsterText = (ofMatch?.[1] || suffixMatch?.[1] || '').replace(/^(?:a|an|the)\s+/, '').trim();
+    const plural = /\bglobs\b/.test(name);
+    return {
+        monsterName: monsterText,
+        size,
+        exact: !!monsterText,
+        defaultCount: plural ? 2 : 0,
+    };
+}
+
+function globTypeForMonsterName(monsterName) {
+    const lowerName = String(monsterName || '').trim().toLowerCase();
+    if (!lowerName) {
+        const index = rn1(RANDOM_GLOB_MONSTER_NAMES.length, 0);
+        return GLOB_TYPES.get(RANDOM_GLOB_MONSTER_NAMES[index]);
+    }
+    if (GLOB_TYPES.has(lowerName)) return GLOB_TYPES.get(lowerName);
+    const monster = wishedMonsterByName(lowerName);
+    if (!monster) {
+        const index = rn1(RANDOM_GLOB_MONSTER_NAMES.length, 0);
+        return GLOB_TYPES.get(RANDOM_GLOB_MONSTER_NAMES[index]);
+    }
+    return GLOB_TYPES.get(monster.name) || GLOB_TYPES.get(lowerName) || null;
+}
+
+function globSizeWeight(size = 0) {
+    if (size <= 1) return 20;
+    return 20 + (5 + (size - 2) * 10) * 20;
+}
+
+function applyWishedGlobQuantity(item, wishedQuan) {
+    if (!item?.globby) return;
+    let count = Math.max(wishedQuan || 0, item._wish_glob_default_count || 0);
+    if (count <= 1) return;
+    let maxCount = rn1(5, 2);
+    const size = item._wish_glob_size || 0;
+    if (maxCount > 6 - size) maxCount = 6 - size;
+    if (count > maxCount && !game.flags?.debug) count = maxCount;
+    item.owt = (item.owt || 20) * count;
+    if (item.oeaten) {
+        item.oeaten = item.owt;
+        consumeOeaten(item, 1);
+    }
+}
+
+function makeWishedGlobObject(globWish = {}) {
+    const globType = globTypeForMonsterName(globWish.monsterName);
+    if (!globType) return noFittingWishObject();
+    const id = next_ident();
+    const shrinkDelay = 25 + rn2(5) - 2;
+    const size = globWish.size || 0;
+    const monsterName = globType.name.replace(/^glob of /, '');
+    return {
+        id,
+        otyp: globType.otyp,
+        cls: 'food',
+        glyph: '%',
+        color: globType.color,
+        _display_color: globType.color,
+        kind: globType.name,
+        actualKind: globType.name,
+        singular: globType.name,
+        globName: globType.name,
+        globby: true,
+        known: true,
+        dknown: true,
+        quan: 1,
+        owt: globSizeWeight(size),
+        corpsenm: wishedMonsterByName(monsterName) || { name: monsterName, neuter: true },
+        globShrinkTurn: (game.moves || 1) + shrinkDelay,
+        _wish_glob_size: size,
+        _wish_glob_default_count: globWish.defaultCount || 0,
+        wishedfor: true,
+    };
+}
+
+function parseWishedDragonArmorName(lowerName) {
+    const name = String(lowerName || '').trim().replace(/\s+/g, ' ');
+    let match = name.match(/^dragon (scales|scale mail|scale armor)$/);
+    if (match) {
+        return {
+            type: match[1] === 'scales' ? 'scales' : 'mail',
+            random: true,
+            armorAlias: match[1] === 'scale armor',
+        };
+    }
+    match = name.match(/^(gray|grey|gold|silver|red|white|orange|black|blue|green|yellow) dragon (scales|scale mail|scale armor)$/);
+    if (!match) return null;
+    return {
+        type: match[2] === 'scales' ? 'scales' : 'mail',
+        spec: DRAGON_ARMOR_BY_COLOR.get(match[1]),
+        armorAlias: match[2] === 'scale armor',
+    };
+}
+
+function makeWishedDragonArmorObject(dragonWish = {}) {
+    const spec = dragonWish.random
+        ? DRAGON_ARMOR_SPECS[rn1(DRAGON_ARMOR_SPECS.length, 0)]
+        : dragonWish.spec;
+    if (!spec) return null;
+    const mail = dragonWish.type === 'mail';
+    if (mail && !dragonWish.random)
+        rn2(dragonWish.armorAlias ? 1 : 67);
+    const kind = `${spec.colorName} dragon ${mail ? 'scale mail' : 'scales'}`;
+    const otmp = mksobj(mail ? spec.mailOtyp : spec.scalesOtyp, true, false);
+    return Object.assign(otmp, {
+        cls: 'armor',
+        glyph: '[',
+        kind,
+        actualKind: kind,
+        color: spec.color,
+        _display_color: spec.color,
+        owt: 40,
+        dragonArmor: true,
+        dragonArmorKind: mail ? 'mail' : 'scales',
+        noArticle: !mail,
+        known: true,
+        wishedfor: true,
+    });
+}
+
+function wishedCorpseOverrideMonster(monster) {
+    if (!monster) return null;
+    if (monster.name === 'long worm tail')
+        return wishedMonsterByName('long worm') || monster;
+    if (monster.guardian)
+        return wishedMonsterByName('human') || monster;
+    if (monster.unique && !game.flags?.debug) return null;
+    if (monster.noCorpse) return null;
+    return monster;
+}
+
+function restartWishedCorpseTimeout(otmp) {
+    const corpseName = otmp?.corpsenm?.name || '';
+    if (!corpseName) return;
+    if (corpseName === 'lichen' || corpseName === 'lizard') {
+        delete otmp.rotAwayTurn;
+        return;
+    }
+    const rotAdjust = game.in_mklev ? 25 : 10;
+    otmp.rotAwayTurn = (game.moves || 1) + ROT_AGE + rnz(rotAdjust) - rotAdjust;
+    otmp._corpse_restart_consumed = true;
+}
+
+function finishWishedCorpseDisplay(otmp) {
+    const corpseName = otmp?.corpsenm?.name || 'monster';
+    otmp.kind = `${corpseName} corpse`;
+    otmp.actualKind = `${corpseName} corpse`;
+    otmp.singular = `${corpseName} corpse`;
+    otmp.plural = `${corpseName} corpses`;
+    if (CORPSE_WEIGHTS.has(corpseName)) otmp.owt = CORPSE_WEIGHTS.get(corpseName);
+}
+
+function makeWishedCorpseObject(corpseWish, qualifiers = {}) {
+    const resolved = resolveWishedCorpstatMonsterName(
+        corpseWish?.monsterName,
+        corpseWish?.requestedGender || qualifiers.monsterGender || null,
+    );
+    if (resolved.monsterName && GLOB_TYPES.has(resolved.monsterName))
+        return makeWishedGlobObject({ monsterName: resolved.monsterName });
+    const monster = resolved.monsterName ? wishedMonsterByName(resolved.monsterName) : null;
+    if (corpseWish?.exact && !monster) return noFittingWishObject();
+    if (monster && GLOB_TYPES.has(monster.name))
+        return makeWishedGlobObject({ monsterName: monster.name });
+
+    const otmp = mksobj(CORPSE, true, false);
+    if (monster) {
+        otmp.spe = wishedCorpstatSpe(monster, resolved.requestedGender);
+        const corpseMonster = wishedCorpseOverrideMonster(monster);
+        if (corpseMonster) {
+            otmp.corpsenm = corpseMonster;
+            restartWishedCorpseTimeout(otmp);
+        }
+    }
+    Object.assign(otmp, {
+        cls: 'food',
+        glyph: '%',
+        wishedfor: true,
+    });
+    finishWishedCorpseDisplay(otmp);
+    return otmp;
+}
+
+const EGG_GROWNUP_MONSTER_NAMES = new Map([
+    ['baby gray dragon', 'gray dragon'],
+    ['baby gold dragon', 'gold dragon'],
+    ['baby silver dragon', 'silver dragon'],
+    ['baby red dragon', 'red dragon'],
+    ['baby white dragon', 'white dragon'],
+    ['baby orange dragon', 'orange dragon'],
+    ['baby black dragon', 'black dragon'],
+    ['baby blue dragon', 'blue dragon'],
+    ['baby green dragon', 'green dragon'],
+    ['baby yellow dragon', 'yellow dragon'],
+    ['red naga hatchling', 'red naga'],
+    ['black naga hatchling', 'black naga'],
+    ['golden naga hatchling', 'golden naga'],
+    ['guardian naga hatchling', 'guardian naga'],
+    ['baby crocodile', 'crocodile'],
+]);
+
+function parseWishedEggName(lowerName, qualifiers = {}) {
+    const name = String(lowerName || '').trim();
+    let match = name.match(/^eggs?(?:\s+of(?:\s+(?:a|an|the))?\s+(.+))?$/);
+    const plural = /^eggs\b/.test(name);
+    let prefixPlural = false;
+    if (!match) {
+        match = name.match(/^(.+)\s+eggs?$/);
+        prefixPlural = /\seggs$/.test(name);
+    }
+    if (!match) return null;
+    const gendered = stripWishedMonsterGenderPrefix(match[1] || '');
+    return {
+        monsterName: gendered.name,
+        requestedGender: gendered.gender || qualifiers.monsterGender || null,
+        exact: !!gendered.name,
+        plural: plural || prefixPlural,
+    };
+}
+
+function lookupWishedEggMonster(name) {
+    const lowerName = String(name || '').trim().toLowerCase();
+    if (!lowerName) return null;
+    if (lowerName === 'scorpius')
+        return wishedMonsterByName('scorpion');
+    return wishedMonsterByName(lowerName);
+}
+
+function grownWishedEggMonster(monster) {
+    if (!monster?.name) return monster;
+    const name = monster.name;
+    const grownName = EGG_GROWNUP_MONSTER_NAMES.get(name)
+        || GROWNUP_MONSTERS.get(name)
+        || null;
+    return grownName
+        ? wishedMonsterByName(grownName) || monster
+        : monster;
+}
+
+function canWishedEggBeHatched(monster) {
+    const eggMonster = grownWishedEggMonster(monster);
+    const name = eggMonster?.name || '';
+    if (!name) return null;
+    if (name === 'killer bee' || name === 'gargoyle') return eggMonster;
+    if (!eggMonster.oviparous) return null;
+    const breederEgg = !rn2(77);
+    if ((name === 'queen bee' || name === 'winged gargoyle') && !breederEgg)
+        return null;
+    return eggMonster;
+}
+
+function consumeWishedEggHatchTimer(otmp) {
+    for (let i = 151; i <= 200; i++) {
+        if (rnd(i) > 150) {
+            otmp.eggHatchTurn = (game.moves || 1) + i;
+            break;
+        }
+    }
+    otmp._egg_hatch_consumed = true;
+}
+
+function makeWishedEggObject(eggWish, qualifiers = {}) {
+    const resolved = resolveWishedCorpstatMonsterName(
+        eggWish?.monsterName,
+        eggWish?.requestedGender || qualifiers.monsterGender || null,
+    );
+    const monster = resolved.monsterName ? lookupWishedEggMonster(resolved.monsterName) : null;
+    if (eggWish?.exact && !monster) return noFittingWishObject();
+
+    const otmp = mksobj(EGG, true, false);
+    const hadHatchTimer = !!otmp.corpsenm;
+    const eggMonster = monster ? canWishedEggBeHatched(monster) : otmp.corpsenm;
+    otmp.corpsenm = eggMonster || null;
+    if (eggMonster && !hadHatchTimer) consumeWishedEggHatchTimer(otmp);
+    Object.assign(otmp, {
+        cls: 'food',
+        glyph: '%',
+        kind: 'egg',
+        singular: 'egg',
+        plural: 'eggs',
+        wishedfor: true,
+    });
+    if (eggWish?.plural) otmp.quan = Math.max(2, otmp.quan || 1);
+    return otmp;
+}
+
+function makeOrdinaryBellWishObject() {
+    const otmp = mksobj(BELL, true, false);
+    return Object.assign(otmp, {
+        cls: 'tool',
+        glyph: '(',
+        kind: 'bell',
+        actualKind: 'bell',
+        wishedfor: true,
+    });
+}
+
+function makeCandleFromCandelabrumWishObject() {
+    const candleType = rnd(25) <= 20 ? TALLOW_CANDLE : WAX_CANDLE;
+    const wax = candleType === WAX_CANDLE;
+    const otmp = mksobj(candleType, true, false);
+    return Object.assign(otmp, {
+        cls: 'tool',
+        glyph: '(',
+        kind: wax ? 'wax candle' : 'tallow candle',
+        plural: wax ? 'wax candles' : 'tallow candles',
+        age: wax ? 400 : 200,
+        wishedfor: true,
+    });
+}
+
+function makeOilLampFromMagicLampWishObject() {
+    const otmp = mksobj(OIL_LAMP, true, false);
+    return Object.assign(otmp, {
+        cls: 'tool',
+        glyph: '(',
+        kind: 'oil lamp',
+        actualKind: 'oil lamp',
+        wishedfor: true,
+    });
+}
+
+function substituteNonWizardSpecialWish(lowerName) {
+    if (game.flags?.debug) return null;
+    if (/\bamulet of yendor\b/.test(lowerName)) {
+        return makeFakeAmuletOfYendorWishObject();
+    }
+    if (lowerName === 'candelabrum of invocation') {
+        rn2(WIZARD_ONLY_WISH_NAMEDESC_BOUNDS.get(lowerName));
+        return makeCandleFromCandelabrumWishObject();
+    }
+    if (lowerName === 'bell of opening') {
+        rn2(WIZARD_ONLY_WISH_NAMEDESC_BOUNDS.get(lowerName));
+        return makeOrdinaryBellWishObject();
+    }
+    if (lowerName === 'book of the dead') {
+        rn2(WIZARD_ONLY_WISH_NAMEDESC_BOUNDS.get(lowerName));
+        return makeBlankSpellbookWishObject();
+    }
+    if (lowerName === 'magic lamp') {
+        rn2(WISH_BASE_NAMEDESC_BOUNDS.get(lowerName));
+        return makeOilLampFromMagicLampWishObject();
+    }
+    return null;
+}
+
+function makeAmbiguousBlankPaperWishObject() {
+    return rn2(48) < 29 ? makeBlankScrollWishObject() : makeBlankSpellbookWishObject();
+}
+
+function isWishedFoodName(lowerName) {
+    return FOOD_NUTRITION.has(lowerName)
+        || lowerName === 'food'
+        || lowerName === 'ration'
+        || lowerName === 'rations'
+        || lowerName.endsWith(' cookie')
+        || lowerName.endsWith(' cookies');
+}
+
+function tinMeatName(monsterName) {
+    return monsterName === 'lichen' ? monsterName : `${monsterName} meat`;
+}
+
+function pluralTinName(name) {
+    if (name.startsWith('empty tin')) return name.replace(/^empty tin/, 'empty tins');
+    return name.replace(/\btin\b/, 'tins');
+}
+
+function tinNameWithVariety(monsterName, varietyIndex = null) {
+    const meat = tinMeatName(monsterName);
+    if (varietyIndex == null) return `tin of ${meat}`;
+    const variety = TIN_VARIETY_TEXTS[varietyIndex] || '';
+    if (variety === 'rotten' || variety === 'homemade')
+        return `${variety} tin of ${meat}`;
+    return `tin of ${variety} ${meat}`;
+}
+
+function setTinDisplayName(item, name) {
+    item.singular = name;
+    item.plural = pluralTinName(name);
+}
+
+function setTinEmpty(item) {
+    item.corpsenm = null;
+    item.spe = 0;
+    item.kind = 'empty tin';
+    item.actualKind = 'tin';
+    item.emptyTin = true;
+    setTinDisplayName(item, 'empty tin');
+}
+
+function setTinSpinach(item) {
+    item.corpsenm = null;
+    item.spe = 1;
+    item.kind = 'tin:spinach';
+    item.actualKind = 'tin';
+    item.emptyTin = false;
+    setTinDisplayName(item, 'tin of spinach');
+}
+
+function setTinMonster(item, monster, varietyIndex = null) {
+    const name = monster?.name || String(monster || '');
+    if (!name) return;
+    item.corpsenm = monster;
+    item.spe = varietyIndex == null ? 0 : -(varietyIndex + 1);
+    item.kind = `tin:${name}`;
+    item.actualKind = 'tin';
+    item.emptyTin = false;
+    setTinDisplayName(item, tinNameWithVariety(name, varietyIndex));
+}
+
+function isTinObject(item) {
+    const kind = String(item?.kind || '').toLowerCase();
+    return item?.otyp === TIN || kind === 'tin' || kind === 'empty tin'
+        || kind.startsWith('tin:');
+}
+
+function tinObjectName(item) {
+    if (item?.singular) return (item.quan || 1) > 1 ? item.plural || pluralTinName(item.singular) : item.singular;
+    if (item?.emptyTin || item?.kind === 'empty tin') return (item.quan || 1) > 1 ? 'empty tins' : 'empty tin';
+    return (item?.quan || 1) > 1 ? 'tins' : 'tin';
+}
+
+function parseWishedTinName(lowerName) {
+    if (lowerName === 'spinach') return { content: 'spinach' };
+    if (lowerName === 'tin' || lowerName === 'tins') return { content: 'plain' };
+
+    const tinOf = lowerName.match(/(?:^| )tins?\s+of\s+(.+)$/);
+    if (!tinOf) return null;
+
+    let rest = tinOf[1].trim().replace(/^(?:a|an|the)\s+/, '');
+    if (rest === 'spinach') return { content: 'spinach' };
+
+    let varietyIndex = null;
+    for (let i = 0; i < TIN_VARIETY_TEXTS.length; ++i) {
+        const prefix = `${TIN_VARIETY_TEXTS[i]} `;
+        if (rest.startsWith(prefix)) {
+            varietyIndex = i;
+            rest = rest.slice(prefix.length);
+            break;
+        }
+    }
+
+    const monsterName = rest.replace(/\s+meat$/, '').replace(/^(?:a|an|the)\s+/, '');
+    const monster = monsterByRndName(monsterName);
+    if (!monster || monster.noCorpse) return { content: 'plain', varietyIndex };
+    return { content: 'monster', monster, varietyIndex };
+}
+
+function makeWishedTinObject(tinWish) {
+    const otmp = mksobj(TIN, true, false);
+    Object.assign(otmp, {
+        cls: 'food',
+        glyph: '%',
+        kind: 'tin',
+        actualKind: 'tin',
+        singular: 'tin',
+        plural: 'tins',
+        wishedfor: true,
+        _wish_ignore_requested_spe: true,
+    });
+    otmp.spe = 0;
+
+    if (tinWish?.content === 'spinach') {
+        setTinSpinach(otmp);
+        otmp._wish_tin_explicit_content = true;
+    } else if (tinWish?.content === 'monster') {
+        setTinMonster(otmp, tinWish.monster);
+        otmp._wish_tin_explicit_content = true;
+        if (tinWish.varietyIndex != null)
+            otmp._wish_tin_requested_variety = tinWish.varietyIndex;
+    } else if (tinWish?.varietyIndex != null) {
+        otmp._wish_tin_requested_variety = tinWish.varietyIndex;
+    }
+    return otmp;
+}
+
+function isBlankScrollItem(item) {
+    return item?.otyp === SCR_BLANK_PAPER || item?.kind === 'blank paper'
+        || item?.actualKind === 'scroll of blank paper'
+        || item?.scrollIndex === IDENTIFIED_SCROLL_NAMES.length;
+}
+
+function isBlankSpellbookItem(item) {
+    if (!(item?.cls === 'spellbook' || item?.otyp === SPBOOK_NO_NOVEL)) return false;
+    const name = item.spellName || item.spell?.name || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
+    return name === 'blank paper' || (!name && item.appearance === 'plain');
+}
+
+function isBookOfTheDeadItem(item) {
+    const text = [
+        item?.kind,
+        item?.actualKind,
+        item?.artifact,
+        item?.name,
+        item?.otyp,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return text.includes('book of the dead');
+}
+
+function readBlindBlockMessage(item, isScroll) {
+    if (!game.u?.blind || isBookOfTheDeadItem(item)) return '';
+    if (item?.cls === 'spellbook') return 'Being blind, you cannot read the mystic runes.';
+    if (isScroll && item?.dknown === false) return 'Being blind, you cannot read the formula on the scroll.';
+    return '';
+}
+
+function learnScrollByName(scrollName, item, scrollIndex = null) {
+    const discoveryName = `scroll of ${scrollName}`;
+    learnObjectScore('Scrolls', discoveryName);
+    const rawLabel = String(item?.kind || '');
+    const label = rawLabel.startsWith('scroll labeled ')
+        ? rawLabel.replace(/^scroll labeled /, '')
+        : scrollIndex != null ? game._object_descriptions?.scrolls?.[scrollIndex] : '';
+    game._discoveries ??= [];
+    const discovery = game._discoveries.find(entry => entry.section === 'Scrolls' && entry.name === discoveryName);
+    const text = label ? `${discoveryName} (${label})` : discoveryName;
+    if (discovery) {
+        discovery.known = true;
+        discovery.text = text;
+    } else {
+        game._discoveries.push({
+            section: 'Scrolls',
+            name: discoveryName,
+            text,
+            starred: false,
+            known: true,
         });
     }
+}
+
+function containedObjectMatching(obj, predicate, seen = new Set()) {
+    if (!obj || seen.has(obj)) return null;
+    seen.add(obj);
+    if (predicate(obj)) return obj;
+    for (const child of obj.contents || obj.cobj || []) {
+        const found = containedObjectMatching(child, predicate, seen);
+        if (found) return found;
+    }
+    return null;
+}
+
+function isGoldObject(item, includeGoldMaterial = false) {
+    if (!item) return false;
+    if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') return true;
+    if (!includeGoldMaterial) return false;
+    const name = String(item.kind || item.actualKind || item.name || '').toLowerCase();
+    return /\bgold(?:en)?\b/.test(name);
+}
+
+function isFoodObject(item) {
+    return item?.cls === 'food' || item?.otyp === FOOD_CLASS
+        || item?.otyp === 'corpse' || item?.otyp === CORPSE
+        || item?.otyp === EGG || item?.otyp === TIN || item?.glyph === '%';
+}
+
+function detectedObjectGlyph(item) {
+    if (isGoldObject(item)) return { ch: '$', color: CLR_YELLOW, dec: false };
+    if (isPotionObject(item) || item?.glyph === '!') return { ch: '!', color: item._appearance_color ?? item.color ?? NO_COLOR, dec: false };
+    if (isFoodObject(item)) return { ch: '%', color: item.color ?? item._display_color ?? NO_COLOR, dec: false };
+    if (item?.cls === 'scroll' || item?.glyph === '?') return { ch: '?', color: CLR_WHITE, dec: false };
+    if (item?.cls === 'spellbook' || item?.glyph === '+') return { ch: '+', color: item.color ?? NO_COLOR, dec: false };
+    return { ch: item?.glyph || '?', color: item?.color ?? NO_COLOR, dec: false };
+}
+
+function markDetectedGlyph(target, x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const glyph = detectedObjectGlyph(target);
+    loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec };
+    loc.waslit = true;
+    show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+}
+
+function collectDetectedObjects(predicate) {
+    const found = { here: [], remote: [] };
+    const ux = game.u?.ux ?? -1;
+    const uy = game.u?.uy ?? -1;
+    for (const obj of game.level?.objects || []) {
+        if (obj.hidden || obj.transientProjectile || obj.ox == null || obj.oy == null) continue;
+        const target = containedObjectMatching(obj, predicate);
+        if (!target) continue;
+        target.seen = true;
+        target.dknown = true;
+        target._hide_until_seen = false;
+        const entry = { target, x: obj.ox, y: obj.oy };
+        if (obj.ox === ux && obj.oy === uy) found.here.push(entry);
+        else found.remote.push(entry);
+    }
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || mon.mhp <= 0 || mon.mx == null || mon.my == null) continue;
+        const target = containedObjectMatching({ contents: mon.minvent || [] }, predicate);
+        if (!target) continue;
+        const entry = { target, x: mon.mx, y: mon.my, monster: mon };
+        if (mon.mx === ux && mon.my === uy) found.here.push(entry);
+        else found.remote.push(entry);
+    }
+    return found;
+}
+
+function markDetectedObjects(entries) {
+    for (const entry of entries) markDetectedGlyph(entry.target, entry.x, entry.y);
+    if (entries.length && game.u?.ux != null) newsym(game.u.ux, game.u.uy);
+}
+
+function carriedGoldInInventory() {
+    if ((game._goldCount || 0) > 0) return true;
+    return (game.inventory || []).some(item => isGoldObject(item) || containedObjectMatching(item, isGoldObject));
+}
+
+function detectTrapsFromGoldDetection(item) {
+    const ux = game.u?.ux ?? -1;
+    const uy = game.u?.uy ?? -1;
+    const remote = [];
+    let here = false;
+    for (const trap of game.level?.traps || []) {
+        if (!trap) continue;
+        if (trap.tx === ux && trap.ty === uy) here = true;
+        else remote.push(trap);
+    }
+    if (remote.length) {
+        for (const trap of remote) {
+            if (item.cursed) {
+                rnd(10);
+                markDetectedGlyph({ otyp: GOLD_PIECE, glyph: '$', color: CLR_YELLOW }, trap.tx, trap.ty);
+            } else {
+                trap.tseen = true;
+                const loc = game.level?.at(trap.tx, trap.ty);
+                if (loc) {
+                    loc.remembered_glyph = { ch: '^', color: CLR_BROWN, dec: false };
+                    loc.waslit = true;
+                }
+                show_glyph_cell(trap.tx, trap.ty, '^', CLR_BROWN, false);
+            }
+        }
+        newsym(ux, uy);
+        return { detected: true, known: false, message: item.cursed ? 'You feel very greedy.' : 'You feel entrapped.', more: true };
+    }
+    if (here) return { detected: true, known: false, message: 'Your toes itch.', more: false };
+    return { detected: false, known: false, message: 'Your toes stop itching.', more: false };
+}
+
+function goldDetectionScrollEffect(item) {
+    if (heroIsConfused() || item.cursed) return detectTrapsFromGoldDetection(item);
+
+    const includeGoldMaterial = !!item.blessed;
+    const goldPredicate = obj => isGoldObject(obj, includeGoldMaterial);
+    const found = collectDetectedObjects(goldPredicate);
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || mon.mhp <= 0 || mon.mx == null || mon.my == null) continue;
+        const name = String(mon.data?.name || mon.name || '').toLowerCase();
+        if (!mon.hasGold && name !== 'gold golem') continue;
+        const entry = { target: { otyp: GOLD_PIECE, glyph: '$', color: CLR_YELLOW }, x: mon.mx, y: mon.my, monster: mon };
+        if (mon.mx === (game.u?.ux ?? -1) && mon.my === (game.u?.uy ?? -1)) found.here.push(entry);
+        else found.remote.push(entry);
+    }
+
+    if (found.remote.length) {
+        for (const entry of found.remote)
+            if (entry.monster && isGoldObject(entry.target)) rnd(10);
+        markDetectedObjects(found.remote);
+        exerciseAttribute(A_WIS, true);
+        return { detected: true, known: true, message: 'You feel very greedy, and sense gold!', more: true };
+    }
+    if (found.here.length)
+        return { detected: true, known: true, message: 'You notice some gold between your feet.', more: false };
+    if (String(polyselfForm()?.name || '').toLowerCase() === 'gold golem')
+        return { detected: false, known: false, message: 'You feel like a million zorkmids!', more: false };
+    if (carriedGoldInInventory())
+        return { detected: false, known: false, message: 'You feel worried about your future financial situation.', more: false };
+    return { detected: false, known: false, message: 'You feel materially poor.', more: false };
+}
+
+function foodDetectionScrollEffect(item) {
+    const confused = heroIsConfused() || item.cursed;
+    const predicate = confused ? obj => isPotionObject(obj) || obj?.glyph === '!' : isFoodObject;
+    const what = confused ? 'something' : 'food';
+    const found = collectDetectedObjects(predicate);
+    if (found.remote.length) {
+        markDetectedObjects(found.remote);
+        let message;
+        if (item.blessed) {
+            message = `Your nose ${game.u?.uedibility ? 'continues' : 'starts'} to tingle and you smell ${what}.`;
+            if (game.u) game.u.uedibility = 1;
+        } else {
+            message = `Your nose tingles and you smell ${what}.`;
+        }
+        exerciseAttribute(A_WIS, true);
+        return { detected: true, known: true, message, more: true };
+    }
+    if (found.here.length) {
+        const messages = [`You smell ${what} nearby.`];
+        if (item.blessed) {
+            if (!game.u?.uedibility) messages.push('Your nose starts to tingle.');
+            if (game.u) game.u.uedibility = 1;
+        }
+        return { detected: true, known: true, message: messages.join('  '), more: false };
+    }
+    const tingle = item.blessed && !game.u?.uedibility;
+    if (tingle && game.u) game.u.uedibility = 1;
+    return {
+        detected: false,
+        known: false,
+        message: `Your nose twitches${tingle ? ' then starts to tingle' : ''}.`,
+        more: false,
+    };
+}
+
+function removeCurseFeelingMessage(confused) {
+    if (heroIsHallucinating())
+        return confused ? 'You feel the power of the Force against you!' : 'You feel in touch with the Universal Oneness.';
+    return confused ? 'You feel like you need some help.' : 'You feel like someone is helping you.';
+}
+
+function refreshInventoryLineAfterBucChange(item) {
+    if (!item || !(game.inventory || []).includes(item) || item.cls === 'coin' || item.otyp === GOLD_PIECE) return;
+    item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function removeCurseBlessOrCurse(item) {
+    if (!item || item.blessed || item.cursed || item.cls === 'coin' || item.otyp === GOLD_PIECE) return false;
+    if (rn2(2)) return false;
+    if (rn2(2)) {
+        item.blessed = true;
+        item.cursed = false;
+    } else {
+        item.blessed = false;
+        item.cursed = true;
+    }
+    return true;
+}
+
+function removeCurseActiveTarget(item) {
+    if (!item || item.cls === 'coin' || item.otyp === GOLD_PIECE || item.glyph === '$') return false;
+    const line = String(item.line || '');
+    if (item.otyp === LOADSTONE || String(item.kind || '').toLowerCase() === 'loadstone') return true;
+    if (String(item.kind || '').toLowerCase() === 'leash' && item.leashmon) return true;
+    if (item.worn || item.wielded || /being worn|weapon in|on (?:left|right) hand/.test(line)) return true;
+    if ((item.alternate || line.includes('alternate weapon')) && game._twoweapon) return true;
+    if ((item.quivered || /at the ready|in quiver/.test(line)) && isProjectileItem(item)) return true;
+    return false;
+}
+
+function unpunishHero() {
+    if (!game.u || !(game.u.uball || game.u.uchain || game.u.upunished || game._punished)) return;
+    const chain = game.u.uchain;
+    const ball = game.u.uball;
+    if (game.level?.objects && chain)
+        game.level.objects = game.level.objects.filter(obj => obj !== chain);
+    if (ball) {
+        ball.worn = false;
+        ball.ox = ball.ox ?? game.u.ux ?? 0;
+        ball.oy = ball.oy ?? game.u.uy ?? 0;
+        if (game.level?.objects && !game.level.objects.includes(ball))
+            game.level.objects.push(ball);
+    }
+    game.u.uchain = null;
+    game.u.uball = null;
+    game.u.upunished = false;
+    game._punished = 0;
+    newsym(game.u.ux || 0, game.u.uy || 0);
+}
+
+function removeCurseScrollEffect(item) {
+    const confused = heroIsConfused();
+    const messages = [item.cursed ? 'You read the scroll.' : 'As you read the scroll, it disappears.'];
+    if (confused)
+        messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+    messages.push(removeCurseFeelingMessage(confused));
+
+    let learned = false;
+    let disintegrates = false;
+    if (!item.cursed) {
+        for (const obj of game.inventory || []) {
+            if (obj.cls === 'coin' || obj.otyp === GOLD_PIECE || obj.glyph === '$') continue;
+            const selected = item.blessed || removeCurseActiveTarget(obj);
+            if (!selected) continue;
+            if (confused) {
+                removeCurseBlessOrCurse(obj);
+                obj.bknown = false;
+                refreshInventoryLineAfterBucChange(obj);
+            } else if (obj.cursed) {
+                if (obj.bknown === true) learned = true;
+                obj.cursed = false;
+                refreshInventoryLineAfterBucChange(obj);
+            }
+        }
+    } else {
+        disintegrates = true;
+    }
+    if (!confused) unpunishHero();
+    return { messages, learned, disintegrates };
+}
+
+function scrollReadMessages(confusedReading) {
+    const messages = ['As you read the scroll, it disappears.'];
+    if (confusedReading)
+        messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+    return messages;
+}
+
+const GENOCIDE_MAX_TRIES = 5;
+
+function normalizeGenocideName(name) {
+    let lower = String(name || '').trim().toLowerCase();
+    lower = lower.replace(/^['"]|['"]$/g, '').replace(/^(?:a|an|the) /, '').replace(/\s+/g, ' ');
+    const irregular = {
+        dwarves: 'dwarf',
+        elves: 'elf',
+        fungi: 'fungus',
+        men: 'human',
+        humans: 'human',
+        bees: 'bee',
+        vortices: 'vortex',
+        liches: 'lich',
+    }[lower];
+    if (irregular) return irregular;
+    if (lower.endsWith('ies')) return `${lower.slice(0, -3)}y`;
+    if (lower.endsWith('ves')) return `${lower.slice(0, -3)}f`;
+    if (lower.endsWith('ses') || lower.endsWith('xes') || lower.endsWith('zes')
+        || lower.endsWith('ches') || lower.endsWith('shes'))
+        return lower.slice(0, -2);
+    if (lower.endsWith('s') && !lower.endsWith('ss')) return lower.slice(0, -1);
+    return lower;
+}
+
+function pluralizeMonsterName(name) {
+    const lower = String(name || '').toLowerCase();
+    if (lower === 'human') return 'humans';
+    if (lower === 'dwarf') return 'dwarves';
+    if (lower === 'elf') return 'elves';
+    if (lower === 'fungus') return 'fungi';
+    if (lower.endsWith('y')) return `${name.slice(0, -1)}ies`;
+    if (/(?:s|x|z|ch|sh)$/i.test(name)) return `${name}es`;
+    return `${name}s`;
+}
+
+function genocideMonsterCatalog() {
+    const entries = [];
+    const seen = new Set();
+    const add = data => {
+        if (!data?.name || seen.has(data.name)) return;
+        seen.add(data.name);
+        entries.push(data);
+    };
+    for (const row of RNDMONST_COMMON_MONSTERS) add(monsterByRndName(row[0]) || {
+        name: row[0],
+        glyph: row[1],
+        mlet: row[1],
+        difficulty: row[4],
+        genoFreq: row[6],
+    });
+    for (const data of RANDOM_MONSTER_BY_NAME.values()) add(data);
+    return entries;
+}
+
+function genocideMonsterByName(name) {
+    const wanted = normalizeGenocideName(name);
+    if (!wanted) return null;
+    for (const data of genocideMonsterCatalog()) {
+        const candidates = [
+            data.name,
+            data.name?.replace(/-/g, ' '),
+            pluralizeMonsterName(data.name || ''),
+        ].map(normalizeGenocideName);
+        if (candidates.includes(wanted)) return data;
+    }
+    return null;
+}
+
+function genocidedMonsterNames() {
+    return [...new Set(game._genocided_monsters || [])].sort((a, b) => a.localeCompare(b));
+}
+
+function isMonsterGenocidedName(name) {
+    return genocidedMonsterNames().includes(name);
+}
+
+function markMonsterGenocided(name) {
+    if (!name) return;
+    game._genocided_monsters ??= [];
+    if (!game._genocided_monsters.includes(name)) game._genocided_monsters.push(name);
+}
+
+function genocideListLines() {
+    const names = genocidedMonsterNames();
+    if (!names.length) return [[0, 41, 'You have never genocided any monsters.'], [1, 40, '--More--']];
+    const rows = [[0, 34, 'Genocided monster types:']];
+    let row = 1;
+    for (const name of names)
+        rows.push([row++, 41, pluralizeMonsterName(name)]);
+    rows.push([Math.min(row, 23), 40, '--More--']);
+    return rows.slice(0, 24);
+}
+
+function killGenocidedMonsters() {
+    const names = new Set(genocidedMonsterNames());
+    if (!names.size) return;
+    const cleanLevel = level => {
+        if (!level?.monsters) return;
+        for (const mon of [...level.monsters]) {
+            const name = mon.data?.name || mon.name;
+            const base = mon.chamBase || mon.vampBase;
+            if (!names.has(name) && !names.has(base)) continue;
+            if (level === game.level) dropMonsterInventory(mon);
+            level.monsters = level.monsters.filter(other => other !== mon);
+            if (level === game.level) newsym(mon.mx, mon.my);
+        }
+    };
+    cleanLevel(game.level);
+    if (game._saved_levels instanceof Map) {
+        for (const saved of game._saved_levels.values())
+            cleanLevel(saved.level);
+    }
+}
+
+function heroGenocideTargetName() {
+    const role = game.urole?.name?.[game.flags?.female ? 'f' : 'm'] || game.urole?.name?.m || game._startup_role || 'adventurer';
+    return String(role || 'adventurer').toLowerCase();
+}
+
+function isHeroGenocideTarget(name) {
+    const lower = normalizeGenocideName(name);
+    const role = normalizeGenocideName(heroGenocideTargetName());
+    const race = normalizeGenocideName(game._startup_race || game.urace?.noun || game.urace?.adj || '');
+    const raceAdj = normalizeGenocideName(game.urace?.adj || '');
+    return !!lower && (lower === role || lower === race || lower === raceAdj
+        || (raceAdj === 'human' && lower === 'human'));
+}
+
+function finishHeroGenocide(messages, cause = 'scroll of genocide') {
+    messages.push('You die...');
+    if (game.u) game.u.uhp = 0;
+    game._death_cause = cause;
+}
+
+function genocideMonsterType(data, messages, { killPlayer = false, cause = 'scroll of genocide' } = {}) {
+    const name = data?.name || heroGenocideTargetName();
+    markMonsterGenocided(name);
+    game._chronicle_genocide_count = (game._chronicle_genocide_count || 0) + 1;
+    messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
+    killGenocidedMonsters();
+    if (killPlayer) finishHeroGenocide(messages, cause);
+}
+
+async function createCursedGenocideMonsters(data, messages) {
+    if (!data || data.unique || data.nemesis || isMonsterGenocidedName(data.name)) {
+        messages.push('Nothing happens.');
+        return;
+    }
+    let cnt = 0;
+    for (let i = rn1(3, 4); i > 0; i--) {
+        const mon = await makemon(data, game.u?.ux || 0, game.u?.uy || 0, NO_MINVENT | MM_NOMSG);
+        if (!mon) break;
+        cnt++;
+    }
+    messages.push(cnt ? `Sent in ${cnt > 1 ? `some ${pluralizeMonsterName(data.name)}` : /^[aeiou]/i.test(data.name) ? `an ${data.name}` : `a ${data.name}`}.` : 'Nothing happens.');
+}
+
+function genocideClassFromInput(input) {
+    const trimmed = String(input || '').trim();
+    if (trimmed.length === 1) return trimmed;
+    const lower = normalizeGenocideName(trimmed);
+    const namedClass = GENOCIDE_MONSTER_CLASS_NAMES.get(lower);
+    if (namedClass) return namedClass;
+    const data = genocideMonsterByName(trimmed);
+    return data?.glyph || data?.mlet || null;
+}
+
+function genocideClassMembers(cls) {
+    return genocideMonsterCatalog().filter(data =>
+        data.glyph === cls || data.mlet === cls || data.mlet?.[0] === cls);
+}
+
+function genocidePrompt(pending) {
+    return pending.classMode
+        ? 'What class of monsters do you want to genocide?'
+        : 'What type of monster do you want to genocide?';
+}
+
+function genocideRetryHint(pending) {
+    return pending.classMode
+        ? " [enter the symbol or name representing a class, or '?']"
+        : " [enter the name of a type of monster, or '?']";
+}
+
+async function endGenocidePrompt(messages = [], more = false) {
+    game._genocide_pending = null;
+    game._genocide_input = '';
+    game._command_mode = null;
+    game.context.move = 1;
+    if (messages.length) await setMessage(messages.join('  '), more);
+    else {
+        game._pending_message = '';
+        game._message_more = 0;
+    }
+}
+
+async function retryGenocidePrompt(pending, message) {
+    pending.tries = (pending.tries || 0) + 1;
+    game._genocide_input = '';
+    if (pending.tries >= GENOCIDE_MAX_TRIES) {
+        const messages = [];
+        if (message) messages.push(message);
+        if (pending.cursed && !pending.classMode)
+            await createCursedGenocideMonsters(rndmonnum(), messages);
+        else
+            messages.push("That's enough tries!");
+        await endGenocidePrompt(messages, messages.length > 1);
+        return;
+    }
+    game._genocide_pending = pending;
+    game._command_mode = 'genocideText';
+    game.context.move = 0;
+    await setMessage(`${message}  ${genocidePrompt(pending)}${genocideRetryHint(pending)}`);
+}
+
+async function finishGenocideInput(raw) {
+    const pending = game._genocide_pending;
+    if (!pending) return;
+    const input = String(raw || '').trim();
+    const messages = [...(pending.messages || [])];
+
+    if (!input) {
+        await retryGenocidePrompt(pending, pending.classMode
+            ? "Type letter (or punctuation) or name used for a class of monsters or 'none'."
+            : "Type the name of a type of monster or 'none'.");
+        return;
+    }
+    if (input === '\x1b' || ['none', "'none'", 'nothing'].includes(input.toLowerCase())) {
+        if (pending.cursed) {
+            await createCursedGenocideMonsters(rndmonnum(), messages);
+            await endGenocidePrompt(messages, messages.length > 1);
+            return;
+        }
+        await endGenocidePrompt();
+        return;
+    }
+    if (input === '?' || input === "'?'") {
+        game._genocide_input = '';
+        setOverlay(genocideListLines(), 24, false, 39);
+        game._command_mode = 'genocideHelp';
+        return;
+    }
+    if (pending.classMode) {
+        const cls = genocideClassFromInput(input);
+        const members = cls ? genocideClassMembers(cls) : [];
+        if (!members.length) {
+            await retryGenocidePrompt(pending, `That ${input.length === 1 ? 'symbol' : 'response'} does not represent any monster.`);
+            return;
+        }
+        let wiped = 0;
+        for (const data of members) {
+            if (isMonsterGenocidedName(data.name) || data.unique || data.nemesis) continue;
+            genocideMonsterType(data, messages);
+            wiped++;
+        }
+        if (!wiped) messages.push('All such monsters are already nonexistent.');
+        if (cls === '@' || members.some(data => isHeroGenocideTarget(data.name)))
+            finishHeroGenocide(messages);
+        await endGenocidePrompt(messages, true);
+        return;
+    }
+
+    const data = genocideMonsterByName(input);
+    if (!data) {
+        await retryGenocidePrompt(pending, 'Such creatures do not exist in this world.');
+        return;
+    }
+    if (isMonsterGenocidedName(data.name)) {
+        await retryGenocidePrompt(pending, 'Such creatures no longer exist in this world.');
+        return;
+    }
+    if (pending.cursed) {
+        await createCursedGenocideMonsters(data, messages);
+        await endGenocidePrompt(messages, messages.length > 1);
+        return;
+    }
+    const killPlayer = isHeroGenocideTarget(input);
+    if (data.unique || data.nemesis) {
+        await retryGenocidePrompt(pending, `You aren't permitted to genocide ${data.unique ? `the ${data.name}` : pluralizeMonsterName(data.name)}.`);
+        return;
+    }
+    genocideMonsterType(data, messages, { killPlayer });
+    await endGenocidePrompt(messages, true);
+}
+
+function fireScrollReadMessages(confusedReading) {
+    const messages = [game.u?.blind ? 'You pronounce the formula on the scroll.' : 'You read the scroll.'];
+    if (confusedReading)
+        messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+    return messages;
+}
+
+function scrollDiscoveryKnown(scrollName) {
+    const discoveryName = `scroll of ${scrollName}`;
+    return (game._discoveries || [])
+        .some(entry => entry.section === 'Scrolls' && entry.name === discoveryName && entry.known !== false);
+}
+
+function scrollCallLabel(item, scrollIndex, fallback = 'ZELGO MER') {
+    const kind = String(item?.kind || '');
+    if (kind.startsWith('scroll labeled '))
+        return kind.replace(/^scroll labeled /, '') || fallback;
+    return game._object_descriptions?.scrolls?.[scrollIndex] || fallback;
+}
+
+function scrollDisappearMessages(confusedReading) {
+    const messages = [game.u?.blind
+        ? 'As you pronounce the formula on it, the scroll disappears.'
+        : 'As you read the scroll, it disappears.'];
+    if (confusedReading)
+        messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+    return messages;
+}
+
+function teleportationScrollEffect(item, messages) {
+    const confused = heroIsConfused();
+    const wizard = !!game.flags?.debug;
+    if (confused || item.cursed) {
+        if ((heroHasAmuletOfYendor() || In_endgame(game.u?.uz) || In_sokoban(game.u?.uz)) && !wizard) {
+            messages.push('You feel very disoriented for a moment.');
+            return { learned: true, more: messages.length > 1 };
+        }
+        if ((heroHasTeleportControl() && !heroIsStunned()) || wizard)
+            return { learned: true, promptLevel: true, confusedPrompt: confused, more: true };
+
+        const targetDepth = randomTeleportDepth();
+        if (targetDepth === depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 })) {
+            messages.push('You shudder for a moment.');
+            return { learned: true, more: messages.length > 1 };
+        }
+        game._deferred_level_goto = {
+            targetLevel: levelTeleportNumericTarget(targetDepth),
+            options: { levelTeleport: true },
+        };
+        return { learned: true, more: messages.length > 1 };
+    }
+
+    if (heroNoTeleportLevel() && !wizard) {
+        messages.push('A mysterious force prevents you from teleporting!');
+        return { learned: true, more: messages.length > 1 };
+    }
+
+    if ((heroHasAmuletOfYendor() || heroOnWizardTowerLevel()) && !rn2(3)) {
+        messages.push('You feel disoriented for a moment.');
+        return { learned: false, more: messages.length > 1 };
+    }
+
+    if (((heroHasTeleportControl() || item.blessed) && !heroIsStunned()) || wizard)
+        return { learned: true, promptSameLevel: true, more: true };
+
+    const materialize = safeTeleportHeroSameLevel();
+    return { learned: true, materialize, more: messages.length > 1 };
+}
+
+function lightScrollNoOpLevel() {
+    return !!(game.u?.uswallow || game.u?.underwater || game.u?.uunderwater || Is_waterlevel(game.u?.uz));
+}
+
+function setLightScrollCell(x, y, on) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    loc.lit = !!on;
+    loc.waslit = !!on;
+    if (on) loc._litScrollWhite = true;
+    else delete loc._litScrollWhite;
+    newsym(x, y);
+    return true;
+}
+
+function applyLightScrollArea(on, item) {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const rogueLevel = Is_rogue_level(game.u?.uz) || game.level?.flags?.rogue_level;
+    if (rogueLevel) {
+        const room = levelRoomByRoomno(game.level?.at(ux, uy)?.roomno || 0);
+        if (!room) return;
+        for (let x = Math.max(1, (room.lx ?? ux) - 1); x <= Math.min(COLNO - 1, (room.hx ?? ux) + 1); x++)
+            for (let y = Math.max(0, (room.ly ?? uy) - 1); y <= Math.min(ROWNO - 1, (room.hy ?? uy) + 1); y++)
+                setLightScrollCell(x, y, on);
+        room.rlit = on ? 1 : 0;
+        return;
+    }
+
+    const radius = item.blessed ? 9 : 5;
+    const radius2 = radius * radius;
+    for (let y = Math.max(0, uy - radius); y <= Math.min(ROWNO - 1, uy + radius); y++) {
+        for (let x = Math.max(1, ux - radius); x <= Math.min(COLNO - 1, ux + radius); x++) {
+            if ((x - ux) ** 2 + (y - uy) ** 2 > radius2) continue;
+            if (!couldsee(x, y)) continue;
+            setLightScrollCell(x, y, on);
+        }
+    }
+}
+
+function snuffCarriedLightsForScroll(messages) {
+    for (const obj of game.inventory || []) {
+        if (!(obj.lamplit || obj.burning)) continue;
+        obj.lamplit = false;
+        obj.burning = false;
+        delete obj._burnTimer;
+        delete obj.litRadius;
+        updateChargedItemLine(obj);
+        if (!game.u?.blind) messages.push(`${chargingObjectSubject(obj)} goes out!`);
+    }
+}
+
+function lightScrollLitroom(on, item, messages) {
+    const blind = !!game.u?.blind;
+    const noOp = lightScrollNoOpLevel();
+    if (!on) {
+        snuffCarriedLightsForScroll(messages);
+        if (!blind)
+            messages.push(game.u?.uswallow ? 'It seems even darker in here than before.' : 'You are surrounded by darkness!');
+    } else if (!blind) {
+        if (game.u?.uswallow && game.u?.ustuck)
+            messages.push(`${fireScrollMonsterName(game.u.ustuck)} is lit.`);
+        else if (!(Is_rogue_level(game.u?.uz) || game.level?.flags?.rogue_level) || game.level?.at(game.u?.ux || 0, game.u?.uy || 0)?.typ !== CORR)
+            messages.push(`A lit field ${noOp ? 'briefly ' : ''}surrounds you!`);
+    }
+
+    if (noOp) return;
+    applyLightScrollArea(on, item);
+    vision_recalc(0);
+    game.vision_full_recalc = 1;
+}
+
+function lightScrollMonsterVisible(mon) {
+    return !!mon && !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible)
+        && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
+}
+
+async function createConfusedLightScrollMonsters(item, messages) {
+    const data = monsterByRndName(item.cursed ? 'black light' : 'yellow light');
+    if (!data) {
+        messages.push('Tiny lights sparkle in the air momentarily.');
+        return false;
+    }
+    const created = [];
+    const count = rn1(2, 3) + (item.blessed ? 2 : 0);
+    for (let i = 0; i < count; i++) {
+        const mon = await makemon(data, game.u?.ux || 0, game.u?.uy || 0, MM_EDOG | NO_MINVENT | MM_NOMSG);
+        if (!mon) continue;
+        mon.pet = true;
+        mon.mtame = Math.max(mon.mtame || 0, baseScrollTameness(mon));
+        mon.mpeaceful = 1;
+        mon.msleeping = 0;
+        mon.mcan = true;
+        ensurePetExtension(mon);
+        created.push(mon);
+        newsym(mon.mx, mon.my);
+    }
+    if (created.length) vision_recalc(0);
+    const sawLights = created.some(lightScrollMonsterVisible);
+    if (sawLights) messages.push('Lights appear all around you!');
+    return sawLights;
+}
+
+async function lightScrollEffect(item, messages) {
+    if (heroIsConfused()) {
+        return { learned: await createConfusedLightScrollMonsters(item, messages) };
+    }
+    const learned = !game.u?.blind;
+    lightScrollLitroom(!item.cursed, item, messages);
+    return { learned };
+}
+
+function primaryWieldedItem() {
+    return (game.inventory || []).find(item =>
+        item?.wielded || item?.line?.includes('weapon in') || item?.line?.includes('(wielded)')) || null;
+}
+
+function enchantWeaponName(item) {
+    return pickupObjectName(item).replace(/^pair of /, '');
+}
+
+function enchantWeaponSubject(item) {
+    return `Your ${enchantWeaponName(item)}`;
+}
+
+function enchantWeaponVerb(item, singular, plural) {
+    const name = enchantWeaponName(item);
+    return (item?.quan || 1) > 1 || /\b(?:boots|shoes|gloves|gauntlets|darts|arrows|daggers|knives|spears|rocks|stones|shuriken)\b/i.test(name)
+        ? plural
+        : singular;
+}
+
+function refreshEnchantWeaponLine(item) {
+    if (!item || !(game.inventory || []).includes(item)) return;
+    item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function enchantWeaponIsWeaponLike(item) {
+    return !!item && (item.cls === 'weapon' || item.otyp === WEAPON_CLASS || item.glyph === ')' || isWeaponTool(item));
+}
+
+function enchantWeaponWillWeld(item) {
+    if (!item?.cursed) return false;
+    if (enchantWeaponIsWeaponLike(item)) return true;
+    return objectKindKey(item) === 'tin opener';
+}
+
+function enchantWeaponAmount(scroll, target) {
+    if (scroll.cursed) return -1;
+    if (!target) return 1;
+    const spe = target.spe ?? 0;
+    if (spe >= 9) return rn2(spe) === 0 ? 1 : 0;
+    if (scroll.blessed) return rnd(3 - Math.trunc(spe / 3));
+    return 1;
+}
+
+function enchantWeaponConfusedEffect(scroll, messages) {
+    const target = primaryWieldedItem();
+    const profile = wishedDamageProfile(target);
+    if (!target || !profile.erosionMatters || target.cls === 'armor' || target.glyph === '[') return null;
+
+    const newErodeproof = !scroll.cursed;
+    if (game.u?.blind) {
+        target.rknown = false;
+        messages.push('Your weapon feels warm for a moment.');
+    } else {
+        target.rknown = true;
+        messages.push(`${enchantWeaponSubject(target)} ${enchantWeaponVerb(target, 'is', 'are')} covered by a ${scroll.cursed ? 'mottled purple glow' : 'shimmering golden shield'}!`);
+    }
+    if (newErodeproof && (target.oeroded || target.oeroded2)) {
+        target.oeroded = 0;
+        target.oeroded2 = 0;
+        messages.push(`${enchantWeaponSubject(target)} ${enchantWeaponVerb(target, game.u?.blind ? 'feels' : 'looks', game.u?.blind ? 'feel' : 'look')} as good as new!`);
+    }
+    target.oerodeproof = newErodeproof;
+    refreshEnchantWeaponLine(target);
+    return { learned: false, more: messages.length > 1 };
+}
+
+function transformWormToCrysknife(target, messages) {
+    const multiple = (target.quan || 1) > 1;
+    messages.push(`${enchantWeaponSubject(target)} ${multiple ? 'fuse, and become' : 'is'} much sharper now.`);
+    target.kind = 'crysknife';
+    target.actualKind = 'crysknife';
+    target.quan = 1;
+    target.oerodeproof = false;
+    target.cursed = false;
+    refreshEnchantWeaponLine(target);
+    return { learned: true, more: false };
+}
+
+function transformCrysknifeToWormTooth(scroll, target, messages) {
+    const multiple = (target.quan || 1) > 1;
+    messages.push(`${enchantWeaponSubject(target)} ${multiple ? 'fuse, and become' : 'is'} much duller now.`);
+    target.kind = 'worm tooth';
+    target.actualKind = 'worm tooth';
+    target.quan = 1;
+    target.oerodeproof = false;
+    refreshEnchantWeaponLine(target);
+    return { learned: scroll.bknown === true, more: false };
+}
+
+function removeWieldedWeapon(target) {
+    removeInventoryItem(target, target.quan || 1);
+    if (target.wielded) game._wielded_mjollnir = false;
+}
+
+function enchantWeaponScrollChwepon(scroll, amount, messages) {
+    const target = primaryWieldedItem();
+    if (!enchantWeaponIsWeaponLike(target)) {
+        if (amount >= 0 && target && enchantWeaponWillWeld(target)) {
+            if (game.u?.blind) messages.push(`Your ${game.u?.uhandedness || 'right'} hand tingles.`);
+            else {
+                messages.push(`${enchantWeaponSubject(target)} ${enchantWeaponVerb(target, 'glows', 'glow')} with an amber aura.`);
+                target.bknown = !game.u?.hallucinating;
+            }
+            target.cursed = false;
+            refreshEnchantWeaponLine(target);
+        } else {
+            messages.push(`Your hands ${amount >= 0 ? 'twitch' : 'itch'}.`);
+        }
+        exerciseAttribute(A_DEX, amount >= 0);
+        return { learned: false, more: false };
+    }
+
+    const kind = objectKindKey(target);
+    if (kind === 'worm tooth' && amount >= 0)
+        return transformWormToCrysknife(target, messages);
+    if (kind === 'crysknife' && amount < 0)
+        return transformCrysknifeToWormTooth(scroll, target, messages);
+
+    const color = amount < 0 ? 'black' : 'blue';
+    if (amount < 0 && target.artifact && target.oname && String(target.oname).toLowerCase() === String(target.artifact).toLowerCase()) {
+        if (!game.u?.blind) messages.push(`${enchantWeaponSubject(target)} faintly ${enchantWeaponVerb(target, 'glows', 'glow')} ${color}.`);
+        return { learned: false, more: false };
+    }
+
+    const spe = target.spe ?? 0;
+    if (((spe > 5 && amount >= 0) || (spe < -5 && amount < 0)) && rn2(3)) {
+        if (game.u?.blind)
+            messages.push(`${enchantWeaponSubject(target)} ${enchantWeaponVerb(target, 'evaporates', 'evaporate')}.`);
+        else
+            messages.push(`${enchantWeaponSubject(target)} violently ${enchantWeaponVerb(target, 'glows', 'glow')} ${color} for a while and then ${enchantWeaponVerb(target, 'evaporates', 'evaporate')}.`);
+        removeWieldedWeapon(target);
+        return { learned: false, more: true };
+    }
+
+    let learned = false;
+    if (!game.u?.blind) {
+        const glow = amount === 0 ? 'violently glows' : 'glows';
+        const time = amount * amount === 1 ? 'moment' : 'while';
+        messages.push(`${enchantWeaponSubject(target)} ${glow} ${color} for a ${time}.`);
+        learned = target.known === true && (amount > 0 || (amount < 0 && scroll.bknown === true));
+    }
+
+    target.spe = capWishSpe(spe + amount);
+    if (amount > 0 && target.cursed) target.cursed = false;
+    refreshEnchantWeaponLine(target);
+
+    if (target.artifact === 'Magicbane' && target.spe >= 0)
+        messages.push(`Your right hand ${amount > 1 && target.spe > 1 ? 'flinches' : 'itches'}!`);
+    if (target.spe > 5 && (/^elven\b/.test(kind) || target.artifact || !rn2(7)))
+        messages.push(`${enchantWeaponSubject(target)} suddenly ${enchantWeaponVerb(target, 'vibrates', 'vibrate')} unexpectedly.`);
+    return { learned, more: messages.length > 1 };
+}
+
+function enchantWeaponScrollEffect(scroll, messages) {
+    if (heroIsConfused()) {
+        const confusedResult = enchantWeaponConfusedEffect(scroll, messages);
+        if (confusedResult) return confusedResult;
+    }
+    const target = primaryWieldedItem();
+    const amount = enchantWeaponAmount(scroll, target);
+    const result = enchantWeaponScrollChwepon(scroll, amount, messages);
+    const finalTarget = primaryWieldedItem();
+    if (finalTarget) {
+        finalTarget.spe = capWishSpe(finalTarget.spe ?? 0);
+        refreshEnchantWeaponLine(finalTarget);
+    }
+    return result;
+}
+
+function wandTypeName(item) {
+    return String(item?.wand
+        || (item?.wandIndex != null ? IDENTIFIED_WAND_NAMES[item.wandIndex] : '')
+        || item?.actualKind
+        || item?.kind
+        || '')
+        .toLowerCase()
+        .replace(/^wand of /, '');
+}
+
+function chargingObjectSubject(item) {
+    return `Your ${pickupObjectName(item)}`;
+}
+
+function updateChargedItemLine(item) {
+    if (!item || !(game.inventory || []).includes(item)) return;
+    if (isWandItem(item)) refreshWandLine(item);
+    else item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function chargeGlowMessage(item, color = '', feeble = false) {
+    const verb = game.u?.blind ? 'vibrates' : 'glows';
+    if (feeble && (!color || game.u?.blind))
+        return `${chargingObjectSubject(item)} feebly ${verb} for a moment.`;
+    if (!color || game.u?.blind)
+        return `${chargingObjectSubject(item)} ${feeble ? 'feebly ' : ''}${verb} briefly.`;
+    return `${chargingObjectSubject(item)} ${feeble ? 'feebly ' : ''}${verb} ${color} for a moment.`;
+}
+
+function stripCharges(item) {
+    const spe = item?.spe ?? 0;
+    if (item?.blessed || spe <= 0) return ['Nothing happens.'];
+    item.spe = 0;
+    if (isWandItem(item)) item.charges = 0;
+    if (isLampObject(item)) item.age = 0;
+    updateChargedItemLine(item);
+    return [`${chargingObjectSubject(item)} vibrates briefly.`];
+}
+
+function wandRechargeLimit(item) {
+    const name = wandTypeName(item);
+    if (name === 'wishing' || isWishingWand(item)) return 1;
+    return NO_DIRECTION_WAND_NAMES.has(name) ? 15 : 8;
+}
+
+function wandExplosionDieSides(item) {
+    const name = wandTypeName(item);
+    if (name === 'wishing' || isWishingWand(item)) return 12;
+    if (['cancellation', 'death', 'polymorph', 'undead turning'].includes(name)) return 10;
+    if (['cold', 'fire', 'lightning', 'magic missile'].includes(name)) return 8;
+    if (name === 'nothing') return 4;
+    return 6;
+}
+
+function explodeChargingWand(item, chg) {
+    const name = pickupObjectName(item);
+    const dice = Math.max(2, (item.spe ?? 0) + chg);
+    const damage = d(dice, wandExplosionDieSides(item));
+    removeInventoryItem(item);
+    exerciseAttribute(A_STR, false);
+    const messages = [`Your ${name} vibrates violently and explodes!`];
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by an exploding wand';
+            messages.push('You die...');
+        }
+    }
+    return { messages, more: messages.length > 1, consumed: true };
+}
+
+function rechargeWand(item, curseBless) {
+    const limit = wandRechargeLimit(item);
+    if ((item.spe ?? item.charges) === -1) setWandCharges(item, 0);
+    const rechargeCount = item.recharged || 0;
+    if (rechargeCount > 0
+        && ((wandTypeName(item) === 'wishing' || isWishingWand(item)) || rechargeCount ** 3 > rn2(343))) {
+        return explodeChargingWand(item, rnd(limit));
+    }
+
+    item.recharged = rechargeCount + 1;
+    if (curseBless < 0) return { messages: stripCharges(item), more: false };
+
+    let target = limit === 1 ? 1 : rn1(5, limit + 1 - 5);
+    if (curseBless <= 0) target = rnd(target);
+    const charges = wandCharges(item);
+    setWandCharges(item, charges < target ? target : charges + 1);
+    updateChargedItemLine(item);
+    if (limit === 1) return { messages: [chargeGlowMessage(item, 'blue', true)], more: false };
+    if (wandCharges(item) >= limit) return { messages: [chargeGlowMessage(item, 'blue')], more: false };
+    return { messages: [chargeGlowMessage(item)], more: false };
+}
+
+function isChargeableRing(item) {
+    if (!(item?.cls === 'ring' || item?.otyp === RING_CLASS || item?.glyph === '=')) return false;
+    if (item.charged) return true;
+    const roll = item.ringRoll || item.roll || 0;
+    if (roll >= 1 && roll <= 6) return true;
+    const name = objectKindKey(item).replace(/^ring of /, '');
+    return ['adornment', 'gain strength', 'gain constitution', 'increase accuracy', 'increase damage', 'protection'].includes(name);
+}
+
+function rechargeRing(item, curseBless) {
+    if (!isChargeableRing(item)) return { messages: ['You have a feeling of loss.'], more: false };
+    const oldSpe = item.spe ?? 0;
+    const adjustment = curseBless > 0 ? rnd(3) : curseBless < 0 ? -rnd(2) : 1;
+    if (oldSpe > rn2(7) || oldSpe <= -5) {
+        const name = pickupObjectName(item);
+        const damage = rnd(Math.max(1, 3 * Math.abs(oldSpe)));
+        removeInventoryItem(item);
+        const messages = [`Your ${name} pulsates momentarily, then explodes!`];
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+            if ((game.u.uhp || 0) <= 0) {
+                game._death_cause = 'killed by an exploding ring';
+                messages.push('You die...');
+            }
+        }
+        return { messages, more: messages.length > 1 };
+    }
+    item.spe = capWishSpe(oldSpe + adjustment);
+    updateChargedItemLine(item);
+    const direction = curseBless < 0 ? 'counterclockwise' : 'clockwise';
+    return { messages: [`${chargingObjectSubject(item)} spins ${direction} for a moment.`], more: false };
+}
+
+function toolChargeKind(item) {
+    const key = objectKindKey(item).replace(/^the /, '');
+    if (key === 'silver bell') return 'bell of opening';
+    return key;
+}
+
+function isWeaponTool(item) {
+    const kind = toolChargeKind(item);
+    return item?.cls === 'tool' && ['pick-axe', 'grappling hook', 'unicorn horn'].includes(kind);
+}
+
+const RECHARGEABLE_TOOL_KINDS = new Set([
+    'bell of opening', 'magic marker', 'tinning kit', 'expensive camera', 'oil lamp',
+    'brass lantern', 'crystal ball', 'horn of plenty', 'bag of tricks', 'can of grease',
+    'magic flute', 'magic harp', 'frost horn', 'fire horn', 'drum of earthquake',
+]);
+
+const CHARGED_TOOL_KINDS = new Set([
+    'bell of opening', 'magic marker', 'tinning kit', 'expensive camera', 'crystal ball',
+    'horn of plenty', 'bag of tricks', 'can of grease', 'magic flute', 'magic harp',
+    'frost horn', 'fire horn', 'drum of earthquake',
+]);
+
+function isRechargeableTool(item) {
+    if (!(item?.cls === 'tool' || item?.otyp === TOOL_CLASS || item?.glyph === '(')) return false;
+    return RECHARGEABLE_TOOL_KINDS.has(toolChargeKind(item));
+}
+
+function isChargePromptSuggested(item) {
+    if (!item?.letter) return false;
+    if (isWandItem(item)) return true;
+    if (isChargeableRing(item) && (item.known || item.dknown || item.bknown)) return true;
+    if (!(item.cls === 'tool' || item.otyp === TOOL_CLASS || item.glyph === '(')) return false;
+    const kind = toolChargeKind(item);
+    if (kind === 'oil lamp' || kind === 'brass lantern') return true;
+    if (kind === 'magic lamp' && item.known === false) return true;
+    return isRechargeableTool(item) && (item.known || item.dknown || item.bknown || item.tool === 'charges' || item.tool === 'magicMarker');
+}
+
+function chargePromptLetters() {
+    return inventoryLetters(isChargePromptSuggested) || '*';
+}
+
+function chargePromptText() {
+    return `What do you want to charge? [${getobjPromptLetters(chargePromptLetters())} or ?*]`;
+}
+
+function rechargeMarkerCameraOrKit(item, curseBless, oldRecharged) {
+    if (curseBless < 0) return stripCharges(item);
+    const kind = toolChargeKind(item);
+    if (kind === 'magic marker' && oldRecharged) {
+        item.recharged = 1;
+        return [(item.spe ?? 0) < 3 ? 'Your marker seems permanently dried out.' : 'Nothing happens.'];
+    }
+    const spe = item.spe ?? 0;
+    if (curseBless > 0) {
+        const amount = rn1(16, 15);
+        if (spe + amount <= 50) item.spe = 50;
+        else if (spe + amount <= 75) item.spe = 75;
+        else item.spe = Math.min(127, spe + amount);
+        item.spe = capWishSpe(item.spe);
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'blue')];
+    }
+    const amount = rn1(11, 10);
+    item.spe = spe + amount <= 50 ? 50 : Math.min(SPE_LIM, spe + amount);
+    updateChargedItemLine(item);
+    return [chargeGlowMessage(item, 'white')];
+}
+
+function rechargeLamp(item, curseBless) {
+    const messages = [];
+    if (curseBless < 0) {
+        messages.push(...stripCharges(item));
+        if (item.lamplit || item.burning) {
+            item.lamplit = false;
+            item.burning = false;
+            delete item._burnTimer;
+            delete item.litRadius;
+            if (!game.u?.blind) messages.push(`${chargingObjectSubject(item)} goes out!`);
+        }
+        updateChargedItemLine(item);
+        return messages;
+    }
+    item.spe = 1;
+    if (curseBless > 0) {
+        item.age = 1500;
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'blue')];
+    }
+    item.age = Math.min(1500, (item.age ?? 0) + 750);
+    updateChargedItemLine(item);
+    return [chargeGlowMessage(item)];
+}
+
+function rechargeCrystalBall(item, curseBless) {
+    if ((item.spe ?? 0) === -1) item.spe = 0;
+    if (curseBless < 0) {
+        item.cursed = true;
+        item.blessed = false;
+        item.spe = 0;
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'black')];
+    }
+    if (curseBless > 0) {
+        item.spe = 7;
+        item.blessed = true;
+        item.cursed = false;
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'light blue')];
+    }
+    if ((item.spe ?? 0) < 7 || item.cursed) {
+        item.spe = Math.min(7, (item.spe ?? 0) + rnd(2));
+        item.cursed = false;
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item)];
+    }
+    return ['Nothing happens.'];
+}
+
+function rechargeGreaseBagOrHorn(item, curseBless) {
+    if (curseBless < 0) return stripCharges(item);
+    const spe = item.spe ?? 0;
+    if (curseBless > 0) {
+        item.spe = Math.min(50, spe + (spe <= 10 ? rn1(10, 6) : rn1(5, 6)));
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'blue')];
+    }
+    item.spe = Math.min(50, spe + rn1(5, 2));
+    updateChargedItemLine(item);
+    return [chargeGlowMessage(item)];
+}
+
+function rechargeInstrument(item, curseBless) {
+    if (curseBless < 0) return stripCharges(item);
+    if (curseBless > 0) {
+        item.spe = Math.min(20, (item.spe ?? 0) + d(2, 4));
+        updateChargedItemLine(item);
+        return [chargeGlowMessage(item, 'blue')];
+    }
+    item.spe = Math.min(20, (item.spe ?? 0) + rnd(4));
+    updateChargedItemLine(item);
+    return [chargeGlowMessage(item)];
+}
+
+function rechargeTool(item, curseBless) {
+    const kind = toolChargeKind(item);
+    const oldRecharged = item.recharged || 0;
+    if (CHARGED_TOOL_KINDS.has(kind) && oldRecharged < 7) item.recharged = oldRecharged + 1;
+
+    if (kind === 'bell of opening') {
+        if (curseBless < 0) return { messages: stripCharges(item), more: false };
+        const amount = curseBless > 0 ? rnd(3) : 1;
+        item.spe = Math.min(5, (item.spe ?? 0) + amount);
+        updateChargedItemLine(item);
+        return { messages: [], more: false };
+    }
+    if (kind === 'magic marker' || kind === 'tinning kit' || kind === 'expensive camera')
+        return { messages: rechargeMarkerCameraOrKit(item, curseBless, oldRecharged), more: false };
+    if (kind === 'oil lamp' || kind === 'brass lantern')
+        return { messages: rechargeLamp(item, curseBless), more: false };
+    if (kind === 'crystal ball')
+        return { messages: rechargeCrystalBall(item, curseBless), more: false };
+    if (kind === 'horn of plenty' || kind === 'bag of tricks' || kind === 'can of grease')
+        return { messages: rechargeGreaseBagOrHorn(item, curseBless), more: false };
+    if (kind === 'magic flute' || kind === 'magic harp' || kind === 'frost horn' || kind === 'fire horn' || kind === 'drum of earthquake')
+        return { messages: rechargeInstrument(item, curseBless), more: false };
+    return { messages: ['You have a feeling of loss.'], more: false };
+}
+
+function rechargeItem(item, curseBless) {
+    if (isWandItem(item)) return rechargeWand(item, curseBless);
+    if (item?.cls === 'ring' || item?.otyp === RING_CLASS || item?.glyph === '=')
+        return rechargeRing(item, curseBless);
+    if (isWeaponTool(item)) return { messages: ['That is a silly thing to charge.'], more: true, retry: true };
+    if (item?.cls === 'tool' || item?.otyp === TOOL_CLASS || item?.glyph === '(')
+        return rechargeTool(item, curseBless);
+    return { messages: ['You have a feeling of loss.'], more: false };
+}
+
+function fireScrollDamage(item) {
+    const cval = item?.blessed ? 1 : item?.cursed ? -1 : 0;
+    return Math.trunc((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+}
+
+function canCenterFireScroll(x, y) {
+    if (x == null || y == null || x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return false;
+    const loc = game.level?.at(x, y);
+    if (loc) {
+        const accessible = ACCESSIBLE(loc.typ) || IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+        if (!accessible) return false;
+    }
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    return couldsee(x, y) && (x - ux) ** 2 + (y - uy) ** 2 < 32;
+}
+
+function heroInsideGasCloud() {
+    const ux = game.u?.ux ?? -1;
+    const uy = game.u?.uy ?? -1;
+    return (game.level?.regions || []).some(reg =>
+        reg.type === 'gas_cloud' && reg.visible !== false
+        && reg.coords?.some(coord => coord.x === ux && coord.y === uy));
+}
+
+function fireScrollMonsterName(mon) {
+    if (mon?.givenName) return mon.givenName;
+    if (mon?.isshk && mon.shknam) return mon.shknam;
+    return `The ${mon?.data?.name || mon?.name || 'monster'}`;
+}
+
+function fireScrollTargetDescription(x, y) {
+    if (x === game.u?.ux && y === game.u?.uy) return heroFarlookDescription();
+    const mon = (game.level?.monsters || []).find(item => item.mx === x && item.my === y);
+    if (mon) return fireScrollMonsterName(mon).replace(/^The /, 'the ');
+    const object = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    if (object) return pickupObjectPhrase(object);
+    const loc = game.level?.at(x, y);
+    if (!loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ')) return 'unexplored area';
+    if (loc.typ === DOOR) return doorDescription(loc);
+    if (loc.typ === CORR) return 'corridor';
+    if (loc.typ === ROOM || loc.typ === STAIRS) return 'floor of a room';
+    if (IS_POOL(loc.typ)) return 'pool of water';
+    if (loc.typ === LAVAPOOL) return 'molten lava';
+    if (loc.typ === LAVAWALL) return 'lava wall';
+    if (loc.typ && loc.typ < DOOR) return 'wall';
+    return 'unexplored area';
+}
+
+function heroIsDeaf() {
+    return (game.u?._statusSuffix || '').includes('Deaf') || (game.u?._deafTimeout || 0) > 0;
+}
+
+function fireDestroyableInventoryClass(item) {
+    const cls = item?.cls || '';
+    if (cls === 'potion' || cls === 'scroll' || cls === 'spellbook') return cls;
+    const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
+    if (name.includes('potion')) return 'potion';
+    if (name.includes('scroll')) return 'scroll';
+    if (name.includes('spellbook')) return 'spellbook';
+    return '';
+}
+
+function fireInventoryItemImmune(item, cls) {
+    const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
+    if (cls === 'scroll' && (item?.scrollIndex === 16 || /\bscroll of fire\b/.test(name))) return true;
+    if (cls === 'spellbook' && (/\bfireball\b/.test(name) || /\bbook of the dead\b/.test(name))) return true;
+    return !!item?.artifact || !!item?.oartifact || (item?.in_use && (item?.quan || 1) === 1);
+}
+
+function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
+    let limit = Math.trunc(origDamage / 5);
+    if (origDamage % 5 > rn2(5)) limit++;
+    if (limit < 1) return 0;
+    limit = Math.min(20, limit);
+
+    const selected = [];
+    let eligible = 0;
+    for (const item of [...(mon?.minvent || [])]) {
+        const cls = fireDestroyableInventoryClass(item);
+        if (!cls || fireInventoryItemImmune(item, cls)) continue;
+        const i = eligible < limit ? eligible : rn2(eligible);
+        eligible++;
+        if (i < limit) selected[i] = item;
+    }
+
+    let damage = 0;
+    const owner = fireScrollMonsterName(mon).replace(/^The /, 'the ');
+    const possessive = owner.endsWith('s') ? `${owner}'` : `${owner}'s`;
+    const resistsFire = !!(mon?.fireResistance || mon?.data?.resistsFire);
+    for (const item of selected.filter(Boolean)) {
+        const cls = fireDestroyableInventoryClass(item);
+        const quan = item.quan || 1;
+        const itemDamage = cls === 'potion' ? rnd(6) : resistsFire ? 0 : 1;
+        let destroyed = 0;
+        for (let i = 0; i < quan; i++)
+            if (!rn2(3)) destroyed++;
+        if (!destroyed) continue;
+
+        if (visible) {
+            const plural = destroyed > 1;
+            const itemName = pickupObjectName({ ...item, line: '', quan: plural ? Math.max(2, quan) : 1 });
+            const subject = destroyed === 1 && quan === 1 ? `${sentenceCase(possessive)} ${itemName}`
+                : destroyed === 1 ? `One of ${possessive} ${itemName}`
+                    : destroyed < quan ? `Some of ${possessive} ${itemName}`
+                        : quan === 2 ? `Both of ${possessive} ${itemName}`
+                            : `All of ${possessive} ${itemName}`;
+            const verb = cls === 'potion'
+                ? plural ? 'boil and explode' : 'boils and explodes'
+                : plural ? 'catch fire and burn' : 'catches fire and burns';
+            messages.push(`${subject} ${verb}!`);
+        }
+        const remaining = quan - destroyed;
+        if (remaining > 0) item.quan = remaining;
+        else mon.minvent = (mon.minvent || []).filter(other => other !== item);
+        damage += itemDamage;
+    }
+    return damage;
+}
+
+function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
+    const ux = game.u?.ux ?? -99;
+    const uy = game.u?.uy ?? -99;
+    const underwater = !!(game.u?.underwater || game.u?.uunderwater);
+    if (underwater) {
+        messages.push('The water around you vaporizes violently!');
+    } else if (cx === ux && cy === uy) {
+        messages.push('The scroll erupts in a tower of flame!');
+    }
+    if (!heroIsDeaf()) messages.push('Boom!');
+
+    for (const mon of [...(game.level?.monsters || [])]) {
+        if (!mon || mon.dead || (mon.mhp ?? 1) <= 0 || Math.abs((mon.mx ?? -99) - cx) > 1 || Math.abs((mon.my ?? -99) - cy) > 1)
+            continue;
+        const visible = !game.u?.blind && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
+        const name = fireScrollMonsterName(mon);
+        if (visible) messages.push(`${name} is caught in the tower of flame!`);
+        const itemDamage = monsterFireInventoryDamage(mon, dam, messages, visible);
+        let damage = 0;
+        if (!(mon.fireResistance || mon.data?.resistsFire)) {
+            damage = dam;
+            if (monsterResistsEffect(mon, 9)) {
+                if (visible) messages.push(`${name} resists the tower of flame!`);
+                damage = Math.trunc((damage + 1) / 2);
+            }
+            if (mon.coldResistance || mon.data?.resistsCold || mon.data?.coldResistance) damage *= 2;
+        }
+        damage += itemDamage;
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) {
+            dropMonsterInventory(mon);
+            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+            recordVanquished(mon, true);
+            newsym(mon.mx, mon.my);
+            if (visible) messages.push(`You kill the ${mon.data?.name || mon.name || 'monster'}!`);
+        }
+    }
+
+    if (Math.abs(ux - cx) <= 1 && Math.abs(uy - cy) <= 1) {
+        const fireInventory = fireDamageInventory(dam, true);
+        messages.push(...fireInventory.messages);
+        const damage = (game.u?.fireResistance ? 0 : dam) + fireInventory.damage;
+        if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u?.uhp || 0) <= 0) {
+            game._death_cause = fireInventory.deathCause || 'killed by a tower of flame';
+            messages.push('You die...');
+        }
+        exerciseAttribute(A_STR, false);
+    }
+
+    return { messages, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
+}
+
+function earthScrollHasEffect() {
+    const uz = game.u?.uz;
+    if (Is_rogue_level(uz)) return false;
+    if (In_endgame(uz) && !Is_earthlevel(uz)) return false;
+    return true;
+}
+
+function earthCeilingMessage(item) {
+    const around = item?.blessed ? 'around' : 'above';
+    if (game.u?.uswallow) return 'You hear rumbling.';
+    if (In_quest(game.u?.uz)) {
+        return item?.blessed
+            ? 'Avalanches of boulders materialize around you!'
+            : 'An avalanche of boulders materializes above you!';
+    }
+    return `The ceiling rumbles ${around} you!`;
+}
+
+function applySokobanGuilt() {
+    if (!game.level?.flags?.sokoban_rules || !game.u) return;
+    game.u.uconduct ??= {};
+    game.u.uconduct.sokocheat = (game.u.uconduct.sokocheat || 0) + 1;
+    game.u.uluck = (game.u.uluck || 0) - 1;
+}
+
+function makeEarthDropObject(confused) {
+    const obj = mksobj(confused ? ROCK : BOULDER, false, false);
+    obj.cls = 'rock';
+    obj.kind = confused ? 'rock' : 'boulder';
+    obj.glyph = confused ? '*' : '`';
+    obj.color = NO_COLOR;
+    if (confused) {
+        obj.quan = rn1(5, 2);
+        obj.plural = 'rocks';
+    } else {
+        obj.quan = 1;
+    }
+    return obj;
+}
+
+function earthDropObjectPhrase(obj) {
+    const quan = obj?.quan || 1;
+    if (obj?.otyp === BOULDER) return 'a boulder';
+    return quan === 1 ? 'a rock' : `${quan} rocks`;
+}
+
+function earthPlaceObject(obj, x, y) {
+    if (!obj || !game.level) return false;
+    Object.assign(obj, { ox: x, oy: y });
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
+    newsym(x, y);
+    return true;
+}
+
+function earthVisibleSquare(x, y) {
+    return !game.u?.blind && !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+}
+
+function earthWaterBodyName(loc) {
+    if (loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL) return 'lava';
+    if (loc?.typ === MOAT) return 'moat';
+    return 'water';
+}
+
+function earthFloorEffects(obj, x, y, messages) {
+    const loc = game.level?.at(x, y);
+    if (!loc || obj?.otyp !== BOULDER) return false;
+    if (!(IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) return false;
+    const lava = loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+    const chance = rn2(10);
+    const fillsUp = lava ? chance === 0 : chance !== 0;
+    const body = earthWaterBodyName(loc);
+    if (fillsUp) loc.typ = ROOM;
+    if (!game.u?.uinwater) {
+        if (earthVisibleSquare(x, y)) {
+            messages.push(`There is a large splash as the boulder ${fillsUp ? 'fills' : 'falls into'} the ${body}.`);
+        } else if (!heroIsDeaf()) {
+            messages.push(`You hear a${lava ? ' sizzling' : ''} splash.`);
+        }
+    }
+    if (!fillsUp && earthVisibleSquare(x, y)) messages.push('It sinks without a trace!');
+    newsym(x, y);
+    return true;
+}
+
+function earthTargetIsSolid(target) {
+    const data = target?.data || target || {};
+    return !(target?.passWalls || target?.noncorporeal || target?.unsolid
+        || data.passWalls || data.noncorporeal || data.unsolid
+        || data.amorphous || data.name === 'fog cloud');
+}
+
+function earthObjectDamage(obj, target) {
+    const quan = obj?.quan || 1;
+    const base = obj?.otyp === BOULDER ? rnd(20) : rnd(3);
+    const data = target?.data || target || {};
+    if (data.thickSkinned || data.scaled || data.name === 'shade') return 0;
+    return base * quan;
+}
+
+function wornEarthHelmet() {
+    return (game.inventory || []).find(item =>
+        item.cls === 'armor' && (item.worn || item.line?.includes('being worn')) && armorSlot(item) === 'helm');
+}
+
+function monsterEarthHelmet(mon) {
+    return (mon?.minvent || []).find(item =>
+        item.cls === 'armor' && (item.worn || item.owornmask || item.line?.includes('being worn')) && armorSlot(item) === 'helm');
+}
+
+function hardEarthHelmet(item) {
+    const name = armorKind(item);
+    return armorSlot(item) === 'helm' && !/\b(?:elven leather helm|leather hat|fedora|cornuthaum|dunce cap)\b/.test(name);
+}
+
+function dropEarthObjectOnHero(confused, helmetProtects, messages) {
+    if (game.u?.uswallow) return dropEarthObjectOnMonster(game.u.ux, game.u.uy, confused, messages);
+    const obj = makeEarthDropObject(confused);
+    const solidHero = earthTargetIsSolid({ ...game.u, data: polyselfForm() || {} });
+    let damage = 0;
+    if (solidHero) {
+        messages.push(`You are hit by ${earthDropObjectPhrase(obj)}!`);
+        damage = earthObjectDamage(obj, { data: polyselfForm() || {} });
+        const helmet = wornEarthHelmet();
+        if (helmet && helmetProtects) {
+            if (hardEarthHelmet(helmet)) {
+                messages.push('Fortunately, you are wearing a hard helmet.');
+                if (damage > 2) damage = 2;
+            } else {
+                messages.push(`Your ${pickupObjectName(helmet)} does not protect you.`);
+            }
+        }
+    }
+    if (!earthFloorEffects(obj, game.u?.ux || 0, game.u?.uy || 0, messages))
+        earthPlaceObject(obj, game.u?.ux || 0, game.u?.uy || 0);
+    if (damage && game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by a scroll of earth';
+            messages.push('You die...');
+        }
+    }
+    return true;
+}
+
+function dropEarthObjectOnMonster(x, y, confused, messages) {
+    const obj = makeEarthDropObject(confused);
+    const mon = (game.level?.monsters || []).find(mtmp => mtmp.mx === x && mtmp.my === y && !mtmp.dead);
+    const visible = mon && earthVisibleSquare(x, y);
+    if (mon && earthTargetIsSolid(mon)) {
+        const name = fireScrollMonsterName(mon);
+        if (visible) messages.push(`${name} is hit by ${earthDropObjectPhrase(obj)}!`);
+        let damage = earthObjectDamage(obj, mon);
+        const helmet = monsterEarthHelmet(mon);
+        if (helmet) {
+            if (hardEarthHelmet(helmet)) {
+                if (visible) messages.push(`Fortunately, ${name.replace(/^The /, 'the ')} is wearing a hard helmet.`);
+                else if (!heroIsDeaf()) messages.push('You hear a clanging sound.');
+                if (damage > 2) damage = 2;
+            } else if (visible) {
+                messages.push(`${name}'s ${pickupObjectName(helmet)} does not protect it.`);
+            }
+        }
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) {
+            dropMonsterInventory(mon);
+            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+            recordVanquished(mon, true);
+            newsym(x, y);
+            if (visible) messages.push(`You kill the ${mon.data?.name || mon.name || 'monster'}!`);
+        } else {
+            mon.msleeping = 0;
+            mon.mpeaceful = false;
+        }
+    }
+    if (!earthFloorEffects(obj, x, y, messages)) earthPlaceObject(obj, x, y);
+    return true;
+}
+
+function earthDropEligibleSquare(x, y) {
+    if (x == null || y == null || x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return false;
+    return !IS_OBSTRUCTED(loc.typ) && !IS_AIR(loc.typ);
+}
+
+function earthScrollEffect(item) {
+    const messages = [];
+    let known = false;
+    let changedVision = false;
+    if (earthScrollHasEffect()) {
+        messages.push(earthCeilingMessage(item));
+        known = true;
+        applySokobanGuilt();
+        let nboulders = 0;
+        const ux = game.u?.ux || 0;
+        const uy = game.u?.uy || 0;
+        if (!item?.cursed) {
+            for (let x = ux - 1; x <= ux + 1; x++) {
+                for (let y = uy - 1; y <= uy + 1; y++) {
+                    if (x === ux && y === uy) continue;
+                    if (!earthDropEligibleSquare(x, y)) continue;
+                    if (dropEarthObjectOnMonster(x, y, heroIsConfused(), messages)) {
+                        nboulders++;
+                        changedVision = true;
+                    }
+                }
+            }
+        }
+        if (!item?.blessed) {
+            if (dropEarthObjectOnHero(heroIsConfused(), !item?.cursed, messages)) changedVision = true;
+        } else if (!nboulders) {
+            messages.push('But nothing else happens.');
+        }
+    }
+    if (changedVision) {
+        vision_reset();
+        vision_recalc(0);
+    }
+    return { messages, known, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
+}
+
+function armorKind(item) {
+    return String(item?.actualKind || item?.kind || pickupObjectName(item)).toLowerCase();
+}
+
+function armorMessageName(item) {
+    return pickupObjectName(item).replace(/^pair of /, '');
+}
+
+function armorNameIsPlural(name) {
+    return /\b(?:boots|shoes|gloves|gauntlets|scales)\b/i.test(name) && !/\bmail\b/i.test(name);
+}
+
+function armorVerb(item, singular, plural) {
+    return armorNameIsPlural(armorMessageName(item)) ? plural : singular;
+}
+
+function armorSubject(item) {
+    return `Your ${armorMessageName(item)}`;
+}
+
+function armorSlot(item) {
+    const name = armorKind(item);
+    if (/\b(?:cloak|robe|mantelet|pall|cape|cope|cloth|smock|apron)\b/.test(name)) return 'cloak';
+    if (/\b(?:mail|armor|jacket|dragon scales?)\b/.test(name)) return 'body';
+    if (/\bshirt\b/.test(name)) return 'shirt';
+    if (/\b(?:helm|helmet|hat|fedora|cornuthaum|cap|pot)\b/.test(name)) return 'helm';
+    if (/\b(?:gloves|gauntlets)\b/.test(name)) return 'gloves';
+    if (/\b(?:boots|shoes)\b/.test(name)) return 'boots';
+    if (/\bshield\b/.test(name)) return 'shield';
+    return '';
+}
+
+function isWornArmorItem(item) {
+    return (item?.cls === 'armor' || item?.glyph === '[' || item?.otyp === ARMOR_CLASS)
+        && (item.worn || item.owornmask || item.line?.includes('being worn'));
+}
+
+function wornArmorItemsBySlotOrder(slots) {
+    const wornArmor = (game.inventory || []).filter(isWornArmorItem);
+    const used = new Set();
+    const ordered = [];
+    for (const slot of slots) {
+        const item = wornArmor.find(candidate => !used.has(candidate) && armorSlot(candidate) === slot);
+        if (item) {
+            used.add(item);
+            ordered.push(item);
+        }
+    }
+    return ordered;
+}
+
+function countWornArmor() {
+    return (game.inventory || []).filter(isWornArmorItem).length;
+}
+
+function someArmorTarget() {
+    const wornArmor = (game.inventory || []).filter(isWornArmorItem);
+    let target = wornArmor.find(item => armorSlot(item) === 'cloak')
+        || wornArmor.find(item => armorSlot(item) === 'body')
+        || wornArmor.find(item => armorSlot(item) === 'shirt')
+        || null;
+    for (const slot of ['helm', 'gloves', 'boots', 'shield']) {
+        const item = wornArmor.find(candidate => armorSlot(candidate) === slot);
+        if (item && (!target || !rn2(4))) target = item;
+    }
+    return target;
+}
+
+function someEnchantArmorTarget() {
+    const wornArmor = (game.inventory || []).filter(item =>
+        item.cls === 'armor' && (item.worn || item.line?.includes('being worn')));
+    let target = wornArmor.find(item => armorSlot(item) === 'cloak')
+        || wornArmor.find(item => armorSlot(item) === 'body')
+        || wornArmor.find(item => armorSlot(item) === 'shirt')
+        || null;
+    for (const slot of ['helm', 'gloves', 'boots', 'shield']) {
+        const item = wornArmor.find(candidate => armorSlot(candidate) === slot);
+        if (item && (!target || !rn2(4))) target = item;
+    }
+    return target;
+}
+
+function wornArmorAcValue(item) {
+    const base = ARMOR_AC_BONUS[armorKind(item)] ?? 0;
+    return base + (item.spe ?? 0) - Math.min(item.oeroded || 0, base);
+}
+
+function wornArmorAcValueGreatestErosion(item) {
+    const base = ARMOR_AC_BONUS[armorKind(item)] ?? 0;
+    return base + (item.spe ?? 0) - Math.min(Math.max(item.oeroded || 0, item.oeroded2 || 0), base);
+}
+
+function updateArmorLine(item) {
+    item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function updateReflectionFromInventory() {
+    if (!game.u) return;
+    game.u.reflecting = (game.inventory || []).some(item => {
+        if (!(item.worn || item.line?.includes('being worn'))) return false;
+        const kind = armorKind(item);
+        return kind === 'silver dragon scale mail' || kind === 'shield of reflection'
+            || item.amuletIndex === 7 || kind === 'amulet of reflection';
+    });
+}
+
+function updateWornArmorAcAfterChange(armor, oldAc) {
+    if (game.u && isWornArmorItem(armor)) game.u.uac = (game.u.uac ?? 10) + oldAc - wornArmorAcValueGreatestErosion(armor);
+    updateArmorLine(armor);
+}
+
+function destroyWornArmorItem(armor) {
+    const oldAc = wornArmorAcValueGreatestErosion(armor);
+    if (game.u && isWornArmorItem(armor)) game.u.uac = (game.u.uac ?? 10) + oldAc;
+    updateGauntletsOfPowerStrength(armorKind(armor), false);
+    removeInventoryItem(armor, armor.quan || 1);
+    updateReflectionFromInventory();
+}
+
+function armorGlowMessage(armor, color) {
+    const subject = armorSubject(armor);
+    if (game.u?.blind)
+        return `${subject} ${armorVerb(armor, 'vibrates', 'vibrate')} for a moment.`;
+    return `${subject} ${armorVerb(armor, 'glows', 'glow')} ${color} for a moment.`;
+}
+
+function destroyArmorErosionType(armor) {
+    const profile = wishedDamageProfile(armor);
+    if (!profile.erosionMatters || !profile.damageable) return null;
+    if (profile.primaryWord === 'burnt') return { field: 'oeroded', action: 'smoulder' };
+    if (profile.primaryWord === 'rusty') return { field: 'oeroded', action: 'rust' };
+    if (profile.primaryWord === 'cracked') return { field: 'oeroded', action: 'crack', shatters: true };
+    if (profile.secondaryWord === 'rotted') return { field: 'oeroded2', action: 'rot' };
+    if (profile.secondaryWord === 'corroded') return { field: 'oeroded2', action: 'corrode' };
+    return null;
+}
+
+function erosionVerb(armor, action) {
+    const plural = {
+        smoulder: 'smoulder',
+        rust: 'rust',
+        rot: 'rot',
+        corrode: 'corrode',
+        crack: 'crack',
+    }[action] || action;
+    const singular = {
+        smoulder: 'smoulders',
+        rust: 'rusts',
+        rot: 'rots',
+        corrode: 'corrodes',
+        crack: 'cracks',
+    }[action] || `${action}s`;
+    return armorVerb(armor, singular, plural);
+}
+
+function erodeDestroyArmor(armor, messages) {
+    const erosion = destroyArmorErosionType(armor);
+    if (!erosion || armor.oerodeproof) return false;
+    if (armor.blessed && !rnl(4)) return false;
+
+    const current = Math.min(3, armor[erosion.field] || 0);
+    const name = armorMessageName(armor);
+    if (current < 3) {
+        const adverb = current + 1 === 3 ? ' completely' : current ? ' further' : '';
+        messages.push(`Your ${name} ${erosionVerb(armor, erosion.action)}${adverb}!`);
+        const oldAc = wornArmorAcValueGreatestErosion(armor);
+        armor[erosion.field] = current + 1;
+        updateWornArmorAcAfterChange(armor, oldAc);
+        return true;
+    }
+
+    messages.push(erosion.shatters
+        ? `Your ${name} shatters!`
+        : `Your ${name} ${erosionVerb(armor, erosion.action)} away!`);
+    destroyWornArmorItem(armor);
+    return 'destroyed';
+}
+
+function destroyArm(messages) {
+    const armors = wornArmorItemsBySlotOrder(['body', 'cloak', 'helm', 'shield', 'gloves', 'boots', 'shirt']);
+    if (!armors.length) return false;
+
+    const hits = rn2(4) + 1;
+    let result = false;
+    for (let i = 0; i < hits; i++) {
+        const armor = armors[rn2(armors.length)];
+        if (!armor || !(game.inventory || []).includes(armor)) continue;
+        const erosion = erodeDestroyArmor(armor, messages);
+        if (erosion) result = true;
+        if (erosion === 'destroyed') break;
+    }
+    return result;
+}
+
+function legacyDestroyArm(messages) {
+    const wornArmor = (game.inventory || []).filter(item =>
+        item.cls === 'armor' && (item.worn || item.line?.includes('being worn')));
+    if (!wornArmor.length) return { changed: false, uacDelta: 0 };
+    const hits = rn2(4) + 1;
+    let result = false;
+    let uacDelta = 0;
+    for (let i = 0; i < hits; i++) {
+        const armor = wornArmor[rn2(wornArmor.length)];
+        if (!armor || !(game.inventory || []).includes(armor)) continue;
+        const armorBase = ARMOR_AC_BONUS[String(armor.kind || '').toLowerCase()] ?? 0;
+        if (!armorBase || (armor.oeroded || 0) >= armorBase) continue;
+        const oldAc = wornArmorAcValue(armor);
+        armor.oeroded = (armor.oeroded || 0) + 1;
+        armor.bknown = true;
+        uacDelta += oldAc - wornArmorAcValue(armor);
+        updateArmorLine(armor);
+        const name = pickupObjectName(armor);
+        messages.push(armor.oeroded === 1
+            ? `Your ${name} smoulders!`
+            : `Your ${name} smoulders further!`);
+        result = true;
+    }
+    return { changed: result, uacDelta };
+}
+
+function armorSimpleSlotName(armor) {
+    const name = armorMessageName(armor);
+    const kind = armorKind(armor);
+    switch (armorSlot(armor)) {
+    case 'cloak':
+        if (kind.includes('robe')) return 'robe';
+        if (kind.includes('apron')) return 'apron';
+        if (kind.includes('smock')) return 'smock';
+        if (kind.includes('wrapping')) return 'wrapping';
+        return 'cloak';
+    case 'body':
+        return name;
+    case 'shirt':
+        return 'shirt';
+    case 'helm':
+        return /\b(?:hat|fedora|cornuthaum|cap)\b/.test(kind) ? 'hat' : 'helm';
+    case 'gloves':
+        return 'gloves';
+    case 'boots':
+        return 'boots';
+    case 'shield':
+        return 'shield';
+    default:
+        return name;
+    }
+}
+
+function disintegrateArmorMessage(armor) {
+    const simple = armorSimpleSlotName(armor);
+    switch (armorSlot(armor)) {
+    case 'cloak':
+        return `Your ${simple} crumbles and turns to dust!`;
+    case 'body':
+        return `Your ${simple} ${armorNameIsPlural(simple) ? 'turn' : 'turns'} to dust and ${armorNameIsPlural(simple) ? 'fall' : 'falls'} to the floor!`;
+    case 'shirt':
+        return `Your ${simple} crumbles into tiny threads and falls apart!`;
+    case 'helm':
+        return `Your ${simple} turns to dust and is blown away!`;
+    case 'gloves':
+        return `Your ${simple} vanish!`;
+    case 'boots':
+        return `Your ${simple} disintegrate!`;
+    case 'shield':
+        return `Your ${simple} crumbles away!`;
+    default:
+        return `Your ${simple} turns to dust!`;
+    }
+}
+
+function armorResistsDisintegration(armor) {
+    if (armor.invocation || armor.riderCorpse) return true;
+    const chance = rn2(100);
+    return chance < (armor.artifact || armor.oartifact ? 90 : 0);
+}
+
+function maybeDisintegrateArmor(armor, target, state, key = 'resisted') {
+    if (!armor || (target && target !== armor)) return null;
+    const resisted = armorResistsDisintegration(armor);
+    state[key] = resisted;
+    return resisted ? null : armor;
+}
+
+function disintegrateArm(target, messages) {
+    const bySlot = Object.fromEntries(wornArmorItemsBySlotOrder([
+        'cloak', 'body', 'shirt', 'helm', 'gloves', 'boots', 'shield',
+    ]).map(armor => [armorSlot(armor), armor]));
+    const state = {};
+    let armor = maybeDisintegrateArmor(bySlot.cloak, target, state, 'resistedCloak');
+    if (!armor && !state.resistedCloak)
+        armor = maybeDisintegrateArmor(bySlot.body, target, state, 'resistedSuit');
+    if (!armor && !state.resistedCloak && !state.resistedSuit)
+        armor = maybeDisintegrateArmor(bySlot.shirt, target, state);
+    if (!armor) armor = maybeDisintegrateArmor(bySlot.helm, target, state);
+    if (!armor) armor = maybeDisintegrateArmor(bySlot.gloves, target, state);
+    if (!armor) armor = maybeDisintegrateArmor(bySlot.boots, target, state);
+    if (!armor) armor = maybeDisintegrateArmor(bySlot.shield, target, state);
+    if (!armor) return false;
+
+    if (armor.lamplit || armor.burning) {
+        armor.lamplit = false;
+        armor.burning = false;
+        delete armor._burnTimer;
+        delete armor.litRadius;
+    }
+    messages.push(disintegrateArmorMessage(armor));
+    destroyWornArmorItem(armor);
+    return true;
+}
+
+function disintegrateCursedArmor(messages) {
+    const armors = wornArmorItemsBySlotOrder(['body', 'cloak', 'helm', 'shield', 'gloves', 'boots', 'shirt'])
+        .filter(armor => armor.cursed);
+    if (!armors.length) return false;
+    return disintegrateArm(armors[rn2(armors.length)], messages);
+}
+
+function destroyArmorPromptLetters() {
+    return inventoryLetters(isWornArmorItem) || '*';
+}
+
+function destroyArmorPromptText() {
+    return `What do you want to destroy? [${getobjPromptLetters(destroyArmorPromptLetters())} or ?*]`;
+}
+
+function destroyArmorConfusedEffect(scroll, target, messages) {
+    if (!target) {
+        messages.push('Your bones itch.');
+        exerciseAttribute(A_STR, false);
+        exerciseAttribute(A_CON, false);
+        return { learned: false, more: messages.length > 1 };
+    }
+    messages.push(armorGlowMessage(target, 'purple'));
+    target.oerodeproof = !!scroll.cursed;
+    updateArmorLine(target);
+    return { learned: false, more: messages.length > 1 };
+}
+
+function destroyArmorCursedCursedEffect(target, messages) {
+    messages.push(`${armorSubject(target)} ${armorVerb(target, 'vibrates', 'vibrate')}.`);
+    if ((target.spe ?? 0) >= -6) {
+        const oldAc = wornArmorAcValueGreatestErosion(target);
+        target.spe = (target.spe ?? 0) - 1;
+        updateWornArmorAcAfterChange(target, oldAc);
+    } else {
+        updateArmorLine(target);
+    }
+    addHeroStun(rn1(10, 10));
+    return { learned: false, more: messages.length > 1 };
+}
+
+function destroyArmorScrollEffect(scroll, messages) {
+    const target = someArmorTarget();
+    if (heroIsConfused()) return destroyArmorConfusedEffect(scroll, target, messages);
+
+    if (scroll.cursed) {
+        if (target?.cursed) return destroyArmorCursedCursedEffect(target, messages);
+        return { learned: disintegrateArm(target, messages), more: messages.length > 1 };
+    }
+
+    if (target && scroll.blessed && countWornArmor() > 1)
+        return { learned: true, more: messages.length > 1, prompt: true, target };
+
+    if (scroll.blessed && disintegrateCursedArmor(messages))
+        return { learned: true, more: messages.length > 1 };
+
+    const legacy = !scroll.blessed;
+    const legacyResult = legacy ? legacyDestroyArm(messages) : null;
+    const destroyed = legacy ? legacyResult.changed : destroyArm(messages);
+    if (!destroyed) {
+        messages.push('Your skin itches.');
+        exerciseAttribute(A_STR, false);
+        exerciseAttribute(A_CON, false);
+        return { learned: false, more: messages.length > 1, skipCall: legacy, legacy, uacDelta: legacyResult?.uacDelta || 0 };
+    }
+    return { learned: !legacy, more: messages.length > 1, skipCall: legacy, legacy, uacDelta: legacyResult?.uacDelta || 0 };
+}
+
+async function finishDestroyArmorSelection(selectedArmor = null) {
+    const pending = game._destroy_armor_scroll || {};
+    const target = selectedArmor || pending.target || null;
+    const messages = [];
+    game._destroy_armor_scroll = null;
+    game._command_mode = null;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    game.context.move = 1;
+    if (target) disintegrateArm(target, messages);
+    if (messages.length) await setMessage(messages.join('  '), messages.length > 1);
+    else {
+        game._pending_message = '';
+        game._message_more = 0;
+        game._keep_pending_message = 1;
+    }
+}
+
+function isSpecialEnchantArmor(item) {
+    const kind = armorKind(item);
+    return kind.includes('elven') || ((game.urole?.name?.m || game._startup_role) === 'Wizard' && kind === 'cornuthaum');
+}
+
+function isEnchantMagicalArmor(item) {
+    return !!item.magic || MAGICAL_ARMOR_KINDS.has(armorKind(item));
+}
+
+function enchantArmorColorWord(item, cursed, blind) {
+    if (blind) return '';
+    const kind = armorKind(item);
+    if (cursed && (kind === 'black dragon scale mail' || kind === 'black dragon scales')) return '';
+    if (!cursed && (kind === 'silver dragon scale mail' || kind === 'silver dragon scales' || kind === 'shield of reflection')) return '';
+    return cursed ? ' black' : ' silver';
+}
+
+function enchantArmorConfusedEffect(item, armor) {
+    const messages = [];
+    const subject = armorSubject(armor);
+    const oldErodeproof = !!armor.oerodeproof;
+    const newErodeproof = !item.cursed;
+    if (game.u?.blind) {
+        armor.rknown = false;
+        messages.push(`${subject} ${armorVerb(armor, 'feels', 'feel')} warm for a moment.`);
+    } else {
+        armor.rknown = true;
+        messages.push(`${subject} ${armorVerb(armor, 'is', 'are')} covered by a ${item.cursed ? 'mottled black glow' : `shimmering golden ${armorSlot(armor) === 'shield' ? 'layer' : 'shield'}`}!`);
+    }
+    const oldAc = wornArmorAcValue(armor);
+    if (newErodeproof && ((armor.oeroded || 0) || (armor.oeroded2 || 0))) {
+        armor.oeroded = 0;
+        armor.oeroded2 = 0;
+        if (game.u) game.u.uac = (game.u.uac ?? 10) + oldAc - wornArmorAcValue(armor);
+        messages.push(`${subject} ${armorVerb(armor, game.u?.blind ? 'feels' : 'looks', game.u?.blind ? 'feel' : 'look')} as good as new!`);
+    }
+    armor.oerodeproof = newErodeproof;
+    if (oldErodeproof && !newErodeproof) armor.rknown = true;
+    updateArmorLine(armor);
+    return { messages, known: false };
+}
+
+function transformDragonScales(armor, blessed) {
+    const oldAc = wornArmorAcValue(armor);
+    const oldName = armorMessageName(armor);
+    const mail = DRAGON_SCALE_MAIL_BY_SCALES.get(armorKind(armor));
+    const spec = DRAGON_ARMOR_BY_COLOR.get(mail.replace(/ dragon scale mail$/, ''));
+    armor.kind = mail;
+    armor.actualKind = mail;
+    if (spec) {
+        armor.otyp = spec.mailOtyp;
+        armor.color = spec.color;
+        armor._display_color = spec.color;
+    }
+    armor.dragonArmor = true;
+    armor.dragonArmorKind = 'mail';
+    armor.noArticle = false;
+    armor.owt = 40;
+    if (blessed) {
+        armor.spe = capWishSpe((armor.spe ?? 0) + 1);
+        armor.blessed = true;
+        armor.cursed = false;
+    } else if (armor.cursed) {
+        armor.cursed = false;
+    }
+    armor.known = true;
+    updateArmorLine(armor);
+    if (game.u) game.u.uac = (game.u.uac ?? 10) + oldAc - wornArmorAcValue(armor);
+    updateReflectionFromInventory();
+    return `Your ${oldName} ${armorVerb({ ...armor, kind: oldName, actualKind: oldName }, 'merges', 'merge')} and ${armorVerb({ ...armor, kind: oldName, actualKind: oldName }, 'hardens', 'harden')}!`;
+}
+
+function enchantArmorScrollEffect(item) {
+    const armor = someEnchantArmorTarget();
+    if (!armor) {
+        exerciseAttribute(A_CON, !item.cursed);
+        exerciseAttribute(A_STR, !item.cursed);
+        return {
+            messages: [game.u?.blind ? 'Your skin feels warm for a moment.' : 'Your skin glows then fades.'],
+            known: false,
+        };
+    }
+    if (heroIsConfused()) return enchantArmorConfusedEffect(item, armor);
+
+    const specialArmor = isSpecialEnchantArmor(armor);
+    let s = item.cursed ? -(armor.spe ?? 0) : (armor.spe ?? 0);
+    if (s > (specialArmor ? 5 : 3) && rn2(s)) {
+        const subject = armorSubject(armor);
+        const color = enchantArmorColorWord(armor, item.cursed, game.u?.blind);
+        const oldAc = wornArmorAcValue(armor);
+        if (game.u) game.u.uac = (game.u.uac ?? 10) + oldAc;
+        removeInventoryItem(armor);
+        updateReflectionFromInventory();
+        return {
+            messages: [`${subject} violently ${armorVerb(armor, game.u?.blind ? 'vibrates' : 'glows', game.u?.blind ? 'vibrate' : 'glow')}${color} for a while, then ${armorVerb(armor, 'evaporates', 'evaporate')}.`],
+            known: !!armor.known,
+        };
+    }
+    if (s < -100) s = -100;
+    s = Math.trunc((4 - s) / 2);
+    if (specialArmor) s++;
+    if (!isEnchantMagicalArmor(armor)) s++;
+    if (item.blessed) s++;
+    if (s <= 0) {
+        s = 0;
+        if ((armor.spe ?? 0) > 0 && !rn2(armor.spe)) s = 1;
+    } else {
+        s = rnd(s);
+    }
+    if (s > 11) s = 11;
+    if (item.cursed) s = -s;
+
+    if (s >= 0 && DRAGON_SCALE_MAIL_BY_SCALES.has(armorKind(armor))) {
+        return { messages: [transformDragonScales(armor, item.blessed)], known: true };
+    }
+
+    const messages = [];
+    const color = enchantArmorColorWord(armor, item.cursed, game.u?.blind);
+    messages.push(`${armorSubject(armor)} ${s === 0 ? 'violently ' : ''}${armorVerb(armor, game.u?.blind ? 'vibrates' : 'glows', game.u?.blind ? 'vibrate' : 'glow')}${color} for a ${s * s > 1 ? 'while' : 'moment'}.`);
+
+    if (item.cursed) {
+        armor.cursed = true;
+        armor.blessed = false;
+    } else if (item.blessed) {
+        armor.blessed = true;
+        armor.cursed = false;
+    } else if (armor.cursed) {
+        armor.cursed = false;
+    }
+
+    if (s) {
+        const oldAc = wornArmorAcValue(armor);
+        const oldSpe = armor.spe ?? 0;
+        armor.spe = capWishSpe(oldSpe + s);
+        s = armor.spe - oldSpe;
+        if (s && game.u) game.u.uac = (game.u.uac ?? 10) + oldAc - wornArmorAcValue(armor);
+        armor.known = true;
+    }
+    updateArmorLine(armor);
+    if ((armor.spe ?? 0) > (specialArmor ? 5 : 3) && (specialArmor || !rn2(7))) {
+        messages.push(`${armorSubject(armor)} suddenly ${armorVerb(armor, 'vibrates', 'vibrate')} ${game.u?.blind ? 'again' : 'unexpectedly'}.`);
+    }
+    return { messages, known: !!armor.known };
+}
+
+function loseAmnesiaSpells() {
+    const spells = game._known_spells || [];
+    const n = spells.length;
+    let nzap = rn2(n + 1);
+    if (heroIsConfused()) {
+        const confusedZap = rn2(n + 1);
+        if (confusedZap > nzap) nzap = confusedZap;
+    }
+    if (nzap > 1 && !rnl(7)) nzap = rnd(nzap);
+    if (!nzap) return;
+
+    const kept = [];
+    for (let i = 0; i < n; i++) {
+        if (nzap > 0 && rn2(n - i) < nzap) {
+            exerciseAttribute(A_WIS, false);
+            nzap--;
+        } else {
+            kept.push(spells[i]);
+        }
+    }
+    game._known_spells = kept;
+}
+
+function amnesiaScrollEffect(item) {
+    if (!item.blessed) loseAmnesiaSpells();
+    rnd(item.blessed ? 3 : 5);
+    if (game.u && (game.u.upunished || game._punished)) game.u._bcFelt = 0;
+    for (const mon of game.level?.monsters || []) {
+        if (mon !== game.u?.usteed && mon !== game.u?.ustuck) mon.meverseen = 0;
+    }
+    if (game.u?.hallucinating) {
+        exerciseAttribute(A_WIS, false);
+        return 'Your mind releases itself from mundane concerns.';
+    }
+    if (/^maud/i.test(game.plname || '')) {
+        exerciseAttribute(A_WIS, false);
+        return 'As your mind turns inward on itself, you forget everything else.';
+    }
+    const message = rn2(2)
+        ? 'Who was that Maud person anyway?'
+        : 'Thinking of Maud you forget everything else.';
+    exerciseAttribute(A_WIS, false);
+    return message;
+}
+
+async function createMonsterScrollEffect(item) {
+    const confused = heroIsConfused();
+    const count = 1 + ((confused || item.cursed) ? 12 : 0)
+        + ((item.blessed || rn2(73)) ? 0 : rnd(4));
+    const fixedMonster = confused ? monsterByRndName('acid blob') : null;
+    let known = false;
+    for (let i = 0; i < count; i++) {
+        const mon = await makemon(fixedMonster, game.u?.ux || 0, game.u?.uy || 0, 0);
+        if (!mon) continue;
+        newsym(mon.mx, mon.my);
+        if (couldsee(mon.mx, mon.my) && !mon.mundetected) known = true;
+    }
+    if (known) learnScrollByName('create monster', item, 6);
+    return known;
+}
+
+function visibleMonsterForScroll(mon) {
+    return !!mon && !mon.dead && (mon.mhp ?? 1) > 0
+        && !mon.mundetected && (!mon.minvis || game.u?.seeInvisible) && couldsee(mon.mx, mon.my);
+}
+
+function ensurePetExtension(mon) {
+    mon.mextra ??= {};
+    mon.mextra.edog ??= {
+        apport: 3,
+        hungrytime: Math.max(game.moves || 1, 1) + 1000,
+        dropdist: 10000,
+        whistletime: 0,
+        ogoal: { x: 0, y: 0 },
+    };
+}
+
+function baseScrollTameness(mon) {
+    const name = String(mon.data?.name || mon.name || '').toLowerCase();
+    const mlet = mon.data?.mlet || mon.mlet;
+    return mlet === 'dog' || mlet === 'feline' || mlet === 'unicorn'
+        || ['little dog', 'dog', 'large dog', 'kitten', 'housecat', 'large cat', 'pony', 'horse', 'warhorse'].includes(name)
+        ? 10 : 5;
+}
+
+function tameMonsterWithScroll(mon, item) {
+    const wasTame = mon.mtame || 0;
+    const wasPeaceful = !!(mon.mpeaceful || mon.pet);
+    if (item.cursed) {
+        mon.mpeaceful = 0;
+        mon.pet = false;
+        mon.mtame = 0;
+        set_malign(mon);
+        return wasPeaceful ? -1 : 0;
+    }
+
+    if (!mon.isshk && monsterResistsEffect(mon, 9)) return 0;
+    if (mon.mfrozen) mon.mfrozen = Math.trunc((mon.mfrozen + 1) / 2);
+    if (mon.msleeping) mon.msleeping = 0;
+    const monsterName = String(mon.data?.name || mon.name || '').toLowerCase();
+    if (monsterName === 'wizard of yendor' || monsterName === 'medusa' || mon.data?.wantsArtifact)
+        return 0;
+
+    mon.mpeaceful = 1;
+    mon.mflee = 0;
+    mon.mfleetim = 0;
+    clearMonsterTrack(mon);
+    set_malign(mon);
+
+    if ((mon.mtame || 0) && mon.mtame < 10) {
+        if (mon.mtame < rnd(10)) mon.mtame++;
+        if (item.blessed) mon.mtame = Math.min(10, mon.mtame + 2);
+        return (mon.mtame || 0) !== wasTame ? 1 : 0;
+    }
+    if (mon.isshk || mon.isgd || mon.ispriest || mon.isminion
+        || mon.data?.isHuman || mon.data?.human || mon.data?.demon || mon.data?.covetous
+        || mon.mcanmove === false)
+        return !wasPeaceful && mon.mpeaceful ? 1 : 0;
+
+    mon.pet = true;
+    mon.mtame = Math.max(mon.mtame || 0, baseScrollTameness(mon));
+    mon.mpeaceful = 1;
+    ensurePetExtension(mon);
+    newsym(mon.mx, mon.my);
+    return (!wasPeaceful || wasTame !== mon.mtame) ? 1 : 0;
+}
+
+function tamingScrollEffect(item) {
+    const confused = heroIsConfused();
+    const radius = confused ? 5 : 1;
+    let candidates = 0;
+    let results = 0;
+    let visibleResults = 0;
+    const seen = new Set();
+    const candidatesList = [];
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp ?? 1) <= 0 || mon.mx == null || mon.my == null) continue;
+        if (Math.max(Math.abs(mon.mx - (game.u?.ux || 0)), Math.abs(mon.my - (game.u?.uy || 0))) > radius) continue;
+        if (seen.has(mon)) continue;
+        seen.add(mon);
+        candidatesList.push(mon);
+    }
+    if (game.u?.usteed && !seen.has(game.u.usteed)) {
+        seen.add(game.u.usteed);
+        candidatesList.push(game.u.usteed);
+    }
+
+    for (const mon of candidatesList) {
+        candidates++;
+        const res = tameMonsterWithScroll(mon, item);
+        results += res;
+        if (visibleMonsterForScroll(mon)) visibleResults += res;
+    }
+
+    if (!results) {
+        return { message: `Nothing interesting ${candidates ? 'seems to happen' : 'happens'}.`, known: false };
+    }
+    if (visibleResults > 0) learnScrollByName('taming', item, 7);
+    return {
+        message: `The neighborhood ${visibleResults ? 'is' : 'seems'} ${results < 0 ? 'un' : ''}friendlier.`,
+        known: visibleResults > 0,
+    };
+}
+
+function confuseMonsterScrollEffect(item) {
+    const confused = heroIsConfused();
+    const nonHuman = !!game.u?._polyself_form && game.u._polyself_form.mlet !== 'human';
+    if (item.cursed || nonHuman) {
+        const wasConfused = confused;
+        addHeroConfusion(rnd(100));
+        return wasConfused ? '' : 'You feel confused.';
+    }
+    if (confused) {
+        if (item.blessed) {
+            clearHeroConfusion();
+            return 'A red glow surrounds your head.';
+        }
+        addHeroConfusion(rnd(100));
+        return 'Your hands begin to glow purple.';
+    }
+    let increment = 3;
+    const existing = game.u?.umconf || 0;
+    let message;
+    if (item.blessed) {
+        message = `Your hands glow ${existing ? 'an even more' : 'a'} brilliant red.`;
+        increment += rn1(8, 2);
+    } else {
+        message = existing
+            ? 'The red glow of your hands intensifies.'
+            : 'Your hands begin to glow red.';
+        increment += rnd(2);
+    }
+    if (existing >= 40) increment = 1;
+    if (game.u) {
+        game.u.umconf = existing + increment;
+        addHeroStatusSuffix('Glow');
+    }
+    return message;
+}
+
+function scareMonsterScrollEffect(item) {
+    const confused = heroIsConfused();
+    const reverse = confused || item.cursed;
+    let visibleUntame = 0;
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || mon.mhp <= 0 || !couldsee(mon.mx, mon.my)) continue;
+        if (reverse) {
+            mon.mflee = 0;
+            mon.mfrozen = 0;
+            mon.msleeping = 0;
+            mon.mcanmove = 1;
+        } else if (!monsterResistsEffect(mon, 9)) {
+            mon.mflee = 1;
+            mon.mfleetim = 0;
+            clearMonsterTrack(mon);
+        }
+        if (!mon.mtame && !mon.pet) visibleUntame++;
+    }
+    return `You hear ${reverse ? 'sad wailing' : 'maniacal laughter'} ${visibleUntame ? 'close by' : 'in the distance'}.`;
+}
+
+function applyConfuseMonsterOnHit(mon, messages, targetPhrase) {
+    if (!game.u?.umconf || mon?.mconf) return;
+    const handsMessage = game.u.umconf === 1
+        ? 'Your hands stop glowing red.'
+        : 'Your hands no longer glow so brightly red.';
+    messages.push(handsMessage);
+    game.u.umconf--;
+    if (!game.u.umconf) removeHeroStatusSuffix('Glow');
+    const attackLevel = game.u?.ulevel || 1;
+    if (!monsterResistsEffect(mon, attackLevel)) {
+        mon.mconf = 1;
+        if (couldsee(mon.mx, mon.my))
+            messages.push(`${sentenceCase(targetPhrase)} appears confused.`);
+    }
+}
+
+function isBoxObject(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === LARGE_BOX || item?.otyp === CHEST
+        || kind === 'large box' || kind === 'chest';
+}
+
+function isWishedContainerObject(item) {
+    const kind = objectKindKey(item);
+    return isBoxObject(item) || item?.otyp === ICE_BOX || BAG_OBJECT_TYPES.has(item?.otyp)
+        || kind === 'ice box' || kind === 'sack' || kind === 'oilskin sack'
+        || kind === 'bag of holding';
+}
+
+function applyWishedContainerState(item, qualifiers) {
+    if (!item) return;
+    const box = isBoxObject(item);
+    const tin = isTinObject(item);
+    if (qualifiers.trappedState && (box || tin))
+        item.otrapped = qualifiers.trappedState === 1;
+    if (qualifiers.empty && tin && !item._wish_tin_explicit_content)
+        setTinEmpty(item);
+    if (qualifiers.empty && objectKindKey(item) === 'bag of tricks')
+        item.spe = 0;
+    if (qualifiers.empty && isWishedContainerObject(item))
+        item.contents = [];
+    if (!box || !qualifiers.lockState) return;
+    if (qualifiers.lockState === 'locked') {
+        item.olocked = true;
+        item.locked = true;
+        item.obroken = false;
+        item.broken = false;
+    } else if (qualifiers.lockState === 'unlocked') {
+        item.olocked = false;
+        item.locked = false;
+        item.obroken = false;
+        item.broken = false;
+    } else if (qualifiers.lockState === 'broken') {
+        item.olocked = false;
+        item.locked = false;
+        item.obroken = true;
+        item.broken = true;
+        item.otrapped = false;
+    }
+}
+
+function wishedDamageProfile(item) {
+    const kind = objectKindKey(item);
+    const cls = itemClassKey(item);
+    const weapon = cls === 'weapon' || item?.glyph === ')';
+    const armor = cls === 'armor' || item?.glyph === '[';
+    const ballOrChain = item?.otyp === HEAVY_IRON_BALL || item?.otyp === IRON_CHAIN || cls === 'ball' || cls === 'chain';
+    const weptool = cls === 'tool' && APPLY_WEAPON_NAME_RE.test(kind);
+    const erosionMatters = weapon || armor || ballOrChain || weptool;
+    if (!erosionMatters) return { erosionMatters: false };
+
+    const excludedMetal = /\b(?:silver|gold|mithril|platinum|gem|stone|crystal ball|shield of reflection)\b/.test(kind);
+    const glassArmor = armor && /\b(?:crystal plate mail|helm of brilliance|crystal helmet)\b/.test(kind);
+    const dragonHide = armor && /\bdragon (?:scales|scale mail|hide)\b/.test(kind);
+    const copperLike = /\b(?:copper|bronze)\b/.test(kind);
+    const ironLike = !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
+        || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart)\b/.test(kind));
+    const flammableLike = !glassArmor && !ironLike && !copperLike && !excludedMetal
+        && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind);
+    const rustprone = ironLike;
+    const crackable = glassArmor;
+    const corrodeable = ironLike || copperLike;
+    const flammable = flammableLike;
+    const rottable = flammableLike || dragonHide;
+    const damageable = rustprone || crackable || corrodeable || flammable || rottable;
+
+    return {
+        erosionMatters,
+        primary: rustprone || crackable || flammable,
+        secondary: corrodeable || rottable,
+        damageable,
+        primaryWord: rustprone ? 'rusty' : crackable ? 'cracked' : flammable ? 'burnt' : '',
+        secondaryWord: corrodeable ? 'corroded' : rottable ? 'rotted' : '',
+        proofWord: rustprone ? 'rustproof' : corrodeable ? 'corrodeproof'
+            : flammable ? 'fireproof' : crackable ? 'tempered'
+                : rottable ? 'rotproof' : '',
+    };
+}
+
+function wishedPoisonable(item) {
+    const kind = objectKindKey(item);
+    return item?.artifact === 'Grimtooth' || POISONABLE_WISH_WEAPONS.has(kind);
+}
+
+function applyWishedQualifiers(item, qualifiers) {
+    if (!item) return;
+    const profile = wishedDamageProfile(item);
+    if (profile.erosionMatters) {
+        item.oeroded = 0;
+        item.oeroded2 = 0;
+        if (qualifiers.eroded && profile.primary)
+            item.oeroded = Math.min(3, qualifiers.eroded);
+        if (qualifiers.eroded2 && profile.secondary)
+            item.oeroded2 = Math.min(3, qualifiers.eroded2);
+        if (qualifiers.erodeproof && profile.damageable)
+            item.oerodeproof = ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) >= 0 || !!game.flags?.debug;
+    }
+    if (qualifiers.greased) item.greased = true;
+    if (qualifiers.diluted && isPotionObject(item) && !isWaterPotion(item))
+        item.odiluted = true;
+    applyWishedLightState(item, qualifiers.lightState);
+    if (qualifiers.halfeaten)
+        applyWishedPartlyEaten(item);
+    if (qualifiers.poisoned) {
+        if (wishedPoisonable(item)) item.opoisoned = ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) >= 0;
+        else if (itemClassKey(item) === 'food') item.age = 1;
+    }
+    if (qualifiers.zombifying && (item.otyp === CORPSE || /\bcorpse$/.test(objectKindKey(item))))
+        item.zombifying = true;
+    if (qualifiers.wetness && objectKindKey(item) === 'towel') item.wetness = qualifiers.wetness;
+    applyWishedContainerState(item, qualifiers);
+}
+
+function applyWishedQuantity(item, wishedQuan, forceQuantity = false) {
+    if (item?.globby) {
+        applyWishedGlobQuantity(item, wishedQuan);
+    } else if (item?.dragonArmor) {
+        item.quan = 1;
+    } else if (isTinObject(item)) {
+        if (game.flags?.debug || wishedQuan < rnd(6))
+            item.quan = wishedQuan;
+    } else if (wishedQuan > 1 || forceQuantity) {
+        item.quan = wishedQuan;
+    }
+}
+
+function applyWishedTinVariety(item) {
+    if (!isTinObject(item) || item._wish_tin_requested_variety == null) return;
+    const varietyIndex = item._wish_tin_requested_variety;
+    if (game.flags?.debug || rn2(4)) {
+        if (item.corpsenm?.name) setTinMonster(item, item.corpsenm, varietyIndex);
+        else item.spe = -(varietyIndex + 1);
+    }
+}
+
+function splitWishedTextClause(text, clause) {
+    const match = String(text || '').match(new RegExp(`\\s+${clause}\\s+`, 'i'));
+    if (!match) return null;
+    return {
+        base: String(text).slice(0, match.index).trim(),
+        tail: String(text).slice(match.index + match[0].length).trim(),
+    };
+}
+
+function splitWishedLabelClause(text) {
+    const match = String(text || '').match(/\s+labell?ed\s+/i);
+    if (!match) return null;
+    return {
+        base: String(text).slice(0, match.index).trim(),
+        tail: String(text).slice(match.index + match[0].length).trim(),
+    };
+}
+
+function unquoteWishedText(text) {
+    const trimmed = String(text || '').trim();
+    const quoted = trimmed.match(/^"([^"]*)"$/) || trimmed.match(/^'([^']*)'$/);
+    return (quoted ? quoted[1] : trimmed).trim();
+}
+
+function wishedLabelKey(text) {
+    return unquoteWishedText(text).toLowerCase().replace(/\s+/g, ' ');
+}
+
+function parseWishedScrollLabel(name) {
+    const match = String(name || '').trim().match(/^scrolls?\s+labell?ed\s+(.+)$/i);
+    return match ? unquoteWishedText(match[1]) : '';
+}
+
+function resolveCalledWishName(baseName, calledName) {
+    const base = String(baseName || '').trim().toLowerCase();
+    const called = wishedLabelKey(calledName);
+    const explicit = new Map([
+        ['shield:reflection', 'shield of reflection'],
+        ['helm:telepathy', 'helm of telepathy'],
+        ['helmet:telepathy', 'helm of telepathy'],
+        ['amulet:life saving', 'amulet of life saving'],
+        ['amulet:esp', 'amulet of esp'],
+        ['amulet:guarding', 'amulet of guarding'],
+        ['ring:accuracy', 'ring of increase accuracy'],
+        ['ring:increase accuracy', 'ring of increase accuracy'],
+        ['ring:protection from shape changers', 'ring of protection from shape changers'],
+        ['ring:protection from shape shifters', 'ring of protection from shape changers'],
+    ]).get(`${base}:${called}`);
+    if (explicit) return explicit;
+    if (base === 'shield' || base === 'helm' || base === 'helmet'
+        || base === 'amulet' || base === 'ring') {
+        const candidate = `${base === 'helmet' ? 'helm' : base} of ${called}`;
+        return WISH_BASE_OBJECTS.has(candidate)
+            || WISH_NAME_ALIASES.has(candidate)
+            || IDENTIFIED_AMULET_NAMES.includes(candidate)
+            || IDENTIFIED_RING_NAMES.includes(candidate.replace(/^ring of /, ''))
+            || ARMOR_WISH_APPEARANCES[candidate]
+            ? candidate : '';
+    }
+    return '';
+}
+
+const WISH_NAME_ALIASES = new Map([
+    ['speedboots', 'speed boots'],
+    ['boots of speed', 'speed boots'],
+    ['plate armor', 'plate mail'],
+    ['scroll of detect food', 'scroll of food detection'],
+    ['detect food scroll', 'scroll of food detection'],
+    ['scroll of detect gold', 'scroll of gold detection'],
+    ['detect gold scroll', 'scroll of gold detection'],
+    ['blank scroll', 'scroll of blank paper'],
+    ['unlabeled scroll', 'scroll of blank paper'],
+    ['unlabelled scroll', 'scroll of blank paper'],
+    ['spellbook of food detection', 'spellbook of detect food'],
+    ['destroy armor', 'scroll of destroy armor'],
+    ['enchant weapon', 'scroll of enchant weapon'],
+    ['ring of accuracy', 'ring of increase accuracy'],
+    ['accuracy', 'ring of increase accuracy'],
+    ['bear trap', 'beartrap'],
+    ['landmine', 'land mine'],
+    ['bags of tricks', 'bag of tricks'],
+    ['wolfsbane', 'sprig of wolfsbane'],
+    ['garlic', 'clove of garlic'],
+    ['royal jelly', 'lump of royal jelly'],
+    ['can', 'tin'],
+    ['gloves of power', 'gauntlets of power'],
+    ['ring of protection from shape shifters', 'ring of protection from shape changers'],
+    ['flint stone', 'flint'],
+]);
+const WISH_EXPLICIT_SPELLING_ALIASES = new Map([
+    ['wakizashi', 'short sword'],
+    ['ninja-to', 'broadsword'],
+    ['nunchaku', 'flail'],
+    ['naginata', 'glaive'],
+    ['osaku', 'lock pick'],
+    ['koto', 'wooden harp'],
+    ['magic koto', 'magic harp'],
+    ['shito', 'knife'],
+    ['tanko', 'plate mail'],
+    ['kabuto', 'helmet'],
+    ['yugake', 'leather gloves'],
+    ['gunyoki', 'food ration'],
+    ['sake', 'potion of booze'],
+    ['whip', 'bullwhip'],
+    ['saber', 'silver saber'],
+    ['silver sabre', 'silver saber'],
+    ['iron ball', 'heavy iron ball'],
+    ['mattock', 'dwarvish mattock'],
+    ['amulet of poison resistance', 'amulet versus poison'],
+    ['amulet of protection', 'amulet of guarding'],
+    ['amulet of telepathy', 'amulet of esp'],
+    ['helm of esp', 'helm of telepathy'],
+    ['potion of sleep', 'potion of sleeping'],
+    ['scroll of recharging', 'scroll of charging'],
+    ['recharging', 'scroll of charging'],
+    ['stone', 'rock'],
+    ['tee shirt', 't-shirt'],
+    ['t shirt', 't-shirt'],
+    ['kelp', 'kelp frond'],
+    ['eucalyptus', 'eucalyptus leaf'],
+    ['lembas', 'lembas wafer'],
+    ['tripe', 'tripe ration'],
+    ['cookie', 'fortune cookie'],
+    ['pie', 'cream pie'],
+    ['huge meatball', 'enormous meatball'],
+    ['huge chunk of meat', 'enormous meatball'],
+    ['lantern', 'brass lantern'],
+    ['camera', 'expensive camera'],
+    ['marker', 'magic marker'],
+    ['can opener', 'tin opener'],
+    ['hook', 'grappling hook'],
+    ['grappling iron', 'grappling hook'],
+    ['grapnel', 'grappling hook'],
+    ['grapple', 'grappling hook'],
+    ['smooth shield', 'shield of reflection'],
+    ['silver shield', 'shield of reflection'],
+    ['gauntlets of ogre power', 'gauntlets of power'],
+    ['gauntlets of giant strength', 'gauntlets of power'],
+    ['gloves of ogre power', 'gauntlets of power'],
+    ['gloves of giant strength', 'gauntlets of power'],
+    ['elven chain mail', 'elven mithril-coat'],
+    ['protection from shape shifters', 'ring of protection from shape changers'],
+    ['box', 'large box'],
+    ['luck stone', 'luckstone'],
+    ['load stone', 'loadstone'],
+    ['touch stone', 'touchstone'],
+    ['flintstone', 'flint'],
+]);
+
+function normalizeWishedSpelling(name) {
+    return String(name || '').replace(/armour/ig, match => match[0] === 'A' ? 'Armor' : 'armor');
+}
+
+function resolveWishedSpellingAlias(lowerName) {
+    const normalized = String(lowerName || '').trim().replace(/\s+/g, ' ');
+    const explicit = WISH_EXPLICIT_SPELLING_ALIASES.get(normalized);
+    if (explicit) return { name: explicit, skipNamedesc: true };
+    return { name: WISH_NAME_ALIASES.get(normalized) || normalized, skipNamedesc: false };
+}
+
+function makeWishedGrayStoneObject(lowerName) {
+    if (lowerName !== 'gray stone' && lowerName !== 'grey stone') return null;
+    const roll = rnd(38);
+    const name = roll <= 10 ? 'luckstone'
+        : roll <= 20 ? 'loadstone'
+            : roll <= 28 ? 'touchstone'
+                : 'flint';
+    const baseObject = WISH_BASE_OBJECTS.get(name);
+    const otmp = mksobj(baseObject.otyp, true, false);
+    return Object.assign(otmp, baseObject, {
+        kind: 'gray stone',
+        actualKind: name,
+        gemDescription: 'gray stone',
+        _display_color: CLR_GRAY,
+        wishedfor: true,
+    });
+}
+
+const WISH_GEM_COLORS = new Map([
+    ['white', CLR_WHITE],
+    ['blue', CLR_BLUE],
+    ['red', CLR_RED],
+    ['yellowish brown', CLR_BROWN],
+    ['orange', CLR_ORANGE],
+    ['yellow', CLR_YELLOW],
+    ['black', CLR_BLACK],
+    ['green', CLR_GREEN],
+    ['violet', CLR_MAGENTA],
+]);
+const WISH_REAL_GEMS = [
+    { name: 'dilithium crystal', description: 'white', prob: 2, displayName: 'dilithium crystal' },
+    { name: 'diamond', description: 'white', prob: 3, displayName: 'diamond' },
+    { name: 'ruby', description: 'red', prob: 4, displayName: 'ruby' },
+    { name: 'jacinth', description: 'orange', prob: 3, displayName: 'jacinth stone' },
+    { name: 'sapphire', description: 'blue', prob: 4, displayName: 'sapphire' },
+    { name: 'black opal', description: 'black', prob: 3, displayName: 'black opal' },
+    { name: 'emerald', description: 'green', prob: 5, displayName: 'emerald' },
+    { name: 'turquoise', description: 'green', prob: 6, displayName: 'turquoise stone' },
+    { name: 'citrine', description: 'yellow', prob: 4, displayName: 'citrine stone' },
+    { name: 'aquamarine', description: 'green', prob: 6, displayName: 'aquamarine stone' },
+    { name: 'amber', description: 'yellowish brown', prob: 8, displayName: 'amber stone' },
+    { name: 'topaz', description: 'yellowish brown', prob: 10, displayName: 'topaz stone' },
+    { name: 'jet', description: 'black', prob: 6, displayName: 'jet stone' },
+    { name: 'opal', description: 'white', prob: 12, displayName: 'opal' },
+    { name: 'chrysoberyl', description: 'yellow', prob: 8, displayName: 'chrysoberyl stone' },
+    { name: 'garnet', description: 'red', prob: 12, displayName: 'garnet stone' },
+    { name: 'amethyst', description: 'violet', prob: 14, displayName: 'amethyst stone' },
+    { name: 'jasper', description: 'red', prob: 15, displayName: 'jasper stone' },
+    { name: 'fluorite', description: 'violet', prob: 15, displayName: 'fluorite stone' },
+    { name: 'obsidian', description: 'black', prob: 9, displayName: 'obsidian stone' },
+    { name: 'agate', description: 'orange', prob: 12, displayName: 'agate stone' },
+    { name: 'jade', description: 'green', prob: 10, displayName: 'jade stone' },
+];
+const WISH_GLASS_GEMS = [
+    { name: 'worthless piece of white glass', description: 'white', prob: 77, displayName: 'worthless piece of white glass' },
+    { name: 'worthless piece of blue glass', description: 'blue', prob: 77, displayName: 'worthless piece of blue glass' },
+    { name: 'worthless piece of red glass', description: 'red', prob: 77, displayName: 'worthless piece of red glass' },
+    { name: 'worthless piece of yellowish brown glass', description: 'yellowish brown', prob: 77, displayName: 'worthless piece of yellowish brown glass' },
+    { name: 'worthless piece of orange glass', description: 'orange', prob: 76, displayName: 'worthless piece of orange glass' },
+    { name: 'worthless piece of yellow glass', description: 'yellow', prob: 77, displayName: 'worthless piece of yellow glass' },
+    { name: 'worthless piece of black glass', description: 'black', prob: 76, displayName: 'worthless piece of black glass' },
+    { name: 'worthless piece of green glass', description: 'green', prob: 77, displayName: 'worthless piece of green glass' },
+    { name: 'worthless piece of violet glass', description: 'violet', prob: 77, displayName: 'worthless piece of violet glass' },
+];
+const WISH_GEMS = [...WISH_REAL_GEMS, ...WISH_GLASS_GEMS];
+const WISH_GEMS_BY_DISPLAY = new Map();
+for (const gem of WISH_GEMS) {
+    WISH_GEMS_BY_DISPLAY.set(gem.name, gem);
+    WISH_GEMS_BY_DISPLAY.set(gem.displayName, gem);
+}
+
+function wishedGemObject(spec, { description = spec?.description || '', consumeNamedesc = true } = {}) {
+    if (!spec) return null;
+    if (consumeNamedesc) rn2(spec.prob + 1);
+    const otmp = mksobj(GEM_CLASS, false, false);
+    const display = spec.displayName || spec.name;
+    const color = WISH_GEM_COLORS.get(spec.description) ?? NO_COLOR;
+    return Object.assign(otmp, {
+        cls: 'gem',
+        glyph: '*',
+        kind: display,
+        actualKind: display,
+        gemDescription: description ? `${description} gem` : display,
+        color,
+        _display_color: color,
+        wishedfor: true,
+    });
+}
+
+function weightedWishedGem(candidates) {
+    const total = candidates.reduce((sum, gem) => sum + gem.prob + 1, 0);
+    let roll = rn2(total);
+    for (const gem of candidates) {
+        roll -= gem.prob + 1;
+        if (roll < 0) return gem;
+    }
+    return candidates[0] || null;
+}
+
+function canonicalWishedGlassName(lowerName) {
+    if (lowerName === 'looking glass') return '';
+    let name = String(lowerName || '').trim();
+    if (name === 'glass') {
+        const gem = WISH_GLASS_GEMS[rn2(WISH_GLASS_GEMS.length)];
+        return gem?.name || '';
+    }
+    if (!name.endsWith(' glass')) return '';
+    name = name.replace(/^worthless\s+/, '');
+    name = name.replace(/^pieces?\s+of\s+/, '');
+    name = name.replace(/^colou?red\s+/, '');
+    if (name === 'glass') {
+        const gem = WISH_GLASS_GEMS[rn2(WISH_GLASS_GEMS.length)];
+        return gem?.name || '';
+    }
+    return `worthless piece of ${name}`;
+}
+
+function makeWishedGemObject(lowerName) {
+    let name = String(lowerName || '').trim().replace(/^worthless pieces of /, 'worthless piece of ');
+    const suffix = name.match(/^(.+?)\s+(?:gems?|stones?)$/);
+    if (suffix) {
+        const description = suffix[1].trim();
+        const candidates = WISH_GEMS.filter(gem => gem.description === description || gem.name === description || gem.displayName === description);
+        if (candidates.length) return wishedGemObject(weightedWishedGem(candidates), { description, consumeNamedesc: false });
+    }
+    const glassName = canonicalWishedGlassName(name);
+    if (glassName) name = glassName;
+    const exact = WISH_GEMS_BY_DISPLAY.get(name);
+    if (exact) return wishedGemObject(exact);
+    return null;
+}
+
+function normalizeWishedGroupPhrase(name, quantity) {
+    const match = String(name || '').match(/^(pair|pairs|set|sets)\s+of\s+/i);
+    if (!match) return { name, quantity, matched: false };
+    const objectName = String(name).slice(match[0].length);
+    const nonStackingPairObject = /\b(?:boots|gloves|lenses)\b/i.test(objectName);
+    let wishedQuantity = quantity;
+    const group = match[1].toLowerCase();
+    if (nonStackingPairObject) wishedQuantity = 1;
+    else if (group === 'pair') wishedQuantity *= 2;
+    else if (!nonStackingPairObject && group === 'pairs' && quantity > 1) wishedQuantity *= 2;
+    return {
+        name: objectName,
+        quantity: wishedQuantity,
+        matched: true,
+    };
+}
+
+function applyWishedPluralQuantity(name, quantity) {
+    if (quantity !== 1) return quantity;
+    const lowerName = String(name || '').trim().toLowerCase();
+    const baseObject = WISH_BASE_OBJECTS.get(lowerName);
+    if (baseObject?.plural && lowerName === baseObject.plural) return 2;
+    if (/^(?:worthless\s+)?pieces\s+of\s+.+\s+glass$/.test(lowerName)) return 2;
+    if (/\bgems$/.test(lowerName) || /\bstones$/.test(lowerName)) return 2;
+    if (lowerName === 'fortune cookies') return 2;
+    return quantity;
+}
+
+function applyWishedInstanceName(item, name) {
+    const objectName = String(name || '').trim();
+    if (!item || !objectName || item.artifact) return;
+    item.oname = objectName;
+    item._wish_object_name = objectName;
+}
+
+function wishedObjectFromName(name, qualifiers = {}) {
+    const wishName = String(name || '').trim();
+    const lowerWishName = wishName.toLowerCase();
+    const artifact = makeArtifactWishObject(lowerWishName, { wizardMode: !!game.flags?.debug });
+    if (artifact) return artifact;
+
+    const named = splitWishedTextClause(wishName, 'named');
+    let baseText = named?.base || wishName;
+    const called = splitWishedTextClause(baseText, 'called');
+    if (called) {
+        baseText = called.base;
+        qualifiers = { ...qualifiers, wishCalledName: unquoteWishedText(called.tail) };
+    }
+    const labeled = splitWishedLabelClause(baseText);
+    if (labeled) {
+        baseText = labeled.base;
+        qualifiers = { ...qualifiers, wishLabelName: unquoteWishedText(labeled.tail) };
+    }
+    const baseName = normalizeWishedSpelling(baseText);
+    const item = wishedBaseObjectFromName(baseName.toLowerCase(), qualifiers, baseName);
+    if (named?.tail) applyWishedInstanceName(item, named.tail);
+    return item;
+}
+
+function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = lowerName) {
+    const spellingAlias = resolveWishedSpellingAlias(lowerName);
+    lowerName = spellingAlias.name;
+    if (qualifiers.wishCalledName) {
+        const calledWish = resolveCalledWishName(lowerName, qualifiers.wishCalledName);
+        if (calledWish)
+            return wishedBaseObjectFromName(calledWish, { ...qualifiers, wishCalledName: '' }, calledWish);
+    }
+    if (lowerName === 'spell') return noFittingWishObject();
+    if (lowerName === 'paperback' || lowerName === 'paperback book') return makeNovelWishObject();
+    if (lowerName === 'paperback spellbook') return noFittingWishObject();
+
+    const tinWish = parseWishedTinName(lowerName);
+    if (tinWish) return makeWishedTinObject(tinWish);
+
+    const yendorAmulet = makeAmuletOfYendorWishObject(lowerName, qualifiers);
+    if (yendorAmulet) return yendorAmulet;
+
+    const statueWish = parseWishedStatueName(lowerName, qualifiers);
+    if (statueWish) {
+        const statue = makeWishedStatueObject(statueWish, qualifiers);
+        if (statue) return statue;
+    }
+
+    const figurineWish = parseWishedFigurineName(lowerName, qualifiers);
+    if (figurineWish) return makeWishedFigurineObject(figurineWish, qualifiers);
+
+    const corpseWish = parseWishedCorpseName(lowerName, qualifiers);
+    if (corpseWish) return makeWishedCorpseObject(corpseWish, qualifiers);
+
+    const globWish = parseWishedGlobName(lowerName, qualifiers);
+    if (globWish) return makeWishedGlobObject(globWish);
+
+    const eggWish = parseWishedEggName(lowerName, qualifiers);
+    if (eggWish) return makeWishedEggObject(eggWish, qualifiers);
+
+    const specialSubstitution = substituteNonWizardSpecialWish(lowerName);
+    if (specialSubstitution) return specialSubstitution;
+
+    const dragonArmorWish = parseWishedDragonArmorName(lowerName);
+    if (dragonArmorWish) return makeWishedDragonArmorObject(dragonArmorWish);
+
+    const grayStoneWish = makeWishedGrayStoneObject(lowerName);
+    if (grayStoneWish) return grayStoneWish;
+
+    const gemWish = makeWishedGemObject(lowerName);
+    if (gemWish) return gemWish;
 
     const baseObject = WISH_BASE_OBJECTS.get(lowerName);
     if (baseObject) {
         const namedescBound = WISH_BASE_NAMEDESC_BOUNDS.get(lowerName);
-        if (namedescBound) rn2(namedescBound);
+        if (namedescBound && !spellingAlias.skipNamedesc) rn2(namedescBound);
+        const { wishSpeRn1, ...baseFields } = baseObject;
         const otmp = mksobj(baseObject.otyp, true, false);
-        return Object.assign(otmp, baseObject, { wishedfor: true });
+        if (wishSpeRn1) otmp.spe = rn1(wishSpeRn1[0], wishSpeRn1[1]);
+        return Object.assign(otmp, baseFields, { wishedfor: true });
     }
 
-    const wandWish = lowerName.match(/^wand of ([a-z ]+?)(?:\s+\(0:(\d+)\))?$/);
+    const wandWish = lowerName.match(/^wand of ([a-z ]+?)(?:\s+\((?:(\d+):)?(\d+)\))?$/);
     if (wandWish && WAND_NAME_TO_INDEX.has(wandWish[1])) {
         const wand = wandWish[1];
+        const wandIndex = WAND_NAME_TO_INDEX.get(wand);
         rn2(WAND_WISH_NAMEDESC_BOUNDS.get(wand));
-        game._mkobj_wand_index = WAND_NAME_TO_INDEX.get(wand);
+        game._mkobj_wand_index = wandIndex;
         const otmp = mksobj(WAND_CLASS, true, false);
+        let spe = wandWish[3] ? capWishSpe(Number(wandWish[3])) : otmp.spe;
+        let recharged = wandWish[2] ? Math.min(Number(wandWish[2]), 7) : 0;
+        let ignoreRequestedSpe = false;
+        if (wand === 'wishing' && !game.flags?.debug) {
+            spe = rn2(10) ? -1 : 0;
+            recharged = 1;
+            ignoreRequestedSpe = true;
+        } else if (!game.flags?.debug) {
+            spe = wishedSpeForItem(otmp, spe);
+        }
         return Object.assign(otmp, {
             cls: 'wand',
             glyph: '/',
             kind: wand,
             wand,
-            wandIndex: WAND_NAME_TO_INDEX.get(wand),
-            spe: wandWish[2] ? Number(wandWish[2]) : otmp.spe,
+            wandIndex,
+            spe,
+            recharged,
             known: false,
             wishedfor: true,
+            _wish_ignore_requested_spe: ignoreRequestedSpe,
+            _wish_spe_from_suffix: wandWish[3] != null,
         });
     }
 
@@ -5078,7 +9650,7 @@ function wishedObjectFromName(lowerName) {
         const ringName = lowerName.replace(/^ring of /, '');
         const ringIndex = IDENTIFIED_RING_NAMES.indexOf(ringName);
         if (ringIndex >= 0) {
-            rn2(2);
+            if (!spellingAlias.skipNamedesc) rn2(2);
             game._mkobj_ring_roll = ringIndex + 1;
         }
         const otmp = mksobj(RING_CLASS, true, false);
@@ -5097,7 +9669,7 @@ function wishedObjectFromName(lowerName) {
     if (lowerName.includes('amulet')) {
         const amuletIndex = IDENTIFIED_AMULET_NAMES.indexOf(lowerName);
         const namedescBound = WISH_AMULET_NAMEDESC_BOUNDS.get(lowerName);
-        if (namedescBound) rn2(namedescBound);
+        if (namedescBound && !spellingAlias.skipNamedesc) rn2(namedescBound);
         game._mkobj_bad_amulet = BAD_AMULET_NAMES.has(lowerName);
         const otmp = mksobj(AMULET_CLASS, true, false);
         const appearance = amuletIndex >= 0 ? game._object_descriptions?.amulets?.[amuletIndex] : '';
@@ -5118,37 +9690,83 @@ function wishedObjectFromName(lowerName) {
         });
     }
 
+    if (qualifiers.unlabeled && lowerName === 'paper')
+        return makeAmbiguousBlankPaperWishObject();
+
     if (/potion|juice|water/.test(lowerName)) {
-        const potionName = lowerName.replace(/^potion(?: of)?\s+/, '');
-        const potionIndex = IDENTIFIED_POTION_NAMES.indexOf(potionName);
-        if (potionIndex >= 0) rn2(POTION_WISH_PROBS[potionIndex] + 1);
-        const otmp = mksobj(potionIndex >= 0 ? POTION_WISH_BASE + potionIndex : POTION_CLASS, true, false);
+        let potionName = lowerName.replace(/^potion(?: of)?\s+/, '');
+        const appearanceWish = lowerName.match(/^(.+?) potions?$/);
+        let appearanceIndex = -1;
+        if (appearanceWish && !lowerName.startsWith('potion')) {
+            const appearanceKey = wishedLabelKey(appearanceWish[1]);
+            appearanceIndex = (game._object_descriptions?.potions || [])
+                .findIndex(potion => wishedLabelKey(potion.description || '') === appearanceKey);
+            if (appearanceIndex >= 0) potionName = IDENTIFIED_POTION_NAMES[appearanceIndex] || potionName;
+        }
+        const holyWater = potionName === 'holy water' || lowerName === 'holy water';
+        const unholyWater = potionName === 'unholy water' || lowerName === 'unholy water';
+        const waterPotion = lowerName === 'water' || potionName === 'water' || holyWater || unholyWater;
+        const oilPotion = potionName === 'oil';
+        const potionIndex = appearanceIndex >= 0 ? appearanceIndex : IDENTIFIED_POTION_NAMES.indexOf(potionName);
+        if (potionIndex >= 0 && !spellingAlias.skipNamedesc) rn2(POTION_WISH_PROBS[potionIndex] + 1);
+        const otmp = mksobj(waterPotion ? POT_WATER : oilPotion ? POT_OIL : potionIndex >= 0 ? POTION_WISH_BASE + potionIndex : POTION_CLASS, true, false);
+        if (oilPotion && otmp.age == null) otmp.age = 400;
         const appearance = potionIndex >= 0 ? game._object_descriptions?.potions?.[potionIndex]?.description : '';
+        if (holyWater) {
+            otmp.blessed = true;
+            otmp.cursed = false;
+        } else if (unholyWater) {
+            otmp.blessed = false;
+            otmp.cursed = true;
+        }
         return Object.assign(otmp, {
             cls: 'potion',
             glyph: '!',
-            kind: appearance ? `${appearance} potion` : lowerName,
-            actualKind: potionIndex >= 0 ? `potion of ${potionName}` : lowerName,
-            potionIndex,
+            kind: waterPotion ? 'water' : appearance ? `${appearance} potion` : lowerName,
+            actualKind: waterPotion ? 'potion of water' : potionIndex >= 0 ? `potion of ${potionName}` : lowerName,
+            potionIndex: waterPotion ? null : potionIndex,
             known: false,
             wishedfor: true,
         });
     }
 
     if (lowerName.includes('scroll')) {
+        const wishedLabel = qualifiers.wishLabelName || parseWishedScrollLabel(originalName);
+        if (wishedLabel) {
+            const labelKey = wishedLabelKey(wishedLabel);
+            const scrollIndex = (game._object_descriptions?.scrolls || [])
+                .findIndex(label => wishedLabelKey(label) === labelKey);
+            if (scrollIndex >= 0 && scrollIndex < IDENTIFIED_SCROLL_NAMES.length) {
+                rn2(SCROLL_WISH_PROBS[scrollIndex] + 1);
+                return makeWishedKnownScrollObject(scrollIndex, wishedLabel);
+            }
+            if (scrollIndex >= IDENTIFIED_SCROLL_NAMES.length) {
+                const otmp = mksobj(SCROLL_CLASS, true, false);
+                const label = game._object_descriptions?.scrolls?.[scrollIndex] || wishedLabel;
+                return Object.assign(otmp, {
+                    cls: 'scroll',
+                    glyph: '?',
+                    kind: `scroll labeled ${label}`,
+                    known: false,
+                    wishedfor: true,
+                });
+            }
+        }
         const scrollName = lowerName.replace(/^scrolls?(?: of)?\s+/, '');
+        if ((qualifiers.unlabeled && /^scrolls?$/.test(lowerName)) || scrollName === 'blank paper')
+            return makeBlankScrollWishObject();
         const scrollIndex = IDENTIFIED_SCROLL_NAMES.indexOf(scrollName);
         const mailScroll = scrollName === 'mail';
         if (mailScroll) rn2(1);
-        else if (scrollIndex >= 0) rn2(SCROLL_WISH_PROBS[scrollIndex] + 1);
-        const otyp = scrollIndex >= 0 ? SCR_ENCHANT_ARMOR + scrollIndex : SCROLL_CLASS;
-        const otmp = mksobj(otyp, !mailScroll, false);
+        else if (scrollIndex >= 0 && !spellingAlias.skipNamedesc) rn2(SCROLL_WISH_PROBS[scrollIndex] + 1);
+        if (scrollIndex >= 0) return makeWishedKnownScrollObject(scrollIndex);
+        const otmp = mksobj(SCROLL_CLASS, !mailScroll, false);
         const label = game._object_descriptions?.scrolls?.[scrollIndex] || 'ZELGO MER';
         return Object.assign(otmp, {
             cls: 'scroll',
             glyph: '?',
-            kind: scrollName === 'mail' ? 'stamped scroll' : scrollIndex >= 0 ? `scroll labeled ${label}` : lowerName,
-            actualKind: scrollIndex >= 0 ? `scroll of ${scrollName}` : lowerName,
+            kind: scrollName === 'mail' ? 'stamped scroll' : lowerName,
+            actualKind: lowerName,
             scrollIndex,
             known: false,
             wishedfor: true,
@@ -5157,7 +9775,30 @@ function wishedObjectFromName(lowerName) {
 
     if (/spellbook|book/.test(lowerName)) {
         const spellName = lowerName.replace(/^spellbook(?: of)?\s+/, '');
+        if ((qualifiers.unlabeled && lowerName === 'spellbook') || spellName === 'blank paper')
+            return makeBlankSpellbookWishObject();
         const spellbookNames = Object.keys(SPELLBOOK_LEVELS);
+        if (qualifiers.wishLabelName) {
+            const labelKey = wishedLabelKey(qualifiers.wishLabelName);
+            const spellbookIndex = (game._object_descriptions?.spellbooks || [])
+                .findIndex(label => wishedLabelKey(label) === labelKey);
+            if (spellbookIndex >= 0 && spellbookIndex < spellbookNames.length) {
+                const labeledSpellName = spellbookNames[spellbookIndex];
+                const namedescBound = WISH_SPELLBOOK_NAMEDESC_BOUNDS.get(labeledSpellName);
+                if (namedescBound) rn2(namedescBound);
+                const otmp = mksobj(SPBOOK_NO_NOVEL, true, false);
+                return Object.assign(otmp, {
+                    cls: 'spellbook',
+                    glyph: '+',
+                    kind: `spellbook of ${labeledSpellName}`,
+                    spellName: labeledSpellName,
+                    spellbookIndex,
+                    appearance: game._object_descriptions?.spellbooks?.[spellbookIndex] || qualifiers.wishLabelName,
+                    known: false,
+                    wishedfor: true,
+                });
+            }
+        }
         const spellbookIndex = spellbookNames.indexOf(spellName);
         const namedescBound = WISH_SPELLBOOK_NAMEDESC_BOUNDS.get(spellName);
         if (namedescBound) rn2(namedescBound);
@@ -5175,6 +9816,8 @@ function wishedObjectFromName(lowerName) {
     }
 
     if (/armor|mail|helm|gauntlets?|gloves|boots|cloak|shirt|robe|shield/.test(lowerName)) {
+        const namedescBound = WISH_BASE_NAMEDESC_BOUNDS.get(lowerName);
+        if (namedescBound && !spellingAlias.skipNamedesc) rn2(namedescBound);
         const otmp = mksobj(ARMOR_CLASS, true, false);
         const armorAppearance = ARMOR_WISH_APPEARANCES[lowerName];
         const [group, index, fallback] = armorAppearance || [];
@@ -5189,7 +9832,7 @@ function wishedObjectFromName(lowerName) {
         });
     }
 
-    if (/ration|apple|orange|pie|food|tin|corpse|cookie/.test(lowerName)) {
+    if (isWishedFoodName(lowerName)) {
         const namedescBound = WISH_FOOD_NAMEDESC_BOUNDS.get(lowerName);
         if (namedescBound) rn2(namedescBound);
         const otmp = mksobj(FOOD_CLASS, true, false);
@@ -5251,92 +9894,117 @@ function dataPagerLines(name, page) {
     return rows;
 }
 
+function maybeWishedInstanceName(obj, baseName) {
+    const objectName = String(obj?._wish_object_name || '').trim();
+    const name = String(baseName || '');
+    if (!objectName || obj?.artifact || / named .+$/i.test(name)) return name;
+    return `${name} named ${objectName}`;
+}
+
 export function pickupObjectName(obj) {
+    const named = name => maybeWishedInstanceName(obj, name);
+    const archeologist = (game.urole?.name?.m || game._startup_role) === 'Archeologist';
     if (obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$')
         return (obj.quan || 1) > 1 ? 'gold pieces' : 'gold piece';
-    if (obj.otyp === 'corpse' || obj.otyp === CORPSE) return `${obj.corpsenm?.name || 'monster'} corpse`;
-    if ((obj.kind === 'statue' || obj.otyp === STATUE) && obj.corpsenm?.name) return `statue of a ${obj.corpsenm.name}`;
-    if (obj.otyp === LARGE_BOX) return 'large box';
-    if (obj.otyp === CHEST) return 'chest';
-    if (obj.otyp === ICE_BOX) return 'ice box';
-    if (BAG_OBJECT_TYPES.has(obj.otyp)) return obj.contents?.length || !obj.cknown ? 'bag' : 'empty bag';
-    if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) return 'lamp';
+    if (obj.artifact) return artifactObjectName(obj) || obj.kind;
+    if (obj.otyp === 'corpse' || obj.otyp === CORPSE) return corpseObjectName(obj);
+    if (obj.otyp === EGG) return named(eggObjectName(obj));
+    if (obj.globby) return named(globObjectName(obj));
+    if ((obj.kind === 'statue' || obj.otyp === STATUE) && obj.corpsenm?.name) {
+        const historic = archeologist && (((obj.spe || 0) & CORPSTAT_HISTORIC) || obj.historic);
+        return `${historic ? 'historic ' : ''}statue of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`;
+    }
+    if ((obj.kind === 'figurine' || obj.actualKind === 'figurine') && obj.corpsenm?.name)
+        return named(`figurine of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
+    if (isTinObject(obj)) return named(tinObjectName(obj));
+    if (obj.otyp === LARGE_BOX) return named('large box');
+    if (obj.otyp === CHEST) return named('chest');
+    if (obj.otyp === ICE_BOX) return named('ice box');
+    if (BAG_OBJECT_TYPES.has(obj.otyp)) return named(obj.contents?.length || !obj.cknown ? 'bag' : 'empty bag');
+    if (obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) return named(maybeLitObjectName(obj, 'lamp'));
+    if (obj.otyp === BRASS_LANTERN) return named(maybeLitObjectName(obj, 'brass lantern'));
+    if (obj.otyp === TALLOW_CANDLE || obj.otyp === WAX_CANDLE) {
+        const name = obj.kind || (obj.otyp === WAX_CANDLE ? 'wax candle' : 'tallow candle');
+        return named(maybeLitObjectName(obj, (obj.quan || 1) > 1 ? obj.plural || `${name}s` : name));
+    }
     if (obj.otyp === SCROLL_CLASS || obj.cls === 'scroll') {
-        if ((obj.quan || 1) > 1 && obj.plural) return obj.plural;
+        if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
         const blankScroll = obj.otyp === SCR_BLANK_PAPER || obj.scrollIndex === 21
             || obj.kind === 'blank paper' || (obj.scrollIndex == null && !obj.kind);
         if (blankScroll) {
             if (obj.known === true || obj.actualKind === 'scroll of blank paper')
-                return (obj.quan || 1) > 1 ? 'scrolls of blank paper' : 'scroll of blank paper';
-            return (obj.quan || 1) > 1 ? 'unlabeled scrolls' : 'unlabeled scroll';
+                return named((obj.quan || 1) > 1 ? 'scrolls of blank paper' : 'scroll of blank paper');
+            return named((obj.quan || 1) > 1 ? 'unlabeled scrolls' : 'unlabeled scroll');
         }
         if (obj.kind?.startsWith?.('scroll:')) {
             const name = obj.kind.slice(7);
-            return (obj.quan || 1) > 1 ? `scrolls of ${name}` : obj.singular || `scroll of ${name}`;
+            return named((obj.quan || 1) > 1 ? `scrolls of ${name}` : obj.singular || `scroll of ${name}`);
         }
         if (obj.kind?.startsWith?.('scroll labeled ')) {
             const label = obj.kind.slice('scroll labeled '.length);
-            return (obj.quan || 1) > 1 ? `scrolls labeled ${label}` : obj.kind;
+            return named((obj.quan || 1) > 1 ? `scrolls labeled ${label}` : obj.kind);
         }
-        if (obj.kind === 'stamped scroll') return (obj.quan || 1) > 1 ? 'stamped scrolls' : obj.kind;
+        if (obj.kind === 'stamped scroll') return named((obj.quan || 1) > 1 ? 'stamped scrolls' : obj.kind);
         if (obj.kind) {
             const name = obj.kind.replace(/^scroll of /, '');
-            return (obj.quan || 1) > 1 ? `scrolls of ${name}` : `scroll of ${name}`;
+            return named((obj.quan || 1) > 1 ? `scrolls of ${name}` : `scroll of ${name}`);
         }
         const label = game._object_descriptions?.scrolls?.[obj.scrollIndex] || 'ZELGO MER';
-        return (obj.quan || 1) > 1 ? `scrolls labeled ${label}` : `scroll labeled ${label}`;
+        return named((obj.quan || 1) > 1 ? `scrolls labeled ${label}` : `scroll labeled ${label}`);
     }
     if (obj.otyp === POTION_CLASS || obj.cls === 'potion') {
-        if ((obj.quan || 1) > 1 && obj.plural) return obj.plural;
-        if (obj.kind?.startsWith?.('potion:')) return obj.singular || `potion of ${obj.kind.slice(7)}`;
+        if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
+        if (obj.kind?.startsWith?.('potion:')) return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, obj.singular || `potion of ${obj.kind.slice(7)}`)));
         const rawKind = String(obj.kind || '').replace(/^potion of /, '');
         if (rawKind === 'water' && (obj.blessed || obj.cursed)) {
             const kind = obj.blessed ? 'holy water' : 'unholy water';
-            return (obj.quan || 1) > 1 ? `potions of ${kind}` : `potion of ${kind}`;
+            return named((obj.quan || 1) > 1 ? `potions of ${kind}` : `potion of ${kind}`);
         }
         if (obj.kind === 'holy water' || obj.kind === 'unholy water')
-            return (obj.quan || 1) > 1 ? `potions of ${obj.kind}` : `potion of ${obj.kind}`;
-        if (obj.kind?.endsWith?.(' potion')) return obj.kind;
+            return named((obj.quan || 1) > 1 ? `potions of ${obj.kind}` : `potion of ${obj.kind}`);
+        if (obj.kind?.endsWith?.(' potion')) return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, obj.kind)));
         if (obj.kind) {
             const name = obj.kind.replace(/^potion of /, '');
-            return (obj.quan || 1) > 1 ? `potions of ${name}` : `potion of ${name}`;
+            return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, (obj.quan || 1) > 1 ? `potions of ${name}` : `potion of ${name}`)));
         }
         const appearance = game._object_descriptions?.potions?.[obj.potionIndex]?.description || 'clear';
-        return `${appearance} potion`;
+        return named(maybeLitObjectName(obj, maybeDilutedPotionName(obj, `${appearance} potion`)));
     }
     if (obj.otyp === WAND_CLASS || obj.cls === 'wand') {
         if (obj.known === false) {
             const appearance = game._object_descriptions?.wands?.[obj.wandIndex]?.description;
-            return appearance ? `${appearance} wand` : 'wand';
+            return named(appearance ? `${appearance} wand` : 'wand');
         }
-        if (obj.wand === 'sleep' || obj.wandIndex === 22) return 'wand of sleep';
-        if (obj.kind && obj.kind !== 'sleep') return obj.kind.startsWith('wand') ? obj.kind : `wand of ${obj.kind}`;
+        if (obj.wand === 'sleep' || obj.wandIndex === 22) return named('wand of sleep');
+        if (obj.kind && obj.kind !== 'sleep') return named(obj.kind.startsWith('wand') ? obj.kind : `wand of ${obj.kind}`);
         const appearance = game._object_descriptions?.wands?.[obj.wandIndex]?.description;
-        return appearance ? `${appearance} wand` : 'wand';
+        return named(appearance ? `${appearance} wand` : 'wand');
     }
     if (obj.cls === 'spellbook' || obj.otyp === SPBOOK_NO_NOVEL || obj.otyp === SPE_HEALING) {
-        if ((obj.quan || 1) > 1 && obj.plural) return obj.plural;
+        if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
         const name = obj.spellName || obj.spell?.name || String(obj.kind || '').replace(/^spellbook(?: of)? /, '');
         if (obj.known === false || (obj.otyp === SPE_HEALING && !obj.cls) || (obj.otyp === SPBOOK_NO_NOVEL && !name)) {
             const appearance = obj.appearance || game._object_descriptions?.spellbooks?.[
                 obj.spellbookIndex ?? HEALING_SPELLBOOK_APPEARANCE_INDEX
             ];
-            if (appearance) return `${appearance} spellbook`;
+            if (appearance) return named(`${appearance} spellbook`);
         }
-        if (!name) return 'spellbook';
-        return (obj.quan || 1) > 1 ? `spellbooks of ${name}` : `spellbook of ${name}`;
+        if (!name) return named('spellbook');
+        return named((obj.quan || 1) > 1 ? `spellbooks of ${name}` : `spellbook of ${name}`);
     }
     if (obj.glyph === '=' || obj.cls === 'ring') {
         if (typeof obj.kind !== 'string')
-            return `${game._object_descriptions?.rings?.[(obj.ringRoll || 1) - 1] || 'ruby'} ring`;
-        return obj.kind;
+            return named(`${game._object_descriptions?.rings?.[(obj.ringRoll || 1) - 1] || 'ruby'} ring`);
+        return named(obj.kind);
     }
+    if (obj.fakeAmuletOfYendor) return obj.known ? obj.actualKind : 'Amulet of Yendor';
+    if (obj.realAmuletOfYendor) return 'Amulet of Yendor';
     if (obj.otyp === AMULET_CLASS || obj.cls === 'amulet') {
         if (obj.known === false || !obj.kind) {
             const appearance = obj.appearance || game._object_descriptions?.amulets?.[obj.amuletIndex] || 'amulet';
-            return `${appearance} amulet`;
+            return named(`${appearance} amulet`);
         }
-        return obj.kind || 'amulet';
+        return named(obj.kind || 'amulet');
     }
     if (obj.cls === 'armor') {
         const kind = String(obj.actualKind || obj.kind || '').toLowerCase();
@@ -5350,43 +10018,41 @@ export function pickupObjectName(obj) {
             });
         if (!typeKnown && (obj.appearance || armorAppearance)) {
             const [group, index, fallback] = armorAppearance || [];
-            return obj.appearance || game._object_descriptions?.[group]?.[index] || fallback;
+            return named(obj.appearance || game._object_descriptions?.[group]?.[index] || fallback);
         }
-        return obj.kind || 'armor';
+        return named(obj.kind || 'armor');
     }
-    if (obj.otyp === MIRROR) return 'looking glass';
+    if (obj.otyp === MIRROR) return named('looking glass');
     if (obj.otyp === DART || obj.kind === 'dart') {
         const poisoned = obj.opoisoned ? 'poisoned ' : '';
-        return (obj.quan || 1) > 1 ? `${poisoned}darts` : `${poisoned}dart`;
+        return named((obj.quan || 1) > 1 ? `${poisoned}darts` : `${poisoned}dart`);
     }
     if (obj.cls === 'weapon' || obj.otyp === WEAPON_CLASS || obj.glyph === ')') {
         const kind = String(obj.actualKind || obj.kind || '').toLowerCase();
         if (kind === 'orcish dagger' || obj.otyp === ORCISH_DAGGER) {
             const known = obj.known === true || (game._discoveries || [])
                 .some(entry => entry.section === 'Weapons' && entry.name === 'orcish dagger' && entry.starred);
-            if (known) return (obj.quan || 1) > 1 ? 'orcish daggers' : 'orcish dagger';
-            return (obj.quan || 1) > 1 ? 'crude daggers' : 'crude dagger';
+            if (known) return named((obj.quan || 1) > 1 ? 'orcish daggers' : 'orcish dagger');
+            return named((obj.quan || 1) > 1 ? 'crude daggers' : 'crude dagger');
         }
     }
     if (obj.otyp === FOOD_CLASS || obj.cls === 'food') {
-        const buc = game._startup_role === 'Priest' || obj.bknown
-            ? obj.cursed ? 'cursed ' : obj.blessed ? 'blessed ' : ''
-            : '';
-        if ((obj.quan || 1) > 1 && obj.plural) return obj.plural;
-        if ((obj.quan || 1) > 1 && obj.kind === 'food ration') return `${buc}food rations`;
-        if ((obj.quan || 1) > 1 && obj.kind === 'cram ration') return `${buc}cram rations`;
-        if (obj.kind === 'tripe') return `${buc}${(obj.quan || 1) > 1 ? 'tripe rations' : 'tripe ration'}`;
-        if (obj.kind?.startsWith?.('tin:')) return `${buc}${obj.singular || 'tin'}`;
-        if (obj.kind) return `${buc}${obj.kind}`;
-        if ((obj.foodRoll || 1000) <= 140) return `${buc}tripe ration`;
-        return `${buc}food ration`;
+        const buc = foodBucPrefix(obj);
+        if ((obj.quan || 1) > 1 && obj.plural) return named(`${buc}${maybePartlyEatenFoodName(obj, obj.plural)}`);
+        if ((obj.quan || 1) > 1 && obj.kind === 'food ration') return named(`${buc}${maybePartlyEatenFoodName(obj, 'food rations')}`);
+        if ((obj.quan || 1) > 1 && obj.kind === 'cram ration') return named(`${buc}${maybePartlyEatenFoodName(obj, 'cram rations')}`);
+        if (obj.kind === 'tripe') return named(`${buc}${maybePartlyEatenFoodName(obj, (obj.quan || 1) > 1 ? 'tripe rations' : 'tripe ration')}`);
+        if (obj.kind?.startsWith?.('tin:')) return named(`${buc}${maybePartlyEatenFoodName(obj, obj.singular || 'tin')}`);
+        if (obj.kind) return named(`${buc}${maybePartlyEatenFoodName(obj, obj.kind)}`);
+        if ((obj.foodRoll || 1000) <= 140) return named(`${buc}${maybePartlyEatenFoodName(obj, 'tripe ration')}`);
+        return named(`${buc}${maybePartlyEatenFoodName(obj, 'food ration')}`);
     }
     if (obj.otyp === GEM_CLASS) {
         const name = obj.gemDescription || 'white gem';
-        return (obj.quan || 1) > 1 ? `${name}s` : name;
+        return named((obj.quan || 1) > 1 ? `${name}s` : name);
     }
-    if ((obj.quan || 1) > 1 && obj.plural) return obj.plural;
-    return obj.kind || (obj.otyp != null ? String(obj.otyp) : 'object');
+    if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
+    return named(obj.kind || (obj.otyp != null ? String(obj.otyp) : 'object'));
 }
 
 function containerSortRank(item) {
@@ -5444,6 +10110,8 @@ function pickupObjectPhrase(obj) {
         return `${article} ${spe}${name}`;
     }
     if (count > 1) return `${count} ${name}`;
+    if (obj.unique) return `the ${name}`;
+    if (obj.noArticle) return name;
     if (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets'))
         return `a pair of ${name}`;
     const article = /^[aeiou]/i.test(name) || name === 'orcish helm' ? 'an' : 'a';
@@ -5519,12 +10187,19 @@ function shopObjectNameKnown(obj) {
     return true;
 }
 
+function levelRoomByRoomno(roomno) {
+    if (roomno < ROOMOFFSET) return null;
+    const idx = roomno - ROOMOFFSET;
+    return game.level?.rooms?.[idx]
+        || (game.level?.subrooms || []).find(room => room?.roomnoidx === idx)
+        || null;
+}
+
 function shopItemPrice(obj, x = game.u?.ux, y = game.u?.uy) {
     if (!obj || obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$') return null;
     const loc = game.level?.at(x, y);
     const roomno = loc?.roomno || 0;
-    if (roomno < ROOMOFFSET) return null;
-    const room = game.level?.rooms?.[roomno - ROOMOFFSET];
+    const room = levelRoomByRoomno(roomno);
     if (!room || room.rtype < SHOPBASE) return null;
     const shkp = room.resident || (game.level?.monsters || [])
         .find(mon => mon.isshk && mon.shoproom === roomno);
@@ -5924,6 +10599,7 @@ function deathAttributesPage2() {
 function deathConductLines() {
     const rows = [[0, 41, 'Voluntary challenges:']];
     let row = 1;
+    const genocideCount = genocidedMonsterNames().length;
     rows.push(
         [row++, 42, 'Character rerolling was not enabled.'],
         [row++, 42, 'You went without food.'],
@@ -5933,7 +10609,9 @@ function deathConductLines() {
     if (!game._chronicle_first_kill) rows.push([row++, 42, 'You were a pacifist.']);
     rows.push(
         [row++, 42, 'You were illiterate.'],
-        [row++, 42, 'You never genocided any monsters.'],
+        [row++, 42, genocideCount
+            ? `You genocided ${genocideCount} type${genocideCount === 1 ? '' : 's'} of monster${genocideCount === 1 ? '' : 's'}.`
+            : 'You never genocided any monsters.'],
         [row++, 42, 'You never polymorphed an object.'],
         [row++, 42, 'You never changed form.'],
         [row++, 42, 'You used no wishes.'],
@@ -5958,6 +10636,23 @@ const IDENTIFIED_SCROLL_NAMES = [
     'magic mapping', 'amnesia', 'fire', 'earth', 'punishment', 'charging',
     'stinking cloud',
 ];
+const GENOCIDE_MONSTER_CLASS_NAMES = new Map([
+    ['ant', 'a'], ['blob', 'b'], ['cockatrice', 'c'], ['dog', 'd'],
+    ['eye', 'e'], ['feline', 'f'], ['gnome', 'G'], ['gremlin', 'g'],
+    ['humanoid', 'h'], ['imp', 'i'], ['jelly', 'j'], ['kobold', 'k'],
+    ['leprechaun', 'l'], ['mimic', 'm'], ['nymph', 'n'], ['orc', 'o'],
+    ['piercer', 'p'], ['quadruped', 'q'], ['rodent', 'r'], ['spider', 's'],
+    ['trapper', 't'], ['unicorn', 'u'], ['vortex', 'v'], ['worm', 'w'],
+    ['xan', 'x'], ['light', 'y'], ['zruty', 'z'], ['angel', 'A'],
+    ['bat', 'B'], ['centaur', 'C'], ['dragon', 'D'], ['elemental', 'E'],
+    ['fungus', 'F'], ['giant', 'H'], ['jabberwock', 'J'], ['kop', 'K'],
+    ['lich', 'L'], ['mummy', 'M'], ['naga', 'N'], ['ogre', 'O'],
+    ['pudding', 'P'], ['quantum mechanic', 'Q'], ['rust monster', 'R'],
+    ['snake', 'S'], ['troll', 'T'], ['umber hulk', 'U'], ['vampire', 'V'],
+    ['wraith', 'W'], ['xorn', 'X'], ['apelike creature', 'Y'],
+    ['zombie', 'Z'], ['human', '@'], ['demon', '&'], ['eel', ';'],
+    ['ghost', ' '],
+]);
 const SCROLL_WISH_PROBS = [
     63, 45, 53, 35, 65, 80, 45, 15, 15, 90, 55, 33, 25, 180, 45, 35,
     30, 18, 15, 15, 15,
@@ -5987,9 +10682,9 @@ const BAD_AMULET_NAMES = new Set([
 ]);
 const IDENTIFIED_GEM_NAMES = [
     [2, 'dilithium crystal'], [5, 'diamond'], [9, 'ruby'], [12, 'jacinth stone'],
-    [16, 'sapphire'], [19, 'black opal'], [24, 'emerald'], [30, 'turquoise'],
-    [34, 'citrine'], [40, 'aquamarine'], [48, 'amber'], [58, 'topaz'],
-    [64, 'jet'], [76, 'opal'], [84, 'chrysoberyl stone'], [96, 'garnet stone'],
+    [16, 'sapphire'], [19, 'black opal'], [24, 'emerald'], [30, 'turquoise stone'],
+    [34, 'citrine stone'], [40, 'aquamarine stone'], [48, 'amber stone'], [58, 'topaz stone'],
+    [64, 'jet stone'], [76, 'opal'], [84, 'chrysoberyl stone'], [96, 'garnet stone'],
     [110, 'amethyst stone'], [125, 'jasper stone'], [140, 'fluorite stone'],
     [149, 'obsidian stone'], [161, 'agate stone'], [171, 'jade stone'],
     [248, 'worthless piece of white glass'], [325, 'worthless piece of blue glass'],
@@ -6056,7 +10751,11 @@ function identifiedInventoryLine(item) {
         const raw = String(item.actualKind || item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '') || 'water';
         if (raw === 'water' && item.blessed) phrase = 'potion of holy water';
         else if (raw === 'water' && item.cursed) phrase = 'potion of unholy water';
-        else phrase = `${buc} ${quan > 1 ? 'potions' : 'potion'} of ${raw}`;
+        else {
+            const diluted = item.odiluted && !isWaterPotion(item) ? 'diluted ' : '';
+            phrase = `${buc} ${diluted}${quan > 1 ? 'potions' : 'potion'} of ${raw}`;
+            phrase = maybeLitObjectName(item, phrase);
+        }
     } else if (cls === 'ring') {
         const roll = item.ringRoll || item.roll || 0;
         const ring = roll ? `ring of ${IDENTIFIED_RING_NAMES[roll - 1]}` : String(item.kind || 'ring');
@@ -6109,6 +10808,59 @@ function identifiedInventoryLine(item) {
     return `${letter} - ${amount}${suffix}`;
 }
 
+function identifyInventoryItem(item) {
+    if (!item) return;
+    item.known = true;
+    item.bknown = true;
+    item.rknown = true;
+    item.cknown = true;
+    item.lknown = true;
+    if (item.cls === 'scroll' || item.otyp === SCROLL_CLASS) {
+        const raw = item.actualKind?.replace(/^scroll of /, '')
+            || (item.scrollIndex != null ? IDENTIFIED_SCROLL_NAMES[item.scrollIndex] : '')
+            || String(item.kind || '').replace(/^scrolls? of /, '').replace(/^scroll:/, '');
+        if (raw) {
+            item.kind = raw;
+            item.actualKind = `scroll of ${raw}`;
+        }
+    } else if (item.cls === 'spellbook') {
+        const raw = item.spellName || item.spell?.name
+            || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
+        if (raw) {
+            item.spellName = raw;
+            item.kind = `spellbook of ${raw}`;
+        }
+    } else if (item.cls === 'potion' || item.otyp === POTION_CLASS) {
+        const raw = item.actualKind?.replace(/^potion of /, '')
+            || (item.potionIndex != null ? IDENTIFIED_POTION_NAMES[item.potionIndex] : '')
+            || String(item.kind || '').replace(/^potion(?: of)? /, '');
+        if (raw) item.actualKind = `potion of ${raw}`;
+    } else if (item.cls === 'ring' || item.otyp === RING_CLASS) {
+        const raw = item.actualKind?.replace(/^ring of /, '')
+            || (item.ringRoll ? IDENTIFIED_RING_NAMES[item.ringRoll - 1] : '')
+            || String(item.kind || '').replace(/^ring of /, '');
+        if (raw) item.kind = `ring of ${raw}`;
+    } else if (item.cls === 'wand' || item.otyp === WAND_CLASS) {
+        item.chargeKnown = true;
+    }
+    item.line = identifiedInventoryLine(item);
+}
+
+function unidentifiedInventoryItems() {
+    return (game.inventory || []).filter(invItem => {
+        if (invItem.cls === 'scroll' || invItem.otyp === SCROLL_CLASS)
+            return !invItem.known || !invItem.bknown;
+        if (invItem.cls === 'spellbook') return !invItem.known || !invItem.bknown;
+        if (invItem.cls === 'potion' || invItem.otyp === POTION_CLASS)
+            return !invItem.known || !invItem.bknown;
+        if (invItem.cls === 'ring' || invItem.otyp === RING_CLASS)
+            return !invItem.known || !invItem.bknown;
+        if (invItem.cls === 'wand' || invItem.otyp === WAND_CLASS)
+            return !invItem.known || !invItem.chargeKnown;
+        return false;
+    });
+}
+
 function normalInventoryLine(item) {
     const letter = item.letter || '?';
     if ((BAG_OBJECT_TYPES.has(item.otyp) || /bag|sack/.test(String(item.kind || item.line || '').toLowerCase()))
@@ -6119,7 +10871,7 @@ function normalInventoryLine(item) {
     const quan = item.quan || 1;
     const kind = String(item.kind || '').toLowerCase();
     const cls = item.cls || (item.otyp === RING_CLASS ? 'ring' : item.otyp === GEM_CLASS ? 'gem' : item.otyp === SCROLL_CLASS ? 'scroll' : item.otyp === POTION_CLASS ? 'potion' : item.otyp === WAND_CLASS ? 'wand' : '');
-    if (item.line && cls !== 'armor') return item.line;
+    if (item.line && cls !== 'armor' && !item.artifact) return item.line;
     const blessedState = item.blessed ? 'blessed ' : item.cursed ? 'cursed ' : 'uncursed ';
     const lineShowsBuc = /\b(?:blessed|uncursed|cursed)\b/.test(String(item.line || ''));
     const knownState = item.bknown === true || (item.bknown !== false && lineShowsBuc) ? blessedState : '';
@@ -6141,7 +10893,8 @@ function normalInventoryLine(item) {
         const showSpe = item.known === true || item.wielded || item.alternate || lineShowsSpe;
         const enchantment = showSpe ? `${spe >= 0 ? '+' : ''}${spe} ` : '';
         const buc = item.blessed || item.cursed ? blessedState : '';
-        phrase = quan > 1 ? `${quan} ${buc}${enchantment}${name}` : `${buc}${enchantment}${name}`;
+        const erosion = erosionPrefix(item);
+        phrase = quan > 1 ? `${quan} ${buc}${erosion}${enchantment}${name}` : `${buc}${erosion}${enchantment}${name}`;
         if (item.wielded) {
             const hand = /quarterstaff|two-handed sword|battle-axe/.test(kind) ? 'hands' : `${game.u?.uhandedness || 'right'} hand`;
             suffix = ` (weapon in ${hand})`;
@@ -7384,6 +12137,7 @@ async function moveHero(dx, dy) {
             const hitPhrase = game.flags?.verbose === false ? 'it' : targetPhrase;
             const hitPunctuation = game.flags?.verbose === false || swallowedMove ? '.' : damage > 4 ? '!' : '.';
             messages.push(`You hit ${hitPhrase}${hitPunctuation}`);
+            applyConfuseMonsterOnHit(mon, messages, targetPhrase);
             if (attackIndex === 0) {
                 if (attackWeapon && damage > 1 && !twoWeaponActive) {
                     rn2(3);
@@ -8111,7 +12865,7 @@ async function moveHero(dx, dy) {
     const continuingTravel = !!game._travel_keys?.length;
     const oldRoomno = oldLoc?.roomno || 0;
     const newRoomno = target?.roomno || 0;
-    const shopRoom = newRoomno >= ROOMOFFSET ? game.level?.rooms?.[newRoomno - ROOMOFFSET] : null;
+    const shopRoom = levelRoomByRoomno(newRoomno);
     if (!continuingTravel && shopRoom?.rtype >= SHOPBASE && oldRoomno !== newRoomno) {
         const shkp = shopRoom.resident || (game.level?.monsters || [])
             .find(mon => mon.isshk && mon.shoproom === newRoomno);
@@ -8332,7 +13086,7 @@ async function moveHero(dx, dy) {
         }
     }
     if ((objHere?.otyp === 'corpse' || objHere?.otyp === CORPSE) && objHere.corpsenm?.name)
-        objHereMessage = `${featurePrefix}You see here a ${objHere.corpsenm.name} corpse${priceSuffix}.`;
+        objHereMessage = `${featurePrefix}You see here a ${pickupObjectName(objHere)}${priceSuffix}.`;
     else if (objHere?.kind === 'dart' && (objHere.quan || 1) > 1)
         objHereMessage = `${featurePrefix}You see here ${objHere.quan} darts${priceSuffix}.`;
     else if (objHere?.kind === 'sling')
@@ -8355,7 +13109,7 @@ async function moveHero(dx, dy) {
     else if (objHere?.kind === 'chest' || objHere?.otyp === CHEST)
         objHereMessage = `${featurePrefix}You see here a ${objHere.lknown && (objHere.locked || objHere.olocked) ? 'locked ' : ''}chest${priceSuffix}.`;
     else if ((objHere?.kind === 'statue' || objHere?.otyp === STATUE) && objHere.corpsenm?.name)
-        objHereMessage = `${featurePrefix}You see here a statue of a ${objHere.corpsenm.name}${priceSuffix}.`;
+        objHereMessage = `${featurePrefix}You see here a ${pickupObjectName(objHere)}${priceSuffix}.`;
     else if (objHere)
         objHereMessage = `${featurePrefix}You see here ${pickupObjectPhrase(objHere)}${priceSuffix}.`;
     else if (ballHere)
@@ -9083,6 +13837,59 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'destroyArmorInvalidMore') {
+        if (ch === '\x1b') {
+            await finishDestroyArmorSelection();
+            return;
+        }
+        if (ch === ' ' || ch === '\r' || ch === '\n') {
+            await setMessage(destroyArmorPromptText());
+            game._command_mode = 'destroyArmorObject';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'destroyArmorInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(destroyArmorPromptText());
+            game._command_mode = 'destroyArmorObject';
+            return;
+        }
+        if (!(game.inventory || []).some(invItem => invItem.letter === ch && isWornArmorItem(invItem))) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._command_mode = 'destroyArmorObject';
+    }
+
+    if (game._command_mode === 'destroyArmorObject') {
+        if (!game._destroy_armor_scroll) {
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setOverlay(inventoryOverlayLines(0, false, isWornArmorItem), 24, true);
+            game._command_mode = 'destroyArmorInventoryOverlay';
+            return;
+        }
+        if (ch === ' ' || ch === '\x1b') {
+            await finishDestroyArmorSelection();
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (!item || !isWornArmorItem(item)) {
+            await setMessage("You aren't wearing that.", true);
+            game._command_mode = 'destroyArmorInvalidMore';
+            return;
+        }
+        await finishDestroyArmorSelection(item);
+        return;
+    }
+
     if (game._command_mode === 'pickupShopQuote') {
         if (ch !== ' ' && ch !== '\x1b' && ch !== '\r' && ch !== '\n') {
             game._keep_pending_message = 1;
@@ -9217,6 +14024,7 @@ export async function rhack(_cmd) {
 	        && !(game._running_continuation && game._process_time_with_more)
         && game._command_mode !== 'eatInvalidMore'
         && game._command_mode !== 'readInvalidMore'
+        && game._command_mode !== 'chargeInvalidMore'
         && game._command_mode !== 'readInventoryMore'
         && game._command_mode !== 'throwInvalidMore'
         && game._command_mode !== 'wieldInvalidMore'
@@ -9386,7 +14194,7 @@ export async function rhack(_cmd) {
                 if (game._punishment_heavier_after_more) {
                     const punishment = game._punishment_heavier_after_more;
                     game._punishment_heavier_after_more = null;
-                    if (game.u?.uball) game.u.uball.owt = (game.u.uball.owt || 480) + 160 * (1 + (punishment.cursed ? 1 : 0));
+                    if (game.u?.uball) game.u.uball.owt = (game.u.uball.owt || WT_IRON_BALL_BASE) + WT_IRON_BALL_INCR * (1 + (punishment.cursed ? 1 : 0));
                     game._pending_message = 'Your iron ball gets heavier.';
                     game._message_more = 0;
                     game._keep_pending_message = 1;
@@ -9422,6 +14230,7 @@ export async function rhack(_cmd) {
                             actualKind: kind,
                             glyph,
                             color: CLR_CYAN,
+                            owt: otyp === IRON_CHAIN ? 120 : WT_IRON_BALL_BASE,
                             ox: game.u?.ux || 0,
                             oy: game.u?.uy || 0,
                             bknown: true,
@@ -9648,7 +14457,7 @@ export async function rhack(_cmd) {
                 for (let i = 0; i < objects.length; i++) {
                     const obj = objects[i];
                     const name = (obj.otyp === 'corpse' || obj.otyp === CORPSE)
-                        ? `${obj.corpsenm?.name || 'monster'} corpse`
+                        ? pickupObjectName(obj)
                         : obj.otyp === ICE_BOX ? 'ice box'
                         : BAG_OBJECT_TYPES.has(obj.otyp) ? 'bag'
                         : pickupObjectName(obj);
@@ -10940,9 +15749,16 @@ export async function rhack(_cmd) {
             if (game._read_confused_teleport_prompt_after_more) {
                 game._read_confused_teleport_prompt_after_more = 0;
                 game._level_teleport_text = '';
-                game._level_teleport_confused_scroll = 1;
+                game._level_teleport_confused_scroll = game._read_level_teleport_confused_prompt ? 1 : 0;
+                game._read_level_teleport_confused_prompt = 0;
                 await setMessage('To what level do you want to teleport?');
                 game._command_mode = 'levelTeleportText';
+                return;
+            }
+            if (game._read_teleport_cursor_prompt_after_more) {
+                game._read_teleport_cursor_prompt_after_more = 0;
+                startControlledTeleportPrompt();
+                await setMessage('Where do you want to be teleported?');
                 return;
             }
             if (game._pet_message_resume) {
@@ -10983,6 +15799,7 @@ export async function rhack(_cmd) {
                 const { mon, trap } = game._pet_bear_trap_after_more;
                 game._pet_bear_trap_after_more = null;
                 if (mon && (game.level?.monsters || []).includes(mon)) {
+                    mon.mtrapseen = (mon.mtrapseen || 0) | (1 << (BEAR_TRAP - 1));
                     mon.knownTraps ??= [];
                     if (!mon.knownTraps.includes(BEAR_TRAP)) mon.knownTraps.push(BEAR_TRAP);
                     mon.mtrapped = 1;
@@ -11190,6 +16007,7 @@ export async function rhack(_cmd) {
         ch === ' ' && game._pending_message && game._message_more
         && game._command_mode !== 'eatInvalidMore'
         && game._command_mode !== 'readInvalidMore'
+        && game._command_mode !== 'chargeInvalidMore'
         && game._command_mode !== 'readInventoryMore'
         && game._command_mode !== 'throwInvalidMore'
         && game._command_mode !== 'wieldInvalidMore'
@@ -11277,27 +16095,15 @@ export async function rhack(_cmd) {
         game._command_mode = null;
 
         const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
-        const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
-        const minDepth = dungeon?.depth_start ?? 1;
-        const maxDepth = dungeon ? dungeon.depth_start + dungeon.num_dunlevs - 1 : currentDepth + 3;
-        let targetDepth = currentDepth;
-        if (rn2(5)) {
-            targetDepth = rn2(currentDepth + 3 - minDepth) + minDepth;
-            if (targetDepth >= currentDepth) targetDepth++;
-            if (targetDepth > maxDepth) targetDepth = maxDepth;
-            if (targetDepth < minDepth) targetDepth = minDepth;
-        }
+        const targetDepth = randomTeleportDepth();
         if (targetDepth === currentDepth) {
             await setMessage('You shudder for a moment.');
             game.context.move = 1;
             return;
         }
 
-        rn2(19);
-        const targetDungeon = game.u?.uz?.dnum ?? 0;
-        const targetLevel = targetDepth - (game.dungeons?.[targetDungeon]?.depth_start ?? 1) + 1;
         game._deferred_level_goto = {
-            targetLevel: { dnum: targetDungeon, dlevel: targetLevel },
+            targetLevel: levelTeleportNumericTarget(targetDepth),
             options: { levelTeleport: true },
         };
         game.context.move = 1;
@@ -12290,9 +17096,10 @@ export async function rhack(_cmd) {
                 .replace(/^[a-zA-Z] - /, '')
                 .replace(/ \((?:being worn|weapon|alternate weapon).*$/, '');
             const spe = `${(item.spe ?? 0) >= 0 ? '+' : ''}${item.spe ?? 0}`;
+            const bareName = baseName.replace(/^(an?|the) /, '');
             const wornName = /[+-]\d/.test(baseName)
                 ? baseName
-                : `a ${spe} ${baseName.replace(/^(an?|the) /, '')}`;
+                : item.noArticle ? `${spe} ${bareName}` : `a ${spe} ${bareName}`;
             const acBonus = (ARMOR_AC_BONUS[String(item.kind || '').toLowerCase()] ?? 0) + (item.spe ?? 0);
             const kind = String(item.kind || '').toLowerCase();
             const delay = ARMOR_WEAR_DELAY[kind] || (/dragon scales?/.test(kind) ? 5 : 0);
@@ -12726,9 +17533,10 @@ export async function rhack(_cmd) {
                 .replace(/^[a-zA-Z] - /, '')
                 .replace(/ \((?:being worn|weapon|alternate weapon).*$/, '');
             const spe = `${(armor.spe ?? 0) >= 0 ? '+' : ''}${armor.spe ?? 0}`;
+            const bareName = baseName.replace(/^(an?|the) /, '');
             const wornName = /[+-]\d/.test(baseName)
                 ? baseName
-                : `a ${spe} ${baseName.replace(/^(an?|the) /, '')}`;
+                : armor.noArticle ? `${spe} ${bareName}` : `a ${spe} ${bareName}`;
             const acBonus = (ARMOR_AC_BONUS[String(armor.kind || '').toLowerCase()] ?? 0) + (armor.spe ?? 0);
             const kind = String(armor.kind || '').toLowerCase();
             const delay = ARMOR_WEAR_DELAY[kind] || (/dragon scales?/.test(kind) ? 5 : 0);
@@ -12827,6 +17635,50 @@ export async function rhack(_cmd) {
             || item?.kind === 'wand of secret door detection'
             || item?.wandIndex === 1
             || (item?.cls === 'wand' && item.roll > 95 && item.roll <= 145);
+        if (item && isWishingWand(item)) {
+            const chargeUse = zappableWand(item);
+            if (!chargeUse.zapped) {
+                const messages = ['Nothing happens.'];
+                if (chargeUse.dust && (game.inventory || []).includes(item))
+                    messages.push(dustWand(item));
+                await setMessage(messages.join('  '));
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            refreshWandLine(item);
+            const wrestMessage = chargeUse.wrested ? 'You wrest one last charge from the worn-out wand.' : '';
+            if (item.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
+                const damage = d(wandCharges(item) + 2, 6);
+                if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+                const name = pickupObjectName(item);
+                game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
+                await setMessage(`${wrestMessage ? `${wrestMessage}  ` : ''}The ${name} suddenly explodes!`);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            const luck = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
+            if (luck + rn2(5) < 0) {
+                const messages = [];
+                if (wrestMessage) messages.push(wrestMessage);
+                messages.push('Unfortunately, nothing happens.');
+                if (wandCharges(item) < 0 && (game.inventory || []).includes(item))
+                    messages.push(dustWand(item));
+                else refreshWandLine(item);
+                await setMessage(messages.join('  '));
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            setKnownWandLine(item, 'wishing');
+            await beginWishPrompt({
+                moveCost: 1,
+                dustItem: wandCharges(item) < 0 ? item : null,
+                message: wrestMessage ? `${wrestMessage}  For what do you wish?` : 'For what do you wish?',
+            });
+            return;
+        }
         if (item?.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
             const damage = d((item.spe ?? item.charges ?? 0) + 2, 6);
             if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
@@ -13296,17 +18148,22 @@ export async function rhack(_cmd) {
                 rn2(19);
                 item.known = true;
                 item.kind = 'digging';
-                item.line = `${item.letter} - a wand of digging`;
-            }
-            for (let step = 1; step < 8; step++) {
-                const x = (game.u?.ux || 0) + dir.dx * step;
-                const y = (game.u?.uy || 0) + dir.dy * step;
-                const loc = game.level?.at(x, y);
-                if (loc && IS_OBSTRUCTED(loc.typ)) {
-                    loc.typ = ROOM;
-                    newsym(x, y);
-                    break;
+                item.line = `${item.letter} - a wand of digging${wandChargeSuffix(item)}`;
+                for (let step = 1; step < 8; step++) {
+                    const x = (game.u?.ux || 0) + dir.dx * step;
+                    const y = (game.u?.uy || 0) + dir.dy * step;
+                    const loc = game.level?.at(x, y);
+                    if (loc && IS_OBSTRUCTED(loc.typ)) {
+                        loc.typ = ROOM;
+                        newsym(x, y);
+                        break;
+                    }
                 }
+                await setMessage('');
+                game._keep_pending_message = 0;
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
             }
             await setMessage('');
             game._keep_pending_message = 0;
@@ -13472,6 +18329,205 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'chargeInvalidMore') {
+        if (ch === '\x1b') {
+            game._charging_scroll = null;
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (ch === ' ' || ch === '\r' || ch === '\n') {
+            await setMessage(chargePromptText());
+            game._command_mode = 'chargeObject';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'chargeInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(chargePromptText());
+            game._command_mode = 'chargeObject';
+            return;
+        }
+        if (!(game.inventory || []).some(invItem => invItem.letter === ch)) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._command_mode = 'chargeObject';
+    }
+
+    if (game._command_mode === 'chargeObject') {
+        const charge = game._charging_scroll;
+        if (!charge) {
+            game._command_mode = null;
+            return;
+        }
+        if (ch === ' ' || ch === '\x1b') {
+            game._charging_scroll = null;
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setOverlay(inventoryOverlayLines(), 24, true);
+            game._command_mode = 'chargeInventoryOverlay';
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (!item) {
+            await setMessage("You don't have that object.", true);
+            game._command_mode = 'chargeInvalidMore';
+            return;
+        }
+        const result = rechargeItem(item, charge.curseBless || 0);
+        if (result.retry) {
+            await setMessage(result.messages.join('  '), true);
+            game._command_mode = 'chargeInvalidMore';
+            return;
+        }
+        game._charging_scroll = null;
+        game._command_mode = null;
+        game.context.move = 1;
+        const message = (result.messages || []).filter(Boolean).join('  ');
+        if (message) await setMessage(message, !!result.more);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 1;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'fireScrollCenter') {
+        const pending = game._fire_scroll_pending;
+        if (!pending) {
+            game._command_mode = null;
+            return;
+        }
+        const ux = game.u?.ux ?? 0;
+        const uy = game.u?.uy ?? 0;
+        let x = game._fire_scroll_cursor?.x ?? ux;
+        let y = game._fire_scroll_cursor?.y ?? uy;
+        const dir = movementDirection(ch);
+        if (dir) {
+            x = Math.max(1, Math.min(COLNO - 1, x + dir.dx));
+            y = Math.max(0, Math.min(ROWNO - 1, y + dir.dy));
+            game._fire_scroll_cursor = { x, y };
+            game._cursor_override = [x - 1, y + 1];
+            const description = fireScrollTargetDescription(x, y);
+            await setMessage(canCenterFireScroll(x, y) ? description : `${description} (invalid target)`);
+            return;
+        }
+        if (!(ch === '.' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n')) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        if (ch === '\x1b') {
+            x = ux;
+            y = uy;
+        }
+        if (!canCenterFireScroll(x, y)) {
+            x = ux;
+            y = uy;
+        }
+        game._fire_scroll_pending = null;
+        game._fire_scroll_cursor = null;
+        game._cursor_override = null;
+        const result = resolveFireScrollExplosion(x, y, pending.damage, pending.messages || []);
+        await setMessage(result.messages.join('  '), result.more);
+        game._command_mode = null;
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'stinkingCloudCenter') {
+        const pending = game._stinking_cloud_pending;
+        if (!pending) {
+            game._command_mode = null;
+            return;
+        }
+        const ux = game.u?.ux ?? 0;
+        const uy = game.u?.uy ?? 0;
+        let x = game._stinking_cloud_cursor?.x ?? ux;
+        let y = game._stinking_cloud_cursor?.y ?? uy;
+        const dir = movementDirection(ch);
+        if (dir) {
+            x = Math.max(1, Math.min(COLNO - 1, x + dir.dx));
+            y = Math.max(0, Math.min(ROWNO - 1, y + dir.dy));
+            game._stinking_cloud_cursor = { x, y };
+            game._cursor_override = [x - 1, y + 1];
+            const description = fireScrollTargetDescription(x, y);
+            await setMessage(canCenterFireScroll(x, y) ? description : `${description} (invalid target)`);
+            return;
+        }
+        if (!(ch === '.' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n')) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._stinking_cloud_pending = null;
+        game._stinking_cloud_cursor = null;
+        game._cursor_override = null;
+        game._command_mode = null;
+        game.context.move = 1;
+        if (ch === '\x1b') {
+            await setMessage('Never mind.');
+            return;
+        }
+        if (!canCenterFireScroll(x, y)) {
+            await setMessage(game.u?.hallucinating
+                ? 'Ugh... someone cut the cheese.'
+                : 'The scroll crumbles with a whiff of rotten eggs.');
+            return;
+        }
+        const wasInside = heroInsideGasCloud();
+        const region = createGasCloud(x, y, pending.cloudsize, pending.damage);
+        if (region) region.heroFault = true;
+        const enveloped = !wasInside && region?.coords?.some(coord => coord.x === ux && coord.y === uy);
+        if (enveloped) await setMessage('You are enveloped in a cloud of noxious gas!');
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 1;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'genocideText') {
+        if (ch === '\r' || ch === '\n') {
+            await finishGenocideInput(game._genocide_input || '');
+            return;
+        }
+        if (ch === '\x1b') {
+            await finishGenocideInput('\x1b');
+            return;
+        }
+        const code = typeof key === 'number' ? key : ch.charCodeAt(0);
+        if (code === 8 || code === 127 || ch === '\x7f') game._genocide_input = (game._genocide_input || '').slice(0, -1);
+        else if (code >= 32) game._genocide_input = `${game._genocide_input || ''}${ch}`;
+        const pending = game._genocide_pending || {};
+        const text = game._genocide_input || '';
+        await setMessage(`${genocidePrompt(pending)}${text ? ` ${text}` : ''}`);
+        return;
+    }
+
+    if (game._command_mode === 'genocideHelp') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._command_mode = 'genocideText';
+            game._genocide_input = '';
+            const pending = game._genocide_pending || {};
+            await setMessage(`${genocidePrompt(pending)}${genocideRetryHint(pending)}`);
+        }
+        return;
+    }
+
     if (game._command_mode === 'readInvalidMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             const letters = inventoryLetters(item => item.cls === 'scroll' || item.cls === 'spellbook' || item.otyp === SCROLL_CLASS) || 'gh';
@@ -13529,171 +18585,253 @@ export async function rhack(_cmd) {
                         ? IDENTIFIED_SCROLL_NAMES[(game._object_descriptions?.scrolls || []).indexOf(item.kind.slice(15))] || ''
                         : '';
         const isScroll = item && (item.cls === 'scroll' || item.otyp === SCROLL_CLASS);
-        if (isScroll && (scrollName === 'destroy armor' || item.scrollIndex === 1)) {
+        const blindBlock = readBlindBlockMessage(item, isScroll);
+        if (blindBlock) {
+            await setMessage(blindBlock);
+            game._command_mode = null;
+            game.context.move = 0;
+            return;
+        }
+        if (isScroll && isBlankScrollItem(item)) {
+            item.known = true;
+            item.actualKind = 'scroll of blank paper';
+            item.kind = 'blank paper';
+            item.line = normalInventoryLine({ ...item, line: '' });
+            await setMessage(game.u?.blind
+                ? "You don't remember there being any magic words on this scroll."
+                : 'This scroll seems to be blank.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'enchant armor' || item.scrollIndex === 0)) {
+            const confusedReading = heroIsConfused();
             removeInventoryItem(item);
             rn2(19);
-            const wornArmor = (game.inventory || []).filter(invItem =>
-                invItem.cls === 'armor' && (invItem.worn || invItem.line?.includes('being worn')));
-            const hits = rn2(4) + 1;
-            const messages = [];
-            let uacDelta = 0;
-            for (let i = 0; i < hits && wornArmor.length; i++) {
-                const armor = wornArmor[rn2(wornArmor.length)];
-                const armorBase = ARMOR_AC_BONUS[String(armor.kind || '').toLowerCase()] ?? 0;
-                if (!armorBase || (armor.oeroded || 0) >= armorBase) continue;
-                const oldArmorBonus = armorBase + (armor.spe ?? 0) - Math.min(armor.oeroded || 0, armorBase);
-                armor.oeroded = (armor.oeroded || 0) + 1;
-                armor.bknown = true;
-                const newArmorBonus = armorBase + (armor.spe ?? 0) - Math.min(armor.oeroded || 0, armorBase);
-                uacDelta += oldArmorBonus - newArmorBonus;
-                armor.line = normalInventoryLine({ ...armor, line: '' });
-                const name = pickupObjectName(armor);
-                messages.push(armor.oeroded === 1
-                    ? `Your ${name} smoulders!`
-                    : `Your ${name} smoulders further!`);
+            const result = enchantArmorScrollEffect(item);
+            if (result.known) learnScrollByName('enchant armor', item, 0);
+            const messages = scrollReadMessages(confusedReading);
+            messages.push(...result.messages);
+            await setMessage(messages.join('  '), true);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'destroy armor' || item.scrollIndex === 1)) {
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('destroy armor')
+                || item.known === true
+                || item.actualKind === 'scroll of destroy armor'
+                || item.kind === 'destroy armor'
+                || item.kind === 'scroll of destroy armor';
+            const callLabel = scrollCallLabel(item, 1);
+            const messages = scrollDisappearMessages(confusedReading);
+            removeInventoryItem(item);
+            rn2(19);
+            const result = destroyArmorScrollEffect(item, messages);
+            if (result.prompt) {
+                if (!alreadyKnown) messages.push('This is a scroll of destroy armor!');
+                learnScrollByName('destroy armor', item, 1);
+                messages.push(destroyArmorPromptText());
+                game._destroy_armor_scroll = { target: result.target };
+                await setMessage(messages.join('  '), false);
+                game._command_mode = 'destroyArmorObject';
+                game.context.move = 0;
+                return;
             }
-            if (!messages.length) messages.push('Your skin itches.');
-            if (messages.length > 1) {
-                game._queued_message_after_more = messages.slice(1).join('  ');
-                game._queued_message_process_time_after_more = 1;
-                game._destroy_armor_uac_delta_after_more = uacDelta;
-                game._read_scroll_exercise_after_more = 1;
-                game._destroy_armor_clear_resume_after_more = 1;
-            } else if (game.u) {
-                game.u.uac = (game.u.uac ?? 10) + uacDelta;
+            if (result.learned) learnScrollByName('destroy armor', item, 1);
+            if (result.legacy) {
+                const effectMessages = messages.slice(1);
+                if (effectMessages.length > 1) {
+                    game._queued_message_after_more = effectMessages.slice(1).join('  ');
+                    game._queued_message_process_time_after_more = 1;
+                    game._destroy_armor_uac_delta_after_more = result.uacDelta || 0;
+                    game._read_scroll_exercise_after_more = 1;
+                    game._destroy_armor_clear_resume_after_more = 1;
+                } else if (game.u) {
+                    game.u.uac = (game.u.uac ?? 10) + (result.uacDelta || 0);
+                }
+                await setMessage(`${messages[0]}  ${effectMessages[0] || 'Your skin itches.'}`, true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
             }
-            await setMessage(`As you read the scroll, it disappears.  ${messages[0]}`, true);
+            const shouldCall = !result.skipCall && !alreadyKnown && !result.learned;
+            await setMessage(messages.join('  '), result.more || confusedReading || shouldCall);
+            game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+            if (shouldCall) game._call_scroll_label = callLabel;
+            game.context.move = shouldCall ? 0 : 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'confuse monster' || item.scrollIndex === 2)) {
+            removeInventoryItem(item);
+            rn2(19);
+            const effectMessage = confuseMonsterScrollEffect(item);
+            await setMessage(`As you read the scroll, it disappears.${effectMessage ? `  ${effectMessage}` : ''}`, true);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'scare monster' || item.scrollIndex === 3)) {
+            removeInventoryItem(item);
+            rn2(19);
+            const effectMessage = scareMonsterScrollEffect(item);
+            await setMessage(`As you read the scroll, it disappears.  ${effectMessage}`, true);
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
         if (isScroll && (scrollName === 'enchant weapon' || item.scrollIndex === 5)) {
-            const label = String(item.kind || '').replace(/^scroll labeled /, '')
-                || game._object_descriptions?.scrolls?.[5];
-            game._discoveries ??= [];
-            const discovery = game._discoveries.find(entry => entry.section === 'Scrolls' && entry.name === 'scroll of enchant weapon');
-            if (discovery) {
-                discovery.known = true;
-                discovery.text = label ? `scroll of enchant weapon (${label})` : 'scroll of enchant weapon';
-            } else {
-                game._discoveries.push({
-                    section: 'Scrolls',
-                    name: 'scroll of enchant weapon',
-                    text: label ? `scroll of enchant weapon (${label})` : 'scroll of enchant weapon',
-                    starred: false,
-                    known: true,
-                });
-            }
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('enchant weapon')
+                || item.known === true
+                || item.actualKind === 'scroll of enchant weapon'
+                || item.kind === 'enchant weapon'
+                || item.kind === 'scroll of enchant weapon';
+            const callLabel = scrollCallLabel(item, 5);
+            const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
             rn2(19);
-            const weapon = (game.inventory || []).find(invItem =>
-                invItem.wielded || invItem.line?.includes('weapon in') || invItem.cls === 'weapon');
-            if (weapon) {
-                const spe = weapon.spe ?? 0;
-                const amount = item.cursed ? -1
-                    : spe >= 9 ? (rn2(spe) === 0 ? 1 : 0)
-                        : item.blessed ? rnd(3 - Math.trunc(spe / 3)) : 1;
-                weapon.spe = spe + amount;
-                const name = pickupObjectName(weapon);
-                const enchantment = `${weapon.spe >= 0 ? '+' : ''}${weapon.spe}`;
-                const article = /^[aeiou]/.test(enchantment) ? 'an' : 'a';
-                const hand = /quarterstaff|two-handed sword|battle-axe/.test(String(weapon.kind || '').toLowerCase())
-                    ? 'hands'
-                    : `${game.u?.uhandedness || 'right'} hand`;
-                weapon.line = `${weapon.letter || '?'} - ${article} ${enchantment} ${name} (weapon in ${hand})`;
-                const glow = amount === 0 ? 'violently glows' : 'glows';
-                const color = amount < 0 ? 'black' : 'blue';
-                const time = amount * amount === 1 ? 'moment' : 'while';
-                game._queued_message_after_more = `Your ${name} ${glow} ${color} for a ${time}.`;
-            } else {
-                game._queued_message_after_more = `Your hands ${item.cursed ? 'itch' : 'twitch'}.`;
+            const result = enchantWeaponScrollEffect(item, messages);
+            if (result.learned) learnScrollByName('enchant weapon', item, 5);
+            const shouldCall = !alreadyKnown && !result.learned;
+            await setMessage(messages.join('  '), result.more || confusedReading || shouldCall);
+            game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+            if (shouldCall) game._call_scroll_label = callLabel;
+            game.context.move = shouldCall ? 0 : 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'create monster' || item.scrollIndex === 6)) {
+            const confusedReading = heroIsConfused();
+            removeInventoryItem(item);
+            rn2(19);
+            await createMonsterScrollEffect(item);
+            await setMessage(scrollReadMessages(confusedReading).join('  '), confusedReading);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'taming' || item.scrollIndex === 7)) {
+            const confusedReading = heroIsConfused();
+            removeInventoryItem(item);
+            rn2(19);
+            const result = tamingScrollEffect(item);
+            const messages = scrollReadMessages(confusedReading);
+            messages.push(result.message);
+            await setMessage(messages.join('  '), true);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'genocide' || item.scrollIndex === 8)) {
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('genocide');
+            const messages = scrollReadMessages(confusedReading);
+            removeInventoryItem(item);
+            rn2(19);
+            if (!alreadyKnown) {
+                messages.push('You have found a scroll of genocide!');
+                learnScrollByName('genocide', item, 8);
             }
-	            game._queued_message_more_after_more = 0;
-            game._queued_message_process_time_after_more = 1;
-	            game._read_scroll_exercise_after_more = 1;
-            await setMessage('As you read the scroll, it disappears.', true);
+            if (confusedReading && !item.blessed) {
+                const target = genocideMonsterByName(heroGenocideTargetName()) || {
+                    name: heroGenocideTargetName(),
+                    glyph: '@',
+                    mlet: '@',
+                    mlevel: game.u?.ulevel || 1,
+                    hpLevel: game.u?.ulevel || 1,
+                    mmove: NORMAL_SPEED,
+                    maligntyp: 0,
+                };
+                if (item.cursed) await createCursedGenocideMonsters(target, messages);
+                else genocideMonsterType(target, messages, { killPlayer: true, cause: 'genocidal confusion' });
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            game._genocide_pending = {
+                messages,
+                cursed: !!item.cursed,
+                classMode: !!item.blessed,
+            };
+            game._genocide_input = '';
+            await setMessage([...messages, genocidePrompt(game._genocide_pending)].join('  '), false);
+            game._command_mode = 'genocideText';
+            game.context.move = 0;
+            return;
+        }
+        if (isScroll && (scrollName === 'gold detection' || item.scrollIndex === 11)) {
+            const confusedReading = heroIsConfused();
+            removeInventoryItem(item);
+            rn2(19);
+            const result = goldDetectionScrollEffect(item);
+            if (result.known) learnScrollByName('gold detection', item, 11);
+            const messages = ['As you read the scroll, it disappears.'];
+            if (confusedReading)
+                messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+            if (result.message) messages.push(result.message);
+            await setMessage(messages.join('  '), result.more || confusedReading);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'food detection' || item.scrollIndex === 12)) {
+            const confusedReading = heroIsConfused();
+            removeInventoryItem(item);
+            rn2(19);
+            const result = foodDetectionScrollEffect(item);
+            if (result.known) learnScrollByName('food detection', item, 12);
+            const messages = ['As you read the scroll, it disappears.'];
+            if (confusedReading)
+                messages.push(heroIsHallucinating() ? 'Being so trippy, you screw up...' : 'Being confused, you mispronounce the magic words...');
+            if (result.message) messages.push(result.message);
+            await setMessage(messages.join('  '), result.more || confusedReading);
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
         if (isScroll && (scrollName === 'identify' || item.actualKind === 'scroll of identify' || item.scrollIndex === 13)) {
-            const alreadyKnown = (game._discoveries || [])
-                .some(entry => entry.section === 'Scrolls' && entry.name === 'scroll of identify' && entry.known !== false);
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('identify')
+                || item.known === true
+                || item.actualKind === 'scroll of identify'
+                || item.kind === 'identify'
+                || item.kind === 'scroll of identify';
             const blessed = !!item.blessed;
             const cursed = !!item.cursed;
+            const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
             rn2(19);
-            rn2(19);
+            if (confusedReading || (cursed && !alreadyKnown)) {
+                messages.push('You identify this as an identify scroll.');
+            } else if (!alreadyKnown) {
+                messages.push('This is an identify scroll.');
+            }
             if (!alreadyKnown) {
-                learnObjectScore('Scrolls', 'scroll of identify');
-                const label = game._object_descriptions?.scrolls?.[13];
-                game._discoveries ??= [];
-                const discovery = game._discoveries.find(entry => entry.section === 'Scrolls' && entry.name === 'scroll of identify');
-                if (discovery) {
-                    discovery.text = label ? `scroll of identify (${label})` : 'scroll of identify';
-                    discovery.known = true;
-                    discovery.starred = false;
-                } else {
-                    game._discoveries.push({
-                        section: 'Scrolls',
-                        name: 'scroll of identify',
-                        text: label ? `scroll of identify (${label})` : 'scroll of identify',
-                        starred: false,
-                        known: true,
-                    });
-                }
+                learnScrollByName('identify', item, 13);
+            }
+            if (confusedReading || (cursed && !alreadyKnown)) {
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            if (!(game.inventory || []).length) {
+                messages.push("You're not carrying anything else to be identified.");
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
             }
             let identifyLimit = 1;
             if (blessed || (!cursed && !rn2(5))) {
                 identifyLimit = rn2(5);
                 if (identifyLimit === 1 && blessed && (game.u?.uluck || 0) > 0) identifyLimit++;
             }
-            const unidentified = (game.inventory || []).filter(invItem => {
-                if (invItem.cls === 'scroll' || invItem.otyp === SCROLL_CLASS)
-                    return !invItem.known || !invItem.bknown;
-                if (invItem.cls === 'spellbook') return !invItem.known || !invItem.bknown;
-                if (invItem.cls === 'potion' || invItem.otyp === POTION_CLASS)
-                    return !invItem.known || !invItem.bknown;
-                if (invItem.cls === 'ring' || invItem.otyp === RING_CLASS)
-                    return !invItem.known || !invItem.bknown;
-                if (invItem.cls === 'wand' || invItem.otyp === WAND_CLASS)
-                    return !invItem.known;
-                return false;
-            });
+            const unidentified = unidentifiedInventoryItems();
             const identified = identifyLimit ? unidentified.slice(0, identifyLimit) : unidentified;
-            for (const invItem of identified) {
-                invItem.known = true;
-                invItem.bknown = true;
-                if (invItem.cls === 'scroll' || invItem.otyp === SCROLL_CLASS) {
-                    const raw = invItem.actualKind?.replace(/^scroll of /, '')
-                        || (invItem.scrollIndex != null ? IDENTIFIED_SCROLL_NAMES[invItem.scrollIndex] : '')
-                        || String(invItem.kind || '').replace(/^scrolls? of /, '').replace(/^scroll:/, '');
-                    if (raw) {
-                        invItem.kind = raw;
-                        invItem.actualKind = `scroll of ${raw}`;
-                    }
-                } else if (invItem.cls === 'spellbook') {
-                    const raw = invItem.spellName || invItem.spell?.name
-                        || String(invItem.kind || '').replace(/^spellbook(?: of)? /, '');
-                    if (raw) {
-                        invItem.spellName = raw;
-                        invItem.kind = `spellbook of ${raw}`;
-                    }
-                } else if (invItem.cls === 'potion' || invItem.otyp === POTION_CLASS) {
-                    const raw = invItem.actualKind?.replace(/^potion of /, '')
-                        || (invItem.potionIndex != null ? IDENTIFIED_POTION_NAMES[invItem.potionIndex] : '')
-                        || String(invItem.kind || '').replace(/^potion(?: of)? /, '');
-                    if (raw) invItem.actualKind = `potion of ${raw}`;
-                } else if (invItem.cls === 'ring' || invItem.otyp === RING_CLASS) {
-                    const raw = invItem.actualKind?.replace(/^ring of /, '')
-                        || (invItem.ringRoll ? IDENTIFIED_RING_NAMES[invItem.ringRoll - 1] : '')
-                        || String(invItem.kind || '').replace(/^ring of /, '');
-                    if (raw) invItem.kind = `ring of ${raw}`;
-                } else if (invItem.cls === 'wand' || invItem.otyp === WAND_CLASS) {
-                    invItem.chargeKnown = true;
-                }
-                invItem.line = identifiedInventoryLine(invItem);
-            }
+            for (const invItem of identified) identifyInventoryItem(invItem);
             if (identified.length) {
                 game._queued_messages_after_more = identified.map((invItem, index) => ({
                     text: `${invItem.line}.`,
@@ -13702,159 +18840,302 @@ export async function rhack(_cmd) {
             } else {
                 game._topline_after_more = `You have already identified ${alreadyKnown ? 'all' : 'the rest'} of your possessions.`;
             }
-            await setMessage(`As you read the scroll, it disappears.${alreadyKnown ? '' : '  This is an identify scroll.'}`, true);
+            await setMessage(messages.join('  '), true);
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
         if (isScroll && (scrollName === 'teleportation' || item.scrollIndex === 10)) {
-            learnObjectScore('Scrolls', 'scroll of teleportation');
-            if ((game.u?._statusSuffix || '').includes('Conf') || item.cursed) {
-                removeInventoryItem(item);
-                game._read_scroll_exercise_after_more = 1;
-                game._queued_message_after_more = (game.u?._statusSuffix || '').includes('Conf')
-                    ? 'Being confused, you mispronounce the magic words...'
-                    : 'You feel disoriented.';
-                game._queued_message_more_after_more = 1;
-                game._read_confused_teleport_prompt_after_more = 1;
-                await setMessage('As you read the scroll, it disappears.', true);
-                game._command_mode = null;
-                return;
-            }
-            const oldX = game.u?.ux || 0;
-            const oldY = game.u?.uy || 0;
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('teleportation')
+                || item.known === true
+                || item.actualKind === 'scroll of teleportation'
+                || item.kind === 'teleportation'
+                || item.kind === 'scroll of teleportation';
+            const callLabel = scrollCallLabel(item, 10);
+            const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
             rn2(19);
-            rn2(19);
-            let teleported = false;
-            for (let tcnt = 0; tcnt < 40; tcnt++) {
-                const x = rnd(COLNO - 1);
-                const y = rn2(ROWNO);
-                const loc = game.level?.at(x, y);
-                const trap = game.level?.traps?.some(item => item.tx === x && item.ty === y);
-                const monster = game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
-                const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
-                if (!trap && loc && ACCESSIBLE(loc.typ) && !monster && !boulder) {
-                    game.u.ux0 = oldX;
-                    game.u.uy0 = oldY;
-                    game.u.ux = x;
-                    game.u.uy = y;
-                    teleported = true;
-                    break;
-                }
+            if (!confusedReading && !item.cursed) rn2(19);
+            const result = teleportationScrollEffect(item, messages);
+            if (result.learned) learnScrollByName('teleportation', item, 10);
+            if (result.promptLevel) {
+                game._read_confused_teleport_prompt_after_more = 1;
+                game._read_level_teleport_confused_prompt = result.confusedPrompt ? 1 : 0;
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 0;
+                return;
             }
-            if (!teleported) u_on_rndspot(false);
-            newsym(oldX, oldY);
-            newsym(game.u.ux, game.u.uy);
-            vision_recalc(0);
-            game._topline_after_more = 'You materialize in a different location!';
-            await setMessage('As you read the scroll, it disappears.', true);
-            game._command_mode = null;
-            game.context.move = 1;
+            if (result.promptSameLevel) {
+                game._read_teleport_cursor_prompt_after_more = 1;
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 0;
+                return;
+            }
+            if (result.materialize) game._topline_after_more = result.materialize;
+            const shouldCall = !alreadyKnown && !result.learned;
+            await setMessage(messages.join('  '), result.more || !!result.materialize || shouldCall);
+            game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+            if (shouldCall) game._call_scroll_label = callLabel;
+            game.context.move = shouldCall ? 0 : 1;
             return;
         }
         if (isScroll && (scrollName === 'punishment' || item.scrollIndex === 18)) {
-            const rawLabel = String(item.kind || '');
-            const label = rawLabel.startsWith('scroll labeled ')
-                ? rawLabel.replace(/^scroll labeled /, '')
-                : game._object_descriptions?.scrolls?.[18];
-            game._discoveries ??= [];
-            const discovery = game._discoveries.find(entry => entry.section === 'Scrolls' && entry.name === 'scroll of punishment');
-            if (discovery) {
-                discovery.known = true;
-                discovery.text = label ? `scroll of punishment (${label})` : 'scroll of punishment';
-            } else {
-                game._discoveries.push({
-                    section: 'Scrolls',
-                    name: 'scroll of punishment',
-                    text: label ? `scroll of punishment (${label})` : 'scroll of punishment',
-                    starred: false,
-                    known: true,
-                });
-            }
+            const confusedReading = heroIsConfused();
+            const messages = scrollReadMessages(confusedReading);
             item.kind = 'punishment';
             item.actualKind = 'scroll of punishment';
             item.known = true;
             item.line = '';
             removeInventoryItem(item);
             rn2(19);
+            learnScrollByName('punishment', item, 18);
+            if (confusedReading || item.blessed) {
+                messages.push('You feel guilty.');
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
             game._punishment_after_more = { cursed: !!item.cursed };
-            await setMessage('As you read the scroll, it disappears.', true);
+            await setMessage(messages.join('  '), true);
             game._command_mode = null;
             game.context.move = 0;
             return;
         }
-        if (isScroll && (scrollName === 'remove curse' || item.scrollIndex === 4)) {
-            rn2(19);
-            learnObjectScore('Scrolls', 'scroll of remove curse');
+        if (isScroll && (scrollName === 'charging' || item.scrollIndex === 19)) {
+            const confusedReading = heroIsConfused();
+            const messages = scrollReadMessages(confusedReading);
+            if (confusedReading) {
+                removeInventoryItem(item);
+                rn2(19);
+                if (item.cursed) {
+                    if (game.u) game.u.uen = 0;
+                    messages.push('You feel discharged.');
+                } else {
+                    if (game.u) {
+                        game.u.uen = (game.u.uen || 0) + d(item.blessed ? 6 : 4, 4);
+                        if (game.u.uen > (game.u.uenmax || 0)) game.u.uenmax = game.u.uen;
+                        else game.u.uen = game.u.uenmax || game.u.uen;
+                    }
+                    messages.push('You feel charged up!');
+                }
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+
+            const alreadyKnown = scrollDiscoveryKnown('charging');
             removeInventoryItem(item);
+            rn2(19);
+            if (!alreadyKnown) {
+                messages.push('This is a charging scroll.');
+                learnScrollByName('charging', item, 19);
+            }
+            game._charging_scroll = { curseBless: item.cursed ? -1 : item.blessed ? 1 : 0 };
+            messages.push(chargePromptText());
+            await setMessage(messages.join('  '), false);
+            game._command_mode = 'chargeObject';
+            game.context.move = 0;
+            return;
+        }
+        if (isScroll && (scrollName === 'remove curse' || item.scrollIndex === 4)) {
+            const alreadyKnown = scrollDiscoveryKnown('remove curse')
+                || item.known === true
+                || item.actualKind === 'scroll of remove curse'
+                || item.kind === 'remove curse'
+                || item.kind === 'scroll of remove curse';
+            const callLabel = String(item.kind || '').startsWith('scroll labeled ')
+                ? String(item.kind || '').replace(/^scroll labeled /, '')
+                : game._object_descriptions?.scrolls?.[4] || 'XOR OTA';
+            rn2(19);
+            removeInventoryItem(item);
+            const result = removeCurseScrollEffect(item);
+            if (result.learned) learnScrollByName('remove curse', item, 4);
             let callAfterDisintegrates = false;
-            if (item.cursed) {
+            const shouldCall = !alreadyKnown && !result.learned;
+            if (result.disintegrates) {
                 game._queued_message_after_more = 'The scroll disintegrates.';
                 game._queued_message_more_after_more = 1;
-                if (!item.actualKind && !item.known) {
-                    game._call_scroll_label = String(item.kind || '').replace(/^scroll labeled /, '') || 'XOR OTA';
+                if (shouldCall) {
+                    game._call_scroll_label = callLabel;
                     game._call_scroll_after_queued_more = 1;
                     callAfterDisintegrates = true;
                 }
             }
-            await setMessage(`You read the scroll.  You feel ${game.u?.hallucinating ? 'in touch with the Universal Oneness.' : 'like someone is helping you.'}`, true);
-            game._command_mode = null;
+            await setMessage(result.messages.join('  '), true);
+            game._command_mode = shouldCall && !result.disintegrates ? 'callScrollAfterMore' : null;
+            if (shouldCall && !result.disintegrates) game._call_scroll_label = callLabel;
             game.context.move = callAfterDisintegrates ? 0 : 1;
+            if (shouldCall && !result.disintegrates) game.context.move = 0;
             return;
         }
         if (isScroll && (scrollName === 'magic mapping' || item.scrollIndex === 14 || (item.roll >= 800 && item.roll <= 844))) {
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('magic mapping')
+                || item.known === true
+                || item.actualKind === 'scroll of magic mapping'
+                || item.kind === 'magic mapping'
+                || item.kind === 'scroll of magic mapping';
+            const callLabel = scrollCallLabel(item, 14);
+            const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
             rn2(19);
+            if (game.level?.flags?.nommap) {
+                messages.push('Your mind is filled with crazy lines!');
+                messages.push(heroIsHallucinating() ? 'Wow!  Modern art.' : 'Your head spins in bewilderment.');
+                addHeroConfusion(rnd(30));
+                const shouldCall = !alreadyKnown;
+                await setMessage(messages.join('  '), true);
+                game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+                if (shouldCall) game._call_scroll_label = callLabel;
+                game.context.move = shouldCall ? 0 : 1;
+                return;
+            }
+            learnScrollByName('magic mapping', item, 14);
+            messages.push('A map coalesces in your mind!');
+            const cursedMap = item.cursed && !confusedReading;
+            revealLevelMap({ confusedMap: cursedMap, revealSecretDoors: !!item.blessed });
             rn2(19);
-            revealLevelMap();
-            await setMessage('As you read the scroll, it disappears.  A map coalesces in your mind!');
+            if (cursedMap) messages.push("Unfortunately, you can't grasp the details.");
+            await setMessage(messages.join('  '), confusedReading || cursedMap);
             game._command_mode = null;
             game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'amnesia' || item.scrollIndex === 15)) {
+            const confusedReading = heroIsConfused();
+            learnScrollByName('amnesia', item, 15);
+            removeInventoryItem(item);
+            rn2(19);
+            const messages = scrollReadMessages(confusedReading);
+            messages.push(amnesiaScrollEffect(item));
+            await setMessage(messages.join('  '), true);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'fire' || item.scrollIndex === 16)) {
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('fire');
+            let damage = fireScrollDamage(item);
+            const messages = fireScrollReadMessages(confusedReading);
+            removeInventoryItem(item);
+            rn2(19);
+            if (!alreadyKnown) learnScrollByName('fire', item, 16);
+
+            if (confusedReading) {
+                if (game.u?.underwater || game.u?.uunderwater) {
+                    messages.push('A little water around you vaporizes.');
+                } else if (game.u?.fireResistance) {
+                    messages.push(game.u?.blind
+                        ? 'You feel a pleasant warmth in your hands.'
+                        : 'Oh, look, what a pretty fire in your hands.');
+                } else {
+                    messages.push('The scroll catches fire and you burn your hands.');
+                    if (game.u) {
+                        game.u.uhp = Math.max(0, (game.u.uhp || 0) - 1);
+                        if ((game.u.uhp || 0) <= 0) {
+                            game._death_cause = 'killed by a scroll of fire';
+                            messages.push('You die...');
+                        }
+                    }
+                }
+                await setMessage(messages.join('  '), true);
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+
+            if (item.blessed) {
+                if (!alreadyKnown) messages.push('This is a scroll of fire!');
+                damage *= 5;
+                messages.push('Where do you want to center the explosion?');
+                game._fire_scroll_pending = { damage, messages };
+                game._fire_scroll_cursor = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+                game._cursor_override = [(game.u?.ux || 0) - 1, (game.u?.uy || 0) + 1];
+                await setMessage(messages.join('  '), false);
+                game._command_mode = 'fireScrollCenter';
+                game.context.move = 0;
+                return;
+            }
+
+            const result = resolveFireScrollExplosion(game.u?.ux || 0, game.u?.uy || 0, damage, messages);
+            await setMessage(result.messages.join('  '), result.more);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'earth' || item.scrollIndex === 17)) {
+            const confusedReading = heroIsConfused();
+            removeInventoryItem(item);
+            rn2(19);
+            const messages = scrollReadMessages(confusedReading);
+            const result = earthScrollEffect(item);
+            if (result.known) learnScrollByName('earth', item, 17);
+            messages.push(...result.messages);
+            await setMessage(messages.join('  '), result.more || confusedReading);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (isScroll && (scrollName === 'stinking cloud' || item.scrollIndex === 20)) {
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('stinking cloud');
+            const messages = scrollReadMessages(confusedReading);
+            const cval = item.blessed ? 1 : item.cursed ? -1 : 0;
+            removeInventoryItem(item);
+            rn2(19);
+            if (!alreadyKnown) {
+                messages.push('You have found a scroll of stinking cloud!');
+                learnScrollByName('stinking cloud', item, 20);
+            }
+            messages.push(`Where do you want to center the ${alreadyKnown ? 'stinking ' : ''}cloud?`);
+            game._stinking_cloud_pending = {
+                cloudsize: 15 + 10 * cval,
+                damage: 8 + 4 * cval,
+            };
+            game._stinking_cloud_cursor = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+            game._cursor_override = [(game.u?.ux || 0) - 1, (game.u?.uy || 0) + 1];
+            await setMessage(messages.join('  '), false);
+            game._command_mode = 'stinkingCloudCenter';
+            game.context.move = 0;
             return;
         }
         if (isScroll && (scrollName === 'light' || item.scrollIndex === 9)) {
-            const label = String(item.kind || '').replace(/^scroll labeled /, '')
-                || game._object_descriptions?.scrolls?.[9];
-            game._discoveries ??= [];
-            const discovery = game._discoveries.find(entry => entry.section === 'Scrolls' && entry.name === 'scroll of light');
-            if (discovery) {
-                discovery.known = true;
-                discovery.text = label ? `scroll of light (${label})` : 'scroll of light';
-            } else {
-                game._discoveries.push({
-                    section: 'Scrolls',
-                    name: 'scroll of light',
-                    text: label ? `scroll of light (${label})` : 'scroll of light',
-                    starred: false,
-                    known: true,
-                });
-            }
+            const confusedReading = heroIsConfused();
+            const alreadyKnown = scrollDiscoveryKnown('light')
+                || item.known === true
+                || item.actualKind === 'scroll of light'
+                || item.kind === 'light'
+                || item.kind === 'scroll of light';
+            const callLabel = scrollCallLabel(item, 9);
+            const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
             rn2(19);
-            rn2(19);
-            learnObjectScore('Scrolls', 'scroll of light');
-            for (let y = Math.max(0, (game.u?.uy || 0) - 5); y <= Math.min(ROWNO - 1, (game.u?.uy || 0) + 5); y++) {
-                for (let x = Math.max(1, (game.u?.ux || 0) - 5); x <= Math.min(COLNO - 1, (game.u?.ux || 0) + 5); x++) {
-                    if ((x - (game.u?.ux || 0)) ** 2 + (y - (game.u?.uy || 0)) ** 2 > 25) continue;
-                    if (!couldsee(x, y)) continue;
-                    const loc = game.level?.at(x, y);
-                    if (!loc || loc.typ === STONE) continue;
-                    loc.lit = !item.cursed;
-                    loc.waslit = !item.cursed;
-                    loc._litScrollWhite = !item.cursed;
-                    newsym(x, y);
-                }
-            }
-            vision_recalc();
-            await setMessage(item.cursed
-                ? 'As you read the scroll, it disappears.  You are surrounded by darkness!'
-                : 'As you read the scroll, it disappears.  A lit field surrounds you!');
-            game._command_mode = null;
-            game.context.move = 1;
+            const result = await lightScrollEffect(item, messages);
+            if (result.learned) learnScrollByName('light', item, 9);
+            const shouldCall = !alreadyKnown && !result.learned;
+            await setMessage(messages.join('  '), confusedReading || shouldCall);
+            game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
+            if (shouldCall) game._call_scroll_label = callLabel;
+            game.context.move = shouldCall ? 0 : 1;
             return;
         }
         if (item?.cls === 'spellbook') {
+            if (isBlankSpellbookItem(item)) {
+                item.known = true;
+                item.kind = 'spellbook of blank paper';
+                item.spellName = '';
+                item.line = normalInventoryLine({ ...item, line: '' });
+                await setMessage('This spellbook is all blank.');
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
             const name = item.spellName || item.spell?.name || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
             const knownSpell = (game._known_spells || []).some(spell =>
                 (spell.name || spell.spellName || spell.spell?.name) === name);
@@ -13891,6 +19172,22 @@ export async function rhack(_cmd) {
                 game._helpless_time = Math.max(game._helpless_time || 0, studyDelay);
                 game._wake_message = 'You can move again.';
                 await setMessage(message);
+                game._command_mode = null;
+                game.context.move = studyDelay;
+                return;
+            }
+            if (heroIsConfused()) {
+                const messages = [];
+                if (!isBookOfTheDeadItem(item) && !rn2(3)) {
+                    messages.push('Being confused you have difficulties in controlling your actions.');
+                    removeInventoryItem(item);
+                    messages.push('You accidentally tear the spellbook to pieces.');
+                } else {
+                    messages.push('You find yourself reading the first line over and over again.');
+                }
+                game._helpless_time = Math.max(game._helpless_time || 0, studyDelay);
+                game._wake_message = 'You can move again.';
+                await setMessage(messages.join('  '), messages.length > 1);
                 game._command_mode = null;
                 game.context.move = studyDelay;
                 return;
@@ -13945,9 +19242,7 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x17' && game.flags?.debug && !game._command_mode) {
-        await setMessage('For what do you wish?');
-        game._wish_text = '';
-        game._command_mode = 'wizardWish';
+        await beginWishPrompt();
         return;
     }
 
@@ -14603,17 +19898,28 @@ export async function rhack(_cmd) {
         if (ch === '\r' || ch === '\n') {
             const text = String(game._name_inventory_text || '').trim();
             if (item && text) {
+                if (item.artifact) {
+                    await setMessage(`${item.artifact} resists the attempt.`);
+                    game._name_inventory_item = null;
+                    game._name_inventory_text = '';
+                    game._command_mode = null;
+                    return;
+                }
                 const currentLine = String(item.line || `${item.letter || '?'} - ${inventoryItemName(item)}`);
                 const status = currentLine.match(/(\s+\([^)]+\))$/)?.[1] || '';
-                const baseName = inventoryItemName(item).replace(/ named .*$/, '');
-                const baseKind = String(item.actualKind || item.kind || baseName)
-                    .replace(/^(?:an? |the )/, '')
-                    .replace(/^(?:blessed |uncursed |cursed )/, '')
-                    .replace(/^[+-]\d+ /, '')
-                    .replace(/ named .*$/, '');
-                item.actualKind = item.actualKind || baseKind;
-                item.kind = `${baseKind} named ${text}`;
-                item.line = `${item.letter || '?'} - ${baseName} named ${text}${status}`;
+                if (nameObjectAsArtifact(item, text)) {
+                    item.line = `${item.letter || '?'} - ${pickupObjectName(item)}${status}`;
+                } else {
+                    const baseName = inventoryItemName(item).replace(/ named .*$/, '');
+                    const baseKind = String(item.actualKind || item.kind || baseName)
+                        .replace(/^(?:an? |the )/, '')
+                        .replace(/^(?:blessed |uncursed |cursed )/, '')
+                        .replace(/^[+-]\d+ /, '')
+                        .replace(/ named .*$/, '');
+                    item.actualKind = item.actualKind || baseKind;
+                    item.kind = `${baseKind} named ${text}`;
+                    item.line = `${item.letter || '?'} - ${baseName} named ${text}${status}`;
+                }
             }
             game._name_inventory_item = null;
             game._name_inventory_text = '';
@@ -16039,41 +21345,217 @@ export async function rhack(_cmd) {
             const wish = wishText.toLowerCase();
             game._wish_text = '';
             game._command_mode = null;
-            game.context.move = 0;
             if (!wish) {
-                await setMessage('Nothing fitting that wish appears.');
+                await setWishResultMessage('Nothing fitting that wish appears.');
                 return;
             }
-            let wishedName = wishText.replace(/^(?:a|an|the)\s+/i, '');
+            let wishedName = wishText;
             let wishedBlessed = false;
+            let wishedUncursed = false;
             let wishedCursed = false;
             let wishedQuan = 1;
             let wishedSpe;
+            let wishedSpeNegative = false;
+            let wishedQuanForced = false;
+            const leadingArticle = wishedName.match(/^(a|an|the)\s+/i);
+            if (leadingArticle) {
+                if (leadingArticle[1].toLowerCase() !== 'the') wishedQuanForced = true;
+                wishedName = wishedName.slice(leadingArticle[0].length);
+            }
+            const wishedQualifiers = {
+                greased: false,
+                poisoned: false,
+                erodeproof: false,
+                eroded: 0,
+                eroded2: 0,
+                wetness: 0,
+                lockState: '',
+                trappedState: 0,
+                empty: false,
+                diluted: false,
+                halfeaten: false,
+                historic: false,
+                unlabeled: false,
+                lightState: null,
+                realAmulet: false,
+                fakeAmulet: false,
+                monsterGender: null,
+                zombifying: false,
+            };
+            let wishedErosionIntensity = 0;
             for (;;) {
-                const buc = wishedName.match(/^(blessed|uncursed|cursed)\s+/i);
+                const buc = wishedName.match(/^(blessed|holy|uncursed|cursed|unholy)\s+/i);
                 if (buc) {
-                    wishedBlessed = buc[1].toLowerCase() === 'blessed';
-                    wishedCursed = buc[1].toLowerCase() === 'cursed';
+                    const state = buc[1].toLowerCase();
+                    wishedBlessed = state === 'blessed' || state === 'holy';
+                    wishedUncursed = state === 'uncursed';
+                    wishedCursed = state === 'cursed' || state === 'unholy';
                     wishedName = wishedName.slice(buc[0].length);
                     continue;
                 }
                 const spe = wishedName.match(/^([+-]\d+)\s+/);
                 if (spe) {
-                    wishedSpe = Number(spe[1]);
+                    wishedSpeNegative = spe[1].startsWith('-');
+                    wishedSpe = capWishSpe(Number(spe[1]));
                     wishedName = wishedName.slice(spe[0].length);
+                    continue;
+                }
+                const amuletReality = wishedName.match(/^(real|fake)\s+/i);
+                if (amuletReality) {
+                    const state = amuletReality[1].toLowerCase();
+                    if (state === 'fake') {
+                        wishedQualifiers.fakeAmulet = true;
+                        wishedQualifiers.realAmulet = false;
+                    } else {
+                        wishedQualifiers.realAmulet = true;
+                    }
+                    wishedName = wishedName.slice(amuletReality[0].length);
+                    continue;
+                }
+                const trapped = wishedName.match(/^(trapped|untrapped)\s+/i);
+                if (trapped) {
+                    const state = trapped[1].toLowerCase();
+                    wishedQualifiers.trappedState = state === 'untrapped' ? 2 : game.flags?.debug ? 1 : 0;
+                    wishedName = wishedName.slice(trapped[0].length);
+                    continue;
+                }
+                const lockState = wishedName.match(WISH_LOCK_QUALIFIER_RE);
+                if (lockState) {
+                    wishedQualifiers.lockState = lockState[1].toLowerCase();
+                    wishedName = wishedName.slice(lockState[0].length);
+                    continue;
+                }
+                const proof = wishedName.match(WISH_PROOF_QUALIFIER_RE);
+                if (proof) {
+                    wishedQualifiers.erodeproof = true;
+                    wishedName = wishedName.slice(proof[0].length);
+                    continue;
+                }
+                const lit = wishedName.match(/^(?:lit|burning|unlit|extinguished)\s+/i);
+                if (lit) {
+                    wishedQualifiers.lightState = /^(?:lit|burning)/i.test(lit[0]) ? 1 : 0;
+                    wishedName = wishedName.slice(lit[0].length);
+                    continue;
+                }
+                const wet = wishedName.match(/^(wet|moist)\s+/i);
+                if (wet) {
+                    wishedQualifiers.wetness = wet[1].toLowerCase() === 'wet' ? 3 + rn2(3) : rnd(2);
+                    wishedName = wishedName.slice(wet[0].length);
+                    continue;
+                }
+                const unlabeled = wishedName.match(/^(?:unlabeled|unlabelled|blank)\s+/i);
+                if (unlabeled) {
+                    wishedQualifiers.unlabeled = true;
+                    wishedName = wishedName.slice(unlabeled[0].length);
+                    continue;
+                }
+                const halfeaten = wishedName.match(/^(?:partly|partially)\s+eaten\s+/i);
+                if (halfeaten) {
+                    wishedQualifiers.halfeaten = true;
+                    wishedName = wishedName.slice(halfeaten[0].length);
+                    continue;
+                }
+                const historic = wishedName.match(/^historic\s+/i);
+                if (historic) {
+                    wishedQualifiers.historic = true;
+                    wishedName = wishedName.slice(historic[0].length);
+                    continue;
+                }
+                const globSize = wishedName.match(/^(small|medium|large|very large)\s+/i);
+                if (globSize && /\bglobs?\b/i.test(wishedName.slice(globSize[0].length))) {
+                    const size = globSize[1].toLowerCase();
+                    wishedQualifiers.globSize = size === 'small' ? 1
+                        : size === 'medium' ? 2
+                            : size === 'large' ? 3 : 4;
+                    wishedName = wishedName.slice(globSize[0].length);
+                    continue;
+                }
+                const monsterGender = wishedName.match(/^(female|male|neuter)\s+/i);
+                if (monsterGender) {
+                    wishedQualifiers.monsterGender = monsterGender[1].toLowerCase();
+                    wishedName = wishedName.slice(monsterGender[0].length);
+                    continue;
+                }
+                const diluted = wishedName.match(/^diluted\s+/i);
+                if (diluted) {
+                    wishedQualifiers.diluted = true;
+                    wishedName = wishedName.slice(diluted[0].length);
+                    continue;
+                }
+                const poisoned = wishedName.match(/^poisoned\s+/i);
+                if (poisoned) {
+                    wishedQualifiers.poisoned = true;
+                    wishedName = wishedName.slice(poisoned[0].length);
+                    continue;
+                }
+                const greased = wishedName.match(/^greased\s+/i);
+                if (greased) {
+                    wishedQualifiers.greased = true;
+                    wishedName = wishedName.slice(greased[0].length);
+                    continue;
+                }
+                const zombifying = wishedName.match(/^zombifying\s+/i);
+                if (zombifying) {
+                    wishedQualifiers.zombifying = true;
+                    wishedName = wishedName.slice(zombifying[0].length);
+                    continue;
+                }
+                const intense = wishedName.match(/^(very|thoroughly)\s+/i);
+                if (intense) {
+                    wishedErosionIntensity = intense[1].toLowerCase() === 'very' ? 1 : 2;
+                    wishedName = wishedName.slice(intense[0].length);
+                    continue;
+                }
+                const primaryErosion = wishedName.match(WISH_PRIMARY_EROSION_RE);
+                if (primaryErosion) {
+                    wishedQualifiers.eroded = 1 + wishedErosionIntensity;
+                    wishedErosionIntensity = 0;
+                    wishedName = wishedName.slice(primaryErosion[0].length);
+                    continue;
+                }
+                const secondaryErosion = wishedName.match(WISH_SECONDARY_EROSION_RE);
+                if (secondaryErosion) {
+                    wishedQualifiers.eroded2 = 1 + wishedErosionIntensity;
+                    wishedErosionIntensity = 0;
+                    wishedName = wishedName.slice(secondaryErosion[0].length);
+                    continue;
+                }
+                const empty = wishedName.match(/^empty\s+/i);
+                if (empty) {
+                    wishedQualifiers.empty = true;
+                    wishedName = wishedName.slice(empty[0].length);
                     continue;
                 }
                 const quan = wishedName.match(/^(\d+)\s+/);
                 if (!quan) break;
                 wishedQuan = Number(quan[1]);
+                wishedQuanForced = true;
                 wishedName = wishedName.slice(quan[0].length);
             }
+            const litSuffix = wishedName.match(/\s*\(lit\)\s*$/i);
+            if (litSuffix) {
+                wishedQualifiers.lightState = 1;
+                wishedName = wishedName.slice(0, litSuffix.index);
+            } else if (!/^wand of\b/i.test(wishedName)) {
+                const chargeSuffix = wishedName.match(/\s*\((-?\d+)\)\s*$/);
+                if (chargeSuffix) {
+                    const charge = Number(chargeSuffix[1]);
+                    wishedSpeNegative = charge < 0;
+                    wishedSpe = capWishSpe(Math.abs(charge));
+                    wishedName = wishedName.slice(0, chargeSuffix.index);
+                }
+            }
+            const groupedWish = normalizeWishedGroupPhrase(wishedName, wishedQuan);
+            wishedName = groupedWish.name;
+            wishedQuan = groupedWish.quantity;
+            wishedQuanForced = wishedQuanForced || groupedWish.matched;
+            wishedQuan = applyWishedPluralQuantity(wishedName, wishedQuan);
             const lowerName = wishedName.trim().toLowerCase();
             if (!lowerName || lowerName === 'nothing' || lowerName === 'nil' || lowerName === 'none') {
-                await setMessage('Nothing fitting that wish appears.');
+                await setWishResultMessage('Nothing fitting that wish appears.');
                 return;
             }
-            if (/^(?:gold(?: pieces?)?|coins?)$/.test(lowerName)) {
+            if (/^(?:gold(?: pieces?)?|coins?|zorkmids?|money|\$)$/.test(lowerName)) {
                 next_ident();
                 godsNoticeWish();
                 game._goldCount = (game._goldCount || 0) + wishedQuan;
@@ -16085,7 +21567,7 @@ export async function rhack(_cmd) {
                 }
                 else game.inventory.push({ letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: game._goldCount });
                 game._pet_food_scan_inventory = game.inventory;
-                await setMessage(`$ - ${wishedQuan} gold piece${wishedQuan === 1 ? '' : 's'}.`);
+                await setWishResultMessage(`$ - ${wishedQuan} gold piece${wishedQuan === 1 ? '' : 's'}.`);
                 return;
             }
             let letter = nextInventoryLetter();
@@ -16093,29 +21575,53 @@ export async function rhack(_cmd) {
                 && !(game.inventory || []).some(invItem => invItem.letter === 'n')) {
                 letter = nextInventoryLetter();
             }
-            const item = Object.assign({ letter, quan: 1 }, wishedObjectFromName(lowerName));
-            if (wishedBlessed) {
-                item.blessed = true;
-                item.cursed = false;
+            const item = Object.assign({ letter, quan: 1 }, wishedObjectFromName(wishedName.trim(), wishedQualifiers));
+            if (item._wish_disappeared) {
+                await setWishResultMessage(item._wish_disappear_message);
+                return;
             }
-            if (wishedCursed) {
-                item.cursed = true;
-                item.blessed = false;
-            }
-            if (wishedSpe !== undefined) item.spe = wishedSpe;
-            if (wishedQuan > 1) item.quan = wishedQuan;
+            if (item._artifact_wish_name) wishedQuan = 1;
+            if (wishedSpe !== undefined && !item._wish_ignore_requested_spe && !item._wish_spe_from_suffix)
+                item.spe = wishedSpeForItem(item, wishedSpe);
+            applyWishedBuc(item, {
+                wishedBlessed,
+                wishedUncursed,
+                wishedCursed,
+                negativeSpe: wishedSpeNegative,
+            });
+            applyWishedQualifiers(item, wishedQualifiers);
+            applyWishedQuantity(item, wishedQuan, wishedQuanForced);
+            applyWishedTinVariety(item);
+            delete item._wish_ignore_requested_spe;
+            delete item._wish_spe_from_suffix;
+            delete item._wish_tin_explicit_content;
+            delete item._wish_tin_requested_variety;
+            delete item._wish_glob_size;
+            delete item._wish_glob_default_count;
             const visibleName = game.u?.blind && item.cls === 'potion' ? 'potion'
                 : game.u?.blind && item.cls === 'ring' ? 'ring'
                     : game.u?.blind && item.cls === 'wand' ? 'wand'
-                    : pickupObjectName(item);
-            const article = /^(?:.* )?(?:boots|gloves)$/.test(visibleName) ? 'a pair of'
+                    : `${erosionPrefix(item)}${pickupObjectName(item)}`;
+            const displayQuan = item.quan || wishedQuan;
+            const article = item.unique ? 'the'
+                : item.noArticle ? ''
+                : /^(?:.* )?(?:boots|gloves)$/.test(visibleName) ? 'a pair of'
                 : /^[aeiou]/i.test(visibleName) ? 'an' : 'a';
-            item.line = `${letter} - ${wishedQuan > 1 ? `${wishedQuan} ${visibleName}` : `${article} ${visibleName}`}`;
+            item.line = `${letter} - ${displayQuan > 1 ? `${displayQuan} ${visibleName}` : article ? `${article} ${visibleName}` : visibleName}`;
             game.inventory ??= [];
             game.inventory.push(item);
             game._pet_food_scan_inventory = game.inventory;
             let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
             for (const invItem of game.inventory || []) {
+                if (invItem.globby) {
+                    carriedWeight += (invItem.owt ?? 20) * (invItem.quan || 1);
+                    continue;
+                }
+                if (invItem.otyp === 'corpse' || invItem.otyp === CORPSE) {
+                    const corpseName = invItem.corpsenm?.name || objectKindKey(invItem).replace(/\s+corpses?$/, '');
+                    carriedWeight += (CORPSE_WEIGHTS.get(corpseName) ?? invItem.owt ?? 1) * (invItem.quan || 1);
+                    continue;
+                }
                 const kind = String(invItem.kind || invItem.actualKind || invItem.spellName || invItem.spell?.name || '').toLowerCase();
                 const cls = invItem.cls || (invItem.otyp === RING_CLASS ? 'ring'
                     : invItem.otyp === SCROLL_CLASS ? 'scroll'
@@ -16130,11 +21636,11 @@ export async function rhack(_cmd) {
                 game._burden_after_more = 1;
                 game._queued_message_after_more = 'Your movements are slowed slightly because of your load.';
                 game._wish_notice_after_more = 1;
-                await setMessage(`${item.line}.`, true);
+                await setWishResultMessage(`${item.line}.`, true);
                 return;
             }
             godsNoticeWish();
-            await setMessage(`${item.line}.`);
+            await setWishResultMessage(`${item.line}.`);
             return;
         }
         if (key === 8 || key === 127) game._wish_text = (game._wish_text || '').slice(0, -1);
@@ -16775,16 +22281,45 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'levelTeleportText') {
-        if (game._level_teleport_confused_scroll && rnl(5)) {
+        if (ch === '\x1b') {
             game._level_teleport_confused_scroll = 0;
             game._level_teleport_text = '';
-            game._command_mode = 'confusedLevelTeleportOopsMore';
             game._deferred_level_goto = null;
-            await setMessage('Oops...', true);
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            game.context.move = 1;
             return;
         }
         if (ch === '\r' || ch === '\n') {
-            const target = Number.parseInt(game._level_teleport_text || '', 10);
+            const text = game._level_teleport_text || '';
+            if (text.trim() === '*') {
+                const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
+                const targetDepth = randomTeleportDepth();
+                game._level_teleport_text = '';
+                game._level_teleport_confused_scroll = 0;
+                game._command_mode = null;
+                if (targetDepth === currentDepth) {
+                    await setMessage('You shudder for a moment.');
+                    game.context.move = 1;
+                    return;
+                }
+                game._deferred_level_goto = {
+                    targetLevel: levelTeleportNumericTarget(targetDepth),
+                    options: { levelTeleport: true },
+                };
+                game.context.move = 1;
+                return;
+            }
+            if (game._level_teleport_confused_scroll && rnl(5)) {
+                game._level_teleport_confused_scroll = 0;
+                game._level_teleport_text = '';
+                game._command_mode = 'confusedLevelTeleportOopsMore';
+                game._deferred_level_goto = null;
+                await setMessage('Oops...', true);
+                return;
+            }
+            const target = Number.parseInt(text, 10);
             if (target) {
                 if (questDownBlocked() && target > (game.u?.uz?.dlevel || 0)) {
                     game._level_teleport_text = '';
@@ -17099,7 +22634,7 @@ export async function rhack(_cmd) {
                 : `${game.u?.uhandedness || 'right'} hand`;
             item.alternate = false;
             item.line = isWeapon ? `${ch} - ${baseName} (weapon in ${hand})` : `${ch} - ${baseName} (wielded)`;
-            game._wielded_mjollnir = item.kind === 'mjollnir' || /Mjollnir/.test(baseName);
+            game._wielded_mjollnir = item.artifact === 'Mjollnir' || item.kind === 'mjollnir' || /Mjollnir/.test(baseName);
             await setMessage(`${item.line}.`);
             game._command_mode = null;
             game.context.move = 1;
@@ -17307,6 +22842,7 @@ export async function rhack(_cmd) {
             if (command === 'conduct') {
                 const rows = [[0, 40, 'Voluntary challenges:']];
                 let row = 1;
+                const genocideCount = genocidedMonsterNames().length;
                 rows.push([row++, 41, 'Character rerolling was not enabled.']);
                 rows.push([row++, 41, 'You have gone without food.']);
                 if (!game._chronicle_rejected_atheism)
@@ -17317,7 +22853,9 @@ export async function rhack(_cmd) {
                     rows.push([row++, 41, 'You have been a pacifist.']);
                 rows.push(
                     [row++, 41, 'You have been illiterate.'],
-                    [row++, 41, 'You have never genocided any monsters.'],
+                    [row++, 41, genocideCount
+                        ? `You have genocided ${genocideCount} type${genocideCount === 1 ? '' : 's'} of monster${genocideCount === 1 ? '' : 's'}.`
+                        : 'You have never genocided any monsters.'],
                     [row++, 41, 'You have never polymorphed an object.'],
                     [row++, 41, 'You have never changed form.'],
                     [row++, 41, 'You have used no wishes.'],
@@ -17334,8 +22872,16 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'genocided') {
-                await setMessage('No creatures have been genocided.');
-                game._command_mode = null;
+                const names = genocidedMonsterNames();
+                if (!names.length) {
+                    await setMessage('No creatures have been genocided.');
+                    game._command_mode = null;
+                }
+                else {
+                    const lines = genocideListLines();
+                    setOverlay(lines, Math.max(...lines.map(([row]) => row)) + 1, false, 39);
+                    game._command_mode = 'simpleOverlay';
+                }
                 return;
             }
             if (command === 'adjust') {
@@ -17426,9 +22972,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'wizwish' && game.flags?.debug) {
-                await setMessage('For what do you wish?');
-                game._wish_text = '';
-                game._command_mode = 'wizardWish';
+                await beginWishPrompt();
                 return;
             }
 	            if (command === 'wizgenesis' && game.flags?.debug) {
@@ -17801,6 +23345,7 @@ export async function rhack(_cmd) {
             game._message_more = 0;
             game._command_mode = null;
             game._teleport_cursor_position_mode = 0;
+            game._teleport_from_scroll = 0;
             game.context.move = 1;
             game._process_command_time_now = 1;
             return;
@@ -17964,6 +23509,15 @@ export async function rhack(_cmd) {
                 await docrt();
                 game._teleport_dot_described = 0;
                 game._command_mode = null;
+                if (game._teleport_from_scroll) {
+                    game._teleport_from_scroll = 0;
+                    game._teleport_cursor_position_mode = 0;
+                    game._cursor_override = null;
+                    game._teleport_geometric_online_once = 1;
+                    await setMessage(`You materialize in ${targetX === oldX && targetY === oldY ? 'the same' : 'a different'} location!`);
+                    game.context.move = 1;
+                    return;
+                }
                 const up = game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY;
                 const down = game.level?.dnstair?.x === targetX && game.level?.dnstair?.y === targetY;
                 const label = up || down ? `staircase ${up ? 'up' : 'down'}`
@@ -18064,8 +23618,12 @@ export async function rhack(_cmd) {
                 game._teleport_cursor_position_mode = 0;
                 game._cursor_override = null;
                 game._command_mode = null;
-                game.context.move = 0;
+                const teleportFromScroll = !!game._teleport_from_scroll;
+                game._teleport_from_scroll = 0;
+                game.context.move = teleportFromScroll ? 1 : 0;
                 if (!selectedValid) {
+                    if (teleportFromScroll)
+                        game._topline_after_more = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                     const attachedObjects = [game.u?.uchain, game.u?.uball].filter(obj =>
                         obj && !obj.hidden && obj.ox === landingX && obj.oy === landingY);
                     if (attachedObjects.length > 1) {
@@ -18086,7 +23644,9 @@ export async function rhack(_cmd) {
                     await setMessage('Sorry...', true);
                     return;
                 }
-                await setMessage('');
+                await setMessage(teleportFromScroll
+                    ? `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`
+                    : '');
                 return;
             }
             const up = game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY;
@@ -19824,18 +25384,19 @@ export async function rhack(_cmd) {
             return;
         }
         if (objectHere?.otyp === 'corpse') {
+            const corpseName = pickupObjectName({ ...objectHere, quan: 1 });
             const letter = nextInventoryLetter();
             game.inventory = [...(game.inventory || []), {
                 ...objectHere,
                 cls: 'food',
                 letter,
                 quan: 1,
-                kind: `${objectHere.corpsenm?.name || 'monster'} corpse`,
+                kind: corpseName,
             }];
             game._pet_food_scan_inventory = game.inventory;
             game.level.objects = (game.level.objects || []).filter(obj => obj !== objectHere);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
-            await setMessage(`${letter} - a ${objectHere.corpsenm?.name || 'monster'} corpse.`);
+            await setMessage(`${letter} - a ${corpseName}.`);
             game.context.move = 1;
             return;
         }
@@ -19849,7 +25410,7 @@ export async function rhack(_cmd) {
             if (shopPrice > 0) {
                 const loc = game.level?.at(game.u?.ux, game.u?.uy);
                 const roomno = loc?.roomno || 0;
-                const room = roomno >= ROOMOFFSET ? game.level?.rooms?.[roomno - ROOMOFFSET] : null;
+                const room = levelRoomByRoomno(roomno);
                 shopkeeperForPrice = room?.resident || (game.level?.monsters || [])
                     .find(mon => mon.isshk && mon.shoproom === roomno);
             }
@@ -20161,7 +25722,7 @@ export async function rhack(_cmd) {
         const adjacent = shopkeepers.filter(mon => Math.max(Math.abs(mon.mx - ux), Math.abs(mon.my - uy)) <= 1);
         const loc = game.level?.at(ux, uy);
         const roomno = loc?.roomno || 0;
-        const room = roomno >= ROOMOFFSET ? game.level?.rooms?.[roomno - ROOMOFFSET] : null;
+        const room = levelRoomByRoomno(roomno);
         const resident = room?.resident || shopkeepers.find(mon => mon.shoproom === roomno);
         const shkp = adjacent.length === 1 ? adjacent[0] : resident || (shopkeepers.length === 1 ? shopkeepers[0] : null);
         if (!shkp) {
@@ -20475,7 +26036,7 @@ export async function rhack(_cmd) {
                 const obj = objects[i];
                 const amount = (() => {
                     const name = (obj.otyp === 'corpse' || obj.otyp === CORPSE)
-                        ? `${obj.corpsenm?.name || 'monster'} corpse`
+                        ? pickupObjectName(obj)
                         : obj.otyp === ICE_BOX ? 'ice box'
                         : BAG_OBJECT_TYPES.has(obj.otyp) ? 'bag'
                         : pickupObjectName(obj);

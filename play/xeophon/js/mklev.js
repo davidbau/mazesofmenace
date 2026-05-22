@@ -27,23 +27,24 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED,
     OROOM, COURT, SWAMP, BEEHIVE, MORGUE, BARRACKS, ZOO, LEPREHALL,
-    COCKNEST, ANTHOLE, VAULT, TEMPLE, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, SHOPBASE,
+    COCKNEST, ANTHOLE, VAULT, TEMPLE, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, SHARED_PLUS, SHOPBASE,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     ACCESSIBLE, IN_SIGHT,
     SPACE_POS, ZAP_POS, isok, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, TREE, CLOUD,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
     MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL,
-    CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER,
+    CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     ROT_AGE, TAINT_AGE,
+    In_mines, DUNGEON_ALIGN_BY_DNUM,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -81,9 +82,16 @@ const SHORT_SWORD = 10031;
 const DWARVISH_SHORT_SWORD = 10103;
 const BROADSWORD = 10032;
 const LONG_SWORD = 10033;
+const RUNESWORD = 10120;
 const POLEARM = 10034;
 const BATTLE_AXE = 10053;
 const DWARVISH_MATTOCK = 10104;
+const WAR_HAMMER = 10121;
+const ELVEN_BROADSWORD = 10122;
+const ELVEN_DAGGER = 10123;
+const MORNING_STAR = 10124;
+const KATANA = 10125;
+const TSURUGI = 10126;
 const CLUB = 10054;
 const RANSEUR = 10055;
 const PARTISAN = 10056;
@@ -142,9 +150,31 @@ const EXPENSIVE_CAMERA = 10082;
 const STETHOSCOPE = 10083;
 const MAGIC_MARKER = 10084;
 const CRYSTAL_BALL = 10088;
+const LUCKSTONE = 10127;
+const LENSES = 10128;
+const CREDIT_CARD = 10129;
+const AMULET_OF_ESP = 10130;
 const GRAY_DRAGON_SCALE_MAIL = 10085;
 const SILVER_DRAGON_SCALE_MAIL = 10086;
 const SPEED_BOOTS = 10087;
+const GOLD_DRAGON_SCALE_MAIL = 10140;
+const RED_DRAGON_SCALE_MAIL = 10141;
+const WHITE_DRAGON_SCALE_MAIL = 10142;
+const ORANGE_DRAGON_SCALE_MAIL = 10143;
+const BLACK_DRAGON_SCALE_MAIL = 10144;
+const BLUE_DRAGON_SCALE_MAIL = 10145;
+const GREEN_DRAGON_SCALE_MAIL = 10146;
+const YELLOW_DRAGON_SCALE_MAIL = 10147;
+const GRAY_DRAGON_SCALES = 10148;
+const GOLD_DRAGON_SCALES = 10149;
+const SILVER_DRAGON_SCALES = 10150;
+const RED_DRAGON_SCALES = 10151;
+const WHITE_DRAGON_SCALES = 10152;
+const ORANGE_DRAGON_SCALES = 10153;
+const BLACK_DRAGON_SCALES = 10154;
+const BLUE_DRAGON_SCALES = 10155;
+const GREEN_DRAGON_SCALES = 10156;
+const YELLOW_DRAGON_SCALES = 10157;
 
 const SPLEV_LEFT = 1;
 const SPLEV_CENTER = 3;
@@ -273,8 +303,9 @@ const REAL_GEM_PROBS = [
 ];
 const REAL_GEM_NAMES = [
     'dilithium crystal', 'diamond', 'ruby', 'jacinth stone', 'sapphire',
-    'black opal', 'emerald', 'turquoise', 'citrine', 'aquamarine', 'amber',
-    'topaz', 'jet', 'opal', 'chrysoberyl stone', 'garnet stone',
+    'black opal', 'emerald', 'turquoise stone', 'citrine stone',
+    'aquamarine stone', 'amber stone', 'topaz stone', 'jet stone',
+    'opal', 'chrysoberyl stone', 'garnet stone',
     'amethyst stone', 'jasper stone', 'fluorite stone', 'obsidian stone',
     'agate stone', 'jade stone',
 ];
@@ -402,10 +433,12 @@ const WEAPON_ROLL_KINDS = [
 
 const SPECIFIC_WEAPONS = new Set([
     DAGGER, BOW, CROSSBOW, KNIFE, SLING, ORCISH_DAGGER, SCIMITAR,
+    RUNESWORD, WAR_HAMMER, ELVEN_BROADSWORD, ELVEN_DAGGER,
     ATHAME, QUARTERSTAFF,
     SPEAR, DWARVISH_SPEAR, TRIDENT, STILETTO, SHORT_SWORD, DWARVISH_SHORT_SWORD, BROADSWORD, LONG_SWORD, POLEARM,
     BATTLE_AXE, CLUB, RANSEUR, PARTISAN, GLAIVE, SPETUM, TWO_HANDED_SWORD,
     LUCERN_HAMMER, AKLYS, FLAIL, MACE, SILVER_MACE, SILVER_SABER, BULLWHIP,
+    MORNING_STAR, KATANA, TSURUGI,
     AXE, DWARVISH_MATTOCK,
 ]);
 
@@ -1308,6 +1341,7 @@ const LEATHER_GLOVES = 10050;
 const LEATHER_CLOAK = 10051;
 const CLOAK_OF_DISPLACEMENT = 10111;
 const GAUNTLETS_OF_POWER = 10112;
+const HELM_OF_BRILLIANCE = 10131;
 const BUGLE = 10052;
 const LEATHER_JACKET = 10077;
 const FEDORA = 10078;
@@ -1330,10 +1364,16 @@ const SPECIFIC_ARMOR = new Set([
     STUDDED_LEATHER_ARMOR, LEATHER_ARMOR, HELMET, DENTED_POT, SMALL_SHIELD,
     LARGE_SHIELD, LOW_BOOTS, HIGH_BOOTS, LEATHER_GLOVES, LEATHER_CLOAK,
     ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT,
-    SHIELD_OF_REFLECTION, GAUNTLETS_OF_POWER,
+    SHIELD_OF_REFLECTION, GAUNTLETS_OF_POWER, HELM_OF_BRILLIANCE,
     LEATHER_JACKET, FEDORA, ELVEN_MITHRIL_COAT, DWARVISH_CLOAK, ELVEN_CLOAK,
     IRON_SHOES, DWARVISH_ROUNDSHIELD, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT,
-    GRAY_DRAGON_SCALE_MAIL, SILVER_DRAGON_SCALE_MAIL, SPEED_BOOTS, ORCISH_HELM,
+    GRAY_DRAGON_SCALE_MAIL, GOLD_DRAGON_SCALE_MAIL, SILVER_DRAGON_SCALE_MAIL,
+    RED_DRAGON_SCALE_MAIL, WHITE_DRAGON_SCALE_MAIL, ORANGE_DRAGON_SCALE_MAIL,
+    BLACK_DRAGON_SCALE_MAIL, BLUE_DRAGON_SCALE_MAIL, GREEN_DRAGON_SCALE_MAIL,
+    YELLOW_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, GOLD_DRAGON_SCALES,
+    SILVER_DRAGON_SCALES, RED_DRAGON_SCALES, WHITE_DRAGON_SCALES,
+    ORANGE_DRAGON_SCALES, BLACK_DRAGON_SCALES, BLUE_DRAGON_SCALES,
+    GREEN_DRAGON_SCALES, YELLOW_DRAGON_SCALES, SPEED_BOOTS, ORCISH_HELM,
 ]);
 const SPECIFIC_ARMOR_COLORS = new Map([
     [ORCISH_HELM, CLR_BLACK],
@@ -1350,7 +1390,25 @@ const SPECIFIC_ARMOR_COLORS = new Map([
     [SPEED_BOOTS, CLR_BROWN],
     [LEATHER_JACKET, CLR_BROWN],
     [GRAY_DRAGON_SCALE_MAIL, CLR_GRAY],
+    [GOLD_DRAGON_SCALE_MAIL, CLR_YELLOW],
     [SILVER_DRAGON_SCALE_MAIL, CLR_BRIGHT_CYAN],
+    [RED_DRAGON_SCALE_MAIL, CLR_RED],
+    [WHITE_DRAGON_SCALE_MAIL, CLR_WHITE],
+    [ORANGE_DRAGON_SCALE_MAIL, CLR_ORANGE],
+    [BLACK_DRAGON_SCALE_MAIL, CLR_BLACK],
+    [BLUE_DRAGON_SCALE_MAIL, CLR_BLUE],
+    [GREEN_DRAGON_SCALE_MAIL, CLR_GREEN],
+    [YELLOW_DRAGON_SCALE_MAIL, CLR_YELLOW],
+    [GRAY_DRAGON_SCALES, CLR_GRAY],
+    [GOLD_DRAGON_SCALES, CLR_YELLOW],
+    [SILVER_DRAGON_SCALES, CLR_BRIGHT_CYAN],
+    [RED_DRAGON_SCALES, CLR_RED],
+    [WHITE_DRAGON_SCALES, CLR_WHITE],
+    [ORANGE_DRAGON_SCALES, CLR_ORANGE],
+    [BLACK_DRAGON_SCALES, CLR_BLACK],
+    [BLUE_DRAGON_SCALES, CLR_BLUE],
+    [GREEN_DRAGON_SCALES, CLR_GREEN],
+    [YELLOW_DRAGON_SCALES, CLR_YELLOW],
 ]);
 const ARMOR_AC_BONUS = new Map([
     [PLATE_MAIL, 7], [CRYSTAL_PLATE_MAIL, 7], [SPLINT_MAIL, 6],
@@ -1361,7 +1419,60 @@ const ARMOR_AC_BONUS = new Map([
     [ROBE, 1], [CLOAK_OF_PROTECTION, 3], [CLOAK_OF_MAGIC_RESISTANCE, 1],
     [SHIELD_OF_REFLECTION, 2], [LEATHER_JACKET, 1], [FEDORA, 0],
     [ELVEN_CLOAK, 1],
+    [GRAY_DRAGON_SCALE_MAIL, 9], [GOLD_DRAGON_SCALE_MAIL, 9],
+    [SILVER_DRAGON_SCALE_MAIL, 9], [RED_DRAGON_SCALE_MAIL, 9],
+    [WHITE_DRAGON_SCALE_MAIL, 9], [ORANGE_DRAGON_SCALE_MAIL, 9],
+    [BLACK_DRAGON_SCALE_MAIL, 9], [BLUE_DRAGON_SCALE_MAIL, 9],
+    [GREEN_DRAGON_SCALE_MAIL, 9], [YELLOW_DRAGON_SCALE_MAIL, 9],
+    [GRAY_DRAGON_SCALES, 3], [GOLD_DRAGON_SCALES, 3],
+    [SILVER_DRAGON_SCALES, 3], [RED_DRAGON_SCALES, 3],
+    [WHITE_DRAGON_SCALES, 3], [ORANGE_DRAGON_SCALES, 3],
+    [BLACK_DRAGON_SCALES, 3], [BLUE_DRAGON_SCALES, 3],
+    [GREEN_DRAGON_SCALES, 3], [YELLOW_DRAGON_SCALES, 3],
 ]);
+const ARTIFACT_DEFS = Object.freeze([
+    { name: 'Excalibur', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Stormbringer', otyp: RUNESWORD, cls: 'weapon', glyph: ')', base: 'runesword', questArtifact: false },
+    { name: 'Mjollnir', otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
+    { name: 'Cleaver', otyp: BATTLE_AXE, cls: 'weapon', glyph: ')', base: 'battle-axe', questArtifact: false },
+    { name: 'Grimtooth', otyp: ORCISH_DAGGER, cls: 'weapon', glyph: ')', base: 'orcish dagger', questArtifact: false },
+    { name: 'Orcrist', otyp: ELVEN_BROADSWORD, cls: 'weapon', glyph: ')', base: 'elven broadsword', questArtifact: false, nameable: true },
+    { name: 'Sting', otyp: ELVEN_DAGGER, cls: 'weapon', glyph: ')', base: 'elven dagger', questArtifact: false, nameable: true },
+    { name: 'Magicbane', otyp: ATHAME, cls: 'weapon', glyph: ')', base: 'athame', questArtifact: false },
+    { name: 'Frost Brand', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Fire Brand', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Dragonbane', otyp: BROADSWORD, cls: 'weapon', glyph: ')', base: 'broadsword', questArtifact: false },
+    { name: 'Demonbane', otyp: SILVER_MACE, cls: 'weapon', glyph: ')', base: 'silver mace', questArtifact: false },
+    { name: 'Werebane', otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false },
+    { name: 'Grayswandir', otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false },
+    { name: 'Giantslayer', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Ogresmasher', otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
+    { name: 'Trollsbane', otyp: MORNING_STAR, cls: 'weapon', glyph: ')', base: 'morning star', questArtifact: false },
+    { name: 'Vorpal Blade', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Snickersnee', otyp: KATANA, cls: 'weapon', glyph: ')', base: 'katana', questArtifact: false },
+    { name: 'Sunsword', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'The Orb of Detection', otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Archeologist' },
+    { name: 'The Heart of Ahriman', otyp: LUCKSTONE, cls: 'gem', glyph: '*', base: 'luckstone', questArtifact: true, questRole: 'Barbarian' },
+    { name: 'The Sceptre of Might', otyp: MACE, cls: 'weapon', glyph: ')', base: 'mace', questArtifact: true, questRole: 'Caveman' },
+    { name: 'The Staff of Aesculapius', otyp: QUARTERSTAFF, cls: 'weapon', glyph: ')', base: 'quarterstaff', questArtifact: true, questRole: 'Healer' },
+    { name: 'The Magic Mirror of Merlin', otyp: MIRROR, cls: 'tool', glyph: '(', base: 'mirror', questArtifact: true, questRole: 'Knight' },
+    { name: 'The Eyes of the Overworld', otyp: LENSES, cls: 'tool', glyph: '(', base: 'lenses', questArtifact: true, questRole: 'Monk' },
+    { name: 'The Mitre of Holiness', otyp: HELM_OF_BRILLIANCE, cls: 'armor', glyph: '[', base: 'helm of brilliance', questArtifact: true, questRole: 'Priest' },
+    { name: 'The Longbow of Diana', otyp: BOW, cls: 'weapon', glyph: ')', base: 'bow', questArtifact: true, questRole: 'Ranger' },
+    { name: 'The Master Key of Thievery', otyp: SKELETON_KEY, cls: 'tool', glyph: '(', base: 'skeleton key', questArtifact: true, questRole: 'Rogue' },
+    { name: 'The Tsurugi of Muramasa', otyp: TSURUGI, cls: 'weapon', glyph: ')', base: 'tsurugi', questArtifact: true, questRole: 'Samurai' },
+    { name: 'The Platinum Yendorian Express Card', otyp: CREDIT_CARD, cls: 'tool', glyph: '(', base: 'credit card', questArtifact: true, questRole: 'Tourist' },
+    { name: 'The Orb of Fate', otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Valkyrie' },
+    { name: 'The Eye of the Aethiopica', otyp: AMULET_OF_ESP, cls: 'amulet', glyph: '"', base: 'amulet of ESP', questArtifact: true, questRole: 'Wizard' },
+]);
+function artifactKey(name) {
+    return String(name || '')
+        .trim()
+        .replace(/^(?:an?|the)\s+/i, '')
+        .toLowerCase()
+        .replace(/[ -]+/g, '');
+}
+const ARTIFACTS_BY_KEY = new Map(ARTIFACT_DEFS.map(def => [artifactKey(def.name), def]));
 const BRASS_LANTERN = 226;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
@@ -1444,7 +1555,7 @@ export const SHOP_TYPES = [
     { name: 'antique weapons outlet', prob: 5, iprobs: [[90, WEAPON_CLASS], [10, ARMOR_CLASS]] },
     { name: 'delicatessen', prob: 5, iprobs: [[83, FOOD_CLASS], [5, -POT_FRUIT_JUICE], [4, -POT_BOOZE], [5, -POT_WATER], [3, -ICE_BOX]] },
     { name: 'jewelers', prob: 3, iprobs: [[85, RING_CLASS], [10, GEM_CLASS], [5, AMULET_CLASS]] },
-    { name: 'quality apparel and accessories', prob: 3, iprobs: [[90, WAND_CLASS], [5, ARMOR_CLASS], [5, ARMOR_CLASS]] },
+    { name: 'quality apparel and accessories', prob: 3, iprobs: [[90, WAND_CLASS], [5, -LEATHER_GLOVES], [5, -ELVEN_CLOAK]] },
     { name: 'hardware store', prob: 3, iprobs: [[100, TOOL_CLASS]] },
     { name: 'rare books', prob: 3, iprobs: [[90, SPBOOK_CLASS], [10, SCROLL_CLASS]] },
     { name: 'health food store', prob: 2, iprobs: [[70, VEGETARIAN_CLASS], [20, -POT_FRUIT_JUICE], [4, -POT_HEALING], [3, -POT_FULL_HEALING], [2, -SCR_FOOD_DETECTION], [1, -LUMP_OF_ROYAL_JELLY]] },
@@ -2324,6 +2435,37 @@ const VLAD_THE_IMPALER = { name: 'Vlad the Impaler', mlet: 'vlad', glyph: 'V', c
 const VAMPIRE_LORD = { name: 'vampire lord', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, mmove: 14, difficulty: 14, maligntyp: -9, skipFindGender: true, vampireLeader: true, strong: true, nasty: true, noCorpse: true, inAir: true, alwaysHostile: true };
 const VAMPIRE_LADY = { name: 'vampire leader', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, difficulty: 14, maligntyp: -9 };
 
+const MINETN1_XSTART = 21;
+const MINETN1_YSTART = 1;
+const MINETN1_ROWS = [
+    '.....................................',
+    '.----------------F------------------.',
+    '.|.................................|.',
+    '.|.-------------......------------.|.',
+    '.|.|...|...|...|......|..|...|...|.|.',
+    '.F.|...|...|...|......|..|...|...|.|.',
+    '.|.|...|...|...|......|..|...|...|.F.',
+    '.|.|...|...|----......------------.|.',
+    '.|.---------.......................|.',
+    '.|.................................|.',
+    '.|.---------.....--...--...........|.',
+    '.|.|...|...|----.|.....|.---------.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.-------------.-------.---------.|.',
+    '.|.................................F.',
+    '.-----------F------------F----------.',
+    '.....................................',
+];
+const MINETN1_RANDOM_DOORS = [
+    [5, 8], [9, 8], [13, 7], [22, 5], [27, 7], [31, 7],
+    [5, 10], [9, 10], [15, 13], [25, 13], [31, 11],
+];
+const MINETN1_BODY_PLACES = [
+    [5, 4], [9, 5], [13, 4], [26, 4], [31, 5],
+    [30, 14], [5, 14], [10, 13], [26, 14], [27, 13],
+];
 const MINETN5_XSTART = 3;
 const MINETN5_YSTART = 0;
 const MINETN5_ROWS = [
@@ -2362,30 +2504,30 @@ const MINETN5_RANDOM_MONSTERS = [
     ['gnome lord'], ['gnome lord'],
     ['dwarf'], ['dwarf'], ['dwarf'],
 ];
-const MINETN3_ROWS = [
-    '',
-    '',
-    '        ┌─────────┐',
-    '        │.........│     ┌──',
-    '        │..........##   ..',
-    '        │.........│ #   │.┌',
-    '        │.........│ #   │.│',
-    '        │.<.......+#### │.│',
-    '        │.........│  ###│.└+─┐',
-    '        └────────.┘  ###.....│',
-    '                 #   # #│....└',
-    '                 #     #│........',
-    '               ###     #│....┌─+┐',
-    '              ─.─      #│.┌+─┘',
-    '             ....+     #│.│',
-    '           ......│    ##│.│',
-    '         │........      │.│',
-    '         └───────┘      │.└',
-    '                        │.',
-    '                        └──',
-    '',
+const MINETN6_XSTART = 21;
+const MINETN6_YSTART = 1;
+const MINETN6_ROWS = [
+    'x--------xxxxxxxxxxx-------------------x',
+    'x------xxxxxxxxxxxxxx-----------------xx',
+    '.-----................----------------.x',
+    '.|...|................|...|..|...|...|..',
+    '.|...+..--+--.........|...|..|...|...|..',
+    '.|...|..|...|..-----..|...|..|-+---+--..',
+    '.-----..|...|--|...|..--+---+-.........x',
+    '........|...|..|...+.............-----.x',
+    '........-----..|...|......--+-...|...|..',
+    'x----...|...|+------..{...|..|...+...|..',
+    'x|..+...|...|.............|..|...|...|..',
+    '.|..|...|...|-+-.....---+-------------.x',
+    '.----...--+--..|..-+-|..................',
+    '...|........|..|..|..|----....--------.x',
+    '...|..T.....----..|..|...+....|......|..',
+    '...|-....{........|..|...|....+......|x.',
+    '...--..-....T.....--------....|......|x.',
+    '.......--.....................----------',
+    '.xxxx-----xxxxxxxxxxxxxxxxxx------------',
+    'xxxx-------xxxxxxxxxxxxxxx--------------',
 ];
-
 const SPECIAL_TERRAIN = {
     ' ': STONE,
     '.': ROOM,
@@ -2810,6 +2952,24 @@ const RANDOM_MAZE_DY = [-1, 0, 1, 0];
 function castleX(x) { return CASTLE_XSTART + x; }
 function castleY(y) { return CASTLE_YSTART + y; }
 
+function castleRandomDryLocation() {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        return !!loc && SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y);
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = castleX(rn2(CASTLE_ROWS[0].length));
+        const y = castleY(rn2(CASTLE_ROWS.length));
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 0; x < CASTLE_ROWS[0].length; x++)
+        for (let y = 0; y < CASTLE_ROWS.length; y++) {
+            const ax = castleX(x), ay = castleY(y);
+            if (good(ax, ay)) return { x: ax, y: ay };
+        }
+    return null;
+}
+
 const BIGRM_RANDOM_MONSTERS = [
     { name: 'giant bat', mlet: 'bat', mlevel: 2, mac: 7, mmove: 22, genoFreq: 2, maligntyp: 0, hostile: true, neuter: false },
     { name: 'bugbear', mlet: 'humanoid', mlevel: 3, mmove: 9, genoFreq: 1, maligntyp: -6, hostile: true, neuter: false },
@@ -2994,20 +3154,16 @@ export function next_ident() {
 
 // C ref: mkobj.c blessorcurse
 function blessorcurse(otmp, chance = 4) {
+    if (!otmp || otmp.blessed || otmp.cursed) return;
     if (!rn2(chance)) {
         const blessed = rn2(2);
-        if (otmp) {
-            otmp.cursed = !blessed;
-            otmp.blessed = !!blessed;
-        }
+        if (blessed) bless(otmp);
+        else curse(otmp);
     }
 }
 
 function blessorcurseChance(otmp, chance) {
-    if (!rn2(chance) && otmp) {
-        if (!rn2(2)) otmp.cursed = true;
-        else otmp.blessed = true;
-    }
+    blessorcurse(otmp, chance);
 }
 
 function mkobj_erosion_rolls(otmp) {
@@ -3042,14 +3198,122 @@ function maybeMkArtifact(otmp, artifactKey, chanceBase) {
     if (!eligible.length) return;
 
     const artifact = eligible[rn2(eligible.length)];
-    existing.push(artifact.name);
-    game._artifact_count = (game._artifact_count || 0) + 1;
+    recordArtifactExistence(artifact.name);
     otmp.artifact = artifact.name;
 
     if (artifact.genSpe) {
         const spe = (otmp.spe || 0) + artifact.genSpe;
         if (spe >= -10 && spe < 10) otmp.spe = spe;
     }
+}
+
+export function artifactDefinitionForName(name) {
+    return ARTIFACTS_BY_KEY.get(artifactKey(name)) || null;
+}
+
+function artifactDefinitionForWishName(name) {
+    const text = String(name || '').trim();
+    const named = text.match(/^(.*?)\s+named\s+(.+)$/i);
+    if (!named) return artifactDefinitionForName(text);
+    const def = artifactDefinitionForName(named[2]);
+    if (!def) return null;
+    return artifactKey(named[1]) === artifactKey(def.base) ? def : null;
+}
+
+export function artifactExists(name) {
+    return Array.isArray(game._artifacts_exist) && game._artifacts_exist.includes(name);
+}
+
+export function nartifact_exist() {
+    return Math.max(game._artifact_count || 0, Array.isArray(game._artifacts_exist) ? game._artifacts_exist.length : 0);
+}
+
+export function recordArtifactExistence(name) {
+    game._artifacts_exist = Array.isArray(game._artifacts_exist) ? game._artifacts_exist : [];
+    if (!game._artifacts_exist.includes(name)) game._artifacts_exist.push(name);
+    game._artifact_count = Math.max(game._artifact_count || 0, game._artifacts_exist.length);
+}
+
+function clearArtifactExistence(name) {
+    if (!Array.isArray(game._artifacts_exist)) {
+        game._artifact_count = 0;
+        return;
+    }
+    game._artifacts_exist = game._artifacts_exist.filter(artifact => artifact !== name);
+    game._artifact_count = game._artifacts_exist.length;
+}
+
+function isCurrentRoleQuestArtifact(def) {
+    return !!def?.questRole && def.questRole === (game._startup_role || game.urole?.name?.m);
+}
+
+function artifactBaseFields(def) {
+    return {
+        otyp: def.otyp,
+        cls: def.cls,
+        glyph: def.glyph,
+        kind: def.base,
+        actualKind: def.base,
+        known: true,
+    };
+}
+
+function applyArtifactFields(otmp, def, extra = {}) {
+    Object.assign(otmp, artifactBaseFields(def), {
+        kind: artifactObjectNameForDef(def),
+        artifact: def.name,
+    }, extra);
+    recordArtifactExistence(def.name);
+    return otmp;
+}
+
+function artifactObjectNameForDef(def) {
+    if (!def) return '';
+    return `${def.base} named ${def.name.replace(/^The /, 'the ')}`;
+}
+
+export function artifactObjectName(obj) {
+    const def = ARTIFACT_DEFS.find(candidate => candidate.name === obj?.artifact);
+    return def ? artifactObjectNameForDef(def) : (obj?.kind || '');
+}
+
+export function makeArtifactWishObject(name, options = {}) {
+    const def = artifactDefinitionForWishName(name);
+    if (!def) return null;
+    const wizardMode = options.wizardMode ?? !!game.flags?.debug;
+    const otmp = mksobj(def.otyp, true, false);
+    if (artifactExists(def.name)) {
+        Object.assign(otmp, artifactBaseFields(def), { wishedfor: true, _artifact_wish_name: true });
+        return otmp;
+    }
+    applyArtifactFields(otmp, def, { wishedfor: true, _artifact_wish_name: true });
+    const abuseBlocked = isCurrentRoleQuestArtifact(def)
+        || rn2(Math.max(1, nartifact_exist())) > 1;
+    if (abuseBlocked && !wizardMode) {
+        clearArtifactExistence(def.name);
+        return {
+            _wish_disappeared: true,
+            _artifact_wish_name: true,
+            _wish_disappear_message: 'For a moment, you feel something in your hands, but it disappears!',
+        };
+    }
+    return otmp;
+}
+
+function artifactObjectBaseName(obj) {
+    const actual = String(obj?.actualKind || '').replace(/ named .+$/i, '');
+    if (actual) return actual;
+    const def = ARTIFACT_DEFS.find(candidate => candidate.otyp === obj?.otyp);
+    if (def?.base) return def.base;
+    return String(obj?.kind || '').replace(/ named .+$/i, '');
+}
+
+export function nameObjectAsArtifact(obj, name) {
+    const def = artifactDefinitionForName(name);
+    if (!obj || obj.artifact || !def || !def.nameable || artifactExists(def.name) || (obj.quan || 1) > 1) return false;
+    if (artifactKey(artifactObjectBaseName(obj)) !== artifactKey(def.base)) return false;
+    applyArtifactFields(obj, def);
+    return true;
 }
 
 // C ref: mkobj.c mksobj — create a specific object
@@ -3345,6 +3609,7 @@ function mksobj_init(otmp, otyp, artif) {
         }
         if (roll > 975) mkobj_erosion_rolls();
     } else if (otyp === WAN_WISHING) {
+        Object.assign(otmp, { cls: 'wand', glyph: '/', kind: 'wishing', wand: 'wishing', wandIndex: 4, known: false });
         otmp.spe = 1;
         blessorcurse(otmp, 17);
     } else if (otyp === WAND_CLASS || otyp === WAN_DIGGING || otyp === WAN_STRIKING
@@ -3482,7 +3747,7 @@ export function scrollIndexForRoll(roll) {
         remaining -= SCROLL_PROBS[i];
         if (remaining <= 0) return i;
     }
-    return null;
+    return SCROLL_PROBS.length; // SCR_BLANK_PAPER
 }
 
 export function potionIndexForRoll(roll) {
@@ -3496,6 +3761,7 @@ export function potionIndexForRoll(roll) {
 
 function wandIndexForObject(otmp) {
     if (otmp.wandIndex != null) return otmp.wandIndex;
+    if (otmp.otyp === WAN_WISHING) return 4;
     if (otmp.otyp === WAN_STRIKING) return 7;
     if (otmp.otyp === WAN_LIGHT) return 0;
     if (otmp.otyp === WAN_MAKE_INVISIBLE) return 8;
@@ -3528,14 +3794,17 @@ function object_display(otmp) {
     if (otyp === CROSSBOW_BOLT || otyp === DAGGER || otyp === CROSSBOW
         || otyp === PICK_AXE || otyp === DART || otyp === KNIFE
         || otyp === SLING || otyp === TRIDENT || otyp === BULLWHIP
+        || otyp === RUNESWORD || otyp === WAR_HAMMER
+        || otyp === ELVEN_BROADSWORD || otyp === ELVEN_DAGGER
         || otyp === LUCERN_HAMMER || otyp === AKLYS || otyp === SILVER_MACE
-        || otyp === ATHAME || otyp === QUARTERSTAFF)
+        || otyp === ATHAME || otyp === QUARTERSTAFF
+        || otyp === MORNING_STAR || otyp === KATANA || otyp === TSURUGI)
         return { glyph: ')', color: displayColor ?? CLR_CYAN };
     if (otyp === ARMOR_CLASS || SPECIFIC_ARMOR.has(otyp))
         return { glyph: '[', color: displayColor ?? otmp._armor_color ?? SPECIFIC_ARMOR_COLORS.get(otyp) ?? NO_COLOR };
     if (otyp === RING_CLASS || otyp === RIN_LEVITATION)
         return { glyph: '=', color: RING_APPEARANCE_COLORS.get(game._object_descriptions?.rings?.[(otmp.ringRoll || 1) - 1]) ?? CLR_WHITE };
-    if (otyp === AMULET_CLASS) return { glyph: '"', color: CLR_CYAN };
+    if (otyp === AMULET_CLASS || otyp === AMULET_OF_ESP) return { glyph: '"', color: CLR_CYAN };
     if (otyp === CORPSE) {
         const corpseColors = {
             orc: CLR_RED, dwarf: CLR_RED, gnome: CLR_BROWN, human: CLR_WHITE, elf: CLR_WHITE,
@@ -3562,7 +3831,7 @@ function object_display(otmp) {
         || otyp === WAN_MAGIC_MISSILE || otyp === WAN_TELEPORTATION
         || otyp === WAN_CREATE_MONSTER || otyp === WAN_MAKE_INVISIBLE
         || otyp === WAN_SPEED_MONSTER || otyp === WAN_POLYMORPH || otyp === WAN_NOTHING
-        || otyp === WAN_LIGHT)
+        || otyp === WAN_LIGHT || otyp === WAN_WISHING)
         return { glyph: '/', color: wandColor(otmp) };
     if (otyp === SPBOOK_no_NOVEL || (otyp >= SPE_HEALING && otyp < ARROW)) return { glyph: '+', color: otmp.color ?? NO_COLOR };
     if (otyp === CHEST || otyp === LARGE_BOX || otyp === ICE_BOX || otyp === SACK
@@ -3572,7 +3841,8 @@ function object_display(otmp) {
         return { glyph: '(', color: displayColor ?? CLR_YELLOW };
     if (otyp === CRYSTAL_BALL) return { glyph: '(', color: displayColor ?? CLR_BRIGHT_CYAN };
     if (otyp === TOOL_CLASS || otyp === TIN_WHISTLE || otyp === TALLOW_CANDLE || otyp === WAX_CANDLE
-        || otyp === EXPENSIVE_CAMERA || otyp === MIRROR || otyp === STETHOSCOPE || otyp === MAGIC_MARKER || otyp === BELL)
+        || otyp === EXPENSIVE_CAMERA || otyp === MIRROR || otyp === STETHOSCOPE || otyp === MAGIC_MARKER || otyp === BELL
+        || otyp === LENSES || otyp === CREDIT_CARD || otyp === SKELETON_KEY)
         return { glyph: '(', color: displayColor ?? CLR_MAGENTA };
     if (otyp === BOULDER) return { glyph: '`', color: NO_COLOR };
     if (otyp === STATUE) {
@@ -3583,7 +3853,7 @@ function object_display(otmp) {
         };
         return { glyph: otmp.corpsenm?.glyph || statueGlyphs[otmp.corpsenm?.mlet] || '`', color: CLR_WHITE };
     }
-    if (otyp === GEM_CLASS || otyp === RUBY || otyp === ROCK) return { glyph: '*', color: displayColor ?? NO_COLOR };
+    if (otyp === GEM_CLASS || otyp === RUBY || otyp === ROCK || otyp === LUCKSTONE) return { glyph: '*', color: displayColor ?? NO_COLOR };
     return { glyph: '?', color: NO_COLOR };
 }
 
@@ -3801,30 +4071,70 @@ function mkgold(amount, x, y) {
 }
 
 function dealloc_obj(otmp) { /* stub */ }
-function curse(otmp) { if (otmp) otmp.cursed = true; }
+function bless(otmp) {
+    if (!otmp || otmp.otyp === GOLD_PIECE) return;
+    otmp.cursed = false;
+    otmp.blessed = true;
+}
+function unbless(otmp) { if (otmp) otmp.blessed = false; }
+function curse(otmp) {
+    if (!otmp || otmp.otyp === GOLD_PIECE) return;
+    otmp.blessed = false;
+    otmp.cursed = true;
+}
+function uncurse(otmp) { if (otmp) otmp.cursed = false; }
+function delete_contents(otmp) { if (otmp) otmp.contents = []; }
 function weight(otmp) { return otmp?.owt || 1; }
+function sameStackableObject(existing, otmp) {
+    const sameCorpse = otmp.otyp !== CORPSE && otmp.otyp !== EGG && otmp.otyp !== TIN
+        || existing.corpsenm?.name === otmp.corpsenm?.name;
+    return existing.otyp === otmp.otyp
+        && existing.cursed === otmp.cursed
+        && existing.blessed === otmp.blessed
+        && (existing.spe || 0) === (otmp.spe || 0)
+        && existing.kind === otmp.kind
+        && existing.scrollIndex === otmp.scrollIndex
+        && existing.potionIndex === otmp.potionIndex
+        && existing.spellbookIndex === otmp.spellbookIndex
+        && existing.gemDescription === otmp.gemDescription
+        && sameCorpse;
+}
 function add_to_container(container, otmp) {
     if (!container || !otmp) return null;
     container.contents ??= [];
     for (const existing of container.contents) {
-        const sameCorpse = otmp.otyp !== CORPSE && otmp.otyp !== EGG && otmp.otyp !== TIN
-            || existing.corpsenm?.name === otmp.corpsenm?.name;
-        if (existing.otyp !== otmp.otyp
-            || existing.cursed !== otmp.cursed
-            || existing.blessed !== otmp.blessed
-            || (existing.spe || 0) !== (otmp.spe || 0)
-            || existing.kind !== otmp.kind
-            || existing.scrollIndex !== otmp.scrollIndex
-            || existing.potionIndex !== otmp.potionIndex
-            || existing.spellbookIndex !== otmp.spellbookIndex
-            || existing.gemDescription !== otmp.gemDescription
-            || !sameCorpse) continue;
+        if (!sameStackableObject(existing, otmp)) continue;
         existing.quan = (existing.quan || 1) + (otmp.quan || 1);
         return existing;
     }
     container.contents.unshift(otmp);
     otmp.contained = true;
     return otmp;
+}
+function floorObjectCanStack(otmp) {
+    const otyp = otmp?.otyp;
+    return otyp === GOLD_PIECE || otyp === ROCK || otyp === GEM_CLASS || otyp === RUBY || otyp === TOUCHSTONE
+        || otyp === FOOD_CLASS || otyp === SCROLL_CLASS || otyp === POTION_CLASS || otyp === SPBOOK_no_NOVEL
+        || (otyp >= 230 && otyp < 300)
+        || otyp === WAX_CANDLE || otyp === TALLOW_CANDLE
+        || SPECIFIC_FOOD_INFO.has(otyp);
+}
+function stack_floor_object(otmp) {
+    if (!otmp || !game.level || !floorObjectCanStack(otmp)) return otmp;
+    for (const existing of game.level.objects || []) {
+        if (existing === otmp || existing.ox !== otmp.ox || existing.oy !== otmp.oy) continue;
+        if (!sameStackableObject(existing, otmp)) continue;
+        existing.quan = (existing.quan || 1) + (otmp.quan || 1);
+        const idx = game.level.objects.indexOf(otmp);
+        if (idx >= 0) game.level.objects.splice(idx, 1);
+        return existing;
+    }
+    return otmp;
+}
+function setMonsterPeaceful(mon, peaceful) {
+    if (!mon || peaceful == null) return;
+    mon.mpeaceful = peaceful ? 1 : 0;
+    set_malign(mon);
 }
 function sobj_at(otyp, x, y) {
     return game.level?.objects?.find(obj => obj.otyp === otyp && obj.ox === x && obj.oy === y) || null;
@@ -4107,11 +4417,13 @@ function monsterFromRndMeta(row) {
     if (name === 'warhorse') ptr.mac = 4;
     if (name === 'small mimic' || name === 'large mimic') {
         ptr.mac = 7;
-        ptr.attack = { dice: 3, sides: 4, verb: 'hits' };
+        ptr.attacks = mimicAttacksFor(name);
+        ptr.attack = ptr.attacks[0];
     }
     if (name === 'giant mimic') {
         ptr.mac = 7;
-        ptr.attack = { dice: 3, sides: 6, verb: 'hits' };
+        ptr.attacks = mimicAttacksFor(name);
+        ptr.attack = ptr.attacks[0];
     }
     ptr.dwarf = name.includes('dwarf');
     ptr.elf = name.includes('elf') || name.includes('elven') || name.includes('Elven') || name.includes('Woodland-elf')
@@ -4253,19 +4565,31 @@ export function monsterByRndName(name) {
     return row ? monsterFromRndMeta(row) : RANDOM_MONSTER_BY_NAME.get(name);
 }
 
+function monsterNameGenocided(name) {
+    return !!name && (game._genocided_monsters || []).includes(name);
+}
+
 export function pickNasty(difcap) {
     let ptr = monsterByRndName(NASTY_MONSTER_NAMES[rn2(NASTY_MONSTER_NAMES.length)]);
     if (ptr?.difficulty >= difcap) ptr = monsterByRndName(ptr.name === 'arch-lich' ? 'master lich' : ptr.name === 'master mind flayer' ? 'mind flayer' : ptr.name);
     return ptr;
 }
 
+function monsterRowsByDifficulty(rows) {
+    return rows
+        .map((row, index) => ({ row, index }))
+        .sort((a, b) => (a.row[4] - b.row[4]) || (a.index - b.index))
+        .map(entry => entry.row);
+}
+
 function mkclassRows(glyph) {
     let rows = RNDMONST_COMMON_MONSTERS.filter(row => row[1] === glyph);
     const names = new Set(rows.map(row => row[0]));
-    if (glyph === 'H') return [MKCLASS_EXTRA_ROWS.H[0], ...rows, MKCLASS_EXTRA_ROWS.H[1]].toSorted((a, b) => a[4] - b[4]);
+    if (glyph === 'H')
+        return monsterRowsByDifficulty([MKCLASS_EXTRA_ROWS.H[0], ...rows, MKCLASS_EXTRA_ROWS.H[1]]);
     for (const row of MKCLASS_EXTRA_ROWS[glyph] || [])
         if (!names.has(row[0])) rows.push(row);
-    return rows.toSorted((a, b) => a[4] - b[4]);
+    return monsterRowsByDifficulty(rows);
 }
 
 function mkclassAligned(glyph, skipZeroFreqCutoff = false, rowOverride = null, includeNoGen = false) {
@@ -4278,6 +4602,7 @@ function mkclassAligned(glyph, skipZeroFreqCutoff = false, rowOverride = null, i
     for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const flags = row[7];
+        if (monsterNameGenocided(row[0])) continue;
         const applyHellFilter = rn2(9) || glyph === 'L';
         if (applyHellFilter && ((game.inhell && flags.includes('O')) || (!game.inhell && flags.includes('!')))) continue;
         if ((!includeNoGen && flags.includes('N')) || flags.includes('U')) continue;
@@ -4306,6 +4631,7 @@ function rndmonstCReservoir(minDifficulty, maxDifficulty) {
     for (const row of RNDMONST_COMMON_MONSTERS) {
         const difficulty = row[4];
         if (difficulty < minDifficulty || difficulty > maxDifficulty) continue;
+        if (monsterNameGenocided(row[0])) continue;
         const maligntyp = row[5];
         const flags = row[7];
         if (flags.includes('N') || flags.includes('U')) continue;
@@ -4336,6 +4662,7 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         let totalweight = 0;
         let selected = null;
         for (const [name, weight] of DIFFICULTY_1_TO_5_MONSTERS) {
+            if (monsterNameGenocided(name)) continue;
             totalweight += weight;
             if (rn2(totalweight) < weight) {
                 const lookup = RANDOM_MONSTER_ALIASES.get(name) || name;
@@ -4353,6 +4680,7 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         let selected = null;
         for (let i = 0; i < MIDGAME_COMMON_MONSTERS.length; i++) {
             const [name, weight, attrs = {}] = MIDGAME_COMMON_MONSTERS[i];
+            if (monsterNameGenocided(name)) continue;
             const base = monsterByRndName(name) || { name, ...MONSTER_VISUALS.get(name) };
             totalweight += weight;
             const mlevel = MIDGAME_COMMON_MONSTER_LEVELS[i];
@@ -4365,6 +4693,7 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         let selected = null;
         for (let i = 0; i < MIDGAME_COMMON_MONSTERS.length; i++) {
             const [name, weight, attrs = {}] = MIDGAME_COMMON_MONSTERS[i];
+            if (monsterNameGenocided(name)) continue;
             const base = monsterByRndName(name) || { name, ...MONSTER_VISUALS.get(name) };
             const mlevel = MIDGAME_COMMON_MONSTER_LEVELS[i];
             if (!mlevel && name !== 'bat') continue;
@@ -4378,12 +4707,15 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         let totalweight = 0;
         let selected = null;
         for (const ptr of SOKOBAN_ZOO_MONSTERS) {
+            if (monsterNameGenocided(ptr.name)) continue;
             totalweight += ptr.weight;
             if (rn2(totalweight) < ptr.weight) selected = { ...(monsterByRndName(ptr.name) || {}), ...ptr };
         }
         return selected;
     }
-    return rndmonstCReservoir(minDifficulty, maxDifficulty) || LEVEL_ONE_COMMON_MONSTERS[0];
+    return rndmonstCReservoir(minDifficulty, maxDifficulty)
+        || LEVEL_ONE_COMMON_MONSTERS.find(ptr => !monsterNameGenocided(ptr.name))
+        || null;
 }
 
 export function rndmonnum() {
@@ -4450,6 +4782,7 @@ function mongets(otyp, erodes = true) {
     else if (otyp === WAN_SPEED_MONSTER) Object.assign(otmp, { cls: 'wand', kind: 'speed monster', wandIndex: 10 });
     else if (otyp === WAN_POLYMORPH) Object.assign(otmp, { cls: 'wand', kind: 'polymorph', wandIndex: 12 });
     else if (otyp === WAN_NOTHING) Object.assign(otmp, { cls: 'wand', kind: 'nothing' });
+    else if (otyp === WAN_WISHING) Object.assign(otmp, { cls: 'wand', glyph: '/', kind: 'wishing', wand: 'wishing', wandIndex: 4, known: false });
     if (game._mongets_target) {
         game._mongets_target.minvent = [otmp, ...(game._mongets_target.minvent || [])];
         game._mongets_target.hasInventory = true;
@@ -4720,6 +5053,129 @@ function makemon_goodpos(ptr, x, y) {
     if (!ACCESSIBLE(loc.typ)) return false;
     const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
     return !boulder || !!ptr.throwsRocks;
+}
+
+function monster_at(x, y) {
+    return (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y) || null;
+}
+
+function mayPasswallLoc(loc) {
+    return !!loc && !(IS_STWALL(loc.typ) && (loc.wall_info & W_NONPASSWALL));
+}
+
+function rlocGoodpos(mon, x, y, checkScary = false) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (game.u?.ux === x && game.u?.uy === y) return false;
+    const occupant = monster_at(x, y);
+    if (occupant && occupant !== mon) return false;
+
+    const ptr = mon?.data || {};
+    if (IS_POOL(loc.typ)) {
+        return !!(ptr.swimmer || ptr.inAir);
+    } else if (ptr.mlet === ';' && rn2(13)) {
+        return false;
+    } else if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL) {
+        return !!(ptr.inAir || ptr.likesLava);
+    }
+    if (ptr.passWalls && mayPasswallLoc(loc)) return true;
+    if ((ptr.amorphous || ptr.name === 'fog cloud') && loc.typ === DOOR
+        && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    if (checkScary && rlocGoodposScary(ptr, x, y)) return false;
+    if (!ACCESSIBLE(loc.typ)) return false;
+    const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+    return !boulder || !!ptr.throwsRocks;
+}
+
+function rlocGoodposScary(ptr, x, y) {
+    if (ptr.mlet === '@' || ptr.mlet === 'A' || ptr.name === 'minotaur') return false;
+    if ((game.level?.objects || []).some(obj => obj.otyp === SCR_SCARE_MONSTER && obj.ox === x && obj.oy === y))
+        return true;
+    if (game.inhell) return false;
+    return (game.level?.engravings || []).some(engr =>
+        engr.x === x && engr.y === y && /Elbereth/.test(engr.text || ''));
+}
+
+function rlocPosOk(mon, x, y) {
+    if (!rlocGoodpos(mon, x, y, true)) return false;
+    const currentRoomno = game.level?.at(mon.mx, mon.my)?.roomno ?? 0;
+    const targetRoomno = game.level?.at(x, y)?.roomno ?? 0;
+    if (mon.isshk && inside_shop(mon.mx, mon.my) && targetRoomno !== mon.shoproom)
+        return false;
+    if (mon.ispriest && mon.shrine?.room && currentRoomno === mon.shrine.room
+        && targetRoomno !== mon.shrine.room)
+        return false;
+    return true;
+}
+
+function collectRlocCoords(mon) {
+    const coords = [];
+    const ptr = mon?.data || {};
+    const skipInaccessible = !ptr.passWalls;
+    const cx = Math.trunc(COLNO / 2);
+    const cy = Math.trunc(ROWNO / 2);
+    const rowrange = cy < Math.trunc(ROWNO / 2) ? ROWNO - 1 - cy : cy;
+    const colrange = cx < Math.trunc(COLNO / 2) ? COLNO - 1 - cx : cx;
+    const maxradius = Math.max(rowrange, colrange);
+
+    for (let radius = 0; radius <= maxradius; radius++) {
+        const lox = cx - radius, hix = cx + radius;
+        const loy = cy - radius, hiy = cy + radius;
+        for (let y = Math.max(loy, 0); y <= hiy; y++) {
+            if (y > ROWNO - 1) break;
+            for (let x = Math.max(lox, 1); x <= hix; x++) {
+                if (x > COLNO - 1) break;
+                if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+                if (monster_at(x, y)) continue;
+                const loc = game.level?.at(x, y);
+                if (skipInaccessible && !ZAP_POS(loc?.typ)) continue;
+                coords.push({ x, y });
+            }
+        }
+    }
+    return coords;
+}
+
+function rlocToCoreNoMsg(mon, x, y) {
+    if (x === mon.mx && y === mon.my && monster_at(x, y) === mon) return;
+    const tailCount = Array.isArray(mon.wormSegments) ? mon.wormSegments.length : 0;
+    mon.mtrack = [];
+    mon.mx = x;
+    mon.my = y;
+    if (tailCount) placeLongWormTailRandomly(mon, x, y, tailCount);
+}
+
+function rlocNoMsg(mon) {
+    if (!mon?.mx) return false;
+    for (let trycount = 0; trycount < 50; trycount++) {
+        const x = rnd(COLNO - 1);
+        const y = rn2(ROWNO);
+        if (rlocPosOk(mon, x, y)) {
+            rlocToCoreNoMsg(mon, x, y);
+            return true;
+        }
+    }
+
+    const coords = collectRlocCoords(mon);
+    let backup = null;
+    for (let i = 0; i < coords.length; i++) {
+        const j = rn2(coords.length - i);
+        if (j > 0) {
+            const swap = coords[i];
+            coords[i] = coords[i + j];
+            coords[i + j] = swap;
+        }
+        const { x, y } = coords[i];
+        if (rlocPosOk(mon, x, y)) {
+            rlocToCoreNoMsg(mon, x, y);
+            return true;
+        }
+        if (!backup && rlocGoodpos(mon, x, y, false))
+            backup = { x, y };
+    }
+    if (!backup) return false;
+    rlocToCoreNoMsg(mon, backup.x, backup.y);
+    return true;
 }
 
 function placeLongWormTailRandomly(mon, x, y, segmentCount) {
@@ -5211,6 +5667,7 @@ export async function makemon(mdat, x, y, mmflags) {
         }
     }
     if (!ptr) return null;
+    if (monsterNameGenocided(ptr.name)) return null;
     const skipRandomItemRolls = !!game._makemon_skip_random_item_rolls_once;
     game._makemon_skip_random_item_rolls_once = false;
 
@@ -5313,6 +5770,7 @@ export async function makemon(mdat, x, y, mmflags) {
             allowMinvent = false;
         }
     }
+    if (monsterNameGenocided(ptr.name)) return null;
     if (ptr.nemesis && allowMinvent) {
         const bell = mksobj(BELL, true, false);
         bell.spe = 3;
@@ -5894,8 +6352,63 @@ function wipeout_text(text, cnt) {
     return chars.join('');
 }
 
-// in_rooms stub
-function in_rooms(x, y, rtype) { return []; }
+// C ref: hack.c in_rooms()
+function roomByRoomno(roomno) {
+    if (roomno < ROOMOFFSET) return null;
+    const idx = roomno - ROOMOFFSET;
+    return game.level?.rooms?.[idx]
+        || (game.level?.subrooms || []).find(room => room?.roomnoidx === idx)
+        || null;
+}
+
+function roomMatchesType(roomno, typewanted) {
+    if (roomno < ROOMOFFSET) return false;
+    if (!typewanted) return true;
+    const room = roomByRoomno(roomno);
+    if (!room) return false;
+    return room.rtype === typewanted
+        || (typewanted === SHOPBASE && room.rtype >= SHOPBASE);
+}
+
+function in_rooms(x, y, typewanted) {
+    const loc = game.level?.at(x, y);
+    const roomno = loc?.roomno ?? 0;
+    if (roomno >= ROOMOFFSET)
+        return roomMatchesType(roomno, typewanted) ? [roomno] : [];
+    if (roomno !== SHARED && roomno !== SHARED_PLUS) return [];
+
+    const found = [];
+    const step = roomno === SHARED ? 2 : 1;
+    const minX = Math.max(0, x - 1);
+    const maxX = Math.min(COLNO - 1, x + 1);
+    const minY = Math.max(0, y - 1);
+    const maxY = Math.min(ROWNO - 1, y + 1);
+    for (let nx = minX; nx <= maxX; nx += step) {
+        for (let ny = minY; ny <= maxY; ny += step) {
+            const adjRoomno = game.level?.at(nx, ny)?.roomno ?? 0;
+            if (adjRoomno >= ROOMOFFSET
+                && !found.includes(adjRoomno)
+                && roomMatchesType(adjRoomno, typewanted)) {
+                found.push(adjRoomno);
+            }
+        }
+    }
+    return found;
+}
+
+function inside_shop(x, y) {
+    const loc = game.level?.at(x, y);
+    const roomno = loc?.roomno ?? 0;
+    const room = roomByRoomno(roomno);
+    if (roomno < ROOMOFFSET || loc?.edge || !room || room.rtype < SHOPBASE) return 0;
+    return roomno;
+}
+
+function isCurrentSpecialLevel() {
+    const uz = game.u?.uz;
+    return !!uz && (game.specialLevels || [])
+        .some(level => level.dnum === uz.dnum && level.dlevel === uz.dlevel);
+}
 
 // ============================================================
 // Core mklev functions (ported from main project's mklev.js)
@@ -6513,7 +7026,7 @@ async function make_arc_fill_level(rooms) {
         }
     }
 
-    makecorridors();
+    await makecorridors();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
     recount_level_features();
@@ -8875,26 +9388,25 @@ async function make_sanctum_level() {
         const dir = (i + si) & 7;
         const px = sanctumX(18 + xdir[dir]);
         const py = sanctumY(8 + ydir[dir]);
-        if (makemon_goodpos(HIGH_CLERIC, px, py)) {
+        if (priestGoodLocation(HIGH_CLERIC, px, py)) {
             priestX = px;
             priestY = py;
             break;
         }
     }
+    relocatePriestSpotOccupant(priestX, priestY);
     const priest = await makemon(HIGH_CLERIC, priestX, priestY, MM_NOGRP);
     if (priest) {
-        priest.mpeaceful = 1;
-        priest.ispriest = 1;
-        priest.msleeping = 0;
+        initPriestMonster(priest);
         const previousMongetsTarget = game._mongets_target;
         game._mongets_target = priest;
         mongets(AMULET_CLASS);
         game._mongets_target = previousMongetsTarget;
-    }
-    for (let cnt = rn1(3, 2); cnt > 0; cnt--) mkobj(SPBOOK_no_NOVEL, false);
-    if (rn2(2)) {
-        const robe = null;
-        if (robe) curse(robe);
+        givePriestSpellbooks(priest);
+        if (rn2(2)) {
+            const robe = null;
+            if (robe) curse(robe);
+        }
     }
 
     for (const [x, y] of SANCTUM_FIRE_TRAPS) {
@@ -9021,16 +9533,15 @@ async function make_valley_level() {
         altar.altarmask = 0;
     }
     rn2(8);
+    relocatePriestSpotOccupant(valleyX(2), valleyY(9));
     const priest = await makemon(ALIGNED_CLERIC, valleyX(2), valleyY(9), MM_NOGRP);
     if (priest) {
-        priest.mpeaceful = 1;
-        priest.ispriest = 1;
-        priest.msleeping = 0;
-    }
-    for (let cnt = rn1(3, 2); cnt > 0; cnt--) mkobj(SPBOOK_no_NOVEL, false);
-    if (rn2(2)) {
-        const robe = null;
-        if (robe) curse(robe);
+        initPriestMonster(priest);
+        givePriestSpellbooks(priest);
+        if (rn2(2)) {
+            const robe = null;
+            if (robe) curse(robe);
+        }
     }
     g.level.flags.has_temple = true;
     if (temple) temple.needfill = 2;
@@ -9153,16 +9664,13 @@ export async function make_castle_level() {
     const chest = mksobj_at(CHEST, towerX, towerY, true, false);
     chest.olocked = true;
     chest.otrapped = false;
+    delete_contents(chest);
     for (const otyp of [WAN_WISHING, POT_GAIN_LEVEL]) {
-        for (let tryct = 0; tryct < 100; tryct++) {
-            const x = castleX(rn2(CASTLE_ROWS[0].length));
-            const y = castleY(rn2(CASTLE_ROWS.length));
-            if (g.level.at(x, y)?.typ === ROOM) break;
-        }
+        castleRandomDryLocation();
         add_to_container(chest, mksobj(otyp, true, false));
     }
     const scare = mksobj_at(SCR_SCARE_MONSTER, towerX, towerY, true, false);
-    scare.cursed = true;
+    Object.assign(scare, { blessed: false, cursed: true });
     mksobj_at(CHEST, castleX(37), castleY(8), true, false);
 
     for (const [x, y] of [[40, 8], [44, 8], [48, 8], [52, 8], [55, 8]]) {
@@ -9500,6 +10008,7 @@ function oracleCentaurStatue(x, y) {
     const centaur = oracleCentaurMontype();
     const statue = mksobj(STATUE, true, false);
     statue.corpsenm = centaur;
+    statue.spe = (statue.spe || 0) | CORPSTAT_HISTORIC;
     statue.historic = true;
     return place_object(statue, x, y);
 }
@@ -9563,8 +10072,13 @@ function oracleSubroomNodoor(lx, ly, hx, hy) {
 }
 
 function inducedAlign80() {
-    if (rn2(100) < 80) return game.u?.ualign?.type ?? A_NEUTRAL;
-    return [A_LAWFUL, A_NEUTRAL, A_CHAOTIC][rn2(3)];
+    const specialAlign = game._special_level_align;
+    if (specialAlign != null && specialAlign !== A_NONE && rn2(100) < 80)
+        return specialAlign;
+    const dungeonAlign = DUNGEON_ALIGN_BY_DNUM[game.u?.uz?.dnum] ?? A_NONE;
+    if (dungeonAlign !== A_NONE && rn2(100) < 80)
+        return dungeonAlign;
+    return rn2(3) - 1;
 }
 
 function oracleRoomRandomLoc(lx, ly, hx, hy, sublx, subly, subhx, subhy) {
@@ -9769,7 +10283,7 @@ export async function make_oracle_level() {
         await oracleRoomTrap(croom);
         await oracleRoomMonster(croom);
     }
-    makecorridors();
+    await makecorridors();
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     recount_level_features();
@@ -9828,7 +10342,10 @@ async function tutorial1_monster(mon, x, y, opts = {}) {
     if (opts.alignRoll) rn2(3);
     const pos = tutorial1_xy(x, y);
     const created = await makemon(mon, pos.x, pos.y, MM_NOGRP);
-    if (created) Object.assign(created, { waiting: true, mpeaceful: opts.peaceful ?? created.mpeaceful });
+    if (created) {
+        created.waiting = true;
+        setMonsterPeaceful(created, opts.peaceful);
+    }
     return created;
 }
 
@@ -9865,9 +10382,9 @@ async function tutorial1_random_content() {
     removeCurse.cursed = false;
     await tutorial1_trap(MAGIC_PORTAL, 19, 11, { seen: true });
 
-    for (const [range, x, y] of [[50, 14, 5], [21, 15, 5], [21, 14, 4], [31, 15, 6], [31, 14, 6]]) {
-        rn2(range);
-        tutorial1_object(ROCK, x, y, { cls: 'gem', kind: 'rock' }, false);
+    for (const [min, range, x, y] of [[50, 50, 14, 5], [10, 21, 15, 5], [10, 21, 14, 4], [30, 31, 15, 6], [30, 31, 14, 6]]) {
+        const quan = min + rn2(range);
+        tutorial1_object(ROCK, x, y, { cls: 'gem', kind: 'rock', quan }, false);
     }
     tutorial1_object(BOULDER, 14, 6, {}, false);
     tutorial1_door(20, 3, rn2(100) < 50 ? 'open' : 'closed');
@@ -9877,7 +10394,8 @@ async function tutorial1_random_content() {
     tutorial1_object(SLING, 37, 3, { cls: 'weapon', kind: 'sling', spe: 9 }, true);
 
     tutorial1_door(38, 6, 'closed');
-    const box = tutorial1_object(LARGE_BOX, 41, 6, { cls: 'tool', kind: 'large box', broken: true, otrapped: false }, false);
+    const box = tutorial1_object(LARGE_BOX, 41, 6, { cls: 'tool', kind: 'large box', broken: true, obroken: true, olocked: false, otrapped: false }, false);
+    delete_contents(box);
     rn2(75);
     rn2(18);
     add_to_container(box, Object.assign(mksobj(WAND_CLASS, true, false), { cls: 'wand', kind: 'wand of secret door detection', spe: 30 }));
@@ -10102,14 +10620,14 @@ function minend2Object(oclass, x = null, y = null) {
     const pos = x == null ? minend2DryLocation() : { x: minend2X(x), y: minend2Y(y) };
     const obj = pos ? mkobj_at(oclass, pos.x, pos.y, true) : null;
     if (obj && (oclass === POTION_CLASS || obj.otyp === POTION_CLASS || (obj.otyp >= 230 && obj.otyp < 270))) obj._appearance_color = null;
-    return obj;
+    return stack_floor_object(obj);
 }
 
 function minend2SpecificObject(otyp, x, y, props = {}) {
     const obj = mksobj_at(otyp, minend2X(x), minend2Y(y), true, false);
     if (obj) Object.assign(obj, props);
     if (otyp >= 230 && otyp < 270 && obj) obj._appearance_color = null;
-    return obj;
+    return stack_floor_object(obj);
 }
 
 async function minend2Monster(name) {
@@ -10345,6 +10863,153 @@ async function make_minend_level(special = null) {
     g.in_mklev = false;
 }
 
+function minetn1X(x) { return MINETN1_XSTART + x; }
+function minetn1Y(y) { return MINETN1_YSTART + y; }
+function minetn1At(x, y) { return game.level.at(minetn1X(x), minetn1Y(y)); }
+
+function minetn1SetTerrain(x, y, ch) {
+    const loc = minetn1At(x, y);
+    if (!loc) return;
+    loc.flags = 0;
+    loc.roomno = 0;
+    loc.edge = 0;
+    loc.lit = false;
+    loc.waslit = false;
+    loc.horizontal = ch !== '|';
+    loc.doormask = 0;
+    loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+}
+
+function minetn1LightRegion(lx, ly, hx, hy, lit) {
+    for (let y = Math.max(0, ly - 1); y <= Math.min(MINETN1_ROWS.length - 1, hy + 1); y++)
+        for (let x = Math.max(0, lx - 1); x <= Math.min(MINETN1_ROWS[0].length - 1, hx + 1); x++) {
+            const loc = minetn1At(x, y);
+            if (loc && loc.typ !== STONE) loc.lit = !!lit;
+        }
+}
+
+function minetn1SetDoorOrientation(ax, ay) {
+    const wallOrDoor = loc => !!loc && (IS_WALL(loc.typ) || IS_DOOR(loc.typ) || loc.typ === SDOOR);
+    const wleft = wallOrDoor(game.level.at(ax - 1, ay));
+    const wright = wallOrDoor(game.level.at(ax + 1, ay));
+    const wup = wallOrDoor(game.level.at(ax, ay - 1));
+    const wdown = wallOrDoor(game.level.at(ax, ay + 1));
+    const loc = game.level.at(ax, ay);
+    if (loc) loc.horizontal = (wleft || wright) && !(wup && wdown) ? 1 : 0;
+}
+
+function minetn1Door(state, x, y) {
+    const ax = minetn1X(x), ay = minetn1Y(y);
+    const loc = game.level.at(ax, ay);
+    if (!loc) return;
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+    loc.doormask = state === 'locked' ? D_LOCKED
+        : state === 'open' ? D_ISOPEN
+            : state === 'nodoor' ? D_NODOOR
+                : state === 'broken' ? D_BROKEN
+                    : state === 'random' ? [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)]
+                        : D_CLOSED;
+    minetn1SetDoorOrientation(ax, ay);
+}
+
+function minetn1DryLocation() {
+    const width = MINETN1_ROWS[0].length;
+    const height = MINETN1_ROWS.length;
+    for (let cpt = 0; cpt < 100; cpt++) {
+        const x = minetn1X(rn2(width));
+        const y = minetn1Y(rn2(height));
+        const loc = game.level.at(x, y);
+        const boulder = game.level.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        if (loc && SPACE_POS(loc.typ) && !boulder) return { x, y };
+    }
+    for (let x = 0; x < width; x++)
+        for (let y = 0; y < height; y++) {
+            const ax = minetn1X(x), ay = minetn1Y(y);
+            const loc = game.level.at(ax, ay);
+            const boulder = game.level.objects?.some(obj => obj.otyp === BOULDER && obj.ox === ax && obj.oy === ay);
+            if (loc && SPACE_POS(loc.typ) && !boulder) return { x: ax, y: ay };
+        }
+    return { x: minetn1X(0), y: minetn1Y(0) };
+}
+
+function minetn1LocalPoint(point) {
+    return { x: minetn1X(point[0]), y: minetn1Y(point[1]) };
+}
+
+function minetn1Object(otyp, pos, opts = {}) {
+    const obj = mksobj_at(otyp, pos.x, pos.y, true, false);
+    if (!obj) return null;
+    if (opts.quantity != null) obj.quan = opts.quantity;
+    if (opts.spe != null) obj.spe = opts.spe;
+    if (opts.buc === 'uncursed') {
+        obj.blessed = false;
+        obj.cursed = false;
+    }
+    Object.assign(obj, opts.display || {}, object_display(obj));
+    return stack_floor_object(obj);
+}
+
+function minetn1Corpse(name, pos = null) {
+    pos ??= minetn1DryLocation();
+    const pm = name === 'shopkeeper' ? SHOPKEEPER
+        : name === 'watchman' ? WATCHMAN
+            : name === 'watch captain' ? WATCH_CAPTAIN
+                : name === 'aligned cleric' ? ALIGNED_CLERIC
+                    : monsterByRndName(name) || { name, neuter: false };
+    const corpse = mkcorpstat(CORPSE, null, pm, pos.x, pos.y, 8);
+    if (corpse && !corpse._corpse_restart_consumed) rnz(game.in_mklev ? 25 : 10);
+    return stack_floor_object(corpse);
+}
+
+function minetn1FloodSelection(x, y) {
+    const start = minetn1At(x, y);
+    if (!start) return [];
+    const typ = start.typ;
+    const stack = [[x, y]];
+    const seen = new Set();
+    const selected = [];
+    while (stack.length) {
+        const [cx, cy] = stack.pop();
+        const key = `${cx},${cy}`;
+        if (seen.has(key) || cx < 0 || cy < 0 || cy >= MINETN1_ROWS.length || cx >= MINETN1_ROWS[0].length)
+            continue;
+        seen.add(key);
+        const loc = minetn1At(cx, cy);
+        if (!loc || loc.typ !== typ) continue;
+        selected.push({ x: minetn1X(cx), y: minetn1Y(cy), lx: cx, ly: cy });
+        stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    }
+    selected.sort((a, b) => a.lx - b.lx || a.ly - b.ly);
+    return selected;
+}
+
+function minetn1AreaIntersection(selection, lx, ly, hx, hy) {
+    return selection.filter(pos => pos.lx >= lx && pos.lx <= hx && pos.ly >= ly && pos.ly <= hy);
+}
+
+function minetn1RndCoord(selection, remove = false) {
+    if (!selection.length) return minetn1DryLocation();
+    const idx = rn2(selection.length);
+    const [pos] = remove ? selection.splice(idx, 1) : [selection[idx]];
+    return { x: pos.x, y: pos.y };
+}
+
+async function minetn1Monster(name, pos = null, peaceful = 0, levAdj = 0) {
+    const ptr = monsterByRndName(name);
+    if (!ptr) return null;
+    let spot = pos || minetn1DryLocation();
+    if (game.level.monsters?.some(mon => mon.mx === spot.x && mon.my === spot.y)) {
+        const next = enextoMonsterSpot(spot.x, spot.y, ptr);
+        if (!next) return null;
+        spot = next;
+    }
+    const mon = await makemon(ptr, spot.x, spot.y, 0);
+    if (!mon) return null;
+    if (levAdj) mon.m_lev = Math.max(0, (mon.m_lev || 0) + levAdj);
+    setMonsterPeaceful(mon, peaceful);
+    return mon;
+}
+
 function minetn5X(x) { return MINETN5_XSTART + x; }
 function minetn5Y(y) { return MINETN5_YSTART + y; }
 function minetn5At(x, y) { return game.level.at(minetn5X(x), minetn5Y(y)); }
@@ -10426,8 +11091,41 @@ async function minetn5Monster(name, x = null, y = null, peaceful = null) {
     const mon = await makemon(ptr, pos.x, pos.y, 0);
     if (!mon) return null;
     if (gender != null) mon.female = !!gender;
-    if (peaceful != null) mon.mpeaceful = peaceful ? 1 : 0;
+    setMonsterPeaceful(mon, peaceful);
     return mon;
+}
+
+function initPriestMonster(priest, shrine = null) {
+    if (!priest) return;
+    if (shrine) priest.shrine = shrine;
+    priest.mtrapseen = ~0;
+    priest.mpeaceful = 1;
+    priest.ispriest = 1;
+    priest.isminion = 0;
+    priest.msleeping = 0;
+    set_malign(priest);
+}
+
+function givePriestSpellbooks(priest) {
+    if (!priest) return;
+    for (let cnt = rn1(3, 2); cnt > 0; cnt--) {
+        const book = mkobj(SPBOOK_no_NOVEL, false);
+        if (book) {
+            priest.minvent = [book, ...(priest.minvent || [])];
+            priest.hasInventory = true;
+        }
+    }
+}
+
+function relocatePriestSpotOccupant(x, y) {
+    const occupant = monster_at(x, y);
+    if (occupant) rlocNoMsg(occupant);
+}
+
+function priestGoodLocation(_ptr, x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !SPACE_POS(loc.typ)) return false;
+    return !(game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
 }
 
 async function minetn5AltarShrine(x, y) {
@@ -10446,16 +11144,150 @@ async function minetn5AltarShrine(x, y) {
     for (let i = 0; i < 8; i++) {
         const dir = (i + si) & 7;
         const nx = ax + xdir[dir], ny = ay + ydir[dir];
-        const nloc = game.level.at(nx, ny);
-        if (nloc && SPACE_POS(nloc.typ)) { px = nx; py = ny; break; }
+        if (priestGoodLocation(ALIGNED_CLERIC, nx, ny)) { px = nx; py = ny; break; }
     }
+    relocatePriestSpotOccupant(px, py);
     const priest = await makemon(ALIGNED_CLERIC, px, py, MM_NOGRP);
     if (!priest) return;
-    priest.mpeaceful = 1;
-    priest.ispriest = 1;
-    priest.msleeping = 0;
-    priest.shrine = { room: temple.roomnoidx + ROOMOFFSET, align, x: ax, y: ay };
-    for (let cnt = rn1(3, 2); cnt > 0; cnt--) mkobj(SPBOOK_no_NOVEL, false);
+    initPriestMonster(priest, { room: temple.roomnoidx + ROOMOFFSET, align, x: ax, y: ay });
+    givePriestSpellbooks(priest);
+    rn2(2);
+}
+
+function minetn6X(x) { return MINETN6_XSTART + x; }
+function minetn6Y(y) { return MINETN6_YSTART + y; }
+function minetn6At(x, y) { return game.level.at(minetn6X(x), minetn6Y(y)); }
+
+function minetn6SetTerrain(x, y, ch) {
+    const loc = minetn6At(x, y);
+    if (!loc) return;
+    loc.flags = 0;
+    loc.roomno = 0;
+    loc.edge = 0;
+    loc.lit = false;
+    loc.waslit = false;
+    loc.horizontal = ch !== '|';
+    loc.doormask = 0;
+    if (ch === '+') {
+        loc.typ = DOOR;
+        loc.doormask = D_NODOOR;
+    } else {
+        loc.typ = ch === 'x' ? STONE : SPECIAL_TERRAIN[ch] ?? STONE;
+    }
+}
+
+function minetn6LightRegion(lx, ly, hx, hy, lit) {
+    for (let y = ly; y <= hy; y++)
+        for (let x = lx; x <= hx; x++) {
+            const loc = minetn6At(x, y);
+            if (loc && loc.typ !== STONE) loc.lit = !!lit;
+        }
+}
+
+function minetn6DryLocation() {
+    const width = MINETN6_ROWS[0].length;
+    const height = MINETN6_ROWS.length;
+    for (let cpt = 0; cpt < 100; cpt++) {
+        const x = minetn6X(rn2(width));
+        const y = minetn6Y(rn2(height));
+        const loc = game.level.at(x, y);
+        const boulder = game.level.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        if (loc && SPACE_POS(loc.typ) && !boulder) return { x, y };
+    }
+    for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++) {
+            const ax = minetn6X(x), ay = minetn6Y(y);
+            const loc = game.level.at(ax, ay);
+            const boulder = game.level.objects?.some(obj => obj.otyp === BOULDER && obj.ox === ax && obj.oy === ay);
+            if (loc && SPACE_POS(loc.typ) && !boulder) return { x: ax, y: ay };
+        }
+    return null;
+}
+
+function minetn6AddRoom(lx, ly, hx, hy, rtype, lit) {
+    const actualType = rtype === FOODSHOP && game._startup_role === 'Monk' ? FODDERSHOP : rtype;
+    add_room(minetn6X(lx), minetn6Y(ly), minetn6X(hx), minetn6Y(hy), lit, actualType, true);
+    const room = game.level.rooms[game.level.nroom - 1];
+    room.needfill = FILL_NORMAL;
+    room.needjoining = false;
+    topologize(room);
+    if (actualType >= SHOPBASE) game.level.flags.has_shop = true;
+    if (actualType === TEMPLE) game.level.flags.has_temple = true;
+    return room;
+}
+
+function minetn6Door(state, x, y) {
+    const ax = minetn6X(x), ay = minetn6Y(y);
+    const loc = game.level.at(ax, ay);
+    if (!loc) return;
+    loc.typ = DOOR;
+    loc.doormask = state === 'locked' ? D_LOCKED
+        : state === 'open' ? D_ISOPEN
+            : state === 'nodoor' ? D_NODOOR
+                : state === 'broken' ? D_BROKEN
+                    : state === 'random' ? [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)]
+                        : D_CLOSED;
+    const left = game.level.at(ax - 1, ay);
+    loc.horizontal = !!(left && (IS_WALL(left.typ) || left.horizontal));
+    for (const room of game.level.rooms || []) {
+        if (!room || room.hx <= 0) continue;
+        const vertical = ay >= room.ly && ay <= room.hy && (ax === room.lx - 1 || ax === room.hx + 1);
+        const horizontal = ax >= room.lx && ax <= room.hx && (ay === room.ly - 1 || ay === room.hy + 1);
+        if (vertical || horizontal) add_door(ax, ay, room);
+    }
+}
+
+async function minetn6Monster(name, x = null, y = null, peaceful = null) {
+    let ptr;
+    let gender = null;
+    if (name.length === 1) {
+        rn2(3);
+        ptr = mkclassAligned(name);
+    } else {
+        gender = name === 'gnome lord' ? 0 : rn2(2);
+        if (name === 'watchman') ptr = WATCHMAN;
+        else if (name === 'watch captain') ptr = WATCH_CAPTAIN;
+        else ptr = monsterByRndName(RANDOM_MONSTER_ALIASES.get(name) || name);
+        rn2(3);
+    }
+    if (!ptr) return null;
+
+    let pos = x == null ? minetn6DryLocation() : { x: minetn6X(x), y: minetn6Y(y) };
+    if (!pos) return null;
+    if (game.level.monsters?.some(mon => mon.mx === pos.x && mon.my === pos.y)) {
+        pos = enextoMonsterSpot(pos.x, pos.y, ptr);
+        if (!pos) return null;
+    }
+    const mon = await makemon(ptr, pos.x, pos.y, 0);
+    if (!mon) return null;
+    if (gender != null) mon.female = !!gender;
+    setMonsterPeaceful(mon, peaceful);
+    return mon;
+}
+
+async function minetn6AltarShrine(x, y) {
+    const ax = minetn6X(x), ay = minetn6Y(y);
+    const loc = game.level.at(ax, ay);
+    if (!loc) return;
+    const align = game.splev_align?.[0] ?? A_NEUTRAL;
+    loc.typ = ALTAR;
+    loc.flags = Align2amask(align) | AM_SHRINE;
+
+    const temple = game.level.rooms?.find(room =>
+        room?.rtype === TEMPLE && ax >= room.lx && ax <= room.hx && ay >= room.ly && ay <= room.hy);
+    if (!temple) return;
+    const si = rn2(8);
+    let px = ax, py = ay;
+    for (let i = 0; i < 8; i++) {
+        const dir = (i + si) & 7;
+        const nx = ax + xdir[dir], ny = ay + ydir[dir];
+        if (priestGoodLocation(ALIGNED_CLERIC, nx, ny)) { px = nx; py = ny; break; }
+    }
+    relocatePriestSpotOccupant(px, py);
+    const priest = await makemon(ALIGNED_CLERIC, px, py, MM_NOGRP);
+    if (!priest) return;
+    initPriestMonster(priest, { room: temple.roomnoidx + ROOMOFFSET, align, x: ax, y: ay });
+    givePriestSpellbooks(priest);
     rn2(2);
 }
 
@@ -10558,38 +11390,39 @@ async function splevBuildRoom(spec, parent = null, contents = null) {
     return croom;
 }
 
-function splevDoor(croom, state, wall) {
+function splevDoor(croom, state, wall, pos = null) {
     const mask = state === 'locked' ? D_LOCKED
         : state === 'open' ? D_ISOPEN
             : state === 'nodoor' ? D_NODOOR
                 : state === 'broken' ? D_BROKEN : D_CLOSED;
     const width = croom.hx - croom.lx + 1;
     const height = croom.hy - croom.ly + 1;
+    const hasPos = pos != null;
     let x = 0, y = 0;
     for (let trycnt = 0; trycnt < 100; trycnt++) {
         switch (rn2(4)) {
         case 0:
             if (!(wall & W_NORTH)) continue;
             y = croom.ly - 1;
-            x = croom.lx + rn2(width);
+            x = croom.lx + (hasPos ? pos : rn2(width));
             if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level.at(x, y - 1)?.typ)) continue;
             break;
         case 1:
             if (!(wall & W_SOUTH)) continue;
             y = croom.hy + 1;
-            x = croom.lx + rn2(width);
+            x = croom.lx + (hasPos ? pos : rn2(width));
             if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level.at(x, y + 1)?.typ)) continue;
             break;
         case 2:
             if (!(wall & W_WEST)) continue;
             x = croom.lx - 1;
-            y = croom.ly + rn2(height);
+            y = croom.ly + (hasPos ? pos : rn2(height));
             if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level.at(x - 1, y)?.typ)) continue;
             break;
         case 3:
             if (!(wall & W_EAST)) continue;
             x = croom.hx + 1;
-            y = croom.ly + rn2(height);
+            y = croom.ly + (hasPos ? pos : rn2(height));
             if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level.at(x + 1, y)?.typ)) continue;
             break;
         }
@@ -10621,18 +11454,33 @@ function splevRoomLocation(croom) {
     return null;
 }
 
+function splevStairLocation(croom) {
+    const pos = { x: 0, y: 0 };
+    const goodStairLoc = (x, y) => {
+        const typ = game.level.at(x, y)?.typ;
+        return typ === ROOM || typ === CORR || typ === ICE;
+    };
+    for (let cpt = 0; cpt < 100; cpt++) {
+        somexy(croom, pos);
+        if (goodStairLoc(pos.x, pos.y)) return { x: pos.x, y: pos.y };
+    }
+    for (let x = croom.lx; x <= croom.hx; x++)
+        for (let y = croom.ly; y <= croom.hy; y++)
+            if (goodStairLoc(x, y)) return { x, y };
+    return null;
+}
+
 function splevFreeRoomLocation(croom) {
     let pos = splevRoomLocation(croom);
+    if (!pos) return null;
     if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     for (let trycnt = 0; trycnt <= 100; trycnt++) {
-        pos = { x: -1, y: -1 };
-        if (pos.x < 0) pos.x = rn2(croom.hx - croom.lx + 1);
-        if (pos.y < 0) pos.y = rn2(croom.hy - croom.ly + 1);
-        pos.x += croom.lx;
-        pos.y += croom.ly;
+        const candidate = { x: 0, y: 0 };
+        if (!somexy(croom, candidate)) break;
+        pos = candidate;
         if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     }
-    return pos;
+    return null;
 }
 
 function splevSpecificLocation(croom, x, y) {
@@ -10643,14 +11491,15 @@ async function splevMonster(croom, name, peaceful = null) {
     let ptr;
     let gender = null;
     if (name.length === 1) {
-        rn2(3);
-        ptr = mkclassAligned(name);
+        gender = 0;
+        inducedAlign80();
+        ptr = mkclassAligned(name, false, null, true);
     } else {
-        gender = name === 'gnome lord' ? 0 : rn2(2);
+        gender = name === 'gnome lord' || name === 'gnome king' ? 0 : rn2(2);
         if (name === 'watchman') ptr = WATCHMAN;
         else if (name === 'watch captain') ptr = WATCH_CAPTAIN;
-        else ptr = monsterByRndName(RANDOM_MONSTER_ALIASES.get(name) || name);
-        rn2(3);
+        else ptr = monsterByRndName(name === 'gnome king' ? 'gnome ruler' : RANDOM_MONSTER_ALIASES.get(name) || name);
+        inducedAlign80();
     }
     const raceAdj = game.urace?.adj;
     const yourRace = (raceAdj === 'dwarven' && ptr?.name === 'dwarf')
@@ -10667,7 +11516,7 @@ async function splevMonster(croom, name, peaceful = null) {
     const mon = await makemon(monData, pos.x, pos.y, 0);
     if (!mon) return null;
     if (gender != null) mon.female = !!gender;
-    if (peaceful != null) mon.mpeaceful = peaceful ? 1 : 0;
+    setMonsterPeaceful(mon, peaceful);
     mon.msleeping = 0;
     return mon;
 }
@@ -10684,28 +11533,22 @@ async function splevAltarShrine(croom, x, y) {
     for (let i = 0; i < 8; i++) {
         const dir = (i + si) & 7;
         const nx = pos.x + xdir[dir], ny = pos.y + ydir[dir];
-        const nloc = game.level.at(nx, ny);
-        if (nloc && SPACE_POS(nloc.typ)) { px = nx; py = ny; break; }
+        if (priestGoodLocation(ALIGNED_CLERIC, nx, ny)) { px = nx; py = ny; break; }
     }
+    relocatePriestSpotOccupant(px, py);
     const priest = await makemon(ALIGNED_CLERIC, px, py, MM_NOGRP);
     if (!priest) return;
     loc.flags |= AM_SHRINE;
-    priest.mpeaceful = 1;
-    priest.ispriest = 1;
-    priest.msleeping = 0;
-    priest.shrine = { room: croom.roomnoidx + ROOMOFFSET, align, x: pos.x, y: pos.y };
-    for (let cnt = rn1(3, 2); cnt > 0; cnt--) mkobj(SPBOOK_no_NOVEL, false);
+    initPriestMonster(priest, { room: croom.roomnoidx + ROOMOFFSET, align, x: pos.x, y: pos.y });
+    givePriestSpellbooks(priest);
     rn2(2);
     game.level.flags.has_temple = true;
 }
 
 async function splevTrap(croom) {
     const pos = splevFreeRoomLocation(croom);
-    let kind = NO_TRAP;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
-    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
-    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    if (!pos) return;
+    let kind = specialRndtrap();
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
     if (kind === WEB) await makemon(monsterByRndName('giant spider'), pos.x, pos.y, 0);
@@ -10721,10 +11564,221 @@ async function splevTrap(croom) {
 }
 
 function splevStair(croom, up) {
-    const pos = splevRoomLocation(croom);
+    const pos = splevStairLocation(croom);
     if (!pos) return;
     game.level.traps = (game.level.traps || []).filter(trap => trap.tx !== pos.x || trap.ty !== pos.y);
     mkstairs(pos.x, pos.y, up, croom);
+}
+
+async function make_minetn1_level() {
+    const g = game;
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.rndmongen = true;
+    g.level.flags.has_town = true;
+    splevMinesLevelInit(ROOM, STONE);
+
+    for (let y = 0; y < MINETN1_ROWS.length; y++) {
+        const row = MINETN1_ROWS[y];
+        for (let x = 0; x < row.length; x++) minetn1SetTerrain(x, y, row[x]);
+    }
+
+    minetn1LightRegion(1, 1, 35, 17, true);
+    place_lregion(1, 3, 21, 19, minetn1X(0), minetn1Y(1), minetn1X(36), minetn1Y(17), LR_UPSTAIR, null);
+    place_lregion(57, 3, 75, 19, minetn1X(0), minetn1Y(1), minetn1X(36), minetn1Y(17), LR_DOWNSTAIR, null);
+
+    minetn1At(16, 9).typ = FOUNTAIN;
+    minetn1At(25, 9).typ = FOUNTAIN;
+    const altar = minetn1At(20, 13);
+    if (altar) {
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(A_NONE);
+    }
+
+    for (const [x, y] of MINETN1_RANDOM_DOORS) minetn1Door('random', x, y);
+    replace_special_terrain(minetn1X(7), minetn1Y(4), 5, 3, VWALL, ROOM, 18);
+    replace_special_terrain(minetn1X(25), minetn1Y(4), 5, 3, VWALL, ROOM, 18);
+    replace_special_terrain(minetn1X(7), minetn1Y(12), 5, 3, VWALL, ROOM, 18);
+    replace_special_terrain(minetn1X(28), minetn1Y(12), 1, 3, VWALL, ROOM, 33);
+
+    const place = MINETN1_BODY_PLACES.map(point => [...point]);
+    for (let i = place.length; i >= 2; i--) {
+        const j = rn2(i);
+        [place[i - 1], place[j]] = [place[j], place[i - 1]];
+    }
+
+    minetn1Corpse('aligned cleric', { x: minetn1X(20), y: minetn1Y(12) });
+    for (let i = 0; i < 5; i++) minetn1Corpse('shopkeeper', minetn1LocalPoint(place[i]));
+    for (let i = 0; i < 4; i++) minetn1Corpse('watchman');
+    minetn1Corpse('watch captain');
+
+    for (let i = 0, count = rn1(10, 10); i < count; i++) {
+        if (rn2(100) < 90) minetn1Object(BOULDER, minetn1DryLocation());
+        minetn1Object(ROCK, minetn1DryLocation());
+    }
+
+    minetn1Object(WAX_CANDLE, minetn1LocalPoint(place[3]), {
+        quantity: rn1(2, 1), display: { cls: 'tool', kind: 'wax candle', plural: 'wax candles' },
+    });
+    minetn1Object(WAX_CANDLE, minetn1LocalPoint(place[0]), {
+        quantity: rn1(3, 2), display: { cls: 'tool', kind: 'wax candle', plural: 'wax candles' },
+    });
+    minetn1Object(WAX_CANDLE, minetn1LocalPoint(place[1]), {
+        quantity: rn1(2, 1), display: { cls: 'tool', kind: 'wax candle', plural: 'wax candles' },
+    });
+    minetn1Object(TALLOW_CANDLE, minetn1LocalPoint(place[2]), {
+        quantity: rn1(3, 1), display: { cls: 'tool', kind: 'tallow candle', plural: 'tallow candles' },
+    });
+    minetn1Object(TALLOW_CANDLE, minetn1LocalPoint(place[1]), {
+        quantity: rn1(2, 1), display: { cls: 'tool', kind: 'tallow candle', plural: 'tallow candles' },
+    });
+    minetn1Object(TALLOW_CANDLE, minetn1LocalPoint(place[3]), {
+        quantity: rn1(2, 1), display: { cls: 'tool', kind: 'tallow candle', plural: 'tallow candles' },
+    });
+
+    minetn1Object(OIL_LAMP, minetn1LocalPoint(place[1]), { display: { cls: 'tool', kind: 'oil lamp' } });
+    minetn1Object(WAN_STRIKING, minetn1LocalPoint(place[0]), {
+        buc: 'uncursed', spe: 0, display: { cls: 'wand', kind: 'wand of striking' },
+    });
+    minetn1Object(WAN_STRIKING, minetn1LocalPoint(place[2]), {
+        buc: 'uncursed', spe: 0, display: { cls: 'wand', kind: 'wand of striking' },
+    });
+    minetn1Object(WAN_STRIKING, minetn1LocalPoint(place[3]), {
+        buc: 'uncursed', spe: 0, display: { cls: 'wand', kind: 'wand of striking' },
+    });
+    minetn1Object(WAN_MAGIC_MISSILE, minetn1LocalPoint(place[3]), {
+        buc: 'uncursed', spe: 0, display: { cls: 'wand', kind: 'wand of magic missile' },
+    });
+    minetn1Object(WAN_MAGIC_MISSILE, minetn1LocalPoint(place[4]), {
+        buc: 'uncursed', spe: 0, display: { cls: 'wand', kind: 'wand of magic missile' },
+    });
+
+    const inside = minetn1FloodSelection(18, 8);
+    const nearTemple = minetn1AreaIntersection(inside, 17, 8, 23, 14);
+    for (let i = 0, count = rn1(11, 5); i < count; i++) {
+        if (rn2(100) < 50) {
+            await minetn1Monster('orc-captain', minetn1RndCoord(inside, true), 0);
+        } else if (rn2(100) < 80) {
+            await minetn1Monster('Uruk-hai', minetn1RndCoord(inside, true), 0);
+        } else {
+            await minetn1Monster('Mordor orc', minetn1RndCoord(inside, true), 0);
+        }
+    }
+    for (let i = 1, count = rn1(6, 1); i <= count; i++)
+        await minetn1Monster('orc shaman', minetn1RndCoord(nearTemple, false), 0, i === 1 ? 3 : 0);
+    for (let i = 0, count = rn1(10, 10); i < count; i++)
+        await minetn1Monster(rn2(100) < 90 ? 'hill orc' : 'goblin', null, 0);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(MINETN1_XSTART, MINETN1_YSTART,
+        MINETN1_XSTART + MINETN1_ROWS[0].length - 1,
+        MINETN1_YSTART + MINETN1_ROWS.length - 1);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    g._level_populated = true;
+}
+
+async function make_minetn2_level() {
+    const g = game;
+    clear_level_structures();
+    g.level.flags.is_maze_lev = false;
+    g.level.flags.rndmongen = true;
+    g.level.flags.has_town = true;
+
+    await splevBuildRoom({
+        rtype: OROOM, lit: 1, x: 3, y: 3,
+        xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 31, h: 15,
+    }, null, async outer => {
+        splevFeature(outer, FOUNTAIN, 17, 5);
+        splevFeature(outer, FOUNTAIN, 13, 8);
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 2, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_WEST));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 0, x: 5, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 8, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_EAST));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 1, x: 16, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_WEST));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 0, x: 19, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 22, y: 0, w: 2, h: 2 }, outer, async room => {
+                splevDoor(room, 'closed', W_SOUTH);
+                await splevMonster(room, 'gnome');
+            });
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 0, x: 25, y: 0, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_EAST));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 1, x: 2, y: 5, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_NORTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 1, x: 5, y: 5, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 8, y: 5, w: 2, h: 2 }, outer, async room => {
+                splevDoor(room, 'locked', W_NORTH);
+                await splevMonster(room, 'gnome');
+            });
+
+        await splevBuildRoom({ rtype: SHOPBASE, chance: 90, lit: 1, x: 2, y: 10, w: 4, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_WEST));
+        await splevBuildRoom({ rtype: TOOLSHOP, chance: 90, lit: 1, x: 23, y: 10, w: 4, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_EAST));
+        await splevBuildRoom({ rtype: FOODSHOP, chance: 90, lit: 1, x: 24, y: 5, w: 3, h: 4 }, outer,
+            room => splevDoor(room, 'closed', W_NORTH));
+        await splevBuildRoom({ rtype: CANDLESHOP, lit: 1, x: 11, y: 10, w: 4, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_EAST));
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 0, x: 7, y: 10, w: 3, h: 3 }, outer, async room => {
+                splevDoor(room, 'locked', W_NORTH);
+                await splevMonster(room, 'gnome');
+            });
+
+        await splevBuildRoom({ rtype: TEMPLE, lit: 1, x: 19, y: 5, w: 4, h: 4 }, outer, async room => {
+            splevDoor(room, 'closed', W_NORTH);
+            await splevAltarShrine(room, 2, 2);
+            await splevMonster(room, 'gnomish wizard');
+            await splevMonster(room, 'gnomish wizard');
+        });
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 1, x: 18, y: 10, w: 4, h: 3 }, outer, async room => {
+                splevDoor(room, 'locked', W_WEST);
+                await splevMonster(room, 'gnome lord');
+            });
+
+        for (let i = 0; i < 4; i++) await splevMonster(outer, 'watchman', 1);
+        await splevMonster(outer, 'watch captain', 1);
+    });
+
+    await splevBuildRoom({ rtype: OROOM }, null, room => splevStair(room, true));
+    await splevBuildRoom({ rtype: OROOM }, null, async room => {
+        splevStair(room, false);
+        await splevTrap(room);
+        await splevMonster(room, 'gnome');
+        await splevMonster(room, 'gnome');
+    });
+    await splevBuildRoom({ rtype: OROOM }, null, room => splevMonster(room, 'dwarf'));
+    await splevBuildRoom({ rtype: OROOM }, null, async room => {
+        await splevTrap(room);
+        await splevMonster(room, 'gnome');
+    });
+
+    await makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
+    g._level_populated = true;
 }
 
 async function make_minetn3_level() {
@@ -10801,12 +11855,12 @@ async function make_minetn3_level() {
         await splevMonster(room, 'gnome');
     });
 
-    makecorridors();
+    await makecorridors();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
     recount_level_features();
-    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
     level_finalize_topology({ mineralizeLevel: false });
+    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
     g._level_populated = true;
 }
 
@@ -10881,12 +11935,209 @@ async function make_minetn4_level() {
         await splevMonster(room, 'gnome');
     });
 
-    makecorridors();
+    await makecorridors();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flipSpecialLevelRnd();
     recount_level_features();
-    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
     level_finalize_topology({ mineralizeLevel: false });
+    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
+    g._level_populated = true;
+}
+
+async function make_minetn6_level() {
+    const g = game;
+    clear_level_structures();
+    rn2(2); // minetn-6.lua initial solidfill level_init omitted lit.
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.rndmongen = true;
+    g.level.flags.has_town = true;
+    g.level.flags.has_shop = true;
+    g.level.flags.has_temple = true;
+    splevMinesLevelInit(ROOM, HWALL, { lit: 1 });
+
+    for (let y = 0; y < MINETN6_ROWS.length; y++) {
+        const row = MINETN6_ROWS[y];
+        for (let x = 0; x < row.length; x++) minetn6SetTerrain(x, y, row[x]);
+    }
+    minetn6LightRegion(0, 0, 39, 19, true);
+
+    place_lregion(1, 3, 21, 19, minetn6X(1), minetn6Y(0), minetn6X(39), minetn6Y(18), LR_UPSTAIR, null);
+    place_lregion(60, 3, 75, 19, minetn6X(0), minetn6Y(0), minetn6X(38), minetn6Y(18), LR_DOWNSTAIR, null);
+
+    minetn6LightRegion(13, 7, 14, 8, false);
+    minetn6AddRoom(9, 9, 11, 11, CANDLESHOP, 1);
+    minetn6AddRoom(16, 6, 18, 8, TOOLSHOP, 1);
+    minetn6AddRoom(23, 3, 25, 5, SHOPBASE, 1);
+    minetn6AddRoom(22, 14, 24, 15, FOODSHOP, 1);
+    minetn6AddRoom(31, 14, 36, 16, TEMPLE, 1);
+    await minetn6AltarShrine(35, 15);
+
+    minetn6Door('closed', 5, 4);
+    minetn6Door('locked', 4, 10);
+    minetn6Door('closed', 10, 4);
+    minetn6Door('closed', 10, 12);
+    minetn6Door('locked', 13, 9);
+    minetn6Door('locked', 14, 11);
+    minetn6Door('closed', 19, 7);
+    minetn6Door('closed', 19, 12);
+    minetn6Door('closed', 24, 6);
+    minetn6Door('closed', 24, 11);
+    minetn6Door('closed', 25, 14);
+    minetn6Door('closed', 28, 6);
+    minetn6Door('locked', 28, 8);
+    minetn6Door('closed', 30, 15);
+    minetn6Door('closed', 31, 5);
+    minetn6Door('closed', 35, 5);
+    minetn6Door('closed', 33, 9);
+
+    for (let i = 0; i < 6; i++) await minetn6Monster('gnome');
+    await minetn6Monster('gnome', 14, 8);
+    await minetn6Monster('gnome lord', 14, 7);
+    await minetn6Monster('gnome', 27, 10);
+    await minetn6Monster('gnome lord');
+    await minetn6Monster('gnome lord');
+    for (let i = 0; i < 3; i++) await minetn6Monster('dwarf');
+    await minetn6Monster('dwarf', null, null, 1);
+    await minetn6Monster('dwarf', null, null, 1);
+    await minetn6Monster('gnome', null, null, 1);
+    await minetn6Monster('gnome', null, null, 1);
+    await minetn6Monster('hobbit', null, null, 1);
+    await minetn6Monster('goblin', null, null, 1);
+    await minetn6Monster('kobold', null, null, 1);
+    await minetn6Monster('dog', null, null, 1);
+    await minetn6Monster('watchman', null, null, 1);
+    await minetn6Monster('watchman', null, null, 1);
+    await minetn6Monster('watchman', null, null, 1);
+    await minetn6Monster('watch captain', null, null, 1);
+    await minetn6Monster('watch captain', null, null, 1);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(MINETN6_XSTART, MINETN6_YSTART,
+        MINETN6_XSTART + MINETN6_ROWS[0].length - 1,
+        MINETN6_YSTART + MINETN6_ROWS.length - 1);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    for (const croom of g.level.rooms || []) {
+        if (croom?.hx > 0) await fill_special_room(croom);
+    }
+    g._level_populated = true;
+}
+
+async function make_minetn7_level() {
+    const g = game;
+    clear_level_structures();
+    g.level.flags.is_maze_lev = false;
+    g.level.flags.rndmongen = true;
+    g.level.flags.has_town = true;
+
+    await splevBuildRoom({
+        rtype: OROOM, lit: 1, x: 3, y: 3,
+        xalign: SPLEV_CENTER, yalign: SPLEV_CENTER, w: 30, h: 15,
+    }, null, async outer => {
+        splevFeature(outer, FOUNTAIN, 12, 7);
+        splevFeature(outer, FOUNTAIN, 11, 13);
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 2, y: 2, w: 4, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 7, y: 2, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_NORTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 7, y: 5, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 1, x: 10, y: 2, w: 3, h: 4 }, outer, async room => {
+                await splevMonster(room, 'gnome');
+                await splevMonster(room, 'monkey');
+                await splevMonster(room, 'monkey');
+                await splevMonster(room, 'monkey');
+                splevDoor(room, 'closed', W_SOUTH);
+            });
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 14, y: 2, w: 4, h: 2 }, outer, async room => {
+                splevDoor(room, 'closed', W_SOUTH, 0);
+                await splevMonster(room, 'n');
+            });
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 16, y: 5, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_SOUTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, lit: 0, x: 19, y: 2, w: 2, h: 2 }, outer, async room => {
+                splevDoor(room, 'locked', W_EAST);
+                await splevMonster(room, 'gnome king');
+            });
+
+        await splevBuildRoom({ rtype: FOODSHOP, chance: 50, lit: 1, x: 19, y: 5, w: 2, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_SOUTH));
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 2, y: 7, w: 2, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_EAST));
+
+        await splevBuildRoom({ rtype: TOOLSHOP, chance: 50, lit: 1, x: 2, y: 10, w: 2, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_SOUTH));
+        await splevBuildRoom({ rtype: CANDLESHOP, lit: 1, x: 5, y: 10, w: 3, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_NORTH));
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 11, y: 10, w: 2, h: 2 }, outer, async room => {
+                splevDoor(room, 'locked', W_WEST);
+                await splevMonster(room, 'G');
+            });
+
+        await splevBuildRoom({ rtype: SHOPBASE, chance: 60, lit: 1, x: 14, y: 10, w: 2, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_NORTH));
+
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 17, y: 11, w: 4, h: 2 }, outer,
+                room => splevDoor(room, 'closed', W_NORTH));
+        if (rn2(100) < 75)
+            await splevBuildRoom({ rtype: OROOM, x: 22, y: 11, w: 2, h: 2 }, outer, room => {
+                splevDoor(room, 'closed', W_SOUTH);
+                splevFeature(room, SINK, 0, 0);
+            });
+
+        await splevBuildRoom({ rtype: FOODSHOP, chance: 50, lit: 1, x: 25, y: 11, w: 3, h: 2 }, outer,
+            room => splevDoor(room, 'closed', W_EAST));
+        await splevBuildRoom({ rtype: TOOLSHOP, chance: 30, lit: 1, x: 25, y: 2, w: 3, h: 3 }, outer,
+            room => splevDoor(room, 'closed', W_WEST));
+        await splevBuildRoom({ rtype: TEMPLE, lit: 1, x: 24, y: 6, w: 4, h: 4 }, outer, async room => {
+            splevDoor(room, 'closed', W_WEST);
+            await splevAltarShrine(room, 2, 1);
+            await splevMonster(room, 'gnomish wizard');
+            await splevMonster(room, 'gnomish wizard');
+        });
+
+        for (let i = 0; i < 4; i++) await splevMonster(outer, 'watchman', 1);
+        await splevMonster(outer, 'watch captain', 1);
+        await splevMonster(outer, 'gnome');
+        await splevMonster(outer, 'gnome');
+        await splevMonster(outer, 'gnome');
+        await splevMonster(outer, 'gnome lord');
+        await splevMonster(outer, 'monkey');
+        await splevMonster(outer, 'monkey');
+    });
+
+    await splevBuildRoom({ rtype: OROOM }, null, room => splevStair(room, true));
+    await splevBuildRoom({ rtype: OROOM }, null, async room => {
+        splevStair(room, false);
+        await splevTrap(room);
+        await splevMonster(room, 'gnome');
+        await splevMonster(room, 'gnome');
+    });
+    await splevBuildRoom({ rtype: OROOM }, null, room => splevMonster(room, 'dwarf'));
+    await splevBuildRoom({ rtype: OROOM }, null, async room => {
+        await splevTrap(room);
+        await splevMonster(room, 'gnome');
+    });
+
+    await makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    for (let i = 0; i < g.level.nroom; i++) await fill_special_room(g.level.rooms[i]);
     g._level_populated = true;
 }
 
@@ -10911,6 +12162,18 @@ async function make_minetn_level(special = null) {
     [align[1], align[alignPick]] = [align[alignPick], align[1]];
     g.splev_align = align;
 
+    if (variant === 1) {
+        await make_minetn1_level();
+        g.in_mklev = false;
+        return;
+    }
+
+    if (variant === 2) {
+        await make_minetn2_level();
+        g.in_mklev = false;
+        return;
+    }
+
     if (variant === 3) {
         await make_minetn3_level();
         g.in_mklev = false;
@@ -10919,6 +12182,18 @@ async function make_minetn_level(special = null) {
 
     if (variant === 4) {
         await make_minetn4_level();
+        g.in_mklev = false;
+        return;
+    }
+
+    if (variant === 6) {
+        await make_minetn6_level();
+        g.in_mklev = false;
+        return;
+    }
+
+    if (variant === 7) {
+        await make_minetn7_level();
         g.in_mklev = false;
         return;
     }
@@ -11043,10 +12318,10 @@ async function make_minetn_level(special = null) {
         MINETN5_XSTART + MINETN5_ROWS[0].length - 1,
         MINETN5_YSTART + MINETN5_ROWS.length - 1);
     recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
     for (const croom of g.level.rooms || []) {
         if (croom?.hx > 0) await fill_special_room(croom);
     }
-    level_finalize_topology({ mineralizeLevel: false });
     g.in_mklev = false;
 }
 
@@ -11647,6 +12922,7 @@ async function make_tower1_level() {
         mksobj_at(CHEST, TOWER1_XSTART + niches[idx][0], TOWER1_YSTART + niches[idx][1], true, false);
     for (const [idx, candle] of [[3, WAX_CANDLE], [4, TALLOW_CANDLE]]) {
         const chest = mksobj_at(CHEST, TOWER1_XSTART + niches[idx][0], TOWER1_YSTART + niches[idx][1], true, false);
+        delete_contents(chest);
         const quantity = rn1(5, 4);
         for (;;) {
             const x = TOWER1_XSTART + rn2(TOWER1_ROWS[0].length);
@@ -11744,6 +13020,7 @@ async function make_tower2_level() {
     }
 
     const chest1 = mksobj_at(CHEST, TOWER1_XSTART + places[4][0], TOWER1_YSTART + places[4][1], true, false);
+    delete_contents(chest1);
     for (;;) {
         const x = TOWER1_XSTART + rn2(TOWER2_ROWS[0].length);
         const y = TOWER1_YSTART + rn2(TOWER2_ROWS.length);
@@ -11753,6 +13030,7 @@ async function make_tower2_level() {
     add_to_container(chest1, mksobj(AMULET_CLASS, true, false));
 
     const chest2 = mksobj_at(CHEST, TOWER1_XSTART + places[5][0], TOWER1_YSTART + places[5][1], true, false);
+    delete_contents(chest2);
     for (;;) {
         const x = TOWER1_XSTART + rn2(TOWER2_ROWS[0].length);
         const y = TOWER1_YSTART + rn2(TOWER2_ROWS.length);
@@ -12119,10 +13397,10 @@ async function make_medusa_level() {
 
     for (let i = 0; i < 8; i++) {
         const pos = medusaDryLocation();
-        mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+        stack_floor_object(mkobj_at(RANDOM_CLASS, pos.x, pos.y, true));
     }
-    mksobj_at(SCR_BLANK_PAPER, medusaX(48), medusaY(18), true, true);
-    mksobj_at(SCR_BLANK_PAPER, medusaX(48), medusaY(18), true, true);
+    stack_floor_object(mksobj_at(SCR_BLANK_PAPER, medusaX(48), medusaY(18), true, true));
+    stack_floor_object(mksobj_at(SCR_BLANK_PAPER, medusaX(48), medusaY(18), true, true));
 
     for (const typ of [RUST_TRAP, RUST_TRAP, SQKY_BOARD, SQKY_BOARD]) {
         const pos = medusaDryLocation();
@@ -12259,7 +13537,7 @@ function sokobanDryLocation(rows, avoidBoulders = true) {
 
 async function make_sokoban_boulder_mimic(rows) {
     rn2(2); // find_montype() random gender for "giant mimic".
-    rn2(3); // induced_align() for default special-level monster alignment.
+    inducedAlign80();
     const pos = sokobanDryLocation(rows);
     const mon = await makemon(GIANT_MIMIC, pos.x, pos.y, 0);
     if (!mon) return null;
@@ -12607,7 +13885,6 @@ function wallify_map(x1, y1, x2, y2) {
 function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
     if (walled) {
         wallify_map(1, 0, COLNO - 1, ROWNO - 1);
-        wallification(1, 0, COLNO - 1, ROWNO - 1);
     }
     if (lit) {
         for (let x = 1; x < COLNO; x++)
@@ -12623,6 +13900,18 @@ function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
         game.level.flags.is_maze_lev = false;
         game.level.flags.is_cavernous_lev = true;
     }
+}
+
+function splevMinesLevelInit(fgTyp, bgTyp, options = {}) {
+    const joined = options.joined ?? true;
+    const walled = options.walled ?? true;
+    const lit = options.lit == null ? rn2(2) : options.lit;
+
+    mkmap_init(bgTyp, fgTyp);
+    mkmap_smooth(bgTyp, fgTyp);
+    if (joined)
+        mkmap_join(bgTyp, fgTyp);
+    mkmap_finish(fgTyp, bgTyp, lit, walled, joined);
 }
 
 function minefill_ok_location(x, y) {
@@ -12767,6 +14056,7 @@ async function make_minefill_level() {
     if (is_branchlev() && !g.made_branch)
         place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
 
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
     g._level_populated = true;
 }
 
@@ -12820,7 +14110,7 @@ async function makelevel() {
     const branchp = is_branchlev();
     let roomThreshold = branchp ? 4 : 3;
 
-    makecorridors();
+    await makecorridors();
     await make_niches();
 
     // Vault creation (simplified for contest)
@@ -12946,21 +14236,18 @@ async function makelevel() {
                         const dir = (i + si) & 7;
                         const nx = ax + xdir[dir], ny = ay + ydir[dir];
                         const nloc = g.level.at(nx, ny);
-                        const occupiedSpot = g.level.monsters?.some(mon => mon.mx === nx && mon.my === ny);
-                        if (nloc && SPACE_POS(nloc.typ) && !occupiedSpot) { px = nx; py = ny; break; }
+                        if (nloc && priestGoodLocation(ALIGNED_CLERIC, nx, ny)) { px = nx; py = ny; break; }
                     }
+                    relocatePriestSpotOccupant(px, py);
                     const priest = await makemon(ALIGNED_CLERIC, px, py, MM_NOGRP);
                     if (priest) {
-                        priest.mpeaceful = 1;
-                        priest.ispriest = 1;
-                        priest.msleeping = 0;
-                        priest.shrine = {
+                        initPriestMonster(priest, {
                             room: (room.roomnoidx ?? g.level.rooms.indexOf(room)) + ROOMOFFSET,
                             align: loc ? Amask2align(loc.flags) : A_NEUTRAL,
                             x: ax,
                             y: ay,
-                        };
-                        for (let cnt = rn1(3, 2); cnt > 0; cnt--) mkobj(SPBOOK_no_NOVEL, false);
+                        });
+                        givePriestSpellbooks(priest);
                         rn2(2);
                     }
                     if (loc) loc.flags |= AM_SHRINE;
@@ -13035,13 +14322,13 @@ function rogueJoin(x1, y1, x2, y2, horiz) {
     for (let y = Math.min(middle, y2); y <= Math.max(middle, y2); y++) rogueCorrCell(x2, y);
 }
 
-function rogueDoor(x, y, room) {
-    dodoor(x, y, room);
+async function rogueDoor(x, y, room) {
+    await dodoor(x, y, room);
     const loc = game.level.at(x, y);
     if (loc) loc.doormask = D_NODOOR;
 }
 
-function roguecorr(grid, x, y, dir) {
+async function roguecorr(grid, x, y, dir) {
     let fromx, fromy, tox, toy;
     if (dir === XL_DOWN) {
         const here = rogueCell(grid, x, y);
@@ -13052,7 +14339,7 @@ function roguecorr(grid, x, y, dir) {
         } else {
             fromx = here.rlx + rn2(here.dx) + 1 + 26 * x;
             fromy = here.rly + here.dy + 7 * y;
-            rogueDoor(fromx, fromy, game.level.rooms[here.nroom]);
+            await rogueDoor(fromx, fromy, game.level.rooms[here.nroom]);
             fromy++;
         }
         y++;
@@ -13064,7 +14351,7 @@ function roguecorr(grid, x, y, dir) {
         } else {
             tox = target.rlx + rn2(target.dx) + 1 + 26 * x;
             toy = target.rly - 1 + 7 * y;
-            rogueDoor(tox, toy, game.level.rooms[target.nroom]);
+            await rogueDoor(tox, toy, game.level.rooms[target.nroom]);
             toy--;
         }
         rogueJoin(fromx, fromy, tox, toy, false);
@@ -13079,7 +14366,7 @@ function roguecorr(grid, x, y, dir) {
     } else {
         fromx = here.rlx + here.dx + 1 + 26 * x;
         fromy = here.rly + rn2(here.dy) + 7 * y;
-        rogueDoor(fromx, fromy, game.level.rooms[here.nroom]);
+        await rogueDoor(fromx, fromy, game.level.rooms[here.nroom]);
         fromx++;
     }
     x++;
@@ -13091,7 +14378,7 @@ function roguecorr(grid, x, y, dir) {
     } else {
         tox = target.rlx - 1 + 1 + 26 * x;
         toy = target.rly + rn2(target.dy) + 7 * y;
-        rogueDoor(tox, toy, game.level.rooms[target.nroom]);
+        await rogueDoor(tox, toy, game.level.rooms[target.nroom]);
         tox--;
     }
     rogueJoin(fromx, fromy, tox, toy, true);
@@ -13133,7 +14420,7 @@ function miniwalk(grid, x, y) {
     }
 }
 
-function makeroguerooms() {
+async function makeroguerooms() {
     const grid = Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => ({
         real: false, rlx: 0, rly: 0, dx: 0, dy: 0, doortable: 0, nroom: -1,
     })));
@@ -13172,8 +14459,8 @@ function makeroguerooms() {
     for (let y = 0; y < 3; y++) {
         for (let x = 0; x < 3; x++) {
             const cell = rogueCell(grid, x, y);
-            if (cell.doortable & XL_DOWN) roguecorr(grid, x, y, XL_DOWN);
-            if (cell.doortable & XL_RIGHT) roguecorr(grid, x, y, XL_RIGHT);
+            if (cell.doortable & XL_DOWN) await roguecorr(grid, x, y, XL_DOWN);
+            if (cell.doortable & XL_RIGHT) await roguecorr(grid, x, y, XL_RIGHT);
         }
     }
 }
@@ -13235,7 +14522,7 @@ async function makerogueghost() {
 
 async function make_rogue_level() {
     game.level.flags.rogue_level = true;
-    makeroguerooms();
+    await makeroguerooms();
     await makerogueghost();
     sort_rooms();
     await generate_stairs();
@@ -13902,7 +15189,7 @@ function themeroom_ghost_adventurer_rng(rows, startX, startY) {
 
     const loc = candidates[rn2(candidates.length)];
     rn2(2); // find_montype("ghost") chooses a gender before makemon.
-    rn2(3); // default special-level monster alignment.
+    inducedAlign80();
 
     const difficulty = level_difficulty();
     const heroLevel = game.u?.ulevel || 1;
@@ -13996,7 +15283,7 @@ async function apply_themeroom_fill(fill, croom, rows = null, startX = 0, startY
             rn2(3);
             const mimic = mkclassMimic();
             const pos = {};
-            const mon = somexyspace(croom, pos) ? await makemon(mimic, pos.x, pos.y, 0) : null;
+            const mon = mimic && somexyspace(croom, pos) ? await makemon(mimic, pos.x, pos.y, 0) : null;
             if (mon) {
                 mon.appearObj = CHEST;
                 mon.appearGlyph = '(';
@@ -14824,11 +16111,11 @@ function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
 }
 
 // C ref: mklev.c dosdoor()
-function dosdoor(x, y, aroom, type) {
+async function dosdoor(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
-    const shdoor = in_rooms(x, y, 0).length > 0;
+    const shdoor = in_rooms(x, y, SHOPBASE).length > 0;
     if (!IS_WALL(loc.typ)) type = DOOR;
     loc.typ = type;
     if (type === DOOR) {
@@ -14845,6 +16132,8 @@ function dosdoor(x, y, aroom, type) {
         if (loc.doormask & D_TRAPPED) {
             if (level_difficulty() >= 9 && !rn2(5)) {
                 loc.doormask = D_NODOOR;
+                const ptr = mkclassMimic();
+                if (ptr) await makemon(ptr, x, y, 0);
             }
         }
     } else {
@@ -14856,8 +16145,8 @@ function dosdoor(x, y, aroom, type) {
     add_door(x, y, aroom);
 }
 
-function dodoor(x, y, aroom) {
-    dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
+async function dodoor(x, y, aroom) {
+    await dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
 function add_door(x, y, aroom) {
@@ -14872,6 +16161,10 @@ function add_door(x, y, aroom) {
     for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--)
         g.level.doors[tmp] = g.level.doors[tmp - 1];
     for (const broom of g.level.rooms || []) {
+        if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
+        if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
+    }
+    for (const broom of g.level.subrooms || []) {
         if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
     }
@@ -14904,7 +16197,7 @@ function okdoor(x, y) {
 }
 
 // C ref: mklev.c join()
-function join(a, b, nxcor) {
+async function join(a, b, nxcor) {
     const g = game;
     const croom = g.level.rooms[a];
     const troom = g.level.rooms[b];
@@ -14942,29 +16235,29 @@ function join(a, b, nxcor) {
     const ftyp = CORR;
     const dig_result = dig_corridor(org, dest, npoints, nxcor, ftyp, STONE);
     if ((npoints.v > 0) && (okdoor(xx, yy) || !nxcor))
-        dodoor(xx, yy, croom);
+        await dodoor(xx, yy, croom);
     if (!dig_result) return;
     if (okdoor(tt.x, tt.y) || !nxcor)
-        dodoor(tt.x, tt.y, troom);
+        await dodoor(tt.x, tt.y, troom);
     if (g.smeq[a] < g.smeq[b]) g.smeq[b] = g.smeq[a];
     else g.smeq[a] = g.smeq[b];
 }
 
 // C ref: mklev.c makecorridors()
-function makecorridors() {
+async function makecorridors() {
     const g = game;
     let any = true;
     for (let i = 0; i < g.level.nroom; i++) g.smeq[i] = i;
     for (let a = 0; a < g.level.nroom - 1; a++) {
-        join(a, a + 1, false);
+        await join(a, a + 1, false);
         if (!rn2(50)) break;
     }
     for (let a = 0; a < g.level.nroom - 2; a++)
-        if (g.smeq[a] !== g.smeq[a + 2]) join(a, a + 2, false);
+        if (g.smeq[a] !== g.smeq[a + 2]) await join(a, a + 2, false);
     for (let a = 0; any && a < g.level.nroom; a++) {
         any = false;
         for (let b = 0; b < g.level.nroom; b++)
-            if (g.smeq[a] !== g.smeq[b]) { join(a, b, false); any = true; }
+            if (g.smeq[a] !== g.smeq[b]) { await join(a, b, false); any = true; }
     }
     if (g.level.nroom > 2) {
         const count = rn2(g.level.nroom) + 4;
@@ -14972,7 +16265,7 @@ function makecorridors() {
             let a = rn2(g.level.nroom);
             let b = rn2(g.level.nroom - 2);
             if (b >= a) b += 2;
-            join(a, b, true);
+            await join(a, b, true);
         }
     }
 }
@@ -15188,11 +16481,11 @@ async function makeniche(trap_type) {
                     wipe_engr_at(xx, yy - dy, 5, false);
                 }
             }
-            dosdoor(xx, yy, aroom, SDOOR);
+            await dosdoor(xx, yy, aroom, SDOOR);
         } else {
             rm.typ = CORR;
             if (rn2(7)) {
-                dosdoor(xx, yy, aroom, rn2(5) ? SDOOR : DOOR);
+                await dosdoor(xx, yy, aroom, rn2(5) ? SDOOR : DOOR);
             } else {
                 const loc = g.level.at(xx, yy);
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
@@ -15582,16 +16875,30 @@ function mkgrave_room(croom) {
 }
 
 function shopDoorPosition(croom) {
-    const door = game.level?.doors?.[croom.fdoor || 0];
-    if (!door) return null;
-    let sx = door.x;
-    let sy = door.y;
-    if (sx === croom.lx - 1) sx++;
-    else if (sx === croom.hx + 1) sx--;
-    else if (sy === croom.ly - 1) sy++;
-    else if (sy === croom.hy + 1) sy--;
-    else return null;
-    return { door, sx, sy };
+    const roomno = (croom.roomnoidx ?? game.level.rooms.indexOf(croom)) + ROOMOFFSET;
+    for (let i = 0; i < croom.doorct; i++) {
+        const door = game.level?.doors?.[(croom.fdoor || 0) + i];
+        if (!door) continue;
+        let sx = door.x;
+        let sy = door.y;
+        if (croom.irregular) {
+            if (isok(sx - 1, sy) && !game.level.at(sx - 1, sy)?.edge
+                && game.level.at(sx - 1, sy)?.roomno === roomno) sx--;
+            else if (isok(sx + 1, sy) && !game.level.at(sx + 1, sy)?.edge
+                && game.level.at(sx + 1, sy)?.roomno === roomno) sx++;
+            else if (isok(sx, sy - 1) && !game.level.at(sx, sy - 1)?.edge
+                && game.level.at(sx, sy - 1)?.roomno === roomno) sy--;
+            else if (isok(sx, sy + 1) && !game.level.at(sx, sy + 1)?.edge
+                && game.level.at(sx, sy + 1)?.roomno === roomno) sy++;
+            else continue;
+        } else if (sx === croom.lx - 1) sx++;
+        else if (sx === croom.hx + 1) sx--;
+        else if (sy === croom.ly - 1) sy++;
+        else if (sy === croom.hy + 1) sy--;
+        else continue;
+        return { door, sx, sy };
+    }
+    return null;
 }
 
 function birthdayFromDatetime() {
@@ -15609,6 +16916,15 @@ function birthdayFromDatetime() {
 
 function assignShopkeeperName(shk, shopIndex) {
     let names = SHOPKEEPER_NAME_LISTS[shopIndex] || GENERAL_SHOPKEEPER_NAMES;
+    if (names === LIGHT_SHOPKEEPER_NAMES
+        && In_mines(game.u?.uz)
+        && game.level?.flags?.has_town) {
+        shk.female = 0;
+        shk.shkRawName = '+Izchak';
+        shk.personalName = true;
+        shk.shknam = 'Izchak';
+        return;
+    }
     const nseed = Math.trunc(birthdayFromDatetime() / 257);
     const ledger = (game.dungeons?.[game.u?.uz?.dnum ?? 0]?.ledger_start || 0) + (game.u?.uz?.dlevel || 1);
     let nameWanted = (shk.m_id || 0) + ledger + (nseed % 13) - (nseed % 5);
@@ -15647,14 +16963,18 @@ function assignShopkeeperName(shk, shopIndex) {
 async function shkinit(shopIndex, croom) {
     const spot = shopDoorPosition(croom);
     if (!spot) return null;
+    const occupant = monster_at(spot.sx, spot.sy);
+    if (occupant) rlocNoMsg(occupant);
     const shk = await makemon(SHOPKEEPER, spot.sx, spot.sy, MM_NOGRP);
     if (!shk) return null;
     shk.isshk = true;
     shk.mpeaceful = 1;
+    set_malign(shk);
     shk.msleeping = 0;
+    shk.mtrapseen = ~0;
     shk.shk = { x: spot.sx, y: spot.sy };
     shk.shd = { x: spot.door.x, y: spot.door.y };
-    shk.shoproom = game.level.rooms.indexOf(croom) + ROOMOFFSET;
+    shk.shoproom = (croom.roomnoidx ?? game.level.rooms.indexOf(croom)) + ROOMOFFSET;
     shk.shoptype = SHOPBASE + shopIndex;
     shk.visitct = 0;
     croom.resident = shk;
@@ -15681,7 +17001,7 @@ function stockRoomGoodpos(croom, door, sx, sy) {
         || (sx === croom.hx && door.x === sx + 1)
         || (sy === croom.ly && door.y === sy - 1)
         || (sy === croom.hy && door.y === sy + 1)) return false;
-    return loc?.typ === ROOM;
+    return !!loc && IS_ROOM(loc.typ);
 }
 
 function getShopItem(shopIndex) {
@@ -15708,68 +17028,39 @@ function mkveggy_at(sx, sy) {
     if (obj?.otyp === TIN) obj.spe = 1;
 }
 
+function mimicAttacksFor(name) {
+    const sides = name === 'giant mimic' ? 6 : 4;
+    const attacks = [{
+        dice: 3,
+        sides,
+        verb: 'hits',
+        aatyp: 'claw',
+        adtyp: name === 'small mimic' ? 'phys' : 'stck',
+    }];
+    if (name === 'giant mimic')
+        attacks.push({ dice: 3, sides, verb: 'hits again', aatyp: 'claw', adtyp: 'stck' });
+    return attacks;
+}
+
 function mkclassMimic() {
-    const mimics = [
-        { name: 'small mimic', freq: 2, difficulty: 8, glyph: 'm', color: CLR_BROWN, mlevel: 7 },
-        { name: 'large mimic', freq: 1, difficulty: 9, glyph: 'm', color: CLR_RED, mlevel: 8 },
-        { name: 'giant mimic', freq: 1, difficulty: 11, glyph: 'm', color: CLR_MAGENTA, mlevel: 9 },
-    ];
-    const maxmlev = level_difficulty() >> 1;
-    const choices = [];
-    let total = 0;
-    for (let i = 0; i < mimics.length; i++) {
-        const mimic = mimics[i];
-        rn2(9);
-        if (total && mimic.difficulty > maxmlev && mimic.difficulty > mimics[i - 1].difficulty && rn2(2)) break;
-        let adj = mimic.mlevel;
-        const levelDiff = level_difficulty() - adj;
-        if (levelDiff < 0) adj--;
-        else adj += Math.trunc(levelDiff / 5);
-        const heroDiff = (game.u?.ulevel || 1) - mimic.mlevel;
-        if (heroDiff > 0) adj += Math.trunc(heroDiff / 4);
-        adj = Math.max(0, Math.min(Math.trunc(3 * mimic.mlevel / 2), adj));
-        const weight = mimic.freq + 1 - (adj > (game.u?.ulevel || 1) * 2);
-        if (weight > 0) {
-            total += weight;
-            choices.push({ mimic, adj, total });
-        }
-    }
-    const pick = rnd(total);
-    const choice = choices.find(item => pick <= item.total) || choices[0];
-    const mimicAttack = choice.mimic.name === 'giant mimic'
-        ? { dice: 3, sides: 6, verb: 'hits' }
-        : { dice: 3, sides: 4, verb: 'hits' };
-    return {
-        name: choice.mimic.name,
-        mlet: S_MIMIC,
-        glyph: 'm',
-        color: choice.mimic.color,
-        mlevel: choice.mimic.mlevel,
-        mac: 7,
-        hpLevel: choice.adj,
-        mmove: 3,
-        neuter: false,
-        mindless: true,
-        weight: 1,
-        alwaysHostile: true,
-        attack: mimicAttack,
-    };
+    return mkclassAligned('m');
 }
 
 async function mkshobj_at(shopIndex, sx, sy, specialStock = false) {
     const shopName = SHOP_TYPES[shopIndex]?.name;
     if (specialStock && (shopName === 'rare books' || shopName === 'second-hand bookstore')) {
-        const novel = mksobj(SPBOOK_no_NOVEL, false, false);
-        rn2(41);
+        const novel = mksobj_at(SPBOOK_no_NOVEL, sx, sy, false, false);
         Object.assign(novel, { kind: 'novel', cls: 'spellbook', glyph: '+', color: CLR_BRIGHT_BLUE });
-        place_object(novel, sx, sy);
         game._tribute_bookstock = true;
         return;
     }
     if (rn2(100) < depth_of_level(game.u?.uz)
         && !game.level?.monsters?.some(mon => mon.mx === sx && mon.my === sy)) {
-        await makemon(mkclassMimic(), sx, sy, 0);
-        return;
+        const ptr = mkclassMimic();
+        if (ptr) {
+            const mimic = await makemon(ptr, sx, sy, 0);
+            if (mimic) return;
+        }
     }
     const atype = getShopItem(shopIndex);
     if (atype === VEGETARIAN_CLASS) mkveggy_at(sx, sy);
@@ -15780,10 +17071,23 @@ async function mkshobj_at(shopIndex, sx, sy, specialStock = false) {
 async function stock_room(shopIndex, croom) {
     const spot = await shkinit(shopIndex, croom);
     if (!spot) return;
-    const doorLoc = game.level?.at(spot.door.x, spot.door.y);
+    const firstDoor = game.level?.doors?.[croom.fdoor || 0];
+    const doorLoc = firstDoor ? game.level?.at(firstDoor.x, firstDoor.y) : null;
     if (doorLoc?.doormask === D_NODOOR) doorLoc.doormask = D_ISOPEN;
     if (doorLoc?.typ === SDOOR) doorLoc.typ = DOOR;
     if (doorLoc?.doormask & D_TRAPPED) doorLoc.doormask = D_LOCKED;
+    if (firstDoor && doorLoc?.doormask === D_LOCKED) {
+        let m = firstDoor.x;
+        let n = firstDoor.y;
+        if (inside_shop(firstDoor.x + 1, firstDoor.y)) m--;
+        else if (inside_shop(firstDoor.x - 1, firstDoor.y)) m++;
+        if (inside_shop(firstDoor.x, firstDoor.y + 1)) n--;
+        else if (inside_shop(firstDoor.x, firstDoor.y - 1)) n++;
+        make_engr_at(m, n, 'Closed for inventory', null, 0, DUST);
+        const signLoc = game.level?.at(m, n);
+        if (signLoc && signLoc.typ !== CORR && signLoc.typ !== ROOM)
+            signLoc.typ = (isCurrentSpecialLevel() || in_rooms(m, n, 0).length) ? ROOM : CORR;
+    }
     const stockSpots = [];
     for (let sx = croom.lx; sx <= croom.hx; sx++)
         for (let sy = croom.ly; sy <= croom.hy; sy++)
@@ -15795,7 +17099,7 @@ async function stock_room(shopIndex, croom) {
         await mkshobj_at(shopIndex, sx, sy, stockCount === specialSpot);
     }
     if (game.level?.flags?.orcus_level) {
-        const roomno = game.level.rooms.indexOf(croom) + ROOMOFFSET;
+        const roomno = (croom.roomnoidx ?? game.level.rooms.indexOf(croom)) + ROOMOFFSET;
         for (const mon of game.level.monsters || [])
             if ((mon.isshk || mon.shopkeeper || mon.data?.shopkeeper) && mon.shoproom === roomno)
                 for (const obj of mon.minvent || [])

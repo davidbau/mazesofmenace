@@ -9,7 +9,7 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, IN_SIGHT, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
@@ -59,6 +59,15 @@ const DEFAULT_DOG_NAMES = {
     Ranger: 'Sirius',
     Samurai: 'Hachi',
 };
+
+function levelRoomByRoomno(roomno) {
+    if (roomno < ROOMOFFSET) return null;
+    const idx = roomno - ROOMOFFSET;
+    return game.level?.rooms?.[idx]
+        || (game.level?.subrooms || []).find(room => room?.roomnoidx === idx)
+        || null;
+}
+
 const FEMALE_ROLE_NAMES = {
     Caveman: 'Cavewoman',
     Priest: 'Priestess',
@@ -322,6 +331,26 @@ const PET_OBJECT_WEIGHTS = {
     'ring mail': 250,
     'orcish ring mail': 250,
     'scale mail': 250,
+    'gray dragon scale mail': 40,
+    'gold dragon scale mail': 40,
+    'silver dragon scale mail': 40,
+    'red dragon scale mail': 40,
+    'white dragon scale mail': 40,
+    'orange dragon scale mail': 40,
+    'black dragon scale mail': 40,
+    'blue dragon scale mail': 40,
+    'green dragon scale mail': 40,
+    'yellow dragon scale mail': 40,
+    'gray dragon scales': 40,
+    'gold dragon scales': 40,
+    'silver dragon scales': 40,
+    'red dragon scales': 40,
+    'white dragon scales': 40,
+    'orange dragon scales': 40,
+    'black dragon scales': 40,
+    'blue dragon scales': 40,
+    'green dragon scales': 40,
+    'yellow dragon scales': 40,
     'studded leather armor': 200,
     'leather armor': 150,
     'leather cloak': 15,
@@ -5521,12 +5550,23 @@ function scaryEngravingAt(mon, x, y) {
 }
 
 function monsterKnowsTrap(mon, ttyp) {
+    if (!mon) return false;
+    if (ttyp === ALL_TRAPS) {
+        if (Number.isInteger(mon.mtrapseen)) return mon.mtrapseen === ~0;
+        return mon.knownTraps?.includes(ALL_TRAPS) || false;
+    }
     if (ttyp <= 0) return false;
     if (Number.isInteger(mon.mtrapseen)) return !!(mon.mtrapseen & (1 << (ttyp - 1)));
-    return mon.knownTraps?.includes(ttyp) || false;
+    return mon.knownTraps?.includes(ALL_TRAPS) || mon.knownTraps?.includes(ttyp) || false;
 }
 
 function monsterLearnTrap(mon, ttyp) {
+    if (!mon) return;
+    if (ttyp === ALL_TRAPS) {
+        mon.mtrapseen = ~0;
+        mon.knownTraps = [ALL_TRAPS];
+        return;
+    }
     if (ttyp <= 0) return;
     mon.mtrapseen = (mon.mtrapseen || 0) | (1 << (ttyp - 1));
     mon.knownTraps ??= [];
@@ -5817,7 +5857,7 @@ function monsterSearchItemGoal(mon) {
             if (!clearPath(mon.mx, mon.my, x, y)) continue;
 
             const roomno = game.level?.at(x, y)?.roomno || 0;
-            const room = roomno >= ROOMOFFSET ? game.level?.rooms?.[roomno - ROOMOFFSET] : null;
+            const room = levelRoomByRoomno(roomno);
             const costlySpot = (room?.rtype || 0) >= SHOPBASE;
             const stack = [...objects].reverse()
                 .filter(obj => obj.ox === x && obj.oy === y && !obj.transientProjectile);
@@ -7871,20 +7911,136 @@ export async function newgame() {
     if (g.flags?.legacy !== false) l_nhcore_init();
 }
 
-function advanceRegions(g) {
+function regionContains(reg, x, y) {
+    return reg?.coords?.some(coord => coord.x === x && coord.y === y);
+}
+
+function reportGasCloudDissipation(g, reg) {
+    if (reg?.type !== 'gas_cloud') return;
+    const ux = g.u?.ux ?? -1;
+    const uy = g.u?.uy ?? -1;
+    if (regionContains(reg, ux, uy)) {
+        addToplineMessage('The gas cloud around you dissipates.');
+        return;
+    }
+    const visibleCount = (reg.coords || []).filter(coord =>
+        g.viz_array?.[coord.y]?.[coord.x] & IN_SIGHT).length;
+    if (visibleCount) addToplineMessage(`You see ${visibleCount === 1 ? 'a' : 'some'} gas cloud${visibleCount === 1 ? '' : 's'} dissipate.`);
+}
+
+function gasCloudWakeNearby(x, y) {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon.msleeping) continue;
+        const dx = (mon.mx || 0) - x;
+        const dy = (mon.my || 0) - y;
+        if (dx * dx + dy * dy <= 4) mon.msleeping = 0;
+    }
+}
+
+function heroGasCloudImmune(g) {
+    const magicalBreathing = (g.inventory || []).some(item =>
+        item.worn && (item.actualKind === 'amulet of magical breathing'
+            || item.kind === 'amulet of magical breathing'));
+    const form = g.u?._polyself_base || {};
+    return !!(g.u?.uinvulnerable || g.u?.underwater || g.u?.uunderwater
+        || magicalBreathing || form.breathless || form.nonliving);
+}
+
+function monsterGasCloudImmune(mon) {
+    const data = mon?.data || {};
+    return !!(data.breathless || data.nonliving || data.name === 'fog cloud'
+        || data.name?.endsWith(' golem') || data.mlet === 'W'
+        || data.mlet === 'Z' || data.mlet === 'M' || data.mlet === "'");
+}
+
+function monsterPoisonResistant(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.poisonResistance || data.resistsPoison || data.poisonResistance);
+}
+
+function applyHeroGasCloud(g, reg) {
+    if ((reg.damage || 0) < 1 || !regionContains(reg, g.u?.ux, g.u?.uy)) return;
+    if (heroGasCloudImmune(g)) return;
+    if (!g.u?.blind) {
+        addToplineMessage('Your eyes sting.');
+        g.u.blind = true;
+        g.u._blindTimeout = Math.max(g.u._blindTimeout || 0, 1);
+    }
+    if (g.u?.poisonResistance) {
+        addToplineMessage('You cough!');
+        gasCloudWakeNearby(g.u.ux, g.u.uy);
+        return;
+    }
+    addToplineMessage('Something is burning your lungs!');
+    addToplineMessage('You cough and spit blood!');
+    gasCloudWakeNearby(g.u.ux, g.u.uy);
+    g.u.uhp = Math.max(0, (g.u.uhp || 0) - (rnd(reg.damage || 1) + 5));
+    if ((g.u.uhp || 0) <= 0) {
+        g._death_cause = 'killed by a gas cloud';
+        addToplineMessage('You die...');
+    }
+}
+
+function applyMonsterGasCloud(g, reg, mon) {
+    if ((reg.damage || 0) < 1 || !regionContains(reg, mon.mx, mon.my)) return false;
+    if (monsterGasCloudImmune(mon)) return false;
+    const data = mon.data || {};
+    const nearby = (mon.mx - (g.u?.ux || 0)) ** 2 + (mon.my - (g.u?.uy || 0)) ** 2 < 8;
+    if (!data.silent && (couldSeeCoord(mon.mx, mon.my) || nearby))
+        addToplineMessage(`${monsterDisplayName(mon)} coughs!`);
+    gasCloudWakeNearby(mon.mx, mon.my);
+    if (reg.heroFault) {
+        mon.mpeaceful = 0;
+        mon.mtame = 0;
+        mon.pet = false;
+    }
+    if (!data.noeyes && mon.mcansee !== false) {
+        mon.mblinded = Math.max(mon.mblinded || 0, 1);
+        mon.mcansee = false;
+    }
+    if (monsterPoisonResistant(mon)) return false;
+    mon.mhp = (mon.mhp || 1) - (rnd(reg.damage || 1) + 5);
+    if ((mon.mhp || 0) > 0) return false;
+    if (couldSeeCoord(mon.mx, mon.my)) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
+    recordVanquished(mon, !!reg.heroFault);
+    dropMonsterInventory(mon);
+    g.level.monsters = (g.level?.monsters || []).filter(other => other !== mon);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+function applyGasCloudEffects(g, reg) {
+    applyHeroGasCloud(g, reg);
+    for (const mon of [...(g.level?.monsters || [])])
+        applyMonsterGasCloud(g, reg, mon);
+}
+
+export function advanceRegions(g) {
     if (!g.level?.regions?.length) return;
     const regionCount = g.level.regions.length;
-    g.level.regions = g.level.regions.filter(reg => reg.ttl !== 0);
+    g.level.regions = g.level.regions.filter(reg => {
+        if (reg.ttl !== 0) return true;
+        if (reg.type === 'gas_cloud' && (reg.damage || 0) >= 5) {
+            reg.damage = Math.trunc((reg.damage || 0) / 2);
+            reg.ttl = 2;
+            return true;
+        }
+        reportGasCloudDissipation(g, reg);
+        return false;
+    });
     if (g.level.regions.length !== regionCount) {
         vision_reset();
         g.vision_full_recalc = 1;
     }
     for (const reg of g.level.regions) {
         if (reg.ttl > 0) reg.ttl--;
-        if (reg.type === 'gas_cloud' && reg.ttl < 20
-            && (g.level?.monsters || []).some(mon => mon.data?.name === 'fog cloud'
-                && reg.coords?.some(coord => coord.x === mon.mx && coord.y === mon.my)))
-            reg.ttl += 5;
+        if (reg.type === 'gas_cloud') {
+            applyGasCloudEffects(g, reg);
+            if (reg.ttl < 20
+                && (g.level?.monsters || []).some(mon => mon.data?.name === 'fog cloud'
+                    && regionContains(reg, mon.mx, mon.my)))
+                reg.ttl += 5;
+        }
     }
 }
 

@@ -436,6 +436,12 @@ function trapAt(x, y) {
     return trap.tseen ? trap : null;
 }
 
+function visibleRegionAt(x, y) {
+    return (game.level?.regions || []).find(reg =>
+        reg.visible !== false && reg.ttl !== -2
+        && reg.coords?.some(coord => coord.x === x && coord.y === y));
+}
+
 function trapGlyph(trap) {
     switch (trap.ttyp) {
     case ARROW_TRAP:
@@ -665,6 +671,12 @@ export function newsym(x, y) {
     if (game.u?.blind && game.u?._bcFeltGlyph?.x === x && game.u._bcFeltGlyph.y === y) {
         const glyph = game.u._bcFeltGlyph;
         show_glyph_cell(x, y, glyph.ch, glyph.color ?? NO_COLOR, false);
+        return;
+    }
+
+    const region = visible ? visibleRegionAt(x, y) : null;
+    if (region?.type === 'gas_cloud') {
+        show_glyph_cell(x, y, '#', region.damage ? CLR_GREEN : CLR_GRAY, false);
         return;
     }
 
