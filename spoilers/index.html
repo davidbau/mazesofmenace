@@ -5377,102 +5377,35 @@ document.addEventListener('DOMContentLoaded', function() {
 </section>
 <section id="the-engrave-test-wands" class="level4">
 <h4>The Engrave Test (Wands)</h4>
-<p>The single most useful wand-identification trick costs you nothing.
-Apply a wand by engraving on the floor with it (command: <code>E</code>,
-then select the wand). What happens tells you what the wand is:</p>
-<table>
-<colgroup>
-<col style="width: 57%" />
-<col style="width: 42%" />
-</colgroup>
-<thead>
-<tr>
-<th>What you see when you engrave</th>
-<th>Wand type</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><em>“A lit field surrounds you”</em></td>
-<td>light</td>
-</tr>
-<tr>
-<td><em>“The floor is riddled by bullet holes”</em></td>
-<td>magic missile</td>
-</tr>
-<tr>
-<td><em>“Gravel flies up from the floor”</em></td>
-<td>digging</td>
-</tr>
-<tr>
-<td><em>“A few ice cubes drop from the wand”</em></td>
-<td>cold</td>
-</tr>
-<tr>
-<td><em>“Flames fly from the wand”</em></td>
-<td>fire</td>
-</tr>
-<tr>
-<td><em>“Lightning arcs from the wand”</em> (may blind)</td>
-<td>lightning</td>
-</tr>
-<tr>
-<td><em>“The bugs on the floor stop moving!”</em></td>
-<td>sleep or death</td>
-</tr>
-<tr>
-<td>You feel self-knowledgeable</td>
-<td>enlightenment</td>
-</tr>
-<tr>
-<td>Floor reveals secret features</td>
-<td>secret door detection</td>
-</tr>
-<tr>
-<td>Monsters appear next to you</td>
-<td>create monster</td>
-</tr>
-<tr>
-<td>Pre-existing engraving randomizes</td>
-<td>polymorph</td>
-</tr>
-<tr>
-<td>Pre-existing engraving “vanishes”</td>
-<td>cancellation, make invisible, or teleportation (test against floor
-with no prior writing to disambiguate)</td>
-</tr>
-<tr>
-<td>“<em>The wand unsuccessfully fights your attempt to
-write!</em>”</td>
-<td>striking (this exact phrasing is striking-only)</td>
-</tr>
-<tr>
-<td>“<em>The bugs on the floor slow down!</em>”</td>
-<td>slow monster</td>
-</tr>
-<tr>
-<td>“<em>The bugs on the floor speed up!</em>”</td>
-<td>speed monster</td>
-</tr>
-<tr>
-<td>You write in the dust with no special-case message</td>
-<td>nothing, undead turning, opening, locking, probing, or stasis —
-zap-test to disambiguate</td>
-</tr>
-<tr>
-<td>Wish prompt appears</td>
-<td><strong>wand of wishing</strong> (yes, engrave gives you the wish —
-don’t be afraid to engrave the suspected $500 wand)</td>
-</tr>
-</tbody>
-</table>
-<p>The engrave test costs one charge per wand but preserves the rest.
-With one zap you can sort most wands into clear categories. For wands
-that just write in the dust, you’ll need further testing: zap them at a
-monster or in a safe direction.</p>
-<p><strong>Warning:</strong> In 5.0, cursed wands may
-<strong>explode</strong> when used to engrave. BUC-test your wands
-before engraving with them.</p>
+<p>The single most useful wand-identification trick costs only one
+charge and preserves the rest.</p>
+<ol type="1">
+<li><strong>BUC-test the wand first.</strong> A cursed wand used to
+engrave may <strong>explode</strong>. Drop the wand on an aligned altar,
+hand it to a priest, or otherwise determine its BUC before testing.</li>
+<li><strong>Write a short message on the floor with your
+finger.</strong> Engrave anything in the dust first (command
+<code>E</code>, then select “<code>-</code>” for fingers, then type a
+word or two). This matters because a few wands act on the
+<em>existing</em> engraving rather than producing a visible effect on
+bare floor: polymorph rewrites the message as a random new one, and
+cancellation, make-invisible, and teleportation each make it “vanish”.
+Without a pre-written message you won’t see those behaviors.</li>
+<li><strong>Engrave again with the wand.</strong> Use <code>E</code> and
+select the wand. Observe the result. The <a href="#the-wand-table">Wand
+Table</a> lists the engrave-test result for each wand; most wands reveal
+themselves here. A few share results — see <a
+href="#resolving-ambiguous-engrave-results">Resolving Ambiguous Engrave
+Results</a>.</li>
+</ol>
+<p><strong>Don’t be afraid of the suspected wand of wishing.</strong>
+Engraving with it grants the wish: if a $500 candidate prompts you with
+<em>“For what do you wish?”</em>, take the wish — that’s the
+identification and the reward in one step.</p>
+<blockquote>
+<p><em>Procedure adapted from Kieron Dunbar’s “Identifying Wands by
+Zapping” spoiler, originally posted to RGRN.</em></p>
+</blockquote>
 <!-- audit
 2026-05-18:
 - dosinkring at do.c:498-650 — 28 ring types each give a distinctive message
@@ -6545,15 +6478,23 @@ affect what they hit in a straight line, and <strong>non-directional
 wands</strong> affect the area around you.</p>
 <section id="the-wand-table" class="level4">
 <h4>The Wand Table</h4>
+<p>Unlike scroll and potion prices, wand prices alone rarely pin down a
+specific wand — a $150 wand is one of thirteen possibilities. The
+<strong>engrave-test result</strong> in the rightmost column is far more
+useful: most wands reveal themselves in one zap. See <a
+href="#the-engrave-test-wands">The Engrave Test (Wands)</a> for the
+procedure and <a href="#resolving-ambiguous-engrave-results">Resolving
+Ambiguous Engrave Results</a> for the few shared results.</p>
 <div class="price-id-toolbar">
 
 </div>
 <table>
 <colgroup>
-<col style="width: 11%" />
-<col style="width: 52%" />
-<col style="width: 11%" />
-<col style="width: 25%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
 </colgroup>
 <thead>
 <tr>
@@ -6561,6 +6502,7 @@ wands</strong> affect the area around you.</p>
 <th>Wand</th>
 <th>Type</th>
 <th>Max Charges</th>
+<th>Engrave-test result</th>
 </tr>
 </thead>
 <tbody>
@@ -6569,153 +6511,180 @@ wands</strong> affect the area around you.</p>
 <td>Light</td>
 <td>NODIR</td>
 <td>15</td>
+<td>room lights up</td>
 </tr>
 <tr>
 <td>100</td>
 <td>Nothing</td>
 <td>BEAM</td>
 <td>15</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>150</td>
 <td><a href="#wand-digging">Digging</a></td>
 <td>RAY</td>
 <td>8</td>
+<td>gravel flies up</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Enlightenment</td>
 <td>NODIR</td>
 <td>15</td>
+<td>you feel enlightened</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Magic missile</td>
 <td>RAY</td>
 <td>8</td>
+<td>bullet holes</td>
 </tr>
 <tr>
 <td>150</td>
 <td><a href="#wand-make-invisible">Make invisible</a></td>
 <td>BEAM</td>
 <td>8</td>
+<td>engraving vanishes ¹</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Opening</td>
 <td>BEAM</td>
 <td>8</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Probing</td>
 <td>BEAM</td>
 <td>8</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Secret door detection</td>
 <td>NODIR</td>
 <td>15</td>
+<td>doors revealed</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Slow monster</td>
 <td>BEAM</td>
 <td>8</td>
+<td>bugs slow down</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Speed monster</td>
 <td>BEAM</td>
 <td>8</td>
+<td>bugs speed up</td>
 </tr>
 <tr>
 <td>150</td>
 <td><a href="#wand-stasis">Stasis</a></td>
 <td>NODIR</td>
 <td>15</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Striking</td>
 <td>BEAM</td>
 <td>8</td>
+<td>wand fights you</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Undead turning</td>
 <td>BEAM</td>
 <td>8</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>150</td>
 <td>Locking</td>
 <td>BEAM</td>
 <td>8</td>
+<td>no message</td>
 </tr>
 <tr>
 <td>175</td>
 <td><a href="#wand-fire-cold-lightning">Cold</a></td>
 <td>RAY</td>
 <td>8</td>
+<td>ice cubes drop</td>
 </tr>
 <tr>
 <td>175</td>
 <td><a href="#wand-fire-cold-lightning">Fire</a></td>
 <td>RAY</td>
 <td>8</td>
+<td>flames fly</td>
 </tr>
 <tr>
 <td>175</td>
 <td><a href="#wand-fire-cold-lightning">Lightning</a></td>
 <td>RAY</td>
 <td>8</td>
+<td>lightning arcs</td>
 </tr>
 <tr>
 <td>175</td>
 <td>Sleep</td>
 <td>RAY</td>
 <td>8</td>
+<td>bugs stop moving ²</td>
 </tr>
 <tr>
 <td>200</td>
 <td><a href="#wand-cancellation">Cancellation</a></td>
 <td>BEAM</td>
 <td>8</td>
+<td>engraving vanishes ¹</td>
 </tr>
 <tr>
 <td>200</td>
 <td>Create monster</td>
 <td>NODIR</td>
 <td>15</td>
+<td>bugs appear</td>
 </tr>
 <tr>
 <td>200</td>
 <td><a href="#wand-polymorph">Polymorph</a></td>
 <td>BEAM</td>
 <td>8</td>
+<td>engraving rewrites</td>
 </tr>
 <tr>
 <td>200</td>
 <td><a href="#wand-teleportation">Teleportation</a></td>
 <td>BEAM</td>
 <td>8</td>
+<td>engraving vanishes ¹</td>
 </tr>
 <tr>
 <td>500</td>
 <td><a href="#wand-death">Death</a></td>
 <td>RAY</td>
 <td>8</td>
+<td>bugs stop moving ²</td>
 </tr>
 <tr>
 <td>500</td>
 <td><a href="#wand-wishing">Wishing</a></td>
 <td>NODIR</td>
 <td>3</td>
+<td>prompts for a wish</td>
 </tr>
 </tbody>
 </table>
+<p><small>¹ Shared by cancellation, make-invisible, and teleportation. ²
+Shared by sleep and death.</small></p>
 <div class="price-id-toolbar">
 
 </div>
@@ -6774,86 +6743,39 @@ potion, change weapons, or just walk past. The silence on engraving
 makes it harder to identify by the engrave test, but if you sit on a
 charge for a fight you’ll know.</p>
 </section>
-<section id="identification-by-engraving" class="level4">
-<h4>Identification by Engraving</h4>
-<p>The engrave test (described in <a
-href="#a-practical-identification-strategy">A Practical Identification
-Strategy</a>) is the fastest way to sort wands. Every wand type produces
-a distinctive result when used to engrave on the floor.</p>
-<blockquote>
-<p><em>Kieron Dunbar’s “Identifying Wands by Zapping” spoiler,
-originally posted to RGRN, describes a systematic protocol for narrowing
-down wand identity through controlled experiments. The approach below is
-adapted from his checklist.</em></p>
-</blockquote>
-<p>Before you start writing on the floor: in 5.0, a <em>cursed</em> wand
-used to engrave may explode, so BUC-test before you test (see <a
-href="#the-engrave-test-wands">The Engrave Test (Wands)</a> for the full
-safety procedure).</p>
-</section>
-<section id="beyond-engraving-systematic-wand-testing" class="level4">
-<h4>Beyond Engraving: Systematic Wand Testing</h4>
-<p>The engrave test sorts most wands immediately, but a few produce
-ambiguous results. For those, a systematic testing protocol helps:</p>
-<p><strong>Step 1: Note the wand category.</strong> When you engrave,
-the result tells you whether the wand is NODIR (non-directional), RAY,
-or BEAM (immediate). This alone cuts the possibilities dramatically.</p>
+<section id="resolving-ambiguous-engrave-results" class="level4">
+<h4>Resolving Ambiguous Engrave Results</h4>
+<p>A few engrave-test results are shared by more than one wand.</p>
+<p><strong>“The engraving vanishes!”</strong> belongs to
+<strong>cancellation</strong>, <strong>make-invisible</strong>, or
+<strong>teleportation</strong>. Drop a known item and zap each
+candidate: make-invisible hides it, teleportation sends it elsewhere on
+the level, cancellation dulls its magic.</p>
+<p><strong>“The bugs on the floor stop moving!”</strong> belongs to
+<strong>sleep</strong> or <strong>death</strong>. Death is the only $500
+ray wand.</p>
+<p><strong>No engrave message at all</strong> narrows to one of six:
+<strong>nothing</strong>, <strong>opening</strong>,
+<strong>locking</strong>, <strong>probing</strong>, <strong>undead
+turning</strong>, or <strong>stasis</strong>. Test each at a safe
+target:</p>
 <ul>
-<li><strong>NODIR wands</strong> (light, enlightenment, create monster,
-secret door detection, stasis, wishing): Most reveal themselves through
-the engrave-test message. Light creates a lit field. Enlightenment makes
-you feel self-knowledgeable. Create monster says “bugs appear.” Wishing
-prompts you for a wish. <strong>Stasis</strong> is deliberately silent
-on engraving — the C code hides it among the other silent wands so the
-engrave test can’t single it out.</li>
-<li><strong>RAY wands</strong> (digging, magic missile, fire, cold,
-lightning, sleep, death): Digging riddles the floor with holes. Fire,
-cold, and lightning produce obvious elemental effects. Magic missile
-riddles the surface with <strong>bullet holes</strong>. <strong>Sleep
-and death</strong> both produce the same “the bugs on the surface stop
-moving!” message — price-test to tell them apart (death is $500).</li>
-<li><strong>BEAM wands</strong> (everything else): The engrave test
-distinguishes most of them. <strong>Cancellation and make
-invisible</strong> erase the engraving in place.
-<strong>Teleportation</strong> moves it elsewhere on the level (look
-around to spot it). <strong>Polymorph</strong> rewrites your engraving
-as a different random one. <strong>Striking</strong> interrupts with
-<em>“The wand unsuccessfully fights your attempt to write!”</em>
-<strong>Slow monster</strong> and <strong>speed monster</strong> make
-the bugs on the surface slow down or speed up, respectively. Five BEAM
-wands — <strong>nothing, undead turning, opening, locking,
-probing</strong> — produce <em>no engrave message at all</em>. Combined
-with the silent NODIR stasis (above), a wand that engraves in silence is
-one of six possibilities; the zap tests below will resolve them.</li>
+<li><strong>Opening</strong> unlocks a chest or door.
+<strong>Locking</strong> locks one.</li>
+<li><strong>Probing</strong> reveals a nearby monster’s stats.</li>
+<li><strong>Undead turning</strong> revives a fresh corpse to its
+original species (and animates any corpses the target was
+carrying).</li>
+<li><strong>Stasis</strong> halts every monster on the level — the
+silent freeze is unmistakable mid-combat.</li>
+<li><strong>Nothing</strong> does nothing.</li>
 </ul>
-<p><strong>Step 2: Safe zapping tests.</strong> For wands that remain
-unidentified after engraving, zap them at safe targets:</p>
-<ul>
-<li><strong>Zap at a locked chest or door.</strong> A wand of opening
-unlocks it. A wand of locking locks it. A wand of striking breaks
-it.</li>
-<li><strong>Zap at a corpse on the floor.</strong> A wand of undead
-turning revives the corpse to its original species (and animates any
-carried corpses too). A wand of polymorph transforms it.</li>
-<li><strong>Zap at a tame or weak monster.</strong> Speed monster makes
-it faster. Slow monster makes it slower. Make invisible makes it vanish.
-Probing reveals its stats.</li>
-<li><strong>Zap at a cancellable item</strong> (a potion, a figurine).
-Cancellation will dull it. Note: cancellation does NOT affect booze,
-fruit juice, or oil, so don’t use those as test subjects.</li>
-</ul>
-<p><strong>The three “vanishes” wands.</strong> Cancellation,
-make-invisible, and teleportation all print <em>“The engraving
-vanishes!”</em> on the engrave-test. To tell them apart, drop a known
-item and zap each candidate: make-invisible makes the item invisible;
-teleportation moves it elsewhere on the level; cancellation dulls its
-magic. (Polymorph isn’t in this group: it rewrites your engraving as a
-different random one, which is its own giveaway.)</p>
-<p><strong>Step 3: When in doubt, check the price.</strong> If testing
-hasn’t resolved the wand, its shop price narrows the field further. A
-$150 wand is one of thirteen types. A $200 wand is one of four. A $500
-wand is death or wishing, and you should be very careful with it either
-way.</p>
+<p>For non-ambiguous wands, a follow-up zap at a safe target confirms
+what the engrave-test already suggested: <strong>slow monster</strong> /
+<strong>speed monster</strong> at a tame or weak monster,
+<strong>striking</strong> at a closed door, <strong>polymorph</strong>
+at a pile of junk gear. Avoid zapping unidentified wands at
+yourself.</p>
 </section>
 <section id="recharging" class="level4">
 <h4>Recharging</h4>
@@ -21952,8 +21874,20 @@ peaceful shopkeeper now auto-pays any debts before the inventory
 prompt.</li>
 </ul>
 <hr />
-<section id="what-to-lean-into" class="level4">
-<h4>What to Lean Into</h4>
+<section id="new-dangers" class="level4">
+<h4>New Dangers</h4>
+<p><strong>Sacrificing weak corpses no longer grinds Luck.</strong> If
+your current Luck exceeds the sacrificed monster’s difficulty, you gain
+zero. A luckstone handles maintenance; sacrifice mid-tier monsters when
+you want to push higher.</p>
+<p><strong>Cleared but not cleaned levels lose loot.</strong> Monsters
+now loot unlocked containers and animate corpse piles. Lock your stash
+and don’t haul speculative corpses through caster-heavy floors.</p>
+<p><strong>Gehennom shatters potions.</strong> Hot ground breaks any
+potion you drop. Carry, don’t stash.</p>
+</section>
+<section id="new-hacks" class="level4">
+<h4>New Hacks</h4>
 <p>A few 5.0 changes have tactical implications worth pulling out:</p>
 <p><strong>Gold dragon scale mail is a light source.</strong> Its innate
 2-square radius lets you skip the lamp and free that inventory slot.</p>
@@ -21969,18 +21903,6 @@ transformation, one blessed potion does the same job.</p>
 polymorphed vampire can <code>#monster</code> to switch between vampire,
 bat, and fog cloud. Fog passes through doors, bat flies, vampire fights
 — plan routes by form rather than direction.</p>
-</section>
-<section id="what-to-watch-out-for" class="level4">
-<h4>What to Watch Out For</h4>
-<p><strong>Sacrificing weak corpses no longer grinds Luck.</strong> If
-your current Luck exceeds the sacrificed monster’s difficulty, you gain
-zero. A luckstone handles maintenance; sacrifice mid-tier monsters when
-you want to push higher.</p>
-<p><strong>Cleared but not cleaned levels lose loot.</strong> Monsters
-now loot unlocked containers and animate corpse piles. Lock your stash
-and don’t haul speculative corpses through caster-heavy floors.</p>
-<p><strong>Gehennom shatters potions.</strong> Hot ground breaks any
-potion you drop. Carry, don’t stash.</p>
 <hr />
 <p><em>You descend the stairs…</em></p>
 <hr />
@@ -22121,9 +22043,6 @@ Patric Mueller, Pat Rankin, Derek S. Ray, Alex Smith, Mike Stephenson,
 Janet Walz, Paul Winner, Bart House, and Warwick Allison, has maintained
 and extended the game across nearly four decades. Everything in these
 pages is downstream of their work.</p>
-<p>This is what a community looks like over decades. People writing
-things down so that others don’t have to die the same stupid death. It’s
-generous, it’s nerdy, and it’s one of the best things about NetHack.</p>
 <p>All data in this guide has been verified against the current game
 source code. Any errors are ours alone.</p>
 <hr />
@@ -22296,7 +22215,13 @@ href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA
       id: section.id,
       title: heading.textContent,
       level: level,
-      text: flat.substring(0, 4000),
+      // `text` is used (a) for the allMatch gate before scoring and
+      // (b) for snippet generation. Truncating it caused a long
+      // section's trailing content to be silently unsearchable — e.g.
+      // "Discworld" at char 4387 of Learning Spells was invisible
+      // when the limit was 4000. Keep the whole body; per-section
+      // body text is small in absolute terms (a few KB at most).
+      text: flat,
       segments: segments
     });
   });
