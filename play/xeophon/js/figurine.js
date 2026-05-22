@@ -1,5 +1,5 @@
 import { game } from './gstate.js';
-import { makemon, set_malign } from './mklev.js';
+import { limitedMonsterBirthLimit, makemon, monsterNameExtinct, set_malign } from './mklev.js';
 import { newsym } from './display.js';
 import {
     CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE,
@@ -90,10 +90,17 @@ function figurineGenderFlags(figurine) {
     return 0;
 }
 
+function limitedExtinctFigurine(figurine) {
+    const name = figurine?.corpsenm?.name;
+    return !!name && !!limitedMonsterBirthLimit(name) && monsterNameExtinct(name);
+}
+
 export async function makeFigurineFamiliar(figurine, x, y, { quietly = false } = {}) {
     const data = figurine?.corpsenm;
     if (!data || (game._genocided_monsters || []).includes(data.name))
         return { mon: null, message: quietly ? '' : 'The figurine writhes and then shatters into pieces!' };
+    if (limitedExtinctFigurine(figurine))
+        return { mon: null, dust: true, message: quietly ? '' : '... into a pile of dust.' };
 
     const mon = await makemon(data, x, y, MM_EDOG | MM_IGNOREWATER | NO_MINVENT | MM_NOMSG | figurineGenderFlags(figurine));
     if (!mon)

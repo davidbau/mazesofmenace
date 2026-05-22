@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -804,6 +804,7 @@ const FOOD_NUTRITION = new Map([
     ['c-ration', 300],
     ['tin', 0],
 ]);
+const ROTTABLE_NON_CORPSE_FOODS = new Set(['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond']);
 const POISONABLE_WISH_WEAPONS = new Set([
     'arrow', 'arrows', 'elven arrow', 'elven arrows', 'orcish arrow', 'orcish arrows',
     'silver arrow', 'silver arrows', 'ya', 'crossbow bolt', 'crossbow bolts',
@@ -1008,6 +1009,7 @@ const WATER_MOCCASIN = {
 };
 const POLYSELF_EXTRA_FORMS = new Map([
     ['red dragon', { name: 'red dragon', mlet: 'D', glyph: 'D', color: CLR_RED, mlevel: 15, hpLevel: 15, mmove: 9, strong: true, inAir: true, nohands: true }],
+    ['stone golem', { name: 'stone golem', mlet: "'", glyph: "'", color: CLR_GRAY, mlevel: 14, hpLevel: 14, mmove: 6, mac: 5, strong: true, neuter: true, noCorpse: true, fixedHp: 100, stoneResistance: true }],
 ]);
 const SPEED_AT_SEVEN_ROLES = new Set(['Barbarian', 'Caveman', 'Knight', 'Valkyrie']);
 const ROLE_LEVEL_ABILITIES = {
@@ -4771,6 +4773,17 @@ function removeInventoryItem(item, amount = 1) {
     game._pet_food_scan_inventory = game.inventory;
 }
 
+export function consumeLifeSavingAmulet({ clearStoning = false } = {}) {
+    const lifesaving = (game.inventory || []).find(item =>
+        item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
+    if (!lifesaving) return false;
+    rn2(19);
+    removeInventoryItem(lifesaving);
+    game._life_saving_refresh_con = 1;
+    if (clearStoning) game._life_saving_clear_stoning = 1;
+    return true;
+}
+
 function stopCarriedFigurineTimerOnLeave(item) {
     if (isFigurineObject(item)) stopFigurineTransformTimeout(item);
 }
@@ -5635,8 +5648,8 @@ function becomeMonster(name) {
     if (form.neuter !== true) rn2(10);
     rn2(500);
     const hpLevel = form.hpLevel ?? form.mlevel;
-    const hp = form.name.includes('dragon') && hpLevel ? 4 * hpLevel + d(hpLevel, 4)
-        : hpLevel ? d(hpLevel, 8) : rnd(4);
+    const hp = form.fixedHp ?? (form.name.includes('dragon') && hpLevel ? 4 * hpLevel + d(hpLevel, 4)
+        : hpLevel ? d(hpLevel, 8) : rnd(4));
     const glyph = form.glyph || (form.mlet?.length === 1 ? form.mlet : form.name[0]);
     game.u.uhp = Math.max(1, hp);
     game.u.uhpmax = Math.max(1, hp);
@@ -5827,11 +5840,69 @@ function foodObjectNutrition(item) {
     return FOOD_NUTRITION.get(kind) ?? 0;
 }
 
+function addHeroNutrition(nutrition) {
+    if (!game.u || nutrition <= 0) return;
+    game.u.uhunger = (game.u.uhunger ?? 900) + nutrition;
+    game.u._statusSuffix = (game.u._statusSuffix || '')
+        .replace(/ Satiated| Hungry| Weak| Fainting| Fainted/g, '');
+    if (game.u.uhunger > 1000) game.u._statusSuffix = `${game.u._statusSuffix || ''} Satiated`;
+}
+
+function remainingFoodNutrition(item) {
+    if (item?.oeaten > 0) return item.oeaten;
+    return foodObjectNutrition(item);
+}
+
+function ensureFoodOeaten(item) {
+    if (!item) return 0;
+    if (!(item.oeaten > 0)) item.oeaten = foodObjectNutrition(item);
+    return item.oeaten || 0;
+}
+
 function consumeOeaten(item, amount) {
     if (!item?.oeaten) return;
     if (amount > 0) item.oeaten = Math.floor(item.oeaten / (2 ** amount));
-    else item.oeaten -= amount;
+    else if (amount < 0) item.oeaten += amount;
     if (item.oeaten <= 0) item.oeaten = 1;
+}
+
+function refreshInventoryObjectLine(item) {
+    if (item) item.line = normalInventoryLine({ ...item, line: '' });
+}
+
+function touchInventoryFood(item) {
+    if (!item) return item;
+    if ((item.quan || 1) <= 1) {
+        ensureFoodOeaten(item);
+        return item;
+    }
+    const id = next_ident();
+    const split = { ...item, id, letter: nextInventoryLetter(), quan: 1, line: '' };
+    delete split.oeaten;
+    item.quan--;
+    refreshInventoryObjectLine(item);
+    ensureFoodOeaten(split);
+    refreshInventoryObjectLine(split);
+    game.inventory.push(split);
+    return split;
+}
+
+function touchFloorFood(item) {
+    if (!item) return item;
+    if ((item.quan || 1) > 1) {
+        const rest = { ...item, id: next_ident(), quan: (item.quan || 1) - 1 };
+        delete rest.oeaten;
+        item.quan = 1;
+        game.level.objects ??= [];
+        game.level.objects.push(rest);
+    }
+    ensureFoodOeaten(item);
+    newsym(item.ox, item.oy);
+    return item;
+}
+
+function touchEatenFood(item, floorObject = false) {
+    return floorObject ? touchFloorFood(item) : touchInventoryFood(item);
 }
 
 function applyWishedPartlyEaten(item) {
@@ -8342,6 +8413,56 @@ function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
     return { messages, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
 }
 
+function resolvePyroliskEggExplosion(cx, cy, dam) {
+    const messages = [];
+    const ux = game.u?.ux ?? -99;
+    const uy = game.u?.uy ?? -99;
+    if (!heroIsDeaf()) messages.push('Boom!');
+
+    for (const mon of [...(game.level?.monsters || [])]) {
+        if (!mon || mon.dead || (mon.mhp ?? 1) <= 0 || Math.abs((mon.mx ?? -99) - cx) > 1 || Math.abs((mon.my ?? -99) - cy) > 1)
+            continue;
+        const visible = !game.u?.blind && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
+        const name = fireScrollMonsterName(mon);
+        if (visible) messages.push(`${name} is caught in the fireball!`);
+        const itemDamage = monsterFireInventoryDamage(mon, dam, messages, visible);
+        let damage = 0;
+        if (!(mon.fireResistance || mon.data?.resistsFire)) {
+            damage = dam;
+            if (monsterResistsEffect(mon, 9)) {
+                if (visible) messages.push(`${name} resists the fireball!`);
+                damage = Math.trunc((damage + 1) / 2);
+            }
+            if (mon.coldResistance || mon.data?.resistsCold || mon.data?.coldResistance) damage *= 2;
+        }
+        damage += itemDamage;
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) {
+            dropMonsterInventory(mon);
+            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+            recordVanquished(mon, true);
+            newsym(mon.mx, mon.my);
+            if (visible) messages.push(`You kill the ${mon.data?.name || mon.name || 'monster'}!`);
+        }
+    }
+
+    if (Math.abs(ux - cx) <= 1 && Math.abs(uy - cy) <= 1) {
+        messages.push('You are caught in the fireball!');
+        const fireInventory = fireDamageInventory(dam, true);
+        messages.push(...fireInventory.messages);
+        const damage = (game.u?.fireResistance ? 0 : dam) + fireInventory.damage;
+        if (damage && game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u?.uhp || 0) <= 0) {
+            game._death_cause = fireInventory.deathCause || 'killed by a fireball';
+            messages.push('It is fatal.');
+            messages.push('You die...');
+        }
+        exerciseAttribute(A_STR, false);
+    }
+
+    return { messages, more: messages.length > 1 || (game.u?.uhp || 1) <= 0 };
+}
+
 function earthScrollHasEffect() {
     const uz = game.u?.uz;
     if (Is_rogue_level(uz)) return false;
@@ -10172,7 +10293,7 @@ function dataPagerLines(name, page) {
 }
 
 function maybeWishedInstanceName(obj, baseName) {
-    const objectName = String(obj?._wish_object_name || '').trim();
+    const objectName = String(obj?._wish_object_name || obj?.oname || '').trim();
     const name = String(baseName || '');
     if (!objectName || obj?.artifact || / named .+$/i.test(name)) return name;
     return `${name} named ${objectName}`;
@@ -10189,7 +10310,7 @@ export function pickupObjectName(obj) {
     if (obj.globby) return named(globObjectName(obj));
     if ((obj.kind === 'statue' || obj.otyp === STATUE) && obj.corpsenm?.name) {
         const historic = archeologist && (((obj.spe || 0) & CORPSTAT_HISTORIC) || obj.historic);
-        return `${historic ? 'historic ' : ''}statue of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`;
+        return named(`${historic ? 'historic ' : ''}statue of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
     }
     if ((obj.kind === 'figurine' || obj.actualKind === 'figurine') && obj.corpsenm?.name)
         return named(`figurine of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
@@ -10626,32 +10747,47 @@ function canMakeBones() {
     return !game.flags?.explore;
 }
 
-function prepareDeathBones() {
-    if (game.flags?.debug || game._death_bones_prepared) return;
-    game._death_bones_prepared = 1;
-    game._bones_ok = canMakeBones();
+function deathBonesLeavesStatue() {
+    return game._death_bones_body === 'statue';
 }
 
-function saveDeathBonesIfNeeded() {
-    if (!game._bones_ok || game._death_bones_saved || game.flags?.debug) return;
-    game._death_bones_saved = 1;
+function heroDeathStatueMonsterData() {
+    if (game.u?._polyself_form) return { ...game.u._polyself_form };
+    const roleName = String(game.urole?.name?.m || game._startup_role || 'tourist').toLowerCase();
+    return { name: roleName, glyph: '@', mlet: 'human', neuter: false };
+}
 
-    const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
-    const bonesPath = `/bones/${uz.dnum}:${uz.dlevel}`;
-    if (vfsReadFile(bonesPath) !== null) return;
-
-    if (!game._death_corpse_created && game.u) {
-        const raceName = game._startup_race || game.urace?.adj || 'human';
-        const corpse = mkcorpstat(CORPSE, null, DEATH_CORPSE_BY_RACE[raceName] || DEATH_CORPSE_BY_RACE.human, game.u.ux, game.u.uy, 8);
-        corpse.oname = game.plname || 'wizard';
-        game._death_corpse_created = 1;
+function createDeathBonesRemains() {
+    if (game._death_corpse_created || !game.u) return;
+    const leavesStatue = deathBonesLeavesStatue();
+    const pm = leavesStatue
+        ? heroDeathStatueMonsterData()
+        : DEATH_CORPSE_BY_RACE[game._startup_race || game.urace?.adj || 'human'] || DEATH_CORPSE_BY_RACE.human;
+    const remains = mkcorpstat(leavesStatue ? STATUE : CORPSE, null, pm, game.u.ux, game.u.uy, leavesStatue ? 0 : 8);
+    remains.oname = game.plname || 'wizard';
+    remains._death_remains = leavesStatue ? 'statue' : 'corpse';
+    if (leavesStatue) {
+        remains.kind = 'statue';
+        remains.spe = (remains.spe || 0) & ~CORPSTAT_GENDER;
+        remains.contents = [];
     }
+    game._death_corpse_created = 1;
+}
+
+function curseDeathBonesInventory() {
     for (const item of game.inventory || []) {
         if (rn2(5)) {
             item.cursed = true;
             item.blessed = false;
         }
         rn2(8);
+    }
+}
+
+function createDeathBonesGhost() {
+    if (deathBonesLeavesStatue()) {
+        delete game._bones_ghost;
+        return;
     }
     const ghostId = next_ident();
     const ghostHp = d(9, 8);
@@ -10687,6 +10823,25 @@ function saveDeathBonesIfNeeded() {
         female: !!game.flags?.female,
         givenName: game.plname || 'wizard',
     };
+}
+
+function prepareDeathBones() {
+    if (game.flags?.debug || game._death_bones_prepared) return;
+    game._death_bones_prepared = 1;
+    game._bones_ok = canMakeBones();
+}
+
+function saveDeathBonesIfNeeded() {
+    if (!game._bones_ok || game._death_bones_saved || game.flags?.debug) return;
+    game._death_bones_saved = 1;
+
+    const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const bonesPath = `/bones/${uz.dnum}:${uz.dlevel}`;
+    if (vfsReadFile(bonesPath) !== null) return;
+
+    createDeathBonesRemains();
+    curseDeathBonesInventory();
+    createDeathBonesGhost();
     vfsWriteFile(bonesPath, encodeBonesLevel());
 }
 
@@ -11370,6 +11525,195 @@ function isCorpseItem(item) {
 
 function isEggItem(item) {
     return item?.otyp === EGG || itemKindText(item) === 'egg';
+}
+
+function eggMonsterName(item) {
+    return String(item?.corpsenm?.name || '').toLowerCase();
+}
+
+function isPyroliskEgg(item) {
+    return isEggItem(item) && eggMonsterName(item) === 'pyrolisk';
+}
+
+function isPetrifyingEgg(item) {
+    return isEggItem(item) && ['chickatrice', 'cockatrice', 'medusa'].includes(eggMonsterName(item));
+}
+
+function isStaleEggItem(item) {
+    if (!isEggItem(item)) return false;
+    if (item.age == null) item.age = game.moves || 1;
+    return (game.moves || 1) - item.age > 2 * MAX_EGG_HATCH_TIME;
+}
+
+function shouldUseGenericRottenEggPath(item) {
+    if (!isEggItem(item)) return false;
+    if (item.age == null) item.age = game.moves || 1;
+    if (item.cursed) return true;
+    const ageLimit = item.blessed ? 50 : 30;
+    return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
+}
+
+function shouldUseGenericRottenFoodPath(item) {
+    if (!item || isEggItem(item) || isCorpseItem(item) || itemKindText(item) === 'fortune cookie') return false;
+    const kind = itemKindText(item).replace(/^partly eaten /, '');
+    if (!ROTTABLE_NON_CORPSE_FOODS.has(kind)) return false;
+    if (item.age == null) item.age = game.moves || 1;
+    if (item.cursed) return true;
+    const ageLimit = item.blessed ? 50 : 30;
+    return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
+}
+
+function rottenFoodEffect() {
+    let rottenSleepDuration = 0;
+    let message = 'Blecch!  Rotten food!';
+    if (!rn2(4)) {
+        const confusionDuration = d(2, 4);
+        if (game.u) game.u._confusionTimeout = (game.u._confusionTimeout || 0) + confusionDuration;
+    } else if (!game.u?.blind && !rn2(4)) {
+        d(2, 10);
+        if (game.u) game.u.blind = true;
+        message += '  Everything suddenly goes dark.';
+    } else if (!rn2(3)) {
+        rottenSleepDuration = rnd(10);
+        game._helpless_time = Math.max(game._helpless_time || 0, rottenSleepDuration);
+        game._sleeping_time = Math.max(game._sleeping_time || 0, rottenSleepDuration + 1);
+        game._wake_message = 'You are conscious again.';
+        game._hear_again_after_wake = 1;
+        message += '  The world spins and goes dark.';
+    }
+    return { message, rottenSleepDuration };
+}
+
+function partialRottenFood(item, floorObject = false) {
+    const touched = touchEatenFood(item, floorObject);
+    if (!touched) return touched;
+    touched.orotten = true;
+    consumeOeaten(touched, 1);
+    if (!floorObject) refreshInventoryObjectLine(touched);
+    else newsym(touched.ox, touched.oy);
+    return touched;
+}
+
+function consumeTouchedFood(item, floorObject = false) {
+    if (floorObject) consumeOneFloorObject(item);
+    else removeInventoryItem(item);
+}
+
+async function eatRottenNonCorpseFood(item, floorObject = false) {
+    const { message, rottenSleepDuration } = rottenFoodEffect();
+    const touched = partialRottenFood(item, floorObject);
+    if (!rottenSleepDuration) {
+        addHeroNutrition(remainingFoodNutrition(touched));
+        consumeTouchedFood(touched, floorObject);
+    }
+    game._pet_food_scan_inventory = game.inventory || [];
+    await setMessage(message, true);
+    game._process_time_with_more = 1;
+    game._command_mode = null;
+    game.context.move = rottenSleepDuration ? rottenSleepDuration + 1 : 1;
+}
+
+function addHeroVomiting(turns) {
+    if (!game.u || turns <= 0) return;
+    game.u._vomitingTimeout = (game.u._vomitingTimeout || 0) + turns;
+    game.u.vomiting = true;
+    addHeroStatusSuffix('Vom');
+}
+
+function consumeOneFloorObject(obj) {
+    if (!obj || !game.level) return;
+    if ((obj.quan || 1) > 1) {
+        next_ident();
+        obj.quan--;
+        newsym(obj.ox, obj.oy);
+        return;
+    }
+    game.level.objects = (game.level.objects || []).filter(other => other !== obj);
+    newsym(obj.ox, obj.oy);
+}
+
+function heroPolyselfResistsStoning() {
+    const form = game.u?._polyself_form;
+    return !!form && (form.stoneResistance || form.name === 'stone golem');
+}
+
+function heroPolyselfCanBecomeStoneGolem() {
+    const form = game.u?._polyself_form;
+    if (!form || form.name === 'stone golem' || isMonsterGenocidedName('stone golem')) return false;
+    return form.mlet === "'" || form.glyph === "'";
+}
+
+function maybeTurnPolyselfIntoStoneGolem() {
+    if (!heroPolyselfCanBecomeStoneGolem()) return '';
+    const result = becomeMonster('stone golem');
+    if (!result) return '';
+    if (game.u) {
+        game.u._stonedTimeout = 0;
+        game.u._stonedKiller = '';
+    }
+    removeHeroStatusSuffix('Stone');
+    newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return result.message || 'You turn into a stone golem!';
+}
+
+function appendPetrificationMessage(message, extra) {
+    return extra ? `${message}  ${extra}` : message;
+}
+
+function startPetrifyingEggStoning(item) {
+    if (!isPetrifyingEgg(item) || !game.u || game.u.stoneResistance
+        || heroPolyselfResistsStoning() || (game.u._stonedTimeout || 0) > 0)
+        return '';
+    const polyselfMessage = maybeTurnPolyselfIntoStoneGolem();
+    if (polyselfMessage) return polyselfMessage;
+    const monsterName = item.corpsenm?.name || 'cockatrice';
+    game.u._stonedTimeout = 5;
+    game.u._stonedKiller = `${monsterName} egg`;
+    addHeroStatusSuffix('Stone');
+    return '';
+}
+
+function consumeOneInventoryFood(item) {
+    if ((item?.quan || 1) > 1) next_ident();
+    removeInventoryItem(item);
+}
+
+function consumeOneEatenFood(item, floorObject = false) {
+    if (floorObject) consumeOneFloorObject(item);
+    else consumeOneInventoryFood(item);
+}
+
+async function eatRottenEgg(item, floorObject = false) {
+    const { message, rottenSleepDuration } = rottenFoodEffect();
+    const touched = partialRottenFood(item, floorObject);
+    let petrificationMessage = '';
+    if (!rottenSleepDuration) {
+        addHeroNutrition(remainingFoodNutrition(touched));
+        consumeTouchedFood(touched, floorObject);
+        petrificationMessage = startPetrifyingEggStoning(touched);
+    }
+    await setMessage(appendPetrificationMessage(message, petrificationMessage), true);
+    game._process_time_with_more = 1;
+    game._command_mode = null;
+    game.context.move = rottenSleepDuration ? rottenSleepDuration + 1 : 1;
+}
+
+async function eatPyroliskEgg(item, floorObject = false) {
+    consumeOneEatenFood(item, floorObject);
+    const result = resolvePyroliskEggExplosion(game.u?.ux || 0, game.u?.uy || 0, d(3, 6));
+    await setMessage(result.messages.join('  '), result.more);
+    game._command_mode = null;
+    game.context.move = 1;
+}
+
+async function eatStaleEgg(item, floorObject = false) {
+    addHeroVomiting(d(10, 4));
+    if (item.oeaten > 0) addHeroNutrition(item.oeaten);
+    consumeOneEatenFood(item, floorObject);
+    const petrificationMessage = startPetrifyingEggStoning(item);
+    await setMessage(appendPetrificationMessage('Ugh.  Rotten egg.', petrificationMessage));
+    game._command_mode = null;
+    game.context.move = 1;
 }
 
 function deadbookCorpseMonster(item) {
@@ -14090,15 +14434,35 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'lifeSavingMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            game._pending_message = 'You feel much better!';
+            const stoningLifeSaved = !!game._life_saving_clear_stoning;
+            game._pending_message = stoningLifeSaved
+                ? 'You feel much better!  The medallion crumbles to dust!'
+                : 'You feel much better!';
             game._pending_explore_lifesaving_message = 0;
             game._message_more = 0;
             game._keep_pending_message = 1;
             game._command_mode = null;
-            if (game.u) game.u.uhp = game.u.uhpmax || 1;
+            if (!stoningLifeSaved && game.u) game.u.uhp = game.u.uhpmax || 1;
+            if (stoningLifeSaved) {
+                game._life_saving_clear_stoning = 0;
+                if (game.u) {
+                    game.u._stonedTimeout = 0;
+                    game.u._stonedKiller = '';
+                }
+                removeHeroStatusSuffix('Stone');
+                game._death_cause = '';
+                game._death_bones_body = '';
+                game._death_current_move = 0;
+                game._death_status_hp_before_zero = null;
+            }
             if (game._life_saving_refresh_con && game.u?.acurr?.a)
                 game.u.acurr.a[4] = Math.max(3, game.u.acurr.a[4] - 1);
             game._life_saving_refresh_con = 0;
+            if (stoningLifeSaved && game.u) {
+                const con = game.u.acurr?.a?.[A_CON] ?? 10;
+                const givehp = 50 + 10 * Math.trunc(con / 2);
+                game.u.uhp = Math.min(game.u.uhpmax || 1, givehp);
+            }
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._suppress_monster_attack_messages = 1;
         }
@@ -17011,47 +17375,9 @@ export async function rhack(_cmd) {
                 }
                 game._death_bones_replace_confirmed = 0;
                 delete game._death_bones_replace_path;
-                for (const item of game.inventory || []) {
-                    if (rn2(5)) {
-                        item.cursed = true;
-                        item.blessed = false;
-                    }
-                    rn2(8);
-                }
-                const ghostId = next_ident();
-                const ghostHp = d(9, 8);
-                rn2(2);
-                rn2(50);
-                rn2(100);
-                rn2(100);
-                game._bones_ghost = {
-                    id: ghostId,
-                    mx: game.u?.ux || 0,
-                    my: game.u?.uy || 0,
-                    data: {
-                        name: 'ghost',
-                        glyph: ' ',
-                        mlet: 'ghost',
-                        mlevel: 10,
-                        mac: -5,
-                        mmove: 3,
-                        difficulty: 13,
-                        maligntyp: -5,
-                        color: CLR_GRAY,
-                        passWalls: true,
-                        noCorpse: true,
-                        undead: true,
-                    },
-                    glyph: ' ',
-                    color: CLR_GRAY,
-                    m_lev: game.u?.ulevel || 1,
-                    mhp: game.u?.uhpmax || ghostHp,
-                    mhpmax: game.u?.uhpmax || ghostHp,
-                    msleeping: 1,
-                    mpeaceful: 0,
-                    female: !!game.flags?.female,
-                    givenName: game.plname || 'wizard',
-                };
+                createDeathBonesRemains();
+                curseDeathBonesInventory();
+                createDeathBonesGhost();
                 vfsWriteFile(bonesPath, encodeBonesLevel());
             }
             setOverlay(deathGraveLines(), 24, true);
@@ -17165,12 +17491,6 @@ export async function rhack(_cmd) {
             game._death_moves = game.moves || 1;
             game._bones_ok = canMakeBones();
             if (game._bones_ok) {
-                if (!game._death_corpse_created && game.u) {
-                    const raceName = game._startup_race || game.urace?.adj || 'human';
-                    const corpse = mkcorpstat(CORPSE, null, DEATH_CORPSE_BY_RACE[raceName] || DEATH_CORPSE_BY_RACE.human, game.u.ux, game.u.uy, 8);
-                    corpse.oname = game.plname || 'wizard';
-                    game._death_corpse_created = 1;
-                }
                 await setMessage('Save bones? [yn] (n)');
                 game._command_mode = 'deathBonesPrompt';
                 return;
@@ -17182,6 +17502,7 @@ export async function rhack(_cmd) {
         if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game.u.uhp = game.u.uhpmax || 1;
             game._death_cause = '';
+            game._death_bones_body = '';
             game._wizard_survived_death = 1;
             await setMessage("OK, so you don't die.");
             if (game._deferred_raven_blind_after_more) {
@@ -24828,67 +25149,37 @@ export async function rhack(_cmd) {
                 game.context.move = 9;
                 return;
             }
+            if (shouldUseGenericRottenEggPath(item)) {
+                await eatRottenEgg(item);
+                return;
+            }
+            if (isPyroliskEgg(item)) {
+                await eatPyroliskEgg(item);
+                return;
+            }
+            if (isStaleEggItem(item)) {
+                await eatStaleEgg(item);
+                return;
+            }
             if (fortuneCookie) {
                 const rumor = getrumor(false).replace(/^\[cookie\]\s*/, '');
                 game._queued_message_after_more = 'This cookie has a scrap of paper inside.  It reads:';
                 game._queued_message_more_after_more = 1;
                 game._fortune_cookie_rumor_after_more = rumor || 'This cookie is devoid of wisdom.';
             }
-            if ((item.quan || 1) > 1) {
-                next_ident();
-            }
-            const rottableFood = ['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond'].includes(item.kind);
-            if (!fortuneCookie && rottableFood && (game.moves || 1) - (item.age || 1) > 30 && !rn2(7)) {
-                let rottenSleepDuration = 0;
-                let message = 'Blecch!  Rotten food!';
-                if (!rn2(4)) {
-                    const confusionDuration = d(2, 4);
-                    if (game.u) game.u._confusionTimeout = (game.u._confusionTimeout || 0) + confusionDuration;
-                } else if (!game.u?.blind && !rn2(4)) {
-                    d(2, 10);
-                    if (game.u) game.u.blind = true;
-                    message += '  Everything suddenly goes dark.';
-	                } else if (!rn2(3)) {
-	                    rottenSleepDuration = rnd(10);
-	                    game._helpless_time = Math.max(game._helpless_time || 0, rottenSleepDuration);
-	                    game._sleeping_time = Math.max(game._sleeping_time || 0, rottenSleepDuration + 1);
-	                    game._wake_message = 'You are conscious again.';
-	                    game._hear_again_after_wake = 1;
-	                    message += '  The world spins and goes dark.';
-	                }
-                if ((item.quan || 1) > 1) {
-                    item.quan--;
-                    item.line = `${item.letter} - ${item.quan} uncursed ${item.kind}s`;
-                    const letters = new Set((game.inventory || []).map(invItem => invItem.letter));
-                    const letter = letters.has('m')
-                        ? 'abcdefghijklmnopqrstuvwxyz'.split('').find(candidate => !letters.has(candidate)) || '?'
-                        : 'm';
-                    const partlyEaten = `${item.blessed ? 'blessed' : item.cursed ? 'cursed' : 'uncursed'} partly eaten ${item.kind}`;
-                    const article = /^[aeiou]/i.test(partlyEaten) ? 'an' : 'a';
-                    game.inventory.push({
-                        ...item,
-                        letter,
-                        quan: 1,
-                        kind: `partly eaten ${item.kind}`,
-                        bknown: true,
-                        line: `${letter} - ${article} ${partlyEaten}`,
-                    });
-                } else {
-                    removeInventoryItem(item);
-                }
-                game._pet_food_scan_inventory = game.inventory || [];
-                await setMessage(message, true);
-                game._process_time_with_more = 1;
-                game._command_mode = null;
-                game.context.move = rottenSleepDuration ? rottenSleepDuration + 1 : 1;
+            if (shouldUseGenericRottenFoodPath(item)) {
+                await eatRottenNonCorpseFood(item);
                 return;
             }
+            if ((item.quan || 1) > 1) next_ident();
+            if (item.oeaten > 0) addHeroNutrition(item.oeaten);
             removeInventoryItem(item);
             game._pet_food_scan_inventory = game.inventory || [];
+            const petrificationMessage = startPetrifyingEggStoning(item);
             const eatMessage = item.kind === 'apple'
                 ? 'Delicious!  Must be a Macintosh!'
                 : `This ${name} is delicious!`;
-            await setMessage(eatMessage, fortuneCookie);
+            await setMessage(appendPetrificationMessage(eatMessage, petrificationMessage), fortuneCookie);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -24908,12 +25199,7 @@ export async function rhack(_cmd) {
             const food = game._eat_floor_object;
             const floorCorpse = food?.otyp === 'corpse' || food?.otyp === CORPSE;
             const oldCorpse = floorCorpse && food?.oldCorpse;
-            const keepCorpseWhileEating = floorCorpse && !oldCorpse;
-            if (food && !oldCorpse && !keepCorpseWhileEating) {
-                game.level.objects = (game.level.objects || []).filter(obj => obj !== food);
-                newsym(food.ox, food.oy);
-            }
-            const name = pickupObjectName(food || {});
+            const name = pickupObjectName({ ...(food || {}), quan: 1 });
             game._eat_floor_object = null;
             if ((food?.otyp === 'corpse' || food?.otyp === CORPSE) && food?.corpsenm?.name === 'lichen') {
                 rn2(10);
@@ -25034,7 +25320,26 @@ export async function rhack(_cmd) {
                 game.context.move = game._eating_turns_remaining;
                 return;
             }
-            await setMessage(`This ${name} is delicious!`);
+            if (shouldUseGenericRottenEggPath(food)) {
+                await eatRottenEgg(food, true);
+                return;
+            }
+            if (isPyroliskEgg(food)) {
+                await eatPyroliskEgg(food, true);
+                return;
+            }
+            if (isStaleEggItem(food)) {
+                await eatStaleEgg(food, true);
+                return;
+            }
+            if (shouldUseGenericRottenFoodPath(food)) {
+                await eatRottenNonCorpseFood(food, true);
+                return;
+            }
+            if (food.oeaten > 0) addHeroNutrition(food.oeaten);
+            consumeOneFloorObject(food);
+            const petrificationMessage = startPetrifyingEggStoning(food);
+            await setMessage(appendPetrificationMessage(`This ${name} is delicious!`, petrificationMessage));
             game._command_mode = null;
             game.context.move = 1;
             return;

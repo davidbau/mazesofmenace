@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -47,6 +47,14 @@ const ROLE_CANONICAL = new Map(Object.keys(ROLE_STATE).map(name => [name.toLower
 const RACE_CANONICAL = new Map(Object.keys(RACE_STATE).map(name => [name.toLowerCase(), name]));
 const ALIGN_CANONICAL = new Map(Object.keys(ALIGN_TYPE).map(name => [name.toLowerCase(), name]));
 const GENDER_CANONICAL = new Map(['male', 'female'].map(name => [name, name]));
+const EGG = 10001;
+const STONED_TEXTS = [
+    'You are slowing down.',
+    'Your limbs are stiffening.',
+    'Your limbs have turned to stone.',
+    'You have turned to stone.',
+    'You are a statue.',
+];
 const ROLE_PET = {
     Caveman: 'dog',
     Knight: 'pony',
@@ -907,6 +915,9 @@ function initFoodFromRoll(roll) {
         rn2(12);
         obj._createdQuan = rn2(6) ? 1 : 2;
     } else if (roll > 140 && roll <= 225) {
+        obj.otyp = EGG;
+        obj.glyph = '%';
+        obj.age = game.moves || 1;
         let hatchableEgg = false;
         if (!rn2(3)) {
             for (let tryct = 200; tryct > 0; tryct--) {
@@ -1789,6 +1800,172 @@ function exerciseAttribute(attr, increase) {
     else u._aexe[attr] -= rn2(2);
 }
 
+function addHeroStatusSuffix(status) {
+    if (!game.u) return;
+    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.includes(status)) parts.push(status);
+    game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+function removeHeroStatusSuffix(status) {
+    if (!game.u) return;
+    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(part => part !== status);
+    game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
+}
+
+function articleFor(name) {
+    return /^[aeiou]/i.test(String(name || '')) ? 'an' : 'a';
+}
+
+function armHeroDeathMore(message = 'You die...') {
+    const messages = [];
+    if (game._pending_message) messages.push(game._pending_message);
+    if (game._topline_after_more && !messages.includes(game._topline_after_more))
+        messages.push(game._topline_after_more);
+    messages.push(message);
+    game._pending_message = messages.join('  ');
+    game._topline_after_more = '';
+    game._message_more = 1;
+    game._message_more_line = '';
+    game._process_time_with_more = 0;
+    game._keep_pending_message = 1;
+    game._pending_time_passed = 0;
+    if (game.context) game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._running_continuation = 0;
+    game._initial_run_command = 0;
+    game._travel_keys = [];
+    game._deferred_monster_turn_tail = 0;
+    game._continue_monsters_after_more = 0;
+    game._resume_time_after_more = 0;
+    game._turn_tail_topline_more = 1;
+    game._command_mode = 'deathDieMore';
+}
+
+function armHeroLifeSavingMore(message = '') {
+    const lifesavingMessage = message
+        || `But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`;
+    const messages = [];
+    if (game._pending_message) messages.push(game._pending_message);
+    if (game._topline_after_more && !messages.includes(game._topline_after_more))
+        messages.push(game._topline_after_more);
+    messages.push(lifesavingMessage);
+    game._pending_message = messages.join('  ');
+    game._topline_after_more = '';
+    game._message_more = 1;
+    game._message_more_line = '';
+    game._process_time_with_more = 0;
+    game._keep_pending_message = 1;
+    game._pending_time_passed = 0;
+    if (game.context) game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._running_continuation = 0;
+    game._initial_run_command = 0;
+    game._travel_keys = [];
+    game._deferred_monster_turn_tail = 0;
+    game._continue_monsters_after_more = 0;
+    game._resume_time_after_more = 0;
+    game._turn_tail_topline_more = 1;
+    game._command_mode = 'lifeSavingMore';
+}
+
+function heroWearingSpeedBoots() {
+    return (game.inventory || []).some(item =>
+        item.worn && String(item.kind || item.actualKind || item.line || '').includes('speed boots'));
+}
+
+function interruptPositiveMultiForStoning() {
+    game._run_steps_remaining = 0;
+    game._running_continuation = 0;
+    game._initial_run_command = 0;
+    game._run_steps_after_more = 0;
+    game._travel_keys = [];
+    game._travel_dynamic_target = null;
+    game._search_pending_count = 0;
+    game._counted_repeat_interruptible = 0;
+}
+
+function stopStoningOccupations() {
+    game._eating_turns_remaining = 0;
+    game._eating_finish_message = '';
+    game._eating_floor_object = null;
+    game._eating_floor_object_pending_useup = null;
+    game._eating_nutrition = 0;
+    game._eating_newt_buzz = 0;
+    game._pending_rotten_food_eating_message = 0;
+    game._armor_wear_occupation = null;
+    game._armor_takeoff_after_more = null;
+    game._armor_finish_after_more = 0;
+    game._force_lock_occupation = null;
+    game._force_lock_continue_time = 0;
+    game._force_lock_finish_after_more = null;
+    game._pending_force_lock_start_message = 0;
+    game._pick_lock_occupation = null;
+    game._pick_lock_continue_time = 0;
+    game._spellbook_study_occupation = null;
+    game._spellbook_finish_after_topline_more = null;
+    game._prayer_occupation = 0;
+    game._prayer_pending_done = 0;
+    game._pending_prayer_finish_message = 0;
+    game._prayer_process_time_now = 0;
+    game._prayer_debug_pleased = 0;
+    game._prayer_split_finish_message = 0;
+    game._prayer_split_waiting_for_time = 0;
+    game._prayer_split_remaining_time = 0;
+    game._prayer_nearby_trouble = 0;
+    if (game.u) game.u.uinvulnerable = false;
+    interruptPositiveMultiForStoning();
+}
+
+function silentlyHealHeroWoundedLegsForStoning() {
+    if (!game.u || game.u.usteed || !(game.u._woundedLegTurns || 0)) return;
+    game.u._woundedLegTurns = 0;
+    game.u._woundedLegSide = '';
+    if (game.u._woundedDexPenalty && game.u.acurr?.a) {
+        game.u.acurr.a[A_DEX]++;
+        game.u._woundedDexPenalty = 0;
+    }
+    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Burdened', '');
+}
+
+function applyStoningDialogueSideEffects(timeout) {
+    if (!game.u) return;
+    switch (timeout) {
+    case 5:
+        game.u._veryfastTimeout = 0;
+        if (!heroWearingSpeedBoots()) game.u.veryfast = false;
+        interruptPositiveMultiForStoning();
+        break;
+    case 4:
+        stopStoningOccupations();
+        break;
+    case 3:
+        stopStoningOccupations();
+        game._helpless_time = Math.max(game._helpless_time || 0, 4);
+        game._sleeping_time = 0;
+        game._wake_message = 'You can move again.';
+        game._stoning_multi_reason = 'getting stoned';
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 3);
+        game._process_command_time_now = 1;
+        silentlyHealHeroWoundedLegsForStoning();
+        break;
+    case 2:
+        if ((game.u._deafTimeout || 0) > 0 && game.u._deafTimeout < 5)
+            game.u._deafTimeout = 5;
+        game.u._vomitingTimeout = 0;
+        game.u.vomiting = false;
+        removeHeroStatusSuffix('Vom');
+        game.u._slimingTimeout = 0;
+        game.u.sliming = false;
+        removeHeroStatusSuffix('Slime');
+        break;
+    default:
+        break;
+    }
+}
+
 function processAttributeExercise() {
     const u = game.u;
     if (!u) return;
@@ -2016,8 +2193,6 @@ function processPickLockOccupation() {
     if (addToplineMessage(`You succeed in ${pick.action}.`))
         game._pick_lock_continue_time = 1;
 }
-
-const EGG = 10001;
 
 const HATCHLING_BY_EGG_MONSTER = new Map([
     ['cockatrice', 'chickatrice'],
@@ -5432,6 +5607,38 @@ async function finishMonsterTurnTail() {
                 : 'You feel less confused now.');
         }
     }
+    if ((game.u?._stonedTimeout || 0) > 0) {
+        addHeroStatusSuffix('Stone');
+        const timeout = game.u._stonedTimeout;
+        const message = STONED_TEXTS[5 - timeout];
+        if (message) addToplineMessage(message);
+        applyStoningDialogueSideEffects(timeout);
+        exerciseAttribute(A_DEX, false);
+        game.u._stonedTimeout--;
+        if (!game.u._stonedTimeout) {
+            const killer = game.u._stonedKiller || 'cockatrice egg';
+            game.u.uhp = 0;
+            game._death_cause = `petrified by ${articleFor(killer)} ${killer}`;
+            game._death_current_move = 1;
+            if (consumeLifeSavingAmulet({ clearStoning: true })) {
+                armHeroLifeSavingMore();
+                return false;
+            }
+            game._death_bones_body = 'statue';
+            armHeroDeathMore();
+            return false;
+        }
+    }
+    if ((game.u?._vomitingTimeout || 0) > 0) {
+        addHeroStatusSuffix('Vom');
+        game.u.vomiting = true;
+        game.u._vomitingTimeout--;
+        if (!game.u._vomitingTimeout) {
+            game.u.vomiting = false;
+            removeHeroStatusSuffix('Vom');
+            addToplineMessage('You vomit!');
+        }
+    }
     if ((game.u?._deafTimeout || 0) > 0) {
         game.u._deafTimeout--;
         if (!game.u._deafTimeout)
@@ -8307,11 +8514,15 @@ export async function moveloop_core() {
         if (armorTailOnly) g._armor_tail_after_more = 0;
         if (g._deferred_monster_turn_tail && !(g._pending_message && g._message_more)) {
             g._deferred_monster_turn_tail = 0;
-            await finishMonsterTurnTail();
+            const tailResult = await finishMonsterTurnTail();
             g.moves = (g.moves || 1) + 1;
             await afterMoveTurn(g);
             g.u.umoved = false;
             if (g.u?.ublesscnt) g.u.ublesscnt--;
+            if (tailResult === false && g._command_mode === 'deathDieMore') {
+                g._pending_time_passed = 0;
+                break;
+            }
             advanceRegions(g);
             g._pending_time_passed = Math.max(0, (g._pending_time_passed || 0) - 1);
             turnAdvanced = true;

@@ -6,6 +6,7 @@ import { NORMAL_SPEED } from './const.js';
 import { updateMonsterTrack } from './montrack.js';
 
 const FIGURINE = 795;
+const STATUE = 472;
 
 const SKIP_KEYS = new Set([
     'coreCtx',
@@ -74,6 +75,14 @@ function stripHeroDroppedFigurineTimer(obj) {
     delete obj._figurine_transform_seq;
 }
 
+function findHeroDeathStatue(level, ux, uy) {
+    const owner = game.plname || 'wizard';
+    return (level.objects || []).find(obj => obj?._death_remains === 'statue')
+        || (level.objects || []).find(obj =>
+            (obj?.otyp === STATUE || obj?.kind === 'statue')
+            && obj.ox === ux && obj.oy === uy && obj.oname === owner);
+}
+
 export function encodeBonesLevel() {
     const level = saveClone(game.level);
     const ux = game.u?.ux || 0;
@@ -87,15 +96,25 @@ export function encodeBonesLevel() {
         mon.mpeaceful = 0;
     }
     level.objects ??= [];
+    const heroStatue = game._death_bones_body === 'statue' ? findHeroDeathStatue(level, ux, uy) : null;
+    for (const obj of level.objects) delete obj._death_remains;
+    if (heroStatue) heroStatue.contents = [];
     for (const item of game.inventory || []) {
         const dropped = saveClone(item);
         stripHeroDroppedFigurineTimer(dropped);
         delete dropped.worn;
         delete dropped.wielded;
         delete dropped.alternate;
-        dropped.ox = ux;
-        dropped.oy = uy;
-        level.objects.push(dropped);
+        if (heroStatue) {
+            delete dropped.ox;
+            delete dropped.oy;
+            dropped.contained = true;
+            heroStatue.contents.push(dropped);
+        } else {
+            dropped.ox = ux;
+            dropped.oy = uy;
+            level.objects.push(dropped);
+        }
     }
     if (game._bones_ghost) {
         level.monsters ??= [];

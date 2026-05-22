@@ -3364,6 +3364,7 @@ export function mksobj(otyp, init, artif) {
             : otmp.corpsenm.male ? CORPSTAT_MALE
             : rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
     } else if (otyp === EGG) {
+        otmp.age = game.moves || 1;
         set_corpsenm(otmp, otmp.corpsenm);
     }
     return otmp;
@@ -4575,6 +4576,35 @@ function monsterNameGenocided(name) {
     return !!name && (game._genocided_monsters || []).includes(name);
 }
 
+const LIMITED_BIRTH_LIMITS = new Map([
+    ['Nazgul', 9],
+    ['erinys', 3],
+]);
+
+export function limitedMonsterBirthLimit(name) {
+    return LIMITED_BIRTH_LIMITS.get(name) || null;
+}
+
+export function monsterNameExtinct(name) {
+    return !!name && (game._extinct_monsters || []).includes(name);
+}
+
+function markMonsterExtinct(name) {
+    if (!name) return;
+    game._extinct_monsters ??= [];
+    if (!game._extinct_monsters.includes(name)) game._extinct_monsters.push(name);
+}
+
+function countMonsterBirth(ptr, mmflags) {
+    const name = ptr?.name;
+    const limit = limitedMonsterBirthLimit(name);
+    if (!name || !limit || (mmflags & MM_NOCOUNTBIRTH)) return;
+    game._monster_birth_counts ??= {};
+    const born = Math.min((game._monster_birth_counts[name] || 0) + 1, 255);
+    game._monster_birth_counts[name] = born;
+    if (born >= limit && !ptr.noGen) markMonsterExtinct(name);
+}
+
 export function pickNasty(difcap) {
     let ptr = monsterByRndName(NASTY_MONSTER_NAMES[rn2(NASTY_MONSTER_NAMES.length)]);
     if (ptr?.difficulty >= difcap) ptr = monsterByRndName(ptr.name === 'arch-lich' ? 'master lich' : ptr.name === 'master mind flayer' ? 'mind flayer' : ptr.name);
@@ -5669,11 +5699,16 @@ export async function makemon(mdat, x, y, mmflags) {
         for (let tryct = 1; ; tryct++) {
             ptr = rndmonst_adj(0, 0);
             if (!ptr) return null;
+            if (monsterNameExtinct(ptr.name)) {
+                if (tryct > 50) return null;
+                continue;
+            }
             if (tryct > 50 || makemon_goodpos(ptr, x, y)) break;
         }
     }
     if (!ptr) return null;
     if (monsterNameGenocided(ptr.name)) return null;
+    if (anymon && monsterNameExtinct(ptr.name)) return null;
     const skipRandomItemRolls = !!game._makemon_skip_random_item_rolls_once;
     game._makemon_skip_random_item_rolls_once = false;
 
@@ -5777,6 +5812,8 @@ export async function makemon(mdat, x, y, mmflags) {
         }
     }
     if (monsterNameGenocided(ptr.name)) return null;
+    if (anymon && monsterNameExtinct(ptr.name)) return null;
+    countMonsterBirth(peacefulPtr, mmflags);
     if (ptr.nemesis && allowMinvent) {
         const bell = mksobj(BELL, true, false);
         bell.spe = 3;
