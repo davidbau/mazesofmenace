@@ -5,6 +5,8 @@ import { GameMap } from './game.js';
 import { NORMAL_SPEED } from './const.js';
 import { updateMonsterTrack } from './montrack.js';
 
+const FIGURINE = 795;
+
 const SKIP_KEYS = new Set([
     'coreCtx',
     'displayCtx',
@@ -65,6 +67,13 @@ function countRestoreIdentities(level) {
     return count;
 }
 
+function stripHeroDroppedFigurineTimer(obj) {
+    const kind = String(obj?.actualKind || obj?.kind || '').toLowerCase();
+    if (obj?.otyp !== FIGURINE && kind !== 'figurine') return;
+    delete obj.figurineTransformTurn;
+    delete obj._figurine_transform_seq;
+}
+
 export function encodeBonesLevel() {
     const level = saveClone(game.level);
     const ux = game.u?.ux || 0;
@@ -80,6 +89,7 @@ export function encodeBonesLevel() {
     level.objects ??= [];
     for (const item of game.inventory || []) {
         const dropped = saveClone(item);
+        stripHeroDroppedFigurineTimer(dropped);
         delete dropped.worn;
         delete dropped.wielded;
         delete dropped.alternate;

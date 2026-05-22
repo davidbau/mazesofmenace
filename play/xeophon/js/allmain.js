@@ -9,13 +9,14 @@ import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, vie
 import { init_objects } from './o_init.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d } from './rng.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_oracle_level, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, BOLT_LIM, MON_POLE_DIST, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHOPBASE } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES } from './monster_data.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
+import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
 
 const ROLE_STATE = {
     Archeologist: { rank: 'Digger', hpBase: 11, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [7, 10, 10, 7, 7, 7], attrDist: [20, 20, 20, 10, 20, 10] },
@@ -2016,12 +2017,260 @@ function processPickLockOccupation() {
         game._pick_lock_continue_time = 1;
 }
 
-function afterMoveTurn(g, includeHeroTime = true) {
+const EGG = 10001;
+
+const HATCHLING_BY_EGG_MONSTER = new Map([
+    ['cockatrice', 'chickatrice'],
+    ['gray dragon', 'baby gray dragon'],
+    ['gold dragon', 'baby gold dragon'],
+    ['silver dragon', 'baby silver dragon'],
+    ['red dragon', 'baby red dragon'],
+    ['white dragon', 'baby white dragon'],
+    ['orange dragon', 'baby orange dragon'],
+    ['black dragon', 'baby black dragon'],
+    ['blue dragon', 'baby blue dragon'],
+    ['green dragon', 'baby green dragon'],
+    ['yellow dragon', 'baby yellow dragon'],
+    ['red naga', 'red naga hatchling'],
+    ['black naga', 'black naga hatchling'],
+    ['golden naga', 'golden naga hatchling'],
+    ['guardian naga', 'guardian naga hatchling'],
+    ['crocodile', 'baby crocodile'],
+]);
+
+function isEggObject(obj) {
+    return obj?.otyp === EGG || String(obj?.kind || obj?.actualKind || '').toLowerCase() === 'egg';
+}
+
+function eggHatchMonsterData(egg) {
+    const name = egg?.corpsenm?.name || '';
+    if (!name || (game._genocided_monsters || []).includes(name)) return null;
+    const hatchName = HATCHLING_BY_EGG_MONSTER.get(name) || name;
+    return monsterByRndName(hatchName) || egg.corpsenm;
+}
+
+function eggObjectLocation(entry) {
+    if (entry.source === 'inventory') return { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+    if (entry.source === 'minvent') return { x: entry.carrier?.mx || 0, y: entry.carrier?.my || 0 };
+    return { x: entry.egg.ox || 0, y: entry.egg.oy || 0 };
+}
+
+function removeHatchedEgg(entry) {
+    const egg = entry.egg;
+    if (!egg) return;
+    if (entry.source === 'inventory') {
+        game.inventory = (game.inventory || []).filter(item => item !== egg);
+        game._pet_food_scan_inventory = game.inventory;
+    } else if (entry.source === 'floor') {
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== egg);
+        newsym(egg.ox, egg.oy);
+    } else if (entry.source === 'minvent' && entry.carrier) {
+        entry.carrier.minvent = (entry.carrier.minvent || []).filter(obj => obj !== egg);
+        entry.carrier.hasInventory = !!entry.carrier.minvent.length;
+    }
+}
+
+function rescheduleHatchedEggStack(egg) {
+    const delay = rnd(12);
+    egg.eggHatchTurn = (game.moves || 1) + delay;
+    egg._egg_hatch_consumed = true;
+    egg._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
+}
+
+function ensureHatchedPetExtension(mon) {
+    mon.mextra ??= {};
+    mon.mextra.edog ??= {
+        apport: 3,
+        hungrytime: Math.max(game.moves || 1, 1) + 1000,
+        dropdist: 10000,
+        whistletime: 0,
+        ogoal: { x: 0, y: 0 },
+    };
+}
+
+function tameHatchedMonster(mon, entry, yours) {
+    const carried = entry.source === 'inventory';
+    const dragon = (mon.data?.mlet || mon.data?.glyph) === 'D';
+    if ((!yours || entry.silent) && !(carried && dragon)) return;
+    mon.pet = true;
+    mon.mtame = carried && !dragon ? 20 : Math.max(mon.mtame || 0, 10);
+    mon.mpeaceful = 1;
+    mon.mflee = 0;
+    mon.mfleetim = 0;
+    ensureHatchedPetExtension(mon);
+    set_malign(mon);
+}
+
+function hatchedMonsterArticle(mon, plural) {
+    const name = mon?.givenName || mon?.data?.name || 'creature';
+    const pluralName = /(?:s|x|z|ch|sh)$/i.test(name) ? `${name}es`
+        : /[^aeiou]y$/i.test(name) ? `${name.slice(0, -1)}ies`
+        : `${name}s`;
+    if (plural) return `some ${pluralName}`;
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+function reportEggHatch(entry, mon, hatchcount, x, y, yours) {
+    const visible = !entry.silent && (cansee(x, y) || !game.viz_array);
+    const plural = hatchcount > 1;
+    if (entry.source === 'inventory') {
+        if (visible) addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} drop out of your pack!`);
+        else addToplineMessage('You feel something drop from your pack!');
+        if (yours) addToplineMessage(`${plural ? 'Their' : 'Its'} crying sounds like "${game.flags?.female ? 'mommy' : 'daddy'}${entry.egg?.spe ? '.' : '?'}"`);
+    } else if (entry.source === 'floor' && visible) {
+        addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} hatch.`);
+    } else if (entry.source === 'minvent' && visible) {
+        addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
+    }
+}
+
+function dueEggEntries(g) {
+    const entries = [];
+    for (const egg of [...(g.inventory || [])]) {
+        if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+            entries.push({ egg, source: 'inventory' });
+    }
+    for (const egg of [...(g.level?.objects || [])]) {
+        if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+            entries.push({ egg, source: 'floor' });
+    }
+    for (const carrier of [...(g.level?.monsters || [])]) {
+        for (const egg of [...(carrier.minvent || [])]) {
+            if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+                entries.push({ egg, source: 'minvent', carrier });
+        }
+    }
+    return entries.sort((a, b) => ((a.egg.eggHatchTurn || 0) - (b.egg.eggHatchTurn || 0))
+        || ((b.egg._egg_hatch_seq || 0) - (a.egg._egg_hatch_seq || 0)));
+}
+
+async function processEggHatchTimeouts(g) {
+    for (const entry of dueEggEntries(g)) {
+        const egg = entry.egg;
+        delete egg.eggHatchTurn;
+        const data = eggHatchMonsterData(egg);
+        if (!data) continue;
+
+        const yours = !!egg.spe || (entry.source === 'inventory' && !game.flags?.female && !rn2(2));
+        const { x, y } = eggObjectLocation(entry);
+        const targetCount = rnd(Math.max(1, egg.quan || 1));
+        let hatched = 0;
+        let lastMon = null;
+        for (let i = 0; i < targetCount; i++) {
+            const spot = enextoMonsterSpot(x, y, data);
+            if (!spot) break;
+            const mon = await makemon(data, spot.x, spot.y, NO_MINVENT | MM_NOMSG);
+            if (!mon) break;
+            tameHatchedMonster(mon, entry, yours);
+            newsym(mon.mx, mon.my);
+            lastMon = mon;
+            hatched++;
+        }
+        if (!hatched) continue;
+
+        egg.quan = Math.max(0, (egg.quan || 1) - hatched);
+        reportEggHatch(entry, lastMon, hatched, x, y, yours);
+        game._egg_hatch_processed = (game._egg_hatch_processed || 0) + hatched;
+        if ((egg.quan || 0) > 0) rescheduleHatchedEggStack(egg);
+        else removeHatchedEgg(entry);
+    }
+}
+
+function figurineTransformLocation(entry) {
+    if (entry.source === 'inventory') return { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+    if (entry.source === 'minvent') return { x: entry.carrier?.mx || 0, y: entry.carrier?.my || 0 };
+    return { x: entry.figurine.ox || 0, y: entry.figurine.oy || 0 };
+}
+
+function dueFigurineEntries(g) {
+    const entries = [];
+    for (const figurine of [...(g.inventory || [])]) {
+        if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
+            entries.push({ figurine, source: 'inventory' });
+    }
+    for (const figurine of [...(g.level?.objects || [])]) {
+        if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
+            entries.push({ figurine, source: 'floor' });
+    }
+    for (const carrier of [...(g.level?.monsters || [])]) {
+        for (const figurine of [...(carrier.minvent || [])]) {
+            if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
+                entries.push({ figurine, source: 'minvent', carrier });
+        }
+    }
+    return entries.sort((a, b) => ((a.figurine.figurineTransformTurn || 0) - (b.figurine.figurineTransformTurn || 0))
+        || ((b.figurine._figurine_transform_seq || 0) - (a.figurine._figurine_transform_seq || 0)));
+}
+
+function removeTransformedFigurine(entry) {
+    const figurine = entry.figurine;
+    stopFigurineTransformTimeout(figurine);
+    if (entry.source === 'inventory') {
+        if ((figurine.quan || 1) > 1) {
+            figurine.quan = (figurine.quan || 1) - 1;
+            const name = pickupObjectName({ ...figurine, quan: 1 });
+            figurine.line = `${figurine.letter || '?'} - ${figurine.quan} ${name}`;
+        } else {
+            game.inventory = (game.inventory || []).filter(item => item !== figurine);
+        }
+        game._pet_food_scan_inventory = game.inventory;
+    } else if (entry.source === 'floor') {
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== figurine);
+        newsym(figurine.ox, figurine.oy);
+    } else if (entry.source === 'minvent' && entry.carrier) {
+        entry.carrier.minvent = (entry.carrier.minvent || []).filter(obj => obj !== figurine);
+        entry.carrier.hasInventory = !!entry.carrier.minvent.length;
+    }
+}
+
+function reportFigurineTransform(entry, mon, x, y, silent) {
+    if (!mon || (silent && entry.source !== 'inventory')) return;
+    const article = hatchedMonsterArticle(mon, false);
+    if (entry.source === 'inventory') {
+        if (game.u?.blind || mon.minvis) addToplineMessage('You feel something drop from your pack!');
+        else addToplineMessage(`You see ${article} drop out of your pack!`);
+    } else if (entry.source === 'floor') {
+        if (cansee(x, y)) addToplineMessage(`You see a figurine transform into ${article}!`);
+    } else if (entry.source === 'minvent') {
+        if (cansee(x, y))
+            addToplineMessage(`You see ${article} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
+    }
+}
+
+async function processFigurineTransformTimeouts(g) {
+    for (const entry of dueFigurineEntries(g)) {
+        const figurine = entry.figurine;
+        const timeout = figurine.figurineTransformTurn;
+        stopFigurineTransformTimeout(figurine);
+        let { x, y } = figurineTransformLocation(entry);
+        if (entry.source === 'inventory' || entry.source === 'minvent') {
+            const spot = enextoMonsterSpot(x, y, figurine.corpsenm || {});
+            if (!spot) {
+                attachFigurineTransformTimeout(figurine, rnd(5000));
+                continue;
+            }
+            x = spot.x;
+            y = spot.y;
+        }
+        const check = figurineLocationCheck(figurine, x, y);
+        if (!check.ok) {
+            attachFigurineTransformTimeout(figurine, rnd(5000));
+            continue;
+        }
+        const result = await makeFigurineFamiliar(figurine, x, y, { quietly: true });
+        removeTransformedFigurine(entry);
+        reportFigurineTransform(entry, result.mon, x, y, timeout !== g.moves);
+    }
+}
+
+async function afterMoveTurn(g, includeHeroTime = true) {
     const rottenObjects = (g.level?.objects || []).filter(obj => obj.rotAwayTurn && obj.rotAwayTurn <= g.moves);
     if (rottenObjects.length) {
         g.level.objects = (g.level.objects || []).filter(obj => !(obj.rotAwayTurn && obj.rotAwayTurn <= g.moves));
         for (const obj of rottenObjects) newsym(obj.ox, obj.oy);
     }
+    await processEggHatchTimeouts(g);
+    await processFigurineTransformTimeouts(g);
     if (includeHeroTime && g.moves >= (g.context.seer_turn || 0))
         g.context.seer_turn = g.moves + rn2(31) + 15;
 }
@@ -4843,7 +5092,7 @@ async function processMonsterTurns() {
 	        game._deferred_monster_turn_tail = 1;
 	        return 'defer-tail';
 	    }
-	    const result = finishMonsterTurnTail();
+	    const result = await finishMonsterTurnTail();
 	    game._swallow_cold_more_allows_tail = 0;
         if (result === true && game._counted_repeat_finish_monsters_once) {
             game._counted_repeat_finish_monsters_once = 0;
@@ -4852,7 +5101,7 @@ async function processMonsterTurns() {
 	    return result;
 	}
 
-function finishMonsterTurnTail() {
+async function finishMonsterTurnTail() {
     const resumeAfterSounds = !!game._resume_monster_turn_tail_after_sounds;
     game._resume_monster_turn_tail_after_sounds = 0;
     let sleepingHunger = false;
@@ -5293,7 +5542,7 @@ function finishMonsterTurnTail() {
             game.u._fumblingTimeout = timeout;
         }
     }
-    processSpellbookStudyOccupation();
+    await processSpellbookStudyOccupation();
     if (game._ball_drag_subtract_after_forced_tail) {
         game._ball_drag_subtract_after_forced_tail = 0;
         if (game.u) game.u.umovement = Math.max(0, (game.u.umovement || 0) - NORMAL_SPEED);
@@ -5304,13 +5553,13 @@ function finishMonsterTurnTail() {
 	    game._monster_turns_started = 1;
     if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss) {
         game.moves = (game.moves || 1) + 1;
-        afterMoveTurn(game, false);
+        await afterMoveTurn(game, false);
         if (game.u?.ublesscnt) game.u.ublesscnt--;
         if (armBallDragForceTail) {
             game._force_monster_turn_tail_once = 1;
             game._ball_drag_subtract_after_forced_tail = 1;
         }
-        return processMonsterTurns();
+        return await processMonsterTurns();
     }
     if (armBallDragForceTail) {
         game._force_monster_turn_tail_once = 1;
@@ -8058,9 +8307,9 @@ export async function moveloop_core() {
         if (armorTailOnly) g._armor_tail_after_more = 0;
         if (g._deferred_monster_turn_tail && !(g._pending_message && g._message_more)) {
             g._deferred_monster_turn_tail = 0;
-            finishMonsterTurnTail();
+            await finishMonsterTurnTail();
             g.moves = (g.moves || 1) + 1;
-            afterMoveTurn(g);
+            await afterMoveTurn(g);
             g.u.umoved = false;
             if (g.u?.ublesscnt) g.u.ublesscnt--;
             advanceRegions(g);
@@ -8189,9 +8438,9 @@ export async function moveloop_core() {
 	            g._monster_turns_started = 0;
 	            const advancedTail = await processMonsterTurns();
 	            g._armor_wear_occupation = occupationForTail;
-	            if (advancedTail) {
-	                g.moves = (g.moves || 1) + 1;
-	                afterMoveTurn(g);
+            if (advancedTail) {
+                g.moves = (g.moves || 1) + 1;
+                await afterMoveTurn(g);
 	                advanceRegions(g);
 	            }
 	            const occupation = g._armor_wear_occupation;
@@ -8245,9 +8494,9 @@ export async function moveloop_core() {
             if (g.u?.ublesscnt) g.u.ublesscnt--;
         } else if (movedMonsters === 'defer-tail') {
             // The visible --More-- must be captured before nh_timeout/gethungry tail rolls.
-	        } else if (movedMonsters) {
-	            g.moves = (g.moves || 1) + 1;
-	            afterMoveTurn(g);
+        } else if (movedMonsters) {
+            g.moves = (g.moves || 1) + 1;
+            await afterMoveTurn(g);
 	            g.u.umoved = false;
             turnAdvanced = true;
             if (g.u?.ublesscnt) g.u.ublesscnt--;
@@ -8422,9 +8671,9 @@ export async function moveloop_core() {
             if (movedMoreMonsters === 'defer-tail') {
                 // Deferred by a message prompt; the top of the loop resumes the tail.
             } else if (movedMoreMonsters) {
-	                g.moves = (g.moves || 1) + 1;
-	                afterMoveTurn(g);
-	            }
+                g.moves = (g.moves || 1) + 1;
+                await afterMoveTurn(g);
+            }
             if (g._message_more && g._pending_force_lock_start_message && !g._process_time_with_more) {
                 g._process_time_with_more = 0;
                 break;

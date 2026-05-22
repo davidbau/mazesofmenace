@@ -5,8 +5,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MM_EDOG, MM_NOMSG, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -18,6 +18,7 @@ import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { datFileLines as bundledDatFileLines } from './dat_files.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { createGasCloud } from './region.js';
+import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -4762,11 +4763,16 @@ function removeInventoryItem(item, amount = 1) {
         item.quan = remaining;
         item.line = normalInventoryLine({ ...item, line: '' });
     } else {
+        stopCarriedFigurineTimerOnLeave(item);
         game.inventory = (game.inventory || []).filter(other => other !== item);
     }
     if (wasWornSpeedBoots && game.u) game.u.veryfast = false;
     updateWornDisplacement();
     game._pet_food_scan_inventory = game.inventory;
+}
+
+function stopCarriedFigurineTimerOnLeave(item) {
+    if (isFigurineObject(item)) stopFigurineTransformTimeout(item);
 }
 
 function wornArmorFireSlot(item) {
@@ -5001,6 +5007,14 @@ function movementDirection(ch) {
     const lower = ch.toLowerCase();
     if (!(lower in DIR_DX)) return null;
     return { dx: DIR_DX[lower], dy: DIR_DY[lower] };
+}
+
+function figurineApplyDirection(ch) {
+    if (ch === '.') return { dx: 0, dy: 0, dz: 0 };
+    if (ch === '<') return { dx: 0, dy: 0, dz: -1 };
+    if (ch === '>') return { dx: 0, dy: 0, dz: 1 };
+    const dir = movementDirection(ch);
+    return dir ? { ...dir, dz: 0 } : null;
 }
 
 function doorDescription(loc) {
@@ -6401,6 +6415,7 @@ function consumeWishedEggHatchTimer(otmp) {
     for (let i = 151; i <= 200; i++) {
         if (rnd(i) > 150) {
             otmp.eggHatchTurn = (game.moves || 1) + i;
+            otmp._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
             break;
         }
     }
@@ -6636,6 +6651,7 @@ function isBlankSpellbookItem(item) {
 }
 
 function isBookOfTheDeadItem(item) {
+    if (item?.otyp === BOOK_OF_THE_DEAD) return true;
     const text = [
         item?.kind,
         item?.actualKind,
@@ -6651,6 +6667,265 @@ function readBlindBlockMessage(item, isScroll) {
     if (item?.cls === 'spellbook') return 'Being blind, you cannot read the mystic runes.';
     if (isScroll && item?.dknown === false) return 'Being blind, you cannot read the formula on the scroll.';
     return '';
+}
+
+function heroHasAntimagic() {
+    if (game.u?.magicResistance || game.u?.antimagic) return true;
+    return (game.inventory || []).some(item => {
+        if (!(item.worn || item.line?.includes('being worn'))) return false;
+        return /cloak of magic resistance|gray dragon scale mail/i
+            .test(String(item.kind || item.actualKind || item.line || ''));
+    });
+}
+
+function heroHasPoisonResistance() {
+    if (game.u?.poisonResistance) return true;
+    return (game.inventory || []).some(item => {
+        if (!(item.worn || item.line?.includes('being worn'))) return false;
+        return /amulet (?:versus|of) poison|poison resistance/i
+            .test(String(item.kind || item.actualKind || item.line || ''));
+    });
+}
+
+function wornGlovesItem() {
+    return (game.inventory || []).find(item => isWornArmorItem(item) && armorSlot(item) === 'gloves') || null;
+}
+
+function makeHeroBlindedFromBook(messages) {
+    const duration = rn1(100, 250);
+    if (!game.u) return;
+    const wasBlind = !!game.u.blind;
+    game.u._blindTimeout = (game.u._blindTimeout || 0) + duration;
+    game.u.blind = true;
+    if (!wasBlind) {
+        messages.push(heroIsHallucinating()
+            ? 'Oh, bummer!  Everything is dark!  Help!'
+            : 'A cloud of darkness falls upon you.');
+    }
+}
+
+function takeGoldFromHeroForBook(messages) {
+    const hadGold = (game._goldCount || 0) > 0
+        || (game.inventory || []).some(item => item.cls === 'coin' || item.otyp === GOLD_PIECE || item.letter === '$');
+    if (!hadGold) {
+        messages.push('You feel a strange sensation.');
+        return;
+    }
+    game._goldCount = 0;
+    game._just_picked_gold = 0;
+    game.inventory = (game.inventory || []).filter(item =>
+        !(item.cls === 'coin' || item.otyp === GOLD_PIECE || item.letter === '$'));
+    game._pet_food_scan_inventory = game.inventory;
+    messages.push('You notice you have no gold!');
+}
+
+function corrodeGlovesFromBook(gloves, messages) {
+    const kind = armorKind(gloves);
+    const corrodeable = /\b(?:gauntlets of power|iron|metal|copper|bronze)\b/.test(kind);
+    if (!corrodeable) {
+        messages.push('Your gloves are not affected by the corrosion.');
+        return;
+    }
+    if (gloves.oerodeproof) {
+        gloves.rknown = true;
+        messages.push('Somehow, your gloves are not affected by the corrosion.');
+        updateArmorLine(gloves);
+        return;
+    }
+    if (gloves.blessed && !rnl(4)) {
+        messages.push('Somehow, your gloves are not affected by the corrosion.');
+        return;
+    }
+    const current = Math.min(3, gloves.oeroded2 || 0);
+    if (current >= 3) return;
+    const adverb = current + 1 === 3 ? ' completely' : current ? ' further' : '';
+    messages.push(`Your gloves ${erosionVerb(gloves, 'corrode')}${adverb}!`);
+    const oldAc = wornArmorAcValueGreatestErosion(gloves);
+    gloves.oeroded2 = current + 1;
+    gloves.bknown = true;
+    updateWornArmorAcAfterChange(gloves, oldAc);
+}
+
+function poisonHeroFromSpellbook(messages) {
+    messages.push('The book was coated with contact poison!');
+    const gloves = wornGlovesItem();
+    if (gloves) {
+        corrodeGlovesFromBook(gloves, messages);
+        return { dead: false };
+    }
+
+    const resisted = heroHasPoisonResistance();
+    const strLoss = resisted ? rn1(2, 1) : rn1(4, 3);
+    const damage = rnd(resisted ? 6 : 10);
+    if (game.u?.acurr?.a) {
+        game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - strLoss);
+        messages.push('You feel weaker.');
+    }
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'killed by a contact-poisoned spellbook';
+            messages.push('You die...');
+            return { dead: true };
+        }
+    }
+    exerciseAttribute(A_STR, false);
+    return { dead: false };
+}
+
+function aggravateMonstersFromBook() {
+    for (const mon of game.level?.monsters || []) {
+        mon.msleeping = 0;
+        if (mon.mcanmove === false && !rn2(5)) {
+            mon.mfrozen = 0;
+            mon.mcanmove = true;
+        }
+    }
+}
+
+function rndcurseFromBook(messages) {
+    if (heroHasAntimagic()) messages.push('A magical shield surrounds you!');
+    messages.push('You feel a malignant aura surround you.');
+    const candidates = (game.inventory || [])
+        .filter(item => !(item.cls === 'coin' || item.otyp === GOLD_PIECE || item.letter === '$'));
+    let count = rnd(heroHasAntimagic() ? 3 : 6);
+    while (count-- > 0 && candidates.length) {
+        const item = candidates[rnd(candidates.length) - 1];
+        if (item?.cursed) continue;
+        if (item.blessed) item.blessed = false;
+        else item.cursed = true;
+        syncCarriedFigurineTransformTimer(item);
+        item.bknown = true;
+        item.line = normalInventoryLine({ ...item, line: '' });
+    }
+}
+
+function cursedBookStudyEffect(level) {
+    const messages = [];
+    let gone = false;
+    let dead = false;
+    switch (rn2(level)) {
+    case 0: {
+        messages.push('You feel a wrenching sensation.');
+        if (game.level?.at && game.u) {
+            const teleportMessage = safeTeleportHeroSameLevel();
+            if (teleportMessage) messages.push(teleportMessage);
+        }
+        break;
+    }
+    case 1:
+        messages.push('You feel threatened.');
+        aggravateMonstersFromBook();
+        break;
+    case 2:
+        makeHeroBlindedFromBook(messages);
+        break;
+    case 3:
+        takeGoldFromHeroForBook(messages);
+        break;
+    case 4:
+        messages.push('These runes were just too much to comprehend.');
+        addHeroConfusion(rn1(7, 16));
+        break;
+    case 5: {
+        const result = poisonHeroFromSpellbook(messages);
+        dead = !!result.dead;
+        break;
+    }
+    case 6:
+        gone = true;
+        if (heroHasAntimagic()) {
+            messages.push('The book radiates explosive energy, but you are unharmed!');
+        } else {
+            messages.push('As you read the book, it radiates explosive energy in your face!');
+            const damage = 2 * rnd(10) + 5;
+            if (game.u) {
+                game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+                if ((game.u.uhp || 0) <= 0) {
+                    game._death_cause = 'killed by an exploding rune';
+                    messages.push('You die...');
+                    dead = true;
+                }
+            }
+        }
+        break;
+    default:
+        rndcurseFromBook(messages);
+        break;
+    }
+    return { messages, gone, dead, more: messages.length > 1 || dead };
+}
+
+function articleFor(noun) {
+    const text = String(noun || '').trim();
+    if (!text) return 'a thing';
+    if (/^(?:the|a|an)\b/i.test(text)) return text;
+    return `${/^[aeiou]/i.test(text) ? 'an' : 'a'} ${text}`;
+}
+
+function spellbookCallAppearance(item) {
+    return item?.appearance || game._object_descriptions?.spellbooks?.[item?.spellbookIndex] || '';
+}
+
+function spellbookCallKey(item) {
+    return spellbookCallAppearance(item) || String(item?.spellbookIndex ?? item?.spellName ?? item?.kind ?? 'spellbook');
+}
+
+function spellbookDiscoveryKnown(name) {
+    const discoveryName = `spellbook of ${name}`;
+    return (game._discoveries || []).some(entry =>
+        entry.section === 'Spellbooks'
+        && entry.name === discoveryName
+        && entry.known !== false);
+}
+
+function shouldTryCallSpellbook(item, name) {
+    if (!item || isBookOfTheDeadItem(item) || item.dknown === false) return false;
+    if (item.known === true || spellbookDiscoveryKnown(name)) return false;
+    return !game._called_spellbooks?.[spellbookCallKey(item)];
+}
+
+function prepareSpellbookTryCall(item, moveCost) {
+    const appearance = spellbookCallAppearance(item);
+    const noun = appearance ? `${appearance} spellbook` : 'spellbook';
+    game._call_spellbook_prompt_noun = noun;
+    game._call_spellbook_appearance = appearance;
+    game._call_spellbook_key = spellbookCallKey(item);
+    game._call_spellbook_move_cost = moveCost;
+    game._call_spellbook_text = '';
+}
+
+function clearSpellbookTryCall() {
+    game._call_spellbook_prompt_noun = '';
+    game._call_spellbook_appearance = '';
+    game._call_spellbook_key = '';
+    game._call_spellbook_text = '';
+    const moveCost = game._call_spellbook_move_cost || 0;
+    game._call_spellbook_move_cost = 0;
+    return moveCost;
+}
+
+function recordCalledSpellbook(name) {
+    const call = String(name || '').trim();
+    if (!call) return;
+    const appearance = game._call_spellbook_appearance || '';
+    const key = game._call_spellbook_key || appearance || 'spellbook';
+    game._called_spellbooks ??= {};
+    game._called_spellbooks[key] = call;
+    game._discoveries ??= [];
+    const discoveryName = `spellbook called ${call}`;
+    const text = appearance ? `${discoveryName} (${appearance})` : discoveryName;
+    const existing = game._discoveries.find(entry =>
+        entry.section === 'Spellbooks'
+        && (entry.name === discoveryName || (appearance && String(entry.text || '').endsWith(`(${appearance})`))));
+    if (existing) {
+        existing.name = discoveryName;
+        existing.text = text;
+        existing.starred = false;
+        existing.known = true;
+    } else {
+        game._discoveries.push({ section: 'Spellbooks', name: discoveryName, text, starred: false, known: true });
+    }
 }
 
 function learnScrollByName(scrollName, item, scrollIndex = null) {
@@ -6875,6 +7150,7 @@ function removeCurseBlessOrCurse(item) {
         item.blessed = false;
         item.cursed = true;
     }
+    syncCarriedFigurineTransformTimer(item);
     return true;
 }
 
@@ -6930,6 +7206,7 @@ function removeCurseScrollEffect(item) {
             } else if (obj.cursed) {
                 if (obj.bknown === true) learned = true;
                 obj.cursed = false;
+                syncCarriedFigurineTransformTimer(obj);
                 refreshInventoryLineAfterBucChange(obj);
             }
         }
@@ -9980,7 +10257,8 @@ export function pickupObjectName(obj) {
         const appearance = game._object_descriptions?.wands?.[obj.wandIndex]?.description;
         return named(appearance ? `${appearance} wand` : 'wand');
     }
-    if (obj.cls === 'spellbook' || obj.otyp === SPBOOK_NO_NOVEL || obj.otyp === SPE_HEALING) {
+    if (obj.cls === 'spellbook' || obj.otyp === SPBOOK_NO_NOVEL || obj.otyp === SPE_HEALING || obj.otyp === BOOK_OF_THE_DEAD) {
+        if (isBookOfTheDeadItem(obj)) return named('Book of the Dead');
         if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
         const name = obj.spellName || obj.spell?.name || String(obj.kind || '').replace(/^spellbook(?: of)? /, '');
         if (obj.known === false || (obj.otyp === SPE_HEALING && !obj.cls) || (obj.otyp === SPBOOK_NO_NOVEL && !name)) {
@@ -10963,7 +11241,361 @@ function setTurnTailMessage(message) {
     game._keep_pending_message = 1;
 }
 
-export function processSpellbookStudyOccupation() {
+function itemKindText(item) {
+    return String(item?.actualKind || item?.kind || item?.artifact || item?.name || '').toLowerCase();
+}
+
+function isBellOfOpeningItem(item) {
+    const text = itemKindText(item);
+    return text === 'bell of opening' || item?.otyp === BELL && text === 'silver bell';
+}
+
+function isCandelabrumOfInvocationItem(item) {
+    return item?.otyp === CANDELABRUM_OF_INVOCATION || itemKindText(item) === 'candelabrum of invocation';
+}
+
+function heroOnStairs() {
+    const x = game.u?.ux;
+    const y = game.u?.uy;
+    if (x == null || y == null) return false;
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ === STAIRS || loc?.typ === LADDER || loc?.ladder) return true;
+    return (game.level?.dnstair?.x === x && game.level?.dnstair?.y === y)
+        || (game.level?.upstair?.x === x && game.level?.upstair?.y === y);
+}
+
+function heroOnInvocationSquare() {
+    if (heroOnStairs()) return false;
+    const x = game.u?.ux;
+    const y = game.u?.uy;
+    if (x == null || y == null) return false;
+    const inv = game.level?.invocationPosition || game.level?.inv_pos;
+    if (inv?.x === x && inv?.y === y) return true;
+    return (game.level?.traps || []).some(trap =>
+        trap && trap.tx === x && trap.ty === y && trap.ttyp === VIBRATING_SQUARE);
+}
+
+function inventoryInvocationItems() {
+    const inventory = game.inventory || [];
+    const bell = inventory.find(isBellOfOpeningItem) || null;
+    const candelabrum = inventory.find(isCandelabrumOfInvocationItem) || null;
+    return { bell, candelabrum };
+}
+
+function bellRecentlyRungForInvocation(bell) {
+    if (!bell) return false;
+    const age = bell.age ?? bell.invocationAge ?? bell._invocation_rung_turn;
+    return age != null && (game.moves || 0) - age < 5;
+}
+
+function candelabrumPrimedForInvocation(candelabrum) {
+    return !!candelabrum && (candelabrum.spe ?? 0) === 7 && !!(candelabrum.lamplit || candelabrum.burning);
+}
+
+function performInvocationArea(messages) {
+    messages.push('The floor shakes violently under you!');
+    const x = game.u?.ux;
+    const y = game.u?.uy;
+    if (x == null || y == null) return;
+
+    let wallNearby = false;
+    for (let dx = -6; dx <= 6 && !wallNearby; dx++) {
+        for (let dy = -5; dy <= 5; dy++) {
+            const loc = game.level?.at?.(x + dx, y + dy);
+            if (loc && IS_WALL(loc.typ)) {
+                wallNearby = true;
+                break;
+            }
+        }
+    }
+    if (wallNearby) messages.push('The walls around you begin to bend and crumble!');
+
+    game.level.traps = (game.level?.traps || []).filter(trap =>
+        !(trap.tx === x && trap.ty === y && trap.ttyp === VIBRATING_SQUARE));
+    const loc = game.level?.at?.(x, y);
+    if (loc) {
+        loc.typ = STAIRS;
+        loc.ladder = 2;
+    }
+    if (game.level) game.level.dnstair = { x, y };
+    newsym(x, y);
+    messages.push('You are standing at the top of a stairwell leading down!');
+}
+
+function deadbookCanSeeMonster(mon) {
+    if (!mon || mon.dead || (mon.mhp ?? 1) <= 0 || mon.mx == null || mon.my == null) return false;
+    if (!game.viz_array) return true;
+    return couldsee(mon.mx, mon.my);
+}
+
+function isDeadbookUndead(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    const mlet = data.mlet || mon?.mlet || data.glyph || mon?.glyph;
+    return mlet === 'L' || mlet === 'M' || mlet === 'V' || mlet === 'W' || mlet === 'Z'
+        || mlet === "'" || mlet === 'ghost' || data.vampshifter
+        || /\b(?:ghost|shade|lich|mummy|zombie|vampire|wraith|nazgul|skeleton|ghoul)\b/.test(name);
+}
+
+function pacifyUndeadForDeadbook() {
+    for (const mon of game.level?.monsters || []) {
+        if (!isDeadbookUndead(mon) || !deadbookCanSeeMonster(mon)) continue;
+        mon.mpeaceful = 1;
+        const mal = mon.data?.maligntyp || 0;
+        const align = game.u?.ualign?.type || 0;
+        const close = Math.max(Math.abs((mon.mx || 0) - (game.u?.ux || 0)),
+            Math.abs((mon.my || 0) - (game.u?.uy || 0))) < 4;
+        if (Math.sign(mal) === Math.sign(align) && close) {
+            if (mon.mtame || mon.pet) mon.mtame = Math.min(20, (mon.mtame || 0) + 1);
+            else {
+                mon.pet = true;
+                mon.mtame = 10;
+                ensurePetExtension(mon);
+            }
+            mon.mflee = 0;
+            mon.mfleetim = 0;
+        } else {
+            mon.mflee = 1;
+            mon.mfleetim = 0;
+            clearMonsterTrack(mon);
+        }
+        set_malign(mon);
+        newsym(mon.mx, mon.my);
+    }
+}
+
+function isCorpseItem(item) {
+    return item?.otyp === CORPSE || item?.otyp === 'corpse';
+}
+
+function isEggItem(item) {
+    return item?.otyp === EGG || itemKindText(item) === 'egg';
+}
+
+function deadbookCorpseMonster(item) {
+    const name = item?.corpsenm?.name || '';
+    if (!name) return null;
+    const found = monsterByRndName(name);
+    if (found) return found;
+    const humanoid = DEATH_CORPSE_BY_RACE[name] || ['human', 'elf', 'dwarf', 'gnome', 'orc'].includes(name);
+    if (humanoid) return { name, mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 0, mmove: 12, maligntyp: 0, neuter: false };
+    return item.corpsenm;
+}
+
+function isDeadbookNonlivingData(data) {
+    const mlet = data?.mlet || data?.glyph;
+    return !!data?.nonliving || mlet === 'W' || mlet === 'M' || mlet === 'Z' || mlet === "'";
+}
+
+function deadbookCorpseNoun(item, oneOf = false) {
+    const corpseName = item?.corpsenm?.name || 'monster';
+    return `${corpseName} corpse${oneOf ? 's' : ''}`;
+}
+
+function deadbookCarriedCorpseGlowMessage(item, oneOf = false) {
+    const prefix = oneOf ? 'One of your ' : 'Your ';
+    return `${prefix}${deadbookCorpseNoun(item, oneOf)} glows iridescently.`;
+}
+
+function deadbookRevivalMessage(mon) {
+    const verb = isDeadbookNonlivingData(mon?.data) ? 'reanimates' : 'comes alive';
+    return `It suddenly ${verb}!`;
+}
+
+function removeDeadbookRevivedItem(item, source) {
+    if (!item) return;
+    if ((item.quan || 1) > 1) {
+        item.quan--;
+        item.line = normalInventoryLine({ ...item, line: '' });
+        return;
+    }
+    if (source === 'inventory') {
+        game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
+        game._pet_food_scan_inventory = game.inventory;
+    } else if (source === 'floor') {
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== item);
+        newsym(item.ox, item.oy);
+    }
+}
+
+function deadbookAttachEggHatchTimer(item) {
+    if (!isEggItem(item) || !item.corpsenm?.name || item.eggHatchTurn) return false;
+    if ((game._genocided_monsters || []).includes(item.corpsenm.name)) return false;
+    for (let i = 151; i <= 200; i++) {
+        if (rnd(i) > 150) {
+            item.eggHatchTurn = (game.moves || 1) + i;
+            item._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
+            break;
+        }
+    }
+    item._egg_hatch_consumed = true;
+    return !!item.eggHatchTurn;
+}
+
+async function reviveDeadbookCorpseItem(item, source) {
+    if (!isCorpseItem(item)) return null;
+    const data = deadbookCorpseMonster(item);
+    if (!data?.name) return null;
+    const x = item.ox || game.u?.ux || 0;
+    const y = item.oy || game.u?.uy || 0;
+    const flags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH;
+    const mon = await makemon(data, x, y, flags);
+    if (!mon) return null;
+
+    if ((item.spe & CORPSTAT_GENDER) === CORPSTAT_MALE) mon.female = false;
+    else if ((item.spe & CORPSTAT_GENDER) === CORPSTAT_FEMALE) mon.female = true;
+    mon.mrevived = 1;
+    mon.mundetected = 0;
+    removeDeadbookRevivedItem(item, source);
+    newsym(mon.mx, mon.my);
+    return mon;
+}
+
+async function unturnDeadHeroInventoryFromBook() {
+    const messages = [];
+    let revived = 0;
+    for (const item of [...(game.inventory || [])]) {
+        if (isEggItem(item)) deadbookAttachEggHatchTimer(item);
+        if (!isCorpseItem(item)) continue;
+
+        const oneOf = (item.quan || 1) > 1;
+        const mon = await reviveDeadbookCorpseItem(item, 'inventory');
+        if (!mon) continue;
+        revived++;
+        messages.push(deadbookCarriedCorpseGlowMessage(item, oneOf));
+        messages.push(deadbookRevivalMessage(mon));
+    }
+    if (revived) game._deadbook_unturned_inventory = (game._deadbook_unturned_inventory || 0) + revived;
+    return messages;
+}
+
+function deadbookFloorCorpseAt(x, y) {
+    return (game.level?.objects || []).find(obj => isCorpseItem(obj) && obj.ox === x && obj.oy === y) || null;
+}
+
+async function mkundeadFromBook() {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const count = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
+    let spawned = 0;
+    let revived = 0;
+
+    for (let i = 0; i < count; i++) {
+        const data = morgueMonster();
+        if (!data) continue;
+        const spot = enextoMonsterSpot(x, y, data);
+        if (!spot) continue;
+
+        const corpse = deadbookFloorCorpseAt(spot.x, spot.y);
+        if (corpse && await reviveDeadbookCorpseItem(corpse, 'floor')) {
+            revived++;
+            continue;
+        }
+
+        const mon = await makemon(data, spot.x, spot.y, NO_MINVENT);
+        if (mon) {
+            spawned++;
+            newsym(mon.mx, mon.my);
+        }
+    }
+
+    game.level ??= {};
+    game.level.flags ??= {};
+    game.level.flags.graveyard = true;
+    game._deadbook_mkundead_spawned = (game._deadbook_mkundead_spawned || 0) + spawned;
+    game._deadbook_mkundead_revived = (game._deadbook_mkundead_revived || 0) + revived;
+}
+
+async function raiseDeadFromBook() {
+    const messages = [];
+    if (!rn2(3)) {
+        const masterLich = monsterByRndName('master lich');
+        const nalfeshnee = monsterByRndName('nalfeshnee');
+        const mon = (masterLich && await makemon(masterLich, game.u?.ux || 0, game.u?.uy || 0, NO_MINVENT))
+            || (nalfeshnee && await makemon(nalfeshnee, game.u?.ux || 0, game.u?.uy || 0, NO_MINVENT));
+        if (mon) {
+            mon.mpeaceful = 0;
+            mon.pet = false;
+            mon.mtame = 0;
+            set_malign(mon);
+            newsym(mon.mx, mon.my);
+        }
+    }
+    messages.push(...await unturnDeadHeroInventoryFromBook());
+    await mkundeadFromBook();
+    game._deadbook_raise_dead_pending = 1;
+    return messages;
+}
+
+async function bookOfTheDeadStudyMessage(item) {
+    if (item) {
+        item.known = true;
+        item.kind = 'Book of the Dead';
+        item.actualKind = 'Book of the Dead';
+        item.line = normalInventoryLine({ ...item, line: '' });
+    }
+
+    const messages = ['You turn the pages of the Book of the Dead...'];
+    if (heroOnInvocationSquare()) {
+        const { bell, candelabrum } = inventoryInvocationItems();
+        if (item?.cursed) {
+            messages.push(game.u?.blind
+                ? 'The Book seems to be ignoring you!'
+                : "The runes appear scrambled.  You can't read them!");
+            return messages.join('  ');
+        }
+        if (!bell || !candelabrum) {
+            messages.push('A chill runs down your spine.');
+            if (!bell) messages.push('You hear a faint chime...');
+            if (!candelabrum) messages.push("Vlad's doppelganger is amused.");
+            return messages.join('  ');
+        }
+
+        const candelabrumPrimed = candelabrumPrimedForInvocation(candelabrum);
+        const bellPrimed = bellRecentlyRungForInvocation(bell);
+        const relicCursed = (candelabrumPrimed && candelabrum.cursed) || (bellPrimed && bell.cursed);
+        if (relicCursed) {
+            messages.push('The invocation fails!');
+            messages.push('At least one of your relics is cursed...');
+            return messages.join('  ');
+        }
+        if (candelabrumPrimed && bellPrimed) {
+            const soon = d(2, 6);
+            performInvocationArea(messages);
+            game.u.uevent ??= {};
+            game.u.uevent.invoked = 1;
+            game.u.uevent.udemigod = 1;
+            if (!game.u.udg_cnt || game.u.udg_cnt > soon) game.u.udg_cnt = soon;
+            game._chronicle_entries ??= [];
+            game._chronicle_entries.push({ turn: game.moves || 1, text: 'performed the invocation ritual' });
+            return messages.join('  ');
+        }
+
+        messages.push('You have a feeling that something is amiss...');
+        messages.push('You raised the dead!');
+        messages.push(...await raiseDeadFromBook());
+    } else if (item?.cursed) {
+        messages.push('You raised the dead!');
+        messages.push(...await raiseDeadFromBook());
+    } else if (item?.blessed) {
+        pacifyUndeadForDeadbook();
+    } else if (!item?.blessed) {
+        switch (rn2(3)) {
+        case 0:
+            messages.push('Your ancestors are annoyed with you!');
+            break;
+        case 1:
+            messages.push('The headstones in the cemetery begin to move!');
+            break;
+        default:
+            messages.push('Oh my!  Your name appears in the book!');
+            break;
+        }
+    }
+    return messages.join('  ');
+}
+
+export async function processSpellbookStudyOccupation() {
     const study = game._spellbook_study_occupation;
     if (!study) return;
     if (study.turns > 0) {
@@ -10978,6 +11610,12 @@ export function processSpellbookStudyOccupation() {
         (spell.name || spell.spellName || spell.spell?.name) === name);
 
     exerciseAttribute(A_WIS, true);
+    if (study.bookOfDead || isBookOfTheDeadItem(item)) {
+        setTurnTailMessage(await bookOfTheDeadStudyMessage(item));
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 2);
+        return;
+    }
+
     let message;
     if (knownSpell) {
         message = `Your knowledge of the "${name}" spell is keener.`;
@@ -11858,7 +12496,7 @@ async function moveHero(dx, dy) {
             const spellbookInfo = pickedObject.otyp === SPE_HEALING
                 ? { cls: 'spellbook', spellName: 'healing', spell: { name: 'healing', level: 1, skill: 'healing' }, known: false, bknown: false }
                 : {};
-            game.inventory = [...(game.inventory || []), {
+            const pickedItem = {
                 ...pickedObject,
                 ...spellbookInfo,
                 cls: pickedObject.cls || spellbookInfo.cls || (pickedObject.otyp === DART ? 'weapon'
@@ -11873,7 +12511,9 @@ async function moveHero(dx, dy) {
                 letter,
                 kind: pickedObject.kind || pickupObjectName({ ...pickedObject, quan: 1 }),
                 line: `${letter} - ${amount}`,
-            }];
+            };
+            game.inventory = [...(game.inventory || []), pickedItem];
+            maybeAttachCarriedFigurineTimeout(pickedItem);
             game.level.objects = (game.level.objects || []).filter(obj => obj !== pickedObject);
             game._pet_food_scan_inventory = game.inventory;
             newsym(newx, newy);
@@ -12940,7 +13580,7 @@ async function moveHero(dx, dy) {
         const spellbookInfo = pickedObject.otyp === SPE_HEALING
             ? { cls: 'spellbook', spellName: 'healing', spell: { name: 'healing', level: 1, skill: 'healing' }, known: false, bknown: false }
             : {};
-        game.inventory = [...(game.inventory || []), {
+        const pickedItem = {
             ...pickedObject,
             ...spellbookInfo,
             cls: pickedObject.cls || spellbookInfo.cls || (pickedObject.otyp === DART ? 'weapon'
@@ -12957,7 +13597,9 @@ async function moveHero(dx, dy) {
             letter,
             kind: pickedObject.kind || pickupObjectName({ ...pickedObject, quan: 1 }),
             line: `${letter} - ${amount}`,
-        }];
+        };
+        game.inventory = [...(game.inventory || []), pickedItem];
+        maybeAttachCarriedFigurineTimeout(pickedItem);
         game.level.objects = (game.level.objects || []).filter(obj => obj !== pickedObject);
         game._pet_food_scan_inventory = game.inventory;
         newsym(newx, newy);
@@ -13548,7 +14190,7 @@ export async function rhack(_cmd) {
                     ? obj.letter
                     : nextInventoryLetter();
                 const amount = pickupObjectPhrase(obj);
-                game.inventory = [...(game.inventory || []), {
+                const pickedItem = {
                     ...obj,
                     cls: obj.cls || (obj.otyp === DART ? 'weapon'
                         : obj.otyp === GEM_CLASS ? 'gem'
@@ -13561,7 +14203,9 @@ export async function rhack(_cmd) {
                     letter,
                     kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
                     line: `${letter} - ${amount}`,
-                }];
+                };
+                game.inventory = [...(game.inventory || []), pickedItem];
+                maybeAttachCarriedFigurineTimeout(pickedItem);
                 messages.push(`${letter} - ${amount}.`);
             }
             game._pet_food_scan_inventory = game.inventory;
@@ -13834,6 +14478,43 @@ export async function rhack(_cmd) {
         else if (key >= 32) game._call_scroll_text = `${game._call_scroll_text || ''}${ch}`;
         const text = game._call_scroll_text || '';
         await setMessage(`Call a scroll labeled ${game._call_scroll_label || 'ZELGO MER'}:${text ? ` ${text}` : ''}`);
+        return;
+    }
+
+    if (game._command_mode === 'callSpellbookAfterMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._call_spellbook_text = '';
+            await setMessage(`Call ${articleFor(game._call_spellbook_prompt_noun || 'spellbook')}:`);
+            game._command_mode = 'callSpellbookText';
+        }
+        return;
+    }
+
+    if (game._command_mode === 'callSpellbookText') {
+        if (ch === '\r' || ch === '\n') {
+            recordCalledSpellbook(game._call_spellbook_text || '');
+            const moveCost = clearSpellbookTryCall();
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            game.context.move = moveCost;
+            return;
+        }
+        if (ch === '\x1b') {
+            const moveCost = clearSpellbookTryCall();
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            game.context.move = moveCost;
+            return;
+        }
+        const code = typeof key === 'number' ? key : ch.charCodeAt(0);
+        if (code === 8 || code === 127) game._call_spellbook_text = (game._call_spellbook_text || '').slice(0, -1);
+        else if (code >= 32) game._call_spellbook_text = `${game._call_spellbook_text || ''}${ch}`;
+        const text = game._call_spellbook_text || '';
+        await setMessage(`Call ${articleFor(game._call_spellbook_prompt_noun || 'spellbook')}:${text ? ` ${text}` : ''}`);
         return;
     }
 
@@ -14908,6 +15589,7 @@ export async function rhack(_cmd) {
                             glyph: '[',
                             color: cloak.color ?? CLR_BROWN,
                         };
+                        stopCarriedFigurineTimerOnLeave(dropped);
                         removeInventoryItem(cloak);
                         game.level?.objects?.push(dropped);
                         if (game.u) game.u.uac = (game.u.uac ?? 10) + 1;
@@ -14927,6 +15609,7 @@ export async function rhack(_cmd) {
                             glyph: tool.glyph || '(',
                             color: tool.color ?? NO_COLOR,
                         };
+                        stopCarriedFigurineTimerOnLeave(dropped);
                         removeInventoryItem(tool);
                         game.level?.objects?.push(dropped);
                         newsym(dropped.ox, dropped.oy);
@@ -14954,6 +15637,8 @@ export async function rhack(_cmd) {
 	                            delete stolen.alternate;
 	                            stolen.letter = game._nymph_steal_after_more.itemLetter;
 	                            stolen.wasStolen = true;
+                            stopCarriedFigurineTimerOnLeave(stolen);
+                            maybeAttachCarriedFigurineTimeout(stolen);
 	                            mon.minvent = [stolen, ...(mon.minvent || [])];
 	                        }
                         removeInventoryItem(item);
@@ -14977,8 +15662,10 @@ export async function rhack(_cmd) {
                             glyph: item.glyph || ')',
                             color: item.color ?? NO_COLOR,
                         };
+                        stopCarriedFigurineTimerOnLeave(dropped);
                         removeInventoryItem(item);
                         if (action.whereTo === 3 && action.mon) {
+                            maybeAttachCarriedFigurineTimeout(dropped);
                             action.mon.minvent = [dropped, ...(action.mon.minvent || [])];
                         } else {
                             dropped.ox = action.whereTo === 1 ? action.mon?.mx : game.u?.ux || 0;
@@ -15284,6 +15971,7 @@ export async function rhack(_cmd) {
                         glyph: item.cls === 'armor' ? '[' : item.glyph || ')',
                         color: item.color ?? (item.cls === 'armor' ? CLR_BROWN : CLR_CYAN),
                     };
+                    stopCarriedFigurineTimerOnLeave(dropped);
                     removeInventoryItem(item);
                     game.level?.objects?.push(dropped);
                 }
@@ -19125,7 +19813,7 @@ export async function rhack(_cmd) {
             game.context.move = shouldCall ? 0 : 1;
             return;
         }
-        if (item?.cls === 'spellbook') {
+        if (item?.cls === 'spellbook' || item?.otyp === BOOK_OF_THE_DEAD) {
             if (isBlankSpellbookItem(item)) {
                 item.known = true;
                 item.kind = 'spellbook of blank paper';
@@ -19136,50 +19824,47 @@ export async function rhack(_cmd) {
                 game.context.move = 1;
                 return;
             }
-            const name = item.spellName || item.spell?.name || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
+            const bookOfDead = isBookOfTheDeadItem(item);
+            const name = bookOfDead ? 'Book of the Dead'
+                : item.spellName || item.spell?.name || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
             const knownSpell = (game._known_spells || []).some(spell =>
-                (spell.name || spell.spellName || spell.spell?.name) === name);
+                !bookOfDead && (spell.name || spell.spellName || spell.spell?.name) === name);
             if (knownSpell) {
                 await setMessage(`You know "${name || 'healing'}" quite well already.`, true);
                 game._command_mode = 'readRepeatMore';
                 return;
             }
-            const level = SPELLBOOK_LEVELS[name] || item.level || item.spell?.level || 1;
-            const baseDelay = SPELLBOOK_DELAYS[name] || 1;
+            const level = bookOfDead ? 7 : (SPELLBOOK_LEVELS[name] || item.level || item.spell?.level || 1);
+            const baseDelay = bookOfDead ? 20 : (SPELLBOOK_DELAYS[name] || 1);
             const studyDelay = level <= 2 ? baseDelay : level <= 4 ? (level - 1) * baseDelay
                 : level <= 6 ? level * baseDelay : 8 * baseDelay;
             const stats = game.u?.acurr?.a || [];
             const readAbility = (stats[3] ?? 10) + 4 + Math.trunc((game.u?.ulevel || 1) / 2) - 2 * level;
-            const tooHard = item.cursed || (!item.blessed && rnd(20) > readAbility);
+            const tooHard = !bookOfDead && (item.cursed || (!item.blessed && rnd(20) > readAbility));
             if (tooHard) {
-                let message = 'These runes were just too much to comprehend.';
-                const effect = rn2(level);
-                if (effect === 0) message = 'You feel a wrenching sensation.';
-                else if (effect === 1) {
-                    message = 'You feel threatened.';
-                    for (const mon of game.level?.monsters || []) {
-                        mon.msleeping = 0;
-                        if (mon.mcanmove === false && !rn2(5)) {
-                            mon.mfrozen = 0;
-                            mon.mcanmove = true;
-                        }
-                    }
-                } else if (effect === 2) message = 'You are blinded!';
-                if (!rn2(3)) {
+                const result = cursedBookStudyEffect(level);
+                const messages = [...result.messages];
+                let shouldCall = false;
+                if (result.gone || !rn2(3)) {
+                    shouldCall = shouldTryCallSpellbook(item, name);
+                    if (shouldCall) prepareSpellbookTryCall(item, studyDelay);
                     removeInventoryItem(item);
-                    message += '  The spellbook crumbles to dust!';
+                    if (!result.gone) messages.push('The spellbook crumbles to dust!');
                 }
                 game._helpless_time = Math.max(game._helpless_time || 0, studyDelay);
                 game._wake_message = 'You can move again.';
-                await setMessage(message);
-                game._command_mode = null;
-                game.context.move = studyDelay;
+                await setMessage(messages.join('  '), shouldCall || result.more || messages.length > 1);
+                game._command_mode = shouldCall ? 'callSpellbookAfterMore' : null;
+                game.context.move = shouldCall ? 0 : studyDelay;
                 return;
             }
             if (heroIsConfused()) {
                 const messages = [];
-                if (!isBookOfTheDeadItem(item) && !rn2(3)) {
+                let shouldCall = false;
+                if (!rn2(3) && !isBookOfTheDeadItem(item)) {
                     messages.push('Being confused you have difficulties in controlling your actions.');
+                    shouldCall = shouldTryCallSpellbook(item, name);
+                    if (shouldCall) prepareSpellbookTryCall(item, studyDelay);
                     removeInventoryItem(item);
                     messages.push('You accidentally tear the spellbook to pieces.');
                 } else {
@@ -19187,9 +19872,9 @@ export async function rhack(_cmd) {
                 }
                 game._helpless_time = Math.max(game._helpless_time || 0, studyDelay);
                 game._wake_message = 'You can move again.';
-                await setMessage(messages.join('  '), messages.length > 1);
-                game._command_mode = null;
-                game.context.move = studyDelay;
+                await setMessage(messages.join('  '), messages.length > 1 || shouldCall);
+                game._command_mode = shouldCall ? 'callSpellbookAfterMore' : null;
+                game.context.move = shouldCall ? 0 : studyDelay;
                 return;
             }
             game._spellbook_study_occupation = {
@@ -19197,9 +19882,10 @@ export async function rhack(_cmd) {
                 name,
                 level,
                 skill: item.spell?.skill || SPELL_CATEGORIES[name] || 'enchantment',
+                bookOfDead,
                 turns: Math.max(1, studyDelay - 1),
             };
-            await setMessage('You begin to memorize the runes.');
+            await setMessage(`You begin to ${bookOfDead ? 'recite' : 'memorize'} the runes.`);
             game._command_mode = null;
             game.context.move = studyDelay + 1;
             return;
@@ -20767,6 +21453,12 @@ export async function rhack(_cmd) {
         }
         const name = inventoryItemName(item).toLowerCase();
         game._command_mode = null;
+        if (isFigurineObject(item)) {
+            game._apply_figurine_letter = item.letter;
+            await setMessage('In what direction?');
+            game._command_mode = 'applyFigurineDirection';
+            return;
+        }
         if (name.includes('cream pie')) {
             rnd(25);
             game.u.blind = 1;
@@ -21184,6 +21876,7 @@ export async function rhack(_cmd) {
                         }
                         messages.push(`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the bag.`);
                     } else {
+                        stopCarriedFigurineTimerOnLeave(selectedEntry.item);
                         game.inventory = (game.inventory || []).filter(item => item !== selectedEntry.item);
                         updateWornDisplacement();
                         bag.contents.push(selectedEntry.item);
@@ -21231,6 +21924,7 @@ export async function rhack(_cmd) {
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch && invItem !== bag);
         if (item) {
+            stopCarriedFigurineTimerOnLeave(item);
             game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
             updateWornDisplacement();
             bag.contents.push(item);
@@ -21292,6 +21986,7 @@ export async function rhack(_cmd) {
                 } else {
                     bag.contents = (bag.contents || []).filter(content => content !== taken.item);
                     game.inventory = [...(game.inventory || []), taken.item];
+                    maybeAttachCarriedFigurineTimeout(taken.item);
                     await setMessage(`${taken.item.line || `${taken.item.letter || '?'} - ${inventoryItemName(taken.item)}`}.`);
                 }
                 game.context.move = 1;
@@ -21329,6 +22024,7 @@ export async function rhack(_cmd) {
         } else if (item) {
             bag.contents = bag.contents.filter(content => content !== item);
             game.inventory = [...(game.inventory || []), item];
+            maybeAttachCarriedFigurineTimeout(item);
             await setMessage(`${item.line || `${item.letter || '?'} - ${inventoryItemName(item)}`}.`);
             game.context.move = 1;
         }
@@ -21610,6 +22306,7 @@ export async function rhack(_cmd) {
             item.line = `${letter} - ${displayQuan > 1 ? `${displayQuan} ${visibleName}` : article ? `${article} ${visibleName}` : visibleName}`;
             game.inventory ??= [];
             game.inventory.push(item);
+            maybeAttachCarriedFigurineTimeout(item);
             game._pet_food_scan_inventory = game.inventory;
             let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
             for (const invItem of game.inventory || []) {
@@ -21678,6 +22375,7 @@ export async function rhack(_cmd) {
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (item) {
+            stopCarriedFigurineTimerOnLeave(item);
             game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
             updateWornDisplacement();
             game._pet_food_scan_inventory = game.inventory;
@@ -21817,6 +22515,39 @@ export async function rhack(_cmd) {
             return;
         }
         await setMessage(`You ${game.u?.ublind ? 'feel' : 'see'} no door there.`);
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'applyFigurineDirection') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_figurine_letter);
+        game._command_mode = null;
+        game._apply_figurine_letter = null;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage('Never mind.');
+            return;
+        }
+        if (!item || !isFigurineObject(item)) return;
+        const dir = figurineApplyDirection(ch);
+        if (!dir) return;
+        const tx = (game.u?.ux || 0) + dir.dx;
+        const ty = (game.u?.uy || 0) + dir.dy;
+        const check = figurineLocationCheck(item, tx, ty);
+        if (!check.ok) {
+            await setMessage(check.message);
+            game.context.move = 1;
+            return;
+        }
+        const action = (dir.dx || dir.dy) ? 'set the figurine beside you'
+            : dir.dz < 0 ? 'toss the figurine into the air'
+                : (Is_waterlevel(game.u?.uz) || IS_POOL(game.level?.at(tx, ty)?.typ))
+                    ? 'release the figurine'
+                    : 'set the figurine on the ground';
+        const prefix = `You ${action} and it ${game.u?.ublind ? 'supposedly ' : ''}transforms.`;
+        const result = await makeFigurineFamiliar(item, tx, ty, { quietly: false });
+        const extra = [result.message].filter(Boolean).join('  ');
+        removeInventoryItem(item);
+        await setMessage(extra ? `${prefix}  ${extra}` : prefix);
         game.context.move = 1;
         return;
     }
@@ -22206,7 +22937,7 @@ export async function rhack(_cmd) {
                 }
                 const letter = nextInventoryLetter();
                 const amount = pickupObjectPhrase(obj);
-                game.inventory = [...(game.inventory || []), {
+                const pickedItem = {
                     ...obj,
                     cls: obj.cls || (obj.otyp === GEM_CLASS ? 'gem'
                         : obj.otyp === SCROLL_CLASS ? 'scroll'
@@ -22214,7 +22945,9 @@ export async function rhack(_cmd) {
                     letter,
                     kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
                     line: `${letter} - ${amount}`,
-                }];
+                };
+                game.inventory = [...(game.inventory || []), pickedItem];
+                maybeAttachCarriedFigurineTimeout(pickedItem);
                 messages.push(`${letter} - ${amount}.`);
             }
             if (container) container.contents = (container.contents || []).filter(item => !picked.some(entry => entry.item === item));
@@ -22436,14 +23169,15 @@ export async function rhack(_cmd) {
                 let fountainMore = false;
 
                 if (game._dip_object === 'e') fountainMessage = 'Nothing seems to happen.';
-                else if (game._dip_object === 'd') {
-                    const water = (game.inventory || []).find(item => item.letter === 'd');
+                else if (game._dip_object === 'd' && isWaterPotion(item)) {
+                    const water = item;
                     if (water) {
                         water.kind = 'unholy water';
                         water.plural = 'potions of unholy water';
                         water.blessed = false;
                         water.cursed = true;
                         water.line = 'd - 4 potions of unholy water';
+                        syncCarriedFigurineTransformTimer(water);
                     }
                     game._keep_pending_message = 1;
                 } else if (fate === 22) {
@@ -22463,11 +23197,13 @@ export async function rhack(_cmd) {
                     if (item?.cls !== 'coin') {
                         item.cursed = true;
                         item.blessed = false;
+                        syncCarriedFigurineTransformTimer(item);
                     }
                     game._keep_pending_message = 1;
                 } else if (fate >= 17 && fate <= 20) {
                     if (item?.cursed) {
                         item.cursed = false;
+                        syncCarriedFigurineTransformTimer(item);
                         fountainMessage = 'The water glows for a moment.';
                     } else {
                         fountainMessage = 'A feeling of loss comes over you.';
@@ -24897,6 +25633,7 @@ export async function rhack(_cmd) {
             glyph: item.cls === 'food' ? '%' : item.glyph || (item.cls === 'gem' ? '*' : ')'),
             color: item.cls === 'food' ? CLR_ORANGE : item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
         };
+        stopCarriedFigurineTimerOnLeave(thrownObject);
 	        const existingStack = (game.level?.objects || []).find(obj => !obj.transientProjectile
 	            && obj.ox === ox && obj.oy === oy && obj.cls === thrownObject.cls
 	            && obj.kind === thrownObject.kind && obj.otyp === thrownObject.otyp);
@@ -25431,6 +26168,7 @@ export async function rhack(_cmd) {
             const existingFood = (objectHere.otyp === FOOD_CLASS || objectHere.cls === 'food')
                 && (game.inventory || []).find(item =>
                     item.cls === 'food' && !item.worn && !item.wielded
+                    && !(isEggItem(item) || isEggItem(objectHere))
                     && pickupObjectName({ ...item, quan: 1 }) === name);
             if (existingFood) {
                 const pickedKnown = objectHere.bknown === true;
@@ -25467,7 +26205,7 @@ export async function rhack(_cmd) {
                 : objectHere.wasStolen && objectHere.letter
                 ? objectHere.letter
                 : nextInventoryLetter();
-            game.inventory = [...(game.inventory || []), {
+            const pickedItem = {
                 ...objectHere,
                 letter,
                 kind: objectHere.kind || name,
@@ -25475,7 +26213,9 @@ export async function rhack(_cmd) {
                 unpaid: shopPrice > 0,
                 unpaidPrice: shopPrice > 0 ? shopPrice : undefined,
                 line: `${letter} - ${amount}${unpaidSuffix}`,
-            }];
+            };
+            game.inventory = [...(game.inventory || []), pickedItem];
+            maybeAttachCarriedFigurineTimeout(pickedItem);
             if (shopkeeperForPrice) shopkeeperForPrice.billct = Math.max(shopkeeperForPrice.billct || 0, 1);
             game._pet_food_scan_inventory = game.inventory;
             game.level.objects = (game.level.objects || []).filter(obj => obj !== objectHere);
