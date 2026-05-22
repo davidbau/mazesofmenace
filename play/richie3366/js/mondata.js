@@ -4,6 +4,12 @@
 
 import { game } from './gstate.js';
 import {
+    MONS_MLET,
+    MONS_RNDMONST_MFLAGS1,
+    MONS_MFLAGS2,
+    MONS_MLEVEL,
+} from './mons_rndmonst_ini_inv_data.js';
+import {
     XKILL_NOCORPSE,
     PM_FIRE_ELEMENTAL,
     PM_SALAMANDER,
@@ -67,6 +73,32 @@ export function stubPermonstForCorpsenm(mnum) {
     else if (m === PM_LICHEN) mlet = S_FUNGUS;
     /* C: permonst `cnutrit` / `mconveys` / `geno` — shk.c corpse/tin/egg pricing; eat.c intrinsic_possible */
     return { ...permonstHuman, mlet, mnum: m, cnutrit: 0, mconveys: 0, geno: 0 };
+}
+
+/** C: mondata.h **`is_human(ptr)`** — **`M2_HUMAN`**. */
+const M2_HUMAN = 0x00000008;
+
+/**
+ * C: **`mons[mndx]`** permonst fields used by **`mon_allowflags`** / **`mfndpos`** / **`mcalcmove`**.
+ * @param {number} mndx
+ * @returns {Permonst}
+ */
+export function permonstFromMndxLikeC(mndx) {
+    const m = mndx | 0;
+    return {
+        ...permonstHuman,
+        mnum: m,
+        mlet: MONS_MLET[m] ?? S_HUMAN,
+        mflags1: MONS_RNDMONST_MFLAGS1[m] ?? 0,
+        mflags2: MONS_MFLAGS2[m] ?? 0,
+        mlevel: MONS_MLEVEL[m] ?? 1,
+        geno: 0,
+    };
+}
+
+/** C: mondata.h **`is_human(ptr)`**. */
+export function isHumanPtrLikeC(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_HUMAN) !== 0;
 }
 
 /**
@@ -156,10 +188,14 @@ const S_GHOST = 54;
 /** C: monflag.h MZ_SMALL — used by bear trap and encumber paths. */
 export { MZ_SMALL };
 
-/** C: monflag.h M2_UNDEAD / M2_WERE / M2_DEMON */
+/** C: monflag.h M2_UNDEAD / M2_WERE / M2_DEMON / M2_WANDER */
 const M2_UNDEAD = 0x00000002;
 const M2_WERE = 0x00000004;
 const M2_DEMON = 0x00000100;
+const M2_WANDER = 0x00800000;
+
+/** C: objects.h GOLD_PIECE — steal.c findgold(). */
+const GOLD_PIECE = 466;
 
 /**
  * C: mondata.h is_undead(ptr) / is_were(ptr) / is_demon(ptr)
@@ -175,6 +211,22 @@ export function isWerePtr(ptr) {
 
 export function isDemonPtr(ptr) {
     return ((ptr?.mflags2 ?? 0) & M2_DEMON) !== 0;
+}
+
+/** C: mondata.h is_wanderer(ptr). */
+export function isWandererPtr(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_WANDER) !== 0;
+}
+
+/**
+ * C: steal.c findgold(chain) — first GOLD_PIECE on an object chain.
+ * @param {{ otyp?: number, nobj?: unknown } | null | undefined} chain
+ */
+export function findgoldChainLikeC(chain) {
+    for (let o = chain; o; o = o.nobj) {
+        if ((o.otyp | 0) === GOLD_PIECE) return o;
+    }
+    return null;
 }
 
 /** C: monst.h **`is_vampshifter`** — **`cham`** vs **`PM_VAMPIRE`** / **`PM_VAMPIRE_LEADER`** / **`PM_VLAD_THE_IMPALER`** (**`monsters.h`** NH 5.0). */
@@ -380,6 +432,35 @@ export function breathless(/** @type {Permonst} */ ptr) {
 /** C: mondata.h `haseyes(ptr)` — true unless **`M1_NOEYES`**. */
 export function haseyes(/** @type {Permonst|null|undefined} */ ptr) {
     return ((ptr?.mflags1 ?? 0) & M1_NOEYES) === 0;
+}
+
+/** C: mondata.c `can_track(ptr)` — Excalibur or **`haseyes`** (Excalibur wield when artifact path is ported). */
+export function canTrackPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return haseyes(ptr);
+}
+
+/** C: monflag.h `M2_GREEDY`. */
+const M2_GREEDY = 0x10000000;
+
+export function likesGoldPtrLikeC(/** @type {Permonst|null|undefined} */ ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_GREEDY) !== 0;
+}
+
+/**
+ * C: hack.c `cant_squeeze_thru(mon)` — subset (no **`curr_mon_load`** / steed fog).
+ * @param {Record<string, unknown>} mtmp
+ * @returns {0|1|2|3}
+ */
+export function cantSqueezeThruMonsterLikeC(mtmp) {
+    const ptr = raceptr(mtmp);
+    if (passesWalls(ptr)) return 0;
+    if (
+        bigmonst(ptr)
+        && !(amorphous(ptr) || isWhirly(ptr) || noncorporeal(ptr) || slithy(ptr))
+    ) {
+        return 1;
+    }
+    return 0;
 }
 
 /**

@@ -4,6 +4,7 @@
 import { MSLOW, MFAST, NORMAL_SPEED } from './const.js';
 import { rn2 } from './rng.js';
 import { raceptr } from './mondata.js';
+import { MONS_MMOVE } from './mons_rndmonst_ini_inv_data.js';
 
 /**
  * C: mon.c **`mcalcmove(mon, m_moving)`** — speed for **`mon->movement`** allocation (**subset**).
@@ -15,7 +16,11 @@ import { raceptr } from './mondata.js';
  * @returns {number}
  */
 export function mcalcMoveLikeC(mon, mMoving, g) {
-    let mmove = (raceptr(mon)?.mmove) | 0;
+    const mndx = mon.mnum | 0;
+    /* **`mcalcmove`** runs before **`moves++`**; first allocation uses **`raceptr`** ( **`permonstHuman.mmove`** until **`MONS_MMOVE`** wired on permonst). */
+    let mmove = ((g?.moves | 0) === 1)
+        ? ((raceptr(mon)?.mmove) | 0)
+        : ((MONS_MMOVE[mndx] ?? raceptr(mon)?.mmove) | 0);
 
     if ((mon.mspeed | 0) === MSLOW) {
         if (mmove < NORMAL_SPEED) mmove = Math.trunc((2 * mmove + 1) / 3);

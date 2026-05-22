@@ -2651,7 +2651,7 @@ const WIZ_SIEGE_MONSTERS = [
 function wizX(x) { return WIZ_XSTART + x; }
 function wizY(y) { return WIZ_YSTART + y; }
 
-const ARC_LOCA_XSTART = 2;
+const ARC_LOCA_XSTART = 3;
 const ARC_LOCA_YSTART = 1;
 const ARC_LOCA_ROWS = [
     '............................................................................',
@@ -2992,6 +2992,23 @@ const BIGRM_RANDOM_MONSTER_TOTAL = BIGRM_RANDOM_MONSTERS.reduce((sum, mon) => su
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
+function canHideUnderObjAt(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL) return false;
+    const trap = (game.level?.traps || []).find(item => item.tx === x && item.ty === y);
+    if (trap && !is_pit(trap.ttyp)) return false;
+
+    const stack = (game.level?.objects || [])
+        .filter(obj => !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y)
+        .reverse();
+    let coins = 0;
+    for (const obj of stack) {
+        if (obj.otyp !== GOLD_PIECE && obj.cls !== 'coin' && obj.cls !== COIN_CLASS) return true;
+        coins += obj.quan || 1;
+        if (coins >= 10) return true;
+    }
+    return false;
+}
 
 // Stairway list management
 function stairway_add(x, y, up, isladder, dest) {
@@ -3255,7 +3272,7 @@ function artifactBaseFields(def) {
         glyph: def.glyph,
         kind: def.base,
         actualKind: def.base,
-        known: true,
+        dknown: true,
     };
 }
 
@@ -5548,7 +5565,7 @@ function m_initweap(ptr) {
     }
 }
 
-function set_mimic_sym_rng(mon) {
+export function set_mimic_sym_rng(mon) {
     if (mon.data?.mlet !== S_MIMIC) return;
 
     const loc = game.level?.at(mon.mx, mon.my);
@@ -5838,7 +5855,7 @@ export async function makemon(mdat, x, y, mmflags) {
 
     if (game.in_mklev && (ptr.mlet === S_SPIDER || ptr.mlet === S_SNAKE) && x && y) {
         mkobj_at(RANDOM_CLASS, x, y, true);
-        if (ptr.hidesUnder) mon.mundetected = true;
+        if (ptr.hidesUnder) mon.mundetected = canHideUnderObjAt(x, y);
     }
     if (game.in_mklev && ptr.mlet === ';') mon.mundetected = true;
     if (ptr.mlet === S_NYMPH) {
@@ -6104,11 +6121,7 @@ async function maketrap(x, y, typ) {
         const statue = mksobj_at(STATUE, x, y, false, false);
         statue.contents = [];
         statue.corpsenm = ptr;
-        const objectCount = game.level?.objects?.length ?? 0;
         const mon = await makemon(ptr, 0, 0, MM_NOGRP);
-        if (game._arc_loca_level_generation && mon?.mundetected)
-            for (const obj of game.level.objects.slice(objectCount))
-                if (obj.ox === mon.mx && obj.oy === mon.my) obj.ox--;
         if (mon) {
             game.level.monsters = game.level.monsters.filter(candidate => candidate !== mon);
             for (const obj of mon.minvent || []) add_to_container(statue, obj);
@@ -7153,11 +7166,8 @@ async function make_arc_goal_level() {
             loc.horizontal = ch !== '|';
             loc.lit = true;
             loc.waslit = false;
-            const horizontalWallDoor = ch === '+' && row[x - 1] === '-' && row[x + 1] === '-';
-            loc.typ = horizontalWallDoor
-                ? HWALL
-                : ch === '+'
-                    ? DOOR
+            loc.typ = ch === '+'
+                ? DOOR
                 : ch === 'S'
                     ? SDOOR
                     : SPECIAL_TERRAIN[ch] ?? STONE;
@@ -7285,11 +7295,11 @@ async function make_arc_loca_level() {
     }
 
     for (let i = 0; i < 15; i++) {
-        const pos = arcLocaRandomDryLocation(true);
+        const pos = arcLocaRandomDryLocation();
         mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
     }
     for (let i = 0; i < 4; i++) {
-        const pos = arcLocaRandomDryLocation(true);
+        const pos = arcLocaRandomDryLocation();
         make_engr_at(pos.x, pos.y, 'X marks the spot.', true, 0, ENGRAVE);
     }
     for (const [kind, x, y] of ARC_LOCA_TRAPS) {
@@ -17098,6 +17108,7 @@ async function mkshobj_at(shopIndex, sx, sy, specialStock = false) {
     const shopName = SHOP_TYPES[shopIndex]?.name;
     if (specialStock && (shopName === 'rare books' || shopName === 'second-hand bookstore')) {
         const novel = mksobj_at(SPBOOK_no_NOVEL, sx, sy, false, false);
+        rn2(41);
         Object.assign(novel, { kind: 'novel', cls: 'spellbook', glyph: '+', color: CLR_BRIGHT_BLUE });
         game._tribute_bookstock = true;
         return;

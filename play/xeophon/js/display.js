@@ -436,6 +436,46 @@ function trapAt(x, y) {
     return trap.tseen ? trap : null;
 }
 
+const PAIR_DISCOVERY_RE = /\b(?:boots|shoes|gloves)$/i;
+
+function addObservedDiscovery(section, name, text = name) {
+    if (!section || !name || !text) return;
+    game._discoveries ??= [];
+    if ((game._discoveries || []).some(entry => entry.section === section && entry.name === name)) return;
+    const entry = { section, name, text, starred: false };
+    if (section === 'Armor' && /^pair of /.test(name)) {
+        const index = game._discoveries.findIndex(item =>
+            item.section === 'Armor' && !item.starred && !/^pair of /.test(item.name || ''));
+        if (index >= 0) {
+            game._discoveries.splice(index, 0, entry);
+            return;
+        }
+    }
+    game._discoveries.push(entry);
+}
+
+export function recordObservedObjectDiscovery(obj) {
+    if (!obj || (game.u?._statusSuffix || '').includes('Hallu')) return;
+    if (obj.cls === 'amulet' || obj.glyph === '"') {
+        const appearance = String(obj.appearance || '').trim();
+        if (appearance) addObservedDiscovery('Amulets', 'amulet', `amulet (${appearance})`);
+        return;
+    }
+    if (obj.cls === 'armor' || obj.glyph === '[') {
+        const description = String(obj.appearance || '').trim();
+        if (!description) return;
+        const name = PAIR_DISCOVERY_RE.test(description) ? `pair of ${description}` : description;
+        addObservedDiscovery('Armor', name);
+        return;
+    }
+    if (obj.otyp === GEM_CLASS || obj.cls === 'gem' || obj.glyph === '*') {
+        const actual = String(obj.actualKind || obj.kind || '').toLowerCase();
+        if (actual === 'touchstone' || actual === 'flint stone' || actual === 'luckstone' || actual === 'loadstone') return;
+        const description = String(obj.gemDescription || '').trim();
+        if (description && description !== 'rock') addObservedDiscovery('Gems/Stones', description);
+    }
+}
+
 function visibleRegionAt(x, y) {
     return (game.level?.regions || []).find(reg =>
         reg.visible !== false && reg.ttl !== -2
@@ -633,7 +673,10 @@ export function newsym(x, y) {
             obj._hide_until_seen = false;
             const dx = x - (game.u?.ux ?? 0);
             const dy = y - (game.u?.uy ?? 0);
-            if (dx * dx + dy * dy <= 6) obj.dknown = true;
+            if (dx * dx + dy * dy <= 6) {
+                obj.dknown = true;
+                recordObservedObjectDiscovery(obj);
+            }
             const glyph = objectGlyph(obj);
             visibleObjectGlyph = glyph;
             loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec };

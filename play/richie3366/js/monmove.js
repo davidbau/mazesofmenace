@@ -14,7 +14,8 @@ import { rn2 } from './rng.js';
 import { NORMAL_SPEED } from './const.js';
 import { mintrapMoveloopTail } from './trap.js';
 import { game } from './gstate.js';
-import { mMoveOneMonsterSubsetLikeC } from './m_move_mon.js';
+import { fmonListNewestFirstLikeC } from './fmon_iter.js';
+import { movemonSinglemonLikeC } from './m_move_mon.js';
 
 export { mthrowAtHeroUxyThituLikeC } from './mthrowu.js';
 
@@ -23,12 +24,12 @@ export const MOVE_MON_HARNESS_MAX_STEP = 12;
 
 /** `null` = harness peeled; run real **`fmon`** loop. */
 const _HARNESS = [
-    /* stepNum 1 — four **`distfleeck`** before **`mcalcmove`** (bulk in **`moveloop_turn_advance`** when **`fmon`** empty). */
-    () => {},
-    /* stepNum 2 — **`mfndpos`/`m_move` track RNG in **`m_move_mon.js`**; replay until **`nearby`** matches C. */
-    () => { rn2(5); rn2(32); rn2(5); rn2(5); rn2(32); rn2(5); },
-    /* session step 4 — **`stepNum` 3** */
-    () => { rn2(5); rn2(24); rn2(5); rn2(5); rn2(24); rn2(5); },
+    /* stepNum 1 — peeled: **`mMoveDistfleeckOnlyTurnLikeC`** (one **`rn2(5)`** per monster). */
+    null,
+    /* stepNum 2 — session step 3 (`n`); peeled — door-niche **`CORR`** + silent **`m_move`**. */
+    null,
+    /* session step 4 — **`stepNum` 3**; peel when **`mfndpos cnt=6`** + 2-mon **`dochug`** parity. */
+    null,
     /* session step 5 — **`stepNum` 4** */
     () => { rn2(5); rn2(16); rn2(5); },
     /* session step 6 — **`stepNum` 5** */
@@ -72,8 +73,8 @@ export async function movemon(stepNum) {
         }
     }
 
-    const mons = game.level?.monsters ?? [];
-    for (const m of mons) await mMoveOneMonsterSubsetLikeC(game, m, stepNum);
+    const mons = fmonListNewestFirstLikeC(game);
+    for (const m of mons) await movemonSinglemonLikeC(game, m, stepNum);
     await mintrapMoveloopTail();
 
     return mons.some(mm => (mm.mhp | 0) > 0 && (mm.movement | 0) >= NORMAL_SPEED);

@@ -1,6 +1,7 @@
 // disturb_mon.js — Wake sleeping monsters (monmove.c disturb).
 // C ref: monmove.c disturb() ~327–357; dochug ~727 before wipe_engr.
 
+import { M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { rn2 } from './rng.js';
 import { couldsee } from './vision.js';
 import { dist2 } from './hacklib.js';
@@ -51,7 +52,9 @@ export function disturbMonsterLikeC(g, mtmp) {
         aggravate
         || mlet === S_DOG
         || mlet === S_HUMAN_MONSYM
-        || (!rn2(7) && (mtmp.mappearance | 0) === 0)
+        || (!rn2(7)
+            && (mtmp.m_ap_type | 0) !== M_AP_FURNITURE
+            && (mtmp.m_ap_type | 0) !== M_AP_OBJECT)
     ) {
         mtmp.msleeping = 0;
         return true;

@@ -3,10 +3,10 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
+import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -1455,6 +1455,28 @@ function teleportHeroSameLevel(x, y) {
     return `You materialize in ${x === oldX && y === oldY ? 'the same' : 'a different'} location!`;
 }
 
+function applySameLevelTeleportNutritionPenalty() {
+    if (!game.u) return;
+    game.u.uhunger = (game.u.uhunger ?? 900) - 100;
+    if ((game.u._statusSuffix || '').includes('Satiated') && game.u.uhunger <= 1000)
+        game.u._statusSuffix = game.u._statusSuffix.replace(/\bSatiated\b/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function heroWearsNutritionAmulet() {
+    return (game.inventory || []).some(item => {
+        if (!item.worn) return false;
+        if (!(item.cls === 'amulet' || item.amuletIndex != null || item.glyph === '"')) return false;
+        const name = String(item.actualKind || item.kind || '').toLowerCase();
+        return !name.includes('cheap plastic imitation');
+    });
+}
+
+function applyAccessoryHunger(accessorytime) {
+    if (!game.u) return;
+    if (accessorytime === 8 && heroWearsNutritionAmulet())
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+}
+
 function safeTeleportHeroSameLevel() {
     for (let tcnt = 0; tcnt < 40; tcnt++) {
         const x = rnd(COLNO - 1);
@@ -1768,11 +1790,11 @@ function questDownBlocked() {
     return questLevelKind() === 'start' && !okToQuest();
 }
 
-function questPagerRows(msgid) {
+function questPagerText(msgid) {
     const roleName = game.urole?.name?.m || game._startup_role || '';
     const info = QUEST_ROLE_DATA[roleName];
     const raw = info?.texts?.[msgid] || (msgid === 'goal_alt' ? info?.texts?.goal_next : '');
-    if (!raw) return null;
+    if (!raw) return '';
     l_nhcore_init();
     const rankIndex = level => level <= 2 ? 0 : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
     const rank = info.ranks[Math.min(rankIndex(game.u?.ulevel || 1), info.ranks.length - 1)];
@@ -1804,6 +1826,12 @@ function questPagerRows(msgid) {
     let text = raw.trimEnd();
     for (const [pattern, replacement] of replacements)
         text = text.split(pattern).join(replacement);
+    return text;
+}
+
+function questPagerRows(msgid) {
+    const text = questPagerText(msgid);
+    if (!text) return null;
     const rows = text.split('\n').slice(0, 23).map((line, row) => [row, 0, line]);
     rows.push([23, 0, '--More--']);
     return rows;
@@ -1827,6 +1855,78 @@ function showQuestPager(msgid, mode = 'questIntroMore') {
     return true;
 }
 
+function queueQuestPline(msgid, more = true) {
+    const text = questPagerText(msgid);
+    if (!text) return false;
+    game._queued_message_after_more = game._queued_message_after_more
+        ? `${game._queued_message_after_more}  ${text}`
+        : text;
+    if (more) game._queued_message_more_after_more = 1;
+    return true;
+}
+
+function showQuestPline(msgid, more = false) {
+    const text = questPagerText(msgid);
+    if (!text) return false;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    game._pending_message = text;
+    game._message_more = more ? 1 : 0;
+    game._keep_pending_message = 1;
+    game._command_mode = null;
+    return true;
+}
+
+function currentObjectHereMessage() {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const objectsHere = (game.level?.objects || [])
+        .filter(obj => !obj.hidden && !obj.transientProjectile
+            && obj !== game.u?.uball && obj !== game.u?.uchain
+            && obj.ox === x && obj.oy === y && obj.otyp !== BOULDER);
+    const goldHere = objectsHere.find(obj => obj.otyp === GOLD_PIECE || obj.glyph === '$');
+    if (goldHere) {
+        const amount = goldHere.quan || 1;
+        return `You see here ${amount} gold piece${amount === 1 ? '' : 's'}.`;
+    }
+    const objHere = objectsHere[0];
+    if (objHere?.kind === 'chest' || objHere?.otyp === CHEST)
+        return `You see here a ${objHere.lknown && (objHere.locked || objHere.olocked) ? 'locked ' : ''}chest.`;
+    if (objHere) return `You see here ${pickupObjectPhrase(objHere)}.`;
+    const ballHere = game.u?.uball?.ox === x && game.u?.uball?.oy === y ? game.u.uball : null;
+    if (ballHere) return `You see here ${pickupObjectPhrase(ballHere)}.`;
+    return '';
+}
+
+function restoredLevelHiderNeedsRestrap(mon) {
+    if (!mon || mon.mcan || mon.mundetected || mon.appearObj != null || mon.appearGlyph || M_AP_TYPE(mon))
+        return false;
+    const name = mon.data?.name || '';
+    const mlet = mon.data?.mlet || '';
+    return mlet === 'mimic'
+        || name === 'lurker above'
+        || name === 'trapper'
+        || name === 'rock piercer'
+        || name === 'iron piercer'
+        || name === 'glass piercer';
+}
+
+function restoredLevelMonsterCatchup(monsters, elapsed) {
+    if (elapsed <= 0) return;
+    const restoreOrder = [...(monsters || [])].reverse();
+    for (const mon of restoreOrder) {
+        if (elapsed <= rnd(10)) continue;
+        if (!restoredLevelHiderNeedsRestrap(mon)) continue;
+        if (rn2(3)) continue;
+        if (mon.data?.mlet === 'mimic') {
+            if (!mon.msleeping && !mon.mfrozen) set_mimic_sym_rng(mon);
+        } else {
+            mon.mundetected = true;
+            newsym(mon.mx, mon.my);
+        }
+    }
+}
+
 function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false) {
     const pager = showNow ? showQuestPager : queueQuestPager;
     const kind = questLevelKind(targetLevel);
@@ -1839,6 +1939,24 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
             return pager('firsttime');
         }
         if (!fromAbove) return false;
+        if ((game.quest_status.not_ready || 0) <= 2) {
+            const text = questPagerText('nexttime');
+            if (!text) return false;
+            if (showNow) {
+                game._overlay_lines = null;
+                game._overlay_hide_status = 0;
+                game._pending_message = text;
+                game._message_more = 0;
+                game._keep_pending_message = 1;
+                game._command_mode = null;
+            } else {
+                game._queued_message_after_more = game._queued_message_after_more
+                    ? `${game._queued_message_after_more}  ${text}`
+                    : text;
+                game._queued_message_more_after_more = 0;
+            }
+            return true;
+        }
         return pager((game.quest_status.not_ready || 0) <= 2 ? 'nexttime' : 'othertime');
     }
     if (kind === 'locate') {
@@ -1853,7 +1971,9 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
         return pager('goal_first');
     }
     if ((game.quest_status.made_goal || 0) < 7) game.quest_status.made_goal = (game.quest_status.made_goal || 1) + 1;
-    return pager('goal_next');
+    const queuedGoal = showNow ? showQuestPline('goal_next') : queueQuestPline('goal_next', true);
+    if (queuedGoal && !showNow) game._quest_arrival_look_here_after_more = 1;
+    return queuedGoal;
 }
 
 async function continueQuestLeaderTalkAfterIntro() {
@@ -2052,8 +2172,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         game.stairs = savedTarget.stairs;
         game._utrack = [...(savedTarget.utrack || [])];
         const elapsed = (game.moves || 1) - (savedTarget.moves || game.moves || 1);
-        if (elapsed > 0)
-            for (const mon of game.level?.monsters || []) rnd(10);
+        restoredLevelMonsterCatchup(game.level?.monsters || [], elapsed);
         if (game.level?.flags?.sokoban_rules) {
             const boulders = new Set((game.level.objects || [])
                 .filter(obj => obj.otyp === BOULDER)
@@ -2698,6 +2817,7 @@ const OBJECT_WEIGHTS = {
     'rubber hose': 20,
     'short sword': 30,
     'shuriken': 1,
+    'silver saber': 40,
     'sling': 3,
     'spear': 30,
     'war hammer': 50,
@@ -2782,7 +2902,9 @@ const OBJECT_WEIGHTS = {
     'silver bell': 10,
     'skeleton key': 3,
     'stethoscope': 4,
+    'tinning kit': 100,
     'tin opener': 4,
+    'touchstone': 10,
     'towel': 2,
     'unicorn horn': 20,
 };
@@ -4255,27 +4377,86 @@ function genericAttributesPage1() {
         [row++, 0, `  Your intelligence is ${stats[1]}${attrLimits[1] ? ` (current; limit:${attrLimits[1]})` : ''}.`],
     );
     game._attributes_page2_prefix = rows.filter(([line]) => line >= 23).map(([, col, text]) => [col, text]);
-    return [...rows.filter(([line]) => line < 23), [23, 0, ' (1 of 2)']];
+    const page2Rows = buildGenericAttributesPage2Rows();
+    const totalPages = page2Rows.some(([line]) => line >= 23) ? 3 : 2;
+    return [...rows.filter(([line]) => line < 23), [23, 0, ` (1 of ${totalPages})`]];
 }
 
-function genericAttributesPage2() {
+function enlightenmentPiousness(record) {
+    if (record >= 20) return 'piously aligned';
+    if (record > 13) return 'devoutly aligned';
+    if (record > 8) return 'fervently aligned';
+    if (record > 3) return 'stridently aligned';
+    if (record === 3) return 'aligned';
+    if (record > 0) return 'haltingly aligned';
+    if (record === 0) return 'nominally aligned';
+    if (record >= -3) return 'strayed';
+    if (record >= -8) return 'sinned';
+    return 'transgressed';
+}
+
+function enlightenmentWeaponName(weapon, roleName) {
+    let name = weapon?.actualKind || weapon?.kind || weapon?.name
+        || (typeof weapon?.otyp === 'string' ? weapon.otyp : '');
+    name = String(name || '').toLowerCase().replace(/\s+named\s+.*$/, '');
+    if (roleName === 'Samurai') {
+        if (name === 'katana') name = 'long sword';
+        else if (name === 'wakizashi') name = 'short sword';
+    }
+    if (/war hammer|mjollnir/.test(name)) name = 'hammer';
+    if (name === 'silver saber' || name === 'scimitar') name = 'saber';
+    if (name === 'scalpel') name = 'knife';
+    return name ? name.replace(/^(?:elven|orcish|dwarvish) /, '') : '';
+}
+
+function enlightenmentWeaponSkillLine(weaponName, roleName) {
+    if (weaponName === 'hammer' && roleName === 'Wizard')
+        return `  You have no skill with ${weaponName}.`;
+    if (weaponName === 'saber' && roleName === 'Archeologist')
+        return `  You are unskilled in ${weaponName}.`;
+    return `  You have basic skill with ${weaponName}.`;
+}
+
+function enlightenmentSourceForSearching(roleName) {
+    return roleName === 'Archeologist' || roleName === 'Ranger'
+        ? 'innately' : 'because of your experience';
+}
+
+function enlightenmentSourceForStealth(roleName) {
+    return roleName === 'Rogue' ? 'innately' : 'because of your experience';
+}
+
+function enlightenmentSourceForSpeed(roleName) {
+    return roleName === 'Monk' || roleName === 'Samurai'
+        ? 'innately' : 'because of your experience';
+}
+
+function wornReflectionSource() {
+    return (game.inventory || []).find(item => {
+        if (!(item.worn || item.line?.includes('being worn'))) return false;
+        const kind = armorKind(item);
+        return kind === 'silver dragon scale mail' || kind === 'shield of reflection'
+            || item.amuletIndex === 7 || kind === 'amulet of reflection';
+    });
+}
+
+function simpleEquipmentName(item) {
+    if (!item) return '';
+    if (item.cls === 'armor') return armorKind(item) || pickupObjectName(item);
+    return item.actualKind || item.kind || pickupObjectName(item);
+}
+
+function buildGenericAttributesPage2Rows() {
     const stats = game.u?.acurr?.a || [];
     const peaks = game.u?.amax?.a || stats;
     const attrLimits = ATTR_LIMITS_BY_RACE[game._startup_race] || {};
     const wisdom = attrLimits[2] ? `${stats[2]} (current; limit:${attrLimits[2]})`
         : stats[2] !== peaks[2] ? `${stats[2]} (current; peak:${peaks[2]})` : stats[2];
     const charisma = attrLimits[5] ? `${stats[5]} (current; limit:${attrLimits[5]})` : stats[5];
+    const roleName = game.urole?.name?.m || game._startup_role || '';
     const weapon = (game.inventory || []).find(item => item.wielded || item.line?.includes('weapon in'))
         || (game.inventory || []).find(item => item.line?.includes('weapon;'));
-    let weaponName = weapon?.kind || weapon?.name || (typeof weapon?.otyp === 'string' ? weapon.otyp : null);
-    if ((game.urole?.name?.m || game._startup_role) === 'Samurai') {
-        if (weaponName === 'katana') weaponName = 'long sword';
-        else if (weaponName === 'wakizashi') weaponName = 'short sword';
-    }
-    if (/war hammer|mjollnir/i.test(weaponName || '')) weaponName = 'hammer';
-    if (weaponName) weaponName = String(weaponName).replace(/^(?:elven|orcish|dwarvish) /, '');
-    const roleName = game.urole?.name?.m || game._startup_role || '';
-    if (weaponName === 'scalpel') weaponName = 'knife';
+    const weaponName = enlightenmentWeaponName(weapon, roleName);
     const weaponArticle = weaponName && /^[aeiou]/i.test(weaponName) ? 'an' : 'a';
     let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
     for (const item of game.inventory || []) {
@@ -4329,10 +4510,8 @@ function genericAttributesPage2() {
     if (game._twoweapon) {
         const primary = (game.inventory || []).find(item => item.wielded || item.line?.includes('right hand') || item.cls === 'weapon');
         const secondary = (game.inventory || []).find(item => item !== primary && (item.alternate || item.line?.includes('left hand')));
-        const primaryName = inventoryItemName(primary || {}).toLowerCase();
-        const secondaryName = inventoryItemName(secondary || {}).toLowerCase();
-        const primarySkill = primaryName.includes('katana') || primaryName.includes('long sword') ? 'long sword' : primaryName.includes('wakizashi') || primaryName.includes('short sword') ? 'short sword' : 'weapon';
-        const secondarySkill = secondaryName.includes('wakizashi') || secondaryName.includes('short sword') ? 'short sword' : secondaryName.includes('katana') || secondaryName.includes('long sword') ? 'long sword' : 'weapon';
+        const primarySkill = enlightenmentWeaponName(primary, roleName) || 'weapon';
+        const secondarySkill = enlightenmentWeaponName(secondary, roleName) || 'weapon';
         rows.push(
             [row++, 0, '  You are wielding two weapons at once.'],
             [row++, 0, `  Your skill in ${primarySkill} is limited by being unskilled with two weapons.`],
@@ -4343,9 +4522,7 @@ function genericAttributesPage2() {
         const bareSkill = roleName === 'Monk' ? '  You have basic skill with martial arts.' : '  You are unskilled in bare handed combat.';
         rows.push(
             [row++, 0, weaponName ? `  You are wielding ${weaponArticle} ${weaponName}.` : emptyHanded],
-            [row++, 0, weaponName ? (weaponName === 'hammer' && roleName === 'Wizard'
-                ? `  You have no skill with ${weaponName}.`
-                : `  You have basic skill with ${weaponName}.`) : bareSkill],
+            [row++, 0, weaponName ? enlightenmentWeaponSkillLine(weaponName, roleName) : bareSkill],
         );
     }
     const wornArmor = (game.inventory || []).some(item => item.cls === 'armor' && item.worn);
@@ -4358,8 +4535,8 @@ function genericAttributesPage2() {
     row++;
     if (game.flags?.debug) {
         const alignRecord = game.u?.ualign?.record ?? 0;
-        const alignmentLine = alignRecord < 0 ? '  You have transgressed.'
-            : `  You are ${alignRecord > 0 && alignRecord < 4 ? 'haltingly' : 'nominally'} aligned.`;
+        const piousness = enlightenmentPiousness(alignRecord);
+        const alignmentLine = alignRecord < 0 ? `  You have ${piousness}.` : `  You are ${piousness}.`;
         rows.push(
             [row++, 0, ' Attributes:'],
             [row++, 0, alignmentLine],
@@ -4371,12 +4548,23 @@ function genericAttributesPage2() {
                 item.worn && /cloak of magic resistance/i.test(inventoryItemName(item)));
         if (magicResistanceSource)
             rows.push([row++, 0, `  You are magic-protected because of your ${pickupObjectName(magicResistanceSource)}.`]);
+        if ((game.inventory || []).some(item => item.wielded && item.artifact === 'Grayswandir'))
+            rows.push([row++, 0, '  You resist hallucinations because of Grayswandir.']);
         if (game.u?.warning) rows.push([row++, 0, '  You are warned because of your experience.']);
+        if (game.u?.searching)
+            rows.push([row++, 0, `  You have automatic searching ${enlightenmentSourceForSearching(roleName)}.`]);
+        if (game.u?.stealth)
+            rows.push([row++, 0, `  You are stealthy ${enlightenmentSourceForStealth(roleName)}.`]);
         if (game.u?.teleportControl) rows.push([row++, 0, '  You have teleport control because of your experience.']);
         const teleportControlRing = (game.inventory || []).find(item =>
             item.worn && (item.actualKind === 'ring of teleport control' || item.ringRoll === 23));
         if (teleportControlRing) rows.push([row++, 0, `  You have teleport control because of your ${pickupObjectName(teleportControlRing)}.`]);
         if (magicNegation > 0) rows.push([row++, 0, '  You are warded.']);
+        if (game.u?.fast || game.u?.veryfast)
+            rows.push([row++, 0, `  You are ${game.u?.veryfast ? 'very fast' : 'fast'} ${enlightenmentSourceForSpeed(roleName)}.`]);
+        const reflectionSource = wornReflectionSource();
+        if (game.u?.reflecting || reflectionSource)
+            rows.push([row++, 0, `  You have reflection because of your ${simpleEquipmentName(reflectionSource) || 'worn equipment'}.`]);
         if ((game.inventory || []).some(item => item.worn && item.amuletIndex === 1))
             rows.push([row++, 0, '  Your life will be saved.']);
         const luck = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
@@ -4407,6 +4595,11 @@ function genericAttributesPage2() {
             [row++, 0, '  Total elapsed playing time is none.'],
         );
     } else rows.push([row++, 0, '  Total elapsed playing time is none.']);
+    return rows;
+}
+
+function genericAttributesPage2() {
+    const rows = buildGenericAttributesPage2Rows();
     const page2 = rows.filter(([line]) => line < 23);
     const page3 = rows.filter(([line]) => line >= 23).map(([, col, text], index) => [index, col, text]);
     if (page3.length) {
@@ -11265,6 +11458,7 @@ function objectBucCategory(item) {
 }
 
 function pickupObjectPhrase(obj) {
+    recordObservedObjectDiscovery(obj);
     const count = obj.quan || 1;
     const name = pickupObjectName(obj);
     if (obj === game.u?.uchain) return 'an iron chain (attached to you)';
@@ -11295,7 +11489,7 @@ function pickupObjectPhrase(obj) {
         }
     }
     const lineShowsSpe = /(?:^| )[-+]\d+ /.test(String(obj.line || ''));
-    const showSpe = obj.known === true || obj.wielded || obj.alternate || lineShowsSpe;
+    const showSpe = obj.known === true || lineShowsSpe;
     if (count === 1 && (obj.cls === 'weapon' || obj.glyph === ')') && obj.spe != null && showSpe) {
         const spe = `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         const article = /^[aeiou]/i.test(`${spe}${name}`) ? 'an' : 'a';
@@ -12118,9 +12312,9 @@ function normalInventoryLine(item) {
     if (cls === 'weapon' || item.wielded || item.alternate) {
         const spe = item.spe ?? 0;
         const lineShowsSpe = /(?:^| )[-+]\d+ /.test(String(item.line || ''));
-        const showSpe = item.known === true || item.wielded || item.alternate || lineShowsSpe;
+        const showSpe = item.known === true || lineShowsSpe;
         const enchantment = showSpe ? `${spe >= 0 ? '+' : ''}${spe} ` : '';
-        const buc = item.blessed || item.cursed ? blessedState : '';
+        const buc = (item.bknown === true || lineShowsBuc) && (item.blessed || item.cursed) ? blessedState : '';
         const erosion = erosionPrefix(item);
         phrase = quan > 1 ? `${quan} ${buc}${erosion}${enchantment}${name}` : `${buc}${erosion}${enchantment}${name}`;
         if (item.wielded) {
@@ -14223,12 +14417,11 @@ function showInventoryOverlay(page = 0, identify = false, match = null) {
 
 function discoveryOverlayLines(page = 0) {
     const sectionOrder = [
-        'Weapons', 'Armor', 'Comestibles', 'Scrolls', 'Spellbooks',
-        'Potions', 'Rings', 'Wands', 'Tools', 'Gems/Stones', 'Amulets', 'Venoms',
-        'Other Items',
+        'Coins', 'Amulets', 'Weapons', 'Armor', 'Comestibles', 'Scrolls',
+        'Spellbooks', 'Potions', 'Rings', 'Wands', 'Tools', 'Gems/Stones',
+        'Boulders/Statues', 'Iron balls', 'Chains', 'Venoms', 'Other Items',
     ];
     const discoveries = (game._discoveries || [])
-        .filter(entry => !(entry.section === 'Amulets' && entry.name === 'amulet'))
         .map(entry => ({ ...entry }));
     const addDiscovery = (section, name, text, starred = false) => {
         if (!discoveries.some(entry => entry.section === section && entry.name === name))
@@ -15189,7 +15382,7 @@ async function moveHero(dx, dy) {
 
         if (!game.u?.uinvulnerable) {
             if (game.u) game.u.uhunger = (game.u.uhunger ?? 900) - 1;
-            rn2(20);
+            applyAccessoryHunger(rn2(20));
         }
         exerciseAttribute(A_STR, true);
         if (!swallowedMove) wipe_engr_at(oldx, oldy, 3, false);
@@ -16296,7 +16489,7 @@ async function moveHero(dx, dy) {
     else if (objHere?.otyp === WAND_CLASS || objHere?.cls === 'wand')
         objHereMessage = `${featurePrefix}You see here a ${pickupObjectName(objHere)}${priceSuffix}.`;
     else if (objHere?.otyp === FOOD_CLASS || objHere?.cls === 'food')
-        objHereMessage = `${featurePrefix}You see here a ${pickupObjectName(objHere)}${priceSuffix}.`;
+        objHereMessage = `${featurePrefix}You see here ${pickupObjectPhrase(objHere)}${priceSuffix}.`;
     else if (objHere?.kind === 'chest' || objHere?.otyp === CHEST)
         objHereMessage = `${featurePrefix}You see here a ${objHere.lknown && (objHere.locked || objHere.olocked) ? 'locked ' : ''}chest${priceSuffix}.`;
     else if ((objHere?.kind === 'statue' || objHere?.otyp === STATUE) && objHere.corpsenm?.name)
@@ -16723,7 +16916,10 @@ export async function rhack(_cmd) {
             await finishLevelTeleport(branchLevel(game.u?.uz?.dnum ?? -1) || { dnum: 0, dlevel: 14 }, { portalArrival: true });
             game._pending_message = '';
             game._message_more = 0;
-            game.context.move = 1;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            game._process_deferred_context_now = 1;
             game._command_mode = null;
         }
         return;
@@ -19040,6 +19236,17 @@ export async function rhack(_cmd) {
                 game.context.move = game._pending_time_passed ? 0 : 1;
                 game._process_command_time_now = 1;
                 return;
+            }
+            if (game._quest_arrival_look_here_after_more) {
+                game._quest_arrival_look_here_after_more = 0;
+                const message = currentObjectHereMessage();
+                game._pending_message = '';
+                game._message_more = 0;
+                game._keep_pending_message = 0;
+                if (message) {
+                    await setMessage(message);
+                    return;
+                }
             }
             const welcome = game._welcome_message;
             game._pending_message = '';
@@ -26035,13 +26242,18 @@ export async function rhack(_cmd) {
                 && (invItem.wielded || invItem.line?.includes('weapon in') || invItem.line?.includes('(wielded)')));
             if (previousWielded) {
                 const previousName = inventoryItemName(previousWielded);
-                const previousLine = `${previousWielded.letter || '?'} - ${previousName} (alternate weapon${(previousWielded.quan || 1) > 1 ? 's' : ''}; not wielded)`;
-                previousWielded.alternate = true;
-                previousWielded.line = previousLine;
-                const previousMessage = `${previousLine}.`;
-                game._topline_after_more = game._topline_after_more
-                    ? `${previousMessage}  ${game._topline_after_more}`
-                    : previousMessage;
+                if (game.flags?.pushweapon) {
+                    const previousLine = `${previousWielded.letter || '?'} - ${previousName} (alternate weapon${(previousWielded.quan || 1) > 1 ? 's' : ''}; not wielded)`;
+                    previousWielded.alternate = true;
+                    previousWielded.line = previousLine;
+                    const previousMessage = `${previousLine}.`;
+                    game._topline_after_more = game._topline_after_more
+                        ? `${previousMessage}  ${game._topline_after_more}`
+                        : previousMessage;
+                } else {
+                    previousWielded.alternate = false;
+                    previousWielded.line = `${previousWielded.letter || '?'} - ${previousName}`;
+                }
             }
             for (const invItem of game.inventory || []) {
                 if (invItem !== item && invItem !== previousWielded
@@ -26924,6 +27136,7 @@ export async function rhack(_cmd) {
                     game.context.move = 1;
                     return;
                 }
+                applySameLevelTeleportNutritionPenalty();
                 const up = game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY;
                 const down = game.level?.dnstair?.x === targetX && game.level?.dnstair?.y === targetY;
                 const label = up || down ? `staircase ${up ? 'up' : 'down'}`
@@ -27025,6 +27238,7 @@ export async function rhack(_cmd) {
                 game._cursor_override = null;
                 game._command_mode = null;
                 game._teleport_from_scroll = 0;
+                applySameLevelTeleportNutritionPenalty();
                 game.context.move = 1;
                 const materializeMessage = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                 if (!selectedValid) {
@@ -29521,11 +29735,6 @@ export async function rhack(_cmd) {
             await setMessage(details[0], true);
             return;
         }
-        const currentSpecial = game.specialLevels?.find(level =>
-            level.dnum === game.u?.uz?.dnum && level.dlevel === game.u?.uz?.dlevel);
-        if (!details.length && (game.level?.flags?.minend1_level
-            || currentSpecial?.name === 'soko1' || currentSpecial?.name === 'soko3'))
-            game._clear_pending_message_only_once = 1;
         await setMessage(details.length ? details[0] : 'You see no objects here.', !!engraving);
         return;
     }

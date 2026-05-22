@@ -8,6 +8,8 @@ import {
     MONS_MFLAGS2,
     MONS_MLEVEL,
 } from './mons_rndmonst_ini_inv_data.js';
+import { permonstFromMndxLikeC } from './mondata.js';
+import { monTrackInitLikeC } from './monflee.js';
 
 /** C: monflag.h M2_NEUTER */
 const M2_NEUTER = 0x00040000;
@@ -99,6 +101,7 @@ export function makemon(mdat, x, y, mmflags) {
         mpeaceful: 0,
         mtame: 0,
         mnum,
+        data: permonstFromMndxLikeC(mnum),
         mcanmove: 1,
         mcansee: 1,
         mfrozen: 0,
@@ -106,7 +109,9 @@ export function makemon(mdat, x, y, mmflags) {
         mfleetim: 0,
         movement: 0,
         mgenmklev: 0,
+        mstrategy: 0,
     };
+    monTrackInitLikeC(mtmp);
     mtmp.mgenmklev = game.in_mklev ? 1 : 0;
     /* C: makemon.c — `femaleok = !is_male(ptr) && !is_neuter(ptr)`; neuter skips `rn2(2)`. */
     const femaleok = ((MONS_MFLAGS2[mnum | 0] | 0) & M2_NEUTER) === 0;
@@ -132,7 +137,8 @@ export function makemon(mdat, x, y, mmflags) {
         }
     }
     const mons = game.level?.monsters;
-    if (mons) mons.push(mtmp);
+    if (mons) mons.unshift(mtmp);
+    else if (game.level) game.level.monsters = [mtmp];
     return mtmp;
 }
 

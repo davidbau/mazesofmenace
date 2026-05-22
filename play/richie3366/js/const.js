@@ -1325,6 +1325,10 @@ export const MON_OBLITERATE = 0x80;
 export const M_AP_TYPMASK = 0x7;
 export const M_AP_F_DKNOWN = 0x8;
 export const MAX_NUM_WORMS = 32;
+/** C: monflag.h `M3_WAITFORU` / `M3_CLOSE` / `M3_WAITMASK` (makemon.c `mstrategy`). */
+export const M3_WAITFORU = 0x0040;
+export const M3_CLOSE = 0x0080;
+export const M3_WAITMASK = 0x00c0;
 export const STRAT_APPEARMSG = 0x80000000;
 export const STRAT_ARRIVE = 0x40000000;
 export const STRAT_WAITFORU = 0x20000000;

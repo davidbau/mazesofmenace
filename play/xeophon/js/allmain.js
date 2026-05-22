@@ -389,6 +389,7 @@ const PET_OBJECT_WEIGHTS = {
     'shield of reflection': 50,
     helmet: 30,
     'leather gloves': 10,
+    'silver saber': 40,
     dart: 1,
     darts: 1,
     scalpel: 5,
@@ -396,6 +397,7 @@ const PET_OBJECT_WEIGHTS = {
     apple: 2,
     rock: 10,
     'tinning kit': 100,
+    touchstone: 10,
 };
 const PET_CLASS_WEIGHTS = { armor: 150, weapon: 30, tool: 10, food: 20, potion: 20, scroll: 5, spellbook: 50, wand: 7, ring: 3, gem: 1 };
 
@@ -408,6 +410,21 @@ function objectWeight(obj) {
     if (obj.otyp === CHEST || obj.kind === 'chest') return 600;
     const kind = String(obj.kind || obj.actualKind || '').replace(/^scroll labeled /, '').replace(/^potion of /, '');
     return PET_OBJECT_WEIGHTS[kind] ?? PET_CLASS_WEIGHTS[obj.cls] ?? 1;
+}
+
+function heroWearsNutritionAmulet() {
+    return (game.inventory || []).some(item => {
+        if (!item.worn) return false;
+        if (!(item.cls === 'amulet' || item.amuletIndex != null || item.glyph === '"')) return false;
+        const name = String(item.actualKind || item.kind || '').toLowerCase();
+        return !name.includes('cheap plastic imitation');
+    });
+}
+
+function applyAccessoryHunger(accessorytime) {
+    if (!game.u) return;
+    if (accessorytime === 8 && heroWearsNutritionAmulet())
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
 }
 
 const TOURIST_FOODS = [
@@ -569,7 +586,7 @@ const TOOL_DISCOVERY = {
     'oil lamp': { section: 'Tools', name: 'oil lamp', appearance: 'lamp' },
 };
 const GEM_DISCOVERY = {
-    touchstone: { section: 'Gems/Stones', name: 'touchstone', appearance: 'gray stone' },
+    touchstone: { section: 'Gems/Stones', name: 'touchstone', appearance: 'gray' },
     'flint stone': { section: 'Gems/Stones', name: 'flint stone', appearance: 'gray' },
 };
 
@@ -3033,9 +3050,7 @@ async function processMonsterTurns() {
 		                        }
                     if (!mon.mfleetim && (mon.mhpmax == null || mon.mhp == null || mon.mhp >= mon.mhpmax) && !rn2(25)) mon.mflee = 0;
                     }
-                    if (!distfleeckDoneAfterAnger) {
-                        rn2(5);
-                    }
+                    if (!distfleeckDoneAfterAnger) rn2(5);
 	                    if (!mon.pet && !mon.mpeaceful && !mon.data?.mindless && !mon.data?.nohands && !(mon.m_seenres & M_SEEN_MAGR)) {
                         const targetX = mon.mux ?? game.u?.ux ?? mon.mx;
                         const targetY = mon.muy ?? game.u?.uy ?? mon.my;
@@ -3174,32 +3189,14 @@ async function processMonsterTurns() {
                             return false;
                         }
                     }
-                    if (!mon.data?.mindless && !mon.data?.nohands && miscRange <= 36 && mon.mspeed !== 'fast') {
-                        const healingPotion = [...(mon.minvent || [])].reverse().find(item => {
-                            const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
-                            return item.otyp === POT_FULL_HEALING || item.otyp === POT_EXTRA_HEALING || item.otyp === POT_HEALING
-                                || (item.cls === 'potion' && (item.potionIndex === 18 || item.potionIndex === 11 || item.potionIndex === 10
-                                    || kind === 'full healing' || kind === 'extra healing' || kind === 'healing'));
-                        });
+                    if (!mon.data?.mindless && !mon.data?.nohands && miscRange <= 36) {
+                        const healingPotion = findMonsterHealingPotion(mon);
                         const heroLevel = game.u?.ulevel || 1;
                         const healFraction = heroLevel < 10 ? 5 : heroLevel < 14 ? 4 : 3;
                         const woundedEnough = (mon.mhp || 0) < (mon.mhpmax || 0)
                             && ((mon.mhp || 0) < 10 || (mon.mhp || 0) * healFraction < (mon.mhpmax || 0));
                         if (healingPotion && woundedEnough) {
-                            const potionDesc = game._object_descriptions?.potions?.[healingPotion.potionIndex]?.description || '';
-                            if (potionDesc === 'milky' || potionDesc === 'smoky') rn2(13);
-                            const visible = couldSeeCoord(mon.mx, mon.my);
-                            addToplineMessage(visible
-                                ? `${monsterDisplayName(mon)} drinks ${healingPotion.kind ? `a potion of ${String(healingPotion.kind).replace(/^potion:/, '').replace(/^potion of /, '')}` : 'a potion'}!`
-                                : 'You hear a chugging sound.');
-                            if (healingPotion.otyp === POT_FULL_HEALING || healingPotion.potionIndex === 18) {
-                                mon.mhp = mon.mhpmax || mon.mhp || 1;
-                            } else {
-                                const sides = healingPotion.otyp === POT_EXTRA_HEALING || healingPotion.potionIndex === 11 ? 8 : 4;
-                                mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + d(6, sides));
-                            }
-                            if ((healingPotion.quan || 1) > 1) healingPotion.quan--;
-                            else mon.minvent = (mon.minvent || []).filter(item => item !== healingPotion);
+                            drinkMonsterHealingPotion(mon, healingPotion);
                             rn2(5);
                             if (game._message_more && !game._process_time_with_more) {
                                 game._monster_resume_index = monIndex + 1;
@@ -3208,46 +3205,48 @@ async function processMonsterTurns() {
                             }
                             continue;
                         }
-                        const speedWand = [...(mon.minvent || [])].reverse().find(item => {
-                            const kind = String(item.kind || item.actualKind || '').replace(/^wand:/, '').replace(/^wand of /, '');
-                            return item.otyp === WAN_SPEED_MONSTER || item.wandIndex === 10 || kind === 'speed monster';
-                        });
-                        if (speedWand && (speedWand.spe || 0) > 0 && !mon.isgd) {
-                            speedWand.spe--;
-                            mon.mspeed = 'fast';
-                            if (couldSeeCoord(mon.mx, mon.my)) {
-                                addToplineMessage(`${monsterDisplayName(mon)} zaps itself with a wand of speed monster!`);
-                            } else {
-                                const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
-                                const dist = (mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2;
-                                addToplineMessage(`You hear a ${dist <= range * range ? 'nearby' : 'distant'} zap.`);
+                        if (mon.mspeed !== 'fast') {
+                            const speedWand = [...(mon.minvent || [])].reverse().find(item => {
+                                const kind = String(item.kind || item.actualKind || '').replace(/^wand:/, '').replace(/^wand of /, '');
+                                return item.otyp === WAN_SPEED_MONSTER || item.wandIndex === 10 || kind === 'speed monster';
+                            });
+                            if (speedWand && (speedWand.spe || 0) > 0 && !mon.isgd) {
+                                speedWand.spe--;
+                                mon.mspeed = 'fast';
+                                if (couldSeeCoord(mon.mx, mon.my)) {
+                                    addToplineMessage(`${monsterDisplayName(mon)} zaps itself with a wand of speed monster!`);
+                                } else {
+                                    const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
+                                    const dist = (mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2;
+                                    addToplineMessage(`You hear a ${dist <= range * range ? 'nearby' : 'distant'} zap.`);
+                                }
+                                if (game._message_more && !game._process_time_with_more) {
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                    return false;
+                                }
+                                continue;
                             }
-                            if (game._message_more && !game._process_time_with_more) {
-                                game._monster_resume_index = monIndex + 1;
-                                game._monster_resume_somebody_can_move = somebodyCanMove;
-                                return false;
+                            const speedPotion = [...(mon.minvent || [])].reverse().find(item => {
+                                const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
+                                return item.otyp === POT_SPEED || (item.cls === 'potion' && (item.potionIndex === 5 || kind === 'speed'));
+                            });
+                            if (speedPotion) {
+                                if ((speedPotion.quan || 1) > 1) speedPotion.quan--;
+                                else mon.minvent = (mon.minvent || []).filter(item => item !== speedPotion);
+                                mon.mspeed = 'fast';
+                                addToplineMessage(couldSeeCoord(mon.mx, mon.my)
+                                    ? `The ${mon.data?.name || 'creature'} drinks a potion of speed!`
+                                    : 'You hear a chugging sound.');
+                                if (game._message_more && !game._process_time_with_more) {
+                                    game._queued_message_after_topline_more = `The ${mon.data?.name || 'creature'} is suddenly moving faster.`;
+                                    game._topline_more_after_more = 1;
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                    return false;
+                                }
+                                continue;
                             }
-                            continue;
-                        }
-                        const speedPotion = [...(mon.minvent || [])].reverse().find(item => {
-                            const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
-                            return item.otyp === POT_SPEED || (item.cls === 'potion' && (item.potionIndex === 5 || kind === 'speed'));
-                        });
-                        if (speedPotion) {
-                            if ((speedPotion.quan || 1) > 1) speedPotion.quan--;
-                            else mon.minvent = (mon.minvent || []).filter(item => item !== speedPotion);
-                            mon.mspeed = 'fast';
-                            addToplineMessage(couldSeeCoord(mon.mx, mon.my)
-                                ? `The ${mon.data?.name || 'creature'} drinks a potion of speed!`
-                                : 'You hear a chugging sound.');
-                            if (game._message_more && !game._process_time_with_more) {
-                                game._queued_message_after_topline_more = `The ${mon.data?.name || 'creature'} is suddenly moving faster.`;
-                                game._topline_more_after_more = 1;
-                                game._monster_resume_index = monIndex + 1;
-                                game._monster_resume_somebody_can_move = somebodyCanMove;
-                                return false;
-                            }
-                            continue;
                         }
                     }
                 }
@@ -3582,9 +3581,9 @@ async function processMonsterTurns() {
                             if (game._message_more && !game._process_time_with_more) return false;
                             continue;
                         }
-			                        let attackShown = true;
-		                            let continuedAfterImmediateSting = false;
-		                            let deferHitEffects = false;
+                        let attackShown = true;
+                        let continuedAfterImmediateSting = false;
+                        let deferHitEffects = false;
                         if (targetAc < 0) {
                             acValue = -rnd(-targetAc);
                             toHit = Math.max(1, acValue + 10 + attackLevel
@@ -4604,12 +4603,25 @@ async function processMonsterTurns() {
                         if (game._message_more && !game._process_time_with_more) return false;
                         continue;
                     }
-					                    if ((game.level?.monsters || []).includes(mon)) {
-								                        if (!postMoveDistFleeRoll) rn2(5);
-					                        const postMoveSling = !mon.mpeaceful && (mon.minvent || []).find(item =>
-					                            item.kind === 'sling' || item.actualKind === 'sling');
-					                        const postMoveRockIndex = postMoveSling ? (mon.minvent || []).findIndex(item =>
-					                            item.otyp === ROCK || item.kind === 'rock' || item.cls === 'gem') : -1;
+                    if ((game.level?.monsters || []).includes(mon)) {
+                        if (!postMoveDistFleeRoll) rn2(5);
+                        const postMoveTargetX = mon.mux ?? game.u?.ux ?? mon.mx;
+                        const postMoveTargetY = mon.muy ?? game.u?.uy ?? mon.my;
+                        const postMoveDist2 = (mon.mx - postMoveTargetX) ** 2 + (mon.my - postMoveTargetY) ** 2;
+                        const postMoveGridBugDiagonal = mon.data?.name === 'grid bug'
+                            && mon.mx !== postMoveTargetX && mon.my !== postMoveTargetY;
+                        const postMoveNearby = postMoveDist2 < 3 && !postMoveGridBugDiagonal;
+                        if (!movedByMonster && !moveEndedTurn && !mon.mpeaceful && !mon.mflee
+                            && !noStandardAttack && postMoveDist2 <= BOLT_LIM * BOLT_LIM
+                            && !postMoveNearby && (game.u?.uhp || 0) > 0) {
+                            const targetAc = game.u?.uac ?? 10;
+                            if (targetAc < 0) rnd(-targetAc);
+                            continue;
+                        }
+                        const postMoveSling = !mon.mpeaceful && (mon.minvent || []).find(item =>
+                            item.kind === 'sling' || item.actualKind === 'sling');
+                        const postMoveRockIndex = postMoveSling ? (mon.minvent || []).findIndex(item =>
+                            item.otyp === ROCK || item.kind === 'rock' || item.cls === 'gem') : -1;
 					                        if (movedByMonster && !game._prayer_force_pleased_heal
 					                            && postMoveRockIndex >= 0 && throwRange >= 4 && throwRange < BOLT_LIM
 					                            && straightThrow && monsterLinedUp(mon, throwTargetX, throwTargetY)) {
@@ -5511,8 +5523,11 @@ async function finishMonsterTurnTail() {
 
     if (sleepingHunger) rn2(10);
     if (!game._prayer_occupation || !game._prayer_debug_pleased) {
-        rn2(20);
-        if (game.u) game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+        const accessorytime = rn2(20);
+        if (game.u) {
+            game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+            applyAccessoryHunger(accessorytime);
+        }
     }
     if (pendingVaultRoom) {
         let guardX = null, guardY = null;
@@ -6686,6 +6701,32 @@ function consumeSetApparxy(mon) {
     return true;
 }
 
+function findMonsterHealingPotion(mon) {
+    return [...(mon.minvent || [])].reverse().find(item => {
+        const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
+        return item.otyp === POT_FULL_HEALING || item.otyp === POT_EXTRA_HEALING || item.otyp === POT_HEALING
+            || (item.cls === 'potion' && (item.potionIndex === 18 || item.potionIndex === 11 || item.potionIndex === 10
+                || kind === 'full healing' || kind === 'extra healing' || kind === 'healing'));
+    });
+}
+
+function drinkMonsterHealingPotion(mon, healingPotion) {
+    const potionDesc = game._object_descriptions?.potions?.[healingPotion.potionIndex]?.description || '';
+    if (potionDesc === 'milky' || potionDesc === 'smoky') rn2(13);
+    const visible = couldSeeCoord(mon.mx, mon.my);
+    addToplineMessage(visible
+        ? `${monsterDisplayName(mon)} drinks ${healingPotion.kind ? `a potion of ${String(healingPotion.kind).replace(/^potion:/, '').replace(/^potion of /, '')}` : 'a potion'}!`
+        : 'You hear a chugging sound.');
+    if (healingPotion.otyp === POT_FULL_HEALING || healingPotion.potionIndex === 18) {
+        mon.mhp = mon.mhpmax || mon.mhp || 1;
+    } else {
+        const sides = healingPotion.otyp === POT_EXTRA_HEALING || healingPotion.potionIndex === 11 ? 8 : 4;
+        mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + d(6, sides));
+    }
+    if ((healingPotion.quan || 1) > 1) healingPotion.quan--;
+    else mon.minvent = (mon.minvent || []).filter(item => item !== healingPotion);
+}
+
 function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, somebodyCanMove = false) {
     mon._opened_door_this_move = 0;
     const data = mon.data || {};
@@ -6893,7 +6934,17 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         appr = 0;
     }
     const cnt = poss.length;
-    if (!cnt) return false;
+    if (!cnt) {
+        if (!mon.data?.mindless && !mon.data?.nohands) {
+            const healingPotion = findMonsterHealingPotion(mon);
+            if (healingPotion) {
+                drinkMonsterHealingPotion(mon, healingPotion);
+                mon._move_consumed_turn = 1;
+                return true;
+            }
+        }
+        return false;
+    }
     const moveChoices = poss.length;
     const tracks = updateMonsterTrack(mon);
     const jcnt = Math.min(4, moveChoices - 1);

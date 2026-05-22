@@ -4,17 +4,58 @@
 import { bot, flush_screen, pline, clearPendingMessageAndToplineLikeC } from './display.js';
 import { vision_recalc } from './vision.js';
 import { movemon } from './monmove.js';
+import { fmonListNewestFirstLikeC } from './fmon_iter.js';
 import { mcalcMoveLikeC } from './mcalc_move.js';
-import { rn2 } from './rng.js';
 import { NORMAL_SPEED } from './const.js';
 import { end_of_turn_rng, maybe_generate_rnd_mon } from './moveloop_aux.js';
 import { encumberMsg } from './pickup.js';
+import { nearCapacity, ENC } from './encumbr.js';
+import { raceptr } from './mondata.js';
+import { rn2 } from './rng.js';
 import { collectNewuhsPlines } from './hunger.js';
 import { settrack } from './track.js';
 import { pullDueMeltIceAwayTimers } from './level_timers.js';
 import { meltIceAt } from './melt_ice.js';
 import { runDueNhObjTimers } from './obj_timeout_dispatch.js';
 import { contextLeavingTutorialActiveLikeC } from './tutorial_branch.js';
+
+/**
+ * C: allmain.c **`u_calc_moveamt(wtcap)`** — hero speed budget after new-turn setup (subset).
+ * @param {import('./gstate.js').game} g
+ * @param {number} [wtcap]
+ */
+function uCalcMoveamtLikeC(g, wtcap = ENC.UNENCUMBERED) {
+    const u = g.u;
+    if (!u) return;
+    let moveamt = raceptr(g.youmonst)?.mmove | 0;
+    if (!moveamt) moveamt = NORMAL_SPEED;
+
+    if ((u.Very_fast | 0) && rn2(3) !== 0) {
+        moveamt += NORMAL_SPEED;
+    } else if ((u.Fast | 0) && rn2(3) === 0) {
+        moveamt += NORMAL_SPEED;
+    }
+
+    switch (wtcap | 0) {
+        case ENC.SLT_ENCUMBER:
+            moveamt -= Math.trunc(moveamt / 4);
+            break;
+        case ENC.MOD_ENCUMBER:
+            moveamt -= Math.trunc(moveamt / 2);
+            break;
+        case ENC.HVY_ENCUMBER:
+            moveamt -= Math.trunc((moveamt * 3) / 4);
+            break;
+        case ENC.EXT_ENCUMBER:
+            moveamt -= Math.trunc((moveamt * 7) / 8);
+            break;
+        default:
+            break;
+    }
+
+    u.umovement = (u.umovement | 0) + moveamt;
+    if ((u.umovement | 0) < 0) u.umovement = 0;
+}
 
 /** C: allmain.c moveloop_core — vision + bot before rhack (monster/tail advance is in post). */
 export async function runMoveloopPreambleBeforeRhackLikeC(g) {
@@ -34,11 +75,7 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
  * @param {number} stepNum
  */
 async function runNewTurnSetupAndTailLikeC(g, stepNum) {
-    const mons = g.level?.monsters ?? [];
-    /* C: session step 2 / stepNum 1 — four **`distfleeck`** draws before **`mcalcmove`** ( **`fmon`** stand-in until **`nearby`** geometry matches). */
-    if (stepNum === 1) {
-        for (let i = 0; i < 4; i++) rn2(5);
-    }
+    const mons = fmonListNewestFirstLikeC(g);
     if (mons.length > 0) {
         for (const m of mons) {
             m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
@@ -71,8 +108,7 @@ async function runNewTurnSetupAndTailLikeC(g, stepNum) {
 
 /**
  * C: allmain.c moveloop_core — after a time-costing hero command: `u.umovement -= NORMAL_SPEED`,
- * `do { movemon(); … } while (monscanmove)` (break early if hero still has movement), then new-turn
- * setup only when `!monscanmove && u.umovement < NORMAL_SPEED`.
+ * outer `do { movemon…; new-turn; u_calc_moveamt; } while (u.umovement < NORMAL_SPEED)`.
  * @param {import('./gstate.js').game} g
  */
 export async function runPostCommandTurnAdvanceLikeC(g) {
@@ -82,26 +118,29 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     u.umovement = (u.umovement ?? NORMAL_SPEED) - NORMAL_SPEED;
 
     const stepNum = (g.moves || 1) - 1;
-    let monscanmove = false;
 
     g.context = g.context || {};
-    g.context._movemonHarnessConsumed = false;
     g.context.monMoving = true;
     try {
-        if (stepNum > 0) {
-            await encumberMsg();
-            do {
-                monscanmove = await movemon(stepNum);
-                if ((u.umovement | 0) >= NORMAL_SPEED) break;
-            } while (monscanmove);
-        }
+        do {
+            let monscanmove = false;
+            if (stepNum > 0) {
+                g.context._movemonHarnessConsumed = false;
+                await encumberMsg();
+                do {
+                    monscanmove = await movemon(stepNum);
+                    if ((u.umovement | 0) >= NORMAL_SPEED) break;
+                } while (monscanmove);
+            }
+
+            if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED) {
+                await runNewTurnSetupAndTailLikeC(g, stepNum);
+                uCalcMoveamtLikeC(g, nearCapacity(g));
+            }
+        } while ((u.umovement | 0) < NORMAL_SPEED);
     } finally {
         g.context.monMoving = false;
         delete g.context._movemonHarnessConsumed;
-    }
-
-    if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED) {
-        await runNewTurnSetupAndTailLikeC(g, stepNum);
     }
 }
 
