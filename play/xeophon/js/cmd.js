@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -1483,6 +1483,13 @@ function startControlledTeleportPrompt() {
     game._command_mode = 'teleportCursor';
 }
 
+async function showControlledTeleportCursorPrompt() {
+    await setMessage("(For instructions type a '?')  Move cursor to the desired position:");
+    game._farlook_x = game.u?.ux || 0;
+    game._farlook_y = game.u?.uy || 0;
+    game._command_mode = 'teleportCursor';
+}
+
 function resolveArrivalCollision(mon) {
     if (!mon || mon.mx !== game.u?.ux || mon.my !== game.u?.uy) return;
     const open = pos => {
@@ -1766,6 +1773,7 @@ function questPagerRows(msgid) {
     const info = QUEST_ROLE_DATA[roleName];
     const raw = info?.texts?.[msgid] || (msgid === 'goal_alt' ? info?.texts?.goal_next : '');
     if (!raw) return null;
+    l_nhcore_init();
     const rankIndex = level => level <= 2 ? 0 : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
     const rank = info.ranks[Math.min(rankIndex(game.u?.ulevel || 1), info.ranks.length - 1)];
     const minRank = info.ranks[Math.min(rankIndex(MIN_QUEST_LEVEL), info.ranks.length - 1)];
@@ -1826,7 +1834,6 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
     game.quest_status ??= {};
     const fromAbove = fromLevel.dnum !== targetLevel.dnum || fromLevel.dlevel < targetLevel.dlevel;
     if (kind === 'start') {
-        l_nhcore_init();
         if (!game.quest_status.first_start) {
             game.quest_status.first_start = true;
             return pager('firsttime');
@@ -1852,6 +1859,7 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
 async function continueQuestLeaderTalkAfterIntro() {
     game.quest_status ??= {};
     if ((game.u?.ulevel || 1) < MIN_QUEST_LEVEL) {
+        game._quest_reject_exercise_wis = 1;
         showQuestPager('badlevel', 'questLeaderRejectMore');
         return;
     }
@@ -1866,6 +1874,7 @@ async function continueQuestLeaderTalkAfterIntro() {
     }
     if (!pure) {
         game.quest_status.not_ready = 1;
+        game._quest_reject_exercise_wis = 1;
         showQuestPager('badalign', 'questLeaderRejectMore');
         return;
     }
@@ -1881,7 +1890,8 @@ export function maybeQueueQuestLeaderTalk(mon) {
     game.quest_status ??= {};
     mon.questTalked = true;
     game.quest_status.met_leader = true;
-    if (!queueQuestPager(game.quest_status.met_leader_once ? 'leader_next' : 'leader_first', 'questLeaderIntroMore'))
+    const pager = game._pending_message && game._message_more ? queueQuestPager : showQuestPager;
+    if (!pager(game.quest_status.met_leader_once ? 'leader_next' : 'leader_first', 'questLeaderIntroMore'))
         return false;
     game.quest_status.met_leader_once = true;
     return true;
@@ -5064,10 +5074,33 @@ export function inventoryLetterRank(item) {
 }
 
 export function inventoryItemName(item) {
-    if (item?.artifact) return artifactObjectName(item);
+    if (item?.artifact) {
+        if (item.line) {
+            return String(item.line)
+                .replace(/^[a-zA-Z$] - /, '')
+                .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '');
+        }
+        return pickupObjectPhrase(item);
+    }
     return String(item.line || `${item.letter || '?'} - ${item.quan > 1 ? `${item.quan} ` : ''}${pickupObjectName(item)}`)
         .replace(/^[a-zA-Z$] - /, '')
         .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '');
+}
+
+const ARTIFACT_ALIGN_TYPE = { lawful: 1, neutral: 0, chaotic: -1 };
+
+function touchArtifact(item) {
+    const def = artifactDefinitionForName(item?.artifact);
+    if (!def?.restricted || def.alignment == null || def.alignment === 'none') return;
+    const artifactAlign = ARTIFACT_ALIGN_TYPE[def.alignment];
+    if (artifactAlign == null) return;
+    const heroAlign = game.u?.ualign?.type ?? 0;
+    const alignRecord = game.u?.ualign?.record ?? 0;
+    if (artifactAlign !== heroAlign || alignRecord < 0) rn2(4);
+}
+
+function touchArtifactForWield(item) {
+    touchArtifact(item);
 }
 
 function isProjectileItem(item) {
@@ -16655,6 +16688,7 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._pending_message = '';
             game._message_more = 0;
+            game._pending_time_passed = 0;
             await setMessage('adjust?');
             game._command_mode = 'questLeaderAdjust';
         }
@@ -16670,6 +16704,7 @@ export async function rhack(_cmd) {
         } else {
             game.quest_status ??= {};
             game.quest_status.not_ready = 1;
+            game._quest_reject_exercise_wis = 1;
             showQuestPager('badalign', 'questLeaderRejectMore');
         }
         return;
@@ -16681,6 +16716,10 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             game._pending_message = '';
             game._message_more = 0;
+            if (game._quest_reject_exercise_wis) {
+                game._quest_reject_exercise_wis = 0;
+                exerciseAttribute(A_WIS, true);
+            }
             await finishLevelTeleport(branchLevel(game.u?.uz?.dnum ?? -1) || { dnum: 0, dlevel: 14 }, { portalArrival: true });
             game._pending_message = '';
             game._message_more = 0;
@@ -24832,6 +24871,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (item._artifact_wish_name) wishedQuan = 1;
+            if (item.artifact) touchArtifact(item);
             if (wishedSpe !== undefined && !item._wish_ignore_requested_spe && !item._wish_spe_from_suffix)
                 item.spe = wishedSpeForItem(item, wishedSpe);
             applyWishedBuc(item, {
@@ -25990,6 +26030,7 @@ export async function rhack(_cmd) {
                 game._command_mode = null;
                 return;
             }
+            touchArtifactForWield(item);
             const previousWielded = (game.inventory || []).find(invItem => invItem !== item
                 && (invItem.wielded || invItem.line?.includes('weapon in') || invItem.line?.includes('(wielded)')));
             if (previousWielded) {
@@ -26072,11 +26113,12 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x14' && game.flags?.debug && !game._command_mode && !(game._pending_message && game._message_more)) {
-        await setMessage('Where do you want to be teleported?');
-        game._farlook_x = game.u?.ux || 0;
-        game._farlook_y = game.u?.uy || 0;
+        await setMessage('Where do you want to be teleported?', true);
         game._teleport_cursor_position_mode = 0;
-        game._command_mode = 'teleportCursor';
+        game._teleport_dot_described = 0;
+        game._teleport_from_scroll = 0;
+        game._cursor_override = null;
+        game._command_mode = 'teleportIntroMore';
         return;
     }
 
@@ -26586,9 +26628,13 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._pending_message = '';
             game._message_more = 0;
-            setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
-            game._getpos_tip_seen = 1;
-            game._command_mode = 'teleportTip';
+            if (!game._getpos_tip_seen && game.flags?.tutorial !== false) {
+                setOverlay(TRAVEL_TIP_LINES, 9, false, 9);
+                game._getpos_tip_seen = 1;
+                game._command_mode = 'teleportTip';
+                return;
+            }
+            await showControlledTeleportCursorPrompt();
             return;
         }
         game._keep_pending_message = 1;
@@ -26599,10 +26645,7 @@ export async function rhack(_cmd) {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
-            await setMessage("(For instructions type a '?')  Move cursor to the desired position:");
-            game._farlook_x = game.u?.ux || 0;
-            game._farlook_y = game.u?.uy || 0;
-            game._command_mode = 'teleportCursor';
+            await showControlledTeleportCursorPrompt();
         }
         return;
     }
@@ -26877,7 +26920,7 @@ export async function rhack(_cmd) {
                     game._teleport_cursor_position_mode = 0;
                     game._cursor_override = null;
                     game._teleport_geometric_online_once = 1;
-                    await setMessage(`You materialize in ${targetX === oldX && targetY === oldY ? 'the same' : 'a different'} location!`);
+                    await setMessage(`You materialize in ${targetX === oldX && targetY === oldY ? 'the same' : 'a different'} location!`, true);
                     game.context.move = 1;
                     return;
                 }
@@ -26981,12 +27024,11 @@ export async function rhack(_cmd) {
                 game._teleport_cursor_position_mode = 0;
                 game._cursor_override = null;
                 game._command_mode = null;
-                const teleportFromScroll = !!game._teleport_from_scroll;
                 game._teleport_from_scroll = 0;
-                game.context.move = teleportFromScroll ? 1 : 0;
+                game.context.move = 1;
+                const materializeMessage = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                 if (!selectedValid) {
-                    if (teleportFromScroll)
-                        game._topline_after_more = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
+                    game._topline_after_more = materializeMessage;
                     const attachedObjects = [game.u?.uchain, game.u?.uball].filter(obj =>
                         obj && !obj.hidden && obj.ox === landingX && obj.oy === landingY);
                     if (attachedObjects.length > 1) {
@@ -27007,9 +27049,7 @@ export async function rhack(_cmd) {
                     await setMessage('Sorry...', true);
                     return;
                 }
-                await setMessage(teleportFromScroll
-                    ? `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`
-                    : '');
+                await setMessage(materializeMessage, true);
                 return;
             }
             const up = game.level?.upstair?.x === targetX && game.level?.upstair?.y === targetY;

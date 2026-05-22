@@ -2839,12 +2839,14 @@ async function processMonsterTurns() {
                         if (monsterMinliquid(mon)) continue;
 			                }
 	                if (mon.mcanmove === false) continue;
+	                const wasWaiting = !!mon.waiting;
 	                if (mon.waiting) {
 	                    const seesHero = mon.mcansee !== false
 	                        && (!game.u?.invisible || mon.data?.seeInvisible)
 	                        && clearPath(mon.mx, mon.my, game.u?.ux || 0, game.u?.uy || 0);
 	                    if (seesHero || (mon.mhp || 0) < (mon.mhpmax || 0)) mon.waiting = false;
 	                }
+	                if (wasWaiting && maybeQueueQuestLeaderTalk(mon)) return false;
 	                if (mon.waiting) {
 	                    if (maybeQueueQuestLeaderTalk(mon)) return false;
 	                    continue;
@@ -4561,6 +4563,7 @@ async function processMonsterTurns() {
 	                        if (game._message_more && !game._process_time_with_more) return false;
 	                    }
                     maybeSpinMonsterWeb(mon);
+                    if (maybeQueueQuestLeaderTalk(mon)) return false;
                     const throwTargetX = mon.mux ?? game.u?.ux ?? mon.mx;
                     const throwTargetY = mon.muy ?? game.u?.uy ?? mon.my;
                     const throwDx = Math.sign(throwTargetX - mon.mx);
@@ -5789,6 +5792,8 @@ async function finishMonsterTurnTail() {
             const occupation = game._armor_wear_occupation;
             game._armor_wear_occupation = null;
             let message = 'You finish your dressing maneuver.';
+            if (game._topline_after_more && !game._pending_message && !game._message_more)
+                game._topline_after_more = '';
             const item = occupationItem;
             if (occupation.action === 'takeoff') {
                 message = `You finish taking off your ${occupation.simpleName || pickupObjectName(item || {})}.`;
