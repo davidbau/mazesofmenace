@@ -1261,12 +1261,12 @@ const WAND_NAME_TO_INDEX = new Map([
     ['sleep', 22], ['death', 23], ['lightning', 24],
 ]);
 const WAND_WISH_NAMEDESC_BOUNDS = new Map([
-    ['light', 95], ['secret door detection', 50], ['enlightenment', 15], ['create monster', 50],
-    ['wishing', 5], ['stasis', 45], ['nothing', 25], ['striking', 30], ['make invisible', 45],
-    ['slow monster', 50], ['speed monster', 50], ['undead turning', 50], ['polymorph', 45],
-    ['cancellation', 45], ['teleportation', 45], ['opening', 30], ['locking', 30],
-    ['probing', 30], ['digging', 40], ['magic missile', 50], ['fire', 40], ['cold', 40],
-    ['sleep', 50], ['death', 5], ['lightning', 40],
+    ['light', 96], ['secret door detection', 51], ['enlightenment', 16], ['create monster', 51],
+    ['wishing', 6], ['stasis', 46], ['nothing', 26], ['striking', 31], ['make invisible', 46],
+    ['slow monster', 51], ['speed monster', 51], ['undead turning', 51], ['polymorph', 46],
+    ['cancellation', 46], ['teleportation', 46], ['opening', 31], ['locking', 31],
+    ['probing', 31], ['digging', 41], ['magic missile', 51], ['fire', 41], ['cold', 41],
+    ['sleep', 51], ['death', 6], ['lightning', 41],
 ]);
 const IDENTIFIED_WAND_NAMES = [...WAND_NAME_TO_INDEX.keys()];
 const NO_DIRECTION_WAND_NAMES = new Set(['light', 'secret door detection', 'enlightenment', 'create monster', 'wishing', 'stasis']);
@@ -4711,7 +4711,8 @@ const GENERATED_OPTIONS_HELP_LINES = [
     '',
     '                 NetHack Options Help:',
     '',
-    'Set options as OPTIONS=<options> in .nethackrc',
+    'Set options as OPTIONS=<options> in',
+    '/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/resul',
     'or use `NETHACKOPTIONS="<options>"\' in your environment',
     '(<options> is a list of options separated by commas)',
     'or press "O" while playing and use the menu.',
@@ -5487,13 +5488,15 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
     const joinState = { joinedArmorMessage: false };
     let destroyItems = false;
     let igniteItems = false;
+    let rollIgniteAfterDestroy = false;
     if (forceDestroyItems) {
         destroyItems = true;
         igniteItems = true;
     } else if (rollIgniteItems) {
         if (!armor.bodyHit) return { messages, events, damage: 0, deathCause: '' };
         destroyItems = !rn2(3);
-        igniteItems = !rn2(3);
+        if (destroyItems) rollIgniteAfterDestroy = true;
+        else igniteItems = !rn2(3);
     } else if (armor.bodyHit || rn2(3)) {
         destroyItems = true;
         igniteItems = true;
@@ -5511,6 +5514,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
     let limit = Math.trunc(origDamage / 5);
     if (origDamage % 5 > rn2(5)) limit++;
     if (limit < 1) {
+        if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
         if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
         return { messages, events, damage, deathCause };
     }
@@ -5570,6 +5574,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
         }
         addFireInventoryMessage(messages, events, message, event, armor, joinState);
     }
+    if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
     if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
     return { messages, events, damage, deathCause };
 }
@@ -11448,6 +11453,27 @@ function containerSortRank(item) {
     return 4;
 }
 
+function containerLootSortKey(item) {
+    return pickupObjectName({ ...item, quan: 1 }).toLowerCase();
+}
+
+function compareContainerLootItems(a, b) {
+    return containerSortRank(a) - containerSortRank(b)
+        || containerLootSortKey(a).localeCompare(containerLootSortKey(b));
+}
+
+function containerObjectPhrase(obj) {
+    const count = obj.quan || 1;
+    const name = pickupObjectName(obj);
+    if (count > 1) return `${count} ${name}`;
+    if (obj.unique) return `the ${name}`;
+    if (obj.noArticle) return name;
+    if (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets'))
+        return `a pair of ${name}`;
+    const article = /^[aeiou]/i.test(name) || name === 'orcish helm' ? 'an' : 'a';
+    return `${article} ${name}`;
+}
+
 function objectBucCategory(item) {
     if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$')
         return game.flags?.goldX ? 'unknown' : 'uncursed';
@@ -16065,13 +16091,6 @@ async function moveHero(dx, dy) {
     if (steppedTrap?.ttyp === TELEP_TRAP) {
         game.u.ux0 = newx;
         game.u.uy0 = newy;
-        const wearingStealthRing = (game.inventory || []).some(item => item.cls === 'ring' && item.worn
-            && ((item.ringRoll || item.roll) === 9 || item.actualKind === 'ring of stealth'));
-        if (!wearingStealthRing) {
-            game._utrack ??= [];
-            game._utrack.push({ x: newx, y: newy });
-            if (game._utrack.length > 100) game._utrack.shift();
-        }
         let teleportedToVault = false;
         if (steppedTrap.once) {
             game.level.traps = (game.level.traps || []).filter(trap => trap !== steppedTrap);
@@ -18050,7 +18069,7 @@ export async function rhack(_cmd) {
 	                    game._command_mode = 'deathDieMore';
 	                    if (attack.currentMove) game._death_current_move = 1;
 	                    if (game.u) {
-	                        game._death_status_hp_before_zero = attack.holdStatusHp ? game.u.uhp : null;
+	                        game._death_status_hp_before_zero = attack.holdStatusHp && !game._death_taker ? game.u.uhp : null;
 	                        game.u.uhp = 0;
 	                    }
 	                    const deathMessage = game._death_taker
@@ -18089,6 +18108,7 @@ export async function rhack(_cmd) {
                     game._run_steps_remaining = 0;
                     game._command_mode = 'deathDieMore';
                     game._death_current_move = 1;
+                    game._death_status_hp_before_zero = null;
                     prepareDeathBones();
                     await setMessage(deathTaker
                         ? `You die...  ${deathTaker} takes all your possessions.`
@@ -18105,7 +18125,7 @@ export async function rhack(_cmd) {
                     game._pet_message_resume = 0;
                     game._monster_resume_index = 0;
                     game._armor_tail_after_more = 1;
-                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 2);
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
                     game.context.move = 0;
                     game._process_command_time_now = 1;
                     game._process_time_with_more = 1;
@@ -19590,6 +19610,7 @@ export async function rhack(_cmd) {
             return;
         }
 
+        rn2(19);
         game._deferred_level_goto = {
             targetLevel: levelTeleportNumericTarget(targetDepth),
             options: levelTeleportOptionsWithTrapFollowup({ levelTeleport: true }),
@@ -19953,6 +19974,7 @@ export async function rhack(_cmd) {
             game._death_moves = game.moves || 1;
             game._bones_ok = canMakeBones();
             if (game._bones_ok) {
+                createDeathBonesRemains();
                 await setMessage('Save bones? [yn] (n)');
                 game._command_mode = 'deathBonesPrompt';
                 return;
@@ -22172,7 +22194,17 @@ export async function rhack(_cmd) {
             removeInventoryItem(item);
             rn2(19);
             const result = enchantWeaponScrollEffect(item, messages);
+            const learnedScroll = result.learned && !alreadyKnown;
             if (result.learned) learnScrollByName('enchant weapon', item, 5);
+            if (learnedScroll && messages.length === 2) {
+                game._queued_message_after_more = messages[1];
+                game._queued_message_process_time_after_more = 1;
+                game._read_scroll_exercise_after_more = 1;
+                await setMessage(messages[0], true);
+                game._command_mode = null;
+                game.context.move = 0;
+                return;
+            }
             const shouldCall = !alreadyKnown && !result.learned;
             await setMessage(messages.join('  '), result.more || confusedReading || shouldCall);
             game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
@@ -22326,6 +22358,7 @@ export async function rhack(_cmd) {
         }
         if (isScroll && (scrollName === 'teleportation' || item.scrollIndex === 10)) {
             const confusedReading = heroIsConfused();
+            const debugWizard = !!game.flags?.debug;
             const alreadyKnown = scrollDiscoveryKnown('teleportation')
                 || item.known === true
                 || item.actualKind === 'scroll of teleportation'
@@ -22334,14 +22367,24 @@ export async function rhack(_cmd) {
             const callLabel = scrollCallLabel(item, 10);
             const messages = scrollDisappearMessages(confusedReading);
             removeInventoryItem(item);
-            rn2(19);
+            const deferConfusedPromptExercise = confusedReading
+                && !((heroHasAmuletOfYendor() || In_endgame(game.u?.uz) || In_sokoban(game.u?.uz)) && !debugWizard)
+                && ((heroHasTeleportControl() && !heroIsStunned()) || debugWizard);
+            if (!deferConfusedPromptExercise) rn2(19);
             if (!confusedReading && !item.cursed) rn2(19);
             const result = teleportationScrollEffect(item, messages);
             if (result.learned) learnScrollByName('teleportation', item, 10);
             if (result.promptLevel) {
                 game._read_confused_teleport_prompt_after_more = 1;
                 game._read_level_teleport_confused_prompt = result.confusedPrompt ? 1 : 0;
-                await setMessage(messages.join('  '), true);
+                if (deferConfusedPromptExercise && messages.length > 1) {
+                    game._queued_message_after_more = messages[1];
+                    game._queued_message_more_after_more = 1;
+                    game._read_scroll_exercise_after_more = 1;
+                    await setMessage(messages[0], true);
+                } else {
+                    await setMessage(messages.join('  '), true);
+                }
                 game._command_mode = null;
                 game.context.move = 0;
                 return;
@@ -22596,7 +22639,9 @@ export async function rhack(_cmd) {
             removeInventoryItem(item);
             rn2(19);
             const result = await lightScrollEffect(item, messages);
+            const learnedScroll = result.learned && !alreadyKnown;
             if (result.learned) learnScrollByName('light', item, 9);
+            if (learnedScroll) exerciseAttribute(A_WIS, true);
             const shouldCall = !alreadyKnown && !result.learned;
             await setMessage(messages.join('  '), confusedReading || shouldCall);
             game._command_mode = shouldCall ? 'callScrollAfterMore' : null;
@@ -25456,15 +25501,12 @@ export async function rhack(_cmd) {
         if (ch === ':') {
             const iceBox = game.level?.objects?.find(obj =>
                 obj.otyp === ICE_BOX && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
+            if (iceBox) iceBox.cknown = true;
             const rows = [[0, 41, 'Contents of the ice box:']];
             let row = 2;
-            const contents = [...(iceBox?.contents || [])].sort((a, b) =>
-                pickupObjectName(a).localeCompare(pickupObjectName(b)));
+            const contents = [...(iceBox?.contents || [])].sort(compareContainerLootItems);
             for (const item of contents) {
-                const count = item.quan || 1;
-                const name = pickupObjectName(item);
-                const pluralName = name.endsWith(' corpse') ? name.replace(/ corpse$/, ' corpses') : `${name}s`;
-                rows.push([row++, 43, count > 1 ? `${count} ${pluralName}` : `a ${name}`]);
+                rows.push([row++, 43, containerObjectPhrase(item)]);
                 if (row >= 23) break;
             }
             if (row === 2) rows.push([row++, 43, 'The ice box is empty.']);
@@ -25511,17 +25553,9 @@ export async function rhack(_cmd) {
             container.cknown = true;
             const rows = [[0, 41, `Contents of the ${name}:`]];
             let row = 2;
-            const contents = [...(container.contents || [])].sort((a, b) =>
-                containerSortRank(a) - containerSortRank(b) || pickupObjectName(a).localeCompare(pickupObjectName(b)));
+            const contents = [...(container.contents || [])].sort(compareContainerLootItems);
             for (const item of contents) {
-                if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') {
-                    const count = item.quan || 1;
-                    rows.push([row++, 43, `${count} gold piece${count === 1 ? '' : 's'}`]);
-                    continue;
-                }
-                const objectName = pickupObjectName(item);
-                const article = /^[aeiou]/i.test(objectName) ? 'an' : 'a';
-                rows.push([row++, 43, `${article} ${objectName}`]);
+                rows.push([row++, 43, containerObjectPhrase(item)]);
             }
             rows.push([row, 41, '--More--']);
             setOverlay(rows, Math.max(11, row + 1));
@@ -25536,8 +25570,7 @@ export async function rhack(_cmd) {
                     [3, 27, '(ignored unless some other choices are also picked)'],
                 ];
                 const seen = new Set();
-                const contents = [...(container.contents || [])].sort((a, b) =>
-                    containerSortRank(a) - containerSortRank(b) || pickupObjectName(a).localeCompare(pickupObjectName(b)));
+                const contents = [...(container.contents || [])].sort(compareContainerLootItems);
                 for (const item of contents) {
                     let label = 'Other Items';
                     if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') label = 'Coins';
@@ -25668,8 +25701,7 @@ export async function rhack(_cmd) {
                     ? new Set(typeEntries.map(entry => entry.label))
                     : new Set(typeEntries.filter(entry => selected.has(entry.letter)).map(entry => entry.label));
                 const entries = [];
-                const contents = [...(container.contents || [])].sort((a, b) =>
-                    containerSortRank(a) - containerSortRank(b) || pickupObjectName(a).localeCompare(pickupObjectName(b)));
+                const contents = [...(container.contents || [])].sort(compareContainerLootItems);
                 for (const item of contents) {
                     let label = 'Other Items';
                     if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') label = 'Coins';
@@ -29616,13 +29648,15 @@ export async function rhack(_cmd) {
         if (nearbyMonster) {
             game.context.move = 0;
             game._counted_repeat_interruptible = 0;
-            const waitMessage = game._safe_wait_advice_seen
-                ? 'Are you waiting to get hit?'
-                : "Are you waiting to get hit?  Use 'm' prefix to force a no-op (to rest).";
-            game._safe_wait_advice_seen = 1;
-            await setMessage(waitMessage);
+            const cmdassist = game.flags?.cmdassist ?? FULL_OPTION_DEFAULTS.cmdassist;
+            const waitMessage = cmdassist || !(game._did_nothing_flag || 0)
+                ? "Are you waiting to get hit?  Use 'm' prefix to force a no-op (to rest)."
+                : 'Are you waiting to get hit?';
+            if (!cmdassist) game._did_nothing_flag = (game._did_nothing_flag || 0) + 1;
+            if (game._last_pline_message !== waitMessage) await setMessage(waitMessage);
             return;
         }
+        game._did_nothing_flag = 0;
         return;
     }
 
@@ -29634,7 +29668,8 @@ export async function rhack(_cmd) {
         const countMessage = game._count_prefix ? `Count: ${game._count_prefix}` : '';
         const forcedSearch = !!game._move_nopick_prefix;
         game._forced_search_this_turn = forcedSearch ? 1 : 0;
-        const nearbyMonster = !game.u?.blind && !count && !forcedSearch && (game.level?.monsters || []).some(mon =>
+        const nearbyMonster = (game.flags?.safe_wait ?? FULL_OPTION_DEFAULTS.safe_wait)
+            && !game.u?.blind && !count && !forcedSearch && (game.level?.monsters || []).some(mon =>
             !mon.pet && !mon.mpeaceful
             && Math.max(Math.abs(mon.mx - (game.u?.ux || 0)), Math.abs(mon.my - (game.u?.uy || 0))) <= 1
         );
@@ -29642,12 +29677,16 @@ export async function rhack(_cmd) {
         game._request_menu_prefix = 0;
         if (nearbyMonster) {
             game._count_prefix = '';
-            const message = "You already found a monster.  Use 'm' prefix to force another search.";
-            if (game._pending_message_is_search_safety_warning || game._search_safety_warning_active) {
-                game._pending_message = 'You already found a monster.';
+            const cmdassist = game.flags?.cmdassist ?? FULL_OPTION_DEFAULTS.cmdassist;
+            const message = cmdassist || !(game._already_found_flag || 0)
+                ? "You already found a monster.  Use 'm' prefix to force another search."
+                : 'You already found a monster.';
+            if (!cmdassist) game._already_found_flag = (game._already_found_flag || 0) + 1;
+            if (game._last_pline_message === message) {
                 game._pending_message_is_search_safety_warning = 0;
                 game._message_more = 0;
-                game._search_safety_warning_active = 0;
+                game._search_safety_warning_active = 1;
+                game._clear_search_safety_message_next_flush = 0;
                 return;
             }
             await setMessage(message);
@@ -29658,6 +29697,7 @@ export async function rhack(_cmd) {
             return;
         }
         game._search_safety_warning_active = 0;
+        game._already_found_flag = 0;
         if (countMessage && game._pending_message === countMessage) {
             game._pending_message = '';
             game._message_more = 0;

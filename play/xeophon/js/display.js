@@ -1186,7 +1186,9 @@ export async function cls() {
 export async function bot() {}
 
 export async function pline(msg) {
-    game._pending_message = String(msg || '');
+    const text = String(msg || '');
+    game._last_pline_message = text;
+    game._pending_message = text;
     game._message_more = 0;
     game._overlay_lines = null;
     game._overlay_hide_status = 0;

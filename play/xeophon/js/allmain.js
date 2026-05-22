@@ -3390,13 +3390,19 @@ async function processMonsterTurns() {
                             continue;
                         }
                         const bites = data.nohands || ['jackal', 'fox', 'coyote', 'dog', 'wolf', 'kitten', 'cat'].some(kind => name.includes(kind));
+                        const attackLoc = game.level?.at(mon.mx, mon.my);
+                        const monsterInSight = !game.u?.blind && !mon.minvis && !mon.mundetected
+                            && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
+                        if (attackLoc?.map_invisible && monsterInSight && !mon._hide_for_bullwhip_more) {
+                            attackLoc.map_invisible = false;
+                            if (attackLoc.remembered_glyph?.ch === 'I') attackLoc.remembered_glyph = null;
+                        }
                         const hiddenBullwhip = !!mon._hide_for_bullwhip_more
-                            || !!game.level?.at(mon.mx, mon.my)?.map_invisible;
+                            || (!!attackLoc?.map_invisible && !monsterInSight);
                         const bullwhipHiddenAttack = !!mon._hide_for_bullwhip_more;
                         const subject = game.u?.blind || hiddenBullwhip ? 'It' : monsterDisplayName(mon);
                         if (game.u?.blind && !hiddenBullwhip) {
-                            const loc = game.level?.at(mon.mx, mon.my);
-                            if (loc) loc.map_invisible = true;
+                            if (attackLoc) attackLoc.map_invisible = true;
                             newsym(mon.mx, mon.my);
                         }
                         const weapon = mon.mw || mon.minvent?.find(item =>
@@ -3571,7 +3577,8 @@ async function processMonsterTurns() {
                                 game._monster_resume_somebody_can_move = somebodyCanMove;
                                 return false;
                             }
-                            if (showedAttack && !game._message_more && !stoppedCountedRepeat && !pendingHeroMeleeMessage) {
+                            if (showedAttack && data.attacks.length > 1
+                                && !game._message_more && !stoppedCountedRepeat && !pendingHeroMeleeMessage) {
                                 game._message_more = 1;
                                 game._process_time_with_more = 0;
                                 game._monster_resume_index = monIndex + 1;
