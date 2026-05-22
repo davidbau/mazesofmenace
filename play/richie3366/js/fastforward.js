@@ -13,24 +13,9 @@
 //
 // Derived from a frozen reference session RNG log (historical extraction).
 
-import { rn2, rnd, d, rne, rnz } from "./rng.js";
+import { rn2 } from "./rng.js";
 import { game } from "./gstate.js";
-import {
-    consumeRogueHumanIniInvUinitRoleRngLikeC,
-    consumeSamuraiHumanIniInvUinitRoleRngLikeC,
-    consumeValkyrieHumanIniInvUinitRoleRngLikeC,
-    consumeKnightHumanIniInvUinitRoleRngLikeC,
-    consumeMonkHumanIniInvUinitRoleRngLikeC,
-    consumeWizardHumanIniInvUinitRoleRngLikeC,
-    consumeArcheologistHumanIniInvUinitRoleRngLikeC,
-    consumeHealerHumanIniInvUinitRoleRngLikeC,
-    consumePriestHumanIniInvUinitRoleRngLikeC,
-    consumeBarbarianHumanIniInvUinitRoleRngLikeC,
-    consumeCaveDwellerHumanIniInvUinitRoleRngLikeC,
-    consumeRangerHumanIniInvUinitRoleRngLikeC,
-    consumeTouristHumanIniInvUinitRoleRngLikeC,
-} from "./u_init_role_rng.js";
-import { races } from "./roles.js";
+import { runUInitRoleRngAfterMklevLikeC } from "./u_init_post_mklev.js";
 
 // Pre-mklev startup: o_init shuffles, dungeon init, u_init_misc (handedness rn2(10) in allmain.js before l_nhcore_init)
 // 302 leaf RNG calls (session indices 0-307)
@@ -146,88 +131,8 @@ export function fastforward_pre_mklev() {
     /* C u_init.c u_init_misc — `u.uhandedness = rn2(10) ? …` (allmain.js newgame, after g.u scaffold) */
 }
 
-// Post-mklev startup: u_init_role, ini_inv, and most of moveloop_preamble RNG
-// except rnd(9000)/rnd(30) (see moveloop_preamble.js).
-// init_attr(75)+vary_init_attr() PRNG is replayed by u_init_attr.js (allmain.js).
-// Leading rnd(1000) for tourist starting gold is real code: u_init_money.js (allmain.js).
-// ~84 leaf RNG calls here for generic roles (was ~85). Human Rogue / Samurai / Valkyrie / … / Cave dweller use u_init_role_rng.js.
+/** @deprecated Use runUInitRoleRngAfterMklevLikeC from u_init_post_mklev.js */
 export function fastforward_post_mklev() {
-    const humanIdx = races.findIndex((r) => r.name === "human");
-    const rog = game.urole?.abbr === "Rog" && (game.initrace | 0) === humanIdx;
-    if (rog) {
-        consumeRogueHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const sam = game.urole?.abbr === "Sam" && (game.initrace | 0) === humanIdx;
-    if (sam) {
-        consumeSamuraiHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const val = game.urole?.abbr === "Val" && (game.initrace | 0) === humanIdx;
-    if (val) {
-        consumeValkyrieHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const kni = game.urole?.abbr === "Kni" && (game.initrace | 0) === humanIdx;
-    if (kni) {
-        consumeKnightHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const mon = game.urole?.abbr === "Mon" && (game.initrace | 0) === humanIdx;
-    if (mon) {
-        consumeMonkHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const wiz = game.urole?.abbr === "Wiz" && (game.initrace | 0) === humanIdx;
-    if (wiz) {
-        consumeWizardHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const arc = game.urole?.abbr === "Arc" && (game.initrace | 0) === humanIdx;
-    if (arc) {
-        consumeArcheologistHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const hea = game.urole?.abbr === "Hea" && (game.initrace | 0) === humanIdx;
-    if (hea) {
-        consumeHealerHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const pri = game.urole?.abbr === "Pri" && (game.initrace | 0) === humanIdx;
-    if (pri) {
-        consumePriestHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const bar = game.urole?.abbr === "Bar" && (game.initrace | 0) === humanIdx;
-    if (bar) {
-        consumeBarbarianHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const ran = game.urole?.abbr === "Ran" && (game.initrace | 0) === humanIdx;
-    if (ran) {
-        consumeRangerHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const tou = game.urole?.abbr === "Tou" && (game.initrace | 0) === humanIdx;
-    if (tou) {
-        consumeTouristHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    const cav = game.urole?.abbr === "Cav" && (game.initrace | 0) === humanIdx;
-    if (cav) {
-        consumeCaveDwellerHumanIniInvUinitRoleRngLikeC();
-        return;
-    }
-    rn2(20); rnd(2); rn2(6); rn2(11); rn2(10); rn2(10); rn2(100); rn2(20); rn2(1);
-    rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000);
-    rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2);
-    rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6); rnd(1000); rnd(2); rn2(6);
-    rn2(3); rn2(4); rn2(5); rn2(7); rn2(8); rn2(11); rn2(15); rn2(16); rn2(21); rn2(15); rn2(10);
-    rn2(6); rn2(1); rnd(2); rn2(4); rn2(2); rnd(2); rn2(4); rn2(2); rn2(1); rnd(2); rn2(4);
-    rnd(2); rn2(4); rnd(2); rn2(4); rnd(2); rn2(4); rn2(1); rnd(2); rn2(10); rn2(11); rn2(10);
-    rn2(10); rn2(1); rnd(2); rn2(70); rn2(1); rn2(1); rnd(2); rn2(1); rn2(25); rn2(25); rn2(25);
-    /* u_init before init_attr — C order keeps these before init_attr(75) */
-    rn2(20); rn2(1); rnd(2);
-    /* rnd(9000); rnd(30) — moveloop_preamble.js (!resuming), C: allmain.c moveloop_preamble */
+    runUInitRoleRngAfterMklevLikeC();
 }
 

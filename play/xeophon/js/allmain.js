@@ -6163,9 +6163,55 @@ function monsterTrapHarmless(mon, trap) {
     if (!game.level?.flags?.sokoban_rules && floorTrigger && data.inAir) return true;
     if (ttyp === BEAR_TRAP) return data.verysmall || data.small || data.amorphous || data.unsolid;
     if (ttyp === RUST_TRAP) return data.name !== 'iron golem';
-    if (ttyp === WEB) return data.webmaker || data.name === 'giant spider' || data.amorphous || data.unsolid;
+    if (ttyp === WEB) return monsterWebPassesThrough(data);
     if (ttyp === ANTI_MAGIC) return data.resistsMagic || data.defendsMagic;
     return ttyp === STATUE_TRAP || ttyp === MAGIC_TRAP || ttyp === VIBRATING_SQUARE;
+}
+
+function monsterWebmakerData(data) {
+    return !!(data?.webmaker || data?.name === 'cave spider' || data?.name === 'giant spider');
+}
+
+function monsterWebDestructionVerb(data) {
+    const name = data?.name || '';
+    if (data?.flaming || name === 'flaming sphere' || name === 'fire elemental'
+        || name === 'salamander' || name === 'fire vortex') return 'burns';
+    if (data?.acidic || name === 'acid blob' || name === 'gelatinous cube') return 'dissolves';
+    return '';
+}
+
+function monsterWebFlowsThrough(data) {
+    const name = data?.name || '';
+    return !!(data?.amorphous || data?.unsolid || data?.noncorporeal || data?.whirly
+        || name === 'gelatinous cube' || name === 'fog cloud'
+        || name.endsWith(' vortex') || name === 'air elemental');
+}
+
+function monsterWebPassesThrough(data) {
+    return monsterWebmakerData(data) || !!monsterWebDestructionVerb(data) || monsterWebFlowsThrough(data);
+}
+
+function monsterWebSpecialEffect(mon, trap) {
+    if (!trap || trap.ttyp !== WEB || mon.mtrapped) return false;
+    const data = mon.data || {};
+    if (monsterWebmakerData(data)) return true;
+    const webName = trap.madeby_u ? 'your spider web' : 'a spider web';
+    const visible = couldSeeCoord(mon.mx, mon.my);
+    const verb = monsterWebDestructionVerb(data);
+    if (verb) {
+        if (visible) addToplineMessage(`${monsterDisplayName(mon)} ${verb} ${webName}!`);
+        game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
+        newsym(mon.mx, mon.my);
+        return true;
+    }
+    if (monsterWebFlowsThrough(data)) {
+        if (visible) {
+            trap.tseen = true;
+            addToplineMessage(`${monsterDisplayName(mon)} flows through ${webName}.`);
+        }
+        return true;
+    }
+    return false;
 }
 
 function monsterAllowFlags(mon, allowHeroAttack = false, conflictActive = false) {
@@ -7313,7 +7359,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             if (inSight) trap.tseen = true;
         }
     }
-	    if (trap?.ttyp === WEB && !mon.mtrapped && !mon.data?.webmaker) {
+	    if (monsterWebSpecialEffect(mon, trap)) {
+	        mon._move_consumed_turn = 1;
+	    } else if (trap?.ttyp === WEB && !mon.mtrapped) {
 	        trap.tseen = true;
 	        mon.mtrapped = 1;
 	        if (couldSeeCoord(mon.mx, mon.my)) {
@@ -8317,6 +8365,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         }
 	    }
 	    const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
+	    if (monsterWebSpecialEffect(mon, trap)) return;
 	    if (trap?.ttyp === MAGIC_TRAP && monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return;
 	    if (trap?.ttyp === MAGIC_TRAP) {
 	        monsterLearnTrap(mon, trap.ttyp);

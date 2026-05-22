@@ -100,6 +100,7 @@ export function makemon(mdat, x, y, mmflags) {
         mtame: 0,
         mnum,
         mcanmove: 1,
+        mcansee: 1,
         mfrozen: 0,
         mflee: 0,
         mfleetim: 0,

@@ -8,6 +8,7 @@ import { mcalcMoveLikeC } from './mcalc_move.js';
 import { rn2 } from './rng.js';
 import { NORMAL_SPEED } from './const.js';
 import { end_of_turn_rng, maybe_generate_rnd_mon } from './moveloop_aux.js';
+import { encumberMsg } from './pickup.js';
 import { collectNewuhsPlines } from './hunger.js';
 import { settrack } from './track.js';
 import { pullDueMeltIceAwayTimers } from './level_timers.js';
@@ -34,7 +35,7 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
  */
 async function runNewTurnSetupAndTailLikeC(g, stepNum) {
     const mons = g.level?.monsters ?? [];
-    /* C: allmain.c first post-chargen turn with empty fmon — four distfleeck stand-ins before mcalcmove (session step 2 / stepNum 1). */
+    /* C: session step 2 / stepNum 1 — four **`distfleeck`** draws before **`mcalcmove`** ( **`fmon`** stand-in until **`nearby`** geometry matches). */
     if (stepNum === 1) {
         for (let i = 0; i < 4; i++) rn2(5);
     }
@@ -50,6 +51,7 @@ async function runNewTurnSetupAndTailLikeC(g, stepNum) {
     maybe_generate_rnd_mon();
     settrack();
     g.moves = (g.moves || 1) + 1;
+    g.hero_seq = (g.moves | 0) << 3;
     const dueMeltIce = pullDueMeltIceAwayTimers(g);
     for (const { x, y } of dueMeltIce) {
         g.context = g.context || {};
@@ -83,9 +85,11 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     let monscanmove = false;
 
     g.context = g.context || {};
+    g.context._movemonHarnessConsumed = false;
     g.context.monMoving = true;
     try {
         if (stepNum > 0) {
+            await encumberMsg();
             do {
                 monscanmove = await movemon(stepNum);
                 if ((u.umovement | 0) >= NORMAL_SPEED) break;
@@ -93,6 +97,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         }
     } finally {
         g.context.monMoving = false;
+        delete g.context._movemonHarnessConsumed;
     }
 
     if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED) {

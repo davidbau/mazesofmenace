@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_earthlevel, Is_rogue_level, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -375,6 +375,77 @@ to me.
 close this college.
 
             "May the wisdom of %d be your guide."`,
+        },
+    },
+    Barbarian: {
+        filecode: 'Bar',
+        homebase: 'the Camp of the Duali Tribe',
+        intermed: 'the Duali Oasis',
+        leader: 'Pelias',
+        nemesis: 'Thoth Amon',
+        guardian: 'chieftain',
+        artifact: 'the Heart of Ahriman',
+        artifactShort: 'Heart of Ahriman',
+        ranks: ['Plunderer', 'Pillager', 'Bandit', 'Brigand', 'Raider', 'Reaver', 'Slayer', 'Chieftain', 'Conqueror'],
+        texts: {
+            firsttime: `Warily you scan your surroundings, all of your senses alert for signs
+of possible danger.  Off in the distance, you can %x the familiar shapes
+of %H.
+
+But why, you think, should %l be there?
+
+Suddenly, the hairs on your neck stand on end as you detect the aura of
+evil magic in the air.
+
+Without thought, you ready your weapon, and mutter under your breath:
+
+    "By %d, there will be blood spilt today."`,
+            nexttime: `Once again, you near %H.  You know that %l
+will be waiting.`,
+            othertime: `Again, and you think possibly for the last time, you approach
+%H.`,
+            locate_first: `The scent of water comes to you in the desert breeze.  You know that
+you have located %i.`,
+            locate_next: 'Yet again you have a chance to infiltrate %i.',
+            goal_first: `The hairs on the nape of your neck lift as you sense an energy in the
+very air around you.  You fight down a primordial panic that seeks to
+make you turn and run.  This is surely the lair of %n.`,
+            goal_next: 'Yet again you feel the air around you heavy with malevolent magical energy.',
+            leader_first: `"Ah, %p.  You have returned at last.  The world is in dire
+need of your help.  There is a great quest you must undertake.
+
+"But first, I must see if you are ready to take on such a challenge."`,
+            leader_next: '"%p, you are back.  Are you ready now for the challenge?"',
+            badalign: `"%pC!  You have wandered from the path of the %a!
+If you attempt to overcome %n in this state, he will surely
+enslave your soul.  Your only hope, and ours, lies in your purification.
+Go forth, and return when you feel ready."`,
+            badlevel: `"%p, I fear that you are as yet too inexperienced to face
+%n.  Only %Ra with the help of %d could ever hope to
+defeat %ni."`,
+            assignquest: `"The world is in great need of your assistance, %p.
+
+"About six months ago, I learned that a mysterious sorcerer, known
+as %n, had begun to gather a large group of cutthroats and brigands
+about %ni.
+
+"At about the same time, these people you once rode with \`liberated' a
+potent magical talisman, %o, from a Turanian caravan.
+
+"%nC and %nj Black Horde swept down upon %i and defeated
+the people there, driving them out into the desert.  He has taken
+%o, and seeks to bend it to %nj will.  I detected the
+subtle changes in the currents of fate, and joined these people.
+Then I sent forth a summons for you.
+
+"If %n can bend %o to %nj will, he will become
+almost indestructible.  He will then be able to enslave the minds of
+men across the world.  You are the only hope.  The gods smile upon you,
+and with %d behind you, you alone can defeat %n.
+
+"You must go to %i.  From there, you can track down
+%n, defeat %ni, and return %o to us.  Only
+then will the world be safe."`,
         },
     },
     Knight: {
@@ -1473,19 +1544,207 @@ function levelTeleportNumericTarget(depth) {
     return { dnum, dlevel: depth - (dungeon?.depth_start ?? 1) + 1 };
 }
 
+function levelTeleportPromptTargetDepth(target) {
+    const current = game.u?.uz ?? { dnum: 0, dlevel: 1 };
+    if (target > 0 && In_quest(current))
+        return target + (game.dungeons?.[current.dnum]?.depth_start ?? 1) - 1;
+    return target;
+}
+
+function levelTeleportPromptQuestion() {
+    const suffix = (game._level_teleport_try_count || 0) >= 1
+        ? ` [type a number${game.flags?.debug ? ', name, or ? for a menu' : ' or name'}]`
+        : '';
+    const text = game._level_teleport_text || '';
+    return `To what level do you want to teleport?${suffix}${text ? ` ${text}` : ''}`;
+}
+
+async function beginLevelTeleportTextPrompt() {
+    game._level_teleport_text = '';
+    game._level_teleport_try_count = 0;
+    await setMessage(levelTeleportPromptQuestion());
+    game._command_mode = 'levelTeleportText';
+}
+
+function clearLevelTeleportTextPrompt() {
+    game._level_teleport_text = '';
+    game._level_teleport_confused_scroll = 0;
+    game._level_teleport_try_count = 0;
+}
+
+function cAtoiLikeLevel(text) {
+    const value = Number.parseInt(text, 10);
+    const raw = String(text || '');
+    const first = raw[0] || '';
+    const second = raw[1] || '';
+    const hasNumericPrefix = /\d/.test(first) || (first === '-' && /\d/.test(second));
+    return { value, hasNumericPrefix };
+}
+
+async function randomLevelTeleportFromPrompt() {
+    const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
+    const targetDepth = randomTeleportDepth();
+    clearLevelTeleportTextPrompt();
+    game._command_mode = null;
+    if (targetDepth === currentDepth) {
+        const followup = consumePendingLevelTeleportTrapFollowup();
+        await setMessage(['You shudder for a moment.', followup].filter(Boolean).join('  '));
+        game.context.move = 1;
+        return;
+    }
+    const options = levelTeleportOptionsWithTrapFollowup({ levelTeleport: true });
+    game._deferred_level_goto = {
+        targetLevel: levelTeleportNumericTarget(targetDepth),
+        options,
+    };
+    game.context.move = 1;
+}
+
+async function retryInvalidLevelTeleportPrompt() {
+    const completedTries = (game._level_teleport_try_count || 0) + 1;
+    if (completedTries >= 10) {
+        await randomLevelTeleportFromPrompt();
+        return;
+    }
+    game._level_teleport_text = '';
+    game._level_teleport_try_count = completedTries;
+    await setMessage(levelTeleportPromptQuestion());
+}
+
+function heavenVoiceMessage() {
+    const role = game.urole?.name?.m || game._startup_role || 'Archeologist';
+    const align = game.u?.ualign?.type ?? 0;
+    const gods = GODS_BY_ROLE[role] || GODS_BY_ROLE.Archeologist;
+    const god = gods[align > 0 ? 0 : align < 0 ? 2 : 1] || 'your god';
+    return `The voice of ${god} rings out:  "Thou art early, but we'll admit thee."`;
+}
+
+async function finishEndgameNegativeLevelTeleport(target) {
+    clearLevelTeleportTextPrompt();
+    game._command_mode = null;
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    const levelLimit = Math.max(1, game.dungeons?.[current.dnum]?.num_dunlevs ?? current.dlevel);
+    if (target <= -levelLimit) {
+        await setMessage("You can't get there from here.");
+        return;
+    }
+    await finishLevelTeleport(
+        { dnum: current.dnum, dlevel: levelLimit + target },
+        { suppressMaterialize: true, endgameLevelTeleport: true },
+    );
+}
+
+async function finishNegativeLevelTeleport(target) {
+    clearLevelTeleportTextPrompt();
+    game._command_mode = null;
+
+    const messages = [];
+    if (target <= -10) {
+        messages.push('You arrive in heaven.');
+        messages.push(heavenVoiceMessage());
+        game._death_cause = 'went to heaven prematurely';
+    } else if (target === -9) {
+        messages.push('You feel deliriously happy.');
+        messages.push("(In fact, you're on Cloud 9!)");
+    } else {
+        messages.push('You are now high above the clouds...');
+    }
+
+    if (target > -10 && game.u?.levitating) {
+        messages.push('You float gently down to earth.');
+    } else if (target > -10 && game.u?.flying) {
+        messages.push('You fly down to the ground.');
+    } else if (target > -10) {
+        messages.push("Unfortunately, you don't know how to fly.");
+        messages.push('You plummet a few thousand feet to your death.');
+        game._death_cause = `teleported out of the dungeon and fell to ${game.flags?.female ? 'her' : 'his'} death`;
+    }
+
+    if (target > -10 && (game.u?.levitating || game.u?.flying)) {
+        const followup = consumePendingLevelTeleportTrapFollowup();
+        if (followup) messages.push(followup);
+        await beginEscapedGame(messages);
+        return;
+    }
+
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        game._life_saving_level_teleport_escape_message = 'You find yourself back on the surface.';
+        game._command_mode = 'lifeSavingMore';
+        await setMessage(`${messages.join('  ')}  But wait...  Your medallion begins to glow!`, true);
+        return;
+    }
+
+    game._death_no_bones = 1;
+    game._death_outside_dungeon = target <= -10 ? 'heaven' : 'surface';
+    game._death_negative_level_teleport_escape_message = 'You find yourself back on the surface.';
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    await setMessage(`${messages.join('  ')}  You die...`, true);
+}
+
+async function beginEscapedGame(messages) {
+    game._escaped_from_dungeon = 1;
+    game._escaped_game = 1;
+    game._quit_game = 0;
+    game._death_cause = 'escaped';
+    game._death_moves ||= game.moves || 1;
+    game._pending_time_passed = 0;
+    game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._deferred_level_goto = null;
+    game._command_mode = 'escapedMore';
+    await setMessage((messages || []).filter(Boolean).join('  '), true);
+}
+
+async function finishNowhereLevelTeleport() {
+    clearLevelTeleportTextPrompt();
+    game._command_mode = null;
+    const messages = [
+        `You ${polyselfForm()?.silent ? 'writhe' : 'scream'} in agony as your body begins to warp...`,
+        'You cease to exist.',
+    ];
+    if ((game.inventory || []).length)
+        messages.push('Your possessions land on the floor with a thud.');
+    game._death_cause = 'committed suicide';
+
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        game._command_mode = 'lifeSavingMore';
+        await setMessage(`${messages.join('  ')}  You die...  But wait...  Your medallion begins to glow!`, true);
+        return;
+    }
+
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    await setMessage(`${messages.join('  ')}  You die...`, true);
+}
+
 function currentLevelMarker(level) {
     return level && game.u?.uz?.dnum === level.dnum && game.u?.uz?.dlevel === level.dlevel ? '*' : ' ';
 }
 
 function questLevelKind(level = game.u?.uz) {
     if (!level || game.dungeons?.[level.dnum]?.name !== 'The Quest') return null;
+    const dungeon = game.dungeons?.[level.dnum];
     const special = game.specialLevels?.find(slev => slev.dnum === level.dnum && slev.dlevel === level.dlevel);
     if (special?.name === 'x-strt') return 'start';
     if (special?.name === 'x-loca') return 'locate';
     if (special?.name === 'x-goal') return 'goal';
     if (level.dlevel === 1) return 'start';
     if (level.dlevel === 3) return 'locate';
-    if (level.dlevel === 5) return 'goal';
+    if (level.dlevel === (dungeon?.num_dunlevs ?? 5)) return 'goal';
     return 'fill';
 }
 
@@ -1516,14 +1775,22 @@ function questPagerRows(msgid) {
     const player = game.plname || 'Hero';
     const cap = text => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
     const article = text => /^(?:the|a|an)\b/i.test(text) ? text : `${/^[aeiou]/i.test(text) ? 'an' : 'a'} ${text}`;
+    const roleClass = roleName || 'Adventurer';
+    const malePronouns = { h: 'he', H: 'He', i: 'him', I: 'Him', j: 'his', J: 'His' };
     const replacements = [
+        ['%nh', malePronouns.h], ['%nH', malePronouns.H], ['%ni', malePronouns.i],
+        ['%nI', malePronouns.I], ['%nj', malePronouns.j], ['%nJ', malePronouns.J],
+        ['%lh', malePronouns.h], ['%lH', malePronouns.H], ['%li', malePronouns.i],
+        ['%lI', malePronouns.I], ['%lj', malePronouns.j], ['%lJ', malePronouns.J],
+        ['%oh', 'it'], ['%oH', 'It'], ['%oi', 'it'], ['%oI', 'It'], ['%oj', 'its'], ['%oJ', 'Its'],
+        ['%ca', article(roleClass)], ['%cA', cap(article(roleClass))], ['%cP', `${roleClass}s`], ['%c', roleClass],
+        ['%x', game.u?.blind ? 'sense' : 'see'], ['%Z', 'The Dungeons of Doom'],
         ['%pC', cap(player)], ['%ra', article(rank)], ['%RC', cap(minRank)],
         ['%R', minRank], ['%r', rank], ['%ns', `${info.nemesis}'s`],
         ['%nC', cap(info.nemesis)], ['%na', article(info.nemesis)],
-        ['%ni', info.nemesis], ['%n', info.nemesis], ['%O', `the ${info.artifactShort}`],
+        ['%n', info.nemesis], ['%O', `the ${info.artifactShort}`],
         ['%oC', cap(info.artifact)], ['%o', info.artifact], ['%l', info.leader],
         ['%i', info.intermed], ['%gP', `${info.guardian}s`], ['%g', info.guardian],
-        ['%oh', 'it'],
         ['%H', info.homebase], ['%d', deity], ['%a', alignName], ['%p', player],
     ];
     let text = raw.trimEnd();
@@ -1735,8 +2002,11 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     game._overlay_hide_status = 0;
     const fromLevel = { dnum: game.u?.uz?.dnum ?? 0, dlevel: game.u?.uz?.dlevel ?? 1 };
     if (fromLevel.dnum === targetLevel.dnum && fromLevel.dlevel === targetLevel.dlevel) {
-        game._pending_message = '';
-        game._message_more = 0;
+        if (options.postMessage) await setMessage(options.postMessage, !!options.arrivalMore);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
+        }
         game._command_mode = null;
         return true;
     }
@@ -1865,11 +2135,13 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     await bot();
 	await flush_screen(1);
     if (options.falling) {
-        const dist = Math.max(1, depth_of_level(targetLevel) - depth_of_level(fromLevel));
-        const damage = d(dist, 6);
-        if (game.u) {
-            game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-            if (game.u.uhp <= 0) game._death_cause = 'falling down a mine shaft';
+        if (options.fallingDamage !== false) {
+            const dist = Math.max(1, depth_of_level(targetLevel) - depth_of_level(fromLevel));
+            const damage = d(dist, 6);
+            if (game.u) {
+                game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+                if (game.u.uhp <= 0) game._death_cause = 'falling down a mine shaft';
+            }
         }
         const fallMessage = [options.preMessage, options.arrivalMessage, options.postMessage]
             .filter(Boolean).join('  ');
@@ -2000,7 +2272,6 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     } else {
         const onBoulder = options.boulderMessage
             && game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
-        const questHome = questLevelKind(targetLevel) === 'start';
         const questArrival = queueQuestArrival(targetLevel, fromLevel, targetIsNew);
         if (enteringValley) {
             game.u.uevent ??= {};
@@ -2025,12 +2296,12 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
                 { text: 'You enter what seems to be an older, more primitive world.', more: false },
             ];
         }
-        let arrivalMessage = onBoulder
+        let arrivalMessage = options.suppressMaterialize ? ''
+            : onBoulder
             ? 'You materialize on a different level!  You see here a boulder.'
             : 'You materialize on a different level!';
         let arrivalMore = lowerWizardTowerArrival
 	            || enteringValley || enteringRogue || questArrival
-            || (!!savedTarget && questHome)
             || promptedBones
             || !!targetAnnotation;
         let familiarMessage = '';
@@ -2075,13 +2346,17 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
                 arrivalMore = false;
             }
         }
+        if (options.endgameLevelTeleport && targetIsNew && Is_airlevel(targetLevel)) {
+            arrivalMessage = 'What a strange feeling!  You notice that there is no gravity here.';
+            arrivalMore = true;
+        }
         if (postArrivalTemperatureMessage) {
             if (arrivalMore)
                 game._queued_message_after_more = game._queued_message_after_more
                     ? `${game._queued_message_after_more}  ${postArrivalTemperatureMessage}`
                     : postArrivalTemperatureMessage;
             else
-                arrivalMessage += `  ${postArrivalTemperatureMessage}`;
+                arrivalMessage = arrivalMessage ? `${arrivalMessage}  ${postArrivalTemperatureMessage}` : postArrivalTemperatureMessage;
         }
         if (targetAnnotation) {
             const annotationMessage = `You remember this level as ${targetAnnotation}.`;
@@ -4895,47 +5170,147 @@ function burnWornArmorFromFire() {
     }
 }
 
+function fireInventoryNameVerb(name, singular, plural) {
+    return /\b(?:boots|shoes|gloves|gauntlets|scales|arrows|darts|bolts|candles|scrolls|potions|globs)\b/i.test(name)
+        && !/\bmail\b/i.test(name) ? plural : singular;
+}
+
+function addFireInventoryMessage(messages, events, text, event, armor, joinState) {
+    if (!joinState.joinedArmorMessage && messages.length === 1 && armor.message) {
+        messages[0] = `${messages[0]}  ${text}`;
+        events.push({ ...event, text: messages[0] });
+        joinState.joinedArmorMessage = true;
+        return;
+    }
+    messages.push(text);
+    events.push({ ...event, text });
+}
+
+function isGreenSlimeGlobItem(item) {
+    return item?.otyp === GLOB_OF_GREEN_SLIME
+        || (item?.globby && /\bgreen slime\b/i.test(objectKindKey(item) || pickupObjectName(item)));
+}
+
+function fireInventoryItemDamage(item, cls) {
+    if (cls === 'potion') return rnd(6);
+    if (cls === 'slime') return Math.trunc(((item.owt || 20) + 19) / 20);
+    return game.u?.fireResistance ? 0 : 1;
+}
+
+function fireInventoryDeathCause(cls, item, plural) {
+    if (cls === 'slime') return plural
+        ? 'killed by exploding globs of slime'
+        : 'killed by an exploding glob of slime';
+    if (cls === 'potion') {
+        const oil = isPotionOfOil(item);
+        return oil
+            ? plural ? 'killed by exploding potions' : 'killed by exploding potion'
+            : plural ? 'killed by boiling potions' : 'killed by boiling potion';
+    }
+    if (cls === 'spellbook') return 'killed by burning book';
+    return plural ? 'killed by burning scrolls' : 'killed by burning scroll';
+}
+
+function fireInventoryDestroyVerb(cls, item, plural) {
+    if (cls === 'potion' && isPotionOfOil(item))
+        return plural ? 'ignite and explode' : 'ignites and explodes';
+    if (cls === 'potion' || cls === 'slime')
+        return plural ? 'boil and explode' : 'boils and explodes';
+    return plural ? 'catch fire and burn' : 'catches fire and burns';
+}
+
+function fireItemCanCatchLight(item) {
+    if (!item || item.lamplit || item.burning || item.in_use) return false;
+    const kind = objectKindKey(item);
+    if (item.otyp === BRASS_LANTERN || kind === 'brass lantern') return false;
+    if (isPotionOfOil(item)) return (item.age ?? 400) !== 0;
+    if (item.otyp === OIL_LAMP || kind === 'oil lamp') return (item.age ?? 1500) !== 0;
+    if (item.otyp === MAGIC_LAMP || kind === 'magic lamp') return (item.spe ?? 1) > 0;
+    if (isCandleObject(item)) return (item.age ?? candleDefaultAge(item)) !== 0;
+    if (item.otyp === CANDELABRUM_OF_INVOCATION || kind === 'candelabrum of invocation')
+        return (item.spe ?? 0) > 0 && !item.cursed;
+    return false;
+}
+
+function maybeIgniteFireItem(item, messages, events, armor, joinState) {
+    if (!fireItemCanCatchLight(item)) return false;
+    const kind = objectKindKey(item);
+    if ((item.otyp === OIL_LAMP || item.otyp === MAGIC_LAMP || kind === 'oil lamp' || kind === 'magic lamp')
+        && item.cursed && !rn2(2))
+        return false;
+    const name = pickupObjectName({ ...item, line: '' });
+    const message = game.u?.blind
+        ? `Your ${name} ${fireInventoryNameVerb(name, 'feels', 'feel')} warm.`
+        : `Your ${name} ${fireInventoryNameVerb(name, 'catches', 'catch')} light!`;
+    beginWishedBurn(item);
+    item.line = normalInventoryLine({ ...item, line: '' });
+    addFireInventoryMessage(messages, events, message, { damage: 0 }, armor, joinState);
+    return true;
+}
+
+function igniteFireInventoryItems(messages, events, armor, joinState) {
+    for (const item of [...(game.inventory || [])])
+        maybeIgniteFireItem(item, messages, events, armor, joinState);
+}
+
 function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false) {
     const messages = [];
     const events = [];
     const armor = burnWornArmorFromFire();
     if (armor.message) messages.push(armor.message);
-    let joinedArmorMessage = false;
-    if (!armor.bodyHit) return { messages, events, damage: 0, deathCause: '' };
-    const destroyItems = forceDestroyItems || !rn2(3);
-    if (!destroyItems) {
-        if (rollIgniteItems) rn2(3);
+    const joinState = { joinedArmorMessage: false };
+    let destroyItems = false;
+    let igniteItems = false;
+    if (forceDestroyItems) {
+        destroyItems = true;
+        igniteItems = true;
+    } else if (rollIgniteItems) {
+        if (!armor.bodyHit) return { messages, events, damage: 0, deathCause: '' };
+        destroyItems = !rn2(3);
+        igniteItems = !rn2(3);
+    } else if (armor.bodyHit || rn2(3)) {
+        destroyItems = true;
+        igniteItems = true;
+    } else {
         return { messages, events, damage: 0, deathCause: '' };
+    }
+
+    let damage = 0;
+    let deathCause = '';
+    if (!destroyItems) {
+        if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
+        return { messages, events, damage, deathCause };
     }
 
     let limit = Math.trunc(origDamage / 5);
     if (origDamage % 5 > rn2(5)) limit++;
     if (limit < 1) {
-        if (rollIgniteItems) rn2(3);
-        return { messages, events, damage: 0, deathCause: '' };
+        if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
+        return { messages, events, damage, deathCause };
     }
     limit = Math.min(20, limit);
 
     const selected = [];
     let eligible = 0;
     for (const item of [...(game.inventory || [])]) {
-        const cls = item.cls || (item.otyp === POTION_CLASS ? 'potion' : item.otyp === SCROLL_CLASS ? 'scroll' : '');
-        if (item.artifact || (item.in_use && (item.quan || 1) === 1)) continue;
-        if (cls !== 'potion' && cls !== 'scroll' && cls !== 'spellbook') continue;
-        const itemName = String(item.actualKind || item.kind || inventoryItemName(item));
-        if (cls === 'scroll' && (item.scrollIndex === 16 || /scroll of fire\b/i.test(itemName))) continue;
-        if (cls === 'spellbook' && /(?:spellbook of )?fireball|Book of the Dead/i.test(itemName)) continue;
+        const cls = fireDestroyableInventoryClass(item);
+        if (!cls || fireInventoryItemImmune(item, cls)) continue;
         const i = eligible < limit ? eligible : rn2(eligible);
         eligible++;
         if (i < limit) selected[i] = item;
     }
 
-    let damage = 0;
-    let deathCause = '';
     for (const item of selected.filter(Boolean)) {
-        const cls = item.cls || (item.otyp === POTION_CLASS ? 'potion' : item.otyp === SCROLL_CLASS ? 'scroll' : '');
+        const cls = fireDestroyableInventoryClass(item);
+        if (cls === 'spellbook' && isBookOfTheDeadItem(item)) {
+            if (!game.u?.blind)
+                addFireInventoryMessage(messages, events,
+                    'The Book of the Dead glows a strange dark red, but remains intact.',
+                    { damage: 0 }, armor, joinState);
+            continue;
+        }
         const quan = item.quan || 1;
-        const itemDamage = cls === 'potion' ? rnd(6) : 0;
+        const itemDamage = fireInventoryItemDamage(item, cls);
         let destroyed = 0;
         for (let i = 0; i < quan; i++)
             if (!rn2(3)) destroyed++;
@@ -4949,45 +5324,27 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
                 : destroyed < quan ? `Some of your ${name}`
                     : quan === 2 ? `Both of your ${name}`
                         : `All of your ${name}`;
-        let message = '';
         const event = { text: '', damage: 0 };
-        if (cls === 'potion') {
-            const oil = item.potionIndex === 24 || /\boil\b/i.test(item.actualKind || item.kind || inventoryItemName(item));
-            message = `${subject} ${oil
-                ? plural ? 'ignite and explode' : 'ignites and explodes'
-                : plural ? 'boil and explode' : 'boils and explodes'}!`;
+        const message = `${subject} ${fireInventoryDestroyVerb(cls, item, plural)}!`;
+        if (cls === 'potion' || cls === 'slime') {
             event.damage = itemDamage;
-            if (item.potionIndex === 8 || /invisibility/i.test(item.actualKind || item.kind || inventoryItemName(item)))
+            if (cls === 'potion' && (item.potionIndex === 8 || /invisibility/i.test(item.actualKind || item.kind || inventoryItemName(item))))
                 event.breatheMessage = "For an instant you couldn't see yourself!";
             damage += itemDamage;
-            deathCause = oil
-                ? plural ? 'killed by exploding potions' : 'killed by exploding potion'
-                : plural ? 'killed by boiling potions' : 'killed by boiling potion';
+            deathCause = fireInventoryDeathCause(cls, item, plural);
             removeInventoryItem(item, destroyed);
-            rn2(2);
+            if (cls === 'potion') rn2(2);
         } else {
-            message = `${subject} ${plural ? 'catch fire and burn' : 'catches fire and burns'}!`;
             removeInventoryItem(item, destroyed);
             if (!game.u?.fireResistance) {
                 event.damage = 1;
                 damage += 1;
-                deathCause = cls === 'spellbook'
-                    ? 'killed by burning book'
-                    : plural ? 'killed by burning scrolls' : 'killed by burning scroll';
+                deathCause = fireInventoryDeathCause(cls, item, plural);
             }
         }
-        if (!joinedArmorMessage && messages.length === 1 && armor.message) {
-            messages[0] = `${messages[0]}  ${message}`;
-            event.text = messages[0];
-            joinedArmorMessage = true;
-        }
-        else {
-            messages.push(message);
-            event.text = message;
-        }
-        events.push(event);
+        addFireInventoryMessage(messages, events, message, event, armor, joinState);
     }
-    if (rollIgniteItems) rn2(3);
+    if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
     return { messages, events, damage, deathCause };
 }
 
@@ -8686,20 +9043,27 @@ function heroIsDeaf() {
 }
 
 function fireDestroyableInventoryClass(item) {
-    const cls = item?.cls || '';
+    if (isGreenSlimeGlobItem(item)) return 'slime';
+    const cls = item?.cls || (item?.otyp === POTION_CLASS || item?.otyp === POT_WATER || item?.otyp === POT_OIL || item?.glyph === '!' ? 'potion'
+        : item?.otyp === SCROLL_CLASS || item?.glyph === '?' ? 'scroll'
+            : item?.otyp === SPBOOK_NO_NOVEL || item?.otyp === SPE_HEALING || item?.otyp === BOOK_OF_THE_DEAD || item?.glyph === '+'
+                ? 'spellbook'
+                : '');
     if (cls === 'potion' || cls === 'scroll' || cls === 'spellbook') return cls;
     const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
+    if (/\bglob of green slime\b/.test(name)) return 'slime';
     if (name.includes('potion')) return 'potion';
     if (name.includes('scroll')) return 'scroll';
-    if (name.includes('spellbook')) return 'spellbook';
+    if (name.includes('spellbook') || name.includes('book of the dead')) return 'spellbook';
     return '';
 }
 
 function fireInventoryItemImmune(item, cls) {
     const name = String(item?.actualKind || item?.kind || item?.line || '').toLowerCase();
+    if (item?.artifact || item?.oartifact || (item?.in_use && (item?.quan || 1) === 1)) return true;
     if (cls === 'scroll' && (item?.scrollIndex === 16 || /\bscroll of fire\b/.test(name))) return true;
-    if (cls === 'spellbook' && (/\bfireball\b/.test(name) || /\bbook of the dead\b/.test(name))) return true;
-    return !!item?.artifact || !!item?.oartifact || (item?.in_use && (item?.quan || 1) === 1);
+    if (cls === 'spellbook' && /\bfireball\b/.test(name)) return true;
+    return false;
 }
 
 function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
@@ -8724,8 +9088,14 @@ function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
     const resistsFire = !!(mon?.fireResistance || mon?.data?.resistsFire);
     for (const item of selected.filter(Boolean)) {
         const cls = fireDestroyableInventoryClass(item);
+        if (cls === 'spellbook' && isBookOfTheDeadItem(item)) {
+            if (visible) messages.push('The Book of the Dead glows a strange dark red, but remains intact.');
+            continue;
+        }
         const quan = item.quan || 1;
-        const itemDamage = cls === 'potion' ? rnd(6) : resistsFire ? 0 : 1;
+        const itemDamage = cls === 'potion' ? rnd(6)
+            : cls === 'slime' ? Math.trunc(((item.owt || 20) + 19) / 20)
+                : resistsFire ? 0 : 1;
         let destroyed = 0;
         for (let i = 0; i < quan; i++)
             if (!rn2(3)) destroyed++;
@@ -8739,9 +9109,7 @@ function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
                     : destroyed < quan ? `Some of ${possessive} ${itemName}`
                         : quan === 2 ? `Both of ${possessive} ${itemName}`
                             : `All of ${possessive} ${itemName}`;
-            const verb = cls === 'potion'
-                ? plural ? 'boil and explode' : 'boils and explodes'
-                : plural ? 'catch fire and burn' : 'catches fire and burns';
+            const verb = fireInventoryDestroyVerb(cls, item, plural);
             messages.push(`${subject} ${verb}!`);
         }
         const remaining = quan - destroyed;
@@ -11122,10 +11490,12 @@ function deathSummary() {
         ac: game.u?.uac ?? 10,
         turns: game._death_moves || game.moves || 1,
         exp: game.u?.uexp || 0,
+        outsideDungeon: game._death_outside_dungeon || '',
     };
 }
 
 function canMakeBones() {
+    if (game._death_no_bones) return false;
     if (game.flags?.bones === false) return false;
     const uz = game.u?.uz;
     const dungeon = game.dungeons?.[uz?.dnum ?? 0];
@@ -12342,6 +12712,10 @@ function sitTrapArticleName(trap) {
     return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
 }
 
+function trapMessage(...parts) {
+    return parts.filter(Boolean).join('  ');
+}
+
 function sitTrapEscapeAllowed(trap) {
     return ![ANTI_MAGIC, MAGIC_PORTAL, VIBRATING_SQUARE].includes(trap?.ttyp);
 }
@@ -12355,8 +12729,67 @@ function sitTrapNote(trap) {
     return `${/^[aeiou]/i.test(note) ? 'an' : 'a'} ${note}`;
 }
 
+function articleForName(name) {
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+const WEBMAKER_FORM_NAMES = new Set(['cave spider', 'giant spider']);
+const WEB_FLAMING_FORM_NAMES = new Set(['fire vortex', 'flaming sphere', 'fire elemental', 'salamander']);
+const WEB_ACIDIC_FORM_NAMES = new Set(['acid blob', 'gelatinous cube']);
+const WEB_WHIRLY_FORM_NAMES = new Set(['fog cloud', 'dust vortex', 'ice vortex', 'energy vortex', 'steam vortex', 'fire vortex', 'air elemental']);
+
+function polyselfFormName() {
+    return String(polyselfForm()?.name || '').toLowerCase();
+}
+
+function heroPassesRocks() {
+    const form = polyselfForm();
+    return !!(form?.passWalls && !form?.unsolid && !form?.noncorporeal);
+}
+
+function heroWebmakerForm() {
+    const form = polyselfForm();
+    const name = polyselfFormName();
+    return !!(form?.webmaker || WEBMAKER_FORM_NAMES.has(name));
+}
+
+function heroWebDestructionVerb() {
+    const form = polyselfForm();
+    const name = polyselfFormName();
+    if (form?.flaming || WEB_FLAMING_FORM_NAMES.has(name)) return 'burn';
+    if (form?.acidic || WEB_ACIDIC_FORM_NAMES.has(name)) return 'dissolve';
+    return '';
+}
+
+function heroFlowsThroughWeb() {
+    const form = polyselfForm();
+    const name = polyselfFormName();
+    return !!(form?.amorphous || form?.whirly || form?.unsolid || form?.noncorporeal
+        || WEB_WHIRLY_FORM_NAMES.has(name) || name === 'gelatinous cube');
+}
+
 function sameDungeonLevel(a, b) {
     return !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+
+function invocationLevel(level = game.u?.uz) {
+    if (!level) return false;
+    const dungeon = game.dungeons?.[level.dnum];
+    return game.dungeons?.[level.dnum]?.name === 'Gehennom'
+        && (level.dlevel ?? 0) === Math.max(1, (dungeon?.num_dunlevs ?? 1) - 1);
+}
+
+function canDigDownFromLevel(level = game.u?.uz) {
+    return !!level && !game.level?.flags?.hardfloor
+        && !Is_botlevel(level) && !invocationLevel(level);
+}
+
+function canFallThroughLevel(level = game.u?.uz) {
+    return canDigDownFromLevel(level) || Is_stronghold(level);
+}
+
+function findHellTargetLevel() {
+    return specialLevel('valley') || branchLevel(1) || null;
 }
 
 function clampDungeonLevel(level) {
@@ -12394,6 +12827,15 @@ function webTrapTimeFromStrength() {
 
 function sitWebTrapMessage(trap, prefix) {
     trap.tseen = true;
+    const webName = trap.madeby_u ? 'your spider web' : 'a spider web';
+    const destroyVerb = heroWebDestructionVerb();
+    if (destroyVerb) {
+        deleteTrap(trap);
+        return `${prefix}  You ${destroyVerb} ${webName}!`;
+    }
+    if (heroFlowsThroughWeb()) return `${prefix}  You flow through ${webName}.`;
+    if (heroWebmakerForm())
+        return `${prefix}  ${trap.madeby_u ? 'You take a walk on your web.' : 'There is a spider web here.'}`;
     const tim = webTrapTimeFromStrength();
     if (game.u) {
         game.u.utrap = tim;
@@ -12408,6 +12850,7 @@ function sitWebTrapMessage(trap, prefix) {
 
 function sitFallTargetLevel(trap) {
     const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if (Is_stronghold(current)) return findHellTargetLevel();
     const rawTarget = trap?.dst || { dnum: current.dnum, dlevel: current.dlevel + 1 };
     const target = clampDungeonLevel(rawTarget);
     return sameDungeonLevel(target, current) ? null : target;
@@ -12415,71 +12858,122 @@ function sitFallTargetLevel(trap) {
 
 function sitFallThroughTrapResult(trap, prefix) {
     trap.tseen = true;
-    const messages = [prefix, trap.ttyp === TRAPDOOR
-        ? 'A trap door opens up under you!'
-        : "There's a gaping hole under you!"];
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if ((game.u?.blind || game.u?.Blind) && game.u?.levitating && !In_sokoban(current))
+        return { message: prefix, more: false };
+    if (!canFallThroughLevel(current))
+        return { message: prefix, more: false };
+
+    const sokobanFall = In_sokoban(current) && canFallThroughLevel(current);
+    const messages = sokobanFall
+        ? [prefix, `Air currents pull you down into ${trap.madeby_u ? 'your' : 'a'} ${trap.ttyp === TRAPDOOR ? 'trap door' : 'hole'}!`]
+        : [prefix, trap.ttyp === TRAPDOOR
+            ? 'A trap door opens up under you!'
+            : "There's a gaping hole under you!"];
     const target = sitFallTargetLevel(trap);
-    if (!target || game.u?.levitating || game.u?.flying || game.u?.ustuck) {
+    const form = polyselfForm() || {};
+    if (!target) {
         messages.push("You don't fall in.");
-        return { message: messages.join('  '), more: false };
+        return { message: trapMessage(...messages), more: false };
     }
-    const dist = Math.max(1, depth_of_level(target) - depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 }));
+    if (!sokobanFall && (form.huge || form.msize === 'huge' || form.size === 'huge')) {
+        messages.push("You don't fit through.");
+        return { message: trapMessage(...messages), more: false };
+    }
+    if (!sokobanFall && (game.u?.levitating || game.u?.flying || game.u?.ustuck
+        || form.clinger || (form.ceilingHider && game.u?.uundetected))) {
+        messages.push("You don't fall in.");
+        return { message: trapMessage(...messages), more: false };
+    }
+    const dist = Math.max(1, depth_of_level(target) - depth_of_level(current));
     if (dist > 1) {
         const depth = dist > 3 ? 'very deep ' : dist > 2 ? 'deep ' : '';
         messages.push(`You fall down a ${depth}shaft!`);
     }
-    scheduleSitLevelChange(target, { falling: true, arrivalMessage: '' });
-    return { message: messages.join('  '), more: true };
+    scheduleSitLevelChange(target, {
+        falling: true,
+        fallingDamage: !game.u?.flying,
+        arrivalMessage: '',
+    });
+    return { message: trapMessage(...messages), more: true };
 }
 
-function sitLevelTeleportTrapResult(trap, prefix) {
+function levelTeleportTrapFollowupMessage() {
+    if (heroIsHallucinating() || heroHasTeleportControl())
+        return `You briefly feel ${heroIsHallucinating() ? 'oriented' : 'centered'}.`;
+    const evenMore = heroIsConfused();
+    addHeroConfusion(3);
+    return `You feel ${evenMore ? 'even more ' : ''}disoriented.`;
+}
+
+function consumePendingLevelTeleportTrapFollowup() {
+    if (!game._level_teleport_trap_followup) return '';
+    game._level_teleport_trap_followup = 0;
+    return levelTeleportTrapFollowupMessage();
+}
+
+function levelTeleportOptionsWithTrapFollowup(options = {}) {
+    const postMessage = consumePendingLevelTeleportTrapFollowup();
+    if (!postMessage) return options;
+    return {
+        ...options,
+        postMessage: options.postMessage ? `${options.postMessage}  ${postMessage}` : postMessage,
+    };
+}
+
+function levelTeleportTrapResult(trap, prefix, intentional = false) {
     trap.tseen = true;
-    const messages = [`${prefix}  You trigger a level teleport trap!`];
+    const verb = intentional ? 'trigger' : `${game.u?.flying ? 'fly' : game.u?.levitating ? 'float' : 'step'} onto`;
+    const messages = [prefix, `You ${verb} a level teleport trap!`];
+    if (heroHasAntimagic() && !intentional) {
+        messages.push('You feel a wrenching sensation.');
+        return { message: trapMessage(...messages), more: false };
+    }
     if (In_endgame(game.u?.uz)) {
         messages.push('You feel a wrenching sensation.');
-        return { message: messages.join('  '), more: false };
+        return { message: trapMessage(...messages), more: false };
     }
     deleteTrap(trap);
     if (heroHasAmuletOfYendor() || In_sokoban(game.u?.uz)) {
         messages.push('You feel very disoriented for a moment.');
-        return { message: messages.join('  '), more: false };
+        messages.push(levelTeleportTrapFollowupMessage());
+        return { message: trapMessage(...messages), more: false };
     }
     if (heroHasTeleportControl() && !heroIsStunned()) {
+        game._level_teleport_trap_followup = 1;
         game._read_confused_teleport_prompt_after_more = 1;
-        game._read_level_teleport_confused_prompt = 0;
-        return { message: messages.join('  '), more: true };
+        game._read_level_teleport_confused_prompt = heroIsConfused() ? 1 : 0;
+        return { message: trapMessage(...messages), more: true };
     }
     const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
     const targetDepth = randomTeleportDepth();
     if (targetDepth === currentDepth) {
         messages.push('You shudder for a moment.');
-        return { message: messages.join('  '), more: false };
-    }
-    let postMessage = '';
-    if (heroHasTeleportControl()) postMessage = 'You briefly feel centered.';
-    else if (heroIsHallucinating()) postMessage = 'You briefly feel oriented.';
-    else {
-        postMessage = 'You feel disoriented.';
-        addHeroConfusion(3);
+        messages.push(levelTeleportTrapFollowupMessage());
+        return { message: trapMessage(...messages), more: false };
     }
     scheduleSitLevelChange(levelTeleportNumericTarget(targetDepth), {
         levelTeleport: true,
-        postMessage,
+        postMessage: levelTeleportTrapFollowupMessage(),
     });
-    return { message: messages.join('  '), more: true };
+    return { message: trapMessage(...messages), more: true };
+}
+
+function sitLevelTeleportTrapResult(trap, prefix) {
+    return levelTeleportTrapResult(trap, prefix, true);
 }
 
 function sitMagicPortalResult(trap, prefix) {
     trap.tseen = true;
-    const messages = [`${prefix}  You activated a magic portal!`];
+    const messages = [prefix, 'You activated a magic portal!'];
     if (In_endgame(game.u?.uz) && !heroHasAmuletOfYendor()) {
         messages.push('You feel dizzy for a moment, but nothing happens...');
-        return { message: messages.join('  '), more: false };
+        return { message: trapMessage(...messages), more: false };
     }
     const target = clampDungeonLevel(trap.dst);
     if (!target || sameDungeonLevel(target, game.u?.uz)) {
         messages.push('You shudder for a moment.');
-        return { message: messages.join('  '), more: false };
+        return { message: trapMessage(...messages), more: false };
     }
     const alreadyStunned = heroIsStunned();
     addHeroStun(3);
@@ -12487,20 +12981,66 @@ function sitMagicPortalResult(trap, prefix) {
         portalArrival: true,
         preMessage: alreadyStunned ? 'You feel dizzier.' : 'You feel slightly dizzy.',
     });
-    return { message: messages.join('  '), more: true };
+    return { message: trapMessage(...messages), more: true };
+}
+
+function movementTrapLocomotion() {
+    if (game.u?.flying) return 'fly';
+    if (game.u?.levitating) return 'float';
+    return 'step';
+}
+
+function movementTrapAlreadySeen(trap) {
+    return trap?.ttyp === HOLE || !!trap?.tseen;
+}
+
+function movementTrapEscapeMessage(trap) {
+    return `You escape ${sitTrapArticleName(trap)}.`;
+}
+
+function movementOverFloorTrapMessage(trap) {
+    return `You ${movementTrapLocomotion()} over ${sitTrapArticleName(trap)}.`;
+}
+
+function movementTransportTrapResult(trap) {
+    if (!trap) return null;
+    const alreadySeen = movementTrapAlreadySeen(trap);
+    const sokobanInescapable = In_sokoban(game.u?.uz)
+        && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(trap.ttyp);
+
+    if ((trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) && !sokobanInescapable
+        && (game.u?.levitating || game.u?.flying)) {
+        return {
+            message: alreadySeen ? movementOverFloorTrapMessage(trap) : '',
+            more: false,
+        };
+    }
+
+    if (alreadySeen && !sokobanInescapable && sitTrapEscapeAllowed(trap) && !rn2(5))
+        return { message: movementTrapEscapeMessage(trap), more: false };
+
+    if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR)
+        return sitFallThroughTrapResult(trap, '');
+    if (trap.ttyp === LEVEL_TELEP)
+        return levelTeleportTrapResult(trap, '', false);
+    if (trap.ttyp === MAGIC_PORTAL)
+        return sitMagicPortalResult(trap, '');
+    return null;
 }
 
 function placeSitTrapProjectile(projectile) {
-    game.level.objects ??= [];
-    game.level.objects.push({
+    const obj = {
         quan: 1,
         blessed: false,
         cursed: false,
         ox: game.u?.ux || 0,
         oy: game.u?.uy || 0,
         ...projectile,
-    });
+    };
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
     newsym(game.u?.ux || 0, game.u?.uy || 0);
+    return obj;
 }
 
 function sitProjectileTrapMessage(trap, prefix, alreadySeen, spec) {
@@ -12537,11 +13077,34 @@ function sitRockTrapMessage(trap, prefix, alreadySeen) {
     }
     trap.once = true;
     trap.tseen = true;
-    const damage = d(2, 6);
+    let damage = d(2, 6);
+    let harmless = false;
+    const messages = [`${prefix}  A trap door in the ceiling opens and a rock falls on your head!`];
     placeSitTrapProjectile({ otyp: ROCK, cls: 'gem', kind: 'rock', singular: 'rock', plural: 'rocks', glyph: '*' });
-    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
-    exerciseAttribute(A_STR, false);
-    return `${prefix}  A trap door in the ceiling opens and a rock falls on your head!`;
+    const helmet = wornEarthHelmet();
+    if (helmet) {
+        if (heroPassesRocks()) {
+            const simple = /\b(?:hat|fedora|cornuthaum|cap)\b/.test(armorKind(helmet)) ? 'hat' : 'helm';
+            messages.push(`Unfortunately, you are wearing ${articleForName(simple)}.`);
+            damage = 2;
+        } else if (hardEarthHelmet(helmet)) {
+            messages.push('Fortunately, you are wearing a hard helmet.');
+            damage = 2;
+        } else if (game.flags?.verbose !== false) {
+            messages.push(`Your ${pickupObjectName(helmet)} does not protect you.`);
+        }
+    } else if (heroPassesRocks()) {
+        messages.push('It passes harmlessly through you.');
+        harmless = true;
+    }
+    if (!harmless) {
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+            if ((game.u.uhp || 0) <= 0) game._death_cause = 'falling rock';
+        }
+        exerciseAttribute(A_STR, false);
+    }
+    return messages.join('  ');
 }
 
 function sitSqueakyBoardMessage(trap, prefix) {
@@ -12561,24 +13124,247 @@ function sitSleepGasMessage(trap, prefix) {
     return `${prefix}  A cloud of gas puts you to sleep!`;
 }
 
-function sitRustTrapMessage(trap, prefix) {
-    trap.tseen = true;
-    switch (rn2(5)) {
-    case 0:
-        return `${prefix}  A gush of water hits you on the head!`;
-    case 1:
-        return `${prefix}  A gush of water hits your left arm!`;
-    case 2:
-        return `${prefix}  A gush of water hits your right arm!`;
-    default:
-        return `${prefix}  A gush of water hits you!`;
+function rustTrapWornArmor(slot) {
+    return wornArmorItemsBySlotOrder([slot])[0] || null;
+}
+
+function rustTrapTorsoArmor() {
+    return wornArmorItemsBySlotOrder(['cloak', 'body', 'shirt'])[0] || null;
+}
+
+function rustTrapPrimaryWeapon() {
+    return (game.inventory || []).find(item => {
+        const line = item.line || '';
+        return item.wielded || /\b(?:weapon|wielded) in (?:right hand|hands)\b/.test(line)
+            || line.includes('(wielded)');
+    }) || null;
+}
+
+function rustTrapSecondaryWeapon(primary) {
+    return (game.inventory || []).find(item => {
+        if (item === primary) return false;
+        const line = item.line || '';
+        return item.alternate || /\b(?:alternate weapon|(?:weapon|wielded) in left hand)\b/.test(line);
+    }) || null;
+}
+
+function rustTrapBimanualWeapon(item) {
+    if (!item) return false;
+    const name = `${objectKindKey(item)} ${inventoryItemName(item)}`.toLowerCase();
+    return /\b(?:quarterstaff|two-handed sword|battle-axe|dwarvish mattock|tsurugi)\b/.test(name);
+}
+
+function rustTrapArmorName(armor) {
+    const slot = armorSlot(armor);
+    const kind = armorKind(armor);
+    if (slot === 'helm') return hardEarthHelmet(armor) ? 'helm' : 'hat';
+    if (slot === 'shield') return 'shield';
+    if (slot === 'gloves') return kind.includes('gauntlets') ? 'gauntlets' : 'gloves';
+    if (slot === 'cloak') return armorSimpleSlotName(armor);
+    if (slot === 'shirt') return 'shirt';
+    if (slot === 'body') {
+        if (/dragon scales?\b/.test(kind)) return kind.includes('mail') ? 'dragon mail' : 'dragon scales';
+        if (kind.endsWith(' mail')) return 'mail';
+        if (kind.endsWith(' jacket')) return 'jacket';
+        return 'suit';
+    }
+    return armorMessageName(armor);
+}
+
+function rustTrapObjectName(item, override = '') {
+    if (override) return override;
+    if (isWornArmorItem(item)) return rustTrapArmorName(item);
+    return pickupObjectName(item).replace(/^pair of /, '');
+}
+
+function rustTrapNameVerb(name, singular, plural) {
+    return /\b(?:boots|shoes|gloves|gauntlets|scales|arrows|darts|bolts)\b/i.test(name)
+        && !/\bmail\b/i.test(name) ? plural : singular;
+}
+
+function rustTrapItemClass(item) {
+    return item?.cls || (item?.otyp === SCROLL_CLASS || item?.glyph === '?' ? 'scroll'
+        : item?.otyp === POTION_CLASS || item?.otyp === POT_WATER || item?.glyph === '!' ? 'potion'
+            : item?.otyp === SPBOOK_NO_NOVEL || item?.otyp === SPE_HEALING || item?.glyph === '+' ? 'spellbook'
+                : '');
+}
+
+function updateRustTrapItemLine(item, oldAc = null) {
+    if (isWornArmorItem(item)) {
+        if (oldAc != null) updateWornArmorAcAfterChange(item, oldAc);
+        else updateArmorLine(item);
+    } else {
+        item.line = normalInventoryLine({ ...item, line: '' });
     }
 }
 
-function sitFireTrapMessage(trap, prefix) {
+function rustTrapSplashLitItem(item, messages) {
+    if (!(item?.lamplit || item?.burning)) return false;
+    const name = pickupObjectName(item).replace(/ \(lit\)$/, '');
+    if (item.otyp === BRASS_LANTERN || objectKindKey(item) === 'brass lantern') {
+        const heard = !heroIsDeaf();
+        const seen = !game.u?.blind;
+        if (heard || seen)
+            messages.push(`Your ${name} ${heard ? 'crackles' : ''}${heard && seen ? ' and ' : ''}${seen ? 'flickers' : ''}.`);
+        return false;
+    }
+    item.lamplit = false;
+    item.burning = false;
+    delete item._burnTimer;
+    delete item.litRadius;
+    updateRustTrapItemLine(item);
+    messages.push(`Your ${name} ${rustTrapNameVerb(name, 'goes', 'go')} out!`);
+    return true;
+}
+
+function rustTrapSplashLitInventory(messages) {
+    const primary = rustTrapPrimaryWeapon();
+    const secondary = rustTrapSecondaryWeapon(primary);
+    for (const item of game.inventory || []) {
+        if (item === primary) continue;
+        if (game._twoweapon && item === secondary) continue;
+        rustTrapSplashLitItem(item, messages);
+    }
+}
+
+function rustTrapIsAcidPotion(item) {
+    const kind = objectKindKey(item).replace(/^potion of /, '');
+    return item?.potionIndex === 23 || kind === 'acid';
+}
+
+function rustTrapDestroyAcidPotion(item, messages, name, described = false) {
+    const plural = (item.quan || 1) > 1;
+    messages.push(described
+        ? `The potion${plural ? 's' : ''} ${plural ? 'explode' : 'explodes'}!`
+        : `Your ${name} ${rustTrapNameVerb(name, 'explodes', 'explode')}!`);
+    removeInventoryItem(item, item.quan || 1);
+}
+
+function rustTrapWaterDamageReadable(item, messages, cls, name) {
+    if (cls === 'scroll') {
+        if (isBlankScrollItem(item)) return false;
+        messages.push(`Your ${name} ${rustTrapNameVerb(name, 'fades', 'fade')}.`);
+        item.otyp = SCR_BLANK_PAPER;
+        item.kind = 'blank paper';
+        item.actualKind = '';
+        item.known = false;
+        item.scrollIndex = IDENTIFIED_SCROLL_NAMES.length;
+        item.spe = 0;
+        updateRustTrapItemLine(item);
+        return true;
+    }
+    if (cls !== 'spellbook' || isBookOfTheDeadItem(item) || isBlankSpellbookItem(item)) return false;
+    messages.push(`Your ${name} ${rustTrapNameVerb(name, 'fades', 'fade')}.`);
+    item.kind = 'spellbook of blank paper';
+    item.actualKind = '';
+    item.spellName = '';
+    item.spell = null;
+    item.known = false;
+    updateRustTrapItemLine(item);
+    return true;
+}
+
+function rustTrapWaterDamagePotion(item, messages, name) {
+    if (rustTrapIsAcidPotion(item)) {
+        rustTrapDestroyAcidPotion(item, messages, name);
+        return true;
+    }
+    if (isWaterPotion(item)) return false;
+    messages.push(`Your ${name} ${rustTrapNameVerb(name, 'dilutes', 'dilute')}${item.odiluted ? ' further' : ''}.`);
+    if (item.odiluted) {
+        item.otyp = POT_WATER;
+        item.kind = 'water';
+        item.actualKind = '';
+        item.blessed = false;
+        item.cursed = false;
+        item.odiluted = false;
+        item.known = false;
+    } else {
+        item.odiluted = true;
+    }
+    updateRustTrapItemLine(item);
+    return true;
+}
+
+function rustTrapWaterDamageItem(item, messages, nameOverride = '') {
+    if (!item) return false;
+    if (rustTrapSplashLitItem(item, messages)) return true;
+
+    const name = rustTrapObjectName(item, nameOverride);
+    if (item.greased) {
+        if (!rn2(2)) {
+            item.greased = false;
+            updateRustTrapItemLine(item);
+            messages.push(`The grease on your ${name} washes off.`);
+        }
+        if (!item.greased && rustTrapItemClass(item) === 'potion' && rustTrapIsAcidPotion(item))
+            rustTrapDestroyAcidPotion(item, messages, name, true);
+        return true;
+    }
+
+    const cls = rustTrapItemClass(item);
+    if ((cls === 'scroll' || cls === 'spellbook') && rustTrapWaterDamageReadable(item, messages, cls, name))
+        return true;
+    if (cls === 'potion' && rustTrapWaterDamagePotion(item, messages, name)) return true;
+
+    const profile = wishedDamageProfile(item);
+    if (!profile.erosionMatters || profile.primaryWord !== 'rusty') return false;
+    if (item.oerodeproof) {
+        if (!item.rknown && game.flags?.verbose !== false)
+            messages.push(`Somehow, your ${name} ${rustTrapNameVerb(name, 'is', 'are')} not affected by the oxidation.`);
+        item.rknown = true;
+        updateRustTrapItemLine(item);
+        return false;
+    }
+    if (item.blessed && !rnl(4)) return false;
+
+    const current = Math.min(3, item.oeroded || 0);
+    if (current >= 3) return false;
+    const oldAc = isWornArmorItem(item) ? wornArmorAcValueGreatestErosion(item) : null;
+    item.oeroded = current + 1;
+    updateRustTrapItemLine(item, oldAc);
+    const adverb = item.oeroded === 3 ? ' completely' : current ? ' further' : '';
+    messages.push(`Your ${name} ${rustTrapNameVerb(name, 'rusts', 'rust')}${adverb}!`);
+    return true;
+}
+
+function sitRustTrapMessage(trap, prefix) {
+    trap.tseen = true;
+    const messages = [];
+    switch (rn2(5)) {
+    case 0:
+        messages.push(`${prefix}  A gush of water hits you on the head!`);
+        rustTrapWaterDamageItem(rustTrapWornArmor('helm'), messages);
+        break;
+    case 1:
+        messages.push(`${prefix}  A gush of water hits your left arm!`);
+        if (!rustTrapWaterDamageItem(rustTrapWornArmor('shield'), messages, 'shield')) {
+            const primary = rustTrapPrimaryWeapon();
+            if (game._twoweapon)
+                rustTrapWaterDamageItem(rustTrapSecondaryWeapon(primary), messages);
+            else if (rustTrapBimanualWeapon(primary))
+                rustTrapWaterDamageItem(primary, messages);
+            rustTrapWaterDamageItem(rustTrapWornArmor('gloves'), messages);
+        }
+        break;
+    case 2:
+        messages.push(`${prefix}  A gush of water hits your right arm!`);
+        rustTrapWaterDamageItem(rustTrapPrimaryWeapon(), messages);
+        rustTrapWaterDamageItem(rustTrapWornArmor('gloves'), messages);
+        break;
+    default:
+        messages.push(`${prefix}  A gush of water hits you!`);
+        rustTrapSplashLitInventory(messages);
+        rustTrapWaterDamageItem(rustTrapTorsoArmor(), messages);
+        break;
+    }
+    return messages.join('  ');
+}
+
+function heroFireTrapMessage(trap, prefix = '') {
     trap.tseen = true;
     const origDamage = d(2, 4);
-    const messages = [`${prefix}  A tower of flame erupts from the floor!`];
+    const messages = [prefix ? `${prefix}  A tower of flame erupts from the floor!` : 'A tower of flame erupts from the floor!'];
     let damage = 0;
     if (game.u?.fireResistance) {
         damage = rn2(2);
@@ -12597,6 +13383,10 @@ function sitFireTrapMessage(trap, prefix) {
     if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
     if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
     return messages.join('  ');
+}
+
+function sitFireTrapMessage(trap, prefix) {
+    return heroFireTrapMessage(trap, prefix);
 }
 
 function sitTeleportTrapMessage(trap, prefix) {
@@ -12704,8 +13494,10 @@ async function sitTriggerTrap(trap) {
     if (!trap) return false;
     if (await sitWhileAlreadyTrapped(trap)) return true;
     const prefix = game.u?.flying ? 'You land.' : 'You sit down.';
-    const alreadySeen = !!trap.tseen;
-    if (alreadySeen && sitTrapEscapeAllowed(trap) && !rn2(5)) {
+    const alreadySeen = trap.ttyp === HOLE || !!trap.tseen;
+    const sokobanInescapable = In_sokoban(game.u?.uz)
+        && [PIT, SPIKED_PIT, HOLE, TRAPDOOR].includes(trap.ttyp);
+    if (alreadySeen && !sokobanInescapable && sitTrapEscapeAllowed(trap) && !rn2(5)) {
         await finishSitMessage(`${prefix}  You escape ${sitTrapArticleName(trap)}.`);
         return true;
     }
@@ -13684,6 +14476,10 @@ function deathGraveLines() {
         .padStart(Math.floor((18 + goldText.length) / 2))
         .padEnd(18);
     const deathVerb = dsum.cause.startsWith('burned by') ? 'burned' : 'died';
+    const summaryVerb = dsum.outsideDungeon === 'heaven' ? 'passed away' : deathVerb;
+    const summaryPlace = dsum.outsideDungeon
+        ? 'beyond the confines of the dungeon'
+        : `in ${dsum.dungeon} on dungeon level ${dsum.depth}`;
     return [
         [1, 23, '----------'],
         [2, 22, '/          \\'],
@@ -13701,9 +14497,26 @@ function deathGraveLines() {
         [14, 17, '*|     *  *  *      | *'],
         [15, 8, '_________)/\\\\_//(\\/(/\\)/\\//\\/|_)_______'],
         [18, 0, `${farewell} ${dsum.name} the ${dsum.role}...`],
-        [20, 0, `You ${deathVerb} in ${dsum.dungeon} on dungeon level ${dsum.depth} with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
+        [20, 0, `You ${summaryVerb} ${summaryPlace} with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
         [21, 0, `and ${dsum.gold} piece${dsum.gold === 1 ? '' : 's'} of gold, after ${dsum.turns} moves.`],
         [22, 0, `You were level ${dsum.level} with a maximum of ${dsum.hpmax} hit points when you ${deathVerb}.`],
+        [23, 0, '--More--'],
+    ];
+}
+
+function escapedSummaryLines() {
+    const dsum = deathSummary();
+    const farewell = {
+        Knight: 'Fare thee well',
+        Samurai: 'Sayonara',
+        Tourist: 'Aloha',
+        Valkyrie: 'Velkommen',
+    }[dsum.role] || 'Goodbye';
+    return [
+        [0, 0, `${farewell} ${dsum.name} the ${dsum.role}...`],
+        [2, 0, `You escaped from the dungeon with ${dsum.score} point${dsum.score === 1 ? '' : 's'},`],
+        [3, 0, `and ${dsum.gold} piece${dsum.gold === 1 ? '' : 's'} of gold, after ${dsum.turns} moves.`],
+        [4, 0, `You were level ${dsum.level} with a maximum of ${dsum.hpmax} hit points when you escaped.`],
         [23, 0, '--More--'],
     ];
 }
@@ -13726,7 +14539,7 @@ function deathScoreLines() {
         maxlvl: dsum.maxlvl,
         hp: dsum.hp,
         hpmax: dsum.hpmax,
-        cause: game._quit_game ? 'quit' : dsum.cause,
+        cause: game._escaped_game ? 'escaped' : game._quit_game ? 'quit' : dsum.cause,
     };
     let entries = JSON.parse(vfsReadFile('/record') || '[]');
     const unrankedCurrent = current.score <= 0;
@@ -13763,12 +14576,17 @@ function deathScoreLines() {
         const scoreCause = entry.cause.replace(/; the /g, ', the ');
         const rankText = rank ? String(rank).padStart(3) : '   ';
         const points = entry.score || (entry.cause === 'quit' ? 0 : dsum.exp || 0);
-        const outcome = entry.cause === 'quit' ? 'quit' : 'died';
-        let line = `${rankText} ${String(points).padStart(10)}  ${name} ${outcome} in ${entry.dungeon}`;
-        line += ` on level ${entry.depth}`;
-        if (entry.depth !== entry.maxlvl) line += ` [max ${entry.maxlvl}]`;
-        if (entry.cause === 'quit') line += '.';
-        else line += `.  ${scoreCause[0].toUpperCase()}${scoreCause.slice(1)}.`;
+        let line = `${rankText} ${String(points).padStart(10)}  ${name} `;
+        if (entry.cause === 'escaped') {
+            line += `escaped the dungeon [max level ${entry.maxlvl ?? entry.depth}].`;
+        } else {
+            const outcome = entry.cause === 'quit' ? 'quit' : 'died';
+            line += `${outcome} in ${entry.dungeon}`;
+            line += ` on level ${entry.depth}`;
+            if (entry.depth !== entry.maxlvl) line += ` [max ${entry.maxlvl}]`;
+            if (entry.cause === 'quit') line += '.';
+            else line += `.  ${scoreCause[0].toUpperCase()}${scoreCause.slice(1)}.`;
+        }
 
         const wrapped = [];
         const wrapCol = COLNO - 10;
@@ -15002,6 +15820,22 @@ async function moveHero(dx, dy) {
         game.context.move = 1;
         return;
     }
+    if ([HOLE, TRAPDOOR, LEVEL_TELEP, MAGIC_PORTAL].includes(steppedTrap?.ttyp)) {
+        const result = movementTransportTrapResult(steppedTrap);
+        if (result) {
+            game._run_steps_remaining = 0;
+            game._run_stop_now = 1;
+            game._travel_keys = [];
+            game._travel_dynamic_target = null;
+            if (result.message) await setMessage(result.message, result.more);
+            else {
+                game._pending_message = '';
+                game._message_more = 0;
+                game._keep_pending_message = 0;
+            }
+            return;
+        }
+    }
     if (steppedTrap?.ttyp === TELEP_TRAP) {
         game.u.ux0 = newx;
         game.u.uy0 = newy;
@@ -15060,6 +15894,10 @@ async function moveHero(dx, dy) {
         steppedTrap.tseen = true;
         rn2(5);
         await setMessage('A gush of water hits you!');
+        return;
+    }
+    if (steppedTrap?.ttyp === FIRE_TRAP) {
+        await setMessage(heroFireTrapMessage(steppedTrap), true);
         return;
     }
     if (steppedTrap?.ttyp === ROLLING_BOULDER_TRAP) {
@@ -15769,9 +16607,11 @@ export async function rhack(_cmd) {
     if (game._command_mode === 'lifeSavingMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             const stoningLifeSaved = !!game._life_saving_clear_stoning;
-            game._pending_message = stoningLifeSaved
+            const levelTeleportEscape = !!game._life_saving_level_teleport_escape_message;
+            const lifeSavingMessage = stoningLifeSaved || levelTeleportEscape
                 ? 'You feel much better!  The medallion crumbles to dust!'
                 : 'You feel much better!';
+            game._pending_message = lifeSavingMessage;
             game._pending_explore_lifesaving_message = 0;
             game._message_more = 0;
             game._keep_pending_message = 1;
@@ -15796,6 +16636,14 @@ export async function rhack(_cmd) {
                 const con = game.u.acurr?.a?.[A_CON] ?? 10;
                 const givehp = 50 + 10 * Math.trunc(con / 2);
                 game.u.uhp = Math.min(game.u.uhpmax || 1, givehp);
+            }
+            if (levelTeleportEscape) {
+                const escapeMessage = game._life_saving_level_teleport_escape_message;
+                game._life_saving_level_teleport_escape_message = '';
+                game._keep_pending_message = 0;
+                game._death_cause = '';
+                await beginEscapedGame([lifeSavingMessage, escapeMessage]);
+                return;
             }
             game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
             game._suppress_monster_attack_messages = 1;
@@ -16424,6 +17272,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'iceBoxContents'
         && game._command_mode !== 'floorContainerContents'
         && game._command_mode !== 'confusedLevelTeleportOopsMore'
+        && game._command_mode !== 'escapedMore'
         && game._command_mode !== 'ponySecondAttackMore'
         && game._command_mode !== 'ponyDamageMore'
         && game._command_mode !== 'deathSlipMore'
@@ -18135,11 +18984,9 @@ export async function rhack(_cmd) {
             }
             if (game._read_confused_teleport_prompt_after_more) {
                 game._read_confused_teleport_prompt_after_more = 0;
-                game._level_teleport_text = '';
                 game._level_teleport_confused_scroll = game._read_level_teleport_confused_prompt ? 1 : 0;
                 game._read_level_teleport_confused_prompt = 0;
-                await setMessage('To what level do you want to teleport?');
-                game._command_mode = 'levelTeleportText';
+                await beginLevelTeleportTextPrompt();
                 return;
             }
             if (game._read_teleport_cursor_prompt_after_more) {
@@ -18417,6 +19264,7 @@ export async function rhack(_cmd) {
         && game._command_mode !== 'levelChangeMore'
         && game._command_mode !== 'messageWait'
         && game._command_mode !== 'confusedLevelTeleportOopsMore'
+        && game._command_mode !== 'escapedMore'
         && game._command_mode !== 'ponySecondAttackMore'
         && game._command_mode !== 'ponyDamageMore'
         && game._command_mode !== 'deathSlipMore'
@@ -18490,16 +19338,43 @@ export async function rhack(_cmd) {
         const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
         const targetDepth = randomTeleportDepth();
         if (targetDepth === currentDepth) {
-            await setMessage('You shudder for a moment.');
+            const followup = consumePendingLevelTeleportTrapFollowup();
+            await setMessage(['You shudder for a moment.', followup].filter(Boolean).join('  '));
             game.context.move = 1;
             return;
         }
 
         game._deferred_level_goto = {
             targetLevel: levelTeleportNumericTarget(targetDepth),
-            options: { levelTeleport: true },
+            options: levelTeleportOptionsWithTrapFollowup({ levelTeleport: true }),
         };
         game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'escapedMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            game._pending_message = '';
+            game._message_more = 0;
+            setOverlay(escapedSummaryLines(), 24, true);
+            game._command_mode = 'escapedSummaryMore';
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'escapedSummaryMore') {
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            const scoreRows = deathScoreLines();
+            setOverlay(scoreRows, 24, true);
+            game._overlay_cursor = [0, Math.min(23, Math.max(...scoreRows.map(([row]) => row)) + 1)];
+            game._command_mode = 'dead';
+            game.program_state ??= {};
+            game.program_state.gameover = true;
+            return;
+        }
+        game._keep_pending_message = 1;
         return;
     }
 
@@ -18845,6 +19720,14 @@ export async function rhack(_cmd) {
             game._death_cause = '';
             game._death_bones_body = '';
             game._wizard_survived_death = 1;
+            if (game._death_negative_level_teleport_escape_message) {
+                const escapeMessage = game._death_negative_level_teleport_escape_message;
+                game._death_negative_level_teleport_escape_message = '';
+                game._death_outside_dungeon = '';
+                game._death_no_bones = 0;
+                await beginEscapedGame(["OK, so you don't die.", escapeMessage]);
+                return;
+            }
             await setMessage("OK, so you don't die.");
             if (game._deferred_raven_blind_after_more) {
                 const ravenAttack = game._deferred_raven_blind_after_more;
@@ -24734,11 +25617,14 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'levelTeleportText') {
         if (ch === '\x1b') {
-            game._level_teleport_confused_scroll = 0;
-            game._level_teleport_text = '';
+            clearLevelTeleportTextPrompt();
             game._deferred_level_goto = null;
-            game._pending_message = '';
-            game._message_more = 0;
+            const followup = consumePendingLevelTeleportTrapFollowup();
+            if (followup) await setMessage(followup);
+            else {
+                game._pending_message = '';
+                game._message_more = 0;
+            }
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -24746,52 +25632,83 @@ export async function rhack(_cmd) {
         if (ch === '\r' || ch === '\n') {
             const text = game._level_teleport_text || '';
             if (text.trim() === '*') {
-                const currentDepth = depth_of_level(game.u?.uz || { dnum: 0, dlevel: 1 });
-                const targetDepth = randomTeleportDepth();
-                game._level_teleport_text = '';
-                game._level_teleport_confused_scroll = 0;
-                game._command_mode = null;
-                if (targetDepth === currentDepth) {
-                    await setMessage('You shudder for a moment.');
-                    game.context.move = 1;
-                    return;
-                }
-                game._deferred_level_goto = {
-                    targetLevel: levelTeleportNumericTarget(targetDepth),
-                    options: { levelTeleport: true },
-                };
-                game.context.move = 1;
+                await randomLevelTeleportFromPrompt();
                 return;
             }
             if (game._level_teleport_confused_scroll && rnl(5)) {
-                game._level_teleport_confused_scroll = 0;
-                game._level_teleport_text = '';
+                clearLevelTeleportTextPrompt();
                 game._command_mode = 'confusedLevelTeleportOopsMore';
                 game._deferred_level_goto = null;
                 await setMessage('Oops...', true);
                 return;
             }
-            const target = Number.parseInt(text, 10);
-            if (target) {
+            if (game.flags?.debug && text.trim() === '?') {
+                clearLevelTeleportTextPrompt();
+                setOverlay(levelTeleportMenuLines(), 24, true);
+                game._command_mode = 'levelTeleportMenu';
+                return;
+            }
+            const { value: target, hasNumericPrefix } = cAtoiLikeLevel(text);
+            if (target || hasNumericPrefix) {
                 if (questDownBlocked() && target > (game.u?.uz?.dlevel || 0)) {
-                    game._level_teleport_text = '';
-                    game._level_teleport_confused_scroll = 0;
+                    clearLevelTeleportTextPrompt();
+                    game._level_teleport_trap_followup = 0;
                     await setMessage('A mysterious force prevents you from descending.');
                     game._command_mode = null;
                     return;
                 }
-                const targetLevel = levelTeleportNumericTarget(target);
-                await finishLevelTeleport(targetLevel, { preHalluRefresh: true });
+                if (target > 0 && singleLevelBranch(game.u?.uz)) {
+                    clearLevelTeleportTextPrompt();
+                    game._command_mode = null;
+                    const followup = consumePendingLevelTeleportTrapFollowup();
+                    await setMessage(['You shudder for a moment.', followup].filter(Boolean).join('  '));
+                    game.context.move = 1;
+                    return;
+                }
+                if (target < 0) {
+                    if (In_endgame(game.u?.uz)) {
+                        await finishEndgameNegativeLevelTeleport(target);
+                        return;
+                    }
+                    await finishNegativeLevelTeleport(target);
+                    return;
+                }
+                if (target === 0) {
+                    clearLevelTeleportTextPrompt();
+                    await setMessage('Go to Nowhere.  Are you sure? [yn] (n)');
+                    game._command_mode = 'levelTeleportNowhereConfirm';
+                    return;
+                }
+                const targetLevel = levelTeleportNumericTarget(levelTeleportPromptTargetDepth(target));
+                await finishLevelTeleport(targetLevel, levelTeleportOptionsWithTrapFollowup({ preHalluRefresh: true }));
                 if (game._command_mode === 'levelTeleportText') game._command_mode = null;
                 return;
             }
-            game._level_teleport_confused_scroll = 0;
-            setOverlay(levelTeleportMenuLines(), 24, true);
-            game._command_mode = 'levelTeleportMenu';
+            await retryInvalidLevelTeleportPrompt();
             return;
         }
         if (key >= 32) game._level_teleport_text = `${game._level_teleport_text || ''}${ch}`;
-        await setMessage(`To what level do you want to teleport?${game._level_teleport_text ? ` ${game._level_teleport_text}` : ''}`);
+        await setMessage(levelTeleportPromptQuestion());
+        return;
+    }
+
+    if (game._command_mode === 'levelTeleportNowhereConfirm') {
+        if (ch === 'y') {
+            await finishNowhereLevelTeleport();
+            return;
+        }
+        if (ch === 'n' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n' || ch === 'q') {
+            const followup = consumePendingLevelTeleportTrapFollowup();
+            if (followup) await setMessage(followup);
+            else {
+                game._pending_message = '';
+                game._message_more = 0;
+            }
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        game._keep_pending_message = 1;
         return;
     }
 
@@ -24801,7 +25718,10 @@ export async function rhack(_cmd) {
             game._command_mode = 'levelTeleportMenu2';
             return;
         }
-        await finishLevelTeleport(levelTeleportMenuTarget(ch), { preHalluRefresh: true });
+        const targetLevel = levelTeleportMenuTarget(ch);
+        await finishLevelTeleport(targetLevel, targetLevel
+            ? levelTeleportOptionsWithTrapFollowup({ preHalluRefresh: true })
+            : { preHalluRefresh: true });
         if (game._command_mode === 'levelTeleportMenu') game._command_mode = null;
         return;
     }
@@ -24812,6 +25732,7 @@ export async function rhack(_cmd) {
             game._overlay_hide_status = 0;
             game._pending_message = '';
             game._message_more = 0;
+            game._level_teleport_trap_followup = 0;
             await docrt();
             game._command_mode = null;
             return;
@@ -24819,12 +25740,16 @@ export async function rhack(_cmd) {
         if (['z', 'A'].includes(ch) && questDownBlocked()) {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
+            game._level_teleport_trap_followup = 0;
             await docrt();
             await setMessage('A mysterious force prevents you from descending.');
             game._command_mode = null;
             return;
         }
-        await finishLevelTeleport(levelTeleportMenuTarget(ch, true), { boulderMessage: ch === 'B', preHalluRefresh: true });
+        const targetLevel = levelTeleportMenuTarget(ch, true);
+        await finishLevelTeleport(targetLevel, targetLevel
+            ? levelTeleportOptionsWithTrapFollowup({ boulderMessage: ch === 'B', preHalluRefresh: true })
+            : { boulderMessage: ch === 'B', preHalluRefresh: true });
         if (game._command_mode === 'levelTeleportMenu2') game._command_mode = null;
         return;
     }
@@ -25141,9 +26066,8 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x16' && game.flags?.debug && !game._command_mode && !(game._pending_message && game._message_more)) {
-        await setMessage('To what level do you want to teleport?');
-        game._level_teleport_text = '';
-        game._command_mode = 'levelTeleportText';
+        game._level_teleport_confused_scroll = 0;
+        await beginLevelTeleportTextPrompt();
         return;
     }
 

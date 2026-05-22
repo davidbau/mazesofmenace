@@ -14,7 +14,8 @@ import {
     noticeMonOffLikeC, noticeMonOnLikeC, noticeAllMonsLikeC, dolookaroundLikeC,
 } from './vision.js';
 import { genders, roleHasFemaleRoleNameLikeC } from './roles.js';
-import { fastforward_pre_mklev, fastforward_post_mklev } from './fastforward.js';
+import { fastforward_pre_mklev } from './fastforward.js';
+import { runUInitRoleRngAfterMklevLikeC } from './u_init_post_mklev.js';
 import {
     runMoveloopPreambleBeforeRhackLikeC,
     runPostCommandTurnAdvanceLikeC,
@@ -179,9 +180,8 @@ export async function newgame() {
 
     /* C u_init.c u_init_role — svm.moves = 1L before ini_inv (before post-mklev fastforward replay) */
     g.moves = 1;
-    // Fast-forward through post-mklev startup RNG calls.
-    // Covers: u_init_role, ini_inv, and most of moveloop_preamble RNG
-    fastforward_post_mklev();
+    /* C: u_init.c u_init_role — per-role ini_inv RNG (tourist etc. in u_init_role_rng.js). */
+    runUInitRoleRngAfterMklevLikeC(g);
 
     /* C: u_init.c u_init_inventory_attrs — u.umoney0 from u_init_role before ini_inv / init_attr */
     applyRoleStartingUmoney0();

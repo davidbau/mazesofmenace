@@ -1,31 +1,159 @@
-// m_move_mon.js — **`mon.c`** **`m_move()`** subset invoked from **`monmove.c`** **`movemon`**.
-// C ref: mon.c **`m_move(struct monst *mtmp, int after)`**; monmove.c **`movemon`** walks **`fmon`**.
-//
-// Ported: C **`monmove.c`** **`dochug`** — **`wipe_engr_at`** (~734); phase-one **`rn2`** (~737–760), **`m_respond`** (~752–755);
-// **`set_apparxy`** (~778); covetous **`tactics`** + **`mstate`** early out + second **`set_apparxy`** (~782–787);
-// first **`distfleeck`** (~791); **`m_move`**/**`m_throw`**; **`mon_offmap`** early **`return`** (~912–913) before second **`distfleeck`** (~915) when
-// **`status != MMOVE_DIED`** (**`MMOVE_DIED`** vs hero **`thitu`** / future **`m_move`** death).
-// **`stepNum===0`**: **`movemon`** not called (**`moveloop_turn_advance`** **`stepNum > 0`**). **`stepNum ≥ 2`**:
-// both **`distfleeck`** calls; **`monmove.js`** harness rows **3–12** omit aggregate **`rn2(5)`** from **`distfleeck`**.
-// **`mcalcmove`**: **`allmain.js`** adds **`movement`** each **`context.move`**; this path subtracts **`NORMAL_SPEED`** before **`distfleeck`**/**`m_throw`** (C order: spend then **`dochugw`** subtree).
-// Omits **`minliquid`**, misc_worn, hider/eel, **`fightm`**, grid **`domove`**, vault guard, worm tails.
+// m_move_mon.js — **`mon.c`** **`m_move()`** / **`monmove.c`** **`dochug`** subset from **`movemon`**.
+// C ref: mon.c **`m_move()`** ~1715+; monmove.c **`dochug`** ~690+; **`movemon_singlemon`** → **`dochugw`**.
 
-import { NORMAL_SPEED, MMOVE_DIED, MMOVE_NOTHING } from './const.js';
+import { NORMAL_SPEED, MMOVE_DIED, MMOVE_MOVED, MMOVE_NOTHING } from './const.js';
+
+/** C: defsym.h — leprechaun. */
+const S_LEPRECHAUN = 46;
 import { mThrowAtHeroAfterMmoveIfLinedUpLikeC } from './mthrow_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
 import { wipeEngrAt } from './engrave.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
-import { canTeleportMon, teleRestrictMon, raceptr, isCovetousPtrLikeC, monOffmapLikeC } from './mondata.js';
+import {
+    canTeleportMon,
+    teleRestrictMon,
+    raceptr,
+    isCovetousPtrLikeC,
+    monOffmapLikeC,
+} from './mondata.js';
+
+/** C: mondata.h **`perceives`** — **`M1_SEE_INVIS`**. */
+const M1_SEE_INVIS = 0x01000000;
+function perceivesPtrLikeC(ptr) {
+    return ((ptr?.mflags1 ?? 0) & M1_SEE_INVIS) !== 0;
+}
 import { tacticsMonsterDochugStubLikeC } from './tactics_mon.js';
 import { mRespondMonsterDochugLikeC } from './m_respond_mon.js';
+import { disturbMonsterLikeC } from './disturb_mon.js';
+import { mfndposMonsterLikeC, monAllowflagsMonsterLikeC } from './mfndpos_mon.js';
+import { ensureMonsterMtrack } from './monflee.js';
+import { dist2 } from './hacklib.js';
+import { couldsee } from './vision.js';
 import { rn2 } from './rng.js';
+
+/** C: monmove.c **`MTSZ`**. */
+const MTSZ = 4;
+
+function heroInvisLikeC(u) {
+    if (!u) return false;
+    return !!((u.HInvis | 0) || (u.EInvis | 0) || (u.BInvis | 0));
+}
+
+/**
+ * C: monmove.c dochug ~882–887 — monster may enter **`m_move`** position pick.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} nearby
+ * @param {number} scared
+ */
+function dochugEntersMmoveBlockLikeC(g, mtmp, nearby, scared) {
+    const ptr = raceptr(mtmp);
+    const mlet = ptr?.mlet | 0;
+    const u = g.u;
+    if (
+        !nearby
+        || (mtmp.mflee | 0)
+        || scared
+        || (mtmp.mconf | 0)
+        || (mtmp.mstun | 0)
+        || ((mtmp.minvis | 0) && !rn2(3))
+        || (mlet === S_LEPRECHAUN && !rn2(2))
+        || ((u?.Conflict | 0) && !(mtmp.iswiz | 0))
+        || (!(mtmp.mcansee | 0) && !rn2(4))
+        || (mtmp.mpeaceful | 0)
+    ) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C: monmove.c **`m_move`** ~1857–1983 — **`appr`** + **`mfndpos`** + track **`rn2(4*(cnt-j))`** loop.
+ * Does not **`postmov`** / change **`mx,my`** yet.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @returns {number} C **`mmoved`** status subset
+ */
+function mMovePositionSelectRngLikeC(g, mtmp) {
+    const u = g.u;
+    if (!u) return MMOVE_NOTHING;
+    const omx = mtmp.mx | 0;
+    const omy = mtmp.my | 0;
+    let ggx = mtmp.mux | 0;
+    let ggy = mtmp.muy | 0;
+    let appr = (mtmp.mflee | 0) ? -1 : 1;
+    const ptr = raceptr(mtmp);
+
+    if ((mtmp.mconf | 0) /* || engulfing_u — not ported */) {
+        appr = 0;
+    } else {
+        const shouldSee =
+            couldsee(omx, omy)
+            && (dist2(omx, omy, ggx, ggy) <= 36);
+        if (
+            !(mtmp.mcansee | 0)
+            || (shouldSee && heroInvisLikeC(u) && ptr && !perceivesPtrLikeC(ptr) && !rn2(11))
+        ) {
+            appr = 0;
+        }
+    }
+
+    const flag = monAllowflagsMonsterLikeC(g, mtmp);
+    const mfp = mfndposMonsterLikeC(g, mtmp, flag);
+    const cnt = mfp.cnt | 0;
+    if (cnt === 0) return MMOVE_NOTHING;
+
+    let nix = omx;
+    let niy = omy;
+    let nidist = dist2(nix, niy, ggx, ggy);
+    let chi = -1;
+    let mmoved = MMOVE_NOTHING;
+    let chcnt = 0;
+    const jcnt = Math.min(MTSZ, cnt - 1);
+
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp.poss[i].x | 0;
+        const ny = mfp.poss[i].y | 0;
+
+        if (appr !== 0) {
+            const mtrk = mtmp.mtrack;
+            let skipPos = false;
+            for (let j = 0; j < jcnt; j++) {
+                const tr = mtrk?.[j];
+                if (tr && nx === (tr.x | 0) && ny === (tr.y | 0) && rn2(4 * (cnt - j))) {
+                    skipPos = true;
+                    break;
+                }
+            }
+            if (skipPos) continue;
+        }
+
+        const nearer = dist2(nx, ny, ggx, ggy) < nidist;
+        if (
+            (appr === 1 && nearer)
+            || (appr === -1 && !nearer)
+            || (!appr && !rn2(++chcnt))
+            || mmoved === MMOVE_NOTHING
+        ) {
+            nix = nx;
+            niy = ny;
+            nidist = dist2(nix, niy, ggx, ggy);
+            chi = i;
+            mmoved = MMOVE_MOVED;
+        }
+    }
+    void chi;
+    void nix;
+    void niy;
+    return mmoved;
+}
 
 /**
  * C: monmove.c dochug ~736–760 — **`m_respond`** (~752–755) before mflee courage.
- * Teleport branch: !rn2(40) only when mflee.
  * @param {import('./gstate.js').game} g
  * @param {*} mtmp
- * @returns {boolean} false if **`DEADMONSTER`** after **`m_respond`** (C returns 1 from dochug)
+ * @returns {boolean} false if **`DEADMONSTER`** after **`m_respond`**
  */
 function dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp) {
     if (!mtmp) return true;
@@ -37,12 +165,12 @@ function dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp) {
     const mflee = mtmp.mflee | 0;
     const ptr = mtmp.data;
     if (
-        mflee &&
-        !rn2(40) &&
-        ptr &&
-        canTeleportMon(ptr) &&
-        !(mtmp.iswiz | 0) &&
-        !teleRestrictMon(g, mtmp)
+        mflee
+        && !rn2(40)
+        && ptr
+        && canTeleportMon(ptr)
+        && !(mtmp.iswiz | 0)
+        && !teleRestrictMon(g, mtmp)
     ) {
         /* C: rloc(mtmp, RLOC_MSG) then return 0 — rloc RNG not fully ported. */
     }
@@ -57,41 +185,47 @@ function dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp) {
 }
 
 /**
- * C: **`mon.c`** **`m_move(mtmp, 0)`** — one monster’s turn (**subset**).
+ * C: **`mon.c`** **`movemon_singlemon`** → **`dochugw`** / **`dochug`** subset for one **`fmon`** entry.
  * @param {import('./gstate.js').game} g
  * @param {*} mtmp
- * @param {number} [stepNum] — 1-based moveloop step index (**`movemon`**).
+ * @param {number} [_stepNum] — moveloop index (unused; C has no step gate)
  */
-export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
+export async function mMoveOneMonsterSubsetLikeC(g, mtmp, _stepNum = 0) {
     if (!mtmp) return;
     if ((mtmp.mhp | 0) <= 0) return;
-    /* C: mon.c movemon_singlemon — if (mtmp->movement < NORMAL_SPEED) return FALSE; mtmp->movement -= NORMAL_SPEED; */
     const mov = mtmp.movement | 0;
     if (mov < NORMAL_SPEED) return;
     mtmp.movement = mov - NORMAL_SPEED;
 
-    if (stepNum >= 2) {
-        const mx = mtmp.mx | 0;
-        const my = mtmp.my | 0;
-        wipeEngrAt(mx, my, 1, false);
-        if (!dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp)) return;
+    if ((mtmp.msleeping | 0) && !disturbMonsterLikeC(g, mtmp)) return;
+
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    wipeEngrAt(mx, my, 1, false);
+    if (!dochugPhaseOneRngAfterWipeEngrLikeC(g, mtmp)) return;
+
+    setApparxyMonsterLikeC(g, mtmp);
+    const ptr = raceptr(mtmp);
+    if (isCovetousPtrLikeC(ptr)) {
+        await tacticsMonsterDochugStubLikeC(g, mtmp);
+        if (monOffmapLikeC(mtmp)) return;
         setApparxyMonsterLikeC(g, mtmp);
-        const ptr = raceptr(mtmp);
-        if (isCovetousPtrLikeC(ptr)) {
-            await tacticsMonsterDochugStubLikeC(g, mtmp);
-            if (monOffmapLikeC(mtmp)) return;
-            setApparxyMonsterLikeC(g, mtmp);
-        }
-        await distfleeckMonsterApplyLikeC(g, mtmp);
     }
 
-    /** @type {number} */
-    let mmStatus = MMOVE_NOTHING; /* C m_move status; MMOVE_DIED if mhp<=0 after m_throw */
+    const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+    let mmStatus = MMOVE_NOTHING;
+    let enteredMmoveBlock = false;
+
+    if (dochugEntersMmoveBlockLikeC(g, mtmp, flee1.nearby, flee1.scared)) {
+        enteredMmoveBlock = true;
+        ensureMonsterMtrack(mtmp);
+        mmStatus = mMovePositionSelectRngLikeC(g, mtmp);
+    }
+
     await mThrowAtHeroAfterMmoveIfLinedUpLikeC(g, mtmp);
     if ((mtmp.mhp | 0) <= 0) mmStatus = MMOVE_DIED;
 
-    /* C: monmove.c dochug ~912 — after m_move; skip second distfleeck (return 1 from dochug). */
     if (monOffmapLikeC(mtmp)) return;
-
-    if (stepNum >= 2 && mmStatus !== MMOVE_DIED) await distfleeckMonsterApplyLikeC(g, mtmp);
+    /* C: monmove.c ~915 — second **`distfleeck`** only inside **`dochug`** m_move block (~882). */
+    if (enteredMmoveBlock && mmStatus !== MMOVE_DIED) await distfleeckMonsterApplyLikeC(g, mtmp);
 }
