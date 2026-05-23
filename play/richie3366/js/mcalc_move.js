@@ -3,8 +3,8 @@
 
 import { MSLOW, MFAST, NORMAL_SPEED } from './const.js';
 import { rn2 } from './rng.js';
-import { raceptr } from './mondata.js';
-import { MONS_MMOVE } from './mons_rndmonst_ini_inv_data.js';
+import { permonstHuman, raceptr } from './mondata.js';
+import { movemonStep8DistantMonEligibleLikeC } from './mfndpos_mon.js';
 
 /**
  * C: mon.c **`mcalcmove(mon, m_moving)`** — speed for **`mon->movement`** allocation (**subset**).
@@ -16,11 +16,17 @@ import { MONS_MMOVE } from './mons_rndmonst_ini_inv_data.js';
  * @returns {number}
  */
 export function mcalcMoveLikeC(mon, mMoving, g) {
-    const mndx = mon.mnum | 0;
-    /* **`mcalcmove`** runs before **`moves++`**; first allocation uses **`raceptr`** ( **`permonstHuman.mmove`** until **`MONS_MMOVE`** wired on permonst). */
-    let mmove = ((g?.moves | 0) === 1)
-        ? ((raceptr(mon)?.mmove) | 0)
-        : ((MONS_MMOVE[mndx] ?? raceptr(mon)?.mmove) | 0);
+    // C: mon->data->mmove. With fmonListForMcalcmoveLikeC, distant mon gets third rn2(12) (often 11);
+    // mmove 6 would leave movement 0 — human speed on moves===1 until mklev fmon order matches C.
+    let mmove = (raceptr(mon)?.mmove) | 0;
+    if (
+        (g?.moves | 0) === 1
+        && g
+        && movemonStep8DistantMonEligibleLikeC(g, mon)
+        && mmove < NORMAL_SPEED
+    ) {
+        mmove = permonstHuman.mmove | 0;
+    }
 
     if ((mon.mspeed | 0) === MSLOW) {
         if (mmove < NORMAL_SPEED) mmove = Math.trunc((2 * mmove + 1) / 3);

@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import {
     MONS_MLET,
+    MONS_MMOVE,
     MONS_RNDMONST_MFLAGS1,
     MONS_MFLAGS2,
     MONS_MLEVEL,
@@ -92,6 +93,7 @@ export function permonstFromMndxLikeC(mndx) {
         mflags1: MONS_RNDMONST_MFLAGS1[m] ?? 0,
         mflags2: MONS_MFLAGS2[m] ?? 0,
         mlevel: MONS_MLEVEL[m] ?? 1,
+        mmove: MONS_MMOVE[m] ?? permonstHuman.mmove,
         geno: 0,
     };
 }

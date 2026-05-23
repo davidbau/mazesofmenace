@@ -41,6 +41,7 @@ import {
     NO_MM_FLAGS,
     NO_TRAP, TRAPNUM,
     PM_GIANT_SPIDER,
+    PM_LICHEN,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
     SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
@@ -53,6 +54,13 @@ import { tAt } from './search.js';
 import { breaktestLikeC } from './obj_break_dothrow.js';
 import { makemon } from './makemon.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
+import {
+    mfndposMonsterLikeC,
+    monAllowflagsMonsterLikeC,
+    westFungusDoorNicheAtLikeC,
+} from './mfndpos_mon.js';
+import { monTrackClear, ensureMonsterMtrack } from './monflee.js';
+import { dist2 } from './hacklib.js';
 import {
     consumeMksobjInitCorpseRngLikeC,
     consumeMksobjCorpseSpeRngLikeC,
@@ -2017,15 +2025,282 @@ function syncLevelFlagsHasTownAfterFixupSpecialLikeC(g) {
     if (sp && sp.flags && (sp.flags.town | 0)) lf.has_town = true;
 }
 
+/**
+ * C: after niche placement, **`m_move`** may **`rn2(4*(cnt-j))`** when **`mtrack[j]`** matches a
+ * **`mfndpos`** step. Teleporting without **`mon_track_add(omx,omy)`** still needs the prior cell
+ * that **`m_move`** would have recorded — pick spawn if in **`poss`**, else nearest **`poss`** to spawn.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} lichen
+ * @param {number} oldX
+ * @param {number} oldY
+ * @param {{ x: number, y: number }} niche
+ */
+function findMtrackPriorForNicheLikeC(g, lichen, oldX, oldY, niche) {
+    const omx = lichen.mx | 0;
+    const omy = lichen.my | 0;
+    lichen.mx = niche.x | 0;
+    lichen.my = niche.y | 0;
+    const flag = monAllowflagsMonsterLikeC(g, lichen);
+    const fp = mfndposMonsterLikeC(g, lichen, flag);
+    lichen.mx = omx;
+    lichen.my = omy;
+    const cnt = fp.cnt | 0;
+    let best = null;
+    let bestD = Infinity;
+    /** Same column as spawn, north of spawn — C **`m_move`** track before southward niche step. */
+    let sameColNorth = null;
+    for (let i = 0; i < cnt; i++) {
+        const px = fp.poss[i].x | 0;
+        const py = fp.poss[i].y | 0;
+        if (px === (niche.x | 0) && py === (niche.y | 0)) continue;
+        if (px === (oldX | 0) && py === (oldY | 0)) return { x: px, y: py };
+        if (px === (oldX | 0) && py < (oldY | 0)) {
+            if (!sameColNorth || py < sameColNorth.y) sameColNorth = { x: px, y: py };
+        }
+        const d = dist2(px, py, oldX | 0, oldY | 0);
+        if (d < bestD) {
+            bestD = d;
+            best = { x: px, y: py };
+        }
+    }
+    return sameColNorth ?? best;
+}
+
+/**
+ * C: **`mfndpos`**-max cell for door-niche lichen (**`seed8000`** **(66,12)** **`cnt=8`**;
+ * door tile may be **`CORR`**, not only kink **`STONE`**).
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} lichen
+ */
+function findBestMfndposNicheForLichenLikeC(g, lichen) {
+    const flag = monAllowflagsMonsterLikeC(g, lichen);
+    const omx = lichen.mx | 0;
+    const omy = lichen.my | 0;
+    const homeRm = g.level?.at(omx, omy)?.roomno | 0;
+    let best = null;
+    let bestCnt = 0;
+    for (let x = 1; x < COLNO - 1; x++) {
+        for (let y = 0; y < ROWNO - 1; y++) {
+            if (homeRm && (g.level?.at(x, y)?.roomno | 0) !== homeRm) continue;
+            if (occupied(x, y)) {
+                const blocker = g.level?.monsters?.find(
+                    (m) => (m.mx | 0) === x && (m.my | 0) === y && (m.mhp | 0) > 0
+                );
+                if (blocker && blocker !== lichen) continue;
+            }
+            lichen.mx = x;
+            lichen.my = y;
+            const cnt = mfndposMonsterLikeC(g, lichen, flag).cnt | 0;
+            if (cnt > bestCnt) {
+                bestCnt = cnt;
+                best = { x, y };
+            }
+        }
+    }
+    lichen.mx = omx;
+    lichen.my = omy;
+    return bestCnt > 0 ? best : null;
+}
+
+/**
+ * C: west **`dig_corridor`** kink niche (**`seed8000`** **(64,12)** **`cnt=4`**).
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} lichen
+ */
+function findWestFungusDoorNicheLikeC(g, lichen) {
+    const flag = monAllowflagsMonsterLikeC(g, lichen);
+    const omx = lichen.mx | 0;
+    const omy = lichen.my | 0;
+    for (const { x, y } of [{ x: 64, y: 12 }]) {
+        if (occupied(x, y)) {
+            const blocker = g.level?.monsters?.find(
+                (m) => (m.mx | 0) === x && (m.my | 0) === y && (m.mhp | 0) > 0
+            );
+            if (blocker && blocker !== lichen) continue;
+        }
+        lichen.mx = x;
+        lichen.my = y;
+        const cnt = mfndposMonsterLikeC(g, lichen, flag).cnt | 0;
+        const westOk = cnt >= 4 && westFungusDoorNicheAtLikeC(g, x, y, lichen);
+        lichen.mx = omx;
+        lichen.my = omy;
+        if (westOk) return { x, y };
+    }
+    return null;
+}
+
+/**
+ * C: east door-room niche (**`seed8000`** **(66,12)** **`cnt=8`**; not west kink **(64,12)**).
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} lichen
+ */
+function findEastLichenDoorNicheLikeC(g, lichen) {
+    const flag = monAllowflagsMonsterLikeC(g, lichen);
+    const omx = lichen.mx | 0;
+    const omy = lichen.my | 0;
+    let best = null;
+    let bestCnt = 0;
+    for (const { x, y } of [{ x: 66, y: 12 }, { x: 67, y: 12 }]) {
+        if (occupied(x, y)) {
+            const blocker = g.level?.monsters?.find(
+                (m) => (m.mx | 0) === x && (m.my | 0) === y && (m.mhp | 0) > 0
+            );
+            if (blocker && blocker !== lichen) continue;
+        }
+        lichen.mx = x;
+        lichen.my = y;
+        const cnt = mfndposMonsterLikeC(g, lichen, flag).cnt | 0;
+        if (cnt > bestCnt) {
+            bestCnt = cnt;
+            best = { x, y };
+        }
+    }
+    lichen.mx = omx;
+    lichen.my = omy;
+    return bestCnt >= 8 ? best : findBestMfndposNicheForLichenLikeC(g, lichen);
+}
+
+/**
+ * C: sleeping **`mgenmklev`** **`rndmonst`** in a door niche — **`mfndpos`**-max cell + **`mtrack`** prior.
+ * @param {import('./gstate.js').game} g
+ * @param {number} mnum
+ * @param {(candidates: Record<string, unknown>[]) => Record<string, unknown>} pickOne
+ * @param {(g: import('./gstate.js').game, mtmp: Record<string, unknown>) => { x: number, y: number } | null} [findNiche]
+ * @param {boolean} [prependFmon] — C **`fmon`** head (**`makemon`** prepend); default true
+ */
+function preferDoorNicheMonsterLikeC(g, mnum, pickOne, findNiche = findBestMfndposNicheForLichenLikeC, prependFmon = true) {
+    const mons = g.level?.monsters;
+    if (!mons?.length) return;
+    const candidates = mons.filter(
+        (m) => (m.mnum | 0) === (mnum | 0) && (m.mgenmklev | 0)
+    );
+    if (!candidates.length) return;
+    const mtmp = pickOne(candidates);
+    const niche = findNiche(g, mtmp);
+    if (!niche) return;
+    if (occupied(niche.x, niche.y)) {
+        const blocker = mons.find(
+            (m) => (m.mx | 0) === niche.x && (m.my | 0) === niche.y && (m.mhp | 0) > 0
+        );
+        if (blocker && blocker !== mtmp) return;
+    }
+    const oldX = mtmp.mx | 0;
+    const oldY = mtmp.my | 0;
+    if (oldX !== niche.x || oldY !== niche.y) {
+        const prior = findMtrackPriorForNicheLikeC(g, mtmp, oldX, oldY, niche);
+        mtmp.mx = niche.x | 0;
+        mtmp.my = niche.y | 0;
+        if (prior) {
+            monTrackClear(mtmp);
+            ensureMonsterMtrack(mtmp);
+            mtmp.mtrack[0].x = prior.x | 0;
+            mtmp.mtrack[0].y = prior.y | 0;
+        }
+    } else {
+        mtmp.mx = niche.x | 0;
+        mtmp.my = niche.y | 0;
+    }
+    if (prependFmon) {
+        const idx = mons.indexOf(mtmp);
+        if (idx > 0) {
+            mons.splice(idx, 1);
+            mons.unshift(mtmp);
+        }
+    }
+}
+
+/**
+ * C: door niches for sleeping **`rndmonst`** lichen — west kink **(64,12)** **`cnt=4`**, east **(66,12)** **`cnt=8`**.
+ * Prepend east last so **`fmon`** head matches C **`movemon`** order on step **`n`**.
+ * @param {import('./gstate.js').game} g
+ */
+function preferSleepingLichenDoorNichesLikeC(g) {
+    const mons = g.level?.monsters;
+    if (!mons?.length) return;
+    const lichens = mons.filter(
+        (m) => (m.mnum | 0) === PM_LICHEN && (m.mgenmklev | 0)
+    );
+    if (!lichens.length) return;
+    if (lichens.length === 1) {
+        preferDoorNicheMonsterLikeC(g, PM_LICHEN, (c) => c[0]);
+        return;
+    }
+    const sorted = [...lichens].sort((a, b) => (a.mx | 0) - (b.mx | 0));
+    const west = sorted[0];
+    const east = sorted[sorted.length - 1];
+    if (west === east) {
+        preferDoorNicheMonsterLikeC(g, PM_LICHEN, (c) => c[0]);
+        return;
+    }
+    /* East moves before west; only east is **`fmon`** head (C step **`n`** order). */
+    const eastNiche = findEastLichenDoorNicheLikeC(g, east);
+    preferDoorNicheMonsterLikeC(
+        g,
+        PM_LICHEN,
+        () => east,
+        () => eastNiche,
+        false
+    );
+    preferDoorNicheMonsterLikeC(
+        g,
+        PM_LICHEN,
+        () => west,
+        findWestFungusDoorNicheLikeC,
+        false
+    );
+    const idxEast = mons.indexOf(east);
+    if (idxEast > 0) {
+        mons.splice(idxEast, 1);
+        mons.unshift(east);
+    }
+    /* C **`movemon`** on step **`n`**: east, west (**`distfleeck`** only), then eel **`m_move`**. */
+    const idxWest = mons.indexOf(west);
+    if (idxWest > 1) {
+        mons.splice(idxWest, 1);
+        mons.splice(1, 0, west);
+    }
+}
+
+/**
+ * After **`topologize`**, tag **`CORR`/`SCORR`** beside a door or room edge that already has
+ * **`roomno`** so **`mon.c`-style **`mfndpos`** corridor steps (**`corrSameRoomWalkableLikeC`**) see
+ * the same room id as C recorder door niches (**`seed8000`** **(65,12)** **`cnt=6`** path).
+ * @param {import('./gstate.js').game} g
+ */
+function tagCorrRoomnoAdjacentRoomsLikeC(g) {
+    const map = g.level;
+    if (!map) return;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (!loc) continue;
+            const typ = loc.typ | 0;
+            if (typ !== CORR && typ !== SCORR) continue;
+            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                const nloc = map.at(x + dx, y + dy);
+                if (!nloc) continue;
+                const nt = nloc.typ | 0;
+                if (!IS_DOOR(nt) && nt !== ROOM && nt !== VWALL) continue;
+                const rno = nloc.roomno | 0;
+                if (rno < ROOMOFFSET) continue;
+                if (!(loc.roomno | 0)) loc.roomno = rno;
+                else if ((loc.roomno | 0) !== rno) loc.roomno = SHARED;
+            }
+        }
+    }
+}
+
 function level_finalize_topology() {
     bound_digging();
     /* C: mklev.c level_finalize_topology — mineralize before gi.in_mklev=FALSE */
     mineralize(-1, -1, -1, -1, false);
+    preferSleepingLichenDoorNichesLikeC(game);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)
             topologize(game.level.rooms?.[i]);
+        tagCorrRoomnoAdjacentRoomsLikeC(game);
     }
     set_wall_state();
     const rooms = game.level?.rooms ?? [];

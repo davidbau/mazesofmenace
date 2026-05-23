@@ -16,9 +16,10 @@ import { isClosedDoorLoc, accessibleAtMonmoveLikeC } from './walkable.js';
 /** C: monflag.h M1_SEE_INVIS — perceives() for Invis vs set_apparxy notseen. */
 const M1_SEE_INVIS = 0x01000000;
 
+/** C: youprop.h **`Invis`** — **`(HInvis || EInvis) && !BInvis`**. */
 function heroInvisLikeC(u) {
     if (!u) return false;
-    return !!((u.HInvis | 0) || (u.EInvis | 0) || (u.BInvis | 0));
+    return !!(((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0));
 }
 
 function perceivesPtrLikeC(ptr) {

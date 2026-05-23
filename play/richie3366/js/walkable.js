@@ -10,14 +10,16 @@ import {
     COLNO, ROWNO,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, OTYP_BOULDER,
     ICE, STONE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, DB_MOAT, DB_LAVA,
-    In_sokoban, Is_rogue_level, PM_GRID_BUG, WT_TOOMUCH_DIAGONAL,
+    In_sokoban, Is_rogue_level, PM_GRID_BUG, PM_FLOATING_EYE, WT_TOOMUCH_DIAGONAL,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNOREWATER, MM_IGNORELAVA,
     xdir, ydir, N_DIRS,
 } from './const.js';
 import {
-    isFlyer, isFloater, raceptr, swims, amphibious, fireResistant,
+    isFlyer, isFloater, isClinger, raceptr, swims, amphibious, fireResistant,
     passesWalls, throwsRocks, amorphous, passesBars,
-    bigmonst, isWhirly, slithy, noncorporeal, canFogHero,
+    bigmonst, isWhirly, slithy, noncorporeal, canFogHero, likesLava, S_EEL,
 } from './mondata.js';
+import { goodposOnscaryMdatLikeC } from './distfleeck_mon.js';
 import { floorObjKey } from './floorobj.js';
 import { rn2 } from './rng.js';
 
@@ -242,6 +244,95 @@ export function goodposHero(x, y, g = game) {
  * @param {{ data?: import('./mondata.js').Permonst }} mtmp
  * @param {Record<string, unknown>} [g]
  */
+/** C: mon.c **`m_in_air`** subset for **`teleport.c`** **`goodpos`**. */
+function mInAirMtmpLikeC(mtmp) {
+    const ptr = raceptr(mtmp);
+    if (isFlyer(ptr) || isFloater(ptr)) return true;
+    return isClinger(ptr) && (mtmp.mundetected | 0) !== 0;
+}
+
+function isPoolCellGoodposLikeC(g, x, y) {
+    const loc = g.level?.at(x | 0, y | 0);
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+    return typ === POOL || typ === MOAT || typ === WATER;
+}
+
+/**
+ * C: teleport.c **`goodpos(x,y,mtmp,gpflags)`** — **`makemon`** / **`enexto`** fakemon path.
+ * @param {number} x
+ * @param {number} y
+ * @param {{ data?: unknown, mnum?: number, mx?: number, my?: number, wormno?: number, m_id?: number }} mtmp
+ * @param {number} [gpflags]
+ * @param {Record<string, unknown>} [g]
+ * @param {{ skipLandEelRn2?: boolean }} [opts]
+ */
+export function goodposMakemonLikeC(x, y, mtmp, gpflags = 0, g = game, opts = {}) {
+    if (!isok(x, y)) return false;
+    const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
+    const ignorelava = (gpflags & MM_IGNORELAVA) !== 0;
+    const checkscary = (gpflags & GP_CHECKSCARY) !== 0;
+    const avoidMonpos = (gpflags & GP_AVOID_MONPOS) !== 0;
+
+    const u = g.u;
+    if (u && (u.ux | 0) === x && (u.uy | 0) === y) return false;
+
+    if (avoidMonpos && g.level?.monsters?.some((m) => (m.mx | 0) === x && (m.my | 0) === y)) {
+        return false;
+    }
+
+    const ptr = raceptr(mtmp);
+    if (!ptr) return goodposNullMonLikeC(x, y, g);
+
+    if (mtmp) {
+        const mtmp2 = g.level?.monsters?.find((m) => (m.mx | 0) === x && (m.my | 0) === y);
+        if (mtmp2 && (mtmp2 !== mtmp || (mtmp.wormno | 0))) return false;
+    }
+
+    const loc = g.level?.at(x, y);
+    if (!loc) return false;
+
+    if (isPoolCellGoodposLikeC(g, x, y) && !ignorewater) {
+        if (swims(ptr) || mInAirMtmpLikeC(mtmp)) return true;
+        return false;
+    }
+    if (
+        (ptr.mlet | 0) === S_EEL
+        && !ignorewater
+        && !opts.skipLandEelRn2
+        && rn2(13)
+    ) {
+        return false;
+    }
+
+    if (isLavaTerrain(loc.typ | 0) && !ignorelava) {
+        if ((ptr.mnum | 0) === PM_FLOATING_EYE) return false;
+        if (mInAirMtmpLikeC(mtmp) || likesLava(ptr)) return true;
+        return false;
+    }
+
+    if (passesWalls(ptr) && mayPasswall(x, y, g)) return true;
+    if (amorphous(ptr) && isClosedDoorLoc(loc)) return true;
+
+    if (checkscary) {
+        if (mtmp.m_id) {
+            /* full onscary needs m_id — not used for mklev fakemon */
+            return false;
+        }
+        if (goodposOnscaryMdatLikeC(g, x, y, ptr)) return false;
+    }
+
+    if (!accessibleAtMonmoveLikeC(x, y, g)) {
+        if (!(isPoolCellGoodposLikeC(g, x, y) && ignorewater)
+            && !(isLavaTerrain(loc.typ | 0) && ignorelava)) {
+            return false;
+        }
+    }
+
+    if (sobjAtBoulder(x, y, g) && !throwsRocks(ptr)) return false;
+    return true;
+}
+
 export function goodposNewMonster(x, y, mtmp, g = game) {
     if (!isok(x, y)) return false;
     const u = g.u;

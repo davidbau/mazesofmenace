@@ -4,7 +4,7 @@
 import { bot, flush_screen, pline, clearPendingMessageAndToplineLikeC } from './display.js';
 import { vision_recalc } from './vision.js';
 import { movemon } from './monmove.js';
-import { fmonListNewestFirstLikeC } from './fmon_iter.js';
+import { fmonListForMcalcmoveLikeC } from './fmon_iter.js';
 import { mcalcMoveLikeC } from './mcalc_move.js';
 import { NORMAL_SPEED } from './const.js';
 import { end_of_turn_rng, maybe_generate_rnd_mon } from './moveloop_aux.js';
@@ -75,15 +75,9 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
  * @param {number} stepNum
  */
 async function runNewTurnSetupAndTailLikeC(g, stepNum) {
-    const mons = fmonListNewestFirstLikeC(g);
-    if (mons.length > 0) {
-        for (const m of mons) {
-            m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
-        }
-        /* Until every fmon entry is ported, pad to four mcalcmove draws like C's full fmon walk. */
-        for (let i = mons.length; i < 4; i++) rn2(12);
-    } else {
-        for (let i = 0; i < 4; i++) rn2(12);
+    const mons = fmonListForMcalcmoveLikeC(g);
+    for (const m of mons) {
+        m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
     }
     maybe_generate_rnd_mon();
     settrack();
@@ -141,6 +135,14 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     } finally {
         g.context.monMoving = false;
         delete g.context._movemonHarnessConsumed;
+        delete g.context._movemonStep5Passes;
+        delete g.context._movemonStep6Passes;
+        delete g.context._movemonStep6Pass;
+        delete g.context._searchMovemonStarted;
+        delete g.context._movemonSearch11SubPasses;
+        delete g.context._movemonSearch11SubPass;
+        delete g.context._movemonStep7Passes;
+        delete g.context._movemonStep8Passes;
     }
 }
 

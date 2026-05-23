@@ -8,7 +8,7 @@ import { monnearMonsterXYLikeC } from './mon_geom.js';
 import { dist2 } from './hacklib.js';
 import { sengrAtLikeC } from './engrave.js';
 import { levlTypAt } from './decor.js';
-import { raceptr, isRiderMnum, isVampshifterMonsterLikeC } from './mondata.js';
+import { raceptr, isRiderMnum, isVampshifterMonsterLikeC, haseyes } from './mondata.js';
 import { inHishop, inRoomsTypewantedRoomnos, templeOccupiedFromUUroomsLikeC } from './shop.js';
 import { couldsee } from './vision.js';
 import { artifactLightObjLikeC } from './artifact_light.js';
@@ -23,6 +23,8 @@ const G_UNIQ = 0x1000;
 const PM_ANGEL = 122;
 const PM_MINOTAUR = 176;
 
+/** C: defsym.h **`MONSYM(..., ANGEL, S_ANGEL, ...)`**. */
+const S_ANGEL = 27;
 /** C: defsym.h **`MONSYM(..., VAMPIRE, S_VAMPIRE, ...)`**. */
 const S_VAMPIRE = 48;
 /** C: defsym.h **`MONSYM(..., HUMAN, S_HUMAN, ...)`** — human or elf class letter **@**. */
@@ -37,9 +39,10 @@ const M2_MINION = 0x00001000;
 /** C: priest.c top — **`u.ualign.record`** gate in **`in_your_sanctuary`**. */
 const ALGN_SINNED = -4;
 
+/** C: youprop.h **`Invis`** — **`(HInvis || EInvis) && !BInvis`**. */
 function heroInvisLikeC(u) {
     if (!u) return false;
-    return !!((u.HInvis | 0) || (u.EInvis | 0) || (u.BInvis | 0));
+    return !!(((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0));
 }
 
 function perceivesDataLikeC(data) {
@@ -126,6 +129,26 @@ export function pCoalignedMonsterLikeC(g, priest) {
 export function isLminionMonsterSubsetLikeC(mtmp) {
     if (!(mtmp?.isminion | 0)) return false;
     return monAligntypMonsterLikeC(mtmp) === A_LAWFUL;
+}
+
+/**
+ * C: teleport.c **`goodpos_onscary`** — new-monster placement ( **`mtmp->m_id` absent** ).
+ * @param {import('./gstate.js').game} g
+ * @param {number} x
+ * @param {number} y
+ * @param {{ mlet?: number, mnum?: number }} ptr
+ */
+export function goodposOnscaryMdatLikeC(g, x, y, ptr) {
+    const mlet = ptr?.mlet | 0;
+    const mnum = ptr?.mnum | 0;
+    if (mlet === S_HUMAN_MONSYM || mlet === S_ANGEL || isRiderMnum(mnum) || uniqueCorpstatLikeC(ptr)) {
+        return false;
+    }
+    if (IS_ALTAR(levlTypAt(x, y) | 0) && mlet === S_VAMPIRE) return true;
+    if (sobjScareMonsterAtLikeC(g, x, y)) return true;
+    if (In_hell(g.u?.uz) || In_endgame(g.u?.uz)) return false;
+    if (mnum === PM_MINOTAUR || !haseyes(ptr)) return false;
+    return !!sengrAtLikeC(g, 'Elbereth', x | 0, y | 0, true);
 }
 
 function sobjScareMonsterAtLikeC(g, x, y) {

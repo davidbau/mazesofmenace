@@ -8,8 +8,10 @@ import {
     MONS_MFLAGS2,
     MONS_MLEVEL,
 } from './mons_rndmonst_ini_inv_data.js';
-import { permonstFromMndxLikeC } from './mondata.js';
+import { permonstFromMndxLikeC, throwsRocks } from './mondata.js';
 import { monTrackInitLikeC } from './monflee.js';
+import { GP_AVOID_MONPOS, GP_CHECKSCARY, In_sokoban, MM_IGNOREWATER } from './const.js';
+import { goodposMakemonLikeC } from './walkable.js';
 
 /** C: monflag.h M2_NEUTER */
 const M2_NEUTER = 0x00040000;
@@ -24,7 +26,8 @@ function isNdemonMndxLikeC(mndx) {
 
 const PM_WUMPUS = 86;
 const PM_LONG_WORM = 114;
-const PM_GIANT_EEL = 326;
+/** C: monsters.h **`PM_GIANT_EEL`** (block index 328; was wrongly 326 = piranha). */
+const PM_GIANT_EEL = 328;
 
 /** C: dungeon.c level_difficulty — depth of current level. */
 function levelDifficultyLikeC() {
@@ -47,12 +50,19 @@ function adjLevMndxLikeC(mndx) {
     return tmp > 0 ? tmp : 0;
 }
 
+/** C: makemon.c **`newmonhp`** when **`!m_lev`** — **`rnd(4)`**, bump if **`mhpmax == basehp`**. */
+function newmonhpRnd4BoostLikeC() {
+    let hp = rnd(4);
+    if (hp === 1) hp = 2;
+    return hp;
+}
+
 /** C: makemon.c newmonhp — `!m_lev` → `rnd(4)`; else `d(m_lev, 8)` + min-2 boost. */
 function newmonhpMndxLikeC(mndx) {
     const mLev = adjLevMndxLikeC(mndx);
-    if (!mLev) return rnd(4);
+    if (!mLev) return newmonhpRnd4BoostLikeC();
     let hp = d(mLev, 8);
-    if (hp < 2) hp = 2;
+    if (hp === mLev) hp += 1;
     return hp;
 }
 
@@ -72,7 +82,6 @@ function mInitinvMklevLikeC(mLev) {
  * @returns {{ mx: number, my: number, mhp: number, mhpmax: number, msleeping: number, mpeaceful: number, mtame: number, mnum: number, mcanmove?: number, mfrozen?: number, mvflags?: number }|null}
  */
 export function makemon(mdat, x, y, mmflags) {
-    void mmflags;
     let px = x | 0;
     let py = y | 0;
     if (px === 0 && py === 0) {
@@ -81,16 +90,40 @@ export function makemon(mdat, x, y, mmflags) {
     }
     let mnum = 0;
     if (mdat === null) {
-        const picked = rndmonstLikeC();
-        if (picked < 0) return null;
-        mnum = picked;
+        let tryct = 0;
+        mnum = -1;
+        do {
+            const picked = rndmonstLikeC();
+            if (picked < 0) return null;
+            const fakemon = { data: permonstFromMndxLikeC(picked), mnum: picked, mx: 0, my: 0, wormno: 0 };
+            const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
+                | GP_CHECKSCARY
+                | GP_AVOID_MONPOS;
+            const posOk = goodposMakemonLikeC(
+                px,
+                py,
+                fakemon,
+                gpflags,
+                game,
+                game.in_mklev ? { skipLandEelRn2: true } : {}
+            );
+            const ok = !(
+                (tryct === 0 && throwsRocks(fakemon.data) && In_sokoban(game.u?.uz))
+                || !posOk
+            );
+            if (ok) {
+                mnum = picked;
+                break;
+            }
+        } while (++tryct <= 50);
+        if (mnum < 0) return null;
     } else if (mdat && typeof mdat === 'object' && typeof mdat.mnum === 'number') {
         mnum = mdat.mnum | 0;
     }
     rnd(2); /* C: makemon.c mtmp->m_id = next_ident() */
-    /* C: fill_ordinary_room sleeping monster (rndmonst null) — newmonhp rnd(4) on D:1. */
+    /* C: fill_ordinary_room **`rndmonst`** — **`newmonhp`** with **`m_lev==0`** → one **`rnd(4)`** only. */
     const hp = (game.in_mklev && mdat === null)
-        ? rnd(4)
+        ? newmonhpRnd4BoostLikeC()
         : newmonhpMndxLikeC(mnum);
     const mtmp = {
         mx: px,
@@ -112,6 +145,7 @@ export function makemon(mdat, x, y, mmflags) {
         mstrategy: 0,
     };
     monTrackInitLikeC(mtmp);
+    mtmp.m_lev = (game.in_mklev && mdat === null) ? 0 : adjLevMndxLikeC(mnum);
     mtmp.mgenmklev = game.in_mklev ? 1 : 0;
     /* C: makemon.c — `femaleok = !is_male(ptr) && !is_neuter(ptr)`; neuter skips `rn2(2)`. */
     const femaleok = ((MONS_MFLAGS2[mnum | 0] | 0) & M2_NEUTER) === 0;

@@ -44,7 +44,7 @@ import {
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     ROT_AGE, TAINT_AGE,
-    In_mines, DUNGEON_ALIGN_BY_DNUM,
+    In_mines,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -3355,7 +3355,14 @@ export function mksobj(otyp, init, artif) {
     const specificFood = SPECIFIC_FOOD_INFO.get(otyp);
     if (specificFood) {
         const [singular, plural, color] = specificFood;
-        Object.assign(otmp, { cls: 'food', kind: singular, singular, plural, _display_color: color });
+        Object.assign(otmp, {
+            cls: 'food',
+            kind: singular,
+            singular,
+            plural,
+            _display_color: color,
+            age: otmp.age ?? Math.max(game.moves || 0, 1),
+        });
     }
     if (otyp === CORPSE) {
         if (!otmp.corpsenm) {
@@ -10132,11 +10139,10 @@ function oracleSubroomNodoor(lx, ly, hx, hy) {
 function inducedAlign80() {
     const specialAlign = game._special_level_align;
     if (specialAlign != null && specialAlign !== A_NONE && rn2(100) < 80)
-        return specialAlign;
-    const dungeonAlign = DUNGEON_ALIGN_BY_DNUM[game.u?.uz?.dnum] ?? A_NONE;
-    if (dungeonAlign !== A_NONE && rn2(100) < 80)
-        return dungeonAlign;
-    return rn2(3) - 1;
+        return Align2amask(specialAlign);
+    // C stores dungeon D_ALIGN_* values in a 3-bit alignment bitfield; in
+    // the traced build that makes ordinary dungeon alignment false here.
+    return Align2amask(rn2(3) - 1);
 }
 
 function oracleRoomRandomLoc(lx, ly, hx, hy, sublx, subly, subhx, subhy) {

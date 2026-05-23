@@ -11199,7 +11199,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
             spellName: spellbookIndex >= 0 ? spellName : '',
             spellbookIndex,
             appearance: spellbookIndex >= 0 ? game._object_descriptions?.spellbooks?.[spellbookIndex] : '',
-            known: spellbookIndex >= 0,
+            known: false,
             wishedfor: true,
         });
     }
@@ -13975,8 +13975,8 @@ async function doSitCommand() {
 }
 
 async function eatRottenNonCorpseFood(item, floorObject = false) {
-    const { message, rottenSleepDuration } = rottenFoodEffect();
     const touched = partialRottenFood(item, floorObject);
+    const { message, rottenSleepDuration } = rottenFoodEffect();
     if (!rottenSleepDuration) {
         if (isRoyalJelly(touched)) {
             await finishRoyalJellyEating(touched, floorObject, message, { more: true, processTimeWithMore: 1 });
@@ -14063,8 +14063,8 @@ function consumeOneEatenFood(item, floorObject = false) {
 }
 
 async function eatRottenEgg(item, floorObject = false) {
-    const { message, rottenSleepDuration } = rottenFoodEffect();
     const touched = partialRottenFood(item, floorObject);
+    const { message, rottenSleepDuration } = rottenFoodEffect();
     let petrificationMessage = '';
     if (!rottenSleepDuration) {
         addHeroNutrition(remainingFoodNutrition(touched));
@@ -22343,10 +22343,7 @@ export async function rhack(_cmd) {
         if (isScroll && (scrollName === 'identify' || item.actualKind === 'scroll of identify' || item.scrollIndex === 13)) {
             const confusedReading = heroIsConfused();
             const alreadyKnown = scrollDiscoveryKnown('identify')
-                || item.known === true
-                || item.actualKind === 'scroll of identify'
-                || item.kind === 'identify'
-                || item.kind === 'scroll of identify';
+                || item.known === true;
             const blessed = !!item.blessed;
             const cursed = !!item.cursed;
             const messages = scrollDisappearMessages(confusedReading);
@@ -26396,12 +26393,15 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x14' && game.flags?.debug && !game._command_mode && !(game._pending_message && game._message_more)) {
-        await setMessage('Where do you want to be teleported?', true);
+        const showGetposTip = !game._getpos_tip_seen && game.flags?.tutorial !== false;
+        await setMessage('Where do you want to be teleported?', showGetposTip);
         game._teleport_cursor_position_mode = 0;
         game._teleport_dot_described = 0;
         game._teleport_from_scroll = 0;
+        game._farlook_x = game.u?.ux || 0;
+        game._farlook_y = game.u?.uy || 0;
         game._cursor_override = null;
-        game._command_mode = 'teleportIntroMore';
+        game._command_mode = showGetposTip ? 'teleportIntroMore' : 'teleportCursor';
         return;
     }
 
@@ -27992,7 +27992,7 @@ export async function rhack(_cmd) {
                 game._eating_floor_object = food;
                 game._eating_nutrition = biteNutrition * reqtime;
                 // C takes an immediate first bite before the eating occupation ticks.
-                if (corpseName === 'bugbear') game._eating_nutrition += Math.max(0, biteNutrition - 2);
+                if (corpseName === 'bugbear') game._eating_nutrition += Math.max(0, biteNutrition - 4);
                 game._eating_newt_buzz = corpseName === 'newt';
                 await setMessage(corpseMessage);
                 game._command_mode = null;

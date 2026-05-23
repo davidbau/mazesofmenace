@@ -23,7 +23,7 @@ import {
     obliterateObjectInLevel,
 } from './floorobj.js';
 import { delEngrAt } from './engrave.js';
-import { isPoolOrLavaCellLikeC } from './fillholetyp.js';
+import { isPoolCellLikeC, isLavaCellLikeC, isPoolOrLavaCellLikeC } from './fillholetyp.js';
 import {
     raceptr,
     isFlyer,
@@ -488,9 +488,10 @@ async function minliquidMonsterAfterMelt(g, mtmp) {
     const typ = loc.typ | 0;
     const ptr = raceptr(mtmp);
     const waterwall = IS_WATERWALL(typ);
-    const inpool = IS_POOL(typ)
+    /* C: mon.c **`minliquid_core`** — **`is_pool(mx,my)`**, not rm.h **`IS_POOL(typ)`**. */
+    const inpool = isPoolCellLikeC(g, x, y)
         && (!(isFlyer(ptr) || isFloater(ptr)) || Is_waterlevel(g.u?.uz));
-    const inlava = IS_LAVA(typ) && !(isFlyer(ptr) || isFloater(ptr));
+    const inlava = isLavaCellLikeC(g, x, y) && !(isFlyer(ptr) || isFloater(ptr));
     const infountain = IS_FOUNTAIN(typ);
 
     const u = g.u;
@@ -574,6 +575,7 @@ async function minliquidMonsterAfterMelt(g, mtmp) {
         return;
     }
 
+    /* C: mon.c — land **S_EEL** outside **is_pool**; **`cant_drown`** only affects in-pool branch above. */
     if ((ptr.mlet | 0) === S_EEL && !Is_waterlevel(g.u?.uz) && !breathless(ptr)) {
         if ((mtmp.mhp | 0) > 1 && rn2(mtmp.mhp | 0) > rn2(8)) mtmp.mhp = (mtmp.mhp | 0) - 1;
         /* C: monmove.c monflee(mtmp, 2, FALSE, FALSE) */

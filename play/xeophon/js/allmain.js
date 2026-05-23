@@ -1118,6 +1118,7 @@ function initSpecificObject(item) {
     if (obj.cls === 'weapon') return initWeapon(obj);
     if (obj.cls === 'armor') return initArmor(obj);
     else if (obj.cls === 'food') {
+        if (obj.age == null) obj.age = Math.max(game.moves || 0, 1);
         const roll = rn2(6);
         if (!['corpse', 'meat ring', 'kelp frond'].includes(obj.kind)) obj._createdQuan = roll ? 1 : 2;
     }
@@ -4845,7 +4846,10 @@ async function processMonsterTurns() {
                         const spitRoll = rn2(BOLT_LIM - throwRange);
                         if (!spitRoll) {
                             const visibleSpitter = !game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected;
-                            if (visibleSpitter) addToplineMessage(`${monsterDisplayName(mon, true)} spits venom!`);
+                            if (visibleSpitter) {
+                                addToplineMessage(`${monsterDisplayName(mon, true)} spits venom!`);
+                                recordDiscovery('Venoms', 'splash of venom', null, false);
+                            }
                             for (let step = 1; step < throwRange; step++) rn2(5);
                             const attackRoll = rnd(20);
                             if (attackRoll === 20) {
