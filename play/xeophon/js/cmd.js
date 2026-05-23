@@ -31173,12 +31173,6 @@ export async function rhack(_cmd) {
 
     if (dir) {
         if ((game.u?._statusSuffix || '').includes('Overloaded') && game.u?._monsterMove === 0) {
-            const targetX = (game.u?.ux || 0) + dir.dx;
-            const targetY = (game.u?.uy || 0) + dir.dy;
-            if (game.level?.at(targetX, targetY)?.map_invisible) {
-                game._search_found_unseen_monster = 0;
-                game._collapse_extra_moves_without_monsters = Math.max(game._collapse_extra_moves_without_monsters || 0, 1);
-            }
             await setMessage('You collapse under your load.');
             game.context.move = 1;
             return;

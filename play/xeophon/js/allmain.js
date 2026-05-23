@@ -2698,7 +2698,9 @@ function maybeShapeshiftVampire(mon) {
 
     const oldHp = mon.mhp || 1;
     const oldMax = mon.mhpmax || oldHp;
-    if (!target.neuter && target.mlet !== 'V') rn2(10);
+    if (target.male) mon.female = false;
+    else if (target.female) mon.female = true;
+    else if (!target.neuter) rn2(10);
     const newLevel = adjustedMonsterLevel(target);
     const newMax = monster_hp(target, newLevel);
     mon.mhp = Math.max(1, Math.min(newMax, Math.trunc((oldHp * newMax) / oldMax)));
@@ -3152,6 +3154,9 @@ async function processMonsterTurns() {
 		                            if (teleported) continue;
 		                        }
                     if (!mon.mfleetim && (mon.mhpmax == null || mon.mhp == null || mon.mhp >= mon.mhpmax) && !rn2(25)) mon.mflee = 0;
+                    }
+                    if (!distfleeckDoneAfterAnger && mon.data?.covetous) {
+                        rn2(mon.mflee ? 33 : 5);
                     }
                     if (!distfleeckDoneAfterAnger) rn2(5);
 	                    if (!mon.pet && !mon.mpeaceful && !mon.data?.mindless && !mon.data?.nohands && !(mon.m_seenres & M_SEEN_MAGR)) {
@@ -4460,47 +4465,51 @@ async function processMonsterTurns() {
                         const inHisShop = mon.isshk && game.level?.at(oldx, oldy)?.roomno === mon.shoproom;
                         const inHisTemple = mon.ispriest && mon.shrine
                             && game.level?.at(oldx, oldy)?.roomno === mon.shrine.room;
+                        const cShapedPriestMove = mon.ispriest && mon.shrine?.specialLevel;
+                        // C pri_move() returns -1 outside the priest's own temple.
+                        const priestLetsGenericMove = cShapedPriestMove && !inHisTemple;
 
-                        if (inHisTemple) {
-                            goalX = mon.shrine.x + rn1(3, -1);
-                            goalY = mon.shrine.y + rn1(3, -1);
-                            avoid = true;
-                        } else if (mon.isshk && mon.mpeaceful) {
-                            const satdoor = oldx === goalX && oldy === goalY;
-                            if (game.u?.invisible || game.u?.usteed) {
+                        if (!priestLetsGenericMove) {
+                            if (inHisTemple) {
+                                goalX = mon.shrine.x + rn1(3, -1);
+                                goalY = mon.shrine.y + rn1(3, -1);
+                                avoid = true;
+                            } else if (mon.isshk && mon.mpeaceful) {
+                                const satdoor = oldx === goalX && oldy === goalY;
+                                if (game.u?.invisible || game.u?.usteed) {
+                                    avoid = false;
+                                } else {
+                                    uondoor = heroX === mon.shd?.x && heroY === mon.shd?.y;
+                                    if (uondoor) avoid = true;
+                                    else {
+                                        const heroInShop = game.level?.at(heroX, heroY)?.roomno === mon.shoproom;
+                                        avoid = heroInShop && (heroX - goalX) ** 2 + (heroY - goalY) ** 2 > 8;
+                                    }
+                                    const onlineHero = oldx === heroX || oldy === heroY
+                                        || Math.abs(oldx - heroX) === Math.abs(oldy - heroY);
+                                    if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
+                                        && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
+                                        const farLineOnly = satdoor && !avoid && oldy === heroY
+                                            && !(mon.robbed || mon.billct || mon.debit)
+                                            && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
+                                        const autoTravelFarLine = farLineOnly
+                                            && (game._travel_keys?.length || game._travel_finish_message || game._travel_keep_message);
+                                        if (!onlineHero || autoTravelFarLine) {
+                                            rn2(5);
+                                            continue;
+                                        }
+                                        if (satdoor) {
+                                            appr = 0;
+                                            goalX = 0;
+                                            goalY = 0;
+                                        }
+                                    }
+                                }
+                            } else if (!mon.mpeaceful) {
+                                goalX = heroX;
+                                goalY = heroY;
                                 avoid = false;
-                            } else {
-                                uondoor = heroX === mon.shd?.x && heroY === mon.shd?.y;
-                                if (uondoor) avoid = true;
-                                else {
-                                    const heroInShop = game.level?.at(heroX, heroY)?.roomno === mon.shoproom;
-                                    avoid = heroInShop && (heroX - goalX) ** 2 + (heroY - goalY) ** 2 > 8;
-                                }
-                                const onlineHero = oldx === heroX || oldy === heroY
-                                    || Math.abs(oldx - heroX) === Math.abs(oldy - heroY);
-                                if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
-                                    && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
-                                    const farLineOnly = satdoor && !avoid && oldy === heroY
-                                        && !(mon.robbed || mon.billct || mon.debit)
-                                        && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
-                                    const autoTravelFarLine = farLineOnly
-                                        && (game._travel_keys?.length || game._travel_finish_message || game._travel_keep_message);
-                                    if (!onlineHero || autoTravelFarLine) {
-                                        rn2(5);
-                                        continue;
-                                    }
-                                    if (satdoor) {
-                                        appr = 0;
-                                        goalX = 0;
-                                        goalY = 0;
-                                    }
-                                }
                             }
-                        } else if (!mon.mpeaceful) {
-                            goalX = heroX;
-                            goalY = heroY;
-                            avoid = false;
-                        }
 
                         if (mon.mconf) {
                             avoid = false;
@@ -4520,25 +4529,32 @@ async function processMonsterTurns() {
                             let choice = null;
                             let choiceInfo = 0;
                             let chcnt = 0;
-                            const targetX = mon.mux ?? heroX;
-                            const targetY = mon.muy ?? heroY;
-                            const positions = [];
-                            for (let nx = Math.max(1, oldx - 1); nx <= Math.min(COLNO - 1, oldx + 1); nx++) {
-                                for (let ny = Math.max(0, oldy - 1); ny <= Math.min(ROWNO - 1, oldy + 1); ny++) {
-                                    if (nx === oldx && ny === oldy) continue;
-                                    const loc = game.level?.at(nx, ny);
-                                    if (!loc || IS_OBSTRUCTED(loc.typ)) continue;
-                                    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) continue;
-                                    if (nx !== oldx && ny !== oldy
-                                        && ((game.level?.at(oldx, oldy)?.typ === DOOR && (game.level.at(oldx, oldy).doormask & ~D_BROKEN))
-                                            || (loc.typ === DOOR && (loc.doormask & ~D_BROKEN)))) continue;
-                                    const occupant = game.level?.monsters?.find(other => other !== mon && other.mx === nx && other.my === ny);
-                                    if (occupant || (nx === heroX && ny === heroY)) continue;
+                            let positions;
+                            if (cShapedPriestMove) {
+                                positions = mfndpos(mon, monsterAllowFlags(mon, false, conflictActive))
+                                    .map(pos => ({ ...pos, loc: game.level?.at(pos.x, pos.y) }))
+                                    .filter(pos => pos.loc);
+                            } else {
+                                const targetX = mon.mux ?? heroX;
+                                const targetY = mon.muy ?? heroY;
+                                positions = [];
+                                for (let nx = Math.max(1, oldx - 1); nx <= Math.min(COLNO - 1, oldx + 1); nx++) {
+                                    for (let ny = Math.max(0, oldy - 1); ny <= Math.min(ROWNO - 1, oldy + 1); ny++) {
+                                        if (nx === oldx && ny === oldy) continue;
+                                        const loc = game.level?.at(nx, ny);
+                                        if (!loc || IS_OBSTRUCTED(loc.typ)) continue;
+                                        if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) continue;
+                                        if (nx !== oldx && ny !== oldy
+                                            && ((game.level?.at(oldx, oldy)?.typ === DOOR && (game.level.at(oldx, oldy).doormask & ~D_BROKEN))
+                                                || (loc.typ === DOOR && (loc.doormask & ~D_BROKEN)))) continue;
+                                        const occupant = game.level?.monsters?.find(other => other !== mon && other.mx === nx && other.my === ny);
+                                        if (occupant || (nx === heroX && ny === heroY)) continue;
 
-                                    let info = 0;
-                                    if (nx === targetX || ny === targetY
-                                        || Math.abs(nx - targetX) === Math.abs(ny - targetY)) info |= NOTONL;
-                                    positions.push({ x: nx, y: ny, loc, info });
+                                        let info = 0;
+                                        if (nx === targetX || ny === targetY
+                                            || Math.abs(nx - targetX) === Math.abs(ny - targetY)) info |= NOTONL;
+                                        positions.push({ x: nx, y: ny, loc, info });
+                                    }
                                 }
                             }
                             if (mon.isshk && avoid && uondoor
@@ -4581,6 +4597,7 @@ async function processMonsterTurns() {
                         }
                         rn2(5);
                         continue;
+                        }
                     }
                     if ((mon.data?.name === 'watchman' || mon.data?.name === 'watch captain')
                         && mon.mpeaceful && mon.mcansee !== false) {
@@ -4859,6 +4876,15 @@ async function processMonsterTurns() {
                         const postMoveGridBugDiagonal = mon.data?.name === 'grid bug'
                             && mon.mx !== postMoveTargetX && mon.my !== postMoveTargetY;
                         const postMoveNearby = postMoveDist2 < 3 && !postMoveGridBugDiagonal;
+                        const ghostChecksOffensiveLine = mon.data?.name === 'ghost'
+                            && !moveEndedTurn && !postMoveNearby && monsterWouldCheckOffensiveLine(mon)
+                            && ((movedByMonster
+                                    && !monsterHasDistanceAttackAvailable(mon)
+                                    && !monsterHasWeaponAttack(mon))
+                                || (!movedByMonster && !noStandardAttack));
+                        if (ghostChecksOffensiveLine) {
+                            monsterLinedUp(mon, postMoveTargetX, postMoveTargetY);
+                        }
                         if (!movedByMonster && !moveEndedTurn && !mon.mpeaceful && !mon.mflee
                             && !noStandardAttack && postMoveDist2 <= BOLT_LIM * BOLT_LIM
                             && !postMoveNearby && (game.u?.uhp || 0) > 0) {
@@ -6285,6 +6311,7 @@ async function searchFindMonster(mon) {
     newsym(mon.mx, mon.my);
     if (!foundSomething) return 0;
     if (!searchCanSpotMonster(mon) && loc?.map_invisible) return -1;
+    exerciseAttribute(A_WIS, true);
     if (!searchCanSpotMonster(mon)) {
         if (loc) loc.map_invisible = true;
         newsym(mon.mx, mon.my);
@@ -6404,6 +6431,35 @@ function hideSeaMonsterUnderWater(mon) {
 
 function monsterUsesPostMoveHide(mon) {
     return !!(mon.data?.hidesUnder || mon.data?.mlet === ';');
+}
+
+function monsterHasDistanceAttackAvailable(mon) {
+    const data = mon.data || {};
+    const attacks = Array.isArray(data.attacks)
+        ? data.attacks
+        : data.attack ? [data.attack] : [];
+    return attacks.some(attack => ['brea', 'breath', 'spit', 'magc'].includes(attack.aatyp))
+        || data.spellcaster || data.magic || data.priest || data.name === 'gnomish wizard'
+        || INNATE_RANGED_ATTACK_MONSTERS.has(data.name);
+}
+
+function monsterHasWeaponAttack(mon) {
+    const data = mon.data || {};
+    if (data.armed) return true;
+    const attacks = Array.isArray(data.attacks)
+        ? data.attacks
+        : data.attack ? [data.attack] : [];
+    return attacks.some(attack => attack.aatyp === 'weap');
+}
+
+function monsterWouldCheckOffensiveLine(mon) {
+    const data = mon.data || {};
+    if (mon.mpeaceful || data.animal || data.mindless || data.nohands) return false;
+    if (game.u?.uswallow) return false;
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    if (scaryObjectAt(mon, ux, uy) || scaryEngravingAt(mon, ux, uy)) return false;
+    return true;
 }
 
 function disturbSleepingMonster(mon) {
@@ -6656,6 +6712,142 @@ function monsterTrapHarmless(mon, trap) {
     if (ttyp === WEB) return monsterWebPassesThrough(data);
     if (ttyp === ANTI_MAGIC) return data.resistsMagic || data.defendsMagic;
     return ttyp === STATUE_TRAP || ttyp === MAGIC_TRAP || ttyp === VIBRATING_SQUARE;
+}
+
+function monsterFireTrapArmorSlot(mon, slot) {
+    const inventory = mon.minvent || [];
+    const matches = {
+        helm: item => /helm|helmet|hat|pot/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        cloak: item => /cloak|robe|smock|wrapping/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        body: item => SUIT_ARMOR_PATTERN.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        shirt: item => /shirt/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        shield: item => /shield/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        gloves: item => /glove|gauntlet/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        boots: item => /boot|shoe/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+    }[slot];
+    const item = inventory.find(candidate => candidate.cls === 'armor'
+        && (candidate.worn || candidate.owornmask) && matches?.(candidate));
+    if (!item || item.oerodeproof) return false;
+    const kind = String(item.kind || item.actualKind || '').toLowerCase();
+    const burnable = /leather|cloth|cloak|robe|shirt|glove|boot|shoe|wood|shield|wrapping|smock/.test(kind);
+    if (!burnable) return false;
+    item.oeroded = Math.min(3, (item.oeroded || 0) + 1);
+    return true;
+}
+
+function monsterBurnArmor(mon) {
+    const towel = (mon.minvent || []).find(item => String(item.kind || '').toLowerCase() === 'towel' && (item.spe || 0) > 0);
+    if (towel) towel.spe = Math.max(0, (towel.spe || 0) - rn2((towel.spe || 0) + 1));
+
+    for (;;) {
+        switch (rn2(5)) {
+        case 0:
+            if (!monsterFireTrapArmorSlot(mon, 'helm')) continue;
+            break;
+        case 1:
+            monsterFireTrapArmorSlot(mon, 'cloak')
+                || monsterFireTrapArmorSlot(mon, 'body')
+                || monsterFireTrapArmorSlot(mon, 'shirt');
+            return true;
+        case 2:
+            if (!monsterFireTrapArmorSlot(mon, 'shield')) continue;
+            break;
+        case 3:
+            if (!monsterFireTrapArmorSlot(mon, 'gloves')) continue;
+            break;
+        case 4:
+            if (!monsterFireTrapArmorSlot(mon, 'boots')) continue;
+            break;
+        }
+        break;
+    }
+    return false;
+}
+
+function monsterFireDestroyableItem(item) {
+    if (!item || item.artifact || item.oartifact || (item.in_use && (item.quan || 1) === 1)) return false;
+    const cls = item.cls || '';
+    const kind = String(item.kind || item.actualKind || '').toLowerCase();
+    if (kind === 'fire' || kind === 'fireball' || kind === 'book of the dead') return false;
+    return cls === 'potion' || cls === 'scroll' || cls === 'spellbook'
+        || kind === 'glob of green slime';
+}
+
+function monsterDestroyItemsByFire(mon, damage) {
+    let limit = Math.trunc(damage / 5);
+    if (damage % 5 > rn2(5)) limit++;
+    if (limit < 1) return 0;
+
+    const selected = [];
+    let eligible = 0;
+    for (const item of mon.minvent || []) {
+        if (!monsterFireDestroyableItem(item)) continue;
+        const index = eligible < limit ? eligible : rn2(eligible);
+        eligible++;
+        if (index < limit) selected[index] = item;
+    }
+    let extraDamage = 0;
+    for (const item of selected) {
+        if (!item) continue;
+        const quantity = Math.max(1, item.quan || 1);
+        let destroyed = 0;
+        for (let i = 0; i < quantity; i++) {
+            if (!rn2(3)) destroyed++;
+        }
+        if (!destroyed) continue;
+        if (item.cls === 'potion') extraDamage += rnd(6);
+        mon.minvent = (mon.minvent || []).filter(candidate => candidate !== item);
+    }
+    return extraDamage;
+}
+
+function killMonsterInFireTrap(mon) {
+    recordVanquished(mon, false);
+    dropMonsterInventory(mon);
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.movement = 0;
+    newsym(mon.mx, mon.my);
+}
+
+function monsterFireTrapEffect(mon, trap) {
+    monsterTriggerTrap(mon, trap);
+    const origDamage = d(2, 4);
+    const visibleMonster = !game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected;
+    const visibleTrap = couldSeeCoord(trap.tx, trap.ty);
+    if (visibleMonster) {
+        addToplineMessage(`A tower of flame erupts from the floor under ${monsterDisplayName(mon).replace(/^The /, 'the ')}!`);
+    } else if (visibleTrap) {
+        addToplineMessage('You see a tower of flame erupt from the floor!');
+    }
+
+    if (!mon.data?.resistsFire) {
+        let damage = origDamage;
+        const name = mon.data?.name || '';
+        if (name === 'paper golem') damage = Math.max(damage, mon.mhpmax || damage);
+        else if (name === 'straw golem') damage = Math.max(damage, Math.trunc((mon.mhpmax || damage) / 2));
+        else if (name === 'wood golem') damage = Math.max(damage, Math.trunc((mon.mhpmax || damage) / 4));
+        else if (name === 'leather golem') damage = Math.max(damage, Math.trunc((mon.mhpmax || damage) / 8));
+
+        mon.mhp = (mon.mhp || 1) - damage;
+        if ((mon.mhp || 0) <= 0) {
+            killMonsterInFireTrap(mon);
+            return true;
+        }
+        const maxLoss = rn2(damage + 1);
+        mon.mhpmax = Math.max(1, (mon.mhpmax || mon.mhp || 1) - maxLoss);
+        mon.mhp = Math.min(mon.mhp || 1, mon.mhpmax);
+    }
+
+    if (monsterBurnArmor(mon) || rn2(3)) {
+        const extraDamage = monsterDestroyItemsByFire(mon, origDamage);
+        mon.mhp = (mon.mhp || 1) - extraDamage;
+        if ((mon.mhp || 0) <= 0) {
+            killMonsterInFireTrap(mon);
+            return true;
+        }
+    }
+    if (visibleTrap) trap.tseen = true;
+    return false;
 }
 
 function monsterWebmakerData(data) {
@@ -7662,6 +7854,10 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             trap.tseen = true;
             addToplineMessage(`${monsterDisplayName(mon)} suddenly falls asleep!`);
         }
+    }
+    if (trap?.ttyp === FIRE_TRAP && !monsterTrapHarmless(mon, trap)) {
+        if (monsterKnowsTrap(mon, trap.ttyp) && rn2(4)) return done();
+        if (monsterFireTrapEffect(mon, trap)) return done();
     }
     if (trap?.ttyp === ROCKTRAP && !monsterTrapHarmless(mon, trap)) {
         if (trap.once && trap.tseen && !rn2(15)) {
@@ -9991,11 +10187,7 @@ export async function moveloop_core() {
         g._keep_pending_message = 1;
         g._replayed_stale_fumble_message = 1;
     }
-    if (g._collapse_extra_moves_without_monsters && !g._pending_time_passed) {
-        g.moves = (g.moves || 1) + g._collapse_extra_moves_without_monsters;
-        g._collapse_extra_moves_without_monsters = 0;
-    }
-		    await bot();
+	    await bot();
     if (g._map_redraw_pending || g._pet_map_redraw_pending) {
         const skipPetRedraw = !g._map_redraw_pending
             && g._pet_map_redraw_pending

@@ -54,11 +54,14 @@ export async function newgame() {
     /* C: allmain.c — flags.pantheon = -1; role_init() before init_dungeons(). */
     g.flags = g.flags || {};
     g.flags.pantheon = -1;
+    /* C: optlist.h autoopen — default On (opt_out); hack.c test_move DO_MOVE closed door. */
+    if (g.flags.autoopen === undefined) g.flags.autoopen = true;
+    /* C: flag.h flags.acoustics — dosounds() early-out when false (default on). */
+    if (g.flags.acoustics === undefined) g.flags.acoustics = true;
     roleInitLikeC(g);
-    /* C: nhlib.lua align shuffle before init_dungeons (session indices 199–200 on seed8000). */
+    /* C: init_dungeons nhl_init → nhlib.lua align shuffle (until dungeon Lua loader is ported). */
     rn2(3);
     rn2(2);
-    /* C: dungeon.c init_dungeons — dungeon graph + init_castle_tune. */
     initDungeonsLikeC(g);
     fastforward_pre_mklev();
 
@@ -259,21 +262,23 @@ function welcomeInterjectionLikeC(g) {
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
+    g.context = g.context || {};
 
     await runMoveloopPreambleBeforeRhackLikeC(g);
 
-    // Read and execute one command
-    await rhack(0);
-
-    // Clear top line unless rhack asked to keep it for the next nhgetch
-    // capture (zero-time plines such as # / spell hint).
-    if (!g._retainMessageAfterCommand) clearPendingMessageAndToplineLikeC();
-    g._retainMessageAfterCommand = false;
-
-    // Advance turn (C: allmain.c — settrack() before svm.moves++)
-    if (g.context?.move) {
+    /* C: allmain.c — **`if (svc.context.move)`** at top: spend hero time + **`movemon`**
+       for the *previous* command before reading the next one. */
+    if (g.context.move) {
         await runPostCommandTurnAdvanceLikeC(g);
     }
+
+    /* C: allmain.c — default assume next command costs time; rhack may clear it. */
+    g.context.move = 1;
+
+    await rhack(0);
+
+    if (!g._retainMessageAfterCommand) clearPendingMessageAndToplineLikeC();
+    g._retainMessageAfterCommand = false;
 
     g._prevMoveTick = g.context?.move ? 1 : 0;
 

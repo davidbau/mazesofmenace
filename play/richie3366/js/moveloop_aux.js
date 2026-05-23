@@ -62,8 +62,29 @@ export function maybe_generate_rnd_mon() {
     rn2(70);
 }
 
-export function dosounds() {
-    rn2(300);
+/**
+ * C: sounds.c dosounds(void) — ambient level sounds; RNG only when matching **`svl.level.flags`**.
+ * Full **`You_hear`** / **`get_iter_mons`** tails omitted until those paths are ported.
+ * @param {import('./gstate.js').game} [g]
+ */
+export function dosounds(g = game) {
+    const u = g.u;
+    if (!u || (u.Deaf | 0) || !g.flags?.acoustics || (u.uswallow | 0) || (u.Underwater | 0)) {
+        return;
+    }
+    const lf = g.level?.flags;
+    if (!lf) return;
+
+    if (lf.nfountains) rn2(400);
+    if (lf.nsinks) rn2(300);
+    if (lf.has_court && !rn2(200)) return;
+    if (lf.has_swamp && !rn2(200)) return;
+    if (lf.has_vault && !rn2(200)) return;
+    if (lf.has_beehive && !rn2(200)) return;
+    if (lf.has_morgue && !rn2(200)) return;
+    if (lf.has_barracks && !rn2(200)) return;
+    if (lf.has_zoo && !rn2(200)) return;
+    if (lf.has_shop && !rn2(200)) return;
 }
 
 /** C: eat.c gethungry — (HRegeneration & ~FROMFORM) || (ERegeneration & ~(W_ARTI | W_WEP)) */

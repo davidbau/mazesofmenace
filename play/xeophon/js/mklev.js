@@ -5344,6 +5344,16 @@ function makemon_goodpos(ptr, x, y) {
     return !boulder || !!ptr.throwsRocks;
 }
 
+function nativeBatMonster(ptr) {
+    return ptr?.name === 'bat' || ptr?.name === 'giant bat' || ptr?.name === 'vampire bat';
+}
+
+function currentLevelInHell() {
+    return !!game.inhell
+        || game.dungeons?.[game.u?.uz?.dnum]?.name === 'Gehennom'
+        || !!game.level?.flags?.gehennom;
+}
+
 function monster_at(x, y) {
     return (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y) || null;
 }
@@ -6088,6 +6098,7 @@ export async function makemon(mdat, x, y, mmflags) {
     }
     mon.mpeaceful = (mmflags & MM_ANGRY) ? 0 : peaceMinded(peacefulPtr);
     set_malign(mon);
+    if (currentLevelInHell() && nativeBatMonster(peacefulPtr)) mon.mspeed = 'fast';
     game.level?.monsters?.push(mon);
     const previousMongetsTarget = game._mongets_target;
     game._mongets_target = mon;
@@ -7738,7 +7749,7 @@ async function priLocaAltarShrine(x, y, temple) {
 async function priLocaAlignedCleric(x, y) {
     rn2(2);
     const mon = await makemon(ALIGNED_CLERIC, priLocaX(x), priLocaY(y), 0);
-    if (mon) setMonsterPeaceful(mon, false);
+    if (mon) initRoamerMonster(mon, A_NONE, false);
     return mon;
 }
 
@@ -10372,7 +10383,8 @@ async function make_sanctum_level() {
     const altar = g.level.at(sanctumX(18), sanctumY(8));
     if (altar) {
         altar.typ = ALTAR;
-        altar.altarmask = AM_SANCTUM;
+        altar.flags = Align2amask(A_NONE) | AM_SHRINE | AM_SANCTUM;
+        altar.altarmask = altar.flags;
     }
 
     const secretWall = rn2(4);
@@ -10412,7 +10424,13 @@ async function make_sanctum_level() {
     relocatePriestSpotOccupant(priestX, priestY);
     const priest = await makemon(HIGH_CLERIC, priestX, priestY, MM_NOGRP);
     if (priest) {
-        initPriestMonster(priest);
+        initPriestMonster(priest, {
+            room: ROOMOFFSET,
+            align: A_NONE,
+            x: sanctumX(18),
+            y: sanctumY(8),
+            specialLevel: true,
+        });
         const previousMongetsTarget = game._mongets_target;
         game._mongets_target = priest;
         mongets(AMULET_CLASS);
@@ -10454,7 +10472,7 @@ async function make_sanctum_level() {
     for (const [x, y] of SANCTUM_CLERICS) {
         rn2(2);
         const mon = await makemon(ALIGNED_CLERIC, sanctumX(x), sanctumY(y), 0);
-        if (mon) mon.mpeaceful = 0;
+        if (mon) initRoamerMonster(mon, A_NONE, false);
     }
     for (const glyph of ['L', 'L', 'V', 'V', 'V']) {
         rn2(3);
@@ -10545,13 +10563,20 @@ async function make_valley_level() {
     const altar = g.level.at(valleyX(3), valleyY(10));
     if (altar) {
         altar.typ = ALTAR;
-        altar.altarmask = 0;
+        altar.flags = Align2amask(A_NONE) | AM_SHRINE;
+        altar.altarmask = altar.flags;
     }
     rn2(8);
     relocatePriestSpotOccupant(valleyX(2), valleyY(9));
     const priest = await makemon(ALIGNED_CLERIC, valleyX(2), valleyY(9), MM_NOGRP);
     if (priest) {
-        initPriestMonster(priest);
+        initPriestMonster(priest, {
+            room: (temple?.roomnoidx ?? 0) + ROOMOFFSET,
+            align: A_NONE,
+            x: valleyX(3),
+            y: valleyY(10),
+            specialLevel: true,
+        });
         givePriestSpellbooks(priest);
         if (rn2(2)) {
             const robe = null;
@@ -12140,6 +12165,18 @@ function initPriestMonster(priest, shrine = null) {
     priest.isminion = 0;
     priest.msleeping = 0;
     set_malign(priest);
+}
+
+function initRoamerMonster(mon, align, peaceful) {
+    if (!mon) return;
+    mon.min_align = align;
+    mon.renegade = Math.sign(align) === Math.sign(game.u?.ualign?.type ?? A_NEUTRAL) && !peaceful;
+    mon.ispriest = 0;
+    mon.isminion = 1;
+    mon.mtrapseen = ~0;
+    mon.mpeaceful = peaceful ? 1 : 0;
+    mon.msleeping = 0;
+    set_malign(mon);
 }
 
 function givePriestSpellbooks(priest) {

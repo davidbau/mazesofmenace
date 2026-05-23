@@ -186,10 +186,17 @@ function mksobjInitMagicMarkerSpeRn1LikeC() {
     rn1(70, 30);
 }
 
-/** C: mkobj.c mksobj_init — SACK → mkbox_cnts; moves<=1 && !in_mklev → n=0 → for (n = rn2(1); …) */
+/**
+ * C: mkobj.c mkbox_cnts — always `for (n = rn2(n + 1); n > 0; n--)`.
+ * Startup SACK sets `n = 0` in the switch but still evaluates `rn2(1)` before the loop.
+ * Non-startup SACK/OILSKIN fall through to `n = 1` → `rn2(2)` (body RNG deferred).
+ */
 function mksobjInitSackStartInvLikeC() {
-    if ((game.moves | 0) <= 1 && !game.in_mklev) return;
-    rn2(1);
+    const n =
+        (game.moves | 0) <= 1 && !game.in_mklev
+            ? 0
+            : 1;
+    rn2(n + 1);
 }
 
 /** C: mkobj.c FOOD default tail — **`!rn2(6)`** sets **`quan`** **2** (food ration, apple, carrot, …). */

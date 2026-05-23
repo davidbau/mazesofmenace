@@ -69,8 +69,8 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
 
 /**
  * C: allmain.c — new-turn block when both hero and monsters are out of movement
- * (`!monscanmove && u.umovement < NORMAL_SPEED`): mcalcmove, maybe_generate_rnd_mon, moves++,
- * once-per-turn tail.
+ * (`!monscanmove && u.umovement < NORMAL_SPEED`): mcalcmove, maybe_generate_rnd_mon,
+ * **`u_calc_moveamt`**, **`settrack`**, **`moves++`**, once-per-turn tail.
  * @param {import('./gstate.js').game} g
  * @param {number} stepNum
  */
@@ -80,6 +80,8 @@ async function runNewTurnSetupAndTailLikeC(g, stepNum) {
         m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
     }
     maybe_generate_rnd_mon();
+    /* C: allmain.c — **`u_calc_moveamt`** before **`settrack`/`moves++`/tail RNG. */
+    uCalcMoveamtLikeC(g, nearCapacity(g));
     settrack();
     g.moves = (g.moves || 1) + 1;
     g.hero_seq = (g.moves | 0) << 3;
@@ -112,25 +114,26 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     u.umovement = (u.umovement | 0) - NORMAL_SPEED;
     if ((u.umovement | 0) < 0) u.umovement = 0;
 
-    const stepNum = (g.moves || 1) - 1;
-
     g.context = g.context || {};
     g.context.monMoving = true;
     try {
         do {
             let monscanmove = false;
-            if (stepNum > 0) {
+            /* C: allmain.c — **`movemon`** uses current **`svm.moves`** each inner-loop pass
+               (hero speed surplus can run monster pass + new-turn more than once per input). */
+            const movemonStepNum = (g.moves | 0) - 1;
+            if (movemonStepNum > 0) {
                 g.context._movemonHarnessConsumed = false;
                 await encumberMsg();
                 do {
-                    monscanmove = await movemon(stepNum);
+                    monscanmove = await movemon(movemonStepNum);
                     if ((u.umovement | 0) >= NORMAL_SPEED) break;
                 } while (monscanmove);
             }
 
             if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED) {
-                await runNewTurnSetupAndTailLikeC(g, stepNum);
-                uCalcMoveamtLikeC(g, nearCapacity(g));
+                const tailStepNum = (g.moves | 0) - 1;
+                await runNewTurnSetupAndTailLikeC(g, tailStepNum);
             }
         } while ((u.umovement | 0) < NORMAL_SPEED);
     } finally {

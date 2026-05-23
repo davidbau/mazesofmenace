@@ -3,7 +3,10 @@
 
 import { PM_LICHEN } from './const.js';
 import { game } from './gstate.js';
+import { dist2 } from './hacklib.js';
+import { monnearMonsterXYLikeC } from './mon_geom.js';
 import { S_EEL, raceptr } from './mondata.js';
+import { isFirstSearchMovemonPassLikeC } from './monmove_search.js';
 import {
     eastFungusDoorNicheAtLikeC,
     findEastKickMonLikeC,
@@ -12,6 +15,9 @@ import {
     isLandEelForMovemonLikeC,
     findDistantMklevMonLikeC,
     movemonStep8DistantMonEligibleLikeC,
+    searchPass1NearMonLikeC,
+    firstSearchNearMklevHostileLikeC,
+    findFirstSearchRogMidMklevHostileLikeC,
     westFungusDoorNicheAtLikeC,
 } from './mfndpos_mon.js';
 
@@ -24,6 +30,31 @@ import {
  */
 export function fmonListNewestFirstLikeC(g) {
     return g.level?.monsters ?? [];
+}
+
+/**
+ * C: when the hero is in the east corridor, **`movemon`** should **`dochug`** **`monnear`**
+ * monsters before the west-kink **(64,12)** sleeper (still **`movement < NORMAL_SPEED`** in C).
+ * Only reorder when at least one non-west mon is adjacent; keep **`fmon`** order otherwise.
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>[]} mons
+ */
+function fmonListD1WestKinkAfterNearHeroLikeC(g, mons) {
+    const u = g.u;
+    const west = findWestKinkMonsterLikeC(g);
+    if (!u || !west || !mons.includes(west)) return mons;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const hasNear = mons.some((m) => {
+        if (m === west) return false;
+        return (
+            monnearMonsterXYLikeC(m, ux, uy)
+            || dist2(m.mx | 0, m.my | 0, ux, uy) <= 36
+        );
+    });
+    if (!hasNear) return mons;
+    return [...mons.filter((m) => m !== west), west];
 }
 
 /**
@@ -122,13 +153,64 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (distant) ordered.push(distant);
         return [...ordered, ...rest].filter(Boolean);
     }
-    /* C: first **`#search`** — distant **`m_move`** then east **(64,9)** **`rn2(12)`**. */
-    if (
-        ((stepNum | 0) === 10 || (stepNum | 0) === 11)
-        && (game.context?._searchStep11Passes | 0) === 1
-    ) {
+    /* C: rogue near mklev / first **`#search`** — gate hostile before pet (also step **`1`** peel). */
+    if (isFirstSearchMovemonPassLikeC(g) || g.context?._searchPass1NearMonLikeC) {
+        const ctx = game.context || (game.context = {});
         const east = findEastKickMonLikeC(g);
         const distant = findDistantMklevMonLikeC(g);
+        const rogueLike =
+            game.urole?.abbr === 'Rog'
+            || game.pl_character === 'Rogue'
+            || (game.urole?.mnum | 0) === 8;
+        const rogHostile = rogueLike ? findFirstSearchRogMidMklevHostileLikeC(g) : null;
+        let nearMon = rogueLike || searchPass1NearMonLikeC(g) || !!rogHostile;
+        ctx._searchPass1NearMonLikeC = nearMon;
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const westKink = findWestKinkMonsterLikeC(g);
+        if (nearMon) {
+            const near = [];
+            const mid = [];
+            const ux = game.u?.ux | 0;
+            const uy = game.u?.uy | 0;
+            for (const m of mons) {
+                if (m === distant || m === pet) continue;
+                if (game.u?.urole?.abbr === 'Tou' && m === east) continue;
+                const mx = m.mx | 0;
+                const my = m.my | 0;
+                if (
+                    monnearMonsterXYLikeC(m, ux, uy)
+                    || (
+                        (m.mgenmklev | 0)
+                        && dist2(mx, my, ux, uy) <= 25
+                        && (
+                            westFungusDoorNicheAtLikeC(g, mx, my, m)
+                            || eastFungusDoorNicheAtLikeC(g, mx, my, m)
+                        )
+                    )
+                ) {
+                    near.push(m);
+                } else mid.push(m);
+            }
+            const tail = [];
+            if (distant) tail.push(distant);
+            if (east && !near.includes(east)) tail.push(east);
+            /* C: rogue **`seed0077`** — mid mklev hostile before door-niche / pet on first **`#search`**. */
+            const nearHostile = near.filter(
+                (m) => firstSearchNearMklevHostileLikeC(g, m) && m !== rogHostile,
+            );
+            const nearRemainder = near.filter(
+                (m) => m !== rogHostile && !nearHostile.includes(m),
+            );
+            const midRest = mid.filter((m) => m !== rogHostile);
+            return [
+                ...(rogHostile ? [rogHostile] : []),
+                ...(pet ? [pet] : []),
+                ...nearHostile,
+                ...nearRemainder,
+                ...midRest,
+                ...tail,
+            ].filter(Boolean);
+        }
         const rest = mons.filter((m) => m !== east && m !== distant);
         /** @type {typeof mons} */
         const ordered = [];
@@ -157,6 +239,9 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         );
         /* C: east may be **`movement < NORMAL_SPEED`** (no RNG); west **`distfleeck`**, eel **`m_move`**, distant. */
         return [west, eel, distant, east, ...rest].filter(Boolean);
+    }
+    if ((g.u?.uz?.dnum | 0) === 0 && (g.u?.uz?.dlevel | 0) === 1) {
+        return fmonListD1WestKinkAfterNearHeroLikeC(g, mons);
     }
     if ((stepNum | 0) !== 3) return mons;
     const west = mons.find(

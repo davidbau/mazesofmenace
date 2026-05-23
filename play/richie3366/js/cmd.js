@@ -11,6 +11,11 @@ import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC } from './display.js';
 import { vision_recalc } from './vision.js';
 import { dosearch } from './search.js';
+import {
+    findFirstSearchRogMidMklevHostileLikeC,
+    searchPass1NearMonLikeC,
+} from './mfndpos_mon.js';
+import { disturbMonsterLikeC } from './disturb_mon.js';
 import { maybeSmudgeEngr } from './engrave.js';
 import { dolookHeroLikeC } from './pickup.js';
 import { runExtcmdFromHashPrefix } from './extcmd.js';
@@ -18,7 +23,9 @@ import { doZapCmd } from './dozap.js';
 import { doReadHeroScrollCmdLikeC } from './read_scroll_hero.js';
 import { doBumpMeleeAttack } from './attack.js';
 import { tryPeacefulSwap } from './peaceful_displace.js';
-import { blocksMovementAt, diagonalHeroMoveBlocked } from './walkable.js';
+import { blocksMovementAt, diagonalHeroMoveBlocked, isClosedDoorLoc } from './walkable.js';
+import { doopenIndirHeroLikeC } from './lock_hero.js';
+import { IS_DOOR } from './const.js';
 import { spotEffects } from './spoteffects.js';
 import { dokickFromCmd } from './kick.js';
 import { snapshotUshops0FromHeroTileLikeC } from './shop.js';
@@ -136,11 +143,26 @@ export async function rhack(key) {
     }
 
     if (isMovementKey(ch)) {
-        game.context.move = (await domove(DIR_DX[ch], DIR_DY[ch])) ? 1 : 0;
+        const moved = await domove(DIR_DX[ch], DIR_DY[ch]);
+        game.context.move = moved || game.context?.door_opened ? 1 : 0;
     } else if (ch === 's') {
         // C: cmd.c rhack — #search → dosearch() → dosearch0 (detect.c)
         game.context.move = 1;
         game.context._searchStep11Passes = (game.context._searchStep11Passes | 0) + 1;
+        if ((game.context._searchStep11Passes | 0) === 1) {
+            delete game.context._searchRogGateCountLikeC;
+            const rogueLike =
+                game.urole?.abbr === 'Rog'
+                || game.pl_character === 'Rogue'
+                || (game.urole?.mnum | 0) === 8;
+            const nearHostile = findFirstSearchRogMidMklevHostileLikeC(game);
+            game.context._searchPass1NearMonLikeC =
+                rogueLike || searchPass1NearMonLikeC(game) || !!nearHostile;
+            if (nearHostile) {
+                disturbMonsterLikeC(game, nearHostile);
+                if ((nearHostile.msleeping | 0)) nearHostile.msleeping = 0;
+            }
+        }
         await dosearch();
     } else if (ch === 'i') {
         // C: cmd.c #inventory — minimal full-screen list (invent.c)
@@ -192,9 +214,34 @@ async function finishDomoveDzStairsTailLikeC(g) {
 }
 
 async function domove(dx, dy) {
-    const u = game.u;
+    const g = game;
+    const u = g.u;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+
+    g.context = g.context || {};
+    g.context.door_opened = false;
+
+    const dest = g.level?.at(newx, newy);
+    if (
+        dest
+        && IS_DOOR(dest.typ | 0)
+        && isClosedDoorLoc(dest)
+        && g.flags?.autoopen
+        && !g.context?.run
+        && !(u.Confusion | 0)
+        && !(u.HStun | 0)
+        && !(u.Fumbling | 0)
+    ) {
+        await doopenIndirHeroLikeC(g, newx, newy);
+        g.context.door_opened = !isClosedDoorLoc(dest);
+        u.dz = 0;
+        clearPendingMessageAndToplineLikeC();
+        g._overlayScreen = null;
+        g._inventoryMode = false;
+        vision_recalc(1);
+        return false;
+    }
 
     if (blocksMove(newx, newy)) {
         // Can't move there — no game time (C: domove returns without moving)

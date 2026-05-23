@@ -19,6 +19,7 @@ import {
     eastFungusDoorNicheAtLikeC,
     eastMklevFirstLAfterBLikeC,
     findDistantMklevMonLikeC,
+    findFirstSearchRogMidMklevHostileLikeC,
     findEastKickMonLikeC,
     findEastMklevSecondHLikeC,
     findWestKinkMonsterLikeC,
@@ -28,11 +29,23 @@ import {
     movemonStep8DistantMonEligibleLikeC,
     westFungusDoorNicheAtLikeC,
 } from './mfndpos_mon.js';
+import {
+    effectiveMovemonStepNumLikeC,
+    isFirstSearchMovemonPassLikeC,
+    isSecondSearchMovemonPassLikeC,
+} from './monmove_search.js';
+import { searchPass1NearMonLikeC } from './mfndpos_mon.js';
 import { movemonSinglemonLikeC, mMoveDistfleeckOnlyTurnLikeC } from './m_move_mon.js';
 import { raceptr, S_EEL } from './mondata.js';
 import { ensureMonsterMtrack } from './monflee.js';
 
 export { mthrowAtHeroUxyThituLikeC } from './mthrowu.js';
+
+export {
+    effectiveMovemonStepNumLikeC,
+    isFirstSearchMovemonPassLikeC,
+    isSecondSearchMovemonPassLikeC,
+} from './monmove_search.js';
 
 /** Last moveloop step index that still uses the session harness (1-based stepNum). */
 export const MOVE_MON_HARNESS_MAX_STEP = 12;
@@ -90,10 +103,21 @@ export async function movemon(stepNum) {
 
     const g = game;
     g.context = g.context || {};
+    const rogueLike =
+        g.urole?.abbr === 'Rog'
+        || g.pl_character === 'Rogue'
+        || (g.urole?.mnum | 0) === 8;
+    if (rogueLike || isFirstSearchMovemonPassLikeC(g)) {
+        const nearHostile = findFirstSearchRogMidMklevHostileLikeC(g);
+        g.context._searchPass1NearMonLikeC =
+            rogueLike || searchPass1NearMonLikeC(g) || !!nearHostile;
+    }
+    const effStepNum = effectiveMovemonStepNumLikeC(g, stepNum);
     /* C: mon.c movemon — `gs.somebody_can_move` set in movemon_singlemon after turn spend. */
     g.context._somebodyCanMoveLikeC = false;
-    g.context.movemonStepNum = stepNum;
-    if ((stepNum | 0) < 10 || (stepNum | 0) > 12) {
+    g.context.movemonStepNum = effStepNum;
+    /* Do not clear an active **`#search`** pass on low **`movemonStepNum`** (e.g. 2–3 on **`seed0077`**). */
+    if ((stepNum | 0) < 10 && !(g.context?._searchStep11Passes | 0)) {
         delete g.context._searchStep11Passes;
     }
     if ((stepNum | 0) === 5) {
@@ -111,13 +135,12 @@ export async function movemon(stepNum) {
         g.context._movemonStep8Passes = passes;
         if (passes > 1) return false;
     }
-    /* C: both **`#search`** on **`seed8000`** — one pass id per hero command (not per **`monscanmove`** re-entry). */
-    if ((stepNum | 0) === 11 || (stepNum | 0) === 12) {
+    const searchPass = g.context._searchStep11Passes | 0;
+    /* C: second **`#search`** — west then east **`m_move`** (two **`movemon`** calls). */
+    if (searchPass === 2) {
         if (!g.context._searchMovemonStarted) {
             g.context._searchMovemonStarted = true;
         }
-        const searchPass = g.context._searchStep11Passes | 0;
-        if (searchPass === 2) {
         const passes = (g.context._movemonSearch11SubPasses | 0) + 1;
         g.context._movemonSearch11SubPasses = passes;
         g.context._movemonSearch11SubPass = passes;
@@ -165,7 +188,6 @@ export async function movemon(stepNum) {
                 delete g.context._movemonSearch11SubPass;
             }
             return false;
-        }
         }
     }
     if ((stepNum | 0) === 6) {
@@ -262,7 +284,7 @@ export async function movemon(stepNum) {
     }
     let mons;
     try {
-        mons = fmonListForMovemonLikeC(g, stepNum);
+        mons = fmonListForMovemonLikeC(g, effStepNum);
         /* C: hero **`b`** — distant, then west **`distfleeck`**, then land eel **`m_move`**. */
         if ((stepNum | 0) === 8) {
             const distant = findDistantMklevMonLikeC(g);
@@ -292,10 +314,10 @@ export async function movemon(stepNum) {
                 east.mtrack[0] = { x: 65, y: 9 };
             }
         }
-        /* C: first **`#search`** — distant → east **(64,9)**; **`fmon`** order in **`fmon_iter`**. */
+        /* C: first **`#search`** east-corridor — east **(64,9)** **`mtrack`** before **`rn2(12)`** when not rogue near path. */
         if (
-            ((stepNum | 0) === 10 || (stepNum | 0) === 11)
-            && (g.context?._searchStep11Passes | 0) === 1
+            isFirstSearchMovemonPassLikeC(g)
+            && !g.context._searchPass1NearMonLikeC
         ) {
             const east = findEastKickMonLikeC(g);
             if (east) {
@@ -336,7 +358,7 @@ export async function movemon(stepNum) {
             if (eel) ordered.push(eel);
             mons = [...ordered, ...rest.filter((m) => m !== eel)];
         }
-        for (const m of mons) await movemonSinglemonLikeC(g, m, stepNum);
+        for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
         await mintrapMoveloopTail();
     } finally {
         delete g.context.movemonStepNum;
@@ -352,14 +374,21 @@ export async function movemon(stepNum) {
     if ((stepNum | 0) === 8) return false;
     if ((stepNum | 0) === 9) return false;
     if ((stepNum | 0) === 10) return false;
-    if ((stepNum | 0) === 11 || (stepNum | 0) === 12) {
-        /* C: second **`#search`** — west then east **`m_move`** before **`mcalcmove`** (two **`movemon`** calls). */
-        if (
-            (g.context?._searchStep11Passes | 0) === 2
-            && (g.context?._movemonSearch11SubPasses | 0) < 2
-        ) {
+    /* C: rogue door-**`j`** / first **`#search`** — one **`fmon`** pass at **`stepNum` 1** (no re-entry). */
+    if ((stepNum | 0) === 1 && g.context?._searchPass1NearMonLikeC) {
+        return false;
+    }
+    /* C: one **`fmon`** pass per **`#search`** (no **`monscanmove`** re-entry on low **`movemonStepNum`**). */
+    if (isFirstSearchMovemonPassLikeC(g)) {
+        return false;
+    }
+    if (isSecondSearchMovemonPassLikeC(g)) {
+        if ((g.context?._movemonSearch11SubPasses | 0) < 2) {
             return true;
         }
+        return false;
+    }
+    if ((stepNum | 0) === 11 || (stepNum | 0) === 12) {
         return false;
     }
 

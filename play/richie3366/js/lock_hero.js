@@ -1,13 +1,15 @@
-// lock_hero.js — lock.c **`pick_lock`** / **`picklock()`**: floor **`Is_box`** + adjacent **door** (**`ch`** differs for doors); occupation **`rn2(100)`** loop.
+// lock_hero.js — lock.c **`pick_lock`** / **`picklock()`** + **`doopen_indir`** (autoopen).
 // C ref: lock.c **`pick_lock()`** / **`picklock()`** — box **`ch`** + cursed halve; door **`ch`** (**`CREDIT_CARD`** **`2*dex+20*rog`**, **`LOCK_PICK`** **`3*dex+30*rog`**, key **`70+dex`**);
 //        door **`b_trapped("door", FINGER)`**, **`D_NODOOR`**, shop **`add_damage`** (**`SHOP_DOOR_COST`**), **`newsym`**; **`is_magic_key`** + **`D_TRAPPED`** door — **`y_n`** disarm (no **`tknown`** on door).
-// Omits **`get_adjacent_loc`**/**`touch_artifact`**/**`ynq`** **`q`** nuance, mimic **`stumble_onto_mimic`**, **`autounlock`**, real **`set_occupation`**.
+// **`doopen_indir`**: **`rnl(20)`** strength open, trapped door **`b_trapped`**. Omits drawbridge/portcullis, mimic **`stumble_onto_mimic`**, **`autounlock`**, **`get_adjacent_loc`**.
 
 import { pline, flush_screen, newsym } from './display.js';
 import { nhgetch } from './input.js';
 import { acurr, exercise } from './attrib.js';
 import {
+    A_STR,
     A_DEX,
+    A_CON,
     A_WIS,
     isok,
     IS_DOOR,
@@ -19,9 +21,11 @@ import {
     D_CLOSED,
     SHOP_DOOR_COST,
     TT_PIT,
+    ECMD_OK,
+    ECMD_TIME,
 } from './const.js';
-import { rn2 } from './rng.js';
-import { raceptr } from './mondata.js';
+import { rn2, rnl } from './rng.js';
+import { raceptr, verysmall } from './mondata.js';
 import { nohandsPermonstLikeC } from './hero_hands.js';
 import { chestTrapHeroLikeC } from './trap.js';
 import { cansee } from './vision.js';
@@ -33,6 +37,68 @@ const OTYP_CHEST = 216;
 const OTYP_SKELETON_KEY = 222;
 const OTYP_LOCK_PICK = 223;
 const OTYP_CREDIT_CARD = 224;
+
+/**
+ * C: lock.c **`doopen_indir(x,y)`** — open closed door at **`(x,y)`** (hero autoopen / `#open` subset).
+ * @param {import('./gstate.js').game} g
+ * @param {number} x
+ * @param {number} y
+ * @returns {Promise<number>} **`ECMD_OK`** | **`ECMD_TIME`**
+ */
+export async function doopenIndirHeroLikeC(g, x, y) {
+    const u = g.u;
+    const ptr = raceptr(g.youmonst);
+    if (nohandsPermonstLikeC(ptr)) {
+        await pline("You can't open anything -- you have no hands!");
+        return ECMD_OK;
+    }
+
+    if (!isok(x, y)) return ECMD_OK;
+
+    if ((u?.utrap | 0) && (u.utraptype | 0) === TT_PIT) {
+        await pline("You can't reach over the edge of the pit.");
+        return ECMD_OK;
+    }
+
+    const loc = g.level?.at(x, y);
+    if (!loc || !IS_DOOR(loc.typ | 0)) {
+        await pline("You see no door there.");
+        return ECMD_OK;
+    }
+
+    const dm0 = loc.doormask | 0;
+    if (!(dm0 & D_CLOSED)) {
+        let mesg = ' is locked';
+        if (dm0 === D_BROKEN) mesg = ' is broken';
+        else if (dm0 === D_NODOOR) mesg = 'way has no door';
+        else if (dm0 === D_ISOPEN) mesg = ' is already open';
+        else if (!(dm0 & D_LOCKED)) mesg = ' is already open';
+        await pline(`This door${mesg}.`);
+        return ECMD_OK;
+    }
+
+    if (verysmall(ptr)) {
+        await pline("You're too small to pull the door open.");
+        return ECMD_OK;
+    }
+
+    const threshold = Math.trunc((acurr(A_STR) + acurr(A_DEX) + acurr(A_CON)) / 3);
+    if (rnl(20) < threshold) {
+        await pline('The door opens.');
+        if (dm0 & D_TRAPPED) {
+            await bTrappedDoorFootLikeC(g);
+            loc.doormask = D_NODOOR;
+            if (inRoomsShopbaseRoomnos(g, x, y).length) addDamageAt(g, x, y, SHOP_DOOR_COST);
+        } else {
+            loc.doormask = D_ISOPEN;
+        }
+        newsym(x, y);
+    } else {
+        exercise(A_STR, true);
+        await pline('The door resists!');
+    }
+    return ECMD_TIME;
+}
 
 /** C: artilist.h / **`arti_enum`** — **`ART_MASTER_KEY_OF_THIEVERY`** (**`oartifact`** index). */
 const ART_MASTER_KEY_OF_THIEVERY = 30;

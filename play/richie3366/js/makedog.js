@@ -6,6 +6,7 @@ import { rn2 } from './rng.js';
 import { MM_EDOG, NO_MINVENT, NON_PM } from './const.js';
 import { makemon } from './makemon.js';
 import { permonstFromMndxLikeC } from './mondata.js';
+import { initedogLikeC } from './dog.js';
 
 /** C: monsters.h — `PM_LITTLE_DOG` / `PM_KITTEN` (MON block order). */
 const PM_LITTLE_DOG = 16;
@@ -41,11 +42,12 @@ export function makedogLikeC(g) {
     g.context.startingpet_typ = pettype;
     const ux = g.u?.ux | 0;
     const uy = g.u?.uy | 0;
-    makemon(
+    const mtmp = makemon(
         { mnum: pettype, data: permonstFromMndxLikeC(pettype) },
         ux,
         uy,
         MM_EDOG | NO_MINVENT,
     );
+    if (mtmp) initedogLikeC(g, mtmp, true);
     return null;
 }

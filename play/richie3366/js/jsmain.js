@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, hasQueuedInput } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
+import { runPostCommandTurnAdvanceLikeC } from './moveloop_turn_advance.js';
 import { moveloopPreamble, maybeDoTutorialLikeC } from './moveloop_preamble.js';
 import { parseNethackrc } from './options.js';
 import { flush_screen } from './display.js';
@@ -267,6 +268,11 @@ export async function runSegment(input) {
             if (String(e?.message || '').includes('Input queue empty')) break;
             throw e;
         }
+    }
+
+    /* C: one more moveloop_core time slice after the last queued key (no rhack). */
+    if (game.context?.move) {
+        await runPostCommandTurnAdvanceLikeC(game);
     }
 
     // Sessions record one more screen than nhgetch calls: the terminal

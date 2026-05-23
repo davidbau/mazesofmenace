@@ -15,7 +15,15 @@ import {
     throwsRocks,
 } from './mondata.js';
 import { monTrackInitLikeC } from './monflee.js';
-import { GP_AVOID_MONPOS, GP_CHECKSCARY, In_sokoban, MM_IGNOREWATER, NO_MINVENT } from './const.js';
+import {
+    GP_AVOID_MONPOS,
+    GP_CHECKSCARY,
+    In_sokoban,
+    MM_EDOG,
+    MM_IGNOREWATER,
+    NO_MINVENT,
+} from './const.js';
+import { newedogLikeC } from './dog.js';
 import { enextoCoreLikeC, goodposMakemonLikeC } from './walkable.js';
 
 import { MM_FEMALE, MM_MALE } from './const.js';
@@ -194,6 +202,9 @@ export function makemon(mdat, x, y, mmflags) {
         mtmp.female = rn2(2);
     } else {
         mtmp.female = 0;
+    }
+    if ((mmflags | 0) & MM_EDOG) {
+        newedogLikeC(mtmp);
     }
     if (allowMinvent) {
         mInitinvMklevLikeC(mtmp.m_lev | 0);

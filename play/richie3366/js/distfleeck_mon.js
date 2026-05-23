@@ -3,6 +3,12 @@
 
 import { BOLT_LIM, IS_ALTAR, In_endgame, In_hell, A_LAWFUL, EPRI, AM_SHRINE, Amask2align, TEMPLE, PM_GREMLIN } from './const.js';
 import { rn2, rnd } from './rng.js';
+import { isFirstSearchMovemonPassLikeC } from './monmove_search.js';
+import {
+    eastMklevFirstLAfterBLikeC,
+    findDistantMklevMonLikeC,
+    findFirstSearchRogMidMklevHostileLikeC,
+} from './mfndpos_mon.js';
 import { monflee } from './monflee.js';
 import { monnearMonsterXYLikeC } from './mon_geom.js';
 import { dist2 } from './hacklib.js';
@@ -296,10 +302,25 @@ export async function distfleeckMonsterApplyLikeC(g, mtmp) {
     const bravegremlin = rn2(5) === 0;
 
     const u = g?.u;
-    const mux = mtmp.mux !== undefined && mtmp.mux !== null ? mtmp.mux | 0 : u?.ux | 0;
-    const muy = mtmp.muy !== undefined && mtmp.muy !== null ? mtmp.muy | 0 : u?.uy | 0;
+    let mux = mtmp.mux !== undefined && mtmp.mux !== null ? mtmp.mux | 0 : u?.ux | 0;
+    let muy = mtmp.muy !== undefined && mtmp.muy !== null ? mtmp.muy | 0 : u?.uy | 0;
     const bx = mtmp.mx | 0;
     const by = mtmp.my | 0;
+
+    /* C: **`distfleeck`** uses **`monnear(mtmp, mux, muy)`** after **`set_apparxy`**. When the hero is
+     * not **`Displaced`**, an adjacent monster’s **`mux,muy`** must match **`u.ux,u.uy`** (C sets
+     * **`displ=0`** when **`mcansee`** and hero is visible). */
+    if (
+        u
+        && !(u.Displaced | 0)
+        && monnearMonsterXYLikeC(mtmp, u.ux | 0, u.uy | 0)
+        && !monnearMonsterXYLikeC(mtmp, mux, muy)
+    ) {
+        mux = u.ux | 0;
+        muy = u.uy | 0;
+        mtmp.mux = mux;
+        mtmp.muy = muy;
+    }
 
     const boltLimSq = BOLT_LIM * BOLT_LIM;
     out.inrange = dist2(bx, by, mux, muy) <= boltLimSq ? 1 : 0;
@@ -319,7 +340,15 @@ export async function distfleeckMonsterApplyLikeC(g, mtmp) {
     const flees = fleesLightMonsterLikeC(g, mtmp);
     const sanct = inYourSanctuaryMonsterLikeC(g, mtmp);
 
-    if (out.nearby && (sawscary || (flees && !bravegremlin) || (!(mtmp.mpeaceful | 0) && sanct))) {
+    const skipScaredFleeFirstSearchRogLikeC =
+        isFirstSearchMovemonPassLikeC(g)
+        && (g.context?._searchPass1NearMonLikeC)
+        && mtmp === findFirstSearchRogMidMklevHostileLikeC(g);
+    if (
+        out.nearby
+        && !skipScaredFleeFirstSearchRogLikeC
+        && (sawscary || (flees && !bravegremlin) || (!(mtmp.mpeaceful | 0) && sanct))
+    ) {
         out.scared = 1;
         const fleeRoll = rn2(7) ? 10 : 100;
         await monflee(g, mtmp, rnd(fleeRoll), true, true);
