@@ -4265,32 +4265,53 @@ const TERRAIN_LINES = [
     [4, 28, 'c - known map without monsters'],
     [5, 27, ' (end)'],
 ];
-const WIZ_INTRINSIC_MENU_LINES = [
-    [0, 0, ' '],
-    [0, 1, 'Which intrinsics?', 1],
-    [2, 0, ' a - invulnerable'],
-    [3, 0, ' b - petrifying'],
-    [4, 0, ' c - becoming slime'],
-    [5, 0, ' d - strangling'],
-    [6, 0, ' e - fatally sick'],
-    [7, 0, ' f - stunned'],
-    [8, 0, ' g - confused'],
-    [9, 0, ' h - hallucinating'],
-    [10, 0, ' i - blinded'],
-    [11, 0, ' j - deafness'],
-    [12, 0, ' k - vomiting'],
-    [13, 0, ' l - slippery fingers'],
-    [14, 0, ' m - wounded legs'],
-    [15, 0, ' n - sleepy'],
-    [16, 0, ' o - teleporting'],
-    [17, 0, ' p - polymorphing'],
-    [18, 0, ' q - levitating'],
-    [19, 0, ' r - very fast'],
-    [20, 0, ' s - clairvoyant'],
-    [21, 0, ' t - monster detection'],
-    [22, 0, ' u - see invisible'],
-    [23, 0, ' (1 of 4)'],
+const WIZ_INTRINSIC_ENTRIES = [
+    ['a', 'invulnerable'],
+    ['b', 'petrifying'],
+    ['c', 'becoming slime'],
+    ['d', 'strangling'],
+    ['e', 'fatally sick'],
+    ['f', 'stunned'],
+    ['g', 'confused'],
+    ['h', 'hallucinating'],
+    ['i', 'blinded'],
+    ['j', 'deafness'],
+    ['k', 'vomiting'],
+    ['l', 'slippery fingers'],
+    ['m', 'wounded legs'],
+    ['n', 'sleepy'],
+    ['o', 'teleporting'],
+    ['p', 'polymorphing'],
+    ['q', 'levitating'],
+    ['r', 'very fast'],
+    ['s', 'clairvoyant'],
+    ['t', 'monster detection'],
+    ['u', 'see invisible'],
 ];
+
+function wizIntrinsicRows() {
+    const cmdassist = game.flags?.cmdassist ?? FULL_OPTION_DEFAULTS.cmdassist;
+    const baseRow = cmdassist ? 3 : 2;
+    const visibleCount = cmdassist ? 20 : 21;
+    return Object.fromEntries(WIZ_INTRINSIC_ENTRIES.map(([letter, label], index) => [
+        letter,
+        [index < visibleCount ? baseRow + index : null, label],
+    ]));
+}
+
+function wizIntrinsicMenuLines() {
+    const cmdassist = game.flags?.cmdassist ?? FULL_OPTION_DEFAULTS.cmdassist;
+    const rows = [
+        [0, 0, ' '],
+        [0, 1, 'Which intrinsics?', 1],
+    ];
+    if (cmdassist) rows.push([2, 0, ' [Precede any selection with a count to increment by other than 30.]']);
+    for (const [letter, [rowNumber, label]] of Object.entries(wizIntrinsicRows())) {
+        if (rowNumber != null) rows.push([rowNumber, 0, ` ${letter} - ${label}`]);
+    }
+    rows.push([23, 0, ' (1 of 4)']);
+    return rows;
+}
 const ENHANCE_ADVANCE_LINES = [
     [0, 0, ' '], [0, 1, 'Pick a skill to advance:', 1],
     [2, 0, ' '], [2, 1, 'Fighting Skills', 1],
@@ -16083,7 +16104,7 @@ async function moveHero(dx, dy) {
         const hiddenTarget = !!game.level?.at(newx, newy)?.map_invisible;
         const targetSpotted = !game.u?.blind && !mon.mundetected
             && (!mon.minvis || game.u?.seeInvisible) && couldsee(newx, newy);
-        if (!hiddenTarget && !targetSpotted && game._force_fight_target !== mon) {
+        if (!swallowedMove && !hiddenTarget && !targetSpotted && game._force_fight_target !== mon) {
             const loc = game.level?.at(newx, newy);
             if (loc) {
                 loc.map_invisible = true;
@@ -18278,8 +18299,8 @@ export async function rhack(_cmd) {
         return;
     }
 
-	    if (
-	        game._pending_message && game._message_more
+    if (
+        game._pending_message && game._message_more
 	        && !(game._running_continuation && game._process_time_with_more)
         && game._command_mode !== 'eatInvalidMore'
         && game._command_mode !== 'readInvalidMore'
@@ -20003,11 +20024,14 @@ export async function rhack(_cmd) {
                         const staleTrackHasObject = staleTrack && (game.level?.objects || []).some(obj =>
                             !obj.hidden && !obj.transientProjectile
                             && obj.ox === staleTrack.x && obj.oy === staleTrack.y);
+                        const staleTrackHasMonster = staleTrack && (game.level?.monsters || []).some(other =>
+                            other !== killer && !other.dead && (other.mhp == null || other.mhp > 0)
+                            && other.mx === staleTrack.x && other.my === staleTrack.y);
                         const staleTrackDiagonal = staleTrack
                             && Math.abs(staleTrack.x - killer.mx) === 1
                             && Math.abs(staleTrack.y - killer.my) === 1;
                         newsym(mon.mx, mon.my);
-                        if (data.name !== 'lichen' && staleTrackDiagonal && !staleTrackHasObject) {
+                        if (data.name !== 'lichen' && staleTrackDiagonal && !staleTrackHasObject && !staleTrackHasMonster) {
                             killer._hide_for_queued_kill_more = 1;
                             newsym(killer.mx, killer.my);
                             const hiddenLoc = game.level?.at(killer.mx, killer.my);
@@ -20369,13 +20393,25 @@ export async function rhack(_cmd) {
 	                    game.u.ustuck = null;
 	                    game._swallow_overlay_active = 0;
 		                    game._swallow_overlay_before_command = null;
-		                    game._overlay_lines = null;
-		                    game._overlay_hide_status = 0;
-		                    game._overlay_hide_status_only = 0;
-		                    vision_recalc(0);
-		                    game._display_hallucinated_redraw = 1;
-		                    await docrt();
-		                    mon.mspec_used = rnd(2);
+			                    game._overlay_lines = null;
+			                    game._overlay_hide_status = 0;
+			                    game._overlay_hide_status_only = 0;
+			                    game._display_hallucinated_redraw = 1;
+			                    vision_recalc(2);
+			                    game._docrt_redraw_memory_only = 1;
+			                    try {
+			                        await docrt();
+			                    } finally {
+			                        game._docrt_redraw_memory_only = 0;
+			                    }
+			                    vision_recalc(0);
+			                    game._docrt_seen_monsters_only = 1;
+			                    try {
+			                        await docrt();
+			                    } finally {
+			                        game._docrt_seen_monsters_only = 0;
+			                    }
+			                    mon.mspec_used = rnd(2);
 		                    const spot = enextoMonsterSpot(mon.mx, mon.my, mon.data || {});
 		                    if (spot) {
 		                        newsym(mon.mx, mon.my);
@@ -20385,7 +20421,7 @@ export async function rhack(_cmd) {
 		                    }
 		                    newsym(heroX, heroY);
 		                    newsym(game.u.ux, game.u.uy);
-		                    game._hallu_refresh_after_expel = 1;
+		                    game._hallu_display_after_expel = 1;
 		                    game._simple_swallow_expel_prompt = 0;
 		                    game._display_hallucinated_redraw = 0;
 			                }
@@ -24597,50 +24633,28 @@ export async function rhack(_cmd) {
             game._wiz_intrinsic_selected = null;
             return;
         }
-        const intrinsicRows = {
-            a: [2, 'invulnerable'],
-            b: [3, 'petrifying'],
-            c: [4, 'becoming slime'],
-            d: [5, 'strangling'],
-            e: [6, 'fatally sick'],
-            f: [7, 'stunned'],
-            g: [8, 'confused'],
-            h: [9, 'hallucinating'],
-            i: [10, 'blinded'],
-            j: [11, 'deafness'],
-            k: [12, 'vomiting'],
-            l: [13, 'slippery fingers'],
-            m: [14, 'wounded legs'],
-            n: [15, 'sleepy'],
-            o: [16, 'teleporting'],
-            p: [17, 'polymorphing'],
-            q: [18, 'levitating'],
-            r: [19, 'very fast'],
-            s: [20, 'clairvoyant'],
-            t: [21, 'monster detection'],
-            u: [22, 'see invisible'],
-        };
-	        if (ch === '.') {
-	            game._wiz_intrinsic_selected = new Set(Object.keys(intrinsicRows));
-	            for (const [letter, [rowNumber, label]] of Object.entries(intrinsicRows)) {
-	                const row = (game._overlay_lines || []).find(line => line[0] === rowNumber);
-	                const timeout = letter === 'i' ? game.u?._blindTimeout || 0 : 0;
-	                const text = timeout ? `${label.padEnd(27)} [${timeout}]` : label;
-	                if (row) row[2] = ` ${letter} + ${text}`;
-	            }
-	            return;
-	        }
+        const intrinsicRows = wizIntrinsicRows();
+        if (ch === '.') {
+            game._wiz_intrinsic_selected = new Set(Object.keys(intrinsicRows));
+            for (const [letter, [rowNumber, label]] of Object.entries(intrinsicRows)) {
+                const row = (game._overlay_lines || []).find(line => line[0] === rowNumber);
+                const timeout = letter === 'i' ? game.u?._blindTimeout || 0 : 0;
+                const text = timeout ? `${label.padEnd(27)} [${timeout}]` : label;
+                if (row) row[2] = ` ${letter} + ${text}`;
+            }
+            return;
+        }
         if (intrinsicRows[ch]) {
             game._wiz_intrinsic_selected ??= new Set();
             if (game._wiz_intrinsic_selected.has(ch)) game._wiz_intrinsic_selected.delete(ch);
-	            else game._wiz_intrinsic_selected.add(ch);
-	            const [rowNumber, label] = intrinsicRows[ch];
-	            const row = (game._overlay_lines || []).find(line => line[0] === rowNumber);
-	            const timeout = ch === 'i' ? game.u?._blindTimeout || 0 : 0;
-	            const text = timeout ? `${label.padEnd(27)} [${timeout}]` : label;
-	            if (row) row[2] = ` ${ch} ${game._wiz_intrinsic_selected.has(ch) ? '+' : '-'} ${text}`;
-	            return;
-	        }
+            else game._wiz_intrinsic_selected.add(ch);
+            const [rowNumber, label] = intrinsicRows[ch];
+            const row = (game._overlay_lines || []).find(line => line[0] === rowNumber);
+            const timeout = ch === 'i' ? game.u?._blindTimeout || 0 : 0;
+            const text = timeout ? `${label.padEnd(27)} [${timeout}]` : label;
+            if (row) row[2] = ` ${ch} ${game._wiz_intrinsic_selected.has(ch) ? '+' : '-'} ${text}`;
+            return;
+        }
         if (ch === '\r' || ch === '\n') {
             const selected = game._wiz_intrinsic_selected || new Set();
             game._command_mode = null;
@@ -24676,6 +24690,7 @@ export async function rhack(_cmd) {
             if (messages.length) {
                 await setMessage(messages.join('  '), true);
                 game._command_mode = 'wizIntrinsicMore';
+                game._clear_wiz_intrinsic_more_after_capture = 1;
             }
         }
         return;
@@ -24687,11 +24702,8 @@ export async function rhack(_cmd) {
             game._pending_message = '';
             game._message_more = 0;
             game._keep_pending_message = 0;
-            if (ch === ' ') {
-                await rhack(ch);
-                return;
-            }
-            if (game._swallow_overlay_active && game.u?.uswallow) refreshSwallowOverlay(false);
+            if (game._pending_message && game._swallow_overlay_active && game.u?.uswallow) refreshSwallowOverlay(false);
+            await flush_screen(1);
             return;
         }
         game._command_mode = null;
@@ -27710,9 +27722,10 @@ export async function rhack(_cmd) {
 	                return;
 	            }
             if (command === 'wizintrinsic' && game.flags?.debug) {
-                const lines = WIZ_INTRINSIC_MENU_LINES.map(line => [...line]);
+                const lines = wizIntrinsicMenuLines().map(line => [...line]);
                 if (game.u?._blindTimeout) {
-                    const row = lines.find(line => line[0] === 10);
+                    const [rowNumber] = wizIntrinsicRows().i;
+                    const row = lines.find(line => line[0] === rowNumber);
                     if (row) row[2] = ` i - ${'blinded'.padEnd(27)} [${game.u._blindTimeout}]`;
                 }
                 setOverlay(lines, 24, true);

@@ -9270,9 +9270,11 @@ export async function moveloop_core() {
         const clearPetKillHalluDisplay = !!g._hallu_display_after_pet_kill_luck;
         const clearColdHalluDisplay = !!g._hallu_display_after_cold_topline;
         const clearDeferredMultiattackHalluDisplay = !!g._hallu_display_after_deferred_multiattack;
+        const clearExpelHalluDisplay = !!g._hallu_display_after_expel;
         const normalHalluDisplay = g._hallu_display_after_pet_kill_luck
             || g._hallu_display_after_cold_topline
             || g._hallu_display_after_deferred_multiattack
+            || g._hallu_display_after_expel
             || (!g._dismissed_more_this_command && !g._process_time_with_more);
         if (normalHalluDisplay && !armorTailOnly) g._display_hallucinated_normal = 1;
         const ballDragForcedTail = g._ball_drag_force_tail_on_last_turn && g._pending_time_passed === 1;
@@ -9303,9 +9305,10 @@ export async function moveloop_core() {
 	            g._eating_nutrition = 0;
 	            g._pending_time_passed = 0;
 	        }
-	        if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;
+        if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;
         if (clearColdHalluDisplay) g._hallu_display_after_cold_topline = 0;
         if (clearDeferredMultiattackHalluDisplay) g._hallu_display_after_deferred_multiattack = 0;
+        if (clearExpelHalluDisplay) g._hallu_display_after_expel = 0;
 	        const prayerPartialTurn = !movedMonsters && g._prayer_occupation
 	            && g._pending_prayer_finish_message;
 	        if (armorTailOnly) {

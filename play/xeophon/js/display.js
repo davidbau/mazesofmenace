@@ -410,8 +410,14 @@ function monsterAt(x, y) {
     if (mon?._hide_for_web_more) return undefined;
     if (mon?._hide_for_queued_kill_more) return undefined;
     const stalePet = game._stale_queued_kill_pet;
-    if (stalePet?.mon === mon) return undefined;
+    if (stalePet?.mon === mon && !staleQueuedKillPetBlocked(stalePet)) return undefined;
     return mon;
+}
+
+function staleQueuedKillPetBlocked(stalePet) {
+    return !!(stalePet?.mon && (game.level?.monsters || []).some(mon =>
+        mon !== stalePet.mon && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+        && mon.mx === stalePet.x && mon.my === stalePet.y));
 }
 
 function objectAt(x, y) {
@@ -570,6 +576,7 @@ function monsterGlyph(mon, detected = false) {
     if (!detected && mon.appearGlyph) return { ch: mon.appearGlyph, color: mon.appearColor ?? NO_COLOR, dec: false };
     if (!detected && mon.appearObj != null) return { ch: '(', color: mon.appearColor ?? CLR_BROWN, dec: false };
     if (hallucinatesDisplay()) {
+        game._hallucinated_map_needs_actual_refresh = 1;
         const monIndex = rn2_on_display_rng(DISPLAY_MONSTER_GLYPHS.length);
         return { ch: DISPLAY_MONSTER_GLYPHS[monIndex] || '?', color: DISPLAY_MONSTER_COLORS[monIndex] ?? CLR_WHITE, dec: false };
     }
@@ -585,6 +592,7 @@ function monsterGlyph(mon, detected = false) {
 
 function objectGlyph(obj) {
     if (hallucinatesDisplay()) {
+        game._hallucinated_map_needs_actual_refresh = 1;
         if (obj.otyp === STATUE) {
             const monIndex = rn2_on_display_rng(DISPLAY_MONSTER_GLYPHS.length);
             rn2_on_display_rng(2);
@@ -637,6 +645,15 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+
+    if (game.u?.uswallow) {
+        if (game.u.ux === x && game.u.uy === y
+            && (!game.u.invisible || game.u.seeInvisible || game.u.blind)) {
+            show_glyph_cell(x, y, game.u._glyph || '@',
+                isRogueLevel() ? NO_COLOR : (game.u._glyphColor ?? CLR_WHITE), false);
+        }
+        return;
+    }
 
     const canSee = !!(game.viz_array?.[y]?.[x] & COULD_SEE);
     const visible = !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
@@ -800,8 +817,90 @@ export function newsym(x, y) {
     show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
 }
 
+function refreshSeenEntityMap() {
+    const seen = new Set();
+    const refresh = (x, y) => {
+        if (x == null || y == null || x < 1 || x >= COLNO || y < 0 || y >= ROWNO) return;
+        const key = `${x},${y}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        newsym(x, y);
+    };
+
+    for (const mon of game.level?.monsters || []) {
+        if (mon.dead || mon.mhp <= 0 || mon._hide_for_bones_prompt) continue;
+        refresh(mon.mx, mon.my);
+    }
+    if (!game.u?.usteed) refresh(game.u?.ux, game.u?.uy);
+    for (const obj of game.level?.objects || []) {
+        if (obj.hidden || obj.ox == null || obj.oy == null) continue;
+        refresh(obj.ox, obj.oy);
+    }
+    for (const trap of game.level?.traps || []) {
+        if (!trap.tseen) continue;
+        refresh(trap.tx, trap.ty);
+    }
+}
+
+function refreshSeenMonsterMap() {
+    const monsters = game.level?.monsters || [];
+    for (let i = monsters.length - 1; i >= 0; i--) {
+        const mon = monsters[i];
+        if (mon.dead || mon.mhp <= 0 || mon._hide_for_bones_prompt) continue;
+        newsym(mon.mx, mon.my);
+    }
+    if (!game.u?.usteed) newsym(game.u?.ux, game.u?.uy);
+}
+
+function redrawRememberedMap() {
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (loc.map_invisible) {
+                show_glyph_cell(x, y, 'I', NO_COLOR, false);
+                continue;
+            }
+            if (loc.remembered_glyph) {
+                const glyph = loc.remembered_glyph;
+                const color = glyph.ch === '+' && loc.typ === DOOR ? CLR_BROWN : glyph.color ?? NO_COLOR;
+                show_glyph_cell(x, y, glyph.ch, color, glyph.dec);
+                continue;
+            }
+            const trap = trapAt(x, y);
+            if (trap?.tseen) {
+                const glyph = trapGlyph(trap);
+                show_glyph_cell(x, y, glyph.ch, glyph.color, false);
+                continue;
+            }
+            if (!loc.seenv && !loc.waslit && loc.lastseentyp == null) {
+                show_glyph_cell(x, y, ' ', NO_COLOR, false);
+                continue;
+            }
+            const terrainLoc = loc.lastseentyp != null
+                ? {
+                    ...loc,
+                    typ: loc.lastseentyp,
+                    doormask: loc.lastseendoormask ?? loc.doormask,
+                    wall_info: loc.lastseenwall_info ?? loc.wall_info,
+                }
+                : loc;
+            const glyph = terrainGlyph(terrainLoc, x, y);
+            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+        }
+    }
+}
+
 export async function docrt() {
     if (!game.level) return;
+    if (game._docrt_redraw_memory_only) {
+        redrawRememberedMap();
+        return;
+    }
+    if (game._docrt_seen_monsters_only) {
+        refreshSeenMonsterMap();
+        return;
+    }
     for (let y = 0; y < ROWNO; y++)
         for (let x = 1; x < COLNO; x++)
             newsym(x, y);
@@ -809,6 +908,7 @@ export async function docrt() {
 
 export function refreshHallucinatedMap(forward = false) {
     if (!hallucinatesDisplay()) return;
+    game._hallucinated_map_needs_actual_refresh = 1;
 
     const monsters = game.level?.monsters || [];
     const monsterOrder = monsters.map((_, i) => forward ? i : monsters.length - 1 - i);
@@ -871,6 +971,11 @@ function drawGrid() {
     const d = display();
     if (!d) return;
     const hidePendingMessageOnce = !!game._hide_pending_message_once;
+    if (game._hallucinated_map_needs_actual_refresh
+        && !(game.u?._statusSuffix || '').includes('Hallu')) {
+        game._hallucinated_map_needs_actual_refresh = 0;
+        refreshSeenEntityMap();
+    }
 
     if (game._redraw_level_after_more && game._pending_message && game._message_more) {
         const more = '--More--';
@@ -950,14 +1055,28 @@ function drawGrid() {
         }
         const stalePet = game._stale_queued_kill_pet;
         if (stalePet?.mon) {
-            const glyph = monsterGlyph(stalePet.mon);
-            d.setCell(
-                stalePet.x - 1,
-                stalePet.y + 1,
-                glyph.ch,
-                glyphColor(glyph.color),
-                game._hilite_pet && stalePet.mon.pet ? 1 : 0,
-            );
+            const occupied = staleQueuedKillPetBlocked(stalePet);
+            if (!occupied) {
+                const glyph = monsterGlyph(stalePet.mon);
+                d.setCell(
+                    stalePet.x - 1,
+                    stalePet.y + 1,
+                    glyph.ch,
+                    glyphColor(glyph.color),
+                    game._hilite_pet && stalePet.mon.pet ? 1 : 0,
+                );
+            } else {
+                newsym(stalePet.mon.mx, stalePet.mon.my);
+                const loc = game.level?.at(stalePet.mon.mx, stalePet.mon.my);
+                if (loc)
+                    d.setCell(
+                        stalePet.mon.mx - 1,
+                        stalePet.mon.my + 1,
+                        loc.disp_ch || ' ',
+                        loc.disp_color ?? NO_COLOR,
+                        loc.disp_attr ?? 0,
+                    );
+            }
         }
     }
 

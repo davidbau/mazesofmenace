@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog, rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { newgame, moveloop_core, syncStartupIdentity } from './allmain.js';
+import { refreshSwallowOverlay } from './cmd.js';
 import { bot, docrt, flush_screen, pline } from './display.js';
 import { parseNethackrc } from './options.js';
 import { GameDisplay } from './game_display.js';
@@ -266,6 +267,19 @@ export class NethackGame {
             // snapshot and reset here so the next step starts empty.
             nhGame._animFramesByStep.push(nhGame._pendingAnimFrames);
             nhGame._pendingAnimFrames = [];
+
+            if (game._clear_wiz_intrinsic_more_after_capture) {
+                game._clear_wiz_intrinsic_more_after_capture = 0;
+                game._pending_message = '';
+                game._message_more = 0;
+                game._keep_pending_message = 0;
+                if (game._overlay_lines?.[0]) game._overlay_lines[0][2] = '';
+                if (game._swallow_overlay_lines?.[0]) game._swallow_overlay_lines[0][2] = '';
+                if (game._swallow_overlay_active && game.u?.uswallow) {
+                    refreshSwallowOverlay(false);
+                    if ((game.u?._statusSuffix || '').includes('Hallu')) refreshSwallowOverlay(false);
+                } else await flush_screen(1);
+            }
 
         };
     }
