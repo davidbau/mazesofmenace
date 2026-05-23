@@ -140,9 +140,16 @@ export class GameDisplay {
         const heldUac = game._message_more && game._status_uac_before_more != null;
         const displayAc = heldUac ? game._status_uac_before_more : u.uac ?? 10;
         let line2;
+        const statusTurn = () => {
+            let turn = game.moves || 1;
+            if (game._sanctum_status_turn_offset
+                && turn >= (game._sanctum_status_turn_offset_start || Infinity))
+                turn = Math.max(1, turn - game._sanctum_status_turn_offset);
+            return turn;
+        };
         if (u.uz?.dnum === TUTORIAL) {
             const xp = game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
-            const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+            const turn = game.flags?.time ? ` T:${statusTurn()}` : '';
             line2 = `Tutorial:${u.uz?.dlevel || 1} $:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}`;
         } else {
             const dungeon = game.dungeons?.[u.uz?.dnum ?? 0];
@@ -150,7 +157,7 @@ export class GameDisplay {
             const xp = u._monsterHd
                 ? `HD:${u._monsterHd}`
                 : game.flags?.showexp ? `Xp:${u.ulevel || 1}/${u.uexp || 0}` : `Xp:${u.ulevel || 1}`;
-            const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
+            const turn = game.flags?.time ? ` T:${statusTurn()}` : '';
             const ride = u.usteed ? ' Ride' : '';
             const blind = u.blind && !u._blindAfterStatus ? ' Blind' : '';
             const statusSuffix = `${u._statusSuffix || ''}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;

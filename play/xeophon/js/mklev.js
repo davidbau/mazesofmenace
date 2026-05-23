@@ -6109,8 +6109,8 @@ export async function makemon(mdat, x, y, mmflags) {
         if (ptr.hidesUnder) mon.mundetected = canHideUnderObjAt(x, y);
     }
     if (game.in_mklev && ptr.mlet === ';') mon.mundetected = !!IS_POOL(game.level?.at(x, y)?.typ);
-    if (ptr.mlet === S_NYMPH) {
-        if (rn2(5)) mon.msleeping = 1;
+    if (ptr.mlet === S_NYMPH || ptr.mlet === 'J') {
+        if (rn2(5) && !game.u?.uhave?.amulet) mon.msleeping = 1;
     }
     if (ptr.name === 'long worm') {
         const segmentCount = (mmflags & MM_NOTAIL) ? 0 : rn2(5);

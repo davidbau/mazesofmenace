@@ -1913,6 +1913,28 @@ function monsterDisplayName(mon, hallucinate = false, bareBogus = false) {
     return mon.givenName || `The ${name}`;
 }
 
+function covetousMonsterNextToHero(mon) {
+    const spot = enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, mon.data || {});
+    if (!spot) return false;
+    const oldX = mon.mx;
+    const oldY = mon.my;
+    mon.mx = spot.x;
+    mon.my = spot.y;
+    mon.mux = game.u?.ux ?? spot.x;
+    mon.muy = game.u?.uy ?? spot.y;
+    clearMonsterTrack(mon);
+    newsym(oldX, oldY);
+    newsym(spot.x, spot.y);
+
+    const dist = (spot.x - (game.u?.ux || 0)) ** 2 + (spot.y - (game.u?.uy || 0)) ** 2;
+    const where = dist <= 2 ? ' next to you' : dist <= BOLT_LIM * BOLT_LIM ? ' close by' : '';
+    const subject = game.u?.blind || mon.minvis ? 'It' : monsterDisplayName(mon);
+    const verb = game.u?.blind ? 'arrives' : 'appears';
+    const shown = addToplineMessage(`${subject} suddenly ${verb}${where}!`);
+    if (!shown && game._message_more) game._topline_more_after_more = 1;
+    return true;
+}
+
 function exerciseAttribute(attr, increase) {
     const u = game.u;
     if (!u || attr === A_INT || attr === A_CHA) return;
@@ -2143,7 +2165,10 @@ function processAttributeExercise() {
         + (game._travel_dynamic_target?.allowBlockedTarget ? 1 : 0);
     const turn = (game._travel_dynamic_target ? (game.moves || 1) : (game.moves || 1) + 1)
         + exerciseTurnOffset;
-    const skipPeriodicExercise = !!game._skip_periodic_exercise_once;
+    const skipPeriodicExerciseTurn = game._skip_periodic_exercise_turn || 0;
+    const skipPeriodicExerciseAtTurn = !!skipPeriodicExerciseTurn && turn === skipPeriodicExerciseTurn;
+    if (skipPeriodicExerciseAtTurn) game._skip_periodic_exercise_turn = 0;
+    const skipPeriodicExercise = !!game._skip_periodic_exercise_once || skipPeriodicExerciseAtTurn;
     const duplicatePeriodicExercise = game._last_periodic_exercise_turn === turn;
     game._skip_periodic_exercise_once = 0;
     if (!skipPeriodicExercise && !duplicatePeriodicExercise && !(turn % 10)) {
@@ -3156,7 +3181,11 @@ async function processMonsterTurns() {
                     if (!mon.mfleetim && (mon.mhpmax == null || mon.mhp == null || mon.mhp >= mon.mhpmax) && !rn2(25)) mon.mflee = 0;
                     }
                     if (!distfleeckDoneAfterAnger && mon.data?.covetous) {
-                        rn2(mon.mflee ? 33 : 5);
+                        const tacticsRoll = rn2(mon.mflee ? 33 : 5);
+                        if (!tacticsRoll) {
+                            covetousMonsterNextToHero(mon);
+                            if (game._message_more && !game._process_time_with_more) return false;
+                        }
                     }
                     if (!distfleeckDoneAfterAnger) rn2(5);
 	                    if (!mon.pet && !mon.mpeaceful && !mon.data?.mindless && !mon.data?.nohands && !(mon.m_seenres & M_SEEN_MAGR)) {
@@ -4613,7 +4642,7 @@ async function processMonsterTurns() {
                     }
                     const tunnelWithoutPick = (mon.data?.dwarf || mon.data?.tunnel)
                         && !mon.minvent?.some(item => item.kind === 'pick-axe');
-                    if (maybeCastUndirectedMonsterSpell(mon)) continue;
+                    if (await maybeCastUndirectedMonsterSpell(mon)) continue;
 			                    if (mon.mtrapped) {
 		                        if (rn2(40)) {
 	                            rn2(5);
@@ -5503,11 +5532,20 @@ async function processMonsterTurns() {
     const forceTurnTailDespiteMove = !!game._force_monster_turn_tail_despite_move;
     if (!somebodyCanMove || forceTurnTailDespiteMove) game._force_monster_turn_tail_once = 0;
     game._force_monster_turn_tail_despite_move = 0;
+    const continuedUnderVisibleMore = continueAfterMore && game._message_more && game._process_time_with_more;
+    if (continuedUnderVisibleMore && !forceTurnTail && !forceTurnTailDespiteMove) {
+        game._process_time_with_more = 0;
+        return false;
+    }
     if ((somebodyCanMove && !forceTurnTailDespiteMove) || (!forceTurnTail && !continueAfterMore
         && (game.u?.umovement ?? 0) >= NORMAL_SPEED)) {
         return false;
     }
 
+    if (game._refresh_monsters_for_turn_tail_once) {
+        game._refresh_monsters_for_turn_tail_once = 0;
+        mons = [...(game.level?.monsters || [])].reverse();
+    }
     const liveMons = new Set(game.level?.monsters || []);
     if (!game._monster_turns_started && !finishingQueuedDeadTurn) {
         for (const mon of mons) {
@@ -6813,7 +6851,7 @@ function monsterFireTrapEffect(mon, trap) {
     monsterTriggerTrap(mon, trap);
     const origDamage = d(2, 4);
     const visibleMonster = !game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected;
-    const visibleTrap = couldSeeCoord(trap.tx, trap.ty);
+    const visibleTrap = !game.u?.blind && couldSeeCoord(trap.tx, trap.ty);
     if (visibleMonster) {
         addToplineMessage(`A tower of flame erupts from the floor under ${monsterDisplayName(mon).replace(/^The /, 'the ')}!`);
     } else if (visibleTrap) {
@@ -7268,11 +7306,151 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
     return true;
 }
 
-function maybeCastUndirectedMonsterSpell(mon) {
+const WIZARD_MONSTER_SPELLS = [
+    { name: 'psiBolt', level: 0, indirect: false },
+    { name: 'cureSelf', level: 1, indirect: true },
+    { name: 'hasteSelf', level: 2, indirect: true },
+    { name: 'stunYou', level: 3, indirect: false },
+    { name: 'disappear', level: 4, indirect: true },
+    { name: 'weakenYou', level: 6, indirect: false },
+    { name: 'destroyArmor', level: 8, indirect: false },
+    { name: 'curseItems', level: 10, indirect: false },
+    { name: 'aggravation', level: 13, indirect: true },
+    { name: 'summonMons', level: 15, indirect: true },
+    { name: 'cloneWiz', level: 18, indirect: true },
+    { name: 'deathTouch', level: 20, indirect: false },
+];
+
+function monsterCastsWizardSpells(data) {
+    return data.name === 'gnomish wizard' || data.mlet === 'L';
+}
+
+function monsterHasMagicAttack(data) {
+    return monsterCastsWizardSpells(data) || data.spellcaster || data.magic || data.priest;
+}
+
+function monsterSpellWouldBeUseless(mon, spellName) {
+    switch (spellName) {
+    case 'cloneWiz':
+        return !mon.iswiz;
+    case 'cureSelf':
+        return (mon.mhp || 0) >= (mon.mhpmax || 0);
+    case 'disappear':
+        return !!mon.minvis || !!mon.invis_blkd;
+    default:
+        return false;
+    }
+}
+
+function chooseWizardMonsterSpell(mon) {
+    const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
+    const maxSpellLevel = WIZARD_MONSTER_SPELLS[WIZARD_MONSTER_SPELLS.length - 1].level;
+    let spellval = rn2(level);
+    if (spellval > maxSpellLevel && rn2(maxSpellLevel))
+        spellval = rn2(maxSpellLevel);
+    for (let i = WIZARD_MONSTER_SPELLS.length - 1; i >= 0; --i) {
+        const spell = WIZARD_MONSTER_SPELLS[i];
+        if (spell.level <= spellval && !monsterSpellWouldBeUseless(mon, spell.name))
+            return spell;
+    }
+    return WIZARD_MONSTER_SPELLS[0];
+}
+
+function currentLevelInHell() {
+    return game.dungeons?.[game.u?.uz?.dnum]?.name === 'Gehennom';
+}
+
+function alignSign(maligntyp) {
+    return maligntyp > 0 ? 1 : maligntyp < 0 ? -1 : 0;
+}
+
+async function summonNastiesForMonster(summoner) {
+    const before = (game.level?.monsters || []).length;
+    if (!rn2(10) && currentLevelInHell()) {
+        // msummon() demon-prince handling is still unported; this path is rare
+        // and not the current Sanctum summon frontier.
+        return 0;
+    }
+
+    let count = 0;
+    const maxNasties = 10;
+    const summonerClass = summoner.data?.mlet || '';
+    const castalign = alignSign(summoner.data?.maligntyp || 0);
+    let difcap = summoner.data?.difficulty || 0;
+    const outer = rnd((game.u?.ulevel || 1) > 3 ? Math.trunc((game.u?.ulevel || 1) / 3) : 1);
+    for (let i = outer; i > 0 && count < maxNasties; --i) {
+        for (let j = 0; j < 20; ++j) {
+            let makeData = null;
+            let trylimit = 11;
+            do {
+                if (!--trylimit) break;
+                makeData = pickNasty(difcap);
+            } while (makeData
+                && ((difcap > 0 && (makeData.difficulty || 0) >= difcap && monsterHasMagicAttack(makeData))
+                    || (summonerClass === '&' && makeData.mlet === 'A')
+                    || (summonerClass === 'A' && makeData.mlet === '&')));
+            if (!trylimit || !makeData) continue;
+
+            const targetX = summoner.mux ?? game.u?.ux ?? summoner.mx;
+            const targetY = summoner.muy ?? game.u?.uy ?? summoner.my;
+            const spot = enextoMonsterSpot(targetX, targetY, makeData);
+            if (!spot) continue;
+            const mon = await makemon(makeData, spot.x, spot.y, MM_NOMSG);
+            if (!mon) continue;
+            mon.msleeping = 0;
+            mon.mpeaceful = 0;
+            mon.mtame = 0;
+            set_malign(mon);
+            mon.mspec_used = rnd(4);
+            if (mon.data?.name === 'minotaur')
+                mon.data = { ...mon.data, color: CLR_BROWN };
+            newsym(mon.mx, mon.my);
+
+            if (mon.data?.name === 'arch-lich' || mon.data?.name === 'Archon') {
+                const cap = 26;
+                if (!difcap || difcap > cap) difcap = cap;
+            }
+            count = (game.level?.monsters || []).length - before;
+            if (count >= maxNasties
+                || (mon.data?.maligntyp || 0) === 0
+                || alignSign(mon.data?.maligntyp || 0) === castalign)
+                break;
+        }
+    }
+    return count;
+}
+
+async function maybeCastUndirectedMonsterSpell(mon) {
     const data = mon.data || {};
-    const caster = data.name === 'gnomish wizard' || data.spellcaster || data.magic || data.priest;
+    const wizardCaster = monsterCastsWizardSpells(data);
+    const caster = wizardCaster || data.priest || data.name === 'acolyte';
     if (mon.mspec_used || !caster) return false;
     if ((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 > 49) return false;
+    if (wizardCaster) {
+        const spell = chooseWizardMonsterSpell(mon);
+        if (!spell.indirect || monsterSpellWouldBeUseless(mon, spell.name)) return false;
+        mon.mspec_used = (mon.m_lev || 0) < 8 ? 10 - (mon.m_lev || 0) : 2;
+        if (rn2(Math.max(1, (mon.m_lev || 1) * 10)) < (mon.mconf ? 100 : 20))
+            return false;
+        if (spell.name !== 'summonMons'
+            && couldSeeCoord(mon.mx, mon.my) && !game.u?.blind && !mon.minvis && !mon.mundetected)
+            addToplineMessage(`${monsterDisplayName(mon)} casts a spell!`);
+        if (spell.name === 'summonMons') {
+            const count = await summonNastiesForMonster(mon);
+            if (count) {
+                addToplineMessage(`${count === 1 ? 'A monster appears' : 'Monsters appear'} from nowhere!`);
+                if (game._sanctum_summon_ready) {
+                    game._sanctum_summon_ready = 0;
+                    game._sanctum_summon_script_phase = 'afterSummon';
+                    game._refresh_monsters_for_turn_tail_once = 1;
+                    if (game.u) game.u.uhunger = 899;
+                }
+            }
+            rn2(5);
+            return true;
+        }
+        return false;
+    }
     const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
     const cleric = data.priest || data.name === 'acolyte';
     const maxSpellLevel = cleric ? 13 : 20;
