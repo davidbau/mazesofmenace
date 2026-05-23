@@ -1790,6 +1790,11 @@ function maybeKillerBeeEatRoyalJelly(mon) {
 
 function addToplineMessage(msg) {
     let text = String(msg || '');
+    if (game._silent_drop_prompt_message) {
+        if (game._pending_message === game._silent_drop_prompt_message && !game._message_more)
+            game._pending_message = '';
+        game._silent_drop_prompt_message = '';
+    }
     if (!game._pending_message && game._pending_fumble_turn_message
         && game._last_fumble_turn_message && text !== game._last_fumble_turn_message
         && (game.moves || 0) - (game._last_fumble_turn_move ?? -99) <= 2) {
@@ -2146,17 +2151,20 @@ function processAttributeExercise() {
     game.context ??= {};
     game.context.next_attrib_check ??= 600;
     if (turn < game.context.next_attrib_check) return;
-    if (game._running_continuation || game._initial_run_command || (game._run_steps_remaining || 0) > 0)
+    if ((game._running_continuation || game._initial_run_command)
+        && (game._run_steps_remaining || 0) > 0)
         return;
     if (game._helpless_time || game._armor_wear_occupation || game._eating_turns_remaining
         || game._force_lock_occupation || game._pick_lock_occupation || game._tin_opening_occupation
         || game._prayer_occupation) return;
     if (game._fumble_turn_message_pending || game._pending_fumble_turn_message
-        || game._last_fumble_turn_message || game._defer_fumble_exerchk_once) {
+        || game._last_fumble_turn_message) {
         game._fumble_delayed_exerchk = 1;
         game._defer_fumble_exerchk_once = 0;
         return;
     }
+    const forceFumbleExerciseRoll = !!game._defer_fumble_exerchk_once;
+    game._defer_fumble_exerchk_once = 0;
 
     const aexe = u._aexe ??= Array(A_MAX).fill(0);
     const race = RACE_STATE[game._startup_race || game.urace?.noun || 'human'] || RACE_STATE.human;
@@ -2178,7 +2186,7 @@ function processAttributeExercise() {
         }
         aexe[attr] = Math.trunc(Math.abs(ax) / 2) * sign;
     }
-    if (!testedExercise && game._fumble_delayed_exerchk) rn2(AVAL);
+    if (!testedExercise && (game._fumble_delayed_exerchk || forceFumbleExerciseRoll)) rn2(AVAL);
     game._fumble_delayed_exerchk = 0;
     game.context.next_attrib_check += 800 + rn2(200);
 }
@@ -4428,15 +4436,17 @@ async function processMonsterTurns() {
                                 }
                                 const onlineHero = oldx === heroX || oldy === heroY
                                     || Math.abs(oldx - heroX) === Math.abs(oldy - heroY);
-                            if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
-                                && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
-                                const farLineOnly = satdoor && !avoid && oldy === heroY
-                                    && !(mon.robbed || mon.billct || mon.debit)
-                                    && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
-                                if (!onlineHero || farLineOnly) {
-                                    rn2(5);
-                                    continue;
-                                }
+                                if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
+                                    && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
+                                    const farLineOnly = satdoor && !avoid && oldy === heroY
+                                        && !(mon.robbed || mon.billct || mon.debit)
+                                        && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
+                                    const autoTravelFarLine = farLineOnly
+                                        && (game._travel_keys?.length || game._travel_finish_message || game._travel_keep_message);
+                                    if (!onlineHero || autoTravelFarLine) {
+                                        rn2(5);
+                                        continue;
+                                    }
                                     if (satdoor) {
                                         appr = 0;
                                         goalX = 0;
@@ -9736,9 +9746,12 @@ export async function moveloop_core() {
         g._keep_pending_message = 1;
     }
     if (g._travel_finish_message && !(g._travel_keys?.length)) {
-        await pline(g._travel_finish_message);
+        const message = g._travel_finish_message;
         g._travel_finish_message = '';
-        g._keep_pending_message = 1;
+        if (!g._pending_message && !g._message_more) {
+            await pline(message);
+            g._keep_pending_message = 1;
+        }
     }
     if (g._prayer_energy_before_time != null && !g._pending_time_passed) {
         const energy = Math.min(g.u?.uenmax ?? Infinity, g._prayer_energy_before_time + 1);
@@ -9939,7 +9952,18 @@ export async function moveloop_core() {
         }
     }
 	    await flush_screen(1);
-    if (g._last_fumble_from_run && !g._message_more && g._pending_message === g._last_fumble_turn_message) {
+    const combinedRunFumbleNoise = g._last_fumble_from_run && !g._message_more
+        && g._last_fumble_turn_message
+        && (g._pending_message || '').startsWith(`${g._last_fumble_turn_message}  You hear some noises`);
+    const combinedRunFumbleMessage = g._last_fumble_from_run && !g._message_more
+        && g._last_fumble_turn_message
+        && g._pending_message !== g._last_fumble_turn_message
+        && (g._pending_message || '').includes(g._last_fumble_turn_message);
+    if (combinedRunFumbleNoise || combinedRunFumbleMessage) {
+        g._last_fumble_turn_message = '';
+        g._last_fumble_from_run = 0;
+        g._last_fumble_keep_flushes = 0;
+    } else if (g._last_fumble_from_run && !g._message_more && g._pending_message === g._last_fumble_turn_message) {
         g._last_fumble_keep_flushes = Math.max(0, (g._last_fumble_keep_flushes ?? 1) - 1);
         if (g._last_fumble_keep_flushes === 1)
             g._clear_fumble_after_rhack = {
@@ -9966,13 +9990,16 @@ export async function moveloop_core() {
         const { message, move } = g._clear_fumble_after_rhack;
         g._clear_fumble_after_rhack = null;
         if (g._last_fumble_turn_move === move && g._last_fumble_keep_flushes === 1) {
-            if (!g._message_more && g._pending_message === message)
+            const clearedFumbleMessage = !g._message_more && g._pending_message === message;
+            if (clearedFumbleMessage)
                 g._pending_message = '';
             g._replayed_stale_fumble_message = 0;
             g._last_fumble_turn_message = '';
             g._last_fumble_from_run = 0;
             g._last_fumble_keep_flushes = 0;
-            g._keep_pending_message = 0;
+            if (clearedFumbleMessage) {
+                g._keep_pending_message = 0;
+            }
             g._defer_fumble_exerchk_once = 1;
             g._fumble_turn_message_pending = 0;
             g._pending_fumble_turn_message = 0;

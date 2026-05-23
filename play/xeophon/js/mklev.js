@@ -149,6 +149,7 @@ const CREAM_PIE = 10081;
 const EXPENSIVE_CAMERA = 10082;
 const STETHOSCOPE = 10083;
 const MAGIC_MARKER = 10084;
+const MAGIC_HARP = 10169;
 const CRYSTAL_BALL = 10088;
 const LUCKSTONE = 10127;
 const LENSES = 10128;
@@ -3577,6 +3578,8 @@ function mksobj_init(otmp, otyp, artif) {
         if (!rn2(6)) otmp.quan = 2;
     } else if (otyp === EXPENSIVE_CAMERA || otyp === MAGIC_MARKER) {
         otmp.spe = rn1(70, 30);
+    } else if (otyp === MAGIC_HARP) {
+        otmp.spe = rn1(5, 4);
     } else if (otyp === CRYSTAL_BALL) {
         otmp.spe = rn1(5, 3);
         blessorcurse(otmp, 2);

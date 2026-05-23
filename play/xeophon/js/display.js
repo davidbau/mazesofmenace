@@ -870,6 +870,7 @@ export function refreshHallucinatedMap(forward = false) {
 function drawGrid() {
     const d = display();
     if (!d) return;
+    const hidePendingMessageOnce = !!game._hide_pending_message_once;
 
     if (game._redraw_level_after_more && game._pending_message && game._message_more) {
         const more = '--More--';
@@ -1217,6 +1218,7 @@ function drawGrid() {
             d.setCursor(game.u.ux - 1, game.u.uy + 1);
         }
     }
+    if (hidePendingMessageOnce) game._hide_pending_message_once = 0;
 }
 
 export async function flush_screen(_mode) {

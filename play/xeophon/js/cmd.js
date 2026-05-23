@@ -6446,6 +6446,11 @@ async function rideDirection(ch) {
 
 async function setMessage(msg, more = false) {
     const text = String(msg || '');
+    if (game._silent_drop_prompt_message) {
+        if (game._pending_message === game._silent_drop_prompt_message && !game._message_more)
+            game._pending_message = '';
+        game._silent_drop_prompt_message = '';
+    }
     const runningMessage = game._pending_message
         && (game._running_continuation || game._initial_run_command || game._run_steps_remaining > 0);
     if (runningMessage) {
@@ -11772,7 +11777,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
                     spellName: labeledSpellName,
                     spellbookIndex,
                     appearance: game._object_descriptions?.spellbooks?.[spellbookIndex] || qualifiers.wishLabelName,
-                    known: false,
+                    known: spellbookDiscoveryKnown(labeledSpellName),
                     wishedfor: true,
                 });
             }
@@ -11788,7 +11793,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
             spellName: spellbookIndex >= 0 ? spellName : '',
             spellbookIndex,
             appearance: spellbookIndex >= 0 ? game._object_descriptions?.spellbooks?.[spellbookIndex] : '',
-            known: false,
+            known: spellbookIndex >= 0 && spellbookDiscoveryKnown(spellName),
             wishedfor: true,
         });
     }
@@ -11962,7 +11967,8 @@ export function pickupObjectName(obj) {
         if (isBookOfTheDeadItem(obj)) return named('Book of the Dead');
         if ((obj.quan || 1) > 1 && obj.plural) return named(obj.plural);
         const name = obj.spellName || obj.spell?.name || String(obj.kind || '').replace(/^spellbook(?: of)? /, '');
-        if (obj.known === false || (obj.otyp === SPE_HEALING && !obj.cls) || (obj.otyp === SPBOOK_NO_NOVEL && !name)) {
+        const typeKnown = obj.known === true || spellbookDiscoveryKnown(name);
+        if (!typeKnown || (obj.otyp === SPE_HEALING && !obj.cls) || (obj.otyp === SPBOOK_NO_NOVEL && !name)) {
             const appearance = obj.appearance || game._object_descriptions?.spellbooks?.[
                 obj.spellbookIndex ?? HEALING_SPELLBOOK_APPEARANCE_INDEX
             ];
@@ -12692,9 +12698,11 @@ function conductAchievementRows(startRow, col) {
 }
 
 function liveConductLines() {
-    const rows = [[0, 34, 'Voluntary challenges:']];
     const conduct = game.u?.uconduct || {};
-    const textCol = 35;
+    const wizard = !!game.flags?.debug;
+    const headerCol = wizard ? 34 : 40;
+    const textCol = headerCol + 1;
+    const rows = [[0, headerCol, 'Voluntary challenges:']];
     let row = 1;
     const genocideCount = genocidedMonsterNames().length;
     rows.push([row++, textCol, 'Character rerolling was not enabled.']);
@@ -12705,38 +12713,42 @@ function liveConductLines() {
         rows.push([row++, textCol, 'You have gone without food.']);
     }
     if (!game._chronicle_rejected_atheism) rows.push([row++, textCol, 'You have been an atheist.']);
-    if (conduct.weaphit > 0)
-        rows.push([row++, textCol, `You have hit with a wielded weapon ${conduct.weaphit} time${conduct.weaphit === 1 ? '' : 's'}.`]);
-    else rows.push([row++, textCol, 'You have never hit with a wielded weapon.']);
+    if (conduct.weaphit > 0) {
+        if (wizard) {
+            rows.push([row++, textCol, `You have hit with a wielded weapon ${conduct.weaphit} time${conduct.weaphit === 1 ? '' : 's'}.`]);
+        }
+    } else rows.push([row++, textCol, 'You have never hit with a wielded weapon.']);
     if (!game._chronicle_first_kill) rows.push([row++, textCol, 'You have been a pacifist.']);
-    if (conduct.literate > 0)
-        rows.push([row++, textCol, `You have read items or engraved ${conduct.literate} time${conduct.literate === 1 ? '' : 's'}.`]);
-    else rows.push([row++, textCol, 'You have been illiterate.']);
-    rows.push([row++, textCol, conduct.pets
-        ? `You have had ${conduct.pets} pet${conduct.pets === 1 ? '' : 's'}.`
-        : 'You have never had a pet.']);
+    if (conduct.literate > 0) {
+        if (wizard) {
+            rows.push([row++, textCol, `You have read items or engraved ${conduct.literate} time${conduct.literate === 1 ? '' : 's'}.`]);
+        }
+    } else rows.push([row++, textCol, 'You have been illiterate.']);
+    if (conduct.pets) {
+        if (wizard) rows.push([row++, textCol, `You have had ${conduct.pets} pet${conduct.pets === 1 ? '' : 's'}.`]);
+    } else rows.push([row++, textCol, 'You have never had a pet.']);
     rows.push([row++, textCol, genocideCount
         ? `You have genocided ${genocideCount} type${genocideCount === 1 ? '' : 's'} of monster${genocideCount === 1 ? '' : 's'}.`
         : 'You have never genocided any monsters.']);
-    rows.push([row++, textCol, conduct.polypiles
-        ? `You have polymorphed ${conduct.polypiles} item${conduct.polypiles === 1 ? '' : 's'}.`
-        : 'You have never polymorphed an object.']);
-    rows.push([row++, textCol, conduct.polyselfs
-        ? `You have changed form ${conduct.polyselfs} time${conduct.polyselfs === 1 ? '' : 's'}.`
-        : 'You have never changed form.']);
-    rows.push([row++, textCol, conduct.wishes
-        ? `You have used ${conduct.wishes} wish${conduct.wishes === 1 ? '' : 'es'}.`
-        : 'You have used no wishes.']);
-    if (!conduct.wisharti) rows.push([row++, textCol, "You haven't wished for any artifacts."]);
+    if (conduct.polypiles) {
+        if (wizard) rows.push([row++, textCol, `You have polymorphed ${conduct.polypiles} item${conduct.polypiles === 1 ? '' : 's'}.`]);
+    } else rows.push([row++, textCol, 'You have never polymorphed an object.']);
+    if (conduct.polyselfs) {
+        if (wizard) rows.push([row++, textCol, `You have changed form ${conduct.polyselfs} time${conduct.polyselfs === 1 ? '' : 's'}.`]);
+    } else rows.push([row++, textCol, 'You have never changed form.']);
+    if (conduct.wishes) {
+        rows.push([row++, textCol, `You have used ${conduct.wishes} wish${conduct.wishes === 1 ? '' : 'es'}.`]);
+        if (!conduct.wisharti) rows.push([row++, textCol, "You haven't wished for any artifacts."]);
+    } else rows.push([row++, textCol, 'You have used no wishes.']);
     const achievementHeaderRow = row + 1;
     const achievements = conductAchievementRows(achievementHeaderRow + 1, textCol);
     if (achievements.length) {
         row = achievementHeaderRow;
-        rows.push([row++, 34, 'Achievements:']);
+        rows.push([row++, headerCol, 'Achievements:']);
         rows.push(...achievements);
         row = Math.max(...rows.map(([line]) => line)) + 1;
     }
-    rows.push([Math.min(row, 20), 34, '--More--']);
+    rows.push([Math.min(row, 20), headerCol, '--More--']);
     return rows.filter(([line]) => line <= 20);
 }
 
@@ -13075,6 +13087,11 @@ function recordKnownPotionDiscovery(item, potionName) {
         || String(item?.kind || '').replace(/ potion$/, '');
     const text = appearance ? `${discoveryName} (${appearance})` : discoveryName;
     game._discoveries ??= [];
+    if (appearance) {
+        const observedText = `potion (${appearance})`;
+        game._discoveries = game._discoveries.filter(entry =>
+            !(entry.section === 'Potions' && entry.name === 'potion' && entry.text === observedText));
+    }
     const existing = game._discoveries.find(entry => entry.section === 'Potions' && entry.name === discoveryName);
     if (existing) {
         existing.text = text;
@@ -19299,12 +19316,20 @@ export async function rhack(_cmd) {
 	                    const toplineFumbleMessageRoll = game._topline_after_more_fumble_message_roll || 0;
 	                    let toplineAfterMore = game._topline_after_more;
 	                    const pendingPetMiss = pendingBeforeTopline.match(/(The [^.]+ misses the [^.]+\.)$/);
-	                    if (game._pet_message_resume?.kind === 'miss' && pendingPetMiss?.[1] === toplineAfterMore) {
-	                        toplineAfterMore = `${pendingPetMiss[1]}  ${toplineAfterMore}`;
-	                        game._resume_time_after_more = 0;
-	                    }
-					                game._pending_message = toplineAfterMore;
-					                game._topline_after_more = '';
+		                    if (game._pet_message_resume?.kind === 'miss' && pendingPetMiss?.[1] === toplineAfterMore) {
+		                        toplineAfterMore = `${pendingPetMiss[1]}  ${toplineAfterMore}`;
+		                        game._resume_time_after_more = 0;
+		                    }
+                    if (game._last_fumble_from_run && game._last_fumble_turn_message
+                        && toplineAfterMore && !toplineHadFumbleTurnMessage
+                        && toplineAfterMore !== game._last_fumble_turn_message
+                        && !toplineAfterMore.startsWith(`${game._last_fumble_turn_message}  `)) {
+                        game._last_fumble_turn_message = '';
+                        game._last_fumble_from_run = 0;
+                        game._last_fumble_keep_flushes = 0;
+                    }
+						                game._pending_message = toplineAfterMore;
+						                game._topline_after_more = '';
                 if (game._brown_mold_passive_after_more) {
                     const passive = game._brown_mold_passive_after_more;
                     game._brown_mold_passive_after_more = null;
@@ -21832,17 +21857,7 @@ export async function rhack(_cmd) {
             const hasFreeAction = (game.inventory || []).some(invItem =>
                 invItem.worn && (invItem.actualKind === 'ring of free action' || invItem.ringRoll === 20));
             learnObjectScore('Potions', 'potion of paralysis');
-            game._discoveries ??= [];
-            if (!game._discoveries.some(entry => entry.section === 'Potions' && entry.name === 'potion of paralysis')) {
-                const appearance = game._object_descriptions?.potions?.[item.potionIndex]?.description
-                    || String(item.kind || '').replace(/ potion$/, '');
-                game._discoveries.push({
-                    section: 'Potions',
-                    name: 'potion of paralysis',
-                    text: appearance ? `potion of paralysis (${appearance})` : 'potion of paralysis',
-                    starred: false,
-                });
-            }
+            recordKnownPotionDiscovery(item, 'paralysis');
             if (hasFreeAction) {
                 await setMessage('You stiffen momentarily.');
                 game.context.move = 1;
@@ -23884,10 +23899,21 @@ export async function rhack(_cmd) {
         if (ch === '/') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
-            await setMessage('Pick a monster, object or location.');
-            game._command_mode = 'farlookCursor';
+            const getposTipSeen = game._farlook_tip_seen || game._travel_tip_seen
+                || game._jump_tip_seen || game._getpos_tip_seen;
+            game._farlook_tip_after_intro = game.flags?.verbose === false ? 1 : 0;
+            game._farlook_quick = 0;
             game._farlook_x = game.u?.ux || 0;
             game._farlook_y = game.u?.uy || 0;
+            if (game.flags?.verbose === false && getposTipSeen) {
+                await setMessage('Pick a monster, object or location.');
+                game._command_mode = 'farlookCursor';
+                return;
+            }
+            await setMessage(game.flags?.verbose === false
+                ? 'Pick a monster, object or location.'
+                : 'Please move the cursor to a monster, object or location.', true);
+            game._command_mode = 'farlookIntroMore';
             return;
         }
         if (ch === '?') {
@@ -24302,7 +24328,7 @@ export async function rhack(_cmd) {
                 game._farlook_more_info = 'branch staircase up';
                 await setMessage('<        a staircase up or a branch staircase up (branch staircase up)', true);
             } else if (loc?.typ === CORR) {
-                await setMessage('#        can be many things (corridor)');
+                await setMessage('#        can be many things (corridor)', !game._farlook_quick);
             } else if (loc?.typ === STONE) {
                 await setMessage('         can be many things (stone)');
             } else if (loc?.typ && loc.typ < DOOR) {
@@ -26244,6 +26270,11 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'dropObject') {
+        const preserveSilentDropPrompt = () => {
+            game._pending_message = game._drop_prompt || '';
+            game._silent_drop_prompt_message = game._pending_message;
+            game._keep_pending_message = game._pending_message ? 1 : 0;
+        };
         if (ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b') {
             await setMessage('Never mind.');
             game._command_mode = null;
@@ -26265,7 +26296,11 @@ export async function rhack(_cmd) {
             const guard = (game.level?.monsters || []).find(mon => mon.isgd || mon.data?.name === 'guard');
             if (guard) prepareVaultGuardEscort(guard);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
-            await setMessage(`You drop ${amount} gold piece${amount === 1 ? '' : 's'}.`);
+            if (game.flags?.verbose === false) {
+                preserveSilentDropPrompt();
+            } else {
+                await setMessage(`You drop ${amount} gold piece${amount === 1 ? '' : 's'}.`);
+            }
             game.context.move = 1;
             game._command_mode = null;
             return;
@@ -26298,10 +26333,13 @@ export async function rhack(_cmd) {
             game._message_more = 0;
             game.context.move = 1;
             if (item.cls === 'weapon' || item.kind === 'chest') {
-                await setMessage(`You drop ${inventoryItemName(item)}.`);
+                if (game.flags?.verbose === false) {
+                    preserveSilentDropPrompt();
+                } else {
+                    await setMessage(`You drop ${inventoryItemName(item)}.`);
+                }
             } else {
-                game._pending_message = '';
-                game._keep_pending_message = 0;
+                preserveSilentDropPrompt();
             }
             game._command_mode = null;
             return;
@@ -27437,6 +27475,7 @@ export async function rhack(_cmd) {
             if (command === 'p' && !game.flags?.debug) command = 'pray';
             if (['tu', 'tur'].includes(command)) command = 'turn';
             if (['d', 'di'].includes(command)) command = 'dip';
+            if (command === 's' && !game.flags?.debug) command = 'sit';
             if (command === 'si') command = 'sit';
             if (command === 'cha') command = 'chat';
             if (game.flags?.debug && command.startsWith('wizw') && 'wizwhere'.startsWith(command))
@@ -27545,7 +27584,9 @@ export async function rhack(_cmd) {
             }
             if (command === 'conduct') {
                 const rows = liveConductLines();
-                setOverlay(rows, 21, false, 33);
+                const wizardConduct = !!game.flags?.debug;
+                const clearRows = wizardConduct ? 21 : Math.max(...rows.map(([row]) => row)) + 1;
+                setOverlay(rows, clearRows, false, wizardConduct ? 33 : 39);
                 game._command_mode = 'simpleOverlay';
                 return;
             }
@@ -27854,7 +27895,7 @@ export async function rhack(_cmd) {
                     : ['u', 'un', 'unt', 'untr', 'untra'].includes(partial) ? 'untrap'
                     : (partial === 'p' && !game.flags?.debug) || ['pr', 'pra'].includes(partial) ? 'pray'
                         : ['e', 'en', 'enh', 'enha', 'enhan', 'enhanc'].includes(partial) ? 'enhance'
-                    : partial === 'si' ? 'sit'
+                    : (partial === 's' && !game.flags?.debug) || partial === 'si' ? 'sit'
                         : ['d', 'di'].includes(partial) ? 'dip'
                             : ['of', 'off', 'offe', 'offer'].includes(partial) ? 'offer'
                                 : ['ov', 'ove', 'over', 'overv', 'overvi', 'overvie', 'overview'].includes(partial) ? 'overview'
@@ -28778,14 +28819,21 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'eatObject') {
-        if (ch === '\x1b' || ch === '\r' || ch === '\n') {
+        if (ch === '\x1b') {
+            game._command_mode = null;
+            if (game.u?.blind || (game.u?._statusSuffix || '').includes('Blind')) game._keep_pending_message = 1;
+            else await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '\r' || ch === '\n') {
             game._command_mode = null;
             game._keep_pending_message = 1;
             return;
         }
         if (ch === ' ') {
             game._command_mode = null;
-            game._keep_pending_message = 1;
+            if (game.u?.blind || (game.u?._statusSuffix || '').includes('Blind')) game._keep_pending_message = 1;
+            else await setMessage('Never mind.');
             return;
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
@@ -30631,6 +30679,7 @@ export async function rhack(_cmd) {
     if (ch === ';') {
         game._farlook_x = game.u?.ux || 0;
         game._farlook_y = game.u?.uy || 0;
+        game._farlook_quick = 1;
         const getposTipSeen = game._farlook_tip_seen || game._travel_tip_seen
             || game._jump_tip_seen || game._getpos_tip_seen;
         if (!getposTipSeen) {
