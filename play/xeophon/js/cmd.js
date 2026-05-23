@@ -337,6 +337,14 @@ function dryupFountainAt(x = game.u?.ux || 0, y = game.u?.uy || 0) {
 
 const MIN_QUEST_LEVEL = 14;
 const MIN_QUEST_ALIGN = 20;
+const QUEST_COMMON_TEXTS = {
+    quest_portal: `You receive a faint telepathic message from %l:
+Your help is urgently needed at %H!
+Look for a ...ic transporter.
+You couldn't quite make out that last message.`,
+    quest_portal_again: 'You again sense %l pleading for help.',
+    quest_portal_demand: 'You again sense %l demanding your attendance.',
+};
 const QUEST_ROLE_DATA = {
     Archeologist: {
         filecode: 'Arc',
@@ -2152,7 +2160,8 @@ function questDownBlocked() {
 function questPagerText(msgid) {
     const roleName = game.urole?.name?.m || game._startup_role || '';
     const info = QUEST_ROLE_DATA[roleName];
-    const raw = info?.texts?.[msgid] || (msgid === 'goal_alt' ? info?.texts?.goal_next : '');
+    const raw = info?.texts?.[msgid] || QUEST_COMMON_TEXTS[msgid]
+        || (msgid === 'goal_alt' ? info?.texts?.goal_next : '');
     if (!raw) return '';
     l_nhcore_init();
     const rankIndex = level => level <= 2 ? 0 : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
@@ -2340,6 +2349,37 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
     return queuedGoal;
 }
 
+function atDungeonEntrance(level, dungeonName) {
+    const dnum = game.dungeons?.findIndex(dungeon => dungeon?.name === dungeonName) ?? -1;
+    if (dnum < 0 || !level) return false;
+    return (game.branches || []).some(branch =>
+        branch.end2?.dnum === dnum
+        && branch.end1?.dnum === level.dnum
+        && branch.end1?.dlevel === level.dlevel);
+}
+
+function queueQuestPortalCall(targetLevel, fromLevel) {
+    if (!targetLevel || !fromLevel) return false;
+    if (game.dungeons?.[fromLevel.dnum]?.name === 'The Quest') return false;
+    if (!atDungeonEntrance(targetLevel, 'The Quest')) return false;
+    const quest = game.quest_status ??= {};
+    if (quest.qcompleted || quest.qexpelled || quest.got_thanks || quest.killed_leader) return false;
+    const msgid = !quest.qcalled
+        ? 'quest_portal'
+        : (game.urole?.name?.m || game._startup_role) === 'Rogue'
+        ? 'quest_portal_demand'
+        : 'quest_portal_again';
+    if (!quest.qcalled) quest.qcalled = 1;
+    const text = questPagerText(msgid);
+    if (!text) return false;
+    const lines = text.split('\n').filter(line => line.length);
+    if (!lines.length) return false;
+    game._queued_messages_after_more ??= [];
+    for (let i = 0; i < lines.length; i++)
+        game._queued_messages_after_more.push({ text: lines[i], more: i < lines.length - 1 });
+    return true;
+}
+
 async function continueQuestLeaderTalkAfterIntro() {
     game.quest_status ??= {};
     if ((game.u?.ulevel || 1) < MIN_QUEST_LEVEL) {
@@ -2448,6 +2488,32 @@ function levelTeleportMenuTarget(ch, page2 = false) {
     const offset = page2 ? 't'.charCodeAt(0) : (hasKnox ? 'l'.charCodeAt(0) : 'k'.charCodeAt(0));
     const index = ch.charCodeAt(0) - offset + (page2 ? (hasKnox ? 8 : 9) : 0);
     return entries[index]?.level;
+}
+
+function monsterHasAmuletOfYendor(mon) {
+    return (mon?.minvent || []).some(item =>
+        item.realAmuletOfYendor
+        || String(item.actualKind || item.kind || '').toLowerCase() === 'amulet of yendor');
+}
+
+function followsHeroAcrossLevels(mon) {
+    if (!mon) return false;
+    if (mon.pet || mon.mtame) return true;
+    if (mon.iswiz) return !monsterHasAmuletOfYendor(mon);
+    if (mon.isshk || mon.data?.shopkeeper) return true;
+    if (mon.data?.mercenary || mon.data?.stalk || mon.data?.name === 'stalker')
+        return !mon.mflee || heroHasAmuletOfYendor();
+    return false;
+}
+
+function levelChangeFollowerNearHero(mon) {
+    if (!followsHeroAcrossLevels(mon)) return false;
+    const dx = (mon.mx || 0) - (game.u?.ux || 0);
+    const dy = (mon.my || 0) - (game.u?.uy || 0);
+    if (dx * dx + dy * dy >= 3) return false;
+    if (mon.msleeping || mon.mfrozen || mon.mcanmove === false) return false;
+    if (mon.waiting || mon.mstrategy === 'waitforu') return false;
+    return true;
 }
 
 function placeFollowerAfterLevelChange(follower, first = false) {
@@ -2688,8 +2754,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     const wasInWizardTower = !!game.level?.flags?.wizard_tower_level && !!towerBounds
         && game.u.ux >= towerBounds.lx && game.u.ux <= towerBounds.hx
         && game.u.uy >= towerBounds.ly && game.u.uy <= towerBounds.hy;
-    const carriedPet = game.level?.monsters?.find(mon => (mon.pet || mon.mtame)
-        && (mon.mx - game.u.ux) ** 2 + (mon.my - game.u.uy) ** 2 < 3);
+    const carriedPet = game.level?.monsters?.find(levelChangeFollowerNearHero);
     const ballAndChain = [game.u?.uball, game.u?.uchain].filter(Boolean);
     removeCarriedPunishmentObjects(ballAndChain);
     rememberObjectsAtHero();
@@ -2977,6 +3042,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         const onBoulder = options.boulderMessage
             && game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
         const questArrival = queueQuestArrival(targetLevel, fromLevel, targetIsNew);
+        const questPortalCall = queueQuestPortalCall(targetLevel, fromLevel);
         if (enteringValley) {
             game.u.uevent ??= {};
             game.u.uevent.gehennom_entered = 1;
@@ -3006,7 +3072,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             : 'You materialize on a different level!';
         const questStartArrival = targetSpecial?.name === 'x-strt';
         let arrivalMore = lowerWizardTowerArrival
-            || enteringValley || enteringRogue || questArrival || questStartArrival
+            || enteringValley || enteringRogue || questArrival || questPortalCall || questStartArrival
             || promptedBones
             || !!targetAnnotation;
         let familiarMessage = '';
@@ -3115,13 +3181,12 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         await setMessage(arrivalMessage, arrivalMore);
         resetMovementAfterArrival = arrivalMore && !lowerWizardTowerArrival;
     }
-    const minend = specialLevel('minend');
     const keepTowerMovement = !resetMovementAfterArrival
         && (targetSpecial?.name?.startsWith('tower') || lowerWizardTowerArrival)
         && (game.u?.umovement || 0) > NORMAL_SPEED;
     if (game.u?.veryfast && (
-        targetSpecial?.name === 'orcus'
-        || (minend && minend.dnum === targetLevel.dnum && minend.dlevel === targetLevel.dlevel)
+        targetSpecial?.name === 'minetn'
+        || targetSpecial?.name === 'orcus'
     ))
         game.u.umovement = NORMAL_SPEED * 2;
     else if (!keepTowerMovement)
@@ -6678,6 +6743,7 @@ async function setMessage(msg, more = false) {
     }
     const runningMessage = game._pending_message
         && (game._running_continuation || game._initial_run_command || game._run_steps_remaining > 0);
+    if (!runningMessage) game._pending_message_blocks_time = 0;
     if (runningMessage) {
         const width = game.nhDisplay?.cols || 80;
         const queueAfterSwap = /^You swap places with /.test(game._pending_message)
@@ -17680,6 +17746,7 @@ export async function rhack(_cmd) {
             }
         }
         game._pending_message = '';
+        game._pending_message_blocks_time = 0;
         game._pending_explore_lifesaving_message = 0;
         game._pending_message_is_search_safety_warning = 0;
         game._clear_search_safety_message_next_flush = 0;

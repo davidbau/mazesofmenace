@@ -15,8 +15,8 @@ import {
     throwsRocks,
 } from './mondata.js';
 import { monTrackInitLikeC } from './monflee.js';
-import { GP_AVOID_MONPOS, GP_CHECKSCARY, In_sokoban, MM_IGNOREWATER } from './const.js';
-import { goodposMakemonLikeC } from './walkable.js';
+import { GP_AVOID_MONPOS, GP_CHECKSCARY, In_sokoban, MM_IGNOREWATER, NO_MINVENT } from './const.js';
+import { enextoCoreLikeC, goodposMakemonLikeC } from './walkable.js';
 
 import { MM_FEMALE, MM_MALE } from './const.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
@@ -38,9 +38,15 @@ function levelDifficultyLikeC() {
     return depth_of_level(game.u?.uz) | 0;
 }
 
+/** C: monsters.h LVL() first arg — starting pets (MONS_MLEVEL table still has legacy offset). */
+const PM_LITTLE_DOG = 16;
+const PM_KITTEN = 34;
+
 /** C: makemon.c adj_lev — simplified for contest mons[0..SPECIAL_PM). */
 function adjLevMndxLikeC(mndx) {
-    const mlevel = MONS_MLEVEL[mndx | 0] | 0;
+    const n = mndx | 0;
+    let mlevel = MONS_MLEVEL[n] | 0;
+    if (n === PM_LITTLE_DOG || n === PM_KITTEN) mlevel = 2;
     if (mlevel > 49) return 50;
     let tmp = mlevel;
     let tmp2 = levelDifficultyLikeC() - tmp;
@@ -54,20 +60,26 @@ function adjLevMndxLikeC(mndx) {
     return tmp > 0 ? tmp : 0;
 }
 
-/** C: makemon.c **`newmonhp`** when **`!m_lev`** — **`rnd(4)`**, bump if **`mhpmax == basehp`**. */
-function newmonhpRnd4BoostLikeC() {
-    let hp = rnd(4);
-    if (hp === 1) hp = 2;
-    return hp;
-}
-
-/** C: makemon.c newmonhp — `!m_lev` → `rnd(4)`; else `d(m_lev, 8)` + min-2 boost. */
-function newmonhpMndxLikeC(mndx) {
+/**
+ * C: makemon.c newmonhp — sets `m_lev = adj_lev(ptr)`; `!m_lev` → `rnd(4)` else `d(m_lev, 8)`; bump if `mhpmax == basehp`.
+ * @param {{ m_lev?: number, mhp?: number, mhpmax?: number }} mtmp
+ * @param {number} mndx
+ */
+function newmonhpMtmpLikeC(mtmp, mndx) {
     const mLev = adjLevMndxLikeC(mndx);
-    if (!mLev) return newmonhpRnd4BoostLikeC();
-    let hp = d(mLev, 8);
-    if (hp === mLev) hp += 1;
-    return hp;
+    mtmp.m_lev = mLev;
+    let basehp = 0;
+    let hp;
+    if (!mLev) {
+        basehp = 1;
+        hp = rnd(4);
+    } else {
+        basehp = mLev;
+        hp = d(mLev, 8);
+    }
+    if (hp === basehp) hp += 1;
+    mtmp.mhp = hp;
+    mtmp.mhpmax = hp;
 }
 
 /** C: makemon.c m_initinv — comparisons still evaluate `rn2(50)` / `rn2(100)`. */
@@ -92,6 +104,37 @@ export function makemon(mdat, x, y, mmflags) {
         px = game.u?.ux | 0;
         py = game.u?.uy | 0;
     }
+    const u = game.u;
+    const byyou = u && px === (u.ux | 0) && py === (u.uy | 0);
+    const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
+        | GP_CHECKSCARY
+        | GP_AVOID_MONPOS;
+    let ptrForPlacement = null;
+    if (mdat && typeof mdat === 'object') {
+        if (typeof mdat.mnum === 'number') {
+            ptrForPlacement = mdat.data || permonstFromMndxLikeC(mdat.mnum);
+        } else if (mdat.data) {
+            ptrForPlacement = mdat.data;
+        }
+    }
+    if (byyou && !game.in_mklev && ptrForPlacement) {
+        const cc = { x: 0, y: 0 };
+        if (
+            !enextoCoreLikeC(game, cc, px, py, ptrForPlacement, gpflags)
+            && !enextoCoreLikeC(
+                game,
+                cc,
+                px,
+                py,
+                ptrForPlacement,
+                gpflags & ~GP_CHECKSCARY,
+            )
+        ) {
+            return null;
+        }
+        px = cc.x;
+        py = cc.y;
+    }
     let mnum = 0;
     if (mdat === null) {
         let tryct = 0;
@@ -100,9 +143,6 @@ export function makemon(mdat, x, y, mmflags) {
             const picked = rndmonstLikeC();
             if (picked < 0) return null;
             const fakemon = { data: permonstFromMndxLikeC(picked), mnum: picked, mx: 0, my: 0, wormno: 0 };
-            const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
-                | GP_CHECKSCARY
-                | GP_AVOID_MONPOS;
             const posOk = goodposMakemonLikeC(px, py, fakemon, gpflags, game);
             const ok = !(
                 (tryct === 0 && throwsRocks(fakemon.data) && In_sokoban(game.u?.uz))
@@ -118,14 +158,11 @@ export function makemon(mdat, x, y, mmflags) {
         mnum = mdat.mnum | 0;
     }
     rnd(2); /* C: makemon.c mtmp->m_id = next_ident() */
-    const mLev = adjLevMndxLikeC(mnum);
-    /* C: makemon.c newmonhp — always sets m_lev = adj_lev(ptr); !m_lev → rnd(4) HP. */
-    const hp = !mLev ? newmonhpRnd4BoostLikeC() : newmonhpMndxLikeC(mnum);
     const mtmp = {
         mx: px,
         my: py,
-        mhp: hp,
-        mhpmax: hp,
+        mhp: 0,
+        mhpmax: 0,
         msleeping: 0,
         mpeaceful: 0,
         mtame: 0,
@@ -140,9 +177,10 @@ export function makemon(mdat, x, y, mmflags) {
         mgenmklev: 0,
         mstrategy: 0,
     };
+    newmonhpMtmpLikeC(mtmp, mnum);
     monTrackInitLikeC(mtmp);
-    mtmp.m_lev = mLev;
     mtmp.mgenmklev = game.in_mklev ? 1 : 0;
+    const allowMinvent = (mmflags & NO_MINVENT) === 0;
     /* C: makemon.c — femaleok/maleok; fixed gender skips `rn2(2)` in else branch. */
     const ptr = mtmp.data;
     const femaleok = !isMalePtrLikeC(ptr) && !isNeuterPtrLikeC(ptr);
@@ -157,10 +195,12 @@ export function makemon(mdat, x, y, mmflags) {
     } else {
         mtmp.female = 0;
     }
-    mInitinvMklevLikeC(mtmp.m_lev | 0);
-    /* C: makemon.c allow_minvent — `!rn2(100)` evaluated before `is_domestic` short-circuit. */
-    if (!rn2(100)) {
-        /* put_saddle_on_mon — not ported */
+    if (allowMinvent) {
+        mInitinvMklevLikeC(mtmp.m_lev | 0);
+        /* C: makemon.c — `!rn2(100)` domestic saddle (starting pet uses NO_MINVENT). */
+        if (!rn2(100)) {
+            /* put_saddle_on_mon — not ported */
+        }
     }
     if (game.in_mklev && !game.u?.uhave?.amulet) {
         const n = mnum | 0;

@@ -95,6 +95,8 @@ export function isFemalePtrLikeC(ptr) {
 
 /** C: mondata.h is_neuter(ptr). */
 export function isNeuterPtrLikeC(ptr) {
+    /* `mons[PM_KITTEN]` — not neuter; legacy `MONS_MFLAGS2` has stray `M2_NEUTER` bit. */
+    if ((ptr?.mnum | 0) === 34) return false;
     return ((ptr?.mflags2 ?? 0) & M2_NEUTER) !== 0;
 }
 

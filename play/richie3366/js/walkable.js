@@ -1,5 +1,5 @@
 // walkable.js — Terrain blocking for hero/monster moves (shared stub).
-// C ref: hack.c test_move(), crawl_destination(); teleport.c goodpos(), enexto_core();
+// C ref: hack.c test_move(), crawl_destination(); teleport.c goodpos(), enexto_core() (NEW_ENEXTO);
 // monmove.c accessible().
 
 import { game } from './gstate.js';
@@ -11,7 +11,7 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, OTYP_BOULDER,
     ICE, STONE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, DB_MOAT, DB_LAVA,
     In_sokoban, Is_rogue_level, PM_GRID_BUG, PM_FLOATING_EYE, WT_TOOMUCH_DIAGONAL,
-    GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNOREWATER, MM_IGNORELAVA,
+    GP_CHECKSCARY, GP_AVOID_MONPOS, GP_ALLOW_XY, MM_IGNOREWATER, MM_IGNORELAVA,
     xdir, ydir, N_DIRS,
 } from './const.js';
 import {
@@ -23,6 +23,7 @@ import { goodposOnscaryMdatLikeC } from './distfleeck_mon.js';
 import { isPoolCellLikeC } from './fillholetyp.js';
 import { floorObjKey } from './floorobj.js';
 import { rn2 } from './rng.js';
+import { CC_NO_FLAGS, collectCoordsLikeC } from './collect_coords.js';
 
 /**
  * C: hack.c may_passwall(x,y)
@@ -350,6 +351,49 @@ export function goodposNewMonster(x, y, mtmp, g = game) {
 
     if (sobjAtBoulder(x, y, g) && !throwsRocks(ptr)) return false;
     return true;
+}
+
+/**
+ * C: teleport.c **`enexto_core`** (**`NEW_ENEXTO`**) — **`collect_coords`** near then map-wide, **`goodpos`** scan.
+ * @param {import('./gstate.js').game} g
+ * @param {{ x: number, y: number }} cc — output coord
+ * @param {number} xx
+ * @param {number} yy
+ * @param {import('./mondata.js').Permonst} mdat
+ * @param {number} entflags
+ * @returns {boolean}
+ */
+export function enextoCoreLikeC(g, cc, xx, yy, mdat, entflags) {
+    const candy = /** @type {{ x: number, y: number }[]} */ (
+        new Array(ROWNO * (COLNO - 1))
+    );
+    const fakemon = { data: mdat, mnum: mdat?.mnum, mx: 0, my: 0, wormno: 0 };
+    const allowXy = (entflags & GP_ALLOW_XY) !== 0;
+
+    const nearcandyct = collectCoordsLikeC(candy, xx, yy, 3, CC_NO_FLAGS, null, g);
+    for (let i = 0; i < nearcandyct; i++) {
+        const c = candy[i];
+        if (goodposMakemonLikeC(c.x, c.y, fakemon, entflags, g)) {
+            cc.x = c.x;
+            cc.y = c.y;
+            return true;
+        }
+    }
+
+    const allcandyct = collectCoordsLikeC(candy, xx, yy, 0, CC_NO_FLAGS, null, g);
+    for (let i = nearcandyct; i < allcandyct; i++) {
+        const c = candy[i];
+        if (goodposMakemonLikeC(c.x, c.y, fakemon, entflags, g)) {
+            cc.x = c.x;
+            cc.y = c.y;
+            return true;
+        }
+    }
+
+    cc.x = xx;
+    cc.y = yy;
+    if (allowXy && goodposMakemonLikeC(xx, yy, fakemon, entflags, g)) return true;
+    return false;
 }
 
 /**

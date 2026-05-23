@@ -393,9 +393,8 @@ export function mksobjInitFoodClassIniInvAfterOtypLikeC(otyp) {
         default:
             break;
     }
-    if (t >= 180 && t <= 183) {
-        rn2(5);
-    } else if (t !== 174 && t !== 179 && t !== 184 && !rn2(6)) {
+    /* C: mkobj.c FOOD_CLASS — `Is_pudding` glob init has no quan roll; else `!rn2(6)` for quan 2. */
+    if (t !== 174 && t !== 179 && t !== 184 && !rn2(6)) {
         /* quan 2 */
     }
 }

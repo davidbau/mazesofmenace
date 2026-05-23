@@ -1612,6 +1612,7 @@ const MERC_ARMOR_BONUS = new Map([
     [LEATHER_CLOAK, 1],
 ]);
 const SEARCH_POTION_INDICES = new Set([2, 3, 4, 5, 8, 10, 11, 12, 17, 18, 19, 23]);
+const SEARCH_WAND_INDICES = new Set([3, 7, 11, 14, 18, 19, 20, 21, 22, 23, 24]);
 const PET_PASSIVE_DAMAGE_MONSTERS = new Set(['brown mold', 'green mold', 'red mold']);
 const DART_TRAP = 2;
 const LARGE_BOX = 214;
@@ -6915,6 +6916,14 @@ function monsterSearchesForItem(mon, obj, cls) {
     if (data.mindless || data.nohands || data.name === 'ghost') return false;
     if (cls === TOOL_CLASS) return !obj.olocked
         && (obj.contents != null || obj.kind === 'bag' || obj.otyp === LARGE_BOX || obj.otyp === CHEST);
+    if (cls === WAND_CLASS) {
+        if ((obj.spe ?? 0) <= 0) return false;
+        const wandIndex = obj.wandIndex;
+        if (wandIndex === 8) return !mon.minvis && !mon.invis_blkd && !data.gaze;
+        if (wandIndex === 10) return mon.mspeed !== 'fast' && mon.mspeed !== 2;
+        if (wandIndex === 12) return (data.difficulty ?? data.mlevel ?? 0) < 6;
+        return SEARCH_WAND_INDICES.has(wandIndex);
+    }
     if (cls !== POTION_CLASS) return false;
 
     if (obj.potionIndex != null) return SEARCH_POTION_INDICES.has(obj.potionIndex);

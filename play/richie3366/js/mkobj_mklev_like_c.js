@@ -4,6 +4,8 @@
 import { game } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
+import { P_BOW, P_SHURIKEN } from './const.js';
+import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
 import {
     NH5_RANDOM_CLASS,
@@ -53,6 +55,43 @@ const MKOBJ_PROBS = Object.freeze([
     [1, NH5_AMULET_CLASS],
 ]);
 
+/** C: objclass.h `SPBOOK_no_NOVEL` — mklev.js / mkobj.c `mkobj(SPBOOK_no_NOVEL, …)`. */
+const LET_SPBOOK_NO_NOVEL = 11;
+
+/** C: objects.h `SPE_BLANK_PAPER` — `rnd_class` upper bound for novel spellbooks. */
+const OTYP_SPE_BLANK_PAPER = 406;
+
+/** @param {readonly (readonly [number, number])[]} rows */
+function ocProbMapFromRows(rows) {
+    /** @type {Map<number, number>} */
+    const m = new Map();
+    for (const r of rows) m.set(r[0] | 0, r[1] | 0);
+    return m;
+}
+
+const SPBOOK_OC_PROB = ocProbMapFromRows(SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS);
+const OTYP_SPBOOK_CLASS_FIRST = SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS[0][0] | 0;
+
+/**
+ * C: objnam.c rnd_class(first, last) — walk contiguous `objects[i].oc_prob`.
+ * @param {number} first
+ * @param {number} last
+ */
+function rndClassMklevOtypLikeC(first, last) {
+    const lo = first | 0;
+    const hi = last | 0;
+    if (hi <= lo) return lo === hi ? lo : 0;
+    let sum = 0;
+    for (let i = lo; i <= hi; i++) sum += SPBOOK_OC_PROB.get(i) | 0;
+    if (!sum) return rn1(hi - lo + 1, lo);
+    let x = rnd(sum);
+    for (let i = lo; i <= hi; i++) {
+        x -= SPBOOK_OC_PROB.get(i) | 0;
+        if (x <= 0) return i;
+    }
+    return hi;
+}
+
 /** mklev.js legacy oclass literals → NH5 objclass.h indices. */
 const LEGACY_OCLASS_TO_NH5 = new Map([
     [0, NH5_RANDOM_CLASS],
@@ -73,7 +112,8 @@ const AMULET_CLASS_MKOBJ_OC_PROB_ROWS = Object.freeze([
 ]);
 
 const OTYP_LOADSTONE = 88;
-const OTYP_ROCK = 89;
+/** C `objects.h` **`ROCK("rock")`** — NH5 otyp **473**. */
+const OTYP_ROCK = 473;
 /** C: objects.h LUCKSTONE — skip `!rn2(6)` quan-2 branch in mksobj_init GEM_CLASS. */
 const OTYP_LUCKSTONE = 470;
 const OTYP_WAN_WISHING = 413;
@@ -85,7 +125,17 @@ const RING_CHARGED = new Set(
     RING_CLASS_MKOBJ_ROWS.filter((r) => (r[1] | 0) === 1).map((r) => r[0] | 0),
 );
 
-const WEAPON_MULTIGEN_OTYP = new Set([24, 25, 26]); /* DART, SHURIKEN, BOOMERANG */
+/** C: obj.h is_multigen — projectiles 19–24 lack OC_SKILL_ROW_BY_OTYP entries. */
+const OTYP_FIRST_PROJECTILE = 19;
+const OTYP_LAST_PROJECTILE = 24;
+
+function weaponMultigenMklevLikeC(otyp) {
+    const t = otyp | 0;
+    const row = OC_SKILL_ROW_BY_OTYP.get(t);
+    const sk = row?.oc_skill ?? 0;
+    if (row?.oclass === NH5_WEAPON_CLASS && sk >= -P_SHURIKEN && sk <= -P_BOW) return true;
+    return t >= OTYP_FIRST_PROJECTILE && t <= OTYP_LAST_PROJECTILE;
+}
 
 /** C: objnam.c erosion_matters — GEM/food/etc. skip mkobj_erosions. */
 function erosionMattersMklevLikeC(oclass) {
@@ -100,8 +150,8 @@ function erosionMattersMklevLikeC(oclass) {
     }
 }
 
-/** C: mkobj.c may_generate_eroded + mkobj_erosions — in_mklev floor objects only when damageable. */
-function mkobjErosionsMklevLikeC(otyp, oclass) {
+/** C: mkobj.c mksobj_init tail — mkobj_erosions (WEAPON/ARMOR in mklev). */
+export function mkobjErosionsMklevLikeC(otyp, oclass) {
     if (!game.in_mklev) return;
     if (!erosionMattersMklevLikeC(oclass)) return;
     void otyp;
@@ -199,7 +249,7 @@ function blessorcurseLikeC(chance, otmp) {
 }
 
 function mksobjInitWeaponLikeC(otyp, artif) {
-    if (WEAPON_MULTIGEN_OTYP.has(otyp | 0)) rn1(6, 6);
+    if (weaponMultigenMklevLikeC(otyp)) rn1(6, 6);
     if (!rn2(11)) {
         rne(3);
         rn2(2);
@@ -235,21 +285,108 @@ function mksobjInitWandLikeC(otyp, otmp) {
     blessorcurseLikeC(17, otmp);
 }
 
+/** C: mkobj.c bcsign — +1 blessed, -1 cursed, else 0. */
+function bcsignFreshLikeC(bc) {
+    return (!!bc.blessed | 0) - (!!bc.cursed | 0);
+}
+
+/** C: mkobj.c blessorcurse — skip when already b/c. */
+function blessorcurseFreshLikeC(bc, chance) {
+    if (bc.blessed || bc.cursed) return;
+    if (!rn2(chance)) {
+        if (!rn2(2)) bc.cursed = true;
+        else bc.blessed = true;
+    }
+}
+
+/** C: mkobj.c RING_CLASS — non-charged curse types. */
+const OTYP_RIN_TELEPORTATION = 194;
+const OTYP_RIN_POLYMORPH = 195;
+const OTYP_RIN_AGGRAVATE_MONSTER = 196;
+const OTYP_RIN_HUNGER = 197;
+
 function mksobjInitRingLikeC(otyp) {
-    if (RING_CHARGED.has(otyp | 0)) {
-        blessorcurseLikeC(3);
+    const t = otyp | 0;
+    if (RING_CHARGED.has(t)) {
+        const bc = { blessed: false, cursed: false };
+        blessorcurseFreshLikeC(bc, 3);
+        let spe = 0;
         if (rn2(10)) {
-            if (rn2(10)) {
-                rn2(2) ? rne(3) : rne(3);
+            const sign = bcsignFreshLikeC(bc);
+            if (rn2(10) && sign) {
+                spe = sign * rne(3);
             } else {
-                rn2(2) ? rne(3) : rne(3);
+                spe = rn2(2) ? rne(3) : -rne(3);
             }
         }
-        rn2(4);
-        rn2(3);
-        if (rn2(5)) { /* curse */ }
-    } else if (rn2(10) && !rn2(9)) {
-        /* curse ring types */
+        if (spe === 0) {
+            spe = rn2(4) - rn2(3);
+        }
+        if (spe < 0 && rn2(5)) {
+            /* curse(otmp) */
+        }
+    } else if (
+        rn2(10) &&
+        (t === OTYP_RIN_TELEPORTATION ||
+            t === OTYP_RIN_POLYMORPH ||
+            t === OTYP_RIN_AGGRAVATE_MONSTER ||
+            t === OTYP_RIN_HUNGER ||
+            !rn2(9))
+    ) {
+        /* curse(otmp) */
+    }
+}
+
+/** C: mkobj.c mksobj_init — TOOL_CLASS (per-otyp; default is `break` only). */
+function mksobjInitToolLikeC(otyp) {
+    const t = otyp | 0;
+    switch (t) {
+    case 219: /* TALLOW_CANDLE */
+    case 220: /* WAX_CANDLE */
+        if (rn2(2)) rn2(7);
+        blessorcurseLikeC(5);
+        break;
+    case 221: /* BRASS_LANTERN */
+    case 222: /* OIL_LAMP */
+        rn1(500, 1000);
+        blessorcurseLikeC(5);
+        break;
+    case 223: /* MAGIC_LAMP */
+        blessorcurseLikeC(2);
+        break;
+    case 215: /* LARGE_BOX */
+    case 216: /* CHEST */
+        rn2(5);
+        rn2(10);
+        if (!rn2(100)) { /* tknown when trapped */ }
+        /* mkbox_cnts — TODO when floor containers need contents RNG */
+        break;
+    case 245: /* EXPENSIVE_CAMERA */
+    case 246: /* TINNING_KIT */
+    case 247: /* MAGIC_MARKER */
+        rn1(70, 30);
+        break;
+    case 248: /* CAN_OF_GREASE */
+        rn1(21, 5);
+        blessorcurseLikeC(10);
+        break;
+    case 249: /* CRYSTAL_BALL */
+        rn1(5, 3);
+        blessorcurseLikeC(2);
+        break;
+    case 250: /* HORN_OF_PLENTY */
+    case 251: /* BAG_OF_TRICKS */
+        rn1(18, 3);
+        break;
+    case 252: /* MAGIC_FLUTE */
+    case 253: /* MAGIC_HARP */
+    case 254: /* FROST_HORN */
+    case 255: /* FIRE_HORN */
+    case 256: /* DRUM_OF_EARTHQUAKE */
+        rn1(5, 4);
+        break;
+    default:
+        break;
     }
 }
 
@@ -287,11 +424,20 @@ export function mksobjPostInitStatueLikeC(otyp) {
  * @returns {number} otyp
  */
 export function mkobjMklevConsumeRngLikeC(let_, artif) {
-    let oclass = nh5OclassFromLet(let_);
-    if (oclass === NH5_RANDOM_CLASS) {
-        oclass = mkobjPickOclassFromMkobjprobsLikeC();
+    const letRaw = let_ | 0;
+    let oclass;
+    let otyp;
+    if (letRaw === LET_SPBOOK_NO_NOVEL) {
+        /* C: mkobj.c — `rnd_class(svb.bases[SPBOOK_CLASS], SPE_BLANK_PAPER)` */
+        otyp = rndClassMklevOtypLikeC(OTYP_SPBOOK_CLASS_FIRST, OTYP_SPE_BLANK_PAPER);
+        oclass = NH5_SPBOOK_CLASS;
+    } else {
+        oclass = nh5OclassFromLet(letRaw);
+        if (oclass === NH5_RANDOM_CLASS) {
+            oclass = mkobjPickOclassFromMkobjprobsLikeC();
+        }
+        otyp = mkobjPickOtypForClassLikeC(oclass);
     }
-    const otyp = mkobjPickOtypForClassLikeC(oclass);
     rnd(2);
     mksobjInitMklevLikeC(otyp, oclass, artif);
     mksobjPostInitStatueLikeC(otyp);
@@ -340,7 +486,7 @@ export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
         else blessorcurseLikeC(10);
         break;
     case NH5_TOOL_CLASS:
-        blessorcurseLikeC(5);
+        mksobjInitToolLikeC(otyp);
         break;
     default:
         break;

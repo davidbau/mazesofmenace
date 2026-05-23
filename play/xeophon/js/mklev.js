@@ -772,6 +772,7 @@ const APPRENTICE = { name: 'apprentice', mlet: '@', glyph: '@', color: CLR_WHITE
 const MINION_OF_HUHETOTL = { name: 'Minion of Huhetotl', mlet: '&', glyph: '&', color: CLR_ORANGE, mlevel: 16, hpLevel: 17, difficulty: 23, mmove: 12, maligntyp: -14, neuter: true, demon: true, inAir: true, strong: true, nasty: true, armed: true, randomInventory: true, alwaysHostile: true, waiting: true, nemesis: true, noCorpse: true };
 const ARCH_PRIEST = { name: 'Arch Priest', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 24, difficulty: 30, mmove: 15, maligntyp: 0, male: true, strong: true, armed: true, priest: true, randomInventory: true, alwaysPeaceful: true, magic: true, waiting: true };
 const ACOLYTE = { name: 'acolyte', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 8, mmove: 12, maligntyp: 0, strong: true, armed: true, spellcaster: true, guardian: true, randomInventory: true, alwaysPeaceful: true };
+const NALZOK = { name: 'Nalzok', mlet: '&', glyph: '&', color: CLR_ORANGE, mlevel: 16, hpLevel: 17, difficulty: 23, mmove: 12, mac: -2, maligntyp: -127, male: true, demon: true, inAir: true, seeInvisible: true, strong: true, nasty: true, armed: true, randomInventory: true, alwaysHostile: true, waiting: true, nemesis: true, noCorpse: true };
 
 const SOKOBAN_ZOO_MONSTERS = [
     { name: 'giant ant', weight: 3, mlevel: 2, hpLevel: 3, mlet: 'a', glyph: 'a', color: 3, neuter: false, smallGroup: true, oviparous: true },
@@ -1629,6 +1630,27 @@ const BIGRM2_MAP = [
     '---------------------------------------------------------------------------',
 ];
 
+const BIGRM3_MAP = [
+    '---------------------------------------------------------------------------',
+    '|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|..............---.......................................---..............|',
+    '|...............|.........................................|...............|',
+    '|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|',
+    '|.....|--------   --------|...................|----------   --------|.....|',
+    '|.....|.|.|.|.|---|.|.|.|.|...................|.|.|.|.|.|---|.|.|.|.|.....|',
+    '|...............|.........................................|...............|',
+    '|..............---.......................................---..............|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|.|',
+    '---------------------------------------------------------------------------',
+];
+
 const BIGRM4_MAP = [
     '-----------                                                     -----------',
     '|.........|                                                     |.........|',
@@ -1739,12 +1761,20 @@ const BIGRM12_MAP = [
 
 const BIGRM_MAPS = {
     2: BIGRM2_MAP,
+    3: BIGRM3_MAP,
     4: BIGRM4_MAP,
     7: BIGRM7_MAP,
     8: BIGRM8_MAP,
     9: BIGRM9_MAP,
     12: BIGRM12_MAP,
 };
+
+const BIGRM3_MONSTER_COORDS = [
+    [1, 1], [13, 1], [25, 1], [37, 1], [49, 1], [61, 1], [73, 1],
+    [7, 7], [13, 7], [25, 7], [37, 7], [49, 7], [61, 7], [67, 7],
+    [7, 9], [13, 9], [25, 9], [37, 9], [49, 9], [61, 9], [67, 9],
+    [1, 16], [13, 16], [25, 16], [37, 16], [49, 16], [61, 16], [73, 16],
+];
 
 const BIGRM8_WIDTH = 75;
 const BIGRM8_HEIGHT = 18;
@@ -2738,6 +2768,33 @@ const PRI_LOCA_FIXED_TRAPS = [[15, 4], [25, 4], [15, 9], [25, 9]];
 function priLocaX(x) { return PRI_LOCA_XSTART + x; }
 function priLocaY(y) { return PRI_LOCA_YSTART + y; }
 
+const PRI_GOAL_XSTART = 27;
+const PRI_GOAL_YSTART = 5;
+const PRI_GOAL_ROWS = [
+    'xxxxxx..xxxxxx...xxxxxxxxx',
+    'xxxx......xx......xxxxxxxx',
+    'xx.xx.............xxxxxxxx',
+    'x....................xxxxx',
+    '......................xxxx',
+    '......................xxxx',
+    'xx........................',
+    'xxx......................x',
+    'xxx................xxxxxxx',
+    'xxxx.....x.xx.......xxxxxx',
+    'xxxxx...xxxxxx....xxxxxxxx',
+];
+const PRI_GOAL_WIDTH = PRI_GOAL_ROWS[0].length;
+const PRI_GOAL_HEIGHT = PRI_GOAL_ROWS.length;
+const PRI_GOAL_ARTIFACT_SPOTS = [[14, 4], [13, 7]];
+const PRI_GOAL_MONSTERS = [
+    ...Array(16).fill('human zombie'),
+    'Z', 'Z',
+    ...Array(8).fill('wraith'),
+    'W',
+];
+function priGoalX(x) { return PRI_GOAL_XSTART + x; }
+function priGoalY(y) { return PRI_GOAL_YSTART + y; }
+
 const ARC_LOCA_XSTART = 3;
 const ARC_LOCA_YSTART = 1;
 const ARC_LOCA_ROWS = [
@@ -2841,6 +2898,7 @@ const QUEST_LEVEL_BUILDERS = {
         special: {
             'x-strt': make_pri_strt_level,
             'x-loca': make_pri_loca_level,
+            'x-goal': make_pri_goal_level,
         },
     },
 };
@@ -2897,6 +2955,28 @@ function arcGoalY(y) { return ARC_GOAL_YSTART + y; }
 
 const MEDUSA_XSTART = 3;
 const MEDUSA_YSTART = 1;
+const MEDUSA1_ROWS = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}.}}}}}..}}}}}......}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}....}}}...}}}}}',
+    '}...}}.....}}}}}....}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}...............}',
+    '}....}}}}}}}}}}....}}}..}}}}}}}}}}}.......}}}}}}}}}}}}}}}}..}}.....}}}...}}',
+    '}....}}}}}}}}.....}}}}..}}}}}}.................}}}}}}}}}}}.}}}}.....}}...}}',
+    '}....}}}}}}}}}}}}.}}}}.}}}}}}.-----------------.}}}}}}}}}}}}}}}}}.........}',
+    '}....}}}}}}}}}}}}}}}}}}.}}}...|...............S...}}}}}}}}}}}}}}}}}}}....}}',
+    '}.....}.}}....}}}}}}}}}.}}....--------+--------....}}}}}}..}}}}}}}}}}}...}}',
+    '}......}}}}..}}}}}}}}}}}}}........|.......|........}}}}}....}}}}}}}}}}}}}}}',
+    '}.....}}}}}}}}}}}}}}}}}}}}........|.......|........}}}}}...}}}}}}}}}.}}}}}}',
+    '}.....}}}}}}}}}}}}}}}}}}}}....--------+--------....}}}}}}.}.}}}}}}}}}}}}}}}',
+    '}......}}}}}}}}}}}}}}}}}}}}...S...............|...}}}}}}}}}}}}}}}}}.}}}}}}}',
+    '}.......}}}}}}}..}}}}}}}}}}}}.-----------------.}}}}}}}}}}}}}}}}}....}}}}}}',
+    '}........}}.}}....}}}}}}}}}}}}.................}}}}}..}}}}}}}}}.......}}}}}',
+    '}.......}}}}}}}......}}}}}}}}}}}}}}.......}}}}}}}}}.....}}}}}}...}}..}}}}}}',
+    '}.....}}}}}}}}}}}.....}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}..}}}}}}}}}}....}}}}}}}',
+    '}}..}}}}}}}}}}}}}....}}}}}}}}}}}}}}}}}}}}}}...}}..}}}}}}}.}}.}}}}..}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
 const MEDUSA3_ROWS = [
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
     '}}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
@@ -2919,6 +2999,8 @@ const MEDUSA3_ROWS = [
     '}}}}}}}}}}}..}}}}}}}}}}}}}}}.}}}}}}}}}}}}}}}}}T..T}}}}}}}}}}}}}}}}}}}}}}}}}}',
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
 ];
+const MEDUSA1_WIDTH = MEDUSA1_ROWS[0].length;
+const MEDUSA1_HEIGHT = MEDUSA1_ROWS.length;
 const MEDUSA_WIDTH = MEDUSA3_ROWS[0].length;
 const MEDUSA_HEIGHT = MEDUSA3_ROWS.length;
 
@@ -4324,8 +4406,12 @@ export function adjustedMonsterLevel(ptr) {
 }
 
 function monsterAlignShift(maligntyp) {
+    const moves = game.moves || 1;
     const special = game.specialLevels?.find(level =>
         level.dnum === game.u?.uz?.dnum && level.dlevel === game.u?.uz?.dlevel);
+    game._align_shift_oldmoves = moves;
+    game._align_shift_has_special = !!special;
+    game._align_shift_special_align = special ? (game._special_level_align ?? A_NONE) : null;
     const align = special ? game._special_level_align : null;
     if (align === A_LAWFUL) return Math.trunc((maligntyp + 20) / 8);
     if (align === A_NEUTRAL) return Math.trunc((20 - Math.abs(maligntyp)) / 4);
@@ -5992,7 +6078,7 @@ export async function makemon(mdat, x, y, mmflags) {
         mkobj_at(RANDOM_CLASS, x, y, true);
         if (ptr.hidesUnder) mon.mundetected = canHideUnderObjAt(x, y);
     }
-    if (game.in_mklev && ptr.mlet === ';') mon.mundetected = true;
+    if (game.in_mklev && ptr.mlet === ';') mon.mundetected = !!IS_POOL(game.level?.at(x, y)?.typ);
     if (ptr.mlet === S_NYMPH) {
         if (rn2(5)) mon.msleeping = 1;
     }
@@ -7239,6 +7325,199 @@ async function priRandomTrap() {
     await priTrapAt(loc.x, loc.y, priSpecialRndTrapType());
 }
 
+function priGoalDryLocation(rejectStairs = false) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        return loc && SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y)
+            && (!rejectStairs || (loc.typ !== STAIRS && loc.typ !== LADDER));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = priGoalX(rn2(PRI_GOAL_WIDTH));
+        const y = priGoalY(rn2(PRI_GOAL_HEIGHT));
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 0; x < PRI_GOAL_WIDTH; x++)
+        for (let y = 0; y < PRI_GOAL_HEIGHT; y++) {
+            const ax = priGoalX(x), ay = priGoalY(y);
+            if (good(ax, ay)) return { x: ax, y: ay };
+        }
+    return { x: priGoalX(0), y: priGoalY(0) };
+}
+
+async function priGoalTrap(kind = null) {
+    const loc = priGoalDryLocation(true);
+    let actual = kind ?? priSpecialRndTrapType();
+    if (is_hole(actual)) {
+        const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+        const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+        if (!canFallThru) actual = ROCKTRAP;
+    }
+    const trap = await maketrap(loc.x, loc.y, actual);
+    if (trap?.ttyp === WEB) await makemon(monsterByRndName('giant spider'), loc.x, loc.y, 0);
+    arcLocaMaybeTrapVictim(trap);
+}
+
+function priGoalMkclassAligned(glyph) {
+    const rows = RNDMONST_COMMON_MONSTERS.filter(row => row[1] === glyph);
+    const names = new Set(rows.map(row => row[0]));
+    for (const row of MKCLASS_EXTRA_ROWS[glyph] || [])
+        if (!names.has(row[0])) rows.push(row);
+    return mkclassAligned(glyph, false, rows, true);
+}
+
+function priGoalLocationMatchesMonster(ptr, x, y, flags) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const boulder = sobj_at(BOULDER, x, y);
+    if (flags.solid && IS_OBSTRUCTED(loc.typ)) return true;
+    if (flags.dry && SPACE_POS(loc.typ) && (!boulder || flags.solid)) return true;
+    if (flags.wet && IS_POOL(loc.typ)) return true;
+    if (flags.hot && (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) return true;
+    return false;
+}
+
+function priGoalMonsterLocation(ptr) {
+    const baseFlags = {
+        dry: true,
+        wet: false,
+        hot: false,
+        solid: false,
+    };
+    if (ptr.swimmer) {
+        baseFlags.dry = false;
+        baseFlags.wet = true;
+    }
+    if (ptr.inAir || ptr.flyer || ptr.floater) {
+        baseFlags.wet = true;
+        baseFlags.hot = true;
+    }
+    if (ptr.passWalls || ptr.noncorporeal) baseFlags.solid = true;
+    if (ptr.likesFire || ptr.likesLava) baseFlags.hot = true;
+
+    const find = (flags, warn = true) => {
+        for (let tryct = 0; tryct < 100; tryct++) {
+            const x = priGoalX(rn2(PRI_GOAL_WIDTH));
+            const y = priGoalY(rn2(PRI_GOAL_HEIGHT));
+            if (priGoalLocationMatchesMonster(ptr, x, y, flags)) return { x, y };
+        }
+        if (!warn) return null;
+        for (let x = 0; x < PRI_GOAL_WIDTH; x++)
+            for (let y = 0; y < PRI_GOAL_HEIGHT; y++) {
+                const ax = priGoalX(x), ay = priGoalY(y);
+                if (priGoalLocationMatchesMonster(ptr, ax, ay, flags)) return { x: ax, y: ay };
+            }
+        return { x: priGoalX(0), y: priGoalY(0) };
+    };
+
+    const loc = find(baseFlags, false);
+    if (loc) return loc;
+    return find({ ...baseFlags, dry: true }, true);
+}
+
+async function priGoalMonster(kind) {
+    let ptr;
+    if (kind === 'Z' || kind === 'W') {
+        arcInducedAlign();
+        ptr = priGoalMkclassAligned(kind);
+    } else {
+        ptr = monsterByRndName(kind);
+        if (ptr && !ptr.female && !ptr.male && !ptr.neuter) rn2(2);
+        arcInducedAlign();
+    }
+    if (!ptr) return;
+    const loc = priGoalMonsterLocation(ptr);
+    let pos = loc;
+    if (game.level?.monsters?.some(mon => mon.mx === pos.x && mon.my === pos.y)) {
+        const spot = enextoMonsterSpot(pos.x, pos.y, ptr);
+        if (!spot) return;
+        pos = spot;
+    }
+    await makemon(ptr, pos.x, pos.y, 0);
+}
+
+async function make_pri_goal_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+
+    l_nhcore_init();
+    rn2(2);
+    mkmap_init(ROOM, LAVAPOOL);
+    mkmap_pass_one(ROOM, LAVAPOOL);
+    mkmap_pass_two(ROOM, LAVAPOOL);
+    mkmap_finish(LAVAPOOL, ROOM, false, false, false);
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = g.level.at(x, y);
+            if (!loc) continue;
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = false;
+            loc.waslit = loc.typ === LAVAPOOL;
+            loc.lastseentyp = loc.typ === LAVAPOOL ? LAVAPOOL : null;
+        }
+
+    for (let y = 0; y < PRI_GOAL_HEIGHT; y++) {
+        const row = PRI_GOAL_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(priGoalX(x), priGoalY(y));
+            if (!loc) continue;
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = false;
+            loc.lit = false;
+            if (ch === '.') {
+                loc.typ = ROOM;
+                loc.waslit = false;
+                loc.lastseentyp = null;
+            } else {
+                loc.lit = loc.typ === LAVAPOOL;
+                loc.waslit = loc.typ === LAVAPOOL;
+                loc.lastseentyp = loc.typ === LAVAPOOL ? LAVAPOOL : null;
+            }
+        }
+    }
+
+    mkstairs(priGoalX(20), priGoalY(5), true, null);
+
+    const spot = PRI_GOAL_ARTIFACT_SPOTS[rn2(PRI_GOAL_ARTIFACT_SPOTS.length)];
+    const artifactX = priGoalX(spot[0]), artifactY = priGoalY(spot[1]);
+    game._mkobj_armor_erosion = { primary: true, secondary: false };
+    const mitre = mksobj_at(HELM_OF_BRILLIANCE, artifactX, artifactY, true, false);
+    Object.assign(mitre, {
+        spe: 0, blessed: true, cursed: false, oerodeproof: true,
+        artifact: 'The Mitre of Holiness', cls: 'armor',
+        kind: 'helm of brilliance', actualKind: 'helm of brilliance',
+    }, object_display(mitre));
+    g._artifact_count = (g._artifact_count || 0) + 1;
+
+    for (let i = 0; i < 14; i++) {
+        const loc = priGoalDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 4; i++) await priGoalTrap(FIRE_TRAP);
+    for (let i = 0; i < 2; i++) await priGoalTrap();
+
+    arcInducedAlign();
+    await makemon(NALZOK, artifactX, artifactY, 0);
+    for (const kind of PRI_GOAL_MONSTERS) await priGoalMonster(kind);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1, true);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    g.in_mklev = false;
+}
+
 async function priNamedMonster(ptr, x, y, randomGender = true) {
     if (randomGender) rn2(2);
     arcInducedAlign();
@@ -7537,6 +7816,10 @@ async function make_pri_loca_level() {
             loc.doormask = mask;
         }
     }
+    add_door(priLocaX(20), priLocaY(2), morgues[1]);
+    add_door(priLocaX(30), priLocaY(6), morgues[3]);
+    add_door(priLocaX(30), priLocaY(7), morgues[3]);
+    add_door(priLocaX(20), priLocaY(11), morgues[2]);
     mkstairs(priLocaX(43), priLocaY(5), true, null);
     mkstairs(priLocaX(20), priLocaY(6), false, null);
 
@@ -10460,6 +10743,19 @@ export async function make_bigrm8_level() {
     } else if (variant === 7) {
         const terrain = ['L', 'T', '{', '.'][rn2(4)];
         replace_special_terrain(xstart, ystart, width, height, LAVAPOOL, SPECIAL_TERRAIN[terrain] ?? ROOM);
+    } else if (variant === 3) {
+        if (rn2(100) < 66) {
+            const terrain = ['F', 'T', 'W', 'Z'][rn2(4)];
+            const toTyp = SPECIAL_TERRAIN[terrain] ?? ROOM;
+            for (let y = 0; y < height; y++) {
+                const row = rows[y].padEnd(width, ' ');
+                for (let x = 1; x < width - 1; x++) {
+                    if (row[x - 1] !== '.' || row[x + 1] !== '.') continue;
+                    const loc = g.level.at(xstart + x, ystart + y);
+                    if (loc && (loc.typ === HWALL || loc.typ === VWALL)) loc.typ = toTyp;
+                }
+            }
+        }
     } else if (variant === 12) {
         if (rn2(100) < 20) {
             if (rn2(100) < 50)
@@ -10556,16 +10852,23 @@ export async function make_bigrm8_level() {
         if (kind === WEB) await makemon(monsterByRndName('giant spider'), loc.x, loc.y, 0);
         rnd(4);
     }
-    for (let i = 0; i < 28; i++) {
-        rn2(3);
-        let loc = bigrm8RandomLocation(bigrmDryTyp);
-        if (g.level.monsters?.some(mon => mon.mx === loc.x && mon.my === loc.y)) {
-            const spot = enextoMonsterSpot(loc.x, loc.y);
-            if (spot) loc = { ...loc, x: spot.x, y: spot.y, preX: spot.x, preY: spot.y };
+    if (variant === 3) {
+        for (const [mx, my] of BIGRM3_MONSTER_COORDS) {
+            rn2(3);
+            await makemon(null, xstart + mx, ystart + my, 0);
         }
-        g._bigrm_preflip_location = loc;
-        await makemon(null, loc.x, loc.y, 0);
-        g._bigrm_preflip_location = null;
+    } else {
+        for (let i = 0; i < 28; i++) {
+            rn2(3);
+            let loc = bigrm8RandomLocation(bigrmDryTyp);
+            if (g.level.monsters?.some(mon => mon.mx === loc.x && mon.my === loc.y)) {
+                const spot = enextoMonsterSpot(loc.x, loc.y);
+                if (spot) loc = { ...loc, x: spot.x, y: spot.y, preX: spot.x, preY: spot.y };
+            }
+            g._bigrm_preflip_location = loc;
+            await makemon(null, loc.x, loc.y, 0);
+            g._bigrm_preflip_location = null;
+        }
     }
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -10636,6 +10939,8 @@ export async function make_bigrm8_level() {
             wallification(1, 0, COLNO - 1, ROWNO - 1);
         }
     }
+    if (is_branchlev() && !g.made_branch)
+        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
     recount_level_features();
     level_finalize_topology();
     g._bigrm_location_rows = null;
@@ -13855,6 +14160,33 @@ function medusaDryLocation() {
     return medusaRandomLocation(loc => SPACE_POS(loc.typ));
 }
 
+function medusa1RandomLocation(okay) {
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = medusaX(rn2(MEDUSA1_WIDTH));
+        const y = medusaY(rn2(MEDUSA1_HEIGHT));
+        const loc = game.level.at(x, y);
+        if (loc && okay(loc, x, y)) return { x, y };
+    }
+    for (let lx = 0; lx < MEDUSA1_WIDTH; lx++)
+        for (let ly = 0; ly < MEDUSA1_HEIGHT; ly++) {
+            const x = medusaX(lx);
+            const y = medusaY(ly);
+            const loc = game.level.at(x, y);
+            if (loc && okay(loc, x, y)) return { x, y };
+        }
+    return { x: medusaX(0), y: medusaY(0) };
+}
+
+function medusa1DryLocation() {
+    return medusa1RandomLocation(loc => SPACE_POS(loc.typ));
+}
+
+function medusa1MonsterLocation(ptr) {
+    if (ptr?.inAir) return medusa1RandomLocation(loc => SPACE_POS(loc.typ) || IS_POOL(loc.typ) || loc.typ === LAVAPOOL);
+    if (ptr?.swimmer) return medusa1RandomLocation(loc => IS_POOL(loc.typ));
+    return medusa1DryLocation();
+}
+
 function medusaMonsterLocation(ptr) {
     if (ptr.inAir) return medusaRandomLocation(loc => SPACE_POS(loc.typ) || IS_POOL(loc.typ) || loc.typ === LAVAPOOL);
     if (ptr.swimmer) return medusaRandomLocation(loc => IS_POOL(loc.typ));
@@ -13863,7 +14195,7 @@ function medusaMonsterLocation(ptr) {
 
 function medusaDoor(state, x, y) {
     const loc = game.level.at(medusaX(x), medusaY(y));
-    loc.typ = DOOR;
+    if (loc.typ !== SDOOR) loc.typ = DOOR;
     loc.doormask = state === 'locked' ? D_LOCKED
         : state === 'random' ? [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)]
             : D_CLOSED;
@@ -13909,9 +14241,9 @@ function medusaToptenStatue(x, y) {
     return statue;
 }
 
-function medusaFlipRooms(flips) {
-    const flipX = x => MEDUSA_XSTART + MEDUSA_WIDTH - 1 - (x - MEDUSA_XSTART);
-    const flipY = y => MEDUSA_YSTART + MEDUSA_HEIGHT - 1 - (y - MEDUSA_YSTART);
+function medusaFlipRooms(flips, width = MEDUSA_WIDTH, height = MEDUSA_HEIGHT) {
+    const flipX = x => MEDUSA_XSTART + width - 1 - (x - MEDUSA_XSTART);
+    const flipY = y => MEDUSA_YSTART + height - 1 - (y - MEDUSA_YSTART);
     for (const room of game.level.rooms || []) {
         if (!room || room.hx < 0) continue;
         if (flips.flipVertical) {
@@ -13923,9 +14255,9 @@ function medusaFlipRooms(flips) {
     }
 }
 
-function medusaFlipRegion(region, flips) {
-    const flipX = x => MEDUSA_XSTART + MEDUSA_WIDTH - 1 - (x - MEDUSA_XSTART);
-    const flipY = y => MEDUSA_YSTART + MEDUSA_HEIGHT - 1 - (y - MEDUSA_YSTART);
+function medusaFlipRegion(region, flips, width = MEDUSA_WIDTH, height = MEDUSA_HEIGHT) {
+    const flipX = x => MEDUSA_XSTART + width - 1 - (x - MEDUSA_XSTART);
+    const flipY = y => MEDUSA_YSTART + height - 1 - (y - MEDUSA_YSTART);
     let [lx, ly, hx, hy] = region;
     if (flips.flipVertical) [ly, hy] = [flipY(hy), flipY(ly)];
     if (flips.flipHorizontal) [lx, hx] = [flipX(hx), flipX(lx)];
@@ -13965,21 +14297,183 @@ async function medusaMonster(ptr, opts = {}) {
     return makemon(ptr, pos.x, pos.y, opts.angry ? MM_ANGRY : 0);
 }
 
+async function medusa1Monster(ptr, opts = {}) {
+    if (opts.findGender) rn2(2);
+    medusaInducedAlign();
+    const monPtr = opts.classGlyph ? mkclassAligned(opts.classGlyph) : ptr;
+    const pos = opts.x == null
+        ? (monPtr ? medusa1MonsterLocation(monPtr) : medusa1DryLocation())
+        : { x: medusaX(opts.x), y: medusaY(opts.y) };
+    const mon = await makemon(monPtr, pos.x, pos.y, opts.angry ? MM_ANGRY : 0);
+    if (mon && opts.asleep) mon.msleeping = 1;
+    return mon;
+}
+
+async function make_medusa1_level() {
+    const g = game;
+    for (let y = 0; y < MEDUSA1_ROWS.length; y++) {
+        const row = MEDUSA1_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(medusaX(x), medusaY(y));
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.lit = false;
+            loc.waslit = false;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = ch !== '|';
+            if (ch === '+') {
+                loc.typ = DOOR;
+                loc.doormask = D_CLOSED;
+            } else if (ch === 'S') {
+                loc.typ = SDOOR;
+                loc.doormask = D_CLOSED;
+            } else {
+                loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            }
+        }
+    }
+
+    medusaSetLit(0, 0, 74, 19, true);
+    medusaSetLit(31, 7, 45, 7, false);
+    add_room(medusaX(35), medusaY(9), medusaX(41), medusaY(10), false, OROOM, true);
+    medusaSetLit(35, 9, 41, 10, false);
+    medusaSetLit(31, 12, 45, 12, false);
+    g.level.dndest = { lx: medusaX(1), ly: medusaY(1), hx: medusaX(5), hy: medusaY(17), nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+    g.level.updest = { lx: medusaX(26), ly: medusaY(4), hx: medusaX(50), hy: medusaY(15), nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+
+    mkstairs(medusaX(5), medusaY(14), true, null);
+    mkstairs(medusaX(36), medusaY(10), false, null);
+    medusaDoor('closed', 46, 7);
+    medusaDoor('locked', 38, 8);
+    medusaDoor('locked', 38, 11);
+    medusaDoor('closed', 30, 12);
+
+    for (let x = 30; x <= 46; x++)
+        for (let y = 6; y <= 13; y++) {
+            const loc = g.level.at(medusaX(x), medusaY(y));
+            if (loc) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+
+    const perseus = mksobj_at(STATUE, medusaX(36), medusaY(10), true, false);
+    perseus.contents = [];
+    perseus.corpsenm = KNIGHT_MON;
+    perseus.spe = CORPSTAT_MALE | CORPSTAT_HISTORIC;
+    Object.assign(perseus, object_display(perseus));
+    if (rn2(100) < 75) {
+        medusa1DryLocation();
+        game._mkobj_armor_erosion = { primary: false, secondary: false };
+        const shield = mksobj(SHIELD_OF_REFLECTION, true, true);
+        Object.assign(shield, { cursed: true, blessed: false, spe: 0 });
+        add_to_container(perseus, shield);
+    }
+    if (rn2(100) < 25) {
+        medusa1DryLocation();
+        const boots = mksobj(LOW_BOOTS, true, true);
+        boots.spe = 0;
+        add_to_container(perseus, boots);
+    }
+    if (rn2(100) < 50) {
+        medusa1DryLocation();
+        const scimitar = mksobj(SCIMITAR, true, true);
+        Object.assign(scimitar, { blessed: true, cursed: false, spe: 2 });
+        add_to_container(perseus, scimitar);
+    }
+    if (rn2(100) < 50) {
+        medusa1DryLocation();
+        add_to_container(perseus, mksobj(SACK, true, true));
+    }
+
+    for (let i = 0; i < 7; i++) {
+        const pos = medusa1DryLocation();
+        await medusaRandomStatue(pos.x, pos.y);
+    }
+    for (let i = 0; i < 8; i++) {
+        const pos = medusa1DryLocation();
+        stack_floor_object(mkobj_at(RANDOM_CLASS, pos.x, pos.y, true));
+    }
+
+    for (let i = 0; i < 5; i++) {
+        const pos = medusa1DryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        await maketrap(pos.x, pos.y, kind);
+        rnd(4);
+    }
+    await maketrap(medusaX(38), medusaY(7), SQKY_BOARD);
+    rnd(4);
+    await maketrap(medusaX(38), medusaY(12), SQKY_BOARD);
+    rnd(4);
+
+    await medusa1Monster(MEDUSA_MON, { x: 36, y: 10, asleep: true });
+    await medusa1Monster(GIANT_EEL, { x: 11, y: 6, findGender: true });
+    await medusa1Monster(GIANT_EEL, { x: 23, y: 13, findGender: true });
+    await medusa1Monster(GIANT_EEL, { x: 29, y: 2, findGender: true });
+    await medusa1Monster(JELLYFISH, { x: 2, y: 2, findGender: true });
+    await medusa1Monster(JELLYFISH, { x: 0, y: 8, findGender: true });
+    await medusa1Monster(JELLYFISH, { x: 4, y: 18, findGender: true });
+    await medusa1Monster(monsterByRndName('water troll'), { x: 51, y: 3, findGender: true });
+    await medusa1Monster(monsterByRndName('water troll'), { x: 64, y: 11, findGender: true });
+    await medusa1Monster(null, { x: 38, y: 7, classGlyph: 'S' });
+    await medusa1Monster(null, { x: 38, y: 12, classGlyph: 'S' });
+    for (let i = 0; i < 10; i++)
+        await medusa1Monster(null);
+
+    const flips = { flipVertical: !!rn2(2), flipHorizontal: !!rn2(2) };
+    if (flips.flipVertical || flips.flipHorizontal) {
+        flip_sokoban_layout({ x: MEDUSA_XSTART, y: MEDUSA_YSTART }, MEDUSA1_WIDTH, MEDUSA1_HEIGHT, flips);
+        medusaFlipRooms(flips, MEDUSA1_WIDTH, MEDUSA1_HEIGHT);
+    }
+    const branchRegion = medusaFlipRegion([medusaX(1), medusaY(0), medusaX(79), medusaY(20)],
+        flips, MEDUSA1_WIDTH, MEDUSA1_HEIGHT);
+    const branchExclude = medusaFlipRegion([medusaX(30), medusaY(6), medusaX(46), medusaY(13)],
+        flips, MEDUSA1_WIDTH, MEDUSA1_HEIGHT);
+    place_lregion(...branchRegion, ...branchExclude, LR_BRANCH, null);
+
+    const firstRoom = g.level.rooms[0];
+    for (let tryct = rnd(4); tryct; tryct--) {
+        medusaToptenStatue(somex(firstRoom), somey(firstRoom));
+    }
+    if (rn2(2)) {
+        medusaToptenStatue(somex(firstRoom), somey(firstRoom));
+    } else {
+        mkcorpstat(STATUE, null, null, somex(firstRoom), somey(firstRoom), 0);
+    }
+
+    wallification(MEDUSA_XSTART - 1, MEDUSA_YSTART - 1,
+        MEDUSA_XSTART + MEDUSA1_WIDTH, MEDUSA_YSTART + MEDUSA1_HEIGHT);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
+}
+
+function medusaLevelAlignForRndmonst() {
+    if (game._align_shift_oldmoves === (game.moves || 1)) {
+        if (game._align_shift_has_special) return game._align_shift_special_align ?? A_NONE;
+        return A_NONE;
+    }
+    return A_CHAOTIC;
+}
+
 async function make_medusa_level() {
     const g = game;
     if (await getbones()) return;
     g.in_mklev = true;
-    g._special_level_align = A_CHAOTIC;
+    g._special_level_align = medusaLevelAlignForRndmonst();
 
     clear_level_structures();
     g.level.flags.is_maze_lev = true;
     g.level.flags.noteleport = true;
     g.level.flags.shortsighted = true;
 
-    rnd(4);
+    const variant = rnd(4);
     rn2(3);
     rn2(2);
     rn2(2);
+    if (variant === 1) {
+        await make_medusa1_level();
+        return;
+    }
 
     for (let y = 0; y < MEDUSA3_ROWS.length; y++) {
         const row = MEDUSA3_ROWS[y];
@@ -14399,7 +14893,7 @@ function mkmap_init(bgTyp, fgTyp) {
     }
 }
 
-function mkmap_smooth(bgTyp, fgTyp) {
+function mkmap_pass_one(bgTyp, fgTyp) {
     for (let x = 2; x <= MKMAP_WIDTH; x++)
         for (let y = 1; y < MKMAP_HEIGHT; y++) {
             const count = mkmap_neighbor_count(x, y, bgTyp, fgTyp);
@@ -14408,7 +14902,9 @@ function mkmap_smooth(bgTyp, fgTyp) {
             if (count <= 2) loc.typ = bgTyp;
             else if (count >= 5) loc.typ = fgTyp;
         }
+}
 
+function mkmap_pass_two(bgTyp, fgTyp) {
     let next = Array.from({ length: COLNO }, () => new Array(ROWNO).fill(bgTyp));
     for (let x = 2; x <= MKMAP_WIDTH; x++)
         for (let y = 1; y < MKMAP_HEIGHT; y++)
@@ -14417,17 +14913,24 @@ function mkmap_smooth(bgTyp, fgTyp) {
     for (let x = 2; x <= MKMAP_WIDTH; x++)
         for (let y = 1; y < MKMAP_HEIGHT; y++)
             game.level.at(x, y).typ = next[x][y];
+}
 
-    for (let pass = 0; pass < 2; pass++) {
-        next = Array.from({ length: COLNO }, () => new Array(ROWNO).fill(bgTyp));
-        for (let x = 2; x <= MKMAP_WIDTH; x++)
-            for (let y = 1; y < MKMAP_HEIGHT; y++)
-                next[x][y] = mkmap_neighbor_count(x, y, bgTyp, fgTyp) < 3
-                    ? bgTyp : mkmap_get(x, y, bgTyp);
-        for (let x = 2; x <= MKMAP_WIDTH; x++)
-            for (let y = 1; y < MKMAP_HEIGHT; y++)
-                game.level.at(x, y).typ = next[x][y];
-    }
+function mkmap_pass_three(bgTyp, fgTyp) {
+    const next = Array.from({ length: COLNO }, () => new Array(ROWNO).fill(bgTyp));
+    for (let x = 2; x <= MKMAP_WIDTH; x++)
+        for (let y = 1; y < MKMAP_HEIGHT; y++)
+            next[x][y] = mkmap_neighbor_count(x, y, bgTyp, fgTyp) < 3
+                ? bgTyp : mkmap_get(x, y, bgTyp);
+    for (let x = 2; x <= MKMAP_WIDTH; x++)
+        for (let y = 1; y < MKMAP_HEIGHT; y++)
+            game.level.at(x, y).typ = next[x][y];
+}
+
+function mkmap_smooth(bgTyp, fgTyp) {
+    mkmap_pass_one(bgTyp, fgTyp);
+    mkmap_pass_two(bgTyp, fgTyp);
+    mkmap_pass_three(bgTyp, fgTyp);
+    mkmap_pass_three(bgTyp, fgTyp);
 }
 
 function mkmap_flood_region(x, y, roomno, fgTyp) {
@@ -14569,6 +15072,11 @@ function mkmap_finish(fgTyp, bgTyp, lit, walled, joined) {
                     || (walled && IS_WALL(loc.typ))) loc.lit = true;
             }
     }
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.typ === LAVAPOOL) loc.lit = true;
+        }
     if (walled && joined) {
         game.level.flags.is_maze_lev = false;
         game.level.flags.is_cavernous_lev = true;

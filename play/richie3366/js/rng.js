@@ -79,10 +79,16 @@ export function rnl(x) {
     return i;
 }
 
-// C ref: d(n, x) — roll n dice of x sides
+// C ref: d(n, x) — roll n dice of x sides (C recorder logs one `d(n,x)=` line, not inner `rnd`)
 export function d(n, x) {
+    const log = _rngLogEnabled;
+    if (log) _rngLogEnabled = false;
     let sum = 0;
     for (let i = 0; i < n; i++) sum += rnd(x);
+    if (log) {
+        _rngLogEnabled = true;
+        _rngLog.push(`d(${n},${x})=${sum}`);
+    }
     return sum;
 }
 

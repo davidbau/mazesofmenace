@@ -14,7 +14,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     def_warnsyms, IS_POOL, IS_STWALL, MAGIC_PORTAL, BC_BALL, BC_CHAIN,
-    AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM,
+    AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM, BOLT_LIM,
 } from './const.js';
 import {
     NO_COLOR, CLR_BROWN, CLR_BLUE, CLR_GRAY, CLR_WHITE, CLR_YELLOW, CLR_RED, CLR_ORANGE,
@@ -412,13 +412,10 @@ function terrainGlyph(loc, x, y) {
     }
 }
 
-function monsterAt(x, y) {
-    if (game.u?.blind) return undefined;
+function rawMonsterAt(x, y) {
     const mon = game.level?.monsters?.find(candidate =>
         candidate.mx === x && candidate.my === y
         && !candidate._hide_for_bones_prompt);
-    if (mon?.mundetected) return undefined;
-    if (mon?.minvis && !game.u?.seeInvisible) return undefined;
     if (mon?._hide_for_door_open) return undefined;
     if (mon?._hide_for_bullwhip_more) return undefined;
     if (mon?._hide_for_web_more) return undefined;
@@ -428,10 +425,46 @@ function monsterAt(x, y) {
     return mon;
 }
 
+function monsterAt(x, y) {
+    if (game.u?.blind) return undefined;
+    const mon = rawMonsterAt(x, y);
+    if (mon?.mundetected) return undefined;
+    if (mon?.minvis && !game.u?.seeInvisible) return undefined;
+    return mon;
+}
+
 function staleQueuedKillPetBlocked(stalePet) {
     return !!(stalePet?.mon && (game.level?.monsters || []).some(mon =>
         mon !== stalePet.mon && !mon.dead && (mon.mhp == null || mon.mhp > 0)
         && mon.mx === stalePet.x && mon.my === stalePet.y));
+}
+
+function itemIsWorn(item) {
+    return !!(item?.worn || /\(being worn\)/.test(item?.line || ''));
+}
+
+function telepathySourceCount() {
+    let count = 0;
+    for (const item of game.inventory || []) {
+        if (!itemIsWorn(item)) continue;
+        const name = `${item.kind || ''} ${item.actualKind || ''} ${item.line || ''}`.toLowerCase();
+        if (/\bamulet of (?:esp|telepathy)\b/.test(name)
+            || /\bhelm(?:et)? of (?:telepathy|esp)\b/.test(name))
+            count++;
+    }
+    return count;
+}
+
+function sensesTelepathically(mon) {
+    if (!mon || mon.mindless || mon.data?.mindless) return false;
+    const sources = telepathySourceCount();
+    const intrinsic = !!(game.u?.telepathy || game.u?.telepathetic || game.u?.HTelepat);
+    if (game.u?.blind) return sources > 0 || intrinsic;
+    if (!sources) return false;
+    const dx = (mon.mx ?? 0) - (game.u?.ux ?? 0);
+    const dy = (mon.my ?? 0) - (game.u?.uy ?? 0);
+    const range = game.u?.unblind_telepat_range ?? (BOLT_LIM * BOLT_LIM * sources);
+    return range >= 0 && dx * dx + dy * dy <= range;
 }
 
 function objectAt(x, y) {
@@ -628,6 +661,14 @@ function objectGlyph(obj) {
         const fallbackColor = MONSTER_COLORS[obj.corpsenm?.name] ?? NO_COLOR;
         return { ch: '%', color: storedColor == null || storedColor === NO_COLOR ? fallbackColor : storedColor, dec: false };
     }
+    if (obj.otyp === STATUE) {
+        const data = obj.corpsenm || {};
+        return {
+            ch: data.glyph || data.mlet?.[0] || obj.glyph || '`',
+            color: obj.color ?? data.color ?? MONSTER_COLORS[data.name] ?? CLR_WHITE,
+            dec: false,
+        };
+    }
     const revealPotionColor = obj.dknown;
     if (obj.glyph === '!' && obj._appearance_color != null && revealPotionColor)
         return { ch: '!', color: glyphColor(obj._appearance_color), dec: false };
@@ -678,12 +719,8 @@ export function newsym(x, y) {
         loc.lastseenwall_info = loc.wall_info;
     }
     const remembered = visible || loc.map_invisible || loc.seenv || loc.waslit || loc.lastseentyp != null;
-    const mon = game.u?.blind
-        ? game.level?.monsters?.find(candidate =>
-            candidate.mx === x && candidate.my === y
-            && !candidate.mundetected
-            && !candidate._hide_for_bones_prompt)
-        : monsterAt(x, y);
+    const rawMon = rawMonsterAt(x, y);
+    const mon = game.u?.blind ? undefined : monsterAt(x, y);
     const warningMon = game.level?.monsters?.find(candidate =>
         candidate.mx === x && candidate.my === y);
     let warning = null;
@@ -695,11 +732,6 @@ export function newsym(x, y) {
             if (level >= (game._warnlevel ?? 1)) warning = def_warnsyms[level];
         }
     }
-    if ((!visible || warningMon?.mundetected) && warning) {
-        if (hallucinatesDisplay()) warning = def_warnsyms[rn2_on_display_rng(def_warnsyms.length - 1) + 1];
-        show_glyph_cell(x, y, warning.ch, warning.color, false);
-        return;
-    }
     const obj = objectAt(x, y);
     const hasInfravision = game.u?.infravision || ['dwarven', 'elven', 'gnomish', 'orcish'].includes(game.urace?.adj);
     const heroRange = Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0)));
@@ -707,6 +739,12 @@ export function newsym(x, y) {
     const infraredHidden = INFRARED_HIDDEN_MLETS.has(mon?.data?.mlet || mon?.mlet);
     const seesInfrared = mon && canSee && !monsterVisible && !game.u?.blind && hasInfravision
         && !infraredHidden && !mon.data?.mindless && !mon.data?.nonliving && !mon.data?.name?.endsWith(' golem');
+    const seesTelepathically = sensesTelepathically(rawMon);
+    if ((!visible || warningMon?.mundetected) && warning && !seesInfrared && !seesTelepathically) {
+        if (hallucinatesDisplay()) warning = def_warnsyms[rn2_on_display_rng(def_warnsyms.length - 1) + 1];
+        show_glyph_cell(x, y, warning.ch, warning.color, false);
+        return;
+    }
     if (game.u?.ux === x && game.u?.uy === y) {
         if (game.u.usteed) {
             const glyph = monsterGlyph(game.u.usteed);
@@ -718,7 +756,7 @@ export function newsym(x, y) {
             return;
         }
     }
-    if (!remembered && !seesInfrared) {
+    if (!remembered && !seesInfrared && !seesTelepathically) {
         show_glyph_cell(x, y, ' ', NO_COLOR, false);
         return;
     }
@@ -749,10 +787,11 @@ export function newsym(x, y) {
             loc.remembered_glyph = null;
         }
     }
-    if (!game.u?.blind && mon && (monsterVisible || seesInfrared)) {
-        recordVisibleMonsterInventoryDiscovery(mon);
-        const glyph = monsterGlyph(mon);
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && mon.pet ? 1 : 0);
+    const displayedMon = seesTelepathically ? rawMon : mon;
+    if (displayedMon && (!game.u?.blind || seesTelepathically) && (monsterVisible || seesInfrared || seesTelepathically)) {
+        if (monsterVisible || seesInfrared) recordVisibleMonsterInventoryDiscovery(displayedMon);
+        const glyph = monsterGlyph(displayedMon);
+        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && displayedMon.pet ? 1 : 0);
         return;
     }
     if (mon?.appearGlyph && remembered
