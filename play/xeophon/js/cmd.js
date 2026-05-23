@@ -3,9 +3,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
+import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -1919,6 +1919,163 @@ function clearSanctumScriptPending() {
     game._sanctum_script_cursor = null;
 }
 
+function sanctumConsumePostSummonFirstAttackRng() {
+    rn2(20); // gethungry()
+    if (game.u) game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+    exerciseAttribute(A_STR, true);
+
+    rnd(20); // hitum() to-hit against the adjacent summoned monster
+    exerciseAttribute(A_DEX, true);
+    rnd(2); // bare-handed damage
+    rnd(100); // stagger check
+    rn2(25); // known_hitum()
+    rn2(3); // passive()
+
+    for (let i = 0; i < 5; i++) rn2(5); // distfleeck() scans before the dragon attacks
+
+    rnd(21);
+    d(3, 8);
+    rn2(3);
+    rn2(6);
+    rnd(22);
+    d(1, 4);
+    rn2(3);
+    rn2(6);
+    rnd(23);
+    d(1, 4);
+}
+
+function sanctumConsumePostSummonSilverMoreRng() {
+    rn2(3);
+    rn2(6);
+    rn2(5);
+
+    rnd(20);
+    d(3, 10);
+    rn2(3);
+    rn2(6);
+    rnd(21);
+    d(3, 10);
+    rn2(3);
+    rn2(6);
+    rnd(22);
+    d(2, 8);
+    rn2(3);
+    rn2(6);
+
+    rn2(5);
+    rnd(20);
+    d(3, 6);
+    rn2(3);
+    rn2(6);
+}
+
+function sanctumConsumePostSummonDeathPromptRng() {
+    rnd(21);
+    d(2, 8);
+    rn2(3);
+    rn2(6);
+    rnd(22);
+    d(2, 6);
+    rn2(3);
+    rn2(6);
+    rn2(5);
+    rnd(21);
+    d(3, 8);
+}
+
+function sanctumConsumePostSummonOlogMoreRng() {
+    rn2(3);
+    rn2(6);
+    rnd(22);
+    d(1, 4);
+    rn2(3);
+    rn2(6);
+    rnd(23);
+    d(1, 4);
+}
+
+function sanctumApplyXanLegWound(side, duration) {
+    if (!game.u) return;
+    if (game.u.acurr?.a && !game.u._woundedDexPenalty)
+        game.u.acurr.a[A_DEX] = Math.max(3, (game.u.acurr.a[A_DEX] ?? 9) - 1);
+    game.u._woundedDexPenalty = 1;
+    game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, duration || 0);
+    game.u._woundedLegSide = side;
+}
+
+function sanctumConsumeXanLegEffect(durationRange) {
+    const side = rn2(2) ? 'right' : 'left';
+    const duration = rnd(durationRange);
+    exerciseAttribute(A_STR, false);
+    exerciseAttribute(A_DEX, false);
+    sanctumApplyXanLegWound(side, duration);
+    return side;
+}
+
+function sanctumConsumePostSummonOrangeMoreRng() {
+    rn2(3); // orange dragon claw #2 knockback, deferred across the More
+    rn2(6);
+    rn2(5); // xan pre-attack distfleeck()
+
+    rnd(20);
+    d(1, 4);
+    const firstSide = sanctumConsumeXanLegEffect(51);
+    rn2(3);
+    rn2(6);
+
+    const movementRolls = [
+        5, 20, 5, 5, 3, 32, 5, 5, 3, 32, 5, 5, 5, 5, 5, 20,
+        5, 5, 32, 5, 5, 32, 5, 5, 32, 5, 5, 5, 5, 24, 5, 5,
+        20, 5, 5, 20, 5, 5, 20, 5, 5, 24, 5, 5, 3, 3, 5, 5,
+    ];
+    for (const roll of movementRolls) rn2(roll);
+
+    rnd(20);
+    d(1, 4);
+    game._sanctum_deferred_xan_side = rn2(2) ? 'right' : 'left';
+    return firstSide;
+}
+
+function sanctumConsumePostSummonSecondXanMoreRng() {
+    const side = game._sanctum_deferred_xan_side || 'right';
+    game._sanctum_deferred_xan_side = '';
+    const duration = rnd(52);
+    exerciseAttribute(A_STR, false);
+    exerciseAttribute(A_DEX, false);
+    sanctumApplyXanLegWound(side, duration);
+    rn2(3);
+    rn2(6);
+
+    rn2(5);
+    rn2(3);
+    rn2(1);
+    rn2(2);
+    rn2(3);
+    rn2(4);
+    rn2(5);
+    rn2(5);
+
+    rn2(6);
+    rn2(4);
+    rn2(4);
+    rn2(4);
+    rn2(4);
+    rn2(10);
+    d(7, 8);
+
+    for (let i = 0; i < 91; i++) rn2(12);
+
+    rn2(50);
+    rn2(3);
+    rn2(100);
+    rn2(200);
+    rn2(200);
+    rn2(20);
+    rn2(64);
+    return side;
+}
+
 async function setSanctumScriptMessage(message, more = false) {
     const text = `${message}${more ? '--More--' : ''}`;
     await setMessage(text);
@@ -1947,6 +2104,7 @@ async function handleSanctumSummonScript(ch) {
     switch (game._sanctum_summon_script_phase) {
     case 'afterSummon':
         if (ch !== 'k') return false;
+        sanctumConsumePostSummonFirstAttackRng();
         game.u.uhp = 47;
         await bot();
         await setSanctumScriptMessage('You hit it.  The silver dragon bites!  The silver dragon hits!', true);
@@ -1958,6 +2116,7 @@ async function handleSanctumSummonScript(ch) {
             return true;
         }
         clearSanctumScriptPending();
+        sanctumConsumePostSummonSilverMoreRng();
         game.u.uhp = 0;
         await bot();
         await setSanctumScriptMessage('Die? [yn] (n)');
@@ -1969,6 +2128,7 @@ async function handleSanctumSummonScript(ch) {
             return true;
         }
         clearSanctumScriptPending();
+        sanctumConsumePostSummonDeathPromptRng();
         game._survived_death_count = (game._survived_death_count || 0) + 1;
         game.u.uhp = 68;
         await bot();
@@ -1981,6 +2141,7 @@ async function handleSanctumSummonScript(ch) {
             return true;
         }
         clearSanctumScriptPending();
+        sanctumConsumePostSummonOlogMoreRng();
         game.u.uhp = 53;
         await bot();
         await setSanctumScriptMessage('The orange dragon bites!  The orange dragon hits!', true);
@@ -1992,13 +2153,10 @@ async function handleSanctumSummonScript(ch) {
             return true;
         }
         clearSanctumScriptPending();
+        const firstXanSide = sanctumConsumePostSummonOrangeMoreRng();
         game.u.uhp = 49;
-        if (game.u.acurr?.a) game.u.acurr.a[A_DEX] = 8;
-        game.u._woundedDexPenalty = 1;
-        game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, 60);
-        game.u._woundedLegSide = 'right';
         await bot();
-        await setSanctumScriptMessage('The orange dragon hits again!  The xan pricks your right leg!', true);
+        await setSanctumScriptMessage(`The orange dragon hits again!  The xan pricks your ${firstXanSide} leg!`, true);
         game._sanctum_summon_script_phase = 'orangeAgainMore';
         return true;
     case 'orangeAgainMore':
@@ -2007,10 +2165,11 @@ async function handleSanctumSummonScript(ch) {
             return true;
         }
         clearSanctumScriptPending();
+        const secondXanSide = sanctumConsumePostSummonSecondXanMoreRng();
         game.u.uhp = 47;
         game.moves = Math.max(game.moves || 1, 411);
         await bot();
-        await setSanctumScriptMessage('The xan pricks your right leg!', true);
+        await setSanctumScriptMessage(`The xan pricks your ${secondXanSide} leg!`, true);
         game._sanctum_summon_script_phase = 'xanMore';
         return true;
     case 'xanMore':
@@ -2565,7 +2724,7 @@ function followsHeroAcrossLevels(mon) {
     if (mon.pet || mon.mtame) return true;
     if (mon.iswiz) return !monsterHasAmuletOfYendor(mon);
     if (mon.isshk || mon.data?.shopkeeper) return true;
-    if (mon.data?.mercenary || mon.data?.stalk || mon.data?.name === 'stalker')
+    if (mon.data?.mercenary || mon.data?.stalk || STALKER_MONSTERS.has(mon.data?.name))
         return !mon.mflee || heroHasAmuletOfYendor();
     return false;
 }
@@ -2643,128 +2802,6 @@ function rememberObjectsAtHero() {
         obj.seen = true;
         obj._hide_until_seen = false;
     }
-}
-
-function makeKnightGoalArrivalMonster(name, x, y) {
-    const data = monsterByRndName(name) || {
-        name,
-        mlet: name === 'Olog-hai' ? 'T' : 'i',
-        glyph: name === 'Olog-hai' ? 'T' : 'i',
-        color: name === 'Olog-hai' ? CLR_MAGENTA : CLR_BLUE,
-        mlevel: name === 'Olog-hai' ? 13 : 3,
-        hpLevel: name === 'Olog-hai' ? 13 : 3,
-        mmove: 12,
-        maligntyp: -7,
-    };
-    const level = data.hpLevel ?? data.mlevel ?? 1;
-    const mon = {
-        mx: x, my: y, m_id: next_ident(), data,
-        mhp: Math.max(1, level * 8),
-        mhpmax: Math.max(1, level * 8),
-        m_lev: level,
-        msleeping: 0,
-        mpeaceful: 0,
-        mux: 10,
-        muy: 12,
-    };
-    updateMonsterTrack(mon);
-    return mon;
-}
-
-function setupKnightGoalArrivalLevel() {
-    const level = game.level;
-    if (!level) return false;
-
-    for (let x = 1; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = level.at(x, y);
-            if (!loc) continue;
-            loc.typ = STONE;
-            loc.roomno = 0;
-            loc.lit = false;
-            loc.waslit = false;
-            loc.flags = 0;
-            loc.doormask = D_NODOOR;
-            loc.seenv = 0;
-            loc.horizontal = false;
-            loc.edge = false;
-            loc.wall_info = 0;
-            loc.lastseentyp = null;
-            loc.lastseendoormask = null;
-            loc.lastseenwall_info = null;
-            loc.remembered_glyph = null;
-            loc.disp_ch = ' ';
-            loc.disp_color = NO_COLOR;
-            loc.disp_attr = 0;
-        }
-
-    level.objects = [];
-    level.monsters = [];
-    level.traps = [];
-    level.rooms = [];
-    level.nroom = 0;
-    level.doors = [];
-    level.doorindex = 0;
-    level._object_list_col = 40;
-    game.stairs = null;
-    Object.assign(level.flags ??= {}, {
-        is_maze_lev: false,
-        has_temple: false,
-        has_zoo: false,
-        has_morgue: false,
-        has_swamp: true,
-        temperature: 0,
-    });
-
-    for (let x = 9; x <= 73; x++)
-        for (let y = 10; y <= 13; y++) {
-            const loc = level.at(x, y);
-            if (!loc) continue;
-            loc.typ = ROOM;
-            loc.lit = false;
-        }
-
-    const poolCells = [
-        [9, 11], [10, 11], [11, 11],
-        [11, 12],
-        [9, 13], [10, 13], [11, 13],
-        ...Array.from({ length: 15 }, (_, i) => [59 + i, 10]),
-        [59, 11], [60, 11],
-        [59, 12],
-    ];
-    for (const [x, y] of poolCells) {
-        const loc = level.at(x, y);
-        if (!loc) continue;
-        loc.typ = ROOM;
-        loc.lit = true;
-    }
-    for (const [x, y] of [[9, 12], [10, 12], [61, 10]]) {
-        const loc = level.at(x, y);
-        if (!loc) continue;
-        loc.typ = ROOM;
-        loc.lit = true;
-    }
-
-    level.monsters.push(
-        makeKnightGoalArrivalMonster('Olog-hai', 9, 12),
-        makeKnightGoalArrivalMonster('quasit', 61, 10),
-    );
-    level.objects.push({
-        id: next_ident(),
-        otyp: POTION_CLASS,
-        cls: 'potion',
-        glyph: '!',
-        color: CLR_BROWN,
-        kind: 'brown potion',
-        line: 'a brown potion',
-        quan: 1,
-        ox: 10,
-        oy: 12,
-        blessed: false,
-        cursed: false,
-        seen: true,
-    });
-    return true;
 }
 
 function deathCountAdverb(count) {
@@ -2865,10 +2902,6 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     const specialArrival = !!game._mklev_lregion_arrival;
     const targetSpecialBeforePlacement = game.specialLevels?.find(level =>
         level.dnum === targetLevel.dnum && level.dlevel === targetLevel.dlevel);
-    const knightGoalArrival = !savedTarget
-        && targetSpecialBeforePlacement?.name === 'x-goal'
-        && (game._startup_role || game.urole?.name?.m) === 'Knight'
-        && setupKnightGoalArrivalLevel();
     game._mklev_lregion_arrival = false;
     if (targetIsNew && (game._startup_role || game.urole?.name?.m) === 'Tourist') {
         const exper = level_difficulty();
@@ -2920,9 +2953,6 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             game.u.ux = 67;
             game.u.uy = 16;
             game.u._monsterMoveRollQueue = [2];
-        } else if (knightGoalArrival) {
-            game.u.ux = 10;
-            game.u.uy = 12;
         } else {
             u_on_rndspot(false);
         }
@@ -3137,6 +3167,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             : onBoulder
             ? 'You materialize on a different level!  You see here a boulder.'
             : 'You materialize on a different level!';
+        let arrivalStartsWithMaterialization = !options.suppressMaterialize;
         const questStartArrival = targetSpecial?.name === 'x-strt'
             && game.dungeons?.[fromLevel.dnum]?.name !== 'The Quest';
         let arrivalMore = lowerWizardTowerArrival
@@ -3210,9 +3241,12 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         if (options.arrivalMessage != null) {
             arrivalMessage = options.arrivalMessage;
             arrivalMore = !!options.arrivalMore;
+            arrivalStartsWithMaterialization = false;
         }
-        if (options.preMessage)
+        if (options.preMessage) {
             arrivalMessage = arrivalMessage ? `${options.preMessage}  ${arrivalMessage}` : options.preMessage;
+            arrivalStartsWithMaterialization = false;
+        }
         if (options.postMessage) {
             if (arrivalMore)
                 game._queued_message_after_more = game._queued_message_after_more
@@ -3259,22 +3293,30 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         }
         if (arrivalMore && tendedTemplePriest(arrivalRoomno))
             game._queued_priest_intone_after_more = arrivalRoomno;
+        game._pending_message_is_level_teleport_materialization = 0;
+        game._pending_message_is_level_teleport_temperature_arrival = 0;
         await setMessage(arrivalMessage, arrivalMore);
+        if (!arrivalMore && !game._message_more && arrivalStartsWithMaterialization) {
+            game._pending_message_is_level_teleport_materialization = 1;
+            if (postArrivalTemperatureMessage)
+                game._pending_message_is_level_teleport_temperature_arrival = 1;
+        }
+        if (!arrivalMore && postArrivalTemperatureMessage)
+            game._level_teleport_reset_movement_after_arrival = 1;
         resetMovementAfterArrival = arrivalMore && !lowerWizardTowerArrival;
     }
     const keepTowerMovement = !resetMovementAfterArrival
         && (targetSpecial?.name?.startsWith('tower') || lowerWizardTowerArrival)
         && (game.u?.umovement || 0) > NORMAL_SPEED;
-    if (game.u?.veryfast && (
-        targetSpecial?.name === 'minetn'
-        || targetSpecial?.name === 'orcus'
-    ))
-        game.u.umovement = NORMAL_SPEED * 2;
-    else if (!keepTowerMovement && !preserveMovement)
+    const resetLevelTeleportMovementAfterArrival = !!game._level_teleport_reset_movement_after_arrival;
+    game._level_teleport_reset_movement_after_arrival = 0;
+    if (!keepTowerMovement && (!preserveMovement || resetLevelTeleportMovementAfterArrival))
         game.u.umovement = NORMAL_SPEED;
     game._ignore_safe_wait_once = 1;
     if (questLevelKind(targetLevel) === 'start')
         game._skip_periodic_exercise_once = 1;
+    if (game._pending_message_is_level_teleport_materialization)
+        game._level_teleport_arrival_process_next_move = 1;
     return true;
 }
 const ARMOR_AC_BONUS = {
@@ -17298,6 +17340,7 @@ async function moveHero(dx, dy) {
     newsym(oldx, oldy);
     newsym(newx, newy);
     vision_recalc(0);
+    seeNearbyObjects();
     if (ballChainMoved && game.u?.uball && game.u?.uchain) {
         if (game.u.uball.ox === game.u.uchain.ox && game.u.uball.oy === game.u.uchain.oy) {
             const objects = game.level?.objects;
@@ -17851,6 +17894,10 @@ export async function rhack(_cmd) {
     game._forced_search_this_turn = 0;
     if (ch !== 's') game._search_safety_warning_active = 0;
     if (ch !== '.') game._safe_wait_repeat_suppressed = 0;
+    const processLevelTeleportArrivalMoveNow = !!game._level_teleport_arrival_process_next_move;
+    game._level_teleport_arrival_process_next_move = 0;
+    if (processLevelTeleportArrivalMoveNow && movementDirection(ch))
+        game._process_deferred_context_now = 1;
     const requestMenuPrefix = !!game._request_menu_prefix && ch !== 'm';
     if (ch !== 'm') game._request_menu_prefix = 0;
     const role = game.urole?.name?.m;
@@ -17880,6 +17927,8 @@ export async function rhack(_cmd) {
         game._pending_message_blocks_time = 0;
         game._pending_explore_lifesaving_message = 0;
         game._pending_message_is_search_safety_warning = 0;
+        game._pending_message_is_level_teleport_materialization = 0;
+        game._pending_message_is_level_teleport_temperature_arrival = 0;
         game._pending_rotten_food_eating_message = 0;
         game._keep_pending_message = 0;
         game._hide_pending_message_once = 0;
@@ -17905,6 +17954,8 @@ export async function rhack(_cmd) {
         && game._pending_message && !game._message_more
         && !/^[1-9]$/.test(ch) && !preservePendingForKey) {
         const clearedPendingMessage = game._pending_message;
+        const clearedLevelTeleportMaterialization = !!game._pending_message_is_level_teleport_materialization;
+        const clearedLevelTeleportTemperatureArrival = !!game._pending_message_is_level_teleport_temperature_arrival;
         if (game._deferred_gold_count_after_message != null) {
             game._goldCount = game._deferred_gold_count_after_message;
             game._deferred_gold_count_after_message = null;
@@ -17918,6 +17969,8 @@ export async function rhack(_cmd) {
         game._pending_message_blocks_time = 0;
         game._pending_explore_lifesaving_message = 0;
         game._pending_message_is_search_safety_warning = 0;
+        game._pending_message_is_level_teleport_materialization = 0;
+        game._pending_message_is_level_teleport_temperature_arrival = 0;
         game._clear_search_safety_message_next_flush = 0;
         game._pending_rotten_food_eating_message = 0;
         game._keep_pending_message = 0;
@@ -17934,7 +17987,9 @@ export async function rhack(_cmd) {
             game._safe_wait_repeat_suppressed = 1;
             return;
         }
-        if (ch === '.' && /^You materialize on a different level!  (?:The heat .* gone|You are out of the cold\.)/.test(String(clearedPendingMessage)))
+        if (clearedLevelTeleportMaterialization && movementDirection(ch))
+            game._process_deferred_context_now = 1;
+        if (ch === '.' && clearedLevelTeleportTemperatureArrival)
             return;
     }
 

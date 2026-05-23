@@ -83,6 +83,7 @@ const DWARVISH_SHORT_SWORD = 10103;
 const BROADSWORD = 10032;
 const LONG_SWORD = 10033;
 const RUNESWORD = 10120;
+const CHAIN_MAIL = 10158;
 const POLEARM = 10034;
 const BATTLE_AXE = 10053;
 const DWARVISH_MATTOCK = 10104;
@@ -504,6 +505,23 @@ const WANDERER_MONSTERS = new Set([
     'Keystone Kop', 'Kop Sergeant', 'Kop Lieutenant', 'Kop Kaptain',
     'ghoul', 'skeleton', 'shade',
 ]);
+export const STALKER_MONSTERS = new Set([
+    'gremlin', 'manes', 'homunculus', 'imp', 'lemure', 'quasit', 'tengu',
+    'lurker above', 'trapper', 'couatl', 'Aleax', 'Angel', 'ki-rin', 'Archon',
+    'stalker', 'troll', 'ice troll', 'rock troll', 'water troll', 'Olog-hai',
+    'vampire', 'vampire mage', 'Vlad the Impaler', 'barrow wight', 'wraith',
+    'Nazgul', 'kobold zombie', 'gnome zombie', 'orc zombie', 'dwarf zombie',
+    'elf zombie', 'human zombie', 'ettin zombie', 'giant zombie',
+    'soldier', 'sergeant', 'lieutenant', 'captain', 'watchman', 'watch captain',
+    'Croesus', 'ghost', 'shade', 'water demon', 'horned devil', 'erinys',
+    'barbed devil', 'marilith', 'vrock', 'hezrou', 'bone devil', 'ice devil',
+    'nalfeshnee', 'pit fiend', 'sandestin', 'balrog', 'Juiblex', 'Yeenoghu',
+    'Orcus', 'Geryon', 'Dispater', 'Baalzebub', 'Asmodeus', 'Demogorgon',
+    'Death', 'Pestilence', 'Famine', 'mail daemon', 'djinni', 'salamander',
+    'Minion of Huhetotl', 'Thoth Amon', 'Chromatic Dragon', 'Goblin King',
+    'Cyclops', 'Ixoth', 'Master Kaen', 'Nalzok', 'Scorpius',
+    'Master Assassin', 'Ashikaga Takauji', 'Lord Surtur', 'Dark One',
+]);
 const ANIMAL_GLYPHS = new Set(['a', 'B', 'c', 'd', 'f', 'q', 'r', 's', 'u', 'x', 'Y']);
 const TUNNEL_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler', 'rock mole', 'umber hulk']);
 const NEED_PICK_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler']);
@@ -767,12 +785,15 @@ const KNIGHT_MON = { name: 'knight', mlet: '@', glyph: '@', color: NO_COLOR, mle
 const SHARK = { name: 'shark', mlet: ';', glyph: ';', color: CLR_GRAY, mlevel: 7, hpLevel: 10, difficulty: 9, mmove: 12, maligntyp: 0, swimmer: true, oviparous: true, nohands: true, hostile: true, alwaysHostile: true };
 const LORD_CARNARVON = { name: 'Lord Carnarvon', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 20, hpLevel: 19, difficulty: 24, mmove: 15, maligntyp: 3, male: true, strong: true, armed: true, randomInventory: true, alwaysPeaceful: true, tunnel: true, needPick: true, waiting: true };
 const STUDENT = { name: 'student', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 7, mmove: 12, maligntyp: 3, strong: true, armed: true, guardian: true, randomInventory: true, alwaysPeaceful: true, tunnel: true, needPick: true };
+const PELIAS = { name: 'Pelias', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 20, hpLevel: 19, difficulty: 24, mmove: 15, maligntyp: 0, male: true, strong: true, armed: true, randomInventory: true, alwaysPeaceful: true, poisonResistance: true, waiting: true };
+const CHIEFTAIN = { name: 'chieftain', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 7, mmove: 12, maligntyp: 0, strong: true, armed: true, guardian: true, randomInventory: true, alwaysPeaceful: true, poisonResistance: true };
 const NEFERET_THE_GREEN = { name: 'Neferet the Green', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 20, hpLevel: 19, difficulty: 25, mmove: 15, maligntyp: 0, female: true, strong: true, armed: true, randomInventory: true, alwaysPeaceful: true, msound: 'leader', waiting: true };
 const APPRENTICE = { name: 'apprentice', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 8, mmove: 12, maligntyp: 0, strong: true, armed: true, spellcaster: true, guardian: true, randomInventory: true, alwaysPeaceful: true };
 const MINION_OF_HUHETOTL = { name: 'Minion of Huhetotl', mlet: '&', glyph: '&', color: CLR_ORANGE, mlevel: 16, hpLevel: 17, difficulty: 23, mmove: 12, maligntyp: -14, neuter: true, demon: true, inAir: true, strong: true, nasty: true, armed: true, randomInventory: true, alwaysHostile: true, waiting: true, nemesis: true, noCorpse: true };
 const ARCH_PRIEST = { name: 'Arch Priest', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 24, difficulty: 30, mmove: 15, maligntyp: 0, male: true, strong: true, armed: true, priest: true, randomInventory: true, alwaysPeaceful: true, magic: true, waiting: true };
 const ACOLYTE = { name: 'acolyte', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 8, mmove: 12, maligntyp: 0, strong: true, armed: true, spellcaster: true, guardian: true, randomInventory: true, alwaysPeaceful: true };
 const NALZOK = { name: 'Nalzok', mlet: '&', glyph: '&', color: CLR_ORANGE, mlevel: 16, hpLevel: 17, difficulty: 23, mmove: 12, mac: -2, maligntyp: -127, male: true, demon: true, inAir: true, seeInvisible: true, strong: true, nasty: true, armed: true, randomInventory: true, alwaysHostile: true, waiting: true, nemesis: true, noCorpse: true };
+const IXOTH = { name: 'Ixoth', mlet: 'D', glyph: 'D', color: CLR_RED, mlevel: 15, hpLevel: 15, difficulty: 22, mmove: 12, maligntyp: -14, male: true, strong: true, nasty: true, nohands: true, seeInvisible: true, resistsFire: true, alwaysHostile: true, waiting: true, nemesis: true, likesGold: true, likesGems: true, likesMagic: true };
 
 const SOKOBAN_ZOO_MONSTERS = [
     { name: 'giant ant', weight: 3, mlevel: 2, hpLevel: 3, mlet: 'a', glyph: 'a', color: 3, neuter: false, smallGroup: true, oviparous: true },
@@ -1367,7 +1388,7 @@ const SPECIFIC_ARMOR = new Set([
     PLATE_MAIL, CRYSTAL_PLATE_MAIL, SPLINT_MAIL, BANDED_MAIL, RING_MAIL,
     STUDDED_LEATHER_ARMOR, LEATHER_ARMOR, HELMET, DENTED_POT, SMALL_SHIELD,
     LARGE_SHIELD, LOW_BOOTS, HIGH_BOOTS, LEATHER_GLOVES, LEATHER_CLOAK,
-    ROBE, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT,
+    ROBE, CHAIN_MAIL, CLOAK_OF_PROTECTION, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_DISPLACEMENT,
     SHIELD_OF_REFLECTION, GAUNTLETS_OF_POWER, HELM_OF_BRILLIANCE,
     LEATHER_JACKET, FEDORA, ELVEN_MITHRIL_COAT, DWARVISH_CLOAK, ELVEN_CLOAK,
     IRON_SHOES, DWARVISH_ROUNDSHIELD, DWARVISH_IRON_HELM, DWARVISH_MITHRIL_COAT,
@@ -2684,6 +2705,55 @@ const WIZ_SIEGE_MONSTERS = [
 function wizX(x) { return WIZ_XSTART + x; }
 function wizY(y) { return WIZ_YSTART + y; }
 
+const BAR_XSTART = 3;
+const BAR_YSTART = 0;
+const BAR_ROWS = [
+    '..................................PP........................................',
+    '...................................PP.......................................',
+    '...................................PP.......................................',
+    '....................................PP......................................',
+    '........--------------......-----....PPP....................................',
+    '........|...S........|......+...|...PPP.....................................',
+    '........|----........|......|...|....PP.....................................',
+    '........|.\\..........+......-----...........................................',
+    '........|----........|...............PP.....................................',
+    '........|...S........|...-----.......PPP....................................',
+    '........--------------...+...|......PPPPP...................................',
+    '.........................|...|.......PPP....................................',
+    '...-----......-----......-----........PP....................................',
+    '...|...+......|...+..--+--.............PP...................................',
+    '...|...|......|...|..|...|..............PP..................................',
+    '...-----......-----..|...|.............PPPP.................................',
+    '.....................-----............PP..PP................................',
+    '.....................................PP...PP................................',
+    '....................................PP...PP.................................',
+    '....................................PP....PP................................',
+];
+const BAR_WIDTH = BAR_ROWS[0].length;
+const BAR_HEIGHT = BAR_ROWS.length;
+const BAR_UNLIT_REGIONS = [
+    [9, 5, 11, 5], [9, 9, 11, 9],
+];
+const BAR_LIT_REGIONS = [
+    [9, 7, 11, 7], [13, 5, 20, 9], [29, 5, 31, 6],
+    [26, 10, 28, 11], [4, 13, 6, 14], [15, 13, 17, 14],
+    [22, 14, 24, 15],
+];
+const BAR_DOORS = [
+    [D_LOCKED, 12, 5], [D_LOCKED, 12, 9],
+    [D_CLOSED, 21, 7],
+    [D_ISOPEN, 7, 13], [D_ISOPEN, 18, 13], [D_ISOPEN, 23, 13],
+    [D_ISOPEN, 25, 10], [D_ISOPEN, 28, 5],
+];
+const BAR_CHIEFTAINS = [
+    [10, 5], [10, 9], [11, 5], [11, 9],
+    [14, 5], [14, 9], [16, 5], [16, 9],
+];
+const BAR_EELS = [[36, 1], [37, 9], [39, 15]];
+
+function barX(x) { return BAR_XSTART + x; }
+function barY(y) { return BAR_YSTART + y; }
+
 const PRI_ROWS = [
     '............................................................................',
     '............................................................................',
@@ -2905,6 +2975,16 @@ const QUEST_LEVEL_BUILDERS = {
             return make_arc_fill_level(level < 3 ? ARC_FILL_A_ROOMS : ARC_FILL_B_ROOMS);
         },
     },
+    Barbarian: {
+        special: {
+            'x-strt': make_bar_strt_level,
+        },
+    },
+    Knight: {
+        special: {
+            'x-goal': make_kni_goal_level,
+        },
+    },
     Wizard: {
         special: {
             'x-strt': make_wiz_strt_level,
@@ -2921,6 +3001,39 @@ const QUEST_LEVEL_BUILDERS = {
         },
     },
 };
+const KNI_GOAL_ROWS = [
+    '....PPPP..PPP..                                                             ',
+    '.PPPPP...PP..     ..........     .................................          ',
+    '..PPPPP...P..    ...........    ...................................         ',
+    '..PPP.......   ...........    ......................................        ',
+    '...PPP.......    .........     ...............   .....................      ',
+    '...........    ............    ............     ......................      ',
+    '............   .............      .......     .....................         ',
+    '..............................            .........................         ',
+    '...............................   ..................................        ',
+    '.............................    ....................................       ',
+    '.........    ......................................................         ',
+    '.....PP...    .....................................................         ',
+    '.....PPP....    ....................................................        ',
+    '......PPP....   ..............   ....................................       ',
+    '.......PPP....  .............    .....................................      ',
+    '........PP...    ............    ......................................     ',
+    '...PPP........     ..........     ..................................        ',
+    '..PPPPP........     ..........     ..............................           ',
+    '....PPPPP......       .........     ..........................              ',
+    '.......PPPP...                                                              ',
+];
+const KNI_GOAL_XSTART = 3;
+const KNI_GOAL_YSTART = 1;
+const KNI_GOAL_WIDTH = KNI_GOAL_ROWS[0].length;
+const KNI_GOAL_HEIGHT = KNI_GOAL_ROWS.length;
+const KNI_GOAL_FIXED_OBJECTS = [
+    [33, 1], [33, 2], [33, 3], [33, 4], [33, 5],
+    [34, 1], [34, 2], [34, 3], [34, 4], [34, 5],
+    [35, 1], [35, 2], [35, 3], [35, 4], [35, 5],
+];
+const KNI_GOAL_FIXED_TRAPS = [[13, 7], [12, 8], [12, 9]];
+
 const ARC_GOAL_ROWS = [
     '                                                                            ',
     '                                  ---------                                 ',
@@ -4539,6 +4652,7 @@ function monsterFromRndMeta(row) {
         covetous: name === 'Vlad the Impaler' || name === 'master lich' || name === 'arch-lich',
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
         wanderer: WANDERER_MONSTERS.has(name),
+        stalk: STALKER_MONSTERS.has(name),
         alwaysHostile: flags.includes('X') || glyph === 'V' || name === 'vampire leader',
         alwaysPeaceful: flags.includes('P'),
         resistsFire: FIRE_RESISTANT_MONSTERS.has(name),
@@ -4791,6 +4905,7 @@ function specialMonsterByName(name) {
     if (name === 'kraken') return KRAKEN;
     if (name === 'jellyfish') return JELLYFISH;
     if (name === 'shark') return SHARK;
+    if (name === 'Ixoth') return IXOTH;
     return null;
 }
 
@@ -5042,6 +5157,10 @@ function mongets(otyp, erodes = true) {
     else if (otyp === DWARVISH_ROUNDSHIELD) Object.assign(otmp, { cls: 'armor', kind: 'dwarvish roundshield', appearance: 'large round shield' });
     else if (otyp === DWARVISH_IRON_HELM) Object.assign(otmp, { cls: 'armor', kind: 'dwarvish iron helm', appearance: 'hard hat' });
     else if (otyp === DWARVISH_MITHRIL_COAT) Object.assign(otmp, { cls: 'armor', kind: 'dwarvish mithril-coat' });
+    else if (otyp === CHAIN_MAIL) Object.assign(otmp, { cls: 'armor', kind: 'chain mail' });
+    else if (otyp === LEATHER_ARMOR) Object.assign(otmp, { cls: 'armor', kind: 'leather armor' });
+    else if (otyp === LOW_BOOTS) Object.assign(otmp, { cls: 'armor', kind: 'low boots' });
+    else if (otyp === HIGH_BOOTS) Object.assign(otmp, { cls: 'armor', kind: 'high boots' });
     else if (otyp === LEATHER_JACKET) Object.assign(otmp, { cls: 'armor', kind: 'leather jacket' });
     else if (otyp === FEDORA) Object.assign(otmp, { cls: 'armor', kind: 'fedora' });
     else if (otyp === ORCISH_DAGGER) Object.assign(otmp, { cls: 'weapon', kind: 'orcish dagger' });
@@ -5051,6 +5170,8 @@ function mongets(otyp, erodes = true) {
     else if (otyp === QUARTERSTAFF) Object.assign(otmp, { cls: 'weapon', kind: 'quarterstaff', appearance: 'staff' });
     else if (otyp === AXE) Object.assign(otmp, { cls: 'weapon', kind: 'axe' });
     else if (otyp === SPEAR) Object.assign(otmp, { cls: 'weapon', kind: 'spear' });
+    else if (otyp === SHORT_SWORD) Object.assign(otmp, { cls: 'weapon', kind: 'short sword' });
+    else if (otyp === LONG_SWORD) Object.assign(otmp, { cls: 'weapon', kind: 'long sword' });
     else if (otyp === DWARVISH_SPEAR) Object.assign(otmp, { cls: 'weapon', kind: 'dwarvish spear' });
     else if (otyp === DWARVISH_SHORT_SWORD) Object.assign(otmp, { cls: 'weapon', kind: 'dwarvish short sword' });
     else if (otyp === DWARVISH_MATTOCK) Object.assign(otmp, { cls: 'weapon', kind: 'dwarvish mattock' });
@@ -5565,6 +5686,15 @@ function m_initweap(ptr) {
         if (game._mongets_target) {
             game._mongets_target.minvent = [otmp, ...(game._mongets_target.minvent || [])];
             game._mongets_target.hasInventory = true;
+        }
+    } else if (ptr.guardian && ptr.name === 'chieftain') {
+        mongets(rn2(3) ? LONG_SWORD : SHORT_SWORD);
+        mongets(rn2(3) ? CHAIN_MAIL : LEATHER_ARMOR);
+        if (rn2(2)) mongets(rn2(2) ? LOW_BOOTS : HIGH_BOOTS);
+        if (!rn2(3)) mongets(LEATHER_CLOAK);
+        if (!rn2(3)) {
+            mongets(BOW);
+            m_initthrow(ARROW, 12);
         }
     } else if (ptr.guardian && (ptr.name === 'student' || ptr.name === 'apprentice' || ptr.name === 'acolyte')) {
         if (rn2(2)) mongets(rn2(3) ? DAGGER : KNIFE);
@@ -7033,6 +7163,255 @@ async function wizRandomTrap() {
     }
 }
 
+function barMapKey(x, y) { return `${x},${y}`; }
+
+function barSelectionBounds(selection) {
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    for (const item of selection) {
+        const [x, y] = item.split(',').map(Number);
+        lx = Math.min(lx, x);
+        ly = Math.min(ly, y);
+        hx = Math.max(hx, x);
+        hy = Math.max(hy, y);
+    }
+    return selection.size ? { lx, ly, hx, hy } : { lx: 0, ly: 0, hx: 0, hy: 0 };
+}
+
+function barRndCoord(selection, remove = false) {
+    if (!selection.size) return barRandomDryLocation(true);
+    const { lx, ly, hx, hy } = barSelectionBounds(selection);
+    const pick = rn2(selection.size);
+    let idx = 0;
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const key = barMapKey(x, y);
+            if (!selection.has(key)) continue;
+            if (idx === pick) {
+                if (remove) selection.delete(key);
+                return { x, y };
+            }
+            idx++;
+        }
+    return { x: -1, y: -1 };
+}
+
+function barFloodfillSelection(x, y) {
+    const target = game.level?.at(x, y)?.typ;
+    const selection = new Set();
+    if (target == null) return selection;
+    const stack = [{ x, y }];
+    const queued = new Set([barMapKey(x, y)]);
+    while (stack.length) {
+        const cur = stack.pop();
+        selection.add(barMapKey(cur.x, cur.y));
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cur.x + dx, ny = cur.y + dy;
+            const key = barMapKey(nx, ny);
+            if (nx < 1 || nx >= COLNO || ny < 0 || ny >= ROWNO
+                || queued.has(key) || game.level?.at(nx, ny)?.typ !== target) continue;
+            queued.add(key);
+            stack.push({ x: nx, y: ny });
+        }
+    }
+    return selection;
+}
+
+function barAreaIntersection(selection, lx, ly, hx, hy) {
+    const result = new Set();
+    const ax1 = barX(lx), ay1 = barY(ly), ax2 = barX(hx), ay2 = barY(hy);
+    for (const item of selection) {
+        const [x, y] = item.split(',').map(Number);
+        if (x >= ax1 && x <= ax2 && y >= ay1 && y <= ay2) result.add(item);
+    }
+    return result;
+}
+
+function barRandLine(selection, x1, y1, x2, y2, rough, rec = 12) {
+    if (rec < 1 || (x2 === x1 && y2 === y1)) return;
+    rough = Math.min(rough, Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1)));
+    let mx, my;
+    if (rough < 2) {
+        mx = Math.trunc((x1 + x2) / 2);
+        my = Math.trunc((y1 + y2) / 2);
+    } else {
+        do {
+            const dx = rn2(rough) - Math.trunc(rough / 2);
+            const dy = rn2(rough) - Math.trunc(rough / 2);
+            mx = Math.trunc((x1 + x2) / 2) + dx;
+            my = Math.trunc((y1 + y2) / 2) + dy;
+        } while (mx > BAR_WIDTH - 1 || mx < 0 || my < 0 || my > BAR_HEIGHT - 1);
+    }
+    selection.add(barMapKey(barX(mx), barY(my)));
+    const nextRough = Math.trunc((rough * 2) / 3);
+    barRandLine(selection, x1, y1, mx, my, nextRough, rec - 1);
+    barRandLine(selection, mx, my, x2, y2, nextRough, rec - 1);
+    selection.add(barMapKey(barX(x2), barY(y2)));
+}
+
+function barReplaceTerrain(x1, y1, x2, y2, fromTyp, toTyp, chance) {
+    const lx = barX(x1), hx = barX(x2), ly = barY(y1), hy = barY(y2);
+    for (let x = Math.max(1, lx); x <= Math.min(COLNO - 1, hx); x++)
+        for (let y = Math.max(0, ly); y <= Math.min(ROWNO - 1, hy); y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.typ === fromTyp && rn2(100) < chance) loc.typ = toTyp;
+        }
+}
+
+function barRandomDryLocation(rejectStairs = false) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        const occupied = game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
+        return loc && SPACE_POS(loc.typ) && !boulder && !occupied && !t_at(x, y)
+            && (!rejectStairs || (loc.typ !== STAIRS && loc.typ !== LADDER));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = barX(rn2(BAR_WIDTH));
+        const y = barY(rn2(BAR_HEIGHT));
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 0; x < BAR_WIDTH; x++)
+        for (let y = 0; y < BAR_HEIGHT; y++) {
+            const loc = { x: barX(x), y: barY(y) };
+            if (good(loc.x, loc.y)) return loc;
+        }
+    return { x: barX(0), y: barY(0) };
+}
+
+async function barNamedMonster(ptrOrName, x, y, peaceful = null, findMontypeRoll = true) {
+    if (findMontypeRoll) rn2(2);
+    arcInducedAlign();
+    const ptr = typeof ptrOrName === 'string'
+        ? (ptrOrName === 'giant eel' ? GIANT_EEL : monsterByRndName(ptrOrName))
+        : ptrOrName;
+    const mon = ptr ? await makemon(ptr, barX(x), barY(y), 0) : null;
+    if (mon && peaceful === false) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+function barInventoryObject(mon, otyp, spe, fields = {}) {
+    barRandomDryLocation();
+    const obj = mksobj(otyp, true, true);
+    obj.spe = spe;
+    Object.assign(obj, object_display(obj), fields);
+    mon.minvent = [obj, ...(mon.minvent || [])];
+    mon.hasInventory = true;
+}
+
+async function make_bar_strt_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.noteleport = true;
+    g.level.flags.hardfloor = true;
+
+    rn2(3);
+    rn2(2);
+    rn2(2);
+
+    for (let y = 0; y < BAR_HEIGHT; y++) {
+        const row = BAR_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(barX(x), barY(y));
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = ch !== '|';
+            loc.lit = true;
+            loc.waslit = false;
+            if (ch === '+') {
+                loc.typ = DOOR;
+                loc.doormask = D_CLOSED;
+            } else if (ch === 'S') {
+                loc.typ = SDOOR;
+                loc.doormask = D_CLOSED;
+            } else if (ch === '\\') {
+                loc.typ = THRONE;
+            } else {
+                loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            }
+            loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
+    barReplaceTerrain(37, 0, 59, 19, ROOM, TREE, 5);
+    barReplaceTerrain(60, 0, 64, 19, ROOM, TREE, 10);
+    barReplaceTerrain(65, 0, 75, 19, ROOM, TREE, 20);
+    const path = new Set();
+    barRandLine(path, 37, 7, 62, 2, 7);
+    for (const item of path) {
+        const [x, y] = item.split(',').map(Number);
+        const loc = g.level.at(x, y);
+        if (loc) loc.typ = ROOM;
+    }
+    const portalLoc = g.level.at(barX(62), barY(2));
+    if (portalLoc) portalLoc.typ = ROOM;
+
+    for (const [lx, ly, hx, hy] of BAR_UNLIT_REGIONS)
+        for (let x = lx; x <= hx; x++)
+            for (let y = ly; y <= hy; y++) {
+                const loc = g.level.at(barX(x), barY(y));
+                if (loc) loc.lit = false;
+            }
+    for (const [lx, ly, hx, hy] of BAR_LIT_REGIONS)
+        for (let x = lx; x <= hx; x++)
+            for (let y = ly; y <= hy; y++) {
+                const loc = g.level.at(barX(x), barY(y));
+                if (loc) loc.lit = true;
+            }
+
+    mkstairs(barX(9), barY(9), false, null);
+    g.level.branch_region = { x: barX(62), y: barY(2) };
+    place_branch(is_branchlev(), barX(62), barY(2));
+    for (const [mask, x, y] of BAR_DOORS) {
+        const loc = g.level.at(barX(x), barY(y));
+        if (loc) {
+            if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            loc.doormask = mask;
+        }
+    }
+
+    const leader = await barNamedMonster(PELIAS, 10, 7, null, false);
+    if (leader) {
+        barInventoryObject(leader, RUNESWORD, 5, { cls: 'weapon', kind: 'runesword' });
+        barInventoryObject(leader, CHAIN_MAIL, 5, { cls: 'armor', kind: 'chain mail' });
+    }
+    mksobj_at(CHEST, barX(9), barY(5), true, true);
+    for (const [x, y] of BAR_CHIEFTAINS) await barNamedMonster(CHIEFTAIN, x, y);
+    await maketrap(barX(37), barY(7), SPIKED_PIT);
+    rnd(4);
+    for (const [x, y] of BAR_EELS) await barNamedMonster('giant eel', x, y);
+
+    let ogrelocs = barFloodfillSelection(barX(37), barY(7));
+    ogrelocs = barAreaIntersection(ogrelocs, 40, 3, 45, 20);
+    for (let i = 0; i < 12; i++) {
+        const loc = barRndCoord(ogrelocs, true);
+        rn2(2);
+        arcInducedAlign();
+        const mon = await makemon(monsterByRndName('ogre'), loc.x, loc.y, 0);
+        if (mon) {
+            mon.mpeaceful = 0;
+            set_malign(mon);
+        }
+    }
+
+    wallification(1, 0, COLNO - 1, BAR_YSTART + BAR_HEIGHT - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, BAR_YSTART + BAR_HEIGHT - 1, true);
+    recount_level_features();
+    rn2(1);
+    rn2(1);
+    level_finalize_topology();
+    g.in_mklev = false;
+}
+
 async function make_arc_strt_level() {
     const g = game;
     if (await getbones()) return;
@@ -7545,6 +7924,210 @@ async function make_pri_goal_level() {
     flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1, true);
     recount_level_features();
     level_finalize_topology({ mineralizeLevel: false });
+    g.in_mklev = false;
+}
+
+function kniGoalX(x) { return KNI_GOAL_XSTART + x; }
+function kniGoalY(y) { return KNI_GOAL_YSTART + y; }
+
+function kniGoalClearLocation(loc, typ, lit = false) {
+    if (!loc) return;
+    loc.typ = typ;
+    loc.flags = 0;
+    loc.roomno = 0;
+    loc.edge = 0;
+    loc.doormask = D_NODOOR;
+    loc.horizontal = false;
+    loc.lit = !!lit;
+    loc.waslit = false;
+    loc.wall_info = 0;
+    loc.seenv = 0;
+    loc.lastseentyp = null;
+    loc.lastseendoormask = null;
+    loc.lastseenwall_info = null;
+    loc.remembered_glyph = null;
+}
+
+function kniGoalSetLit(lx, ly, hx, hy, lit, grow = false) {
+    const x1 = Math.max(0, kniGoalX(lx) - (grow ? 1 : 0));
+    const y1 = Math.max(0, kniGoalY(ly) - (grow ? 1 : 0));
+    const x2 = Math.min(COLNO - 1, kniGoalX(hx) + (grow ? 1 : 0));
+    const y2 = Math.min(ROWNO - 1, kniGoalY(hy) + (grow ? 1 : 0));
+    for (let x = x1; x <= x2; x++)
+        for (let y = y1; y <= y2; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc) loc.lit = !!lit || loc.typ === LAVAPOOL;
+        }
+}
+
+function kniGoalSetNondiggable(lx, ly, hx, hy) {
+    for (let x = kniGoalX(lx); x <= kniGoalX(hx); x++)
+        for (let y = kniGoalY(ly); y <= kniGoalY(hy); y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && (IS_STWALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS))
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+}
+
+function kniGoalLoadMap() {
+    const g = game;
+    const solidLit = rn2(2);
+    for (let x = 2; x <= COLNO - 2; x++)
+        for (let y = 0; y < ROWNO; y++)
+            kniGoalClearLocation(g.level.at(x, y), STONE, solidLit);
+
+    g.level.flags.is_maze_lev = true;
+    g.level._object_list_col = 40;
+
+    for (let y = 0; y < KNI_GOAL_ROWS.length; y++) {
+        const row = KNI_GOAL_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const ch = row[x];
+            const loc = g.level.at(kniGoalX(x), kniGoalY(y));
+            kniGoalClearLocation(loc, SPECIAL_TERRAIN[ch] ?? STONE, false);
+        }
+    }
+
+    kniGoalSetLit(0, 0, 14, 19, true, true);
+    kniGoalSetLit(15, 0, 75, 19, false, false);
+    mkstairs(kniGoalX(3), kniGoalY(8), true, null);
+    kniGoalSetNondiggable(0, 0, 75, 19);
+}
+
+function kniGoalDryLocationOkay(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !SPACE_POS(loc.typ)) return false;
+    return !(game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+}
+
+function kniGoalRandomDryLocation({ rejectStairs = false } = {}) {
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = kniGoalX(rn2(KNI_GOAL_WIDTH));
+        const y = kniGoalY(rn2(KNI_GOAL_HEIGHT));
+        const loc = game.level?.at(x, y);
+        if (!kniGoalDryLocationOkay(x, y)) continue;
+        if (rejectStairs && loc?.typ === STAIRS) continue;
+        return { x, y };
+    }
+    for (let x = 0; x < KNI_GOAL_WIDTH; x++)
+        for (let y = 0; y < KNI_GOAL_HEIGHT; y++) {
+            const ax = kniGoalX(x), ay = kniGoalY(y);
+            const loc = game.level?.at(ax, ay);
+            if (kniGoalDryLocationOkay(ax, ay) && (!rejectStairs || loc?.typ !== STAIRS))
+                return { x: ax, y: ay };
+        }
+    return { x: kniGoalX(0), y: kniGoalY(0) };
+}
+
+function kniGoalArtifactMirror() {
+    const def = artifactDefinitionForName('The Magic Mirror of Merlin');
+    const mirror = mksobj_at(MIRROR, kniGoalX(50), kniGoalY(6), true, false);
+    if (def) applyArtifactFields(mirror, def);
+    Object.assign(mirror, {
+        spe: 0,
+        blessed: true,
+        cursed: false,
+        cls: 'tool',
+        actualKind: 'mirror',
+    }, object_display(mirror));
+    return mirror;
+}
+
+function kniGoalObject(x = null, y = null) {
+    const loc = x == null ? kniGoalRandomDryLocation() : { x: kniGoalX(x), y: kniGoalY(y) };
+    return mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+}
+
+function kniGoalMaybeTrapVictim(trap) {
+    const kind = trap?.ttyp ?? NO_TRAP;
+    const lvl = level_difficulty();
+    if (game.in_mklev && kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) {
+            trap.ttyp = PIT;
+            trap.tseen = true;
+        }
+        mktrap_victim(trap);
+    }
+}
+
+async function kniGoalTrap(kind = null, x = null, y = null) {
+    let loc;
+    do {
+        loc = x == null ? kniGoalRandomDryLocation({ rejectStairs: true }) : { x: kniGoalX(x), y: kniGoalY(y) };
+    } while (x == null && game.level?.at(loc.x, loc.y)?.typ === STAIRS);
+
+    let trapKind = kind;
+    if (trapKind == null) {
+        do { trapKind = traptype_rnd(); } while (trapKind === NO_TRAP);
+        const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+        const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+        if (is_hole(trapKind) && !canFallThru) trapKind = ROCKTRAP;
+    }
+
+    const trap = await maketrap(loc.x, loc.y, trapKind);
+    if (trap?.ttyp === WEB) await makemon(monsterByRndName('giant spider'), loc.x, loc.y, 0);
+    kniGoalMaybeTrapVictim(trap);
+    return trap;
+}
+
+async function kniGoalMonster(ptr, { x = null, y = null, consumeFindGender = false, alreadyAligned = false } = {}) {
+    if (!ptr) return null;
+    const forcedFemale = consumeFindGender ? rn2(2) : null;
+    if (!alreadyAligned) arcInducedAlign();
+    let loc = x == null ? kniGoalRandomDryLocation() : { x: kniGoalX(x), y: kniGoalY(y) };
+    if (game.level?.monsters?.some(mon => mon.mx === loc.x && mon.my === loc.y)) {
+        const spot = enextoMonsterSpot(loc.x, loc.y, ptr);
+        if (!spot) return null;
+        loc = spot;
+    }
+    const mon = await makemon(ptr, loc.x, loc.y, 0);
+    if (mon) {
+        if (forcedFemale != null) mon.female = forcedFemale;
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+async function kniGoalClassMonster(glyph) {
+    arcInducedAlign();
+    const ptr = mkclassAligned(glyph);
+    if (!ptr) return null;
+    return kniGoalMonster(ptr, { alreadyAligned: true });
+}
+
+async function make_kni_goal_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+
+    l_nhcore_init();
+    kniGoalLoadMap();
+
+    kniGoalArtifactMirror();
+    for (const [x, y] of KNI_GOAL_FIXED_OBJECTS) kniGoalObject(x, y);
+    for (let i = 0; i < 6; i++) kniGoalObject();
+
+    for (const [x, y] of KNI_GOAL_FIXED_TRAPS) await kniGoalTrap(SPIKED_PIT, x, y);
+    for (let i = 0; i < 5; i++) await kniGoalTrap();
+
+    await kniGoalMonster(IXOTH, { x: 50, y: 6 });
+    for (let i = 0; i < 16; i++) await kniGoalMonster(monsterByRndName('quasit'), { consumeFindGender: true });
+    for (let i = 0; i < 2; i++) await kniGoalClassMonster('i');
+    for (let i = 0; i < 8; i++) await kniGoalMonster(monsterByRndName('ochre jelly'), { consumeFindGender: true });
+    await kniGoalClassMonster('j');
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd();
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
     g.in_mklev = false;
 }
 

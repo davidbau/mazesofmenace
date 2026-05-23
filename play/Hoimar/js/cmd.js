@@ -20,7 +20,7 @@ import {
     next_ident, place_lregion, place_object, shopTypeName, u_on_dnstairs, u_on_upstairs,
 } from './mklev.js';
 import { OBJECT_CHARGED, OBJECT_CLASS, OBJECT_DELAY, OBJECT_MATERIAL, OBJECT_PROB } from './object_data.js';
-import { finish_pet_kill, obj_resists, pet_arrive_with_you } from './dog.js';
+import { finish_deferred_monster_pet_hit, finish_pet_kill, obj_resists, pet_arrive_with_you } from './dog.js';
 import { merge_inventory_object, newuexp, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry } from './allmain_turns.js';
 import { initrack } from './track.js';
@@ -110,6 +110,8 @@ const FIGURINE = 241;
 const MAGIC_MARKER = 242;
 const LEATHER_DRUM = 257;
 const DRUM_OF_EARTHQUAKE = 258;
+const OIL_LAMP = 227;
+const MAGIC_LAMP = 228;
 const LARGE_BOX = 214;
 const CHEST = 215;
 const ICE_BOX = 216;
@@ -359,6 +361,8 @@ const OBJECT_BASE_NAMES = new Map([
     [LEASH, 'leash'],
     [STETHOSCOPE, 'stethoscope'],
     [TIN_OPENER, 'tin opener'],
+    [OIL_LAMP, 'lamp'],
+    [MAGIC_LAMP, 'lamp'],
     [MAGIC_MARKER, 'magic marker'],
     [257, 'drum'],
     [258, 'drum'],
@@ -754,6 +758,10 @@ function wishedObjectSpec(name) {
         rn2(16);
         return { ...spec, otyp: MAGIC_MARKER };
     }
+    if (wish.includes('magic lamp')) {
+        rn2(16);
+        return { ...spec, otyp: MAGIC_LAMP };
+    }
     if (wish.includes('mirror')) {
         rn2(46);
         return { ...spec, otyp: MIRROR, appearanceName: 'looking glass' };
@@ -761,6 +769,14 @@ function wishedObjectSpec(name) {
     if (wish.includes('expensive camera')) {
         rn2(16);
         return { ...spec, otyp: EXPENSIVE_CAMERA };
+    }
+    if (wish.includes('cream pie')) {
+        rn2(26);
+        return { ...spec, otyp: CREAM_PIE, quan: 1 };
+    }
+    if (wish.includes('chest')) {
+        rn2(8);
+        return { ...spec, otyp: CHEST };
     }
     return null;
 }
@@ -815,6 +831,7 @@ function make_wish_object(name) {
     const otmp = mksobj(spec.otyp, true, false);
     otmp.wishedfor = true;
     if (typeof spec.spe === 'number') otmp.spe = spec.spe;
+    if (typeof spec.quan === 'number') otmp.quan = spec.quan;
     if (typeof spec.recharged === 'number') otmp.recharged = spec.recharged;
     if (typeof spec.blessed === 'boolean') otmp.blessed = spec.blessed;
     if (typeof spec.cursed === 'boolean') otmp.cursed = spec.cursed;
@@ -822,9 +839,11 @@ function make_wish_object(name) {
     if (spec.oname) {
         otmp.oextra = { ...(otmp.oextra || {}), oname: spec.oname };
         if (spec.namedArtifact) {
-            rn2(2); // C ref: objnam.c:readobjnam() artifact wish conduct gate.
             if (!otmp.oartifact) game._nartifact_exist = (game._nartifact_exist ?? 0) + 1;
             otmp.oartifact = true;
+            // C ref: objnam.c:readobjnam().  oname()/artifact_exists() has
+            // already counted the artifact before the wish-abuse gate.
+            rn2(Math.max(1, game._nartifact_exist ?? 0));
         }
     }
     rn2(100);
@@ -958,7 +977,8 @@ function compressLetters(letters) {
 function applyLetters() {
     ensureInventoryLetters();
     return compressLetters((game.inventory || [])
-        .filter(obj => obj?.oclass === TOOL_CLASS || obj?.oclass === WAND_CLASS || obj?.oclass === SPBOOK_CLASS)
+        .filter(obj => obj?.oclass === TOOL_CLASS || obj?.oclass === WAND_CLASS || obj?.oclass === SPBOOK_CLASS
+            || obj?.otyp === CREAM_PIE)
         .map(obj => obj.invlet));
 }
 
@@ -2334,6 +2354,10 @@ function dropObjectName(obj) {
         const body = `${buc}${spe}${base}`;
         return quan > 1 ? `${quan} ${body}` : `${indefiniteArticle(body)} ${body}`;
     }
+    if (OBJECT_BASE_NAMES.has(obj?.otyp)) {
+        const base = baseObjectName(obj);
+        return `${indefiniteArticle(base)} ${base}`;
+    }
     return 'an object';
 }
 
@@ -2594,6 +2618,12 @@ function monsterBesideHero() {
 }
 
 async function doLootCommand() {
+    if (!heroHasHands()) {
+        // C ref: src/pickup.c:doloot_core().
+        await pline('You have no hands!');
+        game.context.move = 0;
+        return;
+    }
     const container = containerAt(game.u?.ux, game.u?.uy);
     if (!container) {
         // C ref: pickup.c:doloot_core().  With no floor container, #loot
@@ -3537,22 +3567,33 @@ function woundedLegsKickMessage() {
     return `Your ${prefix}leg is in no shape for kicking.`;
 }
 
-const EXTENDED_AUTOCOMPLETE = [
-    { name: 'chat', min: 3 },
-    { name: 'force', min: 1 },
-    { name: 'kick', min: 1 },
-    { name: 'levelchange', min: 2, wizard: true },
-    { name: 'loot', min: 1 },
-    { name: 'name', min: 1 },
-    { name: 'pray', min: 2 },
-    { name: 'quit', min: 1 },
-    { name: 'wizgenesis', min: 10, wizard: true },
-    { name: 'wizintrinsic', min: 4, wizard: true },
+const EXTENDED_COMMANDS = [
+    { name: 'annotate', min: 2, autocomplete: true },
+    { name: 'chat', min: 3, autocomplete: true },
+    { name: 'force', min: 1, autocomplete: true },
+    { name: 'herecmdmenu', min: 2, autocomplete: true },
+    { name: 'invoke', min: 1, autocomplete: true },
+    { name: 'kick', min: 4, autocomplete: false },
+    { name: 'levelchange', min: 2, autocomplete: true, wizard: true },
+    { name: 'loot', min: 1, autocomplete: true },
+    { name: 'monster', min: 2, autocomplete: true },
+    { name: 'name', min: 1, autocomplete: true },
+    { name: 'polyself', min: 2, autocomplete: true, wizard: true },
+    { name: 'pray', min: 2, autocomplete: true },
+    { name: 'quit', min: 1, autocomplete: true },
+    { name: 'rub', min: 2, autocomplete: true },
+    { name: 'tip', min: 3, autocomplete: true },
+    { name: 'untrap', min: 1, autocomplete: true },
+    { name: 'wipe', min: 3, autocomplete: true },
+    { name: 'wizgenesis', min: 10, autocomplete: false, wizard: true },
+    { name: 'wizintrinsic', min: 4, autocomplete: true, wizard: true },
+    { name: 'wizwhere', min: 4, autocomplete: true, wizard: true },
+    { name: 'wizwish', min: 7, autocomplete: false, wizard: true },
 ];
 
 function availableExtendedCommands() {
     const wizard = !!(game.wizard || game.flags?.debug);
-    return EXTENDED_AUTOCOMPLETE.filter((cmd) => !cmd.wizard || wizard);
+    return EXTENDED_COMMANDS.filter((cmd) => !cmd.wizard || wizard);
 }
 
 function completeExtendedCommand(input) {
@@ -3561,7 +3602,7 @@ function completeExtendedCommand(input) {
     const commands = availableExtendedCommands();
     const exact = commands.find((cmd) => cmd.name === typed);
     if (exact) return exact.name;
-    const prefixMatches = commands.filter((cmd) => cmd.name.startsWith(typed));
+    const prefixMatches = commands.filter((cmd) => cmd.autocomplete && cmd.name.startsWith(typed));
     const matches = prefixMatches.filter((cmd) => typed.length >= cmd.min);
     return prefixMatches.length === 1 && matches.length === 1 ? matches[0].name : typed;
 }
@@ -3599,6 +3640,241 @@ function showNameCommandMenu() {
     const screen = serialize_terminal_grid(display);
     game._name_menu_screen = screen;
     showOverride(screen, [col + '(end)'.length + 1, 8]);
+}
+
+async function beginWizardWishPrompt() {
+    // C ref: src/wizcmds.c:wiz_wish() -> objnam.c:makewish().
+    const msg = 'For what do you wish? ';
+    await pline(msg);
+    game._prompt_cursor = [msg.length, 0];
+    game._awaiting_wish = true;
+    game._wish_input = '';
+    game.context.move = 0;
+}
+
+async function beginWizardPolyselfPrompt() {
+    // C ref: src/wizcmds.c:wiz_polyself() -> polyself.c:polyself().
+    const msg = 'Become what kind of monster? [type the name]';
+    await pline(msg);
+    game._prompt_cursor = [msg.length + 1, 0];
+    game._awaiting_polyself = true;
+    game._polyself_input = '';
+    game.context.move = 0;
+}
+
+function heroPolyForm() {
+    return game.u?._poly_form || null;
+}
+
+function heroHasHands() {
+    return !heroPolyForm()?.noHands;
+}
+
+function setHeroPolyForm(form) {
+    game.u = game.u || {};
+    game.u._poly_form = form || null;
+    game.u.mtimedone = form ? (form.mtimedone || game.u.mtimedone || 500) : 0;
+    game.u.umonnum = form?.name || game.u.umonster;
+}
+
+function applyPolyselfQueuedState(state) {
+    if (!state || !game.u) return;
+    if (typeof state.uac === 'number') game.u.uac = state.uac;
+    if (typeof state.uencumber === 'number') game.u.uencumber = state.uencumber;
+}
+
+function dropInventoryObjectToFloor(obj) {
+    if (!obj) return false;
+    const idx = (game.inventory || []).indexOf(obj);
+    if (idx < 0) return false;
+    game.inventory.splice(idx, 1);
+    obj.wielded = false;
+    obj.owornmask = (obj.owornmask || 0) & ~C.W_WEP;
+    place_object(obj, game.u?.ux || 0, game.u?.uy || 0);
+    return true;
+}
+
+function dropWornCloakForPolyself() {
+    // C ref: src/polyself.c:polymon() -> break_armor().
+    const cloak = (game.inventory || []).find((obj) =>
+        obj?.otyp === CLOAK_OF_MAGIC_RESISTANCE && (obj.worn || obj.owornmask));
+    if (!cloak) return false;
+    cloak.worn = false;
+    cloak.owornmask = 0;
+    return dropInventoryObjectToFloor(cloak);
+}
+
+function rubLetters() {
+    ensureInventoryLetters();
+    return (game.inventory || [])
+        .filter((obj) => obj && (obj.otyp === MAGIC_LAMP || obj.otyp === OIL_LAMP
+            || obj.oclass === GEM_CLASS || obj.oclass === FOOD_CLASS))
+        .map((obj) => obj.invlet)
+        .filter(Boolean)
+        .join('');
+}
+
+function invokeLetters() {
+    ensureInventoryLetters();
+    return (game.inventory || [])
+        .filter((obj) => obj && (obj.oartifact || C.ONAME(obj)))
+        .map((obj) => obj.invlet)
+        .filter(Boolean)
+        .join('');
+}
+
+async function doRubCommand() {
+    // C ref: src/apply.c:dorub().
+    if (!heroHasHands()) {
+        await pline("You aren't able to rub anything without hands.");
+        game.context.move = 0;
+        return;
+    }
+    const letters = rubLetters();
+    if (!letters) {
+        await pline("You don't have anything to rub.");
+        game.context.move = 0;
+        return;
+    }
+    await showPromptLine(`What do you want to rub? [${letters} or ?*] `);
+    game._awaiting_rub_item = true;
+    game.context.move = 0;
+}
+
+async function doInvokeCommand() {
+    // C ref: src/artifact.c:arti_invoke().
+    const letters = invokeLetters();
+    if (!letters) {
+        await pline('You have nothing to invoke.');
+        game.context.move = 0;
+        return;
+    }
+    await showPromptLine(`What do you want to invoke? [${letters} or ?*] `);
+    game._awaiting_invoke_item = true;
+    game.context.move = 0;
+}
+
+async function doWipeCommand() {
+    // C ref: src/do.c:dowipe() and wipeoff().
+    if (game.u?.ucreamed) {
+        game.u.ucreamed = 0;
+        game.u.ublind = false;
+        if (game.u.uprops) {
+            game.u.uprops.blind = 0;
+            game.u.uprops.blinded = 0;
+        }
+        await docrt();
+        await pline("You've got the glop off.  You can see again.");
+    } else {
+        await pline('Your face is already clean.');
+    }
+    game.context.move = 1;
+}
+
+async function doMonsterAbilityCommand() {
+    // C ref: src/cmd.c:domonability().
+    const form = heroPolyForm();
+    if (form?.canBreathe) {
+        await pline("You don't have enough energy to breathe!");
+    } else {
+        await pline('Any special ability you may have is purely reflexive.');
+    }
+    game.context.move = form?.canBreathe ? 0 : 0;
+}
+
+function polyselfFormForInput(input) {
+    const name = String(input || '').trim().toLowerCase();
+    if (name === 'gnome') {
+        return {
+            name: 'gnome', title: 'Gnome', article: 'a', noHands: false,
+            small: true, glyph: 'G', color: 3, hd: 1, initialAc: 9,
+            finalAc: 10, hpDice: [1, 8], encumbered: true, mmove: 6,
+        };
+    }
+    if (name === 'red dragon') {
+        return {
+            name: 'red dragon', title: 'Red Dragon', article: 'a',
+            noHands: true, canBreathe: true, glyph: 'D', color: 1,
+            hd: 15, initialAc: 10, finalAc: -1, fly: true,
+            strength: '18/**', dragonHpLevel: 15, mmove: 9,
+        };
+    }
+    if (name === 'human' || name === game.urole?.name?.m?.toLowerCase()) return null;
+    return undefined;
+}
+
+function rollPolyselfStats(form) {
+    // C ref: src/polyself.c:polymon().
+    exercise(C.A_CON, false);
+    exercise(C.A_WIS, true);
+    rn2(10);
+    const mtimedone = rn1(500, 500);
+    const hp = form.dragonHpLevel
+        ? (4 * form.dragonHpLevel) + d(form.dragonHpLevel, 4)
+        : d(form.hpDice?.[0] || 1, form.hpDice?.[1] || 8);
+    return { mtimedone, hp };
+}
+
+function applyPolyselfStats(form, stats) {
+    const u = game.u || (game.u = {});
+    const polyForm = { ...form, mtimedone: stats.mtimedone };
+    setHeroPolyForm(polyForm);
+    u.mh = stats.hp;
+    u.mhmax = stats.hp;
+    u.uhp = stats.hp;
+    u.uhpmax = stats.hp;
+    u.uen = 7;
+    u.uenmax = 7;
+    u.uac = form.initialAc;
+    u.uencumber = form.encumbered ? 1 : 0;
+    if (form.mmove && form.mmove < 12)
+        game._slow_poly_move_debt = (12 - form.mmove) - form.mmove;
+    else
+        game._slow_poly_move_debt = null;
+    newsym(u.ux, u.uy);
+}
+
+async function finishWizardPolyself(input) {
+    const form = polyselfFormForInput(input);
+    if (form === undefined) {
+        await pline("I've never heard of such monsters.");
+        game.context.move = 0;
+        return;
+    }
+    if (!form) {
+        setHeroPolyForm(null);
+        await pline('You feel like a new man!');
+        game.context.move = 1;
+        return;
+    }
+
+    const queue = [];
+    if (form.name === 'gnome') {
+        const stats = rollPolyselfStats(form);
+        applyPolyselfStats(form, stats);
+        dropWornCloakForPolyself();
+        await plineWithMorePrompt('You turn into a gnome!  You shrink out of your cloak!');
+        queue.push({
+            text: 'Your movements are slowed slightly because of your load.',
+            more: false,
+            polyState: { uac: form.finalAc },
+        });
+    } else if (form.name === 'red dragon') {
+        const dropped = dropInventoryObjectToFloor(heroWieldedWeapon());
+        const stats = rollPolyselfStats(form);
+        applyPolyselfStats(form, stats);
+        await plineWithMorePrompt(`You turn into a red dragon!${dropped ? '  You find you must drop your tool!' : ''}`);
+        queue.push({
+            text: 'Your movements are now unencumbered.',
+            more: true,
+            polyState: { uac: form.finalAc, uencumber: 0 },
+        });
+        queue.push({ text: 'Use the command #monster to use your breath weapon.', more: false });
+    }
+    if (queue.length) game._more_message_queue = [...(game._more_message_queue || []), ...queue];
+    game._pre_turn_more_waiting = true;
+    game._monster_turn_paused_for_more = true;
+    game.context.move = 1;
 }
 
 function alignNameForHero() {
@@ -6183,9 +6459,21 @@ async function handleQueuedMore(ch) {
         if (game._more_message_queue?.length) {
             const next = game._more_message_queue.shift();
             await pline(next.text);
+            if (game._cream_pie_resist_after_more) {
+                obj_resists(game._cream_pie_resist_after_more, 0, 0);
+                game._cream_pie_resist_after_more = null;
+            }
+            applyPolyselfQueuedState(next.polyState);
             game._more_next_message_row = false;
             if (next.more) queue_more_prompt();
-            else game._more = false;
+            else {
+                game._more = false;
+                if (preTurnResume) {
+                    game._deferred_pre_turn_after_more = true;
+                    game._monster_turn_paused_for_more = false;
+                    game._pre_turn_more_waiting = false;
+                }
+            }
             game.context.move = next.move ? 1 : 0;
             return true;
         }
@@ -6386,7 +6674,30 @@ async function handleQueuedMore(ch) {
             const needsPrompt = !!game._after_more_needs_prompt;
             game._after_more_message = '';
             game._after_more_needs_prompt = false;
+            if (game._clear_latched_status_before_after_more) {
+                game._clear_latched_status_before_after_more = false;
+                game._latched_status_uhp = null;
+            }
+            if (game._after_more_hero_damage) {
+                if (typeof game.u?.uhp === 'number')
+                    game.u.uhp = Math.max(0, game.u.uhp - game._after_more_hero_damage);
+                game._after_more_hero_damage = 0;
+                exercise(A_STR, false); // C ref: src/mthrowu.c:thitu().
+            }
             await pline(msg);
+            if (game._after_more_projectile_obj) {
+                const placed = game._after_more_projectile_obj;
+                game._after_more_projectile_obj = null;
+                placed.obj.ox = placed.x;
+                placed.obj.oy = placed.y;
+                game.level.objects = game.level.objects || [];
+                if (!game.level.objects.includes(placed.obj)) game.level.objects.unshift(placed.obj);
+            }
+            if (game._after_more_projectile_clear) {
+                const clear = game._after_more_projectile_clear;
+                game._after_more_projectile_clear = null;
+                if (C.isok(clear.x, clear.y)) newsym(clear.x, clear.y);
+            }
             if (game._after_more_projectile_glyph) {
                 const glyph = game._after_more_projectile_glyph;
                 game._after_more_projectile_glyph = null;
@@ -6400,6 +6711,9 @@ async function handleQueuedMore(ch) {
                     resumeMonsterBehindNewMore = true;
                     game._monster_attack_resume_behind_after_more = false;
                 }
+            } else {
+                game._more = false;
+                game._more_dismissals_remaining = 0;
             }
         } else if (game._cloak_displacement_on_msg_pending) {
             const obj = game._cloak_displacement_on_msg_pending;
@@ -6428,6 +6742,13 @@ async function handleQueuedMore(ch) {
                 await pline('You hear the studio audience applaud!');
             else
                 await pline('You hear the rumble of distant thunder...');
+        }
+        await finish_deferred_monster_pet_hit();
+        if (game._deferred_pet_miss_passive) {
+            game._deferred_pet_miss_passive = false;
+            game._pet_combat_passive_paused = false;
+            game._clear_pet_combat_more_after_resume = true;
+            rn2(3); // C ref: src/mhitm.c:passivemm().
         }
         // C ref: topl.c:more() returns to the interrupted command before
         // allmain.c's next input prompt; swallowed Hallucination redraws
@@ -8364,6 +8685,21 @@ export async function rhack(key) {
                 game._prompt_cursor = [prompt.length + 1, 0];
                 game._awaiting_create_monster = true;
                 game._create_monster_input = '';
+            } else if (cmd === 'wizwish') {
+                await beginWizardWishPrompt();
+            } else if (cmd === 'polyself') {
+                await beginWizardPolyselfPrompt();
+            } else if (cmd === 'monster') {
+                await doMonsterAbilityCommand();
+            } else if (cmd === 'rub') {
+                await doRubCommand();
+            } else if (cmd === 'wipe') {
+                await doWipeCommand();
+            } else if (cmd === 'invoke') {
+                await doInvokeCommand();
+            } else if (cmd === 'untrap') {
+                // C ref: src/trap.c:dountrap().
+                await pline(heroHasHands() ? 'You find nothing to untrap.' : 'And just how do you expect to do that?');
             } else if (cmd === 'chat') {
                 // C ref: sounds.c:dochat().
                 await showPromptLine('Talk to whom? (in what direction) ');
@@ -8392,7 +8728,7 @@ export async function rhack(key) {
                     await pline(`#${typedExtCommand.slice(0, 60)}: unknown extended command.`);
                 }
             }
-            if (cmd !== 'force') game.context.move = 0;
+            if (cmd !== 'force' && cmd !== 'wipe') game.context.move = 0;
             return;
         }
         if (ch === '\x1b') {
@@ -8750,6 +9086,56 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._awaiting_rub_item) {
+        clear_pending_message();
+        game._awaiting_rub_item = false;
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        const idx = inventoryIndexForLetter(ch);
+        const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (!obj) {
+            await pline("You don't have that object.");
+            game.context.move = 0;
+            return;
+        }
+        if (obj !== heroWieldedWeapon()) {
+            setHeroWieldedWeapon(obj);
+            await pline(`You now wield ${inventoryObjectName(obj, { includeCharges: false })}.`);
+            game.context.move = 1;
+            return;
+        }
+        if (obj.otyp === MAGIC_LAMP) {
+            await pline('Nothing happens.');
+        } else {
+            await pline("Sorry, I don't know how to use that.");
+        }
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._awaiting_invoke_item) {
+        clear_pending_message();
+        game._awaiting_invoke_item = false;
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        const idx = inventoryIndexForLetter(ch);
+        const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (!obj) {
+            await pline("You don't have that object.");
+            game.context.move = 0;
+            return;
+        }
+        await pline('Nothing happens.');
+        game.context.move = 1;
+        return;
+    }
+
     if (game._awaiting_wish) {
         const prompt = 'For what do you wish? ';
         if (ch === '\r' || ch === '\n') {
@@ -8771,6 +9157,30 @@ export async function rhack(key) {
         }
         game._wish_input = `${game._wish_input || ''}${ch}`;
         await showPromptLine(`${prompt}${game._wish_input}`);
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_polyself) {
+        const prompt = 'Become what kind of monster? [type the name]';
+        if (ch === '\r' || ch === '\n') {
+            const input = game._polyself_input || '';
+            clear_pending_message();
+            game._awaiting_polyself = false;
+            game._polyself_input = '';
+            await finishWizardPolyself(input);
+            return;
+        }
+        if (ch === '\x1b') {
+            clear_pending_message();
+            game._awaiting_polyself = false;
+            game._polyself_input = '';
+            await pline('Never mind.');
+            game.context.move = 0;
+            return;
+        }
+        game._polyself_input = `${game._polyself_input || ''}${ch}`;
+        await showPromptLine(`${prompt} ${game._polyself_input}`);
         game.context.move = 0;
         return;
     }
@@ -9146,11 +9556,6 @@ export async function rhack(key) {
             queue_more_prompt();
             return;
         }
-        if (obj.oclass !== WEAPON_CLASS) {
-            game.context.move = 0;
-            await pline('Never mind.');
-            return;
-        }
         game._awaiting_throw_direction = obj;
         game.context.move = 0;
         await showPromptLine('In what direction? ');
@@ -9414,6 +9819,29 @@ export async function rhack(key) {
             game._apply_invalid_more = true;
             await pline("You don't have that object.");
             queue_more_prompt();
+            return;
+        }
+        if (obj.otyp === CREAM_PIE) {
+            // C refs: src/dothrow.c:throwit(), src/do.c:dowipe().
+            // Self-cream sets sticky-goop blindness until #wipe cleans it.
+            consumeInventoryObject(obj);
+            game.u = game.u || {};
+            const blindinc = rnd(25); // C ref: src/apply.c:use_cream_pie().
+            game.u.ucreamed = Math.max(game.u.ucreamed || 0, blindinc);
+            game.u.ublind = true;
+            game.u.uprops = game.u.uprops || {};
+            game.u.uprops.blind = Math.max(game.u.uprops.blind || 0, game.u.ucreamed);
+            game.u.uprops.blinded = Math.max(game.u.uprops.blinded || 0, game.u.ucreamed);
+            await docrt();
+            await plineWithMorePrompt('You immerse your face in the cream pie.');
+            game._more_message_queue = [
+                ...(game._more_message_queue || []),
+                { text: "You can't see through all the sticky goop on your face.", more: false },
+            ];
+            game._cream_pie_resist_after_more = obj;
+            game._pre_turn_more_waiting = true;
+            game._monster_turn_paused_for_more = true;
+            game.context.move = 1;
             return;
         }
         if (obj.oclass !== TOOL_CLASS) {
@@ -9966,12 +10394,7 @@ export async function rhack(key) {
         game._awaiting_level_teleport = true;
         game._level_teleport_input = '';
     } else if (key === 23) { // ^W wizard wish
-        game.context.move = 0;
-        const msg = 'For what do you wish? ';
-        await pline(msg);
-        game._prompt_cursor = [msg.length, 0];
-        game._awaiting_wish = true;
-        game._wish_input = '';
+        await beginWizardWishPrompt();
     } else if (key === 7) { // ^G wizard create monster
         game.context.move = 0;
         const msg = 'Create what kind of monster?';

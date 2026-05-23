@@ -60,6 +60,8 @@ const SLIME_MOLD = 285;
 const TIN = 296;
 const TINNING_KIT = 238;
 const EXPENSIVE_CAMERA = 229;
+const OIL_LAMP = 227;
+const MAGIC_LAMP = 228;
 const LARGE_BOX = 214;
 const CHEST = 215;
 const MIRROR = 230;
@@ -478,6 +480,7 @@ function object_name(obj) {
     if (obj?.otyp === DART) return 'a dart';
     if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
+    if (obj?.otyp === OIL_LAMP || obj?.otyp === MAGIC_LAMP) return 'a lamp';
     if (obj?.otyp === FOOD_RATION) return 'a food ration';
     if (obj?.otyp === CORPSE) {
         const species = corpse_species_name(obj.corpsenm);
@@ -716,6 +719,23 @@ export async function finish_pet_kill(mtmp, target) {
     const idx = monsters.indexOf(target);
     if (idx >= 0) monsters.splice(idx, 1);
     newsym(target.mx, target.my);
+}
+
+export async function finish_deferred_monster_pet_hit() {
+    const pending = game._deferred_monster_pet_hit || null;
+    if (!pending) return false;
+    game._deferred_monster_pet_hit = null;
+    const { attacker, target, attack } = pending;
+    const damage = d(attack?.[2] || 1, attack?.[3] || 6);
+    target.mhp = (target.mhp ?? 1) - damage;
+    rn2(3);
+    rn2(6);
+    if (target.mhp < 1) {
+        await finish_pet_kill(attacker, target);
+    } else {
+        rn2(3);
+    }
+    return true;
 }
 
 function corpse_chance(mon) {
@@ -973,6 +993,16 @@ async function pet_melee_attack(mtmp, target) {
     if (!mattackm_hits(mtmp, target, dieroll)) {
         refresh_pet_attack_symbols(mtmp, target);
         await pet_combat_message(mtmp, `misses the ${monster_name(target)}.`);
+        if (game._more
+            && /^The (?:kitten|little dog|pony) misses /.test(game._after_more_message || '')) {
+            // C ref: src/mhitm.c:missmm()/passivemm().  When a pet miss is
+            // queued behind an already-active tty More, the passive miss
+            // side-effect roll belongs to the resumed path.
+            game._deferred_pet_miss_passive = true;
+            game._pet_combat_passive_paused = true;
+            game._after_more_needs_prompt = false;
+            return { attacked: true, hit: false, defenderDied: false };
+        }
         rn2(3);
         return { attacked: true, hit: false, defenderDied: false };
     }
@@ -1008,6 +1038,7 @@ async function monster_melee_attack(mtmp, target) {
         await append_topline_message(`The ${monster_name(mtmp)} wields ${monster_weapon_name(wielded)}!`);
         return { attacked: true, wielded: true, defenderDied: false };
     }
+    const attack = (mtmp.data?.mattk || []).find(Boolean) || ['AT_BITE', 'AD_PHYS', 1, 6];
     const dieroll = rnd(20);
     if (!mattackm_hits(mtmp, target, dieroll)) {
         refresh_pet_attack_symbols(mtmp, target);
@@ -1015,9 +1046,15 @@ async function monster_melee_attack(mtmp, target) {
         rn2(3);
         return { attacked: true, hit: false, defenderDied: false };
     }
-    const damage = d(1, 6);
     refresh_pet_attack_symbols(mtmp, target);
-    await append_topline_message(`The ${monster_name(mtmp)} bites ${monster_article_name(target)}.`);
+    const verb = attack[0] === 'AT_WEAP' ? 'hits' : 'bites';
+    await append_topline_message(`The ${monster_name(mtmp)} ${verb} ${monster_article_name(target)}.`);
+    if (attack[0] === 'AT_WEAP' && game._more && game._after_more_message
+        && game._after_more_message.includes(`The ${monster_name(mtmp)} ${verb} ${monster_article_name(target)}.`)) {
+        game._deferred_monster_pet_hit = { attacker: mtmp, target, attack };
+        return { attacked: true, hit: true, defenderDied: false };
+    }
+    const damage = d(attack[2] || 1, attack[3] || 6);
     target.mhp = (target.mhp ?? 1) - damage;
     rn2(3);
     rn2(6);
@@ -1140,12 +1177,7 @@ function pet_goal(mtmp, after, udist, whappr) {
     return { abort: false, gx: followX, gy: followY, appr };
 }
 
-export async function dog_move(mtmp, after = true) {
-    const udist = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
-    if (!udist) return 0;
-
-    const edog = init_edog(mtmp);
-    await dog_invent(mtmp, udist);
+async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     const whappr = (game.moves || 0) - (edog.whistletime || 0) < 5;
     const goal = pet_goal(mtmp, after, udist, whappr);
     if (goal.abort) return 0;
@@ -1264,4 +1296,26 @@ export async function dog_move(mtmp, after = true) {
         await pet_reluctance_pline(`${pet_noit_subject(mtmp)} steps reluctantly onto ${topObj ? object_name(topObj) : 'something'}.`);
     }
     return 1;
+}
+
+export async function dog_move_after_inventory(mtmp, after = true) {
+    const udist = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
+    if (!udist) return 0;
+    const edog = init_edog(mtmp);
+    return dog_move_after_inventory_core(mtmp, after, udist, edog);
+}
+
+export async function dog_move(mtmp, after = true) {
+    const udist = dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my);
+    if (!udist) return 0;
+
+    const edog = init_edog(mtmp);
+    await dog_invent(mtmp, udist);
+    // C ref: src/dogmove.c:dog_invent().  A visible pet inventory message
+    // queued behind an active tty --More-- blocks before dog_goal()/attacks.
+    if (game._more && game._after_more_message) {
+        game._resume_pet_move_after_inventory = mtmp;
+        return 0;
+    }
+    return dog_move_after_inventory_core(mtmp, after, udist, edog);
 }

@@ -35,6 +35,9 @@ function currentAttr(index) {
 
 export function exercise(index, increase) {
     if (!game.u) return;
+    // C ref: attrib.c:exercise(). Physical attributes are not exercised
+    // while polymorphed; Wisdom still is.
+    if (game.u._poly_form && index !== A_WIS) return;
     if (!game.u.aexe) game.u.aexe = [0, 0, 0, 0, 0, 0];
     if (Math.abs(game.u.aexe[index] || 0) >= 50) return;
     if (increase) {

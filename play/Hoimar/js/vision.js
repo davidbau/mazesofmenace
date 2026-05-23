@@ -593,6 +593,7 @@ export function vision_recalc(control = 0) {
 // C ref: cansee(x, y)
 export function cansee(x, y) {
     if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    if (game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded) return false;
     return !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
 }
 

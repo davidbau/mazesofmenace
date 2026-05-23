@@ -127,6 +127,10 @@ function rogue_level_display() {
     return Is_rogue_level(game.u?.uz);
 }
 
+function primary_decgraphics() {
+    return String(game._nhopts?.symset || '').toLowerCase() === 'decgraphics';
+}
+
 function dark_room_color_display() {
     // C defaults: optlist.h enables dark_room, and tty runs with color.
     return game.flags?.dark_room !== false && game.flags?.color !== false;
@@ -300,6 +304,60 @@ function terrain_glyph(loc, x, y) {
         ? CLR_RED
         : game.level?.flags?.sokoban_rules ? CLR_BLUE
             : game.level?.flags?.mines_walls ? CLR_BROWN : NO_COLOR;
+    if (!primary_decgraphics()) {
+        switch (typ) {
+        case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
+        case ROOM:      return { ch: '.', color: NO_COLOR, dec: false };
+        case CORR:
+            return { ch: '#', color: (loc.waslit || game.flags?.lit_corridor) ? CLR_WHITE : NO_COLOR, dec: false };
+        case DOOR:
+            if (loc.doormask & D_ISOPEN) return { ch: loc.horizontal ? '-' : '|', color: CLR_BROWN, dec: false };
+            if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
+            return { ch: '.', color: NO_COLOR, dec: false };
+        case SDOOR:
+            return secret_door_horizontal(loc, x, y)
+                ? { ch: '-', color: wallColor, dec: false }
+                : { ch: '|', color: wallColor, dec: false };
+        case STAIRS:
+            {
+                const color = is_known_branch_stair(x, y) ? CLR_YELLOW : CLR_GRAY;
+                if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
+                    return { ch: '<', color, dec: false };
+                return { ch: '>', color, dec: false };
+            }
+        case HWALL:
+        case TLCORNER:
+        case TRCORNER:
+        case BLCORNER:
+        case BRCORNER:
+        case CROSSWALL:
+        case TUWALL:
+        case TDWALL:
+            return { ch: '-', color: wallColor, dec: false };
+        case VWALL:
+        case TLWALL:
+        case TRWALL:
+            return { ch: '|', color: wallColor, dec: false };
+        case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+        case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
+        case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+        case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+        case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
+        case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
+        case POOL:
+        case MOAT:
+            return { ch: '}', color: CLR_BLUE, dec: false };
+        case WATER:
+            return { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
+        case LAVAPOOL:
+            return { ch: '}', color: CLR_RED, dec: false };
+        case LAVAWALL:
+            return { ch: '}', color: CLR_ORANGE, dec: false };
+        case CLOUD:
+            return { ch: '#', color: CLR_GRAY, dec: false };
+        default:        return { ch: '?', color: NO_COLOR, dec: false };
+        }
+    }
     switch (typ) {
     case STONE:     return { ch: ' ', color: NO_COLOR, dec: false };
     case ROOM:      return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
@@ -745,7 +803,7 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     if (!loc) return;
     loc.disp_ch = ch;
     loc.disp_color = rogue_level_display() ? NO_COLOR : tty_color(color);
-    loc.disp_decgfx = rogue_level_display() ? false : !!decgfx;
+    loc.disp_decgfx = rogue_level_display() ? false : primary_decgraphics() && !!decgfx;
     loc.disp_attr = attr | 0;
     loc.gnew = 1;
 }
@@ -821,6 +879,15 @@ function swallowed_glyph_at(x, y) {
     return overlay.cells.get(`${x},${y}`) || null;
 }
 
+function hero_glyph() {
+    const form = game.u?._poly_form || null;
+    return {
+        ch: form?.glyph || '@',
+        color: form?.color ?? CLR_WHITE,
+        dec: false,
+    };
+}
+
 // ── newsym ──
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
@@ -830,8 +897,10 @@ export function newsym(x, y) {
     // calls do not redraw external monsters/objects/traps; swallowed()
     // owns the visible 3x3 stomach display.
     if (game.u?.uswallow) {
-        if (game.u?.ux === x && game.u?.uy === y)
-            show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        if (game.u?.ux === x && game.u?.uy === y) {
+            const hg = hero_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
+        }
         return;
     }
 
@@ -840,7 +909,8 @@ export function newsym(x, y) {
 
     if (game.u?.ux === x && game.u?.uy === y) {
         // Hero
-        show_glyph_cell(x, y, '@', CLR_WHITE, false);
+        const hg = hero_glyph();
+        show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
         if (game.level?.flags?.hero_memory)
             loc.remembered_glyph = mapped_location_memory(loc, x, y, visible);
         return;
@@ -930,7 +1000,10 @@ export async function docrt() {
         }
     see_monsters();
     show_premapped_mimics();
-    if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+    if (game.u?.ux > 0) {
+        const hg = hero_glyph();
+        show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, hg.dec);
+    }
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -1084,13 +1157,15 @@ function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.plname || 'Hero';
-    const role = roleRankForLevel(game.urole, u.ulevel || 1, !!game.flags?.female)
+    const form = u._poly_form || null;
+    const role = form?.title || roleRankForLevel(game.urole, u.ulevel || 1, !!game.flags?.female)
         || (game.flags?.female
             ? (game.urole?.rank?.f || game.urole?.name?.f || game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer')
             : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer'));
     const title = `${name} the ${role}`;
     const attrs = u.acurr?.a || [];
-    const stats = `St:${attrs[0] || '?'} Dx:${attrs[3] || '?'} Co:${attrs[4] || '?'} In:${attrs[1] || '?'} Wi:${attrs[2] || '?'} Ch:${attrs[5] || '?'}`;
+    const strength = form?.strength || attrs[0] || '?';
+    const stats = `St:${strength} Dx:${attrs[3] || '?'} Co:${attrs[4] || '?'} In:${attrs[1] || '?'} Wi:${attrs[2] || '?'} Ch:${attrs[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats
     // C pads to align stats starting at a fixed column
@@ -1102,7 +1177,10 @@ function _statusLine1() {
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
-    const xp = game.flags?.showexp
+    const form = u._poly_form || null;
+    const xp = form
+        ? `HD:${form.hd || 1}`
+        : game.flags?.showexp
         ? `Xp:${u.ulevel || 1}/${u.uexp || 0}`
         : `Xp:${u.ulevel || 1}`;
     const turn = game.flags?.time ? ` T:${game.moves || 1}` : '';
@@ -1110,7 +1188,9 @@ function _statusLine2() {
     if ((u.uencumber || 0) > 0) conditions.push('Burdened');
     if (u.uprops?.confusion || u.uconfusion) conditions.push('Conf');
     if (u.uprops?.hallucination || u.uhallucination) conditions.push('Hallu');
+    if (u.uprops?.blinded || u.uprops?.blind || u.ublind) conditions.push('Blind');
     if (u.uprops?.deaf) conditions.push('Deaf');
+    if (form?.fly) conditions.push('Fly');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp

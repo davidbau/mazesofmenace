@@ -708,7 +708,7 @@ function objectGlyph(obj) {
     if (obj.cls === 'scroll' || obj.glyph === '?') return { ch: '?', color: CLR_WHITE, dec: false };
     if (obj.otyp === GEM_CLASS || obj.cls === 'gem') {
         const rawColor = obj.color === NO_COLOR ? obj._display_color ?? NO_COLOR : obj.color ?? obj._display_color ?? NO_COLOR;
-        const color = rawColor === CLR_WHITE ? NO_COLOR : glyphColor(rawColor);
+        const color = glyphColor(rawColor);
         const dx = (obj.ox ?? 0) - (game.u?.ux ?? 0);
         const dy = (obj.oy ?? 0) - (game.u?.uy ?? 0);
         if (dx * dx + dy * dy <= 6) obj._color_seen = true;
@@ -717,6 +717,29 @@ function objectGlyph(obj) {
     if (obj.otyp === 1 && obj.glyph === ')' && obj.color == null)
         return { ch: ')', color: CLR_CYAN, dec: false };
     return { ch: obj.glyph || '?', color: obj.color ?? NO_COLOR, dec: false };
+}
+
+export function seeNearbyObjects() {
+    if (game.u?.blind || game.u?.uswallow || hallucinatesDisplay()) return;
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    for (let y = uy - 2; y <= uy + 2; y++)
+        for (let x = ux - 2; x <= ux + 2; x++) {
+            if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) continue;
+            const dx = x - ux, dy = y - uy;
+            if (dx * dx + dy * dy > 6) continue;
+            if (!(game.viz_array?.[y]?.[x] & IN_SIGHT)) continue;
+            const obj = objectAt(x, y);
+            if (!obj || obj.dknown) continue;
+            obj.dknown = true;
+            if (obj.otyp === GEM_CLASS || obj.cls === 'gem') obj._color_seen = true;
+            recordObservedObjectDiscovery(obj);
+            if (monsterAt(x, y)) continue;
+            const glyph = objectGlyph(obj);
+            const loc = game.level?.at(x, y);
+            if (loc) loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec };
+            show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec);
+        }
 }
 
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0) {
@@ -1119,7 +1142,7 @@ function drawGrid() {
                     const rawGemColor = visibleObj.color === NO_COLOR
                         ? visibleObj._display_color ?? NO_COLOR
                         : visibleObj.color ?? visibleObj._display_color ?? NO_COLOR;
-                    const gemColor = rawGemColor === CLR_WHITE ? NO_COLOR : glyphColor(rawGemColor);
+                    const gemColor = glyphColor(rawGemColor);
                     const dx = x - (game.u?.ux ?? 0);
                     const dy = y - (game.u?.uy ?? 0);
                     if (dx * dx + dy * dy <= 6) visibleObj._color_seen = true;

@@ -142,6 +142,41 @@ function startupPlayerName(name) {
     return raw ? raw[0].toUpperCase() + raw.slice(1) : 'Contestant';
 }
 
+function legacyPagerAsciiGlyph(ch, decgfx) {
+    if (!decgfx) return ch;
+    switch (ch) {
+    case 'x':
+        return '|';
+    case 'q':
+    case 'l':
+    case 'k':
+    case 'm':
+    case 'j':
+        return '-';
+    case '~':
+        return '.';
+    default:
+        return ch;
+    }
+}
+
+function startupPrimaryDecgraphics() {
+    return String(game._nhopts?.symset || '').toLowerCase() === 'decgraphics';
+}
+
+function restoreLegacyPagerLowerMapRows(display) {
+    for (let screenRow = 18; screenRow <= 21; screenRow++) {
+        const y = screenRow - 1;
+        for (let x = 1; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            const ch = loc?.disp_ch && loc.disp_ch !== ' '
+                ? legacyPagerAsciiGlyph(loc.disp_ch, loc.disp_decgfx)
+                : ' ';
+            display.setCell(x - 1, screenRow, ch, loc?.disp_color ?? NO_COLOR, loc?.disp_attr ?? 0);
+        }
+    }
+}
+
 function drawQuestIntroOverlay(alignName) {
     const g = game;
     const display = g.nhDisplay;
@@ -184,9 +219,10 @@ function drawQuestIntroOverlay(alignName) {
             for (let col = 0; col < display.cols; col++)
                 display.setCell(col, row, ' ', NO_COLOR, 0);
     } else {
-        for (let row = 0; row < 22; row++)
+        for (let row = 0; row <= 17; row++)
             for (let col = Math.max(0, left - 1); col < display.cols; col++)
                 display.setCell(col, row, ' ', NO_COLOR, 0);
+        if (!startupPrimaryDecgraphics()) restoreLegacyPagerLowerMapRows(display);
     }
     for (const [col, row, text] of lines) display.putstr(col, row, text, NO_COLOR, 0);
     g._override_screen = serialize_terminal_grid(display);
@@ -549,6 +585,30 @@ function creditEncumberedExtraTurn(g) {
     g._encumbered_move_debt -= encumberedMoveAmount(enc);
 }
 
+function slowPolyMoveAmount(g) {
+    const form = g.u?._poly_form || null;
+    if (!form || g.u?.uencumber) return NORMAL_SPEED;
+    return form.mmove || NORMAL_SPEED;
+}
+
+function slowPolyDebtNeedsExtraTurn(g) {
+    const moveamt = slowPolyMoveAmount(g);
+    if (moveamt >= NORMAL_SPEED) {
+        g._slow_poly_move_debt = null;
+        return false;
+    }
+    if (g._slow_poly_move_debt == null)
+        g._slow_poly_move_debt = (NORMAL_SPEED - moveamt) - moveamt;
+    g._slow_poly_move_debt += NORMAL_SPEED - moveamt;
+    return g._slow_poly_move_debt > 0;
+}
+
+function creditSlowPolyExtraTurn(g) {
+    const moveamt = slowPolyMoveAmount(g);
+    if (moveamt >= NORMAL_SPEED || g._slow_poly_move_debt == null) return;
+    g._slow_poly_move_debt -= moveamt;
+}
+
 function creditEncumberedNomulFinish(g) {
     const enc = g.u?.uencumber || 0;
     if (!enc || g._encumbered_move_debt == null) return;
@@ -849,6 +909,11 @@ export async function moveloop_core() {
             g._resume_floor_list_turn = true;
             return;
         }
+        if (g._deferred_pre_turn_after_more) {
+            g._deferred_pre_turn_after_more = false;
+            await advanceTurn();
+            if (g._more || g._monster_turn_paused_for_more) return;
+        }
         if (g._resume_monster_turn) {
             g._resume_monster_turn = false;
             await advanceTurn();
@@ -888,9 +953,30 @@ export async function moveloop_core() {
             if (g._more || g._monster_turn_paused_for_more) return;
             seedEncumberedDebtAfterExtraTurn(g);
         }
+        if (g._slow_poly_extra_turn_pending_credit && !g._monster_turn_paused_for_more) {
+            g._slow_poly_extra_turn_pending_credit = false;
+            creditSlowPolyExtraTurn(g);
+        }
+        if (slowPolyDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {
+            // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Slow
+            // polymorphed forms can leave u.umovement below NORMAL_SPEED,
+            // so monsters receive another pass before the next hero action.
+            g._slow_poly_extra_turn_pending_credit = true;
+            await advanceTurn();
+            if (g._monster_turn_paused_for_more) return;
+            g._slow_poly_extra_turn_pending_credit = false;
+            creditSlowPolyExtraTurn(g);
+        }
         while ((g._prayer_turns_remaining || 0) > 0) {
             g._prayer_turns_remaining--;
             await advanceTurn();
+        }
+        if (g._clear_pet_combat_more_after_resume
+            && !g._monster_turn_paused_for_more
+            && !g._after_more_message) {
+            g._clear_pet_combat_more_after_resume = false;
+            g._more = false;
+            g._more_dismissals_remaining = 0;
         }
         finishDeferredSeerTurnUpdate(g);
         if (g.u?.uinvulnerable && g._pending_message === 'You are surrounded by a shimmering light.') {
