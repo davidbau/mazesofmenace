@@ -188,6 +188,7 @@ function mksobjInitMagicMarkerSpeRn1LikeC() {
 
 /** C: mkobj.c mksobj_init — SACK → mkbox_cnts; moves<=1 && !in_mklev → n=0 → for (n = rn2(1); …) */
 function mksobjInitSackStartInvLikeC() {
+    if ((game.moves | 0) <= 1 && !game.in_mklev) return;
     rn2(1);
 }
 

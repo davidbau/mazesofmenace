@@ -14,6 +14,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     def_warnsyms, IS_POOL, IS_STWALL, MAGIC_PORTAL, BC_BALL, BC_CHAIN,
+    AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM,
 } from './const.js';
 import {
     NO_COLOR, CLR_BROWN, CLR_BLUE, CLR_GRAY, CLR_WHITE, CLR_YELLOW, CLR_RED, CLR_ORANGE,
@@ -327,6 +328,19 @@ function crossWallGlyph(loc) {
     return wallResultGlyph('stone');
 }
 
+function altarColor(loc) {
+    const mask = loc?.altarmask ?? loc?.flags ?? 0;
+    if ((mask & AM_SANCTUM) === AM_SANCTUM) return CLR_BRIGHT_MAGENTA;
+    switch (mask & AM_MASK) {
+    case AM_CHAOTIC:
+    case AM_NEUTRAL:
+    case AM_LAWFUL:
+        return CLR_GRAY;
+    default:
+        return CLR_RED;
+    }
+}
+
 function terrainGlyph(loc, x, y) {
     switch (loc?.typ) {
     case STONE: return { ch: ' ', color: NO_COLOR, dec: false };
@@ -382,7 +396,7 @@ function terrainGlyph(loc, x, y) {
     case CLOUD: return { ch: '#', color: CLR_GRAY, dec: false };
     case GRAVE: return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE: return { ch: '\\', color: CLR_YELLOW, dec: false };
-    case ALTAR: return { ch: game.symset === 'DECgraphics' ? '\x0e{\x0f' : '_', color: NO_COLOR, dec: false };
+    case ALTAR: return { ch: game.symset === 'DECgraphics' ? '\x0e{\x0f' : '_', color: altarColor(loc), dec: false };
     case HWALL: return game.level?.flags?.sokoban_rules ? wallGlyph('q', '-') : rememberedWallGlyph(loc, 'q', '-');
     case VWALL: return game.level?.flags?.sokoban_rules ? wallGlyph('x', '|') : rememberedWallGlyph(loc, 'x', '|');
     case TLCORNER: return game.level?.flags?.sokoban_rules ? wallGlyph('l', '-') : rememberedWallGlyph(loc, 'l', '-');

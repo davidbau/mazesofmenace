@@ -18,19 +18,17 @@ import { initObjectsLikeC } from './o_init.js';
 import { roleInitLikeC } from './role_init.js';
 import { initDungeonsLikeC } from './dungeon_init.js';
 import { fastforward_pre_mklev } from './fastforward.js';
-import { runUInitRoleRngAfterMklevLikeC } from './u_init_post_mklev.js';
+import { uInitInventoryAttrsLikeC } from './u_init_post_mklev.js';
+import { makedogLikeC } from './makedog.js';
+import { checkSpecialRoomNewgameFalseLikeC } from './spoteffects.js';
 import {
     runMoveloopPreambleBeforeRhackLikeC,
     runPostCommandTurnAdvanceLikeC,
     clearLeavingTutorialIfActiveLikeC,
 } from './moveloop_turn_advance.js';
-import { initIniInvStub } from './ini_inv_stub.js';
-import { applyInitAttrPipeline, uInitCarryAttrBoostLikeC } from './u_init_attr.js';
 import { applyBirthHpEnergy } from './u_init_hp_energy.js';
-import { applyRoleStartingUmoney0 } from './u_init_money.js';
 import { applyAdjabil } from './u_init_adjabil.js';
 import { findAc } from './u_init_find_ac.js';
-import { applyHiddenGoldToUmoney0 } from './u_init_hidden_gold.js';
 import { applySkillInit } from './u_init_skills.js';
 import { UHS } from './hunger.js';
 import { moveloopPreamble } from './moveloop_preamble.js';
@@ -187,46 +185,27 @@ export async function newgame() {
     // C: do.c goto_level — **`if (new)`** after **`mklev`**; **`allmain.c`** **`newgame`** calls **`mklev()`** with **`u.uz`** on D:1 (no bones on brand-new game).
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
 
-    /* C: mklev.c makelevel fill + level_finalize_topology mineralize (no fastforward replay). */
-
-    /* C u_init.c u_init_role — svm.moves = 1L before ini_inv (before post-mklev fastforward replay) */
-    g.moves = 1;
-    /* C: u_init.c u_init_role — per-role ini_inv RNG (tourist etc. in u_init_role_rng.js). */
-    runUInitRoleRngAfterMklevLikeC(g);
-
-    /* C: u_init.c u_init_inventory_attrs — u.umoney0 from u_init_role before ini_inv / init_attr */
-    applyRoleStartingUmoney0();
-
-    /* C: u_init.c u_init_inventory_attrs — ini_inv display stub (no linked gi.invent yet); */
-    initIniInvStub(g);
-    /* C: u_init.c u_init_inventory_attrs — u.umoney0 += hidden_gold(TRUE) after invent */
-    applyHiddenGoldToUmoney0(g);
-
-    /* C: u_init.c u_init_inventory_attrs — init_attr(75); vary_init_attr(); u_init_carry_attr_boost(); */
-    applyInitAttrPipeline(75);
-    uInitCarryAttrBoostLikeC(g);
-
-    g.multi = 0; /* C: gm.multi — multi-turn actions / occupation */
-    // When non-zero, moveloop_core runs movemon + end-of-turn tail (harness).
-    g._prevMoveTick = 1;
-    g.plname = g.plname || 'Contestant';
-    /* C: u_init.c u_init_skills_discoveries — skill_init() before find_ac (weapon_type on g.invent when linked) */
-    applySkillInit(g);
-    /* C: u_init.c u_init_skills_discoveries — find_ac() after invent (worn gear stubbed) */
-    findAc();
-
-    // C ref: allmain.c newgame() → u_on_upstairs()
-    // Places hero on upstair, or special stair, or random room position.
+    /* C: allmain.c newgame — after mklev: place hero, vision, special room, starting pet, then invent. */
     u_on_upstairs();
-
-    // Initial display
     init_vision_globals();
     vision_reset();
-    vision_recalc(0);
+    checkSpecialRoomNewgameFalseLikeC(g);
+    makedogLikeC(g);
+    uInitInventoryAttrsLikeC(g);
+
+    g.multi = 0; /* C: gm.multi — multi-turn actions / occupation */
+    g._prevMoveTick = 1;
+    g.plname = g.plname || 'Contestant';
+
     await cls();
     await docrt();
     await flush_screen(1);
     await bot();
+
+    /* C: u_init.c u_init_skills_discoveries — skill_init(); find_ac() after invent + docrt/bot */
+    applySkillInit(g);
+    findAc();
+    vision_recalc(0);
 
     /* C: allmain.c newgame — `if (flags.legacy) com_pager(...)` before `welcome(TRUE)`. */
     await awaitLegacyIntroMoreLikeC();

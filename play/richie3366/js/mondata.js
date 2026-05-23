@@ -78,6 +78,25 @@ export function stubPermonstForCorpsenm(mnum) {
 
 /** C: mondata.h **`is_human(ptr)`** — **`M2_HUMAN`**. */
 const M2_HUMAN = 0x00000008;
+/** C: monflag.h M2_MALE / M2_FEMALE / M2_NEUTER — makemon.c gender. */
+const M2_MALE = 0x00010000;
+const M2_FEMALE = 0x00020000;
+const M2_NEUTER = 0x00040000;
+
+/** C: mondata.h is_male(ptr). */
+export function isMalePtrLikeC(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_MALE) !== 0;
+}
+
+/** C: mondata.h is_female(ptr). */
+export function isFemalePtrLikeC(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_FEMALE) !== 0;
+}
+
+/** C: mondata.h is_neuter(ptr). */
+export function isNeuterPtrLikeC(ptr) {
+    return ((ptr?.mflags2 ?? 0) & M2_NEUTER) !== 0;
+}
 
 /**
  * C: **`mons[mndx]`** permonst fields used by **`mon_allowflags`** / **`mfndpos`** / **`mcalcmove`**.

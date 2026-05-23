@@ -48,6 +48,7 @@ import {
     MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     is_pit, is_hole,
     OTYP_BOULDER,
+    In_endgame, In_hell, In_V_tower, Is_rogue_level, Is_oracle_level, In_mines, In_quest,
 } from './const.js';
 import { makeEngrAt, ENGR_HEADSTONE, ENGR_MARK, ENGR_DUST, randomEngraving, getRndEpitaphText, wipeEngrAt } from './engrave.js';
 import { tAt } from './search.js';
@@ -536,19 +537,33 @@ async function makelevel() {
     makecorridors();
     await make_niches();
 
-    // Vault creation (simplified for contest)
+    /* C: mklev.c makelevel — secret vault (check_room, else rnd_rect + create_vault + check_room). */
     if (g.vault_x !== -1) {
         const vw = { v: 1 }, vh = { v: 1 };
         const vx = { v: g.vault_x }, vy = { v: g.vault_y };
-        if (check_room(vx, vw, vy, vh, true)) {
+        const fillVaultRoomLikeC = async () => {
             add_room(vx.v, vy.v, vx.v + vw.v, vy.v + vh.v, true, VAULT, false);
             g.level.flags.has_vault = true;
             const vaultRoom = g.level.rooms[g.level.nroom - 1];
             if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
             if (!is_branchlev()) rn2(3);
             if (!rn2(3)) await makeniche(TELEP_TRAP);
-        } else if (rnd_rect()) {
-            // Fallback vault attempt — simplified
+        };
+        if (check_room(vx, vw, vy, vh, true)) {
+            await fillVaultRoomLikeC();
+        } else if (rnd_rect() && create_vault()) {
+            const vr = g.level.rooms[g.level.nroom - 1];
+            g.vault_x = vr?.lx ?? -1;
+            g.vault_y = vr?.ly ?? -1;
+            vx.v = g.vault_x;
+            vy.v = g.vault_y;
+            vw.v = 1;
+            vh.v = 1;
+            if (check_room(vx, vw, vy, vh, true)) {
+                await fillVaultRoomLikeC();
+            } else if (vr) {
+                vr.hx = -1;
+            }
         }
     }
 
@@ -1818,10 +1833,10 @@ async function fill_ordinary_room(croom, bonus_items) {
         const uz_dlevel = g.u?.uz?.dlevel ?? 1;
         const oracle_dnum = g.oracle_level?.dnum ?? 0;
         const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
-        const branch0 = g.branches?.[0];
+        const uz_branch = is_branchlev();
         /* C: mines food at branch entrance (dungeon.lua base=2); D:1 uses oracle supply chest. */
-        if (branch0 && uz_dnum !== mines_dnum && uz_dlevel >= 2
-            && (branch0.end1?.dnum === mines_dnum || branch0.end2?.dnum === mines_dnum)) {
+        if (uz_branch && uz_dnum !== mines_dnum && uz_dlevel >= 2
+            && (uz_branch.end1?.dnum === mines_dnum || uz_branch.end2?.dnum === mines_dnum)) {
             mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
                 pos.x, pos.y, true, false);
         } else if (uz_dnum === oracle_dnum
@@ -1912,11 +1927,30 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
 
 function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
+    const uz = game.u?.uz;
+    if (!skip_lvl_checks && In_endgame(uz)) return;
     mineralize_kelp(kelp_pool, kelp_moat);
-    const absDepth = depth_of_level(game.u?.uz);
-    const dunLevel = game.u?.uz?.dlevel ?? 1;
+    if (!skip_lvl_checks) {
+        const sp = isSpecialAtUzLikeC(game, uz);
+        if (In_hell(uz) || In_V_tower(uz) || Is_rogue_level(uz)
+            || game.level?.flags?.arboreal
+            || (sp && !Is_oracle_level(uz) && (!In_mines(uz) || sp.flags?.town))) {
+            return;
+        }
+    }
+    const absDepth = depth_of_level(uz);
+    const dunLevel = uz?.dlevel ?? 1;
     if (goldprob < 0) goldprob = 20 + Math.trunc(absDepth / 3);
     if (gemprob < 0) gemprob = Math.trunc(goldprob / 4);
+    if (!skip_lvl_checks) {
+        if (In_mines(uz)) {
+            goldprob *= 2;
+            gemprob *= 3;
+        } else if (In_quest(uz)) {
+            goldprob = Math.trunc(goldprob / 4);
+            gemprob = Math.trunc(gemprob / 6);
+        }
+    }
     for (let x = 2; x < COLNO - 2; x++) {
         for (let y = 1; y < ROWNO - 1; y++) {
             const loc = map.at(x, y);

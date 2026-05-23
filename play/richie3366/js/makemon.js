@@ -5,16 +5,20 @@ import { game } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
 import {
     MONS_MLET,
-    MONS_MFLAGS2,
     MONS_MLEVEL,
 } from './mons_rndmonst_ini_inv_data.js';
-import { permonstFromMndxLikeC, throwsRocks } from './mondata.js';
+import {
+    isFemalePtrLikeC,
+    isMalePtrLikeC,
+    isNeuterPtrLikeC,
+    permonstFromMndxLikeC,
+    throwsRocks,
+} from './mondata.js';
 import { monTrackInitLikeC } from './monflee.js';
 import { GP_AVOID_MONPOS, GP_CHECKSCARY, In_sokoban, MM_IGNOREWATER } from './const.js';
 import { goodposMakemonLikeC } from './walkable.js';
 
-/** C: monflag.h M2_NEUTER */
-const M2_NEUTER = 0x00040000;
+import { MM_FEMALE, MM_MALE } from './const.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
 import { d, rnd, rn2 } from './rng.js';
 
@@ -114,10 +118,9 @@ export function makemon(mdat, x, y, mmflags) {
         mnum = mdat.mnum | 0;
     }
     rnd(2); /* C: makemon.c mtmp->m_id = next_ident() */
-    /* C: fill_ordinary_room **`rndmonst`** — **`newmonhp`** with **`m_lev==0`** → one **`rnd(4)`** only. */
-    const hp = (game.in_mklev && mdat === null)
-        ? newmonhpRnd4BoostLikeC()
-        : newmonhpMndxLikeC(mnum);
+    const mLev = adjLevMndxLikeC(mnum);
+    /* C: makemon.c newmonhp — always sets m_lev = adj_lev(ptr); !m_lev → rnd(4) HP. */
+    const hp = !mLev ? newmonhpRnd4BoostLikeC() : newmonhpMndxLikeC(mnum);
     const mtmp = {
         mx: px,
         my: py,
@@ -138,14 +141,23 @@ export function makemon(mdat, x, y, mmflags) {
         mstrategy: 0,
     };
     monTrackInitLikeC(mtmp);
-    mtmp.m_lev = (game.in_mklev && mdat === null) ? 0 : adjLevMndxLikeC(mnum);
+    mtmp.m_lev = mLev;
     mtmp.mgenmklev = game.in_mklev ? 1 : 0;
-    /* C: makemon.c — `femaleok = !is_male(ptr) && !is_neuter(ptr)`; neuter skips `rn2(2)`. */
-    const femaleok = ((MONS_MFLAGS2[mnum | 0] | 0) & M2_NEUTER) === 0;
-    if (femaleok) {
-        void rn2(2); /* mtmp->female = rn2(2) */
+    /* C: makemon.c — femaleok/maleok; fixed gender skips `rn2(2)` in else branch. */
+    const ptr = mtmp.data;
+    const femaleok = !isMalePtrLikeC(ptr) && !isNeuterPtrLikeC(ptr);
+    const maleok = !isFemalePtrLikeC(ptr) && !isNeuterPtrLikeC(ptr);
+    const mm = mmflags | 0;
+    if (isFemalePtrLikeC(ptr) || ((mm & MM_FEMALE) !== 0 && femaleok)) {
+        mtmp.female = 1;
+    } else if (isMalePtrLikeC(ptr) || ((mm & MM_MALE) !== 0 && maleok)) {
+        mtmp.female = 0;
+    } else if (femaleok) {
+        mtmp.female = rn2(2);
+    } else {
+        mtmp.female = 0;
     }
-    mInitinvMklevLikeC(adjLevMndxLikeC(mnum));
+    mInitinvMklevLikeC(mtmp.m_lev | 0);
     /* C: makemon.c allow_minvent — `!rn2(100)` evaluated before `is_domestic` short-circuit. */
     if (!rn2(100)) {
         /* put_saddle_on_mon — not ported */

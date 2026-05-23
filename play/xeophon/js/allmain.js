@@ -1995,8 +1995,8 @@ function armHeroLifeSavingMore(message = '') {
     game._command_mode = 'lifeSavingMore';
 }
 
-function heroWearingSpeedBoots() {
-    return (game.inventory || []).some(item =>
+function heroWearingSpeedBoots(g = game) {
+    return (g.inventory || []).some(item =>
         item.worn && String(item.kind || item.actualKind || item.line || '').includes('speed boots'));
 }
 
@@ -2004,15 +2004,41 @@ function isBlueDragonArmorKind(kind) {
     return kind === 'blue dragon scale mail' || kind === 'blue dragon scales';
 }
 
+function heroWearingBlueDragonArmor(g = game) {
+    return (g.inventory || []).some(item =>
+        item.worn && isBlueDragonArmorKind(String(item.kind || item.actualKind || '').toLowerCase()));
+}
+
+const ROLE_INTRINSIC_FAST_LEVELS = {
+    Archeologist: 10,
+    Barbarian: 7,
+    Caveman: 7,
+    Knight: 7,
+    Monk: 1,
+    Samurai: 1,
+    Valkyrie: 7,
+};
+
 function heroHasIntrinsicFast(g = game) {
     const role = g?._startup_role || g?.urole?.name?.m;
-    return role === 'Monk' || role === 'Samurai' || !!g?.u?._intrinsicFast;
+    const threshold = ROLE_INTRINSIC_FAST_LEVELS[role];
+    return !!g?.u?._intrinsicFast || (!!threshold && (g?.u?.ulevel || 1) >= threshold);
+}
+
+function syncHeroSpeedState(g = game) {
+    if (!g?.u) return;
+    g.u._blueDragonFast = heroWearingBlueDragonArmor(g);
+    const veryFast = !!(g.u._blueDragonFast || heroWearingSpeedBoots(g) || (g.u._veryfastTimeout || 0) > 0);
+    g.u.veryfast = veryFast;
+    g.u.fast = heroHasIntrinsicFast(g) || veryFast;
 }
 
 function setBlueDragonArmorFast(g, enabled) {
     if (!g?.u) return;
     g.u._blueDragonFast = !!enabled;
-    g.u.fast = heroHasIntrinsicFast(g) || !!g.u._blueDragonFast;
+    const veryFast = !!(g.u._blueDragonFast || heroWearingSpeedBoots(g) || (g.u._veryfastTimeout || 0) > 0);
+    g.u.veryfast = veryFast;
+    g.u.fast = heroHasIntrinsicFast(g) || veryFast;
 }
 
 function interruptPositiveMultiForStoning() {
@@ -2077,7 +2103,7 @@ function applyStoningDialogueSideEffects(timeout) {
     switch (timeout) {
     case 5:
         game.u._veryfastTimeout = 0;
-        if (!heroWearingSpeedBoots()) game.u.veryfast = false;
+        syncHeroSpeedState(game);
         interruptPositiveMultiForStoning();
         break;
     case 4:
@@ -5671,8 +5697,9 @@ async function finishMonsterTurnTail() {
             if ((game.u?._veryfastTimeout || 0) > 0) {
                 game.u._veryfastTimeout--;
                 if (!game.u._veryfastTimeout && game.u.veryfast) {
-                    game.u.veryfast = false;
-                    addToplineMessage(`You feel yourself slow down${game.u.fast ? ' a bit' : ''}.`);
+                    syncHeroSpeedState(game);
+                    if (!game.u.veryfast)
+                        addToplineMessage(`You feel yourself slow down${game.u.fast ? ' a bit' : ''}.`);
                 }
             }
             if ((game.u?._invulnerableTimeout || 0) > 0) {
@@ -6079,11 +6106,13 @@ async function finishMonsterTurnTail() {
                     item.worn = false;
                     item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                     if (game.u) game.u.uac = (game.u.uac ?? 10) + occupation.acBonus;
-                    if (occupation.kind === 'speed boots' && game.u) game.u.veryfast = false;
+                    if (occupation.kind === 'speed boots' && game.u) {
+                        game.u.veryfast = false;
+                        syncHeroSpeedState(game);
+                    }
                     if (isBlueDragonArmorKind(occupation.kind)) {
-                        const wasVeryFast = !!game.u?.veryfast;
                         setBlueDragonArmorFast(game, false);
-                        if (!wasVeryFast) message += '  You slow down.';
+                        if (!game.u?.veryfast) message += '  You slow down.';
                     }
                     updateGauntletsOfPowerStrength(occupation.kind, false);
                 }
@@ -6106,7 +6135,10 @@ async function finishMonsterTurnTail() {
             }
             if (occupation.action !== 'takeoff' && occupation.kind === 'speed boots') {
                 const alreadyFast = !!occupation.alreadyFast;
-                if (game.u) game.u.veryfast = true;
+                if (game.u) {
+                    game.u.veryfast = true;
+                    syncHeroSpeedState(game);
+                }
                 message += `  You feel yourself speed up${alreadyFast ? ' a bit more' : ''}.`;
                 rn2(19);
                 if (item) {
@@ -7036,11 +7068,19 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
 }
 
 function maybeCastUndirectedMonsterSpell(mon) {
-    const wizardCaster = mon.data?.name === 'gnomish wizard' || mon.data?.spellcaster;
-    if (mon.mspec_used || !wizardCaster) return false;
+    const data = mon.data || {};
+    const caster = data.name === 'gnomish wizard' || data.spellcaster || data.magic || data.priest;
+    if (mon.mspec_used || !caster) return false;
     if ((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 > 49) return false;
     const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
-    rn2(level);
+    const cleric = data.priest || data.name === 'acolyte';
+    const maxSpellLevel = cleric ? 13 : 20;
+    const attackCount = data.name === 'Arch Priest' ? 2 : 1;
+    for (let i = 0; i < attackCount; i++) {
+        const spellLevel = rn2(level);
+        if (spellLevel > maxSpellLevel && rn2(maxSpellLevel))
+            rn2(maxSpellLevel);
+    }
     return false;
 }
 
@@ -9158,7 +9198,9 @@ export function advanceRegions(g) {
 
 export async function moveloop_core() {
     const g = game;
-    while (g._pending_time_passed && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
+    while (g._pending_time_passed
+        && !(g._pending_message && !g._message_more && g._pending_message_blocks_time)
+        && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
         let turnAdvanced = false;
         let skipMonsterTurnsThisPass = false;
         let ballDragNoResumePass = false;
@@ -9359,11 +9401,13 @@ export async function moveloop_core() {
                         item.worn = false;
                         item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                         if (g.u) g.u.uac = (g.u.uac ?? 10) + occupation.acBonus;
-                        if (occupation.kind === 'speed boots' && g.u) g.u.veryfast = false;
+                        if (occupation.kind === 'speed boots' && g.u) {
+                            g.u.veryfast = false;
+                            syncHeroSpeedState(g);
+                        }
                         if (isBlueDragonArmorKind(occupation.kind)) {
-                            const wasVeryFast = !!g.u?.veryfast;
                             setBlueDragonArmorFast(g, false);
-                            if (!wasVeryFast) message += '  You slow down.';
+                            if (!g.u?.veryfast) message += '  You slow down.';
                         }
                         updateGauntletsOfPowerStrength(occupation.kind, false);
                     }
@@ -9386,7 +9430,10 @@ export async function moveloop_core() {
                 }
                 if (occupation.action !== 'takeoff' && occupation.kind === 'speed boots') {
                     const alreadyFast = !!occupation.alreadyFast;
-                    if (g.u) g.u.veryfast = true;
+                    if (g.u) {
+                        g.u.veryfast = true;
+                        syncHeroSpeedState(g);
+                    }
                     message += `  You feel yourself speed up${alreadyFast ? ' a bit more' : ''}.`;
                     rn2(19);
                     if (item) {

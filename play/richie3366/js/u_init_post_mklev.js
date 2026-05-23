@@ -1,12 +1,14 @@
 // u_init_post_mklev.js — C u_init.c u_init_role / ini_inv RNG after mklev (allmain.c newgame).
-// C ref: allmain.c newgame — svm.moves = 1, then u_init_role before u_init_inventory_attrs.
-//
-// Per-role chains live in u_init_role_rng.js; generic roles still replay leaf draws below
-// until full ini_inv is ported. Delete the generic tail as roles move to real code.
+// C ref: allmain.c newgame — mklev, u_on_upstairs, vision_reset, check_special_room(FALSE), makedog,
+//        u_init_inventory_attrs().
 
 import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { races } from './roles.js';
+import { applyRoleStartingUmoney0 } from './u_init_money.js';
+import { initIniInvStub } from './ini_inv_stub.js';
+import { applyHiddenGoldToUmoney0 } from './u_init_hidden_gold.js';
+import { applyInitAttrPipeline, uInitCarryAttrBoostLikeC } from './u_init_attr.js';
 import {
     consumeRogueHumanIniInvUinitRoleRngLikeC,
     consumeSamuraiHumanIniInvUinitRoleRngLikeC,
@@ -24,11 +26,13 @@ import {
 } from './u_init_role_rng.js';
 
 /**
- * C: u_init_role + ini_inv PRNG after mklev, before u_init_inventory_attrs / init_attr.
+ * C: u_init_role + ini_inv PRNG (inside u_init_inventory_attrs after makedog).
  * @param {import('./gstate.js').game} [g]
  */
 export function runUInitRoleRngAfterMklevLikeC(g = game) {
     void g;
+    /* C: u_init.c u_init_role — svm.moves = 1L before ini_inv (invent init boundary). */
+    g.moves = 1;
     const humanIdx = races.findIndex((r) => r.name === 'human');
     const rog = game.urole?.abbr === 'Rog' && (game.initrace | 0) === humanIdx;
     if (rog) {
@@ -105,4 +109,17 @@ export function runUInitRoleRngAfterMklevLikeC(g = game) {
     rnd(2); rn2(4); rnd(2); rn2(4); rnd(2); rn2(4); rn2(1); rnd(2); rn2(10); rn2(11); rn2(10);
     rn2(10); rn2(1); rnd(2); rn2(70); rn2(1); rn2(1); rnd(2); rn2(1); rn2(25); rn2(25); rn2(25);
     rn2(20); rn2(1); rnd(2);
+}
+
+/**
+ * C: u_init.c u_init_inventory_attrs() — role/race invent RNG, money, ini_inv, attrs (no skill_init).
+ * @param {import('./gstate.js').game} [g]
+ */
+export function uInitInventoryAttrsLikeC(g = game) {
+    runUInitRoleRngAfterMklevLikeC(g);
+    applyRoleStartingUmoney0();
+    initIniInvStub(g);
+    applyHiddenGoldToUmoney0(g);
+    applyInitAttrPipeline(75);
+    uInitCarryAttrBoostLikeC(g);
 }

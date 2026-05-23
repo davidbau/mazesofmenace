@@ -273,6 +273,11 @@ function checkSpecialRoomSpoteffects(_g, _picked) {
     void _picked;
 }
 
+/** C: allmain.c newgame — **`check_special_room(FALSE)`** after **`vision_reset`**. */
+export function checkSpecialRoomNewgameFalseLikeC(g) {
+    checkSpecialRoomSpoteffects(g, false);
+}
+
 /**
  * C: hack.c **`spoteffects(boolean pick)`** — post-move arrival (**`domove`** / displace).
  * @param {typeof game} [g]
