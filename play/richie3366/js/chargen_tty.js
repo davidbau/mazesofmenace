@@ -781,6 +781,8 @@ function maybeRoleMenuExcessLinesLikeC(f) {
 }
 
 export function paintRoleMenu(disp, f) {
+    /* C role.c plsel_startmenu — rigid_role_checks before recap/menu paint. */
+    rigidRoleChecksJs(f);
     disp.clearScreen();
     const rc = roleHubRightColumnLikeC(f) ? MENU_COL : 0;
     const recap = roleHubRecapLineLikeC(f);

@@ -3035,6 +3035,8 @@ export const PM_ERINYS = 299;
 export const PM_AMOROUS_DEMON = 292;
 /** C: `monsters.h` MON() order — lichen/lizard corpses skip **`start_corpse_timeout`**. */
 export const PM_LICHEN = 162;
+/** C: `monsters.h` MON() order — giant eel (NH5 `mons[]` / `MONS_*` index **328**). */
+export const PM_GIANT_EEL = 328;
 /** C: `monsters.h` MON() order — adult gray–yellow dragon (`mondata.c` `defended`, `Dragon_scales_to_pm`). */
 export const PM_GRAY_DRAGON = 143;
 export const PM_YELLOW_DRAGON = 153;

@@ -99,14 +99,7 @@ export function makemon(mdat, x, y, mmflags) {
             const gpflags = ((mmflags & MM_IGNOREWATER) ? MM_IGNOREWATER : 0)
                 | GP_CHECKSCARY
                 | GP_AVOID_MONPOS;
-            const posOk = goodposMakemonLikeC(
-                px,
-                py,
-                fakemon,
-                gpflags,
-                game,
-                game.in_mklev ? { skipLandEelRn2: true } : {}
-            );
+            const posOk = goodposMakemonLikeC(px, py, fakemon, gpflags, game);
             const ok = !(
                 (tryct === 0 && throwsRocks(fakemon.data) && In_sokoban(game.u?.uz))
                 || !posOk

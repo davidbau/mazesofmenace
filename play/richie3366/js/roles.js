@@ -171,34 +171,58 @@ export const roles = [
       cgod: 'Anhur' },
 ];
 
-/** @type {{ name: string, adj: string, mnum: number, filecode?: string, permonst?: import('./mondata.js').Permonst, attrmin: number[], attrmax: number[], hpadv: RoleAdvance, enadv: RoleAdvance }[]} */
+/**
+ * @typedef {{ name: string, adj: string, mnum: number, filecode?: string, allows?: { align: number[] }, prologForcedAlignValueLikeC?: number, permonst?: import('./mondata.js').Permonst, attrmin: number[], attrmax: number[], hpadv: RoleAdvance, enadv: RoleAdvance }} RaceRow
+ */
+
+/** @type {RaceRow[]} */
 export const races = [
     { name: 'human', adj: 'human', mnum: 0, filecode: 'Hum', permonst: permonstHuman,
+      allows: { align: [1, 0, -1] },
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(100), 18, 18, 18, 18, 18],
       hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
       enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
-    /* C role.c races[].allow: MH_ELF | … | ROLE_CHAOTIC only → role_selection_prolog sets aligns[chaotic] */
+    /* C role.c races[].allow — ROLE_CHAOTIC only for elf */
     { name: 'elf', adj: 'elven', mnum: 1, filecode: 'Elf', permonst: permonstHuman,
+      allows: { align: [-1] },
       prologForcedAlignValueLikeC: -1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [18, 20, 20, 18, 16, 18],
       hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 1, hirnd: 0 },
       enadv: { infix: 2, inrnd: 0, lofix: 3, lornd: 0, hifix: 3, hirnd: 0 } },
     { name: 'dwarf', adj: 'dwarven', mnum: 2, filecode: 'Dwa', permonst: permonstHuman,
+      allows: { align: [1] },
       prologForcedAlignValueLikeC: 1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(100), 16, 16, 20, 20, 16],
       hpadv: { infix: 4, inrnd: 0, lofix: 0, lornd: 3, hifix: 2, hirnd: 0 },
       enadv: { infix: 0, inrnd: 0, lofix: 0, lornd: 0, hifix: 0, hirnd: 0 } },
     { name: 'gnome', adj: 'gnomish', mnum: 3, filecode: 'Gno', permonst: permonstHuman,
+      allows: { align: [0] },
       prologForcedAlignValueLikeC: 0,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(50), 19, 18, 18, 18, 18],
       hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
       enadv: { infix: 2, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
     { name: 'orc', adj: 'orcish', mnum: 4, filecode: 'Orc', permonst: permonstHuman,
+      allows: { align: [-1] },
       prologForcedAlignValueLikeC: -1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(50), 16, 16, 18, 18, 16],
       hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
       enadv: { infix: 1, inrnd: 0, lofix: 1, lornd: 0, hifix: 1, hirnd: 0 } },
 ];
+
+/**
+ * C role.c ok_align / validalign — race **`ROLE_ALIGNMASK`** ∩ alignment value.
+ * @param {RaceRow | undefined} race
+ * @param {number} alignValue
+ * @returns {boolean}
+ */
+export function raceAllowsAlignValueLikeC(race, alignValue) {
+    if (!race) return true;
+    if (race.allows?.align) return race.allows.align.includes(alignValue);
+    if (race.prologForcedAlignValueLikeC !== undefined) {
+        return race.prologForcedAlignValueLikeC === alignValue;
+    }
+    return true;
+}
 
 export const aligns = [
     { name: 'lawful', value: 1, adj: 'lawful', filecode: 'Law', plPrefix: ['law'] },
@@ -460,7 +484,7 @@ export function validalignLikeC(rolenum, racenum, alignnum) {
     const av = aligns[ai].value;
     const role = roles[rolenum | 0];
     if (!role.allows.align.includes(av)) return false;
-    if (race.name === 'orc' && av !== -1) return false;
+    if (!raceAllowsAlignValueLikeC(race, av)) return false;
     return true;
 }
 

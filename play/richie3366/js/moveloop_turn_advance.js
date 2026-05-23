@@ -109,7 +109,8 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     const u = g.u;
     if (!u) return;
 
-    u.umovement = (u.umovement ?? NORMAL_SPEED) - NORMAL_SPEED;
+    u.umovement = (u.umovement | 0) - NORMAL_SPEED;
+    if ((u.umovement | 0) < 0) u.umovement = 0;
 
     const stepNum = (g.moves || 1) - 1;
 

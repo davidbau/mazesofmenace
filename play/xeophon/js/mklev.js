@@ -759,7 +759,7 @@ const WOODCHUCK = { name: 'woodchuck', mlet: S_RODENT, glyph: 'r', color: CLR_BR
 const GIANT_EEL = { name: 'giant eel', mlet: ';', glyph: ';', color: CLR_CYAN, mlevel: 5, hpLevel: 7, difficulty: 7, mmove: 9, maligntyp: 0, swimmer: true, oviparous: true, nohands: true, hostile: true, alwaysHostile: true };
 const PIRANHA = { name: 'piranha', mlet: ';', glyph: ';', color: CLR_RED, mlevel: 5, hpLevel: 7, difficulty: 7, mmove: 18, maligntyp: 0, swimmer: true, oviparous: true, nohands: true, hostile: true, alwaysHostile: true };
 const ELECTRIC_EEL = { name: 'electric eel', mlet: ';', glyph: ';', color: CLR_BRIGHT_BLUE, mlevel: 7, hpLevel: 10, difficulty: 10, mmove: 10, maligntyp: 0, swimmer: true, oviparous: true, nohands: true, hostile: true, alwaysHostile: true };
-const KRAKEN = { name: 'kraken', mlet: ';', glyph: ';', color: CLR_RED, mlevel: 20, hpLevel: 24, difficulty: 22, mmove: 3, maligntyp: -3, swimmer: true, nohands: true, hostile: true, alwaysHostile: true, strong: true };
+const KRAKEN = { name: 'kraken', mlet: ';', glyph: ';', color: CLR_RED, mlevel: 20, hpLevel: 24, difficulty: 22, mmove: 3, maligntyp: -3, swimmer: true, nohands: true, hostile: true, alwaysHostile: true, strong: true, noPoly: true };
 const JELLYFISH = { name: 'jellyfish', mlet: ';', glyph: ';', color: CLR_BLUE, mlevel: 3, difficulty: 5, mmove: 3, maligntyp: 0, swimmer: true, nohands: true, hostile: true, alwaysHostile: true };
 const MEDUSA_MON = { name: 'Medusa', mlet: '@', glyph: '@', color: CLR_BRIGHT_GREEN, mlevel: 20, difficulty: 25, mmove: 12, maligntyp: -15, female: true, swimmer: true, inAir: true, strong: true, hostile: true, alwaysHostile: true, armed: true, randomInventory: true, waiting: true };
 const KNIGHT_MON = { name: 'knight', mlet: '@', glyph: '@', color: NO_COLOR, mlevel: 10, difficulty: 12, mmove: 12, maligntyp: 3, male: true, strong: true, armed: true, randomInventory: true };
@@ -4594,7 +4594,7 @@ function specialMonsterByName(name) {
     return null;
 }
 
-function chameleonAnimalForm() {
+export function chameleonAnimalForm() {
     return monsterByRndName(CHAMELEON_ANIMAL_FORMS[rn2(CHAMELEON_ANIMAL_FORMS.length)]);
 }
 

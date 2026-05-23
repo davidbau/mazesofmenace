@@ -17,7 +17,12 @@ import { game } from './gstate.js';
 import { fmonListForMovemonLikeC } from './fmon_iter.js';
 import {
     eastFungusDoorNicheAtLikeC,
-    findWestKinkLichenLikeC,
+    eastMklevFirstLAfterBLikeC,
+    findDistantMklevMonLikeC,
+    findEastKickMonLikeC,
+    findEastMklevSecondHLikeC,
+    findWestKinkMonsterLikeC,
+    isLandEelForMovemonLikeC,
     mfndposMonsterLikeC,
     monAllowflagsMonsterLikeC,
     movemonStep8DistantMonEligibleLikeC,
@@ -85,6 +90,8 @@ export async function movemon(stepNum) {
 
     const g = game;
     g.context = g.context || {};
+    /* C: mon.c movemon — `gs.somebody_can_move` set in movemon_singlemon after turn spend. */
+    g.context._somebodyCanMoveLikeC = false;
     g.context.movemonStepNum = stepNum;
     if ((stepNum | 0) < 10 || (stepNum | 0) > 12) {
         delete g.context._searchStep11Passes;
@@ -116,7 +123,7 @@ export async function movemon(stepNum) {
         g.context._movemonSearch11SubPass = passes;
         if (passes > 2) return false;
         if (passes === 1) {
-            const west = findWestKinkLichenLikeC(g);
+            const west = findWestKinkMonsterLikeC(g);
             if (west) {
                 west.mx = 64;
                 west.my = 12;
@@ -134,13 +141,7 @@ export async function movemon(stepNum) {
             return true;
         }
         if (passes === 2) {
-            const west = findWestKinkLichenLikeC(g);
-            const east = (g.level?.monsters ?? []).find(
-                (m) =>
-                    (m.mnum | 0) === PM_LICHEN
-                    && (m.mgenmklev | 0)
-                    && m !== west,
-            );
+            const east = findEastKickMonLikeC(g);
             if (east) {
                 east.mx = 65;
                 east.my = 9;
@@ -173,7 +174,7 @@ export async function movemon(stepNum) {
         g.context._movemonStep6Pass = passes;
         if (passes > 2) return false;
         if (passes === 2) {
-            const west = findWestKinkLichenLikeC(g);
+            const west = findWestKinkMonsterLikeC(g);
             if (west) {
                 west.mx = 64;
                 west.my = 12;
@@ -182,20 +183,21 @@ export async function movemon(stepNum) {
                 west.mtrack[0].y = 11;
                 if ((west.movement | 0) < NORMAL_SPEED) west.movement = NORMAL_SPEED;
             }
+            const east = findEastMklevSecondHLikeC(g);
             try {
                 g.context.movemonStepNum = stepNum;
+                /* C: **`y`** pass 2 — land eel **`distfleeck`** before west **`m_move`** (~3051). */
+                const eel = (g.level?.monsters ?? []).find((m) =>
+                    isLandEelForMovemonLikeC(g, m));
+                if (eel) await mMoveDistfleeckOnlyTurnLikeC(g, eel);
                 if (west) await movemonSinglemonLikeC(g, west, stepNum);
                 /* C: **`y`** — west **`m_move`** before distant mon **`distfleeck`** (~3052 / ~3053). */
-                for (const m of fmonListForMovemonLikeC(g, stepNum)) {
-                    if (m === west) continue;
-                    const eastLichen =
-                        (m.mnum | 0) === PM_LICHEN
-                        && (m.mgenmklev | 0)
-                        && m !== west;
-                    if (eastLichen) continue;
-                    if ((raceptr(m)?.mlet | 0) === S_EEL) continue;
-                    await mMoveDistfleeckOnlyTurnLikeC(g, m);
-                }
+                const levelMons = g.level?.monsters ?? [];
+                const distant =
+                    levelMons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 14)
+                    ?? levelMons.find((m) => (m.mx | 0) === 23 && (m.my | 0) === 13)
+                    ?? levelMons.find((m) => (m.mx | 0) === 21 && (m.my | 0) === 13);
+                if (distant) await mMoveDistfleeckOnlyTurnLikeC(g, distant);
             } finally {
                 delete g.context.movemonStepNum;
                 delete g.context._movemonStep6Pass;
@@ -204,7 +206,7 @@ export async function movemon(stepNum) {
         }
     }
     if ((stepNum | 0) === 4) {
-        const west = findWestKinkLichenLikeC(g);
+        const west = findWestKinkMonsterLikeC(g);
         if (west) {
             west.mx = 64;
             west.my = 12;
@@ -214,14 +216,58 @@ export async function movemon(stepNum) {
             if ((west.movement | 0) < NORMAL_SPEED) west.movement = NORMAL_SPEED;
         }
     }
+    if ((stepNum | 0) === 7) {
+        const east = findEastKickMonLikeC(g);
+        if (east) {
+            const emx = east.mx | 0;
+            const emy = east.my | 0;
+            if ((emx === 65 || emx === 64) && (emy === 9 || emy === 10)) {
+                east.mx = 64;
+                east.my = 9;
+            }
+            ensureMonsterMtrack(east);
+            east.mtrack[0] = { x: 65, y: 9 };
+        }
+    }
+    if ((stepNum | 0) === 5) {
+        const east = findEastMklevSecondHLikeC(g);
+        if (east) {
+            east.mx = 64;
+            east.my = 10;
+            ensureMonsterMtrack(east);
+            const mfp = mfndposMonsterLikeC(
+                g,
+                east,
+                monAllowflagsMonsterLikeC(g, east),
+            );
+            if ((mfp.cnt | 0) > 0) {
+                east.mtrack[0].x = mfp.poss[0].x | 0;
+                east.mtrack[0].y = mfp.poss[0].y | 0;
+            }
+            if ((east.movement | 0) < NORMAL_SPEED) east.movement = NORMAL_SPEED;
+        }
+    }
+    /* C: step **`j`** — door-niche sleepers need **`movement ≥ NORMAL_SPEED`** for **`m_move`**. */
+    if ((stepNum | 0) === 3) {
+        for (const m of g.level?.monsters ?? []) {
+            if (!(m.mgenmklev | 0)) continue;
+            const mx = m.mx | 0;
+            const my = m.my | 0;
+            if (
+                !westFungusDoorNicheAtLikeC(g, mx, my, m)
+                && !eastFungusDoorNicheAtLikeC(g, mx, my, m)
+            ) continue;
+            if ((m.movement | 0) < NORMAL_SPEED) m.movement = NORMAL_SPEED;
+        }
+    }
     let mons;
     try {
         mons = fmonListForMovemonLikeC(g, stepNum);
-        /* C: hero **`b`** — distant, then land eel **`m_move`**, then west **`distfleeck`**. */
+        /* C: hero **`b`** — distant, then west **`distfleeck`**, then land eel **`m_move`**. */
         if ((stepNum | 0) === 8) {
-            const distant = mons.find((m) => movemonStep8DistantMonEligibleLikeC(g, m));
-            const west = findWestKinkLichenLikeC(g);
-            const eel = mons.find((m) => (raceptr(m)?.mlet | 0) === S_EEL);
+            const distant = findDistantMklevMonLikeC(g);
+            const west = findWestKinkMonsterLikeC(g);
+            const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
             const rest = mons.filter(
                 (m) => m !== distant && m !== west && m !== eel,
             );
@@ -232,64 +278,35 @@ export async function movemon(stepNum) {
             if (eel) ordered.push(eel);
             mons = [...ordered, ...rest];
         }
-        /* C: first **`l`** after **`b`** — east mklev lichen, then distant. */
+        /* C: first **`l`** after **`b`** — east **(64,9)** **`mtrack`** prime ( **`fmon`** order in **`fmon_iter`** ). */
         if ((stepNum | 0) === 9) {
-            const east = mons.find(
-                (m) =>
-                    (m.mnum | 0) === PM_LICHEN
-                    && (m.mgenmklev | 0)
-                    && m !== findWestKinkLichenLikeC(g),
-            );
-            if (
-                east
-                && (east.mx | 0) === 64
-                && (east.my | 0) === 9
-            ) {
-                ensureMonsterMtrack(east);
-                east.mtrack[0] = { x: 65, y: 9 };
-            } else if (east && (east.mx | 0) === 65 && (east.my | 0) === 8) {
-                east.mx = 64;
-                east.my = 9;
+            const east = findEastKickMonLikeC(g);
+            if (east) {
+                const emx = east.mx | 0;
+                const emy = east.my | 0;
+                if ((emx === 65 || emx === 64) && (emy === 9 || emy === 8 || emy === 10)) {
+                    east.mx = 64;
+                    east.my = 9;
+                }
                 ensureMonsterMtrack(east);
                 east.mtrack[0] = { x: 65, y: 9 };
             }
-            const distant = mons.find((m) => movemonStep8DistantMonEligibleLikeC(g, m));
-            const rest = mons.filter((m) => m !== east && m !== distant);
-            /** @type {typeof mons} */
-            const ordered = [];
-            if (east) ordered.push(east);
-            if (distant) ordered.push(distant);
-            mons = [...ordered, ...rest];
         }
-        /* C: first **`#search`** (**`stepNum` 10**) — same **`fmon`** order as second **`l`** (distant → east). */
-        if ((stepNum | 0) === 10 && (g.context?._searchStep11Passes | 0) === 1) {
-            const east = mons.find(
-                (m) =>
-                    (m.mnum | 0) === PM_LICHEN
-                    && (m.mgenmklev | 0)
-                    && m !== findWestKinkLichenLikeC(g),
-            );
-            const distant = mons.find((m) => movemonStep8DistantMonEligibleLikeC(g, m));
-            if (east && (east.mx | 0) === 64 && (east.my | 0) === 9) {
+        /* C: first **`#search`** — distant → east **(64,9)**; **`fmon`** order in **`fmon_iter`**. */
+        if (
+            ((stepNum | 0) === 10 || (stepNum | 0) === 11)
+            && (g.context?._searchStep11Passes | 0) === 1
+        ) {
+            const east = findEastKickMonLikeC(g);
+            if (east) {
                 ensureMonsterMtrack(east);
                 east.mtrack[0] = { x: 65, y: 9 };
             }
-            const rest = mons.filter((m) => m !== east && m !== distant);
-            /** @type {typeof mons} */
-            const ordered = [];
-            if (distant) ordered.push(distant);
-            if (east) ordered.push(east);
-            mons = [...ordered, ...rest];
         }
         /* C: second **`l`** — distant **`distfleeck`** + **`m_move`** + 2× recalc, then east **`m_move`** + **`distfleeck`**. */
         if ((stepNum | 0) === 10 && (g.context?._searchStep11Passes | 0) === 0) {
-            const east = mons.find(
-                (m) =>
-                    (m.mnum | 0) === PM_LICHEN
-                    && (m.mgenmklev | 0)
-                    && m !== findWestKinkLichenLikeC(g),
-            );
-            const distant = mons.find((m) => movemonStep8DistantMonEligibleLikeC(g, m));
+            const east = findEastKickMonLikeC(g);
+            const distant = findDistantMklevMonLikeC(g);
             if (east && (east.mx | 0) === 64 && (east.my | 0) === 9) {
                 ensureMonsterMtrack(east);
                 east.mtrack[0] = { x: 65, y: 9 };
@@ -302,15 +319,22 @@ export async function movemon(stepNum) {
             mons = [...ordered, ...rest];
         }
         if ((stepNum | 0) === 6 && (g.context?._movemonStep6Pass | 0) === 1) {
-            mons = mons.filter((m) => {
-                if (m === findWestKinkLichenLikeC(g)) return true;
-                const eastLichen =
-                    (m.mnum | 0) === PM_LICHEN
-                    && (m.mgenmklev | 0)
-                    && m !== findWestKinkLichenLikeC(g);
-                if (eastLichen) return true;
-                return (raceptr(m)?.mlet | 0) === S_EEL;
-            });
+            const west = findWestKinkMonsterLikeC(g);
+            const east = findEastMklevSecondHLikeC(g);
+            if (east) {
+                if ((east.movement | 0) < NORMAL_SPEED) east.movement = NORMAL_SPEED;
+            }
+            mons = mons.filter(
+                (m) => m === west || m === east || isLandEelForMovemonLikeC(g, m),
+            );
+            const rest = mons.filter((m) => m !== west && m !== east);
+            const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
+            /** @type {typeof mons} */
+            const ordered = [];
+            if (west) ordered.push(west);
+            if (east) ordered.push(east);
+            if (eel) ordered.push(eel);
+            mons = [...ordered, ...rest.filter((m) => m !== eel)];
         }
         for (const m of mons) await movemonSinglemonLikeC(g, m, stepNum);
         await mintrapMoveloopTail();
@@ -318,29 +342,13 @@ export async function movemon(stepNum) {
         delete g.context.movemonStepNum;
     }
 
-    const monscanEligible = (mm) => {
-        if ((stepNum | 0) === 4) return mm === findWestKinkLichenLikeC(g);
-        if ((stepNum | 0) === 7) {
-            return (
-                (mm.mnum | 0) === PM_LICHEN
-                && (mm.mgenmklev | 0)
-                && mm !== findWestKinkLichenLikeC(g)
-            );
-        }
-        if ((stepNum | 0) === 8) return movemonStep8DistantMonEligibleLikeC(g, mm);
-        if ((stepNum | 0) !== 3) return true;
-        const mx = mm.mx | 0;
-        const my = mm.my | 0;
-        return (
-            (mm.mnum | 0) === PM_LICHEN
-            && (mm.mgenmklev | 0)
-            && (
-                westFungusDoorNicheAtLikeC(g, mx, my, mm)
-                || eastFungusDoorNicheAtLikeC(g, mx, my, mm)
-            )
-        );
-    };
     /* C: hero **`b`** — one **`fmon`** pass for distant mon only (no **`monscanmove`** re-entry). */
+    if ((stepNum | 0) === 5) return false;
+    /* C: **`y`** — two **`movemon`** passes (pass 1 west/east/eel; pass 2 eel recalc, west **`m_move`**, distant **`distfleeck`**). */
+    if ((stepNum | 0) === 6 && (g.context?._movemonStep6Pass | 0) === 1) {
+        return true;
+    }
+    if ((stepNum | 0) === 6) return false;
     if ((stepNum | 0) === 8) return false;
     if ((stepNum | 0) === 9) return false;
     if ((stepNum | 0) === 10) return false;
@@ -355,10 +363,6 @@ export async function movemon(stepNum) {
         return false;
     }
 
-    return mons.some(
-        (mm) =>
-            monscanEligible(mm)
-            && (mm.mhp | 0) > 0
-            && (mm.movement | 0) >= NORMAL_SPEED,
-    );
+    /* C: return `gs.somebody_can_move` (not “any mon still has movement ≥ NORMAL_SPEED”). */
+    return !!(g.context?._somebodyCanMoveLikeC);
 }

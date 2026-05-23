@@ -2,7 +2,7 @@
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm } from './mklev.js';
 import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
@@ -69,6 +69,19 @@ const DEFAULT_DOG_NAMES = {
     Ranger: 'Sirius',
     Samurai: 'Hachi',
 };
+const NO_POLY_FORM_NAMES = new Set([
+    'werejackal', 'werewolf', 'orc', 'wererat', 'Angel', 'ki-rin', 'Archon',
+    'Vlad the Impaler', 'Nazgul', 'doppelganger', 'soldier', 'sergeant',
+    'nurse', 'lieutenant', 'captain', 'ghost', 'shade', 'water demon',
+    'erinys', 'sandestin', 'Juiblex', 'Yeenoghu', 'Orcus', 'Geryon',
+    'Dispater', 'Baalzebub', 'Asmodeus', 'Demogorgon', 'Death',
+    'Pestilence', 'Famine', 'mail daemon', 'djinni', 'kraken', 'chameleon',
+]);
+const SHAPECHANGE_FORM_NAME_OVERRIDES = new Map([
+    [5, 'queen bee'],
+    [93, 'woodchuck'],
+    [177, 'minotaur'],
+]);
 
 function levelRoomByRoomno(roomno) {
     if (roomno < ROOMOFFSET) return null;
@@ -2133,12 +2146,15 @@ function processAttributeExercise() {
     game.context ??= {};
     game.context.next_attrib_check ??= 600;
     if (turn < game.context.next_attrib_check) return;
+    if (game._running_continuation || game._initial_run_command || (game._run_steps_remaining || 0) > 0)
+        return;
     if (game._helpless_time || game._armor_wear_occupation || game._eating_turns_remaining
         || game._force_lock_occupation || game._pick_lock_occupation || game._tin_opening_occupation
         || game._prayer_occupation) return;
     if (game._fumble_turn_message_pending || game._pending_fumble_turn_message
-        || game._last_fumble_turn_message) {
+        || game._last_fumble_turn_message || game._defer_fumble_exerchk_once) {
         game._fumble_delayed_exerchk = 1;
+        game._defer_fumble_exerchk_once = 0;
         return;
     }
 
@@ -2177,6 +2193,18 @@ function processDungeonSounds() {
         }
         if ((game.level?.monsters || []).some(mon => mon.isgd && mon._vault_escort_active)) return false;
         const shown = addToplineMessage(msg);
+        if (shown && game._counted_repeat_interruptible
+            && (game._pending_time_passed || 0) <= 1) {
+            game._pending_time_passed = 0;
+            game._skip_pending_time_decrement = 1;
+            game._search_pending_count = 0;
+            game._run_steps_remaining = 0;
+            game._running_continuation = 0;
+            game._initial_run_command = 0;
+            game._counted_repeat_interruptible = 0;
+            game._message_more = 1;
+            game._process_time_with_more = 0;
+        }
         if (!shown && game._message_more && game._topline_after_more === msg)
             game._turn_tail_topline_more = 1;
         return shown;
@@ -2901,9 +2929,14 @@ async function processMonsterTurns() {
 		                        mon.mundetected = true;
 	                        continue;
 	                    }
-                    if (mon.mundetected) continue;
-                }
-                if (game.level?.flags?.sokoban_rules && mon.msleeping) continue;
+	                    if (mon.mundetected) continue;
+	                }
+	                if (mon.data?.mlet === ';' && !mon.mundetected
+	                    && (mon.mflee || !monsterNextToHero(mon))
+	                    && !monsterVisibleToHero(mon) && !rn2(4)) {
+	                    if (hideSeaMonsterUnderWater(mon)) continue;
+	                }
+	                if (game.level?.flags?.sokoban_rules && mon.msleeping) continue;
                 if (mon.appearObj != null) continue;
 	                if (mon.msleeping && !disturbSleepingMonster(mon)) continue;
                 if (skipAfterMimicReveal) continue;
@@ -3511,6 +3544,23 @@ async function processMonsterTurns() {
 		                                mon._distfleeck_done_after_anger = 1;
 		                                return false;
 		                            }
+	                            if (pendingBeforeAttack && game._counted_repeat_interruptible
+	                                && /^You hear /.test(pendingBeforeAttack)) {
+	                                mon._deferred_multi_attack_roll_after_more = rnd(20);
+	                                mon._distfleeck_done_after_anger = 1;
+	                                game._attack_resume_after_more = 1;
+	                                game._message_more = 1;
+	                                game._process_time_with_more = 0;
+	                                game._pending_time_passed = 1;
+	                                game._resume_time_after_more = 1;
+	                                game._counted_repeat_interruptible = 0;
+	                                game._deferred_counted_repeat_stop_waiting = 1;
+	                                game._monster_resume_index = monIndex;
+	                                game._monster_resume_same_index = 1;
+	                                game._monster_resume_after_preturn = 1;
+	                                game._monster_resume_somebody_can_move = somebodyCanMove;
+	                                return false;
+	                            }
 			                            if (travelFinishPending) {
 			                                if (travelFinishOnlyPending) game._pending_message = '';
 			                                game._travel_finish_message = '';
@@ -3523,9 +3573,12 @@ async function processMonsterTurns() {
                             let stoppedCountedRepeat = false;
 	                            const attackCount = deferMultiAttack ? 1 : data.attacks.length;
 	                            let deferredMultiAttack = null;
-	                            for (let attackIndex = 0; attackIndex < attackCount; attackIndex++) {
-	                                const multiAttack = data.attacks[attackIndex];
-	                                const attackRoll = rnd(20 + attackIndex);
+		                            for (let attackIndex = 0; attackIndex < attackCount; attackIndex++) {
+		                                const multiAttack = data.attacks[attackIndex];
+		                                const deferredAttackRoll = attackIndex === 0
+		                                    ? mon._deferred_multi_attack_roll_after_more : null;
+		                                if (attackIndex === 0) mon._deferred_multi_attack_roll_after_more = null;
+		                                const attackRoll = deferredAttackRoll ?? rnd(20 + attackIndex);
                                     const shownSubject = game.u?.blind || hiddenBullwhip ? 'It' : monsterDisplayName(mon, true);
 	                                if (toHit <= attackRoll) {
 	                                    const missMessage = `${shownSubject} ${toHit === attackRoll && game.flags?.verbose !== false ? 'just ' : ''}misses!`;
@@ -3652,12 +3705,35 @@ async function processMonsterTurns() {
 		                            mon._distfleeck_done_after_anger = 1;
 		                            return false;
 		                        }
-                            if (game._dry_eel_minliquid_turns && name === 'cockatrice'
-                                && String(game.u?._polyself_form?.name || '').toLowerCase() === 'brown mold') {
-                                game._dry_eel_minliquid_turns--;
-                                rn2(5);
+	                            if (pendingBeforeAttack && game._counted_repeat_interruptible
+	                                && /^You hear /.test(pendingBeforeAttack)) {
+	                                mon._deferred_attack_roll_after_more = swallowedEngulf ? 0 : rnd(20);
+	                                mon._distfleeck_done_after_anger = 1;
+	                                game._attack_resume_after_more = 1;
+	                                game._message_more = 1;
+                                game._process_time_with_more = 0;
+	                                game._pending_time_passed = 1;
+	                                game._resume_time_after_more = 1;
+	                                game._counted_repeat_interruptible = 0;
+	                                game._deferred_counted_repeat_stop_waiting = 1;
+	                                game._monster_resume_index = monIndex;
+	                                game._monster_resume_same_index = 1;
+	                                game._monster_resume_after_preturn = 1;
+	                                game._monster_resume_somebody_can_move = somebodyCanMove;
+	                                return false;
+	                            }
+                            let revealedHiderBeforeAttack = false;
+                            const attackerLoc = game.level?.at(mon.mx, mon.my);
+                            if ((mon.mundetected && monsterUsesPostMoveHide(mon))
+                                || (game.u?.blind && attackerLoc?.map_invisible && monsterUsesPostMoveHide(mon))) {
+                                mon.mundetected = false;
+                                addToplineMessage('Something was hidden under something!');
+                                newsym(mon.mx, mon.my);
+                                revealedHiderBeforeAttack = true;
                             }
-				                        const attackRoll = swallowedEngulf ? 0 : rnd(20);
+						                        const deferredAttackRoll = mon._deferred_attack_roll_after_more;
+	                        mon._deferred_attack_roll_after_more = null;
+						                        const attackRoll = swallowedEngulf ? 0 : (deferredAttackRoll ?? rnd(20));
 		                        if (!swallowedEngulf && toHit <= attackRoll) {
 	                            if (game._suppress_monster_attack_messages) attackShown = false;
 	                            else {
@@ -4133,7 +4209,7 @@ async function processMonsterTurns() {
                                 const passiveNeedsMore = !!pendingBeforeAttack
                                     && !/^What do you want to /.test(pendingBeforeAttack)
                                     && !/^(?:It|The .+) (?:bites|hits|misses|touches|stings|kicks)\b/.test(pendingBeforeAttack);
-                                if (!coldShown && !passiveNeedsMore) {
+                                if (revealedHiderBeforeAttack || (!coldShown && !passiveNeedsMore)) {
                                     game._brown_mold_passive_after_more = {
                                         mon,
                                         coldDamage,
@@ -4155,13 +4231,18 @@ async function processMonsterTurns() {
                                 }
                                 mon.mhp = Math.max(0, (mon.mhp || 1) - coldDamage);
                                 rn2(2);
+                                const passiveKilled = (mon.mhp || 0) <= 0;
+                                if (passiveKilled) {
+                                    addToplineMessage(`${shownSubject} dies!`);
+                                    killMonsterFromPassive(mon);
+                                }
                                 if (passiveNeedsMore) {
                                     game._message_more = 1;
                                     game._process_time_with_more = 0;
                                     game._monster_resume_index = monIndex + 1;
                                     game._monster_resume_somebody_can_move = somebodyCanMove;
                                 }
-                                if (name === 'cockatrice') {
+                                if (!passiveKilled && name === 'cockatrice') {
                                     const touchRoll = rnd(21);
                                     const touchHit = toHit > touchRoll;
                                     if (touchHit) d(0, 0);
@@ -4820,19 +4901,24 @@ async function processMonsterTurns() {
 					                            }
 					                            continue;
 					                        }
-						                        if (attemptedMonsterMove && mon.data?.hidesUnder && !hiderStayedUnder) {
-                                    hiderPostmoveRoll = rn2(5);
-	                                }
-				                    }
-	                    if (moveEndedTurn) continue;
-                    if (movedByMonster && mon.data?.hidesUnder) {
-                        const stack = (game.level?.objects || [])
-                            .filter(obj => !obj.transientProjectile && obj.ox === mon.mx && obj.oy === mon.my)
-                            .reverse();
-                        const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
-                        const wasDetected = !mon.mundetected;
-                        let canHide = !!stack.length && (!trap || trap.ttyp === PIT || trap.ttyp === SPIKED_PIT);
-                        if (canHide && (stack[0].otyp === GOLD_PIECE || stack[0].glyph === '$' || stack[0].cls === 'coin')) {
+							                        const postMoveHideCheck = mon.data?.mlet === ';' ? movedByMonster : attemptedMonsterMove;
+							                        if (postMoveHideCheck && monsterUsesPostMoveHide(mon) && !hiderStayedUnder
+                                                        && !(mon.data?.mlet === ';' && mon.mundetected)) {
+	                                    hiderPostmoveRoll = rn2(5);
+		                                }
+					                    }
+		                    if (moveEndedTurn) continue;
+	                    if (movedByMonster && monsterUsesPostMoveHide(mon)) {
+	                        const stack = (game.level?.objects || [])
+	                            .filter(obj => !obj.transientProjectile && obj.ox === mon.mx && obj.oy === mon.my)
+	                            .reverse();
+	                        const trap = game.level?.traps?.find(t => t.tx === mon.mx && t.ty === mon.my);
+	                        const wasDetected = !mon.mundetected;
+	                        let canHide = mon.data?.mlet === ';'
+	                            ? seaMonsterCanHideUnderWater(mon)
+	                            : !!stack.length && (!trap || trap.ttyp === PIT || trap.ttyp === SPIKED_PIT);
+	                        if (canHide && mon.data?.mlet !== ';'
+	                            && (stack[0].otyp === GOLD_PIECE || stack[0].glyph === '$' || stack[0].cls === 'coin')) {
                             let coins = 0;
                             canHide = false;
                             for (const obj of stack) {
@@ -5372,15 +5458,31 @@ async function processMonsterTurns() {
                     }
                     shifted = { name: 'doppelganger role monster', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 10, difficulty: 12, mmove: 12, maligntyp: 0, neuter: false };
                 }
-                if (shifted) {
-                    if (!shifted.neuter && !rn2(10)) mon.female = !mon.female;
-                    const shiftedLevel = adjustedMonsterLevel(shifted);
-                    const shiftedHp = monster_hp(shifted, shiftedLevel);
-                    Object.assign(mon, { data: { ...shifted, hpLevel: shiftedLevel }, m_lev: shiftedLevel, mhp: shiftedHp, mhpmax: shiftedHp });
-                    newsym(mon.mx, mon.my);
-                }
-            } else if (mon.chamBase === 'sandestin') {
-                const shifted = rn2(7) ? pickNasty(25) : null;
+	                if (shifted) {
+	                    if (!shifted.neuter && !rn2(10)) mon.female = !mon.female;
+	                    const shiftedLevel = adjustedMonsterLevel(shifted);
+	                    const shiftedHp = monster_hp(shifted, shiftedLevel);
+	                    Object.assign(mon, { data: { ...shifted, hpLevel: shiftedLevel }, m_lev: shiftedLevel, mhp: shiftedHp, mhpmax: shiftedHp });
+	                    newsym(mon.mx, mon.my);
+	                }
+	            } else if (mon.chamBase === 'chameleon') {
+	                const shifted = selectChameleonShiftForm(mon);
+	                if (shifted && shifted.name !== mon.data?.name) {
+	                    applyShapechangeGender(mon, shifted);
+	                    const oldHp = mon.mhp || 1;
+	                    const oldMax = mon.mhpmax || oldHp;
+	                    const shiftedLevel = adjustedMonsterLevel(shifted);
+	                    const shiftedHp = monster_hp(shifted, shiftedLevel);
+	                    Object.assign(mon, {
+	                        data: { ...shifted, hpLevel: shiftedLevel },
+	                        m_lev: shiftedLevel,
+	                        mhp: Math.max(1, Math.min(shiftedHp, Math.trunc((oldHp * shiftedHp) / oldMax))),
+	                        mhpmax: shiftedHp,
+	                    });
+	                    newsym(mon.mx, mon.my);
+	                }
+	            } else if (mon.chamBase === 'sandestin') {
+	                const shifted = rn2(7) ? pickNasty(25) : null;
                 if (shifted && shifted.name !== mon.data?.name) {
                     if (shifted.male) mon.female = false;
                     else if (shifted.female) mon.female = true;
@@ -5484,6 +5586,8 @@ async function processMonsterTurns() {
                 game._fumble_turn_message_pending = 1;
                 game._last_fumble_turn_message = message;
                 game._last_fumble_turn_move = game.moves || 0;
+                game._last_fumble_from_run = !!(game._running_continuation || game._initial_run_command || game._run_steps_remaining > 0);
+                game._last_fumble_keep_flushes = game._last_fumble_from_run ? 2 : 0;
                 const pendingBeforeFumble = !!game._pending_message;
                 const pendingStartedWithMonsterNoise = !!game._pending_starts_monster_noise_message;
                 if (pendingBeforeFumble && !game._keep_pending_message && !game._message_more)
@@ -5557,14 +5661,17 @@ async function finishMonsterTurnTail() {
         if (!game.u?.uinvulnerable && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
             const con = game.u?.acurr?.a?.[4] ?? 10;
             const regenRoll = rn2(100);
+            const suppressHpRegen = !!game._suppress_next_hp_regen;
+            game._suppress_next_hp_regen = 0;
             const regenerating = (game.inventory || []).some(item =>
                 item.worn && (item.actualKind === 'ring of regeneration'
                     || item.kind === 'ring of regeneration'
                     || item.ringRoll === 7));
             if ((game.u?.uhp || 0) < (game.u?.uhpmax || 0)
+                && !suppressHpRegen
                 && (game.u?.ulevel || 1) + con > regenRoll)
                 game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
-            if (regenerating && (game.u?.uhp || 0) < (game.u?.uhpmax || 0))
+            if (regenerating && !suppressHpRegen && (game.u?.uhp || 0) < (game.u?.uhpmax || 0))
                 game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
             reachedFullHp = (game.u?.uhp || 0) === (game.u?.uhpmax || 0);
         }
@@ -6017,7 +6124,9 @@ async function finishMonsterTurnTail() {
     if (armBallDragForceTail) game._ball_drag_force_tail_after_first_turn = 0;
 	    const collapsedDoubleMiss = /^The .+ misses the .+\.  The .+ misses the .+\.$/.test(game._pending_message || '');
 	    game._monster_turns_started = 1;
-    if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss) {
+    const suppressImmobileExtraTurns = !!game._suppress_immobile_extra_turns_once;
+    game._suppress_immobile_extra_turns_once = 0;
+    if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss && !suppressImmobileExtraTurns) {
         game.moves = (game.moves || 1) + 1;
         await afterMoveTurn(game, false);
         if (game.u?.ublesscnt) game.u.ublesscnt--;
@@ -6034,6 +6143,122 @@ async function finishMonsterTurnTail() {
     return true;
 }
 
+function applyShapechangeGender(mon, ptr) {
+    if (ptr.male) mon.female = false;
+    else if (ptr.female) mon.female = true;
+    else if (!ptr.neuter && !rn2(10)) mon.female = !mon.female;
+}
+
+function acceptShapechangeForm(mon, ptr) {
+    if (!ptr) return null;
+    if ((ptr.noPoly || NO_POLY_FORM_NAMES.has(ptr.name)) && ptr.name !== mon.chamBase)
+        return null;
+    if (ptr.wereHuman) return null;
+    return ptr;
+}
+
+function randomShapechangeForm(mon) {
+    const formIndex = rn2(330);
+    const name = SHAPECHANGE_FORM_NAME_OVERRIDES.get(formIndex)
+        || DISPLAY_MONSTER_HALLU_NAMES[formIndex];
+    return name ? acceptShapechangeForm(mon, monsterByRndName(name)) : null;
+}
+
+function selectChameleonShiftForm(mon) {
+    for (let tryct = 20; tryct > 0; tryct--) {
+        const ptr = !rn2(3) ? chameleonAnimalForm() : randomShapechangeForm(mon);
+        const accepted = acceptShapechangeForm(mon, ptr);
+        if (accepted) return accepted;
+    }
+    return null;
+}
+
+function topFloorObjectAt(x, y) {
+    const objects = game.level?.objects || [];
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        if (!obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y)
+            return obj;
+    }
+    return null;
+}
+
+function feelSearchLocation(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+    if (loc.map_invisible && mon) return;
+    loc.seenv = loc.seenv || 1;
+    const obj = topFloorObjectAt(x, y);
+    if (obj) {
+        obj.seen = true;
+        obj._hide_until_seen = false;
+    }
+    newsym(x, y);
+}
+
+function searchCanSpotMonster(mon) {
+    if (!mon) return false;
+    if (game.u?.blind) return false;
+    if ((mon.minvis || mon.invis) && !game.u?.seeInvisible) return false;
+    if (mon.mundetected) return false;
+    return true;
+}
+
+async function searchFindMonster(mon) {
+    if (!mon || mon.dead || mon.mhp <= 0) return 0;
+    const loc = game.level?.at(mon.mx, mon.my);
+    let foundSomething = !searchCanSpotMonster(mon);
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        foundSomething = true;
+    }
+    newsym(mon.mx, mon.my);
+    if (!foundSomething) return 0;
+    if (!searchCanSpotMonster(mon) && loc?.map_invisible) return -1;
+    if (!searchCanSpotMonster(mon)) {
+        if (loc) loc.map_invisible = true;
+        newsym(mon.mx, mon.my);
+        await pline('You feel an unseen monster!');
+        game._search_found_unseen_monster = 1;
+        return 1;
+    }
+    return 0;
+}
+
+function killMonsterFromPassive(mon) {
+    if (!mon || !(game.level?.monsters || []).includes(mon)) return;
+    const data = mon.data || {};
+    rn2(6);
+    const corpseData = corpseDataForMonster(data);
+    const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
+        || data.rider || data.shopkeeper || data.name === 'lizard';
+    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
+    const dropCorpse = corpseData && !corpseData.noCorpse
+        && (guaranteedCorpse || !rn2(corpseChance));
+    dropMonsterInventory(mon);
+    if (dropCorpse) {
+        const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
+        Object.assign(corpse, {
+            otyp: 'corpse',
+            glyph: '%',
+            color: corpseData.color,
+            corpsenm: corpseData,
+            oldCorpse: !!data.corpse,
+        });
+    }
+    recordVanquished(mon, false);
+    const loc = game.level?.at(mon.mx, mon.my);
+    if (loc?.map_invisible) {
+        loc.map_invisible = false;
+        loc.remembered_glyph = null;
+    }
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.movement = 0;
+    mon.dead = true;
+    newsym(mon.mx, mon.my);
+}
+
 function couldSeeCoord(x, y) {
     if (x <= 0 || y < 0 || x >= COLNO || y >= ROWNO) return false;
     return couldsee(x, y);
@@ -6044,11 +6269,9 @@ function monsterMinliquid(mon) {
     const data = mon.data || {};
     if (loc && data.swimmer && data.mlet === ';'
         && !IS_POOL(loc.typ) && !IS_LAVA(loc.typ)) {
-        rn2(24);
-        rn2(8);
-        rn2(4);
-        rn2(40);
-        game._dry_eel_minliquid_turns = (game._dry_eel_minliquid_turns || 0) + 1;
+        if ((mon.mhp || 0) > 1 && rn2(mon.mhp) > rn2(8))
+            mon.mhp--;
+        monfleeNoMessage(mon, 2, false);
         return false;
     }
     if (!loc || !IS_LAVA(loc.typ) || data.inAir || data.flyer || data.floater || data.likesLava)
@@ -6070,6 +6293,48 @@ function monsterMinliquid(mon) {
     game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
     newsym(mon.mx, mon.my);
     return true;
+}
+
+function monfleeNoMessage(mon, fleetime, first) {
+    if (!first || !mon.mflee) {
+        if (!fleetime) {
+            mon.mfleetim = 0;
+        } else if (!mon.mflee || mon.mfleetim) {
+            let newTime = fleetime + (mon.mfleetim || 0);
+            if (newTime === 1) newTime++;
+            mon.mfleetim = Math.min(newTime, 127);
+        }
+        mon.mflee = 1;
+    }
+    clearMonsterTrack(mon);
+}
+
+function monsterNextToHero(mon) {
+    const dx = Math.abs(mon.mx - (game.u?.ux || 0));
+    const dy = Math.abs(mon.my - (game.u?.uy || 0));
+    return Math.max(dx, dy) <= 1 && !(mon.data?.name === 'grid bug' && dx && dy);
+}
+
+function monsterVisibleToHero(mon) {
+    return !game.u?.blind && !mon.minvis && !mon.mundetected
+        && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
+        && couldSeeCoord(mon.mx, mon.my);
+}
+
+function seaMonsterCanHideUnderWater(mon) {
+    const loc = game.level?.at(mon.mx, mon.my);
+    return !!loc && IS_POOL(loc.typ) && !game.u?.underwater;
+}
+
+function hideSeaMonsterUnderWater(mon) {
+    const willHide = seaMonsterCanHideUnderWater(mon);
+    mon.mundetected = willHide;
+    if (willHide) newsym(mon.mx, mon.my);
+    return willHide;
+}
+
+function monsterUsesPostMoveHide(mon) {
+    return !!(mon.data?.hidesUnder || mon.data?.mlet === ';');
 }
 
 function disturbSleepingMonster(mon) {
@@ -6745,7 +7010,7 @@ function maybeCastUndirectedMonsterSpell(mon) {
 }
 
 function maybeSpinMonsterWeb(mon) {
-    const webmaker = mon.data?.webmaker || mon.data?.name === 'giant spider';
+    const webmaker = monsterWebmakerData(mon.data);
     if (!webmaker || mon.mspec_used) return;
     if (game.level?.traps?.some(trap => trap.tx === mon.mx && trap.ty === mon.my)) return;
     rn2(1000);
@@ -8892,37 +9157,56 @@ export async function moveloop_core() {
             g._skip_pending_time_decrement = 1;
         }
         if (g._search_pending_count > 0) {
-            const searchTargets = [];
+            let foundSearchMonster = false;
+            let foundMessage = '';
+            let revealedSecretTerrain = false;
+            g._search_pending_count--;
             for (let x = (g.u?.ux || 0) - 1; x <= (g.u?.ux || 0) + 1; x++) {
                 for (let y = (g.u?.uy || 0) - 1; y <= (g.u?.uy || 0) + 1; y++) {
+                    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) continue;
                     if (g.u?.ux === x && g.u?.uy === y) continue;
                     const loc = g.level?.at(x, y);
-                    if (loc?.typ === SDOOR || loc?.typ === SCORR) searchTargets.push({ x, y, loc });
-                }
-            }
-            const found = searchTargets.length && rnl(7) === 0;
-            g._search_pending_count--;
-            if (found) {
-                rn2(19);
-                let foundMessage = 'You find a hidden door.';
-                let revealedSecretTerrain = false;
-                for (const { x, y, loc } of searchTargets) {
+                    if (!loc) continue;
+                    if (g.u?.blind || (g.viz_array?.[y]?.[x] & IN_SIGHT))
+                        feelSearchLocation(x, y);
                     if (loc.typ === SDOOR) {
+                        if (rnl(7)) continue;
                         let doorMask = loc.doormask & ~(D_BROKEN | D_ISOPEN | D_CLOSED);
                         loc.typ = DOOR;
                         if (!(doorMask & D_LOCKED)) doorMask |= D_CLOSED;
                         loc.doormask = doorMask;
-                    } else {
+                        foundMessage = 'You find a hidden door.';
+                        revealedSecretTerrain = true;
+                        newsym(x, y);
+                    } else if (loc.typ === SCORR) {
+                        if (rnl(7)) continue;
                         loc.typ = CORR;
                         foundMessage = 'You find a hidden passage.';
+                        revealedSecretTerrain = true;
+                        newsym(x, y);
+                    } else {
+                        const mon = (g.level?.monsters || []).find(candidate =>
+                            candidate.mx === x && candidate.my === y && !candidate._hide_for_bones_prompt);
+                        if (mon) {
+                            const mfres = await searchFindMonster(mon);
+                            if (mfres === -1) continue;
+                            if (mfres > 0) {
+                                foundSearchMonster = true;
+                                break;
+                            }
+                        }
                     }
-                    revealedSecretTerrain = true;
-                    newsym(x, y);
                 }
-                if (revealedSecretTerrain) {
-                    vision_reset();
-                    vision_recalc(0);
-                }
+                if (foundSearchMonster) break;
+            }
+            if (foundSearchMonster) {
+                g._search_pending_count = 0;
+                g._pending_time_passed = Math.min(g._pending_time_passed, 1);
+                g._keep_pending_message = 1;
+            } else if (revealedSecretTerrain) {
+                rn2(19);
+                vision_reset();
+                vision_recalc(0);
                 await pline(foundMessage);
                 g._keep_pending_message = 1;
                 g._search_pending_count = 0;
@@ -9577,10 +9861,14 @@ export async function moveloop_core() {
 	    }
     const staleFumbleTargetMessage = /^(?:staircase up|staircase down)$/.test(g._pending_message || '');
     if ((!g._pending_message || staleFumbleTargetMessage)
-        && g._pending_fumble_turn_message && g._last_fumble_turn_message
-        && (g.moves || 0) - (g._last_fumble_turn_move ?? -99) <= 2) {
+        && g._last_fumble_turn_message && g._last_fumble_from_run) {
         g._pending_message = g._last_fumble_turn_message;
         g._keep_pending_message = 1;
+        g._replayed_stale_fumble_message = 1;
+    }
+    if (g._collapse_extra_moves_without_monsters && !g._pending_time_passed) {
+        g.moves = (g.moves || 1) + g._collapse_extra_moves_without_monsters;
+        g._collapse_extra_moves_without_monsters = 0;
     }
 		    await bot();
     if (g._map_redraw_pending || g._pet_map_redraw_pending) {
@@ -9651,12 +9939,46 @@ export async function moveloop_core() {
         }
     }
 	    await flush_screen(1);
+    if (g._last_fumble_from_run && !g._message_more && g._pending_message === g._last_fumble_turn_message) {
+        g._last_fumble_keep_flushes = Math.max(0, (g._last_fumble_keep_flushes ?? 1) - 1);
+        if (g._last_fumble_keep_flushes === 1)
+            g._clear_fumble_after_rhack = {
+                message: g._last_fumble_turn_message,
+                move: g._last_fumble_turn_move,
+            };
+    } else if (g._replayed_stale_fumble_message) {
+        const replayedMessage = g._last_fumble_turn_message;
+        g._replayed_stale_fumble_message = 0;
+        if (!g._message_more && g._pending_message === replayedMessage)
+            g._pending_message = '';
+        g._last_fumble_turn_message = '';
+        g._last_fumble_from_run = 0;
+        g._last_fumble_keep_flushes = 0;
+        g._keep_pending_message = 0;
+    }
     if (g._ball_drag_travel_delay_restore > 0) {
         g._ball_drag_travel_delay_restore--;
         if (!g._ball_drag_travel_delay_restore && g.u)
             g.u.umovement = (g.u.umovement || 0) + NORMAL_SPEED;
     }
 	    await rhack(0);
+    if (g._clear_fumble_after_rhack) {
+        const { message, move } = g._clear_fumble_after_rhack;
+        g._clear_fumble_after_rhack = null;
+        if (g._last_fumble_turn_move === move && g._last_fumble_keep_flushes === 1) {
+            if (!g._message_more && g._pending_message === message)
+                g._pending_message = '';
+            g._replayed_stale_fumble_message = 0;
+            g._last_fumble_turn_message = '';
+            g._last_fumble_from_run = 0;
+            g._last_fumble_keep_flushes = 0;
+            g._keep_pending_message = 0;
+            g._defer_fumble_exerchk_once = 1;
+            g._fumble_turn_message_pending = 0;
+            g._pending_fumble_turn_message = 0;
+            g._pending_fumble_turn_message_starts = 0;
+        }
+    }
     if (g._prayer_process_time_now) {
         const prayerTurns = g.context?.move || 3;
         g._prayer_process_time_now = 0;
@@ -9678,6 +10000,12 @@ export async function moveloop_core() {
         await finishLevelTeleport(targetLevel, options || {});
     }
 
+    if (g._replayed_stale_fumble_message) {
+        g._replayed_stale_fumble_message = 0;
+        g._last_fumble_turn_message = '';
+        g._last_fumble_from_run = 0;
+        g._last_fumble_keep_flushes = 0;
+    }
 	    if (g._keep_pending_message) g._keep_pending_message = 0;
     else if (!g._message_more) {
         g._pending_message = '';
@@ -9694,8 +10022,13 @@ export async function moveloop_core() {
         g._pending_starts_monster_noise_message = 0;
         g._pending_monster_noise_message = 0;
         g._pending_monster_noise_far = 0;
-        if (!(g._run_steps_remaining > 0 || g._travel_keys?.length))
+        if (g._replayed_stale_fumble_message) {
+            g._replayed_stale_fumble_message = 0;
             g._last_fumble_turn_message = '';
+            g._last_fumble_from_run = 0;
+        } else if (!g._last_fumble_from_run) {
+            g._last_fumble_turn_message = '';
+        }
     }
     if (!g._pending_message && !g._message_more) {
         g._fumble_turn_message_pending = 0;

@@ -2,10 +2,15 @@
 // C ref: makemon.c — `mtmp->nmon = fmon; fmon = mtmp` prepends each new monster.
 
 import { PM_LICHEN } from './const.js';
+import { game } from './gstate.js';
 import { S_EEL, raceptr } from './mondata.js';
 import {
     eastFungusDoorNicheAtLikeC,
-    findWestKinkLichenLikeC,
+    findEastKickMonLikeC,
+    findEastMklevSecondHLikeC,
+    findWestKinkMonsterLikeC,
+    isLandEelForMovemonLikeC,
+    findDistantMklevMonLikeC,
     movemonStep8DistantMonEligibleLikeC,
     westFungusDoorNicheAtLikeC,
 } from './mfndpos_mon.js';
@@ -51,20 +56,117 @@ export function fmonListForMcalcmoveLikeC(g) {
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
     if ((stepNum | 0) === 4) {
-        const west = findWestKinkLichenLikeC(g);
+        const west = findWestKinkMonsterLikeC(g);
         return west ? [west] : [];
+    }
+    /* C: second **`h`** — east **(64,10)** **`m_move`** (**`rn2(12)`**) before west/eel/distant **`distfleeck`**. */
+    /* C: step **`y`** — pass 1 west → east → eel (**`rn2(16)`** east after west **`distfleeck`**). */
+    if ((stepNum | 0) === 6) {
+        const west = findWestKinkMonsterLikeC(g);
+        const east = findEastMklevSecondHLikeC(g);
+        const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
+        const rest = mons.filter((m) => m !== west && m !== east && m !== eel);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (west) ordered.push(west);
+        if (east) ordered.push(east);
+        if (eel) ordered.push(eel);
+        return [...ordered, ...rest].filter(Boolean);
+    }
+    if ((stepNum | 0) === 5) {
+        const east = findEastMklevSecondHLikeC(g);
+        const west = findWestKinkMonsterLikeC(g);
+        const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
+        const distant =
+            mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 14)
+            ?? mons.find((m) => (m.mx | 0) === 23 && (m.my | 0) === 13)
+            ?? mons.find((m) => (m.mx | 0) === 21 && (m.my | 0) === 13)
+            ?? mons.find(
+                (m) =>
+                    m !== east
+                    && m !== west
+                    && m !== eel
+                    && movemonStep8DistantMonEligibleLikeC(g, m),
+            );
+        const rest = mons.filter(
+            (m) => m !== east && m !== west && m !== eel && m !== distant,
+        );
+        return [east, west, eel, distant, ...rest].filter(Boolean);
+    }
+    /* C: kick — east door-niche lichen only (**`distfleeck`** + **`m_move`** + **`distfleeck`**). */
+    if ((stepNum | 0) === 7) {
+        const east = findEastKickMonLikeC(g);
+        return east ? [east] : mons;
+    }
+    /* C: hero **`b`** — distant **`distfleeck`**+**`m_move`**, west **`distfleeck`**, land eel **`m_move`**+**`distfleeck`**. */
+    if ((stepNum | 0) === 8) {
+        const distant = findDistantMklevMonLikeC(g);
+        const west = findWestKinkMonsterLikeC(g);
+        const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
+        const rest = mons.filter((m) => m !== distant && m !== west && m !== eel);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (distant) ordered.push(distant);
+        if (west) ordered.push(west);
+        if (eel) ordered.push(eel);
+        return [...ordered, ...rest].filter(Boolean);
+    }
+    /* C: first **`l`** after **`b`** — east **(64,9)** **`m_move`** then distant **`m_move`**. */
+    if ((stepNum | 0) === 9) {
+        const east = findEastKickMonLikeC(g);
+        const distant = findDistantMklevMonLikeC(g);
+        const rest = mons.filter((m) => m !== east && m !== distant);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (east) ordered.push(east);
+        if (distant) ordered.push(distant);
+        return [...ordered, ...rest].filter(Boolean);
+    }
+    /* C: first **`#search`** — distant **`m_move`** then east **(64,9)** **`rn2(12)`**. */
+    if (
+        ((stepNum | 0) === 10 || (stepNum | 0) === 11)
+        && (game.context?._searchStep11Passes | 0) === 1
+    ) {
+        const east = findEastKickMonLikeC(g);
+        const distant = findDistantMklevMonLikeC(g);
+        const rest = mons.filter((m) => m !== east && m !== distant);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (distant) ordered.push(distant);
+        if (east) ordered.push(east);
+        return [...ordered, ...rest].filter(Boolean);
+    }
+    /* C: step **`n`** — east **`movement < NORMAL_SPEED`** (no RNG); west **`distfleeck`**;
+     * land eel **`m_move`** (**`rn2(32)`**); distant **`distfleeck`**+**`m_move`**+**`distfleeck`**. */
+    if ((stepNum | 0) === 2) {
+        const west =
+            findWestKinkMonsterLikeC(g)
+            ?? mons.find((m) => {
+                const tr = m.mtrack?.[0];
+                return tr && (tr.x | 0) === 63 && (tr.y | 0) === 11;
+            });
+        const eel = mons.find((m) => isLandEelForMovemonLikeC(g, m));
+        const distant = findDistantMklevMonLikeC(g);
+        const east = mons.find(
+            (m) =>
+                (m.mgenmklev | 0)
+                && eastFungusDoorNicheAtLikeC(g, m.mx | 0, m.my | 0, m),
+        );
+        const rest = mons.filter(
+            (m) => m !== east && m !== west && m !== eel && m !== distant,
+        );
+        /* C: east may be **`movement < NORMAL_SPEED`** (no RNG); west **`distfleeck`**, eel **`m_move`**, distant. */
+        return [west, eel, distant, east, ...rest].filter(Boolean);
     }
     if ((stepNum | 0) !== 3) return mons;
     const west = mons.find(
         (m) =>
-            (m.mnum | 0) === PM_LICHEN
-            && (m.mgenmklev | 0)
-            && westFungusDoorNicheAtLikeC(g, m.mx | 0, m.my | 0, m)
+            (m.mgenmklev | 0)
+            && westFungusDoorNicheAtLikeC(g, m.mx | 0, m.my | 0, m),
     );
     const east = mons.find(
         (m) =>
-            (m.mnum | 0) === PM_LICHEN
-            && (m.mgenmklev | 0)
+            (m.mgenmklev | 0)
             && eastFungusDoorNicheAtLikeC(g, m.mx | 0, m.my | 0, m),
     );
     const rest = mons.filter((m) => m !== west && m !== east);

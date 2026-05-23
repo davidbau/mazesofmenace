@@ -19,9 +19,7 @@ import {
     randgendLikeC,
     randalignLikeC,
 } from './roles.js';
-import { randroleFilteredLikeC, randroleLikeC } from './chargen_rigid.js';
-import { permonstHuman } from './mondata.js';
-import { A_CURRENT, A_ORIGINAL } from './const.js';
+import { randroleFilteredLikeC } from './chargen_rigid.js';
 
 /**
  * C **`hacklib.c`** **`findword`** — space-separated **`list`**; match **`word`** prefix of length **`wordlen`**;
@@ -232,64 +230,6 @@ export function applyIdentityFromNethackrc(g, opts) {
 
     g.flags = g.flags || {};
     g.flags.female = female;
-
-    let pantheonIdx = resolvedRoleIdx | 0;
-    if (!role.lgod && role.abbr === 'Pri') {
-        let trycnt = 0;
-        while (!roles[pantheonIdx]?.lgod && trycnt++ < 100) pantheonIdx = randroleLikeC(false);
-        if (!roles[pantheonIdx]?.lgod) {
-            const fi = roles.findIndex((x) => x.lgod);
-            pantheonIdx = fi >= 0 ? fi : 0;
-        }
-    }
-    g.flags.pantheon = pantheonIdx | 0;
-    const pantheonSrc = roles[g.flags.pantheon | 0] || role;
-    const lgod = role.lgod ?? pantheonSrc.lgod ?? '';
-    const ngod = role.ngod ?? pantheonSrc.ngod ?? '';
-    const cgod = role.cgod ?? pantheonSrc.cgod ?? '';
-
-    g.u = g.u || {};
-    g.u.ualign = g.u.ualign || { type: 0, record: 0 };
-    g.u.ualign.type = alignType;
-    /* C: attrib.c newhp — u.ualign.record = gu.urole.initrecord (after u cleared; chargen sets early) */
-    g.u.ualign.record = role.initrecord ?? 0;
-    /* C: u_init.c u_init_role — u.ualignbase[A_CURRENT] = u.ualignbase[A_ORIGINAL] = u.ualign.type */
-    g.u.ualignbase = g.u.ualignbase || [];
-    g.u.ualignbase[A_CURRENT] = alignType;
-    g.u.ualignbase[A_ORIGINAL] = alignType;
-
-    g.urole = {
-        abbr: role.abbr,
-        name: { m: role.name.m, f: role.name.f },
-        rank: { m: role.rank.m, f: role.rank.f },
-        mnum: role.mnum,
-        attrbase: [...role.attrbase],
-        attrdist: [...role.attrdist],
-        hpadv: { ...role.hpadv },
-        enadv: { ...role.enadv },
-        initrecord: role.initrecord ?? 0,
-        /* C: gu.urole — welcome() / rigid checks use ROLE_GENDMASK via allows.gender */
-        allows: {
-            align: [...role.allows.align],
-            races: [...role.allows.races],
-            gender: role.allows.gender,
-        },
-        lgod,
-        ngod,
-        cgod,
-    };
-
-    g.urace = {
-        name: race.name,
-        adj: race.adj,
-        mnum: race.mnum,
-        attrmin: [...race.attrmin],
-        attrmax: [...race.attrmax],
-        hpadv: { ...race.hpadv },
-        enadv: { ...race.enadv },
-        permonst: race.permonst ?? permonstHuman,
-    };
-
-    g.youmonst = g.youmonst || {};
-    g.youmonst.data = race.permonst ?? permonstHuman;
+    /* C: allmain.c newgame — flags.pantheon = -1 until role_init(). */
+    g.flags.pantheon = -1;
 }

@@ -257,6 +257,9 @@ export function init_dungeons_rng() {
     game.medusa_level = level('medusa');
     game.stronghold_level = level('castle');
     game.knox_level = level('knox');
+    const knoxDnum = dnum('Fort Ludios');
+    const knoxBranch = branches.find(branch => branch.end2?.dnum === knoxDnum);
+    if (knoxBranch) knoxBranch.end1 = { dnum: dungeons.length, dlevel: 0 };
     game.astral_level = level('astral');
     game.water_level = level('water');
     game.fire_level = level('fire');

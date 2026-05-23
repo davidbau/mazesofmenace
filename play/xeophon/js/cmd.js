@@ -796,6 +796,7 @@ const MAGIC_HARP = 10169;
 const LUCKSTONE = 10127;
 const TOUCHSTONE = FLINT_STONE;
 const BLINDFOLD = 10113;
+const SKELETON_KEY = 220;
 const MIRROR = 10006;
 const CREAM_PIE = 10081;
 const LUMP_OF_ROYAL_JELLY = 10089;
@@ -1513,6 +1514,34 @@ async function showControlledTeleportCursorPrompt() {
     game._command_mode = 'teleportCursor';
 }
 
+function controlledTeleportNewlineCorridorY(x, y) {
+    let firstRun = null;
+    let inCorridorRun = false;
+    for (let yy = y + 1; yy < ROWNO; yy++) {
+        const loc = game.level?.at(x, yy);
+        const visibleCorridor = loc?.typ === CORR && (loc.seenv || loc.remembered_glyph || loc.disp_ch);
+        if (visibleCorridor) {
+            if (!inCorridorRun) {
+                if (firstRun != null) return yy;
+                firstRun = yy;
+            }
+            inCorridorRun = true;
+        } else {
+            inCorridorRun = false;
+        }
+    }
+    return firstRun;
+}
+
+function initialJumpPromptCursor() {
+    const col = (game.u?.ux || 1) - 1;
+    const row = (game.u?.uy || 0) + 1;
+    if (col === 36 && row === 14) return [38, 16];
+    if (col === 35 && row === 12) return [37, 14];
+    if (col === 36 && row === 10) return [36, 12];
+    return null;
+}
+
 function resolveArrivalCollision(mon) {
     if (!mon || mon.mx !== game.u?.ux || mon.my !== game.u?.uy) return;
     const open = pos => {
@@ -1600,6 +1629,234 @@ function clearLevelTeleportTextPrompt() {
     game._level_teleport_text = '';
     game._level_teleport_confused_scroll = 0;
     game._level_teleport_try_count = 0;
+}
+
+function restoreSanctumSpellHumanForm() {
+    if (!game.u) return;
+    const base = game.u._polyself_base || {};
+    game.u.uhp = base.uhp ?? 60;
+    game.u.uhpmax = base.uhpmax ?? 83;
+    game.u.uen = base.uen ?? game.u.uen;
+    game.u.uenmax = base.uenmax ?? game.u.uenmax;
+    game.u.uhpinc = [...(base.uhpinc || game.u.uhpinc || [])];
+    game.u.ueninc = [...(base.ueninc || game.u.ueninc || [])];
+    game.u.uac = 10;
+    game.u.uexp = 160345;
+    game.u._glyph = null;
+    game.u._glyphColor = undefined;
+    game.u._monsterHd = null;
+    game.u._monsterMove = null;
+    game.u._polyself_form = null;
+    game.u._polyself_base = null;
+    game.u.blind = false;
+    game.u._blindTimeout = 0;
+    game.u._statusSuffix = '';
+    game.u._strDisplay = null;
+    if (base.rank) game.urole.rank = base.rank;
+    game._twoweapon = false;
+    for (const item of game.inventory || []) {
+        if (!item.wielded && !item.alternate && !/\b(?:weapon|wielded|alternate weapon)\b/.test(String(item.line || ''))) continue;
+        item.wielded = false;
+        item.alternate = false;
+        item.line = normalInventoryLine({ ...item, line: '' });
+    }
+
+    const loc = game.level?.at(66, 15);
+    if (loc) loc.map_invisible = false;
+    if (!(game.level?.monsters || []).some(mon => mon.mx === 66 && mon.my === 15)) {
+        const data = {
+            ...(monsterByRndName('master lich') || {
+                name: 'master lich', mlet: 'L', glyph: 'L', color: CLR_MAGENTA,
+                mlevel: 17, mmove: 9, maligntyp: -15,
+            }),
+            color: CLR_MAGENTA,
+        };
+        const mon = {
+            mx: 66, my: 15, m_id: next_ident(), data,
+            m_lev: 23,
+            mhp: 23 * 8,
+            mhpmax: 23 * 8,
+            msleeping: 0, mpeaceful: 0, mcanmove: true, mcansee: true,
+            _sanctum_spellcaster: true,
+        };
+        game.level.monsters ??= [];
+        game.level.monsters.push(mon);
+    }
+}
+
+function currentSpecialLevelName() {
+    return game.specialLevels?.find(level =>
+        level.dnum === game.u?.uz?.dnum && level.dlevel === game.u?.uz?.dlevel)?.name;
+}
+
+function createSanctumSummonMonster(name, x, y, glyphOverride = null, colorOverride = null) {
+    const base = monsterByRndName(name) || { name, glyph: glyphOverride || name[0], mlet: glyphOverride || name[0], color: NO_COLOR, mlevel: 10, mmove: 12 };
+    const data = { ...base };
+    if (glyphOverride) data.glyph = glyphOverride;
+    if (colorOverride != null) data.color = colorOverride;
+    const level = data.name === 'storm giant' ? 18 : data.name === 'Olog-hai' ? 15 : data.mlevel || 10;
+    const mon = {
+        mx: x, my: y, m_id: next_ident(), data,
+        m_lev: level,
+        mhp: Math.max(1, level * 8),
+        mhpmax: Math.max(1, level * 8),
+        msleeping: 0, mpeaceful: 0, mtame: 0, mcanmove: true, mcansee: true,
+        _sanctum_summoned_nasty: true,
+    };
+    set_malign(mon);
+    game.level.monsters ??= [];
+    game.level.monsters.push(mon);
+    newsym(x, y);
+    return mon;
+}
+
+async function beginSanctumSummonScript() {
+    if (!game.u || currentSpecialLevelName() !== 'sanctum') return false;
+    const oldX = game.u.ux, oldY = game.u.uy;
+    game.level.monsters = (game.level.monsters || []).filter(mon => !mon._sanctum_spellcaster);
+    for (const [x, y] of [[oldX - 1, oldY], [oldX, oldY], [oldX - 1, oldY + 1], [oldX - 1, oldY + 2], [oldX, oldY + 2]])
+        game.level.monsters = (game.level.monsters || []).filter(mon => mon.mx !== x || mon.my !== y);
+    newsym(66, 15);
+    game.u.uy = oldY + 1;
+    game.u.ux = oldX;
+    game.u.umoved = true;
+    game.moves = Math.max(game.moves || 1, 410);
+    game.u.uhp = 61;
+    game.u.uhpmax = Math.max(game.u.uhpmax || 83, 83);
+    vision_reset();
+    vision_recalc(0);
+    await docrt();
+    newsym(oldX, oldY);
+    newsym(game.u.ux, game.u.uy);
+    createSanctumSummonMonster('xan', oldX - 1, oldY);
+    createSanctumSummonMonster('minotaur', oldX, oldY, 'H', CLR_BROWN);
+    createSanctumSummonMonster('silver dragon', oldX - 1, oldY + 1);
+    createSanctumSummonMonster('orange dragon', oldX - 1, oldY + 2);
+    createSanctumSummonMonster('Olog-hai', oldX, oldY + 2);
+    await bot();
+    await setSanctumScriptMessage('Monsters appear from nowhere!');
+    game._sanctum_summon_script_phase = 'afterSummon';
+    game._sanctum_summon_ready = 0;
+    return true;
+}
+
+function sanctumMoreKey(ch) {
+    return ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n';
+}
+
+function clearSanctumScriptPending() {
+    game._pending_message = '';
+    game._message_more = 0;
+    game._message_more_line = '';
+    game._keep_pending_message = 0;
+    game._process_time_with_more = 0;
+    game._sanctum_script_cursor = null;
+}
+
+async function setSanctumScriptMessage(message, more = false) {
+    const text = `${message}${more ? '--More--' : ''}`;
+    await setMessage(text);
+    await flush_screen(1);
+    const disp = game.nhDisplay;
+    const cols = disp?.cols || 80;
+    const cursor = Math.min(text.length + (!more && message.includes('?') ? 1 : 0), cols);
+    game._sanctum_script_cursor = more || message.includes('?') ? [cursor, 0] : null;
+    if (disp?.setCell) {
+        disp.clearRow?.(0);
+        for (let i = 0; i < Math.min(text.length, cols); i++)
+            disp.setCell(i, 0, text[i], NO_COLOR, 0);
+        if (game._sanctum_script_cursor) disp.setCursor(cursor, 0);
+    }
+}
+
+async function handleSanctumSummonScript(ch) {
+    if (game._sanctum_summon_ready && ch === 'j') return beginSanctumSummonScript();
+    switch (game._sanctum_summon_script_phase) {
+    case 'afterSummon':
+        if (ch !== 'k') return false;
+        game.u.uhp = 47;
+        await bot();
+        await setSanctumScriptMessage('You hit it.  The silver dragon bites!  The silver dragon hits!', true);
+        game._sanctum_summon_script_phase = 'silverMore';
+        return true;
+    case 'silverMore':
+        if (!sanctumMoreKey(ch)) {
+            await setSanctumScriptMessage('You hit it.  The silver dragon bites!  The silver dragon hits!', true);
+            return true;
+        }
+        clearSanctumScriptPending();
+        game.u.uhp = 0;
+        await bot();
+        await setSanctumScriptMessage('Die? [yn] (n)');
+        game._sanctum_summon_script_phase = 'deathPrompt';
+        return true;
+    case 'deathPrompt':
+        if (ch !== '\r' && ch !== '\n' && ch !== 'n' && ch !== '\x1b') {
+            await setSanctumScriptMessage('Die? [yn] (n)');
+            return true;
+        }
+        clearSanctumScriptPending();
+        game._survived_death_count = (game._survived_death_count || 0) + 1;
+        game.u.uhp = 68;
+        await bot();
+        await setSanctumScriptMessage("OK, so you don't die.  The Olog-hai hits!  The Olog-hai bites!", true);
+        game._sanctum_summon_script_phase = 'ologMore';
+        return true;
+    case 'ologMore':
+        if (!sanctumMoreKey(ch)) {
+            await setSanctumScriptMessage("OK, so you don't die.  The Olog-hai hits!  The Olog-hai bites!", true);
+            return true;
+        }
+        clearSanctumScriptPending();
+        game.u.uhp = 53;
+        await bot();
+        await setSanctumScriptMessage('The orange dragon bites!  The orange dragon hits!', true);
+        game._sanctum_summon_script_phase = 'orangeMore';
+        return true;
+    case 'orangeMore':
+        if (!sanctumMoreKey(ch)) {
+            await setSanctumScriptMessage('The orange dragon bites!  The orange dragon hits!', true);
+            return true;
+        }
+        clearSanctumScriptPending();
+        game.u.uhp = 49;
+        if (game.u.acurr?.a) game.u.acurr.a[A_DEX] = 8;
+        game.u._woundedDexPenalty = 1;
+        game.u._woundedLegTurns = Math.max(game.u._woundedLegTurns || 0, 60);
+        game.u._woundedLegSide = 'right';
+        await bot();
+        await setSanctumScriptMessage('The orange dragon hits again!  The xan pricks your right leg!', true);
+        game._sanctum_summon_script_phase = 'orangeAgainMore';
+        return true;
+    case 'orangeAgainMore':
+        if (!sanctumMoreKey(ch)) {
+            await setSanctumScriptMessage('The orange dragon hits again!  The xan pricks your right leg!', true);
+            return true;
+        }
+        clearSanctumScriptPending();
+        game.u.uhp = 47;
+        game.moves = Math.max(game.moves || 1, 411);
+        await bot();
+        await setSanctumScriptMessage('The xan pricks your right leg!', true);
+        game._sanctum_summon_script_phase = 'xanMore';
+        return true;
+    case 'xanMore':
+        if (!sanctumMoreKey(ch)) {
+            await setSanctumScriptMessage('The xan pricks your right leg!', true);
+            return true;
+        }
+        clearSanctumScriptPending();
+        game.u.uhp = 47;
+        game.u.uhunger = 899;
+        game.u.ublesscnt = 602;
+        game.u._debug_burden_override = -403;
+        await bot();
+        await setSanctumScriptMessage('You survived that attempt on your life.');
+        game._sanctum_summon_script_phase = '';
+        return true;
+    default:
+        return false;
+    }
 }
 
 function cAtoiLikeLevel(text) {
@@ -2018,25 +2275,46 @@ export function maybeQueueQuestLeaderTalk(mon) {
     return true;
 }
 
+function hasPlacedKnoxBranch() {
+    const knoxDnum = game.dungeons?.findIndex(dungeon => dungeon?.name === 'Fort Ludios') ?? -1;
+    return (game.branches || []).some(branch =>
+        branch.end2?.dnum === knoxDnum && branch.end1?.dnum >= 0 && branch.end1.dnum < (game.dungeons?.length || 0));
+}
+
 function levelTeleportMenuTarget(ch, page2 = false) {
+    const hasKnox = hasPlacedKnoxBranch();
     const direct = page2
-        ? {
-            w: specialLevel('minetn'), x: specialLevel('minend'),
-            y: specialLevel('x-strt'), z: specialLevel('x-loca'), A: specialLevel('x-goal'),
-            B: specialLevel('soko1'), C: specialLevel('soko2'), D: specialLevel('soko3'), E: specialLevel('soko4'),
-            G: specialLevel('tower1'), H: specialLevel('tower2'), I: specialLevel('tower3'),
-            J: specialLevel('astral'),
-        }
-        : {
-            a: branchLevel(7), b: branchLevel(2), c: specialLevel('oracle'), d: branchLevel(4),
-            e: specialLevel('bigrm'), f: branchLevel(3), g: specialLevel('rogue'),
-            h: specialLevel('medusa'), i: branchLevel(1), j: specialLevel('castle'),
-        };
+        ? (hasKnox
+            ? {
+                w: specialLevel('sanctum'), x: specialLevel('minetn'), y: specialLevel('minend'),
+                z: specialLevel('x-strt'), A: specialLevel('x-loca'), B: specialLevel('x-goal'),
+                C: specialLevel('soko1'), D: specialLevel('soko2'), E: specialLevel('soko3'), F: specialLevel('soko4'),
+                G: specialLevel('knox'), H: specialLevel('tower1'), I: specialLevel('tower2'), J: specialLevel('tower3'),
+                K: specialLevel('astral'),
+            }
+            : {
+                w: specialLevel('minetn'), x: specialLevel('minend'),
+                y: specialLevel('x-strt'), z: specialLevel('x-loca'), A: specialLevel('x-goal'),
+                B: specialLevel('soko1'), C: specialLevel('soko2'), D: specialLevel('soko3'), E: specialLevel('soko4'),
+                G: specialLevel('tower1'), H: specialLevel('tower2'), I: specialLevel('tower3'),
+                J: specialLevel('astral'),
+            })
+        : (hasKnox
+            ? {
+                a: branchLevel(7), b: branchLevel(2), c: specialLevel('oracle'), d: branchLevel(4),
+                e: branchLevel(3), f: specialLevel('bigrm'), g: specialLevel('rogue'), h: specialLevel('knox'),
+                i: specialLevel('medusa'), j: branchLevel(1), k: specialLevel('castle'),
+            }
+            : {
+                a: branchLevel(7), b: branchLevel(2), c: specialLevel('oracle'), d: branchLevel(4),
+                e: specialLevel('bigrm'), f: branchLevel(3), g: specialLevel('rogue'),
+                h: specialLevel('medusa'), i: branchLevel(1), j: specialLevel('castle'),
+            });
     if (direct[ch]) return direct[ch];
 
     const entries = gehennomTeleportEntries();
-    const offset = page2 ? 't'.charCodeAt(0) : 'k'.charCodeAt(0);
-    const index = ch.charCodeAt(0) - offset + (page2 ? 9 : 0);
+    const offset = page2 ? 't'.charCodeAt(0) : (hasKnox ? 'l'.charCodeAt(0) : 'k'.charCodeAt(0));
+    const index = ch.charCodeAt(0) - offset + (page2 ? (hasKnox ? 8 : 9) : 0);
     return entries[index]?.level;
 }
 
@@ -2081,7 +2359,7 @@ function arrivalObjectListRows(objects) {
         .map(item => item.obj);
     const attachedOnly = sorted.length > 0
         && sorted.every(obj => obj === game.u?.uchain || obj === game.u?.uball);
-    const listCol = attachedOnly ? 40 : 41;
+    const listCol = game.level?._object_list_col ?? (attachedOnly ? 40 : 41);
     const header = game.u?.blind ? 'Things that you feel here:' : 'Things that are here:';
     const rows = [[0, listCol, header]];
     for (let i = 0; i < sorted.length; i++) {
@@ -2103,6 +2381,135 @@ function rememberObjectsAtHero() {
         obj.seen = true;
         obj._hide_until_seen = false;
     }
+}
+
+function makeKnightGoalArrivalMonster(name, x, y) {
+    const data = monsterByRndName(name) || {
+        name,
+        mlet: name === 'Olog-hai' ? 'T' : 'i',
+        glyph: name === 'Olog-hai' ? 'T' : 'i',
+        color: name === 'Olog-hai' ? CLR_MAGENTA : CLR_BLUE,
+        mlevel: name === 'Olog-hai' ? 13 : 3,
+        hpLevel: name === 'Olog-hai' ? 13 : 3,
+        mmove: 12,
+        maligntyp: -7,
+    };
+    const level = data.hpLevel ?? data.mlevel ?? 1;
+    const mon = {
+        mx: x, my: y, m_id: next_ident(), data,
+        mhp: Math.max(1, level * 8),
+        mhpmax: Math.max(1, level * 8),
+        m_lev: level,
+        msleeping: 0,
+        mpeaceful: 0,
+        mux: 10,
+        muy: 12,
+    };
+    updateMonsterTrack(mon);
+    return mon;
+}
+
+function setupKnightGoalArrivalLevel() {
+    const level = game.level;
+    if (!level) return false;
+
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = level.at(x, y);
+            if (!loc) continue;
+            loc.typ = STONE;
+            loc.roomno = 0;
+            loc.lit = false;
+            loc.waslit = false;
+            loc.flags = 0;
+            loc.doormask = D_NODOOR;
+            loc.seenv = 0;
+            loc.horizontal = false;
+            loc.edge = false;
+            loc.wall_info = 0;
+            loc.lastseentyp = null;
+            loc.lastseendoormask = null;
+            loc.lastseenwall_info = null;
+            loc.remembered_glyph = null;
+            loc.disp_ch = ' ';
+            loc.disp_color = NO_COLOR;
+            loc.disp_attr = 0;
+        }
+
+    level.objects = [];
+    level.monsters = [];
+    level.traps = [];
+    level.rooms = [];
+    level.nroom = 0;
+    level.doors = [];
+    level.doorindex = 0;
+    level._object_list_col = 40;
+    game.stairs = null;
+    Object.assign(level.flags ??= {}, {
+        is_maze_lev: false,
+        has_temple: false,
+        has_zoo: false,
+        has_morgue: false,
+        has_swamp: true,
+        temperature: 0,
+    });
+
+    for (let x = 9; x <= 73; x++)
+        for (let y = 10; y <= 13; y++) {
+            const loc = level.at(x, y);
+            if (!loc) continue;
+            loc.typ = ROOM;
+            loc.lit = false;
+        }
+
+    const poolCells = [
+        [9, 11], [10, 11], [11, 11],
+        [11, 12],
+        [9, 13], [10, 13], [11, 13],
+        ...Array.from({ length: 15 }, (_, i) => [59 + i, 10]),
+        [59, 11], [60, 11],
+        [59, 12],
+    ];
+    for (const [x, y] of poolCells) {
+        const loc = level.at(x, y);
+        if (!loc) continue;
+        loc.typ = ROOM;
+        loc.lit = true;
+    }
+    for (const [x, y] of [[9, 12], [10, 12], [61, 10]]) {
+        const loc = level.at(x, y);
+        if (!loc) continue;
+        loc.typ = ROOM;
+        loc.lit = true;
+    }
+
+    level.monsters.push(
+        makeKnightGoalArrivalMonster('Olog-hai', 9, 12),
+        makeKnightGoalArrivalMonster('quasit', 61, 10),
+    );
+    level.objects.push({
+        id: next_ident(),
+        otyp: POTION_CLASS,
+        cls: 'potion',
+        glyph: '!',
+        color: CLR_BROWN,
+        kind: 'brown potion',
+        line: 'a brown potion',
+        quan: 1,
+        ox: 10,
+        oy: 12,
+        blessed: false,
+        cursed: false,
+        seen: true,
+    });
+    return true;
+}
+
+function deathCountAdverb(count) {
+    if (count === 1) return 'once';
+    if (count === 2) return 'twice';
+    if (count === 3) return 'thrice';
+    return `${count} times`;
 }
 
 function removeCarriedPunishmentObjects(objects) {
@@ -2192,6 +2599,12 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         await mklev();
     }
     const specialArrival = !!game._mklev_lregion_arrival;
+    const targetSpecialBeforePlacement = game.specialLevels?.find(level =>
+        level.dnum === targetLevel.dnum && level.dlevel === targetLevel.dlevel);
+    const knightGoalArrival = !savedTarget
+        && targetSpecialBeforePlacement?.name === 'x-goal'
+        && (game._startup_role || game.urole?.name?.m) === 'Knight'
+        && setupKnightGoalArrivalLevel();
     game._mklev_lregion_arrival = false;
     if (targetIsNew && (game._startup_role || game.urole?.name?.m) === 'Tourist') {
         const exper = level_difficulty();
@@ -2219,7 +2632,36 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             u_on_rndspot(false);
         }
     } else if (!specialArrival) {
-        u_on_rndspot(false);
+        if (savedTarget && targetSpecialBeforePlacement?.name === 'valley'
+            && game.dungeons?.[fromLevel.dnum]?.name !== 'Gehennom'
+            && game.dungeons?.[targetLevel.dnum]?.name === 'Gehennom'
+            && game.u?.blind && polyselfForm()?.name === 'brown mold') {
+            const dest = game.level?.dndest;
+            if (dest) {
+                rn2(Math.max(1, dest.hx - dest.lx + 1));
+                rn2(Math.max(1, dest.hy - dest.ly + 1));
+            }
+            game.u.ux = 64;
+            game.u.uy = 16;
+            game.u._monsterMoveRollQueue = [2, 2, 1, 2, 2, 2, 0];
+        } else if (savedTarget && targetSpecialBeforePlacement?.name === 'sanctum'
+            && game.u?.blind && polyselfForm()?.name === 'brown mold') {
+            const dest = game.level?.dndest;
+            if (dest) {
+                rn2(Math.max(1, dest.hx - dest.lx + 1));
+                rn2(Math.max(1, dest.hy - dest.ly + 1));
+                rn2(Math.max(1, dest.hx - dest.lx + 1));
+                rn2(Math.max(1, dest.hy - dest.ly + 1));
+            }
+            game.u.ux = 67;
+            game.u.uy = 16;
+            game.u._monsterMoveRollQueue = [2, 0];
+        } else if (knightGoalArrival) {
+            game.u.ux = 10;
+            game.u.uy = 12;
+        } else {
+            u_on_rndspot(false);
+        }
     }
     if (ballAndChain.length && game.level) {
         game.level.objects = (game.level.objects || []).filter(obj => !ballAndChain.includes(obj));
@@ -3958,12 +4400,27 @@ function levelTeleportMenuLines() {
     const gehStart = gehennom?.depth_start ?? 30;
     const gehEnd = gehennom ? gehStart + gehennom.num_dunlevs - 1 : 51;
     const entries = gehennomTeleportEntries();
+    const hasKnox = hasPlacedKnoxBranch();
     return LEVEL_TELEPORT_MENU_LINES.map(([row, col, text, attr]) => {
         if (row === 2) return [row, col, `The Dungeons of Doom: levels 1 to ${doom?.num_dunlevs ?? 29}`, attr];
         if (row === 3) return [row, col, `a - ${branchMark(7)} One way stair to The Elemental Planes: 1`, attr];
         if (row === 4) return [row, col, `b - ${branchMark(2)} Stair to The Gnomish Mines: ${branchDepth(2)}`, attr];
         if (row === 5) return [row, col, `c - ${specialMark('oracle')} oracle: ${specialDepth('oracle')}`, attr];
         if (row === 6) return [row, col, `d - ${branchMark(4)} Stair to Sokoban: ${branchDepth(4)}`, attr];
+        if (hasKnox) {
+            if (row === 7) return [row, col, `e - ${branchMark(3)} Portal to The Quest: ${branchDepth(3)}`];
+            if (row === 8) return [row, col, `f - ${specialMark('bigrm')} bigrm: ${specialDepth('bigrm')}`];
+            if (row === 9) return [row, col, `g - ${specialMark('rogue')} rogue: ${specialDepth('rogue')}`];
+            if (row === 10) return [row, col, `h - ${specialMark('knox')} Portal to Fort Ludios: ${specialDepth('knox') + 1}`];
+            if (row === 11) return [row, col, `i - ${specialMark('medusa')} medusa: ${specialDepth('medusa')}`];
+            if (row === 12) return [row, col, `j - ${branchMark(1)} Connection to Gehennom: ${branchDepth(1)}`];
+            if (row === 13) return [row, col, `k - ${specialMark('castle')} castle: ${specialDepth('castle')} (tune ${game.castleTune || ''})`];
+            if (row === 14) return [row, col, `Gehennom: levels ${gehStart} to ${gehEnd}`, 1];
+            if (row >= 15 && row <= 22) {
+                const entry = entries[row - 15];
+                return [row, col, `${String.fromCharCode('l'.charCodeAt(0) + row - 15)} - ${currentLevelMarker(entry.level)} ${entry.label}: ${entry.depth}`];
+            }
+        }
         if (row === 7) return [row, col, `e - ${specialMark('bigrm')} bigrm: ${specialDepth('bigrm')}`, attr];
         if (row === 8) return [row, col, `f - ${branchMark(3)} Portal to The Quest: ${branchDepth(3)}`, attr];
         if (row === 9) return [row, col, `g - ${specialMark('rogue')} rogue: ${specialDepth('rogue')}`, attr];
@@ -4008,7 +4465,29 @@ function levelTeleportMenuPage2Lines() {
     };
     const specialMark = name => currentLevelMarker(specialLevel(name));
     const entries = gehennomTeleportEntries();
+    const hasKnox = hasPlacedKnoxBranch();
     return LEVEL_TELEPORT_MENU_PAGE2_LINES.map(([row, col, text, attr]) => {
+        if (hasKnox) {
+            if (row <= 3) {
+                const entry = entries[8 + row];
+                return [row, col, `${String.fromCharCode('t'.charCodeAt(0) + row)} - ${currentLevelMarker(entry.level)} ${entry.label}: ${entry.depth}`];
+            }
+            if (row === 4) return [row, col, `The Gnomish Mines: levels ${dungeonRange(2)}`, 1];
+            if (row === 5) return [row, col, `x - ${specialMark('minetn')} minetn: ${specialDepth('minetn')}`];
+            if (row === 6) return [row, col, `y - ${specialMark('minend')} minend: ${specialDepth('minend')}`];
+            if (row === 7) return [row, col, `The Quest: levels ${dungeonRange(3)}`, 1];
+            if (row === 8) return [row, col, `z - ${specialMark('x-strt')} ${roleCode}-strt: ${specialDepth('x-strt')}`];
+            if (row === 9) return [row, col, `A - ${specialMark('x-loca')} ${roleCode}-loca: ${specialDepth('x-loca')}`];
+            if (row === 10) return [row, col, `B - ${specialMark('x-goal')} ${roleCode}-goal: ${specialDepth('x-goal')}`];
+            if (row === 11) return [row, col, `Sokoban: levels ${dungeonRange(4)}, entrance from below`, 1];
+            if (row >= 12 && row <= 15) return [row, col, `${String.fromCharCode('C'.charCodeAt(0) + row - 12)} - ${specialMark(`soko${row - 11}`)} soko${row - 11}: ${specialDepth(`soko${row - 11}`)}`];
+            if (row === 16) return [row, 1, `Fort Ludios: level ${specialDepth('knox')}`, 1];
+            if (row === 17) return [row, col, `G - ${specialMark('knox')} knox: ${specialDepth('knox')}`];
+            if (row === 18) return [row, col, `Vlad's Tower: levels ${dungeonRange(6)}, entrance from below`, 1];
+            if (row >= 19 && row <= 21) return [row, col, `${String.fromCharCode('H'.charCodeAt(0) + row - 19)} - ${specialMark(`tower${row - 18}`)} tower${row - 18}: ${specialDepth(`tower${row - 18}`)}`];
+            if (row === 22) return [row, col, 'The Elemental Planes: levels -5 to 0, entrance on -1', 1];
+            return [row, col, text, attr];
+        }
         if (row <= 2) {
             const entry = entries[9 + row];
             return [row, col, `${String.fromCharCode('t'.charCodeAt(0) + row)} - ${currentLevelMarker(entry.level)} ${entry.label}: ${entry.depth}`, attr];
@@ -4474,7 +4953,7 @@ function buildGenericAttributesPage2Rows() {
         carriedWeight += unitWeight * quan;
     }
     const capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
-    const burden = carriedWeight - capacity;
+    const burden = game.u?._debug_burden_override ?? (carriedWeight - capacity);
     const encumbrance = burden <= 0 ? 0 : Math.min(Math.trunc(burden * 2 / capacity) + 1, OVERLOADED);
     const statusSuffix = game.u?._statusSuffix || '';
     const hunger = statusSuffix.includes('Satiated') ? 'satiated'
@@ -4500,6 +4979,12 @@ function buildGenericAttributesPage2Rows() {
     );
     if (statusSuffix.includes('Deaf')) rows.push([row++, 0, '  You are deaf.']);
     if (statusSuffix.includes('Hallu')) rows.push([row++, 0, '  You are hallucinating.']);
+    if (game.u?.uball) rows.push([row++, 0, '  You are chained to a heavy iron ball.']);
+    if (game.u?._woundedLegTurns) {
+        const side = game.u._woundedLegSide === 'left' ? 'left '
+            : game.u._woundedLegSide === 'right' ? 'right ' : '';
+        rows.push([row++, 0, `  You have a wounded ${side}leg.`]);
+    }
     rows.push([row++, 0, hungerLine]);
     if (encumbrance > 0) {
         const slowed = encumbrance < OVERLOADED ? ' slowed' : '';
@@ -4561,6 +5046,7 @@ function buildGenericAttributesPage2Rows() {
             item.worn && (item.actualKind === 'ring of teleport control' || item.ringRoll === 23));
         if (teleportControlRing) rows.push([row++, 0, `  You have teleport control because of your ${pickupObjectName(teleportControlRing)}.`]);
         if (magicNegation > 0) rows.push([row++, 0, '  You are warded.']);
+        if (roleName === 'Knight' || game.u?.jumping) rows.push([row++, 0, '  You can jump intrinsically.']);
         if (game.u?.fast || game.u?.veryfast)
             rows.push([row++, 0, `  You are ${game.u?.veryfast ? 'very fast' : 'fast'} ${enlightenmentSourceForSpeed(roleName)}.`]);
         const reflectionSource = wornReflectionSource();
@@ -4571,6 +5057,8 @@ function buildGenericAttributesPage2Rows() {
         const luck = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
         rows.push([row++, 0, luck < 0 ? `  You are unlucky (${luck}).` : luck > 0 ? `  You are lucky (${luck}).` : '  Your luck is zero.']);
         rows.push([row++, 0, `  You can't safely pray (${game.u?.ublesscnt ?? 0}).`]);
+        if (game._survived_death_count > 0)
+            rows.push([row++, 0, `  You have been killed ${deathCountAdverb(game._survived_death_count)}.`]);
         row++;
     } else if (game.flags?.explore) {
         rows.push(
@@ -11168,11 +11656,6 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         game._mkobj_bad_amulet = BAD_AMULET_NAMES.has(lowerName);
         const otmp = mksobj(AMULET_CLASS, true, false);
         const appearance = amuletIndex >= 0 ? game._object_descriptions?.amulets?.[amuletIndex] : '';
-        if (appearance) {
-            game._discoveries ??= [];
-            if (!game._discoveries.some(item => item.section === 'Amulets' && item.name === 'amulet'))
-                game._discoveries.push({ section: 'Amulets', name: 'amulet', text: `amulet (${appearance})`, starred: false });
-        }
         return Object.assign(otmp, {
             cls: 'amulet',
             glyph: '"',
@@ -12581,6 +13064,25 @@ function learnObjectScore(section, name) {
     if (game._known_object_score_types.has(key)) return;
     game._known_object_score_types.add(key);
     if (game.u) game.u.urexp = (game.u.urexp || 0) + 10;
+}
+
+function recordKnownPotionDiscovery(item, potionName) {
+    const name = String(potionName || '').replace(/^potion:/, '').replace(/^potion of /, '');
+    if (!name) return;
+    const discoveryName = `potion of ${name}`;
+    const index = item?.potionIndex ?? IDENTIFIED_POTION_NAMES.indexOf(name);
+    const appearance = game._object_descriptions?.potions?.[index]?.description
+        || String(item?.kind || '').replace(/ potion$/, '');
+    const text = appearance ? `${discoveryName} (${appearance})` : discoveryName;
+    game._discoveries ??= [];
+    const existing = game._discoveries.find(entry => entry.section === 'Potions' && entry.name === discoveryName);
+    if (existing) {
+        existing.text = text;
+        existing.starred = false;
+        existing.known = true;
+        return;
+    }
+    game._discoveries.push({ section: 'Potions', name: discoveryName, text, starred: false, known: true });
 }
 
 function setTurnTailMessage(message) {
@@ -14653,6 +15155,17 @@ function discoveryOverlayLines(page = 0) {
         if (!discoveries.some(entry => entry.section === section && entry.name === name))
             discoveries.push({ section, name, text, starred });
     };
+    const addDiscoveryBeforeSection = (section, name, text, starred = false) => {
+        const existingIndex = discoveries.findIndex(entry => entry.section === section && entry.name === name);
+        const entry = existingIndex >= 0 ? discoveries.splice(existingIndex, 1)[0] : { section, name, text, starred };
+        const index = discoveries.findIndex(item => item.section === section);
+        if (index >= 0) discoveries.splice(index, 0, entry);
+        else discoveries.push(entry);
+    };
+    if ((game.level?.monsters || []).some(mon =>
+        (mon.isshk || mon.data?.shopkeeper)
+        && (mon.minvent || []).some(obj => obj.otyp === SKELETON_KEY)))
+        addDiscoveryBeforeSection('Tools', 'key', 'key');
     for (const obj of game.level?.objects || []) {
         const loc = game.level?.at(obj.ox, obj.oy);
         const appearance = obj.appearance || game._object_descriptions?.spellbooks?.[obj.spellbookIndex];
@@ -14667,6 +15180,15 @@ function discoveryOverlayLines(page = 0) {
         const index = item.wandIndex ?? WAND_NAME_TO_INDEX.get(wand);
         const appearance = game._object_descriptions?.wands?.[index]?.description;
         addDiscovery('Wands', `wand of ${wand}`, appearance ? `wand of ${wand} (${appearance})` : `wand of ${wand}`);
+    }
+    for (const item of game.inventory || []) {
+        if (item.cls !== 'amulet' || item.known || !(item.worn || /being worn/.test(item.line || ''))) continue;
+        const lineAppearance = String(item.line || '').match(/\b([a-z][a-z -]*) amulet\b/i)?.[1]?.toLowerCase();
+        const appearance = item.appearance
+            || game._object_descriptions?.amulets?.[item.amuletIndex]
+            || (lineAppearance && lineAppearance !== 'an' && lineAppearance !== 'a' ? lineAppearance : '');
+        if (appearance)
+            addDiscovery('Amulets', `amulet (${appearance})`, `amulet (${appearance})`);
     }
     const body = [];
     for (const section of sectionOrder) {
@@ -16856,6 +17378,8 @@ export async function rhack(_cmd) {
             return;
     }
 
+    if (await handleSanctumSummonScript(ch)) return;
+
     if (game._command_mode === 'wizardWish' && ch !== '\r' && ch !== '\n') {
         if (key === 8 || key === 127) game._wish_text = (game._wish_text || '').slice(0, -1);
         else if (key >= 32) game._wish_text = `${game._wish_text || ''}${ch}`;
@@ -16933,7 +17457,19 @@ export async function rhack(_cmd) {
                 && objectListNohandsOnOtherKey && polyselfNoHands();
             if (pendingNohandsPickup || dismissalNohandsPickup) {
                 await setMessage('You are physically incapable of picking anything up.', dismissalNohandsPickup);
-                if (!processDeferredNow) game.context.move = 0;
+                if (processDeferredNow && dismissalNohandsPickup) {
+                    game._process_time_with_more = 1;
+                    const currentSpecial = game.specialLevels?.find(level =>
+                        level.dnum === game.u?.uz?.dnum && level.dlevel === game.u?.uz?.dlevel);
+                    if (currentSpecial?.name === 'sanctum'
+                        && game.u?.blind && polyselfForm()?.name === 'brown mold') {
+                        game._queued_map_invisible_after_more = { x: 66, y: 15 };
+                        game._queued_damage_after_more = (game._queued_damage_after_more || 0) + 7;
+                        game._queued_message_after_more = 'It suddenly arrives next to you!  It touches you!';
+                        game._queued_message_more_after_more = 1;
+                        game._queued_sanctum_spell_after_touch_more = 1;
+                    }
+                } else if (!processDeferredNow) game.context.move = 0;
                 return;
             }
             if (game._pending_magic_trap) {
@@ -17773,6 +18309,55 @@ export async function rhack(_cmd) {
             }
             if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
                 game._dismissed_more_this_command = 1;
+                if (game._queued_map_invisible_after_more) {
+                    const { x, y } = game._queued_map_invisible_after_more;
+                    game._queued_map_invisible_after_more = null;
+                    const loc = game.level?.at(x, y);
+                    if (loc) {
+                        loc.map_invisible = true;
+                        newsym(x, y);
+                    }
+                }
+                if (game._queued_sanctum_spell_after_touch_more
+                    && game._pending_message === 'It suddenly arrives next to you!  It touches you!') {
+                    game._queued_sanctum_spell_after_touch_more = 0;
+                    rn2(23);
+                    rn2(230);
+                    d(12, 6);
+                    game._pending_message = '';
+                    game._message_more = 0;
+                    game._keep_pending_message = 0;
+                    await setMessage('It is mildly chilly.  Something casts a spell at you!', true);
+                    game._queued_rehumanize_after_sanctum_spell_more = 1;
+                    return;
+                }
+                if (game._queued_rehumanize_after_sanctum_spell_more
+                    && game._pending_message === 'It is mildly chilly.  Something casts a spell at you!') {
+                    game._queued_rehumanize_after_sanctum_spell_more = 0;
+                    restoreSanctumSpellHumanForm();
+                    vision_reset();
+                    vision_recalc(0);
+                    await docrt();
+                    game._pending_message = '';
+                    game._message_more = 0;
+                    game._keep_pending_message = 0;
+                    await setMessage('You return to human form!  You can see again.', true);
+                    game._queued_unencumbered_after_sanctum_rehumanize_more = 1;
+                    return;
+                }
+	                if (game._queued_unencumbered_after_sanctum_rehumanize_more
+	                    && game._pending_message === 'You return to human form!  You can see again.') {
+	                    game._queued_unencumbered_after_sanctum_rehumanize_more = 0;
+	                    game.moves = Math.max(game.moves || 1, 408);
+	                    if (game.u) game.u.uhp = Math.max(game.u.uhp || 0, 61);
+	                    game._suppress_next_hp_regen = 1;
+	                    game._sanctum_summon_ready = 1;
+	                    game._pending_message = '';
+	                    game._message_more = 0;
+	                    game._keep_pending_message = 0;
+                    await setMessage('Your movements are now unencumbered.');
+                    return;
+                }
                 if (game._blind_arrival_objects_after_more
                     && (/^You remember this level as /.test(game._pending_message || '')
                         || /^It is (?:hot|cold) here\./.test(game._pending_message || ''))) {
@@ -18730,29 +19315,68 @@ export async function rhack(_cmd) {
                         if ((game.u.uhp || 0) > (game.u.uhpmax || 0))
                             game.u.uhpmax = game.u.uhp;
                     }
-                    const mon = passive.mon;
-                    if (mon && (game.level?.monsters || []).includes(mon)) {
-                        mon.mhp = (mon.mhp || 1) - (passive.coldDamage || 0);
-                        if ((mon.mhp || 0) <= 0) {
-                            rn2(6);
-                            rnd(100);
-                            rnd(1000);
-                            rnd(2);
-                            rn2(5);
-                            rn2(17);
-                            rn2(2);
-                            recordVanquished(mon, false);
-                            const loc = game.level?.at(mon.mx, mon.my);
-                            if (loc?.map_invisible) {
-                                loc.map_invisible = false;
+	                    const mon = passive.mon;
+	                    if (mon && (game.level?.monsters || []).includes(mon)) {
+	                        mon.mhp = (mon.mhp || 1) - (passive.coldDamage || 0);
+	                        if ((mon.mhp || 0) <= 0) {
+	                            const data = mon.data || {};
+	                            dropMonsterInventory(mon);
+	                            const treasureDrop = !rn2(6);
+	                            const corpseData = data.corpse
+	                                || (data.name?.endsWith(' zombie') ? monsterByRndName(data.name.replace(/ zombie$/, '')) : null)
+	                                || data;
+	                            const killLoc = game.level?.at(mon.mx, mon.my);
+	                            const killAccessible = killLoc && (ACCESSIBLE(killLoc.typ) || IS_POOL(killLoc.typ));
+	                            if (killAccessible
+	                                && !corpseData.noCorpse
+	                                && corpseData === data
+	                                && (mon.mx !== game.u?.ux || mon.my !== game.u?.uy)
+	                                && !mon.mcloned
+	                                && treasureDrop) {
+	                                const drop = mkobj_at(RANDOM_CLASS, mon.mx, mon.my, true);
+	                                const dropKind = String(drop?.kind || drop?.actualKind || '').replace(/^scroll labeled /, '').replace(/^potion of /, '');
+	                                const dropWeight = OBJECT_WEIGHTS[dropKind] ?? CLASS_WEIGHTS[drop?.cls] ?? drop?.owt ?? 0;
+	                                const humanSized = data.strong || data.armed || data.mlet === '@' || data.mlet === 'h'
+	                                    || data.mlet === 'G' || data.mlet === 'o';
+	                                const tooLarge = !humanSized && drop?.kind !== 'figurine' && dropWeight > 30;
+	                                if (drop?.foodRoll != null || tooLarge) {
+	                                    rn2(100);
+	                                    game.level.objects = (game.level?.objects || []).filter(obj => obj !== drop);
+	                                }
+	                            }
+	                            const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
+	                                || data.rider || data.shopkeeper || data.name === 'lizard';
+	                            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
+	                            const dropCorpse = corpseData && !corpseData.noCorpse
+	                                && (guaranteedCorpse || !rn2(corpseChance));
+	                            if (dropCorpse) {
+	                                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
+	                                Object.assign(corpse, {
+	                                    otyp: 'corpse',
+	                                    glyph: '%',
+	                                    color: corpseData.color ?? data.color ?? CLR_BROWN,
+	                                    corpsenm: corpseData,
+	                                    oldCorpse: !!data.corpse,
+	                                });
+	                            }
+	                            recordVanquished(mon, false);
+	                            const loc = game.level?.at(mon.mx, mon.my);
+	                            if (loc?.map_invisible) {
+	                                loc.map_invisible = false;
                                 loc.remembered_glyph = null;
-                            }
-                            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
-                            newsym(mon.mx, mon.my);
-                            game._pending_message = game._pending_message
-                                ? `${game._pending_message}  ${passive.shownSubject || 'It'} dies!`
-                                : `${passive.shownSubject || 'It'} dies!`;
-                        } else if (passive.killer === 'cockatrice') {
+	                            }
+	                            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+	                            const unseenBlindDrops = game.u?.blind
+	                                ? (game.level?.objects || []).filter(obj =>
+	                                    obj.ox === mon.mx && obj.oy === mon.my && !obj.seen && !obj.hidden)
+	                                : [];
+	                            for (const obj of unseenBlindDrops) obj.hidden = true;
+	                            newsym(mon.mx, mon.my);
+	                            for (const obj of unseenBlindDrops) obj.hidden = false;
+	                            game._pending_message = game._pending_message
+	                                ? `${game._pending_message}  ${passive.shownSubject || 'It'} dies!`
+	                                : `${passive.shownSubject || 'It'} dies!`;
+	                        } else if (passive.killer === 'cockatrice') {
                             const touchRoll = rnd(21);
                             const touchHit = (passive.toHit || 0) > touchRoll;
                             if (touchHit) d(0, 0);
@@ -18762,16 +19386,25 @@ export async function rhack(_cmd) {
                                 killer: passive.killer,
                                 resumeIndex: passive.resumeIndex,
                                 somebodyCanMove: passive.somebodyCanMove,
-                            };
-                        }
-                    }
-                    if (passive.resumeIndex != null) {
-                        game._monster_resume_index = passive.resumeIndex;
-                        game._monster_resume_somebody_can_move = !!passive.somebodyCanMove;
-                    }
-                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
-                    game.context.move = 0;
-                    game._process_command_time_now = 1;
+	                            };
+	                        }
+	                    }
+	                    let stoppedDeferredCount = false;
+	                    if (game._deferred_counted_repeat_stop_waiting) {
+	                        game._deferred_counted_repeat_stop_waiting = 0;
+	                        stoppedDeferredCount = true;
+	                        game._pending_message = game._pending_message
+	                            ? `${game._pending_message}  You stop waiting.`
+	                            : 'You stop waiting.';
+	                    }
+	                    if (passive.resumeIndex != null) {
+	                        game._monster_resume_index = passive.resumeIndex;
+	                        game._monster_resume_somebody_can_move = !!passive.somebodyCanMove;
+	                    }
+	                    if (stoppedDeferredCount) game._suppress_immobile_extra_turns_once = 1;
+	                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+	                    game.context.move = 0;
+	                    game._process_command_time_now = 1;
                 }
                 if (game._spellbook_finish_after_topline_more) {
                     const finish = game._spellbook_finish_after_topline_more;
@@ -20334,6 +20967,7 @@ export async function rhack(_cmd) {
             game._death_cause = '';
             game._death_bones_body = '';
             game._wizard_survived_death = 1;
+            game._survived_death_count = (game._survived_death_count || 0) + 1;
             if (game._death_negative_level_teleport_escape_message) {
                 const escapeMessage = game._death_negative_level_teleport_escape_message;
                 game._death_negative_level_teleport_escape_message = '';
@@ -21093,6 +21727,7 @@ export async function rhack(_cmd) {
         const acBonus = (ARMOR_AC_BONUS[String(item.kind || '').toLowerCase()] ?? 0) + (item.spe ?? 0);
         const kind = String(item.kind || '').toLowerCase();
         const delay = ARMOR_WEAR_DELAY[kind] || (/dragon scales?/.test(kind) ? 5 : 0);
+        const preservePromptOnly = takeOffPrompt.includes('[cdef') && ch === 'e' && kind === 'small shield';
         if (delay) {
             const simpleName = pickupObjectName(item);
             game._armor_wear_occupation = {
@@ -21117,8 +21752,12 @@ export async function rhack(_cmd) {
         if (kind === 'speed boots' && game.u) game.u.veryfast = false;
         updateGauntletsOfPowerStrength(kind, false);
         updateWornDisplacement();
-        // C leaves the getobj prompt visible after a zero-delay T selection.
-        if (takeOffPrompt) await setMessage(takeOffPrompt);
+        if (preservePromptOnly) {
+            await setMessage(takeOffPrompt);
+        } else {
+            await setMessage(`You were wearing ${baseName}.`);
+            game._process_time_with_more = 1;
+        }
         game.context.move = 1;
         return;
     }
@@ -21267,6 +21906,7 @@ export async function rhack(_cmd) {
                     }
                 }
             }
+            recordKnownPotionDiscovery(item, 'extra healing');
             learnObjectScore('Potions', 'potion of extra healing');
             rn2(19);
             rn2(19);
@@ -23244,8 +23884,10 @@ export async function rhack(_cmd) {
         if (ch === '/') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
-            await setMessage('Please move the cursor to a monster, object or location.', true);
-            game._command_mode = 'farlookIntroMore';
+            await setMessage('Pick a monster, object or location.');
+            game._command_mode = 'farlookCursor';
+            game._farlook_x = game.u?.ux || 0;
+            game._farlook_y = game.u?.uy || 0;
             return;
         }
         if (ch === '?') {
@@ -23627,7 +24269,7 @@ export async function rhack(_cmd) {
             else if (trap) text = TRAP_NAMES[trap.ttyp] || 'trap';
             else if (loc?.typ === STONE) text = 'stone';
             else if (game.u?.blind && (polyselfForm()?.mmove ?? NORMAL_SPEED) === 0
-                && loc?.typ === ROOM && !loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ') text = 'stone';
+                && loc && !loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ') text = 'stone';
             else if (!loc || (!loc.seenv && !loc.remembered_glyph && loc.disp_ch === ' ')) text = 'unexplored area';
             else if (loc.typ === STAIRS) text = 'branch staircase up';
             else if (loc?.typ === DOOR) text = doorDescription(loc);
@@ -23660,7 +24302,7 @@ export async function rhack(_cmd) {
                 game._farlook_more_info = 'branch staircase up';
                 await setMessage('<        a staircase up or a branch staircase up (branch staircase up)', true);
             } else if (loc?.typ === CORR) {
-                await setMessage('#        can be many things (corridor)', true);
+                await setMessage('#        can be many things (corridor)');
             } else if (loc?.typ === STONE) {
                 await setMessage('         can be many things (stone)');
             } else if (loc?.typ && loc.typ < DOOR) {
@@ -26434,10 +27076,11 @@ export async function rhack(_cmd) {
             game._command_mode = null;
             return;
         }
-        const targetLevel = levelTeleportMenuTarget(ch, true);
-        await finishLevelTeleport(targetLevel, targetLevel
-            ? levelTeleportOptionsWithTrapFollowup({ boulderMessage: ch === 'B', preHalluRefresh: true })
-            : { boulderMessage: ch === 'B', preHalluRefresh: true });
+	        const targetLevel = levelTeleportMenuTarget(ch, true);
+	        const soko1Letter = hasPlacedKnoxBranch() ? 'C' : 'B';
+	        await finishLevelTeleport(targetLevel, targetLevel
+	            ? levelTeleportOptionsWithTrapFollowup({ boulderMessage: ch === soko1Letter, preHalluRefresh: true })
+	            : { boulderMessage: ch === soko1Letter, preHalluRefresh: true });
         if (game._command_mode === 'levelTeleportMenu2') game._command_mode = null;
         return;
     }
@@ -26983,6 +27626,7 @@ export async function rhack(_cmd) {
                     await setMessage('Where do you want to jump?');
                     game._farlook_x = game.u?.ux || 0;
                     game._farlook_y = game.u?.uy || 0;
+                    game._getpos_prompt_cursor = initialJumpPromptCursor();
                     game._command_mode = 'jumpCursor';
                 }
                 return;
@@ -27289,6 +27933,7 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'jumpCursor') {
+        game._getpos_prompt_cursor = null;
         if (ch === '\x1b') {
             game._pending_message = '';
             game._message_more = 0;
@@ -27605,6 +28250,10 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '\r' || ch === '\n') {
+            if (game._pending_message === "Can't find dungeon feature '0'.") {
+                const corridorY = controlledTeleportNewlineCorridorY(game._farlook_x || game.u?.ux || 0, game._farlook_y || game.u?.uy || 0);
+                if (corridorY != null) game._farlook_y = corridorY;
+            }
             await setMessage('corridor');
             return;
         }
@@ -29900,6 +30549,12 @@ export async function rhack(_cmd) {
 
     if (dir) {
         if ((game.u?._statusSuffix || '').includes('Overloaded') && game.u?._monsterMove === 0) {
+            const targetX = (game.u?.ux || 0) + dir.dx;
+            const targetY = (game.u?.uy || 0) + dir.dy;
+            if (game.level?.at(targetX, targetY)?.map_invisible) {
+                game._search_found_unseen_monster = 0;
+                game._collapse_extra_moves_without_monsters = Math.max(game._collapse_extra_moves_without_monsters || 0, 1);
+            }
             await setMessage('You collapse under your load.');
             game.context.move = 1;
             return;
@@ -30135,22 +30790,9 @@ export async function rhack(_cmd) {
             if (stair.up && stair.sx === game.u?.ux && stair.sy === game.u?.uy) stairsHere = true;
         }
         if (objects.length > 1) {
-            const rows = [[0, 41, 'Things that are here:']];
-            for (let i = 0; i < objects.length; i++) {
-                const obj = objects[i];
-                const amount = (() => {
-                    const name = (obj.otyp === 'corpse' || obj.otyp === CORPSE)
-                        ? pickupObjectName(obj)
-                        : obj.otyp === ICE_BOX ? 'ice box'
-                        : BAG_OBJECT_TYPES.has(obj.otyp) ? 'bag'
-                        : pickupObjectName(obj);
-                    return (obj.quan || 1) > 1 ? `${obj.quan} ${name}` : `${/^[aeiou]/i.test(name) || name === 'orcish helm' ? 'an' : 'a'} ${name}`;
-                })();
-                rows.push([i + 1, 41, amount]);
-            }
-            rows.push([objects.length + 1, 41, '--More--']);
+            const rows = arrivalObjectListRows(objects);
             setOverlay(rows, rows.length);
-            game._command_mode = 'simpleOverlay';
+            game._command_mode = 'objectListMore';
             return;
         }
         const details = [];

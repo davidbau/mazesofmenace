@@ -32,7 +32,10 @@ const STATUE = 472;
 const C_RANDOM_CORPSE = 265;
 const C_SPE_DIG = 366;
 const C_SPE_BLANK_PAPER = 407;
+const POTION_CLASS = 9;
 const GEM_CLASS = 14;
+const SKELETON_KEY = 220;
+const MIRROR = 10006;
 const ARROW_TRAP = 1;
 const DART_TRAP = 2;
 const ROCKTRAP = 3;
@@ -439,6 +442,10 @@ function trapAt(x, y) {
 }
 
 const PAIR_DISCOVERY_RE = /\b(?:boots|shoes|gloves)$/i;
+const OBSERVED_TOOL_DISCOVERIES = new Map([
+    [SKELETON_KEY, 'key'],
+    [MIRROR, 'looking glass'],
+]);
 
 function addObservedDiscovery(section, name, text = name) {
     if (!section || !name || !text) return;
@@ -458,6 +465,12 @@ function addObservedDiscovery(section, name, text = name) {
 
 export function recordObservedObjectDiscovery(obj) {
     if (!obj || (game.u?._statusSuffix || '').includes('Hallu')) return;
+    if (obj.otyp === POTION_CLASS || obj.cls === 'potion' || obj.glyph === '!') {
+        const appearance = game._object_descriptions?.potions?.[obj.potionIndex]?.description
+            || String(obj.kind || '').replace(/ potion$/, '').trim();
+        if (appearance) addObservedDiscovery('Potions', 'potion', `potion (${appearance})`);
+        return;
+    }
     if (obj.cls === 'amulet' || obj.glyph === '"') {
         const appearance = String(obj.appearance || '').trim();
         if (appearance) addObservedDiscovery('Amulets', 'amulet', `amulet (${appearance})`);
@@ -470,12 +483,23 @@ export function recordObservedObjectDiscovery(obj) {
         addObservedDiscovery('Armor', name);
         return;
     }
+    const toolName = OBSERVED_TOOL_DISCOVERIES.get(obj.otyp);
+    if (toolName) {
+        addObservedDiscovery('Tools', toolName);
+        return;
+    }
     if (obj.otyp === GEM_CLASS || obj.cls === 'gem' || obj.glyph === '*') {
         const actual = String(obj.actualKind || obj.kind || '').toLowerCase();
         if (actual === 'touchstone' || actual === 'flint stone' || actual === 'luckstone' || actual === 'loadstone') return;
         const description = String(obj.gemDescription || '').trim();
         if (description && description !== 'rock') addObservedDiscovery('Gems/Stones', description);
     }
+}
+
+function recordVisibleMonsterInventoryDiscovery(mon) {
+    if (!(mon?.isshk || mon?.data?.shopkeeper)) return;
+    if ((mon.minvent || []).some(obj => obj.otyp === SKELETON_KEY))
+        addObservedDiscovery('Tools', 'key');
 }
 
 function visibleRegionAt(x, y) {
@@ -677,7 +701,7 @@ export function newsym(x, y) {
     }
 
     let visibleObjectGlyph = null;
-    if (visible) {
+    if (visible && !game.u?.blind) {
         if (obj) {
             obj.seen = true;
             obj._hide_until_seen = false;
@@ -695,6 +719,7 @@ export function newsym(x, y) {
         }
     }
     if (!game.u?.blind && mon && (monsterVisible || seesInfrared)) {
+        recordVisibleMonsterInventoryDiscovery(mon);
         const glyph = monsterGlyph(mon);
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, game._hilite_pet && mon.pet ? 1 : 0);
         return;
@@ -715,7 +740,8 @@ export function newsym(x, y) {
     const unseenPunishmentObject = !visible && !feltPunishmentObject
         && (obj === game.u?.uball || obj === game.u?.uchain);
     if (obj && !unseenPunishmentObject
-        && (visible || obj.seen || feltPunishmentObject || (obj.otyp === BOULDER && !obj._hide_until_seen))) {
+        && ((!game.u?.blind && visible) || obj.seen || feltPunishmentObject
+            || (obj.otyp === BOULDER && !obj._hide_until_seen))) {
         const glyph = visibleObjectGlyph || objectGlyph(obj);
         const pileAttr = game._hilite_pile
             && (game.level?.objects || []).filter(item => !item.hidden && !item.transientProjectile && item.ox === x && item.oy === y).length > 1
@@ -1101,6 +1127,12 @@ function drawGrid() {
             writeText(1, 0, `${game._message_more_line || ''}${more}`, NO_COLOR);
             setCursorAfter(1, 0, `${game._message_more_line || ''}${more}`);
             cursorSet = true;
+        } else if (game._getpos_prompt_cursor) {
+            d.setCursor(game._getpos_prompt_cursor[0], game._getpos_prompt_cursor[1]);
+            cursorSet = true;
+        } else if (game._command_mode === 'nameInventoryText' && game._name_inventory_text) {
+            d.setCursor(String(game._pending_message || '').length, 0);
+            cursorSet = true;
         } else if (game._command_mode === 'fountainDetectPos') {
             d.setCursor((game._fountain_detect_x || game.u?.ux || 1) - 1, (game._fountain_detect_y || game.u?.uy || 0) + 1);
             cursorSet = true;
@@ -1160,6 +1192,10 @@ function drawGrid() {
             setCursorAfter(0, 0, game._pending_message, 1);
             cursorSet = true;
         }
+    }
+    if (!cursorSet && game._sanctum_script_cursor && game._pending_message) {
+        d.setCursor(game._sanctum_script_cursor[0], game._sanctum_script_cursor[1]);
+        cursorSet = true;
     }
     if (!cursorSet && game._cursor_override) {
         d.setCursor(game._cursor_override[0], game._cursor_override[1]);

@@ -4,7 +4,7 @@
 // setrolefilter, clearrolefilter.
 
 import { rn2 } from './rng.js';
-import { roles, races, aligns, genders } from './roles.js';
+import { roles, races, aligns, genders, raceAllowsAlignValueLikeC } from './roles.js';
 
 export const ROLE_NONE = -1;
 export const ROLE_RANDOM = -2;
@@ -179,8 +179,7 @@ export function okRaceJs(ri, rai, gi, ai) {
             if (indexOkRole(ri)) {
                 if (!roles[ri].allows.align.includes(av)) return false;
             }
-            /* race vs align: orc chaotic-only in C — aligns with roles.js Rogue/orc */
-            if (race.name === 'orc' && av !== -1) return false;
+            if (!raceAllowsAlignValueLikeC(race, av)) return false;
         }
         return true;
     }
@@ -216,7 +215,7 @@ export function okRaceJsIgnoreRaceRfilter(ri, rai, gi, ai) {
             if (indexOkRole(ri)) {
                 if (!roles[ri].allows.align.includes(av)) return false;
             }
-            if (race.name === 'orc' && av !== -1) return false;
+            if (!raceAllowsAlignValueLikeC(race, av)) return false;
         }
         return true;
     }
@@ -240,7 +239,7 @@ export function okGendJsIgnoreGenderRfilter(ri, rai, gi, ai) {
         }
         if (indexOkRace(rai)) {
             const race = races[rai];
-            if (race.name === 'orc' && indexOkAlign(ai) && aligns[ai].value !== -1) return false;
+            if (indexOkAlign(ai) && !raceAllowsAlignValueLikeC(race, aligns[ai].value)) return false;
         }
         if (indexOkAlign(ai)) {
             const av = aligns[ai].value;
@@ -264,7 +263,7 @@ export function okAlignJsIgnoreAlignRfilter(ri, rai, gi, ai) {
         if (indexOkRole(ri) && !roles[ri].allows.align.includes(av)) return false;
         if (indexOkRace(rai)) {
             const race = races[rai];
-            if (race.name === 'orc' && av !== -1) return false;
+            if (!raceAllowsAlignValueLikeC(race, av)) return false;
         }
         return true;
     }
@@ -289,7 +288,7 @@ export function okGendJs(ri, rai, gi, ai) {
         }
         if (indexOkRace(rai)) {
             const race = races[rai];
-            if (race.name === 'orc' && indexOkAlign(ai) && aligns[ai].value !== -1) return false;
+            if (indexOkAlign(ai) && !raceAllowsAlignValueLikeC(race, aligns[ai].value)) return false;
         }
         if (indexOkAlign(ai)) {
             const av = aligns[ai].value;
@@ -314,7 +313,7 @@ export function okAlignJs(ri, rai, gi, ai) {
         if (indexOkRole(ri) && !roles[ri].allows.align.includes(av)) return false;
         if (indexOkRace(rai)) {
             const race = races[rai];
-            if (race.name === 'orc' && av !== -1) return false;
+            if (!raceAllowsAlignValueLikeC(race, av)) return false;
         }
         return true;
     }
@@ -530,15 +529,8 @@ export function rigidRoleChecksJs(f) {
             const t = pickRaceJs(f.initrole, f.initgend, f.initalign, PICK_RIGID);
             if (t !== ROLE_NONE) f.initrace = t;
         }
-        /* C pick_align: only after `racenum` is known — with race still `ROLE_NONE`,
-         * ok_align can leave multiple role-only alignments and must not call rn2 yet. */
-        if (f.initalign === ROLE_NONE && f.initrace >= 0 && f.initrace < races.length) {
-            let alcnt = 0;
-            for (let ai = 0; ai < aligns.length; ai++) {
-                if (okAlignJs(f.initrole, f.initrace, f.initgend, ai)) alcnt++;
-            }
-            const how = alcnt > 1 ? PICK_RANDOM : PICK_RIGID;
-            const t = pickAlignJs(f.initrole, f.initrace, f.initgend, how);
+        if (f.initalign === ROLE_NONE) {
+            const t = pickAlignJs(f.initrole, f.initrace, f.initgend, PICK_RIGID);
             if (t !== ROLE_NONE) f.initalign = t;
         }
         if (f.initgend === ROLE_NONE) {

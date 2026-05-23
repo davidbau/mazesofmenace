@@ -20,6 +20,7 @@ import {
     bigmonst, isWhirly, slithy, noncorporeal, canFogHero, likesLava, S_EEL,
 } from './mondata.js';
 import { goodposOnscaryMdatLikeC } from './distfleeck_mon.js';
+import { isPoolCellLikeC } from './fillholetyp.js';
 import { floorObjKey } from './floorobj.js';
 import { rn2 } from './rng.js';
 
@@ -251,11 +252,9 @@ function mInAirMtmpLikeC(mtmp) {
     return isClinger(ptr) && (mtmp.mundetected | 0) !== 0;
 }
 
+/** C: dbridge.c **`is_pool(x,y)`** — includes **`is_moat`** (drawbridge under moat, etc.). */
 function isPoolCellGoodposLikeC(g, x, y) {
-    const loc = g.level?.at(x | 0, y | 0);
-    if (!loc) return false;
-    const typ = loc.typ | 0;
-    return typ === POOL || typ === MOAT || typ === WATER;
+    return isPoolCellLikeC(g, x, y);
 }
 
 /**
@@ -265,9 +264,8 @@ function isPoolCellGoodposLikeC(g, x, y) {
  * @param {{ data?: unknown, mnum?: number, mx?: number, my?: number, wormno?: number, m_id?: number }} mtmp
  * @param {number} [gpflags]
  * @param {Record<string, unknown>} [g]
- * @param {{ skipLandEelRn2?: boolean }} [opts]
  */
-export function goodposMakemonLikeC(x, y, mtmp, gpflags = 0, g = game, opts = {}) {
+export function goodposMakemonLikeC(x, y, mtmp, gpflags = 0, g = game) {
     if (!isok(x, y)) return false;
     const ignorewater = (gpflags & MM_IGNOREWATER) !== 0;
     const ignorelava = (gpflags & MM_IGNORELAVA) !== 0;
@@ -296,13 +294,10 @@ export function goodposMakemonLikeC(x, y, mtmp, gpflags = 0, g = game, opts = {}
         if (swims(ptr) || mInAirMtmpLikeC(mtmp)) return true;
         return false;
     }
-    if (
-        (ptr.mlet | 0) === S_EEL
-        && !ignorewater
-        && !opts.skipLandEelRn2
-        && rn2(13)
-    ) {
-        return false;
+    if ((ptr.mlet | 0) === S_EEL && !ignorewater) {
+        if (rn2(13)) {
+            return false;
+        }
     }
 
     if (isLavaTerrain(loc.typ | 0) && !ignorelava) {
