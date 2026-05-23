@@ -358,7 +358,9 @@ function terrainGlyph(loc, x, y) {
         return { ch: '>', color: loc.stairColor ?? NO_COLOR, dec: false };
     case FOUNTAIN: return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK: return { ch: '{', color: CLR_WHITE, dec: false };
-    case IRONBARS: return { ch: '#', color: CLR_CYAN, dec: false };
+    case IRONBARS: return game.symset === 'DECgraphics'
+        ? { ch: '\x0e|\x0f', color: CLR_CYAN, dec: false }
+        : { ch: '#', color: CLR_CYAN, dec: false };
     case MOAT:
     case POOL: return game.symset === 'DECgraphics'
         ? { ch: '\x0e`\x0f', color: CLR_BLUE, dec: false }
@@ -621,13 +623,13 @@ export function newsym(x, y) {
         loc.lastseenwall_info = loc.wall_info;
     }
     const remembered = visible || loc.map_invisible || loc.seenv || loc.waslit || loc.lastseentyp != null;
-    const mon = game._revealing_level_map ? undefined : game.u?.blind
+    const mon = game.u?.blind
         ? game.level?.monsters?.find(candidate =>
             candidate.mx === x && candidate.my === y
             && !candidate.mundetected
             && !candidate._hide_for_bones_prompt)
         : monsterAt(x, y);
-    const warningMon = game._revealing_level_map ? undefined : game.level?.monsters?.find(candidate =>
+    const warningMon = game.level?.monsters?.find(candidate =>
         candidate.mx === x && candidate.my === y);
     let warning = null;
     if (warningMon && game.u?.warning && !warningMon.mpeaceful && !warningMon.pet) {
@@ -664,6 +666,14 @@ export function newsym(x, y) {
     if (!remembered && !seesInfrared) {
         show_glyph_cell(x, y, ' ', NO_COLOR, false);
         return;
+    }
+    if (game._revealing_level_map) {
+        const trap = trapAt(x, y);
+        if (trap?.tseen && !(game.u?.ux === x && game.u?.uy === y)) {
+            const glyph = trapGlyph(trap);
+            show_glyph_cell(x, y, glyph.ch, glyph.color, false);
+            return;
+        }
     }
 
     let visibleObjectGlyph = null;
@@ -702,7 +712,10 @@ export function newsym(x, y) {
     const feltPunishmentObject = game.u?.blind
         && ((obj === game.u?.uball && (game.u?._bcFelt & BC_BALL))
             || (obj === game.u?.uchain && (game.u?._bcFelt & BC_CHAIN)));
-    if (obj && (visible || obj.seen || feltPunishmentObject || (obj.otyp === BOULDER && !obj._hide_until_seen))) {
+    const unseenPunishmentObject = !visible && !feltPunishmentObject
+        && (obj === game.u?.uball || obj === game.u?.uchain);
+    if (obj && !unseenPunishmentObject
+        && (visible || obj.seen || feltPunishmentObject || (obj.otyp === BOULDER && !obj._hide_until_seen))) {
         const glyph = visibleObjectGlyph || objectGlyph(obj);
         const pileAttr = game._hilite_pile
             && (game.level?.objects || []).filter(item => !item.hidden && !item.transientProjectile && item.ox === x && item.oy === y).length > 1

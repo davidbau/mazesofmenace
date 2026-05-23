@@ -1473,6 +1473,8 @@ function initializePet() {
         const petName = pet === 'cat' ? 'kitten' : pet === 'dog' ? 'little dog' : pet;
         const givenName = game.petNames?.[pet] || (pet === 'dog' ? DEFAULT_DOG_NAMES[roleName] : '');
         const mlet = pet === 'cat' ? 'feline' : pet === 'pony' ? 'unicorn' : 'dog';
+        game.u.uconduct ??= {};
+        game.u.uconduct.pets = (game.u.uconduct.pets || 0) + 1;
         game.level?.monsters?.push({
             mx: x,
             my: y,
@@ -2166,7 +2168,7 @@ function processAttributeExercise() {
 }
 
 function processDungeonSounds() {
-    if ((game.u?._statusSuffix || '').includes('Deaf')) return;
+    if ((game.u?._statusSuffix || '').includes('Deaf') || (game.u?._deafTimeout || 0) > 0) return;
     const flags = game.level?.flags || {};
     const showSound = msg => {
         if (game._suppress_dungeon_sound_messages > 0) {
@@ -2391,6 +2393,10 @@ function tameHatchedMonster(mon, entry, yours) {
     mon.mpeaceful = 1;
     mon.mflee = 0;
     mon.mfleetim = 0;
+    if (game.u) {
+        game.u.uconduct ??= {};
+        game.u.uconduct.pets = (game.u.uconduct.pets || 0) + 1;
+    }
     ensureHatchedPetExtension(mon);
     set_malign(mon);
 }
@@ -2565,8 +2571,15 @@ async function afterMoveTurn(g, includeHeroTime = true) {
     }
     await processEggHatchTimeouts(g);
     await processFigurineTransformTimeouts(g);
-    if (includeHeroTime && g.moves >= (g.context.seer_turn || 0))
-        g.context.seer_turn = g.moves + rn2(31) + 15;
+    if (includeHeroTime && g.moves >= (g.context.seer_turn || 0)) {
+        if (g._prayer_debug_pleased && g._pending_prayer_finish_message
+            && g._prayer_split_finish_message && !g._prayer_split_waiting_for_time
+            && g.u?.blind) {
+            g._defer_seer_after_prayer_pleased = 1;
+        } else {
+            g.context.seer_turn = g.moves + rn2(31) + 15;
+        }
+    }
 }
 
 function maybeShapeshiftVampire(mon) {
@@ -2648,7 +2661,7 @@ async function processMonsterTurns() {
     }
     if (!game._queued_dead_monsters?.length && game.level?.monsters)
         game.level.monsters = game.level.monsters.filter(mon => mon.mhp == null || mon.mhp > 0);
-    const mons = [...(game.level?.monsters || [])].reverse();
+    let mons = [...(game.level?.monsters || [])].reverse();
     if (game._hallu_names_after_visible_monster_pickup) {
         game._hallu_names_after_visible_monster_pickup = 0;
         for (const mon of mons) {
@@ -3639,6 +3652,11 @@ async function processMonsterTurns() {
 		                            mon._distfleeck_done_after_anger = 1;
 		                            return false;
 		                        }
+                            if (game._dry_eel_minliquid_turns && name === 'cockatrice'
+                                && String(game.u?._polyself_form?.name || '').toLowerCase() === 'brown mold') {
+                                game._dry_eel_minliquid_turns--;
+                                rn2(5);
+                            }
 				                        const attackRoll = swallowedEngulf ? 0 : rnd(20);
 		                        if (!swallowedEngulf && toHit <= attackRoll) {
 	                            if (game._suppress_monster_attack_messages) attackShown = false;
@@ -3942,7 +3960,11 @@ async function processMonsterTurns() {
 		                                                : '';
 		                                    const thief = mon.female ? 'She' : subject;
 		                                    const stolenMessage = `${removeMessage ? thief : subject} stole ${stolenName}.`;
-		                                    const theftMessage = removeMessage || stolenMessage;
+                                            const theftWidth = game.nhDisplay?.cols || 80;
+		                                    const theftMessage = removeMessage
+                                                && removeMessage.length + stolenMessage.length + 2 < theftWidth - 8
+                                                ? `${removeMessage}  ${stolenMessage}`
+                                                : removeMessage || stolenMessage;
 		                                    game._nymph_steal_after_more = {
 		                                        mon, itemLetter: stolen.letter, item: stolen, removeMessage, stolenMessage, theftMessage,
 		                                    };
@@ -3951,7 +3973,7 @@ async function processMonsterTurns() {
 		                                    mon.mavenge = 1;
 		                                    clearMonsterTrack(mon);
 		                                    game._topline_after_more = theftMessage;
-		                                    if (removeMessage)
+		                                    if (removeMessage && theftMessage === removeMessage)
 		                                        game._queued_message_after_topline_more = stolenMessage;
 		                                    game._topline_more_after_more = 1;
 		                                    game._message_more = 1;
@@ -4102,6 +4124,80 @@ async function processMonsterTurns() {
 	                            } else {
 	                                game.u.uhp = hpBeforeDamage - damage;
 	                            }
+                            const brownMoldPassive = attackShown && (game.u?.uhp || 0) > 0
+                                && String(game.u?._polyself_form?.name || '').toLowerCase() === 'brown mold';
+                            if (brownMoldPassive) {
+                                const coldDamage = d(2, 6);
+                                rn2(3);
+                                const coldShown = addToplineMessage(`${shownSubject} is suddenly very cold!`);
+                                const passiveNeedsMore = !!pendingBeforeAttack
+                                    && !/^What do you want to /.test(pendingBeforeAttack)
+                                    && !/^(?:It|The .+) (?:bites|hits|misses|touches|stings|kicks)\b/.test(pendingBeforeAttack);
+                                if (!coldShown && !passiveNeedsMore) {
+                                    game._brown_mold_passive_after_more = {
+                                        mon,
+                                        coldDamage,
+                                        shownSubject,
+                                        killer: name,
+                                        toHit,
+                                        resumeIndex: monIndex + 1,
+                                        somebodyCanMove,
+                                    };
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                    return false;
+                                }
+                                const coldHeal = Math.trunc(coldDamage / 2);
+                                if (game.u) {
+                                    game.u.uhp = Math.max(1, (game.u.uhp || 0) + coldHeal);
+                                    if ((game.u.uhp || 0) > (game.u.uhpmax || 0))
+                                        game.u.uhpmax = game.u.uhp;
+                                }
+                                mon.mhp = Math.max(0, (mon.mhp || 1) - coldDamage);
+                                rn2(2);
+                                if (passiveNeedsMore) {
+                                    game._message_more = 1;
+                                    game._process_time_with_more = 0;
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                }
+                                if (name === 'cockatrice') {
+                                    const touchRoll = rnd(21);
+                                    const touchHit = toHit > touchRoll;
+                                    if (touchHit) d(0, 0);
+                                    const touchMessage = `${shownSubject} ${touchHit ? 'touches you' : 'misses'}!`;
+                                    if (passiveNeedsMore) {
+                                        game._cockatrice_touch_after_more = {
+                                            hit: touchHit,
+                                            message: touchMessage,
+                                            killer: name,
+                                            resumeIndex: monIndex + 1,
+                                            somebodyCanMove,
+                                        };
+                                    } else {
+                                        if (touchHit) {
+                                            const form = game.u?._polyself_form || {};
+                                            const stoningRoll = rn2(3);
+                                            if (!stoningRoll && game.u && !game.u.stoneResistance
+                                                && !form.stoneResistance && String(form.name || '').toLowerCase() !== 'stone golem'
+                                                && !(game.u._stonedTimeout || 0)) {
+                                                game.u._stonedTimeout = 5;
+                                                game.u._stonedKiller = name;
+                                            }
+                                            rn2(3);
+                                            rn2(6);
+                                        }
+                                        addToplineMessage(touchMessage);
+                                        if (game._message_more && !game._process_time_with_more) {
+                                            game._monster_resume_index = monIndex + 1;
+                                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                                        }
+                                    }
+                                } else if (!coldShown && game._message_more && !game._process_time_with_more) {
+                                    game._monster_resume_index = monIndex + 1;
+                                    game._monster_resume_somebody_can_move = somebodyCanMove;
+                                }
+                            }
                             if (attackShown && name === 'straw golem' && (game.u?.uhp || 0) > 0) {
                                 if (toHit > rnd(21)) {
                                     const secondDamage = d(1, 2);
@@ -4251,12 +4347,15 @@ async function processMonsterTurns() {
                                 }
                                 const onlineHero = oldx === heroX || oldy === heroY
                                     || Math.abs(oldx - heroX) === Math.abs(oldy - heroY);
-                                if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
-                                    && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
-                                    if (!onlineHero) {
-                                        rn2(5);
-                                        continue;
-                                    }
+                            if (((!(mon.robbed || mon.billct || mon.debit)) || avoid)
+                                && (oldx - goalX) ** 2 + (oldy - goalY) ** 2 < 3) {
+                                const farLineOnly = satdoor && !avoid && oldy === heroY
+                                    && !(mon.robbed || mon.billct || mon.debit)
+                                    && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 8;
+                                if (!onlineHero || farLineOnly) {
+                                    rn2(5);
+                                    continue;
+                                }
                                     if (satdoor) {
                                         appr = 0;
                                         goalX = 0;
@@ -5336,7 +5435,10 @@ async function processMonsterTurns() {
     const castleDepth = castle && castleDungeon ? (castleDungeon.depth_start || 1) + castle.dlevel - 1 : Infinity;
     const randomMonsterOdds = game.u?.uevent?.udemigod ? 25
         : currentDepth > castleDepth || currentDungeon?.name === 'Gehennom' ? 50 : 70;
-    if (!rn2(randomMonsterOdds)) await makemon(null, 0, 0, NO_MM_FLAGS);
+    if (!rn2(randomMonsterOdds)) {
+        await makemon(null, 0, 0, NO_MM_FLAGS);
+        mons = [...(game.level?.monsters || [])].reverse();
+    }
     let heroMoveAmount = NORMAL_SPEED;
     if (game.u?.usteed && game.u.umoved) {
         const mmove = game.u.usteed.data?.mmove ?? NORMAL_SPEED;
@@ -5940,6 +6042,15 @@ function couldSeeCoord(x, y) {
 function monsterMinliquid(mon) {
     const loc = game.level?.at(mon.mx, mon.my);
     const data = mon.data || {};
+    if (loc && data.swimmer && data.mlet === ';'
+        && !IS_POOL(loc.typ) && !IS_LAVA(loc.typ)) {
+        rn2(24);
+        rn2(8);
+        rn2(4);
+        rn2(40);
+        game._dry_eel_minliquid_turns = (game._dry_eel_minliquid_turns || 0) + 1;
+        return false;
+    }
     if (!loc || !IS_LAVA(loc.typ) || data.inAir || data.flyer || data.floater || data.likesLava)
         return false;
 
@@ -6008,6 +6119,7 @@ function monsterLinedUp(mon, targetX, targetY) {
         const apType = game.u._apType || 'monster';
         const concealed = game.u.uundetected || (apType !== 'nothing' && apType !== 'monster');
         if (roll && concealed) return false;
+        return true;
     }
 
     const dx = targetX - mon.mx;
@@ -8749,7 +8861,13 @@ export async function moveloop_core() {
     while (g._pending_time_passed && (!(g._pending_message && g._message_more) || g._process_time_with_more)) {
         let turnAdvanced = false;
         let skipMonsterTurnsThisPass = false;
-        if (g._resume_time_after_more) {
+        let ballDragNoResumePass = false;
+        if (g._ball_drag_delay_no_resume > 0) {
+            g._ball_drag_delay_no_resume--;
+            ballDragNoResumePass = true;
+            g._resume_time_after_more = 0;
+            g.u.umovement = (g.u.umovement ?? NORMAL_SPEED) - NORMAL_SPEED;
+        } else if (g._resume_time_after_more) {
             g._resume_time_after_more = 0;
         } else {
             g.u.umovement = (g.u.umovement ?? NORMAL_SPEED) - NORMAL_SPEED;
@@ -8877,6 +8995,7 @@ export async function moveloop_core() {
         }
         const movedMonsters = skipMonsterTurnsThisPass || armorTailOnly ? false : await processMonsterTurns();
         if (ballDragForcedTail && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
+        if (ballDragNoResumePass && g.u) g.u.umovement = Math.min(g.u.umovement || 0, NORMAL_SPEED);
         if (normalHalluDisplay && !armorTailOnly) g._display_hallucinated_normal = 0;
 	        if (g._eating_turns_remaining > 0
 	            && (g.level?.monsters || []).some(mon =>

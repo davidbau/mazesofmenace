@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -1056,6 +1056,7 @@ const WISH_TOOL_NAMEDESC_BOUNDS = new Map([
 ]);
 const WISH_AMULET_NAMEDESC_BOUNDS = new Map([
     ['amulet of life saving', 76],
+    ['amulet of unchanging', 61],
 ]);
 const WISH_FOOD_NAMEDESC_BOUNDS = new Map([
     ['apple', 16], ['fortune cookie', 56], ['fortune cookies', 56],
@@ -6194,6 +6195,28 @@ async function advanceExperienceLevel(incremental = false) {
     game._command_mode = more ? 'levelChangeMore' : null;
 }
 
+function polyselfFormByName(name) {
+    return POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+}
+
+function randomPolyselfMonsterName() {
+    for (let tryct = 200; tryct > 0; tryct--) {
+        const name = DISPLAY_MONSTER_HALLU_NAMES[rn2(SPECIAL_PM)];
+        const form = name ? polyselfFormByName(name) : null;
+        if (form) return form.name || name;
+    }
+    return 'newt';
+}
+
+function polymorphSystemShock() {
+    const con = game.u?.acurr?.a?.[A_CON] ?? 10;
+    if (rn2(20) <= con) return null;
+    const damage = rnd(30);
+    if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+    exerciseAttribute(A_CON, false);
+    return { message: 'You shudder for a moment.', more: false };
+}
+
 function becomeMonster(name) {
     const base = game.u._polyself_base;
     if (name === 'human' || name === game.urace?.noun || name === game._startup_race) {
@@ -6278,9 +6301,10 @@ function becomeMonster(name) {
         return { message: game._startup_gender === 'female' ? 'You feel like a new woman!' : 'You feel like a new man!' };
     }
 
-    const form = POLYSELF_EXTRA_FORMS.get(name) || monsterByRndName(name) || RANDOM_MONSTER_BY_NAME.get(name);
+    const form = polyselfFormByName(name);
     if (!form) return null;
     const alreadyPolymorphed = !!game.u._polyself_base;
+    addConductCount('polyselfs');
     if (!alreadyPolymorphed) {
 	        game.u._polyself_base = {
 	            uhp: game.u.uhp,
@@ -6314,6 +6338,10 @@ function becomeMonster(name) {
     game.u._polyself_form = { ...form };
     game.u.umovement = NORMAL_SPEED;
     game.u._statusSuffix = form.inAir ? ' Fly' : '';
+    if (form.noeyes) {
+        game.u.blind = true;
+        game.u._blindAfterStatus = 1;
+    }
     game.u._strDisplay = form.strong ? '18/**' : null;
     const rank = form.name.replace(/\b\w/g, ch => ch.toUpperCase());
     game.urole.rank = { m: rank, f: rank };
@@ -6328,6 +6356,24 @@ function becomeMonster(name) {
         game._topline_after_more = 'Your movements are slowed slightly because of your load.';
         game.u._statusSuffix = `${game.u._statusSuffix || ''} Burdened`;
         game.u.uac = (game.u.uac ?? 10) - 1;
+        return { message, more: true };
+    }
+    const bodyArmor = (game.inventory || []).find(item => {
+        if (!(item.cls === 'armor' && (item.worn || item.line?.includes('being worn')))) return false;
+        const name = inventoryItemName(item).toLowerCase();
+        return /armor|mail/.test(name) && !/helm|helmet|gloves|gauntlets|boots|shoes|shield|cloak|shirt/.test(name);
+    });
+    if (bodyArmor && (form.nohands || form.verysmall)) {
+        message += '  Your armor falls around you!';
+        game._topline_after_more = "You can't even move a handspan with this load!";
+        game._topline_more_after_more = 1;
+        game._polyself_drop_items_after_overload_more = 1;
+        game._polyself_drop_items_after_overload_ac = 9;
+        game.u.uac = game.u._polyself_base?.uac ?? game.u.uac ?? 10;
+        game._status_uac_before_more = game.u._polyself_base?.uac ?? game.u.uac ?? 10;
+        game._status_uac_before_more_hold_count = 3;
+        if (!String(game.u._statusSuffix || '').includes('Overloaded'))
+            game.u._statusSuffix = `${game.u._statusSuffix || ''} Overloaded`;
         return { message, more: true };
     }
     const wieldedTool = (game.inventory || []).find(item =>
@@ -6501,6 +6547,41 @@ function addHeroNutrition(nutrition) {
     if (game.u.uhunger > 1000) game.u._statusSuffix = `${game.u._statusSuffix || ''} Satiated`;
 }
 
+function heroConduct() {
+    if (!game.u) return {};
+    game.u.uconduct ??= {};
+    return game.u.uconduct;
+}
+
+function addConductCount(field, amount = 1) {
+    const conduct = heroConduct();
+    conduct[field] = (conduct[field] || 0) + amount;
+}
+
+function recordLiterateConduct() {
+    addConductCount('literate');
+}
+
+function recordWishConduct({ artifact = false } = {}) {
+    addConductCount('wishes');
+    if (artifact) addConductCount('wisharti');
+}
+
+function recordFoodConduct(item) {
+    const conduct = heroConduct();
+    conduct.food = (conduct.food || 0) + 1;
+    const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    const corpseName = item?.corpsenm?.name || kind.replace(/\s+corpse$/, '');
+    const veganCorpse = ['lichen', 'brown mold', 'yellow mold', 'green mold', 'red mold', 'shrieker', 'violet fungus']
+        .includes(corpseName);
+    if ((isCorpseItem(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
+        conduct.unvegan = (conduct.unvegan || 0) + 1;
+        conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
+    } else if (isEggItem(item) || isRoyalJelly(item)) {
+        conduct.unvegan = (conduct.unvegan || 0) + 1;
+    }
+}
+
 function remainingFoodNutrition(item) {
     if (item?.oeaten > 0) return item.oeaten;
     return foodObjectNutrition(item);
@@ -6523,14 +6604,36 @@ function refreshInventoryObjectLine(item) {
     if (item) item.line = normalInventoryLine({ ...item, line: '' });
 }
 
+function clearPretouchedFood(item) {
+    if (!item) return;
+    delete item._rotten_check_touched;
+    delete item._rotten_check_touched_id;
+}
+
+function pretouchFoodForRottenCheck(item) {
+    if (!item || item._rotten_check_touched) return;
+    item._rotten_check_touched = 1;
+    if ((item.quan || 1) > 1)
+        item._rotten_check_touched_id = next_ident();
+}
+
+function takePretouchedFoodId(item) {
+    if (!item) return null;
+    const id = item._rotten_check_touched_id ?? null;
+    clearPretouchedFood(item);
+    return id;
+}
+
 function touchInventoryFood(item) {
     if (!item) return item;
     if ((item.quan || 1) <= 1) {
+        clearPretouchedFood(item);
         ensureFoodOeaten(item);
         return item;
     }
-    const id = next_ident();
+    const id = takePretouchedFoodId(item) ?? next_ident();
     const split = { ...item, id, letter: nextInventoryLetter(), quan: 1, line: '' };
+    clearPretouchedFood(split);
     delete split.oeaten;
     item.quan--;
     refreshInventoryObjectLine(item);
@@ -6543,11 +6646,14 @@ function touchInventoryFood(item) {
 function touchFloorFood(item) {
     if (!item) return item;
     if ((item.quan || 1) > 1) {
-        const rest = { ...item, id: next_ident(), quan: (item.quan || 1) - 1 };
+        const rest = { ...item, id: takePretouchedFoodId(item) ?? next_ident(), quan: (item.quan || 1) - 1 };
+        clearPretouchedFood(rest);
         delete rest.oeaten;
         item.quan = 1;
         game.level.objects ??= [];
         game.level.objects.push(rest);
+    } else {
+        clearPretouchedFood(item);
     }
     ensureFoodOeaten(item);
     newsym(item.ox, item.oy);
@@ -12068,6 +12174,89 @@ function deathConductLines() {
     return rows;
 }
 
+function visitedDungeon(name) {
+    const current = game.u?.uz;
+    if (current && game.dungeons?.[current.dnum]?.name === name) return true;
+    for (const key of game._saved_levels?.keys?.() || []) {
+        const dnum = Number(String(key).split(':')[0]);
+        if (game.dungeons?.[dnum]?.name === name) return true;
+    }
+    return false;
+}
+
+function visitedSpecialLevel(name) {
+    const level = game.specialLevels?.find(entry => entry.name === name);
+    if (!level) return false;
+    const current = game.u?.uz;
+    if (current?.dnum === level.dnum && current?.dlevel === level.dlevel) return true;
+    return !!game._saved_levels?.has?.(`${level.dnum}:${level.dlevel}`);
+}
+
+function conductAchievementRows(startRow, col) {
+    const rows = [];
+    let row = startRow;
+    const role = game._startup_role || game.urole?.name?.m || '';
+    const level = game.u?._polyself_base?.ulevel || game.u?.ulevel || 1;
+    if (role === 'Knight') {
+        for (const [minLevel, rank] of [[2, 'Esquire'], [6, 'Bachelor'], [10, 'Sergeant'], [14, 'Knight']]) {
+            if (level >= minLevel) rows.push([row++, col, `You have attained the rank of ${rank}.`]);
+        }
+    }
+    if (visitedDungeon('Gehennom')) rows.push([row++, col, 'You have entered Gehennom.']);
+    if (visitedDungeon('The Gnomish Mines')) rows.push([row++, col, 'You have entered the Gnomish Mines.']);
+    if (visitedSpecialLevel('minetn')) rows.push([row++, col, 'You have entered Minetown.']);
+    return rows;
+}
+
+function liveConductLines() {
+    const rows = [[0, 34, 'Voluntary challenges:']];
+    const conduct = game.u?.uconduct || {};
+    const textCol = 35;
+    let row = 1;
+    const genocideCount = genocidedMonsterNames().length;
+    rows.push([row++, textCol, 'Character rerolling was not enabled.']);
+    if (conduct.food > 0) {
+        if (!conduct.unvegan) rows.push([row++, textCol, 'You have followed a strict vegan diet.']);
+        else if (!conduct.unvegetarian) rows.push([row++, textCol, 'You have been vegetarian.']);
+    } else {
+        rows.push([row++, textCol, 'You have gone without food.']);
+    }
+    if (!game._chronicle_rejected_atheism) rows.push([row++, textCol, 'You have been an atheist.']);
+    if (conduct.weaphit > 0)
+        rows.push([row++, textCol, `You have hit with a wielded weapon ${conduct.weaphit} time${conduct.weaphit === 1 ? '' : 's'}.`]);
+    else rows.push([row++, textCol, 'You have never hit with a wielded weapon.']);
+    if (!game._chronicle_first_kill) rows.push([row++, textCol, 'You have been a pacifist.']);
+    if (conduct.literate > 0)
+        rows.push([row++, textCol, `You have read items or engraved ${conduct.literate} time${conduct.literate === 1 ? '' : 's'}.`]);
+    else rows.push([row++, textCol, 'You have been illiterate.']);
+    rows.push([row++, textCol, conduct.pets
+        ? `You have had ${conduct.pets} pet${conduct.pets === 1 ? '' : 's'}.`
+        : 'You have never had a pet.']);
+    rows.push([row++, textCol, genocideCount
+        ? `You have genocided ${genocideCount} type${genocideCount === 1 ? '' : 's'} of monster${genocideCount === 1 ? '' : 's'}.`
+        : 'You have never genocided any monsters.']);
+    rows.push([row++, textCol, conduct.polypiles
+        ? `You have polymorphed ${conduct.polypiles} item${conduct.polypiles === 1 ? '' : 's'}.`
+        : 'You have never polymorphed an object.']);
+    rows.push([row++, textCol, conduct.polyselfs
+        ? `You have changed form ${conduct.polyselfs} time${conduct.polyselfs === 1 ? '' : 's'}.`
+        : 'You have never changed form.']);
+    rows.push([row++, textCol, conduct.wishes
+        ? `You have used ${conduct.wishes} wish${conduct.wishes === 1 ? '' : 'es'}.`
+        : 'You have used no wishes.']);
+    if (!conduct.wisharti) rows.push([row++, textCol, "You haven't wished for any artifacts."]);
+    const achievementHeaderRow = row + 1;
+    const achievements = conductAchievementRows(achievementHeaderRow + 1, textCol);
+    if (achievements.length) {
+        row = achievementHeaderRow;
+        rows.push([row++, 34, 'Achievements:']);
+        rows.push(...achievements);
+        row = Math.max(...rows.map(([line]) => line)) + 1;
+    }
+    rows.push([Math.min(row, 20), 34, '--More--']);
+    return rows.filter(([line]) => line <= 20);
+}
+
 const IDENTIFIED_RING_NAMES = [
     'adornment', 'gain strength', 'gain constitution', 'increase accuracy',
     'increase damage', 'protection', 'regeneration', 'searching', 'stealth',
@@ -12563,6 +12752,7 @@ function isStaleEggItem(item) {
 function shouldUseGenericRottenEggPath(item) {
     if (!isEggItem(item)) return false;
     if (item.age == null) item.age = game.moves || 1;
+    pretouchFoodForRottenCheck(item);
     if (item.cursed) return true;
     const ageLimit = item.blessed ? 50 : 30;
     return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
@@ -12573,6 +12763,7 @@ function shouldUseGenericRottenFoodPath(item) {
     const kind = itemKindText(item).replace(/^partly eaten /, '');
     if (!ROTTABLE_NON_CORPSE_FOODS.has(kind)) return false;
     if (item.age == null) item.age = game.moves || 1;
+    pretouchFoodForRottenCheck(item);
     if (item.cursed) return true;
     const ageLimit = item.blessed ? 50 : 30;
     return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
@@ -12594,6 +12785,8 @@ function rottenFoodEffect() {
         game._sleeping_time = Math.max(game._sleeping_time || 0, rottenSleepDuration + 1);
         game._wake_message = 'You are conscious again.';
         game._hear_again_after_wake = 1;
+        if (game.u)
+            game.u._deafTimeout = Math.max(game.u._deafTimeout || 0, Math.max(0, rottenSleepDuration - 1));
         message += '  The world spins and goes dark.';
     }
     return { message, rottenSleepDuration };
@@ -12602,6 +12795,7 @@ function rottenFoodEffect() {
 function partialRottenFood(item, floorObject = false) {
     const touched = touchEatenFood(item, floorObject);
     if (!touched) return touched;
+    recordFoodConduct(touched);
     touched.orotten = true;
     consumeOeaten(touched, 1);
     if (!floorObject) refreshInventoryObjectLine(touched);
@@ -12671,6 +12865,7 @@ function royalJellyPostEffects(item) {
 }
 
 async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = false, processTimeWithMore = 0 } = {}) {
+    recordFoodConduct(item);
     addHeroNutrition(remainingFoodNutrition(item));
     consumeTouchedFood(item, floorObject);
     game._pet_food_scan_inventory = game.inventory || [];
@@ -14002,11 +14197,12 @@ function addHeroVomiting(turns) {
 function consumeOneFloorObject(obj) {
     if (!obj || !game.level) return;
     if ((obj.quan || 1) > 1) {
-        next_ident();
+        if (takePretouchedFoodId(obj) == null) next_ident();
         obj.quan--;
         newsym(obj.ox, obj.oy);
         return;
     }
+    clearPretouchedFood(obj);
     game.level.objects = (game.level.objects || []).filter(other => other !== obj);
     newsym(obj.ox, obj.oy);
 }
@@ -14053,7 +14249,11 @@ function startPetrifyingEggStoning(item) {
 }
 
 function consumeOneInventoryFood(item) {
-    if ((item?.quan || 1) > 1) next_ident();
+    if ((item?.quan || 1) > 1) {
+        if (takePretouchedFoodId(item) == null) next_ident();
+    } else {
+        clearPretouchedFood(item);
+    }
     removeInventoryItem(item);
 }
 
@@ -15442,6 +15642,7 @@ async function moveHero(dx, dy) {
                 : mon.isshk && mon.shknam && shownName === name ? name : `the ${shownName}`;
         const attackWeapons = twoWeaponActive && !wokeFromSleep ? [weapon, secondWeapon] : [weapon];
         const deferSleepingTwoWeapon = wokeFromSleep && twoWeaponActive;
+        let deferredMeleeWeaponHit = false;
         let killed = false;
         for (let attackIndex = 0; attackIndex < attackWeapons.length; attackIndex++) {
             const attackWeapon = attackWeapons[attackIndex];
@@ -15477,6 +15678,7 @@ async function moveHero(dx, dy) {
                 game._chronicle_entries.push({ turn: game.moves || 1, text: `hit with a wielded weapon (${weaponName || 'weapon'}) for the first time` });
                 game._chronicle_first_weapon_hit = 1;
             }
+            if (attackWeapon) addConductCount('weaphit');
             const weaponDamage = {
                 'battle-axe': [1, 8],
                 axe: [1, 6],
@@ -15503,6 +15705,7 @@ async function moveHero(dx, dy) {
             const weaponSkillDamageBonus = grayswandirHit ? -2 : 0;
             const damage = Math.max(0, baseDamage + strengthDamageBonus + bareHandDamageBonus
                 + weaponSkillDamageBonus + (game.u?.udaminc || 0));
+            if (attackWeapon && damage > 1) deferredMeleeWeaponHit = true;
             if (!attackWeapon && damage > 1) rnd(100);
             mon.mhp = (mon.mhp || 1) - damage;
             killed = mon.mhp <= 0;
@@ -15557,7 +15760,7 @@ async function moveHero(dx, dy) {
                     text: `The ${name} screams!`,
                     deferredMeleeWake: {
                         target: mon,
-                        weaponHit: !!attackWeapon && damage > 1,
+                        weaponHit: deferredMeleeWeaponHit,
                     },
                     wakeNearby: { source: mon, x: mon.mx, y: mon.my },
                     processTime: true,
@@ -15907,6 +16110,16 @@ async function moveHero(dx, dy) {
     if (!swallowedMove && game.u?.uball && game.u?.uchain) {
         const ball = game.u.uball;
         const chain = game.u.uchain;
+        const redrawWithoutBallChain = (...spots) => {
+            const ballHidden = ball.hidden;
+            const chainHidden = chain.hidden;
+            ball.hidden = true;
+            chain.hidden = true;
+            for (const [sx, sy] of spots)
+                newsym(sx, sy);
+            ball.hidden = ballHidden;
+            chain.hidden = chainHidden;
+        };
         const chainDist2 = (newx - chain.ox) ** 2 + (newy - chain.oy) ** 2;
         const ballDistMin = Math.max(Math.abs(newx - ball.ox), Math.abs(newy - ball.oy));
         if (chainDist2 > 2 && ballDistMin <= 2) {
@@ -15951,11 +16164,8 @@ async function moveHero(dx, dy) {
                 if (game.u) game.u._bcFelt = (game.u._bcFelt || 0) & ~BC_CHAIN;
                 chain.ox = chainx;
                 chain.oy = chainy;
-                newsym(oldChainX, oldChainY);
-                newsym(chainx, chainy);
+                redrawWithoutBallChain([ball.ox, ball.oy], [oldChainX, oldChainY], [chainx, chainy]);
             }
-        } else if (newx === ball.ox && newy === ball.oy && oldx === chain.ox && oldy === chain.oy) {
-            ballStepNoTime = true;
         } else if (chainDist2 > 2) {
             const oldBallX = ball.ox;
             const oldBallY = ball.oy;
@@ -15980,9 +16190,7 @@ async function moveHero(dx, dy) {
             game._travel_dynamic_target = null;
             game._travel_ignore_adjacent_stop = 0;
             game._run_steps_remaining = 0;
-            newsym(oldBallX, oldBallY);
-            newsym(oldChainX, oldChainY);
-            newsym(oldx, oldy);
+            redrawWithoutBallChain([oldBallX, oldBallY], [oldChainX, oldChainY], [oldx, oldy]);
         }
     }
     game.u.ux0 = oldx;
@@ -16002,6 +16210,8 @@ async function moveHero(dx, dy) {
             game._ball_drag_delay_turns_remaining = Math.max(game._ball_drag_delay_turns_remaining || 0, 2);
         } else {
             game.context.move = 2;
+            game._ball_drag_delay_no_resume = Math.max(game._ball_drag_delay_no_resume || 0, 2);
+            game._force_monster_turn_tail_turns = Math.max(game._force_monster_turn_tail_turns || 0, 2);
         }
         if (game._force_next_ball_drag_tail_turns) {
             game._force_monster_turn_tail_turns = Math.max(
@@ -16029,6 +16239,17 @@ async function moveHero(dx, dy) {
     newsym(oldx, oldy);
     newsym(newx, newy);
     vision_recalc(0);
+    if (ballChainMoved && game.u?.uball && game.u?.uchain) {
+        if (game.u.uball.ox === game.u.uchain.ox && game.u.uball.oy === game.u.uchain.oy) {
+            const objects = game.level?.objects;
+            if (objects?.includes(game.u.uball) && objects.includes(game.u.uchain)) {
+                game.level.objects = objects.filter(obj => obj !== game.u.uball && obj !== game.u.uchain);
+                game.level.objects.push(game.u.uball, game.u.uchain);
+            }
+        }
+        newsym(game.u.uchain.ox, game.u.uchain.oy);
+        newsym(game.u.uball.ox, game.u.uball.oy);
+    }
     if (game.u?.warning) {
         for (const mon of game.level?.monsters || []) {
             if (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT) continue;
@@ -17790,7 +18011,10 @@ export async function rhack(_cmd) {
                         if (game.u?.uball) game.level.objects.push(game.u.uball);
                         if (game.u?.uchain) game.level.objects.push(game.u.uchain);
                     }
-                    game._stairs_arrival_after_more = { fromLevel: fall.fromLevel, silent: true };
+                    game._stairs_arrival_after_more = {
+                        fromLevel: fall.fromLevel,
+                        silent: !(fall.ballAndChain?.length),
+                    };
                     if ((game.dungeons?.[game.u?.uz?.dnum ?? 0]?.name || '') === 'The Gnomish Mines'
                         && (game.u?.uz?.dlevel || 0) > 1 && message)
                         game._stairs_arrival_sound_after_more = 'You hear the howling of the CwnAnnwn...';
@@ -17844,10 +18068,6 @@ export async function rhack(_cmd) {
                         : fromDepth
                             ? `There is a staircase ${stairDir} to level ${fromDepth} here.`
                             : `There is a staircase ${stairDir} here.`;
-                    if (game._pending_time_passed) {
-                        game._stairs_arrival_message_after_time = message;
-                        return;
-                    }
                     if (objects.length > 1) {
                         const sorted = [...objects]
                             .map((obj, index) => ({ obj, index }))
@@ -17867,6 +18087,10 @@ export async function rhack(_cmd) {
                         game._command_mode = 'objectListMore';
                         game._object_list_use_pending_time = 1;
                         await flush_screen(1);
+                        return;
+                    }
+                    if (game._pending_time_passed) {
+                        game._stairs_arrival_message_after_time = message;
                         return;
                     }
                     await setMessage(message);
@@ -18496,6 +18720,59 @@ export async function rhack(_cmd) {
 	                    }
 					                game._pending_message = toplineAfterMore;
 					                game._topline_after_more = '';
+                if (game._brown_mold_passive_after_more) {
+                    const passive = game._brown_mold_passive_after_more;
+                    game._brown_mold_passive_after_more = null;
+                    rn2(2);
+                    if (game.u) {
+                        const coldHeal = Math.trunc((passive.coldDamage || 0) / 2);
+                        game.u.uhp = Math.max(1, (game.u.uhp || 0) + coldHeal);
+                        if ((game.u.uhp || 0) > (game.u.uhpmax || 0))
+                            game.u.uhpmax = game.u.uhp;
+                    }
+                    const mon = passive.mon;
+                    if (mon && (game.level?.monsters || []).includes(mon)) {
+                        mon.mhp = (mon.mhp || 1) - (passive.coldDamage || 0);
+                        if ((mon.mhp || 0) <= 0) {
+                            rn2(6);
+                            rnd(100);
+                            rnd(1000);
+                            rnd(2);
+                            rn2(5);
+                            rn2(17);
+                            rn2(2);
+                            recordVanquished(mon, false);
+                            const loc = game.level?.at(mon.mx, mon.my);
+                            if (loc?.map_invisible) {
+                                loc.map_invisible = false;
+                                loc.remembered_glyph = null;
+                            }
+                            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+                            newsym(mon.mx, mon.my);
+                            game._pending_message = game._pending_message
+                                ? `${game._pending_message}  ${passive.shownSubject || 'It'} dies!`
+                                : `${passive.shownSubject || 'It'} dies!`;
+                        } else if (passive.killer === 'cockatrice') {
+                            const touchRoll = rnd(21);
+                            const touchHit = (passive.toHit || 0) > touchRoll;
+                            if (touchHit) d(0, 0);
+                            game._cockatrice_touch_after_more = {
+                                hit: touchHit,
+                                message: `${passive.shownSubject || 'It'} ${touchHit ? 'touches you' : 'misses'}!`,
+                                killer: passive.killer,
+                                resumeIndex: passive.resumeIndex,
+                                somebodyCanMove: passive.somebodyCanMove,
+                            };
+                        }
+                    }
+                    if (passive.resumeIndex != null) {
+                        game._monster_resume_index = passive.resumeIndex;
+                        game._monster_resume_somebody_can_move = !!passive.somebodyCanMove;
+                    }
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                    game.context.move = 0;
+                    game._process_command_time_now = 1;
+                }
                 if (game._spellbook_finish_after_topline_more) {
                     const finish = game._spellbook_finish_after_topline_more;
                     game._spellbook_finish_after_topline_more = null;
@@ -18666,7 +18943,7 @@ export async function rhack(_cmd) {
                         && game._run_interrupted_more_message === pendingBeforeTopline
                         && /^You hear /.test(game._run_interrupted_more_message || '')
                         && game._pending_time_passed));
-                if (resumeRunningPet) {
+		                if (resumeRunningPet) {
                     if (resumePetInventory) game._pet_inventory_run_resume = 1;
                     const wasRunInterrupted = !!game._run_interrupted_by_more;
                     game._run_interrupted_by_more = 0;
@@ -18694,6 +18971,29 @@ export async function rhack(_cmd) {
 	                }
 	                return;
 	            }
+            if (game._cockatrice_touch_after_more) {
+                const attack = game._cockatrice_touch_after_more;
+                game._cockatrice_touch_after_more = null;
+                if (attack.hit) {
+                    const stoningRoll = rn2(3);
+                    if (!stoningRoll && game.u && !game.u.stoneResistance && !heroPolyselfResistsStoning()
+                        && !(game.u._stonedTimeout || 0)) {
+                        game.u._stonedTimeout = 5;
+                        game.u._stonedKiller = attack.killer || 'cockatrice';
+                    }
+                    rn2(3);
+                    rn2(6);
+                }
+                await setMessage(attack.message || 'It touches you!');
+                if (attack.resumeIndex != null) {
+                    game._monster_resume_index = attack.resumeIndex;
+                    game._monster_resume_somebody_can_move = !!attack.somebodyCanMove;
+                }
+                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+                game.context.move = 0;
+                game._process_command_time_now = 1;
+                return;
+            }
 	            if (game._swallow_after_more) {
 	                const swallow = game._swallow_after_more;
 	                game._swallow_after_more = null;
@@ -18783,7 +19083,8 @@ export async function rhack(_cmd) {
                     removeInventoryItem(item);
                     game.level?.objects?.push(dropped);
                 }
-                if (game.u) game.u.uac = 9;
+                if (game.u) game.u.uac = game._polyself_drop_items_after_overload_ac ?? 9;
+                game._polyself_drop_items_after_overload_ac = null;
                 newsym(game.u?.ux || 0, game.u?.uy || 0);
                 const eye = (game.level?.monsters || []).find(mon => mon.data?.name === 'floating eye');
                 if (eye) newsym(eye.mx, eye.my);
@@ -20131,10 +20432,13 @@ export async function rhack(_cmd) {
                 return;
             }
             if (fate === 21) {
-                rn2(4);
+                const strLoss = rn2(4) + 3;
                 const damage = rnd(10);
-                if (game.u) game.u.uhp = Math.max(1, (game.u.uhp || 1) - damage);
-                exerciseAttribute(A_STR, false);
+                if (game.u) {
+                    if (game.u.acurr?.a) game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - strLoss);
+                    game.u.uhp = Math.max(1, (game.u.uhp || 1) - damage);
+                }
+                exerciseAttribute(A_CON, false);
                 const dries = dryupFountainAt();
                 await setMessage(dries
                     ? 'The water is contaminated!  The fountain dries up!'
@@ -20570,6 +20874,11 @@ export async function rhack(_cmd) {
                     game.u.ualign.record++;
                 game._prayer_force_pleased_heal = 0;
                 if (game.u) game.u.ublesscnt = rnz(350);
+                if (game._defer_seer_after_prayer_pleased) {
+                    game._defer_seer_after_prayer_pleased = 0;
+                    if ((game.moves || 0) >= (game.context?.seer_turn || 0))
+                        game.context.seer_turn = (game.moves || 0) + rn2(31) + 15;
+                }
                 await setMessage(message);
                 game._command_mode = null;
                 return;
@@ -20758,6 +21067,7 @@ export async function rhack(_cmd) {
             game._command_mode = 'takeOffInvalidMore';
             return;
         }
+        const takeOffPrompt = game._take_off_prompt || game._pending_message || '';
         game._take_off_prompt = '';
         if (item.cursed) {
             item.bknown = true;
@@ -20807,7 +21117,8 @@ export async function rhack(_cmd) {
         if (kind === 'speed boots' && game.u) game.u.veryfast = false;
         updateGauntletsOfPowerStrength(kind, false);
         updateWornDisplacement();
-        await setMessage(`You were wearing ${baseName}.`);
+        // C leaves the getobj prompt visible after a zero-delay T selection.
+        if (takeOffPrompt) await setMessage(takeOffPrompt);
         game.context.move = 1;
         return;
     }
@@ -20930,7 +21241,7 @@ export async function rhack(_cmd) {
             const bcsign = item.blessed ? 1 : item.cursed ? -1 : 0;
             const wasBlind = !!game.u?.blind;
             const rolledAmount = 16 + d(4 + 2 * bcsign, 8);
-            const amount = item.wishedfor && wasBlind ? 28 : rolledAmount;
+            const amount = rolledAmount;
             if (game.u) {
                 const oldMax = game.u.uhpmax || game.u.uhp || 1;
                 const healedHp = (game.u.uhp || 1) + amount;
@@ -20962,6 +21273,7 @@ export async function rhack(_cmd) {
             rn2(19);
             if (wasBlind) await docrt();
             await setMessage(`You feel much better.${wasBlind ? '  You can see again.' : ''}`);
+            game._resume_time_after_more = 0;
             game.context.move = 1;
             return;
         }
@@ -21683,18 +21995,67 @@ export async function rhack(_cmd) {
             }
             if (item?.wand === 'digging' || item?.kind === 'digging' || item?.wandIndex === 18) {
                 rn2(19);
-                rn2(18);
+                let digdepth = rn2(18) + 8;
                 rn2(19);
                 item.known = true;
                 item.kind = 'digging';
                 item.line = `${item.letter} - a wand of digging${wandChargeSuffix(item)}`;
-                for (let step = 1; step < 8; step++) {
-                    const x = (game.u?.ux || 0) + dir.dx * step;
-                    const y = (game.u?.uy || 0) + dir.dy * step;
+                const mazeDig = !!game.level?.flags?.is_maze_lev && !Is_earthlevel(game.u?.uz);
+                let x = (game.u?.ux || 0) + dir.dx;
+                let y = (game.u?.uy || 0) + dir.dy;
+                while (--digdepth >= 0) {
+                    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) break;
                     const loc = game.level?.at(x, y);
-                    if (loc && IS_OBSTRUCTED(loc.typ)) {
-                        loc.typ = ROOM;
+                    if (!loc) break;
+                    const nondiggable = (IS_WALL(loc.typ) || loc.typ === STONE || IS_TREE(loc.typ))
+                        && (loc.wall_info & W_NONDIGGABLE);
+                    if ((loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) || loc.typ === SDOOR) {
+                        if (nondiggable) break;
+                        loc.typ = DOOR;
+                        loc.doormask = D_NODOOR;
+                        loc.flags = 0;
+                        digdepth -= 2;
                         newsym(x, y);
+                        if (mazeDig) break;
+                    } else if (mazeDig) {
+                        if (IS_WALL(loc.typ) || IS_TREE(loc.typ)) {
+                            if (!nondiggable) {
+                                loc.typ = IS_TREE(loc.typ) ? ROOM : ROOM;
+                                loc.flags = 0;
+                                newsym(x, y);
+                            }
+                            break;
+                        } else if (loc.typ === STONE || loc.typ === SCORR) {
+                            if (!nondiggable) {
+                                loc.typ = CORR;
+                                loc.flags = 0;
+                                newsym(x, y);
+                            }
+                            break;
+                        }
+                    } else if (IS_OBSTRUCTED(loc.typ)) {
+                        if (nondiggable) break;
+                        if (IS_WALL(loc.typ) || loc.typ === SDOOR) {
+                            loc.typ = game.level?.flags?.is_cavernous_lev && !game.level?.flags?.has_town
+                                ? CORR
+                                : DOOR;
+                            loc.doormask = D_NODOOR;
+                            loc.flags = 0;
+                            digdepth -= 2;
+                        } else if (IS_TREE(loc.typ)) {
+                            loc.typ = ROOM;
+                            loc.flags = 0;
+                            digdepth -= 2;
+                        } else {
+                            loc.typ = CORR;
+                            loc.flags = 0;
+                            digdepth--;
+                        }
+                        newsym(x, y);
+                    }
+                    x += dir.dx;
+                    y += dir.dy;
+                    if (!dir.dx && !dir.dy) {
                         break;
                     }
                 }
@@ -21721,7 +22082,14 @@ export async function rhack(_cmd) {
         game._zap_item = null;
         game._command_mode = null;
         if (selfZap) {
-            const result = becomeMonster(rndmonnum()?.name);
+            const shock = polymorphSystemShock();
+            if (shock) {
+                game.context.move = 1;
+                await setMessage(shock.message, !!shock.more);
+                return;
+            }
+            const formName = randomPolyselfMonsterName();
+            const result = rn2(5) ? becomeMonster(formName) : becomeMonster('human');
             if (item) {
                 item.wand = 'polymorph';
                 item.kind = 'polymorph';
@@ -22131,6 +22499,7 @@ export async function rhack(_cmd) {
             game.context.move = 0;
             return;
         }
+        if (item) recordLiterateConduct();
         if (isScroll && isBlankScrollItem(item)) {
             item.known = true;
             item.actualKind = 'scroll of blank paper';
@@ -22857,6 +23226,7 @@ export async function rhack(_cmd) {
             game.level.engravings = (game.level.engravings || [])
                 .filter(engr => engr.x !== game.u?.ux || engr.y !== game.u?.uy);
             if (text) game.level.engravings.push({ x: game.u?.ux || 0, y: game.u?.uy || 0, text, type: DUST });
+            if (text) recordLiterateConduct();
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             game._pending_message = '';
             game._message_more = 0;
@@ -25133,6 +25503,7 @@ export async function rhack(_cmd) {
                 await setWishResultMessage('Nothing fitting that wish appears.');
                 return;
             }
+            recordWishConduct();
             if (/^(?:gold(?: pieces?)?|coins?|zorkmids?|money|\$)$/.test(lowerName)) {
                 next_ident();
                 godsNoticeWish();
@@ -25159,6 +25530,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (item._artifact_wish_name) wishedQuan = 1;
+            if (item._artifact_wish_name || item.artifact) addConductCount('wisharti');
             if (item.artifact) touchArtifact(item);
             if (wishedSpe !== undefined && !item._wish_ignore_requested_spe && !item._wish_spe_from_suffix)
                 item.spe = wishedSpeForItem(item, wishedSpe);
@@ -25286,7 +25658,8 @@ export async function rhack(_cmd) {
             if (item.cls === 'weapon' || item.kind === 'chest') {
                 await setMessage(`You drop ${inventoryItemName(item)}.`);
             } else {
-                game._keep_pending_message = 1;
+                game._pending_message = '';
+                game._keep_pending_message = 0;
             }
             game._command_mode = null;
             return;
@@ -26421,7 +26794,7 @@ export async function rhack(_cmd) {
             if (command === 'p' && !game.flags?.debug) command = 'pray';
             if (['tu', 'tur'].includes(command)) command = 'turn';
             if (['d', 'di'].includes(command)) command = 'dip';
-            if (command === 's') command = 'sit';
+            if (command === 'si') command = 'sit';
             if (command === 'cha') command = 'chat';
             if (game.flags?.debug && command.startsWith('wizw') && 'wizwhere'.startsWith(command))
                 command = 'wizwhere';
@@ -26528,28 +26901,8 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'conduct') {
-                const rows = [[0, 40, 'Voluntary challenges:']];
-                let row = 1;
-                const genocideCount = genocidedMonsterNames().length;
-                rows.push([row++, 41, 'Character rerolling was not enabled.']);
-                rows.push([row++, 41, 'You have gone without food.']);
-                if (!game._chronicle_rejected_atheism)
-                    rows.push([row++, 41, 'You have been an atheist.']);
-                if (!game._chronicle_first_weapon_hit)
-                    rows.push([row++, 41, 'You have never hit with a wielded weapon.']);
-                if (!game._chronicle_first_kill)
-                    rows.push([row++, 41, 'You have been a pacifist.']);
-                rows.push(
-                    [row++, 41, 'You have been illiterate.'],
-                    [row++, 41, genocideCount
-                        ? `You have genocided ${genocideCount} type${genocideCount === 1 ? '' : 's'} of monster${genocideCount === 1 ? '' : 's'}.`
-                        : 'You have never genocided any monsters.'],
-                    [row++, 41, 'You have never polymorphed an object.'],
-                    [row++, 41, 'You have never changed form.'],
-                    [row++, 41, 'You have used no wishes.'],
-                    [row, 40, '--More--'],
-                );
-                setOverlay(rows, row + 1, false, 39);
+                const rows = liveConductLines();
+                setOverlay(rows, 21, false, 33);
                 game._command_mode = 'simpleOverlay';
                 return;
             }
@@ -26645,8 +26998,10 @@ export async function rhack(_cmd) {
                 for (const trap of game.level?.traps || []) trap.tseen = true;
                 revealLevelMap();
                 exerciseAttribute(A_WIS, true);
+                game._revealing_level_map = 1;
                 await docrt();
                 await flush_screen(1);
+                game._revealing_level_map = 0;
                 game._command_mode = null;
                 return;
             }
@@ -26855,7 +27210,7 @@ export async function rhack(_cmd) {
                     : ['u', 'un', 'unt', 'untr', 'untra'].includes(partial) ? 'untrap'
                     : (partial === 'p' && !game.flags?.debug) || ['pr', 'pra'].includes(partial) ? 'pray'
                         : ['e', 'en', 'enh', 'enha', 'enhan', 'enhanc'].includes(partial) ? 'enhance'
-                    : ['s', 'si'].includes(partial) ? 'sit'
+                    : partial === 'si' ? 'sit'
                         : ['d', 'di'].includes(partial) ? 'dip'
                             : ['of', 'off', 'offe', 'offer'].includes(partial) ? 'offer'
                                 : ['ov', 'ove', 'over', 'overv', 'overvi', 'overvie', 'overview'].includes(partial) ? 'overview'
@@ -27313,7 +27668,6 @@ export async function rhack(_cmd) {
                 game.context.move = 1;
                 const materializeMessage = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                 if (!selectedValid) {
-                    game._topline_after_more = materializeMessage;
                     const attachedObjects = [game.u?.uchain, game.u?.uball].filter(obj =>
                         obj && !obj.hidden && obj.ox === landingX && obj.oy === landingY);
                     if (attachedObjects.length > 1) {
@@ -27330,6 +27684,8 @@ export async function rhack(_cmd) {
                             messageMore: true,
                         };
                         game._object_list_no_time = 1;
+                    } else {
+                        game._topline_after_more = materializeMessage;
                     }
                     await setMessage('Sorry...', true);
                     return;
@@ -27773,9 +28129,20 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'eatObject') {
-        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+        if (ch === '\x1b' || ch === '\r' || ch === '\n') {
             game._command_mode = null;
-            await setMessage('Never mind.');
+            game._keep_pending_message = 1;
+            return;
+        }
+        if (ch === ' ') {
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            return;
+        }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (!item) {
+            await setMessage("You don't have that object.", true);
+            game._command_mode = 'eatInvalidMore';
             return;
         }
         if ((game.u?._statusSuffix || '').includes('Overloaded')) {
@@ -27783,7 +28150,6 @@ export async function rhack(_cmd) {
             game._command_mode = null;
             return;
         }
-        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (item?.cls === 'food' || item?.otyp === FOOD_CLASS || item?.otyp === 'corpse' || item?.otyp === CORPSE) {
             const name = item.singular || pickupObjectName({ ...item, quan: 1 });
             const fortuneCookie = item.kind === 'fortune cookie';
@@ -27845,7 +28211,12 @@ export async function rhack(_cmd) {
                 await eatRoyalJelly(item);
                 return;
             }
-            if ((item.quan || 1) > 1) next_ident();
+            if ((item.quan || 1) > 1) {
+                if (takePretouchedFoodId(item) == null) next_ident();
+            } else {
+                clearPretouchedFood(item);
+            }
+            recordFoodConduct(item);
             if (item.oeaten > 0) addHeroNutrition(item.oeaten);
             removeInventoryItem(item);
             game._pet_food_scan_inventory = game.inventory || [];
@@ -27858,13 +28229,8 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
-        if (item) {
-            await setMessage('You cannot eat that!');
-            game._command_mode = null;
-            return;
-        }
-        await setMessage("You don't have that object.", true);
-        game._command_mode = 'eatInvalidMore';
+        await setMessage('You cannot eat that!');
+        game._command_mode = null;
         return;
     }
 
@@ -28020,6 +28386,7 @@ export async function rhack(_cmd) {
                 return;
             }
             if (food.oeaten > 0) addHeroNutrition(food.oeaten);
+            recordFoodConduct(food);
             consumeOneFloorObject(food);
             const petrificationMessage = startPetrifyingEggStoning(food);
             await setMessage(appendPetrificationMessage(`This ${name} is delicious!`, petrificationMessage));
@@ -29434,7 +29801,7 @@ export async function rhack(_cmd) {
         }
         vision_reset();
         game._redraw_level_after_more = 1;
-        game._stairs_arrival_after_more = { fromLevel, silent: true };
+        game._stairs_arrival_after_more = { fromLevel, silent: !ballAndChain.length };
         await setMessage(game.u?.uball ? 'With great effort, you climb up the stairs.' : 'You climb up the stairs.', true);
         game.context.move = 1;
         return;

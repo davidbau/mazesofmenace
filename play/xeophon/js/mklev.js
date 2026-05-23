@@ -4292,14 +4292,25 @@ function monsterTemperatureShift(name) {
     return 0;
 }
 
+function adjustedErinysMlevel(baseLevel) {
+    if (baseLevel > 49) return baseLevel;
+    return Math.min(baseLevel + (game.u?.ualign?.abuse || 0), 50);
+}
+
+function adjustedErinysDifficulty(baseDifficulty) {
+    return Math.min(baseDifficulty + Math.trunc((game.u?.ualign?.abuse || 0) / 3), 25);
+}
+
 function monsterFromRndMeta(row) {
     const [name, glyph, mlevel, mmove, difficulty, maligntyp, genoFreq, flags] = row;
+    const adjustedMlevel = name === 'erinys' ? adjustedErinysMlevel(mlevel) : mlevel;
+    const adjustedDifficulty = name === 'erinys' ? adjustedErinysDifficulty(difficulty) : difficulty;
     const mlet = RNDMONST_MLET_BY_GLYPH.get(glyph) || glyph;
     const mercenary = name === 'soldier' || name === 'sergeant' || name === 'lieutenant' || name === 'captain'
         || name === 'watchman' || name === 'watch captain';
     const ptr = {
-        name, mlet, glyph, mlevel, mmove, difficulty, maligntyp, genoFreq, weight: genoFreq,
-        hpLevel: adjustedMonsterLevel({ mlevel }),
+        name, mlet, glyph, mlevel: adjustedMlevel, mmove, difficulty: adjustedDifficulty, maligntyp, genoFreq, weight: genoFreq,
+        hpLevel: adjustedMonsterLevel({ mlevel: adjustedMlevel }),
         color: RNDMONST_COLOR_BY_NAME.get(name) ?? RNDMONST_COLOR_BY_GLYPH.get(glyph) ?? NO_COLOR,
         randomInventory: true,
         mercenary,
@@ -4325,7 +4336,7 @@ function monsterFromRndMeta(row) {
         tunnel: TUNNEL_MONSTERS.has(name),
         needPick: NEED_PICK_MONSTERS.has(name),
         oviparous: flags.includes('o'),
-        covetous: name === 'Vlad the Impaler',
+        covetous: name === 'Vlad the Impaler' || name === 'master lich' || name === 'arch-lich',
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
         wanderer: WANDERER_MONSTERS.has(name),
         alwaysHostile: flags.includes('X'),
@@ -4399,6 +4410,8 @@ function monsterFromRndMeta(row) {
     if (name.endsWith(' elemental')) ptr.mac = 2;
     if (name === 'ice vortex') ptr.attack = { dice: 1, sides: 6, verb: 'engulfs you', aatyp: 'engl', adtyp: 'cold' };
     if (name === 'earth elemental') ptr.attack = { dice: 4, sides: 6, verb: 'hits' };
+    if (name === 'chickatrice') ptr.attack = { dice: 1, sides: 2, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
+    if (name === 'cockatrice') ptr.attack = { dice: 1, sides: 3, verb: 'bites', aatyp: 'bite', adtyp: 'phys' };
     if (name === 'jackal') {
         ptr.mac = 7;
         ptr.attack = { dice: 1, sides: 2, verb: 'bites' };
@@ -7620,7 +7633,7 @@ function asmodeusHellTweaks() {
     hellTweaks(prot);
 }
 
-function hellTweaks(prot) {
+function hellTweaks(prot, options = {}) {
     const key = (x, y) => `${x},${y}`;
     const point = item => item.split(',').map(Number);
     const clone = sel => new Set(sel);
@@ -7636,7 +7649,10 @@ function hellTweaks(prot) {
     const union = (a, b) => new Set([...a, ...b]);
     const intersect = (a, b) => new Set([...a].filter(item => b.has(item)));
 
-    const percent = threshold => rn2(100) < threshold;
+    const percent = threshold => {
+        const value = rn2(100);
+        return value < threshold;
+    };
     const randomPoint = () => key(1 + rn2(COLNO - 1), rn2(ROWNO));
     const randomSelection = () => new Set([randomPoint()]);
     const grow = (sel, dir = 1 | 2 | 4 | 8) => {
@@ -7683,7 +7699,9 @@ function hellTweaks(prot) {
         for (let x = rect.lx; x <= rect.hx; x++)
             for (let y = rect.ly; y <= rect.hy; y++)
                 if (sel.has(key(x, y))) {
-                    if (idx === c) return { x, y };
+                    if (idx === c) {
+                        return { x, y };
+                    }
                     idx++;
                 }
         return { x: -1, y: -1 };
@@ -7719,6 +7737,25 @@ function hellTweaks(prot) {
             }
         }
     };
+    const typAt = (x, y) => isok(x, y) ? game.level.at(x, y)?.typ ?? STONE : STONE;
+    const matchWalls = () => {
+        const sel = new Set();
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (IS_STWALL(typAt(x, y))) sel.add(key(x, y));
+        return sel;
+    };
+    const matchWallBetweenRooms = horizontal => {
+        const sel = new Set();
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                if (!IS_STWALL(typAt(x, y))) continue;
+                const before = horizontal ? typAt(x - 1, y) : typAt(x, y - 1);
+                const after = horizontal ? typAt(x + 1, y) : typAt(x, y + 1);
+                if (before === ROOM && after === ROOM) sel.add(key(x, y));
+            }
+        return sel;
+    };
 
     const depth = depth_of_level(game.u?.uz);
     if (percent(20 + depth)) {
@@ -7730,7 +7767,7 @@ function hellTweaks(prot) {
         pools = union(pools, grow(randomSelection(), 'random'));
         pools = intersect(pools, prot);
         if (percent(80)) {
-            const poolground = intersect(grow(clone(pools)), prot);
+            const poolground = intersect(grow(clone(pools)), options.poolgroundProt || prot);
             terrain(filterPercent(poolground, (1 + rn2(8)) * 10), ROOM);
         }
         terrain(pools, LAVAPOOL);
@@ -7759,8 +7796,17 @@ function hellTweaks(prot) {
         terrain(allrivers, LAVAPOOL);
     }
 
-    percent(20);
-    percent(20);
+    if (percent(20)) {
+        rn2(8);
+    }
+    if (percent(20)) {
+        const amount = 3 * (1 + rn2(8));
+        const fwalls = union(
+            filterPercent(matchWallBetweenRooms(true), amount),
+            filterPercent(matchWallBetweenRooms(false), amount),
+        );
+        terrain(intersect(intersect(grow(fwalls), matchWalls()), prot), IRONBARS);
+    }
 }
 
 function wizard1X(x) { return WIZARD1_XSTART + x; }
@@ -11612,10 +11658,12 @@ async function splevAltarShrine(croom, x, y) {
 async function splevTrap(croom) {
     const pos = splevFreeRoomLocation(croom);
     if (!pos) return;
-    let kind = specialRndtrap();
+    let kind;
+    do {
+        kind = traptype_rnd(true);
+    } while (kind === NO_TRAP);
     const trap = await maketrap(pos.x, pos.y, kind);
     kind = trap ? trap.ttyp : NO_TRAP;
-    if (kind === WEB) await makemon(monsterByRndName('giant spider'), pos.x, pos.y, 0);
     const lvl = level_difficulty();
     if (game.in_mklev && kind !== NO_TRAP
         && lvl <= rnd(4)
@@ -14633,34 +14681,32 @@ function create_random_maze(corrwid, wallthick, rmdeadends) {
             for (let y = 2; y <= workYMax; y++) game.level.at(x, y).typ = (x % 2 && y % 2) ? STONE : HWALL;
     }
 
-    const stack = [{
-        x: 3 + 2 * rn2((workXMax >> 1) - 1),
-        y: 3 + 2 * rn2((workYMax >> 1) - 1),
-    }];
-    while (stack.length) {
-        const top = stack[stack.length - 1];
-        let loc = game.level.at(top.x, top.y);
+    const walkfrom = (x, y) => {
+        let loc = game.level.at(x, y);
         if (loc && !IS_DOOR(loc.typ)) Object.assign(loc, { typ: carveTyp, flags: 0 });
 
-        const dirs = [];
-        for (let dir = 0; dir < 4; dir++) {
-            const x = top.x + 2 * RANDOM_MAZE_DX[dir];
-            const y = top.y + 2 * RANDOM_MAZE_DY[dir];
-            if (x >= 3 && y >= 3 && x <= workXMax && y <= workYMax && game.level.at(x, y)?.typ === STONE)
-                dirs.push(dir);
-        }
-        if (!dirs.length) {
-            stack.pop();
-            continue;
-        }
+        while (true) {
+            const dirs = [];
+            for (let dir = 0; dir < 4; dir++) {
+                const nx = x + 2 * RANDOM_MAZE_DX[dir];
+                const ny = y + 2 * RANDOM_MAZE_DY[dir];
+                if (nx >= 3 && ny >= 3 && nx <= workXMax && ny <= workYMax && game.level.at(nx, ny)?.typ === STONE)
+                    dirs.push(dir);
+            }
+            if (!dirs.length) return;
 
-        const dir = dirs[rn2(dirs.length)];
-        const mid = { x: top.x + RANDOM_MAZE_DX[dir], y: top.y + RANDOM_MAZE_DY[dir] };
-        const next = { x: mid.x + RANDOM_MAZE_DX[dir], y: mid.y + RANDOM_MAZE_DY[dir] };
-        loc = game.level.at(mid.x, mid.y);
-        if (loc) loc.typ = carveTyp;
-        stack.push(next);
-    }
+            const dir = dirs[rn2(dirs.length)];
+            const mid = { x: x + RANDOM_MAZE_DX[dir], y: y + RANDOM_MAZE_DY[dir] };
+            const next = { x: mid.x + RANDOM_MAZE_DX[dir], y: mid.y + RANDOM_MAZE_DY[dir] };
+            loc = game.level.at(mid.x, mid.y);
+            if (loc) loc.typ = carveTyp;
+            walkfrom(next.x, next.y);
+        }
+    };
+    walkfrom(
+        3 + 2 * rn2((workXMax >> 1) - 1),
+        3 + 2 * rn2((workYMax >> 1) - 1),
+    );
 
     if (rmdeadends) {
         const inBounds = (x, y) => x >= 2 && y >= 2 && x < workXMax && y < workYMax && isok(x, y);
@@ -14740,6 +14786,82 @@ function isInvocationLevel() {
     const uz = game.u?.uz;
     const dungeon = game.dungeons?.[uz?.dnum];
     return game.inhell && (uz?.dlevel ?? 0) === (dungeon?.num_dunlevs ?? 0) - 1;
+}
+
+function hellfillMazeGrid() {
+    for (let x = 2; x <= RANDOM_MAZE_XMAX; x++)
+        for (let y = 0; y <= RANDOM_MAZE_YMAX; y++) {
+            const loc = game.level.at(x, y);
+            if (!loc) continue;
+            loc.typ = y < 2 || (x % 2 && y % 2) ? STONE : HWALL;
+            loc.flags = 0;
+            loc.lit = false;
+            loc.roomno = 0;
+            loc.edge = 0;
+        }
+}
+
+function hellfillWalkfrom(x, y, typ) {
+    let loc = game.level.at(x, y);
+    if (loc && !IS_DOOR(loc.typ)) {
+        loc.typ = typ;
+        loc.flags = 0;
+    }
+
+    while (true) {
+        const dirs = [];
+        for (let dir = 0; dir < 4; dir++) {
+            const nx = x + 2 * RANDOM_MAZE_DX[dir];
+            const ny = y + 2 * RANDOM_MAZE_DY[dir];
+            if (nx >= 3 && ny >= 3 && nx <= RANDOM_MAZE_XMAX && ny <= RANDOM_MAZE_YMAX
+                && game.level.at(nx, ny)?.typ === STONE)
+                dirs.push(dir);
+        }
+        if (!dirs.length) return;
+
+        const dir = dirs[rn2(dirs.length)];
+        x += RANDOM_MAZE_DX[dir];
+        y += RANDOM_MAZE_DY[dir];
+        loc = game.level.at(x, y);
+        if (loc) loc.typ = typ;
+        x += RANDOM_MAZE_DX[dir];
+        y += RANDOM_MAZE_DY[dir];
+        hellfillWalkfrom(x, y, typ);
+    }
+}
+
+function hellfillMazewalk() {
+    let x = 1;
+    let y = 10;
+    x++;
+    let loc = game.level.at(x, y);
+    if (loc && !IS_DOOR(loc.typ)) loc.flags = 0;
+    if (!(x % 2)) {
+        x++;
+        loc = game.level.at(x, y);
+        if (loc) {
+            loc.typ = ROOM;
+            loc.flags = 0;
+        }
+    }
+    if (!(y % 2)) y--;
+    hellfillWalkfrom(x, y, ROOM);
+}
+
+function hellfillMazegridProtectedArea() {
+    const prot = new Set();
+    for (let x = 2; x <= RANDOM_MAZE_XMAX - 2; x++)
+        for (let y = 3; y <= RANDOM_MAZE_YMAX - 1; y++)
+            prot.add(`${x},${y}`);
+    return prot;
+}
+
+function hellfillMazegridPoolgroundArea() {
+    const prot = new Set();
+    for (let x = 3; x <= RANDOM_MAZE_XMAX - 2; x++)
+        for (let y = 3; y <= RANDOM_MAZE_YMAX - 1; y++)
+            prot.add(`${x},${y}`);
+    return prot;
 }
 
 async function populate_hellfill_maze() {
@@ -14827,6 +14949,24 @@ async function make_random_maze_level() {
         g.level.flags.corrmaze = false;
         l_nhcore_init();
         const hellno = rn2(7);
+        if (hellno === 1) {
+            hellfillMazeGrid();
+            hellfillMazewalk();
+            hellTweaks(hellfillMazegridProtectedArea(), {
+                poolgroundProt: hellfillMazegridPoolgroundArea(),
+            });
+            rn2(100);
+            wallification(1, 0, COLNO - 1, ROWNO - 1);
+            let mm = hellfillLocation();
+            mkstairs(mm.x, mm.y, true, null);
+            if (!isInvocationLevel()) {
+                mm = hellfillLocation();
+                mkstairs(mm.x, mm.y, false, null);
+            }
+            await populate_hellfill_maze();
+            g._level_populated = true;
+            return;
+        }
         if (hellno === 2) {
             create_random_maze(-1, 1, false);
             wallification(2, 2, RANDOM_MAZE_XMAX, RANDOM_MAZE_YMAX);
@@ -16780,7 +16920,7 @@ function wallification(x1, y1, x2, y2) {
 // Fill ordinary room
 // ============================================================
 
-function traptype_rnd() {
+function traptype_rnd(noSpiderOnWeb = false) {
     const lvl = level_difficulty();
     let kind = rnd(TRAPNUM - 1);
     switch (kind) {
@@ -16795,7 +16935,7 @@ function traptype_rnd() {
     case LANDMINE:
         if (lvl < 6) kind = NO_TRAP; break;
     case WEB:
-        if (lvl < 7) kind = NO_TRAP; break;
+        if (lvl < 7 && !noSpiderOnWeb) kind = NO_TRAP; break;
     case STATUE_TRAP: case POLY_TRAP:
         if (lvl < 8) kind = NO_TRAP; break;
     case FIRE_TRAP:
