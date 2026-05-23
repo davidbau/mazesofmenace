@@ -2465,9 +2465,9 @@ const WIZARD_OF_YENDOR = {
     male: true, strong: true, nasty: true, covetous: true,
     noCorpse: true, alwaysHostile: true, randomInventory: true,
 };
-const VLAD_THE_IMPALER = { name: 'Vlad the Impaler', mlet: 'vlad', glyph: 'V', color: CLR_MAGENTA, mlevel: 28, mmove: 26, difficulty: 32, maligntyp: -10, male: true, covetous: true, noCorpse: true, noRandomInventoryRolls: true };
+const VLAD_THE_IMPALER = { name: 'Vlad the Impaler', mlet: 'vlad', glyph: 'V', color: CLR_MAGENTA, mlevel: 28, mmove: 26, difficulty: 32, maligntyp: -10, male: true, covetous: true, noCorpse: true, alwaysHostile: true, noRandomInventoryRolls: true };
 const VAMPIRE_LORD = { name: 'vampire lord', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, mmove: 14, difficulty: 14, maligntyp: -9, skipFindGender: true, vampireLeader: true, strong: true, nasty: true, noCorpse: true, inAir: true, alwaysHostile: true };
-const VAMPIRE_LADY = { name: 'vampire leader', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, difficulty: 14, maligntyp: -9 };
+const VAMPIRE_LADY = { name: 'vampire leader', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, difficulty: 14, maligntyp: -9, alwaysHostile: true };
 
 const MINETN1_XSTART = 21;
 const MINETN1_YSTART = 1;
@@ -2878,6 +2878,22 @@ const ARC_FILL_B_ROOMS = [
     ['object', 'object', 'trap', 'S'],
     ['object', 'trap', 'S'],
 ];
+const PRI_FILL_A_ROOMS = [
+    { type: OROOM, contents: ['up', 'object', 'human zombie'] },
+    { type: OROOM, contents: ['object', 'object'] },
+    { type: OROOM, contents: ['object', 'trap', 'object', 'human zombie'] },
+    { type: MORGUE, contents: ['down', 'object', 'trap'] },
+    { type: OROOM, contents: ['object', 'object', 'trap', 'wraith'] },
+    { type: MORGUE, contents: ['object', 'trap'] },
+];
+const PRI_FILL_B_ROOMS = [
+    { type: OROOM, contents: ['up', 'object', 'human zombie', 'wraith'] },
+    { type: MORGUE, contents: ['object', 'object', 'object'] },
+    { type: OROOM, contents: ['object', 'trap', 'object', 'human zombie', 'wraith'] },
+    { type: MORGUE, contents: ['down', 'object', 'object', 'trap'] },
+    { type: OROOM, contents: ['object', 'object', 'trap', 'human zombie', 'wraith'] },
+    { type: MORGUE, contents: ['object', 'trap'] },
+];
 const QUEST_LEVEL_BUILDERS = {
     Archeologist: {
         special: {
@@ -2899,6 +2915,9 @@ const QUEST_LEVEL_BUILDERS = {
             'x-strt': make_pri_strt_level,
             'x-loca': make_pri_loca_level,
             'x-goal': make_pri_goal_level,
+        },
+        fill(level) {
+            return make_pri_fill_level(level < 3 ? PRI_FILL_A_ROOMS : PRI_FILL_B_ROOMS);
         },
     },
 };
@@ -4520,7 +4539,7 @@ function monsterFromRndMeta(row) {
         covetous: name === 'Vlad the Impaler' || name === 'master lich' || name === 'arch-lich',
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
         wanderer: WANDERER_MONSTERS.has(name),
-        alwaysHostile: flags.includes('X') || name === 'vampire leader',
+        alwaysHostile: flags.includes('X') || glyph === 'V' || name === 'vampire leader',
         alwaysPeaceful: flags.includes('P'),
         resistsFire: FIRE_RESISTANT_MONSTERS.has(name),
         likesLava: name === 'fire elemental' || name === 'salamander',
@@ -7783,7 +7802,7 @@ async function make_pri_loca_level() {
             loc.edge = 0;
             loc.doormask = D_NODOOR;
             loc.horizontal = ch !== '|';
-            loc.lit = false;
+            loc.lit = true;
             loc.waslit = false;
             if (ch === '+') {
                 loc.typ = DOOR;
@@ -7899,9 +7918,9 @@ function arcLocaMonsterLocation(ptr) {
     return { x: arcLocaX(0), y: arcLocaY(0) };
 }
 
-function arcFillBuildRoom() {
+function arcFillBuildRoom(rtype = OROOM) {
     rn2(100);
-    if (!create_room(-1, -1, -1, -1, -1, -1, OROOM, -1)) return null;
+    if (!create_room(-1, -1, -1, -1, -1, -1, rtype, -1)) return null;
     const croom = game.level.rooms[game.level.nroom - 1];
     topologize(croom);
     croom.needfill = FILL_NORMAL;
@@ -7947,6 +7966,47 @@ async function make_arc_fill_level(rooms) {
     await makecorridors();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
+    recount_level_features();
+    level_finalize_topology();
+}
+
+async function priFillRoomMonster(croom, name) {
+    rn2(2);
+    inducedAlign80();
+    const ptr = monsterByRndName(name);
+    const pos = oracleRoomDryLoc(croom);
+    if (ptr) await makemon(ptr, pos.x, pos.y, 0);
+}
+
+async function make_pri_fill_level(rooms) {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    rn2(3);
+    rn2(2);
+
+    for (const spec of rooms) {
+        const croom = arcFillBuildRoom(spec.type);
+        if (!croom) continue;
+        for (const item of spec.contents) {
+            if (item === 'up') oracleRoomStair(croom, true);
+            else if (item === 'down') oracleRoomStair(croom, false);
+            else if (item === 'object') oracleRoomObject(croom);
+            else if (item === 'trap') await oracleRoomTrap(croom);
+            else await priFillRoomMonster(croom, item);
+        }
+    }
+
+    await makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
+    for (const croom of g.level.rooms || []) {
+        if (!croom || croom.hx <= 0) continue;
+        await fill_special_room(croom);
+    }
     recount_level_features();
     level_finalize_topology();
 }
@@ -14725,7 +14785,7 @@ function make_sokoban_random_object(rows, oclass) {
     } else if (oclass === WAND_CLASS) {
         obj = mkobj(WAND_CLASS, false);
     }
-    Object.assign(obj, { ox: pos.x, oy: pos.y, hidden: true });
+    Object.assign(obj, { ox: pos.x, oy: pos.y, ...object_display(obj), _sokoRandom: true, _sokoRandomRange: 4 });
     game.level.objects.push(obj);
 }
 

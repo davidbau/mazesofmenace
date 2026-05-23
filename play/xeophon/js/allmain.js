@@ -204,7 +204,7 @@ const ROLE_INVENTORY = {
         { cls: 'armor', kind: 'small shield', bknown: false },
         { cls: 'potion', kind: 'holy water', plural: 'potions of holy water', min: 4, max: 4, blessed: true, bknown: true },
         { cls: 'food', kind: 'clove of garlic', plural: 'cloves of garlic', min: 1, max: 1, blessed: false, bknown: false },
-        { cls: 'food', kind: 'sprig of wolfsbane', blessed: false, bknown: false },
+        { cls: 'food', kind: 'sprig of wolfsbane', plural: 'sprigs of wolfsbane', blessed: false, bknown: false },
         { cls: 'spellbook', random: true, min: 2, max: 2, bknown: false },
     ],
     Ranger: [
@@ -9246,6 +9246,7 @@ export async function moveloop_core() {
             let foundSearchMonster = false;
             let foundMessage = '';
             let revealedSecretTerrain = false;
+            let foundTrap = false;
             g._search_pending_count--;
             for (let x = (g.u?.ux || 0) - 1; x <= (g.u?.ux || 0) + 1; x++) {
                 for (let y = (g.u?.uy || 0) - 1; y <= (g.u?.uy || 0) + 1; y++) {
@@ -9281,6 +9282,17 @@ export async function moveloop_core() {
                                 break;
                             }
                         }
+                        const trap = (g.level?.traps || []).find(candidate =>
+                            candidate.tx === x && candidate.ty === y);
+                        if (trap && !trap.tseen && !rnl(8)) {
+                            trap.tseen = true;
+                            exerciseAttribute(A_WIS, true);
+                            newsym(x, y);
+                            const name = TRAP_NAMES[trap.ttyp] || 'trap';
+                            const article = /^[aeiou]/.test(name) ? 'an' : 'a';
+                            foundMessage = `You find ${article} ${name}.`;
+                            foundTrap = true;
+                        }
                     }
                 }
                 if (foundSearchMonster) break;
@@ -9293,6 +9305,11 @@ export async function moveloop_core() {
                 rn2(19);
                 vision_reset();
                 vision_recalc(0);
+                await pline(foundMessage);
+                g._keep_pending_message = 1;
+                g._search_pending_count = 0;
+                g._pending_time_passed = Math.min(g._pending_time_passed, 1);
+            } else if (foundTrap) {
                 await pline(foundMessage);
                 g._keep_pending_message = 1;
                 g._search_pending_count = 0;
