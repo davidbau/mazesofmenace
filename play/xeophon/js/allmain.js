@@ -2000,6 +2000,21 @@ function heroWearingSpeedBoots() {
         item.worn && String(item.kind || item.actualKind || item.line || '').includes('speed boots'));
 }
 
+function isBlueDragonArmorKind(kind) {
+    return kind === 'blue dragon scale mail' || kind === 'blue dragon scales';
+}
+
+function heroHasIntrinsicFast(g = game) {
+    const role = g?._startup_role || g?.urole?.name?.m;
+    return role === 'Monk' || role === 'Samurai' || !!g?.u?._intrinsicFast;
+}
+
+function setBlueDragonArmorFast(g, enabled) {
+    if (!g?.u) return;
+    g.u._blueDragonFast = !!enabled;
+    g.u.fast = heroHasIntrinsicFast(g) || !!g.u._blueDragonFast;
+}
+
 function interruptPositiveMultiForStoning() {
     game._run_steps_remaining = 0;
     game._running_continuation = 0;
@@ -6065,6 +6080,11 @@ async function finishMonsterTurnTail() {
                     item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                     if (game.u) game.u.uac = (game.u.uac ?? 10) + occupation.acBonus;
                     if (occupation.kind === 'speed boots' && game.u) game.u.veryfast = false;
+                    if (isBlueDragonArmorKind(occupation.kind)) {
+                        const wasVeryFast = !!game.u?.veryfast;
+                        setBlueDragonArmorFast(game, false);
+                        if (!wasVeryFast) message += '  You slow down.';
+                    }
                     updateGauntletsOfPowerStrength(occupation.kind, false);
                 }
             } else if (item && !item.worn && occupation.acBonus != null) {
@@ -6078,6 +6098,12 @@ async function finishMonsterTurnTail() {
             }
             if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power')
                 game._gauntlets_power_exercise_after_turn_tail = 1;
+            if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
+                const alreadyFast = !!(game.u?.fast || game.u?.veryfast);
+                if (!game.u?.veryfast)
+                    message += `  You speed up${alreadyFast ? ' a bit more' : ''}.`;
+                setBlueDragonArmorFast(game, true);
+            }
             if (occupation.action !== 'takeoff' && occupation.kind === 'speed boots') {
                 const alreadyFast = !!occupation.alreadyFast;
                 if (game.u) game.u.veryfast = true;
@@ -6394,7 +6420,6 @@ function monsterLinedUp(mon, targetX, targetY) {
         const apType = game.u._apType || 'monster';
         const concealed = game.u.uundetected || (apType !== 'nothing' && apType !== 'monster');
         if (roll && concealed) return false;
-        return true;
     }
 
     const dx = targetX - mon.mx;
@@ -9335,19 +9360,30 @@ export async function moveloop_core() {
                         item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                         if (g.u) g.u.uac = (g.u.uac ?? 10) + occupation.acBonus;
                         if (occupation.kind === 'speed boots' && g.u) g.u.veryfast = false;
+                        if (isBlueDragonArmorKind(occupation.kind)) {
+                            const wasVeryFast = !!g.u?.veryfast;
+                            setBlueDragonArmorFast(g, false);
+                            if (!wasVeryFast) message += '  You slow down.';
+                        }
                         updateGauntletsOfPowerStrength(occupation.kind, false);
                     }
-	                } else if (item && !item.worn && occupation.acBonus != null) {
-	                    item.worn = true;
-	                    if (occupation.wornLine) item.line = occupation.wornLine;
-	                    if (g.u) g.u.uac = (g.u.uac ?? 10) - occupation.acBonus;
-	                    if (occupation.reflecting && g.u) g.u.reflecting = true;
-	                    updateGauntletsOfPowerStrength(occupation.kind, true);
-	                    if (occupation.kind === 'gauntlets of power')
-	                        g._gauntlets_power_exercise_after_turn_tail = 1;
-	                }
+                } else if (item && !item.worn && occupation.acBonus != null) {
+                    item.worn = true;
+                    if (occupation.wornLine) item.line = occupation.wornLine;
+                    if (g.u) g.u.uac = (g.u.uac ?? 10) - occupation.acBonus;
+                    if (occupation.reflecting && g.u) g.u.reflecting = true;
+                    updateGauntletsOfPowerStrength(occupation.kind, true);
+                    if (occupation.kind === 'gauntlets of power')
+                        g._gauntlets_power_exercise_after_turn_tail = 1;
+                }
                 if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power')
                     g._gauntlets_power_exercise_after_turn_tail = 1;
+                if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
+                    const alreadyFast = !!(g.u?.fast || g.u?.veryfast);
+                    if (!g.u?.veryfast)
+                        message += `  You speed up${alreadyFast ? ' a bit more' : ''}.`;
+                    setBlueDragonArmorFast(g, true);
+                }
                 if (occupation.action !== 'takeoff' && occupation.kind === 'speed boots') {
                     const alreadyFast = !!occupation.alreadyFast;
                     if (g.u) g.u.veryfast = true;

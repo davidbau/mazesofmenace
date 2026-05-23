@@ -63,6 +63,31 @@ function polyselfNoHands() {
     return !!polyselfForm()?.nohands;
 }
 
+function monsterHasOlfaction(data = {}) {
+    const name = String(data.name || '').toLowerCase();
+    const mlet = data.mlet ?? data.glyph ?? '';
+    if (name.endsWith(' golem')) return false;
+    if (['e', 'j', 'P', 'b', 'v', 'E', 'F', 'y'].includes(mlet)) return false;
+    if (['eye', 'jelly', 'pudding', 'blob', 'vortex', 'elemental', 'fungus', 'light'].includes(mlet)) return false;
+    if (/sphere$/.test(name)) return false;
+    return true;
+}
+
+function scareNearbyOlfactoryMonstersWithGarlic() {
+    const form = polyselfForm();
+    if (form?.undead) return;
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    for (const mon of game.level?.monsters || []) {
+        const dx = (mon.mx ?? 0) - ux;
+        const dy = (mon.my ?? 0) - uy;
+        if (dx * dx + dy * dy >= 7 || !monsterHasOlfaction(mon.data)) continue;
+        mon.mflee = 1;
+        mon.mfleetim = 0;
+        clearMonsterTrack(mon);
+    }
+}
+
 function isWandItem(item) {
     return item?.cls === 'wand' || item?.glyph === '/' || item?.wandIndex != null
         || item?.kind === 'wand of sleep' || item?.kind === 'sleep';
@@ -1056,8 +1081,17 @@ const WISH_TOOL_NAMEDESC_BOUNDS = new Map([
     ['magic harp', 3], ['leash', 66],
 ]);
 const WISH_AMULET_NAMEDESC_BOUNDS = new Map([
+    ['amulet of esp', 121],
     ['amulet of life saving', 76],
+    ['amulet of strangulation', 116],
+    ['amulet of restful sleep', 116],
+    ['amulet versus poison', 116],
+    ['amulet of change', 116],
     ['amulet of unchanging', 61],
+    ['amulet of reflection', 76],
+    ['amulet of magical breathing', 76],
+    ['amulet of guarding', 76],
+    ['amulet of flying', 61],
 ]);
 const WISH_FOOD_NAMEDESC_BOUNDS = new Map([
     ['apple', 16], ['fortune cookie', 56], ['fortune cookies', 56],
@@ -2281,8 +2315,30 @@ function hasPlacedKnoxBranch() {
         branch.end2?.dnum === knoxDnum && branch.end1?.dnum >= 0 && branch.end1.dnum < (game.dungeons?.length || 0));
 }
 
+function teleportMenuLevelDepth(level) {
+    const dungeon = game.dungeons?.[level?.dnum];
+    return dungeon && level ? dungeon.depth_start + level.dlevel - 1 : 0;
+}
+
+function teleportMenuBranchDepth(dnum) {
+    const branch = game.branches?.find(item => item.end2.dnum === dnum);
+    return branch ? teleportMenuLevelDepth(branch.end1) : 0;
+}
+
+function teleportMenuSpecialDepth(name) {
+    const level = game.specialLevels?.find(item => item.name === name);
+    return level ? teleportMenuLevelDepth(level) : 0;
+}
+
+function teleportMenuQuestBeforeBigrm() {
+    const questDepth = teleportMenuBranchDepth(3);
+    const bigrmDepth = teleportMenuSpecialDepth('bigrm');
+    return questDepth && bigrmDepth ? questDepth <= bigrmDepth : false;
+}
+
 function levelTeleportMenuTarget(ch, page2 = false) {
     const hasKnox = hasPlacedKnoxBranch();
+    const questBeforeBigrm = teleportMenuQuestBeforeBigrm();
     const direct = page2
         ? (hasKnox
             ? {
@@ -2307,7 +2363,9 @@ function levelTeleportMenuTarget(ch, page2 = false) {
             }
             : {
                 a: branchLevel(7), b: branchLevel(2), c: specialLevel('oracle'), d: branchLevel(4),
-                e: specialLevel('bigrm'), f: branchLevel(3), g: specialLevel('rogue'),
+                e: questBeforeBigrm ? branchLevel(3) : specialLevel('bigrm'),
+                f: questBeforeBigrm ? specialLevel('bigrm') : branchLevel(3),
+                g: specialLevel('rogue'),
                 h: specialLevel('medusa'), i: branchLevel(1), j: specialLevel('castle'),
             });
     if (direct[ch]) return direct[ch];
@@ -2663,6 +2721,13 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             u_on_rndspot(false);
         }
     }
+    if (targetIsNew && targetSpecialBeforePlacement?.name === 'x-strt'
+        && (game._startup_role || game.urole?.name?.m) === 'Priest') {
+        rn2(3);
+        rn2(2);
+        rn2(4);
+        rn2(5);
+    }
     if (ballAndChain.length && game.level) {
         game.level.objects = (game.level.objects || []).filter(obj => !ballAndChain.includes(obj));
         for (const obj of ballAndChain) {
@@ -2872,8 +2937,9 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             : onBoulder
             ? 'You materialize on a different level!  You see here a boulder.'
             : 'You materialize on a different level!';
+        const questStartArrival = targetSpecial?.name === 'x-strt';
         let arrivalMore = lowerWizardTowerArrival
-	            || enteringValley || enteringRogue || questArrival
+            || enteringValley || enteringRogue || questArrival || questStartArrival
             || promptedBones
             || !!targetAnnotation;
         let familiarMessage = '';
@@ -4406,17 +4472,11 @@ function levelTeleportMenuLines() {
     const depth = game.u?._displayDepth
         || (currentDungeon && game.u?.uz ? currentDungeon.depth_start + game.u.uz.dlevel - 1 : game.u?.uz?.dlevel || 1);
     const doom = game.dungeons?.[0];
-    const levelDepth = level => game.dungeons?.[level?.dnum]?.depth_start + level.dlevel - 1;
-    const specialDepth = name => {
-        const level = game.specialLevels?.find(item => item.name === name);
-        return level ? levelDepth(level) : 0;
-    };
+    const levelDepth = teleportMenuLevelDepth;
+    const specialDepth = teleportMenuSpecialDepth;
     const specialMark = name => currentLevelMarker(specialLevel(name));
     const branchMark = dnum => currentLevelMarker(branchLevel(dnum));
-    const branchDepth = dnum => {
-        const branch = game.branches?.find(item => item.end2.dnum === dnum);
-        return branch ? levelDepth(branch.end1) : 0;
-    };
+    const branchDepth = teleportMenuBranchDepth;
     const gehennom = game.dungeons?.[1];
     const gehStart = gehennom?.depth_start ?? 30;
     const gehEnd = gehennom ? gehStart + gehennom.num_dunlevs - 1 : 51;
@@ -4442,8 +4502,13 @@ function levelTeleportMenuLines() {
                 return [row, col, `${String.fromCharCode('l'.charCodeAt(0) + row - 15)} - ${currentLevelMarker(entry.level)} ${entry.label}: ${entry.depth}`];
             }
         }
-        if (row === 7) return [row, col, `e - ${specialMark('bigrm')} bigrm: ${specialDepth('bigrm')}`, attr];
-        if (row === 8) return [row, col, `f - ${branchMark(3)} Portal to The Quest: ${branchDepth(3)}`, attr];
+        const questBeforeBigrm = teleportMenuQuestBeforeBigrm();
+        if (row === 7) return questBeforeBigrm
+            ? [row, col, `e - ${branchMark(3)} Portal to The Quest: ${branchDepth(3)}`, attr]
+            : [row, col, `e - ${specialMark('bigrm')} bigrm: ${specialDepth('bigrm')}`, attr];
+        if (row === 8) return questBeforeBigrm
+            ? [row, col, `f - ${specialMark('bigrm')} bigrm: ${specialDepth('bigrm')}`, attr]
+            : [row, col, `f - ${branchMark(3)} Portal to The Quest: ${branchDepth(3)}`, attr];
         if (row === 9) return [row, col, `g - ${specialMark('rogue')} rogue: ${specialDepth('rogue')}`, attr];
         if (row === 10) return [row, col, `h - ${specialMark('medusa')} medusa: ${specialDepth('medusa')}`, attr];
         if (row === 11) return [row, col, `i - ${branchMark(1)} Connection to Gehennom: ${branchDepth(1)}`, attr];
@@ -5777,18 +5842,38 @@ export function inventoryLetterRank(item) {
     return letter ? letter.charCodeAt(0) ^ 0x20 : 200;
 }
 
+function roleKnowsBlessCurse(item) {
+    if (!item || item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') return false;
+    return item.bknown === true || (game._startup_role || game.urole?.name?.m) === 'Priest';
+}
+
+function knownBlessCursePrefix(item) {
+    if (!roleKnowsBlessCurse(item)) return '';
+    if (item.blessed) return 'blessed ';
+    if (item.cursed) return 'cursed ';
+    return '';
+}
+
+function maybeAddKnownBlessCurse(item, phrase) {
+    const prefix = knownBlessCursePrefix(item);
+    const text = String(phrase || '');
+    if (!prefix || /\b(?:blessed|uncursed|cursed)\b/.test(text) || /\b(?:holy|unholy) water\b/.test(text))
+        return text;
+    return text.replace(/^(a|an|the)\s+/i, `$1 ${prefix}`);
+}
+
 export function inventoryItemName(item) {
     if (item?.artifact) {
         if (item.line) {
-            return String(item.line)
+            return maybeAddKnownBlessCurse(item, String(item.line)
                 .replace(/^[a-zA-Z$] - /, '')
-                .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '');
+                .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, ''));
         }
-        return pickupObjectPhrase(item);
+        return maybeAddKnownBlessCurse(item, pickupObjectPhrase(item));
     }
-    return String(item.line || `${item.letter || '?'} - ${item.quan > 1 ? `${item.quan} ` : ''}${pickupObjectName(item)}`)
+    return maybeAddKnownBlessCurse(item, String(item.line || `${item.letter || '?'} - ${item.quan > 1 ? `${item.quan} ` : ''}${pickupObjectName(item)}`)
         .replace(/^[a-zA-Z$] - /, '')
-        .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '');
+        .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, ''));
 }
 
 const ARTIFACT_ALIGN_TYPE = { lawful: 1, neutral: 0, chaotic: -1 };
@@ -13027,7 +13112,9 @@ function normalInventoryLine(item) {
     if (item.line && cls !== 'armor' && !item.artifact) return item.line;
     const blessedState = item.blessed ? 'blessed ' : item.cursed ? 'cursed ' : 'uncursed ';
     const lineShowsBuc = /\b(?:blessed|uncursed|cursed)\b/.test(String(item.line || ''));
-    const knownState = item.bknown === true || (item.bknown !== false && lineShowsBuc) ? blessedState : '';
+    const knownBlessCurseState = item.blessed || item.cursed ? knownBlessCursePrefix(item) : '';
+    const knownState = knownBlessCurseState
+        || (item.bknown === true || (item.bknown !== false && lineShowsBuc) ? blessedState : '');
     let name = pickupObjectName(item);
     let phrase = name;
     let suffix = '';
@@ -13045,7 +13132,8 @@ function normalInventoryLine(item) {
         const lineShowsSpe = /(?:^| )[-+]\d+ /.test(String(item.line || ''));
         const showSpe = item.known === true || lineShowsSpe;
         const enchantment = showSpe ? `${spe >= 0 ? '+' : ''}${spe} ` : '';
-        const buc = (item.bknown === true || lineShowsBuc) && (item.blessed || item.cursed) ? blessedState : '';
+        const buc = knownBlessCursePrefix(item)
+            || ((item.bknown === true || lineShowsBuc) && (item.blessed || item.cursed) ? blessedState : '');
         const erosion = erosionPrefix(item);
         phrase = quan > 1 ? `${quan} ${buc}${erosion}${enchantment}${name}` : `${buc}${erosion}${enchantment}${name}`;
         if (item.wielded) {
@@ -19336,8 +19424,9 @@ export async function rhack(_cmd) {
 	                    const toplineFumbleStartedMessage = !!game._topline_after_more_fumble_turn_message_starts;
 	                    const toplineFumbleMessageRoll = game._topline_after_more_fumble_message_roll || 0;
 	                    let toplineAfterMore = game._topline_after_more;
-	                    const pendingPetMiss = pendingBeforeTopline.match(/(The [^.]+ misses the [^.]+\.)$/);
-		                    if (game._pet_message_resume?.kind === 'miss' && pendingPetMiss?.[1] === toplineAfterMore) {
+	                    const pendingPetMiss = pendingBeforeTopline.match(/(The ([^.]+) misses the [^.]+\.)$/);
+		                    if (game._pet_message_resume?.kind === 'miss' && pendingPetMiss?.[1] === toplineAfterMore
+		                        && pendingBeforeTopline.startsWith(`The ${pendingPetMiss[2]} `)) {
 		                        toplineAfterMore = `${pendingPetMiss[1]}  ${toplineAfterMore}`;
 		                        game._resume_time_after_more = 0;
 		                    }
@@ -26229,16 +26318,21 @@ export async function rhack(_cmd) {
             delete item._wish_tin_requested_variety;
             delete item._wish_glob_size;
             delete item._wish_glob_default_count;
-            const visibleName = game.u?.blind && item.cls === 'potion' ? 'potion'
+            const bucPrefix = knownBlessCursePrefix(item);
+            const baseVisibleName = game.u?.blind && item.cls === 'potion' ? 'potion'
                 : game.u?.blind && item.cls === 'ring' ? 'ring'
                     : game.u?.blind && item.cls === 'wand' ? 'wand'
                     : `${erosionPrefix(item)}${pickupObjectName(item)}`;
+            const visibleName = `${bucPrefix}${baseVisibleName}`;
             const displayQuan = item.quan || wishedQuan;
             const article = item.unique ? 'the'
                 : item.noArticle ? ''
-                : /^(?:.* )?(?:boots|gloves)$/.test(visibleName) ? 'a pair of'
+                : /^(?:.* )?(?:boots|gloves)$/.test(baseVisibleName) ? 'a pair of'
                 : /^[aeiou]/i.test(visibleName) ? 'an' : 'a';
-            item.line = `${letter} - ${displayQuan > 1 ? `${displayQuan} ${visibleName}` : article ? `${article} ${visibleName}` : visibleName}`;
+            const displayPhrase = displayQuan > 1 ? `${displayQuan} ${visibleName}`
+                : article === 'a pair of' ? `a ${bucPrefix}pair of ${baseVisibleName}`
+                    : article ? `${article} ${visibleName}` : visibleName;
+            item.line = `${letter} - ${displayPhrase}`;
             game.inventory ??= [];
             game.inventory.push(item);
             maybeAttachCarriedFigurineTimeout(item);
@@ -28927,6 +29021,7 @@ export async function rhack(_cmd) {
                 clearPretouchedFood(item);
             }
             recordFoodConduct(item);
+            if (item.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
             if (item.oeaten > 0) addHeroNutrition(item.oeaten);
             removeInventoryItem(item);
             game._pet_food_scan_inventory = game.inventory || [];
@@ -29097,6 +29192,7 @@ export async function rhack(_cmd) {
             }
             if (food.oeaten > 0) addHeroNutrition(food.oeaten);
             recordFoodConduct(food);
+            if (food?.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
             consumeOneFloorObject(food);
             const petrificationMessage = startPetrifyingEggStoning(food);
             await setMessage(appendPetrificationMessage(`This ${name} is delicious!`, petrificationMessage));

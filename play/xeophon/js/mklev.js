@@ -770,6 +770,8 @@ const STUDENT = { name: 'student', mlet: '@', glyph: '@', color: CLR_WHITE, mlev
 const NEFERET_THE_GREEN = { name: 'Neferet the Green', mlet: '@', glyph: '@', color: CLR_GREEN, mlevel: 20, hpLevel: 19, difficulty: 25, mmove: 15, maligntyp: 0, female: true, strong: true, armed: true, randomInventory: true, alwaysPeaceful: true, msound: 'leader', waiting: true };
 const APPRENTICE = { name: 'apprentice', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 8, mmove: 12, maligntyp: 0, strong: true, armed: true, spellcaster: true, guardian: true, randomInventory: true, alwaysPeaceful: true };
 const MINION_OF_HUHETOTL = { name: 'Minion of Huhetotl', mlet: '&', glyph: '&', color: CLR_ORANGE, mlevel: 16, hpLevel: 17, difficulty: 23, mmove: 12, maligntyp: -14, neuter: true, demon: true, inAir: true, strong: true, nasty: true, armed: true, randomInventory: true, alwaysHostile: true, waiting: true, nemesis: true, noCorpse: true };
+const ARCH_PRIEST = { name: 'Arch Priest', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 25, hpLevel: 24, difficulty: 30, mmove: 15, maligntyp: 0, male: true, strong: true, armed: true, priest: true, randomInventory: true, alwaysPeaceful: true, magic: true, waiting: true };
+const ACOLYTE = { name: 'acolyte', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 5, hpLevel: 7, difficulty: 8, mmove: 12, maligntyp: 0, strong: true, armed: true, spellcaster: true, guardian: true, randomInventory: true, alwaysPeaceful: true };
 
 const SOKOBAN_ZOO_MONSTERS = [
     { name: 'giant ant', weight: 3, mlevel: 2, hpLevel: 3, mlet: 'a', glyph: 'a', color: 3, neuter: false, smallGroup: true, oviparous: true },
@@ -2652,6 +2654,43 @@ const WIZ_SIEGE_MONSTERS = [
 function wizX(x) { return WIZ_XSTART + x; }
 function wizY(y) { return WIZ_YSTART + y; }
 
+const PRI_ROWS = [
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+    '....................------------------------------------....................',
+    '....................|................|.....|.....|.....|....................',
+    '....................|..------------..|--+-----+-----+--|....................',
+    '....................|..|..........|..|.................|....................',
+    '....................|..|..........|..|+---+---+-----+--|....................',
+    '..................---..|..........|......|...|...|.....|....................',
+    '..................+....|..........+......|...|...|.....|....................',
+    '..................+....|..........+......|...|...|.....|....................',
+    '..................---..|..........|......|...|...|.....|....................',
+    '....................|..|..........|..|+-----+---+---+--|....................',
+    '....................|..|..........|..|.................|....................',
+    '....................|..------------..|--+-----+-----+--|....................',
+    '....................|................|.....|.....|.....|....................',
+    '....................------------------------------------....................',
+    '............................................................................',
+    '............................................................................',
+    '............................................................................',
+];
+const PRI_WIDTH = PRI_ROWS[0].length;
+const PRI_HEIGHT = PRI_ROWS.length;
+const PRI_DOORS = [
+    [D_LOCKED, 18, 9], [D_LOCKED, 18, 10],
+    [D_CLOSED, 34, 9], [D_CLOSED, 34, 10],
+    [D_CLOSED, 40, 5], [D_CLOSED, 46, 5], [D_CLOSED, 52, 5],
+    [D_LOCKED, 38, 7], [D_CLOSED, 42, 7], [D_CLOSED, 46, 7], [D_CLOSED, 52, 7],
+    [D_LOCKED, 38, 12], [D_CLOSED, 44, 12], [D_CLOSED, 48, 12], [D_CLOSED, 52, 12],
+    [D_CLOSED, 40, 14], [D_CLOSED, 46, 14], [D_CLOSED, 52, 14],
+];
+const PRI_ACOLYTES = [
+    [32, 7], [32, 8], [32, 11], [32, 12],
+    [33, 7], [33, 8], [33, 11], [33, 12],
+];
+
 const ARC_LOCA_XSTART = 3;
 const ARC_LOCA_YSTART = 1;
 const ARC_LOCA_ROWS = [
@@ -2749,6 +2788,11 @@ const QUEST_LEVEL_BUILDERS = {
     Wizard: {
         special: {
             'x-strt': make_wiz_strt_level,
+        },
+    },
+    Priest: {
+        special: {
+            'x-strt': make_pri_strt_level,
         },
     },
 };
@@ -5337,9 +5381,14 @@ function m_initweap(ptr) {
         if (w2) mongets(w2);
     } else if (ptr.priest) {
         const otmp = mksobj(MACE, false, false);
+        Object.assign(otmp, object_display(otmp), { cls: 'weapon', kind: 'mace' });
         otmp.spe = rnd(3);
         if (!rn2(2)) curse(otmp);
-    } else if (ptr.guardian && (ptr.name === 'student' || ptr.name === 'apprentice')) {
+        if (game._mongets_target) {
+            game._mongets_target.minvent = [otmp, ...(game._mongets_target.minvent || [])];
+            game._mongets_target.hasInventory = true;
+        }
+    } else if (ptr.guardian && (ptr.name === 'student' || ptr.name === 'apprentice' || ptr.name === 'acolyte')) {
         if (rn2(2)) mongets(rn2(3) ? DAGGER : KNIFE);
         if (rn2(5)) mongets(rn2(3) ? LEATHER_JACKET : LEATHER_CLOAK);
         if (rn2(3)) mongets(rn2(3) ? LOW_BOOTS : HIGH_BOOTS);
@@ -7003,6 +7052,244 @@ async function make_wiz_strt_level() {
     rn2(1);
     rn2(1);
     level_finalize_topology();
+}
+
+function priMapKey(x, y) {
+    return `${x},${y}`;
+}
+
+function priSelectionBounds(selection) {
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    for (const item of selection) {
+        const [x, y] = item.split(',').map(Number);
+        lx = Math.min(lx, x);
+        ly = Math.min(ly, y);
+        hx = Math.max(hx, x);
+        hy = Math.max(hy, y);
+    }
+    return selection.size ? { lx, ly, hx, hy } : { lx: 0, ly: 0, hx: 0, hy: 0 };
+}
+
+function priFloodfillSelection(x, y) {
+    const target = game.level?.at(x, y)?.typ;
+    const selection = new Set();
+    if (target == null) return selection;
+    const stack = [{ x, y }];
+    const queued = new Set([priMapKey(x, y)]);
+    while (stack.length) {
+        const cur = stack.pop();
+        const key = priMapKey(cur.x, cur.y);
+        selection.add(key);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cur.x + dx, ny = cur.y + dy;
+            const nkey = priMapKey(nx, ny);
+            if (nx < 0 || nx >= COLNO || ny < 0 || ny >= ROWNO
+                || queued.has(nkey) || game.level?.at(nx, ny)?.typ !== target) continue;
+            queued.add(nkey);
+            stack.push({ x: nx, y: ny });
+        }
+    }
+    return selection;
+}
+
+function priRndCoord(selection, remove = false) {
+    const { lx, ly, hx, hy } = priSelectionBounds(selection);
+    const pick = rn2(selection.size);
+    let idx = 0;
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const key = priMapKey(x, y);
+            if (!selection.has(key)) continue;
+            if (idx === pick) {
+                if (remove) selection.delete(key);
+                return { x, y };
+            }
+            idx++;
+        }
+    return { x: -1, y: -1 };
+}
+
+function priReplaceTerrain(x1, y1, x2, y2, fromTyp, toTyp, chance) {
+    for (let x = Math.max(0, x1); x <= Math.min(COLNO - 1, x2); x++)
+        for (let y = Math.max(0, y1); y <= Math.min(ROWNO - 1, y2); y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.typ === fromTyp && rn2(100) < chance) loc.typ = toTyp;
+        }
+}
+
+function priRandomDryLocation(rejectStairs = false) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        return loc && SPACE_POS(loc.typ) && !boulder
+            && (!rejectStairs || (loc.typ !== STAIRS && loc.typ !== LADDER));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = rn2(PRI_WIDTH);
+        const y = rn2(PRI_HEIGHT);
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 0; x < PRI_WIDTH; x++)
+        for (let y = 0; y < PRI_HEIGHT; y++)
+            if (good(x, y)) return { x, y };
+    return { x: 0, y: 0 };
+}
+
+function priSpecialRndTrapType() {
+    let kind;
+    do {
+        kind = rnd(TRAPNUM - 1);
+        switch (kind) {
+        case HOLE:
+        case VIBRATING_SQUARE:
+        case MAGIC_PORTAL:
+            kind = NO_TRAP;
+            break;
+        case TRAPDOOR: {
+            const uz = game.u?.uz ?? { dnum: 0, dlevel: 1 };
+            const dungeon = game.dungeons?.[uz.dnum];
+            if ((uz.dlevel ?? 1) >= (dungeon?.num_dunlevs ?? 1)) kind = NO_TRAP;
+            break;
+        }
+        case LEVEL_TELEP:
+        case TELEP_TRAP:
+            if (game.level?.flags?.noteleport) kind = NO_TRAP;
+            break;
+        default:
+            break;
+        }
+    } while (kind === NO_TRAP);
+    return kind;
+}
+
+async function priTrapAt(x, y, kind) {
+    const trap = await maketrap(x, y, kind);
+    if (kind === WEB) await makemon(monsterByRndName('giant spider'), x, y, 0);
+    arcLocaMaybeTrapVictim(trap);
+}
+
+async function priRandomTrap() {
+    const loc = priRandomDryLocation(true);
+    await priTrapAt(loc.x, loc.y, priSpecialRndTrapType());
+}
+
+async function priNamedMonster(ptr, x, y, randomGender = true) {
+    if (randomGender) rn2(2);
+    arcInducedAlign();
+    return makemon(ptr, x, y, 0);
+}
+
+function priInventoryObject(mon, otyp, spe, fields = {}) {
+    priRandomDryLocation();
+    const obj = mksobj(otyp, true, true);
+    obj.spe = spe;
+    Object.assign(obj, object_display(obj), fields);
+    mon.minvent = [obj, ...(mon.minvent || [])];
+    mon.hasInventory = true;
+}
+
+async function make_pri_strt_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.noteleport = true;
+    g.level.flags.hardfloor = true;
+
+    l_nhcore_init();
+    rn2(2);
+
+    for (let y = 0; y < PRI_HEIGHT; y++) {
+        const row = PRI_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(x, y);
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = ch !== '|';
+            loc.lit = true;
+            loc.waslit = false;
+            if (ch === '+') {
+                loc.typ = DOOR;
+            } else {
+                loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            }
+        }
+    }
+
+    const temple = {
+        lx: 24, ly: 6, hx: 33, hy: 13, rtype: TEMPLE, rlit: 1,
+        doorct: 0, fdoor: g.level.doorindex, irregular: false,
+        needjoining: false, nsubrooms: 0, sbrooms: [],
+        roomnoidx: g.level.nroom, needfill: 2,
+    };
+    g.level.rooms[g.level.nroom++] = temple;
+    topologize(temple);
+    g.level.flags.has_temple = true;
+
+    priReplaceTerrain(0, 0, 10, 19, ROOM, TREE, 10);
+    priReplaceTerrain(65, 0, 75, 19, ROOM, TREE, 10);
+    const branchLoc = g.level.at(5, 4);
+    if (branchLoc) branchLoc.typ = ROOM;
+    const spacelocs = priFloodfillSelection(5, 4);
+
+    g.level.branch_region = { x: 5, y: 4 };
+    place_branch(is_branchlev(), 5, 4);
+    mkstairs(52, 9, false, null);
+    for (const [mask, x, y] of PRI_DOORS) {
+        const loc = g.level.at(x, y);
+        if (loc) {
+            if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            loc.doormask = mask;
+        }
+    }
+
+    const altar = g.level.at(28, 9);
+    if (altar) {
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(A_NONE);
+    }
+
+    const leader = await priNamedMonster(ARCH_PRIEST, 28, 10, false);
+    if (leader) {
+        for (const _obj of leader.minvent || []) rn2(100);
+        leader.minvent = [];
+        leader.hasInventory = false;
+        priInventoryObject(leader, ROBE, 4, { cls: 'armor', kind: 'robe' });
+        priInventoryObject(leader, MACE, 4, { cls: 'weapon', kind: 'mace' });
+    }
+    mksobj_at(CHEST, 27, 10, true, true);
+
+    for (const [x, y] of PRI_ACOLYTES) await priNamedMonster(ACOLYTE, x, y);
+
+    for (let x = 18; x <= 55; x++)
+        for (let y = 3; y <= 16; y++) {
+            const loc = g.level.at(x, y);
+            if (loc) loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+
+    for (let i = 0; i < 2; i++) {
+        const loc = priRndCoord(spacelocs, true);
+        await priTrapAt(loc.x, loc.y, DART_TRAP);
+    }
+    for (let i = 0; i < 4; i++) await priRandomTrap();
+    for (let i = 0; i < 12; i++) {
+        const loc = priRndCoord(spacelocs, true);
+        await priNamedMonster(monsterByRndName('human zombie'), loc.x, loc.y);
+    }
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, PRI_WIDTH + 1, PRI_HEIGHT - 1, true);
+    recount_level_features();
+    rn2(1);
+    rn2(1);
+    level_finalize_topology({ mineralizeLevel: false });
+    g.in_mklev = false;
 }
 
 function arcLocaRandomDryLocation(rejectStairs = false) {
