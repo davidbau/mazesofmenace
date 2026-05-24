@@ -12,11 +12,26 @@
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
 import { game } from './gstate.js';
-import { TUTORIAL } from './const.js';
+import {
+    TUTORIAL,
+    In_endgame, Is_airlevel, Is_astralevel, Is_earthlevel, Is_firelevel, Is_waterlevel,
+} from './const.js';
 import { Terminal, CLR_GRAY, NO_COLOR } from './terminal.js';
 
 const TOPLINE_EMPTY = 0;
 const TOPLINE_NEED_MORE = 1;
+
+function endgameStatusName(uz) {
+    if (!In_endgame(uz)) return null;
+    if (Is_astralevel(uz)) return 'Astral Plane';
+    if (Is_waterlevel(uz)) return 'Water';
+    if (Is_firelevel(uz)) return 'Fire';
+    if (Is_airlevel(uz)) return 'Air';
+    if (Is_earthlevel(uz)) return 'Earth';
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    const depth = dungeon && uz ? dungeon.depth_start + uz.dlevel - 1 : uz?.dlevel || 0;
+    return `unknown plane #${depth}`;
+}
 
 export class GameDisplay {
     constructor(terminalOrContainerId) {
@@ -162,7 +177,8 @@ export class GameDisplay {
             const blind = u.blind && !u._blindAfterStatus ? ' Blind' : '';
             const statusSuffix = `${u._statusSuffix || ''}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;
             const goldSymbol = game.level?.flags?.rogue_level ? '*' : '$';
-            const levelName = dungeon?.name === 'The Quest' ? `Home ${u.uz?.dlevel || 1}` : `Dlvl:${level}`;
+            const levelName = endgameStatusName(u.uz)
+                || (dungeon?.name === 'The Quest' ? `Home ${u.uz?.dlevel || 1}` : `Dlvl:${level}`);
             line2 = `${levelName} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayAc} ${xp}${turn}${ride}${blind}${statusSuffix}`;
         }
         if (heldUac) {

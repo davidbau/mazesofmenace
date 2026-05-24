@@ -8,7 +8,7 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_ISOPEN, D_CLOSED, D_LOCKED, SDOOR, SCORR, FOUNTAIN, SINK,
     IRONBARS, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, ICE, TREE, CLOUD, GRAVE, THRONE, ALTAR,
-    COULD_SEE, IN_SIGHT,
+    COULD_SEE, IN_SIGHT, TEMP_LIT,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR, WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
@@ -475,9 +475,6 @@ function objectAt(x, y) {
     const objects = game.level?.objects || [];
     for (let i = objects.length - 1; i >= 0; i--) {
         const obj = objects[i];
-        if (obj._sokoRandom && game.level?.flags?.sokoban_rules
-            && Math.max(Math.abs((obj.ox ?? 0) - (game.u?.ux ?? 0)), Math.abs((obj.oy ?? 0) - (game.u?.uy ?? 0))) > (obj._sokoRandomRange ?? 3))
-            continue;
         if (!obj.hidden && obj.ox === x && obj.oy === y) return obj;
     }
     return null;
@@ -772,7 +769,8 @@ export function newsym(x, y) {
         loc.lastseendoormask = loc.doormask;
         loc.lastseenwall_info = loc.wall_info;
     }
-    const remembered = visible || loc.map_invisible || loc.seenv || loc.waslit || loc.lastseentyp != null;
+    const remembered = visible || loc.map_invisible || loc.seenv || loc.waslit
+        || loc.lastseentyp != null || loc.remembered_glyph;
     const rawMon = rawMonsterAt(x, y);
     const mon = game.u?.blind ? undefined : monsterAt(x, y);
     const warningMon = game.level?.monsters?.find(candidate =>
@@ -789,7 +787,8 @@ export function newsym(x, y) {
     const obj = objectAt(x, y);
     const hasInfravision = game.u?.infravision || ['dwarven', 'elven', 'gnomish', 'orcish'].includes(game.urace?.adj);
     const heroRange = Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0)));
-    const monsterVisible = visible && !(loc.typ === ROOM && !loc.lit && heroRange > 1);
+    const tempLit = !!(game.viz_array?.[y]?.[x] & TEMP_LIT);
+    const monsterVisible = visible && !(loc.typ === ROOM && !loc.lit && !tempLit && heroRange > 1);
     const infraredHidden = INFRARED_HIDDEN_MLETS.has(mon?.data?.mlet || mon?.mlet);
     const seesInfrared = mon && canSee && !monsterVisible && !game.u?.blind && hasInfravision
         && !infraredHidden && !mon.data?.mindless && !mon.data?.nonliving && !mon.data?.name?.endsWith(' golem');
@@ -1078,6 +1077,29 @@ function drawGrid() {
     const d = display();
     if (!d) return;
     const hidePendingMessageOnce = !!game._hide_pending_message_once;
+    if (game._preserved_grid_snapshot && game._pending_message && game._message_more) {
+        const snapshot = game._preserved_grid_snapshot;
+        for (let row = 0; row < Math.min(d.rows, snapshot.length); row++)
+            for (let col = 0; col < Math.min(d.cols, snapshot[row]?.length || 0); col++) {
+                const cell = snapshot[row][col] || {};
+                d.setCell(col, row, cell.ch || ' ', cell.color ?? NO_COLOR, cell.attr || 0);
+            }
+        const more = '--More--';
+        const inlineMore = !game._message_more_line
+            && game._pending_message.length < d.cols - more.length;
+        writeText(0, 0, ' '.repeat(d.cols), NO_COLOR);
+        writeText(0, 0, game._pending_message, NO_COLOR);
+        if (inlineMore) {
+            writeText(0, game._pending_message.length, more, NO_COLOR);
+            setCursorAfter(0, game._pending_message.length, more);
+        } else {
+            writeText(1, 0, ' '.repeat(d.cols), NO_COLOR);
+            writeText(1, 0, `${game._message_more_line || ''}${more}`, NO_COLOR);
+            setCursorAfter(1, 0, `${game._message_more_line || ''}${more}`);
+        }
+        game._clear_preserved_grid_snapshot_after_capture = 1;
+        return;
+    }
     if (game._hallucinated_map_needs_actual_refresh
         && !(game.u?._statusSuffix || '').includes('Hallu')) {
         game._hallucinated_map_needs_actual_refresh = 0;
