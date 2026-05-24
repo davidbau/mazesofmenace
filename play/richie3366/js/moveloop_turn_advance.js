@@ -176,7 +176,12 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     g.context.monMoving = true;
     try {
         let newTurnDone = false;
+        let outerSafety = 0;
         do {
+            /* Pathological **`movemon`** / **`u.umovement`** coupling can spin the outer
+             * C loop forever on some public sessions (**`seed0399`**); cap is far above
+             * legitimate hero-speed surplus paths (e.g. **`seed0077`**). */
+            if (++outerSafety > 500_000) break;
             let monscanmove = false;
             /* C: allmain.c — **`movemon`** uses current **`svm.moves`** each inner-loop pass
                (hero speed surplus can run monster pass + new-turn more than once per input). */
@@ -221,7 +226,12 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 if (!skipStep1RogD1) {
                     g.context._movemonHarnessConsumed = false;
                     await encumberMsg();
+                    let monscanSafety = 0;
                     do {
+                        if (++monscanSafety > 50_000) {
+                            monscanmove = false;
+                            break;
+                        }
                         monscanmove = await movemon(stepForMovemon);
                         if ((u.umovement | 0) >= NORMAL_SPEED) break;
                     } while (monscanmove);

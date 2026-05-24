@@ -426,9 +426,9 @@ export function enextoNearMon(g, xx, yy, fakemon) {
         }
         if (good.length >= MAX_GOOD) break;
         for (let y = ymin; y < ymax2 && good.length < MAX_GOOD; y++) {
-            if (goodposNewMonster(xmin, y, fakemon, g)) good.push({ x, y });
+            if (goodposNewMonster(xmin, y, fakemon, g)) good.push({ x: xmin, y });
             if (good.length >= MAX_GOOD) break;
-            if (xmin !== xmax2 && goodposNewMonster(xmax2, y, fakemon, g)) good.push({ x, y });
+            if (xmin !== xmax2 && goodposNewMonster(xmax2, y, fakemon, g)) good.push({ x: xmax2, y });
         }
         range++;
     }

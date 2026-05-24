@@ -8,6 +8,14 @@ import { game } from './gstate.js';
 let _rngLog = [];
 let _rngLogEnabled = false;
 
+/** Avoid multi-million-entry logs when a port spins RNG in a tight loop (judge **`spawnSync`**). */
+const MAX_RNG_LOG = 500_000;
+
+function appendRngLog(line) {
+    if (!_rngLogEnabled || _rngLog.length >= MAX_RNG_LOG) return;
+    _rngLog.push(line);
+}
+
 export function initRng(seed) {
     game.currentSeed = seed;
     // Convert seed to 8 little-endian bytes
@@ -23,7 +31,7 @@ export function initRng(seed) {
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
-export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
+export function pushRngLogEntry(entry) { appendRngLog(entry); }
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
@@ -47,7 +55,7 @@ function luckMacro() {
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
+    if (_rngLogEnabled) appendRngLog(`rn2(${x})=${val}`);
     return val;
 }
 
@@ -55,7 +63,7 @@ export function rn2(x) {
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
-    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
+    if (_rngLogEnabled) appendRngLog(`rnd(${x})=${val}`);
     return val;
 }
 
@@ -75,7 +83,7 @@ export function rnl(x) {
         if (i < 0) i = 0;
         else if (i >= x) i = x - 1;
     }
-    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${i}`);
+    if (_rngLogEnabled) appendRngLog(`rnl(${x})=${i}`);
     return i;
 }
 
@@ -87,7 +95,7 @@ export function d(n, x) {
     for (let i = 0; i < n; i++) sum += rnd(x);
     if (log) {
         _rngLogEnabled = true;
-        _rngLog.push(`d(${n},${x})=${sum}`);
+        appendRngLog(`d(${n},${x})=${sum}`);
     }
     return sum;
 }
@@ -99,7 +107,7 @@ export function rne(x) {
     const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
     let tmp = 1;
     while (tmp < utmp && !rn2(x)) tmp++;
-    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}`);
+    if (_rngLogEnabled) appendRngLog(`rne(${x})=${tmp}`);
     return tmp;
 }
 
@@ -112,7 +120,7 @@ export function rnz(i) {
     tmp *= rne(4);
     if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
     else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}`);
+    if (_rngLogEnabled) appendRngLog(`rnz(${i})=${x}`);
     return x;
 }
 

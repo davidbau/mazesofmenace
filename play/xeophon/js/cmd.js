@@ -16,7 +16,9 @@ import { DISPLAY_MONSTER_COLORS, DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_N
 import { prepareVaultGuardEscort } from './vault.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { datFileLines as bundledDatFileLines } from './dat_files.js';
-import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
+import { advanceFireBreathRay, applyFireRayFountainTerrain, applyFireRayIceTerrain, applyFireRayWaterTerrain, burnFireRayWebTrap, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
+import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
+import { applyColdRayTerrain, objectIceEffect } from './ice.js';
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 
@@ -317,30 +319,6 @@ export function refreshSwallowOverlay(more = !!game._message_more) {
     game._pending_message = message;
     game._message_more = more ? 1 : 0;
     game._swallow_overlay_active = 1;
-}
-
-function dryupFountainResultAt(x = game.u?.ux || 0, y = game.u?.uy || 0, { isYou = true } = {}) {
-    const loc = game.level?.at(x, y);
-    if (loc?.typ !== FOUNTAIN || (rn2(3) && !loc.fountainWarned)) return { dried: false };
-    if (isYou && game.level?.flags?.has_town && !loc.fountainWarned) {
-        loc.fountainWarned = true;
-        const watchman = (game.level?.monsters || []).find(mon =>
-            (mon.data?.name === 'watchman' || mon.data?.name === 'watch captain')
-            && mon.mpeaceful && couldsee(mon.mx, mon.my));
-        if (!watchman) return { dried: false, trickle: 'The flow reduces to a trickle.' };
-        const name = watchman.data?.name || 'watchman';
-        return { dried: false, warning: `${/^[aeiou]/i.test(name) ? 'An' : 'A'} ${name} yells:` };
-    }
-    loc.typ = ROOM;
-    loc.flags = 0;
-    loc.blessed = 0;
-    if (game.level?.flags?.nfountains) game.level.flags.nfountains--;
-    newsym(x, y);
-    return { dried: true };
-}
-
-function dryupFountainAt(x = game.u?.ux || 0, y = game.u?.uy || 0) {
-    return dryupFountainResultAt(x, y).dried;
 }
 
 const MIN_QUEST_LEVEL = 14;
@@ -17735,6 +17713,7 @@ async function moveHero(dx, dy) {
                 kind: pickedObject.kind || pickupObjectName({ ...pickedObject, quan: 1 }),
                 line: `${letter} - ${amount}`,
             };
+            objectIceEffect(pickedItem, newx, newy, { onLevel: false });
             game.inventory = [...(game.inventory || []), pickedItem];
             maybeAttachCarriedFigurineTimeout(pickedItem);
             game.level.objects = (game.level.objects || []).filter(obj => obj !== pickedObject);
@@ -19591,11 +19570,15 @@ export async function rhack(_cmd) {
                     kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
                     line: `${letter} - ${amount}`,
                 };
+                objectIceEffect(pickedItem, obj.ox, obj.oy, { onLevel: false });
                 game.inventory = [...(game.inventory || []), pickedItem];
                 maybeAttachCarriedFigurineTimeout(pickedItem);
                 messages.push(`${letter} - ${amount}.`);
             }
             game._pet_food_scan_inventory = game.inventory;
+            for (const obj of selected) {
+                objectIceEffect(obj, obj.ox, obj.oy, { onLevel: false });
+            }
             game.level.objects = (game.level.objects || []).filter(item => !selected.includes(item));
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
@@ -24350,11 +24333,19 @@ export async function rhack(_cmd) {
                 rn2(5);
                 rn2(111);
                 let target = null;
-                for (let step = 1; step <= BOLT_LIM; step++) {
+                const terrainMessages = [];
+                let range = BOLT_LIM;
+                for (let step = 1; step <= BOLT_LIM && range-- > 0; step++) {
                     const x = (game.u?.ux || 0) + dir.dx * step;
                     const y = (game.u?.uy || 0) + dir.dy * step;
+                    const loc = game.level?.at(x, y);
+                    if (IS_OBSTRUCTED(loc?.typ)) break;
+                    const terrain = applyColdRayTerrain(x, y);
+                    terrainMessages.push(...terrain.messages);
+                    range += terrain.rangeMod;
+                    if (terrain.stopped || terrain.blocked || range < 0) break;
                     target = game.level?.monsters?.find(mon => mon.mx === x && mon.my === y);
-                    if (target || IS_OBSTRUCTED(game.level?.at(x, y)?.typ)) break;
+                    if (target) break;
                 }
                 if (target) {
                     rn2(6);
@@ -24378,13 +24369,14 @@ export async function rhack(_cmd) {
                     rn2(10);
                     rn2(10);
                     rn2(19);
-                    await setMessage(`You kill the ${target.data?.name || 'monster'}!`);
+                    const killMessage = `You kill the ${target.data?.name || 'monster'}!`;
+                    await setMessage(terrainMessages.length ? `${terrainMessages.join('  ')}  ${killMessage}` : killMessage);
                 } else {
                     rn2(10);
                     rn2(10);
                     rn2(10);
                     rn2(19);
-                    await setMessage('The bolt of cold bounces!');
+                    await setMessage(terrainMessages.length ? terrainMessages.join('  ') : 'The bolt of cold bounces!');
                 }
                 item.known = true;
                 item.kind = 'cold';
@@ -24399,6 +24391,7 @@ export async function rhack(_cmd) {
                 const messages = [];
                 const followups = [];
                 let beamStopIndex = null;
+                let heardGas = false;
                 let range = rn1(7, 7);
                 let sx = game.u?.ux || 0;
                 let sy = game.u?.uy || 0;
@@ -24419,6 +24412,24 @@ export async function rhack(_cmd) {
                         const beam = dy === 0 ? '─' : dx === 0 ? '│' : dx === dy ? '\\' : '/';
                         beamCells.push({ x: sx, y: sy, ch: beam, color: CLR_ORANGE });
 
+                        messages.push(...burnFireRayWebTrap(sx, sy, {
+                            previousMessage: messages[messages.length - 1] || '',
+                        }));
+                        const ice = applyFireRayIceTerrain(sx, sy, { heroRay: true });
+                        messages.push(...ice.messages);
+                        if (!ice.handled) {
+                            const terrain = applyFireRayWaterTerrain(sx, sy, {
+                                previousMessage: messages[messages.length - 1] || '',
+                                heardGas,
+                                heroRay: true,
+                            });
+                            messages.push(...terrain.messages);
+                            heardGas = terrain.heardGas;
+                            range += terrain.rangeMod;
+                            const fountain = applyFireRayFountainTerrain(sx, sy, { heroRay: true });
+                            messages.push(...fountain.messages);
+                            range += fountain.rangeMod;
+                        }
                         messages.push(...burnRayFloorObjectsByFire(sx, sy));
 
                         const target = game.level?.monsters?.find(mon => mon.mx === sx && mon.my === sy);
@@ -28446,6 +28457,7 @@ export async function rhack(_cmd) {
                     : item.color ?? (item.cls === 'scroll' || item.cls === 'spellbook' ? CLR_WHITE : NO_COLOR),
             };
             game.level.objects.push(dropped);
+            objectIceEffect(dropped, dropped.ox, dropped.oy);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             game._message_more = 0;
             game.context.move = 1;
@@ -32339,13 +32351,15 @@ export async function rhack(_cmd) {
         if (objectHere?.otyp === 'corpse') {
             const corpseName = pickupObjectName({ ...objectHere, quan: 1 });
             const letter = nextInventoryLetter();
-            game.inventory = [...(game.inventory || []), {
+            const pickedItem = {
                 ...objectHere,
                 cls: 'food',
                 letter,
                 quan: 1,
                 kind: corpseName,
-            }];
+            };
+            objectIceEffect(pickedItem, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
+            game.inventory = [...(game.inventory || []), pickedItem];
             game._pet_food_scan_inventory = game.inventory;
             game.level.objects = (game.level.objects || []).filter(obj => obj !== objectHere);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
@@ -32405,6 +32419,7 @@ export async function rhack(_cmd) {
                     : `${/^[aeiou]/i.test(`${buc}${pickedName}`) ? 'an' : 'a'} ${buc}${pickedName}`;
                 const pickupMessage = `${existingFood.letter} - ${pickedPhrase} (${existingFood.quan} in total).`;
                 game._pet_food_scan_inventory = game.inventory;
+                objectIceEffect(objectHere, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
                 game.level.objects = (game.level.objects || []).filter(obj => obj !== objectHere);
                 newsym(game.u?.ux || 0, game.u?.uy || 0);
                 if (learnedByComparing) {
@@ -32430,6 +32445,7 @@ export async function rhack(_cmd) {
                 unpaidPrice: shopPrice > 0 ? shopPrice : undefined,
                 line: `${letter} - ${amount}${unpaidSuffix}`,
             };
+            objectIceEffect(pickedItem, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
             game.inventory = [...(game.inventory || []), pickedItem];
             maybeAttachCarriedFigurineTimeout(pickedItem);
             if (shopkeeperForPrice) shopkeeperForPrice.billct = Math.max(shopkeeperForPrice.billct || 0, 1);

@@ -96,6 +96,7 @@ function isRogPeelMklevDistfleeckCandidateLikeC(g, mtmp, stepNum) {
 
 /** C: first near mklev hostile this pass — **`distfleeck`** then **`dochug:886`** (one draw). */
 function peekRogFirstSearchDochugGateMonsterLikeC(g, mtmp) {
+    if (!isFirstSearchMovemonPassLikeC(g)) return false;
     if (!isRogFirstSearchMovemonNearPathLikeC(g) || !mtmp) return false;
     if (!firstSearchNearMklevHostileLikeC(g, mtmp)) return false;
     return (g.context?._searchRogGateCountLikeC | 0) < 2;
@@ -619,22 +620,14 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
     /* C: rogue **`:`** after twin **`#search`** — gate + pet before second-search handlers
      * ( **`_searchStep11Passes`** may still be **2** until **`movemon`** finishes ). */
-    /* C: second **`#search`** — gate **`distfleeck`**, pet **`dog_move`** (**`dog_invent`** ~3227–3228), west peel subpass. */
-    if (
-        isSecondSearchMovemonPassLikeC(g)
-        && rogueSecondSearchFullFmonLikeC(g)
-        && mtmp === findFirstSearchRogMidMklevHostileLikeC(g)
-        && !(g.context?._movemonSearch11SubPass | 0)
-    ) {
+    if (isRogueColonMovemonActiveLikeC(g) && mtmp === findFirstSearchRogMidMklevHostileLikeC(g)) {
         await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
         return;
     }
     if (
-        isSecondSearchMovemonPassLikeC(g)
-        && rogueSecondSearchFullFmonLikeC(g)
+        isRogueColonMovemonActiveLikeC(g)
         && (mtmp.mtame | 0)
         && has_edog(mtmp)
-        && !(g.context?._movemonSearch11SubPass | 0)
     ) {
         let mov = mtmp.movement | 0;
         if (mov < NORMAL_SPEED) {
@@ -647,6 +640,37 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
             mtmp.mux = u.ux | 0;
             mtmp.muy = u.uy | 0;
         }
+        dogMoveOntoApportTowelLikeC(g, mtmp, true);
+        dogMoveLikeC(g, mtmp);
+        return;
+    }
+    /* C: rogue second **`#search`** — gate **`distfleeck`** in main **`fmon`**; post-pet **`dochug`**. */
+    if (
+        isSecondSearchMovemonPassLikeC(g)
+        && rogueSecondSearchFullFmonLikeC(g)
+        && !isRogueColonMovemonActiveLikeC(g)
+        && mtmp === findFirstSearchRogMidMklevHostileLikeC(g)
+    ) {
+        if (!g.context?._searchSecondRogGateDochugLikeC) {
+            await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
+            return;
+        }
+        /* fall through — post-pet gate **`dochug`** (**`rn2(4)`** ~3230). */
+    }
+    /* C: second **`#search`** — full **`dog_move`** (invent + goal); **`:`** is **`dolook`** only. */
+    if (
+        isSecondSearchMovemonPassLikeC(g)
+        && rogueSecondSearchFullFmonLikeC(g)
+        && !isRogueColonMovemonActiveLikeC(g)
+        && (mtmp.mtame | 0)
+        && has_edog(mtmp)
+    ) {
+        let mov = mtmp.movement | 0;
+        if (mov < NORMAL_SPEED) {
+            mtmp.movement = NORMAL_SPEED;
+            mov = NORMAL_SPEED;
+        }
+        mtmp.movement = mov - NORMAL_SPEED;
         dogMoveLikeC(g, mtmp);
         return;
     }
@@ -668,10 +692,7 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
     }
     if (
         (
-            (
-                isSecondSearchMovemonPassLikeC(g)
-                && rogueSecondSearchFullFmonLikeC(g)
-            )
+            (g.context?._searchStep11Passes | 0) === 2
             || isRogueColonMovemonActiveLikeC(g)
         )
         && (g.context?._movemonSearch11SubPass | 0) === 1
@@ -711,7 +732,8 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         if ((mfp.cnt | 0) > 0) {
             mtmp.mtrack[0] = { x: mfp.poss[0].x | 0, y: mfp.poss[0].y | 0 };
         }
-        rn2(16);
+        /* C: rogue east door-niche **`cnt=3`** → **`rn2(12)`**; tourist **`rn2(16)`** (**`cnt=4`**). */
+        rn2(rogueSecondSearchFullFmonLikeC(g) ? 12 : 16);
         await distfleeckMonsterApplyLikeC(g, mtmp);
         return;
     }
@@ -1496,7 +1518,19 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
         forceRogFirstSearchGateLikeC: gateMonPeek,
     })) {
         enteredMmoveBlock = true;
-        if (!gateMonPeek) {
+        if (
+            g.context?._searchSecondRogGateDochugLikeC
+            && mtmp === findFirstSearchRogMidMklevHostileLikeC(g)
+        ) {
+            /* C: second **`#search`** post-pet gate — one **`m_move`** pick (**`rn2(1)`** ~3231). */
+            const mfpGate = mfndposMonsterLikeC(
+                g,
+                mtmp,
+                monAllowflagsMonsterLikeC(g, mtmp),
+            );
+            if ((mfpGate.cnt | 0) > 0) rn2(1);
+            mmStatus = MMOVE_NOTHING;
+        } else if (!gateMonPeek) {
             ensureMonsterMtrack(mtmp);
             primeMtrackBeforeMmoveStep8LikeC(g, mtmp, stepNum);
             mmStatus = mMovePetOrPositionSelectLikeC(g, mtmp);
@@ -1520,6 +1554,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
     /* C: rogue first **`#search`** — pet **`dog_goal`** immediately after gate **`rn2(4)`**. */
     if (
         gateMonPeek
+        && isFirstSearchMovemonPassLikeC(g)
         && g.context?._searchPass1NearMonLikeC
         && g.context?._searchRogGateDoneLikeC
         && !g.context?._searchPass1DogGoalDoneLikeC

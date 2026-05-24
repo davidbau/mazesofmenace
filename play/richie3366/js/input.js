@@ -20,7 +20,7 @@ export function peekReplayMoves(offset = 0) {
     return i < _replayMoves.length ? (_replayMoves.charCodeAt(i) | 0) : null;
 }
 
-/** Replay index advanced by **`nhgetch`** (diagnostics). */
+/** Replay index advanced by **`nhgetch`** (diagnostics / tools). */
 export function replayMovesPosLikeC() {
     return _replayPos | 0;
 }

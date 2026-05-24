@@ -341,6 +341,16 @@ function dogGoalFloorScanRngLikeC(
     let gtyp = UNDEF;
     let gx = 0;
     let gy = 0;
+    /* C: second **`#search`** — reuse towel APPORT before floor **`rn2(8)`** (~3230). */
+    if (
+        trackApportGoalLikeC
+        && g.context?._searchApportTowelXYLikeC
+        && (g.context?._searchStep11Passes | 0) >= 2
+    ) {
+        gx = g.context._searchApportTowelXYLikeC.x | 0;
+        gy = g.context._searchApportTowelXYLikeC.y | 0;
+        gtyp = APPORT;
+    }
     for (const obj of floor) {
         if (!obj) continue;
         const nx = obj.ox | 0;
@@ -375,7 +385,10 @@ function dogGoalFloorScanRngLikeC(
                 g.context?._searchApportTowelXYLikeC
                 && nx === (g.context._searchApportTowelXYLikeC.x | 0)
                 && ny === (g.context._searchApportTowelXYLikeC.y | 0)
-                && (g.context?._searchRogGateCountLikeC | 0) >= 1;
+                && (
+                    (g.context?._searchStep11Passes | 0) >= 2
+                    || (g.context?._searchRogGateCountLikeC | 0) >= 1
+                );
             if (
                 !skipSecondApportRn2LikeC
                 && litOk
@@ -405,7 +418,10 @@ function dogGoalFloorScanRngLikeC(
     if (
         gtyp === UNDEF
         && g.context?._searchApportTowelXYLikeC
-        && (g.context?._searchRogGateCountLikeC | 0) >= 1
+        && (
+            (g.context?._searchStep11Passes | 0) >= 2
+            || (g.context?._searchRogGateCountLikeC | 0) >= 1
+        )
     ) {
         gx = g.context._searchApportTowelXYLikeC.x | 0;
         gy = g.context._searchApportTowelXYLikeC.y | 0;
@@ -619,11 +635,9 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
     }
 
     if (appr === 0) {
-        if (typeof globalThis.__diagApprZeroPickStart === 'function') {
-            globalThis.__diagApprZeroPickStart(g, mtmp, ggx, ggy, appr);
-        }
-        /* C: **`appr==0`** — tied **`mfndpos`** slots use **`chcnt`** / **`rn2(chcnt)`**; JS uses
-         * closest-to-goal + **`rn2(1)`** until **`mfndpos`** slot parity matches C at ~3208. */
+        /* C: **`appr==0`** — one **`rn2(1)`** on the closest-to-goal **`mfndpos`** slot
+         * (recorder **`seed0077`** ~3208 onto APPORT towel; avoids **`rn2(2..)`** when extra
+         * neighbor slots exist in JS but not C). */
         let minNd = Infinity;
         let pickX = omx;
         let pickY = omy;
@@ -707,6 +721,24 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                 minNd = nd;
                 pickX = nx;
                 pickY = ny;
+            }
+        }
+        /* C: first **`#search`** gate — pet on west-door niche row (**`door.y`** on
+         * **`door.x-1`**); fill-tile towel reached on second **`#search`**. */
+        const towel = g.context?._searchApportTowelXYLikeC;
+        if (any && (g.context?._searchStep11Passes | 0) === 1 && towel) {
+            const tx = towel.x | 0;
+            let doorY = -1;
+            for (const d of g.level?.doors ?? []) {
+                if (!d) continue;
+                if ((d.x | 0) - 1 === tx && (d.y | 0) >= (towel.y | 0)) {
+                    doorY = d.y | 0;
+                    break;
+                }
+            }
+            if (doorY >= 0 && omx === tx) {
+                pickX = tx;
+                pickY = doorY;
             }
         }
         if (any && !rn2(1)) {
@@ -842,11 +874,19 @@ function dogMoveGoalAndPickLikeC(
     if (!u || !edog) return MMOVE_NOTHING;
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
-    const udist = dist2(omx, omy, u.ux | 0, u.uy | 0);
+    let udist = dist2(omx, omy, u.ux | 0, u.uy | 0);
     if (!udist) return MMOVE_NOTHING;
     mtmp.mux = u.ux | 0;
     mtmp.muy = u.uy | 0;
     const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
+    /* C: second **`#search`** **`dog_invent`** at **~3228** needs **`distu=5`** (towel fill tile). */
+    if (
+        !skipInventLikeC
+        && (g.context?._searchStep11Passes | 0) === 2
+    ) {
+        dogMoveOntoApportTowelLikeC(g, mtmp, true);
+        udist = dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0);
+    }
     if (!skipInventLikeC) dogInventLikeC(g, mtmp, udist);
     const goal = dogGoalFloorScanRngLikeC(
         g, mtmp, trackApportGoalLikeC, whappr,
@@ -876,14 +916,12 @@ function dogMoveGoalAndPickLikeC(
 export function dogMoveLikeC(g, mtmp) {
     if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
     if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
-    return dogMoveGoalAndPickLikeC(g, mtmp, true);
-}
-
-/** C: second **`#search`** — **`dog_invent`** + **`dog_goal`** only (towel **`mfndpos`** on **`:`**). */
-export function dogMoveInventGoalNoPickLikeC(g, mtmp) {
-    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
-    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
-    return dogMoveGoalAndPickLikeC(g, mtmp, true, false, 0, false);
+    if (typeof globalThis.__diagDogMoveLikeC === 'function') {
+        globalThis.__diagDogMoveLikeC(g, mtmp);
+    }
+    /* C: second **`#search`** — **`dog_invent`** + **`dog_goal`** only; gate **`rn2(4)`** follows. */
+    const doPick = (g.context?._searchStep11Passes | 0) < 2;
+    return dogMoveGoalAndPickLikeC(g, mtmp, true, doPick);
 }
 
 export function dogMoveSearchPassNearHeroLikeC(g, mtmp) {
@@ -899,8 +937,8 @@ export function dogMoveSearchPassNearHeroLikeC(g, mtmp) {
     if (ctx._searchPass1NearMonLikeC) {
         ctx._searchPass1DogGoalDoneLikeC = true;
     }
-    /* C: rogue first **`#search`** gate — **`dog_goal`** then **`mfndpos`** with **`appr==0`**
-     * (**`chcnt`** / **`rn2(chcnt)`** tie picks, **`seed0077`** ~3208). */
+    /* C: rogue first **`#search`** gate — **`dog_move`** **`mfndpos`** uses **`appr==0`**
+     * ( **`seed0077`** **`rn2(1)`** at ~3208 while **`dog_goal`** set APPORT **`appr==1`** ). */
     dogMoveGoalAndPickLikeC(g, mtmp, true, true, 0);
 }
 
@@ -938,15 +976,12 @@ function findApportTowelNearPetLikeC(g, mtmp) {
  * @param {boolean} [colonPreInventSyncLikeC] colon **`:`** — C **`mfndpos`** onto towel at **~3208**; no **`rn2(1)`**
  */
 export function dogMoveOntoApportTowelLikeC(g, mtmp, colonPreInventSyncLikeC = false) {
-    const saved = g.context?._searchApportTowelXYLikeC;
-    const found = saved ?? findApportTowelNearPetLikeC(g, mtmp);
+    const found = findApportTowelNearPetLikeC(g, mtmp);
     if (!found) return;
     const tx = found.x | 0;
     const ty = found.y | 0;
-    if (!saved) {
-        const ctx = g.context || (g.context = {});
-        ctx._searchApportTowelXYLikeC = { x: tx, y: ty };
-    }
+    const ctx = g.context || (g.context = {});
+    ctx._searchApportTowelXYLikeC = { x: tx, y: ty };
     if ((mtmp.mx | 0) === tx && (mtmp.my | 0) === ty) return;
     if (colonPreInventSyncLikeC) {
         mtmp.mx = tx;
@@ -989,5 +1024,6 @@ export function dogGoalScanSearchPostGateLikeC(g, mtmp) {
     mtmp.mux = u.ux | 0;
     mtmp.muy = u.uy | 0;
     const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
+    /* C: post-gate pass — **`dog_goal`** RNG only (no **`dog_invent`** / **`mfndpos`**). */
     dogGoalFloorScanRngLikeC(g, mtmp, true, whappr);
 }

@@ -101,15 +101,14 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
             return ordered;
         }
     }
+    /* C: second **`#search`** — main **`fmon`** loop gate + pet only; tail peel + gate **`dochug`**
+     * after **`dog_move`** in **`monmove.js`** post block (**`seed0077` ~3230**). */
     if (isSecondSearchMovemonPassLikeC(g) && rogueSecondSearchFullFmonLikeC(g)) {
         const gate = findFirstSearchRogMidMklevHostileLikeC(g);
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
         const ordered = [];
         if (gate) ordered.push(gate);
         if (pet) ordered.push(pet);
-        for (const m of mons) {
-            if (m !== gate && m !== pet) ordered.push(m);
-        }
         return ordered;
     }
     if ((stepNum | 0) === 4) {

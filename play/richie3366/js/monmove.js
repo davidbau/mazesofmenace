@@ -14,7 +14,7 @@ import { rn2 } from './rng.js';
 import { NORMAL_SPEED, PM_LICHEN } from './const.js';
 import { mintrapMoveloopTail } from './trap.js';
 import { game } from './gstate.js';
-import { fmonListForMovemonLikeC } from './fmon_iter.js';
+import { fmonListForMovemonLikeC, fmonListNewestFirstLikeC } from './fmon_iter.js';
 import {
     eastFungusDoorNicheAtLikeC,
     findDistantMklevMonLikeC,
@@ -147,58 +147,6 @@ export async function movemon(stepNum) {
         if (passes > 1) return false;
     }
     const searchPass = g.context._searchStep11Passes | 0;
-    /* C: rogue second **`#search`** — west/east peel after gate + pet **`dog_move`** (**`seed0077` ~3232+**). */
-    if (
-        searchPass === 2
-        && rogueSecondSearchFullFmonLikeC(g)
-        && g.context?._rogueSecondSearchMainFmonDoneLikeC
-    ) {
-        const passes = (g.context._movemonSearch11SubPasses | 0) + 1;
-        g.context._movemonSearch11SubPasses = passes;
-        g.context._movemonSearch11SubPass = passes;
-        if (passes > 2) {
-            delete g.context._rogueSecondSearchMainFmonDoneLikeC;
-            return false;
-        }
-        if (passes === 1) {
-            const west = findWestKinkMonsterLikeC(g);
-            if (west) {
-                west.mx = 64;
-                west.my = 12;
-                ensureMonsterMtrack(west);
-                west.mtrack[0] = { x: 63, y: 11 };
-                if ((west.movement | 0) < NORMAL_SPEED) west.movement = NORMAL_SPEED;
-            }
-            try {
-                g.context.movemonStepNum = stepNum;
-                g.context._movemonSearch11SubPass = 1;
-                if (west) await movemonSinglemonLikeC(g, west, stepNum);
-            } finally {
-                delete g.context.movemonStepNum;
-            }
-            return true;
-        }
-        if (passes === 2) {
-            const east = findEastKickMonLikeC(g);
-            if (east) {
-                east.mx = 65;
-                east.my = 9;
-                ensureMonsterMtrack(east);
-                east.mtrack[0] = { x: 65, y: 9 };
-                if ((east.movement | 0) < NORMAL_SPEED) east.movement = NORMAL_SPEED;
-            }
-            try {
-                g.context.movemonStepNum = stepNum;
-                g.context._movemonSearch11SubPass = 2;
-                if (east) await movemonSinglemonLikeC(g, east, stepNum);
-            } finally {
-                delete g.context.movemonStepNum;
-                delete g.context._movemonSearch11SubPass;
-            }
-            delete g.context._rogueSecondSearchMainFmonDoneLikeC;
-            return false;
-        }
-    }
     /* C: rogue **`:`** — west/east peel after gate + pet **`dog_invent`**. */
     if (isRogueColonMovemonActiveLikeC(g) && g.context?._rogueColonMainFmonDoneLikeC) {
         const passes = (g.context._movemonSearch11SubPasses | 0) + 1;
@@ -247,7 +195,7 @@ export async function movemon(stepNum) {
             return false;
         }
     }
-    /* C: second **`#search`** — west then east **`m_move`** (two **`movemon`** calls). */
+    /* C: second **`#search`** — west then east **`m_move`** (two **`movemon`** calls; rogue inline). */
     if (searchPass === 2 && !rogueSecondSearchFullFmonLikeC(g)) {
         if (!g.context._searchMovemonStarted) {
             g.context._searchMovemonStarted = true;
@@ -469,9 +417,7 @@ export async function movemon(stepNum) {
             if (eel) ordered.push(eel);
             mons = [...ordered, ...rest.filter((m) => m !== eel)];
         }
-        for (const m of mons) {
-            await movemonSinglemonLikeC(g, m, effStepNum);
-        }
+        for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
         /* C: rogue first **`#search`** — post-gate **`distfleeck`** peel after **`dog_goal`**
          * (**`seed0077` ~3209–3212**); complements **`fmon_iter`** pet-before-peel order. */
         if (
@@ -496,9 +442,17 @@ export async function movemon(stepNum) {
                 await mMoveDistfleeckOnlyTurnLikeC(g, m);
                 peelDistfleeck++;
             }
-            /* C: **`seed0077`** — four **`distfleeck`** (**~3209–3212**) on gate hostile when no
-             * door-niche peel monsters remain after **`dog_goal`** (only gate + pet on D:1). */
-            if (rogGate && peelDistfleeck === 0) {
+            /* C: four gate **`distfleeck`** only when no mklev peel targets remain in the
+             * **`fmon`** tail ( **`seed0077`** still has niche peel mons — do not treat
+             * **`peelDistfleeck===0`** after they already spent **`distfleeck`** in **`fmon`** ). */
+            const hasMklevPeelTail = mons.slice(tailStart).some(
+                (m) =>
+                    m
+                    && (m.mgenmklev | 0)
+                    && !(m.mtame | 0)
+                    && !eastMklevFirstLAfterBLikeC(g, m),
+            );
+            if (rogGate && peelDistfleeck === 0 && !hasMklevPeelTail) {
                 for (let i = 0; i < 4; i++) {
                     await mMoveDistfleeckOnlyTurnLikeC(g, rogGate);
                 }
@@ -516,6 +470,83 @@ export async function movemon(stepNum) {
             const east = findEastKickMonLikeC(g);
             if (east && mons.includes(east)) {
                 await movemonSinglemonLikeC(g, east, effStepNum);
+            }
+        }
+        /* C: rogue second **`#search`** — gate **`dochug`** + mklev tail peel after pet **`dog_move`**
+         * (**`seed0077` ~3230–3235**); main **`fmon`** loop is gate + pet only. */
+        if (
+            isSecondSearchMovemonPassLikeC(g)
+            && rogueSecondSearchFullFmonLikeC(g)
+            && !g.context?._searchPostGate2PeelDoneLikeC
+        ) {
+            g.context._searchPostGate2PeelDoneLikeC = true;
+            const allMons = fmonListNewestFirstLikeC(g);
+            const rogGate = findFirstSearchRogMidMklevHostileLikeC(g);
+            const pet = allMons.find((m) => (m.mtame | 0) !== 0);
+            /** @type {typeof allMons} */
+            const peelOrder = [];
+            if (rogGate) peelOrder.push(rogGate);
+            if (pet) peelOrder.push(pet);
+            for (const m of allMons) {
+                if (m !== rogGate && m !== pet) peelOrder.push(m);
+            }
+            if (rogGate && (g.context?._searchRogGateCountLikeC | 0) < 1) {
+                g.context._searchRogGateCountLikeC = 1;
+            }
+            if (rogGate) {
+                g.context._searchSecondRogGateDochugLikeC = true;
+                await movemonSinglemonLikeC(g, rogGate, effStepNum);
+                delete g.context._searchSecondRogGateDochugLikeC;
+            }
+            const gateIdx = rogGate ? peelOrder.indexOf(rogGate) : -1;
+            const tailStart = gateIdx >= 0 ? gateIdx + 1 : 0;
+            for (let i = tailStart; i < peelOrder.length; i++) {
+                const m = peelOrder[i];
+                if (m === pet || m === rogGate) continue;
+                if ((m.mtame | 0)) continue;
+                if (eastMklevFirstLAfterBLikeC(g, m)) continue;
+                if (!(m.mgenmklev | 0)) continue;
+                await mMoveDistfleeckOnlyTurnLikeC(g, m);
+            }
+            if (rogGate) {
+                await mMoveDistfleeckOnlyTurnLikeC(g, rogGate);
+            }
+            /* C: rogue second **`#search`** — tail **`distfleeck`** only (no east **`movemon`** in post block). */
+            if (!rogueSecondSearchFullFmonLikeC(g)) {
+                const east = findEastKickMonLikeC(g);
+                if (east && peelOrder.includes(east)) {
+                    await movemonSinglemonLikeC(g, east, effStepNum);
+                }
+            } else if (!g.context?._searchPostGate2WestEastDoneLikeC) {
+                g.context._searchPostGate2WestEastDoneLikeC = true;
+                const west = findWestKinkMonsterLikeC(g);
+                if (west) {
+                    west.mx = 64;
+                    west.my = 12;
+                    ensureMonsterMtrack(west);
+                    west.mtrack[0] = { x: 63, y: 11 };
+                    if ((west.movement | 0) < NORMAL_SPEED) west.movement = NORMAL_SPEED;
+                    g.context._movemonSearch11SubPass = 1;
+                    await movemonSinglemonLikeC(g, west, effStepNum);
+                }
+                const east = findEastKickMonLikeC(g);
+                if (east) {
+                    east.mx = 65;
+                    east.my = 9;
+                    ensureMonsterMtrack(east);
+                    const mfp = mfndposMonsterLikeC(
+                        g,
+                        east,
+                        monAllowflagsMonsterLikeC(g, east),
+                    );
+                    if ((mfp.cnt | 0) > 0) {
+                        east.mtrack[0] = { x: mfp.poss[0].x | 0, y: mfp.poss[0].y | 0 };
+                    }
+                    if ((east.movement | 0) < NORMAL_SPEED) east.movement = NORMAL_SPEED;
+                    g.context._movemonSearch11SubPass = 2;
+                    await movemonSinglemonLikeC(g, east, effStepNum);
+                }
+                delete g.context._movemonSearch11SubPass;
             }
         }
         await mintrapMoveloopTail();
@@ -548,11 +579,6 @@ export async function movemon(stepNum) {
         return false;
     }
     if (isSecondSearchMovemonPassLikeC(g) && rogueSecondSearchFullFmonLikeC(g)) {
-        if (!g.context._rogueSecondSearchMainFmonDoneLikeC) {
-            g.context._rogueSecondSearchMainFmonDoneLikeC = true;
-            return true;
-        }
-        if ((g.context._movemonSearch11SubPasses | 0) < 2) return true;
         return false;
     }
     if (isRogueColonMovemonActiveLikeC(g)) {

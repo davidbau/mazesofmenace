@@ -78,6 +78,9 @@ export function clearSearchMovemonSubHarnessLikeC(g) {
     delete g.context._searchPass1DogGoalDoneLikeC;
     delete g.context._searchRogGateDoneLikeC;
     delete g.context._searchPostGatePeelDoneLikeC;
+    delete g.context._searchPostGate2PeelDoneLikeC;
+    delete g.context._searchPostGate2WestEastDoneLikeC;
+    delete g.context._searchSecondRogGateDochugLikeC;
     delete g.context._searchMovemonStarted;
     delete g.context._movemonSearch11SubPasses;
     delete g.context._movemonSearch11SubPass;
@@ -96,18 +99,6 @@ export function armRogueColonMovemonPendingLikeC(g) {
     if (!g.context) return;
     g.context._rogueColonMovemonPendingLikeC = true;
     delete g.context._searchStep11Passes;
-    delete g.context._deferRogColonMovemonUntilColonLikeC;
-    g.context._deferredNewTurnLikeC = true;
-}
-
-/** @param {import('./gstate.js').game} g */
-export function rogueTwinSearchColonFollowsLikeC(g) {
-    return !!g.context?._rogueTwinSearchColonFollowsLikeC;
-}
-
-/** @deprecated twin-search RNG is on second **`s`**; kept for stale harness reads. */
-export function deferRogColonMovemonUntilColonLikeC(g) {
-    return false;
 }
 
 /** @returns {boolean} */

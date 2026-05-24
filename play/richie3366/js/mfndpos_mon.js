@@ -264,6 +264,18 @@ export function findWestKinkMonsterLikeC(g) {
     );
 }
 
+/** C: rogue gate **`mgenmklev`** at east door **(65,9)** — not second-**`h`** / east-kick peel. */
+function rogEastDoorGateHostileLikeC(g, m) {
+    if (!(m?.mgenmklev | 0) || (m.mtame | 0)) return false;
+    const mx = m.mx | 0;
+    const my = m.my | 0;
+    if (!((mx === 64 || mx === 65) && (my === 9 || my === 10))) return false;
+    if (eastFungusDoorNicheAtLikeC(g, mx, my, m)) return false;
+    const u = g.u;
+    if (!u) return false;
+    return monnearMonsterXYLikeC(m, u.ux | 0, u.uy | 0);
+}
+
 /**
  * C: east door-niche **`mgenmklev`** sleeper for second **`h`** (**`m_move`** at **(64,10)**).
  * @param {import('./gstate.js').game} g
@@ -274,13 +286,23 @@ export function findEastMklevSecondHLikeC(g) {
     return (
         mons.find((m) => {
             if (!(m.mgenmklev | 0) || m === west) return false;
+            if (rogEastDoorGateHostileLikeC(g, m)) return false;
             if (isLandEelForMovemonLikeC(g, m)) return false;
             const mx = m.mx | 0;
             const my = m.my | 0;
             /* C: distant **`mgenmklev`** (e.g. cockatrice **~(22,14)**) is not east door-niche fungus. */
             if (mx <= 24 && my <= 14) return false;
-            if (mx === 64 && my >= 9 && my <= 11) return true;
-            if (mx === 65 && my >= 9 && my <= 11) return true;
+            if (Is_rogue_level(g.u?.uz)) {
+                /* Rogue D:1 second **`h`** at **(64,10)** — not gate **(65,9)**. */
+                if (mx === 64 && my === 10) return true;
+                if (mx === 65 && my === 10) return true;
+                if ((mx === 64 || mx === 65) && (my === 9 || my === 11)) {
+                    return eastFungusDoorNicheAtLikeC(g, mx, my, m);
+                }
+            } else {
+                if (mx === 64 && my >= 9 && my <= 11) return true;
+                if (mx === 65 && my >= 9 && my <= 11) return true;
+            }
             if (eastFungusDoorNicheAtLikeC(g, mx, my, m)) return true;
             const tr = m.mtrack?.[0];
             return !!(tr && (tr.x | 0) === 65 && (tr.y | 0) === 11);
@@ -307,7 +329,7 @@ export function eastMklevFirstLAfterBLikeC(g, mtmp) {
 export function findEastKickMonLikeC(g) {
     const westM = findWestKinkMonsterLikeC(g);
     const east = findEastMklevSecondHLikeC(g);
-    if (east && east !== westM) return east;
+    if (east && east !== westM && !rogEastDoorGateHostileLikeC(g, east)) return east;
     const mons = g.level?.monsters ?? [];
     return (
         mons.find((m) => {
@@ -315,10 +337,19 @@ export function findEastKickMonLikeC(g) {
             const mx = m.mx | 0;
             const my = m.my | 0;
             if (mx === 64 && my === 12) return false;
-            if ((mx === 64 || mx === 65) && (my === 9 || my === 10)) return true;
+            if ((mx === 64 || mx === 65) && (my === 9 || my === 10)) {
+                /* C: rogue gate **(65,9)** — not east **`movemon`** peel target. */
+                if (mx === 65 && my === 9 && !eastFungusDoorNicheAtLikeC(g, mx, my, m)) return false;
+                return true;
+            }
             if (eastFungusDoorNicheAtLikeC(g, mx, my, m)) return true;
             const tr = m.mtrack?.[0];
-            return !!(tr && (tr.x | 0) === 65 && (tr.y | 0) === 9);
+            if (tr && (tr.x | 0) === 65 && (tr.y | 0) === 9) {
+                /* C: rogue gate at **(65,9)** — `mtrack` peel target, not east kick. */
+                if (mx === 65 && my === 9 && !eastFungusDoorNicheAtLikeC(g, mx, my, m)) return false;
+                return true;
+            }
+            return false;
         }) ?? null
     );
 }

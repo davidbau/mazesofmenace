@@ -22,6 +22,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
+import { objectIceEffect } from './ice.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -4436,6 +4437,7 @@ function place_object(otmp, x, y) {
     const display = object_display(otmp);
     Object.assign(otmp, { ox: x, oy: y, ...display });
     game.level.objects.push(otmp);
+    objectIceEffect(otmp, x, y);
     return otmp;
 }
 
