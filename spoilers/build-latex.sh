@@ -24,6 +24,20 @@ if [ ! -f images/dmap-dod.pdf ] || [ companion.md -nt images/dmap-dod.pdf ]; the
   python3 dungeon_map.py --pdfs
 fi
 
+# Make sure the identification-flowchart PDF is present and current.
+# The SVG source lives in cover/ alongside the cover-art SVGs; the
+# print build includes the rendered PDF directly. (build-cover.py
+# also produces this file, but the main book build needs it
+# whether or not the cover has been built.)
+if [ ! -f cover/build/flowchart.pdf ] || [ cover/flowchart.svg -nt cover/build/flowchart.pdf ]; then
+  if ! command -v rsvg-convert &>/dev/null; then
+    echo "Error: rsvg-convert not found. Install with: brew install librsvg" >&2
+    exit 1
+  fi
+  mkdir -p cover/build
+  rsvg-convert -f pdf -o cover/build/flowchart.pdf cover/flowchart.svg
+fi
+
 # Print version drops web-only asides ("or more likely scrolling
 # through" — true in a browser, false on paper). Anything that's
 # accurate-on-screen-only-and-wrong-in-print belongs in this sed.
@@ -45,21 +59,25 @@ caption = (
     'items (Bell of Opening, Candelabrum, Book of the Dead) '
     "needed to enter Moloch's Sanctum and claim the Amulet."
 )
+    # Map image dimensions (PDF points, native):
+    #   dmap-dod.pdf:    570 x 458.25
+    #   dmap-geh.pdf:    570 x 510.75  (combined aspect h/w = 1.700)
+    #   dmap-planes.pdf: 570 x 224.25
+    # A5 text area is 7.018 in tall. At width 4.0 in, the DoD+Geh
+    # stack is 6.8 in tall, with 0.2 in slack inside the text area
+    # (we use \centerline rather than the center env so there's no
+    # env padding eating that budget). Planes uses the same width.
+DMAP_WIDTH = "4.0in"
 replacement = (
     '\n\n```{=latex}\n'
     '\\begingroup\\setlength{\\parskip}{0pt}\n'
-    '\\begin{center}\n'
-    '\\offinterlineskip\n'
-    '\\vbox{%\n'
-    '  \\hbox{\\includegraphics[width=\\linewidth]{images/dmap-dod.pdf}}%\n'
-    '  \\hbox{\\includegraphics[width=\\linewidth]{images/dmap-geh.pdf}}%\n'
-    '}\n'
-    '\\end{center}\n'
+    '\\centerline{\\vbox{\\offinterlineskip%\n'
+    f'  \\hbox{{\\includegraphics[width={DMAP_WIDTH}]{{images/dmap-dod.pdf}}}}%\n'
+    f'  \\hbox{{\\includegraphics[width={DMAP_WIDTH}]{{images/dmap-geh.pdf}}}}%\n'
+    '}}\n'
     '\\endgroup\n'
     '\\clearpage\n'
-    '\\begin{center}\n'
-    '\\includegraphics[width=\\linewidth]{images/dmap-planes.pdf}\n'
-    '\\end{center}\n'
+    f'\\centerline{{\\includegraphics[width={DMAP_WIDTH}]{{images/dmap-planes.pdf}}}}\n'
     '\\vspace{0.6em}\n'
     f'{{\\footnotesize\\itshape\\noindent {caption}\\par}}\n'
     '```\n\n'
@@ -71,14 +89,23 @@ md = re.sub(
 Path('.companion-print.md').write_text(md)
 PY
 
-pandoc .companion-print.md \
-  --from=markdown \
-  --pdf-engine=xelatex \
-  --template=template.tex \
-  --lua-filter=latex-filter.lua \
-  --top-level-division=part \
-  --toc \
-  --output=book.pdf 2>&1
+PANDOC_ARGS=(
+  .companion-print.md
+  --from=markdown
+  --pdf-engine=xelatex
+  --template=template.tex
+  --lua-filter=latex-filter.lua
+  --top-level-division=part
+  --toc
+  --output=book.pdf
+)
+
+# Two-pass build: first pass writes the .aux file (labels and pages);
+# second pass uses it to resolve cross-references like the index's
+# \pageref calls. Without this, page numbers in the index will be
+# stale (showing values from a previous build, or ?? on a fresh build).
+pandoc "${PANDOC_ARGS[@]}" 2>&1
+pandoc "${PANDOC_ARGS[@]}" 2>&1
 rm -f .companion-print.md
 
 echo "    → book.pdf"

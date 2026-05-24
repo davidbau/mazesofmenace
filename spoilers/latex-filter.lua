@@ -92,20 +92,32 @@ function Table(blk)
   -- makes the Class column narrow enough that "disenchanter" and
   -- "Trappers / lurkers above" hyphenate. Bump Class wide enough
   -- that the longest entry fits without breaking.
+  --
+  -- Also wrap with `\let\endhead\endfirsthead` so the header is
+  -- registered as first-page-only. Without this, longtable's normal
+  -- header-repeat behaviour emits a phantom "Sym Class Notes" header
+  -- at the top of the next page when the table content ends right at
+  -- a page break — which the Field Guide subsections do regularly,
+  -- since each is short enough to fit on one page.
   if #blk.colspecs == 3
       and headers[1] == "Sym" and headers[2] == "Class"
       and headers[3] == "Notes" then
     blk.colspecs[1][2] = 0.05
     blk.colspecs[2][2] = 0.22
     blk.colspecs[3][2] = 0.73
-    return blk
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
   end
 
   -- The Wand Table (Price | Wand | Type | Max Charges | Engrave-test
   -- result): pandoc auto-sizes the wand-name column wide enough for
   -- "Secret door detection" and leaves the engrave-test column too
   -- narrow for two-word phrases. Halve the wand column and give
-  -- engrave the slack.
+  -- engrave the slack. (Phantom-header wrap is applied by the
+  -- Price-table catch-all below.)
   if #blk.colspecs == 5
       and headers[1] == "Price" and headers[2] == "Wand"
       and headers[3] == "Type" and headers[4] == "Max Charges"
@@ -115,8 +127,110 @@ function Table(blk)
     blk.colspecs[3][2] = 0.12
     blk.colspecs[4][2] = 0.15
     blk.colspecs[5][2] = 0.43
+    -- fall through to the Price-table phantom-header wrap
+  end
+
+  -- Quoted-price conversion table (Charisma / Markups | Mult | 20 | ... | 500):
+  -- Pandoc's auto-sizing is mostly right but leaves the 500 column a
+  -- touch tight for "1333"; nudge several points away from the
+  -- generous label column and into the 500 column.
+  if #blk.colspecs == 12 and headers[1] == "Charisma / Markups" and headers[2] == "Mult" then
+    blk.colspecs[1][2]  = blk.colspecs[1][2]  - 0.015  -- label: −~5pt
+    blk.colspecs[12][2] = blk.colspecs[12][2] + 0.012  -- 500:   +~4pt
     return blk
   end
+
+  -- Price-ID tables (Scroll Prices, Spellbook Prices, Potion Prices,
+  -- Ring Prices, Amulet Prices, Wand Prices, ...): first column
+  -- header is "Price". These are short tables (~6-25 rows each) but
+  -- they sit in a long sequence right after the Cha-conversion
+  -- longtable, so they regularly end exactly at a page break.
+  -- longtable's normal header-repeat behaviour then emits a phantom
+  -- "Price <Class>" header at the top of the next page, overlapping
+  -- with whatever heading the following section starts with. The fix
+  -- is the same as the Field Guide tables: register the header as
+  -- first-page-only via \let\endhead\endfirsthead.
+  if headers[1] == "Price" and #blk.colspecs >= 2 then
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
+  end
+
+  -- The "Tool | Use" tables in the Tools chapter (containers,
+  -- unlocking tools, light sources, musical instruments, other
+  -- notable tools): same phantom-header story as the price tables.
+  -- One of them ends at the bottom of a page and the next section's
+  -- heading gets a ghost "Tool | Use" header overlapping with it.
+  if headers[1] == "Tool" and headers[2] == "Use" and #blk.colspecs == 2 then
+    return {
+      pandoc.RawBlock("latex", "\\begingroup\\let\\endhead\\endfirsthead"),
+      blk,
+      pandoc.RawBlock("latex", "\\endgroup"),
+    }
+  end
+end
+
+-- Anchors that always carry a "(p. NN)" reference when linked, no
+-- matter the surrounding prose. These are chapter-level sections
+-- whose proper-noun title appears in the body of the book ("...the
+-- gem-throwing negotiation playbook is in Luck and Fortune.") — in
+-- print, the page number helps the reader jump there.
+local always_pageref = {
+  ["more-ways-to-die"] = true,
+  ["luck-and-fortune"] = true,
+  ["field-guide-to-dungeon-fauna"] = true,
+}
+
+-- "see [X](#anchor)" cross-references: in print, append a page
+-- reference like "(p. 63)" after the link, using LaTeX's
+-- \pageref*. Triggered when the immediately preceding word is
+-- "see" / "See" (or ends with that, to catch "(see"), or when the
+-- target is one of the always-pageref section anchors above. Other
+-- internal links pass through unchanged so the book doesn't get
+-- littered with page numbers everywhere. The "see" path is also
+-- suppressed when the author has already said ", below" or
+-- "above" — the reader has been told where to look without needing
+-- a page number.
+function Inlines(inlines)
+  local out = pandoc.List({})
+  for i, x in ipairs(inlines) do
+    out:insert(x)
+    if x.tag == "Link"
+        and x.target
+        and x.target:sub(1, 1) == "#" then
+      local label = x.target:sub(2)
+      local appended = false
+      if i >= 3
+          and inlines[i - 1].tag == "Space"
+          and inlines[i - 2].tag == "Str"
+          and inlines[i - 2].text:match("[Ss]ee$") then
+        -- "see X" path. Suppress when the author has oriented the
+        -- reader with ", below" or ", above" near the link.
+        local skip = false
+        for j = i + 1, math.min(i + 4, #inlines) do
+          if inlines[j].tag == "Str"
+              and inlines[j].text:match("[Bb]elow")
+            or inlines[j].tag == "Str"
+              and inlines[j].text:match("[Aa]bove") then
+            skip = true
+            break
+          end
+        end
+        if not skip then
+          out:insert(pandoc.RawInline("latex",
+            "~(p.~\\pageref*{" .. label .. "})"))
+          appended = true
+        end
+      end
+      if not appended and always_pageref[label] then
+        out:insert(pandoc.RawInline("latex",
+          "~(p.~\\pageref*{" .. label .. "})"))
+      end
+    end
+  end
+  return out
 end
 
 function Div(div)
@@ -135,6 +249,23 @@ function Div(div)
       table.insert(result, pandoc.RawBlock("latex", "\\endgroup"))
       return result
     end
+    -- Sentences/paragraphs that only make sense in the HTML build
+    -- (interactive widgets, scroll references, etc.) get wrapped in
+    -- a `web-only` div. Drop the whole block for the LaTeX/print pipeline.
+    if class == "web-only" then
+      return {}
+    end
+    -- Mirror image: `print-only` content is hidden on the web (via
+    -- CSS) and visible in print. In LaTeX we just want the contents
+    -- to render normally. If we leave the Div in place, Pandoc counts
+    -- it as a heading-nesting level, which silently demotes any
+    -- headings inside (e.g. ##### -> \subparagraph instead of
+    -- \paragraph), and \subparagraph's run-in style confuses
+    -- pagination around the longtable that follows. Unwrap and
+    -- return the contents directly.
+    if class == "print-only" then
+      return div.content
+    end
   end
 end
 
@@ -142,6 +273,31 @@ end
 local function is_sokoban_map(block)
   if block.tag ~= "CodeBlock" then return false end
   return block.text:match("%^") and block.text:match("[┌┐└┘├┤┬┴┼│─]")
+end
+
+-- Centered ASCII-art diagrams: code blocks with box-drawing
+-- characters that aren't Sokoban maps and aren't the special
+-- Dungeons-of-Doom overview map. Pandoc renders these as a plain
+-- verbatim left-flush within the frame, which leaves visible
+-- empty space on the right when the diagram is narrower than the
+-- column. We pad each line with leading spaces so the block (as a
+-- whole) sits centered within the full-width frame, while keeping
+-- the box's internal alignment intact.
+local function is_centered_box_diagram(block)
+  if block.tag ~= "CodeBlock" then return false end
+  if block.text:match("Dungeons of Doom") then return false end
+  if is_sokoban_map(block) then return false end
+  return block.text:match("[┌┐└┘├┤┬┴┼│─]") ~= nil
+end
+
+-- Count UTF-8 code points (visual length) instead of bytes; box
+-- drawing characters are three bytes each in UTF-8.
+local function display_length(s)
+  local n = 0
+  for _ in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    n = n + 1
+  end
+  return n
 end
 
 -- Escape special LaTeX characters in a plain text string
@@ -171,6 +327,43 @@ local function pad_code(text, spaces)
   return table.concat(lines, "\n")
 end
 
+-- Render a centered box-diagram code block. We emit a regular
+-- Verbatim (same env Pandoc uses for fenced code blocks, so the
+-- font/spacing match the surrounding verbatim style exactly) and
+-- pad each line with leading spaces so the diagram block sits
+-- visually centered within the full-width frame. The page-break
+-- minipage wrap that template.tex applies to the lowercase
+-- `verbatim` env doesn't trigger here (we use capital V), so we
+-- add it ourselves.
+--
+-- avail_chars is the number of monospace columns that fit in a
+-- linewidth at \footnotesize Source Code Pro (Scale=0.80 in
+-- template.tex) on the A5 print column (~4.7 in). Measured by
+-- counting where the longest rendered verbatim line lands; 90 is
+-- a generous-but-safe figure that gives visible centering without
+-- pushing wide diagrams past the right margin.
+local function centered_box_diagram(code_block)
+  local text = code_block.text
+  local max_line = 0
+  for line in text:gmatch("[^\n]+") do
+    local n = display_length(line)
+    if n > max_line then max_line = n end
+  end
+  local avail_chars = 90
+  -- 0.375 = 0.75 * (1/2): half of the available slack, scaled to
+  -- 75% so the indent is visible without dominating the diagram.
+  local pad = math.max(0, math.floor((avail_chars - max_line) * 0.375))
+  local padded = pad > 0 and pad_code(text, pad) or text
+
+  return pandoc.RawBlock("latex",
+    "\\begin{minipage}{\\linewidth}\\vspace{0.3em}\n" ..
+    "\\begin{Verbatim}[fontsize=\\footnotesize,baselinestretch=0.85," ..
+    "frame=single,framesep=0.3em,rulecolor=\\color{codeframe}]\n" ..
+    padded .. "\n" ..
+    "\\end{Verbatim}\n" ..
+    "\\vspace{0.3em}\\end{minipage}")
+end
+
 -- Create side-by-side Sokoban layout: map minipage + instructions minipage
 local function sokoban_side_by_side(code_block, list_block)
   -- Calculate max line width and line count of the map
@@ -181,8 +374,8 @@ local function sokoban_side_by_side(code_block, list_block)
     map_lines = map_lines + 1
   end
 
-  -- Wider maps get 40% of page, narrow maps get 33%
-  local map_frac = max_line > 25 and 0.40 or 0.33
+  -- Wider maps get 35% of page, narrow maps get 29%
+  local map_frac = max_line > 25 and 0.35 or 0.29
   local instr_frac = 0.96 - map_frac
 
   local instructions = render_instructions(list_block)
@@ -210,7 +403,7 @@ local function sokoban_side_by_side(code_block, list_block)
 
   local result =
     "\\begin{minipage}[t]{" .. string.format("%.2f", map_frac) .. "\\linewidth}\n" ..
-    "\\begin{Verbatim}[fontsize=\\scriptsize," ..
+    "\\begin{Verbatim}[fontsize=\\scriptsize,baselinestretch=0.85," ..
     "frame=single,framesep=0.3em," ..
     "rulecolor=\\color{codeframe}]\n" ..
     padded_map .. "\n" ..
@@ -360,6 +553,15 @@ function Pandoc(doc)
     if is_sokoban_map(block) and i + 1 <= #blocks and blocks[i+1].tag == "OrderedList" then
       table.insert(new_blocks, sokoban_side_by_side(block, blocks[i+1]))
       i = i + 2  -- skip both the code block and the list
+      goto continue
+    end
+
+    -- Centered ASCII-art diagrams (corridor demos, room types,
+    -- mines preview): pad each line so the whole block sits
+    -- centered within the full-width frame.
+    if is_centered_box_diagram(block) then
+      table.insert(new_blocks, centered_box_diagram(block))
+      i = i + 1
       goto continue
     end
 
