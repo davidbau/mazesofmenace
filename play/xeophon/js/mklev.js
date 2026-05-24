@@ -37,15 +37,16 @@ import {
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, TREE, CLOUD,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
-    MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
+    NO_MINVENT, MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
+    DB_UNDER, DB_FLOOR,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     ROT_AGE, TAINT_AGE,
-    In_endgame, In_mines, Is_airlevel, Is_firelevel,
+    In_endgame, In_mines, In_quest, Is_airlevel, Is_firelevel,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -3627,21 +3628,77 @@ export function u_on_rndspot(up = false) {
 // oinit stub (level-dependent object probability reset)
 function oinit() { /* no-op for contest */ }
 
-// level_difficulty stub
+function builds_up(lev = game.u?.uz) {
+    const dnum = lev?.dnum ?? 0;
+    const dungeon = game.dungeons?.[dnum];
+    if (!dungeon) return false;
+    if ((dungeon.num_dunlevs ?? 1) > 1)
+        return (dungeon.entry_lev ?? 1) === dungeon.num_dunlevs;
+    const dlevel = lev?.dlevel ?? 1;
+    const branch = (game.branches || []).find(br =>
+        br.end2?.dnum === dnum && br.end2?.dlevel === dlevel);
+    return !!branch?.end1_up;
+}
+
+export function recordLevelReached(lev = game.u?.uz) {
+    const dnum = lev?.dnum;
+    const dlevel = lev?.dlevel;
+    const dungeon = game.dungeons?.[dnum];
+    if (!dungeon || !Number.isFinite(dlevel)) return;
+    const reached = dungeon.dunlev_ureached || 0;
+    if (!builds_up(lev)) {
+        if (dlevel > reached) dungeon.dunlev_ureached = dlevel;
+    } else if (!reached || dlevel < reached) {
+        dungeon.dunlev_ureached = dlevel;
+    }
+}
+
+function deepest_lev_reached(noquest = false) {
+    let ret = 0;
+    for (let dnum = 0; dnum < (game.dungeons?.length || 0); dnum++) {
+        if (noquest && dnum === game.quest_dnum) continue;
+        const dlevel = game.dungeons?.[dnum]?.dunlev_ureached || 0;
+        if (!dlevel) continue;
+        ret = Math.max(ret, depth_of_level({ dnum, dlevel }));
+    }
+    return ret;
+}
+
+function heroHasRealAmuletOfYendor() {
+    return !!(game.u?.uhave?.amulet || (game.inventory || []).some(item =>
+        item.realAmuletOfYendor || String(item.actualKind || item.kind || '').toLowerCase() === 'amulet of yendor'));
+}
+
+function heroHasExtrinsicAggravateMonster() {
+    if (game.u?.EAggravate_monster) return true;
+    return (game.inventory || []).some(item => {
+        if (item.cls !== 'ring' || !(item.worn || /\(on (?:left|right) hand\)/.test(item.line || '')))
+            return false;
+        const name = String(item.actualKind || item.kind || '').toLowerCase();
+        return (item.ringRoll || item.roll) === 13 || name === 'ring of aggravate monster';
+    });
+}
+
 export function level_difficulty() {
     const uz = game.u?.uz;
+    let res;
     if (In_endgame(uz)) {
         const sanctum = game.sanctum_level || game.specialLevels?.find(level => level?.name === 'sanctum');
         const sanctumDepth = sanctum ? depth_of_level(sanctum) : 51;
-        return sanctumDepth + Math.trunc((game.u?.ulevel || 1) / 2);
+        res = sanctumDepth + Math.trunc((game.u?.ulevel || 1) / 2);
+    } else if (heroHasRealAmuletOfYendor()) {
+        res = deepest_lev_reached(false);
+    } else {
+        res = depth_of_level(uz);
+        if (builds_up(uz)) {
+            const dungeon = game.dungeons?.[uz?.dnum];
+            const dlevel = uz?.dlevel ?? 1;
+            res += 2 * ((dungeon?.entry_lev ?? dlevel) - dlevel + 1);
+        }
     }
-    const dungeon = game.dungeons?.[uz?.dnum];
-    if (dungeon?.name === 'Sokoban' || dungeon?.name === "Vlad's Tower") {
-        const dlevel = uz?.dlevel ?? 1;
-        return depth_of_level(uz) + 2 * ((dungeon.entry_lev ?? dlevel) - dlevel + 1);
-    }
-    const d = depth_of_level(uz);
-    return d;
+    if (heroHasExtrinsicAggravateMonster())
+        res = res > 25 ? 50 : res * 2;
+    return res;
 }
 
 // ============================================================
@@ -5467,7 +5524,7 @@ function noRandomMonsterItemRolls(ptr) {
     return ptr.mindless || ptr.mlet === 'ghost' || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name);
 }
 
-function noteleportLevelForMonster(mon) {
+export function noteleportLevelForMonster(mon) {
     const ptr = mon?.data || mon;
     const flags = game.level?.flags || {};
     const stasisUntil = flags.stasis_until ?? 0;
@@ -5792,7 +5849,7 @@ function collectRlocCoords(mon) {
     return coords;
 }
 
-function rlocToCoreNoMsg(mon, x, y) {
+export function rlocToCoreNoMsg(mon, x, y) {
     if (x === mon.mx && y === mon.my && monster_at(x, y) === mon) return;
     const tailCount = Array.isArray(mon.wormSegments) ? mon.wormSegments.length : 0;
     mon.mtrack = [];
@@ -5801,7 +5858,7 @@ function rlocToCoreNoMsg(mon, x, y) {
     if (tailCount) placeLongWormTailRandomly(mon, x, y, tailCount);
 }
 
-function rlocNoMsg(mon) {
+export function rlocNoMsg(mon) {
     if (!mon?.mx) return false;
     for (let trycount = 0; trycount < 50; trycount++) {
         const x = rnd(COLNO - 1);
@@ -6360,7 +6417,7 @@ export async function makemon(mdat, x, y, mmflags) {
     if (ptr.name === 'ghost' && !(mmflags & MM_NONAME)) {
         if (rn2(7)) rn2(34);
     }
-    let allowMinvent = true;
+    let allowMinvent = !(mmflags & NO_MINVENT);
     const peacefulPtr = ptr;
     if (ptr.mlet === 'V') {
         let shifted = null;
@@ -6550,7 +6607,7 @@ export async function makemon(mdat, x, y, mmflags) {
         }
     }
 
-    if (ptr.mlet === S_NYMPH) {
+    if (allowMinvent && ptr.mlet === S_NYMPH) {
         if (!rn2(2)) {
             mon.nymphMirror = true;
             mongets(MIRROR);
@@ -6560,19 +6617,19 @@ export async function makemon(mdat, x, y, mmflags) {
             mongets(POT_OBJECT_DETECTION);
         }
     }
-    if (ptr.name === 'leprechaun') {
+    if (allowMinvent && ptr.name === 'leprechaun') {
         mkmonmoney(mon, d(level_difficulty(), 30));
     }
-    if (ptr.name === 'ice devil' && !rn2(4)) {
+    if (allowMinvent && ptr.name === 'ice devil' && !rn2(4)) {
         mongets(SPEAR);
         mon.hasInventory = true;
-    } else if (ptr.name === 'Asmodeus') {
+    } else if (allowMinvent && ptr.name === 'Asmodeus') {
         mongets(WAN_COLD);
         mongets(WAN_FIRE);
         mon.hasInventory = true;
     }
     const livingDwarf = ptr.dwarf && ptr.mlet === S_HUMANOID;
-    if (livingDwarf) {
+    if (allowMinvent && livingDwarf) {
         if (rn2(7)) mongets(DWARVISH_CLOAK);
         if (rn2(7)) mongets(IRON_SHOES);
         if (!rn2(4)) {
@@ -6596,20 +6653,20 @@ export async function makemon(mdat, x, y, mmflags) {
         m_initweap(ptr);
         if (game._last_mon_throw) mon.missile = game._last_mon_throw;
     }
-    if (ptr.priest) {
+    if (allowMinvent && ptr.priest) {
         mongets(rn2(7) ? ROBE : rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE);
         mongets(SMALL_SHIELD);
         mkmonmoney(mon, rn1(10, 20));
     }
-    if (ptr.mercenary) {
+    if (allowMinvent && ptr.mercenary) {
         m_initmercinv(ptr);
         rn2(100);
         game._mongets_target = previousMongetsTarget;
         return mon;
     }
-    if (ptr.mlet === 'G' && !rn2(game.in_mklev && game.dungeons?.[game.u?.uz?.dnum]?.name === 'The Gnomish Mines' ? 20 : 60))
+    if (allowMinvent && ptr.mlet === 'G' && !rn2(game.in_mklev && game.dungeons?.[game.u?.uz?.dnum]?.name === 'The Gnomish Mines' ? 20 : 60))
         mksobj(rn2(4) ? TALLOW_CANDLE : WAX_CANDLE, true, false);
-    if (ptr.shopkeeper) {
+    if (allowMinvent && ptr.shopkeeper) {
         mongets(SKELETON_KEY);
         switch (rn2(4)) {
         case 0:
@@ -6623,7 +6680,7 @@ export async function makemon(mdat, x, y, mmflags) {
         }
         mon.hasInventory = true;
     }
-    const quantumBoxRoll = ptr.glyph === 'Q' && !rn2(20);
+    const quantumBoxRoll = allowMinvent && ptr.glyph === 'Q' && !rn2(20);
     if (ptr.name === 'quantum mechanic' && quantumBoxRoll) {
         const box = mksobj(LARGE_BOX, false, false);
         Object.assign(box, object_display(box));
@@ -6634,7 +6691,7 @@ export async function makemon(mdat, x, y, mmflags) {
         mon.minvent = [box, ...(mon.minvent || [])];
         mon.hasInventory = true;
     }
-    if (ptr.mlet === 'H') {
+    if (allowMinvent && ptr.mlet === 'H') {
         if (ptr.name === 'minotaur') {
             if (!rn2(8)) mongets(WAN_DIGGING);
         } else if (ptr.name?.includes('giant')) {
@@ -6645,7 +6702,7 @@ export async function makemon(mdat, x, y, mmflags) {
             }
         }
     }
-    if (ptr.mlet === 'L') {
+    if (allowMinvent && ptr.mlet === 'L') {
         if (ptr.name === 'master lich' && !rn2(13)) {
             mongets(rn2(7) ? ATHAME : WAN_NOTHING);
         } else if (ptr.name === 'arch-lich' && !rn2(3)) {
@@ -6657,7 +6714,7 @@ export async function makemon(mdat, x, y, mmflags) {
             mon.hasInventory = true;
         }
     }
-    if (ptr.mlet === S_MUMMY && rn2(7)) mongets(ORCISH_HELM);
+    if (allowMinvent && ptr.mlet === S_MUMMY && rn2(7)) mongets(ORCISH_HELM);
     if (allowMinvent && !ptr.noRandomInventoryRolls) {
         if (!skipRandomItemRolls) {
             if (mon.m_lev > rn2(50)) {
@@ -6713,7 +6770,22 @@ function rolling_boulder_launch_path_end(x, y, distance, dx, dy) {
     return { x: lx, y: ly };
 }
 
-function rolling_boulder_launch_coord(trap) {
+function rolling_boulder_explicit_launch_coord(trap, launchfrom) {
+    if (!launchfrom) return null;
+    const x = trap.tx + (launchfrom.x || 0);
+    const y = trap.ty + (launchfrom.y || 0);
+    const dx = x - trap.tx;
+    const dy = y - trap.ty;
+    if (dx === 0 && dy === 0) return null;
+    if (!isok(x, y)) return null;
+    if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) return null;
+    return { x, y };
+}
+
+function rolling_boulder_launch_coord(trap, launchfrom = null) {
+    if (game.level?.flags?.sokoban_rules) return null;
+    const explicit = rolling_boulder_explicit_launch_coord(trap, launchfrom);
+    if (explicit) return explicit;
     let distance = rn1(5, 4);
     let dir = rn2(8);
     let trycount = 0;
@@ -6741,48 +6813,197 @@ function choose_trapnote(ttmp) {
     return picks.length ? picks[rn2(picks.length)] : rn2(12);
 }
 
-// maketrap stub
-async function maketrap(x, y, typ) {
+function undestroyable_trap(ttyp) {
+    return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
+function unhideable_trap(ttyp) {
+    return ttyp === HOLE;
+}
+
+function single_level_branch(lev = game.u?.uz) {
+    const dungeon = game.dungeons?.[lev?.dnum ?? 0];
+    return !!dungeon && (dungeon.num_dunlevs || 1) <= 1;
+}
+
+function trapTerrainBlocked(x, y, typ) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return true;
+    const terrain = loc.typ;
+    if (terrain === STAIRS || terrain === LADDER) return true;
+    if (terrain === POOL || terrain === MOAT || terrain === WATER
+        || terrain === LAVAPOOL || terrain === LAVAWALL) return true;
+    if (IS_FURNITURE(terrain) && typ !== PIT && typ !== HOLE) return true;
+    if (terrain === DRAWBRIDGE_UP && typ === MAGIC_PORTAL) return true;
+    if ((terrain === AIR || terrain === CLOUD) && typ !== MAGIC_PORTAL) return true;
+    if (typ === LEVEL_TELEP && single_level_branch(game.u?.uz)) return true;
+    return false;
+}
+
+function dng_bottom(lev = game.u?.uz) {
+    const dungeon = game.dungeons?.[lev?.dnum ?? 0];
+    let bottom = dungeon?.num_dunlevs ?? lev?.dlevel ?? 1;
+    if (In_quest(lev)) {
+        const qlocate = game.specialLevels?.find(level =>
+            level?.dnum === lev?.dnum && level?.name === 'x-loca');
+        const qlocateDepth = qlocate?.dlevel;
+        if (qlocateDepth && (dungeon?.dunlev_ureached || 0) < qlocateDepth)
+            bottom = qlocateDepth;
+    } else if (dungeon?.name === 'Gehennom' && !game.u?.uevent?.invoked) {
+        bottom = Math.max(1, bottom - 1);
+    }
+    return bottom;
+}
+
+function del_engr_at(x, y) {
+    if (!game.level?.engravings) return;
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== x || engr.y !== y);
+}
+
+function unearth_objs(x, y) {
+    const lvl = game.level;
+    if (!lvl) return;
+    const unearthed = [];
+    if (lvl.buriedobjlist?.length) {
+        const buried = [];
+        for (const obj of lvl.buriedobjlist) {
+            if (obj?.ox === x && obj?.oy === y) unearthed.push(obj);
+            else buried.push(obj);
+        }
+        lvl.buriedobjlist = buried;
+    }
+    for (const obj of unearthed) {
+        obj.buried = false;
+        obj.hidden = false;
+        if (lvl.objects?.includes(obj)) {
+            Object.assign(obj, { ox: x, oy: y }, object_display(obj));
+        } else {
+            place_object(obj, x, y);
+        }
+        stack_floor_object(obj);
+    }
+    for (const obj of lvl.objects || []) {
+        if (obj?.ox !== x || obj?.oy !== y || !obj.buried) continue;
+        obj.buried = false;
+        obj.hidden = false;
+        Object.assign(obj, object_display(obj));
+        stack_floor_object(obj);
+    }
+    del_engr_at(x, y);
+}
+
+function normalizePitHoleTrapTerrain(x, y, typ) {
+    if (!is_pit(typ) && !is_hole(typ)) return;
+    const lvl = game.level;
+    const loc = lvl?.at(x, y);
+    if (!loc) return;
+    const oldTyp = loc.typ;
+    let clearFlags = true;
+    if (oldTyp === DRAWBRIDGE_UP) {
+        clearFlags = false;
+        loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_FLOOR;
+    } else if (IS_ROOM(oldTyp)) {
+        loc.typ = ROOM;
+    } else if (oldTyp === STONE || oldTyp === SCORR) {
+        loc.typ = CORR;
+    } else if (IS_WALL(oldTyp) || oldTyp === SDOOR) {
+        loc.typ = lvl.flags?.is_maze_lev ? ROOM
+            : lvl.flags?.is_cavernous_lev ? CORR
+                : DOOR;
+    }
+    if (clearFlags) {
+        loc.flags = 0;
+        loc.doormask = D_NODOOR;
+        loc.wall_info = 0;
+    }
+    if ((oldTyp === FOUNTAIN || oldTyp === SINK) && loc.typ !== oldTyp)
+        recount_level_features();
+    unearth_objs(x, y);
+}
+
+// C ref: trap.c maketrap
+async function maketrap(x, y, typ, opts = {}) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
     const existing = t_at(x, y);
+    if (existing && undestroyable_trap(existing.ttyp)) return null;
+    if (!existing && trapTerrainBlocked(x, y, typ)) return null;
     const trap = existing || { tx: x, ty: y };
-    Object.assign(trap, { ttyp: typ, tseen: false, once: false, launch: { x: 0, y: 0 } });
+    Object.assign(trap, {
+        ttyp: typ,
+        tseen: unhideable_trap(typ),
+        once: false,
+        launch: { x: -1, y: -1 },
+        launch2: null,
+        teledest: null,
+        dst: { dnum: -1, dlevel: -1 },
+    });
     if (typ === SQKY_BOARD) trap.tnote = choose_trapnote(trap);
     if (typ === STATUE_TRAP) {
         const ptr = rndmonst_adj(3, 6);
         const statue = mksobj_at(STATUE, x, y, false, false);
         statue.contents = [];
         statue.corpsenm = ptr;
-        const mon = await makemon(ptr, 0, 0, MM_NOGRP);
+        const mon = await makemon(ptr, 0, 0, MM_NOCOUNTBIRTH | MM_NOMSG);
         if (mon) {
             game.level.monsters = game.level.monsters.filter(candidate => candidate !== mon);
-            for (const obj of mon.minvent || []) add_to_container(statue, obj);
+            for (const obj of mon.minvent || []) {
+                obj.worn = false;
+                obj.owornmask = 0;
+                add_to_container(statue, obj);
+            }
+            mon.minvent = [];
+            mon.hasInventory = false;
         }
     }
     if (typ === ROLLING_BOULDER_TRAP) {
-        const launch = rolling_boulder_launch_coord(trap);
+        const launch = rolling_boulder_launch_coord(trap, opts.launchfrom);
         if (launch) {
             mksobj_at(BOULDER, launch.x, launch.y, true, false);
             trap.launch = launch;
             trap.launch2 = { x: x - (launch.x - x), y: y - (launch.y - y) };
         } else {
             trap.launch = { x, y };
+            trap.launch2 = { x, y };
         }
     }
+    if (typ === TELEP_TRAP && opts.teledest && isok(opts.teledest.x, opts.teledest.y)) {
+        trap.teledest = { x: opts.teledest.x, y: opts.teledest.y };
+        trap.launch = { ...trap.teledest };
+    }
+    if (is_pit(typ)) trap.conjoined = 0;
     if (is_hole(typ)) {
         const uz = game.u?.uz ?? { dnum: 0, dlevel: 1 };
-        const dungeon = game.dungeons?.[uz.dnum];
-        const bottom = dungeon?.num_dunlevs ?? uz.dlevel;
+        const bottom = dng_bottom(uz);
         trap.dst = { dnum: uz.dnum, dlevel: uz.dlevel };
         while (trap.dst.dlevel < bottom) {
             trap.dst.dlevel++;
             if (rn2(4)) break;
         }
     }
+    normalizePitHoleTrapTerrain(x, y, typ);
     if (!game.level) return trap;
     if (!existing) {
         if (!game.level.traps) game.level.traps = [];
         game.level.traps.push(trap);
+    }
+    return trap;
+}
+
+function sokobanTrapRecord(typ, x, y) {
+    const trap = {
+        ttyp: typ,
+        tx: x,
+        ty: y,
+        tseen: true,
+        once: false,
+        launch: { x: -1, y: -1 },
+        launch2: null,
+        teledest: null,
+        dst: { dnum: -1, dlevel: -1 },
+    };
+    if (typ === ROLLING_BOULDER_TRAP) {
+        trap.launch = { x, y };
+        trap.launch2 = { x, y };
     }
     return trap;
 }
@@ -7166,6 +7387,7 @@ export function l_nhcore_init() {
 
 export function syncDungeonContext() {
     game.inhell = game.dungeons?.[game.u?.uz?.dnum]?.name === 'Gehennom';
+    recordLevelReached(game.u?.uz);
 }
 
 // C ref: mklev.c mklev()
@@ -12060,6 +12282,7 @@ function flipSpecialLevelRnd(xminArg = null, yminArg = null, xmaxArg = null, yma
     for (const trap of map.traps || []) {
         point(trap.launch, 'x', 'y');
         point(trap.launch2, 'x', 'y');
+        point(trap.teledest, 'x', 'y');
     }
     for (const door of map.doors || []) point(door, 'x', 'y');
     for (const engr of map.engravings || []) point(engr, 'x', 'y');
@@ -13321,6 +13544,7 @@ export async function make_tutorial1_level() {
 
     clear_level_structures();
     g.u.uz = { dnum: 8, dlevel: 1 };
+    syncDungeonContext();
     g.level.flags.is_maze_lev = true;
     g.level.flags.rndmongen = false;
     g.level.flags.deathdrops = false;
@@ -15283,7 +15507,7 @@ export async function make_sokoban1_level() {
     u_on_newpos(SOKO_XSTART + landing[0], SOKO_YSTART + landing[1]);
 
     for (const [typ, x, y] of traps) {
-        const trap = { ttyp: typ, tx: SOKO_XSTART + x, ty: SOKO_YSTART + y, tseen: true, once: false, launch: { x: 0, y: 0 } };
+        const trap = sokobanTrapRecord(typ, SOKO_XSTART + x, SOKO_YSTART + y);
         if (is_hole(typ)) {
             const uz = g.u?.uz ?? { dnum: 4, dlevel: 1 };
             const dungeon = g.dungeons?.[uz.dnum];
@@ -15524,7 +15748,7 @@ async function make_sokoban2_level() {
         boulder.color = NO_COLOR;
     }
     for (const [typ, x, y] of layout.traps) {
-        const trap = { ttyp: typ, tx: start.x + x, ty: start.y + y, tseen: true, once: false, launch: { x: 0, y: 0 } };
+        const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);
         if (is_hole(typ)) {
             const uz = g.u?.uz ?? { dnum: 4, dlevel: 1 };
             const dungeon = g.dungeons?.[uz.dnum];
@@ -15612,7 +15836,7 @@ async function make_sokoban3_level() {
         boulder.color = NO_COLOR;
     }
     for (const [typ, x, y] of layout.traps) {
-        const trap = { ttyp: typ, tx: start.x + x, ty: start.y + y, tseen: true, once: false, launch: { x: 0, y: 0 } };
+        const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);
         if (is_hole(typ)) {
             const uz = g.u?.uz ?? { dnum: 4, dlevel: 1 };
             const dungeon = g.dungeons?.[uz.dnum];
@@ -15692,7 +15916,7 @@ async function make_sokoban4_level() {
         boulder.color = NO_COLOR;
     }
     for (const [typ, x, y] of layout.traps) {
-        const trap = { ttyp: typ, tx: start.x + x, ty: start.y + y, tseen: true, once: false, launch: { x: 0, y: 0 } };
+        const trap = sokobanTrapRecord(typ, start.x + x, start.y + y);
         rnd(4);
         g.level.traps.push(trap);
     }
@@ -18504,11 +18728,10 @@ async function run_themeroom_postprocess() {
                 break;
             }
         }
-        const trap = await maketrap(entry.x, entry.y, TELEP_TRAP);
+        const trap = await maketrap(entry.x, entry.y, TELEP_TRAP, dst ? { teledest: dst } : {});
         if (trap) {
             rnd(4);
             trap.tseen = true;
-            if (dst) trap.dst = dst;
         }
     }
 }

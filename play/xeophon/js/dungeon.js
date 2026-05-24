@@ -224,6 +224,7 @@ export function init_dungeons_rng() {
         dungeon.num_dunlevs = src.range ? rn1(src.range, src.base) : src.base;
         dungeon.ledger_start = dgn ? dungeons[dgn - 1].ledger_start + dungeons[dgn - 1].num_dunlevs : 0;
         dungeon.depth_start = dgn ? 0 : 1;
+        dungeon.dunlev_ureached = dgn ? 0 : 1;
         setDungeonEntry(dungeon, src.entry || 0);
         dungeon.unconnected = (src.flags || []).includes('unconnected');
         dungeons[dgn] = dungeon;
