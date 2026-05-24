@@ -1,5 +1,5 @@
 import { game } from './gstate.js';
-import { DB_MOAT, DB_UNDER, DRAWBRIDGE_UP, IN_SIGHT, IS_POOL, Is_waterlevel } from './const.js';
+import { DB_MOAT, DB_UNDER, DRAWBRIDGE_UP, IN_SIGHT, IS_LAVA, IS_POOL, Is_waterlevel } from './const.js';
 import { newsym } from './display.js';
 import { dropMonsterInventory, enextoMonsterSpot, mkcorpstat, next_ident, noteleportLevelForMonster, rlocNoMsg } from './mklev.js';
 import { d, rn2, rnd } from './rng.js';
@@ -263,18 +263,57 @@ function removeLiquidKilledMonster(mon, recordKill = null, awardExperience = fal
     newsym(mon.mx, mon.my);
 }
 
-export function applyMeltedIceMonsterLiquidEffects(x, y, {
+function removeLavaKilledMonster(mon, recordKill = null, awardExperience = false) {
+    dropMonsterInventory(mon);
+    recordKill?.(mon, awardExperience);
+    const loc = game.level?.at(mon.mx, mon.my);
+    if (loc?.map_invisible) {
+        loc.map_invisible = false;
+        loc.remembered_glyph = null;
+    }
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.movement = 0;
+    mon.dead = true;
+    newsym(mon.mx, mon.my);
+}
+
+function applyMonsterLavaEffects(mon, messages, visible, recordKill, heroCaused) {
+    const data = mon?.data || {};
+    if (!mon || data.flyer || data.floater || data.inAir || data.clinger || data.likesLava) return false;
+    if (maybeTeleportAwayFromWater(mon, messages, visible)) return true;
+    if (!(mon.fireResistance || data.resistsFire || data.fireResistance)) {
+        if (visible) messages.push(`${monsterSubject(mon)} burns to a crisp.`);
+        removeLavaKilledMonster(mon, recordKill, heroCaused);
+        return true;
+    }
+
+    mon.mhp = (mon.mhp || 1) - 1;
+    if ((mon.mhp || 0) <= 0) {
+        if (visible) messages.push(`${monsterSubject(mon)} surrenders to the fire.`);
+        removeLavaKilledMonster(mon, recordKill, false);
+        return true;
+    }
+    if (visible) messages.push(`${monsterSubject(mon)} burns slightly.`);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
+export function applyMonsterLiquidEffectsAt(x, y, {
     heroCaused = false,
     recordKill = null,
 } = {}) {
     const loc = game.level?.at(x, y);
-    if (!isPostMeltLiquid(loc)) return [];
+    if (!loc || !(isPostMeltLiquid(loc) || IS_LAVA(loc.typ))) return [];
     const mon = (game.level?.monsters || []).find(candidate =>
         candidate.mx === x && candidate.my === y && (candidate.mhp == null || candidate.mhp > 0));
-    if (!mon || monsterCanStayAbovePool(mon)) return [];
-
+    if (!mon) return [];
     const messages = [];
     const visible = monsterVisibleAt(mon, x, y);
+    if (IS_LAVA(loc.typ)) {
+        applyMonsterLavaEffects(mon, messages, visible, recordKill, heroCaused);
+        return messages;
+    }
+    if (monsterCanStayAbovePool(mon)) return [];
     if ((mon.data?.name || '') === 'gremlin' && rn2(3)) {
         splitGremlin(mon, messages, visible);
         waterDamageMonsterInventory(mon);
@@ -288,4 +327,8 @@ export function applyMeltedIceMonsterLiquidEffects(x, y, {
         messages.push(heroCaused ? `You drown the ${simpleMonsterName(mon)}.` : `${monsterSubject(mon)} drowns.`);
     removeLiquidKilledMonster(mon, recordKill, heroCaused);
     return messages;
+}
+
+export function applyMeltedIceMonsterLiquidEffects(x, y, options = {}) {
+    return applyMonsterLiquidEffectsAt(x, y, options);
 }

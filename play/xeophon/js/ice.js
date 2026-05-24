@@ -227,7 +227,7 @@ function applyTrapIceEffects(x, y) {
         game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
 }
 
-function unearthObjectsAt(x, y) {
+export function unearthObjectsAt(x, y) {
     const lvl = game.level;
     if (!lvl) return;
     const unearthed = [];
@@ -286,6 +286,14 @@ function isHeroBall(obj) {
 function isHeavyIronBallObject(obj) {
     return obj?.otyp === HEAVY_IRON_BALL || obj?.cls === 'ball'
         || objectKindText(obj) === 'heavy iron ball';
+}
+
+function isBuriedBallTrapType() {
+    return game.u?.utraptype === TT_BURIEDBALL || game.u?.utraptype === 'buriedball';
+}
+
+export function isBuriedBallTrapActive() {
+    return !!game.u?.utrap && isBuriedBallTrapType();
 }
 
 function nextLocalIdent() {
@@ -357,11 +365,51 @@ function makeRestoredChain(x, y) {
     };
 }
 
+function buriedBallCandidates(lvl) {
+    const seen = new Set();
+    const candidates = [];
+    for (const obj of lvl?.buriedobjlist || []) {
+        if (!isHeavyIronBallObject(obj) || seen.has(obj)) continue;
+        seen.add(obj);
+        candidates.push(obj);
+    }
+    for (const obj of lvl?.objects || []) {
+        if (!obj?.buried || !isHeavyIronBallObject(obj) || seen.has(obj)) continue;
+        seen.add(obj);
+        candidates.push(obj);
+    }
+    return candidates;
+}
+
+export function findBuriedBallNear(x = game.u?.ux, y = game.u?.uy, lvl = game.level) {
+    if (!lvl || x == null || y == null) return null;
+    if (game.u?.utrap && !isBuriedBallTrapType()) return null;
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const obj of buriedBallCandidates(lvl)) {
+        if (obj.ox === x && obj.oy === y) return { obj, x, y };
+        const dist = (obj.ox - x) ** 2 + (obj.oy - y) ** 2;
+        if (dist <= 8 && dist < nearestDist) {
+            nearest = obj;
+            nearestDist = dist;
+        }
+    }
+    return nearest ? { obj: nearest, x: nearest.ox, y: nearest.oy } : null;
+}
+
+function removeBuriedBallFromLevel(ball, lvl) {
+    if (!ball || !lvl) return;
+    if (lvl.buriedobjlist)
+        lvl.buriedobjlist = lvl.buriedobjlist.filter(obj => obj !== ball);
+    if (lvl.objects)
+        lvl.objects = lvl.objects.filter(obj => obj !== ball || !obj.buried);
+}
+
 export function restoreBuriedBallIfNeeded(obj, x, y, lvl = game.level) {
-    if (!obj || !isHeavyIronBallObject(obj) || !game.u?.utrap
-        || game.u.utraptype !== TT_BURIEDBALL) return false;
+    if (!obj || !isHeavyIronBallObject(obj) || !isBuriedBallTrapType()) return false;
     const ux = game.u.ux ?? x;
     const uy = game.u.uy ?? y;
+    removeBuriedBallFromLevel(obj, lvl);
     clearBuriedOrganicRotTimer(obj);
     obj.buried = false;
     obj.hidden = false;
@@ -384,6 +432,36 @@ export function restoreBuriedBallIfNeeded(obj, x, y, lvl = game.level) {
     if (lvl?.engravings) lvl.engravings = lvl.engravings.filter(engr => engr.x !== x || engr.y !== y);
     newsym(x, y);
     newsym(ux, uy);
+    return true;
+}
+
+export function buriedBallToPunishment(lvl = game.level) {
+    const found = findBuriedBallNear(game.u?.ux, game.u?.uy, lvl);
+    return !!(found && restoreBuriedBallIfNeeded(found.obj, found.x, found.y, lvl));
+}
+
+export function buriedBallToFreedom(lvl = game.level) {
+    const found = findBuriedBallNear(game.u?.ux, game.u?.uy, lvl);
+    if (!found) return false;
+    const ball = found.obj;
+    removeBuriedBallFromLevel(ball, lvl);
+    clearBuriedOrganicRotTimer(ball);
+    ball.buried = false;
+    ball.hidden = false;
+    ball.worn = false;
+    ball.ox = found.x;
+    ball.oy = found.y;
+    ball.buriedPunishmentBall = false;
+    if (lvl) {
+        lvl.objects ??= [];
+        if (!lvl.objects.includes(ball)) lvl.objects.push(ball);
+        if (lvl.engravings) lvl.engravings = lvl.engravings.filter(engr => engr.x !== found.x || engr.y !== found.y);
+    }
+    if (game.u) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+    newsym(found.x, found.y);
     return true;
 }
 
@@ -509,7 +587,7 @@ function buryOneObject(obj, x, y, lvl, underIce = isIceAt(x, y), messages = []) 
     return 'buried';
 }
 
-function buryObjectsAt(x, y) {
+export function buryObjectsAt(x, y, { ignore = null } = {}) {
     const lvl = game.level;
     const messages = [];
     if (!lvl) return messages;
@@ -522,6 +600,10 @@ function buryObjectsAt(x, y) {
     const remaining = [];
     const underIce = isIceAt(x, y);
     for (const obj of lvl.objects) {
+        if (obj === ignore) {
+            remaining.push(obj);
+            continue;
+        }
         if (obj._burialDeleted) continue;
         if (obj.ox === x && obj.oy === y && !obj.transientProjectile) {
             if (buryOneObject(obj, x, y, lvl, underIce, messages) === 'floor') {

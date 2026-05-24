@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -18,9 +18,14 @@ import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { datFileLines as bundledDatFileLines } from './dat_files.js';
 import { advanceFireBreathRay, applyFireRayFountainTerrain, applyFireRayIceTerrain, applyFireRayWaterTerrain, burnFireRayWebTrap, finishHeroTargetedBreath, fireBreathDamageHero, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
-import { applyColdRayTerrain, objectIceEffect } from './ice.js';
+import {
+    applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
+    buryObjectsAt, findBuriedBallNear, isBuriedBallTrapActive, objectIceEffect, objIceEffectsAt,
+    unearthObjectsAt,
+} from './ice.js';
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
+import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -652,6 +657,7 @@ const SCROLL_CLASS = 8;
 const SCR_ENCHANT_ARMOR = 277;
 const SCR_BLANK_PAPER = 293;
 const POTION_CLASS = 9;
+const POT_ACID = 238;
 const POT_OIL = 252;
 const POT_WATER = 253;
 const WAND_CLASS = 10;
@@ -1528,6 +1534,7 @@ function collectSameLevelTeleportCoords(cx, cy) {
 }
 
 function teleportHeroSameLevel(x, y) {
+    if (isBuriedBallTrapActive()) buriedBallToPunishment();
     const oldX = game.u?.ux || 0;
     const oldY = game.u?.uy || 0;
     const oldBallX = game.u?.uball?.ox;
@@ -3145,6 +3152,7 @@ async function digDownwardPitResult(options = {}) {
     if (!canDigDownFromLevel(current) && trap) return downwardDigTooHardResult();
     const boulderResult = downwardDigBoulderResult(x, y, trap);
     if (boulderResult) return boulderResult;
+    if (isBuriedBallTrapActive()) buriedBallToPunishment();
 
     const pit = await maketrap(x, y, PIT);
     if (!pit) return { message: '', more: false };
@@ -3177,6 +3185,7 @@ async function digDownwardHoleResult(options = {}) {
 
     const boulderResult = downwardDigBoulderResult(x, y, existingTrap);
     if (boulderResult) return boulderResult;
+    if (isBuriedBallTrapActive()) buriedBallToPunishment();
 
     const trap = await maketrap(x, y, HOLE);
     if (!trap) return { message: '', more: false };
@@ -3206,6 +3215,361 @@ async function digDownwardHoleResult(options = {}) {
         impactDroppedObjects: impact.objects,
     });
     return { message: trapMessage(...messages), more: true };
+}
+
+function earthquakeLevelDescription() {
+    const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if (Is_astralevel(uz)) return 'astral plane';
+    if (In_endgame(uz)) return 'plane';
+    if (currentSpecialLevelName() === 'sanctum') return 'sanctum';
+    if (In_sokoban(uz)) return 'puzzle';
+    if (In_V_tower(uz)) return 'tower';
+    return 'dungeon';
+}
+
+function isPitTrapType(type) {
+    return type === PIT || type === SPIKED_PIT || type === TT_PIT || type === 'pit' || type === 'spiked pit';
+}
+
+function altarMask(loc) {
+    return loc?.altarmask ?? loc?.flags ?? 0;
+}
+
+function earthquakeAltarAlignName(loc) {
+    const align = Amask2align(altarMask(loc));
+    if (align === A_LAWFUL) return 'lawful';
+    if (align === A_NEUTRAL) return 'neutral';
+    if (align === A_CHAOTIC) return 'chaotic';
+    return 'unaligned';
+}
+
+function earthquakeFeatureMessage(loc) {
+    if (loc?.typ === FOUNTAIN) return 'The fountain falls into a chasm.';
+    if (loc?.typ === SINK) return 'The kitchen sink falls into a chasm.';
+    if (loc?.typ === GRAVE) return 'The headstone topples into a chasm.';
+    if (loc?.typ === THRONE) return 'The throne falls into a chasm.';
+    if (loc?.typ === ALTAR) return `The ${earthquakeAltarAlignName(loc)} altar falls into a chasm.`;
+    return '';
+}
+
+function normalizeEarthquakePitTerrain(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    const oldTyp = loc.typ;
+    if (IS_ROOM(oldTyp)) loc.typ = ROOM;
+    else if (oldTyp === STONE || oldTyp === SCORR) loc.typ = CORR;
+    else if (IS_WALL(oldTyp) || oldTyp === SDOOR) loc.typ = game.level?.flags?.is_maze_lev ? ROOM
+        : game.level?.flags?.is_cavernous_lev ? CORR
+            : DOOR;
+    loc.flags = 0;
+    loc.doormask = D_NODOOR;
+    loc.wall_info = 0;
+}
+
+function makeEarthquakePitTrap(x, y) {
+    const existing = downwardDigTrapAt(x, y);
+    if (existing && (existing.ttyp === MAGIC_PORTAL || existing.ttyp === VIBRATING_SQUARE)) return null;
+    const trap = existing || { tx: x, ty: y };
+    Object.assign(trap, {
+        ttyp: PIT,
+        tseen: true,
+        once: false,
+        launch: { x: -1, y: -1 },
+        launch2: null,
+        teledest: null,
+        dst: { dnum: -1, dlevel: -1 },
+        conjoined: 0,
+    });
+    game.level.traps ??= [];
+    if (!existing) game.level.traps.push(trap);
+    normalizeEarthquakePitTerrain(x, y);
+    return trap;
+}
+
+function drawbridgeUnder(loc) {
+    return (loc?.flags || 0) & DB_UNDER;
+}
+
+function earthquakeIsMoatAt(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || currentSpecialLevelName() === 'juiblex') return false;
+    return loc.typ === MOAT || (loc.typ === DRAWBRIDGE_UP && drawbridgeUnder(loc) === DB_MOAT);
+}
+
+function earthquakeIsLavaAt(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return IS_LAVA(loc.typ) || (loc.typ === DRAWBRIDGE_UP && drawbridgeUnder(loc) === DB_LAVA);
+}
+
+function earthquakeIsPoolAt(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    return loc.typ === POOL || loc.typ === MOAT || loc.typ === WATER || earthquakeIsMoatAt(x, y);
+}
+
+function earthquakeFillHoleType(x, y) {
+    const loX = Math.max(1, x - 1);
+    const hiX = Math.min(x + 1, COLNO - 1);
+    const loY = Math.max(0, y - 1);
+    const hiY = Math.min(y + 1, ROWNO - 1);
+    let poolCnt = 0;
+    let moatCnt = 0;
+    let lavaCnt = 0;
+    for (let x1 = loX; x1 <= hiX; x1++) {
+        for (let y1 = loY; y1 <= hiY; y1++) {
+            if (earthquakeIsMoatAt(x1, y1)) moatCnt++;
+            else if (earthquakeIsPoolAt(x1, y1)) poolCnt++;
+            else if (earthquakeIsLavaAt(x1, y1)) lavaCnt++;
+        }
+    }
+
+    poolCnt = Math.trunc(poolCnt / 3);
+    if (lavaCnt > moatCnt + poolCnt && rn2(lavaCnt + 1)) return LAVAPOOL;
+    if (moatCnt > 0 && rn2(moatCnt + 1)) return MOAT;
+    if (poolCnt > 0 && rn2(poolCnt + 1)) return POOL;
+    return ROOM;
+}
+
+function setEarthquakeLiquidTerrain(x, y, typ) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    loc.typ = typ;
+    loc.flags = 0;
+    loc.doormask = 0;
+    loc.wall_info = 0;
+    if (typ === LAVAPOOL) loc.lit = true;
+    newsym(x, y);
+    return true;
+}
+
+function deleteEarthquakeLiquidTrap(trap, x, y) {
+    if (game.u?.ux === x && game.u?.uy === y && game.u.utraptype !== TT_BURIEDBALL) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+    const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+    if (mon) mon.mtrapped = 0;
+    removeDownwardDigTrap(trap);
+}
+
+function applyEarthquakeHeroLiquidEffects(x, y, typ, messages) {
+    if (game.u?.ux !== x || game.u?.uy !== y) return;
+    if (game.u?.levitating || game.u?.flying) return;
+    if (typ === LAVAPOOL) {
+        if (game.u?.fireResistance) return;
+        d(6, 6);
+        game.u.uhp = 0;
+        game._death_cause = 'burned by molten lava';
+        messages.push('You fall into the molten lava!  You burn to a crisp...');
+        messages.push('You die...');
+        return;
+    }
+    game.u.uinwater = 1;
+    game.u.underwater = true;
+    game.u.uunderwater = true;
+    messages.push('You fall into the pool of water!  You sink like a rock.');
+}
+
+function earthquakeLiquidFlow(x, y, typ, trap, messages) {
+    if (!setEarthquakeLiquidTerrain(x, y, typ)) return false;
+    deleteEarthquakeLiquidTrap(trap, x, y);
+    objIceEffectsAt(x, y, { doBuried: true });
+    unearthObjectsAt(x, y);
+    messages.push(...applyLiquidFlowFloorObjectDamage(x, y, typ).messages);
+    if (game.u?.ux === x && game.u?.uy === y) applyEarthquakeHeroLiquidEffects(x, y, typ, messages);
+    else messages.push(...applyMonsterLiquidEffectsAt(x, y, { heroCaused: true, recordKill: recordVanquished }));
+    newsym(x, y);
+    return true;
+}
+
+function earthquakeMonsterName(mon, { capital = true, article = true } = {}) {
+    if (mon?.givenName) return mon.givenName;
+    if (mon?.isshk && mon.shknam) return mon.shknam;
+    const name = mon?.data?.name || mon?.name || 'monster';
+    if (!article) return name;
+    return `${capital ? 'The' : 'the'} ${name}`;
+}
+
+function earthquakeMonsterVisible(mon) {
+    return !!mon && !game.u?.blind && !mon.minvis && !mon.mundetected && couldsee(mon.mx, mon.my);
+}
+
+function earthquakeMonsterHumanoid(mon) {
+    const mlet = mon?.data?.mlet;
+    return mlet === 'humanoid' || mlet === 'human' || mon?.data?.name === 'human';
+}
+
+function earthquakeRevealMimic(mon) {
+    if (!mon || (!M_AP_TYPE(mon) && mon.appearObj == null && !mon.appearGlyph)) return false;
+    mon.m_ap_type = 0;
+    mon.appearObj = null;
+    mon.appearGlyph = null;
+    mon.appearColor = null;
+    return true;
+}
+
+function earthquakeShakeMonster(x, y, messages) {
+    const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+    if (!mon) return;
+    mon.msleeping = 0;
+    mon.mcanmove = true;
+    mon.mfrozen = 0;
+    if (mon.mpeaceful && !mon.mtame && !mon.pet) mon.mpeaceful = 0;
+    if (mon.mundetected) {
+        const ceilingHider = !!mon.data?.ceilingHider;
+        mon.mundetected = false;
+        if (ceilingHider) {
+            if (!game.u?.blind && couldsee(x, y))
+                messages.push(`${earthquakeMonsterName(mon)} is shaken loose from the ceiling!`);
+            else if (!mon.data?.flyer && !heroIsDeaf()) messages.push('You hear a thump.');
+        }
+        newsym(x, y);
+    }
+    if (earthquakeRevealMimic(mon)) newsym(x, y);
+}
+
+function earthquakeMonsterFalls(mon, messages) {
+    if (!mon || mon.data?.flyer || mon.data?.clinger) return;
+    const alreadyTrapped = !!mon.mtrapped;
+    const visible = earthquakeMonsterVisible(mon);
+    mon.mtrapped = 1;
+    if (!alreadyTrapped) {
+        if (visible) messages.push(`${earthquakeMonsterName(mon)} falls into a chasm!`);
+        else if (earthquakeMonsterHumanoid(mon) && !heroIsDeaf()) messages.push('You hear a scream!');
+    }
+    mon.mhp = (mon.mhp ?? 1) - rnd(alreadyTrapped ? 4 : 6);
+    if ((mon.mhp ?? 0) > 0) return;
+
+    dropMonsterInventory(mon);
+    game.level.monsters = (game.level?.monsters || []).filter(candidate => candidate !== mon);
+    recordVanquished(mon, true);
+    newsym(mon.mx, mon.my);
+    messages.push(visible
+        ? `You destroy ${earthquakeMonsterName(mon, { capital: false })}!`
+        : 'It is destroyed!');
+}
+
+function earthquakeHeroPitKeepFooting() {
+    const roleName = game.urole?.name?.m || game._startup_role;
+    const target = roleName === 'Archeologist' ? 3 : 9;
+    const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+    return !(game.u?.fumbling && rn2(5))
+        && (!rnl(target) || (dex > 7 && rn2(5)));
+}
+
+async function doEarthquakePit(x, y, tuPit, messages) {
+    const chasm = makeEarthquakePitTrap(x, y);
+    if (!chasm) return;
+
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
+    if (boulder) {
+        if (!game.u?.blind && (game.u?.ux === x && game.u?.uy === y || couldsee(x, y)))
+            messages.push(`KADOOM!  The boulder falls into a chasm${game.u?.ux === x && game.u?.uy === y ? ' below you' : ''}!`);
+        const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+        if (mon) mon.mtrapped = 0;
+        game.level.objects = (game.level?.objects || []).filter(obj => obj !== boulder);
+        removeDownwardDigTrap(chasm);
+        newsym(x, y);
+        return;
+    }
+
+    const fillType = earthquakeFillHoleType(x, y);
+    if (fillType !== ROOM) {
+        earthquakeLiquidFlow(x, y, fillType, chasm, messages);
+        if (!downwardDigTrapAt(x, y)) return;
+    }
+
+    const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+    if (mon) {
+        earthquakeMonsterFalls(mon, messages);
+        return;
+    }
+
+    if (game.u?.ux !== x || game.u?.uy !== y) {
+        newsym(x, y);
+        return;
+    }
+
+    if (breakBuriedBallChain()) messages.push('Your chain breaks!');
+    const avoidsFall = game.u?.levitating || game.u?.flying || polyselfForm()?.clinger;
+    if (avoidsFall) {
+        if (!tuPit) {
+            messages.push('A chasm opens up under you!');
+            messages.push("You don't fall in!");
+        }
+    } else if (!tuPit || !game.u.utrap || !isPitTrapType(game.u.utraptype)) {
+        messages.push('You fall into a chasm!');
+        game.u.utrap = rn1(6, 2);
+        game.u.utraptype = 'pit';
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - rnd(6));
+        if ((game.u.uhp || 0) <= 0) game._death_cause = 'fell into a chasm';
+    } else {
+        const keepFooting = earthquakeHeroPitKeepFooting();
+        messages.push('You are jostled around violently!');
+        game.u.utrap = rn1(6, 2);
+        game.u.utraptype = 'pit';
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - rnd(keepFooting ? 2 : 4));
+        if ((game.u.uhp || 0) <= 0) game._death_cause = 'hurt in a chasm';
+        if (keepFooting) exerciseAttribute(A_DEX, true);
+    }
+}
+
+async function doEarthquake(force) {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const cappedForce = Math.min(13, Math.max(1, Math.trunc(force || 1)));
+    const startX = Math.max(1, ux - cappedForce * 2);
+    const endX = Math.min(COLNO - 1, ux + cappedForce * 2);
+    const startY = Math.max(0, uy - cappedForce * 2);
+    const endY = Math.min(ROWNO - 1, uy + cappedForce * 2);
+    const trapAtHero = downwardDigTrapAt(ux, uy);
+    const tuPit = trapAtHero && isPitTrapType(trapAtHero.ttyp);
+    const messages = [];
+
+    for (let x = startX; x <= endX; x++) {
+        for (let y = startY; y <= endY; y++) {
+            earthquakeShakeMonster(x, y, messages);
+            if (rn2(14 - cappedForce)) continue;
+
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if ([FOUNTAIN, SINK, ALTAR, GRAVE, THRONE].includes(loc.typ)) {
+                if (loc.typ === ALTAR && (altarMask(loc) & AM_SANCTUM)) continue;
+                const featureMessage = earthquakeFeatureMessage(loc);
+                if (featureMessage && !game.u?.blind && couldsee(x, y)) messages.push(featureMessage);
+                await doEarthquakePit(x, y, tuPit, messages);
+            } else if (loc.typ === SCORR) {
+                loc.typ = CORR;
+                newsym(x, y);
+                if (!game.u?.blind && couldsee(x, y)) messages.push('A secret corridor is revealed.');
+                await doEarthquakePit(x, y, tuPit, messages);
+            } else if (loc.typ === CORR || loc.typ === ROOM) {
+                await doEarthquakePit(x, y, tuPit, messages);
+            } else if (loc.typ === SDOOR) {
+                loc.typ = DOOR;
+                newsym(x, y);
+                if (!game.u?.blind && couldsee(x, y)) messages.push('A secret door is revealed.');
+                if (loc.doormask === D_NODOOR) {
+                    await doEarthquakePit(x, y, tuPit, messages);
+                } else {
+                    loc.doormask = D_NODOOR;
+                    newsym(x, y);
+                    if (!game.u?.blind && couldsee(x, y)) messages.push('The door collapses.');
+                }
+            } else if (loc.typ === DOOR) {
+                if (loc.doormask === D_NODOOR) {
+                    await doEarthquakePit(x, y, tuPit, messages);
+                } else {
+                    loc.doormask = D_NODOOR;
+                    newsym(x, y);
+                    if (!game.u?.blind && couldsee(x, y)) messages.push('The door collapses.');
+                }
+            }
+        }
+    }
+    return messages;
 }
 
 async function zapDigDownwardResult() {
@@ -3252,6 +3616,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         game._command_mode = null;
         return true;
     }
+    if (isBuriedBallTrapActive()) buriedBallToPunishment();
     const fromTemperature = game.level?.flags?.temperature ?? 0;
     const targetKey = `${targetLevel.dnum}:${targetLevel.dlevel}`;
     const savedTarget = game._saved_levels?.get(targetKey);
@@ -5859,7 +6224,7 @@ function buildGenericAttributesPage2Rows() {
     );
     if (statusSuffix.includes('Deaf')) rows.push([row++, 0, '  You are deaf.']);
     if (statusSuffix.includes('Hallu')) rows.push([row++, 0, '  You are hallucinating.']);
-    if (game.u?.uball) rows.push([row++, 0, '  You are chained to a heavy iron ball.']);
+    if (game.u?.uball || isBuriedBallTrapActive()) rows.push([row++, 0, '  You are chained to a heavy iron ball.']);
     if (game.u?._woundedLegTurns) {
         const side = game.u._woundedLegSide === 'left' ? 'left '
             : game.u._woundedLegSide === 'right' ? 'right ' : '';
@@ -6024,16 +6389,15 @@ function genericAttributesPage2() {
 
 function heroFarlookDescription() {
     const form = polyselfForm();
+    const chained = game.u?.uball || isBuriedBallTrapActive() ? ', chained to a heavy iron ball' : '';
     if (form) {
         const called = game.plname ? ` called ${game.plname}` : '';
-        const chained = game.u?.uball ? ', chained to a heavy iron ball' : '';
         return `${form.name}${called}${chained}`;
     }
     const raceAdj = game.urace?.adj || game._startup_race || 'human';
     const race = { orcish: 'orc', elven: 'elf', gnomish: 'gnome', dwarven: 'dwarf' }[raceAdj] || raceAdj;
     const role = game.urole?.name?.[game.flags?.female ? 'f' : 'm'] || game.urole?.name?.m || game._startup_role || 'Adventurer';
     const called = game.plname ? ` called ${game.plname}` : '';
-    const chained = game.u?.uball ? ', chained to a heavy iron ball' : '';
     return `${String(race).toLowerCase()} ${String(role).toLowerCase()}${called}${chained}`;
 }
 
@@ -7189,6 +7553,481 @@ export function burnRayFloorObjectsByFire(x, y) {
     return messages;
 }
 
+function liquidFlowFloorObjectsAt(x, y) {
+    return (game.level?.objects || []).filter(obj =>
+        obj && !obj.transientProjectile && !obj.buried && obj.ox === x && obj.oy === y);
+}
+
+function removeFloorObject(obj) {
+    game.level.objects = (game.level?.objects || []).filter(item => item !== obj);
+}
+
+function liquidFlowContainerContents(obj) {
+    if (Array.isArray(obj?.contents)) return obj.contents;
+    if (Array.isArray(obj?.cobj)) return obj.cobj;
+    return [];
+}
+
+function clearLiquidFlowContainerContents(obj) {
+    if (Array.isArray(obj?.contents)) obj.contents.length = 0;
+    if (Array.isArray(obj?.cobj)) obj.cobj.length = 0;
+}
+
+function removeContainedObject(container, obj) {
+    if (Array.isArray(container?.contents))
+        container.contents = container.contents.filter(item => item !== obj);
+    if (Array.isArray(container?.cobj))
+        container.cobj = container.cobj.filter(item => item !== obj);
+}
+
+function isLiquidFlowContainer(obj) {
+    if (!obj) return false;
+    if (obj.otyp === LARGE_BOX || obj.otyp === CHEST || obj.otyp === ICE_BOX || BAG_OBJECT_TYPES.has(obj.otyp)) return true;
+    const kind = objectKindKey(obj);
+    return /^(?:large box|chest|ice box|sack|oilskin sack|bag of holding|bag)$/.test(kind);
+}
+
+function isLiquidFlowWaterproofContainer(obj) {
+    return obj?.otyp === LARGE_BOX || obj?.otyp === CHEST || obj?.otyp === ICE_BOX || obj?.otyp === OILSKIN_SACK
+        || /^(?:large box|chest|ice box|oilskin sack)$/.test(objectKindKey(obj));
+}
+
+function placeLiquidFlowFloorObject(obj, x, y) {
+    if (!obj || !game.level) return;
+    obj.contained = false;
+    obj.ox = x;
+    obj.oy = y;
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    delete obj.line;
+    Object.assign(obj, object_display(obj));
+    if (!(game.level.objects || []).includes(obj)) game.level.objects.push(obj);
+}
+
+function floorObjectVisible(x, y) {
+    return !game.u?.blind && couldsee(x, y);
+}
+
+function floorObjectSubject(obj) {
+    const quan = Math.max(1, obj?.quan || 1);
+    const name = pickupObjectName({ ...obj, line: '', quan });
+    return quan > 1 ? name : sentenceCase(articleFor(name));
+}
+
+function floorObjectArticleName(obj) {
+    const quan = Math.max(1, obj?.quan || 1);
+    const name = pickupObjectName({ ...obj, line: '', quan });
+    return quan > 1 ? name : articleFor(name);
+}
+
+function floorObjectBaseName(obj) {
+    return pickupObjectName({ ...obj, line: '', quan: 1 }).replace(/ \(lit\)$/, '');
+}
+
+function floorObjectTheName(obj) {
+    const name = floorObjectBaseName(obj);
+    return /^the\b/i.test(name) ? name : `the ${name}`;
+}
+
+function floorObjectVerb(obj, singular, plural) {
+    const name = floorObjectBaseName(obj);
+    return (obj?.quan || 1) > 1 ? plural : rustTrapNameVerb(name, singular, plural);
+}
+
+function acidPotionItem(obj) {
+    const kind = objectKindKey(obj).replace(/^potion of /, '');
+    return obj?.otyp === POT_ACID || obj?.potionIndex === 23 || kind === 'acid';
+}
+
+function waterDamageFloorLitObject(obj, messages, visible) {
+    if (!(obj?.lamplit || obj?.burning)) return false;
+    if (visible) {
+        const subject = floorObjectSubject(obj);
+        messages.push(`${subject} ${floorObjectVerb(obj, 'goes', 'go')} out!`);
+    }
+    obj.lamplit = false;
+    obj.burning = false;
+    delete obj._burnTimer;
+    delete obj.litRadius;
+    return true;
+}
+
+function blankFloorScroll(obj) {
+    obj.otyp = SCR_BLANK_PAPER;
+    obj.kind = 'blank paper';
+    obj.actualKind = '';
+    obj.scrollIndex = IDENTIFIED_SCROLL_NAMES.length;
+    obj.spe = 0;
+    obj.known = false;
+}
+
+function blankFloorSpellbook(obj) {
+    if (obj.spestudied) obj.spestudied = rn2(obj.spestudied);
+    obj.kind = 'spellbook of blank paper';
+    obj.actualKind = '';
+    obj.spellName = '';
+    obj.spell = null;
+    obj.known = false;
+}
+
+function explodeFloorAcidPotion(obj, messages, acidContext, removeObject = removeFloorObject) {
+    const plural = (obj?.quan || 1) > 1;
+    const previous = acidContext.count++;
+    const prefix = previous ? (plural ? 'More' : 'Another') : (plural ? 'Some' : 'A');
+    messages.push(`${prefix} potion${plural ? 's' : ''} ${plural ? 'explode' : 'explodes'}!`);
+    removeObject(obj);
+    return true;
+}
+
+function waterDamageFloorPotion(obj, messages, acidContext, removeObject = removeFloorObject) {
+    if (acidPotionItem(obj)) return explodeFloorAcidPotion(obj, messages, acidContext, removeObject);
+    if (isWaterPotion(obj)) return false;
+    if (obj.odiluted) {
+        obj.otyp = POT_WATER;
+        obj.kind = 'water';
+        obj.actualKind = '';
+        obj.blessed = false;
+        obj.cursed = false;
+        obj.odiluted = false;
+        obj.known = false;
+    } else {
+        obj.odiluted = true;
+    }
+    return true;
+}
+
+function erodeFloorObject(obj, messages, visible, {
+    profileWord,
+    field,
+    action,
+    cause,
+    destroyAtMax = false,
+    removeObject = removeFloorObject,
+}) {
+    const profile = wishedDamageProfile(obj);
+    if (!profile.erosionMatters || profile.primaryWord !== profileWord) return false;
+    const name = floorObjectBaseName(obj);
+    if (obj.oerodeproof || obj.rustproof) {
+        if (visible && game.flags?.verbose !== false)
+            messages.push(`Somehow, the ${name} ${rustTrapNameVerb(name, 'is', 'are')} not affected by the ${cause}.`);
+        obj.rknown = true;
+        return false;
+    }
+    if (obj.blessed && !rnl(4)) return false;
+
+    const current = Math.min(3, obj[field] || 0);
+    if (current < 3) {
+        obj[field] = current + 1;
+        if (visible) {
+            const adverb = obj[field] === 3 ? ' completely' : current ? ' further' : '';
+            messages.push(`The ${name} ${rustTrapNameVerb(name, `${action}s`, action)}${adverb}!`);
+        }
+        return true;
+    }
+    if (destroyAtMax) {
+        if (visible) messages.push(`The ${name} ${action}s away!`);
+        removeObject(obj);
+        return true;
+    }
+    return false;
+}
+
+function waterDamageContainerContents(container, messages, visible, acidContext) {
+    const contents = [...liquidFlowContainerContents(container)];
+    const waterproof = isLiquidFlowWaterproofContainer(container);
+    if (waterproof) {
+        if (!container.cursed) return true;
+        if (rn2(3)) return true;
+    }
+    let damaged = true;
+    for (const content of contents) {
+        damaged = waterDamageFloorItem(content, messages, visible, acidContext, {
+            removeObject: item => removeContainedObject(container, item),
+        }) || damaged;
+    }
+    return damaged;
+}
+
+function waterDamageFloorItem(obj, messages, visible, acidContext, {
+    removeObject = removeFloorObject,
+} = {}) {
+    if (waterDamageFloorLitObject(obj, messages, visible)) return true;
+
+    const kind = objectKindKey(obj);
+    if (kind === 'can of grease' && (obj.spe || 0) > 0) return false;
+    if (kind === 'towel' && (obj.spe || 0) < 7) {
+        const wetness = Math.max(0, obj.spe || 0);
+        obj.spe = wetness + rnd(7 - wetness);
+        obj.wetness = obj.spe;
+        return false;
+    }
+    if (obj.greased) {
+        if (!rn2(2)) {
+            obj.greased = false;
+            if (rustTrapItemClass(obj) === 'potion' && acidPotionItem(obj))
+                return explodeFloorAcidPotion(obj, messages, acidContext, removeObject);
+        }
+        return true;
+    }
+    if (isLiquidFlowContainer(obj)) return waterDamageContainerContents(obj, messages, visible, acidContext);
+    if (((game.u?.uluck || 0) + (game.u?.moreluck || 0) + 5) > rn2(20)) return false;
+
+    const cls = rustTrapItemClass(obj);
+    if (cls === 'scroll') {
+        if (isBlankScrollItem(obj)) return false;
+        blankFloorScroll(obj);
+        return true;
+    }
+    if (cls === 'spellbook') {
+        if (isBookOfTheDeadItem(obj)) {
+            if (visible) messages.push(`Steam rises from ${floorObjectTheName(obj)}.`);
+            return false;
+        }
+        if (isBlankSpellbookItem(obj)) return false;
+        blankFloorSpellbook(obj);
+        return true;
+    }
+    if (cls === 'potion') return waterDamageFloorPotion(obj, messages, acidContext, removeObject);
+
+    return erodeFloorObject(obj, messages, visible, {
+        profileWord: 'rusty',
+        field: 'oeroded',
+        action: 'rust',
+        cause: 'oxidation',
+        removeObject,
+    });
+}
+
+function fireDamageFloorContainer(obj, messages, visible, {
+    removeObject = removeFloorObject,
+    spillQueue = [],
+    processSpill = null,
+    x,
+    y,
+} = {}) {
+    if (!isLiquidFlowContainer(obj)) return false;
+    if (obj.otyp === ICE_BOX || obj.otyp === STATUE || objectKindKey(obj) === 'ice box')
+        return false;
+    const contents = [...liquidFlowContainerContents(obj)];
+    if (visible) messages.push(`${floorObjectSubject(obj)} catches fire and burns.`);
+    if (contents.length && visible) messages.push('Its contents fall out.');
+    removeObject(obj);
+    for (const content of contents) {
+        removeContainedObject(obj, content);
+        placeLiquidFlowFloorObject(content, x, y);
+        if (processSpill) processSpill(content);
+        else spillQueue.push({ obj: content, mode: 'flooreffects' });
+    }
+    clearLiquidFlowContainerContents(obj);
+    return true;
+}
+
+function fireDamageFloorScrollOrBook(obj, messages, visible, cls, removeObject = removeFloorObject) {
+    if (cls === 'spellbook' && isBookOfTheDeadItem(obj)) {
+        if (visible) messages.push(`Smoke rises from ${floorObjectTheName(obj)}.`);
+        return false;
+    }
+    if (fireInventoryItemImmune(obj, cls)) {
+        return false;
+    }
+    if (visible) {
+        const subject = floorObjectSubject(obj);
+        messages.push(`${subject} ${floorObjectVerb(obj, 'catches fire and burns', 'catch fire and burn')}.`);
+    }
+    removeObject(obj);
+    return true;
+}
+
+function fireDamageFloorPotion(obj, messages, visible, removeObject = removeFloorObject) {
+    if (visible) {
+        const subject = floorObjectSubject(obj);
+        const verb = isPotionOfOil(obj)
+            ? floorObjectVerb(obj, 'ignites and explodes', 'ignite and explode')
+            : floorObjectVerb(obj, 'boils and explodes', 'boil and explode');
+        messages.push(`${subject} ${verb}.`);
+    }
+    removeObject(obj);
+    return true;
+}
+
+function fireDamageFloorItem(obj, messages, visible, options = {}) {
+    const { removeObject = removeFloorObject, spillQueue = [], processSpill = null, x, y } = options;
+    if (maybeIgniteFloorFireItem(obj, messages, visible)) return false;
+    if (isLiquidFlowContainer(obj))
+        return fireDamageFloorContainer(obj, messages, visible, {
+            removeObject, spillQueue, processSpill, x, y,
+        });
+
+    const cls = fireDestroyableInventoryClass(obj);
+    if (cls === 'scroll' || cls === 'spellbook')
+        return fireDamageFloorScrollOrBook(obj, messages, visible, cls, removeObject);
+    if (cls === 'potion') return fireDamageFloorPotion(obj, messages, visible, removeObject);
+
+    return erodeFloorObject(obj, messages, visible, {
+        profileWord: 'burnt',
+        field: 'oeroded',
+        action: 'smoulder',
+        cause: 'heat',
+        destroyAtMax: true,
+        removeObject,
+    });
+}
+
+const LAVA_DIRECT_BURN_MATERIALS = new Set([
+    'liquid', 'wax', 'veggy', 'vegetable', 'flesh', 'paper', 'cloth', 'leather', 'wood', 'bone',
+]);
+const LIQUID_FLOW_RIDER_CORPSE_NAMES = new Set(['death', 'pestilence', 'famine']);
+
+function liquidFlowRiderCorpse(obj) {
+    if (!(obj?.otyp === CORPSE || obj?.otyp === 'corpse')) return false;
+    const corpse = obj.corpsenm || obj.corpse || {};
+    const corpseName = String(corpse.name || corpse.mname || '').toLowerCase();
+    if (corpse.rider || LIQUID_FLOW_RIDER_CORPSE_NAMES.has(corpseName)) return true;
+    return /\b(?:death|pestilence|famine) corpse\b/.test(objectKindKey(obj));
+}
+
+function lavaObjResistsHard(obj) {
+    const actual = String(obj?.actualKind || '').toLowerCase();
+    const kind = objectKindKey(obj);
+    if (obj?.realAmuletOfYendor || actual === 'amulet of yendor'
+        || (!actual && kind === 'amulet of yendor')) return true;
+    if (isBookOfTheDeadItem(obj)) return true;
+    if (isCandelabrumOfInvocationItem(obj)) return true;
+    if (isBellOfOpeningItem(obj)) return true;
+    return liquidFlowRiderCorpse(obj);
+}
+
+function lavaObjectProtectedByObjResists(obj) {
+    if (!lavaObjResistsHard(obj)) {
+        rn2(100);
+        return false;
+    }
+    return !isBookOfTheDeadItem(obj);
+}
+
+function lavaDirectFireExemptObject(obj, cls) {
+    if (cls === 'scroll' || cls === 'spellbook') return true;
+    if (obj?.oerodeproof || obj?.fireResistance || obj?.fireResistant) return true;
+    const kind = objectKindKey(obj);
+    return kind === 'wand of fire' || kind === 'fire horn' || obj?.oprop === 'fire'
+        || obj?.oprop === 'fire resistance' || obj?.oc_oprop === 'fire'
+        || obj?.oc_oprop === 'fire resistance';
+}
+
+function lavaDirectBurnMaterialObject(obj) {
+    if (liquidFlowContainerContents(obj).length) return false;
+    const material = String(obj?.material || obj?.oc_material || '').toLowerCase();
+    if (LAVA_DIRECT_BURN_MATERIALS.has(material)) return true;
+    const cls = itemClassKey(obj);
+    const kind = objectKindKey(obj);
+    if ((cls === 'food' || obj?.otyp === FOOD_CLASS || obj?.glyph === '%')
+        && !/\btin\b/.test(kind)) return true;
+    if (obj?.otyp === CORPSE || obj?.otyp === 'corpse') return true;
+    if (obj?.globby || GLOB_TYPES.has(kind.replace(/^glob of /, ''))) return true;
+    return /\b(?:wax|leather|cloth|wood|wooden|paper|bone|corpse|meat|ration|food|fruit|egg|sack|bag|box|chest|leash|rope|bow|arrow|club|quarterstaff|aklys|bullwhip|sling|flute|harp|drum|whistle|horn)\b/.test(kind);
+}
+
+function lavaDamageFloorEffectItem(obj, messages, visible, {
+    removeObject = removeFloorObject,
+    spillQueue = [],
+    processSpill = null,
+    x,
+    y,
+} = {}) {
+    if (lavaObjectProtectedByObjResists(obj)) return false;
+    const cls = fireDestroyableInventoryClass(obj);
+    if (!lavaDirectFireExemptObject(obj, cls) && lavaDirectBurnMaterialObject(obj)) {
+        if (visible) messages.push(`You see ${floorObjectArticleName(obj)} hit lava and burn up!`);
+        removeObject(obj);
+        return true;
+    }
+    return fireDamageFloorItem(obj, messages, visible, {
+        removeObject, spillQueue, processSpill, x, y,
+    });
+}
+
+function hotGroundPotionFloorEffect(obj, x, y, messages, visible) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || !(loc.typ === ROOM || loc.typ === CORR)) return false;
+    if ((game.level?.flags?.temperature || 0) <= 0) return false;
+    if (fireDestroyableInventoryClass(obj) !== 'potion') return false;
+
+    const plural = (obj?.quan || 1) > 1;
+    if (visible) {
+        messages.push(`${floorObjectSubject(obj)} ${floorObjectVerb(obj, 'heats', 'heat')} up as ${plural ? 'they hit' : 'it hits'} the hot ground.`);
+    }
+    let survival = obj?.blessed ? 70 : 50;
+    if (obj?.invlet) survival += ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) * 2;
+    if (isPotionOfOil(obj)) survival = 100;
+    if (rn2(100) < ((obj?.artifact || obj?.oartifact) ? 100 : survival)) return false;
+    if (visible) messages.push(plural ? 'They shatter from the heat!' : 'It shatters from the heat!');
+    else if (!heroIsDeaf()) messages.push('You hear a shattering noise.');
+    removeFloorObject(obj);
+    return true;
+}
+
+function liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, spillQueue, processSpill = null) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    if (obj?.otyp === BOULDER && (IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) {
+        if (earthFloorEffects(obj, x, y, messages)) {
+            removeFloorObject(obj);
+            return true;
+        }
+        return false;
+    }
+    if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)
+        return lavaDamageFloorEffectItem(obj, messages, visible, { spillQueue, processSpill, x, y });
+    if (IS_POOL(loc.typ))
+        return waterDamageFloorItem(obj, messages, visible, acidContext);
+    if (hotGroundPotionFloorEffect(obj, x, y, messages, visible)) return true;
+    return false;
+}
+
+export function applyLiquidFlowFloorObjectDamage(x, y, typ) {
+    const messages = [];
+    const visible = floorObjectVisible(x, y);
+    let changed = false;
+    let destroyed = 0;
+    const acidContext = { count: 0 };
+
+    const queue = liquidFlowFloorObjectsAt(x, y).map(obj => ({ obj, mode: 'chain' }));
+    const processed = new Set();
+    const processSpilledFloorEffect = obj => {
+        if (processed.has(obj)) return false;
+        processed.add(obj);
+        if (!(game.level?.objects || []).includes(obj)) return false;
+        const damaged = liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, queue, processSpilledFloorEffect);
+        if (damaged) changed = true;
+        if (!(game.level?.objects || []).includes(obj)) destroyed++;
+        return damaged;
+    };
+    for (let i = 0; i < queue.length; i++) {
+        const entry = queue[i];
+        const obj = entry?.obj || entry;
+        if (processed.has(obj)) continue;
+        processed.add(obj);
+        if (!(game.level?.objects || []).includes(obj)) continue;
+        let damaged;
+        if (entry?.mode === 'flooreffects')
+            damaged = liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, queue, processSpilledFloorEffect);
+        else if (typ === LAVAPOOL)
+            damaged = fireDamageFloorItem(obj, messages, visible, {
+                spillQueue: queue, processSpill: processSpilledFloorEffect, x, y,
+            });
+        else
+            damaged = waterDamageFloorItem(obj, messages, visible, acidContext);
+        if (damaged) changed = true;
+        if (!(game.level?.objects || []).includes(obj)) destroyed++;
+    }
+
+    if (typ === LAVAPOOL && destroyed && game.u?.blind && !couldsee(x, y))
+        messages.push('You smell smoke.');
+    if (changed) newsym(x, y);
+    return { messages, changed, destroyed };
+}
+
 function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false, {
     updateArmorInventory = true,
     preburnedArmor = null,
@@ -8096,6 +8935,16 @@ function becomeMonster(name) {
     game.urole.rank = { m: rank, f: rank };
     const article = /^[aeiou]/i.test(form.name) ? 'an' : 'a';
     let message = `You turn into ${article} ${form.name}!`;
+    if (isBuriedBallTrapActive()) {
+        if (form.passWalls && buriedBallToFreedom()) {
+            message += '  The buried ball is no longer bound to you.';
+        } else if ((form.amorphous || form.whirly || form.unsolid || form.noncorporeal) && buriedBallToFreedom()) {
+            message += '  You slip free of the buried ball and chain.';
+        }
+    } else if (game.u?.uball && (form.amorphous || form.whirly || form.unsolid || form.noncorporeal)) {
+        unpunishHero();
+        message += '  You slip out of the iron chain.';
+    }
     const cloak = (game.inventory || []).find(item =>
         item.cls === 'armor' && (item.worn || item.line?.includes('being worn'))
         && inventoryItemName(item).toLowerCase().includes('cloak'));
@@ -8222,7 +9071,8 @@ function itemClassKey(item) {
 }
 
 function isPotionObject(item) {
-    return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_WATER;
+    return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_ACID
+        || item?.otyp === POT_OIL || item?.otyp === POT_WATER;
 }
 
 function isWaterPotion(item) {
@@ -10354,6 +11204,7 @@ function unpunishHero() {
     if (!game.u || !(game.u.uball || game.u.uchain || game.u.upunished || game._punished)) return;
     const chain = game.u.uchain;
     const ball = game.u.uball;
+    if (chain) rn2(100); // C delobj(chain) reaches obj_resists(chain, 0, 0).
     if (game.level?.objects && chain)
         game.level.objects = game.level.objects.filter(obj => obj !== chain);
     if (ball) {
@@ -10368,6 +11219,19 @@ function unpunishHero() {
     game.u.upunished = false;
     game._punished = 0;
     newsym(game.u.ux || 0, game.u.uy || 0);
+}
+
+function breakBuriedBallChain() {
+    if (!isBuriedBallTrapActive() || !game.u) return false;
+    game.u.utrap = 0;
+    game.u.utraptype = null;
+    newsym(game.u.ux || 0, game.u.uy || 0);
+    return true;
+}
+
+function fixPrayerPunishmentTrouble() {
+    if (isBuriedBallTrapActive()) return buriedBallToFreedom();
+    return false;
 }
 
 function removeCurseScrollEffect(item) {
@@ -10398,7 +11262,10 @@ function removeCurseScrollEffect(item) {
     } else {
         disintegrates = true;
     }
+    const buriedBall = isBuriedBallTrapActive();
     if (!confused) unpunishHero();
+    if (buriedBall && buriedBallToFreedom())
+        messages.push('The clasp on your leg vanishes.');
     return { messages, learned, disintegrates };
 }
 
@@ -11464,7 +12331,8 @@ function heroIsDeaf() {
 
 function fireDestroyableInventoryClass(item) {
     if (isGreenSlimeGlobItem(item)) return 'slime';
-    const cls = item?.cls || (item?.otyp === POTION_CLASS || item?.otyp === POT_WATER || item?.otyp === POT_OIL || item?.glyph === '!' ? 'potion'
+    const cls = item?.cls || (item?.otyp === POTION_CLASS || item?.otyp === POT_ACID
+        || item?.otyp === POT_WATER || item?.otyp === POT_OIL || item?.glyph === '!' ? 'potion'
         : item?.otyp === SCROLL_CLASS || item?.glyph === '?' ? 'scroll'
             : item?.otyp === SPBOOK_NO_NOVEL || item?.otyp === SPE_HEALING || item?.otyp === BOOK_OF_THE_DEAD || item?.glyph === '+'
                 ? 'spellbook'
@@ -11753,21 +12621,197 @@ function earthVisibleSquare(x, y) {
     return !game.u?.blind && !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
 }
 
+function earthLiquidUnderDrawbridge(loc) {
+    if (loc?.typ !== DRAWBRIDGE_UP) return null;
+    const under = drawbridgeUnder(loc);
+    if (under === DB_LAVA) return LAVAPOOL;
+    if (under === DB_MOAT) return MOAT;
+    return null;
+}
+
+function earthBoulderHitsLiquid(loc) {
+    if (!loc) return false;
+    if (loc.typ === DRAWBRIDGE_UP) return !!earthLiquidUnderDrawbridge(loc);
+    return IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+}
+
+function earthLiquidIsLava(loc) {
+    return loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL || earthLiquidUnderDrawbridge(loc) === LAVAPOOL;
+}
+
 function earthWaterBodyName(loc) {
-    if (loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL) return 'lava';
-    if (loc?.typ === MOAT) return 'moat';
+    const typ = earthLiquidUnderDrawbridge(loc) || loc?.typ;
+    if (typ === LAVAPOOL) return 'molten lava';
+    if (typ === LAVAWALL) return 'wall of lava';
+    if (typ === POOL) return 'pool of water';
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return Is_waterlevel(game.u?.uz) ? 'limitless water' : 'wall of water';
     return 'water';
+}
+
+function earthBoulderFillsLiquid(loc, lava, chance) {
+    if (Is_waterlevel(game.u?.uz)) return false;
+    if (loc?.typ === WATER) return chance < 5;
+    return lava ? chance === 0 : chance !== 0;
+}
+
+function fillBoulderLiquidTerrain(loc) {
+    if (!loc) return;
+    if (loc.typ === DRAWBRIDGE_UP) {
+        loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_FLOOR;
+    } else {
+        loc.typ = ROOM;
+        loc.flags = 0;
+    }
+}
+
+function shopkeeperForCostlySpot(x, y) {
+    const roomno = game.level?.at?.(x, y)?.roomno || 0;
+    const room = levelRoomByRoomno(roomno);
+    if (!room || room.rtype < SHOPBASE) return null;
+    const shkp = room.resident || (game.level?.monsters || [])
+        .find(mon => mon.isshk && mon.shoproom === roomno);
+    if (!shkp?.isshk) return null;
+    return shkp;
+}
+
+function buriedMerchandiseDebtMessage(x, y, ignoredObject = null) {
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shkp || game._monster_moving) return '';
+    let loss = 0;
+    for (const obj of game.level?.objects || []) {
+        if (!obj || obj === ignoredObject || obj.transientProjectile || obj.no_charge) continue;
+        if (obj.ox !== x || obj.oy !== y) continue;
+        const price = shopItemPrice(obj, x, y);
+        if (!(price > 0)) continue;
+        loss += price;
+        if (!(obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$'))
+            obj.no_charge = true;
+    }
+    if (!loss) return '';
+    shkp.debit = (shkp.debit || 0) + loss;
+    const name = shkp.shknam || shkp.shopkeeperName || 'the shopkeeper';
+    return `You owe ${name} ${loss} zorkmid${loss === 1 ? '' : 's'} for burying merchandise.`;
+}
+
+function clearHeroSlimeFromMoltenLava() {
+    if (game.u?._statusSuffix?.includes('Slimed')) {
+        game.u._statusSuffix = game.u._statusSuffix.replace(/ Slimed/g, '');
+        game.u.slimed = false;
+    }
+}
+
+function heroNextToSquare(x, y) {
+    if (game.u?.ux == null || game.u?.uy == null) return false;
+    return distmin(game.u.ux, game.u.uy, x, y) <= 1;
+}
+
+function applyBoulderLavaSplashToHero(messages) {
+    if (!game.u) return false;
+    messages.push(`You are hit by molten lava${game.u.fireResistance ? '.' : '!'}`);
+    clearHeroSlimeFromMoltenLava();
+    const damage = d(game.u.fireResistance ? 1 : 3, 6);
+    game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+    if ((game.u.uhp || 0) <= 0) {
+        game._death_cause = 'killed by molten lava';
+        messages.push('You die...');
+    }
+    return true;
+}
+
+function boulderFillMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0));
+}
+
+function boulderFillMonsterInAir(mon) {
+    const data = mon?.data || {};
+    return !!(mon?.inAir || mon?.flyer || mon?.floater
+        || data.inAir || data.flyer || data.floater
+        || ((mon?.mundetected || mon?.uundetected) && (data.clinger || data.ceilingHider)
+            && !Is_airlevel(game.u?.uz)));
+}
+
+function maybeCreateBoulderFillCorpse(mon) {
+    const data = mon?.data || {};
+    const corpseData = data.corpse || data;
+    if (!corpseData || corpseData.noCorpse) return;
+    const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
+        || data.rider || data.shopkeeper || data.name === 'lizard';
+    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
+    if (!guaranteedCorpse && rn2(corpseChance)) return;
+    const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
+    Object.assign(corpse, {
+        otyp: 'corpse',
+        glyph: '%',
+        color: corpseData.color ?? data.color ?? corpse.color ?? CLR_BROWN,
+        corpsenm: corpseData,
+        oldCorpse: !!data.corpse,
+    });
+}
+
+function killBoulderFillMonster(x, y) {
+    const mon = boulderFillMonsterAt(x, y);
+    if (!mon || boulderFillMonsterInAir(mon)) return false;
+    dropMonsterInventory(mon);
+    maybeCreateBoulderFillCorpse(mon);
+    recordVanquished(mon, false);
+    const loc = game.level?.at(x, y);
+    if (loc?.map_invisible) {
+        loc.map_invisible = false;
+        loc.remembered_glyph = null;
+    }
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.mhp = 0;
+    mon.movement = 0;
+    mon.dead = true;
+    newsym(x, y);
+    return true;
+}
+
+const BOULDER_FILL_FLOOR_TRAPS = new Set([
+    SQKY_BOARD, BEAR_TRAP, LANDMINE, FIRE_TRAP,
+    PIT, SPIKED_PIT, HOLE, TRAPDOOR,
+    TELEP_TRAP, LEVEL_TELEP, WEB, MAGIC_TRAP, ANTI_MAGIC,
+]);
+
+function boulderFillTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+}
+
+function deleteBoulderFillFloorTrap(trap, x, y) {
+    if (!trap || !BOULDER_FILL_FLOOR_TRAPS.has(trap.ttyp) || !game.level?.traps) return false;
+    if (game.u?.ux === x && game.u?.uy === y) {
+        if (game.u.utraptype !== TT_BURIEDBALL) {
+            game.u.utrap = 0;
+            game.u.utraptype = null;
+        }
+    } else {
+        const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y);
+        if (mon) mon.mtrapped = 0;
+    }
+    game.level.traps = game.level.traps.filter(candidate => candidate !== trap);
+    return true;
 }
 
 function earthFloorEffects(obj, x, y, messages) {
     const loc = game.level?.at(x, y);
     if (!loc || obj?.otyp !== BOULDER) return false;
-    if (!(IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) return false;
-    const lava = loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+    if (!earthBoulderHitsLiquid(loc)) return false;
+    const lava = earthLiquidIsLava(loc);
     const chance = rn2(10);
-    const fillsUp = lava ? chance === 0 : chance !== 0;
     const body = earthWaterBodyName(loc);
-    if (fillsUp) loc.typ = ROOM;
+    const trap = boulderFillTrapAt(x, y);
+    const fillsUp = earthBoulderFillsLiquid(loc, lava, chance);
+    let buriedDebt = '';
+    if (fillsUp) {
+        fillBoulderLiquidTerrain(loc);
+        killBoulderFillMonster(x, y);
+        deleteBoulderFillFloorTrap(trap, x, y);
+        buriedDebt = buriedMerchandiseDebtMessage(x, y, obj);
+        messages.push(...buryObjectsAt(x, y, { ignore: obj }));
+        if (buriedDebt) messages.push(buriedDebt);
+    }
     if (!game.u?.uinwater) {
         if (earthVisibleSquare(x, y)) {
             messages.push(`There is a large splash as the boulder ${fillsUp ? 'fills' : 'falls into'} the ${body}.`);
@@ -11775,7 +12819,18 @@ function earthFloorEffects(obj, x, y, messages) {
             messages.push(`You hear a${lava ? ' sizzling' : ''} splash.`);
         }
     }
-    if (!fillsUp && earthVisibleSquare(x, y)) messages.push('It sinks without a trace!');
+    if (fillsUp && game.u?.uinwater && game.u?.ux === x && game.u?.uy === y) {
+        game.u.uinwater = 0;
+        game.u.underwater = false;
+        game.u.uunderwater = false;
+        game.u.uundetected = 0;
+        vision_recalc(1);
+        messages.push('You find yourself on dry land again!');
+    } else if (lava && heroNextToSquare(x, y)) {
+        applyBoulderLavaSplashToHero(messages);
+    } else if (!fillsUp && earthVisibleSquare(x, y)) {
+        messages.push('It sinks without a trace!');
+    }
     newsym(x, y);
     return true;
 }
@@ -16056,7 +17111,8 @@ function rustTrapNameVerb(name, singular, plural) {
 
 function rustTrapItemClass(item) {
     return item?.cls || (item?.otyp === SCROLL_CLASS || item?.glyph === '?' ? 'scroll'
-        : item?.otyp === POTION_CLASS || item?.otyp === POT_WATER || item?.glyph === '!' ? 'potion'
+        : item?.otyp === POTION_CLASS || item?.otyp === POT_ACID
+            || item?.otyp === POT_OIL || item?.otyp === POT_WATER || item?.glyph === '!' ? 'potion'
             : item?.otyp === SPBOOK_NO_NOVEL || item?.otyp === SPE_HEALING || item?.glyph === '+' ? 'spellbook'
                 : '');
 }
@@ -17699,6 +18755,36 @@ async function moveHero(dx, dy) {
     const liquidTarget = IS_POOL(targetTyp) || targetTyp === LAVAPOOL || targetTyp === LAVAWALL;
     const targetBoulder = game.level?.objects?.find(obj =>
         !obj.transientProjectile && obj.ox === newx && obj.oy === newy && obj.otyp === BOULDER);
+
+    if (!swallowedMove && isBuriedBallTrapActive()) {
+        const found = findBuriedBallNear(oldx, oldy);
+        if (found && (newx - found.x) ** 2 + (newy - found.y) ** 2 <= 2) {
+            if (game.flags?.verbose !== false) await setMessage("You move within the chain's reach.");
+        } else {
+            game.u.utrap = Math.max(0, (game.u.utrap || 0) - 1);
+            const steedName = game.u?.usteed?.givenName || game.u?.usteed?.data?.name || 'steed';
+            const message = game.u.utrap > 0
+                ? game.u?.usteed
+                    ? `You and ${steedName} are chained to the buried ball.`
+                    : 'You are chained to the buried ball.'
+                : game.u?.usteed
+                    ? `${steedName[0]?.toUpperCase() || 'S'}${steedName.slice(1)} finally wrenches the ball free.`
+                    : 'You finally wrench the ball free.';
+            if (!game.u.utrap) {
+                const restored = buriedBallToPunishment();
+                if (!restored && game.u) game.u.utraptype = null;
+            }
+            if ((game.flags?.verbose !== false || !game.u.utrap) && game._last_trapmove_message !== message) {
+                await setMessage(message);
+            } else {
+                game._pending_message = '';
+                game._keep_pending_message = 0;
+            }
+            game._last_trapmove_message = message;
+            game.context.move = 1;
+            return;
+        }
+    }
 
     if (!swallowedMove && game.level?.flags?.sokoban_rules && dx && dy) {
         const boulderBlocksDiagonal = (x, y) =>
@@ -23643,6 +24729,8 @@ export async function rhack(_cmd) {
                     game.u.uhp = game.u.uhpmax;
                     message += '  You feel much better.';
                 }
+                if (!forceHeal && fixPrayerPunishmentTrouble())
+                    message += '  Your chain disappears.';
                 if (!forceHeal && !game._prayer_split_finish_message
                     && game.u?.ualign && (game.u.ualign.record || 0) < 2)
                     game.u.ualign.record++;
@@ -27751,6 +28839,27 @@ export async function rhack(_cmd) {
             game._command_mode = 'markerWriteObject';
             return;
         }
+        if (toolChargeKind(item) === 'drum of earthquake'
+            && !heroIsConfused() && !heroIsStunned() && (item.spe ?? 0) > 0) {
+            item.spe = Math.max(0, (item.spe ?? 0) - 1);
+            updateChargedItemLine(item);
+            item.known = true;
+            item.dknown = true;
+            const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
+            const messages = [
+                'You produce a heavy, thunderous rolling!',
+                `The entire ${earthquakeLevelDescription()} is shaking around you!`,
+                ...earthquakeMessages,
+            ];
+            for (const mon of game.level?.monsters || []) {
+                mon.msleeping = 0;
+                mon.mcanmove = true;
+                mon.mfrozen = 0;
+            }
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
         if (name.includes('drum')) {
             const deaf = (game.u?._statusSuffix || '').includes('Deaf');
             rn2(2);
@@ -30238,6 +31347,22 @@ export async function rhack(_cmd) {
 	                return;
             }
             if (command === 'monster') {
+                const form = polyselfForm();
+                if (form?.mlet === 'n' || String(form?.name || '').includes('nymph')) {
+                    if (isBuriedBallTrapActive()) {
+                        const surface = sitSurfaceName(game.level?.at(game.u?.ux || 0, game.u?.uy || 0));
+                        await setMessage(`The ball and chain are buried firmly in the ${surface}.`);
+                    } else if (game.u?.uball || game.u?.uchain || game.u?.upunished || game._punished) {
+                        unpunishHero();
+                        await setMessage('');
+                        game._keep_pending_message = 0;
+                        game.context.move = 1;
+                    } else {
+                        await setMessage('You are not chained to anything!');
+                    }
+                    game._command_mode = null;
+                    return;
+                }
                 await setMessage(!game.u?._polyself_base
                     ? "You don't have a special ability in your normal form!"
                     : game.u?._glyph === 'D'
@@ -30720,6 +31845,7 @@ export async function rhack(_cmd) {
             const targetY = game._farlook_y || game.u?.uy || 0;
             const loc = game.level?.at(targetX, targetY);
             if (game._teleport_dot_described && loc && !IS_OBSTRUCTED(loc.typ)) {
+                if (isBuriedBallTrapActive()) buriedBallToPunishment();
                 const oldX = game.u?.ux || 0;
                 const oldY = game.u?.uy || 0;
                 const oldBallX = game.u?.uball?.ox;
@@ -30853,6 +31979,7 @@ export async function rhack(_cmd) {
                 }
                 let landingX = targetX;
                 let landingY = targetY;
+                if (isBuriedBallTrapActive()) buriedBallToPunishment();
                 const oldX = game.u?.ux || 0;
                 const oldY = game.u?.uy || 0;
                 const oldBallX = game.u?.uball?.ox;
@@ -32864,6 +33991,7 @@ export async function rhack(_cmd) {
         }
         downStair.u_traversed = true;
         const fromLevel = { dnum: game.u?.uz?.dnum ?? 0, dlevel: game.u?.uz?.dlevel ?? 1 };
+        if (isBuriedBallTrapActive()) buriedBallToPunishment();
         const ballAndChain = [game.u?.uball, game.u?.uchain].filter(Boolean);
         removeCarriedPunishmentObjects(ballAndChain);
         rememberObjectsAtHero();
@@ -32976,6 +34104,7 @@ export async function rhack(_cmd) {
         }
         upStair.u_traversed = true;
         const fromLevel = { dnum: game.u?.uz?.dnum ?? 0, dlevel: game.u?.uz?.dlevel ?? 1 };
+        if (isBuriedBallTrapActive()) buriedBallToPunishment();
         const ballAndChain = [game.u?.uball, game.u?.uchain].filter(Boolean);
         removeCarriedPunishmentObjects(ballAndChain);
         rememberObjectsAtHero();
