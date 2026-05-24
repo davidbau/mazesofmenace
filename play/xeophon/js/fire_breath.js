@@ -7,6 +7,7 @@ import { dropMonsterInventory, mkcorpstat } from './mklev.js';
 import { CLR_BROWN } from './terminal.js';
 import { dryupFountainResultAt } from './fountain.js';
 import { meltIceAt } from './ice.js';
+import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
 
 const CORPSE = 471;
 const WEB_BURST_MESSAGE = 'A web bursts into flames!';
@@ -333,35 +334,16 @@ function applyFireRayPitEffects(x, y, trap) {
     return messages;
 }
 
-function monsterDrownsInMeltedIce(mon) {
-    const data = mon?.data || {};
-    return !!mon && !(data.inAir || data.flyer || data.floater || data.swimmer || data.breathless || data.nonliving);
-}
-
-function applyMeltedIceLiquidEffects(x, y, { heroRay = false } = {}) {
-    const loc = game.level?.at(x, y);
-    if (!loc || !IS_POOL(loc.typ)) return [];
-    const mon = (game.level?.monsters || []).find(candidate =>
-        candidate.mx === x && candidate.my === y && (candidate.mhp == null || candidate.mhp > 0));
-    if (!monsterDrownsInMeltedIce(mon)) return [];
-
-    const messages = [];
-    if (monsterVisibleAt(mon, x, y)) {
-        const name = mon.data?.name || 'creature';
-        messages.push(heroRay ? `You drown the ${name}.` : `The ${name} drowns.`);
-    }
-    dropMonsterInventory(mon);
-    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
-    newsym(x, y);
-    return messages;
-}
-
 // C ref: zap.c zap_over_floor() fire case for ice.
-export function applyFireRayIceTerrain(x, y, { heroRay = false } = {}) {
+export function applyFireRayIceTerrain(x, y, { heroRay = false, recordKill = null } = {}) {
     const result = meltIceAt(x, y);
     if (!result.melted) return { messages: [], handled: false, rangeMod: 0 };
     const messages = [...result.messages];
-    if (result.becameLiquid) messages.push(...applyMeltedIceLiquidEffects(x, y, { heroRay }));
+    if (result.becameLiquid)
+        messages.push(...applyMeltedIceMonsterLiquidEffects(x, y, {
+            heroCaused: heroRay,
+            recordKill,
+        }));
     return { messages, handled: true, rangeMod: 0 };
 }
 

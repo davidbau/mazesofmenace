@@ -17,7 +17,8 @@ import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
-import { processMeltIceTimers } from './ice.js';
+import { processBuriedOrganicRot, processMeltIceTimers } from './ice.js';
+import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
 
 const ROLE_STATE = {
     Archeologist: { rank: 'Digger', hpBase: 11, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [7, 10, 10, 7, 7, 7], attrDist: [20, 20, 20, 10, 20, 10] },
@@ -2863,12 +2864,17 @@ async function processFigurineTransformTimeouts(g) {
 }
 
 async function afterMoveTurn(g, includeHeroTime = true) {
-    for (const msg of processMeltIceTimers(g)) addToplineMessage(msg);
+    for (const msg of processMeltIceTimers(g, {
+        afterMelt: (x, y, result) => result.becameLiquid
+            ? applyMeltedIceMonsterLiquidEffects(x, y, { recordKill: recordVanquished })
+            : [],
+    })) addToplineMessage(msg);
     const rottenObjects = (g.level?.objects || []).filter(obj => obj.rotAwayTurn && obj.rotAwayTurn <= g.moves);
     if (rottenObjects.length) {
         g.level.objects = (g.level.objects || []).filter(obj => !(obj.rotAwayTurn && obj.rotAwayTurn <= g.moves));
         for (const obj of rottenObjects) newsym(obj.ox, obj.oy);
     }
+    processBuriedOrganicRot(g);
     await processEggHatchTimeouts(g);
     await processFigurineTransformTimeouts(g);
     if (includeHeroTime && g.moves >= (g.context.seer_turn || 0)) {

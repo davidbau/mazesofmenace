@@ -2,7 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { rn2Display } from './rng.js';
 import { MONSTER_DATA } from './monster_data.js';
 import { OBJECT_CLASS } from './object_data.js';
@@ -21,6 +21,7 @@ import {
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     WARNCOUNT, STR18, STR19, def_warnsyms, Is_rogue_level,
+    M3_INFRAVISIBLE,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
@@ -658,6 +659,21 @@ function monster_visible(mon) {
     return true;
 }
 
+function hero_has_infravision() {
+    return !game.u?.ublind
+        && !game.u?.uprops?.blind
+        && !game.u?.uprops?.blinded
+        && !!game.u?.uprops?.infravision;
+}
+
+function see_with_infrared(mon) {
+    // C ref: include/display.h:_see_with_infrared().
+    return !!mon
+        && hero_has_infravision()
+        && !!(mon.data?.mflags3 & M3_INFRAVISIBLE)
+        && couldsee(mon.mx, mon.my);
+}
+
 function warning_glyph(mon) {
     // C ref: display.h:_mon_warning(), display.c:warning_of() and
     // display_warning(). Warning floats over unseen hostile monsters.
@@ -945,6 +961,11 @@ export function newsym(x, y) {
     const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
 
     if (!visible) {
+        if (mon && see_with_infrared(mon) && monster_visible(mon)) {
+            const mg = monster_glyph(mon);
+            show_glyph_cell(x, y, mg.ch, mg.color, mg.dec);
+            return;
+        }
         const wg = mon ? warning_glyph(mon) : null;
         if (wg) {
             show_glyph_cell(x, y, wg.ch, wg.color, false);

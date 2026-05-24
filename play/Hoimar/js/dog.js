@@ -2,7 +2,7 @@
 // C ref: dog.c:makedog(), makemon.c:makemon() near-hero placement.
 
 import { game } from './gstate.js';
-import { enexto_core, makemon, place_object } from './mklev.js';
+import { enexto_core, makemon, next_ident, place_object } from './mklev.js';
 import { OBJECT_CLASS } from './object_data.js';
 import { MONSTER_DATA } from './monster_data.js';
 import {
@@ -22,9 +22,13 @@ import { cansee, clear_path, couldsee } from './vision.js';
 
 const FOOD_CLASS = 7;
 const WEAPON_CLASS = 2;
+const COIN_CLASS = 12;
+const GEM_CLASS = 13;
 const ROCK_CLASS = 14;
 const BALL_CLASS = 15;
 const CHAIN_CLASS = 16;
+const M1_NOHANDS = 0x00002000;
+const GOLD_PIECE = 438;
 const ORCISH_DAGGER = 36;
 const DART = 24;
 const JAVELIN = 32;
@@ -127,7 +131,25 @@ const OBJECT_WEIGHT_OVERRIDES = new Map([
 const AMULET_OF_YENDOR = 213;
 const SPE_BOOK_OF_THE_DEAD = 409;
 
-const PM_LITTLE_DOG = {
+function monsterDataByName(monsterName, fallback) {
+    const row = MONSTER_DATA.find(([name]) => name === monsterName);
+    if (!row) return { ...fallback };
+    const [
+        name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color,
+        neuter, male, female, msound = 0, mresists = 0, mconveys = 0,
+        mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = [], msize = 2,
+    ] = row;
+    return {
+        ...fallback,
+        name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color,
+        neuter, male, female, msound, mresists, mconveys, mflags1, mflags2,
+        mflags3, mattk, msize,
+    };
+}
+
+// C ref: include/monsters.h; starting pets need full monster flags so later
+// dogmove/mon.c predicates such as nohands() see the same data as C.
+const PM_LITTLE_DOG = monsterDataByName('LITTLE_DOG', {
     name: 'LITTLE_DOG',
     mlet: 'S_DOG',
     mlevel: 2,
@@ -135,9 +157,9 @@ const PM_LITTLE_DOG = {
     maligntyp: 0,
     geno: 0x0080 | 1,
     mmove: 18,
-};
+});
 
-const PM_KITTEN = {
+const PM_KITTEN = monsterDataByName('KITTEN', {
     name: 'KITTEN',
     mlet: 'S_FELINE',
     mlevel: 2,
@@ -146,9 +168,9 @@ const PM_KITTEN = {
     geno: 0x0080 | 1,
     mmove: 18,
     m2_wander: true,
-};
+});
 
-const PM_PONY = {
+const PM_PONY = monsterDataByName('PONY', {
     name: 'PONY',
     mlet: 'S_UNICORN',
     mlevel: 3,
@@ -157,7 +179,7 @@ const PM_PONY = {
     geno: 0x0080 | 1,
     mmove: 16,
     m2_wander: true,
-};
+});
 
 function configuredPetType() {
     switch (game.preferred_pet) {
@@ -479,8 +501,33 @@ function can_carry(mtmp, obj) {
     if (obj.cursed) return 0;
     if (obj.otyp === CORPSE) return 0;
     if (object_class(obj.otyp) === ROCK_CLASS && obj.otyp === BOULDER && !mtmp.data?.throws_rocks) return 0;
+    const iquan = Math.max(1, obj.quan || 1);
+    if (iquan > 1 && ((mtmp.data?.mflags1 ?? 0) & M1_NOHANDS) && !monster_can_glomp_stack(mtmp, obj)) return 1;
     if (current_mon_load(mtmp) + object_weight(obj) > max_mon_load(mtmp)) return 0;
-    return Math.max(1, obj.quan || 1);
+    return iquan;
+}
+
+function monster_can_glomp_stack(mtmp, obj) {
+    const oclass = obj.oclass ?? object_class(obj.otyp);
+    if (mtmp.data?.mlet === 'S_DRAGON' && (oclass === COIN_CLASS || oclass === GEM_CLASS)) return true;
+    return (mtmp.data?.mattk || []).some((attack) => attack?.[0] === 'AT_ENGL');
+}
+
+function split_floor_object(obj, count) {
+    const quan = Math.max(1, obj?.quan || 1);
+    if (!obj || count >= quan) return obj;
+    const oldWeight = obj.owt;
+    obj.quan = quan - count;
+    if (typeof oldWeight === 'number') {
+        obj.owt = Math.max(1, Math.round(oldWeight * obj.quan / quan));
+    }
+    return {
+        ...obj,
+        quan: count,
+        o_id: next_ident(),
+        owornmask: 0,
+        owt: typeof oldWeight === 'number' ? Math.max(1, oldWeight - (obj.owt || 0)) : obj.owt,
+    };
 }
 
 function object_weight(obj) {
@@ -503,6 +550,10 @@ function max_mon_load(mtmp) {
 }
 
 function object_name(obj) {
+    if (obj?.otyp === GOLD_PIECE) {
+        const quan = obj.quan || 1;
+        return quan === 1 ? 'a gold piece' : `${quan} gold pieces`;
+    }
     if (obj?.otyp === DART) return 'a dart';
     if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
@@ -624,6 +675,7 @@ function pet_inventory_pline(line) {
     if (typeof game._pending_message === 'string'
         && (game._pending_message.startsWith('You see here ')
             || game._pending_message.startsWith('Blecch!  Rotten food!'))) return;
+    if (game._pending_message === line) return;
     if (game._more && game._pending_message) {
         game._after_more_message = game._after_more_message
             ? `${game._after_more_message}  ${line}`
@@ -633,13 +685,12 @@ function pet_inventory_pline(line) {
     }
     if (game._pending_message) {
         const packed = `${game._pending_message}  ${line}`;
-        if (packed.length >= (game.nhDisplay?.cols || COLNO)) queue_more_prompt();
-        if (game._more) {
-            game._after_more_message = game._after_more_message
-                ? `${game._after_more_message}  ${line}`
-                : line;
+        if (packed.length >= (game.nhDisplay?.cols || COLNO)) {
+            queue_more_prompt();
+            game._pet_inventory_more_latched = true;
+            game._after_more_message = line;
             game._after_more_needs_prompt = false;
-            return;
+            if (game._more) return;
         }
         game._pending_message = packed;
     } else {
@@ -825,13 +876,16 @@ async function dog_invent(mtmp, udist) {
             if (rn2(Math.max(1, udist)) || !rn2(edog.apport)) {
                 if (!obj._defer_pet_pickup) {
                     if (cansee(omx, omy)) await latch_more_frame_before_pet_inventory();
-                    const idx = game.level.objects.indexOf(obj);
-                    if (idx >= 0) game.level.objects.splice(idx, 1);
+                    const picked = split_floor_object(obj, carryamt);
+                    if (picked === obj) {
+                        const idx = game.level.objects.indexOf(obj);
+                        if (idx >= 0) game.level.objects.splice(idx, 1);
+                    }
                     mtmp.inventory = mtmp.inventory || [];
-                    mtmp.inventory.unshift(obj);
+                    mtmp.inventory.unshift(picked);
                     if (cansee(omx, omy)) {
-                        mark_object_encountered(obj);
-                        pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(obj)}.`);
+                        mark_object_encountered(picked);
+                        pet_inventory_pline(`${pet_subject(mtmp)} picks up ${object_name(picked)}.`);
                     }
                     newsym(omx, omy);
                 }
@@ -983,6 +1037,7 @@ function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false } = {}) {
         return false;
     }
     if (x === game.u?.ux && y === game.u?.uy) return false;
+    if (x === mtmp.mux && y === mtmp.muy) return false;
     if (!ignoreMonster && mon_at(x, y, mtmp)) return false;
     if (is_boulder_at(x, y)) return false;
     const loc = game.level?.at(x, y);
@@ -992,6 +1047,17 @@ function pet_can_enter_square(mtmp, x, y, { ignoreMonster = false } = {}) {
 
 function pet_can_step(mtmp, x, y) {
     return pet_can_enter_square(mtmp, x, y);
+}
+
+function m_avoid_kicked_loc(mtmp, nx, ny) {
+    const kicked = game._kickedloc;
+    if (!kicked || !isok(kicked.x, kicked.y)) return false;
+    return (mtmp.mpeaceful || mtmp.mtame)
+        && mtmp.mcansee !== 0
+        && !mtmp.mconf && !mtmp.mstun
+        && !game.u?.uprops?.conflict
+        && nx === kicked.x && ny === kicked.y
+        && dist2(nx, ny, game.u?.ux ?? nx, game.u?.uy ?? ny) <= 2;
 }
 
 function pet_should_attack(mtmp, target) {
@@ -1266,6 +1332,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
                 continue;
             }
             if (avoid_soko_push_loc(mtmp, nx, ny)) continue;
+            if (m_avoid_kicked_loc(mtmp, nx, ny)) continue;
 
             // C ref: dogmove.c:dog_move(). Seen traps are retained as
             // candidates by mfndpos(ALLOW_TRAPS), then pets usually avoid
@@ -1356,7 +1423,8 @@ export async function dog_move(mtmp, after = true) {
     await dog_invent(mtmp, udist);
     // C ref: src/dogmove.c:dog_invent().  A visible pet inventory message
     // queued behind an active tty --More-- blocks before dog_goal()/attacks.
-    if (game._more && game._after_more_message) {
+    if (game._more && (game._after_more_message || game._pet_inventory_more_latched)) {
+        game._pet_inventory_more_latched = false;
         game._resume_pet_move_after_inventory = mtmp;
         return 0;
     }

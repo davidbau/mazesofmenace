@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
 import { findRole } from './roles.js';
 import { mkobj, mksobj } from './mklev.js';
-import { OBJECT_CHARGED } from './object_data.js';
+import { OBJECT_CHARGED, OBJECT_CLASS } from './object_data.js';
 import {
     P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL,
     P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
@@ -15,8 +15,8 @@ const ROLE_INIT = new Map([
     ['Healer', {
         attrbase: [7, 7, 13, 7, 11, 16],
         attrmax: [15, 20, 20, 15, 25, 5],
-        attrdist: [15, 10, 20, 15, 25, 15],
-        hp: 13, pwBase: 1, pwRnd: 4, ac: 8, gold: 1218,
+        attrdist: [15, 20, 20, 15, 25, 5],
+        hp: 13, pwBase: 1, pwRnd: 4, ac: 0, gold: 1218,
     }],
     ['Priest', {
         attrbase: [7, 7, 10, 7, 7, 7],
@@ -65,6 +65,36 @@ const ROLE_INIT = new Map([
 const HUMAN_ATTRMAX = [118, 18, 18, 18, 18, 18];
 
 const LEVEL_ADV = new Map([
+    ['Healer', {
+        xlev: 20,
+        hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
+    }],
+    ['Priest', {
+        xlev: 10,
+        hpadv: { infix: 12, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 2 },
+    }],
+    ['Ranger', {
+        xlev: 10,
+        hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 6, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
+    ['Rogue', {
+        xlev: 11,
+        hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
+    ['Samurai', {
+        xlev: 11,
+        hpadv: { infix: 13, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
+    ['Tourist', {
+        xlev: 14,
+        hpadv: { infix: 8, inrnd: 0, lofix: 0, lornd: 8, hifix: 0, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+    }],
     ['Wizard', {
         xlev: 12,
         hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
@@ -81,8 +111,29 @@ const LEVEL_ADV = new Map([
 
 const RACE_LEVEL_ADV = new Map([
     ['human', {
+        attrmax: HUMAN_ATTRMAX,
         hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
         enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 },
+    }],
+    ['elf', {
+        attrmax: [18, 20, 20, 18, 16, 18],
+        hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 1, hirnd: 0 },
+        enadv: { infix: 2, inrnd: 0, lofix: 3, lornd: 0, hifix: 3, hirnd: 0 },
+    }],
+    ['dwarf', {
+        attrmax: [118, 16, 16, 20, 20, 16],
+        hpadv: { infix: 4, inrnd: 0, lofix: 0, lornd: 3, hifix: 2, hirnd: 0 },
+        enadv: { infix: 0, inrnd: 0, lofix: 0, lornd: 0, hifix: 0, hirnd: 0 },
+    }],
+    ['gnome', {
+        attrmax: [68, 19, 18, 18, 18, 18],
+        hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+        enadv: { infix: 2, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 },
+    }],
+    ['orc', {
+        attrmax: [68, 16, 16, 18, 18, 16],
+        hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 1, lornd: 0, hifix: 1, hirnd: 0 },
     }],
 ]);
 
@@ -136,14 +187,26 @@ const BOW = 83;
 const ELVEN_BOW = 84;
 const ORCISH_BOW = 85;
 const YUMI = 86;
+const ELVEN_LEATHER_HELM = 89;
+const ORCISH_HELM = 90;
+const DWARVISH_IRON_HELM = 91;
+const HELMET = 97;
 const PLATE_MAIL = 121;
 const SPLINT_MAIL = 124;
+const CHAIN_MAIL = 128;
+const ORCISH_CHAIN_MAIL = 129;
+const RING_MAIL = 132;
+const ORCISH_RING_MAIL = 133;
 const HAWAIIAN_SHIRT = 136;
 const LEATHER_ARMOR = 134;
+const ELVEN_CLOAK = 139;
+const ORCISH_CLOAK = 140;
 const ROBE = 143;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_DISPLACEMENT = 149;
 const SMALL_SHIELD = 150;
+const URUK_HAI_SHIELD = 154;
+const ORCISH_SHIELD = 155;
 const SCALPEL = 39;
 const LEATHER_GLOVES = 159;
 const LARGE_BOX = 214;
@@ -163,6 +226,8 @@ const SPE_FORCE_BOLT = 383;
 const APPLE = 277;
 const SPRIG_OF_WOLFSBANE = 283;
 const CLOVE_OF_GARLIC = 284;
+const TRIPE_RATION = 264;
+const LEMBAS_WAFER = 291;
 const CRAM_RATION = 292;
 const FOOD_RATION = 293;
 const RIN_LEVITATION = 183;
@@ -288,6 +353,10 @@ const BLINDFOLD_INVENTORY = [
     { typ: BLINDFOLD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
+const XTRA_FOOD_INVENTORY = [
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: FOOD_CLASS, min: 2, max: 2, bless: 0 },
+];
+
 const TIN_OPENER_INVENTORY = [
     { typ: TIN_OPENER, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
@@ -371,6 +440,47 @@ const SAMURAI_KNOWN_ARMOR = [
     // C ref: src/u_init.c:u_init_role() -> knows_class(ARMOR_CLASS).
     PLATE_MAIL, SPLINT_MAIL, LEATHER_GLOVES,
 ];
+
+const ORC_KNOWN_OBJECTS = [
+    // C ref: src/u_init.c:u_init_race().
+    ORCISH_SHORT_SWORD, ORCISH_ARROW, ORCISH_BOW, ORCISH_SPEAR,
+    ORCISH_DAGGER, ORCISH_CHAIN_MAIL, ORCISH_RING_MAIL, ORCISH_HELM,
+    ORCISH_SHIELD, URUK_HAI_SHIELD, ORCISH_CLOAK,
+];
+
+const INFRAVISION_RACES = new Set(['elf', 'dwarf', 'gnome', 'orc']);
+
+const RACE_INVENTORY_SUBSTITUTIONS = new Map([
+    // C ref: src/u_init.c:ini_inv_obj_substitution().
+    ['elf', new Map([
+        [DAGGER, ELVEN_DAGGER],
+        [SPEAR, ELVEN_SPEAR],
+        [SHORT_SWORD, ELVEN_SHORT_SWORD],
+        [BOW, ELVEN_BOW],
+        [ARROW, ELVEN_ARROW],
+        [HELMET, ELVEN_LEATHER_HELM],
+        [CLOAK_OF_DISPLACEMENT, ELVEN_CLOAK],
+        [CRAM_RATION, LEMBAS_WAFER],
+    ])],
+    ['orc', new Map([
+        [DAGGER, ORCISH_DAGGER],
+        [SPEAR, ORCISH_SPEAR],
+        [SHORT_SWORD, ORCISH_SHORT_SWORD],
+        [BOW, ORCISH_BOW],
+        [ARROW, ORCISH_ARROW],
+        [HELMET, ORCISH_HELM],
+        [SMALL_SHIELD, ORCISH_SHIELD],
+        [RING_MAIL, ORCISH_RING_MAIL],
+        [CHAIN_MAIL, ORCISH_CHAIN_MAIL],
+        [CRAM_RATION, TRIPE_RATION],
+        [LEMBAS_WAFER, TRIPE_RATION],
+    ])],
+    ['dwarf', new Map([
+        [SPEAR, DWARVISH_SPEAR],
+        [SHORT_SWORD, DWARVISH_SHORT_SWORD],
+        [HELMET, DWARVISH_IRON_HELM],
+    ])],
+]);
 
 function trquan(trop) {
     if (!trop.min) return 1;
@@ -464,20 +574,41 @@ export function merge_inventory_object(obj) {
 export function add_inventory_object(obj) {
     const target = merge_inventory_object(obj);
     if (target) return target;
+    // C ref: src/invent.c:assigninvlet(), reorder_invent().  Gold uses '$',
+    // which sorts before lettered inventory and is scanned first by systems
+    // that walk gi.invent directly, such as dogmove.c:dog_goal().
+    if (obj.oclass === COIN_CLASS) {
+        game.inventory.unshift(obj);
+        return obj;
+    }
     game.inventory.push(obj);
     return obj;
 }
 
 function discover_starting_object(obj) {
     if (!obj?.knownName || typeof obj.otyp !== 'number') return;
+    const pending = Array.isArray(game._startingObjectDiscoveries)
+        ? game._startingObjectDiscoveries
+        : (game._startingObjectDiscoveries = []);
+    pending.push(obj.otyp);
+}
+
+function flush_starting_object_discoveries() {
+    const pending = Array.isArray(game._startingObjectDiscoveries)
+        ? game._startingObjectDiscoveries
+        : [];
     const order = Array.isArray(game.discoveryOrder)
         ? game.discoveryOrder
         : (game.discoveryOrder = []);
-    if (!order.includes(obj.otyp)) order.push(obj.otyp);
     game.discoveredObjects = game.discoveredObjects || new Set();
-    if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(obj.otyp);
     game.encounteredObjects = game.encounteredObjects || new Set();
-    if (typeof game.encounteredObjects.add === 'function') game.encounteredObjects.add(obj.otyp);
+    for (const otyp of pending) {
+        if (!Number.isInteger(otyp)) continue;
+        if (!order.includes(otyp)) order.push(otyp);
+        if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(otyp);
+        if (typeof game.encounteredObjects.add === 'function') game.encounteredObjects.add(otyp);
+    }
+    game._startingObjectDiscoveries = [];
 }
 
 function discover_role_known_object(otyp) {
@@ -502,6 +633,17 @@ function reorder_samurai_known_discoveries() {
 
 function is_container_type(otyp) {
     return otyp >= LARGE_BOX && otyp <= BAG_OF_TRICKS;
+}
+
+function currentRaceName() {
+    return String(game.urace?.name || game._nhopts?.race || 'human').toLowerCase();
+}
+
+function substitute_initial_inventory_object(obj) {
+    const replacement = RACE_INVENTORY_SUBSTITUTIONS.get(currentRaceName())?.get(obj?.otyp);
+    if (!replacement) return;
+    obj.otyp = replacement;
+    obj.oclass = OBJECT_CLASS[obj.otyp] || obj.oclass;
 }
 
 function ini_inv_adjust_obj(trop, obj) {
@@ -578,6 +720,7 @@ function ini_inv(trobs, noCreate, roleName) {
                 noCreate.nocreate4 = obj.otyp;
             }
         }
+        substitute_initial_inventory_object(obj);
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
         const invObj = add_inventory_object(obj);
         if (trop.wielded) invObj.wielded = true;
@@ -593,6 +736,20 @@ function ini_inv(trobs, noCreate, roleName) {
         idx++;
         if (idx < trobs.length) quan = trquan(trobs[idx]);
     }
+}
+
+function reset_no_create(noCreate) {
+    noCreate.nocreate = UNDEF_TYP;
+    noCreate.nocreate2 = UNDEF_TYP;
+    noCreate.nocreate3 = UNDEF_TYP;
+    noCreate.nocreate4 = UNDEF_TYP;
+}
+
+function u_init_race_inventory(noCreate, roleName) {
+    // C ref: src/u_init.c:u_init_race().
+    if (currentRaceName() !== 'orc') return;
+    if (roleName !== 'Wizard') ini_inv(XTRA_FOOD_INVENTORY, noCreate, roleName);
+    for (const otyp of ORC_KNOWN_OBJECTS) discover_role_known_object(otyp);
 }
 
 export function u_init_role_inventory() {
@@ -659,13 +816,13 @@ export function u_init_role_inventory() {
         for (const otyp of RANGER_KNOWN_WEAPONS) discover_role_known_object(otyp);
     } else if (role?.name?.m === 'Rogue') {
         ini_inv(ROGUE_INVENTORY, noCreate, role.name.m);
+        if (!rn2(5)) {
+            ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
+        }
         // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
         // Rogues know dagger appearances even before encountering those
         // object types, so discoveries marks them with '*'.
         for (const otyp of ROGUE_KNOWN_WEAPONS) discover_role_known_object(otyp);
-        if (!rn2(5)) {
-            ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
-        }
     } else if (role?.name?.m === 'Samurai') {
         ini_inv(SAMURAI_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {
@@ -676,18 +833,33 @@ export function u_init_role_inventory() {
         discover_role_known_object(FOOD_RATION);
         reorder_samurai_known_discoveries();
     }
+    reset_no_create(noCreate);
+    u_init_race_inventory(noCreate, role?.name?.m);
     if (roleStartingGold > 0) {
         ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);
     }
+    // C ref: src/u_init.c:u_init_skills_discoveries().  Starting inventory
+    // is added to discoveries after role and race pre-knowledge.
+    flush_starting_object_discoveries();
 }
 
 export function u_init_misc_rng() {
-    const role = findRole(game._nhopts?.role);
-    const init = ROLE_INIT.get(role?.name?.m);
-    let initialPower = init?.pwBase ?? 2;
-    if ((init?.pwRnd ?? 0) > 0) initialPower += rnd(init.pwRnd);
+    const role = roleLevelAdv();
+    const race = raceLevelAdv();
+    const fallbackRole = findRole(game._nhopts?.role);
+    const init = ROLE_INIT.get(fallbackRole?.name?.m);
+    if (role && race) {
+        // C refs: src/u_init.c:u_init_misc(), src/attrib.c:newhp(),
+        // src/exper.c:newpw(); level-0 HP/Pw combine role and race advances.
+        game._initialHp = initialHitPoints(role, race);
+        game._initialPower = initialPower(role, race);
+    } else {
+        game._initialHp = init?.hp ?? 10;
+        let fallbackPower = init?.pwBase ?? 2;
+        if ((init?.pwRnd ?? 0) > 0) fallbackPower += rnd(init.pwRnd);
+        game._initialPower = fallbackPower;
+    }
     if (game.u) game.u.uhandedness = rn2(10) ? 'right' : 'left';
-    game._initialPower = initialPower;
 }
 
 function rndAttr(init) {
@@ -716,13 +888,13 @@ function redist(attrs, maxes, init, np, addition) {
     return np;
 }
 
-function varyInitAttr(attrs, maxes) {
+function varyInitAttr(attrs, maxes, limits) {
     for (let i = 0; i < attrs.length; i++) {
         if (!rn2(20)) {
             const xd = rn2(7) - 2;
             attrs[i] += xd;
             if (xd > 0 && attrs[i] > maxes[i]) {
-                maxes[i] = Math.min(HUMAN_ATTRMAX[i], attrs[i]);
+                maxes[i] = Math.min(limits[i], attrs[i]);
                 attrs[i] = maxes[i];
             } else if (xd < 0) {
                 attrs[i] = Math.max(3, attrs[i]);
@@ -735,23 +907,26 @@ function varyInitAttr(attrs, maxes) {
 function initialAttributes(init) {
     const attrs = init.attrbase.slice();
     const maxes = init.attrbase.slice();
-    const limits = HUMAN_ATTRMAX;
+    // C ref: include/attrib.h:ATTRMAX(); initial redistribution is bounded
+    // by race maxima, not by the role's attribute distribution weights.
+    const limits = raceLevelAdv()?.attrmax || HUMAN_ATTRMAX;
     let np = 75 - attrs.reduce((a, b) => a + b, 0);
     const redistInit = { ...init, attrmax: limits };
     np = redist(attrs, maxes, redistInit, np, true);
     redist(attrs, maxes, redistInit, np, false);
-    varyInitAttr(attrs, maxes);
-    return { attrs, maxes };
+    varyInitAttr(attrs, maxes, limits);
+    return { attrs, maxes, limits };
 }
 
 export function apply_startup_role_state() {
     const role = findRole(game._nhopts?.role);
     const init = ROLE_INIT.get(role?.name?.m);
     if (!init) return;
-    const { attrs, maxes } = initialAttributes(init);
+    const { attrs, maxes, limits } = initialAttributes(init);
     if (!game._startupRoleGoldInitialized) game._goldCount = init.gold;
-    game.u.uhp = init.hp;
-    game.u.uhpmax = init.hp;
+    const initialHp = game._initialHp ?? init.hp;
+    game.u.uhp = initialHp;
+    game.u.uhpmax = initialHp;
     game.u.uen = game._initialPower ?? init.pwBase;
     game.u.uenmax = game.u.uen;
     game.u.uac = init.ac;
@@ -760,9 +935,13 @@ export function apply_startup_role_state() {
     game.u.uencumber = 0;
     game.u.acurr = { a: attrs };
     game.u.amax = { a: maxes };
+    game.u.attrmax = { a: limits.slice() };
+    game.u.uprops = game.u.uprops || {};
+    // C ref: src/polyself.c:set_uasmon().  Hero infravision comes from the
+    // physical race's monster form while unpolymorphed.
+    if (INFRAVISION_RACES.has(currentRaceName())) game.u.uprops.infravision = true;
     if (role?.name?.m === 'Samurai') {
         // C ref: src/attrib.c:sam_abil[] grants level-1 intrinsic HFast.
-        game.u.uprops = game.u.uprops || {};
         game.u.uprops.intrinsic_fast = true;
     }
 }
@@ -777,6 +956,10 @@ function raceLevelAdv() {
     return RACE_LEVEL_ADV.get(String(raceName).toLowerCase()) || RACE_LEVEL_ADV.get('human');
 }
 
+function currentLevel(u) {
+    return u.ulevel == null ? 1 : Number(u.ulevel);
+}
+
 function currentAttr(index) {
     return game.u?.acurr?.a?.[index] ?? 10;
 }
@@ -787,13 +970,33 @@ function energyMod(en, adv) {
     return en;
 }
 
+function initialHitPoints(role, race) {
+    let hp = role.hpadv.infix + race.hpadv.infix;
+    if (role.hpadv.inrnd > 0) hp += rnd(role.hpadv.inrnd);
+    if (race.hpadv.inrnd > 0) hp += rnd(race.hpadv.inrnd);
+    return Math.max(hp, 1);
+}
+
+function initialPower(role, race) {
+    let en = role.enadv.infix + race.enadv.infix;
+    if (role.enadv.inrnd > 0) en += rnd(role.enadv.inrnd);
+    if (race.enadv.inrnd > 0) en += rnd(race.enadv.inrnd);
+    return Math.max(en, 1);
+}
+
 export function newhp() {
     const u = game.u || {};
     const role = roleLevelAdv();
     const race = raceLevelAdv();
     if (!role || !race) return 1;
-    const lvl = u.ulevel || 1;
+    const lvl = currentLevel(u);
     let hp;
+    if (lvl === 0) {
+        hp = initialHitPoints(role, race);
+        u.uhpinc = u.uhpinc || [];
+        u.uhpinc[0] = hp;
+        return hp;
+    }
     if (lvl < role.xlev) {
         hp = role.hpadv.lofix + race.hpadv.lofix;
         if (role.hpadv.lornd > 0) hp += rnd(role.hpadv.lornd);
@@ -826,7 +1029,13 @@ export function newpw() {
     const role = roleLevelAdv();
     const race = raceLevelAdv();
     if (!role || !race) return 1;
-    const lvl = u.ulevel || 1;
+    const lvl = currentLevel(u);
+    if (lvl === 0) {
+        const en = initialPower(role, race);
+        u.ueninc = u.ueninc || [];
+        u.ueninc[0] = en;
+        return en;
+    }
     let enrnd = Math.trunc(currentAttr(2) / 2);
     let enfix;
     if (lvl < role.xlev) {

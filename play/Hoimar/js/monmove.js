@@ -789,6 +789,17 @@ function distmin(x0, y0, x1, y1) {
     return Math.max(Math.abs(x0 - x1), Math.abs(y0 - y1));
 }
 
+function m_avoid_kicked_loc_basic(mtmp, nx, ny) {
+    const kicked = game._kickedloc;
+    if (!kicked || !isok(kicked.x, kicked.y)) return false;
+    return (mtmp.mpeaceful || mtmp.mtame)
+        && mtmp.mcansee !== 0
+        && !mtmp.mconf && !mtmp.mstun
+        && !game.u?.uprops?.conflict
+        && nx === kicked.x && ny === kicked.y
+        && dist2(nx, ny, game.u?.ux ?? nx, game.u?.uy ?? ny) <= 2;
+}
+
 function sgn(n) {
     return n < 0 ? -1 : n > 0 ? 1 : 0;
 }
@@ -2952,6 +2963,7 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
 
     candidateLoop:
     for (const cand of candidates) {
+        if (m_avoid_kicked_loc_basic(mtmp, cand.x, cand.y)) continue;
         if (appr !== 0) {
             for (let j = 0; j < jcnt; j++) {
                 const trk = mtmp.mtrack[j];
@@ -3415,7 +3427,7 @@ export async function movemon() {
         // C ref: monmove.c:dochug() delegates tame monsters to
         // dogmove.c:dog_move() after the shared distfleeck() phase.
         if (mtmp.mtame) {
-            if (is_wanderer(mtmp) && monnear_hero(mtmp)) rn2(4);
+            if (is_wanderer(mtmp) && fleeState.nearby) rn2(4);
             const dogStatus = await dog_move(mtmp, false);
             if (g._resume_pet_move_after_inventory === mtmp && g._more) {
                 // C ref: src/dogmove.c:dog_invent()/dog_move(). A pet

@@ -41,7 +41,13 @@ export function gethungry() {
     if (game.u?.uinvulnerable || game.iflags?.debug_hunger) return;
     const u = game.u;
     if (!u) return;
-    if (!slowDigestionActive()) u.uhunger = (u.uhunger ?? 900) - 1;
+    const sleeping = (game._nomul_turns_remaining || 0) > 0
+        && game._nomul_finish_message === 'You wake up.';
+    // C ref: src/eat.c:gethungry().  `Unaware` sleep only burns ordinary
+    // metabolism on one in ten turns, before the accessory hunger roll.
+    if ((!sleeping || !rn2(10)) && !slowDigestionActive()) {
+        u.uhunger = (u.uhunger ?? 900) - 1;
+    }
 
     const accessorytime = rn2(20);
     if (accessorytime % 2) {

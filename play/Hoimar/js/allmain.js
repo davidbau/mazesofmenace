@@ -503,6 +503,10 @@ export async function newgame() {
         postInventoryStartupRng();
         if (g.flags?.legacy === false && g.urole?.name?.m === 'Wizard') {
             g.u.uac = 9;
+        } else if (g.flags?.legacy === false && g.urole?.name?.m === 'Healer') {
+            g.u.uac = 8;
+        } else if (g.flags?.legacy === false && g.urole?.name?.m === 'Tourist') {
+            g.u.uac = 10;
         }
     }
 
@@ -520,6 +524,8 @@ export async function newgame() {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
         g._deferred_startup_uac = 9;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Healer') {
+        g._deferred_startup_uac = 8;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Tourist') {
         g._deferred_startup_uac = 10;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Priest') {
@@ -1080,6 +1086,7 @@ export async function moveloop_core() {
     g.context = g.context || {};
     g.context.move = 0; // Reset before rhack
     g.context.mv = 0;
+    g._command_was_kick = false;
 
     if ((g._simple_timed_repeats_remaining || 0) > 0 && !g._more) {
         await continueSimpleTimedRepeats(g);
@@ -1107,6 +1114,7 @@ export async function moveloop_core() {
     // Advance turn; run/rush movement may consume multiple turns before
     // returning to the input boundary.
     if (g.context?.move) {
+        if (!g._command_was_kick) g._kickedloc = null;
         if (g._resume_run_after_more) {
             g._resume_run_after_more = false;
             if (!g._more) {
@@ -1116,57 +1124,82 @@ export async function moveloop_core() {
             }
             return;
         }
-        if (g._monster_turn_paused_for_more && g._more) return;
-        if (g._floor_list_pauses_turn && g._more) {
-            g._floor_list_pauses_turn = false;
-            g._resume_floor_list_turn = true;
-            return;
-        }
-        if (g._deferred_pre_turn_after_more) {
-            g._deferred_pre_turn_after_more = false;
-            await advanceTurn();
-            if (g._more || g._monster_turn_paused_for_more) return;
-        }
-        if (g._resume_monster_turn) {
-            const resumeOccupationAfterMonsterTurn = (!!g._force_lock
-                || (g._force_lock_post_success_turns || 0) > 0)
-                && !!g._occupation_paused_for_more;
-            g._resume_monster_turn = false;
-            await advanceTurn();
-            if (resumeOccupationAfterMonsterTurn
-                && (g._more || g._monster_turn_paused_for_more)) return;
-            if (g._nomovemsg && !g._more && !g._monster_turn_paused_for_more) {
-                // C refs: end.c:savelife(), allmain.c:moveloop_core().
-                // If the resumed monster turn does not block on another
-                // topline More, the saved-life nomovemsg appears at this same
-                // input boundary behind the "OK, so you don't die." line.
-                const msg = g._nomovemsg;
-                g._nomovemsg = '';
-                if (g._pending_message) await append_pline(msg);
-                else await pline(msg);
-            }
-            if (resumeOccupationAfterMonsterTurn && occupationPending(g)) {
-                g._occupation_paused_for_more = false;
-                if (g._force_lock) g._force_lock_resume_turn_first = false;
-                if (!await continueOccupationTurns(g)) return;
-            }
-        } else if (g._occupation_resume) {
-            g._occupation_resume = false;
-            if (!await continueOccupationTurns(g)) return;
-        } else {
-            applyOccupationFinalTurnState(g);
-            await advanceTurn();
+        if (g._resume_nomul_after_more) {
+            g._resume_nomul_after_more = false;
             if (!await continueNomulTurns(g)) return;
             if (!occupationPending(g)) finish_pending_eaten_corpse();
-            if (g._more && occupationPending(g)) {
-                if (g._force_lock) g._force_lock_resume_turn_first = true;
-                g._occupation_paused_for_more = true;
+            if (!await continueOccupationTurns(g)) return;
+        } else {
+            if (g._monster_turn_paused_for_more && g._more) return;
+            if (g._floor_list_pauses_turn && g._more) {
+                g._floor_list_pauses_turn = false;
+                g._resume_floor_list_turn = true;
                 return;
             }
-            if (!await continueOccupationTurns(g)) return;
+            if (g._deferred_pre_turn_after_more) {
+                g._deferred_pre_turn_after_more = false;
+                await advanceTurn();
+                if (g._more || g._monster_turn_paused_for_more) return;
+            }
+            if (g._resume_monster_turn) {
+                const resumeOccupationAfterMonsterTurn = (!!g._force_lock
+                    || (g._force_lock_post_success_turns || 0) > 0)
+                    && !!g._occupation_paused_for_more;
+                g._resume_monster_turn = false;
+                await advanceTurn();
+                if (resumeOccupationAfterMonsterTurn
+                    && (g._more || g._monster_turn_paused_for_more)) return;
+                if (g._nomovemsg && !g._more && !g._monster_turn_paused_for_more) {
+                    // C refs: end.c:savelife(), allmain.c:moveloop_core().
+                    // If the resumed monster turn does not block on another
+                    // topline More, the saved-life nomovemsg appears at this same
+                    // input boundary behind the "OK, so you don't die." line.
+                    const msg = g._nomovemsg;
+                    g._nomovemsg = '';
+                    if (g._pending_message) await append_pline(msg);
+                    else await pline(msg);
+                }
+                if (resumeOccupationAfterMonsterTurn && occupationPending(g)) {
+                    g._occupation_paused_for_more = false;
+                    if (g._force_lock) g._force_lock_resume_turn_first = false;
+                    if (!await continueOccupationTurns(g)) return;
+                }
+                if (!resumeOccupationAfterMonsterTurn
+                    && !g._more
+                    && !g._monster_turn_paused_for_more
+                    && (g._nomul_turns_remaining || 0) > 0) {
+                    if (!await continueNomulTurns(g)) return;
+                    if (!occupationPending(g)) finish_pending_eaten_corpse();
+                    if (!await continueOccupationTurns(g)) return;
+                }
+            } else if (g._occupation_resume) {
+                g._occupation_resume = false;
+                if (!await continueOccupationTurns(g)) return;
+            } else {
+                applyOccupationFinalTurnState(g);
+                await advanceTurn();
+                if (g._monster_turn_paused_for_more) return;
+                if (!await continueNomulTurns(g)) return;
+                if (!occupationPending(g)) finish_pending_eaten_corpse();
+                if (g._more && occupationPending(g)) {
+                    if (g._force_lock) g._force_lock_resume_turn_first = true;
+                    g._occupation_paused_for_more = true;
+                    return;
+                }
+                if (!await continueOccupationTurns(g)) return;
+            }
         }
         const skipPetDeathCatchupDebt = !!g._skip_encumbered_debt_after_pet_death_more;
         g._skip_encumbered_debt_after_pet_death_more = false;
+        if (skipPetDeathCatchupDebt) {
+            // C refs: src/topl.c:more(), src/allmain.c:moveloop_core().
+            // Dismissing the More before visible pet-death side effects
+            // resumes the already-charged monster turn.  It should not start
+            // an immediate extra catch-up pass at that input boundary, but the
+            // completed u_calc_moveamt() still advances the burdened movement
+            // accumulator for later commands.
+            accrueEncumberedMoveDebt(g);
+        }
         if (!skipPetDeathCatchupDebt
             && encumberedDebtNeedsExtraTurn(g) && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  A

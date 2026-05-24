@@ -232,6 +232,7 @@ const BALL_CLASS = 15;
 const CHAIN_CLASS = 16;
 const FIRST_SPELL = 366;
 const LAST_SPELL = 407;
+const SPE_MAGIC_MISSILE = 367;
 const SPE_DETECT_MONSTERS = 373;
 const SPE_HEALING = 374;
 const SPE_CURE_BLINDNESS = 378;
@@ -362,7 +363,7 @@ const OBJECT_BASE_NAMES = new Map([
     [JAVELIN, 'javelin'],
     [SCALPEL, 'scalpel'],
     [KNIFE, 'knife'],
-    [ORCISH_DAGGER, 'crude dagger'],
+    [ORCISH_DAGGER, 'orcish dagger'],
     [BATTLE_AXE, 'battle-axe'],
     [ELVEN_SHORT_SWORD, 'elven short sword'],
     [ORCISH_SHORT_SWORD, 'orcish short sword'],
@@ -653,6 +654,22 @@ const ROLE_INITIAL_SPELL_SKILLS = new Map([
         [C.P_ATTACK_SPELL, C.P_BASIC],
         [C.P_ENCHANTMENT_SPELL, C.P_BASIC],
     ])],
+]);
+
+const ROLE_SPELL_STATS = new Map([
+    // C ref: src/role.c:roles[] spell statistics.
+    ['Healer', {
+        spelbase: 3, spelheal: -3, spelshld: 2, spelarmr: 10,
+        spelstat: C.A_WIS, spelspec: SPE_CURE_SICKNESS, spelsbon: -4,
+    }],
+    ['Priest', {
+        spelbase: 3, spelheal: -2, spelshld: 2, spelarmr: 10,
+        spelstat: C.A_WIS, spelspec: SPE_REMOVE_CURSE, spelsbon: -4,
+    }],
+    ['Wizard', {
+        spelbase: 1, spelheal: 0, spelshld: 3, spelarmr: 10,
+        spelstat: C.A_INT, spelspec: SPE_MAGIC_MISSILE, spelsbon: -4,
+    }],
 ]);
 
 const INVENTORY_GROUPS = [
@@ -953,6 +970,9 @@ function inventoryIndexForLetter(ch) {
 function consumeInventoryObject(obj) {
     if (!obj) return;
     if ((obj.quan || 1) > 1) {
+        // C ref: src/mkobj.c:splitobj(); consuming one item from an
+        // inventory stack gives the split-off object a fresh o_id.
+        next_ident();
         obj.quan--;
         return;
     }
@@ -1063,10 +1083,12 @@ function compressLetters(letters) {
 
 function applyLetters() {
     ensureInventoryLetters();
-    return compressLetters((game.inventory || [])
+    const letters = (game.inventory || [])
         .filter(obj => obj?.oclass === TOOL_CLASS || obj?.oclass === WAND_CLASS || obj?.oclass === SPBOOK_CLASS
             || obj?.otyp === CREAM_PIE)
-        .map(obj => obj.invlet));
+        .map(obj => obj.invlet)
+        .filter(validInvlet);
+    return letters.length > 5 ? compressLetters(letters) : letters.join('');
 }
 
 function readLetters() {
@@ -1363,14 +1385,35 @@ async function doUpCommand() {
 }
 
 function stethoscopeSelfStatusLine() {
-    const role = String(game.urole?.name?.m || game.u?.role || 'character').toLowerCase();
+    const name = game.plname || game.u?.name || 'character';
     const align = game.u?.ualign?.type === 1 ? 'lawful'
         : game.u?.ualign?.type === -1 ? 'chaotic' : 'neutral';
+    const alignment = piousness(false, align);
     const hp = game.u?.uhp ?? 0;
     const hpmax = game.u?.uhpmax ?? hp;
     const ac = game.u?.uac ?? 10;
     const level = game.u?.ulevel ?? 1;
-    return `Status of ${role} (nominally ${align}):  Level ${level}  HP ${hp}(${hpmax})  AC ${ac}.`;
+    return `Status of ${name} (${alignment}):  Level ${level}  HP ${hp}(${hpmax})  AC ${ac}.`;
+}
+
+function piousness(showneg, suffix = '') {
+    const record = game.u?.ualign?.record ?? 0;
+    let pio;
+    if (record >= 20) pio = 'piously';
+    else if (record > 13) pio = 'devoutly';
+    else if (record > 8) pio = 'fervently';
+    else if (record > 3) pio = 'stridently';
+    else if (record === 3) pio = '';
+    else if (record > 0) pio = 'haltingly';
+    else if (record === 0) pio = 'nominally';
+    else if (!showneg) pio = 'insufficiently';
+    else if (record >= -3) pio = 'strayed';
+    else if (record >= -8) pio = 'sinned';
+    else pio = 'transgressed';
+    if (suffix && (!showneg || record >= 0)) {
+        return record === 3 ? suffix : `${pio} ${suffix}`;
+    }
+    return pio;
 }
 
 function objectAppearanceName(otyp) {
@@ -2275,12 +2318,32 @@ function wornArmorObject(otyp) {
         obj?.oclass === ARMOR_CLASS && obj.otyp === otyp && (obj.worn || obj.owornmask));
 }
 
+function wornArmorInRange(first, last) {
+    return (game.inventory || []).find((obj) =>
+        obj?.oclass === ARMOR_CLASS
+        && obj.otyp >= first && obj.otyp <= last
+        && (obj.worn || obj.owornmask));
+}
+
 function wornShieldObject() {
     return (game.inventory || []).find((obj) =>
         obj?.oclass === ARMOR_CLASS
         && obj.otyp >= SMALL_SHIELD
         && obj.otyp <= SHIELD_OF_REFLECTION
         && (obj.worn || obj.owornmask));
+}
+
+function objectWeightForSpellPenalty(obj) {
+    if (!obj) return 0;
+    if (obj.otyp === SMALL_SHIELD
+        || obj.otyp === SHIELD_OF_DRAIN_RESISTANCE
+        || obj.otyp === SHIELD_OF_SHOCK_RESISTANCE) return 30;
+    if (obj.otyp === ELVEN_SHIELD) return 40;
+    if (obj.otyp === URUK_HAI_SHIELD
+        || obj.otyp === ORCISH_SHIELD
+        || obj.otyp === SHIELD_OF_REFLECTION) return 50;
+    if (obj.otyp === LARGE_SHIELD || obj.otyp === DWARVISH_ROUNDSHIELD) return 100;
+    return obj.owt || 1;
 }
 
 const HEALING_SPELL_IDS = new Set([
@@ -2292,57 +2355,44 @@ const HEALING_SPELL_IDS = new Set([
     SPE_REMOVE_CURSE,
 ]);
 
-function priestPercentSpellSuccessBasic(entry) {
-    // C ref: src/spell.c:percent_success(); role.c:roles[] Priest spell stats.
-    let splcaster = 3; // spelbase
-    if (wornArmorObject(ROBE)) splcaster -= 10; // robe bonus via spelarmr
-    if (wornShieldObject()) splcaster += 2; // small shield has no later heavy-shield divisor
-    const weapon = (game.inventory || []).find((obj) => obj?.wielded || ((obj?.owornmask || 0) & C.W_WEP));
-    if (weapon?.otyp === QUARTERSTAFF) splcaster -= 3;
-    if (entry?.otyp === SPE_REMOVE_CURSE) splcaster -= 4; // spelspec/spelsbon
-    if (HEALING_SPELL_IDS.has(entry?.otyp)) splcaster -= 2; // spelheal bonus
-    if (splcaster > 20) splcaster = 20;
-
-    const statused = game.u?.acurr?.a?.[C.A_WIS] ?? 10;
-    let chance = Math.trunc(11 * statused / 2);
-    const skill = currentSpellSkillLevel(entry) - 1;
-    const difficulty = (entry.level - 1) * 4 - ((skill * 6) + Math.trunc((game.u?.ulevel ?? 1) / 3) + 1);
-    if (difficulty > 0) {
-        chance -= Math.trunc(Math.sqrt(900 * difficulty + 2000));
-    } else {
-        const learning = Math.trunc(15 * -difficulty / entry.level);
-        chance += learning > 20 ? 20 : learning;
-    }
-    if (chance < 0) chance = 0;
-    if (chance > 120) chance = 120;
-    chance = Math.trunc(chance * (20 - splcaster) / 15) - splcaster;
-    if (chance > 100) return 100;
-    if (chance < 0) return 0;
-    return chance;
+function percentSpellSuccessBasic(entry) {
+    // C ref: src/spell.c:percent_success().
+    if (!entry) return 100;
+    const stats = ROLE_SPELL_STATS.get(game.urole?.name?.m);
+    if (stats) return rolePercentSpellSuccessBasic(entry, stats);
+    return 100;
 }
 
-function percentSpellSuccessBasic(entry) {
-    // C ref: spell.c:percent_success().  This ports the Wizard-relevant
-    // casting chance path used by the current sessions: base role penalty,
-    // metal gloves/boots penalties, Int, level, and basic spell skill.
-    if (entry && game.urole?.name?.m === 'Healer') return entry.level === 1 ? 3 : 0;
-    if (entry && game.urole?.name?.m === 'Priest') return priestPercentSpellSuccessBasic(entry);
-    if (!entry || game.urole?.name?.m !== 'Wizard') return 100;
-    let splcaster = 1; // role.c Wizard spelbase
-    const ulevel = game.u?.ulevel ?? 1;
-    const statused = game.u?.acurr?.a?.[C.A_INT] ?? 10;
-
-    for (const obj of game.inventory || []) {
-        if (!obj || obj.oclass !== ARMOR_CLASS || !(obj.worn || obj.owornmask)) continue;
-        if (!isMetallicObject(obj)) continue;
-        if (obj.otyp >= LEATHER_GLOVES && obj.otyp <= GAUNTLETS_OF_POWER + 1) splcaster += 6;
-        else if (obj.otyp >= SPEED_BOOTS && obj.otyp <= LEVITATION_BOOTS) splcaster += 2;
+function rolePercentSpellSuccessBasic(entry, stats) {
+    let splcaster = stats.spelbase;
+    const bodyArmor = wornArmorInRange(GRAY_DRAGON_SCALE_MAIL, ROBE - 1);
+    const cloak = wornArmorInRange(ROBE, SMALL_SHIELD - 1);
+    const shield = wornShieldObject();
+    const paladinBonus = game.urole?.name?.m === 'Knight'
+        && (entry?.skillType ?? SPELL_CATEGORY_SKILL_TYPES.get(entry?.category)) === C.P_CLERIC_SPELL;
+    if (bodyArmor && isMetallicObject(bodyArmor) && !paladinBonus) {
+        splcaster += cloak?.otyp === ROBE ? Math.trunc(stats.spelarmr / 2) : stats.spelarmr;
+    } else if (cloak?.otyp === ROBE) {
+        splcaster -= stats.spelarmr;
     }
-
+    if (shield) splcaster += stats.spelshld;
     const weapon = (game.inventory || []).find((obj) => obj?.wielded || ((obj?.owornmask || 0) & C.W_WEP));
     if (weapon?.otyp === QUARTERSTAFF) splcaster -= 3;
+
+    if (!paladinBonus) {
+        const helmet = wornArmorInRange(89, 100);
+        const gloves = wornArmorInRange(LEATHER_GLOVES, SPEED_BOOTS - 1);
+        const boots = wornArmorInRange(SPEED_BOOTS, LEVITATION_BOOTS);
+        if (helmet && isMetallicObject(helmet)) splcaster += 4;
+        if (gloves && isMetallicObject(gloves)) splcaster += 6;
+        if (boots && isMetallicObject(boots)) splcaster += 2;
+    }
+    if (entry?.otyp === stats.spelspec) splcaster += stats.spelsbon;
+    if (HEALING_SPELL_IDS.has(entry?.otyp)) splcaster += stats.spelheal;
     if (splcaster > 20) splcaster = 20;
 
+    const ulevel = game.u?.ulevel ?? 1;
+    const statused = game.u?.acurr?.a?.[stats.spelstat] ?? 10;
     let chance = Math.trunc(11 * statused / 2);
     const skill = currentSpellSkillLevel(entry) - 1;
     const difficulty = (entry.level - 1) * 4 - ((skill * 6) + Math.trunc(ulevel / 3) + 1);
@@ -2354,6 +2404,11 @@ function percentSpellSuccessBasic(entry) {
     }
     if (chance < 0) chance = 0;
     if (chance > 120) chance = 120;
+
+    if (shield && objectWeightForSpellPenalty(shield) > 30) {
+        chance = Math.trunc(chance / (entry?.otyp === stats.spelspec ? 2 : 4));
+    }
+
     chance = Math.trunc(chance * (20 - splcaster) / 15) - splcaster;
     if (chance > 100) return 100;
     if (chance < 0) return 0;
@@ -3866,6 +3921,10 @@ async function handleEatItemKey(ch) {
     }
 
     game.context.move = 1;
+    if (obj.otyp === APPLE) {
+        await pline('Delicious!  Must be a Macintosh!');
+        return true;
+    }
     await pline(`${inventoryObjectName(obj)} is delicious!`);
     return true;
 }
@@ -5208,6 +5267,8 @@ async function kickDirection(ch) {
     }
     const x = (game.u?.ux ?? 0) + dx;
     const y = (game.u?.uy ?? 0) + dy;
+    game._kickedloc = { x, y };
+    game._command_was_kick = true;
     for (const mon of game.level?.monsters || []) {
         if (dist2(game.u?.ux ?? 0, game.u?.uy ?? 0, mon.mx, mon.my) <= 25)
             mon.msleeping = false;
@@ -7913,6 +7974,18 @@ async function handleQueuedMore(ch) {
         if (!swallowedDamageResume && !preTurnResume && !monsterAttackResume)
             refreshSwallowedHallucinationAfterMore();
     }
+    if (!game._more
+        && (game._nomul_turns_remaining || 0) > 0
+        && !resumeMonsterBehindNewMore
+        && !pausedFloorListTurn
+        && !pausedMonsterTurn) {
+        // C ref: topl.c:more(), allmain.c:moveloop_core().  Resume the
+        // interrupted helpless-turn loop immediately after the deferred
+        // topline message is shown.
+        game._resume_nomul_after_more = true;
+        game.context.move = 1;
+        return true;
+    }
     if (resumeMonsterBehindNewMore) {
         game._monster_turn_paused_for_more = false;
         game._monster_attack_more_waiting = false;
@@ -7932,6 +8005,12 @@ async function handleQueuedMore(ch) {
             game._latched_status_uhp = null;
         }
         game._resume_monster_turn = true;
+        game.context.move = 1;
+    } else if (!game._more && (game._nomul_turns_remaining || 0) > 0) {
+        // C ref: topl.c:more(), allmain.c:moveloop_core().  Dismissing a
+        // topline More while helpless returns to the interrupted command tail;
+        // it does not wait for a fresh player command to finish negative multi.
+        game._resume_nomul_after_more = true;
         game.context.move = 1;
     } else if (pausedRunTail && !game._more) {
         game._run_paused_for_more = false;
@@ -8420,7 +8499,8 @@ function discoveryLineForObjectType(otyp, encounteredTypes) {
     if (oclass === SCROLL_CLASS || oclass === SPBOOK_CLASS || oclass === ARMOR_CLASS
         || oclass === POTION_CLASS
         || (oclass === TOOL_CLASS && desc)
-        || (oclass === WEAPON_CLASS && desc)) {
+        || (oclass === WEAPON_CLASS && desc)
+        || (oclass === WAND_CLASS && desc)) {
         return `${prefix}${base}${desc ? ` (${desc})` : ''}${priceQuote}`;
     }
     return `${prefix}${base}${priceQuote}`;
@@ -8443,6 +8523,23 @@ function heroAttr(index) {
 
 function heroBaseAttr(index) {
     return game.u?.amax?.a?.[index] ?? heroAttr(index);
+}
+
+const NORMAL_HUMAN_ATTRMAX = [C.STR18(100), 18, 18, 18, 18, 18];
+const RACE_ATTRMAX = new Map([
+    // C ref: include/attrib.h:ATTRMAX().
+    ['human', NORMAL_HUMAN_ATTRMAX],
+    ['elf', [18, 20, 20, 18, 16, 18]],
+    ['dwarf', [C.STR18(100), 16, 16, 20, 20, 16]],
+    ['gnome', [C.STR18(50), 19, 18, 18, 18, 18]],
+    ['orc', [C.STR18(50), 16, 16, 18, 18, 16]],
+]);
+
+function heroAttrLimit(index) {
+    const stored = game.u?.attrmax?.a?.[index];
+    if (Number.isInteger(stored)) return stored;
+    const raceLimits = RACE_ATTRMAX.get(game.urace?.name) || NORMAL_HUMAN_ATTRMAX;
+    return raceLimits[index] ?? NORMAL_HUMAN_ATTRMAX[index] ?? 18;
 }
 
 function wearingPowerGauntlets() {
@@ -8477,14 +8574,27 @@ function wizardRankTitle(level) {
 function insightAttrLine(label, index) {
     const current = heroAttr(index);
     const base = heroBaseAttr(index);
+    const peak = game.u?.amax?.a?.[index] ?? base;
+    const limit = heroAttrLimit(index);
     const currentText = insightAttrValueText(index, current);
+    const normalLimit = NORMAL_HUMAN_ATTRMAX[index] ?? 18;
+    const parts = [];
     if (current !== base) {
         // C ref: src/insight.c:one_characteristic().  JS does not yet keep
         // separate ABASE/AMAX slots, so downward non-temporary loss is the
         // previous peak; explicit JS temporary penalties still report base.
         const temporaryPenalty = index === C.A_DEX && game.u?.wounded_legs_dex_penalty;
         const tag = current < base && !temporaryPenalty ? 'peak' : 'base';
-        return `  Your ${label} is ${currentText} (current; ${tag}:${insightAttrValueText(index, base)}).`;
+        parts.push(`${tag}:${insightAttrValueText(index, base)}`);
+    }
+    if (base !== peak) {
+        parts.push(`peak:${insightAttrValueText(index, peak)}`);
+    }
+    if (limit !== normalLimit) {
+        parts.push(`${current > limit ? 'innate ' : ''}limit:${insightAttrValueText(index, limit)}`);
+    }
+    if (parts.length) {
+        return `  Your ${label} is ${currentText} (current; ${parts.join(', ')}).`;
     }
     return `  Your ${label} is ${currentText}.`;
 }
@@ -8632,6 +8742,8 @@ function roleOppositionLine(role, alignName) {
 function weaponSkillName(obj) {
     // C ref: src/insight.c:attributes_enlightenment().  Most wielded weapons
     // are described by skill class rather than exact object name.
+    if ([SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD].includes(obj?.otyp))
+        return 'short sword';
     if (obj?.otyp === KATANA) return 'long sword';
     if (obj?.otyp === SCALPEL) return 'knife';
     if (obj?.otyp === WAR_HAMMER) return 'hammer';
@@ -8641,9 +8753,14 @@ function weaponSkillName(obj) {
 function weaponSkillLevelName(obj) {
     if (obj?.otyp === SCALPEL || obj?.otyp === QUARTERSTAFF) return 'basic';
     if (game.urole?.name?.m === 'Ranger' && (obj?.otyp === DAGGER || obj?.otyp === BOW)) return 'basic';
-    if (game.urole?.name?.m === 'Rogue' && obj?.otyp === SHORT_SWORD) return 'basic';
+    if (game.urole?.name?.m === 'Rogue'
+        && [SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD].includes(obj?.otyp))
+        return 'basic';
     if (game.urole?.name?.m === 'Priest' && obj?.otyp === MACE) return 'basic';
-    if (game.urole?.name?.m === 'Samurai' && (obj?.otyp === KATANA || obj?.otyp === SHORT_SWORD)) return 'basic';
+    if (game.urole?.name?.m === 'Samurai'
+        && (obj?.otyp === KATANA
+            || [SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD].includes(obj?.otyp)))
+        return 'basic';
     if (game.urole?.name?.m === 'Valkyrie' && obj?.otyp === SPEAR) return 'basic';
     return 'no';
 }
@@ -8689,13 +8806,14 @@ function roleAttributesPageParts() {
         ` ${game.plname || 'Adventurer'} the ${roleName}'s attributes:`,
         '',
         ' Background:',
-        `  You are ${articleForWord(rank)} ${rank}, a level ${game.u?.ulevel || 1} ${roleInsightGenderPrefix(role, female)}${game.urace?.name || 'human'} ${roleName}.`,
+        `  You are ${articleForWord(rank)} ${rank}, a level ${game.u?.ulevel || 1} ${roleInsightGenderPrefix(role, female)}${game.urace?.adj || game.urace?.name || 'human'} ${roleName}.`,
         `  You are ${alignName}, on a mission for ${roleGod(role, alignName)}`,
         roleOppositionLine(role, alignName),
         `  You are ${game.u?.uhandedness || 'right'}-handed.`,
         `  You are in ${levelName}, on level ${displayDepth(game.u?.uz)}.`,
         `  You entered the dungeon ${game.moves || 1} turns ago.`,
         ...(game.flags?.moonphase === 4 ? ['  There is a full moon in effect.'] : []),
+        ...(game.flags?.moonphase === 0 ? ['  There is a new moon in effect.'] : []),
         ...(game.flags?.friday13 ? ['  Bad things can happen on Friday the 13th.'] : []),
         `  You have ${game.u?.uexp || 0} experience points.`,
         '',
@@ -8824,9 +8942,9 @@ function wizardAttributesPage2() {
     lines.push(debugInsight ? `  You are unencumbered <${encumbrance}>.` : '  You are unencumbered.');
 
     if (wielded) {
-        const weaponName = wielded.otyp === WAR_HAMMER ? 'hammer' : baseObjectName(wielded);
-        lines.push(`  You are wielding a ${weaponName}.`);
-        lines.push(`  You have ${wielded.otyp === QUARTERSTAFF ? 'basic' : 'no'} skill with ${weaponName}.`);
+        const weaponName = weaponSkillName(wielded);
+        lines.push(`  You are wielding ${articleForWord(weaponName)} ${weaponName}.`);
+        lines.push(`  You have ${weaponSkillLevelName(wielded)} skill with ${weaponName}.`);
     } else {
         lines.push('  You are bare handed.');
         lines.push('  You are unskilled in bare handed combat.');
@@ -11428,19 +11546,29 @@ export async function rhack(key) {
             }
             return;
         }
+        const dx = DIR_DX[ch] || 0;
+        const dy = DIR_DY[ch] || 0;
+        if (obj.otyp === WAN_SLEEP && ch === '.') {
+            obj.knownName = true;
+            // C ref: src/zap.c:dozap(), src/zap.c:zapyourself(); self-zaps
+            // take the zapyourself branch before weffects exercise handling.
+            game._nomul_turns_remaining = rnd(50);
+            game._nomul_finish_message = 'You wake up.';
+            await pline('The sleep ray hits you!');
+            game.context.move = 1;
+            return;
+        }
         exercise(A_WIS, true);
         if (obj.otyp === WAN_DIGGING) {
             obj.knownName = true;
             obj.chargesKnown = false;
-            zapDig(DIR_DX[ch] || 0, DIR_DY[ch] || 0);
+            zapDig(dx, dy);
             exercise(A_WIS, true);
         } else if (obj.otyp === WAN_FIRE) {
             obj.knownName = true;
-            await zapFireRayAtHero(DIR_DX[ch] || 0, DIR_DY[ch] || 0);
+            await zapFireRayAtHero(dx, dy);
         } else if (obj.otyp === WAN_SLEEP) {
             obj.knownName = true;
-            const dx = DIR_DX[ch] || 0;
-            const dy = DIR_DY[ch] || 0;
             if (sleepRayHitsHeroAfterBounce(dx, dy)) {
                 drawRayBeam(dx, dy, 12);
                 await pline('The sleep ray bounces!  The sleep ray hits you!');
