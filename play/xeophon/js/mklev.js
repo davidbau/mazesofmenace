@@ -11,6 +11,7 @@ import { nhgetch } from './input.js';
 import { docrt, flush_screen, pline } from './display.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { restoreBonesLevel } from './save.js';
+import { createGasCloud } from './region.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, d, rne, rnz } from './rng.js';
 import {
     CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN,
@@ -36,15 +37,15 @@ import {
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, TREE, CLOUD,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
-    MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL,
+    MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
-    LR_DOWNSTAIR, LR_UPSTAIR, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
+    LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     ROT_AGE, TAINT_AGE,
-    In_mines,
+    In_endgame, In_mines, Is_airlevel, Is_firelevel,
 } from './const.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -2750,6 +2751,89 @@ const BAR_CHIEFTAINS = [
     [14, 5], [14, 9], [16, 5], [16, 9],
 ];
 const BAR_EELS = [[36, 1], [37, 9], [39, 15]];
+const BAR_LOCA_ROWS = [
+    '..........PPP.........................................',
+    '...........PP..........................................        .......',
+    '..........PP...........-----..........------------------     ..........',
+    '...........PP..........+...|..........|....S...........|..  ............',
+    '..........PPP..........|...|..........|-----...........|...  .............',
+    '...........PPP.........-----..........+....+...........|...  .............',
+    '..........PPPPPPPPP...................+....+...........S.................',
+    '........PPPPPPPPPPPPP.........-----...|-----...........|................',
+    '......PPPPPPPPPPPPPP..P.......+...|...|....S...........|          ...',
+    '.....PPPPPPP......P..PPPP.....|...|...------------------..         ...',
+    '....PPPPPPP.........PPPPPP....-----........................      ........',
+    '...PPPPPPP..........PPPPPPP..................................   ..........',
+    '....PPPPPPP........PPPPPPP....................................  ..........',
+    '.....PPPPP........PPPPPPP.........-----........................   ........',
+    '......PPP..PPPPPPPPPPPP...........+...|.........................    .....',
+    '..........PPPPPPPPPPP.............|...|.........................     ....',
+    '..........PPPPPPPPP...............-----.........................       .',
+    '..............PPP.................................................',
+    '...............PP....................................................',
+    '................PPP...................................................',
+].map(row => row.padEnd(BAR_WIDTH, ' '));
+const BAR_LOCA_REGIONS = [
+    [0, 0, 75, 19, true],
+    [24, 3, 26, 4, false],
+    [31, 8, 33, 9, false],
+    [35, 14, 37, 15, false],
+    [39, 3, 54, 8, true],
+    [56, 0, 75, 8, false],
+    [64, 9, 75, 16, false],
+];
+const BAR_LOCA_DOORS = [
+    [D_ISOPEN, 23, 3],
+    [D_ISOPEN, 30, 8],
+    [D_ISOPEN, 34, 14],
+    [D_LOCKED, 38, 5],
+    [D_LOCKED, 38, 6],
+    [D_CLOSED, 43, 3],
+    [D_CLOSED, 43, 5],
+    [D_CLOSED, 43, 6],
+    [D_CLOSED, 43, 8],
+    [D_LOCKED, 55, 6],
+];
+const BAR_LOCA_OBJECTS = [
+    [42, 3], [42, 3], [42, 3],
+    [41, 3], [41, 3], [41, 3], [41, 3],
+    [41, 8], [41, 8],
+    [42, 8], [42, 8], [42, 8],
+    [71, 13], [71, 13], [71, 13],
+];
+const BAR_LOCA_FIXED_TRAPS = [
+    [SPIKED_PIT, 10, 13],
+    [SPIKED_PIT, 21, 7],
+    [SPIKED_PIT, 67, 8],
+    [SPIKED_PIT, 68, 9],
+];
+const BAR_LOCA_MONSTERS = [
+    ['ogre', 12, 9], ['ogre', 18, 11],
+    ['ogre', 45, 5], ['ogre', 45, 6], ['ogre', 47, 5], ['ogre', 46, 5],
+    ['ogre', 56, 3], ['ogre', 56, 4], ['ogre', 56, 5], ['ogre', 56, 6],
+    ['ogre', 57, 3], ['ogre', 57, 4], ['ogre', 57, 5], ['ogre', 57, 6],
+    ['ogre'], ['ogre'], ['ogre'], ['O'], ['T'],
+    ['rock troll', 46, 6], ['rock troll', 47, 6],
+    ['rock troll', 56, 7], ['rock troll', 57, 7], ['rock troll', 70, 13],
+    ['rock troll'], ['rock troll'], ['T'],
+];
+const BAR_FILL_A = {
+    bg: ROOM,
+    walled: false,
+    objects: 8,
+    traps: 4,
+    monsters: ['ogre', 'ogre', 'O', 'rock troll'],
+};
+const BAR_FILL_B = {
+    bg: STONE,
+    walled: true,
+    objects: 11,
+    traps: 4,
+    monsters: [
+        'ogre', 'ogre', 'ogre', 'ogre', 'ogre', 'ogre', 'ogre',
+        'O', 'rock troll', 'rock troll', 'rock troll', 'T',
+    ],
+};
 
 function barX(x) { return BAR_XSTART + x; }
 function barY(y) { return BAR_YSTART + y; }
@@ -2978,6 +3062,10 @@ const QUEST_LEVEL_BUILDERS = {
     Barbarian: {
         special: {
             'x-strt': make_bar_strt_level,
+            'x-loca': make_bar_loca_level,
+        },
+        fill(level) {
+            return make_bar_fill_level(level < 3 ? BAR_FILL_A : BAR_FILL_B);
         },
     },
     Knight: {
@@ -3394,6 +3482,11 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
                 mkstairs(x, y, rtype === LR_UPSTAIR, null);
                 return;
             }
+            if (rtype === LR_PORTAL) {
+                game.level.traps ??= [];
+                game.level.traps.push({ tx: x, ty: y, ttyp: MAGIC_PORTAL, tseen: false, once: false, launch: { x: 0, y: 0 }, dst: lev });
+                return;
+            }
             if (rtype === LR_TELE) game._mklev_lregion_arrival = true;
             u_on_newpos(x, y);
             return;
@@ -3409,6 +3502,11 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
                 }
                 if (rtype === LR_UPSTAIR || rtype === LR_DOWNSTAIR) {
                     mkstairs(x, y, rtype === LR_UPSTAIR, null);
+                    return;
+                }
+                if (rtype === LR_PORTAL) {
+                    game.level.traps ??= [];
+                    game.level.traps.push({ tx: x, ty: y, ttyp: MAGIC_PORTAL, tseen: false, once: false, launch: { x: 0, y: 0 }, dst: lev });
                     return;
                 }
                 if (rtype === LR_TELE) game._mklev_lregion_arrival = true;
@@ -3453,6 +3551,11 @@ function oinit() { /* no-op for contest */ }
 // level_difficulty stub
 export function level_difficulty() {
     const uz = game.u?.uz;
+    if (In_endgame(uz)) {
+        const sanctum = game.sanctum_level || game.specialLevels?.find(level => level?.name === 'sanctum');
+        const sanctumDepth = sanctum ? depth_of_level(sanctum) : 51;
+        return sanctumDepth + Math.trunc((game.u?.ulevel || 1) / 2);
+    }
     const dungeon = game.dungeons?.[uz?.dnum];
     if (dungeon?.name === 'Sokoban' || dungeon?.name === "Vlad's Tower") {
         const dlevel = uz?.dlevel ?? 1;
@@ -4120,7 +4223,7 @@ function potionColor(otmp) {
     return color === CLR_BLACK ? NO_COLOR : color;
 }
 
-function object_display(otmp) {
+export function object_display(otmp) {
     const otyp = otmp?.otyp;
     const displayColor = otmp?._display_color;
     if (otyp === GOLD_PIECE) return { glyph: '$', color: CLR_YELLOW };
@@ -4204,7 +4307,7 @@ function mksobj_at(otyp, x, y, init, artif) {
     return place_object(mksobj(otyp, init, artif), x, y);
 }
 
-function mkobj(oclass, artif) {
+export function mkobj(oclass, artif) {
     if (oclass === RANDOM_CLASS) {
         let tprob = rnd(100);
         const probs = game.level?.flags?.rogue_level
@@ -4660,10 +4763,10 @@ function monsterFromRndMeta(row) {
     };
     const armedHuman = glyph === '@' && name !== 'nurse';
     ptr.armed = name !== 'minotaur' && name !== 'gnomish wizard' && !ptr.nohands && ((mlet === S_ORC && name !== 'orc shaman') || (mlet === S_KOBOLD && name !== 'kobold shaman') || glyph === 'A' || glyph === 'G' || glyph === 'h'
-        || armedHuman || glyph === 'O' || glyph === 'H' || glyph === 'C'
+        || armedHuman || glyph === 'O' || glyph === 'H' || glyph === 'C' || name === 'djinni'
         || glyph === 'T' || (glyph === '&' && DEMON_WEAPON_MONSTERS.has(name)));
     if (glyph === '&') {
-        ptr.demon = name !== 'sandestin';
+        ptr.demon = name !== 'sandestin' && name !== 'djinni' && name !== 'mail daemon';
         ptr.nasty = ptr.demon;
         if (ALWAYS_HOSTILE_DEMONS.has(name)) ptr.alwaysHostile = true;
         if (name === 'sandestin') ptr.strong = true;
@@ -5045,11 +5148,26 @@ function priestQuestRandomMonsterType() {
     return mkclassAligned('W');
 }
 
+function barbarianQuestRandomMonsterType() {
+    if (rn2(5)) {
+        if (rn2(5) && !monsterNameGenocided('ogre'))
+            return monsterByRndName('ogre');
+        return mkclassAligned('O');
+    }
+    if (rn2(5) && !monsterNameGenocided('troll'))
+        return monsterByRndName('troll');
+    return mkclassAligned('T');
+}
+
 function rndmonst_adj(minadj = 0, maxadj = 0) {
     if (game.dungeons?.[game.u?.uz?.dnum]?.name === 'The Quest' && rn2(7)) {
         const roleName = game.urole?.name?.m || game._startup_role;
         if (roleName === 'Priest') {
             const ptr = priestQuestRandomMonsterType();
+            if (ptr) return ptr;
+        }
+        if (roleName === 'Barbarian') {
+            const ptr = barbarianQuestRandomMonsterType();
             if (ptr) return ptr;
         }
         if (roleName === 'Archeologist') {
@@ -5130,7 +5248,7 @@ export function monster_hp(ptr, hpLevel = ptr.hpLevel ?? adjustedMonsterLevel(pt
     if ((ptr.mlevel || 0) > 49) return 2 * (ptr.mlevel - 6);
     if (ptr.name?.endsWith(' golem')) return ptr.hpLevel || 1;
     if (ptr.glyph === 'D' && !ptr.name?.startsWith('baby '))
-        return 4 * hpLevel + d(hpLevel, 4);
+        return In_endgame(game.u?.uz) ? (8 * hpLevel) : (4 * hpLevel + d(hpLevel, 4));
     const hp = hpLevel ? d(hpLevel, 8) : rnd(4);
     return hp === (hpLevel || 1) ? hp + 1 : hp;
 }
@@ -5455,7 +5573,7 @@ function makemon_goodpos(ptr, x, y) {
     const preflip = game._bigrm_preflip_location;
     if (preflip && game.u?.ux === preflip.preX && game.u?.uy === preflip.preY) return false;
     if (game.u?.ux === x && game.u?.uy === y) return false;
-    if (game.level?.monsters?.some(mon => mon.mx === x && mon.my === y)) return false;
+    if (monster_at(x, y)) return false;
     if (IS_POOL(loc.typ)) return !!(ptr.swimmer || ptr.inAir);
     if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL) return !!(ptr.inAir || ptr.likesLava);
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))
@@ -5476,7 +5594,11 @@ function currentLevelInHell() {
 }
 
 function monster_at(x, y) {
-    return (game.level?.monsters || []).find(mon => mon.mx === x && mon.my === y) || null;
+    return (game.level?.monsters || []).find(mon => {
+        if (mon.mx === x && mon.my === y) return true;
+        return Array.isArray(mon.wormSegments)
+            && mon.wormSegments.some(seg => seg.x === x && seg.y === y);
+    }) || null;
 }
 
 function mayPasswallLoc(loc) {
@@ -5600,6 +5722,7 @@ function rlocNoMsg(mon) {
 
 function placeLongWormTailRandomly(mon, x, y, segmentCount) {
     const segments = [];
+    mon.wormSegments = [];
     let ox = x;
     let oy = y;
     for (let seg = 0; seg < segmentCount; seg++) {
@@ -5972,10 +6095,10 @@ export function set_mimic_sym_rng(mon) {
         && game.level?.flags?.has_town;
     if (game.level?.flags?.is_maze_lev && !inMinesTown && !game.level?.flags?.sokoban_rules && rn2(2)) {
         mon.appearObj = STATUE;
-        const display = object_display({ otyp: STATUE });
+        const statueMon = rndmonnum();
+        const display = object_display({ otyp: STATUE, corpsenm: statueMon });
         mon.appearGlyph = display.glyph;
         mon.appearColor = display.color;
-        rndmonnum();
         return;
     }
     if ((loc?.roomno ?? 0) < ROOMOFFSET && !trap) {
@@ -6076,7 +6199,7 @@ export async function makemon(mdat, x, y, mmflags) {
         }
     }
 
-    const spotHasMonster = x && y && game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
+    const spotHasMonster = x && y && !!monster_at(x, y);
     const spotHasHero = x && y && game.u?.ux === x && game.u?.uy === y;
     if (spotHasHero && !game.in_mklev) {
         const spot = enextoMonsterSpot(x, y, mdat);
@@ -6220,7 +6343,8 @@ export async function makemon(mdat, x, y, mmflags) {
         mon.hasInventory = true;
     }
     const normalDemon = ptr.demon && !ptr.demonLord && !ptr.demonPrince;
-    if (game.in_mklev && (normalDemon || ptr.name === 'giant eel' || ptr.name === 'long worm' || ptr.name === 'wumpus') && rn2(5))
+    if (game.in_mklev && !game.u?.uhave?.amulet
+        && (normalDemon || ptr.name === 'giant eel' || ptr.name === 'long worm' || ptr.name === 'wumpus') && rn2(5))
         mon.msleeping = 1;
     if (ptr.name === 'stalker' || ptr.name === 'black light') {
         mon.perminvis = true;
@@ -6263,6 +6387,7 @@ export async function makemon(mdat, x, y, mmflags) {
         let groupX = preflip?.preX ?? x;
         let groupY = preflip?.preY ?? y;
         while (cnt--) {
+            if (peaceMinded(ptr)) continue;
             const coords = [];
             for (let radius = 1; radius <= 3; radius++) {
                 const passStart = coords.length;
@@ -6443,6 +6568,18 @@ export async function makemon(mdat, x, y, mmflags) {
     }
 
     game._mongets_target = previousMongetsTarget;
+    return mon;
+}
+
+export async function resurrectWizardOfYendor() {
+    const mon = await makemon(WIZARD_OF_YENDOR, game.u?.ux || 0, game.u?.uy || 0, MM_NOWAIT);
+    if (!mon) return null;
+    mon.iswiz = true;
+    mon.mrevived = 1;
+    mon.mpeaceful = 0;
+    mon.pet = false;
+    mon.mtame = 0;
+    set_malign(mon);
     return mon;
 }
 
@@ -7012,6 +7149,14 @@ export async function mklev() {
         await make_orcus_level();
         return;
     }
+    if (special?.name === 'fire') {
+        await make_fire_level();
+        return;
+    }
+    if (special?.name === 'air') {
+        await make_air_level();
+        return;
+    }
     const questBuilder = QUEST_LEVEL_BUILDERS[g.urole?.name?.m || g._startup_role || ''];
     const specialQuestBuilder = special?.name ? questBuilder?.special?.[special.name] : null;
     if (specialQuestBuilder) {
@@ -7299,6 +7444,263 @@ function barInventoryObject(mon, otyp, spe, fields = {}) {
     Object.assign(obj, object_display(obj), fields);
     mon.minvent = [obj, ...(mon.minvent || [])];
     mon.hasInventory = true;
+}
+
+function barFillDryLocation(okay = null) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        return loc && SPACE_POS(loc.typ) && !boulder && (!okay || okay(loc));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = 1 + rn2(COLNO - 1);
+        const y = rn2(ROWNO);
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if (good(x, y)) return { x, y };
+    return { x: COLNO - 1, y: ROWNO - 1 };
+}
+
+function barFillStair(up) {
+    const pos = barFillDryLocation(loc => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+    const trap = t_at(pos.x, pos.y);
+    if (trap) game.level.traps = (game.level.traps || []).filter(item => item !== trap);
+    mkstairs(pos.x, pos.y, up, null);
+}
+
+function barFillObject() {
+    const pos = barFillDryLocation();
+    mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+}
+
+async function barFillTrap() {
+    let pos, trycnt = 0;
+    do {
+        pos = barFillDryLocation();
+        const typ = game.level.at(pos.x, pos.y)?.typ;
+        if (typ !== STAIRS && typ !== LADDER) break;
+    } while (++trycnt <= 100);
+    if (trycnt > 100) return;
+
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+
+    const trap = await maketrap(pos.x, pos.y, kind);
+    kind = trap ? trap.ttyp : NO_TRAP;
+    if (kind === WEB) await makemon(monsterByRndName('giant spider'), pos.x, pos.y, 0);
+    if (game.in_mklev && kind !== NO_TRAP
+        && level_difficulty() <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+async function barFillMonster(name) {
+    let ptr;
+    if (name.length === 1) {
+        arcInducedAlign();
+        ptr = mkclassAligned(name, false, null, true);
+    } else {
+        rn2(2);
+        arcInducedAlign();
+        ptr = monsterByRndName(name);
+    }
+    const pos = barFillDryLocation();
+    const prevRelocate = game._makemon_relocate_occupied_once;
+    game._makemon_relocate_occupied_once = true;
+    const mon = ptr ? await makemon(ptr, pos.x, pos.y, 0) : null;
+    game._makemon_relocate_occupied_once = prevRelocate;
+    if (mon) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+}
+
+function barLocaLoadMap() {
+    const g = game;
+    const solidLit = !!rn2(2);
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = g.level.at(x, y);
+            loc.typ = STONE;
+            loc.lit = solidLit;
+            loc.waslit = false;
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = false;
+        }
+
+    for (let y = 0; y < BAR_LOCA_ROWS.length; y++) {
+        const row = BAR_LOCA_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(barX(x), barY(y));
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = ch !== '|';
+            loc.lit = solidLit;
+            loc.waslit = false;
+            if (ch === '+') {
+                loc.typ = DOOR;
+                loc.doormask = D_CLOSED;
+            } else if (ch === 'S') {
+                loc.typ = SDOOR;
+                loc.doormask = D_CLOSED;
+            } else {
+                loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            }
+        }
+    }
+
+    for (const [lx, ly, hx, hy, lit] of BAR_LOCA_REGIONS)
+        for (let x = lx; x <= hx; x++)
+            for (let y = ly; y <= hy; y++) {
+                const loc = g.level.at(barX(x), barY(y));
+                if (loc) loc.lit = lit;
+            }
+}
+
+function barLocaObject(x, y) {
+    mkobj_at(RANDOM_CLASS, barX(x), barY(y), true);
+}
+
+function barLocaDryLocation(okay = null) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        const boulder = game.level?.objects?.some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        return loc && SPACE_POS(loc.typ) && !boulder && (!okay || okay(loc));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = barX(rn2(BAR_WIDTH));
+        const y = barY(rn2(BAR_HEIGHT));
+        if (good(x, y)) return { x, y };
+    }
+    for (let x = 0; x < BAR_WIDTH; x++)
+        for (let y = 0; y < BAR_HEIGHT; y++) {
+            const loc = { x: barX(x), y: barY(y) };
+            if (good(loc.x, loc.y)) return loc;
+        }
+    return { x: barX(0), y: barY(0) };
+}
+
+async function barLocaTrap(kind, x = null, y = null) {
+    let pos;
+    if (x == null || y == null) {
+        let trycnt = 0;
+        do {
+            pos = barLocaDryLocation();
+            const typ = game.level.at(pos.x, pos.y)?.typ;
+            if (typ !== STAIRS && typ !== LADDER) break;
+        } while (++trycnt <= 100);
+        if (trycnt > 100) return;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+        const canFallThru = !game.level?.flags?.hardfloor
+            && (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+        if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    } else {
+        pos = { x: barX(x), y: barY(y) };
+    }
+
+    const trap = await maketrap(pos.x, pos.y, kind);
+    if (trap?.ttyp === WEB) await makemon(monsterByRndName('giant spider'), pos.x, pos.y, 0);
+    arcLocaMaybeTrapVictim(trap);
+}
+
+async function barLocaMonster(name, x = null, y = null) {
+    let ptr;
+    let fixedFemale = null;
+    if (name.length === 1) {
+        arcInducedAlign();
+        ptr = mkclassAligned(name, false, null, true);
+        fixedFemale = false;
+    } else {
+        fixedFemale = !!rn2(2);
+        arcInducedAlign();
+        ptr = monsterByRndName(name);
+    }
+    const pos = x == null || y == null ? barLocaDryLocation() : { x: barX(x), y: barY(y) };
+    if (!ptr) return null;
+    const prevRelocate = game._makemon_relocate_occupied_once;
+    game._makemon_relocate_occupied_once = true;
+    const mon = await makemon(ptr, pos.x, pos.y, 0);
+    game._makemon_relocate_occupied_once = prevRelocate;
+    if (mon) {
+        if (fixedFemale != null) mon.female = fixedFemale;
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+async function make_bar_loca_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.hardfloor = true;
+    l_nhcore_init();
+    barLocaLoadMap();
+
+    for (const [mask, x, y] of BAR_LOCA_DOORS) {
+        const loc = g.level.at(barX(x), barY(y));
+        if (loc) {
+            if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            loc.doormask = mask;
+        }
+    }
+    mkstairs(barX(5), barY(2), true, null);
+    mkstairs(barX(70), barY(13), false, null);
+
+    for (const [x, y] of BAR_LOCA_OBJECTS) barLocaObject(x, y);
+    for (const [kind, x, y] of BAR_LOCA_FIXED_TRAPS) await barLocaTrap(kind, x, y);
+    for (let i = 0; i < 4; i++) await barLocaTrap(null);
+    for (const [name, x, y] of BAR_LOCA_MONSTERS) await barLocaMonster(name, x, y);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1, true);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
+}
+
+async function make_bar_fill_level(spec) {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    l_nhcore_init();
+
+    rn2(2); // Bar-fil*.lua initial solidfill level_init has random lit.
+    g.level.flags.is_maze_lev = true;
+    splevMinesLevelInit(ROOM, spec.bg, { lit: 0, walled: spec.walled, joined: true });
+
+    barFillStair(true);
+    barFillStair(false);
+    for (let i = 0; i < spec.objects; i++) barFillObject();
+    for (let i = 0; i < spec.traps; i++) await barFillTrap();
+    for (const name of spec.monsters) await barFillMonster(name);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    recount_level_features();
+    level_finalize_topology();
+    g.in_mklev = false;
 }
 
 async function make_bar_strt_level() {
@@ -10679,6 +11081,513 @@ async function make_juiblex_level() {
     level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
 }
 
+const FIRE_ROWS = [
+    'LL.............LL..............L...LL.........LL.................LL...........L',
+    'LL....LLLLLLLL............L...L.............LL....LLL.......................LL.',
+    'L....LL...................L......................LLLL................LL........',
+    '.....L.............LLLL...LL....LL...............LLLLL.............LLL.........',
+    '.L.LLLL..............LL....L.....LLL......L........LLLL....LL........LLL......L',
+    'LL..........LLLL...LLLL...LLL....LLL......L........LLLL....LL........LLL......L',
+    'LL........LLLLLLL...LL.....L......L......LL.........LL......LL........LL...L...',
+    'L.........LL..LLL..LL......LL......LLLL..L.........LL......LLL............LL...',
+    '......L..LL....LLLLL.................LLLLLLL.......L......LL............LLLLLL.',
+    '......L..L.....LL.LLLL.......L............L........LLLLL.LL......LL.........LL.',
+    '......LL........L...LL......LL.............LLL.....L...LLL.......LLL.........L.',
+    '.L.....LLLLLL........L.......LLL.............L....LL...L.LLL......LLLLLLL......',
+    'LL..........LLLL............LL.L.............L....L...LL.........LLL..LLL......',
+    '.L...........................LLLLL...........LL...L...L........LLLL..LLLLLL...L',
+    '.L.....LLLL.............LL....LL.......LLL...LL.......L..LLL....LLLLLLL.......L',
+    '.........LLL.........LLLLLLLLLLL......LLLLL...L...........LL...LL...LL........',
+    '...........LL.......LL.........LL.......LLL....L..LLL....LL.........LL........',
+    '............LLLLLLLLL...........LL....LLL.......LLLLL.....LL........LL.........',
+    '.LL...............L.............LLLLLL............LL...LLLL.........LL.......L.',
+    'LL.....L..........................LL....................LL..................LLL',
+    'L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL',
+];
+const FIRE_MONSTERS = [
+    ['red dragon'], ['balrog'], ['fire elemental', true], ['fire elemental', true],
+    ['fire vortex'], ['hell hound'], ['fire giant'], ['barbed devil'],
+    ['hell hound'], ['stone golem'], ['pit fiend'], ['fire elemental', true],
+    ['fire elemental', true], ['hell hound'], ['fire elemental', true],
+    ['fire elemental', true], ['scorpion'], ['fire giant'], ['hell hound'],
+    ['dust vortex'], ['fire vortex'], ['fire elemental', true],
+    ['fire elemental', true], ['fire elemental', true], ['hell hound'],
+    ['fire elemental', true], ['stone golem'], ['pit viper'], ['pit viper'],
+    ['fire vortex'], ['fire elemental', true], ['fire elemental', true],
+    ['fire giant'], ['fire elemental', true], ['fire vortex'], ['fire vortex'],
+    ['pit fiend'], ['fire elemental', true], ['pit viper'], ['salamander', true],
+    ['salamander', true], ['minotaur'], ['salamander', true], ['steam vortex'],
+    ['salamander', true], ['salamander', true], ['fire giant'], ['barbed devil'],
+    ['fire elemental', true], ['fire vortex'], ['fire elemental', true],
+    ['fire elemental', true], ['hell hound'], ['fire giant'], ['pit fiend'],
+    ['fire elemental', true], ['fire elemental', true], ['barbed devil'],
+    ['salamander', true], ['steam vortex'], ['salamander', true], ['salamander', true],
+];
+
+function fireX(x) { return x + 1; }
+
+function fireLoadMap(lit) {
+    for (let y = 0; y < FIRE_ROWS.length; y++) {
+        const row = FIRE_ROWS[y];
+        for (let x = 0; x < 79; x++) {
+            const loc = game.level.at(fireX(x), y);
+            if (!loc) continue;
+            const ch = row[x] || ' ';
+            loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.lit = lit;
+        }
+    }
+}
+
+function fireLocation(kind = 'dry', ptr = null) {
+    for (;;) {
+        const x = fireX(rn2(79));
+        const y = rn2(21);
+        const loc = game.level.at(x, y);
+        if (!loc || monster_at(x, y) || sobj_at(BOULDER, x, y)) continue;
+        if (kind === 'trap' && t_at(x, y)) continue;
+        if (kind === 'monster' && ptr) {
+            if (makemon_goodpos(ptr, x, y)) return { x, y };
+            continue;
+        }
+        if (SPACE_POS(loc.typ)) return { x, y };
+    }
+}
+
+const FIRE_DRY = 0x01;
+const FIRE_WET = 0x02;
+const FIRE_HOT = 0x04;
+const FIRE_SOLID = 0x08;
+
+function fireLocationOkByHumidity(x, y, humidity) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    const boulder = sobj_at(BOULDER, x, y);
+    if ((humidity & FIRE_SOLID) && IS_OBSTRUCTED(loc.typ)) return true;
+    if ((humidity & FIRE_DRY) && SPACE_POS(loc.typ) && (!boulder || (humidity & FIRE_SOLID))) return true;
+    if ((humidity & FIRE_WET) && IS_POOL(loc.typ)) return true;
+    if ((humidity & FIRE_HOT) && (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) return true;
+    return false;
+}
+
+function fireLocationByHumidity(humidity) {
+    for (let cpt = 0; cpt < 100; cpt++) {
+        const x = fireX(rn2(79));
+        const y = rn2(21);
+        if (fireLocationOkByHumidity(x, y, humidity)) return { x, y };
+    }
+    for (let x = 0; x < 79; x++)
+        for (let y = 0; y < 21; y++) {
+            const loc = { x: fireX(x), y };
+            if (fireLocationOkByHumidity(loc.x, loc.y, humidity)) return loc;
+        }
+    return null;
+}
+
+function fireMonsterHumidity(ptr) {
+    let humidity = FIRE_DRY;
+    if (ptr?.swimmer || ptr?.amphibious || ptr?.mlet === ';') humidity = FIRE_WET;
+    if (ptr?.inAir) humidity |= FIRE_HOT | FIRE_WET;
+    if (ptr?.passWalls || ptr?.noncorporeal) humidity |= FIRE_SOLID;
+    if (ptr?.likesLava) humidity |= FIRE_HOT;
+    return humidity;
+}
+
+function fireMonsterLocation(ptr) {
+    const humidity = fireMonsterHumidity(ptr);
+    let loc = fireLocationByHumidity(humidity);
+    if (!loc && (humidity & FIRE_WET) && !(humidity & (FIRE_DRY | FIRE_HOT | FIRE_SOLID)))
+        loc = fireLocationByHumidity(humidity);
+    if (!loc && !(humidity & FIRE_DRY)) loc = fireLocationByHumidity(humidity | FIRE_DRY);
+    return loc || fireLocation('monster', ptr);
+}
+
+export function fumaroles() {
+    let nmax = rn2(3);
+    let sizemin = 5;
+    let heard = false;
+    let loud = false;
+
+    if (Is_firelevel(game.u?.uz)) {
+        nmax++;
+        sizemin += 5;
+    }
+    if ((game.level?.flags?.temperature ?? 0) > 0) {
+        nmax++;
+        sizemin += 5;
+    }
+
+    for (let n = nmax; n > 0; n--) {
+        const x = rn1(COLNO - 4, 3);
+        const y = rn1(ROWNO - 4, 3);
+        const loc = game.level?.at(x, y);
+        if (loc?.typ !== LAVAPOOL) continue;
+
+        createGasCloud(x, y, rn1(10, sizemin), rn1(10, 5));
+        heard = true;
+        const dx = x - (game.u?.ux || 0);
+        const dy = y - (game.u?.uy || 0);
+        if (dx * dx + dy * dy < 15) loud = true;
+    }
+
+    if (heard && !(game.u?._deafTimeout > 0 || (game.u?._statusSuffix || '').includes('Deaf'))) {
+        const msg = `You hear a ${loud ? 'loud ' : ''}whoosh!`;
+        if (!game._pending_message) game._pending_message = msg;
+    }
+}
+
+async function fireMonster(name, forceHostile = false) {
+    const ptr = monsterByRndName(name);
+    if (!ptr) return null;
+    let specifiedFemale = ptr.female ? true : ptr.male ? false : null;
+    if (!ptr.male && !ptr.female && !ptr.skipFindGender) specifiedFemale = !!rn2(2);
+    rn2(3);
+    let loc = fireMonsterLocation(ptr);
+    if (monster_at(loc.x, loc.y)) {
+        const spot = enextoMonsterSpot(loc.x, loc.y, ptr);
+        if (spot) loc = spot;
+    }
+    const mon = await makemon(ptr, loc.x, loc.y, 0);
+    if (mon && specifiedFemale != null) mon.female = specifiedFemale;
+    if (mon && forceHostile) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+async function make_fire_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.noteleport = true;
+    g.level.flags.hardfloor = true;
+    g.level.flags.shortsighted = true;
+    g.level.flags.temperature = 1;
+    g.level.flags.fumaroles = true;
+    g.level.dndest = { lx: fireX(71), ly: 16, hx: fireX(71), hy: 16, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+
+    l_nhcore_init();
+    fireLoadMap(!!rn2(2));
+
+    for (let i = 0; i < 40; i++) {
+        const loc = fireLocation('trap');
+        rnd(4);
+        await maketrap(loc.x, loc.y, FIRE_TRAP);
+    }
+    for (const [name, hostile] of FIRE_MONSTERS)
+        await fireMonster(name, !!hostile);
+    for (let i = 0; i < 5; i++) {
+        const loc = fireLocation('object');
+        mksobj_at(BOULDER, loc.x, loc.y, true, false);
+    }
+    flipSpecialLevelRnd(1, 0, 79, 20, true);
+    rn2(79); // Fire -> Water portal levregion x placement.
+    rn2(20); // Fire -> Water portal levregion y placement.
+
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    g.in_mklev = false;
+}
+
+const AIR_XSTART = 3;
+const AIR_YSTART = 1;
+const AIR_WIDTH = 76;
+const AIR_HEIGHT = 20;
+const AIR_BMASKS = [
+    [2, 1, 0x3],
+    [3, 2, 0x7, 0x7],
+    [4, 3, 0x6, 0xf, 0x6],
+    [5, 3, 0xe, 0x1f, 0xe],
+    [6, 4, 0x1e, 0x3f, 0x3f, 0x1e],
+    [7, 4, 0x3e, 0x7f, 0x7f, 0x3e],
+    [8, 4, 0x7e, 0xff, 0xff, 0x7e],
+];
+const AIR_MONSTERS = [
+    ...Array(11).fill({ name: 'air elemental', hostile: true }),
+    ...Array(3).fill({ name: 'floating eye', hostile: true }),
+    ...Array(3).fill({ name: 'yellow light', hostile: true }),
+    { name: 'couatl' },
+    ...Array(5).fill({ classGlyph: 'D' }),
+    ...Array(3).fill({ classGlyph: 'E' }),
+    ...Array(2).fill({ classGlyph: 'J' }),
+    ...Array(3).fill({ name: 'djinni', hostile: true }),
+    ...Array(9).fill({ name: 'fog cloud', hostile: true }),
+    ...Array(5).fill({ name: 'energy vortex', hostile: true }),
+    ...Array(5).fill({ name: 'steam vortex', hostile: true }),
+];
+
+function airX(x) { return AIR_XSTART + x; }
+function airY(y) { return AIR_YSTART + y; }
+
+function airLoadMap(lit) {
+    for (let y = 0; y < AIR_HEIGHT; y++) {
+        for (let x = 0; x < AIR_WIDTH; x++) {
+            const loc = game.level.at(airX(x), airY(y));
+            if (!loc) continue;
+            loc.typ = AIR;
+            loc.flags = 0;
+            loc.doormask = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.lit = lit;
+        }
+    }
+}
+
+function airLocationOkByHumidity(x, y, humidity) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    const boulder = sobj_at(BOULDER, x, y);
+    if ((humidity & FIRE_SOLID) && IS_OBSTRUCTED(loc.typ)) return true;
+    if ((humidity & FIRE_DRY) && SPACE_POS(loc.typ) && (!boulder || (humidity & FIRE_SOLID))) return true;
+    if ((humidity & FIRE_WET) && IS_POOL(loc.typ)) return true;
+    if ((humidity & FIRE_HOT) && (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) return true;
+    return false;
+}
+
+function airLocationByHumidity(humidity, noWarn = true) {
+    for (let cpt = 0; cpt < 100; cpt++) {
+        const x = airX(rn2(AIR_WIDTH));
+        const y = airY(rn2(AIR_HEIGHT));
+        if (airLocationOkByHumidity(x, y, humidity)) return { x, y };
+    }
+    if (noWarn) return null;
+    for (let x = 0; x < AIR_WIDTH; x++)
+        for (let y = 0; y < AIR_HEIGHT; y++) {
+            const loc = { x: airX(x), y: airY(y) };
+            if (airLocationOkByHumidity(loc.x, loc.y, humidity)) return loc;
+        }
+    return null;
+}
+
+function airMonsterLocation(ptr) {
+    const humidity = fireMonsterHumidity(ptr);
+    let loc = airLocationByHumidity(humidity, true);
+    if (!loc) loc = airLocationByHumidity(humidity, true);
+    if (!loc && !(humidity & FIRE_DRY)) {
+        const dryHumidity = humidity | FIRE_DRY;
+        loc = airLocationByHumidity(dryHumidity, true);
+        if (!loc) loc = airLocationByHumidity(dryHumidity, false);
+    }
+    if (!loc) loc = airLocationByHumidity(humidity, false);
+    return loc || { x: airX(0), y: airY(0) };
+}
+
+async function airMonster(spec) {
+    let ptr = null;
+    let specifiedFemale = null;
+    if (spec.classGlyph) {
+        rn2(3);
+        ptr = mkclassAligned(spec.classGlyph, false, null, true);
+    } else {
+        ptr = monsterByRndName(spec.name);
+        if (!ptr) return null;
+        specifiedFemale = ptr.female ? true : ptr.male ? false : null;
+        if (!ptr.male && !ptr.female && !ptr.skipFindGender) specifiedFemale = !!rn2(2);
+        rn2(3);
+    }
+    if (!ptr) return null;
+    let loc = airMonsterLocation(ptr);
+    if (monster_at(loc.x, loc.y)) {
+        const spot = enextoMonsterSpot(loc.x, loc.y, ptr);
+        if (spot) loc = spot;
+    }
+    const mon = await makemon(ptr, loc.x, loc.y, 0);
+    if (mon && specifiedFemale != null) mon.female = specifiedFemale;
+    if (mon && spec.hostile) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+function airBounds() {
+    return { xmin: 3, ymin: 1, xmax: Math.min(78, COLNO - 2), ymax: Math.min(20, ROWNO - 1) };
+}
+
+function airBubbleBounds() {
+    const b = airBounds();
+    return { xmin: b.xmin + 1, ymin: b.ymin + 1, xmax: b.xmax - 1, ymax: b.ymax - 1 };
+}
+
+function drawAirBubble(bubble) {
+    const bm = bubble.bm;
+    for (let i = 0, x = bubble.x; i < bm[0]; i++, x++) {
+        for (let j = 0, y = bubble.y; j < bm[1]; j++, y++) {
+            if (!(bm[j + 2] & (1 << i))) continue;
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.typ = CLOUD;
+            loc.lit = true;
+        }
+    }
+}
+
+function mv_air_bubble(bubble, dx, dy, ini) {
+    const bounds = airBubbleBounds();
+    let colli = 0;
+
+    if (!rn2(6)) {
+        if (dx < -1 || dx > 1 || dy < -1 || dy > 1) {
+            dx = Math.sign(dx);
+            dy = Math.sign(dy);
+        }
+        if (bubble.x <= bounds.xmin) colli |= 2;
+        if (bubble.y <= bounds.ymin) colli |= 1;
+        if (bubble.x + bubble.bm[0] - 1 >= bounds.xmax) colli |= 2;
+        if (bubble.y + bubble.bm[1] - 1 >= bounds.ymax) colli |= 1;
+
+        if (bubble.x < bounds.xmin) bubble.x = bounds.xmin;
+        if (bubble.y < bounds.ymin) bubble.y = bounds.ymin;
+        if (bubble.x + bubble.bm[0] - 1 > bounds.xmax) bubble.x = bounds.xmax - bubble.bm[0] + 1;
+        if (bubble.y + bubble.bm[1] - 1 > bounds.ymax) bubble.y = bounds.ymax - bubble.bm[1] + 1;
+
+        if (bubble.x === bounds.xmin && dx < 0) dx = -dx;
+        if (bubble.x + bubble.bm[0] - 1 === bounds.xmax && dx > 0) dx = -dx;
+        if (bubble.y === bounds.ymin && dy < 0) dy = -dy;
+        if (bubble.y + bubble.bm[1] - 1 === bounds.ymax && dy > 0) dy = -dy;
+
+        bubble.x += dx;
+        bubble.y += dy;
+    }
+
+    drawAirBubble(bubble);
+
+    switch (colli) {
+    case 1:
+        bubble.dy = -bubble.dy;
+        break;
+    case 3:
+        bubble.dy = -bubble.dy;
+        bubble.dx = -bubble.dx;
+        break;
+    case 2:
+        bubble.dx = -bubble.dx;
+        break;
+    default:
+        if (!ini && ((bubble.dx || bubble.dy) ? !rn2(20) : !rn2(5))) {
+            bubble.dx = 1 - rn2(3);
+            bubble.dy = 1 - rn2(3);
+        }
+        break;
+    }
+}
+
+function mk_air_bubble(x, y, n) {
+    const bounds = airBubbleBounds();
+    if (x >= bounds.xmax || y >= bounds.ymax) return;
+    const bm = AIR_BMASKS[Math.min(n, AIR_BMASKS.length - 1)];
+    if (x + bm[0] - 1 > bounds.xmax) x = bounds.xmax - bm[0] + 1;
+    if (y + bm[1] - 1 > bounds.ymax) y = bounds.ymax - bm[1] + 1;
+    const bubble = { x, y, dx: 1 - rn2(3), dy: 1 - rn2(3), bm: [...bm] };
+    game.level._airBubbles ??= [];
+    game.level._airBubbles.push(bubble);
+    mv_air_bubble(bubble, 0, 0, true);
+}
+
+function setup_air_level() {
+    if (!Is_airlevel(game.u?.uz)) return;
+    game.level.flags.hero_memory = 0;
+    game.level._airBubbles = [];
+    if (game._bubble_move_up == null) game._bubble_move_up = false;
+    for (let x = 1; x <= COLNO - 1; x++) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const loc = game.level.at(x, y);
+            if (loc?.typ === STONE) loc.typ = AIR;
+        }
+    }
+    const bounds = airBubbleBounds();
+    const xskip = 6 + rn2(4);
+    const yskip = 3 + rn2(3);
+    for (let x = bounds.xmin; x <= bounds.xmax; x += xskip)
+        for (let y = bounds.ymin; y <= bounds.ymax; y += yskip)
+            mk_air_bubble(x, y, rn2(7));
+}
+
+function flipAirRect(region, flips) {
+    if (!flips || (!flips.flipY && !flips.flipX)) return region;
+    const fx = x => flips.flipX ? flips.xmin + flips.xmax - x : x;
+    const fy = y => flips.flipY ? flips.ymin + flips.ymax - y : y;
+    const lx = fx(region.lx), hx = fx(region.hx), ly = fy(region.ly), hy = fy(region.hy);
+    return { lx: Math.min(lx, hx), ly: Math.min(ly, hy), hx: Math.max(lx, hx), hy: Math.max(ly, hy) };
+}
+
+export function movebubbles() {
+    if (!Is_airlevel(game.u?.uz) || !game.level?._airBubbles) return;
+    const bounds = airBubbleBounds();
+    for (let x = 1; x <= COLNO - 1; x++) {
+        for (let y = 0; y <= ROWNO - 1; y++) {
+            const loc = game.level.at(x, y);
+            if (!loc) continue;
+            loc.typ = AIR;
+            loc.lit = true;
+            const xedge = x < bounds.xmin || x > bounds.xmax;
+            const yedge = y < bounds.ymin || y > bounds.ymax;
+            if ((xedge || yedge) && !rn2(xedge ? 3 : 5))
+                loc.typ = CLOUD;
+        }
+    }
+
+    game._bubble_move_up = !game._bubble_move_up;
+    const bubbles = game._bubble_move_up
+        ? game.level._airBubbles
+        : [...game.level._airBubbles].reverse();
+    for (const bubble of bubbles) {
+        const rx = rn2(3), ry = rn2(3);
+        mv_air_bubble(
+            bubble,
+            bubble.dx + 1 - (!bubble.dx ? rx : (rx ? 1 : 0)),
+            bubble.dy + 1 - (!bubble.dy ? ry : (ry ? 1 : 0)),
+            false,
+        );
+    }
+}
+
+async function make_air_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.noteleport = true;
+    g.level.flags.hardfloor = true;
+    g.level.flags.shortsighted = true;
+    g.level.flags.stormy = true;
+    g.level.updest = { lx: 1, ly: 0, hx: 24, hy: 20, nlx: 25, nly: 0, nhx: 79, nhy: 20 };
+    g.level.dndest = { lx: 56, ly: 0, hx: 79, hy: 20, nlx: 1, nly: 0, nhx: 55, nhy: 20 };
+    let portalRegion = { lx: 57, ly: 1, hx: 78, hy: 19 };
+
+    l_nhcore_init();
+    airLoadMap(!!rn2(2));
+    for (let x = airX(0); x <= airX(AIR_WIDTH - 1); x++)
+        for (let y = airY(0); y <= airY(AIR_HEIGHT - 1); y++)
+            g.level.at(x, y).lit = true;
+
+    for (const spec of AIR_MONSTERS)
+        await airMonster(spec);
+
+    const flips = flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1, true);
+    portalRegion = flipAirRect(portalRegion, flips);
+    setup_air_level();
+    place_lregion(portalRegion.lx, portalRegion.ly, portalRegion.hx, portalRegion.hy,
+        0, 0, 0, 0, LR_PORTAL, { ...(g.fire_level || {}) });
+
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false });
+    g.in_mklev = false;
+}
+
 async function valleyFillMorgue(croom) {
     const roomno = croom.roomnoidx + ROOMOFFSET;
     for (let x = croom.lx; x <= croom.hx; x++)
@@ -11544,7 +12453,7 @@ export async function make_bigrm8_level() {
     const allowsFinalFlip = variant === 7 || variant === 8 || variant === 12;
     const finalFlipVertical = (variant === 7 || variant === 8) ? rn2(2) : 0;
     const finalFlipHorizontal = allowsFinalFlip ? rn2(2) : 0;
-    const flipContentVertical = variant === 8 ? (flipVertical || finalFlipVertical) : finalFlipVertical;
+    const flipContentVertical = variant === 8 ? (flipVertical !== !!finalFlipVertical) : finalFlipVertical;
     const flipContentHorizontal = allowsFinalFlip && finalFlipHorizontal;
     if (flipContentVertical || flipContentHorizontal) {
         const flipPoint = point => {
@@ -11552,7 +12461,7 @@ export async function make_bigrm8_level() {
             if (flipContentVertical) point.y = ystart + height - 1 - (point.y - ystart);
             if (flipContentHorizontal) point.x = xstart + width - 1 - (point.x - xstart);
         };
-        const flipTerrainWithContent = variant === 7 || variant === 12;
+        const flipTerrainWithContent = variant === 7 || variant === 8 || variant === 12;
         if (flipTerrainWithContent) {
             const refs = new Map();
             for (let x = xstart; x < xstart + width; x++)

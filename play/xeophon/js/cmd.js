@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, potionIndexForRoll, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -678,10 +678,15 @@ const POT_OIL = 252;
 const POT_WATER = 253;
 const WAND_CLASS = 10;
 const SPBOOK_NO_NOVEL = 11;
+const SPBOOK_CLASS = 10003;
 const TOOL_CLASS = 12;
 const BOOK_OF_THE_DEAD = 10097;
 const GEM_CLASS = 14;
 const AMULET_CLASS = 15;
+const WISH_RANDOM_CLASSES = [
+    WAND_CLASS, RING_CLASS, POTION_CLASS, SCROLL_CLASS, GEM_CLASS, AMULET_CLASS,
+    SPBOOK_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, FOOD_CLASS,
+];
 const OBJECT_CLASS_GLYPHS = {
     armor: '[',
     weapon: ')',
@@ -2713,6 +2718,20 @@ function levelTeleportMenuTarget(ch, page2 = false) {
     return entries[index]?.level;
 }
 
+function levelTeleportMenuPage3Target(ch) {
+    const hasKnox = hasPlacedKnoxBranch();
+    const direct = hasKnox
+        ? {
+            L: specialLevel('water'), M: specialLevel('fire'), N: specialLevel('air'), O: specialLevel('earth'),
+            Q: specialLevel('tut-1'), R: specialLevel('tut-2'),
+        }
+        : {
+            K: specialLevel('water'), L: specialLevel('fire'), M: specialLevel('air'), N: specialLevel('earth'),
+            P: specialLevel('tut-1'), Q: specialLevel('tut-2'),
+        };
+    return direct[ch];
+}
+
 function monsterHasAmuletOfYendor(mon) {
     return (mon?.minvent || []).some(item =>
         item.realAmuletOfYendor
@@ -2858,7 +2877,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     const wasInWizardTower = !!game.level?.flags?.wizard_tower_level && !!towerBounds
         && game.u.ux >= towerBounds.lx && game.u.ux <= towerBounds.hx
         && game.u.uy >= towerBounds.ly && game.u.uy <= towerBounds.hy;
-    const carriedPet = game.level?.monsters?.find(levelChangeFollowerNearHero);
+    const carriedFollowers = (game.level?.monsters || []).filter(levelChangeFollowerNearHero);
     const ballAndChain = [game.u?.uball, game.u?.uchain].filter(Boolean);
     removeCarriedPunishmentObjects(ballAndChain);
     rememberObjectsAtHero();
@@ -2869,7 +2888,8 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         utrack: [...(game._utrack || [])],
         moves: game.moves || 1,
     });
-    if (carriedPet) game.level.monsters = game.level.monsters.filter(mon => mon !== carriedPet);
+    if (carriedFollowers.length)
+        game.level.monsters = game.level.monsters.filter(mon => !carriedFollowers.includes(mon));
     game.u.uz = { dnum: targetLevel.dnum, dlevel: targetLevel.dlevel };
     syncDungeonContext();
     game.u._displayDepth = null;
@@ -2970,7 +2990,10 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         newsym(game.u?.ux || 0, game.u?.uy || 0);
     }
     game._was_in_wizard_tower = false;
-    placeFollowerAfterLevelChange(carriedPet);
+    for (const follower of carriedFollowers)
+        placeFollowerAfterLevelChange(follower);
+    if (game.level?.flags?.fumaroles) fumaroles();
+    if (Is_airlevel(game.u?.uz)) movebubbles();
     if (!savedTarget && !game._getbones_prompted) game._utrack = [];
     const promptedBones = !!game._getbones_prompted;
     game._getbones_prompted = 0;
@@ -3037,6 +3060,10 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     const rogue = specialLevel('rogue');
     const enteringRogue = targetIsNew && rogue?.dnum === targetLevel.dnum && rogue?.dlevel === targetLevel.dlevel;
     const temperature = game.level?.flags?.temperature ?? 0;
+    game._force_endgame_wizard_after_arrival = targetIsNew
+        && fromLevel.dnum !== targetLevel.dnum
+        && In_endgame(targetLevel)
+        && !!game.u?.uhave?.amulet ? 1 : 0;
     let quietTemperatureMessage = '';
     if (!enteringValley && temperature !== fromTemperature) {
         if (temperature) {
@@ -3186,19 +3213,25 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
             ][rn2(4)];
         }
         if (!enteringValley && temperature && temperature !== fromTemperature) {
-            arrivalMessage += `  It is ${temperature > 0 ? 'hot' : 'cold'} here.`;
-            arrivalMore = true;
-            if (temperature > 0 && game.dungeons?.[targetLevel.dnum]?.name === 'Gehennom') {
-                game._queued_messages_after_more = [{ text: `You ${game.u?.blind ? 'sense' : 'smell'} smoke...`, more: arrivalObjects.length > 1 }];
-                if (arrivalObjects.length > 1) {
-                    const rows = arrivalObjectListRows(arrivalObjects);
-                    game._queued_overlay_after_more = {
-                        lines: rows,
-                        clearRows: rows.length,
-                        clearCol: 39,
-                        mode: 'objectListMore',
-                        usePendingTime: true,
-                    };
+            const temperatureArrivalMessage = `It is ${temperature > 0 ? 'hot' : 'cold'} here.`;
+            if (options.endgameLevelTeleport && targetIsNew && In_endgame(targetLevel)) {
+                postArrivalTemperatureMessage = temperatureArrivalMessage;
+                arrivalMore = true;
+            } else {
+                arrivalMessage += `  ${temperatureArrivalMessage}`;
+                arrivalMore = true;
+                if (temperature > 0 && game.dungeons?.[targetLevel.dnum]?.name === 'Gehennom') {
+                    game._queued_messages_after_more = [{ text: `You ${game.u?.blind ? 'sense' : 'smell'} smoke...`, more: arrivalObjects.length > 1 }];
+                    if (arrivalObjects.length > 1) {
+                        const rows = arrivalObjectListRows(arrivalObjects);
+                        game._queued_overlay_after_more = {
+                            lines: rows,
+                            clearRows: rows.length,
+                            clearCol: 39,
+                            mode: 'objectListMore',
+                            usePendingTime: true,
+                        };
+                    }
                 }
             }
         } else if (!enteringValley && !temperature && temperature !== fromTemperature) {
@@ -4738,6 +4771,17 @@ const LEVEL_TELEPORT_MENU_PAGE2_LINES = [
     [22, 1, 'J -   astral: -5'],
     [23, 1, '(2 of 3)'],
 ];
+const LEVEL_TELEPORT_MENU_PAGE3_LINES = [
+    [0, 1, 'K -   water: -4'],
+    [1, 1, 'L -   fire: -3'],
+    [2, 1, 'M -   air: -2'],
+    [3, 1, 'N -   earth: -1'],
+    [4, 1, 'dummy: 0'],
+    [5, 1, 'The Tutorial: levels 1 to 2', 1],
+    [6, 1, 'P -   tut-1: 1'],
+    [7, 1, 'Q -   tut-2: 2'],
+    [8, 1, '(3 of 3)'],
+];
 function levelTeleportMenuLines() {
     const currentDungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const depth = game.u?._displayDepth
@@ -4862,6 +4906,23 @@ function levelTeleportMenuPage2Lines() {
         if (row === 16) return [row, col, `knox: ${specialDepth('knox')}`, attr];
         if (row === 17) return [row, col, `Vlad's Tower: levels ${dungeonRange(6)}, entrance from below`, attr];
         if (row >= 18 && row <= 20) return [row, col, `${String.fromCharCode('G'.charCodeAt(0) + row - 18)} - ${specialMark(`tower${row - 17}`)} tower${row - 17}: ${specialDepth(`tower${row - 17}`)}`, attr];
+        return [row, col, text, attr];
+    });
+}
+
+function levelTeleportMenuPage3Lines() {
+    const hasKnox = hasPlacedKnoxBranch();
+    const endgameLetters = hasKnox ? ['L', 'M', 'N', 'O'] : ['K', 'L', 'M', 'N'];
+    const tutorialLetters = hasKnox ? ['Q', 'R'] : ['P', 'Q'];
+    const specialDepth = name => wizWhereDepth(specialLevel(name));
+    return LEVEL_TELEPORT_MENU_PAGE3_LINES.map(([row, col, text, attr]) => {
+        if (row >= 0 && row <= 3) {
+            const names = ['water', 'fire', 'air', 'earth'];
+            const name = names[row];
+            return [row, col, `${endgameLetters[row]} -   ${name}: ${specialDepth(name)}`, attr];
+        }
+        if (row === 6) return [row, col, `${tutorialLetters[0]} -   tut-1: ${specialDepth('tut-1')}`, attr];
+        if (row === 7) return [row, col, `${tutorialLetters[1]} -   tut-2: ${specialDepth('tut-2')}`, attr];
         return [row, col, text, attr];
     });
 }
@@ -7334,6 +7395,42 @@ function becomeMonster(name) {
 
 function godsNoticeWish() {
     game.u.ublesscnt = (game.u.ublesscnt || 0) + rn2(100) + 50;
+}
+
+function wishedInventoryPhrase(item, wishedQuan = 1) {
+    const bucPrefix = knownBlessCursePrefix(item);
+    const baseVisibleName = game.u?.blind && item.cls === 'potion' ? 'potion'
+        : game.u?.blind && item.cls === 'ring' ? 'ring'
+            : game.u?.blind && item.cls === 'wand' ? 'wand'
+                : `${erosionPrefix(item)}${pickupObjectName(item)}`;
+    const visibleName = `${bucPrefix}${baseVisibleName}`;
+    const displayQuan = item.quan || wishedQuan;
+    const article = item.unique ? 'the'
+        : item.noArticle ? ''
+        : /^(?:.* )?(?:boots|gloves)$/.test(baseVisibleName) ? 'a pair of'
+        : /^[aeiou]/i.test(visibleName) ? 'an' : 'a';
+    return displayQuan > 1 ? `${displayQuan} ${visibleName}`
+        : article === 'a pair of' ? `a ${bucPrefix}pair of ${baseVisibleName}`
+            : article ? `${article} ${visibleName}` : visibleName;
+}
+
+function makeRandomWishObject() {
+    const oclass = WISH_RANDOM_CLASSES[rn2(WISH_RANDOM_CLASSES.length)];
+    const item = mkobj(oclass, false);
+    return Object.assign(item, object_display(item), { wishedfor: true });
+}
+
+async function finishRandomBlankWish() {
+    recordWishConduct();
+    const letter = nextInventoryLetter();
+    const item = Object.assign({ letter, quan: 1 }, makeRandomWishObject());
+    item.line = `${letter} - ${wishedInventoryPhrase(item)}`;
+    game.inventory ??= [];
+    game.inventory.push(item);
+    maybeAttachCarriedFigurineTimeout(item);
+    game._pet_food_scan_inventory = game.inventory;
+    godsNoticeWish();
+    await setWishResultMessage(`${item.line}.`);
 }
 
 function capWishSpe(spe) {
@@ -14450,6 +14547,70 @@ function levelTeleportOptionsWithTrapFollowup(options = {}) {
     };
 }
 
+function grantEndgamePrerequisiteIfNeeded(targetLevel) {
+    if (!targetLevel || !In_endgame(targetLevel) || In_endgame(game.u?.uz) || heroHasAmuletOfYendor())
+        return '';
+    const amulet = makeRealAmuletOfYendorWishObject();
+    const letter = nextInventoryLetter();
+    Object.assign(amulet, {
+        letter,
+        line: `${letter} - the Amulet of Yendor`,
+    });
+    game.inventory ??= [];
+    game.inventory.push(amulet);
+    game.u ??= {};
+    game.u.uhave ??= {};
+    game.u.uhave.amulet = 1;
+    return `Endgame prerequisite: ${letter} - the Amulet of Yendor.`;
+}
+
+async function finishMenuLevelTeleport(targetLevel, options = {}) {
+    const prerequisiteMessage = grantEndgamePrerequisiteIfNeeded(targetLevel);
+    const finalOptions = prerequisiteMessage
+        ? { ...options, endgameLevelTeleport: true }
+        : options;
+    const ok = await finishLevelTeleport(targetLevel, finalOptions);
+    const forceEndgameWizard = !!game._force_endgame_wizard_after_arrival;
+    game._force_endgame_wizard_after_arrival = 0;
+    const shouldAmuletWish = ok
+        && !!prerequisiteMessage
+        && finalOptions.endgameLevelTeleport
+        && In_endgame(targetLevel)
+        && !!game.u?.uhave?.amulet
+        && !game.u?.uevent?.amulet_wish;
+    if (shouldAmuletWish) {
+        game.u.uevent ??= {};
+        game.u.uevent.amulet_wish = 1;
+    }
+    if (ok && prerequisiteMessage) {
+        const arrivalText = game._pending_message || '';
+        const arrivalMore = !!game._message_more;
+        const queuedMessages = game._queued_messages_after_more || [];
+        const queuedText = game._queued_message_after_more || '';
+        const queuedMore = !!game._queued_message_more_after_more || (shouldAmuletWish && !!queuedText);
+        const insertAfter = [
+            ...queuedMessages,
+            ...(queuedText ? [{ text: queuedText, more: queuedMore }] : []),
+            ...(shouldAmuletWish ? [
+                { text: 'The Amulet is bestowing a wish upon you!  You may wish for an object.', more: true },
+                { text: 'For what do you wish?', more: false, beginWishPrompt: true },
+            ] : []),
+        ];
+        game._queued_messages_after_more = arrivalText
+            ? [{
+                text: arrivalText,
+                more: arrivalMore,
+                ...(forceEndgameWizard ? { forceEndgameWizard: true } : {}),
+                ...(insertAfter.length ? { insertAfter } : {}),
+            }]
+            : insertAfter;
+        game._queued_message_after_more = '';
+        game._queued_message_more_after_more = '';
+        await setMessage(prerequisiteMessage, true);
+    }
+    return ok;
+}
+
 function levelTeleportTrapResult(trap, prefix, intentional = false) {
     trap.tseen = true;
     const verb = intentional ? 'trigger' : `${game.u?.flying ? 'fly' : game.u?.levitating ? 'float' : 'step'} onto`;
@@ -17996,6 +18157,12 @@ export async function rhack(_cmd) {
     if (await handleSanctumSummonScript(ch)) return;
 
     if (game._command_mode === 'wizardWish' && ch !== '\r' && ch !== '\n') {
+        if (ch === '\x1b' || key === 27) {
+            game._wish_text = '';
+            game._command_mode = null;
+            await finishRandomBlankWish();
+            return;
+        }
         if (key === 8 || key === 127) game._wish_text = (game._wish_text || '').slice(0, -1);
         else if (key >= 32) game._wish_text = `${game._wish_text || ''}${ch}`;
         await setMessage(`For what do you wish?${game._wish_text ? ` ${game._wish_text}` : ''}`);
@@ -20505,6 +20672,17 @@ export async function rhack(_cmd) {
                     nextText = messages.join('  ');
                     next.more = true;
                 }
+                if (next.forceEndgameWizard) {
+                    const mon = await resurrectWizardOfYendor();
+                    if (mon) {
+                        newsym(mon.mx, mon.my);
+                        next.insertAfter = [
+                            { text: 'The Wizard of Yendor suddenly appears next to you!', more: true },
+                            { text: 'A voice booms out...  "So thou thought thou couldst kill me, fool."', more: true },
+                            ...(next.insertAfter || []),
+                        ];
+                    }
+                }
                 if (next.text === 'You die...' || next.text === 'You die.') prepareDeathBones();
                 await setMessage(nextText, !!next.more);
                 if (next.clearOnlyNext && !next.more) game._clear_pending_message_only_once = 1;
@@ -20527,6 +20705,12 @@ export async function rhack(_cmd) {
                         ...next.insertAfter,
                         ...(game._queued_messages_after_more || []),
                     ];
+                if (next.beginWishPrompt) {
+                    game._wish_text = '';
+                    game._wish_move_cost = 0;
+                    game._wish_dust_item = null;
+                    game._command_mode = 'wizardWish';
+                }
                 if (next.text === 'You die...' || next.text === 'You die.') {
                     if (!game._pending_time_passed) game._death_current_move = 0;
                     game._pending_time_passed = 0;
@@ -21047,39 +21231,29 @@ export async function rhack(_cmd) {
 	                    game.u.uswldtim = 0;
 	                    game.u.ustuck = null;
 	                    game._swallow_overlay_active = 0;
-		                    game._swallow_overlay_before_command = null;
-			                    game._overlay_lines = null;
-			                    game._overlay_hide_status = 0;
-			                    game._overlay_hide_status_only = 0;
-			                    game._display_hallucinated_redraw = 1;
-			                    vision_recalc(2);
-			                    game._docrt_redraw_memory_only = 1;
-			                    try {
-			                        await docrt();
-			                    } finally {
-			                        game._docrt_redraw_memory_only = 0;
-			                    }
-			                    vision_recalc(0);
-			                    game._docrt_seen_monsters_only = 1;
-			                    try {
-			                        await docrt();
-			                    } finally {
-			                        game._docrt_seen_monsters_only = 0;
-			                    }
-			                    mon.mspec_used = rnd(2);
-		                    const spot = enextoMonsterSpot(mon.mx, mon.my, mon.data || {});
-		                    if (spot) {
-		                        newsym(mon.mx, mon.my);
-		                        mon.mx = spot.x;
-		                        mon.my = spot.y;
-		                        newsym(mon.mx, mon.my);
-		                    }
-		                    newsym(heroX, heroY);
-		                    newsym(game.u.ux, game.u.uy);
-		                    game._hallu_display_after_expel = 1;
-		                    game._simple_swallow_expel_prompt = 0;
-		                    game._display_hallucinated_redraw = 0;
-			                }
+	                    game._swallow_overlay_before_command = null;
+	                    game._overlay_lines = null;
+	                    game._overlay_hide_status = 0;
+	                    game._overlay_hide_status_only = 0;
+	                    game._display_hallucinated_redraw = 1;
+	                    vision_recalc(2);
+	                    await docrt();
+	                    vision_recalc(0);
+	                    mon.mspec_used = rnd(2);
+	                    const spot = enextoMonsterSpot(mon.mx, mon.my, mon.data || {});
+	                    if (spot) {
+	                        newsym(mon.mx, mon.my);
+	                        mon.mx = spot.x;
+	                        mon.my = spot.y;
+	                        newsym(mon.mx, mon.my);
+	                    }
+	                    newsym(heroX, heroY);
+	                    newsym(game.u.ux, game.u.uy);
+	                    game._hallu_display_after_expel = 1;
+	                    game._hallu_refresh_after_expel = 1;
+	                    game._simple_swallow_expel_prompt = 0;
+	                    game._display_hallucinated_redraw = 0;
+	                }
 	                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
 	                game.context.move = 0;
 	                game._process_command_time_now = 1;
@@ -27775,7 +27949,7 @@ export async function rhack(_cmd) {
             return;
         }
         const targetLevel = levelTeleportMenuTarget(ch);
-        await finishLevelTeleport(targetLevel, targetLevel
+        await finishMenuLevelTeleport(targetLevel, targetLevel
             ? levelTeleportOptionsWithTrapFollowup({ preHalluRefresh: true })
             : { preHalluRefresh: true });
         if (game._command_mode === 'levelTeleportMenu') game._command_mode = null;
@@ -27783,6 +27957,11 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'levelTeleportMenu2') {
+        if (ch === ' ') {
+            setOverlay(levelTeleportMenuPage3Lines(), 24, true);
+            game._command_mode = 'levelTeleportMenu3';
+            return;
+        }
         if (ch === 'y' && questDownBlocked()) {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
@@ -27804,10 +27983,19 @@ export async function rhack(_cmd) {
         }
 	        const targetLevel = levelTeleportMenuTarget(ch, true);
 	        const soko1Letter = hasPlacedKnoxBranch() ? 'C' : 'B';
-	        await finishLevelTeleport(targetLevel, targetLevel
-	            ? levelTeleportOptionsWithTrapFollowup({ boulderMessage: ch === soko1Letter, preHalluRefresh: true })
-	            : { boulderMessage: ch === soko1Letter, preHalluRefresh: true });
+	        await finishMenuLevelTeleport(targetLevel, targetLevel
+		            ? levelTeleportOptionsWithTrapFollowup({ boulderMessage: ch === soko1Letter, preHalluRefresh: true })
+		            : { boulderMessage: ch === soko1Letter, preHalluRefresh: true });
         if (game._command_mode === 'levelTeleportMenu2') game._command_mode = null;
+        return;
+    }
+
+    if (game._command_mode === 'levelTeleportMenu3') {
+        const targetLevel = levelTeleportMenuPage3Target(ch);
+        await finishMenuLevelTeleport(targetLevel, targetLevel
+            ? levelTeleportOptionsWithTrapFollowup({ preHalluRefresh: true })
+            : { preHalluRefresh: true });
+        if (game._command_mode === 'levelTeleportMenu3') game._command_mode = null;
         return;
     }
 
