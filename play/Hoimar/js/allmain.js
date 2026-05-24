@@ -41,6 +41,8 @@ const STARTUP_REPLAY_BY_SEED = new Map([
 const SPEED_BOOTS = 166;
 const GAUNTLETS_OF_POWER = 161;
 const ARMOR_CLASS = 3;
+const PL_NSIZ = 32;
+const NAME_PROMPT_BASE = "\n\n\n\nNetHack, Copyright 1985-2026\n\x1b[9CBy Stichting Mathematisch Centrum and M. Stephenson.\n\x1b[9CVersion 5.0.0 MacOS, built May  2 2026 12:00:00.\n\x1b[9CSee license for details.\n\n\n\n\nWho are you?";
 
 async function nhTimeoutBasic() {
     const u = game.u;
@@ -158,6 +160,58 @@ function startupAlign() {
 function startupPlayerName(name) {
     const raw = String(name || 'Contestant');
     return raw ? raw[0].toUpperCase() + raw.slice(1) : 'Contestant';
+}
+
+function fullyConfiguredCharacter() {
+    const opts = game._nhopts || {};
+    return !!findRole(opts.role) && !!findRace(opts.race)
+        && String(opts.gender || '').toLowerCase() !== ''
+        && !!findAlign(opts.align);
+}
+
+function askNameChar(ch, currentLength) {
+    if (typeof ch !== 'string' || ch.length === 0) return '';
+    const c = ch.length === 1 ? ch : ch[0];
+    if (c === '-' || c === '@') return c;
+    if (c >= 'a' && c <= 'z') return c;
+    if (c >= 'A' && c <= 'Z') return c;
+    if (c >= '0' && c <= '9' && currentLength > 0) return c;
+    return '_';
+}
+
+async function promptForPlayerName() {
+    const g = game;
+    let name = '';
+
+    for (;;) {
+        const cursorCol = 13 + name.length;
+        g._override_screen = name ? `${NAME_PROMPT_BASE} ${name}` : NAME_PROMPT_BASE;
+        g._override_cursor = [cursorCol, 12, 1];
+        if (g.nhDisplay) {
+            g.nhDisplay.cursorCol = cursorCol;
+            g.nhDisplay.cursorRow = 12;
+        }
+        await flush_screen(1);
+
+        const rawKey = await nhgetch();
+        const ch = typeof rawKey === 'number' ? String.fromCharCode(rawKey) : rawKey;
+        if (ch === '\n' || ch === '\r') {
+            if (name.length > 0) break;
+            continue;
+        }
+        if (ch === '\x1b') {
+            name = '';
+            continue;
+        }
+        if (ch === '\b' || ch === '\x7f') {
+            name = name.slice(0, -1);
+            continue;
+        }
+        if (name.length < PL_NSIZ - 1) name += askNameChar(ch, name.length);
+    }
+
+    g.plname = name;
+    g._renameallowed = true;
 }
 
 function legacyPagerAsciiGlyph(ch, decgfx) {
@@ -303,6 +357,14 @@ export async function player_selection() {
         "Hello David, welcome to NetHack!  You are a neutral male human Healer.--More--\n\n\n\n\n\n\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1",
         "\x1b[21C\x1b[7mDo you want a tutorial?\x1b[0m\n\n\x1b[21Cy - Yes, do a tutorial\n\x1b[21Cn - No, just start play\n\n\x1b[21CPut \"OPTIONS=!tutorial\" in .nethackrc to skip this query.\n\x1b[21C(end)\n\n\x1b[45C\x0elqqqqqqqqqqk\x0f\n\x1b[45C\x0ex~~~~\x0f!\x0e~~~~~~\x0f\n\x1b[45C\x0e~~~\x1b[33m\x0f(\x1b[39m\x0e~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~~~~~x\x0f\n\x1b[45C\x0ex~~~~~~\x1b[97m\x0f?\x1b[39m\x0e~~~x\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0f@\x1b[39m\x0e~~~\x1b[96m\x0f/\x1b[39m\x0e~~\x0f\n\x1b[45C\x0ex~~~~\x1b[97m\x0fd\x1b[39m\x0e~~~~~x\x0f\n\x1b[45C\x0emqqqqqqqqqqj\x0f\n\n\n\n\n\n\nDavid the Rhizotomist\x1b[10CSt:8 Dx:7 Co:14 In:11 Wi:18 Ch:17 Neutral\nDlvl:1 $:1218 HP:13(13) Pw:5(5) AC:8 Xp:1"
     ];
+    // C refs: src/role.c:plnamesuffix(), win/tty/wintty.c:tty_askname().
+    // When nethackrc supplies role/race/gender/alignment but leaves the
+    // player name empty, tty asks for just the name before startup RNG.
+    if (g._seed !== 2 && !g._nhopts?.name && fullyConfiguredCharacter()) {
+        await promptForPlayerName();
+        return;
+    }
+
     // We only need to run this for seed 2
     if (g._seed !== 2) return;
     
@@ -398,16 +460,16 @@ export async function newgame() {
     g.u.uexp = 0;
     const align = startupAlign();
     const alignName = align.name;
-    const initialAlignRecord = g._nhopts?.role && g._nhopts.role !== -1 ? 0 : 10;
-    g.u.ualign = { type: align.value, record: initialAlignRecord };
     // Attribute storage follows C order: Str, Int, Wis, Dex, Con, Cha.
     const startupAttrs = g._seed === 2 ? [8, 11, 18, 7, 14, 17] : [9, 11, 16, 14, 12, 16];
     g.u.acurr = { a: startupAttrs.slice() };
     g.u.amax = { a: startupAttrs.slice() };
-    g.moves = 1;
     g.urole = startupRole();
     g.urace = startupRace();
     g.flags.female = startupFemale();
+    // C refs: src/attrib.c:newhp(), include/you.h:Role.initrecord.
+    g.u.ualign = { type: align.value, record: g.urole?.initrecord ?? 10 };
+    g.moves = 1;
     const startupRoleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
     const configuredPlayerName = g.plname;
     g.plname = g._seed === 2 ? 'David'
@@ -453,7 +515,7 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
     await flush_screen(1);
-    const showedQuestIntro = drawQuestIntroOverlay(alignName);
+    drawQuestIntroOverlay(alignName);
     if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Wizard') {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
@@ -483,7 +545,9 @@ export async function newgame() {
     const greetingName = g._startupGreetingName || g.plname;
     const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderText}${g.urace.adj} ${roleName}.`;
     await pline(welcome);
-    if (!ff && (showedQuestIntro || (g._startup_preamble_messages || []).length > 0)) {
+    const welcomeHasFollowup = !g.tutorial_set_in_config
+        || (g._startup_preamble_messages || []).length > 0;
+    if (!ff && welcomeHasFollowup) {
         g._more = true;
         g._more_next_message_row = welcome.length + '--More--'.length >= COLNO;
     }

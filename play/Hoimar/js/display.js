@@ -20,7 +20,7 @@ import {
     M_AP_OBJECT, IS_POOL, IS_WALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, WM_MASK,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    WARNCOUNT, def_warnsyms, Is_rogue_level,
+    WARNCOUNT, STR18, STR19, def_warnsyms, Is_rogue_level,
 } from './const.js';
 import { depth, distmin, dist2 } from './hacklib.js';
 import {
@@ -66,6 +66,7 @@ const FIRST_SPELL = 366;
 const LAST_SPELL = 407;
 const CORPSE = 265;
 const STATUE = 476;
+const GAUNTLETS_OF_POWER = 161;
 
 const GENERIC_OBJECT_GLYPH = {
     [POTION_CLASS]: { ch: '!', color: CLR_GRAY },
@@ -1184,6 +1185,29 @@ export function serialize_known_terrain_view_screen(message = '') {
 }
 
 // ── Status lines ──
+function wearing_power_gauntlets() {
+    return (game.inventory || []).some((obj) => obj?.otyp === GAUNTLETS_OF_POWER
+        && (obj.worn || obj.owornmask));
+}
+
+function strength_status_text(value) {
+    if (value == null || value === '') return '?';
+    if (typeof value === 'string') return value;
+    let st = Number(value);
+    if (!Number.isFinite(st) || st <= 0) return '?';
+
+    // C refs: src/botl.c:get_strength_str(), src/attrib.c:acurr().
+    // Stored strength uses 19..118 for 18/01..18/**; current JS still keeps
+    // power gauntlets as raw 25, so normalize that equipment case here.
+    if (st === 25 && wearing_power_gauntlets()) st = STR19(25);
+    if (st > 18) {
+        if (st > STR18(100)) return String(st - 100);
+        if (st < STR18(100)) return `18/${String(st - 18).padStart(2, '0')}`;
+        return '18/**';
+    }
+    return String(st);
+}
+
 function _statusLine1() {
     const u = game.u;
     if (!u) return '';
@@ -1195,7 +1219,7 @@ function _statusLine1() {
             : (game.urole?.rank?.m || game.urole?.name?.m || 'Adventurer'));
     const title = `${name} the ${role}`;
     const attrs = u.acurr?.a || [];
-    const strength = form?.strength || attrs[0] || '?';
+    const strength = strength_status_text(form?.strength ?? attrs[0]);
     const stats = `St:${strength} Dx:${attrs[3] || '?'} Co:${attrs[4] || '?'} In:${attrs[1] || '?'} Wi:${attrs[2] || '?'} Ch:${attrs[5] || '?'}`;
     const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
     // C uses cursor-forward for gap between title and stats

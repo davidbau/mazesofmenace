@@ -4785,6 +4785,13 @@ function rememberPrayerStart() {
     game._prayer_ptype = currentPrayerType();
 }
 
+function prayerTurnBudget() {
+    // C refs: src/pray.c:dopray(), src/allmain.c:u_calc_moveamt().
+    // Current movement accounting needs the longer budget for intrinsically
+    // fast prayers so their extra movement allocation reaches prayer_done().
+    return (game.u?.uprops?.fast || game.u?.uprops?.intrinsic_fast) ? 4 : 2;
+}
+
 function changeLuck(delta) {
     game.u = game.u || {};
     const next = (game.u.uluck || 0) + delta;
@@ -5416,6 +5423,7 @@ export function shouldStopRunForNearbyMonster() {
 }
 
 function monsterSwapName(mon) {
+    if (C.has_mgivenname(mon)) return C.MGIVENNAME(mon);
     const name = monsterName(mon);
     if (mon?.mtame) return `your ${name}`;
     if (mon?.mpeaceful) return `the peaceful ${name}`;
@@ -8437,6 +8445,24 @@ function heroBaseAttr(index) {
     return game.u?.amax?.a?.[index] ?? heroAttr(index);
 }
 
+function wearingPowerGauntlets() {
+    return (game.inventory || []).some((obj) => obj?.otyp === GAUNTLETS_OF_POWER
+        && (obj.worn || obj.owornmask));
+}
+
+function insightAttrValueText(index, value) {
+    let attrvalue = Number(value);
+    if (!Number.isFinite(attrvalue)) return String(value ?? 0);
+    if (index === C.A_STR && attrvalue === 25 && wearingPowerGauntlets()) {
+        attrvalue = C.STR19(25);
+    }
+    // C ref: src/insight.c:attrval().  Insight prints exceptional strength as
+    // 18/xx and uses 18/100 rather than the status line's 18/** spelling.
+    if (index !== C.A_STR || attrvalue <= 18) return String(attrvalue);
+    if (attrvalue > C.STR18(100)) return String(attrvalue - 100);
+    return `18/${String(attrvalue - 18).padStart(2, '0')}`;
+}
+
 function wizardRankTitle(level) {
     if (level >= 26) return 'Mage';
     if (level >= 22) return 'Necromancer';
@@ -8451,15 +8477,16 @@ function wizardRankTitle(level) {
 function insightAttrLine(label, index) {
     const current = heroAttr(index);
     const base = heroBaseAttr(index);
+    const currentText = insightAttrValueText(index, current);
     if (current !== base) {
         // C ref: src/insight.c:one_characteristic().  JS does not yet keep
         // separate ABASE/AMAX slots, so downward non-temporary loss is the
         // previous peak; explicit JS temporary penalties still report base.
         const temporaryPenalty = index === C.A_DEX && game.u?.wounded_legs_dex_penalty;
         const tag = current < base && !temporaryPenalty ? 'peak' : 'base';
-        return `  Your ${label} is ${current} (current; ${tag}:${base}).`;
+        return `  Your ${label} is ${currentText} (current; ${tag}:${insightAttrValueText(index, base)}).`;
     }
-    return `  Your ${label} is ${current}.`;
+    return `  Your ${label} is ${currentText}.`;
 }
 
 function articleForWord(word) {
@@ -8603,6 +8630,9 @@ function roleOppositionLine(role, alignName) {
 }
 
 function weaponSkillName(obj) {
+    // C ref: src/insight.c:attributes_enlightenment().  Most wielded weapons
+    // are described by skill class rather than exact object name.
+    if (obj?.otyp === KATANA) return 'long sword';
     if (obj?.otyp === SCALPEL) return 'knife';
     if (obj?.otyp === WAR_HAMMER) return 'hammer';
     return baseObjectName(obj);
@@ -8613,6 +8643,7 @@ function weaponSkillLevelName(obj) {
     if (game.urole?.name?.m === 'Ranger' && (obj?.otyp === DAGGER || obj?.otyp === BOW)) return 'basic';
     if (game.urole?.name?.m === 'Rogue' && obj?.otyp === SHORT_SWORD) return 'basic';
     if (game.urole?.name?.m === 'Priest' && obj?.otyp === MACE) return 'basic';
+    if (game.urole?.name?.m === 'Samurai' && (obj?.otyp === KATANA || obj?.otyp === SHORT_SWORD)) return 'basic';
     if (game.urole?.name?.m === 'Valkyrie' && obj?.otyp === SPEAR) return 'basic';
     return 'no';
 }
@@ -8634,6 +8665,15 @@ function encumbranceInsightLine() {
     if (enc === 3) return '  You are strained; movement is significantly slowed.';
     if (enc === 4) return '  You are overtaxed; movement is extremely slowed.';
     return '  You are overloaded; you cannot move.';
+}
+
+function autopickupInsightLine() {
+    // C ref: src/insight.c:attributes_enlightenment().
+    if (!game.flags?.pickup) return '  Autopickup is off.';
+    const pickupTypes = String(game.flags?.pickup_types || '');
+    let text = pickupTypes ? `on for '${pickupTypes}'` : 'on for all types';
+    if (pickupTypes && game.flags?.pickup_thrown !== false) text += ' plus thrown';
+    return `  Autopickup is ${text}.`;
 }
 
 function roleAttributesPageParts() {
@@ -8664,7 +8704,7 @@ function roleAttributesPageParts() {
         energyLine(),
         `  Your armor class is ${game.u?.uac ?? 10}.`,
         gold > 0 ? `  Your wallet contains ${gold} zorkmids.` : '  Your wallet is empty.',
-        '  Autopickup is off.',
+        autopickupInsightLine(),
         '',
         ' Characteristics:',
     ];
@@ -8743,7 +8783,7 @@ function wizardAttributesPage1() {
         + `  You have all ${game.u?.uenmax || 0} energy points (spell power).\n`
         + `  Your armor class is ${game.u?.uac ?? 10}.\n`
         + '  Your wallet is empty.\n'
-        + '  Autopickup is off.\n'
+        + `${autopickupInsightLine()}\n`
         + '\n Characteristics:\n'
         + `${insightAttrLine('strength', C.A_STR)}\n`
         + `${insightAttrLine('dexterity', C.A_DEX)}\n`
@@ -9944,7 +9984,9 @@ export async function rhack(key) {
                 game._awaiting_pray_force_more = true;
                 game.context.move = 0;
             } else {
-                game._prayer_turns_remaining = 2;
+                // C ref: src/pray.c:dopray() uses nomul(-3) before
+                // gn.nomovemsg/ga.afternmv run at prayer completion.
+                game._prayer_turns_remaining = prayerTurnBudget();
                 game._pending_prayer_finish_message = true;
                 game.context.move = 1;
             }
@@ -9967,6 +10009,9 @@ export async function rhack(key) {
             game.u.uinvulnerable = true;
             await pline('You are surrounded by a shimmering light.');
             game._more = true;
+            // C ref: src/pray.c:dopray() uses nomul(-3).  The wizard
+            // force prompt has already split the prayer start across a
+            // blocking --More-- boundary in this JS path.
             game._prayer_turns_remaining = 2;
             game._pending_prayer_finish_message = true;
             game.context.move = 1;

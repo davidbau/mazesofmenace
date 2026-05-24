@@ -6,7 +6,7 @@ import { game } from './gstate.js';
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
-        flags: {}, iflags: {},
+        flags: { pickup_thrown: true }, iflags: {},
     };
     if (!rc) return result;
 
@@ -34,14 +34,19 @@ export function parseNethackrc(rc) {
                 else if (key === 'race') result.race = val;
                 else if (key === 'gender') result.gender = val;
                 else if (key === 'align') result.align = val;
+                else if (key === 'catname') result.catname = val;
+                else if (key === 'dogname') result.dogname = val;
+                else if (key === 'horsename') result.horsename = val;
                 else if (key === 'playmode' && val === 'debug') result.flags.debug = true;
                 else if (key === 'pettype' || key === 'pet') {
                     result.flags.pettype = val;
                     if (val === 'none' || val === 'n') result.preferred_pet = 'n';
                     else if (val === 'dog' || val === 'd') result.preferred_pet = 'd';
                     else if (val === 'cat' || val === 'c') result.preferred_pet = 'c';
+                    else if (val === 'horse' || val === 'pony' || val === 'h') result.preferred_pet = 'h';
                 }
                 else if (key === 'symset') result.symset = val;
+                else if (key === 'pickup_types') result.flags.pickup_types = val;
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
                 else if (key === 'msg_window') result.iflags.prevmsg_window = val;
                 else result.flags[key] = val;
@@ -51,6 +56,7 @@ export function parseNethackrc(rc) {
                 const value = !negated;
 
                 if (lname === 'autopickup') result.flags.pickup = value;
+                else if (lname === 'pickup_thrown') result.flags.pickup_thrown = value;
                 else if (lname === 'color') result.flags.color = value;
                 else if (lname === 'legacy') result.flags.legacy = value;
                 else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }

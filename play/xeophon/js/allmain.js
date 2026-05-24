@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, movebubbles } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -6845,7 +6845,7 @@ function maybeRedDragonFireBreath(mon, ray, attack, monIndex, somebodyCanMove) {
     ray.remaining = rn2(7) + 7;
 
     for (;;) {
-        const event = advanceFireBreathRay(ray, mon.m_id);
+        const event = advanceFireBreathRay(ray, mon.m_id, { floorFire: burnRayFloorObjectsByFire });
         for (const message of event.messages) {
             if (message) addToplineMessage(message);
         }
@@ -6856,7 +6856,15 @@ function maybeRedDragonFireBreath(mon, ray, attack, monIndex, somebodyCanMove) {
         if (event.target.type === 'monster') {
             const target = event.target.mon;
             if (fireBreathZapHits(target.data?.ac ?? target.ac ?? 10)) {
-                const hit = fireBreathDamageMonster(target, attack.dice);
+                const visible = !game.u?.blind && !target.minvis && !target.mundetected
+                    && couldSeeCoord(target.mx, target.my);
+                const hit = fireBreathDamageMonster(target, attack.dice, origDamage => {
+                    const messages = [];
+                    const damage = monsterFireInventoryDamage(target, origDamage, messages, visible);
+                    igniteMonsterFireInventoryItems(target, messages, visible);
+                    return { damage, messages };
+                });
+                for (const message of hit.messages) addToplineMessage(message);
                 if (!hit.killedHidden) {
                     addToplineMessage(game.u?.blind || target.minvis || target.mundetected
                         ? 'The blast of fire hits it!'
@@ -7100,7 +7108,7 @@ function monsterPossessiveName(mon) {
 function monsterFireTrapArmorSlot(mon, slot, messages, visible, ownerPrefix) {
     const inventory = mon.minvent || [];
     const matches = {
-        helm: item => /helm|helmet|hat|pot/.test(String(item.kind || item.actualKind || '').toLowerCase()),
+        helm: item => /helm|helmet|hat|fedora|cornuthaum|cap|pot/.test(String(item.kind || item.actualKind || '').toLowerCase()),
         cloak: item => /cloak|robe|smock|wrapping/.test(String(item.kind || item.actualKind || '').toLowerCase()),
         body: item => SUIT_ARMOR_PATTERN.test(String(item.kind || item.actualKind || '').toLowerCase()),
         shirt: item => /shirt/.test(String(item.kind || item.actualKind || '').toLowerCase()),

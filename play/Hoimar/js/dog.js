@@ -14,7 +14,7 @@ import {
     ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, ROWNO, TABU, UNDEF,
     D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
-    W_WEP, isok,
+    W_WEP, isok, MGIVENNAME, has_mgivenname,
 } from './const.js';
 import { d, rn2, rnd } from './rng.js';
 import { gettrack } from './track.js';
@@ -164,6 +164,7 @@ function configuredPetType() {
     case 'n': return null;
     case 'c': return PM_KITTEN;
     case 'd': return PM_LITTLE_DOG;
+    case 'h': return PM_PONY;
     default: break;
     }
 
@@ -182,6 +183,26 @@ function configuredPetType() {
     }
 }
 
+function configuredPetName(pet) {
+    const opts = game._nhopts || {};
+    if (pet === PM_LITTLE_DOG && opts.dogname) return opts.dogname;
+    if (pet === PM_KITTEN && opts.catname) return opts.catname;
+    if (pet === PM_PONY && opts.horsename) return opts.horsename;
+
+    // C ref: src/dog.c:makedog().  If no dogname option was supplied, a few
+    // role-default little dogs are christened as the starting pet.
+    if (pet === PM_LITTLE_DOG) {
+        switch (game.urole?.name?.m) {
+        case 'Barbarian': return 'Idefix';
+        case 'Caveman': return 'Slasher';
+        case 'Ranger': return 'Sirius';
+        case 'Samurai': return 'Hachi';
+        default: break;
+        }
+    }
+    return '';
+}
+
 export async function makedog() {
     let pet = configuredPetType();
     if (pet === null) return null;
@@ -193,6 +214,11 @@ export async function makedog() {
         game.pet_type = pet;
         mon.mtame = Math.max(10, mon.mtame || 0);
         mon.mpeaceful = 1;
+        const petname = configuredPetName(pet);
+        if (petname && !game._petname_used) {
+            mon.mgivenname = petname;
+            game._petname_used = true;
+        }
         init_edog(mon);
     }
     return mon;
@@ -566,10 +592,12 @@ function pet_name(mtmp) {
 }
 
 function pet_subject(mtmp) {
+    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return `The ${pet_name(mtmp)}`;
 }
 
 function pet_noit_subject(mtmp) {
+    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return mtmp?.mtame ? `Your ${pet_name(mtmp)}` : `The ${pet_name(mtmp)}`;
 }
 
@@ -714,7 +742,7 @@ async function append_topline_message(line) {
 async function pet_combat_message(mtmp, text) {
     // C ref: mhitm.c:missmm()/hitmm(). Multiple pet-combat plines can land
     // during a delayed occupation turn; tty pauses the occupation on --More--.
-    await append_topline_message(`The ${pet_name(mtmp)} ${text}`);
+    await append_topline_message(`${pet_subject(mtmp)} ${text}`);
 }
 
 function refresh_pet_attack_symbols(mtmp, target) {

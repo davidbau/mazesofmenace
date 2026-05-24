@@ -3766,6 +3766,13 @@ const ARMOR_AC_BONUS = {
     'cloak of magic resistance': 1,
     'cloak of displacement': 1,
     'cloak of invisibility': 1,
+    'cloak of protection': 3,
+    'mummy wrapping': 1,
+    'elven cloak': 1,
+    'orcish cloak': 1,
+    'dwarvish cloak': 1,
+    'alchemy smock': 1,
+    'leather cloak': 1,
     'oilskin cloak': 1,
     robe: 2,
     'leather jacket': 1,
@@ -3809,6 +3816,9 @@ const ARMOR_AC_BONUS = {
     'elven shield': 2,
     'orcish shield': 1,
     'Uruk-hai shield': 1,
+    'uruk-hai shield': 1,
+    'shield of drain resistance': 1,
+    'shield of shock resistance': 1,
     'dwarvish roundshield': 2,
     'shield of reflection': 2,
     'leather gloves': 1,
@@ -6818,7 +6828,7 @@ function stopCarriedFigurineTimerOnLeave(item) {
 
 function wornArmorFireSlot(item) {
     const name = inventoryItemName(item).toLowerCase();
-    if (/helm|helmet|hat/.test(name)) return 0;
+    if (/helm|helmet|hat|fedora|cornuthaum|cap|pot/.test(name)) return 0;
     if (/cloak|mail|armor|shirt|robe/.test(name)) return 1;
     if (/shield/.test(name)) return 2;
     if (/gloves|gauntlets/.test(name)) return 3;
@@ -7050,7 +7060,10 @@ function maybeIgniteFloorFireItem(item, messages, giveFeedback) {
     return true;
 }
 
-export function burnFloorObjectsByFire(x, y, { giveFeedback = false } = {}) {
+export function burnFloorObjectsByFire(x, y, {
+    giveFeedback = false,
+    igniteFeedback = giveFeedback,
+} = {}) {
     if (!game.level) return { count: 0, messages: [] };
     const messages = [];
     let count = 0;
@@ -7076,19 +7089,29 @@ export function burnFloorObjectsByFire(x, y, { giveFeedback = false } = {}) {
     }
 
     for (const obj of [...(game.level.objects || [])]) {
-        if (atSquare(obj) && maybeIgniteFloorFireItem(obj, messages, giveFeedback))
+        if (atSquare(obj) && maybeIgniteFloorFireItem(obj, messages, igniteFeedback))
             changed = true;
     }
     if (changed) newsym(x, y);
     return { count, messages };
 }
 
+export function burnRayFloorObjectsByFire(x, y) {
+    const floorVisible = !game.u?.blind && !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+    const floorFire = burnFloorObjectsByFire(x, y, { igniteFeedback: floorVisible });
+    const messages = [...floorFire.messages];
+    if (floorFire.count && couldsee(x, y))
+        messages.push(`You ${game.u?.blind ? 'smell a whiff' : 'see a puff'} of smoke.`);
+    return messages;
+}
+
 function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false, {
     updateArmorInventory = true,
+    preburnedArmor = null,
 } = {}) {
     const messages = [];
     const events = [];
-    const armor = burnWornArmorFromFire({ updateHeroInventory: updateArmorInventory });
+    const armor = preburnedArmor || burnWornArmorFromFire({ updateHeroInventory: updateArmorInventory });
     if (armor.message) messages.push(armor.message);
     const joinState = { joinedArmorMessage: false };
     let destroyItems = false;
@@ -11314,7 +11337,7 @@ function fireInventoryItemImmune(item, cls) {
     return false;
 }
 
-function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
+export function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
     let limit = Math.trunc(origDamage / 5);
     if (origDamage % 5 > rn2(5)) limit++;
     if (limit < 1) return 0;
@@ -11366,6 +11389,27 @@ function monsterFireInventoryDamage(mon, origDamage, messages, visible) {
         damage += itemDamage;
     }
     return damage;
+}
+
+function maybeIgniteMonsterFireItem(item, messages, visible) {
+    if (!fireItemCanCatchLight(item)) return false;
+    const kind = objectKindKey(item);
+    if ((item.otyp === OIL_LAMP || item.otyp === MAGIC_LAMP || kind === 'oil lamp' || kind === 'magic lamp')
+        && item.cursed && !rn2(2))
+        return false;
+    const name = pickupObjectName({ ...item, line: '' });
+    beginWishedBurn(item);
+    if (visible) {
+        const subject = sentenceCase(articleFor(name));
+        messages.push(`${subject} ${fireInventoryNameVerb(name, 'catches', 'catch')} light!`);
+    }
+    return true;
+}
+
+export function igniteMonsterFireInventoryItems(mon, messages = [], visible = false) {
+    for (const item of [...(mon?.minvent || [])])
+        maybeIgniteMonsterFireItem(item, messages, visible);
+    return messages;
 }
 
 function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
@@ -21595,32 +21639,44 @@ export async function rhack(_cmd) {
                 }
                 if (next.fireBreathHeroHit) {
                     const breath = next.fireBreathHeroHit;
-                    const hit = fireBreathDamageHero(breath.dice);
+                    const hit = fireBreathDamageHero(breath.dice, origDamage =>
+                        fireDamageInventory(origDamage, false, true, {
+                            preburnedArmor: { bodyHit: true, message: '' },
+                        }));
                     const messages = [nextText, ...hit.messages].filter(Boolean);
-                    const ray = { ...breath.ray, heardGas: false };
-                    const follow = advanceFireBreathRay(ray, breath.sourceId);
-                    if (follow.target?.type === 'monster') {
-                        game._queued_messages_after_more ??= [];
-                        game._queued_messages_after_more.unshift({
-                            text: follow.messages.join('  '),
-                            more: true,
-                            fireBreathMonsterHit: {
-                                dice: breath.dice,
-                                ray: { ...follow.ray },
-                                sourceId: breath.sourceId,
-                                targetId: follow.target.mon.m_id,
-                                resumeIndex: breath.resumeIndex,
-                                somebodyCanMove: breath.somebodyCanMove,
-                            },
-                        });
-                        next.more = true;
+                    if (hit.lethal) {
+                        next.insertAfter = [
+                            { text: 'You die...', more: true },
+                            ...(next.insertAfter || []),
+                        ];
                     } else {
-                        messages.push(...follow.messages);
-                        const source = (game.level?.monsters || []).find(mon => mon.m_id === breath.sourceId);
-                        finishHeroTargetedBreath(source);
-                        next.processTime = true;
-                        next.resumeIndex = breath.resumeIndex;
-                        next.somebodyCanMove = breath.somebodyCanMove;
+                        const ray = { ...breath.ray, heardGas: false };
+                        const follow = advanceFireBreathRay(ray, breath.sourceId, {
+                            floorFire: burnRayFloorObjectsByFire,
+                        });
+                        if (follow.target?.type === 'monster') {
+                            game._queued_messages_after_more ??= [];
+                            game._queued_messages_after_more.unshift({
+                                text: follow.messages.join('  '),
+                                more: true,
+                                fireBreathMonsterHit: {
+                                    dice: breath.dice,
+                                    ray: { ...follow.ray },
+                                    sourceId: breath.sourceId,
+                                    targetId: follow.target.mon.m_id,
+                                    resumeIndex: breath.resumeIndex,
+                                    somebodyCanMove: breath.somebodyCanMove,
+                                },
+                            });
+                            next.more = true;
+                        } else {
+                            messages.push(...follow.messages);
+                            const source = (game.level?.monsters || []).find(mon => mon.m_id === breath.sourceId);
+                            finishHeroTargetedBreath(source);
+                            next.processTime = true;
+                            next.resumeIndex = breath.resumeIndex;
+                            next.somebodyCanMove = breath.somebodyCanMove;
+                        }
                     }
                     nextText = messages.join('  ');
                 }
@@ -21630,7 +21686,15 @@ export async function rhack(_cmd) {
                         || (game.level?.monsters || []).find(mon => mon.mx === breath.ray.x && mon.my === breath.ray.y);
                     const messages = [nextText].filter(Boolean);
                     if (target && fireBreathZapHits(target.data?.ac ?? target.ac ?? 10)) {
-                        const hit = fireBreathDamageMonster(target, breath.dice);
+                        const visible = !game.u?.blind && !target.minvis && !target.mundetected
+                            && (game.viz_array?.[target.my]?.[target.mx] & IN_SIGHT);
+                        const hit = fireBreathDamageMonster(target, breath.dice, origDamage => {
+                            const inventoryMessages = [];
+                            const damage = monsterFireInventoryDamage(target, origDamage, inventoryMessages, visible);
+                            igniteMonsterFireInventoryItems(target, inventoryMessages, visible);
+                            return { damage, messages: inventoryMessages };
+                        });
+                        messages.push(...hit.messages);
                         if (!hit.killedHidden) {
                             messages.push(game.u?.blind || target.minvis || target.mundetected
                                 ? 'The blast of fire hits it!'
@@ -21638,7 +21702,9 @@ export async function rhack(_cmd) {
                         }
                         if (breath.ray.remaining > 0) breath.ray.remaining = Math.max(0, breath.ray.remaining - 2);
                     }
-                    const follow = advanceFireBreathRay(breath.ray, breath.sourceId);
+                    const follow = advanceFireBreathRay(breath.ray, breath.sourceId, {
+                        floorFire: burnRayFloorObjectsByFire,
+                    });
                     if (follow.target?.type === 'monster') {
                         game._queued_messages_after_more ??= [];
                         game._queued_messages_after_more.unshift({
@@ -24353,6 +24419,8 @@ export async function rhack(_cmd) {
                         const beam = dy === 0 ? '─' : dx === 0 ? '│' : dx === dy ? '\\' : '/';
                         beamCells.push({ x: sx, y: sy, ch: beam, color: CLR_ORANGE });
 
+                        messages.push(...burnRayFloorObjectsByFire(sx, sy));
+
                         const target = game.level?.monsters?.find(mon => mon.mx === sx && mon.my === sy);
                         if (target) {
                             const chance = rn2(20);
@@ -24362,40 +24430,20 @@ export async function rhack(_cmd) {
 
                             if (chance ? 3 - chance < armorClass : armorClass > 0) {
                                 range -= 2;
-                                let damage = d(6, 6);
-                                const origDamage = damage;
-                                if (target.data?.coldResistance || target.coldResistance) damage += 7;
-                                if (!rn2(3)) {
-                                    let limit = Math.trunc(origDamage / 5);
-                                    if (origDamage % 5 > rn2(5)) limit++;
-                                    limit = Math.min(20, limit);
-                                    if (limit > 0 && target.minvent?.length) {
-                                        const minvent = [...target.minvent];
-                                        let eligible = 0;
-                                        const selected = [];
-                                        for (const monItem of minvent) {
-                                            const cls = monItem.cls || (monItem.otyp === POTION_CLASS ? 'potion' : monItem.otyp === SCROLL_CLASS ? 'scroll' : '');
-                                            if (cls !== 'potion' && cls !== 'scroll' && cls !== 'spellbook') continue;
-                                            const i = eligible < limit ? eligible : rn2(eligible);
-                                            eligible++;
-                                            if (i < limit) selected[i] = monItem;
-                                        }
-                                        for (const monItem of selected.filter(Boolean)) {
-                                            const cls = monItem.cls || (monItem.otyp === POTION_CLASS ? 'potion' : monItem.otyp === SCROLL_CLASS ? 'scroll' : '');
-                                            const itemDamage = cls === 'potion' ? rnd(6) : 0;
-                                            let destroyed = 0;
-                                            for (let i = 0; i < (monItem.quan || 1); i++)
-                                                if (!rn2(3)) destroyed++;
-                                            if (!destroyed) continue;
-                                            if (cls === 'potion') damage += itemDamage;
-                                            const remaining = (monItem.quan || 1) - destroyed;
-                                            if (remaining > 0) monItem.quan = remaining;
-                                            else target.minvent = (target.minvent || []).filter(other => other !== monItem);
-                                        }
-                                    }
-                                }
-                                const dlev = Math.max(1, Math.min(50, target.m_lev ?? target.data?.hpLevel ?? target.data?.mlevel ?? 1));
-                                if (rn2(112 - dlev) < (target.data?.mr || target.mr || 0)) damage = Math.trunc(damage / 2);
+                                const visible = !game.u?.blind && !target.minvis && !target.mundetected
+                                    && (game.viz_array?.[target.my]?.[target.mx] & IN_SIGHT);
+                                const hit = fireBreathDamageMonster(target, 6, origDamage => {
+                                    const inventoryMessages = [];
+                                    const inventoryDamage = monsterFireInventoryDamage(target, origDamage, inventoryMessages, visible);
+                                    igniteMonsterFireInventoryItems(target, inventoryMessages, visible);
+                                    return { damage: inventoryDamage, messages: inventoryMessages };
+                                }, {
+                                    applyDamage: false,
+                                    adjustDamage: damage => monsterResistsEffect(target, 12)
+                                        ? Math.trunc(damage / 2) : damage,
+                                });
+                                messages.push(...hit.messages);
+                                const damage = hit.damage;
                                 target.mhp = (target.mhp || 1) - damage;
                                 if ((target.mhp || 0) <= 0) {
                                     rn2(6);
