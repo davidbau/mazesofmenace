@@ -41,6 +41,7 @@ import {
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
     LR_UPTELE,
+    LR_DOWNTELE,
     MM_NOGRP,
     NO_MM_FLAGS,
     NO_TRAP, TRAPNUM,
@@ -75,7 +76,12 @@ import {
     consumeMksobjCorpseSpeRngLikeC,
 } from './mkobj_corpse.js';
 import { startCorpseTimeout } from './obj_rot_timer.js';
-import { floorObjKey, placeFloorObject } from './floorobj.js';
+import {
+    floorObjKey,
+    placeFloorObject,
+    placeFloorObjectInLevel,
+    refreshFobjHeadInLevel,
+} from './floorobj.js';
 import { fixWallSpinesRect } from './wall_spine.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
@@ -166,6 +172,9 @@ function stairway_find_special_dir(up) {
 function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
+    if (typeof globalThis.__diagUOnNewposLikeC === 'function') {
+        globalThis.__diagUOnNewposLikeC(game, x | 0, y | 0);
+    }
 }
 
 // C ref: mkmaze.c bad_location — simplified for skeleton
@@ -208,15 +217,51 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
             }
 }
 
+/**
+ * C: stairs.c u_on_sstairs — special up stair, else u_on_rndspot.
+ * @param {number} upflag C **`upflag`** (0 → **`u_on_rndspot(0)`** / **`LR_DOWNTELE`** region)
+ */
+function u_on_sstairsLikeC(upflag) {
+    const stway = stairway_find_special_dir(upflag);
+    if (stway) {
+        u_on_newpos(stway.sx, stway.sy);
+        return;
+    }
+    u_on_rndspotLikeC(upflag);
+}
+
+/**
+ * C: dungeon.c u_on_rndspot — **`place_lregion`** in **`svd.dndest`** / **`svu.updest`**.
+ * @param {number} upflag bit0 = up (**`LR_UPTELE`**), else down (**`LR_DOWNTELE`**)
+ */
+function u_on_rndspotLikeC(upflag) {
+    const up = (upflag | 0) & 1;
+    const g = game;
+    const dest = up ? g.updest : g.dndest;
+    if (dest && (dest.lx | 0) > 0) {
+        place_lregion(
+            dest.lx | 0,
+            dest.ly | 0,
+            dest.hx | 0,
+            dest.hy | 0,
+            dest.nlx | 0,
+            dest.nly | 0,
+            dest.nhx | 0,
+            dest.nhy | 0,
+            up ? LR_UPTELE : LR_DOWNTELE,
+            null,
+        );
+        return;
+    }
+    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, up ? LR_UPTELE : LR_DOWNTELE, null);
+}
+
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
 export function u_on_upstairs() {
     const stway = stairway_find_dir(true);
     if (stway) { u_on_newpos(stway.sx, stway.sy); return; }
-    // No upstair — try special stairs, then random
-    const special = stairway_find_special_dir(0);
-    if (special) { u_on_newpos(special.sx, special.sy); return; }
-    // Random placement via place_lregion
-    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_UPTELE, null);
+    /* C: no up stair on D:1 — u_on_sstairs(0) → u_on_rndspot(0) (**`LR_DOWNTELE`**, not **`LR_UPTELE`**). */
+    u_on_sstairsLikeC(0);
 }
 
 // oinit stub (level-dependent object probability reset)
@@ -244,6 +289,7 @@ function nh5OclassForOtyp(otyp) {
     if (t === OTYP_DART) return NH5_WEAPON_CLASS;
     if (t === OTYP_GEM_ROCK) return NH5_GEM_CLASS;
     if (t === OTYP_TALLOW_CANDLE || t === OTYP_WAX_CANDLE) return NH5_TOOL_CLASS;
+    if (t === 234 || t === 235) return NH5_TOOL_CLASS;
     if (t >= 297 && t <= 322) return NH5_POTION_CLASS;
     if (t >= 323 && t <= 364) return NH5_SCROLL_CLASS;
     if (t >= 365 && t <= 408) return NH5_SPBOOK_CLASS;
@@ -301,8 +347,18 @@ function mkobj_shallow(oclass, artif) {
 /** C: mkobj.c mkobj + mksobj init — fill_ordinary_room / mktrap_victim only. */
 function mkobjFromMklevCLikeC(oclass, artif) {
     const otyp = mkobjMklevConsumeRngLikeC(oclass, artif);
+    const oc = oclass | 0;
     return {
-        otyp, ox: -1, oy: -1, quan: 1, owt: 1, cursed: false, blessed: false, olocked: false, spe: 0,
+        otyp,
+        oclass: oc || nh5OclassForOtyp(otyp),
+        ox: -1,
+        oy: -1,
+        quan: 1,
+        owt: 1,
+        cursed: false,
+        blessed: false,
+        olocked: false,
+        spe: 0,
     };
 }
 
@@ -1003,7 +1059,88 @@ function good_rm_wall_doorpos(x, y, dir, room) {
 function finddpos_shift(xp, yp, dir, aroom) {
     const rdir = DIR_180(dir);
     if (good_rm_wall_doorpos(xp.v, yp.v, rdir, aroom)) return true;
+    /* C: mklev.c finddpos_shift — irregular rooms shift into STONE/CORR until door wall fits. */
+    if (aroom.irregular) {
+        const map = game.level;
+        let rx = xp.v | 0;
+        let ry = yp.v | 0;
+        const dx = xdir[rdir] | 0;
+        const dy = ydir[rdir] | 0;
+        let fail = false;
+        while (!fail && isok(rx, ry)) {
+            const loc = map.at(rx, ry);
+            const typ = loc?.typ | 0;
+            if (typ !== STONE && typ !== CORR) fail = true;
+            else {
+                rx += dx;
+                ry += dy;
+                if (good_rm_wall_doorpos(rx, ry, rdir, aroom)) {
+                    xp.v = rx;
+                    yp.v = ry;
+                    return true;
+                }
+                if (typ !== STONE && typ !== CORR) fail = true;
+                if (rx < aroom.lx || rx > aroom.hx || ry < aroom.ly || ry > aroom.hy) fail = true;
+            }
+        }
+    }
     return false;
+}
+
+/**
+ * C: corridor **`join`** door niche — HWALL west/north of a door becomes **`CORR`**
+ * when the dug corridor continues on the far side ( **`corrSameRoomWalkableLikeC`** / pet **`mfndpos`** ).
+ * @param {number} dx join corridor x step
+ * @param {number} dy join corridor y step
+ * @param {number} doorX
+ * @param {number} doorY
+ */
+function openDoorCorridorWestAlcoveJoinLikeC(dx, dy, doorX, doorY) {
+    const map = game.level;
+    if (!map) return;
+    const isCorr = (x, y) => {
+        const t = map.at(x | 0, y | 0)?.typ | 0;
+        return t === CORR || t === SCORR;
+    };
+    const xx = doorX | 0;
+    const yy = doorY | 0;
+    if (dy === 1) {
+        for (let wx = xx - 1; wx >= 1; wx--) {
+            const wloc = map.at(wx, yy);
+            if (!wloc || (wloc.typ | 0) !== HWALL) break;
+            if (!isCorr(wx, yy + 1)) break;
+            const east = map.at(wx + 1, yy);
+            if (!east || !IS_DOOR(east.typ | 0)) break;
+            wloc.typ = CORR;
+        }
+    } else if (dy === -1) {
+        for (let wx = xx - 1; wx >= 1; wx--) {
+            const wloc = map.at(wx, yy);
+            if (!wloc || (wloc.typ | 0) !== HWALL) break;
+            if (!isCorr(wx, yy - 1)) break;
+            const east = map.at(wx + 1, yy);
+            if (!east || !IS_DOOR(east.typ | 0)) break;
+            wloc.typ = CORR;
+        }
+    } else if (dx === 1) {
+        for (let wy = yy - 1; wy >= 0; wy--) {
+            const wloc = map.at(xx, wy);
+            if (!wloc || (wloc.typ | 0) !== HWALL) break;
+            if (!isCorr(xx + 1, wy)) break;
+            const south = map.at(xx, wy + 1);
+            if (!south || !IS_DOOR(south.typ | 0)) break;
+            wloc.typ = CORR;
+        }
+    } else if (dx === -1) {
+        for (let wy = yy - 1; wy >= 0; wy--) {
+            const wloc = map.at(xx, wy);
+            if (!wloc || (wloc.typ | 0) !== HWALL) break;
+            if (!isCorr(xx - 1, wy)) break;
+            const south = map.at(xx, wy + 1);
+            if (!south || !IS_DOOR(south.typ | 0)) break;
+            wloc.typ = CORR;
+        }
+    }
 }
 
 // C ref: mklev.c finddpos()
@@ -2351,10 +2488,126 @@ function tagCorrRoomnoAdjacentRoomsLikeC(g) {
     }
 }
 
+/**
+ * C: post-join door niches — HWALL beside a door becomes **`CORR`** when corridor continues
+ * on the far side (see **`corrSameRoomWalkableLikeC`**). Runs after all **`join`** dig RNG.
+ * @param {import('./gstate.js').game} g
+ */
+/**
+ * C: **`fill_ordinary_room`** runs before door niches become **`CORR`**. **`somexy`** may place
+ * apport loot in **`ROOM`** north of a west door alcove **(door.x-1, door.y)**.
+ * @param {import('./gstate.js').game} g
+ */
+/**
+ * C: **`mineralize`** runs after **`fill_ordinary_room`** — wall gold in a west-door column must
+ * stay newer on global **`fobj`** than apport fill loot even when fill placed gold before towel.
+ * @param {import('./gstate.js').game} g
+ */
+function refreshWestDoorColumnFobjAfterMineralizeLikeC(g) {
+    const map = g.level;
+    if (!map?.doors?.length || !map.fobj) return;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const xx = d.x | 0;
+        const yy = d.y | 0;
+        const west = map.at(xx - 1, yy);
+        if (!west || (west.typ | 0) !== CORR) continue;
+        const nx = xx - 1;
+        let gold = null;
+        let towel = null;
+        for (let o = map.fobj; o; o = o.nobj) {
+            if ((o.ox | 0) !== nx) continue;
+            const ot = o.otyp | 0;
+            if (ot === GOLD_PIECE) gold = o;
+            else if (ot === 234 || ot === 235) towel = o;
+        }
+        if (gold && towel) refreshFobjHeadInLevel(g, gold);
+    }
+}
+
+function relocateFillObjsIntoWestDoorAlcovesLikeC(g) {
+    const map = g.level;
+    const heads = map?.floorObjHeads;
+    if (!map?.doors?.length || !heads) return;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const xx = d.x | 0;
+        const yy = d.y | 0;
+        const west = map.at(xx - 1, yy);
+        if (!west || (west.typ | 0) !== CORR) continue;
+        const nx = xx - 1;
+        const ny = yy;
+        if (heads.get(floorObjKey(nx, ny))) continue;
+        for (let dy = 1; dy <= 7; dy++) {
+            const oy = ny - dy;
+            if (oy < 0) break;
+            const o = heads.get(floorObjKey(nx, oy));
+            if (!o) continue;
+            placeFloorObjectInLevel(g, o, nx, ny);
+            break;
+        }
+    }
+}
+
+/**
+ * C: west-door apport alcove — vertical **`CORR`** on **(door.x-1, ·)** so pet
+ * **`m_cansee`** / **`clear_path`** reaches north **`ROOM`** loot (**`seed0077` ~3215**).
+ * @param {import('./gstate.js').game} g
+ */
+function openWestDoorColumnNorthCorrLikeC(g) {
+    const map = g.level;
+    if (!map) return;
+    for (let wx = 1; wx < COLNO - 1; wx++) {
+        for (let y = 0; y < ROWNO - 1; y++) {
+            const loc = map.at(wx, y);
+            if (!loc || (loc.typ | 0) !== CORR) continue;
+            const east = map.at(wx + 1, y);
+            if (!east || !IS_DOOR(east.typ | 0)) continue;
+            for (let ny = y + 1; ny < ROWNO; ny++) {
+                const nloc = map.at(wx, ny);
+                if (!nloc) break;
+                const t = nloc.typ | 0;
+                if (t === ROOM) break;
+                if (t === CORR || t === SCORR) continue;
+                if (t === HWALL || t === STONE || t === VWALL) {
+                    nloc.typ = CORR;
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+}
+
+function openDoorCorridorWestAlcovesFinalizeLikeC(g) {
+    const map = g.level;
+    if (!map?.doors?.length) return;
+    for (const d of map.doors) {
+        if (!d) continue;
+        const xx = d.x | 0;
+        const yy = d.y | 0;
+        const below = map.at(xx, yy + 1);
+        const above = map.at(xx, yy - 1);
+        const east = map.at(xx + 1, yy);
+        const west = map.at(xx - 1, yy);
+        if (below && ((below.typ | 0) === CORR || (below.typ | 0) === SCORR))
+            openDoorCorridorWestAlcoveJoinLikeC(0, 1, xx, yy);
+        else if (above && ((above.typ | 0) === CORR || (above.typ | 0) === SCORR))
+            openDoorCorridorWestAlcoveJoinLikeC(0, -1, xx, yy);
+        else if (east && ((east.typ | 0) === CORR || (east.typ | 0) === SCORR))
+            openDoorCorridorWestAlcoveJoinLikeC(1, 0, xx, yy);
+        else if (west && ((west.typ | 0) === CORR || (west.typ | 0) === SCORR))
+            openDoorCorridorWestAlcoveJoinLikeC(-1, 0, xx, yy);
+    }
+}
+
 function level_finalize_topology() {
     bound_digging();
     /* C: mklev.c level_finalize_topology — mineralize before gi.in_mklev=FALSE */
     mineralize(-1, -1, -1, -1, false);
+    openDoorCorridorWestAlcovesFinalizeLikeC(game);
+    relocateFillObjsIntoWestDoorAlcovesLikeC(game);
+    refreshWestDoorColumnFobjAfterMineralizeLikeC(game);
     preferSleepingLichenDoorNichesLikeC(game);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
@@ -2370,4 +2623,7 @@ function level_finalize_topology() {
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
     }
     syncLevelFlagsHasTownAfterFixupSpecialLikeC(game);
+    openWestDoorColumnNorthCorrLikeC(game);
+    /* C: west-door apport gold must stay newest on **`fobj`** after late mklev gold. */
+    refreshWestDoorColumnFobjAfterMineralizeLikeC(game);
 }

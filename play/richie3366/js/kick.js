@@ -634,6 +634,9 @@ async function reallyKickObjectLikeC(g, x, y, head) {
         range = 1;
     }
 
+    /* C: dokick.c — **`gk.kickedloc`** for **`m_avoid_kicked_loc`** (pets avoid kicked square). */
+    g.kickedloc = { x: x | 0, y: y | 0 };
+
     await pline(`You kick ${donameKickRelative(head, isGold)}.`);
 
     /* C: dokick.c really_kick_object — after Is_box / before Thump+slide (**`hero_breaks(..., 0)`**). */
@@ -795,6 +798,10 @@ export async function dokickFromCmd(g) {
 
     u.dx = delta.dx;
     u.dy = delta.dy;
+    g.kickedloc = {
+        x: (u.ux | 0) + (u.dx | 0),
+        y: (u.uy | 0) + (u.dy | 0),
+    };
 
     if (g.u.uswallow) {
         switch (rn2(3)) {

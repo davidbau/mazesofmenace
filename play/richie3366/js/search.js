@@ -246,6 +246,47 @@ export async function dosearch() {
 }
 
 /**
+ * C: do.c cmd_safety_prevention + detect.c dosearch — block repeat search when
+ * safe_wait and a hostile is adjacent (first **`s`** on seed0077 is 0 RNG).
+ * @returns {Promise<boolean>} true when suppressed (ECMD_OK, no time).
+ */
+export async function dosearchCmdSafetyPreventionLikeC() {
+    const g = game;
+    if (g.flags?.safe_wait === false) return false;
+    if (g.iflags?.menu_requested || (g.multi | 0)) return false;
+    if (!monsterNearbySearchSafeWaitLikeC(g)) {
+        if (g.context) g.context._alreadyFoundSearchFlagLikeC = 0;
+        return false;
+    }
+    g.context = g.context || {};
+    const ctr = g.context._alreadyFoundSearchFlagLikeC | 0;
+    g.context._alreadyFoundSearchFlagLikeC = ctr + 1;
+    let suffix = '';
+    if (g.iflags?.cmdassist !== false || !ctr) {
+        suffix = "  Use 'm' prefix to force another search.";
+    }
+    await pline(`You already found a monster.${suffix}`);
+    return true;
+}
+
+/** C: hack.c monster_nearby() subset for search safe_wait. */
+function monsterNearbySearchSafeWaitLikeC(g) {
+    const u = g.u;
+    if (!u) return false;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (const mtmp of g.level?.monsters ?? []) {
+        const x = mtmp.mx | 0;
+        const y = mtmp.my | 0;
+        if (Math.max(Math.abs(x - ux), Math.abs(y - uy)) !== 1) continue;
+        if ((mtmp.mpeaceful | 0) || (mtmp.mtame | 0)) continue;
+        if ((mtmp.m_ap_type | 0) !== 0) continue;
+        return true;
+    }
+    return false;
+}
+
+/**
  * C: dosearch0(int aflag) — eight-neighbor search; aflag≠0 for auto-search.
  * @param {number} aflag
  */

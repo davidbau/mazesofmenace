@@ -523,6 +523,22 @@ export const STALKER_MONSTERS = new Set([
     'Cyclops', 'Ixoth', 'Master Kaen', 'Nalzok', 'Scorpius',
     'Master Assassin', 'Ashikaga Takauji', 'Lord Surtur', 'Dark One',
 ]);
+const QUEST_COVETOUS_MONSTER_NAMES = [
+    'Minion of Huhetotl', 'Thoth Amon', 'Chromatic Dragon', 'Goblin King',
+    'Cyclops', 'Ixoth', 'Master Kaen', 'Nalzok', 'Scorpius',
+    'Master Assassin', 'Ashikaga Takauji', 'Lord Surtur', 'Dark One',
+];
+const COVETOUS_MONSTER_NAMES = new Set([
+    'master lich', 'arch-lich', 'Vlad the Impaler', 'Wizard of Yendor',
+    'Juiblex', 'Yeenoghu', 'Orcus', 'Geryon', 'Dispater', 'Baalzebub',
+    'Asmodeus', 'Demogorgon',
+    ...QUEST_COVETOUS_MONSTER_NAMES,
+]);
+
+function monsterDataIsCovetous(ptr) {
+    return !!ptr?.covetous || COVETOUS_MONSTER_NAMES.has(ptr?.name);
+}
+
 const ANIMAL_GLYPHS = new Set(['a', 'B', 'c', 'd', 'f', 'q', 'r', 's', 'u', 'x', 'Y']);
 const TUNNEL_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler', 'rock mole', 'umber hulk']);
 const NEED_PICK_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler']);
@@ -4815,7 +4831,7 @@ function monsterFromRndMeta(row) {
         tunnel: TUNNEL_MONSTERS.has(name),
         needPick: NEED_PICK_MONSTERS.has(name),
         oviparous: flags.includes('o'),
-        covetous: name === 'master lich' || name === 'arch-lich',
+        covetous: COVETOUS_MONSTER_NAMES.has(name),
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
         wanderer: WANDERER_MONSTERS.has(name),
         stalk: STALKER_MONSTERS.has(name),
@@ -5451,7 +5467,18 @@ function noRandomMonsterItemRolls(ptr) {
     return ptr.mindless || ptr.mlet === 'ghost' || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name);
 }
 
-function rnd_defensive_item(ptr) {
+function noteleportLevelForMonster(mon) {
+    const ptr = mon?.data || mon;
+    const flags = game.level?.flags || {};
+    const stasisUntil = flags.stasis_until ?? 0;
+    return !!((flags.demon_court_noteleport && !ptr?.demonLord && !ptr?.demonPrince)
+        || (flags.noteleport && !monsterDataIsCovetous(ptr))
+        || (stasisUntil > 0 && stasisUntil >= (game.moves || 1)));
+}
+
+function rnd_defensive_item(mon) {
+    const ptr = mon?.data || mon;
+    if (!ptr) return 0;
     if (noRandomMonsterItemRolls(ptr)) return 0;
     const difficulty = ptr.difficulty ?? ptr.hpLevel ?? ptr.mlevel ?? 0;
     let trycnt = 0;
@@ -5459,9 +5486,7 @@ function rnd_defensive_item(ptr) {
         switch (rn2(8 + (difficulty > 3) + (difficulty > 6) + (difficulty > 8))) {
         case 6:
         case 9:
-            if (((game.level?.flags?.noteleport && !ptr.covetous)
-                || (game.level?.flags?.demon_court_noteleport && !ptr.demonLord && !ptr.demonPrince))
-                && ++trycnt < 2) continue;
+            if (noteleportLevelForMonster(mon) && ++trycnt < 2) continue;
             if (!rn2(3)) return WAN_TELEPORTATION;
             return SCR_TELEPORTATION;
         case 0:
@@ -5589,7 +5614,7 @@ function m_initmercinv(ptr) {
 
     const monLevel = ptr.hpLevel ?? ptr.mlevel ?? 0;
     if (monLevel > rn2(50)) {
-        const defensiveItem = rnd_defensive_item(ptr);
+        const defensiveItem = rnd_defensive_item(game._mongets_target || ptr);
         if (defensiveItem) mongets(defensiveItem);
     }
     if (monLevel > rn2(100)) {
@@ -6636,7 +6661,7 @@ export async function makemon(mdat, x, y, mmflags) {
     if (allowMinvent && !ptr.noRandomInventoryRolls) {
         if (!skipRandomItemRolls) {
             if (mon.m_lev > rn2(50)) {
-                const defensiveItem = rnd_defensive_item(ptr);
+                const defensiveItem = rnd_defensive_item(mon);
                 if (defensiveItem) {
                     mon.hasInventory = true;
                     mongets(defensiveItem);
@@ -15756,7 +15781,7 @@ async function make_tower1_level() {
         g._mongets_target = vlad;
         m_initweap({ ...VLAD_THE_IMPALER, vladWeapon: true, strong: true });
         if (vlad.m_lev > rn2(50)) {
-            const defensiveItem = rnd_defensive_item(VLAD_THE_IMPALER);
+            const defensiveItem = rnd_defensive_item(vlad);
             if (defensiveItem) mongets(defensiveItem);
         }
         if (vlad.m_lev > rn2(100)) {

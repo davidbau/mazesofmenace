@@ -25,6 +25,43 @@ export function floorObjKey(x, y) {
     return `${x},${y}`;
 }
 
+/**
+ * C: mkobj.c **`fobj`** — remove **`otmp`** from global floor chain (**`nobj`**).
+ * @param {import('./gstate.js').game['level']} lvl
+ * @param {Record<string, unknown>} otmp
+ */
+function unlinkFromFobjInLevel(lvl, otmp) {
+    if (!lvl?.fobj || !otmp) return;
+    if (lvl.fobj === otmp) {
+        lvl.fobj = otmp.nobj ?? null;
+    } else {
+        for (let o = lvl.fobj; o; o = o.nobj) {
+            if (o.nobj === otmp) {
+                o.nobj = otmp.nobj ?? null;
+                break;
+            }
+        }
+    }
+    otmp.nobj = null;
+}
+
+/**
+ * C: mkobj.c **`place_object`** — prepend onto global **`fobj`**.
+ * @param {import('./gstate.js').game['level']} lvl
+ * @param {Record<string, unknown>} otmp
+ */
+function prependToFobjInLevel(lvl, otmp) {
+    if (!lvl || !otmp) return;
+    unlinkFromFobjInLevel(lvl, otmp);
+    otmp.nobj = lvl.fobj ?? null;
+    lvl.fobj = otmp;
+}
+
+/** @param {import('./gstate.js').game} g */
+export function refreshFobjHeadInLevel(g, otmp) {
+    prependToFobjInLevel(g.level, otmp);
+}
+
 /** C: invent.c **`mergable(otmp, obj)`** subset for floor **`stackobj`** (no glob / oil / rider / bill). */
 function mergableFloorStackSubset(otmp, obj) {
     if (!otmp || !obj || otmp === obj) return false;
@@ -64,9 +101,8 @@ export function stackObjOnFloorInLevel(g, obj) {
     return false;
 }
 
-/** C: take off chain before move — remove otmp from floorObjHeads at its coords (**`game.level`**). */
-export function unlinkFloorObject(otmp) {
-    const lvl = game.level;
+/** C: **`level.objects[x][y]`** pile only — leave global **`fobj`** order intact. */
+function unlinkFloorPileOnlyInLevel(lvl, otmp) {
     if (!lvl?.floorObjHeads || !otmp || otmp.ox < 0 || otmp.oy < 0) return;
     const k = floorObjKey(otmp.ox, otmp.oy);
     const head = lvl.floorObjHeads.get(k) ?? null;
@@ -86,26 +122,20 @@ export function unlinkFloorObject(otmp) {
     otmp.nexthere = null;
 }
 
+/** C: take off chain before move — remove otmp from floorObjHeads at its coords (**`game.level`**). */
+export function unlinkFloorObject(otmp) {
+    const lvl = game.level;
+    if (!lvl?.floorObjHeads || !otmp || otmp.ox < 0 || otmp.oy < 0) return;
+    unlinkFloorPileOnlyInLevel(lvl, otmp);
+    unlinkFromFobjInLevel(lvl, otmp);
+}
+
 /** C: **`unlinkFloorObject`** with explicit **`g.level`** (avoid **`game`** mismatch). */
 export function unlinkFloorObjectInLevel(g, otmp) {
     const lvl = g.level;
     if (!lvl?.floorObjHeads || !otmp || otmp.ox < 0 || otmp.oy < 0) return;
-    const k = floorObjKey(otmp.ox, otmp.oy);
-    const head = lvl.floorObjHeads.get(k) ?? null;
-    if (head === otmp) {
-        if (otmp.nexthere) lvl.floorObjHeads.set(k, otmp.nexthere);
-        else lvl.floorObjHeads.delete(k);
-    } else if (head) {
-        let cur = head;
-        while (cur?.nexthere) {
-            if (cur.nexthere === otmp) {
-                cur.nexthere = otmp.nexthere;
-                break;
-            }
-            cur = cur.nexthere;
-        }
-    }
-    otmp.nexthere = null;
+    unlinkFloorPileOnlyInLevel(lvl, otmp);
+    unlinkFromFobjInLevel(lvl, otmp);
 }
 
 /** C: **`rm.c`**-style remove from **`buriedObjHeads`** at **`otmp.ox`/`otmp.oy`**. */
@@ -139,7 +169,9 @@ export function placeFloorObjectInLevel(g, otmp, x, y) {
     if (!lvl || !otmp) return;
     const xi = x | 0;
     const yi = y | 0;
-    if (otmp.ox >= 0 && otmp.oy >= 0 && (otmp.ox !== xi || otmp.oy !== yi)) unlinkFloorObjectInLevel(g, otmp);
+    const wasOnFloor = otmp.ox >= 0 && otmp.oy >= 0;
+    if (wasOnFloor && otmp.ox === xi && otmp.oy === yi) return;
+    if (wasOnFloor) unlinkFloorPileOnlyInLevel(lvl, otmp);
     if (!lvl.floorObjHeads) lvl.floorObjHeads = new Map();
     const k = floorObjKey(xi, yi);
     otmp.ox = xi;
@@ -147,7 +179,11 @@ export function placeFloorObjectInLevel(g, otmp, x, y) {
     const prev = lvl.floorObjHeads.get(k) ?? null;
     otmp.nexthere = prev;
     lvl.floorObjHeads.set(k, otmp);
-    if (!lvl.objects.includes(otmp)) lvl.objects.push(otmp);
+    if (!wasOnFloor) prependToFobjInLevel(lvl, otmp);
+    if (!lvl.objects) lvl.objects = [];
+    const fi = lvl.objects.indexOf(otmp);
+    if (fi >= 0) lvl.objects.splice(fi, 1);
+    lvl.objects.push(otmp);
 }
 
 /** @param {import('./gstate.js').game} g */
@@ -448,13 +484,21 @@ export function obliterateObjectInLevel(g, otmp) {
 export function placeFloorObject(otmp, x, y) {
     const lvl = game.level;
     if (!lvl || !otmp) return;
-    if (otmp.ox >= 0 && otmp.oy >= 0 && (otmp.ox !== x || otmp.oy !== y)) unlinkFloorObject(otmp);
+    const xi = x | 0;
+    const yi = y | 0;
+    const wasOnFloor = otmp.ox >= 0 && otmp.oy >= 0;
+    if (wasOnFloor && otmp.ox === xi && otmp.oy === yi) return;
+    if (wasOnFloor) unlinkFloorPileOnlyInLevel(lvl, otmp);
     if (!lvl.floorObjHeads) lvl.floorObjHeads = new Map();
-    const k = floorObjKey(x, y);
-    otmp.ox = x;
-    otmp.oy = y;
+    const k = floorObjKey(xi, yi);
+    otmp.ox = xi;
+    otmp.oy = yi;
     const prev = lvl.floorObjHeads.get(k) ?? null;
     otmp.nexthere = prev;
     lvl.floorObjHeads.set(k, otmp);
-    if (!lvl.objects.includes(otmp)) lvl.objects.push(otmp);
+    if (!wasOnFloor) prependToFobjInLevel(lvl, otmp);
+    if (!lvl.objects) lvl.objects = [];
+    const fi = lvl.objects.indexOf(otmp);
+    if (fi >= 0) lvl.objects.splice(fi, 1);
+    lvl.objects.push(otmp);
 }

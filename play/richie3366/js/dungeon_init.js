@@ -4,7 +4,7 @@
 import { rn2, rn1 } from './rng.js';
 import { game } from './gstate.js';
 import { DUNGEON_PROTO } from './dungeon_proto.js';
-import { addSpLevchnLevelOrderedLikeC } from './sp_levchn.js';
+import { addSpLevchnLevelOrderedLikeC, findLevelByProtoLikeC } from './sp_levchn.js';
 import { MAXLEVEL } from './const.js';
 
 /** @typedef {{ name: string, lev: { base: number, rand: number }, chance: number, chain: number, rndlevs: number }} ProtoLevel */
@@ -331,6 +331,41 @@ function placeLevelLikeC(g, protoIndex, pd) {
     return false;
 }
 
+/**
+ * C: dungeon.c fixup_level_locations — assign `rogue_level`, `oracle_level`, … from `sp_levchn`.
+ * @param {import('./gstate.js').game} g
+ */
+export function fixupLevelLocationsLikeC(g) {
+    const entries = [
+        ['rogue', 'rogue_level'],
+        ['oracle', 'oracle_level'],
+        ['medusa', 'medusa_level'],
+        ['castle', 'stronghold_level'],
+        ['knox', 'knox_level'],
+        ['valley', 'valley_level'],
+        ['sanctum', 'sanctum_level'],
+        ['juiblex', 'juiblex_level'],
+        ['orcus', 'orcus_level'],
+        ['bigrm', 'bigroom_level'],
+        ['air', 'air_level'],
+        ['fire', 'fire_level'],
+        ['earth', 'earth_level'],
+        ['water', 'water_level'],
+        ['astral', 'astral_level'],
+        ['wizard1', 'wiz1_level'],
+        ['wizard2', 'wiz2_level'],
+        ['wizard3', 'wiz3_level'],
+        ['minend', 'mineend_level'],
+        ['soko1', 'sokoend_level'],
+    ];
+    for (const [proto, key] of entries) {
+        const sp = findLevelByProtoLikeC(g, proto);
+        if (sp?.dlevel) {
+            g[key] = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
+        }
+    }
+}
+
 /** C: dungeon.c init_castle_tune */
 function initCastleTuneLikeC(g) {
     let tune = '';
@@ -378,4 +413,5 @@ export function initDungeonsLikeC(g = game) {
     }
 
     initCastleTuneLikeC(g);
+    fixupLevelLocationsLikeC(g);
 }

@@ -1047,6 +1047,10 @@ export function refreshHallucinatedMap(forward = false) {
     const objects = game.level?.objects || [];
     const pickup = game._hallu_refresh_after_monster_pickup;
     game._hallu_refresh_after_monster_pickup = null;
+    if (game._hallu_expel_object_rng_skip) {
+        game._hallu_expel_object_rng_skip = 0;
+        rn2_on_display_rng(DISPLAY_OBJECT_GLYPHS.length);
+    }
     if (pickup) {
         const mon = monsterAt(pickup.x, pickup.y);
         const visible = !!(game.viz_array?.[pickup.y]?.[pickup.x] & IN_SIGHT);

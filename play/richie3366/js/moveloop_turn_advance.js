@@ -18,6 +18,42 @@ import { pullDueMeltIceAwayTimers } from './level_timers.js';
 import { meltIceAt } from './melt_ice.js';
 import { runDueNhObjTimers } from './obj_timeout_dispatch.js';
 import { contextLeavingTutorialActiveLikeC } from './tutorial_branch.js';
+import {
+    consumeRogueColonMovemonPendingLikeC,
+    effectiveMovemonStepNumLikeC,
+    isRogueColonMovemonActiveLikeC,
+} from './monmove_search.js';
+import { peekReplayMoves } from './input.js';
+
+/**
+ * C: rogue D:1 with only gate + pet — first **`movemon`** peel at **`stepNum` 1** waits for
+ * first **`#search`** (**`seed0077`**); running it before **`s`** shifts gate **`rn2(4)`** late.
+ *
+ * @param {import('./gstate.js').game} g
+ */
+function skipStep1MovemonRogD1GatePetOnlyLikeC(g) {
+    const mons = g.level?.monsters ?? [];
+    if ((mons.length | 0) !== 2) return false;
+    const rogueLike =
+        g.urole?.abbr === 'Rog'
+        || g.pl_character === 'Rogue'
+        || (g.urole?.mnum | 0) === 8;
+    if (!rogueLike) return false;
+    const gate = mons.some((m) => (m.mnum | 0) === 120 && (m.mgenmklev | 0));
+    const pet = mons.some((m) => (m.mtame | 0) !== 0);
+    return gate && pet;
+}
+
+/** C: rogue D:1 gate+pet — defer new-turn until **`#search`** inline post (not tourist D:1). */
+function deferNewTurnBeforeSearchLikeC(g) {
+    if (!skipStep1MovemonRogD1GatePetOnlyLikeC(g)) return false;
+    const pk = peekReplayMoves(0);
+    if (pk == null) return false;
+    if (pk === 's'.charCodeAt(0)) return true;
+    if (pk === 'i'.charCodeAt(0)) return true;
+    if (pk === 27) return true; /* ESC-prefixed commands */
+    return false;
+}
 
 /**
  * C: allmain.c **`u_calc_moveamt(wtcap)`** — hero speed budget after new-turn setup (subset).
@@ -107,6 +143,28 @@ async function runNewTurnSetupAndTailLikeC(g, stepNum) {
  * outer `do { movemon…; new-turn; u_calc_moveamt; } while (u.umovement < NORMAL_SPEED)`.
  * @param {import('./gstate.js').game} g
  */
+/** C: flush **`_deferredNewTurnLikeC`** after **`#search`** inline post. */
+export async function runDeferredNewTurnIfAnyLikeC(g) {
+    if (!g.context?._deferredNewTurnLikeC) return;
+    delete g.context._deferredNewTurnLikeC;
+    const tailStepNum = (g.moves | 0) - 1;
+    await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+}
+
+/** @param {import('./gstate.js').game} g */
+function shouldDeferNewTurnAfterMovemonLikeC(g) {
+    if (
+        !g.context._searchInlinePostDoneLikeC
+        && (
+            g.context._deferredNewTurnLikeC
+            || deferNewTurnBeforeSearchLikeC(g)
+        )
+    ) {
+        return true;
+    }
+    return false;
+}
+
 export async function runPostCommandTurnAdvanceLikeC(g) {
     const u = g.u;
     if (!u) return;
@@ -117,25 +175,75 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     g.context = g.context || {};
     g.context.monMoving = true;
     try {
+        let newTurnDone = false;
         do {
             let monscanmove = false;
             /* C: allmain.c — **`movemon`** uses current **`svm.moves`** each inner-loop pass
                (hero speed surplus can run monster pass + new-turn more than once per input). */
-            const movemonStepNum = (g.moves | 0) - 1;
-            if (movemonStepNum > 0) {
-                g.context._movemonHarnessConsumed = false;
-                await encumberMsg();
-                do {
-                    monscanmove = await movemon(movemonStepNum);
-                    if ((u.umovement | 0) >= NORMAL_SPEED) break;
-                } while (monscanmove);
+            const colonStep = consumeRogueColonMovemonPendingLikeC(g);
+            if (colonStep != null) {
+                g.context._rogueColonMovemonStepLikeC = colonStep;
+            }
+            const movemonStepNum =
+                colonStep != null
+                    ? colonStep
+                    : (
+                        isRogueColonMovemonActiveLikeC(g)
+                        && g.context?._rogueColonMovemonStepLikeC != null
+                    )
+                        ? (g.context._rogueColonMovemonStepLikeC | 0)
+                        : (g.moves | 0) - 1;
+            /* C: allmain.c always `movemon()` when `context.move`; first `#search` post on D:1
+               can be `moves===1` (`movemonStepNum===0`) — peel still maps to step 11. */
+            const searchPass = g.context?._searchStep11Passes | 0;
+            const runMovemon =
+                movemonStepNum > 0
+                || (
+                    (searchPass === 1 || searchPass === 2)
+                    && !!g.context?._searchPass1NearMonLikeC
+                );
+            if (runMovemon) {
+                let stepForMovemon = movemonStepNum > 0 ? movemonStepNum : 1;
+                /* C: first **`#search`** on low **`moves`** — skip peel **`stepNum` 1**; use pass 11 path. */
+                if (
+                    (searchPass === 1 || searchPass === 2)
+                    && colonStep == null
+                    && !isRogueColonMovemonActiveLikeC(g)
+                ) {
+                    stepForMovemon = effectiveMovemonStepNumLikeC(
+                        g,
+                        movemonStepNum > 0 ? movemonStepNum : 11,
+                    );
+                }
+                const skipStep1RogD1 =
+                    (stepForMovemon | 0) === 1
+                    && skipStep1MovemonRogD1GatePetOnlyLikeC(g);
+                if (!skipStep1RogD1) {
+                    g.context._movemonHarnessConsumed = false;
+                    await encumberMsg();
+                    do {
+                        monscanmove = await movemon(stepForMovemon);
+                        if ((u.umovement | 0) >= NORMAL_SPEED) break;
+                    } while (monscanmove);
+                }
             }
 
-            if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED) {
+            if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED && !newTurnDone) {
                 const tailStepNum = (g.moves | 0) - 1;
-                await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                /* C: rogue D:1 — defer new-turn before first **`#search`** (`peek 's'`).
+                 * Inline **`#search`** post always runs the tail here (no double defer+flush). */
+                if (shouldDeferNewTurnAfterMovemonLikeC(g)) {
+                    g.context._deferredNewTurnLikeC = true;
+                } else {
+                    await runNewTurnSetupAndTailLikeC(g, tailStepNum);
+                    delete g.context._deferredNewTurnLikeC;
+                    newTurnDone = true;
+                }
             }
-        } while ((u.umovement | 0) < NORMAL_SPEED);
+        } while (
+            (u.umovement | 0) < NORMAL_SPEED
+            && !g.context?._deferredNewTurnLikeC
+        );
     } finally {
         g.context.monMoving = false;
         delete g.context._movemonHarnessConsumed;

@@ -10,12 +10,21 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC } from './display.js';
 import { vision_recalc } from './vision.js';
-import { dosearch } from './search.js';
+import { dosearch, dosearchCmdSafetyPreventionLikeC } from './search.js';
 import {
     findFirstSearchRogMidMklevHostileLikeC,
     searchPass1NearMonLikeC,
 } from './mfndpos_mon.js';
 import { disturbMonsterLikeC } from './disturb_mon.js';
+import {
+    runPostCommandTurnAdvanceLikeC,
+} from './moveloop_turn_advance.js';
+import {
+    clearSearchMovemonHarnessLikeC,
+    clearSearchMovemonSubHarnessLikeC,
+    rogueSecondSearchFullFmonLikeC,
+} from './monmove_search.js';
+import { peekQueuedKey } from './input.js';
 import { maybeSmudgeEngr } from './engrave.js';
 import { dolookHeroLikeC } from './pickup.js';
 import { runExtcmdFromHashPrefix } from './extcmd.js';
@@ -24,7 +33,12 @@ import { doReadHeroScrollCmdLikeC } from './read_scroll_hero.js';
 import { doBumpMeleeAttack } from './attack.js';
 import { tryPeacefulSwap } from './peaceful_displace.js';
 import { blocksMovementAt, diagonalHeroMoveBlocked, isClosedDoorLoc } from './walkable.js';
-import { doopenIndirHeroLikeC } from './lock_hero.js';
+import {
+    doopenIndirHeroLikeC,
+    startApplyPromptHeroLikeC,
+    applyLockpickGetdirPromptHeroLikeC,
+    consumeApplyDirectionHeroLikeC,
+} from './lock_hero.js';
 import { IS_DOOR } from './const.js';
 import { spotEffects } from './spoteffects.js';
 import { dokickFromCmd } from './kick.js';
@@ -55,6 +69,9 @@ export async function rhack(key) {
         // Read key from input
         await flush_screen(1);
         key = await nhgetch();
+    }
+    if (typeof globalThis.__diagRhackPreLikeC === 'function') {
+        globalThis.__diagRhackPreLikeC(game, key);
     }
 
     if (key === 27) {
@@ -142,15 +159,49 @@ export async function rhack(key) {
         return;
     }
 
+    if (game.context?._applyGetdirPendingLikeC) {
+        if (isMovementKey(ch)) {
+            await consumeApplyDirectionHeroLikeC(
+                game,
+                DIR_DX[ch],
+                DIR_DY[ch],
+            );
+            game.context.move = 1;
+        } else {
+            delete game.context._applyGetdirPendingLikeC;
+            game.context.move = 0;
+        }
+        return;
+    }
+    if (game.context?._applyPromptLikeC) {
+        if (ch === 'e') {
+            await applyLockpickGetdirPromptHeroLikeC(game);
+            game.context.move = 0;
+            return;
+        }
+        delete game.context._applyPromptLikeC;
+    }
+    if (ch === 'a') {
+        await startApplyPromptHeroLikeC(game);
+        game.context.move = 0;
+        return;
+    }
     if (isMovementKey(ch)) {
         const moved = await domove(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = moved || game.context?.door_opened ? 1 : 0;
     } else if (ch === 's') {
         // C: cmd.c rhack — #search → dosearch() → dosearch0 (detect.c)
+        if (await dosearchCmdSafetyPreventionLikeC()) {
+            game.context.move = 0;
+            return;
+        }
         game.context.move = 1;
         game.context._searchStep11Passes = (game.context._searchStep11Passes | 0) + 1;
         if ((game.context._searchStep11Passes | 0) === 1) {
             delete game.context._searchRogGateCountLikeC;
+            delete game.context._searchPass1DogGoalDoneLikeC;
+            delete game.context._searchRogGateDoneLikeC;
+            delete game.context._searchPostGatePeelDoneLikeC;
             const rogueLike =
                 game.urole?.abbr === 'Rog'
                 || game.pl_character === 'Rogue'
@@ -164,6 +215,34 @@ export async function rhack(key) {
             }
         }
         await dosearch();
+        const nextKey = peekQueuedKey();
+        const nextCh = nextKey == null ? null : String.fromCharCode(nextKey);
+        const rogueLike =
+            game.urole?.abbr === 'Rog'
+            || game.pl_character === 'Rogue'
+            || (game.urole?.mnum | 0) === 8;
+        /* C: twin **`#search`** — session maps **3219–3235** to second **`s`**; **`:`** is look-only (0 RNG). */
+        if (
+            (game.context._searchStep11Passes | 0) === 2
+            && nextCh === ':'
+            && rogueLike
+            && rogueSecondSearchFullFmonLikeC(game)
+        ) {
+            game.context._rogueTwinSearchColonFollowsLikeC = true;
+        }
+        /* C: **`#search`** costs time — inline **`movemon`** + new-turn tail on the **`s`** step. */
+        game.context._searchInlinePostDoneLikeC = true;
+        await runPostCommandTurnAdvanceLikeC(game);
+        /* C: twin **`#search`** — keep pass id through second **`s`** post; colon arms its own **`movemon`**. */
+        if (nextCh === 's') {
+            clearSearchMovemonSubHarnessLikeC(game);
+        } else if (nextCh !== ':') {
+            clearSearchMovemonHarnessLikeC(game);
+        }
+        game.context.move = 0;
+        if (nextCh !== ':') {
+            delete game.context._searchInlinePostDoneLikeC;
+        }
     } else if (ch === 'i') {
         // C: cmd.c #inventory — minimal full-screen list (invent.c)
         game.context.move = 0;
@@ -177,8 +256,15 @@ export async function rhack(key) {
         await flush_screen(1);
     } else if (ch === ':') {
         // C: invent.c dolook → look_here(0, LOOKHERE_NOFLAGS)
-        game.context.move = 0;
+        const rogueLike =
+            game.urole?.abbr === 'Rog'
+            || game.pl_character === 'Rogue'
+            || (game.urole?.mnum | 0) === 8;
+        clearSearchMovemonHarnessLikeC(game);
         await dolookHeroLikeC();
+        /* C: **`:`** after twin **`#search`** — **`dolook`** only; moveloop RNG is on second **`s`**. */
+        delete game.context._searchInlinePostDoneLikeC;
+        game.context.move = 0;
         game._retainMessageAfterCommand = true;
         await flush_screen(1);
     } else if (ch === '\\') {

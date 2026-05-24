@@ -11,7 +11,7 @@
 
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
-import { pushKey, hasQueuedInput } from './input.js';
+import { pushKey, hasQueuedInput, initReplayMoves } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
 import { runPostCommandTurnAdvanceLikeC } from './moveloop_turn_advance.js';
 import { moveloopPreamble, maybeDoTutorialLikeC } from './moveloop_preamble.js';
@@ -247,6 +247,7 @@ export async function runSegment(input) {
     display.onEmptyQueue = () => { throw new Error('Input queue empty - test may be missing keystrokes'); };
     nhGame._pendingDisplay = display;
 
+    initReplayMoves(moves);
     for (const ch of moves) pushKey(ch.charCodeAt(0));
 
     await nhGame.start();

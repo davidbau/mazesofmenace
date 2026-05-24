@@ -1595,9 +1595,46 @@ function heroWearsNutritionAmulet() {
     });
 }
 
+function ringNutritionName(item) {
+    const roll = item?.ringRoll || item?.roll || 0;
+    if (roll) return IDENTIFIED_RING_NAMES[roll - 1] || '';
+    return String(item?.actualKind || item?.kind || '').toLowerCase().replace(/^ring of /, '');
+}
+
+function wornRingOnHand(hand) {
+    const handPattern = hand === 'left' ? /\(on left hand\)/ : /\(on right hand\)/;
+    return (game.inventory || []).find(item => item.cls === 'ring' && (item.worn === hand || handPattern.test(item.line || '')));
+}
+
+function heroWearsRingNamed(name) {
+    return (game.inventory || []).some(item => item.cls === 'ring' && item.worn && ringNutritionName(item) === name);
+}
+
+function wornRingConsumesNutrition(hand) {
+    const item = wornRingOnHand(hand);
+    if (!item) return false;
+    const name = ringNutritionName(item);
+    if (name === 'meat ring') return false;
+    if ((item.spe || 0) !== 0) return true;
+    return !(item.charged || (item.ringRoll || item.roll || 99) <= 6);
+}
+
 function applyAccessoryHunger(accessorytime) {
     if (!game.u) return;
-    if (accessorytime === 8 && heroWearsNutritionAmulet())
+    if (accessorytime % 2) {
+        if (heroWearsRingNamed('regeneration'))
+            game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+        return;
+    }
+    if (heroWearsRingNamed('hunger'))
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+    if (accessorytime === 4 && wornRingConsumesNutrition('left'))
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+    else if (accessorytime === 8 && heroWearsNutritionAmulet())
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+    else if (accessorytime === 12 && wornRingConsumesNutrition('right'))
+        game.u.uhunger = (game.u.uhunger ?? 900) - 1;
+    else if (accessorytime === 16 && heroHasAmuletOfYendor())
         game.u.uhunger = (game.u.uhunger ?? 900) - 1;
 }
 
@@ -5451,8 +5488,7 @@ function buildGenericAttributesPage2Rows() {
             : statusSuffix.includes('Weak') ? 'weak from severe hunger'
                 : statusSuffix.includes('Faint') ? 'fainting due to starvation'
                     : 'not hungry';
-    const debugHunger = (game.u?.uhunger ?? 900)
-        - (statusSuffix.includes('Hallu') && game._hallu_refresh_after_level_teleport_move ? 5 : 0);
+    const debugHunger = game.u?.uhunger ?? 900;
     const hungerLine = hunger === 'not hungry'
         ? game.flags?.debug ? `  You aren't hungry <${debugHunger}>.` : "  You aren't hungry."
         : game.flags?.debug ? `  You are ${hunger} <${debugHunger}>.` : `  You are ${hunger}.`;
@@ -6749,6 +6785,24 @@ function movementDirection(ch) {
     return { dx: DIR_DX[lower], dy: DIR_DY[lower] };
 }
 
+function truncateCursorToMap(x, y, dx, dy) {
+    if (x + dx < 1) {
+        dy -= Math.sign(dy) * (1 - (x + dx));
+        dx = 1 - x;
+    } else if (x + dx > COLNO - 1) {
+        dy += Math.sign(dy) * ((COLNO - 1) - (x + dx));
+        dx = (COLNO - 1) - x;
+    }
+    if (y + dy < 0) {
+        dx -= Math.sign(dx) * (0 - (y + dy));
+        dy = -y;
+    } else if (y + dy > ROWNO - 1) {
+        dx += Math.sign(dx) * ((ROWNO - 1) - (y + dy));
+        dy = (ROWNO - 1) - y;
+    }
+    return { x: x + dx, y: y + dy };
+}
+
 function figurineApplyDirection(ch) {
     if (ch === '.') return { dx: 0, dy: 0, dz: 0 };
     if (ch === '<') return { dx: 0, dy: 0, dz: -1 };
@@ -7067,8 +7121,8 @@ async function setMessage(msg, more = false) {
         if (more && text === 'You get expelled!') {
             const prompt = `${game._pending_message}--More--`;
             game._simple_swallow_expel_prompt = 1;
-            for (const [, , ch] of SWALLOW_OVERLAY_CELLS)
-                if (ch !== '@') rn2_on_display_rng(DISPLAY_MONSTER_COLORS.length);
+            if ((game.u?._statusSuffix || '').includes('Hallu'))
+                game._hallu_expel_object_rng_skip = 1;
             const overlayLines = (game._overlay_lines || game._swallow_overlay_lines || []).map(line => [...line]);
             if (overlayLines[0]) overlayLines[0][2] = prompt;
             game._overlay_lines = overlayLines;
@@ -29326,6 +29380,7 @@ export async function rhack(_cmd) {
                     const oldX = game.u?.ux || 0;
                     const oldY = game.u?.uy || 0;
                     const materializeMessage = safeTeleportHeroSameLevel();
+                    game._travel_previous_target = null;
                     const landingX = game.u?.ux || oldX;
                     const landingY = game.u?.uy || oldY;
                     game._teleport_dot_described = 0;
@@ -30067,15 +30122,16 @@ export async function rhack(_cmd) {
                         : `This ${corpseName} corpse is ${palatable}.`;
                 }
                 const eatTime = 3 + ((CORPSE_WEIGHTS.get(corpseName) ?? food.owt ?? 1) >> 6);
-                const reqtime = Math.max(1, eatTime - 1);
                 const nutrition = CORPSE_NUTRITION.get(corpseName) || 0;
-                const biteNutrition = Math.trunc(nutrition / reqtime);
+                const biteCount = eatTime >= 10 ? eatTime : Math.max(1, eatTime - 1);
+                const biteNutrition = Math.trunc(nutrition / biteCount);
+                // This port applies multi-turn corpse nutrition at finish time,
+                // so preserve the portion C would have delivered across bites.
                 game._eating_turns_remaining = eatTime + 1;
                 game._eating_finish_message = `You finish eating the ${corpseName} corpse.`;
                 game._eating_floor_object = food;
-                game._eating_nutrition = biteNutrition * reqtime;
-                // C takes an immediate first bite before the eating occupation ticks.
-                if (corpseName === 'bugbear') game._eating_nutrition += Math.max(0, biteNutrition - 4);
+                game._eating_nutrition = biteNutrition * biteCount
+                    + (eatTime >= 10 ? Math.min(nutrition % biteCount, 10) : 0);
                 game._eating_newt_buzz = corpseName === 'newt';
                 await setMessage(corpseMessage);
                 game._command_mode = null;
@@ -30222,7 +30278,6 @@ export async function rhack(_cmd) {
                         const validKeys = blocked ? [] : travelPathKeys(down.sx, down.sy, false, true);
                         if (validKeys[0]) {
                             game._travel_target = { x: down.sx, y: down.sy };
-                            game._travel_previous_target = { ...game._travel_target };
                             return;
                         }
                         game._travel_target = null;
@@ -30232,7 +30287,6 @@ export async function rhack(_cmd) {
                         return;
                     }
                     game._travel_target = { x: down.sx, y: down.sy };
-                    game._travel_previous_target = { ...game._travel_target };
                 } else {
                     game._farlook_x = previousX;
                     game._farlook_y = previousY;
@@ -30262,7 +30316,6 @@ export async function rhack(_cmd) {
                     game._farlook_y = up.sy;
                     game._cursor_override = [game._farlook_x - 1, game._farlook_y + 1];
                     game._travel_target = { x: up.sx, y: up.sy };
-                    game._travel_previous_target = { ...game._travel_target };
                 } else {
                     game._farlook_x = previousX;
                     game._farlook_y = previousY;
@@ -30307,6 +30360,7 @@ export async function rhack(_cmd) {
             game._travel_prompt_current = 0;
             game._travel_no_path_target = null;
             if (!keys[0]) {
+                game._travel_previous_target = { x: targetX, y: targetY };
                 await setMessage(keepMessage);
                 return;
             }
@@ -30382,8 +30436,14 @@ export async function rhack(_cmd) {
         const dir = movementDirection(moveCh);
         if (dir) {
             const steps = 'HJKLYUBN'.includes(moveCh) ? 8 : 1;
-            game._farlook_x = Math.max(1, Math.min(COLNO - 1, (game._farlook_x || game.u?.ux || 0) + dir.dx * steps));
-            game._farlook_y = Math.max(0, Math.min(ROWNO - 1, (game._farlook_y || game.u?.uy || 0) + dir.dy * steps));
+            const cursor = truncateCursorToMap(
+                game._farlook_x || game.u?.ux || 0,
+                game._farlook_y || game.u?.uy || 0,
+                dir.dx * steps,
+                dir.dy * steps,
+            );
+            game._farlook_x = cursor.x;
+            game._farlook_y = cursor.y;
             const targetX = game._farlook_x;
             const targetY = game._farlook_y;
             const loc = game.level?.at(targetX, targetY);
@@ -30411,7 +30471,6 @@ export async function rhack(_cmd) {
                 return;
             }
             game._travel_target = { x: targetX, y: targetY };
-            game._travel_previous_target = { ...game._travel_target };
             game._travel_target_description = terrain;
             game._travel_no_path_target = null;
             game._travel_prompt_current = 0;
@@ -30813,7 +30872,10 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '_') {
-        const travelCursorStart = game._travel_previous_target || { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+        let travelCursorStart = game._travel_previous_target || { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+        const travelStartLoc = game.level?.at(travelCursorStart.x, travelCursorStart.y);
+        if (!travelStartLoc || IS_OBSTRUCTED(travelStartLoc.typ))
+            travelCursorStart = { x: game.u?.ux || 0, y: game.u?.uy || 0 };
         if (game._travel_tip_seen || game.flags?.tutorial === false) {
             game._travel_tip_seen = 1;
             const prompt = game.flags?.tutorial === false

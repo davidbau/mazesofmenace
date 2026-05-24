@@ -43,6 +43,8 @@ export class GameMap {
         this.doors = [];
         this.doorindex = 0;
         this.objects = [];
+        /** C: mkobj.c global **`fobj`** — newest-first floor object chain (**`nobj`**). */
+        this.fobj = null;
         /** C: svl.level.objects[x][y] — head of floor stack at each cell; key "x,y". */
         this.floorObjHeads = new Map();
         /** C: svl.level.buriedobjlist — per-cell heads (**`dig.c`** **`bury_objs`/`unearth_objs`** subset). */

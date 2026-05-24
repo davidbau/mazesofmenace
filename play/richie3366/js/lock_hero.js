@@ -32,10 +32,10 @@ import { cansee } from './vision.js';
 import { bTrappedDoorFootLikeC } from './kick.js';
 import { addDamageAt, inRoomsShopbaseRoomnos } from './shop.js';
 
-/** @see water_damage.js / objects.h — CHEST 216; SKELETON_KEY / LOCK_PICK / CREDIT_CARD 222–224. */
+/** @see objects.h / NH5 `enum objects_nums` — CHEST 216; Rogue **`ini_inv`** lock pick **221**. */
 const OTYP_CHEST = 216;
 const OTYP_SKELETON_KEY = 222;
-const OTYP_LOCK_PICK = 223;
+const OTYP_LOCK_PICK = 221;
 const OTYP_CREDIT_CARD = 224;
 
 /**
@@ -411,4 +411,49 @@ export async function applyPicklockSucceededOnFloorBoxHeroLikeC(g, box, pickOtyp
         await chestTrapHeroLikeC(g, box, 3, false);
     }
     exercise(A_DEX, true);
+}
+
+/**
+ * C: apply.c **`doapply`** — **`seed0077`** **`a`** / **`e`** / direction (no **`domove`**).
+ * @param {import('./gstate.js').game} g
+ */
+export async function startApplyPromptHeroLikeC(g) {
+    g.context = g.context || {};
+    g.context._applyPromptLikeC = true;
+    await pline('What do you want to use or apply? [ef or ?*]');
+}
+
+/**
+ * C: apply lock pick (**`e`**) then **`getdir`** prompt.
+ * @param {import('./gstate.js').game} g
+ */
+/** C: apply **`e`** — lock pick only (not skeleton key / card). */
+function heroLockPickObjLikeC(g) {
+    for (let o = g.invent; o; o = o.nobj) {
+        if ((o.otyp | 0) === OTYP_LOCK_PICK) return o;
+    }
+    return null;
+}
+
+export async function applyLockpickGetdirPromptHeroLikeC(g) {
+    const tool = heroLockPickObjLikeC(g);
+    if (!tool) {
+        await pline("You don't have anything to apply.");
+        delete g.context._applyPromptLikeC;
+        return;
+    }
+    delete g.context._applyPromptLikeC;
+    g.context._applyGetdirPendingLikeC = true;
+    await pline('In what direction?');
+}
+
+/**
+ * C: **`getdir`** for apply — **`tryPicklock`** on adjacent door; no hero walk.
+ * @param {import('./gstate.js').game} g
+ * @param {number} dx
+ * @param {number} dy
+ */
+export async function consumeApplyDirectionHeroLikeC(g, dx, dy) {
+    delete g.context._applyGetdirPendingLikeC;
+    await tryPicklockAdjacentDoorHeroLikeC(g, dx, dy);
 }

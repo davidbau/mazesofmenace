@@ -6,7 +6,12 @@ import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { monnearMonsterXYLikeC } from './mon_geom.js';
 import { S_EEL, raceptr } from './mondata.js';
-import { isFirstSearchMovemonPassLikeC } from './monmove_search.js';
+import {
+    isFirstSearchMovemonPassLikeC,
+    isRogueColonMovemonActiveLikeC,
+    isSecondSearchMovemonPassLikeC,
+    rogueSecondSearchFullFmonLikeC,
+} from './monmove_search.js';
 import {
     eastFungusDoorNicheAtLikeC,
     findEastKickMonLikeC,
@@ -86,6 +91,27 @@ export function fmonListForMcalcmoveLikeC(g) {
  */
 export function fmonListForMovemonLikeC(g, stepNum = 0) {
     const mons = fmonListNewestFirstLikeC(g);
+    if (isRogueColonMovemonActiveLikeC(g)) {
+        const gate = findFirstSearchRogMidMklevHostileLikeC(g);
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        if (!(g.context?._movemonSearch11SubPass | 0)) {
+            const ordered = [];
+            if (gate) ordered.push(gate);
+            if (pet) ordered.push(pet);
+            return ordered;
+        }
+    }
+    if (isSecondSearchMovemonPassLikeC(g) && rogueSecondSearchFullFmonLikeC(g)) {
+        const gate = findFirstSearchRogMidMklevHostileLikeC(g);
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const ordered = [];
+        if (gate) ordered.push(gate);
+        if (pet) ordered.push(pet);
+        for (const m of mons) {
+            if (m !== gate && m !== pet) ordered.push(m);
+        }
+        return ordered;
+    }
     if ((stepNum | 0) === 4) {
         const west = findWestKinkMonsterLikeC(g);
         return west ? [west] : [];
@@ -202,6 +228,40 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
                 (m) => m !== rogHostile && !nearHostile.includes(m),
             );
             const midRest = mid.filter((m) => m !== rogHostile);
+            /* C: first **`#search`** rogue near — one door-niche **`distfleeck`** (**~3202**), gate + **`dog_goal`**
+             * (**~3203–3208**), then remaining peel **`distfleeck`** (**~3209–3212**), east last. */
+            if (isFirstSearchMovemonPassLikeC(g)) {
+                const mklevTail = [...nearHostile, ...nearRemainder, ...midRest];
+                if (distant && distant !== rogHostile && !mklevTail.includes(distant)) {
+                    mklevTail.push(distant);
+                }
+                const preGatePeel = nearHostile.length > 0 ? [nearHostile[0]] : [];
+                const postGatePeel = mklevTail.filter(
+                    (m) => m !== rogHostile && !preGatePeel.includes(m),
+                );
+                const eastTail = east && !preGatePeel.includes(east) && !postGatePeel.includes(east)
+                    ? [east]
+                    : [];
+                /* C: gate **`dochug`** + pet **`dog_goal`** before remaining peel **`distfleeck`**. */
+                const ordered = [
+                    ...preGatePeel,
+                    ...(rogHostile ? [rogHostile] : []),
+                    ...(pet ? [pet] : []),
+                    ...postGatePeel,
+                    ...eastTail,
+                ].filter(Boolean);
+                if (typeof globalThis.__diagFmonAtSearch === 'function') {
+                    globalThis.__diagFmonAtSearch(g, stepNum, ordered, {
+                        preGatePeel,
+                        postGatePeel,
+                        mklevTail,
+                        nearHostile,
+                        nearRemainder,
+                        midRest,
+                    });
+                }
+                return ordered;
+            }
             return [
                 ...(rogHostile ? [rogHostile] : []),
                 ...(pet ? [pet] : []),
