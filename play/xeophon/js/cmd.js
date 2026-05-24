@@ -1636,6 +1636,17 @@ async function showControlledTeleportCursorPrompt() {
     game._command_mode = 'teleportCursor';
 }
 
+function getposTipSeen() {
+    return !!(game._farlook_tip_seen || game._travel_tip_seen
+        || game._jump_tip_seen || game._getpos_tip_seen);
+}
+
+function controlledTeleportIntroMessage() {
+    return game.flags?.verbose === false
+        ? 'Where do you want to be teleported?'
+        : "Where do you want to be teleported?  (For instructions type a '?')";
+}
+
 function controlledTeleportNewlineCorridorY(x, y) {
     let firstRun = null;
     let inCorridorRun = false;
@@ -24800,6 +24811,7 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x06' && game.flags?.debug && !game._command_mode) {
+        for (const trap of game.level?.traps || []) trap.tseen = true;
         revealLevelMap();
         exerciseAttribute(A_WIS, true);
         return;
@@ -28409,8 +28421,9 @@ export async function rhack(_cmd) {
     }
 
     if (ch === '\x14' && game.flags?.debug && !game._command_mode && !(game._pending_message && game._message_more)) {
-        const showGetposTip = !game._getpos_tip_seen && game.flags?.tutorial !== false;
-        await setMessage('Where do you want to be teleported?', showGetposTip);
+        const showGetposTip = !getposTipSeen() && game.flags?.tutorial !== false;
+        await setMessage(showGetposTip ? 'Where do you want to be teleported?'
+            : controlledTeleportIntroMessage(), showGetposTip);
         game._teleport_cursor_position_mode = 0;
         game._teleport_dot_described = 0;
         game._teleport_from_scroll = 0;
@@ -29274,22 +29287,45 @@ export async function rhack(_cmd) {
                 selectedValid &&= !(game.level?.traps || []).some(trap => trap.tx === targetX && trap.ty === targetY);
                 selectedValid &&= !(game.level?.monsters || []).some(mon => mon.mx === targetX && mon.my === targetY);
                 selectedValid &&= !(game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === targetX && obj.oy === targetY);
+                if (!selectedValid) {
+                    const oldX = game.u?.ux || 0;
+                    const oldY = game.u?.uy || 0;
+                    const materializeMessage = safeTeleportHeroSameLevel();
+                    const landingX = game.u?.ux || oldX;
+                    const landingY = game.u?.uy || oldY;
+                    game._teleport_dot_described = 0;
+                    game._teleport_cursor_position_mode = 0;
+                    game._cursor_override = null;
+                    game._command_mode = null;
+                    game._teleport_from_scroll = 0;
+                    applySameLevelTeleportNutritionPenalty();
+                    game.context.move = 1;
+                    await queueUntendedTempleEntryAfterTeleport(oldX, oldY, landingX, landingY);
+                    await docrt();
+                    const attachedObjects = [game.u?.uchain, game.u?.uball].filter(obj =>
+                        obj && !obj.hidden && obj.ox === landingX && obj.oy === landingY);
+                    if (attachedObjects.length > 1) {
+                        const rows = [[0, 40, 'Things that are here:']];
+                        for (let i = 0; i < attachedObjects.length; i++)
+                            rows.push([i + 1, 40, pickupObjectPhrase(attachedObjects[i])]);
+                        rows.push([attachedObjects.length + 1, 40, '--More--']);
+                        game._queued_overlay_after_more = {
+                            lines: rows,
+                            clearRows: attachedObjects.length + 2,
+                            clearCol: 39,
+                            mode: 'objectListMore',
+                            message: 'text-window',
+                            messageMore: true,
+                        };
+                        game._object_list_no_time = 1;
+                        await setMessage('Sorry...', true);
+                        return;
+                    }
+                    await setMessage(materializeMessage ? `Sorry...  ${materializeMessage}` : 'Sorry...');
+                    return;
+                }
                 let landingX = targetX;
                 let landingY = targetY;
-                if (!selectedValid) {
-                    for (let trycnt = 0; trycnt < 200; trycnt++) {
-                        const x = rnd(COLNO - 1);
-                        const y = rn2(ROWNO);
-                        const candidate = game.level?.at(x, y);
-                        if (!candidate || !ACCESSIBLE(candidate.typ)) continue;
-                        if ((game.level?.traps || []).some(trap => trap.tx === x && trap.ty === y)) continue;
-                        if ((game.level?.monsters || []).some(mon => mon.mx === x && mon.my === y)) continue;
-                        if ((game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y)) continue;
-                        landingX = x;
-                        landingY = y;
-                        break;
-                    }
-                }
                 const oldX = game.u?.ux || 0;
                 const oldY = game.u?.uy || 0;
                 const oldBallX = game.u?.uball?.ox;
@@ -29325,29 +29361,6 @@ export async function rhack(_cmd) {
                 game.context.move = 1;
                 const materializeMessage = `You materialize in ${landingX === oldX && landingY === oldY ? 'the same' : 'a different'} location!`;
                 await queueUntendedTempleEntryAfterTeleport(oldX, oldY, landingX, landingY);
-                if (!selectedValid) {
-                    const attachedObjects = [game.u?.uchain, game.u?.uball].filter(obj =>
-                        obj && !obj.hidden && obj.ox === landingX && obj.oy === landingY);
-                    if (attachedObjects.length > 1) {
-                        const rows = [[0, 40, 'Things that are here:']];
-                        for (let i = 0; i < attachedObjects.length; i++)
-                            rows.push([i + 1, 40, pickupObjectPhrase(attachedObjects[i])]);
-                        rows.push([attachedObjects.length + 1, 40, '--More--']);
-                        game._queued_overlay_after_more = {
-                            lines: rows,
-                            clearRows: attachedObjects.length + 2,
-                            clearCol: 39,
-                            mode: 'objectListMore',
-                            message: 'text-window',
-                            messageMore: true,
-                        };
-                        game._object_list_no_time = 1;
-                    } else {
-                        game._topline_after_more = materializeMessage;
-                    }
-                    await setMessage('Sorry...', true);
-                    return;
-                }
                 await setMessage(materializeMessage, true);
                 return;
             }
@@ -30268,7 +30281,6 @@ export async function rhack(_cmd) {
                 : { x: targetX, y: targetY, allowGuess: true };
             if (blockedTargetTravel) {
                 game._travel_ignore_adjacent_stop = 1;
-                if (game.context?.seer_turn) game.context.seer_turn++;
             }
             game._travel_keep_message = keepMessage;
             game._pending_message = '';
@@ -30340,8 +30352,10 @@ export async function rhack(_cmd) {
             const targetX = game._farlook_x;
             const targetY = game._farlook_y;
             const loc = game.level?.at(targetX, targetY);
-            const terrain = !loc || (!loc.seenv && !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ') ? 'unexplored area'
-                : loc?.typ === STONE ? 'stone'
+            const terrain = loc?.typ === STONE
+                && (loc.seenv || loc.remembered_glyph || (loc.disp_ch || ' ') !== ' '
+                    || game._travel_previous_target) ? 'stone'
+                : !loc || (!loc.seenv && !loc.remembered_glyph && (loc.disp_ch || ' ') === ' ') ? 'unexplored area'
                 : loc?.typ === CLOUD ? 'fog/vapor cloud'
                 : loc?.typ === ROOM && !(game.viz_array?.[targetY]?.[targetX] & IN_SIGHT) ? 'dark part of a room'
                 : (loc.disp_ch || ' ') === ' ' ? 'dark part of a room'

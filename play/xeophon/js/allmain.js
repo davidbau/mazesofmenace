@@ -2161,10 +2161,9 @@ function processAttributeExercise() {
     const u = game.u;
     if (!u) return;
 
-    const exerciseTurnOffset = (game._exercise_turn_offset || 0)
-        + (game._travel_dynamic_target?.allowBlockedTarget ? 1 : 0);
-    const turn = (game._travel_dynamic_target ? (game.moves || 1) : (game.moves || 1) + 1)
-        + exerciseTurnOffset;
+    const oneShotExerciseTurnOffset = game._exercise_turn_offset || 0;
+    const exerciseTurnOffset = oneShotExerciseTurnOffset;
+    const turn = (game.moves || 1) + 1 + exerciseTurnOffset;
     const skipPeriodicExerciseTurn = game._skip_periodic_exercise_turn || 0;
     const skipPeriodicExerciseAtTurn = !!skipPeriodicExerciseTurn && turn === skipPeriodicExerciseTurn;
     if (skipPeriodicExerciseAtTurn) game._skip_periodic_exercise_turn = 0;
@@ -2214,6 +2213,7 @@ function processAttributeExercise() {
         if ((u._woundedLegTurns || 0) > 0 || u.fumbling || status.includes('Stun')) exerciseAttribute(A_DEX, false);
     }
     if (!skipPeriodicExercise) game._last_periodic_exercise_turn = turn;
+    if (oneShotExerciseTurnOffset) game._exercise_turn_offset = 0;
 
     game.context ??= {};
     game.context.next_attrib_check ??= 600;
@@ -7422,8 +7422,10 @@ async function summonNastiesForMonster(summoner) {
 
 async function maybeCastUndirectedMonsterSpell(mon) {
     const data = mon.data || {};
-    const wizardCaster = monsterCastsWizardSpells(data);
-    const caster = wizardCaster || data.priest || data.name === 'acolyte';
+    const clericCaster = data.priest || data.name === 'acolyte';
+    const wizardCaster = !clericCaster
+        && (monsterCastsWizardSpells(data) || data.spellcaster || data.magic);
+    const caster = wizardCaster || clericCaster;
     if (mon.mspec_used || !caster) return false;
     if ((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 > 49) return false;
     if (wizardCaster) {
@@ -7449,10 +7451,28 @@ async function maybeCastUndirectedMonsterSpell(mon) {
             rn2(5);
             return true;
         }
-        return false;
+        if (spell.name === 'disappear') {
+            const wasVisible = couldSeeCoord(mon.mx, mon.my)
+                && !game.u?.blind && !mon.minvis && !mon.mundetected;
+            mon.minvis = 1;
+            if (wasVisible) {
+                addToplineMessage(`${monsterDisplayName(mon)} suddenly ${game.u?.seeInvisible ? 'becomes transparent' : 'disappears'}!`);
+                if (!game.u?.seeInvisible) {
+                    const loc = game.level?.at(mon.mx, mon.my);
+                    if (loc) loc.map_invisible = true;
+                }
+            }
+            newsym(mon.mx, mon.my);
+        } else if (spell.name === 'hasteSelf') {
+            mon.permspeed = 'fast';
+        } else if (spell.name === 'cureSelf') {
+            mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + Math.max(1, Math.trunc((mon.m_lev || 1) / 2) + 1));
+        }
+        rn2(5);
+        return true;
     }
     const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
-    const cleric = data.priest || data.name === 'acolyte';
+    const cleric = clericCaster;
     const maxSpellLevel = cleric ? 13 : 20;
     const attackCount = data.name === 'Arch Priest' ? 2 : 1;
     for (let i = 0; i < attackCount; i++) {
@@ -7882,8 +7902,12 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         }
     }
     if (nextInfo & ALLOW_U) {
-        mon.mux = game.u?.ux ?? mon.mux;
-        mon.muy = game.u?.uy ?? mon.muy;
+        if (next.x === (game.u?.ux || 0) && next.y === (game.u?.uy || 0)) {
+            mon.mux = game.u?.ux ?? mon.mux;
+            mon.muy = game.u?.uy ?? mon.muy;
+        } else {
+            mon._move_consumed_turn = 1;
+        }
         return false;
     }
     if (next.target) {

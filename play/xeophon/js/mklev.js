@@ -5362,8 +5362,12 @@ const NO_RANDOM_MONSTER_ITEM_NAMES = new Set([
     'ghost',
 ]);
 
+function noRandomMonsterItemRolls(ptr) {
+    return ptr.mindless || ptr.mlet === 'ghost' || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name);
+}
+
 function rnd_defensive_item(ptr) {
-    if (ptr.mindless || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name)) return 0;
+    if (noRandomMonsterItemRolls(ptr)) return 0;
     const difficulty = ptr.difficulty ?? ptr.hpLevel ?? ptr.mlevel ?? 0;
     let trycnt = 0;
     for (;;) {
@@ -5399,7 +5403,7 @@ function rnd_defensive_item(ptr) {
 }
 
 function rnd_misc_item(ptr, mon = null) {
-    if (ptr.mindless || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name)) return 0;
+    if (noRandomMonsterItemRolls(ptr)) return 0;
     const difficulty = ptr.difficulty ?? ptr.mlevel ?? ptr.hpLevel ?? 0;
     if (difficulty < 6 && !rn2(30)) return rn2(6) ? POT_POLYMORPH : WAN_POLYMORPH;
     const nonliving = ptr.nonliving || ptr.mlet === 'W' || ptr.mlet === S_ZOMBIE || ptr.mlet === S_MUMMY || ptr.mlet === "'";
@@ -5418,7 +5422,7 @@ function rnd_misc_item(ptr, mon = null) {
 }
 
 function rnd_offensive_item(ptr) {
-    if (ptr.mindless || NO_RANDOM_MONSTER_ITEM_NAMES.has(ptr.name)) return 0;
+    if (noRandomMonsterItemRolls(ptr)) return 0;
     const difficulty = ptr.difficulty ?? ptr.hpLevel ?? ptr.mlevel ?? 0;
     if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
     switch (rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0))) {
