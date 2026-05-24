@@ -2487,7 +2487,7 @@ const WIZARD_OF_YENDOR = {
     male: true, strong: true, nasty: true, covetous: true,
     noCorpse: true, alwaysHostile: true, randomInventory: true,
 };
-const VLAD_THE_IMPALER = { name: 'Vlad the Impaler', mlet: 'vlad', glyph: 'V', color: CLR_MAGENTA, mlevel: 28, mmove: 26, difficulty: 32, maligntyp: -10, male: true, covetous: true, noCorpse: true, alwaysHostile: true, noRandomInventoryRolls: true };
+const VLAD_THE_IMPALER = { name: 'Vlad the Impaler', mlet: 'vlad', glyph: 'V', color: CLR_MAGENTA, mlevel: 28, mmove: 26, difficulty: 32, maligntyp: -10, male: true, noCorpse: true, alwaysHostile: true, noRandomInventoryRolls: true, waiting: true };
 const VAMPIRE_LORD = { name: 'vampire lord', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, mmove: 14, difficulty: 14, maligntyp: -9, skipFindGender: true, vampireLeader: true, strong: true, nasty: true, noCorpse: true, inAir: true, alwaysHostile: true };
 const VAMPIRE_LADY = { name: 'vampire leader', mlet: 'V', glyph: 'V', color: CLR_BLUE, mlevel: 12, difficulty: 14, maligntyp: -9, alwaysHostile: true };
 
@@ -2701,6 +2701,49 @@ const WIZ_SIEGE_MONSTERS = [
     ['i', 60, 13], ['B', 61, 10], ['B', 61, 11], ['B', 61, 12],
     ['B', 35, 3], ['i', 35, 17], ['B', 36, 17], ['B', 34, 16],
     ['i', 34, 17], ['W', 67, 2], ['B', 10, 19],
+];
+const WIZ_LOCA_ROWS = [
+    '.............        .......................................................',
+    '..............       .............}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.......',
+    '..............      ..............}.................................}.......',
+    '..............      ..............}.-------------------------------.}.......',
+    '...............     .........C....}.|.............................|.}.......',
+    '...............    ..........C....}.|.---------------------------.|.}.......',
+    '...............    .........CCC...}.|.|.........................|.|.}.......',
+    '................   ....C....CCC...}.|.|.-----------------------.|.|.}.......',
+    '.......C..C.....  .....C....CCC...}.|.|.|......+.......+......|.|.|.}.......',
+    '.............C..CC.....C....CCC...}.|.|.|......|-------|......|.|.|.}.......',
+    '................   ....C....CCC...}.|.|.|......|.......|......|.|.|.}.......',
+    '......C..C.....    ....C....CCC...}.|.|.|......|-------|......|.|.|.}.......',
+    '............C..     ...C....CCC...}.|.|.|......+.......+......|.|.|.}.......',
+    '........C......    ....C....CCC...}.|.|.-----------------------.|.|.}.......',
+    '....C......C...     ........CCC...}.|.|.........................|.|.}.......',
+    '......C..C....      .........C....}.|.---------------------------.|.}.......',
+    '..............      .........C....}.|.............................|.}.......',
+    '.............       ..............}.-------------------------------.}.......',
+    '.............        .............}.................................}.......',
+    '.............        .............}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.......',
+    '.............        .......................................................',
+];
+const WIZ_LOCA_WIDTH = WIZ_LOCA_ROWS[0].length;
+const WIZ_LOCA_HEIGHT = WIZ_LOCA_ROWS.length;
+const WIZ_LOCA_DOORS = [
+    [D_LOCKED, 55, 8], [D_LOCKED, 55, 12], [D_LOCKED, 47, 8], [D_LOCKED, 47, 12],
+];
+const WIZ_LOCA_FIXED_TRAPS = [
+    [SPIKED_PIT, 24, 2], [SPIKED_PIT, 7, 10], [SPIKED_PIT, 23, 5],
+    [SPIKED_PIT, 26, 19], [SPIKED_PIT, 72, 2], [SPIKED_PIT, 72, 12],
+    [ROCKTRAP, 45, 16], [ROCKTRAP, 65, 13], [ROCKTRAP, 55, 6],
+    [ROCKTRAP, 39, 11], [ROCKTRAP, 57, 9], [MAGIC_TRAP, null, null],
+    [STATUE_TRAP, null, null], [STATUE_TRAP, null, null], [POLY_TRAP, null, null],
+    [ANTI_MAGIC, 53, 10], [SLP_GAS_TRAP, null, null], [SLP_GAS_TRAP, null, null],
+    [DART_TRAP, null, null], [DART_TRAP, null, null], [DART_TRAP, null, null],
+];
+const WIZ_LOCA_RANDOM_MONSTERS = [
+    ...Array(12).fill('B'),
+    ...Array(7).fill('i'),
+    ...Array(7).fill('vampire bat'),
+    'i',
 ];
 
 function wizX(x) { return WIZ_XSTART + x; }
@@ -3048,6 +3091,22 @@ const PRI_FILL_B_ROOMS = [
     { type: OROOM, contents: ['object', 'object', 'trap', 'human zombie', 'wraith'] },
     { type: MORGUE, contents: ['object', 'trap'] },
 ];
+const WIZ_FILL_A_ROOMS = [
+    ['up', 'object', 'i'],
+    ['object', 'object', 'i'],
+    ['object', 'trap', 'object', 'vampire bat', 'vampire bat'],
+    ['down', 'object', 'trap', 'i', 'vampire bat'],
+    ['object', 'object', 'trap', 'i'],
+    ['object', 'trap', 'vampire bat'],
+];
+const WIZ_FILL_B_ROOMS = [
+    ['up', 'object', 'X'],
+    ['object', 'object', 'i'],
+    ['object', 'trap', 'object', 'X'],
+    ['down', 'object', 'trap', 'i', 'vampire bat'],
+    ['object', 'object', 'trap', 'i'],
+    ['object', 'trap', 'vampire bat'],
+];
 const QUEST_LEVEL_BUILDERS = {
     Archeologist: {
         special: {
@@ -3076,6 +3135,10 @@ const QUEST_LEVEL_BUILDERS = {
     Wizard: {
         special: {
             'x-strt': make_wiz_strt_level,
+            'x-loca': make_wiz_loca_level,
+        },
+        fill(level) {
+            return make_wiz_fill_level(level < 3 ? WIZ_FILL_A_ROOMS : WIZ_FILL_B_ROOMS);
         },
     },
     Priest: {
@@ -4752,11 +4815,12 @@ function monsterFromRndMeta(row) {
         tunnel: TUNNEL_MONSTERS.has(name),
         needPick: NEED_PICK_MONSTERS.has(name),
         oviparous: flags.includes('o'),
-        covetous: name === 'Vlad the Impaler' || name === 'master lich' || name === 'arch-lich',
+        covetous: name === 'master lich' || name === 'arch-lich',
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
         wanderer: WANDERER_MONSTERS.has(name),
         stalk: STALKER_MONSTERS.has(name),
         alwaysHostile: flags.includes('X') || glyph === 'V' || name === 'vampire leader',
+        waiting: name === 'Vlad the Impaler',
         alwaysPeaceful: flags.includes('P'),
         resistsFire: FIRE_RESISTANT_MONSTERS.has(name),
         likesLava: name === 'fire elemental' || name === 'salamander',
@@ -4972,6 +5036,7 @@ const NASTY_MONSTER_NAMES = [
 ];
 
 const DOPPELGANGER_HUMANOID_FORMS = new Map([
+    [211, 'genetic engineer'],
     [246, 'ghoul'],
 ]);
 const SHAPECHANGER_RANDOM_FORMS = new Map([
@@ -5026,6 +5091,11 @@ export function monsterByRndName(name) {
         || RNDMONST_COMMON_MONSTERS.find(candidate => candidate[0] === name)
         || Object.values(MKCLASS_EXTRA_ROWS).flat().find(candidate => candidate[0] === name);
     return row ? monsterFromRndMeta(row) : RANDOM_MONSTER_BY_NAME.get(name);
+}
+
+export function doppelgangerHumanoidForm() {
+    const name = DOPPELGANGER_HUMANOID_FORMS.get(rn2(330));
+    return name ? monsterByRndName(name) : null;
 }
 
 function monsterNameGenocided(name) {
@@ -5159,6 +5229,17 @@ function barbarianQuestRandomMonsterType() {
     return mkclassAligned('T');
 }
 
+function wizardQuestRandomMonsterType() {
+    if (rn2(5)) {
+        if (rn2(5) && !monsterNameGenocided('vampire bat'))
+            return monsterByRndName('vampire bat');
+        return mkclassAligned('B');
+    }
+    if (rn2(5) && !monsterNameGenocided('xorn'))
+        return monsterByRndName('xorn');
+    return mkclassAligned('W');
+}
+
 function rndmonst_adj(minadj = 0, maxadj = 0) {
     if (game.dungeons?.[game.u?.uz?.dnum]?.name === 'The Quest' && rn2(7)) {
         const roleName = game.urole?.name?.m || game._startup_role;
@@ -5168,6 +5249,10 @@ function rndmonst_adj(minadj = 0, maxadj = 0) {
         }
         if (roleName === 'Barbarian') {
             const ptr = barbarianQuestRandomMonsterType();
+            if (ptr) return ptr;
+        }
+        if (roleName === 'Wizard') {
+            const ptr = wizardQuestRandomMonsterType();
             if (ptr) return ptr;
         }
         if (roleName === 'Archeologist') {
@@ -6243,7 +6328,7 @@ export async function makemon(mdat, x, y, mmflags) {
     const effectiveLevel = (ptr.mlevel || 0) > 49 ? Math.trunc(hp / 4) : monLevel;
     const mon = { mx: x, my: y, m_id: monId, mhp: hp, mhpmax: hp, m_lev: effectiveLevel, msleeping: 0, mpeaceful: 0, data: ptr };
 
-    if (ptr.waiting) mon.waiting = true;
+    if (ptr.waiting && !(mmflags & MM_NOWAIT)) mon.waiting = true;
     if (ptr.female) mon.female = true;
     else if (ptr.male) mon.female = false;
     else if (!ptr.neuter) mon.female = rn2(2);
@@ -8018,6 +8103,167 @@ async function make_wiz_strt_level() {
     level_finalize_topology();
 }
 
+function wizLocaLoadMap() {
+    const g = game;
+    for (let y = 0; y < WIZ_LOCA_HEIGHT; y++) {
+        const row = WIZ_LOCA_ROWS[y];
+        for (let x = 0; x < row.length; x++) {
+            const loc = g.level.at(wizX(x), wizY(y));
+            const ch = row[x];
+            loc.flags = 0;
+            loc.roomno = 0;
+            loc.edge = 0;
+            loc.doormask = D_NODOOR;
+            loc.horizontal = ch !== '|';
+            loc.lit = true;
+            loc.waslit = false;
+            if (ch === '+') {
+                loc.typ = DOOR;
+                loc.doormask = D_CLOSED;
+            } else {
+                loc.typ = SPECIAL_TERRAIN[ch] ?? STONE;
+            }
+            loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+        }
+    }
+}
+
+function wizLocaReplaceTerrain(lx, ly, hx, hy, fromTyp, toTyp, chance) {
+    for (let x = lx; x <= hx; x++)
+        for (let y = ly; y <= hy; y++) {
+            const loc = game.level.at(wizX(x), wizY(y));
+            if (loc?.typ === fromTyp && rn2(100) < chance) loc.typ = toTyp;
+        }
+}
+
+function wizLocaCreateSecretDoors() {
+    rn2(4); rn2(29);
+    rn2(4); rn2(25);
+    rn2(3); rn2(4); rn2(5);
+    rn2(3); rn2(4);
+    rn2(4); rn2(6);
+    rn2(4); rn2(7);
+}
+
+function wizLocaRandomDryLocation(rejectStairs = false) {
+    const good = (x, y) => {
+        const loc = game.level?.at(x, y);
+        const occupied = (game.level?.monsters || []).some(mon => mon.mx === x && mon.my === y);
+        const boulder = (game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
+        return loc && SPACE_POS(loc.typ) && !occupied && !boulder && !t_at(x, y)
+            && (!rejectStairs || (loc.typ !== STAIRS && loc.typ !== LADDER));
+    };
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = wizX(rn2(WIZ_LOCA_WIDTH));
+        const y = wizY(rn2(WIZ_LOCA_HEIGHT));
+        if (good(x, y)) return { x, y };
+    }
+    for (let y = 0; y < WIZ_LOCA_HEIGHT; y++)
+        for (let x = 0; x < WIZ_LOCA_WIDTH; x++) {
+            const wx = wizX(x), wy = wizY(y);
+            if (good(wx, wy)) return { x: wx, y: wy };
+        }
+    return { x: wizX(0), y: wizY(0) };
+}
+
+async function wizLocaTrap(ttyp, x, y) {
+    const pos = x == null ? wizLocaRandomDryLocation(true) : { x: wizX(x), y: wizY(y) };
+    const locTyp = game.level?.at(pos.x, pos.y)?.typ;
+    if (locTyp === CLOUD || locTyp === AIR || IS_POOL(locTyp) || locTyp === LAVAPOOL || locTyp === LAVAWALL) return;
+    const trap = await maketrap(pos.x, pos.y, ttyp);
+    const kind = trap ? trap.ttyp : NO_TRAP;
+    const lvl = level_difficulty();
+    if (game.in_mklev && kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+async function wizLocaMonster(spec) {
+    if (spec === 'vampire bat') rn2(2);
+    arcInducedAlign();
+    const ptr = spec === 'vampire bat' ? monsterByRndName('vampire bat') : mkclassAligned(spec);
+    if (!ptr) return null;
+    let pos = null;
+    for (let tryct = 0; tryct < 100; tryct++) {
+        const x = wizX(rn2(WIZ_LOCA_WIDTH));
+        const y = wizY(rn2(WIZ_LOCA_HEIGHT));
+        if (makemon_goodpos(ptr, x, y)) {
+            pos = { x, y };
+            break;
+        }
+    }
+    if (!pos) pos = wizLocaRandomDryLocation();
+    const mon = await makemon(ptr, pos.x, pos.y, 0);
+    if (mon) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+    return mon;
+}
+
+async function make_wiz_loca_level() {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.hardfloor = true;
+
+    l_nhcore_init();
+    wizLocaLoadMap();
+
+    rn2(2);
+
+    wizLocaReplaceTerrain(0, 0, 30, 20, ROOM, CLOUD, 15);
+    wizLocaReplaceTerrain(68, 0, 75, 20, ROOM, MOAT, 25);
+    wizLocaReplaceTerrain(34, 1, 68, 19, MOAT, ROOM, 2);
+    wizLocaCreateSecretDoors();
+
+    for (const [lx, ly, hx, hy, lit] of [
+        [37, 4, 65, 16, false], [39, 6, 63, 14, false],
+        [41, 8, 46, 12, true], [56, 8, 61, 12, true],
+        [48, 8, 54, 8, false], [48, 12, 54, 12, false],
+        [48, 10, 54, 10, false],
+    ])
+        for (let x = lx; x <= hx; x++)
+            for (let y = ly; y <= hy; y++) {
+                const loc = g.level.at(wizX(x), wizY(y));
+                if (loc) loc.lit = lit;
+            }
+
+    mkstairs(wizX(3), wizY(17), true, null);
+    mkstairs(wizX(48), wizY(10), false, null);
+    for (const [mask, x, y] of WIZ_LOCA_DOORS) {
+        const loc = g.level.at(wizX(x), wizY(y));
+        if (loc) {
+            if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            loc.doormask = mask;
+        }
+    }
+
+    for (let i = 0; i < 15; i++) {
+        const pos = wizLocaRandomDryLocation();
+        mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+    }
+    for (const [ttyp, x, y] of WIZ_LOCA_FIXED_TRAPS)
+        await wizLocaTrap(ttyp, x, y);
+    for (const spec of WIZ_LOCA_RANDOM_MONSTERS)
+        await wizLocaMonster(spec);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1, true);
+    recount_level_features();
+    level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
+    g.in_mklev = false;
+}
+
 function priMapKey(x, y) {
     return `${x},${y}`;
 }
@@ -8960,6 +9206,47 @@ async function make_arc_fill_level(rooms) {
             else if (item === 'object') oracleRoomObject(croom);
             else if (item === 'trap') await oracleRoomTrap(croom);
             else await arcFillRoomMonster(croom, item);
+        }
+    }
+
+    await makecorridors();
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRnd(1, 0, COLNO - 1, ROWNO - 1);
+    recount_level_features();
+    level_finalize_topology();
+}
+
+async function wizFillRoomMonster(croom, spec) {
+    if (spec === 'vampire bat') rn2(2);
+    arcInducedAlign();
+    const ptr = spec === 'vampire bat' ? monsterByRndName('vampire bat') : mkclassAligned(spec);
+    const pos = oracleRoomDryLoc(croom);
+    const mon = ptr ? await makemon(ptr, pos.x, pos.y, 0) : null;
+    if (mon) {
+        mon.mpeaceful = 0;
+        set_malign(mon);
+    }
+}
+
+async function make_wiz_fill_level(rooms) {
+    const g = game;
+    if (await getbones()) return;
+    g.in_mklev = true;
+
+    oinit();
+    clear_level_structures();
+    rn2(3);
+    rn2(2);
+
+    for (const contents of rooms) {
+        const croom = arcFillBuildRoom();
+        if (!croom) continue;
+        for (const item of contents) {
+            if (item === 'up') oracleRoomStair(croom, true);
+            else if (item === 'down') oracleRoomStair(croom, false);
+            else if (item === 'object') oracleRoomObject(croom);
+            else if (item === 'trap') await oracleRoomTrap(croom);
+            else await wizFillRoomMonster(croom, item);
         }
     }
 

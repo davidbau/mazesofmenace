@@ -1591,7 +1591,7 @@ function heroWearsNutritionAmulet() {
         if (!item.worn) return false;
         if (!(item.cls === 'amulet' || item.amuletIndex != null || item.glyph === '"')) return false;
         const name = String(item.actualKind || item.kind || '').toLowerCase();
-        return !name.includes('cheap plastic imitation');
+        return !/cheap plastic imitation/.test(name);
     });
 }
 
@@ -2578,7 +2578,10 @@ function queueQuestArrival(targetLevel, fromLevel, targetIsNew, showNow = false)
     if (kind === 'locate') {
         if (!game.quest_status.first_locate) {
             game.quest_status.first_locate = true;
-            return fromAbove && pager('locate_first');
+            if (!fromAbove) return false;
+            if ((game.urole?.name?.m || game._startup_role) === 'Wizard')
+                return showNow ? showQuestPline('locate_first', false) : queueQuestPline('locate_first', false);
+            return pager('locate_first');
         }
         return fromAbove && (showNow ? showQuestPline('locate_next', true) : queueQuestPline('locate_next', true));
     }
@@ -3362,8 +3365,11 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     if (!keepTowerMovement && (!preserveMovement || resetLevelTeleportMovementAfterArrival))
         game.u.umovement = NORMAL_SPEED;
     game._ignore_safe_wait_once = 1;
-    if (questLevelKind(targetLevel) === 'start')
+    if (questLevelKind(targetLevel) === 'start') {
         game._skip_periodic_exercise_once = 1;
+    } else if (game._skip_periodic_exercise_once && questLevelKind(fromLevel) === 'start') {
+        game._skip_periodic_exercise_once = 0;
+    }
     if (game._pending_message_is_level_teleport_materialization)
         game._level_teleport_arrival_process_next_move = 1;
     return true;
@@ -3578,6 +3584,27 @@ const ARMOR_WISH_APPEARANCES = {
     'fumble boots': ['boots', 5, 'riding boots'],
     'levitation boots': ['boots', 6, 'snow boots'],
 };
+function pairArmorDiscoveryName(name) {
+    return /(?:boots|shoes|gloves)$/.test(name) || name.startsWith('gauntlets')
+        ? `pair of ${name}` : name;
+}
+function recordKnownArmorDiscovery(kind, starred = false) {
+    const name = String(kind || '').toLowerCase();
+    const armorAppearance = ARMOR_WISH_APPEARANCES[name];
+    if (!armorAppearance) return;
+    const [group, index, fallback] = armorAppearance;
+    const appearance = group ? game._object_descriptions?.[group]?.[index] || fallback : fallback;
+    const discoveryName = pairArmorDiscoveryName(name);
+    const text = appearance ? `${discoveryName} (${appearance})` : discoveryName;
+    game._discoveries ??= [];
+    const existing = game._discoveries.find(entry => entry.section === 'Armor' && entry.name === discoveryName);
+    if (existing) {
+        existing.text = text;
+        if (!starred) existing.starred = false;
+        return;
+    }
+    game._discoveries.push({ section: 'Armor', name: discoveryName, text, starred });
+}
 const MAGICAL_ARMOR_KINDS = new Set([
     'cloak of displacement', 'cloak of invisibility', 'cloak of magic resistance',
     'cloak of protection', 'helm of brilliance', 'helm of caution',
@@ -3684,6 +3711,7 @@ const OBJECT_WEIGHTS = {
     'green dragon scales': 40,
     'yellow dragon scales': 40,
     'helmet': 30,
+    'gauntlets of power': 30,
     'high boots': 20,
     'iron shoes': 50,
     'large shield': 100,
@@ -5233,7 +5261,7 @@ function genericAttributesPage1() {
     const peaks = game.u?.amax?.a || stats;
     const attrLimits = ATTR_LIMITS_BY_RACE[game._startup_race] || {};
     const strength = attrLimits[0] ? `${strengthString(stats[0])} (current; limit:${attrLimits[0]})`
-        : stats[0] !== peaks[0] ? `${strengthString(stats[0])} (current; peak:${strengthString(peaks[0])})`
+        : stats[0] !== peaks[0] ? `${strengthString(stats[0])} (current; ${stats[0] > peaks[0] ? 'base' : 'peak'}:${strengthString(peaks[0])})`
             : strengthString(stats[0]);
     const dexterity = attrLimits[3] ? `${stats[3]} (current; limit:${attrLimits[3]})`
         : stats[3] !== peaks[3] ? `${stats[3]} (current; base:${peaks[3]})` : stats[3];
@@ -5527,6 +5555,11 @@ function buildGenericAttributesPage2Rows() {
             rows.push([row++, 0, `  You are telepathic because of your ${appearance ? `${appearance} amulet` : simpleEquipmentName(telepathyAmulet)}.`]);
         }
         if (game.u?.warning) rows.push([row++, 0, '  You are warned because of your experience.']);
+        const displacementSource = (game.inventory || []).find(item =>
+            isWornInventoryItem(item)
+            && String(item.kind || item.actualKind || inventoryItemName(item)).toLowerCase() === 'cloak of displacement');
+        if (game._has_displacement || displacementSource)
+            rows.push([row++, 0, `  You are displaced because of your ${simpleEquipmentName(displacementSource) || 'cloak of displacement'}.`]);
         if (game.u?.searching)
             rows.push([row++, 0, `  You have automatic searching ${enlightenmentSourceForSearching(roleName)}.`]);
         if (game.u?.stealth)
@@ -5538,9 +5571,10 @@ function buildGenericAttributesPage2Rows() {
         if (magicNegation > 0) rows.push([row++, 0, '  You are warded.']);
         if (roleName === 'Knight' || game.u?.jumping) rows.push([row++, 0, '  You can jump intrinsically.']);
         if (game.u?.fast || game.u?.veryfast) {
-            const speedSource = game.u?._blueDragonFast || (game.inventory || []).some(item =>
-                isWornInventoryItem(item) && String(item.kind || item.actualKind || '').toLowerCase() === 'speed boots')
-                ? 'because of worn equipment' : enlightenmentSourceForSpeed(roleName);
+            const speedBoots = (game.inventory || []).find(item =>
+                isWornInventoryItem(item) && String(item.kind || item.actualKind || '').toLowerCase() === 'speed boots');
+            const speedSource = speedBoots ? 'because of your speed boots'
+                : game.u?._blueDragonFast ? 'because of worn equipment' : enlightenmentSourceForSpeed(roleName);
             rows.push([row++, 0, `  You are ${game.u?.veryfast ? 'very fast' : 'fast'} ${speedSource}.`]);
         }
         const reflectionSource = wornReflectionSource();
@@ -8190,7 +8224,7 @@ function makeWishedDragonArmorObject(dragonWish = {}) {
         dragonArmor: true,
         dragonArmorKind: mail ? 'mail' : 'scales',
         noArticle: !mail,
-        known: true,
+        known: false,
         wishedfor: true,
     });
 }
@@ -12402,7 +12436,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
             kind: lowerName,
             actualKind: lowerName,
             appearance: armorAppearance ? game._object_descriptions?.[group]?.[index] || fallback : '',
-            known: !armorAppearance,
+            known: false,
             wishedfor: true,
         });
     }
@@ -22618,6 +22652,7 @@ export async function rhack(_cmd) {
             if (kind === 'shield of reflection' && game.u) game.u.reflecting = true;
             if (kind === 'cloak of displacement') {
                 item.known = true;
+                recordKnownArmorDiscovery(kind, false);
                 if (game.u) {
                     game._status_uac_before_more = (game.u.uac ?? 10) + acBonus;
                     game._status_uac_before_more_seen = 0;

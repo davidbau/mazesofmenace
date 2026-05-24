@@ -793,7 +793,9 @@ export function newsym(x, y) {
     const seesInfrared = mon && canSee && !monsterVisible && !game.u?.blind && hasInfravision
         && !infraredHidden && !mon.data?.mindless && !mon.data?.nonliving && !mon.data?.name?.endsWith(' golem');
     const seesTelepathically = sensesTelepathically(rawMon);
-    if ((!visible || warningMon?.mundetected) && warning && !seesInfrared && !seesTelepathically) {
+    const warningOnlyMonster = warningMon && !mon && !game.u?.blind;
+    if ((!visible || warningMon?.mundetected || warningOnlyMonster)
+        && warning && !seesInfrared && !seesTelepathically) {
         if (hallucinatesDisplay()) warning = def_warnsyms[rn2_on_display_rng(def_warnsyms.length - 1) + 1];
         show_glyph_cell(x, y, warning.ch, warning.color, false);
         return;

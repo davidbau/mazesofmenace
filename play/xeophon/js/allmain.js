@@ -2,7 +2,7 @@
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, fumaroles, movebubbles } from './mklev.js';
+import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, fumaroles, movebubbles } from './mklev.js';
 import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
@@ -401,7 +401,9 @@ const PET_OBJECT_WEIGHTS = {
     'dwarvish roundshield': 100,
     'shield of reflection': 50,
     helmet: 30,
+    'gauntlets of power': 30,
     'leather gloves': 10,
+    'speed boots': 20,
     'silver saber': 40,
     dart: 1,
     darts: 1,
@@ -430,7 +432,7 @@ function heroWearsNutritionAmulet() {
         if (!item.worn) return false;
         if (!(item.cls === 'amulet' || item.amuletIndex != null || item.glyph === '"')) return false;
         const name = String(item.actualKind || item.kind || '').toLowerCase();
-        return !name.includes('cheap plastic imitation');
+        return !/cheap plastic imitation/.test(name);
     });
 }
 
@@ -589,9 +591,11 @@ const ARMOR_DISCOVERIES = [
     { name: 'orcish shield', appearance: 'red-eyed shield', race: 'orc', classKnown: true },
     { name: 'dwarvish roundshield', appearance: 'large round shield', race: 'dwarf', classKnown: true },
     { name: 'leather gloves', appearanceKey: ['gloves', 0], classKnown: true },
+    { name: 'gauntlets of power', appearanceKey: ['gloves', 2] },
     { name: 'low boots', appearance: 'walking shoes', classKnown: true },
     { name: 'iron shoes', appearance: 'hard shoes', classKnown: true },
     { name: 'high boots', appearance: 'jackboots', classKnown: true },
+    { name: 'speed boots', appearanceKey: ['boots', 0] },
     { name: 'elven boots', appearanceKey: ['boots', 3], race: 'elf' },
 ];
 const TOOL_DISCOVERY = {
@@ -759,6 +763,23 @@ function recordDiscoveryEntry(section, entry, starred = true) {
     recordDiscovery(section, entry.name, discoveryAppearance(entry), starred);
 }
 
+function pairArmorDiscoveryName(name) {
+    return /(?:boots|shoes|gloves)$/.test(name) || name.startsWith('gauntlets')
+        ? `pair of ${name}` : name;
+}
+
+function recordArmorDiscoveryByKind(kind, starred = false) {
+    const name = String(kind || '').toLowerCase();
+    const armor = ARMOR_DISCOVERIES.find(entry => entry.name.toLowerCase() === name);
+    if (armor) recordDiscovery('Armor', pairArmorDiscoveryName(armor.name), discoveryAppearance(armor), starred);
+}
+
+function recordWeaponDiscoveryForItem(weapon, visible = true) {
+    if (!visible) return;
+    if (weapon?.kind === 'orcish dagger' || weapon?.otyp === ORCISH_DAGGER)
+        recordDiscovery('Weapons', 'crude dagger', null, false);
+}
+
 function recordPotionDiscovery(kind, starred = false) {
     const raw = String(kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
     const potion = raw === 'holy water' ? 'water' : raw;
@@ -795,8 +816,7 @@ function recordStartupInventoryDiscovery(item) {
     const kind = String(item.kind || '').toLowerCase();
     const weapon = WEAPON_DISCOVERIES.find(entry => entry.name === kind);
     if (weapon) recordDiscoveryEntry('Weapons', weapon, false);
-    const armor = ARMOR_DISCOVERIES.find(entry => entry.name.toLowerCase() === kind);
-    if (armor) recordDiscovery('Armor', kind === 'leather gloves' ? 'pair of leather gloves' : armor.name, discoveryAppearance(armor), false);
+    recordArmorDiscoveryByKind(kind, false);
     if (item.cls === 'potion' && kind) recordPotionDiscovery(kind, false);
     if (item.cls === 'scroll' && kind) recordScrollDiscovery(kind, false);
     if (item.cls === 'ring' && kind) recordRingDiscovery(kind, false);
@@ -825,8 +845,7 @@ function recordKnownWeaponClass(roleName) {
 
 function recordKnownArmorClass() {
     for (const entry of ARMOR_DISCOVERIES.filter(entry => entry.classKnown)) {
-        const pair = ['leather gloves', 'low boots', 'iron shoes', 'high boots'].includes(entry.name);
-        recordDiscovery('Armor', pair ? `pair of ${entry.name}` : entry.name, discoveryAppearance(entry), entry.name !== 'leather gloves');
+        recordDiscovery('Armor', pairArmorDiscoveryName(entry.name), discoveryAppearance(entry), entry.name !== 'leather gloves');
     }
 }
 
@@ -2023,6 +2042,15 @@ function heroWearingSpeedBoots(g = game) {
         item.worn && String(item.kind || item.actualKind || item.line || '').includes('speed boots'));
 }
 
+function wornSpeedBootsLine(item, g = game) {
+    const bucKnown = item.bknown === true || (g._startup_role || g.urole?.name?.m) === 'Priest';
+    const buc = item.blessed ? 'blessed' : item.cursed ? 'cursed' : 'uncursed';
+    const spe = `${(item.spe ?? 0) >= 0 ? '+' : ''}${item.spe ?? 0}`;
+    const phrase = `${bucKnown ? `${buc} ` : ''}${spe} pair of speed boots`;
+    const article = /^[aeiou]/i.test(phrase) ? 'an' : 'a';
+    return `${item.letter || '?'} - ${article} ${phrase} (being worn)`;
+}
+
 function isBlueDragonArmorKind(kind) {
     return kind === 'blue dragon scale mail' || kind === 'blue dragon scales';
 }
@@ -2256,6 +2284,14 @@ function processAttributeExercise() {
     if (!testedExercise && (game._fumble_delayed_exerchk || forceFumbleExerciseRoll)) rn2(AVAL);
     game._fumble_delayed_exerchk = 0;
     game.context.next_attrib_check += 800 + rn2(200);
+}
+
+function refreshWarningMonsters() {
+    if (!game.u?.warning || (game.u?._statusSuffix || '').includes('Hallu')) return;
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        newsym(mon.mx, mon.my);
+    }
 }
 
 function processDungeonSounds() {
@@ -3549,6 +3585,7 @@ async function processMonsterTurns() {
                             const stack = (weapon.quan || 1) === 1
                                 ? (weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'a crude dagger' : `a ${weapon.kind || 'weapon'}`)
                                 : `${weapon.quan} ${weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'crude daggers' : `${weapon.kind || 'weapon'}s`}`;
+                            recordWeaponDiscoveryForItem(weapon, monsterInSight && !hiddenBullwhip);
                             addToplineMessage(`${subject} wields ${stack}!`);
                             if (game._message_more && !game._process_time_with_more) return false;
                             continue;
@@ -4475,9 +4512,10 @@ async function processMonsterTurns() {
                                     ? 'a crude dagger' : `a ${readyWeapon.kind || (readyWeapon.otyp === SHORT_SWORD ? 'short sword' : 'weapon')}`)
                                 : `${readyWeapon.quan} ${readyWeapon.kind === 'orcish dagger' || readyWeapon.otyp === ORCISH_DAGGER
                                     ? 'crude daggers' : `${readyWeapon.kind || (readyWeapon.otyp === SHORT_SWORD ? 'short sword' : 'weapon')}s`}`;
+                            recordWeaponDiscoveryForItem(readyWeapon);
                             addToplineMessage(`${monsterDisplayName(mon, true)} wields ${stack}!`);
                             if (game._message_more && !game._process_time_with_more) return false;
-	                        }
+		                        }
 	                        continue;
 	                    }
 	                    if (mon.isshk || mon.ispriest) {
@@ -5561,26 +5599,40 @@ async function processMonsterTurns() {
         if (!liveMons.has(mon)) continue;
         if (mon.chamBase && !mon.mspec_used && !rn2(6)) {
             mon.mspec_used = 3 + rn2(10);
-            if (mon.chamBase === 'doppelganger') {
-                let shifted = null;
-                if (!rn2(7)) {
-                    shifted = null;
-                } else if (rn2(3)) {
-                    if (rn2(13)) {
-                        rnd(10);
-                        rn2(13);
-                    } else {
-                        rn1(13, 0);
-                    }
-                    shifted = { name: 'doppelganger role monster', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 10, difficulty: 12, mmove: 12, maligntyp: 0, neuter: false };
-                }
-	                if (shifted) {
-	                    if (!shifted.neuter && !rn2(10)) mon.female = !mon.female;
-	                    const shiftedLevel = adjustedMonsterLevel(shifted);
-	                    const shiftedHp = monster_hp(shifted, shiftedLevel);
-	                    Object.assign(mon, { data: { ...shifted, hpLevel: shiftedLevel }, m_lev: shiftedLevel, mhp: shiftedHp, mhpmax: shiftedHp });
-	                    newsym(mon.mx, mon.my);
+	            if (mon.chamBase === 'doppelganger') {
+	                let shifted = null;
+	                if (!rn2(7)) {
+	                    shifted = pickNasty(17);
+	                } else if (rn2(3)) {
+	                    if (rn2(13)) {
+	                        rnd(10);
+	                        rn2(13);
+	                    } else {
+	                        rn1(13, 0);
+	                    }
+	                    shifted = { name: 'doppelganger role monster', mlet: '@', glyph: '@', color: CLR_WHITE, mlevel: 10, difficulty: 12, mmove: 12, maligntyp: 0, neuter: false };
+	                } else if (!rn2(3)) {
+	                    rn1(13, 0);
+	                } else {
+	                    for (let tryct = 5; tryct > 0; tryct--) {
+	                        shifted = acceptShapechangeForm(mon, doppelgangerHumanoidForm());
+	                        if (shifted) break;
+	                    }
 	                }
+		                if (shifted) {
+		                    if (!shifted.neuter && !rn2(10)) mon.female = !mon.female;
+		                    const oldHp = mon.mhp || 1;
+		                    const oldMax = mon.mhpmax || oldHp;
+		                    const shiftedLevel = adjustedMonsterLevel(shifted);
+		                    const shiftedHp = monster_hp(shifted, shiftedLevel);
+		                    Object.assign(mon, {
+		                        data: { ...shifted, hpLevel: shiftedLevel },
+		                        m_lev: shiftedLevel,
+		                        mhp: Math.max(1, Math.min(shiftedHp, Math.trunc((oldHp * shiftedHp) / oldMax))),
+		                        mhpmax: shiftedHp,
+		                    });
+		                    newsym(mon.mx, mon.my);
+		                }
 	            } else if (mon.chamBase === 'chameleon') {
 	                const shifted = selectChameleonShiftForm(mon);
 	                if (shifted && shifted.name !== mon.data?.name) {
@@ -6187,11 +6239,21 @@ async function finishMonsterTurnTail() {
                 if (game.u) game.u.uac = (game.u.uac ?? 10) - occupation.acBonus;
                 if (occupation.reflecting && game.u) game.u.reflecting = true;
                 updateGauntletsOfPowerStrength(occupation.kind, true);
-                if (occupation.kind === 'gauntlets of power')
+                if (occupation.kind === 'gauntlets of power') {
+                    if (item) {
+                        item.known = true;
+                        recordArmorDiscoveryByKind(occupation.kind, false);
+                    }
                     game._gauntlets_power_exercise_after_turn_tail = 1;
+                }
             }
-            if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power')
+            if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power') {
+                if (item) {
+                    item.known = true;
+                    recordArmorDiscoveryByKind(occupation.kind, false);
+                }
                 game._gauntlets_power_exercise_after_turn_tail = 1;
+            }
             if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
                 const alreadyFast = !!(game.u?.fast || game.u?.veryfast);
                 if (!game.u?.veryfast)
@@ -6208,10 +6270,8 @@ async function finishMonsterTurnTail() {
                 rn2(19);
                 if (item) {
                     item.known = true;
-                    const buc = item.blessed ? 'blessed' : item.cursed ? 'cursed' : 'uncursed';
-                    const spe = `${(item.spe ?? 0) >= 0 ? '+' : ''}${item.spe ?? 0}`;
-                    const article = /^[aeiou]/.test(buc) ? 'an' : 'a';
-                    item.line = `${item.letter || '?'} - ${article} ${buc} ${spe} pair of speed boots (being worn)`;
+                    recordArmorDiscoveryByKind(occupation.kind, false);
+                    item.line = wornSpeedBootsLine(item);
                 }
             }
             if (occupation.kind === 'fumble boots')
@@ -6525,6 +6585,19 @@ function accessibleCoord(x, y) {
     const loc = game.level?.at(x, y);
     return !!loc && ACCESSIBLE(loc.typ)
         && !(loc.typ === DOOR && (loc.doormask & (D_LOCKED | D_CLOSED)));
+}
+
+function monsterCanOozeOrFogUnderDoor(mon) {
+    const data = mon?.data || {};
+    return !!(data.amorphous || data.name === 'fog cloud' || data.vampshifter);
+}
+
+function apparentTargetAccessible(mon, x, y) {
+    if (accessibleCoord(x, y)) return true;
+    const loc = game.level?.at(x, y);
+    return !!loc && loc.typ === DOOR
+        && (loc.doormask & (D_LOCKED | D_CLOSED))
+        && monsterCanOozeOrFogUnderDoor(mon);
 }
 
 function linedupBlockingTerrain(x, y) {
@@ -7307,18 +7380,18 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
 }
 
 const WIZARD_MONSTER_SPELLS = [
-    { name: 'psiBolt', level: 0, indirect: false },
+    { name: 'psiBolt', level: 0, indirect: false, hostile: true, sight: true },
     { name: 'cureSelf', level: 1, indirect: true },
     { name: 'hasteSelf', level: 2, indirect: true },
-    { name: 'stunYou', level: 3, indirect: false },
+    { name: 'stunYou', level: 3, indirect: false, hostile: true, sight: true },
     { name: 'disappear', level: 4, indirect: true },
-    { name: 'weakenYou', level: 6, indirect: false },
-    { name: 'destroyArmor', level: 8, indirect: false },
-    { name: 'curseItems', level: 10, indirect: false },
-    { name: 'aggravation', level: 13, indirect: true },
-    { name: 'summonMons', level: 15, indirect: true },
-    { name: 'cloneWiz', level: 18, indirect: true },
-    { name: 'deathTouch', level: 20, indirect: false },
+    { name: 'weakenYou', level: 6, indirect: false, hostile: true, sight: true },
+    { name: 'destroyArmor', level: 8, indirect: false, hostile: true, sight: true },
+    { name: 'curseItems', level: 10, indirect: false, hostile: true, sight: true },
+    { name: 'aggravation', level: 13, indirect: true, hostile: true, sight: true },
+    { name: 'summonMons', level: 15, indirect: true, hostile: true, sight: true },
+    { name: 'cloneWiz', level: 18, indirect: true, hostile: true, sight: true },
+    { name: 'deathTouch', level: 20, indirect: false, hostile: true, sight: true },
 ];
 
 function monsterCastsWizardSpells(data) {
@@ -7329,14 +7402,19 @@ function monsterHasMagicAttack(data) {
     return monsterCastsWizardSpells(data) || data.spellcaster || data.magic || data.priest;
 }
 
-function monsterSpellWouldBeUseless(mon, spellName) {
-    switch (spellName) {
+function monsterSpellWouldBeUseless(mon, spell) {
+    if (spell.hostile && mon.mpeaceful) return true;
+    if (spell.sight && !couldSeeCoord(mon.mx, mon.my)) return true;
+
+    switch (spell.name) {
     case 'cloneWiz':
         return !mon.iswiz;
     case 'cureSelf':
         return (mon.mhp || 0) >= (mon.mhpmax || 0);
     case 'disappear':
-        return !!mon.minvis || !!mon.invis_blkd;
+        return !!mon.minvis || !!mon.invis_blkd || (!!mon.mpeaceful && !game.u?.seeInvisible);
+    case 'hasteSelf':
+        return mon.permspeed === 'fast';
     default:
         return false;
     }
@@ -7350,7 +7428,7 @@ function chooseWizardMonsterSpell(mon) {
         spellval = rn2(maxSpellLevel);
     for (let i = WIZARD_MONSTER_SPELLS.length - 1; i >= 0; --i) {
         const spell = WIZARD_MONSTER_SPELLS[i];
-        if (spell.level <= spellval && !monsterSpellWouldBeUseless(mon, spell.name))
+        if (spell.level <= spellval && !monsterSpellWouldBeUseless(mon, spell))
             return spell;
     }
     return WIZARD_MONSTER_SPELLS[0];
@@ -7430,7 +7508,7 @@ async function maybeCastUndirectedMonsterSpell(mon) {
     if ((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 > 49) return false;
     if (wizardCaster) {
         const spell = chooseWizardMonsterSpell(mon);
-        if (!spell.indirect || monsterSpellWouldBeUseless(mon, spell.name)) return false;
+        if (!spell.indirect || monsterSpellWouldBeUseless(mon, spell)) return false;
         mon.mspec_used = (mon.m_lev || 0) < 8 ? 10 - (mon.m_lev || 0) : 2;
         if (rn2(Math.max(1, (mon.m_lev || 1) * 10)) < (mon.mconf ? 100 : 20))
             return false;
@@ -7465,6 +7543,7 @@ async function maybeCastUndirectedMonsterSpell(mon) {
             newsym(mon.mx, mon.my);
         } else if (spell.name === 'hasteSelf') {
             mon.permspeed = 'fast';
+            mon.mspeed = 'fast';
         } else if (spell.name === 'cureSelf') {
             mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + Math.max(1, Math.trunc((mon.m_lev || 1) / 2) + 1));
         }
@@ -7568,7 +7647,7 @@ function consumeSetApparxy(mon) {
         my = uy - displ + rn2(2 * displ + 1);
         if (mx <= 0 || my < 0 || mx >= COLNO || my >= ROWNO) continue;
         if (displ !== 2 && mx === mon.mx && my === mon.my) continue;
-        if ((mx !== ux || my !== uy) && !accessibleCoord(mx, my)) continue;
+        if ((mx !== ux || my !== uy) && !apparentTargetAccessible(mon, mx, my)) continue;
         if (!couldSeeCoord(mx, my)) continue;
         break;
     }
@@ -7915,12 +7994,13 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             item.otyp === ORCISH_DAGGER || item.kind === 'orcish dagger' || item.kind === 'dagger');
         if (!mon.mw && weapon) {
             mon.mw = weapon;
-            const stack = (weapon.quan || 1) === 1
-                ? (weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'a crude dagger' : `a ${weapon.kind || 'weapon'}`)
-                : `${weapon.quan} ${weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'crude daggers' : `${weapon.kind || 'weapon'}s`}`;
-            addToplineMessage(`${monsterDisplayName(mon, true)} wields ${stack}!`);
-            return done();
-        }
+                const stack = (weapon.quan || 1) === 1
+                    ? (weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'a crude dagger' : `a ${weapon.kind || 'weapon'}`)
+                    : `${weapon.quan} ${weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'crude daggers' : `${weapon.kind || 'weapon'}s`}`;
+                recordWeaponDiscoveryForItem(weapon);
+                addToplineMessage(`${monsterDisplayName(mon, true)} wields ${stack}!`);
+                return done();
+            }
         const targetAc = next.target.data?.mac ?? 7;
         const attackerLevel = mon.data?.mlevel ?? 0;
         const hit = targetAc + attackerLevel > rnd(20);
@@ -8993,6 +9073,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                         const stack = (weapon.quan || 1) === 1
                             ? (weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'a crude dagger' : `a ${weapon.kind || 'weapon'}`)
                             : `${weapon.quan} ${weapon.kind === 'orcish dagger' || weapon.otyp === ORCISH_DAGGER ? 'crude daggers' : `${weapon.kind || 'weapon'}s`}`;
+                        recordWeaponDiscoveryForItem(weapon);
                         addToplineMessage(`The ${targetName} wields ${stack}!`);
                     }
                 }
@@ -9848,11 +9929,21 @@ export async function moveloop_core() {
                     if (g.u) g.u.uac = (g.u.uac ?? 10) - occupation.acBonus;
                     if (occupation.reflecting && g.u) g.u.reflecting = true;
                     updateGauntletsOfPowerStrength(occupation.kind, true);
-                    if (occupation.kind === 'gauntlets of power')
+                    if (occupation.kind === 'gauntlets of power') {
+                        if (item) {
+                            item.known = true;
+                            recordArmorDiscoveryByKind(occupation.kind, false);
+                        }
                         g._gauntlets_power_exercise_after_turn_tail = 1;
+                    }
                 }
-                if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power')
+                if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power') {
+                    if (item) {
+                        item.known = true;
+                        recordArmorDiscoveryByKind(occupation.kind, false);
+                    }
                     g._gauntlets_power_exercise_after_turn_tail = 1;
+                }
                 if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
                     const alreadyFast = !!(g.u?.fast || g.u?.veryfast);
                     if (!g.u?.veryfast)
@@ -9869,10 +9960,8 @@ export async function moveloop_core() {
                     rn2(19);
                     if (item) {
                         item.known = true;
-                        const buc = item.blessed ? 'blessed' : item.cursed ? 'cursed' : 'uncursed';
-                        const spe = `${(item.spe ?? 0) >= 0 ? '+' : ''}${item.spe ?? 0}`;
-                        const article = /^[aeiou]/.test(buc) ? 'an' : 'a';
-                        item.line = `${item.letter || '?'} - ${article} ${buc} ${spe} pair of speed boots (being worn)`;
+                        recordArmorDiscoveryByKind(occupation.kind, false);
+                        item.line = wornSpeedBootsLine(item, g);
                     }
                 }
                 if (occupation.kind === 'fumble boots') g._pending_fumble_boots_timeout = 1;
@@ -10101,13 +10190,6 @@ export async function moveloop_core() {
             g._turn_tail_topline_more = 0;
             const swapMoreBeforeTimeDebit = /^You swap places with\b/.test(g._pending_message || '');
             g._resume_time_after_more = completedTurnTailMore || swapMoreBeforeTimeDebit ? 0 : 1;
-            const combatMore = /\b(?:bites|hits|misses|stings|kicks|is killed)\b/.test(g._pending_message || '');
-            if (combatMore && g._pending_time_passed && !g._more_prompt_hunger_done) {
-                if (g.u) g.u.uhunger = (g.u.uhunger ?? 900) - 1;
-                if (g.u && (g.u._statusSuffix || '').includes('Satiated') && (g.u.uhunger ?? 900) <= 1000)
-                    g.u._statusSuffix = (g.u._statusSuffix || '').replace(' Satiated', '');
-                g._more_prompt_hunger_done = 1;
-            }
             if (g._continue_monsters_after_more && !g._pet_inventory_resume
                 && !g._monster_resume_index && !g._monster_resume_same_index
                 && !g._attack_resume_after_more && !g._pickup_resume_after_more) {
@@ -10390,6 +10472,7 @@ export async function moveloop_core() {
             g._display_hallucinated_normal = 0;
 	        }
 	    }
+    refreshWarningMonsters();
     const staleFumbleTargetMessage = /^(?:staircase up|staircase down)$/.test(g._pending_message || '');
     if ((!g._pending_message || staleFumbleTargetMessage)
         && g._last_fumble_turn_message && g._last_fumble_from_run) {
