@@ -6922,7 +6922,7 @@ function normalizePitHoleTrapTerrain(x, y, typ) {
 }
 
 // C ref: trap.c maketrap
-async function maketrap(x, y, typ, opts = {}) {
+export async function maketrap(x, y, typ, opts = {}) {
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST) return null;
     const existing = t_at(x, y);
     if (existing && undestroyable_trap(existing.ttyp)) return null;

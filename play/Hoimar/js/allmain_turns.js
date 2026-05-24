@@ -1,9 +1,21 @@
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { dosounds } from './sounds.js';
-import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from './const.js';
+import {
+    A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS,
+    W_AMUL, W_RINGL, W_RINGR,
+} from './const.js';
+import { OBJECT_CHARGED } from './object_data.js';
 import { makemon } from './mklev.js';
 import { depth } from './hacklib.js';
+
+const RING_CLASS = 4;
+const AMULET_CLASS = 5;
+const RIN_PROTECTION = 178;
+const RIN_SLOW_DIGESTION = 193;
+const MEAT_RING = 270;
+const FAKE_AMULET_OF_YENDOR = 212;
+const AMULET_OF_YENDOR = 213;
 
 export async function maybe_generate_rnd_mon() {
     // C ref: allmain.c:maybe_generate_rnd_mon().
@@ -24,9 +36,82 @@ export function regen_hp() {
 }
 
 export function gethungry() {
-    // C ref: eat.c:3191
+    // C ref: eat.c:gethungry().  Ordinary metabolism decrements nutrition
+    // before the randomized accessory/extra-hunger gate.
     if (game.u?.uinvulnerable || game.iflags?.debug_hunger) return;
-    rn2(20);
+    const u = game.u;
+    if (!u) return;
+    if (!slowDigestionActive()) u.uhunger = (u.uhunger ?? 900) - 1;
+
+    const accessorytime = rn2(20);
+    if (accessorytime % 2) {
+        if (u.uprops?.hp_regeneration) u.uhunger--;
+        return;
+    }
+    if (u.uprops?.voracious_hunger) u.uhunger--;
+    if (u.uprops?.conflict) u.uhunger--;
+
+    const left = wornRing(W_RINGL, 'left');
+    const right = wornRing(W_RINGR, 'right');
+    switch (accessorytime) {
+    case 0:
+        if (slowDigestionActive() && left?.otyp !== RIN_SLOW_DIGESTION
+            && right?.otyp !== RIN_SLOW_DIGESTION) {
+            u.uhunger--;
+        }
+        break;
+    case 4:
+        if (ringConsumesNutrition(left, W_RINGL)) u.uhunger--;
+        break;
+    case 8:
+        {
+            const amulet = wornAmulet();
+            if (amulet && amulet.otyp !== FAKE_AMULET_OF_YENDOR) u.uhunger--;
+        }
+        break;
+    case 12:
+        if (ringConsumesNutrition(right, W_RINGR)) u.uhunger--;
+        break;
+    case 16:
+        if (hasRealAmulet()) u.uhunger--;
+        break;
+    default:
+        break;
+    }
+}
+
+function wornRing(mask, side) {
+    return (game.inventory || []).find((obj) => obj?.oclass === RING_CLASS
+        && (obj.wornSide === side || ((obj.owornmask || 0) & mask)));
+}
+
+function wornAmulet() {
+    return (game.inventory || []).find((obj) => obj?.oclass === AMULET_CLASS
+        && (obj.worn || ((obj.owornmask || 0) & W_AMUL)));
+}
+
+function slowDigestionActive() {
+    return !!game.u?.uprops?.slow_digestion
+        || wornRing(W_RINGL, 'left')?.otyp === RIN_SLOW_DIGESTION
+        || wornRing(W_RINGR, 'right')?.otyp === RIN_SLOW_DIGESTION;
+}
+
+function hasRealAmulet() {
+    return !!game.u?.uhave?.amulet
+        || (game.inventory || []).some((obj) => obj?.otyp === AMULET_OF_YENDOR);
+}
+
+function ringConsumesNutrition(ring, sideMask) {
+    if (!ring || ring.otyp === MEAT_RING) return false;
+    if (ring.spe) return true;
+    if (!OBJECT_CHARGED[ring.otyp]) return true;
+    if (ring.otyp !== RIN_PROTECTION) return false;
+
+    const otherMask = sideMask === W_RINGL ? W_RINGR : W_RINGL;
+    const otherRing = wornRing(otherMask, sideMask === W_RINGL ? 'right' : 'left');
+    const otherProtection = !!game.u?.uprops?.extra_protection
+        || (otherRing?.otyp === RIN_PROTECTION && !otherRing.spe);
+    return !otherProtection;
 }
 
 function currentAttr(index) {

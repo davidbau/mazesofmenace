@@ -7,7 +7,6 @@ import { game } from './gstate.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
-let _displayCtx = null;
 
 export function initRng(seed) {
     game.currentSeed = seed;
@@ -19,27 +18,15 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
-    _displayCtx = isaac64_init(bytes);
     _rngLog = [];
 }
 
 export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
-// Scorer note (GitHub davidbau/teleport-contest#8): this must return the
-// complete per-segment RNG log. The hosted scorer has overflowed while
-// spreading large segment logs into its aggregate list; truncating or hiding
-// entries here would be reward-hacking and breaks parity evidence. Fix real
-// PRNG drift/log growth or the scorer aggregation instead.
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
-    return Number(val % BigInt(x));
-}
-
-function DISPLAY_RND(x) {
-    if (!_displayCtx || x <= 0) return 0;
-    const val = isaac64_next_uint64(_displayCtx);
     return Number(val % BigInt(x));
 }
 
@@ -51,10 +38,6 @@ export function rn2(x) {
     return val;
 }
 
-export function rn2Display(x) {
-    return DISPLAY_RND(x);
-}
-
 // C ref: rnd(x) — random number 1..x
 export function rnd(x) {
     if (x <= 0) return 0;
@@ -63,35 +46,13 @@ export function rnd(x) {
     return val;
 }
 
-export function rndDisplay(x) {
-    return DISPLAY_RND(x) + 1;
-}
-
 // C ref: rn1(x, y) — random number y..y+x-1
 export function rn1(x, y) { return rn2(x) + y; }
-
-// C ref: rnd.c:rnl() -- rn2 adjusted by Luck.
-export function rnl(x) {
-    if (x <= 0) return 0;
-    let adjustment = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
-    if (x <= 15) {
-        adjustment = Math.trunc((Math.abs(adjustment) + 1) / 3) * Math.sign(adjustment);
-    }
-    let val = RND(x);
-    if (adjustment && rn2(37 + Math.abs(adjustment))) {
-        val -= adjustment;
-        if (val < 0) val = 0;
-        else if (val >= x) val = x - 1;
-    }
-    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${val}`);
-    return val;
-}
 
 // C ref: d(n, x) — roll n dice of x sides
 export function d(n, x) {
     let sum = 0;
-    for (let i = 0; i < n; i++) sum += RND(x) + 1;
-    if (_rngLogEnabled) _rngLog.push(`d(${n},${x})=${sum}`);
+    for (let i = 0; i < n; i++) sum += rnd(x);
     return sum;
 }
 

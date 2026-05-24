@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DOOR, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -981,6 +981,7 @@ const BAG_PUT_CLASS_TYPES = [
 const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const APPLY_WEAPON_NAME_RE = /pick-axe|mattock|\baxe\b|bullwhip|lance|polearm|poleaxe|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge|snickersnee/;
 const POLEARM_NAME_RE = /\blance\b|polearm|poleaxe|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge|snickersnee/;
+const PICK_DIG_NAME_RE = /(?:^|\b)(?:pick-axe|pick axe|pickaxe|pick-ax|pickax|dwarvish mattock|mattock)(?:\b|$)/;
 const WISH_LOCK_QUALIFIER_RE = /^(locked|unlocked|broken)\s+/i;
 const WISH_PROOF_QUALIFIER_RE = /^(rustproof|erodeproof|corrodeproof|fixed|fireproof|rotproof|tempered|crackproof)\s+/i;
 const WISH_PRIMARY_EROSION_RE = /^(rusty|rusted|burnt|burned|cracked)\s+/i;
@@ -2925,6 +2926,326 @@ function removeCarriedPunishmentObjects(objects) {
     }
 }
 
+function impactDropGateText(trap) {
+    if (!trap?.tseen || (trap.ttyp !== HOLE && trap.ttyp !== TRAPDOOR))
+        return '';
+    return trap.ttyp === TRAPDOOR ? 'through the trap door' : 'through the hole';
+}
+
+function impactDropLevelKey(level) {
+    return level ? `${level.dnum}:${level.dlevel}` : '';
+}
+
+function queueImpactDroppedObjects(targetLevel, objects) {
+    if (!targetLevel || !objects?.length) return;
+    game._impact_drop_migrations ??= new Map();
+    const key = impactDropLevelKey(targetLevel);
+    const queued = game._impact_drop_migrations.get(key) || [];
+    queued.push(...objects);
+    game._impact_drop_migrations.set(key, queued);
+}
+
+function impactDropRandomLandingSpot() {
+    const candidates = [];
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || !ACCESSIBLE(loc.typ)) continue;
+            candidates.push({ x, y });
+        }
+    return candidates.length ? candidates[rn2(candidates.length)]
+        : { x: game.u?.ux || 0, y: game.u?.uy || 0 };
+}
+
+function deliverQueuedImpactDroppedObjects(targetLevel) {
+    const key = impactDropLevelKey(targetLevel);
+    const queued = game._impact_drop_migrations?.get?.(key) || [];
+    if (!queued.length || !game.level) return;
+    game._impact_drop_migrations.delete(key);
+    game.level.objects ??= [];
+    for (const obj of queued) {
+        const spot = impactDropRandomLandingSpot();
+        obj.ox = spot.x;
+        obj.oy = spot.y;
+        obj.hidden = false;
+        obj.transientProjectile = false;
+        game.level.objects.push(obj);
+        newsym(spot.x, spot.y);
+    }
+}
+
+function impactDropFloorObjects(x, y, trap, options = {}) {
+    const gateText = impactDropGateText(trap);
+    if (!gateText || !game.level?.objects?.length) return { message: '', objects: [] };
+    if (!options.withHero && !options.targetLevel) return { message: '', objects: [] };
+    const pile = (game.level.objects || []).filter(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y);
+    if (!pile.length) return { message: '', objects: [] };
+
+    let objectCount = 0;
+    let fallenCount = 0;
+    const fallen = [];
+    for (const obj of pile) {
+        const quantity = obj.quan || 1;
+        objectCount += quantity;
+        if (obj === game.u?.uball || obj === game.u?.uchain) continue;
+        if (rn2(obj.otyp === BOULDER ? 30 : 3)) continue;
+        fallen.push(obj);
+        fallenCount += quantity;
+    }
+    if (!fallen.length) return { message: '', objects: [] };
+
+    game.level.objects = (game.level.objects || []).filter(obj => !fallen.includes(obj));
+    newsym(x, y);
+
+    let message = '';
+    if (!game.u?.blind && couldsee(x, y)) {
+        const what = fallenCount === 1 ? 'object falls' : 'objects fall';
+        if (fallenCount === objectCount)
+            message = `${fallenCount === 1 ? 'The' : 'All the'} adjacent ${what} ${gateText}.`;
+        else
+            message = `${fallenCount === 1 ? 'One of the' : 'Some of the'} adjacent ${fallenCount === 1 ? 'objects falls' : what} ${gateText}.`;
+    }
+    if (!options.withHero) {
+        queueImpactDroppedObjects(options.targetLevel, fallen);
+        return { message, objects: [] };
+    }
+    return { message, objects: fallen };
+}
+
+function impactDropObjectClass(obj) {
+    return obj?.cls || (obj?.otyp === POTION_CLASS || obj?.glyph === '!' ? 'potion'
+        : obj?.otyp === SCROLL_CLASS || obj?.glyph === '?' ? 'scroll'
+            : obj?.glyph === '+' ? 'spellbook'
+                : obj?.glyph === '*' ? 'gem' : '');
+}
+
+function impactDropBreakKind(obj) {
+    const cls = impactDropObjectClass(obj);
+    const name = String(obj?.actualKind || obj?.kind || pickupObjectName(obj)).toLowerCase();
+    if (cls === 'potion') return 'shatter';
+    if (obj?.otyp === EGG || name === 'egg') return 'splat';
+    if (name.includes('melon')) return 'splat';
+    if (name.includes('cream pie')) return 'mess';
+    if (obj?.otyp === EXPENSIVE_CAMERA || obj?.otyp === MIRROR
+        || name.includes('mirror') || name.includes('looking glass')
+        || name.includes('crystal ball') || name.includes('lenses'))
+        return 'pieces';
+    if (cls !== 'gem' && /\bglass\b|\bcrystal\b/.test(name)) return 'shatter';
+    return '';
+}
+
+function impactDropObjectBreaks(obj) {
+    const kind = impactDropBreakKind(obj);
+    if (!kind) return '';
+    const ordinaryResistChance = 1;
+    const artifactResistChance = 99;
+    if (rn2(100) < (obj?.artifact ? artifactResistChance : ordinaryResistChance)) return '';
+    return kind;
+}
+
+function impactDropLandingIsSoft() {
+    const loc = game.level?.at(game.u?.ux || 0, game.u?.uy || 0);
+    if (!loc) return false;
+    return IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT
+        || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+}
+
+function deliverImpactDroppedObjects(objects) {
+    if (!objects?.length || !game.level || !game.u) return '';
+    const messages = [];
+    const hardLanding = !impactDropLandingIsSoft();
+    for (const obj of objects) {
+        obj.ox = game.u.ux || 0;
+        obj.oy = game.u.uy || 0;
+        obj.hidden = false;
+        obj.transientProjectile = false;
+        const breakKind = hardLanding ? impactDropObjectBreaks(obj) : '';
+        if (breakKind) {
+            if (breakKind === 'splat') messages.push('Splat!');
+            else if (breakKind === 'mess') messages.push('What a mess!');
+            else if (game.u.blind) messages.push('You hear something shatter!');
+            else {
+                const name = pickupObjectName({ ...obj, quan: obj.quan || 1 });
+                const many = (obj.quan || 1) > 1;
+                const subject = many ? `The ${name}` : (/^[aeiou]/i.test(name) ? `An ${name}` : `A ${name}`);
+                const verb = many ? 'shatter' : 'shatters';
+                messages.push(`${subject} ${verb}${breakKind === 'pieces' ? ' into a thousand pieces' : ''}!`);
+            }
+            continue;
+        }
+        game.level.objects.push(obj);
+    }
+    newsym(game.u.ux || 0, game.u.uy || 0);
+    return messages.join('  ');
+}
+
+function heroStairway() {
+    for (let stair = game.stairs; stair; stair = stair.next)
+        if (stair.sx === game.u?.ux && stair.sy === game.u?.uy) return stair;
+    return null;
+}
+
+function placeRockAtHero() {
+    const rock = mksobj(ROCK, false, false);
+    Object.assign(rock, {
+        otyp: ROCK,
+        ox: game.u?.ux || 0,
+        oy: game.u?.uy || 0,
+        quan: 1,
+        cls: 'gem',
+        kind: 'rock',
+        singular: 'rock',
+        plural: 'rocks',
+        glyph: '*',
+    });
+    game.level.objects ??= [];
+    game.level.objects.push(rock);
+    newsym(rock.ox, rock.oy);
+}
+
+function zapDigFallingRockMessage(stair = null) {
+    const messages = [];
+    if (stair)
+        messages.push(`The beam bounces off the ${stair.isladder ? 'ladder' : 'stairs'} and hits the ceiling.`);
+    messages.push('You loosen a rock from the ceiling.');
+    messages.push('It falls on your head!');
+    const helmet = wornEarthHelmet();
+    const damage = rnd(helmet && hardEarthHelmet(helmet) ? 2 : 6);
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        if ((game.u.uhp || 0) <= 0) game._death_cause = 'falling rock';
+    }
+    placeRockAtHero();
+    return trapMessage(...messages);
+}
+
+function dugHoleFallTarget() {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    return clampDungeonLevel({ dnum: current.dnum, dlevel: current.dlevel + 1 });
+}
+
+function downwardDigTrapAt(x, y) {
+    return (game.level?.traps || []).find(trap => trap.tx === x && trap.ty === y) || null;
+}
+
+function removeDownwardDigTrap(trap) {
+    if (!trap || !game.level?.traps) return;
+    game.level.traps = game.level.traps.filter(candidate => candidate !== trap);
+}
+
+function downwardDigTooHardResult() {
+    return { message: 'The floor here is too hard to dig in.', more: false };
+}
+
+function downwardDigBoulderResult(x, y, trap) {
+    const boulder = (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile && obj.ox === x && obj.oy === y && obj.otyp === BOULDER);
+    if (!boulder) return null;
+
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== boulder);
+    if (trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) && rn2(2)) {
+        trap.ttyp = PIT;
+        trap.tseen = true;
+        newsym(x, y);
+        return { message: 'The boulder settles into the pit.', more: false };
+    }
+
+    removeDownwardDigTrap(trap);
+    newsym(x, y);
+    return { message: 'KADOOM!  The boulder falls in!', more: false };
+}
+
+async function digDownwardPitResult(options = {}) {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if (Is_airlevel(current) || Is_waterlevel(current))
+        return { message: options.pick ? 'You swing your pick through thin air.' : '', more: false };
+
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const trap = downwardDigTrapAt(x, y);
+    if (!canDigDownFromLevel(current) && trap) return downwardDigTooHardResult();
+    const boulderResult = downwardDigBoulderResult(x, y, trap);
+    if (boulderResult) return boulderResult;
+
+    const pit = await maketrap(x, y, PIT);
+    if (!pit) return { message: '', more: false };
+    pit.madeby_u = true;
+    pit.tseen = true;
+    if (game.u) {
+        if (!(game.u.levitating || game.u.flying)) {
+            game.u.utrap = rn1(4, 2);
+            game.u.utraptype = 'pit';
+        } else {
+            game.u.utrap = 0;
+            game.u.utraptype = null;
+        }
+    }
+    return { message: 'You dig a pit in the floor.', more: false };
+}
+
+async function digDownwardHoleResult(options = {}) {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if (Is_airlevel(current) || Is_waterlevel(current))
+        return { message: options.pick ? 'You swing your pick through thin air.' : '', more: false };
+
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    const existingTrap = downwardDigTrapAt(x, y);
+    if (!canDigDownFromLevel(current)) {
+        if (existingTrap) return downwardDigTooHardResult();
+        return digDownwardPitResult(options);
+    }
+
+    const boulderResult = downwardDigBoulderResult(x, y, existingTrap);
+    if (boulderResult) return boulderResult;
+
+    const trap = await maketrap(x, y, HOLE);
+    if (!trap) return { message: '', more: false };
+    trap.madeby_u = true;
+    trap.tseen = true;
+    if (game.u) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+    const messages = ['You dig a hole through the floor.'];
+    const target = dugHoleFallTarget();
+    const noFall = game.u?.levitating || game.u?.flying || game.u?.ustuck || !target;
+    if (noFall) {
+        const dropTarget = sitFallTargetLevel(trap) || target;
+        const impact = impactDropFloorObjects(x, y, trap, { targetLevel: dropTarget });
+        if (impact.message) messages.push(impact.message);
+        return { message: trapMessage(...messages), more: false };
+    }
+
+    messages.push('You fall through...');
+    const impact = impactDropFloorObjects(x, y, trap, { targetLevel: target, withHero: true });
+    if (impact.message) messages.push(impact.message);
+    scheduleSitLevelChange(target, {
+        falling: true,
+        fallingDamage: !game.u?.flying,
+        arrivalMessage: '',
+        impactDroppedObjects: impact.objects,
+    });
+    return { message: trapMessage(...messages), more: true };
+}
+
+async function zapDigDownwardResult() {
+    const current = game.u?.uz || { dnum: 0, dlevel: 1 };
+    if (Is_airlevel(current) || Is_waterlevel(current)) return { message: '', more: false };
+    const stair = heroStairway();
+    if (stair) return { message: zapDigFallingRockMessage(stair), more: false };
+    return digDownwardHoleResult();
+}
+
+export async function finishPickDigDownwardPit() {
+    return digDownwardPitResult({ pick: true });
+}
+
+export async function finishPickDigDownwardHole() {
+    return digDownwardHoleResult({ pick: true });
+}
+
 export async function finishLevelTeleport(targetLevel, options = {}) {
     if (!targetLevel) return false;
     const preserveMovement = !!options.preserveMovement
@@ -3076,6 +3397,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
     game._was_in_wizard_tower = false;
     for (const follower of carriedFollowers)
         placeFollowerAfterLevelChange(follower);
+    deliverQueuedImpactDroppedObjects(targetLevel);
     if (game.level?.flags?.fumaroles) fumaroles();
     if (Is_airlevel(game.u?.uz)) movebubbles();
     if (!savedTarget && !game._getbones_prompted) game._utrack = [];
@@ -3093,6 +3415,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         game._hallu_refresh_after_level_teleport_move = 1;
         game._skip_hallu_refresh_after_level_teleport_once = 1;
     }
+    const impactDropArrivalMessage = deliverImpactDroppedObjects(options.impactDroppedObjects || []);
     if (savedTarget && game.level?.flags?.sokoban_rules) {
         const boulders = new Set((game.level.objects || [])
             .filter(obj => obj.otyp === BOULDER)
@@ -3116,7 +3439,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
                 if (game.u.uhp <= 0) game._death_cause = 'falling down a mine shaft';
             }
         }
-        const fallMessage = [options.preMessage, options.arrivalMessage, options.postMessage]
+        const fallMessage = [options.preMessage, options.arrivalMessage, impactDropArrivalMessage, options.postMessage]
             .filter(Boolean).join('  ');
         if (fallMessage) await setMessage(fallMessage, !!options.arrivalMore);
         else {
@@ -6503,7 +6826,96 @@ function wornArmorFireSlot(item) {
     return 1;
 }
 
-function burnWornArmorFromFire() {
+function fireTrapOwnerSubject(ownerPrefix) {
+    const owner = String(ownerPrefix || 'your');
+    return owner === 'your' ? 'Your' : sentenceCase(owner);
+}
+
+function fireTrapArmorName(item) {
+    const kind = armorKind(item);
+    switch (armorSlot(item)) {
+    case 'cloak':
+        if (kind.includes('robe')) return 'robe';
+        if (kind.includes('wrapping')) return 'wrapping';
+        if (kind.includes('smock')) return 'smock';
+        if (kind.includes('apron')) return 'apron';
+        return 'cloak';
+    case 'shirt':
+        return 'shirt';
+    default:
+        return armorMessageName(item);
+    }
+}
+
+export function erodeArmorByFireTrap(item, {
+    messages = null,
+    ownerPrefix = 'your',
+    displayName = '',
+    updateHeroInventory = false,
+    visible = true,
+} = {}) {
+    if (!item) return false;
+    const profile = wishedDamageProfile(item);
+    if (!profile.erosionMatters || profile.primaryWord !== 'burnt') return false;
+
+    const name = displayName || fireTrapArmorName(item);
+    if (item.oerodeproof) {
+        if (!item.rknown && visible && messages && game.flags?.verbose !== false) {
+            messages.push(`Somehow, ${ownerPrefix} ${name} ${fireInventoryNameVerb(name, 'is', 'are')} not affected by the heat.`);
+        }
+        item.rknown = true;
+        if (updateHeroInventory) updateArmorLine(item);
+        return false;
+    }
+    if (item.blessed && !rnl(4)) return false;
+
+    const current = Math.min(3, item.oeroded || 0);
+    if (current >= 3) return false;
+
+    const oldAc = updateHeroInventory && isWornArmorItem(item) ? wornArmorAcValueGreatestErosion(item) : null;
+    item.oeroded = current + 1;
+    if (updateHeroInventory) {
+        if (oldAc != null) updateWornArmorAcAfterChange(item, oldAc);
+        else updateArmorLine(item);
+    }
+
+    if (visible && messages) {
+        const adverb = item.oeroded === 3 ? ' completely' : current ? ' further' : '';
+        messages.push(`${fireTrapOwnerSubject(ownerPrefix)} ${name} ${fireInventoryNameVerb(name, 'smoulders', 'smoulder')}${adverb}!`);
+    }
+    return true;
+}
+
+function towelWetness(item) {
+    return Math.max(0, item?.spe || item?.wetness || 0);
+}
+
+export function dryWetTowelFromFire(items, {
+    messages = null,
+    ownerPrefix = 'your',
+    updateInventory = false,
+    visible = true,
+} = {}) {
+    for (const item of items || []) {
+        if (objectKindKey(item) !== 'towel') continue;
+        const oldWetness = towelWetness(item);
+        if (oldWetness <= 0) continue;
+        const newWetness = rn2(oldWetness + 1);
+        if (item.spe != null || !('wetness' in item)) item.spe = newWetness;
+        if (item.wetness != null) item.wetness = newWetness;
+        if (updateInventory) item.line = normalInventoryLine({ ...item, line: '' });
+        if (newWetness >= oldWetness) continue;
+        if (visible && messages) {
+            messages.push(`${fireTrapOwnerSubject(ownerPrefix)} towel dries${newWetness ? '' : ' out'}.`);
+        }
+        return true;
+    }
+    return false;
+}
+
+function burnWornArmorFromFire({ updateHeroInventory = true } = {}) {
+    const messages = [];
+    dryWetTowelFromFire(game.inventory || [], { messages, updateInventory: updateHeroInventory });
     const wornArmor = (game.inventory || []).filter(item =>
         item.cls === 'armor' && (item.worn || item.line?.includes('being worn')));
     for (;;) {
@@ -6513,25 +6925,20 @@ function burnWornArmorFromFire() {
             item = wornArmor.find(armor => /cloak|robe|wrapping|smock|apron/i.test(inventoryItemName(armor)))
                 || wornArmor.find(armor => wornArmorFireSlot(armor) === slot);
         if (slot === 1) {
-            if (!item) return { bodyHit: true, message: '' };
-            const itemName = inventoryItemName(item);
-            let name = pickupObjectName(item);
-            if (/robe/i.test(itemName)) name = 'robe';
-            else if (/wrapping/i.test(itemName)) name = 'wrapping';
-            else if (/smock/i.test(itemName)) name = 'smock';
-            else if (/apron/i.test(itemName)) name = 'apron';
-            else if (/cloak/i.test(itemName)) name = 'cloak';
-            item.oeroded = (item.oeroded || 0) + 1;
-            item.bknown = true;
-            item.line = normalInventoryLine({ ...item, line: '' });
-            return { bodyHit: true, message: `Your ${name} smoulders${item.oeroded > 1 ? ' further' : ''}!` };
+            if (item) erodeArmorByFireTrap(item, {
+                messages,
+                updateHeroInventory,
+                displayName: fireTrapArmorName(item),
+            });
+            return { bodyHit: true, message: messages.join('  ') };
         }
         if (!item) continue;
-        const name = pickupObjectName(item);
-        item.oeroded = (item.oeroded || 0) + 1;
-        item.bknown = true;
-        item.line = normalInventoryLine({ ...item, line: '' });
-        return { bodyHit: false, message: `Your ${name} smoulders${item.oeroded > 1 ? ' further' : ''}!` };
+        if (!erodeArmorByFireTrap(item, {
+            messages,
+            updateHeroInventory,
+            displayName: fireTrapArmorName(item),
+        })) continue;
+        return { bodyHit: false, message: messages.join('  ') };
     }
 }
 
@@ -6618,10 +7025,70 @@ function igniteFireInventoryItems(messages, events, armor, joinState) {
         maybeIgniteFireItem(item, messages, events, armor, joinState);
 }
 
-function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false) {
+function fireFloorItemMessage(item, destroyed) {
+    if (destroyed > 1) {
+        const name = pickupObjectName({ ...item, line: '', quan: Math.max(2, item.quan || destroyed) });
+        return `${destroyed} ${name} burn.`;
+    }
+    const name = pickupObjectName({ ...item, line: '', quan: 1 });
+    return `${sentenceCase(articleFor(name))} burns.`;
+}
+
+function maybeIgniteFloorFireItem(item, messages, giveFeedback) {
+    if (!fireItemCanCatchLight(item)) return false;
+    const kind = objectKindKey(item);
+    if ((item.otyp === OIL_LAMP || item.otyp === MAGIC_LAMP || kind === 'oil lamp' || kind === 'magic lamp')
+        && item.cursed && !rn2(2))
+        return false;
+    const name = pickupObjectName({ ...item, line: '' });
+    beginWishedBurn(item);
+    if (giveFeedback) {
+        const many = (item.quan || 1) > 1;
+        const subject = many ? `The ${name}` : sentenceCase(articleFor(name));
+        messages.push(`${subject} ${fireInventoryNameVerb(name, 'catches', 'catch')} light!`);
+    }
+    return true;
+}
+
+export function burnFloorObjectsByFire(x, y, { giveFeedback = false } = {}) {
+    if (!game.level) return { count: 0, messages: [] };
+    const messages = [];
+    let count = 0;
+    let changed = false;
+    const atSquare = obj => obj && !obj.transientProjectile && !obj.buried && obj.ox === x && obj.oy === y;
+
+    for (const obj of [...(game.level.objects || [])]) {
+        if (!atSquare(obj)) continue;
+        const cls = fireDestroyableInventoryClass(obj);
+        if (!['scroll', 'spellbook', 'slime'].includes(cls) || fireInventoryItemImmune(obj, cls))
+            continue;
+        const quan = Math.max(1, obj.quan || 1);
+        let destroyed = 0;
+        for (let i = 0; i < quan; i++)
+            if (!rn2(3)) destroyed++;
+        if (!destroyed) continue;
+        if (giveFeedback) messages.push(fireFloorItemMessage(obj, destroyed));
+        count += destroyed;
+        changed = true;
+        const remaining = quan - destroyed;
+        if (remaining > 0) obj.quan = remaining;
+        else game.level.objects = (game.level.objects || []).filter(item => item !== obj);
+    }
+
+    for (const obj of [...(game.level.objects || [])]) {
+        if (atSquare(obj) && maybeIgniteFloorFireItem(obj, messages, giveFeedback))
+            changed = true;
+    }
+    if (changed) newsym(x, y);
+    return { count, messages };
+}
+
+function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteItems = false, {
+    updateArmorInventory = true,
+} = {}) {
     const messages = [];
     const events = [];
-    const armor = burnWornArmorFromFire();
+    const armor = burnWornArmorFromFire({ updateHeroInventory: updateArmorInventory });
     if (armor.message) messages.push(armor.message);
     const joinState = { joinedArmorMessage: false };
     let destroyItems = false;
@@ -8135,14 +8602,71 @@ function statueTrapAt(x, y) {
         trap.tx === x && trap.ty === y && trap.ttyp === STATUE_TRAP) || null;
 }
 
+function dropStatueContentsToFloor(statue, x, y) {
+    const contents = statue?.contents || [];
+    if (!contents.length || !game.level) return;
+    while (contents.length) {
+        const item = contents.shift();
+        item.contained = false;
+        item.ox = x;
+        item.oy = y;
+        item.hidden = false;
+        item.transientProjectile = false;
+        delete item.line;
+        Object.assign(item, object_display(item));
+        game.level.objects.push(item);
+    }
+    statue.contents = [];
+}
+
+export function breakStatueObject(statue, x = statue?.ox || 0, y = statue?.oy || 0) {
+    if (!statue || !game.level) return false;
+    const objects = game.level.objects || [];
+    if (!objects.includes(statue)) return false;
+    dropStatueContentsToFloor(statue, x, y);
+    Object.assign(statue, {
+        otyp: ROCK,
+        ox: x,
+        oy: y,
+        quan: rn1(60, 7),
+        cls: 'gem',
+        kind: 'rock',
+        actualKind: 'rock',
+        singular: 'rock',
+        plural: 'rocks',
+        gemDescription: 'rock',
+        spe: 0,
+        ...object_display({ otyp: ROCK }),
+    });
+    delete statue.contents;
+    delete statue.corpsenm;
+    delete statue.historic;
+    delete statue._death_remains;
+    game.level.objects = objects.filter(obj => obj !== statue);
+    game.level.objects.push(statue);
+    newsym(x, y);
+    return true;
+}
+
 function isPolearmItem(item) {
     if (!item) return false;
     const name = inventoryItemName(item).toLowerCase();
     return item.cls === 'weapon' && POLEARM_NAME_RE.test(name);
 }
 
+function isPickDigItem(item) {
+    if (!item) return false;
+    if (item.otyp === PICK_AXE || item.otyp === DWARVISH_MATTOCK) return true;
+    return PICK_DIG_NAME_RE.test(inventoryItemName(item).toLowerCase());
+}
+
 function itemIsWielded(item) {
     return !!(item && (item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')));
+}
+
+function isTwoHandedWieldItem(item) {
+    const name = inventoryItemName(item).toLowerCase();
+    return isPolearmItem(item) || /quarterstaff|two-handed sword|battle-axe|dwarvish mattock|mattock/.test(name);
 }
 
 function wieldItemForApply(item) {
@@ -8159,7 +8683,7 @@ function wieldItemForApply(item) {
     }
     item.wielded = true;
     item.alternate = false;
-    const hand = isPolearmItem(item) || item.kind === 'quarterstaff' ? 'hands' : `${game.u?.uhandedness || 'right'} hand`;
+    const hand = isTwoHandedWieldItem(item) ? 'hands' : `${game.u?.uhandedness || 'right'} hand`;
     item.line = `${item.letter || '?'} - ${inventoryItemName(item)} (weapon in ${hand})`;
     game._wielded_mjollnir = item.artifact === 'Mjollnir' || item.kind === 'mjollnir' || /Mjollnir/.test(inventoryItemName(item));
     return item.line;
@@ -8184,7 +8708,7 @@ function polearmTargetDescription(x, y) {
     return loc.typ && loc.typ < DOOR ? 'wall' : 'unexplored area';
 }
 
-function statueTrapStrikeTargetAlongLine(dir) {
+function statueStrikeTargetAlongLine(dir) {
     for (let step = 1; step <= BOLT_LIM; step++) {
         const x = (game.u?.ux || 0) + dir.dx * step;
         const y = (game.u?.uy || 0) + dir.dy * step;
@@ -8197,10 +8721,33 @@ function statueTrapStrikeTargetAlongLine(dir) {
             break;
         const statue = floorStatueAt(x, y);
         const trap = statue ? statueTrapAt(x, y) : null;
-        if (trap) return { trap, x, y };
+        if (statue) return { statue, trap, x, y };
         if (!ZAP_POS(loc.typ) || (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)))) break;
     }
     return null;
+}
+
+function statueStrikeBreakResult(x, y) {
+    if (!game.u?.blind && couldsee(x, y))
+        return { message: 'The statue shatters.', learned: true };
+    if (!heroIsDeaf()) return { message: 'You hear a crumbling sound.', learned: true };
+    return { message: '', learned: false };
+}
+
+async function strikeStatueAlongLine(dir) {
+    const target = statueStrikeTargetAlongLine(dir);
+    if (!target) return { hit: false, message: '', learned: false };
+    if (target.trap) {
+        const message = await activateStatueTrap(target.trap, target.x, target.y, { shatter: true }) || '';
+        if (message) return { hit: true, message, learned: true };
+        const statue = floorStatueAt(target.x, target.y);
+        if (statue && breakStatueObject(statue, target.x, target.y))
+            return { hit: true, ...statueStrikeBreakResult(target.x, target.y) };
+        return { hit: true, message: '', learned: false };
+    }
+    if (!breakStatueObject(target.statue, target.x, target.y))
+        return { hit: false, message: '', learned: false };
+    return { hit: true, ...statueStrikeBreakResult(target.x, target.y) };
 }
 
 export async function activateStatueTrap(trap, x, y, { prefix = '', shatter = false, search = false, normal = false } = {}) {
@@ -11970,6 +12517,29 @@ function applyWishedContainerState(item, qualifiers) {
     }
 }
 
+const FIRE_FLAMMABLE_ARMOR_KINDS = new Set([
+    'elven leather helm', 'fedora', 'cornuthaum', 'dunce cap',
+    'studded leather armor', 'leather armor', 'leather jacket',
+    'hawaiian shirt', 't-shirt',
+    'mummy wrapping', 'elven cloak', 'orcish cloak', 'dwarvish cloak', 'oilskin cloak',
+    'robe', 'alchemy smock', 'leather cloak', 'cloak of protection',
+    'cloak of invisibility', 'cloak of magic resistance', 'cloak of displacement',
+    'small shield', 'shield of drain resistance', 'shield of shock resistance', 'elven shield',
+    'leather gloves', 'gauntlets of fumbling', 'gauntlets of dexterity',
+    'low boots', 'high boots', 'speed boots', 'water walking boots', 'jumping boots',
+    'elven boots', 'fumble boots', 'levitation boots',
+]);
+
+const FIRE_NONFLAMMABLE_ARMOR_KINDS = new Set([
+    'orcish helm', 'dwarvish iron helm', 'dented pot', 'helm of brilliance',
+    'helmet', 'helm of caution', 'helm of opposite alignment', 'helm of telepathy',
+    'plate mail', 'crystal plate mail', 'bronze plate mail', 'splint mail',
+    'banded mail', 'dwarvish mithril-coat', 'elven mithril-coat', 'chain mail',
+    'orcish chain mail', 'scale mail', 'ring mail', 'orcish ring mail',
+    'uruk-hai shield', 'orcish shield', 'large shield', 'dwarvish roundshield',
+    'shield of reflection', 'gauntlets of power', 'iron shoes', 'kicking boots',
+]);
+
 function wishedDamageProfile(item) {
     const kind = objectKindKey(item);
     const cls = itemClassKey(item);
@@ -11983,11 +12553,13 @@ function wishedDamageProfile(item) {
     const excludedMetal = /\b(?:silver|gold|mithril|platinum|gem|stone|crystal ball|shield of reflection)\b/.test(kind);
     const glassArmor = armor && /\b(?:crystal plate mail|helm of brilliance|crystal helmet)\b/.test(kind);
     const dragonHide = armor && /\bdragon (?:scales|scale mail|hide)\b/.test(kind);
+    const flammableArmor = armor && FIRE_FLAMMABLE_ARMOR_KINDS.has(kind);
+    const nonflammableArmor = armor && FIRE_NONFLAMMABLE_ARMOR_KINDS.has(kind);
     const copperLike = /\b(?:copper|bronze)\b/.test(kind);
-    const ironLike = !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
+    const ironLike = !flammableArmor && !excludedMetal && !glassArmor && !copperLike && !dragonHide && (ballOrChain || kind.includes('iron')
         || /\b(?:plate mail|splint mail|banded mail|ring mail|chain mail|scale mail|large shield|roundshield|gauntlets|helm|helmet|dented pot|shoes|sword|saber|dagger|knife|axe|mace|hammer|flail|morning star|pick-axe|mattock|spear|trident|lance|polearm|dart)\b/.test(kind));
-    const flammableLike = !glassArmor && !ironLike && !copperLike && !excludedMetal
-        && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind);
+    const flammableLike = flammableArmor || (!nonflammableArmor && !glassArmor && !ironLike && !copperLike && !excludedMetal
+        && /\b(?:leather|cloth|cloak|robe|shirt|boots|gloves|wooden|small shield|bow|crossbow|arrow|club|quarterstaff|aklys|bullwhip|sling)\b/.test(kind));
     const rustprone = ironLike;
     const crackable = glassArmor;
     const corrodeable = ironLike || copperLike;
@@ -12038,7 +12610,10 @@ function applyWishedQualifiers(item, qualifiers) {
     }
     if (qualifiers.zombifying && (item.otyp === CORPSE || /\bcorpse$/.test(objectKindKey(item))))
         item.zombifying = true;
-    if (qualifiers.wetness && objectKindKey(item) === 'towel') item.wetness = qualifiers.wetness;
+    if (qualifiers.wetness && objectKindKey(item) === 'towel') {
+        item.wetness = qualifiers.wetness;
+        item.spe = qualifiers.wetness;
+    }
     applyWishedContainerState(item, qualifiers);
 }
 
@@ -14829,11 +15404,15 @@ function sitFallThroughTrapResult(trap, prefix) {
     }
     if (!sokobanFall && (form.huge || form.msize === 'huge' || form.size === 'huge')) {
         messages.push("You don't fit through.");
+        const impact = impactDropFloorObjects(game.u?.ux || 0, game.u?.uy || 0, trap, { targetLevel: target });
+        if (impact.message) messages.push(impact.message);
         return { message: trapMessage(...messages), more: false };
     }
     if (!sokobanFall && (game.u?.levitating || game.u?.flying || game.u?.ustuck
         || form.clinger || (form.ceilingHider && game.u?.uundetected))) {
         messages.push("You don't fall in.");
+        const impact = impactDropFloorObjects(game.u?.ux || 0, game.u?.uy || 0, trap, { targetLevel: target });
+        if (impact.message) messages.push(impact.message);
         return { message: trapMessage(...messages), more: false };
     }
     const dist = Math.max(1, depth_of_level(target) - depth_of_level(current));
@@ -14841,10 +15420,13 @@ function sitFallThroughTrapResult(trap, prefix) {
         const depth = dist > 3 ? 'very deep ' : dist > 2 ? 'deep ' : '';
         messages.push(`You fall down a ${depth}shaft!`);
     }
+    const impact = impactDropFloorObjects(game.u?.ux || 0, game.u?.uy || 0, trap, { targetLevel: target, withHero: true });
+    if (impact.message) messages.push(impact.message);
     scheduleSitLevelChange(target, {
         falling: true,
         fallingDamage: !game.u?.flying,
         arrivalMessage: '',
+        impactDroppedObjects: impact.objects,
     });
     return { message: trapMessage(...messages), more: true };
 }
@@ -15446,6 +16028,9 @@ function heroFireTrapMessage(trap, prefix = '') {
     }
     const inventoryFire = fireDamageInventory(origDamage);
     messages.push(...inventoryFire.messages);
+    const floorFire = burnFloorObjectsByFire(game.u?.ux || 0, game.u?.uy || 0, { giveFeedback: !game.u?.blind });
+    messages.push(...floorFire.messages);
+    if (floorFire.count && game.u?.blind) messages.push('You smell paper burning.');
     damage += inventoryFire.damage;
     if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
     if ((game.u?.uhp || 0) <= 0) game._death_cause = inventoryFire.deathCause || 'killed by a tower of flame';
@@ -21773,6 +22358,11 @@ export async function rhack(_cmd) {
                 game._process_command_time_now = 1;
                 game._process_time_with_more = 1;
             }
+            if (game._pick_dig_occupation) {
+                game.context.move = 1;
+                game._process_command_time_now = 1;
+                game._process_time_with_more = 1;
+            }
             if (game._tin_opening_occupation) {
                 game.context.move = 1;
                 game._process_command_time_now = 1;
@@ -23515,17 +24105,20 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'zapDirection') {
         let dir = movementDirection(ch);
+        let verticalDir = !dir && ch === '<' ? { dx: 0, dy: 0, dz: -1 }
+            : !dir && ch === '>' ? { dx: 0, dy: 0, dz: 1 } : null;
         let selfZap = ch === '.';
         const item = game._zap_item;
         game._zap_item = null;
         const confusedDirection = (game.u?._statusSuffix || '').includes('Conf') || (game.u?._confusionTimeout || 0) > 0;
         const stunnedDirection = (game.u?._statusSuffix || '').includes('Stun') || game.u?.stunned;
-        if ((dir || selfZap) && (stunnedDirection || (confusedDirection && !rn2(5)))) {
+        if ((dir || verticalDir || selfZap) && (stunnedDirection || (confusedDirection && !rn2(5)))) {
             const confusedDirs = [
                 { dx: -1, dy: 0 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 },
                 { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: 1, dy: 1 }, { dx: -1, dy: 1 },
             ];
             dir = confusedDirs[rn2(confusedDirs.length)];
+            verticalDir = null;
             selfZap = false;
         }
         const deathWand = item?.wand === 'death'
@@ -23579,6 +24172,19 @@ export async function rhack(_cmd) {
             item.kind = 'fire';
             item.line = `${item.letter} - a wand of fire${wandChargeSuffix(item)}`;
             await setMessage(resistsFire ? 'You feel rather warm.' : "You've set yourself afire!", !!followups.length);
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (verticalDir && (item?.wand === 'digging' || item?.kind === 'digging' || item?.wandIndex === 18)) {
+            item.known = true;
+            item.kind = 'digging';
+            item.line = `${item.letter} - a wand of digging${wandChargeSuffix(item)}`;
+            const result = verticalDir.dz < 0
+                ? { message: zapDigFallingRockMessage(), more: false }
+                : await zapDigDownwardResult();
+            await setMessage(result.message, !!result.more);
+            game._keep_pending_message = 0;
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -23833,7 +24439,7 @@ export async function rhack(_cmd) {
                                     dy = -dy;
                                 } else {
                                     const origDamage = d(6, 6);
-                                    const fireInventory = fireDamageInventory(origDamage, false, true);
+                                    const fireInventory = fireDamageInventory(origDamage, false, true, { updateArmorInventory: false });
                                     if (game.u?.fireResistance) messages.push("You don't feel hot!");
                                     const baseDamage = game.u?.fireResistance ? 0 : origDamage;
                                     const damage = fireInventory.damage + baseDamage;
@@ -23939,11 +24545,9 @@ export async function rhack(_cmd) {
                 || item?.actualKind === 'wand of striking'
                 || item?.wandIndex === 7;
             if (strikingWand) {
-                let message = '';
-                const target = statueTrapStrikeTargetAlongLine(dir);
-                if (target)
-                    message = await activateStatueTrap(target.trap, target.x, target.y, { shatter: true }) || '';
-                if (message) {
+                const result = await strikeStatueAlongLine(dir);
+                const message = result.message || '';
+                if (result.learned) {
                     item.known = true;
                     item.kind = 'striking';
                     item.wandIndex = 7;
@@ -24191,11 +24795,8 @@ export async function rhack(_cmd) {
             await setMessage('You feel better.');
         } else if (spell?.name === 'force bolt') {
             const dir = movementDirection(ch);
-            const target = dir ? statueTrapStrikeTargetAlongLine(dir) : null;
-            const message = target
-                ? await activateStatueTrap(target.trap, target.x, target.y, { shatter: true })
-                : '';
-            await setMessage(message || `You cast ${spell?.name || 'a spell'}.`);
+            const result = dir ? await strikeStatueAlongLine(dir) : null;
+            await setMessage(result?.hit ? (result.message || '') : `You cast ${spell?.name || 'a spell'}.`);
         } else {
             await setMessage(`You cast ${spell?.name || 'a spell'}.`);
         }
@@ -26681,6 +27282,19 @@ export async function rhack(_cmd) {
             await beginTinOpenerUse(item);
             return;
         }
+        if (isPickDigItem(item)) {
+            if (!itemIsWielded(item)) {
+                const line = wieldItemForApply(item);
+                game._queued_pick_dig_apply_letter = item.letter;
+                await setMessage(`${line}.`);
+                game.context.move = 1;
+                return;
+            }
+            game._apply_pick_dig_letter = item.letter;
+            await setMessage('In what direction do you want to dig?');
+            game._command_mode = 'applyPickDigDirection';
+            return;
+        }
         if (isPolearmItem(item)) {
             if (!itemIsWielded(item)) {
                 const line = wieldItemForApply(item);
@@ -26850,6 +27464,67 @@ export async function rhack(_cmd) {
             return;
         }
         game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'applyPickDigDirection') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_pick_dig_letter);
+        game._apply_pick_dig_letter = null;
+        game._command_mode = null;
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            await setMessage('Never mind.');
+            return;
+        }
+        const dir = figurineApplyDirection(ch);
+        if (!dir) return;
+        if (!item || !isPickDigItem(item) || !itemIsWielded(item)) return;
+        if (dir.dz < 0) {
+            await setMessage(game.u?.levitating ? "You don't have enough leverage." : "You can't reach the ceiling.");
+            game.context.move = 1;
+            return;
+        }
+        if (dir.dz > 0) {
+            game._pick_dig_occupation = {
+                itemLetter: item.letter,
+                x: game.u?.ux || 0,
+                y: game.u?.uy || 0,
+                down: true,
+                effort: 0,
+            };
+            await setMessage('You start digging downward.');
+            game.context.move = 1;
+            game._process_time_with_more = 1;
+            return;
+        }
+        if (!dir.dx && !dir.dy) {
+            const damage = Math.max(1, rnd(2) + (item?.spe || 0));
+            if (game.u) {
+                game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+                if ((game.u.uhp || 0) <= 0) game._death_cause = `hit ${game.flags?.female ? 'herself' : 'himself'} with a pick-axe`;
+            }
+            await setMessage(`You hit yourself with ${pickupObjectName(item)}.`);
+            game.context.move = 1;
+            return;
+        }
+
+        const x = (game.u?.ux || 0) + dir.dx;
+        const y = (game.u?.uy || 0) + dir.dy;
+        if (floorStatueAt(x, y)) {
+            game._pick_dig_occupation = {
+                itemLetter: item.letter,
+                x,
+                y,
+                effort: 0,
+                didMessage: false,
+            };
+            await setMessage('You start chipping the statue.');
+            game.context.move = 1;
+            game._process_time_with_more = 1;
+            return;
+        }
+
+        await setMessage(`You swing your ${pickupObjectName(item)} through thin air.`);
+        game.context.move = 1;
         return;
     }
 

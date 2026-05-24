@@ -6,6 +6,10 @@ import { rnd, rn2, rn1, rne } from './rng.js';
 import { findRole } from './roles.js';
 import { mkobj, mksobj } from './mklev.js';
 import { OBJECT_CHARGED } from './object_data.js';
+import {
+    P_ATTACK_SPELL, P_HEALING_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL,
+    P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
+} from './const.js';
 
 const ROLE_INIT = new Map([
     ['Healer', {
@@ -13,6 +17,12 @@ const ROLE_INIT = new Map([
         attrmax: [15, 20, 20, 15, 25, 5],
         attrdist: [15, 10, 20, 15, 25, 15],
         hp: 13, pwBase: 1, pwRnd: 4, ac: 8, gold: 1218,
+    }],
+    ['Priest', {
+        attrbase: [7, 7, 10, 7, 7, 7],
+        attrmax: [15, 10, 30, 15, 20, 10],
+        attrdist: [15, 10, 30, 15, 20, 10],
+        hp: 14, pwBase: 5, pwRnd: 3, ac: 0, gold: 0,
     }],
     ['Rogue', {
         attrbase: [7, 7, 7, 10, 7, 6],
@@ -26,11 +36,23 @@ const ROLE_INIT = new Map([
         attrdist: [30, 10, 10, 20, 20, 10],
         hp: 15, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
     }],
+    ['Samurai', {
+        attrbase: [10, 8, 7, 10, 17, 6],
+        attrmax: [30, 10, 8, 30, 14, 8],
+        attrdist: [30, 10, 8, 30, 14, 8],
+        hp: 15, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
+    }],
     ['Tourist', {
         attrbase: [7, 10, 6, 7, 7, 10],
         attrmax: [15, 10, 10, 15, 30, 20],
         attrdist: [15, 10, 10, 15, 30, 20],
         hp: 10, pwBase: 2, pwRnd: 0, ac: 0, gold: 757,
+    }],
+    ['Valkyrie', {
+        attrbase: [10, 7, 7, 7, 10, 7],
+        attrmax: [30, 6, 7, 20, 30, 7],
+        attrdist: [30, 6, 7, 20, 30, 7],
+        hp: 16, pwBase: 2, pwRnd: 0, ac: 0, gold: 0,
     }],
     ['Wizard', {
         attrbase: [7, 10, 7, 7, 7, 7],
@@ -48,6 +70,12 @@ const LEVEL_ADV = new Map([
         hpadv: { infix: 10, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
         enadv: { infix: 4, inrnd: 3, lofix: 0, lornd: 2, hifix: 0, hirnd: 3 },
         energyMod: 'wizard',
+    }],
+    ['Valkyrie', {
+        xlev: 10,
+        hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 1 },
+        energyMod: 'valkyrie',
     }],
 ]);
 
@@ -80,23 +108,42 @@ const ELVEN_ARROW = 19;
 const ORCISH_ARROW = 20;
 const YA = 22;
 const DART = 24;
+const SHURIKEN = 25;
+const SPEAR = 27;
 const DAGGER = 34;
 const ELVEN_DAGGER = 35;
 const ORCISH_DAGGER = 36;
+const KNIFE = 40;
 const ELVEN_SPEAR = 28;
 const ORCISH_SPEAR = 29;
 const DWARVISH_SPEAR = 30;
 const JAVELIN = 32;
+const BATTLE_AXE = 45;
 const SHORT_SWORD = 46;
+const ELVEN_SHORT_SWORD = 47;
+const ORCISH_SHORT_SWORD = 48;
+const DWARVISH_SHORT_SWORD = 49;
+const SCIMITAR = 50;
+const BROADSWORD = 52;
+const ELVEN_BROADSWORD = 53;
+const KATANA = 56;
+const TSURUGI = 57;
+const RUNESWORD = 58;
+const DWARVISH_MATTOCK = 71;
+const MACE = 73;
 const QUARTERSTAFF = 79;
 const BOW = 83;
 const ELVEN_BOW = 84;
 const ORCISH_BOW = 85;
 const YUMI = 86;
+const PLATE_MAIL = 121;
+const SPLINT_MAIL = 124;
 const HAWAIIAN_SHIRT = 136;
 const LEATHER_ARMOR = 134;
+const ROBE = 143;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_DISPLACEMENT = 149;
+const SMALL_SHIELD = 150;
 const SCALPEL = 39;
 const LEATHER_GLOVES = 159;
 const LARGE_BOX = 214;
@@ -110,10 +157,14 @@ const LEASH = 236;
 const STETHOSCOPE = 237;
 const TIN_OPENER = 239;
 const SACK = 217;
+const OIL_LAMP = 227;
 const MAGIC_MARKER = 242;
 const SPE_FORCE_BOLT = 383;
 const APPLE = 277;
+const SPRIG_OF_WOLFSBANE = 283;
+const CLOVE_OF_GARLIC = 284;
 const CRAM_RATION = 292;
+const FOOD_RATION = 293;
 const RIN_LEVITATION = 183;
 const RIN_HUNGER = 184;
 const RIN_AGGRAVATE_MONSTER = 185;
@@ -126,6 +177,7 @@ const POT_FULL_HEALING = 315;
 const POT_POLYMORPH = 316;
 const POT_SICKNESS = 318;
 const POT_ACID = 320;
+const POT_WATER = 322;
 const STATUE = 476;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_MAGIC_MAPPING = 337;
@@ -153,6 +205,28 @@ const SPELLBOOK_LEVEL = new Map([
     [402, 7], [403, 1], [404, 1], [405, 3], [406, 2], [407, 0],
 ]);
 
+const SPELLBOOK_SKILL = new Map([
+    [366, P_MATTER_SPELL], [367, P_ATTACK_SPELL], [368, P_ATTACK_SPELL],
+    [369, P_ATTACK_SPELL], [370, P_ENCHANTMENT_SPELL], [371, P_ATTACK_SPELL],
+    [372, P_DIVINATION_SPELL], [373, P_DIVINATION_SPELL], [374, P_HEALING_SPELL],
+    [375, P_MATTER_SPELL], [376, P_ATTACK_SPELL], [377, P_ENCHANTMENT_SPELL],
+    [378, P_HEALING_SPELL], [379, P_ATTACK_SPELL], [380, P_ENCHANTMENT_SPELL],
+    [381, P_MATTER_SPELL], [382, P_CLERIC_SPELL], [383, P_DIVINATION_SPELL],
+    [384, P_ENCHANTMENT_SPELL], [385, P_DIVINATION_SPELL], [386, P_HEALING_SPELL],
+    [387, P_ENCHANTMENT_SPELL], [388, P_ESCAPE_SPELL], [389, P_DIVINATION_SPELL],
+    [390, P_ESCAPE_SPELL], [391, P_HEALING_SPELL], [392, P_HEALING_SPELL],
+    [393, P_ESCAPE_SPELL], [394, P_DIVINATION_SPELL], [395, P_CLERIC_SPELL],
+    [396, P_DIVINATION_SPELL], [397, P_DIVINATION_SPELL], [398, P_CLERIC_SPELL],
+    [399, P_MATTER_SPELL], [400, P_ESCAPE_SPELL], [401, P_CLERIC_SPELL],
+    [402, P_MATTER_SPELL], [403, P_CLERIC_SPELL], [404, P_ESCAPE_SPELL],
+    [405, P_HEALING_SPELL], [406, P_ATTACK_SPELL],
+]);
+
+const ROLE_ALLOWED_STARTING_SPELL_SKILLS = new Map([
+    // C ref: src/u_init.c:restricted_spell_discipline(), Skill_P[].
+    ['Priest', new Set([P_HEALING_SPELL, P_DIVINATION_SPELL, P_CLERIC_SPELL])],
+]);
+
 const WIZARD_INVENTORY = [
     { typ: QUARTERSTAFF, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1, wielded: true },
     { typ: CLOAK_OF_MAGIC_RESISTANCE, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
@@ -178,6 +252,17 @@ const HEALER_INVENTORY = [
     { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 5, max: 5, bless: 0 },
 ];
 
+const PRIEST_INVENTORY = [
+    // C ref: src/u_init.c:Priest[].
+    { typ: MACE, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: 1, wielded: true },
+    { typ: ROBE, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: SMALL_SHIELD, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: POT_WATER, spe: 0, cls: POTION_CLASS, min: 4, max: 4, bless: 1 },
+    { typ: CLOVE_OF_GARLIC, spe: 0, cls: FOOD_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: SPRIG_OF_WOLFSBANE, spe: 0, cls: FOOD_CLASS, min: 1, max: 1, bless: 0 },
+    { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: SPBOOK_CLASS, min: 2, max: 2, bless: UNDEF_BLESS },
+];
+
 const TOURIST_INVENTORY = [
     { typ: DART, spe: 2, cls: WEAPON_CLASS, min: 21, max: 40, bless: UNDEF_BLESS },
     { typ: UNDEF_TYP, spe: UNDEF_SPE, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
@@ -186,6 +271,13 @@ const TOURIST_INVENTORY = [
     { typ: HAWAIIAN_SHIRT, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
     { typ: EXPENSIVE_CAMERA, spe: UNDEF_SPE, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
     { typ: CREDIT_CARD, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
+const VALKYRIE_INVENTORY = [
+    { typ: SPEAR, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: DAGGER, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: SMALL_SHIELD, spe: 3, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: FOOD_RATION, spe: 0, cls: FOOD_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
 const MONEY_INVENTORY = [
@@ -212,6 +304,10 @@ const MAGIC_MARKER_INVENTORY = [
     { typ: MAGIC_MARKER, spe: 19, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
+const LAMP_INVENTORY = [
+    { typ: OIL_LAMP, spe: 1, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
+];
+
 const RANGER_INVENTORY = [
     { typ: DAGGER, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
     { typ: BOW, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
@@ -230,6 +326,15 @@ const ROGUE_INVENTORY = [
     { typ: SACK, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 },
 ];
 
+const SAMURAI_INVENTORY = [
+    // C ref: src/u_init.c:Samurai[].
+    { typ: KATANA, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: SHORT_SWORD, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: YUMI, spe: 0, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS },
+    { typ: YA, spe: 0, cls: WEAPON_CLASS, min: 26, max: 45, bless: UNDEF_BLESS, quivered: true },
+    { typ: SPLINT_MAIL, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+];
+
 const RANGER_KNOWN_WEAPONS = [
     ELVEN_ARROW, ORCISH_ARROW, YA,
     ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR,
@@ -240,6 +345,33 @@ const ROGUE_KNOWN_WEAPONS = [
     ELVEN_DAGGER, ORCISH_DAGGER,
 ];
 
+const VALKYRIE_KNOWN_WEAPONS = [
+    // C ref: u_init.c:knows_class(WEAPON_CLASS), excluding polearms for
+    // non-Knight/non-Samurai roles. Discovery output only shows types with
+    // descriptions, but order still follows objects[].
+    ELVEN_ARROW, ORCISH_ARROW, YA, SHURIKEN,
+    ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR, JAVELIN,
+    ELVEN_DAGGER, ORCISH_DAGGER, BATTLE_AXE,
+    ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD,
+    SCIMITAR, ELVEN_BROADSWORD, KATANA, TSURUGI,
+    RUNESWORD, DWARVISH_MATTOCK,
+];
+
+const SAMURAI_KNOWN_WEAPONS = [
+    // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
+    ELVEN_ARROW, ORCISH_ARROW, YA, SHURIKEN,
+    ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR, JAVELIN,
+    ELVEN_DAGGER, ORCISH_DAGGER, KNIFE, BATTLE_AXE,
+    SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD,
+    SCIMITAR, BROADSWORD, ELVEN_BROADSWORD, KATANA, TSURUGI,
+    RUNESWORD, DWARVISH_MATTOCK,
+];
+
+const SAMURAI_KNOWN_ARMOR = [
+    // C ref: src/u_init.c:u_init_role() -> knows_class(ARMOR_CLASS).
+    PLATE_MAIL, SPLINT_MAIL, LEATHER_GLOVES,
+];
+
 function trquan(trop) {
     if (!trop.min) return 1;
     return trop.min + rn2(trop.max - trop.min + 1);
@@ -248,6 +380,13 @@ function trquan(trop) {
 function starting_spell_level(otyp) {
     if (otyp === SPE_FORCE_BOLT) return 1;
     return SPELLBOOK_LEVEL.get(otyp) ?? 0;
+}
+
+function restricted_starting_spell_discipline(otyp, roleName) {
+    const allowed = ROLE_ALLOWED_STARTING_SPELL_SKILLS.get(roleName);
+    if (!allowed) return false;
+    const skill = SPELLBOOK_SKILL.get(otyp);
+    return skill != null && !allowed.has(skill);
 }
 
 function rejected_starting_object(obj, noCreate, gotLevel1Spellbook, roleName) {
@@ -266,7 +405,8 @@ function rejected_starting_object(obj, noCreate, gotLevel1Spellbook, roleName) {
     if (roleName === 'Wizard' && otyp === SPE_FORCE_BOLT) return true;
     if (obj.oclass === SPBOOK_CLASS) {
         const maxLevel = gotLevel1Spellbook ? 3 : 1;
-        return starting_spell_level(otyp) > maxLevel;
+        return starting_spell_level(otyp) > maxLevel
+            || restricted_starting_spell_discipline(otyp, roleName);
     }
     return false;
 }
@@ -348,6 +488,16 @@ function discover_role_known_object(otyp) {
     if (!order.includes(otyp)) order.push(otyp);
     game.discoveredObjects = game.discoveredObjects || new Set();
     if (typeof game.discoveredObjects.add === 'function') game.discoveredObjects.add(otyp);
+}
+
+function reorder_samurai_known_discoveries() {
+    // C ref: src/u_init.c:u_init_role() -> knows_class(); discovery output
+    // follows object-table order for the pre-known classes, not ini_inv order.
+    const known = [...SAMURAI_KNOWN_WEAPONS, ...SAMURAI_KNOWN_ARMOR, FOOD_RATION];
+    const knownSet = new Set(known);
+    const order = Array.isArray(game.discoveryOrder) ? game.discoveryOrder : [];
+    const rest = order.filter((otyp) => !knownSet.has(otyp));
+    game.discoveryOrder = [...known, ...rest];
 }
 
 function is_container_type(otyp) {
@@ -468,6 +618,14 @@ export function u_init_role_inventory() {
         if (!rn2(25)) {
             // C may add an oil lamp here; object creation is still unported.
         }
+    } else if (role?.name?.m === 'Priest') {
+        ini_inv(PRIEST_INVENTORY, noCreate, role.name.m);
+        if (!rn2(5)) {
+            ini_inv(MAGIC_MARKER_INVENTORY, noCreate, role.name.m);
+        } else if (!rn2(10)) {
+            ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
+        }
+        discover_role_known_object(POT_WATER);
     } else if (role?.name?.m === 'Tourist') {
         game._goldCount = rnd(1000);
         game._startupRoleGoldInitialized = true;
@@ -487,6 +645,12 @@ export function u_init_role_inventory() {
         if (!rn2(5)) {
             ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
         }
+    } else if (role?.name?.m === 'Valkyrie') {
+        ini_inv(VALKYRIE_INVENTORY, noCreate, role.name.m);
+        if (!rn2(6)) {
+            ini_inv(LAMP_INVENTORY, noCreate, role.name.m);
+        }
+        for (const otyp of VALKYRIE_KNOWN_WEAPONS) discover_role_known_object(otyp);
     } else if (role?.name?.m === 'Ranger') {
         ini_inv(RANGER_INVENTORY, noCreate, role.name.m);
         // C ref: u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
@@ -502,6 +666,15 @@ export function u_init_role_inventory() {
         if (!rn2(5)) {
             ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
         }
+    } else if (role?.name?.m === 'Samurai') {
+        ini_inv(SAMURAI_INVENTORY, noCreate, role.name.m);
+        if (!rn2(5)) {
+            ini_inv(BLINDFOLD_INVENTORY, noCreate, role.name.m);
+        }
+        for (const otyp of SAMURAI_KNOWN_WEAPONS) discover_role_known_object(otyp);
+        for (const otyp of SAMURAI_KNOWN_ARMOR) discover_role_known_object(otyp);
+        discover_role_known_object(FOOD_RATION);
+        reorder_samurai_known_discoveries();
     }
     if (roleStartingGold > 0) {
         ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);
@@ -582,8 +755,16 @@ export function apply_startup_role_state() {
     game.u.uen = game._initialPower ?? init.pwBase;
     game.u.uenmax = game.u.uen;
     game.u.uac = init.ac;
+    game.u.uhunger = 900;
+    game.u.ublesscnt = 300;
+    game.u.uencumber = 0;
     game.u.acurr = { a: attrs };
     game.u.amax = { a: maxes };
+    if (role?.name?.m === 'Samurai') {
+        // C ref: src/attrib.c:sam_abil[] grants level-1 intrinsic HFast.
+        game.u.uprops = game.u.uprops || {};
+        game.u.uprops.intrinsic_fast = true;
+    }
 }
 
 function roleLevelAdv() {
@@ -602,6 +783,7 @@ function currentAttr(index) {
 
 function energyMod(en, adv) {
     if (adv?.energyMod === 'wizard') return 2 * en;
+    if (adv?.energyMod === 'valkyrie') return Math.trunc((3 * en) / 4);
     return en;
 }
 

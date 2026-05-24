@@ -253,7 +253,7 @@ function xcrypt(str) {
     return out;
 }
 
-function wipeoutText(text, cnt, seed) {
+export function wipeoutText(text, cnt, seed) {
     const chars = [...text];
     let lth = chars.length;
     while (lth && cnt-- > 0) {

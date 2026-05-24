@@ -25,7 +25,7 @@ import {
     queue_more_prompt, see_monsters, see_objects, see_traps,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
-import { findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
+import { roles, findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
 import { NO_COLOR } from './terminal.js';
 import { A_DEX, A_STR, A_WIS, COLNO, NORMAL_SPEED } from './const.js';
 import * as ff8000 from './fastforward.js';
@@ -77,10 +77,23 @@ function startupReplayForCurrentSeed() {
 }
 
 function preLuaRoleInitRng() {
+    const role = findRole(game._nhopts?.role);
     // C ref: role.c:role_init(). Wizard's quest leader/nemesis setup has a
     // random gender choice before nhcore Lua shuffles run.
-    const role = findRole(game._nhopts?.role);
     if (role?.name?.m === 'Wizard') rn2(100);
+    // C ref: role.c:role_init(). Priests have no own pantheon; new games roll
+    // random roles until one with gods is found and copy that pantheon.
+    if (role?.name?.m === 'Priest' && !role.gods) {
+        let pantheon = role;
+        let trycnt = 0;
+        while (!pantheon?.gods && ++trycnt < 100) {
+            pantheon = roles[rn2(roles.length)];
+        }
+        if (!pantheon?.gods) pantheon = roles.find(r => r.gods);
+        game._startup_pantheon_gods = pantheon?.gods || null;
+    } else {
+        game._startup_pantheon_gods = null;
+    }
 }
 
 function postInventoryStartupRng() {
@@ -111,7 +124,12 @@ function postInventoryStartupRng() {
 
 function startupRole() {
     const configured = findRole(game._nhopts?.role);
-    if (configured) return roleWithStartingRank(configured);
+    if (configured) {
+        const role = game._startup_pantheon_gods && !configured.gods
+            ? { ...configured, gods: game._startup_pantheon_gods }
+            : configured;
+        return roleWithStartingRank(role);
+    }
 
     // Random chargen is still not ported; seed 2 currently records the
     // observed random Healer selection until pick4u() is implemented.
@@ -164,6 +182,13 @@ function startupPrimaryDecgraphics() {
     return String(game._nhopts?.symset || '').toLowerCase() === 'decgraphics';
 }
 
+function legacyPagerLeftColumn(textLines, cols) {
+    // C refs: win/tty/wintty.c:tty_putstr(), tty_display_nhwindow().
+    const maxcol = Math.max(...textLines.map(line => line.length + 1));
+    const offx = Math.min(Math.min(82, Math.trunc(cols / 2)), cols - maxcol - 1);
+    return Math.max(0, offx) + 1;
+}
+
 function restoreLegacyPagerLowerMapRows(display) {
     for (let screenRow = 18; screenRow <= 21; screenRow++) {
         const y = screenRow - 1;
@@ -192,7 +217,27 @@ function drawQuestIntroOverlay(alignName) {
         ? (g.urole?.rank?.f || g.urole?.rank?.m || g.urole?.name?.f || g.urole?.name?.m)
         : (g.urole?.rank?.m || g.urole?.name?.m);
     const isTourist = g.urole?.name?.m === 'Tourist';
-    const left = isTourist ? 17 : 23;
+    const textLines = [
+        `It is written in the Book of ${god}:`,
+        '',
+        '    After the Creation, the cruel god Moloch rebelled',
+        '    against the authority of Marduk the Creator.',
+        '    Moloch stole from Marduk the most powerful of all',
+        '    the artifacts of the gods, the Amulet of Yendor,',
+        '    and he hid it in the dark cavities of Gehennom, the',
+        '    Under World, where he now lurks, and bides his time.',
+        '',
+        `Your ${godTitle} ${god} seeks to possess the Amulet, and with it`,
+        'to gain deserved ascendance over the other gods.',
+        '',
+        `You, a newly trained ${rank}, have been heralded`,
+        `from birth as the instrument of ${god}.  You are destined`,
+        'to recover the Amulet for your deity, or die in the',
+        'attempt.  Your hour of destiny has come.  For the sake',
+        `of us all:  Go bravely with ${god}!`,
+        '--More--',
+    ];
+    const left = isTourist ? 17 : legacyPagerLeftColumn(textLines, display.cols || COLNO);
     const bodyLeft = left + 4;
     const lines = [
         [left, 0, `It is written in the Book of ${god}:`],
@@ -415,17 +460,28 @@ export async function newgame() {
         g._deferred_startup_uac = 9;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Tourist') {
         g._deferred_startup_uac = 10;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Priest') {
+        g._deferred_startup_uac = 7;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Ranger') {
         g._deferred_startup_uac = 7;
     } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Rogue') {
         g._deferred_startup_uac = 7;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Valkyrie') {
+        g._deferred_startup_uac = 6;
+    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Samurai') {
+        g._deferred_startup_uac = 4;
     }
 
     // Welcome message
-    const genderAdj = g.flags?.female ? 'female' : 'male';
     const roleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
+    // C ref: allmain.c:welcome(): forced-gender roles and distinct female
+    // role names do not also print a separate gender adjective.
+    const roleHasGenderedName = !!(g.urole.name.f && g.urole.name.f !== g.urole.name.m);
+    const roleForcesGender = g.urole?.mnum === 11; // Valkyrie
+    const genderAdj = g.flags?.female ? 'female' : 'male';
+    const genderText = (!roleHasGenderedName && !roleForcesGender) ? `${genderAdj} ` : '';
     const greetingName = g._startupGreetingName || g.plname;
-    const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderAdj} ${g.urace.adj} ${roleName}.`;
+    const welcome = `${roleGreeting(g.urole)} ${greetingName}, welcome to NetHack!  You are a ${alignName} ${genderText}${g.urace.adj} ${roleName}.`;
     await pline(welcome);
     if (!ff && (showedQuestIntro || (g._startup_preamble_messages || []).length > 0)) {
         g._more = true;
@@ -477,7 +533,15 @@ export async function advanceTurn() {
     }
 
     await maybe_generate_rnd_mon();
-    if (g.u?.uprops?.fast) g._fast_extra_action_pending = rn2(3) !== 0;
+    if (g.u?.uprops?.fast) {
+        // C ref: src/allmain.c:u_calc_moveamt(); speed boots/potion/spell
+        // Very_fast grants an extra action on 2/3 of turns.
+        g._fast_extra_action_pending = rn2(3) !== 0;
+    } else if (g.u?.uprops?.intrinsic_fast) {
+        // C ref: src/allmain.c:u_calc_moveamt(); intrinsic Fast grants an
+        // extra action on 1/3 of turns.
+        g._fast_extra_action_pending = rn2(3) === 0;
+    }
     settrack();
 
     await nhTimeoutBasic();
@@ -488,6 +552,9 @@ export async function advanceTurn() {
 }
 
 function finishPostDosoundsTurnTail(g) {
+    // C ref: allmain.c:moveloop_core().  Prayer timeout drains once during
+    // each real turn, including occupation/extra monster-turn catch-ups.
+    if ((g.u?.ublesscnt || 0) > 0) g.u.ublesscnt--;
     gethungry();
     exerchk();
     maybe_wipe_engraving();
@@ -524,7 +591,87 @@ function applyOccupationFinalTurnState(g) {
 }
 
 function occupationPending(g) {
-    return (g._occupation_turns_remaining || 0) > 0 || !!g._occupation_finish_message;
+    return (g._occupation_turns_remaining || 0) > 0
+        || !!g._occupation_finish_message
+        || !!g._force_lock
+        || (g._force_lock_post_success_turns || 0) > 0;
+}
+
+async function packedOccupationPline(msg) {
+    if (game._pending_message) await append_pline(msg);
+    else await pline(msg);
+}
+
+function clearForceLock(g) {
+    g._force_lock = null;
+    g._force_lock_resume_turn_first = false;
+}
+
+async function forceLockAttempt(g) {
+    const state = g._force_lock;
+    if (!state) return true;
+    const box = state.box;
+    if (!box || box.ox !== g.u?.ux || box.oy !== g.u?.uy) {
+        clearForceLock(g);
+        return true;
+    }
+    if ((state.usedtime || 0) >= 50 || !state.weapon) {
+        await packedOccupationPline('You give up your attempt to force the lock.');
+        if ((state.usedtime || 0) >= 50) exercise(state.picktyp ? A_DEX : A_STR, true);
+        clearForceLock(g);
+        return true;
+    }
+
+    state.usedtime = (state.usedtime || 0) + 1;
+    // C ref: lock.c:forcelock().  The chance check runs once per occupation
+    // turn after that turn's monster/allmain tail has completed.
+    if (rn2(100) >= (state.chance || 0)) return false;
+
+    await packedOccupationPline('You succeed in forcing the lock.');
+    exercise(state.picktyp ? A_DEX : A_STR, true);
+    const destroyit = !state.picktyp && rn2(3) === 0;
+    box.olocked = false;
+    box.obroken = true;
+    box.lknown = true;
+    if (destroyit) {
+        const idx = g.level?.objects?.indexOf(box) ?? -1;
+        if (idx >= 0) g.level.objects.splice(idx, 1);
+        await packedOccupationPline("In fact, you've totally destroyed the chest.");
+    }
+    newsym(box.ox, box.oy);
+    // C's movement loop drains one final monster/allmain allocation after
+    // forcelock() clears the occupation, before the next input prompt.
+    g._force_lock_post_success_turns = 1;
+    clearForceLock(g);
+    return true;
+}
+
+async function continueForceLockTurns(g) {
+    let resumeTurnFirst = !!g._force_lock_resume_turn_first;
+    g._force_lock_resume_turn_first = false;
+    while (g._force_lock || (g._force_lock_post_success_turns || 0) > 0) {
+        if (!g._force_lock) {
+            g._force_lock_post_success_turns--;
+            await advanceTurn();
+            if ((g._more || g._monster_turn_paused_for_more) && occupationPending(g)) {
+                g._occupation_paused_for_more = true;
+                return false;
+            }
+            continue;
+        }
+        if (resumeTurnFirst) {
+            resumeTurnFirst = false;
+        } else if (await forceLockAttempt(g)) {
+            continue;
+        }
+        await advanceTurn();
+        if ((g._more || g._monster_turn_paused_for_more) && occupationPending(g)) {
+            g._force_lock_resume_turn_first = true;
+            g._occupation_paused_for_more = true;
+            return false;
+        }
+    }
+    return true;
 }
 
 function encumberedMoveAmount(encumbrance) {
@@ -704,6 +851,8 @@ async function continueNomulTurns(g) {
 }
 
 async function continueOccupationTurns(g) {
+    if (g._force_lock || (g._force_lock_post_success_turns || 0) > 0)
+        return continueForceLockTurns(g);
     // C ref: allmain.c:moveloop_core()/occupation.  Delayed occupations keep
     // consuming turns, but tty --More-- pauses can split them across inputs.
     while ((g._occupation_turns_remaining || 0) > 0) {
@@ -915,8 +1064,28 @@ export async function moveloop_core() {
             if (g._more || g._monster_turn_paused_for_more) return;
         }
         if (g._resume_monster_turn) {
+            const resumeOccupationAfterMonsterTurn = (!!g._force_lock
+                || (g._force_lock_post_success_turns || 0) > 0)
+                && !!g._occupation_paused_for_more;
             g._resume_monster_turn = false;
             await advanceTurn();
+            if (resumeOccupationAfterMonsterTurn
+                && (g._more || g._monster_turn_paused_for_more)) return;
+            if (g._nomovemsg && !g._more && !g._monster_turn_paused_for_more) {
+                // C refs: end.c:savelife(), allmain.c:moveloop_core().
+                // If the resumed monster turn does not block on another
+                // topline More, the saved-life nomovemsg appears at this same
+                // input boundary behind the "OK, so you don't die." line.
+                const msg = g._nomovemsg;
+                g._nomovemsg = '';
+                if (g._pending_message) await append_pline(msg);
+                else await pline(msg);
+            }
+            if (resumeOccupationAfterMonsterTurn && occupationPending(g)) {
+                g._occupation_paused_for_more = false;
+                if (g._force_lock) g._force_lock_resume_turn_first = false;
+                if (!await continueOccupationTurns(g)) return;
+            }
         } else if (g._occupation_resume) {
             g._occupation_resume = false;
             if (!await continueOccupationTurns(g)) return;
@@ -926,14 +1095,15 @@ export async function moveloop_core() {
             if (!await continueNomulTurns(g)) return;
             if (!occupationPending(g)) finish_pending_eaten_corpse();
             if (g._more && occupationPending(g)) {
+                if (g._force_lock) g._force_lock_resume_turn_first = true;
                 g._occupation_paused_for_more = true;
                 return;
             }
             if (!await continueOccupationTurns(g)) return;
         }
-        const skipEncumberedDebt = !!g._skip_encumbered_debt_after_pet_death_more;
+        const skipPetDeathCatchupDebt = !!g._skip_encumbered_debt_after_pet_death_more;
         g._skip_encumbered_debt_after_pet_death_more = false;
-        if (!skipEncumberedDebt
+        if (!skipPetDeathCatchupDebt
             && encumberedDebtNeedsExtraTurn(g) && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  A
             // burdened hero does not always recover enough movement for the
@@ -943,7 +1113,7 @@ export async function moveloop_core() {
             if (g._more || g._monster_turn_paused_for_more) return;
             creditEncumberedExtraTurn(g);
         }
-        if (!skipEncumberedDebt
+        if (!skipPetDeathCatchupDebt
             && g._extra_encumbered_turn_pending && !g._more && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Becoming
             // slightly encumbered can leave u.umovement below NORMAL_SPEED,
@@ -957,7 +1127,8 @@ export async function moveloop_core() {
             g._slow_poly_extra_turn_pending_credit = false;
             creditSlowPolyExtraTurn(g);
         }
-        if (slowPolyDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {
+        if (!skipPetDeathCatchupDebt
+            && slowPolyDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {
             // C ref: allmain.c:moveloop_core()/u_calc_moveamt().  Slow
             // polymorphed forms can leave u.umovement below NORMAL_SPEED,
             // so monsters receive another pass before the next hero action.
@@ -979,11 +1150,13 @@ export async function moveloop_core() {
             g._more_dismissals_remaining = 0;
         }
         finishDeferredSeerTurnUpdate(g);
-        if (g.u?.uinvulnerable && g._pending_message === 'You are surrounded by a shimmering light.') {
-            g._pending_message = 'You are surrounded by a shimmering light.  You finish your prayer.';
+        if (g._pending_prayer_finish_message) {
+            g._pending_prayer_finish_message = false;
+            if (g._pending_message) await append_pline('You finish your prayer.');
+            else await pline('You finish your prayer.');
             g._more = true;
             g._awaiting_prayer_done_more = true;
-            g.u.uinvulnerable = false;
+            if (g.u?.uinvulnerable) g.u.uinvulnerable = false;
         }
         // C ref: topl.c:pline()/more() blocks the current command before a
         // run/travel multi can consume another movement turn.  Prayer's

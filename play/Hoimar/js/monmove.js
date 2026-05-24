@@ -1,9 +1,10 @@
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
 import { dog_move, dog_move_after_inventory } from './dog.js';
+import { exercise } from './allmain_turns.js';
 import {
     enexto_core, monsterPtr, MONSTER_SYMBOLS, newmonhp_state_for,
-    pick_newcham_shape_for, mksobj, place_object,
+    pick_newcham_shape_for, mksobj, place_object, next_ident,
 } from './mklev.js';
 import { OBJECT_CLASS, OBJECT_DIR } from './object_data.js';
 import {
@@ -18,7 +19,7 @@ import {
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, W_ARMS, W_NONDIGGABLE, W_WEP,
     GP_CHECKSCARY, SDOOR, W_NONPASSWALL,
-    STRAT_WAITFORU, STRAT_WAITMASK,
+    STRAT_WAITFORU, STRAT_WAITMASK, A_DEX, A_STR,
     COLNO, ROWNO, ROOMOFFSET, SHOPBASE, isok, SPACE_POS, is_pit,
 } from './const.js';
 import {
@@ -31,7 +32,7 @@ import { clear_path, cansee, couldsee, vision_reset, vision_recalc } from './vis
 import { m_dowear_basic } from './mon_wear.js';
 import { gettrack } from './track.js';
 import { randomHallucinatedMonsterName } from './random_text.js';
-import { getObjectDescription } from './o_init.js';
+import { getObjectColor, getObjectDescription } from './o_init.js';
 import { NO_COLOR } from './terminal.js';
 
 const NORMAL_SPEED = 12;
@@ -88,7 +89,10 @@ const SCROLL_CLASS = 9;
 const SPBOOK_CLASS = 10;
 const WAND_CLASS = 11;
 const GEM_CLASS = 13;
+const G_FREQ = 0x0007;
+const G_NOCORPSE = 0x0010;
 const SPRIG_OF_WOLFSBANE = 283;
+const CORPSE = 265;
 const ROCK = 474;
 const BOULDER = 475;
 const AXE = 44;
@@ -128,6 +132,7 @@ const WAN_TELEPORTATION = 424;
 const WAN_DIGGING = 428;
 const ARROW = 18;
 const DART = 24;
+const BOOMERANG = 26;
 const PARTISAN = 56;
 const RANSEUR = 57;
 const SPETUM = 58;
@@ -916,7 +921,11 @@ function m_balks_at_approaching_basic(oldappr, mtmp) {
 }
 
 function hth_weapon_candidate(mtmp) {
-    return (mtmp.inventory || []).find((obj) => object_class(obj) === WEAPON_CLASS);
+    // C ref: src/weapon.c:select_hwep().  Projectile-only weapons such as
+    // arrows, darts, shuriken, and boomerangs are ranged candidates, not
+    // hand-to-hand wield choices.
+    return (mtmp.inventory || []).find((obj) => object_class(obj) === WEAPON_CLASS
+        && !(obj.otyp >= ARROW && obj.otyp <= BOOMERANG));
 }
 
 function pick_weapon_candidate(mtmp) {
@@ -999,6 +1008,97 @@ function remove_monster_inventory_object(mtmp, obj) {
     obj.owornmask = 0;
 }
 
+function monster_multishot_basic(mtmp, obj, mwep = null) {
+    // C ref: src/mthrowu.c:monmulti().  This covers the stackable weapon
+    // front door; launcher, class, and racial bonuses are future evidence.
+    let multishot = 1;
+    if ((obj?.quan ?? 1) > 1 && object_class(obj) === WEAPON_CLASS && !mtmp?.mconf) {
+        multishot = rnd(multishot);
+    }
+    multishot = Math.min(obj?.quan ?? 1, multishot);
+    return Math.max(1, multishot);
+}
+
+function split_monster_projectile(mtmp, obj) {
+    if (!obj) return null;
+    if ((obj.quan ?? 1) > 1) {
+        const oldQuan = obj.quan ?? 1;
+        const oldWeight = obj.owt;
+        obj.quan--;
+        if (typeof oldWeight === 'number') {
+            obj.owt = Math.max(1, Math.round(oldWeight * obj.quan / oldQuan));
+        }
+        return {
+            ...obj,
+            quan: 1,
+            o_id: next_ident(),
+            owornmask: 0,
+            owt: typeof oldWeight === 'number' ? Math.max(1, oldWeight - (obj.owt || 0)) : obj.owt,
+        };
+    }
+    remove_monster_inventory_object(mtmp, obj);
+    return obj;
+}
+
+function prepare_monster_projectile_for_floor(obj, x, y) {
+    if (!obj) return;
+    obj.ox = x;
+    obj.oy = y;
+    obj.owornmask = 0;
+    obj.quan = 1;
+    obj.ch = ')';
+    obj.color = getObjectColor(obj.otyp) ?? obj.color ?? NO_COLOR;
+}
+
+function monster_projectile_article_name(obj) {
+    const name = monster_weapon_name(obj);
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+function projectile_erosion(obj) {
+    return Math.max(obj?.oeroded || 0, obj?.oeroded2 || 0, obj?.oeroded3 || 0);
+}
+
+function should_mulch_monster_projectile(obj) {
+    // C ref: src/dothrow.c:should_mulch_missile().  Current monster-ranged
+    // evidence reaches throwable missiles such as darts.
+    if (!obj || obj.otyp !== DART) return false;
+    const chance = 3 + projectile_erosion(obj) - (obj.spe || 0);
+    let broken = chance > 1 ? !!rn2(chance) : !rn2(4);
+    if (obj.blessed && !rn2(3)) broken = false;
+    return broken;
+}
+
+function monster_projectile_destroyed_by_hit(obj) {
+    if (!should_mulch_monster_projectile(obj)) return false;
+    rn2(100); // C ref: src/invent.c:delobj_core()/src/zap.c:obj_resists().
+    return true;
+}
+
+function hero_thrown_object_catch_chance() {
+    // C ref: src/mthrowu.c:u_catch_thrown_obj().
+    const dex = game.u?.acurr?.a?.[A_DEX] ?? 10;
+    const role = game.urole?.name?.m;
+    const roleBonus = role === 'Monk' || role === 'Rogue' ? 20 : 0;
+    return Math.max(1, 100 - dex - roleBonus);
+}
+
+function monster_thrown_hit_value(mtmp, obj) {
+    // C ref: src/mthrowu.c:m_throw() default thrown-object branch.
+    let hitv = 3 - distmin(game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my, mtmp.mx, mtmp.my);
+    if (hitv < -4) hitv = -4;
+    return hitv + 8 + (obj?.spe || 0);
+}
+
+function monster_projectile_miss_message(obj, hitv, dieroll) {
+    const onm = monster_projectile_article_name(obj);
+    const uac = game.u?.uac ?? 10;
+    if (uac + hitv <= dieroll - 2) {
+        return `${sentence_case(onm)} misses you.`;
+    }
+    return `You are almost hit by ${onm}.`;
+}
+
 function first_monster_on_throw_path(mtmp, dx, dy, range) {
     let x = mtmp.mx;
     let y = mtmp.my;
@@ -1019,11 +1119,12 @@ async function throw_weapon_at_hero_basic(mtmp, obj) {
     const dy = sgn(ty - mtmp.my);
     const range = distmin(mtmp.mx, mtmp.my, tx, ty);
     const seenThrower = cansee(mtmp.mx, mtmp.my);
-    remove_monster_inventory_object(mtmp, obj);
-    const packedAfterHeroMessage = !!game._pending_message;
+    monster_multishot_basic(mtmp, obj, mtmp.mw);
+    const projectile = split_monster_projectile(mtmp, obj);
+    if (!projectile) return false;
 
     if (seenThrower) {
-        const line = `${monster_subject(mtmp)} throws a ${monster_weapon_name(obj)}!`;
+        const line = `${monster_subject(mtmp)} throws ${monster_projectile_article_name(projectile)}!`;
         if (game._pending_message) await append_pline(line);
         else await pline(line);
         queue_more_prompt();
@@ -1041,34 +1142,33 @@ async function throw_weapon_at_hero_basic(mtmp, obj) {
             show_glyph_cell(glyphX, glyphY, ')', NO_COLOR, false);
         // C ref: src/mthrowu.c:ohitmon(). The hit check precedes dmgval().
         rnd(20);
-        const damage = monster_weapon_damage(obj);
+        const damage = monster_weapon_damage(projectile);
         if (typeof hit.mon.mhp === 'number') {
             const hp = hit.mon.mhp - damage;
             hit.mon.mhp = hit.mon.mtame ? Math.max(1, hp) : Math.max(0, hp);
         }
         const hitMessage = seenThrower
-            ? `The ${monster_weapon_name(obj)} hits the ${monster_name(hit.mon)}.`
+            ? `The ${monster_weapon_name(projectile)} hits the ${monster_name(hit.mon)}.`
             : 'It is hit.';
         const afterDx = dx || sgn((mtmp.mux ?? game.u?.ux ?? glyphX) - mtmp.mx);
         const afterDy = dy || sgn((mtmp.muy ?? game.u?.uy ?? glyphY) - mtmp.my);
         const landingX = glyphX + afterDx;
         const landingY = glyphY + afterDy;
-        obj.ox = landingX;
-        obj.oy = landingY;
-        obj.owornmask = 0;
-        obj.quan = 1;
-        obj.ch = ')';
-        obj.color = NO_COLOR;
-        obj._defer_pet_pickup = true;
-        obj._pet_keep_projectile = true;
+        const projectileDestroyed = monster_projectile_destroyed_by_hit(projectile);
+        prepare_monster_projectile_for_floor(projectile, landingX, landingY);
+        projectile._defer_pet_pickup = true;
+        projectile._pet_keep_projectile = true;
         if (seenThrower) {
             game._after_more_message = hitMessage;
             game._after_more_needs_prompt = false;
-            game._after_more_projectile_obj = { obj, x: landingX, y: landingY };
+            if (!projectileDestroyed)
+                game._after_more_projectile_obj = { obj: projectile, x: landingX, y: landingY };
             game._after_more_projectile_glyph = { x: landingX, y: landingY, ch: ')' };
         } else {
-            game.level.objects = game.level.objects || [];
-            if (!game.level.objects.includes(obj)) game.level.objects.unshift(obj);
+            if (!projectileDestroyed) {
+                game.level.objects = game.level.objects || [];
+                if (!game.level.objects.includes(projectile)) game.level.objects.unshift(projectile);
+            }
             await pline(hitMessage);
             if (isok(landingX, landingY)) newsym(landingX, landingY);
         }
@@ -1077,29 +1177,43 @@ async function throw_weapon_at_hero_basic(mtmp, obj) {
         const glyphY = hit.y - dy;
         if (seenThrower && isok(glyphX, glyphY))
             show_glyph_cell(glyphX, glyphY, ')', NO_COLOR, false);
-        rn2(82); // C ref: src/mthrowu.c:u_catch_thrown_obj().
-        const damage = monster_weapon_damage(obj);
-        rnd(20);
-        obj.ox = hit.x;
-        obj.oy = hit.y;
-        obj.owornmask = 0;
-        obj.quan = 1;
-        obj.ch = ')';
-        obj.color = NO_COLOR;
-        const hitMessage = seenThrower
-            ? `You are hit by a ${monster_weapon_name(obj)}.`
-            : 'You are hit.';
-        if (seenThrower) {
-            game._after_more_message = hitMessage;
-            game._after_more_needs_prompt = false;
-            game._after_more_hero_damage = (game._after_more_hero_damage || 0) + damage;
-            game._after_more_projectile_obj = { obj, x: hit.x, y: hit.y };
-            game._after_more_projectile_clear = { x: glyphX, y: glyphY };
+        rn2(hero_thrown_object_catch_chance());
+        const damage = monster_weapon_damage(projectile);
+        const hitv = monster_thrown_hit_value(mtmp, projectile);
+        const dieroll = rnd(20);
+        prepare_monster_projectile_for_floor(projectile, hit.x, hit.y);
+        const hitHero = (game.u?.uac ?? 10) + hitv > dieroll;
+        if (hitHero) {
+            const hitMessage = `You are hit by ${monster_projectile_article_name(projectile)}.`;
+            if (seenThrower) {
+                game._after_more_message = hitMessage;
+                game._after_more_needs_prompt = false;
+                game._after_more_hero_damage = (game._after_more_hero_damage || 0) + damage;
+                game._after_more_projectile_obj = { obj: projectile, x: hit.x, y: hit.y };
+                game._after_more_projectile_clear = { x: glyphX, y: glyphY };
+            } else {
+                if (typeof game.u?.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - damage);
+                exercise(A_STR, false);
+                const projectileDestroyed = monster_projectile_destroyed_by_hit(projectile);
+                if (!projectileDestroyed) {
+                    game.level.objects = game.level.objects || [];
+                    if (!game.level.objects.includes(projectile)) game.level.objects.unshift(projectile);
+                }
+                await pline(hitMessage);
+            }
         } else {
-            if (typeof game.u?.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - damage);
-            game.level.objects = game.level.objects || [];
-            if (!game.level.objects.includes(obj)) game.level.objects.unshift(obj);
-            await pline(hitMessage);
+            const missMessage = monster_projectile_miss_message(projectile, hitv, dieroll);
+            rn2(5); // C ref: src/mthrowu.c:m_throw() forcehit gate after a hero miss.
+            if (seenThrower) {
+                game._after_more_message = missMessage;
+                game._after_more_needs_prompt = false;
+                game._after_more_projectile_obj = { obj: projectile, x: hit.x, y: hit.y };
+                game._after_more_projectile_clear = { x: glyphX, y: glyphY };
+            } else {
+                game.level.objects = game.level.objects || [];
+                if (!game.level.objects.includes(projectile)) game.level.objects.unshift(projectile);
+                await pline(missMessage);
+            }
         }
     }
     if (game.context?.run) game.context.run = null;
@@ -1571,7 +1685,10 @@ async function prepare_monster_more_base_screen() {
 }
 
 function occupation_message_boundary_active() {
-    return (game._occupation_turns_remaining || 0) > 0 || !!game._occupation_finish_message;
+    return (game._occupation_turns_remaining || 0) > 0
+        || !!game._occupation_finish_message
+        || !!game._force_lock
+        || (game._force_lock_post_success_turns || 0) > 0;
 }
 
 function hallucinating() {
@@ -1946,6 +2063,56 @@ async function mintrap_missile_basic(mtmp, trap, otyp, tlev) {
     return (await thitm_basic(tlev, mtmp, otmp)) ? MMOVE_DIED : MMOVE_MOVED;
 }
 
+function corpse_chance_basic(mon) {
+    // C ref: mon.c:corpse_chance().
+    const mdat = mon?.data || {};
+    if ((mdat.geno || 0) & G_NOCORPSE) return false;
+    const freq = (mdat.geno ?? 0) & G_FREQ;
+    const verySmall = typeof mdat.msize === 'number' && mdat.msize < 1;
+    const chance = 2 + (freq < 2 ? 1 : 0) + (verySmall ? 1 : 0);
+    return !rn2(chance);
+}
+
+function make_monster_corpse_basic(mon) {
+    // C ref: mon.c:mondied() -> mkobj.c:mkcorpstat(CORPSE, CORPSTAT_INIT).
+    const wasInMklev = game.in_mklev;
+    const oldLiveCorpseTimeout = game._live_corpse_timeout;
+    game.in_mklev = false;
+    game._live_corpse_timeout = true;
+    let corpse;
+    try {
+        corpse = mksobj(CORPSE, true, false);
+    } finally {
+        game.in_mklev = wasInMklev;
+        game._live_corpse_timeout = oldLiveCorpseTimeout;
+    }
+    if (!corpse) return null;
+    corpse.corpsenm = mon?.data?.name || corpse.corpsenm;
+    return place_object(corpse, mon.mx, mon.my);
+}
+
+async function mintrap_pit_basic(mtmp, trap) {
+    // C ref: trap.c:trapeffect_pit().
+    const inSight = cansee(mtmp.mx, mtmp.my);
+    if (!mon_passes_walls(mtmp)) mtmp.mtrapped = 1;
+    if (inSight) {
+        await append_trap_topline(`${monster_subject(mtmp)} falls into a pit!`);
+        trap.tseen = true;
+        newsym(trap.tx, trap.ty);
+    }
+    const damage = rnd(trap.ttyp === SPIKED_PIT ? 10 : 6);
+    mtmp.mhp = (mtmp.mhp ?? mtmp.mhpmax ?? 1) - damage;
+    if (mtmp.mhp > 0) return mtmp.mtrapped ? MMOVE_DONE : MMOVE_MOVED;
+
+    if (inSight) await append_pline(`${monster_subject(mtmp)} is killed!`);
+    remove_dead_monster(mtmp);
+    if (corpse_chance_basic(mtmp)) {
+        make_monster_corpse_basic(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+    }
+    return MMOVE_DIED;
+}
+
 async function mintrap_basic(mtmp) {
     const trap = trap_at_basic(mtmp.mx, mtmp.my);
     if (!trap) return MMOVE_MOVED;
@@ -1964,6 +2131,7 @@ async function mintrap_basic(mtmp) {
     if (trap.ttyp === SLP_GAS_TRAP) return mintrap_sleep_gas_basic(mtmp);
     if (trap.ttyp === ARROW_TRAP) return mintrap_missile_basic(mtmp, trap, ARROW, 8);
     if (trap.ttyp === DART_TRAP) return mintrap_missile_basic(mtmp, trap, DART, 7);
+    if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) return mintrap_pit_basic(mtmp, trap);
     return MMOVE_MOVED;
 }
 
@@ -2545,10 +2713,11 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 if (!game._pet_combat_resume_active)
                     game._latched_status_uhp = preDamageHp <= 1 ? Math.max(0, preDamageHp) : 0;
                 game._monster_death_pending = true;
-                if (!game._pet_combat_resume_active) {
-                    game._fatal_monster_attack_paused = true;
-                    game._monster_turn_paused_for_more = true;
-                }
+                // C refs: mhitu.c:mattacku(), end.c:done().  Wizard/explore
+                // death handling interrupts the current monster turn even when
+                // the hit occurred while resuming a deferred pet-combat More.
+                game._fatal_monster_attack_paused = true;
+                game._monster_turn_paused_for_more = true;
                 break;
             }
         } else {
@@ -2591,7 +2760,7 @@ function monster_attack_verb(attack, counts) {
 }
 
 function monster_weapon_damage(obj) {
-    if (obj?.otyp === ORCISH_DAGGER) return rnd(3);
+    if (obj?.otyp === ORCISH_DAGGER || obj?.otyp === DART) return rnd(3);
     return 0;
 }
 
@@ -3121,8 +3290,18 @@ export async function movemon() {
                 g._resume_movemon_after_mon = resumeDogAfterInventory;
             }
         }
-        if (g._more && g._pet_combat_more_latched && g._pet_combat_passive_paused
+        const resumedPetCombatNeedsPause = !!g._after_more_message
+            || !!g._pet_defender_death_pending
+            || !!g._pet_combat_passive_paused
+            || (g._occupation_turns_remaining || 0) > 0
+            || !!g._occupation_finish_message
+            || !!g._force_lock
+            || (g._force_lock_post_success_turns || 0) > 0;
+        if (g._more && g._pet_combat_more_latched && resumedPetCombatNeedsPause
             && !g._savelife_resume_active && !hallucinating()) {
+            if ((!g._after_more_message || !g._after_more_message.includes('  '))
+                && !/ engulfs you!$/.test(g._after_more_message || ''))
+                g._after_more_needs_prompt = false;
             g._resume_tame_post_distfleeck = resumeDogAfterInventory;
             g._resume_movemon_after_mon = resumeDogAfterInventory;
             g._resume_somebody_can_move = resumeDogAfterInventory.movement >= NORMAL_SPEED;
@@ -3254,7 +3433,9 @@ export async function movemon() {
                 || !!g._pet_defender_death_pending
                 || !!g._pet_combat_passive_paused
                 || (g._occupation_turns_remaining || 0) > 0
-                || !!g._occupation_finish_message;
+                || !!g._occupation_finish_message
+                || !!g._force_lock
+                || (g._force_lock_post_success_turns || 0) > 0;
             if (g._more && g._pet_combat_more_latched && petCombatNeedsPause
                 && !g._savelife_resume_active && !hallucinating()) {
                 if ((!g._after_more_message || !g._after_more_message.includes('  '))
@@ -3323,6 +3504,15 @@ export async function movemon() {
                     return false;
                 }
                 if (g._pet_combat_resume_active && g._more && !hallucinating()) {
+                    if (g._packed_monster_more_candidate && !g._after_more_message
+                        && !g._monster_attack_pause_after_more) {
+                        // C refs: win/tty/topl.c:more(), mhitu.c:hitmsg().
+                        // A non-side-effect packed monster hit can remain on
+                        // the topline while later monster movement queues the
+                        // next visible message behind that More.
+                        g._pet_combat_resume_active = false;
+                        continue;
+                    }
                     g._pet_combat_resume_active = false;
                     g._resume_movemon_after_mon = mtmp;
                     g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;

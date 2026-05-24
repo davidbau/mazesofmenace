@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin, dist2 } from './hacklib.js';
-import { randomEngraving, randomEpitaph } from './random_text.js';
+import { randomEngraving, randomEpitaph, wipeoutText } from './random_text.js';
 import {
     OBJECT_CLASS, OBJECT_PROB, OBJECT_CHARGED, OBJECT_DIR,
     CLASS_BASES, CLASS_TOTALS,
@@ -29,12 +29,13 @@ import {
     SDOOR, SCORR, IRONBARS, TREE, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
+    ACCESSIBLE,
     SPACE_POS, ZAP_POS, isok, W_NONDIGGABLE, FILL_NORMAL, FILL_NONE, FILL_LVFLAGS,
     DRY, WET, HOT, SOLID,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, THRONE,
     A_LAWFUL, A_NONE, Align2amask,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE, NO_MINVENT, MM_IGNOREWATER, MM_IGNORELAVA, MM_ADJACENTOK, MM_ANGRY, MM_EPRI, MM_ASLEEP, MM_NOGRP, MM_NOTAIL, MM_NONAME, MM_NOWAIT, GP_CHECKSCARY, GP_AVOID_MONPOS,
-    MARK as ENGR_MARK, N_ENGRAVE,
+    MARK as ENGR_MARK, DUST as ENGR_DUST, BURN as ENGR_BURN, ENGR_BLOOD, HEADSTONE, N_ENGRAVE,
     M_AP_OBJECT, M_AP_FURNITURE,
     STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_CLOSE,
     M3_WAITFORU, M3_CLOSE, M3_WAITMASK, M3_COVETOUS,
@@ -440,6 +441,11 @@ const HOLE = 13;
 const TRAPDOOR = 14;
 const TELEP_TRAP = 15;
 const LEVEL_TELEP = 16;
+const TRAP_ENGRAVINGS = new Map([
+    [TRAPDOOR, 'Vlad was here'],
+    [TELEP_TRAP, 'ad aerarium'],
+    [LEVEL_TELEP, 'ad aerarium'],
+]);
 const MAGIC_PORTAL = 17;
 const WEB = 18;
 const STATUE_TRAP = 19;
@@ -744,7 +750,7 @@ function goodpos(x, y, entflags = 0, ptr = null) {
             && !(ptr && (mon_in_air_for(ptr) || mon_likes_lava_for(ptr)))) {
             return false;
         }
-    } else if (!SPACE_POS(loc.typ)) {
+    } else if (!ACCESSIBLE(loc.typ)) {
         return false;
     }
     if ((entflags & GP_CHECKSCARY) && goodpos_onscary(x, y, ptr)) return false;
@@ -1318,6 +1324,11 @@ function mksobj_init(otmp, otyp, artif) {
             blessorcurse(otmp, 10);
         }
         if (artif) maybe_artifact(otmp, 40);
+        if (samuraiLacqueredSplintApplies(otyp)) {
+            // C ref: src/mkobj.c:mksobj_init().
+            otmp.oerodeproof = true;
+            otmp.rknown = true;
+        }
         break;
     case AMULET_CLASS:
         if (rn2(10) && (otyp === AMULET_OF_STRANGULATION
@@ -1345,6 +1356,13 @@ function mksobj_init(otmp, otyp, artif) {
             if (monsterName(otmp.corpsenm) !== 'LICHEN') rnz(25);
         }
     }
+}
+
+function samuraiLacqueredSplintApplies(otyp) {
+    if (otyp !== SPLINT_MAIL) return false;
+    const roleName = game.urole?.name?.m || game._nhopts?.role;
+    if (roleName !== 'Samurai') return false;
+    return (game.moves ?? 1) <= 1 || game.u?.uz?.dnum === game.quest_dnum;
 }
 
 function is_poisonable_weapon(otyp) {
@@ -1453,6 +1471,21 @@ function weight(otmp) { return otmp?.owt || 1; }
 function add_to_container(container, otmp) { /* stub */ }
 function sobj_at(otyp, x, y) {
     return (game.level?.objects || []).find(o => o.otyp === otyp && o.ox === x && o.oy === y) || false;
+}
+
+function obj_at(x, y) {
+    return (game.level?.objects || []).find(o => o.ox === x && o.oy === y) || null;
+}
+
+function trap_at(x, y) {
+    return (game.level?.traps || []).find(t => t.tx === x && t.ty === y) || null;
+}
+
+function can_hide_under_object(x, y) {
+    // C ref: monmove.c:can_hide_under_obj().
+    if (!obj_at(x, y)) return false;
+    const trap = trap_at(x, y);
+    return !trap || is_pit(trap.ttyp);
 }
 
 function set_corpsenm(otmp, pm) {
@@ -3037,9 +3070,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         set_mimic_sym(mon);
     }
     if (pm_invisible_ptr(ptr)) mon_set_minvis(mon, false);
-    if ((ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') && game.in_mklev && x && y) {
-        mkobj_at(RANDOM_CLASS, x, y, true);
-        mon.mundetected = 1;
+    if ((ptr.mlet === 'S_SPIDER' || ptr.mlet === 'S_SNAKE') && game.in_mklev) {
+        if (x && y) mkobj_at(RANDOM_CLASS, x, y, true);
+        if (can_hide_under_object(x, y) && !IS_POOL(game.level?.at(x, y)?.typ)
+            && !IS_LAVA(game.level?.at(x, y)?.typ)) {
+            mon.mundetected = 1;
+        }
     }
     if (ptr.mlet === 'S_EEL' && game.in_mklev && IS_POOL(game.level?.at(x, y)?.typ)) {
         // C ref: makemon.c:makemon() calls hideunder() for sea monsters
@@ -3265,7 +3301,23 @@ function make_engr_at(x, y, text, pristine, epoch, engr_type) {
     game.level.engravings.unshift(ep);
     return ep;
 }
-function wipe_engr_at(x, y, cnt, perm) { /* stub */ }
+function wipe_engr_at(x, y, cnt, magical) {
+    // C ref: engrave.c:wipe_engr_at().
+    const ep = engr_at(x, y);
+    if (!ep || ep.type === HEADSTONE || ep.nowipeout) return;
+    const loc = game.level?.at(x, y);
+    if (ep.type !== ENGR_BURN || loc?.typ === ICE || (magical && !rn2(2))) {
+        let count = cnt;
+        if (ep.type !== ENGR_DUST && ep.type !== ENGR_BLOOD) {
+            count = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+        }
+        ep.text = wipeoutText(ep.text, count, 0).replace(/^ +/, '');
+        if (!ep.text) {
+            game.level.engravings = (game.level.engravings || [])
+                .filter(other => other !== ep);
+        }
+    }
+}
 function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
     if (!loc || (loc.typ !== ROOM && loc.typ !== GRAVE)) return;
@@ -3359,6 +3411,29 @@ const BIGRM_4_MAP = [
 ];
 const BIGRM_4_XSTART = 3;
 const BIGRM_4_YSTART = 3;
+
+const BIGRM_8_MAP = [
+    '----------------------------------------------',
+    '|............................................---',
+    '--.............................................---',
+    ' ---......................................FF.....---',
+    '   ---...................................FF........---',
+    '     ---................................FF...........---',
+    '       ---.............................FF..............---',
+    '         ---..........................FF.................---',
+    '           ---.......................FF....................---',
+    '             ---....................FF.......................---',
+    '               ---.................FF..........................---',
+    '                 ---..............FF.............................---',
+    '                   ---...........FF................................----',
+    '                     ---........FF...................................---',
+    '                       ---.....FF......................................---',
+    '                         ---.............................................--',
+    '                           ---............................................|',
+    '                             ----------------------------------------------',
+];
+const BIGRM_8_XSTART = 3;
+const BIGRM_8_YSTART = 3;
 
 const CASTLE_MAP = [
     '}}}}}}}}}.............................................}}}}}}}}}',
@@ -3847,6 +3922,10 @@ function bigrm2TerrainAt(x, y) {
 
 function bigrm4TerrainAt(x, y) {
     return BIGRM_4_MAP[y]?.[x] || ' ';
+}
+
+function bigrm8TerrainAt(x, y) {
+    return BIGRM_8_MAP[y]?.[x] || ' ';
 }
 
 function sokoXStart(spec) { return spec.xstart ?? SOKO1_XSTART; }
@@ -4467,6 +4546,37 @@ function bigrm4GetFloorLocation() {
     return { x: x + BIGRM_4_XSTART, y: y + BIGRM_4_YSTART };
 }
 
+function bigrm8Location(ok) {
+    let x, y, loc;
+    let tries = 0;
+    do {
+        x = rn2(75);
+        y = rn2(18);
+        loc = game.level?.at(x + BIGRM_8_XSTART, y + BIGRM_8_YSTART);
+        if (loc && ok(loc, x + BIGRM_8_XSTART, y + BIGRM_8_YSTART)) {
+            return { x: x + BIGRM_8_XSTART, y: y + BIGRM_8_YSTART };
+        }
+    } while (++tries < 100);
+
+    for (x = 0; x < 75; x++)
+        for (y = 0; y < 18; y++) {
+            loc = game.level?.at(x + BIGRM_8_XSTART, y + BIGRM_8_YSTART);
+            if (loc && ok(loc, x + BIGRM_8_XSTART, y + BIGRM_8_YSTART)) {
+                return { x: x + BIGRM_8_XSTART, y: y + BIGRM_8_YSTART };
+            }
+        }
+    return { x: BIGRM_8_XSTART, y: BIGRM_8_YSTART };
+}
+
+function bigrm8GetStairLocation() {
+    // C ref: sp_lev.c:l_create_stairway() uses good_stair_loc().
+    return bigrm8Location((loc) => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
+}
+
+function bigrm8GetDryLocation() {
+    return bigrm8Location((loc, x, y) => SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y));
+}
+
 function placeSpecialStair(x, y, up) {
     const loc = game.level?.at(x, y);
     if (loc) {
@@ -4696,10 +4806,13 @@ function bigrmTerrainType(ch) {
     case '-': return HWALL;
     case '|': return VWALL;
     case 'P': return POOL;
+    case '}': return MOAT;
     case 'L': return LAVAPOOL;
     case 'T': return TREE;
     case 'W': return WATER;
     case 'Z': return LAVAWALL;
+    case 'C': return CLOUD;
+    case 'F': return IRONBARS;
     default: return STONE;
     }
 }
@@ -4710,6 +4823,17 @@ function loadBigrm4Terrain() {
             const loc = game.level.at(x + BIGRM_4_XSTART, y + BIGRM_4_YSTART);
             if (!loc) continue;
             loc.typ = bigrmTerrainType(BIGRM_4_MAP[y][x]);
+        }
+    }
+    game.level.flags.is_maze_lev = true;
+}
+
+function loadBigrm8Terrain() {
+    for (let y = 0; y < 18; y++) {
+        for (let x = 0; x < 75; x++) {
+            const loc = game.level.at(x + BIGRM_8_XSTART, y + BIGRM_8_YSTART);
+            if (!loc) continue;
+            loc.typ = bigrmTerrainType(bigrm8TerrainAt(x, y));
         }
     }
     game.level.flags.is_maze_lev = true;
@@ -4757,30 +4881,47 @@ function lightWallsAdjacentToLitCells(x1, y1, x2, y2) {
 }
 
 function premapGlyphForLoc(loc, x, y) {
+    const decgraphics = String(game._nhopts?.symset || '').toLowerCase() === 'decgraphics';
     switch (loc?.typ) {
-    case ROOM: return { ch: '~', color: 8, decgfx: true };
+    case ROOM:
+        return decgraphics
+            ? { ch: '~', color: 8, decgfx: true }
+            : { ch: '.', color: 8, decgfx: false };
     case CORR: return { ch: '#', color: 8, decgfx: false };
     case DOOR:
-        if (loc.doormask & D_ISOPEN) return { ch: '|', color: 3, decgfx: false };
-        if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: 3, decgfx: false };
-        return { ch: '~', color: 8, decgfx: true };
+        if (loc.doormask & D_ISOPEN)
+            return decgraphics
+                ? { ch: 'a', color: 3, decgfx: true }
+                // C refs: src/display.c:back_to_glyph(), include/defsym.h.
+                : { ch: loc.horizontal ? '|' : '-', color: 8, decgfx: false };
+        if (loc.doormask & (D_CLOSED | D_LOCKED))
+            return { ch: '+', color: 3, decgfx: false };
+        return decgraphics
+            ? { ch: '~', color: 8, decgfx: true }
+            : { ch: '.', color: 8, decgfx: false };
     case STAIRS:
         return {
             ch: game.level?.upstair?.x === x && game.level?.upstair?.y === y ? '<' : '>',
             color: 7,
             decgfx: false,
         };
-    case HWALL: return { ch: 'q', color: 4, decgfx: true };
-    case VWALL: return { ch: 'x', color: 4, decgfx: true };
-    case TLCORNER: return { ch: 'l', color: 4, decgfx: true };
-    case TRCORNER: return { ch: 'k', color: 4, decgfx: true };
-    case BLCORNER: return { ch: 'm', color: 4, decgfx: true };
-    case BRCORNER: return { ch: 'j', color: 4, decgfx: true };
-    case CROSSWALL: return { ch: 'n', color: 4, decgfx: true };
-    case TUWALL: return { ch: 'v', color: 4, decgfx: true };
-    case TDWALL: return { ch: 'w', color: 4, decgfx: true };
-    case TLWALL: return { ch: 'u', color: 4, decgfx: true };
-    case TRWALL: return { ch: 't', color: 4, decgfx: true };
+    case HWALL:
+    case TLCORNER:
+    case TRCORNER:
+    case BLCORNER:
+    case BRCORNER:
+    case CROSSWALL:
+    case TUWALL:
+    case TDWALL:
+        return decgraphics
+            ? { ch: WALL_MEMORY_GLYPHS[loc.typ] || 'q', color: 4, decgfx: true }
+            : { ch: '-', color: 8, decgfx: false };
+    case VWALL:
+    case TLWALL:
+    case TRWALL:
+        return decgraphics
+            ? { ch: WALL_MEMORY_GLYPHS[loc.typ] || 'x', color: 4, decgfx: true }
+            : { ch: '|', color: 8, decgfx: false };
     default: return null;
     }
 }
@@ -4909,6 +5050,66 @@ function loadBigrm4Special() {
     for (let i = 0; i < 28; i++) {
         rn2(3);
         loc = bigrm4GetFloorLocation();
+        makemon(null, loc.x, loc.y, 0);
+    }
+}
+
+function markBigrm8NonDiggable() {
+    // C ref: sp_lev.c:lspo_non_diggable() -> sel_set_wall_property().
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 0; x < COLNO; x++) {
+            const loc = game.level?.at(x, y);
+            if (loc && (IS_STWALL(loc.typ) || loc.typ === TREE || loc.typ === IRONBARS)) {
+                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+            }
+        }
+}
+
+function loadBigrm8Special() {
+    // C ref: dat/bigrm-8.lua loaded through mkmaze.c:makemaz().
+    loadBigrm8Terrain();
+    l_nhcore_init();
+    rn2(2); // splev_initlev flip state; bigrm-8 permits the final flips.
+
+    if (rn2(100) < 40) {
+        const terrains = ['L', '}', 'T', '.', '-', 'C'];
+        const toterr = terrains[rn2(terrains.length)];
+        for (let y = 0; y < 18; y++)
+            for (let x = 0; x < 75; x++) {
+                if (bigrm8TerrainAt(x, y) !== 'F') continue;
+                if (rn2(100) < 100) {
+                    const loc = game.level?.at(x + BIGRM_8_XSTART, y + BIGRM_8_YSTART);
+                    if (loc) loc.typ = bigrmTerrainType(toterr);
+                }
+            }
+    }
+
+    for (let y = 1; y <= 16; y++)
+        for (let x = 1; x <= 73; x++) {
+            const loc = game.level?.at(x + BIGRM_8_XSTART, y + BIGRM_8_YSTART);
+            if (loc) loc.lit = true;
+        }
+
+    let loc = bigrm8GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, true);
+    loc = bigrm8GetStairLocation();
+    placeSpecialStair(loc.x, loc.y, false);
+    markBigrm8NonDiggable();
+
+    for (let i = 0; i < 15; i++) {
+        loc = bigrm8GetDryLocation();
+        mkobj_at(RANDOM_CLASS, loc.x, loc.y, true);
+    }
+    for (let i = 0; i < 6; i++) {
+        loc = bigrm8GetDryLocation();
+        let kind;
+        do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+        const trap = maketrap(loc.x, loc.y, kind);
+        maybeTrapVictim(trap);
+    }
+    for (let i = 0; i < 28; i++) {
+        rn2(3);
+        loc = bigrm8GetDryLocation();
         makemon(null, loc.x, loc.y, 0);
     }
 }
@@ -9112,6 +9313,15 @@ function makemaz_special(slev) {
             BIGRM_4_YSTART + BIGRM_4_MAP.length - 1);
         return;
     }
+    if (game._last_special_protofile === 'bigrm-8') {
+        loadBigrm8Special();
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        flip_level_rnd(3);
+        lightWallsAdjacentToLitCells(BIGRM_8_XSTART, BIGRM_8_YSTART,
+            BIGRM_8_XSTART + 74,
+            BIGRM_8_YSTART + BIGRM_8_MAP.length - 1);
+        return;
+    }
     if (loadSokoSpecial(game._last_special_protofile)) {
         return;
     }
@@ -10027,8 +10237,76 @@ function choose_themeroom_fill(croom) {
     return pick?.name || null;
 }
 
+function roomSelectionPoints(croom) {
+    const points = [];
+    if (!croom) return points;
+    const rmno = game.level?.rooms?.indexOf(croom) + ROOMOFFSET;
+    if (!rmno || rmno < ROOMOFFSET) return points;
+    // C ref: selvar.c:selection_from_mkroom(), selvar.c:selection_rndcoord().
+    // Lua room selections are counted and picked in x-major order.
+    for (let x = croom.lx; x <= croom.hx; x++)
+        for (let y = croom.ly; y <= croom.hy; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc && !loc.edge && loc.roomno === rmno) points.push({ x, y });
+        }
+    return points;
+}
+
+function roomSelectionRndcoord(croom) {
+    const points = roomSelectionPoints(croom);
+    if (!points.length) return { x: -1, y: -1 };
+    return points[rn2(points.length)];
+}
+
+function unblessSpecialObject(otmp) {
+    if (otmp) otmp.blessed = false;
+    return otmp;
+}
+
+function createNotBlessedObjectAt(otyp, x, y) {
+    // C ref: sp_lev.c:create_object() applies buc="not-blessed" after
+    // ordinary mksobj_at(..., TRUE, !named) initialization.
+    return unblessSpecialObject(mksobj_at(otyp, x, y, true, true));
+}
+
+function createNotBlessedObjectClassAt(oclass, x, y) {
+    return unblessSpecialObject(mkobj_at(oclass, x, y, true));
+}
+
+function applyGhostAdventurerFill(croom) {
+    // C ref: dat/themerms.lua Ghost of an Adventurer, sp_lev.c:create_monster().
+    const loc = roomSelectionRndcoord(croom);
+    if (loc.x < 0 || loc.y < 0) return;
+
+    const ghostPtr = monster_by_user_name('ghost');
+    let scriptedFemale = false;
+    if (monster_name_needs_find_gender_roll('ghost', ghostPtr)) scriptedFemale = !!rn2(2);
+    induced_align_80();
+    const mon = makemon(ghostPtr, loc.x, loc.y, 0);
+    if (mon) {
+        mon.female = scriptedFemale;
+        mon.msleeping = 1;
+        mon.mstrategy |= STRAT_WAITFORU;
+        mon.mstrategy_waiting = 1;
+    }
+
+    if (rn2(100) < 65) createNotBlessedObjectAt(DAGGER, loc.x, loc.y);
+    if (rn2(100) < 55) createNotBlessedObjectClassAt(WEAPON_CLASS, loc.x, loc.y);
+    if (rn2(100) < 45) {
+        createNotBlessedObjectAt(BOW, loc.x, loc.y);
+        createNotBlessedObjectAt(ARROW, loc.x, loc.y);
+    }
+    if (rn2(100) < 65) createNotBlessedObjectClassAt(ARMOR_CLASS, loc.x, loc.y);
+    if (rn2(100) < 20) createNotBlessedObjectClassAt(RING_CLASS, loc.x, loc.y);
+    if (rn2(100) < 20) createNotBlessedObjectClassAt(SCROLL_CLASS, loc.x, loc.y);
+}
+
 function apply_themeroom_fill(croom) {
     const fill = choose_themeroom_fill(croom);
+    if (fill === 'Ghost of an Adventurer') {
+        applyGhostAdventurerFill(croom);
+        return;
+    }
     if (fill === 'Storeroom') {
         const locs = [];
         for (let y = croom.ly; y <= croom.hy; y++)
@@ -11082,7 +11360,15 @@ async function makeniche(trap_type) {
             if (trap_type) {
                 let actualTrap = trap_type;
                 if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
-                await maketrap(xx, yy + dy, actualTrap);
+                const trap = await maketrap(xx, yy + dy, actualTrap);
+                if (trap) {
+                    if (actualTrap !== ROCKTRAP) trap.once = true;
+                    const engraving = TRAP_ENGRAVINGS.get(actualTrap);
+                    if (engraving) {
+                        make_engr_at(xx, yy - dy, engraving, null, 0, ENGR_DUST);
+                        wipe_engr_at(xx, yy - dy, 5, false);
+                    }
+                }
             }
             dosdoor(xx, yy, aroom, SDOOR);
         } else {

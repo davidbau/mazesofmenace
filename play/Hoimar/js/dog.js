@@ -605,8 +605,15 @@ function pet_inventory_pline(line) {
     }
     if (game._pending_message) {
         const packed = `${game._pending_message}  ${line}`;
-        game._pending_message = packed;
         if (packed.length >= (game.nhDisplay?.cols || COLNO)) queue_more_prompt();
+        if (game._more) {
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = false;
+            return;
+        }
+        game._pending_message = packed;
     } else {
         pline(line);
     }
@@ -633,7 +640,10 @@ function hallucinating() {
 }
 
 function occupation_message_boundary_active() {
-    return (game._occupation_turns_remaining || 0) > 0 || !!game._occupation_finish_message;
+    return (game._occupation_turns_remaining || 0) > 0
+        || !!game._occupation_finish_message
+        || !!game._force_lock
+        || (game._force_lock_post_success_turns || 0) > 0;
 }
 
 function pending_pet_combat_boundary() {
@@ -645,10 +655,12 @@ async function append_topline_message(line) {
     if (game._pending_message?.startsWith('You start putting on ')) game._pending_message = '';
     if (game._pending_message) {
         if (game._more && !hallucinating()) {
-            game._after_more_message = game._after_more_message
+            const packed = game._after_more_message
                 ? `${game._after_more_message}  ${line}`
                 : line;
-            game._after_more_needs_prompt = true;
+            game._after_more_message = packed;
+            game._after_more_needs_prompt = !!game._after_more_needs_prompt
+                || packed.length >= (game.nhDisplay?.cols || COLNO);
             game._pet_combat_more_latched = true;
             return;
         }
@@ -675,10 +687,13 @@ async function append_topline_message(line) {
         const packed = `${pending}  ${line}`;
         const cols = game.nhDisplay?.cols || COLNO;
         const heroMeleePack = /^You (?:miss|hit) /.test(pending) && packed.length < cols;
+        const petKillPack = /^The (?:kitten|little dog|pony) .+ the .+\.$/.test(pending)
+            && /^The .+ is killed!$/.test(line)
+            && packed.length < cols;
         game._pending_message = packed;
         if (heroMeleePack) {
             game._pet_combat_pending_boundary = true;
-        } else {
+        } else if (!petKillPack) {
             queue_more_prompt();
             game._pet_combat_more_latched = true;
         }
