@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -647,6 +647,8 @@ const GLOB_TYPES = new Map([
     ['black pudding', { otyp: GLOB_OF_BLACK_PUDDING, name: 'glob of black pudding', color: CLR_BLACK }],
 ]);
 GLOB_TYPES.set('grey ooze', GLOB_TYPES.get('gray ooze'));
+const GLOB_TYPE_BY_OTYP = new Map();
+for (const globType of GLOB_TYPES.values()) GLOB_TYPE_BY_OTYP.set(globType.otyp, globType);
 const RANDOM_GLOB_MONSTER_NAMES = ['gray ooze', 'brown pudding', 'green slime'];
 const RANDOM_CLASS = 0;
 const WEAPON_CLASS = 1;
@@ -3441,7 +3443,7 @@ function earthquakeMonsterFalls(mon, messages) {
     mon.mhp = (mon.mhp ?? 1) - rnd(alreadyTrapped ? 4 : 6);
     if ((mon.mhp ?? 0) > 0) return;
 
-    dropMonsterInventory(mon);
+    dropMonsterInventory(mon, messages);
     game.level.monsters = (game.level?.monsters || []).filter(candidate => candidate !== mon);
     recordVanquished(mon, true);
     newsym(mon.mx, mon.my);
@@ -7947,7 +7949,9 @@ function lavaDamageFloorEffectItem(obj, messages, visible, {
     });
 }
 
-function hotGroundPotionFloorEffect(obj, x, y, messages, visible) {
+function hotGroundPotionFloorEffect(obj, x, y, messages, visible, {
+    removeObject = removeFloorObject,
+} = {}) {
     const loc = game.level?.at?.(x, y);
     if (!loc || !(loc.typ === ROOM || loc.typ === CORR)) return false;
     if ((game.level?.flags?.temperature || 0) <= 0) return false;
@@ -7963,19 +7967,18 @@ function hotGroundPotionFloorEffect(obj, x, y, messages, visible) {
     if (rn2(100) < ((obj?.artifact || obj?.oartifact) ? 100 : survival)) return false;
     if (visible) messages.push(plural ? 'They shatter from the heat!' : 'It shatters from the heat!');
     else if (!heroIsDeaf()) messages.push('You hear a shattering noise.');
-    removeFloorObject(obj);
+    removeObject(obj);
     return true;
 }
 
 function liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, spillQueue, processSpill = null) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
-    if (obj?.otyp === BOULDER && (IS_POOL(loc.typ) || loc.typ === LAVAPOOL || loc.typ === LAVAWALL)) {
-        if (earthFloorEffects(obj, x, y, messages)) {
+    if (obj?.otyp === BOULDER) {
+        if (earthFloorEffects(obj, x, y, messages, '')) {
             removeFloorObject(obj);
             return true;
         }
-        return false;
     }
     if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)
         return lavaDamageFloorEffectItem(obj, messages, visible, { spillQueue, processSpill, x, y });
@@ -12489,7 +12492,7 @@ function resolveFireScrollExplosion(cx, cy, dam, messages = []) {
         damage += itemDamage;
         mon.mhp = (mon.mhp || 1) - damage;
         if ((mon.mhp || 0) <= 0) {
-            dropMonsterInventory(mon);
+            dropMonsterInventory(mon, messages);
             game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
             recordVanquished(mon, true);
             newsym(mon.mx, mon.my);
@@ -12537,7 +12540,7 @@ function resolvePyroliskEggExplosion(cx, cy, dam) {
         damage += itemDamage;
         mon.mhp = (mon.mhp || 1) - damage;
         if ((mon.mhp || 0) <= 0) {
-            dropMonsterInventory(mon);
+            dropMonsterInventory(mon, messages);
             game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
             recordVanquished(mon, true);
             newsym(mon.mx, mon.my);
@@ -12794,45 +12797,635 @@ function deleteBoulderFillFloorTrap(trap, x, y) {
     return true;
 }
 
-function earthFloorEffects(obj, x, y, messages) {
-    const loc = game.level?.at(x, y);
-    if (!loc || obj?.otyp !== BOULDER) return false;
-    if (!earthBoulderHitsLiquid(loc)) return false;
-    const lava = earthLiquidIsLava(loc);
-    const chance = rn2(10);
-    const body = earthWaterBodyName(loc);
+function earthBoulderPitTrapAt(x, y) {
     const trap = boulderFillTrapAt(x, y);
-    const fillsUp = earthBoulderFillsLiquid(loc, lava, chance);
-    let buriedDebt = '';
-    if (fillsUp) {
-        fillBoulderLiquidTerrain(loc);
-        killBoulderFillMonster(x, y);
-        deleteBoulderFillFloorTrap(trap, x, y);
-        buriedDebt = buriedMerchandiseDebtMessage(x, y, obj);
-        messages.push(...buryObjectsAt(x, y, { ignore: obj }));
-        if (buriedDebt) messages.push(buriedDebt);
-    }
-    if (!game.u?.uinwater) {
-        if (earthVisibleSquare(x, y)) {
-            messages.push(`There is a large splash as the boulder ${fillsUp ? 'fills' : 'falls into'} the ${body}.`);
-        } else if (!heroIsDeaf()) {
-            messages.push(`You hear a${lava ? ' sizzling' : ''} splash.`);
+    return trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT || trap.ttyp === HOLE || trap.ttyp === TRAPDOOR)
+        ? trap
+        : null;
+}
+
+function earthBoulderPitMessage(trap) {
+    if (trap?.ttyp === TRAPDOOR) return `${trap.tseen ? '' : 'triggers and '}plugs a trap door`;
+    if (trap?.ttyp === HOLE) return 'plugs a hole';
+    return 'fills a pit';
+}
+
+function applyEarthBoulderPitOccupantEffects(trap, x, y, messages, verb = 'fall') {
+    const mon = (game.level?.monsters || []).find(candidate =>
+        candidate.mx === x && candidate.my === y && !candidate.dead && (candidate.mhp == null || candidate.mhp > 0));
+    const heroHere = game.u?.ux === x && game.u?.uy === y;
+    const monsterTrapped = mon && mon.mtrapped;
+    const heroTrapped = heroHere && game.u?.utrap;
+    if (!monsterTrapped && !heroTrapped) return { skipPlugMessage: false };
+    if (verb && (earthVisibleSquare(x, y) || heroHere))
+        messages.push(`${game.u?.blind ? 'A' : 'The'} boulder ${verb}s into the pit${monsterTrapped ? '' : ' with you'}.`);
+    if (monsterTrapped) {
+        if (earthTargetIsSolid(mon) && !earthTargetThrowsRocks(mon)) {
+            mon.mhp = (mon.mhp || 1) - earthObjectDamage({ otyp: BOULDER, quan: 1 }, mon);
+            if ((mon.mhp || 0) <= 0) {
+                dropMonsterInventory(mon, messages);
+                game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+                mon.mhp = 0;
+                mon.dead = true;
+                const heroCaused = !game._monster_moving;
+                recordVanquished(mon, heroCaused);
+                if (earthVisibleSquare(x, y)) {
+                    messages.push(heroCaused
+                        ? `You kill the ${mon.data?.name || mon.name || 'monster'}!`
+                        : `${fireScrollMonsterName(mon)} is killed!`);
+                }
+            }
+        }
+        mon.mtrapped = 0;
+    } else if (heroTrapped) {
+        const heroTarget = { ...game.u, data: polyselfForm() || {} };
+        const solidHero = earthTargetIsSolid(heroTarget) && !earthTargetThrowsRocks(heroTarget);
+        if (solidHero && game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 1) - rnd(15));
+            if ((game.u.uhp || 0) <= 0) {
+                game._death_cause = 'squished under a boulder';
+                messages.push('You die...');
+            }
+            return { skipPlugMessage: true };
+        } else if (game.u?.utraptype !== TT_BURIEDBALL) {
+            game.u.utrap = 0;
+            game.u.utraptype = null;
         }
     }
-    if (fillsUp && game.u?.uinwater && game.u?.ux === x && game.u?.uy === y) {
-        game.u.uinwater = 0;
-        game.u.underwater = false;
-        game.u.uunderwater = false;
-        game.u.uundetected = 0;
-        vision_recalc(1);
-        messages.push('You find yourself on dry land again!');
-    } else if (lava && heroNextToSquare(x, y)) {
-        applyBoulderLavaSplashToHero(messages);
-    } else if (!fillsUp && earthVisibleSquare(x, y)) {
-        messages.push('It sinks without a trace!');
+    return { skipPlugMessage: false };
+}
+
+function earthBoulderPitHoleEffects(obj, x, y, messages, verb = 'fall') {
+    if (obj?.otyp !== BOULDER) return false;
+    const trap = earthBoulderPitTrapAt(x, y);
+    if (!trap) return false;
+    const heroHere = game.u?.ux === x && game.u?.uy === y;
+    const { skipPlugMessage } = applyEarthBoulderPitOccupantEffects(trap, x, y, messages, verb);
+    if (verb && !skipPlugMessage && game.u?.blind && heroHere) {
+        messages.push('You hear a CRASH! beneath you.');
+    } else if (verb && !skipPlugMessage && earthVisibleSquare(x, y)) {
+        messages.push(`The boulder ${earthBoulderPitMessage(trap)}.`);
+    } else if (verb && !skipPlugMessage && !heroIsDeaf()) {
+        messages.push(`You hear a boulder ${verb}.`);
     }
+    const buriedDebt = buriedMerchandiseDebtMessage(x, y, obj);
+    deleteBoulderFillFloorTrap(trap, x, y);
+    if (game.u?.ux === x && game.u?.uy === y && game.u.utraptype !== TT_BURIEDBALL) {
+        game.u.utrap = 0;
+        game.u.utraptype = null;
+    }
+    messages.push(...buryObjectsAt(x, y, { ignore: obj }));
+    if (buriedDebt) messages.push(buriedDebt);
     newsym(x, y);
     return true;
+}
+
+function earthFloorLiquidType(loc) {
+    if (!loc) return null;
+    if (loc.typ === DRAWBRIDGE_UP) return earthLiquidUnderDrawbridge(loc);
+    return loc.typ;
+}
+
+function floorEffectsObjectWeight(obj) {
+    if (obj?.owt != null) return obj.owt;
+    if (obj?.weight != null) return obj.weight;
+    if (obj?.otyp === ROCK || objectKindKey(obj) === 'rock') return 10;
+    return 10 * Math.max(1, obj?.quan || 1);
+}
+
+function maybeDroppedObjectPoolFeedback(obj, x, y, messages) {
+    if (!game.u || game.u.ux !== x || game.u.uy !== y || heroIsDeaf()) return;
+    const floating = !!(game.u.levitation || game.u.Levitation || game.u.flying || game.u.Flying);
+    if (!game.u.blind && !floating) return;
+    if (!(game.u.underwater || game.u.uunderwater)) {
+        if (floorEffectsObjectWeight(obj) > 9) messages.push('Splash!');
+        else if (floating) messages.push('Plop!');
+    }
+    newsym(x, y);
+}
+
+function droppedObjectWaterFloorEffects(obj, x, y, messages) {
+    let destroyed = false;
+    maybeDroppedObjectPoolFeedback(obj, x, y, messages);
+    waterDamageFloorItem(obj, messages, floorObjectVisible(x, y), { count: 0 }, {
+        removeObject: () => { destroyed = true; },
+    });
+    return destroyed;
+}
+
+function droppedObjectLavaFloorEffects(obj, x, y, messages) {
+    let destroyed = false;
+    const visible = floorObjectVisible(x, y);
+    const acidContext = { count: 0 };
+    const processed = new Set();
+    const processSpill = item => {
+        if (processed.has(item)) return false;
+        processed.add(item);
+        if (!(game.level?.objects || []).includes(item)) return false;
+        return liquidFlowFloorEffectsItem(item, x, y, messages, visible, acidContext, [], processSpill);
+    };
+    lavaDamageFloorEffectItem(obj, messages, visible, {
+        removeObject: () => { destroyed = true; },
+        processSpill,
+        x,
+        y,
+    });
+    return destroyed;
+}
+
+function droppedObjectHotGroundFloorEffects(obj, x, y, messages) {
+    let destroyed = false;
+    hotGroundPotionFloorEffect(obj, x, y, messages, floorObjectVisible(x, y), {
+        removeObject: () => { destroyed = true; },
+    });
+    return destroyed;
+}
+
+function floorEffectsTeeteringPit(trap, x, y) {
+    return !!(trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) && trap.tseen
+        && game.u?.ux === x && game.u?.uy === y
+        && !(game.u?.utrap && isPitTrapType(game.u?.utraptype)));
+}
+
+function floorEffectsEscapedShaft(trap, x, y) {
+    return !!(trap && (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR) && trap.tseen
+        && game.u?.ux === x && game.u?.uy === y);
+}
+
+function floorEffectsObjectVerb(obj, singular, plural) {
+    return (obj?.quan || 1) > 1 ? plural : singular;
+}
+
+function droppedObjectPitHoleFloorEffects(obj, x, y, messages) {
+    const trap = boulderFillTrapAt(x, y);
+    if (floorEffectsTeeteringPit(trap, x, y)) {
+        if (game.u?.blind && !heroIsDeaf()) {
+            messages.push(`You hear ${floorObjectTheName(obj)} tumble downwards.`);
+        } else {
+            const whose = trap.madeby_u ? 'your' : 'the';
+            messages.push(`${floorObjectSubject(obj)} ${floorEffectsObjectVerb(obj, 'tumbles', 'tumble')} into ${whose} pit.`);
+        }
+        return { handled: true, consumed: false };
+    }
+    if (!floorEffectsEscapedShaft(trap, x, y)) return { handled: false, consumed: false };
+    if (obj === game.u?.uball || obj === game.u?.uchain) return { handled: true, consumed: false };
+    if (!canFallThroughLevel(game.u?.uz)) return { handled: true, consumed: false };
+    if (rn2(3)) return { handled: true, consumed: false };
+    const target = sitFallTargetLevel(trap);
+    if (!target) return { handled: true, consumed: false };
+    if (floorObjectVisible(x, y)) {
+        const gate = trap.ttyp === TRAPDOOR ? 'through the trap door' : 'through the hole';
+        messages.push(`${floorObjectSubject(obj)} ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gate}.`);
+    }
+    queueImpactDroppedObjects(target, [obj]);
+    newsym(x, y);
+    return { handled: true, consumed: true };
+}
+
+function globTypeForObject(obj) {
+    if (!obj) return null;
+    if (GLOB_TYPE_BY_OTYP.has(obj.otyp)) return GLOB_TYPE_BY_OTYP.get(obj.otyp);
+    let name = String(obj.globName || obj.actualKind || obj.kind || '').toLowerCase();
+    name = name.replace(/^partly eaten\s+/, '').replace(/^(?:small|medium|large|very large)\s+/, '');
+    const match = name.match(/^glob of (.+)$/);
+    return GLOB_TYPES.get(match?.[1] || name) || null;
+}
+
+function isGlobbyObject(obj) {
+    return !!(obj?.globby || globTypeForObject(obj));
+}
+
+function globsCanMeld(target, obj) {
+    const targetType = globTypeForObject(target);
+    const objType = globTypeForObject(obj);
+    if (!targetType || !objType || targetType.otyp !== objType.otyp) return false;
+    if (target === obj || target?.nomerge || obj?.nomerge) return false;
+    if (!!target.cursed !== !!obj.cursed || !!target.blessed !== !!obj.blessed) return false;
+    if (target.how_lost === 'LOST_EXPLODING' || obj.how_lost === 'LOST_EXPLODING') return false;
+    if (target.how_lost && target.how_lost !== 'LOST_NONE' && target.how_lost !== obj.how_lost) return false;
+    return true;
+}
+
+function floorGlobMeldCandidateAt(obj, x, y) {
+    return (game.level?.objects || []).find(candidate =>
+        candidate !== obj && !candidate.buried && !candidate.transientProjectile
+        && candidate.ox === x && candidate.oy === y
+        && globsCanMeld(candidate, obj)) || null;
+}
+
+function floorGlobMeldTarget(obj, x, y) {
+    const here = floorGlobMeldCandidateAt(obj, x, y);
+    if (here) return here;
+
+    const dx = rn2(2) ? -1 : 1;
+    const dy = rn2(2) ? -1 : 1;
+    const ex = x - dx;
+    const ey = y - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            if (fx < 0 || fx >= COLNO || fy < 0 || fy >= ROWNO || (fx === x && fy === y)) continue;
+            const target = floorGlobMeldCandidateAt(obj, fx, fy);
+            if (target) return target;
+        }
+    }
+    return null;
+}
+
+function globMeldWeight(obj) {
+    return Math.max(1, obj?.oeaten || obj?.owt || 20);
+}
+
+function globMeldRemainingTurns(obj) {
+    const turn = obj?.globShrinkTurn;
+    if (typeof turn !== 'number') return 25;
+    return Math.max(1, turn - (game.moves || 0));
+}
+
+function syncGlobObjectFields(obj) {
+    const globType = globTypeForObject(obj);
+    if (!globType) return;
+    Object.assign(obj, {
+        otyp: globType.otyp,
+        cls: 'food',
+        glyph: '%',
+        color: globType.color,
+        _display_color: globType.color,
+        kind: globType.name,
+        actualKind: globType.name,
+        singular: globType.name,
+        globName: globType.name,
+        globby: true,
+        quan: 1,
+        known: obj.known ?? true,
+        dknown: obj.dknown ?? true,
+    });
+}
+
+function absorbGlobObject(absorber, absorbed) {
+    const w1 = globMeldWeight(absorber);
+    const w2 = globMeldWeight(absorbed);
+    const moves = game.moves || 0;
+    const age1 = typeof absorber.age === 'number' ? absorber.age : moves;
+    const age2 = typeof absorbed.age === 'number' ? absorbed.age : moves;
+
+    if (!!absorber.bknown !== !!absorbed.bknown) absorber.bknown = false;
+    if (!!absorber.rknown !== !!absorbed.rknown) absorber.rknown = false;
+    if (!!absorber.greased !== !!absorbed.greased) absorber.greased = false;
+    if (absorber.orotten || absorbed.orotten) absorber.orotten = true;
+
+    absorber.age = moves - Math.trunc((((moves - age1) * w1) + ((moves - age2) * w2)) / (w1 + w2));
+    absorber.owt = Math.max(1, absorber.owt || w1) + w2;
+    if (absorber.oeaten || absorbed.oeaten) absorber.oeaten = w1 + w2;
+    absorber.globShrinkTurn = moves + Math.trunc((globMeldRemainingTurns(absorber) + globMeldRemainingTurns(absorbed) + 1) / 2);
+    syncGlobObjectFields(absorber);
+    if (game.level?.objects?.includes(absorbed))
+        game.level.objects = game.level.objects.filter(candidate => candidate !== absorbed);
+}
+
+function globPluralName(obj) {
+    const globType = globTypeForObject(obj);
+    return globType ? `${globType.name.replace(/^glob\b/, 'globs')}` : 'globs';
+}
+
+function droppedObjectGlobMeldFloorEffects(obj, x, y, messages) {
+    if (!isGlobbyObject(obj)) return false;
+    const target = floorGlobMeldTarget(obj, x, y);
+    if (!target) return false;
+
+    const visible = !game.u?.blind && (couldsee(x, y) || couldsee(target.ox, target.oy));
+    if (visible) {
+        if (heroIsHallucinating()) {
+            messages.push('You see parts of the floor melting!');
+        } else {
+            const adjacent = (x !== game.u?.ux || y !== game.u?.uy)
+                && (target.ox !== game.u?.ux || target.oy !== game.u?.uy);
+            messages.push(`The ${adjacent ? 'adjacent ' : ''}${globPluralName(obj)} coalesce.`);
+        }
+    } else if (!heroIsDeaf()) {
+        messages.push('You hear a faint sloshing sound.');
+    }
+
+    absorbGlobObject(target, obj);
+    newsym(x, y);
+    newsym(target.ox, target.oy);
+    return true;
+}
+
+function floorObjectClass(obj) {
+    if (obj?.cls) return obj.cls;
+    if (obj?.otyp === GOLD_PIECE || obj?.glyph === '$') return 'coin';
+    return '';
+}
+
+function droppedObjectAltarFloorEffects(obj, x, y, messages) {
+    const loc = game.level?.at(x, y);
+    if (!game._monster_moving || loc?.typ !== ALTAR || !floorObjectVisible(x, y)) return false;
+    const coin = floorObjectClass(obj) === 'coin';
+    if (coin) {
+        obj.blessed = false;
+        obj.cursed = false;
+    }
+    if (obj.blessed || obj.cursed) {
+        const color = obj.blessed ? 'amber' : 'black';
+        messages.push(`There is an ${color} flash as ${floorObjectArticleName(obj)} ${floorObjectVerb(obj, 'hits', 'hit')} the altar.`);
+        if (!heroIsHallucinating()) obj.bknown = true;
+    } else {
+        messages.push(`${floorObjectSubject(obj)} ${floorObjectVerb(obj, 'lands', 'land')} on the altar.`);
+        if (!coin) obj.bknown = true;
+    }
+    return true;
+}
+
+export function earthFloorEffects(obj, x, y, messages, verb = 'fall') {
+    const loc = game.level?.at(x, y);
+    if (!loc || !obj) return false;
+    if (obj?.otyp === BOULDER && earthBoulderHitsLiquid(loc)) {
+        const lava = earthLiquidIsLava(loc);
+        const chance = rn2(10);
+        const body = earthWaterBodyName(loc);
+        const trap = boulderFillTrapAt(x, y);
+        const fillsUp = earthBoulderFillsLiquid(loc, lava, chance);
+        let buriedDebt = '';
+        if (fillsUp) {
+            fillBoulderLiquidTerrain(loc);
+            killBoulderFillMonster(x, y);
+            deleteBoulderFillFloorTrap(trap, x, y);
+            buriedDebt = buriedMerchandiseDebtMessage(x, y, obj);
+            messages.push(...buryObjectsAt(x, y, { ignore: obj }));
+            if (buriedDebt) messages.push(buriedDebt);
+        }
+        if (!game.u?.uinwater) {
+            if (earthVisibleSquare(x, y)) {
+                messages.push(`There is a large splash as the boulder ${fillsUp ? 'fills' : 'falls into'} the ${body}.`);
+            } else if (!heroIsDeaf()) {
+                messages.push(`You hear a${lava ? ' sizzling' : ''} splash.`);
+            }
+        }
+        if (fillsUp && game.u?.uinwater && game.u?.ux === x && game.u?.uy === y) {
+            game.u.uinwater = 0;
+            game.u.underwater = false;
+            game.u.uunderwater = false;
+            game.u.uundetected = 0;
+            vision_recalc(1);
+            messages.push('You find yourself on dry land again!');
+        } else if (lava && heroNextToSquare(x, y)) {
+            applyBoulderLavaSplashToHero(messages);
+        } else if (!fillsUp && earthVisibleSquare(x, y)) {
+            messages.push('It sinks without a trace!');
+        }
+        newsym(x, y);
+        return true;
+    }
+    if (obj?.otyp === BOULDER)
+        return earthBoulderPitHoleEffects(obj, x, y, messages, verb);
+
+    const liquidType = earthFloorLiquidType(loc);
+    if (liquidType === LAVAPOOL || liquidType === LAVAWALL)
+        return droppedObjectLavaFloorEffects(obj, x, y, messages);
+    if (IS_POOL(liquidType))
+        return droppedObjectWaterFloorEffects(obj, x, y, messages);
+    const pitHole = droppedObjectPitHoleFloorEffects(obj, x, y, messages);
+    if (pitHole.handled) return pitHole.consumed;
+    if (droppedObjectGlobMeldFloorEffects(obj, x, y, messages)) return true;
+    if (droppedObjectAltarFloorEffects(obj, x, y, messages)) return false;
+    return droppedObjectHotGroundFloorEffects(obj, x, y, messages);
+}
+
+function dropMonsterInventory(mon, messages = null, { verb = 'fall' } = {}) {
+    const floorMessages = Array.isArray(messages) ? messages : [];
+    return dropMonsterInventoryRaw(mon, {
+        verb,
+        floorEffects: (obj, x, y, floorVerb) => earthFloorEffects(obj, x, y, floorMessages, floorVerb),
+    });
+}
+
+function monstoneObjectEscapesStatue(obj) {
+    if (!obj) return false;
+    if (obj.otyp === BOULDER || objectKindKey(obj) === 'boulder') return true;
+    const kind = objectKindKey(obj);
+    const actual = String(obj.actualKind || '').toLowerCase();
+    return obj.realAmuletOfYendor || actual === 'amulet of yendor' || kind === 'amulet of yendor'
+        || isBookOfTheDeadItem(obj) || isBellOfOpeningItem(obj) || isCandelabrumOfInvocationItem(obj);
+}
+
+function monsterStoneCorpstatFlags(mon) {
+    const data = mon?.data || {};
+    let flags = 0;
+    if (mon?.female) flags |= CORPSTAT_FEMALE;
+    else if (!data.neuter) flags |= CORPSTAT_MALE;
+    if (data.unique || data.nemesis || data.rider) flags |= CORPSTAT_HISTORIC;
+    return flags;
+}
+
+function placeMonstoneEscapedObject(obj, x, y, messages) {
+    Object.assign(obj, { ox: x, oy: y });
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    obj.contained = false;
+    delete obj.line;
+    if (earthFloorEffects(obj, x, y, messages, 'fall')) return;
+    game.level.objects.push(obj);
+    newsym(x, y);
+}
+
+function makeStoneMonsterRock(x, y) {
+    const rock = mksobj(ROCK, true, false);
+    Object.assign(rock, object_display(rock), { ox: x, oy: y, quan: 1 });
+    const stacked = stackMonsterThrownObject(rock);
+    if (stacked === rock) game.level.objects.push(rock);
+    return stacked;
+}
+
+export function stoneMonster(mon, messages = null, { awardExperience = false } = {}) {
+    if (!mon || !game.level) return null;
+    const x = mon.mx;
+    const y = mon.my;
+    if (x == null || y == null) return null;
+    game.level.objects ??= [];
+    const floorMessages = Array.isArray(messages) ? messages : [];
+    const data = mon.data || {};
+    mon.mhp = 0;
+    mon.mtrapped = 0;
+
+    const oldInventory = [...(mon.minvent || [])];
+    const statueContents = [];
+    mon.minvent = [];
+    if (mon.missile && !oldInventory.includes(mon.missile)) oldInventory.push(mon.missile);
+    mon.missile = null;
+    mon.mw = null;
+
+    for (const obj of oldInventory) {
+        if (monstoneObjectEscapesStatue(obj)) {
+            placeMonstoneEscapedObject(obj, x, y, floorMessages);
+            continue;
+        }
+        if (obj.lamplit || obj.burning) {
+            obj.lamplit = false;
+            obj.burning = false;
+            delete obj._burnTimer;
+            delete obj.litRadius;
+        }
+        obj.contained = false;
+        obj.worn = false;
+        obj.owornmask = 0;
+        statueContents.push(obj);
+    }
+
+    const tiny = !!(data.verysmall || data.tiny || data.msize === 'tiny' || data.size === 'tiny');
+    const makeStatue = !tiny || !rn2(2 + ((data.genoFreq ?? 1) > 2 ? 1 : 0));
+    let remains;
+    if (makeStatue) {
+        remains = mkcorpstat(STATUE, mon, data, x, y, monsterStoneCorpstatFlags(mon));
+        remains.kind = 'statue';
+        remains.contents = [];
+        for (const obj of statueContents) add_to_container(remains, obj);
+        remains.owt = (remains.owt || 0)
+            + remains.contents.reduce((sum, obj) => sum + (obj.owt || obj.weight || 0) * Math.max(1, obj.quan || 1), 0);
+        Object.assign(remains, object_display(remains));
+    } else {
+        for (const obj of statueContents) placeMonstoneEscapedObject(obj, x, y, floorMessages);
+        remains = makeStoneMonsterRock(x, y);
+    }
+
+    recordVanquished(mon, awardExperience);
+    game.level.monsters = (game.level.monsters || []).filter(other => other !== mon);
+    mon.dead = true;
+    mon.movement = 0;
+    newsym(x, y);
+    return remains;
+}
+
+function sameMonsterThrownStackObject(existing, obj) {
+    if (!existing || !obj || existing === obj) return false;
+    if (existing.hidden || existing.buried || existing.transientProjectile) return false;
+    if (existing.ox !== obj.ox || existing.oy !== obj.oy) return false;
+    return existing.otyp === obj.otyp
+        && existing.cls === obj.cls
+        && existing.kind === obj.kind
+        && existing.actualKind === obj.actualKind
+        && existing.glyph === obj.glyph
+        && existing.color === obj.color
+        && (existing.spe || 0) === (obj.spe || 0)
+        && !!existing.blessed === !!obj.blessed
+        && !!existing.cursed === !!obj.cursed
+        && !!existing.opoisoned === !!obj.opoisoned
+        && (existing.oeroded || 0) === (obj.oeroded || 0)
+        && (existing.oeroded2 || 0) === (obj.oeroded2 || 0)
+        && existing.gemDescription === obj.gemDescription
+        && existing.scrollIndex === obj.scrollIndex
+        && existing.potionIndex === obj.potionIndex
+        && existing.spellbookIndex === obj.spellbookIndex;
+}
+
+function stackMonsterThrownObject(obj) {
+    const stack = (game.level?.objects || []).find(existing => sameMonsterThrownStackObject(existing, obj));
+    if (!stack) return obj;
+    stack.quan = (stack.quan || 1) + (obj.quan || 1);
+    return stack;
+}
+
+function monsterThrownFloorEffects(obj, x, y, messages, verb) {
+    const previousMonsterMoving = game._monster_moving;
+    game._monster_moving = 1;
+    try {
+        return earthFloorEffects(obj, x, y, messages, verb);
+    } finally {
+        if (previousMonsterMoving === undefined) delete game._monster_moving;
+        else game._monster_moving = previousMonsterMoving;
+    }
+}
+
+export function dropMonsterObject(mon, obj, messages = null, {
+    verb = 'fall',
+    monsterMoving = true,
+} = {}) {
+    if (!mon || !obj || !game.level) return { consumed: false, object: null, messages: [] };
+    game.level.objects ??= [];
+    const floorMessages = Array.isArray(messages) ? messages : [];
+    if (Array.isArray(mon.minvent))
+        mon.minvent = mon.minvent.filter(item => item !== obj);
+    if (mon.missile === obj) mon.missile = null;
+    if (mon.mw === obj) mon.mw = null;
+
+    obj.ox = mon.mx;
+    obj.oy = mon.my;
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    delete obj.line;
+
+    const previousMonsterMoving = game._monster_moving;
+    if (monsterMoving) game._monster_moving = 1;
+    let consumed = false;
+    try {
+        consumed = earthFloorEffects(obj, obj.ox, obj.oy, floorMessages, verb);
+    } finally {
+        if (monsterMoving) {
+            if (previousMonsterMoving === undefined) delete game._monster_moving;
+            else game._monster_moving = previousMonsterMoving;
+        }
+    }
+    if (consumed) {
+        newsym(obj.ox, obj.oy);
+        return { consumed: true, object: null, messages: floorMessages };
+    }
+    const stacked = stackMonsterThrownObject(obj);
+    if (stacked === obj) game.level.objects.push(obj);
+    newsym(obj.ox, obj.oy);
+    return { consumed: false, object: stacked, messages: floorMessages };
+}
+
+export function landMonsterThrownObject(missile, x, y, {
+    glyph = missile?.glyph || ')',
+    color = missile?.color ?? CLR_CYAN,
+    petFetchable = true,
+    messages = null,
+    verb = 'fall',
+    quan = 1,
+} = {}) {
+    if (!missile || !game.level) return { consumed: false, object: null, messages: [] };
+    game.level.objects ??= [];
+    const floorMessages = Array.isArray(messages) ? messages : [];
+    const landing = {
+        ...missile,
+        ox: x,
+        oy: y,
+        quan: Math.max(1, quan || 1),
+        glyph,
+        color,
+        petFetchable,
+        hidden: false,
+        buried: false,
+        transientProjectile: false,
+    };
+    delete landing.line;
+    const consumed = monsterThrownFloorEffects(landing, x, y, floorMessages, verb);
+    if (consumed) {
+        newsym(x, y);
+        return { consumed: true, object: null, messages: floorMessages };
+    }
+    const stacked = stackMonsterThrownObject(landing);
+    if (stacked === landing) game.level.objects.push(landing);
+    newsym(x, y);
+    return { consumed: false, object: stacked, messages: floorMessages };
+}
+
+function appendToplineAfterMoreMessages(messages) {
+    for (const msg of messages || []) {
+        if (!msg) continue;
+        if (!game._topline_after_more) {
+            game._topline_after_more = msg;
+            continue;
+        }
+        const width = game.nhDisplay?.cols || 80;
+        if (game._topline_after_more.length + msg.length + 3 < width - 8) {
+            game._topline_after_more = `${game._topline_after_more}  ${msg}`;
+        } else {
+            game._queued_messages_after_more ??= [];
+            game._queued_messages_after_more.push({ text: msg, more: true });
+        }
+    }
 }
 
 function earthTargetIsSolid(target) {
@@ -12840,6 +13433,11 @@ function earthTargetIsSolid(target) {
     return !(target?.passWalls || target?.noncorporeal || target?.unsolid
         || data.passWalls || data.noncorporeal || data.unsolid
         || data.amorphous || data.name === 'fog cloud');
+}
+
+function earthTargetThrowsRocks(target) {
+    const data = target?.data || target || {};
+    return !!(target?.throwsRocks || data.throwsRocks);
 }
 
 function earthObjectDamage(obj, target) {
@@ -12885,7 +13483,7 @@ function dropEarthObjectOnHero(confused, helmetProtects, messages) {
     }
     if (!earthFloorEffects(obj, game.u?.ux || 0, game.u?.uy || 0, messages))
         earthPlaceObject(obj, game.u?.ux || 0, game.u?.uy || 0);
-    if (damage && game.u) {
+    if (damage && game.u && (game.u.uhp || 0) > 0) {
         game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
         if ((game.u.uhp || 0) <= 0) {
             game._death_cause = 'killed by a scroll of earth';
@@ -12915,7 +13513,7 @@ function dropEarthObjectOnMonster(x, y, confused, messages) {
         }
         mon.mhp = (mon.mhp || 1) - damage;
         if ((mon.mhp || 0) <= 0) {
-            dropMonsterInventory(mon);
+            dropMonsterInventory(mon, messages);
             game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
             recordVanquished(mon, true);
             newsym(x, y);
@@ -19350,7 +19948,7 @@ async function moveHero(dx, dy) {
             game._chronicle_first_kill = 1;
         }
         recordVanquished(mon);
-        dropMonsterInventory(mon);
+        dropMonsterInventory(mon, messages);
 	        await setMessage(messages.join('  '), killedPet && messages.length > 1);
         const treasureDrop = !rn2(6);
 
@@ -22118,29 +22716,15 @@ export async function rhack(_cmd) {
 	                if (game._monster_throw_after_more) {
                     const thrown = game._monster_throw_after_more;
                     game._monster_throw_after_more = null;
-                    if (thrown.hitPet) {
-                        game.level?.objects?.push({
-                            ...thrown.missile,
-                            ox: thrown.hitPet.mx,
-                            oy: thrown.hitPet.my,
-                            quan: 1,
-                            glyph: ')',
-                            color: NO_COLOR,
-                            petFetchable: true,
-                        });
-                        newsym(thrown.hitPet.mx, thrown.hitPet.my);
-                    } else {
-                        game.level?.objects?.push({
-                            ...thrown.missile,
-                            ox: game.u?.ux || 0,
-                            oy: game.u?.uy || 0,
-                            quan: 1,
-                            glyph: ')',
-                            color: CLR_CYAN,
-                            petFetchable: true,
-                        });
-                        newsym(game.u?.ux || 0, game.u?.uy || 0);
-                    }
+                    const landingX = thrown.x ?? (thrown.hitPet ? thrown.hitPet.mx : game.u?.ux || 0);
+                    const landingY = thrown.y ?? (thrown.hitPet ? thrown.hitPet.my : game.u?.uy || 0);
+                    const floorMessages = [];
+                    landMonsterThrownObject(thrown.missile, landingX, landingY, {
+                        glyph: thrown.glyph || ')',
+                        color: thrown.color ?? (thrown.hitPet ? NO_COLOR : CLR_CYAN),
+                        messages: floorMessages,
+                    });
+                    appendToplineAfterMoreMessages(floorMessages);
                 }
                         if (game._cold_effect_after_topline_more) {
                             const cold = game._cold_effect_after_topline_more;
@@ -25707,7 +26291,7 @@ export async function rhack(_cmd) {
                                         rn2(6);
                                         const corpseRoll = rn2(3);
                                         const corpseData = target.data?.corpse || target.data;
-                                        dropMonsterInventory(target);
+                                        dropMonsterInventory(target, messages);
                                         game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== target);
                                         if (!corpseRoll && corpseData && !corpseData.noCorpse) {
                                             const corpse = mkcorpstat(CORPSE, target, corpseData, target.mx, target.my, 8);
@@ -25905,7 +26489,7 @@ export async function rhack(_cmd) {
                                     rn2(6);
                                     const corpseRoll = rn2(3);
                                     const corpseData = target.data?.corpse || target.data;
-                                    dropMonsterInventory(target);
+                                    dropMonsterInventory(target, messages);
                                     game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== target);
                                     if (!corpseRoll && corpseData && !corpseData.noCorpse) {
                                         const corpse = mkcorpstat(CORPSE, target, corpseData, target.mx, target.my, 8);
@@ -29922,19 +30506,26 @@ export async function rhack(_cmd) {
                 color: item.cls === 'weapon' ? (item.kind === 'quarterstaff' ? CLR_BROWN : item.color ?? CLR_CYAN)
                     : item.color ?? (item.cls === 'scroll' || item.cls === 'spellbook' ? CLR_WHITE : NO_COLOR),
             };
-            game.level.objects.push(dropped);
-            objectIceEffect(dropped, dropped.ox, dropped.oy);
+            const floorMessages = [];
+            const consumedByFloor = earthFloorEffects(dropped, dropped.ox, dropped.oy, floorMessages, 'drop');
+            if (!consumedByFloor) {
+                game.level.objects.push(dropped);
+                objectIceEffect(dropped, dropped.ox, dropped.oy);
+            }
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             game._message_more = 0;
             game.context.move = 1;
             if (item.cls === 'weapon' || item.kind === 'chest') {
                 if (game.flags?.verbose === false) {
-                    preserveSilentDropPrompt();
+                    if (floorMessages.length) await setMessage(floorMessages.join('  '), floorMessages.length > 1);
+                    else preserveSilentDropPrompt();
                 } else {
-                    await setMessage(`You drop ${inventoryItemName(item)}.`);
+                    const messages = [`You drop ${inventoryItemName(item)}.`, ...floorMessages];
+                    await setMessage(messages.join('  '), messages.length > 1);
                 }
             } else {
-                preserveSilentDropPrompt();
+                if (floorMessages.length) await setMessage(floorMessages.join('  '), floorMessages.length > 1);
+                else preserveSilentDropPrompt();
             }
             game._command_mode = null;
             return;

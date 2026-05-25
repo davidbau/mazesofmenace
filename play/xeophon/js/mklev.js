@@ -545,6 +545,8 @@ const ANIMAL_GLYPHS = new Set(['a', 'B', 'c', 'd', 'f', 'q', 'r', 's', 'u', 'x',
 const TUNNEL_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler', 'rock mole', 'umber hulk']);
 const NEED_PICK_MONSTERS = new Set(['dwarf', 'dwarf leader', 'dwarf ruler']);
 const WALLWALK_MONSTERS = new Set(['earth elemental', 'xorn']);
+const METALLIVOROUS_MONSTERS = new Set(['rock mole', 'rust monster', 'xorn']);
+const CORPSE_EATER_MONSTERS = new Set(['purple worm', 'baby purple worm', 'ghoul', 'piranha']);
 const RNDMONST_FLAGS_BY_NAME = new Map(
     RNDMONST_COMMON_MONSTERS.map(([name, , , , , , , flags]) => [name, flags]),
 );
@@ -4675,7 +4677,7 @@ function sameStackableObject(existing, otmp) {
         && existing.gemDescription === otmp.gemDescription
         && sameCorpse;
 }
-function add_to_container(container, otmp) {
+export function add_to_container(container, otmp) {
     if (!container || !otmp) return null;
     container.contents ??= [];
     for (const existing of container.contents) {
@@ -4815,7 +4817,7 @@ const COLD_RESISTANT_MONSTERS = new Set([
     'ettin zombie', 'ghoul', 'giant zombie', 'straw golem', 'paper golem',
     'wood golem', 'flesh golem', 'iron golem', 'ice devil',
 ]);
-const STONE_RESISTANT_MONSTERS = new Set([
+export const STONE_RESISTANT_MONSTERS = new Set([
     'acid blob', 'gelatinous cube', 'chickatrice', 'cockatrice',
     'gargoyle', 'winged gargoyle', 'spotted jelly', 'ochre jelly',
     'fog cloud', 'dust vortex', 'ice vortex', 'energy vortex',
@@ -4889,6 +4891,8 @@ function monsterFromRndMeta(row) {
         passWalls: WALLWALK_MONSTERS.has(name),
         tunnel: TUNNEL_MONSTERS.has(name),
         needPick: NEED_PICK_MONSTERS.has(name),
+        metallivorous: METALLIVOROUS_MONSTERS.has(name),
+        corpseEater: CORPSE_EATER_MONSTERS.has(name),
         oviparous: flags.includes('o'),
         covetous: COVETOUS_MONSTER_NAMES.has(name),
         hidesUnder: HIDES_UNDER_MONSTERS.has(name),
@@ -5478,7 +5482,7 @@ function mongets(otyp, erodes = true) {
     return otmp;
 }
 
-export function dropMonsterInventory(mon) {
+export function dropMonsterInventory(mon, { floorEffects = null, verb = 'fall' } = {}) {
     if (!mon || !game.level) return;
     const inventory = [...(mon.minvent || [])];
     if (mon.missile && (mon.missile.quan || 1) > 0 && !inventory.includes(mon.missile))
@@ -5487,6 +5491,8 @@ export function dropMonsterInventory(mon) {
     for (const otmp of inventory) {
         if ((otmp.quan || 1) <= 0) continue;
         Object.assign(otmp, { ox: mon.mx, oy: mon.my });
+        if (floorEffects?.(otmp, otmp.ox, otmp.oy, verb))
+            continue;
         const stack = game.level.objects.find(obj => obj.ox === otmp.ox && obj.oy === otmp.oy
             && obj.kind === otmp.kind && obj.otyp === otmp.otyp && obj.cls === otmp.cls);
         if (stack) {
