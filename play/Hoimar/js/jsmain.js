@@ -182,6 +182,15 @@ export class NethackGame {
             // Capture from the official terminal serializer. Override screens
             // are rendered into the terminal grid before this hook runs.
             const disp = game?.nhDisplay;
+            if (game?._override_serialized_persistent
+                && game._override_serialized_screen
+                && Array.isArray(game._override_serialized_cursor)
+                && disp?.setCursor) {
+                disp.setCursor(
+                    game._override_serialized_cursor[0],
+                    game._override_serialized_cursor[1],
+                );
+            }
             const term = disp?.terminal || disp;
             nhGame._screens.push(term?.serialize ? term.serialize() : '');
             const cursor = disp ? [disp.cursorCol ?? 0, disp.cursorRow ?? 0, 1] : null;
@@ -194,6 +203,8 @@ export class NethackGame {
             }
             if (game._override_screen) {
                 game._override_prev = game._override_screen; // let rhack know what was shown
+                if (!game._override_serialized_persistent)
+                    game._override_serialized_cursor = null;
                 game._override_cursor = null;
                 game._override_screen = null;
             } else {

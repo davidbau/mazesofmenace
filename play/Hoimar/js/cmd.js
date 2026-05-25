@@ -34,7 +34,11 @@ import { d, rn1, rn2, rnd, rnl, rnz } from './rng.js';
 import { dist2 } from './hacklib.js';
 import { getObjectDescription } from './o_init.js';
 import { getRumor, hallucinatedLiquidName, randomHallucinatedMonsterName, wipeoutText } from './random_text.js';
-import { finish_pending_swallowed_expulsion, monster_projectile_destroyed_by_hit } from './monmove.js';
+import {
+    finish_deferred_monster_physical_attack,
+    finish_pending_swallowed_expulsion,
+    monster_projectile_destroyed_by_hit,
+} from './monmove.js';
 import { writeSavedGame } from './save_restore.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
@@ -2197,6 +2201,12 @@ function deathTopTenScreen() {
     return game._death_topten_screen;
 }
 
+function deathTopTenCursor(screen) {
+    const rows = String(screen || '').split('\n');
+    while (rows.length > 0 && rows[rows.length - 1] === '') rows.pop();
+    return [0, Math.min(rows.length, C.TERMINAL_ROWS - 1)];
+}
+
 function pluralizeObjectName(name) {
     if (name === 'ya') return name;
     if (name.startsWith('scroll of ')) return name.replace(/^scroll of /, 'scrolls of ');
@@ -3055,6 +3065,12 @@ async function start_wearing_object(obj) {
 
     const armorWearName = obj.oclass === ARMOR_CLASS ? baseObjectName(obj) : '';
     obj.worn = true;
+    if (obj.oclass === ARMOR_CLASS) {
+        // C refs: do_wear.c:armor_or_accessory_on(), allmain.c:moveloop_core().
+        // setworn() makes the bottom line eligible to show new AC before
+        // find_ac() updates u.uac for combat calculations.
+        game._status_uac_override = calculated_armor_class();
+    }
     if (obj.otyp === CLOAK_OF_DISPLACEMENT) {
         // C ref: do_wear.c:Cloak_on()/toggle_displacement().  The property
         // discovery message can block at --More-- before on_msg() reports
@@ -3080,6 +3096,7 @@ async function start_wearing_object(obj) {
         if (obj.oclass === ARMOR_CLASS) {
             obj.known = true;
             game.u.uac = calculated_armor_class();
+            game._status_uac_override = null;
             await pline(`You are now wearing ${wornArmorMessageName(armorWearName)}.`);
         } else {
             await pline(`${inventoryListing(obj)} (being worn).`);
@@ -4471,10 +4488,42 @@ function floorCorpseAtHero() {
 
 function corpseEatingReqtime(obj) {
     // C ref: eat.c:eatcorpse(); corpse delay is weight-dependent:
-    // victual.reqtime = 3 + (mons[mnum].cwt >> 6), then start_eating()
-    // records the first bite without consuming an input boundary.
+    // victual.reqtime = 3 + (mons[mnum].cwt >> 6).  C ref:
+    // eat.c:doeat() then scales that delay by the corpse's remaining
+    // nutrition after rotten first-bite accounting.
     const cwt = obj?.corpse_cwt || CORPSE_WEIGHT_BY_MONSTER.get(corpseMonsterPtr(obj)?.name) || 0;
-    return 3 + (cwt >> 6);
+    const reqtime = 3 + (cwt >> 6);
+    const fullNutrition = corpseNutrition(obj);
+    if (!fullNutrition) return reqtime;
+    const oeaten = currentCorpseOeaten(obj, fullNutrition);
+    return rounddiv(reqtime * oeaten, fullNutrition);
+}
+
+function corpseNutrition(obj) {
+    if (Number.isFinite(obj?.corpse_cnutrit)) return obj.corpse_cnutrit;
+    return corpseMonsterPtr(obj)?.cnutrit ?? 0;
+}
+
+function currentCorpseOeaten(obj, fullNutrition = corpseNutrition(obj)) {
+    if (!fullNutrition) return 0;
+    let oeaten = Number.isFinite(obj?.oeaten) && obj.oeaten > 0
+        ? Math.trunc(obj.oeaten)
+        : fullNutrition;
+    if (oeaten > fullNutrition) oeaten = fullNutrition;
+    if (obj && !Number.isFinite(obj.oeaten)) obj.oeaten = oeaten;
+    return oeaten;
+}
+
+function consumeCorpseOeaten(obj, amt) {
+    const fullNutrition = corpseNutrition(obj);
+    if (!obj || !fullNutrition) return 0;
+    let oeaten = currentCorpseOeaten(obj, fullNutrition);
+    if (amt > 0) oeaten >>= amt;
+    else if (oeaten > -amt) oeaten += amt;
+    else oeaten = 0;
+    if (oeaten === 0) oeaten = 1;
+    obj.oeaten = oeaten;
+    return oeaten;
 }
 
 function rottenFoodInterruptsEating() {
@@ -4698,6 +4747,7 @@ async function handleFloorCorpseEatKey(ch) {
     } else if (obj?._live_kill_corpse) {
         rn2(7);
         firstBiteStarted = !rottenFoodInterruptsEating();
+        if (firstBiteStarted) consumeCorpseOeaten(obj, 2);
     } else {
         rn2(5);
         const damage = rnd(8);
@@ -6142,6 +6192,15 @@ function monsterKillVerb(mon) {
     return 'kill';
 }
 
+function heroHitExclam(mon, damage) {
+    // C ref: src/uhitm.c:hmon_hitmon_msg_hit().  Hand-to-hand hits use
+    // exclam(dmg) only when canseemon(mon); swallowed or blind hits use ".".
+    const canSeeTarget = !(game.u?.uswallow && game.u?.ustuck === mon)
+        && !(game.u?.ublind || game.u?.uprops?.blind)
+        && cansee(mon.mx, mon.my);
+    return canSeeTarget ? (damage <= 4 ? '.' : '!') : '.';
+}
+
 function monsterHelpless(mon) {
     return !!mon?.msleeping || mon?.mcanmove === 0 || !!mon?.mfrozen;
 }
@@ -6777,7 +6836,7 @@ async function heroMeleeAttack(mon) {
             }
         }
         if (maybeKnockback) heroMeleeKnockbackFrontdoor();
-        await pline(`You hit ${monsterHitName(mon)}${damage <= 4 ? '.' : '!'}`);
+        await pline(`You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`);
         await wakeupMonsterByAttack(mon);
         // C refs: src/uhitm.c:known_hitum(), src/uhitm.c:passive().
         rn2(25);
@@ -6817,7 +6876,7 @@ async function heroMeleeAttack(mon) {
         }
     }
     if (maybeKnockback) heroMeleeKnockbackFrontdoor();
-    await pline(`You hit ${monsterHitName(mon)}${damage <= 4 ? '.' : '!'}`);
+    await pline(`You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`);
     await wakeupMonsterByAttack(mon);
     // C refs: src/uhitm.c:known_hitum(), src/uhitm.c:passive().
     rn2(25);
@@ -7731,6 +7790,7 @@ function extendedKeyLine(cmd, desc) {
 
 function showOverride(screen, cursor) {
     game._override_serialized_screen = null;
+    game._override_serialized_cursor = null;
     game._override_screen = screen;
     game._override_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
     if (game.nhDisplay && cursor) {
@@ -7752,11 +7812,13 @@ function showSerializedOverride(screen, cursor) {
     }
     showOverride(screen, cursor);
     game._override_serialized_screen = screen;
+    game._override_serialized_cursor = cursor ? [cursor[0], cursor[1], 1] : null;
 }
 
 function clearOverrideScreen() {
     game._override_screen = null;
     game._override_serialized_screen = null;
+    game._override_serialized_cursor = null;
     game._override_serialized_persistent = false;
     game._override_cursor = null;
     game._override_prev = null;
@@ -8896,6 +8958,7 @@ function finishDeferredProjectileClearAfterMore() {
 async function handleQueuedMore(ch) {
     if (!game._more || (game._more_dismissals_remaining || 0) <= 0) return false;
     let resumeMonsterBehindNewMore = false;
+    let suppressPausedMonsterResume = false;
     const moreDismissKey = !!game._monster_more_accepts_any_key
         || ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
     const pausedMonsterTurn = !!game._monster_turn_paused_for_more;
@@ -9020,7 +9083,11 @@ async function handleQueuedMore(ch) {
         game._more_dismissals_remaining = 0;
         game._monster_death_pending = false;
         game._death_prompt_pending = true;
-        runPendingDeathBonesCheck();
+        // C refs: src/end.c:done(), src/end.c:really_done(),
+        // src/bones.c:can_make_bones().  Wizard/explore deaths ask whether to
+        // die before really_done(); declining the prompt must not run the bones
+        // feasibility RNG.
+        if (!deathUsesWizardPrompt()) runPendingDeathBonesCheck();
         if (!game._death_preserve_latched_status) game._latched_status_uhp = 0;
         await pline('You die...');
         if (game._death_shopkeeper_takes_name) {
@@ -9045,7 +9112,8 @@ async function handleQueuedMore(ch) {
         game._more = false;
         game._death_blank_more_active = false;
         game._override_serialized_persistent = false;
-        showSerializedOverride(deathTopTenScreen(), [0, 6]);
+        const screen = deathTopTenScreen();
+        showSerializedOverride(screen, deathTopTenCursor(screen));
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
         game.context.move = 0;
@@ -9179,6 +9247,14 @@ async function handleQueuedMore(ch) {
             && /^The (?:kitten|little dog|(?:saddled )?pony) misses /.test(game._pending_message || '')
             ? game._pending_message
             : '';
+        if (game._pet_miss_prompt_preserve_on_dismiss && !game._after_more_message) {
+            game._pet_miss_prompt_preserve_on_dismiss = false;
+            game._pet_combat_more_latched = false;
+            game._more = false;
+            game._more_dismissals_remaining = 0;
+            game.context.move = 0;
+            return true;
+        }
         clear_pending_message();
         if (petMissLineAfterMore) await pline(petMissLineAfterMore);
         if (game._resume_spot_effects_after_more) {
@@ -9434,7 +9510,22 @@ async function handleQueuedMore(ch) {
             }
             await pline(msg);
             game._monster_topline_deferred = false;
-            finish_deferred_pet_kill_side_effect();
+            await finish_deferred_monster_physical_attack();
+            const finishedDeferredPetKill = finish_deferred_pet_kill_side_effect();
+            const suppressPetKillResume = !!game._pet_kill_suppress_resume_after_death_line;
+            game._pet_kill_suppress_resume_after_death_line = false;
+            if (finishedDeferredPetKill && suppressPetKillResume && !needsPrompt) {
+                // C refs: src/mhitm.c:mdamagem(), src/mon.c:monkilled().
+                // The interrupted pet attack has already returned from
+                // dog_move(); dismissing the preceding More must finish the
+                // post-pet turn tail, not start another monster pass.
+                suppressPausedMonsterResume = true;
+                game._monster_turn_paused_for_more = false;
+                game._swallowed_damage_more_waiting = false;
+                game._pre_turn_more_waiting = false;
+                game._monster_attack_more_waiting = false;
+                game._skip_encumbered_debt_after_pet_death_more = true;
+            }
             if (game._after_more_potion_breathe) {
                 const pendingPotion = game._after_more_potion_breathe;
                 game._after_more_potion_breathe = null;
@@ -9486,7 +9577,13 @@ async function handleQueuedMore(ch) {
         } else if (game._pet_defender_death_pending) {
             const pending = game._pet_defender_death_pending;
             game._pet_defender_death_pending = null;
-            await finish_pet_kill(pending.killer, pending.target);
+            const oldPetDeathBlockingFrame = game._pet_deferred_death_blocking_frame;
+            game._pet_deferred_death_blocking_frame = true;
+            try {
+                await finish_pet_kill(pending.killer, pending.target);
+            } finally {
+                game._pet_deferred_death_blocking_frame = oldPetDeathBlockingFrame;
+            }
             game._skip_encumbered_debt_after_pet_death_more = true;
             if (game._resume_movemon_after_mon === pending.target)
                 game._resume_movemon_after_mon = null;
@@ -9552,6 +9649,9 @@ async function handleQueuedMore(ch) {
         game._resume_floor_list_turn = false;
         await triggerSpotEffectsAtHero();
         if (!game._more) finishPendingMoveSmudge();
+        game.context.move = 1;
+    } else if (suppressPausedMonsterResume && !game._more) {
+        game._resume_turn_tail_after_more = true;
         game.context.move = 1;
     } else if (pausedMonsterTurn && !game._more && !game._death_prompt_active) {
         game._monster_turn_paused_for_more = false;
@@ -10360,8 +10460,9 @@ function roleAttributesPageParts() {
     const alignName = alignNameForHero();
     const levelName = game.level?.flags?.sokoban_rules ? 'Sokoban' : 'the Dungeons of Doom';
     const gold = heroGoldAmount();
+    const playerName = sentenceStart(game.plname || 'Adventurer');
     const headerLines = [
-        ` ${game.plname || 'Adventurer'} the ${roleName}'s attributes:`,
+        ` ${playerName} the ${roleName}'s attributes:`,
         '',
         ' Background:',
         `  You are ${articleForWord(rank)} ${rank}, a level ${game.u?.ulevel || 1} ${roleInsightGenderPrefix(role, female)}${game.urace?.adj || game.urace?.name || 'human'} ${roleName}.`,
@@ -10445,7 +10546,8 @@ function wizardAttributesPage1() {
         ? `${xp} experience points, ${xpNeedText}`
         : `${xp} experience points`;
     const pages = wizardAttributePageCount();
-    return ` ${game.plname || 'Wizard'} the Wizard's attributes:\n\n`
+    const playerName = sentenceStart(game.plname || 'Wizard');
+    return ` ${playerName} the Wizard's attributes:\n\n`
         + ' Background:\n'
         + `  You are ${articleForWord(rank)} ${rank}, a level ${level} male human Wizard.\n`
         + '  You are neutral, on a mission for Thoth\n'

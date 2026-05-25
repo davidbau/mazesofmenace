@@ -1252,7 +1252,10 @@ function strength_status_text(value) {
 function _statusLine1() {
     const u = game.u;
     if (!u) return '';
-    const name = game.plname || 'Hero';
+    const rawName = game.plname || 'Hero';
+    // C ref: src/botl.c:do_statusline1().  The bottom line capitalizes the
+    // first player-name character, while ustatusline() prints svp.plname raw.
+    const name = rawName ? `${rawName[0].toUpperCase()}${rawName.slice(1)}` : rawName;
     const form = u._poly_form || null;
     const role = form?.title || roleRankForLevel(game.urole, u.ulevel || 1, !!game.flags?.female)
         || (game.flags?.female
@@ -1291,12 +1294,13 @@ function _statusLine2() {
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp
         : (u.uhp || 0);
+    const ac = game._status_uac_override ?? u.uac ?? 10;
     const goldSymbol = rogue_level_display() ? '*' : '$';
     // C ref: botl.c:describe_level().
     const levelDesc = game.quest_dnum != null && u.uz?.dnum === game.quest_dnum
         ? `Home ${u.uz?.dlevel || 1}`
         : `Dlvl:${depth(u.uz)}`;
-    return `${levelDesc} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10} ${xp}${turn}${conditionText}`;
+    return `${levelDesc} ${goldSymbol}:${game._goldCount || 0} HP:${hp}(${u.uhpmax || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${ac} ${xp}${turn}${conditionText}`;
 }
 
 // ── Serialize terminal grid for screen comparison ──
@@ -1382,7 +1386,9 @@ function renderOverrideScreen(display, screen) {
         state.col++;
     }
 
-    const cursor = game._override_cursor || game._latched_more_cursor;
+    const cursor = game._override_cursor
+        || game._latched_more_cursor
+        || (game._override_serialized_persistent ? game._override_serialized_cursor : null);
     if (cursor && display.setCursor) {
         display.setCursor(cursor[0], cursor[1]);
     }
@@ -1601,6 +1607,8 @@ export function clear_pending_message() {
     game._hero_melee_message_pending = false;
     game._pet_combat_more_latched = false;
     game._pet_combat_pending_boundary = false;
+    game._pet_miss_prompt_after_resume = false;
+    game._pet_miss_prompt_preserve_on_dismiss = false;
     game._prompt_cursor = null;
     game._packed_monster_more_candidate = false;
     game._monster_more_accepts_any_key = false;

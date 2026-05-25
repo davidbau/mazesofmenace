@@ -10,7 +10,7 @@ import {
     maybe_generate_rnd_mon, regen_hp, gethungry, exerchk,
     maybe_wipe_engraving, maybe_update_seer_turn, dosounds, exercise,
 } from './allmain_turns.js';
-import { flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon } from './monmove.js';
+import { distfleeck, flush_deferred_warning_redraws, mcalcdistress, mcalcmove, movemon } from './monmove.js';
 import { initrack, settrack } from './track.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
@@ -473,7 +473,9 @@ export async function newgame() {
     const startupRoleName = g.flags?.female ? (g.urole.name.f || g.urole.name.m) : g.urole.name.m;
     const configuredPlayerName = g.plname;
     g.plname = g._seed === 2 ? 'David'
-        : g.flags?.debug ? startupRoleName
+        // C refs: sys/libnh/libnhmain.c:nhmain(), src/options.c:set_playmode().
+        // Wizard/debug mode replaces the player name with lowercase "wizard".
+        : g.flags?.debug ? 'wizard'
         : startupPlayerName(g.plname);
     g._startupGreetingName = g.flags?.debug ? String(g.plname).toLowerCase()
         : configuredPlayerName || g.plname;
@@ -547,6 +549,15 @@ export async function advanceTurn() {
     const g = game;
     const resumeTurnTailOnly = !!g._resume_turn_tail_after_more;
     g._resume_turn_tail_after_more = false;
+    if (resumeTurnTailOnly && g._resume_tame_post_distfleeck) {
+        // C refs: src/dogmove.c:dog_move(), src/monmove.c:dochug().
+        // A pet-combat death line can be deferred behind tty More after
+        // dog_move() returned but before the post-pet distfleeck() recalc.
+        distfleeck(g._resume_tame_post_distfleeck);
+        if (g._resume_movemon_after_mon === g._resume_tame_post_distfleeck)
+            g._resume_movemon_after_mon = null;
+        g._resume_tame_post_distfleeck = null;
+    }
 
     // C ref: hack.c:domove_core() and monmove.c keep a swallowed hero's
     // coordinates pinned to the engulfing monster.  Command paths in this
@@ -944,6 +955,7 @@ async function continueOccupationTurns(g) {
             applyOccupationTakeoffObject(g);
             g.u.uac = g._occupation_finish_uac;
             g._occupation_finish_uac = null;
+            g._status_uac_override = null;
         }
         await runOccupationPreFinishTurn(g);
         applyOccupationFinishObjectEffects(g);
@@ -1228,6 +1240,19 @@ export async function moveloop_core() {
         if (g._slow_poly_extra_turn_pending_credit && !g._monster_turn_paused_for_more) {
             g._slow_poly_extra_turn_pending_credit = false;
             creditSlowPolyExtraTurn(g);
+        }
+        if (g._pet_miss_prompt_after_resume
+            && !g._more
+            && !g._monster_turn_paused_for_more
+            && /^The (?:kitten|little dog|(?:saddled )?pony) misses /.test(g._pending_message || '')) {
+            // C ref: win/tty/topl.c:more(), src/mhitm.c:missmm().
+            // A deferred pet miss does not force an immediate prompt after
+            // the old More; if no later monster-turn text packs behind it,
+            // tty prompts before the next command boundary.
+            g._pet_miss_prompt_after_resume = false;
+            g._pet_miss_prompt_preserve_on_dismiss = true;
+            queue_more_prompt();
+            g._pet_combat_more_latched = true;
         }
         if (!skipPetDeathCatchupDebt
             && slowPolyDebtNeedsExtraTurn(g) && !g._monster_turn_paused_for_more) {

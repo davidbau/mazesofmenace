@@ -1675,9 +1675,10 @@ async function thrwmu_basic(mtmp) {
         mtmp.weapon_check = NEED_RANGED_WEAPON;
         if (await mon_wield_item_basic(mtmp)) return true;
     }
-    const linedUp = lined_up_basic(mtmp);
     const obj = ranged_weapon_candidate(mtmp);
-    if (!obj || !linedUp) return false;
+    if (!obj) return false;
+    const linedUp = lined_up_basic(mtmp);
+    if (!linedUp) return false;
 
     const dist = distmin(game.u?.ux ?? mtmp.mux ?? mtmp.mx, game.u?.uy ?? mtmp.muy ?? mtmp.my, mtmp.mx, mtmp.my);
     const oldDist = distmin(game.u?.ux0 ?? game.u?.ux ?? mtmp.mx, game.u?.uy0 ?? game.u?.uy ?? mtmp.my, mtmp.mx, mtmp.my);
@@ -2400,7 +2401,12 @@ async function show_blocking_monster_message(line) {
         if (is_simple_monster_vs_monster_line(game._pending_message)
             && is_simple_monster_hit_you_line(line)
             && topline_can_pack_message(game._pending_message, line)) {
+            // C refs: src/mhitm.c:mattackm(), src/mhitu.c:hitmsg(),
+            // win/tty/topl.c:update_topl().  While resuming an interrupted
+            // pet-combat turn, a monster-to-hero hit can pack behind the
+            // restored monster-vs-monster line but still owns a tty More.
             game._pending_message = `${game._pending_message}  ${line}`;
+            if (game._pet_combat_resume_active) queue_more_prompt();
             return;
         }
         if (/^The .+ (?:misses|hits|bites|stings|kicks|butts) the .+\.$/.test(game._pending_message)) {
@@ -2418,6 +2424,20 @@ async function show_blocking_monster_message(line) {
             game._after_more_message = line;
             game._after_more_needs_prompt = true;
         }
+        return;
+    }
+    if (game._pending_message && !game._more) {
+        // C ref: win/tty/topl.c:update_topl().  When an existing topline
+        // cannot pack the next monster message, tty services the old line's
+        // --More-- before replacing it with the new message.
+        queue_more_prompt();
+        game._monster_more_accepts_any_key = true;
+        if (!game._monster_death_pending) {
+            game._after_more_message = line;
+            game._after_more_needs_prompt = true;
+        }
+        game._monster_attack_more_latched = true;
+        game._monster_attack_pause_after_more = true;
         return;
     }
     if (game._more && game._pending_message && game._pet_combat_more_latched && !hallucinating()) {
@@ -3380,6 +3400,44 @@ function apply_hero_damage(damage) {
     if (damage > 0) game.u.uhp = Math.max(0, (game.u.uhp ?? 0) - damage);
 }
 
+function handle_monster_fatal_damage(mtmp, preDamageHp) {
+    if ((game.u?.uhp ?? 0) > 0) return false;
+    begin_monster_fatal_damage_basic();
+    const pendingTopline = game._pending_message || '';
+    const preserveFatalHitStatusHp = (!pendingTopline && preDamageHp <= 1)
+        || (!!pendingTopline && !/^You /.test(pendingTopline));
+    let preserveDeathPromptStatusHp = preserveFatalHitStatusHp;
+    if (mtmp.isshk && shopkeeper_name(mtmp)) {
+        const honorific = mtmp.female ? 'Ms.' : 'Mr.';
+        game._death_killer_name = `${honorific} ${shopkeeper_name(mtmp)}, the shopkeeper`;
+        game._death_killer_format = 'by';
+        game._death_shopkeeper_killer = { honorific, name: shopkeeper_name(mtmp) };
+        preserveDeathPromptStatusHp = false;
+    } else {
+        game._death_killer_name = monster_name(mtmp);
+        game._death_killer_format = 'by-an';
+        game._death_shopkeeper_killer = null;
+    }
+    game._death_preserve_latched_status = preserveDeathPromptStatusHp;
+    if (!game._pet_combat_resume_active)
+        // C refs: src/mhitu.c:hitmu(), src/end.c:done().
+        // Fatal hit More frames can show the pre-damage status until
+        // done_in_by() advances to the death prompt.
+        game._latched_status_uhp = preserveFatalHitStatusHp ? preDamageHp : 0;
+    game._monster_death_pending = true;
+    // C refs: mhitu.c:mattacku(), end.c:done().  Wizard/explore death
+    // handling interrupts the current monster turn even when the hit occurred
+    // while resuming a deferred pet-combat More.
+    if (mtmp.isshk && shopkeeper_name(mtmp)
+        && ((game.inventory || []).length || (game._goldCount || 0) > 0)) {
+        // C ref: shk.c:paybill()/inherits().
+        game._death_shopkeeper_takes_name = shopkeeper_name(mtmp);
+    }
+    game._fatal_monster_attack_paused = true;
+    game._monster_turn_paused_for_more = true;
+    return true;
+}
+
 function begin_monster_fatal_damage_basic() {
     if (game._death_bones_checked) return;
     game._death_bones_checked = true;
@@ -3553,6 +3611,30 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             let damage = d(damn, damd);
             if (verb === 'weapon') damage += monster_weapon_damage(mtmp.mw);
             damage = elemental_hit_side_effects(mtmp, adtyp, damage);
+            if (damage > 0 && game._pending_message && !game._more
+                && !topline_can_pack_message(game._pending_message, line)) {
+                // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
+                // hitmsg() can block on an older tty topline after damage dice
+                // are known but before knockback, AC reduction, HP loss, or the
+                // monster's later attacks run.
+                game._after_more_message = line;
+                const hasLaterAttack = attacks.slice(i + 1).some(Boolean);
+                game._after_more_needs_prompt = hasLaterAttack
+                    || (adtyp === 'AD_COLD' && damage > 0);
+                game._monster_attack_more_latched = true;
+                game._monster_attack_pause_after_more = true;
+                game._monster_attack_resume_behind_after_more = true;
+                game._deferred_monster_physical_attack = {
+                    mtmp,
+                    attacks,
+                    nextIndex: i + 1,
+                    toHit,
+                    attackVerbCounts: [...attackVerbCounts.entries()],
+                    current: { damage, preDamageHp: game.u?.uhp ?? 0 },
+                };
+                if (!game._more) queue_more_prompt();
+                return [];
+            }
             mhitm_knockback_frontdoor();
             damage = reduce_damage_by_negative_ac(damage);
             if (adtyp === 'AD_COLD' && damage > 0)
@@ -3591,40 +3673,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
                 game._latched_status_uhp = preDamageHp;
                 game._clear_latched_status_after_more = true;
             }
-            if ((game.u?.uhp ?? 0) <= 0) {
-                begin_monster_fatal_damage_basic();
-                const preserveFatalHitStatusHp = !/^You /.test(game._pending_message || '');
-                let preserveDeathPromptStatusHp = preserveFatalHitStatusHp;
-                if (mtmp.isshk && shopkeeper_name(mtmp)) {
-                    const honorific = mtmp.female ? 'Ms.' : 'Mr.';
-                    game._death_killer_name = `${honorific} ${shopkeeper_name(mtmp)}, the shopkeeper`;
-                    game._death_killer_format = 'by';
-                    game._death_shopkeeper_killer = { honorific, name: shopkeeper_name(mtmp) };
-                    preserveDeathPromptStatusHp = false;
-                } else {
-                    game._death_killer_name = monster_name(mtmp);
-                    game._death_killer_format = 'by-an';
-                    game._death_shopkeeper_killer = null;
-                }
-                game._death_preserve_latched_status = preserveDeathPromptStatusHp;
-                if (!game._pet_combat_resume_active)
-                    // C refs: src/mhitu.c:hitmu(), src/end.c:done().
-                    // Fatal hit More frames can show the pre-damage status
-                    // until done_in_by() advances to the death prompt.
-                    game._latched_status_uhp = preserveFatalHitStatusHp ? preDamageHp : 0;
-                game._monster_death_pending = true;
-                // C refs: mhitu.c:mattacku(), end.c:done().  Wizard/explore
-                // death handling interrupts the current monster turn even when
-                // the hit occurred while resuming a deferred pet-combat More.
-                if (mtmp.isshk && shopkeeper_name(mtmp)
-                    && ((game.inventory || []).length || (game._goldCount || 0) > 0)) {
-                    // C ref: shk.c:paybill()/inherits().
-                    game._death_shopkeeper_takes_name = shopkeeper_name(mtmp);
-                }
-                game._fatal_monster_attack_paused = true;
-                game._monster_turn_paused_for_more = true;
-                break;
-            }
+            if (handle_monster_fatal_damage(mtmp, preDamageHp)) break;
             if (game._monster_topline_deferred) break;
         } else {
             const miss = toHit === roll ? 'just misses' : 'misses';
@@ -3648,6 +3697,67 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
         game._after_more_strict_keys = true;
     }
     return hitMessages;
+}
+
+function append_deferred_physical_attack_line(line) {
+    if (!line) return;
+    if (game._pending_message) game._pending_message = `${game._pending_message}  ${line}`;
+    else game._pending_message = line;
+    game._last_topline_message = game._pending_message;
+    game._last_topline_can_force_more = false;
+}
+
+function finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp) {
+    mhitm_knockback_frontdoor();
+    damage = reduce_damage_by_negative_ac(damage);
+    apply_hero_damage(damage);
+    return handle_monster_fatal_damage(mtmp, preDamageHp);
+}
+
+export async function finish_deferred_monster_physical_attack() {
+    const pending = game._deferred_monster_physical_attack;
+    if (!pending) return false;
+    game._deferred_monster_physical_attack = null;
+    const { mtmp, attacks, nextIndex, toHit, current } = pending;
+    const attackVerbCounts = new Map(pending.attackVerbCounts || []);
+    if (finish_deferred_physical_hit_damage(mtmp, current.damage, current.preDamageHp))
+        return true;
+
+    for (let i = nextIndex; i < attacks.length; i++) {
+        const attack = attacks[i];
+        if (!attack) continue;
+        const [, adtyp, damn, damd] = attack;
+        const roll = rnd(20 + i);
+        if (toHit > roll) {
+            const verb = monster_attack_verb(attack, attackVerbCounts);
+            const extra = adtyp === 'AD_ELEC' ? '  You get zapped!' : '';
+            const target = verb === 'touches' ? ' you' : '';
+            const subject = monster_subject(mtmp);
+            const line = verb === 'weapon'
+                ? (mtmp.mw
+                    ? `${subject} ${monster_weapon_swing_verb(mtmp.mw)} ${monster_possessive(mtmp)} ${monster_weapon_name(mtmp.mw)}.  ${subject} hits!`
+                    : `${subject} hits!`)
+                : `${subject} ${verb}${target}!${extra}`;
+            append_deferred_physical_attack_line(line);
+            let damage = d(damn, damd);
+            if (verb === 'weapon') damage += monster_weapon_damage(mtmp.mw);
+            damage = elemental_hit_side_effects(mtmp, adtyp, damage);
+            if (adtyp === 'AD_COLD' && damage > 0)
+                game._pending_monster_attack_side_effect = "You're covered in frost!";
+            const preDamageHp = game.u?.uhp ?? 0;
+            if (finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp)) break;
+        } else {
+            const miss = toHit === roll ? 'just misses' : 'misses';
+            const subject = monster_subject(mtmp);
+            const line = attack?.[0] === 'AT_WEAP'
+                ? (mtmp.mw
+                    ? `${subject} ${monster_weapon_swing_verb(mtmp.mw)} ${monster_possessive(mtmp)} ${monster_weapon_name(mtmp.mw)}.  ${subject} ${miss}!`
+                    : `${subject} ${miss}!`)
+                : `${subject} ${miss}!`;
+            append_deferred_physical_attack_line(line);
+        }
+    }
+    return true;
 }
 
 function monster_attack_verb(attack, counts) {
@@ -3681,6 +3791,14 @@ async function mattacku_basic(mtmp, state) {
     if (game.u?.uswallow && game.u?.ustuck !== mtmp) return false;
     if (state.scared || mtmp.mpeaceful || mtmp.mtame) return false;
     if ((game.u?.uhp ?? 1) <= 0) return false;
+    const rangeWeapon = state?.inrange && !state.nearby && mon_has_attack_type(mtmp, 'AT_WEAP');
+
+    const cooldownAttack = cooldown_replacement_attack(mtmp);
+    const engulf = basic_engulf_attack(mtmp);
+    const physical = engulf ? null : basic_physical_attacks(mtmp, !rangeWeapon);
+    // C refs: src/mhitu.c:mattacku(), src/muse.c:find_offensive().
+    // mattacku() computes AC_VALUE() before checking offensive inventory.
+    const toHit = mattacku_to_hit(mtmp);
     const offensiveItem = offensive_item_candidate_basic(mtmp);
     if (offensiveItem?.kind === 'potion') return use_offensive_potion_basic(mtmp, offensiveItem.obj);
     if (offensiveItem?.kind === 'wand' && await use_offensive_wand_basic(mtmp, offensiveItem.obj)) {
@@ -3693,13 +3811,10 @@ async function mattacku_basic(mtmp, state) {
                 && (mtmp.movement || 0) < NORMAL_SPEED)
             || (game.u?.uhp ?? 1) <= 0) return true;
     }
-    const rangeWeapon = state?.inrange && !state.nearby && mon_has_attack_type(mtmp, 'AT_WEAP');
-
-    const cooldownAttack = cooldown_replacement_attack(mtmp);
     if (cooldownAttack) {
         if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
         if (!game._monster_topline_deferred) await flush_pending_more_before_monster_message();
-        const messages = await physical_melee_attacks(mtmp, [cooldownAttack], mattacku_to_hit(mtmp));
+        const messages = await physical_melee_attacks(mtmp, [cooldownAttack], toHit);
         if (messages.length && game._monster_topline_deferred && game._after_more_message) {
             for (const message of messages)
                 await append_monster_effect_topline(message, { needsPrompt: true });
@@ -3707,8 +3822,6 @@ async function mattacku_basic(mtmp, state) {
         await flush_visible_monster_attack_side_effect();
         return true;
     }
-    const engulf = basic_engulf_attack(mtmp);
-    const physical = engulf ? null : basic_physical_attacks(mtmp, !rangeWeapon);
     if (rangeWeapon && !physical && (mtmp.weapon_check === NEED_WEAPON || !mtmp.mw)) {
         // C ref: mhitu.c:mattacku()/mthrowu.c:thrwmu().  A ranged weapon
         // switch consumes the monster's attack opportunity.
@@ -3723,7 +3836,6 @@ async function mattacku_basic(mtmp, state) {
         && (mtmp.mux !== game.u?.ux || mtmp.muy !== game.u?.uy);
     if (!engulf && !physical && !rangeWeapon) {
         if (state?.inrange && (mtmp.data?.mattk || []).some(Boolean)) {
-            mattacku_to_hit(mtmp);
             if (targetsDisplacedImage && wildmissMelee) {
                 await wildmiss_displaced_image_basic(mtmp);
                 return true;
@@ -3735,16 +3847,11 @@ async function mattacku_basic(mtmp, state) {
         // C ref: monmove.c:dochug() calls mhitu.c:mattacku() for in-range
         // displaced images; mattacku() computes AC_VALUE() before range2
         // suppresses ordinary physical attacks.
-        if (state?.inrange) mattacku_to_hit(mtmp);
         return false;
     }
-    const toHit = mattacku_to_hit(mtmp);
     if (targetsDisplacedImage && (physical || wildmissMelee)) {
         await wildmiss_displaced_image_basic(mtmp);
         return true;
-    }
-    if (!rangeWeapon && physical?.some((attack) => attack?.[0] === 'AT_WEAP')) {
-        lined_up_basic(mtmp);
     }
     if (game._hero_melee_message_pending && game._pending_message) queue_more_prompt();
     if (rangeWeapon && !physical) {
@@ -4367,7 +4474,7 @@ export async function movemon() {
                 // C ref: src/dogmove.c:dog_invent()/dog_move(). A pet
                 // inventory pline can block on tty More, then returns to the
                 // same dog_move() call before the next command is read.
-                g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                 g._monster_turn_paused_for_more = true;
                 return false;
             }
@@ -4385,7 +4492,7 @@ export async function movemon() {
                     g._resume_tame_post_distfleeck = mtmp;
                     g._resume_movemon_after_mon = mtmp;
                 }
-                g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                 g._pet_combat_resume_active = true;
                 g._monster_turn_paused_for_more = true;
                 return false;
@@ -4408,14 +4515,14 @@ export async function movemon() {
                 if (g._swallowed_damage_more_latched && g._more) {
                     g._swallowed_damage_more_latched = false;
                     g._resume_movemon_after_mon = mtmp;
-                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                     g._monster_turn_paused_for_more = true;
                     g._swallowed_damage_more_waiting = true;
                     return false;
                 }
                 if (g._pending_swallowed_display_clear && g._more) {
                     g._resume_movemon_after_mon = mtmp;
-                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                     g._monster_turn_paused_for_more = true;
                     g._swallowed_expulsion_paused_for_more = true;
                     return false;
@@ -4440,7 +4547,7 @@ export async function movemon() {
                         }
                         g._monster_attack_pause_after_more = false;
                         g._resume_movemon_after_mon = mtmp;
-                        g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                        g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                         g._monster_turn_paused_for_more = true;
                         g._monster_attack_more_waiting = true;
                         return false;
@@ -4465,7 +4572,7 @@ export async function movemon() {
                     }
                     g._pet_combat_resume_active = false;
                     g._resume_movemon_after_mon = mtmp;
-                    g._resume_somebody_can_move = mtmp.movement >= NORMAL_SPEED;
+                    g._resume_somebody_can_move = somebody_can_move || mtmp.movement >= NORMAL_SPEED;
                     g._monster_turn_paused_for_more = true;
                     return false;
                 }

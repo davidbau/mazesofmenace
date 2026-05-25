@@ -4197,7 +4197,7 @@ function mksobj_init(otmp, otyp, artif) {
                         : rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
         } else if ((roll > 944 && roll <= 946) || (roll > 951 && roll <= 955)
             || (roll > 961 && roll <= 963) || (roll > 973 && roll <= 975)) {
-            rn1(5, 4);
+            otmp.spe = rn1(5, 4);
         } else if (roll > 955 && roll <= 957) {
             otmp.spe = rn1(18, 3);
         }

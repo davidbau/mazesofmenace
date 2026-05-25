@@ -764,6 +764,7 @@ const IRON_CHAIN = 475;
 const ROCK = 467;
 const EGG = 10001;
 const TIN = 10004;
+const CRYSTAL_BALL = 10088;
 const GLOB_OF_GRAY_OOZE = 10180;
 const GLOB_OF_BROWN_PUDDING = 10181;
 const GLOB_OF_GREEN_SLIME = 10182;
@@ -7302,6 +7303,18 @@ function removeInventoryItem(item, amount = 1) {
     game._pet_food_scan_inventory = game.inventory;
 }
 
+function useUpInventoryItem(item, amount = 1) {
+    if (!item) return false;
+    const usedCount = Math.max(1, Math.trunc(Number(amount || 1)));
+    const quantity = Math.max(1, Math.trunc(Number(item.quan || 1)));
+    if (usedCount >= quantity) {
+        const { shkp } = shopkeeperOwningBillEntry(item);
+        markObjectShopBillUsedUp(item, shkp || heroShopkeeper());
+    }
+    removeInventoryItem(item, usedCount);
+    return true;
+}
+
 export function consumeLifeSavingAmulet({ clearStoning = false } = {}) {
     const lifesaving = (game.inventory || []).find(item =>
         item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
@@ -7645,6 +7658,7 @@ function maybeIgniteFloorFireItem(item, messages, giveFeedback) {
 export function burnFloorObjectsByFire(x, y, {
     giveFeedback = false,
     igniteFeedback = giveFeedback,
+    heroCaused = false,
 } = {}) {
     if (!game.level) return { count: 0, messages: [] };
     const messages = [];
@@ -7665,9 +7679,13 @@ export function burnFloorObjectsByFire(x, y, {
         if (giveFeedback) messages.push(fireFloorItemMessage(obj, destroyed));
         count += destroyed;
         changed = true;
-        const remaining = quan - destroyed;
-        if (remaining > 0) obj.quan = remaining;
-        else game.level.objects = (game.level.objects || []).filter(item => item !== obj);
+        if (heroCaused) {
+            useUpFloorObject(obj, destroyed, { heroCaused: true });
+        } else {
+            const remaining = quan - destroyed;
+            if (remaining > 0) obj.quan = remaining;
+            else game.level.objects = (game.level.objects || []).filter(item => item !== obj);
+        }
     }
 
     for (const obj of [...(game.level.objects || [])]) {
@@ -7678,9 +7696,9 @@ export function burnFloorObjectsByFire(x, y, {
     return { count, messages };
 }
 
-export function burnRayFloorObjectsByFire(x, y) {
+export function burnRayFloorObjectsByFire(x, y, { heroCaused = true } = {}) {
     const floorVisible = !game.u?.blind && !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
-    const floorFire = burnFloorObjectsByFire(x, y, { igniteFeedback: floorVisible });
+    const floorFire = burnFloorObjectsByFire(x, y, { igniteFeedback: floorVisible, heroCaused });
     const messages = [...floorFire.messages];
     if (floorFire.count && couldsee(x, y))
         messages.push(`You ${game.u?.blind ? 'smell a whiff' : 'see a puff'} of smoke.`);
@@ -7694,6 +7712,47 @@ function liquidFlowFloorObjectsAt(x, y) {
 
 function removeFloorObject(obj) {
     game.level.objects = (game.level?.objects || []).filter(item => item !== obj);
+}
+
+function splitFloorObjectForUseUp(obj, count) {
+    const usedCount = Math.max(1, Math.trunc(Number(count || 1)));
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (!obj || quantity <= usedCount) return obj;
+    const split = { ...obj, id: next_ident(), quan: usedCount };
+    obj.quan = quantity - usedCount;
+    game.level.objects ??= [];
+    game.level.objects.push(split);
+    return split;
+}
+
+function billHeroCausedFloorUseUp(obj, precomputedPrice = null) {
+    if (!obj || obj.no_charge || shopBillableGold(obj)) return false;
+    const x = obj.ox ?? game.u?.ux;
+    const y = obj.oy ?? game.u?.uy;
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return false;
+    const price = precomputedPrice ?? shopItemPrice(obj, x, y);
+    if (!(price > 0)) return false;
+    const heroRoomShkp = shopkeeperForShopRoom(game.u?.ux, game.u?.uy);
+    if (sameShopkeeper(shkp, heroRoomShkp)) {
+        if (!shopBillEntryForObject(shkp, obj))
+            addObjectToShopBill(shkp, obj, price, { useup: true });
+        return markObjectShopBillUsedUp(obj, shkp);
+    }
+    shkp.robbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0))) + price;
+    return true;
+}
+
+function useUpFloorObject(obj, count, { heroCaused = false } = {}) {
+    if (!obj) return null;
+    const usedCount = Math.max(1, Math.trunc(Number(count || 1)));
+    const precomputedPrice = heroCaused
+        ? shopItemPrice({ ...obj, quan: Math.min(usedCount, Math.max(1, Math.trunc(Number(obj.quan || 1)))) }, obj.ox, obj.oy)
+        : null;
+    const usedObj = splitFloorObjectForUseUp(obj, count);
+    if (heroCaused) billHeroCausedFloorUseUp(usedObj, precomputedPrice);
+    removeFloorObject(usedObj);
+    return usedObj;
 }
 
 function floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy = false) {
@@ -8279,10 +8338,10 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
                 event.breatheMessage = "For an instant you couldn't see yourself!";
             damage += itemDamage;
             deathCause = fireInventoryDeathCause(cls, item, plural);
-            removeInventoryItem(item, destroyed);
+            useUpInventoryItem(item, destroyed);
             if (cls === 'potion') rn2(2);
         } else {
-            removeInventoryItem(item, destroyed);
+            useUpInventoryItem(item, destroyed);
             if (!game.u?.fireResistance) {
                 event.damage = 1;
                 damage += 1;
@@ -9306,6 +9365,12 @@ function isLampObject(item) {
         || kind === 'oil lamp' || kind === 'magic lamp' || kind === 'brass lantern';
 }
 
+function isCrystalBallObject(item) {
+    const kind = toolChargeKind(item);
+    return item?.otyp === CRYSTAL_BALL || kind === 'crystal ball'
+        || (kind === 'glass orb' && String(item?.actualKind || '').toLowerCase() === 'crystal ball');
+}
+
 function isWishedLightSource(item) {
     return isLampObject(item) || isCandleObject(item) || isPotionOfOil(item);
 }
@@ -9348,20 +9413,565 @@ function beginWishedBurn(item) {
     }
 }
 
+function endWishedBurn(item) {
+    item.lamplit = false;
+    item.burning = false;
+    delete item._burnTimer;
+    delete item.litRadius;
+}
+
 function applyWishedLightState(item, state) {
     if (!isWishedLightSource(item) || state == null) return;
     if (state) beginWishedBurn(item);
-    else {
-        item.lamplit = false;
-        item.burning = false;
-        delete item._burnTimer;
-        delete item.litRadius;
-    }
+    else endWishedBurn(item);
 }
 
 function maybeLitObjectName(obj, name) {
     if (!(obj?.lamplit || obj?.burning) || name.endsWith(' (lit)')) return name;
     return `${name} (lit)`;
+}
+
+function lampNoun(item) {
+    return item?.otyp === BRASS_LANTERN || objectKindKey(item) === 'brass lantern' ? 'lantern' : 'lamp';
+}
+
+function lampUsageChargeCount(item) {
+    if (item?.spe != null || item?.charges != null) return chargedUsageChargeCount(item);
+    return 1;
+}
+
+function refreshLightSourceLine(item) {
+    refreshInventoryObjectLine(item);
+    if (item?.unpaid) syncUnpaidBillLine(item);
+}
+
+async function applyLamp(item) {
+    const noun = lampNoun(item);
+    const messages = [];
+    if (item.lamplit || item.burning) {
+        endWishedBurn(item);
+        refreshLightSourceLine(item);
+        messages.push(`Your ${noun} is now off.`);
+    } else if (game.u?.underwater || game.u?.uunderwater) {
+        messages.push('This is not a diving lamp.');
+    } else if ((item.age ?? 1500) === 0
+        || ((item.otyp === MAGIC_LAMP || objectKindKey(item) === 'magic lamp') && (item.spe ?? 1) <= 0)) {
+        messages.push(noun === 'lantern'
+            ? (game.u?.blind ? 'Nothing happens.' : 'Your lantern is out of power.')
+            : `This ${pickupObjectName({ ...item, line: '' })} has no oil.`);
+    } else if (item.cursed && !rn2(2)) {
+        if (noun === 'lamp' && !rn2(3)) {
+            addHeroGlibTimeout(d(2, 10));
+            messages.push(`The lamp spills and covers your ${fingersOrGloves()} with oil.`);
+        } else {
+            messages.push(game.u?.blind ? 'Nothing happens.' : `${sentenceCase(pickupObjectName({ ...item, line: '' }))} flickers for a moment, then dies.`);
+        }
+    } else {
+        checkUnpaidUsage(item, messages, { chargeCount: lampUsageChargeCount(item) });
+        beginWishedBurn(item);
+        refreshLightSourceLine(item);
+        messages.push(`Your ${noun} is now on.`);
+    }
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+}
+
+const CRYSTAL_BALL_HALLUCINATION_MESSAGES = [
+    'You grok some groovy globs of incandescent lava.',
+    'Whoa!  Psychedelic colors, dude!',
+    'The crystal pulses with sinister light!',
+    'You see goldfish swimming above fluorescent rocks.',
+    'You see tiny snowflakes spinning around a miniature farmhouse.',
+    'Oh wow... like a kaleidoscope!',
+];
+
+const CRYSTAL_BALL_LEVEL_DETECTS = [
+    'Delphi',
+    "Medusa's lair",
+    'a castle',
+    "the Wizard of Yendor's tower",
+];
+
+const CRYSTAL_BALL_OBJECT_CLASSES = new Map([
+    ['$', { label: 'gold', predicate: obj => obj?.glyph === '$' || obj?.cls === 'coin' }],
+    ['"', { label: 'amulets', predicate: obj => obj?.glyph === '"' || obj?.cls === 'amulet' }],
+    ['%', { label: 'food', predicate: obj => obj?.glyph === '%' || obj?.cls === 'food' }],
+    ['?', { label: 'scrolls', predicate: obj => obj?.glyph === '?' || obj?.cls === 'scroll' }],
+    ['+', { label: 'spellbooks', predicate: obj => obj?.glyph === '+' || obj?.cls === 'spellbook' }],
+    ['!', { label: 'potions', predicate: obj => obj?.glyph === '!' || obj?.cls === 'potion' }],
+    ['=', { label: 'rings', predicate: obj => obj?.glyph === '=' || obj?.cls === 'ring' }],
+    ['/', { label: 'wands', predicate: obj => obj?.glyph === '/' || obj?.cls === 'wand' }],
+    ['*', { label: 'gems', predicate: obj => obj?.glyph === '*' || obj?.cls === 'gem' }],
+    ['(', { label: 'tools', predicate: obj => obj?.glyph === '(' || obj?.cls === 'tool' }],
+    [')', { label: 'weapons', predicate: obj => obj?.glyph === ')' || obj?.cls === 'weapon' }],
+    ['[', { label: 'armor', predicate: obj => obj?.glyph === '[' || obj?.cls === 'armor' }],
+]);
+
+function crystalBallObjectName(item) {
+    return pickupObjectName({ ...(item || {}), line: '' }) || 'crystal ball';
+}
+
+function crystalBallSubject(item) {
+    return `The ${crystalBallObjectName(item)}`;
+}
+
+function crystalBallTooBadMessage(item) {
+    return `Too bad you can't see the ${crystalBallObjectName(item)}.`;
+}
+
+function crystalBallIntelligence() {
+    return game.u?.acurr?.a?.[A_INT] ?? 10;
+}
+
+function crystalBallBackfire(item, messages) {
+    if (!item || (item.spe ?? 0) <= 0) return false;
+    const oops = item.artifact ? 8 : item.blessed ? 16 : 20;
+    if (!item.cursed && rnd(oops) <= crystalBallIntelligence()) return false;
+
+    const impair = rnd(Math.max(1, 100 - 3 * crystalBallIntelligence()));
+    const roll = rnd((item.artifact || item.blessed) ? 4 : 5);
+    const subject = crystalBallSubject(item);
+    if (roll === 1) {
+        messages.push(`${subject} is too much to comprehend!`);
+    } else if (roll === 2) {
+        messages.push(`${subject} confuses you!`);
+        addHeroConfusion(impair);
+    } else if (roll === 3) {
+        messages.push(`${subject} damages your vision!`);
+        if (game.u) {
+            game.u.blind = true;
+            game.u._blindTimeout = (game.u._blindTimeout || 0) + impair;
+        }
+    } else if (roll === 4) {
+        messages.push(`${subject} zaps your mind!`);
+        if (game.u) {
+            game.u.hallucinating = true;
+            game.u._halluTimeout = (game.u._halluTimeout || 0) + impair;
+            addHeroStatusSuffix('Hallu');
+        }
+    } else {
+        messages.push(`${subject} explodes!`);
+        useUpInventoryItem(item, item.quan || 1);
+        const damage = rnd(30);
+        if (game.u) {
+            game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+            if ((game.u.uhp || 0) <= 0) {
+                game._death_cause = 'killed by an exploding crystal ball';
+                messages.push('You die...');
+            }
+        }
+        return true;
+    }
+    spendChargedToolUse(item, messages);
+    return true;
+}
+
+function implodeCrystalBall(item, messages) {
+    messages.push(`${crystalBallSubject(item)} implodes!`);
+    useUpInventoryItem(item, item?.quan || 1);
+}
+
+function crystalBallHallucinationUse(item, messages) {
+    if ((item?.spe ?? 0) <= 0) {
+        messages.push('All you see is funky haze.');
+        if ((item?.spe ?? 0) < 0) implodeCrystalBall(item, messages);
+        return;
+    }
+    messages.push(CRYSTAL_BALL_HALLUCINATION_MESSAGES[rn2(CRYSTAL_BALL_HALLUCINATION_MESSAGES.length)]);
+    spendChargedToolUse(item, messages);
+}
+
+function crystalBallTrapDetectionMessage() {
+    const traps = game.level?.traps || [];
+    const ux = game.u?.ux ?? -1;
+    const uy = game.u?.uy ?? -1;
+    const remote = traps.filter(trap => trap && (trap.tx !== ux || trap.ty !== uy));
+    if (remote.length) {
+        for (const trap of remote) {
+            trap.tseen = true;
+            const loc = game.level?.at?.(trap.tx, trap.ty);
+            if (loc) {
+                loc.remembered_glyph = { ch: '^', color: CLR_BROWN, dec: false };
+                loc.waslit = true;
+            }
+            show_glyph_cell(trap.tx, trap.ty, '^', CLR_BROWN, false);
+        }
+        newsym(ux, uy);
+        return 'You feel entrapped.';
+    }
+    if (traps.some(trap => trap && trap.tx === ux && trap.ty === uy)) return 'Your toes itch.';
+    return 'Your toes stop itching.';
+}
+
+function crystalBallObjectDetectionMessage(ch) {
+    const spec = CRYSTAL_BALL_OBJECT_CLASSES.get(ch);
+    if (!spec) return '';
+    const found = collectDetectedObjects(spec.predicate);
+    if (found.remote.length) {
+        markDetectedObjects(found.remote);
+        return `You sense ${spec.label}.`;
+    }
+    if (found.here.length) return `You sense ${spec.label} nearby.`;
+    return 'The vision is unclear.';
+}
+
+function crystalBallMonsterDetectionMessage(ch) {
+    if (!/^[A-Za-z]$/.test(ch)) return '';
+    const found = (game.level?.monsters || []).filter(mon =>
+        mon && !mon.dead && (mon.mhp == null || mon.mhp > 0)
+        && (mon.data?.mlet === ch || mon.data?.glyph === ch || String(mon.data?.name || '').startsWith(ch)));
+    if (!found.length) return 'The vision is unclear.';
+    game._detect_monsters_display = 1;
+    return 'You sense the presence of monsters.';
+}
+
+function crystalBallLevelDetectionMessage() {
+    const what = CRYSTAL_BALL_LEVEL_DETECTS[rn2(CRYSTAL_BALL_LEVEL_DETECTS.length)];
+    return `You see ${what}, in the distance.`;
+}
+
+function crystalBallDetectionMessage(ch) {
+    if (ch === '^') return crystalBallTrapDetectionMessage();
+    return crystalBallObjectDetectionMessage(ch)
+        || crystalBallMonsterDetectionMessage(ch)
+        || crystalBallLevelDetectionMessage();
+}
+
+async function beginCrystalBallUse(item) {
+    if (game.u?.blind || (game.u?._statusSuffix || '').includes('Blind')) {
+        await setMessage(crystalBallTooBadMessage(item));
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+
+    const messages = [];
+    if (crystalBallBackfire(item, messages)) {
+        await setMessage(messages.join('  '), messages.length > 1);
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+    if (heroIsHallucinating()) {
+        crystalBallHallucinationUse(item, messages);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+
+    game._apply_crystal_ball_letter = item?.letter || '';
+    await setMessage(`${game.flags?.verbose === false ? '' : 'You may look for an object, monster, or special map symbol.  '}What do you look for?`);
+    game._command_mode = 'crystalBallLook';
+    return true;
+}
+
+async function finishCrystalBallUse(ch) {
+    const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_crystal_ball_letter);
+    game._apply_crystal_ball_letter = '';
+    game._command_mode = null;
+    if (!item) return false;
+    if (ch !== '@' && (ch === 'q' || ch === '\x1b' || ch === '\r' || ch === '\n')) {
+        if (game.flags?.verbose !== false) await setMessage('Never mind.');
+        game.context.move = 1;
+        return true;
+    }
+
+    const messages = [`You peer into the ${crystalBallObjectName(item)}...`];
+    const charged = (item.spe ?? 0) > 0;
+    if (!charged) {
+        messages.push('The vision is unclear.');
+        if ((item.spe ?? 0) < 0) implodeCrystalBall(item, messages);
+    } else {
+        item.known = true;
+        item.dknown = true;
+        item.actualKind = 'crystal ball';
+        item.kind = 'crystal ball';
+        spendChargedToolUse(item, messages);
+        messages.push(crystalBallDetectionMessage(ch));
+    }
+    await setMessage(messages.filter(Boolean).join('  '), messages.length > 1);
+    game.context.move = 1;
+    return true;
+}
+
+function magicInstrumentKind(item) {
+    const kind = toolChargeKind(item);
+    return kind === 'magic flute' || kind === 'magic harp' ? kind : '';
+}
+
+function instrumentDisplayName(item) {
+    return inventoryItemName(item).replace(/\s+\(0:\d+\)$/, '');
+}
+
+function instrumentTheName(item) {
+    return `The ${instrumentDisplayName(item).replace(/^(?:an?|the) /i, '')}`;
+}
+
+function instrumentOpeningMessage() {
+    if (heroIsHallucinating())
+        return 'You disseminate a kaleidoscopic display of floating butterflies.';
+    if (heroIsStunned() && heroIsConfused())
+        return 'What you perform is quite far from music...';
+    if (heroIsStunned())
+        return heroIsDeaf() ? 'You feel a monotonous vibration.' : 'You radiate an obnoxious droning sound.';
+    if (heroIsConfused())
+        return heroIsDeaf() ? 'You feel a jarring vibration.' : 'You generate a raucous noise.';
+    return null;
+}
+
+function monsterDistanceSquaredFromHero(mon) {
+    const dx = (mon?.mx || 0) - (game.u?.ux || 0);
+    const dy = (mon?.my || 0) - (game.u?.uy || 0);
+    return dx * dx + dy * dy;
+}
+
+function sleepMonstersWithMagicFlute(distance) {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        if (monsterDistanceSquaredFromHero(mon) >= distance) continue;
+        if (monsterResistsEffect(mon, game.u?.ulevel || 1)) continue;
+        mon.msleeping = 1;
+    }
+}
+
+function charmMonstersWithMagicHarp(distance) {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        if (monsterDistanceSquaredFromHero(mon) > distance) continue;
+        tameMonsterWithScroll(mon, {});
+    }
+}
+
+async function finishInstrumentTune(item) {
+    game._apply_instrument_letter = '';
+    game._instrument_tune_text = '';
+    game._command_mode = null;
+    if (!item) return false;
+    const name = instrumentTheName(item).replace(/^The /, 'the ');
+    const message = heroIsDeaf()
+        ? `You can feel ${name} emitting vibrations.`
+        : `You extract a strange sound from ${name}!`;
+    await setMessage(message);
+    game.context.move = 1;
+    return true;
+}
+
+async function finishMusicalImprovisation(item) {
+    const kind = magicInstrumentKind(item);
+    if (!kind) return false;
+    game._apply_instrument_letter = '';
+    game._command_mode = null;
+
+    const messages = [];
+    const opening = instrumentOpeningMessage();
+    if (opening) messages.push(opening);
+    else messages.push(`You start playing ${instrumentDisplayName(item)}.`);
+
+    const hasSpecialEffect = !heroIsStunned() && !heroIsConfused() && (item.spe ?? 0) > 0;
+    if (!hasSpecialEffect) {
+        messages.push(kind === 'magic flute'
+            ? (heroIsDeaf() ? `You feel ${instrumentDisplayName(item)} toot.` : `${instrumentTheName(item)} toots.`)
+            : (heroIsDeaf() ? 'You feel soothing vibrations.' : `${instrumentTheName(item)} twangs.`));
+        exerciseAttribute(A_DEX, true);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    spendChargedToolUse(item, messages);
+    if (kind === 'magic flute') {
+        const tone = heroIsHallucinating() ? 'piped' : 'soft';
+        messages.push(heroIsDeaf() ? `You seem to produce ${tone} music.` : `You produce ${tone} music.`);
+        sleepMonstersWithMagicFlute((game.u?.ulevel || 1) * 5);
+    } else {
+        messages.push(heroIsDeaf()
+            ? 'You feel very soothing vibrations.'
+            : `${instrumentTheName(item)} produces very attractive music.`);
+        charmMonstersWithMagicHarp(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
+    }
+    exerciseAttribute(A_DEX, true);
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+    return true;
+}
+
+async function beginMusicalInstrumentUse(item) {
+    if (game.u?.underwater || game.u?.uunderwater) {
+        await setMessage("You can't play music underwater!");
+        game._command_mode = null;
+        return true;
+    }
+    if (!heroIsStunned() && !heroIsConfused() && !heroIsHallucinating()) {
+        game._apply_instrument_letter = item.letter || '';
+        await setMessage('Improvise? [ynq] (q)');
+        game._command_mode = 'instrumentImprovisePrompt';
+        return true;
+    }
+    return finishMusicalImprovisation(item);
+}
+
+function splitOilPotionForApply(item) {
+    if (!item || (item.quan || 1) <= 1) return item;
+    const split = { ...item, id: next_ident(), quan: 1, line: '' };
+    delete split.o_id;
+    delete split._shopBillObjectId;
+    split.letter = nextInventoryLetter();
+    if (item.unpaid && !splitCarriedObjectShopBill(item, split, 1))
+        clearObjectShopBillState(split);
+    item.quan = (item.quan || 1) - 1;
+    refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+    refreshInventoryObjectLine(split);
+    game.inventory ??= [];
+    game.inventory.push(split);
+    return split;
+}
+
+function identifyPotionOfOil(item) {
+    if (!item) return;
+    item.known = true;
+    item.actualKind = 'potion of oil';
+    item.kind = 'oil';
+    item.potionIndex = 24;
+    recordKnownPotionDiscovery(item, 'oil');
+    learnObjectScore('Potions', 'potion of oil');
+}
+
+function recordKnownToolDiscovery(toolName) {
+    const name = String(toolName || '').trim();
+    if (!name) return;
+    game._discoveries ??= [];
+    if (!game._discoveries.some(entry => entry.section === 'Tools' && entry.name === name))
+        game._discoveries.push({ section: 'Tools', name, text: name, starred: false, known: true });
+    learnObjectScore('Tools', name);
+}
+
+async function applyPotionOfOil(item) {
+    const messages = [];
+    if (item.lamplit || item.burning) {
+        messages.push('You snuff the lit potion.');
+        endWishedBurn(item);
+        refreshLightSourceLine(item);
+    } else if (game.u?.underwater || game.u?.uunderwater) {
+        messages.push('There is not enough oxygen to sustain a fire.');
+    } else {
+        const potion = splitOilPotionForApply(item);
+        messages.push(`You light your potion.${game.u?.blind ? '' : '  It gives off a dim light.'}`);
+        if (potion.unpaid) {
+            checkUnpaidUsage(potion, messages);
+            messages.push('"That\'s in addition to the cost of the potion, of course."');
+            markObjectShopBillUsedUp(potion);
+        }
+        identifyPotionOfOil(potion);
+        beginWishedBurn(potion);
+        refreshLightSourceLine(potion);
+    }
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+}
+
+function removeMonsterFromLevel(mon) {
+    if (!mon || !game.level?.monsters) return;
+    game.level.monsters = game.level.monsters.filter(candidate => candidate !== mon);
+    newsym(mon.mx, mon.my);
+}
+
+async function djinniFromLamp(lamp, messages) {
+    const data = monsterByRndName('djinni') || RANDOM_MONSTER_BY_NAME.get('djinni');
+    const mon = data ? await makemon(data, game.u?.ux || 0, game.u?.uy || 0, MM_NOMSG) : null;
+    if (!mon) {
+        messages.push('It turns out to be empty.');
+        return;
+    }
+
+    const name = mon.data?.name || 'djinni';
+    if (game.u?.blind) {
+        messages.push('You smell acrid fumes.');
+        messages.push('Something speaks.');
+    } else {
+        messages.push(`In a cloud of smoke, ${monsterIndefiniteName(name)} emerges!`);
+        messages.push(`The ${name} speaks.`);
+    }
+
+    let chance = rn2(5);
+    if (lamp.blessed) chance = chance === 4 ? rnd(4) : 0;
+    else if (lamp.cursed) chance = chance === 0 ? rn2(4) : 4;
+
+    switch (chance) {
+    case 0:
+        messages.push('"I am in your debt.  I will grant one wish!"');
+        removeMonsterFromLevel(mon);
+        game._queued_messages_after_more ??= [];
+        game._queued_messages_after_more.push({ text: 'For what do you wish?', more: false, beginWishPrompt: true });
+        break;
+    case 1:
+        messages.push('"Thank you for freeing me!"');
+        mon.pet = true;
+        mon.mtame = Math.max(1, mon.mtame || 0);
+        mon.mpeaceful = 1;
+        break;
+    case 2:
+        messages.push('"You freed me!"');
+        mon.pet = false;
+        mon.mtame = 0;
+        mon.mpeaceful = 1;
+        set_malign(mon);
+        break;
+    case 3:
+        messages.push('"It is about time!"');
+        if (visibleCreatedMonster(mon)) messages.push(`The ${name} vanishes.`);
+        removeMonsterFromLevel(mon);
+        break;
+    default:
+        messages.push('"You disturbed me, fool!"');
+        mon.pet = false;
+        mon.mtame = 0;
+        mon.mpeaceful = 0;
+        set_malign(mon);
+        break;
+    }
+}
+
+async function rubLampObject(item) {
+    const messages = [];
+    if (!itemIsWielded(item)) {
+        wieldItemForApply(item);
+        await setMessage(`You now wield ${articleFor(pickupObjectName({ ...item, line: '' }))}.`);
+        game._command_mode = null;
+        game.context.move = 1;
+        return;
+    }
+
+    const kind = objectKindKey(item);
+    if (item.otyp === MAGIC_LAMP || kind === 'magic lamp') {
+        if ((item.spe ?? 0) > 0 && !rn2(3)) {
+            checkUnpaidUsage(item, messages, { altusage: true, chargeCount: 1 });
+            const wasLit = !!(item.lamplit || item.burning);
+            item.otyp = OIL_LAMP;
+            item.kind = 'oil lamp';
+            item.actualKind = 'oil lamp';
+            item.spe = 0;
+            item.age = rn1(500, 1000);
+            if (wasLit) beginWishedBurn(item);
+            refreshLightSourceLine(item);
+            recordKnownToolDiscovery('magic lamp');
+            await djinniFromLamp(item, messages);
+        } else if (rn2(2)) {
+            messages.push(game.u?.blind ? 'You smell smoke.' : 'You see a puff of smoke.');
+        } else {
+            messages.push('Nothing happens.');
+        }
+    } else if (item.otyp === BRASS_LANTERN || kind === 'brass lantern') {
+        messages.push('Rubbing the electric lamp is not particularly rewarding.');
+        messages.push('Anyway, nothing exciting happens.');
+    } else {
+        messages.push('Nothing happens.');
+    }
+
+    await setMessage(messages.join('  '), messages.length > 1 || !!game._queued_messages_after_more?.length);
+    game._command_mode = null;
+    game.context.move = 1;
 }
 
 function foodObjectNutrition(item) {
@@ -10511,6 +11121,175 @@ function setTinMonster(item, monster, varietyIndex = null) {
     setTinDisplayName(item, tinNameWithVariety(name, varietyIndex));
 }
 
+function corpseMonsterName(item) {
+    return String(item?.corpsenm?.name || objectKindKey(item).replace(/\s+corpse$/, '') || '').toLowerCase();
+}
+
+function tinnableCorpseNutrition(item) {
+    if (!item) return 0;
+    if (typeof item.corpsenm?.cnutrit === 'number') return item.corpsenm.cnutrit;
+    if (typeof item.nutrition === 'number') return item.nutrition;
+    const name = corpseMonsterName(item);
+    const known = CORPSE_NUTRITION.get(name);
+    if (known != null) return known;
+    return name ? 1 : 0;
+}
+
+function isTinnableCorpse(item) {
+    return isCorpseItem(item) && !(item.oeaten > 0) && tinnableCorpseNutrition(item) > 0;
+}
+
+function floorTinnableCorpseAtHero() {
+    return (game.level?.objects || []).find(obj =>
+        !obj.hidden && !obj.transientProjectile
+        && obj.ox === game.u?.ux && obj.oy === game.u?.uy
+        && isTinnableCorpse(obj));
+}
+
+function tinningInventoryLetters() {
+    return inventoryLetters(isTinnableCorpse);
+}
+
+function tinningInventoryPrompt() {
+    const letters = tinningInventoryLetters();
+    return `What do you want to tin? [${getobjPromptLetters(letters)} or ?*]`;
+}
+
+function tinningFloorPrompt(corpse) {
+    const name = pickupObjectName(corpse);
+    if ((corpse?.quan || 1) > 1)
+        return `There are ${corpse.quan} ${corpse.plural || `${name}s`} here; tin one? [ynq] (n)`;
+    const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
+    return `There is ${article} ${name} here; tin it? [ynq] (n)`;
+}
+
+function clearTinningKitState() {
+    game._apply_tinning_kit_letter = '';
+    game._tinning_floor_object = null;
+}
+
+function createHomemadeTinFromCorpse(corpse, kit) {
+    const can = mksobj(TIN, false, false);
+    Object.assign(can, {
+        cls: 'food',
+        glyph: '%',
+        kind: 'tin',
+        actualKind: 'tin',
+        singular: 'tin',
+        plural: 'tins',
+        quan: 1,
+        blessed: !!kit?.blessed,
+        cursed: !!kit?.cursed,
+        known: true,
+        dknown: true,
+        bknown: true,
+        ox: game.u?.ux ?? corpse?.ox ?? 0,
+        oy: game.u?.uy ?? corpse?.oy ?? 0,
+    });
+    setTinMonster(can, corpse?.corpsenm || { name: corpseMonsterName(corpse) }, HOMEMADE_TIN);
+    can.known = true;
+    return can;
+}
+
+function addHomemadeTinToInventory(can, messages) {
+    game.inventory ??= [];
+    const used = new Set(game.inventory.map(item => item.letter).filter(Boolean));
+    const letter = nextInventoryLetter();
+    if (!letter || used.has(letter)) {
+        can.ox = game.u?.ux ?? 0;
+        can.oy = game.u?.uy ?? 0;
+        delete can.letter;
+        delete can.line;
+        game.level.objects ??= [];
+        game.level.objects.push(can);
+        newsym(can.ox, can.oy);
+        messages.push(`You make, but cannot pick up, ${pickupObjectName(can)}.`);
+        return;
+    }
+    can.letter = letter;
+    can.line = normalInventoryLine({ ...can, line: '' });
+    game.inventory.push(can);
+    game._pet_food_scan_inventory = game.inventory;
+    messages.push(`${can.line}.`);
+}
+
+function carriedCorpseNeedsTinningBill(corpse) {
+    return !!(corpse?.unpaid || shopkeeperOwningBillEntry(corpse).entry);
+}
+
+function floorCorpseNeedsTinningBill(corpse) {
+    if (!corpse || corpse.no_charge) return false;
+    const x = corpse.ox ?? game.u?.ux;
+    const y = corpse.oy ?? game.u?.uy;
+    const shkp = shopkeeperForCostlySpot(x, y);
+    return shopkeeperInHisShop(shkp) && (shopItemPrice(corpse, x, y) > 0 || !!shopBillEntryForObject(shkp, corpse));
+}
+
+async function beginTinningInventorySelection(kit) {
+    const letters = tinningInventoryLetters();
+    if (!letters) {
+        clearTinningKitState();
+        await setMessage('You have nothing to tin.');
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+    game._apply_tinning_kit_letter = kit?.letter || '';
+    await setMessage(tinningInventoryPrompt());
+    game._command_mode = 'tinningObject';
+    return true;
+}
+
+async function beginTinningKitUse(kit) {
+    game._apply_tinning_kit_letter = kit?.letter || '';
+    if ((kit?.spe ?? 0) <= 0) {
+        clearTinningKitState();
+        await setMessage('You seem to be out of tins.');
+        game._command_mode = null;
+        game.context.move = 1;
+        return true;
+    }
+    const floorCorpse = floorTinnableCorpseAtHero();
+    if (floorCorpse) {
+        game._tinning_floor_object = floorCorpse;
+        await setMessage(tinningFloorPrompt(floorCorpse));
+        game._command_mode = 'tinningFloorConfirm';
+        return true;
+    }
+    return beginTinningInventorySelection(kit);
+}
+
+async function finishTinningKitUse(kit, corpse, { floorObject = false } = {}) {
+    clearTinningKitState();
+    game._command_mode = null;
+    if (!kit) return false;
+    if (!isTinnableCorpse(corpse)) {
+        await setMessage(corpse?.oeaten ? 'You cannot tin something which is partly eaten.' : "That's too insubstantial to tin.");
+        game.context.move = 1;
+        return true;
+    }
+
+    const messages = [];
+    if (!spendChargedToolUse(kit, messages)) {
+        await setMessage('You seem to be out of tins.');
+        game.context.move = 1;
+        return true;
+    }
+
+    const can = createHomemadeTinFromCorpse(corpse, kit);
+    if (floorObject) {
+        if (floorCorpseNeedsTinningBill(corpse) && !heroIsDeaf()) messages.push('"You tin it, you bought it!"');
+        useUpFloorObject(corpse, 1, { heroCaused: true });
+    } else {
+        if (carriedCorpseNeedsTinningBill(corpse) && !heroIsDeaf()) messages.push('"You tin it, you bought it!"');
+        useUpInventoryItem(corpse, 1);
+    }
+    addHomemadeTinToInventory(can, messages);
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+    return true;
+}
+
 function isTinObject(item) {
     const kind = String(item?.kind || '').toLowerCase();
     return item?.otyp === TIN || kind === 'tin' || kind === 'empty tin'
@@ -10977,6 +11756,193 @@ function isBlankSpellbookItem(item) {
     if (!(item?.cls === 'spellbook' || item?.otyp === SPBOOK_NO_NOVEL)) return false;
     const name = item.spellName || item.spell?.name || String(item.kind || '').replace(/^spellbook(?: of)? /, '');
     return name === 'blank paper' || (!name && item.appearance === 'plain');
+}
+
+const MARKER_SCROLL_INK_COSTS = new Map([
+    ['light', 8], ['gold detection', 8], ['food detection', 8], ['magic mapping', 8],
+    ['amnesia', 8], ['fire', 8], ['earth', 8],
+    ['destroy armor', 10], ['create monster', 10], ['punishment', 10],
+    ['confuse monster', 12],
+    ['identify', 14],
+    ['enchant armor', 16], ['remove curse', 16], ['enchant weapon', 16], ['charging', 16],
+    ['scare monster', 20], ['stinking cloud', 20], ['taming', 20], ['teleportation', 20],
+    ['genocide', 30],
+]);
+
+function markerPaperType(item) {
+    if (item?.cls === 'spellbook' || item?.glyph === '+' || item?.otyp === SPBOOK_NO_NOVEL) return 'spellbook';
+    if (item?.cls === 'scroll' || item?.glyph === '?' || item?.otyp === SCROLL_CLASS) return 'scroll';
+    return '';
+}
+
+function markerPaperTypeWord(item) {
+    const type = markerPaperType(item);
+    if (type === 'spellbook') return isBookOfTheDeadItem(item) ? 'book' : 'spellbook';
+    return type || 'scroll';
+}
+
+function markerWritePrompt(item) {
+    return `What type of ${markerPaperTypeWord(item)} do you want to write?`;
+}
+
+function normalizeMarkerWriteName(text) {
+    let name = String(text || '').trim().replace(/\s+/g, ' ');
+    name = normalizeWishedSpelling(name).toLowerCase();
+    if (name.startsWith('scroll ')) name = name.slice(7);
+    else if (name.startsWith('spellbook ')) name = name.slice(10);
+    if (name.startsWith('of ')) name = name.slice(3);
+    return name.trim();
+}
+
+function markerResolveWrittenType(rawText, paper) {
+    const paperType = markerPaperType(paper);
+    const normalized = normalizeMarkerWriteName(rawText);
+    if (!normalized) return null;
+    const alias = resolveWishedSpellingAlias(
+        paperType === 'scroll' ? normalized : `spellbook of ${normalized}`,
+    ).name;
+    const name = paperType === 'scroll'
+        ? alias.replace(/^scroll of /, '')
+        : alias.replace(/^spellbook(?: of)?\s+/, '');
+
+    if (name === 'blank paper') return { paperType, name, blank: true };
+    if (paperType === 'scroll') {
+        const index = IDENTIFIED_SCROLL_NAMES.indexOf(name);
+        if (index < 0) return null;
+        return { paperType, name, index, inkCost: MARKER_SCROLL_INK_COSTS.get(name) || 1000 };
+    }
+    if (paperType === 'spellbook') {
+        const level = SPELLBOOK_LEVELS[name] || 0;
+        if (!(level > 0)) return null;
+        return { paperType, name, spellbookIndex: Object.keys(SPELLBOOK_LEVELS).indexOf(name), inkCost: 10 * level };
+    }
+    return null;
+}
+
+function markerKnownWrittenType(target) {
+    if (!target) return false;
+    if (target.paperType === 'scroll') return scrollDiscoveryKnown(target.name);
+    if (target.paperType === 'spellbook') return spellbookDiscoveryKnown(target.name);
+    return false;
+}
+
+function markerWrittenObject(target, marker, paper, letter) {
+    const curseval = (marker?.blessed ? 1 : marker?.cursed ? -1 : 0)
+        + (paper?.blessed ? 1 : paper?.cursed ? -1 : 0);
+    const base = {
+        id: next_ident(),
+        quan: 1,
+        ox: game.u?.ux || paper?.ox || 0,
+        oy: game.u?.uy || paper?.oy || 0,
+        letter,
+        bknown: !!(paper?.bknown && marker?.bknown),
+        blessed: curseval > 0,
+        cursed: curseval < 0,
+        dknown: false,
+    };
+    if (target.paperType === 'scroll') {
+        const known = scrollDiscoveryKnown(target.name);
+        const label = game._object_descriptions?.scrolls?.[target.index] || 'ZELGO MER';
+        return Object.assign(base, {
+            cls: 'scroll',
+            glyph: '?',
+            otyp: SCROLL_CLASS,
+            kind: known ? `scroll of ${target.name}` : `scroll labeled ${label}`,
+            actualKind: `scroll of ${target.name}`,
+            scrollIndex: target.index,
+            known,
+        });
+    }
+    const known = spellbookDiscoveryKnown(target.name);
+    return Object.assign(base, {
+        cls: 'spellbook',
+        glyph: '+',
+        otyp: SPBOOK_NO_NOVEL,
+        kind: `spellbook of ${target.name}`,
+        spellName: target.name,
+        spellbookIndex: target.spellbookIndex,
+        appearance: game._object_descriptions?.spellbooks?.[target.spellbookIndex] || '',
+        known,
+    });
+}
+
+async function finishMarkerWriting() {
+    const marker = (game.inventory || []).find(item => item.letter === game._apply_marker_letter);
+    const paper = (game.inventory || []).find(item => item.letter === game._marker_write_paper_letter);
+    const text = game._marker_write_text || '';
+    game._apply_marker_letter = null;
+    game._marker_write_paper_letter = null;
+    game._marker_write_text = '';
+    game._command_mode = null;
+
+    if (!marker || !paper) return false;
+    const target = markerResolveWrittenType(text, paper);
+    const typeword = markerPaperTypeWord(paper);
+    if (!target) {
+        await setMessage(`There is no such ${typeword}!`);
+        game.context.move = 1;
+        return true;
+    }
+    if (target.blank) {
+        await setMessage("You can't write that!  It's obscene!");
+        game.context.move = 1;
+        return true;
+    }
+
+    const messages = [];
+    checkUnpaidUsage(marker, messages);
+    const inkCost = target.inkCost || 1000;
+    const halfCost = Math.trunc(inkCost / 2);
+    if ((marker.spe ?? 0) < halfCost) {
+        messages.push('Your marker is too dry to write that!');
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    const actualCost = rn1(halfCost, halfCost);
+    if ((marker.spe ?? 0) < actualCost) {
+        marker.spe = 0;
+        updateChargedItemLine(marker);
+        messages.push('Your marker dries out!');
+        if (target.paperType === 'spellbook') {
+            messages.push('The spellbook is left unfinished and your writing fades.');
+        } else {
+            messages.push('The scroll is now useless and disappears!');
+            useUpInventoryItem(paper);
+        }
+        await setMessage(messages.join('  '), true);
+        game.context.move = 1;
+        return true;
+    }
+
+    marker.spe = Math.max(0, (marker.spe ?? 0) - actualCost);
+    updateChargedItemLine(marker);
+
+    if (!markerKnownWrittenType(target) && !game.flags?.debug) {
+        messages.push("You don't know how to write that.");
+        if (target.paperType === 'spellbook') {
+            messages.push('You write in your best handwriting:  "My Diary", but it quickly fades.');
+        } else {
+            messages.push(`You write "${game.plname || 'You'} was here!" and the scroll disappears.`);
+            useUpInventoryItem(paper);
+        }
+        await setMessage(messages.join('  '), true);
+        game.context.move = 1;
+        return true;
+    }
+
+    const letter = paper.letter;
+    useUpInventoryItem(paper);
+    const written = markerWrittenObject(target, marker, paper, letter);
+    written.line = normalInventoryLine({ ...written, line: '' });
+    game.inventory ??= [];
+    game.inventory.push(written);
+    if (target.paperType === 'spellbook')
+        messages.push('The spellbook warps strangely.');
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+    return true;
 }
 
 function isBookOfTheDeadItem(item) {
@@ -14342,6 +15308,7 @@ export const __shopBillingTestHooks = {
     splitShopBillEntry,
     subFromShopBill,
     subOneFromShopBill,
+    fireDamageInventoryForTest: fireDamageInventory,
     checkUnpaidUsageForTest: checkUnpaidUsage,
     costlyTinForTest: costlyTinAlteration,
     tipContainerContents,
@@ -19196,6 +20163,10 @@ function chargedToolUsageBasePrice(obj) {
 function chargedUsageChargeCount(obj, override = null) {
     if (override != null) return Math.max(0, Math.trunc(Number(override || 0)));
     if (isWandItem(obj)) return Math.max(0, wandCharges(obj));
+    const kind = toolChargeKind(obj);
+    if ((kind === 'oil lamp' || kind === 'brass lantern' || kind === 'magic lamp')
+        && obj?.spe == null && obj?.charges == null)
+        return 1;
     return Math.max(0, Math.trunc(Number(obj?.spe ?? obj?.charges ?? 0)));
 }
 
@@ -21581,8 +22552,7 @@ function royalJellyRubPrompt() {
 
 function rubObjectLetters() {
     return inventoryLetters(item => {
-        const name = inventoryItemName(item).toLowerCase();
-        return name.includes('lamp') || isRoyalJelly(item);
+        return isLampObject(item) || isRoyalJelly(item);
     });
 }
 
@@ -22622,7 +23592,10 @@ function heroFireTrapMessage(trap, prefix = '') {
     }
     const inventoryFire = fireDamageInventory(origDamage);
     messages.push(...inventoryFire.messages);
-    const floorFire = burnFloorObjectsByFire(game.u?.ux || 0, game.u?.uy || 0, { giveFeedback: !game.u?.blind });
+    const floorFire = burnFloorObjectsByFire(game.u?.ux || 0, game.u?.uy || 0, {
+        giveFeedback: !game.u?.blind,
+        heroCaused: true,
+    });
     messages.push(...floorFire.messages);
     if (floorFire.count && game.u?.blind) messages.push('You smell paper burning.');
     damage += inventoryFire.damage;
@@ -28200,7 +29173,7 @@ export async function rhack(_cmd) {
                     } else {
                         const ray = { ...breath.ray, heardGas: false };
                         const follow = advanceFireBreathRay(ray, breath.sourceId, {
-                            floorFire: burnRayFloorObjectsByFire,
+                            floorFire: (x, y) => burnRayFloorObjectsByFire(x, y, { heroCaused: false }),
                         });
                         if (follow.target?.type === 'monster') {
                             game._queued_messages_after_more ??= [];
@@ -28251,7 +29224,7 @@ export async function rhack(_cmd) {
                         if (breath.ray.remaining > 0) breath.ray.remaining = Math.max(0, breath.ray.remaining - 2);
                     }
                     const follow = advanceFireBreathRay(breath.ray, breath.sourceId, {
-                        floorFire: burnRayFloorObjectsByFire,
+                        floorFire: (x, y) => burnRayFloorObjectsByFire(x, y, { heroCaused: false }),
                     });
                     if (follow.target?.type === 'monster') {
                         game._queued_messages_after_more ??= [];
@@ -32415,7 +33388,7 @@ export async function rhack(_cmd) {
                 if (result.gone || !rn2(3)) {
                     shouldCall = shouldTryCallSpellbook(item, name);
                     if (shouldCall) prepareSpellbookTryCall(item, studyDelay);
-                    removeInventoryItem(item);
+                    useUpInventoryItem(item);
                     if (!result.gone) messages.push('The spellbook crumbles to dust!');
                 }
                 game._helpless_time = Math.max(game._helpless_time || 0, studyDelay);
@@ -32432,7 +33405,7 @@ export async function rhack(_cmd) {
                     messages.push('Being confused you have difficulties in controlling your actions.');
                     shouldCall = shouldTryCallSpellbook(item, name);
                     if (shouldCall) prepareSpellbookTryCall(item, studyDelay);
-                    removeInventoryItem(item);
+                    useUpInventoryItem(item);
                     messages.push('You accidentally tear the spellbook to pieces.');
                 } else {
                     messages.push('You find yourself reading the first line over and over again.');
@@ -33970,6 +34943,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isPotionOfOil(invItem)
                     || isIceBoxObject(invItem)
                     || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
@@ -34008,6 +34982,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isPotionOfOil(invItem)
                     || isIceBoxObject(invItem)
                     || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
@@ -34039,6 +35014,22 @@ export async function rhack(_cmd) {
         }
         if (isTinOpenerObject(item)) {
             await beginTinOpenerUse(item);
+            return;
+        }
+        if (toolChargeKind(item) === 'tinning kit' || name.includes('tinning kit')) {
+            await beginTinningKitUse(item);
+            return;
+        }
+        if (isCrystalBallObject(item)) {
+            await beginCrystalBallUse(item);
+            return;
+        }
+        if (magicInstrumentKind(item)) {
+            await beginMusicalInstrumentUse(item);
+            return;
+        }
+        if (isPotionOfOil(item)) {
+            await applyPotionOfOil(item);
             return;
         }
         if (isPickDigItem(item)) {
@@ -34157,6 +35148,7 @@ export async function rhack(_cmd) {
         }
         if (name.includes('magic marker')) {
             await setMessage('What do you want to write on? [*]');
+            game._apply_marker_letter = item.letter;
             game._command_mode = 'markerWriteObject';
             return;
         }
@@ -34225,9 +35217,8 @@ export async function rhack(_cmd) {
             game.context.move = 1;
             return;
         }
-        if (name.includes('lamp')) {
-            await setMessage('You rub the lamp.  Nothing happens.');
-            game.context.move = 1;
+        if (isLampObject(item)) {
+            await applyLamp(item);
             return;
         }
         await setMessage('Nothing happens.');
@@ -34439,6 +35430,61 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'crystalBallLook') {
+        await finishCrystalBallUse(ch);
+        return;
+    }
+
+    if (game._command_mode === 'instrumentImprovisePrompt') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_instrument_letter);
+        if (ch === 'y') {
+            await finishMusicalImprovisation(item);
+            return;
+        }
+        if (ch === 'n') {
+            if (!item) {
+                game._apply_instrument_letter = '';
+                game._command_mode = null;
+                return;
+            }
+            game._instrument_tune_text = '';
+            await setMessage('What tune are you playing? [5 notes, A-G]');
+            game._command_mode = 'instrumentTuneText';
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._apply_instrument_letter = '';
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'instrumentTuneText') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_instrument_letter);
+        if (ch === '\x1b') {
+            game._apply_instrument_letter = '';
+            game._instrument_tune_text = '';
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '\r' || ch === '\n') {
+            await finishInstrumentTune(item);
+            return;
+        }
+        const code = ch.charCodeAt(0);
+        if (code === 8 || code === 127 || ch === '\x7f') {
+            game._instrument_tune_text = (game._instrument_tune_text || '').slice(0, -1);
+        } else if (code >= 32) {
+            game._instrument_tune_text = `${game._instrument_tune_text || ''}${ch}`;
+        }
+        await setMessage(`What tune are you playing? [5 notes, A-G]${game._instrument_tune_text ? ` ${game._instrument_tune_text}` : ''}`);
+        return;
+    }
+
     if (game._command_mode === 'greaseInventoryOverlay') {
         game._overlay_lines = null;
         game._overlay_hide_status = 0;
@@ -34521,9 +35567,36 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'markerWriteText') {
+        if (ch === '\r' || ch === '\n') {
+            await finishMarkerWriting();
+            return;
+        }
+        if (ch === '\x1b') {
+            game._apply_marker_letter = null;
+            game._marker_write_paper_letter = null;
+            game._marker_write_text = '';
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        const code = typeof key === 'number' ? key : ch.charCodeAt(0);
+        if (code === 8 || code === 127 || ch === '\x7f') {
+            game._marker_write_text = (game._marker_write_text || '').slice(0, -1);
+        } else if (code >= 32) {
+            game._marker_write_text = `${game._marker_write_text || ''}${ch}`;
+        }
+        const paper = (game.inventory || []).find(invItem => invItem.letter === game._marker_write_paper_letter);
+        const prompt = markerWritePrompt(paper);
+        const text = game._marker_write_text || '';
+        await setMessage(`${prompt}${text ? ` ${text}` : ''}`);
+        return;
+    }
+
     if (game._command_mode === 'markerWriteObject') {
         if (ch === '\x1b') {
             await setMessage('Never mind.');
+            game._apply_marker_letter = null;
             game._command_mode = null;
             return;
         }
@@ -34533,8 +35606,37 @@ export async function rhack(_cmd) {
             game._command_mode = 'markerWriteInvalidMore';
             return;
         }
-        await setMessage('That is a silly thing to write on.');
-        game._command_mode = null;
+        const paperType = markerPaperType(item);
+        if (!paperType) {
+            await setMessage('That is a silly thing to write on.');
+            game._command_mode = null;
+            game._apply_marker_letter = null;
+            return;
+        }
+        if (game.u?.blind && !item.dknown) {
+            await setMessage(`You don't know whether that ${markerPaperTypeWord(item)} is blank or not.`);
+            game._command_mode = null;
+            game._apply_marker_letter = null;
+            return;
+        }
+        if (game.u?.blind && paperType === 'spellbook') {
+            await setMessage("Magic marker can't create braille text.");
+            game._command_mode = null;
+            game._apply_marker_letter = null;
+            return;
+        }
+        if ((paperType === 'scroll' && !isBlankScrollItem(item))
+            || (paperType === 'spellbook' && !isBlankSpellbookItem(item))) {
+            await setMessage(`That ${markerPaperTypeWord(item)} is not blank!`);
+            game._command_mode = null;
+            game._apply_marker_letter = null;
+            game.context.move = 1;
+            return;
+        }
+        game._marker_write_paper_letter = item.letter;
+        game._marker_write_text = '';
+        await setMessage(markerWritePrompt(item));
+        game._command_mode = 'markerWriteText';
         return;
     }
 
@@ -35460,8 +36562,7 @@ export async function rhack(_cmd) {
     if (game._command_mode === 'rubObject') {
         if (ch === '?' || ch === '*') {
             const rubItems = (game.inventory || []).filter(item => {
-                const name = inventoryItemName(item).toLowerCase();
-                return name.includes('lamp') || isRoyalJelly(item);
+                return isLampObject(item) || isRoyalJelly(item);
             });
             const rows = rubItems.map((item, index) => [index, 40, ` ${normalInventoryLine(item)}`.padEnd(40, ' ')]);
             rows.push([rows.length, 40, ' (end)'.padEnd(40, ' ')]);
@@ -35473,19 +36574,8 @@ export async function rhack(_cmd) {
             await beginRoyalJellyRub(item);
             return;
         }
-        const name = item ? inventoryItemName(item).toLowerCase() : '';
-        if (item && name.includes('lamp')) {
-            const lamp = item;
-            for (const invItem of game.inventory || []) {
-                if (invItem.wielded || invItem.line?.includes('weapon in')) {
-                    invItem.line = `${invItem.letter || '?'} - ${inventoryItemName(invItem)}`;
-                }
-                invItem.wielded = invItem === lamp;
-            }
-            if (lamp) lamp.line = `${lamp.letter || '?'} - ${inventoryItemName(lamp)} (weapon in right hand)`;
-            await setMessage('You now wield a lamp.');
-            game._command_mode = null;
-            game.context.move = 1;
+        if (item && isLampObject(item)) {
+            await rubLampObject(item);
             return;
         }
         if (ch === '\x1b') {
@@ -38569,6 +39659,78 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'tinningFloorConfirm') {
+        const kit = (game.inventory || []).find(invItem => invItem.letter === game._apply_tinning_kit_letter);
+        const corpse = game._tinning_floor_object;
+        if (ch === 'y') {
+            await finishTinningKitUse(kit, corpse, { floorObject: true });
+            return;
+        }
+        if (ch === 'n') {
+            game._tinning_floor_object = null;
+            await beginTinningInventorySelection(kit);
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clearTinningKitState();
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'tinningObject') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clearTinningKitState();
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setOverlay(inventoryOverlayLines(0, false, isTinnableCorpse), 24, true);
+            game._command_mode = 'tinningInventoryOverlay';
+            return;
+        }
+        const kit = (game.inventory || []).find(invItem => invItem.letter === game._apply_tinning_kit_letter);
+        const corpse = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (!corpse) {
+            game._topline_after_more = tinningInventoryPrompt();
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        if (!isTinnableCorpse(corpse)) {
+            clearTinningKitState();
+            await setMessage(corpse.oeaten ? 'You cannot tin something which is partly eaten.' : "That's too insubstantial to tin.");
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        await finishTinningKitUse(kit, corpse, { floorObject: false });
+        return;
+    }
+
+    if (game._command_mode === 'tinningInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(tinningInventoryPrompt());
+            game._command_mode = 'tinningObject';
+            return;
+        }
+        if (!(game.inventory || []).some(invItem => invItem.letter === ch && isTinnableCorpse(invItem))) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        const kit = (game.inventory || []).find(invItem => invItem.letter === game._apply_tinning_kit_letter);
+        const corpse = (game.inventory || []).find(invItem => invItem.letter === ch && isTinnableCorpse(invItem));
+        await finishTinningKitUse(kit, corpse, { floorObject: false });
+        return;
+    }
+
     if (game._command_mode === 'eatInvalidMore') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
             await setMessage(eatingPrompt());
@@ -39818,6 +40980,7 @@ export async function rhack(_cmd) {
             return item.cls === 'tool' || item.cls === 'wand' || item.kind === 'wand of sleep'
                 || item.otyp === WAND_CLASS || item.cls === 'spellbook'
                 || item.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                || isPotionOfOil(item)
                 || isRoyalJelly(item)
                 || (item.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
         });
