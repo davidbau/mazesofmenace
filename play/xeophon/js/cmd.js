@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -273,10 +273,12 @@ function dropCarriedObjectAtHero(item, messages = []) {
     normalizeContainedObjectParents(dropped);
     removeInventoryItem(item, item.quan || 1);
     const placed = placeObjectOnFloorWithEffects(dropped, dropped.ox, dropped.oy, messages, 'drop');
+    let shopSale = null;
     if (placed && !sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy)) {
-        const shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
+        shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
         if (shopSale?.message) messages.push(shopSale.message);
     }
+    if (placed && !shopSale?.prompt) stackDroppedFloorObject(dropped);
     return dropped;
 }
 
@@ -7139,6 +7141,22 @@ function nextInventoryLetter() {
     return INVENTORY_LETTERS[index] || INVENTORY_LETTERS[INVENTORY_LETTERS.length - 1];
 }
 
+function simulatedNextInventoryLetters(count) {
+    const used = new Set((game.inventory || []).map(item => item.letter).filter(Boolean));
+    let index = game._nextInventoryLetterIndex ?? Math.max(-1,
+        ...(game.inventory || []).map(item => INVENTORY_LETTERS.indexOf(item.letter)).filter(i => i >= 0)) + 1;
+    const letters = [];
+    for (let i = 0; i < count; i++) {
+        while (used.has(INVENTORY_LETTERS[index]) && index < INVENTORY_LETTERS.length - 1) index++;
+        const letter = INVENTORY_LETTERS[index];
+        if (!letter || used.has(letter)) return null;
+        letters.push(letter);
+        used.add(letter);
+        index = Math.min(INVENTORY_LETTERS.length, index + 1);
+    }
+    return letters;
+}
+
 function updateMoneyLine(money) {
     if (money) money.line = `$ - ${money.quan || 0} gold piece${(money.quan || 0) === 1 ? '' : 's'}`;
 }
@@ -9695,9 +9713,29 @@ async function finishCrystalBallUse(ch) {
     return true;
 }
 
-function magicInstrumentKind(item) {
+const MUSICAL_INSTRUMENT_KINDS = new Set([
+    'wooden flute', 'magic flute', 'tooled horn', 'frost horn', 'fire horn',
+    'wooden harp', 'magic harp', 'bugle', 'leather drum', 'drum of earthquake',
+]);
+const CHARGED_MUSICAL_INSTRUMENT_KINDS = new Set([
+    'magic flute', 'magic harp', 'frost horn', 'fire horn', 'drum of earthquake',
+]);
+const BLOW_MUSICAL_INSTRUMENT_KINDS = new Set([
+    'wooden flute', 'magic flute', 'tooled horn', 'frost horn', 'fire horn', 'bugle',
+]);
+const DRUM_MUSICAL_INSTRUMENT_KINDS = new Set(['leather drum', 'drum of earthquake']);
+
+function normalizeMusicalInstrumentKind(kind) {
+    if (kind === 'flute') return 'wooden flute';
+    if (kind === 'harp') return 'wooden harp';
+    if (kind === 'drum') return 'leather drum';
+    return kind;
+}
+
+function musicalInstrumentKind(item) {
     const kind = toolChargeKind(item);
-    return kind === 'magic flute' || kind === 'magic harp' ? kind : '';
+    const normalized = normalizeMusicalInstrumentKind(kind);
+    return MUSICAL_INSTRUMENT_KINDS.has(normalized) ? normalized : '';
 }
 
 function instrumentDisplayName(item) {
@@ -9708,22 +9746,75 @@ function instrumentTheName(item) {
     return `The ${instrumentDisplayName(item).replace(/^(?:an?|the) /i, '')}`;
 }
 
+function instrumentPlayName(item) {
+    const name = instrumentDisplayName(item);
+    if (/\bunpaid\b/i.test(name)) return name;
+    return name.replace(/^(?:an?|the) /i, 'your ');
+}
+
+function instrumentSimpleName(item) {
+    return instrumentDisplayName(item).replace(/^(?:an?|the) /i, '');
+}
+
+function heroCanBlowInstrument() {
+    const form = polyselfForm();
+    if ((game.u?._statusSuffix || '').includes('Strngl') || game.u?.strangled || game.u?.strangling)
+        return false;
+    if (!form) return true;
+    const msound = String(form.msound || '').toLowerCase();
+    const silentOrBuzz = !!form.silent || msound === 'buzz' || msound === 'ms_buzz';
+    const noHead = form.hasHead === false || form.noHead || form.headless;
+    const eelLike = form.mlet === ';' || /\beel\b/i.test(String(form.name || ''));
+    return !(silentOrBuzz && (form.breathless || form.verysmall || noHead || eelLike));
+}
+
 function instrumentOpeningMessage() {
-    if (heroIsHallucinating())
+    let mode = 'normal';
+    if (heroIsStunned() && heroIsConfused()) mode = 'stunned-confused';
+    else if (heroIsStunned()) mode = 'stunned';
+    else if (heroIsConfused()) mode = 'confused';
+    if (heroIsHallucinating()) mode = mode === 'normal' ? 'hallucinating' : `${mode}-hallucinating`;
+
+    if (!rn2(2)) {
+        if (mode === 'stunned-confused')
+            mode = !rn2(2) ? 'stunned' : 'confused';
+        if (mode.includes('hallucinating'))
+            mode = 'hallucinating';
+    }
+
+    if (mode === 'normal')
+        return null;
+    if (mode === 'hallucinating')
         return 'You disseminate a kaleidoscopic display of floating butterflies.';
-    if (heroIsStunned() && heroIsConfused())
-        return 'What you perform is quite far from music...';
-    if (heroIsStunned())
+    if (mode === 'stunned')
         return heroIsDeaf() ? 'You feel a monotonous vibration.' : 'You radiate an obnoxious droning sound.';
-    if (heroIsConfused())
+    if (mode === 'confused')
         return heroIsDeaf() ? 'You feel a jarring vibration.' : 'You generate a raucous noise.';
-    return null;
+    return 'What you perform is quite far from music...';
 }
 
 function monsterDistanceSquaredFromHero(mon) {
     const dx = (mon?.mx || 0) - (game.u?.ux || 0);
     const dy = (mon?.my || 0) - (game.u?.uy || 0);
     return dx * dx + dy * dy;
+}
+
+function visibleInstrumentMonster(mon) {
+    return !game.u?.blind && !mon?.minvis && !mon?.mundetected
+        && !!(game.viz_array?.[mon?.my]?.[mon?.mx] & IN_SIGHT);
+}
+
+function rollInstrumentImprovisation() {
+    game.context ??= {};
+    if (!(heroHasUnchanging() && game.context.jingle)) {
+        const notes = 'ABCDEFG';
+        let tune = '';
+        const count = rnd(5);
+        for (let i = 0; i < count; i++) tune += notes[rn2(notes.length)];
+        game.context.jingle = tune || 'C';
+        return { notes: game.context.jingle, sameOldSong: false };
+    }
+    return { notes: game.context.jingle, sameOldSong: true };
 }
 
 function sleepMonstersWithMagicFlute(distance) {
@@ -9743,22 +9834,332 @@ function charmMonstersWithMagicHarp(distance) {
     }
 }
 
-async function finishInstrumentTune(item) {
+function charmSnakesWithWoodenFlute(distance, messages) {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        const data = mon.data || {};
+        if (!(data.mlet === 'S' || data.snake || /\bsnake\b/i.test(String(data.name || '')))) continue;
+        if (mon.mcanmove === false || monsterDistanceSquaredFromHero(mon) >= distance) continue;
+        const wasPeaceful = !!mon.mpeaceful;
+        const couldSee = visibleInstrumentMonster(mon);
+        mon.mpeaceful = 1;
+        mon.mavenge = 0;
+        mon.mundetected = 0;
+        newsym(mon.mx, mon.my);
+        if (!visibleInstrumentMonster(mon)) continue;
+        const name = mon.givenName || mon.shknam || `The ${data.name || 'snake'}`;
+        messages.push(couldSee
+            ? `${name} freezes, then sways with the music${wasPeaceful ? '' : ', and now seems quieter'}.`
+            : `You notice ${name.toLowerCase()}, swaying with the music.`);
+    }
+}
+
+function calmNymphsWithWoodenHarp(distance, messages) {
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        const data = mon.data || {};
+        if (!(data.mlet === 'n' || data.nymph || /\bnymph\b/i.test(String(data.name || '')))) continue;
+        if (mon.mcanmove === false || monsterDistanceSquaredFromHero(mon) >= distance) continue;
+        mon.msleeping = 0;
+        mon.mpeaceful = 1;
+        mon.mavenge = 0;
+        if (visibleInstrumentMonster(mon)) {
+            const name = mon.givenName || mon.shknam || `The ${data.name || 'nymph'}`;
+            messages.push(`${name} listens cheerfully to the music, then seems quieter.`);
+        }
+    }
+}
+
+function awakenScareInstrumentMonster(mon, scary) {
+    mon.msleeping = 0;
+    mon.mcanmove = true;
+    mon.mfrozen = 0;
+    mon.waiting = false;
+    if (!scary || mon.data?.mindless) return false;
+    const bound = Math.max(1, 110 - monsterResistanceLevel(mon));
+    if (rn2(bound) < monsterMagicResistance(mon)) return false;
+    const wasFleeing = !!mon.mflee;
+    mon.mflee = 1;
+    mon.mfleetim = 0;
+    return !wasFleeing;
+}
+
+function awakenMonstersWithInstrument(distance) {
+    const fleeMessages = [];
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        const dist = monsterDistanceSquaredFromHero(mon);
+        if (dist >= distance) continue;
+        const newlyFleeing = awakenScareInstrumentMonster(mon, dist < Math.trunc(distance / 3));
+        if (newlyFleeing && visibleInstrumentMonster(mon)) {
+            const name = mon.givenName || mon.shknam || `The ${mon.data?.name || 'monster'}`;
+            fleeMessages.push(`${name} turns to flee.`);
+        }
+    }
+    if (fleeMessages.length) game._topline_after_more = fleeMessages.join('  ');
+}
+
+function awakenSoldiersWithBugle(messages) {
+    const distance = (game.u?.ulevel || 1) * 30;
+    for (const mon of game.level?.monsters || []) {
+        if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        const data = mon.data || {};
+        if (data.mercenary && data.name !== 'guard') {
+            if (!mon.mtame) mon.mpeaceful = 0;
+            mon.msleeping = 0;
+            mon.mfrozen = 0;
+            mon.mcanmove = true;
+            mon.waiting = false;
+            if (visibleInstrumentMonster(mon)) {
+                const name = mon.givenName || mon.shknam || `The ${data.name || 'soldier'}`;
+                messages.push(`${name} is now ready for battle!`);
+            } else if (!heroIsDeaf()) {
+                messages.push('You hear the rattle of battle gear being readied.');
+            }
+        } else {
+            const dist = monsterDistanceSquaredFromHero(mon);
+            if (dist < distance) awakenScareInstrumentMonster(mon, dist < Math.trunc(distance / 3));
+        }
+    }
+}
+
+function fireColdHornElement(item) {
+    const kind = toolChargeKind(item);
+    if (kind === 'fire horn') return 'fire';
+    if (kind === 'frost horn') return 'cold';
+    return '';
+}
+
+function identifyZapToolOrWand(item, element) {
+    if (!item) return;
+    const hornElement = fireColdHornElement(item);
+    if (hornElement) {
+        const hornKind = hornElement === 'fire' ? 'fire horn' : 'frost horn';
+        item.known = true;
+        item.dknown = true;
+        item.actualKind = hornKind;
+        item.kind = hornKind;
+        updateChargedItemLine(item);
+        return;
+    }
+    item.known = true;
+    item.kind = element;
+    item.line = `${item.letter} - a wand of ${element}${wandChargeSuffix(item)}`;
+}
+
+function hornBlastMessage(item) {
+    const element = fireColdHornElement(item);
+    if (!element || game.u?.blind) return '';
+    return `A bolt of ${element} blasts out of the horn!`;
+}
+
+function tooledHornImprovisationEffect(messages, sameOldSong = false) {
+    messages.push(heroIsDeaf()
+        ? 'You blow into the horn.'
+        : `You produce a frightful, grave${sameOldSong ? ', yet familiar,' : ''} sound.`);
+    awakenMonstersWithInstrument((game.u?.ulevel || 1) * 30);
+    exerciseAttribute(A_WIS, false);
+}
+
+function leatherDrumImprovisationEffect(messages, { mundaneDowngrade = false, sameOldSong = false } = {}) {
+    if (!mundaneDowngrade) {
+        if (!heroIsDeaf()) {
+            messages.push(`You beat a ${sameOldSong ? 'familiar ' : ''}deafening row!`);
+            if (game.u)
+                game.u._deafTimeout = Math.max(game.u._deafTimeout || 0, rn1(20, 30));
+            game._deaf_after_more = 1;
+        } else {
+            messages.push('You pound on the drum.');
+        }
+        exerciseAttribute(A_WIS, false);
+    } else {
+        const verb = rn2(2) ? 'butcher' : rn2(2) ? 'manage' : 'pull off';
+        messages.push(`You ${verb} a drumbeat.`);
+    }
+    awakenMonstersWithInstrument((game.u?.ulevel || 1) * (mundaneDowngrade ? 5 : 40));
+}
+
+function normalizeManualTuneText(text) {
+    return String(text || '')
+        .replace(/\t/g, ' ')
+        .replace(/^ +| +$/g, '')
+        .replace(/ {2,}/g, ' ')
+        .toUpperCase()
+        .replace(/H/g, 'B');
+}
+
+function drawbridgeDirectionAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || (loc.typ !== DRAWBRIDGE_UP && loc.typ !== DRAWBRIDGE_DOWN)) return null;
+    return (loc.flags || 0) & DB_DIR;
+}
+
+function wallCoordForDrawbridge(x, y) {
+    const dir = drawbridgeDirectionAt(x, y);
+    if (dir == null) return null;
+    if (dir === DB_NORTH) return { x, y: y - 1 };
+    if (dir === DB_SOUTH) return { x, y: y + 1 };
+    if (dir === DB_EAST) return { x: x + 1, y };
+    if (dir === DB_WEST) return { x: x - 1, y };
+    return null;
+}
+
+function isDrawbridgeWallAt(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc || (loc.typ !== DOOR && loc.typ !== DBWALL)) return -1;
+    if (drawbridgeDirectionAt(x + 1, y) === DB_WEST) return DB_WEST;
+    if (drawbridgeDirectionAt(x - 1, y) === DB_EAST) return DB_EAST;
+    if (drawbridgeDirectionAt(x, y - 1) === DB_SOUTH) return DB_SOUTH;
+    if (drawbridgeDirectionAt(x, y + 1) === DB_NORTH) return DB_NORTH;
+    return -1;
+}
+
+function findDrawbridgeAtOrWall(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ === DRAWBRIDGE_UP || loc?.typ === DRAWBRIDGE_DOWN) return { x, y };
+    const dir = isDrawbridgeWallAt(x, y);
+    if (dir === DB_NORTH) return { x, y: y + 1 };
+    if (dir === DB_SOUTH) return { x, y: y - 1 };
+    if (dir === DB_EAST) return { x: x - 1, y };
+    if (dir === DB_WEST) return { x: x + 1, y };
+    return null;
+}
+
+function findAdjacentDrawbridge() {
+    for (let y = (game.u?.uy || 0) - 1; y <= (game.u?.uy || 0) + 1; y++) {
+        for (let x = (game.u?.ux || 0) - 1; x <= (game.u?.ux || 0) + 1; x++) {
+            if (!isok(x, y)) continue;
+            const found = findDrawbridgeAtOrWall(x, y);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function clearDrawbridgeSquareState(x, y) {
+    if (!game.level) return;
+    game.level.objects = (game.level.objects || []).filter(obj => obj.ox !== x || obj.oy !== y);
+    game.level.traps = (game.level.traps || []).filter(trap => trap.tx !== x || trap.ty !== y);
+    game.level.engravings = (game.level.engravings || []).filter(engr => engr.x !== x || engr.y !== y);
+}
+
+function drawbridgeVisible(x, y, wall) {
+    if (game.u?.blind) return false;
+    return !!(game.viz_array?.[y]?.[x] & IN_SIGHT)
+        || !!(game.viz_array?.[wall.y]?.[wall.x] & IN_SIGHT);
+}
+
+function toggleDrawbridgeForTune(x, y) {
+    const loc = game.level?.at?.(x, y);
+    const wall = wallCoordForDrawbridge(x, y);
+    const wallLoc = wall ? game.level?.at?.(wall.x, wall.y) : null;
+    if (!loc || !wall || !wallLoc) return '';
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const distBridge = (ux - x) ** 2 + (uy - y) ** 2;
+    const distWall = (ux - wall.x) ** 2 + (uy - wall.y) ** 2;
+    let message = '';
+    if (loc.typ === DRAWBRIDGE_UP) {
+        message = drawbridgeVisible(x, y, wall)
+            ? `You see a drawbridge ${distWall < distBridge ? 'going' : 'coming'} down!`
+            : 'You hear gears turning and chains rattling.';
+        loc.typ = DRAWBRIDGE_DOWN;
+        wallLoc.typ = DOOR;
+        wallLoc.doormask = D_NODOOR;
+        if (game.u) {
+            game.u.uevent ??= {};
+            game.u.uevent.uopened_dbridge = 1;
+        }
+    } else if (loc.typ === DRAWBRIDGE_DOWN) {
+        const coming = ((ux === x || uy === y) && !(game.u?.underwater || game.u?.uunderwater)) || distWall < distBridge;
+        message = drawbridgeVisible(x, y, wall)
+            ? `You see a drawbridge ${coming ? 'coming' : 'going'} up!`
+            : 'You hear chains rattling and gears turning.';
+        loc.typ = DRAWBRIDGE_UP;
+        wallLoc.typ = DBWALL;
+        wallLoc.wall_info = W_NONDIGGABLE;
+        const dir = drawbridgeDirectionAt(x, y);
+        wallLoc.horizontal = dir === DB_NORTH || dir === DB_SOUTH;
+    }
+    clearDrawbridgeSquareState(x, y);
+    clearDrawbridgeSquareState(wall.x, wall.y);
+    newsym(x, y);
+    newsym(wall.x, wall.y);
+    return message;
+}
+
+function castleTuneFeedbackMessage(tune) {
+    const target = normalizeManualTuneText(game.castleTune || '');
+    if (!target) return '';
+    let tumblers = 0;
+    let gears = 0;
+    const matched = [false, false, false, false, false];
+    for (let i = 0; i < tune.length && i < 5; i++) {
+        if (tune[i] === target[i]) {
+            gears++;
+            matched[i] = true;
+        } else {
+            for (let j = 0; j < 5; j++) {
+                if (!matched[j] && tune[i] === target[j] && tune[j] !== target[j]) {
+                    tumblers++;
+                    matched[j] = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (gears === 5 && game.u) {
+        game.u.uevent ??= {};
+        game.u.uevent.uheard_tune = 2;
+    }
+    const tumblerText = tumblers === 1 ? '1 tumbler click' : `${tumblers} tumblers click`;
+    const gearText = gears === 1 ? '1 gear turn' : `${gears} gears turn`;
+    if (tumblers && gears) return `You hear ${tumblerText} and ${gearText}.`;
+    if (tumblers) return `You hear ${tumblerText}.`;
+    if (gears) return `You hear ${gearText}.`;
+    return '';
+}
+
+function handleStrongholdManualTune(tune, messages) {
+    if (!Is_stronghold(game.u?.uz)) return;
+    exerciseAttribute(A_WIS, true);
+    const found = findAdjacentDrawbridge();
+    const target = normalizeManualTuneText(game.castleTune || '');
+    if (target && tune === target && found) {
+        game.u.uevent ??= {};
+        game.u.uevent.uheard_tune = 2;
+        const bridgeMessage = toggleDrawbridgeForTune(found.x, found.y);
+        if (bridgeMessage) messages.push(bridgeMessage);
+        return;
+    }
+    if (heroIsDeaf()) return;
+    game.u.uevent ??= {};
+    if ((game.u.uevent.uheard_tune || 0) < 1) game.u.uevent.uheard_tune = 1;
+    if (found) {
+        const feedback = castleTuneFeedbackMessage(tune);
+        if (feedback) messages.push(feedback);
+    }
+}
+
+async function finishInstrumentTune(item, tuneText = game._instrument_tune_text || '') {
     game._apply_instrument_letter = '';
     game._instrument_tune_text = '';
     game._command_mode = null;
     if (!item) return false;
+    const tune = normalizeManualTuneText(tuneText);
     const name = instrumentTheName(item).replace(/^The /, 'the ');
     const message = heroIsDeaf()
         ? `You can feel ${name} emitting vibrations.`
         : `You extract a strange sound from ${name}!`;
-    await setMessage(message);
+    const messages = [message];
+    handleStrongholdManualTune(tune, messages);
+    await setMessage(messages.join('  '), messages.length > 1);
     game.context.move = 1;
     return true;
 }
 
 async function finishMusicalImprovisation(item) {
-    const kind = magicInstrumentKind(item);
+    const kind = musicalInstrumentKind(item);
     if (!kind) return false;
     game._apply_instrument_letter = '';
     game._command_mode = null;
@@ -9766,43 +10167,121 @@ async function finishMusicalImprovisation(item) {
     const messages = [];
     const opening = instrumentOpeningMessage();
     if (opening) messages.push(opening);
-    else messages.push(`You start playing ${instrumentDisplayName(item)}.`);
+    else messages.push(`You start playing ${instrumentPlayName(item)}.`);
 
-    const hasSpecialEffect = !heroIsStunned() && !heroIsConfused() && (item.spe ?? 0) > 0;
-    if (!hasSpecialEffect) {
-        messages.push(kind === 'magic flute'
-            ? (heroIsDeaf() ? `You feel ${instrumentDisplayName(item)} toot.` : `${instrumentTheName(item)} toots.`)
-            : (heroIsDeaf() ? 'You feel soothing vibrations.' : `${instrumentTheName(item)} twangs.`));
+    const { sameOldSong } = rollInstrumentImprovisation();
+    const doSpec = !heroIsStunned() && !heroIsConfused();
+    let effectiveKind = kind;
+    let mundaneDowngrade = false;
+    if ((!doSpec || (item.spe ?? 0) <= 0) && CHARGED_MUSICAL_INSTRUMENT_KINDS.has(kind)) {
+        effectiveKind = kind === 'magic flute' ? 'wooden flute'
+            : kind === 'magic harp' ? 'wooden harp'
+                : kind === 'drum of earthquake' ? 'leather drum'
+                    : 'tooled horn';
+        mundaneDowngrade = true;
+    }
+
+    if (effectiveKind === 'wooden flute') {
+        const dex = Math.max(1, game.u?.acurr?.a?.[A_DEX] ?? 10);
+        const calms = doSpec && rn2(dex) + (game.u?.ulevel || 1) > 25;
+        messages.push(heroIsDeaf()
+            ? `You feel ${instrumentDisplayName(item)} ${calms ? 'trill' : 'toot'}.`
+            : `${instrumentTheName(item)} ${calms ? 'trills' : 'toots'}${sameOldSong ? ' a familiar tune' : ''}.`);
+        if (calms) charmSnakesWithWoodenFlute((game.u?.ulevel || 1) * 3, messages);
         exerciseAttribute(A_DEX, true);
         await setMessage(messages.join('  '), messages.length > 1);
         game.context.move = 1;
         return true;
     }
 
+    if (effectiveKind === 'wooden harp') {
+        const dex = Math.max(1, game.u?.acurr?.a?.[A_DEX] ?? 10);
+        const calms = doSpec && rn2(dex) + (game.u?.ulevel || 1) > 25;
+        const normalMessage = calms
+            ? `${instrumentTheName(item)} produces ${sameOldSong ? 'a familiar, ' : 'a '}lilting melody.`
+            : `${instrumentTheName(item)} twangs${sameOldSong ? ' a familiar tune' : ''}.`;
+        messages.push(heroIsDeaf() ? 'You feel soothing vibrations.' : normalMessage);
+        if (calms) calmNymphsWithWoodenHarp((game.u?.ulevel || 1) * 3, messages);
+        exerciseAttribute(A_DEX, true);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    if (effectiveKind === 'tooled horn') {
+        tooledHornImprovisationEffect(messages, sameOldSong);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    if (effectiveKind === 'bugle') {
+        messages.push(heroIsDeaf()
+            ? 'You blow into the bugle.'
+            : `You extract a loud${sameOldSong ? ', familiar' : ''} noise from ${instrumentDisplayName(item)}.`);
+        awakenSoldiersWithBugle(messages);
+        exerciseAttribute(A_WIS, false);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
+    if (effectiveKind === 'leather drum') {
+        leatherDrumImprovisationEffect(messages, { mundaneDowngrade, sameOldSong });
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return true;
+    }
+
     spendChargedToolUse(item, messages);
-    if (kind === 'magic flute') {
+    if (effectiveKind === 'magic flute') {
         const tone = heroIsHallucinating() ? 'piped' : 'soft';
-        messages.push(heroIsDeaf() ? `You seem to produce ${tone} music.` : `You produce ${tone} music.`);
+        messages.push(heroIsDeaf()
+            ? `You seem to produce ${tone}${sameOldSong ? ', familiar' : ''} music.`
+            : `You produce ${tone}${sameOldSong ? ', familiar' : ''} music.`);
         sleepMonstersWithMagicFlute((game.u?.ulevel || 1) * 5);
-    } else {
+    } else if (effectiveKind === 'magic harp') {
         messages.push(heroIsDeaf()
             ? 'You feel very soothing vibrations.'
-            : `${instrumentTheName(item)} produces very attractive music.`);
+            : `${instrumentTheName(item)} produces very attractive${sameOldSong ? ' and familiar' : ''} music.`);
         charmMonstersWithMagicHarp(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
+    } else if (effectiveKind === 'drum of earthquake') {
+        messages.push('You produce a heavy, thunderous rolling!');
+        const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
+        messages.push(`The entire ${earthquakeLevelDescription()} is shaking around you!`, ...earthquakeMessages);
+        awakenMonstersWithInstrument(ROWNO * COLNO);
+        item.known = true;
+        item.dknown = true;
+        updateChargedItemLine(item);
+    } else {
+        game._zap_item = item;
+        game._zap_prelude_messages = messages;
+        game._command_mode = 'zapDirection';
+        await setMessage([...messages, 'In what direction?'].join('  '), messages.length > 0);
+        return true;
     }
-    exerciseAttribute(A_DEX, true);
+    if (effectiveKind === 'magic flute' || effectiveKind === 'magic harp')
+        exerciseAttribute(A_DEX, true);
     await setMessage(messages.join('  '), messages.length > 1);
     game.context.move = 1;
     return true;
 }
 
 async function beginMusicalInstrumentUse(item) {
+    const kind = musicalInstrumentKind(item);
+    if (!kind) return false;
     if (game.u?.underwater || game.u?.uunderwater) {
         await setMessage("You can't play music underwater!");
         game._command_mode = null;
         return true;
     }
-    if (!heroIsStunned() && !heroIsConfused() && !heroIsHallucinating()) {
+    if (BLOW_MUSICAL_INSTRUMENT_KINDS.has(kind) && !heroCanBlowInstrument()) {
+        await setMessage(`You are incapable of playing the ${instrumentSimpleName(item)}.`);
+        game._command_mode = null;
+        return true;
+    }
+    if (!DRUM_MUSICAL_INSTRUMENT_KINDS.has(kind)
+        && !heroIsStunned() && !heroIsConfused() && !heroIsHallucinating()) {
         game._apply_instrument_letter = item.letter || '';
         await setMessage('Improvise? [ynq] (q)');
         game._command_mode = 'instrumentImprovisePrompt';
@@ -14696,6 +15175,51 @@ function shopSaleUninterestedObject(obj) {
         || (isCandleObject(obj) && obj.age < 20 * shopBaseCost(obj));
 }
 
+function shopObjectOrContentsUnpaid(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return false;
+    seen.add(obj);
+    if (obj.unpaid) return true;
+    return globContents(obj).some(child => shopObjectOrContentsUnpaid(child, seen));
+}
+
+function shopkeeperIsIzchak(shkp) {
+    return String(shkp?.shknam || shkp?.shopkeeperName || '').replace(/^[|+\-_]/, '').toLowerCase() === 'izchak';
+}
+
+function shopkeeperPossessivePronoun(shkp) {
+    if (shkp?.female) return 'her';
+    if (shkp?.neuter || shkp?.data?.neuter) return 'its';
+    return 'his';
+}
+
+function shopSpecialStockMessage(obj, shkp) {
+    if (shkp?.shoptype !== CANDLESHOP || !isCandelabrumOfInvocationItem(obj)) return '';
+    const name = shopkeeperDisplayName(shkp);
+    const candles = Math.max(0, Math.trunc(Number(obj?.spe || 0)));
+    const invoked = !!game.u?.uevent?.invoked;
+    const canTalk = !heroIsDeaf() && !shkp?.mute && !shkp?.silent && !shkp?.helpless;
+    if (shopkeeperIsIzchak(shkp) && !invoked) {
+        if (!canTalk)
+            return `${name} seems ${candles < 7 ? 'horrified' : 'concerned'} that you want to sell that.`;
+        const messages = [`${name} says: "No thanks, I'd hang onto that if I were you."`];
+        if (candles < 7) {
+            const needed = 7 - candles;
+            messages.push(`${name} says: "You'll need ${needed}${candles > 0 ? ' more' : ''} candle${needed === 1 ? '' : 's'} to go along with it."`);
+        }
+        return messages.join('  ');
+    }
+    if (canTalk) return `${name} says: "I won't stock that.  Take it out of here!"`;
+    return `${name} shakes ${shopkeeperPossessivePronoun(shkp)} head in refusal.`;
+}
+
+function shopSellobjUninterestedMessage(shkp, containedGold = 0) {
+    return `${shopkeeperDisplayName(shkp)} seems uninterested${containedGold > 0 ? ' in the rest' : ''}.`;
+}
+
+function shopSellobjNoPromptResult(obj, shkp, kind, message, extra = {}) {
+    return { kind, obj, shkp, handled: true, prompt: false, message, ...extra };
+}
+
 function ownedShopSaleOffer(shkp, obj) {
     if (!obj || obj.unpaid || obj.no_charge || shopBillableGold(obj) || shopSaleUninterestedObject(obj)) return 0;
     return shopSaleableObject(shkp, obj) ? shopSaleOffer(obj, shkp) : 0;
@@ -14783,13 +15307,15 @@ function shopDroppedPaidObjectSaleInfo(obj, x, y) {
     const offer = topOffer + contentSale.offer;
     const noSale = !(offer > 0);
     if (!containedGold && noSale) {
+        const unpaid = shopObjectOrContentsUnpaid(obj);
         if (containerSale) {
             markNoChargeRecursively(obj);
             subFromShopBill(obj, shkp);
         } else {
             obj.no_charge = true;
         }
-        return { obj, shkp, handled: true, prompt: false, message: `${shopkeeperDisplayName(shkp)} seems uninterested.` };
+        const message = unpaid ? '' : shopSpecialStockMessage(obj, shkp) || shopSellobjUninterestedMessage(shkp);
+        return shopSellobjNoPromptResult(obj, shkp, 'drop', message);
     }
     const robbed = robbedShopSellobjResult(obj, shkp, offer, containedGold, 'drop');
     if (robbed) return robbed;
@@ -14811,7 +15337,7 @@ function shopDroppedPaidObjectSaleInfo(obj, x, y) {
         } else {
             obj.no_charge = true;
         }
-        return { obj, shkp, handled: true, prompt: false, message: `${shopkeeperDisplayName(shkp)} seems uninterested.` };
+        return shopSellobjNoPromptResult(obj, shkp, 'drop', shopSellobjUninterestedMessage(shkp, containedGold));
     }
     const sale = {
         kind: 'drop',
@@ -14859,7 +15385,7 @@ function shopFloorContainerPutSaleInfo(container, putItem) {
     const y = container?.oy ?? game.u?.uy;
     if (!container || !putItem || (game.inventory || []).includes(container) || x == null || y == null)
         return null;
-    if (shopBillableGold(putItem) || putItem.unpaid || container.no_charge) return null;
+    if (shopBillableGold(putItem) || putItem.unpaid || putItem.no_charge || container.no_charge) return null;
     const shkp = shopFloorContainerShopkeeper(container);
     if (!shopkeeperInHisShop(shkp)) return null;
     if (shopkeeperAngryForSellobj(shkp)) return {
@@ -14870,10 +15396,18 @@ function shopFloorContainerPutSaleInfo(container, putItem) {
     const topOffer = ownedShopSaleOffer(shkp, putItem);
     const containedGold = containedShopGold(putItem);
     const offer = topOffer + contentSale.offer;
-    if (!(offer > 0) && !containedGold) return null;
+    const noSale = !(offer > 0);
+    if (noSale && !containedGold) {
+        const message = shopObjectOrContentsUnpaid(putItem)
+            ? ''
+            : shopSpecialStockMessage(putItem, shkp) || shopSellobjUninterestedMessage(shkp);
+        return shopSellobjNoPromptResult(putItem, shkp, 'containerPutIn', message, { container });
+    }
     const robbed = robbedShopSellobjResult(putItem, shkp, offer, containedGold, 'containerPutIn');
     if (robbed) return { ...robbed, container };
-    if (!(offer > 0) || (Array.isArray(shkp.bill) && shkp.bill.length >= SHOP_BILL_LIMIT)) return null;
+    if (noSale) return null;
+    if ((Array.isArray(shkp.bill) && shkp.bill.length >= SHOP_BILL_LIMIT) || shopSaleUninterestedObject(putItem))
+        return shopSellobjNoPromptResult(putItem, shkp, 'containerPutIn', shopSellobjUninterestedMessage(shkp, containedGold), { container });
     const sale = {
         kind: 'containerPutIn',
         obj: putItem,
@@ -14941,6 +15475,7 @@ function shopSalePaymentMessage(pending, verb = 'relinquish') {
 function finishDroppedObjectSale(pending, accept) {
     if (!pending?.obj || !pending.shkp) return '';
     const obj = pending.obj;
+    let message;
     if (!accept) {
         if (pending.containerSale) {
             markNoChargeRecursively(obj);
@@ -14948,13 +15483,16 @@ function finishDroppedObjectSale(pending, accept) {
         } else {
             obj.no_charge = true;
         }
-        return pending.declineMessage || `You drop ${pickupObjectPhrase(obj)}.`;
+        message = pending.declineMessage || `You drop ${pickupObjectPhrase(obj)}.`;
+    } else {
+        if (pending.containerSale) {
+            markAcceptedShopContainerSaleState(obj, pending.shkp);
+            subFromShopBill(obj, pending.shkp);
+        }
+        message = shopSalePaymentMessage(pending);
     }
-    if (pending.containerSale) {
-        markAcceptedShopContainerSaleState(obj, pending.shkp);
-        subFromShopBill(obj, pending.shkp);
-    }
-    return shopSalePaymentMessage(pending);
+    stackDroppedFloorObject(obj);
+    return message;
 }
 
 function addPickedObjectToShopBill(source, pickedItem) {
@@ -15264,6 +15802,72 @@ function mergePickedObjectIntoInventory(source, target) {
     return `${target.letter} - ${pickedPhrase} (${target.quan} in total).`;
 }
 
+function containerTakeoutInventorySourceView(container, obj) {
+    return {
+        ...obj,
+        cls: obj?.cls || (obj?.otyp === GEM_CLASS ? 'gem'
+            : obj?.otyp === SCROLL_CLASS ? 'scroll'
+                : obj?.glyph === '+' ? 'spellbook' : obj?.cls),
+        kind: obj?.kind || pickupObjectName({ ...(obj || {}), quan: 1 }),
+        no_charge: false,
+        ox: container?.ox ?? obj?.ox,
+        oy: container?.oy ?? obj?.oy,
+    };
+}
+
+function containerTakeoutMergeBilling(container, obj) {
+    const shkp = shopFloorContainerShopkeeper(container);
+    if (!shkp || obj?.unpaid || obj?.no_charge || globContents(obj).length)
+        return { shkp, price: 0, sourceWillBeUnpaid: false };
+    const x = container?.ox;
+    const y = container?.oy;
+    const price = x == null || y == null ? 0 : shopItemPrice(obj, x, y);
+    return {
+        shkp,
+        price,
+        sourceWillBeUnpaid: price > 0 && shopkeeperInHisShop(shkp),
+    };
+}
+
+function containerTakeoutBillMergeCompatible(source, target, billing) {
+    if (!billing.sourceWillBeUnpaid) return true;
+    const entry = shopBillEntryForObject(billing.shkp, target);
+    const targetCount = Math.max(1, Math.trunc(Number(target?.quan || 1)));
+    const sourceCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
+    const existingTotal = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(target);
+    return existingTotal > 0 && existingTotal * sourceCount === billing.price * targetCount;
+}
+
+function findContainerTakeoutInventoryMergeTarget(container, obj) {
+    if (!obj || shopBillableGold(obj) || obj.unpaid) return null;
+    const source = containerTakeoutInventorySourceView(container, obj);
+    if (!pickupObjectCanInventoryMerge(source)) return null;
+    const billing = containerTakeoutMergeBilling(container, obj);
+    for (const target of game.inventory || []) {
+        if (!pickedObjectInventoryMergeCompatible(target, source, billing.sourceWillBeUnpaid, billing.shkp)) continue;
+        if (!containerTakeoutBillMergeCompatible(source, target, billing)) continue;
+        return { target, source, billing };
+    }
+    return null;
+}
+
+function mergeContainerTakeoutObjectIntoInventory(container, obj, mergeInfo) {
+    const { target, source, billing } = mergeInfo;
+    prepareContainerTakeoutObject(container, obj);
+    Object.assign(obj, {
+        cls: source.cls,
+        kind: source.kind,
+        no_charge: false,
+    });
+    if (billing.sourceWillBeUnpaid) {
+        const billSource = { ...obj, ox: container?.ox, oy: container?.oy, no_charge: false };
+        mergePickedObjectIntoShopBill(billSource, target, billing.price);
+    }
+    const line = mergePickedObjectIntoInventory(obj, target);
+    maybeAttachCarriedFigurineTimeout(target);
+    return line;
+}
+
 function sellobjReturnUnpaidToShop(obj, x, y) {
     if (!obj?.unpaid || shopBillableGold(obj) || globContents(obj).length) return false;
     const shkp = shopkeeperForCostlySpot(x, y);
@@ -15301,6 +15905,7 @@ export const __shopBillingTestHooks = {
     resolveUnpaidProjectileShopLanding,
     returnUnpaidObjectToShopBillOwnerAt,
     costlyShopGoldAtSpot,
+    containerTakeoutPreflight,
     sellobjReturnUnpaidToShop,
     sellobjDroppedGoldAt,
     stackMonsterThrownObject,
@@ -16233,6 +16838,131 @@ function globObjectWeight(obj) {
     return Math.max(0, unitWeight * (obj?.quan || 1));
 }
 
+function heroCarriedWeight() {
+    let weight = Math.max(0, Math.trunc(((game._goldCount || 0) + 50) / 100));
+    for (const item of game.inventory || []) weight += globObjectWeight(item);
+    return weight;
+}
+
+function heroCarryCapacity() {
+    const stats = game.u?.acurr?.a || [];
+    const normalCapacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
+    return Is_airlevel(game.u?.uz) || game.u?.levitating ? 1000 : normalCapacity;
+}
+
+const PICKUP_BURDEN_LEVELS = {
+    unencumbered: 0,
+    burdened: 1,
+    stressed: 2,
+    strained: 3,
+    overtaxed: 4,
+    overloaded: 5,
+};
+
+function heroEncumbranceForWeight(weight) {
+    const capacity = heroCarryCapacity();
+    const burden = Math.trunc(Number(weight || 0)) - capacity;
+    if (burden <= 0) return 0;
+    if (capacity <= 1) return OVERLOADED;
+    return Math.min(Math.trunc(burden * 2 / capacity) + 1, OVERLOADED);
+}
+
+function pickupBurdenLimit() {
+    const value = String(game.flags?.pickup_burden || 'stressed').toLowerCase();
+    return PICKUP_BURDEN_LEVELS[value] ?? PICKUP_BURDEN_LEVELS.stressed;
+}
+
+function containerTakeoutBurdenPrefix(encumbrance) {
+    if (encumbrance >= 4) return 'You have extreme difficulty';
+    if (encumbrance >= 3) return 'You have much trouble';
+    if (encumbrance >= 2) return 'You have trouble';
+    return 'You have a little trouble';
+}
+
+function containerTakeoutObjectView(obj, count) {
+    const quantity = Math.max(1, Math.trunc(Number(count || obj?.quan || 1)));
+    return quantity === Math.max(1, Math.trunc(Number(obj?.quan || 1)))
+        ? obj
+        : { ...obj, quan: quantity };
+}
+
+function containerTakeoutWeightIncrease(obj, count, goldCount = game._goldCount || 0) {
+    const quantity = Math.max(1, Math.trunc(Number(count || obj?.quan || 1)));
+    if (shopBillableGold(obj)) {
+        const oldGoldWeight = Math.max(0, Math.trunc((Math.max(0, Math.trunc(Number(goldCount || 0))) + 50) / 100));
+        const newGoldWeight = Math.max(0, Math.trunc((Math.max(0, Math.trunc(Number(goldCount || 0))) + quantity + 50) / 100));
+        return newGoldWeight - oldGoldWeight;
+    }
+    return globObjectWeight(containerTakeoutObjectView(obj, quantity));
+}
+
+function containerTakeoutLiftableCount(container, obj, currentWeight, goldCount = game._goldCount || 0) {
+    const count = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if ((game.inventory || []).includes(container)) return count;
+    const maxWeight = heroCarryCapacity() * 3;
+    if (currentWeight + containerTakeoutWeightIncrease(obj, count, goldCount) <= maxWeight)
+        return count;
+    if (count <= 1 || obj?.otyp === LOADSTONE || objectKindKey(obj) === 'loadstone' || globContents(obj).length)
+        return 0;
+
+    let low = 0;
+    let high = count;
+    while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (currentWeight + containerTakeoutWeightIncrease(obj, mid, goldCount) <= maxWeight)
+            low = mid;
+        else high = mid - 1;
+    }
+    return low;
+}
+
+function containerTakeoutPreflight(container, entries) {
+    let currentWeight = heroCarriedWeight();
+    let gold = Math.max(0, Math.trunc(Number(game._goldCount || 0)));
+    const initialEncumbrance = heroEncumbranceForWeight(currentWeight);
+    const burdenLimit = Math.max(initialEncumbrance, pickupBurdenLimit());
+    let burdenPrompt = null;
+    const messages = [];
+    const planned = [];
+
+    for (const entry of entries || []) {
+        const obj = entry?.item || entry;
+        if (!obj) continue;
+        const originalCount = Math.max(1, Math.trunc(Number(obj.quan || 1)));
+        const takeCount = containerTakeoutLiftableCount(container, obj, currentWeight, gold);
+        if (takeCount < 1) {
+            return {
+                ok: false,
+                message: `There is ${pickupObjectPhrase(obj)} in ${containerObjectPhrase(container)}, but you cannot carry any more.`,
+            };
+        }
+        if (takeCount < originalCount) {
+            messages.push(`You can only carry ${takeCount === 1 ? 'one' : 'some'} of the ${pickupObjectPhrase(obj)} in ${containerObjectPhrase(container)}.`);
+        }
+        const view = containerTakeoutObjectView(obj, takeCount);
+        const increase = containerTakeoutWeightIncrease(obj, takeCount, gold);
+        const nextWeight = currentWeight + increase;
+        const nextEncumbrance = heroEncumbranceForWeight(nextWeight);
+        if (!burdenPrompt && nextEncumbrance > burdenLimit) {
+            burdenPrompt = `${containerTakeoutBurdenPrefix(nextEncumbrance)} removing ${pickupObjectPhrase(view)}.  Continue? [ynq] (q)`;
+        }
+        currentWeight = nextWeight;
+        if (shopBillableGold(obj)) gold += takeCount;
+        planned.push({ ...entry, item: obj, takeCount, liftView: view });
+    }
+
+    const newSlotCount = planned
+        .filter(entry => !shopBillableGold(entry.liftView) && !findContainerTakeoutInventoryMergeTarget(container, entry.liftView))
+        .length;
+    if (newSlotCount && !simulatedNextInventoryLetters(newSlotCount)) {
+        return {
+            ok: false,
+            message: 'Your knapsack cannot accommodate any more items.',
+        };
+    }
+    return { ok: true, message: '', entries: planned, messages, prompt: burdenPrompt };
+}
+
 function globEntryTopContainer(entry) {
     if (!entry?.parent) return null;
     const chain = entry.ancestors?.length ? entry.ancestors : [entry.parent];
@@ -16553,18 +17283,32 @@ export function stoneMonster(mon, messages = null, { awardExperience = false } =
     return remains;
 }
 
+function objectStackType(obj) {
+    if (!obj) return undefined;
+    if (obj.otyp != null && obj.otyp !== obj.cls) return obj.otyp;
+    return obj.actualKind ?? obj.kind ?? obj.otyp ?? obj.cls;
+}
+
+function objectStackColor(obj) {
+    if (!obj) return undefined;
+    if (obj.color != null) return obj.color;
+    if (obj.cls === 'weapon') return obj.kind === 'quarterstaff' ? CLR_BROWN : CLR_CYAN;
+    if (obj.cls === 'scroll' || obj.cls === 'spellbook') return CLR_WHITE;
+    return NO_COLOR;
+}
+
 function sameMonsterThrownStackObject(existing, obj) {
     if (!existing || !obj || existing === obj) return false;
     if (existing.hidden || existing.buried || existing.transientProjectile) return false;
     if (existing.ox !== obj.ox || existing.oy !== obj.oy) return false;
     if (!!existing.unpaid !== !!obj.unpaid || !!existing.no_charge !== !!obj.no_charge) return false;
     if (existing.unpaid && !sameShopBillUnitPrice(existing, obj)) return false;
-    return existing.otyp === obj.otyp
+    return objectStackType(existing) === objectStackType(obj)
         && existing.cls === obj.cls
         && existing.kind === obj.kind
         && existing.actualKind === obj.actualKind
         && existing.glyph === obj.glyph
-        && existing.color === obj.color
+        && objectStackColor(existing) === objectStackColor(obj)
         && (existing.spe || 0) === (obj.spe || 0)
         && !!existing.blessed === !!obj.blessed
         && !!existing.cursed === !!obj.cursed
@@ -16583,6 +17327,28 @@ function stackMonsterThrownObject(obj) {
     mergeStackedShopBillEntries(stack, obj);
     stack.quan = (stack.quan || 1) + (obj.quan || 1);
     return stack;
+}
+
+function sameDroppedFloorStackObject(dropped, existing) {
+    if (!sameMonsterThrownStackObject(existing, dropped)) return false;
+    if (dropped.nomerge || existing.nomerge) return false;
+    if (dropped.artifact || existing.artifact) return false;
+    if (globContents(dropped).length || globContents(existing).length) return false;
+    return true;
+}
+
+function stackDroppedFloorObject(obj) {
+    if (!game.level || !Array.isArray(game.level.objects) || !obj) return obj;
+    const objects = game.level.objects;
+    if (!objects.includes(obj)) return obj;
+    const stack = objects.find(existing => existing !== obj && sameDroppedFloorStackObject(obj, existing));
+    if (!stack) return obj;
+    mergeStackedShopBillEntries(obj, stack);
+    obj.quan = (obj.quan || 1) + (stack.quan || 1);
+    stack.quan = 0;
+    game.level.objects = objects.filter(existing => existing !== stack);
+    newsym(obj.ox, obj.oy);
+    return obj;
 }
 
 function placeStackableFloorObject(obj) {
@@ -19467,13 +20233,20 @@ function prepareContainerTakeoutObject(container, obj) {
 }
 
 function addContainerTakeoutObjectToInventory(container, obj) {
-    prepareContainerTakeoutObject(container, obj);
     if (shopBillableGold(obj)) {
+        prepareContainerTakeoutObject(container, obj);
         const amount = Math.max(1, Math.trunc(Number(obj.quan || 1)));
         addContainerTakeoutObjectToShopBill(container, obj, obj);
         addGoldToHero(amount);
         return `$ - ${amount} gold piece${amount === 1 ? '' : 's'}`;
     }
+    const mergeInfo = findContainerTakeoutInventoryMergeTarget(container, obj);
+    if (mergeInfo) {
+        const line = mergeContainerTakeoutObjectIntoInventory(container, obj, mergeInfo);
+        game._pet_food_scan_inventory = game.inventory;
+        return line;
+    }
+    prepareContainerTakeoutObject(container, obj);
     const letter = nextInventoryLetter();
     Object.assign(obj, {
         cls: obj.cls || (obj.otyp === GEM_CLASS ? 'gem'
@@ -19488,6 +20261,64 @@ function addContainerTakeoutObjectToInventory(container, obj) {
     maybeAttachCarriedFigurineTimeout(obj);
     game._pet_food_scan_inventory = game.inventory;
     return obj.line || `${letter} - ${pickupObjectPhrase(obj)}`;
+}
+
+function splitContainerTakeoutObjectForLift(obj, count) {
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    const takeCount = Math.max(1, Math.min(quantity, Math.trunc(Number(count || quantity))));
+    if (!obj || takeCount >= quantity) return obj;
+    const lifted = { ...obj, id: next_ident(), quan: takeCount };
+    delete lifted.o_id;
+    delete lifted._shopBillObjectId;
+    delete lifted.letter;
+    delete lifted.line;
+    obj.quan = quantity - takeCount;
+    return lifted;
+}
+
+async function finishContainerTakeoutSelection(container, picked, preflightMessages = []) {
+    const messages = [...(preflightMessages || [])];
+    const moved = [];
+    for (const pickedEntry of picked || []) {
+        const source = pickedEntry.item;
+        const obj = splitContainerTakeoutObjectForLift(source, pickedEntry.takeCount || source?.quan || 1);
+        const line = addContainerTakeoutObjectToInventory(container, obj);
+        moved.push(obj);
+        messages.push(/[.!?]$/.test(line) ? line : `${line}.`);
+    }
+    for (const obj of moved) removeContainedObject(container, obj);
+    game._pet_food_scan_inventory = game.inventory;
+    const followupPutIn = game._icebox_sequence_after_takeout === 'putin' && isIceBoxObject(container);
+    const finishSequence = !followupPutIn && iceBoxSequenceActive() && isIceBoxObject(container);
+    const followupContainerPutIn = game._container_sequence_after_takeout === 'putin' && !isIceBoxObject(container);
+    const finishContainerSeq = !followupContainerPutIn && containerSequenceActive() && !isIceBoxObject(container);
+    clearContainerTakeoutState();
+    game._floor_container_object = null;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    if (followupPutIn) {
+        markIceBoxSequenceUsed(true);
+        await continueIceBoxSequenceToPutIn(container, messages);
+        return;
+    }
+    if (finishSequence) {
+        await finishIceBoxSequence(messages, true);
+        return;
+    }
+    if (followupContainerPutIn) {
+        markContainerSequenceUsed(true);
+        await continueContainerSequenceToPutIn(container, messages);
+        return;
+    }
+    if (finishContainerSeq) {
+        await finishContainerSequence(messages, true);
+        return;
+    }
+    clearIceBoxSequenceState();
+    clearContainerSequenceState();
+    game._command_mode = null;
+    game.context.move = 1;
+    await showIceBoxMessageList(messages);
 }
 
 function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', {
@@ -27536,6 +28367,32 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'containerTakeoutBurdenConfirm') {
+        const pending = game._container_takeout_pending;
+        const answer = ch.toLowerCase();
+        if (!pending || !['y', 'n', 'q', ' ', '\r', '\n', '\x1b'].includes(answer)) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._container_takeout_pending = null;
+        game._pending_message = '';
+        game._message_more = 0;
+        game._keep_pending_message = 0;
+        if (answer === 'y') {
+            await finishContainerTakeoutSelection(pending.container, pending.picked, pending.messages);
+            return;
+        }
+        clearContainerTakeoutState();
+        game._floor_container_object = null;
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        clearIceBoxSequenceState();
+        clearContainerSequenceState();
+        game._command_mode = null;
+        game.context.move = 0;
+        return;
+    }
+
     if (game._command_mode === 'payMenu') {
         const entries = game._pay_menu_items || [];
         if (ch === '\x1b') {
@@ -31690,6 +32547,9 @@ export async function rhack(_cmd) {
         let selfZap = ch === '.';
         const item = game._zap_item;
         game._zap_item = null;
+        const preludeMessages = game._zap_prelude_messages || [];
+        game._zap_prelude_messages = null;
+        const hornElement = fireColdHornElement(item);
         const confusedDirection = (game.u?._statusSuffix || '').includes('Conf') || (game.u?._confusionTimeout || 0) > 0;
         const stunnedDirection = (game.u?._statusSuffix || '').includes('Stun') || game.u?.stunned;
         if ((dir || verticalDir || selfZap) && (stunnedDirection || (confusedDirection && !rn2(5)))) {
@@ -31730,8 +32590,8 @@ export async function rhack(_cmd) {
             game.context.move = sleepTime;
             return;
         }
-        const fireWand = item?.wand === 'fire' || item?.kind === 'fire' || item?.wandIndex === 20;
-        const coldWand = item?.wand === 'cold' || item?.kind === 'cold' || item?.wandIndex === 21;
+        const fireWand = item?.wand === 'fire' || item?.kind === 'fire' || item?.wandIndex === 20 || hornElement === 'fire';
+        const coldWand = item?.wand === 'cold' || item?.kind === 'cold' || item?.wandIndex === 21 || hornElement === 'cold';
         if (selfZap && fireWand) {
             const origDamage = d(12, 6);
             const resistsFire = !!game.u?.fireResistance;
@@ -31743,16 +32603,16 @@ export async function rhack(_cmd) {
             const followups = [...fireInventory.messages];
             if ((game.u?.uhp || 0) <= 0) {
                 game._death_cause = fireInventory.deathCause
-                    || `zapped ${game.flags?.female ? 'herself' : 'himself'} with a wand of fire`;
+                    || (hornElement
+                        ? `using a magical horn on ${game.flags?.female ? 'herself' : 'himself'}`
+                        : `zapped ${game.flags?.female ? 'herself' : 'himself'} with a wand of fire`);
                 followups.push('You die...');
             }
             if (followups.length)
                 game._queued_messages_after_more = [...(game._queued_messages_after_more || []),
                     ...followups.map((text, index) => ({ text, more: index < followups.length - 1 }))];
-            item.known = true;
-            item.kind = 'fire';
-            item.line = `${item.letter} - a wand of fire${wandChargeSuffix(item)}`;
-            await setMessage(resistsFire ? 'You feel rather warm.' : "You've set yourself afire!", !!followups.length);
+            identifyZapToolOrWand(item, 'fire');
+            await setMessage([...preludeMessages, resistsFire ? 'You feel rather warm.' : "You've set yourself afire!"].join('  '), !!followups.length || preludeMessages.length > 0);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -31770,16 +32630,16 @@ export async function rhack(_cmd) {
             if ((game.u?.uhp || 0) <= 0) {
                 game._death_cause = coldInventory.damage >= hpBefore && coldInventory.deathCause
                     ? coldInventory.deathCause
-                    : `zapped ${game.flags?.female ? 'herself' : 'himself'} with a wand of cold`;
+                    : hornElement
+                        ? `using a magical horn on ${game.flags?.female ? 'herself' : 'himself'}`
+                        : `zapped ${game.flags?.female ? 'herself' : 'himself'} with a wand of cold`;
                 followups.push('You die...');
             }
             if (followups.length)
                 game._queued_messages_after_more = [...(game._queued_messages_after_more || []),
                     ...followups.map((text, index) => ({ text, more: index < followups.length - 1 }))];
-            item.known = true;
-            item.kind = 'cold';
-            item.line = `${item.letter} - a wand of cold${wandChargeSuffix(item)}`;
-            await setMessage(resistsCold ? 'You feel a little chill.' : 'You imitate a popsicle!', !!followups.length);
+            identifyZapToolOrWand(item, 'cold');
+            await setMessage([...preludeMessages, resistsCold ? 'You feel a little chill.' : 'You imitate a popsicle!'].join('  '), !!followups.length || preludeMessages.length > 0);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -31886,7 +32746,8 @@ export async function rhack(_cmd) {
             if (coldWand) {
                 exerciseAttribute(A_WIS, true);
                 const beamCells = [];
-                const messages = [];
+                const blast = hornBlastMessage(item);
+                const messages = [...preludeMessages, ...(blast ? [blast] : [])];
                 let beamStopIndex = null;
                 let range = rn1(7, 7);
                 let sx = game.u?.ux || 0;
@@ -32052,9 +32913,7 @@ export async function rhack(_cmd) {
                 game._transient_beam_cells = messageMore
                     ? beamStopIndex == null ? beamCells : beamCells.slice(0, beamStopIndex)
                     : null;
-                item.known = true;
-                item.kind = 'cold';
-                item.line = `${item.letter} - a wand of cold${wandChargeSuffix(item)}`;
+                identifyZapToolOrWand(item, 'cold');
                 rn2(10);
                 rn2(10);
                 rn2(10);
@@ -32067,7 +32926,8 @@ export async function rhack(_cmd) {
             if (fireWand) {
                 rn2(19);
                 const beamCells = [];
-                const messages = [];
+                const blast = hornBlastMessage(item);
+                const messages = [...preludeMessages, ...(blast ? [blast] : [])];
                 const followups = [];
                 let beamStopIndex = null;
                 let heardGas = false;
@@ -32262,9 +33122,7 @@ export async function rhack(_cmd) {
                         ...followups.map((entry, index) => typeof entry === 'string'
                             ? { text: entry, more: index < followups.length - 1 }
                             : { ...entry, more: entry.more ?? index < followups.length - 1 })];
-                item.known = true;
-                item.kind = 'fire';
-                item.line = `${item.letter} - a wand of fire${wandChargeSuffix(item)}`;
+                identifyZapToolOrWand(item, 'fire');
                 await setMessage(messages.join('  '), messages.length > 1 || !!followups.length);
                 game._command_mode = null;
                 game.context.move = 1;
@@ -32362,6 +33220,12 @@ export async function rhack(_cmd) {
             }
             await setMessage('');
             game._keep_pending_message = 0;
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        if (hornElement) {
+            await setMessage([...preludeMessages, `${instrumentTheName(item)} vibrates.`].join('  '), preludeMessages.length > 0);
             game._command_mode = null;
             game.context.move = 1;
             return;
@@ -35024,7 +35888,7 @@ export async function rhack(_cmd) {
             await beginCrystalBallUse(item);
             return;
         }
-        if (magicInstrumentKind(item)) {
+        if (musicalInstrumentKind(item)) {
             await beginMusicalInstrumentUse(item);
             return;
         }
@@ -35447,6 +36311,11 @@ export async function rhack(_cmd) {
                 game._command_mode = null;
                 return;
             }
+            if ((game.u?.uevent?.uheard_tune || 0) === 2) {
+                await setMessage('Play the passtune? [ynq] (q)');
+                game._command_mode = 'instrumentPasstunePrompt';
+                return;
+            }
             game._instrument_tune_text = '';
             await setMessage('What tune are you playing? [5 notes, A-G]');
             game._command_mode = 'instrumentTuneText';
@@ -35454,6 +36323,29 @@ export async function rhack(_cmd) {
         }
         if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
             game._apply_instrument_letter = '';
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'instrumentPasstunePrompt') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_instrument_letter);
+        if (ch === 'y') {
+            await finishInstrumentTune(item, game.castleTune || '');
+            return;
+        }
+        if (ch === 'n') {
+            game._instrument_tune_text = '';
+            await setMessage('What tune are you playing? [5 notes, A-G]');
+            game._command_mode = 'instrumentTuneText';
+            return;
+        }
+        if (ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._apply_instrument_letter = '';
+            game._instrument_tune_text = '';
             game._command_mode = null;
             await setMessage('Never mind.');
             return;
@@ -36495,6 +37387,7 @@ export async function rhack(_cmd) {
                     shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
                 if (shopSale?.message) floorMessages.push(shopSale.message);
                 objectIceEffect(dropped, dropped.ox, dropped.oy);
+                if (!shopSale?.prompt) stackDroppedFloorObject(dropped);
             }
             newsym(game.u?.ux || 0, game.u?.uy || 0);
             game._message_more = 0;
@@ -37564,74 +38457,34 @@ export async function rhack(_cmd) {
         if ((ch === '\r' || ch === '\n' || ch === ' ') && selected.size) {
             const container = game._loot_takeout_container;
             const picked = entries.filter(entry => selected.has(entry.letter));
-            const messages = [];
-            for (const pickedEntry of picked) {
-                const obj = pickedEntry.item;
-                if (obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$') {
-                    const amount = obj.quan || 1;
-                    addContainerTakeoutObjectToInventory(container, obj);
-                    messages.push(`$ - ${amount} gold piece${amount === 1 ? '' : 's'}.`);
-                    continue;
-                }
-                const letter = nextInventoryLetter();
-                prepareContainerTakeoutObject(container, obj);
-                const amount = pickupObjectPhrase(obj);
-                const pickedItem = isIceBoxObject(container) ? obj : { ...obj };
-                Object.assign(pickedItem, {
-                    cls: obj.cls || (obj.otyp === GEM_CLASS ? 'gem'
-                        : obj.otyp === SCROLL_CLASS ? 'scroll'
-                            : obj.glyph === '+' ? 'spellbook' : obj.cls),
-                    letter,
-                    kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
-                    line: `${letter} - ${amount}`,
-                });
-                addContainerTakeoutObjectToShopBill(container, obj, pickedItem);
-                game.inventory = [...(game.inventory || []), pickedItem];
-                maybeAttachCarriedFigurineTimeout(pickedItem);
-                messages.push(`${pickedItem.line || `${letter} - ${amount}`}.`);
-            }
-            if (container) container.contents = (container.contents || []).filter(item => !picked.some(entry => entry.item === item));
-            game._pet_food_scan_inventory = game.inventory;
-            const followupPutIn = game._icebox_sequence_after_takeout === 'putin' && isIceBoxObject(container);
-            const finishSequence = !followupPutIn && iceBoxSequenceActive() && isIceBoxObject(container);
-            const followupContainerPutIn = game._container_sequence_after_takeout === 'putin' && !isIceBoxObject(container);
-            const finishContainerSeq = !followupContainerPutIn && containerSequenceActive() && !isIceBoxObject(container);
-            clearContainerTakeoutState();
-            game._floor_container_object = null;
-            game._overlay_lines = null;
-            game._overlay_hide_status = 0;
-            const message = messages.join('  ');
-            if (followupPutIn) {
-                markIceBoxSequenceUsed(true);
-                await continueIceBoxSequenceToPutIn(container, messages);
+            const preflight = containerTakeoutPreflight(container, picked);
+            if (!preflight.ok) {
+                clearContainerTakeoutState();
+                game._floor_container_object = null;
+                game._overlay_lines = null;
+                game._overlay_hide_status = 0;
+                clearIceBoxSequenceState();
+                clearContainerSequenceState();
+                game._command_mode = null;
+                await setMessage(preflight.message || 'You cannot carry that.');
                 return;
             }
-            if (finishSequence) {
-                await finishIceBoxSequence(messages, true);
+            const planned = preflight.entries || picked;
+            if (preflight.prompt) {
+                game._container_takeout_pending = {
+                    container,
+                    picked: planned,
+                    messages: preflight.messages || [],
+                };
+                clearContainerTakeoutState();
+                game._floor_container_object = null;
+                game._overlay_lines = null;
+                game._overlay_hide_status = 0;
+                game._command_mode = 'containerTakeoutBurdenConfirm';
+                await setMessage(preflight.prompt);
                 return;
             }
-            if (followupContainerPutIn) {
-                markContainerSequenceUsed(true);
-                await continueContainerSequenceToPutIn(container, messages);
-                return;
-            }
-            if (finishContainerSeq) {
-                await finishContainerSequence(messages, true);
-                return;
-            }
-            clearIceBoxSequenceState();
-            clearContainerSequenceState();
-            game._command_mode = null;
-            if (message.length <= 79) {
-                await setMessage(message);
-            } else {
-                const first = messages.slice(0, 2).join('  ');
-                const rest = messages.slice(2).join('  ');
-                game._queued_message_after_more = rest || null;
-                game._queued_message_process_time_after_more = 1;
-                await setMessage(first, true);
-            }
-            game.context.move = 1;
+            await finishContainerTakeoutSelection(container, planned, preflight.messages || []);
             return;
         }
         if (ch === '\x1b') {

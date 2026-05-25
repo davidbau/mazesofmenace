@@ -13,6 +13,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, hasQueuedInput, initReplayMoves } from './input.js';
 import { newgame, moveloop_core } from './allmain.js';
+import { docrtPaintVisibleForWelcomeLikeC } from './display.js';
 import { runPostCommandTurnAdvanceLikeC } from './moveloop_turn_advance.js';
 import { moveloopPreamble, maybeDoTutorialLikeC } from './moveloop_preamble.js';
 import { parseNethackrc } from './options.js';
@@ -175,6 +176,10 @@ export class NethackGame {
         const fullLog = getRngLog() || [];
         const slice = fullLog.slice(this._lastRngIdx);
         this._lastRngIdx = fullLog.length;
+
+        /* C: welcome `--More--` — paint IN_SIGHT map before first tourist input snapshot. */
+        if (bump && this._nhgetchCount === 1 && game.urole?.abbr === 'Tou')
+            await docrtPaintVisibleForWelcomeLikeC();
 
         /* C: tty refresh before input boundaries; also when find_ac flagged botl but moveloop not started. */
         const needFlush =

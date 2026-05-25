@@ -175,7 +175,7 @@ export function paintAttributesIntoDisplay(display, page) {
     display.putstr(0, row++, enlightHungerLine(u.uhs), NO_COLOR, 0);
         display.putstr(0, row++, enlightEncumbranceLine(nearCapacity(), !!g._enlightenmentFinal), NO_COLOR, 0);
     display.putstr(0, row++, enlightWieldLine(u, g), NO_COLOR, 0);
-    display.putstr(0, row++, enlightWieldSkillLine(u), NO_COLOR, 0);
+    display.putstr(0, row++, enlightWieldSkillLine(u, g), NO_COLOR, 0);
     row++;
     display.putstr(0, row++, ' Miscellaneous:', NO_COLOR, 0);
     display.putstr(0, row++, enlightPlaytimeLine(g), NO_COLOR, 0);

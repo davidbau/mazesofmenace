@@ -88,6 +88,7 @@ import {
     refreshFobjHeadInLevel,
 } from './floorobj.js';
 import { fixWallSpinesRect } from './wall_spine.js';
+import { setLevltypLikeC } from './set_levltyp.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
 /* NH5 audit: scroll **`otyp`** literals below are **legacy** (pre–`objects_nums` / `mkobj_scroll_class_rng_like_c.js`).
@@ -2157,24 +2158,32 @@ async function mktrapLikeC(num, mktrapflags, croom, tm) {
     }
 }
 
+/** C: mklev.c mkfount — find_okay_roompos + set_levltyp(FOUNTAIN). */
 function mkfount(croom) {
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
+    if (!setLevltypLikeC(pos.x, pos.y, FOUNTAIN)) return;
     const loc = game.level?.at(pos.x, pos.y);
-    if (loc) {
-        loc.typ = FOUNTAIN;
-        if (!rn2(7)) loc.blessedftn = 1;
-        game.level.flags.nfountains++;
-    }
+    if (loc && !rn2(7)) loc.blessedftn = 1;
+    game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
+}
+
+/** C: mklev.c mksink — find_okay_roompos + set_levltyp(SINK). */
+function mksink(croom) {
+    const pos = { x: 0, y: 0 };
+    if (!find_okay_roompos(croom, pos)) return false;
+    if (!setLevltypLikeC(pos.x, pos.y, SINK)) return false;
+    game.level.flags.nsinks = (game.level.flags.nsinks | 0) + 1;
+    return true;
 }
 
 function mkaltar(croom) {
     if (!croom || croom.rtype !== OROOM) return;
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
+    if (!setLevltypLikeC(pos.x, pos.y, ALTAR)) return;
     const loc = game.level?.at(pos.x, pos.y);
     if (!loc) return;
-    loc.typ = ALTAR;
     const al = rn2(A_LAWFUL + 2) - 1;
     loc.flags = Align2amask(al);
 }
@@ -2238,12 +2247,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     /* C: mklev.c — `goto skip_nonrogue` on rogue level (fountain…graffiti + bonus/chest). */
     if (!Is_rogue_level(g.u?.uz)) {
         if (!rn2(10)) mkfount(croom);
-        if (!rn2(60)) {
-            if (find_okay_roompos(croom, pos)) {
-                const loc = g.level?.at(pos.x, pos.y);
-                if (loc) { loc.typ = SINK; g.level.flags.nsinks = (g.level.flags.nsinks || 0) + 1; }
-            }
-        }
+        if (!rn2(60)) mksink(croom);
         if (!rn2(60)) mkaltar(croom);
         x = 80 - (u_depth * 2);
         if (x < 2) x = 2;

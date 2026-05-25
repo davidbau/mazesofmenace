@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { paintIniInvStubIntoDisplay } from './ini_inv_stub.js';
 import { contextLeavingTutorialActiveLikeC } from './tutorial_branch.js';
-import { TTY_PICKINV_COL } from './display.js';
+import { ttyPickinvColLikeC } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { isHumanRogueChargenLikeC } from './u_init_link_rogue_invent.js';
 
@@ -32,7 +32,7 @@ export function updateInventory() {
  */
 export function paintInventoryOverlayLikeC(display) {
     const g = game;
-    const col = TTY_PICKINV_COL;
+    const col = ttyPickinvColLikeC(g);
     if (isHumanRogueChargenLikeC(g) && g.invent) {
         const dq = g._rogueIniDaggerQuan | 0;
         let row = 1;

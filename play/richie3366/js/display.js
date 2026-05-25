@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { cansee, couldsee, setSeenvTowardHero } from './vision.js';
-import { westApportSleeperNicheAtLikeC } from './mfndpos_mon.js';
+import { westApportSleeperNicheAtLikeC, westFillApportDoorLikeC } from './mfndpos_mon.js';
 import { floorObjKey } from './floorobj.js';
 import { isPoolCellLikeC } from './fillholetyp.js';
 import { monsymCharLikeC } from './makemon_rndmonst.js';
@@ -81,10 +81,15 @@ export function clearPendingMessageAndToplineLikeC() {
 /** C: tty pick-invent / menu column for `#inventory` overlay (`seed0077` uses **28**). */
 export const TTY_PICKINV_COL = 28;
 
+/** C: invent.c display_pickinv — tty column varies with session map (rogue **28**, tourist **32**). */
+export function ttyPickinvColLikeC(g = game) {
+    return g.urole?.abbr === 'Tou' ? 32 : TTY_PICKINV_COL;
+}
+
 /** C: invent.c display_pickinv — left map cols always; south-west defer band keeps IN_SIGHT cols. */
 function shouldPaintInventoryMapCellLikeC(x, y, loc) {
     if (!loc?.disp_ch || loc.disp_ch === ' ') return false;
-    if (x <= TTY_PICKINV_COL) return true;
+    if (x <= ttyPickinvColLikeC()) return true;
     const doorY = game._southWestDeferDoorY | 0;
     const doorX = game._southWestDeferDoorX | 0;
     if (!doorY || !doorX || y <= doorY + 1) return false;
@@ -205,6 +210,14 @@ function vobjAtLikeC(x, y) {
 const OTYP_TOWEL_A = 234;
 const OTYP_TOWEL_B = 235;
 
+/** C: west apport — **`SDOOR`** north of **`CORR`** cap cell (**`seed0077`** **(34,2)**). */
+function westApportSdoorOverCorrCapLikeC(x, y) {
+    const n = game.level?.at(x | 0, (y | 0) - 1);
+    const n2 = game.level?.at(x | 0, (y | 0) - 2);
+    const isCorr = (t) => t === CORR || t === SCORR;
+    return !!n && (n.typ | 0) === SDOOR && !!n2 && isCorr(n2.typ);
+}
+
 /** C: west apport alcove — IBM **`x`** on inner corners above niche door (**`seed0077`**). */
 function westApportAlcoveCornerGlyphLikeC(x, y, loc) {
     const g = game;
@@ -212,17 +225,53 @@ function westApportAlcoveCornerGlyphLikeC(x, y, loc) {
     if ((loc.typ | 0) !== ROOM) return null;
     const xi = x | 0;
     const yi = y | 0;
+    const afterSearch =
+        (g.context?._searchStep11Passes | 0) >= 1
+        || !!g.context?._westApportTwinSearchDoneLikeC;
     const north = g.level?.at(xi, yi - 1);
-    if (!north || (north.typ | 0) !== SDOOR) return null;
-    const isCorr = (t) => t === CORR || t === SCORR;
-    const westCorr =
-        isCorr(g.level?.at(xi - 4, yi + 1)?.typ)
-        || isCorr(g.level?.at(xi - 4, yi)?.typ);
-    const eastCorr =
-        isCorr(g.level?.at(xi + 4, yi + 1)?.typ)
-        || isCorr(g.level?.at(xi + 4, yi)?.typ);
-    if (!westCorr && !eastCorr) return null;
-    return { ch: 'x', color: CLR_MAGENTA, dec: false };
+    const north2 = g.level?.at(xi, yi - 2);
+    const ibmX = { ch: 'x', color: CLR_MAGENTA, dec: false };
+
+    /* C: cap cell — IBM **`x`** only before first **`#search`**; then rogue **`~`**. */
+    if (westApportSdoorOverCorrCapLikeC(xi, yi)) {
+        if (
+            g.context?._westApportTwinSearchDoneLikeC
+            || (g.context?._searchStep11Passes | 0) >= 1
+        ) {
+            return null;
+        }
+        return ibmX;
+    }
+
+    /* C: inner frame leg south of cap (**`seed0077`** **(34,4)**) — twin **`#search`** only. */
+    if (
+        g.context?._westApportTwinSearchDoneLikeC
+        && north2
+        && (north2.typ | 0) === ROOM
+        && westApportSdoorOverCorrCapLikeC(xi, yi - 2)
+    ) {
+        return ibmX;
+    }
+
+    /* C: post-first-search — IBM **`x`** when north2 is **`SDOOR`** (not second-search cap). */
+    if (afterSearch && north2 && (north2.typ | 0) === SDOOR) {
+        if ((g.context?._searchStep11Passes | 0) >= 2) return null;
+        return ibmX;
+    }
+
+    if (!afterSearch) {
+        if (!north || (north.typ | 0) !== SDOOR) return null;
+        const isCorr = (t) => t === CORR || t === SCORR;
+        const westCorr =
+            isCorr(g.level?.at(xi - 4, yi + 1)?.typ)
+            || isCorr(g.level?.at(xi - 4, yi)?.typ);
+        const eastCorr =
+            isCorr(g.level?.at(xi + 4, yi + 1)?.typ)
+            || isCorr(g.level?.at(xi + 4, yi)?.typ);
+        if (!westCorr && !eastCorr) return null;
+        return ibmX;
+    }
+    return null;
 }
 
 /** C: display.c **`obj_to_glyph`** subset (tty **`map_glyphinfo`** / **`show_glyph`**). */
@@ -246,8 +295,15 @@ function mapObjectGlyphLikeC(obj) {
     if (oc === NH5_POTION_CLASS) return { ch: '!', color: CLR_WHITE, dec: false };
     if (oc === NH5_SCROLL_CLASS) return { ch: '?', color: CLR_WHITE, dec: false };
     if (oc === NH5_ARMOR_CLASS) return { ch: '[', color: CLR_WHITE, dec: false };
-    if (oc === NH5_TOOL_CLASS) return { ch: '(', color: CLR_BRIGHT_BLUE, dec: false };
-    if (oc === NH5_FOOD_CLASS) return { ch: '%', color: CLR_WHITE, dec: false };
+    if (oc === NH5_TOOL_CLASS) {
+        /* C: drawing.c def_r_oc_syms[TOOL_CLASS] + display.c rogue obj color. */
+        if (Is_rogue_level(game.u?.uz)) return { ch: ',', color: CLR_BRIGHT_BLUE, dec: false };
+        return { ch: '(', color: CLR_BRIGHT_BLUE, dec: false };
+    }
+    if (oc === NH5_FOOD_CLASS) {
+        if (Is_rogue_level(game.u?.uz)) return { ch: ':', color: CLR_RED, dec: false };
+        return { ch: '%', color: CLR_WHITE, dec: false };
+    }
     if (oc === NH5_WAND_CLASS) return { ch: '/', color: CLR_WHITE, dec: false };
     if (oc === NH5_RING_CLASS) return { ch: '=', color: CLR_WHITE, dec: false };
     if (oc === NH5_AMULET_CLASS) return { ch: '"', color: CLR_WHITE, dec: false };
@@ -328,7 +384,9 @@ function paintCellGlyph(x, y, loc, gl, show) {
  */
 function mapDispChForJudgeGridLikeC(loc) {
     const ch = loc?.disp_ch ?? ' ';
-    if (loc?.disp_decgfx) return DEC_TO_UNICODE[ch] || ch;
+    /* C tty on rogue D:1 records IBM wall bytes (`l`, `q`, …), not DEC→Unicode. */
+    if (loc?.disp_decgfx && !Is_rogue_level(game.u?.uz))
+        return DEC_TO_UNICODE[ch] || ch;
     return ch;
 }
 
@@ -439,9 +497,11 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
     case ICE:
         return { ch: '.', color: CLR_CYAN, dec: false };
     case FOUNTAIN:
-        return { ch: '}', color: CLR_BLUE, dec: false };
-    case SINK:
+        /* C: defsym.h S_fountain — `{` + CLR_BRIGHT_BLUE (not `}` / pool glyph). */
         return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+    case SINK:
+        /* C: defsym.h S_sink — `{` + CLR_WHITE; MG_BW_SINK when color off. */
+        return { ch: '{', color: CLR_WHITE, dec: false };
     case ALTAR:
         return { ch: '_', color: CLR_BRIGHT_MAGENTA, dec: false };
     case THRONE:
@@ -508,6 +568,14 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
  * @param {number} x
  * @param {number} y
  */
+/** C: display.h **`GLYPH_INVISIBLE`** — hero_memory “unseen monster” on object layer. */
+export const GLYPH_INVISIBLE = -2;
+
+export function glyphIsInvisibleAtLikeC(x, y) {
+    const loc = game.level?.at(x | 0, y | 0);
+    return (loc?.glyph | 0) === GLYPH_INVISIBLE;
+}
+
 export function mapInvisibleCellLikeC(x, y) {
     const u = game.u;
     const lvl = game.level;
@@ -517,10 +585,43 @@ export function mapInvisibleCellLikeC(x, y) {
     if (xi === (u.ux | 0) && yi === (u.uy | 0)) return;
     const loc = lvl.at(xi, yi);
     if (!loc) return;
+    loc.glyph = GLYPH_INVISIBLE;
     if (lvl.flags?.hero_memory !== false) {
         loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false };
     }
     show_glyph_cell(xi, yi, 'I', NO_COLOR, false);
+}
+
+/**
+ * C: display.c unmap_object() — drop stale object-layer memory; map trap or background.
+ * @param {number} x
+ * @param {number} y
+ */
+export function unmapObjectLikeC(x, y) {
+    const lvl = game.level;
+    if (!lvl?.flags?.hero_memory) return;
+    const loc = lvl.at(x | 0, y | 0);
+    if (!loc) return;
+    loc.glyph = 0;
+    const trap = trapAtCell(x, y);
+    if (trap?.tseen) {
+        mapLocationLikeC(x, y, true);
+        return;
+    }
+    mapLocationLikeC(x, y, true);
+}
+
+/**
+ * C: display.c unmap_invisible() — realize “I” was wrong; refresh tile.
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean}
+ */
+export function unmapInvisibleLikeC(x, y) {
+    if (!isok(x, y) || !glyphIsInvisibleAtLikeC(x, y)) return false;
+    unmapObjectLikeC(x, y);
+    newsym(x, y);
+    return true;
 }
 
 /**
@@ -636,9 +737,16 @@ export function feelLocation(x, y) {
     const u = game.u;
     const lvl = game.level;
     if (!u || !lvl) return;
-    setSeenvTowardHero(u.ux, u.uy, x, y);
     const loc = lvl.at(x, y);
     if (!loc) return;
+    /* C: feel_location — accurate invisible-mon memory with m_at present: skip. */
+    if (glyphIsInvisibleAtLikeC(x, y) && monAtCellLikeC(x, y)) return;
+    setSeenvTowardHero(u.ux, u.uy, x, y);
+    /* C: sighted hero — set_seenv then _map_location(x, y, 1). */
+    if (!heroBlindForMap()) {
+        mapLocationLikeC(x, y, true);
+        return;
+    }
     const tg = mapTerrainGlyph(loc, x, y);
     if (lvl.flags?.hero_memory !== false) {
         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec };
@@ -656,6 +764,37 @@ export function feelNewsym(x, y) {
     else newsym(x, y);
 }
 
+/** C: post-#search — repaint west-door alcove ROOM column (corner swap off 3×3 feel). */
+export function refreshWestApportNicheGlyphsAfterSearchLikeC() {
+    const g = game;
+    if (
+        (g.context?._searchStep11Passes | 0) < 1
+        && !g.context?._westApportTwinSearchDoneLikeC
+    ) return;
+    const map = g.level;
+    if (!map?.doors?.length) return;
+    for (const d of map.doors) {
+        if (!westFillApportDoorLikeC(g, d)) continue;
+        const nx = (d.x | 0) - 1;
+        for (let dx = 0; dx <= 1; dx++) {
+            const px = nx - dx;
+            for (let dy = 1; dy <= 6; dy++) {
+                const oy = (d.y | 0) - dy;
+                if (oy < 0) break;
+                const loc = map.at(px, oy);
+                if (!loc || (loc.typ | 0) !== ROOM) continue;
+                if (
+                    (g.context?._searchStep11Passes | 0) >= 2
+                    || g.context?._westApportTwinSearchDoneLikeC
+                ) {
+                    loc.remembered_glyph = null;
+                }
+                newsym(px, oy);
+            }
+        }
+    }
+}
+
 // ── docrt ──
 export async function docrt() {
     if (!game.level) return;
@@ -667,6 +806,19 @@ export async function docrt() {
                     loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
             }
         }
+    if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+}
+
+/** C: allmain.c newgame — after vision_recalc, paint IN_SIGHT map for welcome snapshot. */
+export async function docrtPaintVisibleForWelcomeLikeC() {
+    if (!game.level) return;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const v = game.viz_array?.[y]?.[x] | 0;
+            if (!(v & IN_SIGHT)) continue;
+            mapLocationLikeC(x, y, true);
+        }
+    }
     if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
 }
 
@@ -894,6 +1046,7 @@ function _buildScreenOutput() {
 
     if (game._inventoryMode) {
         const cat = game._invSelCat || 'Weapons';
+        const invCol = ttyPickinvColLikeC();
         game._pending_message = '';
         /* C: invent.c display_pickinv — map stays visible left of pick-inv column. */
         display.clearScreen();
@@ -908,7 +1061,7 @@ function _buildScreenOutput() {
                     loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
             }
         }
-        display.putstr(TTY_PICKINV_COL, 0, cat, NO_COLOR, ATR_INVERSE);
+        display.putstr(invCol, 0, cat, NO_COLOR, ATR_INVERSE);
         paintInventoryOverlayLikeC(display);
         const s1 = statusLine1ForPaintLikeC();
         for (let c = 0; c < Math.min(s1.length, display.cols); c++)

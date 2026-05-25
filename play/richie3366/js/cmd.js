@@ -206,6 +206,9 @@ export async function rhack(key) {
         }
         game.context.move = 1;
         game.context._searchStep11Passes = (game.context._searchStep11Passes | 0) + 1;
+        if ((game.context._searchStep11Passes | 0) === 2) {
+            game.context._westApportTwinSearchDoneLikeC = true;
+        }
         if ((game.context._searchStep11Passes | 0) === 1) {
             delete game.context._searchRogGateCountLikeC;
             delete game.context._searchPass1DogGoalDoneLikeC;
@@ -225,21 +228,26 @@ export async function rhack(key) {
             }
         }
         await dosearch();
+        const searchPassAfter = game.context._searchStep11Passes | 0;
         const nextKey = peekQueuedKey();
         const nextCh = nextKey == null ? null : String.fromCharCode(nextKey);
+        const rogueLike =
+            game.urole?.abbr === 'Rog'
+            || game.pl_character === 'Rogue'
+            || (game.urole?.mnum | 0) === 8;
         /* C: twin `#search` — blank topline before second search; single search retains trap msg. */
         if (nextCh === 's') {
             clearPendingMessageAndToplineLikeC();
         } else {
             game._retainMessageAfterCommand = true;
         }
+        /* C: tourist twin `#search` — second pass with no finds leaves blank topline. */
+        if (searchPassAfter >= 2 && nextCh !== 's' && !rogueLike) {
+            clearPendingMessageAndToplineLikeC();
+        }
         /* C: **`#search`** costs time — inline **`movemon`** + new-turn tail on the **`s`** step. */
         game.context._searchInlinePostDoneLikeC = true;
         await runPostCommandTurnAdvanceLikeC(game);
-        const rogueLike =
-            game.urole?.abbr === 'Rog'
-            || game.pl_character === 'Rogue'
-            || (game.urole?.mnum | 0) === 8;
         /* C: twin **`#search`** — keep **`_searchStep11Passes`**; full clear only before **`:`** / other cmds. */
         if (nextCh === 's') {
             clearSearchMovemonSubHarnessLikeC(game);
@@ -257,7 +265,8 @@ export async function rhack(key) {
         game.context.move = 0;
         if (!game._inventoryMode) {
             game._inventoryMode = true;
-            game._invSelCat = 'Weapons';
+            game._invSelCat =
+                game.urole?.abbr === 'Tou' ? 'Coins' : 'Weapons';
             await flush_screen(1);
         }
     } else if (ch === '+') {

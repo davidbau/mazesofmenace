@@ -42,7 +42,7 @@ import {
     NO_MINVENT, MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
-    DB_UNDER, DB_FLOOR,
+    DB_EAST, DB_UNDER, DB_FLOOR, DB_MOAT,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
@@ -13040,7 +13040,16 @@ export async function make_castle_level() {
         }
     }
     const bridge = g.level.at(castleX(5), castleY(8));
-    if (bridge) bridge.typ = DRAWBRIDGE_UP;
+    if (bridge) {
+        bridge.typ = DRAWBRIDGE_UP;
+        bridge.flags = DB_EAST | DB_MOAT;
+    }
+    const bridgeWall = g.level.at(castleX(6), castleY(8));
+    if (bridgeWall) {
+        bridgeWall.typ = DBWALL;
+        bridgeWall.wall_info = W_NONDIGGABLE;
+        bridgeWall.horizontal = false;
+    }
 
     for (let i = 0; i < CASTLE_STORAGE_ROOMS.length; i++) {
         const oclass = classFor(object[i]);

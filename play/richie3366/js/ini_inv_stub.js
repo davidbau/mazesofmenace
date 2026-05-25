@@ -2,6 +2,7 @@
 // One structured list drives #inventory painting and #discoveries (per-class lines).
 
 import { game } from './gstate.js';
+import { ttyPickinvColLikeC } from './display.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import { applyRogueHumanLinkedInventAndWieldLikeC } from './u_init_link_rogue_invent.js';
 import { applySamuraiHumanLinkedInventAndWieldLikeC } from './u_init_link_samurai_invent.js';
@@ -24,7 +25,7 @@ const TOURIST_INI_INV = [
     { type: 'cat', name: 'Coins' },
     { type: 'item', text: (g) => `$ - ${g._goldCount ?? 0} gold pieces` },
     { type: 'cat', name: 'Weapons' },
-    { type: 'item', text: 'a - 27 +2 darts (at the ready)' },
+    { type: 'item', text: (g) => `a - ${g._touristIniDartQuan ?? 27} +2 darts (at the ready)` },
     { type: 'cat', name: 'Armor' },
     { type: 'item', text: 'j - an uncursed +0 Hawaiian shirt (being worn)' },
     { type: 'cat', name: 'Comestibles' },
@@ -609,13 +610,14 @@ export function initIniInvStub(/** @type {import('./gstate.js').game} */ g) {
 /** @param {import('./game_display.js').GameDisplay} display */
 export function paintIniInvStubIntoDisplay(display) {
     const rows = game._iniInvRows || [];
+    const col = ttyPickinvColLikeC();
     let i = 0;
     for (const row of rows) {
         if (row.type === 'cat') {
-            display.putstr(INV_COL, i, row.name, NO_COLOR, ATR_INVERSE);
+            display.putstr(col, i, row.name, NO_COLOR, ATR_INVERSE);
         } else {
             const t = typeof row.text === 'function' ? row.text(game) : row.text;
-            display.putstr(INV_COL, i, t, NO_COLOR, 0);
+            display.putstr(col, i, t, NO_COLOR, 0);
         }
         i++;
     }

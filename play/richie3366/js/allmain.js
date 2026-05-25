@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import {
-    docrt, cls, bot, flush_screen, pline, newsym,
+    docrt, docrtPaintVisibleForWelcomeLikeC, cls, bot, flush_screen, pline, newsym,
     clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
 } from './display.js';
 import {
@@ -215,6 +215,8 @@ export async function newgame() {
     applySkillInit(g);
     findAc();
     vision_recalc(0);
+    /* C: display.c docrt after vision — tourist welcome snapshot includes rogue D:1 map. */
+    if (g.urole?.abbr === 'Tou') await docrtPaintVisibleForWelcomeLikeC();
 
     /* C: allmain.c newgame — `if (flags.legacy) com_pager(...)` before `welcome(TRUE)`. */
     await awaitLegacyIntroMoreLikeC();

@@ -3,6 +3,7 @@
 
 import {
     P_NONE,
+    P_BARE_HANDED_COMBAT,
     P_ISRESTRICTED,
     P_UNSKILLED,
     P_BASIC,
@@ -73,11 +74,15 @@ export function enlightWieldLine(u, g) {
 export function enlightWieldSkillLine(u, g) {
     const uwep = u.uwep;
     if (!uwep || typeof uwep === 'string') {
-        const wtype = P_NONE;
+        /* C: weapon.c weapon_type(NULL) → P_BARE_HANDED_COMBAT (not P_NONE). */
+        const wtype = P_BARE_HANDED_COMBAT;
         const sklvl = u.weapon_skills?.[wtype]?.skill ?? P_UNSKILLED;
-        if (sklvl === P_UNSKILLED)
-            return '  You are unskilled in bare handed combat.';
-        return '  You are unskilled in that weapon type.';
+        const sklvlbuf = skillLevelNameLowerLikeC(wtype, u);
+        const skname = pSkillDisplayName(wtype, g);
+        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
+        return hav
+            ? `  You have ${sklvlbuf} skill with ${skname}.`
+            : `  You are ${sklvlbuf} in ${skname}.`;
     }
     const wtype = weaponType(uwep);
     if (wtype === P_NONE || isAmmo(uwep))

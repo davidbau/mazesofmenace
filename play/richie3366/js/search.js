@@ -7,7 +7,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnl } from './rng.js';
-import { pline, newsym, feelLocation } from './display.js';
+import {
+    pline, newsym,     feelLocation, feelNewsym, unmapInvisibleLikeC, GLYPH_INVISIBLE,
+    refreshWestApportNicheGlyphsAfterSearchLikeC,
+} from './display.js';
 import { recalcBlockPointLikeC, cansee } from './vision.js';
 import { exercise } from './attrib.js';
 import {
@@ -108,7 +111,7 @@ function monsterCanHide(mtmp) {
 
 function glyphIsInvisibleSquare(x, y) {
     const loc = game.level?.at(x, y);
-    return loc?.disp_ch === 'I';
+    return (loc?.glyph | 0) === GLYPH_INVISIBLE || loc?.disp_ch === 'I';
 }
 
 function mAt(x, y) {
@@ -332,7 +335,7 @@ export async function dosearch0(aflag) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
                 recalcBlockPointLikeC(x, y);
-                newsym(x, y);
+                feelNewsym(x, y);
                 await pline('You find a hidden passage.');
                 reported = true;
             } else {
@@ -344,7 +347,7 @@ export async function dosearch0(aflag) {
                 }
 
                 if (!aflag && !mtmp && !Blind) {
-                    /* C: unmap_invisible(x, y); */
+                    unmapInvisibleLikeC(x, y);
                 }
 
                 const trap = tAt(x, y);
@@ -362,4 +365,5 @@ export async function dosearch0(aflag) {
     }
 
     if (!reported) await pline('You find no traps or secret doors.');
+    refreshWestApportNicheGlyphsAfterSearchLikeC();
 }
