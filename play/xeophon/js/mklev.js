@@ -8,7 +8,8 @@
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, pline } from './display.js';
+import { docrt, flush_screen, newsym, pline } from './display.js';
+import { cansee } from './vision.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { restoreBonesLevel } from './save.js';
 import { createGasCloud } from './region.js';
@@ -22,7 +23,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
-import { clearBuriedOrganicRotTimer, objectIceEffect, restoreBuriedBallIfNeeded } from './ice.js';
+import { clearBuriedOrganicRotTimer, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded } from './ice.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -134,6 +135,10 @@ const STATUE = 472;
 const SPBOOK_no_NOVEL = 11;
 const EGG = 10001;
 const TIN = 10004;
+const GLOB_OF_GRAY_OOZE = 10180;
+const GLOB_OF_BROWN_PUDDING = 10181;
+const GLOB_OF_GREEN_SLIME = 10182;
+const GLOB_OF_BLACK_PUDDING = 10183;
 const CANDY_BAR = 10005;
 const EUCALYPTUS_LEAF = 11000;
 const APPLE = 11001;
@@ -148,6 +153,15 @@ const SLIME_MOLD = 11009;
 const FORTUNE_COOKIE = 11010;
 const PANCAKE = 11011;
 const LUMP_OF_ROYAL_JELLY = 10089;
+const GLOB_TYPES = new Map([
+    ['gray ooze', { otyp: GLOB_OF_GRAY_OOZE, name: 'glob of gray ooze', color: CLR_GRAY }],
+    ['brown pudding', { otyp: GLOB_OF_BROWN_PUDDING, name: 'glob of brown pudding', color: CLR_BROWN }],
+    ['green slime', { otyp: GLOB_OF_GREEN_SLIME, name: 'glob of green slime', color: CLR_GREEN }],
+    ['black pudding', { otyp: GLOB_OF_BLACK_PUDDING, name: 'glob of black pudding', color: CLR_BLACK }],
+]);
+GLOB_TYPES.set('grey ooze', GLOB_TYPES.get('gray ooze'));
+const GLOB_TYPE_BY_OTYP = new Map();
+for (const globType of GLOB_TYPES.values()) GLOB_TYPE_BY_OTYP.set(globType.otyp, globType);
 const MIRROR = 10006;
 const CREAM_PIE = 10081;
 const EXPENSIVE_CAMERA = 10082;
@@ -965,9 +979,11 @@ const BIG_MONSTER_NAMES = new Set([
     'bugbear',
     'earth elemental',
     'fire elemental',
-	'giant spider',
-	'tiger',
-	'water elemental',
+    'giant spider',
+    'green slime',
+    'black pudding',
+    'tiger',
+    'water elemental',
 ]);
 
 export const RANDOM_MONSTER_BY_NAME = new Map(
@@ -4266,7 +4282,9 @@ function mkbox_cnts(box) {
 
     for (n = rn2(n + 1); n > 0; n--) {
         if (box.otyp === ICE_BOX) {
-            add_to_container(box, mksobj(CORPSE, true, false));
+            const corpse = mksobj(CORPSE, true, false);
+            freezeObjectInIcebox(corpse);
+            add_to_container(box, corpse);
             continue;
         }
 
@@ -4681,12 +4699,29 @@ export function add_to_container(container, otmp) {
     if (!container || !otmp) return null;
     container.contents ??= [];
     for (const existing of container.contents) {
+        if (globsCanMeld(existing, otmp)) {
+            absorbGlobObject(existing, otmp);
+            existing.contained = true;
+            return existing;
+        }
+        if (globTypeForObject(existing) || globTypeForObject(otmp)) continue;
         if (!sameStackableObject(existing, otmp)) continue;
         existing.quan = (existing.quan || 1) + (otmp.quan || 1);
         return existing;
     }
     container.contents.unshift(otmp);
     otmp.contained = true;
+    return otmp;
+}
+export function add_to_minv(mon, otmp) {
+    if (!mon || !otmp) return null;
+    mon.minvent ??= [];
+    for (const existing of mon.minvent) {
+        if (!globsCanMeld(existing, otmp)) continue;
+        absorbGlobObject(existing, otmp);
+        return existing;
+    }
+    mon.minvent = [otmp, ...mon.minvent];
     return otmp;
 }
 function floorObjectCanStack(otmp) {
@@ -4766,6 +4801,236 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     }
     Object.assign(otmp, object_display(otmp));
     return otmp;
+}
+
+function globTypeForMonsterCorpseData(data) {
+    const name = String(data?.name || '').trim().toLowerCase();
+    return GLOB_TYPES.get(name) || null;
+}
+
+export function monsterLeavesCorpseLikeDrop(corpseData) {
+    return !!corpseData && (!corpseData.noCorpse || !!globTypeForMonsterCorpseData(corpseData));
+}
+
+export function monsterCorpseDropSucceeds(mon, data = mon?.data || {}) {
+    const bigOrLizard = data.big || data.bigmonst || data.name === 'lizard';
+    const golem = data.golem || /\bgolem$/.test(String(data.name || ''));
+    if ((bigOrLizard && !mon?.mcloned)
+        || golem || data.mplayer || data.rider || data.shopkeeper || mon?.isshk)
+        return true;
+    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
+    return !rn2(corpseChance);
+}
+
+function globTypeForObject(obj) {
+    if (!obj) return null;
+    if (GLOB_TYPE_BY_OTYP.has(obj.otyp)) return GLOB_TYPE_BY_OTYP.get(obj.otyp);
+    let name = String(obj.globName || obj.actualKind || obj.kind || '').toLowerCase();
+    name = name.replace(/^partly eaten\s+/, '').replace(/^(?:small|medium|large|very large)\s+/, '');
+    const match = name.match(/^glob of (.+)$/);
+    return GLOB_TYPES.get(match?.[1] || name) || null;
+}
+
+function globsCanMeld(target, obj) {
+    const targetType = globTypeForObject(target);
+    const objType = globTypeForObject(obj);
+    if (!targetType || !objType || targetType.otyp !== objType.otyp) return false;
+    if (target === obj || target?.nomerge || obj?.nomerge) return false;
+    if (!!target.cursed !== !!obj.cursed || !!target.blessed !== !!obj.blessed) return false;
+    if (target.how_lost === 'LOST_EXPLODING' || obj.how_lost === 'LOST_EXPLODING') return false;
+    if (target.how_lost && target.how_lost !== 'LOST_NONE' && target.how_lost !== obj.how_lost) return false;
+    return true;
+}
+
+function floorGlobMeldCandidateAt(obj, x, y) {
+    return (game.level?.objects || []).find(candidate =>
+        candidate !== obj && !candidate.buried && !candidate.transientProjectile
+        && candidate.ox === x && candidate.oy === y
+        && globsCanMeld(candidate, obj)) || null;
+}
+
+function floorGlobMeldTarget(obj, x, y) {
+    const here = floorGlobMeldCandidateAt(obj, x, y);
+    if (here) return here;
+
+    const dx = rn2(2) ? -1 : 1;
+    const dy = rn2(2) ? -1 : 1;
+    const ex = x - dx;
+    const ey = y - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            if (fx < 0 || fx >= COLNO || fy < 0 || fy >= ROWNO || (fx === x && fy === y)) continue;
+            const target = floorGlobMeldCandidateAt(obj, fx, fy);
+            if (target) return target;
+        }
+    }
+    return null;
+}
+
+function globMeldWeight(obj) {
+    return Math.max(1, obj?.oeaten || obj?.owt || 20);
+}
+
+function globMeldRemainingTurns(obj) {
+    const turn = obj?.globShrinkTurn;
+    if (typeof turn !== 'number') return 25;
+    return Math.max(1, turn - (game.moves || 0));
+}
+
+function syncGlobObjectFields(obj) {
+    const globType = globTypeForObject(obj);
+    if (!globType) return;
+    Object.assign(obj, {
+        otyp: globType.otyp,
+        cls: 'food',
+        glyph: '%',
+        color: globType.color,
+        _display_color: globType.color,
+        kind: globType.name,
+        actualKind: globType.name,
+        singular: globType.name,
+        globName: globType.name,
+        globby: true,
+        quan: 1,
+        known: obj.known ?? true,
+        dknown: obj.dknown ?? true,
+    });
+}
+
+function absorbGlobObject(absorber, absorbed) {
+    const w1 = globMeldWeight(absorber);
+    const w2 = globMeldWeight(absorbed);
+    const moves = game.moves || 0;
+    const age1 = typeof absorber.age === 'number' ? absorber.age : moves;
+    const age2 = typeof absorbed.age === 'number' ? absorbed.age : moves;
+
+    if (!!absorber.bknown !== !!absorbed.bknown) absorber.bknown = false;
+    if (!!absorber.rknown !== !!absorbed.rknown) absorber.rknown = false;
+    if (!!absorber.greased !== !!absorbed.greased) absorber.greased = false;
+    if (absorber.orotten || absorbed.orotten) absorber.orotten = true;
+
+    absorber.age = moves - Math.trunc((((moves - age1) * w1) + ((moves - age2) * w2)) / (w1 + w2));
+    absorber.owt = Math.max(1, absorber.owt || w1) + w2;
+    if (absorber.oeaten || absorbed.oeaten) absorber.oeaten = w1 + w2;
+    absorber.globShrinkTurn = moves + Math.trunc((globMeldRemainingTurns(absorber) + globMeldRemainingTurns(absorbed) + 1) / 2);
+    syncGlobObjectFields(absorber);
+    if (game.level?.objects?.includes(absorbed))
+        game.level.objects = game.level.objects.filter(candidate => candidate !== absorbed);
+}
+
+function globPluralName(obj) {
+    const globType = globTypeForObject(obj);
+    return globType ? `${globType.name.replace(/^glob\b/, 'globs')}` : 'globs';
+}
+
+function heroIsGlobMeldDeaf() {
+    return (game.u?._statusSuffix || '').includes('Deaf') || (game.u?._deafTimeout || 0) > 0;
+}
+
+function heroIsGlobMeldHallucinating() {
+    return !!game.u?.hallucinating || (game.u?._statusSuffix || '').includes('Hallu');
+}
+
+function pushGlobMeldMessage(obj, target, x, y, messages) {
+    if (!messages) return;
+    const visible = !game.u?.blind && (cansee(x, y) || cansee(target.ox, target.oy));
+    if (visible) {
+        if (heroIsGlobMeldHallucinating()) {
+            messages.push('You see parts of the floor melting!');
+        } else {
+            const adjacent = (x !== game.u?.ux || y !== game.u?.uy)
+                && (target.ox !== game.u?.ux || target.oy !== game.u?.uy);
+            messages.push(`The ${adjacent ? 'adjacent ' : ''}${globPluralName(obj)} coalesce.`);
+        }
+    } else if (!heroIsGlobMeldDeaf()) {
+        messages.push('You hear a faint sloshing sound.');
+    }
+}
+
+function floorGlobMeldSurvivor(obj, target) {
+    let absorber = target;
+    let absorbed = obj;
+    const objWeight = globMeldWeight(obj);
+    const targetWeight = globMeldWeight(target);
+    if (objWeight > targetWeight || (objWeight === targetWeight && rn2(2))) {
+        absorber = obj;
+        absorbed = target;
+    }
+    absorbGlobObject(absorber, absorbed);
+    return absorber;
+}
+
+function globShrinkDelay() {
+    return 25 + rn2(5) - 2;
+}
+
+function monsterDeathGlobObject(mon, corpseData, globType, x, y) {
+    const monsterName = globType.name.replace(/^glob of /, '');
+    return {
+        id: next_ident(),
+        otyp: globType.otyp,
+        cls: 'food',
+        glyph: '%',
+        color: globType.color,
+        _display_color: globType.color,
+        kind: globType.name,
+        actualKind: globType.name,
+        singular: globType.name,
+        globName: globType.name,
+        globby: true,
+        known: true,
+        dknown: true,
+        quan: 1,
+        owt: 20,
+        age: game.moves || 0,
+        corpsenm: corpseData || mon?.data || monsterByRndName(monsterName) || { name: monsterName, neuter: true },
+        globShrinkTurn: Math.max(game.moves || 0, 1) + globShrinkDelay(),
+        ox: x,
+        oy: y,
+    };
+}
+
+function meldDeathGlobOnFloor(obj, messages = null) {
+    let glob = obj;
+    while (glob) {
+        const x = glob.ox;
+        const y = glob.oy;
+        const target = floorGlobMeldTarget(glob, x, y);
+        if (!target) return glob;
+
+        const targetX = target.ox;
+        const targetY = target.oy;
+        pushGlobMeldMessage(glob, target, x, y, messages);
+        glob = floorGlobMeldSurvivor(glob, target);
+        newsym(x, y);
+        newsym(targetX, targetY);
+        if (!game.level?.objects?.includes(glob)) return null;
+    }
+    return null;
+}
+
+export function createMonsterCorpseOrGlob(mon, corpseData, x = mon?.mx || 0, y = mon?.my || 0, {
+    oldCorpse = !!mon?.data?.corpse,
+    messages = null,
+} = {}) {
+    const data = mon?.data || {};
+    const globType = globTypeForMonsterCorpseData(corpseData);
+    if (globType) {
+        const glob = monsterDeathGlobObject(mon, corpseData, globType, x, y);
+        game.level.objects ??= [];
+        game.level.objects.push(glob);
+        return meldDeathGlobOnFloor(glob, messages);
+    }
+    if (!corpseData || corpseData.noCorpse) return null;
+    const corpse = mkcorpstat(CORPSE, mon, corpseData, x, y, 8);
+    Object.assign(corpse, {
+        otyp: 'corpse',
+        glyph: '%',
+        color: corpseData.color ?? data.color ?? corpse.color ?? CLR_BROWN,
+        corpsenm: corpseData,
+        oldCorpse,
+    });
+    return corpse;
 }
 
 export function adjustedMonsterLevel(ptr) {

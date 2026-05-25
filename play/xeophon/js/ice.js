@@ -7,9 +7,9 @@ import {
     IS_DOOR, IS_WALL, IS_POOL, Is_rogue_level, Is_waterlevel, isok, LANDMINE, LAVAPOOL,
     LAVAWALL, MAGIC_PORTAL, MOAT, POOL, ROOM, ROWNO, SDOOR, STONE, TDWALL,
     TLCORNER, TLWALL, TRCORNER, TRWALL, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TUWALL,
-    VIBRATING_SQUARE, VWALL, WATER,
+    VIBRATING_SQUARE, VWALL, WATER, ROT_AGE,
 } from './const.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd, rnz } from './rng.js';
 import { newsym } from './display.js';
 import { vision_recalc } from './vision.js';
 
@@ -26,6 +26,8 @@ const BOOK_OF_THE_DEAD = 10097;
 const CANDELABRUM_OF_INVOCATION = 10076;
 const LAND_MINE = 10160;
 const BEARTRAP = 10161;
+const GLOB_OF_GRAY_OOZE = 10180;
+const GLOB_OF_BLACK_PUDDING = 10183;
 
 const ICE_MELT_MESSAGE = 'The ice crackles and melts.';
 const ICE_TIMER_MELT_MESSAGE = 'Some ice melts away.';
@@ -44,6 +46,21 @@ const MIN_ICE_TIME = 50;
 const MAX_ICE_TIME = 2000;
 const RIDER_CORPSE_NAMES = new Set(['death', 'pestilence', 'famine']);
 const ORGANIC_MATERIALS = new Set(['liquid', 'wax', 'veggy', 'flesh', 'paper', 'cloth', 'leather', 'wood']);
+
+function isGlobbyObject(obj) {
+    return !!(obj?.globby || (obj?.otyp >= GLOB_OF_GRAY_OOZE && obj?.otyp <= GLOB_OF_BLACK_PUDDING)
+        || /^glob of /.test(String(obj?.kind || obj?.actualKind || obj?.globName || '').toLowerCase()));
+}
+
+function stopGlobShrinkTimeout(obj) {
+    delete obj.globShrinkTurn;
+}
+
+function startGlobShrinkTimeout(obj) {
+    if (!isGlobbyObject(obj)) return;
+    const delay = 25 + rn2(5) - 2;
+    obj.globShrinkTurn = Math.max(game.moves || 0, 1) + delay;
+}
 
 export function isIceAt(x, y) {
     const loc = game.level?.at(x, y);
@@ -145,6 +162,66 @@ export function processMeltIceTimers(g = game, { afterMelt = null } = {}) {
 
 function isCorpseObject(obj) {
     return obj?.otyp === CORPSE || obj?.otyp === 'corpse';
+}
+
+function corpseName(obj) {
+    const named = obj?.corpsenm?.name || obj?.corpsenm || obj?.corpseName;
+    if (named) return String(named).toLowerCase();
+    return String(obj?.actualKind || obj?.kind || '').toLowerCase().replace(/\s+corpse$/, '');
+}
+
+function corpseHasNoTimeout(obj) {
+    const name = corpseName(obj);
+    return name === 'lichen' || name === 'lizard';
+}
+
+function corpseUsesRevivePath(obj) {
+    const name = corpseName(obj);
+    return !!(obj?.corpsenm?.rider || obj?.riderCorpse || name.includes('troll'));
+}
+
+function restartCorpseRotTimeout(obj) {
+    delete obj.rotAwayTurn;
+    delete obj.reviveTurn;
+    if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
+    if (corpseUsesRevivePath(obj)) return;
+    const moves = Math.max(game.moves || 0, 1);
+    const rotAdjust = game.in_mklev ? 25 : 10;
+    const age = moves - (obj.age ?? moves);
+    let timeout = age > ROT_AGE ? rotAdjust : ROT_AGE - age;
+    timeout += rnz(rotAdjust) - rotAdjust;
+    obj.rotAwayTurn = moves + Math.max(1, timeout);
+}
+
+export function freezeObjectInIcebox(obj) {
+    if (!obj) return;
+    obj.inIceBox = true;
+    obj.fromIceBox = true;
+    if (isGlobbyObject(obj)) stopGlobShrinkTimeout(obj);
+    if (!isCorpseObject(obj)) return;
+    const moves = Math.max(game.moves || 0, 1);
+    obj.age = Math.max(0, moves - (obj.age ?? moves));
+    delete obj.rotAwayTurn;
+    delete obj.reviveTurn;
+    setCorpseOnIce(obj, false);
+}
+
+export function removedFromIcebox(obj) {
+    if (!obj) return;
+    const moves = Math.max(game.moves || 0, 1);
+    if (isCorpseObject(obj)) {
+        const frozenAge = obj.inIceBox || obj.fromIceBox
+            ? Math.max(0, obj.age ?? 0)
+            : Math.max(0, moves - (obj.age ?? moves));
+        obj.age = moves - frozenAge;
+        const name = corpseName(obj);
+        if (name) obj.norevive = name !== 'ice troll';
+        setCorpseOnIce(obj, false);
+        restartCorpseRotTimeout(obj);
+    }
+    if (isGlobbyObject(obj)) startGlobShrinkTimeout(obj);
+    obj.fromIceBox = false;
+    obj.inIceBox = false;
 }
 
 function corpseOnIce(obj) {

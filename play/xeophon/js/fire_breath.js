@@ -3,13 +3,11 @@ import { DB_MOAT, DB_UNDER, DRAWBRIDGE_UP, FOUNTAIN, IN_SIGHT, Is_waterlevel, IS
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { createGasCloud } from './region.js';
 import { newsym } from './display.js';
-import { dropMonsterInventory, mkcorpstat } from './mklev.js';
-import { CLR_BROWN } from './terminal.js';
+import { createMonsterCorpseOrGlob, dropMonsterInventory, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop } from './mklev.js';
 import { dryupFountainResultAt } from './fountain.js';
 import { meltIceAt } from './ice.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
 
-const CORPSE = 471;
 const WEB_BURST_MESSAGE = 'A web bursts into flames!';
 const WATER_GAS_MESSAGE = 'You hear hissing gas.';
 const WATER_EVAPORATES_MESSAGE = 'Some water evaporates.';
@@ -288,19 +286,10 @@ function killMonsterByPit(mon, messages, visible) {
     if (visible) messages.push(`The ${mon.data?.name || 'creature'} is killed!`);
     const data = mon.data || {};
     const corpseData = data.corpse || data;
-    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-    const corpseRoll = rn2(corpseChance);
+    const dropCorpse = monsterCorpseDropSucceeds(mon, data);
     dropMonsterInventory(mon);
-    if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-        const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-        Object.assign(corpse, {
-            otyp: 'corpse',
-            glyph: '%',
-            color: corpseData.color ?? data.color ?? CLR_BROWN,
-            corpsenm: corpseData,
-            oldCorpse: !!data.corpse,
-        });
-    }
+    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+        createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
     game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
     newsym(mon.mx, mon.my);
 }
@@ -494,19 +483,10 @@ export function fireBreathDamageMonster(mon, nd = 6, inventoryFire = null, {
         }
         const data = mon.data || {};
         const corpseData = data.corpse || data;
-        const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-        const corpseRoll = rn2(corpseChance);
+        const dropCorpse = monsterCorpseDropSucceeds(mon, data);
         dropMonsterInventory(mon);
-        if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-            const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-            Object.assign(corpse, {
-                otyp: 'corpse',
-                glyph: '%',
-                color: corpseData.color ?? data.color ?? CLR_BROWN,
-                corpsenm: corpseData,
-                oldCorpse: !!data.corpse,
-            });
-        }
+        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+            createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
         game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
         newsym(mon.mx, mon.my);
     }

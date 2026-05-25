@@ -4,8 +4,8 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
-import { couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, movebubbles } from './mklev.js';
+import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -20,8 +20,9 @@ import { advanceFireBreathRay, applyFireRayFountainTerrain, applyFireRayIceTerra
 import { dryupFountainAt, dryupFountainResultAt } from './fountain.js';
 import {
     applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
+    freezeObjectInIcebox,
     buryObjectsAt, findBuriedBallNear, isBuriedBallTrapActive, objectIceEffect, objIceEffectsAt,
-    unearthObjectsAt,
+    removedFromIcebox, unearthObjectsAt,
 } from './ice.js';
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
@@ -3650,6 +3651,7 @@ export async function finishLevelTeleport(targetLevel, options = {}) {
         game.level = savedTarget.level;
         game.stairs = savedTarget.stairs;
         game._utrack = [...(savedTarget.utrack || [])];
+        catchUpReturnedLevelGlobShrinkTimers();
         const elapsed = (game.moves || 1) - (savedTarget.moves || game.moves || 1);
         restoredLevelMonsterCatchup(game.level?.monsters || [], elapsed);
         if (game.level?.flags?.sokoban_rules) {
@@ -9212,7 +9214,7 @@ function recordFoodConduct(item) {
     const corpseName = item?.corpsenm?.name || kind.replace(/\s+corpse$/, '');
     const veganCorpse = ['lichen', 'brown mold', 'yellow mold', 'green mold', 'red mold', 'shrieker', 'violet fungus']
         .includes(corpseName);
-    if ((isCorpseItem(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
+    if ((isCorpseItem(item) || isGlobFood(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
         conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
     } else if (isEggItem(item) || isRoyalJelly(item)) {
@@ -9537,7 +9539,7 @@ function moveStatueContentsToMonster(statue, mon) {
         delete item.ox;
         delete item.oy;
         delete item.line;
-        mon.minvent = [item, ...(mon.minvent || [])];
+        add_to_minv(mon, item);
     }
     mon.hasInventory = !!(mon.minvent || []).length;
 }
@@ -12738,19 +12740,9 @@ function boulderFillMonsterInAir(mon) {
 function maybeCreateBoulderFillCorpse(mon) {
     const data = mon?.data || {};
     const corpseData = data.corpse || data;
-    if (!corpseData || corpseData.noCorpse) return;
-    const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-        || data.rider || data.shopkeeper || data.name === 'lizard';
-    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-    if (!guaranteedCorpse && rn2(corpseChance)) return;
-    const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-    Object.assign(corpse, {
-        otyp: 'corpse',
-        glyph: '%',
-        color: corpseData.color ?? data.color ?? corpse.color ?? CLR_BROWN,
-        corpsenm: corpseData,
-        oldCorpse: !!data.corpse,
-    });
+    if (!monsterLeavesCorpseLikeDrop(corpseData)) return;
+    if (!monsterCorpseDropSucceeds(mon, data)) return;
+    createMonsterCorpseOrGlob(mon, corpseData);
 }
 
 function killBoulderFillMonster(x, y) {
@@ -13092,7 +13084,16 @@ function droppedObjectGlobMeldFloorEffects(obj, x, y, messages) {
     const target = floorGlobMeldTarget(obj, x, y);
     if (!target) return false;
 
-    const visible = !game.u?.blind && (couldsee(x, y) || couldsee(target.ox, target.oy));
+    pushGlobMeldMessage(obj, target, x, y, messages);
+    absorbGlobObject(target, obj);
+    newsym(x, y);
+    newsym(target.ox, target.oy);
+    return true;
+}
+
+function pushGlobMeldMessage(obj, target, x, y, messages) {
+    if (!messages) return;
+    const visible = !game.u?.blind && (cansee(x, y) || cansee(target.ox, target.oy));
     if (visible) {
         if (heroIsHallucinating()) {
             messages.push('You see parts of the floor melting!');
@@ -13104,11 +13105,208 @@ function droppedObjectGlobMeldFloorEffects(obj, x, y, messages) {
     } else if (!heroIsDeaf()) {
         messages.push('You hear a faint sloshing sound.');
     }
+}
 
-    absorbGlobObject(target, obj);
-    newsym(x, y);
-    newsym(target.ox, target.oy);
-    return true;
+function globShrinkDelay() {
+    return 25 + rn2(5) - 2;
+}
+
+function startGlobShrinkTimeout(obj, when = 0) {
+    if (!isGlobbyObject(obj)) return;
+    const delay = when > 0 ? when : globShrinkDelay();
+    obj.globShrinkTurn = Math.max(game.moves || 0, 1) + delay;
+}
+
+function globContents(obj) {
+    if (Array.isArray(obj?.contents)) return obj.contents;
+    if (Array.isArray(obj?.cobj)) return obj.cobj;
+    return [];
+}
+
+function collectGlobShrinkEntriesFromList(list, source, entries, {
+    parent = null,
+    root = null,
+    ancestors = [],
+    owner = null,
+} = {}) {
+    for (const obj of list || []) {
+        const top = root || obj;
+        if (isGlobbyObject(obj)) entries.push({
+            obj,
+            parent,
+            root: top,
+            ancestors: [...ancestors],
+            source,
+            owner,
+        });
+        const contents = globContents(obj);
+        if (contents.length) {
+            collectGlobShrinkEntriesFromList(contents, source, entries, {
+                parent: obj,
+                root: top,
+                ancestors: [...ancestors, obj],
+                owner,
+            });
+        }
+    }
+}
+
+function collectGlobShrinkEntries(g = game) {
+    const entries = [];
+    collectGlobShrinkEntriesFromList(g.inventory || [], 'inventory', entries);
+    collectGlobShrinkEntriesFromList(g.level?.objects || [], 'floor', entries);
+    for (const mon of g.level?.monsters || [])
+        collectGlobShrinkEntriesFromList(mon.minvent || [], 'minvent', entries, { owner: mon });
+    return entries;
+}
+
+function globInIceBox(entry) {
+    return !!(entry.obj?.inIceBox || entry.ancestors.some(isIceBoxObject));
+}
+
+function globIceState(entry) {
+    if (entry.source !== 'floor') return 'none';
+    const root = entry.root || entry.obj;
+    const x = root?.ox;
+    const y = root?.oy;
+    if (typeof x !== 'number' || typeof y !== 'number') return 'none';
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ !== ICE) return 'none';
+    return root.buried ? 'buried' : 'onice';
+}
+
+function removeShrunkGlob(entry) {
+    const obj = entry.obj;
+    if (entry.parent) {
+        removeContainedObject(entry.parent, obj);
+        return;
+    }
+    if (entry.source === 'inventory') {
+        game.inventory = (game.inventory || []).filter(item => item !== obj);
+        return;
+    }
+    if (entry.source === 'floor') {
+        game.level.objects = (game.level?.objects || []).filter(item => item !== obj);
+        if (typeof obj.ox === 'number' && typeof obj.oy === 'number') newsym(obj.ox, obj.oy);
+        return;
+    }
+    if (entry.source === 'minvent' && entry.owner)
+        entry.owner.minvent = (entry.owner.minvent || []).filter(item => item !== obj);
+}
+
+function outerInventoryContainer(entry) {
+    if (entry.source !== 'inventory' || !entry.parent) return null;
+    return entry.root || entry.parent;
+}
+
+function globFloorVisible(entry) {
+    const obj = entry.obj;
+    return entry.source === 'floor' && !entry.parent
+        && typeof obj.ox === 'number' && typeof obj.oy === 'number'
+        && !game.u?.blind && couldsee(obj.ox, obj.oy);
+}
+
+function globShrinkName(obj) {
+    return globObjectName(obj).replace(/^the /i, '');
+}
+
+function catchUpGlobShrink(entry, iceState) {
+    const obj = entry.obj;
+    const moves = game.moves || 0;
+    const expired = obj.globShrinkTurn || moves;
+    let delta = Math.trunc((moves - expired + 24) / 25);
+    const nextDelay = 25 - (delta % 25);
+    if (iceState === 'onice') delta = Math.trunc((delta + 2) / 3);
+    if (delta >= Math.max(0, obj.owt ?? 20)) {
+        obj.owt = 0;
+        removeShrunkGlob(entry);
+        return [];
+    }
+    obj.owt = Math.max(0, (obj.owt ?? 20) - Math.max(1, delta));
+    startGlobShrinkTimeout(obj, nextDelay);
+    return [];
+}
+
+function processGlobShrinkEntry(entry) {
+    const obj = entry.obj;
+    if (!isGlobbyObject(obj) || typeof obj.globShrinkTurn !== 'number') return [];
+    if (globInIceBox(entry)) {
+        delete obj.globShrinkTurn;
+        return [];
+    }
+    const iceState = globIceState(entry);
+    if (obj.globShrinkTurn < (game.moves || 0) && iceState !== 'buried')
+        return catchUpGlobShrink(entry, iceState);
+    if (game._eating_floor_object === obj || iceState === 'buried'
+        || (iceState === 'onice' && (game.moves || 0) % 3 === 1)) {
+        startGlobShrinkTimeout(obj);
+        return [];
+    }
+
+    const oldWeight = Math.max(0, obj.owt ?? 20);
+    const thresholdMessage = oldWeight > 0 && oldWeight % 10 === 0;
+    const name = globShrinkName(obj);
+    obj.owt = Math.max(0, oldWeight - 1);
+    if ((obj.oeaten || 0) > 1) obj.oeaten -= 1;
+
+    const messages = [];
+    const gone = !obj.owt;
+    if (entry.source === 'inventory' && !entry.parent && (thresholdMessage || gone))
+        messages.push(`Your ${name} ${gone ? 'dissolves completely' : 'shrinks'}.`);
+    const topContainer = outerInventoryContainer(entry);
+    if (topContainer && (thresholdMessage || gone)) {
+        const topName = pickupObjectName(topContainer);
+        messages.push(`Your ${topName} becomes${gone ? '' : ' slightly'} lighter.`);
+    }
+
+    if (gone) {
+        const visibleFloor = globFloorVisible(entry);
+        removeShrunkGlob(entry);
+        if (visibleFloor) messages.push(`A ${name} fades away.`);
+    } else {
+        startGlobShrinkTimeout(obj);
+    }
+    return messages;
+}
+
+export function processGlobShrinkTimers(g = game) {
+    const moves = g.moves || 0;
+    const due = collectGlobShrinkEntries(g)
+        .filter(entry => typeof entry.obj?.globShrinkTurn === 'number'
+            && entry.obj.globShrinkTurn <= moves)
+        .sort((a, b) => (a.obj.globShrinkTurn - b.obj.globShrinkTurn)
+            || ((a.obj.id || a.obj.oid || 0) - (b.obj.id || b.obj.oid || 0)));
+    const messages = [];
+    for (const entry of due) messages.push(...processGlobShrinkEntry(entry));
+    return messages;
+}
+
+function collectReturnedLevelGlobShrinkEntries(g = game) {
+    const entries = [];
+    collectGlobShrinkEntriesFromList(g.level?.objects || [], 'floor', entries);
+    for (const mon of g.level?.monsters || [])
+        collectGlobShrinkEntriesFromList(mon.minvent || [], 'minvent', entries, { owner: mon });
+    return entries;
+}
+
+export function catchUpReturnedLevelGlobShrinkTimers(g = game) {
+    const moves = g.moves || 0;
+    const stale = collectReturnedLevelGlobShrinkEntries(g)
+        .filter(entry => typeof entry.obj?.globShrinkTurn === 'number'
+            && entry.obj.globShrinkTurn < moves)
+        .sort((a, b) => (a.obj.globShrinkTurn - b.obj.globShrinkTurn)
+            || ((a.obj.id || a.obj.oid || 0) - (b.obj.id || b.obj.oid || 0)));
+    for (const entry of stale) {
+        const obj = entry.obj;
+        if (!isGlobbyObject(obj) || typeof obj.globShrinkTurn !== 'number') continue;
+        if (globInIceBox(entry)) {
+            delete obj.globShrinkTurn;
+            continue;
+        }
+        const iceState = globIceState(entry);
+        if (iceState === 'buried') continue;
+        catchUpGlobShrink(entry, iceState);
+    }
 }
 
 function floorObjectClass(obj) {
@@ -15379,6 +15577,466 @@ function compareContainerLootItems(a, b) {
         || containerLootSortKey(a).localeCompare(containerLootSortKey(b));
 }
 
+function isIceBoxObject(obj) {
+    return !!obj && (obj.otyp === ICE_BOX || obj.kind === 'ice box' || objectKindKey(obj) === 'ice box');
+}
+
+function iceBoxPutClassTypes() {
+    return [...BAG_PUT_CLASS_TYPES, { key: 'other', label: 'Other Items', symbol: '*' }];
+}
+
+function iceBoxPutCategory(item) {
+    if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') return 'coin';
+    if (item.cls === 'amulet' || item.otyp === AMULET_CLASS || item.glyph === '"') return 'amulet';
+    if (item.cls === 'weapon' || item.otyp === WEAPON_CLASS || item.glyph === ')') return 'weapon';
+    if (item.cls === 'armor' || item.otyp === ARMOR_CLASS || item.glyph === '[') return 'armor';
+    if (item.otyp === 'corpse' || item.otyp === CORPSE || item.otyp === FOOD_CLASS || item.cls === 'food' || item.glyph === '%') return 'food';
+    if (item.otyp === SCROLL_CLASS || item.cls === 'scroll' || item.glyph === '?') return 'scroll';
+    if (item.otyp === SPBOOK_NO_NOVEL || item.cls === 'spellbook' || item.glyph === '+') return 'spellbook';
+    if (item.otyp === POTION_CLASS || item.cls === 'potion' || item.glyph === '!') return 'potion';
+    if (item.otyp === RING_CLASS || item.cls === 'ring' || item.glyph === '=') return 'ring';
+    if (item.otyp === WAND_CLASS || item.cls === 'wand' || item.glyph === '/') return 'wand';
+    if (item.otyp === GEM_CLASS || item.cls === 'gem' || item.glyph === '*') return 'gem';
+    if (item.otyp === BOULDER || item.otyp === STATUE || item.cls === 'rock' || item.glyph === '`') return 'rock';
+    if (item === game.u?.uball || item.cls === 'ball' || item.glyph === '0') return 'ball';
+    if (item === game.u?.uchain || item.cls === 'chain' || item.glyph === '_') return 'chain';
+    if (BAG_OBJECT_TYPES.has(item.otyp) || item.otyp === ICE_BOX || item.otyp === OIL_LAMP || item.otyp === MAGIC_LAMP
+        || item.otyp === MIRROR || item.otyp === EXPENSIVE_CAMERA || item.otyp === STETHOSCOPE
+        || item.otyp === MAGIC_MARKER || item.cls === 'tool' || item.glyph === '(') return 'tool';
+    return 'other';
+}
+
+function buildIceBoxPutItems() {
+    const putItems = [];
+    if (game._goldCount) {
+        putItems.push({
+            item: { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: game._goldCount },
+            category: 'coin',
+        });
+    }
+    for (const item of game.inventory || []) {
+        if (item.letter === '$' || item.cls === 'coin' || item.glyph === '$') continue;
+        putItems.push({ item, category: iceBoxPutCategory(item) });
+    }
+    return putItems;
+}
+
+function iceBoxPutLetters() {
+    const letters = [];
+    if (game._goldCount) letters.push('$');
+    for (const item of game.inventory || []) {
+        if (item.letter === '$' || item.cls === 'coin' || item.glyph === '$') continue;
+        if (item.letter) letters.push(item.letter);
+    }
+    return letters.join('');
+}
+
+function clearIceBoxPutState() {
+    game._icebox_put_container = null;
+    game._icebox_put_type_choices = null;
+    game._icebox_put_type_selected = null;
+    game._icebox_put_items = null;
+    game._icebox_put_entries = null;
+    game._icebox_put_selected = null;
+    game._icebox_stash_letters = null;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+}
+
+function clearContainerTakeoutState() {
+    game._loot_takeout_container = null;
+    game._loot_takeout_entries = null;
+    game._loot_takeout_selected = null;
+    game._loot_takeout_clear_col = null;
+    game._loot_takeout_type_entries = null;
+    game._loot_takeout_types_selected = null;
+}
+
+function clearIceBoxSequenceState() {
+    game._icebox_sequence_after_takeout = null;
+    game._icebox_sequence_after_putin = null;
+    game._icebox_sequence_used = 0;
+    game._icebox_sequence_messages = null;
+}
+
+function startIceBoxSequence(nextAction) {
+    clearIceBoxSequenceState();
+    if (nextAction === 'putin') game._icebox_sequence_after_takeout = 'putin';
+    else if (nextAction === 'takeout') game._icebox_sequence_after_putin = 'takeout';
+    game._icebox_sequence_messages = [];
+}
+
+function iceBoxSequenceActive() {
+    return !!(game._icebox_sequence_after_takeout || game._icebox_sequence_after_putin);
+}
+
+function markIceBoxSequenceUsed(used = true) {
+    if (used) game._icebox_sequence_used = 1;
+}
+
+function addIceBoxSequenceMessages(messages) {
+    const list = Array.isArray(messages) ? messages : [messages];
+    game._icebox_sequence_messages ??= [];
+    for (const message of list) {
+        if (message) game._icebox_sequence_messages.push(message);
+    }
+}
+
+function iceBoxEmptyMessage() {
+    return 'The ice box is empty.';
+}
+
+function iceBoxContainerAvailable(iceBox) {
+    return !!(iceBox && (game.level?.objects || []).includes(iceBox)
+        && iceBox.ox === game.u?.ux && iceBox.oy === game.u?.uy);
+}
+
+function iceBoxPutTypeChoices(putItems) {
+    const classTypes = iceBoxPutClassTypes();
+    const presentTypes = classTypes.filter(type => putItems.some(entry => entry.category === type.key));
+    const choices = [{ key: 'auto', letter: 'A', label: 'Auto-select every relevant item' }];
+    if (presentTypes.length > 1) choices.push({ key: 'all', letter: 'a', label: 'All types', row: 5 });
+    let row = presentTypes.length > 1 ? 6 : 5;
+    let letterIndex = presentTypes.length > 1 ? 1 : 0;
+    for (const type of presentTypes) {
+        const letter = 'abcdefghijklmnopqrstuvwxyz'[letterIndex++];
+        choices.push({ ...type, letter, row: row++ });
+    }
+    const extraChoices = [];
+    if (putItems.some(({ item }) => objectBucCategory(item) === 'blessed'))
+        extraChoices.push({ key: 'blessed', letter: 'B', label: 'Items known to be Blessed' });
+    if (putItems.some(({ item }) => objectBucCategory(item) === 'cursed'))
+        extraChoices.push({ key: 'cursed', letter: 'C', label: 'Items known to be Cursed' });
+    if (putItems.some(({ item }) => objectBucCategory(item) === 'uncursed'))
+        extraChoices.push({ key: 'uncursed', letter: 'U', label: 'Items known to be Uncursed' });
+    if (putItems.some(({ item }) => objectBucCategory(item) === 'unknown'))
+        extraChoices.push({ key: 'unknown', letter: 'X', label: 'Items of unknown Bless/Curse status' });
+    if (game._just_picked_gold && game._goldCount)
+        extraChoices.push({
+            key: 'justpicked',
+            letter: 'P',
+            label: `Just picked up: ${game._goldCount} gold piece${game._goldCount === 1 ? '' : 's'}`,
+        });
+    if (extraChoices.length) row++;
+    for (const choice of extraChoices) choices.push({ ...choice, row: row++ });
+    return choices;
+}
+
+function drawIceBoxPutTypeMenu() {
+    const choices = game._icebox_put_type_choices || [];
+    const selected = new Set(game._icebox_put_type_selected || []);
+    const rows = [
+        [0, 23, 'Put in what type of objects?', 1],
+        [2, 23, `A ${selected.has('auto') ? '+' : '-'} Auto-select every relevant item`],
+        [3, 27, '(ignored unless some other choices are also picked)'],
+    ];
+    for (const choice of choices) {
+        if (!choice.row) continue;
+        rows.push([choice.row, 23, `${choice.letter} ${selected.has(choice.key) ? '+' : '-'} ${choice.label}`]);
+    }
+    const endRow = Math.max(4, ...choices.map(choice => choice.row || 0)) + 1;
+    rows.push([endRow, 23, '(end)']);
+    setOverlay(rows, endRow + 1, false, 23);
+}
+
+function beginIceBoxPutIn(iceBox) {
+    const putItems = buildIceBoxPutItems();
+    if (!putItems.length) return false;
+    game._icebox_put_container = iceBox;
+    game._icebox_put_items = putItems;
+    game._icebox_put_type_choices = iceBoxPutTypeChoices(putItems);
+    game._icebox_put_type_selected = [];
+    drawIceBoxPutTypeMenu();
+    game._command_mode = 'iceBoxPutTypes';
+    return true;
+}
+
+function drawIceBoxPutObjectMenu() {
+    const entries = game._icebox_put_entries || [];
+    const selected = new Set(game._icebox_put_selected || []);
+    const rows = [[0, 41, 'Put in what?', 1]];
+    let row = 2;
+    let lastCategory = '';
+    for (const entry of entries) {
+        if (entry.category !== lastCategory) {
+            const type = iceBoxPutClassTypes().find(type => type.key === entry.category);
+            rows.push([row, 34, '┌─────']);
+            rows.push([row, 40, ' '.repeat(40)]);
+            rows.push([row++, 41, type?.label || 'Other Items', 1]);
+            lastCategory = entry.category;
+        }
+        entry.row = row;
+        const label = entry.letter === '$'
+            ? `${entry.amount} gold piece${entry.amount === 1 ? '' : 's'}`
+            : inventoryItemName(entry.item);
+        rows.push([row, 34, '│']);
+        rows.push([row++, 40, ` ${entry.letter} ${selected.has(entry.letter) ? '+' : '-'} ${label}`.padEnd(40, ' ')]);
+    }
+    rows.push([row, 34, '│']);
+    rows.push([row, 40, ' (end)'.padEnd(40, ' ')]);
+    setOverlay(rows, 2, false, 0);
+}
+
+function articlelessObjectName(item) {
+    return pickupObjectName(item).replace(/^(?:an? |the )/i, '');
+}
+
+function iceBoxPutRejectMessage(iceBox, item) {
+    if (!item) return "You don't have that object.";
+    if (item === game.u?.uball || item === game.u?.uchain) return 'You must be kidding.';
+    if (item === iceBox) return 'That would be an interesting topological exercise.';
+    if (isWornInventoryItem(item)) return 'You cannot refrigerate something you are wearing.';
+    const kind = objectKindKey(item);
+    if ((item.otyp === LOADSTONE || kind === 'loadstone') && item.cursed) {
+        item.bknown = true;
+        return `The stone${(item.quan || 1) === 1 ? '' : 's'} won't leave your person.`;
+    }
+    const actual = String(item.actualKind || '').toLowerCase();
+    if (item.realAmuletOfYendor || actual === 'amulet of yendor' || (!actual && kind === 'amulet of yendor')
+        || isBookOfTheDeadItem(item) || isBellOfOpeningItem(item) || isCandelabrumOfInvocationItem(item))
+        return `The ${articlelessObjectName(item)} cannot be confined in such trappings.`;
+    if (kind === 'leash' && item.leashmon) return 'The leash is attached to your pet.';
+    const boxLike = isIceBoxObject(item) || item.otyp === CHEST || item.otyp === LARGE_BOX
+        || kind === 'chest' || kind === 'large box';
+    const bigStatue = item.otyp === STATUE
+        && (item.big || item.bigStatue || item.large || item.corpsenm?.msize === 'large' || item.corpsenm?.size === 'large');
+    if (boxLike || item.otyp === BOULDER || kind === 'boulder' || bigStatue)
+        return `You cannot fit the ${articlelessObjectName(item)} into the ice box.`;
+    return '';
+}
+
+function clearContainerPutEquipmentState(item, name) {
+    const line = String(item.line || '');
+    if (item.wielded || /(?:weapon|wielded) in/.test(line) || line.includes('(wielded)')) {
+        item.wielded = false;
+        if (item.artifact === 'Mjollnir' || item.kind === 'mjollnir') game._wielded_mjollnir = false;
+    }
+    if (item.alternate || line.includes('alternate weapon')) item.alternate = false;
+    if (item.quivered || /at the ready|in quiver/.test(line)) item.quivered = false;
+    if (item.line) item.line = `${item.letter || '?'} - ${name}`;
+}
+
+function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1) {
+    if (!iceBoxContainerAvailable(iceBox)) return { moved: false, message: '' };
+    iceBox.contents ??= [];
+    iceBox.cknown = true;
+    if (item?.letter === '$' || item?.otyp === GOLD_PIECE || item?.cls === 'coin' || item?.glyph === '$') {
+        const gold = Math.min(Math.max(0, amount || 0), game._goldCount || 0);
+        if (!gold) return { moved: false, message: 'You have no gold to put in.' };
+        add_to_container(iceBox, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
+        game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
+        game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
+        const money = (game.inventory || []).find(invItem => invItem.letter === '$' || invItem.cls === 'coin');
+        if (money && game._goldCount) {
+            money.quan = game._goldCount;
+            updateMoneyLine(money);
+        } else {
+            game.inventory = (game.inventory || []).filter(invItem => invItem.letter !== '$' && invItem.cls !== 'coin');
+        }
+        game._pet_food_scan_inventory = game.inventory;
+        return { moved: true, message: `You put ${gold} gold piece${gold === 1 ? '' : 's'} into the ice box.` };
+    }
+
+    const reject = iceBoxPutRejectMessage(iceBox, item);
+    if (reject) return { moved: false, message: reject };
+
+    const name = inventoryItemName(item);
+    const count = Math.min(Math.max(1, amount || 1), item.quan || 1);
+    const putItem = (item.quan || 1) > count ? { ...item, quan: count } : item;
+    clearContainerPutEquipmentState(putItem, name);
+    removeInventoryItem(item, count);
+    freezeObjectInIcebox(putItem);
+    add_to_container(iceBox, putItem);
+    game._pet_food_scan_inventory = game.inventory;
+    return { moved: true, message: `You put ${name} into the ice box.` };
+}
+
+async function showIceBoxMessageList(messages) {
+    messages = (messages || []).filter(Boolean);
+    if (!messages.length) return;
+    const message = messages.join('  ');
+    if (message.length <= 79) {
+        await setMessage(message);
+    } else {
+        const first = messages.slice(0, 2).join('  ');
+        const rest = messages.slice(2).join('  ');
+        game._queued_message_after_more = rest || null;
+        game._queued_message_process_time_after_more = 1;
+        await setMessage(first, true);
+    }
+}
+
+function iceBoxPutResultMessages(results) {
+    return (results || []).map(result => result.message).filter(Boolean);
+}
+
+async function showIceBoxPutMessages(results) {
+    await showIceBoxMessageList(iceBoxPutResultMessages(results));
+}
+
+async function finishIceBoxSequence(messages = [], moved = false) {
+    const allMessages = [...(game._icebox_sequence_messages || []), ...(messages || [])];
+    const used = moved || !!game._icebox_sequence_used;
+    clearIceBoxSequenceState();
+    game._command_mode = null;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+    if (used) game.context.move = 1;
+    await showIceBoxMessageList(allMessages);
+}
+
+async function continueIceBoxSequenceToPutIn(iceBox, messages = []) {
+    addIceBoxSequenceMessages(messages);
+    if (iceBoxContainerAvailable(iceBox) && beginIceBoxPutIn(iceBox)) return true;
+    clearIceBoxPutState();
+    game._command_mode = null;
+    await finishIceBoxSequence(["You don't have anything to put in."]);
+    return true;
+}
+
+async function continueIceBoxSequenceToTakeout(iceBox, messages = []) {
+    addIceBoxSequenceMessages(messages);
+    if (!iceBoxContainerAvailable(iceBox)) {
+        clearContainerTakeoutState();
+        clearIceBoxPutState();
+        game._command_mode = null;
+        await finishIceBoxSequence();
+        return true;
+    }
+    const learnedEmpty = !(iceBox.contents || []).length && !iceBox.cknown;
+    iceBox.cknown = true;
+    if (beginIceBoxTakeout(iceBox)) return true;
+    if (learnedEmpty) markIceBoxSequenceUsed();
+    clearContainerTakeoutState();
+    game._command_mode = null;
+    await finishIceBoxSequence([iceBoxEmptyMessage()]);
+    return true;
+}
+
+async function beginIceBoxStash(iceBox) {
+    const letters = iceBoxPutLetters();
+    if (!letters) return false;
+    game._icebox_put_container = iceBox;
+    game._icebox_stash_letters = letters;
+    await setMessage(`What do you want to stash? [${getobjPromptLetters(letters)} or ?*]`);
+    game._command_mode = 'iceBoxStashObject';
+    return true;
+}
+
+function containerLootCategory(item) {
+    if (item.otyp === GOLD_PIECE || item.cls === 'coin' || item.glyph === '$') return 'Coins';
+    if (item.otyp === FOOD_CLASS || item.cls === 'food' || item.glyph === '%') return 'Comestibles';
+    if (item.otyp === SCROLL_CLASS || item.cls === 'scroll' || item.glyph === '?') return 'Scrolls';
+    if (item.cls === 'spellbook' || item.glyph === '+') return 'Spellbooks';
+    if (item.otyp === POTION_CLASS || item.cls === 'potion' || item.glyph === '!') return 'Potions';
+    if (item.otyp === RING_CLASS || item.cls === 'ring' || item.glyph === '=') return 'Rings';
+    if (item.otyp === GEM_CLASS || item.cls === 'gem' || item.glyph === '*') return 'Gems/Stones';
+    return 'Other Items';
+}
+
+function beginIceBoxTakeout(iceBox) {
+    const contents = [...(iceBox?.contents || [])].sort(compareContainerLootItems);
+    if (!contents.length) return false;
+    const seen = new Set(contents.map(containerLootCategory));
+    const typeEntries = [...seen]
+        .sort((a, b) => PICKUP_SECTION_ORDER.indexOf(a) - PICKUP_SECTION_ORDER.indexOf(b))
+        .map((label, i) => ({ letter: String.fromCharCode('b'.charCodeAt(0) + i), label }));
+    if (typeEntries.length === 1) {
+        const entries = contents.map((item, i) => ({
+            item,
+            label: typeEntries[0].label,
+            letter: String.fromCharCode('a'.charCodeAt(0) + i),
+        }));
+        const rows = [[0, 41, 'Take out what?', 1], [2, 41, typeEntries[0].label, 1]];
+        let row = 3;
+        for (const entry of entries)
+            rows.push([row++, 41, `${entry.letter} - ${pickupObjectPhrase(entry.item)}`]);
+        rows.push([row, 41, '(end)']);
+        game._loot_takeout_container = iceBox;
+        game._loot_takeout_entries = entries;
+        game._loot_takeout_selected = [];
+        game._loot_takeout_clear_col = 40;
+        setOverlay(rows, row + 1, false, game._loot_takeout_clear_col);
+        game._command_mode = 'lootTakeoutObjects';
+        return true;
+    }
+
+    const typeRows = [
+        [0, 23, 'Take out what type of objects?', 1],
+        [2, 23, 'A - Auto-select every relevant item'],
+        [3, 27, '(ignored unless some other choices are also picked)'],
+        [5, 23, 'a - All types'],
+    ];
+    for (let i = 0; i < typeEntries.length; i++)
+        typeRows.push([6 + i, 23, `${typeEntries[i].letter} - ${typeEntries[i].label}`]);
+    let filterRow = 7 + typeEntries.length;
+    if (contents.some(item => objectBucCategory(item) === 'blessed'))
+        typeRows.push([filterRow++, 23, 'B - Items known to be Blessed']);
+    if (contents.some(item => objectBucCategory(item) === 'cursed'))
+        typeRows.push([filterRow++, 23, 'C - Items known to be Cursed']);
+    if (contents.some(item => objectBucCategory(item) === 'uncursed'))
+        typeRows.push([filterRow++, 23, 'U - Items known to be Uncursed']);
+    if (contents.some(item => objectBucCategory(item) === 'unknown'))
+        typeRows.push([filterRow++, 23, 'X - Items of unknown Bless/Curse status']);
+    typeRows.push([filterRow, 23, '(end)']);
+    game._loot_takeout_container = iceBox;
+    game._loot_takeout_type_entries = typeEntries;
+    game._loot_takeout_types_selected = [];
+    setOverlay(typeRows, filterRow + 1, false, 22);
+    game._command_mode = 'lootTakeoutMenu';
+    return true;
+}
+
+function prepareContainerTakeoutObject(container, obj) {
+    if (!isIceBoxObject(container)) return obj;
+    removedFromIcebox(obj);
+    obj.contained = false;
+    obj.container = null;
+    delete obj.nobj;
+    delete obj.nexthere;
+    return obj;
+}
+
+function placeTippedObjectOnFloor(obj, x, y, messages) {
+    obj.contained = false;
+    obj.container = null;
+    obj.ox = x;
+    obj.oy = y;
+    obj.hidden = false;
+    obj.buried = false;
+    obj.transientProjectile = false;
+    delete obj.line;
+    delete obj.nobj;
+    delete obj.nexthere;
+    Object.assign(obj, object_display(obj));
+    if (!earthFloorEffects(obj, x, y, messages, 'drop')) {
+        game.level.objects ??= [];
+        game.level.objects.push(obj);
+        objectIceEffect(obj, x, y);
+    }
+    newsym(x, y);
+}
+
+function tipIceBoxToFloor(iceBox) {
+    const contents = [...(iceBox?.contents || [])];
+    iceBox.cknown = true;
+    if (!contents.length) return ['The ice box is empty.'];
+    const x = game.u?.ux ?? iceBox.ox ?? 0;
+    const y = game.u?.uy ?? iceBox.oy ?? 0;
+    const names = contents.map(containerObjectPhrase).join(', ');
+    const messages = [contents.length === 1
+        ? `An object spills out: ${names}.`
+        : `Objects spill out: ${names}.`];
+    for (const obj of contents) {
+        removeContainedObject(iceBox, obj);
+        removedFromIcebox(obj);
+        placeTippedObjectOnFloor(obj, x, y, messages);
+    }
+    if (Array.isArray(iceBox.contents)) iceBox.contents.length = 0;
+    if (Array.isArray(iceBox.cobj)) iceBox.cobj.length = 0;
+    return messages;
+}
+
 function containerObjectPhrase(obj) {
     const count = obj.quan || 1;
     const name = pickupObjectName(obj);
@@ -16765,6 +17423,137 @@ function isRoyalJelly(item) {
     return item?.otyp === LUMP_OF_ROYAL_JELLY || objectKindKey(item).replace(/^partly eaten /, '') === 'lump of royal jelly';
 }
 
+function isGlobFood(item) {
+    return !!item?.globby || GLOB_TYPE_BY_OTYP.has(item?.otyp);
+}
+
+function globFoodMonsterName(item) {
+    if (item?.corpsenm?.name) return item.corpsenm.name;
+    const type = GLOB_TYPE_BY_OTYP.get(item?.otyp);
+    if (type) return type.name.replace(/^glob of /, '');
+    const text = objectKindKey(item).replace(/^partly eaten\s+/, '');
+    return text.match(/^glob of (.+)$/)?.[1]
+        || text.match(/^(?:small|medium|large|very large) glob of (.+)$/)?.[1]
+        || '';
+}
+
+const GLOB_CPOSTFX_INTRINSICS = new Map([
+    ['gray ooze', {
+        mlevel: 3,
+        intrinsics: ['fireResistance', 'coldResistance', 'poisonResistance'],
+    }],
+    ['brown pudding', {
+        mlevel: 5,
+        intrinsics: ['coldResistance', 'shockResistance', 'poisonResistance'],
+    }],
+    ['green slime', {
+        mlevel: 6,
+        intrinsics: ['acidResistance', 'stoneResistance'],
+    }],
+    ['black pudding', {
+        mlevel: 10,
+        intrinsics: ['coldResistance', 'shockResistance', 'poisonResistance'],
+    }],
+]);
+
+function heroHasAcidResistance() {
+    const form = game.u?._polyself_form || {};
+    return !!(game.u?.acidResistance || game.u?._acidResistanceTimeout
+        || form.acidResistance || form.resistsAcid);
+}
+
+function heroSlimeproof() {
+    const form = game.u?._polyself_form || {};
+    const name = String(form.name || '').toLowerCase();
+    return name === 'green slime' || !!(form.flaming || form.noncorporeal);
+}
+
+function startHeroSliming() {
+    if (!game.u || game.u._slimingTimeout || heroHasUnchanging() || heroSlimeproof()) return false;
+    game.u._slimingTimeout = 10;
+    game.u.sliming = true;
+    addHeroStatusSuffix('Slime');
+    return true;
+}
+
+function fixHeroPetrificationFromAcidicFood() {
+    if (!game.u?._stonedTimeout) return '';
+    game.u._stonedTimeout = 0;
+    game.u._stonedKiller = '';
+    removeHeroStatusSuffix('Stone');
+    return 'You feel limber!';
+}
+
+function globCpostfxIntrinsicForMonster(monsterName) {
+    const spec = GLOB_CPOSTFX_INTRINSICS.get(monsterName);
+    if (!spec) return null;
+    let count = 0;
+    let selected = null;
+    for (const intrinsic of spec.intrinsics) {
+        count++;
+        if (!rn2(count)) selected = intrinsic;
+    }
+    return selected ? { intrinsic: selected, mlevel: spec.mlevel } : null;
+}
+
+function globIntrinsicGrantSucceeds(intrinsic, mlevel) {
+    if (mlevel > rn2(15)) return true;
+    if (intrinsic === 'acidResistance') return mlevel > rn2(3);
+    if (intrinsic === 'stoneResistance') return mlevel > rn2(6);
+    return false;
+}
+
+function addTemporaryResistance(prop, duration) {
+    if (!game.u) return;
+    const timeoutField = prop === 'acidResistance' ? '_acidResistanceTimeout' : '_stoneResistanceTimeout';
+    const baseField = prop === 'acidResistance' ? '_acidResistanceBase' : '_stoneResistanceBase';
+    if (!(game.u[timeoutField] > 0)) game.u[baseField] = !!game.u[prop];
+    game.u[timeoutField] = (game.u[timeoutField] || 0) + duration;
+    game.u[prop] = true;
+}
+
+function applyGlobCpostfxIntrinsic(monsterName) {
+    const choice = globCpostfxIntrinsicForMonster(monsterName);
+    if (!choice || !globIntrinsicGrantSucceeds(choice.intrinsic, choice.mlevel)) return '';
+    switch (choice.intrinsic) {
+    case 'fireResistance':
+        if (game.u?._corpseFireResistance) return '';
+        game.u.fireResistance = true;
+        game.u._corpseFireResistance = true;
+        return heroIsHallucinating() ? "You be chillin'." : 'You feel a momentary chill.';
+    case 'coldResistance':
+        if (game.u?._corpseColdResistance) return '';
+        game.u.coldResistance = true;
+        game.u._corpseColdResistance = true;
+        return 'You feel full of hot air.';
+    case 'shockResistance':
+        if (game.u?._corpseShockResistance) return '';
+        game.u.shockResistance = true;
+        game.u._corpseShockResistance = true;
+        return heroIsHallucinating()
+            ? 'You feel grounded in reality.'
+            : 'Your health currently feels amplified!';
+    case 'poisonResistance':
+        if (game.u?._corpsePoisonResistance) return '';
+        const alreadyPoisonResistant = !!game.u?.poisonResistance;
+        game.u.poisonResistance = true;
+        game.u._corpsePoisonResistance = true;
+        return alreadyPoisonResistant ? 'You feel especially healthy.' : 'You feel healthy.';
+    case 'acidResistance': {
+        const alreadyAcidResistant = heroHasAcidResistance();
+        addTemporaryResistance('acidResistance', d(3, 6));
+        return alreadyAcidResistant ? '' : 'You feel less concerned about being harmed by acid.';
+    }
+    case 'stoneResistance': {
+        const alreadyStoneResistant = !!game.u?.stoneResistance;
+        addTemporaryResistance('stoneResistance', d(3, 6));
+        return alreadyStoneResistant ? '' : 'You feel less concerned about becoming petrified.';
+    }
+    default:
+        return '';
+    }
+}
+
 function heroHasUnchanging() {
     return !!game.u?.unchanging || (game.inventory || []).some(item =>
         item.worn && /amulet of unchanging|unchanging/i.test(String(item.kind || item.actualKind || item.line || '')));
@@ -16851,6 +17640,81 @@ async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = f
 async function eatRoyalJelly(item, floorObject = false) {
     const name = pickupObjectName({ ...(item || {}), quan: 1 });
     await finishRoyalJellyEating(item, floorObject, `This ${name} is delicious!`);
+}
+
+async function finishFatalEatingMessage(message) {
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+        game._command_mode = 'lifeSavingMore';
+        await setMessage(`${message}  You die...  But wait...  Your medallion begins to glow!`, true);
+        return;
+    }
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    await setMessage(`${message}  You die...`, true);
+}
+
+async function eatGlobFood(item, floorObject = false) {
+    const touched = touchEatenFood(item, floorObject);
+    const monsterName = globFoodMonsterName(touched);
+    const messages = [];
+    const name = pickupObjectName({ ...(touched || {}), quan: 1 });
+    let tasted = false;
+    recordFoodConduct(touched);
+    addHeroNutrition(remainingFoodNutrition(touched));
+    consumeTouchedFood(touched, floorObject);
+
+    if (!heroHasAcidResistance()) {
+        const damage = rnd(15);
+        if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        messages.push('You have a very bad case of stomach acid.');
+        if ((game.u?.uhp || 0) <= 0) {
+            game._death_cause = 'killed by an acidic glob';
+            game._pet_food_scan_inventory = game.inventory || [];
+            await finishFatalEatingMessage(messages.join('  '));
+            return;
+        }
+    } else if (monsterName === 'green slime' && rn2(5)) {
+        messages.push('Ecch - that must have been poisonous!');
+        if (!game.u?.poisonResistance) {
+            const strengthDamage = rnd(4);
+            const hpDamage = rnd(15);
+            if (game.u?.acurr?.a)
+                game.u.acurr.a[A_STR] = Math.max(3, (game.u.acurr.a[A_STR] ?? 10) - strengthDamage);
+            if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 1) - hpDamage);
+            if ((game.u?.uhp || 0) <= 0) {
+                game._death_cause = 'poisoned by a poisonous glob';
+                game._pet_food_scan_inventory = game.inventory || [];
+                await finishFatalEatingMessage(messages.join('  '));
+                return;
+            }
+        } else {
+            messages.push('You seem unaffected by the poison.');
+        }
+    }
+
+    if (!messages.length) {
+        messages.push(`This ${name} tastes terrible!`);
+        tasted = true;
+    }
+
+    if (monsterName === 'green slime' && startHeroSliming())
+        messages.push("You don't feel very well.");
+    const petrificationMessage = fixHeroPetrificationFromAcidicFood();
+    if (petrificationMessage) messages.push(petrificationMessage);
+    const cpostfxMessage = applyGlobCpostfxIntrinsic(monsterName);
+    if (cpostfxMessage) messages.push(cpostfxMessage);
+    if (!tasted && !messages.length) messages.push(`This ${name} tastes terrible!`);
+    game._pet_food_scan_inventory = game.inventory || [];
+    await setMessage(messages.join('  '), messages.length > 1);
+    game._command_mode = null;
+    game.context.move = 1;
 }
 
 function royalJellyRubTargetLetters() {
@@ -20018,20 +20882,9 @@ async function moveHero(dx, dy) {
             }
             game._process_time_with_more = 0;
         } else {
-            const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-                || data.rider || data.shopkeeper || data.name === 'lizard';
-            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-            const corpseRoll = guaranteedCorpse ? 0 : rn2(corpseChance);
-            if (corpseData && !corpseData.noCorpse && (guaranteedCorpse || !corpseRoll)) {
-                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-                Object.assign(corpse, {
-                    otyp: 'corpse',
-                    glyph: '%',
-                    color: corpseData.color ?? data.color ?? corpse.color ?? CLR_BROWN,
-                    corpsenm: corpseData,
-                    oldCorpse: !!data.corpse,
-                });
-            }
+            const dropCorpse = monsterCorpseDropSucceeds(mon, data);
+            if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
         }
         if (mon.mpeaceful) {
             if (!rn2(2) || mon.mtame) game.u.uluck = (game.u?.uluck || 0) - 1;
@@ -22871,19 +23724,10 @@ export async function rhack(_cmd) {
                     const { x, y, mon } = game._rolling_boulder_cleanup_after_more;
                     game._rolling_boulder_cleanup_after_more = null;
                     const data = mon?.data || {};
-                    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-                    const corpseRoll = rn2(corpseChance);
                     const corpseData = data.corpse || data;
-                    if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                        const corpse = mkcorpstat(CORPSE, mon, corpseData, x, y, 8);
-                        Object.assign(corpse, {
-                            otyp: 'corpse',
-                            glyph: '%',
-                            color: corpseData.color ?? data.color ?? CLR_BROWN,
-                            corpsenm: corpseData,
-                            oldCorpse: !!data.corpse,
-                        });
-                    }
+                    const dropCorpse = monsterCorpseDropSucceeds(mon, data);
+                    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                        createMonsterCorpseOrGlob(mon, corpseData, x, y);
                     newsym(x, y);
                 }
                 if (game._cream_pie_after_more_letter) {
@@ -22954,7 +23798,7 @@ export async function rhack(_cmd) {
 	                            stolen.wasStolen = true;
                             stopCarriedFigurineTimerOnLeave(stolen);
                             maybeAttachCarriedFigurineTimeout(stolen);
-	                            mon.minvent = [stolen, ...(mon.minvent || [])];
+	                            add_to_minv(mon, stolen);
 	                        }
                         removeInventoryItem(item);
                     }
@@ -22981,7 +23825,7 @@ export async function rhack(_cmd) {
                         removeInventoryItem(item);
                         if (action.whereTo === 3 && action.mon) {
                             maybeAttachCarriedFigurineTimeout(dropped);
-                            action.mon.minvent = [dropped, ...(action.mon.minvent || [])];
+                            add_to_minv(action.mon, dropped);
                         } else {
                             dropped.ox = action.whereTo === 1 ? action.mon?.mx : game.u?.ux || 0;
                             dropped.oy = action.whereTo === 1 ? action.mon?.my : game.u?.uy || 0;
@@ -23051,21 +23895,9 @@ export async function rhack(_cmd) {
 	                                    game.level.objects = (game.level?.objects || []).filter(obj => obj !== drop);
 	                                }
 	                            }
-	                            const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-	                                || data.rider || data.shopkeeper || data.name === 'lizard';
-	                            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-	                            const dropCorpse = corpseData && !corpseData.noCorpse
-	                                && (guaranteedCorpse || !rn2(corpseChance));
-	                            if (dropCorpse) {
-	                                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-	                                Object.assign(corpse, {
-	                                    otyp: 'corpse',
-	                                    glyph: '%',
-	                                    color: corpseData.color ?? data.color ?? CLR_BROWN,
-	                                    corpsenm: corpseData,
-	                                    oldCorpse: !!data.corpse,
-	                                });
-	                            }
+	                            const dropCorpse = monsterLeavesCorpseLikeDrop(corpseData)
+	                                && monsterCorpseDropSucceeds(mon, data);
+	                            if (dropCorpse) createMonsterCorpseOrGlob(mon, corpseData);
 	                            recordVanquished(mon, false);
 	                            const loc = game.level?.at(mon.mx, mon.my);
 	                            if (loc?.map_invisible) {
@@ -23704,20 +24536,11 @@ export async function rhack(_cmd) {
                     for (const mon of game._queued_dead_monsters) {
                         const data = mon.data || {};
                         const corpseData = data.corpse || data;
-                        const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-                        const corpseRoll = rn2(corpseChance);
+                        const dropCorpse = monsterCorpseDropSucceeds(mon, data);
                         recordVanquished(mon, false);
                         dropMonsterInventory(mon);
-                        if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                            const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-                            Object.assign(corpse, {
-                                otyp: 'corpse',
-                                glyph: '%',
-                                color: corpseData.color ?? data.color ?? CLR_BROWN,
-                                corpsenm: corpseData,
-                                oldCorpse: !!data.corpse,
-                            });
-                        }
+                        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                            createMonsterCorpseOrGlob(mon, corpseData);
                         const killer = mon._killed_by_mon;
                         mon._killed_by_mon = null;
                         if (!monsterGrowUp(killer, mon)) rnd((data.mlevel ?? 0) + 1);
@@ -26289,20 +27112,12 @@ export async function rhack(_cmd) {
                                     target.mhp = (target.mhp || 1) - damage;
                                     if ((target.mhp || 0) <= 0) {
                                         rn2(6);
-                                        const corpseRoll = rn2(3);
                                         const corpseData = target.data?.corpse || target.data;
+                                        const dropCorpse = monsterCorpseDropSucceeds(target, target.data);
                                         dropMonsterInventory(target, messages);
                                         game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== target);
-                                        if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                                            const corpse = mkcorpstat(CORPSE, target, corpseData, target.mx, target.my, 8);
-                                            Object.assign(corpse, {
-                                                otyp: 'corpse',
-                                                glyph: '%',
-                                                color: corpseData.color ?? target.data?.color ?? CLR_BROWN,
-                                                corpsenm: corpseData,
-                                                oldCorpse: !!target.data?.corpse,
-                                            });
-                                        }
+                                        if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                                            createMonsterCorpseOrGlob(target, corpseData, target.mx, target.my, { messages });
                                         recordVanquished(target, true);
                                         newsym(target.mx, target.my);
                                         messages.push(`You kill the ${target.data?.name || 'monster'}!`);
@@ -26487,20 +27302,12 @@ export async function rhack(_cmd) {
                                 target.mhp = (target.mhp || 1) - damage;
                                 if ((target.mhp || 0) <= 0) {
                                     rn2(6);
-                                    const corpseRoll = rn2(3);
                                     const corpseData = target.data?.corpse || target.data;
+                                    const dropCorpse = monsterCorpseDropSucceeds(target, target.data);
                                     dropMonsterInventory(target, messages);
                                     game.level.monsters = (game.level?.monsters || []).filter(mon => mon !== target);
-                                    if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                                        const corpse = mkcorpstat(CORPSE, target, corpseData, target.mx, target.my, 8);
-                                        Object.assign(corpse, {
-                                            otyp: 'corpse',
-                                            glyph: '%',
-                                            color: corpseData.color ?? target.data?.color ?? CLR_BROWN,
-                                            corpsenm: corpseData,
-                                            oldCorpse: !!target.data?.corpse,
-                                        });
-                                    }
+                                    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                                        createMonsterCorpseOrGlob(target, corpseData, target.mx, target.my, { messages });
                                     recordVanquished(target, true);
                                     newsym(target.mx, target.my);
                                     messages.push(`You kill the ${target.data?.name || 'monster'}!`);
@@ -29955,9 +30762,7 @@ export async function rhack(_cmd) {
                 for (const selectedEntry of selectedEntries) {
                     if (selectedEntry.letter === '$') {
                         const gold = Math.min(selectedEntry.amount || 0, game._goldCount || 0);
-                        const coins = bag.contents.find(item => item.cls === 'coin' || item.letter === '$');
-                        if (coins) coins.quan = (coins.quan || 0) + gold;
-                        else bag.contents.push({ letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
+                        add_to_container(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
                         game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
                         game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
                         const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
@@ -29972,7 +30777,7 @@ export async function rhack(_cmd) {
                         stopCarriedFigurineTimerOnLeave(selectedEntry.item);
                         game.inventory = (game.inventory || []).filter(item => item !== selectedEntry.item);
                         updateWornDisplacement();
-                        bag.contents.push(selectedEntry.item);
+                        add_to_container(bag, selectedEntry.item);
                         messages.push(`You put ${inventoryItemName(selectedEntry.item)} into the bag.`);
                     }
                 }
@@ -30004,9 +30809,7 @@ export async function rhack(_cmd) {
                 game._command_mode = null;
                 return;
             }
-            const coins = bag.contents.find(item => item.cls === 'coin' || item.letter === '$');
-            if (coins) coins.quan = (coins.quan || 0) + gold;
-            else bag.contents.push({ letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
+            add_to_container(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
             game._goldCount = 0;
             game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin');
             await setMessage(`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the bag.`);
@@ -30020,7 +30823,7 @@ export async function rhack(_cmd) {
             stopCarriedFigurineTimerOnLeave(item);
             game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
             updateWornDisplacement();
-            bag.contents.push(item);
+            add_to_container(bag, item);
             await setMessage(`You put ${inventoryItemName(item)} into the bag.`);
             game._container_letter = null;
             game._command_mode = null;
@@ -30773,9 +31576,9 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'lootIceMenu') {
+        const iceBox = game.level?.objects?.find(obj =>
+            isIceBoxObject(obj) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
         if (ch === ':') {
-            const iceBox = game.level?.objects?.find(obj =>
-                obj.otyp === ICE_BOX && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
             if (iceBox) iceBox.cknown = true;
             const rows = [[0, 41, 'Contents of the ice box:']];
             let row = 2;
@@ -30791,13 +31594,269 @@ export async function rhack(_cmd) {
             game._command_mode = 'iceBoxContents';
             return;
         }
+        if (ch === 'o') {
+            if (iceBox) iceBox.cknown = true;
+            if (iceBox && beginIceBoxTakeout(iceBox)) return;
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._command_mode = null;
+            await setMessage('The ice box is empty.');
+            game.context.move = 1;
+            return;
+        }
+        if (ch === 'i') {
+            if (iceBox) iceBox.cknown = true;
+            if (iceBox && beginIceBoxPutIn(iceBox)) return;
+            clearIceBoxPutState();
+            game._command_mode = null;
+            await setMessage("You don't have anything to put in.");
+            return;
+        }
+        if (ch === 's') {
+            if (iceBox) iceBox.cknown = true;
+            if (iceBox && (await beginIceBoxStash(iceBox))) return;
+            clearIceBoxPutState();
+            game._command_mode = null;
+            await setMessage("You don't have anything to stash.");
+            return;
+        }
+        if (ch === 'b') {
+            startIceBoxSequence('putin');
+            if (iceBox) {
+                const learnedEmpty = !(iceBox.contents || []).length && !iceBox.cknown;
+                iceBox.cknown = true;
+                if (beginIceBoxTakeout(iceBox)) return;
+                if (learnedEmpty) markIceBoxSequenceUsed();
+                await continueIceBoxSequenceToPutIn(iceBox, [iceBoxEmptyMessage()]);
+                return;
+            }
+            await finishIceBoxSequence([iceBoxEmptyMessage(), "You don't have anything to put in."]);
+            game._command_mode = null;
+            return;
+        }
+        if (ch === 'r') {
+            startIceBoxSequence('takeout');
+            if (iceBox && beginIceBoxPutIn(iceBox)) return;
+            await continueIceBoxSequenceToTakeout(iceBox, ["You don't have anything to put in."]);
+            return;
+        }
         if (ch === '\x1b' || ch === 'q') {
             for (let row = 0; row < 12; row++) game.nhDisplay?.clearRow(row);
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
             game._command_mode = null;
+            clearIceBoxSequenceState();
             game.context.move = 1;
         }
+        return;
+    }
+
+    if (game._command_mode === 'iceBoxPutTypes') {
+        const iceBox = game._icebox_put_container;
+        if (!iceBoxContainerAvailable(iceBox)) {
+            clearIceBoxPutState();
+            if (iceBoxSequenceActive()) await finishIceBoxSequence();
+            else clearIceBoxSequenceState();
+            game._command_mode = null;
+            return;
+        }
+        const choices = game._icebox_put_type_choices || [];
+        const selected = new Set(game._icebox_put_type_selected || []);
+        const choice = choices.find(entry => entry.letter === ch || entry.symbol === ch);
+        if (ch === '\x1b' || ch === 'q') {
+            clearIceBoxPutState();
+            if (game._icebox_sequence_after_putin === 'takeout') {
+                await continueIceBoxSequenceToTakeout(iceBox);
+                return;
+            }
+            if (iceBoxSequenceActive()) {
+                await finishIceBoxSequence();
+                return;
+            }
+            clearIceBoxSequenceState();
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '@') {
+            for (const entry of choices) {
+                if (entry.key !== 'auto') selected.add(entry.key);
+            }
+            game._icebox_put_type_selected = [...selected];
+            drawIceBoxPutTypeMenu();
+            return;
+        }
+        if (choice) {
+            if (selected.has(choice.key)) selected.delete(choice.key);
+            else selected.add(choice.key);
+            game._icebox_put_type_selected = [...selected];
+            drawIceBoxPutTypeMenu();
+            return;
+        }
+        if (ch === '\r' || ch === '\n' || ch === ' ') {
+            if (!selected.size || (selected.size === 1 && selected.has('auto'))) {
+                clearIceBoxPutState();
+                if (game._icebox_sequence_after_putin === 'takeout') {
+                    await continueIceBoxSequenceToTakeout(iceBox);
+                    return;
+                }
+                if (iceBoxSequenceActive()) {
+                    await finishIceBoxSequence(['No relevant items selected.']);
+                    return;
+                }
+                clearIceBoxSequenceState();
+                game._command_mode = null;
+                await setMessage('No relevant items selected.');
+                return;
+            }
+            const items = (game._icebox_put_items || []).filter(({ item, category }) => {
+                if (selected.has('all')) return true;
+                if (selected.has(category)) return true;
+                const bucCategory = objectBucCategory(item);
+                if (selected.has('blessed') && bucCategory === 'blessed') return true;
+                if (selected.has('cursed') && bucCategory === 'cursed') return true;
+                if (selected.has('uncursed') && bucCategory === 'uncursed') return true;
+                return (selected.has('unknown') && bucCategory === 'unknown')
+                    || (selected.has('justpicked') && item.letter === '$' && game._just_picked_gold);
+            });
+            const entries = items.map(({ item, category }) => ({
+                item,
+                category,
+                letter: item.letter,
+                amount: item.letter === '$' && selected.has('justpicked')
+                    ? game._just_picked_gold || 0
+                    : item.quan || 1,
+            })).filter(entry => entry.amount > 0);
+            if (!entries.length) {
+                clearIceBoxPutState();
+                if (game._icebox_sequence_after_putin === 'takeout') {
+                    await continueIceBoxSequenceToTakeout(iceBox);
+                    return;
+                }
+                if (iceBoxSequenceActive()) {
+                    await finishIceBoxSequence(['No relevant items selected.']);
+                    return;
+                }
+                clearIceBoxSequenceState();
+                game._command_mode = null;
+                await setMessage('No relevant items selected.');
+                return;
+            }
+            game._icebox_put_entries = entries;
+            game._icebox_put_selected = [];
+            drawIceBoxPutObjectMenu();
+            game._command_mode = 'iceBoxPutObjects';
+            return;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'iceBoxPutObjects') {
+        const iceBox = game._icebox_put_container;
+        if (!iceBoxContainerAvailable(iceBox)) {
+            clearIceBoxPutState();
+            if (iceBoxSequenceActive()) await finishIceBoxSequence();
+            else clearIceBoxSequenceState();
+            game._command_mode = null;
+            return;
+        }
+        const entries = game._icebox_put_entries || [];
+        const selected = new Set(game._icebox_put_selected || []);
+        const entry = entries.find(item => item.letter === ch);
+        if (entry) {
+            if (selected.has(entry.letter)) selected.delete(entry.letter);
+            else selected.add(entry.letter);
+            game._icebox_put_selected = [...selected];
+            drawIceBoxPutObjectMenu();
+            return;
+        }
+        if (ch === '\r' || ch === '\n' || ch === ' ') {
+            const selectedEntries = entries.filter(item => selected.has(item.letter));
+            if (!selectedEntries.length) {
+                clearIceBoxPutState();
+                if (game._icebox_sequence_after_putin === 'takeout') {
+                    await continueIceBoxSequenceToTakeout(iceBox);
+                    return;
+                }
+                if (iceBoxSequenceActive()) {
+                    await finishIceBoxSequence(['No relevant items selected.']);
+                    return;
+                }
+                clearIceBoxSequenceState();
+                game._command_mode = null;
+                await setMessage('No relevant items selected.');
+                return;
+            }
+            const results = selectedEntries.map(selectedEntry =>
+                putInventoryObjectIntoIceBox(iceBox, selectedEntry.item, selectedEntry.amount));
+            const moved = results.some(result => result.moved);
+            const messages = iceBoxPutResultMessages(results);
+            clearIceBoxPutState();
+            if (game._icebox_sequence_after_putin === 'takeout') {
+                markIceBoxSequenceUsed(moved);
+                await continueIceBoxSequenceToTakeout(iceBox, messages);
+                return;
+            }
+            if (iceBoxSequenceActive()) {
+                await finishIceBoxSequence(messages, moved);
+                return;
+            }
+            clearIceBoxSequenceState();
+            game._command_mode = null;
+            if (moved) game.context.move = 1;
+            await showIceBoxMessageList(messages);
+            return;
+        }
+        if (ch === '\x1b' || ch === 'q') {
+            clearIceBoxPutState();
+            if (game._icebox_sequence_after_putin === 'takeout') {
+                await continueIceBoxSequenceToTakeout(iceBox);
+                return;
+            }
+            if (iceBoxSequenceActive()) {
+                await finishIceBoxSequence();
+                return;
+            }
+            clearIceBoxSequenceState();
+            game._command_mode = null;
+        }
+        return;
+    }
+
+    if (game._command_mode === 'iceBoxStashObject') {
+        const iceBox = game._icebox_put_container;
+        if (!iceBoxContainerAvailable(iceBox)) {
+            clearIceBoxPutState();
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clearIceBoxPutState();
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            const rows = [[0, 40, 'Stash what?', 1]];
+            let row = 2;
+            for (const { item } of buildIceBoxPutItems()) {
+                const label = item.letter === '$'
+                    ? `${item.letter} - ${item.quan || 0} gold piece${(item.quan || 0) === 1 ? '' : 's'}`
+                    : `${item.letter || '?'} - ${inventoryItemName(item)}`;
+                rows.push([row++, 40, label]);
+                if (row >= 23) break;
+            }
+            rows.push([row, 40, '(end)']);
+            setOverlay(rows, Math.max(4, row + 1), false, 40);
+            return;
+        }
+        const item = ch === '$'
+            ? { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: game._goldCount || 0 }
+            : (game.inventory || []).find(invItem => invItem.letter === ch);
+        const result = putInventoryObjectIntoIceBox(iceBox, item, item?.quan || 1);
+        clearIceBoxPutState();
+        game._command_mode = null;
+        if (result.moved) game.context.move = 1;
+        await showIceBoxPutMessages([result]);
         return;
     }
 
@@ -31015,11 +32074,18 @@ export async function rhack(_cmd) {
                 return;
             }
             if (ch === '\x1b') {
-                game._loot_takeout_container = null;
-                game._loot_takeout_type_entries = null;
-                game._loot_takeout_types_selected = null;
+                clearContainerTakeoutState();
                 game._overlay_lines = null;
                 game._overlay_hide_status = 0;
+                if (game._icebox_sequence_after_takeout === 'putin' && isIceBoxObject(container)) {
+                    await continueIceBoxSequenceToPutIn(container);
+                    return;
+                }
+                if (iceBoxSequenceActive() && isIceBoxObject(container)) {
+                    await finishIceBoxSequence();
+                    return;
+                }
+                clearIceBoxSequenceState();
                 game._command_mode = null;
             }
             return;
@@ -31032,6 +32098,7 @@ export async function rhack(_cmd) {
             for (let row = 0; row < 12; row++) game.nhDisplay?.clearRow(row);
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
+            clearIceBoxSequenceState();
             game._command_mode = null;
         }
         return;
@@ -31092,31 +32159,41 @@ export async function rhack(_cmd) {
                     continue;
                 }
                 const letter = nextInventoryLetter();
+                prepareContainerTakeoutObject(container, obj);
                 const amount = pickupObjectPhrase(obj);
-                const pickedItem = {
-                    ...obj,
+                const pickedItem = isIceBoxObject(container) ? obj : { ...obj };
+                Object.assign(pickedItem, {
                     cls: obj.cls || (obj.otyp === GEM_CLASS ? 'gem'
                         : obj.otyp === SCROLL_CLASS ? 'scroll'
                             : obj.glyph === '+' ? 'spellbook' : obj.cls),
                     letter,
                     kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
                     line: `${letter} - ${amount}`,
-                };
+                });
                 game.inventory = [...(game.inventory || []), pickedItem];
                 maybeAttachCarriedFigurineTimeout(pickedItem);
                 messages.push(`${letter} - ${amount}.`);
             }
             if (container) container.contents = (container.contents || []).filter(item => !picked.some(entry => entry.item === item));
             game._pet_food_scan_inventory = game.inventory;
-            game._loot_takeout_container = null;
-            game._loot_takeout_entries = null;
-            game._loot_takeout_selected = null;
-            game._loot_takeout_clear_col = null;
+            const followupPutIn = game._icebox_sequence_after_takeout === 'putin' && isIceBoxObject(container);
+            const finishSequence = !followupPutIn && iceBoxSequenceActive() && isIceBoxObject(container);
+            clearContainerTakeoutState();
             game._floor_container_object = null;
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
-            game._command_mode = null;
             const message = messages.join('  ');
+            if (followupPutIn) {
+                markIceBoxSequenceUsed(true);
+                await continueIceBoxSequenceToPutIn(container, messages);
+                return;
+            }
+            if (finishSequence) {
+                await finishIceBoxSequence(messages, true);
+                return;
+            }
+            clearIceBoxSequenceState();
+            game._command_mode = null;
             if (message.length <= 79) {
                 await setMessage(message);
             } else {
@@ -31130,12 +32207,20 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '\x1b') {
-            game._loot_takeout_container = null;
-            game._loot_takeout_entries = null;
-            game._loot_takeout_selected = null;
-            game._loot_takeout_clear_col = null;
+            const container = game._loot_takeout_container;
+            const followupPutIn = game._icebox_sequence_after_takeout === 'putin' && isIceBoxObject(container);
+            clearContainerTakeoutState();
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
+            if (followupPutIn) {
+                await continueIceBoxSequenceToPutIn(container);
+                return;
+            }
+            if (iceBoxSequenceActive() && isIceBoxObject(container)) {
+                await finishIceBoxSequence();
+                return;
+            }
+            clearIceBoxSequenceState();
             game._command_mode = null;
         }
         return;
@@ -31325,6 +32410,18 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'tipConfirm') {
         if (ch === 'q') game._keep_pending_message = 1;
+        if (ch === 'y') {
+            const tipTarget = game._tip_container_object;
+            game._tip_container_object = null;
+            if (isIceBoxObject(tipTarget)) {
+                const messages = tipIceBoxToFloor(tipTarget);
+                await setMessage(messages.join('  '), messages.length > 1);
+                game.context.move = 1;
+                game._command_mode = null;
+                return;
+            }
+        }
+        game._tip_container_object = null;
         game._command_mode = null;
         return;
     }
@@ -32039,6 +33136,14 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'tip') {
+                const iceBox = game.level?.objects?.find(obj =>
+                    isIceBoxObject(obj) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
+                if (iceBox) {
+                    game._tip_container_object = iceBox;
+                    await setMessage(`There is ${containerObjectPhrase(iceBox)} here, tip it? [ynq] (q)`);
+                    game._command_mode = 'tipConfirm';
+                    return;
+                }
                 await setMessage('There is a broken chest here, tip it? [ynq] (q)');
                 game._command_mode = 'tipConfirm';
                 return;
@@ -33120,6 +34225,10 @@ export async function rhack(_cmd) {
                 game.context.move = 9;
                 return;
             }
+            if (isGlobFood(item)) {
+                await eatGlobFood(item);
+                return;
+            }
             if (shouldUseGenericRottenEggPath(item)) {
                 await eatRottenEgg(item);
                 return;
@@ -33300,6 +34409,10 @@ export async function rhack(_cmd) {
                 await setMessage(corpseMessage);
                 game._command_mode = null;
                 game.context.move = game._eating_turns_remaining;
+                return;
+            }
+            if (isGlobFood(food)) {
+                await eatGlobFood(food, true);
                 return;
             }
             if (shouldUseGenericRottenEggPath(food)) {
@@ -34608,6 +35721,7 @@ export async function rhack(_cmd) {
             game.level = saved.level;
             game.stairs = saved.stairs;
             game._utrack = [...(saved.utrack || [])];
+            catchUpReturnedLevelGlobShrinkTimers();
             for (const mon of game.level?.monsters || []) {
                 rnd(10);
             }
@@ -34721,6 +35835,7 @@ export async function rhack(_cmd) {
             game.level = saved.level;
             game.stairs = saved.stairs;
             game._utrack = [...(saved.utrack || [])];
+            catchUpReturnedLevelGlobShrinkTimers();
             for (const mon of game.level?.monsters || []) {
                 rnd(10);
             }

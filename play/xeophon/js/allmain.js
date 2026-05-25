@@ -2,8 +2,8 @@
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
-import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, movebubbles } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, stoneMonster } from './cmd.js';
+import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, stoneMonster, processGlobShrinkTimers } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -17,7 +17,7 @@ import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
-import { processBuriedOrganicRot, processMeltIceTimers } from './ice.js';
+import { processBuriedOrganicRot, processMeltIceTimers, removedFromIcebox } from './ice.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
 
 const ROLE_STATE = {
@@ -58,6 +58,13 @@ const STONED_TEXTS = [
     'You have turned to stone.',
     'You are a statue.',
 ];
+const SLIME_TEXTS = new Map([
+    [9, 'You are turning a little green.'],
+    [7, 'Your limbs are getting oozy.'],
+    [5, 'Your skin begins to peel away.'],
+    [3, 'You are turning into a green slime.'],
+    [1, 'You have become a green slime.'],
+]);
 const ROLE_PET = {
     Caveman: 'dog',
     Knight: 'pony',
@@ -1937,7 +1944,7 @@ function gelatinousCubeAddToInventory(mon, obj) {
     delete obj.line;
     delete obj.nexthere;
     delete obj.nobj;
-    mon.minvent = [obj, ...(mon.minvent || [])];
+    add_to_minv(mon, obj);
 }
 
 function containerContents(obj) {
@@ -1962,16 +1969,6 @@ function detachContainedObject(container, obj) {
     obj.container = null;
     delete obj.nobj;
     delete obj.nexthere;
-}
-
-function removedFromIceboxForMonsterConsumption(obj) {
-    if (!obj) return;
-    obj.fromIceBox = false;
-    obj.inIceBox = false;
-    const corpseName = obj.corpsenm?.name || '';
-    if (obj.otyp === CORPSE || obj.otyp === 'corpse') {
-        if (corpseName && corpseName !== 'ice troll') obj.norevive = true;
-    }
 }
 
 function floorSurfaceNameAt(x, y) {
@@ -2023,7 +2020,7 @@ function monsterConsumeContainerContents(mon, container, messages) {
     for (const obj of contents) {
         detachContainedObject(container, obj);
         if (container.otyp === ICE_BOX || container.kind === 'ice box')
-            removedFromIceboxForMonsterConsumption(obj);
+            removedFromIcebox(obj);
         if (cube) {
             gelatinousCubeAddToInventory(mon, obj);
         } else {
@@ -2902,6 +2899,31 @@ function applyStoningDialogueSideEffects(timeout) {
     }
 }
 
+function applySlimingDialogueSideEffects(timeout) {
+    if (!game.u) return;
+    switch (timeout) {
+    case 7:
+        game.u._veryfastTimeout = 0;
+        syncHeroSpeedState(game);
+        interruptPositiveMultiForStoning();
+        break;
+    case 5:
+        if ((game.u._deafTimeout || 0) > 0 && game.u._deafTimeout < 5)
+            game.u._deafTimeout = 5;
+        break;
+    case 3:
+        if (game.u._stonedTimeout) {
+            game.u._stonedTimeout = 0;
+            game.u._stonedKiller = '';
+            removeHeroStatusSuffix('Stone');
+        }
+        break;
+    default:
+        break;
+    }
+    exerciseAttribute(A_DEX, false);
+}
+
 function processAttributeExercise() {
     const u = game.u;
     if (!u) return;
@@ -3544,6 +3566,7 @@ async function afterMoveTurn(g, includeHeroTime = true) {
         g.level.objects = (g.level.objects || []).filter(obj => !(obj.rotAwayTurn && obj.rotAwayTurn <= g.moves));
         for (const obj of rottenObjects) newsym(obj.ox, obj.oy);
     }
+    for (const msg of processGlobShrinkTimers(g)) addToplineMessage(msg);
     processBuriedOrganicRot(g);
     await processEggHatchTimeouts(g);
     await processFigurineTransformTimeouts(g);
@@ -3715,22 +3738,11 @@ async function processMonsterTurns() {
                 if (target.mhp < 1) {
                     const targetName = target.data?.name || 'creature';
                     addToplineMessage(`The ${targetName} is killed!`);
-                    const corpseChance = 2
-                        + ((target.data?.genoFreq ?? 1) < 2 ? 1 : 0)
-                        + (target.data?.verysmall ? 1 : 0);
-                    const corpseRoll = rn2(corpseChance);
+                    const dropCorpse = monsterCorpseDropSucceeds(target, target.data);
                     const corpseData = corpseDataForMonster(target.data);
                     dropMonsterInventory(target);
-                    if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                        const corpse = mkcorpstat(CORPSE, target, corpseData, target.mx, target.my, 8);
-                        Object.assign(corpse, {
-                            otyp: 'corpse',
-                            glyph: '%',
-                            color: corpseData.color,
-                            corpsenm: corpseData,
-                            oldCorpse: !!target.data?.corpse,
-                        });
-                    }
+                    if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                        createMonsterCorpseOrGlob(target, corpseData);
                     monsterGrowUp(mon, target);
                     rn2(5);
 	                    recordVanquished(target, false);
@@ -7030,6 +7042,42 @@ async function finishMonsterTurnTail() {
             return false;
         }
     }
+    if ((game.u?._slimingTimeout || 0) > 0) {
+        addHeroStatusSuffix('Slime');
+        game.u.sliming = true;
+        game.u._slimingTimeout--;
+        const timeout = game.u._slimingTimeout;
+        const message = SLIME_TEXTS.get(timeout);
+        if (message) addToplineMessage(message);
+        applySlimingDialogueSideEffects(timeout);
+        if (!game.u._slimingTimeout) {
+            game.u.sliming = false;
+            removeHeroStatusSuffix('Slime');
+            game.u.uhp = 0;
+            game._death_cause = 'turned into green slime';
+            game._death_current_move = 1;
+            if (consumeLifeSavingAmulet()) {
+                armHeroLifeSavingMore();
+                return false;
+            }
+            armHeroDeathMore();
+            return false;
+        }
+    }
+    if ((game.u?._acidResistanceTimeout || 0) > 0) {
+        game.u._acidResistanceTimeout--;
+        if (!game.u._acidResistanceTimeout) {
+            if (!game.u._acidResistanceBase) game.u.acidResistance = false;
+            delete game.u._acidResistanceBase;
+        }
+    }
+    if ((game.u?._stoneResistanceTimeout || 0) > 0) {
+        game.u._stoneResistanceTimeout--;
+        if (!game.u._stoneResistanceTimeout) {
+            if (!game.u._stoneResistanceBase) game.u.stoneResistance = false;
+            delete game.u._stoneResistanceBase;
+        }
+    }
     if ((game.u?._vomitingTimeout || 0) > 0) {
         addHeroStatusSuffix('Vom');
         game.u.vomiting = true;
@@ -7293,22 +7341,10 @@ function killMonsterFromPassive(mon) {
     const data = mon.data || {};
     rn2(6);
     const corpseData = corpseDataForMonster(data);
-    const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-        || data.rider || data.shopkeeper || data.name === 'lizard';
-    const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-    const dropCorpse = corpseData && !corpseData.noCorpse
-        && (guaranteedCorpse || !rn2(corpseChance));
+    const dropCorpse = monsterLeavesCorpseLikeDrop(corpseData)
+        && monsterCorpseDropSucceeds(mon, data);
     dropMonsterInventory(mon);
-    if (dropCorpse) {
-        const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-        Object.assign(corpse, {
-            otyp: 'corpse',
-            glyph: '%',
-            color: corpseData.color,
-            corpsenm: corpseData,
-            oldCorpse: !!data.corpse,
-        });
-    }
+    if (dropCorpse) createMonsterCorpseOrGlob(mon, corpseData);
     recordVanquished(mon, false);
     const loc = game.level?.at(mon.mx, mon.my);
     if (loc?.map_invisible) {
@@ -8368,7 +8404,7 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
     }
     pickedObj.seen = false;
     pickedObj._hide_until_seen = false;
-    mon.minvent = [pickedObj, ...(mon.minvent || [])];
+    add_to_minv(mon, pickedObj);
     if (pickedObj.cls === 'armor' || pickedObj.glyph === '[' || pickedObj.otyp === ARMOR_CLASS)
         mon._gear_next_turn = 1;
     if (deferPickupNewsym) {
@@ -9162,19 +9198,10 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
         if (mon.mhp <= 0) {
             const data = mon.data || {};
             const corpseData = corpseDataForMonster(data);
-            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
-            const corpseRoll = rn2(corpseChance);
+            const dropCorpse = monsterCorpseDropSucceeds(mon, data);
             dropMonsterInventory(mon);
-            if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-                Object.assign(corpse, {
-                    otyp: 'corpse',
-                    glyph: '%',
-                    color: corpseData.color,
-                    corpsenm: corpseData,
-                    oldCorpse: !!data.corpse,
-                });
-            }
+            if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                createMonsterCorpseOrGlob(mon, corpseData);
             recordVanquished(mon, false);
             game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
             mon.movement = 0;
@@ -9197,20 +9224,9 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
 	            if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
             const data = mon.data || {};
             const corpseData = corpseDataForMonster(data);
-            const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-                || data.rider || data.shopkeeper || data.name === 'lizard';
-            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
             dropMonsterInventory(mon);
-            if (corpseData && !corpseData.noCorpse && (guaranteedCorpse || !rn2(corpseChance))) {
-                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-                Object.assign(corpse, {
-                    otyp: 'corpse',
-                    glyph: '%',
-                    color: corpseData.color,
-                    corpsenm: corpseData,
-                    oldCorpse: !!data.corpse,
-                });
-            }
+            if (monsterLeavesCorpseLikeDrop(corpseData) && monsterCorpseDropSucceeds(mon, data))
+                createMonsterCorpseOrGlob(mon, corpseData);
             recordVanquished(mon, false);
 	            game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
 	            mon.movement = 0;
@@ -9559,7 +9575,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                     pickedObj.seen = false;
                     pickedObj._hide_until_seen = false;
                     if (hereObj.otyp === FOOD_CLASS && !pickupVisible) mon._preserve_pickup_memory = { x: mon.mx, y: mon.my };
-                    mon.minvent = [pickedObj, ...(mon.minvent || [])];
+                    add_to_minv(mon, pickedObj);
                     pickedUpThisTurn = true;
                     if (!game.u?.blind && pickupVisible && !hereObj.hidden) {
                         const petName = mon.givenName || `The ${mon.saddled ? 'saddled ' : ''}${mon.data?.name || 'pet'}`;
@@ -9943,22 +9959,11 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                             rn2(3);
                             rn2(6);
                             if (pos.target.mhp < 1) {
-                                const corpseChance = 2
-                                    + ((pos.target.data?.genoFreq ?? 1) < 2 ? 1 : 0)
-                                    + (pos.target.data?.verysmall ? 1 : 0);
-                                const corpseRoll = rn2(corpseChance);
+                                const dropCorpse = monsterCorpseDropSucceeds(pos.target, pos.target.data);
                                 const corpseData = corpseDataForMonster(pos.target.data);
                                 dropMonsterInventory(pos.target);
-                                if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                                    const corpse = mkcorpstat(CORPSE, pos.target, corpseData, pos.target.mx, pos.target.my, 8);
-                                    Object.assign(corpse, {
-                                        otyp: 'corpse',
-                                        glyph: '%',
-                                        color: corpseData.color,
-                                        corpsenm: corpseData,
-                                        oldCorpse: !!pos.target.data?.corpse,
-                                    });
-                                }
+                                if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                                    createMonsterCorpseOrGlob(pos.target, corpseData);
                                 monsterGrowUp(mon, pos.target);
                                 rn2(5);
                                 recordVanquished(pos.target, false);
@@ -10038,22 +10043,11 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
 	                        game._message_more = 0;
 	                    }
 	                }
-                const corpseChance = 2
-                    + ((pos.target.data?.genoFreq ?? 1) < 2 ? 1 : 0)
-                    + (pos.target.data?.verysmall ? 1 : 0);
-                const corpseRoll = rn2(corpseChance);
+                const dropCorpse = monsterCorpseDropSucceeds(pos.target, pos.target.data);
                 const corpseData = corpseDataForMonster(pos.target.data);
                 dropMonsterInventory(pos.target);
-                if (!corpseRoll && corpseData && !corpseData.noCorpse) {
-                    const corpse = mkcorpstat(CORPSE, pos.target, corpseData, pos.target.mx, pos.target.my, 8);
-                    Object.assign(corpse, {
-                        otyp: 'corpse',
-                        glyph: '%',
-                        color: corpseData.color,
-                        corpsenm: corpseData,
-                        oldCorpse: !!pos.target.data?.corpse,
-                    });
-                }
+                if (dropCorpse && monsterLeavesCorpseLikeDrop(corpseData))
+                    createMonsterCorpseOrGlob(pos.target, corpseData);
                 monsterGrowUp(mon, pos.target);
                 rn2(5);
                 if (targetName === 'lichen') game._pet_skip_post_move_roll = 1;
@@ -10425,20 +10419,9 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
             addToplineMessage(`The ${mon.data?.name || 'creature'} is killed!`);
             const data = mon.data || {};
             const corpseData = corpseDataForMonster(data);
-            const guaranteedCorpse = data.big || data.bigmonst || data.golem || data.mplayer
-                || data.rider || data.shopkeeper || data.name === 'lizard';
-            const corpseChance = 2 + ((data.genoFreq ?? 1) < 2 ? 1 : 0) + (data.verysmall ? 1 : 0);
             dropMonsterInventory(mon);
-            if (corpseData && !corpseData.noCorpse && (guaranteedCorpse || !rn2(corpseChance))) {
-                const corpse = mkcorpstat(CORPSE, mon, corpseData, mon.mx, mon.my, 8);
-                Object.assign(corpse, {
-                    otyp: 'corpse',
-                    glyph: '%',
-                    color: corpseData.color,
-                    corpsenm: corpseData,
-                    oldCorpse: !!data.corpse,
-                });
-            }
+            if (monsterLeavesCorpseLikeDrop(corpseData) && monsterCorpseDropSucceeds(mon, data))
+                createMonsterCorpseOrGlob(mon, corpseData);
             recordVanquished(mon, false);
             game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
             mon.movement = 0;
