@@ -7,7 +7,7 @@
 // queued weapon.c plines (give_may_advance_msg, drain_weapon_skill forget).
 
 import { game } from './gstate.js';
-import { pline, docrt } from './display.js';
+import { pline, docrt_flags, docrtRefresh } from './display.js';
 import { rnd } from './rng.js';
 import {
     NEW_MOON, FULL_MOON, NORMAL_SPEED, STONE, FUZZER_IMPOSSIBLE_PANIC, UTOTYPE_NONE,
@@ -74,7 +74,7 @@ export async function maybeDoTutorialLikeC() {
     await deferredGotoHeroLikeC(g);
 
     vision_recalc(0);
-    await docrt();
+    await docrt_flags(docrtRefresh);
 
     g.iflags.nofollowers = false;
 }

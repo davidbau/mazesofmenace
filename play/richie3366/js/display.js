@@ -16,13 +16,24 @@ import {
 } from './nh5_objclass.js';
 import { wallAngleCmapLikeC } from './wall_angle.js';
 import {
+    cmapSymGlyphFromShowsymsLikeC,
+    objClassSymGlyphFromShowsymsLikeC,
+    monClassSymGlyphFromShowsymsLikeC,
+    S_room, S_ndoor, S_vodoor, S_hodoor, S_vcdoor, S_hcdoor,
+    S_corr, S_litcorr, S_bars, S_tree, S_altar, S_grave, S_throne,
+    S_upstair, S_dnstair, S_upladder, S_dnladder,
+    S_fountain, S_sink, S_pool, S_water, S_ice, S_lava,
+} from './symbols_file.js';
+import { vision_recalc, seeMonsters } from './vision.js';
+import {
     COLNO, ROWNO, isok, TEMP_LIT, IN_SIGHT, STONE, ROOM, CORR, DOOR, STAIRS, LADDER,
     HWALL, VWALL, SDOOR, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, decgraphics,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     SCORR, IRONBARS, TREE, POOL, MOAT, WATER, ICE,
     FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, LAVAPOOL, LAVAWALL,
-    Is_rogue_level, OTYP_BOULDER, OTYP_GOLD_PIECE, OTYP_HEAVY_IRON_BALL, OTYP_IRON_CHAIN,
+    Is_rogue_level, Is_waterlevel, LA_DOWN, gs, H_DEC, PRIMARYSET,
+    OTYP_BOULDER, OTYP_GOLD_PIECE, OTYP_HEAVY_IRON_BALL, OTYP_IRON_CHAIN,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP,
     PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
@@ -43,6 +54,7 @@ import {
 } from './terminal.js';
 import { paintInventoryIntoDisplay, paintInventoryOverlayLikeC } from './invent.js';
 import { paintOverlayScreen } from './overlay_screens.js';
+import { isHumanRogueChargenLikeC } from './u_init_link_rogue_invent.js';
 import { paintLegacyIntroIntoDisplay } from './legacy_intro_paint.js';
 import {
     paintTutorialMenuOverlayLikeC,
@@ -112,6 +124,36 @@ export function formatPendingMessageLineLikeC() {
     return base + DEFMORE_STR;
 }
 
+/** C: seed8000 welcome `--More--` — tty wire has pline only; cursor on hero tile. */
+function touristWelcomeMoreSnapLikeC() {
+    const base = game._pending_message || '';
+    return !!(
+        game._showDefmoreOnTopline
+        && game._toplineNeedMore
+        && game.urole?.abbr === 'Tou'
+        && base.includes('welcome to NetHack')
+    );
+}
+
+/**
+ * Row-0 pline for `terminal.serialize()` grid — C welcome `--More--` snapshots
+ * (e.g. seed8000 screen 0) keep the welcome pline on WIN_MESSAGE only; the
+ * recorder wire has no literal `--More--` bytes and no embedded `\n` before map rows.
+ */
+export function messageLine0ForJudgeGridLikeC() {
+    if (touristWelcomeMoreSnapLikeC()) return game._pending_message || '';
+
+    let line = formatPendingMessageLineLikeC();
+    const nl = line.indexOf('\n');
+    if (nl >= 0) {
+        const tail = line.slice(nl + 1);
+        line = line.slice(0, nl);
+        /* C: packed topl — `--More--` stays on row 0 after `\n` in formatPendingMessageLineLikeC. */
+        if (tail === DEFMORE_STR) line += DEFMORE_STR;
+    }
+    return line;
+}
+
 /** C: allmain.c moveloop_core — do not clear welcome / retained plines yet. */
 export function shouldClearMoveloopToplineLikeC(g) {
     return !g._retainMessageAfterCommand && !g._toplineNeedMore && !g._keepToplineUntilNextCommand;
@@ -137,7 +179,26 @@ export function syncTtyCursorForJudgeLikeC(display) {
     const g = game;
     if (!g.program_state?.in_moveloop) return;
     if (g._inventoryMode) {
-        display.setCursor(34, 10);
+        const col = ttyPickinvColLikeC(g);
+        /* C: invent.c display_pickinv — rogue linked invent `(end)` row 10, col 28+6. */
+        if (isHumanRogueChargenLikeC(g) && g.invent) {
+            display.setCursor(col + 6, 10);
+            display.cursorVisible = true;
+            return;
+        }
+        const rows = g._iniInvRows || [];
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const t = row.type === 'cat'
+                ? row.name
+                : (typeof row.text === 'function' ? row.text(g) : row.text);
+            if (t === '(end)') {
+                display.setCursor(col + t.length + 1, i);
+                display.cursorVisible = true;
+                return;
+            }
+        }
+        display.setCursor(col + 6, 10);
         display.cursorVisible = true;
         return;
     }
@@ -274,6 +335,18 @@ function westApportAlcoveCornerGlyphLikeC(x, y, loc) {
     return null;
 }
 
+/** C: display.c has_rogue_color / obj_color — rogue D:1 object class colors. */
+function objColorForOclassLikeC(oc) {
+    if (Is_rogue_level(game.u?.uz)) {
+        if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
+        if (oc === NH5_FOOD_CLASS) return CLR_RED;
+        return CLR_BRIGHT_BLUE;
+    }
+    if (oc === NH5_COIN_CLASS) return CLR_YELLOW;
+    if (oc === NH5_TOOL_CLASS) return CLR_BRIGHT_BLUE;
+    return CLR_WHITE;
+}
+
 /** C: display.c **`obj_to_glyph`** subset (tty **`map_glyphinfo`** / **`show_glyph`**). */
 function mapObjectGlyphLikeC(obj) {
     if (!obj) return { ch: ')', color: CLR_WHITE, dec: false };
@@ -289,26 +362,25 @@ function mapObjectGlyphLikeC(obj) {
     if (ot === OBJ_ROCK) return { ch: '*', color: CLR_WHITE, dec: false };
     if (ot === OTYP_HEAVY_IRON_BALL || ot === OTYP_IRON_CHAIN) return { ch: '*', color: CLR_WHITE, dec: false };
     const oc = obj.oclass | 0;
-    if (oc === NH5_WEAPON_CLASS) return { ch: ')', color: CLR_WHITE, dec: false };
-    if (oc === NH5_GEM_CLASS || oc === NH5_ROCK_CLASS) return { ch: '*', color: CLR_WHITE, dec: false };
-    if (oc === NH5_COIN_CLASS) return { ch: '$', color: CLR_YELLOW, dec: false };
-    if (oc === NH5_POTION_CLASS) return { ch: '!', color: CLR_WHITE, dec: false };
-    if (oc === NH5_SCROLL_CLASS) return { ch: '?', color: CLR_WHITE, dec: false };
-    if (oc === NH5_ARMOR_CLASS) return { ch: '[', color: CLR_WHITE, dec: false };
-    if (oc === NH5_TOOL_CLASS) {
-        /* C: drawing.c def_r_oc_syms[TOOL_CLASS] + display.c rogue obj color. */
-        if (Is_rogue_level(game.u?.uz)) return { ch: ',', color: CLR_BRIGHT_BLUE, dec: false };
-        return { ch: '(', color: CLR_BRIGHT_BLUE, dec: false };
+    if (Is_rogue_level(game.u?.uz)) {
+        /* C: drawing.c def_r_oc_syms — rogue level object tty (judge IBM wire on D:1). */
+        if (oc === NH5_WEAPON_CLASS) return { ch: ')', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_GEM_CLASS || oc === NH5_ROCK_CLASS) return { ch: '*', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_COIN_CLASS) return { ch: '$', color: CLR_YELLOW, dec: false };
+        if (oc === NH5_POTION_CLASS) return { ch: '!', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_SCROLL_CLASS) return { ch: '?', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_ARMOR_CLASS) return { ch: '[', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_TOOL_CLASS) return { ch: ',', color: CLR_BRIGHT_BLUE, dec: false };
+        if (oc === NH5_FOOD_CLASS) return { ch: ':', color: CLR_RED, dec: false };
+        if (oc === NH5_WAND_CLASS) return { ch: '/', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_RING_CLASS) return { ch: '=', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_AMULET_CLASS) return { ch: '"', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_SPBOOK_CLASS) return { ch: '+', color: objColorForOclassLikeC(oc), dec: false };
+        if (oc === NH5_BALL_CLASS || oc === NH5_CHAIN_CLASS) return { ch: '*', color: objColorForOclassLikeC(oc), dec: false };
+        return { ch: ')', color: objColorForOclassLikeC(oc), dec: false };
     }
-    if (oc === NH5_FOOD_CLASS) {
-        if (Is_rogue_level(game.u?.uz)) return { ch: ':', color: CLR_RED, dec: false };
-        return { ch: '%', color: CLR_WHITE, dec: false };
-    }
-    if (oc === NH5_WAND_CLASS) return { ch: '/', color: CLR_WHITE, dec: false };
-    if (oc === NH5_RING_CLASS) return { ch: '=', color: CLR_WHITE, dec: false };
-    if (oc === NH5_AMULET_CLASS) return { ch: '"', color: CLR_WHITE, dec: false };
-    if (oc === NH5_SPBOOK_CLASS) return { ch: '+', color: CLR_WHITE, dec: false };
-    if (oc === NH5_BALL_CLASS || oc === NH5_CHAIN_CLASS) return { ch: '*', color: CLR_WHITE, dec: false };
+    const symG = objClassSymGlyphFromShowsymsLikeC(oc);
+    if (symG) return { ...symG, color: objColorForOclassLikeC(oc) };
     return { ch: ')', color: CLR_WHITE, dec: false };
 }
 
@@ -363,6 +435,8 @@ function mapMonsterGlyphLikeC(mtmp) {
         return { ch: 'a', color: CLR_BROWN, dec: true };
     }
     const mlet = MONS_MLET[mtmp.mnum | 0] ?? 0;
+    const symG = monClassSymGlyphFromShowsymsLikeC(mlet);
+    if (symG) return { ...symG, color: CLR_WHITE };
     const ch = monsymCharLikeC(mlet);
     return { ch: ch || '?', color: CLR_WHITE, dec: false };
 }
@@ -385,7 +459,8 @@ function paintCellGlyph(x, y, loc, gl, show) {
 function mapDispChForJudgeGridLikeC(loc) {
     const ch = loc?.disp_ch ?? ' ';
     /* C tty on rogue D:1 records IBM wall bytes (`l`, `q`, …), not DEC→Unicode. */
-    if (loc?.disp_decgfx && !Is_rogue_level(game.u?.uz))
+    const decHandler = gs.symset[PRIMARYSET].handling === H_DEC;
+    if (loc?.disp_decgfx && decHandler && !Is_rogue_level(game.u?.uz))
         return DEC_TO_UNICODE[ch] || ch;
     return ch;
 }
@@ -398,6 +473,8 @@ function mapDispChForJudgeGridLikeC(loc) {
 function cmapIdxToTerrainGlyph(cmapIdx, rogueIbm) {
     const idx = cmapIdx | 0;
     if (idx === 0) return { ch: ' ', color: NO_COLOR, dec: false };
+    const fromSym = cmapSymGlyphFromShowsymsLikeC(idx, rogueIbm);
+    if (fromSym) return fromSym;
     const decCh = decgraphics[idx - 1];
     /* C tty recorder on rogue D:1 still emits DEC line-drawing (SO/SI) for wall cmap. */
     if (decCh) return { ch: decCh, color: NO_COLOR, dec: true };
@@ -408,6 +485,28 @@ function cmapIdxToTerrainGlyph(cmapIdx, rogueIbm) {
 function wallTerrainGlyphLikeC(loc, rogueIbm) {
     const cmap = loc.seenv ? wallAngleCmapLikeC(loc) : 0;
     return cmapIdxToTerrainGlyph(cmap, rogueIbm);
+}
+
+/**
+ * C: display.c `back_to_glyph` → `map_glyphinfo` cmap symidx + color.
+ * Uses active symset when `gs.showsyms[sIdx]` is set; else defsym.h ASCII fallback.
+ * @param {number} sIdx
+ * @param {number} color
+ * @param {{ ch: string, color: number, dec: boolean }} fallback
+ */
+function terrainFromCmapLikeC(sIdx, color, fallback) {
+    const sym = gs.showsyms?.[sIdx | 0] | 0;
+    if (sym) {
+        const g = cmapIdxToTerrainGlyph(sIdx, false);
+        if (g) return { ...g, color };
+    }
+    return { ...fallback };
+}
+
+/** Feature tiles (fountain/sink/pool) — keep fallback `dec` (rogue D:1 wire avoids DEC SO/SI). */
+function terrainFeatureFromCmapLikeC(sIdx, color, fallback) {
+    const g = terrainFromCmapLikeC(sIdx, color, fallback);
+    return { ch: g.ch, color: g.color, dec: fallback.dec };
 }
 
 /** C: wintty.c process_menu_window — `cl_end()` from menu offx through EOL. */
@@ -431,7 +530,8 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
         const alcoveCorner = westApportAlcoveCornerGlyphLikeC(x, y, loc);
         if (alcoveCorner) return alcoveCorner;
         if (rogue) return { ch: '~', color: CLR_GRAY, dec: false };
-        return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
+        return cmapSymGlyphFromShowsymsLikeC(S_room, false)
+            ?? { ch: '~', color: NO_COLOR, dec: true };
     }
     case CORR: {
         if (!skipApportMon) {
@@ -450,7 +550,11 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
             });
             if (cmap) return cmapIdxToTerrainGlyph(cmap, !!rogue);
         }
-        return { ch: '#', color: NO_COLOR, dec: false };
+        if (rogue) return { ch: '#', color: NO_COLOR, dec: false };
+        const corrIdx = (loc.waslit || game.flags?.lit_corridor)
+            ? S_litcorr
+            : S_corr;
+        return terrainFromCmapLikeC(corrIdx, CLR_GRAY, { ch: '#', color: CLR_GRAY, dec: false });
     }
     case DOOR:
         /* C: symbols.c init_rogue_symbols — open/closed doors are '+' on rogue. */
@@ -460,17 +564,37 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
             return { ch: '~', color: CLR_GRAY, dec: false };
         }
         if (loc.doormask & D_ISOPEN) {
+            const openIdx = loc.horizontal ? S_hodoor : S_vodoor;
+            const openSym = cmapSymGlyphFromShowsymsLikeC(openIdx, false);
+            if (openSym) return { ...openSym, color: CLR_BROWN };
             return loc.horizontal
                 ? { ch: '-', color: CLR_BROWN, dec: false }
                 : { ch: '|', color: CLR_BROWN, dec: false };
         }
-        if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
-        return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
-    case STAIRS:
-        // Check upstair vs downstair
-        if (game.level?.upstair?.x === x && game.level?.upstair?.y === y)
-            return { ch: '<', color: CLR_YELLOW, dec: false };
-        return { ch: '>', color: CLR_YELLOW, dec: false };
+        if (loc.doormask & (D_CLOSED | D_LOCKED)) {
+            const closedIdx = loc.horizontal ? S_hcdoor : S_vcdoor;
+            const closedSym = cmapSymGlyphFromShowsymsLikeC(closedIdx, false);
+            if (closedSym) return { ...closedSym, color: CLR_BROWN };
+            return { ch: '+', color: CLR_BROWN, dec: false };
+        }
+        return cmapSymGlyphFromShowsymsLikeC(S_ndoor, false)
+            ?? { ch: '~', color: NO_COLOR, dec: true };
+    case STAIRS: {
+        const up = game.level?.upstair?.x === x && game.level?.upstair?.y === y;
+        const fb = up
+            ? { ch: '<', color: CLR_YELLOW, dec: false }
+            : { ch: '>', color: CLR_YELLOW, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(up ? S_upstair : S_dnstair, CLR_YELLOW, fb);
+    }
+    case LADDER: {
+        const down = ((loc.ladder | 0) & LA_DOWN) !== 0;
+        const fb = down
+            ? { ch: '>', color: CLR_YELLOW, dec: false }
+            : { ch: '<', color: CLR_YELLOW, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(down ? S_dnladder : S_upladder, CLR_YELLOW, fb);
+    }
     case HWALL:
     case VWALL:
     case TLCORNER:
@@ -486,31 +610,69 @@ export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
         return wallTerrainGlyphLikeC(loc, !!rogue);
     case SCORR:
         return { ch: '#', color: NO_COLOR, dec: false };
-    case IRONBARS:
-        return { ch: '#', color: CLR_GRAY, dec: false };
-    case TREE:
-        return { ch: '#', color: CLR_GREEN, dec: false };
+    case IRONBARS: {
+        const fb = { ch: '#', color: CLR_GRAY, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(S_bars, CLR_GRAY, fb);
+    }
+    case TREE: {
+        const fb = { ch: '#', color: CLR_GREEN, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(S_tree, CLR_GREEN, fb);
+    }
     case POOL:
-    case MOAT:
-    case WATER:
-        return { ch: '~', color: CLR_BRIGHT_BLUE, dec: false };
-    case ICE:
-        return { ch: '.', color: CLR_CYAN, dec: false };
-    case FOUNTAIN:
-        /* C: defsym.h S_fountain — `{` + CLR_BRIGHT_BLUE (not `}` / pool glyph). */
-        return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
-    case SINK:
-        /* C: defsym.h S_sink — `{` + CLR_WHITE; MG_BW_SINK when color off. */
-        return { ch: '{', color: CLR_WHITE, dec: false };
-    case ALTAR:
-        return { ch: '_', color: CLR_BRIGHT_MAGENTA, dec: false };
-    case THRONE:
-        return { ch: '^', color: CLR_YELLOW, dec: false };
-    case GRAVE:
-        return { ch: '|', color: CLR_GRAY, dec: false };
+    case MOAT: {
+        const fb = { ch: '~', color: CLR_BRIGHT_BLUE, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_pool | 0]) return terrainFeatureFromCmapLikeC(S_pool, CLR_BLUE, fb);
+        return fb;
+    }
+    case WATER: {
+        const fb = { ch: '~', color: CLR_BRIGHT_BLUE, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_water | 0]) return terrainFeatureFromCmapLikeC(S_water, CLR_BRIGHT_BLUE, fb);
+        return fb;
+    }
+    case ICE: {
+        const fb = { ch: '.', color: CLR_CYAN, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_ice | 0]) return terrainFeatureFromCmapLikeC(S_ice, CLR_CYAN, fb);
+        return fb;
+    }
+    case FOUNTAIN: {
+        const fb = { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_fountain | 0]) return terrainFeatureFromCmapLikeC(S_fountain, CLR_BRIGHT_BLUE, fb);
+        return fb;
+    }
+    case SINK: {
+        const fb = { ch: '{', color: CLR_WHITE, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_sink | 0]) return terrainFeatureFromCmapLikeC(S_sink, CLR_WHITE, fb);
+        return fb;
+    }
+    case ALTAR: {
+        const fb = { ch: '_', color: CLR_BRIGHT_MAGENTA, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(S_altar, CLR_BRIGHT_MAGENTA, fb);
+    }
+    case THRONE: {
+        const fb = { ch: '^', color: CLR_YELLOW, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(S_throne, CLR_YELLOW, fb);
+    }
+    case GRAVE: {
+        const fb = { ch: '|', color: CLR_GRAY, dec: false };
+        if (rogue) return fb;
+        return terrainFromCmapLikeC(S_grave, CLR_GRAY, fb);
+    }
     case LAVAPOOL:
-    case LAVAWALL:
-        return { ch: '}', color: CLR_RED, dec: false };
+    case LAVAWALL: {
+        const fb = { ch: '}', color: CLR_RED, dec: false };
+        if (Is_rogue_level(game.u?.uz)) return fb;
+        if (gs.showsyms?.[S_lava | 0]) return terrainFeatureFromCmapLikeC(S_lava, CLR_RED, fb);
+        return fb;
+    }
     case LADDER:
         return { ch: '>', color: CLR_YELLOW, dec: false };
     default:        return { ch: '?', color: NO_COLOR, dec: false };
@@ -796,17 +958,138 @@ export function refreshWestApportNicheGlyphsAfterSearchLikeC() {
 }
 
 // ── docrt ──
-export async function docrt() {
+/** C: include/display.h `enum docrt_flags_bits` */
+export const docrtRecalc = 0;
+export const docrtRefresh = 1;
+export const docrtMapOnly = 2;
+export const docrtNocls = 4;
+
+/** C: display.c `show_glyph(x, y, lev->glyph)` during docrt memory pass (glyph id subset). */
+function showGlyphFromLevLikeC(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    if ((loc.glyph | 0) === GLYPH_INVISIBLE) {
+        show_glyph_cell(x, y, 'I', NO_COLOR, false);
+        return;
+    }
+    if (loc.remembered_glyph) {
+        show_glyph_cell(x, y, loc.remembered_glyph.ch,
+            loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
+        return;
+    }
+    if (loc.disp_ch && loc.disp_ch !== ' ') {
+        show_glyph_cell(x, y, loc.disp_ch, loc.disp_color ?? NO_COLOR, !!loc.disp_decgfx);
+    }
+}
+
+/**
+ * C: display.c `swallowed(first)` — docrt early-out; full stomach glyphs deferred.
+ * @param {boolean} first
+ */
+async function swallowedDocrtLikeC(first) {
+    if (first) await cls();
+    await redrawMapLikeC(false);
+}
+
+/**
+ * C: display.c `under_water(mode)` — docrt early-out when `Underwater` and not water level.
+ * @param {number} mode — C passes `1` from `docrt_flags`
+ */
+async function underWaterDocrtLikeC(mode) {
+    const u = game.u;
+    if (!u || Is_waterlevel(u.uz) || (u.uswallow | 0)) return;
+    if ((mode | 0) === 1) await cls();
+    await redrawMapLikeC(false);
+}
+
+/** C: display.c `redraw_map` — resend current map without full docrt recalc. */
+async function redrawMapLikeC(cursorOnU) {
+    if (!game.u?.ux || suppressMapOutputDisplay()) return;
     if (!game.level) return;
-    for (let y = 0; y < ROWNO; y++)
+    for (let y = 0; y < ROWNO; y++) {
         for (let x = 1; x < COLNO; x++) {
             const loc = game.level.at(x, y);
-            if (loc?.remembered_glyph) {
-                show_glyph_cell(x, y, loc.remembered_glyph.ch,
-                    loc.remembered_glyph.color, loc.remembered_glyph.decgfx);
-            }
+            if (!loc?.disp_ch || loc.disp_ch === ' ') continue;
+            show_glyph_cell(x, y, loc.disp_ch, loc.disp_color ?? NO_COLOR, !!loc.disp_decgfx);
         }
+    }
     if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+    await flush_screen(cursorOnU ? 1 : 0);
+}
+
+/**
+ * C: display.c `docrt_flags` — full recalc needs `lev->glyph` replay (after `read_sym_file`);
+ * until then `docrtRecalc` replays hero_memory without cls/vision shutdown.
+ * @param {number} refreshFlags
+ */
+export async function docrt_flags(refreshFlags) {
+    if (!game.u?.ux) return;
+    const ps = game.program_state || (game.program_state = {});
+    if (ps.in_docrt) return;
+    ps.in_docrt = true;
+    try {
+        const maponly = (refreshFlags & docrtMapOnly) !== 0;
+        const redrawonly = (refreshFlags & docrtRefresh) !== 0;
+        const nocls = (refreshFlags & docrtNocls) !== 0;
+
+        if (redrawonly) {
+            await redrawMapLikeC(false);
+            if (!maponly) {
+                game.disp = game.disp || {};
+                game.disp.botlx = true;
+            }
+            return;
+        }
+
+        const u = game.u;
+        if ((u.uswallow | 0) !== 0) {
+            await swallowedDocrtLikeC(true);
+            if (!maponly) {
+                game.disp = game.disp || {};
+                game.disp.botlx = true;
+            }
+            return;
+        }
+        if ((u.Underwater | 0) !== 0 && !Is_waterlevel(u.uz)) {
+            await underWaterDocrtLikeC(1);
+            if (!maponly) {
+                game.disp = game.disp || {};
+                game.disp.botlx = true;
+            }
+            return;
+        }
+
+        if (ps.newgame_docrt_recalc) {
+            ps.newgame_docrt_recalc = false;
+            vision_recalc(2);
+            if (!nocls) await cls();
+            if (game.level) {
+                for (let y = 0; y < ROWNO; y++) {
+                    for (let x = 1; x < COLNO; x++) showGlyphFromLevLikeC(x, y);
+                }
+            }
+            if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+            vision_recalc(0);
+            seeMonsters();
+        } else if (game.level) {
+            for (let y = 0; y < ROWNO; y++) {
+                for (let x = 1; x < COLNO; x++) showGlyphFromLevLikeC(x, y);
+            }
+            if (game.u?.ux > 0) show_glyph_cell(game.u.ux, game.u.uy, '@', CLR_WHITE, false);
+        }
+
+        if (!maponly) {
+            game.disp = game.disp || {};
+            game.disp.botlx = true;
+        }
+    } finally {
+        ps.in_docrt = false;
+    }
+}
+
+/** C: display.c `docrt` → `docrt_flags(docrtRecalc)`. */
+export async function docrt() {
+    await docrt_flags(docrtRecalc);
 }
 
 /** C: allmain.c newgame — after vision_recalc, paint IN_SIGHT map for welcome snapshot. */
@@ -1017,7 +1300,7 @@ function _buildScreenOutput() {
     if (game._tutorialMenuActive) {
         if (display.grid) {
             display.clearScreen();
-            const msg = formatPendingMessageLineLikeC();
+            const msg = messageLine0ForJudgeGridLikeC();
             for (let c = 0; c < Math.min(msg.length, display.cols); c++)
                 display.setCell(c, 0, msg[c], NO_COLOR, 0);
             for (let y = 0; y < ROWNO; y++) {
@@ -1050,7 +1333,7 @@ function _buildScreenOutput() {
         game._pending_message = '';
         /* C: invent.c display_pickinv — map stays visible left of pick-inv column. */
         display.clearScreen();
-        const msgInv = formatPendingMessageLineLikeC();
+        const msgInv = messageLine0ForJudgeGridLikeC();
         for (let c = 0; c < Math.min(msgInv.length, display.cols); c++)
             display.setCell(c, 0, msgInv[c], NO_COLOR, 0);
         for (let y = 0; y < ROWNO; y++) {
@@ -1094,7 +1377,7 @@ function _buildScreenOutput() {
     if (display.grid) {
         display.clearScreen();
         // Message line
-        const msg = formatPendingMessageLineLikeC();
+        const msg = messageLine0ForJudgeGridLikeC();
         for (let c = 0; c < Math.min(msg.length, display.cols); c++)
             display.setCell(c, 0, msg[c], NO_COLOR, 0);
         // Map — judge grid matches C recorder bytes (no DEC → Unicode conversion)
@@ -1118,7 +1401,10 @@ function _buildScreenOutput() {
             || g._showDefmoreOnTopline
             || /\?\s*(\[[^\]]*\])?\s*$/.test(msg)
             || msg.includes('Press a key to continue');
-        if (g._showDefmoreOnTopline || g._toplineNeedMore || (msg.length > 0 && queryTopl)) {
+        if (touristWelcomeMoreSnapLikeC() && g.u?.ux > 0) {
+            display.setCursor(g.u.ux - 1, g.u.uy + 1);
+            display.cursorVisible = true;
+        } else if (g._showDefmoreOnTopline || g._toplineNeedMore || (msg.length > 0 && queryTopl)) {
             syncTtyCursorForJudgeLikeC(display);
         } else if (g.u?.ux > 0) {
             display.setCursor(g.u.ux - 1, g.u.uy + 1);

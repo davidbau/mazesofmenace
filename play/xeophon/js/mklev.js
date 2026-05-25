@@ -170,6 +170,7 @@ const MAGIC_MARKER = 10084;
 const MAGIC_HARP = 10169;
 const CRYSTAL_BALL = 10088;
 const LUCKSTONE = 10127;
+const LOADSTONE = 10165;
 const LENSES = 10128;
 const CREDIT_CARD = 10129;
 const AMULET_OF_ESP = 10130;
@@ -3969,6 +3970,12 @@ function mksobj_init(otmp, otyp, artif) {
     // For general objects: varies
     // We just do blessorcurse for scrolls/potions
     if (otyp === SCROLL_CLASS || (otyp >= 270 && otyp < 300)) {
+        if (otyp === SCR_SCARE_MONSTER) {
+            otmp.cls = 'scroll';
+            otmp.glyph = '?';
+            otmp.scrollIndex = 3;
+            otmp.actualKind = 'scroll of scare monster';
+        }
         blessorcurse(otmp, 4);
     } else if (otyp === POTION_CLASS || (otyp >= 230 && otyp < 270)) {
         if (otyp !== POTION_CLASS) {
@@ -3979,6 +3986,15 @@ function mksobj_init(otmp, otyp, artif) {
         blessorcurse(otmp, 4);
     } else if (otyp === BOOK_OF_THE_DEAD || otyp === SPBOOK_no_NOVEL || (otyp >= SPE_HEALING && otyp < ARROW)) {
         blessorcurse(otmp, 17);
+    } else if (otyp === LOADSTONE) {
+        otmp.cls = 'gem';
+        otmp.glyph = '*';
+        otmp.kind = 'loadstone';
+        otmp.actualKind = 'loadstone';
+        otmp.gemDescription = 'gray stone';
+        otmp.cursed = true;
+        otmp.blessed = false;
+        otmp.owt = 500;
     } else if (otyp === WEAPON_CLASS) {
         const multigen = !!game._mkobj_weapon_multigen;
         const poisonable = !!game._mkobj_weapon_poisonable;
@@ -4449,7 +4465,8 @@ export function object_display(otmp) {
         };
         return { glyph: otmp.corpsenm?.glyph || statueGlyphs[otmp.corpsenm?.mlet] || '`', color: CLR_WHITE };
     }
-    if (otyp === GEM_CLASS || otyp === RUBY || otyp === ROCK || otyp === LUCKSTONE) return { glyph: '*', color: displayColor ?? NO_COLOR };
+    if (otyp === GEM_CLASS || otyp === RUBY || otyp === ROCK || otyp === LUCKSTONE || otyp === LOADSTONE)
+        return { glyph: '*', color: displayColor ?? NO_COLOR };
     return { glyph: '?', color: NO_COLOR };
 }
 
@@ -4530,6 +4547,11 @@ export function mkobj(oclass, artif) {
         otmp.actualKind = gem.name;
         otmp._display_color = gem.color === CLR_BLACK ? NO_COLOR : gem.color;
         otmp.isRock = !!gem.isRock;
+        if (gem.name === 'loadstone') {
+            otmp.cursed = true;
+            otmp.blessed = false;
+            otmp.owt = 500;
+        }
         return otmp;
     }
     if (oclass === ROCK_CLASS) {

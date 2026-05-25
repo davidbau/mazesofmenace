@@ -3,7 +3,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, clearPendingMessageAndToplineLikeC, docrt } from './display.js';
+import {
+    flush_screen, clearPendingMessageAndToplineLikeC, docrt, docrt_flags, docrtRefresh,
+} from './display.js';
 import { findAc } from './u_init_find_ac.js';
 import { NO_COLOR } from './terminal.js';
 
@@ -91,7 +93,7 @@ export async function askDoTutorialMenuTTYLikeC(disp) {
             /* C: find_ac then flush_screen → bot() when disp.botl. */
             findAc(g);
             await flush_screen(1);
-            await docrt();
+            await docrt_flags(docrtRefresh);
             return true;
         }
         if (k === 110 || k === 78) break;
@@ -101,6 +103,6 @@ export async function askDoTutorialMenuTTYLikeC(disp) {
     clearPendingMessageAndToplineLikeC();
     findAc(g);
     await flush_screen(1);
-    await docrt();
+    await docrt_flags(docrtRefresh);
     return false;
 }

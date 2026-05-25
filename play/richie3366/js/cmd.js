@@ -9,7 +9,8 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC,
+    newsym, flush_screen, pline, docrt_flags, docrtRefresh,
+    clearPendingMessageAndToplineLikeC,
 } from './display.js';
 import { vision_recalc } from './vision.js';
 import { dosearch, dosearchCmdSafetyPreventionLikeC } from './search.js';
@@ -77,7 +78,7 @@ export async function rhack(key) {
         game._inventoryMode = false;
         delete game._invSelCat;
         clearPendingMessageAndToplineLikeC();
-        await docrt();
+        await docrt_flags(docrtRefresh);
         await flush_screen(1);
         game.context.move = 0;
         return;
@@ -88,12 +89,12 @@ export async function rhack(key) {
         if (game._inventoryMode) {
             game._inventoryMode = false;
             clearPendingMessageAndToplineLikeC();
-            await docrt();
+            await docrt_flags(docrtRefresh);
             await flush_screen(1);
         } else if (game._overlayScreen) {
             game._overlayScreen = null;
             clearPendingMessageAndToplineLikeC();
-            await docrt();
+            await docrt_flags(docrtRefresh);
             await flush_screen(1);
         } else {
             clearPendingMessageAndToplineLikeC();
@@ -122,7 +123,7 @@ export async function rhack(key) {
     if (ch === ' ' && game._overlayScreen === 'attr2') {
         game._overlayScreen = null;
         clearPendingMessageAndToplineLikeC();
-        await docrt();
+        await docrt_flags(docrtRefresh);
         await flush_screen(1);
         game.context.move = 0;
         return;

@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import {
-    docrt, docrtPaintVisibleForWelcomeLikeC, cls, bot, flush_screen, pline, newsym,
+    docrt, docrt_flags, docrtRecalc, docrtNocls, docrtPaintVisibleForWelcomeLikeC, cls, bot, flush_screen, pline, newsym,
     clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
 } from './display.js';
 import {
@@ -204,7 +204,8 @@ export async function newgame() {
     g.plname = g.plname || 'Contestant';
 
     await cls();
-    await docrt();
+    g.program_state.newgame_docrt_recalc = true;
+    await docrt_flags(docrtRecalc | docrtNocls);
     await flush_screen(1);
     await bot();
     /* C: com_pager — first botl lines stay at AC:0 until welcome refresh after find_ac. */

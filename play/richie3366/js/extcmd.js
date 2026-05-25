@@ -15,7 +15,9 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { readDirIntoU } from './dir_input.js';
-import { flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC } from './display.js';
+import {
+    flush_screen, pline, docrt_flags, docrtRefresh, clearPendingMessageAndToplineLikeC,
+} from './display.js';
 import { versionPlineText } from './nethack_version.js';
 import { enhanceWeaponSkillOneStep } from './u_init_skills.js';
 import { ZT_SPELL, ZT_COLD, ZT_WAND } from './zap_over_floor.js';
@@ -60,7 +62,7 @@ export async function runExtcmdFromHashPrefix() {
     if (game._overlayScreen || game._inventoryMode) {
         game._overlayScreen = null;
         game._inventoryMode = false;
-        await docrt();
+        await docrt_flags(docrtRefresh);
     }
     game._pending_message = '#';
     await flush_screen(1);

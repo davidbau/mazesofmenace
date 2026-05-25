@@ -2643,6 +2643,21 @@ export function set_symhandling(handling, which_set) {
   }
 }
 
+/** C: options.c optfn_symset + symbols.c read_sym_file `Handling:` (minimal without dat/symbols parse). */
+const SYMSSET_HANDLING_BY_NAME = {
+  DECgraphics: 'DEC',
+  IBMgraphics: 'IBM',
+  curses: 'DEC',
+};
+
+/** C: optfn_symset(do_set) → read_sym_file(PRIMARYSET) → set_symhandling from symset block. */
+export function applyPrimarySymsetFromRcLikeC(name) {
+  if (!name) return;
+  gs.symset[PRIMARYSET].name = name;
+  const handling = SYMSSET_HANDLING_BY_NAME[name];
+  if (handling) set_symhandling(handling, PRIMARYSET);
+}
+
 // free_symsets, savedsym_free, savedsym_add, savedsym_strbuf, parsesymbols
 // — moved to drawing.js (depend on symbols.js / hacklib.js)
 // AUTO-IMPORT-BEGIN: CONST_WEAPON_SKILLS
