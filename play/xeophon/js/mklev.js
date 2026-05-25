@@ -4683,6 +4683,9 @@ function uncurse(otmp) { if (otmp) otmp.cursed = false; }
 function delete_contents(otmp) { if (otmp) otmp.contents = []; }
 function weight(otmp) { return otmp?.owt || 1; }
 function sameStackableObject(existing, otmp) {
+    if (existing.nomerge || otmp.nomerge) return false;
+    if (!!existing.unpaid !== !!otmp.unpaid || !!existing.no_charge !== !!otmp.no_charge) return false;
+    if (existing.unpaid || otmp.unpaid) return false;
     const sameCorpse = otmp.otyp !== CORPSE && otmp.otyp !== EGG && otmp.otyp !== TIN
         || existing.corpsenm?.name === otmp.corpsenm?.name;
     return existing.otyp === otmp.otyp
