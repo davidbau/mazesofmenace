@@ -7,7 +7,7 @@ import {
     IS_DOOR, IS_WALL, IS_POOL, Is_rogue_level, Is_waterlevel, isok, LANDMINE, LAVAPOOL,
     LAVAWALL, MAGIC_PORTAL, MOAT, POOL, ROOM, ROWNO, SDOOR, STONE, TDWALL,
     TLCORNER, TLWALL, TRCORNER, TRWALL, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TUWALL,
-    VIBRATING_SQUARE, VWALL, WATER, ROT_AGE,
+    VIBRATING_SQUARE, VWALL, WATER, ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
 } from './const.js';
 import { rn1, rn2, rnd, rnz } from './rng.js';
 import { newsym } from './display.js';
@@ -164,7 +164,7 @@ function isCorpseObject(obj) {
     return obj?.otyp === CORPSE || obj?.otyp === 'corpse';
 }
 
-function corpseName(obj) {
+export function corpseName(obj) {
     const named = obj?.corpsenm?.name || obj?.corpsenm || obj?.corpseName;
     if (named) return String(named).toLowerCase();
     return String(obj?.actualKind || obj?.kind || '').toLowerCase().replace(/\s+corpse$/, '');
@@ -180,17 +180,76 @@ function corpseUsesRevivePath(obj) {
     return !!(obj?.corpsenm?.rider || obj?.riderCorpse || name.includes('troll'));
 }
 
-function restartCorpseRotTimeout(obj) {
+export function riderRevivalDelay(obj, retry = false) {
+    const name = corpseName(obj);
+    const minTurn = retry ? 3 : name === 'death' ? 6 : 12;
+    let when = minTurn;
+    for (; when < 67; when++)
+        if (!rn2(3)) break;
+    return when;
+}
+
+export function zombieFormNameForCorpse(obj) {
+    const name = typeof obj === 'string' ? obj.toLowerCase() : corpseName(obj);
+    if (!name || /\bzombie$/.test(name) || name === 'ghoul' || name === 'skeleton') return '';
+    if (name === 'kobold') return 'kobold zombie';
+    if (name === 'gnome') return 'gnome zombie';
+    if (name === 'orc') return 'orc zombie';
+    if (name === 'dwarf') return 'dwarf zombie';
+    if (name === 'elf' || /\belf$/.test(name)) return 'elf zombie';
+    if (name === 'ettin') return 'ettin zombie';
+    if (name === 'giant' || /\bgiant$/.test(name)) return 'giant zombie';
+    if (name === 'human' || name.includes('kop')) return 'human zombie';
+    return '';
+}
+
+export function clearCorpseTimeout(obj) {
     delete obj.rotAwayTurn;
     delete obj.reviveTurn;
-    if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
-    if (corpseUsesRevivePath(obj)) return;
+    delete obj.zombifyTurn;
+}
+
+function corpseRotDelay(obj) {
     const moves = Math.max(game.moves || 0, 1);
     const rotAdjust = game.in_mklev ? 25 : 10;
     const age = moves - (obj.age ?? moves);
     let timeout = age > ROT_AGE ? rotAdjust : ROT_AGE - age;
     timeout += rnz(rotAdjust) - rotAdjust;
-    obj.rotAwayTurn = moves + Math.max(1, timeout);
+    return Math.max(1, timeout);
+}
+
+export function startCorpseTimeout(obj, { zombify = obj?.zombifying } = {}) {
+    clearCorpseTimeout(obj);
+    if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
+    const moves = Math.max(game.moves || 0, 1);
+    let action = 'rot';
+    let delay = corpseRotDelay(obj);
+
+    if (obj?.corpsenm?.rider || RIDER_CORPSE_NAMES.has(corpseName(obj))) {
+        action = 'revive';
+        delay = riderRevivalDelay(obj, false);
+    } else if (corpseUsesRevivePath(obj)) {
+        for (let age = 2; age <= TAINT_AGE; age++) {
+            if (!rn2(TROLL_REVIVE_CHANCE)) {
+                action = 'revive';
+                delay = age;
+                break;
+            }
+        }
+    } else if (zombify && zombieFormNameForCorpse(obj) && !obj.norevive) {
+        action = 'zombify';
+        delay = rn1(15, 5);
+    }
+
+    if (action === 'revive') obj.reviveTurn = moves + Math.max(1, delay);
+    else if (action === 'zombify') obj.zombifyTurn = moves + Math.max(1, delay);
+    else obj.rotAwayTurn = moves + Math.max(1, delay);
+}
+
+function restartCorpseRotTimeout(obj) {
+    clearCorpseTimeout(obj);
+    if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
+    obj.rotAwayTurn = Math.max(game.moves || 0, 1) + corpseRotDelay(obj);
 }
 
 export function freezeObjectInIcebox(obj) {
@@ -201,8 +260,7 @@ export function freezeObjectInIcebox(obj) {
     if (!isCorpseObject(obj)) return;
     const moves = Math.max(game.moves || 0, 1);
     obj.age = Math.max(0, moves - (obj.age ?? moves));
-    delete obj.rotAwayTurn;
-    delete obj.reviveTurn;
+    clearCorpseTimeout(obj);
     setCorpseOnIce(obj, false);
 }
 
@@ -217,7 +275,7 @@ export function removedFromIcebox(obj) {
         const name = corpseName(obj);
         if (name) obj.norevive = name !== 'ice troll';
         setCorpseOnIce(obj, false);
-        restartCorpseRotTimeout(obj);
+        startCorpseTimeout(obj);
     }
     if (isGlobbyObject(obj)) startGlobShrinkTimeout(obj);
     obj.fromIceBox = false;

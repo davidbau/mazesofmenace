@@ -23,7 +23,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
-import { clearBuriedOrganicRotTimer, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded } from './ice.js';
+import { clearBuriedOrganicRotTimer, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -47,7 +47,7 @@ import {
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    ROT_AGE, TAINT_AGE,
+    TAINT_AGE,
     In_endgame, In_mines, In_quest, Is_airlevel, Is_firelevel,
 } from './const.js';
 
@@ -3945,10 +3945,7 @@ export function mksobj(otyp, init, artif) {
             : otmp.corpsenm.male ? CORPSTAT_MALE
             : rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
         otmp.age = game.moves || 1;
-        if (otmp.corpsenm.name !== 'lichen' && otmp.corpsenm.name !== 'lizard') {
-            const rotAdjust = game.in_mklev ? 25 : 10;
-            otmp.rotAwayTurn = (game.moves || 1) + ROT_AGE + rnz(rotAdjust) - rotAdjust;
-        }
+        startCorpseTimeout(otmp);
     } else if (otyp === STATUE) {
         if (!otmp.corpsenm) otmp.corpsenm = rndmonnum();
         otmp.spe = otmp.corpsenm.neuter ? CORPSTAT_NEUTER
@@ -4706,15 +4703,19 @@ export function add_to_container(container, otmp) {
         if (globsCanMeld(existing, otmp)) {
             absorbGlobObject(existing, otmp);
             existing.contained = true;
+            existing.container = container;
             return existing;
         }
         if (globTypeForObject(existing) || globTypeForObject(otmp)) continue;
         if (!sameStackableObject(existing, otmp)) continue;
         existing.quan = (existing.quan || 1) + (otmp.quan || 1);
+        existing.contained = true;
+        existing.container = container;
         return existing;
     }
     container.contents.unshift(otmp);
     otmp.contained = true;
+    otmp.container = container;
     return otmp;
 }
 export function add_to_minv(mon, otmp) {
@@ -4794,12 +4795,9 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
             && (newName === 'lichen' || newName === 'lizard'
                 || otmp.corpsenm.glyph === 'T' || newName.includes('troll') || otmp.corpsenm.rider);
         if (objtyp === CORPSE) {
-            if (newName === 'lichen' || newName === 'lizard') {
-                delete otmp.rotAwayTurn;
-            } else if (oldSpecial || newSpecial) {
-                const rotAdjust = game.in_mklev ? 25 : 10;
-                otmp.rotAwayTurn = (game.moves || 1) + ROT_AGE + rnz(rotAdjust) - rotAdjust;
-                otmp._corpse_restart_consumed = true;
+            if (newName === 'lichen' || newName === 'lizard' || oldSpecial || newSpecial || otmp.zombifying) {
+                startCorpseTimeout(otmp);
+                if (newName !== 'lichen' && newName !== 'lizard') otmp._corpse_restart_consumed = true;
             }
         }
     }
@@ -7362,10 +7360,7 @@ function make_grave(x, y, text) {
 }
 
 function restart_corpse_timeout(otmp) {
-    const name = otmp.corpsenm?.name;
-    if (name === 'lichen' || name === 'lizard') return;
-    const rotAdjust = game.in_mklev ? 25 : 10;
-    otmp.rotAwayTurn = (game.moves || 1) + ROT_AGE + rnz(rotAdjust) - rotAdjust;
+    startCorpseTimeout(otmp);
 }
 
 function get_rnd_toptenentry() {
