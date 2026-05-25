@@ -2,7 +2,8 @@
 // C ref: display.c — newsym, feel_newsym, feel_location, show_glyph, docrt, cls, flush_screen.
 
 import { game } from './gstate.js';
-import { cansee, setSeenvTowardHero } from './vision.js';
+import { cansee, couldsee, setSeenvTowardHero } from './vision.js';
+import { westApportSleeperNicheAtLikeC } from './mfndpos_mon.js';
 import { floorObjKey } from './floorobj.js';
 import { isPoolCellLikeC } from './fillholetyp.js';
 import { monsymCharLikeC } from './makemon_rndmonst.js';
@@ -15,7 +16,7 @@ import {
 } from './nh5_objclass.js';
 import { wallAngleCmapLikeC } from './wall_angle.js';
 import {
-    COLNO, ROWNO, isok, STONE, ROOM, CORR, DOOR, STAIRS, LADDER,
+    COLNO, ROWNO, isok, TEMP_LIT, IN_SIGHT, STONE, ROOM, CORR, DOOR, STAIRS, LADDER,
     HWALL, VWALL, SDOOR, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL, decgraphics,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
@@ -79,6 +80,22 @@ export function clearPendingMessageAndToplineLikeC() {
 
 /** C: tty pick-invent / menu column for `#inventory` overlay (`seed0077` uses **28**). */
 export const TTY_PICKINV_COL = 28;
+
+/** C: invent.c display_pickinv — left map cols always; south-west defer band keeps IN_SIGHT cols. */
+function shouldPaintInventoryMapCellLikeC(x, y, loc) {
+    if (!loc?.disp_ch || loc.disp_ch === ' ') return false;
+    if (x <= TTY_PICKINV_COL) return true;
+    const doorY = game._southWestDeferDoorY | 0;
+    const doorX = game._southWestDeferDoorX | 0;
+    if (!doorY || !doorX || y <= doorY + 1) return false;
+    const maxRow = doorY + 8;
+    if (y > maxRow + 1) return false;
+    if (x > doorX + 1) return false;
+    if (!(game.viz_array?.[y]?.[x] & IN_SIGHT)) return false;
+    const ch = loc.disp_ch;
+    if (ch === '~' || ch === '+') return true;
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
 
 /** C: topl.c — row-0 text at nhgetch snapshot. */
 export function formatPendingMessageLineLikeC() {
@@ -247,6 +264,23 @@ function monAtCellLikeC(x, y) {
     return monsters.find((m) => (m.mx | 0) === xi && (m.my | 0) === yi) ?? null;
 }
 
+/** C: west apport sleeper at (door.x−1, door.y+1) — tty paints mon on door cell east. */
+function westApportDoorCellForSleeperLikeC(x, y) {
+    if (!westApportSleeperNicheAtLikeC(game, x | 0, y | 0)) return null;
+    return { x: (x | 0) + 1, y: (y | 0) - 1 };
+}
+
+/** C: vision.c lit/TEMP_LIT + display.c newsym — apport sleeper before IN_SIGHT. */
+function apportSleeperSeenViaTempLitLikeC(x, y) {
+    const mon = monAtCellLikeC(x, y);
+    if (!mon || !(mon.mgenmklev | 0) || !westApportSleeperNicheAtLikeC(game, x, y)) {
+        return false;
+    }
+    const v = game.viz_array?.[y]?.[x] | 0;
+    const loc = game.level?.at(x, y);
+    return couldsee(x, y) && !!(loc?.lit || (v & TEMP_LIT));
+}
+
 /** C: display.h **`mon_visible`** subset for **`newsym`** (worm tails omitted). */
 function monVisibleForNewsymLikeC(mtmp) {
     const u = game.u;
@@ -254,10 +288,24 @@ function monVisibleForNewsymLikeC(mtmp) {
     if (u.usteed === mtmp) return true;
     if ((mtmp.mundetected | 0) !== 0) return false;
     if ((mtmp.minvis | 0) && !(u.See_invisible | 0)) return false;
-    return cansee(mtmp.mx | 0, mtmp.my | 0);
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    /* C: door-open + light.c TEMP_LIT — apport sleeper before IN_SIGHT is committed. */
+    if ((mtmp.mgenmklev | 0) && westApportSleeperNicheAtLikeC(game, mx, my)) {
+        const v = game.viz_array?.[my]?.[mx] | 0;
+        const loc = game.level?.at(mx, my);
+        if (couldsee(mx, my) && (loc?.lit || (v & TEMP_LIT))) return true;
+    }
+    return cansee(mx, my);
 }
 
 function mapMonsterGlyphLikeC(mtmp) {
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    if ((mtmp.mgenmklev | 0) && westApportSleeperNicheAtLikeC(game, mx, my)) {
+        /* C tty: rogue fungus uses DEC `a` (shade block) + CLR_BROWN on door cell. */
+        return { ch: 'a', color: CLR_BROWN, dec: true };
+    }
     const mlet = MONS_MLET[mtmp.mnum | 0] ?? 0;
     const ch = monsymCharLikeC(mlet);
     return { ch: ch || '?', color: CLR_WHITE, dec: false };
@@ -293,7 +341,8 @@ function cmapIdxToTerrainGlyph(cmapIdx, rogueIbm) {
     const idx = cmapIdx | 0;
     if (idx === 0) return { ch: ' ', color: NO_COLOR, dec: false };
     const decCh = decgraphics[idx - 1];
-    if (decCh) return { ch: decCh, color: NO_COLOR, dec: !rogueIbm };
+    /* C tty recorder on rogue D:1 still emits DEC line-drawing (SO/SI) for wall cmap. */
+    if (decCh) return { ch: decCh, color: NO_COLOR, dec: true };
     return { ch: '?', color: NO_COLOR, dec: false };
 }
 
@@ -315,7 +364,7 @@ function blankTutorialMenuTailOnDisplay(disp) {
 
 // ── Terrain to display character + color + DEC flag ──
 // C ref: display.c back_to_glyph / map_glyphinfo (simplified).
-export function mapTerrainGlyph(loc, x, y) {
+export function mapTerrainGlyph(loc, x, y, skipApportMon = false) {
     const typ = loc.typ;
     const rogue = Is_rogue_level(game.u?.uz);
     switch (typ) {
@@ -326,7 +375,13 @@ export function mapTerrainGlyph(loc, x, y) {
         if (rogue) return { ch: '~', color: CLR_GRAY, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // DEC middle dot
     }
-    case CORR:
+    case CORR: {
+        if (!skipApportMon) {
+            const sleeper = monAtCellLikeC(x, y);
+            if (sleeper && (sleeper.mgenmklev | 0) && westApportSleeperNicheAtLikeC(game, x, y)) {
+                return mapMonsterGlyphLikeC(sleeper);
+            }
+        }
         /* C: west-door row shows `q` on corridor cells that share wall `seenv` (typ may stay CORR). */
         if (loc.seenv) {
             const cmap = wallAngleCmapLikeC({
@@ -338,10 +393,20 @@ export function mapTerrainGlyph(loc, x, y) {
             if (cmap) return cmapIdxToTerrainGlyph(cmap, !!rogue);
         }
         return { ch: '#', color: NO_COLOR, dec: false };
+    }
     case DOOR:
-        if (loc.doormask & D_ISOPEN) return { ch: '|', color: CLR_BROWN, dec: false };
+        /* C: symbols.c init_rogue_symbols — open/closed doors are '+' on rogue. */
+        if (rogue) {
+            if (loc.doormask & D_ISOPEN) return { ch: '+', color: CLR_BROWN, dec: false };
+            if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
+            return { ch: '~', color: CLR_GRAY, dec: false };
+        }
+        if (loc.doormask & D_ISOPEN) {
+            return loc.horizontal
+                ? { ch: '-', color: CLR_BROWN, dec: false }
+                : { ch: '|', color: CLR_BROWN, dec: false };
+        }
         if (loc.doormask & (D_CLOSED | D_LOCKED)) return { ch: '+', color: CLR_BROWN, dec: false };
-        if (rogue) return { ch: '~', color: CLR_GRAY, dec: false };
         return { ch: '~', color: NO_COLOR, dec: true };  // D_NODOOR = floor
     case STAIRS:
         // Check upstair vs downstair
@@ -492,7 +557,24 @@ export function newsym(x, y) {
         return;
     }
 
-    if (cansee(x, y)) {
+    const door = game.level?.at(x, y);
+    if (door && (door.typ | 0) === DOOR) {
+        const wx = (x | 0) - 1;
+        const wy = (y | 0) + 1;
+        const sleeper = monAtCellLikeC(wx, wy);
+        if (
+            sleeper
+            && (sleeper.mgenmklev | 0)
+            && westApportSleeperNicheAtLikeC(game, wx, wy)
+            && (cansee(wx, wy) || apportSleeperSeenViaTempLitLikeC(wx, wy))
+            && monVisibleForNewsymLikeC(sleeper)
+        ) {
+            paintCellGlyph(x, y, loc, mapMonsterGlyphLikeC(sleeper), true);
+            return;
+        }
+    }
+
+    if (cansee(x, y) || apportSleeperSeenViaTempLitLikeC(x, y)) {
         const mon = monAtCellLikeC(x, y);
         if (mon && monVisibleForNewsymLikeC(mon)) {
             if (
@@ -500,6 +582,20 @@ export function newsym(x, y) {
                 && westApportAlcoveCornerGlyphLikeC(x, y, loc)
             ) {
                 mapLocationLikeC(x, y, true);
+                return;
+            }
+            const doorCell = westApportDoorCellForSleeperLikeC(x, y);
+            if ((mon.mgenmklev | 0) && doorCell) {
+                loc.remembered_glyph = null;
+                /* C tty: fungus on door cell; niche CORR stays blank on screen. */
+                show_glyph_cell(x, y, ' ', NO_COLOR, false);
+                const doorLoc = game.level?.at(doorCell.x, doorCell.y);
+                if (doorLoc) {
+                    paintCellGlyph(
+                        doorCell.x, doorCell.y, doorLoc,
+                        mapMonsterGlyphLikeC(mon), true,
+                    );
+                }
                 return;
             }
             mapLocationLikeC(x, y, false);
@@ -799,8 +895,19 @@ function _buildScreenOutput() {
     if (game._inventoryMode) {
         const cat = game._invSelCat || 'Weapons';
         game._pending_message = '';
-        /* C: invent.c display_pickinv — NHW_MENU clears map rows; inventory at TTY_PICKINV_COL. */
+        /* C: invent.c display_pickinv — map stays visible left of pick-inv column. */
         display.clearScreen();
+        const msgInv = formatPendingMessageLineLikeC();
+        for (let c = 0; c < Math.min(msgInv.length, display.cols); c++)
+            display.setCell(c, 0, msgInv[c], NO_COLOR, 0);
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 1; x < COLNO; x++) {
+                const loc = game.level?.at(x, y);
+                if (!shouldPaintInventoryMapCellLikeC(x, y, loc)) continue;
+                display.setCell(x - 1, y + 1, mapDispChForJudgeGridLikeC(loc),
+                    loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+            }
+        }
         display.putstr(TTY_PICKINV_COL, 0, cat, NO_COLOR, ATR_INVERSE);
         paintInventoryOverlayLikeC(display);
         const s1 = statusLine1ForPaintLikeC();

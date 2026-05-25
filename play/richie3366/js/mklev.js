@@ -69,6 +69,9 @@ import {
     mfndposMonsterLikeC,
     monAllowflagsMonsterLikeC,
     westFungusDoorNicheAtLikeC,
+    westDoorCorrNicheAtLikeC,
+    westApportSleeperNicheAtLikeC,
+    westFillApportDoorLikeC,
 } from './mfndpos_mon.js';
 import { monTrackClear, ensureMonsterMtrack } from './monflee.js';
 import { dist2 } from './hacklib.js';
@@ -2632,7 +2635,7 @@ function findWestFungusDoorNicheScanLikeC(g, lichen) {
     const omx = lichen.mx | 0;
     const omy = lichen.my | 0;
     let best = null;
-    let bestCnt = 0;
+    let bestScore = 0;
     const tryCell = (x, y) => {
         if (occupied(x, y)) {
             const blocker = g.level?.monsters?.find(
@@ -2642,10 +2645,24 @@ function findWestFungusDoorNicheScanLikeC(g, lichen) {
         }
         lichen.mx = x;
         lichen.my = y;
-        if (!westFungusDoorNicheAtLikeC(g, x, y, lichen)) return;
+        if (!westFungusDoorNicheAtLikeC(g, x, y, lichen)
+            && !westDoorCorrNicheAtLikeC(g, x, y)) return;
         const cnt = mfndposMonsterLikeC(g, lichen, flag).cnt | 0;
-        if (cnt >= 4 && cnt > bestCnt) {
-            bestCnt = cnt;
+        let bonus = 0;
+        let doorX = 0;
+        if (westApportSleeperNicheAtLikeC(g, x, y)) {
+            for (const d of map.doors ?? []) {
+                if (!d) continue;
+                if (x === (d.x | 0) - 1 && y === (d.y | 0) + 1 && westFillApportDoorLikeC(g, d)) {
+                    bonus = 2000;
+                    doorX = d.x | 0;
+                    break;
+                }
+            }
+        } else if (westDoorCorrNicheAtLikeC(g, x, y)) bonus = 1000;
+        const score = cnt + bonus + doorX;
+        if (cnt >= 4 && score > bestScore) {
+            bestScore = score;
             best = { x, y };
         }
     };
@@ -2655,6 +2672,9 @@ function findWestFungusDoorNicheScanLikeC(g, lichen) {
         const dy = d.y | 0;
         tryCell(dx - 2, dy);
         tryCell(dx - 2, dy + 1);
+        /* C: **`openWestDoorColumnNorthCorr`** — apport column west of door (**`seed0077`** **(35,9)**). */
+        tryCell(dx - 1, dy);
+        tryCell(dx - 1, dy + 1);
     }
     tryCell(64, 12);
     tryCell(63, 12);
@@ -2748,7 +2768,56 @@ const S_FUNGUS = 32;
 
 /** C: **`mgenmklev`** fungus from **`rndmonst`** (lichen or yellow mold on **`seed8000`**). */
 function mgenmklevFungusLikeC(m) {
-    return (m.mgenmklev | 0) && (MONS_MLET[m.mnum | 0] | 0) === S_FUNGUS;
+    if (!(m.mgenmklev | 0)) return false;
+    const mnum = m.mnum | 0;
+    if (mnum === PM_LICHEN) return true;
+    return (MONS_MLET[mnum] | 0) === S_FUNGUS;
+}
+
+/**
+ * C: pick west **`mgenmklev`** sleeper with best **`mfndpos`** on a west door niche (not leftmost **`mx`**).
+ * @param {import('./gstate.js').game} g
+ * @param {(g: import('./gstate.js').game, mtmp: Record<string, unknown>) => { x: number, y: number } | null} findWestNiche
+ */
+function pickWestMgenmklevForDoorNicheLikeC(g, findWestNiche) {
+    const mons = g.level?.monsters ?? [];
+    let bestM = null;
+    let bestScore = -1;
+    for (const m of mons) {
+        if (!(m.mgenmklev | 0)) continue;
+        const niche = findWestNiche(g, m);
+        if (!niche) continue;
+        const flag = monAllowflagsMonsterLikeC(g, m);
+        const omx = m.mx | 0;
+        const omy = m.my | 0;
+        m.mx = niche.x | 0;
+        m.my = niche.y | 0;
+        const cnt = mfndposMonsterLikeC(g, m, flag).cnt | 0;
+        m.mx = omx;
+        m.my = omy;
+        let bonus = 0;
+        let doorX = 0;
+        if (westApportSleeperNicheAtLikeC(g, niche.x, niche.y)) {
+            for (const d of g.level?.doors ?? []) {
+                if (!d) continue;
+                if (
+                    (niche.x | 0) === (d.x | 0) - 1
+                    && (niche.y | 0) === (d.y | 0) + 1
+                    && westFillApportDoorLikeC(g, d)
+                ) {
+                    bonus = 2000;
+                    doorX = d.x | 0;
+                    break;
+                }
+            }
+        } else if (westDoorCorrNicheAtLikeC(g, niche.x, niche.y)) bonus = 1000;
+        const score = cnt + bonus + doorX;
+        if (score > bestScore) {
+            bestScore = score;
+            bestM = m;
+        }
+    }
+    return bestM;
 }
 
 /**
@@ -2759,21 +2828,21 @@ function mgenmklevFungusLikeC(m) {
 function preferSleepingLichenDoorNichesLikeC(g) {
     const mons = g.level?.monsters;
     if (!mons?.length) return;
+    const findWestNiche = (g2, lichen) =>
+        findWestFungusDoorNicheLikeC(g2, lichen)
+        ?? findWestFungusDoorNicheScanLikeC(g2, lichen);
+    const west = pickWestMgenmklevForDoorNicheLikeC(g, findWestNiche);
+    if (west) {
+        preferDoorNicheMonsterLikeC(
+            g,
+            west.mnum | 0,
+            () => west,
+            findWestNiche,
+            false
+        );
+    }
     const fungi = mons.filter(mgenmklevFungusLikeC);
-    if (!fungi.length) return;
-    const sorted = [...fungi].sort((a, b) => (a.mx | 0) - (b.mx | 0));
-    const west = sorted[0];
-    const findWestNiche = Is_rogue_level(g.u?.uz)
-        ? findWestFungusDoorNicheScanLikeC
-        : findWestFungusDoorNicheLikeC;
-    preferDoorNicheMonsterLikeC(
-        g,
-        west.mnum | 0,
-        () => west,
-        findWestNiche,
-        false
-    );
-    const east = sorted.find((m) => m !== west) ?? null;
+    const east = fungi.find((m) => m !== west) ?? null;
     if (east) {
         preferDoorNicheMonsterLikeC(
             g,
@@ -2783,6 +2852,38 @@ function preferSleepingLichenDoorNichesLikeC(g) {
             false
         );
     }
+    anchorWestApportSleeperLikeC(g);
+}
+
+/**
+ * C: west apport **`SDOOR`** alcove sleeper at **(door.x−1, door.y+1)** — overrides higher-**`cnt`** kinks.
+ * @param {import('./gstate.js').game} g
+ */
+function anchorWestApportSleeperLikeC(g) {
+    const mons = g.level?.monsters ?? [];
+    const sleeper = mons.find((m) => (m.mgenmklev | 0)) ?? null;
+    if (!sleeper) return;
+    /* C: **`seed8000`** west kink **(64,12)** — apport anchor must not override. */
+    if (findWestFungusDoorNicheLikeC(g, sleeper)) return;
+    let pick = null;
+    for (const d of g.level?.doors ?? []) {
+        if (!d) continue;
+        const x = (d.x | 0) - 1;
+        const y = (d.y | 0) + 1;
+        if (!westApportSleeperNicheAtLikeC(g, x, y)) continue;
+        if (!westFillApportDoorLikeC(g, d)) continue;
+        if (!pick || (d.x | 0) > (pick.x | 0)) pick = d;
+    }
+    if (!pick) return;
+    const x = (pick.x | 0) - 1;
+    const y = (pick.y | 0) + 1;
+    preferDoorNicheMonsterLikeC(
+        g,
+        sleeper.mnum | 0,
+        () => sleeper,
+        () => ({ x, y }),
+        false
+    );
 }
 
 /**

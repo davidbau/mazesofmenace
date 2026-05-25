@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack } from './cmd.js';
 import {
-    docrt, cls, bot, flush_screen, pline,
+    docrt, cls, bot, flush_screen, pline, newsym,
     clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
 } from './display.js';
 import {
@@ -294,6 +294,15 @@ export async function moveloop_core() {
     if (g.vision_full_recalc) {
         vision_recalc(0);
         g.vision_full_recalc = 0;
+    }
+    const apx = g._doorOpenApportNewsymX | 0;
+    const apy = g._doorOpenApportNewsymY | 0;
+    if (apx > 0 && apy >= 0) {
+        newsym(apx, apy);
+        g._doorOpenApportNewsymX = 0;
+        g._doorOpenApportNewsymY = 0;
+        /* C: tty refresh after door-open niche newsym — grid must match disp_ch before next capture. */
+        await flush_screen(1);
     }
 
     if (shouldClearMoveloopToplineLikeC(g)) clearPendingMessageAndToplineLikeC();

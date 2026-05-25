@@ -34,6 +34,8 @@ import {
     CORR,
     SCORR,
     ROOM,
+    SDOOR,
+    FOUNTAIN,
     STONE,
     VWALL,
     LAVAWALL,
@@ -177,6 +179,45 @@ export function stoneCorrDoorTailWalkableLikeC(g, nx, ny, ntyp) {
  */
 export function westFungusDoorNicheAtLikeC(g, mx, my, mtmp) {
     return stoneCorrAdjacentRowNicheLikeC(g, mx | 0, (my | 0) - 1, STONE, mtmp);
+}
+
+/** C: west-door apport column **`CORR`** on **(door.x−1, ·)** after **`openWestDoorColumnNorthCorr`**. */
+export function westDoorCorrNicheAtLikeC(g, mx, my) {
+    const loc = g.level?.at(mx | 0, my | 0);
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+    if (typ !== CORR && typ !== SCORR) return false;
+    const x = mx | 0;
+    const y = my | 0;
+    for (const dy of [0, -1, 1]) {
+        const east = g.level?.at(x + 1, y + dy);
+        if (east && IS_DOOR(east.typ | 0)) return true;
+    }
+    return false;
+}
+
+/** C: west fill apport — **`SDOOR`/`ROOM`** north of west-door column (**`seed0077`**). */
+export function westFillApportDoorLikeC(g, d) {
+    if (!d) return false;
+    const alcove = g.level?.at((d.x | 0) - 1, (d.y | 0) - 1);
+    if (!alcove) return false;
+    const t = alcove.typ | 0;
+    return t === SDOOR || t === ROOM || t === FOUNTAIN;
+}
+
+/** C: west apport sleeper — **`CORR`** at **(door.x−1, door.y+1)** beside the west door. */
+export function westApportSleeperNicheAtLikeC(g, mx, my) {
+    if (!westDoorCorrNicheAtLikeC(g, mx, my)) return false;
+    const x = mx | 0;
+    const y = my | 0;
+    for (const d of g.level?.doors ?? []) {
+        if (!d) continue;
+        if (x === (d.x | 0) - 1 && y === (d.y | 0) + 1
+            && westFillApportDoorLikeC(g, d)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**

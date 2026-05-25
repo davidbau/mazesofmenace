@@ -28,6 +28,7 @@ import {
     monAllowflagsMonsterLikeC,
     movemonStep8DistantMonEligibleLikeC,
     westFungusDoorNicheAtLikeC,
+    westApportSleeperNicheAtLikeC,
 } from './mfndpos_mon.js';
 import {
     clearRogueColonMovemonActiveLikeC,
@@ -337,6 +338,7 @@ export async function movemon(stepNum) {
             const my = m.my | 0;
             if (
                 !westFungusDoorNicheAtLikeC(g, mx, my, m)
+                && !westApportSleeperNicheAtLikeC(g, mx, my)
                 && !eastFungusDoorNicheAtLikeC(g, mx, my, m)
             ) continue;
             if ((m.movement | 0) < NORMAL_SPEED) m.movement = NORMAL_SPEED;

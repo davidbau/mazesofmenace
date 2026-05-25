@@ -58,6 +58,7 @@ import {
     isLandEelForMovemonLikeC,
     movemonStep8DistantMonEligibleLikeC,
     westFungusDoorNicheAtLikeC,
+    westApportSleeperNicheAtLikeC,
     eastFungusDoorNicheAtLikeC,
     mfndposMonsterLikeC,
     monAllowflagsMonsterLikeC,
@@ -761,6 +762,7 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
             (mtmp.mgenmklev | 0)
             && (
                 westFungusDoorNicheAtLikeC(g, mx, my, mtmp)
+                || westApportSleeperNicheAtLikeC(g, mx, my)
                 || eastFungusDoorNicheAtLikeC(g, mx, my, mtmp)
             );
         if (!doorNicheSleeper) return;
@@ -1156,6 +1158,7 @@ export async function mMoveDistfleeckMmoveTurnLikeC(g, mtmp, stepNum = 0, skipFl
             const my = mtmp.my | 0;
             if (
                 westFungusDoorNicheAtLikeC(g, mx, my, mtmp)
+                || westApportSleeperNicheAtLikeC(g, mx, my)
                 || eastFungusDoorNicheAtLikeC(g, mx, my, mtmp)
             ) {
                 const mfpJ = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
@@ -1343,6 +1346,7 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
             !(mtmp.mgenmklev | 0)
             || !(
                 westFungusDoorNicheAtLikeC(g, mx, my, mtmp)
+                || westApportSleeperNicheAtLikeC(g, mx, my)
                 || eastFungusDoorNicheAtLikeC(g, mx, my, mtmp)
             )
         ) return;

@@ -123,8 +123,8 @@ function isWishingWand(item) {
         || actualKind === 'wand of wishing';
 }
 
-function wandCharges(item) {
-    return item?.spe ?? item?.charges ?? 0;
+function wandCharges(item, fallback = 0) {
+    return item?.spe ?? item?.charges ?? fallback;
 }
 
 function setWandCharges(item, charges) {
@@ -147,8 +147,8 @@ function setKnownWandLine(item, wand) {
     refreshWandLine(item);
 }
 
-function zappableWand(item) {
-    const charges = wandCharges(item);
+function zappableWand(item, { fallbackCharges = 0 } = {}) {
+    const charges = wandCharges(item, fallbackCharges);
     if (charges < 0) return { zapped: false, dust: true };
     if (charges === 0) {
         if (rn2(WAND_WREST_CHANCE)) return { zapped: false };
@@ -157,6 +157,133 @@ function zappableWand(item) {
     }
     setWandCharges(item, charges - 1);
     return { zapped: true };
+}
+
+function spendZapWandCharge(item, messages) {
+    const charges = wandCharges(item, 8);
+    checkUnpaidUsage(item, messages, { chargeCount: charges });
+    return zappableWand(item, { fallbackCharges: 8 });
+}
+
+function spendChargedToolUse(item, messages) {
+    const charges = chargedUsageChargeCount(item);
+    if (charges <= 0) return false;
+    checkUnpaidUsage(item, messages, { chargeCount: charges });
+    item.spe = Math.max(0, charges - 1);
+    if ('charges' in item) item.charges = item.spe;
+    updateChargedItemLine(item);
+    return true;
+}
+
+function heroHasSlipperyFingers() {
+    return !!(game.u?._glibTimeout || game.u?.glib || (game.u?._statusSuffix || '').includes('Slippery'));
+}
+
+function heroIsFumbling() {
+    return !!(game.u?.fumbling || game.u?._fumblingTimeout || (game.u?._statusSuffix || '').includes('Fumbling')
+        || (game.inventory || []).some(item => isWornArmorItem(item)
+            && String(item.kind || item.actualKind || '').toLowerCase() === 'fumble boots'));
+}
+
+function fingersOrGloves() {
+    return wornGlovesItem() ? 'gloves' : 'fingers';
+}
+
+function wornRingItem(item) {
+    return !!item && (item.cls === 'ring' || item.glyph === '=' || item.otyp === RING_CLASS)
+        && (item.worn || /\(on (?:left|right) hand\)/.test(String(item.line || '')));
+}
+
+function wornArmorInSlot(slot) {
+    return (game.inventory || []).find(item => isWornArmorItem(item) && armorSlot(item) === slot) || null;
+}
+
+function greaseInaccessibleBlockers(item) {
+    if (!item) return [];
+    if (isWornArmorItem(item)) {
+        const slot = armorSlot(item);
+        if (slot === 'body') {
+            const cloak = wornArmorInSlot('cloak');
+            return cloak && cloak !== item ? [cloak] : [];
+        }
+        if (slot === 'shirt') {
+            return [wornArmorInSlot('cloak'), wornArmorInSlot('body')]
+                .filter(blocker => blocker && blocker !== item);
+        }
+    }
+    if (wornRingItem(item)) {
+        const gloves = wornGlovesItem();
+        return gloves ? [gloves] : [];
+    }
+    return [];
+}
+
+function ownedEquipmentName(item) {
+    return `your ${inventoryItemName(item).replace(/^(?:an?|the) /i, '')}`;
+}
+
+function ownedEquipmentListName(items) {
+    const names = items.map(item => inventoryItemName(item).replace(/^(?:an?|the) /i, ''));
+    return `your ${names.join(' and ')}`;
+}
+
+function canGreaseObject(item) {
+    return !!item && item.cls !== 'coin' && item.letter !== '$'
+        && !greaseInaccessibleBlockers(item).length;
+}
+
+function canSelectGreaseObject(item) {
+    return !!item && item.cls !== 'coin' && item.letter !== '$';
+}
+
+function greaseTargetPrompt() {
+    const letters = inventoryLetters(canGreaseObject);
+    const display = letters ? `- ${getobjPromptLetters(letters)}` : '-';
+    return `What do you want to grease? [${display} or ?*]`;
+}
+
+function greaseInaccessibleMessage(item) {
+    const blockers = greaseInaccessibleBlockers(item);
+    if (!blockers.length) return '';
+    return `You need to take off ${ownedEquipmentListName(blockers)} to grease ${ownedEquipmentName(item)}.`;
+}
+
+function addHeroGlibTimeout(duration) {
+    if (!game.u) return;
+    game.u._glibTimeout = (game.u._glibTimeout || 0) + duration;
+}
+
+function dropCarriedObjectAtHero(item, messages = []) {
+    const dropped = {
+        ...item,
+        letter: undefined,
+        line: undefined,
+        wielded: false,
+        worn: false,
+        quivered: false,
+        ox: game.u?.ux || 0,
+        oy: game.u?.uy || 0,
+        glyph: item.glyph || (item.cls === 'weapon' ? ')' : item.cls === 'armor' ? '[' : item.cls === 'wand' ? '/'
+            : item.cls === 'ring' ? '=' : item.cls === 'potion' ? '!' : item.cls === 'scroll' ? '?'
+                : item.cls === 'spellbook' ? '+' : '('),
+        color: item.color ?? (item.cls === 'scroll' || item.cls === 'spellbook' ? CLR_WHITE : NO_COLOR),
+    };
+    if (Array.isArray(dropped.contents)) dropped.contents = [...dropped.contents];
+    if (Array.isArray(dropped.cobj)) dropped.cobj = [...dropped.cobj];
+    normalizeContainedObjectParents(dropped);
+    removeInventoryItem(item, item.quan || 1);
+    const placed = placeObjectOnFloorWithEffects(dropped, dropped.ox, dropped.oy, messages, 'drop');
+    if (placed && !sellobjReturnUnpaidToShop(dropped, dropped.ox, dropped.oy)) {
+        const shopSale = beginDroppedPaidObjectSale(dropped, dropped.ox, dropped.oy);
+        if (shopSale?.message) messages.push(shopSale.message);
+    }
+    return dropped;
+}
+
+function wandZapSpendMessages(usageMessages, chargeUse) {
+    const messages = [...usageMessages];
+    if (chargeUse?.wrested) messages.push('You wrest one last charge from the worn-out wand.');
+    return messages;
 }
 
 function dustWand(item) {
@@ -7569,6 +7696,14 @@ function removeFloorObject(obj) {
     game.level.objects = (game.level?.objects || []).filter(item => item !== obj);
 }
 
+function floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy = false) {
+    if (!usedUpShopBillOnDestroy) return removeObject;
+    return obj => {
+        markObjectShopBillUsedUp(obj);
+        removeObject(obj);
+    };
+}
+
 function liquidFlowContainerContents(obj) {
     const contents = Array.isArray(obj?.contents) ? obj.contents : [];
     const cobj = Array.isArray(obj?.cobj) ? obj.cobj : [];
@@ -7745,7 +7880,9 @@ function erodeFloorObject(obj, messages, visible, {
     return false;
 }
 
-function waterDamageContainerContents(container, messages, visible, acidContext) {
+function waterDamageContainerContents(container, messages, visible, acidContext, {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     const contents = [...liquidFlowContainerContents(container)];
     const waterproof = isLiquidFlowWaterproofContainer(container);
     if (waterproof) {
@@ -7756,6 +7893,7 @@ function waterDamageContainerContents(container, messages, visible, acidContext)
     for (const content of contents) {
         damaged = waterDamageFloorItem(content, messages, visible, acidContext, {
             removeObject: item => removeContainedObject(container, item),
+            usedUpShopBillOnDestroy,
         }) || damaged;
     }
     return damaged;
@@ -7763,7 +7901,9 @@ function waterDamageContainerContents(container, messages, visible, acidContext)
 
 function waterDamageFloorItem(obj, messages, visible, acidContext, {
     removeObject = removeFloorObject,
+    usedUpShopBillOnDestroy = false,
 } = {}) {
+    const destroyObject = floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy);
     if (waterDamageFloorLitObject(obj, messages, visible)) return true;
 
     const kind = objectKindKey(obj);
@@ -7782,7 +7922,8 @@ function waterDamageFloorItem(obj, messages, visible, acidContext, {
         }
         return true;
     }
-    if (isLiquidFlowContainer(obj)) return waterDamageContainerContents(obj, messages, visible, acidContext);
+    if (isLiquidFlowContainer(obj))
+        return waterDamageContainerContents(obj, messages, visible, acidContext, { usedUpShopBillOnDestroy });
     if (((game.u?.uluck || 0) + (game.u?.moreluck || 0) + 5) > rn2(20)) return false;
 
     const cls = rustTrapItemClass(obj);
@@ -7800,14 +7941,14 @@ function waterDamageFloorItem(obj, messages, visible, acidContext, {
         blankFloorSpellbook(obj);
         return true;
     }
-    if (cls === 'potion') return waterDamageFloorPotion(obj, messages, acidContext, removeObject);
+    if (cls === 'potion') return waterDamageFloorPotion(obj, messages, acidContext, destroyObject);
 
     return erodeFloorObject(obj, messages, visible, {
         profileWord: 'rusty',
         field: 'oeroded',
         action: 'rust',
         cause: 'oxidation',
-        removeObject,
+        removeObject: destroyObject,
     });
 }
 
@@ -7864,17 +8005,21 @@ function fireDamageFloorPotion(obj, messages, visible, removeObject = removeFloo
 }
 
 function fireDamageFloorItem(obj, messages, visible, options = {}) {
-    const { removeObject = removeFloorObject, spillQueue = [], processSpill = null, x, y } = options;
+    const {
+        removeObject = removeFloorObject, spillQueue = [], processSpill = null,
+        usedUpShopBillOnDestroy = false, x, y,
+    } = options;
+    const destroyObject = floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy);
     if (maybeIgniteFloorFireItem(obj, messages, visible)) return false;
     if (isLiquidFlowContainer(obj))
         return fireDamageFloorContainer(obj, messages, visible, {
-            removeObject, spillQueue, processSpill, x, y,
+            removeObject: destroyObject, spillQueue, processSpill, x, y,
         });
 
     const cls = fireDestroyableInventoryClass(obj);
     if (cls === 'scroll' || cls === 'spellbook')
-        return fireDamageFloorScrollOrBook(obj, messages, visible, cls, removeObject);
-    if (cls === 'potion') return fireDamageFloorPotion(obj, messages, visible, removeObject);
+        return fireDamageFloorScrollOrBook(obj, messages, visible, cls, destroyObject);
+    if (cls === 'potion') return fireDamageFloorPotion(obj, messages, visible, destroyObject);
 
     return erodeFloorObject(obj, messages, visible, {
         profileWord: 'burnt',
@@ -7882,7 +8027,7 @@ function fireDamageFloorItem(obj, messages, visible, options = {}) {
         action: 'smoulder',
         cause: 'heat',
         destroyAtMax: true,
-        removeObject,
+        removeObject: destroyObject,
     });
 }
 
@@ -7944,24 +8089,28 @@ function lavaDamageFloorEffectItem(obj, messages, visible, {
     removeObject = removeFloorObject,
     spillQueue = [],
     processSpill = null,
+    usedUpShopBillOnDestroy = false,
     x,
     y,
 } = {}) {
+    const destroyObject = floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy);
     if (lavaObjectProtectedByObjResists(obj)) return false;
     const cls = fireDestroyableInventoryClass(obj);
     if (!lavaDirectFireExemptObject(obj, cls) && lavaDirectBurnMaterialObject(obj)) {
         if (visible) messages.push(`You see ${floorObjectArticleName(obj)} hit lava and burn up!`);
-        removeObject(obj);
+        destroyObject(obj);
         return true;
     }
     return fireDamageFloorItem(obj, messages, visible, {
-        removeObject, spillQueue, processSpill, x, y,
+        removeObject, spillQueue, processSpill, usedUpShopBillOnDestroy, x, y,
     });
 }
 
 function hotGroundPotionFloorEffect(obj, x, y, messages, visible, {
     removeObject = removeFloorObject,
+    usedUpShopBillOnDestroy = false,
 } = {}) {
+    const destroyObject = floorEffectRemoveObject(removeObject, usedUpShopBillOnDestroy);
     const loc = game.level?.at?.(x, y);
     if (!loc || !(loc.typ === ROOM || loc.typ === CORR)) return false;
     if ((game.level?.flags?.temperature || 0) <= 0) return false;
@@ -7977,24 +8126,28 @@ function hotGroundPotionFloorEffect(obj, x, y, messages, visible, {
     if (rn2(100) < ((obj?.artifact || obj?.oartifact) ? 100 : survival)) return false;
     if (visible) messages.push(plural ? 'They shatter from the heat!' : 'It shatters from the heat!');
     else if (!heroIsDeaf()) messages.push('You hear a shattering noise.');
-    removeObject(obj);
+    destroyObject(obj);
     return true;
 }
 
-function liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, spillQueue, processSpill = null) {
+function liquidFlowFloorEffectsItem(obj, x, y, messages, visible, acidContext, spillQueue, processSpill = null, {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
     if (obj?.otyp === BOULDER) {
-        if (earthFloorEffects(obj, x, y, messages, '')) {
+        if (earthFloorEffects(obj, x, y, messages, '', { usedUpShopBillOnDestroy })) {
             removeFloorObject(obj);
             return true;
         }
     }
     if (loc.typ === LAVAPOOL || loc.typ === LAVAWALL)
-        return lavaDamageFloorEffectItem(obj, messages, visible, { spillQueue, processSpill, x, y });
+        return lavaDamageFloorEffectItem(obj, messages, visible, {
+            spillQueue, processSpill, usedUpShopBillOnDestroy, x, y,
+        });
     if (IS_POOL(loc.typ))
-        return waterDamageFloorItem(obj, messages, visible, acidContext);
-    if (hotGroundPotionFloorEffect(obj, x, y, messages, visible)) return true;
+        return waterDamageFloorItem(obj, messages, visible, acidContext, { usedUpShopBillOnDestroy });
+    if (hotGroundPotionFloorEffect(obj, x, y, messages, visible, { usedUpShopBillOnDestroy })) return true;
     return false;
 }
 
@@ -9308,11 +9461,33 @@ function takePretouchedFoodId(item) {
     return id;
 }
 
+function costlyBiteFood(item, { floorObject = false } = {}) {
+    if (!item || item.oeaten > 0) return false;
+    if (floorObject) {
+        const x = item.ox ?? game.u?.ux;
+        const y = item.oy ?? game.u?.uy;
+        const shkp = shopkeeperForCostlySpot(x, y);
+        if (!shopkeeperInHisShop(shkp)) return false;
+        const entry = shopBillEntryForObject(shkp, item);
+        const price = entry ? shopBillEntryTotal(entry) : shopItemPrice(item, x, y);
+        if (!(price > 0)) return false;
+        if (!entry && !addObjectToShopBill(shkp, item, price, { useup: true })) return false;
+        const billed = markObjectShopBillUsedUp(item, shkp);
+        if (billed) item.no_charge = true;
+        return billed;
+    }
+    if (!item.unpaid && !shopkeeperOwningBillEntry(item).entry) return false;
+    return markObjectShopBillUsedUp(item);
+}
+
 function touchInventoryFood(item) {
     if (!item) return item;
+    const firstBite = !(item.oeaten > 0);
     if ((item.quan || 1) <= 1) {
         clearPretouchedFood(item);
+        if (firstBite) costlyBiteFood(item);
         ensureFoodOeaten(item);
+        refreshInventoryObjectLine(item);
         return item;
     }
     const id = takePretouchedFoodId(item) ?? next_ident();
@@ -9320,7 +9495,11 @@ function touchInventoryFood(item) {
     clearPretouchedFood(split);
     delete split.oeaten;
     item.quan--;
+    if (item.unpaid && !splitCarriedObjectShopBill(item, split, 1))
+        clearObjectShopBillState(split);
     refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+    if (firstBite) costlyBiteFood(split);
     ensureFoodOeaten(split);
     refreshInventoryObjectLine(split);
     game.inventory.push(split);
@@ -9329,16 +9508,20 @@ function touchInventoryFood(item) {
 
 function touchFloorFood(item) {
     if (!item) return item;
+    const firstBite = !(item.oeaten > 0);
     if ((item.quan || 1) > 1) {
         const rest = { ...item, id: takePretouchedFoodId(item) ?? next_ident(), quan: (item.quan || 1) - 1 };
         clearPretouchedFood(rest);
         delete rest.oeaten;
         item.quan = 1;
+        if (item.unpaid && !splitCarriedObjectShopBill(item, rest, rest.quan || 1))
+            clearObjectShopBillState(rest);
         game.level.objects ??= [];
         game.level.objects.push(rest);
     } else {
         clearPretouchedFood(item);
     }
+    if (firstBite) costlyBiteFood(item, { floorObject: true });
     ensureFoodOeaten(item);
     newsym(item.ox, item.oy);
     return item;
@@ -10399,6 +10582,61 @@ function consumeTinObject(tin, floorObject = false) {
     game._tin_opening_occupation = null;
 }
 
+function splitTinForCostlyAlteration(tin, floorObject = false) {
+    if (!tin || (tin.quan || 1) <= 1) return tin;
+    const split = { ...tin, id: next_ident(), quan: 1, line: '' };
+    tin.quan = (tin.quan || 1) - 1;
+    if (floorObject) {
+        delete split.letter;
+        delete split.line;
+        game.level.objects ??= [];
+        game.level.objects.push(split);
+        newsym(split.ox, split.oy);
+    } else {
+        split.letter = nextInventoryLetter();
+        if (tin.unpaid && !splitCarriedObjectShopBill(tin, split, 1))
+            clearObjectShopBillState(split);
+        refreshInventoryObjectLine(tin);
+        if (tin.unpaid) syncUnpaidBillLine(tin);
+        refreshInventoryObjectLine(split);
+        game.inventory.push(split);
+    }
+    return split;
+}
+
+function costlyTinAlteration(tin, { floorObject = false, alterType = 'open' } = {}) {
+    if (!tin) return tin;
+    const shouldBill = floorObject
+        ? (() => {
+            if (tin.no_charge) return false;
+            const x = tin.ox ?? game.u?.ux;
+            const y = tin.oy ?? game.u?.uy;
+            const itemShkp = shopkeeperForCostlySpot(x, y);
+            const heroShkp = shopkeeperForCostlySpot(game.u?.ux, game.u?.uy);
+            return !!itemShkp && sameShopkeeper(itemShkp, heroShkp) && shopkeeperInHisShop(itemShkp);
+        })()
+        : !!tin.unpaid;
+    if (!shouldBill) return tin;
+
+    const chargedTin = splitTinForCostlyAlteration(tin, floorObject);
+    if (floorObject) {
+        const x = chargedTin.ox ?? game.u?.ux;
+        const y = chargedTin.oy ?? game.u?.uy;
+        const shkp = shopkeeperForCostlySpot(x, y);
+        const entry = shopBillEntryForObject(shkp, chargedTin);
+        const price = entry ? shopBillEntryTotal(entry) : shopItemPrice(chargedTin, x, y);
+        if (price > 0 && (entry || addObjectToShopBill(shkp, chargedTin, price, { useup: true }))) {
+            markObjectShopBillUsedUp(chargedTin, shkp);
+            chargedTin.no_charge = true;
+        }
+        return chargedTin;
+    }
+
+    const { shkp } = shopkeeperOwningBillEntry(chargedTin);
+    markObjectShopBillUsedUp(chargedTin, shkp || heroShopkeeper());
+    return chargedTin;
+}
+
 function tinContentName(tin) {
     const monster = tin?.corpsenm;
     if (!monster?.name) return 'monster';
@@ -10439,6 +10677,7 @@ async function explodeTinTrap(tin, floorObject = false) {
         addHeroStatusSuffix('Stun');
     }
     exerciseAttribute(A_STR, false);
+    tin = costlyTinAlteration(tin, { floorObject, alterType: 'destroy' });
     consumeTinObject(tin, floorObject);
     await setMessage('KABOOM!!  The tin was booby-trapped!', true);
     game._command_mode = null;
@@ -10447,6 +10686,7 @@ async function explodeTinTrap(tin, floorObject = false) {
 
 async function finishTinContents(tin, floorObject = false, eat = true, knownVariety = null) {
     if (!eat) {
+        tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
         await setMessage('You discard the open tin.');
         game._command_mode = null;
@@ -10469,9 +10709,10 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
             game.u.acurr.a[A_STR] = after;
             if (game.u.amax?.a) game.u.amax.a[A_STR] = Math.max(game.u.amax.a[A_STR] || after, after);
         }
+        tin = costlyTinAlteration(tin, { floorObject });
+        consumeTinObject(tin, floorObject);
         const nutrition = tin.blessed ? 600 : !tin.cursed ? 400 + rnd(200) : 200 + rnd(400);
         addHeroNutrition(nutrition);
-        consumeTinObject(tin, floorObject);
         await setMessage(messages.join('  '), messages.length > 1);
         game._command_mode = null;
         game.context.move = 1;
@@ -10480,6 +10721,7 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
 
     if (!tin.corpsenm?.name || tin.emptyTin || objectKindKey(tin) === 'empty tin') {
         tin.known = true;
+        tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
         await setMessage("It turns out to be empty.");
         game._command_mode = null;
@@ -10493,20 +10735,22 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
     const sideEffect = applyTinMonsterSideEffects(tin);
     if (sideEffect) messages.push(sideEffect);
     tin.known = true;
+    let nutrition = null;
     if ((TIN_VARIETY_NUTRITION[r] || 0) < 0) {
         addHeroVomiting(rn1(15, 10));
     } else {
-        let nutrition = TIN_VARIETY_NUTRITION[r] || 0;
+        nutrition = TIN_VARIETY_NUTRITION[r] || 0;
         if (r === HOMEMADE_TIN)
             nutrition = Math.min(nutrition, CORPSE_NUTRITION.get(monsterName) || nutrition);
-        addHeroNutrition(nutrition);
     }
     if (TIN_GREASY_VARIETIES.has(r)) {
         const already = game.u?._glibTimeout || 0;
         if (game.u) game.u._glibTimeout = already + rn1(11, 5);
         messages.push(`Eating ${varietyText} food made your ${wornGlovesItem() ? 'gloves' : 'fingers'} ${already ? 'even more' : 'very'} slippery.`);
     }
+    tin = costlyTinAlteration(tin, { floorObject });
     consumeTinObject(tin, floorObject);
+    if (nutrition != null) addHeroNutrition(nutrition);
     await setMessage(messages.join('  '), messages.length > 1);
     game._command_mode = null;
     game.context.move = 1;
@@ -10521,6 +10765,8 @@ async function consumeOpenedTin(tin, floorObject = false, openMessage = 'You suc
     }
 
     if (!tin.corpsenm?.name && r !== SPINACH_TIN) {
+        tin.known = true;
+        tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
         await setMessage(`${openMessage}  It turns out to be empty.`, true);
         game._command_mode = null;
@@ -13894,6 +14140,15 @@ function markHeldMagicBagDeletedContentsUsedUp(obj, seen = new Set()) {
     }
 }
 
+function markObjectTreeShopBillsUsedUp(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return false;
+    seen.add(obj);
+    let marked = false;
+    for (const child of globContents(obj))
+        marked = markObjectTreeShopBillsUsedUp(child, seen) || marked;
+    return markObjectShopBillUsedUp(obj) || marked;
+}
+
 function billHeldMagicBagLostItem(obj) {
     const owner = shopkeeperOwningBillEntry(obj);
     if (obj?.unpaid || owner.entry) {
@@ -14087,9 +14342,12 @@ export const __shopBillingTestHooks = {
     splitShopBillEntry,
     subFromShopBill,
     subOneFromShopBill,
+    checkUnpaidUsageForTest: checkUnpaidUsage,
+    costlyTinForTest: costlyTinAlteration,
     tipContainerContents,
     tipContainerIntoContainer,
     tipContainerToFloor,
+    touchFoodForBiteTest: touchEatenFood,
     shopDroppedPaidObjectSaleInfo,
     shopBillEntryForObject,
     shopBillEntryQuantity,
@@ -14268,7 +14526,9 @@ function applyEarthBoulderPitOccupantEffects(trap, x, y, messages, verb = 'fall'
     return { skipPlugMessage: false };
 }
 
-function earthBoulderPitHoleEffects(obj, x, y, messages, verb = 'fall') {
+function earthBoulderPitHoleEffects(obj, x, y, messages, verb = 'fall', {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     if (obj?.otyp !== BOULDER) return false;
     const trap = earthBoulderPitTrapAt(x, y);
     if (!trap) return false;
@@ -14289,6 +14549,7 @@ function earthBoulderPitHoleEffects(obj, x, y, messages, verb = 'fall') {
     }
     messages.push(...buryObjectsAt(x, y, { ignore: obj }));
     if (buriedDebt) messages.push(buriedDebt);
+    if (usedUpShopBillOnDestroy) markObjectShopBillUsedUp(obj);
     newsym(x, y);
     return true;
 }
@@ -14317,16 +14578,21 @@ function maybeDroppedObjectPoolFeedback(obj, x, y, messages) {
     newsym(x, y);
 }
 
-function droppedObjectWaterFloorEffects(obj, x, y, messages) {
+function droppedObjectWaterFloorEffects(obj, x, y, messages, {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     let destroyed = false;
     maybeDroppedObjectPoolFeedback(obj, x, y, messages);
     waterDamageFloorItem(obj, messages, floorObjectVisible(x, y), { count: 0 }, {
         removeObject: () => { destroyed = true; },
+        usedUpShopBillOnDestroy,
     });
     return destroyed;
 }
 
-function droppedObjectLavaFloorEffects(obj, x, y, messages) {
+function droppedObjectLavaFloorEffects(obj, x, y, messages, {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     let destroyed = false;
     const visible = floorObjectVisible(x, y);
     const acidContext = { count: 0 };
@@ -14335,21 +14601,27 @@ function droppedObjectLavaFloorEffects(obj, x, y, messages) {
         if (processed.has(item)) return false;
         processed.add(item);
         if (!(game.level?.objects || []).includes(item)) return false;
-        return liquidFlowFloorEffectsItem(item, x, y, messages, visible, acidContext, [], processSpill);
+        return liquidFlowFloorEffectsItem(item, x, y, messages, visible, acidContext, [], processSpill, {
+            usedUpShopBillOnDestroy,
+        });
     };
     lavaDamageFloorEffectItem(obj, messages, visible, {
         removeObject: () => { destroyed = true; },
         processSpill,
+        usedUpShopBillOnDestroy,
         x,
         y,
     });
     return destroyed;
 }
 
-function droppedObjectHotGroundFloorEffects(obj, x, y, messages) {
+function droppedObjectHotGroundFloorEffects(obj, x, y, messages, {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     let destroyed = false;
     hotGroundPotionFloorEffect(obj, x, y, messages, floorObjectVisible(x, y), {
         removeObject: () => { destroyed = true; },
+        usedUpShopBillOnDestroy,
     });
     return destroyed;
 }
@@ -15151,7 +15423,9 @@ function droppedObjectAltarFloorEffects(obj, x, y, messages) {
     return true;
 }
 
-export function earthFloorEffects(obj, x, y, messages, verb = 'fall') {
+export function earthFloorEffects(obj, x, y, messages, verb = 'fall', {
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     const loc = game.level?.at(x, y);
     if (!loc || !obj) return false;
     if (obj?.otyp === BOULDER && earthBoulderHitsLiquid(loc)) {
@@ -15188,22 +15462,23 @@ export function earthFloorEffects(obj, x, y, messages, verb = 'fall') {
         } else if (!fillsUp && earthVisibleSquare(x, y)) {
             messages.push('It sinks without a trace!');
         }
+        if (usedUpShopBillOnDestroy) markObjectShopBillUsedUp(obj);
         newsym(x, y);
         return true;
     }
     if (obj?.otyp === BOULDER)
-        return earthBoulderPitHoleEffects(obj, x, y, messages, verb);
+        return earthBoulderPitHoleEffects(obj, x, y, messages, verb, { usedUpShopBillOnDestroy });
 
     const liquidType = earthFloorLiquidType(loc);
     if (liquidType === LAVAPOOL || liquidType === LAVAWALL)
-        return droppedObjectLavaFloorEffects(obj, x, y, messages);
+        return droppedObjectLavaFloorEffects(obj, x, y, messages, { usedUpShopBillOnDestroy });
     if (IS_POOL(liquidType))
-        return droppedObjectWaterFloorEffects(obj, x, y, messages);
+        return droppedObjectWaterFloorEffects(obj, x, y, messages, { usedUpShopBillOnDestroy });
     const pitHole = droppedObjectPitHoleFloorEffects(obj, x, y, messages);
     if (pitHole.handled) return pitHole.consumed;
     if (droppedObjectGlobMeldFloorEffects(obj, x, y, messages)) return true;
     if (droppedObjectAltarFloorEffects(obj, x, y, messages)) return false;
-    return droppedObjectHotGroundFloorEffects(obj, x, y, messages);
+    return droppedObjectHotGroundFloorEffects(obj, x, y, messages, { usedUpShopBillOnDestroy });
 }
 
 function dropMonsterInventory(mon, messages = null, { verb = 'fall' } = {}) {
@@ -18248,7 +18523,10 @@ function addContainerTakeoutObjectToInventory(container, obj) {
     return obj.line || `${letter} - ${pickupObjectPhrase(obj)}`;
 }
 
-function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', { stack = false } = {}) {
+function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', {
+    stack = false,
+    usedUpShopBillOnDestroy = false,
+} = {}) {
     obj.contained = false;
     obj.container = null;
     obj.ox = x;
@@ -18260,7 +18538,7 @@ function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', { sta
     delete obj.nobj;
     delete obj.nexthere;
     Object.assign(obj, object_display(obj));
-    if (!earthFloorEffects(obj, x, y, messages, verb)) {
+    if (!earthFloorEffects(obj, x, y, messages, verb, { usedUpShopBillOnDestroy })) {
         game.level.objects ??= [];
         const stacked = stack ? stackMonsterThrownObject(obj) : obj;
         if (stacked === obj) game.level.objects.push(obj);
@@ -18513,8 +18791,9 @@ function removeObjectFromWorld(obj) {
     game._pet_food_scan_inventory = game.inventory || [];
 }
 
-function destroyMagicBagItem(item, messages, { silent = false } = {}) {
+function destroyMagicBagItem(item, messages, { silent = false, usedUpShopBill = false } = {}) {
     if (!item) return;
+    if (usedUpShopBill) markObjectTreeShopBillsUsedUp(item);
     if (!silent) messages.push(magicBagItemGoneMessage(item));
     removeObjectFromWorld(item);
 }
@@ -18565,7 +18844,7 @@ function magicBagScatterBreaks(obj, sx, sy, messages) {
     const breakKind = impactDropBreakKind(obj);
     if (!breakKind && !forcedBreak) return false;
     if (floorObjectVisible(sx, sy)) magicBagScatterBreakMessage(obj, breakKind || 'shatter', messages);
-    destroyMagicBagItem(obj, messages, { silent: true });
+    destroyMagicBagItem(obj, messages, { silent: true, usedUpShopBill: true });
     return true;
 }
 
@@ -18573,13 +18852,18 @@ function splitMagicBagScatterStack(obj) {
     if ((obj?.quan || 1) <= 1) return obj;
     const splitCount = rnd(Math.min(obj.quan - 1, Number.MAX_SAFE_INTEGER));
     obj.quan -= splitCount;
-    return {
+    const splitObj = {
         ...obj,
         id: next_ident(),
         quan: splitCount,
         contents: Array.isArray(obj.contents) ? [...obj.contents] : obj.contents,
         cobj: Array.isArray(obj.cobj) ? [...obj.cobj] : obj.cobj,
     };
+    delete splitObj.o_id;
+    delete splitObj._shopBillObjectId;
+    if (obj.unpaid && !splitCarriedObjectShopBill(obj, splitObj, splitCount))
+        clearObjectShopBillState(splitObj);
+    return splitObj;
 }
 
 function magicBagScatterClosedDoor(x, y) {
@@ -18697,7 +18981,7 @@ function magicBagScatterHitMonster(mon, obj, x, y, messages) {
     }
 
     if (consumedOnHit) {
-        destroyMagicBagItem(obj, messages, { silent: true });
+        destroyMagicBagItem(obj, messages, { silent: true, usedUpShopBill: true });
         newsym(x, y);
         return { stopped: true, consumed: true };
     }
@@ -18724,7 +19008,7 @@ function magicBagScatterHitHero(obj, messages) {
     if (game.u.blind || game.flags?.verbose === false) messages.push(`You are hit${damage > 4 ? '!' : '.'}`);
     else messages.push(`You are hit by ${objectName}${damage > 4 ? '!' : '.'}`);
     if (magicBagScatterHitConsumesObject(obj)) {
-        destroyMagicBagItem(obj, messages, { silent: true });
+        destroyMagicBagItem(obj, messages, { silent: true, usedUpShopBill: true });
         return { hit: true, consumed: true };
     }
     if (damage > 0) {
@@ -18798,13 +19082,21 @@ function finishMagicBagScatterShopBilling(shopContext, messages) {
 }
 
 function scatterMagicBagObject(container, obj, sx, sy, messages, shopContext = null) {
-    const scatterObj = splitMagicBagScatterStack(obj);
-    if (scatterObj !== obj) {
-        scatterObj.container = null;
-        scatterObj.contained = false;
-    } else {
-        removeContainedObject(container, obj);
+    let remaining = obj;
+    while (remaining) {
+        const scatterObj = splitMagicBagScatterStack(remaining);
+        if (scatterObj !== remaining) {
+            scatterObj.container = null;
+            scatterObj.contained = false;
+        } else {
+            removeContainedObject(container, remaining);
+            remaining = null;
+        }
+        scatterOneMagicBagObject(scatterObj, sx, sy, messages, shopContext);
     }
+}
+
+function scatterOneMagicBagObject(scatterObj, sx, sy, messages, shopContext = null) {
     if (magicBagScatterBreaks(scatterObj, sx, sy, messages)) return;
 
     const dir = rn2(N_DIRS);
@@ -18836,7 +19128,10 @@ function scatterMagicBagObject(container, obj, sx, sy, messages, shopContext = n
             if (hit.hit) range -= 3;
         }
     }
-    if (placeObjectOnFloorWithEffects(scatterObj, x, y, messages, 'land', { stack: true }))
+    if (placeObjectOnFloorWithEffects(scatterObj, x, y, messages, 'land', {
+        stack: true,
+        usedUpShopBillOnDestroy: true,
+    }))
         maybeBillMagicBagScatterGold(scatterObj, sx, sy, x, y, shopContext);
 }
 
@@ -18880,9 +19175,9 @@ function damageHeroWithMagicBagExplosion(messages) {
 function explodeMagicBagTransfer(targetBag, triggerObj, messages, { tumble = false } = {}) {
     messages.push(magicBagExplosionMessage(triggerObj, tumble));
     if (isBagOfHoldingObject(triggerObj)) scatterMagicBagContents(triggerObj, messages);
-    destroyMagicBagItem(triggerObj, messages, { silent: true });
+    destroyMagicBagItem(triggerObj, messages, { silent: true, usedUpShopBill: true });
     scatterMagicBagContents(targetBag, messages);
-    destroyMagicBagItem(targetBag, messages, { silent: true });
+    destroyMagicBagItem(targetBag, messages, { silent: true, usedUpShopBill: true });
     damageHeroWithMagicBagExplosion(messages);
     return { bagGone: true, moved: true, message: '', messages };
 }
@@ -18898,17 +19193,53 @@ function chargedToolUsageBasePrice(obj) {
     return shopItemPrice(obj, game.u?.ux, game.u?.uy) || shopBaseCost(obj) || 0;
 }
 
-function chargedToolUsageFee(obj, altusage = false) {
+function chargedUsageChargeCount(obj, override = null) {
+    if (override != null) return Math.max(0, Math.trunc(Number(override || 0)));
+    if (isWandItem(obj)) return Math.max(0, wandCharges(obj));
+    return Math.max(0, Math.trunc(Number(obj?.spe ?? obj?.charges ?? 0)));
+}
+
+function chargedUsageIsChargeBased(obj) {
+    if (isWandItem(obj)) return true;
+    const kind = toolChargeKind(obj);
+    return CHARGED_TOOL_KINDS.has(kind)
+        || kind === 'oil lamp' || kind === 'brass lantern' || kind === 'magic lamp';
+}
+
+function chargedToolUsageFee(obj, altusage = false, chargeCount = chargedUsageChargeCount(obj)) {
     let fee = chargedToolUsageBasePrice(obj);
     if (!(fee > 0)) return 0;
-    if (!altusage && (isBagOfTricksObject(obj) || isHornOfPlentyObject(obj)))
+    const kind = toolChargeKind(obj);
+    if (kind === 'magic lamp') {
+        if (!altusage) return shopBaseCost({ cls: 'tool', kind: 'oil lamp', actualKind: 'oil lamp' }) || 0;
+        fee += Math.trunc(fee / 3);
+    } else if (kind === 'magic marker') {
+        fee = Math.trunc(fee / 2);
+    } else if (!altusage && (isBagOfTricksObject(obj) || isHornOfPlentyObject(obj))) {
         fee = Math.trunc(fee / 5);
+    } else if (isWandItem(obj) || kind === 'crystal ball' || kind === 'oil lamp'
+        || kind === 'brass lantern' || kind === 'magic flute' || kind === 'magic harp'
+        || kind === 'frost horn' || kind === 'fire horn' || kind === 'drum of earthquake') {
+        if (chargeCount > 1) fee = Math.trunc(fee / 4);
+    } else if (obj?.cls === 'spellbook' || obj?.glyph === '+') {
+        fee -= Math.trunc(fee / 5);
+    } else if (kind === 'can of grease' || kind === 'tinning kit' || kind === 'expensive camera') {
+        fee = Math.trunc(fee / 10);
+    } else if (obj?.cls === 'potion' && /(?:^| )oil$|potion of oil/.test(objectKindKey(obj))) {
+        fee = Math.trunc(fee / 5);
+    }
     return Math.max(0, fee);
 }
 
-function chargedToolUsageFeeMessage(obj, fee, altusage = false) {
+function chargedToolUsageFeeMessage(obj, fee, altusage = false, shkp = null) {
     let arg1 = '';
     let arg2 = '';
+    if (obj?.cls === 'spellbook' || obj?.glyph === '+') {
+        const additional = (shkp?.debit || 0) > 0 ? ' an additional' : '';
+        return `"This is no free library!  You owe${additional} ${fee} zorkmid${fee === 1 ? '' : 's'}."`;
+    }
+    if (obj?.cls === 'potion' && /(?:^| )oil$|potion of oil/.test(objectKindKey(obj)))
+        return `"That will cost you ${fee} zorkmid${fee === 1 ? '' : 's'} (Yendorian Fuel Tax)."`;
     if (altusage && (isBagOfTricksObject(obj) || isHornOfPlentyObject(obj))) {
         if (!rn2(3)) arg1 = 'Whoa!  ';
         if (!rn2(3)) arg1 = 'Watch it!  ';
@@ -18919,16 +19250,22 @@ function chargedToolUsageFeeMessage(obj, fee, altusage = false) {
     return `"${arg1}${arg2}Usage fee, ${fee} zorkmid${fee === 1 ? '' : 's'}."`;
 }
 
-function billChargedToolUsage(obj, messages, { altusage = false, chargeCount = tipChargeCount(obj) } = {}) {
-    if (!obj?.unpaid || !(chargeCount > 0)) return 0;
+function checkUnpaidUsage(obj, messages, { altusage = false, chargeCount = null } = {}) {
+    if (!obj?.unpaid) return 0;
+    const currentCharges = chargedUsageChargeCount(obj, chargeCount);
+    if (chargedUsageIsChargeBased(obj) && currentCharges <= 0) return 0;
     const shkp = heroShopkeeper();
     if (!shkp) return 0;
-    const fee = chargedToolUsageFee(obj, altusage);
+    const fee = chargedToolUsageFee(obj, altusage, currentCharges);
     if (!(fee > 0)) return 0;
+    const message = chargedToolUsageFeeMessage(obj, fee, altusage, shkp);
     shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + fee;
-    const message = chargedToolUsageFeeMessage(obj, fee, altusage);
     if (!heroIsDeaf()) messages?.push(message);
     return fee;
+}
+
+function billChargedToolUsage(obj, messages, { altusage = false, chargeCount = tipChargeCount(obj) } = {}) {
+    return checkUnpaidUsage(obj, messages, { altusage, chargeCount });
 }
 
 function floorSpecialSourceUsageBill(source) {
@@ -21153,8 +21490,9 @@ async function finishRoyalJellyEating(item, floorObject, baseMessage, { more = f
 }
 
 async function eatRoyalJelly(item, floorObject = false) {
-    const name = pickupObjectName({ ...(item || {}), quan: 1 });
-    await finishRoyalJellyEating(item, floorObject, `This ${name} is delicious!`);
+    const touched = touchEatenFood(item, floorObject);
+    const name = pickupObjectName({ ...(touched || {}), quan: 1 });
+    await finishRoyalJellyEating(touched, floorObject, `This ${name} is delicious!`);
 }
 
 async function finishFatalEatingMessage(message) {
@@ -22745,7 +23083,8 @@ async function eatRottenEgg(item, floorObject = false) {
 }
 
 async function eatPyroliskEgg(item, floorObject = false) {
-    consumeOneEatenFood(item, floorObject);
+    const touched = touchEatenFood(item, floorObject);
+    consumeOneEatenFood(touched, floorObject);
     const result = resolvePyroliskEggExplosion(game.u?.ux || 0, game.u?.uy || 0, d(3, 6));
     await setMessage(result.messages.join('  '), result.more);
     game._command_mode = null;
@@ -22753,10 +23092,11 @@ async function eatPyroliskEgg(item, floorObject = false) {
 }
 
 async function eatStaleEgg(item, floorObject = false) {
+    const touched = touchEatenFood(item, floorObject);
     addHeroVomiting(d(10, 4));
-    if (item.oeaten > 0) addHeroNutrition(item.oeaten);
-    consumeOneEatenFood(item, floorObject);
-    const petrificationMessage = startPetrifyingEggStoning(item);
+    if (touched.oeaten > 0) addHeroNutrition(touched.oeaten);
+    consumeOneEatenFood(touched, floorObject);
+    const petrificationMessage = startPetrifyingEggStoning(touched);
     await setMessage(appendPetrificationMessage('Ugh.  Rotten egg.', petrificationMessage));
     game._command_mode = null;
     game.context.move = 1;
@@ -23021,6 +23361,10 @@ export async function processSpellbookStudyOccupation() {
             ? `You learn the "${name}" spell.`
             : `You add the "${name}" spell to your repertoire, as '${spellLetter}'.`;
     }
+
+    const usageMessages = [];
+    if (item) checkUnpaidUsage(item, usageMessages);
+    if (usageMessages.length) message = [message, ...usageMessages].join('  ');
 
     const width = game.nhDisplay?.cols || 80;
     const splitAfterMore = game._pending_message
@@ -30283,33 +30627,33 @@ export async function rhack(_cmd) {
             || item?.kind === 'wand of secret door detection'
             || item?.wandIndex === 1
             || (item?.cls === 'wand' && item.roll > 95 && item.roll <= 145);
+        const usageMessages = [];
+        const chargeUse = item ? spendZapWandCharge(item, usageMessages) : null;
+        if (item && !chargeUse.zapped) {
+            const messages = [...usageMessages, 'Nothing happens.'];
+            if (chargeUse.dust && (game.inventory || []).includes(item))
+                messages.push(dustWand(item));
+            await setMessage(messages.join('  '));
+            game._command_mode = null;
+            game.context.move = 1;
+            return;
+        }
+        const spentMessages = () => wandZapSpendMessages(usageMessages, chargeUse);
         if (item && isWishingWand(item)) {
-            const chargeUse = zappableWand(item);
-            if (!chargeUse.zapped) {
-                const messages = ['Nothing happens.'];
-                if (chargeUse.dust && (game.inventory || []).includes(item))
-                    messages.push(dustWand(item));
-                await setMessage(messages.join('  '));
-                game._command_mode = null;
-                game.context.move = 1;
-                return;
-            }
             refreshWandLine(item);
-            const wrestMessage = chargeUse.wrested ? 'You wrest one last charge from the worn-out wand.' : '';
             if (item.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
                 const damage = d(wandCharges(item) + 2, 6);
                 if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
                 const name = pickupObjectName(item);
                 game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
-                await setMessage(`${wrestMessage ? `${wrestMessage}  ` : ''}The ${name} suddenly explodes!`);
+                await setMessage([...spentMessages(), `The ${name} suddenly explodes!`].join('  '));
                 game._command_mode = null;
                 game.context.move = 1;
                 return;
             }
             const luck = (game.u?.uluck || 0) + (game.u?.moreluck || 0);
             if (luck + rn2(5) < 0) {
-                const messages = [];
-                if (wrestMessage) messages.push(wrestMessage);
+                const messages = spentMessages();
                 messages.push('Unfortunately, nothing happens.');
                 if (wandCharges(item) < 0 && (game.inventory || []).includes(item))
                     messages.push(dustWand(item));
@@ -30323,7 +30667,7 @@ export async function rhack(_cmd) {
             await beginWishPrompt({
                 moveCost: 1,
                 dustItem: wandCharges(item) < 0 ? item : null,
-                message: wrestMessage ? `${wrestMessage}  For what do you wish?` : 'For what do you wish?',
+                message: [...spentMessages(), 'For what do you wish?'].join('  '),
             });
             return;
         }
@@ -30331,36 +30675,33 @@ export async function rhack(_cmd) {
             const damage = d((item.spe ?? item.charges ?? 0) + 2, 6);
             if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
             game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
-            await setMessage(`The ${pickupObjectName(item)} suddenly explodes!`);
+            await setMessage([...spentMessages(), `The ${pickupObjectName(item)} suddenly explodes!`].join('  '));
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
         if (secretDoorDetection) {
-            item.charges = (item.charges ?? item.spe ?? 8) - 1;
-            item.spe = item.charges;
-            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, item.charges)}`;
+            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, wandCharges(item))}`;
             rn2(19);
-            await setMessage("You don't find anything.");
+            const messages = [...spentMessages(), "You don't find anything."];
+            if (wandCharges(item) < 0 && (game.inventory || []).includes(item))
+                messages.push(dustWand(item));
+            await setMessage(messages.join('  '), messages.length > 1);
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
         if (item?.wand === 'polymorph') {
-            item.charges = (item.charges ?? item.spe ?? 8) - 1;
-            item.spe = item.charges;
-            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, item.charges)}`;
+            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, wandCharges(item))}`;
             game._zap_item = item;
-            await setMessage('In what direction?');
+            await setMessage([...spentMessages(), 'In what direction?'].join('  '));
             game._command_mode = 'zapPolymorphDirection';
             return;
         }
         if (item) {
-            item.charges = (item.charges ?? item.spe ?? 8) - 1;
-            item.spe = item.charges;
-            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, item.charges)}`;
+            item.line = `${item.letter} - a ${pickupObjectName(item)}${wandChargeSuffix(item, wandCharges(item))}`;
             game._zap_item = item;
-            await setMessage('In what direction?');
+            await setMessage([...spentMessages(), 'In what direction?'].join('  '));
             game._command_mode = 'zapDirection';
             return;
         }
@@ -33777,6 +34118,43 @@ export async function rhack(_cmd) {
             game._command_mode = 'stethoscopeDirection';
             return;
         }
+        if (toolChargeKind(item) === 'expensive camera' || name.includes('camera')) {
+            if (game.u?.underwater || game.u?.uunderwater) {
+                await setMessage('Using your camera underwater would void the warranty.');
+                return;
+            }
+            game._apply_camera_letter = item.letter;
+            await setMessage('In what direction?');
+            game._command_mode = 'cameraDirection';
+            return;
+        }
+        if (toolChargeKind(item) === 'can of grease' || name.includes('can of grease')) {
+            if (heroHasSlipperyFingers()) {
+                const messages = [`The ${pickupObjectName(item)} slips from your fingers.`];
+                dropCarriedObjectAtHero(item, messages);
+                await setMessage(messages.join('  '), messages.length > 1);
+                game.context.move = 1;
+                return;
+            }
+            if ((item.spe ?? 0) <= 0) {
+                await setMessage(`The ${pickupObjectName(item)} ${item.known ? 'is' : 'seems to be'} empty.`);
+                game.context.move = 1;
+                return;
+            }
+            if ((item.cursed || heroIsFumbling()) && !rn2(2)) {
+                const messages = [];
+                spendChargedToolUse(item, messages);
+                messages.push(`The ${pickupObjectName(item)} slips from your fingers.`);
+                dropCarriedObjectAtHero(item, messages);
+                await setMessage(messages.join('  '), messages.length > 1);
+                game.context.move = 1;
+                return;
+            }
+            game._apply_grease_letter = item.letter;
+            await setMessage(greaseTargetPrompt());
+            game._command_mode = 'greaseObject';
+            return;
+        }
         if (name.includes('magic marker')) {
             await setMessage('What do you want to write on? [*]');
             game._command_mode = 'markerWriteObject';
@@ -33784,12 +34162,15 @@ export async function rhack(_cmd) {
         }
         if (toolChargeKind(item) === 'drum of earthquake'
             && !heroIsConfused() && !heroIsStunned() && (item.spe ?? 0) > 0) {
+            const usageMessages = [];
+            checkUnpaidUsage(item, usageMessages);
             item.spe = Math.max(0, (item.spe ?? 0) - 1);
             updateChargedItemLine(item);
             item.known = true;
             item.dknown = true;
             const earthquakeMessages = await doEarthquake(Math.trunc(((game.u?.ulevel || 1) - 1) / 3) + 1);
             const messages = [
+                ...usageMessages,
                 'You produce a heavy, thunderous rolling!',
                 `The entire ${earthquakeLevelDescription()} is shaking around you!`,
                 ...earthquakeMessages,
@@ -33992,6 +34373,139 @@ export async function rhack(_cmd) {
         }
 
         await setMessage(`You swing your ${pickupObjectName(item)} through thin air.`);
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'cameraDirection') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_camera_letter);
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._apply_camera_letter = null;
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        const dir = movementDirection(ch);
+        const verticalDir = !dir && ch === '<' ? { dx: 0, dy: 0, dz: -1 }
+            : !dir && ch === '>' ? { dx: 0, dy: 0, dz: 1 } : null;
+        const selfZap = ch === '.';
+        if (!dir && !verticalDir && !selfZap) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._apply_camera_letter = null;
+        game._command_mode = null;
+        if (!item) return;
+        const messages = [];
+        if (!spendChargedToolUse(item, messages)) {
+            await setMessage('Nothing happens.');
+            game.context.move = 1;
+            return;
+        }
+        const flashHero = item.cursed && !rn2(2);
+        if (flashHero || selfZap) {
+            const duration = 5 + rnd(25);
+            if (game.u) {
+                game.u.blind = true;
+                game.u._blindTimeout = (game.u._blindTimeout || 0) + duration;
+            }
+            messages.push('You are blinded by the flash!');
+        } else if (verticalDir) {
+            messages.push(`You take a picture of the ${verticalDir.dz > 0 ? 'floor' : 'ceiling'}.`);
+        } else if (dir) {
+            let x = game.u?.ux || 0;
+            let y = game.u?.uy || 0;
+            let target = null;
+            for (let range = 0; range < COLNO; range++) {
+                x += dir.dx;
+                y += dir.dy;
+                if (x <= 0 || x >= COLNO || y < 0 || y >= ROWNO) break;
+                target = game.level?.monsters?.find(mon =>
+                    mon.mx === x && mon.my === y && (mon.mhp == null || mon.mhp > 0));
+                if (target) break;
+                const loc = game.level?.at?.(x, y);
+                if (!ZAP_POS(loc?.typ ?? STONE)) break;
+            }
+            if (target) {
+                target.msleeping = 0;
+                target.mcansee = false;
+                target.mblinded = Math.max(target.mblinded || 0, rnd(20));
+                if (!game.u?.blind && (game.viz_array?.[target.my]?.[target.mx] & IN_SIGHT))
+                    messages.push(`The ${target.data?.name || 'monster'} is blinded by the flash!`);
+            }
+        }
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
+        return;
+    }
+
+    if (game._command_mode === 'greaseInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(greaseTargetPrompt());
+            game._command_mode = 'greaseObject';
+            return;
+        }
+        if (ch !== '-' && !(game.inventory || []).some(invItem => invItem.letter === ch && canSelectGreaseObject(invItem))) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._command_mode = 'greaseObject';
+    }
+
+    if (game._command_mode === 'greaseObject') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._apply_grease_letter = null;
+            await setMessage('Never mind.');
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setOverlay(inventoryOverlayLines(0, false, canGreaseObject), 24, true);
+            game._command_mode = 'greaseInventoryOverlay';
+            return;
+        }
+        const grease = (game.inventory || []).find(invItem => invItem.letter === game._apply_grease_letter);
+        const target = ch === '-' ? null
+            : (game.inventory || []).find(invItem => invItem.letter === ch && canSelectGreaseObject(invItem));
+        if (ch !== '-' && !target) {
+            game._topline_after_more = greaseTargetPrompt();
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        if (target) {
+            const inaccessible = greaseInaccessibleMessage(target);
+            if (inaccessible) {
+                game._apply_grease_letter = null;
+                game._command_mode = null;
+                await setMessage(inaccessible);
+                return;
+            }
+        }
+        game._apply_grease_letter = null;
+        game._command_mode = null;
+        if (!grease) return;
+        const messages = [];
+        if (!spendChargedToolUse(grease, messages)) {
+            await setMessage(`The ${pickupObjectName(grease)} ${grease.known ? 'is' : 'seems to be'} empty.`);
+            game.context.move = 1;
+            return;
+        }
+        if (ch === '-') {
+            addHeroGlibTimeout(rn1(11, 5));
+            messages.push(`You coat your ${fingersOrGloves()} with grease.`);
+        } else {
+            messages.push(`You cover ${inventoryItemName(target)} with a thick layer of grease.`);
+            target.greased = true;
+            target.line = normalInventoryLine({ ...target, line: '' });
+            if (target.unpaid) syncUnpaidBillLine(target);
+            if (grease.cursed) {
+                addHeroGlibTimeout(rn1(6, 10));
+                messages.push(`Some of the grease gets all over your ${fingersOrGloves()}.`);
+            }
+        }
+        await setMessage(messages.join('  '), messages.length > 1);
         game.context.move = 1;
         return;
     }
@@ -38159,17 +38673,13 @@ export async function rhack(_cmd) {
                 await eatRoyalJelly(item);
                 return;
             }
-            if ((item.quan || 1) > 1) {
-                if (takePretouchedFoodId(item) == null) next_ident();
-            } else {
-                clearPretouchedFood(item);
-            }
-            recordFoodConduct(item);
-            if (item.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
-            addHeroNutrition(item.oeaten > 0 ? item.oeaten : foodObjectNutrition(item));
-            removeInventoryItem(item);
+            const touched = touchEatenFood(item);
+            recordFoodConduct(touched);
+            if (touched.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
+            addHeroNutrition(touched.oeaten > 0 ? touched.oeaten : foodObjectNutrition(touched));
+            removeInventoryItem(touched);
             game._pet_food_scan_inventory = game.inventory || [];
-            const petrificationMessage = startPetrifyingEggStoning(item);
+            const petrificationMessage = startPetrifyingEggStoning(touched);
             const eatMessage = item.kind === 'apple'
                 ? 'Delicious!  Must be a Macintosh!'
                 : `This ${name} is delicious!`;
@@ -38339,11 +38849,12 @@ export async function rhack(_cmd) {
                 await eatRoyalJelly(food, true);
                 return;
             }
-            addHeroNutrition(food.oeaten > 0 ? food.oeaten : foodObjectNutrition(food));
-            recordFoodConduct(food);
-            if (food?.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
-            consumeOneFloorObject(food);
-            const petrificationMessage = startPetrifyingEggStoning(food);
+            const touched = touchEatenFood(food, true);
+            addHeroNutrition(touched.oeaten > 0 ? touched.oeaten : foodObjectNutrition(touched));
+            recordFoodConduct(touched);
+            if (touched?.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
+            consumeOneFloorObject(touched);
+            const petrificationMessage = startPetrifyingEggStoning(touched);
             await setMessage(appendPetrificationMessage(`This ${name} is delicious!`, petrificationMessage));
             game._command_mode = null;
             game.context.move = 1;
