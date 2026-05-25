@@ -3011,6 +3011,8 @@ export const OTYP_RIN_PROTECTION = 178;
 export const OTYP_MEAT_RING = 255;
 /** C: objects.h `OBJ("boulder", …)` — NH5 `otyp`; must match `mklev.js` floor boulder placement. */
 export const OTYP_BOULDER = 465;
+/** C: objects.h `COIN("gold piece", …, GOLD_PIECE)` */
+export const OTYP_GOLD_PIECE = 466;
 /** C: objects.h after `STATUE` — NH5 `otyp` (see `mklev.js` `STATUE` **472**). */
 export const OTYP_HEAVY_IRON_BALL = 473;
 /** C: objects.h `OBJ("iron chain", …)` — follows heavy iron ball in `OBJECTS_ENUM`. */

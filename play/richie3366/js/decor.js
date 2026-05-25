@@ -46,7 +46,7 @@ export function stairwayAtInGame(g, x, y) {
             return {
                 up: !!s.up,
                 isladder: !!s.isladder,
-                u_traversed: !!g.u?.u_traversed_upstairs,
+                u_traversed: stairwayTraversedLikeC(g, s),
                 tolev: tv && tv.dnum != null ? { dnum: tv.dnum | 0, dlevel: tv.dlevel | 0 } : null,
             };
         }
@@ -54,7 +54,12 @@ export function stairwayAtInGame(g, x, y) {
     const L = g.level;
     if (!L) return null;
     if (L.upstair && L.upstair.x === xi && L.upstair.y === yi) {
-        return { up: true, isladder: false, u_traversed: !!g.u?.u_traversed_upstairs, tolev: null };
+        return {
+            up: true,
+            isladder: false,
+            u_traversed: (g.u?.uz?.dnum | 0) === 0 && (g.u?.uz?.dlevel | 0) === 1,
+            tolev: null,
+        };
     }
     if (L.dnstair && L.dnstair.x === xi && L.dnstair.y === yi) {
         return { up: false, isladder: false, u_traversed: false, tolev: null };
@@ -65,6 +70,36 @@ export function stairwayAtInGame(g, x, y) {
 /** C: stairs.c **`stairway_at`** — uses global **`game`**. */
 export function stairwayAt(x, y) {
     return stairwayAtInGame(game, x, y);
+}
+
+/** C: mklev.c D:1 branch up stairs marked traversed when hero starts. */
+function stairwayTraversedLikeC(g, s) {
+    if (s.u_traversed) return true;
+    return (g.u?.uz?.dnum | 0) === 0 && (g.u?.uz?.dlevel | 0) === 1 && !!s.up;
+}
+
+/**
+ * C: stairs.c stairs_description() — subset for look_here / dolook on D:1 up stairs.
+ * @param {import('./gstate.js').game} g
+ * @param {{ up: boolean, isladder: boolean, u_traversed: boolean, tolev?: { dnum: number, dlevel: number }|null }} sway
+ * @returns {string}
+ */
+export function stairsDescriptionLikeC(g, sway) {
+    const stairs = sway.isladder ? 'ladder' : 'staircase';
+    const updown = sway.up ? 'up' : 'down';
+    const u = g.u;
+    const uz = u?.uz;
+    if (
+        uz
+        && (uz.dnum | 0) === 0
+        && (uz.dlevel | 0) === 1
+        && sway.up
+        && sway.u_traversed
+        && !g.uhave?.amulet
+    ) {
+        return `${stairs} ${updown} out of the dungeon`;
+    }
+    return `${stairs} ${updown}`;
 }
 
 /**
@@ -139,8 +174,7 @@ export function dfeatureAt(x, y) {
 
     const st = stairwayAt(x, y);
     if (st) {
-        const kind = st.isladder ? 'ladder' : 'staircase';
-        return `${kind} ${st.up ? 'up' : 'down'}`;
+        return stairsDescriptionLikeC(game, st);
     }
     if (t === DRAWBRIDGE_DOWN) return 'lowered drawbridge';
     if (t === DBWALL) return 'raised drawbridge';

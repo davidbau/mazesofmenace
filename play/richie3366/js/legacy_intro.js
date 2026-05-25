@@ -21,5 +21,7 @@ export async function awaitLegacyIntroMoreLikeC() {
     await flush_screen(1);
     await nhgetch();
     g._legacyIntroActive = false;
+    delete g._botlLine1PreFindAcBotlLikeC;
+    delete g._botlLine2PreFindAcBotlLikeC;
     await flush_screen(1);
 }

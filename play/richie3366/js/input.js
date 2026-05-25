@@ -53,7 +53,17 @@ export async function nhgetch() {
 
     if (_inputQueue.length > 0) {
         if (_replayPos < _replayMoves.length) _replayPos++;
-        return _inputQueue.shift();
+        const key = _inputQueue.shift();
+        /* C: tty_nhgetch / topl.c `more()` — dismiss `--More--`; clear active line unless retained. */
+        if (game._toplineNeedMore) {
+            game._toplineNeedMore = false;
+            game._showDefmoreOnTopline = false;
+            if (!game._keepToplineUntilNextCommand) {
+                game._pending_message = '';
+                game._toplineAccum = '';
+            }
+        }
+        return key;
     }
 
     // Browser mode: wait for keypress from the display

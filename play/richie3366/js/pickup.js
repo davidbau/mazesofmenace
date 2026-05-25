@@ -182,6 +182,7 @@ async function lookHere(objCnt, lhflags) {
  */
 export async function dolookHeroLikeC() {
     await lookHere(0, 0);
+    game._toplineNeedMore = false;
 }
 
 /**

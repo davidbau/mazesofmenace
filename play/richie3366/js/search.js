@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rn2, rnl } from './rng.js';
 import { pline, newsym, feelLocation } from './display.js';
-import { vision_recalc, cansee } from './vision.js';
+import { recalcBlockPointLikeC, cansee } from './vision.js';
 import { exercise } from './attrib.js';
 import {
     isok,
@@ -19,6 +19,8 @@ import {
     CORR,
     D_CLOSED,
     D_LOCKED,
+    D_NODOOR,
+    Is_rogue_level,
     STATUE_TRAP,
     ARROW_TRAP,
     DART_TRAP,
@@ -168,7 +170,12 @@ export function delTrap(trap) {
 /** C: rm.c cvt_sdoor_to_door — secret door → normal door. */
 function cvtSdoorToDoor(lev) {
     let newmask = lev.doormask ?? 0;
-    if (!(newmask & D_LOCKED)) newmask |= D_CLOSED;
+    /* C: detect.c cvt_sdoor_to_door — rogue has doorways (D_NODOOR), not closed doors. */
+    if (Is_rogue_level(game.u?.uz)) {
+        newmask = D_NODOOR;
+    } else if (!(newmask & D_LOCKED)) {
+        newmask |= D_CLOSED;
+    }
     lev.typ = DOOR;
     lev.doormask = newmask;
 }
@@ -317,14 +324,14 @@ export async function dosearch0(aflag) {
             if (loc.typ === SDOOR) {
                 if (rnl(7 - fund)) continue;
                 cvtSdoorToDoor(loc);
-                vision_recalc(1);
+                recalcBlockPointLikeC(x, y);
                 newsym(x, y);
                 await pline('You find a hidden door.');
                 reported = true;
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
-                vision_recalc(1);
+                recalcBlockPointLikeC(x, y);
                 newsym(x, y);
                 await pline('You find a hidden passage.');
                 reported = true;

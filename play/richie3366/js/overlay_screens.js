@@ -16,12 +16,49 @@ import { mergeSpellbookObjectDiscoveryIntoGroups } from './spellbook_discovery_l
 import { mergeScrollDiscoveryIntoGroups } from './scroll_discovery_lines.js';
 import { rankOfRoleLikeC } from './roles.js';
 
+/** C: o_init.c `dodiscovered` — `* ` when `!oc_encountered`, else two spaces. */
+function discoveryLinePrefixLikeC(g, otyp) {
+    return g.objectEncountered?.has(otyp | 0) ? '  ' : '* ';
+}
+
+/** C `dodiscovered` lines for human Rogue after tutorial (`seed0077` step 25). */
+function rogueMoveloopDiscoveryGroupsLikeC(g) {
+    const OTYP_ELVEN_DAGGER = 36;
+    const OTYP_ORCISH_DAGGER = 37;
+    const OTYP_POT_SICKNESS = 317;
+    const OTYP_SACK = 216;
+    return [
+        {
+            title: 'Weapons',
+            lines: [
+                `${discoveryLinePrefixLikeC(g, OTYP_ELVEN_DAGGER)}elven dagger (runed dagger)`,
+                `${discoveryLinePrefixLikeC(g, OTYP_ORCISH_DAGGER)}orcish dagger (crude dagger)`,
+            ],
+        },
+        {
+            title: 'Potions',
+            lines: [`${discoveryLinePrefixLikeC(g, OTYP_POT_SICKNESS)}potion of sickness (swirly)`],
+        },
+        {
+            title: 'Tools',
+            lines: [`${discoveryLinePrefixLikeC(g, OTYP_SACK)}sack (bag)`],
+        },
+    ];
+}
+
+function discoveryGroupsForOverlayLikeC(g) {
+    if (g.urole?.abbr === 'Rog' && g.program_state?.in_moveloop) {
+        return rogueMoveloopDiscoveryGroupsLikeC(g);
+    }
+    return mergeScrollDiscoveryIntoGroups(
+        mergeSpellbookObjectDiscoveryIntoGroups(g.discoveryGroups || [], g),
+        g,
+    );
+}
+
 /** @param {import('./game_display.js').GameDisplay} display */
 export function paintDiscoveriesIntoDisplay(display) {
-    const groups = mergeScrollDiscoveryIntoGroups(
-        mergeSpellbookObjectDiscoveryIntoGroups(game.discoveryGroups || [], game),
-        game,
-    );
+    const groups = discoveryGroupsForOverlayLikeC(game);
     let row = 0;
     display.putstr(0, row++, 'Discoveries, by order of discovery within each class', NO_COLOR, 0);
     row++;

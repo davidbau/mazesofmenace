@@ -15,7 +15,7 @@ import { initrack, settrack } from './track.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
-import { apply_startup_role_state, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
+import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
 import { continueRunStep, finish_pending_eaten_corpse, performLevelTeleport, rhack, shouldStopRunForNearbyMonster } from './cmd.js';
 import { nhgetch } from './input.js';
@@ -501,12 +501,9 @@ export async function newgame() {
         u_init_role_inventory();
         apply_startup_role_state();
         postInventoryStartupRng();
-        if (g.flags?.legacy === false && g.urole?.name?.m === 'Wizard') {
-            g.u.uac = 9;
-        } else if (g.flags?.legacy === false && g.urole?.name?.m === 'Healer') {
-            g.u.uac = 8;
-        } else if (g.flags?.legacy === false && g.urole?.name?.m === 'Tourist') {
-            g.u.uac = 10;
+        if (g.flags?.legacy === false) {
+            // C ref: u_init.c:u_init_skills_discoveries() -> do_wear.c:find_ac().
+            g.u.uac = calculated_armor_class();
         }
     }
 
@@ -520,24 +517,11 @@ export async function newgame() {
     await bot();
     await flush_screen(1);
     drawQuestIntroOverlay(alignName);
-    if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Wizard') {
+    if (!ff && g.flags?.legacy !== false) {
         // C applies starting inventory wear/find_ac side effects after the
         // first startup status render but before the welcome prompt.
-        g._deferred_startup_uac = 9;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Healer') {
-        g._deferred_startup_uac = 8;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Tourist') {
-        g._deferred_startup_uac = 10;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Priest') {
-        g._deferred_startup_uac = 7;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Ranger') {
-        g._deferred_startup_uac = 7;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Rogue') {
-        g._deferred_startup_uac = 7;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Valkyrie') {
-        g._deferred_startup_uac = 6;
-    } else if (!ff && g.flags?.legacy !== false && g.urole?.name?.m === 'Samurai') {
-        g._deferred_startup_uac = 4;
+        const startupAc = calculated_armor_class();
+        if (startupAc !== g.u.uac) g._deferred_startup_uac = startupAc;
     }
 
     // Welcome message
@@ -655,9 +639,20 @@ function finishDeferredSeerTurnUpdate(g) {
 
 function applyOccupationFinalTurnState(g) {
     if ((g._occupation_turns_remaining || 0) <= 1 && g._occupation_finish_uac != null) {
+        if (g._occupation_takeoff_object) return;
+        applyOccupationTakeoffObject(g);
         g.u.uac = g._occupation_finish_uac;
         g._occupation_finish_uac = null;
     }
+}
+
+function applyOccupationTakeoffObject(g) {
+    const obj = g._occupation_takeoff_object;
+    if (!obj) return;
+    obj.worn = false;
+    obj.owornmask = 0;
+    obj.known = true;
+    g._occupation_takeoff_object = null;
 }
 
 function occupationPending(g) {
@@ -934,13 +929,19 @@ async function continueOccupationTurns(g) {
             g._occupation_finish_removes_eaten_corpse = false;
         }
         await advanceTurn();
-        if (g._more && occupationPending(g)) {
+        if (g._more && occupationPending(g) && !g._occupation_continue_behind_more) {
             g._occupation_paused_for_more = true;
             return false;
         }
     }
     if (g._occupation_finish_message) {
+        if (g._more && g._occupation_continue_behind_more) {
+            g._occupation_continue_behind_more = false;
+            g._occupation_paused_for_more = true;
+            return false;
+        }
         if (g._occupation_finish_uac != null) {
+            applyOccupationTakeoffObject(g);
             g.u.uac = g._occupation_finish_uac;
             g._occupation_finish_uac = null;
         }
@@ -1142,11 +1143,15 @@ export async function moveloop_core() {
                 if (g._more || g._monster_turn_paused_for_more) return;
             }
             if (g._resume_monster_turn) {
-                const resumeOccupationAfterMonsterTurn = (!!g._force_lock
-                    || (g._force_lock_post_success_turns || 0) > 0)
-                    && !!g._occupation_paused_for_more;
+                const resumeOccupationAfterMonsterTurn = !!g._occupation_paused_for_more
+                    && occupationPending(g);
                 g._resume_monster_turn = false;
-                await advanceTurn();
+                g._resuming_monster_turn_after_more = true;
+                try {
+                    await advanceTurn();
+                } finally {
+                    g._resuming_monster_turn_after_more = false;
+                }
                 if (resumeOccupationAfterMonsterTurn
                     && (g._more || g._monster_turn_paused_for_more)) return;
                 if (g._nomovemsg && !g._more && !g._monster_turn_paused_for_more) {
@@ -1181,7 +1186,7 @@ export async function moveloop_core() {
                 if (g._monster_turn_paused_for_more) return;
                 if (!await continueNomulTurns(g)) return;
                 if (!occupationPending(g)) finish_pending_eaten_corpse();
-                if (g._more && occupationPending(g)) {
+                if (g._more && occupationPending(g) && !g._occupation_continue_behind_more) {
                     if (g._force_lock) g._force_lock_resume_turn_first = true;
                     g._occupation_paused_for_more = true;
                     return;

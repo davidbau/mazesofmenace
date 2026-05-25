@@ -5,10 +5,11 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
+    COLNO, ROWNO, DOOR, SDOOR, TREE,
     D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
+    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
+    IS_WALL, IS_OBSTRUCTED, IS_DOOR, ROOMOFFSET,
+    Is_rogue_level,
 } from './const.js';
 import { newsym } from './display.js';
 
@@ -66,17 +67,21 @@ function mark_visible_range(row, left, right) {
     if (game.cs_right[row] < right) game.cs_right[row] = right;
 }
 
-// Simplified blockage check: walls, closed doors, stone
-function _blocks(level, x, y) {
-    const loc = level.at(x, y);
+/** C: vision.c does_block — walls, closed doors, tree (no boulders/mimics/clouds yet). */
+export function doesBlockLikeC(x, y) {
+    const loc = game.level?.at(x, y);
     if (!loc) return true;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
-    if (typ === DOOR) {
+    if (IS_OBSTRUCTED(typ) || typ === TREE) return true;
+    if (IS_DOOR(typ)) {
         const mask = loc.doormask ?? 0;
         if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
     }
     return false;
+}
+
+function _blocks(_level, x, y) {
+    return doesBlockLikeC(x, y);
 }
 
 // C ref: vision_reset() — rebuild viz_clear and left/right ptrs
@@ -119,6 +124,58 @@ export function vision_reset() {
     }
     game._viz_rmin = null;
     game._viz_rmax = null;
+}
+
+/**
+ * C: vision.c rogue_vision — room boundaries + adjacent squares on rogue levels.
+ * @param {Uint8Array[]} next
+ * @param {Int16Array} next_rmin
+ * @param {Int16Array} next_rmax
+ */
+function rogueVisionLikeC(next, next_rmin, next_rmax) {
+    const u = game.u;
+    const level = game.level;
+    if (!u || !level) return;
+
+    const heroLoc = level.at(u.ux, u.uy);
+    const rnum = (heroLoc?.roomno | 0) - ROOMOFFSET;
+    if (rnum >= 0 && level.rooms?.[rnum]) {
+        const room = level.rooms[rnum];
+        const ly = (room.ly | 0) - 1;
+        const hy = (room.hy | 0) + 1;
+        const lx = (room.lx | 0) - 1;
+        const hx = (room.hx | 0) + 1;
+        for (let zy = ly; zy <= hy; zy++) {
+            if (zy < 0 || zy >= ROWNO) continue;
+            next_rmin[zy] = lx;
+            next_rmax[zy] = hx;
+            for (let zx = lx; zx <= hx; zx++) {
+                if (zx < 1 || zx >= COLNO) continue;
+                if (room.rlit) {
+                    /* C sets IN_SIGHT + seenv; display still gates floor on viz_clear in update pass. */
+                    next[zy][zx] = COULD_SEE | IN_SIGHT;
+                    const loc = level.at(zx, zy);
+                    if (loc) loc.seenv = SVALL;
+                } else {
+                    next[zy][zx] = COULD_SEE;
+                }
+            }
+        }
+    }
+
+    const inDoor = (heroLoc?.typ | 0) === DOOR;
+    const ylo = Math.max((u.uy | 0) - 1, 0);
+    const yhi = Math.min((u.uy | 0) + 1, ROWNO - 1);
+    const xlo = Math.max((u.ux | 0) - 1, 1);
+    const xhi = Math.min((u.ux | 0) + 1, COLNO - 1);
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (xlo < next_rmin[zy]) next_rmin[zy] = xlo;
+        if (xhi > next_rmax[zy]) next_rmax[zy] = xhi;
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            if (inDoor && (zx === (u.ux | 0) || zy === (u.uy | 0))) newsym(zx, zy);
+        }
+    }
 }
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
@@ -411,7 +468,11 @@ export function vision_recalc(control = 0) {
     }
 
     if (control !== 2) {
-        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        if (Is_rogue_level(u.uz)) {
+            rogueVisionLikeC(next, next_rmin, next_rmax);
+        } else {
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
     }
 
     // Compute IN_SIGHT from COULD_SEE + lighting
@@ -478,7 +539,7 @@ export function vision_recalc(control = 0) {
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
                     loc.seenv = (loc.seenv || 0) | sv;
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
-                        newsym(col, row);
+                        if (!rogueBlocksFloorDisplayLikeC(col, row, loc)) newsym(col, row);
                     }
                 } else if ((nv & COULD_SEE) && loc.lit) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
@@ -493,7 +554,7 @@ export function vision_recalc(control = 0) {
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
-                    } else {
+                    } else if (!rogueBlocksFloorDisplayLikeC(col, row, loc)) {
                         next_row[col] |= IN_SIGHT;
                         const oldseenv = loc.seenv || 0;
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -503,11 +564,11 @@ export function vision_recalc(control = 0) {
                     }
                 } else if ((nv & COULD_SEE) && loc.waslit) {
                     loc.waslit = 0;
-                    newsym(col, row);
+                    if (!rogueBlocksFloorDisplayLikeC(col, row, loc)) newsym(col, row);
                 } else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        newsym(col, row);
+                        if (!rogueBlocksFloorDisplayLikeC(col, row, loc)) newsym(col, row);
                     }
                 }
             }
@@ -517,6 +578,14 @@ export function vision_recalc(control = 0) {
 
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
+}
+
+/** Rogue: room-fill IN_SIGHT does not paint floor behind blocking segments (viz_clear). */
+function rogueBlocksFloorDisplayLikeC(col, row, loc) {
+    if (!Is_rogue_level(game.u?.uz) || !loc) return false;
+    if (viz_clear[row]?.[col]) return false;
+    const typ = loc.typ | 0;
+    return typ !== DOOR && typ !== SDOOR && !IS_WALL(typ);
 }
 
 /** C: rm.c set_seenv — hero-relative seenv bits (used by feel_location). */
@@ -529,16 +598,124 @@ export function setSeenvTowardHero(ux, uy, x, y) {
     loc.seenv = (loc.seenv || 0) | sv;
 }
 
-// C ref: cansee(x, y)
+// C ref: cansee(x, y) — rogue room-fill IN_SIGHT still respects viz_clear for floor.
 export function cansee(x, y) {
     if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
-    return !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+    if (!(game.viz_array?.[y]?.[x] & IN_SIGHT)) return false;
+    if (Is_rogue_level(game.u?.uz) && !viz_clear[y]?.[x]) {
+        const loc = game.level?.at(x, y);
+        const typ = loc?.typ | 0;
+        if (loc && typ !== DOOR && typ !== SDOOR && !IS_WALL(typ)) return false;
+    }
+    return true;
 }
 
 // C ref: couldsee(x, y)
 export function couldsee(x, y) {
     if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
     return !!(game.viz_array?.[y]?.[x] & COULD_SEE);
+}
+
+/** C: vision.c dig_point(row, col) — make (col,row) transparent to light. */
+function digPointLikeC(row, col) {
+    if (viz_clear[row][col]) return;
+    viz_clear[row][col] = 1;
+    if (col === 0) {
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = right_ptrs[row][1];
+        } else {
+            right_ptrs[row][0] = 1;
+            for (let i = 1; i <= right_ptrs[row][1]; i++) left_ptrs[row][i] = 1;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+        } else {
+            left_ptrs[row][COLNO - 1] = COLNO - 2;
+            for (let i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++) right_ptrs[row][i] = COLNO - 2;
+        }
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i]) continue;
+            right_ptrs[row][i] = right_ptrs[row][col + 1];
+        }
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i]) continue;
+            left_ptrs[row][i] = left_ptrs[row][col - 1];
+        }
+    } else if (viz_clear[row][col - 1]) {
+        for (let i = col + 1; i <= right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = col + 1;
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) {
+            if (!viz_clear[row][i]) continue;
+            right_ptrs[row][i] = col + 1;
+        }
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else if (viz_clear[row][col + 1]) {
+        for (let i = left_ptrs[row][col - 1]; i < col; i++) right_ptrs[row][i] = col - 1;
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) {
+            if (!viz_clear[row][i]) continue;
+            left_ptrs[row][i] = col - 1;
+        }
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else {
+        for (let i = left_ptrs[row][col - 1]; i < col; i++) right_ptrs[row][i] = col - 1;
+        for (let i = col + 1; i <= right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = col + 1;
+        left_ptrs[row][col] = col - 1;
+        right_ptrs[row][col] = col + 1;
+    }
+}
+
+/** C: vision.c fill_point(row, col) — make (col,row) opaque to light. */
+function fillPointLikeC(row, col) {
+    if (!viz_clear[row][col]) return;
+    viz_clear[row][col] = 0;
+    if (col === 0) {
+        if (viz_clear[row][1]) {
+            right_ptrs[row][0] = 0;
+        } else {
+            right_ptrs[row][0] = right_ptrs[row][1];
+            for (let i = 1; i <= right_ptrs[row][1]; i++) left_ptrs[row][i] = 0;
+        }
+    } else if (col === COLNO - 1) {
+        if (viz_clear[row][COLNO - 2]) {
+            left_ptrs[row][COLNO - 1] = COLNO - 1;
+        } else {
+            left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
+            for (let i = left_ptrs[row][COLNO - 2]; i < COLNO - 1; i++) right_ptrs[row][i] = COLNO - 1;
+        }
+    } else if (viz_clear[row][col - 1] && viz_clear[row][col + 1]) {
+        for (let i = left_ptrs[row][col - 1] + 1; i <= col; i++) right_ptrs[row][i] = col;
+        if (!left_ptrs[row][col - 1]) right_ptrs[row][0] = col;
+        for (let i = col; i < right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = col;
+        if (right_ptrs[row][col + 1] === COLNO - 1) left_ptrs[row][COLNO - 1] = col;
+    } else if (viz_clear[row][col - 1]) {
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = col;
+        for (let i = left_ptrs[row][col - 1] + 1; i < col; i++) right_ptrs[row][i] = col;
+        if (!left_ptrs[row][col - 1]) right_ptrs[row][0] = col;
+        right_ptrs[row][col] = right_ptrs[row][col + 1];
+    } else if (viz_clear[row][col + 1]) {
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) right_ptrs[row][i] = col;
+        for (let i = col + 1; i < right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = col;
+        if (right_ptrs[row][col + 1] === COLNO - 1) left_ptrs[row][COLNO - 1] = col;
+        left_ptrs[row][col] = left_ptrs[row][col - 1];
+    } else {
+        for (let i = left_ptrs[row][col - 1]; i <= col; i++) right_ptrs[row][i] = right_ptrs[row][col + 1];
+        for (let i = col; i <= right_ptrs[row][col + 1]; i++) left_ptrs[row][i] = left_ptrs[row][col - 1];
+    }
+}
+
+/**
+ * C: vision.c recalc_block_point — dig/fill viz_clear then defer vision_recalc.
+ * @param {number} x
+ * @param {number} y
+ */
+export function recalcBlockPointLikeC(x, y) {
+    const xi = x | 0;
+    const yi = y | 0;
+    if (yi < 0 || yi >= ROWNO || xi < 0 || xi >= COLNO) return;
+    if (doesBlockLikeC(xi, yi)) fillPointLikeC(yi, xi);
+    else digPointLikeC(yi, xi);
+    if (game.viz_array?.[yi]?.[xi]) game.vision_full_recalc = 1;
 }
 
 export function init_vision_globals() {

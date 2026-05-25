@@ -18,6 +18,12 @@ const ROLE_INIT = new Map([
         attrdist: [15, 20, 20, 15, 25, 5],
         hp: 13, pwBase: 1, pwRnd: 4, ac: 0, gold: 1218,
     }],
+    ['Knight', {
+        attrbase: [13, 7, 14, 8, 10, 17],
+        attrmax: [30, 15, 15, 10, 20, 10],
+        attrdist: [30, 15, 15, 10, 20, 10],
+        hp: 16, pwBase: 2, pwRnd: 4, ac: 0, gold: 0,
+    }],
     ['Priest', {
         attrbase: [7, 7, 10, 7, 7, 7],
         attrmax: [15, 10, 30, 15, 20, 10],
@@ -69,6 +75,13 @@ const LEVEL_ADV = new Map([
         xlev: 20,
         hpadv: { infix: 11, inrnd: 0, lofix: 0, lornd: 8, hifix: 1, hirnd: 0 },
         enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
+        energyMod: 'healer',
+    }],
+    ['Knight', {
+        xlev: 10,
+        hpadv: { infix: 14, inrnd: 0, lofix: 0, lornd: 8, hifix: 2, hirnd: 0 },
+        enadv: { infix: 1, inrnd: 4, lofix: 0, lornd: 1, hifix: 0, hirnd: 2 },
+        energyMod: 'knight',
     }],
     ['Priest', {
         xlev: 10,
@@ -177,10 +190,12 @@ const DWARVISH_SHORT_SWORD = 49;
 const SCIMITAR = 50;
 const BROADSWORD = 52;
 const ELVEN_BROADSWORD = 53;
+const LONG_SWORD = 54;
 const KATANA = 56;
 const TSURUGI = 57;
 const RUNESWORD = 58;
 const DWARVISH_MATTOCK = 71;
+const LANCE = 72;
 const MACE = 73;
 const QUARTERSTAFF = 79;
 const BOW = 83;
@@ -193,22 +208,35 @@ const DWARVISH_IRON_HELM = 91;
 const HELMET = 97;
 const PLATE_MAIL = 121;
 const SPLINT_MAIL = 124;
+const ELVEN_MITHRIL_COAT = 127;
 const CHAIN_MAIL = 128;
 const ORCISH_CHAIN_MAIL = 129;
 const RING_MAIL = 132;
 const ORCISH_RING_MAIL = 133;
+const GRAY_DRAGON_SCALE_MAIL = 101;
 const HAWAIIAN_SHIRT = 136;
 const LEATHER_ARMOR = 134;
 const ELVEN_CLOAK = 139;
 const ORCISH_CLOAK = 140;
 const ROBE = 143;
+const CLOAK_OF_PROTECTION = 146;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_DISPLACEMENT = 149;
 const SMALL_SHIELD = 150;
+const SHIELD_OF_DRAIN_RESISTANCE = 151;
+const SHIELD_OF_SHOCK_RESISTANCE = 152;
+const ELVEN_SHIELD = 153;
 const URUK_HAI_SHIELD = 154;
 const ORCISH_SHIELD = 155;
+const LARGE_SHIELD = 156;
+const DWARVISH_ROUNDSHIELD = 157;
+const SHIELD_OF_REFLECTION = 158;
 const SCALPEL = 39;
 const LEATHER_GLOVES = 159;
+const GAUNTLETS_OF_POWER = 161;
+const SPEED_BOOTS = 166;
+const ELVEN_BOOTS = 169;
+const LEVITATION_BOOTS = 172;
 const LARGE_BOX = 214;
 const BAG_OF_TRICKS = 220;
 const BLINDFOLD = 233;
@@ -222,8 +250,15 @@ const TIN_OPENER = 239;
 const SACK = 217;
 const OIL_LAMP = 227;
 const MAGIC_MARKER = 242;
+const WOODEN_FLUTE = 247;
+const TOOLED_HORN = 249;
+const WOODEN_HARP = 253;
+const BELL = 255;
+const BUGLE = 256;
+const LEATHER_DRUM = 257;
 const SPE_FORCE_BOLT = 383;
 const APPLE = 277;
+const CARROT = 282;
 const SPRIG_OF_WOLFSBANE = 283;
 const CLOVE_OF_GARLIC = 284;
 const TRIPE_RATION = 264;
@@ -276,7 +311,7 @@ const SPELLBOOK_SKILL = new Map([
     [372, P_DIVINATION_SPELL], [373, P_DIVINATION_SPELL], [374, P_HEALING_SPELL],
     [375, P_MATTER_SPELL], [376, P_ATTACK_SPELL], [377, P_ENCHANTMENT_SPELL],
     [378, P_HEALING_SPELL], [379, P_ATTACK_SPELL], [380, P_ENCHANTMENT_SPELL],
-    [381, P_MATTER_SPELL], [382, P_CLERIC_SPELL], [383, P_DIVINATION_SPELL],
+    [381, P_MATTER_SPELL], [382, P_CLERIC_SPELL], [383, P_ATTACK_SPELL],
     [384, P_ENCHANTMENT_SPELL], [385, P_DIVINATION_SPELL], [386, P_HEALING_SPELL],
     [387, P_ENCHANTMENT_SPELL], [388, P_ESCAPE_SPELL], [389, P_DIVINATION_SPELL],
     [390, P_ESCAPE_SPELL], [391, P_HEALING_SPELL], [392, P_HEALING_SPELL],
@@ -315,6 +350,18 @@ const HEALER_INVENTORY = [
     { typ: SPE_EXTRA_HEALING, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
     { typ: SPE_STONE_TO_FLESH, spe: 0, cls: SPBOOK_CLASS, min: 1, max: 1, bless: 1 },
     { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 5, max: 5, bless: 0 },
+];
+
+const KNIGHT_INVENTORY = [
+    // C ref: src/u_init.c:Knight[].
+    { typ: LONG_SWORD, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, wielded: true },
+    { typ: LANCE, spe: 1, cls: WEAPON_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, alternate: true },
+    { typ: RING_MAIL, spe: 1, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: HELMET, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: SMALL_SHIELD, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: LEATHER_GLOVES, spe: 0, cls: ARMOR_CLASS, min: 1, max: 1, bless: UNDEF_BLESS, worn: true },
+    { typ: APPLE, spe: 0, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
+    { typ: CARROT, spe: 0, cls: FOOD_CLASS, min: 10, max: 10, bless: 0 },
 ];
 
 const PRIEST_INVENTORY = [
@@ -446,6 +493,17 @@ const ORC_KNOWN_OBJECTS = [
     ORCISH_SHORT_SWORD, ORCISH_ARROW, ORCISH_BOW, ORCISH_SPEAR,
     ORCISH_DAGGER, ORCISH_CHAIN_MAIL, ORCISH_RING_MAIL, ORCISH_HELM,
     ORCISH_SHIELD, URUK_HAI_SHIELD, ORCISH_CLOAK,
+];
+
+const ELF_KNOWN_OBJECTS = [
+    // C ref: src/u_init.c:u_init_race().
+    ELVEN_SHORT_SWORD, ELVEN_ARROW, ELVEN_BOW, ELVEN_SPEAR,
+    ELVEN_DAGGER, ELVEN_BROADSWORD, ELVEN_MITHRIL_COAT,
+    ELVEN_LEATHER_HELM, ELVEN_SHIELD, ELVEN_BOOTS, ELVEN_CLOAK,
+];
+
+const ELF_INSTRUMENT_TYPES = [
+    WOODEN_FLUTE, TOOLED_HORN, WOODEN_HARP, BELL, BUGLE, LEATHER_DRUM,
 ];
 
 const INFRAVISION_RACES = new Set(['elf', 'dwarf', 'gnome', 'orc']);
@@ -691,6 +749,64 @@ function apply_starting_worn_extrinsic(obj) {
     if (obj.otyp === CLOAK_OF_MAGIC_RESISTANCE) game.u.uprops.magic_resistance = true;
 }
 
+function armor_base_bonus(obj) {
+    switch (obj?.otyp) {
+    case GRAY_DRAGON_SCALE_MAIL:
+        return 9;
+    case SPLINT_MAIL:
+        return 6;
+    case CHAIN_MAIL:
+        return 5;
+    case RING_MAIL:
+        return 3;
+    case ORCISH_RING_MAIL:
+        return 2;
+    case CLOAK_OF_PROTECTION:
+        return 3;
+    case LEATHER_ARMOR:
+    case ROBE:
+        return 2;
+    case ELVEN_LEATHER_HELM:
+    case ORCISH_HELM:
+    case DWARVISH_IRON_HELM:
+    case HELMET:
+    case CLOAK_OF_MAGIC_RESISTANCE:
+    case CLOAK_OF_DISPLACEMENT:
+    case LEATHER_GLOVES:
+    case GAUNTLETS_OF_POWER:
+    case SMALL_SHIELD:
+    case SHIELD_OF_DRAIN_RESISTANCE:
+    case SHIELD_OF_SHOCK_RESISTANCE:
+    case URUK_HAI_SHIELD:
+    case ORCISH_SHIELD:
+        return 1;
+    case ELVEN_SHIELD:
+    case LARGE_SHIELD:
+    case DWARVISH_ROUNDSHIELD:
+    case SHIELD_OF_REFLECTION:
+        return 2;
+    default:
+        if (obj?.otyp >= SPEED_BOOTS && obj.otyp <= LEVITATION_BOOTS) return 1;
+        return 0;
+    }
+}
+
+function armor_bonus(obj) {
+    if (!obj?.worn && !obj?.owornmask) return 0;
+    const base = armor_base_bonus(obj);
+    const erosion = Math.max(obj.oeroded ?? 0, obj.oeroded2 ?? 0);
+    // C ref: include/hack.h:ARM_BONUS(), do_wear.c:find_ac().
+    return base + (obj.spe || 0) - Math.min(erosion, base);
+}
+
+export function calculated_armor_class() {
+    let uac = 10;
+    for (const obj of game.inventory || []) {
+        if (obj?.oclass === ARMOR_CLASS) uac -= armor_bonus(obj);
+    }
+    return Math.max(-99, Math.min(99, uac));
+}
+
 function ini_inv(trobs, noCreate, roleName) {
     if (!trobs.length) return;
     game.inventory = game.inventory || [];
@@ -747,7 +863,16 @@ function reset_no_create(noCreate) {
 
 function u_init_race_inventory(noCreate, roleName) {
     // C ref: src/u_init.c:u_init_race().
-    if (currentRaceName() !== 'orc') return;
+    const race = currentRaceName();
+    if (race === 'elf') {
+        if (roleName === 'Priest' || roleName === 'Wizard') {
+            const typ = ELF_INSTRUMENT_TYPES[rn2(ELF_INSTRUMENT_TYPES.length)];
+            ini_inv([{ typ, spe: 0, cls: TOOL_CLASS, min: 1, max: 1, bless: 0 }], noCreate, roleName);
+        }
+        for (const otyp of ELF_KNOWN_OBJECTS) discover_role_known_object(otyp);
+        return;
+    }
+    if (race !== 'orc') return;
     if (roleName !== 'Wizard') ini_inv(XTRA_FOOD_INVENTORY, noCreate, roleName);
     for (const otyp of ORC_KNOWN_OBJECTS) discover_role_known_object(otyp);
 }
@@ -775,6 +900,8 @@ export function u_init_role_inventory() {
         if (!rn2(25)) {
             // C may add an oil lamp here; object creation is still unported.
         }
+    } else if (role?.name?.m === 'Knight') {
+        ini_inv(KNIGHT_INVENTORY, noCreate, role.name.m);
     } else if (role?.name?.m === 'Priest') {
         ini_inv(PRIEST_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {
@@ -836,6 +963,7 @@ export function u_init_role_inventory() {
     reset_no_create(noCreate);
     u_init_race_inventory(noCreate, role?.name?.m);
     if (roleStartingGold > 0) {
+        game._initialGoldCount = roleStartingGold;
         ini_inv(MONEY_INVENTORY, noCreate, role?.name?.m);
     }
     // C ref: src/u_init.c:u_init_skills_discoveries().  Starting inventory
@@ -923,7 +1051,10 @@ export function apply_startup_role_state() {
     const init = ROLE_INIT.get(role?.name?.m);
     if (!init) return;
     const { attrs, maxes, limits } = initialAttributes(init);
-    if (!game._startupRoleGoldInitialized) game._goldCount = init.gold;
+    if (!game._startupRoleGoldInitialized) {
+        game._goldCount = init.gold;
+        game._initialGoldCount = init.gold;
+    }
     const initialHp = game._initialHp ?? init.hp;
     game.u.uhp = initialHp;
     game.u.uhpmax = initialHp;
@@ -943,6 +1074,9 @@ export function apply_startup_role_state() {
     if (role?.name?.m === 'Samurai') {
         // C ref: src/attrib.c:sam_abil[] grants level-1 intrinsic HFast.
         game.u.uprops.intrinsic_fast = true;
+    } else if (role?.name?.m === 'Knight') {
+        // C ref: src/u_init.c:u_init_role() grants Knights intrinsic Jumping.
+        game.u.uprops.jumping = true;
     }
 }
 
@@ -966,6 +1100,7 @@ function currentAttr(index) {
 
 function energyMod(en, adv) {
     if (adv?.energyMod === 'wizard') return 2 * en;
+    if (adv?.energyMod === 'healer' || adv?.energyMod === 'knight') return Math.trunc((3 * en) / 2);
     if (adv?.energyMod === 'valkyrie') return Math.trunc((3 * en) / 4);
     return en;
 }

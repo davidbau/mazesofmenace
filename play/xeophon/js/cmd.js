@@ -12974,13 +12974,32 @@ function subOneFromShopBill(obj, shkp) {
 
 function subFromShopBill(obj, shkp) {
     const removed = subOneFromShopBill(obj, shkp);
-    const contents = Array.isArray(obj?.contents) ? obj.contents : [];
+    const contents = globContents(obj);
     for (const child of contents) {
         if (shopBillableGold(child)) continue;
-        if (Array.isArray(child.contents) && child.contents.length) subFromShopBill(child, shkp);
+        if (globContents(child).length) subFromShopBill(child, shkp);
         else subOneFromShopBill(child, shkp);
     }
     return removed;
+}
+
+function markObjectShopBillUsedUp(obj, shkp = null) {
+    if (!obj || shopBillableGold(obj)) return false;
+    const owner = shkp
+        ? { shkp, entry: shopBillEntryForObject(shkp, obj) }
+        : shopkeeperOwningBillEntry(obj);
+    const billOwner = owner.shkp || shkp;
+    let entry = owner.entry;
+    const price = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(obj);
+    if (!entry && billOwner && obj.unpaid && price > 0)
+        entry = addObjectToShopBill(billOwner, obj, price, { useup: true });
+    if (!entry || !(price > 0)) return false;
+    entry.useup = true;
+    clearObjectShopBillState(obj);
+    if (!usedUpShopBillTrackerForId(entry.bo_id, billOwner))
+        rememberUsedUpShopBillEntry(obj, entry, price, billOwner);
+    billOwner.billct = Array.isArray(billOwner.bill) ? billOwner.bill.length : Math.max(1, billOwner.billct || 1);
+    return true;
 }
 
 function returnUnpaidObjectToShopBillOwnerAt(obj, x, y) {
@@ -13051,6 +13070,88 @@ function markNoChargeRecursively(obj) {
     if (!obj || shopBillableGold(obj) || obj.unpaid) return;
     obj.no_charge = true;
     for (const child of globContents(obj)) markNoChargeRecursively(child);
+}
+
+function clearNoChargeRecursively(obj, { includeSelf = true } = {}, seen = new Set()) {
+    if (!obj || seen.has(obj)) return;
+    seen.add(obj);
+    if (includeSelf && !shopBillableGold(obj)) obj.no_charge = false;
+    for (const child of globContents(obj))
+        clearNoChargeRecursively(child, { includeSelf: true }, seen);
+}
+
+function containedShopGold(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return 0;
+    seen.add(obj);
+    let total = 0;
+    for (const child of globContents(obj)) {
+        if (shopBillableGold(child)) {
+            total += Math.max(1, Math.trunc(Number(child.quan || 1)));
+        } else {
+            total += containedShopGold(child, seen);
+        }
+    }
+    return total;
+}
+
+function addShopBillEntryOrMark(shkp, obj, totalPrice) {
+    if (!shkp || !obj || shopBillableGold(obj) || !(totalPrice > 0)) return null;
+    const billEntry = addObjectToShopBill(shkp, obj, totalPrice);
+    if (!billEntry) {
+        obj.unpaid = true;
+        obj.unpaidPrice = totalPrice;
+        syncUnpaidBillLine(obj);
+        shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
+    }
+    return billEntry;
+}
+
+function addContainedObjectsToShopBill(shkp, obj, x, y, seen = new Set()) {
+    let price = 0;
+    const billEntries = [];
+    for (const child of globContents(obj)) {
+        if (!child || seen.has(child)) continue;
+        seen.add(child);
+        if (shopBillableGold(child)) continue;
+        if (child.unpaid) {
+            syncUnpaidBillLine(child);
+        } else if (!child.no_charge) {
+            const childPrice = shopItemPrice(child, x, y);
+            if (childPrice > 0) {
+                billEntries.push(addShopBillEntryOrMark(shkp, child, childPrice));
+                price += childPrice;
+            }
+        }
+        const nested = addContainedObjectsToShopBill(shkp, child, x, y, seen);
+        price += nested.price;
+        billEntries.push(...nested.billEntries);
+    }
+    return { price, billEntries };
+}
+
+function addContainerAndContentsToShopBill(container, sourceObj, pickedItem, shkp, x, y) {
+    let price = 0;
+    let billEntry = null;
+    if (!sourceObj.no_charge) {
+        const topPrice = shopItemPrice(sourceObj, x, y);
+        if (topPrice > 0) {
+            billEntry = addShopBillEntryOrMark(shkp, pickedItem, topPrice);
+            price += topPrice;
+        }
+    }
+    const nested = addContainedObjectsToShopBill(shkp, sourceObj, x, y);
+    price += nested.price;
+    const gold = containedShopGold(sourceObj);
+    if (gold > 0) {
+        costlyShopGoldAt(container, gold);
+        price += gold;
+    }
+    clearNoChargeRecursively(sourceObj);
+    if (pickedItem && pickedItem !== sourceObj) {
+        pickedItem.no_charge = false;
+        clearNoChargeRecursively(pickedItem, { includeSelf: false });
+    }
+    return { shkp, price, billEntry, billEntries: [billEntry, ...nested.billEntries].filter(Boolean) };
 }
 
 function sameShopBillUnitPrice(a, b) {
@@ -13221,6 +13322,19 @@ function costlyShopGoldAt(container, amount) {
     const gold = Math.max(0, Math.trunc(Number(amount || 0)));
     const shkp = shopFloorContainerShopkeeper(container);
     if (!shkp || !gold) return { shkp: null, charged: 0 };
+    return costlyGoldToShopkeeper(shkp, gold);
+}
+
+function costlyShopGoldAtSpot(x, y, amount) {
+    const gold = Math.max(0, Math.trunc(Number(amount || 0)));
+    if (x == null || y == null || !gold) return { shkp: null, charged: 0, messages: [] };
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return { shkp: null, charged: 0, messages: [] };
+    const charged = costlyGoldToShopkeeper(shkp, gold);
+    return { ...charged, messages: costlyGoldMessages(charged) };
+}
+
+function costlyGoldToShopkeeper(shkp, gold) {
     const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
     const coveredByCredit = Math.min(credit, gold);
     shkp.credit = credit - coveredByCredit;
@@ -13229,14 +13343,67 @@ function costlyShopGoldAt(container, amount) {
         shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + delta;
         shkp.loan = Math.max(0, Math.trunc(Number(shkp.loan || 0))) + delta;
     }
-    return { shkp, charged: gold, coveredByCredit, debit: delta };
+    return { shkp, charged: gold, coveredByCredit, debit: delta, creditBefore: credit };
+}
+
+function costlyGoldMessages(charged) {
+    if (!charged?.charged) return [];
+    const messages = [];
+    const creditBefore = Math.max(0, Math.trunc(Number(charged.creditBefore || 0)));
+    const coveredByCredit = Math.max(0, Math.trunc(Number(charged.coveredByCredit || 0)));
+    const debit = Math.max(0, Math.trunc(Number(charged.debit || 0)));
+    if (coveredByCredit > 0)
+        messages.push(coveredByCredit < creditBefore
+            ? `Your credit is reduced by ${coveredByCredit} ${shopCurrency(coveredByCredit)}.`
+            : 'Your credit is erased.');
+    if (debit > 0) {
+        if (Math.max(0, Math.trunc(Number(charged.shkp?.debit || 0))) > debit)
+            messages.push(`Your debt increases by ${debit} ${shopCurrency(debit)}.`);
+        else
+            messages.push(`You owe ${shopkeeperDisplayName(charged.shkp)} ${debit} ${shopCurrency(debit)}.`);
+    }
+    return messages;
+}
+
+function pickUpFloorGoldObject(goldObj) {
+    if (!goldObj || !(goldObj.otyp === GOLD_PIECE || goldObj.cls === 'coin' || goldObj.glyph === '$'))
+        return { picked: false, amount: 0, messages: [] };
+    const amount = Math.max(1, Math.trunc(Number(goldObj.quan || 1)));
+    const charged = costlyShopGoldAtSpot(goldObj.ox, goldObj.oy, amount);
+    game._goldCount = (game._goldCount || 0) + amount;
+    game._just_picked_gold = amount;
+    const invGold = (game.inventory || []).find(obj => obj.letter === '$' || obj.cls === 'coin');
+    if (invGold) {
+        invGold.quan = (invGold.quan || 0) + amount;
+        updateMoneyLine(invGold);
+    } else {
+        game.inventory = [...(game.inventory || []), { cls: 'coin', letter: '$', otyp: GOLD_PIECE, glyph: '$', quan: amount }];
+    }
+    game.level.objects = (game.level?.objects || []).filter(obj => obj !== goldObj);
+    game._pet_food_scan_inventory = game.inventory;
+    const total = game._goldCount === amount ? '' : ` (${game._goldCount} in total)`;
+    const pickupMessage = `$ - ${amount} gold piece${amount === 1 ? '' : 's'}${total}.`;
+    return { picked: true, amount, charged, messages: [pickupMessage, ...(charged.messages || [])] };
 }
 
 function donateShopGoldAt(container, amount) {
     const gold = Math.max(0, Math.trunc(Number(amount || 0)));
     const shkp = shopFloorContainerShopkeeper(container);
+    return sellobjGoldToShopkeeper(shkp, gold);
+}
+
+function donateShopGoldAtSpot(x, y, amount) {
+    const gold = Math.max(0, Math.trunc(Number(amount || 0)));
+    if (x == null || y == null) return { shkp: null, donated: 0 };
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return { shkp: null, donated: 0 };
+    return sellobjGoldToShopkeeper(shkp, gold);
+}
+
+function donateGoldToShopkeeper(shkp, gold) {
     if (!shkp || !gold) return { shkp: null, donated: 0 };
     const debit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
+    const previousCredit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
     const coveredDebt = Math.min(debit, gold);
     if (coveredDebt > 0) {
         shkp.debit = debit - coveredDebt;
@@ -13245,11 +13412,63 @@ function donateShopGoldAt(container, amount) {
     }
     const credit = gold - coveredDebt;
     if (credit > 0)
-        shkp.credit = Math.max(0, Math.trunc(Number(shkp.credit || 0))) + credit;
-    return { shkp, donated: gold, coveredDebt, credit };
+        shkp.credit = previousCredit + credit;
+    return { shkp, donated: gold, coveredDebt, credit, debitBefore: debit, creditBefore: previousCredit };
 }
 
-function saleDeclineQuestionObject(obj) {
+function shopCurrency(amount) {
+    const gold = Math.max(0, Math.trunc(Number(amount || 0)));
+    return `zorkmid${gold === 1 ? '' : 's'}`;
+}
+
+function shopGoldDonationMessages(donation, { selling = true } = {}) {
+    if (!donation?.donated) return [];
+    const messages = [];
+    const debitBefore = Math.max(0, Math.trunc(Number(donation.debitBefore || 0)));
+    const credit = Math.max(0, Math.trunc(Number(donation.credit || 0)));
+    if (debitBefore > 0) {
+        messages.push(`Your debt is ${donation.donated < debitBefore ? 'partially ' : ''}paid off.`);
+    }
+    if (credit > 0) {
+        const totalCredit = Math.max(0, Math.trunc(Number(donation.shkp?.credit || 0)));
+        if (totalCredit === credit) {
+            messages.push(`You have ${selling ? '' : 're-'}established ${credit} ${shopCurrency(credit)} credit.`);
+        } else {
+            messages.push(`${credit} ${shopCurrency(credit)} added${selling ? '' : ' back'} to your credit; total is now ${totalCredit} ${shopCurrency(totalCredit)}.`);
+        }
+    }
+    return messages;
+}
+
+function sellobjGoldToShopkeeper(shkp, amount) {
+    const gold = Math.max(0, Math.trunc(Number(amount || 0)));
+    if (!shkp || !gold) return { shkp: shkp || null, donated: 0, messages: [] };
+    if (shopkeeperAngryForSellobj(shkp))
+        return { shkp, donated: 0, angry: true, messages: [`${shopkeeperDisplayName(shkp)} smirks with satisfaction.`] };
+    const robbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0)));
+    if (robbed > 0) {
+        shkp.robbed = 0;
+        return {
+            shkp,
+            donated: 0,
+            robbedContribution: gold,
+            messages: ['Thank you for your contribution to restock this recently plundered shop.'],
+        };
+    }
+    const donation = donateGoldToShopkeeper(shkp, gold);
+    return { ...donation, messages: shopGoldDonationMessages(donation, { selling: true }) };
+}
+
+function sellobjDroppedGoldAt(x, y, amount) {
+    const gold = Math.max(0, Math.trunc(Number(amount || 0)));
+    if (!gold || x == null || y == null) return { shkp: null, donated: 0, messages: [] };
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return { shkp: null, donated: 0, messages: [] };
+    return sellobjGoldToShopkeeper(shkp, gold);
+}
+
+function saleDeclineQuestionObject(obj, sale = {}) {
+    if ((sale.contentOffer || 0) > 0 || (sale.contentSaleCount || 0) > 0) return 'them';
     return (obj?.quan || 1) === 1 ? 'it' : 'them';
 }
 
@@ -13258,37 +13477,160 @@ function shopSalePromptName(obj) {
     return (obj?.quan || 1) === 1 ? `${obj?.unique ? 'the' : 'your'} ${name}` : `your ${name}`;
 }
 
+function shopSaleUninterestedObject(obj) {
+    return obj?.cls === 'ball' || obj?.glyph === '0' || obj?.otyp === HEAVY_IRON_BALL
+        || obj?.cls === 'chain' || obj?.glyph === '_' || obj?.otyp === IRON_CHAIN
+        || ((obj?.cls === 'food' || obj?.otyp === FOOD_CLASS) && obj?.oeaten)
+        || (isCandleObject(obj) && obj.age < 20 * shopBaseCost(obj));
+}
+
+function ownedShopSaleOffer(shkp, obj) {
+    if (!obj || obj.unpaid || obj.no_charge || shopBillableGold(obj) || shopSaleUninterestedObject(obj)) return 0;
+    return shopSaleableObject(shkp, obj) ? shopSaleOffer(obj, shkp) : 0;
+}
+
+function containedShopSaleOffer(shkp, obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return { offer: 0, count: 0 };
+    seen.add(obj);
+    let offer = 0;
+    let count = 0;
+    for (const child of globContents(obj)) {
+        if (shopBillableGold(child)) continue;
+        const childOffer = ownedShopSaleOffer(shkp, child);
+        if (childOffer > 0) {
+            offer += childOffer;
+            count += 1;
+        }
+        const contained = containedShopSaleOffer(shkp, child, seen);
+        offer += contained.offer;
+        count += contained.count;
+    }
+    return { offer, count };
+}
+
+function markAcceptedShopContainerSaleState(obj, shkp, seen = new Set()) {
+    if (!obj || seen.has(obj) || shopBillableGold(obj)) return;
+    seen.add(obj);
+    if (!obj.unpaid && ownedShopSaleOffer(shkp, obj) <= 0) obj.no_charge = true;
+    for (const child of globContents(obj))
+        markAcceptedShopContainerSaleState(child, shkp, seen);
+}
+
+function shopSalePromptObjectName(obj, sale = {}) {
+    const contentsSold = (sale.contentOffer || 0) > 0 || (sale.contentSaleCount || 0) > 0;
+    return contentsSold ? `${shopSalePromptName(obj)} and its contents` : shopSalePromptName(obj);
+}
+
+function shopkeeperAngryForSellobj(shkp) {
+    return !!shkp && (shkp.angry || shkp.hostile || shkp.mpeaceful === 0);
+}
+
+function shopSellobjAngryResult(obj, shkp, kind = 'drop') {
+    if (globContents(obj).length) subFromShopBill(obj, shkp);
+    return {
+        kind,
+        obj,
+        shkp,
+        handled: true,
+        prompt: false,
+        angry: true,
+        message: `${shopkeeperDisplayName(shkp)} smirks with satisfaction.`,
+    };
+}
+
+function robbedShopSellobjResult(obj, shkp, offer, containedGold = 0, kind = 'drop') {
+    const robbed = Math.max(0, Math.trunc(Number(shkp?.robbed || 0)));
+    if (!robbed) return null;
+    const contribution = Math.max(0, Math.trunc(Number(offer || 0)))
+        + (Math.max(0, Math.trunc(Number(containedGold || 0))) > 0 ? 1 : 0);
+    shkp.robbed = 0;
+    subFromShopBill(obj, shkp);
+    return {
+        kind,
+        obj,
+        shkp,
+        handled: true,
+        prompt: false,
+        robbed: true,
+        robbedContribution: contribution,
+        message: contribution > 0
+            ? 'Thank you for your contribution to restock this recently plundered shop.'
+            : '',
+    };
+}
+
 function shopDroppedPaidObjectSaleInfo(obj, x, y) {
-    if (!obj || obj.unpaid || shopBillableGold(obj) || globContents(obj).length) return null;
+    const containerSale = globContents(obj).length > 0;
+    if (!obj || shopBillableGold(obj) || (!containerSale && obj.unpaid)) return null;
     const shkp = shopkeeperForCostlySpot(x, y);
     if (!shopkeeperInHisShop(shkp)) return null;
-    if (shkp.angry || shkp.hostile || shkp.mpeaceful === 0) {
-        return { obj, shkp, handled: true, prompt: false, message: `${shopkeeperDisplayName(shkp)} smirks with satisfaction.` };
-    }
-    const offer = shopSaleableObject(shkp, obj) ? shopSaleOffer(obj, shkp) : 0;
-    const uninterested = !offer
-        || (Array.isArray(shkp.bill) && shkp.bill.length >= SHOP_BILL_LIMIT)
-        || obj.cls === 'ball' || obj.glyph === '0' || obj.otyp === HEAVY_IRON_BALL
-        || obj.cls === 'chain' || obj.glyph === '_' || obj.otyp === IRON_CHAIN
-        || ((obj.cls === 'food' || obj.otyp === FOOD_CLASS) && obj.oeaten)
-        || (isCandleObject(obj) && obj.age < 20 * shopBaseCost(obj));
-    if (uninterested) {
-        obj.no_charge = true;
+    if (shopkeeperAngryForSellobj(shkp)) return shopSellobjAngryResult(obj, shkp, 'drop');
+    const contentSale = containerSale ? containedShopSaleOffer(shkp, obj) : { offer: 0, count: 0 };
+    const topOffer = ownedShopSaleOffer(shkp, obj);
+    const containedGold = containerSale ? containedShopGold(obj) : 0;
+    const offer = topOffer + contentSale.offer;
+    const noSale = !(offer > 0);
+    if (!containedGold && noSale) {
+        if (containerSale) {
+            markNoChargeRecursively(obj);
+            subFromShopBill(obj, shkp);
+        } else {
+            obj.no_charge = true;
+        }
         return { obj, shkp, handled: true, prompt: false, message: `${shopkeeperDisplayName(shkp)} seems uninterested.` };
     }
+    const robbed = robbedShopSellobjResult(obj, shkp, offer, containedGold, 'drop');
+    if (robbed) return robbed;
+    if (containedGold > 0) donateShopGoldAtSpot(x, y, containedGold);
+    if (containedGold > 0 && noSale) {
+        if (containerSale) {
+            markNoChargeRecursively(obj);
+            subFromShopBill(obj, shkp);
+        }
+        return { obj, shkp, handled: true, prompt: false, message: '' };
+    }
+    const uninterested = noSale
+        || (Array.isArray(shkp.bill) && shkp.bill.length >= SHOP_BILL_LIMIT)
+        || shopSaleUninterestedObject(obj);
+    if (uninterested) {
+        if (containerSale) {
+            markNoChargeRecursively(obj);
+            subFromShopBill(obj, shkp);
+        } else {
+            obj.no_charge = true;
+        }
+        return { obj, shkp, handled: true, prompt: false, message: `${shopkeeperDisplayName(shkp)} seems uninterested.` };
+    }
+    const sale = {
+        kind: 'drop',
+        obj,
+        shkp,
+        handled: true,
+        prompt: true,
+        offer,
+        topOffer,
+        contentOffer: contentSale.offer,
+        contentSaleCount: contentSale.count,
+        containerSale,
+    };
     const cash = shopkeeperCash(shkp);
+    const saleName = shopSalePromptObjectName(obj, sale);
     if (!cash) {
         const creditOffer = Math.trunc((offer * 9) / 10) + (offer <= 1 ? 1 : 0);
         return {
-            obj, shkp, handled: true, prompt: true, credit: true, offer: creditOffer,
-            promptMessage: `${shopkeeperDisplayName(shkp)} cannot pay you at present.  Will you accept ${creditOffer} zorkmid${creditOffer === 1 ? '' : 's'} in credit for ${shopSalePromptName(obj)}? [ynaq] (n)`,
+            ...sale,
+            credit: true,
+            offer: creditOffer,
+            promptMessage: `${shopkeeperDisplayName(shkp)} cannot pay you at present.  Will you accept ${creditOffer} zorkmid${creditOffer === 1 ? '' : 's'} in credit for ${saleName}? [ynaq] (n)`,
         };
     }
     const cashOffer = Math.min(offer, cash);
     const shortFunds = cashOffer < offer;
     return {
-        obj, shkp, handled: true, prompt: true, credit: false, offer: cashOffer,
-        promptMessage: `${shopkeeperDisplayName(shkp)} offers${shortFunds ? ' only' : ''} ${cashOffer} gold piece${cashOffer === 1 ? '' : 's'} for ${shopSalePromptName(obj)}.  Sell ${saleDeclineQuestionObject(obj)}? [ynaq] (n)`,
+        ...sale,
+        credit: false,
+        offer: cashOffer,
+        promptMessage: `${shopkeeperDisplayName(shkp)} offers${shortFunds ? ' only' : ''} ${cashOffer} gold piece${cashOffer === 1 ? '' : 's'} for ${saleName}.  Sell ${saleDeclineQuestionObject(obj, sale)}? [ynaq] (n)`,
     };
 }
 
@@ -13300,21 +13642,107 @@ function beginDroppedPaidObjectSale(obj, x, y, declineMessage = '') {
     return sale;
 }
 
-function finishDroppedObjectSale(pending, accept) {
-    if (!pending?.obj || !pending.shkp) return '';
-    const obj = pending.obj;
-    const offer = Math.max(0, Math.trunc(Number(pending.offer || 0)));
-    if (!accept) {
-        obj.no_charge = true;
-        return pending.declineMessage || `You drop ${pickupObjectPhrase(obj)}.`;
+function shopFloorContainerPutSaleInfo(container, putItem) {
+    const x = container?.ox ?? game.u?.ux;
+    const y = container?.oy ?? game.u?.uy;
+    if (!container || !putItem || (game.inventory || []).includes(container) || x == null || y == null)
+        return null;
+    if (shopBillableGold(putItem) || putItem.unpaid || container.no_charge) return null;
+    const shkp = shopFloorContainerShopkeeper(container);
+    if (!shopkeeperInHisShop(shkp)) return null;
+    if (shopkeeperAngryForSellobj(shkp)) return {
+        ...shopSellobjAngryResult(putItem, shkp, 'containerPutIn'),
+        container,
+    };
+    const contentSale = containedShopSaleOffer(shkp, putItem);
+    const topOffer = ownedShopSaleOffer(shkp, putItem);
+    const containedGold = containedShopGold(putItem);
+    const offer = topOffer + contentSale.offer;
+    if (!(offer > 0) && !containedGold) return null;
+    const robbed = robbedShopSellobjResult(putItem, shkp, offer, containedGold, 'containerPutIn');
+    if (robbed) return { ...robbed, container };
+    if (!(offer > 0) || (Array.isArray(shkp.bill) && shkp.bill.length >= SHOP_BILL_LIMIT)) return null;
+    const sale = {
+        kind: 'containerPutIn',
+        obj: putItem,
+        container,
+        shkp,
+        handled: true,
+        prompt: true,
+        offer,
+        topOffer,
+        contentOffer: contentSale.offer,
+        contentSaleCount: contentSale.count,
+        containerSale: globContents(putItem).length > 0,
+    };
+    const cash = shopkeeperCash(shkp);
+    const saleName = shopSalePromptObjectName(putItem, sale);
+    if (!cash) {
+        const creditOffer = Math.trunc((offer * 9) / 10) + (offer <= 1 ? 1 : 0);
+        return {
+            ...sale,
+            credit: true,
+            offer: creditOffer,
+            promptMessage: `${shopkeeperDisplayName(shkp)} cannot pay you at present.  Will you accept ${creditOffer} zorkmid${creditOffer === 1 ? '' : 's'} in credit for ${saleName}? [ynaq] (n)`,
+        };
     }
+    const cashOffer = Math.min(offer, cash);
+    const shortFunds = cashOffer < offer;
+    return {
+        ...sale,
+        credit: false,
+        offer: cashOffer,
+        promptMessage: `${shopkeeperDisplayName(shkp)} offers${shortFunds ? ' only' : ''} ${cashOffer} gold piece${cashOffer === 1 ? '' : 's'} for ${saleName}.  Sell ${saleDeclineQuestionObject(putItem, sale)}? [ynaq] (n)`,
+    };
+}
+
+function beginShopFloorContainerPutSale(container, item, amount = item?.quan || 1) {
+    if (!container) return null;
+    if (item?.letter === '$' || item?.otyp === GOLD_PIECE || item?.cls === 'coin' || item?.glyph === '$') return null;
+    if (item?.unpaid) return null;
+    const reject = containerPutRejectMessage(container, item);
+    if (reject) return null;
+    const count = Math.min(Math.max(1, amount || 1), item.quan || 1);
+    const putItem = splitInventoryObjectForContainerPut(item, count);
+    const sale = shopFloorContainerPutSaleInfo(container, putItem);
+    if (!sale?.prompt) return sale;
+    return {
+        ...sale,
+        item,
+        putItem,
+        amount: count,
+        itemName: inventoryItemName(item),
+    };
+}
+
+function shopSalePaymentMessage(pending, verb = 'relinquish') {
+    const offer = Math.max(0, Math.trunc(Number(pending.offer || 0)));
     if (pending.credit) {
         pending.shkp.credit = Math.max(0, Math.trunc(Number(pending.shkp.credit || 0))) + offer;
-        return `You relinquish ${pickupObjectPhrase(obj)} and acquire ${offer} zorkmid${offer === 1 ? '' : 's'} in credit.`;
+        return `You ${verb} ${pickupObjectPhrase(pending.obj)} and acquire ${offer} zorkmid${offer === 1 ? '' : 's'} in credit.`;
     }
     const paid = removeGoldFromShopkeeper(pending.shkp, offer);
     addGoldToHero(paid);
-    return `You relinquish ${pickupObjectPhrase(obj)} and receive ${paid} gold piece${paid === 1 ? '' : 's'} in compensation.`;
+    return `You ${verb} ${pickupObjectPhrase(pending.obj)} and receive ${paid} gold piece${paid === 1 ? '' : 's'} in compensation.`;
+}
+
+function finishDroppedObjectSale(pending, accept) {
+    if (!pending?.obj || !pending.shkp) return '';
+    const obj = pending.obj;
+    if (!accept) {
+        if (pending.containerSale) {
+            markNoChargeRecursively(obj);
+            subFromShopBill(obj, pending.shkp);
+        } else {
+            obj.no_charge = true;
+        }
+        return pending.declineMessage || `You drop ${pickupObjectPhrase(obj)}.`;
+    }
+    if (pending.containerSale) {
+        markAcceptedShopContainerSaleState(obj, pending.shkp);
+        subFromShopBill(obj, pending.shkp);
+    }
+    return shopSalePaymentMessage(pending);
 }
 
 function addPickedObjectToShopBill(source, pickedItem) {
@@ -13356,6 +13784,8 @@ function addContainerTakeoutObjectToShopBill(container, sourceObj, pickedItem = 
         syncUnpaidBillLine(pickedItem);
         return { shkp: null, price: 0, billEntry: null };
     }
+    if (globContents(sourceObj).length)
+        return addContainerAndContentsToShopBill(container, sourceObj, pickedItem, floorShkp, x, y);
     if (x == null || y == null || shopBillableGold(sourceObj))
         return { shkp: null, price: 0, billEntry: null };
     const shkp = floorShkp;
@@ -13378,6 +13808,132 @@ function addContainerTakeoutObjectToShopBill(container, sourceObj, pickedItem = 
 
 function addTippedContainerObjectToShopBill(container, obj) {
     return addContainerTakeoutObjectToShopBill(container, obj, obj);
+}
+
+function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) {
+    if (!source || !obj || !shkp || seen.has(obj)) return 0;
+    seen.add(obj);
+    if (shopBillableGold(obj))
+        return Math.max(1, Math.trunc(Number(obj.quan || 1)));
+
+    let value = 0;
+    const entry = shopBillEntryForObject(shkp, obj);
+    if (entry) {
+        value += shopBillEntryTotal(entry);
+        removeObjectFromShopBill(shkp, obj);
+    } else if (obj.unpaid) {
+        value += unpaidBillPrice(obj);
+        clearObjectShopBillState(obj);
+    } else if (!obj.no_charge) {
+        value += shopItemPrice(obj, source.ox ?? game.u?.ux, source.oy ?? game.u?.uy);
+    }
+
+    for (const child of globContents(obj))
+        value += lostShopMerchandiseValueForObject(source, child, shkp, seen);
+    return value;
+}
+
+function chargeShopkeeperForLostMerchandise(shkp, value) {
+    let remaining = Math.max(0, Math.trunc(Number(value || 0)));
+    if (!shkp || !remaining) return 0;
+    const peaceful = shopkeeperPeacefulForDebt(shkp);
+    if (peaceful) {
+        const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+        const covered = Math.min(credit, remaining);
+        shkp.credit = credit - covered;
+        remaining -= covered;
+    }
+    if (remaining > 0) {
+        if (peaceful && !shkp.angry) {
+            shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + remaining;
+        } else {
+            shkp.robbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0))) + remaining;
+        }
+    }
+    return remaining;
+}
+
+function billLostMagicBagShopItem(source, obj) {
+    const shkp = shopFloorContainerShopkeeper(source);
+    if (!shkp || !obj) return 0;
+    const value = lostShopMerchandiseValueForObject(source, obj, shkp);
+    return chargeShopkeeperForLostMerchandise(shkp, value);
+}
+
+function objectCarriedByHero(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return false;
+    seen.add(obj);
+    if ((game.inventory || []).includes(obj)) return true;
+    if ((game.level?.objects || []).includes(obj)) return false;
+    return objectCarriedByHero(obj.container, seen);
+}
+
+function heldMagicBagLostValueForObject(obj, shkp, seen = new Set()) {
+    if (!obj || !shkp || seen.has(obj) || shopBillableGold(obj)) return 0;
+    seen.add(obj);
+    let value = 0;
+    const entry = shopBillEntryForObject(shkp, obj);
+    if (entry) {
+        value += shopBillEntryTotal(entry);
+        removeObjectFromShopBill(shkp, obj);
+    } else if (obj.unpaid) {
+        value += unpaidBillPrice(obj) || shopItemPrice(obj, game.u?.ux, game.u?.uy);
+        clearObjectShopBillState(obj);
+    }
+    for (const child of globContents(obj))
+        value += heldMagicBagLostValueForObject(child, shkp, seen);
+    return value;
+}
+
+function markHeldMagicBagDeletedContentsUsedUp(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return;
+    seen.add(obj);
+    for (const child of globContents(obj)) {
+        markHeldMagicBagDeletedContentsUsedUp(child, seen);
+        markObjectShopBillUsedUp(child);
+    }
+}
+
+function billHeldMagicBagLostItem(obj) {
+    const owner = shopkeeperOwningBillEntry(obj);
+    if (obj?.unpaid || owner.entry) {
+        const shkp = owner.shkp || heroShopkeeper();
+        if (!shkp) return 0;
+        const value = heldMagicBagLostValueForObject(obj, shkp);
+        return chargeShopkeeperForLostMerchandise(shkp, value);
+    }
+    markHeldMagicBagDeletedContentsUsedUp(obj);
+    return 0;
+}
+
+function billMagicBagLostItem(source, obj) {
+    const shkp = shopFloorContainerShopkeeper(source);
+    if (shkp) return billLostMagicBagShopItem(source, obj);
+    if (objectCarriedByHero(source)) return billHeldMagicBagLostItem(obj);
+    return 0;
+}
+
+function billShopFloorMagicBagExplosionTarget(targetBag) {
+    const shkp = shopFloorContainerShopkeeper(targetBag);
+    if (!shkp || !targetBag || shopBillableGold(targetBag)) return { shkp: null, billEntry: null };
+    const wasNoCharge = !!targetBag.no_charge;
+    const billing = addContainerAndContentsToShopBill(
+        targetBag,
+        targetBag,
+        targetBag,
+        shkp,
+        targetBag.ox,
+        targetBag.oy,
+    );
+    targetBag.no_charge = wasNoCharge;
+    markObjectShopBillUsedUp(targetBag, shkp);
+    return { shkp, billEntry: shopBillEntryForObject(shkp, targetBag), billing };
+}
+
+function lostShopMerchandiseMessage(loss) {
+    const amount = Math.max(0, Math.trunc(Number(loss || 0)));
+    if (!amount) return '';
+    return `You owe ${amount} ${shopCurrency(amount)} for lost merchandise.`;
 }
 
 function mergePickedObjectIntoShopBill(source, target, sourcePrice = null) {
@@ -13505,13 +14061,16 @@ export const __shopBillingTestHooks = {
     addObjectToShopBill,
     addPickedObjectToShopBill,
     beginDroppedPaidObjectSale,
+    beginShopFloorContainerPutSale,
     collectPayableShopDebts,
     finishShopPaymentSelection,
     findPickedObjectInventoryMergeTarget,
     finishDroppedObjectSale,
+    finishShopFloorContainerPutSale,
     mergePickedObjectIntoInventory,
     mergePickedObjectIntoShopBill,
     placeStackableFloorObject,
+    pickUpFloorGoldObject,
     prepareContainerTakeoutObject,
     putInventoryObjectIntoContainer,
     removeObjectFromShopBill,
@@ -13520,7 +14079,9 @@ export const __shopBillingTestHooks = {
     removeInventoryItem,
     resolveUnpaidProjectileShopLanding,
     returnUnpaidObjectToShopBillOwnerAt,
+    costlyShopGoldAtSpot,
     sellobjReturnUnpaidToShop,
+    sellobjDroppedGoldAt,
     stackMonsterThrownObject,
     splitCarriedObjectShopBill,
     splitShopBillEntry,
@@ -14004,6 +14565,16 @@ function globContents(obj) {
     if (Array.isArray(obj?.contents)) return obj.contents;
     if (Array.isArray(obj?.cobj)) return obj.cobj;
     return [];
+}
+
+function normalizeContainedObjectParents(container, seen = new Set()) {
+    if (!container || seen.has(container)) return;
+    seen.add(container);
+    for (const child of globContents(container)) {
+        child.contained = true;
+        child.container = container;
+        normalizeContainedObjectParents(child, seen);
+    }
 }
 
 function collectGlobShrinkEntriesFromList(list, source, entries, {
@@ -17255,14 +17826,14 @@ function clearContainerPutEquipmentState(item, name) {
     if (item.line) item.line = `${item.letter || '?'} - ${name}`;
 }
 
-function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1) {
+function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1, options = {}) {
     if (!iceBoxContainerAvailable(iceBox)) return { moved: false, message: '' };
     iceBox.contents ??= [];
     iceBox.cknown = true;
     if (item?.letter === '$' || item?.otyp === GOLD_PIECE || item?.cls === 'coin' || item?.glyph === '$') {
         const gold = Math.min(Math.max(0, amount || 0), game._goldCount || 0);
         if (!gold) return { moved: false, message: 'You have no gold to put in.' };
-        donateShopGoldAt(iceBox, gold);
+        const shopGold = donateShopGoldAt(iceBox, gold);
         add_to_container(iceBox, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
         game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
         game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
@@ -17274,7 +17845,8 @@ function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1) {
             game.inventory = (game.inventory || []).filter(invItem => invItem.letter !== '$' && invItem.cls !== 'coin');
         }
         game._pet_food_scan_inventory = game.inventory;
-        return { moved: true, message: `You put ${gold} gold piece${gold === 1 ? '' : 's'} into the ice box.` };
+        const messages = [`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the ice box.`, ...(shopGold.messages || [])];
+        return { moved: true, message: messages.join('  '), messages };
     }
 
     const reject = iceBoxPutRejectMessage(iceBox, item);
@@ -17284,11 +17856,26 @@ function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1) {
     const count = Math.min(Math.max(1, amount || 1), item.quan || 1);
     const putItem = (item.quan || 1) > count ? { ...item, quan: count } : item;
     clearContainerPutEquipmentState(putItem, name);
+    let sellobjResult = null;
+    if (!options.skipSalePrompt) {
+        const pendingSale = beginShopFloorContainerPutSale(iceBox, item, count);
+        if (pendingSale?.prompt)
+            return { moved: false, pendingSale, message: pendingSale.promptMessage };
+        if (pendingSale?.handled) sellobjResult = pendingSale;
+    }
+    const billing = billShopFloorContainerPutObject(iceBox, putItem, {
+        acceptedSale: !!options.acceptedSale,
+        shkp: options.salePending?.shkp,
+        sellobjResult,
+    });
     removeInventoryItem(item, count);
     freezeObjectInIcebox(putItem);
-    add_to_container(iceBox, putItem);
+    const contained = add_to_container(iceBox, putItem);
+    if (options.acceptedSale && contained) markAcceptedShopContainerSaleState(contained, options.salePending?.shkp || billing.shkp);
+    if (billing.noCharge && contained && contained !== putItem) markNoChargeRecursively(contained);
     game._pet_food_scan_inventory = game.inventory;
-    return { moved: true, message: `You put ${name} into the ice box.` };
+    const messages = [sellobjResult?.message, `You put ${name} into the ice box.`].filter(Boolean);
+    return { moved: true, message: messages.join('  '), messages };
 }
 
 function putInventoryObjectIntoBag(bag, item, amount = item?.quan || 1) {
@@ -17339,7 +17926,7 @@ function splitInventoryObjectForContainerPut(item, count) {
     return putItem;
 }
 
-function billShopFloorContainerPutObject(container, putItem) {
+function billShopFloorContainerPutObject(container, putItem, options = {}) {
     const x = container?.ox ?? game.u?.ux;
     const y = container?.oy ?? game.u?.uy;
     if (!container || !putItem || (game.inventory || []).includes(container) || x == null || y == null)
@@ -17347,25 +17934,34 @@ function billShopFloorContainerPutObject(container, putItem) {
     const shkp = shopFloorContainerShopkeeper(container);
     if (!shkp) return { shkp: null, returned: false, noCharge: false };
     if (shopBillableGold(putItem)) return { shkp, returned: false, noCharge: false };
+    const sellobjResult = options.sellobjResult;
+    if (sellobjResult?.angry || sellobjResult?.robbed)
+        return { shkp, returned: false, noCharge: false, sellobjResult };
+    const gold = containedShopGold(putItem);
+    if (gold > 0) donateShopGoldAt(container, gold);
     if (returnUnpaidObjectToShopBillOwnerAt(putItem, x, y))
         return { shkp, returned: true, noCharge: false };
     if (!putItem.unpaid) {
+        if (options.acceptedSale) {
+            markAcceptedShopContainerSaleState(putItem, options.shkp || shkp);
+            return { shkp, returned: false, noCharge: false, acceptedSale: true };
+        }
         markNoChargeRecursively(putItem);
         return { shkp, returned: false, noCharge: true };
     }
     return { shkp, returned: false, noCharge: false };
 }
 
-function putInventoryObjectIntoContainer(container, item, amount = item?.quan || 1) {
+function putInventoryObjectIntoContainer(container, item, amount = item?.quan || 1, options = {}) {
     if (!container) return { moved: false, message: '' };
-    if (isIceBoxObject(container)) return putInventoryObjectIntoIceBox(container, item, amount);
+    if (isIceBoxObject(container)) return putInventoryObjectIntoIceBox(container, item, amount, options);
     container.contents ??= [];
     container.cknown = true;
     const containerName = tipContainerSimpleName(container);
     if (item?.letter === '$' || item?.otyp === GOLD_PIECE || item?.cls === 'coin' || item?.glyph === '$') {
         const gold = Math.min(Math.max(0, amount || 0), game._goldCount || 0);
         if (!gold) return { moved: false, message: 'You have no gold to put in.' };
-        donateShopGoldAt(container, gold);
+        const shopGold = donateShopGoldAt(container, gold);
         add_to_container(container, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
         game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
         game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
@@ -17378,7 +17974,8 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
         }
         refreshTipContainerWeight(container);
         game._pet_food_scan_inventory = game.inventory;
-        return { moved: true, message: `You put ${gold} gold piece${gold === 1 ? '' : 's'} into the ${containerName}.` };
+        const messages = [`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the ${containerName}.`, ...(shopGold.messages || [])];
+        return { moved: true, message: messages.join('  '), messages };
     }
 
     const reject = containerPutRejectMessage(container, item);
@@ -17389,16 +17986,46 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
     const putItem = splitInventoryObjectForContainerPut(item, count);
     clearContainerPutEquipmentState(putItem, name);
     if (isMagicBagObject(container) && magicBagExplodesWithObject(putItem)) {
+        billShopFloorMagicBagExplosionTarget(container);
+        markObjectShopBillUsedUp(putItem);
         removeInventoryItem(item, count);
         return explodeMagicBagTransfer(container, putItem, []);
     }
-    const billing = billShopFloorContainerPutObject(container, putItem);
+    let sellobjResult = null;
+    if (!options.skipSalePrompt) {
+        const pendingSale = beginShopFloorContainerPutSale(container, item, count);
+        if (pendingSale?.prompt)
+            return { moved: false, pendingSale, message: pendingSale.promptMessage };
+        if (pendingSale?.handled) sellobjResult = pendingSale;
+    }
+    const billing = billShopFloorContainerPutObject(container, putItem, {
+        acceptedSale: !!options.acceptedSale,
+        shkp: options.salePending?.shkp,
+        sellobjResult,
+    });
     removeInventoryItem(item, count);
     const contained = add_to_container(container, putItem);
+    if (options.acceptedSale && contained) markAcceptedShopContainerSaleState(contained, options.salePending?.shkp || billing.shkp);
     if (billing.noCharge && contained && contained !== putItem) markNoChargeRecursively(contained);
     refreshTipContainerWeight(container);
     game._pet_food_scan_inventory = game.inventory;
-    return { moved: true, message: `You put ${name} into the ${containerName}.` };
+    const messages = [sellobjResult?.message, `You put ${name} into the ${containerName}.`].filter(Boolean);
+    return { moved: true, message: messages.join('  '), messages };
+}
+
+function finishShopFloorContainerPutSale(pending, accept) {
+    if (!pending?.container || !pending.item || !pending.putItem || !pending.shkp)
+        return { moved: false, message: '' };
+    const result = putInventoryObjectIntoContainer(
+        pending.container,
+        pending.item,
+        pending.amount || pending.item?.quan || 1,
+        { skipSalePrompt: true, acceptedSale: !!accept, salePending: pending },
+    );
+    if (!result.moved || !accept) return result;
+    const saleMessage = shopSalePaymentMessage({ ...pending, obj: pending.putItem }, 'sell');
+    const messages = [saleMessage, ...(result.messages || (result.message ? [result.message] : []))].filter(Boolean);
+    return { ...result, saleMessage, messages, message: messages.join('  ') };
 }
 
 async function showIceBoxMessageList(messages) {
@@ -17665,6 +18292,13 @@ function thawObjectTippedFromSource(source, obj) {
     if (isIceBoxObject(source)) removedFromIcebox(obj);
 }
 
+function returnTippedObjectToShopFloor(source, obj) {
+    const shkp = shopFloorContainerShopkeeper(source);
+    if (!shkp || !obj || shopBillableGold(obj)) return false;
+    if (globContents(obj).length) return subFromShopBill(obj, shkp);
+    return sellobjReturnUnpaidToShop(obj, obj.ox, obj.oy);
+}
+
 function tipContainerToFloor(source) {
     const contents = [...liquidFlowContainerContents(source)];
     source.cknown = true;
@@ -17672,6 +18306,7 @@ function tipContainerToFloor(source) {
     const x = game.u?.ux ?? source.ox ?? 0;
     const y = game.u?.uy ?? source.oy ?? 0;
     const cursedMagicBag = isMagicBagObject(source) && source.cursed;
+    let lostMerchandise = 0;
     const names = contents.map(containerObjectPhrase).join(', ');
     const messages = [cursedMagicBag
         ? (contents.length === 1 ? 'An object spills out.' : 'Objects spill out.')
@@ -17682,16 +18317,25 @@ function tipContainerToFloor(source) {
         removeContainedObject(source, obj);
         thawObjectTippedFromSource(source, obj);
         if (cursedMagicBag && !rn2(13)) {
+            lostMerchandise += billMagicBagLostItem(source, obj);
             destroyMagicBagItem(obj, messages);
             continue;
         }
         addTippedContainerObjectToShopBill(source, obj);
         const placed = placeTippedObjectOnFloor(obj, x, y, messages);
-        if (placed && shopBillableGold(obj)) donateShopGoldAt(source, obj.quan || 1);
+        if (placed) {
+            const gold = shopBillableGold(obj)
+                ? Math.max(1, Math.trunc(Number(obj.quan || 1)))
+                : containedShopGold(obj);
+            if (gold > 0) donateShopGoldAt(source, gold);
+            returnTippedObjectToShopFloor(source, obj);
+        }
     }
     if (Array.isArray(source.contents)) source.contents.length = 0;
     if (Array.isArray(source.cobj)) source.cobj.length = 0;
     refreshTipContainerWeight(source);
+    const lostMessage = lostShopMerchandiseMessage(lostMerchandise);
+    if (lostMessage) messages.push(lostMessage);
     return messages;
 }
 
@@ -17878,13 +18522,17 @@ function destroyMagicBagItem(item, messages, { silent = false } = {}) {
 function magicBagContentsLoss(container, messages, { silent = false } = {}) {
     if (!isMagicBagObject(container) || !container.cursed) return 0;
     let lost = 0;
+    let lostMerchandise = 0;
     for (const obj of [...liquidFlowContainerContents(container)]) {
         if (rn2(13)) continue;
+        lostMerchandise += billMagicBagLostItem(container, obj);
         removeContainedObject(container, obj);
         destroyMagicBagItem(obj, messages, { silent });
         lost++;
     }
     refreshTipContainerWeight(container);
+    const lostMessage = !silent ? lostShopMerchandiseMessage(lostMerchandise) : '';
+    if (lostMessage) messages.push(lostMessage);
     return lost;
 }
 
@@ -18198,6 +18846,7 @@ function scatterMagicBagContents(container, messages) {
     const shopContext = magicBagScatterShopContext(x, y);
     for (const obj of [...liquidFlowContainerContents(container)]) {
         if (!rn2(13)) {
+            billMagicBagLostItem(container, obj);
             removeContainedObject(container, obj);
             destroyMagicBagItem(obj, messages, { silent: true });
             continue;
@@ -18530,6 +19179,7 @@ function tipContainerIntoContainer(source, targetBox) {
     if (!contents.length) return [tipContainerEmptyMessage(source)];
     targetBox.contents ??= [];
     const cursedMagicBag = isMagicBagObject(source) && source.cursed;
+    let lostMerchandise = 0;
     const messages = [contents.length === 1
         ? `An object tumbles into ${tipTargetPhrase(targetBox)}.`
         : `Objects tumble into ${tipTargetPhrase(targetBox)}.`];
@@ -18537,6 +19187,7 @@ function tipContainerIntoContainer(source, targetBox) {
         removeContainedObject(source, obj);
         thawObjectTippedFromSource(source, obj);
         if (cursedMagicBag && !rn2(13)) {
+            lostMerchandise += billMagicBagLostItem(source, obj);
             destroyMagicBagItem(obj, messages);
             continue;
         }
@@ -18552,6 +19203,8 @@ function tipContainerIntoContainer(source, targetBox) {
     if (Array.isArray(source.cobj)) source.cobj.length = 0;
     refreshTipContainerWeight(source);
     refreshTipContainerWeight(targetBox);
+    const lostMessage = lostShopMerchandiseMessage(lostMerchandise);
+    if (lostMessage) messages.push(lostMessage);
     return messages;
 }
 
@@ -24228,19 +24881,8 @@ async function moveHero(dx, dy) {
                 && (obj.otyp === GOLD_PIECE || obj.glyph === '$'))
             : null;
         if (goldHere) {
-            const amount = goldHere.quan || 1;
-            game._goldCount = (game._goldCount || 0) + amount;
-            game._just_picked_gold = amount;
-            const invGold = (game.inventory || []).find(obj => obj.letter === '$' || obj.cls === 'coin');
-            if (invGold) {
-                invGold.quan = (invGold.quan || 0) + amount;
-                updateMoneyLine(invGold);
-            } else {
-                game.inventory = [...(game.inventory || []), { cls: 'coin', letter: '$', otyp: GOLD_PIECE, glyph: '$', quan: amount }];
-            }
-            game.level.objects = (game.level.objects || []).filter(obj => obj !== goldHere);
-            const total = game._goldCount === amount ? '' : ` (${game._goldCount} in total)`;
-            game._topline_after_more = `$ - ${amount} gold piece${amount === 1 ? '' : 's'}${total}.`;
+            const pickup = pickUpFloorGoldObject(goldHere);
+            game._topline_after_more = (pickup.messages || []).join('  ');
         }
         await setMessage(materializeMessage, true);
         return;
@@ -24430,26 +25072,16 @@ async function moveHero(dx, dy) {
     if (trapHere?.ttyp === BEAR_TRAP && objectsHere.length > 1) game._pending_bear_trap = trapHere;
     const goldHere = objectsHere.find(obj => obj.otyp === GOLD_PIECE || obj.glyph === '$');
     if (game._autopickup && goldHere) {
-        const amount = goldHere.quan || 1;
-        game._goldCount = (game._goldCount || 0) + amount;
-        game._just_picked_gold = amount;
-        const invGold = (game.inventory || []).find(obj => obj.letter === '$' || obj.cls === 'coin');
-        if (invGold) {
-            invGold.quan = (invGold.quan || 0) + amount;
-            updateMoneyLine(invGold);
-        }
-        else game.inventory = [...(game.inventory || []), { cls: 'coin', letter: '$', otyp: GOLD_PIECE, glyph: '$', quan: amount }];
-        game.level.objects = (game.level.objects || []).filter(obj => obj !== goldHere);
-        const total = game._goldCount === amount ? '' : ` (${game._goldCount} in total)`;
-        let message = `$ - ${amount} gold piece${amount === 1 ? '' : 's'}${total}.`;
+        const pickup = pickUpFloorGoldObject(goldHere);
+        const messages = [...(pickup.messages || [])];
         const remainingObjects = objectsHere.filter(obj => obj !== goldHere);
         if (remainingObjects.length === 1) {
             const remaining = remainingObjects[0];
             if (remaining.kind === 'chest' || remaining.otyp === CHEST)
-                message += `  You see here a ${remaining.lknown && (remaining.locked || remaining.olocked) ? 'locked ' : ''}chest.`;
-            else message += `  You see here ${pickupObjectPhrase(remaining)}.`;
+                messages.push(`You see here a ${remaining.lknown && (remaining.locked || remaining.olocked) ? 'locked ' : ''}chest.`);
+            else messages.push(`You see here ${pickupObjectPhrase(remaining)}.`);
         }
-        await setMessage(message);
+        await setMessage(messages.join('  '));
         return;
     }
     const pickupTypes = game._autopickup_types || game.flags?.pickup_types || 'all';
@@ -25139,17 +25771,8 @@ export async function rhack(_cmd) {
             const messages = [];
             for (const obj of selected) {
                 if (obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$') {
-                    const amount = obj.quan || 1;
-                    game._goldCount = (game._goldCount || 0) + amount;
-                    game._just_picked_gold = amount;
-                    const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
-                    if (money) {
-                        money.quan = (money.quan || 0) + amount;
-                        updateMoneyLine(money);
-                    }
-                    else game.inventory = [...(game.inventory || []), { cls: 'coin', letter: '$', otyp: GOLD_PIECE, glyph: '$', quan: amount }];
-                    const total = game._goldCount === amount ? '' : ` (${game._goldCount} in total)`;
-                    messages.push(`$ - ${amount} gold piece${amount === 1 ? '' : 's'}${total}.`);
+                    const pickup = pickUpFloorGoldObject(obj);
+                    messages.push(...(pickup.messages || []));
                     continue;
                 }
                 const letter = obj.wasStolen && obj.letter
@@ -25564,7 +26187,13 @@ export async function rhack(_cmd) {
             return;
         }
         const accepted = answer === 'y' || answer === 'a';
-        const message = finishDroppedObjectSale(pendingSale, accepted);
+        let message;
+        if (pendingSale.kind === 'containerPutIn') {
+            const result = finishShopFloorContainerPutSale(pendingSale, accepted);
+            message = (result.messages || (result.message ? [result.message] : [])).join('  ');
+        } else {
+            message = finishDroppedObjectSale(pendingSale, accepted);
+        }
         game._shop_sale_pending = null;
         game._pending_message = '';
         game._message_more = 0;
@@ -34186,7 +34815,7 @@ export async function rhack(_cmd) {
             const amount = game._goldCount || (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin')?.quan || 0;
             game._goldCount = 0;
             game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin');
-            game.level.objects.push({
+            const floorGold = {
                 otyp: GOLD_PIECE,
                 cls: 'coin',
                 glyph: '$',
@@ -34194,11 +34823,19 @@ export async function rhack(_cmd) {
                 ox: game.u?.ux || 0,
                 oy: game.u?.uy || 0,
                 quan: amount,
-            });
+            };
+            placeStackableFloorObject(floorGold);
+            const shopGold = sellobjDroppedGoldAt(floorGold.ox, floorGold.oy, amount);
             const guard = (game.level?.monsters || []).find(mon => mon.isgd || mon.data?.name === 'guard');
             if (guard) prepareVaultGuardEscort(guard);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
-            if (game.flags?.verbose === false) {
+            const messages = [
+                ...(game.flags?.verbose === false ? [] : [`You drop ${amount} gold piece${amount === 1 ? '' : 's'}.`]),
+                ...(shopGold.messages || []),
+            ];
+            if (messages.length) {
+                await setMessage(messages.join('  '), messages.length > 1);
+            } else if (game.flags?.verbose === false) {
                 preserveSilentDropPrompt();
             } else {
                 await setMessage(`You drop ${amount} gold piece${amount === 1 ? '' : 's'}.`);
@@ -34230,6 +34867,9 @@ export async function rhack(_cmd) {
                 color: item.cls === 'weapon' ? (item.kind === 'quarterstaff' ? CLR_BROWN : item.color ?? CLR_CYAN)
                     : item.color ?? (item.cls === 'scroll' || item.cls === 'spellbook' ? CLR_WHITE : NO_COLOR),
             };
+            if (Array.isArray(dropped.contents)) dropped.contents = [...dropped.contents];
+            if (Array.isArray(dropped.cobj)) dropped.cobj = [...dropped.cobj];
+            normalizeContainedObjectParents(dropped);
             const floorMessages = [];
             let shopSale = null;
             const consumedByFloor = earthFloorEffects(dropped, dropped.ox, dropped.oy, floorMessages, 'drop');
@@ -34730,11 +35370,27 @@ export async function rhack(_cmd) {
                 await setMessage('No relevant items selected.');
                 return;
             }
-            const results = selectedEntries.map(selectedEntry =>
-                putInventoryObjectIntoIceBox(iceBox, selectedEntry.item, selectedEntry.amount));
+            const results = [];
+            let pendingSale = null;
+            for (const selectedEntry of selectedEntries) {
+                const result = putInventoryObjectIntoIceBox(iceBox, selectedEntry.item, selectedEntry.amount);
+                results.push(result);
+                if (result.pendingSale) {
+                    pendingSale = result.pendingSale;
+                    break;
+                }
+            }
             const moved = results.some(result => result.moved);
             const messages = iceBoxPutResultMessages(results);
             clearIceBoxPutState();
+            if (pendingSale) {
+                clearIceBoxSequenceState();
+                game._shop_sale_pending = pendingSale;
+                game._command_mode = 'shopSaleConfirm';
+                if (moved) game.context.move = 1;
+                await showIceBoxMessageList([...messages.filter(message => message !== pendingSale.promptMessage), pendingSale.promptMessage]);
+                return;
+            }
             if (game._icebox_sequence_after_putin === 'takeout') {
                 markIceBoxSequenceUsed(moved);
                 await continueIceBoxSequenceToTakeout(iceBox, messages);
@@ -34798,6 +35454,12 @@ export async function rhack(_cmd) {
             : (game.inventory || []).find(invItem => invItem.letter === ch);
         const result = putInventoryObjectIntoIceBox(iceBox, item, item?.quan || 1);
         clearIceBoxPutState();
+        if (result.pendingSale) {
+            game._shop_sale_pending = result.pendingSale;
+            game._command_mode = 'shopSaleConfirm';
+            await showIceBoxMessageList([result.pendingSale.promptMessage]);
+            return;
+        }
         game._command_mode = null;
         if (result.moved) game.context.move = 1;
         await showIceBoxPutMessages([result]);
@@ -34925,12 +35587,30 @@ export async function rhack(_cmd) {
                 await setMessage('No relevant items selected.');
                 return;
             }
-            const results = selectedEntries.map(selectedEntry =>
-                putInventoryObjectIntoContainer(container, selectedEntry.item, selectedEntry.amount));
+            const results = [];
+            let pendingSale = null;
+            for (const selectedEntry of selectedEntries) {
+                const result = putInventoryObjectIntoContainer(container, selectedEntry.item, selectedEntry.amount);
+                results.push(result);
+                if (result.pendingSale) {
+                    pendingSale = result.pendingSale;
+                    break;
+                }
+                if (result.bagGone) break;
+            }
             const moved = results.some(result => result.moved);
             const bagGone = results.some(result => result.bagGone);
             const messages = results.flatMap(result => result.messages || (result.message ? [result.message] : []));
             clearContainerPutState();
+            if (pendingSale) {
+                clearContainerSequenceState();
+                game._floor_container_object = null;
+                game._shop_sale_pending = pendingSale;
+                game._command_mode = 'shopSaleConfirm';
+                if (moved || bagGone) game.context.move = 1;
+                await showIceBoxMessageList([...messages.filter(message => message !== pendingSale.promptMessage), pendingSale.promptMessage]);
+                return;
+            }
             if (!bagGone && game._container_sequence_after_putin === 'takeout') {
                 markContainerSequenceUsed(moved);
                 await continueContainerSequenceToTakeout(container, messages);
@@ -34992,6 +35672,12 @@ export async function rhack(_cmd) {
         const result = putInventoryObjectIntoContainer(container, item, item?.quan || 1);
         clearContainerPutState();
         game._floor_container_object = null;
+        if (result.pendingSale) {
+            game._shop_sale_pending = result.pendingSale;
+            game._command_mode = 'shopSaleConfirm';
+            await showIceBoxMessageList([result.pendingSale.promptMessage]);
+            return;
+        }
         game._command_mode = null;
         if (result.moved || result.bagGone) game.context.move = 1;
         await showIceBoxMessageList(result.messages || (result.message ? [result.message] : []));
@@ -38748,20 +39434,9 @@ export async function rhack(_cmd) {
         }
         const objectHere = objectsHere[0];
         if (objectHere?.otyp === GOLD_PIECE || objectHere?.glyph === '$') {
-            const amount = objectHere.quan || 1;
-            game._goldCount = (game._goldCount || 0) + amount;
-            game._just_picked_gold = amount;
-            const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
-            if (money) {
-                money.quan = (money.quan || 0) + amount;
-                updateMoneyLine(money);
-            }
-            else game.inventory = [...(game.inventory || []), { cls: 'coin', letter: '$', otyp: GOLD_PIECE, glyph: '$', quan: amount }];
-            game._pet_food_scan_inventory = game.inventory;
-            game.level.objects = (game.level.objects || []).filter(obj => obj !== objectHere);
+            const pickup = pickUpFloorGoldObject(objectHere);
             newsym(game.u?.ux || 0, game.u?.uy || 0);
-            const total = game._goldCount === amount ? '' : ` (${game._goldCount} in total)`;
-            await setMessage(`$ - ${amount} gold piece${amount === 1 ? '' : 's'}${total}.`);
+            await setMessage((pickup.messages || []).join('  '), (pickup.messages || []).length > 1);
             game.context.move = 1;
             return;
         }

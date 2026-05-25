@@ -8,7 +8,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC } from './display.js';
+import {
+    newsym, flush_screen, pline, docrt, clearPendingMessageAndToplineLikeC,
+} from './display.js';
 import { vision_recalc } from './vision.js';
 import { dosearch, dosearchCmdSafetyPreventionLikeC } from './search.js';
 import {
@@ -68,6 +70,17 @@ export async function rhack(key) {
         // Read key from input
         await flush_screen(1);
         key = await nhgetch();
+    }
+
+    /* C: invent.c display_pickinv — next key dismisses overlay; key is consumed. */
+    if (key !== 0 && game._inventoryMode && key !== 27) {
+        game._inventoryMode = false;
+        delete game._invSelCat;
+        clearPendingMessageAndToplineLikeC();
+        await docrt();
+        await flush_screen(1);
+        game.context.move = 0;
+        return;
     }
 
     if (key === 27) {
@@ -212,11 +225,17 @@ export async function rhack(key) {
             }
         }
         await dosearch();
+        const nextKey = peekQueuedKey();
+        const nextCh = nextKey == null ? null : String.fromCharCode(nextKey);
+        /* C: twin `#search` — blank topline before second search; single search retains trap msg. */
+        if (nextCh === 's') {
+            clearPendingMessageAndToplineLikeC();
+        } else {
+            game._retainMessageAfterCommand = true;
+        }
         /* C: **`#search`** costs time — inline **`movemon`** + new-turn tail on the **`s`** step. */
         game.context._searchInlinePostDoneLikeC = true;
         await runPostCommandTurnAdvanceLikeC(game);
-        const nextKey = peekQueuedKey();
-        const nextCh = nextKey == null ? null : String.fromCharCode(nextKey);
         const rogueLike =
             game.urole?.abbr === 'Rog'
             || game.pl_character === 'Rogue'
@@ -234,10 +253,13 @@ export async function rhack(key) {
             delete game.context._searchInlinePostDoneLikeC;
         }
     } else if (ch === 'i') {
-        // C: cmd.c #inventory — minimal full-screen list (invent.c)
+        // C: cmd.c #inventory — display_pickinv overlay (map stays visible)
         game.context.move = 0;
-        game._inventoryMode = true;
-        await flush_screen(1);
+        if (!game._inventoryMode) {
+            game._inventoryMode = true;
+            game._invSelCat = 'Weapons';
+            await flush_screen(1);
+        }
     } else if (ch === '+') {
         // C: spell menu — no spells known yet
         game.context.move = 0;
@@ -306,10 +328,11 @@ async function domove(dx, dy) {
         await doopenIndirHeroLikeC(g, newx, newy);
         g.context.door_opened = !isClosedDoorLoc(dest);
         u.dz = 0;
-        clearPendingMessageAndToplineLikeC();
+        /* C: autoopen pline stays on row 0 until the next command (do not cls here). */
+        if (!g._retainMessageAfterCommand) clearPendingMessageAndToplineLikeC();
         g._overlayScreen = null;
         g._inventoryMode = false;
-        vision_recalc(1);
+        /* C: no domove vision_recalc when autoopen without moving — moveloop_core tail. */
         return false;
     }
 

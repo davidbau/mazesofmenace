@@ -11,13 +11,15 @@ import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, distmin, dist2 } from './hacklib.js';
 import { randomEngraving, randomEpitaph, wipeoutText } from './random_text.js';
+import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
 import {
     OBJECT_CLASS, OBJECT_PROB, OBJECT_CHARGED, OBJECT_DIR,
-    CLASS_BASES, CLASS_TOTALS,
+    OBJECT_WEIGHT, CLASS_BASES, CLASS_TOTALS,
 } from './object_data.js';
 import { getObjectColor, getObjectMaterial } from './o_init.js';
 import { MONSTER_DATA } from './monster_data.js';
 import { m_dowear_basic } from './mon_wear.js';
+import { NO_COLOR } from './terminal.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR, CLOUD,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -30,7 +32,7 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, IS_ROOM,
     ACCESSIBLE,
-    SPACE_POS, ZAP_POS, isok, W_NONDIGGABLE, FILL_NORMAL, FILL_NONE, FILL_LVFLAGS,
+    SPACE_POS, ZAP_POS, isok, W_NONDIGGABLE, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, FILL_NORMAL, FILL_NONE, FILL_LVFLAGS,
     DRY, WET, HOT, SOLID,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, THRONE,
     A_LAWFUL, A_NONE, Align2amask,
@@ -76,6 +78,7 @@ const SPE_INVISIBILITY = 393;
 const SPE_POLYMORPH = 399;
 const SPE_CREATE_FAMILIAR = 401;
 const SPE_STONE_TO_FLESH = 405;
+const SPE_NOVEL = 408;
 const SPE_BOOK_OF_THE_DEAD = 409;
 const WAND_CLASS = 11;
 const WAN_LIGHT = 410;
@@ -197,6 +200,7 @@ const FLINT = 473;
 const ROCK = 474;
 const KELP_FROND = 275;
 const CREAM_PIE = 287;
+const CANDY_BAR = 288;
 const SCR_TELEPORTATION = 333;
 const SCR_CHARGING = 342;
 const BELL = 263;
@@ -257,6 +261,8 @@ const ICE_BOX = 216;
 const SACK = 217;
 const OILSKIN_SACK = 218;
 const BAG_OF_HOLDING = 219;
+const BAG_OF_TRICKS = 220;
+const HORN_OF_PLENTY = 252;
 const FOOD_RATION = 293;
 const CRAM_RATION = 292;
 const LEMBAS_WAFER = 291;
@@ -310,11 +316,13 @@ const M2_HOSTILE = 0x00100000;
 const M2_PEACEFUL = 0x00200000;
 const M2_NASTY = 0x02000000;
 const M2_STRONG = 0x04000000;
+const M2_ROCKTHROW = 0x08000000;
 const M2_GREEDY = 0x10000000;
 const MIMIC_FURNITURE_CLASS = Symbol('MIMIC_FURNITURE_CLASS');
 const MIMIC_STRANGE_OBJECT = Symbol('MIMIC_STRANGE_OBJECT');
 const M1_FLY = 0x00000001;
 const M1_SWIM = 0x00000002;
+const M1_AMORPHOUS = 0x00000004;
 const M1_AMPHIBIOUS = 0x00000200;
 const M1_WALLWALK = 0x00000008;
 const M1_NOEYES = 0x00001000;
@@ -462,9 +470,10 @@ function unhideable_trap(t) { return t === HOLE; }
 function undestroyable_trap(t) { return t === MAGIC_PORTAL || t === VIBRATING_SQUARE; }
 function is_xport_trap(t) { return t >= TELEP_TRAP && t <= MAGIC_PORTAL; }
 
-const MONSTERS = MONSTER_DATA.map(([name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, neuter, male, female, msound = 0, mresists = 0, mconveys = 0, mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = [], msize = 2]) => ({
-    name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, msound, mresists, mconveys, mflags1, mflags2, mflags3, mattk, msize,
+const MONSTERS = MONSTER_DATA.map(([name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, neuter, male, female, msound = 0, mresists = 0, mconveys = 0, mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = [], msize = 2, ac = 10, cwt = 0, cnutrit = 0]) => ({
+    name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color, msound, mresists, mconveys, mflags1, mflags2, mflags3, mattk, msize, ac, cwt, cnutrit,
     neuter: !!neuter, male: !!male, female: !!female,
+    throws_rocks: !!(mflags2 & M2_ROCKTHROW),
 }));
 
 const SPECIAL_PM = MONSTERS.findIndex(mon => mon.name === 'LONG_WORM_TAIL');
@@ -500,6 +509,55 @@ const MONGEN_ORDER = (() => {
 })();
 
 const PLACEHOLDER_MONSTERS = new Set(['ORC', 'GIANT', 'ELF', 'HUMAN']);
+const MONSTER_NAME_ALIASES = new Map([
+    ['dwarf lord', { name: 'DWARF_LORD', gender: 'male' }],
+    ['dwarf lady', { name: 'DWARF_LORD', gender: 'female' }],
+    ['dwarf leader', { name: 'DWARF_LORD' }],
+    ['dwarf king', { name: 'DWARF_KING', gender: 'male' }],
+    ['dwarf queen', { name: 'DWARF_KING', gender: 'female' }],
+    ['dwarf ruler', { name: 'DWARF_KING' }],
+    ['kobold lord', { name: 'KOBOLD_LORD', gender: 'male' }],
+    ['kobold lady', { name: 'KOBOLD_LORD', gender: 'female' }],
+    ['kobold leader', { name: 'KOBOLD_LORD' }],
+    ['gnome lord', { name: 'GNOME_LORD', gender: 'male' }],
+    ['gnome lady', { name: 'GNOME_LORD', gender: 'female' }],
+    ['gnome leader', { name: 'GNOME_LORD' }],
+    ['gnome king', { name: 'GNOME_KING', gender: 'male' }],
+    ['gnome queen', { name: 'GNOME_KING', gender: 'female' }],
+    ['gnome ruler', { name: 'GNOME_KING' }],
+    ['ogre lord', { name: 'OGRE_LORD', gender: 'male' }],
+    ['ogre lady', { name: 'OGRE_LORD', gender: 'female' }],
+    ['ogre leader', { name: 'OGRE_LORD' }],
+    ['ogre king', { name: 'OGRE_KING', gender: 'male' }],
+    ['ogre queen', { name: 'OGRE_KING', gender: 'female' }],
+    ['ogre tyrant', { name: 'OGRE_KING' }],
+    ['vampire lord', { name: 'VAMPIRE_LORD', gender: 'male' }],
+    ['vampire lady', { name: 'VAMPIRE_LORD', gender: 'female' }],
+    ['vampire leader', { name: 'VAMPIRE_LORD' }],
+    ['elf-lord', { name: 'ELF_LORD', gender: 'male' }],
+    ['elf lord', { name: 'ELF_LORD', gender: 'male' }],
+    ['elf-lady', { name: 'ELF_LORD', gender: 'female' }],
+    ['elf lady', { name: 'ELF_LORD', gender: 'female' }],
+    ['elf-noble', { name: 'ELF_LORD' }],
+    ['elf noble', { name: 'ELF_LORD' }],
+    ['elvenking', { name: 'ELVENKING', gender: 'male' }],
+    ['elvenqueen', { name: 'ELVENKING', gender: 'female' }],
+    ['elven monarch', { name: 'ELVENKING' }],
+    ['priest', { name: 'PRIEST', gender: 'male' }],
+    ['priestess', { name: 'PRIEST', gender: 'female' }],
+    ['aligned cleric', { name: 'PRIEST' }],
+    ['aligned priest', { name: 'PRIEST', gender: 'male' }],
+    ['aligned priestess', { name: 'PRIEST', gender: 'female' }],
+    ['high priest', { name: 'HIGH_PRIEST', gender: 'male' }],
+    ['high priestess', { name: 'HIGH_PRIEST', gender: 'female' }],
+    ['high cleric', { name: 'HIGH_PRIEST' }],
+    ['incubus', { name: 'INCUBUS', gender: 'male' }],
+    ['succubus', { name: 'INCUBUS', gender: 'female' }],
+    ['amorous demon', { name: 'INCUBUS' }],
+    ['caveman', { name: 'CAVEMAN', gender: 'male' }],
+    ['cavewoman', { name: 'CAVEMAN', gender: 'female' }],
+    ['cave dweller', { name: 'CAVEMAN' }],
+]);
 const DOPPELGANGER_ROLE_FORMS = [
     'ARCHEOLOGIST', 'BARBARIAN', 'CAVEMAN', 'HEALER', 'KNIGHT',
     'MONK', 'PRIEST', 'RANGER', 'ROGUE', 'SAMURAI', 'TOURIST',
@@ -541,6 +599,10 @@ function verysmall_monster(mon) {
     const ptr = monsterPtr(mon);
     if (ptr && ptr.mlet === 'S_HUMAN') return false;
     return VERY_SMALL_MONSTERS.has(monsterName(ptr || mon));
+}
+
+function is_human_monster(ptr) {
+    return ptr?.mlet === 'S_HUMAN';
 }
 
 // Stairway list management
@@ -695,6 +757,10 @@ function mon_likes_fire_for(ptr) {
         || mon_likes_lava_for(ptr);
 }
 
+function mon_throws_rocks_for(ptr) {
+    return !!(ptr?.throws_rocks || ((ptr?.mflags2 ?? 0) & M2_ROCKTHROW));
+}
+
 function pm_to_humidity(ptr) {
     let loc = DRY;
     if (!ptr) return loc;
@@ -750,9 +816,14 @@ function goodpos(x, y, entflags = 0, ptr = null) {
             && !(ptr && (mon_in_air_for(ptr) || mon_likes_lava_for(ptr)))) {
             return false;
         }
-    } else if (!ACCESSIBLE(loc.typ)) {
+    } else if ((ptr?.mflags1 ?? 0) & M1_AMORPHOUS && closed_door_at(x, y)) {
+        return true;
+    } else if (!ACCESSIBLE(loc.typ) || closed_door_at(x, y)) {
         return false;
     }
+    // C ref: src/teleport.c:goodpos().  Most monsters cannot be placed on
+    // boulders; rock throwers are the exception.
+    if (sobj_at(BOULDER, x, y) && !mon_throws_rocks_for(ptr)) return false;
     if ((entflags & GP_CHECKSCARY) && goodpos_onscary(x, y, ptr)) return false;
     return true;
 }
@@ -867,7 +938,7 @@ export function u_on_dnstairs() {
 function oinit() { /* no-op for contest */ }
 
 // level_difficulty stub
-function level_difficulty() {
+export function level_difficulty() {
     const uz = game.u?.uz;
     let d = depth_of_level(uz);
     const dungeon = game.dungeons?.[uz?.dnum ?? 0];
@@ -1149,6 +1220,19 @@ export function mksobj(otyp, init, artif) {
         if (ptr && !ptr.neuter && !ptr.female && !ptr.male) rn2(2);
         set_corpsenm(otmp, otmp.corpsenm);
     }
+    if (otyp === FIGURINE) {
+        // C ref: mkobj.c:mksobj().  Figurines always receive monster
+        // species metadata after mksobj_init(), even for init=FALSE.
+        if (otmp.corpsenm == null) otmp.corpsenm = rndmonnum();
+        const ptr = monster_ptr(otmp.corpsenm);
+        if (ptr && !ptr.neuter && !ptr.female && !ptr.male) rn2(2);
+        set_corpsenm(otmp, otmp.corpsenm);
+    }
+    if (otyp === SPE_NOVEL) {
+        // C refs: src/mkobj.c:mksobj(), src/do_name.c:noveltitle().
+        otmp.novelidx = rn2(41);
+        otmp.oname = 'novel';
+    }
     if (game._in_monster_init) {
         game._monster_init_item_count = (game._monster_init_item_count || 0) + 1;
         if (otyp === GOLD_PIECE) game._monster_init_has_gold = true;
@@ -1161,6 +1245,7 @@ export function mksobj(otyp, init, artif) {
             mon.inventory.unshift(otmp);
         }
     }
+    otmp.owt = weight(otmp);
     return otmp;
 }
 
@@ -1206,6 +1291,9 @@ function mksobj_init(otmp, otyp, artif) {
                 }
             }
             blessorcurse(otmp, 10);
+        } else if (otyp === CANDY_BAR) {
+            // C ref: src/read.c:assign_candy_wrapper().
+            otmp.spe = 1 + rn2(12);
         }
         if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND && !rn2(6)) {
             otmp.quan = 2;
@@ -1268,6 +1356,19 @@ function mksobj_init(otmp, otyp, artif) {
         } else if (otyp === 240) { // CAN_OF_GREASE
             otmp.spe = rn1(21, 5);
             blessorcurse(otmp, 10);
+        } else if (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY) {
+            // C ref: src/mkobj.c:mksobj_init().
+            otmp.spe = rn1(18, 3);
+        } else if (otyp === FIGURINE) {
+            // C ref: mkobj.c:mksobj_init().  Random figurines use a
+            // slightly harder monster pool, then reject human forms.
+            let tryct = 0;
+            let ptr = null;
+            do {
+                ptr = rndmonst_adj(5, 10);
+                otmp.corpsenm = ptr ? monsterIndex(ptr) : null;
+            } while (ptr && is_human_monster(ptr) && tryct++ < 30);
+            blessorcurse(otmp, 4);
         }
         break;
     case POTION_CLASS:
@@ -1418,6 +1519,56 @@ export function place_object(otmp, x, y) {
     return otmp;
 }
 
+function stackable_object_basic(obj) {
+    if (!obj || obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN)
+        return false;
+    if (obj.oclass === COIN_CLASS || obj.oclass === GEM_CLASS
+        || obj.oclass === POTION_CLASS || obj.oclass === SCROLL_CLASS
+        || obj.oclass === SPBOOK_CLASS || obj.oclass === FOOD_CLASS)
+        return true;
+    if (obj.oclass !== WEAPON_CLASS) return false;
+    return (obj.otyp >= ARROW && obj.otyp <= SHURIKEN)
+        || (obj.otyp >= DAGGER && obj.otyp <= WORM_TOOTH);
+}
+
+function stackable_scalar(obj, key) {
+    return obj?.[key] ?? false;
+}
+
+function mergable_object_basic(into, obj) {
+    // C ref: invent.c:mergable().  This covers ordinary stackable floor
+    // objects; container/mail/timer edge cases are outside current evidence.
+    if (!into || !obj || into === obj || into.otyp !== obj.otyp) return false;
+    if (!stackable_object_basic(into) || !stackable_object_basic(obj)) return false;
+    if (into.oartifact || obj.oartifact || into.oname || obj.oname) return false;
+    if (into.contents || obj.contents || into.cobj || obj.cobj) return false;
+    for (const key of [
+        'cursed', 'blessed', 'spe', 'unpaid', 'no_charge', 'obroken',
+        'otrapped', 'lamplit', 'oeroded', 'oeroded2', 'greased',
+        'corpsenm', 'known', 'dknown', 'bknown', 'rknown',
+    ]) {
+        if (stackable_scalar(into, key) !== stackable_scalar(obj, key)) return false;
+    }
+    return true;
+}
+
+export function stackobj(obj) {
+    if (!obj || !game.level?.objects) return obj;
+    const objects = game.level.objects;
+    const idx = objects.indexOf(obj);
+    for (let i = 0; i < objects.length; i++) {
+        const other = objects[i];
+        if (other === obj || other?.ox !== obj.ox || other?.oy !== obj.oy) continue;
+        if (!mergable_object_basic(obj, other)) continue;
+        obj.quan = (obj.quan || 1) + (other.quan || 1);
+        obj.owt = weight(obj);
+        objects.splice(i, 1);
+        return obj;
+    }
+    if (idx < 0) objects.unshift(obj);
+    return obj;
+}
+
 function mksobj_at(otyp, x, y, init, artif) {
     return place_object(mksobj(otyp, init, artif), x, y);
 }
@@ -1467,7 +1618,18 @@ function mkgold(amount, x, y) {
 
 function dealloc_obj(otmp) { /* stub */ }
 function curse(otmp) { if (otmp) otmp.cursed = true; }
-function weight(otmp) { return otmp?.owt || 1; }
+function weight(otmp) {
+    if (!otmp) return 1;
+    if (otmp.otyp === CORPSE) {
+        // C ref: mkobj.c:weight(). Corpse weight is quantity times mons[].cwt.
+        const ptr = monster_ptr(otmp.corpsenm);
+        if (ptr && Number.isFinite(ptr.cwt)) return (otmp.quan || 1) * ptr.cwt;
+        if (Number.isFinite(otmp.corpse_cwt)) return (otmp.quan || 1) * otmp.corpse_cwt;
+    }
+    const base = OBJECT_WEIGHT[otmp.otyp];
+    if (Number.isFinite(base)) return (otmp.quan || 1) * base;
+    return otmp.owt || 1;
+}
 function add_to_container(container, otmp) { /* stub */ }
 function sobj_at(otyp, x, y) {
     return (game.level?.objects || []).find(o => o.otyp === otyp && o.ox === x && o.oy === y) || false;
@@ -1490,12 +1652,18 @@ function can_hide_under_object(x, y) {
 
 function set_corpsenm(otmp, pm) {
     if (!otmp) return;
+    let ptr = null;
     if (typeof pm === 'number') {
         otmp.corpsenm = pm;
-        return;
+        ptr = monster_ptr(pm);
+    } else {
+        ptr = monster_ptr(pm);
+        otmp.corpsenm = ptr ? ptr.name : pm;
     }
-    const ptr = monster_ptr(pm);
-    otmp.corpsenm = ptr ? ptr.name : pm;
+    if (otmp.otyp === CORPSE && ptr) {
+        otmp.corpse_cwt = ptr.cwt ?? 0;
+        otmp.owt = weight(otmp);
+    }
 }
 
 function set_corpsenm_restart(otmp, pm) {
@@ -1505,8 +1673,9 @@ function set_corpsenm_restart(otmp, pm) {
 
 function monster_ptr(ref) {
     if (typeof ref === 'number') return MONSTERS[ref] || null;
-    if (ref === 'CAVEWOMAN') return MONSTERS.find((mon) => mon.name === 'CAVEMAN') || null;
     if (typeof ref === 'string') {
+        const alias = MONSTER_NAME_ALIASES.get(ref.trim().toLowerCase().replace(/\s+/g, ' '));
+        if (alias) return MONSTERS.find((mon) => mon.name === alias.name) || null;
         const key = ref.trim().toUpperCase().replace(/[\s-]+/g, '_');
         return MONSTERS.find((mon) => mon.name === ref || mon.name === key) || null;
     }
@@ -1519,14 +1688,8 @@ export function monster_by_user_name(name) {
 }
 
 function monster_name_gender(name) {
-    switch (String(name || '').trim().toLowerCase()) {
-    case 'vampire lord':
-        return 'male';
-    case 'vampire lady':
-        return 'female';
-    default:
-        return null;
-    }
+    const alias = MONSTER_NAME_ALIASES.get(String(name || '').trim().toLowerCase().replace(/\s+/g, ' '));
+    return alias?.gender ?? null;
 }
 
 function monster_name_needs_find_gender_roll(name, ptr) {
@@ -1553,7 +1716,7 @@ function special_corpse(ref) {
         || ptr.mlet === 'S_TROLL' || is_rider_ref(ptr);
 }
 
-function undead_to_corpse_ptr(ptr) {
+export function undead_to_corpse_ptr(ptr) {
     if (!ptr) return null;
     const mapped = ({
         KOBOLD_ZOMBIE: 'KOBOLD',
@@ -1681,12 +1844,24 @@ function remove_level_object(obj) {
     if (idx >= 0) game.level.objects.splice(idx, 1);
 }
 
+function add_to_buried_basic(obj, x = obj?.ox ?? 0, y = obj?.oy ?? 0) {
+    // C ref: mkobj.c:add_to_buried().
+    if (!obj || !game.level) return null;
+    obj.ox = x;
+    obj.oy = y;
+    obj.buried = true;
+    game.level.buriedobjlist = game.level.buriedobjlist || [];
+    game.level.buriedobjlist.unshift(obj);
+    return obj;
+}
+
 function bury_an_obj_basic(obj) {
     // C ref: dig.c:bury_an_obj(); burial probes obj_resists(0,0) even when
     // the object cannot resist, then moves the object off the floor chain.
     if (obj_resists_basic(obj, 0, 0)) return false;
     remove_level_object(obj);
-    obj.buried = true;
+    if (obj.otyp === ROCK || obj.otyp === BOULDER) return true;
+    add_to_buried_basic(obj);
     return true;
 }
 
@@ -1754,9 +1929,12 @@ function align_shift(ptr) {
         alignShiftOldMoves = game.moves ?? 0;
         alignShiftSeed = game.currentSeed;
     }
-    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
-    const align = alignShiftSpecial ? (alignShiftSpecial.flags?.align ?? A_NONE) : (dungeon?.flags?.align ?? null);
-    if (align == null || align === A_NONE) return 0;
+    // C ref: dungeon.c:init_dungeon_dungeons() stores shifted D_ALIGN_* values
+    // in dungeon flags, while align_shift() compares against AM_* masks. Only
+    // s_level records have the unshifted values that can affect generation.
+    if (!alignShiftSpecial) return 0;
+    const align = alignShiftSpecial.flags?.align ?? A_NONE;
+    if (align === A_NONE) return 0;
     if (align === A_LAWFUL) return Math.trunc((ptr.maligntyp + 20) / (2 * 4));
     if (align === 0) return Math.trunc((20 - Math.abs(ptr.maligntyp)) / 4);
     return Math.trunc((-(ptr.maligntyp - 20)) / (2 * 4));
@@ -1932,7 +2110,13 @@ export function newmonhp_state_for(ptr, monLevel = adj_lev_for(ptr)) {
     if (ptr.mlet === 'S_DRAGON' && !String(ptr.name || '').startsWith('BABY_')) {
         return { hp: 4 * lev + d(lev, 4), level: monLevel };
     }
-    if (!lev) return { hp: rnd(4), level: monLevel };
+    if (!lev) {
+        let hp = rnd(4);
+        // C ref: makemon.c:newmonhp(). Level-0 monsters use 1d4, then
+        // the common minimum-HP boost raises a roll of 1 to 2.
+        if (hp === 1) hp++;
+        return { hp, level: monLevel };
+    }
     let hp = d(lev, 8);
     if (hp === lev) hp++;
     return { hp, level: monLevel };
@@ -2791,6 +2975,42 @@ function peace_minded_for(ptr) {
         && !!rn2(2 + Math.abs(mal));
 }
 
+function sgn(value) {
+    return value < 0 ? -1 : value ? 1 : 0;
+}
+
+export function set_malign_basic(mon) {
+    // C ref: makemon.c:set_malign().  `malign` is the later alignment
+    // record adjustment owned by xkilled(), after peaceful state is final.
+    if (!mon) return 0;
+    let mal = mon.data?.maligntyp ?? 0;
+    if (mon.ispriest || mon.isminion) {
+        if (mon.ispriest && mon.mextra?.epri) mal = mon.mextra.epri.shralign;
+        else if (mon.isminion && mon.mextra?.emin) mal = mon.mextra.emin.min_align;
+        if (mal !== A_NONE) mal *= 5;
+    }
+
+    const mflags2 = mon.data?.mflags2 ?? 0;
+    const coaligned = sgn(mal) === sgn(game.u?.ualign?.type ?? 0);
+    if (mon.data?.msound === MS_LEADER) {
+        mon.malign = -20;
+    } else if (mal === A_NONE) {
+        mon.malign = mon.mpeaceful ? 0 : 20;
+    } else if (mflags2 & M2_PEACEFUL) {
+        const absmal = Math.abs(mal);
+        mon.malign = mon.mpeaceful ? -3 * Math.max(5, absmal) : 3 * Math.max(5, absmal);
+    } else if (mflags2 & M2_HOSTILE) {
+        const absmal = Math.abs(mal);
+        mon.malign = coaligned ? 0 : Math.max(5, absmal);
+    } else if (coaligned) {
+        const absmal = Math.abs(mal);
+        mon.malign = mon.mpeaceful ? -3 * Math.max(3, absmal) : Math.max(3, absmal);
+    } else {
+        mon.malign = Math.abs(mal);
+    }
+    return mon.malign;
+}
+
 function race_masks() {
     switch (game.urace?.name || game.urace?.adj || game._nhopts?.race || 'human') {
     case 'elf':
@@ -2969,6 +3189,7 @@ function m_initgrp(mon, x, y, n, mmflags) {
         const head = game.level?.monsters?.[0];
         if (head && head.data?.name === mon.data?.name && head.mx === cc.x && head.my === cc.y) {
             head.mpeaceful = 0;
+            set_malign_basic(head);
         }
     }
 }
@@ -3110,6 +3331,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
             for (let i = 8; i > 0; i--) rn2(i);
         }
     }
+    set_malign_basic(mon);
     const anymon = mdat === null;
     if (anymon && !(mmflags & MM_NOGRP)) {
         if ((ptr.geno & G_SGROUP) && rn2(2)) {
@@ -3339,7 +3561,225 @@ function getbones() {
     if (flags.explore) return false;
     if (flags.bones === false) return false;
     if (rn2(3) && !game.flags?.debug) return false;
+    if (no_bones_level()) return false;
+
+    const key = bones_file_key();
+    const text = key ? vfsReadFile(key) : null;
+    if (!text) return false;
+
+    let ok = false;
+    try {
+        const snapshot = JSON.parse(text);
+        ok = restore_bones_snapshot(snapshot);
+    } catch (e) {
+        ok = false;
+    }
+    const deleted = vfsDeleteFile(key);
+    return ok && deleted;
+}
+
+function same_dlevel(a, b) {
+    return !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+
+function special_level_for(uz = game.u?.uz) {
+    return game.specialLevels?.find((lev) => same_dlevel(lev?.dlevel, uz)) || null;
+}
+
+function branch_level_for(uz = game.u?.uz) {
+    return game.branches?.find((br) =>
+        same_dlevel(br?.end1, uz) || same_dlevel(br?.end2, uz)) || null;
+}
+
+function role_file_code() {
+    if (game.urole?.filecode) return game.urole.filecode;
+    const name = game.urole?.name?.m || game.urole?.name?.f || '';
+    return {
+        Archeologist: 'Arc', Barbarian: 'Bar', Caveman: 'Cav',
+        Healer: 'Hea', Knight: 'Kni', Monk: 'Mon', Priest: 'Pri',
+        Ranger: 'Ran', Rogue: 'Rog', Samurai: 'Sam', Tourist: 'Tou',
+        Valkyrie: 'Val', Wizard: 'Wiz',
+    }[name] || String(name || 'Adv').slice(0, 3);
+}
+
+function no_bones_level(uz = game.u?.uz) {
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    const ledger = ledger_no(uz);
+    if (ledger <= 0) return true;
+    const maxLedger = (game.dungeons || []).reduce((max, dgn) =>
+        Math.max(max, (dgn?.ledger_start ?? 0) + (dgn?.num_dunlevs ?? 0)), 0);
+    if (maxLedger && ledger > maxLedger) return true;
+    const slev = special_level_for(uz);
+    if (slev && !slev.boneid) return true;
+    if (!dungeon?.boneid) return true;
+    if ((uz?.dlevel ?? 1) === (dungeon.num_dunlevs ?? uz?.dlevel ?? 1)) return true;
+    if (branch_level_for(uz) && (uz?.dlevel ?? 1) > 1) return true;
+    if (dungeon.flags?.hellish && (uz?.dlevel ?? 1) === (dungeon.num_dunlevs ?? 0) - 1)
+        return true;
     return false;
+}
+
+// C ref: files.c:set_bonesfile_name().
+export function bones_file_key(uz = game.u?.uz) {
+    const dungeon = game.dungeons?.[uz?.dnum ?? 0];
+    if (!dungeon?.boneid) return null;
+    const questCode = dungeon.dname === 'The Quest' ? role_file_code() : '0';
+    const slev = special_level_for(uz);
+    const levelCode = slev ? slev.boneid : String(uz?.dlevel ?? 1);
+    return `bones/bon${dungeon.boneid}${questCode}.${levelCode}`;
+}
+
+export function bones_file_exists(uz = game.u?.uz) {
+    const key = bones_file_key(uz);
+    return !!(key && vfsReadFile(key) != null);
+}
+
+function clone_for_bones(value) {
+    if (value == null) return value;
+    return JSON.parse(JSON.stringify(value));
+}
+
+function clear_bones_memory(level) {
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = level?.locations?.[x]?.[y];
+            if (!loc) continue;
+            loc.seenv = 0;
+            loc.waslit = 0;
+            loc.remembered_glyph = undefined;
+            loc.disp_ch = ' ';
+            loc.disp_color = NO_COLOR;
+            loc.disp_decgfx = false;
+            loc.disp_attr = 0;
+            loc.gnew = 0;
+            loc.glyph_symidx = -1;
+        }
+}
+
+function object_chain_for(mon) {
+    if (Array.isArray(mon?.minvent) && mon.minvent.length) return mon.minvent;
+    if (Array.isArray(mon?.inventory)) return mon.inventory;
+    return mon?.minvent || [];
+}
+
+function restore_bones_object_ids(objects) {
+    for (const obj of objects || []) {
+        obj.o_id = next_ident();
+        if (obj.cobj) restore_bones_object_ids(obj.cobj);
+        if (obj.contents) restore_bones_object_ids(obj.contents);
+    }
+}
+
+function restore_bones_monster(mon) {
+    mon.m_id = next_ident();
+    if (mon.data?.name) {
+        const ptr = monsterPtr(mon.data.name);
+        if (ptr) mon.data = { ...ptr };
+    }
+    // C ref: restore.c:getlev().  Bones are "ghostly" restores: ordinary
+    // monsters recalculate attitude and malign for the new character rather
+    // than keeping the dead character's peacefulness.
+    if (!mon.isshk) {
+        mon.mpeaceful = (mon.data?.mlet === 'S_UNICORN'
+            && sgn(game.u?.ualign?.type ?? 0) === sgn(mon.data?.maligntyp ?? 0))
+            ? 1
+            : (peace_minded_for(mon.data) ? 1 : 0);
+    }
+    set_malign_basic(mon);
+    restore_bones_object_ids(object_chain_for(mon));
+}
+
+function rehydrate_bones_level(level) {
+    const map = new GameMap();
+    Object.assign(map, level);
+    for (const mon of map.monsters || []) restore_bones_monster(mon);
+    restore_bones_object_ids(map.objects || []);
+    restore_bones_object_ids(map.buriedobjlist || []);
+    restore_bones_object_ids(map.billobjs || []);
+    if (map.flags) map.flags.wizard_bones = !!level?.flags?.wizard_bones;
+    return map;
+}
+
+function prepare_bones_monsters(level) {
+    for (const mon of level?.monsters || []) {
+        // C ref: bones.c:savebones().  Pets lose their bond when their
+        // owner dies; the future character will re-evaluate monster attitude
+        // during ghostly restore.
+        mon.mlstmv = 0;
+        if (mon.mtame) {
+            mon.mtame = 0;
+            mon.mpeaceful = 0;
+        }
+        mon.seen_resistance = 0;
+    }
+}
+
+function fallback_bones_stairs(level, uz = game.u?.uz) {
+    let stairs = null;
+    const add = (pt, up) => {
+        if (!pt) return;
+        stairs = {
+            sx: pt.x,
+            sy: pt.y,
+            up,
+            isladder: false,
+            isbranch: false,
+            u_traversed: false,
+            tolev: {
+                dnum: uz?.dnum ?? 0,
+                dlevel: (uz?.dlevel ?? 1) + (up ? -1 : 1),
+            },
+            next: stairs,
+        };
+    };
+    add(level?.dnstair, false);
+    add(level?.upstair, true);
+    return stairs;
+}
+
+function restore_bones_snapshot(snapshot) {
+    if (!snapshot?.level) return false;
+    game.level = rehydrate_bones_level(snapshot.level);
+    game.stairs = clone_for_bones(snapshot.stairs) || fallback_bones_stairs(game.level);
+    game.updest = snapshot.updest ? clone_for_bones(snapshot.updest) : null;
+    game.dndest = snapshot.dndest ? clone_for_bones(snapshot.dndest) : null;
+    game._made_special_level = false;
+    game._last_special_protofile = '';
+    game.u = game.u || {};
+    game.u.uroleplay = game.u.uroleplay || {};
+    game.u.uroleplay.numbones = (game.u.uroleplay.numbones || 0) + 1;
+    return true;
+}
+
+export function save_bones_snapshot(extra = {}) {
+    const key = bones_file_key();
+    if (!key || no_bones_level()) return false;
+    if (vfsReadFile(key) != null) return false;
+
+    const level = clone_for_bones(game.level);
+    if (!level) return false;
+    clear_bones_memory(level);
+    prepare_bones_monsters(level);
+
+    const floorObjects = (extra.floorObjects || []).map(clone_for_bones);
+    if (floorObjects.length) level.objects = floorObjects.concat(level.objects || []);
+    for (const drop of extra.monsterInventories || []) {
+        const mon = (level.monsters || []).find((candidate) => candidate.m_id === drop.m_id);
+        if (!mon) continue;
+        const name = mon.minvent ? 'minvent' : 'inventory';
+        mon[name] = (drop.objects || []).map(clone_for_bones).concat(mon[name] || []);
+    }
+
+    return vfsWriteFile(key, JSON.stringify({
+        version: 1,
+        bonesid: key.slice('bones/bon'.length),
+        level,
+        // C ref: save.c:savelev()/restore.c:getlev().  The stairway list is
+        // level state; bones restore must not reuse the previous level's list.
+        stairs: clone_for_bones(game.stairs || null),
+        updest: clone_for_bones(game.updest || null),
+        dndest: clone_for_bones(game.dndest || null),
+    }));
 }
 
 const BIGRM_12_MAP = [
@@ -4102,6 +4542,7 @@ function minetn5Monster(name, x = null, y = null, peaceful = null) {
     if (mon && peaceful != null) {
         mon.mpeaceful = !!peaceful;
         mon.mhostile = !peaceful;
+        set_malign_basic(mon);
     }
     return mon;
 }
@@ -5964,11 +6405,10 @@ function induced_align_80() {
     if (spAlign != null && spAlign !== A_NONE) {
         if (rn2(100) < 80) return Align2amask(spAlign);
     }
-    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
-    const dAlign = dungeon?.flags?.align;
-    if (dAlign != null && dAlign !== A_NONE) {
-        if (rn2(100) < 80) return Align2amask(dAlign);
-    }
+    // C ref: src/dungeon.c:init_dungeon_dungeons() assigns shifted
+    // D_ALIGN_* values into a 3-bit dungeon flag, so branch-wide dungeon
+    // alignment does not survive to induced_align(). Special-level fallback
+    // alignment is handled when s_level records are initialized.
     return Align2amask(rn2(3) - 1);
 }
 
@@ -6356,6 +6796,7 @@ function priestini(croom, sanctum = false) {
         mon.ispriest = 1;
         mon.msleeping = 0;
         mon.mpeaceful = 1;
+        set_malign_basic(mon);
     }
     if (sanctum) {
         give_mon_obj(mon, mksobj(AMULET_OF_YENDOR, true, false));
@@ -7126,8 +7567,10 @@ function sanctumCreateMonster(id, x = null, y = null, peaceful = null) {
         mon.ispriest = 0;
         mon.mpeaceful = 0;
         mon.msleeping = 0;
+        set_malign_basic(mon);
     } else if (mon && peaceful != null) {
         mon.mpeaceful = peaceful ? 1 : 0;
+        set_malign_basic(mon);
     }
     return mon;
 }
@@ -8496,7 +8939,10 @@ function wizStartCreateMonster(id, x, y, peaceful = null) {
         }
     }
     const mon = apply_monster_name_gender(makemon(ptr, loc.x, loc.y, 0), id);
-    if (mon && peaceful === 0) mon.mpeaceful = 0;
+    if (mon && peaceful === 0) {
+        mon.mpeaceful = 0;
+        set_malign_basic(mon);
+    }
     return mon;
 }
 
@@ -9128,6 +9574,7 @@ function wizLocaCreateMonster(id, mmflags = 0, opts = {}) {
         // C ref: sp_lev.c:create_monster() applies Lua peaceful=0/1 after
         // makemon(), so peace_minded() RNG has already happened.
         mon.mpeaceful = opts.peaceful ? 1 : 0;
+        set_malign_basic(mon);
     }
     return mon;
 }
@@ -9154,6 +9601,7 @@ function createWizardFillerMonster(croom, id, opts = {}) {
         // C ref: sp_lev.c:create_monster(); Lua peaceful=0 overrides after
         // makemon() has already run peace_minded().
         mon.mpeaceful = opts.peaceful ? 1 : 0;
+        set_malign_basic(mon);
     }
     return mon;
 }
@@ -9422,7 +9870,7 @@ export async function mklev() {
     clearSpecialLregions();
     await makelevel();
     const slev = currentSpecialLevel();
-    const loadedSpecial = !!(slev?.proto && slev.proto !== 'rogue');
+    const loadedSpecial = !!g._made_special_level || !!(slev?.proto && slev.proto !== 'rogue');
     if (!loadedSpecial) wallification(1, 0, COLNO - 1, ROWNO - 1);
     if (loadedSpecial) link_doors_rooms();
     if (loadedSpecial && (game._last_special_protofile === 'castle'
@@ -9438,6 +9886,7 @@ export async function mklev() {
         }
     }
     recount_level_features();
+    processThemeroomPostprocess();
     level_finalize_topology();
     g.in_mklev = false;
 }
@@ -9520,20 +9969,374 @@ function litstate_rnd(litstate) {
     return !!litstate;
 }
 
+const MKMAP_WIDTH = COLNO - 2;
+const MKMAP_HEIGHT = ROWNO - 1;
+const MKMAP_DIRS = [
+    [-1, -1], [-1, 0], [-1, 1], [0, -1],
+    [0, 1], [1, -1], [1, 0], [1, 1],
+];
+
+function mkmap_init_map(bgTyp) {
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            loc.roomno = 0;
+            loc.typ = bgTyp;
+            loc.lit = false;
+            loc.edge = false;
+        }
+    }
+}
+
+function mkmap_get(x, y, bgTyp) {
+    if (x <= 0 || y < 0 || x > MKMAP_WIDTH || y >= MKMAP_HEIGHT) return bgTyp;
+    return game.level?.at(x, y)?.typ ?? bgTyp;
+}
+
+function mkmap_count_neighbors(x, y, bgTyp, fgTyp) {
+    let count = 0;
+    for (const [dx, dy] of MKMAP_DIRS)
+        if (mkmap_get(x + dx, y + dy, bgTyp) === fgTyp) count++;
+    return count;
+}
+
+function mkmap_init_fill(bgTyp, fgTyp) {
+    // C ref: src/mkmap.c:init_fill().
+    const limit = Math.trunc((MKMAP_WIDTH * MKMAP_HEIGHT * 2) / 5);
+    let count = 0;
+    while (count < limit) {
+        const x = rn1(MKMAP_WIDTH - 1, 2);
+        const y = rnd(MKMAP_HEIGHT - 1);
+        const loc = game.level?.at(x, y);
+        if (loc?.typ === bgTyp) {
+            loc.typ = fgTyp;
+            count++;
+        }
+    }
+}
+
+function mkmap_pass_one(bgTyp, fgTyp) {
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const count = mkmap_count_neighbors(x, y, bgTyp, fgTyp);
+            const loc = game.level?.at(x, y);
+            if (!loc) continue;
+            if (count <= 2) loc.typ = bgTyp;
+            else if (count >= 5) loc.typ = fgTyp;
+        }
+    }
+}
+
+function mkmap_buffered_pass(bgTyp, fgTyp, mode) {
+    const next = new Map();
+    for (let x = 2; x <= MKMAP_WIDTH; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const count = mkmap_count_neighbors(x, y, bgTyp, fgTyp);
+            const typ = game.level?.at(x, y)?.typ ?? bgTyp;
+            next.set(`${x},${y}`, mode === 2
+                ? (count === 5 ? bgTyp : typ)
+                : (count < 3 ? bgTyp : typ));
+        }
+    }
+    for (let x = 2; x <= MKMAP_WIDTH; x++)
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc) loc.typ = next.get(`${x},${y}`);
+        }
+}
+
+function mkmap_flood_region(sx, sy, rmno, fgTyp) {
+    const queue = [[sx, sy]];
+    const seen = new Set();
+    const cells = [];
+    let minx = sx, maxx = sx, miny = sy, maxy = sy;
+    while (queue.length) {
+        const [x, y] = queue.shift();
+        const key = `${x},${y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const loc = game.level?.at(x, y);
+        if (!loc || loc.typ !== fgTyp || loc.roomno === rmno) continue;
+        loc.roomno = rmno;
+        cells.push([x, y]);
+        minx = Math.min(minx, x);
+        maxx = Math.max(maxx, x);
+        miny = Math.min(miny, y);
+        maxy = Math.max(maxy, y);
+        for (const [dx, dy] of MKMAP_DIRS) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 1 || nx > MKMAP_WIDTH || ny < 0 || ny >= MKMAP_HEIGHT) continue;
+            const nloc = game.level?.at(nx, ny);
+            if (nloc?.typ === fgTyp && nloc.roomno !== rmno) queue.push([nx, ny]);
+        }
+    }
+    return { cells, minx, maxx, miny, maxy };
+}
+
+function mkmap_join_cleanup() {
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc) loc.roomno = 0;
+        }
+    game.level.nroom = 0;
+    game.level.rooms = [{ hx: -1 }];
+}
+
+function mkmap_join_map(bgTyp, fgTyp) {
+    // C ref: src/mkmap.c:join_map().
+    let stop = false;
+    for (let x = 2; x <= MKMAP_WIDTH && !stop; x++) {
+        for (let y = 1; y < MKMAP_HEIGHT; y++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || loc.typ !== fgTyp || loc.roomno) continue;
+            const rmno = game.level.nroom + ROOMOFFSET;
+            const region = mkmap_flood_region(x, y, rmno, fgTyp);
+            if (region.cells.length > 3) {
+                add_room(region.minx, region.miny, region.maxx, region.maxy, false, OROOM, true);
+                const croom = game.level.rooms[game.level.nroom - 1];
+                if (croom) croom.irregular = true;
+                if (game.level.nroom >= MAXNROFROOMS * 2) {
+                    stop = true;
+                    break;
+                }
+            } else {
+                for (const [cx, cy] of region.cells) {
+                    const tiny = game.level?.at(cx, cy);
+                    if (tiny?.roomno === rmno) {
+                        tiny.typ = bgTyp;
+                        tiny.roomno = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    let croomIndex = 0;
+    for (let croom2Index = 1; croom2Index < game.level.nroom; croom2Index++) {
+        const croom = game.level.rooms[croomIndex];
+        const croom2 = game.level.rooms[croom2Index];
+        const sm = { x: 0, y: 0 };
+        const em = { x: 0, y: 0 };
+        if (!somexy(croom, sm) || !somexy(croom2, em)) {
+            sm.x = croom.lx + Math.trunc((croom.hx - croom.lx) / 2);
+            sm.y = croom.ly + Math.trunc((croom.hy - croom.ly) / 2);
+            em.x = croom2.lx + Math.trunc((croom2.hx - croom2.lx) / 2);
+            em.y = croom2.ly + Math.trunc((croom2.hy - croom2.ly) / 2);
+        }
+        dig_corridor(sm, em, null, false, fgTyp, bgTyp);
+        if (croom2.lx > croom.hx
+            || ((croom2.ly > croom.hy || croom2.hy < croom.ly) && rn2(3))) {
+            croomIndex = croom2Index;
+        }
+    }
+    mkmap_join_cleanup();
+}
+
+function mkmap_finish(fgTyp, bgTyp, lit, walled) {
+    if (walled) wallify_map(1, 0, COLNO - 1, ROWNO - 1);
+    if (lit) {
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level?.at(x, y);
+                if (!loc) continue;
+                if ((!IS_OBSTRUCTED(fgTyp) && loc.typ === fgTyp)
+                    || (!IS_OBSTRUCTED(bgTyp) && loc.typ === bgTyp)
+                    || (walled && IS_WALL(loc.typ))) {
+                    loc.lit = true;
+                }
+            }
+        }
+        for (let i = 0; i < (game.level?.nroom ?? 0); i++)
+            if (game.level.rooms[i]) game.level.rooms[i].rlit = 1;
+    }
+}
+
+function mkmap_mines(lit) {
+    // C refs: src/sp_lev.c:splev_initlev(), src/mkmap.c:mkmap().
+    const bgTyp = STONE;
+    const fgTyp = ROOM;
+    mkmap_init_map(bgTyp);
+    mkmap_init_fill(bgTyp, fgTyp);
+    mkmap_pass_one(bgTyp, fgTyp);
+    mkmap_buffered_pass(bgTyp, fgTyp, 2);
+    mkmap_buffered_pass(bgTyp, fgTyp, 3);
+    mkmap_buffered_pass(bgTyp, fgTyp, 3);
+    mkmap_join_map(bgTyp, fgTyp);
+    mkmap_finish(fgTyp, bgTyp, lit, true);
+    game.level.flags.is_maze_lev = false;
+    game.level.flags.is_cavernous_lev = true;
+    game.level.flags.mines_walls = true;
+}
+
+function special_level_location(good) {
+    const ok = good || ((x, y) => {
+        const loc = game.level?.at(x, y);
+        return loc && SPACE_POS(loc.typ) && !sobj_at(BOULDER, x, y);
+    });
+    let x = 1, y = 0;
+    for (let cpt = 0; cpt < 100; cpt++) {
+        x = 1 + rn2(COLNO - 1);
+        y = rn2(ROWNO);
+        if (ok(x, y)) return { x, y };
+    }
+    for (let xx = 1; xx < COLNO; xx++)
+        for (let yy = 0; yy < ROWNO; yy++)
+            if (ok(xx, yy)) return { x: xx, y: yy };
+    return { x, y };
+}
+
+function special_level_dry_location() {
+    return special_level_location();
+}
+
+function minefill_regular_stair(up) {
+    // C ref: src/sp_lev.c:l_create_stairway(), src/mklev.c:mkstairs().
+    const loc = special_level_location((x, y) => {
+        const typ = game.level?.at(x, y)?.typ;
+        return typ === ROOM || typ === CORR || typ === ICE;
+    });
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const dunlev = game.u?.uz?.dlevel ?? 1;
+    const maxlev = dungeon?.num_dunlevs ?? dunlev;
+    if (dunlev === (up ? 1 : maxlev)) return;
+    placeSpecialStair(loc.x, loc.y, up);
+}
+
+function minefill_object(oclassOrType = RANDOM_CLASS, typed = false) {
+    const loc = special_level_dry_location();
+    if (typed) mksobj_at(oclassOrType, loc.x, loc.y, true, false);
+    else mkobj_at(oclassOrType, loc.x, loc.y, true);
+}
+
+function monster_mlet_from_char(ch) {
+    for (const [mlet, sym] of Object.entries(MONSTER_SYMBOLS))
+        if (sym === ch) return mlet;
+    return null;
+}
+
+function minefill_monster(ref) {
+    let ptr = null;
+    let scriptedFemale = null;
+    const classMlet = (typeof ref === 'string' && ref.length === 1)
+        ? monster_mlet_from_char(ref)
+        : null;
+    if (classMlet) {
+        induced_align_80();
+        ptr = mkclass_aligned(classMlet, G_NOGEN);
+    } else {
+        ptr = monster_ptr(ref);
+        if (monster_name_needs_find_gender_roll(ref, ptr)) scriptedFemale = !!rn2(2);
+        induced_align_80();
+    }
+    let loc = special_level_dry_location();
+    if (m_at(loc.x, loc.y)) {
+        loc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+            || enexto_core(loc.x, loc.y, ptr, 0)
+            || loc;
+    }
+    const mon = makemon(ptr, loc.x, loc.y, 0);
+    if (mon && scriptedFemale != null) mon.female = scriptedFemale;
+    return apply_monster_name_gender(mon, ref);
+}
+
+function minefill_trap() {
+    // C refs: src/sp_lev.c:create_trap(), src/mklev.c:mktrap().
+    let loc = { x: -1, y: -1 };
+    let trycnt = 0;
+    do {
+        loc = special_level_dry_location();
+    } while ((game.level?.at(loc.x, loc.y)?.typ === STAIRS
+            || game.level?.at(loc.x, loc.y)?.typ === LADDER)
+        && ++trycnt <= 100);
+    if (trycnt > 100) return;
+
+    let kind;
+    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
+    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+
+    const trap = maketrap(loc.x, loc.y, kind);
+    kind = trap ? trap.ttyp : NO_TRAP;
+    if (kind === WEB) makemon(monster_ptr('GIANT_SPIDER'), loc.x, loc.y, 0);
+    const lvl = level_difficulty();
+    if (game.in_mklev && kind !== NO_TRAP
+        && lvl <= rnd(4)
+        && kind !== SQKY_BOARD && kind !== RUST_TRAP
+        && !(kind === ROLLING_BOULDER_TRAP && trap.launch?.x === trap.tx && trap.launch?.y === trap.ty)
+        && !is_pit(kind) && (kind < HOLE || kind === MAGIC_TRAP)) {
+        if (kind === LANDMINE) { trap.ttyp = PIT; trap.tseen = true; }
+        mktrap_victim(trap);
+    }
+}
+
+function loadMinefillSpecial() {
+    // C refs: dat/minefill.lua, src/mklev.c:makelevel(), src/mkmap.c:mkmap().
+    l_nhcore_init();
+    rn2(2); // LVLINIT_SOLIDFILL random lit state.
+    game.level.flags.is_maze_lev = true;
+    const minesLit = !!rn2(2); // LVLINIT_MINES random lit state.
+    mkmap_mines(minesLit);
+
+    minefill_regular_stair(true);
+    minefill_regular_stair(false);
+
+    for (let i = 0, n = rn2(4) + 2; i < n; i++) minefill_object(GEM_CLASS);
+    minefill_object(TOOL_CLASS);
+    for (let i = 0, n = rn2(3) + 2; i < n; i++) minefill_object(RANDOM_CLASS);
+    if (rn2(100) < 75) {
+        for (let i = 0, n = rn2(2) + 1; i < n; i++) minefill_object(BOULDER, true);
+    }
+
+    for (let i = 0, n = rn2(3) + 6; i < n; i++) minefill_monster('gnome');
+    minefill_monster('gnome lord');
+    minefill_monster('dwarf');
+    minefill_monster('dwarf');
+    minefill_monster('G');
+    minefill_monster('G');
+    minefill_monster(rn2(100) < 50 ? 'h' : 'G');
+
+    for (let i = 0; i < 6; i++) minefill_trap();
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
+}
+
+function loadDungeonFillerSpecial(proto) {
+    game._last_special_protofile = proto;
+    game._made_special_level = true;
+    if (proto === 'minefill') {
+        loadMinefillSpecial();
+        return true;
+    }
+    game.level.flags.is_maze_lev = true;
+    return false;
+}
+
 // C ref: mklev.c makelevel()
 async function makelevel() {
     const g = game;
     oinit();
     clear_level_structures();
+    g._made_special_level = false;
 
     const slev = currentSpecialLevel();
     if (slev?.proto && slev.proto !== 'rogue') {
+        g._made_special_level = true;
         makemaz_special(slev);
+        return;
+    }
+    const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
+    if (dungeon?.fill_lvl) {
+        loadDungeonFillerSpecial(dungeon.fill_lvl);
         return;
     }
     const questFiller = wizardQuestFillerProto();
     if (questFiller) {
         game._last_special_protofile = questFiller;
+        g._made_special_level = true;
         loadWizardFillerSpecial(questFiller);
         return;
     }
@@ -9591,6 +10394,7 @@ async function makelevel() {
                 const vaultRoom = g.level.rooms[g.level.nroom - 1];
                 if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
                 fill_special_room(vaultRoom);
+                mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
                 if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
             } else if (rnd_rect() && create_vault()) {
                 g.vault_x = g.level.rooms[g.level.nroom]?.lx ?? -1;
@@ -9604,6 +10408,7 @@ async function makelevel() {
                     const vaultRoom = g.level.rooms[g.level.nroom - 1];
                     if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
                     fill_special_room(vaultRoom);
+                    mk_knox_portal(fx.v + fw.v, fy.v + fh.v);
                     if (!g.level.flags.noteleport && !rn2(3)) await makeniche(TELEP_TRAP);
                 } else if (g.level.rooms[g.level.nroom]) {
                     g.level.rooms[g.level.nroom].hx = -1;
@@ -10016,6 +10821,35 @@ const THEMED_MAPS = new Map([
             '-----xxx',
         ],
     }],
+    ['Blocked center', {
+        filler: [1, 1],
+        preFiller: blockedCenterThemedMapPreFiller,
+        map: [
+            '-----------',
+            '|.........|',
+            '|.........|',
+            '|.........|',
+            '|...LLL...|',
+            '|...LLL...|',
+            '|...LLL...|',
+            '|.........|',
+            '|.........|',
+            '|.........|',
+            '-----------',
+        ],
+    }],
+    ['Circular, small', {
+        filler: [3, 3],
+        map: [
+            'xx---xx',
+            'x--.--x',
+            '--...--',
+            '|.....|',
+            '--...--',
+            'x--.--x',
+            'xx---xx',
+        ],
+    }],
     ['Circular, medium', {
         filler: [4, 4],
         map: [
@@ -10028,6 +10862,80 @@ const THEMED_MAPS = new Map([
             '--.....--',
             'x--...--x',
             'xx-----xx',
+        ],
+    }],
+    ['Circular, big', {
+        filler: [5, 5],
+        map: [
+            'xxx-----xxx',
+            'x---...---x',
+            'x-.......-x',
+            '--.......--',
+            '|.........|',
+            '|.........|',
+            '|.........|',
+            '--.......--',
+            'x-.......-x',
+            'x---...---x',
+            'xxx-----xxx',
+        ],
+    }],
+    ['T-shaped', {
+        filler: [5, 5],
+        map: [
+            'xxx-----xxx',
+            'xxx|...|xxx',
+            'xxx|...|xxx',
+            '----...----',
+            '|.........|',
+            '|.........|',
+            '|.........|',
+            '-----------',
+        ],
+    }],
+    ['T-shaped, rot 1', {
+        filler: [2, 2],
+        map: [
+            '-----xxx',
+            '|...|xxx',
+            '|...|xxx',
+            '|...----',
+            '|......|',
+            '|......|',
+            '|......|',
+            '|...----',
+            '|...|xxx',
+            '|...|xxx',
+            '-----xxx',
+        ],
+    }],
+    ['T-shaped, rot 2', {
+        filler: [2, 2],
+        map: [
+            '-----------',
+            '|.........|',
+            '|.........|',
+            '|.........|',
+            '----...----',
+            'xxx|...|xxx',
+            'xxx|...|xxx',
+            'xxx-----xxx',
+        ],
+    }],
+    ['T-shaped, rot 3', {
+        filler: [5, 5],
+        map: [
+            'xxx-----',
+            'xxx|...|',
+            'xxx|...|',
+            '----...|',
+            '|......|',
+            '|......|',
+            '|......|',
+            '----...|',
+            'xxx|...|',
+            'xxx|...|',
+            'xxx-----',
         ],
     }],
     ['S-shaped', {
@@ -10120,6 +11028,21 @@ const THEMED_MAPS = new Map([
             '-----x-----',
         ],
     }],
+    ['Water-surrounded vault', {
+        filler: [3, 3],
+        skipFillerRegion: true,
+        forceRoomType: THEMEROOM,
+        forceNeedfill: FILL_NONE,
+        postMap: waterSurroundedVaultThemedMapPostprocess,
+        map: [
+            '}}}}}}',
+            '}----}',
+            '}|..|}',
+            '}|..|}',
+            '}----}',
+            '}}}}}}',
+        ],
+    }],
 ]);
 
 function is_themeroom_eligible(room, difficulty) {
@@ -10149,15 +11072,29 @@ async function themerooms_generate(difficulty) {
         || pick.name === 'Unlit room with themed fill'
         || pick.name === 'Room with both normal contents and themed fill';
     const normalAndThemedFill = pick.name === 'Room with both normal contents and themed fill';
+    let roomWidth = -1;
+    let roomHeight = -1;
+    if (pick.name === 'Fake Delphi') {
+        // C ref: dat/themerms.lua "Fake Delphi".
+        roomWidth = 11;
+        roomHeight = 9;
+    } else if (pick.name === 'Huge room with another room inside') {
+        // C ref: dat/themerms.lua "Huge room with another room inside".
+        roomWidth = rn2(10) + 11;
+        roomHeight = rn2(5) + 8;
+    } else if (pick.name === 'Nesting rooms') {
+        // C ref: dat/themerms.lua "Nesting rooms".
+        roomWidth = 9 + rn2(4);
+        roomHeight = 9 + rn2(4);
+    }
     // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
     const chance = 100;
     if (pick.name !== 'ordinary') {
         // Themed room — not expected for seed8000, but handle RNG correctly
         rn2(100); // chance check (build_room)
     }
     // All themed rooms go through create_room for placement
-    const ok = create_room(-1, -1, -1, -1, -1, -1,
+    const ok = create_room(-1, -1, roomWidth, roomHeight, -1, -1,
         wantsThemedFill ? THEMEROOM : OROOM,
         pick.name === 'Unlit room with themed fill' ? 0 : -1);
     if (ok) {
@@ -10166,6 +11103,7 @@ async function themerooms_generate(difficulty) {
         if (aroom) {
             topologize(aroom);
             aroom.needfill = (!wantsThemedFill || normalAndThemedFill) ? FILL_NORMAL : FILL_NONE;
+            if (pick.name === 'Fake Delphi') applyFakeDelphiContents(aroom);
             if (wantsThemedFill) apply_themeroom_fill(aroom);
         }
     }
@@ -10173,12 +11111,50 @@ async function themerooms_generate(difficulty) {
 }
 
 function themed_map_typ(ch) {
-    switch (ch) {
-    case '-': return HWALL;
-    case '|': return VWALL;
-    case '.': return ROOM;
-    default: return STONE;
+    return bigrmTerrainType(ch);
+}
+
+function blockedCenterThemedMapPreFiller() {
+    // C ref: dat/themerms.lua "Blocked center" contents before filler_region().
+    if (rn2(100) >= 30) return null;
+    const terr = ['-', 'P'];
+    lua_shuffle(terr);
+    return {
+        map: (ch) => ch === 'L' ? themed_map_typ(terr[0]) : themed_map_typ(ch),
+        consumeReplaceTerrain: (rows) => {
+            // C ref: sp_lev.c:lspo_replace_terrain().  Even chance=100
+            // terrain replacement rolls once for every matching point in
+            // x-major selection order.
+            for (let x = 1; x <= 9; x++)
+                for (let y = 1; y <= 9; y++)
+                    if ((rows[y]?.[x] || 'x') === 'L') rn2(100);
+        },
+    };
+}
+
+function waterSurroundedVaultThemedMapPostprocess(croom, xstart, ystart) {
+    // C ref: dat/themerms.lua "Water-surrounded vault" map contents.
+    const chestSpots = [[2, 2], [3, 2], [2, 3], [3, 3]];
+    lua_shuffle(chestSpots);
+
+    const escapeItems = [SCR_TELEPORTATION, RIN_TELEPORTATION, WAN_TELEPORTATION, WAN_DIGGING];
+    const itm = mksobj(escapeItems[rn2(escapeItems.length)], true, false);
+    const [boxRelX, boxRelY] = chestSpots[0];
+    const box = mksobj_at(CHEST, xstart + boxRelX, ystart + boxRelY, true, false);
+    if (box) {
+        if (itm && object_material(itm.otyp) === GLASS) box.olocked = false;
+        box.contents = [itm].filter(Boolean);
     }
+    for (let i = 1; i < chestSpots.length; i++) {
+        const [rx, ry] = chestSpots[i];
+        mksobj_at(CHEST, xstart + rx, ystart + ry, true, false);
+    }
+
+    const nastyUndead = ['giant zombie', 'ettin zombie', 'vampire lord'];
+    lua_shuffle(nastyUndead);
+    const ptr = monster_by_user_name(nastyUndead[0]);
+    if (ptr) makemon(ptr, xstart + 2, ystart + 2, 0);
+    croom.needfill = FILL_NONE;
 }
 
 function themed_map_origin_ok(rows, width, height, xstart, ystart) {
@@ -10205,6 +11181,84 @@ function lua_shuffle(values) {
         const j = rn2(i);
         [values[i - 1], values[j]] = [values[j], values[i - 1]];
     }
+}
+
+function rnddoor_state() {
+    // C ref: sp_lev.c:rnddoor().
+    return [D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED][rn2(5)];
+}
+
+function createThemeroomDoor(croom, mask = -1, wall = W_ANY) {
+    // C ref: sp_lev.c:lspo_door(), sp_lev.c:create_door().
+    const typ = mask === -1 ? rnddoor_state() : mask;
+    const secret = typ === D_SECRET;
+    let doorMask = mask;
+    if (doorMask === -1) {
+        if (!secret) {
+            if (!rn2(3)) {
+                if (!rn2(5)) doorMask = D_ISOPEN;
+                else if (!rn2(6)) doorMask = D_LOCKED;
+                else doorMask = D_CLOSED;
+                if (doorMask !== D_ISOPEN && !rn2(25)) doorMask |= D_TRAPPED;
+            } else {
+                doorMask = D_NODOOR;
+            }
+        } else {
+            if (!rn2(5)) doorMask = D_LOCKED;
+            else doorMask = D_CLOSED;
+            if (!rn2(20)) doorMask |= D_TRAPPED;
+        }
+    }
+
+    for (let trycnt = 0; trycnt < 100; trycnt++) {
+        let x = 0, y = 0;
+        switch (rn2(4)) {
+        case 0:
+            if (!(wall & W_NORTH)) continue;
+            y = croom.ly - 1;
+            x = croom.lx + rn2(1 + croom.hx - croom.lx);
+            if (!isok(x, y - 1) || IS_OBSTRUCTED(game.level?.at(x, y - 1)?.typ)) continue;
+            break;
+        case 1:
+            if (!(wall & W_SOUTH)) continue;
+            y = croom.hy + 1;
+            x = croom.lx + rn2(1 + croom.hx - croom.lx);
+            if (!isok(x, y + 1) || IS_OBSTRUCTED(game.level?.at(x, y + 1)?.typ)) continue;
+            break;
+        case 2:
+            if (!(wall & W_WEST)) continue;
+            x = croom.lx - 1;
+            y = croom.ly + rn2(1 + croom.hy - croom.ly);
+            if (!isok(x - 1, y) || IS_OBSTRUCTED(game.level?.at(x - 1, y)?.typ)) continue;
+            break;
+        case 3:
+            if (!(wall & W_EAST)) continue;
+            x = croom.hx + 1;
+            y = croom.ly + rn2(1 + croom.hy - croom.ly);
+            if (!isok(x + 1, y) || IS_OBSTRUCTED(game.level?.at(x + 1, y)?.typ)) continue;
+            break;
+        default:
+            break;
+        }
+        if (!okdoor(x, y)) continue;
+        const loc = game.level?.at(x, y);
+        if (!loc) return;
+        loc.typ = secret ? SDOOR : DOOR;
+        loc.horizontal = (y === croom.ly - 1 || y === croom.hy + 1);
+        set_door_mask(loc, doorMask);
+        return;
+    }
+}
+
+function applyFakeDelphiContents(aroom) {
+    // C ref: dat/themerms.lua "Fake Delphi"; sp_lev.c:build_room().
+    rn2(100);
+    const inner = create_subroom(aroom, 4, 3, 3, 3, OROOM, -1);
+    if (!inner) return;
+    topologize(inner);
+    inner.needfill = FILL_NORMAL;
+    inner.needjoining = true;
+    createThemeroomDoor(inner, -1, W_ANY);
 }
 
 function choose_themeroom_fill(croom) {
@@ -10250,6 +11304,34 @@ function roomSelectionPoints(croom) {
             if (loc && !loc.edge && loc.roomno === rmno) points.push({ x, y });
         }
     return points;
+}
+
+function levelRoomSelectionPoints() {
+    const points = [];
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level?.at(x, y);
+            if (loc?.typ === ROOM) points.push({ x, y });
+        }
+    return points;
+}
+
+function processThemeroomPostprocess() {
+    const pending = (game.level?.traps || [])
+        .filter((trap) => trap._themeroom_teledest_pending);
+    for (const trap of pending) {
+        const locs = levelRoomSelectionPoints();
+        let dest = null;
+        do {
+            if (!locs.length) break;
+            dest = locs.splice(rn2(locs.length), 1)[0];
+        } while (dest.x === trap.tx || dest.y === trap.ty);
+        if (dest) trap.teledest = { x: dest.x, y: dest.y };
+        delete trap._themeroom_teledest_pending;
+        // C ref: mklev.c:mktrap().  In mklev, even non-victim trap kinds
+        // consume the early victim-gate roll before later kind exclusions.
+        rnd(4);
+    }
 }
 
 function roomSelectionRndcoord(croom) {
@@ -10301,10 +11383,28 @@ function applyGhostAdventurerFill(croom) {
     if (rn2(100) < 20) createNotBlessedObjectClassAt(SCROLL_CLASS, loc.x, loc.y);
 }
 
+function applyTeleportationHubFill(croom) {
+    // C ref: dat/themerms.lua Teleportation hub.
+    const locs = roomSelectionPoints(croom);
+    for (let i = 0, n = 2 + rn2(3); i < n; i++) {
+        if (!locs.length) return;
+        const loc = locs.splice(rn2(locs.length), 1)[0];
+        const trap = maketrap(loc.x, loc.y, TELEP_TRAP);
+        if (trap) {
+            trap.tseen = true;
+            trap._themeroom_teledest_pending = true;
+        }
+    }
+}
+
 function apply_themeroom_fill(croom) {
     const fill = choose_themeroom_fill(croom);
     if (fill === 'Ghost of an Adventurer') {
         applyGhostAdventurerFill(croom);
+        return;
+    }
+    if (fill === 'Teleportation hub') {
+        applyTeleportationHubFill(croom);
         return;
     }
     if (fill === 'Storeroom') {
@@ -10319,10 +11419,16 @@ function apply_themeroom_fill(croom) {
                 rn2(3); // C ref: dungeon.c:induced_align() before mkclass().
                 const ptr = mkclass_aligned('S_MIMIC', 0);
                 if (ptr) {
-                    const mx = somex(croom);
-                    const my = somey(croom);
-                    makemon(ptr, mx, my, 0);
-                    const mon = game.level?.monsters?.find(m => m.mx === mx && m.my === my);
+                    let loc = { x: somex(croom), y: somey(croom) };
+                    if (m_at(loc.x, loc.y)) {
+                        // C ref: sp_lev.c:create_monster().  Scripted
+                        // themed-room monsters relocate before makemon()
+                        // when their selected square is occupied.
+                        loc = enexto_core(loc.x, loc.y, ptr, GP_CHECKSCARY)
+                            || enexto_core(loc.x, loc.y, ptr, 0)
+                            || loc;
+                    }
+                    const mon = makemon(ptr, loc.x, loc.y, 0);
                     if (mon) {
                         mon.m_ap_type = M_AP_OBJECT;
                         mon.mappearance = CHEST;
@@ -10373,19 +11479,28 @@ function create_themed_map_room(spec) {
     }
     if (!ok) return false;
 
+    const terrainOverride = spec.preFiller ? spec.preFiller() : null;
+    if (terrainOverride?.consumeReplaceTerrain) terrainOverride.consumeReplaceTerrain(rows);
+    const terrainMap = typeof terrainOverride === 'function'
+        ? terrainOverride
+        : terrainOverride?.map;
     // C ref: themerms.lua:filler_region() after mapped themed rooms.
-    const themedFill = rn2(100) < 30;
+    const hasFillerRegion = !spec.skipFillerRegion;
+    const themedFill = hasFillerRegion && rn2(100) < 30;
     const lit = litstate_rnd(-1);
 
     for (let y = 0; y < height; y++) {
         const row = rows[y];
         for (let x = 0; x < width; x++) {
             const ch = row[x] || 'x';
-            const typ = themed_map_typ(ch);
+            const typ = terrainMap ? terrainMap(ch, x, y) : themed_map_typ(ch);
             const loc = game.level.at(xstart + x, ystart + y);
             if (!loc) continue;
             loc.typ = typ;
-            loc.lit = lit;
+            // C refs: sp_lev.c:lspo_map(), themerms.lua:filler_region().
+            // des.map() itself defaults to unlit; the following irregular
+            // region flood-fill owns the random room lighting.
+            loc.lit = false;
             loc.horizontal = ch === '-';
             if (typ !== STONE) loc.edge = typ !== ROOM;
         }
@@ -10439,18 +11554,19 @@ function create_themed_map_room(spec) {
 
     const croom = {
         lx: minx, ly: miny, hx: maxx, hy: maxy,
-        rtype: themedFill ? THEMEROOM : OROOM, rlit: lit ? 1 : 0,
+        rtype: spec.forceRoomType ?? (themedFill ? THEMEROOM : OROOM), rlit: lit ? 1 : 0,
         doorct: 0, fdoor: game.level.doorindex,
         irregular: true, needjoining: true,
         nsubrooms: 0, sbrooms: [],
         roomnoidx: game.level.nroom,
-        needfill: FILL_NORMAL,
+        needfill: spec.forceNeedfill ?? FILL_NORMAL,
     };
     game.smeq[game.level.nroom] = game.level.nroom;
     game.level.rooms[game.level.nroom] = croom;
     game.level.nroom++;
     if (game.level.nroom < MAXNROFROOMS) game.level.rooms[game.level.nroom] = { hx: -1 };
     if (themedFill) apply_themeroom_fill(croom);
+    if (spec.postMap) spec.postMap(croom, xstart, ystart);
     return true;
 }
 
@@ -11415,7 +12531,6 @@ async function make_niches() {
 }
 
 const SHOP_TYPE_PROBS = [42, 14, 10, 10, 5, 5, 3, 3, 3, 2];
-const SHKTOOLS_NAME_COUNT = 40;
 const SHOP_TYPE_NAMES = [
     'general store',
     'used armor dealership',
@@ -11431,7 +12546,18 @@ const SHOP_TYPE_NAMES = [
     'lighting store',
 ];
 const SHOPKEEPER_NAMES = [
-    null,
+    [
+        // C ref: shknam.c:shkgeneral[].
+        'Hebiwerie', 'Possogroenoe', 'Asidonhopo', 'Manlobbi',
+        'Adjama', 'Pakka Pakka', 'Kabalebo', 'Wonotobo',
+        'Akalapi', 'Sipaliwini',
+        'Annootok', 'Upernavik', 'Angmagssalik',
+        'Aklavik', 'Inuvik', 'Tuktoyaktuk', 'Chicoutimi',
+        'Ouiatchouane', 'Chibougamau', 'Matagami', 'Kipawa',
+        'Kinojevis', 'Abitibi', 'Maganasipi',
+        'Akureyri', 'Kopasker', 'Budereyri', 'Akranes',
+        'Bordeyri', 'Holmavik',
+    ],
     [
         'Demirci', 'Kalecik', 'Boyabai', 'Yildizeli', 'Gaziantep',
         'Siirt', 'Akhalataki', 'Tirebolu', 'Aksaray', 'Ermenak',
@@ -11439,6 +12565,110 @@ const SHOPKEEPER_NAMES = [
         'Bayburt', 'Ayancik', 'Zonguldak', 'Balya', 'Tefenni',
         'Artvin', 'Kars', 'Makharadze', 'Malazgirt', 'Midyat',
         'Birecik', 'Kirikkale', 'Alaca', 'Polatli', 'Nallihan',
+    ],
+    [
+        // C ref: shknam.c:shkbooks[].
+        'Skibbereen', 'Kanturk', 'Rath Luirc', 'Ennistymon',
+        'Lahinch', 'Kinnegad', 'Lugnaquillia', 'Enniscorthy',
+        'Gweebarra', 'Kittamagh', 'Nenagh', 'Sneem',
+        'Ballingeary', 'Kilgarvan', 'Cahersiveen', 'Glenbeigh',
+        'Kilmihil', 'Kiltamagh', 'Droichead Atha', 'Inniscrone',
+        'Clonegal', 'Lisnaskea', 'Culdaff', 'Dunfanaghy',
+        'Inishbofin', 'Kesh',
+    ],
+    [
+        // C ref: shknam.c:shkliquors[].
+        'Njezjin', 'Tsjernigof', 'Ossipewsk', 'Gorlowka',
+        'Gomel',
+        'Konosja', 'Weliki Oestjoeg', 'Syktywkar', 'Sablja',
+        'Narodnaja', 'Kyzyl',
+        'Walbrzych', 'Swidnica', 'Klodzko', 'Raciborz',
+        'Gliwice', 'Brzeg', 'Krnov', 'Hradec Kralove',
+        'Leuk', 'Brig', 'Brienz', 'Thun', 'Sarnen', 'Burglen',
+        'Elm', 'Flims', 'Vals', 'Schuls', 'Zum Loch',
+    ],
+    [
+        // C ref: shknam.c:shkweapons[].
+        'Voulgezac', 'Rouffiac', 'Lerignac', 'Touverac', 'Guizengeard',
+        'Melac', 'Neuvicq', 'Vanzac', 'Picq', 'Urignac',
+        'Corignac', 'Fleac', 'Lonzac', 'Vergt', 'Queyssac',
+        'Liorac', 'Echourgnac', 'Cazelon', 'Eypau', 'Carignan',
+        'Monbazillac', 'Jonzac', 'Pons', 'Jumilhac', 'Fenouilledes',
+        'Laguiolet', 'Saujon', 'Eymoutiers', 'Eygurande', 'Eauze',
+        'Labouheyre',
+    ],
+    [
+        // C ref: shknam.c:shkfoods[].
+        'Djasinga', 'Tjibarusa', 'Tjiwidej', 'Pengalengan',
+        'Bandjar', 'Parbalingga', 'Bojolali', 'Sarangan',
+        'Ngebel', 'Djombang', 'Ardjawinangun', 'Berbek',
+        'Papar', 'Baliga', 'Tjisolok', 'Siboga',
+        'Banjoewangi', 'Trenggalek', 'Karangkobar', 'Njalindoeng',
+        'Pasawahan', 'Pameunpeuk', 'Patjitan', 'Kediri',
+        'Pemboeang', 'Tringanoe', 'Makin', 'Tipor',
+        'Semai', 'Berhala', 'Tegal', 'Samoe',
+    ],
+    [
+        // C ref: shknam.c:shkrings[].
+        'Feyfer', 'Flugi', 'Gheel', 'Havic', 'Haynin',
+        'Hoboken', 'Imbyze', 'Juyn', 'Kinsky', 'Massis',
+        'Matray', 'Moy', 'Olycan', 'Sadelin', 'Svaving',
+        'Tapper', 'Terwen', 'Wirix', 'Ypey',
+        'Rastegaisa', 'Varjag Njarga', 'Kautekeino', 'Abisko',
+        'Enontekis', 'Rovaniemi', 'Avasaksa', 'Haparanda',
+        'Lulea', 'Gellivare', 'Oeloe', 'Kajaani', 'Fauske',
+    ],
+    [
+        // C ref: shknam.c:shkwands[].
+        'Yr Wyddgrug', 'Trallwng', 'Mallwyd', 'Pontarfynach',
+        'Rhaeader', 'Llandrindod', 'Llanfair-ym-muallt',
+        'Y-Fenni', 'Maesteg', 'Rhydaman', 'Beddgelert',
+        'Curig', 'Llanrwst', 'Llanerchymedd', 'Caergybi',
+        'Nairn', 'Turriff', 'Inverurie', 'Braemar', 'Lochnagar',
+        'Kerloch', 'Beinn a Ghlo', 'Drumnadrochit', 'Morven',
+        'Uist', 'Storr', 'Sgurr na Ciche', 'Cannich', 'Gairloch',
+        'Kyleakin', 'Dunvegan',
+    ],
+    [
+        // C ref: shknam.c:shktools[].
+        'Ymla', 'Eed-morra', 'Elan Lapinski', 'Cubask', 'Nieb',
+        'Bnowr Falr', 'Sperc', 'Noskcirdneh', 'Yawolloh', 'Hyeghu',
+        'Niskal', 'Trahnil', 'Htargcm', 'Enrobwem', 'Kachzi Rellim',
+        'Regien', 'Donmyar', 'Yelpur', 'Nosnehpets', 'Stewe',
+        'Renrut', 'Senna Hut', '-Zlaw', 'Nosalnef', 'Rewuorb',
+        'Rellenk', 'Yad', 'Cire Htims', 'Y-crad', 'Nenilukah',
+        'Corsh', 'Aned', 'Dark Eery', 'Niknar', 'Lapu', 'Lechaim',
+        'Rebrol-nek', 'AlliWar Wickson', 'Oguhmk', 'Telloc Cyaj',
+    ],
+    [
+        // C ref: shknam.c:shkbooks[] for rare-books shops.
+        'Skibbereen', 'Kanturk', 'Rath Luirc', 'Ennistymon',
+        'Lahinch', 'Kinnegad', 'Lugnaquillia', 'Enniscorthy',
+        'Gweebarra', 'Kittamagh', 'Nenagh', 'Sneem',
+        'Ballingeary', 'Kilgarvan', 'Cahersiveen', 'Glenbeigh',
+        'Kilmihil', 'Kiltamagh', 'Droichead Atha', 'Inniscrone',
+        'Clonegal', 'Lisnaskea', 'Culdaff', 'Dunfanaghy',
+        'Inishbofin', 'Kesh',
+    ],
+    [
+        // C ref: shknam.c:shkhealthfoods[].
+        'Ga\'er', 'Zhangmu', 'Rikaze', 'Jiangji', 'Changdu',
+        'Linzhi', 'Shigatse', 'Gyantse', 'Ganden', 'Tsurphu',
+        'Lhasa', 'Tsedong', 'Drepung',
+        '=Azura', '=Blaze', '=Breanna', '=Breezy', '=Dharma',
+        '=Feather', '=Jasmine', '=Luna', '=Melody', '=Moonjava',
+        '=Petal', '=Rhiannon', '=Starla', '=Tranquilla',
+        '=Windsong', '=Zennia', '=Zoe', '=Zora',
+    ],
+    [
+        // C ref: shknam.c:shklight[].
+        'Zarnesti', 'Slanic', 'Nehoiasu', 'Ludus', 'Sighisoara',
+        'Nisipitu', 'Razboieni', 'Bicaz', 'Dorohoi', 'Vaslui',
+        'Fetesti', 'Tirgu Neamt', 'Babadag', 'Zimnicea', 'Zlatna',
+        'Jiu', 'Eforie', 'Mamaia',
+        'Silistra', 'Tulovo', 'Panagyuritshte', 'Smolyan',
+        'Kirklareli', 'Pernik', 'Lom', 'Haskovo', 'Dobrinishte',
+        'Varvara', 'Oryahovo', 'Troyan', 'Lovech', 'Sliven',
     ],
 ];
 
@@ -11450,7 +12680,16 @@ function fixedDatetimeEpochSeconds() {
     const t = game._lt;
     if (!t) return 0;
     const y = t.year;
-    const offsetHours = isNewYorkDst(t) ? -4 : -5;
+    // C refs: calendar.c:time_from_yyyymmddhhmmss(), shknam.c:nameshk().
+    // The local deterministic patch seeds tm_isdst from current localtime()
+    // before overriding the fixed Y/M/D/H/M/S fields, so ubirthday's epoch
+    // uses the current New York DST state rather than the fixed date's state.
+    const now = new Date();
+    const offsetHours = isNewYorkDst({
+        year: now.getUTCFullYear(),
+        month: now.getUTCMonth() + 1,
+        day: now.getUTCDate(),
+    }) ? -4 : -5;
     return Math.trunc(Date.UTC(y, t.month - 1, t.day, t.hour - offsetHours, t.minute, t.second) / 1000);
 }
 
@@ -11489,12 +12728,20 @@ function shopkeeperName(shopIndex, shk) {
     if (!names?.length) return '';
     // C ref: shknam.c:nameshk().  Non-tool shop names are deterministic from
     // m_id, ledger_no(), and ubirthday; only tool shops randomize here.
-    const nseed = Math.trunc(fixedDatetimeEpochSeconds() / 257);
-    let wanted = (shk?.m_id ?? 0) + ledger_no() + (nseed % 13) - (nseed % 5);
-    if (wanted < 0) wanted += 18;
-    shk.female = !!(wanted & 1);
-    wanted %= names.length;
-    return names[wanted];
+    let name;
+    if (shopIndex === 8) {
+        name = names[rn2(names.length)];
+        shk.female = false;
+    } else {
+        const nseed = Math.trunc(fixedDatetimeEpochSeconds() / 257);
+        let wanted = (shk?.m_id ?? 0) + ledger_no() + (nseed % 13) - (nseed % 5);
+        if (wanted < 0) wanted += 18;
+        shk.female = !!(wanted & 1);
+        name = names[wanted % names.length];
+    }
+    if (/^[_-]/.test(name)) shk.female = true;
+    else if (/^[|+]/.test(name)) shk.female = false;
+    return name;
 }
 const SHOP_ITEM_PROBS = [
     [{ iprob: 100, itype: RANDOM_CLASS }],
@@ -11621,6 +12868,7 @@ function shkinit(shopIndex, sroom) {
         shk.isshk = 1;
         shk.mpeaceful = 1;
         shk.msleeping = 0;
+        set_malign_basic(shk);
         const roomIndex = game.level.rooms.indexOf(sroom);
         const door = sroom?.doorct ? game.level?.doors?.[sroom.fdoor] : null;
         // C ref: shknam.c:shkinit().  Movement needs the shopkeeper's
@@ -11631,7 +12879,7 @@ function shkinit(shopIndex, sroom) {
             shoproom: roomIndex >= 0 ? roomIndex + ROOMOFFSET : 0,
             shoptype: sroom.rtype,
             shoplevel: { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) },
-            shknam: shopkeeperName(shopIndex, shk),
+            shknam: '',
             shd: door ? { x: door.x, y: door.y } : { x: pos.x, y: pos.y },
             shk: { x: pos.x, y: pos.y },
             robbed: 0,
@@ -11652,7 +12900,7 @@ function shkinit(shopIndex, sroom) {
         || (shopIndex === 0 && rn2(5))) {
         mksobj(SCR_CHARGING, true, false);
     }
-    if (shopIndex === 8) rn2(SHKTOOLS_NAME_COUNT);
+    if (shk?.mextra?.eshk) shk.mextra.eshk.shknam = shopkeeperName(shopIndex, shk);
     return sroom.fdoor ?? 0;
 }
 
@@ -11681,7 +12929,13 @@ function get_shop_item(shopIndex) {
     return probs[probs.length - 1].itype;
 }
 
-function mkshobj_at(shopIndex, sx, sy) {
+function mkshobj_at(shopIndex, sx, sy, mkspecl = false) {
+    if (mkspecl && (SHOP_TYPE_NAMES[shopIndex] === 'rare books'
+        || SHOP_TYPE_NAMES[shopIndex] === 'second-hand bookstore')) {
+        const novel = mksobj_at(SPE_NOVEL, sx, sy, false, false);
+        if (novel) game._tribute_bookstock = true;
+        return;
+    }
     if (rn2(100) < depth_of_level(game.u?.uz) && !m_at(sx, sy)) {
         const ptr = mkclass_aligned('S_MIMIC', 0);
         if (ptr && makemon(ptr, sx, sy, 0)) return;
@@ -11739,11 +12993,14 @@ function stock_room(croom) {
     for (let sx = croom.lx; sx <= croom.hx; sx++)
         for (let sy = croom.ly; sy <= croom.hy; sy++)
             if (stock_room_goodpos(croom, sh, sx, sy)) stockcount++;
-    if (stockcount) rnd(stockcount);
+    const specialspot = (stockcount && !game._tribute_bookstock) ? rnd(stockcount) : 0;
+    stockcount = 0;
     for (let sx = croom.lx; sx <= croom.hx; sx++)
         for (let sy = croom.ly; sy <= croom.hy; sy++)
-            if (stock_room_goodpos(croom, sh, sx, sy))
-                mkshobj_at(shopIndex, sx, sy);
+            if (stock_room_goodpos(croom, sh, sx, sy)) {
+                stockcount++;
+                mkshobj_at(shopIndex, sx, sy, stockcount === specialspot);
+            }
     remove_orcus_shopkeeper(croom);
     game.level.flags.has_shop = true;
 }
@@ -11890,6 +13147,72 @@ function is_branchlev() {
 function branch_to_dnum(branchp, dnum) {
     return !!branchp && dnum != null
         && (branchp.end1?.dnum === dnum || branchp.end2?.dnum === dnum);
+}
+
+function on_level(lev, uz = game.u?.uz) {
+    return !!lev && !!uz && lev.dnum === uz.dnum && lev.dlevel === uz.dlevel;
+}
+
+function same_dungeon(lev, uz = game.u?.uz) {
+    return !!lev && !!uz && lev.dnum === uz.dnum;
+}
+
+function dungeon_branch(name) {
+    const dnum = game.dungeons?.findIndex((dgn) => dgn?.dname === name) ?? -1;
+    if (dnum < 0) return null;
+    return game.branches?.find((br) => branch_to_dnum(br, dnum)) || null;
+}
+
+function branch_order_value(branchp) {
+    return ((((branchp.end1?.dnum ?? 0) * 31 + (branchp.end1?.dlevel ?? 0)) * 10 * 31)
+        + ((branchp.end2?.dnum ?? 0) * 31) + (branchp.end2?.dlevel ?? 0));
+}
+
+function insert_branch(branchp) {
+    const branches = game.branches;
+    if (!branches || !branchp) return;
+    const oldIndex = branches.indexOf(branchp);
+    if (oldIndex >= 0) branches.splice(oldIndex, 1);
+    const value = branch_order_value(branchp);
+    let idx = 0;
+    while (idx < branches.length && branch_order_value(branches[idx]) < value) idx++;
+    branches.splice(idx, 0, branchp);
+}
+
+function at_dgn_entrance(name) {
+    const br = dungeon_branch(name);
+    return !!br && on_level(br.end1);
+}
+
+// C ref: src/mklev.c:mk_knox_portal()
+function mk_knox_portal(x, y) {
+    const br = dungeon_branch('Fort Ludios');
+    if (!br) return;
+    const knoxLevel = game.knox_level || br.end2;
+
+    let source;
+    if (on_level(knoxLevel, br.end1)) {
+        source = br.end2;
+    } else {
+        if (is_branchlev()) return;
+        source = br.end1;
+    }
+
+    if ((source?.dnum ?? 0) < (game.dungeons?.length ?? 0) || (rn2(3) && !game.wizard)) {
+        return;
+    }
+
+    const uDepth = depth_of_level(game.u?.uz);
+    const medusaDepth = game.medusa_level ? depth_of_level(game.medusa_level) : 999;
+    if (!same_dungeon(game.oracle_level)
+        || at_dgn_entrance('The Quest') || uDepth <= 10 || uDepth >= medusaDepth) {
+        return;
+    }
+
+    source.dnum = game.u?.uz?.dnum ?? 0;
+    source.dlevel = game.u?.uz?.dlevel ?? 1;
+    insert_branch(br);
+    place_branch(br, x, y);
 }
 
 function find_branch_room(mp) {
@@ -12174,13 +13497,16 @@ function mkgrave_room(croom) {
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
         if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
+            gold.quan = rnd(20) + level_difficulty() * rnd(5);
+            gold.owt = weight(gold);
+            add_to_buried_basic(gold, pos.x, pos.y);
         }
     }
     for (let tryct = rn2(5); tryct > 0; tryct--) {
         const otmp = mkobj(RANDOM_CLASS, true);
+        if (!otmp) return;
         curse(otmp);
+        add_to_buried_basic(otmp, pos.x, pos.y);
     }
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
@@ -12367,9 +13693,12 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                 && n([1,1]) && n([-1,1])) {
                 if (rn2(1000) < goldprob) {
                     const otmp = mksobj(GOLD_PIECE, false, false);
+                    otmp.ox = x;
+                    otmp.oy = y;
                     otmp.quan = 1 + rnd(goldprob * 3);
+                    otmp.owt = weight(otmp);
                     if (!rn2(3)) {
-                        // Buried object chain is not modeled yet.
+                        add_to_buried_basic(otmp, x, y);
                     } else {
                         place_object(otmp, x, y);
                     }
@@ -12379,8 +13708,10 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
                     for (let i = 0; i < cnt; i++) {
                         const otmp = mkobj(GEM_CLASS, false);
                         if (otmp?.otyp !== ROCK) {
+                            otmp.ox = x;
+                            otmp.oy = y;
                             if (!rn2(3)) {
-                                // Buried object chain is not modeled yet.
+                                add_to_buried_basic(otmp, x, y);
                             } else {
                                 place_object(otmp, x, y);
                             }

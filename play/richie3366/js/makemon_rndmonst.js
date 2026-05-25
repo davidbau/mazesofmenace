@@ -70,7 +70,7 @@ const DEF_MONSYM_DISPLAY = /** @type {readonly string[]} */ (Object.freeze([
 ]));
 
 /** C: mondata.h monsym(ptr) — `def_monsyms[(int) ptr->mlet].sym`. */
-function monsymCharLikeC(mlet) {
+export function monsymCharLikeC(mlet) {
     return DEF_MONSYM_DISPLAY[mlet | 0] ?? '\0';
 }
 

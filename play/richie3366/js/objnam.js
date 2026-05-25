@@ -639,6 +639,14 @@ export function upstartLikeC(str) {
  * @param {boolean} markAsEncountered
  * @param {boolean} [_creditHero]
  */
+/** C: `svd.disco[]` slot — list otyp for `#discoveries` without encounter/known flags. */
+export function noteDiscoveryOtypLikeC(g, oindx) {
+    const t = oindx | 0;
+    if (t < 1) return;
+    if (!Array.isArray(g.discoOtyps)) g.discoOtyps = [];
+    if (!g.discoOtyps.includes(t)) g.discoOtyps.push(t);
+}
+
 export function discoverObjectHeroLikeC(g, oindx, markAsKnown, markAsEncountered, _creditHero) {
     const t = oindx | 0;
     if (t < 1) return;
@@ -667,6 +675,8 @@ export function discoverObjectHeroLikeC(g, oindx, markAsKnown, markAsEncountered
     if (!enter) return;
 
     /* C: **`svd.disco[dindx] = oindx`** — ordering deferred. */
+    if (!Array.isArray(g.discoOtyps)) g.discoOtyps = [];
+    if (!g.discoOtyps.includes(t)) g.discoOtyps.push(t);
     if (markAsEncountered) g.objectEncountered.add(t);
 
     if (markAsKnown && !partialNameKnown) {

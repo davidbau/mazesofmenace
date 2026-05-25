@@ -109,6 +109,7 @@ export class NethackGame {
         // Initialize hero struct
         g.u = {
             ux: 0, uy: 0, ux0: 0, uy0: 0, dx: 0, dy: 0, dz: 0, /* C: you.h last move + getdir z */
+            uac: 0, /* C: before u_init_skills_discoveries find_ac — first botl shows AC:0 */
             uluck: 0, LUCKADD: 0, Upolyd: 0,
             umonnum: 0, /* C: you.h — poly form index; `NODIAG` / corpse `monsndx` */
             inv_weight: 0, weight_cap: 0, /* C: invent.c — `cant_squeeze_thru` diagonal load */
@@ -174,6 +175,12 @@ export class NethackGame {
         const fullLog = getRngLog() || [];
         const slice = fullLog.slice(this._lastRngIdx);
         this._lastRngIdx = fullLog.length;
+
+        /* C: tty refresh before input boundaries; also when find_ac flagged botl but moveloop not started. */
+        const needFlush =
+            game.program_state?.in_moveloop
+            || (game.disp?.botl && game._cachedBotlLine2 != null);
+        if (needFlush) await flush_screen(1);
 
         const disp = game?.nhDisplay;
         const term = disp?.terminal || disp;

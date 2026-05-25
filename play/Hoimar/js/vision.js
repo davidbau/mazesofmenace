@@ -68,8 +68,14 @@ const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
 
+let active_vis_func = null;
+
 function mark_visible_range(row, left, right) {
     if (left > right) return;
+    if (active_vis_func) {
+        for (let i = left; i <= right; i++) active_vis_func(i, row);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
     if (!rowp) return;
     for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
@@ -383,45 +389,76 @@ function left_side(row, left_mark, right, limitsIdx) {
 }
 
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, visFunc = null) {
+    const oldVisFunc = active_vis_func;
+    active_vis_func = visFunc;
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
 
-    let left, right;
-    if (viz_clear[srow][scol]) {
-        left = left_ptrs[srow][scol];
-        right = right_ptrs[srow][scol];
-    } else {
-        left = !scol ? 0
-            : (viz_clear[srow][scol - 1] ? left_ptrs[srow][scol - 1] : scol - 1);
-        right = scol === COLNO - 1 ? COLNO - 1
-            : (viz_clear[srow][scol + 1] ? right_ptrs[srow][scol + 1] : scol + 1);
-    }
+    try {
+        let left, right;
+        if (viz_clear[srow][scol]) {
+            left = left_ptrs[srow][scol];
+            right = right_ptrs[srow][scol];
+        } else {
+            left = !scol ? 0
+                : (viz_clear[srow][scol - 1] ? left_ptrs[srow][scol - 1] : scol - 1);
+            right = scol === COLNO - 1 ? COLNO - 1
+                : (viz_clear[srow][scol + 1] ? right_ptrs[srow][scol + 1] : scol + 1);
+        }
 
-    let limitsIdx = -1;
-    if (range) {
-        if (left < scol - range) left = scol - range;
-        if (right > scol + range) right = scol + range;
-        limitsIdx = circle_start[range] + 1;
-    }
+        let limitsIdx = -1;
+        if (range) {
+            if (left < scol - range) left = scol - range;
+            if (right > scol + range) right = scol + range;
+            limitsIdx = circle_start[range] + 1;
+        }
 
-    mark_visible_range(srow, left, right);
+        mark_visible_range(srow, left, right);
 
-    const nrow_down = srow + 1;
-    if (nrow_down < ROWNO) {
-        game.vis_step = 1;
-        if (scol < COLNO - 1) right_side(nrow_down, scol, right, limitsIdx);
-        if (scol) left_side(nrow_down, left, scol, limitsIdx);
+        const nrow_down = srow + 1;
+        if (nrow_down < ROWNO) {
+            game.vis_step = 1;
+            if (scol < COLNO - 1) right_side(nrow_down, scol, right, limitsIdx);
+            if (scol) left_side(nrow_down, left, scol, limitsIdx);
+        }
+        const nrow_up = srow - 1;
+        if (nrow_up >= 0) {
+            game.vis_step = -1;
+            if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
+            if (scol) left_side(nrow_up, left, scol, limitsIdx);
+        }
+    } finally {
+        active_vis_func = oldVisFunc;
     }
-    const nrow_up = srow - 1;
-    if (nrow_up >= 0) {
-        game.vis_step = -1;
-        if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
-        if (scol) left_side(nrow_up, left, scol, limitsIdx);
-    }
+}
+
+export function clear_area_from(scol, srow, range) {
+    // C ref: src/vision.c:do_clear_area() for non-hero origins.
+    if (srow < 0 || srow >= ROWNO || scol < 0 || scol >= COLNO) return [];
+    const oldState = {
+        vis_start_col: game.vis_start_col,
+        vis_start_row: game.vis_start_row,
+        cs_rows: game.cs_rows,
+        cs_left: game.cs_left,
+        cs_right: game.cs_right,
+        vis_step: game.vis_step,
+    };
+    const points = [];
+    view_from(srow, scol, null, null, null, range, (x, y) => {
+        points.push({ x, y });
+    });
+    game.vis_start_col = oldState.vis_start_col;
+    game.vis_start_row = oldState.vis_start_row;
+    game.cs_rows = oldState.cs_rows;
+    game.cs_left = oldState.cs_left;
+    game.cs_right = oldState.cs_right;
+    game.vis_step = oldState.vis_step;
+
+    return points;
 }
 
 function monster_light_range(mon) {

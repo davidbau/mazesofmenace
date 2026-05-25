@@ -2,25 +2,30 @@
 // C ref: dog.c:makedog(), makemon.c:makemon() near-hero placement.
 
 import { game } from './gstate.js';
-import { enexto_core, makemon, next_ident, place_object } from './mklev.js';
-import { OBJECT_CLASS } from './object_data.js';
+import { enexto_core, makemon, mkcorpstat, mksobj, monsterPtr, next_ident, place_object } from './mklev.js';
+import { OBJECT_CLASS, OBJECT_DELAY } from './object_data.js';
 import { MONSTER_DATA } from './monster_data.js';
 import {
-    newsym, pline, queue_more_prompt, flush_screen, clear_pending_message,
-    serialize_terminal_grid,
+    newsym, pline, queue_more_prompt, flush_screen,
+    serialize_terminal_grid, show_glyph_cell, topline_can_pack_message,
 } from './display.js';
-import { nhgetch } from './input.js';
+import { NO_COLOR } from './terminal.js';
 import {
     ACCFOOD, APPORT, CADAVER, COLNO, DOGFOOD, MANFOOD, ROWNO, TABU, UNDEF,
     D_BROKEN, D_CLOSED, D_LOCKED, GP_AVOID_MONPOS, GP_CHECKSCARY, IS_DOOR, IS_OBSTRUCTED,
     IS_LAVA, IS_POOL, IS_ROOM, LADDER, MM_EDOG, MTSZ, NO_MINVENT, SPACE_POS, STAIRS,
-    W_WEP, isok, MGIVENNAME, has_mgivenname,
+    W_SADDLE, W_WEP, isok, MGIVENNAME, has_mgivenname, CORPSTAT_INIT,
 } from './const.js';
 import { d, rn2, rnd } from './rng.js';
 import { gettrack } from './track.js';
-import { cansee, clear_path, couldsee } from './vision.js';
+import { cansee, clear_area_from, clear_path, couldsee } from './vision.js';
+import { getObjectDescription } from './o_init.js';
 
+const AMULET_CLASS = 5;
 const FOOD_CLASS = 7;
+const SCROLL_CLASS = 9;
+const SPBOOK_CLASS = 10;
+const WAND_CLASS = 11;
 const WEAPON_CLASS = 2;
 const COIN_CLASS = 12;
 const GEM_CLASS = 13;
@@ -57,6 +62,7 @@ const MEATBALL = 267;
 const MEAT_STICK = 268;
 const ENORMOUS_MEATBALL = 269;
 const GLOB_OF_GREEN_SLIME = 273;
+const APPLE = 277;
 const BANANA = 281;
 const CARROT = 282;
 const CLOVE_OF_GARLIC = 284;
@@ -66,6 +72,7 @@ const TINNING_KIT = 238;
 const EXPENSIVE_CAMERA = 229;
 const OIL_LAMP = 227;
 const MAGIC_LAMP = 228;
+const SADDLE = 235;
 const LARGE_BOX = 214;
 const CHEST = 215;
 const MIRROR = 230;
@@ -76,6 +83,7 @@ const CANDELABRUM_OF_INVOCATION = 262;
 const DOG_HUNGRY = 300;
 const M2_STRONG = 0x04000000;
 const G_FREQ = 0x0007;
+const G_NOCORPSE = 0x0010;
 
 const OBJECT_WEIGHT_OVERRIDES = new Map([
     [LARGE_BOX, 350],
@@ -127,8 +135,18 @@ const OBJECT_WEIGHT_OVERRIDES = new Map([
     [MAGIC_MARKER, 2],
 ]);
 
+const CORPSE_STATS = new Map([
+    // C ref: include/monsters.h SIZ(cwt, cnutrit, ...).
+    ['JACKAL', { cwt: 300, cnutrit: 250 }],
+    ['NEWT', { cwt: 10, cnutrit: 20 }],
+    ['GNOME', { cwt: 650, cnutrit: 100 }],
+]);
+
 // These ids come from the generated object table used by mklev.js.
 const AMULET_OF_YENDOR = 213;
+const FIRST_SPELL = 366;
+const LAST_SPELL = 407;
+const SPE_NOVEL = 408;
 const SPE_BOOK_OF_THE_DEAD = 409;
 
 function monsterDataByName(monsterName, fallback) {
@@ -138,12 +156,13 @@ function monsterDataByName(monsterName, fallback) {
         name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color,
         neuter, male, female, msound = 0, mresists = 0, mconveys = 0,
         mflags1 = 0, mflags2 = 0, mflags3 = 0, mattk = [], msize = 2,
+        ac = 10,
     ] = row;
     return {
         ...fallback,
         name, mlet, mlevel, mmove, maligntyp, geno, difficulty, color,
         neuter, male, female, msound, mresists, mconveys, mflags1, mflags2,
-        mflags3, mattk, msize,
+        mflags3, mattk, msize, ac,
     };
 }
 
@@ -241,9 +260,26 @@ export async function makedog() {
             mon.mgivenname = petname;
             game._petname_used = true;
         }
+        if (pet === PM_PONY) put_starting_saddle_on_pony(mon);
         init_edog(mon);
     }
     return mon;
+}
+
+function put_starting_saddle_on_pony(mon) {
+    // C refs: src/dog.c:makedog(), src/steed.c:put_saddle_on_mon().
+    const saddle = mksobj(SADDLE, true, false);
+    if (!saddle) return;
+    saddle.known = true;
+    saddle.knownName = true;
+    saddle.dknown = true;
+    saddle.bknown = true;
+    saddle.rknown = true;
+    saddle.owornmask = W_SADDLE;
+    saddle.leashmon = mon.m_id;
+    mon.inventory = mon.inventory || [];
+    mon.inventory.unshift(saddle);
+    mon.misc_worn_check = (mon.misc_worn_check || 0) | W_SADDLE;
 }
 
 function hero_charisma() {
@@ -268,6 +304,20 @@ function init_edog(mon) {
     return mon.edog;
 }
 
+function clone_mon_inventory(inventory) {
+    return inventory ? inventory.map((obj) => ({ ...obj })) : inventory;
+}
+
+function migrated_wielded_object(migrating, inventory) {
+    if (!migrating?.mw || !inventory?.length) return migrating?.mw ? { ...migrating.mw } : migrating?.mw;
+    if (migrating.mw.o_id != null) {
+        const byId = inventory.find((obj) => obj?.o_id === migrating.mw.o_id);
+        if (byId) return byId;
+    }
+    return inventory.find((obj) => ((obj?.owornmask || 0) & W_WEP)
+        && obj.otyp === migrating.mw.otyp) || { ...migrating.mw };
+}
+
 function arrive_with_hero(migrating) {
     game._migrating_pet = null;
     if (!migrating) return null;
@@ -288,7 +338,9 @@ function arrive_with_hero(migrating) {
     }
 
     const ch = pet === PM_KITTEN ? 'f' : pet === PM_PONY ? 'u' : 'd';
+    const inventory = clone_mon_inventory(migrating?.inventory);
     const mon = {
+        ...migrating,
         mx: x, my: y,
         // C ref: dog.c:mon_arrive().  Arriving pets refresh their apparent
         // hero target so relocation helpers do not use stale migration data.
@@ -304,7 +356,15 @@ function arrive_with_hero(migrating) {
         mpeaceful: migrating?.mpeaceful ?? 1,
         mtame: migrating?.mtame ?? 10,
         movement: migrating?.movement ?? 0,
+        inventory,
+        misc_worn_check: migrating?.misc_worn_check || 0,
     };
+    mon.mw = migrated_wielded_object(migrating, inventory);
+    for (const obj of mon.inventory || []) {
+        if (obj?.otyp === SADDLE && ((obj.owornmask || 0) & W_SADDLE)) {
+            obj.leashmon = mon.m_id;
+        }
+    }
     if (migrating?.edog) mon.edog = { ...migrating.edog };
     init_edog(mon);
     if (game.level?.monsters) game.level.monsters.unshift(mon);
@@ -424,6 +484,16 @@ function pet_diet(mtmp) {
     return { carni: true, herbi: false };
 }
 
+function vegan_monster(ptr) {
+    // C ref: include/mondata.h:vegan().
+    if (!ptr) return false;
+    const mlet = ptr.mlet;
+    if (['S_BLOB', 'S_JELLY', 'S_FUNGUS', 'S_VORTEX', 'S_LIGHT'].includes(mlet)) return true;
+    if (mlet === 'S_ELEMENTAL' && ptr.name !== 'STALKER') return true;
+    if (mlet === 'S_GOLEM' && ptr.name !== 'FLESH_GOLEM' && ptr.name !== 'LEATHER_GOLEM') return true;
+    return false;
+}
+
 function dogfood(mtmp, obj) {
     // C ref: dog.c:dogfood().  The object-resistance check is deliberately
     // first; it is a common hidden RNG consumer before pet goal selection.
@@ -438,6 +508,7 @@ function dogfood(mtmp, obj) {
             return carni ? DOGFOOD : MANFOOD;
         case CORPSE:
             if (obj.trap_victim) return MANFOOD;
+            if (vegan_monster(monsterPtr(obj.corpsenm))) return herbi ? CADAVER : MANFOOD;
             return carni ? CADAVER : MANFOOD;
         case EGG:
             return carni ? CADAVER : MANFOOD;
@@ -447,6 +518,8 @@ function dogfood(mtmp, obj) {
             return herbi ? ACCFOOD : MANFOOD;
         case TIN:
             return MANFOOD;
+        case APPLE:
+            return herbi ? DOGFOOD : MANFOOD;
         case BANANA:
             return herbi ? ACCFOOD : MANFOOD;
         case CARROT:
@@ -499,7 +572,7 @@ function can_reach_location(mtmp, mx, my, fx, fy, depth = 0) {
 function can_carry(mtmp, obj) {
     if (mtmp === game.u?.usteed) return 0;
     if (obj.cursed) return 0;
-    if (obj.otyp === CORPSE) return 0;
+    if (obj.otyp === CORPSE && obj.trap_victim) return 0;
     if (object_class(obj.otyp) === ROCK_CLASS && obj.otyp === BOULDER && !mtmp.data?.throws_rocks) return 0;
     const iquan = Math.max(1, obj.quan || 1);
     if (iquan > 1 && ((mtmp.data?.mflags1 ?? 0) & M1_NOHANDS) && !monster_can_glomp_stack(mtmp, obj)) return 1;
@@ -530,10 +603,74 @@ function split_floor_object(obj, count) {
     };
 }
 
+function pet_droppable(mtmp) {
+    // C ref: src/dogmove.c:droppables().  Worn monster equipment, including
+    // a starting pony's saddle, is not ordinary carried inventory.
+    return (mtmp.inventory || []).find((obj) => obj && !obj.owornmask && obj !== mtmp.mw) || null;
+}
+
 function object_weight(obj) {
     if (!obj) return 0;
     if (typeof obj.owt === 'number' && obj.owt > 1) return obj.owt;
     return OBJECT_WEIGHT_OVERRIDES.get(obj.otyp) || obj.owt || 1;
+}
+
+function corpseStats(obj) {
+    const key = corpse_species_name(obj?.corpsenm).toUpperCase().replace(/[\s-]+/g, '_');
+    return {
+        cwt: obj?.corpse_cwt ?? CORPSE_STATS.get(key)?.cwt ?? 0,
+        cnutrit: obj?.corpse_cnutrit ?? CORPSE_STATS.get(key)?.cnutrit ?? 0,
+    };
+}
+
+function foodNutrition(obj) {
+    if (!obj) return 0;
+    if (obj.otyp === CORPSE) return corpseStats(obj).cnutrit;
+    if (obj.otyp === FOOD_RATION) return 800;
+    if (obj.otyp === TRIPE_RATION) return 200;
+    if (obj.otyp === MEATBALL) return 5;
+    if (obj.otyp === MEAT_STICK) return 5;
+    if (obj.otyp === ENORMOUS_MEATBALL) return 2000;
+    if (obj.otyp === EGG) return 80;
+    if (obj.otyp === BANANA) return 80;
+    if (obj.otyp === CARROT) return 50;
+    if (obj.otyp === CLOVE_OF_GARLIC) return 40;
+    return 0;
+}
+
+function petNutritionScale(mtmp) {
+    switch (mtmp?.data?.msize) {
+    case 0: return 8; // MZ_TINY
+    case 1: return 6; // MZ_SMALL
+    case 3: return 4; // MZ_LARGE
+    case 4: return 3; // MZ_HUGE
+    case 7: return 2; // MZ_GIGANTIC
+    default: return 5; // MZ_MEDIUM and unknown
+    }
+}
+
+function dog_nutrition(mtmp, obj) {
+    const oclass = object_class(obj?.otyp);
+    if (oclass === FOOD_CLASS) {
+        if (obj.otyp === CORPSE) {
+            const stats = corpseStats(obj);
+            mtmp.meating = 3 + (stats.cwt >> 6);
+        } else {
+            mtmp.meating = OBJECT_DELAY[obj.otyp] || 0;
+        }
+        return foodNutrition(obj) * petNutritionScale(mtmp);
+    }
+    if (oclass === COIN_CLASS) {
+        mtmp.meating = Math.max(1, Math.trunc((obj?.quan || 1) / 2000) + 1);
+        return Math.max(0, Math.trunc((obj?.quan || 0) / 20));
+    }
+    mtmp.meating = Math.trunc(object_weight(obj) / 20) + 1;
+    return 0;
+}
+
+function remove_level_object(obj) {
+    const idx = game.level?.objects?.indexOf(obj) ?? -1;
+    if (idx >= 0) game.level.objects.splice(idx, 1);
 }
 
 function current_mon_load(mtmp) {
@@ -554,11 +691,47 @@ function object_name(obj) {
         const quan = obj.quan || 1;
         return quan === 1 ? 'a gold piece' : `${quan} gold pieces`;
     }
+    const oclass = obj?.oclass ?? OBJECT_CLASS[obj?.otyp];
+    if (oclass === SCROLL_CLASS && !obj?.knownName) {
+        // C ref: objnam.c:xname().  Undiscovered scrolls are named by their
+        // shuffled label, with the unlabeled special case before articles.
+        const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
+        if (desc === 'unlabeled') return 'an unlabeled scroll';
+        if (desc) return `a scroll labeled ${desc}`;
+    }
+    if (oclass === SPBOOK_CLASS && !obj?.knownName) {
+        // C ref: src/objnam.c:xname().  Descriptor-known spellbooks use their
+        // shuffled cover adjective even when the spell itself is unknown.
+        const generic = obj?.otyp === SPE_NOVEL ? 'book' : 'spellbook';
+        if (obj?.dknown === false) return `${indefinite_article(generic)} ${generic}`;
+        const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
+        if (desc && (obj.otyp === SPE_NOVEL
+            || obj.otyp === SPE_BOOK_OF_THE_DEAD
+            || (obj.otyp >= FIRST_SPELL && obj.otyp <= LAST_SPELL))) {
+            const name = `${desc} ${generic}`;
+            return `${indefinite_article(name)} ${name}`;
+        }
+        return `${indefinite_article(generic)} ${generic}`;
+    }
     if (obj?.otyp === DART) return 'a dart';
     if (obj?.otyp === JAVELIN) return 'a throwing spear';
     if (obj?.otyp === ORCISH_DAGGER) return 'a crude dagger';
     if (obj?.otyp === OIL_LAMP || obj?.otyp === MAGIC_LAMP) return 'a lamp';
     if (obj?.otyp === FOOD_RATION) return 'a food ration';
+    if (oclass === AMULET_CLASS && !obj?.knownName) {
+        const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
+        if (desc) return `a ${desc} amulet`;
+    }
+    if (oclass === WAND_CLASS && !obj?.knownName) {
+        // C ref: dogmove.c:dog_move() -> objnam.c:distant_name(..., doname).
+        // Undiscovered wands use the shuffled appearance descriptor.
+        const desc = obj?.appearanceName || getObjectDescription(obj.otyp);
+        if (desc) {
+            const name = `${desc} wand`;
+            return `${indefinite_article(name)} ${name}`;
+        }
+        return 'a wand';
+    }
     if (obj?.otyp === CORPSE) {
         const species = corpse_species_name(obj.corpsenm);
         return `${indefinite_article(species)} ${species} corpse`;
@@ -639,12 +812,80 @@ function mattackm_hits(magr, mdef, dieroll) {
 }
 
 function pet_name(mtmp) {
-    return String(mtmp?.data?.name || 'pet').toLowerCase().replace(/_/g, ' ');
+    return saddled_monster_name(mtmp);
+}
+
+function sees_saddle_adjective(mon) {
+    // C ref: src/do_name.c:x_monnam().
+    return !!((mon?.misc_worn_check || 0) & W_SADDLE)
+        && !(game.u?.ublind || game.u?.uprops?.blind)
+        && !(game.u?.uhallucination || game.u?.uprops?.hallucination);
+}
+
+function saddled_monster_name(mon) {
+    const name = String(mon?.data?.name || 'pet').toLowerCase().replace(/_/g, ' ');
+    return `${sees_saddle_adjective(mon) ? 'saddled ' : ''}${name}`;
 }
 
 function pet_subject(mtmp) {
     if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
     return `The ${pet_name(mtmp)}`;
+}
+
+function monster_spotted_for_combat(mon) {
+    // C ref: src/mhitm.c:mattackm() via cansee()+canspotmon().
+    if (!mon || !cansee(mon.mx, mon.my)) return false;
+    if (mon.mundetected || mon._opened_unseen_door) return false;
+    if (mon.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    return true;
+}
+
+function monster_combat_visible(magr, mdef) {
+    // C ref: src/mhitm.c:mattackm().
+    return monster_spotted_for_combat(magr) || monster_spotted_for_combat(mdef);
+}
+
+function monster_combat_subject(mon) {
+    if (!monster_spotted_for_combat(mon)) return 'It';
+    if (has_mgivenname(mon)) return MGIVENNAME(mon);
+    return `The ${saddled_monster_name(mon)}`;
+}
+
+function monster_combat_object(mon) {
+    if (!monster_spotted_for_combat(mon)) return 'it';
+    if (has_mgivenname(mon)) return MGIVENNAME(mon);
+    return `the ${saddled_monster_name(mon)}`;
+}
+
+async function monster_combat_noises(magr, attack = null) {
+    // C ref: src/mhitm.c:noises().
+    if (game.u?.uprops?.deaf) return;
+    const far = dist2(magr.mx, magr.my, game.u?.ux ?? magr.mx, game.u?.uy ?? magr.my) > 15;
+    const moves = game.moves || 0;
+    const lastFar = !!game._far_noise;
+    const lastTime = game._noise_time ?? 0;
+    if (far === lastFar && moves - lastTime <= 10) return;
+    game._far_noise = far;
+    game._noise_time = moves;
+    const what = attack?.[0] === 'AT_EXPL' ? 'an explosion' : 'some noises';
+    await append_topline_message(`You hear ${what}${far ? ' in the distance' : ''}.`);
+}
+
+async function monster_combat_message(magr, mdef, phrase, attack = null) {
+    if (!monster_combat_visible(magr, mdef)) {
+        await monster_combat_noises(magr, attack);
+        return false;
+    }
+    await append_topline_message(`${monster_combat_subject(magr)} ${phrase(monster_combat_object(mdef))}`);
+    return true;
+}
+
+function map_invisible_basic(x, y) {
+    // C ref: src/display.c:map_invisible().
+    if (x === game.u?.ux && y === game.u?.uy) return;
+    const loc = game.level?.at(x, y);
+    if (loc) loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false };
+    show_glyph_cell(x, y, 'I', NO_COLOR, false);
 }
 
 function pet_noit_subject(mtmp) {
@@ -698,6 +939,51 @@ function pet_inventory_pline(line) {
     }
 }
 
+async function dog_eat(mtmp, obj, startX, startY, devour = false) {
+    const edog = init_edog(mtmp);
+    if ((edog.hungrytime || 0) < (game.moves || 0)) edog.hungrytime = game.moves || 0;
+    let nutrit = dog_nutrition(mtmp, obj);
+    if (devour) {
+        if ((mtmp.meating || 0) > 1) mtmp.meating = Math.trunc(mtmp.meating / 2);
+        if (nutrit > 1) nutrit = Math.trunc((nutrit * 3) / 4);
+    }
+    edog.hungrytime = (edog.hungrytime || 0) + nutrit;
+    mtmp.mconf = 0;
+    if (edog.mhpmax_penalty) {
+        mtmp.mhpmax = (mtmp.mhpmax || 0) + edog.mhpmax_penalty;
+        edog.mhpmax_penalty = 0;
+    }
+    if (mtmp.mflee && (mtmp.mfleetim || 0) > 1) mtmp.mfleetim = Math.trunc(mtmp.mfleetim / 2);
+    if ((mtmp.mtame || 0) < 20) mtmp.mtame = (mtmp.mtame || 0) + 1;
+    if (startX !== mtmp.mx || startY !== mtmp.my) {
+        newsym(startX, startY);
+        newsym(mtmp.mx, mtmp.my);
+    }
+
+    if (cansee(mtmp.mx, mtmp.my) || (cansee(startX, startY) && cansee(mtmp.mx, mtmp.my))) {
+        if (cansee(mtmp.mx, mtmp.my)) await latch_more_frame_before_pet_inventory();
+        // C ref: dogmove.c:dog_eat() calls distant_name(obj, doname) before
+        // consuming.  The JS name path is side-effect free, so the later
+        // delobj_core() resistance probe below is the relevant RNG consumer.
+        pet_inventory_pline(`${pet_noit_subject(mtmp)} ${devour ? 'devours' : 'eats'} ${object_name(obj)}.`);
+    }
+
+    const eatenFoodType = dogfood(mtmp, obj);
+    if (eatenFoodType === DOGFOOD && obj?.invlet) {
+        const denom = Math.max(1, (edog.dropdist || 0) + (game.moves || 0) - (edog.droptime || 0));
+        edog.apport = Math.max(1, (edog.apport || 1) + Math.trunc(200 / denom));
+    }
+
+    const consumed = object_class(obj?.otyp) === FOOD_CLASS && (obj?.quan || 1) > 1
+        ? split_floor_object(obj, 1)
+        : obj;
+    if (!obj_resists(consumed, 0, 0)) {
+        if (consumed === obj) remove_level_object(obj);
+    }
+    newsym(mtmp.mx, mtmp.my);
+    return 1;
+}
+
 async function latch_more_frame_before_pet_inventory() {
     if (!game._more || !game._pending_message || game._latched_more_screen) return;
     await flush_screen(1);
@@ -711,7 +997,7 @@ async function latch_more_frame_before_pet_inventory() {
 }
 
 function monster_article_name(mon) {
-    return `the ${monster_name(mon)}`;
+    return `the ${saddled_monster_name(mon)}`;
 }
 
 function hallucinating() {
@@ -727,20 +1013,25 @@ function occupation_message_boundary_active() {
 
 function pending_pet_combat_boundary() {
     return game._pet_combat_pending_boundary
-        || /^You (?:miss|hit) .+  The (?:kitten|little dog|pony) .+\.$/.test(game._pending_message || '');
+        || /^You (?:miss|hit) .+  The (?:kitten|little dog|(?:saddled )?pony) .+\.$/.test(game._pending_message || '');
 }
 
 async function append_topline_message(line) {
     if (game._pending_message?.startsWith('You start putting on ')) game._pending_message = '';
     if (game._pending_message) {
         if (game._more && !hallucinating()) {
-            const packed = game._after_more_message
-                ? `${game._after_more_message}  ${line}`
-                : line;
-            game._after_more_message = packed;
-            game._after_more_needs_prompt = !!game._after_more_needs_prompt
-                || packed.length >= (game.nhDisplay?.cols || COLNO);
-            game._pet_combat_more_latched = true;
+            if (topline_can_pack_message(game._pending_message, line)) {
+                game._pending_message = `${game._pending_message}  ${line}`;
+                game._last_topline_message = game._pending_message;
+            } else {
+                const packed = game._after_more_message
+                    ? `${game._after_more_message}  ${line}`
+                    : line;
+                game._after_more_message = packed;
+                game._after_more_needs_prompt = !!game._after_more_needs_prompt
+                    || packed.length >= (game.nhDisplay?.cols || COLNO);
+                game._pet_combat_more_latched = true;
+            }
             return;
         }
         if (/^The .+ thrusts .+\.  The .+ (?:hits|misses|just misses)!$/.test(game._pending_message)) {
@@ -766,24 +1057,27 @@ async function append_topline_message(line) {
         const packed = `${pending}  ${line}`;
         const cols = game.nhDisplay?.cols || COLNO;
         const heroMeleePack = /^You (?:miss|hit) /.test(pending) && packed.length < cols;
-        const petKillPack = /^The (?:kitten|little dog|pony) .+ the .+\.$/.test(pending)
-            && /^The .+ is killed!$/.test(line)
-            && packed.length < cols;
-        game._pending_message = packed;
         if (heroMeleePack) {
+            game._pending_message = packed;
             game._pet_combat_pending_boundary = true;
-        } else if (!petKillPack) {
+        } else if (topline_can_pack_message(pending, line)) {
+            game._pending_message = packed;
+            game._pet_combat_pending_boundary = false;
+        } else {
             queue_more_prompt();
+            game._after_more_message = game._after_more_message
+                ? `${game._after_more_message}  ${line}`
+                : line;
+            game._after_more_needs_prompt = false;
             game._pet_combat_more_latched = true;
         }
         if (occupation_message_boundary_active()) {
             // C ref: tty topline handling via pline()/--More--.  A second
             // visible pet-combat pline can block inside the monster turn,
             // before mdamagem()/mondead() apply visible death side effects.
-            if (game._occupation_finish_uac != null) game.u.uac = game._occupation_finish_uac;
-            await flush_screen(1);
-            await nhgetch();
-            clear_pending_message();
+            queue_more_prompt();
+            game._pet_combat_more_latched = true;
+            game._occupation_paused_for_more = true;
         }
     } else {
         await pline(line);
@@ -799,20 +1093,73 @@ async function pet_combat_message(mtmp, text) {
 function refresh_pet_attack_symbols(mtmp, target) {
     // C ref: mhitm.c:pre_mm_attack(). Refresh visible attacker and defender
     // positions before missmm()/hitmm() writes the combat pline.
+    const visibleCombat = monster_combat_visible(mtmp, target);
+    const spottedAttacker = monster_spotted_for_combat(mtmp);
+    const spottedDefender = monster_spotted_for_combat(target);
     newsym(mtmp.mx, mtmp.my);
     newsym(target.mx, target.my);
+    if (visibleCombat && !spottedAttacker) map_invisible_basic(mtmp.mx, mtmp.my);
+    if (visibleCombat && !spottedDefender) map_invisible_basic(target.mx, target.my);
+}
+
+function apply_pet_kill_side_effects(mtmp, target, oldx, oldy, targetX, targetY, blockingFrame = true) {
+    if (corpse_chance(target)) make_pet_kill_corpse(target);
+    grow_up_from_kill(mtmp, target);
+    const monsters = game.level?.monsters || [];
+    const idx = monsters.indexOf(target);
+    if (idx >= 0) monsters.splice(idx, 1);
+    if (mtmp?.mtame && dist2(oldx, oldy, targetX, targetY) <= 2
+        && blockingFrame && game._more && game._pet_combat_more_latched) {
+        // C refs: mhitm.c:hitmm(), mhitm.c:mdamagem(), tty display.  The
+        // blocking kill frame shows the attacker glyph at the hit square, but
+        // dogmove.c still resumes with the pet at its original model square.
+        mtmp.mx = targetX;
+        mtmp.my = targetY;
+        newsym(oldx, oldy);
+        newsym(targetX, targetY);
+        mtmp.mx = oldx;
+        mtmp.my = oldy;
+    } else {
+        newsym(oldx, oldy);
+        newsym(targetX, targetY);
+    }
+}
+
+export function finish_deferred_pet_kill_side_effect() {
+    const pending = game._pet_kill_side_effect_pending;
+    if (!pending) return false;
+    game._pet_kill_side_effect_pending = null;
+    apply_pet_kill_side_effects(
+        pending.killer,
+        pending.target,
+        pending.oldx,
+        pending.oldy,
+        pending.targetX,
+        pending.targetY,
+        false,
+    );
+    return true;
 }
 
 export async function finish_pet_kill(mtmp, target) {
     // C ref: mon.c:monkilled(). Monster-vs-monster death announces the
     // visible defender before corpse/death side effects run.
-    await append_topline_message(`The ${monster_name(target)} is killed!`);
-    corpse_chance(target);
-    grow_up_from_kill(mtmp, target);
-    const monsters = game.level?.monsters || [];
-    const idx = monsters.indexOf(target);
-    if (idx >= 0) monsters.splice(idx, 1);
-    newsym(target.mx, target.my);
+    const oldx = mtmp.mx;
+    const oldy = mtmp.my;
+    const targetX = target.mx;
+    const targetY = target.my;
+    if (cansee(targetX, targetY)) {
+        const line = `The ${monster_name(target)} is killed!`;
+        const pending = game._pending_message || '';
+        const deathLineWillDefer = !!pending && !game._more
+            && !topline_can_pack_message(pending, line);
+        await append_topline_message(line);
+        if (deathLineWillDefer) {
+            game._pet_kill_side_effect_pending = { killer: mtmp, target, oldx, oldy, targetX, targetY };
+            return;
+        }
+    }
+    apply_pet_kill_side_effects(mtmp, target, oldx, oldy, targetX, targetY);
 }
 
 export async function finish_deferred_monster_pet_hit() {
@@ -843,12 +1190,39 @@ function corpse_chance(mon) {
     return !rn2(chance);
 }
 
+function make_pet_kill_corpse(mon) {
+    // C ref: mon.c:mondied() -> mkobj.c:mkcorpstat(CORPSE, CORPSTAT_INIT).
+    // C ref: mon.c:make_corpse().  corpse_chance() consumes its RNG before
+    // make_corpse() rejects G_NOCORPSE species such as grid bugs.
+    if ((mon?.data?.geno || 0) & G_NOCORPSE) return;
+    const oldLiveCorpseTimeout = game._live_corpse_timeout;
+    game._live_corpse_timeout = true;
+    try {
+        const corpse = mkcorpstat(CORPSE, mon, mon?.data, mon.mx, mon.my, CORPSTAT_INIT);
+        if (corpse) {
+            const key = corpse_species_name(corpse.corpsenm).toUpperCase().replace(/[\s-]+/g, '_');
+            const stats = CORPSE_STATS.get(key);
+            if (stats) {
+                corpse.corpse_cwt = stats.cwt;
+                corpse.corpse_cnutrit = stats.cnutrit;
+            }
+            corpse._live_kill_corpse = true;
+        }
+        return corpse;
+    } finally {
+        game._live_corpse_timeout = oldLiveCorpseTimeout;
+    }
+}
+
 async function dog_invent(mtmp, udist) {
     if (mtmp.meating || !game.level?.objects) return 0;
     const edog = init_edog(mtmp);
-    if (mtmp.inventory?.length) {
+    const droppable = pet_droppable(mtmp);
+    if (droppable) {
         if ((!rn2(udist + 1) || !rn2(edog.apport)) && rn2(10) < edog.apport) {
-            const obj = mtmp.inventory.shift();
+            const idx = mtmp.inventory.indexOf(droppable);
+            if (idx >= 0) mtmp.inventory.splice(idx, 1);
+            const obj = droppable;
             if (cansee(mtmp.mx, mtmp.my)) await latch_more_frame_before_pet_inventory();
             place_object(obj, mtmp.mx, mtmp.my);
             // C ref: steal.c:mdrop_obj().  Pet inventory drops are only
@@ -869,7 +1243,11 @@ async function dog_invent(mtmp, udist) {
     if (!obj || typeof obj.otyp !== 'number') return 0;
     if (dog_nofetch(obj)) return 0;
 
-    dogfood(mtmp, obj);
+    const edible = dogfood(mtmp, obj);
+    if ((edible <= CADAVER || (edog.mhpmax_penalty && edible === ACCFOOD))
+        && could_reach_item(mtmp, obj.ox, obj.oy)) {
+        return dog_eat(mtmp, obj, omx, omy, false);
+    }
     const carryamt = can_carry(mtmp, obj);
     if (carryamt > 0 && !obj.cursed && could_reach_item(mtmp, obj.ox, obj.oy)) {
         if (rn2(20) < edog.apport + 3) {
@@ -906,9 +1284,6 @@ function nearest_visible_pet_goal(mtmp) {
     let best = null;
 
     const consider = (x, y) => {
-        if (!isok(x, y)) return;
-        if (dist2(mtmp.mx, mtmp.my, x, y) > range * range) return;
-        if (!clear_path(mtmp.mx, mtmp.my, x, y)) return;
         const heroDist = dist2(x, y, ux, uy);
         if (!best || heroDist < best.heroDist) best = { x, y, heroDist };
     };
@@ -916,17 +1291,7 @@ function nearest_visible_pet_goal(mtmp) {
     // C refs: dogmove.c:dog_goal(), dogmove.c:wantdoor(),
     // vision.c:do_clear_area().  When the pet cannot see the hero and has
     // no useful track, it walks toward the visible square nearest the hero.
-    for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
-        consider(x, mtmp.my);
-    const minY = Math.max(0, mtmp.my - range);
-    const maxY = Math.min(ROWNO - 1, mtmp.my + range);
-    for (let dy = 1; dy <= range; dy++) {
-        if (mtmp.my + dy > maxY && mtmp.my - dy < minY) break;
-        for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
-            if (mtmp.my + dy <= maxY) consider(x, mtmp.my + dy);
-        for (let x = Math.max(1, mtmp.mx - range); x <= Math.min(COLNO - 1, mtmp.mx + range); x++)
-            if (mtmp.my - dy >= minY) consider(x, mtmp.my - dy);
-    }
+    for (const point of clear_area_from(mtmp.mx, mtmp.my, range)) consider(point.x, point.y);
 
     if (!best || (best.x === mtmp.mx && best.y === mtmp.my)) return null;
     return best;
@@ -1096,29 +1461,90 @@ async function pet_melee_attack(mtmp, target) {
     if (!pet_should_attack(mtmp, target)) return { attacked: false };
     // C ref: dogmove.c calls mattackm() for ALLOW_M candidates before
     // ranged attacks.  This is a narrow mhitm.c front door for the current
-    // pet evidence: one physical attack, miss passive check, or hit damage
+    // pet evidence: physical attack rows, miss passive check, or hit damage
     // plus death/growth follow-up RNG.
-    const dieroll = rnd(20);
-    if (!mattackm_hits(mtmp, target, dieroll)) {
-        refresh_pet_attack_symbols(mtmp, target);
-        await pet_combat_message(mtmp, `misses the ${monster_name(target)}.`);
-        if (game._more
-            && /^The (?:kitten|little dog|pony) misses /.test(game._after_more_message || '')) {
-            // C ref: src/mhitm.c:missmm()/passivemm().  When a pet miss is
-            // queued behind an already-active tty More, the passive miss
-            // side-effect roll belongs to the resumed path.
-            game._deferred_pet_miss_passive = true;
-            game._pet_combat_passive_paused = true;
-            game._after_more_needs_prompt = false;
-            return { attacked: true, hit: false, defenderDied: false };
+    mtmp.mlstmv = game.moves || 0; // C ref: mhitm.c:mattackm().
+    const attacks = pet_physical_attacks(mtmp);
+    for (let i = 0; i < attacks.length; i++) {
+        const attack = attacks[i];
+        const dieroll = rnd(20 + i);
+        if (!mattackm_hits(mtmp, target, dieroll)) {
+            const paused = await pet_melee_miss(mtmp, target, attack, i < attacks.length - 1);
+            if (paused) return { attacked: true, hit: false, defenderDied: false };
+            continue;
         }
-        rn2(3);
-        return { attacked: true, hit: false, defenderDied: false };
-    }
 
-    const damage = d(1, 6);
+        const defenderDied = await pet_melee_hit(mtmp, target, attack);
+        if (defenderDied) return { attacked: true, hit: true, defenderDied: true };
+    }
+    return { attacked: true, hit: false, defenderDied: false };
+}
+
+function pet_physical_attacks(mtmp) {
+    const attacks = (mtmp?.data?.mattk || [])
+        .filter((attack) => attack
+            && (attack[0] === 'AT_BITE' || attack[0] === 'AT_KICK' || attack[0] === 'AT_CLAW')
+            && attack[1] === 'AD_PHYS');
+    return attacks.length ? attacks : [['AT_BITE', 'AD_PHYS', 1, 6]];
+}
+
+function pet_attack_verb(attack) {
+    return attack?.[0] === 'AT_BITE' ? 'bites' : 'hits';
+}
+
+function pet_attack_damage(attack) {
+    return d(attack?.[2] || 1, attack?.[3] || 6);
+}
+
+function visible_pet_miss_line(mtmp, target) {
+    if (!monster_combat_visible(mtmp, target)) return '';
+    return `${monster_combat_subject(mtmp)} misses ${monster_combat_object(target)}.`;
+}
+
+async function pet_melee_miss(mtmp, target, attack, hasLaterAttack) {
+    const duplicateMiss = visible_pet_miss_line(mtmp, target);
+    if (duplicateMiss && game._pending_message === duplicateMiss
+        && game._resuming_monster_turn_after_more && !game._more && !hallucinating()) {
+        queue_more_prompt();
+        game._pet_combat_more_latched = true;
+    } else {
+        refresh_pet_attack_symbols(mtmp, target);
+        const visibleMiss = await monster_combat_message(
+            mtmp, target,
+            (targetName) => `misses ${targetName}.`,
+            attack,
+        );
+        const missedLine = game._after_more_message || game._pending_message || '';
+        if (!hasLaterAttack && visibleMiss && game._resuming_monster_turn_after_more && !game._more
+            && /^The (?:kitten|little dog|(?:saddled )?pony) misses /.test(missedLine)
+            && !hallucinating()) {
+            queue_more_prompt();
+            game._pet_combat_more_latched = true;
+        }
+    }
+    const missedLine = game._after_more_message || game._pending_message || '';
+    if (!hasLaterAttack && game._more
+        && /^The (?:kitten|little dog|(?:saddled )?pony) misses /.test(missedLine)) {
+        // C ref: src/mhitm.c:missmm()/passivemm().  When a pet miss is queued
+        // behind a tty More, the passive miss side-effect roll belongs to the
+        // resumed path.
+        game._deferred_pet_miss_passive = true;
+        game._pet_combat_passive_paused = true;
+        if (game._after_more_message) game._after_more_needs_prompt = true;
+        return true;
+    }
+    rn2(3);
+    return false;
+}
+
+async function pet_melee_hit(mtmp, target, attack) {
+    const damage = pet_attack_damage(attack);
     refresh_pet_attack_symbols(mtmp, target);
-    await pet_combat_message(mtmp, `bites the ${monster_name(target)}.`);
+    await monster_combat_message(
+        mtmp, target,
+        (targetName) => `${pet_attack_verb(attack)} ${targetName}.`,
+        attack,
+    );
     const currentHp = target.mhp ?? Math.max(1, target.data?.mlevel ?? 1);
     target.mhp = currentHp - damage;
     rn2(3); // mhitm_knockback chance
@@ -1134,13 +1560,22 @@ async function pet_melee_attack(mtmp, target) {
         } else {
             await finish_pet_kill(mtmp, target);
         }
-    } else {
-        rn2(3);
+        return true;
     }
-    return { attacked: true, hit: true, defenderDied: target.mhp < 1 };
+    rn2(3); // C ref: src/mhitm.c:passivemm().
+    if (rn2(4) && target.mlstmv !== (game.moves || 0)
+        && dist2(target.mx, target.my, mtmp.mx, mtmp.my) <= 2) {
+        // C ref: src/dogmove.c:dog_move().  Pet-initiated hits give the
+        // defender a state/adjacency-gated return attack without the movement
+        // roll used by fightm().
+        const result = await monster_melee_attack(target, mtmp);
+        if (result.defenderDied) return true;
+    }
+    return false;
 }
 
 async function monster_melee_attack(mtmp, target) {
+    mtmp.mlstmv = game.moves || 0; // C ref: mhitm.c:mattackm().
     const wielded = monster_wield_for_pet_counter(mtmp);
     if (wielded) {
         refresh_pet_attack_symbols(mtmp, target);
@@ -1151,13 +1586,21 @@ async function monster_melee_attack(mtmp, target) {
     const dieroll = rnd(20);
     if (!mattackm_hits(mtmp, target, dieroll)) {
         refresh_pet_attack_symbols(mtmp, target);
-        await append_topline_message(`The ${monster_name(mtmp)} misses ${monster_article_name(target)}.`);
+        await monster_combat_message(
+            mtmp, target,
+            (targetName) => `misses ${targetName}.`,
+            attack,
+        );
         rn2(3);
         return { attacked: true, hit: false, defenderDied: false };
     }
     refresh_pet_attack_symbols(mtmp, target);
     const verb = attack[0] === 'AT_WEAP' ? 'hits' : 'bites';
-    await append_topline_message(`The ${monster_name(mtmp)} ${verb} ${monster_article_name(target)}.`);
+    await monster_combat_message(
+        mtmp, target,
+        (targetName) => `${verb} ${targetName}.`,
+        attack,
+    );
     if (attack[0] === 'AT_WEAP' && game._more && game._after_more_message
         && game._after_more_message.includes(`The ${monster_name(mtmp)} ${verb} ${monster_article_name(target)}.`)) {
         game._deferred_monster_pet_hit = { attacker: mtmp, target, attack };
@@ -1173,6 +1616,8 @@ async function monster_melee_attack(mtmp, target) {
         } else {
             await finish_pet_kill(mtmp, target);
         }
+    } else {
+        rn2(3); // C ref: mhitm.c:passivemm().
     }
     return { attacked: true, hit: true, defenderDied: target.mhp < 1 };
 }
@@ -1197,7 +1642,7 @@ function pet_goal(mtmp, after, udist, whappr) {
     // C ref: dogmove.c uses couldsee(omx, omy).  While swallowed, C's
     // gulpmu() disables ordinary hero vision before later pet goal scans.
     const inMastersSight = !game.u?.uswallow && couldsee(mtmp.mx, mtmp.my);
-    const dogHasMinvent = !!(mtmp.inventory?.length);
+    const dogHasMinvent = !!pet_droppable(mtmp);
 
     for (const obj of game.level?.objects || []) {
         if (typeof obj.otyp !== 'number') continue;
@@ -1270,9 +1715,7 @@ function pet_goal(mtmp, after, udist, whappr) {
             followY = edog.ogoal.y;
             edog.ogoal.x = 0;
         } else {
-            const visibleGoal = dist2(mtmp.mx, mtmp.my, gx, gy) <= 81
-                ? nearest_visible_pet_goal(mtmp)
-                : null;
+            const visibleGoal = nearest_visible_pet_goal(mtmp);
             if (visibleGoal) {
                 followX = visibleGoal.x;
                 followY = visibleGoal.y;
@@ -1302,6 +1745,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
     let uncursedcnt = 0;
     let mfndposcnt = 0;
     let doEat = false;
+    let eatObj = null;
     let moveReluctant = false;
 
     for (let nx = Math.max(1, mtmp.mx - 1); nx <= maxx; nx++) {
@@ -1352,6 +1796,7 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
                         nix = nx;
                         niy = ny;
                         doEat = true;
+                        eatObj = obj;
                         moveReluctant = false;
                         cursedOnCandidate = false;
                         break searchCandidates;
@@ -1405,6 +1850,10 @@ async function dog_move_after_inventory_core(mtmp, after, udist, edog) {
         const topObj = objects_at(nix, niy)[0];
         await pet_reluctance_pline(`${pet_noit_subject(mtmp)} steps reluctantly onto ${topObj ? object_name(topObj) : 'something'}.`);
     }
+    if (doEat && eatObj) {
+        const eatStatus = await dog_eat(mtmp, eatObj, oldx, oldy, false);
+        if (eatStatus === 2) return 2;
+    }
     return 1;
 }
 
@@ -1420,7 +1869,9 @@ export async function dog_move(mtmp, after = true) {
     if (!udist) return 0;
 
     const edog = init_edog(mtmp);
-    await dog_invent(mtmp, udist);
+    const inventStatus = await dog_invent(mtmp, udist);
+    if (inventStatus === 2) return 2;
+    if (inventStatus === 1) return 1;
     // C ref: src/dogmove.c:dog_invent().  A visible pet inventory message
     // queued behind an active tty --More-- blocks before dog_goal()/attacks.
     if (game._more && (game._after_more_message || game._pet_inventory_more_latched)) {

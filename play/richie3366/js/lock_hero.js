@@ -3,7 +3,8 @@
 //        door **`b_trapped("door", FINGER)`**, **`D_NODOOR`**, shop **`add_damage`** (**`SHOP_DOOR_COST`**), **`newsym`**; **`is_magic_key`** + **`D_TRAPPED`** door — **`y_n`** disarm (no **`tknown`** on door).
 // **`doopen_indir`**: **`rnl(20)`** strength open, trapped door **`b_trapped`**. Omits drawbridge/portcullis, mimic **`stumble_onto_mimic`**, **`autounlock`**, **`get_adjacent_loc`**.
 
-import { pline, flush_screen, newsym } from './display.js';
+import { pline, flush_screen, feelNewsym, newsym } from './display.js';
+import { recalcBlockPointLikeC } from './vision.js';
 import { nhgetch } from './input.js';
 import { acurr, exercise } from './attrib.js';
 import {
@@ -85,6 +86,7 @@ export async function doopenIndirHeroLikeC(g, x, y) {
     const threshold = Math.trunc((acurr(A_STR) + acurr(A_DEX) + acurr(A_CON)) / 3);
     if (rnl(20) < threshold) {
         await pline('The door opens.');
+        g._retainMessageAfterCommand = true;
         if (dm0 & D_TRAPPED) {
             await bTrappedDoorFootLikeC(g);
             loc.doormask = D_NODOOR;
@@ -92,7 +94,8 @@ export async function doopenIndirHeroLikeC(g, x, y) {
         } else {
             loc.doormask = D_ISOPEN;
         }
-        newsym(x, y);
+        feelNewsym(x, y);
+        recalcBlockPointLikeC(x, y);
     } else {
         exercise(A_STR, true);
         await pline('The door resists!');
@@ -267,6 +270,7 @@ export async function tryPicklockAdjacentDoorHeroLikeC(g, dx, dy) {
             return 'bad_door_state';
         case D_ISOPEN:
             await pline('You cannot lock an open door.');
+            g._retainMessageAfterCommand = true;
             return 'bad_door_state';
         case D_BROKEN:
             await pline('This door is broken.');
@@ -421,6 +425,7 @@ export async function startApplyPromptHeroLikeC(g) {
     g.context = g.context || {};
     g.context._applyPromptLikeC = true;
     await pline('What do you want to use or apply? [ef or ?*]');
+    g._retainMessageAfterCommand = true;
 }
 
 /**
@@ -445,6 +450,7 @@ export async function applyLockpickGetdirPromptHeroLikeC(g) {
     delete g.context._applyPromptLikeC;
     g.context._applyGetdirPendingLikeC = true;
     await pline('In what direction?');
+    g._retainMessageAfterCommand = true;
 }
 
 /**

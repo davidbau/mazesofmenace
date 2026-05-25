@@ -1,7 +1,10 @@
 // moveloop_turn_advance.js — Shared tail of allmain.c moveloop_core (movemon + turn advance).
 // C ref: allmain.c moveloop_core — extracted so pray.c nomul(-3) helpless ticks can reuse the same
 // RNG ordering as a normal moveloop iteration without importing cmd.js (rhack).
-import { bot, flush_screen, pline, clearPendingMessageAndToplineLikeC } from './display.js';
+import {
+    bot, flush_screen, pline,
+    clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
+} from './display.js';
 import { vision_recalc } from './vision.js';
 import { movemon } from './monmove.js';
 import { fmonListForMcalcmoveLikeC } from './fmon_iter.js';
@@ -283,8 +286,8 @@ export function clearLeavingTutorialIfActiveLikeC(g) {
  */
 export async function executeHelplessMoveloopTickLikeC(g) {
     await runMoveloopPreambleBeforeRhackLikeC(g);
-    if (!g._retainMessageAfterCommand) clearPendingMessageAndToplineLikeC();
-    g._retainMessageAfterCommand = false;
+    if (shouldClearMoveloopToplineLikeC(g)) clearPendingMessageAndToplineLikeC();
+    latchRetainedToplineLikeC(g);
     g.context = g.context || {};
     g.context.move = 1;
     await runPostCommandTurnAdvanceLikeC(g);

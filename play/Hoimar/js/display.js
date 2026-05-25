@@ -407,7 +407,10 @@ function terrain_glyph(loc, x, y) {
     case TRWALL:    return { ch: 't', color: wallColor, dec: true };  // ├
     case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
     case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
-    case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
+    case ALTAR:
+        // C ref: dat/symbols DECGraphics S_altar uses the raw DEC payload
+        // byte '{'; the harness cell decoder preserves that byte.
+        return { ch: '{', color: CLR_GRAY, dec: false };
     case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
     case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
@@ -930,6 +933,19 @@ function hero_glyph() {
     };
 }
 
+function hero_visible_to_self() {
+    // C refs: include/display.h:canseeself(), canspotself().  If the hero is
+    // invisible without see-invisible, newsym() shows what is underneath.
+    const u = game.u || {};
+    if (u.uswallow) return true;
+    if (u.ublind || u.blind || u.uprops?.blind || u.uprops?.blinded) return true;
+    const invisible = !!(u.uinvis || u.Invis || u.uprops?.invisible);
+    const seeInvisible = !!(u.usee_invisible || u.see_invisible
+        || u.See_invisible || u.uprops?.see_invisible);
+    const undetected = !!u.uundetected;
+    return (!invisible || seeInvisible) && !undetected;
+}
+
 // ── newsym ──
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
@@ -949,18 +965,14 @@ export function newsym(x, y) {
     const visible = cansee(x, y);
     if (visible) loc.waslit = !!loc.lit;
 
-    if (game.u?.ux === x && game.u?.uy === y) {
-        // Hero
-        const hg = hero_glyph();
-        show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
-        if (game.level?.flags?.hero_memory)
-            loc.remembered_glyph = mapped_location_memory(loc, x, y, visible);
-        return;
-    }
-
     const mon = game.level?.monsters?.find(m => m.mx === x && m.my === y);
 
     if (!visible) {
+        if (game.u?.ux === x && game.u?.uy === y && hero_visible_to_self()) {
+            const hg = hero_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
+            return;
+        }
         if (mon && see_with_infrared(mon) && monster_visible(mon)) {
             const mg = monster_glyph(mon);
             show_glyph_cell(x, y, mg.ch, mg.color, mg.dec);
@@ -1023,6 +1035,17 @@ export function newsym(x, y) {
         const mem = random_object_glyph_for_display();
         memory_ch = mem.ch; memory_color = mem.color; memory_dec = false;
     }
+    if (game.u?.ux === x && game.u?.uy === y) {
+        if (game.level?.flags?.hero_memory)
+            loc.remembered_glyph = { ch: memory_ch, color: memory_color, decgfx: memory_dec };
+        if (hero_visible_to_self()) {
+            const hg = hero_glyph();
+            show_glyph_cell(x, y, hg.ch, hg.color, hg.dec);
+        } else {
+            show_glyph_cell(x, y, draw_ch, draw_color, draw_dec);
+        }
+        return;
+    }
     if (monster_visible(mon)) {
         const mg = monster_glyph(mon);
         draw_ch = mg.ch; draw_color = mg.color; draw_dec = mg.dec;
@@ -1053,10 +1076,7 @@ export async function docrt() {
         }
     see_monsters();
     show_premapped_mimics();
-    if (game.u?.ux > 0) {
-        const hg = hero_glyph();
-        show_glyph_cell(game.u.ux, game.u.uy, hg.ch, hg.color, hg.dec);
-    }
+    if (game.u?.ux > 0) newsym(game.u.ux, game.u.uy);
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -1403,7 +1423,19 @@ function _buildScreenOutput() {
         // Message line
         const msg = (game._pending_message || '') + (game._more && !floorListActive ? '--More--' : '');
         const pending = game._pending_message || '';
-        if (game._more && game._more_next_message_row) {
+        const wrapCols = game._pending_message_wrap_cols || 0;
+        if (wrapCols && !game._more_next_message_row) {
+            const first = msg.slice(0, wrapCols);
+            const rest = msg.slice(wrapCols);
+            for (let c = 0; c < Math.min(first.length, display.cols); c++)
+                display.setCell(c, 0, first[c], NO_COLOR, 0);
+            if (rest) {
+                for (let c = 0; c < display.cols; c++)
+                    display.setCell(c, 1, ' ', NO_COLOR, 0);
+                for (let c = 0; c < Math.min(rest.length, display.cols); c++)
+                    display.setCell(c, 1, rest[c], NO_COLOR, 0);
+            }
+        } else if (game._more && game._more_next_message_row) {
             for (let c = 0; c < Math.min(pending.length, display.cols); c++)
                 display.setCell(c, 0, pending[c], NO_COLOR, 0);
         } else {
@@ -1506,6 +1538,7 @@ export async function bot() {
 // ── pline ──
 export async function pline(msg) {
     game._pending_message = msg;
+    game._pending_message_wrap_cols = 0;
     game._last_topline_message = msg;
     game._last_topline_can_force_more = false;
 }
@@ -1520,6 +1553,17 @@ export async function append_pline(msg) {
     } else {
         await pline(msg);
     }
+}
+
+export function topline_can_pack_message(current, next) {
+    // C ref: win/tty/topl.c:update_topl().
+    const cols = game.nhDisplay?.cols || COLNO;
+    const oldText = String(current || '');
+    const nextText = String(next || '');
+    return oldText.length > 0
+        && nextText.length > 0
+        && nextText.length + oldText.length + 3 < cols - 8
+        && !nextText.startsWith('You die');
 }
 
 export function queue_more_prompt(count = 1) {
@@ -1549,6 +1593,7 @@ function terminalCellWidth(text) {
 
 export function clear_pending_message() {
     game._pending_message = '';
+    game._pending_message_wrap_cols = 0;
     game._more = false;
     game._more_next_message_row = false;
     game._message_continuation_row = '';

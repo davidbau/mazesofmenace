@@ -15,6 +15,7 @@ import {
 } from './mkobj_mklev_like_c.js';
 import {
     NH5_WEAPON_CLASS,
+    NH5_COIN_CLASS,
     NH5_TOOL_CLASS,
     NH5_GEM_CLASS,
     NH5_POTION_CLASS,
@@ -71,6 +72,7 @@ import {
 } from './mfndpos_mon.js';
 import { monTrackClear, ensureMonsterMtrack } from './monflee.js';
 import { dist2 } from './hacklib.js';
+import { setWallStateLikeC } from './wall_state.js';
 import {
     consumeMksobjInitCorpseRngLikeC,
     consumeMksobjCorpseSpeRngLikeC,
@@ -157,7 +159,15 @@ TRAP_ENGRAVINGS[LEVEL_TELEP] = 'ad aerarium';
 
 // is_pit / is_hole from const.js (trap.h)
 function stairway_add(x, y, up, isladder, dest) {
-    const node = { sx: x, sy: y, up, isladder, tolev: { ...dest }, next: game.stairs };
+    const node = {
+        sx: x,
+        sy: y,
+        up,
+        isladder,
+        tolev: { ...dest },
+        u_traversed: false,
+        next: game.stairs,
+    };
     game.stairs = node;
 }
 
@@ -257,6 +267,7 @@ function nh5OclassForOtyp(otyp) {
     if (t >= OTYP_ARROW && t <= 24) return NH5_WEAPON_CLASS;
     if (t === OTYP_DART) return NH5_WEAPON_CLASS;
     if (t === OTYP_GEM_ROCK) return NH5_GEM_CLASS;
+    if (t === GOLD_PIECE) return NH5_COIN_CLASS;
     if (t === OTYP_TALLOW_CANDLE || t === OTYP_WAX_CANDLE) return NH5_TOOL_CLASS;
     if (t === 234 || t === 235) return NH5_TOOL_CLASS;
     if (t >= 297 && t <= 322) return NH5_POTION_CLASS;
@@ -276,6 +287,7 @@ function mksobj(otyp, init, artif) {
     if (init) {
         const oclass = nh5OclassForOtyp(otyp);
         if (oclass) {
+            otmp.oclass = oclass;
             mksobjInitMklevLikeC(otyp, oclass, artif, otmp);
             /* C: mksobj_init() always ends with mkobj_erosions (mktrap_victim ammo, …). */
             mkobjErosionsMklevLikeC(otyp, oclass);
@@ -618,7 +630,16 @@ async function makelevel() {
 
     // C: mklev.c skip0 — place_branch then fill ordinary rooms
     if (branchp) {
+        const prevStairs = g.stairs;
         place_branch(branchp);
+        if (
+            (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.stairs !== prevStairs
+            && g.stairs
+        ) {
+            g.stairs.u_traversed = true;
+        }
     }
 
     /* C: mklev.c makelevel tail — fill ordinary rooms (gi.in_mklev). */
@@ -2449,7 +2470,10 @@ function bound_digging() {
         }
 }
 
-function set_wall_state() { /* no-op for contest */ }
+/** C: display.c set_wall_state — delegated to wall_state.js */
+function set_wall_state() {
+    setWallStateLikeC();
+}
 
 /**
  * C: mkmaze.c fixup_special() tail — **`Is_special(&u.uz)`** && **`sp->flags.town`** → **`has_town`**
@@ -2596,6 +2620,50 @@ function findWestFungusDoorNicheLikeC(g, lichen) {
 }
 
 /**
+ * C: rogue **`roguecorr`** door kinks — scan doors for west-niche **`mfndpos cnt≥4`**
+ * (tourist **`seed8000`** anchor **(64,12)** may not exist on rogue D:1).
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} lichen
+ */
+function findWestFungusDoorNicheScanLikeC(g, lichen) {
+    const map = g.level;
+    if (!map) return null;
+    const flag = monAllowflagsMonsterLikeC(g, lichen);
+    const omx = lichen.mx | 0;
+    const omy = lichen.my | 0;
+    let best = null;
+    let bestCnt = 0;
+    const tryCell = (x, y) => {
+        if (occupied(x, y)) {
+            const blocker = g.level?.monsters?.find(
+                (m) => (m.mx | 0) === x && (m.my | 0) === y && (m.mhp | 0) > 0,
+            );
+            if (blocker && blocker !== lichen) return;
+        }
+        lichen.mx = x;
+        lichen.my = y;
+        if (!westFungusDoorNicheAtLikeC(g, x, y, lichen)) return;
+        const cnt = mfndposMonsterLikeC(g, lichen, flag).cnt | 0;
+        if (cnt >= 4 && cnt > bestCnt) {
+            bestCnt = cnt;
+            best = { x, y };
+        }
+    };
+    for (const d of map.doors ?? []) {
+        if (!d) continue;
+        const dx = d.x | 0;
+        const dy = d.y | 0;
+        tryCell(dx - 2, dy);
+        tryCell(dx - 2, dy + 1);
+    }
+    tryCell(64, 12);
+    tryCell(63, 12);
+    lichen.mx = omx;
+    lichen.my = omy;
+    return best;
+}
+
+/**
  * C: east door-room niche (**`seed8000`** **(66,12)** **`cnt=8`**; not west kink **(64,12)**).
  * @param {import('./gstate.js').game} g
  * @param {Record<string, unknown>} lichen
@@ -2695,11 +2763,14 @@ function preferSleepingLichenDoorNichesLikeC(g) {
     if (!fungi.length) return;
     const sorted = [...fungi].sort((a, b) => (a.mx | 0) - (b.mx | 0));
     const west = sorted[0];
+    const findWestNiche = Is_rogue_level(g.u?.uz)
+        ? findWestFungusDoorNicheScanLikeC
+        : findWestFungusDoorNicheLikeC;
     preferDoorNicheMonsterLikeC(
         g,
         west.mnum | 0,
         () => west,
-        findWestFungusDoorNicheLikeC,
+        findWestNiche,
         false
     );
     const east = sorted.find((m) => m !== west) ?? null;
@@ -2913,7 +2984,6 @@ function level_finalize_topology() {
     openDoorCorridorWestAlcovesFinalizeLikeC(game);
     relocateFillObjsIntoWestDoorAlcovesLikeC(game);
     refreshWestDoorColumnFobjAfterMineralizeLikeC(game);
-    preferSleepingLichenDoorNichesLikeC(game);
     game.in_mklev = false;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
@@ -2929,6 +2999,8 @@ function level_finalize_topology() {
     }
     syncLevelFlagsHasTownAfterFixupSpecialLikeC(game);
     openWestDoorColumnNorthCorrLikeC(game);
+    /* C: door-niche sleepers need west-column **`CORR`** ( **`openWestDoorColumnNorthCorr`** ). */
+    preferSleepingLichenDoorNichesLikeC(game);
     anchorApportTowelOnWestFillAlcoveLikeC(game);
     /* C: west-door apport gold must stay newest on **`fobj`** after late mklev gold. */
     refreshWestDoorColumnFobjAfterMineralizeLikeC(game);

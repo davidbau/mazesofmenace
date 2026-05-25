@@ -17,7 +17,7 @@ import { applyRangerHumanLinkedInventAndWearLikeC } from './u_init_link_ranger_i
 import { applyPriestHumanLinkedInventAndWearLikeC } from './u_init_link_priest_invent.js';
 import { applyTouristHumanLinkedInventAndWearLikeC } from './u_init_link_tourist_invent.js';
 
-const INV_COL = 32;
+const INV_COL = 28;
 
 /** @type {Array<{ type: 'cat', name: string } | { type: 'item', text: string | ((g: object) => string), oclass?: string, discoveryLine?: string }>} */
 const TOURIST_INI_INV = [

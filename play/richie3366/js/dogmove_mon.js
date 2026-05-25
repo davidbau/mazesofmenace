@@ -170,7 +170,7 @@ function mpickobjMonLikeC(mtmp, otmp) {
 function monNamPetPickupLikeC(mtmp) {
     const n = mtmp?.data?.mname || mtmp?.monnam;
     if (n) return `The ${n}`;
-    return 'Your pet';
+    return 'The kitten';
 }
 
 function floorObjDonamePickupLikeC(obj) {

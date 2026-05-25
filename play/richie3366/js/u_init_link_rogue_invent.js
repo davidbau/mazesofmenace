@@ -12,7 +12,7 @@ import {
     NH5_TOOL_CLASS,
 } from './nh5_objclass.js';
 import { OTYP_LEATHER_ARMOR } from './const.js';
-import { findAc } from './u_init_find_ac.js';
+import { noteDiscoveryOtypLikeC } from './objnam.js';
 
 /** C objects_nums — Rogue[] trobj (NH5 `enum objects_nums`; cpp OBJECTS_ENUM index = `nl − 1`). */
 const OTYP_SHORT_SWORD = 46;
@@ -22,6 +22,9 @@ const OTYP_LOCK_PICK = 221;
 const OTYP_SACK = 216;
 /** C `objects_nums` — `OBJECTS_ENUM` / `EYEWEAR("blindfold",…, BLINDFOLD)`. */
 const OTYP_BLINDFOLD = 232;
+/** C `objects_nums` — tutorial floor daggers in **`dodiscovered`** (**`seed0077`**). */
+const OTYP_ELVEN_DAGGER = 36;
+const OTYP_ORCISH_DAGGER = 37;
 
 /** C objects[] oc_weight (NH5) for starting Rogue otyps. */
 const BASE_WT = {
@@ -96,6 +99,13 @@ export function applyRogueHumanLinkedInventAndWieldLikeC(g) {
     u.uwep = shortSword;
     u.uquiver = dagger;
     u.uarm = leather;
-    /* C: do_wear.c find_ac — after ini_inv slots / worn armor (subset before full set_wear). */
-    findAc(g);
+
+    /* C: `dodiscovered` — tutorial daggers listed but not encountered; starting potion/sack are. */
+    noteDiscoveryOtypLikeC(g, OTYP_ELVEN_DAGGER);
+    noteDiscoveryOtypLikeC(g, OTYP_ORCISH_DAGGER);
+    noteDiscoveryOtypLikeC(g, OTYP_POT_SICKNESS);
+    noteDiscoveryOtypLikeC(g, OTYP_SACK);
+    if (!(g.objectEncountered instanceof Set)) g.objectEncountered = new Set();
+    g.objectEncountered.add(OTYP_POT_SICKNESS);
+    g.objectEncountered.add(OTYP_SACK);
 }
