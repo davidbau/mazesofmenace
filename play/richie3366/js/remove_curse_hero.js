@@ -7,6 +7,7 @@ import {
     W_BALL,
     W_SADDLE,
     COST_UNCURS,
+    OTYP_LOADSTONE,
 } from './const.js';
 import { rn2 } from './rng.js';
 import { NH5_COIN_CLASS, NH5_GEM_CLASS, NH5_WEAPON_CLASS } from './nh5_objclass.js';
@@ -21,8 +22,6 @@ import { alterCostShopBillObjLikeC, costlyAlterationUnpaidHeroInventLikeC } from
 const OTYP_POT_WATER = 321;
 /** C: objects.h — SCR_REMOVE_CURSE. */
 const OTYP_SCR_REMOVE_CURSE = 327;
-/** C: objects.h LOADSTONE. */
-const OTYP_LOADSTONE = 471;
 /** C: objects.h LEASH. */
 const OTYP_LEASH = 237;
 /**

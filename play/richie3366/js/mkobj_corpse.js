@@ -26,8 +26,8 @@ function cellIsIce(g, x, y) {
     return !!(IS_DRAWBRIDGE(loc.typ) && (loc.flags & DB_UNDER) === DB_ICE);
 }
 
-/** NH5 objects_nums corpse otyp (matches mklev.js CORPSE). */
-export const CORPSE_OTYP = 471;
+/** C `objects[]` — `FOOD("corpse")` (**`mklev.js`** / **`mkobj`**). */
+export const CORPSE_OTYP = 265;
 
 /**
  * C: mkobj.c mksobj_init — FOOD_CLASS CORPSE branch (before mkcorpstat ptr override).

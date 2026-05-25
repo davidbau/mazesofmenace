@@ -17,9 +17,11 @@ import { findAc } from './u_init_find_ac.js';
 
 const OTYP_QUARTERSTAFF = 79;
 const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 148;
-const OTYP_MAGIC_MARKER = 242;
+/** C `objects[]` — **`MAGIC_MARKER`** 243. */
+const OTYP_MAGIC_MARKER = 243;
 const OTYP_SPE_FORCE_BOLT = 375;
-const OTYP_BLINDFOLD = 232;
+/** C `objects[]` — blindfold (**`BLINDED`**, black cloth) 233. */
+const OTYP_BLINDFOLD = 233;
 
 const BASE_WT = {
     [OTYP_QUARTERSTAFF]: 40,

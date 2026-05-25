@@ -30,14 +30,14 @@ import {
 } from './nh5_objclass.js';
 
 /** C objects_nums — OBJECTS_ENUM (nethack-c/upstream/include/objects.h). */
-const OTYP_DAGGER = 34;
+const OTYP_DAGGER = 35;
 const OTYP_YA = 22;
-const OTYP_SHORT_SWORD = 46;
-const OTYP_KATANA = 56;
+const OTYP_SHORT_SWORD = 47;
+const OTYP_KATANA = 57;
 const OTYP_YUMI = 86;
 /** NH5 — matches **`OBJECTS_A_AC_ARMOR`** splint row **125** (`u_init_find_ac.js`). */
 const OTYP_SPLINT_MAIL = 125;
-/** C `OC_SKILL_ROW_BY_OTYP` key for **`SPEAR`** (NH5 invent **`otyp`** = **27**, same **−1** pattern as Rogue short sword **46** vs map **47**). */
+/** C `OC_SKILL_ROW_BY_OTYP` — **`SPEAR`** (NH5 **`otyp`** **28**). */
 const OTYP_SPEAR_MK = 28;
 /** C `OC_SKILL_ROW_BY_OTYP` — **`LONG_SWORD`** / **`LANCE`** (`mksobj_init` WEAPON). */
 const OTYP_LONG_SWORD_MK = 55;
@@ -48,8 +48,9 @@ const OTYP_POT_SICKNESS = 317;
 /** C Wizard[] — `OBJECTS_ENUM` / `objects.h`. */
 const OTYP_QUARTERSTAFF = 79;
 const OTYP_CLOAK_OF_MAGIC_RESISTANCE = 148;
-/** C `OC_SKILL_ROW_BY_OTYP` — **`BULLWHIP`** (`mksobj_init` WEAPON); NH5 invent **`otyp`** = **82** (OC key **83** − **1**, same pattern as Rogue **`SHORT_SWORD`**). */
-const OTYP_BULLWHIP_MK = 83;
+/** C `objects[]` — **`P_WHIP`** / bullwhip at otyp **82**. */
+/** C `objects[]` — **`P_WHIP`** / bullwhip (83 is bow). */
+const OTYP_BULLWHIP_MK = 82;
 const OTYP_FOOD_RATION = 143;
 const OTYP_LEATHER_JACKET = 136;
 const OTYP_FEDORA = 93;
@@ -80,7 +81,7 @@ const OTYP_CLUB = 78;
 const OTYP_SLING = 87;
 const OTYP_FLINT = 473;
 const OTYP_ROCK = 474;
-/** C `objects.h` — PROJECTILE **`ARROW`** … **`CROSSBOW_BOLT`** (NH5 `otyp` **19–24**; `OC_SKILL_ROW_BY_OTYP` omits this slice). */
+/** C `objects[]` — PROJECTILE **`ARROW`** … **`CROSSBOW_BOLT`** (otyp **19–24**, negative **`P_BOW`** … skills). */
 const OTYP_FIRST_PROJECTILE = 19;
 const OTYP_LAST_PROJECTILE = 24;
 const OTYP_ARROW = 19;

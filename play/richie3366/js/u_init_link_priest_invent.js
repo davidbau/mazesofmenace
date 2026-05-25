@@ -19,7 +19,8 @@ const OTYP_SMALL_SHIELD = 151;
 const OTYP_POT_WATER = 321;
 const OTYP_CLOVE_GARLIC = 284;
 const OTYP_SPRIG_WOLFSBANE = 283;
-const OTYP_MAGIC_MARKER = 242;
+/** C `objects[]` — **`MAGIC_MARKER`** 243. */
+const OTYP_MAGIC_MARKER = 243;
 const OTYP_OIL_LAMP = 228;
 
 const BASE_WT = {

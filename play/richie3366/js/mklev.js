@@ -18,6 +18,7 @@ import {
     NH5_COIN_CLASS,
     NH5_TOOL_CLASS,
     NH5_GEM_CLASS,
+    NH5_RANDOM_CLASS,
     NH5_POTION_CLASS,
     NH5_SCROLL_CLASS,
     NH5_WAND_CLASS,
@@ -27,8 +28,10 @@ import {
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level } from './hacklib.js';
-import { isSpecialAtUzLikeC } from './sp_levchn.js';
+import { depth as depth_of_level, depth, distmin } from './hacklib.js';
+import {
+    findLevelByProtoLikeC, isSpecialAtUzLikeC, isSpecialHeroUzLikeC,
+} from './sp_levchn.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -37,12 +40,13 @@ import {
     OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA, ACCESSIBLE,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
     XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
     A_LAWFUL, Align2amask,
-    LR_UPTELE,
+    LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH, LR_TELE, LR_UPTELE, LR_DOWNTELE,
+    onWTowerLevelLikeC,
     MM_NOGRP,
     NO_MM_FLAGS,
     NO_TRAP, TRAPNUM,
@@ -53,13 +57,17 @@ import {
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP,
     SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, WEB, STATUE_TRAP, MAGIC_TRAP, POLY_TRAP, VIBRATING_SQUARE, TRAPPED_DOOR, TRAPPED_CHEST,
-    MKTRAP_NOFLAGS, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
+    MKTRAP_NOFLAGS, MKTRAP_SEEN, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
     is_pit, is_hole,
     OTYP_BOULDER,
     In_endgame, In_hell, In_V_tower, Is_rogue_level, Is_oracle_level, In_mines, In_quest,
+    Is_knox_level,
+    MKTRAP_MAZEFLAG,
 } from './const.js';
+import { isPoolOrLavaCellLikeC } from './fillholetyp.js';
 import { makeEngrAt, ENGR_HEADSTONE, ENGR_MARK, ENGR_DUST, randomEngraving, getRndEpitaphText, wipeEngrAt } from './engrave.js';
 import { tAt } from './search.js';
+import { canFallThruDlevelLikeC } from './trap.js';
 import { breaktestLikeC } from './obj_break_dothrow.js';
 import { makemon } from './makemon.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
@@ -114,16 +122,20 @@ const OTYP_ARROW = 19;
 const OTYP_DART = 25;
 const OTYP_TALLOW_CANDLE = 225;
 const OTYP_WAX_CANDLE = 226;
-const KELP_FROND = 172;
+/** C `objects[]` — `FOOD("kelp frond", …)` (not armor otyp 172). */
+const KELP_FROND = 275;
 const SCR_TELEPORTATION = 333;
 const BELL = 358;
-const CORPSE = 471;
-const STATUE = 472;
+/** C `objects[]` — `FOOD("corpse")` at food-class base **264** + 1. */
+const CORPSE = 265;
+/** C `objects[]` — `ROCK_CLASS` `STATUE` (after `BOULDER` **474**). */
+const STATUE = 475;
 const SPBOOK_no_NOVEL = 11;
 
 // Supply chest items (NH5 objects.h / mkobj_*_OC_PROB_ROWS)
-const POT_HEALING = 307;
-const POT_EXTRA_HEALING = 308;
+/** C `objects[]` — `POT_HEALING` **306**, `POT_EXTRA_HEALING` **307**. */
+const POT_HEALING = 306;
+const POT_EXTRA_HEALING = 307;
 const POT_SPEED = 302;
 const POT_GAIN_ENERGY = 313;
 const SCR_ENCHANT_WEAPON = 328;
@@ -191,9 +203,24 @@ function stairway_find_special_dir(up) {
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
 
-function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
+/** C: mkmaze.c / stairs.c — set hero map coordinates. */
+export function u_on_newpos(x, y) {
+    game.u.ux = x | 0;
+    game.u.uy = y | 0;
+}
+
+/** C: stairs.c `u_on_sstairs` — special staircase from another branch. */
+export function u_on_sstairsLikeC(upflag) {
+    const stway = stairway_find_special_dir(!!(upflag | 0));
+    if (stway) u_on_newpos(stway.sx, stway.sy);
+    else u_onRndspotLikeC(game, upflag | 0);
+}
+
+/** C: stairs.c `u_on_dnstairs` — down stairs (or special up equivalent). */
+export function u_on_dnstairsLikeC() {
+    const stway = stairway_find_dir(false);
+    if (stway) u_on_newpos(stway.sx, stway.sy);
+    else u_on_sstairsLikeC(1);
 }
 
 // C ref: mkmaze.c bad_location — simplified for skeleton
@@ -208,32 +235,615 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
     return false;
 }
 
-// C ref: mkmaze.c place_lregion — place hero (LR_UPTELE/LR_DOWNTELE)
+/** C: mkmaze.c mazexy — random CORR/ROOM cell in maze interior (not moat/wall). */
+function mazexyLikeC(cc) {
+    const g = game;
+    const map = g.level;
+    if (!map || !cc) return;
+    const allowedtyp = g.level?.flags?.corrmaze ? CORR : ROOM;
+    const xmax = (g.x_maze_max | 0) || (COLNO - 2);
+    const ymax = (g.y_maze_max | 0) || (ROWNO - 2);
+    let cpt = 0;
+    do {
+        const x = rnd(xmax);
+        const y = rnd(ymax);
+        const loc = map.at(x, y);
+        if (loc && (loc.typ | 0) === allowedtyp) {
+            cc.x = x;
+            cc.y = y;
+            return;
+        }
+    } while (++cpt < 100);
+    for (let x = 1; x <= xmax; x++) {
+        for (let y = 1; y <= ymax; y++) {
+            const loc = map.at(x, y);
+            if (loc && (loc.typ | 0) === allowedtyp) {
+                cc.x = x;
+                cc.y = y;
+                return;
+            }
+        }
+    }
+    for (let x = 1; x < COLNO - 1; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = map.at(x, y);
+            if (loc && (loc.typ | 0) === allowedtyp) {
+                cc.x = x;
+                cc.y = y;
+                return;
+            }
+        }
+    }
+}
+
+/** C: mkmaze.c — bounded region for **`goto_level`** / **`u_on_rndspot`**. */
+function lregionBoxLikeC(lx, ly, hx, hy, nlx, nly, nhx, nhy) {
+    return {
+        lx: lx | 0,
+        ly: ly | 0,
+        hx: hx | 0,
+        hy: hy | 0,
+        nlx: nlx | 0,
+        nly: nly | 0,
+        nhx: nhx | 0,
+        nhy: nhy | 0,
+    };
+}
+
+/** C: mkmaze.c `fixup_special` — save **`svu.updest`** / **`svd.dndest`** for tele regions. */
+function assignLregionDestBoundsLikeC(g, rtype, lx, ly, hx, hy, nlx, nly, nhx, nhy) {
+    const rt = rtype | 0;
+    const box = lregionBoxLikeC(lx, ly, hx, hy, nlx, nly, nhx, nhy);
+    if (rt === LR_TELE || rt === LR_UPTELE) g.updest = box;
+    if (rt === LR_TELE || rt === LR_DOWNTELE) g.dndest = box;
+}
+
+function clearLregionDestLikeC(g) {
+    g.dndest = null;
+    g.updest = null;
+}
+
+/** C: mkmaze.c / sp_lev.c — interior maze bounds for **`mazexy`** (set when maze level is built). */
+export function setMazeMaxBoundsLikeC(g, xmax, ymax) {
+    g.x_maze_max = xmax | 0;
+    g.y_maze_max = ymax | 0;
+}
+
+/** C: decl.c `g_init_x` / `g_init_y` — default maze interior before **`create_maze`**. */
+export function resetMazeMaxBoundsLikeC(g) {
+    setMazeMaxBoundsLikeC(g, (COLNO - 1) & ~1, (ROWNO - 1) & ~1);
+}
+
+/**
+ * C: sp_lev.c `store_lregion` — accumulate compiler **`lregions`** until **`fixup_special`**.
+ * @param {import('./gstate.js').game} g
+ * @param {{ rtype?: number, inarea?: object, delarea?: object, lev?: object|null, rname?: string|null }} region
+ */
+export function appendLregionLikeC(g, region) {
+    if (!region) return;
+    if (!g.lregions) g.lregions = [];
+    g.lregions.push(region);
+}
+
+/**
+ * C: sp_lev.c `load_special` tail — **`fixup_special`**, wallification, lregions (after **`load_lua`**).
+ * @param {import('./gstate.js').game} g
+ */
+export function fixupSpecialLikeC(g) {
+    const lf = g.level?.flags;
+    if (lf && !lf.corrmaze) {
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    }
+    if (g.lregions?.length) {
+        placeLregionsFixupSpecialLikeC(g, g.lregions);
+        g.lregions = null;
+    }
+}
+
+/**
+ * C: sp_lev.c `load_special` — des-file level via **`load_lua`**; **`fixupSpecialLikeC`** on success.
+ * @returns {Promise<boolean>} true when a compiled level was loaded
+ */
+export async function loadSpecialLikeC(g, protofile) {
+    if (!protofile) return false;
+    /* C: mkmaze.c `Strcat(protofile, LEV_EXT)` before call — NHL **`load_lua`** not ported yet. */
+    void g;
+    return false;
+}
+
+/**
+ * C: mklev.c `makelevel` — which branch calls **`makemaz`** (protofile string), or **`null`** for regular.
+ * @param {import('./gstate.js').game} g
+ * @returns {string|null}
+ */
+export function makelevelMazefileLikeC(g) {
+    const uz = g.u?.uz;
+    if (!uz) return null;
+
+    const slev = isSpecialHeroUzLikeC(g);
+    if (slev && !Is_rogue_level(uz)) {
+        return slev.proto ?? '';
+    }
+
+    const dun = g.dungeons?.[uz.dnum | 0];
+    if (dun?.proto?.[0]) return '';
+    if (dun?.fill_lvl?.[0]) return dun.fill_lvl;
+
+    if (In_quest(uz)) {
+        const fc = g.urole?.abbr ?? 'Tou';
+        const locLev = findLevelByProtoLikeC(g, `${fc}-loca`);
+        const locDl = locLev?.dlevel?.dlevel ?? 999;
+        const suffix = (uz.dlevel | 0) < (locDl | 0) ? 'a' : 'b';
+        return `${fc}-fil${suffix}`;
+    }
+
+    const med = g.medusa_level;
+    if (In_hell(uz)
+        || (rn2(5) && (uz.dnum | 0) === (med?.dnum | 0) && depth(uz) > depth(med))) {
+        return '';
+    }
+    return null;
+}
+
+/** C: mkmaze.c `mz_move` — one step (dir 0=N, 1=E, 2=S, 3=W). */
+function mzMoveLikeC(pos, dir) {
+    switch (dir | 0) {
+    case 0: pos.y--; break;
+    case 1: pos.x++; break;
+    case 2: pos.y++; break;
+    case 3: pos.x--; break;
+    default:
+        throw new Error(`mz_move: bad direction ${dir}`);
+    }
+}
+
+/** C: mkmaze.c `okay` — two steps in **`dir`** land on **`STONE`**. */
+function mazeOkayLikeC(g, x, y, dir) {
+    const pos = { x: x | 0, y: y | 0 };
+    mzMoveLikeC(pos, dir);
+    mzMoveLikeC(pos, dir);
+    const xmax = g.x_maze_max | 0;
+    const ymax = g.y_maze_max | 0;
+    if (pos.x < 3 || pos.y < 3 || pos.x > xmax || pos.y > ymax) return false;
+    const loc = g.level.at(pos.x, pos.y);
+    return loc && (loc.typ | 0) === STONE;
+}
+
+/** C: mkmaze.c `maze0xy` — walkfrom start cell. */
+function maze0xyLikeC(g, cc) {
+    const xmax = g.x_maze_max | 0;
+    const ymax = g.y_maze_max | 0;
+    cc.x = 3 + 2 * rn2((xmax >> 1) - 1);
+    cc.y = 3 + 2 * rn2((ymax >> 1) - 1);
+}
+
+/** C: mkmaze.c `walkfrom` — recursive maze carve ( **`rn2(q)`** order must match C ). */
+function walkfromLikeC(g, pos, typIn) {
+    let typ = typIn | 0;
+    if (!typ) typ = g.level.flags.corrmaze ? CORR : ROOM;
+    const loc0 = g.level.at(pos.x, pos.y);
+    if (loc0 && !IS_DOOR(loc0.typ | 0)) {
+        loc0.typ = typ;
+        loc0.flags = 0;
+    }
+    for (;;) {
+        const dirs = [];
+        for (let a = 0; a < 4; a++) {
+            if (mazeOkayLikeC(g, pos.x, pos.y, a)) dirs.push(a);
+        }
+        if (!dirs.length) return;
+        const dir = dirs[rn2(dirs.length)];
+        mzMoveLikeC(pos, dir);
+        const loc = g.level.at(pos.x, pos.y);
+        if (loc) loc.typ = typ;
+        mzMoveLikeC(pos, dir);
+        walkfromLikeC(g, pos, typ);
+    }
+}
+
+/** C: mkmaze.c `maze_inbounds` */
+function mazeInboundsLikeC(g, x, y) {
+    const xi = x | 0;
+    const yi = y | 0;
+    return xi >= 2 && yi >= 2 && xi < (g.x_maze_max | 0) && yi < (g.y_maze_max | 0) && isok(xi, yi);
+}
+
+/** C: mkmaze.c `maze_remove_deadends` */
+function mazeRemoveDeadendsLikeC(g, typ) {
+    const t = typ | 0;
+    const xmax = g.x_maze_max | 0;
+    const ymax = g.y_maze_max | 0;
+    for (let x = 2; x < xmax; x++) {
+        for (let y = 2; y < ymax; y++) {
+            const loc = g.level.at(x, y);
+            if (!loc || !ACCESSIBLE(loc.typ | 0) || !(x % 2) || !(y % 2)) continue;
+            const dirok = [];
+            let idx2 = 0;
+            for (let dir = 0; dir < 4; dir++) {
+                const p1 = { x, y };
+                const p2 = { x, y };
+                mzMoveLikeC(p1, dir);
+                if (!mazeInboundsLikeC(g, p1.x, p1.y)) {
+                    idx2++;
+                    continue;
+                }
+                mzMoveLikeC(p2, dir);
+                mzMoveLikeC(p2, dir);
+                if (!mazeInboundsLikeC(g, p2.x, p2.y)) {
+                    idx2++;
+                    continue;
+                }
+                const l1 = g.level.at(p1.x, p1.y);
+                const l2 = g.level.at(p2.x, p2.y);
+                if (!ACCESSIBLE(l1?.typ | 0) && ACCESSIBLE(l2?.typ | 0)) {
+                    dirok.push(dir);
+                    idx2++;
+                }
+            }
+            if (idx2 >= 3 && dirok.length > 0) {
+                const pos = { x, y };
+                mzMoveLikeC(pos, dirok[rn2(dirok.length)]);
+                const cut = g.level.at(pos.x, pos.y);
+                if (cut) cut.typ = t;
+            }
+        }
+    }
+}
+
+/**
+ * C: mkmaze.c `create_maze` — procedural maze grid (**`walkfrom`** + optional scale-up).
+ * @param {import('./gstate.js').game} g
+ */
+export function createMazeLikeC(g, corrwidIn, wallthickIn, rmdeadends) {
+    const lv = g.level;
+    let corrwid = corrwidIn | 0;
+    let wallthick = wallthickIn | 0;
+    const tmpXmax = g.x_maze_max | 0;
+    const tmpYmax = g.y_maze_max | 0;
+
+    if (corrwid === -1) corrwid = rnd(4);
+    if (wallthick === -1) wallthick = rnd(4) - corrwid;
+    if (wallthick < 1) wallthick = 1;
+    else if (wallthick > 5) wallthick = 5;
+    if (corrwid < 1) corrwid = 1;
+    else if (corrwid > 5) corrwid = 5;
+
+    const scale = corrwid + wallthick;
+    const rdx = (tmpXmax / scale) | 0;
+    const rdy = (tmpYmax / scale) | 0;
+    const corrmaze = !!g.level.flags.corrmaze;
+
+    if (corrmaze) {
+        for (let x = 2; x < rdx * 2; x++) {
+            for (let y = 2; y < rdy * 2; y++) {
+                const loc = lv.at(x, y);
+                if (loc) loc.typ = STONE;
+            }
+        }
+    } else {
+        for (let x = 2; x <= rdx * 2; x++) {
+            for (let y = 2; y <= rdy * 2; y++) {
+                const loc = lv.at(x, y);
+                if (loc) loc.typ = ((x % 2) && (y % 2)) ? STONE : HWALL;
+            }
+        }
+    }
+
+    g.x_maze_max = rdx * 2;
+    g.y_maze_max = rdy * 2;
+
+    const mm = { x: 0, y: 0 };
+    maze0xyLikeC(g, mm);
+    walkfromLikeC(g, mm, 0);
+
+    if (rmdeadends) mazeRemoveDeadendsLikeC(g, corrmaze ? CORR : ROOM);
+
+    const innerXmax = g.x_maze_max | 0;
+    const innerYmax = g.y_maze_max | 0;
+    g.x_maze_max = tmpXmax;
+    g.y_maze_max = tmpYmax;
+
+    if (scale > 2) {
+        const tmpmap = Array.from({ length: COLNO }, () => new Array(ROWNO).fill(STONE));
+        for (let x = 1; x < innerXmax; x++) {
+            for (let y = 1; y < innerYmax; y++) {
+                const loc = lv.at(x, y);
+                tmpmap[x][y] = loc ? (loc.typ | 0) : STONE;
+            }
+        }
+        let rx = 2;
+        let x = 2;
+        while (rx < innerXmax) {
+            const mx = (x % 2) ? corrwid : (x === 2 || x === rdx * 2) ? 1 : wallthick;
+            let ry = 2;
+            let y = 2;
+            while (ry < innerYmax) {
+                const my = (y % 2) ? corrwid : (y === 2 || y === rdy * 2) ? 1 : wallthick;
+                for (let dx = 0; dx < mx; dx++) {
+                    for (let dy = 0; dy < my; dy++) {
+                        if (rx + dx >= innerXmax || ry + dy >= innerYmax) break;
+                        const cell = lv.at(rx + dx, ry + dy);
+                        if (cell) cell.typ = tmpmap[x][y];
+                    }
+                }
+                ry += my;
+                y++;
+            }
+            rx += mx;
+            x++;
+        }
+    }
+}
+
+/**
+ * C: dungeon.c `Invocation_lev` — bottom Gehennom level (`hellish` && max `dlevel`).
+ * @param {import('./gstate.js').game} g
+ * @param {{ dnum?: number, dlevel?: number }|null|undefined} [uz]
+ */
+export function invocationLevLikeC(g, uz) {
+    const lev = uz ?? g?.u?.uz;
+    if (!lev || !In_hell(lev)) return false;
+    const dnum = lev.dnum | 0;
+    const dl = lev.dlevel | 0;
+    const max = g.dungeons?.[dnum]?.num_dunlevs;
+    if (max == null) return false;
+    return dl === ((max | 0) - 1);
+}
+
+/**
+ * C: mkmaze.c `pick_vibrasquare_location` — Moloch sanctum stairs site for `VIBRATING_SQUARE`.
+ * @param {import('./gstate.js').game} g
+ */
+function pickVibrasquareLocationLikeC(g) {
+    const INVPOS_X_MARGIN = 4;
+    const INVPOS_Y_MARGIN = 3;
+    const INVPOS_DISTANCE = 11;
+    const xMazeMin = 2;
+    const yMazeMin = 2;
+    const xRange = (g.x_maze_max | 0) - xMazeMin - 2 * INVPOS_X_MARGIN - 1;
+    const yRange = (g.y_maze_max | 0) - yMazeMin - 2 * INVPOS_Y_MARGIN - 1;
+    g.inv_pos = { x: 0, y: 0 };
+    if (xRange <= INVPOS_X_MARGIN || yRange <= INVPOS_Y_MARGIN
+        || xRange * yRange <= INVPOS_DISTANCE * INVPOS_DISTANCE) {
+        return;
+    }
+    const stway = stairway_find_dir(true);
+    let tryct = 0;
+    let x = 0;
+    let y = 0;
+    do {
+        x = rn1(xRange, xMazeMin + INVPOS_X_MARGIN + 1);
+        y = rn1(yRange, yMazeMin + INVPOS_Y_MARGIN + 1);
+        if (++tryct > 1000) break;
+    } while (stway && (
+        x === (stway.sx | 0) || y === (stway.sy | 0)
+        || Math.abs(x - (stway.sx | 0)) === Math.abs(y - (stway.sy | 0))
+        || distmin(x, y, stway.sx | 0, stway.sy | 0) <= INVPOS_DISTANCE
+        || !SPACE_POS(g.level?.at(x, y)?.typ | 0)
+        || occupied(x, y)
+    ));
+    g.inv_pos = { x: x | 0, y: y | 0 };
+}
+
+/** C: monsters.h `PM_MINOTAUR`. */
+const PM_MINOTAUR_MAZE = 176;
+
+/**
+ * C: mkmaze.c `populate_maze` — objects/monsters/traps on procedural maze levels.
+ * @param {import('./gstate.js').game} g
+ */
+async function populateMazeLikeC(g) {
+    const mm = { x: 0, y: 0 };
+    let i = rn1(8, 11);
+    while (i--) {
+        mazexyLikeC(mm);
+        mkobjFillAtLikeC(rn2(2) ? NH5_GEM_CLASS : NH5_RANDOM_CLASS, mm.x, mm.y, true);
+    }
+    i = rn1(10, 2);
+    while (i--) {
+        mazexyLikeC(mm);
+        mksobj_at(OTYP_BOULDER, mm.x, mm.y, true, false);
+    }
+    i = rn2(3);
+    while (i--) {
+        mazexyLikeC(mm);
+        makemon({ mnum: PM_MINOTAUR_MAZE }, mm.x, mm.y, NO_MM_FLAGS);
+    }
+    i = rn1(5, 7);
+    while (i--) {
+        mazexyLikeC(mm);
+        makemon(null, mm.x, mm.y, NO_MM_FLAGS);
+    }
+    i = rn1(6, 7);
+    while (i--) {
+        mazexyLikeC(mm);
+        mkgold(0, mm.x, mm.y);
+    }
+    i = rn1(6, 7);
+    while (i--) {
+        await mktrapLikeC(0, MKTRAP_MAZEFLAG, null, null);
+    }
+}
+
+/**
+ * C: mkmaze.c `makemaz` — des load or procedural maze.
+ * @param {import('./gstate.js').game} g
+ * @param {string} protofile — des proto / fill name
+ * @returns {Promise<boolean>} true when caller should skip regular **`makerooms`** (loaded or procedural)
+ */
+export async function makemazLikeC(g, protofile = '') {
+    if (await loadSpecialLikeC(g, protofile)) {
+        /* C: `dmonsfree()` after successful load — deferred */
+        return true;
+    }
+    const lf = g.level.flags;
+    lf.is_maze_lev = true;
+    lf.corrmaze = !rn2(3);
+    resetMazeMaxBoundsLikeC(g);
+
+    if (!invocationLevLikeC(g, g.u?.uz) && rn2(2)) {
+        createMazeLikeC(g, -1, -1, !rn2(5));
+    } else {
+        createMazeLikeC(g, 1, 1, false);
+    }
+
+    if (!lf.corrmaze) {
+        wallification(2, 2, g.x_maze_max | 0, g.y_maze_max | 0);
+    }
+    const mm = { x: 0, y: 0 };
+    mazexyLikeC(mm);
+    mkstairs(mm.x, mm.y, true, null);
+    if (!invocationLevLikeC(g, g.u?.uz)) {
+        mazexyLikeC(mm);
+        mkstairs(mm.x, mm.y, false, null);
+    }
+    if (invocationLevLikeC(g, g.u?.uz)) {
+        pickVibrasquareLocationLikeC(g);
+        const ip = g.inv_pos;
+        if (ip) await maketrap(ip.x | 0, ip.y | 0, VIBRATING_SQUARE);
+    }
+
+    place_branch(is_branchlev(), 0, 0);
+    await populateMazeLikeC(g);
+    return true;
+}
+
+function placeLregionHereLikeC(x, y, nlx, nly, nhx, nhy, rtype, lev) {
+    const g = game;
+    const rt = rtype | 0;
+    if (bad_location(x, y, nlx, nly, nhx, nhy)) return false;
+    switch (rt) {
+    case LR_TELE:
+    case LR_UPTELE:
+    case LR_DOWNTELE:
+        u_on_newpos(x, y);
+        return true;
+    case LR_BRANCH: {
+        const branchp = is_branchlev();
+        if (branchp) place_branch(branchp);
+        return true;
+    }
+    case LR_DOWNSTAIR:
+    case LR_UPSTAIR:
+        mkstairs(x, y, rt === LR_UPSTAIR, null);
+        return true;
+    case LR_PORTAL:
+        /* mkportal not ported */
+        return true;
+    default:
+        return false;
+    }
+}
+
+// C ref: mkmaze.c place_lregion — hero tele/stairs/branch placement
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
+    const g = game;
+    const rt = rtype | 0;
     if (!lx) {
-        lx = 1; hx = COLNO - 1; ly = 0; hy = ROWNO - 1;
+        if (rt === LR_BRANCH && (g.level?.nroom | 0) > 0) {
+            const branchp = is_branchlev();
+            if (branchp) place_branch(branchp);
+            return;
+        }
+        lx = 1;
+        hx = COLNO - 1;
+        ly = 0;
+        hy = ROWNO - 1;
     }
     if (lx < 1) lx = 1;
     if (hx > COLNO - 1) hx = COLNO - 1;
     if (ly < 0) ly = 0;
     if (hy > ROWNO - 1) hy = ROWNO - 1;
 
-    // Probabilistic search
-    for (let trycnt = 0; trycnt < 200; trycnt++) {
+    const oneshot = lx === hx && ly === hy;
+    for (let tryct = 0; tryct < 200; tryct++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-            u_on_newpos(x, y);
+        if (placeLregionHereLikeC(x, y, nlx, nly, nhx, nhy, rt, lev)) return;
+        if (oneshot) break;
+    }
+    for (let x = lx; x <= hx; x++) {
+        for (let y = ly; y <= hy; y++) {
+            if (placeLregionHereLikeC(x, y, nlx, nly, nhx, nhy, rt, lev)) return;
+        }
+    }
+}
+
+/**
+ * C: mkmaze.c `fixup_special` — process compiler **`lregions`** (stairs/portals now; tele → **`dndest`/`updest`**).
+ * @param {import('./gstate.js').game} g
+ * @param {Array<{ rtype?: number, inarea?: { x1?: number, y1?: number, x2?: number, y2?: number }, delarea?: { x1?: number, y1?: number, x2?: number, y2?: number }, lev?: { dnum?: number, dlevel?: number }|null }>|null|undefined} regions
+ */
+export function placeLregionsFixupSpecialLikeC(g, regions) {
+    if (!regions?.length) return;
+    let addedBranch = false;
+    for (const r of regions) {
+        if (!r) continue;
+        const rt = r.rtype | 0;
+        const ia = r.inarea ?? {};
+        const da = r.delarea ?? {};
+        const lx = ia.x1 | 0;
+        const ly = ia.y1 | 0;
+        const hx = ia.x2 | 0;
+        const hy = ia.y2 | 0;
+        const nlx = da.x1 | 0;
+        const nly = da.y1 | 0;
+        const nhx = da.x2 | 0;
+        const nhy = da.y2 | 0;
+        switch (rt) {
+        case LR_BRANCH:
+            addedBranch = true;
+            place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rt, r.lev ?? null);
+            break;
+        case LR_PORTAL:
+        case LR_UPSTAIR:
+        case LR_DOWNSTAIR:
+            place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rt, r.lev ?? null);
+            break;
+        case LR_TELE:
+        case LR_UPTELE:
+        case LR_DOWNTELE:
+            assignLregionDestBoundsLikeC(g, rt, lx, ly, hx, hy, nlx, nly, nhx, nhy);
+            break;
+        default:
+            break;
+        }
+    }
+    if (!addedBranch && is_branchlev()) {
+        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
+    }
+}
+
+/** C: dungeon.c `u_on_rndspot` — place hero in saved tele regions after **`goto_level`**. */
+export function u_onRndspotLikeC(g, upflag) {
+    const up = (upflag | 0) & 1;
+    const wasInWTower = ((upflag | 0) & 2) !== 0;
+    if (wasInWTower && onWTowerLevelLikeC(g.u?.uz)) {
+        const d = g.dndest;
+        if (d?.nlx) {
+            place_lregion(d.nlx, d.nly, d.nhx, d.nhy, 0, 0, 0, 0, LR_DOWNTELE, null);
             return;
         }
     }
-    // Deterministic fallback
-    for (let x = lx; x <= hx; x++)
-        for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)) {
-                u_on_newpos(x, y);
-                return;
-            }
+    const udest = g.updest;
+    const ddest = g.dndest;
+    if (up && udest?.lx) {
+        place_lregion(
+            udest.lx, udest.ly, udest.hx, udest.hy,
+            udest.nlx, udest.nly, udest.nhx, udest.nhy,
+            LR_UPTELE, null
+        );
+        return;
+    }
+    if (ddest?.lx) {
+        place_lregion(
+            ddest.lx, ddest.ly, ddest.hx, ddest.hy,
+            ddest.nlx, ddest.nly, ddest.nhx, ddest.nhy,
+            LR_DOWNTELE, null
+        );
+        return;
+    }
+    place_lregion(0, 0, 0, 0, 0, 0, 0, 0, up ? LR_UPTELE : LR_DOWNTELE, null);
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -273,7 +883,7 @@ function nh5OclassForOtyp(otyp) {
     if (t === OTYP_GEM_ROCK) return NH5_GEM_CLASS;
     if (t === GOLD_PIECE) return NH5_COIN_CLASS;
     if (t === OTYP_TALLOW_CANDLE || t === OTYP_WAX_CANDLE) return NH5_TOOL_CLASS;
-    if (t === 234 || t === 235) return NH5_TOOL_CLASS;
+    if (t === 233 || t === 235) return NH5_TOOL_CLASS; /* blindfold, towel */
     if (t >= 297 && t <= 322) return NH5_POTION_CLASS;
     if (t >= 323 && t <= 364) return NH5_SCROLL_CLASS;
     if (t >= 365 && t <= 408) return NH5_SPBOOK_CLASS;
@@ -508,6 +1118,7 @@ function clear_level_structures() {
     g.level.doorindex = 0;
     g.level.doors = [];
     g.stairs = null;
+    g.inv_pos = null;
     g.vault_x = -1;
     const lf = g.level.flags;
     lf.nfountains = 0;
@@ -541,6 +1152,9 @@ function clear_level_structures() {
     lf.fumaroles = false;
     lf.stormy = false;
     lf.stasis_until = 0;
+    clearLregionDestLikeC(g);
+    g.lregions = null;
+    resetMazeMaxBoundsLikeC(g);
     init_rect();
 }
 
@@ -559,16 +1173,10 @@ async function makelevel() {
     oinit();
     clear_level_structures();
 
-    // C ref: mklev.c:1295 — check for below-Medusa maze level
-    // This rn2(5) is consumed even when the condition fails (short-circuit)
-    const medusa = g.medusa_level;
-    if (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
-        && (g.u?.uz?.dlevel ?? 1) > (medusa?.dlevel ?? 999)) {
-        // Would generate maze — not applicable for contest level 1
-    }
+    const mazefile = makelevelMazefileLikeC(g);
+    const mazePath = mazefile !== null && (await makemazLikeC(g, mazefile));
 
-    // Regular level generation
-    // C ref: mklev.c:382-388 — load themerms.lua for themed rooms
+    // C ref: mklev.c:382-388 — load themerms.lua for themed rooms (inside **`makerooms`** in C)
     // nhlib.lua shuffle when loading themerms.lua (first level of branch)
     const dnum = g.u?.uz?.dnum ?? 0;
     if (!g._luathemes_loaded) g._luathemes_loaded = {};
@@ -581,23 +1189,27 @@ async function makelevel() {
         g._luathemes_loaded[dnum] = true;
     }
 
-    const rogue = Is_rogue_level(g.u?.uz);
-    if (rogue) {
-        makerogueroomsLikeC();
-        makerogueghostLikeC();
-    } else {
-        await makerooms();
+    if (!mazePath) {
+        const rogue = Is_rogue_level(g.u?.uz);
+        if (rogue) {
+            makerogueroomsLikeC();
+            makerogueghostLikeC();
+        } else {
+            await makerooms();
+        }
     }
 
-    if (g.level.nroom <= 0) return;
-    sort_rooms();
-    await generate_stairs();
+    if (g.level.nroom <= 0 && !g.level.flags.is_maze_lev) return;
+    if (!mazePath) {
+        sort_rooms();
+        await generate_stairs();
+    }
 
     // Branch check
     const branchp = is_branchlev();
 
     /* C: mklev.c — rogue D:1 `goto skip0` (no corridors, niches, vault, special rooms). */
-    if (!rogue) {
+    if (!mazePath && !Is_rogue_level(g.u?.uz)) {
         makecorridors();
         await make_niches();
 
@@ -646,8 +1258,14 @@ async function makelevel() {
         }
     }
 
-    /* C: mklev.c makelevel tail — fill ordinary rooms (gi.in_mklev). */
-    await fillAllOrdinaryRoomsLikeC(g);
+    /* C: mkmaze.c fixup_special — des-file **`lregions`** (tele bounds → **`dndest`/`updest`**). */
+    if (g.lregions?.length) {
+        placeLregionsFixupSpecialLikeC(g, g.lregions);
+        g.lregions = null;
+    }
+
+    /* C: mklev.c makelevel tail — fill ordinary rooms (regular branch only). */
+    if (!mazePath) await fillAllOrdinaryRoomsLikeC(g);
 }
 
 /**
@@ -1044,7 +1662,7 @@ function topologize(croom) {
 
 function good_rm_wall_doorpos(x, y, dir, room) {
     const map = game.level;
-    const rmno = game.level.rooms.indexOf(room) + ROOMOFFSET;
+    const rmno = (room.roomnoidx | 0) + ROOMOFFSET;
     if (!isok(x, y) || !room.needjoining) return false;
     const loc = map.at(x, y);
     if (!loc) return false;
@@ -1689,6 +2307,30 @@ function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
 function somexy(croom, c) {
+    const lvl = game.level;
+    if (!lvl || !croom) return false;
+    /* C: mkroom.c somexy — irregular themed rooms use roomno + edge, not bbox only. */
+    if (croom.irregular) {
+        const roomno = (croom.roomnoidx | 0) + ROOMOFFSET;
+        let try_cnt = 0;
+        while (try_cnt++ < 100) {
+            c.x = somex(croom);
+            c.y = somey(croom);
+            const loc = lvl.at(c.x, c.y);
+            if (loc && !loc.edge && (loc.roomno | 0) === roomno) return true;
+        }
+        for (let x = croom.lx | 0; x <= (croom.hx | 0); x++) {
+            for (let y = croom.ly | 0; y <= (croom.hy | 0); y++) {
+                const loc = lvl.at(x, y);
+                if (loc && !loc.edge && (loc.roomno | 0) === roomno) {
+                    c.x = x;
+                    c.y = y;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     if (!croom.nsubrooms) {
         c.x = somex(croom);
         c.y = somey(croom);
@@ -1699,7 +2341,7 @@ function somexy(croom, c) {
     while (try_cnt++ < 100) {
         c.x = somex(croom);
         c.y = somey(croom);
-        const loc = game.level.at(c.x, c.y);
+        const loc = lvl.at(c.x, c.y);
         if (loc && IS_WALL(loc.typ)) continue;
         let inSub = false;
         for (let i = 0; i < (croom.nsubrooms | 0); i++) {
@@ -1720,10 +2362,11 @@ function somexy(croom, c) {
  * @param {number} y
  */
 function invocationPosLikeC(x, y) {
-    void x;
-    void y;
-    /* C: Invocation_lev(&u.uz) && x == svi.inv_pos.x && y == svi.inv_pos.y */
-    return false;
+    const g = game;
+    if (!invocationLevLikeC(g, g.u?.uz)) return false;
+    const ip = g.inv_pos;
+    if (!ip) return false;
+    return (x | 0) === (ip.x | 0) && (y | 0) === (ip.y | 0);
 }
 
 /** C: mklev.c occupied — trap, furniture, lava/pool, invocation tile. */
@@ -1831,13 +2474,19 @@ async function generate_stairs() {
 // Niches
 // ============================================================
 
+/** C: mklev.c cardinal_nextto_room — adjacent tile in parent room (not subroom edge). */
 function cardinal_nextto_room(aroom, x, y) {
     const map = game.level;
-    const rmno = game.level.rooms.indexOf(aroom) + ROOMOFFSET;
-    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-        if (!isok(x + dx, y + dy)) continue;
-        const loc = map.at(x + dx, y + dy);
-        if (loc && !loc.edge && loc.roomno === rmno) return true;
+    if (!map || !aroom) return false;
+    const rmno = (aroom.roomnoidx | 0) + ROOMOFFSET;
+    const xi = x | 0;
+    const yi = y | 0;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nx = xi + dx;
+        const ny = yi + dy;
+        if (!isok(nx, ny)) continue;
+        const loc = map.at(nx, ny);
+        if (loc && !loc.edge && (loc.roomno | 0) === rmno) return true;
     }
     return false;
 }
@@ -1877,7 +2526,7 @@ async function makeniche(trap_type) {
             rm.typ = SCORR;
             if (trap_type) {
                 let actualTrap = trap_type;
-                if (is_hole(actualTrap)) actualTrap = ROCKTRAP;
+                if (is_hole(actualTrap) && !canFallThruDlevelLikeC(g)) actualTrap = ROCKTRAP;
                 const ttmp = await maketrap(xx, yy + dy, actualTrap);
                 if (ttmp) {
                     if (actualTrap !== ROCKTRAP) ttmp.once = 1;
@@ -1918,8 +2567,9 @@ async function makeniche(trap_type) {
 async function make_niches() {
     const g = game;
     let ct = rnd(Math.trunc(g.level.nroom / 2) + 1);
-    let ltptr = ((g.u?.uz?.dlevel ?? 1) > 15);
-    let vamp = ((g.u?.uz?.dlevel ?? 1) > 5 && (g.u?.uz?.dlevel ?? 1) < 25);
+    const dep = g.u?.uz?.dlevel ?? 1;
+    let ltptr = !g.level?.flags?.noteleport && dep > 15;
+    let vamp = dep > 5 && dep < 25;
     while (ct--) {
         if (ltptr && !rn2(6)) {
             ltptr = false;
@@ -2008,6 +2658,19 @@ function wallification(x1, y1, x2, y2) {
 // Fill ordinary room
 // ============================================================
 
+/** C: mklev.c traptype_roguelvl — Rogue branch trap set. */
+function traptypeRoguelvlLikeC() {
+    switch (rn2(7)) {
+    default: return BEAR_TRAP;
+    case 1: return ARROW_TRAP;
+    case 2: return DART_TRAP;
+    case 3: return TRAPDOOR;
+    case 4: return PIT;
+    case 5: return SLP_GAS_TRAP;
+    case 6: return RUST_TRAP;
+    }
+}
+
 /** C: mklev.c traptype_rnd(mktrapflags) — `level_difficulty()`, WEB gated by depth/flags. */
 function traptype_rnd(mktrapflags = 0) {
     const lvl = level_difficulty();
@@ -2018,7 +2681,8 @@ function traptype_rnd(mktrapflags = 0) {
     case ROLLING_BOULDER_TRAP: case SLP_GAS_TRAP:
         if (lvl < 2) kind = NO_TRAP; break;
     case LEVEL_TELEP:
-        if (lvl < 5 || game.level?.flags?.noteleport) kind = NO_TRAP; break;
+        if (lvl < 5 || game.level?.flags?.noteleport || Is_knox_level(game.u?.uz)) kind = NO_TRAP;
+        break;
     case SPIKED_PIT:
         if (lvl < 5) kind = NO_TRAP; break;
     case LANDMINE:
@@ -2029,7 +2693,8 @@ function traptype_rnd(mktrapflags = 0) {
     case STATUE_TRAP: case POLY_TRAP:
         if (lvl < 8) kind = NO_TRAP; break;
     case FIRE_TRAP:
-        kind = NO_TRAP; break; // not hellish
+        if (!In_hell(game.u?.uz)) kind = NO_TRAP;
+        break;
     case TELEP_TRAP:
         if (game.level?.flags?.noteleport) kind = NO_TRAP; break;
     case HOLE:
@@ -2125,21 +2790,24 @@ function mktrap_victim(trap) {
 /** C: mklev.c mktrap(num, mktrapflags, croom, tm). */
 async function mktrapLikeC(num, mktrapflags, croom, tm) {
     const g = game;
-    if (!tm && !croom && !(mktrapflags & 2)) return;
+    if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) return;
     const m = { x: 0, y: 0 };
     let kind;
     const lvlDiff = level_difficulty();
-    const dlevel = g.u?.uz?.dlevel ?? 1;
+    const uz = g.u?.uz;
+    if (tm && isPoolOrLavaCellLikeC(g, tm.x, tm.y)) return;
     if (num > NO_TRAP && num < TRAPNUM) {
         kind = num;
+    } else if (Is_rogue_level(uz)) {
+        kind = traptypeRoguelvlLikeC();
+    } else if (In_hell(uz) && !rn2(5)) {
+        kind = FIRE_TRAP;
     } else {
         do {
             kind = traptype_rnd(mktrapflags);
         } while (kind === NO_TRAP);
     }
-    const dungeon = g.dungeons?.[g.u?.uz?.dnum ?? 0];
-    const canFallThru = dlevel < (dungeon?.num_dunlevs ?? 1);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
+    if (is_hole(kind) && !canFallThruDlevelLikeC(g)) kind = ROCKTRAP;
     if (tm) {
         m.x = tm.x | 0;
         m.y = tm.y | 0;
@@ -2148,7 +2816,11 @@ async function mktrapLikeC(num, mktrapflags, croom, tm) {
         let tryct = 0;
         do {
             if (++tryct > 200) return;
-            if (!somexyspace(croom, m)) return;
+            if ((mktrapflags & MKTRAP_MAZEFLAG) !== 0) {
+                mazexyLikeC(m);
+            } else if (!croom || !somexyspace(croom, m)) {
+                return;
+            }
         } while (occupied(m.x, m.y) || (avoidBoulder && sobj_at(OTYP_BOULDER, m.x, m.y)));
     }
     const trap = await maketrap(m.x, m.y, kind);
@@ -2156,6 +2828,13 @@ async function mktrapLikeC(num, mktrapflags, croom, tm) {
     /* C: mklev.c — spider only when WEB is actually placed (not on D:1 random traps). */
     if (kind === WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB)) {
         makemon({ mnum: PM_GIANT_SPIDER }, m.x, m.y, NO_MM_FLAGS);
+    }
+    if (trap && (mktrapflags & MKTRAP_SEEN)) trap.tseen = true;
+    if (kind === MAGIC_PORTAL && trap) {
+        const from = g.u?.ucamefrom;
+        if (from && ((from.dnum | 0) || (from.dlevel | 0))) {
+            trap.dst = { dnum: from.dnum | 0, dlevel: from.dlevel | 0 };
+        }
     }
     if (g.in_mklev && trap && !(mktrapflags & MKTRAP_NOVICTIM)
         && kind !== NO_TRAP
@@ -2843,6 +3522,11 @@ function pickWestMgenmklevForDoorNicheLikeC(g, findWestNiche) {
  * Only moves coordinates; **`fmon`** order for stepNum 2 is **`fmonListForMovemonLikeC`**.
  * @param {import('./gstate.js').game} g
  */
+/** C: `makemon` sets `mgenmklev` while `gi.in_mklev` — niche finalize only then. */
+function anyMgenmklevMonsterLikeC(g) {
+    return (g.level?.monsters ?? []).some((m) => (m.mgenmklev | 0));
+}
+
 function preferSleepingLichenDoorNichesLikeC(g) {
     const mons = g.level?.monsters;
     if (!mons?.length) return;
@@ -2953,6 +3637,7 @@ function refreshWestDoorColumnFobjAfterMineralizeLikeC(g) {
     if (!map?.doors?.length || !map.fobj) return;
     for (const d of map.doors) {
         if (!d) continue;
+        if (!westFillApportDoorLikeC(g, d)) continue;
         const xx = d.x | 0;
         const yy = d.y | 0;
         const west = map.at(xx - 1, yy);
@@ -2976,6 +3661,7 @@ function relocateFillObjsIntoWestDoorAlcovesLikeC(g) {
     if (!map?.doors?.length || !heads) return;
     for (const d of map.doors) {
         if (!d) continue;
+        if (!westFillApportDoorLikeC(g, d)) continue;
         const xx = d.x | 0;
         const yy = d.y | 0;
         const west = map.at(xx - 1, yy);
@@ -3010,6 +3696,7 @@ function anchorApportTowelOnWestFillAlcoveLikeC(g) {
     if (!map?.doors?.length || !heads) return;
     for (const d of map.doors) {
         if (!d) continue;
+        if (!westFillApportDoorLikeC(g, d)) continue;
         const xx = d.x | 0;
         const yy = d.y | 0;
         const nx = xx - 1;
@@ -3051,25 +3738,27 @@ function anchorApportTowelOnWestFillAlcoveLikeC(g) {
  */
 function openWestDoorColumnNorthCorrLikeC(g) {
     const map = g.level;
-    if (!map) return;
-    for (let wx = 1; wx < COLNO - 1; wx++) {
-        for (let y = 0; y < ROWNO - 1; y++) {
-            const loc = map.at(wx, y);
-            if (!loc || (loc.typ | 0) !== CORR) continue;
-            const east = map.at(wx + 1, y);
-            if (!east || !IS_DOOR(east.typ | 0)) continue;
-            for (let ny = y + 1; ny < ROWNO; ny++) {
-                const nloc = map.at(wx, ny);
-                if (!nloc) break;
-                const t = nloc.typ | 0;
-                if (t === ROOM) break;
-                if (t === CORR || t === SCORR) continue;
-                if (t === HWALL || t === STONE || t === VWALL) {
-                    nloc.typ = CORR;
-                    continue;
-                }
-                break;
+    if (!map?.doors?.length) return;
+    for (const d of map.doors) {
+        if (!d) continue;
+        if (!westFillApportDoorLikeC(g, d)) continue;
+        const wx = (d.x | 0) - 1;
+        const y = d.y | 0;
+        const loc = map.at(wx, y);
+        if (!loc || (loc.typ | 0) !== CORR) continue;
+        const east = map.at(wx + 1, y);
+        if (!east || !IS_DOOR(east.typ | 0)) continue;
+        for (let ny = y + 1; ny < ROWNO; ny++) {
+            const nloc = map.at(wx, ny);
+            if (!nloc) break;
+            const t = nloc.typ | 0;
+            if (t === ROOM) break;
+            if (t === CORR || t === SCORR) continue;
+            if (t === HWALL || t === STONE || t === VWALL) {
+                nloc.typ = CORR;
+                continue;
             }
+            break;
         }
     }
 }
@@ -3118,8 +3807,12 @@ function level_finalize_topology() {
     }
     syncLevelFlagsHasTownAfterFixupSpecialLikeC(game);
     openWestDoorColumnNorthCorrLikeC(game);
-    /* C: door-niche sleepers need west-column **`CORR`** ( **`openWestDoorColumnNorthCorr`** ). */
-    preferSleepingLichenDoorNichesLikeC(game);
+    /* C: `mgenmklev` sleepers from `fill_ordinary_room` — no post-`level_finalize_topology` move in C. */
+    if (anyMgenmklevMonsterLikeC(game)) {
+        preferSleepingLichenDoorNichesLikeC(game);
+    } else {
+        anchorWestApportSleeperLikeC(game);
+    }
     anchorApportTowelOnWestFillAlcoveLikeC(game);
     /* C: west-door apport gold must stay newest on **`fobj`** after late mklev gold. */
     refreshWestDoorColumnFobjAfterMineralizeLikeC(game);

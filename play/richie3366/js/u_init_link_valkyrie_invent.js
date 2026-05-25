@@ -15,7 +15,7 @@ import { findAc } from './u_init_find_ac.js';
 /** NH5 `objects_nums` — cpp **`OBJECTS_ENUM` − 1** where map key is **28** (`obj_oc_skill_data.js` **SPEAR**). */
 const OTYP_SPEAR = 27;
 /** Same pattern as Rogue dagger (**`u_init_role_rng.js`** / **`u_init_link_rogue_invent.js`**). */
-const OTYP_DAGGER = 34;
+const OTYP_DAGGER = 35;
 /** Matches **`OBJECTS_A_AC_ARMOR`** small shield row **151** (`u_init_find_ac.js`). */
 const OTYP_SMALL_SHIELD = 151;
 /** Align with **`mklev.js`** FOOD_RATION anchor for NH5 food class. */

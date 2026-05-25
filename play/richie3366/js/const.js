@@ -3024,14 +3024,17 @@ export const OTYP_AMULET_OF_GUARDING = 195;
 export const OTYP_GLOB_OF_GREEN_SLIME = 276;
 export const OTYP_RIN_PROTECTION = 178;
 export const OTYP_MEAT_RING = 255;
-/** C: objects.h `OBJ("boulder", …)` — NH5 `otyp`; must match `mklev.js` floor boulder placement. */
-export const OTYP_BOULDER = 465;
+/** C: objects.h `OBJ("boulder", …)` — `objects[]` **474** (`ROCK_CLASS`). */
+export const OTYP_BOULDER = 474;
 /** C: objects.h `COIN("gold piece", …, GOLD_PIECE)` */
 export const OTYP_GOLD_PIECE = 466;
-/** C: objects.h after `STATUE` — NH5 `otyp` (see `mklev.js` `STATUE` **472**). */
-export const OTYP_HEAVY_IRON_BALL = 473;
-/** C: objects.h `OBJ("iron chain", …)` — follows heavy iron ball in `OBJECTS_ENUM`. */
-export const OTYP_IRON_CHAIN = 474;
+/** C: objects.h gray stones — `LUCKSTONE` **470**, `LOADSTONE` **471** (`objects[]` order after worthless glass). */
+export const OTYP_LUCKSTONE = 470;
+export const OTYP_LOADSTONE = 471;
+/** C: objects.h `STATUE` **475**; `HEAVY_IRON_BALL` **476**; `IRON_CHAIN` **477**. */
+export const OTYP_STATUE = 475;
+export const OTYP_HEAVY_IRON_BALL = 476;
+export const OTYP_IRON_CHAIN = 477;
 /** C: `monsters.h` `MON()` order (NH 5.0 upstream) — zero-based `mons[]` index; purple worm line (**`LITTLE_TO_BIG`** **[115,117]**). */
 export const PM_BABY_PURPLE_WORM = 115;
 export const PM_PURPLE_WORM = 117;

@@ -1498,7 +1498,7 @@ function canDigDownForFallLikeC(g) {
 }
 
 /** C: dungeon.c **`Can_fall_thru(lev)`** — **`Can_dig_down` || `Is_stronghold`**. */
-function canFallThruDlevelLikeC(g) {
+export function canFallThruDlevelLikeC(g) {
     const uz = g.u?.uz;
     if (!uz) return false;
     return canDigDownForFallLikeC(g) || Is_stronghold(uz);

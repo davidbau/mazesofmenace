@@ -14,7 +14,8 @@ import {
 } from './nh5_objclass.js';
 import { findAc } from './u_init_find_ac.js';
 
-const OTYP_SCALPEL = 39;
+/** C `objects[]` — **`SCALPEL`** (39 is knife/stiletto line). */
+const OTYP_SCALPEL = 40;
 const OTYP_LEATHER_GLOVES = 160;
 const OTYP_STETHOSCOPE = 238;
 const OTYP_POT_HEALING = 306;

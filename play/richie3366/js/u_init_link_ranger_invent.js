@@ -8,7 +8,7 @@ import { NH5_WEAPON_CLASS, NH5_ARMOR_CLASS, NH5_FOOD_CLASS } from './nh5_objclas
 import { findAc } from './u_init_find_ac.js';
 
 /** C `objects_nums` / repo Rogue dagger anchor (NH5 invent **`otyp`**). */
-const OTYP_DAGGER = 34;
+const OTYP_DAGGER = 35;
 const OTYP_BOW = 84;
 const OTYP_ARROW = 19;
 const OTYP_CLOAK_OF_DISPLACEMENT = 150;

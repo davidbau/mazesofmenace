@@ -13,10 +13,11 @@ import {
 import { findAc } from './u_init_find_ac.js';
 
 /** NH5 `objects_nums` — cpp **`OBJECTS_ENUM` − 1** (`u_init_role_rng.js` / **`obj_oc_skill_data.js`**). */
-const OTYP_TWO_HANDED_SWORD = 55;
-const OTYP_AXE = 44;
-const OTYP_BATTLE_AXE = 45;
-const OTYP_SHORT_SWORD = 46;
+/** C `objects_nums` / `obj_oc_skill_data.js`. */
+const OTYP_TWO_HANDED_SWORD = 56;
+const OTYP_AXE = 45;
+const OTYP_BATTLE_AXE = 46;
+const OTYP_SHORT_SWORD = 47;
 const OTYP_RING_MAIL = 133;
 const OTYP_FOOD_RATION = 143;
 const OTYP_OIL_LAMP = 228;

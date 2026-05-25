@@ -5,7 +5,9 @@ import { game } from './gstate.js';
 import { cansee, couldsee, setSeenvTowardHero } from './vision.js';
 import { westApportSleeperNicheAtLikeC, westFillApportDoorLikeC } from './mfndpos_mon.js';
 import { floorObjKey } from './floorobj.js';
-import { isPoolCellLikeC } from './fillholetyp.js';
+import { isPoolCellLikeC, isPoolOrLavaCellLikeC } from './fillholetyp.js';
+import { isIceAt } from './melt_ice.js';
+import { rn2 } from './rng.js';
 import { monsymCharLikeC } from './makemon_rndmonst.js';
 import { MONS_MLET } from './mons_rndmonst_ini_inv_data.js';
 import {
@@ -32,7 +34,7 @@ import {
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     SCORR, IRONBARS, TREE, POOL, MOAT, WATER, ICE,
     FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, LAVAPOOL, LAVAWALL,
-    Is_rogue_level, Is_waterlevel, LA_DOWN, gs, H_DEC, PRIMARYSET,
+    Is_rogue_level, Is_waterlevel, LA_DOWN, gs, H_DEC, PRIMARYSET, u_at,
     OTYP_BOULDER, OTYP_GOLD_PIECE, OTYP_HEAVY_IRON_BALL, OTYP_IRON_CHAIN,
     ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
     ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP,
@@ -47,6 +49,7 @@ import { findAc } from './u_init_find_ac.js';
 import { describeLevelStatusSlotLikeC } from './describe_level.js';
 import { mungspacesLikeC } from './hacklib.js';
 import { OBJ_ROCK } from './mthrowu.js';
+import { distmin } from './hacklib.js';
 import {
     NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_GREEN, CLR_BLUE, CLR_CYAN,
     CLR_RED, CLR_MAGENTA, CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_CYAN,
@@ -876,6 +879,15 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
+    const u = game.u;
+    if ((u?.uswallow | 0) !== 0) {
+        if (u_at(x, y)) displaySelfLikeC();
+        return;
+    }
+    if ((u?.Underwater | 0) !== 0 && !Is_waterlevel(u.uz)) {
+        if (!(isPoolOrLavaCellLikeC(game, x, y) || isIceAt(game, x, y)) || !next2uLikeC(x, y)) return;
+    }
+
     if (game.u?.ux === x && game.u?.uy === y) {
         show_glyph_cell(x, y, '@', CLR_WHITE, false);
         const tg = mapTerrainGlyph(loc, x, y);
@@ -1041,24 +1053,190 @@ function showGlyphFromLevLikeC(x, y) {
     }
 }
 
-/**
- * C: display.c `swallowed(first)` — docrt early-out; full stomach glyphs deferred.
- * @param {boolean} first
- */
-async function swallowedDocrtLikeC(first) {
-    if (first) await cls();
-    await redrawMapLikeC(false);
+/** C: defsym.h `S_sw_tl` … `S_sw_br` (stomach frame cmap indices). */
+const S_sw_tl = 88;
+const S_sw_tc = 89;
+const S_sw_tr = 90;
+const S_sw_ml = 91;
+const S_sw_mr = 92;
+const S_sw_bl = 93;
+const S_sw_bc = 94;
+const S_sw_br = 95;
+
+/** C: display.c `swallowed` / `under_water` static last position. */
+let _swallowLastX = 0;
+let _swallowLastY = 0;
+let _underWaterLastX = 0;
+let _underWaterLastY = 0;
+let _underWaterDela = false;
+let _underGroundDela = false;
+
+/** C: display.h `what_mon(mon, rng)` — display RNG uses main `rn2` in this port. */
+function whatMonForSwallowLikeC(mnum) {
+    const u = game.u;
+    if (u && ((u.Hallucination | 0) || (u.timed?.hallucination ?? 0) > 0)) {
+        return rn2(338);
+    }
+    return mnum | 0;
+}
+
+/** C: display.c `swallow_to_glyph` → `map_glyphinfo` symidx `S_sw_tl + (offset & 7)`. */
+function swallowFrameDispLikeC(mnum, loc) {
+    let cmap = loc | 0;
+    if (cmap < S_sw_tl || cmap > S_sw_br) cmap = S_sw_br;
+    const frame = cmap - S_sw_tl;
+    const sym = cmapSymGlyphFromShowsymsLikeC(S_sw_tl + frame);
+    const fallback = ['/', '-', '\\', '|', '|', '\\', '-', '/'];
+    const ch = sym?.ch ?? fallback[frame] ?? '/';
+    const color = (Is_rogue_level(game.u?.uz) || !game.iflags?.use_color)
+        ? NO_COLOR
+        : (sym?.color ?? CLR_GREEN);
+    whatMonForSwallowLikeC(mnum);
+    return { ch, color, dec: !!sym?.dec };
+}
+
+/** C: `show_glyph(x,y,GLYPH_UNEXPLORED)` during swallow/under_water position moves. */
+function showGlyphUnexploredLikeC(x, y) {
+    show_glyph_cell(x | 0, y | 0, ' ', NO_COLOR, false);
+}
+
+/** C: display.h `display_self()` — hero `@` (usteed / mappearance deferred). */
+function displaySelfLikeC() {
+    const u = game.u;
+    if (!u?.ux) return;
+    show_glyph_cell(u.ux | 0, u.uy | 0, '@', CLR_WHITE, false);
+}
+
+function next2uLikeC(x, y) {
+    const u = game.u;
+    if (!u) return false;
+    return distmin(u.ux | 0, u.uy | 0, x | 0, y | 0) <= 1;
 }
 
 /**
- * C: display.c `under_water(mode)` — docrt early-out when `Underwater` and not water level.
- * @param {number} mode — C passes `1` from `docrt_flags`
+ * C: display.c `swallowed(first)` — stomach frame around hero; `monsndx(u.ustuck->data)`.
+ * @param {boolean} first
  */
-async function underWaterDocrtLikeC(mode) {
+async function swallowedLikeC(first) {
     const u = game.u;
-    if (!u || Is_waterlevel(u.uz) || (u.uswallow | 0)) return;
-    if ((mode | 0) === 1) await cls();
-    await redrawMapLikeC(false);
+    const stuck = u?.ustuck;
+    if (!u?.ux || !stuck) return;
+    if (first) {
+        await cls();
+        await bot();
+    } else {
+        for (let y = _swallowLastY - 1; y <= _swallowLastY + 1; y++) {
+            for (let x = _swallowLastX - 1; x <= _swallowLastX + 1; x++) {
+                if (isok(x, y)) showGlyphUnexploredLikeC(x, y);
+            }
+        }
+    }
+    const swallower = (stuck.mnum ?? stuck.data?.mnum ?? 0) | 0;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const leftOk = isok(ux - 1, uy);
+    const rghtOk = isok(ux + 1, uy);
+    if (isok(ux, uy - 1)) {
+        if (leftOk) {
+            const g = swallowFrameDispLikeC(swallower, S_sw_tl);
+            show_glyph_cell(ux - 1, uy - 1, g.ch, g.color, g.dec);
+        }
+        const tc = swallowFrameDispLikeC(swallower, S_sw_tc);
+        show_glyph_cell(ux, uy - 1, tc.ch, tc.color, tc.dec);
+        if (rghtOk) {
+            const g = swallowFrameDispLikeC(swallower, S_sw_tr);
+            show_glyph_cell(ux + 1, uy - 1, g.ch, g.color, g.dec);
+        }
+    }
+    if (leftOk) {
+        const g = swallowFrameDispLikeC(swallower, S_sw_ml);
+        show_glyph_cell(ux - 1, uy, g.ch, g.color, g.dec);
+    }
+    displaySelfLikeC();
+    if (rghtOk) {
+        const g = swallowFrameDispLikeC(swallower, S_sw_mr);
+        show_glyph_cell(ux + 1, uy, g.ch, g.color, g.dec);
+    }
+    if (isok(ux, uy + 1)) {
+        if (leftOk) {
+            const g = swallowFrameDispLikeC(swallower, S_sw_bl);
+            show_glyph_cell(ux - 1, uy + 1, g.ch, g.color, g.dec);
+        }
+        const bc = swallowFrameDispLikeC(swallower, S_sw_bc);
+        show_glyph_cell(ux, uy + 1, bc.ch, bc.color, bc.dec);
+        if (rghtOk) {
+            const g = swallowFrameDispLikeC(swallower, S_sw_br);
+            show_glyph_cell(ux + 1, uy + 1, g.ch, g.color, g.dec);
+        }
+    }
+    _swallowLastX = ux;
+    _swallowLastY = uy;
+}
+
+/**
+ * C: display.c `under_water(mode)` — 3×3 pool/lava/ice via `newsym` when not water level.
+ * @param {number} mode
+ */
+async function underWaterLikeC(mode) {
+    const u = game.u;
+    if (!u?.ux || Is_waterlevel(u.uz) || (u.uswallow | 0)) return;
+    const m = mode | 0;
+    if (m === 1 || _underWaterDela) {
+        await cls();
+        _underWaterDela = false;
+    } else if (m === 2) {
+        _underWaterDela = true;
+        return;
+    } else {
+        for (let y = _underWaterLastY - 1; y <= _underWaterLastY + 1; y++) {
+            for (let x = _underWaterLastX - 1; x <= _underWaterLastX + 1; x++) {
+                if (isok(x, y)) showGlyphUnexploredLikeC(x, y);
+            }
+        }
+    }
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (let x = ux - 1; x <= ux + 1; x++) {
+        for (let y = uy - 1; y <= uy + 1; y++) {
+            if (!isok(x, y)) continue;
+            if (!isPoolOrLavaCellLikeC(game, x, y) && !isIceAt(game, x, y)) continue;
+            if (heroBlindForMap() && !u_at(x, y)) showGlyphUnexploredLikeC(x, y);
+            else newsym(x, y);
+        }
+    }
+    _underWaterLastX = ux;
+    _underWaterLastY = uy;
+}
+
+/**
+ * C: display.c `under_ground(mode)` — docrt early-out when `u.uburied` (mode 1: cls only).
+ * @param {number} mode
+ */
+async function underGroundDocrtLikeC(mode) {
+    const u = game.u;
+    if (!u?.ux || (u.uswallow | 0)) return;
+    const m = mode | 0;
+    if (m === 1 || _underGroundDela) {
+        await cls();
+        _underGroundDela = false;
+    } else if (m === 2) {
+        _underGroundDela = true;
+        return;
+    } else {
+        newsym(u.ux | 0, u.uy | 0);
+    }
+}
+
+/** C: `docrt_flags` → `swallowed(1)`. */
+async function swallowedDocrtLikeC(first) {
+    await swallowedLikeC(first);
+    await flush_screen(0);
+}
+
+/** C: `docrt_flags` → `under_water(1)`. */
+async function underWaterDocrtLikeC(mode) {
+    await underWaterLikeC(mode);
+    await flush_screen(0);
 }
 
 /** C: display.c `redraw_map` — resend current map without full docrt recalc. */
@@ -1106,6 +1284,11 @@ export async function docrt_flags(refreshFlags) {
         }
         if ((u.Underwater | 0) !== 0 && !Is_waterlevel(u.uz)) {
             await underWaterDocrtLikeC(1);
+            if (!maponly) postDocrtMapLikeC();
+            return;
+        }
+        if ((u.uburied | 0) !== 0) {
+            await underGroundDocrtLikeC(1);
             if (!maponly) postDocrtMapLikeC();
             return;
         }

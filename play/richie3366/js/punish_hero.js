@@ -15,7 +15,8 @@ import {
     stackObjOnFloorInLevel,
 } from './floorobj.js';
 import { removeObjFromHeroInvent } from './water_damage.js';
-import { pline, newsym } from './display.js';
+import { pline } from './display.js';
+import { placebcHeroLikeC } from './ball_bc_hero.js';
 import { permonstHuman, amorphous, isWhirly, unsolid } from './mondata.js';
 
 /** @param {import('./gstate.js').game} g */
@@ -51,7 +52,7 @@ export function heroPunishedLikeC(g) {
 
 /**
  * C: read.c **`punish(sobj)`** — scroll / unearthed ball / **`pray.c`** **`angrygods`** null **`sobj`** (**`reuse_ball`**).
- * Omits **`placebc`/`set_bc`** blind detail; non-**`uswallow`** tail uses **`newsym`** only (**`ball.c`** **`placebc_core`** TODO).
+ * Calls **`placebcHeroLikeC`** when not swallowed (**`ball.c`** **`placebc_core`**).
  * @param {import('./gstate.js').game} g
  * @param {{ otyp?: number, cursed?: number } | null} sobj scroll, **`HEAVY_IRON_BALL`**, or **`null`** (gods’ punishment)
  */
@@ -104,7 +105,7 @@ export async function punishHeroFromObjLikeC(g, sobj) {
     u.Punished = 1;
 
     if (!(u.uswallow | 0)) {
-        newsym(u.ux | 0, u.uy | 0);
+        await placebcHeroLikeC(g);
     }
 }
 

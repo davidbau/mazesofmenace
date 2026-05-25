@@ -17,9 +17,7 @@ import { rnd } from './rng.js';
 import { newsym } from './display.js';
 import { permonstHuman, amorphous, isWhirly, unsolid } from './mondata.js';
 import { stopNhObjTimer } from './obj_rot_timer.js';
-
-/** C: mkobj_corpse.js **`CORPSE_OTYP`** — local literal avoids **`floorobj`↔`mkobj_corpse`** import cycle. */
-const CORPSE_OTYP = 471;
+import { CORPSE_OTYP } from './mkobj_corpse.js';
 
 export function floorObjKey(x, y) {
     return `${x},${y}`;

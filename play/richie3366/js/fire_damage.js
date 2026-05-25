@@ -24,7 +24,7 @@ import { Has_contents, IS_LAVA, FIRE_RES } from './const.js';
 import { WAN_FIRE } from './buzz.js';
 
 /** C: mklev.js / objects.h — **`STATUE`**. */
-const OTYP_STATUE = 472;
+import { OTYP_STATUE } from './const.js';
 const OTYP_ICE_BOX = 217;
 const OTYP_CHEST = 216;
 const OTYP_LARGE_BOX = 215;

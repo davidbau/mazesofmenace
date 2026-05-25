@@ -3,20 +3,45 @@
 //        do.c goto_level / schedule_goto tail; spoteffects(FALSE) after arrival.
 //
 // Ported: **`applyGotoAfterHeroHoleFallLikeC(g, dest?)`**, **`impactDropLikeC`**/**`objDeliveryLikeC`** (**`dokick.c`**), **`shopdigLikeC(1)`** / **`payForDamage('dig into')`** before **`You fall through...`** (**`dig.c`** **`digactualhole`** order); **`pickup(1)`** tail (**`do.c`** **`goto_level`**).
-// **`applyHeroDescendStairsOneLevelLikeC(g)`** — **`do.c`** **`goto_level`** down-stairs slice after **`mklev`**/**`u_on_upstairs`** (**`near_capacity`/`Punished`/`Fumbling`**, **`drag_down`**, **`losehp`**, **`placebc`** omitted).
+// **`applyHeroDescendStairsOneLevelLikeC(g)`** — **`do.c`** **`goto_level`** down-stairs slice after **`mklev`**/**`u_on_upstairs`** (**`near_capacity`/`Punished`/`Fumbling`**, **`drag_down`**, **`losehp`**, **`placebc`**).
 // **`scheduleGotoHeroLikeC` / `deferredGotoHeroLikeC`** — **`do.c`** **`schedule_goto`/`deferred_goto`** subset (**`applyGotoLevelDirectHeroLikeC`** for non-falling **`goto_level`**).
 // **`keepdogsHeroStubLikeC`** — C **`dog.c`** **`keepdogs(pets_only)`** gate (**`if (!iflags.nofollowers) keepdogs(FALSE)`** in **`goto_level`**) before **`u.uz`** moves; stub tallies tame **`level.monsters`** and applies the C **`pets_only==TRUE`** tame-clear subset when that flag is passed (**ascension** / final escape — not wired from **`do.c`** yet).
 // **`vision_recalc(2)`** after **`keepdogs`**, before **`u.uz`** assign — C **`goto_level`** (**`vision.c`** “no longer see old level” pass before **`savelev`**).
 // **`gotoLevelTutorialBranchHookLikeC`** — C **`do.c`** **`newdungeon`** **`In_tutorial`/`tutorial()`** before **`savelev`** / **`impact_drop`** ( **`tutorial_branch.js`** ).
 // **`maybeRecordEnteredNewLevelLivelogLikeC`** after **`mklev()`** when map built (**`livelog.js`**) — C **`new`** after **`mklev`**; **`livelogPrintfLikeC`** ring (**`gd.livelog_recent`**), no **`LIVELOGFILE`**.
 // Deferred: **`fill_pit`**, real **`next_to_u`**,
-// full **`keepdogs`/`dog.c`** migration (**`migrate_to_level`**, …), bones/save, full **`goto_level`** beyond **`mklev`**.
+// full **`keepdogs`/`dog.c`** migration (**`migrate_to_level`**, …), bones/save.
 
-import { mklev, u_on_upstairs } from './mklev.js';
+import {
+    mklev,
+    u_on_upstairs,
+    u_on_dnstairsLikeC,
+    u_on_sstairsLikeC,
+    u_on_newpos,
+    u_onRndspotLikeC,
+} from './mklev.js';
+import {
+    In_endgame,
+    In_hell,
+    onWTowerLevelLikeC,
+    inWTowerLikeC,
+    MAGIC_PORTAL,
+    UTOTYPE_ATSTAIRS,
+    UTOTYPE_PORTAL,
+} from './const.js';
 import { spotEffects } from './spoteffects.js';
 import { vision_recalc } from './vision.js';
 import { pline, pline1 } from './display.js';
-import { onLevelLikeC } from './hacklib.js';
+import {
+    depth,
+    onLevelLikeC,
+    dunlevLikeC,
+    dunlevsInDungeonLikeC,
+    assignLevelLikeC,
+    assignRndLevelLikeC,
+} from './hacklib.js';
+import { seetrap } from './search.js';
+import { stairwayFindFromLikeC } from './decor.js';
 import { shopdigLikeC, payForDamage, heroInShopOccupancyLikeUshops } from './shop.js';
 import { impactDropLikeC, objDeliveryLikeC } from './impact_drop.js';
 import { pickup } from './pickup.js';
@@ -30,6 +55,14 @@ import {
 } from './const.js';
 import { gotoLevelTutorialBranchHookLikeC } from './tutorial_branch.js';
 import { maybeRecordEnteredNewLevelLivelogLikeC } from './livelog.js';
+import {
+    placebcHeroLikeC,
+    unplacebcHeroLikeC,
+    ballreleaseHeroLikeC,
+    ballfallHeroLikeC,
+    weldedUballLikeC,
+} from './ball_bc_hero.js';
+import { safeTeledsHeroLikeC, TELEDS_NO_FLAGS } from './teleport_hero.js';
 
 /** C: **`Punished`** / carried **`uball`** — macro subset until **`punish()`** sets **`u.Punished`**. */
 function heroPunishedLikeC(g) {
@@ -45,6 +78,43 @@ function heroPunishedLikeC(g) {
 /** C: mon.c **`next_to_u`** — stub **TRUE** until ball&chain / leash parity. */
 export function nextToUForHoleFallStub() {
     return true;
+}
+
+/**
+ * C: **`do.c`** **`goto_level`** — Gehennom amulet “mysterious force” may push **`dest`** deeper when climbing up.
+ * @param {import('./gstate.js').game} g
+ * @param {{ dnum: number, dlevel: number }} dest — mutated in place
+ * @param {{ up: boolean, portal: boolean, newdungeon: boolean, wasInWTower: boolean }} opts
+ * @returns {Promise<boolean>} **true** when C returns early (**`safe_teleds`** on same level — teleported subset omitted).
+ */
+async function applyGehennomMysteryForceGotoDestLikeC(g, dest, opts) {
+    const u = g.u;
+    const uz0 = u?.uz;
+    if (!uz0) return false;
+    if (!In_hell(uz0) || !opts.up || !u.uhave?.amulet || opts.newdungeon || opts.portal) return false;
+    if (dunlevLikeC(uz0) >= dunlevsInDungeonLikeC(uz0) - 3) return false;
+
+    g.context = g.context || {};
+    const mf = g.context.mysteryforce | 0;
+    if (rn2(4 + mf)) return false;
+
+    const odds = 3 + (u.ualign?.type | 0);
+    let diff = odds <= 1 ? 0 : rn2(odds);
+    if (diff !== 0) {
+        assignRndLevelLikeC(dest, uz0, diff);
+        diff = (dest.dlevel | 0) - (uz0.dlevel | 0);
+        if (opts.wasInWTower && !onWTowerLevelLikeC(dest)) diff = 0;
+    }
+    if (diff === 0) assignLevelLikeC(dest, uz0);
+
+    await pline('A mysterious force momentarily surrounds you...');
+    g.context.mysteryforce = mf + rn2(diff + 2);
+
+    if (onLevelLikeC(dest, uz0)) {
+        await safeTeledsHeroLikeC(g, TELEDS_NO_FLAGS);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -78,6 +148,66 @@ export function keepdogsHeroStubLikeC(g, petsOnly) {
     g.gd.keepdogs_last_tame_seen = tame;
 }
 
+/**
+ * C: **`do.c`** **`goto_level`** post-**`mklev`** placement — portal, **`at_stairs`**, else **`u_on_rndspot`**.
+ * @param {import('./gstate.js').game} g
+ * @param {{ portal?: boolean, atStairs?: boolean, up?: boolean, uz0: { dnum: number, dlevel: number }, atLadder?: boolean, wasInWTower?: boolean, newdungeon?: boolean }} opts
+ */
+export function placeHeroAfterGotoLevelLikeC(g, opts) {
+    const u = g.u;
+    if (!u) return;
+    const uz = u.uz;
+    const uz0 = opts.uz0;
+    const portal = !!opts.portal;
+    const atStairs = !!opts.atStairs;
+    const up = !!opts.up;
+    const atLadder = !!opts.atLadder;
+    const wasInWTower = !!opts.wasInWTower;
+    const newdungeon = !!opts.newdungeon;
+
+    if (portal && !In_endgame(uz)) {
+        const traps = g.level?.traps;
+        let ttrap = null;
+        if (traps) {
+            for (let i = 0; i < traps.length; i++) {
+                const t = traps[i];
+                if (t && (t.ttyp | 0) === MAGIC_PORTAL) {
+                    ttrap = t;
+                    break;
+                }
+            }
+        }
+        if (!ttrap) {
+            u_onRndspotLikeC(g, 0);
+        } else {
+            seetrap(ttrap);
+            u_on_newpos(ttrap.tx | 0, ttrap.ty | 0);
+        }
+        return;
+    }
+
+    if (atStairs && !In_endgame(uz)) {
+        if (up) {
+            const stway = stairwayFindFromLikeC(g, uz0, atLadder);
+            if (stway) {
+                u_on_newpos(stway.sx | 0, stway.sy | 0);
+                stway.u_traversed = true;
+            } else if (newdungeon) u_on_sstairsLikeC(1);
+            else u_on_dnstairsLikeC();
+        } else {
+            const stway = stairwayFindFromLikeC(g, uz0, atLadder);
+            if (stway) {
+                u_on_newpos(stway.sx | 0, stway.sy | 0);
+                stway.u_traversed = true;
+            } else if (newdungeon) u_on_sstairsLikeC(0);
+            else u_on_upstairs();
+        }
+        return;
+    }
+
+    u_onRndspotLikeC(g, (up ? 1 : 0) | (wasInWTower ? 2 : 0));
+}
+
 /** @param {import('./gstate.js').game} g */
 function clearDeferredGotoMessagesLikeC(g) {
     const gd = g.gd;
@@ -90,14 +220,35 @@ function clearDeferredGotoMessagesLikeC(g) {
  * C: **`do.c`** **`goto_level`** — plain arrival (**not** falling): **`keepdogs`**, **`vision_recalc(2)`**, set **`u.uz`**, **`mklev`**, **`spoteffects`**, **`vision_recalc(1)`**, **`pickup(1)`**.
  * @param {import('./gstate.js').game} g
  * @param {{ dnum: number, dlevel: number }} dest
+ * @param {{ atStairs?: boolean, portal?: boolean, up?: boolean, atLadder?: boolean }} [gotoOpts]
  */
-export async function applyGotoLevelDirectHeroLikeC(g, dest) {
+export async function applyGotoLevelDirectHeroLikeC(g, dest, gotoOpts = {}) {
     const u = g.u;
     if (!u || !g.level) return;
 
     const uz0 = u.uz || { dnum: 0, dlevel: 1 };
-    const dn = dest.dnum | 0;
-    let dl = dest.dlevel | 0;
+    const destMut = { dnum: dest.dnum | 0, dlevel: dest.dlevel | 0 };
+    if (dunlevLikeC(destMut) > dunlevsInDungeonLikeC(destMut)) {
+        destMut.dlevel = dunlevsInDungeonLikeC(destMut);
+    }
+
+    const up = gotoOpts.up != null
+        ? !!gotoOpts.up
+        : depth(uz0) > depth(destMut);
+    const newdungeon = (uz0.dnum | 0) !== (destMut.dnum | 0);
+    const wasInWTower = inWTowerLikeC(u.ux | 0, u.uy | 0, g);
+
+    if (await applyGehennomMysteryForceGotoDestLikeC(g, destMut, {
+        up,
+        portal: !!gotoOpts.portal,
+        newdungeon,
+        wasInWTower,
+    })) {
+        return;
+    }
+
+    const dn = destMut.dnum | 0;
+    let dl = destMut.dlevel | 0;
     const mx = g.dungeons?.[dn]?.num_dunlevs;
     if (mx != null) {
         if (dl > (mx | 0)) dl = mx | 0;
@@ -108,6 +259,8 @@ export async function applyGotoLevelDirectHeroLikeC(g, dest) {
 
     gotoLevelTutorialBranchHookLikeC(g, uz0, newUz);
 
+    if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
+
     if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
     vision_recalc(2);
 
@@ -116,6 +269,18 @@ export async function applyGotoLevelDirectHeroLikeC(g, dest) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    if (!In_endgame(newUz)) {
+        placeHeroAfterGotoLevelLikeC(g, {
+            portal: !!gotoOpts.portal,
+            atStairs: !!gotoOpts.atStairs,
+            up,
+            uz0,
+            atLadder: !!gotoOpts.atLadder,
+            wasInWTower,
+            newdungeon,
+        });
+    }
+    if (heroPunishedLikeC(g)) await placebcHeroLikeC(g);
     await objDeliveryLikeC(g, false);
     await spotEffects(g, false, {});
     await objDeliveryLikeC(g, true);
@@ -167,7 +332,12 @@ export async function deferredGotoHeroLikeC(g) {
         if (g.gd.dfr_pre_msg) await pline1(g.gd.dfr_pre_msg);
 
         if (typmask & UTOTYPE_FALLING) await applyGotoAfterHeroHoleFallLikeC(g, dest);
-        else await applyGotoLevelDirectHeroLikeC(g, dest);
+        else {
+            await applyGotoLevelDirectHeroLikeC(g, dest, {
+                atStairs: (typmask & UTOTYPE_ATSTAIRS) !== 0,
+                portal: (typmask & UTOTYPE_PORTAL) !== 0,
+            });
+        }
 
         if (typmask & UTOTYPE_RMPORTAL) {
             /* C: **`deltrap`/`newsym`** after **`goto_level`** — not ported */
@@ -219,6 +389,8 @@ export async function applyGotoAfterHeroHoleFallLikeC(g, dest) {
     /* C: do.c **`goto_level`** **`falling`** → **`impact_drop(..., newlevel->dlevel)`** before **`u.uz`** assign. */
     await impactDropLikeC(g, null, u.ux | 0, u.uy | 0, newUz.dlevel | 0);
 
+    if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
+
     if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
     vision_recalc(2);
 
@@ -227,6 +399,9 @@ export async function applyGotoAfterHeroHoleFallLikeC(g, dest) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    if (!In_endgame(newUz)) u_onRndspotLikeC(g, 0);
+    if (heroPunishedLikeC(g) && !weldedUballLikeC(g)) await ballfallHeroLikeC(g);
+    if (heroPunishedLikeC(g)) await placebcHeroLikeC(g);
     await objDeliveryLikeC(g, false);
     await spotEffects(g, false, {});
     await objDeliveryLikeC(g, true);
@@ -271,7 +446,7 @@ export async function gotoLevelHeroFallThroughDigHoleLikeC(g, digX, digY) {
  * C: **`do.c`** **`goto_level`** — **`at_stairs`** && !**`up`** && !**`In_endgame`** after **`u_on_upstairs`**
  * ( **`stairway_find_from`** / **`u_on_sstairs`** omitted; **`u.dz`** treated as down).
  * **`keepdogs`**, **`vision_recalc(2)`**, then **`u.uz`** / **`mklev`** / **`u_on_upstairs`** …
- * Omits **`ballrelease`**, **`dismount_steed`**, **`selftouch`**, **`placebc`**, **`obj_delivery`**, branch mapseen.
+ * Omits **`dismount_steed`**, **`selftouch`**, **`obj_delivery`**, branch mapseen.
  * @param {import('./gstate.js').game} g
  * @returns {Promise<boolean>} true if level changed
  */
@@ -297,6 +472,8 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
     const atLadder = !!st.isladder;
     const newUz = { dnum, dlevel: prev + 1 };
 
+    if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
+
     if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
     vision_recalc(2);
 
@@ -305,7 +482,14 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
-    u_on_upstairs();
+    placeHeroAfterGotoLevelLikeC(g, {
+        atStairs: true,
+        up: false,
+        uz0,
+        atLadder,
+        wasInWTower: false,
+        newdungeon: (uz0.dnum | 0) !== (newUz.dnum | 0),
+    });
     syncHeroInvWeightNetLikeC(g);
 
     const flying = !!(u.Levitation || u.Flying);
@@ -323,7 +507,10 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
         || (u.Fumbling | 0) !== 0
     ) {
         await pline(atLadder ? 'You fall down the ladder.' : 'You fall down the stairs.');
-        if (heroPunishedLikeC(g) && g.uball) await dragDownHeroStairsLikeC(g);
+        if (heroPunishedLikeC(g) && g.uball) {
+            await dragDownHeroStairsLikeC(g);
+            await ballreleaseHeroLikeC(g, false);
+        }
         if (!(u.usteed | 0)) {
             const knm = atLadder ? 'falling off a ladder' : 'tumbling down a flight of stairs';
             losehp(maybeHalfPhys(rnd(3)), knm, 0);
@@ -332,7 +519,7 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
         await pline(atLadder ? 'You climb down the ladder.' : 'You descend the stairs.');
     }
 
-    /* C: **`goto_level`** — **`placebc`** after arrival when **`Punished`** (not ported). */
+    if (heroPunishedLikeC(g)) await placebcHeroLikeC(g);
     await objDeliveryLikeC(g, false);
     await spotEffects(g, false, {});
     await objDeliveryLikeC(g, true);

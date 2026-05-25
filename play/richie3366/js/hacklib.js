@@ -3,6 +3,7 @@
 
 import { game } from './gstate.js';
 import { ROOMOFFSET } from './const.js';
+import { rnd } from './rng.js';
 
 export function isok(x, y) {
     const { COLNO, ROWNO } = await_const();
@@ -77,6 +78,34 @@ export function depth(uz) {
 export function onLevelLikeC(lev1, lev2) {
     if (!lev1 || !lev2) return false;
     return (lev1.dnum | 0) === (lev2.dnum | 0) && (lev1.dlevel | 0) === (lev2.dlevel | 0);
+}
+
+/** C: dungeon.h `dunlev(lev)` — branch-local dlevel index. */
+export function dunlevLikeC(uz) {
+    return uz?.dlevel ?? 1;
+}
+
+/** C: dungeon.c `dunlevs_in_dungeon(lev)` — `dungeons[dnum].num_dunlevs`. */
+export function dunlevsInDungeonLikeC(uz) {
+    const dnum = uz?.dnum ?? 0;
+    const n = game?.dungeons?.[dnum]?.num_dunlevs;
+    return n != null ? (n | 0) : 1;
+}
+
+/** C: dungeon.c `assign_level(dest, src)`. */
+export function assignLevelLikeC(dest, src) {
+    dest.dnum = src.dnum | 0;
+    dest.dlevel = src.dlevel | 0;
+}
+
+/** C: dungeon.c `assign_rnd_level(dest, src, range)` — `dest = src + rn1(|range|)`. */
+export function assignRndLevelLikeC(dest, src, range) {
+    dest.dnum = src.dnum | 0;
+    const r = range | 0;
+    dest.dlevel = (src.dlevel | 0) + (r > 0 ? rnd(r) : -rnd(-r));
+    const max = dunlevsInDungeonLikeC(dest);
+    if (dest.dlevel > max) dest.dlevel = max;
+    else if (dest.dlevel < 1) dest.dlevel = 1;
 }
 
 /**

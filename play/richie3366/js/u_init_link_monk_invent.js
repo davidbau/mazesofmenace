@@ -8,13 +8,16 @@ import { findAc } from './u_init_find_ac.js';
 
 const OTYP_LEATHER_GLOVES = 160;
 const OTYP_ROBE = 144;
-const OTYP_POT_HEALING = 307;
+/** C `objects[]` — **`POT_HEALING`** (not **`POT_EXTRA_HEALING`** 307). */
+const OTYP_POT_HEALING = 306;
 const OTYP_FOOD_RATION = 143;
 const OTYP_APPLE = 277;
 const OTYP_ORANGE = 278;
 const OTYP_FORTUNE_COOKIE = 289;
-const OTYP_MAGIC_MARKER = 242;
-const OTYP_OIL_LAMP = 227;
+/** C `objects[]` — **`MAGIC_MARKER`** 243 (242 is figurine). */
+const OTYP_MAGIC_MARKER = 243;
+/** C `objects[]` — **`OIL_LAMP`** (227 is brass lantern). */
+const OTYP_OIL_LAMP = 228;
 
 const BASE_WT = {
     [OTYP_LEATHER_GLOVES]: 10,

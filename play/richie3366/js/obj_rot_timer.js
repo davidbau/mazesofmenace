@@ -16,7 +16,7 @@ import { isRiderMnum, isTrollCorpsenm } from './mondata.js';
 import { rn2, rnz } from './rng.js';
 
 /** NH5 `objects_nums` corpse **`otyp`** (same as **`mkobj_corpse.js`** **`CORPSE_OTYP`**). */
-const CORPSE_OTYP = 471;
+import { CORPSE_OTYP } from './mkobj_corpse.js';
 
 /** C: mkobj.c **`#define ROT_ICE_ADJUSTMENT 2`** */
 export const ROT_ICE_ADJUSTMENT = 2;

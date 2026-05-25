@@ -128,7 +128,7 @@ export class NethackGame {
         g.uball = null;
         g.uchain = null;
         /* C: allmain.c newgame — svc.context.next_attrib_check = 600L */
-        g.context = { move: 0, next_attrib_check: 600 };
+        g.context = { move: 0, next_attrib_check: 600, mysteryforce: 0 };
         g.program_state = {};
         g.moves = 1;
 

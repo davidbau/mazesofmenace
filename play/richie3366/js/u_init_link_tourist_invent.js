@@ -22,7 +22,8 @@ const OTYP_CREDIT_CARD = 224;
 const OTYP_TIN_OPENER = 240;
 const OTYP_LEASH = 237;
 const OTYP_TOWEL = 235;
-const OTYP_MAGIC_MARKER = 242;
+/** C `objects[]` — **`MAGIC_MARKER`** 243. */
+const OTYP_MAGIC_MARKER = 243;
 
 const BASE_WT = {
     [OTYP_DART]: 1,

@@ -28,6 +28,7 @@ import {
     W_SADDLE,
     A_DEX,
     A_STR,
+    OTYP_LOADSTONE,
 } from './const.js';
 import { NH5_COIN_CLASS, NH5_GEM_CLASS } from './nh5_objclass.js';
 import { removeWornItemHeroShipObjectLikeC } from './remove_worn_item_hero.js';
@@ -38,8 +39,6 @@ import { freehandHeroLikeC, nohandsPermonstLikeC } from './hero_hands.js';
 /** C: hack.h **`invlet_basic`** (52). */
 const INVLET_BASIC = 52;
 
-/** C: objects.h **`LOADSTONE`**. */
-const OTYP_LOADSTONE = 471;
 /** C: objects.h **`LEASH`**. */
 const OTYP_LEASH = 237;
 

@@ -1,7 +1,12 @@
-// symbols_file.js — C symbols.c read_sym_file / switch_symbols / parse_sym_line (cmap subset).
-// C ref: symbols.c parse_sym_line, load_symset, dat/symbols symset blocks.
+// symbols_file.js — C symbols.c read_sym_file / switch_symbols / parse_sym_line.
+// C ref: symbols.c parse_sym_line, files.c read_sym_file, dat/symbols symset blocks.
 
-import { gs, gp, H_DEC, H_IBM, PRIMARYSET } from './const.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { gs, gp, H_DEC, H_IBM, PRIMARYSET, set_symhandling } from './const.js';
+import { mungspacesLikeC } from './hacklib.js';
+import { SYM_PARSE_BY_NAME } from './symbols_symmap_data.js';
 import { NO_COLOR } from './terminal.js';
 import { DEF_MONSYM_DISPLAY } from './makemon_rndmonst.js';
 import {
@@ -245,10 +250,159 @@ export function switchSymbolsPrimaryLikeC(nondefault) {
     initPrimarySymbolsLikeC();
 }
 
-/** C: symbols.c read_sym_file(PRIMARYSET) for known symset names (no dat/symbols I/O). */
+const SYM_CONTROL = 1;
+const SYM_PCHAR = 2;
+const SYM_OC = 3;
+const SYM_MON = 4;
+
+/**
+ * C: options.c sym_val() — `\xNN`, quoted char, or first byte.
+ * @param {string} strval
+ * @returns {number}
+ */
+function symValLikeC(strval) {
+    const s = mungspacesLikeC(strval);
+    if (!s) return 0;
+    if (s.length === 1) return s.charCodeAt(0) & 0xff;
+    const x = s.match(/^\\x([0-9a-fA-F]{2})/);
+    if (x) return parseInt(x[1], 16) & 0xff;
+    if (s.startsWith("'") && s.length >= 2) {
+        if (s.length >= 4 && s[1] === '\\' && s[3] === "'") return s.charCodeAt(2) & 0xff;
+        if (s[2] === "'") return s.charCodeAt(1) & 0xff;
+    }
+    return s.charCodeAt(0) & 0xff;
+}
+
+/**
+ * C: symbols.c match_sym() — name before `=`/`:` (G_* lines skipped).
+ * @param {string} buf
+ * @returns {{ range: number, idx: number }|null}
+ */
+function matchSymLikeC(buf) {
+    if ((buf[0] === 'G' || buf[0] === 'g') && buf[1] === '_') return null;
+    let end = buf.length;
+    const eq = buf.indexOf('=');
+    const col = buf.indexOf(':');
+    let sep = -1;
+    if (eq >= 0 && (col < 0 || eq < col)) sep = eq;
+    else if (col >= 0) sep = col;
+    if (sep >= 0) {
+        end = sep;
+        if (sep > 0 && buf[sep - 1] === ' ') end = sep - 1;
+    }
+    const key = buf.slice(0, end).trim();
+    const hit = SYM_PARSE_BY_NAME[key] ?? SYM_PARSE_BY_NAME[key.toLowerCase()];
+    if (hit) return hit;
+    if (key === 'S_armour') return SYM_PARSE_BY_NAME.S_armor ?? null;
+    return null;
+}
+
+/**
+ * C: symbols.c parse_sym_line() — subset for PRIMARYSET cmap/obj/mon (no G_* / UTF-8).
+ * @param {string} line
+ * @param {number} whichSet
+ * @param {{ chosenStart: boolean, chosenEnd: boolean, targetName: string|null }} ctx
+ * @returns {boolean}
+ */
+function parseSymLineLikeC(line, whichSet, ctx) {
+    let buf = mungspacesLikeC(line);
+    if (!buf) return true;
+    const hash = buf.lastIndexOf('#');
+    if (hash > 0 && buf[hash - 1] === ' ') buf = buf.slice(0, hash - 1).trimEnd();
+
+    let sep = buf.indexOf('=');
+    const altp = buf.indexOf(':');
+    if (sep < 0 || (altp >= 0 && altp < sep)) sep = altp;
+
+    if (sep < 0) {
+        if (buf.toLowerCase().startsWith('finish')) {
+            if (ctx.chosenStart) ctx.chosenEnd = true;
+            ctx.chosenStart = false;
+            return true;
+        }
+        return false;
+    }
+    const symp = matchSymLikeC(buf);
+    if (!symp) return true;
+    let valStart = sep + 1;
+    while (valStart < buf.length && buf[valStart] === ' ') valStart++;
+    const valStr = buf.slice(valStart).trim();
+
+    if (symp.range === SYM_CONTROL) {
+        if (!ctx.targetName) return true;
+        switch (symp.idx) {
+        case 0: {
+            const want = valStr.toLowerCase();
+            const got = (ctx.targetName || '').toLowerCase();
+            if (want === got || want.replace(/graphics$/i, '') === got.replace(/graphics$/i, '')) {
+                ctx.chosenStart = true;
+                initPrimarySymbolsLikeC();
+            }
+            break;
+        }
+        case 1:
+            if (ctx.chosenStart) ctx.chosenEnd = true;
+            ctx.chosenStart = false;
+            break;
+        case 2:
+            if (ctx.chosenStart) set_symhandling(valStr, whichSet);
+            break;
+        default:
+            break;
+        }
+        return true;
+    }
+
+    if (!ctx.chosenStart) return true;
+    const val = symValLikeC(valStr);
+    if (whichSet === PRIMARYSET) {
+        gp.primary_syms[symp.idx] = val;
+    }
+    return true;
+}
+
+/** Optional read of nethack-c/upstream/dat/symbols (embedded tables remain fallback). */
+function tryReadDatSymbolsText() {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+        path.join(process.cwd(), 'nethack-c/upstream/dat/symbols'),
+        path.resolve(here, '../nethack-c/upstream/dat/symbols'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
+        } catch { /* sandboxed judge may deny fs */ }
+    }
+    return null;
+}
+
+/**
+ * C: files.c read_sym_file() + symbols.c parse_sym_line for one symset block.
+ * @param {number} whichSet
+ * @param {string} symsetName
+ * @returns {boolean}
+ */
+function readSymFileDatLikeC(whichSet, symsetName) {
+    const text = tryReadDatSymbolsText();
+    if (!text) return false;
+    const ctx = { chosenStart: false, chosenEnd: false, targetName: symsetName };
+    gs.symset[whichSet].name = symsetName;
+    for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line[0] === '#') continue;
+        parseSymLineLikeC(line, whichSet, ctx);
+    }
+    return ctx.chosenStart && ctx.chosenEnd;
+}
+
+/** C: symbols.c read_sym_file(PRIMARYSET) — dat/symbols when available, else embedded cmap tables. */
 export function readSymFilePrimaryLikeC(name) {
     if (!name) return false;
     initPrimarySymbolsLikeC();
+    if (readSymFileDatLikeC(PRIMARYSET, name)) {
+        switchSymbolsPrimaryLikeC(true);
+        return true;
+    }
     if (!SYMSSET_PRIMARY_OVERRIDES[name]) return false;
     applySymsetOverridesLikeC(name);
     switchSymbolsPrimaryLikeC(true);

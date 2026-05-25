@@ -23,8 +23,8 @@ const OTYP_TOUCHSTONE = 472;
 const OTYP_SACK = 216;
 const OTYP_TIN_OPENER = 240;
 const OTYP_OIL_LAMP = 228;
-/** Match **`u_init_link_wizard_invent.js`** (**`OBJECTS_ENUM`** / NH5 drift). */
-const OTYP_MAGIC_MARKER = 242;
+/** C `objects[]` — **`MAGIC_MARKER`** 243. */
+const OTYP_MAGIC_MARKER = 243;
 
 const BASE_WT = {
     [OTYP_BULLWHIP]: 20,
