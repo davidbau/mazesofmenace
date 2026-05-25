@@ -37,7 +37,7 @@ import {
     OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
-    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
+    IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA,
     SPACE_POS, isok, W_NONDIGGABLE, FILL_NORMAL,
     XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
@@ -1714,12 +1714,26 @@ function somexy(croom, c) {
     return false;
 }
 
+/**
+ * C: hack.c invocation_pos — true on the Invocation square (not ported yet).
+ * @param {number} x
+ * @param {number} y
+ */
+function invocationPosLikeC(x, y) {
+    void x;
+    void y;
+    /* C: Invocation_lev(&u.uz) && x == svi.inv_pos.x && y == svi.inv_pos.y */
+    return false;
+}
+
 /** C: mklev.c occupied — trap, furniture, lava/pool, invocation tile. */
 function occupied(x, y) {
     if (tAt(x, y)) return true;
     const loc = game.level?.at(x, y);
     if (!loc) return false;
-    return !!(IS_FURNITURE(loc.typ) || loc.typ === LAVAPOOL || IS_POOL(loc.typ));
+    const typ = loc.typ | 0;
+    if (IS_FURNITURE(typ) || IS_LAVA(typ) || IS_POOL(typ)) return true;
+    return invocationPosLikeC(x, y);
 }
 
 function somexyspace(croom, c) {

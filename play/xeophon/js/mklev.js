@@ -5172,6 +5172,11 @@ function adjustedErinysDifficulty(baseDifficulty) {
     return Math.min(baseDifficulty + Math.trunc((game.u?.ualign?.abuse || 0) / 3), 25);
 }
 
+function monsterThrowsRocksByMeta(name, glyph, flags) {
+    const metaFlags = String(flags || '');
+    return (glyph === 'H' && metaFlags.includes('g')) || name === 'titan';
+}
+
 function monsterFromRndMeta(row) {
     const [name, glyph, mlevel, mmove, difficulty, maligntyp, genoFreq, flags] = row;
     const adjustedMlevel = name === 'erinys' ? adjustedErinysMlevel(mlevel) : mlevel;
@@ -5197,6 +5202,7 @@ function monsterFromRndMeta(row) {
         strong: flags.includes('S'),
         likesGems: flags.includes('g'),
         likesGold: flags.includes('g') && glyph !== 'H' && glyph !== 'u',
+        throwsRocks: monsterThrowsRocksByMeta(name, glyph, flags),
         likesMagic: MAGIC_ITEM_MONSTERS.has(name),
         mindless: flags.includes('i'),
         noeyes: NOEYES_MONSTERS.has(name),
