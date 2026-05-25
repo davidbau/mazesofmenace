@@ -1420,6 +1420,8 @@ const ICE_BOX = 216;
 const SACK = 217;
 const OILSKIN_SACK = 218;
 const BAG_OF_HOLDING = 219;
+const BAG_OF_TRICKS = 10158;
+const HORN_OF_PLENTY = 957;
 
 const SPECIFIC_ARMOR = new Set([
     PLATE_MAIL, CRYSTAL_PLATE_MAIL, SPLINT_MAIL, BANDED_MAIL, RING_MAIL,
@@ -4140,6 +4142,8 @@ function mksobj_init(otmp, otyp, artif) {
     } else if (otyp === LUMP_OF_ROYAL_JELLY || otyp === CREAM_PIE || otyp === FOOD_CLASS || SPECIFIC_FOOD_INFO.has(otyp) || otyp === FOOD_RATION || otyp === CRAM_RATION
         || otyp === LEMBAS_WAFER || otyp === K_RATION || otyp === C_RATION) {
         if (!rn2(6)) otmp.quan = 2;
+    } else if (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY) {
+        otmp.spe = rn1(18, 3);
     } else if (otyp === EXPENSIVE_CAMERA || otyp === MAGIC_MARKER) {
         otmp.spe = rn1(70, 30);
     } else if (otyp === MAGIC_HARP) {
@@ -4163,7 +4167,7 @@ function mksobj_init(otmp, otyp, artif) {
             else otmp.otyp = BAG_OF_HOLDING;
             mkbox_cnts(otmp);
         } else if (roll <= 160) {
-            rn1(18, 3);
+            otmp.spe = rn1(18, 3);
         } else if (roll > 315 && roll <= 340) {
             if (rn2(2)) rn2(7);
             blessorcurse(otmp, 5);
@@ -4198,7 +4202,7 @@ function mksobj_init(otmp, otyp, artif) {
             || (roll > 961 && roll <= 963) || (roll > 973 && roll <= 975)) {
             rn1(5, 4);
         } else if (roll > 955 && roll <= 957) {
-            rn1(18, 3);
+            otmp.spe = rn1(18, 3);
         }
         if (roll > 975) mkobj_erosion_rolls();
     } else if (otyp === WAN_WISHING) {
@@ -4897,6 +4901,28 @@ function syncGlobObjectFields(obj) {
     });
 }
 
+function unpaidBillPrice(obj) {
+    const price = Number(obj?.unpaidPrice || 0);
+    return Number.isFinite(price) ? Math.max(0, price) : 0;
+}
+
+function syncUnpaidBillLine(obj) {
+    const price = unpaidBillPrice(obj);
+    if (!obj?.line || !price) return;
+    const suffix = ` (unpaid, ${price} zorkmid${price === 1 ? '' : 's'})`;
+    if (/ \(unpaid, \d+ zorkmids?\)/.test(obj.line))
+        obj.line = obj.line.replace(/ \(unpaid, \d+ zorkmids?\)/, suffix);
+    else obj.line = `${obj.line}${suffix}`;
+}
+
+function combineAbsorbedGlobBill(absorber, absorbed) {
+    const total = unpaidBillPrice(absorber) + unpaidBillPrice(absorbed);
+    if (!total) return;
+    absorber.unpaid = true;
+    absorber.unpaidPrice = total;
+    syncUnpaidBillLine(absorber);
+}
+
 function absorbGlobObject(absorber, absorbed) {
     const w1 = globMeldWeight(absorber);
     const w2 = globMeldWeight(absorbed);
@@ -4908,6 +4934,7 @@ function absorbGlobObject(absorber, absorbed) {
     if (!!absorber.rknown !== !!absorbed.rknown) absorber.rknown = false;
     if (!!absorber.greased !== !!absorbed.greased) absorber.greased = false;
     if (absorber.orotten || absorbed.orotten) absorber.orotten = true;
+    combineAbsorbedGlobBill(absorber, absorbed);
 
     absorber.age = moves - Math.trunc((((moves - age1) * w1) + ((moves - age2) * w2)) / (w1 + w2));
     absorber.owt = Math.max(1, absorber.owt || w1) + w2;

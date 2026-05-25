@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_FLOOR, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROT_AGE, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -887,6 +887,7 @@ const TIN_OPENER = 10159;
 const LAND_MINE = 10160;
 const BEARTRAP = 10161;
 const TOOLED_HORN = 10162;
+const HORN_OF_PLENTY = 957;
 const GRAPPLING_HOOK = 10163;
 const MEAT_RING = 10164;
 const LOADSTONE = 10165;
@@ -7567,6 +7568,11 @@ function removeFloorObject(obj) {
 }
 
 function liquidFlowContainerContents(obj) {
+    const contents = Array.isArray(obj?.contents) ? obj.contents : [];
+    const cobj = Array.isArray(obj?.cobj) ? obj.cobj : [];
+    if (contents.length && cobj.length) return [...new Set([...contents, ...cobj])];
+    if (contents.length) return contents;
+    if (cobj.length) return cobj;
     if (Array.isArray(obj?.contents)) return obj.contents;
     if (Array.isArray(obj?.cobj)) return obj.cobj;
     return [];
@@ -12670,7 +12676,7 @@ function fillBoulderLiquidTerrain(loc) {
     }
 }
 
-function shopkeeperForCostlySpot(x, y) {
+function shopkeeperForShopRoom(x, y) {
     const roomno = game.level?.at?.(x, y)?.roomno || 0;
     const room = levelRoomByRoomno(roomno);
     if (!room || room.rtype < SHOPBASE) return null;
@@ -12678,6 +12684,30 @@ function shopkeeperForCostlySpot(x, y) {
         .find(mon => mon.isshk && mon.shoproom === roomno);
     if (!shkp?.isshk) return null;
     return shkp;
+}
+
+function shopkeeperInHisShop(shkp) {
+    if (!shkp?.isshk || shkp.dead || (shkp.mhp != null && shkp.mhp <= 0)) return false;
+    const x = shkp.mx ?? shkp.shk?.x;
+    const y = shkp.my ?? shkp.shk?.y;
+    if (x == null || y == null) return false;
+    return (game.level?.at?.(x, y)?.roomno || 0) === shkp.shoproom;
+}
+
+function shopkeeperForCostlySpot(x, y) {
+    const shkp = shopkeeperForShopRoom(x, y);
+    if (!shkp) return null;
+    if (shkp.shk && x === shkp.shk.x && y === shkp.shk.y) return null;
+    return shkp;
+}
+
+function heroShopkeeper() {
+    const shkp = shopkeeperForShopRoom(game.u?.ux, game.u?.uy);
+    return shopkeeperInHisShop(shkp) ? shkp : null;
+}
+
+function shopkeeperDisplayName(shkp) {
+    return shkp?.shknam || shkp?.shopkeeperName || 'the shopkeeper';
 }
 
 function buriedMerchandiseDebtMessage(x, y, ignoredObject = null) {
@@ -12695,8 +12725,7 @@ function buriedMerchandiseDebtMessage(x, y, ignoredObject = null) {
     }
     if (!loss) return '';
     shkp.debit = (shkp.debit || 0) + loss;
-    const name = shkp.shknam || shkp.shopkeeperName || 'the shopkeeper';
-    return `You owe ${name} ${loss} zorkmid${loss === 1 ? '' : 's'} for burying merchandise.`;
+    return `You owe ${shopkeeperDisplayName(shkp)} ${loss} zorkmid${loss === 1 ? '' : 's'} for burying merchandise.`;
 }
 
 function clearHeroSlimeFromMoltenLava() {
@@ -13053,6 +13082,28 @@ function syncGlobObjectFields(obj) {
     });
 }
 
+function unpaidBillPrice(obj) {
+    const price = Number(obj?.unpaidPrice || 0);
+    return Number.isFinite(price) ? Math.max(0, price) : 0;
+}
+
+function syncUnpaidBillLine(obj) {
+    const price = unpaidBillPrice(obj);
+    if (!obj?.line || !price) return;
+    const suffix = ` (unpaid, ${price} zorkmid${price === 1 ? '' : 's'})`;
+    if (/ \(unpaid, \d+ zorkmids?\)/.test(obj.line))
+        obj.line = obj.line.replace(/ \(unpaid, \d+ zorkmids?\)/, suffix);
+    else obj.line = `${obj.line}${suffix}`;
+}
+
+function combineAbsorbedGlobBill(absorber, absorbed) {
+    const total = unpaidBillPrice(absorber) + unpaidBillPrice(absorbed);
+    if (!total) return;
+    absorber.unpaid = true;
+    absorber.unpaidPrice = total;
+    syncUnpaidBillLine(absorber);
+}
+
 function absorbGlobObject(absorber, absorbed) {
     const w1 = globMeldWeight(absorber);
     const w2 = globMeldWeight(absorbed);
@@ -13064,6 +13115,7 @@ function absorbGlobObject(absorber, absorbed) {
     if (!!absorber.rknown !== !!absorbed.rknown) absorber.rknown = false;
     if (!!absorber.greased !== !!absorbed.greased) absorber.greased = false;
     if (absorber.orotten || absorbed.orotten) absorber.orotten = true;
+    combineAbsorbedGlobBill(absorber, absorbed);
 
     absorber.age = moves - Math.trunc((((moves - age1) * w1) + ((moves - age2) * w2)) / (w1 + w2));
     absorber.owt = Math.max(1, absorber.owt || w1) + w2;
@@ -13177,8 +13229,10 @@ function globIceState(entry) {
 
 function removeShrunkGlob(entry) {
     const obj = entry.obj;
+    rememberUsedUpShopBill(obj);
     if (entry.parent) {
         removeContainedObject(entry.parent, obj);
+        refreshGlobEntryContainerWeights(entry);
         return;
     }
     if (entry.source === 'inventory') {
@@ -13197,6 +13251,97 @@ function removeShrunkGlob(entry) {
 function outerInventoryContainer(entry) {
     if (entry.source !== 'inventory' || !entry.parent) return null;
     return entry.root || entry.parent;
+}
+
+function usedUpShopBillName(obj) {
+    let name = String(obj?.line || '')
+        .replace(/^[a-zA-Z$] - /, '')
+        .replace(/ \(unpaid, \d+ zorkmids?\)/, '');
+    if (name) return name;
+    const baseName = pickupObjectName({ ...(obj || {}), quan: 1 });
+    return `${/^[aeiou]/i.test(baseName) ? 'an' : 'a'} ${baseName}`;
+}
+
+function rememberUsedUpShopBill(obj) {
+    const price = unpaidBillPrice(obj);
+    if (!obj?.unpaid || !price) return;
+    game._usedUpShopBills ??= [];
+    game._usedUpShopBills.push({ name: usedUpShopBillName(obj), price });
+}
+
+function objectWeightKind(obj) {
+    const kind = String(obj?.actualKind || obj?.kind || obj?.spellName || obj?.spell?.name || '').toLowerCase();
+    if (/war hammer|mjollnir/.test(kind)) return 'war hammer';
+    if (!kind && obj?.otyp === LARGE_BOX) return 'large box';
+    if (!kind && obj?.otyp === CHEST) return 'chest';
+    if (!kind && obj?.otyp === ICE_BOX) return 'ice box';
+    if (!kind && obj?.otyp === SACK) return 'sack';
+    if (!kind && obj?.otyp === OILSKIN_SACK) return 'oilskin sack';
+    if (!kind && obj?.otyp === BAG_OF_HOLDING) return 'bag of holding';
+    return kind;
+}
+
+function objectWeightClass(obj) {
+    return obj?.cls || (obj?.otyp === RING_CLASS ? 'ring'
+        : obj?.otyp === SCROLL_CLASS ? 'scroll'
+            : obj?.otyp === POTION_CLASS ? 'potion'
+                : obj?.otyp === WAND_CLASS ? 'wand'
+                    : obj?.otyp === GEM_CLASS ? 'gem'
+                        : obj?.otyp === FOOD_CLASS ? 'food'
+                            : obj?.otyp === AMULET_CLASS ? 'amulet' : '');
+}
+
+function containerBaseWeight(obj) {
+    if (obj?.otyp === LARGE_BOX) return 350;
+    if (obj?.otyp === CHEST) return 600;
+    if (obj?.otyp === ICE_BOX) return 900;
+    if (obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK || obj?.otyp === BAG_OF_HOLDING) return 15;
+    return null;
+}
+
+function isGlobWeightContainerObject(obj) {
+    return obj?.otyp === LARGE_BOX || obj?.otyp === CHEST || obj?.otyp === ICE_BOX
+        || obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK || obj?.otyp === BAG_OF_HOLDING;
+}
+
+function globObjectWeight(obj) {
+    if (isGlobbyObject(obj)) return Math.max(0, obj.owt ?? 20);
+    if (obj?.otyp === GOLD_PIECE || obj?.cls === 'coin' || obj?.glyph === '$')
+        return Math.max(1, Math.trunc(((obj.quan || 1) + 50) / 100));
+    const contents = globContents(obj);
+    if (contents.length || isGlobWeightContainerObject(obj)) {
+        let contentsWeight = contents.reduce((sum, item) => sum + globObjectWeight(item), 0);
+        if (obj?.otyp === BAG_OF_HOLDING) {
+            contentsWeight = obj.cursed ? contentsWeight * 2
+                : obj.blessed ? Math.trunc((contentsWeight + 3) / 4)
+                    : Math.trunc((contentsWeight + 1) / 2);
+        }
+        const baseKind = objectWeightKind(obj);
+        const base = containerBaseWeight(obj) ?? OBJECT_WEIGHTS[baseKind] ?? CLASS_WEIGHTS[objectWeightClass(obj)] ?? 0;
+        return Math.max(0, base + contentsWeight);
+    }
+    const kind = objectWeightKind(obj);
+    const cls = objectWeightClass(obj);
+    const unitWeight = OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? obj?.owt ?? 0;
+    return Math.max(0, unitWeight * (obj?.quan || 1));
+}
+
+function globEntryTopContainer(entry) {
+    if (!entry?.parent) return null;
+    const chain = entry.ancestors?.length ? entry.ancestors : [entry.parent];
+    return chain[0] || entry.parent;
+}
+
+function refreshGlobEntryContainerWeights(entry, oldTopWeight = null) {
+    if (!entry?.parent) return { top: null, oldTopWeight: 0, newTopWeight: 0 };
+    const chain = entry.ancestors?.length ? entry.ancestors : [entry.parent];
+    const top = globEntryTopContainer(entry);
+    oldTopWeight ??= globObjectWeight(top);
+    for (let i = chain.length - 1; i >= 0; i--) {
+        const container = chain[i];
+        if (container) container.owt = globObjectWeight(container);
+    }
+    return { top, oldTopWeight, newTopWeight: top?.owt ?? globObjectWeight(top) };
 }
 
 function globFloorVisible(entry) {
@@ -13223,6 +13368,7 @@ function catchUpGlobShrink(entry, iceState) {
         return [];
     }
     obj.owt = Math.max(0, (obj.owt ?? 20) - Math.max(1, delta));
+    refreshGlobEntryContainerWeights(entry);
     startGlobShrinkTimeout(obj, nextDelay);
     return [];
 }
@@ -13246,17 +13392,20 @@ function processGlobShrinkEntry(entry) {
     const oldWeight = Math.max(0, obj.owt ?? 20);
     const thresholdMessage = oldWeight > 0 && oldWeight % 10 === 0;
     const name = globShrinkName(obj);
+    const topContainer = outerInventoryContainer(entry);
+    const oldTopContainerWeight = topContainer ? globObjectWeight(topContainer) : null;
     obj.owt = Math.max(0, oldWeight - 1);
     if ((obj.oeaten || 0) > 1) obj.oeaten -= 1;
+    const containerWeights = refreshGlobEntryContainerWeights(entry, oldTopContainerWeight);
 
     const messages = [];
     const gone = !obj.owt;
     if (entry.source === 'inventory' && !entry.parent && (thresholdMessage || gone))
         messages.push(`Your ${name} ${gone ? 'dissolves completely' : 'shrinks'}.`);
-    const topContainer = outerInventoryContainer(entry);
     if (topContainer && (thresholdMessage || gone)) {
         const topName = pickupObjectName(topContainer);
-        messages.push(`Your ${topName} becomes${gone ? '' : ' slightly'} lighter.`);
+        const verb = containerWeights.newTopWeight !== containerWeights.oldTopWeight ? 'becomes' : 'seems';
+        messages.push(`Your ${topName} ${verb}${gone ? '' : ' slightly'} lighter.`);
     }
 
     if (gone) {
@@ -15606,7 +15755,7 @@ function iceBoxPutCategory(item) {
     return 'other';
 }
 
-function buildIceBoxPutItems() {
+function buildIceBoxPutItems(iceBox = null) {
     const putItems = [];
     if (game._goldCount) {
         putItems.push({
@@ -15616,16 +15765,18 @@ function buildIceBoxPutItems() {
     }
     for (const item of game.inventory || []) {
         if (item.letter === '$' || item.cls === 'coin' || item.glyph === '$') continue;
+        if (item === iceBox) continue;
         putItems.push({ item, category: iceBoxPutCategory(item) });
     }
     return putItems;
 }
 
-function iceBoxPutLetters() {
+function iceBoxPutLetters(iceBox = null) {
     const letters = [];
     if (game._goldCount) letters.push('$');
     for (const item of game.inventory || []) {
         if (item.letter === '$' || item.cls === 'coin' || item.glyph === '$') continue;
+        if (item === iceBox) continue;
         if (item.letter) letters.push(item.letter);
     }
     return letters.join('');
@@ -15686,9 +15837,27 @@ function iceBoxEmptyMessage() {
     return 'The ice box is empty.';
 }
 
-function iceBoxContainerAvailable(iceBox) {
+function iceBoxIsOnHeroFloor(iceBox) {
     return !!(iceBox && (game.level?.objects || []).includes(iceBox)
         && iceBox.ox === game.u?.ux && iceBox.oy === game.u?.uy);
+}
+
+function iceBoxIsCarried(iceBox) {
+    return !!(iceBox && (game.inventory || []).includes(iceBox));
+}
+
+function iceBoxContainerAvailable(iceBox) {
+    return iceBoxIsOnHeroFloor(iceBox) || iceBoxIsCarried(iceBox);
+}
+
+function setIceBoxActionMenu(iceBox, done = false) {
+    game._icebox_action_container = iceBox || null;
+    setOverlay(done ? LOOT_ICE_MENU_DONE_LINES : LOOT_ICE_MENU_LINES, 11);
+    game._command_mode = 'iceBoxAction';
+}
+
+function clearIceBoxActionState() {
+    game._icebox_action_container = null;
 }
 
 function iceBoxPutTypeChoices(putItems) {
@@ -15740,7 +15909,7 @@ function drawIceBoxPutTypeMenu() {
 }
 
 function beginIceBoxPutIn(iceBox) {
-    const putItems = buildIceBoxPutItems();
+    const putItems = buildIceBoxPutItems(iceBox);
     if (!putItems.length) return false;
     game._icebox_put_container = iceBox;
     game._icebox_put_items = putItems;
@@ -15805,6 +15974,31 @@ function iceBoxPutRejectMessage(iceBox, item) {
     return '';
 }
 
+function containerPutRejectMessage(container, item) {
+    if (!item) return "You don't have that object.";
+    if (isIceBoxObject(container)) return iceBoxPutRejectMessage(container, item);
+    if (item === game.u?.uball || item === game.u?.uchain) return 'You must be kidding.';
+    if (item === container) return 'That would be an interesting topological exercise.';
+    if (isWornInventoryItem(item)) return 'You cannot stash something you are wearing.';
+    const kind = objectKindKey(item);
+    if ((item.otyp === LOADSTONE || kind === 'loadstone') && item.cursed) {
+        item.bknown = true;
+        return `The stone${(item.quan || 1) === 1 ? '' : 's'} won't leave your person.`;
+    }
+    const actual = String(item.actualKind || '').toLowerCase();
+    if (item.realAmuletOfYendor || actual === 'amulet of yendor' || (!actual && kind === 'amulet of yendor')
+        || isBookOfTheDeadItem(item) || isBellOfOpeningItem(item) || isCandelabrumOfInvocationItem(item))
+        return `The ${articlelessObjectName(item)} cannot be confined in such trappings.`;
+    if (kind === 'leash' && item.leashmon) return 'The leash is attached to your pet.';
+    const boxLike = isIceBoxObject(item) || item.otyp === CHEST || item.otyp === LARGE_BOX
+        || kind === 'chest' || kind === 'large box';
+    const bigStatue = item.otyp === STATUE
+        && (item.big || item.bigStatue || item.large || item.corpsenm?.msize === 'large' || item.corpsenm?.size === 'large');
+    if (boxLike || item.otyp === BOULDER || kind === 'boulder' || bigStatue)
+        return `You cannot fit the ${articlelessObjectName(item)} into the ${tipContainerSimpleName(container)}.`;
+    return '';
+}
+
 function clearContainerPutEquipmentState(item, name) {
     const line = String(item.line || '');
     if (item.wielded || /(?:weapon|wielded) in/.test(line) || line.includes('(wielded)')) {
@@ -15851,6 +16045,44 @@ function putInventoryObjectIntoIceBox(iceBox, item, amount = item?.quan || 1) {
     return { moved: true, message: `You put ${name} into the ice box.` };
 }
 
+function putInventoryObjectIntoBag(bag, item, amount = item?.quan || 1) {
+    if (!bag || !(game.inventory || []).includes(bag)) return { moved: false, message: '' };
+    bag.contents ??= [];
+    bag.cknown = true;
+    if (item?.letter === '$' || item?.otyp === GOLD_PIECE || item?.cls === 'coin' || item?.glyph === '$') {
+        const gold = Math.min(Math.max(0, amount || 0), game._goldCount || 0);
+        if (!gold) return { moved: false, message: 'You have no gold to put in.' };
+        add_to_container(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
+        game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
+        game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
+        const money = (game.inventory || []).find(invItem => invItem.letter === '$' || invItem.cls === 'coin');
+        if (money && game._goldCount) {
+            money.quan = game._goldCount;
+            updateMoneyLine(money);
+        } else {
+            game.inventory = (game.inventory || []).filter(invItem => invItem.letter !== '$' && invItem.cls !== 'coin');
+        }
+        game._pet_food_scan_inventory = game.inventory;
+        return { moved: true, message: `You put ${gold} gold piece${gold === 1 ? '' : 's'} into the bag.` };
+    }
+
+    const reject = containerPutRejectMessage(bag, item);
+    if (reject) return { moved: false, message: reject };
+
+    const name = inventoryItemName(item);
+    const count = Math.min(Math.max(1, amount || 1), item.quan || 1);
+    const putItem = (item.quan || 1) > count ? { ...item, quan: count } : item;
+    clearContainerPutEquipmentState(putItem, name);
+    if (isMagicBagObject(bag) && magicBagExplodesWithObject(putItem)) {
+        removeInventoryItem(item, count);
+        return explodeMagicBagTransfer(bag, putItem, []);
+    }
+    removeInventoryItem(item, count);
+    add_to_container(bag, putItem);
+    game._pet_food_scan_inventory = game.inventory;
+    return { moved: true, message: `You put ${name} into the bag.` };
+}
+
 async function showIceBoxMessageList(messages) {
     messages = (messages || []).filter(Boolean);
     if (!messages.length) return;
@@ -15878,6 +16110,7 @@ async function finishIceBoxSequence(messages = [], moved = false) {
     const allMessages = [...(game._icebox_sequence_messages || []), ...(messages || [])];
     const used = moved || !!game._icebox_sequence_used;
     clearIceBoxSequenceState();
+    clearIceBoxActionState();
     game._command_mode = null;
     game._overlay_lines = null;
     game._overlay_hide_status = 0;
@@ -15914,7 +16147,7 @@ async function continueIceBoxSequenceToTakeout(iceBox, messages = []) {
 }
 
 async function beginIceBoxStash(iceBox) {
-    const letters = iceBoxPutLetters();
+    const letters = iceBoxPutLetters(iceBox);
     if (!letters) return false;
     game._icebox_put_container = iceBox;
     game._icebox_stash_letters = letters;
@@ -15997,7 +16230,7 @@ function prepareContainerTakeoutObject(container, obj) {
     return obj;
 }
 
-function placeTippedObjectOnFloor(obj, x, y, messages) {
+function placeObjectOnFloorWithEffects(obj, x, y, messages, verb = 'drop', { stack = false } = {}) {
     obj.contained = false;
     obj.container = null;
     obj.ox = x;
@@ -16009,32 +16242,942 @@ function placeTippedObjectOnFloor(obj, x, y, messages) {
     delete obj.nobj;
     delete obj.nexthere;
     Object.assign(obj, object_display(obj));
-    if (!earthFloorEffects(obj, x, y, messages, 'drop')) {
+    if (!earthFloorEffects(obj, x, y, messages, verb)) {
         game.level.objects ??= [];
-        game.level.objects.push(obj);
+        const stacked = stack ? stackMonsterThrownObject(obj) : obj;
+        if (stacked === obj) game.level.objects.push(obj);
         objectIceEffect(obj, x, y);
+        newsym(x, y);
+        return true;
     }
     newsym(x, y);
+    return false;
 }
 
-function tipIceBoxToFloor(iceBox) {
-    const contents = [...(iceBox?.contents || [])];
-    iceBox.cknown = true;
-    if (!contents.length) return ['The ice box is empty.'];
-    const x = game.u?.ux ?? iceBox.ox ?? 0;
-    const y = game.u?.uy ?? iceBox.oy ?? 0;
+function placeTippedObjectOnFloor(obj, x, y, messages) {
+    placeObjectOnFloorWithEffects(obj, x, y, messages, 'drop');
+}
+
+function tipContainerSimpleName(source) {
+    const display = BAG_OBJECT_TYPES.has(source?.otyp) ? { ...source, cknown: false } : source;
+    const name = articlelessObjectName(display);
+    if ((source?.broken || source?.obroken) && /^(?:large box|chest)$/.test(name))
+        return `broken ${name}`;
+    return name;
+}
+
+function tipContainerEmptyMessage(source) {
+    return `The ${tipContainerSimpleName(source)} is empty.`;
+}
+
+function thawObjectTippedFromSource(source, obj) {
+    if (isIceBoxObject(source)) removedFromIcebox(obj);
+}
+
+function tipContainerToFloor(source) {
+    const contents = [...liquidFlowContainerContents(source)];
+    source.cknown = true;
+    if (!contents.length) return [tipContainerEmptyMessage(source)];
+    const x = game.u?.ux ?? source.ox ?? 0;
+    const y = game.u?.uy ?? source.oy ?? 0;
+    const cursedMagicBag = isMagicBagObject(source) && source.cursed;
     const names = contents.map(containerObjectPhrase).join(', ');
-    const messages = [contents.length === 1
-        ? `An object spills out: ${names}.`
-        : `Objects spill out: ${names}.`];
+    const messages = [cursedMagicBag
+        ? (contents.length === 1 ? 'An object spills out.' : 'Objects spill out.')
+        : contents.length === 1
+            ? `An object spills out: ${names}.`
+            : `Objects spill out: ${names}.`];
     for (const obj of contents) {
-        removeContainedObject(iceBox, obj);
-        removedFromIcebox(obj);
+        removeContainedObject(source, obj);
+        thawObjectTippedFromSource(source, obj);
+        if (cursedMagicBag && !rn2(13)) {
+            destroyMagicBagItem(obj, messages);
+            continue;
+        }
         placeTippedObjectOnFloor(obj, x, y, messages);
     }
-    if (Array.isArray(iceBox.contents)) iceBox.contents.length = 0;
-    if (Array.isArray(iceBox.cobj)) iceBox.cobj.length = 0;
+    if (Array.isArray(source.contents)) source.contents.length = 0;
+    if (Array.isArray(source.cobj)) source.cobj.length = 0;
+    refreshTipContainerWeight(source);
     return messages;
+}
+
+function isTipContainerObject(obj) {
+    if (!obj) return false;
+    if (isIceBoxObject(obj) || isBoxObject(obj) || BAG_OBJECT_TYPES.has(obj.otyp)) return true;
+    return /^(?:large box|chest|ice box|sack|oilskin sack|bag of holding|bag)$/.test(objectKindKey(obj));
+}
+
+function isBagOfTricksObject(obj) {
+    return !!obj && (obj.otyp === BAG_OF_TRICKS || objectKindKey(obj) === 'bag of tricks'
+        || pickupObjectName({ ...obj, quan: 1 }).toLowerCase() === 'bag of tricks');
+}
+
+function isUnknownBagOfTricksObject(obj) {
+    return isBagOfTricksObject(obj) && obj.known !== true
+        && String(obj.kind || '').toLowerCase() === 'bag';
+}
+
+function isHornOfPlentyObject(obj) {
+    return !!obj && (obj.otyp === HORN_OF_PLENTY || objectKindKey(obj) === 'horn of plenty'
+        || pickupObjectName({ ...obj, quan: 1 }).toLowerCase() === 'horn of plenty');
+}
+
+function isTipSourceObject(obj) {
+    return isTipContainerObject(obj) || isBagOfTricksObject(obj) || isHornOfPlentyObject(obj);
+}
+
+function isFloorTipSourceObject(obj) {
+    return isTipContainerObject(obj) || isBagOfTricksObject(obj) || isHornOfPlentyObject(obj);
+}
+
+function isTipTargetContainer(obj) {
+    return isTipContainerObject(obj) || isUnknownBagOfTricksObject(obj);
+}
+
+function carriedTipTargetContainers(source) {
+    if (polyselfNoHands()) return [];
+    return (game.inventory || [])
+        .filter(obj => obj !== source && isTipTargetContainer(obj)
+            && !(obj.lknown && (obj.locked || obj.olocked)));
+}
+
+function tipTargetPhrase(targetBox) {
+    const name = articlelessObjectName(targetBox);
+    return `the ${name}`;
+}
+
+function tipContainerCheckMessage(container, { allowEmpty = false } = {}) {
+    if (!container) return "You don't have that object.";
+    container.lknown = true;
+    if (container.locked || container.olocked) return `The ${tipContainerSimpleName(container)} is locked.`;
+    if (container.otrapped) {
+        container.otrapped = false;
+        container.tknown = false;
+        return 'You trigger a trap!';
+    }
+    if (!allowEmpty && !liquidFlowContainerContents(container).length) {
+        container.cknown = true;
+        return tipContainerEmptyMessage(container);
+    }
+    return '';
+}
+
+function tipChargeCount(item) {
+    return Math.max(0, item?.spe ?? 0);
+}
+
+function consumeTipCharge(item) {
+    item.spe = Math.max(0, (item.spe ?? 0) - 1);
+    updateChargedItemLine(item);
+}
+
+function identifyChargedToolKind(item, knownKind) {
+    if (!item || !knownKind) return;
+    item.known = true;
+    item.actualKind = knownKind;
+    item.kind = knownKind;
+    updateChargedItemLine(item);
+}
+
+function clearTipState() {
+    game._tip_container_object = null;
+    game._tip_target_entries = null;
+    game._overlay_lines = null;
+    game._overlay_hide_status = 0;
+}
+
+function drawTipDestinationMenu(source, targets) {
+    const sourceName = (game.inventory || []).includes(source)
+        ? inventoryItemName(source)
+        : `the ${tipContainerSimpleName(source)}`;
+    const rows = [
+        [0, 32, `Where to tip the contents of ${sourceName}?`, 1],
+        [2, 32, '- - on the floor'],
+    ];
+    let row = 4;
+    for (const target of targets) {
+        rows.push([row++, 32, `${target.letter || '?'} - ${normalInventoryLine(target).replace(/^[a-zA-Z] - /, '')}`]);
+        if (row >= 23) break;
+    }
+    rows.push([row, 32, '(end)']);
+    setOverlay(rows, Math.max(5, row + 1), false, 31);
+}
+
+function beginTipDestinationSelection(source) {
+    const targets = carriedTipTargetContainers(source);
+    if (!targets.length) return false;
+    game._tip_container_object = source;
+    game._tip_target_entries = targets.map(target => ({ target, letter: target.letter }));
+    drawTipDestinationMenu(source, targets);
+    game._command_mode = 'tipDestination';
+    return true;
+}
+
+function prepareTippedObjectForContainer(obj) {
+    obj.contained = false;
+    obj.container = null;
+    delete obj.ox;
+    delete obj.oy;
+    delete obj.hidden;
+    delete obj.buried;
+    delete obj.transientProjectile;
+    delete obj.nobj;
+    delete obj.nexthere;
+}
+
+function refreshTipContainerWeight(container) {
+    if (isGlobWeightContainerObject(container)) container.owt = globObjectWeight(container);
+}
+
+function isBagOfHoldingObject(obj) {
+    return !!obj && (obj.otyp === BAG_OF_HOLDING || objectKindKey(obj) === 'bag of holding');
+}
+
+function isMagicBagObject(obj) {
+    return isBagOfHoldingObject(obj) || isBagOfTricksObject(obj);
+}
+
+function isWandOfCancellationObject(obj) {
+    return !!obj && (obj.wandIndex === WAND_NAME_TO_INDEX.get('cancellation')
+        || wandTypeName(obj) === 'cancellation'
+        || objectKindKey(obj) === 'wand of cancellation'
+        || objectKindKey(obj) === 'cancellation');
+}
+
+function magicBagExplodesWithObject(obj, depth = 0) {
+    if ((isWandOfCancellationObject(obj) || isBagOfTricksObject(obj)) && (obj.spe ?? 0) <= 0)
+        return false;
+    if ((isMagicBagObject(obj) || isWandOfCancellationObject(obj))
+        && rn2(1 << Math.min(depth, 7)) <= depth)
+        return true;
+    for (const content of liquidFlowContainerContents(obj))
+        if (magicBagExplodesWithObject(content, depth + 1)) return true;
+    return false;
+}
+
+function magicBagItemGoneMessage(item) {
+    const subject = upstartText(containerObjectPhrase(item));
+    const verb = (item.quan || 1) > 1 ? 'have' : 'has';
+    return `${subject} ${verb} vanished!`;
+}
+
+function removeObjectFromWorld(obj) {
+    if (!obj) return;
+    if ((game.inventory || []).includes(obj))
+        game.inventory = (game.inventory || []).filter(item => item !== obj);
+    if ((game.level?.objects || []).includes(obj)) {
+        const x = obj.ox;
+        const y = obj.oy;
+        removeFloorObject(obj);
+        if (x != null && y != null) newsym(x, y);
+    }
+    stopCarriedFigurineTimerOnLeave(obj);
+    game._pet_food_scan_inventory = game.inventory || [];
+}
+
+function destroyMagicBagItem(item, messages, { silent = false } = {}) {
+    if (!item) return;
+    if (!silent) messages.push(magicBagItemGoneMessage(item));
+    removeObjectFromWorld(item);
+}
+
+function magicBagContentsLoss(container, messages, { silent = false } = {}) {
+    if (!isMagicBagObject(container) || !container.cursed) return 0;
+    let lost = 0;
+    for (const obj of [...liquidFlowContainerContents(container)]) {
+        if (rn2(13)) continue;
+        removeContainedObject(container, obj);
+        destroyMagicBagItem(obj, messages, { silent });
+        lost++;
+    }
+    refreshTipContainerWeight(container);
+    return lost;
+}
+
+function magicBagScatterBreakMessage(obj, breakKind, messages) {
+    if (!breakKind) return;
+    if (breakKind === 'splat') {
+        messages.push('Splat!');
+        return;
+    }
+    if (breakKind === 'mess') {
+        messages.push('What a mess!');
+        return;
+    }
+    if (game.u?.blind) {
+        messages.push('You hear something shatter!');
+        return;
+    }
+    const name = pickupObjectName({ ...obj, quan: obj.quan || 1 });
+    const many = (obj.quan || 1) > 1;
+    const subject = many ? `The ${name}` : (/^[aeiou]/i.test(name) ? `An ${name}` : `A ${name}`);
+    const verb = many ? 'shatter' : 'shatters';
+    messages.push(`${subject} ${verb}${breakKind === 'pieces' ? ' into a thousand pieces' : ''}!`);
+}
+
+function magicBagScatterBreaks(obj, sx, sy, messages) {
+    const randomBreak = !rn2(10);
+    const material = String(obj?.material || obj?.oc_material || '').toLowerCase();
+    const forcedBreak = obj?.otyp === EGG || objectKindKey(obj) === 'egg' || material === 'glass';
+    if (!randomBreak && !forcedBreak) return false;
+    const breakKind = impactDropBreakKind(obj);
+    if (!breakKind && !forcedBreak) return false;
+    if (floorObjectVisible(sx, sy)) magicBagScatterBreakMessage(obj, breakKind || 'shatter', messages);
+    destroyMagicBagItem(obj, messages, { silent: true });
+    return true;
+}
+
+function splitMagicBagScatterStack(obj) {
+    if ((obj?.quan || 1) <= 1) return obj;
+    const splitCount = rnd(Math.min(obj.quan - 1, Number.MAX_SAFE_INTEGER));
+    obj.quan -= splitCount;
+    return {
+        ...obj,
+        id: next_ident(),
+        quan: splitCount,
+        contents: Array.isArray(obj.contents) ? [...obj.contents] : obj.contents,
+        cobj: Array.isArray(obj.cobj) ? [...obj.cobj] : obj.cobj,
+    };
+}
+
+function magicBagScatterClosedDoor(x, y) {
+    const loc = game.level?.at(x, y);
+    return !!(loc?.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+function magicBagScatterWeight(obj) {
+    return Math.max(0, globObjectWeight(obj) || obj?.owt || obj?.weight || floorEffectsObjectWeight(obj));
+}
+
+function magicBagScatterMonsterAt(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon.mx === x && mon.my === y && !mon.dead && (mon.mhp == null || mon.mhp > 0));
+}
+
+function magicBagScatterObjectName(obj) {
+    return pickupObjectName({ ...obj, quan: Math.max(1, obj?.quan || 1) });
+}
+
+function magicBagScatterMissileName(obj) {
+    return pickupObjectName({ ...obj, quan: 1 });
+}
+
+function magicBagScatterObjectArticle(obj) {
+    const name = magicBagScatterObjectName(obj);
+    return (obj?.quan || 1) > 1 ? name : articleFor(name);
+}
+
+function magicBagScatterMonsterHitBonus(mon) {
+    const data = mon?.data || {};
+    let bonus = data.verysmall || data.tiny ? -2 : data.small ? -1 : 0;
+    if (data.big || data.bigmonst || data.large || data.strong) bonus += 2;
+    if (mon?.msleeping) bonus += 2;
+    if (mon?.mcanmove === 0 || data.mmove === 0) bonus += 4;
+    return bonus;
+}
+
+function magicBagScatterObjectHitBonus(obj) {
+    if (obj?.otyp === HEAVY_IRON_BALL) return 2;
+    if (obj?.otyp === BOULDER) return 6;
+    const cls = obj?.cls || (obj?.otyp === GEM_CLASS ? 'gem' : obj?.otyp === WEAPON_CLASS ? 'weapon' : '');
+    return (cls === 'weapon' || cls === 'gem' || obj?.glyph === ')') ? (obj?.spe || 0) : 0;
+}
+
+function magicBagScatterHitConsumesObject(obj) {
+    const kind = objectKindKey(obj);
+    return isPotionObject(obj)
+        || obj?.otyp === CREAM_PIE || kind === 'cream pie'
+        || obj?.otyp === EGG || kind === 'egg'
+        || obj?.cls === 'venom';
+}
+
+function magicBagScatterKillVerb(mon) {
+    const data = mon?.data || {};
+    return data.nonliving || data.mlet === 'Z' || data.mlet === 'zombie'
+        || data.glyph === 'Z' || data.name?.includes('zombie') || data.name?.endsWith(' golem')
+        ? 'destroyed'
+        : 'killed';
+}
+
+function magicBagScatterCorpseData(mon) {
+    const data = mon?.data || {};
+    return data.corpse
+        || (data.name?.endsWith(' zombie') ? monsterByRndName(data.name.replace(/ zombie$/, '')) : null)
+        || data;
+}
+
+function magicBagScatterRemoveKilledMonster(mon, messages) {
+    const data = mon?.data || {};
+    const corpseData = magicBagScatterCorpseData(mon);
+    const dropCorpse = monsterLeavesCorpseLikeDrop(corpseData)
+        && monsterCorpseDropSucceeds(mon, data);
+    dropMonsterInventory(mon, messages);
+    if (dropCorpse) createMonsterCorpseOrGlob(mon, corpseData, mon.mx, mon.my, { messages });
+    recordVanquished(mon, !game._monster_moving);
+    const loc = game.level?.at(mon.mx, mon.my);
+    if (loc?.map_invisible) {
+        loc.map_invisible = false;
+        loc.remembered_glyph = null;
+    }
+    game.level.monsters = (game.level?.monsters || []).filter(other => other !== mon);
+    mon.mhp = 0;
+    mon.dead = true;
+    mon.movement = 0;
+    newsym(mon.mx, mon.my);
+}
+
+function magicBagScatterHitMonster(mon, obj, x, y, messages) {
+    const visible = floorObjectVisible(x, y);
+    const monsterName = fireScrollMonsterName(mon).replace(/^The /, 'the ');
+    const toHit = 5 + (mon?.data?.mac ?? 10)
+        + magicBagScatterMonsterHitBonus(mon)
+        + magicBagScatterObjectHitBonus(obj);
+    if (toHit < rnd(20)) {
+        if (visible)
+            messages.push(`${sentenceCase(articleFor(magicBagScatterMissileName(obj)))} misses ${monsterName}.`);
+        return { stopped: false, consumed: false };
+    }
+
+    const consumedOnHit = magicBagScatterHitConsumesObject(obj);
+    const damage = consumedOnHit ? 0 : earthObjectDamage(obj, mon);
+    mon.msleeping = 0;
+    if (visible) {
+        const punct = damage > 4 ? '!' : '.';
+        messages.push(`${sentenceCase(articleFor(magicBagScatterMissileName(obj)))} hits ${monsterName}${punct}`);
+    }
+    if (damage > 0) mon.mhp = (mon.mhp || 1) - damage;
+    if ((mon.mhp || 0) <= 0) {
+        if (visible)
+            messages.push(`${fireScrollMonsterName(mon)} is ${magicBagScatterKillVerb(mon)}!`);
+        magicBagScatterRemoveKilledMonster(mon, messages);
+    } else if (!game._monster_moving) {
+        mon.mpeaceful = false;
+    }
+
+    if (consumedOnHit) {
+        destroyMagicBagItem(obj, messages, { silent: true });
+        newsym(x, y);
+        return { stopped: true, consumed: true };
+    }
+    placeObjectOnFloorWithEffects(obj, x, y, messages, 'land', { stack: true });
+    return { stopped: true, consumed: false };
+}
+
+function magicBagScatterHitHero(obj, messages) {
+    if (!game.u) return { hit: false, consumed: false };
+    const form = polyselfForm() || {};
+    const damage = earthObjectDamage(obj, { data: form });
+    const hitValue = 8 + (obj?.spe || 0) + (form.big || form.bigmonst ? 1 : 0);
+    const roll = rnd(20);
+    const objectName = magicBagScatterObjectArticle(obj);
+    if ((game.u.uac ?? 10) + hitValue <= roll) {
+        if (game.u.blind || game.flags?.verbose === false) messages.push('It misses.');
+        else if ((game.u.uac ?? 10) + hitValue <= roll - 2)
+            messages.push(`${sentenceCase(objectName)} misses you.`);
+        else
+            messages.push(`You are almost hit by ${objectName}.`);
+        return { hit: false, consumed: false };
+    }
+
+    if (game.u.blind || game.flags?.verbose === false) messages.push(`You are hit${damage > 4 ? '!' : '.'}`);
+    else messages.push(`You are hit by ${objectName}${damage > 4 ? '!' : '.'}`);
+    if (magicBagScatterHitConsumesObject(obj)) {
+        destroyMagicBagItem(obj, messages, { silent: true });
+        return { hit: true, consumed: true };
+    }
+    if (damage > 0) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 1) - damage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = `killed by ${magicBagScatterObjectName(obj)}`;
+            messages.push('You die...');
+        }
+    }
+    return { hit: true, consumed: false };
+}
+
+function magicBagScatterShopContext(sx, sy) {
+    const originRoomno = game.level?.at?.(sx, sy)?.roomno || 0;
+    const shkp = shopkeeperForCostlySpot(sx, sy);
+    return shkp ? {
+        shkp,
+        originRoomno,
+        beforeCredit: Math.max(0, Math.trunc(Number(shkp.credit || 0))),
+        beforeDebit: Math.max(0, Math.trunc(Number(shkp.debit || 0))),
+        beforeLoan: Math.max(0, Math.trunc(Number(shkp.loan || 0))),
+    } : null;
+}
+
+function magicBagScatterGoldValue(obj) {
+    if (!(obj?.otyp === GOLD_PIECE || obj?.cls === 'coin' || obj?.glyph === '$')) return 0;
+    return Math.max(1, obj.quan || 1);
+}
+
+function magicBagScatterHeroInOriginShop(shopContext) {
+    const roomno = game.level?.at?.(game.u?.ux, game.u?.uy)?.roomno || 0;
+    return roomno >= ROOMOFFSET && roomno === shopContext?.originRoomno;
+}
+
+function chargeShopGold(shkp, amount) {
+    if (!shkp || !(amount > 0)) return;
+    const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    if (credit >= amount) {
+        shkp.credit = credit - amount;
+        return;
+    }
+    const delta = amount - credit;
+    shkp.credit = 0;
+    shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + delta;
+    shkp.loan = Math.max(0, Math.trunc(Number(shkp.loan || 0))) + delta;
+}
+
+function maybeBillMagicBagScatterGold(obj, sx, sy, x, y, shopContext) {
+    if (!shopContext?.shkp || (x === sx && y === sy)) return;
+    if (shopkeeperForCostlySpot(x, y) || !magicBagScatterHeroInOriginShop(shopContext)) return;
+    chargeShopGold(shopContext.shkp, magicBagScatterGoldValue(obj));
+}
+
+function finishMagicBagScatterShopBilling(shopContext, messages) {
+    if (!shopContext?.shkp) return;
+    const nowCredit = Math.max(0, Math.trunc(Number(shopContext.shkp.credit || 0)));
+    const nowDebit = Math.max(0, Math.trunc(Number(shopContext.shkp.debit || 0)));
+    const nowLoan = Math.max(0, Math.trunc(Number(shopContext.shkp.loan || 0)));
+    let amount = 0;
+    let kind = 'debt has increased';
+    if (nowCredit < shopContext.beforeCredit) {
+        amount = shopContext.beforeCredit - nowCredit;
+        kind = 'credit has been reduced';
+    } else if (nowDebit > shopContext.beforeDebit) {
+        amount = nowDebit - shopContext.beforeDebit;
+    } else if (nowLoan > shopContext.beforeLoan) {
+        amount = nowLoan - shopContext.beforeLoan;
+    }
+    if (amount)
+        messages.push(`Your ${kind} by ${amount} zorkmid${amount === 1 ? '' : 's'}.`);
+}
+
+function scatterMagicBagObject(container, obj, sx, sy, messages, shopContext = null) {
+    const scatterObj = splitMagicBagScatterStack(obj);
+    if (scatterObj !== obj) {
+        scatterObj.container = null;
+        scatterObj.contained = false;
+    } else {
+        removeContainedObject(container, obj);
+    }
+    if (magicBagScatterBreaks(scatterObj, sx, sy, messages)) return;
+
+    const dir = rn2(N_DIRS);
+    const dx = xdir[dir];
+    const dy = ydir[dir];
+    const force = Math.max(1, 4 - Math.trunc(magicBagScatterWeight(scatterObj) / 40));
+    let range = rnd(force);
+    let x = sx;
+    let y = sy;
+    while (range-- > 0) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const loc = game.level?.at(nx, ny);
+        if (!isok(nx, ny) || !loc || !ZAP_POS(loc.typ) || magicBagScatterClosedDoor(nx, ny))
+            break;
+        x = nx;
+        y = ny;
+        if (loc.typ === SINK) break;
+        const mon = magicBagScatterMonsterAt(x, y);
+        if (mon) {
+            range--;
+            const hit = magicBagScatterHitMonster(mon, scatterObj, x, y, messages);
+            if (hit.stopped) return;
+            continue;
+        }
+        if (game.u?.ux === x && game.u?.uy === y) {
+            const hit = magicBagScatterHitHero(scatterObj, messages);
+            if (hit.consumed) return;
+            if (hit.hit) range -= 3;
+        }
+    }
+    if (placeObjectOnFloorWithEffects(scatterObj, x, y, messages, 'land', { stack: true }))
+        maybeBillMagicBagScatterGold(scatterObj, sx, sy, x, y, shopContext);
+}
+
+function scatterMagicBagContents(container, messages) {
+    const x = game.u?.ux ?? container?.ox ?? 0;
+    const y = game.u?.uy ?? container?.oy ?? 0;
+    const shopContext = magicBagScatterShopContext(x, y);
+    for (const obj of [...liquidFlowContainerContents(container)]) {
+        if (!rn2(13)) {
+            removeContainedObject(container, obj);
+            destroyMagicBagItem(obj, messages, { silent: true });
+            continue;
+        }
+        obj.ox = x;
+        obj.oy = y;
+        scatterMagicBagObject(container, obj, x, y, messages, shopContext);
+    }
+    finishMagicBagScatterShopBilling(shopContext, messages);
+    clearLiquidFlowContainerContents(container);
+}
+
+function magicBagExplosionMessage(obj, tumble = false) {
+    if (tumble) {
+        const subject = containerObjectPhrase(obj);
+        const verb = (obj.quan || 1) > 1 ? 'tumble' : 'tumbles';
+        return `As ${subject} ${verb} inside, you are blasted by a magical explosion!`;
+    }
+    return `As you put ${inventoryItemName(obj)} inside, you are blasted by a magical explosion!`;
+}
+
+function damageHeroWithMagicBagExplosion(messages) {
+    if (!game.u) return;
+    game.u.uhp = Math.max(0, (game.u.uhp || 0) - d(6, 6));
+    if ((game.u.uhp || 0) <= 0) {
+        game._death_cause = 'killed by a magical explosion';
+        messages.push('You die...');
+    }
+}
+
+function explodeMagicBagTransfer(targetBag, triggerObj, messages, { tumble = false } = {}) {
+    messages.push(magicBagExplosionMessage(triggerObj, tumble));
+    if (isBagOfHoldingObject(triggerObj)) scatterMagicBagContents(triggerObj, messages);
+    destroyMagicBagItem(triggerObj, messages, { silent: true });
+    scatterMagicBagContents(targetBag, messages);
+    destroyMagicBagItem(targetBag, messages, { silent: true });
+    damageHeroWithMagicBagExplosion(messages);
+    return { bagGone: true, moved: true, message: '', messages };
+}
+
+function visibleCreatedMonster(mon) {
+    if (!mon || game.u?.blind) return false;
+    return cansee(mon.mx, mon.my) || !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
+}
+
+function chargedToolUsageBasePrice(obj) {
+    const billed = unpaidBillPrice(obj);
+    if (billed > 0) return billed;
+    return shopItemPrice(obj, game.u?.ux, game.u?.uy) || shopBaseCost(obj) || 0;
+}
+
+function chargedToolUsageFee(obj, altusage = false) {
+    let fee = chargedToolUsageBasePrice(obj);
+    if (!(fee > 0)) return 0;
+    if (!altusage && (isBagOfTricksObject(obj) || isHornOfPlentyObject(obj)))
+        fee = Math.trunc(fee / 5);
+    return Math.max(0, fee);
+}
+
+function chargedToolUsageFeeMessage(obj, fee, altusage = false) {
+    let arg1 = '';
+    let arg2 = '';
+    if (altusage && (isBagOfTricksObject(obj) || isHornOfPlentyObject(obj))) {
+        if (!rn2(3)) arg1 = 'Whoa!  ';
+        if (!rn2(3)) arg1 = 'Watch it!  ';
+        return `"${arg1}Emptying that will cost you ${fee} zorkmid${fee === 1 ? '' : 's'}."`;
+    }
+    if (!rn2(3)) arg1 = 'Hey!  ';
+    if (!rn2(3)) arg2 = 'Ahem.  ';
+    return `"${arg1}${arg2}Usage fee, ${fee} zorkmid${fee === 1 ? '' : 's'}."`;
+}
+
+function billChargedToolUsage(obj, messages, { altusage = false, chargeCount = tipChargeCount(obj) } = {}) {
+    if (!obj?.unpaid || !(chargeCount > 0)) return 0;
+    const shkp = heroShopkeeper();
+    if (!shkp) return 0;
+    const fee = chargedToolUsageFee(obj, altusage);
+    if (!(fee > 0)) return 0;
+    shkp.debit = Math.max(0, Math.trunc(Number(shkp.debit || 0))) + fee;
+    const message = chargedToolUsageFeeMessage(obj, fee, altusage);
+    if (!heroIsDeaf()) messages?.push(message);
+    return fee;
+}
+
+function floorSpecialSourceUsageBill(source) {
+    if (!source || (game.inventory || []).includes(source) || source.no_charge) return null;
+    const x = source.ox ?? game.u?.ux;
+    const y = source.oy ?? game.u?.uy;
+    if (x == null || y == null || x !== game.u?.ux || y !== game.u?.uy) return null;
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return null;
+    const price = shopItemPrice(source, x, y);
+    if (!(price > 0)) return null;
+    return {
+        unpaid: source.unpaid,
+        unpaidPrice: source.unpaidPrice,
+        line: source.line,
+        price,
+    };
+}
+
+function beginFloorSpecialSourceUsageBill(source) {
+    const saved = floorSpecialSourceUsageBill(source);
+    if (!saved) return null;
+    source.unpaid = true;
+    source.unpaidPrice = saved.price;
+    return () => {
+        source.unpaid = saved.unpaid;
+        source.unpaidPrice = saved.unpaidPrice;
+        source.line = saved.line;
+    };
+}
+
+async function applyBagOfTricksOnce(bag, { tipping = false } = {}) {
+    if (tipChargeCount(bag) < 1) {
+        if (tipping && bag.cknown) return ["It's empty."];
+        if (bag.dknown || bag.known) bag.cknown = true;
+        return ['Nothing happens.'];
+    }
+
+    const messages = [];
+    if (!tipping) billChargedToolUsage(bag, messages);
+    consumeTipCharge(bag);
+    let creatcnt = 1;
+    if (!rn2(23)) creatcnt += rnd(7);
+    let moncount = 0;
+    let seecount = 0;
+    for (let i = 0; i < creatcnt; i++) {
+        const mon = await makemon(null, game.u?.ux || 0, game.u?.uy || 0, 0);
+        if (!mon) continue;
+        moncount++;
+        if (visibleCreatedMonster(mon)) seecount++;
+    }
+    if (seecount && bag.dknown) identifyChargedToolKind(bag, 'bag of tricks');
+    if (!tipping && !seecount) messages.push(moncount ? 'Nothing seems to happen.' : 'Nothing happens.');
+    return messages;
+}
+
+async function tipBagOfTricks(bag) {
+    if (tipChargeCount(bag) < 1) return applyBagOfTricksOnce(bag, { tipping: true });
+    const oldSpe = tipChargeCount(bag);
+    let seen = false;
+    while (tipChargeCount(bag) > 0) {
+        const beforeMonsters = (game.level?.monsters || []).length;
+        const messages = await applyBagOfTricksOnce(bag, { tipping: true });
+        if (messages.length) return messages;
+        const created = (game.level?.monsters || []).slice(beforeMonsters);
+        if (created.some(visibleCreatedMonster)) seen = true;
+    }
+    if (tipChargeCount(bag) < oldSpe) {
+        bag.spe = 0;
+        bag.cknown = true;
+        updateChargedItemLine(bag);
+        const messages = seen ? [] : ['Nothing seems to happen.'];
+        billChargedToolUsage(bag, messages, { altusage: true, chargeCount: oldSpe });
+        return messages;
+    }
+    return [];
+}
+
+function hornCreatedObjectDescription(obj, potion) {
+    if (potion) return (obj.quan || 1) > 1 ? 'Some potions' : 'A potion';
+    return 'Some food';
+}
+
+function hornSpillMessage(obj, potion) {
+    const what = hornCreatedObjectDescription(obj, potion);
+    const spills = !potion || what === 'A potion';
+    return `${what} ${spills ? 'spills' : 'spill'} out.`;
+}
+
+function createHornOfPlentyObject(horn) {
+    const potion = !rn2(13);
+    const obj = mkobj(potion ? POTION_CLASS : FOOD_CLASS, false);
+    if (!potion && objectKindKey(obj) === 'food ration' && !rn2(7)) {
+        Object.assign(obj, {
+            otyp: LUMP_OF_ROYAL_JELLY,
+            kind: 'lump of royal jelly',
+            singular: 'lump of royal jelly',
+            plural: 'lumps of royal jelly',
+        });
+    }
+    obj.blessed = !!horn.blessed;
+    obj.cursed = !!horn.cursed;
+    Object.assign(obj, object_display(obj));
+    return { obj, potion };
+}
+
+function hornCreatedObjectBillMessage(obj, price) {
+    const name = pickupObjectName(obj);
+    const subject = (obj.quan || 1) > 1 ? upstartText(name) : `The ${name}`;
+    const each = (obj.quan || 1) > 1 ? ' each' : '';
+    return `${subject} will cost you ${price} zorkmid${price === 1 ? '' : 's'}${each}.`;
+}
+
+function billHornCreatedObject(horn, obj, messages, { silent = false } = {}) {
+    if (!horn?.unpaid || !obj) return 0;
+    const shkp = heroShopkeeper();
+    if (!shkp) return 0;
+    const price = shopItemPrice(obj, game.u?.ux, game.u?.uy);
+    if (!(price > 0)) return 0;
+    obj.unpaid = true;
+    obj.unpaidPrice = price;
+    shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
+    if (!silent && !heroIsDeaf()) messages?.push(hornCreatedObjectBillMessage(obj, price));
+    return price;
+}
+
+function mergeStackedUnpaidBill(stacked, obj) {
+    if (!stacked || stacked === obj || !obj?.unpaid) return;
+    const price = unpaidBillPrice(stacked) + unpaidBillPrice(obj);
+    if (!(price > 0)) return;
+    stacked.unpaid = true;
+    stacked.unpaidPrice = price;
+    syncUnpaidBillLine(stacked);
+}
+
+function placeHornObjectOnFloor(obj, messages) {
+    const x = game.u?.ux ?? 0;
+    const y = game.u?.uy ?? 0;
+    placeTippedObjectOnFloor(obj, x, y, messages);
+    messages.push(`${upstartText(containerObjectPhrase(obj))} drops to the floor.`);
+}
+
+function hornApplyFloorMessage(obj) {
+    const quan = obj.quan || 1;
+    const name = pickupObjectName({ ...obj, quan: 1 });
+    const subject = quan > 1 ? upstartText(containerObjectPhrase(obj)) : `The ${name}`;
+    return `Oops! ${subject} slip${quan > 1 ? '' : 's'} to the floor!`;
+}
+
+function placeAppliedHornObjectOnFloor(obj, messages) {
+    const x = game.u?.ux ?? 0;
+    const y = game.u?.uy ?? 0;
+    placeTippedObjectOnFloor(obj, x, y, messages);
+    messages.push(hornApplyFloorMessage(obj));
+}
+
+function addAppliedHornObjectToInventory(obj, messages) {
+    game.inventory ??= [];
+    const used = new Set(game.inventory.map(item => item.letter).filter(Boolean));
+    const letter = nextInventoryLetter();
+    if (!letter || used.has(letter)) {
+        placeAppliedHornObjectOnFloor(obj, messages);
+        return;
+    }
+    prepareTippedObjectForContainer(obj);
+    obj.letter = letter;
+    const displayLine = normalInventoryLine({ ...obj, line: '' });
+    obj.line = displayLine;
+    if (obj.unpaid) syncUnpaidBillLine(obj);
+    game.inventory.push(obj);
+    maybeAttachCarriedFigurineTimeout(obj);
+    game._pet_food_scan_inventory = game.inventory;
+    messages.push(`${displayLine}.`);
+}
+
+function applyHornOfPlentyOnce(horn) {
+    if (tipChargeCount(horn) < 1) {
+        horn.cknown = true;
+        updateChargedItemLine(horn);
+        return ['Nothing happens.'];
+    }
+
+    const messages = [];
+    billChargedToolUsage(horn, messages);
+    consumeTipCharge(horn);
+    const { obj, potion } = createHornOfPlentyObject(horn);
+    messages.push(hornSpillMessage(obj, potion));
+    billHornCreatedObject(horn, obj, messages);
+    if (horn.dknown) identifyChargedToolKind(horn, 'horn of plenty');
+    updateChargedItemLine(horn);
+    addAppliedHornObjectToInventory(obj, messages);
+    return messages;
+}
+
+async function tipHornOfPlenty(horn, targetBox = null) {
+    if (tipChargeCount(horn) < 1) {
+        horn.cknown = true;
+        updateChargedItemLine(horn);
+        return ['Nothing happens.'];
+    }
+
+    const messages = [];
+    const oldSpe = tipChargeCount(horn);
+    while (tipChargeCount(horn) > 0) {
+        consumeTipCharge(horn);
+        const { obj, potion } = createHornOfPlentyObject(horn);
+        messages.push(hornSpillMessage(obj, potion));
+        billHornCreatedObject(horn, obj, messages, { silent: true });
+        if (targetBox) {
+            prepareTippedObjectForContainer(obj);
+            const stacked = add_to_container(targetBox, obj);
+            mergeStackedUnpaidBill(stacked, obj);
+            refreshTipContainerWeight(targetBox);
+        } else {
+            placeHornObjectOnFloor(obj, messages);
+        }
+    }
+    if (tipChargeCount(horn) < oldSpe) {
+        horn.spe = 0;
+        horn.cknown = true;
+        if (horn.dknown) identifyChargedToolKind(horn, 'horn of plenty');
+        updateChargedItemLine(horn);
+        billChargedToolUsage(horn, messages, { altusage: true, chargeCount: oldSpe });
+    }
+    return messages;
+}
+
+async function tipSpecialSourceContents(source, targetBox = null) {
+    if (targetBox) {
+        const targetError = tipContainerCheckMessage(targetBox, { allowEmpty: true });
+        if (targetError) return [targetError];
+    }
+    const restoreFloorBill = beginFloorSpecialSourceUsageBill(source);
+    try {
+        if (isBagOfTricksObject(source)) return await tipBagOfTricks(source);
+        if (isHornOfPlentyObject(source)) return await tipHornOfPlenty(source, targetBox);
+        return null;
+    } finally {
+        if (restoreFloorBill) restoreFloorBill();
+    }
+}
+
+function tipContainerIntoContainer(source, targetBox) {
+    const contents = [...liquidFlowContainerContents(source)];
+    source.cknown = true;
+    if (!contents.length) return [tipContainerEmptyMessage(source)];
+    targetBox.contents ??= [];
+    const cursedMagicBag = isMagicBagObject(source) && source.cursed;
+    const messages = [contents.length === 1
+        ? `An object tumbles into ${tipTargetPhrase(targetBox)}.`
+        : `Objects tumble into ${tipTargetPhrase(targetBox)}.`];
+    for (const obj of contents) {
+        removeContainedObject(source, obj);
+        thawObjectTippedFromSource(source, obj);
+        if (cursedMagicBag && !rn2(13)) {
+            destroyMagicBagItem(obj, messages);
+            continue;
+        }
+        prepareTippedObjectForContainer(obj);
+        if (isMagicBagObject(targetBox) && magicBagExplodesWithObject(obj)) {
+            explodeMagicBagTransfer(targetBox, obj, messages, { tumble: true });
+            break;
+        }
+        add_to_container(targetBox, obj);
+    }
+    if (Array.isArray(source.contents)) source.contents.length = 0;
+    if (Array.isArray(source.cobj)) source.cobj.length = 0;
+    refreshTipContainerWeight(source);
+    refreshTipContainerWeight(targetBox);
+    return messages;
+}
+
+async function tipContainerContents(source, targetBox = null) {
+    const special = isBagOfTricksObject(source) || isHornOfPlentyObject(source);
+    const sourceError = tipContainerCheckMessage(source, { allowEmpty: special });
+    if (sourceError) return [sourceError];
+    if (targetBox && isBagOfTricksObject(targetBox))
+        return applyBagOfTricksOnce(targetBox, { tipping: false });
+    if (special) return tipSpecialSourceContents(source, targetBox);
+    if (targetBox) {
+        const targetError = tipContainerCheckMessage(targetBox, { allowEmpty: true });
+        if (targetError) return [targetError];
+    }
+    return targetBox ? tipContainerIntoContainer(source, targetBox) : tipContainerToFloor(source);
+}
+
+function tipContainerObjectPhrase(obj) {
+    const phrase = containerObjectPhrase(obj);
+    if (!(obj?.broken || obj?.obroken)) return phrase;
+    if (!/^(?:an? |the )?(?:large box|chest)$/i.test(phrase)) return phrase;
+    return phrase.replace(/^(an? |the )/i, '$1broken ');
 }
 
 function containerObjectPhrase(obj) {
@@ -16109,6 +17252,7 @@ function shopBaseCost(obj) {
     const cls = obj.cls || '';
     let kind = String(obj.actualKind || obj.kind || '').toLowerCase();
     kind = kind.replace(/^(?:blessed|uncursed|cursed) /, '');
+    if (isGlobbyObject(obj)) return 6;
 
     if (obj.otyp === SCROLL_CLASS || cls === 'scroll') {
         if (obj.scrollIndex != null) return SCROLL_SHOP_COSTS[obj.scrollIndex] || 0;
@@ -16160,6 +17304,12 @@ function shopBaseCost(obj) {
     else if (!kind && obj.otyp === STETHOSCOPE) kind = 'stethoscope';
     else if (!kind && obj.otyp === MAGIC_MARKER) kind = 'magic marker';
     return SHOP_OBJECT_COSTS[kind] || 0;
+}
+
+function shopPricingUnits(obj) {
+    if (isGlobbyObject(obj))
+        return Math.max(1, Math.trunc(((obj.owt ?? 20) + 19) / 20));
+    return obj?.quan || 1;
 }
 
 function shopObjectNameKnown(obj) {
@@ -16322,7 +17472,7 @@ function shopItemPrice(obj, x = game.u?.ux, y = game.u?.uy) {
     else if (cha <= 10) { multiplier *= 4; divisor *= 3; }
     price *= multiplier;
     if (divisor > 1) price = Math.trunc((Math.trunc(price * 10 / divisor) + 5) / 10);
-    price = Math.max(1, price) * (obj.quan || 1);
+    price = Math.max(1, price) * shopPricingUnits(obj);
     return price;
 }
 
@@ -16331,6 +17481,58 @@ function shopItemPriceSuffix(obj, x = game.u?.ux, y = game.u?.uy) {
     if (price == null) return '';
     if (price === 0) return ' (no charge)';
     return ` (for sale, ${price} zorkmid${price === 1 ? '' : 's'})`;
+}
+
+function shopDebtItemName(item) {
+    let name = String(item?.line || '')
+        .replace(/^[a-zA-Z$] - /, '')
+        .replace(/ \(unpaid, \d+ zorkmids?\)/, '');
+    if (name) return name;
+    const baseName = pickupObjectName({ ...(item || {}), quan: 1 });
+    return `${/^[aeiou]/i.test(baseName) ? 'an' : 'a'} ${baseName}`;
+}
+
+function collectUnpaidShopItemsFromList(list, entries) {
+    for (const item of list || []) {
+        const price = unpaidBillPrice(item);
+        if (item?.unpaid && price) entries.push({ item, name: shopDebtItemName(item), price });
+        const contents = globContents(item);
+        if (contents.length) collectUnpaidShopItemsFromList(contents, entries);
+    }
+}
+
+function collectPayableShopDebts(shkp = null) {
+    const entries = [];
+    collectUnpaidShopItemsFromList(game.inventory || [], entries);
+    collectUnpaidShopItemsFromList(game.level?.objects || [], entries);
+    for (const bill of game._usedUpShopBills || []) {
+        const price = Number(bill?.price || 0);
+        if (price > 0) entries.push({
+            usedUpBill: bill,
+            name: bill.name || 'used-up object',
+            price,
+        });
+    }
+    const debit = Math.max(0, Math.trunc(Number(shkp?.debit || 0)));
+    if (debit > 0) entries.push({
+        shopkeeperDebit: shkp,
+        name: `debt owed to ${shopkeeperDisplayName(shkp)}`,
+        price: debit,
+    });
+    return entries.map((entry, index) => ({
+        ...entry,
+        letter: String.fromCharCode(97 + index),
+        selected: false,
+    }));
+}
+
+function shopkeeperDebitPayment(entry) {
+    const shkp = entry?.shopkeeperDebit;
+    if (!shkp) return { debt: 0, credit: 0, coveredByCredit: 0, cashDue: 0 };
+    const debt = Math.max(0, Math.trunc(Number(shkp.debit ?? entry.price ?? 0)));
+    const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    const coveredByCredit = Math.min(credit, debt);
+    return { debt, credit, coveredByCredit, cashDue: debt - coveredByCredit };
 }
 
 function pickupMenuEntries(objects) {
@@ -22715,22 +23917,46 @@ export async function rhack(_cmd) {
                 return;
             }
 
-            const total = selected.reduce((sum, entry) => sum + entry.price, 0);
             const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
-            if ((game._goldCount || money?.quan || 0) > total) next_ident();
-            game._goldCount = Math.max(0, (game._goldCount || money?.quan || 0) - total);
+            const availableGold = game._goldCount || money?.quan || 0;
+            const cashTotal = selected.reduce((sum, entry) =>
+                sum + (entry.shopkeeperDebit ? shopkeeperDebitPayment(entry).cashDue : entry.price), 0);
+            if (availableGold < cashTotal) {
+                game._pay_shopkeeper = null;
+                await setMessage("You don't have enough gold.");
+                return;
+            }
+            if (availableGold > cashTotal) next_ident();
+            game._goldCount = Math.max(0, availableGold - cashTotal);
             if (money) {
                 money.quan = game._goldCount;
                 updateMoneyLine(money);
             }
+            const paidUsedUpBills = new Set();
             for (const entry of selected) {
+                if (entry.usedUpBill) {
+                    paidUsedUpBills.add(entry.usedUpBill);
+                    continue;
+                }
+                if (entry.shopkeeperDebit) {
+                    const payment = shopkeeperDebitPayment(entry);
+                    entry.shopkeeperDebit.credit = Math.max(0, payment.credit - payment.coveredByCredit);
+                    entry.shopkeeperDebit.debit = 0;
+                    entry.shopkeeperDebit.loan = 0;
+                    continue;
+                }
+                if (!entry.item) continue;
                 entry.item.unpaid = false;
                 entry.item.unpaidPrice = undefined;
                 entry.item.line = String(entry.item.line || '')
                     .replace(/ \(unpaid, \d+ zorkmids?\)/, '');
             }
+            if (paidUsedUpBills.size)
+                game._usedUpShopBills = (game._usedUpShopBills || [])
+                    .filter(bill => !paidUsedUpBills.has(bill));
             const shkp = game._pay_shopkeeper;
-            if (shkp) shkp.billct = Math.max(0, (shkp.billct || selected.length) - selected.length);
+            const billedSelections = selected.filter(entry => !entry.shopkeeperDebit).length;
+            if (shkp) shkp.billct = Math.max(0, (shkp.billct || billedSelections) - billedSelections);
             if (shkp?.shk) {
                 const home = shkp.shk;
                 const blockingPet = (game.level?.monsters || []).find(mon =>
@@ -30108,6 +31334,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isIceBoxObject(invItem)
                     || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
             }).sort((a, b) => {
@@ -30145,6 +31372,7 @@ export async function rhack(_cmd) {
                 return invItem.cls === 'tool' || invItem.cls === 'wand' || invItem.kind === 'wand of sleep'
                     || invItem.otyp === WAND_CLASS || invItem.cls === 'spellbook'
                     || invItem.section === 'Tools' || /lamp|camera|card|bag|sack|cream pie/.test(name)
+                    || isIceBoxObject(invItem)
                     || isRoyalJelly(invItem)
                     || (invItem.cls === 'weapon' && APPLY_WEAPON_NAME_RE.test(name));
             });
@@ -30209,9 +31437,38 @@ export async function rhack(_cmd) {
             await setMessage("Sorry, I don't know how to use that.");
             return;
         }
+        if (isIceBoxObject(item)) {
+            setIceBoxActionMenu(item);
+            return;
+        }
+        if (isBagOfTricksObject(item)) {
+            const messages = await applyBagOfTricksOnce(item, { tipping: false });
+            if (messages.length) await setMessage(messages.join('  '), messages.length > 1);
+            else await setMessage('');
+            game.context.move = 1;
+            return;
+        }
+        if (isHornOfPlentyObject(item)) {
+            const messages = applyHornOfPlentyOnce(item);
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
         if (/bag|sack/.test(name)) {
+            const lossMessages = [];
+            if (magicBagContentsLoss(item, lossMessages)) {
+                item.cknown = true;
+                game.context.move = 1;
+            }
             game._container_letter = item.letter;
             setOverlay(LOOT_BAG_MENU_LINES, 11);
+            if (lossMessages.length) {
+                const lossText = lossMessages.join('  ');
+                game._pending_message = lossText;
+                game._last_pline_message = lossText;
+                game._message_more = lossMessages.length > 1 ? 1 : 0;
+                game._keep_pending_message = 1;
+            }
             game._command_mode = 'bagAction';
             return;
         }
@@ -30575,7 +31832,7 @@ export async function rhack(_cmd) {
                 extraChoices.push({ key: 'cursed', letter: 'C', label: 'Items known to be Cursed' });
             if (putItems.some(({ item }) => objectBucCategory(item) === 'uncursed'))
                 extraChoices.push({ key: 'uncursed', letter: 'U', label: 'Items known to be Uncursed' });
-            if (putItems.some(({ item }) => objectBucCategory(item) === 'unknown' || item === bag))
+            if (putItems.some(({ item }) => objectBucCategory(item) === 'unknown'))
                 extraChoices.push({ key: 'unknown', letter: 'X', label: 'Items of unknown Bless/Curse status' });
             if (game._just_picked_gold && game._goldCount)
                 extraChoices.push({
@@ -30759,29 +32016,17 @@ export async function rhack(_cmd) {
                     return;
                 }
                 const messages = [];
+                let moved = false;
+                let bagGone = false;
                 for (const selectedEntry of selectedEntries) {
-                    if (selectedEntry.letter === '$') {
-                        const gold = Math.min(selectedEntry.amount || 0, game._goldCount || 0);
-                        add_to_container(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
-                        game._goldCount = Math.max(0, (game._goldCount || 0) - gold);
-                        game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
-                        const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
-                        if (money && game._goldCount) {
-                            money.quan = game._goldCount;
-                            updateMoneyLine(money);
-                        } else {
-                            game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin');
-                        }
-                        messages.push(`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the bag.`);
-                    } else {
-                        stopCarriedFigurineTimerOnLeave(selectedEntry.item);
-                        game.inventory = (game.inventory || []).filter(item => item !== selectedEntry.item);
-                        updateWornDisplacement();
-                        add_to_container(bag, selectedEntry.item);
-                        messages.push(`You put ${inventoryItemName(selectedEntry.item)} into the bag.`);
+                    const result = putInventoryObjectIntoBag(bag, selectedEntry.item, selectedEntry.amount);
+                    moved ||= !!result.moved;
+                    messages.push(...(result.messages || (result.message ? [result.message] : [])));
+                    if (result.bagGone) {
+                        bagGone = true;
+                        break;
                     }
                 }
-                await setMessage(messages[0]);
                 game._container_letter = null;
                 game._bag_put_entries = null;
                 game._bag_put_selected = null;
@@ -30789,7 +32034,8 @@ export async function rhack(_cmd) {
                 game._bag_put_type_selected = null;
                 game._bag_put_items = null;
                 game._command_mode = null;
-                game.context.move = 1;
+                if (moved || bagGone) game.context.move = 1;
+                await showIceBoxMessageList(messages);
                 return;
             }
             if (ch === '\x1b' || ch === 'q') {
@@ -30803,31 +32049,20 @@ export async function rhack(_cmd) {
             return;
         }
         if (ch === '$') {
-            const gold = game._goldCount || 0;
-            if (!gold) {
-                await setMessage('You have no gold to put in.');
-                game._command_mode = null;
-                return;
-            }
-            add_to_container(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: gold });
-            game._goldCount = 0;
-            game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin');
-            await setMessage(`You put ${gold} gold piece${gold === 1 ? '' : 's'} into the bag.`);
+            const result = putInventoryObjectIntoBag(bag, { letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: game._goldCount || 0 }, game._goldCount || 0);
             game._container_letter = null;
             game._command_mode = null;
-            game.context.move = 1;
+            if (result.moved) game.context.move = 1;
+            await showIceBoxMessageList(result.messages || (result.message ? [result.message] : []));
             return;
         }
-        const item = (game.inventory || []).find(invItem => invItem.letter === ch && invItem !== bag);
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (item) {
-            stopCarriedFigurineTimerOnLeave(item);
-            game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
-            updateWornDisplacement();
-            add_to_container(bag, item);
-            await setMessage(`You put ${inventoryItemName(item)} into the bag.`);
+            const result = putInventoryObjectIntoBag(bag, item, item?.quan || 1);
             game._container_letter = null;
             game._command_mode = null;
-            game.context.move = 1;
+            if (result.moved) game.context.move = 1;
+            await showIceBoxMessageList(result.messages || (result.message ? [result.message] : []));
             return;
         }
         await setMessage("You don't have that object.");
@@ -31575,9 +32810,17 @@ export async function rhack(_cmd) {
         return;
     }
 
-    if (game._command_mode === 'lootIceMenu') {
-        const iceBox = game.level?.objects?.find(obj =>
+    if (game._command_mode === 'lootIceMenu' || game._command_mode === 'iceBoxAction') {
+        const iceBox = game._icebox_action_container || game.level?.objects?.find(obj =>
             isIceBoxObject(obj) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
+        if (!iceBoxContainerAvailable(iceBox)) {
+            clearIceBoxActionState();
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._command_mode = null;
+            return;
+        }
+        game._icebox_action_container = iceBox;
         if (ch === ':') {
             if (iceBox) iceBox.cknown = true;
             const rows = [[0, 41, 'Contents of the ice box:']];
@@ -31642,6 +32885,7 @@ export async function rhack(_cmd) {
         }
         if (ch === '\x1b' || ch === 'q') {
             for (let row = 0; row < 12; row++) game.nhDisplay?.clearRow(row);
+            clearIceBoxActionState();
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
             game._command_mode = null;
@@ -31838,7 +33082,7 @@ export async function rhack(_cmd) {
         if (ch === '?' || ch === '*') {
             const rows = [[0, 40, 'Stash what?', 1]];
             let row = 2;
-            for (const { item } of buildIceBoxPutItems()) {
+            for (const { item } of buildIceBoxPutItems(iceBox)) {
                 const label = item.letter === '$'
                     ? `${item.letter} - ${item.quan || 0} gold piece${(item.quan || 0) === 1 ? '' : 's'}`
                     : `${item.letter || '?'} - ${inventoryItemName(item)}`;
@@ -31862,10 +33106,9 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'iceBoxContents') {
         if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
-            setOverlay(LOOT_ICE_MENU_DONE_LINES, 11);
+            setIceBoxActionMenu(game._icebox_action_container, true);
             game._pending_message = '';
             game._message_more = 0;
-            game._command_mode = 'lootIceMenu';
         }
         return;
     }
@@ -32408,20 +33651,86 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'tipContainerObject') {
+        const containers = (game.inventory || []).filter(isTipSourceObject);
+        const letters = containers.map(item => item.letter).filter(Boolean).join('');
+        if (ch === '\x1b' || ch === 'q' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._overlay_lines = null;
+            game._overlay_hide_status = 0;
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            const rows = [[0, 40, 'Tip what?', 1]];
+            let row = 2;
+            for (const item of containers) {
+                rows.push([row++, 40, normalInventoryLine(item)]);
+                if (row >= 23) break;
+            }
+            rows.push([row, 40, '(end)']);
+            setOverlay(rows, Math.max(4, row + 1), false, 40);
+            return;
+        }
+        const tipTarget = containers.find(item => item.letter === ch);
+        if (!tipTarget) {
+            await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
+            return;
+        }
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        game._tip_container_object = tipTarget;
+        await setMessage(`Tip ${inventoryItemName(tipTarget)}? [ynq] (q)`);
+        game._command_mode = 'tipConfirm';
+        return;
+    }
+
+    if (game._command_mode === 'tipDestination') {
+        const source = game._tip_container_object;
+        const entries = game._tip_target_entries || [];
+        const finishTip = async targetBox => {
+            const messages = await tipContainerContents(source, targetBox);
+            clearTipState();
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            game._command_mode = null;
+        };
+        if (!source || !isTipSourceObject(source)) {
+            clearTipState();
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '\x1b' || ch === 'q') {
+            clearTipState();
+            game._command_mode = null;
+            return;
+        }
+        if (ch === '-' || ch === ' ' || ch === '\r' || ch === '\n') {
+            await finishTip(null);
+            return;
+        }
+        const entry = entries.find(item => item.letter === ch);
+        if (entry?.target && (game.inventory || []).includes(entry.target)) {
+            await finishTip(entry.target);
+            return;
+        }
+        return;
+    }
+
     if (game._command_mode === 'tipConfirm') {
         if (ch === 'q') game._keep_pending_message = 1;
         if (ch === 'y') {
             const tipTarget = game._tip_container_object;
-            game._tip_container_object = null;
-            if (isIceBoxObject(tipTarget)) {
-                const messages = tipIceBoxToFloor(tipTarget);
+            if (isTipSourceObject(tipTarget)) {
+                if (beginTipDestinationSelection(tipTarget)) return;
+                game._tip_container_object = null;
+                const messages = await tipContainerContents(tipTarget);
                 await setMessage(messages.join('  '), messages.length > 1);
                 game.context.move = 1;
                 game._command_mode = null;
                 return;
             }
         }
-        game._tip_container_object = null;
+        clearTipState();
         game._command_mode = null;
         return;
     }
@@ -33087,8 +34396,7 @@ export async function rhack(_cmd) {
                     game._command_mode = 'lootMenu';
                     return;
                 } else if (iceBox) {
-                    setOverlay(LOOT_ICE_MENU_LINES, 11);
-                    game._command_mode = 'lootIceMenu';
+                    setIceBoxActionMenu(iceBox);
                     return;
                 } else if (bag) {
                     game._floor_container_object = bag;
@@ -33136,12 +34444,25 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'tip') {
-                const iceBox = game.level?.objects?.find(obj =>
-                    isIceBoxObject(obj) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
-                if (iceBox) {
-                    game._tip_container_object = iceBox;
-                    await setMessage(`There is ${containerObjectPhrase(iceBox)} here, tip it? [ynq] (q)`);
+                const floorContainer = game.level?.objects?.find(obj =>
+                    isFloorTipSourceObject(obj) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
+                if (floorContainer) {
+                    game._tip_container_object = floorContainer;
+                    await setMessage(`There is ${tipContainerObjectPhrase(floorContainer)} here, tip it? [ynq] (q)`);
                     game._command_mode = 'tipConfirm';
+                    return;
+                }
+                const carriedContainers = (game.inventory || []).filter(isTipSourceObject);
+                if (carriedContainers.length === 1) {
+                    game._tip_container_object = carriedContainers[0];
+                    await setMessage(`Tip ${inventoryItemName(carriedContainers[0])}? [ynq] (q)`);
+                    game._command_mode = 'tipConfirm';
+                    return;
+                }
+                if (carriedContainers.length > 1) {
+                    const letters = carriedContainers.map(item => item.letter).filter(Boolean).join('');
+                    await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
+                    game._command_mode = 'tipContainerObject';
                     return;
                 }
                 await setMessage('There is a broken chest here, tip it? [ynq] (q)');
@@ -35894,28 +37215,11 @@ export async function rhack(_cmd) {
             return;
         }
 
-        const unpaidItems = (game.inventory || []).filter(item => item.unpaid);
-        if (!unpaidItems.length) {
+        const entries = collectPayableShopDebts(shkp);
+        if (!entries.length) {
             await setMessage(`You do not owe ${shkp.shknam || 'the shopkeeper'} anything.`);
             return;
         }
-
-        const entries = unpaidItems.map((item, index) => {
-            let name = String(item.line || '')
-                .replace(/^[a-zA-Z$] - /, '')
-                .replace(/ \(unpaid, \d+ zorkmids?\)/, '');
-            if (!name) {
-                const baseName = pickupObjectName({ ...item, quan: 1 });
-                name = `${/^[aeiou]/i.test(baseName) ? 'an' : 'a'} ${baseName}`;
-            }
-            return {
-                item,
-                name,
-                letter: String.fromCharCode(97 + index),
-                price: item.unpaidPrice || 0,
-                selected: false,
-            };
-        });
         const width = String(Math.max(...entries.map(entry => entry.price))).length;
         const rows = [[0, 41, 'Pay for which items?', 1]];
         for (let i = 0; i < entries.length; i++) {
