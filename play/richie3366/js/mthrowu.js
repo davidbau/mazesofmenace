@@ -18,6 +18,7 @@ import {
     NH5_BALL_CLASS,
     NH5_CHAIN_CLASS,
 } from './nh5_objclass.js';
+import { objectOcWsdam, objectOcWldam } from './obj_oc_damage_data.js';
 
 export const OBJ_ARROW = 349;
 export const OBJ_DART = 353;
@@ -71,18 +72,25 @@ export function tMissile(otyp, _trap) {
 export function dmgval(otmp, mon) {
     if (!otmp) return 0;
     const t = otmp.otyp | 0;
-    let tmp;
+    if (t === OTYP_CREAM_PIE) return 0;
+
+    const dptr = mon ? raceptr(mon) : null;
+    let tmp = 0;
     if (t === OTYP_BOULDER) {
         if (!mon) return Math.max(1, d(2, 6));
         const ptr0 = raceptr(mon);
         const roll = bigmonst(ptr0) ? d(2, 6) + rnd(6) : d(2, 6);
         tmp = Math.max(1, roll);
-    } else if (t === OBJ_ARROW) tmp = rnd(6);
-    else if (t === OBJ_DART) tmp = rnd(3);
-    else if (t === OBJ_ROCK) tmp = rnd(6);
-    else tmp = rnd(4);
-
-    const dptr = mon ? raceptr(mon) : null;
+    } else if (dptr && bigmonst(dptr)) {
+        const wldam = objectOcWldam(t);
+        if (wldam) tmp = rnd(wldam);
+    } else {
+        const wsdam = objectOcWsdam(t);
+        if (wsdam) tmp = rnd(wsdam);
+        else if (t === OBJ_ARROW) tmp = rnd(6);
+        else if (t === OBJ_DART) tmp = rnd(3);
+        else if (t === OBJ_ROCK) tmp = rnd(6);
+    }
     /* C: weapon.c dmgval — PM_SHADE + !shade_glare → tmp=0, then blessed/silver bonus block */
     if (dptr?.mname === 'shade' && !shadeGlareLikeC(otmp)) {
         tmp = 0;
@@ -94,6 +102,11 @@ export function dmgval(otmp, mon) {
             if ((otmp.blessed | 0) && (isUndeadPtr(dptr) || isDemonPtr(dptr))) tmp += rnd(4);
             if ((otmp.oc_material | 0) === 14 && monHatesSilverPtrLikeC(dptr)) tmp += rnd(20);
         }
+    }
+    const oc = otmp.oclass | 0;
+    if (oc === NH5_WEAPON_CLASS) {
+        tmp += otmp.spe | 0;
+        if (tmp < 0) tmp = 0;
     }
     return tmp;
 }

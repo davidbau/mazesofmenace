@@ -12,11 +12,19 @@ export function nomul(nval) {
     if (nval === 0 && game.context) game.context.run = 0;
 }
 
-/** C: hack.c end_running(boolean force) — stop multi-step travel (subset). */
-export function endRunning(force) {
+/** C: hack.c end_running(boolean and_travel) — stop run/travel and clear multi. */
+export function endRunning(andTravel) {
     const g = game;
     g.context = g.context || {};
-    if (force) g.context.run = 0;
+    if (g.context.run) {
+        g.context.run = 0;
+    }
+    if (andTravel) {
+        g.context.travel = 0;
+        g.context.travel1 = 0;
+        g.context.mv = false;
+    }
+    if ((g.multi | 0) > 0) g.multi = 0;
 }
 
 /**

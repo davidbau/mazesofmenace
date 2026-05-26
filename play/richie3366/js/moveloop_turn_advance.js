@@ -178,6 +178,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     g.context = g.context || {};
     g.context.monMoving = true;
     try {
+        /* C: allmain.c outer loop may run new-turn → movemon → new-turn in one post
+         * (wizard **`seed0006`** ~2502–2522 after **`n`**). Cap to one new-turn only for
+         * inline **`#search`** post (same moveloop as **`cmd.js`**). */
+        const capNewTurnsToOne = !!g.context?._searchInlinePostDoneLikeC;
         let newTurnDone = false;
         let outerSafety = 0;
         do {
@@ -241,7 +245,11 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 }
             }
 
-            if (!monscanmove && (u.umovement | 0) < NORMAL_SPEED && !newTurnDone) {
+            if (
+                !monscanmove
+                && (u.umovement | 0) < NORMAL_SPEED
+                && (!capNewTurnsToOne || !newTurnDone)
+            ) {
                 const tailStepNum = (g.moves | 0) - 1;
                 /* C: rogue D:1 — defer new-turn before first **`#search`** (`peek 's'`).
                  * Inline **`#search`** post always runs the tail here (no double defer+flush). */

@@ -1307,7 +1307,7 @@ const WISH_TOOL_APPEARANCES = new Map([
     ['magic harp', 'harp'], ['drum of earthquake', 'drum'],
 ]);
 const WISH_TOOL_NAMEDESC_BOUNDS = new Map([
-    ['magic harp', 3], ['leash', 66],
+    ['magic harp', 3], ['leash', 66], ['lenses', 6],
 ]);
 const WISH_AMULET_NAMEDESC_BOUNDS = new Map([
     ['amulet of esp', 121],
@@ -4680,6 +4680,7 @@ const OBJECT_WEIGHTS = {
     'lamp': 20,
     'harp': 30,
     'leash': 12,
+    'lenses': 3,
     'lock pick': 4,
     'magic lamp': 20,
     'magic marker': 2,
@@ -4915,6 +4916,7 @@ const SHOP_OBJECT_COSTS = {
     'wooden harp': 50,
     'magic harp': 50,
     'bell': 50,
+    'bell of opening': 5000,
     'bugle': 15,
     'leather drum': 25,
     'drum of earthquake': 25,
@@ -7457,8 +7459,9 @@ function billDummyAlteredCarriedObject(obj) {
     const owner = shopkeeperOwningBillEntry(obj);
     const shkp = owner.shkp || heroShopkeeper();
     const entry = owner.entry || (shkp ? shopBillEntryForObject(shkp, obj) : null);
-    const price = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(obj);
-    if (!shkp || !(price > 0) || (!entry && !obj.unpaid)) return false;
+    if (!shkp || !entry) return false;
+    const price = shopBillEntryTotal(entry);
+    if (!(price > 0)) return false;
     const dummy = {
         ...obj,
         id: next_ident(),
@@ -9478,11 +9481,20 @@ function wishedInventoryPhrase(item, wishedQuan = 1) {
     const displayQuan = item.quan || wishedQuan;
     const article = item.unique ? 'the'
         : item.noArticle ? ''
-        : /^(?:.* )?(?:boots|gloves)$/.test(baseVisibleName) ? 'a pair of'
+        : pairArticleObjectName(baseVisibleName) ? 'a pair of'
         : /^[aeiou]/i.test(visibleName) ? 'an' : 'a';
     return displayQuan > 1 ? `${displayQuan} ${visibleName}`
         : article === 'a pair of' ? `a ${bucPrefix}pair of ${baseVisibleName}`
             : article ? `${article} ${visibleName}` : visibleName;
+}
+
+function pairArticleObjectName(name) {
+    const objectName = String(name || '').toLowerCase();
+    return objectName === 'lenses'
+        || objectName.endsWith('boots')
+        || objectName.endsWith('shoes')
+        || objectName.endsWith('gloves')
+        || objectName.startsWith('gauntlets');
 }
 
 function makeRandomWishObject() {
@@ -13268,6 +13280,20 @@ function removeCurseActiveTarget(item) {
     return false;
 }
 
+function normalizeUncursedWaterPotion(item) {
+    if (!isWaterPotion(item)) return;
+    item.kind = 'water';
+    item.actualKind = 'potion of water';
+    item.potionIndex = null;
+    item.blessed = false;
+}
+
+function costlyUncurseWater(item) {
+    if (!item?.cursed || !item.unpaid || !isWaterPotion(item)) return '';
+    item.bknown = true;
+    return costlyAlterationPaymentMessage(item, 'uncurse');
+}
+
 function unpunishHero() {
     if (!game.u || !(game.u.uball || game.u.uchain || game.u.upunished || game._punished)) return;
     const chain = game.u.uchain;
@@ -13322,7 +13348,13 @@ function removeCurseScrollEffect(item) {
                 refreshInventoryLineAfterBucChange(obj);
             } else if (obj.cursed) {
                 if (obj.bknown === true) learned = true;
+                const payment = costlyUncurseWater(obj);
+                if (payment) {
+                    learned = true;
+                    messages.push(payment);
+                }
                 obj.cursed = false;
+                normalizeUncursedWaterPotion(obj);
                 syncCarriedFigurineTransformTimer(obj);
                 refreshInventoryLineAfterBucChange(obj);
             }
@@ -13894,12 +13926,23 @@ function enchantWeaponAmount(scroll, target) {
     return 1;
 }
 
+function finishConfusedProofMutation(target, oldErodeproof, newErodeproof, messages) {
+    if (oldErodeproof && !newErodeproof) {
+        target.oerodeproof = true;
+        const payment = costlyAlterationPaymentMessage(target, 'degrade');
+        if (payment) messages.push(payment);
+    }
+    target.oerodeproof = !!newErodeproof;
+}
+
 function enchantWeaponConfusedEffect(scroll, messages) {
     const target = primaryWieldedItem();
     const profile = wishedDamageProfile(target);
     if (!target || !profile.erosionMatters || target.cls === 'armor' || target.glyph === '[') return null;
 
+    const oldErodeproof = !!target.oerodeproof;
     const newErodeproof = !scroll.cursed;
+    target.oerodeproof = false;
     if (game.u?.blind) {
         target.rknown = false;
         messages.push('Your weapon feels warm for a moment.');
@@ -13912,7 +13955,7 @@ function enchantWeaponConfusedEffect(scroll, messages) {
         target.oeroded2 = 0;
         messages.push(`${enchantWeaponSubject(target)} ${enchantWeaponVerb(target, game.u?.blind ? 'feels' : 'looks', game.u?.blind ? 'feel' : 'look')} as good as new!`);
     }
-    target.oerodeproof = newErodeproof;
+    finishConfusedProofMutation(target, oldErodeproof, newErodeproof, messages);
     refreshEnchantWeaponLine(target);
     return { learned: false, more: messages.length > 1 };
 }
@@ -13932,6 +13975,8 @@ function transformWormToCrysknife(target, messages) {
 function transformCrysknifeToWormTooth(scroll, target, messages) {
     const multiple = (target.quan || 1) > 1;
     messages.push(`${enchantWeaponSubject(target)} ${multiple ? 'fuse, and become' : 'is'} much duller now.`);
+    const payment = costlyAlterationPaymentMessage(target, 'degrade');
+    if (payment) messages.push(payment);
     target.kind = 'worm tooth';
     target.actualKind = 'worm tooth';
     target.quan = 1;
@@ -13993,6 +14038,10 @@ function enchantWeaponScrollChwepon(scroll, amount, messages) {
         learned = target.known === true && (amount > 0 || (amount < 0 && scroll.bknown === true));
     }
 
+    if (amount < 0) {
+        const payment = costlyAlterationPaymentMessage(target, 'disenchant');
+        if (payment) messages.push(payment);
+    }
     target.spe = capWishSpe(spe + amount);
     if (amount > 0 && target.cursed) target.cursed = false;
     refreshEnchantWeaponLine(target);
@@ -14054,6 +14103,42 @@ function costlyAlterationPaymentMessage(item, verb) {
     const plural = (item?.quan || 1) > 1;
     if (!billDummyAlteredCarriedObject(item)) return '';
     return `You ${verb} ${plural ? 'those' : 'that'} ${name}, you pay for ${plural ? 'them' : 'it'}!`;
+}
+
+const NO_EFFECT_BROKEN_WANDS = new Set([
+    'enlightenment',
+    'locking',
+    'nothing',
+    'opening',
+    'probing',
+    'secret door detection',
+    'stasis',
+    'wishing',
+]);
+
+function canApplyNoEffectWandBreak(item) {
+    return isWandItem(item) && (wandCharges(item) < 0 || NO_EFFECT_BROKEN_WANDS.has(wandTypeName(item)));
+}
+
+function wandBreakObjectName(item) {
+    const name = pickupObjectName(item);
+    return /^(?:a|an|the|some) /i.test(name) ? name : `the ${name}`;
+}
+
+function applyNoEffectWandBreak(item) {
+    const messages = [`Raising ${wandBreakObjectName(item)} high above your head, you break it in two!`];
+    checkUnpaidUsage(item, messages);
+    const payment = costlyAlterationPaymentMessage(item, 'destroy');
+    if (payment) messages.push(payment);
+    const chargeUse = zappableWand(item);
+    if (chargeUse.zapped) {
+        setWandCharges(item, wandCharges(item) + 1);
+        if (wandCharges(item) === 0) setWandCharges(item, rnd(3));
+        messages.push(...wandZapSpendMessages([], chargeUse));
+    }
+    removeInventoryItem(item, item.quan || 1);
+    messages.push('But nothing else happens...');
+    return messages;
 }
 
 function stripCharges(item) {
@@ -15077,10 +15162,8 @@ function markObjectShopBillUsedUp(obj, shkp = null) {
         ? { shkp, entry: shopBillEntryForObject(shkp, obj) }
         : shopkeeperOwningBillEntry(obj);
     const billOwner = owner.shkp || shkp;
-    let entry = owner.entry;
-    const price = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(obj);
-    if (!entry && billOwner && obj.unpaid && price > 0)
-        entry = addObjectToShopBill(billOwner, obj, price, { useup: true });
+    const entry = owner.entry;
+    const price = entry ? shopBillEntryTotal(entry) : 0;
     if (!entry || !(price > 0)) return false;
     entry.useup = true;
     clearObjectShopBillState(obj);
@@ -15133,8 +15216,8 @@ function collectObjectAndContentsShopDebtItems(obj, shkp, seen = new Set()) {
     seen.add(obj);
     const items = [];
     const entry = shopBillEntryForObject(shkp, obj);
-    const price = entry ? shopBillEntryTotal(entry) : (obj.unpaid ? unpaidBillPrice(obj) : 0);
-    if ((entry || obj.unpaid) && price > 0) items.push({ item: obj, entry, price });
+    const price = entry ? shopBillEntryTotal(entry) : 0;
+    if (entry && price > 0) items.push({ item: obj, entry, price });
     for (const child of globContents(obj))
         items.push(...collectObjectAndContentsShopDebtItems(child, shkp, seen));
     return items;
@@ -16210,9 +16293,6 @@ function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) 
     if (entry) {
         value += shopBillEntryTotal(entry);
         subOneFromShopBill(obj, shkp);
-    } else if (obj.unpaid) {
-        value += unpaidBillPrice(obj);
-        clearObjectShopBillState(obj);
     } else if (!obj.no_charge) {
         value += shopItemPrice(obj, source.ox ?? game.u?.ux, source.oy ?? game.u?.uy);
     }
@@ -16308,9 +16388,6 @@ function heldMagicBagLostValueForObject(obj, shkp, seen = new Set()) {
     if (entry) {
         value += shopBillEntryTotal(entry);
         subOneFromShopBill(obj, shkp);
-    } else if (obj.unpaid) {
-        value += unpaidBillPrice(obj) || shopItemPrice(obj, game.u?.ux, game.u?.uy);
-        clearObjectShopBillState(obj);
     }
     for (const child of globContents(obj))
         value += heldMagicBagLostValueForObject(child, shkp, seen);
@@ -16337,7 +16414,7 @@ function markObjectTreeShopBillsUsedUp(obj, seen = new Set()) {
 
 function billHeldMagicBagLostItem(obj) {
     const owner = shopkeeperOwningBillEntry(obj);
-    if (obj?.unpaid || owner.entry) {
+    if (owner.entry) {
         const currentShopkeeper = heroShopkeeper();
         const shkp = owner.shkp || currentShopkeeper;
         if (!shkp) return 0;
@@ -16395,15 +16472,15 @@ function mergePickedObjectIntoShopBill(source, target, sourcePrice = null) {
 
     if (!sourceBillable) return { canMerge: !targetUnpaid, price: 0, billEntry: existingEntry };
     if (!targetUnpaid) return { canMerge: false, price, billEntry: null };
+    if (!existingEntry) return { canMerge: false, price, billEntry: null };
 
-    const existingTotal = existingEntry ? shopBillEntryTotal(existingEntry) : unpaidBillPrice(target);
+    const existingTotal = shopBillEntryTotal(existingEntry);
     if (!(existingTotal > 0)) return { canMerge: false, price, billEntry: existingEntry };
     if (existingTotal * pickedCount !== price * targetCount)
         return { canMerge: false, price, billEntry: existingEntry };
 
     const totalPrice = existingTotal + price;
-    let billEntry = existingEntry;
-    if (!billEntry) billEntry = addObjectToShopBill(shkp, target, totalPrice);
+    const billEntry = existingEntry;
     if (billEntry) {
         billEntry.bquan = targetCount + pickedCount;
         billEntry.totalPrice = totalPrice;
@@ -16519,9 +16596,10 @@ function containerTakeoutMergeBilling(container, obj) {
 function containerTakeoutBillMergeCompatible(source, target, billing) {
     if (!billing.sourceWillBeUnpaid) return true;
     const entry = shopBillEntryForObject(billing.shkp, target);
+    if (!entry) return false;
     const targetCount = Math.max(1, Math.trunc(Number(target?.quan || 1)));
     const sourceCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
-    const existingTotal = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(target);
+    const existingTotal = shopBillEntryTotal(entry);
     return existingTotal > 0 && existingTotal * sourceCount === billing.price * targetCount;
 }
 
@@ -16572,18 +16650,22 @@ export const __shopBillingTestHooks = {
     addContainerTakeoutObjectToShopBill,
     addObjectToShopBill,
     addPickedObjectToShopBill,
+    billDummyAlteredCarriedObjectForTest: billDummyAlteredCarriedObject,
     beginDroppedPaidObjectSale,
     beginShopFloorContainerPutSale,
     collectPayableShopDebts,
     finishRobbedOnlyShopPayment,
     finishShopPaymentSelection,
     findPickedObjectInventoryMergeTarget,
+    findFloorPickupFoodMergeTargetForPreflight,
     finishDroppedObjectSale,
     finishShopFloorContainerPutSale,
     impactDropFloorObjects,
     mergePickedObjectIntoInventory,
     mergePickedObjectIntoShopBill,
+    containerTakeoutBillMergeCompatible,
     landProjectileObjectWithShopHandling,
+    markObjectShopBillUsedUpForTest: markObjectShopBillUsedUp,
     placeStackableFloorObject,
     projectileContainerImpactDmg,
     pickUpFloorGoldObject,
@@ -16620,6 +16702,7 @@ export const __shopBillingTestHooks = {
     shopBillEntryTotal,
     shopkeeperDebitPayment,
     shopkeeperCash,
+    shopBaseCost,
     shopItemPrice,
     shopPaymentCashDue,
     shopSaleableObject,
@@ -17460,19 +17543,20 @@ function usedUpShopBillName(obj) {
 }
 
 function rememberUsedUpShopBill(obj) {
-    const price = unpaidBillPrice(obj);
-    if (!obj?.unpaid || !price) return;
-    const shkp = heroShopkeeper();
-    const billEntry = shopBillEntryForObject(shkp, obj);
-    if (billEntry) {
-        billEntry.name = usedUpShopBillName(obj);
-        billEntry.shopkeeperId = shopkeeperIdentity(shkp);
-    }
+    const { shkp, entry: billEntry } = shopkeeperOwningBillEntry(obj);
+    const price = shopBillEntryTotal(billEntry);
+    if (!shkp || !billEntry || !(price > 0)) return;
+    const name = usedUpShopBillName(obj);
+    billEntry.useup = true;
+    clearObjectShopBillState(obj);
+    billEntry.name = name;
+    billEntry.shopkeeperId = shopkeeperIdentity(shkp);
+    if (usedUpShopBillTrackerForId(billEntry.bo_id, shkp)) return;
     game._usedUpShopBills ??= [];
     game._usedUpShopBills.push({
-        name: usedUpShopBillName(obj),
+        name,
         price,
-        bo_id: billEntry?.bo_id ?? shopBillObjectId(obj),
+        bo_id: billEntry.bo_id,
         shopkeeperId: shopkeeperIdentity(shkp),
     });
 }
@@ -17941,8 +18025,9 @@ function findFloorPickupFoodMergeTargetForPreflight(source, sourcePrice = null) 
             continue;
         }
         if (!targetUnpaid) continue;
+        if (!entry) continue;
         const targetCount = Math.max(1, Math.trunc(Number(target.quan || 1)));
-        const existingTotal = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(target);
+        const existingTotal = shopBillEntryTotal(entry);
         if (existingTotal > 0 && existingTotal * sourceCount === price * targetCount)
             return target;
     }
@@ -19189,8 +19274,11 @@ function destroyArmorConfusedEffect(scroll, target, messages) {
         exerciseAttribute(A_CON, false);
         return { learned: false, more: messages.length > 1 };
     }
+    const oldErodeproof = !!target.oerodeproof;
+    const newErodeproof = !!scroll.cursed;
+    target.oerodeproof = false;
     messages.push(armorGlowMessage(target, 'purple'));
-    target.oerodeproof = !!scroll.cursed;
+    finishConfusedProofMutation(target, oldErodeproof, newErodeproof, messages);
     updateArmorLine(target);
     return { learned: false, more: messages.length > 1 };
 }
@@ -19272,9 +19360,10 @@ function enchantArmorColorWord(item, cursed, blind) {
 
 function enchantArmorConfusedEffect(item, armor) {
     const messages = [];
-    const subject = armorSubject(armor);
     const oldErodeproof = !!armor.oerodeproof;
     const newErodeproof = !item.cursed;
+    armor.oerodeproof = false;
+    const subject = armorSubject(armor);
     if (game.u?.blind) {
         armor.rknown = false;
         messages.push(`${subject} ${armorVerb(armor, 'feels', 'feel')} warm for a moment.`);
@@ -19289,7 +19378,7 @@ function enchantArmorConfusedEffect(item, armor) {
         if (game.u) game.u.uac = (game.u.uac ?? 10) + oldAc - wornArmorAcValue(armor);
         messages.push(`${subject} ${armorVerb(armor, game.u?.blind ? 'feels' : 'looks', game.u?.blind ? 'feel' : 'look')} as good as new!`);
     }
-    armor.oerodeproof = newErodeproof;
+    finishConfusedProofMutation(armor, oldErodeproof, newErodeproof, messages);
     if (oldErodeproof && !newErodeproof) armor.rknown = true;
     updateArmorLine(armor);
     return { messages, known: false };
@@ -19372,6 +19461,11 @@ function enchantArmorScrollEffect(item) {
     const messages = [];
     const color = enchantArmorColorWord(armor, item.cursed, game.u?.blind);
     messages.push(`${armorSubject(armor)} ${s === 0 ? 'violently ' : ''}${armorVerb(armor, game.u?.blind ? 'vibrates' : 'glows', game.u?.blind ? 'vibrate' : 'glow')}${color} for a ${s * s > 1 ? 'while' : 'moment'}.`);
+
+    if (s < 0) {
+        const payment = costlyAlterationPaymentMessage(armor, 'disenchant');
+        if (payment) messages.push(payment);
+    }
 
     if (item.cursed) {
         armor.cursed = true;
@@ -21267,6 +21361,7 @@ function billShopFloorContainerPutObject(container, putItem, options = {}) {
 
 function preserveExplodedShopFloorPutTriggerBill(putItem, owner, fallbackShkp, price) {
     if (!putItem || shopBillableGold(putItem)) return false;
+    if (!owner?.entry) return false;
     const shkp = owner?.shkp || fallbackShkp || heroShopkeeper();
     if (!shkp) return false;
     if (!shopBillEntryForObject(shkp, putItem) && price > 0)
@@ -21317,8 +21412,8 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
     curseLoadstoneLeavingInventory(putItem);
     if (isMagicBagObject(container) && magicBagExplodesWithObject(putItem)) {
         const triggerOwner = shopkeeperOwningBillEntry(putItem);
-        const triggerPrice = triggerOwner.entry ? shopBillEntryTotal(triggerOwner.entry) : unpaidBillPrice(putItem);
-        const wasUnpaid = !!(putItem.unpaid || triggerOwner.entry);
+        const triggerPrice = triggerOwner.entry ? shopBillEntryTotal(triggerOwner.entry) : 0;
+        const wasUnpaid = !!triggerOwner.entry;
         const billing = billShopFloorContainerPutObject(container, putItem, {
             acceptedSale: !!options.acceptedSale,
             shkp: options.salePending?.shkp,
@@ -22372,8 +22467,6 @@ function visibleCreatedMonster(mon) {
 }
 
 function chargedToolUsageBasePrice(obj) {
-    const billed = unpaidBillPrice(obj);
-    if (billed > 0) return billed;
     return shopItemPrice(obj, game.u?.ux, game.u?.uy) || shopBaseCost(obj) || 0;
 }
 
@@ -22439,11 +22532,12 @@ function chargedToolUsageFeeMessage(obj, fee, altusage = false, shkp = null) {
 }
 
 function checkUnpaidUsage(obj, messages, { altusage = false, chargeCount = null } = {}) {
-    if (!obj?.unpaid) return 0;
-    const currentCharges = chargedUsageChargeCount(obj, chargeCount);
-    if (chargedUsageIsChargeBased(obj) && currentCharges <= 0) return 0;
     const shkp = heroShopkeeper();
     if (!shkp) return 0;
+    const billEntry = shopBillEntryForObject(shkp, obj);
+    if (!billEntry || billEntry.useup) return 0;
+    const currentCharges = chargedUsageChargeCount(obj, chargeCount);
+    if (chargedUsageIsChargeBased(obj) && currentCharges <= 0) return 0;
     const fee = chargedToolUsageFee(obj, altusage, currentCharges);
     if (!(fee > 0)) return 0;
     const message = chargedToolUsageFeeMessage(obj, fee, altusage, shkp);
@@ -22466,6 +22560,7 @@ function floorSpecialSourceUsageBill(source) {
     const price = shopItemPrice(source, x, y);
     if (!(price > 0)) return null;
     return {
+        shkp,
         unpaid: source.unpaid,
         unpaidPrice: source.unpaidPrice,
         line: source.line,
@@ -22476,9 +22571,14 @@ function floorSpecialSourceUsageBill(source) {
 function beginFloorSpecialSourceUsageBill(source) {
     const saved = floorSpecialSourceUsageBill(source);
     if (!saved) return null;
-    source.unpaid = true;
-    source.unpaidPrice = saved.price;
+    const existingEntry = shopBillEntryForObject(saved.shkp, source);
+    const savedEntry = existingEntry ? { ...existingEntry } : null;
+    const billEntry = existingEntry || addObjectToShopBill(saved.shkp, source, saved.price);
+    if (!billEntry) return null;
     return () => {
+        if (savedEntry) Object.assign(existingEntry, savedEntry);
+        else removeObjectFromShopBillById(saved.shkp, shopBillObjectId(source));
+        saved.shkp.billct = Array.isArray(saved.shkp.bill) ? saved.shkp.bill.length : Math.max(0, saved.shkp.billct || 0);
         source.unpaid = saved.unpaid;
         source.unpaidPrice = saved.unpaidPrice;
         source.line = saved.line;
@@ -22778,7 +22878,7 @@ function containerObjectPhrase(obj) {
     if (count > 1) return `${count} ${name}`;
     if (obj.unique) return `the ${name}`;
     if (obj.noArticle) return name;
-    if (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets'))
+    if (pairArticleObjectName(name))
         return `a pair of ${name}`;
     const article = /^[aeiou]/i.test(name) || name === 'orcish helm' ? 'an' : 'a';
     return `${article} ${name}`;
@@ -22834,7 +22934,7 @@ function pickupObjectPhrase(obj) {
     if (count > 1) return `${count} ${name}`;
     if (obj.unique) return `the ${name}`;
     if (obj.noArticle) return name;
-    if (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets'))
+    if (pairArticleObjectName(name))
         return `a pair of ${name}`;
     const article = /^[aeiou]/i.test(name) || name === 'orcish helm' ? 'an' : 'a';
     return `${article} ${name}`;
@@ -22845,6 +22945,7 @@ function shopBaseCost(obj) {
     let kind = String(obj.actualKind || obj.kind || '').toLowerCase();
     kind = kind.replace(/^(?:blessed|uncursed|cursed) /, '');
     if (isGlobbyObject(obj)) return 6;
+    if (isBellOfOpeningItem(obj)) return SHOP_OBJECT_COSTS['bell of opening'];
 
     if (obj.otyp === SCROLL_CLASS || cls === 'scroll' || obj.otyp === SCR_SCARE_MONSTER) {
         const scrollIndex = obj.scrollIndex ?? (obj.otyp === SCR_SCARE_MONSTER ? 3 : undefined);
@@ -23360,7 +23461,7 @@ function collectLegacyUnpaidShopItemsFromList(list, entries, shkp = null, seenBi
             continue;
         }
         const price = billEntry ? shopBillEntryTotal(billEntry) : unpaidBillPrice(item);
-        if ((item?.unpaid || billEntry) && price) entries.push({ item, billEntry, billPortion: 'legacy', name: shopDebtItemName(item), price });
+        if ((billEntry || (!shkp && item?.unpaid)) && price) entries.push({ item, billEntry, billPortion: 'legacy', name: shopDebtItemName(item), price });
         const contents = globContents(item);
         if (contents.length) collectLegacyUnpaidShopItemsFromList(contents, entries, shkp, seenBillIds);
     }
@@ -24810,8 +24911,9 @@ function normalInventoryLine(item) {
     let suffix = '';
 
     if (cls === 'coin') return `$ - ${quan} gold piece${quan === 1 ? '' : 's'}`;
-    if (cls === 'armor' && !name.startsWith('pair of ')
-        && (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets')))
+    if ((cls === 'armor' || (cls === 'tool' && kind === 'lenses'))
+        && !name.startsWith('pair of ')
+        && pairArticleObjectName(name))
         name = `pair of ${name}`;
     if (cls === 'tool' && kind === 'sack') name = `empty ${blessedState}sack`;
     if ((cls === 'wand' || item.tool === 'charges' || item.tool === 'magicMarker' || isChargedTool(item)) && item.spe != null && item.chargeKnown)
@@ -24931,6 +25033,49 @@ function itemKindText(item) {
 function isBellOfOpeningItem(item) {
     const text = itemKindText(item);
     return text === 'bell of opening' || item?.otyp === BELL && text === 'silver bell';
+}
+
+function identifyBellOfOpening(item) {
+    if (!item) return;
+    item.known = true;
+    item.dknown = true;
+    item.kind = 'Bell of Opening';
+    item.actualKind = 'bell of opening';
+    recordKnownToolDiscovery('Bell of Opening');
+    updateChargedItemLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+}
+
+function applyBellOfOpening(item) {
+    const messages = [`You ring the ${pickupObjectName(item)}.`];
+    if (game.u?.underwater || game.u?.uunderwater) {
+        messages.push('But the sound is muffled.');
+        return messages;
+    }
+
+    const invoking = heroOnInvocationSquare();
+    if (chargedUsageChargeCount(item) <= 0) {
+        if (invoking) {
+            messages.push('But it makes no sound.');
+            identifyBellOfOpening(item);
+        }
+        return messages;
+    }
+
+    const bellName = pickupObjectName(item);
+    spendChargedToolUse(item, messages);
+    if (item.unpaid) syncUnpaidBillLine(item);
+
+    if (item.cursed) {
+        messages.push('Nothing happens.');
+    } else if (invoking) {
+        messages.push(`The ${bellName} issues an unsettling shrill sound...`);
+        item.age = game.moves || 0;
+        identifyBellOfOpening(item);
+    } else {
+        messages.push('Nothing happens.');
+    }
+    return messages;
 }
 
 function isCandelabrumOfInvocationItem(item) {
@@ -37920,6 +38065,27 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'breakWandConfirm') {
+        const item = (game.inventory || []).find(invItem => invItem.letter === game._apply_break_wand_letter);
+        if (ch === 'y' && item && canApplyNoEffectWandBreak(item)) {
+            game._apply_break_wand_letter = null;
+            game._command_mode = null;
+            const messages = applyNoEffectWandBreak(item);
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n'
+            || !item || !canApplyNoEffectWandBreak(item)) {
+            game._apply_break_wand_letter = null;
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
     if (game._command_mode === 'applyObject') {
         if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
             await setMessage('Never mind.');
@@ -38017,6 +38183,12 @@ export async function rhack(_cmd) {
             await beginMusicalInstrumentUse(item);
             return;
         }
+        if (isBellOfOpeningItem(item)) {
+            const messages = applyBellOfOpening(item);
+            await setMessage(messages.join('  '), messages.length > 1);
+            game.context.move = 1;
+            return;
+        }
         if (isPotionOfOil(item)) {
             await applyPotionOfOil(item);
             return;
@@ -38047,6 +38219,12 @@ export async function rhack(_cmd) {
             game._cursor_override = [(game._farlook_x || 0) - 1, (game._farlook_y || 0) + 1];
             await setMessage('Where do you want to hit?');
             game._command_mode = 'applyPolearmTarget';
+            return;
+        }
+        if (canApplyNoEffectWandBreak(item)) {
+            game._apply_break_wand_letter = item.letter;
+            await setMessage(`Are you really sure you want to break ${wandBreakObjectName(item)}? [yn] (n)`);
+            game._command_mode = 'breakWandConfirm';
             return;
         }
         if (['armor', 'weapon', 'amulet', 'ring', 'gem', 'food'].includes(item.cls)) {
@@ -39404,7 +39582,7 @@ export async function rhack(_cmd) {
             const displayQuan = item.quan || wishedQuan;
             const article = item.unique ? 'the'
                 : item.noArticle ? ''
-                : /^(?:.* )?(?:boots|gloves)$/.test(baseVisibleName) ? 'a pair of'
+                : pairArticleObjectName(baseVisibleName) ? 'a pair of'
                 : /^[aeiou]/i.test(visibleName) ? 'an' : 'a';
             const displayPhrase = displayQuan > 1 ? `${displayQuan} ${visibleName}`
                 : article === 'a pair of' ? `a ${bucPrefix}pair of ${baseVisibleName}`
@@ -44575,19 +44753,20 @@ export async function rhack(_cmd) {
     }
 
     if (ch === 'p') {
-        if (game.u?.blind) {
-            await setMessage("You can't see...");
-            return;
-        }
         const ux = game.u?.ux || 0;
         const uy = game.u?.uy || 0;
         const shopkeepers = (game.level?.monsters || []).filter(mon => mon.isshk);
         const adjacent = shopkeepers.filter(mon => Math.max(Math.abs(mon.mx - ux), Math.abs(mon.my - uy)) <= 1);
+        const uniqueAdjacent = adjacent.length === 1 ? adjacent[0] : null;
+        if (game.u?.blind && !uniqueAdjacent) {
+            await setMessage("You can't see...");
+            return;
+        }
         const loc = game.level?.at(ux, uy);
         const roomno = loc?.roomno || 0;
         const room = levelRoomByRoomno(roomno);
         const resident = room?.resident || shopkeepers.find(mon => mon.shoproom === roomno);
-        const shkp = adjacent.length === 1 ? adjacent[0] : resident || null;
+        const shkp = uniqueAdjacent || resident || null;
         if (!shkp && shopkeepers.length === 1) {
             await setMessage(`${shopkeeperDisplayName(shopkeepers[0])} is not near enough to receive your payment.`);
             return;

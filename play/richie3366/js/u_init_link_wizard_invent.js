@@ -2,7 +2,6 @@
 // C ref: u_init.c Wizard[] trobj, ini_inv(), ini_inv_use_obj — uwep quarterstaff, uarmc cloak MR.
 
 import { game } from './gstate.js';
-import { races } from './roles.js';
 import {
     NH5_ARMOR_CLASS,
     NH5_POTION_CLASS,
@@ -32,9 +31,13 @@ const BASE_WT = {
 };
 
 /** @param {import('./gstate.js').game} [g] */
+export function isWizardChargenLikeC(g = game) {
+    return g.urole?.abbr === 'Wiz';
+}
+
+/** @deprecated use {@link isWizardChargenLikeC} */
 export function isHumanWizardChargenLikeC(g = game) {
-    const humanIdx = races.findIndex((r) => r.name === 'human');
-    return g.urole?.abbr === 'Wiz' && (g.initrace | 0) === humanIdx;
+    return isWizardChargenLikeC(g);
 }
 
 /**
@@ -42,7 +45,7 @@ export function isHumanWizardChargenLikeC(g = game) {
  * @param {import('./gstate.js').game} g
  */
 export function applyWizardHumanLinkedInventAndWearLikeC(g) {
-    if (!isHumanWizardChargenLikeC(g)) return;
+    if (!isWizardChargenLikeC(g)) return;
 
     const wandO = g._wizardIniWandOtyp | 0;
     const rings = g._wizardIniRingOtyps ?? [];

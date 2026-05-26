@@ -41,7 +41,7 @@ import {
     applyLockpickGetdirPromptHeroLikeC,
     consumeApplyDirectionHeroLikeC,
 } from './lock_hero.js';
-import { IS_DOOR } from './const.js';
+import { COLNO, IS_DOOR } from './const.js';
 import { spotEffects } from './spoteffects.js';
 import { dokickFromCmd } from './kick.js';
 import { snapshotUshops0FromHeroTileLikeC } from './shop.js';
@@ -58,6 +58,11 @@ const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
+}
+
+/** C: cmd.c move_funcs[][N_MOVEMODES_RUN] — shift-dir / run-* extended cmds. */
+function isRunMovementKey(ch) {
+    return 'HJKLYUBN'.includes(ch);
 }
 
 // C ref: walkable.js blocksMovementAt (hack.c / goodpos terrain slice)
@@ -197,8 +202,26 @@ export async function rhack(key) {
         return;
     }
     if (isMovementKey(ch)) {
-        const moved = await domove(DIR_DX[ch], DIR_DY[ch]);
+        const moved = await domoveHeroDirLikeC(DIR_DX[ch], DIR_DY[ch]);
         game.context.move = moved || game.context?.door_opened ? 1 : 0;
+    } else if (isRunMovementKey(ch)) {
+        /* C: cmd.c DOMOVE_RUSH — set_move_cmd + gm.multi=COLNO + context.mv; first domove here. */
+        const lower = ch.toLowerCase();
+        const g = game;
+        const dx = DIR_DX[lower];
+        const dy = DIR_DY[lower];
+        g.context = g.context || {};
+        g.u = g.u || {};
+        g.u.dx = dx;
+        g.u.dy = dy;
+        g.context.run = 1;
+        g.context.mv = true;
+        g.multi = COLNO;
+        await domoveHeroDirLikeC(dx, dy);
+        g.context.move = 1;
+    } else if (ch === '.') {
+        /* C: do.c donull — wait/rest one turn (ECMD_TIME). */
+        game.context.move = 1;
     } else if (ch === 's') {
         // C: cmd.c rhack — #search → dosearch() → dosearch0 (detect.c)
         if (await dosearchCmdSafetyPreventionLikeC()) {
@@ -315,7 +338,8 @@ async function finishDomoveDzStairsTailLikeC(g) {
     ua.dz = 0;
 }
 
-async function domove(dx, dy) {
+/** C: hack.c domove — hero move / bump / door (uses u.dx/u.dy when called from multi tail). */
+export async function domoveHeroDirLikeC(dx, dy) {
     const g = game;
     const u = g.u;
     const newx = u.ux + dx;

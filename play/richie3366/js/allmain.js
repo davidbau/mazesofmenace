@@ -7,7 +7,9 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack } from './cmd.js';
+import { domoveHeroDirLikeC, rhack } from './cmd.js';
+import { COLNO } from './const.js';
+import { endRunning } from './timeout.js';
 import {
     docrt, docrtPaintVisibleForWelcomeLikeC, bot, flush_screen, pline, newsym,
     clearPendingMessageAndToplineLikeC, shouldClearMoveloopToplineLikeC, latchRetainedToplineLikeC,
@@ -290,7 +292,22 @@ export async function moveloop_core() {
     /* C: allmain.c — default assume next command costs time; rhack may clear it. */
     g.context.move = 1;
 
-    await rhack(0);
+    /* C: allmain.c — gm.multi continuation: extra domove before next rhack(0). */
+    if ((g.multi | 0) > 0) {
+        g.context = g.context || {};
+        if (g.context.mv) {
+            if ((g.multi | 0) < COLNO && (g.multi = (g.multi | 0) - 1) <= 0) {
+                endRunning(true);
+            }
+            const u = g.u || {};
+            await domoveHeroDirLikeC(u.dx | 0, u.dy | 0);
+        } else {
+            g.multi = (g.multi | 0) - 1;
+            await rhack(0);
+        }
+    } else {
+        await rhack(0);
+    }
 
     /* C: allmain.c moveloop_core — vision_recalc after rhack when unblock/block changed. */
     if (g.vision_full_recalc) {

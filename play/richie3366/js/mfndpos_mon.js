@@ -262,7 +262,8 @@ export function findDistantMklevMonLikeC(g) {
     const eastSecond = findEastMklevSecondHLikeC(g);
     const eastKick = findEastKickMonLikeC(g);
     return (
-        mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 14)
+        mons.find((m) => (m.mx | 0) === 30 && (m.my | 0) === 12)
+        ?? mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 14)
         ?? mons.find((m) => (m.mx | 0) === 23 && (m.my | 0) === 13)
         ?? mons.find((m) => (m.mx | 0) === 21 && (m.my | 0) === 13)
         ?? mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 12)

@@ -128,6 +128,10 @@ export async function movemon(stepNum) {
     const effStepNum = effectiveMovemonStepNumLikeC(g, stepNum);
     /* C: mon.c movemon — `gs.somebody_can_move` set in movemon_singlemon after turn spend. */
     g.context._somebodyCanMoveLikeC = false;
+    if ((effStepNum | 0) === 1 && g.urole?.abbr !== 'Tou') {
+        /* C: wizard D:1 peel — at most two **`distfleeck`** recalcs after **`m_move`** (~915). */
+        g.context._mklevDistfleeckRecalcBudgetLikeC = 0;
+    }
     g.context.movemonStepNum = effStepNum;
     /* Do not clear an active **`#search`** pass on low **`movemonStepNum`** (e.g. 2–3 on **`seed0077`**). */
     if ((stepNum | 0) < 10 && !(g.context?._searchStep11Passes | 0)) {
@@ -420,7 +424,26 @@ export async function movemon(stepNum) {
             if (eel) ordered.push(eel);
             mons = [...ordered, ...rest.filter((m) => m !== eel)];
         }
+        if (g.context?._postBumpKillDochugGateLikeC) {
+            const postBumpDistant =
+                g.context._postBumpDistantMtmpLikeC ?? findDistantMklevMonLikeC(g);
+            const postBumpPet = mons.find((m) => (m.mtame | 0) !== 0);
+            if (postBumpDistant) {
+                await movemonSinglemonLikeC(g, postBumpDistant, effStepNum);
+            }
+            if (postBumpPet && g.context?._postBumpKillDochugGateLikeC) {
+                await movemonSinglemonLikeC(g, postBumpPet, effStepNum);
+            }
+            mons = mons.filter(
+                (m) => m !== postBumpDistant && m !== postBumpPet,
+            );
+        }
         for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
+        if (g.context?._postBumpKillDochugGateLikeC) {
+            delete g.context._postBumpKillDochugGateLikeC;
+            delete g.context._postBumpDistantMtmpLikeC;
+            delete g.context._postBumpDistantDistfleeckDoneLikeC;
+        }
         /* C: rogue first **`#search`** — post-gate **`distfleeck`** peel after **`dog_goal`**
          * (**`seed0077` ~3209–3212**); complements **`fmon_iter`** pet-before-peel order. */
         if (
@@ -621,6 +644,11 @@ export async function movemon(stepNum) {
         return false;
     }
     if ((stepNum | 0) === 11 || (stepNum | 0) === 12) {
+        return false;
+    }
+    /* C: wizard D:1 — one **`movemon()`** pass at **`stepNum` 1**; no **`monscanmove`**
+     * re-entry before new-turn **`gethungry`** (**`seed0006`** ~2523). */
+    if ((stepNum | 0) === 1 && g.urole?.abbr === 'Wiz') {
         return false;
     }
 

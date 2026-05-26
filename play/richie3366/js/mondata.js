@@ -6,6 +6,8 @@ import { game } from './gstate.js';
 import {
     MONS_MLET,
     MONS_MMOVE,
+    MONS_MSIZE,
+    MONS_GENO_PLAN_B,
     MONS_RNDMONST_MFLAGS1,
     MONS_MFLAGS2,
     MONS_MLEVEL,
@@ -78,7 +80,15 @@ export function stubPermonstForCorpsenm(mnum) {
     else if (m === PM_LIZARD) mlet = S_LIZARD;
     else if (m === PM_LICHEN) mlet = S_FUNGUS;
     /* C: permonst `cnutrit` / `mconveys` / `geno` — shk.c corpse/tin/egg pricing; eat.c intrinsic_possible */
-    return { ...permonstHuman, mlet, mnum: m, cnutrit: 0, mconveys: 0, geno: 0 };
+    return {
+        ...permonstHuman,
+        mlet,
+        mnum: m,
+        msize: MONS_MSIZE[m] ?? permonstHuman.msize,
+        cnutrit: 0,
+        mconveys: 0,
+        geno: MONS_GENO_PLAN_B[m] ?? 0,
+    };
 }
 
 /** C: mondata.h **`is_human(ptr)`** — **`M2_HUMAN`**. */
@@ -120,9 +130,10 @@ export function permonstFromMndxLikeC(mndx) {
         mflags2: MONS_MFLAGS2[m] ?? 0,
         mlevel: MONS_MLEVEL[m] ?? 1,
         mmove: MONS_MMOVE[m] ?? permonstHuman.mmove,
+        msize: MONS_MSIZE[m] ?? permonstHuman.msize,
         maligntyp: MONS_RNDMONST_MALIGNTYP[m] ?? 0,
         msound: 0,
-        geno: 0,
+        geno: MONS_GENO_PLAN_B[m] ?? 0,
     };
 }
 
