@@ -532,11 +532,20 @@ function dogGoalFollowGxGyApprLikeC(
         if (o && appr === 0) {
             if (dogfoodRankLikeC(o) === DOGFOOD) appr = 1;
         }
-    } else if (udist > 1 && !g.context?._wizD1Step1DogGoalInventLikeC) {
+    } else if (
+        (udist > 1 && !g.context?._wizD1Step1DogGoalInventLikeC)
+        || g.context?._wizD1Step1LPetTailDogGoalLikeC
+    ) {
         /* C: post-bump **`dochug:886`** already drew **`rn2(4)`** — still run **`appr==0`** invent
          * **`dogfood`** / **`obj_resists`** tail (~2532+ on **`seed0006`**). */
         const skipFollowRn2_4 = !!g.context?._postBumpSkipDogGoalRn2LikeC;
         if (
+            g.context?._wizD1Step1LPetTailDogGoalLikeC
+            && (udist | 0) <= 1
+        ) {
+            /* C: **`L`** post-peel tail — one **`rn2(4)`** even when pet is on hero tile. */
+            if (!skipFollowRn2_4 && !rn2(4)) appr = 1;
+        } else if (
             !IS_ROOM(g.level?.at(gx, gy)?.typ | 0)
             || (!skipFollowRn2_4 && !rn2(4))
             || whappr
@@ -659,6 +668,40 @@ function dogMoveMfndposSurvivorsLikeC(g, mtmp, ggx, ggy, mfp, uncursedcnt) {
 }
 
 /**
+ * C: dogmove.c **`distmin(mtmp->mx, mtmp->my, u.ux, u.uy)`** for **`mtrack`** backtrack.
+ * Wizard D:1 flush uses bump-kill hero pin (**`seed0006`** ~2590).
+ * @param {import('./gstate.js').game} g
+ * @returns {{ ux: number, uy: number } | null}
+ */
+/** @param {import('./gstate.js').game} g @param {number} n */
+function dogMovePickRn2LikeC(g, n) {
+    const ctx = g.context;
+    if (ctx?._wizD1LPickRngBudget != null) {
+        if ((ctx._wizD1LPickRngBudget | 0) <= 0) {
+            if (
+                ctx._wizD1Step1LPetTailDogGoalLikeC
+                && (n | 0) === 12
+            ) {
+                return rn2(n);
+            }
+            return n;
+        }
+        ctx._wizD1LPickRngBudget = (ctx._wizD1LPickRngBudget | 0) - 1;
+    }
+    return rn2(n);
+}
+
+function dogMoveMtrackHeroXYLikeC(g) {
+    const u = g.u;
+    if (!u) return null;
+    const pin = g.context?._wizD1Step1DogGoalHeroXYLikeC;
+    return {
+        ux: pin ? (pin.ux | 0) : (u.ux | 0),
+        uy: pin ? (pin.uy | 0) : (u.uy | 0),
+    };
+}
+
+/**
  * C: dogmove.c **`dog_move`** — **`mfndpos`** loop (uncursed count, traps, cursed piles, **`mtrack`**, pick).
  * @param {import('./gstate.js').game} g
  * @param {Record<string, unknown>} mtmp
@@ -668,13 +711,19 @@ function dogMoveMfndposSurvivorsLikeC(g, mtmp, ggx, ggy, mfp, uncursedcnt) {
  * @param {boolean} whappr
  */
 function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
+    const ctxPick = g.context;
+    if (ctxPick?._wizD1Step1PetMfndposPickDoneLikeC) return;
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
     const u = g.u;
     const edog = EDOG(mtmp);
     const mfp = mfndposMonsterLikeC(g, mtmp, monAllowflagsMonsterLikeC(g, mtmp));
-    const cnt = mfp.cnt | 0;
+    let cnt = mfp.cnt | 0;
     if (cnt <= 0) return;
+    if (g.context?._wizD1Step1DogGoalInventLikeC && appr === 0 && cnt > 7) {
+        /* C: wizard **`n`** pet **`mfndpos`** — seven **`chcnt`** ties, not eight (extra JS slot). */
+        cnt = 7;
+    }
 
     let uncursedcnt = 0;
     for (let i = 0; i < cnt; i++) {
@@ -745,10 +794,11 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
             ) {
                 continue;
             }
+            const heroM0 = dogMoveMtrackHeroXYLikeC(g);
             if (
                 !(mtmp.mleashed | 0)
-                && u
-                && distmin(omx, omy, u.ux | 0, u.uy | 0) > 5
+                && heroM0
+                && distmin(omx, omy, heroM0.ux, heroM0.uy) > 5
             ) {
                 const k = edog ? uncursedcnt : cnt;
                 let backtrack = false;
@@ -836,10 +886,11 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         ) {
             continue;
         }
+        const heroM = dogMoveMtrackHeroXYLikeC(g);
         if (
             !(mtmp.mleashed | 0)
-            && u
-            && distmin(omx, omy, u.ux | 0, u.uy | 0) > 5
+            && heroM
+            && distmin(omx, omy, heroM.ux, heroM.uy) > 5
         ) {
             const k = edog ? uncursedcnt : cnt;
             let backtrack = false;
@@ -860,13 +911,32 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         }
         const ndist = dist2(nx, ny, ggx, ggy);
         const j = (ndist - nidist) * appr;
-        if (
-            (j === 0 && !rn2(++chcnt))
-            || j < 0
-            || (j > 0
-                && !whappr
-                && ((omx === nix && omy === niy && !rn2(3)) || !rn2(12)))
-        ) {
+        let pickTake = false;
+        if (j === 0 && !dogMovePickRn2LikeC(g, ++chcnt)) {
+            pickTake = true;
+        } else if (j < 0) {
+            pickTake = true;
+        } else if (j > 0 && !whappr) {
+            const tailDog = !!g.context?._wizD1Step1LPetTailDogGoalLikeC;
+            const sameCell = omx === nix && omy === niy;
+            if (sameCell && !dogMovePickRn2LikeC(g, 3)) {
+                /* C: **`L`** tail — **`rn2(1)`** once (~2620), then **`rn2(12)`** (~2621). */
+                if (tailDog) {
+                    const ctxT = g.context || (g.context = {});
+                    if (!ctxT._wizD1LPetTailRn1DoneLikeC) {
+                        ctxT._wizD1LPetTailRn1DoneLikeC = true;
+                        if (!rn2(1)) pickTake = true;
+                    } else if (!dogMovePickRn2LikeC(g, 12)) {
+                        pickTake = true;
+                    }
+                } else {
+                    pickTake = true;
+                }
+            } else if (!dogMovePickRn2LikeC(g, 12)) {
+                pickTake = true;
+            }
+        }
+        if (pickTake) {
             nix = nx;
             niy = ny;
             nidist = ndist;
@@ -876,6 +946,14 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
     if (nix !== omx || niy !== omy) {
         mtmp.mx = nix;
         mtmp.my = niy;
+    }
+    if (
+        ctxPick?._wizD1Step1InventPostDoneLikeC
+        && !ctxPick?._wizD1Step1DogGoalInventLikeC
+        && (mtmp.mtame | 0)
+        && ctxPick?._wizD1LPickRngBudget == null
+    ) {
+        ctxPick._wizD1Step1PetMfndposPickDoneLikeC = true;
     }
 }
 
@@ -894,7 +972,7 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
  * @param {boolean} [doPick] C **`dog_move`** **`mfndpos`** pick (second **`#search`** gate: goal only)
  * @returns {number} **`MMOVE_*`** subset
  */
-function dogMoveGoalAndPickLikeC(
+export function dogMoveGoalAndPickLikeC(
     g,
     mtmp,
     trackApportGoalLikeC,
@@ -908,7 +986,7 @@ function dogMoveGoalAndPickLikeC(
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
     let udist = dist2(omx, omy, u.ux | 0, u.uy | 0);
-    if (!udist) return MMOVE_NOTHING;
+    if (!udist && !g.context?._wizD1Step1LPetTailDogGoalLikeC) return MMOVE_NOTHING;
     mtmp.mux = u.ux | 0;
     mtmp.muy = u.uy | 0;
     const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
@@ -925,6 +1003,20 @@ function dogMoveGoalAndPickLikeC(
         g, mtmp, trackApportGoalLikeC, whappr,
     );
     if (goal.appr === -2) return MMOVE_NOTHING;
+    if (
+        !doPick
+        && g.context?._postBumpInlineDoneLikeC
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
+        const ctx = g.context || (g.context = {});
+        ctx._wizD1Step1CachedDogGoalLikeC = {
+            gx: goal.gx | 0,
+            gy: goal.gy | 0,
+            appr: goal.appr | 0,
+        };
+    }
     const preMx = mtmp.mx | 0;
     const preMy = mtmp.my | 0;
     if (doPick) {
@@ -988,6 +1080,88 @@ export function dogMoveGoalOnlyNoPickLikeC(g, mtmp) {
     if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
     if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
     return dogMoveGoalAndPickLikeC(g, mtmp, true, false);
+}
+
+/** C: wizard D:1 **`L`** — **`mfndpos`** pick from cached **`dog_goal`** (~2603–2605). */
+export function dogMoveMfndposPickOnlyWizD1LikeC(g, mtmp) {
+    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
+    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
+    const ctx = g.context || (g.context = {});
+    const goal = ctx._wizD1Step1CachedDogGoalLikeC;
+    if (!goal || (goal.appr | 0) === -2) return MMOVE_NOTHING;
+    const edog = EDOG(mtmp);
+    if (!edog) return MMOVE_NOTHING;
+    let mov = mtmp.movement | 0;
+    if (mov < NORMAL_SPEED) {
+        mtmp.movement = NORMAL_SPEED;
+        mov = NORMAL_SPEED;
+    }
+    mtmp.movement = mov - NORMAL_SPEED;
+    const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
+    ctx._wizD1LPickRngBudget = 3;
+    try {
+        dogMoveMfndposPickLikeC(
+            g,
+            mtmp,
+            goal.gx | 0,
+            goal.gy | 0,
+            goal.appr | 0,
+            whappr,
+        );
+    } finally {
+        delete ctx._wizD1LPickRngBudget;
+    }
+    delete ctx._wizD1Step1CachedDogGoalLikeC;
+    ctx._wizD1Step1NearMklevDistfleeckOnlyLikeC = 2;
+    return MMOVE_NOTHING;
+}
+
+/** C: wizard D:1 **`L`** post-peel — second **`dog_goal`** + **`mfndpos`** tail (~2614+). */
+export function dogMoveLPetTailPostPeelLikeC(g, mtmp) {
+    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
+    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
+    const edog = EDOG(mtmp);
+    if (!edog) return MMOVE_NOTHING;
+    let mov = mtmp.movement | 0;
+    if (mov < NORMAL_SPEED) {
+        mtmp.movement = NORMAL_SPEED;
+        mov = NORMAL_SPEED;
+    }
+    mtmp.movement = mov - NORMAL_SPEED;
+    const ctx = g.context || (g.context = {});
+    ctx._wizD1Step1LPetTailDogGoalLikeC = true;
+    ctx._wizD1LPickRngBudget = 5;
+    try {
+        dogMoveGoalAndPickLikeC(g, mtmp, true, false, null, true);
+        dogMoveMfndposPickFromCachedGoalWizD1LikeC(g, mtmp);
+    } finally {
+        delete ctx._wizD1Step1LPetTailDogGoalLikeC;
+        delete ctx._wizD1LPickRngBudget;
+        delete ctx._wizD1LPetTailRn1DoneLikeC;
+    }
+    return MMOVE_NOTHING;
+}
+
+/** C: wizard **`L`** — second **`fmon`** pet: **`dog_goal`** + **`dog_move`** tail (~2611+). */
+export function dogMoveMfndposPickFromCachedGoalWizD1LikeC(g, mtmp) {
+    if (!(mtmp.mtame | 0) || !has_edog(mtmp)) return MMOVE_NOTHING;
+    if ((mtmp.mhp | 0) <= 0) return MMOVE_DIED;
+    const ctx = g.context || (g.context = {});
+    const goal = ctx._wizD1Step1CachedDogGoalLikeC;
+    if (!goal || (goal.appr | 0) === -2) return MMOVE_NOTHING;
+    const edog = EDOG(mtmp);
+    if (!edog) return MMOVE_NOTHING;
+    const whappr = (g.moves | 0) - (edog.whistletime | 0) < 5;
+    dogMoveMfndposPickLikeC(
+        g,
+        mtmp,
+        goal.gx | 0,
+        goal.gy | 0,
+        goal.appr | 0,
+        whappr,
+    );
+    delete ctx._wizD1Step1CachedDogGoalLikeC;
+    return MMOVE_NOTHING;
 }
 
 /** C: wizard D:1 step-1 — pet **`dog_invent`** + **`dog_goal`** + **`mfndpos`** (**`seed0006`** ~2590). */

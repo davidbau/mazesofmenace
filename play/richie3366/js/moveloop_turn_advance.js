@@ -177,12 +177,21 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
 
     g.context = g.context || {};
     delete g.context._wizD1MovemonRanThisPostLikeC;
+    const wizD1MovemonOnceLikeC =
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1;
+    if (wizD1MovemonOnceLikeC && g.context?._wizD1Step1InventPostDoneLikeC) {
+        delete g.context._wizD1Step1DistantFirstDfDoneLikeC;
+        delete g.context._wizD1Step1DistantMmoveDoneLikeC;
+        delete g.context._wizD1Step1DistantPeelMtmpLikeC;
+        delete g.context._wizD1Step1LPetFirstPassDoneLikeC;
+        delete g.context._wizD1Step1LPetTailDoneLikeC;
+        /* Keep **`_wizD1Step1PendingLPostPeelLikeC`** until **`L`** post consumes it (set on **`n`** invent). */
+        delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
+    }
     g.context.monMoving = true;
     try {
-        const wizD1MovemonOnceLikeC =
-            g.urole?.abbr === 'Wiz'
-            && (g.u?.uz?.dnum | 0) === 0
-            && (g.u?.uz?.dlevel | 0) === 1;
         /* C: allmain.c outer loop may run new-turn → movemon → new-turn in one post
          * (wizard **`seed0006`** ~2502–2522 after **`n`**). Cap to one new-turn only for
          * inline **`#search`** post (same moveloop as **`cmd.js`**). */

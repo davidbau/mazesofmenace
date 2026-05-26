@@ -1056,6 +1056,7 @@ const CREAM_PIE = 10081;
 const LUMP_OF_ROYAL_JELLY = 10089;
 const KELP_FROND = 172;
 const EUCALYPTUS_LEAF = 11000;
+const APPLE = 11001;
 const PANCAKE = 11011;
 const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
@@ -1164,6 +1165,16 @@ const FOOD_NUTRITION = new Map([
     ['k-ration', 400],
     ['c-ration', 300],
     ['tin', 0],
+]);
+const CARRIED_DELAYED_FOOD_VICTUALS = new Map([
+    ['pancake', { otyp: PANCAKE, delay: 2, finishName: 'pancake' }],
+    ['lembas wafer', { otyp: LEMBAS_WAFER, delay: 2, finishName: 'lembas wafer' }],
+    ['cram ration', { otyp: CRAM_RATION, delay: 3, finishName: 'cram ration', bland: true }],
+    ['food ration', { otyp: FOOD_RATION, delay: 5, finishName: 'food ration', rationFeedback: true }],
+]);
+const DELAY_ONE_FOOD_VICTUALS = new Map([
+    ['apple', { otyp: APPLE, delay: 1, finishName: 'apple' }],
+    ['fortune cookie', { otyp: FORTUNE_COOKIE, delay: 1, finishName: 'fortune cookie' }],
 ]);
 const ROTTABLE_NON_CORPSE_FOODS = new Set(['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond', 'lump of royal jelly']);
 const POISONABLE_WISH_WEAPONS = new Set([
@@ -10813,9 +10824,105 @@ function foodObjectNutrition(item) {
 function addHeroNutrition(nutrition) {
     if (!game.u || nutrition <= 0) return;
     game.u.uhunger = (game.u.uhunger ?? 900) + nutrition;
+    refreshHeroEatingHungerStatus();
+}
+
+function refreshHeroEatingHungerStatus() {
+    if (!game.u) return;
     game.u._statusSuffix = (game.u._statusSuffix || '')
         .replace(/ Satiated| Hungry| Weak| Fainting| Fainted/g, '');
     if (game.u.uhunger > 1000) game.u._statusSuffix = `${game.u._statusSuffix || ''} Satiated`;
+}
+
+function heroIsSatiatedForEating() {
+    return (game.u?.uhunger ?? 900) > 1000
+        || (game.u?._statusSuffix || '').includes('Satiated');
+}
+
+function delayedEatingFullWarningOutcome(remainingAfterBite) {
+    if (!game.u || (game.u.uhunger ?? 900) < 1500 || game._eating_fullwarn) return null;
+    game._eating_fullwarn = 1;
+    game._eating_nomovemsg = "You're finally finished.";
+    const messages = ["You're having a hard time getting all of it down."];
+    if (game._eating_canchoke && remainingAfterBite > 1) {
+        messages.push('Continue eating? [yn] (n)');
+        return { messages, prompt: true };
+    }
+    return { messages, prompt: false };
+}
+
+function delayedFoodChokeWord(food) {
+    if (!food) return 'it';
+    return pickupObjectName({ ...food, quan: 1 })
+        .replace(/^[a-zA-Z$?] - /, '')
+        .replace(/^(?:a|an|the)\s+/i, '');
+}
+
+function delayedFoodChokeMessageWord(food) {
+    if (food?.cls === 'food' || food?.otyp === FOOD_CLASS || food?.glyph === '%') return 'food';
+    return delayedFoodChokeWord(food);
+}
+
+function delayedFoodChokeDeathCause(food) {
+    const word = delayedFoodChokeWord(food).replace(/^partly eaten\s+/i, '');
+    if (word === 'it') return 'choked on a quick snack';
+    const article = /^[aeiou]/i.test(word) ? 'an' : 'a';
+    return `choked on ${article} ${word}`;
+}
+
+function delayedFoodChokeOutcome(food) {
+    const messages = [];
+    const role = game.urole?.name?.m || game._startup_role || '';
+    if (role === 'Knight' && game.u?.ualign?.type === A_LAWFUL)
+        messages.push('You feel like a glutton!');
+    if (!rn2(20)) {
+        messages.push('You stuff yourself and then vomit voluminously.');
+        if (game.u) {
+            game.u.uhunger = Math.max(0, (game.u.uhunger ?? 900) - 1000);
+            refreshHeroEatingHungerStatus();
+        }
+        game._helpless_time = Math.max(game._helpless_time || 0, 2);
+        game._wake_message = 'You can move again.';
+        return { messages, choked: true, recovered: true, move: 2 };
+    }
+
+    messages.push(`You choke over your ${delayedFoodChokeMessageWord(food)}.`);
+    game._death_cause = delayedFoodChokeDeathCause(food);
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) {
+            game.u.uhp = 0;
+            game.u.uhunger = 900;
+            refreshHeroEatingHungerStatus();
+        }
+        messages.push('You die...');
+        messages.push(`But wait...  Your medallion ${game.u?.blind ? 'feels warm' : 'begins to glow'}!`);
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+        game._command_mode = 'lifeSavingMore';
+        return { messages, choked: true, fatal: true, lifesaved: true, more: true, move: 0 };
+    }
+
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    if (game.context) game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    messages.push('You die...');
+    return { messages, choked: true, fatal: true, more: true, move: 0 };
+}
+
+export function addDelayedFoodBiteNutrition(nutrition, { remainingAfterBite = 0, food = null } = {}) {
+    if (!game.u || !(nutrition > 0)) return { messages: [], prompt: false };
+    if (game._eating_canchoke && (game.u.uhunger ?? 900) >= 2000)
+        return { ...delayedFoodChokeOutcome(food), preBite: true };
+    addHeroNutrition(nutrition);
+    if (game._eating_canchoke && (game.u.uhunger ?? 900) >= 2000)
+        return { ...delayedFoodChokeOutcome(food), nutritionApplied: true };
+    const warning = (game.u.uhunger ?? 900) < 2000
+        ? delayedEatingFullWarningOutcome(remainingAfterBite)
+        : null;
+    return warning || { messages: [], prompt: false };
 }
 
 function heroConduct() {
@@ -10848,9 +10955,47 @@ function recordFoodConduct(item) {
     if ((isCorpseItem(item) || isGlobFood(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
         conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
-    } else if (isEggItem(item) || isRoyalJelly(item)) {
+    } else if (isEggItem(item) || isRoyalJelly(item) || kind === 'pancake' || kind === 'fortune cookie') {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
     }
+}
+
+function isFortuneCookieFood(item) {
+    return itemKindText(item).replace(/^partly eaten /, '') === 'fortune cookie';
+}
+
+function heroIsBlind() {
+    return !!(game.u?.blind || (game.u?._statusSuffix || '').includes('Blind'));
+}
+
+function fortuneCookieRumorTruth(item) {
+    if (item?.blessed) return 1;
+    if (item?.cursed) return -1;
+    return 0;
+}
+
+function queueFortuneCookieRumor(item) {
+    if (heroIsBlind()) {
+        game._queued_message_after_more = 'This cookie has a scrap of paper inside.';
+        game._queued_message_more_after_more = 1;
+        game._fortune_cookie_rumor_after_more = 'What a pity that you cannot read it!';
+        return;
+    }
+    game._queued_message_after_more = 'This cookie has a scrap of paper inside.  It reads:';
+    game._queued_message_more_after_more = 1;
+    const rumor = getrumor(false, fortuneCookieRumorTruth(item)).replace(/^\[cookie\]\s*/, '');
+    game._fortune_cookie_rumor_after_more = rumor || 'This cookie is devoid of wisdom.';
+}
+
+function cursedAppleSleepPostEffect(item) {
+    const kind = itemKindText(item).replace(/^partly eaten /, '');
+    if (kind !== 'apple' || !item?.cursed || game.u?.sleepResistance) return null;
+    const duration = rn1(11, 20);
+    game._helpless_time = Math.max(game._helpless_time || 0, duration);
+    game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
+    if (heroIsDeaf() || game.flags?.acoustics === false)
+        return { message: 'You fall asleep.', duration };
+    return { message: 'You hear sinister laughter as you fall asleep...', duration };
 }
 
 function remainingFoodNutrition(item) {
@@ -10869,6 +11014,11 @@ function consumeOeaten(item, amount) {
     if (amount > 0) item.oeaten = Math.floor(item.oeaten / (2 ** amount));
     else if (amount < 0) item.oeaten += amount;
     if (item.oeaten <= 0) item.oeaten = 1;
+}
+
+function roundDivPositive(numerator, denominator) {
+    if (!(denominator > 0)) return 0;
+    return Math.trunc((numerator + Math.trunc(denominator / 2)) / denominator);
 }
 
 function refreshInventoryObjectLine(item) {
@@ -10963,6 +11113,417 @@ function touchFloorFood(item) {
 
 function touchEatenFood(item, floorObject = false) {
     return floorObject ? touchFloorFood(item) : touchInventoryFood(item);
+}
+
+function delayedFoodVictualSpec(item) {
+    if (!item) return null;
+    const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    const spec = CARRIED_DELAYED_FOOD_VICTUALS.get(kind);
+    if (spec) return { ...spec, kind };
+    for (const [entryKind, entrySpec] of CARRIED_DELAYED_FOOD_VICTUALS) {
+        if (item.otyp === entrySpec.otyp) return { ...entrySpec, kind: entryKind };
+    }
+    return null;
+}
+
+function delayOneFoodVictualSpec(item) {
+    if (!item) return null;
+    const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    const spec = DELAY_ONE_FOOD_VICTUALS.get(kind);
+    if (spec) return { ...spec, kind };
+    for (const [entryKind, entrySpec] of DELAY_ONE_FOOD_VICTUALS) {
+        if (item.otyp === entrySpec.otyp) return { ...entrySpec, kind: entryKind };
+    }
+    return null;
+}
+
+function ordinaryFoodVictualSpec(item) {
+    return delayOneFoodVictualSpec(item) || delayedFoodVictualSpec(item);
+}
+
+function delayedFoodCanAgeRot(spec) {
+    return spec?.kind !== 'lembas wafer' && spec?.kind !== 'cram ration';
+}
+
+function delayedFoodShouldBeRotten(item, spec) {
+    if (!item || !spec) return false;
+    if (spec.kind === 'fortune cookie') return false;
+    if (item.cursed) return true;
+    if (!delayedFoodCanAgeRot(spec)) return false;
+    if (item.age == null) item.age = game.moves || 1;
+    const ageLimit = item.blessed ? 50 : 30;
+    return (game.moves || 1) - item.age > ageLimit && (item.orotten || !rn2(7));
+}
+
+function heroFoodRaceOrPolyName() {
+    const formName = String(polyselfForm()?.name || '').toLowerCase();
+    if (formName) return formName;
+    return String(game.urace?.noun || game.urace?.adj || game._startup_race || 'human').toLowerCase();
+}
+
+function heroFoodIsElf() {
+    const name = heroFoodRaceOrPolyName();
+    return name === 'elven' || name.includes('elf');
+}
+
+function heroFoodIsOrc() {
+    const name = heroFoodRaceOrPolyName();
+    return name === 'orcish' || /(?:^|[-\s])orc(?:$|[-\s])/.test(name);
+}
+
+function heroFoodIsDwarf() {
+    const name = heroFoodRaceOrPolyName();
+    return name === 'dwarven' || name === 'dwarvish' || /^dwarv/.test(name)
+        || /(?:^|[-\s])dwarf(?:$|[-\s])/.test(name);
+}
+
+function adjustedDelayedFoodBiteHunger(spec, baseNutrition) {
+    let nutrition = Math.trunc(baseNutrition || 0);
+    if (!(nutrition > 0)) return 0;
+    if (spec?.kind === 'lembas wafer') {
+        const adjustment = Math.trunc((nutrition + 2) / 4);
+        if (heroFoodIsElf()) nutrition += adjustment;
+        else if (heroFoodIsOrc()) nutrition -= adjustment;
+    } else if (spec?.kind === 'cram ration' && heroFoodIsDwarf()) {
+        nutrition += Math.trunc((nutrition + 3) / 6);
+    }
+    return Math.max(nutrition, 1);
+}
+
+function delayedFoodFirstBiteMessage(spec, hunger) {
+    if (!spec) return '';
+    if (spec.rationFeedback) {
+        if ((hunger ?? 900) <= 200) return 'This food really hits the spot!';
+        if ((hunger ?? 900) < 700) return 'This satiates your stomach!';
+        return '';
+    }
+    if (spec.kind === 'lembas wafer') {
+        if (heroFoodIsOrc()) return '!#?&* elf kibble!';
+        if (heroFoodIsElf()) return 'A little goes a long way.';
+    }
+    if (spec.kind === 'apple') return 'Delicious!  Must be a Macintosh!';
+    return `This ${spec.finishName || spec.kind} is ${spec.bland ? 'bland.' : 'delicious!'}`;
+}
+
+function applyDelayedFoodPostEffect(touched, spec) {
+    if (spec?.kind === 'fortune cookie') {
+        queueFortuneCookieRumor(touched);
+        return { more: true };
+    }
+    if (spec?.kind === 'apple')
+        return cursedAppleSleepPostEffect(touched) || {};
+    return {};
+}
+
+function delayedFoodVictualState(touched, spec) {
+    const fullNutrition = foodObjectNutrition(touched) || FOOD_NUTRITION.get(spec.kind) || 0;
+    const reqtime = roundDivPositive(spec.delay * remainingFoodNutrition(touched), fullNutrition);
+    const biteNutrition = reqtime > 0 && touched.oeaten >= reqtime
+        ? Math.trunc(touched.oeaten / reqtime)
+        : 0;
+    const biteHunger = adjustedDelayedFoodBiteHunger(spec, biteNutrition);
+    return { reqtime, biteNutrition, biteHunger };
+}
+
+function clearInterruptedEatingVictualState() {
+    game._eating_interrupted = 0;
+    game._eating_paused_turns_remaining = 0;
+}
+
+function clearDelayedEatingFullnessState() {
+    game._eating_canchoke = 0;
+    game._eating_fullwarn = 0;
+    game._eating_nomovemsg = '';
+}
+
+function clearDelayedEatingVictualState() {
+    game._eating_turns_remaining = 0;
+    game._eating_finish_message = '';
+    game._eating_floor_object = null;
+    game._eating_floor_object_direct_useup = 0;
+    game._eating_inventory_object = null;
+    game._eating_bite_nutrition = 0;
+    game._eating_bite_hunger = 0;
+    game._eating_nutrition = 0;
+    game._eating_newt_buzz = 0;
+    clearInterruptedEatingVictualState();
+    clearDelayedEatingFullnessState();
+}
+
+function declineDelayedFoodContinuation() {
+    if (!(game._eating_turns_remaining > 0)) return;
+    game._eating_paused_turns_remaining = game._eating_turns_remaining;
+    game._eating_interrupted = 1;
+    game._eating_turns_remaining = 0;
+    game._eating_fullwarn = 0;
+    game._eating_nomovemsg = '';
+}
+
+function pauseDelayedFoodAfterChoke(touched, {
+    remainingTurns = 0,
+    biteNutrition = 0,
+    biteHunger = biteNutrition,
+    floorObject = false,
+    finishName = '',
+} = {}) {
+    if (remainingTurns <= 0) {
+        if (floorObject) consumeOneFloorObject(touched);
+        else {
+            removeInventoryItem(touched);
+            game._pet_food_scan_inventory = game.inventory || [];
+        }
+        clearDelayedEatingVictualState();
+        return;
+    }
+    game._eating_turns_remaining = 0;
+    game._eating_paused_turns_remaining = remainingTurns;
+    game._eating_interrupted = 1;
+    game._eating_finish_message = `You finish eating the ${finishName}.`;
+    if (floorObject) {
+        game._eating_floor_object = touched;
+        game._eating_floor_object_direct_useup = 1;
+    } else {
+        game._eating_inventory_object = touched;
+        game._pet_food_scan_inventory = game.inventory || [];
+    }
+    game._eating_bite_nutrition = biteNutrition;
+    game._eating_bite_hunger = biteHunger;
+    game._eating_nutrition = 0;
+    game._eating_fullwarn = 0;
+    game._eating_nomovemsg = '';
+}
+
+function isPausedDelayedFoodVictual(item, floorObject = false) {
+    if (!game._eating_interrupted || !(game._eating_paused_turns_remaining > 0)) return false;
+    if (!(game._eating_bite_nutrition > 0)) return false;
+    if (floorObject)
+        return game._eating_floor_object === item
+            && (game.level?.objects || []).includes(item)
+            && item.ox === game.u?.ux
+            && item.oy === game.u?.uy;
+    return game._eating_inventory_object === item
+        && (game.inventory || []).includes(item);
+}
+
+function resumeDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
+    if (!isPausedDelayedFoodVictual(item, floorObject)) return null;
+
+    const pausedTurns = Math.trunc(game._eating_paused_turns_remaining || 0);
+    const touched = touchEatenFood(item, floorObject);
+    const biteNutrition = Math.trunc(game._eating_bite_nutrition || 0);
+    const biteHunger = Math.trunc(game._eating_bite_hunger || biteNutrition);
+    const finishName = spec.finishName || spec.kind;
+    const lastBite = pausedTurns <= 2;
+    const message = lastBite
+        ? 'You consume the last bite of your meal.'
+        : 'You resume your meal.';
+    if (!heroIsSatiatedForEating()) game._eating_canchoke = 0;
+    game._eating_fullwarn = 0;
+
+    let nutritionOutcome = { messages: [], prompt: false };
+    if (biteNutrition > 0) {
+        nutritionOutcome = addDelayedFoodBiteNutrition(biteHunger, {
+            remainingAfterBite: Math.max(0, pausedTurns - 2),
+            food: touched,
+        });
+        if (!nutritionOutcome.fatal && !nutritionOutcome.preBite) {
+            consumeOeaten(touched, -biteNutrition);
+            if (floorObject) newsym(touched.ox, touched.oy);
+            else refreshInventoryObjectLine(touched);
+        }
+    }
+    const combinedMessage = [message, ...(nutritionOutcome.messages || [])].filter(Boolean).join('  ');
+
+    if (nutritionOutcome.choked) {
+        clearInterruptedEatingVictualState();
+        if (nutritionOutcome.recovered) {
+            pauseDelayedFoodAfterChoke(touched, {
+                remainingTurns: nutritionOutcome.preBite ? pausedTurns : Math.max(0, pausedTurns - 1),
+                biteNutrition,
+                biteHunger,
+                floorObject,
+                finishName,
+            });
+        } else {
+            clearDelayedEatingVictualState();
+        }
+        return {
+            message: combinedMessage,
+            more: !!nutritionOutcome.more,
+            commandMode: nutritionOutcome.fatal || nutritionOutcome.lifesaved
+                ? (game._command_mode || null) : null,
+            move: nutritionOutcome.move ?? 0,
+            finished: false,
+        };
+    }
+
+    clearInterruptedEatingVictualState();
+    if (lastBite || biteNutrition <= 0) {
+        if (floorObject) consumeOneFloorObject(touched);
+        else {
+            removeInventoryItem(touched);
+            game._pet_food_scan_inventory = game.inventory || [];
+        }
+        const finishMessage = game._eating_nomovemsg || `You finish eating the ${finishName}.`;
+        clearDelayedEatingVictualState();
+        return {
+            message: `${combinedMessage}  ${finishMessage}`,
+            more: false,
+            move: 1,
+            finished: true,
+        };
+    }
+
+    game._eating_turns_remaining = pausedTurns - 1;
+    game._eating_finish_message = `You finish eating the ${finishName}.`;
+    if (floorObject) {
+        game._eating_floor_object = touched;
+        game._eating_floor_object_direct_useup = 1;
+    } else {
+        game._eating_inventory_object = touched;
+        game._pet_food_scan_inventory = game.inventory || [];
+    }
+    game._eating_bite_nutrition = biteNutrition;
+    game._eating_bite_hunger = biteHunger;
+    game._eating_nutrition = 0;
+
+    return {
+        message: combinedMessage,
+        more: false,
+        commandMode: nutritionOutcome.prompt ? 'continueEatingPrompt' : null,
+        move: 1,
+        finished: false,
+        touched,
+    };
+}
+
+function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
+    const resumed = resumeDelayedFoodVictual(item, spec, { floorObject });
+    if (resumed) return resumed;
+    clearDelayedEatingVictualState();
+
+    const hungerBeforeBite = game.u?.uhunger ?? 900;
+    const alreadyPartlyEaten = item?.oeaten > 0;
+    const touched = touchEatenFood(item, floorObject);
+    recordFoodConduct(touched);
+    const finishName = spec.finishName || spec.kind;
+    let message = alreadyPartlyEaten ? `You begin eating the partly eaten ${finishName}.` : delayedFoodFirstBiteMessage(spec, hungerBeforeBite);
+    let more = false;
+    let processTimeWithMore = false;
+    let move = 1;
+    let rottenFirstBite = false;
+
+    if (delayedFoodShouldBeRotten(touched, spec)) {
+        const rotten = rottenFoodEffect();
+        message = rotten.message;
+        more = true;
+        processTimeWithMore = true;
+        rottenFirstBite = true;
+        consumeOeaten(touched, 1);
+        if (floorObject) newsym(touched.ox, touched.oy);
+        else refreshInventoryObjectLine(touched);
+        if (rotten.rottenSleepDuration) {
+            touched.orotten = true;
+            if (!floorObject) game._pet_food_scan_inventory = game.inventory || [];
+            return {
+                message,
+                more,
+                processTimeWithMore,
+                move: rotten.rottenSleepDuration + 1,
+                finished: false,
+                touched,
+            };
+        }
+    }
+
+    const { reqtime, biteNutrition, biteHunger } = delayedFoodVictualState(touched, spec);
+    game._eating_canchoke = heroIsSatiatedForEating();
+    game._eating_fullwarn = 0;
+    game._eating_nomovemsg = '';
+
+    let nutritionOutcome = { messages: [], prompt: false };
+    if (biteNutrition > 0) {
+        nutritionOutcome = addDelayedFoodBiteNutrition(biteHunger, {
+            remainingAfterBite: Math.max(0, reqtime - 1),
+            food: touched,
+        });
+        if (!nutritionOutcome.fatal && !nutritionOutcome.preBite) {
+            consumeOeaten(touched, -biteNutrition);
+            if (floorObject) newsym(touched.ox, touched.oy);
+            else refreshInventoryObjectLine(touched);
+        }
+    }
+    if (nutritionOutcome.messages?.length)
+        message = [message, ...nutritionOutcome.messages].filter(Boolean).join('  ');
+
+    if (nutritionOutcome.choked) {
+        if (nutritionOutcome.recovered) {
+            pauseDelayedFoodAfterChoke(touched, {
+                remainingTurns: reqtime,
+                biteNutrition,
+                biteHunger,
+                floorObject,
+                finishName,
+            });
+        } else {
+            clearDelayedEatingVictualState();
+        }
+        return {
+            message,
+            more: !!nutritionOutcome.more,
+            commandMode: nutritionOutcome.fatal || nutritionOutcome.lifesaved
+                ? (game._command_mode || null) : null,
+            move: nutritionOutcome.move ?? 0,
+            finished: false,
+            touched,
+        };
+    }
+
+    if (reqtime <= 1 || biteNutrition <= 0) {
+        const postEffect = applyDelayedFoodPostEffect(touched, spec);
+        if (postEffect.message) message = `${message}  ${postEffect.message}`;
+        if (postEffect.more) more = true;
+        if (postEffect.duration) move = postEffect.duration;
+        if (floorObject) consumeOneFloorObject(touched);
+        else {
+            removeInventoryItem(touched);
+            game._pet_food_scan_inventory = game.inventory || [];
+        }
+        return {
+            message: reqtime <= 1 && alreadyPartlyEaten && !rottenFirstBite ? `You eat the partly eaten ${finishName}.` : message,
+            more,
+            processTimeWithMore,
+            move,
+            finished: true,
+        };
+    }
+
+    game._eating_turns_remaining = reqtime;
+    game._eating_finish_message = `You finish eating the ${finishName}.`;
+    if (floorObject) {
+        game._eating_floor_object = touched;
+        game._eating_floor_object_direct_useup = 1;
+    } else {
+        game._eating_inventory_object = touched;
+        game._pet_food_scan_inventory = game.inventory || [];
+    }
+    game._eating_bite_nutrition = biteNutrition;
+    game._eating_bite_hunger = biteHunger;
+    game._eating_nutrition = 0;
+
+    return {
+        message,
+        more,
+        processTimeWithMore,
+        commandMode: nutritionOutcome.prompt ? 'continueEatingPrompt' : null,
+        move,
+        finished: false,
+        touched,
+    };
+}
+
+function startCarriedDelayedFoodVictual(item, spec) {
+    return startDelayedFoodVictual(item, spec);
 }
 
 function applyWishedPartlyEaten(item) {
@@ -27686,6 +28247,7 @@ async function doSitCommand() {
 async function eatRottenNonCorpseFood(item, floorObject = false) {
     const touched = partialRottenFood(item, floorObject);
     const { message, rottenSleepDuration } = rottenFoodEffect();
+    let postEffect = null;
     if (!rottenSleepDuration) {
         if (isRoyalJelly(touched)) {
             await finishRoyalJellyEating(touched, floorObject, message, { more: true, processTimeWithMore: 1 });
@@ -27693,12 +28255,13 @@ async function eatRottenNonCorpseFood(item, floorObject = false) {
         }
         addHeroNutrition(remainingFoodNutrition(touched));
         consumeTouchedFood(touched, floorObject);
+        postEffect = cursedAppleSleepPostEffect(touched);
     }
     game._pet_food_scan_inventory = game.inventory || [];
-    await setMessage(message, true);
+    await setMessage(postEffect?.message ? `${message}  ${postEffect.message}` : message, true);
     game._process_time_with_more = 1;
     game._command_mode = null;
-    game.context.move = rottenSleepDuration ? rottenSleepDuration + 1 : 1;
+    game.context.move = rottenSleepDuration ? rottenSleepDuration + 1 : (postEffect?.duration || 1);
 }
 
 function addHeroVomiting(turns) {
@@ -43804,6 +44367,24 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'continueEatingPrompt') {
+        if (ch === 'y') {
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            game.context.move = game._eating_turns_remaining > 0 ? 1 : 0;
+            return;
+        }
+        if (ch === 'n' || ch === 'q' || ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            declineDelayedFoodContinuation();
+            game._command_mode = null;
+            game._keep_pending_message = 1;
+            game.context.move = 0;
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
     if (game._command_mode === 'eatObject') {
         if (ch === '\x1b') {
             game._command_mode = null;
@@ -43835,7 +44416,7 @@ export async function rhack(_cmd) {
         }
         if (item?.cls === 'food' || item?.otyp === FOOD_CLASS || item?.otyp === 'corpse' || item?.otyp === CORPSE) {
             const name = item.singular || pickupObjectName({ ...item, quan: 1 });
-            const fortuneCookie = item.kind === 'fortune cookie';
+            const fortuneCookie = isFortuneCookieFood(item);
             const corpse = item.otyp === 'corpse' || item.otyp === CORPSE;
             if (isTinObject(item)) {
                 await startTinOpening(item, false);
@@ -43884,18 +44465,21 @@ export async function rhack(_cmd) {
                 await eatStaleEgg(item);
                 return;
             }
-            if (fortuneCookie) {
-                const rumor = getrumor(false).replace(/^\[cookie\]\s*/, '');
-                game._queued_message_after_more = 'This cookie has a scrap of paper inside.  It reads:';
-                game._queued_message_more_after_more = 1;
-                game._fortune_cookie_rumor_after_more = rumor || 'This cookie is devoid of wisdom.';
-            }
-            if (shouldUseGenericRottenFoodPath(item)) {
+            if (!ordinaryFoodVictualSpec(item) && shouldUseGenericRottenFoodPath(item)) {
                 await eatRottenNonCorpseFood(item);
                 return;
             }
             if (isRoyalJelly(item)) {
                 await eatRoyalJelly(item);
+                return;
+            }
+            const delayedFoodVictual = ordinaryFoodVictualSpec(item);
+            if (delayedFoodVictual) {
+                const result = startCarriedDelayedFoodVictual(item, delayedFoodVictual);
+                await setMessage(result.message, result.more);
+                if (result.processTimeWithMore) game._process_time_with_more = 1;
+                game._command_mode = result.commandMode || null;
+                game.context.move = result.move ?? 1;
                 return;
             }
             const touched = touchEatenFood(item);
@@ -43905,7 +44489,7 @@ export async function rhack(_cmd) {
             removeInventoryItem(touched);
             game._pet_food_scan_inventory = game.inventory || [];
             const petrificationMessage = startPetrifyingEggStoning(touched);
-            const eatMessage = item.kind === 'apple'
+            const eatMessage = itemKindText(touched).replace(/^partly eaten /, '') === 'apple'
                 ? 'Delicious!  Must be a Macintosh!'
                 : `This ${name} is delicious!`;
             await setMessage(appendPetrificationMessage(eatMessage, petrificationMessage), fortuneCookie);
@@ -43925,6 +44509,7 @@ export async function rhack(_cmd) {
             const oldCorpse = floorCorpse && food?.oldCorpse;
             const name = pickupObjectName({ ...(food || {}), quan: 1 });
             game._eat_floor_object = null;
+            game._eating_floor_object_direct_useup = 0;
             if (isTinObject(food)) {
                 await startTinOpening(food, true);
                 return;
@@ -44066,12 +44651,21 @@ export async function rhack(_cmd) {
                 await eatStaleEgg(food, true);
                 return;
             }
-            if (shouldUseGenericRottenFoodPath(food)) {
+            if (!ordinaryFoodVictualSpec(food) && shouldUseGenericRottenFoodPath(food)) {
                 await eatRottenNonCorpseFood(food, true);
                 return;
             }
             if (isRoyalJelly(food)) {
                 await eatRoyalJelly(food, true);
+                return;
+            }
+            const delayedFoodVictual = ordinaryFoodVictualSpec(food);
+            if (delayedFoodVictual) {
+                const result = startDelayedFoodVictual(food, delayedFoodVictual, { floorObject: true });
+                await setMessage(result.message, result.more);
+                if (result.processTimeWithMore) game._process_time_with_more = 1;
+                game._command_mode = result.commandMode || null;
+                game.context.move = result.move ?? 1;
                 return;
             }
             const touched = touchEatenFood(food, true);
@@ -44080,7 +44674,13 @@ export async function rhack(_cmd) {
             if (touched?.kind === 'clove of garlic') scareNearbyOlfactoryMonstersWithGarlic();
             consumeOneFloorObject(touched);
             const petrificationMessage = startPetrifyingEggStoning(touched);
-            await setMessage(appendPetrificationMessage(`This ${name} is delicious!`, petrificationMessage));
+            const fortuneCookie = isFortuneCookieFood(touched);
+            if (fortuneCookie) queueFortuneCookieRumor(touched);
+            const kind = itemKindText(touched).replace(/^partly eaten /, '');
+            const eatMessage = kind === 'apple'
+                ? 'Delicious!  Must be a Macintosh!'
+                : `This ${name} is delicious!`;
+            await setMessage(appendPetrificationMessage(eatMessage, petrificationMessage), fortuneCookie);
             game._command_mode = null;
             game.context.move = 1;
             return;

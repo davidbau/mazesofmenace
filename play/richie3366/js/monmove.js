@@ -45,10 +45,14 @@ import {
     movemonSinglemonLikeC,
     mMoveDistfleeckOnlyTurnLikeC,
     mMoveWizardD1Step1DistantAfterPeelLikeC,
+    mMoveWizardD1LPostTailDistantLikeC,
+    primeDistantMtrackRn20LikeC,
 } from './m_move_mon.js';
 import {
     dogGoalScanSearchPostGateLikeC,
     dogMoveGoalOnlyNoPickLikeC,
+    dogMoveGoalAndPickLikeC,
+    dogMoveLPetTailPostPeelLikeC,
     dogMoveInventOnlyLikeC,
     dogMoveSearchPassNearHeroLikeC,
 } from './dogmove_mon.js';
@@ -134,6 +138,9 @@ export async function movemon(stepNum) {
         delete g.context._searchPass1NearMonLikeC;
     }
     const effStepNum = effectiveMovemonStepNumLikeC(g, stepNum);
+    if (g.context?._wizD1Step1InventPostDoneLikeC) {
+        delete g.context._wizD1Step1GateDochugLikeC;
+    }
     /* C: mon.c movemon — `gs.somebody_can_move` set in movemon_singlemon after turn spend. */
     g.context._somebodyCanMoveLikeC = false;
     if ((effStepNum | 0) === 1 && g.urole?.abbr !== 'Tou') {
@@ -496,8 +503,10 @@ export async function movemon(stepNum) {
             isWizardD1Step1PeelLikeC(g, effStepNum)
             && !g.context?._postBumpKillDochugGateLikeC
         ) {
+            const wizInventPost = !g.context?._wizD1Step1InventPostDoneLikeC;
             const distant = findDistantMklevMonLikeC(g);
-            if (distant) {
+            /* C: **`n`** post — distant **`m_move`** peel; **`L`** uses main **`fmon`** only. */
+            if (distant && wizInventPost) {
                 await mMoveWizardD1Step1DistantAfterPeelLikeC(g, distant);
             }
             const pet = (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
@@ -508,15 +517,86 @@ export async function movemon(stepNum) {
                     && (m.mgenmklev | 0)
                     && !(m.mtame | 0),
             );
-            /* C: near mklev **`dochug:886`** **`rn2(4)`** before pet **`dog_invent`** (~2575 vs ~2590). */
-            if (nearMklev) {
+            /* C: **`n`** only — near mklev **`dochug:886`** **`rn2(4)`** before invent post (~2575). */
+            if (wizInventPost && nearMklev) {
                 g.context._wizD1Step1GateDochugLikeC = true;
                 await movemonSinglemonLikeC(g, nearMklev, effStepNum);
                 delete g.context._wizD1Step1GateDochugLikeC;
             }
-            if (pet) {
+            if (pet && wizInventPost) {
                 setApparxyMonsterLikeC(g, pet);
                 dogMoveInventOnlyLikeC(g, pet);
+                g.context._wizD1Step1InventPostDoneLikeC = true;
+                g.context._wizD1Step1PendingLPostPeelLikeC = true;
+            }
+            /* C: **`n`** — near mklev **`distfleeck`** after pet **`mfndpos`** (~2597). */
+            if (wizInventPost && nearMklev) {
+                setApparxyMonsterLikeC(g, nearMklev);
+                await distfleeckMonsterApplyLikeC(g, nearMklev);
+            }
+            /* C: **`L`** post-peel — once after **`n`** invent (~2608–2621). */
+            if (
+                !wizInventPost
+                && g.context?._wizD1Step1PendingLPostPeelLikeC
+            ) {
+                if (
+                    g.context?._wizD1Step1DistantFirstDfDoneLikeC
+                    && !g.context?._wizD1Step1DistantMmoveDoneLikeC
+                ) {
+                    const peelDistant =
+                        g.context._wizD1Step1DistantPeelMtmpLikeC
+                        ?? findDistantMklevMonLikeC(g);
+                    if (peelDistant) {
+                        setApparxyMonsterLikeC(g, peelDistant);
+                        primeDistantMtrackRn20LikeC(peelDistant);
+                        rn2(20);
+                        await distfleeckMonsterApplyLikeC(g, peelDistant);
+                        await distfleeckMonsterApplyLikeC(g, peelDistant);
+                        g.context._wizD1Step1DistantMmoveDoneLikeC = true;
+                    }
+                }
+                if (pet && !g.context?._wizD1Step1LPetTailDoneLikeC) {
+                    setApparxyMonsterLikeC(g, pet);
+                    delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
+                    dogMoveLPetTailPostPeelLikeC(g, pet);
+                    g.context._wizD1Step1LPetTailDoneLikeC = true;
+                }
+                /* C: after pet tail — distant ~915 **`distfleeck`** then **`m_move`** (~2622–2623). */
+                if (g.context?._wizD1Step1LPetTailDoneLikeC) {
+                    const peelDistant =
+                        g.context._wizD1Step1DistantPeelMtmpLikeC
+                        ?? distant;
+                    if (peelDistant) {
+                        await mMoveWizardD1LPostTailDistantLikeC(
+                            g,
+                            peelDistant,
+                            effStepNum,
+                        );
+                    }
+                }
+                if (g.context?._wizD1Step1LPetTailDoneLikeC) {
+                    const peelDistant =
+                        g.context._wizD1Step1DistantPeelMtmpLikeC
+                        ?? distant;
+                    const handled = new Set(
+                        [peelDistant, pet, nearMklev].filter(Boolean),
+                    );
+                    const restMons = (g.level?.monsters ?? []).filter(
+                        (m) =>
+                            (m.mgenmklev | 0)
+                            && !(m.mtame | 0)
+                            && !handled.has(m),
+                    );
+                    g.context._wizD1Step1RestDochugLikeC = true;
+                    try {
+                        for (const m of restMons) {
+                            await movemonSinglemonLikeC(g, m, effStepNum);
+                        }
+                    } finally {
+                        delete g.context._wizD1Step1RestDochugLikeC;
+                    }
+                }
+                delete g.context._wizD1Step1PendingLPostPeelLikeC;
             }
         }
         /* C: post-bump gate cleared in **`finally`** — search / east peels below stay distfleeck-only. */

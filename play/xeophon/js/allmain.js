@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, stoneMonster, processCorpseTimers, processGlobShrinkTimers } from './cmd.js';
+import { rhack, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, maybeQueueQuestLeaderTalk, monsterGrowUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, travelPathKeys, updateGauntletsOfPowerStrength, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, landMonsterThrownObject, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -2803,6 +2803,106 @@ function setBlueDragonArmorFast(g, enabled) {
     g.u.fast = heroHasIntrinsicFast(g) || veryFast;
 }
 
+function addEatingNutrition(g, nutrition) {
+    if (!g?.u || !(nutrition > 0)) return;
+    g.u.uhunger = (g.u.uhunger ?? 900) + nutrition;
+    g.u._statusSuffix = (g.u._statusSuffix || '')
+        .replace(/ Satiated| Hungry| Weak| Fainting| Fainted/g, '');
+    if (g.u.uhunger > 1000) g.u._statusSuffix = `${g.u._statusSuffix || ''} Satiated`;
+}
+
+function consumeEatingObject(item, nutrition) {
+    if (!item?.oeaten || !(nutrition > 0)) return;
+    item.oeaten -= nutrition;
+    if (item.oeaten <= 0) item.oeaten = 1;
+}
+
+function consumeEatingInventoryObject(item, nutrition) {
+    consumeEatingObject(item, nutrition);
+}
+
+function removeEatingInventoryObject(g, item) {
+    if (!item) return;
+    g.inventory = (g.inventory || []).filter(other => other !== item);
+}
+
+function clearEatingInventoryState(g) {
+    g._eating_inventory_object = null;
+    g._eating_bite_nutrition = 0;
+    g._eating_bite_hunger = 0;
+}
+
+function clearInterruptedEatingState(g) {
+    g._eating_interrupted = 0;
+    g._eating_paused_turns_remaining = 0;
+}
+
+function clearEatingFullnessState(g) {
+    g._eating_canchoke = 0;
+    g._eating_fullwarn = 0;
+    g._eating_nomovemsg = '';
+}
+
+function useUpEatingFloorObject(g, item) {
+    if (!item || !g?.level) return;
+    g.level.objects = (g.level.objects || []).filter(other => other !== item);
+    newsym(item.ox, item.oy);
+}
+
+function eatingOccupationObjectName(item) {
+    const rawName = item?.line ? inventoryItemName(item) : pickupObjectName({ ...item, quan: 1 });
+    const base = rawName
+        .replace(/^[a-zA-Z$?] - /, '')
+        .replace(/ \((?:weapon|wielded|alternate weapon|being worn|at the ready|in quiver|on .* hand).*$/, '')
+        .replace(/^(?:a|an|the)\s+/i, '');
+    return `the ${base}`;
+}
+
+function clearActiveEatingOccupation(g) {
+    g._eating_turns_remaining = 0;
+    g._eating_finish_message = '';
+    g._eating_floor_object = null;
+    g._eating_floor_object_direct_useup = 0;
+    g._eating_nutrition = 0;
+    g._eating_newt_buzz = 0;
+    clearEatingInventoryState(g);
+    clearInterruptedEatingState(g);
+    clearEatingFullnessState(g);
+}
+
+function pauseEatingOccupationAfterChoke(g, remainingTurns) {
+    if (!(remainingTurns > 0)) {
+        clearActiveEatingOccupation(g);
+        return;
+    }
+    g._eating_paused_turns_remaining = remainingTurns;
+    g._eating_interrupted = 1;
+    g._eating_turns_remaining = 0;
+    g._eating_fullwarn = 0;
+    g._eating_nomovemsg = '';
+}
+
+export function interruptEatingOccupation(g = game) {
+    if (!(g._eating_turns_remaining > 0)) return false;
+    if (g._eating_turns_remaining <= 1)
+        return processEatingOccupationTick(g);
+
+    const eatenObject = g._eating_inventory_object || g._eating_floor_object;
+    const biteNutrition = Math.trunc(g._eating_bite_nutrition || 0);
+    if (eatenObject && biteNutrition > 0) {
+        g._eating_paused_turns_remaining = g._eating_turns_remaining;
+        g._eating_interrupted = 1;
+        g._eating_turns_remaining = 0;
+        g._pending_rotten_food_eating_message = 0;
+        addToplineMessage(`You stop eating ${eatingOccupationObjectName(eatenObject)}.`);
+        return true;
+    }
+
+    clearActiveEatingOccupation(g);
+    g._pending_rotten_food_eating_message = 0;
+    return true;
+}
+
 function interruptPositiveMultiForStoning() {
     game._run_steps_remaining = 0;
     game._running_continuation = 0;
@@ -2818,9 +2918,13 @@ function stopStoningOccupations() {
     game._eating_turns_remaining = 0;
     game._eating_finish_message = '';
     game._eating_floor_object = null;
+    game._eating_floor_object_direct_useup = 0;
     game._eating_floor_object_pending_useup = null;
     game._eating_nutrition = 0;
     game._eating_newt_buzz = 0;
+    clearEatingInventoryState(game);
+    clearInterruptedEatingState(game);
+    clearEatingFullnessState(game);
     game._pending_rotten_food_eating_message = 0;
     game._armor_wear_occupation = null;
     game._armor_takeoff_after_more = null;
@@ -10680,6 +10784,106 @@ function advanceSpecialLevelFeatures(g) {
     else if (g.level?.flags?.fumaroles) fumaroles();
 }
 
+export function processEatingOccupationTick(g = game) {
+    if (!(g._eating_turns_remaining > 0) || g._command_mode === 'continueEatingPrompt'
+        || (g._pending_message && g._message_more && g._process_time_with_more))
+        return false;
+    g._eating_turns_remaining--;
+    const eatenInventoryObject = g._eating_inventory_object;
+    const eatenFloorObject = g._eating_floor_object;
+    const biteNutrition = Math.trunc(g._eating_bite_nutrition || 0);
+    const biteHunger = Math.trunc(g._eating_bite_hunger || biteNutrition);
+    if (eatenInventoryObject && biteNutrition > 0 && g._eating_turns_remaining > 0) {
+        const nutritionOutcome = addDelayedFoodBiteNutrition(biteHunger, {
+            remainingAfterBite: Math.max(0, g._eating_turns_remaining - 1),
+            food: eatenInventoryObject,
+        });
+        if (nutritionOutcome.messages?.length) addToplineMessage(nutritionOutcome.messages.join('  '));
+        if (nutritionOutcome.choked) {
+            if (nutritionOutcome.recovered) {
+                if (!nutritionOutcome.preBite) consumeEatingInventoryObject(eatenInventoryObject, biteNutrition);
+                pauseEatingOccupationAfterChoke(g, nutritionOutcome.preBite
+                    ? g._eating_turns_remaining + 1 : g._eating_turns_remaining);
+            } else {
+                g._message_more = nutritionOutcome.more ? 1 : 0;
+                clearActiveEatingOccupation(g);
+            }
+            if (g.context) g.context.move = nutritionOutcome.move ?? 0;
+            return false;
+        }
+        consumeEatingInventoryObject(eatenInventoryObject, biteNutrition);
+        if (nutritionOutcome.prompt) {
+            g._command_mode = 'continueEatingPrompt';
+            g._pending_time_passed = 0;
+        }
+    }
+    if (eatenFloorObject && biteNutrition > 0 && g._eating_turns_remaining > 0) {
+        const nutritionOutcome = addDelayedFoodBiteNutrition(biteHunger, {
+            remainingAfterBite: Math.max(0, g._eating_turns_remaining - 1),
+            food: eatenFloorObject,
+        });
+        if (nutritionOutcome.messages?.length) addToplineMessage(nutritionOutcome.messages.join('  '));
+        if (nutritionOutcome.choked) {
+            if (nutritionOutcome.recovered) {
+                if (!nutritionOutcome.preBite) consumeEatingObject(eatenFloorObject, biteNutrition);
+                pauseEatingOccupationAfterChoke(g, nutritionOutcome.preBite
+                    ? g._eating_turns_remaining + 1 : g._eating_turns_remaining);
+            } else {
+                g._message_more = nutritionOutcome.more ? 1 : 0;
+                clearActiveEatingOccupation(g);
+            }
+            if (g.context) g.context.move = nutritionOutcome.move ?? 0;
+            return false;
+        }
+        consumeEatingObject(eatenFloorObject, biteNutrition);
+        if (nutritionOutcome.prompt) {
+            g._command_mode = 'continueEatingPrompt';
+            g._pending_time_passed = 0;
+        }
+    }
+    if (!g._eating_turns_remaining) {
+        g._map_redraw_pending = 1;
+        if (eatenFloorObject) {
+            if (g._eating_floor_object_direct_useup) {
+                useUpEatingFloorObject(g, eatenFloorObject);
+                g._eating_floor_object_direct_useup = 0;
+            } else {
+                g._eating_floor_object_pending_useup = eatenFloorObject;
+            }
+            g._eating_floor_object = null;
+        }
+        if (eatenInventoryObject) {
+            removeEatingInventoryObject(g, eatenInventoryObject);
+            clearEatingInventoryState(g);
+        }
+        if (eatenFloorObject && biteNutrition > 0) clearEatingInventoryState(g);
+        if (g._eating_nutrition && g.u) {
+            addEatingNutrition(g, g._eating_nutrition);
+            g._eating_nutrition = 0;
+        }
+        addToplineMessage(g._eating_nomovemsg || g._eating_finish_message || 'You finish eating.');
+        g._eating_nomovemsg = '';
+        g._eating_finish_message = '';
+        if (g._eating_newt_buzz) {
+            g._eating_newt_buzz = 0;
+            if (rn2(3) || 3 * (g.u?.uen || 0) <= 2 * (g.u?.uenmax || 0)) {
+                const oldEnergy = g.u?.uen || 0;
+                if (g.u) g.u.uen = oldEnergy + rnd(3);
+                if ((g.u?.uen || 0) > (g.u?.uenmax || 0)) {
+                    if (!rn2(3) && g.u) g.u.uenmax = (g.u.uenmax || 0) + 1;
+                    if (g.u) g.u.uen = g.u.uenmax || 0;
+                }
+                if ((g.u?.uen || 0) !== oldEnergy) addToplineMessage('You feel a mild buzz.');
+            }
+        }
+        g._pending_rotten_food_eating_message = 0;
+        clearInterruptedEatingState(g);
+        clearEatingFullnessState(g);
+        g._pet_food_scan_inventory = g.inventory || [];
+    }
+    return true;
+}
+
 export async function moveloop_core() {
     const g = game;
     while (g._pending_time_passed
@@ -10811,40 +11015,7 @@ export async function moveloop_core() {
         if (earlyPickDig) await processPickDigOccupation();
         if (earlyTinOpening) await processTinOpeningTurn();
 
-        if (g._eating_turns_remaining > 0 && !(g._pending_message && g._message_more && g._process_time_with_more)) {
-            g._eating_turns_remaining--;
-            if (!g._eating_turns_remaining) {
-                g._map_redraw_pending = 1;
-                const eatenFloorObject = g._eating_floor_object;
-                if (eatenFloorObject) {
-                    g._eating_floor_object_pending_useup = eatenFloorObject;
-                    g._eating_floor_object = null;
-                }
-                if (g._eating_nutrition && g.u) {
-                    g.u.uhunger = (g.u.uhunger ?? 900) + g._eating_nutrition;
-                    g.u._statusSuffix = (g.u._statusSuffix || '')
-                        .replace(/ Satiated| Hungry| Weak| Fainting| Fainted/g, '');
-                    if (g.u.uhunger > 1000) g.u._statusSuffix = `${g.u._statusSuffix || ''} Satiated`;
-                    g._eating_nutrition = 0;
-                }
-                addToplineMessage(g._eating_finish_message || 'You finish eating.');
-                g._eating_finish_message = '';
-                if (g._eating_newt_buzz) {
-                    g._eating_newt_buzz = 0;
-                    if (rn2(3) || 3 * (g.u?.uen || 0) <= 2 * (g.u?.uenmax || 0)) {
-                        const oldEnergy = g.u?.uen || 0;
-                        if (g.u) g.u.uen = oldEnergy + rnd(3);
-                        if ((g.u?.uen || 0) > (g.u?.uenmax || 0)) {
-                            if (!rn2(3) && g.u) g.u.uenmax = (g.u.uenmax || 0) + 1;
-                            if (g.u) g.u.uen = g.u.uenmax || 0;
-                        }
-                        if ((g.u?.uen || 0) !== oldEnergy) addToplineMessage('You feel a mild buzz.');
-                    }
-                }
-                g._pending_rotten_food_eating_message = 0;
-                g._pet_food_scan_inventory = g.inventory || [];
-            }
-        }
+        processEatingOccupationTick(g);
 
         const clearPetKillHalluDisplay = !!g._hallu_display_after_pet_kill_luck;
         const clearColdHalluDisplay = !!g._hallu_display_after_cold_topline;
@@ -10877,11 +11048,7 @@ export async function moveloop_core() {
 	                !mon.pet && !mon.mpeaceful && !mon.msleeping && !mon.mundetected
 	                && Math.max(Math.abs(mon.mx - (g.u?.ux || 0)), Math.abs(mon.my - (g.u?.uy || 0))) <= 1
 	                && couldSeeCoord(mon.mx, mon.my))) {
-	            g._eating_turns_remaining = 0;
-	            g._eating_finish_message = '';
-	            g._eating_floor_object = null;
-	            g._eating_newt_buzz = 0;
-	            g._eating_nutrition = 0;
+	            interruptEatingOccupation(g);
 	            g._pending_time_passed = 0;
 	        }
         if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;

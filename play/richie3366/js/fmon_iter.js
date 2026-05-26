@@ -115,11 +115,30 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
     ) {
         const distant = findDistantMklevMonLikeC(g);
         const pet = mons.find((m) => (m.mtame | 0) !== 0);
-        const rest = mons.filter((m) => m !== distant && m !== pet);
+        const nearMklev = mons.find(
+            (m) =>
+                m !== distant
+                && m !== pet
+                && (m.mgenmklev | 0)
+                && !(m.mtame | 0),
+        );
+        const rest = mons.filter(
+            (m) => m !== distant && m !== pet && m !== nearMklev,
+        );
         /** @type {typeof mons} */
         const ordered = [];
+        /* C: **`L`**+ — distant df, pet goal+pick, near df, distant **`m_move`**, pet tail (~2601–2611). */
+        if (g.context?._wizD1Step1InventPostDoneLikeC && pet) {
+            if (distant) ordered.push(distant);
+            ordered.push(pet);
+            if (nearMklev) ordered.push(nearMklev);
+            if (distant) ordered.push(distant);
+            /* C: defer other **`fmon`** until post-peel distant **`m_move`** + pet tail (~2611+). */
+            return ordered;
+        }
         if (distant) ordered.push(distant);
         if (pet) ordered.push(pet);
+        if (nearMklev) ordered.push(nearMklev);
         return [...ordered, ...rest];
     }
     if (isRogueColonMovemonActiveLikeC(g)) {

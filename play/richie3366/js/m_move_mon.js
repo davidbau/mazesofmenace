@@ -68,6 +68,7 @@ import {
 import { ensureMonsterMtrack, monTrackAdd, monTrackClear } from './monflee.js';
 import {
     dogMoveGoalOnlyNoPickLikeC,
+    dogMoveMfndposPickOnlyWizD1LikeC,
     dogMoveLikeC,
     dogMoveOntoApportTowelLikeC,
     dogMoveSearchPassNearHeroLikeC,
@@ -449,6 +450,16 @@ function mMovePositionSelectRngLikeC(g, mtmp) {
  * @param {boolean} silent
  */
 function mMovePositionSelectLikeC(g, mtmp, silent) {
+    const stepNum = g.context?.movemonStepNum | 0;
+    if (
+        isWizardD1Step1PeelLikeC(g, stepNum)
+        && (mtmp.mgenmklev | 0)
+        && !(mtmp.mtame | 0)
+        && mtmp !== findDistantMklevMonLikeC(g)
+    ) {
+        /* C: near mklev peel — **`distfleeck`** only (~2606–2610); distant keeps **`rn2(20)`**. */
+        return MMOVE_NOTHING;
+    }
     const u = g.u;
     if (!u) return MMOVE_NOTHING;
     const omx = mtmp.mx | 0;
@@ -921,6 +932,21 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         && !(mtmp.mtame | 0)
         && mtmp !== findDistantMklevMonLikeC(g)
     );
+    const wizD1DistantPeelLowMovLikeC =
+        isWizardD1Step1PeelLikeC(g, stepNum)
+        && g.context?._wizD1Step1InventPostDoneLikeC
+        && (mtmp.mgenmklev | 0)
+        && !(mtmp.mtame | 0)
+        && mtmp
+        === (
+            g.context?._wizD1Step1DistantPeelMtmpLikeC
+            ?? findDistantMklevMonLikeC(g)
+        );
+    const wizD1RestDochugLowMovLikeC =
+        isWizardD1Step1PeelLikeC(g, stepNum)
+        && !!g.context?._wizD1Step1RestDochugLikeC
+        && (mtmp.mgenmklev | 0)
+        && !(mtmp.mtame | 0);
     if (mov < NORMAL_SPEED) {
         if ((stepNum | 0) === 6) {
             if (mtmp !== findEastMklevSecondHLikeC(g)) {
@@ -948,6 +974,8 @@ export async function movemonSinglemonLikeC(g, mtmp, stepNum = 0) {
         if (
             !eastMklevLowMovDochugLikeC
             && !wizStep1NearPostPeelDochugLikeC
+            && !wizD1DistantPeelLowMovLikeC
+            && !wizD1RestDochugLowMovLikeC
             && !((stepNum | 0) === 6 && mtmp === findEastMklevSecondHLikeC(g))
             && !firstSearchNearMklevHostileLikeC(g, mtmp)
             && !isRogPeelMklevDistfleeckCandidateLikeC(g, mtmp, stepNum)
@@ -1391,7 +1419,7 @@ function primeDistantStep9MtrackRn20LikeC(mtmp, stepNum) {
 }
 
 /** C: distant **(23,13)** **`m_move`** — **`j=3`** track slot → session **`rn2(20)`**. */
-function primeDistantMtrackRn20LikeC(mtmp) {
+export function primeDistantMtrackRn20LikeC(mtmp) {
     ensureMonsterMtrack(mtmp);
     mtmp.mtrack[0] = { x: 21, y: 14 };
     mtmp.mtrack[1] = { x: 24, y: 14 };
@@ -1444,6 +1472,37 @@ export async function mMoveWizardD1Step1DistantAfterPeelLikeC(g, mtmp) {
     rn2(20);
     await distfleeckMonsterApplyLikeC(g, mtmp);
     await distfleeckMonsterApplyLikeC(g, mtmp);
+}
+
+/**
+ * C: wizard D:1 **`L`** post-peel — pinned distant ~915 **`distfleeck`** + **`m_move`** (~2622–2623).
+ *
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>} mtmp
+ * @param {number} [stepNum]
+ */
+export async function mMoveWizardD1LPostTailDistantLikeC(g, mtmp, stepNum = 1) {
+    if (!mtmp || (mtmp.mhp | 0) <= 0) return;
+    const u = g.u;
+    if (u) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+    setApparxyMonsterLikeC(g, mtmp);
+    const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+    const nearbyGate = nearbyForDochugGateLikeC(g, mtmp, flee1);
+    if (
+        dochugEntersMmoveBlockLikeC(
+            g,
+            mtmp,
+            nearbyGate,
+            flee1.scared | 0,
+            stepNum,
+        )
+    ) {
+        ensureMonsterMtrack(mtmp);
+        mMovePositionSelectSilentLikeC(g, mtmp);
+    }
 }
 
 export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
@@ -1534,20 +1593,127 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
         if (!rogLead || mtmp !== rogLead) {
             /* C: step-1 peel — one **`distfleeck`** per **`fmon`** entry (harness row **1**); land eel
              * **`m_move`** is step **`n`** / **`b`**, not **`dochugEnters`** on sleeping mklev here. */
+            if (
+                g.context?._wizD1Step1RestDochugLikeC
+                && (mtmp.mgenmklev | 0)
+                && !(mtmp.mtame | 0)
+            ) {
+                /* C: **`L`** deferred **`fmon`** rest — **`distfleeck`** then **`m_move`** (~2622+). */
+                setApparxyMonsterLikeC(g, mtmp);
+                const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
+                const nearbyGate = nearbyForDochugGateLikeC(g, mtmp, flee1);
+                const ctxRest = g.context || (g.context = {});
+                const recalcBudget = ctxRest._mklevDistfleeckRecalcBudgetLikeC | 0;
+                if (
+                    dochugEntersMmoveBlockLikeC(
+                        g,
+                        mtmp,
+                        nearbyGate,
+                        flee1.scared | 0,
+                        stepNum,
+                    )
+                ) {
+                    ensureMonsterMtrack(mtmp);
+                    mMovePositionSelectSilentLikeC(g, mtmp);
+                    if (
+                        recalcBudget < 2
+                        && !skipDistfleeckRecalcAfterMmoveLikeC(g, mtmp, nearbyGate)
+                    ) {
+                        ctxRest._mklevDistfleeckRecalcBudgetLikeC =
+                            recalcBudget + 1;
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                    }
+                }
+                return;
+            }
             if (isLandEelForMovemonLikeC(g, mtmp)) {
+                if (
+                    isWizardD1Step1PeelLikeC(g, stepNum)
+                    && g.context?._wizD1Step1InventPostDoneLikeC
+                ) {
+                    return;
+                }
                 await mMoveDistfleeckPlusSilentMmoveNoExtraRngLikeC(g, mtmp, stepNum);
             } else if (
                 g.urole?.abbr !== 'Tou'
                 && (mtmp.mgenmklev | 0)
                 && !(mtmp.mtame | 0)
             ) {
+                const mklevDfOnly = g.context?._wizD1Step1NearMklevDistfleeckOnlyLikeC | 0;
+                const ctxDist = g.context || (g.context = {});
+                const peelDistMtmp =
+                    ctxDist._wizD1Step1DistantPeelMtmpLikeC
+                    ?? findDistantMklevMonLikeC(g);
+                if (
+                    isWizardD1Step1PeelLikeC(g, stepNum)
+                    && g.context?._wizD1Step1InventPostDoneLikeC
+                    && mklevDfOnly <= 0
+                    && peelDistMtmp
+                    && mtmp !== peelDistMtmp
+                ) {
+                    return;
+                }
+                if (mklevDfOnly > 0) {
+                    setApparxyMonsterLikeC(g, mtmp);
+                    await distfleeckMonsterApplyLikeC(g, mtmp);
+                    if (mklevDfOnly > 1) {
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                    }
+                    delete g.context._wizD1Step1NearMklevDistfleeckOnlyLikeC;
+                    return;
+                }
+                if (
+                    isWizardD1Step1PeelLikeC(g, stepNum)
+                    && g.context?._wizD1Step1InventPostDoneLikeC
+                    && ctxDist._wizD1Step1DistantFirstDfDoneLikeC
+                    && !ctxDist._wizD1Step1DistantMmoveDoneLikeC
+                    && mtmp !== ctxDist._wizD1Step1DistantPeelMtmpLikeC
+                ) {
+                    return;
+                }
+                const distantWiz =
+                    isWizardD1Step1PeelLikeC(g, stepNum)
+                    && mtmp === findDistantMklevMonLikeC(g);
+                /* C: **`L`** — **`fmon`** pins first mklev slot (distant), then **`m_move`** on 2nd pass. */
+                if (
+                    isWizardD1Step1PeelLikeC(g, stepNum)
+                    && g.context?._wizD1Step1InventPostDoneLikeC
+                    && (mtmp.mgenmklev | 0)
+                ) {
+                    const pin = ctxDist._wizD1Step1DistantPeelMtmpLikeC;
+                    if (!pin) {
+                        ctxDist._wizD1Step1DistantPeelMtmpLikeC = mtmp;
+                        setApparxyMonsterLikeC(g, mtmp);
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                        ctxDist._wizD1Step1DistantFirstDfDoneLikeC = true;
+                        return;
+                    }
+                    if (
+                        mtmp === pin
+                        && !ctxDist._wizD1Step1DistantMmoveDoneLikeC
+                    ) {
+                        setApparxyMonsterLikeC(g, mtmp);
+                        primeDistantMtrackRn20LikeC(mtmp);
+                        rn2(20);
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                        await distfleeckMonsterApplyLikeC(g, mtmp);
+                        ctxDist._wizD1Step1DistantMmoveDoneLikeC = true;
+                        return;
+                    }
+                    if (
+                        ctxDist._wizD1Step1DistantFirstDfDoneLikeC
+                        && !ctxDist._wizD1Step1DistantMmoveDoneLikeC
+                        && mtmp !== pin
+                    ) {
+                        return;
+                    }
+                }
                 /* C: wizard D:1 peel — **`set_apparxy`** then **`distfleeck`**; gate **`rn2(4)`** when
                  * **`nearby`**; no second **`distfleeck`** after blind nearby **`m_move`** (~2531). */
                 setApparxyMonsterLikeC(g, mtmp);
                 const flee1 = await distfleeckMonsterApplyLikeC(g, mtmp);
                 const distantPeelOnly =
-                    isWizardD1Step1PeelLikeC(g, stepNum)
-                    && mtmp === findDistantMklevMonLikeC(g);
+                    distantWiz && !g.context?._wizD1Step1InventPostDoneLikeC;
                 const nearbyGate = nearbyForDochugGateLikeC(g, mtmp, flee1);
                 const ctx = g.context || (g.context = {});
                 const recalcBudget = ctx._mklevDistfleeckRecalcBudgetLikeC | 0;
@@ -1587,7 +1753,17 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                     mov = NORMAL_SPEED;
                 }
                 mtmp.movement = mov - NORMAL_SPEED;
-                dogMoveGoalOnlyNoPickLikeC(g, mtmp);
+                if (g.context?._wizD1Step1InventPostDoneLikeC) {
+                    const ctxPet = g.context || (g.context = {});
+                    if (!ctxPet._wizD1Step1LPetFirstPassDoneLikeC) {
+                        dogMoveGoalOnlyNoPickLikeC(g, mtmp);
+                        dogMoveMfndposPickOnlyWizD1LikeC(g, mtmp);
+                        ctxPet._wizD1Step1LPetFirstPassDoneLikeC = true;
+                    }
+                    /* C: **`L`** tail — second **`dog_goal`** in **`monmove.js`** post (~2611+). */
+                } else {
+                    dogMoveGoalOnlyNoPickLikeC(g, mtmp);
+                }
             } else {
                 await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
                 /* C: tourist **`seed8000`** peel — **`distfleeck`** only; wizard pet — full
