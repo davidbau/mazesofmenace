@@ -420,6 +420,8 @@ const PET_OBJECT_WEIGHTS = {
     stethoscope: 4,
     apple: 2,
     'lump of royal jelly': 2,
+    meatball: 1,
+    'enormous meatball': 400,
     rock: 10,
     'tinning kit': 100,
     touchstone: 10,

@@ -152,6 +152,8 @@ const CLOVE_OF_GARLIC = 11008;
 const SLIME_MOLD = 11009;
 const FORTUNE_COOKIE = 11010;
 const PANCAKE = 11011;
+const MEATBALL = 11012;
+const ENORMOUS_MEATBALL = 11013;
 const LUMP_OF_ROYAL_JELLY = 10089;
 const GLOB_TYPES = new Map([
     ['gray ooze', { otyp: GLOB_OF_GRAY_OOZE, name: 'glob of gray ooze', color: CLR_GRAY }],
@@ -167,7 +169,13 @@ const CREAM_PIE = 10081;
 const EXPENSIVE_CAMERA = 10082;
 const STETHOSCOPE = 10083;
 const MAGIC_MARKER = 10084;
+const TINNING_KIT = 10170;
+const CAN_OF_GREASE = 10171;
+const MAGIC_FLUTE = 946;
+const FROST_HORN = 953;
+const FIRE_HORN = 955;
 const MAGIC_HARP = 10169;
+const DRUM_OF_EARTHQUAKE = 975;
 const CRYSTAL_BALL = 10088;
 const LUCKSTONE = 10127;
 const LOADSTONE = 10165;
@@ -1564,6 +1572,8 @@ const SPECIFIC_FOOD_INFO = new Map([
     [LUMP_OF_ROYAL_JELLY, ['lump of royal jelly', 'lumps of royal jelly', CLR_YELLOW]],
     [FORTUNE_COOKIE, ['fortune cookie', 'fortune cookies', CLR_YELLOW]],
     [PANCAKE, ['pancake', 'pancakes', CLR_YELLOW]],
+    [MEATBALL, ['meatball', 'meatballs', CLR_BROWN]],
+    [ENORMOUS_MEATBALL, ['enormous meatball', 'enormous meatballs', CLR_BROWN]],
 ]);
 const VEGETARIAN_FOOD_PROBS = [
     [85, EGG],
@@ -4068,6 +4078,9 @@ function mksobj_init(otmp, otyp, artif) {
         }
         if (artif) maybeMkArtifact(otmp, otyp, 20);
         if (otyp !== SILVER_SABER) mkobj_erosion_rolls(otmp);
+    } else if (otyp === BAG_OF_TRICKS && game._mkobj_force_bag_of_tricks) {
+        game._mkobj_force_bag_of_tricks = false;
+        otmp.spe = rn1(18, 3);
     } else if (otyp === ARMOR_CLASS || SPECIFIC_ARMOR.has(otyp)) {
         const autocurse = !!game._mkobj_armor_autocurse;
         const erosion = game._mkobj_armor_erosion || { primary: true, secondary: true };
@@ -4158,9 +4171,13 @@ function mksobj_init(otmp, otyp, artif) {
         if (!rn2(6)) otmp.quan = 2;
     } else if (otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY) {
         otmp.spe = rn1(18, 3);
-    } else if (otyp === EXPENSIVE_CAMERA || otyp === MAGIC_MARKER) {
+    } else if (otyp === EXPENSIVE_CAMERA || otyp === TINNING_KIT || otyp === MAGIC_MARKER) {
         otmp.spe = rn1(70, 30);
-    } else if (otyp === MAGIC_HARP) {
+    } else if (otyp === CAN_OF_GREASE) {
+        otmp.spe = rn1(21, 5);
+        blessorcurse(otmp, 10);
+    } else if (otyp === MAGIC_FLUTE || otyp === FROST_HORN || otyp === FIRE_HORN
+        || otyp === MAGIC_HARP || otyp === DRUM_OF_EARTHQUAKE) {
         otmp.spe = rn1(5, 4);
     } else if (otyp === CRYSTAL_BALL) {
         otmp.spe = rn1(5, 3);
@@ -4215,8 +4232,14 @@ function mksobj_init(otmp, otyp, artif) {
                         : rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE;
         } else if ((roll > 944 && roll <= 946) || (roll > 951 && roll <= 955)
             || (roll > 961 && roll <= 963) || (roll > 973 && roll <= 975)) {
+            if (roll > 944 && roll <= 946) otmp.otyp = MAGIC_FLUTE;
+            else if (roll > 951 && roll <= 953) otmp.otyp = FROST_HORN;
+            else if (roll > 953 && roll <= 955) otmp.otyp = FIRE_HORN;
+            else if (roll > 961 && roll <= 963) otmp.otyp = MAGIC_HARP;
+            else if (roll > 973 && roll <= 975) otmp.otyp = DRUM_OF_EARTHQUAKE;
             otmp.spe = rn1(5, 4);
         } else if (roll > 955 && roll <= 957) {
+            otmp.otyp = HORN_OF_PLENTY;
             otmp.spe = rn1(18, 3);
         }
         if (roll > 975) mkobj_erosion_rolls();
@@ -4455,7 +4478,10 @@ export function object_display(otmp) {
         return { glyph: '(', color: displayColor ?? CLR_YELLOW };
     if (otyp === CRYSTAL_BALL) return { glyph: '(', color: displayColor ?? CLR_BRIGHT_CYAN };
     if (otyp === TOOL_CLASS || otyp === TIN_WHISTLE || otyp === TALLOW_CANDLE || otyp === WAX_CANDLE
-        || otyp === EXPENSIVE_CAMERA || otyp === MIRROR || otyp === STETHOSCOPE || otyp === MAGIC_MARKER || otyp === BELL
+        || otyp === EXPENSIVE_CAMERA || otyp === TINNING_KIT || otyp === CAN_OF_GREASE
+        || otyp === MAGIC_FLUTE || otyp === FROST_HORN || otyp === FIRE_HORN
+        || otyp === HORN_OF_PLENTY || otyp === MAGIC_HARP || otyp === DRUM_OF_EARTHQUAKE
+        || otyp === MIRROR || otyp === STETHOSCOPE || otyp === MAGIC_MARKER || otyp === BELL
         || otyp === LENSES || otyp === CREDIT_CARD || otyp === SKELETON_KEY)
         return { glyph: '(', color: displayColor ?? CLR_MAGENTA };
     if (otyp === BOULDER) return { glyph: '`', color: NO_COLOR };
