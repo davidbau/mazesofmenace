@@ -40,6 +40,7 @@ import {
 } from './monmove_search.js';
 import { searchPass1NearMonLikeC } from './mfndpos_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
+import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
 import { movemonSinglemonLikeC, mMoveDistfleeckOnlyTurnLikeC } from './m_move_mon.js';
 import {
     dogGoalScanSearchPostGateLikeC,
@@ -434,20 +435,42 @@ export async function movemon(stepNum) {
             if (postBumpPet && g.context?._postBumpKillDochugGateLikeC) {
                 await movemonSinglemonLikeC(g, postBumpPet, effStepNum);
             }
+            if (
+                postBumpDistant
+                && g.context?._postBumpKillDochugGateLikeC
+            ) {
+                g.context._postBumpDistantSecondPassLikeC = true;
+                await movemonSinglemonLikeC(g, postBumpDistant, effStepNum);
+            }
             mons = mons.filter(
                 (m) => m !== postBumpDistant && m !== postBumpPet,
             );
         }
-        for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
         if (g.context?._postBumpKillDochugGateLikeC) {
-            delete g.context._postBumpKillDochugGateLikeC;
-            delete g.context._postBumpDistantMtmpLikeC;
-            delete g.context._postBumpDistantDistfleeckDoneLikeC;
+            /* C: tail **`fmon`** — distant ~915 **`distfleeck`** recalc, then each other mklev
+             * (**`seed0006`** ~2558–2559); use live **`level.monsters`**, not filtered **`mons`**. */
+            const postBumpDistant =
+                g.context._postBumpDistantMtmpLikeC ?? findDistantMklevMonLikeC(g);
+            const postBumpPet = (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
+            if (postBumpDistant) {
+                setApparxyMonsterLikeC(g, postBumpDistant);
+                await distfleeckMonsterApplyLikeC(g, postBumpDistant);
+            }
+            for (const m of g.level?.monsters ?? []) {
+                if (m === postBumpPet || (m.mtame | 0) || m === postBumpDistant) continue;
+                if (!(m.mgenmklev | 0)) continue;
+                setApparxyMonsterLikeC(g, m);
+                await distfleeckMonsterApplyLikeC(g, m);
+            }
+        } else {
+            for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
         }
+        /* C: post-bump gate cleared in **`finally`** — search / east peels below stay distfleeck-only. */
         /* C: rogue first **`#search`** — post-gate **`distfleeck`** peel after **`dog_goal`**
          * (**`seed0077` ~3209–3212**); complements **`fmon_iter`** pet-before-peel order. */
         if (
-            isFirstSearchMovemonPassLikeC(g)
+            !g.context?._postBumpKillDochugGateLikeC
+            && isFirstSearchMovemonPassLikeC(g)
             && g.context?._searchPass1NearMonLikeC
             && !g.context?._searchPostGatePeelDoneLikeC
         ) {
@@ -501,7 +524,8 @@ export async function movemon(stepNum) {
         /* C: rogue second **`#search`** — gate **`dochug`** + mklev tail peel after pet **`dog_move`**
          * (**`seed0077` ~3230–3235**); main **`fmon`** loop is gate + pet only. */
         if (
-            isSecondSearchMovemonPassLikeC(g)
+            !g.context?._postBumpKillDochugGateLikeC
+            && isSecondSearchMovemonPassLikeC(g)
             && rogueSecondSearchFullFmonLikeC(g)
             && !g.context?._searchPostGate2PeelDoneLikeC
         ) {
@@ -606,6 +630,12 @@ export async function movemon(stepNum) {
         await mintrapMoveloopTail();
     } finally {
         delete g.context.movemonStepNum;
+        if (g.context?._postBumpKillDochugGateLikeC) {
+            delete g.context._postBumpKillDochugGateLikeC;
+            delete g.context._postBumpDistantMtmpLikeC;
+            delete g.context._postBumpDistantDistfleeckDoneLikeC;
+            delete g.context._postBumpDistantSecondPassLikeC;
+        }
     }
 
     /* C: hero **`b`** — one **`fmon`** pass for distant mon only (no **`monscanmove`** re-entry). */
@@ -646,9 +676,13 @@ export async function movemon(stepNum) {
     if ((stepNum | 0) === 11 || (stepNum | 0) === 12) {
         return false;
     }
-    /* C: wizard D:1 — one **`movemon()`** pass at **`stepNum` 1**; no **`monscanmove`**
-     * re-entry before new-turn **`gethungry`** (**`seed0006`** ~2523). */
-    if ((stepNum | 0) === 1 && g.urole?.abbr === 'Wiz') {
+    /* C: wizard D:1 — one **`movemon()`** pass per hero turn (any **`stepNum`**); no
+     * **`monscanmove`** re-entry before new-turn **`gethungry`** (**`seed0006`** ~2523 / ~2558). */
+    if (
+        g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
         return false;
     }
 

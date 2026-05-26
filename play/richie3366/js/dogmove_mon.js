@@ -649,7 +649,7 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
         uncursedcnt++;
     }
 
-    if (appr === 0) {
+    if (appr === 0 && (g.context?._searchStep11Passes | 0) === 1) {
         /* C: **`appr==0`** — one **`rn2(1)`** on the closest-to-goal **`mfndpos`** slot
          * (recorder **`seed0077`** ~3208 onto APPORT towel; avoids **`rn2(2..)`** when extra
          * neighbor slots exist in JS but not C). */
@@ -682,7 +682,6 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                         continue;
                     }
                     if (!canReachFood) continue;
-                    /* C: dogmove.c — **`dogfood`** on every reachable pile member ( **`obj_resists`** ). */
                     const otyp = dogfoodRankLikeC(obj);
                     const hungrytime = edog.hungrytime | 0;
                     if (
@@ -733,10 +732,8 @@ function dogMoveMfndposPickLikeC(g, mtmp, ggx, ggy, appr, whappr) {
                 pickY = ny;
             }
         }
-        /* C: first **`#search`** — **`mfndpos`** **`appr==0`** step onto APPORT towel fill tile
-         * (**`seed0077`** ~3208: kitten **`f`** covers **`(`** at west alcove). */
         const towel = g.context?._searchApportTowelXYLikeC;
-        if (any && (g.context?._searchStep11Passes | 0) === 1 && towel) {
+        if (any && towel) {
             pickX = towel.x | 0;
             pickY = towel.y | 0;
         }

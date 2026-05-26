@@ -267,19 +267,29 @@ export function findDistantMklevMonLikeC(g) {
         ?? mons.find((m) => (m.mx | 0) === 23 && (m.my | 0) === 13)
         ?? mons.find((m) => (m.mx | 0) === 21 && (m.my | 0) === 13)
         ?? mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 12)
-        ?? mons.find(
-            (m) =>
-                (m.mgenmklev | 0)
-                && m !== west
-                && m !== eel
-                && m !== eastSecond
-                && m !== eastKick
-                && !isLandEelForMovemonLikeC(g, m)
-                /* C: distant mklev is well west of hero / east-corridor sleepers (**`mx < 64`** on **`seed8000`**). */
-                && (m.mx | 0) < 64
-                && (g.u ? (m.mx | 0) < (g.u.ux | 0) - 8 : true)
-                && (m.mnum | 0) !== PM_LICHEN
-        )
+        ?? (() => {
+            /* C: prefer westernmost eligible mklev — not door-niche sleepers at **~63,7**. */
+            let best = null;
+            let bestMx = 999;
+            for (const m of mons) {
+                const mx = m.mx | 0;
+                const my = m.my | 0;
+                if (!(m.mgenmklev | 0)) continue;
+                if (m === west || m === eel || m === eastSecond || m === eastKick) continue;
+                if (isLandEelForMovemonLikeC(g, m)) continue;
+                if (mx >= 64) continue;
+                if (g.u && mx >= (g.u.ux | 0) - 8) continue;
+                if ((m.mnum | 0) === PM_LICHEN) continue;
+                if (westApportSleeperNicheAtLikeC(g, mx, my)) continue;
+                if (westFungusDoorNicheAtLikeC(g, mx, my, m)) continue;
+                if (eastFungusDoorNicheAtLikeC(g, mx, my, m)) continue;
+                if (mx < bestMx) {
+                    bestMx = mx;
+                    best = m;
+                }
+            }
+            return best;
+        })()
     ) ?? null;
 }
 

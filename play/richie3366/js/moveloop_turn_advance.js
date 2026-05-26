@@ -176,8 +176,13 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
     if ((u.umovement | 0) < 0) u.umovement = 0;
 
     g.context = g.context || {};
+    delete g.context._wizD1MovemonRanThisPostLikeC;
     g.context.monMoving = true;
     try {
+        const wizD1MovemonOnceLikeC =
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1;
         /* C: allmain.c outer loop may run new-turn → movemon → new-turn in one post
          * (wizard **`seed0006`** ~2502–2522 after **`n`**). Cap to one new-turn only for
          * inline **`#search`** post (same moveloop as **`cmd.js`**). */
@@ -214,7 +219,10 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     (searchPass === 1 || searchPass === 2)
                     && !!g.context?._searchPass1NearMonLikeC
                 );
-            if (runMovemon) {
+            if (
+                runMovemon
+                && !(wizD1MovemonOnceLikeC && g.context._wizD1MovemonRanThisPostLikeC)
+            ) {
                 let stepForMovemon = movemonStepNum > 0 ? movemonStepNum : 1;
                 /* C: first **`#search`** on low **`moves`** — skip peel **`stepNum` 1**; use pass 11 path. */
                 if (
@@ -242,6 +250,9 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         monscanmove = await movemon(stepForMovemon);
                         if ((u.umovement | 0) >= NORMAL_SPEED) break;
                     } while (monscanmove);
+                    if (wizD1MovemonOnceLikeC) {
+                        g.context._wizD1MovemonRanThisPostLikeC = true;
+                    }
                 }
             }
 

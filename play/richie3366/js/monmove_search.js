@@ -62,14 +62,19 @@ export function rogueSecondSearchFullFmonLikeC(g) {
  * @returns {number}
  */
 export function effectiveMovemonStepNumLikeC(g, stepNum) {
+    const raw = stepNum | 0;
+    /* C: `#search` peel uses step-11 handlers only on the low-`moves` moveloop pass that
+     * follows **`s`** — not on later D:1 commands (**`seed0006`** post-bump **`l`** ~2558). */
+    if (g.context?._postBumpKillDochugGateLikeC) return raw;
     const searchPass = g.context?._searchStep11Passes | 0;
     if (
         (searchPass === 1 || searchPass === 2)
         && !isRogueColonMovemonActiveLikeC(g)
+        && raw <= 12
     ) {
         return 11;
     }
-    return stepNum | 0;
+    return raw;
 }
 
 /** C: between consecutive **`#search`** keys — reset peel counters, keep pass id. */
