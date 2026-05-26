@@ -27,6 +27,9 @@ import {
     isRogueColonMovemonActiveLikeC,
 } from './monmove_search.js';
 import { peekReplayMoves } from './input.js';
+import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
+import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
+import { dogMoveLPetInventAfterNewturnLikeC } from './dogmove_mon.js';
 
 /**
  * C: rogue D:1 with only gate + pet — first **`movemon`** peel at **`stepNum` 1** waits for
@@ -187,6 +190,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1Step1DistantPeelMtmpLikeC;
         delete g.context._wizD1Step1LPetFirstPassDoneLikeC;
         delete g.context._wizD1Step1LPetTailDoneLikeC;
+        delete g.context._wizD1Step1LPetInventAfterNewturnDoneLikeC;
         /* Keep **`_wizD1Step1PendingLPostPeelLikeC`** until **`L`** post consumes it (set on **`n`** invent). */
         delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
     }
@@ -291,6 +295,36 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     delete g.context._deferredNewTurnLikeC;
                     newTurnDone = true;
+                    if (
+                        wizD1MovemonOnceLikeC
+                        && g.context?._wizD1Step1LPetTailDoneLikeC
+                        && !g.context?._wizD1Step1LPetInventAfterNewturnDoneLikeC
+                    ) {
+                        const pet = (g.level?.monsters ?? []).find(
+                            (m) => (m.mtame | 0) !== 0,
+                        );
+                        const distant = (g.level?.monsters ?? []).find(
+                            (m) =>
+                                (m.mgenmklev | 0)
+                                && !(m.mtame | 0)
+                                && m !== (g.context?._wizD1Step1DistantPeelMtmpLikeC),
+                        );
+                        const nearMklev = (g.level?.monsters ?? []).find(
+                            (m) =>
+                                m !== distant
+                                && m !== pet
+                                && (m.mgenmklev | 0)
+                                && !(m.mtame | 0),
+                        );
+                        if (nearMklev) {
+                            setApparxyMonsterLikeC(g, nearMklev);
+                            await distfleeckMonsterApplyLikeC(g, nearMklev);
+                        }
+                        if (pet) {
+                            dogMoveLPetInventAfterNewturnLikeC(g, pet);
+                        }
+                        g.context._wizD1Step1LPetInventAfterNewturnDoneLikeC = true;
+                    }
                 }
             }
         } while (
