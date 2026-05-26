@@ -345,6 +345,7 @@ export function fixupLevelLocationsLikeC(g) {
         ['valley', 'valley_level'],
         ['sanctum', 'sanctum_level'],
         ['juiblex', 'juiblex_level'],
+        ['baalz', 'baalzebub_level'],
         ['orcus', 'orcus_level'],
         ['bigrm', 'bigroom_level'],
         ['air', 'air_level'],

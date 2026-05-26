@@ -28,6 +28,7 @@ import { enextoCoreLikeC, goodposMakemonLikeC } from './walkable.js';
 
 import { MM_FEMALE, MM_MALE } from './const.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
+import { deliverObjToMonLikeC, DF_NONE } from './deliver_obj_to_mon.js';
 import { d, rnd, rn2 } from './rng.js';
 
 /** C: mondata.h is_ndemon — `mons[mndx].mlet` in S_IMP..S_DEMON. */
@@ -225,6 +226,9 @@ export function makemon(mdat, x, y, mmflags) {
         ) {
             mtmp.msleeping = 1;
         }
+    }
+    if (allowMinvent && game.migratingObjs?.length) {
+        deliverObjToMonLikeC(game, mtmp, 1, DF_NONE);
     }
     const mons = game.level?.monsters;
     if (mons) mons.unshift(mtmp);

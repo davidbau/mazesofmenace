@@ -10,6 +10,7 @@ import {
     MONS_MFLAGS2,
     MONS_MLEVEL,
 } from './mons_rndmonst_ini_inv_data.js';
+import { ESHK } from './const.js';
 import {
     XKILL_NOCORPSE,
     PM_FIRE_ELEMENTAL,
@@ -40,6 +41,9 @@ import {
     NON_PM,
     LOW_PM,
     MON_FLOOR,
+    S_GOLEM,
+    PM_STONE_GOLEM,
+    G_GENOD,
 } from './const.js';
 
 /**
@@ -149,6 +153,8 @@ export const G_NOCORPSE = 0x0010;
 
 /** C: monflag.h `MR_FIRE` — innate fire resistance (goodpos lava, trap.c, …). */
 export const MR_FIRE = 0x01;
+/** C: monflag.h MR_STONE */
+export const MR_STONE = 0x80;
 /** C: monflag.h `MR_COLD` */
 export const MR_COLD = 0x02;
 /** C: monflag.h `MR_SLEEP` — sleep resistance (trap.c sleep gas, …). */
@@ -668,6 +674,27 @@ export function fireResistant(/** @type {Permonst} */ ptr) {
     return ((ptr?.mresists ?? 0) & MR_FIRE) !== 0;
 }
 
+/** C: mondata.c pm_resistance — innate `mresists` only. */
+export function pmResistanceLikeC(/** @type {Permonst} */ ptr, mr) {
+    return ((ptr?.mresists ?? 0) & (mr | 0)) !== 0;
+}
+
+/** C: mondata.c is_golem */
+export function isGolemPtrLikeC(/** @type {Permonst} */ ptr) {
+    return (ptr?.mlet | 0) === S_GOLEM;
+}
+
+/**
+ * C: mondata.c poly_when_stoned — non-stone golems petrify to stone golem unless genocided.
+ * @param {import('./gstate.js').game} g
+ */
+export function polyWhenStonedLikeC(g, /** @type {Permonst} */ ptr) {
+    if (!isGolemPtrLikeC(ptr)) return false;
+    if ((ptr.mnum | 0) === PM_STONE_GOLEM) return false;
+    if (((g.mvitals?.[PM_STONE_GOLEM]?.mvflags | 0) & G_GENOD) !== 0) return false;
+    return true;
+}
+
 /** C: mondata.h resists_sleep — `mons[].mresists & MR_SLEEP` (subset; no `defended`/`resist()` yet). */
 export function resistsSleep(/** @type {Permonst} */ ptr) {
     return ((ptr?.mresists ?? 0) & MR_SLEEP) !== 0;
@@ -720,6 +747,28 @@ export function amorphous(/** @type {Permonst} */ ptr) {
 export function monHasAmulet(mtmp) {
     for (let o = mtmp?.minvent; o; o = o.nobj) {
         if ((o.otyp | 0) === OTYP_AMULET_OF_YENDOR) return true;
+    }
+    return false;
+}
+
+/** C: shk.c **`is_fshk`** — fleeing shopkeeper follows across levels. */
+export function isFshkMonsterLikeC(mtmp) {
+    return !!(mtmp?.isshk && (ESHK(mtmp)?.following | 0));
+}
+
+/**
+ * C: mondata.c **`levl_follower(mtmp)`** — tame / wiz / fleeing shk / stalkers.
+ * @param {import('./gstate.js').game} g
+ */
+export function levlFollowerLikeC(g, mtmp) {
+    const u = g?.u;
+    if (!u || !mtmp) return false;
+    if (mtmp === u.usteed) return true;
+    if ((mtmp.iswiz | 0) && monHasAmulet(mtmp)) return false;
+    if ((mtmp.mtame | 0) || (mtmp.iswiz | 0) || isFshkMonsterLikeC(mtmp)) return true;
+    const ptr = raceptr(mtmp);
+    if ((ptr?.mflags2 & M2_STALK_WATCH) !== 0 && (!((mtmp.mflee | 0)) || u.uhave?.amulet)) {
+        return true;
     }
     return false;
 }

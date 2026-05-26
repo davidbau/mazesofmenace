@@ -348,7 +348,7 @@ function terrain_glyph(loc, x, y) {
         case FOUNTAIN:  return { ch: '{', color: CLR_BRIGHT_BLUE, dec: false };
         case SINK:      return { ch: '{', color: CLR_WHITE, dec: false };
         case ALTAR:     return { ch: '_', color: CLR_GRAY, dec: false };
-        case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+        case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
         case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
         case TREE:      return { ch: '#', color: CLR_GREEN, dec: false };
         case POOL:
@@ -411,7 +411,7 @@ function terrain_glyph(loc, x, y) {
         // C ref: dat/symbols DECGraphics S_altar uses the raw DEC payload
         // byte '{'; the harness cell decoder preserves that byte.
         return { ch: '{', color: CLR_GRAY, dec: false };
-    case GRAVE:     return { ch: '|', color: CLR_GRAY, dec: false };
+    case GRAVE:     return { ch: '|', color: CLR_WHITE, dec: false };
     case THRONE:    return { ch: '\\', color: CLR_YELLOW, dec: false };
     case TREE:      return { ch: 'g', color: CLR_GREEN, dec: false };
     case POOL:
@@ -925,6 +925,9 @@ function swallowed_glyph_at(x, y) {
 }
 
 function hero_glyph() {
+    // C ref: src/display.c:newsym().  When mounted, the hero's map square is
+    // rendered with the steed's glyph/color rather than the ordinary @ glyph.
+    if (game.u?.usteed) return monster_glyph(game.u.usteed);
     const form = game.u?._poly_form || null;
     return {
         ch: form?.glyph || '@',
@@ -1290,6 +1293,7 @@ function _statusLine2() {
     if (u.uprops?.blinded || u.uprops?.blind || u.ublind) conditions.push('Blind');
     if (u.uprops?.deaf) conditions.push('Deaf');
     if (form?.fly) conditions.push('Fly');
+    if (u.usteed) conditions.push('Ride');
     const conditionText = conditions.length ? ` ${conditions.join(' ')}` : '';
     const hp = game._latched_status_uhp != null && (game._more || game._death_prompt_active)
         ? game._latched_status_uhp

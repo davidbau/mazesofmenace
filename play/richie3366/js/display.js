@@ -480,11 +480,32 @@ export function mapBackgroundLikeC(x, y, show) {
 }
 
 /**
+ * C: display.c `map_object(obj, show)` — hero_memory glyph (no `newsym_rn2` observe path).
+ * @param {object} obj
+ * @param {boolean} show
+ */
+export function mapObjectLikeC(obj, show) {
+    if (!obj) return;
+    const x = obj.ox | 0;
+    const y = obj.oy | 0;
+    const lvl = game.level;
+    const loc = lvl?.at(x, y);
+    if (!loc) return;
+    const gl = mapObjectGlyphLikeC(obj);
+    if ((loc.glyph | 0) === GLYPH_INVISIBLE) loc.glyph = 0;
+    if (lvl.flags?.hero_memory !== false) {
+        rememberCellGlyph(loc, gl);
+        loc.glyph = 0;
+    }
+    if (show) show_glyph_cell(x, y, gl.ch, gl.color, gl.dec);
+}
+
+/**
  * C: display.c `map_trap(trap, show)`.
  * @param {{ tx: number, ty: number }} trap
  * @param {boolean} show
  */
-function mapTrapLikeC(trap, show) {
+export function mapTrapLikeC(trap, show) {
     const x = trap.tx | 0;
     const y = trap.ty | 0;
     const loc = game.level?.at(x, y);

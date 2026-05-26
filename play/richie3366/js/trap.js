@@ -1413,7 +1413,7 @@ function getMleashFromInvent(g, mtmp) {
 }
 
 /** C: apply.c **`m_unleash(mtmp, feedback)`** — hero invent leash + plines. */
-async function mUnleashMon(g, mtmp, feedback = false) {
+export async function mUnleashMonLikeC(g, mtmp, feedback = false) {
     if (feedback) {
         if (canseemonRip(g, mtmp)) {
             await pline(`${monNamSentence(mtmp)} pulls free of its leash!`);
@@ -1476,7 +1476,7 @@ async function teleportPetAllowsMon(g, mtmp, forceIt) {
         return false;
     }
     await pline('Your leash goes slack.');
-    await mUnleashMon(g, mtmp, false);
+    await mUnleashMonLikeC(g, mtmp, false);
     return true;
 }
 
@@ -1552,7 +1552,7 @@ function controlTeleportMon(_ptr) {
 async function migrateToLevelMon(g, mtmp, toLev, migrateTyp) {
     if ((mtmp.mleashed | 0)) {
         mtmp.mtame = Math.max(0, (mtmp.mtame | 0) - 1);
-        await mUnleashMon(g, mtmp, true);
+        await mUnleashMonLikeC(g, mtmp, true);
     }
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;

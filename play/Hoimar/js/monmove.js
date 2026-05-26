@@ -19,7 +19,7 @@ import {
     MON_POLE_DIST, NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, W_ARMS, W_NONDIGGABLE, W_WEP,
     GP_CHECKSCARY, SDOOR, W_NONPASSWALL,
-    STRAT_WAITFORU, STRAT_WAITMASK, A_DEX, A_STR, A_WIS,
+    STRAT_WAITFORU, STRAT_WAITMASK, A_DEX, A_STR, A_WIS, A_CON,
     COLNO, ROWNO, ROOMOFFSET, SHOPBASE, W_RING, isok, SPACE_POS, is_pit,
 } from './const.js';
 import {
@@ -39,11 +39,14 @@ const NORMAL_SPEED = 12;
 const BOLT_LIM = 8;
 const MZ_SMALL = 1;
 const MZ_LARGE = 3;
+const BLINDING_VENOM = 479;
+const ACID_VENOM = 480;
 
 const M1_AMORPHOUS = 0x00000004;
 const M2_WERE = 0x00000004;
 const M2_HUMAN = 0x00000008;
 const M2_DWARF = 0x00000020;
+const M2_ORC = 0x00000080;
 const M2_WANDER = 0x00800000;
 const M2_ROCKTHROW = 0x08000000;
 const M1_FLY = 0x00000001;
@@ -166,10 +169,10 @@ const CROSSBOW_BOLT = 23;
 const DART = 24;
 const SHURIKEN = 25;
 const BOOMERANG = 26;
-const PARTISAN = 56;
-const RANSEUR = 57;
-const SPETUM = 58;
-const BEC_DE_CORBIN = 67;
+const PARTISAN = 59;
+const RANSEUR = 60;
+const SPETUM = 61;
+const BEC_DE_CORBIN = 70;
 const AKLYS = 80;
 const BOW = 83;
 const ELVEN_BOW = 84;
@@ -190,6 +193,7 @@ const NON_HTH_WEAPONS = new Set([
     BOW, ELVEN_BOW, ORCISH_BOW, YUMI, CROSSBOW,
 ]);
 const BASIC_MELEE_ATTACKS = new Set(['AT_CLAW', 'AT_KICK', 'AT_BITE', 'AT_STNG', 'AT_TUCH', 'AT_BUTT', 'AT_TENT', 'AT_WEAP']);
+const BASIC_MELEE_ADTYPES = new Set(['AD_PHYS', 'AD_ELEC', 'AD_COLD', 'AD_FIRE', 'AD_ACID', 'AD_DRST', 'AD_DRDX', 'AD_DRCO']);
 const DISTANCE_ATTACK_TYPES = new Set(['AT_SPIT', 'AT_BREA', 'AT_MAGC', 'AT_GAZE']);
 const MCAST = {
     PSI_BOLT: { level: 0, flags: MCF_HOSTILE | MCF_SIGHT },
@@ -703,7 +707,8 @@ async function m_digweapon_check_basic(mtmp, x, y) {
 }
 
 function mon_at(x, y, self) {
-    return (game.level?.monsters || []).find((mon) => mon !== self && mon.mx === x && mon.my === y);
+    return (game.level?.monsters || []).find((mon) =>
+        mon !== self && mon !== game.u?.usteed && mon.mx === x && mon.my === y);
 }
 
 function closed_door_basic(x, y) {
@@ -1463,6 +1468,28 @@ function monster_projectile_miss_message(obj, hitv, dieroll) {
     return `You are almost hit by ${onm}.`;
 }
 
+function hero_is_blind_basic() {
+    return !!(game.u?.ublind || game.u?.blind || game.u?.uprops?.blind || game.u?.uprops?.blinded);
+}
+
+function verbose_messages_enabled_basic() {
+    return game.flags?.verbose !== false;
+}
+
+function spit_venom_object_type(attack) {
+    const adtyp = attack?.[1];
+    return (adtyp === 'AD_BLND' || adtyp === 'AD_DRST') ? BLINDING_VENOM : ACID_VENOM;
+}
+
+function venom_article_name(obj) {
+    const name = getObjectDescription(obj?.otyp) || 'splash of venom';
+    return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
+}
+
+function monster_spit_attack(mtmp) {
+    return (mtmp.data?.mattk || []).find((attack) => attack?.[0] === 'AT_SPIT') || null;
+}
+
 function first_monster_on_throw_path(mtmp, dx, dy, range) {
     let x = mtmp.mx;
     let y = mtmp.my;
@@ -1474,6 +1501,74 @@ function first_monster_on_throw_path(mtmp, dx, dy, range) {
         if (x === game.u?.ux && y === game.u?.uy) return { hero: true, x, y, steps: i + 1 };
     }
     return null;
+}
+
+async function throw_venom_at_hero_basic(mtmp, obj) {
+    const tx = mtmp.mux ?? game.u?.ux ?? mtmp.mx;
+    const ty = mtmp.muy ?? game.u?.uy ?? mtmp.my;
+    const dx = sgn(tx - mtmp.mx);
+    const dy = sgn(ty - mtmp.my);
+    let range = distmin(mtmp.mx, mtmp.my, tx, ty);
+    let x = mtmp.mx;
+    let y = mtmp.my;
+    while (range-- > 0) {
+        x += dx;
+        y += dy;
+        if (x === game.u?.ux && y === game.u?.uy) {
+            let hitv = 8;
+            let damage = 0;
+            if (obj?.otyp !== BLINDING_VENOM) {
+                damage = Math.max(1, d(6, 6));
+                hitv = 3 - distmin(game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my, mtmp.mx, mtmp.my);
+                if (hitv < -4) hitv = -4;
+                hitv += 8 + (obj?.spe || 0);
+            }
+            const dieroll = rnd(20);
+            const hitHero = (game.u?.uac ?? 10) + hitv > dieroll;
+            if (hitHero) {
+                const msg = (hero_is_blind_basic() || !verbose_messages_enabled_basic())
+                    ? `You are hit${damage_exclam_basic(damage)}`
+                    : `You are hit by ${venom_article_name(obj)}${damage_exclam_basic(damage)}`;
+                await append_monster_effect_topline(msg);
+                if (obj?.otyp === BLINDING_VENOM) {
+                    const blindinc = rnd(25);
+                    if (!hero_is_blind_basic()) await append_monster_effect_topline('The venom blinds you.');
+                    game.u.ucreamed = Math.max(game.u?.ucreamed || 0, blindinc);
+                    game.u.ublind = true;
+                    game.u.uprops = game.u.uprops || {};
+                    game.u.uprops.blind = Math.max(game.u.uprops.blind || 0, blindinc);
+                    game.u.uprops.blinded = Math.max(game.u.uprops.blinded || 0, blindinc);
+                } else {
+                    apply_hero_damage(damage);
+                    exercise(A_STR, false);
+                }
+                rn2(100); // C ref: src/mthrowu.c:drop_throw()->delobj().
+                break;
+            }
+            const missMessage = (hero_is_blind_basic() || !verbose_messages_enabled_basic())
+                ? 'It misses.'
+                : monster_projectile_miss_message(obj, hitv, dieroll);
+            rn2(5); // C ref: src/mthrowu.c:m_throw() forcehit gate after a hero miss.
+            await append_monster_effect_topline(missMessage);
+            rn2(100); // C ref: src/mthrowu.c:drop_throw()->delobj().
+            break;
+        }
+        rn2(5); // C ref: src/mthrowu.c:m_throw() forcehit gate between flight squares.
+    }
+    if (game.context?.run) game.context.run = null;
+    return true;
+}
+
+async function spitmu_basic(mtmp, attack) {
+    // C refs: src/mhitu.c:mattacku(), src/mthrowu.c:spitmu()/spitmm().
+    if (!lined_up_basic(mtmp)) return false;
+    const tx = mtmp.mux ?? game.u?.ux ?? mtmp.mx;
+    const ty = mtmp.muy ?? game.u?.uy ?? mtmp.my;
+    const dist = distmin(mtmp.mx, mtmp.my, tx, ty);
+    const obj = mksobj(spit_venom_object_type(attack), true, false);
+    if (rn2(BOLT_LIM - dist)) return false;
+    if (hero_can_spot_monster(mtmp)) await append_monster_topline(`${monster_subject(mtmp)} spits venom!`);
+    return throw_venom_at_hero_basic(mtmp, obj);
 }
 
 async function throw_weapon_at_hero_basic(mtmp, obj) {
@@ -1696,7 +1791,16 @@ function can_attack_after_move_basic(mtmp, state) {
     // C ref: monmove.c:dochug() lets monsters that moved still reach
     // mattacku() when they are in range for a weapon/ranged attack.
     if (!state?.inrange || state.nearby) return false;
-    return mon_has_attack_type(mtmp, 'AT_WEAP') || !!offensive_potion_candidate_basic(mtmp);
+    return ranged_attk_available_basic(mtmp)
+        || mon_has_attack_type(mtmp, 'AT_WEAP')
+        || !!offensive_potion_candidate_basic(mtmp);
+}
+
+function can_standard_attack_basic(state) {
+    // C ref: monmove.c:dochug() phase four.  mattacku() is not entered
+    // merely because m_move() failed to move; the recomputed range/scare
+    // state still gates the standard attack.
+    return !!state?.inrange && !state.scared;
 }
 
 async function maybe_wield_hth_before_move(mtmp, state) {
@@ -1861,8 +1965,13 @@ function m_search_items_basic(mtmp, ggx, ggy, appr) {
             }
         }
     }
-    if (target && minr < 5 && appr === -1) {
+    if (minr < 5 && appr === -1) {
+        // C ref: src/monmove.c:m_search_items().  The initial "hero is
+        // closer" radius reduction also reaches finish_search, so a monster
+        // avoiding ranged contact can switch back to approach mode even when
+        // no item target was found.
         if (distmin(omx, omy, mtmp.mux ?? ggx, mtmp.muy ?? ggy) <= 3) return null;
+        if (!target) return { forceApproachOnly: true };
     }
     return target;
 }
@@ -1951,7 +2060,25 @@ function shopkeeper_name(mtmp) {
     return String(mtmp?.mextra?.eshk?.shknam || '').replace(/^[_+\-|]/, '');
 }
 
+function hero_can_spot_monster(mtmp) {
+    if (!mtmp || mtmp.mundetected) return false;
+    if (!cansee(mtmp.mx, mtmp.my)) return false;
+    if (mtmp.minvis && !(game.u?.usee_invisible || game.u?.uprops?.see_invisible)) return false;
+    return true;
+}
+
+function map_invisible_basic(x, y) {
+    // C ref: display.c:map_invisible().
+    if (x === game.u?.ux && y === game.u?.uy) return;
+    const loc = game.level?.at(x, y);
+    if (loc) loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false };
+    show_glyph_cell(x, y, 'I', NO_COLOR, false);
+}
+
 function monster_subject(mtmp) {
+    // C ref: mhitu.c:hitmsg() via do_name.c:Monnam().  Once the hero is
+    // blind, physical attack messages use the unseen generic subject.
+    if (!hero_can_spot_monster(mtmp)) return 'It';
     if (hallucinating()) return sentence_case(randomHallucinatedMonsterName('the'));
     if (mtmp?.isshk && shopkeeper_name(mtmp)) return shopkeeper_name(mtmp);
     const named = named_monster_name(mtmp);
@@ -2261,6 +2388,12 @@ function is_simple_monster_hit_you_chain(line) {
     return String(line || '').split('  ').every(is_simple_monster_hit_you_line);
 }
 
+function monster_miss_text(toHit, roll) {
+    // C ref: src/mhitu.c:missmu().  "just misses" is only used when
+    // flags.verbose is enabled.
+    return toHit === roll && game.flags?.verbose !== false ? 'just misses' : 'misses';
+}
+
 function is_simple_monster_vs_monster_line(line) {
     return /^(?:The [^.!?]+|[A-Z][A-Za-z0-9' -]*) (?:misses|hits|bites|stings|kicks|butts|touches) (?:the |[A-Z]).+\.$/.test(line || '');
 }
@@ -2364,6 +2497,17 @@ async function show_blocking_monster_message(line) {
         return;
     }
     if (game._pending_message && !game._more && `${game._pending_message}  ${line}`.length < 80) {
+        if (is_simple_monster_hit_you_line(line)
+            && !is_simple_monster_vs_monster_line(game._pending_message)
+            && !/^You hear the (?:studio audience applaud|rumble of distant thunder\.\.\.)!$/.test(game._pending_message)
+            && game._pending_message !== "You're covered in frost!"
+            && topline_can_pack_message(game._pending_message, line)) {
+            // C refs: mhitu.c:hitmsg(), win/tty/topl.c:update_topl().
+            // A short command result can share the tty topline with the
+            // following monster hit rather than pausing the monster turn.
+            game._pending_message = `${game._pending_message}  ${line}`;
+            return;
+        }
         if (is_simple_monster_hit_you_chain(game._pending_message)
             && is_simple_monster_hit_you_line(line)
             && topline_can_pack_message(game._pending_message, line)) {
@@ -2375,6 +2519,14 @@ async function show_blocking_monster_message(line) {
             && is_simple_monster_hit_you_line(line)
             && topline_can_pack_message(game._pending_message, line)) {
             // C refs: uhitm.c:xkilled(), mhitu.c:hitmsg(), win/tty/topl.c:update_topl().
+            game._pending_message = `${game._pending_message}  ${line}`;
+            return;
+        }
+        if (/^You (?:kill|destroy) .+!$/.test(game._pending_message)
+            && is_simple_monster_hit_you_chain(line)
+            && topline_can_pack_message(game._pending_message, line)) {
+            // C refs: uhitm.c:xkilled(), mhitu.c:missmu()/hitmsg(),
+            // win/tty/topl.c:update_topl().
             game._pending_message = `${game._pending_message}  ${line}`;
             return;
         }
@@ -3194,17 +3346,29 @@ function attack_is_basic_physical(attack) {
     if (!attack) return true;
     const [aatyp, adtyp, damn, damd] = attack;
     return BASIC_MELEE_ATTACKS.has(aatyp)
-        && ['AD_PHYS', 'AD_ELEC', 'AD_COLD', 'AD_FIRE', 'AD_ACID'].includes(adtyp)
-        && damn > 0
-        && damd > 0;
+        && BASIC_MELEE_ADTYPES.has(adtyp)
+        && (adtyp.startsWith('AD_DR') || (damn > 0 && damd > 0));
 }
 
 function basic_physical_attacks(mtmp, includeWeapon = true) {
     const attacks = mtmp.data?.mattk || [];
     if (!attacks.filter(Boolean).length) return null;
     if (!includeWeapon && attacks.some((attack) => attack?.[0] === 'AT_WEAP')) return null;
-    if (!attacks.every(attack_is_basic_physical)) return null;
-    return attacks;
+    const melee = [];
+    for (const attack of attacks) {
+        if (!attack) {
+            melee.push(attack);
+            continue;
+        }
+        const [aatyp] = attack;
+        if (DISTANCE_ATTACK_TYPES.has(aatyp)) {
+            melee.push(null);
+            continue;
+        }
+        if (!attack_is_basic_physical(attack)) return null;
+        melee.push(attack);
+    }
+    return melee.some(Boolean) ? melee : null;
 }
 
 function wildmiss_melee_attack_available_basic(mtmp) {
@@ -3378,6 +3542,80 @@ function elemental_hit_side_effects(mtmp, adtyp, damage) {
     // attacker level after a non-negated elemental hit.
     if (monster_level(mtmp) > rn2(20)) destroy_items_shape(adtyp, damage);
     return damage;
+}
+
+function monster_subject_suffix(subject) {
+    if (subject === 'It') return 'Its';
+    return subject.endsWith('s') ? `${subject}'` : `${subject}'s`;
+}
+
+function poison_delivery_subject(attack) {
+    const [aatyp] = attack || [];
+    if (aatyp === 'AT_WEAP') return 'attack';
+    if (aatyp === 'AT_TUCH') return 'contact';
+    if (aatyp === 'AT_GAZE') return 'gaze';
+    if (aatyp === 'AT_BITE') return 'bite';
+    return 'sting';
+}
+
+function poison_attribute_for_adtyp(adtyp) {
+    if (adtyp === 'AD_DRDX') return A_DEX;
+    if (adtyp === 'AD_DRCO') return A_CON;
+    return A_STR;
+}
+
+function poison_attribute_message(attr) {
+    if (attr === A_DEX) return "Your muscles won't obey you!";
+    if (attr === A_CON) return 'You feel very sick!';
+    return 'You feel weaker!';
+}
+
+function reduce_poisoned_attribute(attr, loss) {
+    const u = game.u;
+    if (!u?.acurr?.a) return false;
+    const before = u.acurr.a[attr] ?? 10;
+    const after = Math.max(3, before - Math.max(0, loss));
+    u.acurr.a[attr] = after;
+    return after !== before;
+}
+
+function poisoned_by_monster_attack_basic(mtmp, attack, attr, messages) {
+    const reason = `${monster_subject_suffix(monster_subject(mtmp))} ${poison_delivery_subject(attack)}`;
+    messages.push(`${reason} was poisoned!`);
+    if (game.u?.uprops?.poison_resistance) {
+        messages.push("The poison doesn't seem to affect you.");
+        return;
+    }
+
+    const fatal = rn2(30);
+    if (fatal === 0) {
+        const loss = 6 + d(4, 6);
+        if ((game.u?.uhp ?? 0) <= loss) {
+            game.u.uhp = -1;
+            messages.push('The poison was deadly...');
+        } else {
+            apply_hero_damage(loss);
+            if (reduce_poisoned_attribute(A_CON, attr !== A_CON ? 1 : 3))
+                messages.push(poison_attribute_message(A_CON));
+            if (attr !== A_CON && reduce_poisoned_attribute(attr, 3))
+                messages.push(poison_attribute_message(attr));
+        }
+    } else if (fatal > 5) {
+        apply_hero_damage(rn2(10) + 6);
+    } else {
+        const loss = d(2, 2);
+        if (reduce_poisoned_attribute(attr, loss))
+            messages.push(poison_attribute_message(attr));
+    }
+}
+
+function drain_strength_hit_side_effects(mtmp, attack, messages) {
+    const [, adtyp] = attack || [];
+    if (!['AD_DRST', 'AD_DRDX', 'AD_DRCO'].includes(adtyp)) return;
+    const negated = mhitm_mgc_atk_negated_basic(mtmp);
+    if (!negated && !rn2(8)) {
+        poisoned_by_monster_attack_basic(mtmp, attack, poison_attribute_for_adtyp(adtyp), messages);
+    }
 }
 
 function mhitm_knockback_frontdoor() {
@@ -3596,6 +3834,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             const verb = monster_attack_verb(attack, attackVerbCounts);
             const extra = adtyp === 'AD_ELEC' ? '  You get zapped!' : '';
             const target = verb === 'touches' ? ' you' : '';
+            if (!hero_can_spot_monster(mtmp)) map_invisible_basic(mtmp.mx, mtmp.my);
             const subject = monster_subject(mtmp);
             const line = verb === 'weapon'
                 ? (mtmp.mw
@@ -3611,6 +3850,7 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             let damage = d(damn, damd);
             if (verb === 'weapon') damage += monster_weapon_damage(mtmp.mw);
             damage = elemental_hit_side_effects(mtmp, adtyp, damage);
+            drain_strength_hit_side_effects(mtmp, attack, hitMessages);
             if (damage > 0 && game._pending_message && !game._more
                 && !topline_can_pack_message(game._pending_message, line)) {
                 // C refs: src/mhitu.c:hitmu(), win/tty/topl.c:update_topl().
@@ -3676,7 +3916,8 @@ async function physical_melee_attacks(mtmp, attacks, toHit) {
             if (handle_monster_fatal_damage(mtmp, preDamageHp)) break;
             if (game._monster_topline_deferred) break;
         } else {
-            const miss = toHit === roll ? 'just misses' : 'misses';
+            const miss = monster_miss_text(toHit, roll);
+            if (!hero_can_spot_monster(mtmp)) map_invisible_basic(mtmp.mx, mtmp.my);
             const subject = monster_subject(mtmp);
             const line = attack?.[0] === 'AT_WEAP'
                 ? (mtmp.mw
@@ -3742,12 +3983,15 @@ export async function finish_deferred_monster_physical_attack() {
             let damage = d(damn, damd);
             if (verb === 'weapon') damage += monster_weapon_damage(mtmp.mw);
             damage = elemental_hit_side_effects(mtmp, adtyp, damage);
+            const poisonMessages = [];
+            drain_strength_hit_side_effects(mtmp, attack, poisonMessages);
+            for (const poisonMessage of poisonMessages) append_deferred_physical_attack_line(poisonMessage);
             if (adtyp === 'AD_COLD' && damage > 0)
                 game._pending_monster_attack_side_effect = "You're covered in frost!";
             const preDamageHp = game.u?.uhp ?? 0;
             if (finish_deferred_physical_hit_damage(mtmp, damage, preDamageHp)) break;
         } else {
-            const miss = toHit === roll ? 'just misses' : 'misses';
+            const miss = monster_miss_text(toHit, roll);
             const subject = monster_subject(mtmp);
             const line = attack?.[0] === 'AT_WEAP'
                 ? (mtmp.mw
@@ -3787,11 +4031,25 @@ function monster_weapon_damage(obj) {
     return Math.max(0, damage + (obj?.spe || 0) - projectile_erosion(obj));
 }
 
+function maybe_redirect_attack_to_steed_basic(mtmp) {
+    const steed = game.u?.usteed;
+    if (!steed || mtmp === steed) return false;
+    // C ref: src/mhitu.c:mattacku().  Mounted heroes give monsters a chance
+    // to attack the steed first; the random gate is evaluated before the
+    // adjacency check.
+    const chance = (mtmp.data?.mflags2 ?? 0) & M2_ORC ? 2 : 4;
+    if (rn2(chance) || dist2(mtmp.mx, mtmp.my, game.u?.ux ?? mtmp.mx, game.u?.uy ?? mtmp.my) > 2)
+        return false;
+    return true;
+}
+
 async function mattacku_basic(mtmp, state) {
     if (game.u?.uswallow && game.u?.ustuck !== mtmp) return false;
     if (state.scared || mtmp.mpeaceful || mtmp.mtame) return false;
     if ((game.u?.uhp ?? 1) <= 0) return false;
     const rangeWeapon = state?.inrange && !state.nearby && mon_has_attack_type(mtmp, 'AT_WEAP');
+    const rangeSpit = state?.inrange && !state.nearby ? monster_spit_attack(mtmp) : null;
+    if (maybe_redirect_attack_to_steed_basic(mtmp)) return true;
 
     const cooldownAttack = cooldown_replacement_attack(mtmp);
     const engulf = basic_engulf_attack(mtmp);
@@ -3834,7 +4092,7 @@ async function mattacku_basic(mtmp, state) {
         && mtmp.data?.name !== 'DISPLACER_BEAST';
     const targetsDisplacedImage = heroDisplaced && state?.nearby
         && (mtmp.mux !== game.u?.ux || mtmp.muy !== game.u?.uy);
-    if (!engulf && !physical && !rangeWeapon) {
+    if (!engulf && !physical && !rangeWeapon && !rangeSpit) {
         if (state?.inrange && (mtmp.data?.mattk || []).some(Boolean)) {
             if (targetsDisplacedImage && wildmissMelee) {
                 await wildmiss_displaced_image_basic(mtmp);
@@ -3843,7 +4101,7 @@ async function mattacku_basic(mtmp, state) {
         }
         return false;
     }
-    if (!state?.nearby && !rangeWeapon) {
+    if (!state?.nearby && !rangeWeapon && !rangeSpit) {
         // C ref: monmove.c:dochug() calls mhitu.c:mattacku() for in-range
         // displaced images; mattacku() computes AC_VALUE() before range2
         // suppresses ordinary physical attacks.
@@ -3857,6 +4115,7 @@ async function mattacku_basic(mtmp, state) {
     if (rangeWeapon && !physical) {
         return thrwmu_basic(mtmp);
     }
+    if (!state?.nearby && rangeSpit) return spitmu_basic(mtmp, rangeSpit);
     if (engulf) return engulf_attack(mtmp, engulf, toHit);
     if (!game._monster_topline_deferred) await flush_pending_more_before_monster_message();
     const messages = await physical_melee_attacks(mtmp, physical, toHit);
@@ -3952,9 +4211,11 @@ async function m_move_basic(mtmp, resumeAfterTenguTeleRestrict = false) {
     if (getitems) {
         const itemGoal = m_search_items_basic(mtmp, ggx, ggy, appr);
         if (itemGoal) {
-            ggx = itemGoal.x;
-            ggy = itemGoal.y;
-            if (ggx === omx && ggy === omy) {
+            if (!itemGoal.forceApproachOnly) {
+                ggx = itemGoal.x;
+                ggy = itemGoal.y;
+            }
+            if (!itemGoal.forceApproachOnly && ggx === omx && ggy === omy) {
                 return await mpickstuff_basic(mtmp) ? MMOVE_DONE : MMOVE_NOTHING;
             }
             if (appr === -1) appr = 1;
@@ -4386,7 +4647,7 @@ export async function movemon() {
             if (moveStatus === MMOVE_DIED) continue;
             if (g._monster_turn_paused_for_more) return false;
             const postMoveState = distfleeck(mtmp);
-            if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE)
+            if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE && can_standard_attack_basic(postMoveState))
                 || (moveStatus === MMOVE_MOVED && can_attack_after_move_basic(mtmp, postMoveState))) {
                 await mattacku_basic(mtmp, postMoveState);
                 if (g._monster_turn_paused_for_more) return false;
@@ -4509,7 +4770,7 @@ export async function movemon() {
                 // movement, even when the monster is off-screen.
                 postMoveState = distfleeck(mtmp);
             }
-            if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE)
+            if ((moveStatus !== MMOVE_MOVED && moveStatus !== MMOVE_DONE && can_standard_attack_basic(postMoveState))
                 || (moveStatus === MMOVE_MOVED && can_attack_after_move_basic(mtmp, postMoveState))) {
                 await mattacku_basic(mtmp, postMoveState);
                 if (g._swallowed_damage_more_latched && g._more) {

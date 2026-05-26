@@ -7,7 +7,19 @@
 // races, gender): see `roles[]` entries in role.c.
 
 import { permonstHuman } from './mondata.js';
-import { STR18 } from './const.js';
+import {
+    STR18,
+    MH_HUMAN,
+    MH_ELF,
+    MH_DWARF,
+    MH_GNOME,
+    MH_ORC,
+    ROLE_MALE,
+    ROLE_FEMALE,
+    ROLE_LAWFUL,
+    ROLE_NEUTRAL,
+    ROLE_CHAOTIC,
+} from './const.js';
 import { rn2 } from './rng.js';
 import { game } from './gstate.js';
 import { ROLE_RANK_TITLES_BY_ABBR } from './role_ranks_like_c.js';
@@ -172,36 +184,36 @@ export const roles = [
 ];
 
 /**
- * @typedef {{ name: string, adj: string, mnum: number, filecode?: string, allows?: { align: number[] }, prologForcedAlignValueLikeC?: number, permonst?: import('./mondata.js').Permonst, attrmin: number[], attrmax: number[], hpadv: RoleAdvance, enadv: RoleAdvance }} RaceRow
+ * @typedef {{ name: string, adj: string, mnum: number, selfmask: number, filecode?: string, allows?: { align: number[] }, prologForcedAlignValueLikeC?: number, permonst?: import('./mondata.js').Permonst, attrmin: number[], attrmax: number[], hpadv: RoleAdvance, enadv: RoleAdvance }} RaceRow
  */
 
 /** @type {RaceRow[]} */
 export const races = [
-    { name: 'human', adj: 'human', mnum: 0, filecode: 'Hum', permonst: permonstHuman,
+    { name: 'human', adj: 'human', mnum: 0, selfmask: MH_HUMAN, filecode: 'Hum', permonst: permonstHuman,
       allows: { align: [1, 0, -1] },
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(100), 18, 18, 18, 18, 18],
       hpadv: { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },
       enadv: { infix: 1, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
     /* C role.c races[].allow — ROLE_CHAOTIC only for elf */
-    { name: 'elf', adj: 'elven', mnum: 1, filecode: 'Elf', permonst: permonstHuman,
+    { name: 'elf', adj: 'elven', mnum: 1, selfmask: MH_ELF, filecode: 'Elf', permonst: permonstHuman,
       allows: { align: [-1] },
       prologForcedAlignValueLikeC: -1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [18, 20, 20, 18, 16, 18],
       hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 1, hirnd: 0 },
       enadv: { infix: 2, inrnd: 0, lofix: 3, lornd: 0, hifix: 3, hirnd: 0 } },
-    { name: 'dwarf', adj: 'dwarven', mnum: 2, filecode: 'Dwa', permonst: permonstHuman,
+    { name: 'dwarf', adj: 'dwarven', mnum: 2, selfmask: MH_DWARF, filecode: 'Dwa', permonst: permonstHuman,
       allows: { align: [1] },
       prologForcedAlignValueLikeC: 1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(100), 16, 16, 20, 20, 16],
       hpadv: { infix: 4, inrnd: 0, lofix: 0, lornd: 3, hifix: 2, hirnd: 0 },
       enadv: { infix: 0, inrnd: 0, lofix: 0, lornd: 0, hifix: 0, hirnd: 0 } },
-    { name: 'gnome', adj: 'gnomish', mnum: 3, filecode: 'Gno', permonst: permonstHuman,
+    { name: 'gnome', adj: 'gnomish', mnum: 3, selfmask: MH_GNOME, filecode: 'Gno', permonst: permonstHuman,
       allows: { align: [0] },
       prologForcedAlignValueLikeC: 0,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(50), 19, 18, 18, 18, 18],
       hpadv: { infix: 1, inrnd: 0, lofix: 0, lornd: 1, hifix: 0, hirnd: 0 },
       enadv: { infix: 2, inrnd: 0, lofix: 2, lornd: 0, hifix: 2, hirnd: 0 } },
-    { name: 'orc', adj: 'orcish', mnum: 4, filecode: 'Orc', permonst: permonstHuman,
+    { name: 'orc', adj: 'orcish', mnum: 4, selfmask: MH_ORC, filecode: 'Orc', permonst: permonstHuman,
       allows: { align: [-1] },
       prologForcedAlignValueLikeC: -1,
       attrmin: [3, 3, 3, 3, 3, 3], attrmax: [STR18(50), 16, 16, 18, 18, 16],
@@ -225,15 +237,15 @@ export function raceAllowsAlignValueLikeC(race, alignValue) {
 }
 
 export const aligns = [
-    { name: 'lawful', value: 1, adj: 'lawful', filecode: 'Law', plPrefix: ['law'] },
-    { name: 'neutral', value: 0, adj: 'neutral', filecode: 'Neu', plPrefix: ['balance', 'neu'] },
-    { name: 'chaotic', value: -1, adj: 'chaotic', filecode: 'Cha', plPrefix: ['chaos', 'cha'] },
+    { name: 'lawful', value: 1, adj: 'lawful', filecode: 'Law', allowMask: ROLE_LAWFUL, plPrefix: ['law'] },
+    { name: 'neutral', value: 0, adj: 'neutral', filecode: 'Neu', allowMask: ROLE_NEUTRAL, plPrefix: ['balance', 'neu'] },
+    { name: 'chaotic', value: -1, adj: 'chaotic', filecode: 'Cha', allowMask: ROLE_CHAOTIC, plPrefix: ['chaos', 'cha'] },
 ];
 
 /** C: hack.c genders[] — welcome() uses genders[currentgend].adj when the role has no name.f pointer in C. */
 export const genders = [
-    { name: 'male', value: 0, adj: 'male', filecode: 'Mal', he: 'he', him: 'him', his: 'his' },
-    { name: 'female', value: 1, adj: 'female', filecode: 'Fem', he: 'she', him: 'her', his: 'her' },
+    { name: 'male', value: 0, adj: 'male', filecode: 'Mal', allowMask: ROLE_MALE, he: 'he', him: 'him', his: 'his' },
+    { name: 'female', value: 1, adj: 'female', filecode: 'Fem', allowMask: ROLE_FEMALE, he: 'she', him: 'her', his: 'her' },
 ];
 
 /**

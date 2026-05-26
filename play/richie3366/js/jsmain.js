@@ -16,7 +16,7 @@ import { newgame, moveloop_core } from './allmain.js';
 import { docrtPaintVisibleForWelcomeLikeC } from './display.js';
 import { runPostCommandTurnAdvanceLikeC } from './moveloop_turn_advance.js';
 import { moveloopPreamble, maybeDoTutorialLikeC } from './moveloop_preamble.js';
-import { parseNethackrc } from './options.js';
+import { parseNethackrc, parseRcBooleanishLikeC } from './options.js';
 import { applyPrimarySymsetFromRcLikeC } from './const.js';
 import { readSymFilePrimaryLikeC } from './symbols_file.js';
 import { flush_screen } from './display.js';
@@ -109,6 +109,9 @@ export class NethackGame {
         g.plname = (fullInteractiveChargen || asknameOnly) ? '' : (opts.name || 'Hero');
         /* C optlist.h — NHOPTB(legacy … On), NHOPTB(showexp … Off), NHOPTB(time … Off) */
         g.flags = { verbose: true, legacy: true, showexp: false, time: false, ...opts.flags };
+        if (g.flags.randomall != null) {
+            g.flags.randomall = parseRcBooleanishLikeC(String(g.flags.randomall));
+        }
         g.iflags = { ...opts.iflags };
         if (opts.preferred_pet) g.preferred_pet = opts.preferred_pet;
         if (opts.tutorial_set) g.tutorial_set_in_config = true;

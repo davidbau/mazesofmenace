@@ -5,7 +5,7 @@
 // Ported: **`applyGotoAfterHeroHoleFallLikeC(g, dest?)`**, **`impactDropLikeC`**/**`objDeliveryLikeC`** (**`dokick.c`**), **`shopdigLikeC(1)`** / **`payForDamage('dig into')`** before **`You fall through...`** (**`dig.c`** **`digactualhole`** order); **`pickup(1)`** tail (**`do.c`** **`goto_level`**).
 // **`applyHeroDescendStairsOneLevelLikeC(g)`** — **`do.c`** **`goto_level`** down-stairs slice after **`mklev`**/**`u_on_upstairs`** (**`near_capacity`/`Punished`/`Fumbling`**, **`drag_down`**, **`losehp`**, **`placebc`**).
 // **`scheduleGotoHeroLikeC` / `deferredGotoHeroLikeC`** — **`do.c`** **`schedule_goto`/`deferred_goto`** subset (**`applyGotoLevelDirectHeroLikeC`** for non-falling **`goto_level`**).
-// **`keepdogsHeroStubLikeC`** — C **`dog.c`** **`keepdogs(pets_only)`** gate (**`if (!iflags.nofollowers) keepdogs(FALSE)`** in **`goto_level`**) before **`u.uz`** moves; stub tallies tame **`level.monsters`** and applies the C **`pets_only==TRUE`** tame-clear subset when that flag is passed (**ascension** / final escape — not wired from **`do.c`** yet).
+// **`keepdogsHeroLikeC`** — C **`dog.c`** **`keepdogs(pets_only)`** (**`mintrap`**, **`stay_behind`**, **`keep_mon_accessible`**, **`gm.mydogs`**).
 // **`vision_recalc(2)`** after **`keepdogs`**, before **`u.uz`** assign — C **`goto_level`** (**`vision.c`** “no longer see old level” pass before **`savelev`**).
 // **`gotoLevelTutorialBranchHookLikeC`** — C **`do.c`** **`newdungeon`** **`In_tutorial`/`tutorial()`** before **`savelev`** / **`impact_drop`** ( **`tutorial_branch.js`** ).
 // **`maybeRecordEnteredNewLevelLivelogLikeC`** after **`mklev()`** when map built (**`livelog.js`**) — C **`new`** after **`mklev`**; **`livelogPrintfLikeC`** ring (**`gd.livelog_recent`**), no **`LIVELOGFILE`**.
@@ -63,6 +63,8 @@ import {
     weldedUballLikeC,
 } from './ball_bc_hero.js';
 import { safeTeledsHeroLikeC, TELEDS_NO_FLAGS } from './teleport_hero.js';
+import { keepdogsHeroLikeC } from './keepdogs_hero.js';
+import { losedogsLikeC } from './mon_arrive.js';
 
 /** C: **`Punished`** / carried **`uball`** — macro subset until **`punish()`** sets **`u.Punished`**. */
 function heroPunishedLikeC(g) {
@@ -115,37 +117,6 @@ async function applyGehennomMysteryForceGotoDestLikeC(g, dest, opts) {
         return true;
     }
     return false;
-}
-
-/**
- * C: **`dog.c`** **`keepdogs(boolean pets_only)`** — migrate tame **`fmon`** with hero across **`u.uz`** changes.
- * **`goto_level`** passes **`pets_only == FALSE`**; **`TRUE`** is ascension / final escape (clears mundane pet impediments before follow logic).
- * Stub: record **`pets_only`** and tame headcount; when **`pets_only`**, apply C **`keepdogs`** lines ~798–809 on tame mons (**`mtrapped`**, **`meating`**, **`msleeping`**, **`mfrozen`**, **`mcanmove`**) — no **`finish_meating`** / **`mintrap`** yet.
- * @param {import('./gstate.js').game} g
- * @param {boolean} petsOnly — C **`pets_only`** (**`FALSE`** on all **`goto_level`** paths wired here today).
- */
-export function keepdogsHeroStubLikeC(g, petsOnly) {
-    g.gd = g.gd || {};
-    g.gd.keepdogs_last_pets_only = !!petsOnly;
-    const mons = g.level?.monsters;
-    let tame = 0;
-    if (mons) {
-        for (let i = 0; i < mons.length; i++) {
-            const m = mons[i];
-            if (!m) continue;
-            if ((m.mtame | 0) > 0) {
-                tame++;
-                if (petsOnly) {
-                    m.mtrapped = 0;
-                    m.meating = 0;
-                    m.msleeping = 0;
-                    m.mfrozen = 0;
-                    m.mcanmove = 1;
-                }
-            }
-        }
-    }
-    g.gd.keepdogs_last_tame_seen = tame;
 }
 
 /**
@@ -261,7 +232,7 @@ export async function applyGotoLevelDirectHeroLikeC(g, dest, gotoOpts = {}) {
 
     if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
 
-    if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
+    if (!g.iflags?.nofollowers) await keepdogsHeroLikeC(g, false);
     vision_recalc(2);
 
     u.uz = newUz;
@@ -269,6 +240,7 @@ export async function applyGotoLevelDirectHeroLikeC(g, dest, gotoOpts = {}) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    await losedogsLikeC(g);
     if (!In_endgame(newUz)) {
         placeHeroAfterGotoLevelLikeC(g, {
             portal: !!gotoOpts.portal,
@@ -391,7 +363,7 @@ export async function applyGotoAfterHeroHoleFallLikeC(g, dest) {
 
     if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
 
-    if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
+    if (!g.iflags?.nofollowers) await keepdogsHeroLikeC(g, false);
     vision_recalc(2);
 
     u.uz = newUz;
@@ -399,6 +371,7 @@ export async function applyGotoAfterHeroHoleFallLikeC(g, dest) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    await losedogsLikeC(g);
     if (!In_endgame(newUz)) u_onRndspotLikeC(g, 0);
     if (heroPunishedLikeC(g) && !weldedUballLikeC(g)) await ballfallHeroLikeC(g);
     if (heroPunishedLikeC(g)) await placebcHeroLikeC(g);
@@ -474,7 +447,7 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
 
     if (heroPunishedLikeC(g)) unplacebcHeroLikeC(g);
 
-    if (!g.iflags?.nofollowers) keepdogsHeroStubLikeC(g, false);
+    if (!g.iflags?.nofollowers) await keepdogsHeroLikeC(g, false);
     vision_recalc(2);
 
     u.uz = newUz;
@@ -482,6 +455,7 @@ export async function applyHeroDescendStairsOneLevelLikeC(g) {
     u.utraptype = 0;
 
     if (await mklev()) maybeRecordEnteredNewLevelLivelogLikeC(g);
+    await losedogsLikeC(g);
     placeHeroAfterGotoLevelLikeC(g, {
         atStairs: true,
         up: false,

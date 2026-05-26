@@ -170,38 +170,73 @@ const GOLD_PIECE = 438;
 const ARROW = 18;
 const ELVEN_ARROW = 19;
 const ORCISH_ARROW = 20;
+const SILVER_ARROW = 21;
 const YA = 22;
+const CROSSBOW_BOLT = 23;
 const DART = 24;
 const SHURIKEN = 25;
+const BOOMERANG = 26;
 const SPEAR = 27;
 const DAGGER = 34;
 const ELVEN_DAGGER = 35;
 const ORCISH_DAGGER = 36;
+const SILVER_DAGGER = 37;
+const ATHAME = 38;
+const STILETTO = 41;
+const WORM_TOOTH = 42;
+const CRYSKNIFE = 43;
 const KNIFE = 40;
 const ELVEN_SPEAR = 28;
 const ORCISH_SPEAR = 29;
 const DWARVISH_SPEAR = 30;
+const SILVER_SPEAR = 31;
 const JAVELIN = 32;
+const TRIDENT = 33;
+const AXE = 44;
 const BATTLE_AXE = 45;
 const SHORT_SWORD = 46;
 const ELVEN_SHORT_SWORD = 47;
 const ORCISH_SHORT_SWORD = 48;
 const DWARVISH_SHORT_SWORD = 49;
 const SCIMITAR = 50;
+const SILVER_SABER = 51;
 const BROADSWORD = 52;
 const ELVEN_BROADSWORD = 53;
 const LONG_SWORD = 54;
+const TWO_HANDED_SWORD = 55;
 const KATANA = 56;
 const TSURUGI = 57;
 const RUNESWORD = 58;
+const PARTISAN = 59;
+const RANSEUR = 60;
+const SPETUM = 61;
+const GLAIVE = 62;
+const HALBERD = 63;
+const BARDICHE = 64;
+const VOULGE = 65;
+const FAUCHARD = 66;
+const GUISARME = 67;
+const BILL_GUISARME = 68;
+const LUCERN_HAMMER = 69;
+const BEC_DE_CORBIN = 70;
 const DWARVISH_MATTOCK = 71;
 const LANCE = 72;
 const MACE = 73;
+const SILVER_MACE = 74;
+const MORNING_STAR = 75;
+const WAR_HAMMER = 76;
+const CLUB = 77;
+const RUBBER_HOSE = 78;
 const QUARTERSTAFF = 79;
+const AKLYS = 80;
+const FLAIL = 81;
+const BULLWHIP = 82;
 const BOW = 83;
 const ELVEN_BOW = 84;
 const ORCISH_BOW = 85;
 const YUMI = 86;
+const SLING = 87;
+const CROSSBOW = 88;
 const ELVEN_LEATHER_HELM = 89;
 const ORCISH_HELM = 90;
 const DWARVISH_IRON_HELM = 91;
@@ -234,6 +269,7 @@ const SHIELD_OF_REFLECTION = 158;
 const SCALPEL = 39;
 const LEATHER_GLOVES = 159;
 const GAUNTLETS_OF_POWER = 161;
+const GAUNTLETS_OF_DEXTERITY = 162;
 const SPEED_BOOTS = 166;
 const ELVEN_BOOTS = 169;
 const LEVITATION_BOOTS = 172;
@@ -486,6 +522,37 @@ const SAMURAI_KNOWN_WEAPONS = [
 const SAMURAI_KNOWN_ARMOR = [
     // C ref: src/u_init.c:u_init_role() -> knows_class(ARMOR_CLASS).
     PLATE_MAIL, SPLINT_MAIL, LEATHER_GLOVES,
+];
+
+const KNIGHT_KNOWN_WEAPONS = [
+    // C ref: src/u_init.c:u_init_role() -> knows_class(WEAPON_CLASS).
+    // Knights know all ordinary weapons, including polearms.
+    ARROW, ELVEN_ARROW, ORCISH_ARROW, SILVER_ARROW, YA, CROSSBOW_BOLT,
+    DART, SHURIKEN, BOOMERANG,
+    SPEAR, ELVEN_SPEAR, ORCISH_SPEAR, DWARVISH_SPEAR, SILVER_SPEAR,
+    JAVELIN, TRIDENT,
+    DAGGER, ELVEN_DAGGER, ORCISH_DAGGER, SILVER_DAGGER, ATHAME,
+    SCALPEL, KNIFE, STILETTO, WORM_TOOTH, CRYSKNIFE, AXE, BATTLE_AXE,
+    SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD,
+    SCIMITAR, SILVER_SABER, BROADSWORD, ELVEN_BROADSWORD, LONG_SWORD,
+    TWO_HANDED_SWORD, KATANA, TSURUGI, RUNESWORD,
+    PARTISAN, RANSEUR, SPETUM, GLAIVE, HALBERD, BARDICHE, VOULGE,
+    FAUCHARD, GUISARME, BILL_GUISARME, LUCERN_HAMMER, BEC_DE_CORBIN,
+    DWARVISH_MATTOCK, LANCE, MACE, SILVER_MACE, MORNING_STAR, WAR_HAMMER,
+    CLUB, RUBBER_HOSE, QUARTERSTAFF, AKLYS, FLAIL, BULLWHIP,
+    BOW, ELVEN_BOW, ORCISH_BOW, YUMI, SLING, CROSSBOW,
+];
+
+const KNIGHT_KNOWN_ARMOR = [
+    // C ref: src/u_init.c:u_init_role() -> knows_class(ARMOR_CLASS).
+    // Small shields, cornuthaums, and dunce caps are intentionally excluded by
+    // C's ambiguous-appearance filter; the latter two are not modeled here.
+    ELVEN_LEATHER_HELM, ORCISH_HELM, DWARVISH_IRON_HELM, HELMET,
+    PLATE_MAIL, SPLINT_MAIL, ELVEN_MITHRIL_COAT, CHAIN_MAIL,
+    ORCISH_CHAIN_MAIL, RING_MAIL, ORCISH_RING_MAIL, HAWAIIAN_SHIRT,
+    LEATHER_ARMOR, ELVEN_CLOAK, ORCISH_CLOAK, ROBE,
+    ELVEN_SHIELD, URUK_HAI_SHIELD, ORCISH_SHIELD, LARGE_SHIELD,
+    DWARVISH_ROUNDSHIELD, LEATHER_GLOVES, ELVEN_BOOTS,
 ];
 
 const ORC_KNOWN_OBJECTS = [
@@ -774,6 +841,7 @@ function armor_base_bonus(obj) {
     case CLOAK_OF_DISPLACEMENT:
     case LEATHER_GLOVES:
     case GAUNTLETS_OF_POWER:
+    case GAUNTLETS_OF_DEXTERITY:
     case SMALL_SHIELD:
     case SHIELD_OF_DRAIN_RESISTANCE:
     case SHIELD_OF_SHOCK_RESISTANCE:
@@ -902,6 +970,8 @@ export function u_init_role_inventory() {
         }
     } else if (role?.name?.m === 'Knight') {
         ini_inv(KNIGHT_INVENTORY, noCreate, role.name.m);
+        for (const otyp of KNIGHT_KNOWN_WEAPONS) discover_role_known_object(otyp);
+        for (const otyp of KNIGHT_KNOWN_ARMOR) discover_role_known_object(otyp);
     } else if (role?.name?.m === 'Priest') {
         ini_inv(PRIEST_INVENTORY, noCreate, role.name.m);
         if (!rn2(5)) {

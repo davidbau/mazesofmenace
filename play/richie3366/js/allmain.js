@@ -41,6 +41,7 @@ import { bootstrapSpLevchnMinesMinetnFromBranchStubLikeC } from './sp_levchn.js'
 import { maybeRecordEnteredNewLevelLivelogLikeC } from './livelog.js';
 import { awaitLegacyIntroMoreLikeC } from './legacy_intro.js';
 import { rn2 } from './rng.js';
+import { nhlibAlignShuffleRn2LikeC } from './nhlib_align_shuffle.js';
 import { LAST_PROP } from './const.js';
 
 // C ref: allmain.c newgame()
@@ -62,9 +63,8 @@ export async function newgame() {
     /* C: flag.h flags.acoustics — dosounds() early-out when false (default on). */
     if (g.flags.acoustics === undefined) g.flags.acoustics = true;
     roleInitLikeC(g);
-    /* C: init_dungeons nhl_init → nhlib.lua align shuffle (until dungeon Lua loader is ported). */
-    rn2(3);
-    rn2(2);
+    /* C: init_dungeons nhl_init → nhlib.lua align shuffle (see nhlib_align_shuffle.js harness note). */
+    nhlibAlignShuffleRn2LikeC();
     initDungeonsLikeC(g);
     fastforward_pre_mklev();
 

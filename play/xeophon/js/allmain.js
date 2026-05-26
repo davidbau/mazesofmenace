@@ -7586,7 +7586,9 @@ function maybeRedDragonFireBreath(mon, ray, attack, monIndex, somebodyCanMove) {
     ray.remaining = rn2(7) + 7;
 
     for (;;) {
-        const event = advanceFireBreathRay(ray, mon.m_id, { floorFire: burnRayFloorObjectsByFire });
+        const event = advanceFireBreathRay(ray, mon.m_id, {
+            floorFire: (x, y) => burnRayFloorObjectsByFire(x, y, { heroCaused: false }),
+        });
         for (const message of event.messages) {
             if (message) addToplineMessage(message);
         }

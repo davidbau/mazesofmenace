@@ -12,12 +12,21 @@ import {
     COPYRIGHT_BANNER_D,
 } from './const.js';
 import { NO_COLOR, ATR_INVERSE } from './terminal.js';
-import { roles, races, aligns, genders, roleHasFemaleRoleNameLikeC, coerceChargenIndicesForRoleSelectionPrologLikeC } from './roles.js';
+import {
+    roles,
+    races,
+    aligns,
+    genders,
+    roleHasFemaleRoleNameLikeC,
+    coerceChargenIndicesForRoleSelectionPrologLikeC,
+    validraceLikeC,
+    validgendLikeC,
+    validalignLikeC,
+} from './roles.js';
 import {
     rigidRoleChecksJs,
     ROLE_NONE,
     ROLE_RANDOM,
-    PICK_RANDOM,
     clearChargenRfilterLikeC,
     trySetrolefilterTokenLikeC,
     gotChargenRfilterLikeC,
@@ -33,13 +42,17 @@ import {
     roleMenuExtraRsRoleGrayLineLikeC,
     roleMenuExtraRsRaceGrayLineLikeC,
     roleMenuExtraRsGenderGrayLineLikeC,
-    pickRoleJs,
-    pickRaceJs,
-    pickGendJs,
-    pickAlignJs,
+    pickRoleWithPick4uFallbackLikeC,
+    pickRaceWithPick4uFallbackLikeC,
+    pickGendWithPick4uFallbackLikeC,
+    pickAlignWithPick4uFallbackLikeC,
+    applyGenlPick4uRandomFacetsLikeC,
+    applyChargenRandomallUnsetFacetsLikeC,
+    chargenGetConfirmationLikeC,
     ROLE_MENU_ORDER_LIKE_C,
 } from './chargen_rigid.js';
-import { applyIdentityFromNethackrc } from './chargen.js';
+import { applyIdentityFromNethackrc, applyPlnameSuffixToOptsLikeC, chargenFacetIndicesFromOptsLikeC } from './chargen.js';
+import { buildPlselectionPromptLikeC, chargenPickSomethingLikeC } from './chargen_plselection.js';
 
 const MENU_COL = 41;
 
@@ -446,7 +459,7 @@ function resetFilterAcceleratorTokenLikeC(entries, inch) {
  * @param {{ initrole: number, initrace: number, initgend: number, initalign: number }} f
  * @returns {Promise<boolean>} C truth value: true iff applied with at least one selection.
  */
-async function runResetRoleFilteringMenuLikeC(disp, f) {
+async function runResetRoleFilteringMenuLikeC(disp, f, plname = '') {
     const entries = buildResetFilterMenuEntriesLikeC();
 
     const selected = new Set();
@@ -528,8 +541,11 @@ function roleMenuAccelLetterLikeC(rawFirst, lastch) {
 }
 
 /** C build_plselection_prompt when all four facets unspecified (strsubst applied). */
-export function buildShallPickPrompt() {
-    return "Shall I pick character's race, role, gender and alignment for you? [ynaq]";
+export function buildShallPickPrompt(f) {
+    if (f) {
+        return buildPlselectionPromptLikeC(f.initrole, f.initrace, f.initgend, f.initalign);
+    }
+    return buildPlselectionPromptLikeC(ROLE_NONE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
 }
 
 export function needsFullInteractiveChargen(opts) {
@@ -585,41 +601,51 @@ export async function ttyAsknameLikeC(disp, g, opts) {
     }
     /* C: static const char who_are_you[] = "Who are you? "; */
     const prompt = 'Who are you? ';
-    disp.putstr(0, askRow, prompt, NO_COLOR);
-    disp.cursorVisible = true;
-    disp.setCursor(prompt.length, askRow);
-    let buf = '';
+    let tryct = 0;
     for (;;) {
-        const c = await nhgetch();
-        if (c === 13 || c === 10) break;
-        if (c === 27) {
-            buf = '';
+        if (++tryct > 1) {
+            if (tryct > 10) throw new Error('Giving up after 10 tries.');
             disp.clearRow(askRow);
-            disp.putstr(0, askRow, prompt, NO_COLOR);
-            disp.setCursor(prompt.length, askRow);
-            continue;
+            disp.putstr(0, askRow, 'Enter a name for your character...', NO_COLOR);
         }
-        if (c === 8 || c === 127) {
-            if (buf.length) {
-                buf = buf.slice(0, -1);
-                disp.putstr(prompt.length, askRow, `${buf} `, NO_COLOR);
-                disp.setCursor(prompt.length + buf.length, askRow);
+        disp.putstr(0, askRow, prompt, NO_COLOR);
+        disp.cursorVisible = true;
+        disp.setCursor(prompt.length, askRow);
+        let buf = '';
+        for (;;) {
+            const c = await nhgetch();
+            if (c === 13 || c === 10) break;
+            if (c === 27) {
+                buf = '';
+                disp.clearRow(askRow);
+                disp.putstr(0, askRow, prompt, NO_COLOR);
+                disp.setCursor(prompt.length, askRow);
+                break;
             }
-            continue;
+            if (c === 8 || c === 127) {
+                if (buf.length) {
+                    buf = buf.slice(0, -1);
+                    disp.putstr(prompt.length, askRow, `${buf} `, NO_COLOR);
+                    disp.setCursor(prompt.length + buf.length, askRow);
+                }
+                continue;
+            }
+            let ch = String.fromCodePoint(c);
+            if (ch !== '-' && ch !== '@') {
+                if (!/[a-zA-Z]/.test(ch) && !(ch >= '0' && ch <= '9' && buf.length > 0)) ch = '_';
+            }
+            if (buf.length < 31) buf += ch;
+            disp.putstr(prompt.length, askRow, buf, NO_COLOR);
+            disp.setCursor(prompt.length + buf.length, askRow);
         }
-        let ch = String.fromCodePoint(c);
-        if (ch !== '-' && ch !== '@') {
-            if (!/[a-zA-Z]/.test(ch) && !(ch >= '0' && ch <= '9' && buf.length > 0)) ch = '_';
-        }
-        if (buf.length < 31) buf += ch;
-        disp.putstr(prompt.length, askRow, buf, NO_COLOR);
-        disp.setCursor(prompt.length + buf.length, askRow);
+        if (buf.length === 0) continue;
+        g.plname = buf;
+        return;
     }
-    g.plname = buf || 'X';
 }
 
-export function paintPostNameYnaqScreen(disp, plname) {
-    const p0 = buildShallPickPrompt();
+export function paintPostNameYnaqScreen(disp, plname, f) {
+    const p0 = buildShallPickPrompt(f);
     disp.clearScreen();
     disp.putstr(0, YNAQ_AFTER_NAME_ROW, p0, NO_COLOR);
     /* C tty_curs past prompt text — matches recorder column (e.g. seed0006: len+1). */
@@ -671,7 +697,7 @@ function paintConfirmYnaqHelpOverlay(disp, col) {
  * @param {import('./game_display.js').GameDisplay} disp
  * @param {string} plname
  */
-export async function readYnaqPick4u(disp, plname) {
+export async function readYnaqPick4u(disp, plname, f) {
     for (;;) {
         const c = await nhgetch();
         let k = lowc(String.fromCodePoint(c));
@@ -679,7 +705,7 @@ export async function readYnaqPick4u(disp, plname) {
         if (k === '?') {
             paintYnaqHelpOverlay(disp);
             await nhgetch();
-            paintPostNameYnaqScreen(disp, plname);
+            paintPostNameYnaqScreen(disp, plname, f);
             continue;
         }
         if (k === ' ' || k === '\n' || k === '\r') k = 'y';
@@ -711,19 +737,42 @@ function roleMenuEntries(f) {
     return out;
 }
 
-/** @param {{ initrole: number, initrace: number, initgend: number, initalign: number }} f */
-function roleHubRecapLineLikeC(f) {
-    const rn = f.initrole >= 0 ? roleNameForDisplay(f.initrole, f.initgend) : '<role>';
-    const raceNoun = f.initrace >= 0 ? races[f.initrace].name : '<race>';
-    const gd = f.initgend >= 0 ? (f.initgend === 1 ? 'female' : 'male') : '<gender>';
-    let alTok = '<alignment>';
-    if (f.initalign >= 0) {
-        alTok = aligns[f.initalign].name;
-    } else if (f.initrole >= 0) {
-        const sole = soleAlignNameAcrossRacesRecapLikeC(f.initrole);
-        if (sole) alTok = sole;
+/** C role.c plsel_startmenu — `%.20s` field cap per token. */
+function plselRecapFieldLikeC(s) {
+    if (!s) return '';
+    return s.length > 20 ? s.slice(0, 20) : s;
+}
+
+/**
+ * C role.c `plsel_startmenu` header (`qbuf`) — incomplete facets vs full identity recap.
+ * @param {{ initrole: number, initrace: number, initgend: number, initalign: number }} f
+ * @param {string} [plname]
+ */
+function plselStartMenuRecapLineLikeC(f, plname = '') {
+    const ri = f.initrole;
+    const rai = f.initrace;
+    const gi = f.initgend;
+    const ai = f.initalign;
+    const rolename = ri < 0
+        ? '<role>'
+        : (gi === 1 && roles[ri].name.f ? roles[ri].name.f : roles[ri].name.m);
+    const name = plname && String(plname).length ? String(plname) : '';
+    if (!name || ri < 0 || rai < 0 || gi < 0 || ai < 0) {
+        return [
+            plselRecapFieldLikeC(rolename),
+            rai < 0 ? '<race>' : plselRecapFieldLikeC(races[rai].name),
+            gi < 0 ? '<gender>' : plselRecapFieldLikeC(genders[gi].adj),
+            ai < 0 ? '<alignment>' : plselRecapFieldLikeC(aligns[ai].adj),
+        ].join(' ');
     }
-    return `${rn} ${raceNoun} ${gd} ${alTok}`;
+    return [
+        plselRecapFieldLikeC(name),
+        'the',
+        plselRecapFieldLikeC(aligns[ai].adj),
+        plselRecapFieldLikeC(genders[gi].adj),
+        plselRecapFieldLikeC(races[rai].adj),
+        plselRecapFieldLikeC(rolename),
+    ].join(' ');
 }
 
 /** C genl_player_setup: role hub uses right column once race/gender/align may be set, or when role filtering is active (seed0006 after reset_role_filtering). */
@@ -780,12 +829,12 @@ function maybeRoleMenuExcessLinesLikeC(f) {
     return 0;
 }
 
-export function paintRoleMenu(disp, f) {
+export function paintRoleMenu(disp, f, plname = '') {
     /* C role.c plsel_startmenu — rigid_role_checks before recap/menu paint. */
     rigidRoleChecksJs(f);
     disp.clearScreen();
     const rc = roleHubRightColumnLikeC(f) ? MENU_COL : 0;
-    const recap = roleHubRecapLineLikeC(f);
+    const recap = plselStartMenuRecapLineLikeC(f, plname);
     if (rc === 0) {
         disp.putstr(0, 0, ' ', NO_COLOR);
         disp.putstr(1, 0, 'Pick a role or profession', NO_COLOR, ATR_INVERSE);
@@ -838,11 +887,11 @@ function roleNameForDisplay(ri, gi) {
     return r.name.m;
 }
 
-function paintRaceMenu(disp, f) {
+function paintRaceMenu(disp, f, plname = '') {
     rigidRoleChecksJs(f);
     disp.clearScreen();
     disp.putstr(MENU_COL, 0, 'Pick a race or species', NO_COLOR, ATR_INVERSE);
-    disp.putstr(MENU_COL, 2, raceMenuRecapLineLikeC(f), NO_COLOR);
+    disp.putstr(MENU_COL, 2, plselStartMenuRecapLineLikeC(f, plname), NO_COLOR);
     let row = 4;
     for (let i = 0; i < races.length; i++) {
         if (!okRaceJs(f.initrole, i, f.initgend, f.initalign)) continue;
@@ -895,20 +944,25 @@ async function chargenStarPickOneN2LikeC(quitMenuLabel, tryExplicit, pickRandom)
     return pickRandom();
 }
 
-async function readRaceChoice(disp, f) {
+async function readRaceChoice(disp, f, plname = '') {
     const valid = [];
     for (let i = 0; i < races.length; i++) {
         if (okRaceJs(f.initrole, i, f.initgend, f.initalign)) valid.push({ i, ch: races[i].name[0] });
     }
+    if (valid.length === 0) {
+        for (let i = 0; i < races.length; i++) {
+            if (validraceLikeC(f.initrole, i)) valid.push({ i, ch: races[i].name[0] });
+        }
+    }
     if (valid.length === 1) return valid[0].i;
     const map = new Map(valid.map((v) => [lowc(String(v.ch)), v.i]));
     for (;;) {
-        paintRaceMenu(disp, f);
+        paintRaceMenu(disp, f, plname);
         const c = await nhgetch();
         const k = lowc(String.fromCodePoint(c));
         if (k === '~') {
             f.initrace = ROLE_NONE;
-            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f);
+            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f, plname);
             if (!repickRole) f.chargenResumePick = 'race';
             continue;
         }
@@ -917,7 +971,7 @@ async function readRaceChoice(disp, f) {
             const t = await chargenStarPickOneN2LikeC(
                 'race menu',
                 (k2) => (map.has(k2) ? /** @type {number} */ (map.get(k2)) : undefined),
-                () => pickRaceJs(f.initrole, f.initgend, f.initalign, PICK_RANDOM),
+                () => pickRaceWithPick4uFallbackLikeC(f.initrole, f.initgend, f.initalign),
             );
             if (t !== ROLE_NONE) return t;
             continue;
@@ -934,16 +988,11 @@ async function readRaceChoice(disp, f) {
     }
 }
 
-function paintGenderMenu(disp, f) {
+function paintGenderMenu(disp, f, plname = '') {
     rigidRoleChecksJs(f);
     disp.clearScreen();
     disp.putstr(MENU_COL, 0, 'Pick a gender or sex', NO_COLOR, ATR_INVERSE);
-    const rn = roleNameForDisplay(f.initrole, f.initgend);
-    const raceNoun = f.initrace >= 0 ? races[f.initrace].name : '<race>';
-    const recapAlign = f.initalign >= 0
-        ? aligns[f.initalign].name
-        : (soleAlignNameForRoleRaceLikeC(f.initrole, f.initrace) ?? '<alignment>');
-    disp.putstr(MENU_COL, 2, `${rn} ${raceNoun} <gender> ${recapAlign}`, NO_COLOR);
+    disp.putstr(MENU_COL, 2, plselStartMenuRecapLineLikeC(f, plname), NO_COLOR);
     let row = 4;
     disp.putstr(MENU_COL, row, 'm - male', NO_COLOR);
     row++;
@@ -973,10 +1022,15 @@ function paintGenderMenu(disp, f) {
     setChargenEndMenuCursorLikeC(disp, MENU_COL, '(end)', row);
 }
 
-async function readGenderChoice(disp, f) {
+async function readGenderChoice(disp, f, plname = '') {
     const valid = [];
     for (let gi = 0; gi < genders.length; gi++) {
         if (okGendJs(f.initrole, f.initrace, gi, f.initalign)) valid.push(gi);
+    }
+    if (valid.length === 0) {
+        for (let gi = 0; gi < genders.length; gi++) {
+            if (validgendLikeC(f.initrole, f.initrace, gi)) valid.push(gi);
+        }
     }
     if (valid.length === 1) return valid[0];
     const map = new Map([
@@ -984,12 +1038,12 @@ async function readGenderChoice(disp, f) {
         ['f', 1],
     ]);
     for (;;) {
-        paintGenderMenu(disp, f);
+        paintGenderMenu(disp, f, plname);
         const c = await nhgetch();
         const k = lowc(String.fromCodePoint(c));
         if (k === '~') {
             f.initgend = ROLE_NONE;
-            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f);
+            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f, plname);
             if (!repickRole) f.chargenResumePick = 'gender';
             continue;
         }
@@ -1002,7 +1056,7 @@ async function readGenderChoice(disp, f) {
                     const gi = /** @type {number} */ (map.get(k2));
                     return valid.includes(gi) ? gi : undefined;
                 },
-                () => pickGendJs(f.initrole, f.initrace, f.initalign, PICK_RANDOM),
+                () => pickGendWithPick4uFallbackLikeC(f.initrole, f.initrace, f.initalign),
             );
             if (t !== ROLE_NONE) return t;
             continue;
@@ -1025,15 +1079,11 @@ async function readGenderChoice(disp, f) {
 /** First key NetHack tty uses for each alignment row (lawful / neutral / chaotic). */
 const ALIGN_MENU_KEYS = ['l', 'n', 'c'];
 
-function paintAlignMenu(disp, f) {
+function paintAlignMenu(disp, f, plname = '') {
     rigidRoleChecksJs(f);
     disp.clearScreen();
     disp.putstr(MENU_COL, 0, 'Pick an alignment or creed', NO_COLOR, ATR_INVERSE);
-    const rn = f.initrole >= 0 ? roleNameForDisplay(f.initrole, f.initgend) : '<role>';
-    const raceNoun = f.initrace >= 0 ? races[f.initrace].name : '<race>';
-    const gd = f.initgend >= 0 ? (f.initgend === 1 ? 'female' : 'male') : '<gender>';
-    const alTok = f.initalign >= 0 ? aligns[f.initalign].name : '<alignment>';
-    disp.putstr(MENU_COL, 2, `${rn} ${raceNoun} ${gd} ${alTok}`, NO_COLOR);
+    disp.putstr(MENU_COL, 2, plselStartMenuRecapLineLikeC(f, plname), NO_COLOR);
     let row = 4;
     for (let ai = 0; ai < aligns.length; ai++) {
         if (!okAlignJs(f.initrole, f.initrace, f.initgend, ai)) continue;
@@ -1060,20 +1110,25 @@ function paintAlignMenu(disp, f) {
     setChargenEndMenuCursorLikeC(disp, MENU_COL, '(end)', row);
 }
 
-async function readAlignChoice(disp, f) {
+async function readAlignChoice(disp, f, plname = '') {
     const valid = [];
     for (let ai = 0; ai < aligns.length; ai++) {
         if (okAlignJs(f.initrole, f.initrace, f.initgend, ai)) valid.push(ai);
     }
+    if (valid.length === 0) {
+        for (let ai = 0; ai < aligns.length; ai++) {
+            if (validalignLikeC(f.initrole, f.initrace, ai)) valid.push(ai);
+        }
+    }
     if (valid.length === 1) return valid[0];
     const map = new Map(valid.map((ai) => [ALIGN_MENU_KEYS[ai], ai]));
     for (;;) {
-        paintAlignMenu(disp, f);
+        paintAlignMenu(disp, f, plname);
         const c = await nhgetch();
         const k = lowc(String.fromCodePoint(c));
         if (k === '~') {
             f.initalign = ROLE_NONE;
-            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f);
+            const repickRole = await runResetRoleFilteringMenuLikeC(disp, f, plname);
             if (!repickRole) f.chargenResumePick = 'align';
             continue;
         }
@@ -1082,7 +1137,7 @@ async function readAlignChoice(disp, f) {
             const t = await chargenStarPickOneN2LikeC(
                 'align menu',
                 (k2) => (map.has(k2) ? /** @type {number} */ (map.get(k2)) : undefined),
-                () => pickAlignJs(f.initrole, f.initrace, f.initgend, PICK_RANDOM),
+                () => pickAlignWithPick4uFallbackLikeC(f.initrole, f.initrace, f.initgend),
             );
             if (t !== ROLE_NONE) return t;
             continue;
@@ -1174,7 +1229,7 @@ async function readConfirmAnswer(disp, f, plname) {
  * @param {{ initrole: number, initrace: number, initgend: number, initalign: number,
  *   chargenResumePick?: 'race' | 'gender' | 'align' }} f
  */
-async function pickManualChargenFacets(disp, f) {
+async function pickManualChargenFacets(disp, f, plname = '') {
     const entries = roleMenuEntries(f);
     const roleByMenuKey = new Map(entries.map((e) => [String(e.ch), e.ri]));
     for (;;) {
@@ -1189,7 +1244,7 @@ async function pickManualChargenFacets(disp, f) {
         if (f.chargenResumePick === 'race') {
             delete f.chargenResumePick;
             if (f.initrace === ROLE_NONE) {
-                const t = await readRaceChoice(disp, f);
+                const t = await readRaceChoice(disp, f, plname);
                 if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                 f.initrace = t;
                 continue;
@@ -1198,7 +1253,7 @@ async function pickManualChargenFacets(disp, f) {
         if (f.chargenResumePick === 'gender') {
             delete f.chargenResumePick;
             if (f.initgend === ROLE_NONE) {
-                const t = await readGenderChoice(disp, f);
+                const t = await readGenderChoice(disp, f, plname);
                 if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                 f.initgend = t;
                 continue;
@@ -1207,7 +1262,7 @@ async function pickManualChargenFacets(disp, f) {
         if (f.chargenResumePick === 'align') {
             delete f.chargenResumePick;
             if (f.initalign === ROLE_NONE) {
-                const t = await readAlignChoice(disp, f);
+                const t = await readAlignChoice(disp, f, plname);
                 if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                 f.initalign = t;
                 continue;
@@ -1215,14 +1270,14 @@ async function pickManualChargenFacets(disp, f) {
         }
 
         if (f.initrole === ROLE_NONE) {
-            paintRoleMenu(disp, f);
+            paintRoleMenu(disp, f, plname);
             const c = await nhgetch();
             const kRaw = String.fromCodePoint(c);
             const k = lowc(kRaw);
             if (k === '\x1b' || k === 'q') throw new Error('Player quit role menu');
             if (k === '~') {
                 f.initrole = ROLE_NONE;
-                await runResetRoleFilteringMenuLikeC(disp, f);
+                await runResetRoleFilteringMenuLikeC(disp, f, plname);
                 continue;
             }
             /* C ref: role.c genl_player_setup — PICK_ONE n==2: first ROLE_RANDOM, second real role → choice = selected[1]. */
@@ -1248,18 +1303,12 @@ async function pickManualChargenFacets(disp, f) {
                         pushKey(c2);
                     }
                 }
-                const t = pickRoleJs(
-                    f.initrace >= 0 ? f.initrace : ROLE_RANDOM,
-                    f.initgend >= 0 ? f.initgend : ROLE_RANDOM,
-                    f.initalign >= 0 ? f.initalign : ROLE_RANDOM,
-                    PICK_RANDOM,
-                );
-                if (t !== ROLE_NONE) f.initrole = t;
+                f.initrole = pickRoleWithPick4uFallbackLikeC(f.initrace, f.initgend, f.initalign);
                 continue;
             }
             if (k === '[') {
                 if (f.initalign === ROLE_NONE) {
-                    const t = await readAlignChoice(disp, f);
+                    const t = await readAlignChoice(disp, f, plname);
                     if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                     f.initalign = t;
                 }
@@ -1267,7 +1316,7 @@ async function pickManualChargenFacets(disp, f) {
             }
             if (k === '"') {
                 if (f.initgend === ROLE_NONE) {
-                    const t = await readGenderChoice(disp, f);
+                    const t = await readGenderChoice(disp, f, plname);
                     if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                     f.initgend = t;
                 }
@@ -1275,7 +1324,7 @@ async function pickManualChargenFacets(disp, f) {
             }
             if (k === '/') {
                 if (f.initrace === ROLE_NONE) {
-                    const t = await readRaceChoice(disp, f);
+                    const t = await readRaceChoice(disp, f, plname);
                     if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
                     f.initrace = t;
                 }
@@ -1292,19 +1341,19 @@ async function pickManualChargenFacets(disp, f) {
         }
 
         if (f.initrace === ROLE_NONE) {
-            const t = await readRaceChoice(disp, f);
+            const t = await readRaceChoice(disp, f, plname);
             if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
             f.initrace = t;
             continue;
         }
         if (f.initgend === ROLE_NONE) {
-            const t = await readGenderChoice(disp, f);
+            const t = await readGenderChoice(disp, f, plname);
             if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
             f.initgend = t;
             continue;
         }
         if (f.initalign === ROLE_NONE) {
-            const t = await readAlignChoice(disp, f);
+            const t = await readAlignChoice(disp, f, plname);
             if (chargenHandleSubmenuNavReturnLikeC(f, t)) continue;
             f.initalign = t;
             continue;
@@ -1324,22 +1373,26 @@ export async function runInteractiveTtyChargen(disp, g, opts) {
         resetChargenRfilter();
         await ttyAsknameLikeC(disp, g, { compact: asknameAnotherNameCompact });
         asknameAnotherNameCompact = false;
-        paintPostNameYnaqScreen(disp, g.plname);
-        const pick4u = await readYnaqPick4u(disp, g.plname);
+        opts.name = g.plname;
+        applyPlnameSuffixToOptsLikeC(opts);
+        const fFromName = chargenFacetIndicesFromOptsLikeC(opts);
+        const picksomething = chargenPickSomethingLikeC(fFromName);
+        const randomall = !!g.flags?.randomall;
+        applyChargenRandomallUnsetFacetsLikeC(fFromName, randomall, picksomething);
+        rigidRoleChecksJs(fFromName);
+        if (!chargenPickSomethingLikeC(fFromName)) {
+            applyChargenFlagsToGame(g, opts, fFromName);
+            return;
+        }
+        paintPostNameYnaqScreen(disp, g.plname, fFromName);
+        const pick4u = await readYnaqPick4u(disp, g.plname, fFromName);
         if (pick4u === 'q') throw new Error('Player quit during chargen');
         if (pick4u === 'y' || pick4u === 'a') {
-            const f = { initrole: ROLE_NONE, initrace: ROLE_NONE, initgend: ROLE_NONE, initalign: ROLE_NONE };
-            f.initrole = pickRoleJs(ROLE_RANDOM, ROLE_RANDOM, ROLE_RANDOM, PICK_RANDOM);
-            if (f.initrole === ROLE_NONE) throw new Error('pick_role failed');
+            const f = chargenFacetIndicesFromOptsLikeC(opts);
+            applyChargenRandomallUnsetFacetsLikeC(f, randomall, picksomething);
             rigidRoleChecksJs(f);
-            if (f.initrace === ROLE_NONE) f.initrace = pickRaceJs(f.initrole, f.initgend, f.initalign, PICK_RANDOM);
-            if (f.initgend === ROLE_NONE) f.initgend = pickGendJs(f.initrole, f.initrace, f.initalign, PICK_RANDOM);
-            if (f.initalign === ROLE_NONE) {
-                const t = pickAlignJs(f.initrole, f.initrace, f.initgend, PICK_RANDOM);
-                if (t !== ROLE_NONE) f.initalign = t;
-            }
-            if (pick4u === 'a') {
-                /* C: skip confirmation for "a" (all random, no confirm). */
+            applyGenlPick4uRandomFacetsLikeC(f);
+            if (!chargenGetConfirmationLikeC(picksomething, pick4u, randomall)) {
                 applyChargenFlagsToGame(g, opts, f);
                 return;
             }
@@ -1353,25 +1406,60 @@ export async function runInteractiveTtyChargen(disp, g, opts) {
                 asknameAnotherNameCompact = true;
                 continue top;
             }
-            /* 'n': repick random (C: treat as restart ynaq from name). */
-            continue top;
+            /* C confirm 'n': pick4u stays 'y'; ROLE/RACE/GEND/ALGN = ROLE_NONE; goto makepicks (manual). */
+            f.initrole = ROLE_NONE;
+            f.initrace = ROLE_NONE;
+            f.initgend = ROLE_NONE;
+            f.initalign = ROLE_NONE;
+            await pickManualChargenFacets(disp, f, g.plname);
+            if (!chargenGetConfirmationLikeC(picksomething, pick4u, randomall)) {
+                applyChargenFlagsToGame(g, opts, f);
+                return;
+            }
+            for (;;) {
+                rigidRoleChecksJs(f);
+                const ok2 = await readConfirmAnswer(disp, f, g.plname);
+                if (ok2 === 'y') {
+                    applyChargenFlagsToGame(g, opts, f);
+                    return;
+                }
+                if (ok2 === 'q' || ok2 === '\x1b') throw new Error('Player quit confirm');
+                if (ok2 === 'a') {
+                    asknameAnotherNameCompact = true;
+                    continue top;
+                }
+                if (ok2 === 'n') {
+                    f.initrole = ROLE_NONE;
+                    f.initrace = ROLE_NONE;
+                    f.initgend = ROLE_NONE;
+                    f.initalign = ROLE_NONE;
+                    await pickManualChargenFacets(disp, f, g.plname);
+                    continue;
+                }
+            }
         }
 
         outer: for (;;) {
-            const f = { initrole: ROLE_NONE, initrace: ROLE_NONE, initgend: ROLE_NONE, initalign: ROLE_NONE };
-            await pickManualChargenFacets(disp, f);
-            rigidRoleChecksJs(f);
-            const ok = await readConfirmAnswer(disp, f, g.plname);
-            if (ok === 'y') {
+            const f = chargenFacetIndicesFromOptsLikeC(opts);
+            await pickManualChargenFacets(disp, f, g.plname);
+            if (!chargenGetConfirmationLikeC(picksomething, pick4u, randomall)) {
                 applyChargenFlagsToGame(g, opts, f);
                 return;
             }
-            if (ok === 'q' || ok === '\x1b') throw new Error('Player quit confirm');
-            if (ok === 'a') {
-                asknameAnotherNameCompact = true;
-                continue top;
+            for (;;) {
+                rigidRoleChecksJs(f);
+                const ok = await readConfirmAnswer(disp, f, g.plname);
+                if (ok === 'y') {
+                    applyChargenFlagsToGame(g, opts, f);
+                    return;
+                }
+                if (ok === 'q' || ok === '\x1b') throw new Error('Player quit confirm');
+                if (ok === 'a') {
+                    asknameAnotherNameCompact = true;
+                    continue top;
+                }
+                if (ok === 'n') continue outer;
             }
-            if (ok === 'n') continue outer;
         }
     }
 }

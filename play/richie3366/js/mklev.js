@@ -28,7 +28,13 @@ import {
 import { GameMap } from './game.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, depth, distmin } from './hacklib.js';
+import {
+    depth as depth_of_level,
+    depth,
+    distmin,
+    dunlevLikeC,
+    dunlevsInDungeonLikeC,
+} from './hacklib.js';
 import {
     findLevelByProtoLikeC, isSpecialAtUzLikeC, isSpecialHeroUzLikeC,
 } from './sp_levchn.js';
@@ -61,8 +67,10 @@ import {
     is_pit, is_hole,
     OTYP_BOULDER,
     In_endgame, In_hell, In_V_tower, Is_rogue_level, Is_oracle_level, In_mines, In_quest,
-    Is_knox_level,
+    Is_knox_level, Is_stronghold,
+    CORPSTAT_NONE,
     MKTRAP_MAZEFLAG,
+    LEV_EXT,
 } from './const.js';
 import { isPoolOrLavaCellLikeC } from './fillholetyp.js';
 import { makeEngrAt, ENGR_HEADSTONE, ENGR_MARK, ENGR_DUST, randomEngraving, getRndEpitaphText, wipeEngrAt } from './engrave.js';
@@ -82,8 +90,18 @@ import {
     westFillApportDoorLikeC,
 } from './mfndpos_mon.js';
 import { monTrackClear, ensureMonsterMtrack } from './monflee.js';
-import { dist2 } from './hacklib.js';
+import { dist2, onLevelLikeC } from './hacklib.js';
+import { goodposNullMonLikeC } from './walkable.js';
+import { rndmonnum } from './makemon.js';
+import {
+    MR_STONE,
+    permonstFromMndxLikeC,
+    pmResistanceLikeC,
+    polyWhenStonedLikeC,
+} from './mondata.js';
 import { setWallStateLikeC } from './wall_state.js';
+import { stolenBootyLikeC } from './stolen_booty.js';
+import { baalzFixupLikeC } from './baalz_fixup.js';
 import {
     consumeMksobjInitCorpseRngLikeC,
     consumeMksobjCorpseSpeRngLikeC,
@@ -97,6 +115,15 @@ import {
 } from './floorobj.js';
 import { fixWallSpinesRect } from './wall_spine.js';
 import { setLevltypLikeC } from './set_levltyp.js';
+import {
+    flipLevelRndLikeC,
+    linkDoorsRoomsLikeC,
+    mapCleanupLikeC,
+    removeBoundarySymsLikeC,
+    solidifyMapLikeC,
+} from './sp_lev_load.js';
+import { premapDetectLikeC } from './premap_detect.js';
+import { ensureWayOutLikeC } from './ensure_way_out.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
 /* NH5 audit: scroll **`otyp`** literals below are **legacy** (pre–`objects_nums` / `mkobj_scroll_class_rng_like_c.js`).
@@ -326,29 +353,245 @@ export function appendLregionLikeC(g, region) {
 }
 
 /**
- * C: sp_lev.c `load_special` tail — **`fixup_special`**, wallification, lregions (after **`load_lua`**).
+ * C: mkmaze.c `check_ransacked` — before **`load_special`** (proto name without **`LEV_EXT`**).
+ * @param {import('./gstate.js').game} g
+ * @param {string} protoBase
+ */
+export function checkRansackedLikeC(g, protoBase) {
+    const minesDnum = g.mines_dnum;
+    const uz = g.u?.uz;
+    if (minesDnum == null || !uz) {
+        g.ransacked = false;
+        return;
+    }
+    g.ransacked = (uz.dnum | 0) === (minesDnum | 0) && protoBase === 'minetn-1';
+}
+
+/**
+ * C: sp_lev.c `create_des_coder` / `give_up` — NHL des compiler state (stub until **`load_lua`**).
  * @param {import('./gstate.js').game} g
  */
-export function fixupSpecialLikeC(g) {
+function createDesCoderLikeC(g) {
+    if (!g.desCoder) {
+        g.desCoder = {
+            allowFlips: 0,
+            solidify: false,
+            checkInaccessibles: false,
+            premapped: false,
+            spLevMap: null,
+        };
+    }
+}
+
+/** @param {import('./gstate.js').game} g */
+function freeDesCoderLikeC(g) {
+    g.desCoder = null;
+}
+
+/**
+ * C: nhlua.c `load_lua` — compile/run `.lua` des level (NHL not ported).
+ * @returns {Promise<boolean>}
+ */
+async function loadLuaLikeC(g, name) {
+    const { runLuaProtofileLikeC } = await import('./nhl_lua.js');
+    return runLuaProtofileLikeC(g, name, {
+        appendLregion: appendLregionLikeC,
+        addRoom: add_room,
+        digCorridor: dig_corridor,
+        somexy,
+        wallification,
+        litstateRnd: litstate_rnd,
+        mksobj,
+        mkcorpstat,
+    });
+}
+
+/**
+ * C: sp_lev.c `load_special` post-**`load_lua`** chain (deferred pieces are no-ops until NHL).
+ * @param {import('./gstate.js').game} g
+ */
+function loadSpecialAfterLuaLikeC(g) {
+    const coder = g.desCoder;
+    linkDoorsRoomsLikeC(g, add_door);
+    removeBoundarySymsLikeC(g);
+    if (coder?.checkInaccessibles) ensureWayOutLikeC(g);
+    mapCleanupLikeC(g);
     const lf = g.level?.flags;
     if (lf && !lf.corrmaze) {
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     }
-    if (g.lregions?.length) {
-        placeLregionsFixupSpecialLikeC(g, g.lregions);
-        g.lregions = null;
+    flipLevelRndLikeC(g, coder?.allowFlips ?? 0, false);
+    recount_level_features();
+    if (coder?.solidify) solidifyMapLikeC(g);
+    fixupSpecialLikeC(g);
+    if (coder?.premapped) premapDetectLikeC(g);
+}
+
+/**
+ * C: dungeon.c **`Is_medusa_level(&u.uz)`** — **`on_level`** vs **`medusa_level`**.
+ * @param {import('./gstate.js').game} g
+ * @param {{ dnum?: number, dlevel?: number }|null|undefined} [uz]
+ */
+function isMedusaLevelLikeC(g, uz) {
+    const med = g.medusa_level;
+    const lev = uz ?? g.u?.uz;
+    return !!(med && lev && onLevelLikeC(lev, med));
+}
+
+/** C: dungeon.h `Is_baal_level` — `on_level` vs `baalzebub_level`. */
+function isBaalLevelLikeC(g, uz) {
+    const baal = g.baalzebub_level;
+    const lev = uz ?? g.u?.uz;
+    return !!(baal && lev && onLevelLikeC(lev, baal));
+}
+
+/**
+ * C: mkobj.c `set_corpsenm` — statue/corpse **`corpsenm`** + weight (timers deferred).
+ * @param {Record<string, unknown>|null|undefined} otmp
+ * @param {number} id
+ */
+function set_corpsenm(otmp, id) {
+    if (!otmp) return;
+    otmp.corpsenm = id | 0;
+    otmp.owt = weight(otmp);
+}
+
+/** C: mkobj.c `mk_tt_object(STATUE)` — no init; **`tt_oname`** not ported → **`rn1`** role corpsenm. */
+function mkTtObjectStatueLikeC(x, y) {
+    const otmp = mksobj_at(STATUE, x, y, false, false);
+    const pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
+    set_corpsenm(otmp, pm);
+    return otmp;
+}
+
+/**
+ * C: mkmaze.c Medusa fixup — retry when **`poly_when_stoned`** or stone resistance.
+ * @param {import('./gstate.js').game} g
+ * @param {Record<string, unknown>|null|undefined} otmp
+ */
+function medusaStatueNeedsRerollLikeC(g, otmp) {
+    const cm = otmp?.corpsenm | 0;
+    if (cm < 0) return false;
+    const ptr = permonstFromMndxLikeC(cm);
+    return polyWhenStonedLikeC(g, ptr) || pmResistanceLikeC(ptr, MR_STONE);
+}
+
+/**
+ * C: mkmaze.c `fixup_special` — Medusa level statue placement (**`mk_tt_object`** / **`mkcorpstat`**).
+ * @param {import('./gstate.js').game} g
+ */
+function fixupSpecialMedusaStatuesLikeC(g) {
+    const croom = g.level?.rooms?.[0];
+    if (!croom || (croom.hx | 0) <= 0) return;
+    let tryct = rnd(4);
+    while (tryct--) {
+        const x = somex(croom);
+        const y = somey(croom);
+        if (goodposNullMonLikeC(x, y, g)) {
+            let otmp = mkTtObjectStatueLikeC(x, y);
+            let tryct2 = 0;
+            while (++tryct2 < 100 && otmp && medusaStatueNeedsRerollLikeC(g, otmp)) {
+                set_corpsenm(otmp, rndmonnum());
+            }
+        }
+    }
+    let otmp;
+    if (rn2(2)) {
+        otmp = mkTtObjectStatueLikeC(somex(croom), somey(croom));
+    } else {
+        otmp = mkcorpstat(STATUE, null, null, somex(croom), somey(croom), CORPSTAT_NONE);
+    }
+    if (otmp) {
+        let tryct = 0;
+        while (++tryct < 100 && otmp && medusaStatueNeedsRerollLikeC(g, otmp)) {
+            set_corpsenm(otmp, rndmonnum());
+        }
     }
 }
 
 /**
- * C: sp_lev.c `load_special` — des-file level via **`load_lua`**; **`fixupSpecialLikeC`** on success.
+ * C: mkmaze.c `fixup_special` — post-**`lregions`** tail (graveyard, medusa, stolen booty, **`has_town`**).
+ * @param {import('./gstate.js').game} g
+ */
+function fixupSpecialTailLikeC(g) {
+    const uz = g.u?.uz;
+    const lf = g.level?.flags;
+    if (!lf || !uz) return;
+    if (isMedusaLevelLikeC(g, uz)) {
+        fixupSpecialMedusaStatuesLikeC(g);
+    } else if (g.urole?.abbr === 'Pri' && In_quest(uz)) {
+        lf.graveyard = true;
+    } else if (Is_stronghold(uz)) {
+        lf.graveyard = true;
+    } else if (isBaalLevelLikeC(g, uz)) {
+        baalzFixupLikeC(g);
+    } else if (g.ransacked) {
+        stolenBootyLikeC(g);
+    }
+}
+
+/**
+ * C: mkmaze.c `fixup_special` tail + sp_lev.c `load_special` — lregions, then level-specific tail.
+ * @param {import('./gstate.js').game} g
+ */
+export function fixupSpecialLikeC(g) {
+    if (g.lregions?.length) {
+        placeLregionsFixupSpecialLikeC(g, g.lregions);
+        g.lregions = null;
+    }
+    fixupSpecialTailLikeC(g);
+    syncLevelFlagsHasTownAfterFixupSpecialLikeC(g);
+}
+
+/**
+ * C: sp_lev.c `load_special` — des-file level via **`load_lua`**.
+ * @param {import('./gstate.js').game} g
+ * @param {string} name — protofile + **`LEV_EXT`** (caller appends extension)
  * @returns {Promise<boolean>} true when a compiled level was loaded
  */
-export async function loadSpecialLikeC(g, protofile) {
-    if (!protofile) return false;
-    /* C: mkmaze.c `Strcat(protofile, LEV_EXT)` before call — NHL **`load_lua`** not ported yet. */
-    void g;
-    return false;
+export async function loadSpecialLikeC(g, name) {
+    if (!name) return false;
+    createDesCoderLikeC(g);
+    let result = false;
+    if (await loadLuaLikeC(g, name)) {
+        loadSpecialAfterLuaLikeC(g);
+        result = true;
+    }
+    freeDesCoderLikeC(g);
+    return result;
+}
+
+/**
+ * C: mkmaze.c **`makemaz`** — resolve des protofile from **`s`**, **`Is_special`**, dungeon **`proto`**.
+ * Omits wizard **`SPLEVTYPE`** env override.
+ * @param {import('./gstate.js').game} g
+ * @param {string} s — from **`makelevelMazefileLikeC`** (empty → dungeon **`proto`** branch)
+ * @returns {string}
+ */
+export function resolveMakemazProtofileLikeC(g, s) {
+    const uz = g.u?.uz;
+    if (!uz) return '';
+    const sp = isSpecialHeroUzLikeC(g);
+    const sIn = String(s ?? '');
+
+    if (sIn.length > 0) {
+        if (sp?.rndlevs) return `${sIn}-${rnd(sp.rndlevs | 0)}`;
+        return sIn;
+    }
+
+    const dun = g.dungeons?.[uz.dnum | 0];
+    const protoBase = dun?.proto;
+    if (protoBase != null && String(protoBase).length > 0) {
+        const pb = String(protoBase);
+        if (dunlevsInDungeonLikeC(uz) > 1) {
+            const lev = dunlevLikeC(uz);
+            if (sp?.rndlevs) return `${pb}${lev}-${rnd(sp.rndlevs | 0)}`;
+            return `${pb}${lev}`;
+        }
+        if (sp?.rndlevs) return `${pb}-${rnd(sp.rndlevs | 0)}`;
+        return pb;
+    }
+    return '';
 }
 
 /**
@@ -672,9 +915,15 @@ async function populateMazeLikeC(g) {
  * @returns {Promise<boolean>} true when caller should skip regular **`makerooms`** (loaded or procedural)
  */
 export async function makemazLikeC(g, protofile = '') {
-    if (await loadSpecialLikeC(g, protofile)) {
-        /* C: `dmonsfree()` after successful load — deferred */
-        return true;
+    const resolvedProto = resolveMakemazProtofileLikeC(g, protofile);
+    if (resolvedProto.length > 0) {
+        checkRansackedLikeC(g, resolvedProto);
+        g.in_mk_themerooms = false;
+        if (await loadSpecialLikeC(g, resolvedProto + LEV_EXT)) {
+            /* C: `dmonsfree()` after successful load — deferred */
+            return true;
+        }
+        /* C: impossible("Couldn't load \"%s\" - making a maze.", protofile); — no RNG */
     }
     const lf = g.level.flags;
     lf.is_maze_lev = true;
@@ -1001,9 +1250,6 @@ function add_to_buried(otmp) {
 }
 function sobj_at(otyp, x, y) { return false; }
 
-// set_corpsenm stub
-function set_corpsenm(otmp, pm) { /* stub */ }
-
 // mkcorpstat — C: mkobj.c mkcorpstat (mksobj init + spe + ptr override + set_corpsenm)
 function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     void mtmp;
@@ -1014,7 +1260,8 @@ function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     if (init && t === CORPSE) {
         otmp.corpsenm = consumeMksobjInitCorpseRngLikeC();
     } else if (!init && pm === null && (t === CORPSE || t === STATUE)) {
-        rndmonstLikeC();
+        otmp.corpsenm = rndmonstLikeC();
+        otmp.owt = weight(otmp);
     }
     if (t === CORPSE && (otmp.corpsenm | 0) >= 0) {
         /* C: mksobj tail spe before mkcorpstat ptr override. */
@@ -1154,6 +1401,8 @@ function clear_level_structures() {
     lf.stasis_until = 0;
     clearLregionDestLikeC(g);
     g.lregions = null;
+    g.ransacked = false;
+    g.desCoder = null;
     resetMazeMaxBoundsLikeC(g);
     init_rect();
 }

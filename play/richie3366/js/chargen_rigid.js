@@ -4,7 +4,29 @@
 // setrolefilter, clearrolefilter.
 
 import { rn2 } from './rng.js';
-import { roles, races, aligns, genders, raceAllowsAlignValueLikeC } from './roles.js';
+import {
+    RS_filter,
+    RS_ROLE,
+    RS_RACE,
+    RS_GENDER,
+    RS_ALGNMNT,
+    ROLE_RACEMASK,
+    ROLE_GENDMASK,
+    ROLE_ALIGNMASK,
+} from './const.js';
+import {
+    roles,
+    races,
+    aligns,
+    genders,
+    raceAllowsAlignValueLikeC,
+    validraceLikeC,
+    validgendLikeC,
+    validalignLikeC,
+    randraceLikeC,
+    randgendLikeC,
+    randalignLikeC,
+} from './roles.js';
 
 export const ROLE_NONE = -1;
 export const ROLE_RANDOM = -2;
@@ -18,26 +40,45 @@ export const ROLE_MENU_ORDER_LIKE_C = Object.freeze([
 
 /** @typedef {{ initrole: number, initrace: number, initgend: number, initalign: number }} ChargenFlags */
 
-/* ----- C gr.rfilter — boolean means "unacceptable" (excluded from picks) ----- */
+/* ----- C gr.rfilter — roles[] booleans + mask for race/gender/align ----- */
 const rfilterExcludedRole = /** @type {boolean[]} */ ([]);
-const rfilterExcludedRace = /** @type {boolean[]} */ ([]);
-const rfilterExcludedGend = /** @type {boolean[]} */ ([]);
-const rfilterExcludedAlign = /** @type {boolean[]} */ ([]);
+/** C `gr.rfilter.mask` — `selfmask` / `genders[].allow` / `aligns[].allow` bits. */
+let rfilterMask = 0;
 
-function ensureRfilterArrays() {
+function ensureRfilterRoleArray() {
     while (rfilterExcludedRole.length < roles.length) rfilterExcludedRole.push(false);
-    while (rfilterExcludedRace.length < races.length) rfilterExcludedRace.push(false);
-    while (rfilterExcludedGend.length < genders.length) rfilterExcludedGend.push(false);
-    while (rfilterExcludedAlign.length < aligns.length) rfilterExcludedAlign.push(false);
+}
+
+/**
+ * C clearrolefilter(which) — RS_filter clears mask + roles; per-aspect clears mask bits.
+ * @param {number} which — RS_filter | RS_ROLE | RS_RACE | RS_GENDER | RS_ALGNMNT
+ */
+export function clearChargenRfilterAspectLikeC(which) {
+    ensureRfilterRoleArray();
+    switch (which) {
+    case RS_filter:
+        rfilterMask = 0;
+        /* FALLTHROUGH */
+    case RS_ROLE:
+        for (let i = 0; i < roles.length; i++) rfilterExcludedRole[i] = false;
+        break;
+    case RS_RACE:
+        rfilterMask &= ~ROLE_RACEMASK;
+        break;
+    case RS_GENDER:
+        rfilterMask &= ~ROLE_GENDMASK;
+        break;
+    case RS_ALGNMNT:
+        rfilterMask &= ~ROLE_ALIGNMASK;
+        break;
+    default:
+        break;
+    }
 }
 
 /** C clearrolefilter(RS_filter) — clear all exclusions. */
 export function clearChargenRfilterLikeC() {
-    ensureRfilterArrays();
-    for (let i = 0; i < roles.length; i++) rfilterExcludedRole[i] = false;
-    for (let i = 0; i < races.length; i++) rfilterExcludedRace[i] = false;
-    for (let i = 0; i < genders.length; i++) rfilterExcludedGend[i] = false;
-    for (let i = 0; i < aligns.length; i++) rfilterExcludedAlign[i] = false;
+    clearChargenRfilterAspectLikeC(RS_filter);
 }
 
 function strncmpiPrefix(user, canon) {
@@ -54,7 +95,7 @@ export function trySetrolefilterTokenLikeC(bufp) {
     if (!raw) return false;
     const s = raw.startsWith('!') ? raw.slice(1).trim() : raw;
     if (!s) return false;
-    ensureRfilterArrays();
+    ensureRfilterRoleArray();
 
     for (let i = 0; i < roles.length; i++) {
         const r = roles[i];
@@ -68,21 +109,21 @@ export function trySetrolefilterTokenLikeC(bufp) {
         const rc = races[i];
         if (strncmpiPrefix(s, rc.name) || strncmpiPrefix(s, rc.adj)
             || (rc.filecode && s.toLowerCase() === rc.filecode.toLowerCase())) {
-            rfilterExcludedRace[i] = true;
+            rfilterMask |= rc.selfmask;
             return true;
         }
     }
     for (let i = 0; i < genders.length; i++) {
         const g = genders[i];
         if (strncmpiPrefix(s, g.name)) {
-            rfilterExcludedGend[i] = true;
+            rfilterMask |= g.allowMask;
             return true;
         }
     }
     for (let i = 0; i < aligns.length; i++) {
         const a = aligns[i];
         if (strncmpiPrefix(s, a.name)) {
-            rfilterExcludedAlign[i] = true;
+            rfilterMask |= a.allowMask;
             return true;
         }
     }
@@ -104,18 +145,10 @@ function indexOkGend(gi) {
 
 /** C gotrolefilter() */
 export function gotChargenRfilterLikeC() {
-    ensureRfilterArrays();
+    if (rfilterMask) return true;
+    ensureRfilterRoleArray();
     for (let i = 0; i < roles.length; i++) {
         if (rfilterExcludedRole[i]) return true;
-    }
-    for (let i = 0; i < races.length; i++) {
-        if (rfilterExcludedRace[i]) return true;
-    }
-    for (let i = 0; i < genders.length; i++) {
-        if (rfilterExcludedGend[i]) return true;
-    }
-    for (let i = 0; i < aligns.length; i++) {
-        if (rfilterExcludedAlign[i]) return true;
     }
     return false;
 }
@@ -132,7 +165,7 @@ export function okRoleJs(ri, rai, gi, ai) {
         }
         return false;
     }
-    ensureRfilterArrays();
+    ensureRfilterRoleArray();
     if (rfilterExcludedRole[ri]) return false;
     const role = roles[ri];
     if (indexOkRace(rai)) {
@@ -156,9 +189,8 @@ export function okRoleJs(ri, rai, gi, ai) {
  */
 export function okRaceJs(ri, rai, gi, ai) {
     if (indexOkRace(rai)) {
-        ensureRfilterArrays();
-        if (rfilterExcludedRace[rai]) return false;
         const race = races[rai];
+        if (rfilterMask & race.selfmask) return false;
         if (indexOkRole(ri)) {
             const role = roles[ri];
             if (!role.allows.races.includes(race.name)) return false;
@@ -278,9 +310,9 @@ export function okAlignJsIgnoreAlignRfilter(ri, rai, gi, ai) {
 
 export function okGendJs(ri, rai, gi, ai) {
     if (indexOkGend(gi)) {
-        ensureRfilterArrays();
-        if (rfilterExcludedGend[gi]) return false;
-        const gv = genders[gi].value;
+        const g = genders[gi];
+        if (rfilterMask & g.allowMask) return false;
+        const gv = g.value;
         if (indexOkRole(ri)) {
             const role = roles[ri];
             if (role.allows.gender === 'female' && gv !== 1) return false;
@@ -307,9 +339,9 @@ export function okGendJs(ri, rai, gi, ai) {
 
 export function okAlignJs(ri, rai, gi, ai) {
     if (indexOkAlign(ai)) {
-        ensureRfilterArrays();
-        if (rfilterExcludedAlign[ai]) return false;
-        const av = aligns[ai].value;
+        const a = aligns[ai];
+        if (rfilterMask & a.allowMask) return false;
+        const av = a.value;
         if (indexOkRole(ri) && !roles[ri].allows.align.includes(av)) return false;
         if (indexOkRace(rai)) {
             const race = races[rai];
@@ -330,7 +362,7 @@ export function okAlignJs(ri, rai, gi, ai) {
 export function roleMenuExtraRsRoleGrayLineLikeC(f) {
     const r = f.initrole;
     if (r < 0) return null;
-    ensureRfilterArrays();
+    ensureRfilterRoleArray();
     for (let i = 0; i < roles.length; i++) {
         if (i !== r && !rfilterExcludedRole[i]) return null;
     }
@@ -500,6 +532,84 @@ export function randroleFilteredLikeC() {
         }
     }
     return set.length ? set[rn2(set.length)] : randroleLikeC(false);
+}
+
+/** C `genl_player_setup` / `*` menu: `pick_role` then `randrole(FALSE)` on failure. */
+export function pickRoleWithPick4uFallbackLikeC(rai, gi, ai) {
+    const r = rai >= 0 ? rai : ROLE_RANDOM;
+    const g = gi >= 0 ? gi : ROLE_RANDOM;
+    const a = ai >= 0 ? ai : ROLE_RANDOM;
+    let k = pickRoleJs(r, g, a, PICK_RANDOM);
+    if (k === ROLE_NONE) k = randroleLikeC(false);
+    return k;
+}
+
+/** C `genl_player_setup`: `pick_race` then `randrace(ROLE)` on failure. */
+export function pickRaceWithPick4uFallbackLikeC(ri, gi, ai) {
+    const g = gi >= 0 ? gi : ROLE_RANDOM;
+    const a = ai >= 0 ? ai : ROLE_RANDOM;
+    let k = pickRaceJs(ri, g, a, PICK_RANDOM);
+    if (k === ROLE_NONE) k = randraceLikeC(ri);
+    return k;
+}
+
+/** C `genl_player_setup`: `pick_gend` then `randgend(ROLE, RACE)` on failure. */
+export function pickGendWithPick4uFallbackLikeC(ri, rai, ai) {
+    const a = ai >= 0 ? ai : ROLE_RANDOM;
+    let k = pickGendJs(ri, rai, a, PICK_RANDOM);
+    if (k === ROLE_NONE) k = randgendLikeC(ri, rai);
+    return k;
+}
+
+/** C `genl_player_setup`: `pick_align` then `randalign(ROLE, RACE)` on failure. */
+export function pickAlignWithPick4uFallbackLikeC(ri, rai, gi) {
+    let k = pickAlignJs(ri, rai, gi, PICK_RANDOM);
+    if (k === ROLE_NONE) k = randalignLikeC(ri, rai);
+    return k;
+}
+
+/**
+ * C role.c genl_player_setup — pick4u y or a facet picks with incompatible fallbacks
+ * and validrace/validgend/validalign re-pick when a preset facet is illegal.
+ * @param {ChargenFlags} f
+ */
+/**
+ * C genl_player_setup — `flags.randomall && picksomething` sets unset facets to ROLE_RANDOM
+ * before `rigid_role_checks()`.
+ * @param {ChargenFlags} f
+ * @param {boolean} randomall
+ * @param {boolean} picksomething
+ */
+export function applyChargenRandomallUnsetFacetsLikeC(f, randomall, picksomething) {
+    if (!randomall || !picksomething) return;
+    if (f.initrole === ROLE_NONE) f.initrole = ROLE_RANDOM;
+    if (f.initrace === ROLE_NONE) f.initrace = ROLE_RANDOM;
+    if (f.initgend === ROLE_NONE) f.initgend = ROLE_RANDOM;
+    if (f.initalign === ROLE_NONE) f.initalign = ROLE_RANDOM;
+}
+
+/** C genl_player_setup — `getconfirmation = (picksomething && pick4u != 'a' && !flags.randomall)`. */
+export function chargenGetConfirmationLikeC(picksomething, pick4u, randomall) {
+    return picksomething && pick4u !== 'a' && !randomall;
+}
+
+export function applyGenlPick4uRandomFacetsLikeC(f) {
+    if (f.initrole === ROLE_NONE) {
+        f.initrole = pickRoleWithPick4uFallbackLikeC(f.initrace, f.initgend, f.initalign);
+    }
+    rigidRoleChecksJs(f);
+    const ri = f.initrole;
+    if (f.initrace === ROLE_NONE || !validraceLikeC(ri, f.initrace)) {
+        f.initrace = pickRaceWithPick4uFallbackLikeC(ri, f.initgend, f.initalign);
+    }
+    const rai = f.initrace;
+    if (f.initgend === ROLE_NONE || !validgendLikeC(ri, rai, f.initgend)) {
+        f.initgend = pickGendWithPick4uFallbackLikeC(ri, rai, f.initalign);
+    }
+    const gi = f.initgend;
+    if (f.initalign === ROLE_NONE || !validalignLikeC(ri, rai, f.initalign)) {
+        f.initalign = pickAlignWithPick4uFallbackLikeC(ri, rai, gi);
+    }
 }
 
 /**

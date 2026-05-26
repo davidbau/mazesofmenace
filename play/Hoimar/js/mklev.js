@@ -1176,13 +1176,14 @@ function mkbox_cnts(box) {
             : mkobj(pick_prob_entry(boxiprobs).iclass, false);
         if (otmp?.oclass === COIN_CLASS) {
             otmp.quan = rnd(level_difficulty() + 2) * rnd(75);
-        } else {
-            while (otmp?.otyp === ROCK) {
-                otmp.otyp = rnd_class(DILITHIUM_CRYSTAL, LOADSTONE);
-                otmp.oclass = object_class(otmp.otyp);
-                if ((otmp.quan || 1) > 2) otmp.quan = 1;
+            } else {
+                while (otmp?.otyp === ROCK) {
+                    otmp.otyp = rnd_class(DILITHIUM_CRYSTAL, LOADSTONE);
+                    otmp.oclass = object_class(otmp.otyp);
+                    if ((otmp.quan || 1) > 2) otmp.quan = 1;
+                }
             }
-        }
+            add_to_container(box, otmp);
     }
 }
 
@@ -1630,7 +1631,21 @@ function weight(otmp) {
     if (Number.isFinite(base)) return (otmp.quan || 1) * base;
     return otmp.owt || 1;
 }
-function add_to_container(container, otmp) { /* stub */ }
+function add_to_container(container, otmp) {
+    // C ref: src/mkobj.c:add_to_container().  The JS representation keeps the
+    // contained chain as an array, newest object first like C's cobj list.
+    if (!container || !otmp) return otmp;
+    container.cobj = container.cobj || [];
+    Object.defineProperty(otmp, 'ocontainer', {
+        value: container,
+        enumerable: false,
+        configurable: true,
+        writable: true,
+    });
+    otmp.where = 'contained';
+    container.cobj.unshift(otmp);
+    return otmp;
+}
 function sobj_at(otyp, x, y) {
     return (game.level?.objects || []).find(o => o.otyp === otyp && o.ox === x && o.oy === y) || false;
 }
@@ -3566,6 +3581,10 @@ function getbones() {
     const key = bones_file_key();
     const text = key ? vfsReadFile(key) : null;
     if (!text) return false;
+    if (game.wizard || game.flags?.debug) {
+        game._pending_bones_restore = { key, text };
+        return 'prompt';
+    }
 
     let ok = false;
     try {
@@ -3576,6 +3595,29 @@ function getbones() {
     }
     const deleted = vfsDeleteFile(key);
     return ok && deleted;
+}
+
+export function restore_pending_bones_snapshot() {
+    const pending = game._pending_bones_restore;
+    if (!pending?.text) return false;
+    let ok = false;
+    try {
+        ok = restore_bones_snapshot(JSON.parse(pending.text));
+    } catch (e) {
+        ok = false;
+    }
+    game._pending_bones_restore_ok = ok;
+    return ok;
+}
+
+export function delete_pending_bones_file() {
+    const key = game._pending_bones_restore?.key;
+    return key ? vfsDeleteFile(key) : false;
+}
+
+export function clear_pending_bones_restore() {
+    game._pending_bones_restore = null;
+    game._pending_bones_restore_ok = false;
 }
 
 function same_dlevel(a, b) {
@@ -3743,6 +3785,9 @@ function restore_bones_snapshot(snapshot) {
     game.stairs = clone_for_bones(snapshot.stairs) || fallback_bones_stairs(game.level);
     game.updest = snapshot.updest ? clone_for_bones(snapshot.updest) : null;
     game.dndest = snapshot.dndest ? clone_for_bones(snapshot.dndest) : null;
+    // C refs: save.c:savelev(), restore.c:getlev().  Bones files include the
+    // hero scent track; off-screen monsters can follow it after restore.
+    game._utrack = Array.isArray(snapshot.utrack) ? clone_for_bones(snapshot.utrack) : [];
     game._made_special_level = false;
     game._last_special_protofile = '';
     game.u = game.u || {};
@@ -3751,10 +3796,10 @@ function restore_bones_snapshot(snapshot) {
     return true;
 }
 
-export function save_bones_snapshot(extra = {}) {
+export function save_bones_snapshot(extra = {}, options = {}) {
     const key = bones_file_key();
     if (!key || no_bones_level()) return false;
-    if (vfsReadFile(key) != null) return false;
+    if (vfsReadFile(key) != null && !options.replace) return false;
 
     const level = clone_for_bones(game.level);
     if (!level) return false;
@@ -3779,6 +3824,7 @@ export function save_bones_snapshot(extra = {}) {
         stairs: clone_for_bones(game.stairs || null),
         updest: clone_for_bones(game.updest || null),
         dndest: clone_for_bones(game.dndest || null),
+        utrack: clone_for_bones(game._utrack || []),
     }));
 }
 
@@ -9865,7 +9911,9 @@ export function l_nhcore_init() {
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
-    if (getbones()) return;
+    const bones = getbones();
+    if (bones === 'prompt') return 'bones-prompt';
+    if (bones) return 'bones';
     g.in_mklev = true;
     clearSpecialLregions();
     await makelevel();
@@ -9889,6 +9937,7 @@ export async function mklev() {
     processThemeroomPostprocess();
     level_finalize_topology();
     g.in_mklev = false;
+    return 'made';
 }
 
 function currentSpecialLevel() {

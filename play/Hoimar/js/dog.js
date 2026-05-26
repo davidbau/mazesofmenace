@@ -82,6 +82,7 @@ const BELL_OF_OPENING = 263;
 const CANDELABRUM_OF_INVOCATION = 262;
 const DOG_HUNGRY = 300;
 const M2_STRONG = 0x04000000;
+const M2_UNDEAD = 0x00000002;
 const G_FREQ = 0x0007;
 const G_NOCORPSE = 0x0010;
 
@@ -426,7 +427,8 @@ function sgn(value) {
 }
 
 function mon_at(x, y, self) {
-    return game.level?.monsters?.find((mon) => mon !== self && mon.mx === x && mon.my === y);
+    return game.level?.monsters?.find((mon) =>
+        mon !== self && mon !== game.u?.usteed && mon.mx === x && mon.my === y);
 }
 
 function object_class(otyp) {
@@ -772,6 +774,19 @@ function mark_object_encountered(obj) {
 
 function monster_name(mon) {
     return String(mon?.data?.name || 'monster').toLowerCase().replace(/_/g, ' ');
+}
+
+function pet_kill_verb(mon) {
+    // C ref: src/mon.c:monkilled(). Nonliving monsters are destroyed.
+    const ptr = mon?.data;
+    if ((ptr?.mflags2 ?? 0) & M2_UNDEAD) return 'destroyed';
+    if (ptr?.name === 'MANES' || ptr?.mlet === 'S_GOLEM' || ptr?.mlet === 'S_VORTEX')
+        return 'destroyed';
+    return 'killed';
+}
+
+function pet_kill_line(mon) {
+    return `The ${monster_name(mon)} is ${pet_kill_verb(mon)}!`;
 }
 
 function monster_has_weapon_attack(mon) {
@@ -1162,7 +1177,7 @@ export async function finish_pet_kill(mtmp, target) {
     const targetX = target.mx;
     const targetY = target.my;
     if (cansee(targetX, targetY)) {
-        const line = `The ${monster_name(target)} is killed!`;
+        const line = pet_kill_line(target);
         const pending = game._pending_message || '';
         const deathLineWillDefer = !!pending && !game._more
             && !topline_can_pack_message(pending, line);
@@ -1595,8 +1610,11 @@ async function pet_melee_hit(mtmp, target, attack) {
     rn2(3); // mhitm_knockback chance
     rn2(6); // mhitm_knockback distance/side gate
     if (target.mhp < 1) {
-        if ((game._more || pending_pet_combat_boundary()) && !hallucinating()) {
-            if (!game._more && pending_pet_combat_boundary()) {
+        const killLine = pet_kill_line(target);
+        const killLineCanPack = !!game._pending_message && !game._more
+            && topline_can_pack_message(game._pending_message, killLine);
+        if ((game._more || (pending_pet_combat_boundary() && !killLineCanPack)) && !hallucinating()) {
+            if (!game._more && pending_pet_combat_boundary() && !killLineCanPack) {
                 game._pet_combat_pending_boundary = false;
                 queue_more_prompt();
                 game._pet_combat_more_latched = true;

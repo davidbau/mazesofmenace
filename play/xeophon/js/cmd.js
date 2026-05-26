@@ -133,7 +133,7 @@ function setWandCharges(item, charges) {
 }
 
 function refreshWandLine(item) {
-    if (/\(0:\d+\)/.test(String(item.line || ''))) item.chargeKnown = true;
+    if (/\(\d+:-?\d+\)/.test(String(item.line || ''))) item.chargeKnown = true;
     item.line = normalInventoryLine({ ...item, line: '' });
 }
 
@@ -163,6 +163,14 @@ function spendZapWandCharge(item, messages) {
     const charges = wandCharges(item, 8);
     checkUnpaidUsage(item, messages, { chargeCount: charges });
     return zappableWand(item, { fallbackCharges: 8 });
+}
+
+function spendEngraveWandCharge(item, messages) {
+    const chargeUse = zappableWand(item);
+    if (!chargeUse.zapped) return chargeUse;
+    checkUnpaidUsage(item, messages, { chargeCount: wandCharges(item) });
+    refreshWandLine(item);
+    return chargeUse;
 }
 
 function spendChargedToolUse(item, messages) {
@@ -295,8 +303,15 @@ function dustWand(item) {
     return `The ${name} turns to dust.`;
 }
 
+function useUpDustWand(item) {
+    const name = pickupObjectName(item);
+    useUpInventoryItem(item, item?.quan || 1);
+    return `The ${name} turns to dust.`;
+}
+
 async function beginWishPrompt({ moveCost = 0, dustItem = null, message = 'For what do you wish?' } = {}) {
     game._wish_text = '';
+    game._wish_tries = 0;
     game._wish_move_cost = moveCost;
     game._wish_dust_item = dustItem;
     await setMessage(message);
@@ -308,6 +323,7 @@ async function setWishResultMessage(message, more = false) {
     const dustItem = game._wish_dust_item || null;
     game._wish_move_cost = 0;
     game._wish_dust_item = null;
+    game._wish_tries = 0;
     game.context.move = moveCost;
     let text = message;
     if (dustItem && (game.inventory || []).includes(dustItem)) {
@@ -1213,7 +1229,7 @@ const WISH_BASE_OBJECTS = new Map([
     ['wax candle', { otyp: WAX_CANDLE, cls: 'tool', glyph: '(', kind: 'wax candle', plural: 'wax candles', age: 400 }],
     ['wax candles', { otyp: WAX_CANDLE, cls: 'tool', glyph: '(', kind: 'wax candle', plural: 'wax candles', age: 400 }],
     ['stethoscope', { otyp: STETHOSCOPE, cls: 'tool', glyph: '(', kind: 'stethoscope' }],
-    ['magic marker', { otyp: MAGIC_MARKER, cls: 'tool', glyph: '(', kind: 'magic marker' }],
+    ['magic marker', { otyp: MAGIC_MARKER, cls: 'tool', glyph: '(', kind: 'magic marker', plural: 'magic markers' }],
     ['lock pick', { otyp: LOCK_PICK, cls: 'tool', glyph: '(', kind: 'lock pick', actualKind: 'lock pick' }],
     ['wooden harp', { otyp: WOODEN_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'wooden harp', known: false }],
     ['magic harp', { otyp: MAGIC_HARP, cls: 'tool', glyph: '(', kind: 'harp', actualKind: 'magic harp', known: false }],
@@ -1282,6 +1298,7 @@ const WISH_TOOL_ROLLS = new Map([
     ['horn of plenty', 957], ['harp', 961], ['wooden harp', 961],
     ['magic harp', 963], ['bell', 965], ['bugle', 969],
     ['leather drum', 973], ['drum of earthquake', 975],
+    ['crystal ball', 495],
 ]);
 const WISH_TOOL_APPEARANCES = new Map([
     ['wooden flute', 'flute'], ['magic flute', 'flute'],
@@ -7402,6 +7419,61 @@ function useUpInventoryItem(item, amount = 1) {
     return true;
 }
 
+function splitCarriedCreamPieForSplat(item) {
+    if (!item || (item.quan || 1) <= 1) return item;
+    const split = { ...item, id: next_ident(), quan: 1, line: '' };
+    delete split.o_id;
+    delete split._shopBillObjectId;
+    split.letter = nextInventoryLetter();
+    if (item.unpaid && !splitCarriedObjectShopBill(item, split, 1))
+        clearObjectShopBillState(split);
+    item.quan = (item.quan || 1) - 1;
+    refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+    refreshInventoryObjectLine(split);
+    game.inventory ??= [];
+    game.inventory.push(split);
+    return split;
+}
+
+function billDummyAlteredCarriedObject(obj) {
+    if (!obj || shopBillableGold(obj)) return false;
+    const owner = shopkeeperOwningBillEntry(obj);
+    const shkp = owner.shkp || heroShopkeeper();
+    const entry = owner.entry || (shkp ? shopBillEntryForObject(shkp, obj) : null);
+    const price = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(obj);
+    if (!shkp || !(price > 0) || (!entry && !obj.unpaid)) return false;
+    const dummy = {
+        ...obj,
+        id: next_ident(),
+        o_id: undefined,
+        letter: undefined,
+        line: undefined,
+        contained: false,
+        container: null,
+        contents: [],
+        cobj: [],
+        nobj: null,
+        nexthere: null,
+        ox: undefined,
+        oy: undefined,
+    };
+    if (entry) removeObjectFromShopBillById(shkp, entry.bo_id);
+    const dummyEntry = addObjectToShopBill(shkp, dummy, price, { useup: true });
+    if (!dummyEntry) return false;
+    rememberUsedUpShopBillEntry(obj, dummyEntry, price, shkp);
+    clearObjectShopBillState(obj);
+    return true;
+}
+
+function finishCreamPieSplat(item) {
+    if (!item) return false;
+    const pie = splitCarriedCreamPieForSplat(item);
+    const billed = billDummyAlteredCarriedObject(pie);
+    removeInventoryItem(pie);
+    return billed;
+}
+
 export function consumeLifeSavingAmulet({ clearStoning = false } = {}) {
     const lifesaving = (game.inventory || []).find(item =>
         item.worn && String(item.kind || item.actualKind || item.line || '').includes('life saving'));
@@ -7709,6 +7781,15 @@ function maybeIgniteFireItem(item, messages, events, armor, joinState) {
     beginWishedBurn(item);
     item.line = normalInventoryLine({ ...item, line: '' });
     addFireInventoryMessage(messages, events, message, { damage: 0 }, armor, joinState);
+    if (item.unpaid) {
+        const shkp = heroShopkeeper();
+        if (shkp) {
+            checkUnpaidUsage(item, messages, { chargeCount: lampUsageChargeCount(item) });
+            const pronoun = (item.quan || 1) === 1 ? 'itself' : 'themselves';
+            messages.push(`"That's in addition to the cost of ${pickupObjectName({ ...item, line: '' })} ${pronoun}, of course."`);
+            markObjectShopBillUsedUp(item, shkp);
+        }
+    }
     return true;
 }
 
@@ -8497,6 +8578,36 @@ function syncBrokenBoxContentDisplay(content) {
     if (OBJECT_CLASS_GLYPHS[content.cls]) content.glyph = OBJECT_CLASS_GLYPHS[content.cls];
 }
 
+function billDummyAlteredShopObject(obj) {
+    if (!obj || shopBillableGold(obj)) return false;
+    const x = obj.ox ?? game.u?.ux;
+    const y = obj.oy ?? game.u?.uy;
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return false;
+    const price = shopItemPrice({ ...obj, contents: [], cobj: [] }, x, y);
+    if (!(price > 0)) return false;
+    const dummy = {
+        ...obj,
+        id: next_ident(),
+        o_id: undefined,
+        contents: [],
+        cobj: [],
+        contained: false,
+        container: null,
+        nobj: null,
+        nexthere: null,
+        ox: undefined,
+        oy: undefined,
+    };
+    const entry = addObjectToShopBill(shkp, dummy, price, { useup: true });
+    if (!entry) return false;
+    rememberUsedUpShopBillEntry(obj, entry, price, shkp);
+    obj.no_charge = true;
+    clearObjectShopBillState(obj);
+    obj.no_charge = true;
+    return true;
+}
+
 export function finishForceLock(force) {
     const chest = force?.chest;
     if (!chest) return false;
@@ -8505,6 +8616,7 @@ export function finishForceLock(force) {
     const destroyRoll = rn2(3);
     const destroyed = !force.picktyp && !destroyRoll;
     if (!destroyed) {
+        billDummyAlteredShopObject(chest);
         chest.locked = false;
         chest.olocked = false;
         chest.obroken = true;
@@ -9363,8 +9475,9 @@ function makeRandomWishObject() {
     return Object.assign(item, object_display(item), { wishedfor: true });
 }
 
-async function finishRandomBlankWish() {
+async function finishRandomBlankWish(prefix = '') {
     recordWishConduct();
+    game._wish_tries = 0;
     const letter = nextInventoryLetter();
     const item = Object.assign({ letter, quan: 1 }, makeRandomWishObject());
     item.line = `${letter} - ${wishedInventoryPhrase(item)}`;
@@ -9373,7 +9486,29 @@ async function finishRandomBlankWish() {
     maybeAttachCarriedFigurineTimeout(item);
     game._pet_food_scan_inventory = game.inventory;
     godsNoticeWish();
-    await setWishResultMessage(`${item.line}.`);
+    await setWishResultMessage(`${prefix}${item.line}.`);
+}
+
+const MAX_WISH_TRIES = 5;
+
+function wishRetryPrompt() {
+    return game.flags?.cmdassist
+        ? "For what do you wish (enter 'help' for assistance)?"
+        : 'For what do you wish?';
+}
+
+async function handleNoFittingWish() {
+    const tries = Math.max(0, Math.trunc(Number(game._wish_tries || 0))) + 1;
+    game._wish_text = '';
+    if (tries < MAX_WISH_TRIES) {
+        game._wish_tries = tries;
+        game._command_mode = 'wizardWish';
+        await setMessage(`Nothing fitting that description exists in the game.  ${wishRetryPrompt()}`);
+        return;
+    }
+    game._wish_tries = 0;
+    game._command_mode = null;
+    await finishRandomBlankWish("Nothing fitting that description exists in the game.  That's enough tries!  ");
 }
 
 function capWishSpe(spe) {
@@ -9381,12 +9516,80 @@ function capWishSpe(spe) {
     return sign * Math.min(Math.abs(spe), SPE_LIM);
 }
 
-function wishedSpeForItem(item, spe) {
-    if ((item?.cls === 'wand' || item?.otyp === WAND_CLASS) && !game.flags?.debug) {
-        if (spe < 0) return Math.max(spe, -1);
-        return Math.min(spe, item.spe ?? spe);
+function parseWishedChargeSuffix(name) {
+    const text = String(name || '');
+    if (text.length <= 1) return { name: text, type: 'none' };
+    const open = text.lastIndexOf('(');
+    if (open < 0) return { name: text, type: 'none' };
+    const beforeCut = open > 0 && text[open - 1] === ' ' ? open - 1 : open;
+    let pos = open + 1;
+
+    if (text.slice(pos, pos + 4).toLowerCase() === 'lit)') {
+        return {
+            name: text.slice(0, beforeCut) + text.slice(pos + 4),
+            type: 'lit',
+        };
     }
-    return spe;
+
+    const readDigits = start => {
+        let end = start;
+        while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57)
+            end++;
+        return {
+            value: end > start ? Number(text.slice(start, end)) : 0,
+            end,
+        };
+    };
+
+    let first = readDigits(pos);
+    let spe = first.value;
+    let recharged = 0;
+    pos = first.end;
+    if (text[pos] === ':') {
+        recharged = spe;
+        first = readDigits(pos + 1);
+        spe = first.value;
+        pos = first.end;
+    }
+    if (text[pos] !== ')') {
+        return {
+            name: text.slice(0, beforeCut),
+            type: 'invalid',
+            spe: 0,
+            recharged: 0,
+        };
+    }
+    if (!Number.isFinite(spe) || spe > SPE_LIM) spe = SPE_LIM;
+    if (!Number.isFinite(recharged) || recharged < 0 || recharged > 7) recharged = 7;
+    return {
+        name: text.slice(0, beforeCut) + text.slice(pos + 1),
+        type: 'charge',
+        spe,
+        recharged,
+    };
+}
+
+function wishedSpeForItem(item, spe) {
+    let requested = Math.min(Math.abs(Math.trunc(Number(spe || 0))), SPE_LIM);
+    let negative = spe < 0;
+    if (game.flags?.debug) return negative && requested ? -requested : requested;
+
+    const generated = item?.spe ?? 0;
+    const cls = itemClassKey(item);
+    if (cls === 'armor' || cls === 'weapon' || isWeaponTool(item) || isChargeableRing(item)) {
+        if (requested > rnd(5) && requested > generated)
+            requested = 0;
+        if (requested > 2 && ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) < 0)
+            negative = true;
+    } else {
+        if (cls === 'wand' || item?.otyp === WAND_CLASS || isCrystalBallObject(item)) {
+            if (requested > 1 && negative) requested = 1;
+        } else if (requested > 0 && negative) {
+            requested = 0;
+        }
+        if (requested > generated) requested = generated;
+    }
+    return negative && requested ? -requested : requested;
 }
 
 function applyWishedBuc(item, { wishedBlessed, wishedUncursed, wishedCursed, negativeSpe }) {
@@ -9808,7 +10011,7 @@ function musicalInstrumentKind(item) {
 }
 
 function instrumentDisplayName(item) {
-    return inventoryItemName(item).replace(/\s+\(0:\d+\)$/, '');
+    return inventoryItemName(item).replace(/\s+\(\d+:-?\d+\)$/, '');
 }
 
 function instrumentTheName(item) {
@@ -11150,8 +11353,7 @@ export async function activateStatueTrap(trap, x, y, { prefix = '', shatter = fa
 
 function noFittingWishObject() {
     return {
-        _wish_disappeared: true,
-        _wish_disappear_message: 'Nothing fitting that wish appears.',
+        _wish_no_match: true,
     };
 }
 
@@ -13909,6 +14111,11 @@ const CHARGED_TOOL_KINDS = new Set([
     'frost horn', 'fire horn', 'drum of earthquake',
 ]);
 
+function isChargedTool(item) {
+    if (!(item?.cls === 'tool' || item?.otyp === TOOL_CLASS || item?.glyph === '(')) return false;
+    return CHARGED_TOOL_KINDS.has(toolChargeKind(item));
+}
+
 function isRechargeableTool(item) {
     if (!(item?.cls === 'tool' || item?.otyp === TOOL_CLASS || item?.glyph === '(')) return false;
     return RECHARGEABLE_TOOL_KINDS.has(toolChargeKind(item));
@@ -15785,8 +15992,13 @@ function markObjectTreeShopBillsUsedUp(obj, seen = new Set()) {
 function billHeldMagicBagLostItem(obj) {
     const owner = shopkeeperOwningBillEntry(obj);
     if (obj?.unpaid || owner.entry) {
-        const shkp = owner.shkp || heroShopkeeper();
+        const currentShopkeeper = heroShopkeeper();
+        const shkp = owner.shkp || currentShopkeeper;
         if (!shkp) return 0;
+        if (!currentShopkeeper) {
+            markObjectTreeShopBillsUsedUp(obj);
+            return 0;
+        }
         const value = heldMagicBagLostValueForObject(obj, shkp);
         return chargeShopkeeperForLostMerchandise(shkp, value);
     }
@@ -19196,16 +19408,41 @@ function applyWishedQualifiers(item, qualifiers) {
 }
 
 function applyWishedQuantity(item, wishedQuan, forceQuantity = false) {
+    const quantity = Math.max(1, Math.trunc(Number(wishedQuan || 1)));
     if (item?.globby) {
-        applyWishedGlobQuantity(item, wishedQuan);
+        applyWishedGlobQuantity(item, quantity);
     } else if (item?.dragonArmor) {
         item.quan = 1;
     } else if (isTinObject(item)) {
-        if (game.flags?.debug || wishedQuan < rnd(6))
-            item.quan = wishedQuan;
-    } else if (wishedQuan > 1 || forceQuantity) {
-        item.quan = wishedQuan;
+        if (game.flags?.debug || quantity < rnd(6))
+            item.quan = quantity;
+    } else if (wishQuantityMergeable(item)) {
+        if (game.flags?.debug || quantity < rnd(6) || wishQuantityAlwaysAllowed(item, quantity))
+            item.quan = quantity;
+    } else if (forceQuantity) {
+        item.quan = 1;
     }
+}
+
+function wishQuantityMergeable(item) {
+    const cls = itemClassKey(item);
+    if (cls === 'scroll' || cls === 'potion' || cls === 'gem') return true;
+    if (cls === 'food' && objectKindKey(item) !== 'meat ring') return true;
+    if (cls === 'weapon') return true;
+    if (isCandleObject(item)) return true;
+    return false;
+}
+
+function wishedAmmoOrMissile(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === DART
+        || /\b(?:arrow|arrows|bolt|bolts|dart|darts|shuriken|throwing star|throwing stars|rock|rocks|flint)\b/.test(kind);
+}
+
+function wishQuantityAlwaysAllowed(item, quantity) {
+    if (quantity <= 7 && isCandleObject(item)) return true;
+    return quantity <= 20 && (wishedAmmoOrMissile(item)
+        || item?.otyp === ROCK || item?.otyp === FLINT || ['rock', 'flint'].includes(objectKindKey(item)));
 }
 
 function applyWishedTinVariety(item) {
@@ -19374,7 +19611,26 @@ function resolveWishedSpellingAlias(lowerName) {
     const normalized = String(lowerName || '').trim().replace(/\s+/g, ' ');
     const explicit = WISH_EXPLICIT_SPELLING_ALIASES.get(normalized);
     if (explicit) return { name: explicit, skipNamedesc: true };
-    return { name: WISH_NAME_ALIASES.get(normalized) || normalized, skipNamedesc: false };
+    const alias = WISH_NAME_ALIASES.get(normalized);
+    if (alias) return { name: alias, skipNamedesc: false };
+    return { name: singularizeWishedPluralName(normalized), skipNamedesc: false };
+}
+
+function singularizeWishedPluralName(normalized) {
+    for (const [name, baseObject] of WISH_BASE_OBJECTS.entries()) {
+        if (baseObject?.plural === normalized) return name;
+    }
+    for (const [plural, singular] of [
+        [/^wands of (.+)$/, 'wand of $1'],
+        [/^rings of (.+)$/, 'ring of $1'],
+        [/^potions of (.+)$/, 'potion of $1'],
+        [/^spellbooks of (.+)$/, 'spellbook of $1'],
+        [/^scrolls of (.+)$/, 'scroll of $1'],
+    ]) {
+        const match = normalized.match(plural);
+        if (match) return singular.replace('$1', match[1]);
+    }
+    return normalized;
 }
 
 function makeWishedGrayStoneObject(lowerName) {
@@ -19626,15 +19882,16 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         return Object.assign(otmp, baseFields, { wishedfor: true });
     }
 
-    const wandWish = lowerName.match(/^wand of ([a-z ]+?)(?:\s+\((?:(\d+):)?(\d+)\))?$/);
+    const wandWish = lowerName.match(/^wand of ([a-z ]+?)$/);
     if (wandWish && WAND_NAME_TO_INDEX.has(wandWish[1])) {
         const wand = wandWish[1];
         const wandIndex = WAND_NAME_TO_INDEX.get(wand);
         rn2(WAND_WISH_NAMEDESC_BOUNDS.get(wand));
         game._mkobj_wand_index = wandIndex;
         const otmp = mksobj(WAND_CLASS, true, false);
-        let spe = wandWish[3] ? capWishSpe(Number(wandWish[3])) : otmp.spe;
-        let recharged = wandWish[2] ? Math.min(Number(wandWish[2]), 7) : 0;
+        const chargeSuffix = !!qualifiers.wishChargeSuffix;
+        let spe = chargeSuffix ? capWishSpe(Number(qualifiers.wishChargeSpe || 0)) : otmp.spe;
+        let recharged = chargeSuffix ? Math.min(Math.max(0, Math.trunc(Number(qualifiers.wishRecharged || 0))), 7) : 0;
         let ignoreRequestedSpe = false;
         if (wand === 'wishing' && !game.flags?.debug) {
             spe = rn2(10) ? -1 : 0;
@@ -19654,7 +19911,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
             known: false,
             wishedfor: true,
             _wish_ignore_requested_spe: ignoreRequestedSpe,
-            _wish_spe_from_suffix: wandWish[3] != null,
+            _wish_spe_from_suffix: chargeSuffix,
         });
     }
 
@@ -19849,7 +20106,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         const otmp = mksobj(GEM_CLASS, false, false);
         return Object.assign(otmp, { cls: 'gem', glyph: '*', gemDescription: lowerName, actualKind: lowerName, wishedfor: true });
     }
-    if (/lamp|chest|camera|bag|sack|tool|marker|card|bell|harp|leash|blindfold|towel|lenses|flute|horn|whistle|drum|saddle|grease|figurine|tin opener/.test(lowerName)) {
+    if (/lamp|chest|camera|bag|sack|tool|marker|card|bell|harp|leash|blindfold|towel|lenses|flute|horn|whistle|drum|saddle|grease|figurine|tin opener|crystal ball/.test(lowerName)) {
         const namedescBound = WISH_TOOL_NAMEDESC_BOUNDS.get(lowerName);
         if (namedescBound) rn2(namedescBound);
         const toolRoll = WISH_TOOL_ROLLS.get(lowerName);
@@ -19865,8 +20122,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
             wishedfor: true,
         });
     }
-    const otmp = mksobj(WEAPON_CLASS, true, false);
-    return Object.assign(otmp, { cls: 'weapon', glyph: ')', kind: lowerName, actualKind: lowerName, wishedfor: true });
+    return noFittingWishObject();
 }
 
 function setOverlay(lines, clearRows = 24, hideStatus = false, clearCol = null) {
@@ -20631,6 +20887,15 @@ function billShopFloorContainerPutObject(container, putItem, options = {}) {
     return { shkp, returned: false, noCharge: false };
 }
 
+function preserveExplodedShopFloorPutTriggerBill(putItem, owner, fallbackShkp, price) {
+    if (!putItem || shopBillableGold(putItem)) return false;
+    const shkp = owner?.shkp || fallbackShkp || heroShopkeeper();
+    if (!shkp) return false;
+    if (!shopBillEntryForObject(shkp, putItem) && price > 0)
+        addObjectToShopBill(shkp, putItem, price, { useup: true });
+    return markObjectShopBillUsedUp(putItem, shkp);
+}
+
 function putInventoryObjectIntoContainer(container, item, amount = item?.quan || 1, options = {}) {
     if (!container) return { moved: false, message: '' };
     if (isIceBoxObject(container)) return putInventoryObjectIntoIceBox(container, item, amount, options);
@@ -20664,12 +20929,6 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
     const count = Math.min(Math.max(1, amount || 1), item.quan || 1);
     const putItem = splitInventoryObjectForContainerPut(item, count);
     clearContainerPutEquipmentState(putItem, name);
-    if (isMagicBagObject(container) && magicBagExplodesWithObject(putItem)) {
-        billShopFloorMagicBagExplosionTarget(container);
-        markObjectShopBillUsedUp(putItem);
-        removeInventoryItem(item, count);
-        return explodeMagicBagTransfer(container, putItem, []);
-    }
     let sellobjResult = null;
     if (!options.skipSalePrompt) {
         const pendingSale = beginShopFloorContainerPutSale(container, item, count);
@@ -20678,6 +20937,22 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
         if (pendingSale?.handled) sellobjResult = pendingSale;
     }
     curseLoadstoneLeavingInventory(putItem);
+    if (isMagicBagObject(container) && magicBagExplodesWithObject(putItem)) {
+        const triggerOwner = shopkeeperOwningBillEntry(putItem);
+        const triggerPrice = triggerOwner.entry ? shopBillEntryTotal(triggerOwner.entry) : unpaidBillPrice(putItem);
+        const wasUnpaid = !!(putItem.unpaid || triggerOwner.entry);
+        const billing = billShopFloorContainerPutObject(container, putItem, {
+            acceptedSale: !!options.acceptedSale,
+            shkp: options.salePending?.shkp,
+            sellobjResult,
+        });
+        if (wasUnpaid)
+            preserveExplodedShopFloorPutTriggerBill(putItem, triggerOwner, billing.shkp, triggerPrice);
+        billShopFloorMagicBagExplosionTarget(container);
+        removeInventoryItem(item, count);
+        const messages = sellobjResult?.message ? [sellobjResult.message] : [];
+        return explodeMagicBagTransfer(container, putItem, messages);
+    }
     const billing = billShopFloorContainerPutObject(container, putItem, {
         acceptedSale: !!options.acceptedSale,
         shkp: options.salePending?.shkp,
@@ -22484,10 +22759,52 @@ function shopBillEntryDisplayName(entry, obj, quantity = null, shkp = null) {
     return 'used-up object';
 }
 
+function outermostShopBillContainerForObject(obj) {
+    let top = obj;
+    const seen = new Set();
+    while (top?.container && !seen.has(top.container)) {
+        seen.add(top);
+        top = top.container;
+    }
+    if (!top || top === obj) return null;
+    if ((game.inventory || []).includes(top) || (game.level?.objects || []).includes(top))
+        return top;
+    return null;
+}
+
+function shopContainerPaymentName(container, includesContainer = false) {
+    const baseName = pickupObjectName({ ...(container || {}), line: '', quan: 1 })
+        .replace(/^empty /, '');
+    if (includesContainer)
+        return `${articleFor(`unpaid ${baseName}`)} and its contents`;
+    if ((game.level?.objects || []).includes(container))
+        return `the contents of the ${baseName}`;
+    return `the contents of your ${baseName}`;
+}
+
+function addContainerPaymentBillItem(groups, container, item, billEntry, price, options = {}) {
+    if (!container || !item || !(price > 0)) return;
+    const key = shopBillObjectId(container);
+    if (key == null) return;
+    let group = groups.get(key);
+    if (!group) {
+        group = { container, billItems: [], price: 0, includesContainer: false };
+        groups.set(key, group);
+    }
+    const billId = billEntry?.bo_id ?? shopBillObjectId(item);
+    if (group.billItems.some(entry => String(entry.billId) === String(billId))) return;
+    group.billItems.push({ item, billEntry, billId, price, blockedByUsedUp: !!options.blockedByUsedUp });
+    group.price += price;
+    if (item === container) group.includesContainer = true;
+    if (options.blockedByUsedUp) group.blockedByUsedUp = true;
+}
+
 function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
     const ledger = Array.isArray(shkp?.bill) ? shkp.bill : [];
     const usedEntries = [];
     const intactEntries = [];
+    const possibleTopContainerEntries = [];
+    const containerPaymentGroups = new Map();
     for (const billEntry of ledger) {
         const billId = String(billEntry.bo_id);
         seenBillIds.add(billId);
@@ -22520,26 +22837,61 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
                 name: shopBillEntryDisplayName(billEntry, obj, usedQuantity, shkp),
                 price: unitPrice * usedQuantity,
             });
-            intactEntries.push({
-                item: obj,
-                billEntry,
-                billPortion: 'intact',
-                quantity: liveQuantity,
-                blockedByUsedUp: true,
-                name: shopDebtItemName({ ...obj, quan: liveQuantity, line: '' }),
-                price: unitPrice * liveQuantity,
-            });
+            const intactPrice = unitPrice * liveQuantity;
+            const topContainer = outermostShopBillContainerForObject(obj);
+            if (topContainer) {
+                addContainerPaymentBillItem(containerPaymentGroups, topContainer, obj, billEntry, intactPrice, {
+                    blockedByUsedUp: true,
+                });
+            } else {
+                intactEntries.push({
+                    item: obj,
+                    billEntry,
+                    billPortion: 'intact',
+                    quantity: liveQuantity,
+                    blockedByUsedUp: true,
+                    name: shopDebtItemName({ ...obj, quan: liveQuantity, line: '' }),
+                    price: intactPrice,
+                });
+            }
             continue;
         }
 
         const price = shopBillEntryTotal(billEntry);
-        if (price > 0) intactEntries.push({
+        if (!(price > 0)) continue;
+        const intactEntry = {
             item: obj,
             billEntry,
             billPortion: 'intact',
             quantity: liveQuantity || billedQuantity,
             name: shopDebtItemName(obj),
             price,
+        };
+        const topContainer = outermostShopBillContainerForObject(obj);
+        if (topContainer) {
+            addContainerPaymentBillItem(containerPaymentGroups, topContainer, obj, billEntry, price);
+        } else if (globContents(obj).length) {
+            possibleTopContainerEntries.push(intactEntry);
+        } else {
+            intactEntries.push(intactEntry);
+        }
+    }
+    for (const entry of possibleTopContainerEntries) {
+        const group = containerPaymentGroups.get(shopBillObjectId(entry.item));
+        if (group) addContainerPaymentBillItem(containerPaymentGroups, entry.item, entry.item, entry.billEntry, entry.price);
+        else intactEntries.push(entry);
+    }
+    for (const group of containerPaymentGroups.values()) {
+        if (!(group.price > 0) || !group.billItems.length) continue;
+        intactEntries.push({
+            item: group.container,
+            containerPayment: true,
+            billPortion: 'containerContents',
+            billItems: group.billItems,
+            quantity: 1,
+            name: shopContainerPaymentName(group.container, group.includesContainer),
+            price: group.price,
+            blockedByUsedUp: !!group.blockedByUsedUp,
         });
     }
     entries.push(...usedEntries, ...intactEntries);
@@ -22583,11 +22935,14 @@ function collectPayableShopDebts(shkp = null) {
         name: `debt owed to ${shopkeeperDisplayName(shkp)}`,
         price: debit,
     });
-    return entries.map((entry, index) => ({
-        ...entry,
-        letter: String.fromCharCode(97 + index),
-        selected: false,
-    }));
+    return entries
+        .map((entry, index) => ({ entry, index }))
+        .sort((a, b) => shopPaymentEntryCompare(a.entry, b.entry) || a.index - b.index)
+        .map(({ entry }, index) => ({
+            ...entry,
+            letter: String.fromCharCode(97 + index),
+            selected: false,
+        }));
 }
 
 function shopkeeperDebitPayment(entry) {
@@ -22605,23 +22960,62 @@ function shopPaymentEntryRank(entry) {
     return 2;
 }
 
+function shopPaymentEntryIsUsedUp(entry) {
+    return entry?.billPortion === 'partlyUsedUp'
+        || entry?.billPortion === 'fullyUsedUp'
+        || !!entry?.usedUpBill;
+}
+
+function shopPaymentEntryCompare(a, b) {
+    const rank = shopPaymentEntryRank(a) - shopPaymentEntryRank(b);
+    if (rank) return rank;
+    const price = shopPaymentEntryValue(b) - shopPaymentEntryValue(a);
+    if (price) return price;
+    return 0;
+}
+
 function shopPaymentHasUsedUpSelection(selected, entry) {
     return selected.some(candidate =>
         candidate !== entry && candidate.billEntry === entry.billEntry
         && candidate.billPortion === 'partlyUsedUp');
 }
 
-function shopPaymentEntryBlocked(entry, selected) {
-    if (!entry?.blockedByUsedUp || !entry.billEntry || !entry.item) return false;
+function blockedShopPaymentBillItem(entry, selected) {
+    if (entry?.containerPayment || entry?.billPortion === 'containerContents') {
+        const billItems = Array.isArray(entry.billItems) ? entry.billItems : [];
+        return billItems.find(billItem => {
+            if (!billItem?.blockedByUsedUp || !billItem.billEntry || !billItem.item) return false;
+            const liveQuantity = Math.max(1, Math.trunc(Number(billItem.item.quan || 1)));
+            if (shopBillEntryQuantity(billItem.billEntry) <= liveQuantity) return false;
+            return !shopPaymentHasUsedUpSelection(selected, { billEntry: billItem.billEntry });
+        }) || null;
+    }
+    if (!entry?.blockedByUsedUp || !entry.billEntry || !entry.item) return null;
     const liveQuantity = Math.max(1, Math.trunc(Number(entry.item.quan || 1)));
-    if (shopBillEntryQuantity(entry.billEntry) <= liveQuantity) return false;
-    return !shopPaymentHasUsedUpSelection(selected, entry);
+    if (shopBillEntryQuantity(entry.billEntry) <= liveQuantity) return null;
+    return !shopPaymentHasUsedUpSelection(selected, entry) ? { item: entry.item, billEntry: entry.billEntry } : null;
+}
+
+function shopPaymentEntryBlocked(entry, selected) {
+    return !!blockedShopPaymentBillItem(entry, selected);
+}
+
+function blockedShopPaymentMessage(entry, selected) {
+    const blocker = blockedShopPaymentBillItem(entry, selected);
+    if (!blocker?.item || !blocker.billEntry) return "You can't buy that yet.";
+    const liveQuantity = Math.max(1, Math.trunc(Number(blocker.item.quan || 1)));
+    const usedQuantity = Math.max(1, shopBillEntryQuantity(blocker.billEntry) - liveQuantity);
+    const usedName = pickupObjectName({ ...blocker.item, quan: usedQuantity, line: '' });
+    const container = entry?.item || blocker.item.container;
+    const containerName = pickupObjectName({ ...(container || {}), quan: 1, line: '' }).replace(/^empty /, '');
+    const liveWord = liveQuantity > 1 ? 'ones' : 'one';
+    return `Please pay for the other ${usedName} before buying the ${liveWord} in the ${containerName}.`;
 }
 
 function payableShopPaymentEntries(selected) {
     return [...(selected || [])]
         .filter(entry => !shopPaymentEntryBlocked(entry, selected || []))
-        .sort((a, b) => shopPaymentEntryRank(a) - shopPaymentEntryRank(b));
+        .sort(shopPaymentEntryCompare);
 }
 
 function shopPaymentEntryValue(entry) {
@@ -22693,6 +23087,40 @@ function payIntactShopBillEntry(shkp, entry) {
     return { billed: true, removedLedger: false, legacy: true };
 }
 
+function payContainerShopBillEntry(shkp, entry) {
+    const billItems = Array.isArray(entry?.billItems) ? entry.billItems : [];
+    if (!billItems.length) return { billed: false, removedLedger: false, legacy: false };
+    if (shopPaymentEntryBlocked(entry, [entry])) return {
+        billed: false,
+        removedLedger: false,
+        legacy: false,
+        blocked: true,
+        message: blockedShopPaymentMessage(entry, [entry]),
+    };
+    applyShopPaymentValue(shkp, entry.price);
+    const container = entry.item;
+    const ordered = [...billItems].sort((a, b) => (a.item === container) - (b.item === container));
+    const seen = new Set();
+    let removedLedgerBillCount = 0;
+    let legacy = false;
+    for (const billItem of ordered) {
+        const item = billItem.item;
+        const billId = billItem.billEntry?.bo_id ?? shopBillObjectId(item);
+        if (billId == null || seen.has(String(billId))) continue;
+        seen.add(String(billId));
+        const removedLedger = removeObjectFromShopBillById(shkp, billId);
+        if (removedLedger) removedLedgerBillCount++;
+        else legacy = true;
+        clearObjectShopBillState(item);
+    }
+    return {
+        billed: true,
+        removedLedger: removedLedgerBillCount > 0,
+        removedLedgerBillCount,
+        legacy,
+    };
+}
+
 function applyShopPaymentEntry(shkp, entry) {
     if (entry?.shopkeeperDebit) {
         const debt = Math.max(0, Math.trunc(Number(entry.shopkeeperDebit.debit ?? entry.price ?? 0)));
@@ -22703,49 +23131,125 @@ function applyShopPaymentEntry(shkp, entry) {
     }
     if (entry?.billPortion === 'partlyUsedUp') return payPartlyUsedShopBillEntry(shkp, entry);
     if (entry?.billPortion === 'fullyUsedUp' || entry?.usedUpBill) return payFullyUsedShopBillEntry(shkp, entry);
+    if (entry?.billPortion === 'containerContents' || entry?.containerPayment) return payContainerShopBillEntry(shkp, entry);
     return payIntactShopBillEntry(shkp, entry);
 }
 
 function finishShopPaymentSelection(shkp, selected) {
     const payableEntries = payableShopPaymentEntries(selected);
-    const cashTotal = shopPaymentCashDue(shkp, payableEntries);
-    if (!payableEntries.length) return { paid: false, skipped: true, cashTotal, payableEntries, message: '' };
+    if (!payableEntries.length) {
+        const blockedEntry = (selected || []).find(entry => shopPaymentEntryBlocked(entry, selected || []));
+        if (blockedEntry) return {
+            paid: false,
+            skipped: false,
+            blocked: true,
+            cashTotal: 0,
+            payableEntries,
+            message: blockedShopPaymentMessage(blockedEntry, selected || []),
+        };
+        return { paid: false, skipped: true, cashTotal: 0, payableEntries, message: '' };
+    }
     const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
     const availableGold = game._goldCount || money?.quan || 0;
-    if (availableGold < cashTotal) return {
+    let remainingGold = availableGold;
+    let cashTotal = 0;
+    let removedLedgerBillCount = 0;
+    let billedSelections = 0;
+    let legacyBillSelections = 0;
+    const paidEntries = [];
+    let stoppedShort = false;
+    let stopMessage = '';
+    for (const entry of payableEntries) {
+        const paymentShopkeeper = entry?.shopkeeperDebit || shkp;
+        const value = shopPaymentEntryValue(entry);
+        const credit = Math.max(0, Math.trunc(Number(paymentShopkeeper?.credit || 0)));
+        const cashDue = value - Math.min(credit, value);
+        if (cashDue > remainingGold) {
+            if (paidEntries.length) break;
+            return {
+                paid: false,
+                cashTotal: 0,
+                payableEntries,
+                message: "You don't have enough gold.",
+            };
+        }
+        const result = applyShopPaymentEntry(shkp, entry);
+        if (result.blocked) {
+            if (paidEntries.length) {
+                stoppedShort = true;
+                stopMessage = result.message || blockedShopPaymentMessage(entry, selected || []);
+                break;
+            }
+            return {
+                paid: false,
+                blocked: true,
+                cashTotal: 0,
+                payableEntries,
+                message: result.message || blockedShopPaymentMessage(entry, selected || []),
+            };
+        }
+        remainingGold -= cashDue;
+        cashTotal += cashDue;
+        paidEntries.push(entry);
+        if (!result.billed) continue;
+        billedSelections++;
+        if (result.removedLedgerBillCount != null)
+            removedLedgerBillCount += result.removedLedgerBillCount;
+        else if (result.removedLedger)
+            removedLedgerBillCount++;
+        if (result.legacy) legacyBillSelections++;
+    }
+    if (payableEntries.length > paidEntries.length && !stoppedShort) {
+        stoppedShort = true;
+        stopMessage = "You don't have enough gold.";
+    }
+    if (shkp && legacyBillSelections)
+        shkp.billct = Math.max(0, (shkp.billct || legacyBillSelections) - legacyBillSelections);
+    if (!paidEntries.length) return {
         paid: false,
-        cashTotal,
+        cashTotal: 0,
         payableEntries,
         message: "You don't have enough gold.",
     };
 
     if (availableGold > cashTotal) next_ident();
-    game._goldCount = Math.max(0, availableGold - cashTotal);
+    game._goldCount = Math.max(0, remainingGold);
     if (money) {
         money.quan = game._goldCount;
         updateMoneyLine(money);
     }
-
-    let removedLedgerBillCount = 0;
-    let billedSelections = 0;
-    let legacyBillSelections = 0;
-    for (const entry of payableEntries) {
-        const result = applyShopPaymentEntry(shkp, entry);
-        if (!result.billed) continue;
-        billedSelections++;
-        if (result.removedLedger) removedLedgerBillCount++;
-        if (result.legacy) legacyBillSelections++;
-    }
-    if (shkp && legacyBillSelections)
-        shkp.billct = Math.max(0, (shkp.billct || legacyBillSelections) - legacyBillSelections);
     return {
         paid: true,
         cashTotal,
-        payableEntries,
+        payableEntries: paidEntries,
         billedSelections,
         removedLedgerBillCount,
         legacyBillSelections,
+        stoppedShort,
+        message: stopMessage,
     };
+}
+
+function shopPaymentMenuRows(entries, width) {
+    const rows = [[0, 41, 'Pay for which items?', 1]];
+    let row = 2;
+    const hasUsedUpSection = shopPaymentEntryIsUsedUp(entries[0]);
+    if (hasUsedUpSection) {
+        const plural = entries[1] && shopPaymentEntryIsUsedUp(entries[1]) ? 's' : '';
+        rows.push([row++, 41, `Used up item${plural}:`]);
+    }
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        if (hasUsedUpSection && i > 0 && shopPaymentEntryIsUsedUp(entries[i - 1]) && !shopPaymentEntryIsUsedUp(entry)) {
+            const plural = i < entries.length - 1 ? 's' : '';
+            rows.push([row++, 41, `Unpaid item${plural}:`]);
+        }
+        const price = String(entry.price).padStart(width, ' ');
+        entry.payMenuRow = row;
+        rows.push([row++, 41, `${entry.letter} - ${price} Zm, ${entry.name}`]);
+    }
+    rows.push([row, 41, '(end)']);
+    return rows;
 }
 
 function shopkeeperObjectivePronoun(shkp) {
@@ -23665,14 +24169,15 @@ function identifiedInventoryLine(item) {
             || (item.wandIndex != null ? IDENTIFIED_WAND_NAMES[item.wandIndex] : '')
             || String(item.kind || '').replace(/^wand of /, '')
             || 'nothing';
-        phrase = `wand of ${raw}${item.spe == null ? '' : ` (0:${item.spe})`}`;
+        phrase = `wand of ${raw}${identifiedChargeSuffix(item)}`;
     } else if (cls === 'tool') {
         const raw = pickupObjectName(item);
+        const chargeSuffix = isChargedTool(item) ? identifiedChargeSuffix(item) : '';
         phrase = item.tool === 'magicMarker' || item.kind === 'magic marker'
-            ? `magic marker${item.spe == null ? '' : ` (0:${item.spe})`}`
+            ? `magic marker${identifiedChargeSuffix(item)}`
             : item.kind === 'sack'
                 ? `empty ${buc} sack`
-            : `${buc} ${raw}`;
+            : `${buc} ${raw}${chargeSuffix}`;
     } else if (cls === 'food' || item.otyp === FOOD_CLASS) {
         let name = pickupObjectName(item);
         if (String(item.kind || '').startsWith('tin:')) {
@@ -23734,6 +24239,8 @@ function identifyInventoryItem(item) {
         if (raw) item.kind = `ring of ${raw}`;
     } else if (item.cls === 'wand' || item.otyp === WAND_CLASS) {
         item.chargeKnown = true;
+    } else if (isChargedTool(item)) {
+        item.chargeKnown = true;
     }
     item.line = identifiedInventoryLine(item);
 }
@@ -23778,8 +24285,8 @@ function normalInventoryLine(item) {
         && (name.endsWith('boots') || name.endsWith('shoes') || name.endsWith('gloves') || name.startsWith('gauntlets')))
         name = `pair of ${name}`;
     if (cls === 'tool' && kind === 'sack') name = `empty ${blessedState}sack`;
-    if ((cls === 'wand' || item.tool === 'charges' || item.tool === 'magicMarker') && item.spe != null && item.chargeKnown)
-        name = `${name} (0:${item.spe})`;
+    if ((cls === 'wand' || item.tool === 'charges' || item.tool === 'magicMarker' || isChargedTool(item)) && item.spe != null && item.chargeKnown)
+        name = `${name}${identifiedChargeSuffix(item)}`;
 
     if (cls === 'weapon' || item.wielded || item.alternate) {
         const spe = item.spe ?? 0;
@@ -23827,8 +24334,14 @@ function normalInventoryLine(item) {
 
 function wandChargeSuffix(item, charges = item?.spe) {
     if (charges == null) return '';
-    const chargesKnown = item.chargeKnown || /\(0:\d+\)/.test(String(item.line || ''));
-    return chargesKnown ? ` (0:${charges})` : '';
+    const chargesKnown = item.chargeKnown || /\(\d+:-?\d+\)/.test(String(item.line || ''));
+    return chargesKnown ? identifiedChargeSuffix(item, charges) : '';
+}
+
+function identifiedChargeSuffix(item, charges = item?.spe) {
+    if (charges == null) return '';
+    const recharged = Math.max(0, Math.trunc(Number(item?.recharged || 0)));
+    return ` (${recharged}:${charges})`;
 }
 
 function learnObjectScore(section, name) {
@@ -29461,7 +29974,9 @@ export async function rhack(_cmd) {
             const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
             const shopkeeperName = shkp?.shknam || 'shopkeeper';
             const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
-            game._queued_message_after_more = `"Thank you for shopping in ${possessive} ${shopName}!"`;
+            game._queued_message_after_more = payment.stoppedShort
+                ? payment.message || "You don't have enough gold."
+                : `"Thank you for shopping in ${possessive} ${shopName}!"`;
             const paidEntries = payment.payableEntries;
             const message = paidEntries.length === 1
                 ? `You bought ${paidEntries[0].name} for ${paidEntries[0].price} gold piece${paidEntries[0].price === 1 ? '' : 's'}.`
@@ -29476,7 +29991,7 @@ export async function rhack(_cmd) {
         const entry = entries[index];
         if (!entry) return;
         entry.selected = !entry.selected;
-        const row = (game._overlay_lines || []).find(line => line[0] === index + 2 && line[1] === 41);
+        const row = (game._overlay_lines || []).find(line => line[0] === (entry.payMenuRow ?? index + 2) && line[1] === 41);
         if (row) {
             const price = String(entry.price).padStart(game._pay_menu_width || 1, ' ');
             row[2] = `${entry.letter} ${entry.selected ? '+' : '-'} ${price} Zm, ${entry.name}`;
@@ -30438,9 +30953,13 @@ export async function rhack(_cmd) {
                     newsym(x, y);
                 }
                 if (game._cream_pie_after_more_letter) {
-                    rn2(100);
+                    rn2(100); // C delobj() reaches obj_resists(obj, 0, 0).
                     const pie = (game.inventory || []).find(item => item.letter === game._cream_pie_after_more_letter);
-                    if (pie) removeInventoryItem(pie);
+                    if (pie && finishCreamPieSplat(pie)) {
+                        const queuedBefore = game._queued_messages_after_more?.length || 0;
+                        appendToplineAfterMoreMessages(['You splatter that cream pie, you pay for it!']);
+                        if ((game._queued_messages_after_more?.length || 0) > queuedBefore) keepMore = true;
+                    }
                     game._cream_pie_after_more_letter = '';
                 }
                 if (game._polyself_cloak_after_more_letter) {
@@ -33490,7 +34009,7 @@ export async function rhack(_cmd) {
                 const damage = d(wandCharges(item) + 2, 6);
                 if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
                 const name = pickupObjectName(item);
-                game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
+                useUpInventoryItem(item, item.quan || 1);
                 await setMessage([...spentMessages(), `The ${name} suddenly explodes!`].join('  '));
                 game._command_mode = null;
                 game.context.move = 1;
@@ -33519,7 +34038,7 @@ export async function rhack(_cmd) {
         if (item?.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
             const damage = d((item.spe ?? item.charges ?? 0) + 2, 6);
             if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
-            game.inventory = (game.inventory || []).filter(invItem => invItem !== item);
+            useUpInventoryItem(item, item.quan || 1);
             await setMessage([...spentMessages(), `The ${pickupObjectName(item)} suddenly explodes!`].join('  '));
             game._command_mode = null;
             game.context.move = 1;
@@ -35383,6 +35902,43 @@ export async function rhack(_cmd) {
             game._command_mode = 'engraveToolMore';
             return;
         }
+        const item = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (item && isWandItem(item)) {
+            const usageMessages = [];
+            const chargeUse = spendEngraveWandCharge(item, usageMessages);
+            const messages = wandZapSpendMessages(usageMessages, chargeUse);
+            if (!chargeUse.zapped) {
+                if (chargeUse.dust && (game.inventory || []).includes(item))
+                    messages.push(useUpDustWand(item));
+                else
+                    messages.push('The wand is too worn out to engrave.');
+                await setMessage(messages.join('  '));
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            if (item.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
+                const damage = d(wandCharges(item) + 2, 6);
+                if (game.u) game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+                useUpInventoryItem(item, item.quan || 1);
+                messages.push(`The ${pickupObjectName(item)} suddenly explodes!`);
+                await setMessage(messages.join('  '));
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            if (wandCharges(item) < 0 && (game.inventory || []).includes(item)) {
+                messages.push(useUpDustWand(item));
+                await setMessage(messages.join('  '));
+                game._command_mode = null;
+                game.context.move = 1;
+                return;
+            }
+            if (!messages.length) messages.push(`You write in the dust with ${articleFor(pickupObjectName(item))}.`);
+            await setMessage(messages.join('  '), true);
+            game._command_mode = 'engraveToolMore';
+            return;
+        }
         await setMessage("You don't have that object.", true);
         game._command_mode = 'engraveToolMore';
         return;
@@ -36891,7 +37447,7 @@ export async function rhack(_cmd) {
             for (const mon of game.level?.monsters || []) newsym(mon.mx, mon.my);
             game._cream_pie_after_more_letter = item.letter;
             game._topline_after_more = "You can't see through all the sticky goop on your face.";
-            await setMessage('You immerse your face in the cream pie.', true);
+            await setMessage(`You immerse your face in ${(item.quan || 1) > 1 ? 'one of the cream pies' : 'the cream pie'}.`, true);
             return;
         }
         if (isRoyalJelly(item)) {
@@ -38057,6 +38613,9 @@ export async function rhack(_cmd) {
                 fakeAmulet: false,
                 monsterGender: null,
                 zombifying: false,
+                wishChargeSuffix: false,
+                wishChargeSpe: 0,
+                wishRecharged: 0,
             };
             let wishedErosionIntensity = 0;
             for (;;) {
@@ -38208,18 +38767,18 @@ export async function rhack(_cmd) {
                 wishedQuanForced = true;
                 wishedName = wishedName.slice(quan[0].length);
             }
-            const litSuffix = wishedName.match(/\s*\(lit\)\s*$/i);
-            if (litSuffix) {
+            const chargeSuffix = parseWishedChargeSuffix(wishedName);
+            wishedName = chargeSuffix.name;
+            if (chargeSuffix.type === 'lit') {
                 wishedQualifiers.lightState = 1;
-                wishedName = wishedName.slice(0, litSuffix.index);
-            } else if (!/^wand of\b/i.test(wishedName)) {
-                const chargeSuffix = wishedName.match(/\s*\((-?\d+)\)\s*$/);
-                if (chargeSuffix) {
-                    const charge = Number(chargeSuffix[1]);
-                    wishedSpeNegative = charge < 0;
-                    wishedSpe = capWishSpe(Math.abs(charge));
-                    wishedName = wishedName.slice(0, chargeSuffix.index);
-                }
+            } else if (chargeSuffix.type === 'charge') {
+                wishedSpeNegative = false;
+                wishedSpe = capWishSpe(chargeSuffix.spe);
+                wishedQualifiers.wishChargeSuffix = true;
+                wishedQualifiers.wishChargeSpe = chargeSuffix.spe;
+                wishedQualifiers.wishRecharged = chargeSuffix.recharged;
+            } else if (chargeSuffix.type === 'invalid' && wishedSpe !== undefined) {
+                wishedSpe = 0;
             }
             const groupedWish = normalizeWishedGroupPhrase(wishedName, wishedQuan);
             wishedName = groupedWish.name;
@@ -38227,12 +38786,16 @@ export async function rhack(_cmd) {
             wishedQuanForced = wishedQuanForced || groupedWish.matched;
             wishedQuan = applyWishedPluralQuantity(wishedName, wishedQuan);
             const lowerName = wishedName.trim().toLowerCase();
-            if (!lowerName || lowerName === 'nothing' || lowerName === 'nil' || lowerName === 'none') {
+            if (!lowerName) {
+                await handleNoFittingWish();
+                return;
+            }
+            if (lowerName === 'nothing' || lowerName === 'nil' || lowerName === 'none') {
                 await setWishResultMessage('Nothing fitting that wish appears.');
                 return;
             }
-            recordWishConduct();
             if (/^(?:gold(?: pieces?)?|coins?|zorkmids?|money|\$)$/.test(lowerName)) {
+                recordWishConduct();
                 next_ident();
                 godsNoticeWish();
                 game._goldCount = (game._goldCount || 0) + wishedQuan;
@@ -38253,15 +38816,22 @@ export async function rhack(_cmd) {
                 letter = nextInventoryLetter();
             }
             const item = Object.assign({ letter, quan: 1 }, wishedObjectFromName(wishedName.trim(), wishedQualifiers));
+            if (item._wish_no_match) {
+                await handleNoFittingWish();
+                return;
+            }
             if (item._wish_disappeared) {
                 await setWishResultMessage(item._wish_disappear_message);
                 return;
             }
+            recordWishConduct();
             if (item._artifact_wish_name) wishedQuan = 1;
             if (item._artifact_wish_name || item.artifact) addConductCount('wisharti');
             if (item.artifact) touchArtifact(item);
-            if (wishedSpe !== undefined && !item._wish_ignore_requested_spe && !item._wish_spe_from_suffix)
-                item.spe = wishedSpeForItem(item, wishedSpe);
+            if (wishedSpe !== undefined && !item._wish_ignore_requested_spe && !item._wish_spe_from_suffix) {
+                const requestedSpe = wishedSpeNegative ? -Math.abs(wishedSpe) : Math.abs(wishedSpe);
+                item.spe = wishedSpeForItem(item, requestedSpe);
+            }
             applyWishedBuc(item, {
                 wishedBlessed,
                 wishedUncursed,
@@ -43468,16 +44038,11 @@ export async function rhack(_cmd) {
             return;
         }
         const width = String(Math.max(...entries.map(entry => entry.price))).length;
-        const rows = [[0, 41, 'Pay for which items?', 1]];
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            rows.push([i + 2, 41, `${entry.letter} - ${String(entry.price).padStart(width, ' ')} Zm, ${entry.name}`]);
-        }
-        rows.push([entries.length + 2, 41, '(end)']);
+        const rows = shopPaymentMenuRows(entries, width);
         game._pay_menu_items = entries;
         game._pay_menu_width = width;
         game._pay_shopkeeper = shkp;
-        setOverlay(rows, entries.length + 3, false, 41);
+        setOverlay(rows, Math.max(...rows.map(([row]) => row)) + 1, false, 41);
         game._command_mode = 'payMenu';
         return;
     }

@@ -1,9 +1,10 @@
 // rng.js — PRNG wrappers around ISAAC64.
 // C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: only core context is used for parity.
+// Contest: core + Lua ISAAC contexts (see nhl_rng.js); display stream still deferred.
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
+import { initLuaRngFromCoreBytesLikeC } from './nhl_rng.js';
 
 let _rngLog = [];
 let _rngLogEnabled = false;
@@ -26,6 +27,7 @@ export function initRng(seed) {
         s >>= 8n;
     }
     game.coreCtx = isaac64_init(bytes);
+    initLuaRngFromCoreBytesLikeC(bytes);
     _rngLog = [];
 }
 

@@ -4196,7 +4196,8 @@ function mksobj_init(otmp, otyp, artif) {
         } else if ((roll > 430 && roll <= 445) || (roll > 705 && roll <= 720) || (roll > 795 && roll <= 810)) {
             rn1(70, 30);
         } else if (roll > 490 && roll <= 505) {
-            rn1(5, 3);
+            otmp.otyp = CRYSTAL_BALL;
+            otmp.spe = rn1(5, 3);
             blessorcurse(otmp, 2);
         } else if (roll > 755 && roll <= 770) {
             rn1(21, 5);

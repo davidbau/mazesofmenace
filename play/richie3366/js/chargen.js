@@ -19,7 +19,7 @@ import {
     randgendLikeC,
     randalignLikeC,
 } from './roles.js';
-import { randroleFilteredLikeC } from './chargen_rigid.js';
+import { randroleFilteredLikeC, ROLE_NONE } from './chargen_rigid.js';
 
 /**
  * C **`hacklib.c`** **`findword`** — space-separated **`list`**; match **`word`** prefix of length **`wordlen`**;
@@ -175,6 +175,38 @@ export function applyPlnameSuffixToOptsLikeC(opts) {
     }
 
     opts.name = base.replace(/,/g, ' ');
+}
+
+/**
+ * C flags.initrole/initrace/initgend/initalign after plnamesuffix — unset facets stay ROLE_NONE.
+ * @param {ReturnType<typeof import('./options.js').parseNethackrc>} opts
+ * @returns {{ initrole: number, initrace: number, initgend: number, initalign: number }}
+ */
+export function chargenFacetIndicesFromOptsLikeC(opts) {
+    const f = {
+        initrole: ROLE_NONE,
+        initrace: ROLE_NONE,
+        initgend: ROLE_NONE,
+        initalign: ROLE_NONE,
+    };
+    if (typeof opts.role === 'string' && opts.role.trim()) {
+        const r = findRole(opts.role) || findRoleByAbbr(opts.role);
+        if (r) f.initrole = roles.indexOf(r);
+    }
+    if (typeof opts.race === 'string' && opts.race.trim()) {
+        const r = findRace(opts.race);
+        if (r) f.initrace = races.indexOf(r);
+    }
+    if (typeof opts.gender === 'string' && opts.gender.trim()) {
+        const gnd = opts.gender.toLowerCase().trim();
+        if (gnd.startsWith('f') || gnd === 'female' || gnd === 'fem') f.initgend = 1;
+        else if (gnd.startsWith('m') || gnd === 'male' || gnd === 'mal') f.initgend = 0;
+    }
+    if (typeof opts.align === 'string' && opts.align.trim()) {
+        const a = findAlign(opts.align);
+        if (a) f.initalign = aligns.indexOf(a);
+    }
+    return f;
 }
 
 /**

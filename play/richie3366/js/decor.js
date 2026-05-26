@@ -120,6 +120,22 @@ export function stairwayFindFromLikeC(g, fromdlev, isladder) {
     return null;
 }
 
+/**
+ * C: stairs.c `stairway_find(d_level *fromdlev)` — match `tolev` only (no isladder).
+ * @param {import('./gstate.js').game} g
+ * @param {{ dnum: number, dlevel: number }} fromdlev
+ */
+export function stairwayFindLikeC(g, fromdlev) {
+    const dn = fromdlev.dnum | 0;
+    const dl = fromdlev.dlevel | 0;
+    for (let s = g.stairs; s; s = s.next) {
+        const tv = s.tolev;
+        if (!tv) continue;
+        if ((tv.dnum | 0) === dn && (tv.dlevel | 0) === dl) return s;
+    }
+    return null;
+}
+
 export function an(phrase) {
     if (!phrase) return phrase;
     const t = phrase.trim();

@@ -5,7 +5,7 @@
  * C: options.c boolean opt_set-style OPTIONS=key:val (tutorial:yes, color:no, …).
  * @param {string} val
  */
-function parseRcBooleanishLikeC(val) {
+export function parseRcBooleanishLikeC(val) {
     const v = String(val).trim().toLowerCase();
     if (!v) return false;
     if (v === 'no' || v === 'false' || v === 'off' || v === '0' || v === 'n') return false;

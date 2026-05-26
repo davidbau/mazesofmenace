@@ -44,7 +44,7 @@ const ALIGNWEIGHT = 4;
 const M1_OVIPAROUS = 0x00400000;
 
 /** C `objects.h` FOOD_CLASS slice **`[otyp, oc_prob]`** incl. **`MEAT_RING`** (**0**). */
-const FOOD_CLASS_MKOBJ_WALK = /** @type {readonly (readonly [number, number])[]} */ ([
+export const FOOD_CLASS_MKOBJ_WALK = /** @type {readonly (readonly [number, number])[]} */ ([
     [173, 140],
     [174, 0],
     [175, 85],

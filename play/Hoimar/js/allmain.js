@@ -17,12 +17,12 @@ import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
 import { apply_startup_role_state, calculated_armor_class, u_init_misc_rng, u_init_role_inventory } from './u_init.js';
 import { makedog } from './dog.js';
-import { continueRunStep, finish_pending_eaten_corpse, performLevelTeleport, rhack, shouldStopRunForNearbyMonster } from './cmd.js';
+import { continueRunStep, finish_pending_eaten_corpse, finishPrayerResult, performLevelTeleport, rhack, shouldStopRunForNearbyMonster } from './cmd.js';
 import { nhgetch } from './input.js';
 import {
     docrt, cls, bot, flush_screen, pline, append_pline, newsym, serialize_terminal_grid,
     refresh_warning_monsters, refresh_swallowed_overlay, clear_pending_message,
-    queue_more_prompt, see_monsters, see_objects, see_traps,
+    queue_more_prompt, see_monsters, see_objects, see_traps, topline_can_pack_message,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { roles, findAlign, findRace, findRole, roleGod, roleGreeting, roleWithStartingRank } from './roles.js';
@@ -547,6 +547,7 @@ export async function newgame() {
 
 export async function advanceTurn() {
     const g = game;
+    g._advance_turn_completed_tail = false;
     const resumeTurnTailOnly = !!g._resume_turn_tail_after_more;
     g._resume_turn_tail_after_more = false;
     if (resumeTurnTailOnly && g._resume_tame_post_distfleeck) {
@@ -598,15 +599,7 @@ export async function advanceTurn() {
     }
 
     await maybe_generate_rnd_mon();
-    if (g.u?.uprops?.fast) {
-        // C ref: src/allmain.c:u_calc_moveamt(); speed boots/potion/spell
-        // Very_fast grants an extra action on 2/3 of turns.
-        g._fast_extra_action_pending = rn2(3) !== 0;
-    } else if (g.u?.uprops?.intrinsic_fast) {
-        // C ref: src/allmain.c:u_calc_moveamt(); intrinsic Fast grants an
-        // extra action on 1/3 of turns.
-        g._fast_extra_action_pending = rn2(3) === 0;
-    }
+    applyHeroMovementRation(g);
     settrack();
 
     await nhTimeoutBasic();
@@ -631,7 +624,29 @@ function finishPostDosoundsTurnTail(g) {
 
     g._pet_combat_resume_active = false;
     g._savelife_resume_active = false;
+    if (g.u) g.u.umoved = false;
     g.moves = (g.moves || 1) + 1;
+    g._advance_turn_completed_tail = true;
+}
+
+function applyHeroMovementRation(g) {
+    // C ref: src/allmain.c:u_calc_moveamt().  A mounted hero who actually
+    // changed map location uses the steed's movement rate; hero speed does
+    // not augment steed speed.
+    if (g.u?.usteed && g.u?.umoved) {
+        const moveamt = mcalcmove(g.u.usteed, true);
+        if (moveamt >= NORMAL_SPEED * 2) g._fast_extra_action_pending = true;
+        return;
+    }
+    if (g.u?.uprops?.fast) {
+        // C ref: src/allmain.c:u_calc_moveamt(); speed boots/potion/spell
+        // Very_fast grants an extra action on 2/3 of turns.
+        g._fast_extra_action_pending = rn2(3) !== 0;
+    } else if (g.u?.uprops?.intrinsic_fast) {
+        // C ref: src/allmain.c:u_calc_moveamt(); intrinsic Fast grants an
+        // extra action on 1/3 of turns.
+        g._fast_extra_action_pending = rn2(3) === 0;
+    }
 }
 
 function shouldDeferSeerTurnUpdate(g) {
@@ -902,16 +917,18 @@ async function runOccupationPreFinishTurn(g) {
     }
 }
 
-async function continueNomulTurns(g) {
+async function continueNomulTurns(g, options = {}) {
     if ((g._nomul_turns_remaining || 0) <= 0) return true;
     // C ref: allmain.c:moveloop_core() increments negative `multi` after
     // each immobile turn, then `unmul()` prints `nomovemsg` on the final turn.
-    g._nomul_turns_remaining--;
+    if (options.countCurrentTurn && g._advance_turn_completed_tail)
+        g._nomul_turns_remaining--;
     while ((g._nomul_turns_remaining || 0) > 0) {
         await advanceTurn();
         if (g._monster_turn_paused_for_more) return false;
         if (g._more) return false;
-        g._nomul_turns_remaining--;
+        if (g._advance_turn_completed_tail)
+            g._nomul_turns_remaining--;
     }
     if (g._nomul_finish_message) {
         const msg = g._nomul_finish_message;
@@ -946,8 +963,9 @@ async function continueOccupationTurns(g) {
         }
     }
     if (g._occupation_finish_message) {
-        if (g._more && g._occupation_continue_behind_more) {
-            g._occupation_continue_behind_more = false;
+        if (g._more) {
+            if (g._occupation_continue_behind_more)
+                g._occupation_continue_behind_more = false;
             g._occupation_paused_for_more = true;
             return false;
         }
@@ -959,7 +977,9 @@ async function continueOccupationTurns(g) {
         }
         await runOccupationPreFinishTurn(g);
         applyOccupationFinishObjectEffects(g);
-        if (g._pending_message && g._occupation_pack_finish_message) {
+        if (g._pending_message
+            && g._occupation_pack_finish_message
+            && topline_can_pack_message(g._pending_message, g._occupation_finish_message)) {
             await append_pline(g._occupation_finish_message);
             g._occupation_pack_finish_message = false;
         } else {
@@ -1144,6 +1164,10 @@ export async function moveloop_core() {
             if (!await continueOccupationTurns(g)) return;
         } else {
             if (g._monster_turn_paused_for_more && g._more) return;
+            if (g._look_here_pauses_turn && g._more) {
+                g._look_here_pauses_turn = false;
+                return;
+            }
             if (g._floor_list_pauses_turn && g._more) {
                 g._floor_list_pauses_turn = false;
                 g._resume_floor_list_turn = true;
@@ -1185,7 +1209,7 @@ export async function moveloop_core() {
                     && !g._more
                     && !g._monster_turn_paused_for_more
                     && (g._nomul_turns_remaining || 0) > 0) {
-                    if (!await continueNomulTurns(g)) return;
+                    if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
                     if (!occupationPending(g)) finish_pending_eaten_corpse();
                     if (!await continueOccupationTurns(g)) return;
                 }
@@ -1196,7 +1220,7 @@ export async function moveloop_core() {
                 applyOccupationFinalTurnState(g);
                 await advanceTurn();
                 if (g._monster_turn_paused_for_more) return;
-                if (!await continueNomulTurns(g)) return;
+                if (!await continueNomulTurns(g, { countCurrentTurn: true })) return;
                 if (!occupationPending(g)) finish_pending_eaten_corpse();
                 if (g._more && occupationPending(g) && !g._occupation_continue_behind_more) {
                     if (g._force_lock) g._force_lock_resume_turn_first = true;
@@ -1279,10 +1303,18 @@ export async function moveloop_core() {
         finishDeferredSeerTurnUpdate(g);
         if (g._pending_prayer_finish_message) {
             g._pending_prayer_finish_message = false;
-            if (g._pending_message) await append_pline('You finish your prayer.');
+            const hadPrayerTopline = !!g._pending_message;
+            if (hadPrayerTopline) await append_pline('You finish your prayer.');
             else await pline('You finish your prayer.');
-            g._more = true;
-            g._awaiting_prayer_done_more = true;
+            if (g._prayer_finish_result_inline && !hadPrayerTopline) {
+                g._prayer_finish_result_inline = false;
+                g._pack_next_prayer_result_line = true;
+                await finishPrayerResult();
+            } else {
+                g._prayer_finish_result_inline = false;
+                g._more = true;
+                g._awaiting_prayer_done_more = true;
+            }
             if (g.u?.uinvulnerable) g.u.uinvulnerable = false;
         }
         // C ref: topl.c:pline()/more() blocks the current command before a

@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     newsym, show_glyph_cell, flush_screen, pline, append_pline, clear_pending_message, docrt,
-    serialize_terminal_grid, queue_more_prompt,
+    serialize_terminal_grid, queue_more_prompt, topline_can_pack_message,
     apply_hallucination_display_transition, refresh_swallowed_overlay,
     see_monsters, see_objects, see_nearby_objects, see_traps, refresh_warning_monsters, map_level_for_wizard,
     object_glyph_for_menu, serialize_known_terrain_view_screen,
@@ -19,7 +19,8 @@ import {
     makemon, mklev, mkobj, mkcorpstat, mksobj, monster_by_user_name, monsterPtr,
     next_ident, place_lregion, place_object, shopTypeName, u_on_dnstairs, u_on_upstairs,
     bones_file_exists, save_bones_snapshot, undead_to_corpse_ptr,
-    level_difficulty, stackobj,
+    level_difficulty, stackobj, restore_pending_bones_snapshot, delete_pending_bones_file,
+    clear_pending_bones_restore,
 } from './mklev.js';
 import { OBJECT_CHARGED, OBJECT_CLASS, OBJECT_DELAY, OBJECT_DIR, OBJECT_MATERIAL, OBJECT_PROB } from './object_data.js';
 import {
@@ -28,7 +29,6 @@ import {
 } from './dog.js';
 import { calculated_armor_class, merge_inventory_object, newuexp, pluslvl } from './u_init.js';
 import { adjalign, exercise, gethungry } from './allmain_turns.js';
-import { initrack } from './track.js';
 import { roleGod, roleGreeting, roleRankForLevel } from './roles.js';
 import { d, rn1, rn2, rnd, rnl, rnz } from './rng.js';
 import { dist2 } from './hacklib.js';
@@ -43,6 +43,7 @@ import { writeSavedGame } from './save_restore.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import * as C from './const.js';
+import { initrack } from './track.js';
 import {
     COLNO, ROWNO, STONE, CORR, DOOR, D_NODOOR, D_CLOSED, D_LOCKED,
     SDOOR, SCORR, IS_WALL, IS_OBSTRUCTED, IS_POOL, LR_UPTELE, LR_DOWNTELE, A_STR, A_DEX, A_CON, A_WIS,
@@ -87,7 +88,15 @@ const WAN_DIGGING = 428;
 const WAN_MAGIC_MISSILE = 429;
 const QUARTERSTAFF = 79;
 const MACE = 73;
+const LANCE = 72;
+const SILVER_MACE = 74;
+const MORNING_STAR = 75;
 const WAR_HAMMER = 76;
+const CLUB = 77;
+const RUBBER_HOSE = 78;
+const AKLYS = 80;
+const FLAIL = 81;
+const BULLWHIP = 82;
 const ROBE = 143;
 const CLOAK_OF_MAGIC_RESISTANCE = 148;
 const CLOAK_OF_PROTECTION = 146;
@@ -114,6 +123,7 @@ const RIN_TELEPORT_CONTROL = 195;
 const RIN_INCREASE_ACCURACY = 176;
 const RIN_STEALTH = 181;
 const RIN_PROTECTION = 178;
+const RIN_REGENERATION = 179;
 const RIN_WARNING = 187;
 const RIN_POLYMORPH = 196;
 const DILITHIUM_CRYSTAL = 439;
@@ -139,20 +149,32 @@ const LARGE_BOX = 214;
 const CHEST = 215;
 const ICE_BOX = 216;
 const SACK = 217;
+const BAG_OF_HOLDING = 219;
 const BAG_OF_TRICKS = 220;
 const GOLD_PIECE = 438;
 const ARROW = 18;
 const ELVEN_ARROW = 19;
 const ORCISH_ARROW = 20;
+const SILVER_ARROW = 21;
 const YA = 22;
+const CROSSBOW_BOLT = 23;
 const SHURIKEN = 25;
+const BOOMERANG = 26;
 const SPEAR = 27;
+const SILVER_SPEAR = 31;
+const TRIDENT = 33;
 const SCALPEL = 39;
 const KNIFE = 40;
 const DART = 24;
 const DAGGER = 34;
 const ELVEN_DAGGER = 35;
+const SILVER_DAGGER = 37;
+const ATHAME = 38;
+const STILETTO = 41;
+const WORM_TOOTH = 42;
+const CRYSKNIFE = 43;
 const SHORT_SWORD = 46;
+const AXE = 44;
 const BATTLE_AXE = 45;
 const ELVEN_SPEAR = 28;
 const ORCISH_SPEAR = 29;
@@ -162,18 +184,33 @@ const ELVEN_SHORT_SWORD = 47;
 const ORCISH_SHORT_SWORD = 48;
 const DWARVISH_SHORT_SWORD = 49;
 const SCIMITAR = 50;
+const SILVER_SABER = 51;
 const BROADSWORD = 52;
 const ELVEN_BROADSWORD = 53;
 const LONG_SWORD = 54;
+const TWO_HANDED_SWORD = 55;
 const KATANA = 56;
 const TSURUGI = 57;
 const RUNESWORD = 58;
+const PARTISAN = 59;
+const RANSEUR = 60;
+const SPETUM = 61;
+const GLAIVE = 62;
+const HALBERD = 63;
+const BARDICHE = 64;
+const VOULGE = 65;
+const FAUCHARD = 66;
+const GUISARME = 67;
+const BILL_GUISARME = 68;
+const LUCERN_HAMMER = 69;
+const BEC_DE_CORBIN = 70;
 const DWARVISH_MATTOCK = 71;
 const BOW = 83;
 const ELVEN_BOW = 84;
 const ORCISH_BOW = 85;
 const YUMI = 86;
 const SLING = 87;
+const CROSSBOW = 88;
 const ORCISH_DAGGER = 36;
 const BOW_AMMO = new Set([ARROW, ELVEN_ARROW, ORCISH_ARROW, YA]);
 const TRIPE_RATION = 264;
@@ -209,6 +246,7 @@ const SCR_DESTROY_ARMOR = 324;
 const SCR_REMOVE_CURSE = 327;
 const SCR_ENCHANT_WEAPON = 328;
 const SCR_LIGHT = 332;
+const SCR_TELEPORTATION = 333;
 const SCR_MAGIC_MAPPING = 337;
 const BOULDER = 475;
 const APPLE = 277;
@@ -236,7 +274,9 @@ const SPLINT_MAIL = 124;
 const CHAIN_MAIL = 128;
 const LEATHER_GLOVES = 159;
 const GAUNTLETS_OF_POWER = 161;
+const GAUNTLETS_OF_DEXTERITY = 162;
 const MZ_HUMAN = 2;
+const MZ_LARGE = 3;
 const M2_GREEDY = 0x10000000;
 const M2_JEWELS = 0x20000000;
 const M2_COLLECT = 0x40000000;
@@ -376,12 +416,19 @@ const OBJECT_BASE_NAMES = new Map([
     [ARROW, 'arrow'],
     [ELVEN_ARROW, 'elven arrow'],
     [ORCISH_ARROW, 'orcish arrow'],
+    [SILVER_ARROW, 'silver arrow'],
     [YA, 'ya'],
+    [CROSSBOW_BOLT, 'crossbow bolt'],
     [DART, 'dart'],
     [SHURIKEN, 'shuriken'],
+    [BOOMERANG, 'boomerang'],
     [SPEAR, 'spear'],
+    [SILVER_SPEAR, 'silver spear'],
+    [TRIDENT, 'trident'],
     [DAGGER, 'dagger'],
     [ELVEN_DAGGER, 'elven dagger'],
+    [SILVER_DAGGER, 'silver dagger'],
+    [ATHAME, 'athame'],
     [SHORT_SWORD, 'short sword'],
     [ELVEN_SPEAR, 'elven spear'],
     [ORCISH_SPEAR, 'orcish spear'],
@@ -389,26 +436,54 @@ const OBJECT_BASE_NAMES = new Map([
     [JAVELIN, 'javelin'],
     [SCALPEL, 'scalpel'],
     [KNIFE, 'knife'],
+    [STILETTO, 'stiletto'],
+    [WORM_TOOTH, 'worm tooth'],
+    [CRYSKNIFE, 'crysknife'],
     [ORCISH_DAGGER, 'orcish dagger'],
+    [AXE, 'axe'],
     [BATTLE_AXE, 'battle-axe'],
     [ELVEN_SHORT_SWORD, 'elven short sword'],
     [ORCISH_SHORT_SWORD, 'orcish short sword'],
     [DWARVISH_SHORT_SWORD, 'dwarvish short sword'],
     [SCIMITAR, 'scimitar'],
+    [SILVER_SABER, 'silver saber'],
     [BROADSWORD, 'broadsword'],
     [ELVEN_BROADSWORD, 'elven broadsword'],
+    [LONG_SWORD, 'long sword'],
+    [TWO_HANDED_SWORD, 'two-handed sword'],
     [KATANA, 'katana'],
     [TSURUGI, 'tsurugi'],
     [RUNESWORD, 'runesword'],
+    [PARTISAN, 'partisan'],
+    [RANSEUR, 'ranseur'],
+    [SPETUM, 'spetum'],
+    [GLAIVE, 'glaive'],
+    [HALBERD, 'halberd'],
+    [BARDICHE, 'bardiche'],
+    [VOULGE, 'voulge'],
+    [FAUCHARD, 'fauchard'],
+    [GUISARME, 'guisarme'],
+    [BILL_GUISARME, 'bill-guisarme'],
+    [LUCERN_HAMMER, 'lucern hammer'],
+    [BEC_DE_CORBIN, 'bec de corbin'],
     [DWARVISH_MATTOCK, 'dwarvish mattock'],
+    [LANCE, 'lance'],
+    [SILVER_MACE, 'silver mace'],
     [WAR_HAMMER, 'war hammer'],
     [MACE, 'mace'],
+    [MORNING_STAR, 'morning star'],
+    [CLUB, 'club'],
+    [RUBBER_HOSE, 'rubber hose'],
     [QUARTERSTAFF, 'quarterstaff'],
+    [AKLYS, 'aklys'],
+    [FLAIL, 'flail'],
+    [BULLWHIP, 'bullwhip'],
     [BOW, 'bow'],
     [ELVEN_BOW, 'elven bow'],
     [ORCISH_BOW, 'orcish bow'],
     [YUMI, 'yumi'],
     [SLING, 'sling'],
+    [CROSSBOW, 'crossbow'],
     [GRAY_DRAGON_SCALE_MAIL, 'gray dragon scale mail'],
     [CLOAK_OF_MAGIC_RESISTANCE, 'cloak of magic resistance'],
     [CLOAK_OF_DISPLACEMENT, 'cloak of displacement'],
@@ -419,6 +494,7 @@ const OBJECT_BASE_NAMES = new Map([
     [AMULET_OF_LIFE_SAVING, 'amulet of life saving'],
     [RIN_PROTECTION, 'ring of protection'],
     [RIN_INCREASE_ACCURACY, 'ring of increase accuracy'],
+    [RIN_REGENERATION, 'ring of regeneration'],
     [188, 'ring of poison resistance'],
     [RIN_WARNING, 'ring of warning'],
     [RIN_POLYMORPH, 'ring of polymorph'],
@@ -735,21 +811,21 @@ const TOURIST_STARTER_MENU = [
 const ROLE_INNATE_ABILITIES = new Map([
     ['Archeologist', [
         { level: 5, prop: 'stealth', gain: 'stealthy' },
-        { level: 10, prop: 'fast', gain: 'quick' },
+        { level: 10, prop: 'intrinsic_fast', gain: 'quick' },
     ]],
     ['Barbarian', [
-        { level: 7, prop: 'fast', gain: 'quick' },
+        { level: 7, prop: 'intrinsic_fast', gain: 'quick' },
         { level: 15, prop: 'stealth', gain: 'stealthy' },
     ]],
     ['Caveman', [
-        { level: 7, prop: 'fast', gain: 'quick' },
+        { level: 7, prop: 'intrinsic_fast', gain: 'quick' },
         { level: 15, prop: 'warning', gain: 'sensitive' },
     ]],
     ['Healer', [
         { level: 15, prop: 'warning', gain: 'sensitive' },
     ]],
     ['Knight', [
-        { level: 7, prop: 'fast', gain: 'quick' },
+        { level: 7, prop: 'intrinsic_fast', gain: 'quick' },
     ]],
     ['Monk', [
         { level: 3, prop: 'poison_resistance', gain: 'healthy' },
@@ -828,6 +904,13 @@ function wishedObjectSpec(name) {
         rn2(9);
         return { ...spec, otyp: GAUNTLETS_OF_POWER };
     }
+    if (wish.includes('leather gloves')) {
+        // C ref: objnam.c:rnd_otyp_by_namedesc().  "leather gloves" can
+        // resolve through the shuffled gloves description pool; the object
+        // remains unidentified and prints as its current appearance.
+        rn2(16);
+        return { ...spec, otyp: GAUNTLETS_OF_DEXTERITY, appearanceName: 'fencing gloves' };
+    }
     if (wish.includes('cloak of magic resistance')) {
         // C ref: objnam.c:rnd_otyp_by_namedesc() searches the cloak/armor
         // description/name pool before mksobj() initializes the cloak.
@@ -868,16 +951,31 @@ function wishedObjectSpec(name) {
         return { ...spec, otyp: WAN_MAGIC_MISSILE };
     }
     if (wish.includes('wand of death')) {
-        rn2(41);
+        // C ref: objnam.c:rnd_otyp_by_namedesc().  Unlike most wands in
+        // current evidence, wand of death's object probability plus the wish
+        // bonus yields a six-point selection pool.
+        rn2(6);
         return { ...spec, otyp: WAN_DEATH };
     }
     if (wish.includes('wand of digging')) {
         rn2(41);
         return { ...spec, otyp: WAN_DIGGING };
     }
+    if (wish.includes('scroll of teleportation')) {
+        rn2(56);
+        return { ...spec, otyp: SCR_TELEPORTATION, appearanceName: 'scroll labeled YUM YUM' };
+    }
+    if (wish.includes('potion of confusion')) {
+        rn2(41);
+        return { ...spec, otyp: POT_CONFUSION, appearanceName: 'puce potion' };
+    }
     if (wish.includes('ring of teleport control')) {
         rn2(2);
         return { ...spec, otyp: RIN_TELEPORT_CONTROL, appearanceName: 'ivory ring' };
+    }
+    if (wish.includes('ring of regeneration')) {
+        rn2(2);
+        return { ...spec, otyp: RIN_REGENERATION, appearanceName: 'clay ring' };
     }
     if (wish.includes('stethoscope')) {
         rn2(26);
@@ -899,6 +997,10 @@ function wishedObjectSpec(name) {
         rn2(16);
         return { ...spec, otyp: EXPENSIVE_CAMERA };
     }
+    if (wish.includes('blindfold')) {
+        rn2(51);
+        return { ...spec, otyp: BLINDFOLD };
+    }
     if (wish.includes('cream pie')) {
         rn2(26);
         return { ...spec, otyp: CREAM_PIE, quan: 1 };
@@ -908,6 +1010,10 @@ function wishedObjectSpec(name) {
         // wished chest uses chest object probability plus the wish bonus.
         rn2(36);
         return { ...spec, otyp: CHEST };
+    }
+    if (wish.includes('bag of holding')) {
+        rn2(21);
+        return { ...spec, otyp: BAG_OF_HOLDING, appearanceName: 'bag' };
     }
     return null;
 }
@@ -1243,6 +1349,24 @@ async function readScrollOfMagicMapping(obj) {
     exercise(A_WIS, true);
     discoverObjectType(obj.otyp);
     consumeInventoryObject(obj);
+    game.context.move = 1;
+}
+
+async function readScrollOfTeleportation(obj, idx) {
+    // C refs: read.c:doread(), read.c:seffect_teleportation(),
+    // teleport.c:level_tele().  Confused or cursed teleport scrolls level
+    // teleport; the read/disappears and confused-wording plines can each
+    // block before the destination prompt is read.
+    consumeInventoryObject(obj);
+    await pline('As you read the scroll, it disappears.');
+    const confused = !!(game.u?.uprops?.confusion || game.u?.uconfusion);
+    if (confused || obj.cursed) {
+        game._scroll_teleport_confused_after_more = confused;
+        game._scroll_teleport_prompt_after_more = !confused;
+        queue_more_prompt();
+        game.context.move = 0;
+        return;
+    }
     game.context.move = 1;
 }
 
@@ -1678,6 +1802,13 @@ async function showFireWandDeathMessage() {
     queue_more_prompt();
 }
 
+async function showDeathRayDeathMessage() {
+    game._death_ray_death_pending = false;
+    game._death_prompt_pending = true;
+    await pline('You die.');
+    queue_more_prompt();
+}
+
 function finishSleepRaySleepAfterMore() {
     game._sleep_wand_sleep_pending = false;
     const duration = d(game._sleep_wand_hit_nd || 6, 25);
@@ -1750,8 +1881,54 @@ async function showDeathPrompt() {
     game._prompt_cursor = [msg.length + 1, 0];
 }
 
+async function showDeathSaveBonesPrompt() {
+    game._death_save_bones_prompt_active = true;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    game._latched_status_uhp = 0;
+    if (game.u && typeof game.u.uhp === 'number') game.u.uhp = 0;
+    const msg = 'Save bones? [yn] (n)';
+    await showPromptLine(msg);
+    game._prompt_cursor = [msg.length + 1, 0];
+}
+
 function deathUsesWizardPrompt() {
     return !!(game.wizard || game.flags?.debug || game.flags?.explore);
+}
+
+function deathDisclosureOptionDisables(category) {
+    const raw = String(game.flags?.disclose || '').trim().toLowerCase();
+    if (!raw) return false;
+    if (raw === 'none') return true;
+    return raw.split(/\s+/).includes(`-${category}`);
+}
+
+function deathInventoryDisclosurePromptWanted() {
+    // C ref: src/end.c:disclose().  The inventory prompt is skipped when
+    // end_disclose says "-i" or when there is no inventory to disclose.
+    if (deathDisclosureOptionDisables('i')) return false;
+    return (game.inventory || []).length > 0 || (game._goldCount || 0) > 0;
+}
+
+async function showDeathInventoryDisclosurePrompt() {
+    game._death_prompt_pending = false;
+    game._death_inventory_disclosure_prompt_active = true;
+    game._more = false;
+    game._more_dismissals_remaining = 0;
+    game._latched_status_uhp = 0;
+    if (game.u && typeof game.u.uhp === 'number') game.u.uhp = 0;
+    const msg = 'Do you want your possessions identified? [ynq] (n)';
+    await showPromptLine(msg);
+    game._prompt_cursor = [msg.length + 1, 0];
+}
+
+async function showDeathDisclosureOrPrompt() {
+    if (deathInventoryDisclosurePromptWanted()) await showDeathInventoryDisclosurePrompt();
+    else await showDeathDisclosure();
+}
+
+function deathCanSaveWizardBones() {
+    return !!(game.wizard || game.flags?.debug);
 }
 
 function currentDungeonDepth() {
@@ -1784,11 +1961,25 @@ function deathBonesRollNeededBasic() {
 function runPendingDeathBonesCheck() {
     if (!game._death_bones_check_pending) return;
     game._death_bones_check_pending = false;
+    if (!prepareDeathBonesDoneStageBasic()) return;
+    savePreparedBonesRngBasic();
+}
+
+function prepareDeathBonesDoneStageBasic() {
+    if (game._death_bones_done_stage_prepared) return !!game._death_bones_ok;
+    game._death_bones_done_stage_prepared = true;
+    game._death_bones_check_pending = false;
+    game._death_bones_ok = false;
     doneObjectCleanupBasic();
     if (!deathBonesRollNeededBasic()) return;
     const depth = Math.max(1, currentDungeonDepth());
-    if (!rn2(1 + (depth >> 2))) return;
-    saveBonesRngBasic();
+    // C ref: src/bones.c:can_make_bones().  Wizard/debug mode still consumes
+    // the low-level feasibility roll but ignores a zero result.
+    if (!rn2(1 + (depth >> 2)) && !deathCanSaveWizardBones()) return false;
+    if (game.flags?.explore && !deathCanSaveWizardBones()) return false;
+    game._death_bones_ok = true;
+    prepareDeathBonesCorpseBasic();
+    return true;
 }
 
 function doneObjectCleanupBasic() {
@@ -1808,10 +1999,11 @@ function doneObjectCleanupBasic() {
     stackobj(place_object(obj, x, y));
 }
 
-function saveBonesRngBasic() {
-    // C refs: src/end.c:done(), src/bones.c:savebones(),
-    // src/bones.c:drop_upon_death().
-    if (bones_file_exists()) return;
+function prepareDeathBonesCorpseBasic() {
+    if (game._death_bones_corpse_prepared) return;
+    game._death_bones_corpse_prepared = true;
+    // C ref: src/end.c:really_done() creates the named hero corpse before the
+    // wizard-mode "Save bones?" prompt.
     const oldInMklev = game.in_mklev;
     const oldLiveCorpseTimeout = game._live_corpse_timeout;
     game.in_mklev = false;
@@ -1821,6 +2013,15 @@ function saveBonesRngBasic() {
     } finally {
         game._live_corpse_timeout = oldLiveCorpseTimeout;
     }
+    game.in_mklev = oldInMklev;
+}
+
+function savePreparedBonesRngBasic(options = {}) {
+    // C refs: src/bones.c:savebones(), src/bones.c:drop_upon_death().
+    if (!game._death_bones_ok || game._death_bones_saved) return;
+    if (bones_file_exists() && !options.replace) return 'exists';
+    game._death_bones_saved = true;
+    const oldInMklev = game.in_mklev;
     const extra = deathDropInventoryForBonesBasic();
     game.in_mklev = true;
     try {
@@ -1833,7 +2034,14 @@ function saveBonesRngBasic() {
     } finally {
         game.in_mklev = oldInMklev;
     }
-    save_bones_snapshot(extra);
+    save_bones_snapshot(extra, { replace: !!options.replace });
+}
+
+function saveBonesRngBasic() {
+    // C refs: src/end.c:really_done(), src/bones.c:savebones().
+    prepareDeathBonesCorpseBasic();
+    game._death_bones_ok = true;
+    savePreparedBonesRngBasic();
 }
 
 function cloneDeathDropObjectBasic(obj) {
@@ -1893,15 +2101,52 @@ function deathDropInventoryForBonesBasic() {
     return { floorObjects, monsterInventories: [...monsterInventories.values()] };
 }
 
+function containedGoldBasic(obj) {
+    if (!obj) return 0;
+    if (obj.otyp === GOLD_PIECE) return obj.quan || 0;
+    let total = 0;
+    for (const child of obj.cobj || obj.contents || []) total += containedGoldBasic(child);
+    return total;
+}
+
+function hiddenGoldBasic(evenIfUnknown = true) {
+    // C ref: src/vault.c:hidden_gold().  Endgame scoring/RIP uses TRUE and
+    // counts all gold inside carried containers, including unknown contents.
+    let total = 0;
+    for (const obj of game.inventory || []) {
+        if (!C.Has_contents(obj) && !obj?.contents?.length) continue;
+        if (!evenIfUnknown && !obj.cknown) continue;
+        for (const child of obj.cobj || obj.contents || []) total += containedGoldBasic(child);
+    }
+    return total;
+}
+
+function deathGoldBasic() {
+    return (game._goldCount || 0) + hiddenGoldBasic(true);
+}
+
+function deathRecordScoreBaseBasic() {
+    let score = game.u?.urexp || 0;
+    if (game._tourist_debug_level_teleport_score_floor
+        && game.urole?.name?.m === 'Tourist') {
+        // C refs: src/wizcmds.c:wiz_level_tele(), src/do.c:goto_level(),
+        // src/exper.c:newuexp().  Current debug-Tourist evidence carries the
+        // level-1 record-score floor after wizard level teleport; full score
+        // initialization remains broader startup/scoring debt.
+        score += newuexp(game.u?.ulevel || 1);
+    }
+    return score;
+}
+
 function deathScoreBasic() {
     // C ref: src/botl.c:botl_score().
     const deepest = Math.max(1, game._deepestDepthReached ?? currentDungeonDepth());
-    const currentGold = game._goldCount || 0;
+    const currentGold = deathGoldBasic();
     const initialGold = game._initialGoldCount || 0;
     const goldScore = Math.max(0, currentGold - initialGold);
     const depthBonus = 50 * (deepest - 1)
         + (deepest > 30 ? 10000 : deepest > 20 ? 1000 * (deepest - 20) : 0);
-    return (game.u?.urexp || 0) + goldScore + depthBonus;
+    return deathRecordScoreBaseBasic() + goldScore + depthBonus;
 }
 
 function deathCenter(text, width = 18) {
@@ -1924,7 +2169,7 @@ function roleGoodbye(role) {
 function deathTombstoneScreen() {
     // C refs: src/end.c:done_in_by()/really_done(), win/tty/wintty.c RIP.
     const name = game.plname || game.u?.name || 'Hero';
-    const gold = game._goldCount || 0;
+    const gold = deathGoldBasic();
     const killer = game._death_killer_name || 'monster';
     const shkKiller = game._death_shopkeeper_killer;
     const year = String(game._lt?.year || game._datetime?.slice?.(0, 4) || '2026');
@@ -1940,8 +2185,19 @@ function deathTombstoneScreen() {
     const killerArticle = game._death_killer_article || 'a';
     const deathText = game._death_killer_format === 'by'
         ? `killed by ${killer}`
+        : game._death_killer_format === 'raw'
+        ? killer
         : `killed by ${killerArticle} ${killer}`;
-    const killerLines = shkKiller
+    const rawKillerLines = Array.isArray(game._death_tombstone_killer_lines)
+        ? game._death_tombstone_killer_lines.slice(0, 3)
+        : null;
+    const killerLines = rawKillerLines
+        ? [
+            `${' '.repeat(18)}|${deathCenter(rawKillerLines[0] || '')}|`,
+            `${' '.repeat(18)}|${deathCenter(rawKillerLines[1] || '')}|`,
+            `${' '.repeat(18)}|${deathCenter(rawKillerLines[2] || '')}|`,
+        ]
+        : shkKiller
         ? [
             `${' '.repeat(18)}|${deathCenter(`killed by ${shkKiller.honorific}`)}|`,
             `${' '.repeat(18)}|${deathCenter(`${shkKiller.name}; the`)}|`,
@@ -2002,7 +2258,7 @@ function quitDisclosureScreen() {
     // C refs: end.c:done2()/really_done().  Quitting skips the tombstone but
     // still shows the role goodbye and end-of-game disclosure text.
     const name = game.plname || game.u?.name || 'Hero';
-    const gold = game._goldCount || 0;
+    const gold = deathGoldBasic();
     const dungeonName = game.dungeons?.[game.u?.uz?.dnum]?.dname || 'The Dungeons of Doom';
     const depth = currentDungeonDepth();
     const roleName = game.flags?.female
@@ -2081,6 +2337,8 @@ function currentTopTenEntry() {
     const killerArticle = game._death_killer_article || 'a';
     const death = game._death_killer_format === 'by'
         ? `killed by ${killer}`
+        : game._death_killer_format === 'raw'
+        ? killer
         : `killed by ${killerArticle} ${killer}`;
     return {
         points: score,
@@ -2286,6 +2544,7 @@ function objectTypeNameKnown(obj) {
 function armorObjectName(obj) {
     const def = ARMOR_XNAMES.get(obj?.otyp);
     if (!def) return '';
+    if (obj.appearanceName && !objectTypeNameKnown(obj)) return obj.appearanceName;
     if (def.scales) return `set of ${def.name}`;
     if (!obj.dknown) {
         if (obj.otyp >= 153 && obj.otyp <= 155) return 'shield';
@@ -2328,6 +2587,7 @@ function baseObjectName(obj) {
     if ((obj?.knownName || knownObjectType(obj?.otyp)) && OBJECT_BASE_NAMES.has(obj.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     const appearanceName = unknownAppearanceName(obj);
     if (appearanceName) return appearanceName;
+    if (obj?.otyp === SLIME_MOLD) return currentFruitName();
     if (OBJECT_BASE_NAMES.has(obj?.otyp)) return OBJECT_BASE_NAMES.get(obj.otyp);
     if (obj?.oclass === RING_CLASS) return 'ring';
     if (obj?.oclass === WAND_CLASS) return 'wand';
@@ -2945,7 +3205,8 @@ function putonLetters() {
     ensureInventoryLetters();
     return (game.inventory || [])
         .filter((obj) => (obj?.oclass === RING_CLASS && !obj.wornSide)
-            || (obj?.oclass === AMULET_CLASS && !obj.worn))
+            || (obj?.oclass === AMULET_CLASS && !obj.worn)
+            || (obj?.otyp === BLINDFOLD && !obj.worn))
         .map((obj) => obj.invlet)
         .join('');
 }
@@ -2958,10 +3219,36 @@ function wearLetters() {
         .join('');
 }
 
+function takeoffLetters() {
+    ensureInventoryLetters();
+    return (game.inventory || [])
+        .filter((obj) => obj?.oclass === ARMOR_CLASS && (obj.worn || obj.owornmask))
+        .map((obj) => obj.invlet)
+        .join('');
+}
+
 function is_puton_candidate(obj) {
     if (!obj) return false;
+    if (obj.otyp === BLINDFOLD) return !obj.worn;
     if (obj.oclass === RING_CLASS) return !obj.wornSide;
     return obj.oclass === ARMOR_CLASS || obj.oclass === AMULET_CLASS;
+}
+
+function is_worn_takeoff_candidate(obj) {
+    if (!obj) return false;
+    if (obj.oclass === ARMOR_CLASS) return !!(obj.worn || obj.owornmask);
+    if (obj.oclass === RING_CLASS) return !!obj.wornSide || !!((obj.owornmask || 0) & C.W_RING);
+    if (obj.oclass === AMULET_CLASS) return !!(obj.worn || obj.owornmask);
+    if (obj.otyp === BLINDFOLD) return !!(obj.worn || ((obj.owornmask || 0) & C.W_TOOL));
+    return false;
+}
+
+function refreshRingRegenerationExtrinsic() {
+    if (!game.u) return;
+    game.u.uprops = game.u.uprops || {};
+    game.u.uprops.hp_regeneration = (game.inventory || []).some((item) =>
+        item?.otyp === RIN_REGENERATION
+        && (item.wornSide || ((item.owornmask || 0) & C.W_RING))) ? 1 : 0;
 }
 
 function apply_deferred_startup_wear() {
@@ -3031,6 +3318,16 @@ function takeoffArmorSimpleName(obj) {
 }
 
 async function start_takeoff_armor(obj) {
+    if (obj?.cursed) {
+        // C ref: do_wear.c:cursed().  A stuck cursed item reports the curse
+        // and does not spend a turn.
+        const plural = (obj.otyp >= LEATHER_GLOVES && obj.otyp <= LEVITATION_BOOTS)
+            || (obj.quan || 1) > 1;
+        obj.bknown = true;
+        game.context.move = 0;
+        await pline(`You can't.  ${plural ? 'They are' : 'It is'} cursed.`);
+        return;
+    }
     const finishAc = armorClassAfterTakingOff(obj);
     const delay = OBJECT_DELAY[obj?.otyp] || 0;
     if (delay <= 0) {
@@ -3047,6 +3344,45 @@ async function start_takeoff_armor(obj) {
     game._occupation_turns_remaining = Math.max(0, delay - 1);
     game._occupation_finish_uac = finishAc;
     game._occupation_finish_message = `You finish taking off your ${takeoffArmorSimpleName(obj)}.`;
+    game._occupation_pack_finish_message = true;
+}
+
+async function start_takeoff_blindfold(obj) {
+    if (obj?.cursed) {
+        obj.bknown = true;
+        game.context.move = 0;
+        await pline("You can't.  It is cursed.");
+        return;
+    }
+    obj.worn = false;
+    obj.owornmask = 0;
+    game.u.uprops = game.u.uprops || {};
+    game.u.ublind = false;
+    game.u.uprops.blind = 0;
+    game.u.uprops.blinded = 0;
+    await pline(`You were wearing ${inventoryObjectName(obj)}.`);
+    await append_pline('You can see again.');
+    game.context.move = 1;
+}
+
+async function start_taking_off_object(obj) {
+    if (obj?.oclass === ARMOR_CLASS) {
+        await start_takeoff_armor(obj);
+    } else if (obj?.otyp === BLINDFOLD) {
+        // C refs: do_wear.c:takeoff_ok(), do_wear.c:Blindf_off().  The
+        // blindfold is downplayed by the T prompt but can still be selected.
+        await start_takeoff_blindfold(obj);
+    } else if (obj?.oclass === RING_CLASS && obj.wornSide) {
+        const side = obj.wornSide;
+        obj.wornSide = null;
+        obj.owornmask = 0;
+        if (obj.otyp === RIN_REGENERATION) refreshRingRegenerationExtrinsic();
+        await pline(`You were wearing ${inventoryObjectName(obj)} (on ${side} hand).`);
+        game.context.move = 1;
+    } else {
+        game.context.move = 0;
+        await pline('Never mind.');
+    }
 }
 
 async function start_wearing_object(obj) {
@@ -3063,18 +3399,28 @@ async function start_wearing_object(obj) {
         return;
     }
 
+    if (obj.otyp === BLINDFOLD) {
+        // C ref: do_wear.c:Blindf_on().  Blindfolds are put on via the
+        // accessory command even though they are tools, not armor.
+        obj.worn = true;
+        obj.owornmask = C.W_TOOL || 0;
+        game.u.uprops = game.u.uprops || {};
+        game.u.ublind = true;
+        game.u.uprops.blind = 1;
+        game.u.uprops.blinded = 1;
+        await pline("You are now wearing a blindfold.  You can't see any more.");
+        game.context.move = 1;
+        return;
+    }
+
     const armorWearName = obj.oclass === ARMOR_CLASS ? baseObjectName(obj) : '';
     obj.worn = true;
-    if (obj.oclass === ARMOR_CLASS) {
-        // C refs: do_wear.c:armor_or_accessory_on(), allmain.c:moveloop_core().
-        // setworn() makes the bottom line eligible to show new AC before
-        // find_ac() updates u.uac for combat calculations.
-        game._status_uac_override = calculated_armor_class();
-    }
     if (obj.otyp === CLOAK_OF_DISPLACEMENT) {
         // C ref: do_wear.c:Cloak_on()/toggle_displacement().  The property
         // discovery message can block at --More-- before on_msg() reports
-        // that the cloak is now worn and before the wearing turn advances.
+        // that the cloak is now worn and before moveloop_core() reaches
+        // find_ac(), so the blocking frame still shows the previous AC.
+        game._status_uac_override = null;
         discoverObjectType(obj.otyp);
         obj.known = true;
         obj.knownName = true;
@@ -3086,10 +3432,17 @@ async function start_wearing_object(obj) {
         game.context.move = 0;
         return;
     }
+    if (obj.oclass === ARMOR_CLASS) {
+        // C refs: do_wear.c:armor_or_accessory_on(), allmain.c:moveloop_core().
+        // setworn() makes the bottom line eligible to show new AC before
+        // find_ac() updates u.uac for combat calculations.
+        game._status_uac_override = calculated_armor_class();
+    }
     const delay = OBJECT_DELAY[obj.otyp] || 0;
     if (obj.oclass === ARMOR_CLASS && delay > 0) {
         game._occupation_turns_remaining = Math.max(0, delay - 1);
         game._occupation_finish_message = armor_finish_message(obj);
+        game._occupation_pack_finish_message = true;
         game._occupation_finish_uac = calculated_armor_class();
         game._occupation_finish_object = obj;
     } else {
@@ -3242,6 +3595,23 @@ function floorObjectsAt(x, y) {
 function floorObjectsAtHero() {
     const u = game.u || {};
     return floorObjectsAt(u.ux, u.uy);
+}
+
+function showFloorObjectList(objects, featureLine = '') {
+    // C ref: src/invent.c:look_here().  Explicit ':' look uses obj_cnt=0,
+    // so it displays the full object list even when autopickup floor-look
+    // would summarize a pile via pile_limit.
+    const lines = objects.map(obj => inventoryObjectName(obj, { includePrice: true, observe: true }));
+    if (featureLine) {
+        game._pending_message = `${' '.repeat(41)}${featureLine}`;
+        game._floor_list_lines = ['', 'Things that are here:', ...lines];
+    } else {
+        game._pending_message = `${' '.repeat(41)}Things that are here:`;
+        game._floor_list_lines = lines;
+    }
+    game._floor_list_col = 41;
+    game._prompt_cursor = [49, Math.min(21, game._floor_list_lines.length + 1)];
+    queue_more_prompt();
 }
 
 function heroIsBlind() {
@@ -4950,16 +5320,19 @@ const EXTENDED_COMMANDS = [
     { name: 'genocided', min: 1, autocomplete: true },
     { name: 'herecmdmenu', min: 2, autocomplete: true },
     { name: 'invoke', min: 1, autocomplete: true },
+    { name: 'jump', min: 1, autocomplete: true },
     { name: 'kick', min: 4, autocomplete: false },
     { name: 'levelchange', min: 2, autocomplete: true, wizard: true },
     { name: 'loot', min: 1, autocomplete: true },
     { name: 'monster', min: 2, autocomplete: true },
     { name: 'name', min: 1, autocomplete: true },
     { name: 'offer', min: 2, autocomplete: true },
+    { name: 'options', min: 1, autocomplete: true },
     { name: 'overview', min: 2, autocomplete: true },
     { name: 'polyself', min: 2, autocomplete: true, wizard: true },
     { name: 'pray', min: 1, autocomplete: true },
     { name: 'quit', min: 1, autocomplete: true },
+    { name: 'ride', min: 2, autocomplete: true },
     { name: 'rub', min: 2, autocomplete: true },
     { name: 'sit', min: 1, autocomplete: true },
     { name: 'terrain', min: 2, autocomplete: true },
@@ -5368,6 +5741,221 @@ async function doTwoWeaponCommand() {
     game.context.move = rnd(20) > heroAttr(C.A_DEX) ? 1 : 0;
 }
 
+function heroHasJumping() {
+    return !!(game.u?.uprops?.jumping || game.u?.uprops?.jumping_extrinsic);
+}
+
+function heroHasLimitedKnightJumping() {
+    // C ref: src/apply.c:is_valid_jump_pos().  Intrinsic Knight jumping is
+    // restricted to chess-knight targets unless an extrinsic/magic source is
+    // controlling the jump.
+    return !!game.u?.uprops?.jumping && !game.u?.uprops?.jumping_extrinsic;
+}
+
+function currentJumpCursor() {
+    if (!game._jump_cursor)
+        game._jump_cursor = { x: game.u?.ux ?? 1, y: game.u?.uy ?? 0 };
+    return game._jump_cursor;
+}
+
+function jumpTrajectory(x, y, magic = false) {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    let ax = Math.abs(x - ux);
+    let ay = Math.abs(y - uy);
+    if (magic || (!ax && !ay)) return 0;
+    if (ax >= 2 * ay) ay = 0;
+    else if (ay >= 2 * ax) ax = 0;
+    if (!ax && !ay) return 0;
+    if (!ay) return 1;
+    if (!ax) return 2;
+    return 3;
+}
+
+function jumpDiagonalCategory(x, y, magic = false) {
+    const dx = x - (game.u?.ux ?? 0);
+    const dy = y - (game.u?.uy ?? 0);
+    if (magic || (!dx && !dy)) return 0;
+    if (!dy) return 1;
+    if (!dx) return 2;
+    return 3;
+}
+
+function jumpOpenDoorBlocksPath(loc, traj) {
+    if (loc?.typ !== DOOR || !(loc.doormask & C.D_ISOPEN) || !traj) return false;
+    if (traj === 3) return true;
+    return ((traj & 1) !== 0) === !!loc.horizontal;
+}
+
+function jumpPathSquareClear(x, y, traj) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    if (C.IS_STWALL(loc.typ)) return false;
+    if (loc.typ === DOOR) {
+        if (loc.doormask & (D_CLOSED | D_LOCKED)) return false;
+        if (jumpOpenDoorBlocksPath(loc, traj)) return false;
+    }
+    if (sobj_at_basic(BOULDER, x, y)) return false;
+    return true;
+}
+
+function walkJumpPathClear(x, y, traj) {
+    // C ref: src/dothrow.c:walk_path().  Jump validation uses the same
+    // Bresenham stepping routine as hurtle/jump movement.
+    let cx = game.u?.ux ?? 0;
+    let cy = game.u?.uy ?? 0;
+    let dx = x - cx;
+    let dy = y - cy;
+    const xChange = dx < 0 ? -1 : 1;
+    const yChange = dy < 0 ? -1 : 1;
+    dx = Math.abs(dx);
+    dy = Math.abs(dy);
+    let err = 0;
+    let i = 0;
+    if (dx < dy) {
+        while (i++ < dy) {
+            cy += yChange;
+            err += dx << 1;
+            if (err > dy) {
+                cx += xChange;
+                err -= dy << 1;
+            }
+            if (!jumpPathSquareClear(cx, cy, traj)) return false;
+        }
+    } else {
+        while (i++ < dx) {
+            cx += xChange;
+            err += dy << 1;
+            if (err > dx) {
+                cy += yChange;
+                err -= dx << 1;
+            }
+            if (!jumpPathSquareClear(cx, cy, traj)) return false;
+        }
+    }
+    return true;
+}
+
+function jumpValidation(x, y, magic = false) {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    const distance = dist2(x, y, ux, uy);
+    if (!magic && heroHasLimitedKnightJumping() && distance !== 5)
+        return { ok: false, message: 'Illegal move!' };
+    if (distance > (magic ? 6 + magic * 3 : 9))
+        return { ok: false, message: 'Too far!' };
+    if (!C.isok(x, y)) return { ok: false, message: 'You cannot jump there!' };
+    if (!cansee(x, y)) return { ok: false, message: 'You cannot see where to land!' };
+
+    const diag = jumpDiagonalCategory(x, y, magic);
+    const traj = jumpTrajectory(x, y, magic);
+    const here = game.level?.at(ux, uy);
+    if (diag === 3 && jumpOpenDoorBlocksPath(here, traj))
+        return { ok: false, message: "You can't jump diagonally out of a doorway." };
+    if (!walkJumpPathClear(x, y, traj))
+        return { ok: false, message: 'There is an obstacle preventing that jump.' };
+    return { ok: true };
+}
+
+function jumpLocationDescription(x, y) {
+    const base = teleportLocationDescription(x, y);
+    return jumpValidation(x, y, false).ok ? base : `${base} (invalid target)`;
+}
+
+async function describeJumpCursor() {
+    const cursor = currentJumpCursor();
+    await pline(jumpLocationDescription(cursor.x, cursor.y));
+    setTravelMapCursorAt(cursor.x, cursor.y);
+}
+
+function moveHeroForJump(x, y) {
+    const u = game.u;
+    if (!u) return;
+    const oldx = u.ux;
+    const oldy = u.uy;
+    u.ux0 = oldx;
+    u.uy0 = oldy;
+    u.ux = x;
+    u.uy = y;
+    if (u.usteed) {
+        u.usteed.mx = x;
+        u.usteed.my = y;
+    }
+    newsym(oldx, oldy);
+    see_monsters();
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+    refreshWarningAfterHeroMove();
+    newsym(x, y);
+}
+
+async function finishJumpToCursor() {
+    const cursor = currentJumpCursor();
+    const check = jumpValidation(cursor.x, cursor.y, false);
+    game._awaiting_jump_prompt = false;
+    game._jump_cursor = null;
+    game._prompt_cursor = null;
+    if (!check.ok) {
+        await pline(check.message);
+        setTravelMapCursor();
+        game.context.move = 0;
+        return;
+    }
+    if (game.u?.usteed && game.u?.ux === cursor.x && game.u?.uy === cursor.y) {
+        await pline(`${sentenceStart(monsterName(game.u.usteed))} isn't capable of jumping in place.`);
+        setTravelMapCursor();
+        game.context.move = 0;
+        return;
+    }
+    if (game.u?.ux === cursor.x && game.u?.uy === cursor.y) {
+        await pline('You decide not to jump after all.');
+        setTravelMapCursor();
+        game.context.move = 0;
+        return;
+    }
+    moveHeroForJump(cursor.x, cursor.y);
+    if (game.u) game.u.uhunger = Math.max(0, (game.u.uhunger ?? 900) - rnd(25));
+    game._nomul_turns_remaining = Math.max(game._nomul_turns_remaining || 0, 1);
+    game._nomul_finish_message = '';
+    game.context.move = 1;
+}
+
+async function doJumpCommand() {
+    // C ref: src/apply.c:dojump()/jump().  This covers physical jumping; the
+    // spell path and trap-specific jump side effects remain part of the same
+    // subsystem rather than separate command special cases.
+    refreshHeroPreviousPositionForStationaryCommand();
+    if (!heroHasJumping()) {
+        await pline("You can't jump very far.");
+        game.context.move = 0;
+        return;
+    }
+    if ((game.u?.uencumber || 0) > C.UNENCUMBERED) {
+        await pline('You are carrying too much to jump!');
+        game.context.move = 0;
+        return;
+    }
+    if ((game.u?.uhunger ?? 900) <= 100 || heroAttr(C.A_STR) < 6) {
+        await pline('You lack the strength to jump!');
+        game.context.move = 0;
+        return;
+    }
+    if (hasWoundedLegs()) {
+        await pline(woundedLegsKickMessage().replace('kicking', 'jumping'));
+        game.context.move = 0;
+        return;
+    }
+    await pline('Where do you want to jump?');
+    if (!getposTipSeen()) {
+        queue_more_prompt();
+        game._jump_tip_pending = true;
+    } else {
+        game._jump_cursor = { x: game.u?.ux ?? 1, y: game.u?.uy ?? 0 };
+        game._awaiting_jump_prompt = true;
+    }
+    game.context.move = 0;
+}
+
 function availableExtendedCommands() {
     const wizard = !!(game.wizard || game.flags?.debug);
     return EXTENDED_COMMANDS.filter((cmd) => !cmd.wizard || wizard);
@@ -5412,6 +6000,228 @@ async function showExtendedCommandInput(typed) {
     await showPromptLine(`# ${shown}`);
     game._pending_message_wrap_cols = 79;
     game._prompt_cursor = extendedCommandInputCursor(input);
+}
+
+function monsterHasSaddle(mon) {
+    return !!((mon?.misc_worn_check || 0) & C.W_SADDLE)
+        || (mon?.inventory || []).some((obj) => (obj?.owornmask || 0) & C.W_SADDLE);
+}
+
+function steedBaseName(mon) {
+    return String(mon?.data?.name || 'monster').toLowerCase().replaceAll('_', ' ');
+}
+
+function steedSaddledName(mon) {
+    const visibleSaddle = monsterHasSaddle(mon)
+        && !(game.u?.ublind || game.u?.uprops?.blind)
+        && !(game.u?.uhallucination || game.u?.uprops?.hallucination);
+    return `${visibleSaddle ? 'saddled ' : ''}${steedBaseName(mon)}`;
+}
+
+function steedMonNam(mon) {
+    return C.has_mgivenname(mon) ? C.MGIVENNAME(mon) : `the ${steedSaddledName(mon)}`;
+}
+
+function steedAnName(mon) {
+    const name = steedBaseName(mon);
+    const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
+    return `${article} ${name}`;
+}
+
+function steedCanBeRidden(mon) {
+    const mlet = mon?.data?.mlet;
+    const size = mon?.data?.msize ?? mon?.data?.size ?? 0;
+    return mlet === 'S_QUADRUPED' || mlet === 'S_UNICORN' || mlet === 'S_ANGEL'
+        || steedBaseName(mon) === 'pony' || size >= 2;
+}
+
+function removeMountedSteedFromMap(mon) {
+    // C ref: src/steed.c:mount_steed() removes the steed from the map grid,
+    // but it remains in the fmon list for movement allocation and pet upkeep.
+    // JS uses level.monsters for that fmon-like list, so keep the object here;
+    // mon_at() ignores the active steed while mounted.
+    void mon;
+}
+
+function placeSteedOnMap(mon, x, y) {
+    if (!mon || !game.level) return;
+    mon.mx = x;
+    mon.my = y;
+    if (!game.level.monsters.includes(mon)) game.level.monsters.push(mon);
+    newsym(x, y);
+}
+
+async function mountSteedBasic(mon) {
+    // C ref: src/steed.c:mount_steed().
+    if (game.u?.usteed) {
+        await pline(`You are already riding ${steedMonNam(game.u.usteed)}.`);
+        game.context.move = 0;
+        return;
+    }
+    if (!mon) {
+        await pline('I see nobody there.');
+        game.context.move = 0;
+        return;
+    }
+    if (!monsterHasSaddle(mon)) {
+        await pline(`${C.has_mgivenname(mon) ? C.MGIVENNAME(mon) : `The ${steedBaseName(mon)}`} is not saddled.`);
+        game.context.move = 0;
+        return;
+    }
+    if (!mon.mtame || mon.isminion) {
+        await pline(`I think ${steedMonNam(mon)} would mind.`);
+        game.context.move = 0;
+        return;
+    }
+    if (!steedCanBeRidden(mon)) {
+        await pline("You can't ride such a creature.");
+        game.context.move = 0;
+        return;
+    }
+
+    const threshold = (game.u?.ulevel || 1) + (mon.mtame || 0);
+    if (threshold < rnd(20)) {
+        await pline(`You slip while trying to get on ${steedMonNam(mon)}.`);
+        const damage = rn1(5, 10);
+        if (game.u && typeof game.u.uhp === 'number') {
+            game.u.uhp = Math.max(0, game.u.uhp - damage);
+            if (game.u.uhp <= 0) {
+                game._death_killer_name = 'riding accident';
+                game._death_killer_article = 'a';
+                game._death_killer_format = 'by-an';
+                game._death_shopkeeper_killer = null;
+                game._death_preserve_latched_status = true;
+                if (!game._death_bones_checked) {
+                    game._death_bones_checked = true;
+                    game._death_bones_check_pending = true;
+                }
+                game._monster_death_pending = true;
+                game._latched_status_uhp = 0;
+                queue_more_prompt();
+            }
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    await pline(`You mount ${steedMonNam(mon)}.`);
+    const oldx = game.u.ux;
+    const oldy = game.u.uy;
+    game.u.usteed = mon;
+    removeMountedSteedFromMap(mon);
+    game.u.ux0 = oldx;
+    game.u.uy0 = oldy;
+    game.u.ux = mon.mx;
+    game.u.uy = mon.my;
+    mon.mx = game.u.ux;
+    mon.my = game.u.uy;
+    newsym(oldx, oldy);
+    vision_recalc(1);
+    newsym(game.u.ux, game.u.uy);
+    game.context.move = 1;
+}
+
+const LANDING_DIRS = [
+    { dx: -1, dy: 0 }, { dx: -1, dy: -1 }, { dx: 0, dy: -1 }, { dx: 1, dy: -1 },
+    { dx: 1, dy: 0 }, { dx: 1, dy: 1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 1 },
+];
+
+function doorlessDoorBasic(loc) {
+    if (loc?.typ !== DOOR) return false;
+    const mask = loc.doormask || 0;
+    return mask === D_NODOOR || !!(mask & C.D_BROKEN);
+}
+
+function landingTestMoveBasic(dx, dy) {
+    // C ref: src/hack.c:test_move(TEST_MOVE).  Dismount landing uses the
+    // ordinary movement test, so diagonal moves into or out of intact doorways
+    // are rejected even if the destination itself is open/passable.
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const x = ux + dx;
+    const y = uy + dy;
+    if (blocksMove(x, y)) return false;
+    if (!dx || !dy) return true;
+    const target = game.level?.at(x, y);
+    if (target?.typ === DOOR && !doorlessDoorBasic(target)) return false;
+    const origin = game.level?.at(ux, uy);
+    if (origin?.typ === DOOR && !doorlessDoorBasic(origin)) return false;
+    if (blocksMove(ux, y) && blocksMove(x, uy)) return false;
+    return true;
+}
+
+function landingSpotBasic() {
+    // C ref: src/steed.c:landing_spot().  This covers the ordinary voluntary
+    // dismount path: prefer accessible adjacent squares, favor orthogonal
+    // distance, and randomize among equal-distance candidates.
+    let viable = 0;
+    let best = null;
+    let minDistance = -1;
+    for (const dir of LANDING_DIRS) {
+        const x = (game.u?.ux || 0) + dir.dx;
+        const y = (game.u?.uy || 0) + dir.dy;
+        if (!C.isok(x, y) || mon_at(x, y) || !landingTestMoveBasic(dir.dx, dir.dy)) continue;
+        viable++;
+        const distance = dist2(game.u?.ux || 0, game.u?.uy || 0, x, y);
+        if (minDistance < 0 || distance < minDistance
+            || (distance === minDistance && !rn2(viable))) {
+            best = { x, y };
+            minDistance = distance;
+        }
+    }
+    return best;
+}
+
+async function dismountSteedBasic() {
+    // C ref: src/steed.c:dismount_steed(DISMOUNT_BYCHOICE).
+    const steed = game.u?.usteed;
+    if (!steed) return;
+    const spot = landingSpotBasic();
+    if (!spot) {
+        await pline("You can't.  There isn't anywhere for you to stand.");
+        game.context.move = 0;
+        return;
+    }
+
+    if (C.has_mgivenname(steed)) await pline(`You dismount ${steedMonNam(steed)}.`);
+    else await pline(`You've been through the dungeon on ${steedAnName(steed)} with no name.`);
+
+    const steedX = game.u.ux;
+    const steedY = game.u.uy;
+    game.u.usteed = null;
+    game.u.ux0 = steedX;
+    game.u.uy0 = steedY;
+    game.u.ux = spot.x;
+    game.u.uy = spot.y;
+    placeSteedOnMap(steed, steedX, steedY);
+    vision_recalc(1);
+    newsym(spot.x, spot.y);
+    deferDismountLookHereIfNeeded();
+    game.context.move = 1;
+}
+
+function deferDismountLookHereIfNeeded() {
+    // C refs: src/steed.c:dismount_steed(), src/hack.c:spoteffects(),
+    // src/pickup.c:pickup().  Voluntary dismount moves the hero via teleds();
+    // if pickup/look-here output is about to replace the dismount line, tty
+    // first blocks on the dismount topline.
+    const u = game.u || {};
+    const objects = floorObjectsAt(u.ux, u.uy);
+    if (!objects.length || !game._pending_message) return false;
+    queue_more_prompt();
+    game._look_here_pauses_turn = true;
+    game._resume_look_here_after_more = true;
+    return true;
+}
+
+async function doRideCommand() {
+    if (game.u?.usteed) {
+        await dismountSteedBasic();
+        return;
+    }
+    await showPromptLine('In what direction? ');
+    game._awaiting_ride_direction = true;
+    game.context.move = 0;
 }
 
 function showNameCommandMenu() {
@@ -5858,11 +6668,22 @@ function changeLuck(delta) {
 
 const GOD_VOICES = ['booms out', 'thunders', 'rings out', 'booms'];
 
+async function prayerResultPline(line) {
+    if (game._pack_next_prayer_result_line
+        && topline_can_pack_message(game._pending_message, line)) {
+        game._pack_next_prayer_result_line = false;
+        await append_pline(line);
+        return;
+    }
+    game._pack_next_prayer_result_line = false;
+    await pline(line);
+}
+
 async function godVoice(alignment, words = null) {
     const voice = GOD_VOICES[rn2(GOD_VOICES.length)];
     const god = prayerGodNameForAlign(alignment);
-    if (words) await pline(`The voice of ${god} ${voice}: "${words}"`);
-    else await pline(`The voice of ${god} ${voice}: `);
+    if (words) await prayerResultPline(`The voice of ${god} ${voice}: "${words}"`);
+    else await prayerResultPline(`The voice of ${god} ${voice}: `);
 }
 
 function queuePrayerMoreMessages(messages) {
@@ -5891,7 +6712,7 @@ async function angryGods(respGod) {
     switch (rn2(maxanger)) {
     case 0:
     case 1:
-        await pline(`You feel that ${prayerGodNameForAlign(respGod)} is displeased.`);
+        await prayerResultPline(`You feel that ${prayerGodNameForAlign(respGod)} is displeased.`);
         break;
     case 2:
     case 3:
@@ -5931,7 +6752,7 @@ async function godsUpset(respGod) {
     await angryGods(respGod);
 }
 
-async function finishPrayerResult() {
+export async function finishPrayerResult() {
     // C ref: pray.c:prayer_done().
     const ptype = game._prayer_ptype ?? 3;
     const alignment = game._prayer_alignment ?? (game.u?.ualign?.type ?? 0);
@@ -5946,7 +6767,7 @@ async function finishPrayerResult() {
         await angryGods(game.u?.ualign?.type ?? alignment);
     } else {
         const god = prayerGodNameForAlign(alignment);
-        await pline(`You feel that ${god} is satisfied.`);
+        await prayerResultPline(`You feel that ${god} is satisfied.`);
         if ((game.u?.ualign?.record ?? 0) < 2) adjalign(1);
         rn1(2, 1);
         game.u.ublesscnt = rnz(350);
@@ -5962,6 +6783,15 @@ function blocksMove(x, y) {
     if (IS_WALL(loc.typ)) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
     return false;
+}
+
+function blockedMovementMessage(x, y) {
+    // C ref: src/hack.c:test_move(DO_MOVE).  With `mention_walls`, bumping
+    // ordinary obstructing terrain reports the remembered map feature.
+    const loc = game.level?.at(x, y);
+    if (!loc || loc.typ === STONE || loc.typ === SCORR) return "It's solid stone.";
+    if (loc.typ === SDOOR || IS_WALL(loc.typ)) return "It's a wall.";
+    return '';
 }
 
 function cvt_sdoor_to_door_basic(loc) {
@@ -6105,7 +6935,8 @@ async function tryPushBoulder(boulder, sx, sy, dx, dy) {
 }
 
 function mon_at(x, y) {
-    return (game.level?.monsters || []).find((mon) => mon.mx === x && mon.my === y);
+    return (game.level?.monsters || []).find((mon) =>
+        mon !== game.u?.usteed && mon.mx === x && mon.my === y);
 }
 
 function namedMonsterDisplayName(mon) {
@@ -6165,6 +6996,9 @@ async function chatMonsterNoise(mon) {
 }
 
 function monsterHitName(mon) {
+    // C ref: src/do_name.c:mon_nam().  With ARTICLE_THE, an unspotted
+    // monster is "it" even if the hero knows its remembered glyph/name.
+    if (!heroCanNameMonsterForHit(mon)) return 'it';
     if (game.u?.uhallucination || game.u?.uprops?.hallucination) {
         // C ref: do_name.c:x_monnam(ARTICLE_THE) -> rndmonnam().
         return randomHallucinatedMonsterName('the');
@@ -6192,13 +7026,59 @@ function monsterKillVerb(mon) {
     return 'kill';
 }
 
+function verboseMessagesEnabled() {
+    return game.flags?.verbose !== false;
+}
+
+function monsterVisibleForHero(mon) {
+    // C ref: include/display.h:mon_visible().
+    if (!mon || mon.mundetected) return false;
+    if (mon._opened_unseen_door) return false;
+    if (mon.minvis && !heroSeesInvisible()) return false;
+    return true;
+}
+
+function heroSeesMonsterLocation(mon) {
+    // C ref: include/display.h:canseemon(), including infravision.
+    const blind = game.u?.ublind || game.u?.uprops?.blind || game.u?.uprops?.blinded;
+    if (blind) return false;
+    if (cansee(mon.mx, mon.my)) return true;
+    return !!(game.u?.uprops?.infravision
+        && (mon.data?.mflags3 & C.M3_INFRAVISIBLE)
+        && couldsee(mon.mx, mon.my));
+}
+
+function heroCanSpotMonsterForHit(mon) {
+    // C refs: include/display.h:canspotmon(), do_name.c:x_monnam().
+    if (!mon) return false;
+    if (game.u?.uswallow && game.u?.ustuck === mon) return false;
+    return monsterVisibleForHero(mon) && heroSeesMonsterLocation(mon);
+}
+
+function heroCanNameMonsterForHit(mon) {
+    // C ref: src/uhitm.c:hmon_hitmon_msg_hit().  A swallowed attacker is
+    // still named by mon_nam(), but canseemon() is false for exclam(dmg).
+    if (!mon) return false;
+    if (game.u?.uswallow && game.u?.ustuck === mon) return true;
+    return heroCanSpotMonsterForHit(mon);
+}
+
 function heroHitExclam(mon, damage) {
     // C ref: src/uhitm.c:hmon_hitmon_msg_hit().  Hand-to-hand hits use
     // exclam(dmg) only when canseemon(mon); swallowed or blind hits use ".".
-    const canSeeTarget = !(game.u?.uswallow && game.u?.ustuck === mon)
-        && !(game.u?.ublind || game.u?.uprops?.blind)
-        && cansee(mon.mx, mon.my);
-    return canSeeTarget ? (damage <= 4 ? '.' : '!') : '.';
+    return heroCanSpotMonsterForHit(mon) ? (damage <= 4 ? '.' : '!') : '.';
+}
+
+function heroMeleeHitMessage(mon, damage) {
+    // C ref: src/uhitm.c:hmon_hitmon_msg_hit().
+    if (!verboseMessagesEnabled()) return 'You hit it.';
+    return `You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`;
+}
+
+function heroMeleeMissMessage(mon) {
+    // C ref: src/uhitm.c:missum().
+    if (!verboseMessagesEnabled()) return 'You miss it.';
+    return `You miss ${monsterHitName(mon)}.`;
 }
 
 function monsterHelpless(mon) {
@@ -6267,6 +7147,16 @@ const WEAPON_SMALL_DAMAGE_DIE = new Map([
     [SCALPEL, 3],
     // C ref: include/objects.h WEAPON("long sword", ... oc_wsdam=8).
     [LONG_SWORD, 8],
+]);
+
+const WEAPON_LARGE_DAMAGE_DIE = new Map([
+    [SCALPEL, 3],
+    // C ref: include/objects.h WEAPON("long sword", ... oc_wldam=12).
+    [LONG_SWORD, 12],
+]);
+
+const BIMANUAL_MELEE_WEAPONS = new Set([
+    BATTLE_AXE, TWO_HANDED_SWORD, TSURUGI, DWARVISH_MATTOCK,
 ]);
 
 const WEAPON_HIT_BONUS = new Map([
@@ -6350,10 +7240,37 @@ function setHeroWieldedWeapon(obj) {
     obj.owornmask = (obj.owornmask || 0) | C.W_WEP;
 }
 
-function heroMeleeSmallDamageDie() {
-    const weapon = heroWieldedWeapon();
+function heroMeleeDamageDie(mon, weapon = heroWieldedWeapon()) {
     if (!weapon) return 2;
+    // C ref: src/weapon.c:dmgval(), include/mondata.h:bigmonst().
+    if ((mon?.data?.msize ?? 0) >= MZ_LARGE)
+        return WEAPON_LARGE_DAMAGE_DIE.get(weapon?.otyp) || WEAPON_SMALL_DAMAGE_DIE.get(weapon?.otyp) || 6;
     return WEAPON_SMALL_DAMAGE_DIE.get(weapon?.otyp) || 6;
+}
+
+function heroStrengthDamageBonus() {
+    // C ref: src/weapon.c:dbon().
+    const str = currentAttr(A_STR);
+    if (str < 6) return -1;
+    if (str < 16) return 0;
+    if (str < 18) return 1;
+    if (str === 18) return 2;
+    if (str <= C.STR18(75)) return 3;
+    if (str <= C.STR18(90)) return 4;
+    if (str < C.STR18(100)) return 5;
+    return 6;
+}
+
+function heroMeleeStrengthDamageBonus(weapon) {
+    let bonus = heroStrengthDamageBonus();
+    if (!bonus) return 0;
+    const sign = Math.sign(bonus);
+    const abs = Math.abs(bonus);
+    if (game.u?.twoweap && (weapon === heroPrimaryWeapon() || weapon === heroSecondaryWeapon()))
+        return Math.trunc((3 * abs + 2) / 4) * sign;
+    if (!game.u?.twoweap && weapon === heroPrimaryWeapon() && BIMANUAL_MELEE_WEAPONS.has(weapon?.otyp))
+        return Math.trunc((3 * abs + 1) / 2) * sign;
+    return bonus;
 }
 
 function heroMeleeKnockbackFrontdoor() {
@@ -6362,10 +7279,16 @@ function heroMeleeKnockbackFrontdoor() {
     rn2(6);
 }
 
-function heroMeleeDamageBonus() {
-    const weapon = heroWieldedWeapon();
-    if (!weapon || typeof weapon.spe !== 'number') return 0;
-    return weapon.spe;
+function heroMeleeDamageBonus(weapon = heroWieldedWeapon()) {
+    // C ref: src/uhitm.c:hmon_hitmon_dmg_recalc().
+    return (game.u?.udaminc || 0) + heroMeleeStrengthDamageBonus(weapon);
+}
+
+function heroMeleeDamage(mon, weapon = heroWieldedWeapon()) {
+    let damage = rnd(heroMeleeDamageDie(mon, weapon));
+    if (weapon && typeof weapon.spe === 'number')
+        damage = Math.max(0, damage + weapon.spe);
+    return Math.max(1, damage + heroMeleeDamageBonus(weapon));
 }
 
 function doorwayBlocksDiagonalForHero(loc) {
@@ -6378,6 +7301,10 @@ function currentAttr(index) {
 
 function kickDamageDie() {
     return currentAttr(A_CON) > 15 ? 3 : 5;
+}
+
+function doorIsShopDoor(x, y) {
+    return inRoomsAt(x, y).some((roomno) => isShopRoomNo(roomno));
 }
 
 async function kickOuch(x, y, kickobjnam = '') {
@@ -6416,13 +7343,16 @@ async function kickDoor(x, y, loc) {
     exercise(A_DEX, true);
     const avrgAttrib = Math.trunc((currentAttr(A_STR) + currentAttr(A_DEX) + currentAttr(A_CON)) / 3);
     if (rnl(35) < avrgAttrib) {
-        exercise(A_STR, true);
-        loc.doormask = C.D_BROKEN;
-        loc.flags = C.D_BROKEN;
+        const shatters = currentAttr(A_STR) > 18 && !rn2(5) && !doorIsShopDoor(x, y);
+        loc.doormask = shatters ? C.D_NODOOR : C.D_BROKEN;
+        loc.flags = loc.doormask;
         newsym(x, y);
         vision_reset();
         vision_recalc(0);
-        await pline('As you kick the door, it crashes open!');
+        await pline(shatters
+            ? 'As you kick the door, it shatters to pieces!'
+            : 'As you kick the door, it crashes open!');
+        exercise(A_STR, true);
         game._pet_combat_pending_boundary = true;
     } else {
         exercise(A_STR, true);
@@ -6802,7 +7732,7 @@ async function heroMeleeAttack(mon) {
     const dieroll = rnd(20);
     const hit = heroMeleeToHit(mon, primary) > dieroll;
     if (!hit) {
-        await pline(`You miss ${monsterHitName(mon)}.`);
+        await pline(heroMeleeMissMessage(mon));
         if (!monsterHelpless(mon)) await wakeupMonsterByAttack(mon);
         rn2(3);
         if (!game.u?.twoweap || !heroSecondaryWeapon()) {
@@ -6812,7 +7742,7 @@ async function heroMeleeAttack(mon) {
     } else {
         exercise(A_DEX, true);
         const unarmed = !primary;
-        const damage = Math.max(1, rnd(heroMeleeSmallDamageDie()) + heroMeleeDamageBonus());
+        const damage = heroMeleeDamage(mon, primary);
         // C refs: uhitm.c:hmon_hitmon_barehands(),
         // uhitm.c:hmon_hitmon_stagger().  Barehand hits roll the small
         // unarmed damage die, then high-enough damage probes the rare stagger.
@@ -6836,7 +7766,7 @@ async function heroMeleeAttack(mon) {
             }
         }
         if (maybeKnockback) heroMeleeKnockbackFrontdoor();
-        await pline(`You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`);
+        await pline(heroMeleeHitMessage(mon, damage));
         await wakeupMonsterByAttack(mon);
         // C refs: src/uhitm.c:known_hitum(), src/uhitm.c:passive().
         rn2(25);
@@ -6849,13 +7779,13 @@ async function heroMeleeAttack(mon) {
     const secondRoll = rnd(20);
     const secondHit = heroMeleeToHit(mon, second) > secondRoll;
     if (!secondHit) {
-        await append_pline(`You miss ${monsterHitName(mon)}.`);
+        await append_pline(heroMeleeMissMessage(mon));
         if (!monsterHelpless(mon)) await wakeupMonsterByAttack(mon);
         game.context.run = null;
         return;
     }
     const secondUnarmed = !second;
-    const damage = Math.max(1, rnd(heroMeleeSmallDamageDie()) + heroMeleeDamageBonus());
+    const damage = heroMeleeDamage(mon, second);
     if (secondUnarmed && damage > 1) rnd(100);
     const maybeKnockback = !secondUnarmed && damage > 1 && !game.u?.twoweap && second;
     if (typeof mon.mhp === 'number') {
@@ -6876,7 +7806,7 @@ async function heroMeleeAttack(mon) {
         }
     }
     if (maybeKnockback) heroMeleeKnockbackFrontdoor();
-    await pline(`You hit ${monsterHitName(mon)}${heroHitExclam(mon, damage)}`);
+    await pline(heroMeleeHitMessage(mon, damage));
     await wakeupMonsterByAttack(mon);
     // C refs: src/uhitm.c:known_hitum(), src/uhitm.c:passive().
     rn2(25);
@@ -6931,6 +7861,13 @@ async function corpseChance(mon) {
         await monExplodesBasic(mon, boom);
         return false;
     }
+    // C ref: src/mon.c:corpse_chance().  Large monsters and golems always
+    // reach make_corpse(); G_NOCORPSE suppression happens there without an
+    // additional chance roll.
+    if (((mon?.data?.msize ?? 0) >= MZ_LARGE || monsterName(mon) === 'lizard') && !mon.mcloned)
+        return true;
+    if (mon?.data?.mlet === 'S_GOLEM' || mon?.isshk || mon?.is_rider || mon?.isrider)
+        return true;
     const genoFreq = (mon.data?.geno ?? 0) & 0x7;
     const verysmall = VERY_SMALL_MONSTERS.has(monsterName(mon)) ? 1 : 0;
     const denom = 2 + (genoFreq < 2 ? 1 : 0) + verysmall;
@@ -7303,7 +8240,20 @@ const DISCOVERY_DESCRIPTION_SLOT = new Map([
     [KATANA, 'samurai sword'],
     [TSURUGI, 'long samurai sword'],
     [RUNESWORD, 'runed broadsword'],
+    [PARTISAN, 'vulgar polearm'],
+    [RANSEUR, 'hilted polearm'],
+    [SPETUM, 'forked polearm'],
+    [GLAIVE, 'single-edged polearm'],
+    [HALBERD, 'angled poleaxe'],
+    [BARDICHE, 'long poleaxe'],
+    [VOULGE, 'pole cleaver'],
+    [FAUCHARD, 'pole sickle'],
+    [GUISARME, 'pruning hook'],
+    [BILL_GUISARME, 'hooked polearm'],
+    [LUCERN_HAMMER, 'pronged polearm'],
+    [BEC_DE_CORBIN, 'beaked polearm'],
     [DWARVISH_MATTOCK, 'broad pick'],
+    [AKLYS, 'thonged club'],
     [SACK, 'bag'],
     [QUARTERSTAFF, 'staff'],
     [CLOAK_OF_MAGIC_RESISTANCE, 148],
@@ -7839,6 +8789,233 @@ async function redrawAfterFullScreenMenuDismiss() {
     }
 }
 
+function currentFruitName() {
+    return String(game.flags?.fruit || 'slime mold');
+}
+
+function optionBool(container, key, defaultValue = false) {
+    const source = container === 'iflags' ? game.iflags : game.flags;
+    return source?.[key] == null ? defaultValue : !!source[key];
+}
+
+function setOptionBool(container, key, value) {
+    const target = container === 'iflags'
+        ? (game.iflags || (game.iflags = {}))
+        : (game.flags || (game.flags = {}));
+    target[key] = !!value;
+}
+
+function toggleOptionBool(container, key, defaultValue = false) {
+    const next = !optionBool(container, key, defaultValue);
+    setOptionBool(container, key, next);
+    return next;
+}
+
+const SIMPLE_OPTIONS_PAGE1 = [
+    ' \x1b[7mOptions\x1b[0m',
+    '',
+    ' ? - show help',
+    '',
+    ' \x1b[7m General\x1b[0m',
+    () => ` a - fruit                   [${currentFruitName()}]`,
+    ' b - number_pad              [0=off]',
+    ' c - price_quotes            [ ]',
+    '',
+    ' \x1b[7m Behavior\x1b[0m',
+    () => ` d - autodig                 [${optionBool('flags', 'autodig') ? 'X' : ' '}]`,
+    () => ` e - autoopen                [${optionBool('flags', 'autoopen', true) ? 'X' : ' '}]`,
+    () => ` f - autopickup              [${optionBool('flags', 'pickup') ? 'X' : ' '}]`,
+    ' g - autopickup exceptions   [(0 currently set)]',
+    () => ` h - autoquiver              [${optionBool('flags', 'autoquiver') ? 'X' : ' '}]`,
+    ' i - autounlock              [apply-key]',
+    () => ` j - cmdassist               [${optionBool('iflags', 'cmdassist', true) ? 'X' : ' '}]`,
+    () => ` k - dropped_nopick          [${optionBool('flags', 'dropped_nopick', true) ? 'X' : ' '}]  (for autopickup)`,
+    () => ` l - fireassist              [${optionBool('flags', 'fireassist', true) ? 'X' : ' '}]`,
+    () => ` m - pickup_stolen           [${optionBool('flags', 'pickup_stolen', true) ? 'X' : ' '}]  (for autopickup)`,
+    () => ` n - pickup_thrown           [${optionBool('flags', 'pickup_thrown', true) ? 'X' : ' '}]  (for autopickup)`,
+    () => ` o - pickup_types            [${game.flags?.pickup_types || 'all'}]  (for autopickup)`,
+    () => ` p - pushweapon              [${optionBool('flags', 'pushweapon', true) ? 'X' : ' '}]`,
+    ' (1 of 2)',
+];
+
+const SIMPLE_OPTIONS_PAGE2 = [
+    '',
+    ' \x1b[7m Map\x1b[0m',
+    () => ` a - bgcolors                [${optionBool('iflags', 'bgcolors', true) ? 'X' : ' '}]`,
+    () => ` b - color                   [${optionBool('flags', 'color', true) ? 'X' : ' '}]`,
+    () => ` c - customcolors            [${optionBool('iflags', 'customcolors', true) ? 'X' : ' '}]`,
+    () => ` d - customsymbols           [${optionBool('iflags', 'customsymbols', true) ? 'X' : ' '}]`,
+    () => ` e - hilite_pet              [${optionBool('iflags', 'hilite_pet') ? 'X' : ' '}]`,
+    () => ` f - hilite_pile             [${optionBool('iflags', 'hilite_pile') ? 'X' : ' '}]`,
+    () => ` g - showrace                [${optionBool('flags', 'showrace') ? 'X' : ' '}]`,
+    () => ` h - sparkle                 [${optionBool('flags', 'sparkle', true) ? 'X' : ' '}]`,
+    ' i - symset                  [DECgraphics, active, handler=DEC]',
+    '',
+    ' \x1b[7m Status\x1b[0m',
+    () => ` j - hitpointbar             [${optionBool('iflags', 'hitpointbar') ? 'X' : ' '}]`,
+    ' k - menu colors             [(0 currently set)]',
+    () => ` l - showexp                 [${optionBool('flags', 'showexp', true) ? 'X' : ' '}]`,
+    ' m - status condition fields [(16 currently set)]',
+    ' n - status highlight rules  [(0 currently set)]',
+    ' o - statuslines             [2]',
+    () => ` p - time                    [${optionBool('flags', 'time', true) ? 'X' : ' '}]`,
+    ' (2 of 2)',
+];
+
+function simpleOptionsLines(page) {
+    const rows = page === 1 ? SIMPLE_OPTIONS_PAGE2 : SIMPLE_OPTIONS_PAGE1;
+    return rows.map((row) => typeof row === 'function' ? row() : row);
+}
+
+function renderSimpleOptionsMenu() {
+    const menu = game._options_menu || (game._options_menu = { page: 0 });
+    const lines = simpleOptionsLines(menu.page);
+    const footerRow = lines.length - 1;
+    const footer = lines[footerRow] || '';
+    showSerializedOverride(lines.join('\n'), [footer.length, footerRow]);
+    game.context.move = 0;
+}
+
+function beginSimpleOptionsMenu() {
+    // C ref: src/options.c:doset_simple()/doset_simple_menu().
+    game._options_menu = { page: 0 };
+    renderSimpleOptionsMenu();
+}
+
+async function finishSimpleOptionsMenu() {
+    game._options_menu = null;
+    clearOverrideScreen();
+    await redrawAfterFullScreenMenuDismiss();
+    game.context.move = 0;
+}
+
+function rerenderOptionsFromFirstPage() {
+    game._options_menu = game._options_menu || { page: 0 };
+    game._options_menu.page = 0;
+    renderSimpleOptionsMenu();
+}
+
+async function beginOptionsFruitPrompt() {
+    await redrawAfterFullScreenMenuDismiss();
+    game._awaiting_options_fruit = true;
+    game._options_fruit_input = '';
+    const baseRows = serialize_terminal_grid(game.nhDisplay).split('\n');
+    while (baseRows.length < C.TERMINAL_ROWS) baseRows.push('');
+    baseRows[22] = '';
+    baseRows[23] = '';
+    game._options_fruit_base_screen = baseRows.slice(0, C.TERMINAL_ROWS).join('\n');
+    renderOptionsFruitPromptScreen();
+    game.context.move = 0;
+}
+
+function renderOptionsFruitPromptScreen() {
+    const input = game._options_fruit_input || '';
+    const prompt = input ? `Set fruit to what? ${input}` : 'Set fruit to what?';
+    const screen = screenWithPromptLine(game._options_fruit_base_screen || '', prompt);
+    showSerializedOverride(screen, [Math.min('Set fruit to what? '.length + input.length, 79), 0]);
+    game._pending_message = prompt;
+    game.context.move = 0;
+}
+
+async function handleOptionsFruitKey(ch) {
+    if (ch === '\r' || ch === '\n') {
+        const text = String(game._options_fruit_input || '').trim();
+        if (text) {
+            game.flags = game.flags || {};
+            game.flags.fruit = text;
+        }
+        game._awaiting_options_fruit = false;
+        game._options_fruit_input = '';
+        game._options_fruit_base_screen = null;
+        clear_pending_message();
+        rerenderOptionsFromFirstPage();
+        return;
+    }
+    if (ch === '\x1b') {
+        game._awaiting_options_fruit = false;
+        game._options_fruit_input = '';
+        game._options_fruit_base_screen = null;
+        clear_pending_message();
+        rerenderOptionsFromFirstPage();
+        return;
+    }
+    if (ch === '\b' || ch === '\x7f') {
+        game._options_fruit_input = String(game._options_fruit_input || '').slice(0, -1);
+        renderOptionsFruitPromptScreen();
+        return;
+    }
+    if (ch >= ' ' && ch !== '\x7f') {
+        if (String(game._options_fruit_input || '').length < 80)
+            game._options_fruit_input = `${game._options_fruit_input || ''}${ch}`;
+        renderOptionsFruitPromptScreen();
+        return;
+    }
+    renderOptionsFruitPromptScreen();
+}
+
+async function handleSimpleOptionsMenuKey(ch) {
+    const menu = game._options_menu || (game._options_menu = { page: 0 });
+    if (ch === '\x1b' || ch === '\r' || ch === '\n' || ch === ' ') {
+        await finishSimpleOptionsMenu();
+        return;
+    }
+    if (ch === '>' || ch === '\x06') {
+        menu.page = 1;
+        renderSimpleOptionsMenu();
+        return;
+    }
+    if (ch === '<' || ch === '\x02') {
+        menu.page = 0;
+        renderSimpleOptionsMenu();
+        return;
+    }
+    if (menu.page === 0) {
+        if (ch === 'a') {
+            await beginOptionsFruitPrompt();
+            return;
+        }
+        const toggles = {
+            d: ['flags', 'autodig', false],
+            e: ['flags', 'autoopen', true],
+            f: ['flags', 'pickup', false],
+            h: ['flags', 'autoquiver', false],
+            j: ['iflags', 'cmdassist', true],
+            k: ['flags', 'dropped_nopick', true],
+            l: ['flags', 'fireassist', true],
+            m: ['flags', 'pickup_stolen', true],
+            n: ['flags', 'pickup_thrown', true],
+            p: ['flags', 'pushweapon', true],
+        };
+        const toggle = toggles[ch];
+        if (toggle) {
+            toggleOptionBool(toggle[0], toggle[1], toggle[2]);
+            rerenderOptionsFromFirstPage();
+            return;
+        }
+    } else {
+        const toggles = {
+            a: ['iflags', 'bgcolors', true],
+            b: ['flags', 'color', true],
+            c: ['iflags', 'customcolors', true],
+            d: ['iflags', 'customsymbols', true],
+            e: ['iflags', 'hilite_pet', false],
+            f: ['iflags', 'hilite_pile', false],
+            g: ['flags', 'showrace', false],
+            h: ['flags', 'sparkle', true],
+            j: ['iflags', 'hitpointbar', false],
+            l: ['flags', 'showexp', true],
+            p: ['flags', 'time', true],
+        };
+        const toggle = toggles[ch];
+        if (toggle) {
+            toggleOptionBool(toggle[0], toggle[1], toggle[2]);
+            rerenderOptionsFromFirstPage();
+            return;
+        }
+    }
+    renderSimpleOptionsMenu();
+}
+
 const TRAVEL_TIP_ROWS = [
     [0, 'Tip: Farlooking or selecting a map location'],
     [2, 'You are now in a "farlook" mode - the movement keys move the cursor,'],
@@ -7848,6 +9025,22 @@ const TRAVEL_TIP_ROWS = [
     [7, 'and pressing ? will show the key help.'],
     [8, '(end)'],
 ];
+
+function getposTipSeen() {
+    // C ref: hack.c:handle_tip(TIP_GETPOS).  Travel, terrain browsing, and
+    // farlook all consume the same context tip bit.
+    return !!(game._getpos_tip_seen
+        || game._travel_tip_seen
+        || game._farlook_tip_seen
+        || game._terrain_getpos_tip_seen);
+}
+
+function markGetposTipSeen() {
+    game._getpos_tip_seen = true;
+    game._travel_tip_seen = true;
+    game._farlook_tip_seen = true;
+    game._terrain_getpos_tip_seen = true;
+}
 
 function showTravelTipOverScreen(baseScreen) {
     const lines = String(baseScreen || '').split('\n');
@@ -8239,6 +9432,10 @@ async function resumeGetposAfterHelp(kind) {
         const cursor = currentTeleportCursor();
         await showPromptLine("Move cursor to the desired position:");
         setTravelMapCursorAt(cursor.x, cursor.y);
+    } else if (kind === 'jump') {
+        const cursor = currentJumpCursor();
+        await showPromptLine('Move cursor to the desired position:');
+        setTravelMapCursorAt(cursor.x, cursor.y);
     } else if (kind === 'farlook') {
         const cursor = currentFarlookCursor();
         await showPromptLine('Pick a monster, object or location.');
@@ -8372,9 +9569,29 @@ function travelLocationDescription(x, y) {
     return desc;
 }
 
+function getposLocationKnown(x, y) {
+    if (game.u?.ux === x && game.u?.uy === y) return true;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    // C refs: src/getpos.c:auto_describe(), src/pager.c:do_screen_description().
+    // Getpos describes the displayed/remembered glyph, not hidden terrain.
+    return cansee(x, y) || !!loc.seenv || !!loc.remembered_glyph
+        || !!(loc.disp_ch && loc.disp_ch !== ' ');
+}
+
+function getposObjectDescription(x, y) {
+    const obj = (game.level?.objects || [])
+        .find((item) => item.ox === x && item.oy === y);
+    return obj ? inventoryObjectName(obj, { observe: false }) : '';
+}
+
 function teleportLocationDescription(x, y) {
+    if (game.u?.ux === x && game.u?.uy === y) return heroGetposDescription();
     const loc = game.level?.at(x, y);
     if (!loc) return 'stone';
+    if (!getposLocationKnown(x, y)) return 'unexplored area';
+    const objDesc = getposObjectDescription(x, y);
+    if (objDesc) return objDesc;
     if (loc.typ === C.CLOUD) return 'fog/vapor cloud';
     if (loc.typ === STONE || loc.typ === SCORR) return 'stone';
     if (IS_WALL(loc.typ)) return 'wall';
@@ -8390,6 +9607,9 @@ function farlookLocationDescription(x, y) {
     if (mon && !mon.mundetected && cansee(x, y)) return farlookMonsterDescription(mon, x, y);
     const loc = game.level?.at(x, y);
     if (!loc) return 'stone';
+    if (!getposLocationKnown(x, y)) return 'unexplored area';
+    const objDesc = getposObjectDescription(x, y);
+    if (objDesc) return objDesc;
     if (loc.typ === C.STAIRS) {
         const st = travelFeatureStairAt(x, y);
         if (st?.isbranch) return `branch staircase ${st.up ? 'up' : 'down'}`;
@@ -8598,9 +9818,10 @@ const GETPOS_FEATURE_TYPES = new Map([
     ['}', [C.POOL, C.MOAT, C.WATER]],
     ['~', [C.LAVAPOOL, C.LAVAWALL, C.ICE]],
 ]);
+const GETPOS_EXTRA_FEATURE_KEYS = new Set(['0']);
 
 function isGetposFeatureSearchKey(ch) {
-    return ch === '^' || GETPOS_FEATURE_TYPES.has(ch);
+    return ch === '^' || GETPOS_FEATURE_TYPES.has(ch) || GETPOS_EXTRA_FEATURE_KEYS.has(ch);
 }
 
 function getposFeatureAt(ch, x, y) {
@@ -8955,19 +10176,62 @@ function finishDeferredProjectileClearAfterMore() {
     if (clear && C.isok(clear.x, clear.y)) newsym(clear.x, clear.y);
 }
 
+function petCombatTopline(line) {
+    return /^The (?:kitten|little dog|(?:saddled )?pony) (?:misses|bites|hits|kicks|stings|butts|touches) .+[.!]$/.test(line || '');
+}
+
+function petCombatHitTopline(line) {
+    return /^The (?:kitten|little dog|(?:saddled )?pony) (?:bites|hits|kicks|stings|butts|touches) .+[.!]$/.test(line || '');
+}
+
+function splitDeferredPetCombatTopline(line) {
+    const msg = String(line || '');
+    const match = /^(The (?:kitten|little dog|(?:saddled )?pony) (?:misses|bites|hits|kicks|stings|butts|touches) .+?[.!])  (The (?:kitten|little dog|(?:saddled )?pony) .+)$/.exec(msg);
+    if (!match || !petCombatTopline(match[1]) || !petCombatTopline(match[2])) return null;
+    return { first: match[1], rest: match[2] };
+}
+
+function monsterDeathPastTense(mon) {
+    // C ref: src/mon.c:monkilled(). Nonliving monsters are destroyed.
+    const ptr = mon?.data;
+    if ((ptr?.mflags2 ?? 0) & M2_UNDEAD) return 'destroyed';
+    if (ptr?.name === 'MANES' || ptr?.mlet === 'S_GOLEM' || ptr?.mlet === 'S_VORTEX')
+        return 'destroyed';
+    return 'killed';
+}
+
+function monsterPetDeathLine(mon) {
+    return `The ${monsterName(mon)} is ${monsterDeathPastTense(mon)}!`;
+}
+
 async function handleQueuedMore(ch) {
     if (!game._more || (game._more_dismissals_remaining || 0) <= 0) return false;
     let resumeMonsterBehindNewMore = false;
     let suppressPausedMonsterResume = false;
+    const afterMoreSplit = splitDeferredPetCombatTopline(game._after_more_message || '');
+    const afterMoreTopline = afterMoreSplit?.first || game._after_more_message || '';
+    const splitHitDeathPrompt = !!game._pet_death_after_split_hit_more
+        && !!game._pet_defender_death_pending
+        && petCombatHitTopline(afterMoreTopline);
     const moreDismissKey = !!game._monster_more_accepts_any_key
         || ch === ' ' || ch === '\r' || ch === '\n' || ch === '\x1b';
     const pausedMonsterTurn = !!game._monster_turn_paused_for_more;
     const swallowedDamageResume = pausedMonsterTurn && !!game._swallowed_damage_more_waiting;
     const preTurnResume = pausedMonsterTurn && !!game._pre_turn_more_waiting;
     const monsterAttackResume = pausedMonsterTurn && !!game._monster_attack_more_waiting;
-    const deferredPetDeathNeedsPrompt = !!game._after_more_message
+    const deferredPetDeathPending = game._pet_defender_death_pending || null;
+    const deferredPetDeathCanPack = !!afterMoreTopline
+        && !afterMoreSplit
+        && !splitHitDeathPrompt
+        && !!deferredPetDeathPending
+        && topline_can_pack_message(
+            afterMoreTopline,
+            monsterPetDeathLine(deferredPetDeathPending.target),
+        );
+    const deferredPetDeathNeedsPrompt = !!afterMoreTopline
         && !!game._pet_defender_death_pending
         && !!game._pet_combat_more_latched
+        && (!deferredPetDeathCanPack || splitHitDeathPrompt)
         && !(game.u?.uhallucination || game.u?.uprops?.hallucination);
     const pausedFloorListTurn = !!game._resume_floor_list_turn;
     const pausedRunTail = !!game._run_paused_for_more;
@@ -9064,6 +10328,9 @@ async function handleQueuedMore(ch) {
     } else if (game._fire_wand_death_pending) {
         game._more_dismissals_remaining = 0;
         await showFireWandDeathMessage();
+    } else if (game._death_ray_death_pending) {
+        game._more_dismissals_remaining = 0;
+        await showDeathRayDeathMessage();
     } else if (game._sleep_wand_reflect_pending) {
         game._more_dismissals_remaining = 0;
         await showSleepRayReflectBounceAfterMore();
@@ -9097,7 +10364,7 @@ async function handleQueuedMore(ch) {
         queue_more_prompt();
     } else if (game._death_prompt_pending) {
         if (deathUsesWizardPrompt()) await showDeathPrompt();
-        else await showDeathDisclosure();
+        else await showDeathDisclosureOrPrompt();
     } else if (game._quit_disclosure_active) {
         game._quit_disclosure_active = false;
         game._override_serialized_persistent = false;
@@ -9112,8 +10379,15 @@ async function handleQueuedMore(ch) {
         game._more = false;
         game._death_blank_more_active = false;
         game._override_serialized_persistent = false;
-        const screen = deathTopTenScreen();
-        showSerializedOverride(screen, deathTopTenCursor(screen));
+        if (game.wizard || game.flags?.debug || game.flags?.explore) {
+            // C ref: src/topten.c:topten().  Debug/explore games report that
+            // the score list is skipped instead of showing ranked entries.
+            const mode = (game.wizard || game.flags?.debug) ? 'wizard' : 'discover';
+            showSerializedOverride(`\nSince you were in ${mode} mode, the score list will not be checked.`, [0, 2]);
+        } else {
+            const screen = deathTopTenScreen();
+            showSerializedOverride(screen, deathTopTenCursor(screen));
+        }
         game.program_state = game.program_state || {};
         game.program_state.gameover = true;
         game.context.move = 0;
@@ -9203,6 +10477,25 @@ async function handleQueuedMore(ch) {
             game._after_more_hero_damage = 0;
             game._after_more_damage_after_prompt = false;
         }
+        if (game._scroll_teleport_confused_after_more) {
+            game._scroll_teleport_confused_after_more = false;
+            exercise(A_WIS, true);
+            clear_pending_message();
+            await pline('Being confused, you mispronounce the magic words...');
+            queue_more_prompt();
+            game._scroll_teleport_prompt_after_more = true;
+            game.context.move = 0;
+            return true;
+        }
+        if (game._scroll_teleport_prompt_after_more) {
+            game._scroll_teleport_prompt_after_more = false;
+            clear_pending_message();
+            await showPromptLine('To what level do you want to teleport? ');
+            game._awaiting_scroll_level_teleport = true;
+            game._scroll_level_teleport_input = '';
+            game.context.move = 0;
+            return true;
+        }
         if (game._more_message_queue?.length) {
             const next = game._more_message_queue.shift();
             if (next.attrDelta && game.u?.acurr?.a) {
@@ -9257,6 +10550,20 @@ async function handleQueuedMore(ch) {
         }
         clear_pending_message();
         if (petMissLineAfterMore) await pline(petMissLineAfterMore);
+        if (game._resume_look_here_after_more) {
+            game._resume_look_here_after_more = false;
+            await lookHereAfterMove();
+            if (game._more && game._floor_list_pauses_turn) {
+                game._floor_list_pauses_turn = false;
+                game._resume_floor_list_turn = true;
+                game.context.move = 0;
+                return true;
+            }
+            await triggerSpotEffectsAtHero();
+            if (!game._more) finishPendingMoveSmudge();
+            game.context.move = 1;
+            return true;
+        }
         if (game._resume_spot_effects_after_more) {
             game._resume_spot_effects_after_more = false;
             game._resume_floor_list_turn = false;
@@ -9370,8 +10677,8 @@ async function handleQueuedMore(ch) {
             game._farlook_intro_after_more = false;
             game._farlook_quick_mode = quick;
             clear_pending_message();
-            if (!game._farlook_tip_seen) {
-                game._farlook_tip_seen = true;
+            if (!getposTipSeen()) {
+                markGetposTipSeen();
                 game._farlook_after_tip_quick = quick;
                 game._travel_tip_active = 'farlook';
                 await showTravelTipScreen();
@@ -9387,7 +10694,16 @@ async function handleQueuedMore(ch) {
         if (game._travel_tip_pending) {
             game._travel_tip_pending = false;
             game._travel_tip_active = true;
-            game._travel_tip_seen = true;
+            markGetposTipSeen();
+            clear_pending_message();
+            await showTravelTipScreen();
+            game.context.move = 0;
+            return true;
+        }
+        if (game._jump_tip_pending) {
+            game._jump_tip_pending = false;
+            game._travel_tip_active = 'jump';
+            markGetposTipSeen();
             clear_pending_message();
             await showTravelTipScreen();
             game.context.move = 0;
@@ -9471,13 +10787,23 @@ async function handleQueuedMore(ch) {
             await finishEnchantWeaponAfterMore();
         }
         if (game._after_more_message) {
-            const msg = game._after_more_message;
+            const split = afterMoreSplit;
+            const msg = split?.first || game._after_more_message;
+            const rest = split?.rest || '';
             // C refs: src/mhitm.c:mattackm(), src/mon.c:monkilled().
             // A deferred monster-vs-monster hit line blocks before visible
             // death side effects such as "The kitten is killed!" are applied.
-            let needsPrompt = !!game._after_more_needs_prompt || deferredPetDeathNeedsPrompt;
-            game._after_more_message = '';
+            let needsPrompt = !!game._after_more_needs_prompt || deferredPetDeathNeedsPrompt || !!rest;
+            game._after_more_message = rest;
             game._after_more_needs_prompt = false;
+            if (rest) {
+                // C refs: win/tty/topl.c:update_topl()/more(),
+                // src/mhitm.c:mattackm().  Pet combat plines generated behind
+                // an existing --More-- are shown one tty boundary at a time.
+                game._pet_combat_more_latched = true;
+                if (game._pet_defender_death_pending && petCombatHitTopline(rest))
+                    game._pet_death_after_split_hit_more = true;
+            }
             if (game._clear_latched_status_before_after_more) {
                 game._clear_latched_status_before_after_more = false;
                 game._latched_status_uhp = null;
@@ -9509,8 +10835,19 @@ async function handleQueuedMore(ch) {
                     exercise(A_STR, false); // C ref: src/mthrowu.c:thitu().
             }
             await pline(msg);
+            if (splitHitDeathPrompt) game._pet_death_after_split_hit_more = false;
             game._monster_topline_deferred = false;
             await finish_deferred_monster_physical_attack();
+            if (deferredPetDeathCanPack && game._pet_defender_death_pending) {
+                const pending = game._pet_defender_death_pending;
+                game._pet_defender_death_pending = null;
+                await finish_pet_kill(pending.killer, pending.target);
+                game._skip_encumbered_debt_after_pet_death_more = true;
+                if (game._resume_movemon_after_mon === pending.target)
+                    game._resume_movemon_after_mon = null;
+                if (game._resume_tame_post_distfleeck === pending.target)
+                    game._resume_tame_post_distfleeck = null;
+            }
             const finishedDeferredPetKill = finish_deferred_pet_kill_side_effect();
             const suppressPetKillResume = !!game._pet_kill_suppress_resume_after_death_line;
             game._pet_kill_suppress_resume_after_death_line = false;
@@ -10149,7 +11486,8 @@ function discoveryLineForObjectType(otyp, encounteredTypes) {
     if (oclass === AMULET_CLASS && !typeKnown) {
         return `${prefix}amulet${desc ? ` (${desc})` : ''}${priceQuote}`;
     }
-    if (otyp === SPEED_BOOTS || otyp === GAUNTLETS_OF_POWER || otyp === LEATHER_GLOVES)
+    if (otyp === SPEED_BOOTS || otyp === GAUNTLETS_OF_POWER || otyp === GAUNTLETS_OF_DEXTERITY
+        || otyp === LEATHER_GLOVES)
         base = `pair of ${base}`;
     if (!typeKnown && (oclass === ARMOR_CLASS || oclass === WEAPON_CLASS) && desc) {
         return `${prefix}${desc}${priceQuote}`;
@@ -10321,6 +11659,7 @@ const INSIGHT_OBJECT_WEIGHTS = new Map([
     [CLOAK_OF_DISPLACEMENT, 10],
     [LEATHER_GLOVES, 10],
     [GAUNTLETS_OF_POWER, 30],
+    [GAUNTLETS_OF_DEXTERITY, 10],
     [SPEED_BOOTS, 20],
     [LEVITATION_BOOTS, 15],
     [AMULET_OF_LIFE_SAVING, 20],
@@ -10418,6 +11757,9 @@ function weaponSkillLevelName(obj) {
     if (game.urole?.name?.m === 'Samurai'
         && (obj?.otyp === KATANA
             || [SHORT_SWORD, ELVEN_SHORT_SWORD, ORCISH_SHORT_SWORD, DWARVISH_SHORT_SWORD].includes(obj?.otyp)))
+        return 'basic';
+    if (game.urole?.name?.m === 'Knight'
+        && (obj?.otyp === LONG_SWORD || obj?.otyp === LANCE))
         return 'basic';
     if (game.urole?.name?.m === 'Valkyrie' && obj?.otyp === SPEAR) return 'basic';
     return 'no';
@@ -10694,6 +12036,13 @@ async function showPromptLine(text, options = {}) {
     game._prompt_cursor = [Math.min(text.length + cursorPad, 79), 0];
 }
 
+function screenWithPromptLine(screen, text) {
+    const rows = String(screen || '').split('\n');
+    while (rows.length < 24) rows.push('');
+    rows[0] = text;
+    return rows.slice(0, 24).join('\n');
+}
+
 async function showDrinkInventoryPrompt() {
     const letters = drinkLetters();
     if (letters) {
@@ -10782,6 +12131,7 @@ function saveCurrentLevelState() {
         specialLregions: game._special_lregions ? [...game._special_lregions] : [],
         lastSpecialProtofile: game._last_special_protofile || null,
         smeq: game.smeq ? [...game.smeq] : null,
+        utrack: Array.isArray(game._utrack) ? game._utrack.map((t) => ({ ...t })) : [],
         savedMoves: game.moves || 0,
     });
 }
@@ -10851,6 +12201,7 @@ function restoreCachedLevelState(uz) {
     game._special_lregions = saved.specialLregions ? [...saved.specialLregions] : [];
     game._last_special_protofile = saved.lastSpecialProtofile || null;
     game.smeq = saved.smeq ? [...saved.smeq] : game.smeq;
+    game._utrack = Array.isArray(saved.utrack) ? saved.utrack.map((t) => ({ ...t })) : [];
     const elapsed = (game.moves || 0) - (saved.savedMoves || 0);
     if (elapsed > 0) {
         // C ref: restore.c:getlev() gives each restored monster a hide
@@ -11224,6 +12575,25 @@ function applyStairFallDamage(options, goingUp) {
     if (typeof game.u?.uhp === 'number') game.u.uhp = Math.max(0, game.u.uhp - damage);
 }
 
+function randomTeleportLevelForHero() {
+    // C ref: teleport.c:random_teleport_level().  This covers ordinary
+    // Dungeons-of-Doom level teleport ranges; special branches can extend it
+    // when sessions reach them.
+    const curDepth = displayDepth(game.u?.uz);
+    if (!rn2(5)) return { ...(game.u?.uz || { dnum: 0, dlevel: 1 }) };
+    const minDepth = 1;
+    const dun = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const maxDepth = (dun?.num_dunlevs || dun?.dunlev_ureached || 30) + ((dun?.depth_start || 1) - 1);
+    let newDepth = rn2(Math.max(1, curDepth + 3 - minDepth)) + minDepth;
+    if (newDepth >= curDepth) newDepth++;
+    if (newDepth > maxDepth) newDepth = maxDepth;
+    if (newDepth < minDepth) newDepth = minDepth;
+    return {
+        dnum: game.u?.uz?.dnum ?? 0,
+        dlevel: Math.max(1, newDepth - ((dun?.depth_start || 1) - 1)),
+    };
+}
+
 async function finishPendingStairArrivalRedraw() {
     if (!game._stair_arrival_redraw_pending) return;
     game._stair_arrival_redraw_pending = false;
@@ -11274,7 +12644,42 @@ export async function performLevelTeleport(target, options = {}) {
     saveCurrentLevelState();
     game.u.uz = newUz;
     const restoredLevel = restoreCachedLevelState(newUz);
-    if (!restoredLevel) await mklev();
+    if (!restoredLevel) {
+        const mklevResult = await mklev();
+        if (mklevResult === 'bones-prompt') {
+            game._pending_level_teleport_after_bones = {
+                oldUz,
+                options,
+                wasInHell,
+                prevTemperature,
+                preChangeScreen,
+                restoredLevel: false,
+            };
+            const msg = 'Get bones? [yn] (n)';
+            await showPromptLine(msg);
+            game._prompt_cursor = [msg.length + 1, 0];
+            game._bones_get_prompt_active = true;
+            return;
+        }
+    }
+    await finishLevelTeleportArrival({
+        oldUz,
+        options,
+        wasInHell,
+        prevTemperature,
+        preChangeScreen,
+        restoredLevel,
+    });
+}
+
+async function finishLevelTeleportArrival({
+    oldUz,
+    options = {},
+    wasInHell = false,
+    prevTemperature = 0,
+    preChangeScreen = '',
+    restoredLevel = false,
+} = {}) {
     if (!restoredLevel && game.urole?.name?.m === 'Tourist') {
         // C ref: src/do.c:goto_level().  Tourists gain experience for each
         // newly entered level, based on destination level difficulty.
@@ -11302,7 +12707,21 @@ export async function performLevelTeleport(target, options = {}) {
         }
     }
     pet_arrive_with_you();
-    initrack();
+    const restoredBonesTrack = !!game._pending_bones_familiar;
+    if (!restoredLevel && !restoredBonesTrack) initrack();
+    let familiarBonesMessage = '';
+    if (game._pending_bones_familiar) {
+        game._pending_bones_familiar = false;
+        // C ref: src/do.c:familiar_level_msg().
+        const which = rn2(4);
+        const familiar = [
+            'You have a sense of deja vu.',
+            "You feel like you've been here before.",
+            `This place ${game.u?.ublind || game.u?.uprops?.blind ? 'seems' : 'looks'} familiar...`,
+            '',
+        ];
+        familiarBonesMessage = familiar[which] || '';
+    }
     if (arrivalMessage) {
         // C ref: do.c:goto_level().  Stair arrival messages are generated
         // before the destination level's docrt() is flushed, so the blocking
@@ -11333,7 +12752,28 @@ export async function performLevelTeleport(target, options = {}) {
     see_monsters();
     await docrt();
     if (game.u?.uhallucination || game.u?.uprops?.hallucination) see_objects();
-    await pline('You materialize on a different level!');
+    // C ref: src/teleport.c:level_tele().  Level teleport schedules this
+    // deferred post-message only when flags.verbose is true.
+    const materializeLine = options?.materializeMessage === false
+        ? ''
+        : (typeof options?.materializeMessage === 'string'
+            ? options.materializeMessage
+            : (game.flags?.verbose === false ? '' : 'You materialize on a different level!'));
+    if (materializeLine && options?.deferMaterializeBehindMore && game._more) {
+        game._more_message_queue = [
+            { text: materializeLine, more: false, move: true },
+            ...(game._more_message_queue || []),
+        ];
+    } else if (materializeLine) {
+        await pline(materializeLine);
+    }
+    if (familiarBonesMessage) {
+        queue_more_prompt();
+        game._more_message_queue = [
+            ...(game._more_message_queue || []),
+            { text: familiarBonesMessage, more: false },
+        ];
+    }
     const locateMessage = questLocateMessage(oldUz);
     if (locateMessage) {
         queue_more_prompt();
@@ -11548,8 +12988,8 @@ export async function rhack(key) {
             game._more = false;
             game._more_dismissals_remaining = 0;
             clear_pending_message();
-            if (!game._terrain_getpos_tip_seen) {
-                game._terrain_getpos_tip_seen = true;
+            if (!getposTipSeen()) {
+                markGetposTipSeen();
                 game._travel_tip_active = 'terrain';
                 await showTravelTipScreen(serialize_known_terrain_view_screen(''));
             } else {
@@ -11614,6 +13054,11 @@ export async function rhack(key) {
                 }
             } else if (kind === 'terrain') {
                 showTerrainBrowsePrompt();
+            } else if (kind === 'jump') {
+                game._awaiting_jump_prompt = true;
+                game._jump_cursor = { x: game.u?.ux ?? 1, y: game.u?.uy ?? 0 };
+                await showPromptLine('Move cursor to the desired position:');
+                setTravelMapCursorAt(game._jump_cursor.x, game._jump_cursor.y);
             } else {
                 await showPromptLine(TRAVEL_CURSOR_PROMPT);
                 setTravelMapCursor();
@@ -11726,14 +13171,96 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._bones_get_prompt_active) {
+        game._bones_get_prompt_active = false;
+        const promptScreen = serialize_terminal_grid(game.nhDisplay);
+        clear_pending_message();
+        if (ch === 'y' || ch === 'Y') {
+            const ok = restore_pending_bones_snapshot();
+            game._pending_bones_familiar = !!ok;
+            // C ref: bones.c:getbones() asks the wizard unlink prompt inside
+            // getbones(); goto_level() performs its docrt() after that prompt
+            // has been answered.
+            const msg = 'Unlink bones? [yn] (n)';
+            await showPromptLine(msg);
+            game._prompt_cursor = [msg.length + 1, 0];
+            if (promptScreen) {
+                showSerializedOverride(screenWithPromptLine(promptScreen, msg), [msg.length + 1, 0]);
+            }
+            game._bones_unlink_prompt_active = true;
+            game.context.move = 0;
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+            clear_pending_bones_restore();
+            const pending = game._pending_level_teleport_after_bones || {};
+            game._pending_level_teleport_after_bones = null;
+            const oldBones = game.flags?.bones;
+            game.flags = game.flags || {};
+            game.flags.bones = false;
+            try {
+                await mklev();
+            } finally {
+                game.flags.bones = oldBones;
+            }
+            await finishLevelTeleportArrival(pending);
+            game.context.move = 0;
+            return;
+        }
+        const msg = 'Get bones? [yn] (n)';
+        await showPromptLine(msg);
+        game._prompt_cursor = [msg.length + 1, 0];
+        game._bones_get_prompt_active = true;
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._bones_unlink_prompt_active) {
+        game._bones_unlink_prompt_active = false;
+        game._override_prev = null;
+        clear_pending_message();
+        if (ch === 'y' || ch === 'Y') delete_pending_bones_file();
+        const pending = game._pending_level_teleport_after_bones || {};
+        game._pending_level_teleport_after_bones = null;
+        clear_pending_bones_restore();
+        await finishLevelTeleportArrival(pending);
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._death_inventory_disclosure_prompt_active) {
+        if (ch === 'y' || ch === 'Y' || ch === 'n' || ch === 'N'
+            || ch === 'q' || ch === 'Q' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._death_inventory_disclosure_prompt_active = false;
+            clear_pending_message();
+            await showDeathDisclosure();
+            game.context.move = 0;
+            return;
+        }
+        const msg = 'Do you want your possessions identified? [ynq] (n)';
+        await showPromptLine(msg);
+        game._prompt_cursor = [msg.length + 1, 0];
+        game.context.move = 0;
+        return;
+    }
+
     if (game._death_prompt_active) {
         if (ch === 'y' || ch === 'Y') {
             game._death_prompt_active = false;
             game._fatal_monster_attack_paused = false;
             game._resume_turn_tail_after_more = false;
-            game._latched_status_uhp = null;
-            game.program_state = game.program_state || {};
-            game.program_state.gameover = true;
+            game._latched_status_uhp = 0;
+            if (game.u && typeof game.u.uhp === 'number') game.u.uhp = 0;
+            if (!game._death_bones_checked) {
+                game._death_bones_checked = true;
+                game._death_bones_check_pending = true;
+            }
+            const bonesOk = prepareDeathBonesDoneStageBasic();
+            if (bonesOk && deathCanSaveWizardBones()) {
+                await showDeathSaveBonesPrompt();
+            } else {
+                await showDeathDisclosureOrPrompt();
+            }
             game.context.move = 0;
             return;
         }
@@ -11745,6 +13272,11 @@ export async function rhack(key) {
             if (game.u && typeof game.u.uhp === 'number')
                 game.u.uhp = Math.max(1, game.u.uhpmax || game.u.uhp);
             game._latched_status_uhp = null;
+            game._death_bones_checked = false;
+            game._death_bones_check_pending = false;
+            game._death_bones_done_stage_prepared = false;
+            game._death_bones_corpse_prepared = false;
+            game._death_bones_ok = false;
             if (game._monster_turn_paused_for_more) {
                 game._resume_turn_tail_after_more = false;
                 game._nomovemsg = 'You survived that attempt on your life.';
@@ -11766,6 +13298,60 @@ export async function rhack(key) {
             return;
         }
         const msg = 'Die? [yn] (n)';
+        await showPromptLine(msg);
+        game._prompt_cursor = [msg.length + 1, 0];
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._death_replace_bones_prompt_active) {
+        if (ch === 'y' || ch === 'Y') {
+            game._death_replace_bones_prompt_active = false;
+            clear_pending_message();
+            savePreparedBonesRngBasic({ replace: true });
+            await showDeathDisclosureOrPrompt();
+            game.context.move = 0;
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._death_replace_bones_prompt_active = false;
+            clear_pending_message();
+            await showDeathDisclosureOrPrompt();
+            game.context.move = 0;
+            return;
+        }
+        const msg = 'Bones file already exists.  Replace it? [yn] (n)';
+        await showPromptLine(msg);
+        game._prompt_cursor = [msg.length + 1, 0];
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._death_save_bones_prompt_active) {
+        if (ch === 'y' || ch === 'Y') {
+            game._death_save_bones_prompt_active = false;
+            clear_pending_message();
+            const saved = savePreparedBonesRngBasic();
+            if (saved === 'exists' && deathCanSaveWizardBones()) {
+                const msg = 'Bones file already exists.  Replace it? [yn] (n)';
+                await showPromptLine(msg);
+                game._prompt_cursor = [msg.length + 1, 0];
+                game._death_replace_bones_prompt_active = true;
+                game.context.move = 0;
+                return;
+            }
+            await showDeathDisclosureOrPrompt();
+            game.context.move = 0;
+            return;
+        }
+        if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._death_save_bones_prompt_active = false;
+            clear_pending_message();
+            await showDeathDisclosureOrPrompt();
+            game.context.move = 0;
+            return;
+        }
+        const msg = 'Save bones? [yn] (n)';
         await showPromptLine(msg);
         game._prompt_cursor = [msg.length + 1, 0];
         game.context.move = 0;
@@ -11815,6 +13401,7 @@ export async function rhack(key) {
         game._awaiting_pray_confirm = false;
         if (ch === 'y' || ch === 'Y') {
             rememberPrayerStart();
+            game._prayer_finish_result_inline = false;
             await pline(`You begin praying to ${prayerGodName()}.`);
             if (game.wizard || game.flags?.debug) {
                 game._more = true;
@@ -11835,8 +13422,9 @@ export async function rhack(key) {
 
     if (game._awaiting_pray_force) {
         clear_pending_message();
-        game._awaiting_pray_force = false;
+        game._prayer_finish_result_inline = false;
         if (ch === 'y' || ch === 'Y') {
+            game._awaiting_pray_force = false;
             game.u.ublesscnt = 0;
             if ((game.u.ualign?.record ?? 0) <= 0) game.u.ualign.record = 1;
             game.u.ugangr = 0;
@@ -11852,8 +13440,20 @@ export async function rhack(key) {
             game._prayer_turns_remaining = 2;
             game._pending_prayer_finish_message = true;
             game.context.move = 1;
-        } else {
+        } else if (ch === 'n' || ch === 'N' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._awaiting_pray_force = false;
+            // C ref: pray.c:dopray().  Declining the wizard force-success
+            // prompt still falls through to nomul(-3)/prayer_done().
+            game._prayer_turns_remaining = 2;
+            game._pending_prayer_finish_message = true;
+            game._prayer_finish_result_inline = true;
             game.context.move = 1;
+        } else {
+            // C ref: pray.c:dopray() uses yn_function(); invalid input keeps
+            // the prompt active and consumes no turn.
+            game._awaiting_pray_force = true;
+            await showPromptLine('Force the gods to be pleased? [yn] (n) ');
+            game.context.move = 0;
         }
         return;
     }
@@ -11897,6 +13497,14 @@ export async function rhack(key) {
     }
     if (game._loot_type_menu) {
         await handleLootTypeMenuKey(ch);
+        return;
+    }
+    if (game._awaiting_options_fruit) {
+        await handleOptionsFruitKey(ch);
+        return;
+    }
+    if (game._options_menu) {
+        await handleSimpleOptionsMenuKey(ch);
         return;
     }
 
@@ -12006,6 +13614,8 @@ export async function rhack(key) {
                 await showPromptLine('Are you sure you want to pray? [yn] (n) ');
                 game._awaiting_pray_confirm = true;
                 game.context.move = 0;
+            } else if (cmd === 'ride') {
+                await doRideCommand();
             } else if (cmd === 'quit') {
                 // C ref: src/end.c:done2().
                 const prompt = 'Really quit without saving? [yn] (n)';
@@ -12035,6 +13645,8 @@ export async function rhack(key) {
                 await doWipeCommand();
             } else if (cmd === 'invoke') {
                 await doInvokeCommand();
+            } else if (cmd === 'jump') {
+                await doJumpCommand();
             } else if (cmd === 'untrap') {
                 // C ref: src/trap.c:dountrap().
                 await pline(heroHasHands() ? 'You find nothing to untrap.' : 'And just how do you expect to do that?');
@@ -12081,6 +13693,8 @@ export async function rhack(key) {
                 await doSitCommand();
             } else if (cmd === 'offer') {
                 await doOfferCommand();
+            } else if (cmd === 'options') {
+                beginSimpleOptionsMenu();
             } else if (cmd === 'overview') {
                 showOverviewScreen();
             } else if (cmd === 'version') {
@@ -12096,7 +13710,9 @@ export async function rhack(key) {
                     await pline(`#${typedExtCommand.slice(0, 60)}: unknown extended command.`);
                 }
             }
-            if (cmd !== 'force' && cmd !== 'wipe' && cmd !== 'twoweapon' && cmd !== 'sit' && cmd !== 'dip') game.context.move = 0;
+            if (cmd !== 'force' && cmd !== 'wipe' && cmd !== 'twoweapon'
+                && cmd !== 'sit' && cmd !== 'dip' && cmd !== 'ride'
+                && cmd !== 'jump') game.context.move = 0;
             return;
         }
         if (ch === '\x1b') {
@@ -12140,6 +13756,33 @@ export async function rhack(key) {
             return;
         }
         game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_ride_direction) {
+        game._awaiting_ride_direction = false;
+        clear_pending_message();
+        if (!'hykulnjb<>.'.includes(ch)) {
+            game.context.move = 0;
+            if (game.iflags?.cmdassist !== false) {
+                game._direction_help_screen = INVALID_DIRECTION_HELP_SCREEN;
+                game._direction_help_after_more_message = '';
+                showSerializedOverride(INVALID_DIRECTION_HELP_SCREEN, [8, 23]);
+                queue_more_prompt();
+            } else {
+                await pline('What a strange direction!');
+            }
+            return;
+        }
+        if (ch === '<' || ch === '>' || ch === '.') {
+            await pline('I see nobody there.');
+            game.context.move = 0;
+            return;
+        }
+        game.u.dx = DIR_DX[ch] || 0;
+        game.u.dy = DIR_DY[ch] || 0;
+        const mon = mon_at((game.u?.ux || 0) + game.u.dx, (game.u?.uy || 0) + game.u.dy);
+        await mountSteedBasic(mon);
         return;
     }
 
@@ -12235,6 +13878,32 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._awaiting_jump_prompt) {
+        if (isGetposMovementKey(ch)) {
+            const cursor = currentJumpCursor();
+            moveGetposCursor(cursor, ch);
+            await describeJumpCursor();
+        } else if (ch === ' ') {
+            await describeJumpCursor();
+        } else if (ch === '?') {
+            await showGetposHelpScreen('jump');
+        } else if (ch === '.' || ch === ',' || ch === ';' || ch === ':') {
+            await finishJumpToCursor();
+            return;
+        } else if (ch === '\x1b') {
+            game._awaiting_jump_prompt = false;
+            game._jump_cursor = null;
+            clear_pending_message();
+            setTravelMapCursor();
+        } else {
+            await pline(`Unknown direction: '${getposKeyDisplay(ch)}' (use 'h', 'j', 'k', 'l' or '.').`);
+            const cursor = currentJumpCursor();
+            setTravelMapCursorAt(cursor.x, cursor.y);
+        }
+        game.context.move = 0;
+        return;
+    }
+
     if (game._awaiting_travel_prompt) {
         if (ch === '>' || ch === '<') {
             const st = travelFeatureStair(ch === '<');
@@ -12298,6 +13967,10 @@ export async function rhack(key) {
             const cursor = currentTeleportCursor();
             moveGetposCursor(cursor, ch);
             await describeTeleportCursor();
+        } else if (ch === '\r' || ch === '\n') {
+            const cursor = currentTeleportCursor();
+            truncateGetposCursorToMap(cursor, 0, 8);
+            await describeTeleportCursor();
         } else if (ch === ' ') {
             await describeTeleportCursor();
         } else if (ch === '?') {
@@ -12317,9 +13990,15 @@ export async function rhack(key) {
             game.context.move = 1;
             return;
         } else if (ch === '\x1b') {
+            // C ref: src/teleport.c:dotele() -> tele()/scrolltele().  The
+            // controlled-teleport getpos may be aborted, but deliberate
+            // teleport-at-will still consumes nutrition and a turn.
             game._awaiting_teleport_prompt = false;
             game._teleport_cursor = null;
             clear_pending_message();
+            if (game.u) game.u.uhunger = Math.max(0, (game.u.uhunger ?? 900) - 100);
+            game.context.move = 1;
+            return;
         } else {
             await pline(`Unknown direction: '${getposKeyDisplay(ch)}' (use 'h', 'j', 'k', 'l' or '.').`);
             const cursor = currentTeleportCursor();
@@ -12483,6 +14162,44 @@ export async function rhack(key) {
                 renderIntrinsicMenu(menu);
             }
             game.context.move = 0;
+            return;
+        }
+        game.context.move = 0;
+        return;
+    }
+
+    if (game._awaiting_scroll_level_teleport) {
+        const prompt = 'To what level do you want to teleport? ';
+        if (ch >= '0' && ch <= '9') {
+            game._scroll_level_teleport_input = `${game._scroll_level_teleport_input || ''}${ch}`;
+            await showPromptLine(`${prompt}${game._scroll_level_teleport_input}`);
+            game.context.move = 0;
+            return;
+        }
+        clear_pending_message();
+        game._awaiting_scroll_level_teleport = false;
+        const requested = Number(game._scroll_level_teleport_input || 0);
+        game._scroll_level_teleport_input = '';
+        const confused = !!(game.u?.uprops?.confusion || game.u?.uconfusion);
+        if (confused && rnl(5)) {
+            await pline('Oops...');
+            queue_more_prompt();
+            await flush_screen(1);
+            game._latched_more_screen = serialize_terminal_grid(game.nhDisplay);
+            game._latched_more_cursor = [Math.min('Oops...--More--'.length, 79), 0, 1];
+            game._latched_more_keep_until_dismiss = true;
+            const randomTarget = randomTeleportLevelForHero();
+            // C ref: read.c:seffects().  The scroll's wisdom exercise lands
+            // after the confused level choice has fallen through to a random
+            // destination.
+            exercise(A_WIS, true);
+            await performLevelTeleport(randomTarget, { deferMaterializeBehindMore: true });
+            game.context.move = 0;
+            return;
+        }
+        if ((ch === '\r' || ch === '\n') && requested > 0) {
+            await performLevelTeleport(requested, { deferMaterializeBehindMore: !!game._more });
+            game.context.move = 1;
             return;
         }
         game.context.move = 0;
@@ -13003,6 +14720,25 @@ export async function rhack(key) {
         return;
     }
 
+    if (game._awaiting_takeoff_item) {
+        clear_pending_message();
+        game._awaiting_takeoff_item = false;
+        if (ch === ' ' || ch === '\x1b') {
+            game.context.move = 0;
+            await pline('Never mind.');
+            return;
+        }
+        const idx = inventoryIndexForLetter(ch);
+        const obj = idx >= 0 ? game.inventory?.[idx] : null;
+        if (!is_worn_takeoff_candidate(obj)) {
+            game.context.move = 0;
+            await pline('Never mind.');
+            return;
+        }
+        await start_taking_off_object(obj);
+        return;
+    }
+
     if (game._awaiting_read_item) {
         clear_pending_message();
         if (ch === ' ' || ch === '\x1b') {
@@ -13048,6 +14784,10 @@ export async function rhack(key) {
         }
         if (obj.otyp === SCR_LIGHT) {
             await readScrollOfLight(obj, idx);
+            return;
+        }
+        if (obj.otyp === SCR_TELEPORTATION) {
+            await readScrollOfTeleportation(obj, idx);
             return;
         }
         if (obj.otyp === SCR_MAGIC_MAPPING) {
@@ -13097,6 +14837,8 @@ export async function rhack(key) {
             return;
         }
         obj.wornSide = (ch === 'r' || ch === 'R') ? 'right' : 'left';
+        obj.owornmask = obj.wornSide === 'right' ? C.W_RINGR : C.W_RINGL;
+        if (obj.otyp === RIN_REGENERATION) refreshRingRegenerationExtrinsic();
         await pline(`${inventoryListing(obj)} (on ${obj.wornSide} hand).`);
         game.context.move = 1;
         return;
@@ -13307,6 +15049,28 @@ export async function rhack(key) {
             game.context.move = 1;
             return;
         }
+        if (obj.otyp === WAN_DEATH && ch === '.') {
+            obj.knownName = true;
+            // C refs: src/cmd.c:getdir()/confdir(), src/zap.c:zapyourself()
+            // for WAN_DEATH.  Confusion still probes impairment before a
+            // deliberate self direction is honored.
+            if (game.u?.uprops?.confusion || game.u?.uconfusion) rn2(5);
+            const self = game.flags?.female ? 'herself' : 'himself';
+            game._death_killer_name = `shot ${self} with a death ray`;
+            game._death_killer_format = 'raw';
+            game._death_tombstone_killer_lines = [`shot ${self}`, 'with a death ray'];
+            game._death_shopkeeper_killer = null;
+            game._death_preserve_latched_status = true;
+            game._death_ray_death_pending = true;
+            if (!game._death_bones_checked) {
+                game._death_bones_checked = true;
+                game._death_bones_check_pending = true;
+            }
+            await pline('You irradiate yourself with pure energy!');
+            queue_more_prompt();
+            game.context.move = 0;
+            return;
+        }
         exercise(A_WIS, true);
         if (obj.otyp === WAN_DIGGING) {
             obj.knownName = true;
@@ -13501,7 +15265,12 @@ export async function rhack(key) {
                 game.context.move = 0;
                 return;
             }
-            await showTutorialPrompt(true);
+            // C ref: options.c:ask_do_tutorial() + win/tty/wintty.c:tty_select_menu().
+            // The menu loop returns with no selection for space/enter, causing
+            // ask_do_tutorial() to rebuild the menu with the extra guidance
+            // line. Other invalid selector keys are swallowed by the tty menu
+            // and leave the original menu/cursor in place.
+            await showTutorialPrompt(ch === ' ' || ch === '\r' || ch === '\n');
             game.context.move = 0;
             return;
         }
@@ -13901,7 +15670,7 @@ export async function rhack(key) {
         await showTerrainMenu();
     } else if (ch === '_') {
         game.context.move = 0;
-        if (!game._travel_tip_seen) {
+        if (!getposTipSeen()) {
             await pline('Where do you want to travel to?');
             queue_more_prompt();
             game._travel_tip_pending = true;
@@ -13943,21 +15712,30 @@ export async function rhack(key) {
         await showCastSpellMenu();
     } else if (key === 20) { // ^T teleport
         game.context.move = 0;
-        await showPromptLine("Where do you want to be teleported?  (For instructions type a '?')");
+        const prompt = game.flags?.verbose === false
+            ? 'Where do you want to be teleported?'
+            : "Where do you want to be teleported?  (For instructions type a '?')";
+        await showPromptLine(prompt);
         game._teleport_cursor = { x: game.u?.ux ?? 1, y: game.u?.uy ?? 0 };
         setTravelMapCursorAt(game._teleport_cursor.x, game._teleport_cursor.y);
         game._awaiting_teleport_prompt = true;
     } else if (ch === '?') {
         game.context.move = 0;
         await showHelpMenu();
+    } else if (ch === 'O') {
+        beginSimpleOptionsMenu();
     } else if (ch === '/') {
         game.context.move = 0;
         await showLookAtMenu();
         game._awaiting_lookat_menu = true;
     } else if (ch === ';') {
         game.context.move = 0;
+        // C refs: src/pager.c:do_look(), src/getpos.c:getpos().
+        // The quick farlook getpos prompt starts as a fresh prompt line; an
+        // old command-result topline does not turn it into a blocking More.
+        clear_pending_message();
         await pline('Pick a monster, object or location.');
-        if (!game._farlook_tip_seen) {
+        if (!getposTipSeen()) {
             queue_more_prompt();
             game._farlook_intro_after_more = true;
             game._farlook_intro_quick = true;
@@ -13969,6 +15747,8 @@ export async function rhack(key) {
         }
     } else if (key === 22) { // ^V wizard level teleport
         game.context.move = 0;
+        if ((game.wizard || game.flags?.debug) && game.urole?.name?.m === 'Tourist')
+            game._tourist_debug_level_teleport_score_floor = true;
         const msg = 'To what level do you want to teleport? ';
         await pline(msg);
         game._prompt_cursor = [msg.length, 0];
@@ -13992,13 +15772,22 @@ export async function rhack(key) {
         game._prompt_cursor = [msg.length, 0];
         game._awaiting_wear_item = true;
     } else if (ch === 'T') {
+        const suggestedLetters = takeoffLetters();
         const armor = wornArmorForTakeoff();
-        if (!armor) {
+        const anyTakeoff = (game.inventory || []).some(is_worn_takeoff_candidate);
+        if (!anyTakeoff) {
             game.context.move = 0;
-            await pline('You are not wearing any armor.');
-        } else {
+            await pline('Not wearing any armor or accessories.');
+        } else if (armor && suggestedLetters.length === 1) {
             game.context.move = 1;
             await start_takeoff_armor(armor);
+        } else {
+            game.context.move = 0;
+            const prompt = suggestedLetters
+                ? `What do you want to take off? [${suggestedLetters} or ?*] `
+                : 'What do you want to take off? [*] ';
+            await showPromptLine(prompt);
+            game._awaiting_takeoff_item = true;
         }
     } else if (ch === '\\') {
         game.context.move = 0;
@@ -14041,12 +15830,7 @@ export async function rhack(key) {
                 if (feature.line) await append_pline(line);
                 else await pline(line);
             } else if (objects.length > 1) {
-                const count = objects.length === 2 ? 'two'
-                    : objects.length < 5 ? 'a few'
-                        : objects.length < 10 ? 'several' : 'many';
-                const line = `There are ${count} objects here.`;
-                if (feature.line) await append_pline(line);
-                else await pline(line);
+                showFloorObjectList(objects, feature.line || '');
             } else if (!feature.line) {
                 await pline("You see no objects here.");
             }
@@ -14321,6 +16105,8 @@ export async function domove(dx, dy) {
 
     if (blocksMove(newx, newy)) {
         // Can't move there
+        const msg = game.flags?.mention_walls ? blockedMovementMessage(newx, newy) : '';
+        if (msg) await pline(msg);
         game.context.move = 0;
         return false;
     }
@@ -14368,6 +16154,11 @@ export async function domove(dx, dy) {
     u.uy0 = oldy;
     u.ux = newx;
     u.uy = newy;
+    u.umoved = true;
+    if (u.usteed) {
+        u.usteed.mx = newx;
+        u.usteed.my = newy;
+    }
     game._pending_move_smudge = { oldx, oldy };
     if (game.context?.run && runShouldStopAfterMove(source, target)) {
         if (target?.typ === DOOR && !(target.doormask & (D_CLOSED | D_LOCKED))) {

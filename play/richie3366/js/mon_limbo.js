@@ -16,6 +16,7 @@ import {
     MIGR_RANDOM,
 } from './const.js';
 import { raceptr, monHasAmulet, isHomeElemental, isRiderMnum, S_ELEMENTAL } from './mondata.js';
+import { monLeaveHeroLikeC } from './keepdogs_hero.js';
 
 /**
  * C: mon.c **`ok_to_obliterate`** — **`mons[PM_WIZARD_OF_YENDOR]`** via **`mname`** when **`mnum`** not wired.
@@ -42,11 +43,13 @@ function okToObliterateLikeC(g, mtmp, mon) {
  * @param {{ dnum: number, dlevel: number }} toLev
  * @param {number} migrateTyp
  */
-function migrateMonToLevel(g, mtmp, toLev, migrateTyp) {
+/** C: dog.c **`migrate_to_level`** — remove from **`fmon`**, queue **`migrating_mons`**. */
+export function migrateMonToLevelLikeC(g, mtmp, toLev, migrateTyp) {
     if ((mtmp.mleashed | 0)) {
         mtmp.mtame = Math.max(0, (mtmp.mtame | 0) - 1);
         mtmp.mleashed = 0;
     }
+    const numSegs = monLeaveHeroLikeC(g, mtmp);
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
     const mons = g.level?.monsters;
@@ -66,6 +69,8 @@ function migrateMonToLevel(g, mtmp, toLev, migrateTyp) {
     });
     mtmp.mx = 0;
     mtmp.my = 0;
+    mtmp.wormno = numSegs;
+    mtmp.mlstmv = g.moves | 0;
     newsym(mx, my);
 }
 
@@ -80,7 +85,7 @@ export function mIntoLimbo(g, mtmp) {
         if (mtmp === u.ustuck) u.ustuck = null;
     }
     mtmp.mstate = (mtmp.mstate | 0) | MON_LIMBO;
-    migrateMonToLevel(g, mtmp, { dnum: u.uz.dnum | 0, dlevel: u.uz.dlevel | 0 }, MIGR_APPROX_XY);
+    migrateMonToLevelLikeC(g, mtmp, { dnum: u.uz.dnum | 0, dlevel: u.uz.dlevel | 0 }, MIGR_APPROX_XY);
 }
 
 function obliterateMonGone(g, victim) {

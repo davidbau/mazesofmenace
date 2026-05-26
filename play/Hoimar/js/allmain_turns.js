@@ -12,6 +12,7 @@ import { depth } from './hacklib.js';
 const RING_CLASS = 4;
 const AMULET_CLASS = 5;
 const RIN_PROTECTION = 178;
+const RIN_REGENERATION = 179;
 const RIN_SLOW_DIGESTION = 193;
 const MEAT_RING = 270;
 const FAKE_AMULET_OF_YENDOR = 212;
@@ -30,9 +31,13 @@ export function regen_hp() {
     // regeneration roll once the hero has actually taken HP damage.
     const u = game.u;
     if (!u || u.uinvulnerable || (u.uhp ?? 0) >= (u.uhpmax ?? 0)) return;
-    const heal = ((u.ulevel || 0) + currentAttr(A_CON)) > rn2(100);
+    const ringRegen = !!u.uprops?.hp_regeneration
+        || wornRing(W_RINGL, 'left')?.otyp === RIN_REGENERATION
+        || wornRing(W_RINGR, 'right')?.otyp === RIN_REGENERATION;
+    let heal = ((u.ulevel || 0) + currentAttr(A_CON)) > rn2(100) ? 1 : 0;
+    if (ringRegen) heal++;
     if (!heal) return;
-    u.uhp = Math.min(u.uhpmax, (u.uhp || 0) + 1);
+    u.uhp = Math.min(u.uhpmax, (u.uhp || 0) + heal);
 }
 
 export function gethungry() {
