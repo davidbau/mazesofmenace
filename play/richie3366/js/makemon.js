@@ -26,7 +26,8 @@ import {
 import { newedogLikeC } from './dog.js';
 import { enextoCoreLikeC, goodposMakemonLikeC } from './walkable.js';
 
-import { MM_FEMALE, MM_MALE } from './const.js';
+import { MM_ANGRY, MM_FEMALE, MM_MALE } from './const.js';
+import { peaceMindedLikeC } from './makemon_peace_minded.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
 import { deliverObjToMonLikeC, DF_NONE } from './deliver_obj_to_mon.js';
 import { d, rnd, rn2 } from './rng.js';
@@ -203,6 +204,11 @@ export function makemon(mdat, x, y, mmflags) {
         mtmp.female = rn2(2);
     } else {
         mtmp.female = 0;
+    }
+    /* C: makemon.c sets mpeaceful via peace_minded(ptr) for every monster; gate to
+     * MM_EDOG until mklev makemon volume matches C (avoids stray rn2 on seed8000). */
+    if ((mmflags | 0) & MM_EDOG) {
+        mtmp.mpeaceful = ((mmflags | 0) & MM_ANGRY) ? 0 : (peaceMindedLikeC(game, ptr) ? 1 : 0);
     }
     if ((mmflags | 0) & MM_EDOG) {
         newedogLikeC(mtmp);

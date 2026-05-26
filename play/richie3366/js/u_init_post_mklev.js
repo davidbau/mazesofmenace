@@ -59,8 +59,8 @@ export function runUInitRoleRngAfterMklevLikeC(g = game) {
         consumeMonkHumanIniInvUinitRoleRngLikeC();
         return;
     }
-    const wiz = game.urole?.abbr === 'Wiz' && (game.initrace | 0) === humanIdx;
-    if (wiz) {
+    /* C: u_init_role PM_WIZARD — ini_inv(Wizard[]) same for all races (race extras in u_init_race). */
+    if (game.urole?.abbr === 'Wiz') {
         consumeWizardHumanIniInvUinitRoleRngLikeC();
         return;
     }

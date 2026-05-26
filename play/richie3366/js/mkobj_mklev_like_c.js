@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { rndmonstLikeC } from './makemon_rndmonst.js';
-import { P_BOW, P_SHURIKEN, OTYP_LOADSTONE, OTYP_LUCKSTONE } from './const.js';
+import { P_BOW, P_SHURIKEN, OTYP_LOADSTONE, OTYP_LUCKSTONE, OTYP_GOLD_PIECE } from './const.js';
 import { OC_SKILL_ROW_BY_OTYP } from './obj_oc_skill_data.js';
 import { rnd, rn2, rn1, rne } from './rng.js';
 import {
@@ -21,24 +21,48 @@ import {
     NH5_GEM_CLASS,
     NH5_ROCK_CLASS,
     NH5_AMULET_CLASS,
+    NH5_COIN_CLASS,
 } from './nh5_objclass.js';
 import {
     WEAPON_CLASS_MKOBJ_OC_PROB_ROWS,
     ARMOR_CLASS_MKOBJ_OC_PROB_ROWS,
     TOOL_CLASS_MKOBJ_OC_PROB_ROWS,
     GEM_CLASS_MKOBJ_OC_PROB_ROWS,
+    RING_CLASS_MKOBJ_OC_PROB_ROWS,
 } from './mkobj_mklev_oc_prob_data.js';
 import {
     POTION_CLASS_MKOBJ_OC_PROB_ROWS,
     WAND_CLASS_MKOBJ_OC_PROB_ROWS,
     SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS,
-    RING_CLASS_MKOBJ_ROWS,
 } from './mkobj_wizard_ini_inv_data.js';
 import { SCROLL_CLASS_MKOBJ_OC_PROB_ROWS } from './mkobj_scroll_class_rng_like_c.js';
 import {
     mkobjOtypFoodClassIniInvLikeC,
     mksobjInitFoodClassIniInvAfterOtypLikeC,
 } from './mkobj_food_class_rng_like_c.js';
+
+/** C: mkobj.c boxiprobs[] — mkbox_cnts item classes. */
+const BOXIPROBS = Object.freeze([
+    [18, NH5_GEM_CLASS],
+    [15, NH5_FOOD_CLASS],
+    [18, NH5_POTION_CLASS],
+    [18, NH5_SCROLL_CLASS],
+    [12, NH5_SPBOOK_CLASS],
+    [7, NH5_COIN_CLASS],
+    [6, NH5_WAND_CLASS],
+    [5, NH5_RING_CLASS],
+    [1, NH5_AMULET_CLASS],
+]);
+
+/** C: objects.h — floor containers (mksobj_init TOOL + mkbox_cnts). */
+const OTYP_LARGE_BOX = 215;
+const OTYP_CHEST = 216;
+const OTYP_ICE_BOX = 217;
+const OTYP_SACK = 218;
+const OTYP_OILSKIN_SACK = 219;
+const OTYP_BAG_OF_HOLDING = 220;
+/** C: GEM_CLASS — `rnd_class(DILITHIUM_CRYSTAL, LOADSTONE)` in mkbox_cnts. */
+const OTYP_DILITHIUM_CRYSTAL = 468;
 
 /** C: mkobj.c mkobjprobs[] (non-hell, non-rogue). */
 const MKOBJ_PROBS = Object.freeze([
@@ -119,7 +143,7 @@ const OTYP_WAN_STASIS = 415;
 const OTYP_STATUE = 475;
 
 const RING_CHARGED = new Set(
-    RING_CLASS_MKOBJ_ROWS.filter((r) => (r[1] | 0) === 1).map((r) => r[0] | 0),
+    RING_CLASS_MKOBJ_OC_PROB_ROWS.filter((r) => (r[1] | 0) === 1).map((r) => r[0] | 0),
 );
 
 /** C: obj.h is_multigen — projectiles 19–24 lack OC_SKILL_ROW_BY_OTYP entries. */
@@ -215,7 +239,7 @@ function mkobjPickOtypForClassLikeC(oclass) {
     case NH5_SPBOOK_CLASS:
         return mkobjOtypFromProbRowsLikeC(SPBOOK_CLASS_MKOBJ_OC_PROB_ROWS);
     case NH5_RING_CLASS:
-        return mkobjOtypFromProbRowsLikeC(RING_CLASS_MKOBJ_ROWS);
+        return mkobjOtypFromProbRowsLikeC(RING_CLASS_MKOBJ_OC_PROB_ROWS);
     case NH5_FOOD_CLASS:
         return mkobjOtypFoodClassIniInvLikeC();
     case NH5_WEAPON_CLASS:
@@ -228,12 +252,86 @@ function mkobjPickOtypForClassLikeC(oclass) {
         return mkobjOtypFromProbRowsLikeC(GEM_CLASS_MKOBJ_OC_PROB_ROWS);
     case NH5_AMULET_CLASS:
         return mkobjOtypFromProbRowsLikeC(AMULET_CLASS_MKOBJ_OC_PROB_ROWS);
+    case NH5_COIN_CLASS:
+        return OTYP_GOLD_PIECE;
     default:
         return 0;
     }
 }
 
 /** C: mkobj.c blessorcurse(otmp, chance) — optional otmp for supply-chest cursed checks. */
+function levelDifficultyMklevLikeC() {
+    return depth_of_level(game.u?.uz) | 0;
+}
+
+/**
+ * C: mkobj.c mkbox_cnts — floor chest/box contents RNG (mklev `mksobj_at` init=TRUE).
+ * @param {{ otyp: number, olocked?: boolean }} box
+ */
+function mkboxCntsMklevLikeC(box) {
+    const t = box.otyp | 0;
+    let n;
+    switch (t) {
+    case OTYP_ICE_BOX:
+        n = 20;
+        break;
+    case OTYP_CHEST:
+        n = box.olocked ? 7 : 5;
+        break;
+    case OTYP_LARGE_BOX:
+        n = box.olocked ? 5 : 3;
+        break;
+    case OTYP_SACK:
+    case OTYP_OILSKIN_SACK:
+        if ((game.moves | 0) <= 1 && !game.in_mklev) {
+            n = 0;
+            break;
+        }
+        /* FALLTHROUGH */
+    case OTYP_BAG_OF_HOLDING:
+        n = 1;
+        break;
+    default:
+        n = 0;
+        break;
+    }
+    for (n = rn2(n + 1); n > 0; n--) {
+        if (t === OTYP_ICE_BOX) {
+            mkobjMklevConsumeRngLikeC(NH5_FOOD_CLASS, false);
+            continue;
+        }
+        let tprob = rnd(100);
+        let oclass = NH5_GEM_CLASS;
+        for (const [iprob, iclass] of BOXIPROBS) {
+            tprob -= iprob;
+            if (tprob <= 0) {
+                oclass = iclass;
+                break;
+            }
+        }
+        let otyp = mkobjMklevConsumeRngLikeC(oclass, false);
+        if (oclass === NH5_COIN_CLASS) {
+            rnd(levelDifficultyMklevLikeC() + 2);
+            rnd(75);
+        } else {
+            while ((otyp | 0) === OTYP_ROCK) {
+                otyp = rn1(OTYP_LOADSTONE - OTYP_DILITHIUM_CRYSTAL + 1, OTYP_DILITHIUM_CRYSTAL);
+            }
+        }
+        if (t === OTYP_BAG_OF_HOLDING) {
+            if (otyp === OTYP_SACK) {
+                /* Is_mbag → SACK */
+            } else {
+                const OTYP_WAN_CANCELLATION = 433;
+                while ((otyp | 0) === OTYP_WAN_CANCELLATION) {
+                    otyp = rn1(12, 422);
+                }
+            }
+        }
+        void otyp;
+    }
+}
+
 function blessorcurseLikeC(chance, otmp) {
     if (otmp && (otmp.blessed || otmp.cursed)) return;
     if (!rn2(chance)) {
@@ -335,7 +433,7 @@ function mksobjInitRingLikeC(otyp) {
 }
 
 /** C: mkobj.c mksobj_init — TOOL_CLASS (per-otyp; default is `break` only). */
-function mksobjInitToolLikeC(otyp) {
+function mksobjInitToolLikeC(otyp, otmp) {
     const t = otyp | 0;
     switch (t) {
     case 219: /* TALLOW_CANDLE */
@@ -351,12 +449,17 @@ function mksobjInitToolLikeC(otyp) {
     case 223: /* MAGIC_LAMP */
         blessorcurseLikeC(2);
         break;
-    case 215: /* LARGE_BOX */
-    case 216: /* CHEST */
-        rn2(5);
-        rn2(10);
-        if (!rn2(100)) { /* tknown when trapped */ }
-        /* mkbox_cnts — TODO when floor containers need contents RNG */
+    case OTYP_LARGE_BOX:
+    case OTYP_CHEST:
+        if (!otmp) {
+            otmp = { otyp: t, olocked: false, otrapped: false };
+        }
+        otmp.olocked = !!rn2(5);
+        otmp.otrapped = !rn2(10);
+        if (!rn2(100) && otmp.otrapped) {
+            /* tknown when trap obvious */
+        }
+        mkboxCntsMklevLikeC(otmp);
         break;
     case 245: /* EXPENSIVE_CAMERA */
     case 246: /* TINNING_KIT */
@@ -483,7 +586,7 @@ export function mksobjInitMklevLikeC(otyp, oclass, artif, otmp) {
         else blessorcurseLikeC(10);
         break;
     case NH5_TOOL_CLASS:
-        mksobjInitToolLikeC(otyp);
+        mksobjInitToolLikeC(otyp, otmp);
         break;
     default:
         break;

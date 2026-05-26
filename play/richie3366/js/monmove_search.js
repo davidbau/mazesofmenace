@@ -9,8 +9,9 @@ export function isFirstSearchMovemonPassLikeC(g) {
 }
 
 /**
- * C: **`movemon`** step-1 peel — all roles at **`stepNum===1`**; rogue near mklev also on
- * first **`#search`** when harness maps **`effStepNum===11`** (**`seed0077`** tail **`distfleeck`**).
+ * C: **`movemon`** step-1 peel — bulk **`distfleeck`** per **`fmon`** at **`stepNum===1`**
+ * (tourist **`seed8000`**); tame pets still need **`dog_move`** and **`dog_goal`** in that pass
+ * (**`seed0006`**). Rogue near mklev also on first **`#search`** (**`seed0077`**).
  *
  * @param {import('./gstate.js').game} g
  * @param {number} stepNum

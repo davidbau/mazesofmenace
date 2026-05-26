@@ -33,10 +33,10 @@ export const ROLE_RANDOM = -2;
 export const PICK_RANDOM = 0;
 export const PICK_RIGID = 1;
 
-/** C `role.c` tty menu / reset_role_filtering row order: Rogue before Ranger (Priest … Samurai). */
-export const ROLE_MENU_ORDER_LIKE_C = Object.freeze([
-    0, 1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11, 12,
-]);
+/** C `role.c` `roles[]` index order (`setup_rolemenu` walks `i = 0 …`). */
+export const ROLE_MENU_ORDER_LIKE_C = Object.freeze(
+    Array.from({ length: roles.length }, (_, i) => i),
+);
 
 /** @typedef {{ initrole: number, initrace: number, initgend: number, initalign: number }} ChargenFlags */
 
@@ -79,6 +79,50 @@ export function clearChargenRfilterAspectLikeC(which) {
 /** C clearrolefilter(RS_filter) — clear all exclusions. */
 export function clearChargenRfilterLikeC() {
     clearChargenRfilterAspectLikeC(RS_filter);
+}
+
+/**
+ * C options.c parse_role_opt — negated role/race/gender/alignment rc tokens → setrolefilter.
+ * Positive identity (e.g. role:wizard) is handled by chargenFacetIndicesFromOptsLikeC, not here.
+ * @param {string} raw — option value (space-separated tokens, optional leading `!` per token)
+ * @param {number} which — RS_ROLE | RS_RACE | RS_GENDER | RS_ALGNMNT
+ */
+function applyChargenRoleAspectFiltersFromRcLikeC(raw, which) {
+    let clearedForNeg = false;
+    for (const token of raw.trim().split(/\s+/)) {
+        let t = token.trim();
+        if (!t) continue;
+        let neg = false;
+        if (t.startsWith('!')) {
+            neg = true;
+            t = t.slice(1).trim();
+        } else if (/^no/i.test(t) && t.length > 2) {
+            neg = true;
+            t = t.slice(t[2] === '-' ? 3 : 2).trim();
+        }
+        if (!t || !neg) continue;
+        if (!clearedForNeg) {
+            clearChargenRfilterAspectLikeC(which);
+            clearedForNeg = true;
+        }
+        trySetrolefilterTokenLikeC(t);
+    }
+}
+
+/**
+ * Apply OPTIONS role/race/gender/alignment filter negation from parsed nethackrc.
+ * @param {ReturnType<typeof import('./options.js').parseNethackrc>} opts
+ */
+export function applyChargenRfiltersFromOptsLikeC(opts) {
+    const specs = [
+        [typeof opts.role === 'string' ? opts.role : '', RS_ROLE],
+        [typeof opts.race === 'string' ? opts.race : '', RS_RACE],
+        [typeof opts.gender === 'string' ? opts.gender : '', RS_GENDER],
+        [typeof opts.align === 'string' ? opts.align : '', RS_ALGNMNT],
+    ];
+    for (const [raw, which] of specs) {
+        if (raw.trim()) applyChargenRoleAspectFiltersFromRcLikeC(raw, which);
+    }
 }
 
 function strncmpiPrefix(user, canon) {
@@ -370,12 +414,22 @@ export function roleMenuExtraRsRoleGrayLineLikeC(f) {
 }
 
 /**
- * C `role_menu_extra(RS_RACE)` — single race left: either role table forces it,
- * or filter narrowed to one while `initrace` is set.
+ * C `role_menu_extra(RS_RACE)` — role table pins one race, or filter leaves one mask.
  */
 export function roleMenuExtraRsRaceGrayLineLikeC(f) {
     const r = f.initrole;
     if (r < 0) return null;
+    const role = roles[r];
+    let allowmask = 0;
+    for (const rn of role.allows.races) {
+        const rc = races.find((x) => x.name === rn);
+        if (rc) allowmask |= rc.selfmask;
+    }
+    if (f.initrace >= 0) {
+        const sel = races[f.initrace];
+        if (sel && (allowmask & ~rfilterMask) === sel.selfmask) return 'filter forces race';
+        return null;
+    }
     const gi = f.initgend >= 0 ? f.initgend : ROLE_RANDOM;
     const ai = f.initalign >= 0 ? f.initalign : ROLE_RANDOM;
     /** @type {number[]} */
@@ -390,7 +444,6 @@ export function roleMenuExtraRsRaceGrayLineLikeC(f) {
         if (okRaceJsIgnoreRaceRfilter(r, rai, gi, ai)) nIgn++;
     }
     if (nIgn === 1) return `role forces ${noun}`;
-    if (f.initrace >= 0 && nIgn > 1) return 'filter forces race';
     return null;
 }
 

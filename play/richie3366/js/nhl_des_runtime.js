@@ -1,9 +1,7 @@
 // nhl_des_runtime.js — NHL **`des.*`** + selection helpers for Fengari (minetn vertical slice).
 // C ref: sp_lev.c `lspo_*`, nhlsel.c `l_selection_*`, mkmap.c `mkmap`.
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readUpstreamDatTextLikeC } from './dat_upstream.js';
 import {
     COLNO, ROWNO, BOOL_RANDOM, INVALID_TYPE, STONE, ROOM, LVLINIT_MINES,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_TELE, DOOR, D_CLOSED, D_NODOOR,
@@ -30,9 +28,6 @@ const OTYP_WAX_CANDLE = 226;
 const OTYP_OIL_LAMP = 228;
 const OTYP_WAN_STRIKING = 415;
 const WAN_MAGIC_MISSILE = 306;
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_DAT = join(__dirname, '..', 'nethack-c', 'upstream', 'dat');
 
 /** @typedef {{ g: import('./gstate.js').game, deps: Record<string, Function>, nextSel: number, sels: Map<number, import('./selection.js').SelectionVar>, mapGx?: { xstart:number, ystart:number, xsize:number, ysize:number } }} NhlDesCtx */
 
@@ -393,5 +388,5 @@ export function desMonsterLikeC(ctx, a) {
 
 /** @param {string} baseName e.g. minetn-1 */
 export function readUpstreamDatLikeC(baseName) {
-    return readFileSync(join(REPO_DAT, `${baseName}.lua`), 'utf8');
+    return readUpstreamDatTextLikeC(baseName);
 }

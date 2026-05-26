@@ -442,17 +442,15 @@ export function consumeWizardHumanIniInvUinitRoleRngLikeC() {
     mksobjInitWeaponLikeC(OTYP_QUARTERSTAFF, false);
     rn2(1);
 
-    /* CLOAK_OF_MAGIC_RESISTANCE +0 */
+    /* CLOAK_OF_MAGIC_RESISTANCE +0 — ARMOR: no second trquan in ini_inv_adjust_obj */
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitArmorLikeC(false);
-    rn2(1);
 
     /* UNDEF wand */
     trquanMinMaxLikeC(1, 1);
     game._wizardIniWandOtyp = iniInvMkobjFilterWizardHumanLikeC(NH5_WAND_CLASS, false, gn, false);
     iniInvGnAfterUndefAcceptLikeC(NH5_WAND_CLASS, game._wizardIniWandOtyp | 0, gn);
-    rn2(1);
 
     const ringQ = trquanMinMaxLikeC(2, 2);
     game._wizardIniRingQuan = ringQ;
@@ -463,7 +461,6 @@ export function consumeWizardHumanIniInvUinitRoleRngLikeC() {
         iniInvAdjustObjRingSpeUndefTropLikeC(ro, speMk ?? 0);
         game._wizardIniRingOtyps.push(ro);
         iniInvGnAfterUndefAcceptLikeC(NH5_RING_CLASS, ro, gn);
-        rn2(1);
     }
 
     const potQ = trquanMinMaxLikeC(3, 3);
@@ -473,7 +470,6 @@ export function consumeWizardHumanIniInvUinitRoleRngLikeC() {
         const po = iniInvMkobjFilterWizardHumanLikeC(NH5_POTION_CLASS, false, gn, false);
         game._wizardIniPotionOtyps.push(po);
         iniInvGnAfterUndefAcceptLikeC(NH5_POTION_CLASS, po, gn);
-        rn2(1);
     }
 
     const scrQ = trquanMinMaxLikeC(3, 3);
@@ -483,27 +479,24 @@ export function consumeWizardHumanIniInvUinitRoleRngLikeC() {
         const so = iniInvMkobjFilterWizardHumanLikeC(NH5_SCROLL_CLASS, false, gn, false);
         game._wizardIniScrollOtyps.push(so);
         iniInvGnAfterUndefAcceptLikeC(NH5_SCROLL_CLASS, so, gn);
-        rn2(1);
     }
 
     /* SPE_FORCE_BOLT — fixed; sets **`got_sp1`** in C before UNDEF spellbook */
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitSpellbookIniInvLikeC();
-    rn2(1);
 
     /* UNDEF spellbook — `got_level1_spellbook` TRUE */
     trquanMinMaxLikeC(1, 1);
     game._wizardIniSecondSpellbookOtyp = iniInvMkobjFilterWizardHumanLikeC(NH5_SPBOOK_CLASS, true, gn, false);
     iniInvGnAfterUndefAcceptLikeC(NH5_SPBOOK_CLASS, game._wizardIniSecondSpellbookOtyp | 0, gn);
-    rn2(1);
 
-    /* MAGIC_MARKER — C: `mksobj_init` **`rn1(70,30)`** then **`ini_inv_adjust_obj`** forces **`spe`** **19** + **`rn2(4)`** */
+    /* MAGIC_MARKER — TOOL: adjust **`trquan`** then **`trspe` 19 + **`rn2(4)`** */
     trquanMinMaxLikeC(1, 1);
     nextIdentLikeC();
     mksobjInitMagicMarkerSpeRn1LikeC();
-    game._wizardIniMagicmarkerSpe = 19 + rn2(4);
     rn2(1);
+    game._wizardIniMagicmarkerSpe = 19 + rn2(4);
 
     game._wizardIniBlindfold = consumeIniInvBlindfoldLeafRngIfGateLikeC();
 }

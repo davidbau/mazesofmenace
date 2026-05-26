@@ -1,9 +1,6 @@
 // symbols_file.js — C symbols.c read_sym_file / switch_symbols / parse_sym_line.
 // C ref: symbols.c parse_sym_line, files.c read_sym_file, dat/symbols symset blocks.
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { gs, gp, H_DEC, H_IBM, PRIMARYSET, set_symhandling } from './const.js';
 import { mungspacesLikeC } from './hacklib.js';
 import { SYM_PARSE_BY_NAME } from './symbols_symmap_data.js';
@@ -363,16 +360,8 @@ function parseSymLineLikeC(line, whichSet, ctx) {
 
 /** Optional read of nethack-c/upstream/dat/symbols (embedded tables remain fallback). */
 function tryReadDatSymbolsText() {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-        path.join(process.cwd(), 'nethack-c/upstream/dat/symbols'),
-        path.resolve(here, '../nethack-c/upstream/dat/symbols'),
-    ];
-    for (const p of candidates) {
-        try {
-            if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
-        } catch { /* sandboxed judge may deny fs */ }
-    }
+    // Browser Play UI and the judge sandbox must not depend on node:fs here.
+    // DECgraphics / IBMgraphics overrides are embedded below.
     return null;
 }
 

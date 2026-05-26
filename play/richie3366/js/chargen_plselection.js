@@ -10,6 +10,7 @@ import {
     genders,
     validroleLikeC,
     raceAllowsAlignValueLikeC,
+    roleHasFemaleRoleNameLikeC,
 } from './roles.js';
 import { ROLE_NONE, ROLE_RANDOM, okAlignJs, okRaceJs } from './chargen_rigid.js';
 
@@ -22,15 +23,18 @@ function resetPlselPromptStateLikeC() {
     for (let k = 0; k < NUM_BP; k++) plselRolePa[k] = 0;
 }
 
-function appendPostAttribListLikeC(out, names) {
-    for (let i = 0; i < names.length; i++) {
-        if (i > 0) {
-            if (i === names.length - 1 && names.length > 1) out += ' and ';
-            else out += ', ';
-        }
-        out += names[i];
+/** C role.c promptsep — comma / final "and " using gr.role_post_attribs countdown. */
+function promptsepLikeC(buf, numPostAttribs) {
+    let b = buf;
+    if (numPostAttribs > 1 && plselRolePostAttribs < numPostAttribs && plselRolePostAttribs > 1) {
+        b += ',';
     }
-    return out;
+    b += ' ';
+    plselRolePostAttribs--;
+    if (plselRolePostAttribs === 0 && numPostAttribs > 1) {
+        b += 'and ';
+    }
+    return b;
 }
 
 function roleGendercountLikeC(rolenum) {
@@ -97,7 +101,7 @@ function rootPlselectionPromptLikeC(rolenum, racenum, gendnum, alignnum) {
 
     if (gendnum !== ROLE_NONE && gendnum !== ROLE_RANDOM) {
         if (validroleLikeC(rolenum)) {
-            if (rolenum !== ROLE_NONE && gendercount > 1 && !roles[rolenum].name.f) {
+            if (rolenum !== ROLE_NONE && gendercount > 1 && !roleHasFemaleRoleNameLikeC(roles[rolenum])) {
                 if (donefirst) chunks.push(' ');
                 chunks.push(genders[gendnum].adj);
                 donefirst = true;
@@ -133,9 +137,13 @@ function rootPlselectionPromptLikeC(rolenum, racenum, gendnum, alignnum) {
     if (validroleLikeC(rolenum)) {
         if (donefirst) chunks.push(' ');
         const r = roles[rolenum];
-        if (gendnum !== ROLE_NONE) {
-            chunks.push(gendnum === 1 && r.name.f ? r.name.f : r.name.m);
-        } else if (r.name.f) {
+        if (gendnum !== ROLE_NONE && gendnum !== ROLE_RANDOM) {
+            if (gendnum === 1 && roleHasFemaleRoleNameLikeC(r)) {
+                chunks.push(r.name.f);
+            } else {
+                chunks.push(r.name.m);
+            }
+        } else if (roleHasFemaleRoleNameLikeC(r)) {
             chunks.push(`${r.name.m}/${r.name.f}`);
         } else {
             chunks.push(r.name.m);
@@ -170,6 +178,9 @@ export function buildPlselectionPromptLikeC(rolenum, racenum, gendnum, alignnum)
     tmp = tmp.replace(/pick a character/g, 'pick character');
 
     let out = sSuffixLikeC(tmp);
+    if (/priest\/priestess'$/i.test(out)) {
+        out += 's';
+    }
 
     let numPostAttribs = plselRolePostAttribs;
     if (!numPostAttribs) {
@@ -193,13 +204,22 @@ export function buildPlselectionPromptLikeC(rolenum, racenum, gendnum, alignnum)
     }
 
     if (numPostAttribs) {
-        const names = [];
-        if (plselRolePa[BP_RACE]) names.push('race');
-        if (plselRolePa[BP_ROLE]) names.push('role');
-        if (plselRolePa[BP_GEND]) names.push('gender');
-        if (plselRolePa[BP_ALIGN]) names.push('alignment');
-        if (!out.endsWith(' ')) out += ' ';
-        out = appendPostAttribListLikeC(out, names);
+        if (plselRolePa[BP_RACE]) {
+            out = promptsepLikeC(out, numPostAttribs);
+            out += 'race';
+        }
+        if (plselRolePa[BP_ROLE]) {
+            out = promptsepLikeC(out, numPostAttribs);
+            out += 'role';
+        }
+        if (plselRolePa[BP_GEND]) {
+            out = promptsepLikeC(out, numPostAttribs);
+            out += 'gender';
+        }
+        if (plselRolePa[BP_ALIGN]) {
+            out = promptsepLikeC(out, numPostAttribs);
+            out += 'alignment';
+        }
     }
 
     /* C Strcat trailing space before yn_function; tty cursor uses len+1 on visible line (no extra space). */

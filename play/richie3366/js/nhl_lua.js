@@ -420,8 +420,8 @@ des = {
   wallify = function() return nhc.des_wallify() end,
 }
 `;
-    const nhlib = Des.readUpstreamDatLikeC('nhlib');
-    const minetn = Des.readUpstreamDatLikeC('minetn-1');
+    const nhlib = await Des.readUpstreamDatLikeC('nhlib');
+    const minetn = await Des.readUpstreamDatLikeC('minetn-1');
 
     const runChunk = (src, tag) => {
         const err = lauxlib.luaL_loadstring(L, to_luastring(src, true));

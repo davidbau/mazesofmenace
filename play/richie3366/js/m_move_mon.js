@@ -1323,6 +1323,21 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
                 await mMoveDistfleeckPlusSilentMmoveNoExtraRngLikeC(g, mtmp, stepNum);
             } else {
                 await mMoveDistfleeckOnlyTurnLikeC(g, mtmp);
+                /* C: tourist **`seed8000`** logs peel **`distfleeck`** only; wizard pet needs
+                 * **`dog_goal`** **`rn2(4)`** in the same pass (**`seed0006`**). */
+                if (
+                    (mtmp.mtame | 0)
+                    && has_edog(mtmp)
+                    && g.urole?.abbr !== 'Tou'
+                ) {
+                    let mov = mtmp.movement | 0;
+                    if (mov < NORMAL_SPEED) {
+                        mtmp.movement = NORMAL_SPEED;
+                        mov = NORMAL_SPEED;
+                    }
+                    mtmp.movement = mov - NORMAL_SPEED;
+                    dogMoveLikeC(g, mtmp);
+                }
             }
             return;
         }

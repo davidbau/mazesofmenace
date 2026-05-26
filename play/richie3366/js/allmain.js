@@ -68,14 +68,8 @@ export async function newgame() {
     initDungeonsLikeC(g);
     fastforward_pre_mklev();
 
-    /* C u_init.c u_init_misc — handedness (allmain.c newgame after init_dungeons). */
-    g.u = g.u || {};
-    g.u.left_handed = (rn2(10) === 0);
-
-    // C ref: allmain.c l_nhcore_init() — shuffle align[] for Lua
-    l_nhcore_init();
-
     // Set up game state needed by mklev (dungeons[] from initDungeonsLikeC)
+    g.u = g.u || {};
     g.u.dx |= 0;
     g.u.dy |= 0;
     g.u.uz = { dnum: 0, dlevel: 1 };
@@ -155,6 +149,9 @@ export async function newgame() {
     /* C: u_init.c u_init_misc — u.ublessed / u.uspellprot (you.h); pray / spell protection vs AC */
     g.u.ublessed = 0;
     g.u.uspellprot = 0;
+    /* C: artifact.c init_artifacts — before u_init_misc (allmain.c newgame). */
+    initArtidiscoHeroLikeC(g);
+
     /* C u_init_misc — newhp()/newpw() with u.ulevel==0; adjabil(0,1); u.ulevel=u.ulevelmax=1 (before mklev) */
     g.u.ulevel = 0;
     g.u.ulevelmax = 0;
@@ -162,18 +159,21 @@ export async function newgame() {
     applyAdjabil(0, 1);
     g.u.ulevel = 1;
     g.u.ulevelmax = 1;
+    /* C: u_init_misc — after newhp/newpw/adjabil/ulevel bump (role.c:1031). */
+    g.u.left_handed = (rn2(10) === 0);
     g.u.uhpinc = g.u.uhpinc || [];
     g.u.ueninc = g.u.ueninc || [];
     g.u.uhpinc[1] = g.u.uhpmax | 0;
     g.u.ueninc[1] = g.u.uenmax | 0;
+
+    /* C: allmain.c newgame — u_init_misc() before l_nhcore_init() (Lua align shuffle). */
+    l_nhcore_init();
 
     g.context = g.context || {};
     if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
     g.context.victual = { eating: 0, fullwarn: 0, canchoke: 1 };
     /* C: allmain.c newgame — mvitals[i].mvflags = mons[i].geno & G_NOCORPSE (see mvitals.js initMvitalsStub) */
     initMvitalsStub(g);
-    /* C: artifact.c **`init_artifacts`** — **`artidisco[]`** zeroed with **`artiexist[]`** */
-    initArtidiscoHeroLikeC(g);
 
     g.flags = g.flags || {};
     /* C: hack.c flags.terrainstatus — gate classify_terrain; default on for new games */

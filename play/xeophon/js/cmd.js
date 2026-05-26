@@ -3145,6 +3145,22 @@ function impactDropFloorObjects(x, y, trap, options = {}) {
         else
             message = `${fallenCount === 1 ? 'One of the' : 'Some of the'} adjacent ${fallenCount === 1 ? 'objects falls' : what} ${gateText}.`;
     }
+    let debitDelta = 0;
+    let robbedDelta = 0;
+    let debtShkp = null;
+    for (const obj of fallen) {
+        const debt = shipObjectShopDebt(obj, x, y, { shopFloorObj: true, silent: true });
+        debitDelta += debt.debitDelta || 0;
+        robbedDelta += debt.robbedDelta || 0;
+        if (debt.shkp) debtShkp = debt.shkp;
+    }
+    if (debitDelta > 0)
+        message = [message, `You owe ${shopkeeperDisplayName(debtShkp)} ${debitDelta} ${shopCurrency(debitDelta)} for goods lost.`]
+            .filter(Boolean).join('  ');
+    if (robbedDelta > 0)
+        message = [message, `You removed ${robbedDelta} ${shopCurrency(robbedDelta)} worth of goods!`]
+            .filter(Boolean).join('  ');
+
     if (!options.withHero) {
         queueImpactDroppedObjects(options.targetLevel, fallen);
         return { message, objects: [] };
@@ -11757,6 +11773,35 @@ function makeOrdinaryBellWishObject() {
     });
 }
 
+function makeCandelabrumOfInvocationWishObject() {
+    const otmp = mksobj(CANDELABRUM_OF_INVOCATION, true, false);
+    return Object.assign(otmp, {
+        cls: 'tool',
+        glyph: '(',
+        color: CLR_YELLOW,
+        kind: 'Candelabrum of Invocation',
+        actualKind: 'Candelabrum of Invocation',
+        known: true,
+        unique: true,
+        wishedfor: true,
+    });
+}
+
+function makeBookOfTheDeadWishObject() {
+    const otmp = mksobj(BOOK_OF_THE_DEAD, true, false);
+    return Object.assign(otmp, {
+        cls: 'spellbook',
+        glyph: '+',
+        color: CLR_WHITE,
+        kind: 'Book of the Dead',
+        actualKind: 'Book of the Dead',
+        spellName: '',
+        known: true,
+        unique: true,
+        wishedfor: true,
+    });
+}
+
 function makeCandleFromCandelabrumWishObject() {
     const candleType = rnd(25) <= 20 ? TALLOW_CANDLE : WAX_CANDLE;
     const wax = candleType === WAX_CANDLE;
@@ -11780,6 +11825,19 @@ function makeOilLampFromMagicLampWishObject() {
         actualKind: 'oil lamp',
         wishedfor: true,
     });
+}
+
+function makeWizardSpecialWishObject(lowerName) {
+    if (!game.flags?.debug) return null;
+    if (lowerName === 'candelabrum of invocation') {
+        rn2(WIZARD_ONLY_WISH_NAMEDESC_BOUNDS.get(lowerName));
+        return makeCandelabrumOfInvocationWishObject();
+    }
+    if (lowerName === 'book of the dead') {
+        rn2(WIZARD_ONLY_WISH_NAMEDESC_BOUNDS.get(lowerName));
+        return makeBookOfTheDeadWishObject();
+    }
+    return null;
 }
 
 function substituteNonWizardSpecialWish(lowerName) {
@@ -13991,14 +14049,24 @@ function chargeGlowMessage(item, color = '', feeble = false) {
     return `${chargingObjectSubject(item)} ${feeble ? 'feebly ' : ''}${verb} ${color} for a moment.`;
 }
 
+function costlyAlterationPaymentMessage(item, verb) {
+    const name = pickupObjectName(item);
+    const plural = (item?.quan || 1) > 1;
+    if (!billDummyAlteredCarriedObject(item)) return '';
+    return `You ${verb} ${plural ? 'those' : 'that'} ${name}, you pay for ${plural ? 'them' : 'it'}!`;
+}
+
 function stripCharges(item) {
     const spe = item?.spe ?? 0;
     if (item?.blessed || spe <= 0) return ['Nothing happens.'];
+    const messages = [`${chargingObjectSubject(item)} vibrates briefly.`];
+    const payment = costlyAlterationPaymentMessage(item, 'uncharge');
+    if (payment) messages.push(payment);
     item.spe = 0;
     if (isWandItem(item)) item.charges = 0;
     if (isLampObject(item)) item.age = 0;
     updateChargedItemLine(item);
-    return [`${chargingObjectSubject(item)} vibrates briefly.`];
+    return messages;
 }
 
 function wandRechargeLimit(item) {
@@ -14082,10 +14150,15 @@ function rechargeRing(item, curseBless) {
         }
         return { messages, more: messages.length > 1 };
     }
+    const direction = curseBless < 0 ? 'counterclockwise' : 'clockwise';
+    const messages = [`${chargingObjectSubject(item)} spins ${direction} for a moment.`];
+    if (adjustment < 0) {
+        const payment = costlyAlterationPaymentMessage(item, 'disenchant');
+        if (payment) messages.push(payment);
+    }
     item.spe = capWishSpe(oldSpe + adjustment);
     updateChargedItemLine(item);
-    const direction = curseBless < 0 ? 'counterclockwise' : 'clockwise';
-    return { messages: [`${chargingObjectSubject(item)} spins ${direction} for a moment.`], more: false };
+    return { messages, more: messages.length > 1 };
 }
 
 function toolChargeKind(item) {
@@ -14191,11 +14264,21 @@ function rechargeLamp(item, curseBless) {
 function rechargeCrystalBall(item, curseBless) {
     if ((item.spe ?? 0) === -1) item.spe = 0;
     if (curseBless < 0) {
-        item.cursed = true;
-        item.blessed = false;
+        const messages = [];
+        if (!item.cursed) {
+            messages.push(chargeGlowMessage(item, 'black'));
+            item.cursed = true;
+            item.blessed = false;
+        } else {
+            messages.push(`${chargingObjectSubject(item)} vibrates briefly.`);
+        }
+        if ((item.spe ?? 0) > 0) {
+            const payment = costlyAlterationPaymentMessage(item, 'uncharge');
+            if (payment) messages.push(payment);
+        }
         item.spe = 0;
         updateChargedItemLine(item);
-        return [chargeGlowMessage(item, 'black')];
+        return messages;
     }
     if (curseBless > 0) {
         item.spe = 7;
@@ -15015,17 +15098,78 @@ function returnUnpaidObjectToShopBillOwnerAt(obj, x, y) {
     return subOneFromShopBill(obj, shkp);
 }
 
+function shopkeeperOwningObjectOrContentsBillEntry(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return { shkp: null, entry: null };
+    seen.add(obj);
+    const owner = shopkeeperOwningBillEntry(obj);
+    if (owner.shkp) return owner;
+    for (const child of globContents(obj)) {
+        const childOwner = shopkeeperOwningObjectOrContentsBillEntry(child, seen);
+        if (childOwner.shkp) return childOwner;
+    }
+    return { shkp: null, entry: null };
+}
+
+function returnProjectileShopBillToOwnerAt(obj, x, y) {
+    if (!shopObjectOrContentsUnpaid(obj) || shopBillableGold(obj)) return null;
+    const { shkp } = shopkeeperOwningObjectOrContentsBillEntry(obj);
+    const spotShkp = shopkeeperForCostlySpot(x, y);
+    if (!sameShopkeeper(shkp, spotShkp) || !shopkeeperInHisShop(shkp)) return null;
+    const containedGold = containedShopGold(obj);
+    const before = Array.isArray(shkp?.bill) ? shkp.bill.length : Math.max(0, Math.trunc(Number(shkp?.billct || 0)));
+    subFromShopBill(obj, shkp);
+    const donation = containedGold > 0 ? donateShopGoldAtSpot(x, y, containedGold) : null;
+    const after = Array.isArray(shkp?.bill) ? shkp.bill.length : Math.max(0, Math.trunc(Number(shkp?.billct || 0)));
+    const returned = after < before || !shopObjectOrContentsUnpaid(obj);
+    return returned ? { shkp, messages: donation?.messages || [] } : null;
+}
+
 function shopDebtObjectPronoun(obj) {
     return (obj?.quan || 1) > 1 ? 'them' : 'it';
 }
 
+function collectObjectAndContentsShopDebtItems(obj, shkp, seen = new Set()) {
+    if (!obj || seen.has(obj) || shopBillableGold(obj)) return [];
+    seen.add(obj);
+    const items = [];
+    const entry = shopBillEntryForObject(shkp, obj);
+    const price = entry ? shopBillEntryTotal(entry) : (obj.unpaid ? unpaidBillPrice(obj) : 0);
+    if ((entry || obj.unpaid) && price > 0) items.push({ item: obj, entry, price });
+    for (const child of globContents(obj))
+        items.push(...collectObjectAndContentsShopDebtItems(child, shkp, seen));
+    return items;
+}
+
+function shopDebtContainerSuffix(obj, debtItems) {
+    const topCharged = debtItems.some(item => item.item === obj);
+    const chargedContents = debtItems.filter(item => item.item !== obj).length;
+    if (!chargedContents) return shopDebtObjectPronoun(obj);
+    const contentCount = countContentsForShopDebt(obj);
+    const some = contentCount > chargedContents ? 'some of ' : '';
+    return `${topCharged ? 'it and ' : ''}${some}its contents`;
+}
+
+function countContentsForShopDebt(obj, seen = new Set()) {
+    if (!obj || seen.has(obj)) return 0;
+    seen.add(obj);
+    let count = 0;
+    for (const child of globContents(obj)) {
+        if (!shopBillableGold(child)) count++;
+        count += countContentsForShopDebt(child, seen);
+    }
+    return count;
+}
+
 function convertUnpaidObjectToShopDebt(obj, { silent = false, broken = false } = {}) {
-    if (!obj?.unpaid || shopBillableGold(obj)) return { charged: false, value: 0, shkp: null, message: '' };
-    const { shkp, entry } = shopkeeperOwningBillEntry(obj);
+    if (!shopObjectOrContentsUnpaid(obj) || shopBillableGold(obj)) return { charged: false, value: 0, shkp: null, message: '' };
+    const { shkp } = shopkeeperOwningObjectOrContentsBillEntry(obj);
     if (!shkp) return { charged: false, value: 0, shkp: null, message: '' };
-    const value = entry ? shopBillEntryTotal(entry) : unpaidBillPrice(obj);
-    if (entry) removeObjectFromShopBillById(shkp, entry.bo_id);
-    clearObjectShopBillState(obj);
+    const debtItems = collectObjectAndContentsShopDebtItems(obj, shkp);
+    const value = debtItems.reduce((sum, item) => sum + item.price, 0);
+    for (const debtItem of debtItems) {
+        if (debtItem.entry) subOneFromShopBill(debtItem.item, shkp);
+        else clearObjectShopBillState(debtItem.item);
+    }
     if (broken) obj.no_charge = true;
     if (!(value > 0)) return { charged: false, value: 0, shkp, message: '' };
 
@@ -15054,7 +15198,7 @@ function convertUnpaidObjectToShopDebt(obj, { silent = false, broken = false } =
                 message = 'You have no credit remaining.';
             } else {
                 const still = creditUse ? 'still ' : '';
-                message = `You ${still}owe ${shopkeeperDisplayName(shkp)} ${remaining} zorkmid${remaining === 1 ? '' : 's'} for ${shopDebtObjectPronoun(obj)}!`;
+                message = `You ${still}owe ${shopkeeperDisplayName(shkp)} ${remaining} zorkmid${remaining === 1 ? '' : 's'} for ${shopDebtContainerSuffix(obj, debtItems)}!`;
             }
         } else {
             message = `You hear a scream, "Thief!"`;
@@ -15064,11 +15208,170 @@ function convertUnpaidObjectToShopDebt(obj, { silent = false, broken = false } =
 }
 
 function resolveUnpaidProjectileShopLanding(obj, x, y, options = {}) {
-    if (!obj?.unpaid) return { handled: false, charged: false, returned: false, value: 0, shkp: null, message: '' };
-    if (returnUnpaidObjectToShopBillOwnerAt(obj, x, y))
-        return { handled: true, charged: false, returned: true, value: 0, shkp: null, message: '' };
+    if (!shopObjectOrContentsUnpaid(obj)) return { handled: false, charged: false, returned: false, value: 0, shkp: null, message: '' };
+    const returned = returnProjectileShopBillToOwnerAt(obj, x, y);
+    if (returned)
+        return { handled: true, charged: false, returned: true, value: 0, shkp: returned.shkp, message: (returned.messages || []).join('  ') };
     const charged = convertUnpaidObjectToShopDebt(obj, options);
     return { ...charged, handled: charged.charged, returned: false };
+}
+
+function isProjectileImpactContainer(obj) {
+    return isTipContainerObject(obj) && globContents(obj).length && !isMagicBagObject(obj);
+}
+
+function projectileLandingIsSoft(x, y) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return false;
+    return IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT
+        || loc.typ === LAVAPOOL || loc.typ === LAVAWALL;
+}
+
+function projectileImpactGlassCandidate(obj) {
+    if (!obj || impactDropObjectClass(obj) === 'gem') return false;
+    const material = String(obj.material || obj.oc_material || '').toLowerCase();
+    const kind = objectKindKey(obj);
+    return material === 'glass' || impactDropObjectClass(obj) === 'potion'
+        || obj.otyp === MIRROR || kind === 'looking glass' || kind === 'mirror'
+        || kind === 'crystal ball' || kind === 'lenses'
+        || /\bglass\b|\bcrystal\b/.test(kind);
+}
+
+function projectileImpactContentBreakKind(obj) {
+    if (projectileImpactGlassCandidate(obj)) {
+        if (obj.artifact || rn2(100) < 33) return '';
+        return 'shatter';
+    }
+    if (isEggItem(obj) && !rn2(3)) return 'cracking';
+    return '';
+}
+
+function projectileTopLevelBreakKind(obj, options = {}) {
+    const roll = Number.isInteger(options.breakRoll) ? options.breakRoll : rn2(100);
+    const kind = impactDropBreakKind(obj);
+    if (!kind) return '';
+    const resistChance = obj?.artifact ? 99 : 1;
+    return roll < resistChance ? '' : kind;
+}
+
+function projectileTopLevelBreakMessage(obj, breakKind, messages) {
+    if (!breakKind) return;
+    if (breakKind === 'splat') {
+        messages.push('Splat!');
+        return;
+    }
+    if (breakKind === 'mess') {
+        messages.push('What a mess!');
+        return;
+    }
+    if (game.u?.blind) {
+        messages.push('You hear something shatter!');
+        return;
+    }
+    const name = pickupObjectName({ ...obj, quan: obj.quan || 1 });
+    const many = (obj.quan || 1) > 1;
+    const subject = many ? `The ${name}` : articleFor(name, true);
+    const verb = many ? 'shatter' : 'shatters';
+    messages.push(`${subject} ${verb}${breakKind === 'pieces' ? ' into a thousand pieces' : ''}!`);
+}
+
+function splitImpactBrokenStackItem(container, obj, shkp) {
+    const quantity = Math.max(1, Math.trunc(Number(obj?.quan || 1)));
+    if (quantity <= 1) return obj;
+    const broken = {
+        ...obj,
+        id: next_ident(),
+        o_id: undefined,
+        _shopBillObjectId: undefined,
+        quan: 1,
+        contained: true,
+        container,
+    };
+    obj.quan = quantity - 1;
+    if (obj.unpaid && shkp) splitShopBillEntry(shkp, obj, broken, 1);
+    if (obj.unpaid) syncUnpaidBillLine(obj);
+    return broken;
+}
+
+function projectileContainerImpactDmg(obj, fromX, fromY, options = {}) {
+    const messages = Array.isArray(options.messages) ? options.messages : [];
+    if (!isProjectileImpactContainer(obj)) return { loss: 0, broke: false, messages };
+    const shkp = shopkeeperForCostlySpot(fromX, fromY);
+    const costly = shopkeeperInHisShop(shkp);
+    const insider = costly && sameShopkeeper(shkp, shopkeeperForShopRoom(game.u?.ux, game.u?.uy));
+    let loss = 0;
+    let broke = false;
+    for (const child of [...globContents(obj)]) {
+        const breakKind = projectileImpactContentBreakKind(child);
+        if (!breakKind) continue;
+        const brokenChild = splitImpactBrokenStackItem(obj, child, shkp);
+        if (costly) {
+            if (!brokenChild.unpaid) brokenChild.no_charge = true;
+            const charged = convertUnpaidObjectToShopDebt(brokenChild, { silent: true, broken: true });
+            loss += charged.value || 0;
+        }
+        if (brokenChild === child) removeContainedObject(obj, child);
+        brokenChild.contained = false;
+        brokenChild.container = null;
+        obj.cknown = false;
+        broke = true;
+        if (!options.silent) messages.push(`You hear a muffled ${breakKind}.`);
+    }
+    if (broke && isGlobWeightContainerObject(obj)) obj.owt = globObjectWeight(obj);
+    if (costly && loss && !options.silent) {
+        if (insider) {
+            messages.push(`You owe ${shopkeeperDisplayName(shkp)} ${loss} ${shopCurrency(loss)} for objects destroyed.`);
+        } else {
+            messages.push(`You caused ${loss} ${shopCurrency(loss)} worth of damage!`);
+        }
+    }
+    return { loss, broke, messages };
+}
+
+function placeUnstackedFloorObject(obj) {
+    game.level.objects ??= [];
+    game.level.objects.push(obj);
+    return obj;
+}
+
+function stackPlacedProjectileObject(obj) {
+    const objects = game.level?.objects || [];
+    if (!objects.includes(obj)) return obj;
+    const stack = objects.find(existing => existing !== obj && sameMonsterThrownStackObject(existing, obj));
+    if (!stack) return obj;
+    mergeStackedShopBillEntries(stack, obj);
+    stack.quan = (stack.quan || 1) + (obj.quan || 1);
+    game.level.objects = objects.filter(existing => existing !== obj);
+    return stack;
+}
+
+function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
+    const messages = [];
+    const hardLanding = !projectileLandingIsSoft(x, y);
+    if (hardLanding) {
+        const breakKind = projectileTopLevelBreakKind(obj, options);
+        if (breakKind) {
+            if (!options.silent) projectileTopLevelBreakMessage(obj, breakKind, messages);
+            const shopLanding = convertUnpaidObjectToShopDebt(obj, { ...options, broken: true });
+            if (!shopLanding.charged) obj.no_charge = true;
+            if (shopLanding.message) messages.push(shopLanding.message);
+            return {
+                object: null,
+                impact: { loss: 0, broke: false, messages },
+                topBreak: { broke: true, breakKind, value: shopLanding.value || 0 },
+                shopLanding: { ...shopLanding, handled: shopLanding.charged, returned: false },
+                messages,
+            };
+        }
+    }
+    const placed = placeUnstackedFloorObject(obj);
+    const impact = !hardLanding
+        ? { loss: 0, broke: false, messages }
+        : projectileContainerImpactDmg(placed, options.fromX ?? game.u?.ux ?? x, options.fromY ?? game.u?.uy ?? y, { messages, silent: options.silent });
+    const shopLanding = resolveUnpaidProjectileShopLanding(placed, x, y, options);
+    if (shopLanding.message) messages.push(shopLanding.message);
+    const stacked = stackPlacedProjectileObject(placed);
+    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, shopLanding, messages };
 }
 
 function markNoChargeRecursively(obj) {
@@ -15906,7 +16209,7 @@ function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) 
     const entry = shopBillEntryForObject(shkp, obj);
     if (entry) {
         value += shopBillEntryTotal(entry);
-        removeObjectFromShopBill(shkp, obj);
+        subOneFromShopBill(obj, shkp);
     } else if (obj.unpaid) {
         value += unpaidBillPrice(obj);
         clearObjectShopBillState(obj);
@@ -15919,10 +16222,9 @@ function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) 
     return value;
 }
 
-function chargeShopkeeperForLostMerchandise(shkp, value) {
+function chargeShopkeeperForLostMerchandise(shkp, value, { peaceful = shopkeeperPeacefulForDebt(shkp) } = {}) {
     let remaining = Math.max(0, Math.trunc(Number(value || 0)));
     if (!shkp || !remaining) return 0;
-    const peaceful = shopkeeperPeacefulForDebt(shkp);
     if (peaceful) {
         const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
         const covered = Math.min(credit, remaining);
@@ -15937,6 +16239,50 @@ function chargeShopkeeperForLostMerchandise(shkp, value) {
         }
     }
     return remaining;
+}
+
+function heroInShopOwnedBy(shkp) {
+    return sameShopkeeper(shopkeeperForCostlySpot(game.u?.ux, game.u?.uy), shkp);
+}
+
+function shopDebtDeltas(shkp, beforeDebit, beforeRobbed) {
+    return {
+        debitDelta: Math.max(0, Math.trunc(Number(shkp?.debit || 0)) - beforeDebit),
+        robbedDelta: Math.max(0, Math.trunc(Number(shkp?.robbed || 0)) - beforeRobbed),
+    };
+}
+
+function shipObjectShopDebt(obj, x, y, { shopFloorObj = false, silent = false } = {}) {
+    if (!obj || shopBillableGold(obj)) return { charged: false, value: 0, shkp: null, message: '', debitDelta: 0, robbedDelta: 0 };
+
+    if (!shopFloorObj && shopObjectOrContentsUnpaid(obj)) {
+        const { shkp } = shopkeeperOwningObjectOrContentsBillEntry(obj);
+        const beforeDebit = Math.max(0, Math.trunc(Number(shkp?.debit || 0)));
+        const beforeRobbed = Math.max(0, Math.trunc(Number(shkp?.robbed || 0)));
+        const charged = convertUnpaidObjectToShopDebt(obj, { silent });
+        if (charged.charged || shopObjectOrContentsUnpaid(obj)) clearNoChargeRecursively(obj);
+        return { ...charged, ...shopDebtDeltas(charged.shkp || shkp, beforeDebit, beforeRobbed) };
+    }
+
+    if (!shopFloorObj) return { charged: false, value: 0, shkp: null, message: '', debitDelta: 0, robbedDelta: 0 };
+
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) return { charged: false, value: 0, shkp: null, message: '', debitDelta: 0, robbedDelta: 0 };
+    const beforeDebit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
+    const beforeRobbed = Math.max(0, Math.trunc(Number(shkp.robbed || 0)));
+    const value = lostShopMerchandiseValueForObject({ ox: x, oy: y }, obj, shkp);
+    clearNoChargeRecursively(obj);
+    const peaceful = heroInShopOwnedBy(shkp);
+    const remaining = chargeShopkeeperForLostMerchandise(shkp, value, { peaceful });
+    const deltas = shopDebtDeltas(shkp, beforeDebit, beforeRobbed);
+    let message = '';
+    if (!silent && remaining > 0) {
+        if (deltas.robbedDelta > 0)
+            message = `You removed ${deltas.robbedDelta} ${shopCurrency(deltas.robbedDelta)} worth of goods!`;
+        else if (deltas.debitDelta > 0)
+            message = `You owe ${shopkeeperDisplayName(shkp)} ${deltas.debitDelta} ${shopCurrency(deltas.debitDelta)} for goods lost.`;
+    }
+    return { charged: value > 0, value, shkp, message, ...deltas };
 }
 
 function billLostMagicBagShopItem(source, obj) {
@@ -15961,7 +16307,7 @@ function heldMagicBagLostValueForObject(obj, shkp, seen = new Set()) {
     const entry = shopBillEntryForObject(shkp, obj);
     if (entry) {
         value += shopBillEntryTotal(entry);
-        removeObjectFromShopBill(shkp, obj);
+        subOneFromShopBill(obj, shkp);
     } else if (obj.unpaid) {
         value += unpaidBillPrice(obj) || shopItemPrice(obj, game.u?.ux, game.u?.uy);
         clearObjectShopBillState(obj);
@@ -16234,9 +16580,12 @@ export const __shopBillingTestHooks = {
     findPickedObjectInventoryMergeTarget,
     finishDroppedObjectSale,
     finishShopFloorContainerPutSale,
+    impactDropFloorObjects,
     mergePickedObjectIntoInventory,
     mergePickedObjectIntoShopBill,
+    landProjectileObjectWithShopHandling,
     placeStackableFloorObject,
+    projectileContainerImpactDmg,
     pickUpFloorGoldObject,
     prepareContainerTakeoutObject,
     hasRobbedOnlyShopPayment,
@@ -16251,6 +16600,7 @@ export const __shopBillingTestHooks = {
     costlyShopGoldAtSpot,
     containerTakeoutPreflight,
     sellobjReturnUnpaidToShop,
+    shipObjectShopDebt,
     sellobjDroppedGoldAt,
     stackMonsterThrownObject,
     splitCarriedObjectShopBill,
@@ -16578,6 +16928,8 @@ function droppedObjectPitHoleFloorEffects(obj, x, y, messages) {
         const gate = trap.ttyp === TRAPDOOR ? 'through the trap door' : 'through the hole';
         messages.push(`${floorObjectSubject(obj)} ${floorEffectsObjectVerb(obj, 'falls', 'fall')} ${gate}.`);
     }
+    const debt = shipObjectShopDebt(obj, x, y);
+    if (debt.message) messages.push(debt.message);
     queueImpactDroppedObjects(target, [obj]);
     newsym(x, y);
     return { handled: true, consumed: true };
@@ -17161,6 +17513,17 @@ function isGlobWeightContainerObject(obj) {
         || obj?.otyp === SACK || obj?.otyp === OILSKIN_SACK || obj?.otyp === BAG_OF_HOLDING;
 }
 
+const WISHED_OBJECT_WEIGHT_OVERRIDES = new Map([
+    ['bag of tricks', 15],
+    ['bell', 30],
+    ['bell of opening', 50],
+    ['book of the dead', 20],
+    ['crystal ball', 150],
+    ['heavy iron ball', WT_IRON_BALL_BASE],
+    ['horn of plenty', 18],
+    ['tooled horn', 18],
+]);
+
 function globObjectWeight(obj) {
     if (isGlobbyObject(obj)) return Math.max(0, obj.owt ?? 20);
     if (obj?.otyp === GOLD_PIECE || obj?.cls === 'coin' || obj?.glyph === '$')
@@ -17181,6 +17544,18 @@ function globObjectWeight(obj) {
     const cls = objectWeightClass(obj);
     const unitWeight = OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? obj?.owt ?? 0;
     return Math.max(0, unitWeight * (obj?.quan || 1));
+}
+
+function wishedObjectFinalWeight(obj) {
+    if (!obj) return 0;
+    if (isCandelabrumOfInvocationItem(obj)) {
+        const candleWeight = OBJECT_WEIGHTS['tallow candle'] ?? 2;
+        return 200 + Math.max(0, Math.trunc(Number(obj.spe || 0))) * candleWeight;
+    }
+    const kind = objectKindKey(obj);
+    const override = WISHED_OBJECT_WEIGHT_OVERRIDES.get(kind);
+    if (override != null) return Math.max(0, override * (obj.quan || 1));
+    return globObjectWeight(obj);
 }
 
 function heroCarriedWeight() {
@@ -19281,7 +19656,7 @@ function applyWishedContainerState(item, qualifiers) {
         item.otrapped = qualifiers.trappedState === 1;
     if (qualifiers.empty && tin && !item._wish_tin_explicit_content)
         setTinEmpty(item);
-    if (qualifiers.empty && objectKindKey(item) === 'bag of tricks')
+    if (qualifiers.empty && (objectKindKey(item) === 'bag of tricks' || isHornOfPlentyObject(item)))
         item.spe = 0;
     if (qualifiers.empty && isWishedContainerObject(item))
         item.contents = [];
@@ -19859,6 +20234,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
 
     const eggWish = parseWishedEggName(lowerName, qualifiers);
     if (eggWish) return makeWishedEggObject(eggWish, qualifiers);
+
+    const wizardSpecial = makeWizardSpecialWishObject(lowerName);
+    if (wizardSpecial) return wizardSpecial;
 
     const specialSubstitution = substituteNonWizardSpecialWish(lowerName);
     if (specialSubstitution) return specialSubstitution;
@@ -21403,7 +21781,49 @@ function isTipSourceObject(obj) {
 }
 
 function isFloorTipSourceObject(obj) {
-    return isTipContainerObject(obj) || isBagOfTricksObject(obj) || isHornOfPlentyObject(obj);
+    return isTipContainerObject(obj) || isBagOfTricksObject(obj);
+}
+
+function tipSpillageKind(obj) {
+    const kind = objectKindKey(obj);
+    if (isCandleObject(obj) && obj.lamplit) return 'wax';
+    if ((isPotionOfOil(obj) && obj.lamplit)
+        || ((obj?.otyp === OIL_LAMP || kind === 'oil lamp') && (obj.age ?? 0) !== 0)
+        || ((obj?.otyp === MAGIC_LAMP || kind === 'magic lamp') && (obj.spe ?? 0) !== 0))
+        return 'oil';
+    if ((toolChargeKind(obj) === 'can of grease' || kind === 'can of grease') && (obj?.spe ?? 0) > 0)
+        return 'grease';
+    if (obj?.otyp === FOOD_RATION || obj?.otyp === LEMBAS_WAFER
+        || kind === 'food ration' || kind === 'cram ration' || kind === 'lembas wafer')
+        return 'crumbs';
+    if (obj?.cls === 'venom') return 'venom';
+    return '';
+}
+
+function isTipSpillageObject(obj) {
+    return !!tipSpillageKind(obj);
+}
+
+function isTipCommandObject(obj) {
+    return isTipSourceObject(obj) || isTipSpillageObject(obj);
+}
+
+function tipSpillageSurfacePhrase() {
+    const loc = game.level?.at?.(game.u?.ux, game.u?.uy);
+    if (loc?.typ === LAVAPOOL || loc?.typ === LAVAWALL) return { surface: 'lava', suffix: ' and immediately burns away' };
+    if (loc && (IS_POOL(loc.typ) || loc.typ === WATER || loc.typ === MOAT)) return { surface: 'water', suffix: ' and gradually dissipates' };
+    return { surface: 'floor', suffix: '' };
+}
+
+function tipSpillageObject(obj) {
+    const spillage = tipSpillageKind(obj);
+    if (!spillage) return ['Nothing happens.'];
+    const plural = spillage === 'crumbs';
+    const { surface, suffix } = tipSpillageSurfacePhrase();
+    const messages = [`Some ${spillage} ${plural ? 'spill' : 'spills'} onto the ${surface}${suffix}.`];
+    if ((toolChargeKind(obj) === 'can of grease' || objectKindKey(obj) === 'can of grease') && (obj?.spe ?? 0) > 0)
+        spendChargedToolUse(obj, messages);
+    return messages;
 }
 
 function isTipTargetContainer(obj) {
@@ -22090,6 +22510,24 @@ async function applyBagOfTricksOnce(bag, { tipping = false } = {}) {
     return messages;
 }
 
+async function lootFloorBagOfTricks(bag) {
+    bag.lknown = true;
+    const bagName = articlelessObjectName(bag);
+    const damage = rnd(10);
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) game._death_cause = 'killed by a carnivorous bag';
+    }
+    identifyChargedToolKind(bag, 'bag of tricks');
+    const messages = [
+        `You carefully open the ${bagName}...`,
+        'It develops a huge set of teeth and bites you!',
+    ];
+    if ((game.u?.uhp || 0) <= 0) messages.push('You die...');
+    await setMessage(messages.join('  '), messages.length > 1);
+    game.context.move = 1;
+}
+
 async function tipBagOfTricks(bag) {
     if (tipChargeCount(bag) < 1) return applyBagOfTricksOnce(bag, { tipping: true });
     const oldSpe = tipChargeCount(bag);
@@ -22288,6 +22726,7 @@ function tipContainerIntoContainer(source, targetBox) {
     const messages = [contents.length === 1
         ? `An object tumbles into ${tipTargetPhrase(targetBox)}.`
         : `Objects tumble into ${tipTargetPhrase(targetBox)}.`];
+    let targetGone = false;
     for (const obj of contents) {
         removeContainedObject(source, obj);
         thawObjectTippedFromSource(source, obj);
@@ -22300,14 +22739,13 @@ function tipContainerIntoContainer(source, targetBox) {
         prepareTippedObjectForContainer(obj);
         if (isMagicBagObject(targetBox) && magicBagExplodesWithObject(obj)) {
             explodeMagicBagTransfer(targetBox, obj, messages, { tumble: true });
+            targetGone = true;
             break;
         }
         add_to_container(targetBox, obj);
     }
-    if (Array.isArray(source.contents)) source.contents.length = 0;
-    if (Array.isArray(source.cobj)) source.cobj.length = 0;
     refreshTipContainerWeight(source);
-    refreshTipContainerWeight(targetBox);
+    if (!targetGone) refreshTipContainerWeight(targetBox);
     const lostMessage = lostShopMerchandiseMessage(lostMerchandise);
     if (lostMessage) messages.push(lostMessage);
     return messages;
@@ -22315,10 +22753,10 @@ function tipContainerIntoContainer(source, targetBox) {
 
 async function tipContainerContents(source, targetBox = null) {
     const special = isBagOfTricksObject(source) || isHornOfPlentyObject(source);
-    const sourceError = tipContainerCheckMessage(source, { allowEmpty: special });
-    if (sourceError) return [sourceError];
     if (targetBox && isBagOfTricksObject(targetBox))
         return applyBagOfTricksOnce(targetBox, { tipping: false });
+    const sourceError = tipContainerCheckMessage(source, { allowEmpty: special });
+    if (sourceError) return [sourceError];
     if (special) return tipSpecialSourceContents(source, targetBox);
     if (targetBox) {
         const targetError = tipContainerCheckMessage(targetBox, { allowEmpty: true });
@@ -22598,6 +23036,8 @@ async function queueUntendedTempleEntryAfterTeleport(oldX, oldY, newX, newY) {
 
 function shopItemPrice(obj, x = game.u?.ux, y = game.u?.uy) {
     if (!obj || obj.otyp === GOLD_PIECE || obj.cls === 'coin' || obj.glyph === '$') return null;
+    if ((obj.cls === 'food' || obj.otyp === FOOD_CLASS || obj.otyp === CORPSE || obj.otyp === 'corpse') && obj.oeaten)
+        return 0;
     const loc = game.level?.at(x, y);
     const roomno = loc?.roomno || 0;
     const room = levelRoomByRoomno(roomno);
@@ -22788,8 +23228,11 @@ function addContainerPaymentBillItem(groups, container, item, billEntry, price, 
     if (key == null) return;
     let group = groups.get(key);
     if (!group) {
-        group = { container, billItems: [], price: 0, includesContainer: false };
+        group = { container, billItems: [], price: 0, includesContainer: false, sortBillIndex: options.sortBillIndex };
         groups.set(key, group);
+    } else if (group.sortBillIndex == null || options.sortBillIndex === -1
+        || (options.sortBillIndex != null && group.sortBillIndex !== -1 && options.sortBillIndex < group.sortBillIndex)) {
+        group.sortBillIndex = options.sortBillIndex;
     }
     const billId = billEntry?.bo_id ?? shopBillObjectId(item);
     if (group.billItems.some(entry => String(entry.billId) === String(billId))) return;
@@ -22805,7 +23248,8 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
     const intactEntries = [];
     const possibleTopContainerEntries = [];
     const containerPaymentGroups = new Map();
-    for (const billEntry of ledger) {
+    for (let billIndex = 0; billIndex < ledger.length; billIndex++) {
+        const billEntry = ledger[billIndex];
         const billId = String(billEntry.bo_id);
         seenBillIds.add(billId);
         const unitPrice = shopBillEntryUnitPrice(billEntry);
@@ -22823,6 +23267,7 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
                 quantity: billedQuantity,
                 name: shopBillEntryDisplayName(billEntry, obj, billedQuantity, shkp),
                 price,
+                sortBillIndex: billIndex,
             });
             continue;
         }
@@ -22836,12 +23281,14 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
                 quantity: usedQuantity,
                 name: shopBillEntryDisplayName(billEntry, obj, usedQuantity, shkp),
                 price: unitPrice * usedQuantity,
+                sortBillIndex: billIndex,
             });
             const intactPrice = unitPrice * liveQuantity;
             const topContainer = outermostShopBillContainerForObject(obj);
             if (topContainer) {
                 addContainerPaymentBillItem(containerPaymentGroups, topContainer, obj, billEntry, intactPrice, {
                     blockedByUsedUp: true,
+                    sortBillIndex: topContainer.unpaid ? billIndex : -1,
                 });
             } else {
                 intactEntries.push({
@@ -22852,6 +23299,7 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
                     blockedByUsedUp: true,
                     name: shopDebtItemName({ ...obj, quan: liveQuantity, line: '' }),
                     price: intactPrice,
+                    sortBillIndex: billIndex,
                 });
             }
             continue;
@@ -22866,10 +23314,13 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
             quantity: liveQuantity || billedQuantity,
             name: shopDebtItemName(obj),
             price,
+            sortBillIndex: billIndex,
         };
         const topContainer = outermostShopBillContainerForObject(obj);
         if (topContainer) {
-            addContainerPaymentBillItem(containerPaymentGroups, topContainer, obj, billEntry, price);
+            addContainerPaymentBillItem(containerPaymentGroups, topContainer, obj, billEntry, price, {
+                sortBillIndex: topContainer.unpaid ? billIndex : -1,
+            });
         } else if (globContents(obj).length) {
             possibleTopContainerEntries.push(intactEntry);
         } else {
@@ -22878,7 +23329,9 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
     }
     for (const entry of possibleTopContainerEntries) {
         const group = containerPaymentGroups.get(shopBillObjectId(entry.item));
-        if (group) addContainerPaymentBillItem(containerPaymentGroups, entry.item, entry.item, entry.billEntry, entry.price);
+        if (group) addContainerPaymentBillItem(containerPaymentGroups, entry.item, entry.item, entry.billEntry, entry.price, {
+            sortBillIndex: entry.sortBillIndex,
+        });
         else intactEntries.push(entry);
     }
     for (const group of containerPaymentGroups.values()) {
@@ -22892,6 +23345,7 @@ function pushShopBillLedgerDebtEntries(shkp, entries, seenBillIds) {
             name: shopContainerPaymentName(group.container, group.includesContainer),
             price: group.price,
             blockedByUsedUp: !!group.blockedByUsedUp,
+            sortBillIndex: group.sortBillIndex,
         });
     }
     entries.push(...usedEntries, ...intactEntries);
@@ -22929,12 +23383,6 @@ function collectPayableShopDebts(shkp = null) {
             price,
         });
     }
-    const debit = Math.max(0, Math.trunc(Number(shkp?.debit || 0)));
-    if (debit > 0) entries.push({
-        shopkeeperDebit: shkp,
-        name: `debt owed to ${shopkeeperDisplayName(shkp)}`,
-        price: debit,
-    });
     return entries
         .map((entry, index) => ({ entry, index }))
         .sort((a, b) => shopPaymentEntryCompare(a.entry, b.entry) || a.index - b.index)
@@ -22971,6 +23419,10 @@ function shopPaymentEntryCompare(a, b) {
     if (rank) return rank;
     const price = shopPaymentEntryValue(b) - shopPaymentEntryValue(a);
     if (price) return price;
+    const aSortIndex = Number(a?.sortBillIndex);
+    const bSortIndex = Number(b?.sortBillIndex);
+    if (Number.isFinite(aSortIndex) && Number.isFinite(bSortIndex) && aSortIndex !== bSortIndex)
+        return aSortIndex - bSortIndex;
     return 0;
 }
 
@@ -23033,6 +23485,83 @@ function shopPaymentCashDue(shkp, selected) {
         cashDue += value - coveredByCredit;
     }
     return cashDue;
+}
+
+function shopPaymentPreMenuBlockMessage(shkp, entries, { paidBefore = false } = {}) {
+    if (!entries?.length) return '';
+    const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
+    const availableGold = Math.max(0, Math.trunc(Number(game._goldCount || money?.quan || 0)));
+    const credit = Math.max(0, Math.trunc(Number(shkp?.credit || 0)));
+    if (availableGold + credit <= 0) return `You have no gold or credit${paidBefore ? ' left' : ''}.`;
+    const cheapest = Math.min(...entries.map(entry => shopPaymentEntryValue(entry)).filter(value => value > 0));
+    if (Number.isFinite(cheapest) && availableGold + credit < cheapest) {
+        const moreThanOne = entries.length > 1;
+        return `You don't have enough gold to buy${moreThanOne ? ' any of' : ''} the item${moreThanOne ? 's' : ''} ${moreThanOne ? "you've picked" : 'on your bill'}.`;
+    }
+    return '';
+}
+
+function finishShopDebitPayment(shkp) {
+    const debit = Math.max(0, Math.trunc(Number(shkp?.debit || 0)));
+    if (!shkp || debit <= 0) return { handled: false, paid: false, blocked: false, cashTotal: 0, message: '' };
+
+    const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
+    const availableGold = Math.max(0, Math.trunc(Number(game._goldCount || money?.quan || 0)));
+    const credit = Math.max(0, Math.trunc(Number(shkp.credit || 0)));
+    const loan = Math.max(0, Math.trunc(Number(shkp.loan || 0)));
+    const name = shopkeeperDisplayName(shkp);
+    const currency = `zorkmid${debit === 1 ? '' : 's'}`;
+    let owed = `You owe ${name} ${debit} ${currency} `;
+    if (loan) {
+        owed += loan === debit
+            ? 'you picked up in the store.'
+            : 'for gold picked up and the use of merchandise.';
+    } else {
+        owed += 'for the use of merchandise.';
+    }
+
+    if (availableGold + credit < debit) {
+        return {
+            handled: true,
+            paid: false,
+            blocked: true,
+            cashTotal: 0,
+            message: `${owed}  But you don't have enough gold${credit ? ' or credit' : ''}.`,
+        };
+    }
+
+    let cashDue = 0;
+    let resultMessage = '';
+    if (credit >= debit) {
+        shkp.credit = credit - debit;
+        resultMessage = 'Your debt is covered by your credit.';
+    } else if (!credit) {
+        cashDue = debit;
+        resultMessage = 'You pay that debt.';
+    } else {
+        cashDue = debit - credit;
+        shkp.credit = 0;
+        resultMessage = 'That debt is partially offset by your credit.  You pay the remainder.';
+    }
+
+    shkp.debit = 0;
+    shkp.loan = 0;
+    if (cashDue > 0) {
+        if (availableGold > cashDue) next_ident();
+        game._goldCount = Math.max(0, availableGold - cashDue);
+        if (money) {
+            money.quan = game._goldCount;
+            updateMoneyLine(money);
+        }
+    }
+
+    return {
+        handled: true,
+        paid: true,
+        blocked: false,
+        cashTotal: cashDue,
+        message: `${owed}  ${resultMessage}`,
+    };
 }
 
 function applyShopPaymentValue(shkp, value) {
@@ -29923,12 +30452,20 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'payMenu') {
         const entries = game._pay_menu_items || [];
+        const prepaidMessage = game._pay_prepaid_message || '';
+        const prepaidPaid = !!game._pay_prepaid_paid;
         if (ch === '\x1b') {
             game._pay_menu_items = null;
             game._pay_menu_width = 0;
             game._pay_shopkeeper = null;
+            game._pay_prepaid_message = '';
+            game._pay_prepaid_paid = false;
             game._overlay_lines = null;
             game._command_mode = null;
+            if (prepaidPaid) {
+                await setMessage(prepaidMessage);
+                game.context.move = 1;
+            }
             return;
         }
         if (ch === '\r' || ch === '\n') {
@@ -29937,8 +30474,14 @@ export async function rhack(_cmd) {
             game._pay_menu_width = 0;
             game._overlay_lines = null;
             game._command_mode = null;
+            game._pay_prepaid_message = '';
+            game._pay_prepaid_paid = false;
             if (!selected.length) {
                 game._pay_shopkeeper = null;
+                if (prepaidPaid) {
+                    await setMessage(prepaidMessage);
+                    game.context.move = 1;
+                }
                 return;
             }
 
@@ -29947,7 +30490,10 @@ export async function rhack(_cmd) {
             if (!payment.paid) {
                 game._pay_shopkeeper = null;
                 if (payment.skipped) return;
-                await setMessage(payment.message || "You don't have enough gold.");
+                const message = [prepaidMessage, payment.message || "You don't have enough gold."]
+                    .filter(Boolean).join('  ');
+                await setMessage(message);
+                if (prepaidPaid) game.context.move = 1;
                 return;
             }
             if (shkp?.shk) {
@@ -29978,9 +30524,10 @@ export async function rhack(_cmd) {
                 ? payment.message || "You don't have enough gold."
                 : `"Thank you for shopping in ${possessive} ${shopName}!"`;
             const paidEntries = payment.payableEntries;
-            const message = paidEntries.length === 1
+            const boughtMessage = paidEntries.length === 1
                 ? `You bought ${paidEntries[0].name} for ${paidEntries[0].price} gold piece${paidEntries[0].price === 1 ? '' : 's'}.`
                 : `You bought ${paidEntries.length} items for ${payment.cashTotal} gold pieces.`;
+            const message = [prepaidMessage, boughtMessage].filter(Boolean).join('  ');
             await setMessage(message, true);
             game.context.move = 1;
             return;
@@ -38841,6 +39388,7 @@ export async function rhack(_cmd) {
             applyWishedQualifiers(item, wishedQualifiers);
             applyWishedQuantity(item, wishedQuan, wishedQuanForced);
             applyWishedTinVariety(item);
+            const finalWishedWeight = wishedObjectFinalWeight(item);
             delete item._wish_ignore_requested_spe;
             delete item._wish_spe_from_suffix;
             delete item._wish_tin_explicit_content;
@@ -38888,12 +39436,14 @@ export async function rhack(_cmd) {
             const stats = game.u?.acurr?.a || [];
             const capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
             if (carriedWeight > capacity && !(game.u?._statusSuffix || '').includes('Burdened')) {
+                item.owt = finalWishedWeight;
                 game._burden_after_more = 1;
                 game._queued_message_after_more = 'Your movements are slowed slightly because of your load.';
                 game._wish_notice_after_more = 1;
                 await setWishResultMessage(`${item.line}.`, true);
                 return;
             }
+            item.owt = finalWishedWeight;
             godsNoticeWish();
             await setWishResultMessage(`${item.line}.`);
             return;
@@ -40296,8 +40846,8 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'tipContainerObject') {
-        const containers = (game.inventory || []).filter(isTipSourceObject);
-        const letters = containers.map(item => item.letter).filter(Boolean).join('');
+        const tipObjects = (game.inventory || []).filter(isTipCommandObject);
+        const letters = tipObjects.map(item => item.letter).filter(Boolean).join('');
         if (ch === '\x1b' || ch === 'q' || ch === ' ' || ch === '\r' || ch === '\n') {
             game._overlay_lines = null;
             game._overlay_hide_status = 0;
@@ -40307,7 +40857,7 @@ export async function rhack(_cmd) {
         if (ch === '?' || ch === '*') {
             const rows = [[0, 40, 'Tip what?', 1]];
             let row = 2;
-            for (const item of containers) {
+            for (const item of tipObjects) {
                 rows.push([row++, 40, normalInventoryLine(item)]);
                 if (row >= 23) break;
             }
@@ -40315,7 +40865,7 @@ export async function rhack(_cmd) {
             setOverlay(rows, Math.max(4, row + 1), false, 40);
             return;
         }
-        const tipTarget = containers.find(item => item.letter === ch);
+        const tipTarget = tipObjects.find(item => item.letter === ch);
         if (!tipTarget) {
             await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
             return;
@@ -40368,6 +40918,14 @@ export async function rhack(_cmd) {
                 if (beginTipDestinationSelection(tipTarget)) return;
                 game._tip_container_object = null;
                 const messages = await tipContainerContents(tipTarget);
+                await setMessage(messages.join('  '), messages.length > 1);
+                game.context.move = 1;
+                game._command_mode = null;
+                return;
+            }
+            if (isTipSpillageObject(tipTarget)) {
+                game._tip_container_object = null;
+                const messages = tipSpillageObject(tipTarget);
                 await setMessage(messages.join('  '), messages.length > 1);
                 game.context.move = 1;
                 game._command_mode = null;
@@ -41018,7 +41576,9 @@ export async function rhack(_cmd) {
                     (obj.kind === 'chest' || obj.otyp === CHEST || obj.kind === 'large box' || obj.otyp === LARGE_BOX)
                     && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
                 const iceBox = game.level?.objects?.find(obj => obj.otyp === ICE_BOX && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
-                const bag = game.level?.objects?.find(obj => BAG_OBJECT_TYPES.has(obj.otyp) && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
+                const bag = game.level?.objects?.find(obj =>
+                    (BAG_OBJECT_TYPES.has(obj.otyp) || isBagOfTricksObject(obj))
+                    && obj.ox === game.u?.ux && obj.oy === game.u?.uy);
                 if (game.u?._glyph === 'D') await setMessage('You have no hands!');
                 else if (chest?.locked || chest?.olocked) {
                     chest.lknown = true;
@@ -41039,6 +41599,11 @@ export async function rhack(_cmd) {
                     setIceBoxActionMenu(iceBox);
                     return;
                 } else if (bag) {
+                    if (isBagOfTricksObject(bag)) {
+                        await lootFloorBagOfTricks(bag);
+                        game._command_mode = null;
+                        return;
+                    }
                     game._floor_container_object = bag;
                     const lossMessages = [];
                     const lossDetails = { lost: 0, lostMerchandise: 0 };
@@ -41107,15 +41672,15 @@ export async function rhack(_cmd) {
                     game._command_mode = 'tipConfirm';
                     return;
                 }
-                const carriedContainers = (game.inventory || []).filter(isTipSourceObject);
-                if (carriedContainers.length === 1) {
-                    game._tip_container_object = carriedContainers[0];
-                    await setMessage(`Tip ${inventoryItemName(carriedContainers[0])}? [ynq] (q)`);
+                const carriedTipObjects = (game.inventory || []).filter(isTipCommandObject);
+                if (carriedTipObjects.length === 1) {
+                    game._tip_container_object = carriedTipObjects[0];
+                    await setMessage(`Tip ${inventoryItemName(carriedTipObjects[0])}? [ynq] (q)`);
                     game._command_mode = 'tipConfirm';
                     return;
                 }
-                if (carriedContainers.length > 1) {
-                    const letters = carriedContainers.map(item => item.letter).filter(Boolean).join('');
+                if (carriedTipObjects.length > 1) {
+                    const letters = carriedTipObjects.map(item => item.letter).filter(Boolean).join('');
                     await setMessage(`What do you want to tip? [${getobjPromptLetters(letters)} or ?*]`);
                     game._command_mode = 'tipContainerObject';
                     return;
@@ -42841,10 +43406,14 @@ export async function rhack(_cmd) {
         const volleyLimit = game._fire_launcher_letter && oldQuan > 1 ? 2 : 1;
         const shotCount = volleyLimit > 1 ? Math.min(oldQuan, rnd(volleyLimit)) : 1;
         let projectileId = null;
+        let projectileBreakRoll = null;
+        const hardLanding = !projectileLandingIsSoft(ox, oy);
         for (let shot = 0; shot < shotCount; shot++) {
             if (oldQuan - shot > 1) projectileId = next_ident();
-            const landingLoc = game.level?.at(ox, oy);
-            if (!landingLoc || !IS_POOL(landingLoc.typ)) rn2(100);
+            if (hardLanding) {
+                const roll = rn2(100);
+                if (projectileBreakRoll == null) projectileBreakRoll = roll;
+            }
         }
         const projectileObject = {
             ...item,
@@ -42860,8 +43429,8 @@ export async function rhack(_cmd) {
             color: item.color || (item.cls === 'gem' ? CLR_GRAY : CLR_CYAN),
         };
         if (oldQuan > shotCount) splitCarriedObjectShopBill(item, projectileObject, shotCount);
-        const shopLanding = resolveUnpaidProjectileShopLanding(projectileObject, ox, oy);
-        placeStackableFloorObject(projectileObject);
+        const landing = landProjectileObjectWithShopHandling(projectileObject, ox, oy, { breakRoll: projectileBreakRoll });
+        const landingMessage = landing.messages.join('  ');
         if (game._fire_launcher_letter) {
             game._stale_projectile_marks ??= [];
             game._stale_projectile_marks.push({
@@ -42886,8 +43455,8 @@ export async function rhack(_cmd) {
         const fireMessage = shotCount > 1
             ? `${game._fire_launcher_letter ? 'You shoot' : 'You throw'} ${shotCount} ${name}.`
             : `${game._fire_launcher_letter ? 'You shoot' : 'You throw'} ${name}.`;
-        if (shopLanding.message) game._queued_message_after_more = shopLanding.message;
-        await setMessage(fireMessage, !!shopLanding.message);
+        if (landingMessage) game._queued_message_after_more = landingMessage;
+        await setMessage(fireMessage, !!landingMessage);
         game._command_mode = null;
         game._fire_item_letter = null;
         game._fire_launcher_letter = null;
@@ -43059,7 +43628,6 @@ export async function rhack(_cmd) {
 	            targetMon = (game.level?.monsters || []).find(mon => mon.mx === ox && mon.my === oy) || null;
 	            if (targetMon) break;
 	        }
-	        const landingLoc = game.level?.at(ox, oy);
 	        const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
 	        let impactMessage = '';
 	        if (targetMon && (item.otyp === CREAM_PIE || lowerName === 'cream pie')) {
@@ -43087,7 +43655,7 @@ export async function rhack(_cmd) {
 	            impactMessage = `The ${thrownName} misses the ${targetName}.`;
 	            if (!rn2(3)) targetMon.msleeping = 0;
 	        }
-	        if (!landingLoc || !IS_POOL(landingLoc.typ)) rn2(100); // C breaktest: obj_resists() on hard landing.
+	        const projectileBreakRoll = projectileLandingIsSoft(ox, oy) ? null : rn2(100); // C breaktest: obj_resists() on hard landing.
         const thrownObject = {
             ...item,
             letter: undefined,
@@ -43104,45 +43672,45 @@ export async function rhack(_cmd) {
         };
         curseLoadstoneLeavingInventory(thrownObject);
         if ((item.quan || 1) > 1) splitCarriedObjectShopBill(item, thrownObject, 1);
-        const shopLanding = resolveUnpaidProjectileShopLanding(thrownObject, ox, oy);
         stopCarriedFigurineTimerOnLeave(thrownObject);
-        placeStackableFloorObject(thrownObject);
-	        newsym(ox, oy);
-	        const wasBurdened = (game.u?._statusSuffix || '').includes('Burdened');
-	        removeInventoryItem(item);
-	        if (wasBurdened) {
-	            let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
-	            for (const invItem of game.inventory || []) {
-	                const kind = String(invItem.kind || invItem.actualKind || invItem.spellName || invItem.spell?.name || '').toLowerCase();
-	                const cls = invItem.cls || (invItem.otyp === RING_CLASS ? 'ring'
-	                    : invItem.otyp === SCROLL_CLASS ? 'scroll'
-	                        : invItem.otyp === POTION_CLASS ? 'potion'
-	                            : invItem.otyp === WAND_CLASS ? 'wand'
-	                                : invItem.otyp === GEM_CLASS ? 'gem' : '');
-	                carriedWeight += (OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? invItem.owt ?? 0) * (invItem.quan || 1);
-	            }
-	            const stats = game.u?.acurr?.a || [];
-	            const capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
-	            if (carriedWeight <= capacity) {
-	                game._topline_after_more = 'Your movements are now unencumbered.';
-	                game._unburden_after_topline_more = 1;
-	            }
-	        }
-	        const wieldedLauncher = (game.inventory || []).find(invItem =>
-	            (invItem.wielded || invItem.line?.includes('weapon in')) && /bow|sling/.test(inventoryItemName(invItem).toLowerCase()));
-	        const thrownByHand = /arrow/.test(lowerName) && !wieldedLauncher;
-	        if (thrownByHand) {
-            if (shopLanding.message) game._queued_message_after_more = shopLanding.message;
-            await setMessage("You aren't wielding a bow, so you throw your arrow by hand.", !!shopLanding.message);
+        const landing = landProjectileObjectWithShopHandling(thrownObject, ox, oy, { breakRoll: projectileBreakRoll });
+        const landingMessage = landing.messages.join('  ');
+        newsym(ox, oy);
+        const wasBurdened = (game.u?._statusSuffix || '').includes('Burdened');
+        removeInventoryItem(item);
+        if (wasBurdened) {
+            let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
+            for (const invItem of game.inventory || []) {
+                const kind = String(invItem.kind || invItem.actualKind || invItem.spellName || invItem.spell?.name || '').toLowerCase();
+                const cls = invItem.cls || (invItem.otyp === RING_CLASS ? 'ring'
+                    : invItem.otyp === SCROLL_CLASS ? 'scroll'
+                        : invItem.otyp === POTION_CLASS ? 'potion'
+                            : invItem.otyp === WAND_CLASS ? 'wand'
+                                : invItem.otyp === GEM_CLASS ? 'gem' : '');
+                carriedWeight += (OBJECT_WEIGHTS[kind] ?? CLASS_WEIGHTS[cls] ?? invItem.owt ?? 0) * (invItem.quan || 1);
+            }
+            const stats = game.u?.acurr?.a || [];
+            const capacity = Math.min(1000, 25 * ((stats[0] ?? 10) + (stats[4] ?? 10)) + 50);
+            if (carriedWeight <= capacity) {
+                game._topline_after_more = 'Your movements are now unencumbered.';
+                game._unburden_after_topline_more = 1;
+            }
         }
-	        else if (impactMessage) {
-            if (shopLanding.message) game._queued_message_after_more = shopLanding.message;
+        const wieldedLauncher = (game.inventory || []).find(invItem =>
+            (invItem.wielded || invItem.line?.includes('weapon in')) && /bow|sling/.test(inventoryItemName(invItem).toLowerCase()));
+        const thrownByHand = /arrow/.test(lowerName) && !wieldedLauncher;
+        if (thrownByHand) {
+            if (landingMessage) game._queued_message_after_more = landingMessage;
+            await setMessage("You aren't wielding a bow, so you throw your arrow by hand.", !!landingMessage);
+        }
+        else if (impactMessage) {
+            if (landingMessage) game._queued_message_after_more = landingMessage;
             await setMessage(impactMessage, true);
         }
-        else if (shopLanding.message) await setMessage(shopLanding.message);
-	        else {
-	            game._pending_message = '';
-	            game._message_more = 0;
+        else if (landingMessage) await setMessage(landingMessage);
+        else {
+            game._pending_message = '';
+            game._message_more = 0;
         }
         game._command_mode = null;
         game._throw_item_letter = null;
@@ -44019,14 +44587,27 @@ export async function rhack(_cmd) {
         const roomno = loc?.roomno || 0;
         const room = levelRoomByRoomno(roomno);
         const resident = room?.resident || shopkeepers.find(mon => mon.shoproom === roomno);
-        const shkp = adjacent.length === 1 ? adjacent[0] : resident || (shopkeepers.length === 1 ? shopkeepers[0] : null);
+        const shkp = adjacent.length === 1 ? adjacent[0] : resident || null;
+        if (!shkp && shopkeepers.length === 1) {
+            await setMessage(`${shopkeeperDisplayName(shopkeepers[0])} is not near enough to receive your payment.`);
+            return;
+        }
         if (!shkp) {
             await setMessage('There appears to be no shopkeeper here to receive your payment.');
             return;
         }
 
+        game._pay_prepaid_message = '';
+        game._pay_prepaid_paid = false;
+        const debitPayment = finishShopDebitPayment(shkp);
+        if (debitPayment.blocked) {
+            game._command_mode = null;
+            await setMessage(debitPayment.message || "You don't have enough gold.");
+            game.context.move = 1;
+            return;
+        }
         const entries = collectPayableShopDebts(shkp);
-        if (hasRobbedOnlyShopPayment(shkp, entries)) {
+        if (!debitPayment.paid && hasRobbedOnlyShopPayment(shkp, entries)) {
             const payment = finishRobbedOnlyShopPayment(shkp, { resident });
             game._command_mode = null;
             await setMessage(payment.message || "You don't have enough gold.");
@@ -44034,7 +44615,14 @@ export async function rhack(_cmd) {
             return;
         }
         if (!entries.length) {
-            await setMessage(`You do not owe ${shkp.shknam || 'the shopkeeper'} anything.`);
+            await setMessage(debitPayment.message || `You do not owe ${shkp.shknam || 'the shopkeeper'} anything.`);
+            if (debitPayment.paid) game.context.move = 1;
+            return;
+        }
+        const preMenuBlockMessage = shopPaymentPreMenuBlockMessage(shkp, entries, { paidBefore: debitPayment.paid });
+        if (preMenuBlockMessage) {
+            await setMessage([debitPayment.message, preMenuBlockMessage].filter(Boolean).join('  '));
+            if (debitPayment.paid) game.context.move = 1;
             return;
         }
         const width = String(Math.max(...entries.map(entry => entry.price))).length;
@@ -44042,6 +44630,8 @@ export async function rhack(_cmd) {
         game._pay_menu_items = entries;
         game._pay_menu_width = width;
         game._pay_shopkeeper = shkp;
+        game._pay_prepaid_message = debitPayment.message || '';
+        game._pay_prepaid_paid = !!debitPayment.paid;
         setOverlay(rows, Math.max(...rows.map(([row]) => row)) + 1, false, 41);
         game._command_mode = 'payMenu';
         return;

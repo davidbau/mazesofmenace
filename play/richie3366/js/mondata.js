@@ -9,6 +9,7 @@ import {
     MONS_RNDMONST_MFLAGS1,
     MONS_MFLAGS2,
     MONS_MLEVEL,
+    MONS_RNDMONST_MALIGNTYP,
 } from './mons_rndmonst_ini_inv_data.js';
 import { ESHK } from './const.js';
 import {
@@ -119,6 +120,8 @@ export function permonstFromMndxLikeC(mndx) {
         mflags2: MONS_MFLAGS2[m] ?? 0,
         mlevel: MONS_MLEVEL[m] ?? 1,
         mmove: MONS_MMOVE[m] ?? permonstHuman.mmove,
+        maligntyp: MONS_RNDMONST_MALIGNTYP[m] ?? 0,
+        msound: 0,
         geno: 0,
     };
 }
