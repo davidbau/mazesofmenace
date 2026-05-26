@@ -1143,7 +1143,9 @@ const HOMEMADE_TIN = 1;
 const SPINACH_TIN = -1;
 const FOOD_NUTRITION = new Map([
     ['tripe ration', 200],
+    ['tripe', 200],
     ['egg', 80],
+    ['kelp frond', 30],
     ['eucalyptus leaf', 1],
     ['apple', 50],
     ['orange', 80],
@@ -1167,14 +1169,29 @@ const FOOD_NUTRITION = new Map([
     ['tin', 0],
 ]);
 const CARRIED_DELAYED_FOOD_VICTUALS = new Map([
+    ['tripe ration', { delay: 2, finishName: 'tripe ration' }],
+    ['tripe', { delay: 2, finishName: 'tripe ration' }],
     ['pancake', { otyp: PANCAKE, delay: 2, finishName: 'pancake' }],
     ['lembas wafer', { otyp: LEMBAS_WAFER, delay: 2, finishName: 'lembas wafer' }],
     ['cram ration', { otyp: CRAM_RATION, delay: 3, finishName: 'cram ration', bland: true }],
     ['food ration', { otyp: FOOD_RATION, delay: 5, finishName: 'food ration', rationFeedback: true }],
 ]);
 const DELAY_ONE_FOOD_VICTUALS = new Map([
+    ['kelp frond', { otyp: KELP_FROND, delay: 1, finishName: 'kelp frond' }],
+    ['eucalyptus leaf', { otyp: EUCALYPTUS_LEAF, delay: 1, finishName: 'eucalyptus leaf' }],
     ['apple', { otyp: APPLE, delay: 1, finishName: 'apple' }],
+    ['orange', { delay: 1, finishName: 'orange' }],
+    ['pear', { delay: 1, finishName: 'pear' }],
+    ['melon', { delay: 1, finishName: 'melon' }],
+    ['banana', { delay: 1, finishName: 'banana' }],
+    ['carrot', { delay: 1, finishName: 'carrot' }],
+    ['sprig of wolfsbane', { delay: 1, finishName: 'sprig of wolfsbane' }],
+    ['clove of garlic', { delay: 1, finishName: 'clove of garlic' }],
+    ['cream pie', { otyp: CREAM_PIE, delay: 1, finishName: 'cream pie' }],
+    ['candy bar', { delay: 1, finishName: 'candy bar' }],
     ['fortune cookie', { otyp: FORTUNE_COOKIE, delay: 1, finishName: 'fortune cookie' }],
+    ['k-ration', { otyp: K_RATION, delay: 1, finishName: 'K-ration', bland: true }],
+    ['c-ration', { otyp: C_RATION, delay: 1, finishName: 'C-ration', bland: true }],
 ]);
 const ROTTABLE_NON_CORPSE_FOODS = new Set(['apple', 'carrot', 'pear', 'melon', 'orange', 'banana', 'kelp frond', 'lump of royal jelly']);
 const POISONABLE_WISH_WEAPONS = new Set([
@@ -1217,9 +1234,11 @@ const WISH_BASE_OBJECTS = new Map([
     ['pickax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
     ['pick-ax', { otyp: PICK_AXE, cls: 'tool', glyph: '(', kind: 'pick-axe' }],
     ['cream pie', { otyp: CREAM_PIE, cls: 'food', glyph: '%', kind: 'cream pie' }],
-    ['lump of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, cls: 'food', glyph: '%', kind: 'lump of royal jelly', singular: 'lump of royal jelly', plural: 'lumps of royal jelly' }],
+    ['lump of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, cls: 'food', glyph: '%', kind: 'lump of royal jelly', singular: 'lump of royal jelly', plural: 'lumps of royal jelly', nutrition: 200 }],
+    ['lumps of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, cls: 'food', glyph: '%', kind: 'lump of royal jelly', singular: 'lump of royal jelly', plural: 'lumps of royal jelly', nutrition: 200 }],
     ['eucalyptus leaf', { otyp: EUCALYPTUS_LEAF, cls: 'food', glyph: '%', kind: 'eucalyptus leaf', plural: 'eucalyptus leaves' }],
-    ['kelp frond', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond' }],
+    ['kelp frond', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond', plural: 'kelp fronds', nutrition: 30 }],
+    ['kelp fronds', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond', plural: 'kelp fronds', nutrition: 30 }],
     ['pancake', { otyp: PANCAKE, cls: 'food', glyph: '%', kind: 'pancake', plural: 'pancakes', nutrition: 200 }],
     ['pancakes', { otyp: PANCAKE, cls: 'food', glyph: '%', kind: 'pancake', plural: 'pancakes', nutrition: 200 }],
     ['lembas wafer', { otyp: LEMBAS_WAFER, cls: 'food', glyph: '%', kind: 'lembas wafer', plural: 'lembas wafers' }],
@@ -1293,7 +1312,7 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['flail', 41], ['glaive', 9],
     ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
     ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
-    ['cream pie', 26], ['lump of royal jelly', 1], ['eucalyptus leaf', 4], ['kelp frond', 1],
+    ['cream pie', 26], ['lump of royal jelly', 1], ['lumps of royal jelly', 1], ['eucalyptus leaf', 4], ['kelp frond', 1], ['kelp fronds', 1],
     ['pancake', 26], ['pancakes', 26], ['lembas wafer', 21],
     ['cram ration', 21], ['cram rations', 21],
     ['fortune cookie', 56], ['fortune cookies', 56],
@@ -4708,19 +4727,25 @@ const OBJECT_WEIGHTS = {
     'banana': 2,
     'boulder': 6000,
     'carrot': 2,
+    'clove of garlic': 1,
     'cream pie': 10,
     'c-ration': 10,
+    'eucalyptus leaf': 1,
+    'kelp frond': 1,
     'food ration': 20,
     'fortune cookie': 1,
     'fortune cookies': 1,
     'cram ration': 15,
     'k-ration': 10,
     'lembas wafer': 5,
+    'lump of royal jelly': 2,
     'melon': 5,
     'orange': 2,
     'pancake': 2,
     'pear': 2,
     'sprig of wolfsbane': 1,
+    'tripe': 10,
+    'tripe ration': 10,
     'meat ring': 5,
     'grappling hook': 30,
     'hammer': 50,
@@ -4907,6 +4932,7 @@ const SHOP_OBJECT_COSTS = {
     'fumble boots': 30,
     'levitation boots': 30,
     'tripe ration': 15,
+    'tripe': 15,
     'egg': 9,
     'apple': 7,
     'orange': 9,
@@ -4916,7 +4942,10 @@ const SHOP_OBJECT_COSTS = {
     'carrot': 7,
     'sprig of wolfsbane': 7,
     'clove of garlic': 7,
+    'eucalyptus leaf': 5,
+    'kelp frond': 6,
     'slime mold': 17,
+    'lump of royal jelly': 15,
     'cream pie': 10,
     'candy bar': 10,
     'fortune cookie': 7,
@@ -10817,6 +10846,7 @@ function foodObjectNutrition(item) {
         return CORPSE_NUTRITION.get(corpseName) || 0;
     }
     const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    if ((item.foodRoll || 1000) <= 140) return FOOD_NUTRITION.get('tripe ration') || 200;
     if (kind.startsWith('tin:')) return 0;
     return FOOD_NUTRITION.get(kind) ?? 0;
 }
@@ -10840,7 +10870,8 @@ function heroIsSatiatedForEating() {
 }
 
 function delayedEatingFullWarningOutcome(remainingAfterBite) {
-    if (!game.u || (game.u.uhunger ?? 900) < 1500 || game._eating_fullwarn) return null;
+    if (!game.u || (game.u.uhunger ?? 900) < 1500 || game._eating_fullwarn
+        || heroHasHungerPropertyForChoke()) return null;
     game._eating_fullwarn = 1;
     game._eating_nomovemsg = "You're finally finished.";
     const messages = ["You're having a hard time getting all of it down."];
@@ -10870,15 +10901,54 @@ function delayedFoodChokeDeathCause(food) {
     return `choked on ${article} ${word}`;
 }
 
+function wornItemKindIncludes(text) {
+    const needle = String(text || '').toLowerCase();
+    return (game.inventory || []).some(item => {
+        if (!item?.worn) return false;
+        const fields = [item.actualKind, item.kind, item.line];
+        return fields.some(field => String(field || '').toLowerCase().includes(needle));
+    });
+}
+
+function heroIsBreathlessForChoke() {
+    const form = polyselfForm() || {};
+    return !!(game.u?.breathless || game.u?.Breathless
+        || form.breathless
+        || wornItemKindIncludes('amulet of magical breathing'));
+}
+
+function heroHasHungerPropertyForChoke() {
+    return !!(game.u?.hunger || game.u?.Hunger || game.u?.hungerProperty
+        || game.u?.intrinsics?.hunger
+        || wornItemKindIncludes('ring of hunger'));
+}
+
+function heroIsStrangledForChoke() {
+    return !!((game.u?._statusSuffix || '').includes('Strngl')
+        || game.u?.strangled || game.u?.strangling);
+}
+
+function heroCannotVomitForChoke() {
+    const form = polyselfForm() || {};
+    const name = String(form.name || '').toLowerCase();
+    const mlet = String(form.mlet || '').toLowerCase();
+    if (['pony', 'horse', 'warhorse'].includes(name)) return true;
+    if (mlet === 'r' && name !== 'rock mole' && name !== 'woodchuck') return true;
+    return !!form.cantVomit;
+}
+
 function delayedFoodChokeOutcome(food) {
     const messages = [];
     const role = game.urole?.name?.m || game._startup_role || '';
     if (role === 'Knight' && game.u?.ualign?.type === A_LAWFUL)
         messages.push('You feel like a glutton!');
-    if (!rn2(20)) {
+    const hungerProperty = heroHasHungerPropertyForChoke();
+    if (heroIsBreathlessForChoke() || hungerProperty
+        || (!heroIsStrangledForChoke() && !rn2(20))) {
         messages.push('You stuff yourself and then vomit voluminously.');
+        if (heroCannotVomitForChoke()) messages.push('Your jaw gapes convulsively.');
         if (game.u) {
-            game.u.uhunger = Math.max(0, (game.u.uhunger ?? 900) - 1000);
+            game.u.uhunger = hungerProperty ? 60 : Math.max(0, (game.u.uhunger ?? 900) - 1000);
             refreshHeroEatingHungerStatus();
         }
         game._helpless_time = Math.max(game._helpless_time || 0, 2);
@@ -10955,7 +11025,12 @@ function recordFoodConduct(item) {
     if ((isCorpseItem(item) || isGlobFood(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
         conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
-    } else if (isEggItem(item) || isRoyalJelly(item) || kind === 'pancake' || kind === 'fortune cookie') {
+    } else if (kind === 'tripe ration' || kind === 'tripe' || (item?.foodRoll || 1000) <= 140) {
+        conduct.unvegan = (conduct.unvegan || 0) + 1;
+        conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
+    } else if (isEggItem(item) || isRoyalJelly(item)
+        || kind === 'pancake' || kind === 'fortune cookie'
+        || kind === 'cream pie' || kind === 'candy bar') {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
     }
 }
@@ -11118,10 +11193,13 @@ function touchEatenFood(item, floorObject = false) {
 function delayedFoodVictualSpec(item) {
     if (!item) return null;
     const kind = objectKindKey(item).replace(/^partly eaten /, '');
+    if ((item.foodRoll || 1000) <= 140)
+        return { ...CARRIED_DELAYED_FOOD_VICTUALS.get('tripe ration'), kind: 'tripe ration' };
     const spec = CARRIED_DELAYED_FOOD_VICTUALS.get(kind);
     if (spec) return { ...spec, kind };
     for (const [entryKind, entrySpec] of CARRIED_DELAYED_FOOD_VICTUALS) {
-        if (item.otyp === entrySpec.otyp) return { ...entrySpec, kind: entryKind };
+        if (entrySpec.otyp != null && item.otyp === entrySpec.otyp)
+            return { ...entrySpec, kind: entryKind };
     }
     return null;
 }
@@ -11132,7 +11210,8 @@ function delayOneFoodVictualSpec(item) {
     const spec = DELAY_ONE_FOOD_VICTUALS.get(kind);
     if (spec) return { ...spec, kind };
     for (const [entryKind, entrySpec] of DELAY_ONE_FOOD_VICTUALS) {
-        if (item.otyp === entrySpec.otyp) return { ...entrySpec, kind: entryKind };
+        if (entrySpec.otyp != null && item.otyp === entrySpec.otyp)
+            return { ...entrySpec, kind: entryKind };
     }
     return null;
 }
@@ -11177,6 +11256,129 @@ function heroFoodIsDwarf() {
         || /(?:^|[-\s])dwarf(?:$|[-\s])/.test(name);
 }
 
+function heroFoodIsUndead() {
+    const form = polyselfForm() || {};
+    return !!(form.undead || game.u?.undead || game.u?.isUndead);
+}
+
+function heroFoodIsWereForm() {
+    const form = polyselfForm() || {};
+    const name = String(form.name || '').toLowerCase();
+    return !!(form.wereHuman || form.wereAnimal || form.were || form.lycanthrope || /^were/.test(name));
+}
+
+function heroFoodIsCarnivorousNonHumanoid() {
+    const form = polyselfForm() || {};
+    return !!(form.carnivorous || form.carnivore) && form.humanoid === false;
+}
+
+function heroTripeVomitingExempt() {
+    const role = String(game.urole?.name?.m || game._startup_role || '').toLowerCase();
+    return heroFoodIsOrc() || role.includes('cave');
+}
+
+function delayedTripeFirstBiteMessage(spec) {
+    if (heroFoodIsCarnivorousNonHumanoid())
+        return 'This tripe ration is surprisingly good!';
+    if (heroFoodIsOrc())
+        return heroIsHallucinating() ? 'Tastes great!  Less filling!' : 'Mmm, tripe... not bad!';
+    if (game.u) game.u.uexp = (game.u.uexp || 0) + 1;
+    if (rn2(2) && !heroTripeVomitingExempt())
+        addHeroVomiting(rn1(spec?.delay || 1, 14));
+    return 'Yak - dog food!';
+}
+
+function delayedPearFirstBiteMessage() {
+    if (!heroIsHallucinating()) return 'Core dumped.';
+    const roll = rnd(100);
+    const cause = roll <= 75 ? 'Segmentation fault' : roll <= 99 ? 'Bus error' : "Yo' mama";
+    return `${cause} -- core dumped.`;
+}
+
+function delayedGarlicFirstBiteMessage(reqtime) {
+    if (heroFoodIsUndead()) {
+        addHeroVomiting(rn1(Math.max(1, Math.trunc(reqtime || 1)), 5));
+        return '';
+    }
+    scareNearbyOlfactoryMonstersWithGarlic();
+    return 'This clove of garlic is delicious!';
+}
+
+function carrotPostEffect() {
+    if (!game.u) return {};
+    const wasBlind = heroIsBlind();
+    const creamed = Math.max(0, Math.trunc(game.u.ucreamed || 0));
+    if (creamed > 0) {
+        game.u.blind = true;
+        game.u._blindTimeout = creamed;
+        return {};
+    }
+    game.u.blind = false;
+    game.u._blindTimeout = 0;
+    game.u.ucreamed = 0;
+    removeHeroStatusSuffix('Blind');
+    if (!wasBlind) return {};
+    return { message: heroIsHallucinating() ? 'Far out!  Everything is all cosmic again!' : 'You can see again.' };
+}
+
+function wolfsbanePostEffect() {
+    if (!game.u) return {};
+    const lycanthropic = game.u.ulycn != null && game.u.ulycn !== -1 && game.u.ulycn !== false;
+    if (!lycanthropic && !heroFoodIsWereForm()) return {};
+    game.u.ulycn = -1;
+    game.u.lycanthrope = false;
+    game.u.were = false;
+    game.u._lycanthropyTimeout = 0;
+    return { message: 'You feel purified.' };
+}
+
+function heroIsVomiting() {
+    return !!(game.u?.vomiting || (game.u?._vomitingTimeout || 0) > 0
+        || (game.u?._statusSuffix || '').includes('Vom'));
+}
+
+function clearHeroVomiting() {
+    if (!game.u) return;
+    game.u.vomiting = false;
+    game.u._vomitingTimeout = 0;
+    removeHeroStatusSuffix('Vom');
+}
+
+function heroIsSick() {
+    const u = game.u;
+    if (!u) return false;
+    return !!(u.sick || u.Sick || u.sickness || u.terminallySick || u.ill
+        || (u._sickTimeout || 0) > 0 || (u._sicknessTimeout || 0) > 0
+        || (u._statusSuffix || '').includes('Sick') || (u._statusSuffix || '').includes('Ill'));
+}
+
+function clearHeroSickness() {
+    if (!game.u) return;
+    game.u.sick = false;
+    game.u.Sick = false;
+    game.u.sickness = false;
+    game.u.terminallySick = false;
+    game.u.ill = false;
+    game.u._sickTimeout = 0;
+    game.u._sicknessTimeout = 0;
+    removeHeroStatusSuffix('Sick');
+    removeHeroStatusSuffix('Ill');
+}
+
+function eucalyptusPostEffect(touched) {
+    if (touched?.cursed) return {};
+    const messages = [];
+    if (heroIsSick()) {
+        clearHeroSickness();
+        messages.push('You feel cured.  What a relief!');
+    }
+    if (heroIsVomiting()) {
+        clearHeroVomiting();
+        messages.push('You feel much less nauseated now.');
+    }
+    return messages.length ? { message: messages.join('  ') } : {};
+}
+
 function adjustedDelayedFoodBiteHunger(spec, baseNutrition) {
     let nutrition = Math.trunc(baseNutrition || 0);
     if (!(nutrition > 0)) return 0;
@@ -11190,7 +11392,7 @@ function adjustedDelayedFoodBiteHunger(spec, baseNutrition) {
     return Math.max(nutrition, 1);
 }
 
-function delayedFoodFirstBiteMessage(spec, hunger) {
+function delayedFoodFirstBiteMessage(spec, hunger, { reqtime = spec?.delay || 1 } = {}) {
     if (!spec) return '';
     if (spec.rationFeedback) {
         if ((hunger ?? 900) <= 200) return 'This food really hits the spot!';
@@ -11201,8 +11403,12 @@ function delayedFoodFirstBiteMessage(spec, hunger) {
         if (heroFoodIsOrc()) return '!#?&* elf kibble!';
         if (heroFoodIsElf()) return 'A little goes a long way.';
     }
+    if (spec.kind === 'tripe ration' || spec.kind === 'tripe')
+        return delayedTripeFirstBiteMessage({ ...spec, delay: reqtime || spec.delay });
     if (spec.kind === 'apple') return 'Delicious!  Must be a Macintosh!';
-    return `This ${spec.finishName || spec.kind} is ${spec.bland ? 'bland.' : 'delicious!'}`;
+    if (spec.kind === 'pear') return delayedPearFirstBiteMessage();
+    if (spec.kind === 'clove of garlic') return delayedGarlicFirstBiteMessage(reqtime);
+    return `This ${spec.finishName || spec.kind} is ${spec.bland ? 'bland.' : heroIsHallucinating() ? 'gnarly!' : 'delicious!'}`;
 }
 
 function applyDelayedFoodPostEffect(touched, spec) {
@@ -11212,6 +11418,12 @@ function applyDelayedFoodPostEffect(touched, spec) {
     }
     if (spec?.kind === 'apple')
         return cursedAppleSleepPostEffect(touched) || {};
+    if (spec?.kind === 'carrot')
+        return carrotPostEffect();
+    if (spec?.kind === 'sprig of wolfsbane')
+        return wolfsbanePostEffect();
+    if (spec?.kind === 'eucalyptus leaf')
+        return eucalyptusPostEffect(touched);
     return {};
 }
 
@@ -11266,7 +11478,7 @@ function pauseDelayedFoodAfterChoke(touched, {
     floorObject = false,
     finishName = '',
 } = {}) {
-    if (remainingTurns <= 0) {
+    if (remainingTurns <= 1) {
         if (floorObject) consumeOneFloorObject(touched);
         else {
             removeInventoryItem(touched);
@@ -11407,7 +11619,7 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
     const touched = touchEatenFood(item, floorObject);
     recordFoodConduct(touched);
     const finishName = spec.finishName || spec.kind;
-    let message = alreadyPartlyEaten ? `You begin eating the partly eaten ${finishName}.` : delayedFoodFirstBiteMessage(spec, hungerBeforeBite);
+    let message = alreadyPartlyEaten ? `You begin eating the partly eaten ${finishName}.` : '';
     let more = false;
     let processTimeWithMore = false;
     let move = 1;
@@ -11437,6 +11649,8 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
     }
 
     const { reqtime, biteNutrition, biteHunger } = delayedFoodVictualState(touched, spec);
+    if (!alreadyPartlyEaten && !rottenFirstBite)
+        message = delayedFoodFirstBiteMessage(spec, hungerBeforeBite, { reqtime });
     game._eating_canchoke = heroIsSatiatedForEating();
     game._eating_fullwarn = 0;
     game._eating_nomovemsg = '';
@@ -17431,7 +17645,13 @@ const COVERED_SIMPLE_MERGEABLE_FOOD_KINDS = new Set([
     'melon',
     'banana',
     'carrot',
+    'kelp frond',
+    'sprig of wolfsbane',
+    'clove of garlic',
+    'eucalyptus leaf',
+    'lump of royal jelly',
     'cream pie',
+    'fortune cookie',
     'pancake',
     'lembas wafer',
     'cram ration',
@@ -18996,6 +19216,7 @@ function findFloorPickupInventoryMergeTargetForPreflight(source, sourcePrice = n
     const shkp = x == null || y == null ? null : shopkeeperForCostlySpot(x, y);
     const price = sourcePrice != null ? Number(sourcePrice) : shopItemPrice(source, x, y);
     const sourceWillBeUnpaid = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp);
+    if (sourceWillBeUnpaid) return null;
     const billing = { shkp, price, sourceWillBeUnpaid };
     for (const target of game.inventory || []) {
         if (!pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid, shkp)) continue;
@@ -24010,6 +24231,7 @@ function shopBaseCost(obj) {
     else if (!kind && obj.otyp === EXPENSIVE_CAMERA) kind = 'expensive camera';
     else if (!kind && obj.otyp === STETHOSCOPE) kind = 'stethoscope';
     else if (!kind && obj.otyp === MAGIC_MARKER) kind = 'magic marker';
+    if ((obj.foodRoll || 1000) <= 140 || kind === 'tripe') kind = 'tripe ration';
     return SHOP_OBJECT_COSTS[kind] || 0;
 }
 
@@ -45696,6 +45918,10 @@ export async function rhack(_cmd) {
     }
 
     if (ch === 'e') {
+        if (heroIsStrangledForChoke()) {
+            await setMessage("If you can't breathe air, how can you consume solids?");
+            return;
+        }
         const floorFood = (game.level?.objects || []).find(obj =>
             !obj.hidden
             && obj.ox === game.u?.ux

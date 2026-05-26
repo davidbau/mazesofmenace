@@ -419,6 +419,7 @@ const PET_OBJECT_WEIGHTS = {
     scalpel: 5,
     stethoscope: 4,
     apple: 2,
+    'lump of royal jelly': 2,
     rock: 10,
     'tinning kit': 100,
     touchstone: 10,
@@ -1202,8 +1203,11 @@ function initSpecificObject(item) {
     if (obj.cls === 'armor') return initArmor(obj);
     else if (obj.cls === 'food') {
         if (obj.age == null) obj.age = Math.max(game.moves || 0, 1);
-        const roll = rn2(6);
-        if (!['corpse', 'meat ring', 'kelp frond'].includes(obj.kind)) obj._createdQuan = roll ? 1 : 2;
+        if (obj.kind === 'kelp frond') obj._createdQuan = rnd(2);
+        else {
+            const roll = rn2(6);
+            if (!['corpse', 'meat ring'].includes(obj.kind)) obj._createdQuan = roll ? 1 : 2;
+        }
     }
     else if (obj.cls === 'gem') {
         const roll = rn2(6);

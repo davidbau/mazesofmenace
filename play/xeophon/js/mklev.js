@@ -1545,6 +1545,7 @@ const FOOD_RATION = 143;
 const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
 const SPECIFIC_FOOD_INFO = new Map([
+    [KELP_FROND, ['kelp frond', 'kelp fronds', CLR_GREEN]],
     [FOOD_RATION, ['food ration', 'food rations', CLR_BROWN]],
     [CRAM_RATION, ['cram ration', 'cram rations', CLR_BROWN]],
     [LEMBAS_WAFER, ['lembas wafer', 'lembas wafers', CLR_WHITE]],
@@ -4120,7 +4121,7 @@ function mksobj_init(otmp, otyp, artif) {
         }
         rn2(6);
     } else if (otyp === KELP_FROND) {
-        rnd(2);
+        otmp.quan = rnd(2);
     } else if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE) {
         otmp.spe = 1;
         otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
