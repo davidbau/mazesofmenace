@@ -24,6 +24,17 @@ export function isMovemonStepOnePeelLikeC(g, stepNum) {
     );
 }
 
+/** C: wizard D:1 — **`movemon(stepNum 1)`** peel + post-peel distant **`m_move`** (**`seed0006`** **`n`**). */
+export function isWizardD1Step1PeelLikeC(g, stepNum) {
+    return (
+        !!g.context?._postBumpInlineDoneLikeC
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && (stepNum | 0) === 1
+    );
+}
+
 /** Rogue near peel only (sleeping **`mgenmklev`** / gate); not tourist step-1 bulk peel. */
 export function isRogFirstSearchStepOnePeelLikeC(g, stepNum) {
     if (!g.context?._searchPass1NearMonLikeC) return false;

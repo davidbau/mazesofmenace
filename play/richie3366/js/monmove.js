@@ -41,11 +41,18 @@ import {
 import { searchPass1NearMonLikeC } from './mfndpos_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
-import { movemonSinglemonLikeC, mMoveDistfleeckOnlyTurnLikeC } from './m_move_mon.js';
+import {
+    movemonSinglemonLikeC,
+    mMoveDistfleeckOnlyTurnLikeC,
+    mMoveWizardD1Step1DistantAfterPeelLikeC,
+} from './m_move_mon.js';
 import {
     dogGoalScanSearchPostGateLikeC,
+    dogMoveGoalOnlyNoPickLikeC,
+    dogMoveInventOnlyLikeC,
     dogMoveSearchPassNearHeroLikeC,
 } from './dogmove_mon.js';
+import { isWizardD1Step1PeelLikeC } from './monmove_search.js';
 import { raceptr, S_EEL } from './mondata.js';
 import { ensureMonsterMtrack } from './monflee.js';
 
@@ -349,6 +356,7 @@ export async function movemon(stepNum) {
             if ((m.movement | 0) < NORMAL_SPEED) m.movement = NORMAL_SPEED;
         }
     }
+    const postBumpMovemonThisPass = !!g.context?._postBumpKillDochugGateLikeC;
     let mons;
     try {
         mons = fmonListForMovemonLikeC(g, effStepNum);
@@ -462,8 +470,54 @@ export async function movemon(stepNum) {
                 setApparxyMonsterLikeC(g, m);
                 await distfleeckMonsterApplyLikeC(g, m);
             }
+            /* C: non-distant door-niche mklev — second tail **`distfleeck`** before **`dog_goal`** (~2559). */
+            const postBumpNearMklev = (g.level?.monsters ?? []).find((m) => {
+                if (m === postBumpPet || (m.mtame | 0) || m === postBumpDistant) return false;
+                return (m.mgenmklev | 0);
+            });
+            if (postBumpNearMklev) {
+                setApparxyMonsterLikeC(g, postBumpNearMklev);
+                await distfleeckMonsterApplyLikeC(g, postBumpNearMklev);
+            }
+            /* C: post-bump **`l`** tail — **`dog_goal`** then distant ~915 **`distfleeck`** (~2560–2561). */
+            if (postBumpPet) {
+                setApparxyMonsterLikeC(g, postBumpPet);
+                dogMoveGoalOnlyNoPickLikeC(g, postBumpPet);
+            }
+            if (postBumpDistant) {
+                setApparxyMonsterLikeC(g, postBumpDistant);
+                await distfleeckMonsterApplyLikeC(g, postBumpDistant);
+            }
         } else {
             for (const m of mons) await movemonSinglemonLikeC(g, m, effStepNum);
+        }
+        /* C: wizard D:1 step-1 — post-peel distant **`m_move`** + pet **`dog_invent`** (~2572–2597). */
+        if (
+            isWizardD1Step1PeelLikeC(g, effStepNum)
+            && !g.context?._postBumpKillDochugGateLikeC
+        ) {
+            const distant = findDistantMklevMonLikeC(g);
+            if (distant) {
+                await mMoveWizardD1Step1DistantAfterPeelLikeC(g, distant);
+            }
+            const pet = (g.level?.monsters ?? []).find((m) => (m.mtame | 0) !== 0);
+            const nearMklev = (g.level?.monsters ?? []).find(
+                (m) =>
+                    m !== distant
+                    && m !== pet
+                    && (m.mgenmklev | 0)
+                    && !(m.mtame | 0),
+            );
+            /* C: near mklev **`dochug:886`** **`rn2(4)`** before pet **`dog_invent`** (~2575 vs ~2590). */
+            if (nearMklev) {
+                g.context._wizD1Step1GateDochugLikeC = true;
+                await movemonSinglemonLikeC(g, nearMklev, effStepNum);
+                delete g.context._wizD1Step1GateDochugLikeC;
+            }
+            if (pet) {
+                setApparxyMonsterLikeC(g, pet);
+                dogMoveInventOnlyLikeC(g, pet);
+            }
         }
         /* C: post-bump gate cleared in **`finally`** — search / east peels below stay distfleeck-only. */
         /* C: rogue first **`#search`** — post-gate **`distfleeck`** peel after **`dog_goal`**
@@ -630,6 +684,9 @@ export async function movemon(stepNum) {
         await mintrapMoveloopTail();
     } finally {
         delete g.context.movemonStepNum;
+        if (postBumpMovemonThisPass) {
+            g.context._postBumpInlineDoneLikeC = true;
+        }
         if (g.context?._postBumpKillDochugGateLikeC) {
             delete g.context._postBumpKillDochugGateLikeC;
             delete g.context._postBumpDistantMtmpLikeC;

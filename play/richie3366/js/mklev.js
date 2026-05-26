@@ -3823,8 +3823,10 @@ function anchorWestApportSleeperLikeC(g) {
     const mons = g.level?.monsters ?? [];
     const sleeper = mons.find((m) => (m.mgenmklev | 0)) ?? null;
     if (!sleeper) return;
-    /* C: **`seed8000`** west kink **(64,12)** — apport anchor must not override. */
-    if (findWestFungusDoorNicheLikeC(g, sleeper)) return;
+    /* C: **`seed8000`** west kink **(64,12)** — apport anchor must not override that sleeper. */
+    const mx = sleeper.mx | 0;
+    const my = sleeper.my | 0;
+    if (mx === 64 && my === 12 && westFungusDoorNicheAtLikeC(g, mx, my, sleeper)) return;
     let pick = null;
     for (const d of g.level?.doors ?? []) {
         if (!d) continue;

@@ -224,6 +224,18 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 && !(wizD1MovemonOnceLikeC && g.context._wizD1MovemonRanThisPostLikeC)
             ) {
                 let stepForMovemon = movemonStepNum > 0 ? movemonStepNum : 1;
+                /* C: wizard D:1 — every hero turn uses step-1 **`distfleeck`** peel + pet **`dog_move`**
+                 * (**`seed0006`** **`n`** ~2568–2597), not **`moves−1`** door-niche **`j`** paths. */
+                if (
+                    wizD1MovemonOnceLikeC
+                    && colonStep == null
+                    && !isRogueColonMovemonActiveLikeC(g)
+                    && (searchPass | 0) === 0
+                    && !g.context?._postBumpKillDochugGateLikeC
+                    && g.context?._postBumpInlineDoneLikeC
+                ) {
+                    stepForMovemon = 1;
+                }
                 /* C: first **`#search`** on low **`moves`** — skip peel **`stepNum` 1**; use pass 11 path. */
                 if (
                     (searchPass === 1 || searchPass === 2)

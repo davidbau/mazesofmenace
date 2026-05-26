@@ -216,6 +216,20 @@ export async function bumpMeleeAttackLikeC(g, mtmp) {
         /* C: melee kill is not `#search` — drop stale peel pass id before post-`movemon`. */
         clearSearchMovemonHarnessLikeC(g);
         ctx._postBumpKillDochugGateLikeC = true;
+        /* C: wizard D:1 bump-kill — **`dog_goal`** on flush uses hero xy at kill, not
+         * post-**`movemon`** displacement (**`seed0006`** ~2590 **`appr==0`** / **`rn2(1)`**). */
+        const u = g.u;
+        if (
+            u
+            && g.urole?.abbr === 'Wiz'
+            && (u.uz?.dnum | 0) === 0
+            && (u.uz?.dlevel | 0) === 1
+        ) {
+            ctx._wizD1Step1DogGoalHeroXYLikeC = {
+                ux: u.ux | 0,
+                uy: u.uy | 0,
+            };
+        }
         const distant = findDistantMklevMonLikeC(g);
         if (distant) ctx._postBumpDistantMtmpLikeC = distant;
         /* C: domove_attackmon_at → do_attack — bump kill does not walk onto bhitpos. */

@@ -105,6 +105,23 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (pet) ordered.push(pet);
         return [...ordered, ...rest];
     }
+    /* C: wizard step-1 peel — distant **`distfleeck`**, pet **`dog_goal`**, then mklev (**`seed0006`** **`n`**). */
+    if (
+        g.context?._postBumpInlineDoneLikeC
+        && (stepNum | 0) === 1
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
+        const distant = findDistantMklevMonLikeC(g);
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const rest = mons.filter((m) => m !== distant && m !== pet);
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (distant) ordered.push(distant);
+        if (pet) ordered.push(pet);
+        return [...ordered, ...rest];
+    }
     if (isRogueColonMovemonActiveLikeC(g)) {
         const gate = findFirstSearchRogMidMklevHostileLikeC(g);
         const pet = mons.find((m) => (m.mtame | 0) !== 0);

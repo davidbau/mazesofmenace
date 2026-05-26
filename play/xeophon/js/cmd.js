@@ -1056,7 +1056,11 @@ const CREAM_PIE = 10081;
 const LUMP_OF_ROYAL_JELLY = 10089;
 const KELP_FROND = 172;
 const EUCALYPTUS_LEAF = 11000;
+const PANCAKE = 11011;
+const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
+const K_RATION = 10035;
+const C_RATION = 10036;
 const FORTUNE_COOKIE = 11010;
 const EXPENSIVE_CAMERA = 10082;
 const STETHOSCOPE = 10083;
@@ -1205,10 +1209,18 @@ const WISH_BASE_OBJECTS = new Map([
     ['lump of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, cls: 'food', glyph: '%', kind: 'lump of royal jelly', singular: 'lump of royal jelly', plural: 'lumps of royal jelly' }],
     ['eucalyptus leaf', { otyp: EUCALYPTUS_LEAF, cls: 'food', glyph: '%', kind: 'eucalyptus leaf', plural: 'eucalyptus leaves' }],
     ['kelp frond', { otyp: KELP_FROND, cls: 'food', glyph: '%', kind: 'kelp frond' }],
+    ['pancake', { otyp: PANCAKE, cls: 'food', glyph: '%', kind: 'pancake', plural: 'pancakes', nutrition: 200 }],
+    ['pancakes', { otyp: PANCAKE, cls: 'food', glyph: '%', kind: 'pancake', plural: 'pancakes', nutrition: 200 }],
     ['lembas wafer', { otyp: LEMBAS_WAFER, cls: 'food', glyph: '%', kind: 'lembas wafer', plural: 'lembas wafers' }],
+    ['cram ration', { otyp: CRAM_RATION, cls: 'food', glyph: '%', kind: 'cram ration', plural: 'cram rations', nutrition: 600 }],
+    ['cram rations', { otyp: CRAM_RATION, cls: 'food', glyph: '%', kind: 'cram ration', plural: 'cram rations', nutrition: 600 }],
     ['fortune cookie', { otyp: FORTUNE_COOKIE, cls: 'food', glyph: '%', kind: 'fortune cookie', plural: 'fortune cookies' }],
     ['fortune cookies', { otyp: FORTUNE_COOKIE, cls: 'food', glyph: '%', kind: 'fortune cookie', plural: 'fortune cookies' }],
     ['food ration', { otyp: FOOD_RATION, cls: 'food', glyph: '%', kind: 'food ration', plural: 'food rations', nutrition: 800 }],
+    ['k-ration', { otyp: K_RATION, cls: 'food', glyph: '%', kind: 'K-ration', actualKind: 'K-ration', plural: 'K-rations', nutrition: 400 }],
+    ['k-rations', { otyp: K_RATION, cls: 'food', glyph: '%', kind: 'K-ration', actualKind: 'K-ration', plural: 'K-rations', nutrition: 400 }],
+    ['c-ration', { otyp: C_RATION, cls: 'food', glyph: '%', kind: 'C-ration', actualKind: 'C-ration', plural: 'C-rations', nutrition: 300 }],
+    ['c-rations', { otyp: C_RATION, cls: 'food', glyph: '%', kind: 'C-ration', actualKind: 'C-ration', plural: 'C-rations', nutrition: 300 }],
     ['enormous meatball', { otyp: FOOD_CLASS, cls: 'food', glyph: '%', kind: 'enormous meatball', actualKind: 'enormous meatball', nutrition: 2000 }],
     ['rock', { otyp: ROCK, cls: 'gem', glyph: '*', kind: 'rock', actualKind: 'rock', plural: 'rocks', gemDescription: 'rock' }],
     ['luckstone', { otyp: LUCKSTONE, cls: 'gem', glyph: '*', kind: 'luckstone', actualKind: 'luckstone', gemDescription: 'gray stone' }],
@@ -1271,8 +1283,12 @@ const WISH_BASE_NAMEDESC_BOUNDS = new Map([
     ['bullwhip', 3], ['silver saber', 7], ['dwarvish mattock', 14],
     ['pick-axe', 21], ['pick axe', 21], ['pickaxe', 21], ['pickax', 21], ['pick-ax', 21],
     ['cream pie', 26], ['lump of royal jelly', 1], ['eucalyptus leaf', 4], ['kelp frond', 1],
-    ['lembas wafer', 21], ['fortune cookie', 56], ['fortune cookies', 56],
-    ['food ration', 381], ['enormous meatball', 1], ['rock', 101], ['luckstone', 11],
+    ['pancake', 26], ['pancakes', 26], ['lembas wafer', 21],
+    ['cram ration', 21], ['cram rations', 21],
+    ['fortune cookie', 56], ['fortune cookies', 56],
+    ['food ration', 381],
+    ['k-ration', 1], ['k-rations', 1], ['c-ration', 1], ['c-rations', 1],
+    ['enormous meatball', 1], ['rock', 101], ['luckstone', 11],
     ['loadstone', 11], ['touchstone', 9], ['flint', 11],
     ['heavy iron ball', 1001], ['large box', 41], ['chest', 36], ['ice box', 6],
     ['sack', 36], ['oilskin sack', 6], ['bag of holding', 21],
@@ -4678,12 +4694,21 @@ const OBJECT_WEIGHTS = {
     'credit card': 1,
     'expensive camera': 12,
     'apple': 2,
+    'banana': 2,
     'boulder': 6000,
     'carrot': 2,
     'cream pie': 10,
+    'c-ration': 10,
     'food ration': 20,
     'fortune cookie': 1,
     'fortune cookies': 1,
+    'cram ration': 15,
+    'k-ration': 10,
+    'lembas wafer': 5,
+    'melon': 5,
+    'orange': 2,
+    'pancake': 2,
+    'pear': 2,
     'sprig of wolfsbane': 1,
     'meat ring': 5,
     'grappling hook': 30,
@@ -4888,6 +4913,8 @@ const SHOP_OBJECT_COSTS = {
     'lembas wafer': 45,
     'cram ration': 35,
     'food ration': 45,
+    'k-ration': 25,
+    'c-ration': 20,
     'tin': 5,
     'large box': 8,
     'chest': 16,
@@ -7420,6 +7447,11 @@ function syncHeroSpeedState() {
 }
 
 function removeInventoryItem(item, amount = 1) {
+    if (shopBillableGold(item)) {
+        removeGoldFromHero(amount);
+        updateWornDisplacement();
+        return;
+    }
     const wasWornSpeedChanger = item.cls === 'armor'
         && isWornInventoryItem(item)
         && (String(item.kind || '').toLowerCase() === 'speed boots'
@@ -15675,6 +15707,39 @@ function stackPlacedProjectileObject(obj) {
     return stack;
 }
 
+function projectileLandingSellobjShopkeeper(x, y) {
+    const heroShkp = heroShopkeeper();
+    if (!shopkeeperInHisShop(heroShkp)) return null;
+    const landingShkp = shopkeeperForCostlySpot(x, y);
+    if (!sameShopkeeper(heroShkp, landingShkp) || !shopkeeperInHisShop(landingShkp)) return null;
+    if (x === landingShkp.mx && y === landingShkp.my) return null;
+    return landingShkp;
+}
+
+function autoSellProjectileLandingObject(obj, x, y, options = {}) {
+    const shkp = projectileLandingSellobjShopkeeper(x, y);
+    if (!shkp || !obj) return { handled: false, shkp: null, message: '', messages: [] };
+    if (shopBillableGold(obj)) {
+        const goldSale = sellobjDroppedGoldAt(x, y, obj.quan || 1);
+        const messages = options.silent ? [] : (goldSale.messages || []);
+        return { ...goldSale, handled: !!goldSale.shkp, gold: true, message: messages.join('  '), messages };
+    }
+    if (shopObjectOrContentsUnpaid(obj)) return { handled: false, shkp: null, message: '', messages: [] };
+    const sale = shopDroppedPaidObjectSaleInfo(obj, x, y);
+    if (!sale?.handled) return { handled: false, shkp: null, message: '', messages: [] };
+    if (!sale.prompt) {
+        const messages = options.silent || !sale.message ? [] : [sale.message];
+        return { ...sale, sold: false, message: messages.join('  '), messages };
+    }
+    if (sale.containerSale) {
+        markAcceptedShopContainerSaleState(obj, sale.shkp);
+        subFromShopBill(obj, sale.shkp);
+    }
+    const paymentMessage = shopSalePaymentMessage(sale);
+    const message = options.silent ? '' : paymentMessage;
+    return { ...sale, sold: true, prompt: false, message, messages: message ? [message] : [] };
+}
+
 function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
     const messages = [];
     const hardLanding = !projectileLandingIsSoft(x, y);
@@ -15690,6 +15755,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
                 impact: { loss: 0, broke: false, messages },
                 topBreak: { broke: true, breakKind, value: shopLanding.value || 0 },
                 shopLanding: { ...shopLanding, handled: shopLanding.charged, returned: false },
+                shopSale: { handled: false, shkp: null, message: '', messages: [] },
                 messages,
             };
         }
@@ -15700,8 +15766,11 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
         : projectileContainerImpactDmg(placed, options.fromX ?? game.u?.ux ?? x, options.fromY ?? game.u?.uy ?? y, { messages, silent: options.silent });
     const shopLanding = resolveUnpaidProjectileShopLanding(placed, x, y, options);
     if (shopLanding.message) messages.push(shopLanding.message);
+    const shopSale = shopLanding.handled ? { handled: false, shkp: null, message: '', messages: [] }
+        : autoSellProjectileLandingObject(placed, x, y, options);
+    if (shopSale.message) messages.push(shopSale.message);
     const stacked = stackPlacedProjectileObject(placed);
-    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, shopLanding, messages };
+    return { object: stacked, impact, topBreak: { broke: false, breakKind: '', value: 0 }, shopLanding, shopSale, messages };
 }
 
 function markNoChargeRecursively(obj) {
@@ -15962,6 +16031,23 @@ function addGoldToHero(amount) {
         updateMoneyLine(money);
     } else {
         game.inventory.push({ letter: '$', cls: 'coin', otyp: GOLD_PIECE, glyph: '$', quan: game._goldCount });
+    }
+    game._pet_food_scan_inventory = game.inventory;
+    return gold;
+}
+
+function removeGoldFromHero(amount) {
+    const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin' || item.otyp === GOLD_PIECE);
+    const available = Math.max(0, Math.trunc(Number(game._goldCount || money?.quan || 0)));
+    const gold = Math.min(available, Math.max(0, Math.trunc(Number(amount || 0))));
+    if (!gold) return 0;
+    game._goldCount = Math.max(0, available - gold);
+    game._just_picked_gold = Math.max(0, (game._just_picked_gold || 0) - gold);
+    if (money && game._goldCount) {
+        money.quan = game._goldCount;
+        updateMoneyLine(money);
+    } else {
+        game.inventory = (game.inventory || []).filter(item => item.letter !== '$' && item.cls !== 'coin' && item.otyp !== GOLD_PIECE);
     }
     game._pet_food_scan_inventory = game.inventory;
     return gold;
@@ -16557,11 +16643,12 @@ function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set(), 
             : 0;
 
     let value = 0;
+    const inventoryLikeNestedContent = options.inventoryLikeContents && options.topLevel === false;
     const entry = shopBillEntryForObject(shkp, obj);
     if (entry) {
         value += shopBillEntryTotal(entry);
         subOneFromShopBill(obj, shkp);
-    } else if (!obj.no_charge) {
+    } else if (!obj.no_charge && (!inventoryLikeNestedContent || obj.unpaid)) {
         value += shopItemPrice(obj, source.ox ?? game.u?.ux, source.oy ?? game.u?.uy);
     }
 
@@ -16641,6 +16728,7 @@ function billLostMagicBagShopItem(source, obj) {
     if (!shkp || !obj) return 0;
     const value = lostShopMerchandiseValueForObject(source, obj, shkp, new Set(), {
         includeContainedGold: false,
+        inventoryLikeContents: true,
     });
     return chargeShopkeeperForLostMerchandise(shkp, value);
 }
@@ -16775,15 +16863,37 @@ function pickupWeaponCanStack(obj) {
     return /\b(?:arrow|ya|bolt|dart|dagger|knife|spear|javelin|shuriken|boomerang|rock|stone)\b/.test(name);
 }
 
-function isOrdinaryFoodRationObject(obj) {
+const COVERED_SIMPLE_MERGEABLE_FOOD_KINDS = new Set([
+    'apple',
+    'orange',
+    'pear',
+    'melon',
+    'banana',
+    'carrot',
+    'cream pie',
+    'pancake',
+    'lembas wafer',
+    'cram ration',
+    'food ration',
+    'k-ration',
+    'c-ration',
+]);
+
+function simpleMergeableFoodKind(obj) {
+    const kind = objectKindKey(obj).replace(/^partly eaten\s+/, '').trim();
+    if (COVERED_SIMPLE_MERGEABLE_FOOD_KINDS.has(kind)) return kind;
+    const singular = String(obj?.singular || '').toLowerCase().trim();
+    if (COVERED_SIMPLE_MERGEABLE_FOOD_KINDS.has(singular)) return singular;
+    return '';
+}
+
+function isSimpleMergeableFoodObject(obj) {
     if (!obj || isTinObject(obj) || isEggItem(obj) || isGlobbyObject(obj) || globContents(obj).length) return false;
     if (obj.otyp === CORPSE || obj.otyp === 'corpse') return false;
-    const kind = objectKindKey(obj).replace(/^partly eaten\s+/, '').trim();
+    const kind = simpleMergeableFoodKind(obj);
     if (obj.otyp === MEAT_RING || kind === 'meat ring') return false;
-    if (obj.otyp === FOOD_RATION) return true;
-    const singular = String(obj?.singular || '').toLowerCase().trim();
     const foodLike = obj.cls === 'food' || obj.otyp === FOOD_CLASS || obj.glyph === '%';
-    return foodLike && (kind === 'food ration' || singular === 'food ration');
+    return foodLike && !!kind;
 }
 
 function objectInstanceNameKey(obj) {
@@ -16807,7 +16917,7 @@ function copyObjectInstanceNameForMerge(target, source) {
 function pickupObjectCanInventoryMerge(obj) {
     if (!obj || shopBillableGold(obj) || globContents(obj).length || isGlobbyObject(obj)) return false;
     if (obj.otyp === CORPSE || obj.otyp === 'corpse' || obj.otyp === EGG || isTinObject(obj)) return false;
-    if (isOrdinaryFoodRationObject(obj)) return true;
+    if (isSimpleMergeableFoodObject(obj)) return true;
     if (obj.cls === 'food' || obj.otyp === FOOD_CLASS) return false;
     const cls = shopObjectClassCode(obj);
     if (cls === SCROLL_CLASS || cls === POTION_CLASS || cls === GEM_CLASS) return true;
@@ -16839,9 +16949,10 @@ function pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid
     if ((target.gemDescription ?? null) !== (source.gemDescription ?? null)) return false;
     if ((target.actualKind || target.kind || '') !== (source.actualKind || source.kind || '')
         && pickupMergeName(target) !== pickupMergeName(source)) return false;
-    if ((isOrdinaryFoodRationObject(target) || isOrdinaryFoodRationObject(source))
-        && (!isOrdinaryFoodRationObject(target)
-            || !isOrdinaryFoodRationObject(source)
+    if ((isSimpleMergeableFoodObject(target) || isSimpleMergeableFoodObject(source))
+        && (!isSimpleMergeableFoodObject(target)
+            || !isSimpleMergeableFoodObject(source)
+            || simpleMergeableFoodKind(target) !== simpleMergeableFoodKind(source)
             || !objectInstanceNamesMergeCompatible(target, source)))
         return false;
     if (isCandleObject(source) && Math.trunc((target.age || 0) / 25) !== Math.trunc((source.age || 0) / 25))
@@ -16866,7 +16977,7 @@ function findPickedObjectInventoryMergeTarget(source, sourcePrice = null) {
 function mergePickedObjectIntoInventory(source, target) {
     const pickedCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
     const targetCount = Math.max(1, Math.trunc(Number(target.quan || 1)));
-    if (isOrdinaryFoodRationObject(target) && isOrdinaryFoodRationObject(source)) {
+    if (isSimpleMergeableFoodObject(target) && isSimpleMergeableFoodObject(source)) {
         const targetAge = Number.isFinite(Number(target.age)) ? Number(target.age) : 0;
         const sourceAge = Number.isFinite(Number(source.age)) ? Number(source.age) : 0;
         if (target.age != null || source.age != null)
@@ -16880,7 +16991,7 @@ function mergePickedObjectIntoInventory(source, target) {
     if (source.rknown !== target.rknown) target.rknown = true;
     target.line = normalInventoryLine({ ...target, line: '' });
     if (target.unpaid) syncUnpaidBillLine(target);
-    const pickedPhrase = isOrdinaryFoodRationObject(target) && isOrdinaryFoodRationObject(source)
+    const pickedPhrase = isSimpleMergeableFoodObject(target) && isSimpleMergeableFoodObject(source)
         ? normalInventoryLine({ ...target, line: '', quan: pickedCount }).replace(/^[^ ]+ - /, '')
         : pickupObjectPhrase({ ...source, line: '', quan: pickedCount });
     return `${target.letter} - ${pickedPhrase} (${target.quan} in total).`;
@@ -18334,7 +18445,7 @@ function findFloorPickupInventoryMergeTargetForPreflight(source, sourcePrice = n
 }
 
 function findFloorPickupFoodMergeTargetForPreflight(source, sourcePrice = null) {
-    if (!isOrdinaryFoodRationObject(source)) return null;
+    if (!isSimpleMergeableFoodObject(source)) return null;
     return findFloorPickupInventoryMergeTargetForPreflight(source, sourcePrice);
 }
 
@@ -18934,6 +19045,7 @@ function objectStackType(obj) {
 
 function objectStackColor(obj) {
     if (!obj) return undefined;
+    if (shopBillableGold(obj)) return CLR_YELLOW;
     if (obj.color != null) return obj.color;
     if (obj.cls === 'weapon') return obj.kind === 'quarterstaff' ? CLR_BROWN : CLR_CYAN;
     if (obj.cls === 'scroll' || obj.cls === 'spellbook') return CLR_WHITE;
@@ -20362,6 +20474,14 @@ const WISH_EXPLICIT_SPELLING_ALIASES = new Map([
     ['kelp', 'kelp frond'],
     ['eucalyptus', 'eucalyptus leaf'],
     ['lembas', 'lembas wafer'],
+    ['k ration', 'k-ration'],
+    ['k rations', 'k-rations'],
+    ['kration', 'k-ration'],
+    ['krations', 'k-rations'],
+    ['c ration', 'c-ration'],
+    ['c rations', 'c-rations'],
+    ['cration', 'c-ration'],
+    ['crations', 'c-rations'],
     ['tripe', 'tripe ration'],
     ['cookie', 'fortune cookie'],
     ['pie', 'cream pie'],
@@ -20405,7 +20525,7 @@ function resolveWishedSpellingAlias(lowerName) {
 
 function singularizeWishedPluralName(normalized) {
     for (const [name, baseObject] of WISH_BASE_OBJECTS.entries()) {
-        if (baseObject?.plural === normalized) return name;
+        if (String(baseObject?.plural || '').toLowerCase() === normalized) return name;
     }
     for (const [plural, singular] of [
         [/^wands of (.+)$/, 'wand of $1'],
@@ -20571,9 +20691,12 @@ function normalizeWishedGroupPhrase(name, quantity) {
 
 function applyWishedPluralQuantity(name, quantity) {
     if (quantity !== 1) return quantity;
-    const lowerName = String(name || '').trim().toLowerCase();
+    const rawLowerName = String(name || '').trim().toLowerCase();
+    const rawBaseObject = WISH_BASE_OBJECTS.get(rawLowerName);
+    if (rawBaseObject?.plural && rawLowerName === String(rawBaseObject.plural).toLowerCase()) return 2;
+    const lowerName = resolveWishedSpellingAlias(rawLowerName).name;
     const baseObject = WISH_BASE_OBJECTS.get(lowerName);
-    if (baseObject?.plural && lowerName === baseObject.plural) return 2;
+    if (baseObject?.plural && lowerName === String(baseObject.plural).toLowerCase()) return 2;
     if (/^(?:worthless\s+)?pieces\s+of\s+.+\s+glass$/.test(lowerName)) return 2;
     if (/\bgems$/.test(lowerName) || /\bstones$/.test(lowerName)) return 2;
     if (lowerName === 'fortune cookies') return 2;
@@ -44520,11 +44643,6 @@ export async function rhack(_cmd) {
 		        let ox = ux;
 		        let oy = uy;
 		        let targetMon = null;
-        let thrownId = null;
-        if ((item.quan || 1) > 1) {
-            if (item.otyp === DART || /\bdarts?\b/.test(lowerName)) rnd(1); // C throw_obj: multishot count.
-            thrownId = next_ident(); // C splitobj: nextoid()/next_ident() for the thrown unit.
-        }
         for (let step = 0; step < 8; step++) {
             const nx = ox + dir.dx;
             const ny = oy + dir.dy;
@@ -44535,6 +44653,39 @@ export async function rhack(_cmd) {
 	            targetMon = (game.level?.monsters || []).find(mon => mon.mx === ox && mon.my === oy) || null;
 	            if (targetMon) break;
 	        }
+        if (shopBillableGold(item)) {
+            const amount = Math.max(1, Math.trunc(Number(game._goldCount || item.quan || 1)));
+            const thrownGold = {
+                ...item,
+                letter: undefined,
+                line: undefined,
+                ox,
+                oy,
+                quan: amount,
+                glyph: '$',
+                color: CLR_YELLOW,
+            };
+            const landing = landProjectileObjectWithShopHandling(thrownGold, ox, oy, { breakRoll: 0 });
+            const landingMessage = landing.messages.join('  ');
+            newsym(ox, oy);
+            removeGoldFromHero(amount);
+            if (landingMessage) await setMessage(landingMessage);
+            else {
+                game._pending_message = '';
+                game._message_more = 0;
+            }
+            game._command_mode = null;
+            game._throw_item_letter = null;
+            game._resume_time_after_more = 0;
+            game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+            game.context.move = 0;
+            return;
+        }
+        let thrownId = null;
+        if ((item.quan || 1) > 1) {
+            if (item.otyp === DART || /\bdarts?\b/.test(lowerName)) rnd(1); // C throw_obj: multishot count.
+            thrownId = next_ident(); // C splitobj: nextoid()/next_ident() for the thrown unit.
+        }
 	        const combatObject = item.cls === 'weapon' || item.cls === 'gem' || item.glyph === ')' || item.otyp === GEM_CLASS;
 	        let impactMessage = '';
 	        if (targetMon && (item.otyp === CREAM_PIE || lowerName === 'cream pie')) {
@@ -45172,7 +45323,7 @@ export async function rhack(_cmd) {
             const name = pickupObjectName({ ...pickupObj, quan: 1 });
             const mergeTarget = findPickedObjectInventoryMergeTarget(pickupObj, liftedShopPrice);
             if (mergeTarget) {
-                const learnedByComparing = isOrdinaryFoodRationObject(pickupObj)
+                const learnedByComparing = isSimpleMergeableFoodObject(pickupObj)
                     && (pickupObj.bknown === true) !== (mergeTarget.target.bknown !== false);
                 const pickupMessage = mergePickedObjectIntoInventory(pickupObj, mergeTarget.target);
                 game._pet_food_scan_inventory = game.inventory;
