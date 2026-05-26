@@ -14917,6 +14917,240 @@ function shopkeeperInHisShop(shkp) {
     return (game.level?.at?.(x, y)?.roomno || 0) === shkp.shoproom;
 }
 
+function liveShopkeeper(mon) {
+    return !!mon?.isshk && !mon.dead && (mon.mhp == null || mon.mhp > 0);
+}
+
+function shopkeeperNextToHero(shkp, ux = game.u?.ux || 0, uy = game.u?.uy || 0) {
+    if (!shkp) return false;
+    return Math.max(Math.abs((shkp.mx ?? 0) - ux), Math.abs((shkp.my ?? 0) - uy)) <= 1;
+}
+
+function payCanSpotShopkeeper(shkp) {
+    if (!shkp || game.u?.blind || shkp.mundetected) return false;
+    if (!game.viz_array) return true;
+    return cansee(shkp.mx, shkp.my) || !!(game.viz_array?.[shkp.my]?.[shkp.mx] & IN_SIGHT);
+}
+
+function scanPayShopkeepers() {
+    const ux = game.u?.ux || 0;
+    const uy = game.u?.uy || 0;
+    const roomno = game.level?.at?.(ux, uy)?.roomno || 0;
+    const room = levelRoomByRoomno(roomno);
+    const liveShopkeepers = (game.level?.monsters || []).filter(liveShopkeeper);
+    const scan = {
+        sk: 0,
+        seensk: 0,
+        nexttosk: 0,
+        nxtm: null,
+        resident: null,
+        visibleShopkeeper: null,
+        ux,
+        uy,
+    };
+
+    for (const shkp of liveShopkeepers) {
+        scan.sk++;
+        if (shopkeeperNextToHero(shkp, ux, uy)) {
+            if (!scan.nxtm || !shopkeeperAngryForSellobj(scan.nxtm)) {
+                scan.nexttosk++;
+                scan.nxtm = shkp;
+            }
+        }
+        if (payCanSpotShopkeeper(shkp)) {
+            scan.seensk++;
+            scan.visibleShopkeeper = shkp;
+        }
+        if (room?.rtype >= SHOPBASE
+            && shopkeeperInHisShop(shkp)
+            && shkp.shoproom === roomno) {
+            scan.resident = shkp;
+        }
+    }
+    return scan;
+}
+
+function resolvePayShopkeeperFromScan(scan) {
+    if (scan.nxtm && scan.nexttosk === 1)
+        return { selected: scan.nxtm, resident: scan.resident, needsPayWhomPrompt: false, message: '' };
+
+    if ((!scan.sk && !game.u?.blind) || (!game.u?.blind && !scan.seensk))
+        return {
+            selected: null,
+            resident: scan.resident,
+            needsPayWhomPrompt: false,
+            message: 'There appears to be no shopkeeper here to receive your payment.',
+        };
+
+    if (!scan.seensk)
+        return { selected: null, resident: scan.resident, needsPayWhomPrompt: false, message: "You can't see..." };
+
+    if (scan.sk === 1 && scan.resident)
+        return { selected: scan.resident, resident: scan.resident, needsPayWhomPrompt: false, message: '' };
+
+    if (scan.seensk === 1) {
+        const shkp = scan.visibleShopkeeper;
+        if (!sameShopkeeper(shkp, scan.resident) && !shopkeeperNextToHero(shkp, scan.ux, scan.uy))
+            return {
+                selected: null,
+                resident: scan.resident,
+                needsPayWhomPrompt: false,
+                message: `${shopkeeperDisplayName(shkp)} is not near enough to receive your payment.`,
+            };
+        return { selected: shkp, resident: scan.resident, needsPayWhomPrompt: false, message: '' };
+    }
+
+    return { selected: null, resident: scan.resident, needsPayWhomPrompt: true, message: 'Pay whom?' };
+}
+
+function payTargetCanSee(x, y) {
+    if (game.u?.blind) return false;
+    if (!game.viz_array) return true;
+    return cansee(x, y) || !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
+}
+
+function payCanSpotMonster(mon) {
+    if (!mon || mon.dead || (mon.mhp != null && mon.mhp <= 0)) return false;
+    if (mon.mundetected || (mon.minvis && !game.u?.seeInvisible)) return false;
+    return payTargetCanSee(mon.mx, mon.my);
+}
+
+function payMonsterDisplayName(mon) {
+    if (!mon) return 'Someone';
+    if (mon.isshk) return shopkeeperDisplayName(mon);
+    if (mon.givenName) return mon.givenName;
+    const name = mon.data?.name || mon.name || 'monster';
+    return `The ${name}`;
+}
+
+function monsterAtPayTarget(x, y) {
+    return (game.level?.monsters || []).find(mon =>
+        mon.mx === x && mon.my === y
+        && !mon.dead && (mon.mhp == null || mon.mhp > 0)) || null;
+}
+
+function validatePayWhomTarget(x, y, resident) {
+    if (x === (game.u?.ux || 0) && y === (game.u?.uy || 0))
+        return { shkp: null, message: 'You are generous to yourself.' };
+
+    const mon = monsterAtPayTarget(x, y);
+    if (!payTargetCanSee(x, y) && (!mon || !payCanSpotMonster(mon)))
+        return { shkp: null, message: `You can't ${game.u?.blind ? 'sense' : 'see'} anyone there.` };
+
+    if (!mon)
+        return { shkp: null, message: 'There is no one there to receive your payment.' };
+
+    if (!mon.isshk)
+        return { shkp: null, message: `${payMonsterDisplayName(mon)} is not interested in your payment.` };
+
+    if (!sameShopkeeper(mon, resident) && !shopkeeperNextToHero(mon))
+        return { shkp: null, message: `${shopkeeperDisplayName(mon)} is too far to receive your payment.` };
+
+    return { shkp: mon, message: '' };
+}
+
+function payWhomTargetDescription(x, y) {
+    if (x === (game.u?.ux || 0) && y === (game.u?.uy || 0)) return heroFarlookDescription();
+    const mon = monsterAtPayTarget(x, y);
+    if (mon && payCanSpotMonster(mon)) return farlookMonsterDescription(mon);
+    const obj = payWhomObjectAt(x, y);
+    if (obj) return pickupObjectPhrase(obj);
+    if (!payTargetCanSee(x, y)) return 'unexplored area';
+    const loc = game.level?.at(x, y);
+    if (loc?.typ === DOOR) return doorDescription(loc);
+    if (loc?.typ === CORR) return 'corridor';
+    if (loc?.typ === ROOM || loc?.typ === STAIRS) return 'floor of a room';
+    if (loc?.typ === MOAT) return 'moat';
+    if (loc?.typ === TREE) return 'tree';
+    if (loc?.typ && loc.typ < DOOR) return 'wall';
+    return 'unexplored area';
+}
+
+function payWhomCycleDistance(x, y) {
+    return Math.max(Math.abs(x - (game.u?.ux || 0)), Math.abs(y - (game.u?.uy || 0)));
+}
+
+function payWhomLocationSort(a, b) {
+    return (payWhomCycleDistance(a.x, a.y) - payWhomCycleDistance(b.x, b.y))
+        || (a.y - b.y) || (a.x - b.x);
+}
+
+function visiblePayWhomMonsters() {
+    return (game.level?.monsters || [])
+        .filter(payCanSpotMonster)
+        .sort((a, b) => payWhomLocationSort({ x: a.mx, y: a.my }, { x: b.mx, y: b.my }));
+}
+
+function payWhomObjectAt(x, y) {
+    if (!payTargetCanSee(x, y)) return null;
+    const mon = monsterAtPayTarget(x, y);
+    if (mon && payCanSpotMonster(mon)) return null;
+    const loc = game.level?.at?.(x, y);
+    const objects = game.level?.objects || [];
+    for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        if (!obj || obj.hidden || obj.transientProjectile || obj.ox !== x || obj.oy !== y) continue;
+        if (obj.otyp === BOULDER || obj.otyp === ROCK || objectKindKey(obj) === 'boulder'
+            || objectKindKey(obj) === 'rock') continue;
+        if (loc?.disp_ch && loc.disp_ch !== ' ' && obj.glyph && loc.disp_ch !== obj.glyph) continue;
+        return obj;
+    }
+    return null;
+}
+
+function visiblePayWhomObjects() {
+    const seen = new Set();
+    const targets = [];
+    for (const obj of game.level?.objects || []) {
+        if (!obj || seen.has(`${obj.ox}:${obj.oy}`)) continue;
+        const target = payWhomObjectAt(obj.ox, obj.oy);
+        if (!target) continue;
+        seen.add(`${obj.ox}:${obj.oy}`);
+        targets.push({ x: obj.ox, y: obj.oy, obj: target });
+    }
+    return targets.sort(payWhomLocationSort);
+}
+
+function payWhomCycleLocations(kind) {
+    const hero = { x: game.u?.ux || 0, y: game.u?.uy || 0, kind: 'hero' };
+    const targets = kind === 'objects'
+        ? visiblePayWhomObjects()
+        : visiblePayWhomMonsters().map(mon => ({ x: mon.mx, y: mon.my, mon }));
+    return [hero, ...targets];
+}
+
+function cyclePayWhomCursor(kind, reverse = false) {
+    const locations = payWhomCycleLocations(kind);
+    if (!locations.length) return null;
+    game._pay_getpos_cycle_indexes ??= {};
+    const current = Math.max(0, Math.trunc(Number(game._pay_getpos_cycle_indexes[kind] || 0)));
+    const index = (current + (reverse ? -1 : 1) + locations.length) % locations.length;
+    game._pay_getpos_cycle_indexes[kind] = index;
+    const target = locations[index];
+    game._farlook_x = target.x;
+    game._farlook_y = target.y;
+    game._cursor_override = [target.x - 1, target.y + 1];
+    return target;
+}
+
+async function startPayWhomCursor(resident, { requestMenu = false } = {}) {
+    game._pay_whom_resident = resident || null;
+    game._pay_request_menu = !!requestMenu;
+    game._pay_getpos_cycle_indexes = {};
+    game._farlook_x = game.u?.ux || 0;
+    game._farlook_y = game.u?.uy || 0;
+    game._cursor_override = [(game._farlook_x || 1) - 1, (game._farlook_y || 0) + 1];
+    game._command_mode = 'payWhomCursor';
+    await setMessage('Pay whom?');
+}
+
+function clearPayWhomCursor() {
+    game._pay_whom_resident = null;
+    game._pay_request_menu = false;
+    game._pay_getpos_cycle_indexes = null;
+    game._cursor_override = null;
+}
+
 function shopkeeperForCostlySpot(x, y) {
     const shkp = shopkeeperForShopRoom(x, y);
     if (!shkp) return null;
@@ -16314,11 +16548,13 @@ function addTippedContainerObjectToShopBill(container, obj) {
     return addContainerTakeoutObjectToShopBill(container, obj, obj);
 }
 
-function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) {
+function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set(), options = {}) {
     if (!source || !obj || !shkp || seen.has(obj)) return 0;
     seen.add(obj);
     if (shopBillableGold(obj))
-        return Math.max(1, Math.trunc(Number(obj.quan || 1)));
+        return (options.topLevel !== false || options.includeContainedGold !== false)
+            ? Math.max(1, Math.trunc(Number(obj.quan || 1)))
+            : 0;
 
     let value = 0;
     const entry = shopBillEntryForObject(shkp, obj);
@@ -16330,7 +16566,10 @@ function lostShopMerchandiseValueForObject(source, obj, shkp, seen = new Set()) 
     }
 
     for (const child of globContents(obj))
-        value += lostShopMerchandiseValueForObject(source, child, shkp, seen);
+        value += lostShopMerchandiseValueForObject(source, child, shkp, seen, {
+            ...options,
+            topLevel: false,
+        });
     return value;
 }
 
@@ -16400,7 +16639,9 @@ function shipObjectShopDebt(obj, x, y, { shopFloorObj = false, silent = false } 
 function billLostMagicBagShopItem(source, obj) {
     const shkp = shopFloorContainerShopkeeper(source);
     if (!shkp || !obj) return 0;
-    const value = lostShopMerchandiseValueForObject(source, obj, shkp);
+    const value = lostShopMerchandiseValueForObject(source, obj, shkp, new Set(), {
+        includeContainedGold: false,
+    });
     return chargeShopkeeperForLostMerchandise(shkp, value);
 }
 
@@ -16534,9 +16775,39 @@ function pickupWeaponCanStack(obj) {
     return /\b(?:arrow|ya|bolt|dart|dagger|knife|spear|javelin|shuriken|boomerang|rock|stone)\b/.test(name);
 }
 
+function isOrdinaryFoodRationObject(obj) {
+    if (!obj || isTinObject(obj) || isEggItem(obj) || isGlobbyObject(obj) || globContents(obj).length) return false;
+    if (obj.otyp === CORPSE || obj.otyp === 'corpse') return false;
+    const kind = objectKindKey(obj).replace(/^partly eaten\s+/, '').trim();
+    if (obj.otyp === MEAT_RING || kind === 'meat ring') return false;
+    if (obj.otyp === FOOD_RATION) return true;
+    const singular = String(obj?.singular || '').toLowerCase().trim();
+    const foodLike = obj.cls === 'food' || obj.otyp === FOOD_CLASS || obj.glyph === '%';
+    return foodLike && (kind === 'food ration' || singular === 'food ration');
+}
+
+function objectInstanceNameKey(obj) {
+    return String(obj?._wish_object_name || obj?.oname || obj?.oextra?.oname || '').trim();
+}
+
+function objectInstanceNamesMergeCompatible(target, source) {
+    const targetName = objectInstanceNameKey(target);
+    const sourceName = objectInstanceNameKey(source);
+    return !targetName || !sourceName || targetName === sourceName;
+}
+
+function copyObjectInstanceNameForMerge(target, source) {
+    if (objectInstanceNameKey(target)) return;
+    const sourceName = objectInstanceNameKey(source);
+    if (!sourceName) return;
+    if (source?._wish_object_name) target._wish_object_name = source._wish_object_name;
+    else target.oname = sourceName;
+}
+
 function pickupObjectCanInventoryMerge(obj) {
     if (!obj || shopBillableGold(obj) || globContents(obj).length || isGlobbyObject(obj)) return false;
     if (obj.otyp === CORPSE || obj.otyp === 'corpse' || obj.otyp === EGG || isTinObject(obj)) return false;
+    if (isOrdinaryFoodRationObject(obj)) return true;
     if (obj.cls === 'food' || obj.otyp === FOOD_CLASS) return false;
     const cls = shopObjectClassCode(obj);
     if (cls === SCROLL_CLASS || cls === POTION_CLASS || cls === GEM_CLASS) return true;
@@ -16551,9 +16822,11 @@ function pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid
     if (target.nomerge || source.nomerge || target.artifact || source.artifact) return false;
     const targetUnpaid = !!(target.unpaid || shopBillEntryForObject(shkp, target));
     if (targetUnpaid !== !!sourceWillBeUnpaid) return false;
-    if (!!target.no_charge !== !!source.no_charge) return false;
+    const sourceNoCharge = sourceWillBeUnpaid ? !!source.no_charge : false;
+    if (!!target.no_charge !== sourceNoCharge) return false;
     if (!!target.blessed !== !!source.blessed || !!target.cursed !== !!source.cursed) return false;
     if ((target.spe ?? 0) !== (source.spe ?? 0)) return false;
+    if ((target.oeaten ?? 0) !== (source.oeaten ?? 0) || (target.orotten ?? 0) !== (source.orotten ?? 0)) return false;
     if ((target.obroken ?? false) !== (source.obroken ?? false)) return false;
     if ((target.lamplit ?? false) !== (source.lamplit ?? false)) return false;
     if ((target.odiluted ?? false) !== (source.odiluted ?? false)) return false;
@@ -16566,6 +16839,11 @@ function pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid
     if ((target.gemDescription ?? null) !== (source.gemDescription ?? null)) return false;
     if ((target.actualKind || target.kind || '') !== (source.actualKind || source.kind || '')
         && pickupMergeName(target) !== pickupMergeName(source)) return false;
+    if ((isOrdinaryFoodRationObject(target) || isOrdinaryFoodRationObject(source))
+        && (!isOrdinaryFoodRationObject(target)
+            || !isOrdinaryFoodRationObject(source)
+            || !objectInstanceNamesMergeCompatible(target, source)))
+        return false;
     if (isCandleObject(source) && Math.trunc((target.age || 0) / 25) !== Math.trunc((source.age || 0) / 25))
         return false;
     return true;
@@ -16587,14 +16865,24 @@ function findPickedObjectInventoryMergeTarget(source, sourcePrice = null) {
 
 function mergePickedObjectIntoInventory(source, target) {
     const pickedCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
-    target.quan = Math.max(1, Math.trunc(Number(target.quan || 1))) + pickedCount;
+    const targetCount = Math.max(1, Math.trunc(Number(target.quan || 1)));
+    if (isOrdinaryFoodRationObject(target) && isOrdinaryFoodRationObject(source)) {
+        const targetAge = Number.isFinite(Number(target.age)) ? Number(target.age) : 0;
+        const sourceAge = Number.isFinite(Number(source.age)) ? Number(source.age) : 0;
+        if (target.age != null || source.age != null)
+            target.age = Math.trunc(((targetAge * targetCount) + (sourceAge * pickedCount)) / (targetCount + pickedCount));
+        copyObjectInstanceNameForMerge(target, source);
+    }
+    target.quan = targetCount + pickedCount;
     if (source.plural && !target.plural) target.plural = source.plural;
     if (source.known !== target.known) target.known = true;
     if (source.bknown !== target.bknown && game._startup_role !== 'Priest') target.bknown = true;
     if (source.rknown !== target.rknown) target.rknown = true;
     target.line = normalInventoryLine({ ...target, line: '' });
     if (target.unpaid) syncUnpaidBillLine(target);
-    const pickedPhrase = pickupObjectPhrase({ ...source, line: '', quan: pickedCount });
+    const pickedPhrase = isOrdinaryFoodRationObject(target) && isOrdinaryFoodRationObject(source)
+        ? normalInventoryLine({ ...target, line: '', quan: pickedCount }).replace(/^[^ ]+ - /, '')
+        : pickupObjectPhrase({ ...source, line: '', quan: pickedCount });
     return `${target.letter} - ${pickedPhrase} (${target.quan} in total).`;
 }
 
@@ -18046,31 +18334,8 @@ function findFloorPickupInventoryMergeTargetForPreflight(source, sourcePrice = n
 }
 
 function findFloorPickupFoodMergeTargetForPreflight(source, sourcePrice = null) {
-    if (!(source?.otyp === FOOD_CLASS || source?.cls === 'food') || isEggItem(source)) return null;
-    const name = pickupObjectName({ ...source, quan: 1 });
-    const x = source?.ox ?? game.u?.ux;
-    const y = source?.oy ?? game.u?.uy;
-    const shkp = x == null || y == null ? null : shopkeeperForCostlySpot(x, y);
-    const price = sourcePrice != null ? Number(sourcePrice) : shopItemPrice(source, x, y);
-    const sourceBillable = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp);
-    const sourceCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
-    for (const target of game.inventory || []) {
-        if (target?.cls !== 'food' || target.worn || target.wielded || isEggItem(target)) continue;
-        if (pickupObjectName({ ...target, quan: 1 }) !== name) continue;
-        const entry = shopBillEntryForObject(shkp, target);
-        const targetUnpaid = !!(target.unpaid || entry);
-        if (!sourceBillable) {
-            if (!targetUnpaid) return target;
-            continue;
-        }
-        if (!targetUnpaid) continue;
-        if (!entry) continue;
-        const targetCount = Math.max(1, Math.trunc(Number(target.quan || 1)));
-        const existingTotal = shopBillEntryTotal(entry);
-        if (existingTotal > 0 && existingTotal * sourceCount === price * targetCount)
-            return target;
-    }
-    return null;
+    if (!isOrdinaryFoodRationObject(source)) return null;
+    return findFloorPickupInventoryMergeTargetForPreflight(source, sourcePrice);
 }
 
 async function floorPickupPreflight(obj, { shopPrice = null, prompt = true, scareSpecial = true } = {}) {
@@ -19137,6 +19402,16 @@ function erosionVerb(armor, action) {
     return armorVerb(armor, singular, plural);
 }
 
+function erosionAlterationVerb(action) {
+    return {
+        smoulder: 'burn',
+        rust: 'rust',
+        rot: 'rot',
+        corrode: 'tarnish',
+        crack: 'crack',
+    }[action] || action;
+}
+
 function erodeDestroyArmor(armor, messages) {
     const erosion = destroyArmorErosionType(armor);
     if (!erosion || armor.oerodeproof) return false;
@@ -19147,6 +19422,8 @@ function erodeDestroyArmor(armor, messages) {
     if (current < 3) {
         const adverb = current + 1 === 3 ? ' completely' : current ? ' further' : '';
         messages.push(`Your ${name} ${erosionVerb(armor, erosion.action)}${adverb}!`);
+        const payment = costlyAlterationPaymentMessage(armor, erosionAlterationVerb(erosion.action));
+        if (payment) messages.push(payment);
         const oldAc = wornArmorAcValueGreatestErosion(armor);
         armor[erosion.field] = current + 1;
         updateWornArmorAcAfterChange(armor, oldAc);
@@ -19156,6 +19433,8 @@ function erodeDestroyArmor(armor, messages) {
     messages.push(erosion.shatters
         ? `Your ${name} shatters!`
         : `Your ${name} ${erosionVerb(armor, erosion.action)} away!`);
+    const payment = costlyAlterationPaymentMessage(armor, erosionAlterationVerb(erosion.action));
+    if (payment) messages.push(payment);
     destroyWornArmorItem(armor);
     return 'destroyed';
 }
@@ -23944,18 +24223,140 @@ function shopPaymentMenuRows(entries, width) {
     return rows;
 }
 
+function shopPaymentTraditionalStyle() {
+    const style = game.flags?.menu_style ?? game.flags?.menustyle ?? game.flags?.menuStyle;
+    return style === 0 || String(style || '').toLowerCase() === 'traditional';
+}
+
+function shopPaymentMoreThanOne(entries) {
+    if ((entries || []).length > 1) return true;
+    const entry = entries?.[0];
+    return !!(entry?.containerPayment || entry?.billPortion === 'containerContents' || entry?.billPortion === 'partlyUsedUp');
+}
+
+function clearShopPaymentPromptState({ clearShopkeeper = true } = {}) {
+    game._pay_menu_items = null;
+    game._pay_menu_width = 0;
+    game._pay_itemized_index = 0;
+    game._pay_itemized_paid_entries = null;
+    game._pay_itemized_cash_total = 0;
+    game._pay_prepaid_message = '';
+    game._pay_prepaid_paid = false;
+    game._overlay_lines = null;
+    if (clearShopkeeper) game._pay_shopkeeper = null;
+}
+
+function shopPaymentThankYouMessage(shkp) {
+    const shopIndex = (shkp?.shoptype || 0) - SHOPBASE;
+    const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
+    const shopkeeperName = shkp?.shknam || 'shopkeeper';
+    const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
+    return `"Thank you for shopping in ${possessive} ${shopName}!"`;
+}
+
+function shopPaymentBoughtMessage(entries, cashTotal) {
+    const paidEntries = entries || [];
+    if (paidEntries.length === 1) {
+        const entry = paidEntries[0];
+        return `You bought ${entry.name} for ${entry.price} gold piece${entry.price === 1 ? '' : 's'}.`;
+    }
+    return `You bought ${paidEntries.length} items for ${cashTotal} gold pieces.`;
+}
+
+function shopPaymentItemizedQuestion(entry) {
+    const price = Math.max(0, Math.trunc(Number(entry?.price || 0)));
+    return `Pay for ${entry?.name || 'that item'} for ${price} zorkmid${price === 1 ? '' : 's'}? [yn]`;
+}
+
+function openShopPaymentMenu(shkp, entries, { prepaidMessage = '', prepaidPaid = false } = {}) {
+    const width = String(Math.max(...entries.map(entry => entry.price))).length;
+    const rows = shopPaymentMenuRows(entries, width);
+    game._pay_menu_items = entries;
+    game._pay_menu_width = width;
+    game._pay_shopkeeper = shkp;
+    game._pay_prepaid_message = prepaidMessage || '';
+    game._pay_prepaid_paid = !!prepaidPaid;
+    setOverlay(rows, Math.max(...rows.map(([row]) => row)) + 1, false, 41);
+    game._command_mode = 'payMenu';
+}
+
+async function finishShopPaymentCommandResult(shkp, payment, { prepaidMessage = '', prepaidPaid = false } = {}) {
+    if (!payment.paid) {
+        if (payment.skipped) return false;
+        const message = [prepaidMessage, payment.message || "You don't have enough gold."]
+            .filter(Boolean).join('  ');
+        await setMessage(message);
+        if (prepaidPaid) game.context.move = 1;
+        return false;
+    }
+    if (shkp?.shk) {
+        const home = shkp.shk;
+        const blockingPet = (game.level?.monsters || []).find(mon =>
+            mon.pet && Math.max(Math.abs(mon.mx - home.x), Math.abs(mon.my - home.y)) === 1
+            && (mon.mx === home.x || mon.my === home.y));
+        if (blockingPet) {
+            const stepDx = Math.sign((game.u?.ux ?? home.x) - home.x)
+                || Math.sign(blockingPet.mx - home.x) || -1;
+            const stepDy = Math.sign(blockingPet.my - home.y)
+                || Math.sign((game.u?.uy ?? home.y) - home.y) || 1;
+            shkp._paid_shopkeeper_step = { x: home.x + stepDx, y: home.y + stepDy };
+            blockingPet._paid_shopkeeper_pet_step = {
+                x: blockingPet.mx + Math.sign(blockingPet.mx - home.x),
+                y: blockingPet.my + Math.sign(blockingPet.my - home.y),
+            };
+        }
+    }
+    game._pet_food_scan_inventory = game.inventory;
+    game._queued_message_after_more = payment.stoppedShort
+        ? payment.message || "You don't have enough gold."
+        : shopPaymentThankYouMessage(shkp);
+    const message = [prepaidMessage, shopPaymentBoughtMessage(payment.payableEntries, payment.cashTotal)]
+        .filter(Boolean).join('  ');
+    await setMessage(message, true);
+    game.context.move = 1;
+    return true;
+}
+
+async function startShopPaymentItemizedFlow(shkp, entries, { prepaidMessage = '', prepaidPaid = false } = {}) {
+    game._pay_menu_items = entries;
+    game._pay_shopkeeper = shkp;
+    game._pay_prepaid_message = prepaidMessage || '';
+    game._pay_prepaid_paid = !!prepaidPaid;
+    game._pay_itemized_index = 0;
+    game._pay_itemized_paid_entries = [];
+    game._pay_itemized_cash_total = 0;
+    game._command_mode = 'payItemized';
+    await setMessage(shopPaymentItemizedQuestion(entries[0]));
+}
+
 function shopkeeperObjectivePronoun(shkp) {
     if (shkp?.female) return 'her';
     if (shkp?.neuter || shkp?.data?.neuter) return 'it';
     return 'him';
 }
 
+function shopkeeperSubjectPronoun(shkp) {
+    if (shkp?.female) return 'she';
+    if (shkp?.neuter || shkp?.data?.neuter) return 'it';
+    return 'he';
+}
+
 function shopkeeperRobbedAmount(shkp) {
     return Math.max(0, Math.trunc(Number(shkp?.robbed || 0)));
 }
 
+const SHOPKEEPER_APPEASEMENT_GOLD = 1000;
+
 function hasRobbedOnlyShopPayment(shkp, entries = []) {
     if (!shkp || shopkeeperRobbedAmount(shkp) <= 0 || entries.length) return false;
+    const ledgerCount = Array.isArray(shkp.bill) ? shkp.bill.length : 0;
+    const billCount = Math.max(ledgerCount, Math.max(0, Math.trunc(Number(shkp.billct || 0))));
+    const debit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
+    return billCount === 0 && debit === 0;
+}
+
+function hasAngryUnrobbedShopPayment(shkp, entries = []) {
+    if (!shkp || entries.length || shopkeeperRobbedAmount(shkp) > 0 || !shopkeeperAngryForSellobj(shkp)) return false;
     const ledgerCount = Array.isArray(shkp.bill) ? shkp.bill.length : 0;
     const billCount = Math.max(ledgerCount, Math.max(0, Math.trunc(Number(shkp.billct || 0))));
     const debit = Math.max(0, Math.trunc(Number(shkp.debit || 0)));
@@ -23969,7 +24370,7 @@ function finishRobbedOnlyShopPayment(shkp, { resident = null } = {}) {
     const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
     const availableGold = Math.max(0, Math.trunc(Number(game._goldCount || money?.quan || 0)));
     const name = shopkeeperDisplayName(shkp);
-    const isResident = !resident || sameShopkeeper(shkp, resident);
+    const isResident = !!resident && sameShopkeeper(shkp, resident);
     const isAngry = shopkeeperAngryForSellobj(shkp);
     const messages = [];
 
@@ -23987,11 +24388,11 @@ function finishRobbedOnlyShopPayment(shkp, { resident = null } = {}) {
             updateMoneyLine(money);
         }
         if (availableGold > robbed)
-            messages.push(`You give ${name} the ${robbed} gold piece${robbed === 1 ? '' : 's'} ${shopkeeperObjectivePronoun(shkp)} asked for.`);
+            messages.push(`You give ${name} the ${robbed} gold piece${robbed === 1 ? '' : 's'} ${shopkeeperSubjectPronoun(shkp)} asked for.`);
         else
             messages.push(`You give ${name} all your gold.`);
         if (availableGold < Math.trunc(robbed / 2)) {
-            messages.push(`Unfortunately, ${shopkeeperObjectivePronoun(shkp)} doesn't look satisfied.`);
+            messages.push(`Unfortunately, ${shopkeeperSubjectPronoun(shkp)} doesn't look satisfied.`);
         } else {
             shkp.robbed = 0;
             shkp.following = 0;
@@ -24049,6 +24450,121 @@ function finishRobbedOnlyShopPayment(shkp, { resident = null } = {}) {
         robbedOnly: true,
         message: messages.join('  '),
     };
+}
+
+function finishAngryUnrobbedShopPayment(shkp) {
+    if (!shkp) return { handled: false, paid: false, cashTotal: 0, message: '' };
+
+    const money = (game.inventory || []).find(item => item.letter === '$' || item.cls === 'coin');
+    const availableGold = Math.max(0, Math.trunc(Number(game._goldCount || money?.quan || 0)));
+    const name = shopkeeperDisplayName(shkp);
+    const messages = [`${name} is after your hide, not your gold!`];
+
+    if (availableGold < SHOPKEEPER_APPEASEMENT_GOLD) {
+        messages.push(availableGold
+            ? `Besides, you don't have enough to interest ${shopkeeperObjectivePronoun(shkp)}.`
+            : 'Moreover, you have no gold.');
+        return { handled: true, paid: false, cashTotal: 0, message: messages.join('  ') };
+    }
+
+    const targetName = payCanSpotMonster(shkp) ? `the angry ${name}` : name;
+    messages.push(`You try to appease ${targetName} by giving ${shopkeeperObjectivePronoun(shkp)} ${SHOPKEEPER_APPEASEMENT_GOLD} gold pieces.`);
+    const payment = applyShopPaymentValue(shkp, SHOPKEEPER_APPEASEMENT_GOLD);
+    if (payment.coveredByCredit >= SHOPKEEPER_APPEASEMENT_GOLD) {
+        messages.push('The price is deducted from your credit.');
+    } else {
+        if (payment.coveredByCredit > 0)
+            messages.push('The price is partially covered by your credit.');
+        if (availableGold > payment.cashDue) next_ident();
+        game._goldCount = Math.max(0, availableGold - payment.cashDue);
+        if (money) {
+            money.quan = game._goldCount;
+            updateMoneyLine(money);
+        }
+    }
+
+    const customer = String(shkp.customer || '');
+    const player = String(game.plname || '');
+    const stillAngry = !!customer && !!player && customer === player && !rn2(3);
+    if (stillAngry) {
+        messages.push(`But ${name} is as angry as ever.`);
+    } else {
+        shkp.robbed = 0;
+        shkp.following = 0;
+        shkp.angry = false;
+        shkp.hostile = false;
+        shkp.mpeaceful = 1;
+        messages.push(`${name} calms down.`);
+    }
+
+    return {
+        handled: true,
+        paid: true,
+        cashTotal: payment.cashDue,
+        compensationValue: SHOPKEEPER_APPEASEMENT_GOLD,
+        angryUnrobbed: true,
+        message: messages.join('  '),
+    };
+}
+
+async function finishPayCommandForShopkeeper(shkp, resident, { requestMenu = false } = {}) {
+    game._pay_prepaid_message = '';
+    game._pay_prepaid_paid = false;
+    const debitPayment = finishShopDebitPayment(shkp);
+    if (debitPayment.blocked) {
+        game._command_mode = null;
+        await setMessage(debitPayment.message || "You don't have enough gold.");
+        game.context.move = 1;
+        return;
+    }
+    const entries = collectPayableShopDebts(shkp);
+    if (!debitPayment.paid && hasAngryUnrobbedShopPayment(shkp, entries)) {
+        const payment = finishAngryUnrobbedShopPayment(shkp);
+        game._command_mode = null;
+        await setMessage(payment.message || "You don't have enough gold.");
+        game.context.move = 1;
+        return;
+    }
+    if (!debitPayment.paid && hasRobbedOnlyShopPayment(shkp, entries)) {
+        const payment = finishRobbedOnlyShopPayment(shkp, { resident });
+        game._command_mode = null;
+        await setMessage(payment.message || "You don't have enough gold.");
+        game.context.move = 1;
+        return;
+    }
+    if (!entries.length) {
+        await setMessage(debitPayment.message || `You do not owe ${shkp.shknam || 'the shopkeeper'} anything.`);
+        if (debitPayment.paid) game.context.move = 1;
+        return;
+    }
+    const preMenuBlockMessage = shopPaymentPreMenuBlockMessage(shkp, entries, { paidBefore: debitPayment.paid });
+    if (preMenuBlockMessage) {
+        await setMessage([debitPayment.message, preMenuBlockMessage].filter(Boolean).join('  '));
+        if (debitPayment.paid) game.context.move = 1;
+        return;
+    }
+    let viaMenu = !shopPaymentTraditionalStyle();
+    if (requestMenu) viaMenu = !viaMenu;
+    if (viaMenu) {
+        openShopPaymentMenu(shkp, entries, {
+            prepaidMessage: debitPayment.message || '',
+            prepaidPaid: !!debitPayment.paid,
+        });
+        return;
+    }
+    game._pay_menu_items = entries;
+    game._pay_shopkeeper = shkp;
+    game._pay_prepaid_message = debitPayment.message || '';
+    game._pay_prepaid_paid = !!debitPayment.paid;
+    if (!shopPaymentMoreThanOne(entries)) {
+        await startShopPaymentItemizedFlow(shkp, entries, {
+            prepaidMessage: debitPayment.message || '',
+            prepaidPaid: !!debitPayment.paid,
+        });
+        return;
+    }
+    game._command_mode = 'payItemizedPrompt';
+    await setMessage('Itemized billing? [ynq m] (q)');
 }
 
 function pickupMenuEntries(objects) {
@@ -30657,17 +31173,209 @@ export async function rhack(_cmd) {
         return;
     }
 
+    if (game._command_mode === 'payWhomCursor') {
+        if (ch === '\x1b') {
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            clearPayWhomCursor();
+            return;
+        }
+        if (ch === '@') {
+            game._pay_getpos_cycle_indexes = {};
+            game._farlook_x = game.u?.ux || 0;
+            game._farlook_y = game.u?.uy || 0;
+            game._cursor_override = [(game._farlook_x || 1) - 1, (game._farlook_y || 0) + 1];
+            await setMessage(payWhomTargetDescription(game._farlook_x, game._farlook_y));
+            return;
+        }
+        if (ch === 'm' || ch === 'M') {
+            const target = cyclePayWhomCursor('monsters', ch === 'M');
+            await setMessage(payWhomTargetDescription(target.x, target.y));
+            return;
+        }
+        if (ch === 'o' || ch === 'O') {
+            const target = cyclePayWhomCursor('objects', ch === 'O');
+            await setMessage(payWhomTargetDescription(target.x, target.y));
+            return;
+        }
+        const pickTarget = ch === '.' || ch === ',' || ch === ';' || ch === ':'
+            || ch === ' ' || ch === '\r' || ch === '\n';
+        if (pickTarget) {
+            const targetX = game._farlook_x || game.u?.ux || 0;
+            const targetY = game._farlook_y || game.u?.uy || 0;
+            const resident = game._pay_whom_resident || null;
+            const requestMenu = !!game._pay_request_menu;
+            const target = validatePayWhomTarget(targetX, targetY, resident);
+            game._pending_message = '';
+            game._message_more = 0;
+            game._command_mode = null;
+            clearPayWhomCursor();
+            if (!target.shkp) {
+                await setMessage(target.message || 'There is no one there to receive your payment.');
+                return;
+            }
+            await finishPayCommandForShopkeeper(target.shkp, resident, { requestMenu });
+            return;
+        }
+        const dir = movementDirection(ch);
+        if (dir) {
+            const steps = ch !== ch.toLowerCase() ? 8 : 1;
+            const cursor = truncateCursorToMap(
+                game._farlook_x || game.u?.ux || 0,
+                game._farlook_y || game.u?.uy || 0,
+                dir.dx * steps,
+                dir.dy * steps,
+            );
+            game._farlook_x = cursor.x;
+            game._farlook_y = cursor.y;
+            game._cursor_override = [cursor.x - 1, cursor.y + 1];
+            await setMessage(payWhomTargetDescription(cursor.x, cursor.y));
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'payItemizedPrompt') {
+        const entries = game._pay_menu_items || [];
+        const shkp = game._pay_shopkeeper;
+        const prepaidMessage = game._pay_prepaid_message || '';
+        const prepaidPaid = !!game._pay_prepaid_paid;
+        const answer = ch === '\x1b' ? 'q' : ch.toLowerCase();
+        if (answer === 'q') {
+            clearShopPaymentPromptState();
+            game._pending_message = '';
+            game._message_more = 0;
+            game._keep_pending_message = 0;
+            game._command_mode = null;
+            if (prepaidPaid) {
+                await setMessage(prepaidMessage);
+                game.context.move = 1;
+            }
+            return;
+        }
+        if (answer === 'm') {
+            openShopPaymentMenu(shkp, entries, { prepaidMessage, prepaidPaid });
+            return;
+        }
+        if (answer === 'n') {
+            clearShopPaymentPromptState({ clearShopkeeper: false });
+            game._command_mode = null;
+            const payment = finishShopPaymentSelection(shkp, entries);
+            game._pay_shopkeeper = null;
+            await finishShopPaymentCommandResult(shkp, payment, { prepaidMessage, prepaidPaid });
+            return;
+        }
+        if (answer === 'y') {
+            await startShopPaymentItemizedFlow(shkp, entries, { prepaidMessage, prepaidPaid });
+            return;
+        }
+        game._keep_pending_message = 1;
+        return;
+    }
+
+    if (game._command_mode === 'payItemized') {
+        const entries = game._pay_menu_items || [];
+        const shkp = game._pay_shopkeeper;
+        const prepaidMessage = game._pay_prepaid_message || '';
+        const prepaidPaid = !!game._pay_prepaid_paid;
+        const answer = ch === '\x1b' ? 'n' : ch.toLowerCase();
+        if (answer !== 'y' && answer !== 'n') {
+            game._keep_pending_message = 1;
+            return;
+        }
+
+        const index = Math.max(0, Math.trunc(Number(game._pay_itemized_index || 0)));
+        const entry = entries[index];
+        if (!entry) {
+            const paidEntries = game._pay_itemized_paid_entries || [];
+            const cashTotal = Math.max(0, Math.trunc(Number(game._pay_itemized_cash_total || 0)));
+            clearShopPaymentPromptState({ clearShopkeeper: false });
+            game._command_mode = null;
+            game._pay_shopkeeper = null;
+            if (paidEntries.length) {
+                await finishShopPaymentCommandResult(shkp, {
+                    paid: true,
+                    cashTotal,
+                    payableEntries: paidEntries,
+                }, { prepaidMessage, prepaidPaid });
+            } else if (prepaidPaid) {
+                await setMessage(prepaidMessage);
+                game.context.move = 1;
+            } else {
+                game._pending_message = '';
+                game._keep_pending_message = 0;
+            }
+            return;
+        }
+
+        if (answer === 'y') {
+            const payment = finishShopPaymentSelection(shkp, [entry]);
+            if (!payment.paid) {
+                const paidEntries = game._pay_itemized_paid_entries || [];
+                const cashTotal = Math.max(0, Math.trunc(Number(game._pay_itemized_cash_total || 0)));
+                clearShopPaymentPromptState({ clearShopkeeper: false });
+                game._command_mode = null;
+                game._pay_shopkeeper = null;
+                if (paidEntries.length) {
+                    await finishShopPaymentCommandResult(shkp, {
+                        paid: true,
+                        stoppedShort: true,
+                        cashTotal,
+                        payableEntries: paidEntries,
+                        message: payment.message || "You don't have enough gold.",
+                    }, { prepaidMessage, prepaidPaid });
+                } else {
+                    const message = [prepaidMessage, payment.message || "You don't have enough gold."]
+                        .filter(Boolean).join('  ');
+                    await setMessage(message);
+                    if (prepaidPaid) game.context.move = 1;
+                }
+                return;
+            }
+            game._pay_itemized_paid_entries = [
+                ...(game._pay_itemized_paid_entries || []),
+                ...(payment.payableEntries || []),
+            ];
+            game._pay_itemized_cash_total = Math.max(0, Math.trunc(Number(game._pay_itemized_cash_total || 0)))
+                + Math.max(0, Math.trunc(Number(payment.cashTotal || 0)));
+        }
+
+        const nextIndex = index + 1;
+        game._pay_itemized_index = nextIndex;
+        if (nextIndex < entries.length) {
+            await setMessage(shopPaymentItemizedQuestion(entries[nextIndex]));
+            return;
+        }
+
+        const paidEntries = game._pay_itemized_paid_entries || [];
+        const cashTotal = Math.max(0, Math.trunc(Number(game._pay_itemized_cash_total || 0)));
+        clearShopPaymentPromptState({ clearShopkeeper: false });
+        game._command_mode = null;
+        game._pay_shopkeeper = null;
+        if (paidEntries.length) {
+            await finishShopPaymentCommandResult(shkp, {
+                paid: true,
+                cashTotal,
+                payableEntries: paidEntries,
+            }, { prepaidMessage, prepaidPaid });
+        } else if (prepaidPaid) {
+            await setMessage(prepaidMessage);
+            game.context.move = 1;
+        } else {
+            game._pending_message = '';
+            game._keep_pending_message = 0;
+        }
+        return;
+    }
+
     if (game._command_mode === 'payMenu') {
         const entries = game._pay_menu_items || [];
         const prepaidMessage = game._pay_prepaid_message || '';
         const prepaidPaid = !!game._pay_prepaid_paid;
         if (ch === '\x1b') {
-            game._pay_menu_items = null;
-            game._pay_menu_width = 0;
-            game._pay_shopkeeper = null;
-            game._pay_prepaid_message = '';
-            game._pay_prepaid_paid = false;
-            game._overlay_lines = null;
+            clearShopPaymentPromptState();
             game._command_mode = null;
             if (prepaidPaid) {
                 await setMessage(prepaidMessage);
@@ -30677,12 +31385,8 @@ export async function rhack(_cmd) {
         }
         if (ch === '\r' || ch === '\n') {
             const selected = entries.filter(entry => entry.selected);
-            game._pay_menu_items = null;
-            game._pay_menu_width = 0;
-            game._overlay_lines = null;
+            clearShopPaymentPromptState({ clearShopkeeper: false });
             game._command_mode = null;
-            game._pay_prepaid_message = '';
-            game._pay_prepaid_paid = false;
             if (!selected.length) {
                 game._pay_shopkeeper = null;
                 if (prepaidPaid) {
@@ -30694,49 +31398,8 @@ export async function rhack(_cmd) {
 
             const shkp = game._pay_shopkeeper;
             const payment = finishShopPaymentSelection(shkp, selected);
-            if (!payment.paid) {
-                game._pay_shopkeeper = null;
-                if (payment.skipped) return;
-                const message = [prepaidMessage, payment.message || "You don't have enough gold."]
-                    .filter(Boolean).join('  ');
-                await setMessage(message);
-                if (prepaidPaid) game.context.move = 1;
-                return;
-            }
-            if (shkp?.shk) {
-                const home = shkp.shk;
-                const blockingPet = (game.level?.monsters || []).find(mon =>
-                    mon.pet && Math.max(Math.abs(mon.mx - home.x), Math.abs(mon.my - home.y)) === 1
-                    && (mon.mx === home.x || mon.my === home.y));
-                if (blockingPet) {
-                    const stepDx = Math.sign((game.u?.ux ?? home.x) - home.x)
-                        || Math.sign(blockingPet.mx - home.x) || -1;
-                    const stepDy = Math.sign(blockingPet.my - home.y)
-                        || Math.sign((game.u?.uy ?? home.y) - home.y) || 1;
-                    shkp._paid_shopkeeper_step = { x: home.x + stepDx, y: home.y + stepDy };
-                    blockingPet._paid_shopkeeper_pet_step = {
-                        x: blockingPet.mx + Math.sign(blockingPet.mx - home.x),
-                        y: blockingPet.my + Math.sign(blockingPet.my - home.y),
-                    };
-                }
-            }
             game._pay_shopkeeper = null;
-            game._pet_food_scan_inventory = game.inventory;
-
-            const shopIndex = (shkp?.shoptype || 0) - SHOPBASE;
-            const shopName = SHOP_TYPES[shopIndex]?.name || 'shop';
-            const shopkeeperName = shkp?.shknam || 'shopkeeper';
-            const possessive = shopkeeperName.endsWith('s') ? `${shopkeeperName}'` : `${shopkeeperName}'s`;
-            game._queued_message_after_more = payment.stoppedShort
-                ? payment.message || "You don't have enough gold."
-                : `"Thank you for shopping in ${possessive} ${shopName}!"`;
-            const paidEntries = payment.payableEntries;
-            const boughtMessage = paidEntries.length === 1
-                ? `You bought ${paidEntries[0].name} for ${paidEntries[0].price} gold piece${paidEntries[0].price === 1 ? '' : 's'}.`
-                : `You bought ${paidEntries.length} items for ${payment.cashTotal} gold pieces.`;
-            const message = [prepaidMessage, boughtMessage].filter(Boolean).join('  ');
-            await setMessage(message, true);
-            game.context.move = 1;
+            await finishShopPaymentCommandResult(shkp, payment, { prepaidMessage, prepaidPaid });
             return;
         }
 
@@ -44507,32 +45170,11 @@ export async function rhack(_cmd) {
                 : liftedPriceInfo?.itemPrice ?? shopItemPrice(pickupObj);
             const amount = pickupObjectPhrase(pickupObj);
             const name = pickupObjectName({ ...pickupObj, quan: 1 });
-            let existingFood = (pickupObj.otyp === FOOD_CLASS || pickupObj.cls === 'food')
-                && (game.inventory || []).find(item =>
-                    item.cls === 'food' && !item.worn && !item.wielded
-                    && !(isEggItem(item) || isEggItem(pickupObj))
-                    && pickupObjectName({ ...item, quan: 1 }) === name);
-            if (existingFood && !mergePickedObjectIntoShopBill(pickupObj, existingFood, liftedShopPrice).canMerge)
-                existingFood = null;
-            if (existingFood) {
-                const pickedKnown = pickupObj.bknown === true;
-                const carriedKnown = existingFood.bknown !== false;
-                const learnedByComparing = pickedKnown !== carriedKnown;
-                const pickedCount = pickupObj.quan || 1;
-                existingFood.quan = (existingFood.quan || 1) + pickedCount;
-                if (pickupObj.plural && !existingFood.plural) existingFood.plural = pickupObj.plural;
-                if (learnedByComparing) existingFood.bknown = true;
-                const buc = existingFood.bknown === false
-                    ? ''
-                    : existingFood.blessed ? 'blessed ' : existingFood.cursed ? 'cursed ' : 'uncursed ';
-                const totalName = pickupObjectName(existingFood);
-                existingFood.line = `${existingFood.letter} - ${existingFood.quan} ${buc}${totalName}`;
-                if (existingFood.unpaid) syncUnpaidBillLine(existingFood);
-                const pickedName = pickupObjectName({ ...existingFood, quan: pickedCount });
-                const pickedPhrase = pickedCount > 1
-                    ? `${pickedCount} ${buc}${pickedName}`
-                    : `${/^[aeiou]/i.test(`${buc}${pickedName}`) ? 'an' : 'a'} ${buc}${pickedName}`;
-                const pickupMessage = `${existingFood.letter} - ${pickedPhrase} (${existingFood.quan} in total).`;
+            const mergeTarget = findPickedObjectInventoryMergeTarget(pickupObj, liftedShopPrice);
+            if (mergeTarget) {
+                const learnedByComparing = isOrdinaryFoodRationObject(pickupObj)
+                    && (pickupObj.bknown === true) !== (mergeTarget.target.bknown !== false);
+                const pickupMessage = mergePickedObjectIntoInventory(pickupObj, mergeTarget.target);
                 game._pet_food_scan_inventory = game.inventory;
                 objectIceEffect(pickupObj, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
                 game.level.objects = (game.level.objects || []).filter(obj => obj !== pickupObj);
@@ -44542,17 +45184,6 @@ export async function rhack(_cmd) {
                     game._queued_message_after_more = pickupMessages.join('  ');
                     await setMessage('You learn more about your items by comparing them.', true);
                 } else await setMessage(pickupMessages.join('  '));
-                game.context.move = 1;
-                return;
-            }
-            const mergeTarget = findPickedObjectInventoryMergeTarget(pickupObj, liftedShopPrice);
-            if (mergeTarget) {
-                const pickupMessage = mergePickedObjectIntoInventory(pickupObj, mergeTarget.target);
-                game._pet_food_scan_inventory = game.inventory;
-                objectIceEffect(pickupObj, game.u?.ux || 0, game.u?.uy || 0, { onLevel: false });
-                game.level.objects = (game.level.objects || []).filter(obj => obj !== pickupObj);
-                newsym(game.u?.ux || 0, game.u?.uy || 0);
-                await setMessage([...preflightMessages, pickupMessage].join('  '));
                 game.context.move = 1;
                 return;
             }
@@ -44819,66 +45450,16 @@ export async function rhack(_cmd) {
     }
 
     if (ch === 'p') {
-        const ux = game.u?.ux || 0;
-        const uy = game.u?.uy || 0;
-        const shopkeepers = (game.level?.monsters || []).filter(mon => mon.isshk);
-        const adjacent = shopkeepers.filter(mon => Math.max(Math.abs(mon.mx - ux), Math.abs(mon.my - uy)) <= 1);
-        const uniqueAdjacent = adjacent.length === 1 ? adjacent[0] : null;
-        if (game.u?.blind && !uniqueAdjacent) {
-            await setMessage("You can't see...");
+        const target = resolvePayShopkeeperFromScan(scanPayShopkeepers());
+        if (target.needsPayWhomPrompt) {
+            await startPayWhomCursor(target.resident, { requestMenu: requestMenuPrefix });
             return;
         }
-        const loc = game.level?.at(ux, uy);
-        const roomno = loc?.roomno || 0;
-        const room = levelRoomByRoomno(roomno);
-        const resident = room?.resident || shopkeepers.find(mon => mon.shoproom === roomno);
-        const shkp = uniqueAdjacent || resident || null;
-        if (!shkp && shopkeepers.length === 1) {
-            await setMessage(`${shopkeeperDisplayName(shopkeepers[0])} is not near enough to receive your payment.`);
+        if (!target.selected) {
+            await setMessage(target.message || 'There appears to be no shopkeeper here to receive your payment.');
             return;
         }
-        if (!shkp) {
-            await setMessage('There appears to be no shopkeeper here to receive your payment.');
-            return;
-        }
-
-        game._pay_prepaid_message = '';
-        game._pay_prepaid_paid = false;
-        const debitPayment = finishShopDebitPayment(shkp);
-        if (debitPayment.blocked) {
-            game._command_mode = null;
-            await setMessage(debitPayment.message || "You don't have enough gold.");
-            game.context.move = 1;
-            return;
-        }
-        const entries = collectPayableShopDebts(shkp);
-        if (!debitPayment.paid && hasRobbedOnlyShopPayment(shkp, entries)) {
-            const payment = finishRobbedOnlyShopPayment(shkp, { resident });
-            game._command_mode = null;
-            await setMessage(payment.message || "You don't have enough gold.");
-            game.context.move = 1;
-            return;
-        }
-        if (!entries.length) {
-            await setMessage(debitPayment.message || `You do not owe ${shkp.shknam || 'the shopkeeper'} anything.`);
-            if (debitPayment.paid) game.context.move = 1;
-            return;
-        }
-        const preMenuBlockMessage = shopPaymentPreMenuBlockMessage(shkp, entries, { paidBefore: debitPayment.paid });
-        if (preMenuBlockMessage) {
-            await setMessage([debitPayment.message, preMenuBlockMessage].filter(Boolean).join('  '));
-            if (debitPayment.paid) game.context.move = 1;
-            return;
-        }
-        const width = String(Math.max(...entries.map(entry => entry.price))).length;
-        const rows = shopPaymentMenuRows(entries, width);
-        game._pay_menu_items = entries;
-        game._pay_menu_width = width;
-        game._pay_shopkeeper = shkp;
-        game._pay_prepaid_message = debitPayment.message || '';
-        game._pay_prepaid_paid = !!debitPayment.paid;
-        setOverlay(rows, Math.max(...rows.map(([row]) => row)) + 1, false, 41);
-        game._command_mode = 'payMenu';
+        await finishPayCommandForShopkeeper(target.selected, target.resident, { requestMenu: requestMenuPrefix });
         return;
     }
 

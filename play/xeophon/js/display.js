@@ -1394,6 +1394,7 @@ function drawGrid() {
             cursorSet = true;
         } else if (game._command_mode === 'farlookCursor'
                    || game._command_mode === 'jumpCursor'
+                   || game._command_mode === 'payWhomCursor'
                    || game._command_mode === 'teleportCursor') {
             d.setCursor((game._farlook_x || game.u?.ux || 1) - 1, (game._farlook_y || game.u?.uy || 0) + 1);
             cursorSet = true;
