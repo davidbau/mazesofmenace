@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -9785,11 +9785,17 @@ function wizardTrapWishMatch(lowerName) {
     return null;
 }
 
-async function tryWizardNonObjectWish(lowerName) {
-    if (!game.flags?.debug) return false;
-    const trapWish = wizardTrapWishMatch(lowerName);
-    if (!trapWish) return false;
+function heroTerrainCell() {
+    const x = game.u?.ux || 0;
+    const y = game.u?.uy || 0;
+    return { x, y, loc: game.level?.at?.(x, y) };
+}
 
+function normalizeWizardTerrainWishName(lowerName) {
+    return String(lowerName || '').trim().replace(/\s+/g, ' ');
+}
+
+async function createWizardTrapWishResult(trapWish) {
     const x = game.u?.ux || 0;
     const y = game.u?.uy || 0;
     let trapType = trapWish.trapType;
@@ -9807,6 +9813,95 @@ async function tryWizardNonObjectWish(lowerName) {
         await setWishResultMessage(`Creation of ${articleForName(trapWish.trapName)} failed.`);
     }
     return true;
+}
+
+async function createWizardFurnitureWishResult(terrainWish) {
+    const { x, y, loc } = heroTerrainCell();
+    if (!loc) return false;
+    game.level.flags ??= {};
+    const oldTyp = loc.typ;
+    loc.doormask = 0;
+    loc.wall_info = 0;
+    loc.horizontal = false;
+    if (terrainWish.typ === FOUNTAIN) {
+        loc.typ = FOUNTAIN;
+        loc.flags = terrainWish.looted ? F_LOOTED : 0;
+        loc.fountainLooted = !!terrainWish.looted;
+        loc.fountainWarned = false;
+        loc.blessedftn = terrainWish.blessed ? 1 : 0;
+        if (oldTyp !== FOUNTAIN) game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
+        if (oldTyp === SINK && game.level.flags.nsinks) game.level.flags.nsinks--;
+        newsym(x, y);
+        await setWishResultMessage(`A ${loc.blessedftn ? 'magic ' : ''}fountain.`);
+        return true;
+    }
+    if (terrainWish.typ === THRONE) {
+        loc.typ = THRONE;
+        loc.flags = terrainWish.looted ? T_LOOTED : 0;
+        loc.blessedftn = 0;
+        loc.fountainLooted = false;
+        loc.fountainWarned = false;
+        if (oldTyp === FOUNTAIN && game.level.flags.nfountains) game.level.flags.nfountains--;
+        if (oldTyp === SINK && game.level.flags.nsinks) game.level.flags.nsinks--;
+        newsym(x, y);
+        await setWishResultMessage('A throne.');
+        return true;
+    }
+    if (terrainWish.typ === SINK) {
+        loc.typ = SINK;
+        loc.flags = terrainWish.looted ? (S_LPUDDING | S_LDWASHER | S_LRING) : 0;
+        loc.blessedftn = 0;
+        loc.fountainLooted = false;
+        loc.fountainWarned = false;
+        if (oldTyp !== SINK) game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
+        if (oldTyp === FOUNTAIN && game.level.flags.nfountains) game.level.flags.nfountains--;
+        newsym(x, y);
+        await setWishResultMessage('A sink.');
+        return true;
+    }
+    return false;
+}
+
+function wizardFurnitureWishMatch(lowerName, qualifiers = {}) {
+    if (!game.flags?.debug) return null;
+    let name = normalizeWizardTerrainWishName(lowerName);
+    if (/(?:fountains|thrones|sinks)$/.test(name)) name = name.slice(0, -1);
+    const looted = !!qualifiers.looted;
+    if (name.endsWith('fountain')) {
+        const prefix = name.slice(0, -'fountain'.length).trim();
+        return { typ: FOUNTAIN, blessed: prefix === 'magic' || !!qualifiers.blessed, looted };
+    }
+    if (name.endsWith('throne')) {
+        return { typ: THRONE, looted };
+    }
+    if (name.endsWith('sink')) {
+        return { typ: SINK, looted };
+    }
+    return null;
+}
+
+function wizardBearLandTrapWish(lowerName, qualifiers = {}) {
+    if (!game.flags?.debug) return null;
+    const name = normalizeWizardTerrainWishName(lowerName);
+    const match = name.match(/^(bear\s*trap|land\s*mine)(.*)$/);
+    if (!match) return null;
+    const isBear = match[1].startsWith('bear');
+    const suffix = match[2] || '';
+    const objectName = isBear ? 'beartrap' : 'land mine';
+    if (qualifiers.trappedState === 2 || suffix.toLowerCase() === ' object')
+        return { result: 'object', objectName };
+    if (qualifiers.trappedState === 1 || suffix)
+        return { result: 'trap', trapName: isBear ? 'bear trap' : 'land mine', trapType: isBear ? BEAR_TRAP : LANDMINE };
+    return { result: 'object', objectName };
+}
+
+async function tryWizardNonObjectWish(lowerName, qualifiers = {}) {
+    if (!game.flags?.debug) return false;
+    const trapWish = wizardTrapWishMatch(lowerName);
+    if (trapWish) return createWizardTrapWishResult(trapWish);
+    const terrainWish = wizardFurnitureWishMatch(lowerName, qualifiers);
+    if (terrainWish) return createWizardFurnitureWishResult(terrainWish);
+    return false;
 }
 
 function capWishSpe(spe) {
@@ -41220,6 +41315,8 @@ export async function rhack(_cmd) {
                 wishChargeSuffix: false,
                 wishChargeSpe: 0,
                 wishRecharged: 0,
+                blessed: false,
+                looted: false,
             };
             let wishedErosionIntensity = 0;
             for (;;) {
@@ -41229,6 +41326,7 @@ export async function rhack(_cmd) {
                     wishedBlessed = state === 'blessed' || state === 'holy';
                     wishedUncursed = state === 'uncursed';
                     wishedCursed = state === 'cursed' || state === 'unholy';
+                    wishedQualifiers.blessed = wishedBlessed;
                     wishedName = wishedName.slice(buc[0].length);
                     continue;
                 }
@@ -41256,6 +41354,12 @@ export async function rhack(_cmd) {
                     const state = trapped[1].toLowerCase();
                     wishedQualifiers.trappedState = state === 'untrapped' ? 2 : game.flags?.debug ? 1 : 0;
                     wishedName = wishedName.slice(trapped[0].length);
+                    continue;
+                }
+                const looted = wishedName.match(/^(?:looted|disturbed)\s+/i);
+                if (looted) {
+                    wishedQualifiers.looted = true;
+                    wishedName = wishedName.slice(looted[0].length);
                     continue;
                 }
                 const lockState = wishedName.match(WISH_LOCK_QUALIFIER_RE);
@@ -41416,9 +41520,17 @@ export async function rhack(_cmd) {
                 await setWishResultMessage(`$ - ${moneyQuan} gold piece${moneyQuan === 1 ? '' : 's'}.`);
                 return;
             }
-            const wishedItem = wishedObjectFromName(wishedName.trim(), wishedQualifiers);
+            const bearLandResolution = wizardBearLandTrapWish(lowerName, wishedQualifiers);
+            if (bearLandResolution?.result === 'trap') {
+                await createWizardTrapWishResult(bearLandResolution);
+                return;
+            }
+            const objectWishName = bearLandResolution?.result === 'object'
+                ? bearLandResolution.objectName
+                : wishedName.trim();
+            const wishedItem = wishedObjectFromName(objectWishName, wishedQualifiers);
             if (wishedItem._wish_no_match) {
-                if (await tryWizardNonObjectWish(lowerName)) return;
+                if (await tryWizardNonObjectWish(lowerName, wishedQualifiers)) return;
                 await handleNoFittingWish();
                 return;
             }
