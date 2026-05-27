@@ -136,6 +136,7 @@ const STATUE = 472;
 const SPBOOK_no_NOVEL = 11;
 const EGG = 10001;
 const TIN = 10004;
+const MEAT_RING = 10164;
 const GLOB_OF_GRAY_OOZE = 10180;
 const GLOB_OF_BROWN_PUDDING = 10181;
 const GLOB_OF_GREEN_SLIME = 10182;
@@ -4742,12 +4743,144 @@ function curse(otmp) {
 function uncurse(otmp) { if (otmp) otmp.cursed = false; }
 function delete_contents(otmp) { if (otmp) otmp.contents = []; }
 function weight(otmp) { return otmp?.owt || 1; }
+function objectKindKey(obj) {
+    return String(obj?.actualKind || obj?.kind || '').toLowerCase().trim();
+}
+function objectInstanceNameKey(obj) {
+    return String(obj?._wish_object_name || obj?.oname || obj?.oextra?.oname || '').trim();
+}
+function copyObjectInstanceNameForMerge(target, source) {
+    if (objectInstanceNameKey(target)) return;
+    const sourceName = objectInstanceNameKey(source);
+    if (!sourceName) return;
+    target.oname = sourceName;
+    target._wish_object_name = sourceName;
+}
+function isCorpseMergeObject(obj) {
+    return obj?.otyp === CORPSE || obj?.otyp === 'corpse' || /\bcorpse$/.test(objectKindKey(obj));
+}
+function isEggMergeObject(obj) {
+    return obj?.otyp === EGG || objectKindKey(obj) === 'egg';
+}
+function isTinMergeObject(obj) {
+    const kind = objectKindKey(obj);
+    return obj?.otyp === TIN || kind === 'tin' || kind === 'empty tin' || kind.startsWith('tin:');
+}
+function isSpecialFoodMergeObject(obj) {
+    return isCorpseMergeObject(obj) || isEggMergeObject(obj) || isTinMergeObject(obj);
+}
+function isFoodMergeObject(obj) {
+    return isSpecialFoodMergeObject(obj) || obj?.otyp === FOOD_CLASS || SPECIFIC_FOOD_INFO.has(obj?.otyp)
+        || obj?.cls === 'food' || obj?.glyph === '%';
+}
+function isCandleMergeObject(obj) {
+    return obj?.otyp === WAX_CANDLE || obj?.otyp === TALLOW_CANDLE || /\bcandle$/.test(objectKindKey(obj));
+}
+function objectHowLostKey(obj) {
+    return obj?.how_lost ?? 0;
+}
+function objectMergeableByCMetadata(obj) {
+    if (!obj) return false;
+    if (obj.ocMerge === false) return false;
+    const otyp = obj.otyp;
+    if (otyp === GOLD_PIECE || otyp === COIN_CLASS || obj.cls === 'coin') return true;
+    if (isFoodMergeObject(obj)) return true;
+    if (otyp === POTION_CLASS || obj.cls === 'potion') return true;
+    if (otyp === SCROLL_CLASS || obj.cls === 'scroll') return true;
+    if (otyp === ROCK || otyp === GEM_CLASS || otyp === RUBY || otyp === TOUCHSTONE || obj.cls === 'gem' || obj.cls === 'rock') return true;
+    if (isCandleMergeObject(obj)) return true;
+    if (otyp >= 230 && otyp < 300) return true;
+    if (['arrow', 'bolt', 'dart', 'dagger', 'knife', 'spear', 'javelin', 'shuriken', 'boomerang'].some(name => objectKindKey(obj).includes(name)))
+        return true;
+    return false;
+}
+function stackMonsterNameKey(obj) {
+    return String(obj?.corpsenm?.name || obj?.corpse?.name || '').toLowerCase();
+}
+function eggHasLocalHatchTimer(obj) {
+    return isEggMergeObject(obj) && obj?.eggHatchTurn != null;
+}
+function corpseIsReviverForMerge(obj) {
+    if (!isCorpseMergeObject(obj)) return false;
+    const name = stackMonsterNameKey(obj);
+    const glyph = obj?.corpsenm?.glyph || obj?.corpsenm?.mlet;
+    return !!(obj?.corpsenm?.rider || glyph === 'T' || name.includes('troll')
+        || name === 'death' || name === 'pestilence' || name === 'famine');
+}
+function sameStackCorpseEggTinFields(existing, otmp) {
+    const existingSpecial = isSpecialFoodMergeObject(existing);
+    const objSpecial = isSpecialFoodMergeObject(otmp);
+    if (!existingSpecial && !objSpecial) return true;
+    if (existingSpecial !== objSpecial) return false;
+    if (stackMonsterNameKey(existing) !== stackMonsterNameKey(otmp)) return false;
+    if ((isEggMergeObject(existing) || isEggMergeObject(otmp))
+        && (eggHasLocalHatchTimer(existing) || eggHasLocalHatchTimer(otmp)))
+        return false;
+    if (corpseIsReviverForMerge(existing) || corpseIsReviverForMerge(otmp)) return false;
+    return true;
+}
+function objectInstanceNamesMergeCompatible(existing, otmp) {
+    const existingName = objectInstanceNameKey(existing);
+    const objName = objectInstanceNameKey(otmp);
+    if (isCorpseMergeObject(existing) || isCorpseMergeObject(otmp))
+        return existingName === objName;
+    return !existingName || !objName || existingName === objName;
+}
+function hasAttachedMergeData(obj) {
+    return !!(obj?.omonst || obj?.omid || obj?.oextra?.omonst || obj?.oextra?.omid);
+}
+function clearMergedSourceTimers(obj) {
+    delete obj.eggHatchTurn;
+    delete obj._egg_hatch_seq;
+    delete obj._egg_hatch_consumed;
+    delete obj.rotAwayTurn;
+    delete obj.reviveTurn;
+    delete obj.zombifyTurn;
+    delete obj.figurineTransformTurn;
+    delete obj._figurine_transform_seq;
+}
+function mergeStackableObject(existing, otmp) {
+    const existingCount = Math.max(1, Math.trunc(Number(existing.quan || 1)));
+    const objCount = Math.max(1, Math.trunc(Number(otmp.quan || 1)));
+    if (!otmp.lamplit && (existing.age != null || otmp.age != null)) {
+        const existingAge = Number.isFinite(Number(existing.age)) ? Number(existing.age) : 0;
+        const objAge = Number.isFinite(Number(otmp.age)) ? Number(otmp.age) : 0;
+        existing.age = Math.trunc(((existingAge * existingCount) + (objAge * objCount)) / (existingCount + objCount));
+    }
+    copyObjectInstanceNameForMerge(existing, otmp);
+    existing.quan = existingCount + objCount;
+    clearMergedSourceTimers(otmp);
+}
 function sameStackableObject(existing, otmp) {
+    if (!existing || !otmp || existing === otmp) return false;
     if (existing.nomerge || otmp.nomerge) return false;
+    if (!objectMergeableByCMetadata(existing) || !objectMergeableByCMetadata(otmp)) return false;
+    if (objectHowLostKey(existing) === 'LOST_EXPLODING' || objectHowLostKey(otmp) === 'LOST_EXPLODING'
+        || objectHowLostKey(existing) === 4 || objectHowLostKey(otmp) === 4)
+        return false;
+    if (objectHowLostKey(existing) && objectHowLostKey(existing) !== 'LOST_NONE' && objectHowLostKey(existing) !== objectHowLostKey(otmp))
+        return false;
+    if (existing.otyp === MEAT_RING || otmp.otyp === MEAT_RING
+        || objectKindKey(existing) === 'meat ring' || objectKindKey(otmp) === 'meat ring')
+        return false;
     if (!!existing.unpaid !== !!otmp.unpaid || !!existing.no_charge !== !!otmp.no_charge) return false;
     if (existing.unpaid || otmp.unpaid) return false;
-    const sameCorpse = otmp.otyp !== CORPSE && otmp.otyp !== EGG && otmp.otyp !== TIN
-        || existing.corpsenm?.name === otmp.corpsenm?.name;
+    if ((existing.obroken ?? false) !== (otmp.obroken ?? false)) return false;
+    if ((existing.otrapped ?? false) !== (otmp.otrapped ?? false)) return false;
+    if ((existing.lamplit ?? false) !== (otmp.lamplit ?? false)) return false;
+    if (isCandleMergeObject(existing) && Math.trunc((existing.age || 0) / 25) !== Math.trunc((otmp.age || 0) / 25))
+        return false;
+    if (existing.otyp === POT_OIL && existing.lamplit) return false;
+    if ((existing.oeroded ?? 0) !== (otmp.oeroded ?? 0) || (existing.oeroded2 ?? 0) !== (otmp.oeroded2 ?? 0)) return false;
+    if ((existing.greased ?? false) !== (otmp.greased ?? false)) return false;
+    if ((existing.oerodeproof ?? false) !== (otmp.oerodeproof ?? false)) return false;
+    if (isFoodMergeObject(existing) || isFoodMergeObject(otmp)) {
+        if ((existing.oeaten ?? 0) !== (otmp.oeaten ?? 0) || (existing.orotten ?? 0) !== (otmp.orotten ?? 0))
+            return false;
+    }
+    if (!sameStackCorpseEggTinFields(existing, otmp)) return false;
+    if (!objectInstanceNamesMergeCompatible(existing, otmp)) return false;
+    if (hasAttachedMergeData(existing) || hasAttachedMergeData(otmp)) return false;
     return existing.otyp === otmp.otyp
         && existing.cursed === otmp.cursed
         && existing.blessed === otmp.blessed
@@ -4756,8 +4889,7 @@ function sameStackableObject(existing, otmp) {
         && existing.scrollIndex === otmp.scrollIndex
         && existing.potionIndex === otmp.potionIndex
         && existing.spellbookIndex === otmp.spellbookIndex
-        && existing.gemDescription === otmp.gemDescription
-        && sameCorpse;
+        && existing.gemDescription === otmp.gemDescription;
 }
 export function add_to_container(container, otmp) {
     if (!container || !otmp) return null;
@@ -4771,7 +4903,7 @@ export function add_to_container(container, otmp) {
         }
         if (globTypeForObject(existing) || globTypeForObject(otmp)) continue;
         if (!sameStackableObject(existing, otmp)) continue;
-        existing.quan = (existing.quan || 1) + (otmp.quan || 1);
+        mergeStackableObject(existing, otmp);
         existing.contained = true;
         existing.container = container;
         return existing;
@@ -4785,10 +4917,18 @@ export function add_to_minv(mon, otmp) {
     if (!mon || !otmp) return null;
     mon.minvent ??= [];
     for (const existing of mon.minvent) {
-        if (!globsCanMeld(existing, otmp)) continue;
-        absorbGlobObject(existing, otmp);
+        if (globsCanMeld(existing, otmp)) {
+            absorbGlobObject(existing, otmp);
+            existing.ocarry = mon;
+            return existing;
+        }
+        if (globTypeForObject(existing) || globTypeForObject(otmp)) continue;
+        if (!sameStackableObject(existing, otmp)) continue;
+        mergeStackableObject(existing, otmp);
+        existing.ocarry = mon;
         return existing;
     }
+    otmp.ocarry = mon;
     mon.minvent = [otmp, ...mon.minvent];
     return otmp;
 }
@@ -4805,7 +4945,7 @@ function stack_floor_object(otmp) {
     for (const existing of game.level.objects || []) {
         if (existing === otmp || existing.ox !== otmp.ox || existing.oy !== otmp.oy) continue;
         if (!sameStackableObject(existing, otmp)) continue;
-        existing.quan = (existing.quan || 1) + (otmp.quan || 1);
+        mergeStackableObject(existing, otmp);
         const idx = game.level.objects.indexOf(otmp);
         if (idx >= 0) game.level.objects.splice(idx, 1);
         return existing;

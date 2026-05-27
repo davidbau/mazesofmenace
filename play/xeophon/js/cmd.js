@@ -28,6 +28,7 @@ import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
 import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
+import { eggHasHatchTimer, eggSpeciesGenocidedForHatching, killDeadSpeciesEggHatchTimers } from './egg_timers.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -15194,7 +15195,9 @@ function genocideMonsterType(data, messages, { killPlayer = false, cause = 'scro
     markMonsterGenocided(name);
     game._chronicle_genocide_count = (game._chronicle_genocide_count || 0) + 1;
     messages.push(`Wiped out all ${pluralizeMonsterName(name)}.`);
+    killDeadSpeciesEggHatchTimers(game);
     killGenocidedMonsters();
+    killDeadSpeciesEggHatchTimers(game);
     if (killPlayer) finishHeroGenocide(messages, cause);
 }
 
@@ -16834,6 +16837,17 @@ function shopkeeperDisplayName(shkp) {
 
 const SHOP_BILL_LIMIT = 200;
 
+function shopBillEntryCount(shkp) {
+    if (!shkp) return 0;
+    if (Array.isArray(shkp.bill)) return shkp.bill.length;
+    const billct = Math.trunc(Number(shkp.billct || 0));
+    return Number.isFinite(billct) && billct > 0 ? billct : 0;
+}
+
+function shopBillIsFull(shkp) {
+    return shopBillEntryCount(shkp) >= SHOP_BILL_LIMIT;
+}
+
 function shopBillObjectId(obj) {
     if (!obj) return null;
     const id = obj.o_id ?? obj.id ?? obj._shopBillObjectId;
@@ -17456,14 +17470,7 @@ function containedShopGold(obj, seen = new Set()) {
 
 function addShopBillEntryOrMark(shkp, obj, totalPrice) {
     if (!shkp || !obj || shopBillableGold(obj) || !(totalPrice > 0)) return null;
-    const billEntry = addObjectToShopBill(shkp, obj, totalPrice);
-    if (!billEntry) {
-        obj.unpaid = true;
-        obj.unpaidPrice = totalPrice;
-        syncUnpaidBillLine(obj);
-        shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
-    }
-    return billEntry;
+    return addObjectToShopBill(shkp, obj, totalPrice);
 }
 
 function liveUnpaidBillOwnerOrClear(shkp, obj) {
@@ -17488,8 +17495,11 @@ function addContainedObjectsToShopBill(shkp, obj, x, y, seen = new Set()) {
         } else if (!child.no_charge) {
             const childPrice = shopItemPrice(child, x, y);
             if (childPrice > 0) {
-                billEntries.push(addShopBillEntryOrMark(shkp, child, childPrice));
-                price += childPrice;
+                const childEntry = addShopBillEntryOrMark(shkp, child, childPrice);
+                if (childEntry) {
+                    billEntries.push(childEntry);
+                    price += childPrice;
+                }
             }
         }
         const nested = addContainedObjectsToShopBill(shkp, child, x, y, seen);
@@ -17502,11 +17512,24 @@ function addContainedObjectsToShopBill(shkp, obj, x, y, seen = new Set()) {
 function addContainerAndContentsToShopBill(container, sourceObj, pickedItem, shkp, x, y) {
     let price = 0;
     let billEntry = null;
+    if (shopBillIsFull(shkp)) {
+        return {
+            shkp,
+            price: 0,
+            itemPrice: 0,
+            goldCharged: 0,
+            goldMessages: [],
+            billEntry: null,
+            billEntries: [],
+            free: true,
+            messages: ['You got that for free!'],
+        };
+    }
     if (!sourceObj.no_charge) {
         const topPrice = shopItemPrice(sourceObj, x, y);
         if (topPrice > 0) {
             billEntry = addShopBillEntryOrMark(shkp, pickedItem, topPrice);
-            price += topPrice;
+            if (billEntry) price += topPrice;
         }
     }
     const nested = addContainedObjectsToShopBill(shkp, sourceObj, x, y);
@@ -18222,12 +18245,7 @@ function addPickedObjectToShopBill(source, pickedItem) {
     const price = shopItemPrice(source, x, y);
     if (!(price > 0)) return { shkp, price: 0, billEntry: null };
     const billEntry = addObjectToShopBill(shkp, pickedItem, price);
-    if (!billEntry) {
-        pickedItem.unpaid = true;
-        pickedItem.unpaidPrice = price;
-        syncUnpaidBillLine(pickedItem);
-        shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
-    }
+    if (!billEntry) return { shkp, price: 0, billEntry: null, free: true, messages: ['You got that for free!'] };
     return { shkp, price, billEntry };
 }
 
@@ -18274,12 +18292,7 @@ function addContainerTakeoutObjectToShopBill(container, sourceObj, pickedItem = 
     const price = shopItemPrice(pickedItem, x, y);
     if (!(price > 0)) return { shkp, price: 0, billEntry: null };
     const billEntry = addObjectToShopBill(shkp, pickedItem, price);
-    if (!billEntry) {
-        pickedItem.unpaid = true;
-        pickedItem.unpaidPrice = price;
-        syncUnpaidBillLine(pickedItem);
-        shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
-    }
+    if (!billEntry) return { shkp, price: 0, billEntry: null, free: true, messages: ['You got that for free!'] };
     return { shkp, price, billEntry };
 }
 
@@ -18480,7 +18493,7 @@ function mergePickedObjectIntoShopBill(source, target, sourcePrice = null) {
     const y = source?.oy ?? game.u?.uy;
     const shkp = x == null || y == null ? null : shopkeeperForCostlySpot(x, y);
     const price = sourcePrice != null ? Number(sourcePrice) : shopItemPrice(source, x, y);
-    const sourceBillable = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp);
+    const sourceBillable = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp) && !shopBillIsFull(shkp);
     const existingEntry = shopBillEntryForObject(shkp, target);
     const targetUnpaid = !!(target?.unpaid || existingEntry);
 
@@ -18558,6 +18571,17 @@ function isSimpleMergeableFoodObject(obj) {
     return foodLike && !!kind;
 }
 
+function isSpecialFoodMergeObject(obj) {
+    return isCorpseItem(obj) || isEggItem(obj) || isTinObject(obj);
+}
+
+function specialFoodCanInventoryMerge(obj) {
+    if (!isSpecialFoodMergeObject(obj)) return false;
+    if (isEggItem(obj)) return !eggHasHatchTimer(obj);
+    if (isCorpseItem(obj)) return !corpseIsReviverForMerge(obj);
+    return true;
+}
+
 function objectInstanceNameKey(obj) {
     return String(obj?._wish_object_name || obj?.oname || obj?.oextra?.oname || '').trim();
 }
@@ -18566,6 +18590,25 @@ function objectInstanceNamesMergeCompatible(target, source) {
     const targetName = objectInstanceNameKey(target);
     const sourceName = objectInstanceNameKey(source);
     return !targetName || !sourceName || targetName === sourceName;
+}
+
+function specialFoodInstanceNamesMergeCompatible(target, source) {
+    const targetName = objectInstanceNameKey(target);
+    const sourceName = objectInstanceNameKey(source);
+    if (isCorpseItem(target) || isCorpseItem(source))
+        return targetName === sourceName;
+    return !targetName || !sourceName || targetName === sourceName;
+}
+
+function stackedObjectInstanceNamesMergeCompatible(target, source) {
+    if (isCorpseItem(target) || isCorpseItem(source))
+        return specialFoodInstanceNamesMergeCompatible(target, source);
+    return objectInstanceNamesMergeCompatible(target, source);
+}
+
+function copyStackedObjectInstanceNameForMerge(target, source) {
+    if (isCorpseItem(target) || isCorpseItem(source)) return;
+    copyObjectInstanceNameForMerge(target, source);
 }
 
 function copyObjectInstanceNameForMerge(target, source) {
@@ -18578,7 +18621,8 @@ function copyObjectInstanceNameForMerge(target, source) {
 
 function pickupObjectCanInventoryMerge(obj) {
     if (!obj || shopBillableGold(obj) || globContents(obj).length || isGlobbyObject(obj)) return false;
-    if (obj.otyp === CORPSE || obj.otyp === 'corpse' || obj.otyp === EGG || isTinObject(obj)) return false;
+    if (specialFoodCanInventoryMerge(obj)) return true;
+    if (isSpecialFoodMergeObject(obj)) return false;
     if (isSimpleMergeableFoodObject(obj)) return true;
     if (obj.cls === 'food' || obj.otyp === FOOD_CLASS) return false;
     const cls = shopObjectClassCode(obj);
@@ -18601,6 +18645,10 @@ function pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid
     if ((target.oeaten ?? 0) !== (source.oeaten ?? 0) || (target.orotten ?? 0) !== (source.orotten ?? 0)) return false;
     if ((target.obroken ?? false) !== (source.obroken ?? false)) return false;
     if ((target.lamplit ?? false) !== (source.lamplit ?? false)) return false;
+    if (!sameStackCorpseEggTinFields(target, source)) return false;
+    if ((isSpecialFoodMergeObject(target) || isSpecialFoodMergeObject(source))
+        && !specialFoodInstanceNamesMergeCompatible(target, source))
+        return false;
     if ((target.odiluted ?? false) !== (source.odiluted ?? false)) return false;
     if ((target.oeroded ?? 0) !== (source.oeroded ?? 0) || (target.oeroded2 ?? 0) !== (source.oeroded2 ?? 0)) return false;
     if ((target.greased ?? false) !== (source.greased ?? false)) return false;
@@ -18627,7 +18675,7 @@ function findPickedObjectInventoryMergeTarget(source, sourcePrice = null) {
     const y = source?.oy ?? game.u?.uy;
     const shkp = x == null || y == null ? null : shopkeeperForCostlySpot(x, y);
     const price = sourcePrice != null ? Number(sourcePrice) : shopItemPrice(source, x, y);
-    const sourceWillBeUnpaid = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp);
+    const sourceWillBeUnpaid = Number.isFinite(price) && price > 0 && shopkeeperInHisShop(shkp) && !shopBillIsFull(shkp);
     for (const target of game.inventory || []) {
         if (!pickedObjectInventoryMergeCompatible(target, source, sourceWillBeUnpaid, shkp)) continue;
         const billMerge = mergePickedObjectIntoShopBill(source, target, price);
@@ -18639,11 +18687,17 @@ function findPickedObjectInventoryMergeTarget(source, sourcePrice = null) {
 function mergePickedObjectIntoInventory(source, target) {
     const pickedCount = Math.max(1, Math.trunc(Number(source?.quan || 1)));
     const targetCount = Math.max(1, Math.trunc(Number(target.quan || 1)));
-    if (isSimpleMergeableFoodObject(target) && isSimpleMergeableFoodObject(source)) {
+    const ageAveragedMerge = (isSimpleMergeableFoodObject(target) && isSimpleMergeableFoodObject(source))
+        || (isSpecialFoodMergeObject(target) && isSpecialFoodMergeObject(source));
+    if (ageAveragedMerge) {
         const targetAge = Number.isFinite(Number(target.age)) ? Number(target.age) : 0;
         const sourceAge = Number.isFinite(Number(source.age)) ? Number(source.age) : 0;
         if (target.age != null || source.age != null)
             target.age = Math.trunc(((targetAge * targetCount) + (sourceAge * pickedCount)) / (targetCount + pickedCount));
+    }
+    if (isSimpleMergeableFoodObject(target) && isSimpleMergeableFoodObject(source)) {
+        copyObjectInstanceNameForMerge(target, source);
+    } else if (isSpecialFoodMergeObject(target) && isSpecialFoodMergeObject(source) && !isCorpseItem(target)) {
         copyObjectInstanceNameForMerge(target, source);
     }
     target.quan = targetCount + pickedCount;
@@ -18682,7 +18736,7 @@ function containerTakeoutMergeBilling(container, obj) {
     return {
         shkp,
         price,
-        sourceWillBeUnpaid: price > 0 && shopkeeperInHisShop(shkp),
+        sourceWillBeUnpaid: price > 0 && shopkeeperInHisShop(shkp) && !shopBillIsFull(shkp),
     };
 }
 
@@ -18724,7 +18778,9 @@ function mergeContainerTakeoutObjectIntoInventory(container, obj, mergeInfo) {
     }
     const line = mergePickedObjectIntoInventory(obj, target);
     maybeAttachCarriedFigurineTimeout(target);
-    return line;
+    return !billing.sourceWillBeUnpaid && billing.price > 0 && shopBillIsFull(billing.shkp)
+        ? `You got that for free!  ${line}`
+        : line;
 }
 
 function sellobjReturnUnpaidToShop(obj, x, y) {
@@ -20718,6 +20774,30 @@ function objectStackColor(obj) {
     return NO_COLOR;
 }
 
+function stackMonsterNameKey(obj) {
+    return String(obj?.corpsenm?.name || '').toLowerCase();
+}
+
+function corpseIsReviverForMerge(obj) {
+    if (!isCorpseItem(obj)) return false;
+    const name = stackMonsterNameKey(obj);
+    const glyph = obj?.corpsenm?.glyph || obj?.corpsenm?.mlet;
+    return !!(obj?.corpsenm?.rider || glyph === 'T' || name.includes('troll')
+        || name === 'death' || name === 'pestilence' || name === 'famine');
+}
+
+function sameStackCorpseEggTinFields(existing, obj) {
+    const existingSpecial = isCorpseItem(existing) || isEggItem(existing) || isTinObject(existing);
+    const objSpecial = isCorpseItem(obj) || isEggItem(obj) || isTinObject(obj);
+    if (!existingSpecial && !objSpecial) return true;
+    if (existingSpecial !== objSpecial) return false;
+    if (stackMonsterNameKey(existing) !== stackMonsterNameKey(obj)) return false;
+    if ((isEggItem(existing) || isEggItem(obj)) && (eggHasHatchTimer(existing) || eggHasHatchTimer(obj)))
+        return false;
+    if (corpseIsReviverForMerge(existing) || corpseIsReviverForMerge(obj)) return false;
+    return true;
+}
+
 function sameMonsterThrownStackObject(existing, obj) {
     if (!existing || !obj || existing === obj) return false;
     if (existing.hidden || existing.buried || existing.transientProjectile) return false;
@@ -20728,9 +20808,11 @@ function sameMonsterThrownStackObject(existing, obj) {
         && existing.cls === obj.cls
         && existing.kind === obj.kind
         && existing.actualKind === obj.actualKind
+        && sameStackCorpseEggTinFields(existing, obj)
         && existing.glyph === obj.glyph
         && objectStackColor(existing) === objectStackColor(obj)
         && (existing.spe || 0) === (obj.spe || 0)
+        && stackedObjectInstanceNamesMergeCompatible(existing, obj)
         && !!existing.blessed === !!obj.blessed
         && !!existing.cursed === !!obj.cursed
         && !!existing.opoisoned === !!obj.opoisoned
@@ -20746,6 +20828,7 @@ function stackMonsterThrownObject(obj) {
     const stack = (game.level?.objects || []).find(existing => sameMonsterThrownStackObject(existing, obj));
     if (!stack) return obj;
     mergeStackedShopBillEntries(stack, obj);
+    copyStackedObjectInstanceNameForMerge(stack, obj);
     stack.quan = (stack.quan || 1) + (obj.quan || 1);
     return stack;
 }
@@ -20765,6 +20848,7 @@ function stackDroppedFloorObject(obj) {
     const stack = objects.find(existing => existing !== obj && sameDroppedFloorStackObject(obj, existing));
     if (!stack) return obj;
     mergeStackedShopBillEntries(obj, stack);
+    copyStackedObjectInstanceNameForMerge(obj, stack);
     obj.quan = (obj.quan || 1) + (stack.quan || 1);
     stack.quan = 0;
     game.level.objects = objects.filter(existing => existing !== stack);
@@ -22793,7 +22877,7 @@ export function pickupObjectName(obj) {
     if (isBoulderObject(obj)) return named((obj.quan || 1) > 1 ? 'boulders' : 'boulder');
     if (obj.artifact) return artifactObjectName(obj) || obj.kind;
     if (obj.otyp === 'corpse' || obj.otyp === CORPSE) return corpseObjectName(obj);
-    if (obj.otyp === EGG) return named(eggObjectName(obj));
+    if (isEggItem(obj)) return named(eggObjectName(obj));
     if (obj.globby) return named(globObjectName(obj));
     if (isSlimeMoldObject(obj))
         return named(slimeMoldNameForObject(obj, (obj.quan || 1) > 1));
@@ -23833,11 +23917,12 @@ function addContainerTakeoutObjectToInventory(container, obj, options = {}) {
         kind: obj.kind || pickupObjectName({ ...obj, quan: 1 }),
     });
     obj.line = normalInventoryLine({ ...obj, line: '' });
-    addContainerTakeoutObjectToShopBill(container, billingSource, obj);
+    const billing = addContainerTakeoutObjectToShopBill(container, billingSource, obj);
     game.inventory = [...(game.inventory || []), obj];
     maybeAttachCarriedFigurineTimeout(obj);
     game._pet_food_scan_inventory = game.inventory;
-    return obj.line || `${letter} - ${pickupObjectPhrase(obj)}`;
+    const line = obj.line || `${letter} - ${pickupObjectPhrase(obj)}`;
+    return billing.messages?.length ? `${billing.messages.join('  ')}  ${line}` : line;
 }
 
 function splitContainerTakeoutObjectForLift(obj, count) {
@@ -24851,11 +24936,7 @@ function billHornCreatedObject(horn, obj, messages, { silent = false } = {}) {
     if (!shkp) return 0;
     const price = shopItemPrice(obj, game.u?.ux, game.u?.uy);
     if (!(price > 0)) return 0;
-    if (!addObjectToShopBill(shkp, obj, price)) {
-        obj.unpaid = true;
-        obj.unpaidPrice = price;
-        shkp.billct = Math.max(0, Math.trunc(Number(shkp.billct || 0))) + 1;
-    }
+    if (!addObjectToShopBill(shkp, obj, price)) return 0;
     if (!silent && !heroIsDeaf()) messages?.push(hornCreatedObjectBillMessage(obj, price));
     return price;
 }
@@ -26558,6 +26639,7 @@ function pickupListHandleObject(obj, preflight, state) {
     pickedItem.line = replaceShopPriceLineSuffix(pickedItem.line, unpaidSuffix);
     game.inventory = [...(game.inventory || []), pickedItem];
     maybeAttachCarriedFigurineTimeout(pickedItem);
+    if (billing.messages?.length) state.messages.push(...billing.messages);
     if (billedPrice > 0) state.messages.push(shopPickupQuoteMessage(pickupObj, billedPrice, priceInfo));
     if (billing.goldMessages?.length) state.messages.push(...billing.goldMessages);
     state.messages.push(`${letter} - ${amount}${unpaidSuffix}.`);
@@ -28032,6 +28114,7 @@ function royalJellyRubTargetLetters() {
 
 function royalJellyRubPrompt() {
     const letters = royalJellyRubTargetLetters();
+    if (!letters) return 'What do you want to rub the royal jelly on? [*]';
     return `What do you want to rub the royal jelly on? [${getobjPromptLetters(letters)} or ?*]`;
 }
 
@@ -28042,7 +28125,9 @@ function rubObjectLetters() {
 }
 
 function rubObjectPrompt() {
-    return `What do you want to rub? [${getobjPromptLetters(rubObjectLetters())} or ?*]`;
+    const letters = rubObjectLetters();
+    if (!letters) return 'What do you want to rub? [*]';
+    return `What do you want to rub? [${getobjPromptLetters(letters)} or ?*]`;
 }
 
 async function beginRoyalJellyRub(item) {
@@ -28082,16 +28167,19 @@ async function rubRoyalJellyOnEgg(jelly, egg) {
         else messages.push('Nothing seems to happen.');
         delete egg.eggHatchTurn;
         delete egg._egg_hatch_seq;
+        delete egg._egg_hatch_consumed;
     } else {
         const wasTimed = !!egg.eggHatchTurn;
-        if (egg.corpsenm?.name && !egg.eggHatchTurn) attachEggHatchTimer(egg);
-        if (jelly?.blessed && !egg.spe) egg.spe = 2;
+        if (egg.corpsenm?.name) {
+            if (!egg.eggHatchTurn) attachEggHatchTimer(egg);
+            if (jelly?.blessed && !egg.spe) egg.spe = 2;
+        }
         if ((egg.eggHatchTurn && !wasTimed) || egg.spe === 2 || changedType)
             messages.push(`The ${effectName} ${eggQuiverVerb(egg)} briefly.`);
         else messages.push('Nothing seems to happen.');
     }
 
-    consumeOneInventoryFood(jelly);
+    consumeOneInventoryFoodUsedUp(jelly);
     refreshInventoryObjectLine(egg);
     game._royal_jelly_rub_letter = '';
     game._pet_food_scan_inventory = game.inventory || [];
@@ -29522,6 +29610,29 @@ function consumeOneInventoryFood(item) {
     removeInventoryItem(item);
 }
 
+function consumeOneInventoryFoodUsedUp(item) {
+    if (!item) return false;
+    const rawQuantity = Math.trunc(Number(item.quan || 1));
+    const quantity = Number.isFinite(rawQuantity) ? Math.max(1, rawQuantity) : 1;
+    if (quantity <= 1) return useUpInventoryItem(item, 1);
+
+    const usedId = takePretouchedFoodId(item) ?? next_ident();
+    const used = { ...item, id: usedId, quan: 1, letter: undefined, line: '' };
+    delete used.o_id;
+    delete used._shopBillObjectId;
+    clearPretouchedFood(used);
+
+    if (item.unpaid && !splitCarriedObjectShopBill(item, used, 1))
+        clearObjectShopBillState(used);
+    item.quan = quantity - 1;
+    refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+    markObjectShopBillUsedUp(used);
+    updateWornDisplacement();
+    game._pet_food_scan_inventory = game.inventory;
+    return true;
+}
+
 function consumeOneEatenFood(item, floorObject = false) {
     if (floorObject) consumeOneFloorObject(item);
     else consumeOneInventoryFood(item);
@@ -29610,7 +29721,7 @@ function removeDeadbookRevivedItem(item, source) {
 
 function deadbookAttachEggHatchTimer(item) {
     if (!isEggItem(item) || !item.corpsenm?.name || item.eggHatchTurn) return false;
-    if ((game._genocided_monsters || []).includes(item.corpsenm.name)) return false;
+    if (eggSpeciesGenocidedForHatching(item, game)) return false;
     for (let i = 151; i <= 200; i++) {
         if (rnd(i) > 150) {
             item.eggHatchTurn = (game.moves || 1) + i;
@@ -42416,6 +42527,11 @@ export async function rhack(_cmd) {
     }
 
     if (game._command_mode === 'rubObject') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
         if (ch === '?' || ch === '*') {
             const rubItems = (game.inventory || []).filter(item => {
                 return isLampObject(item) || isRoyalJelly(item);
@@ -42432,10 +42548,6 @@ export async function rhack(_cmd) {
         }
         if (item && isLampObject(item)) {
             await rubLampObject(item);
-            return;
-        }
-        if (ch === '\x1b') {
-            game._command_mode = null;
             return;
         }
         await setMessage(rubObjectPrompt());
@@ -44511,8 +44623,13 @@ export async function rhack(_cmd) {
                 return;
             }
             if (command === 'rub') {
-                await setMessage(rubObjectPrompt());
-                game._command_mode = 'rubObject';
+                if (!rubObjectLetters()) {
+                    game._command_mode = null;
+                    await setMessage("You don't have anything to rub.");
+                } else {
+                    await setMessage(rubObjectPrompt());
+                    game._command_mode = 'rubObject';
+                }
                 return;
             }
             if (command === 'quit') {
@@ -47215,7 +47332,7 @@ export async function rhack(_cmd) {
                 return;
             }
             const pickupMessage = `${letter} - ${amount}${unpaidSuffix}.`;
-            const pickupMessages = [...preflightMessages, ...(billing.goldMessages || []), pickupMessage];
+            const pickupMessages = [...preflightMessages, ...(billing.messages || []), ...(billing.goldMessages || []), pickupMessage];
             await setMessage(pickupMessages.join('  '), !!pickupObj.wasStolen || pickupMessages.join('  ').length >= (game.nhDisplay?.cols || 80) - 8);
             game.context.move = 1;
             return;

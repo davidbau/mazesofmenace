@@ -20,6 +20,7 @@ import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject
 import { processBuriedOrganicRot, processMeltIceTimers, removedFromIcebox } from './ice.js';
 import { SLIME_MOLD_OTYP, applySlimeMoldFruitFields } from './fruit.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
+import { eggHatchMonsterData, eggHasHatchTimer, isEggObject, killEggHatchTimer } from './egg_timers.js';
 
 const ROLE_STATE = {
     Archeologist: { rank: 'Digger', hpBase: 11, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [7, 10, 10, 7, 7, 7], attrDist: [20, 20, 20, 10, 20, 10] },
@@ -3419,36 +3420,6 @@ async function processTinOpeningTurn() {
         await finishTinOpeningOccupation(result.finish);
 }
 
-const HATCHLING_BY_EGG_MONSTER = new Map([
-    ['cockatrice', 'chickatrice'],
-    ['gray dragon', 'baby gray dragon'],
-    ['gold dragon', 'baby gold dragon'],
-    ['silver dragon', 'baby silver dragon'],
-    ['red dragon', 'baby red dragon'],
-    ['white dragon', 'baby white dragon'],
-    ['orange dragon', 'baby orange dragon'],
-    ['black dragon', 'baby black dragon'],
-    ['blue dragon', 'baby blue dragon'],
-    ['green dragon', 'baby green dragon'],
-    ['yellow dragon', 'baby yellow dragon'],
-    ['red naga', 'red naga hatchling'],
-    ['black naga', 'black naga hatchling'],
-    ['golden naga', 'golden naga hatchling'],
-    ['guardian naga', 'guardian naga hatchling'],
-    ['crocodile', 'baby crocodile'],
-]);
-
-function isEggObject(obj) {
-    return obj?.otyp === EGG || String(obj?.kind || obj?.actualKind || '').toLowerCase() === 'egg';
-}
-
-function eggHatchMonsterData(egg) {
-    const name = egg?.corpsenm?.name || '';
-    if (!name || (game._genocided_monsters || []).includes(name)) return null;
-    const hatchName = HATCHLING_BY_EGG_MONSTER.get(name) || name;
-    return monsterByRndName(hatchName) || egg.corpsenm;
-}
-
 function eggObjectLocation(entry) {
     if (entry.source === 'inventory') return { x: game.u?.ux || 0, y: game.u?.uy || 0 };
     if (entry.source === 'minvent') return { x: entry.carrier?.mx || 0, y: entry.carrier?.my || 0 };
@@ -3531,16 +3502,16 @@ function reportEggHatch(entry, mon, hatchcount, x, y, yours) {
 function dueEggEntries(g) {
     const entries = [];
     for (const egg of [...(g.inventory || [])]) {
-        if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
             entries.push({ egg, source: 'inventory' });
     }
     for (const egg of [...(g.level?.objects || [])]) {
-        if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
             entries.push({ egg, source: 'floor' });
     }
     for (const carrier of [...(g.level?.monsters || [])]) {
         for (const egg of [...(carrier.minvent || [])]) {
-            if (isEggObject(egg) && egg.eggHatchTurn && egg.eggHatchTurn <= g.moves)
+            if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
                 entries.push({ egg, source: 'minvent', carrier });
         }
     }
@@ -3548,11 +3519,11 @@ function dueEggEntries(g) {
         || ((b.egg._egg_hatch_seq || 0) - (a.egg._egg_hatch_seq || 0)));
 }
 
-async function processEggHatchTimeouts(g) {
+export async function processEggHatchTimeouts(g = game) {
     for (const entry of dueEggEntries(g)) {
         const egg = entry.egg;
-        delete egg.eggHatchTurn;
-        const data = eggHatchMonsterData(egg);
+        killEggHatchTimer(egg);
+        const data = eggHatchMonsterData(egg, g);
         if (!data) continue;
 
         const yours = !!egg.spe || (entry.source === 'inventory' && !game.flags?.female && !rn2(2));
