@@ -76,7 +76,7 @@ will do our best to keep you alive.
 
 10. [The Art of Combat](#the-art-of-combat) — Hit probability, damage, and tactics
 11. [Things That Will Kill You](#things-that-will-kill-you) — Top-ten killers, common deaths, mimics, dragons
-12. [More Ways to Die](#more-ways-to-die) — Instadeaths and how to recognize them
+12. [Ways to Die Instantly](#ways-to-die-instantly) — Instadeaths and how to recognize them
 13. [Divine Relations](#divine-relations) — Prayer, sacrifice, and altars
 14. [Making Friends](#making-friends) — Pets, taming, and peaceful coexistence
 
@@ -96,30 +96,32 @@ will do our best to keep you alive.
 
 24. [Spellcasting](#spellcasting) — Magic for the studious adventurer
 25. [Luck and Fortune](#luck-and-fortune) — The hidden numbers that shape your fate
-26. [Enhancing Skills](#enhancing-skills) — Mastering specific styles of combat and magic
-27. [Wishes and Wishing](#wishes-and-wishing) — Getting what you want
-28. [Artifacts](#artifacts) — Legendary equipment and how to obtain it
+26. [Exercising Your Stats](#exercising-your-stats) — Habits that slowly drift Str, Dex, Con, and Wis
+27. [Enhancing Skills](#enhancing-skills) — Mastering specific styles of combat and magic
+28. [Wishes and Wishing](#wishes-and-wishing) — Getting what you want
+29. [Artifacts](#artifacts) — Legendary equipment and how to obtain it
 
 **Part Six: The Deep Dungeon**
 
-29. [The Castle](#the-castle) — The gateway to Gehennom
-30. [Gehennom](#gehennom) — A travel advisory
-31. [The Ascension Kit](#the-ascension-kit) — What the winners actually carry
-32. [The Ascension Run](#the-ascension-run) — Getting back out alive
-33. [The Elemental Planes](#the-elemental-planes) — The final gauntlet
+30. [The Castle](#the-castle) — The gateway to Gehennom
+31. [Gehennom](#gehennom) — A travel advisory
+32. [The Ascension Kit](#the-ascension-kit) — Gear for the long climb
+33. [The Ascension Run](#the-ascension-run) — Getting back out alive
+34. [The Elemental Planes](#the-elemental-planes) — The final gauntlet
 
 **Appendices**
 
-34. [Advanced Controls](#advanced-controls) — Command counts, prefixes, and efficiency techniques
-35. [Sokoban Solutions](#sokoban-solutions) — All eight level variants, solved
-36. [Voluntary Challenges](#voluntary-challenges) — Conducts and self-imposed restrictions
-37. [Shopping and Shopkeeper Pricing](#shopping-and-shopkeeper-pricing) — Commerce in the dungeon
-38. [Weapons Tables](#weapons-tables)
-39. [Armor Tables](#armor-tables)
-40. [Spell Tables](#spell-tables)
-41. [Bestiary Tables](#bestiary-tables)
-42. [What Changed Since Last Time](#what-changed-since-last-time) — What's new in 5.0 vs 3.6.x, and what to do about it
-43. [Acknowledgements](#acknowledgements) — Standing on the shoulders of giants
+35. [Advanced Controls](#advanced-controls) — Command counts, prefixes, and efficiency techniques
+36. [Customization](#options-worth-knowing-about) — rcfile options worth knowing
+37. [Sokoban Solutions](#sokoban-solutions) — All eight level variants, solved
+38. [Voluntary Challenges](#voluntary-challenges) — Conducts and self-imposed restrictions
+39. [Shopping and Shopkeeper Pricing](#shopping-and-shopkeeper-pricing) — Commerce in the dungeon
+40. [Weapons Tables](#weapons-tables)
+41. [Armor Tables](#armor-tables)
+42. [Spell Tables](#spell-tables)
+43. [Bestiary Tables](#bestiary-tables)
+44. [What Changed Since Last Time](#what-changed-since-last-time) — What's new in 5.0 vs 3.6.x, and what to do about it
+45. [Acknowledgements](#acknowledgements) — Standing on the shoulders of giants
 
 
 ## Part One: Before You Set Out
@@ -204,7 +206,7 @@ solutions. *Alignment: Neutral or Chaotic.*
 **Cave Dweller.** You start primitive but tough, with a club, a
 sling, and a pile of flint stones for it. You gain speed by
 mid-game and your hit dice are generous. The Cave Dweller's
-simplicity is a virtue: fewer tools means fewer things to manage.
+simplicity is a virtue: fewer tools, fewer things to manage.
 *Alignment: Lawful or Neutral.*
 
 **Healer.** You begin with a stethoscope, four potions of healing
@@ -496,12 +498,12 @@ deal with them.
 
 #### The Golden Rules of Early Survival
 
-**Rule 1: Don't fight what you can't beat.** This sounds obvious, but
-it's the single most violated principle in the Mazes. If a monster is
+**Rule 1: Don't fight what you can't beat.** This sounds obvious,
+but it's easy to forget once a fight is underway. If a monster is
 too tough for you, walk away. Use corridors as chokepoints. Funnel
-enemies so you fight them one at a time. If you stumble into a room
-full of monsters, step back into the corridor and force them to come
-to you in single file.
+enemies so you fight them one at a time. If you stumble into a
+room full of monsters, step back into the corridor and force them
+to come to you in single file.
 
 ```
   Bad: fighting in the open       Good: corridor chokepoint
@@ -596,21 +598,19 @@ rather than dangerous, unless you're carrying a cockatrice corpse:
 the tumble counts as touching it, and stairs become the most
 literal instadeath in the game.
 
-**Caught in the open by a pack.** Jackals are the single most common
-cause of death on the public server. They bite for 1d2, but packs
-of four to seven spawn on the upper levels and surround you in
-open rooms. Killer bees, foxes, soldier ants, dwarves, and gnomes
-all kill in this same shape. Retreat to a doorway or corridor at
-the first sign of more than two attackers; they can only approach
-single-file there.
+**Caught in the open by a pack.** Jackals bite for only 1d2 each,
+but packs of four to seven spawn on the upper levels and surround
+you in open rooms. Killer bees, foxes, soldier ants, dwarves, and
+gnomes all kill in this same shape. Retreat to a doorway or
+corridor at the first sign of more than two attackers; they can
+only approach single-file there.
 
 **Pushing too quickly into the Mines.** The problem isn't depth,
 it's getting there too early. The deeper Mines below Minetown are
-crowded with armored dwarves and gnome rulers, second only to
-jackals as a public-server killer. If your gear and experience
-level aren't ready for armored melee fighters in packs, head back
-up to the main Dungeons of Doom branch and come back to the Mines
-later.
+crowded with armored dwarves and gnome rulers. If your gear and
+experience level aren't ready for armored melee fighters in packs,
+head back up to the main Dungeons of Doom branch and return to the
+Mines later.
 
 #### Supply Containers
 
@@ -702,27 +702,25 @@ follows shows the typical shape. Knowing where you are in this
 tree helps you know what's coming.
 
 The **Dungeons of Doom** form the upper half, roughly levels 1
-through 27. Along the way you'll find branches leading to the
-**Gnomish Mines** (luckstone, shops), **Sokoban** (a prize at the
-top), your **Quest** (your role's special dungeon), and optionally
-**Fort Ludios** (a vault full of gold). The main trunk ends at
-**The Castle**, which guards the entrance to Gehennom.
+through 27. Side branches lead to the **Gnomish Mines** (where
+you can find a *[luckstone](#luck-and-fortune)* and
+*[shops](#shopping-and-shopkeeper-pricing)*), **Sokoban** (a
+*[puzzle](#sokoban)* with a prize at the top), your
+[Quest dungeon](#the-quest), and sometimes **Fort Ludios** (a vault
+full of gold). The trunk ends at **The Castle**, the gateway to
+Gehennom.
 
-**Gehennom** is the lower half: maze levels, demon lords, and
-the ultimate objective: the **Amulet of Yendor** at the very
-bottom in Moloch's Sanctum. Once you have it, you climb all the
-way back up and pass through the **Elemental Planes** to reach
-the **Astral Plane**, where your god awaits your offering.
+**Gehennom** is the lower half: maze levels and demon lords,
+with the **Amulet of Yendor** at the bottom in Moloch's Sanctum.
+Once you have it, you climb back up through the **Elemental
+Planes** to the **Astral Plane**, where your god awaits your
+offering.
 
 <!-- DMAP-BEGIN -->
 <div><figure style="margin: 1.5em 0; text-align: center;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 611" role="img" aria-label="Dungeons of Doom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="55" x2="380" y2="611" stroke="#B5651D" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#B5651D"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">DUNGEONS OF DOOM</text><line x1="150" y1="140" x2="150" y2="246" stroke="#5B8E3A" stroke-width="2" fill="none"/><line x1="630" y1="166" x2="630" y2="194" stroke="#B58A1A" stroke-width="2" fill="none"/><line x1="630" y1="305" x2="630" y2="343" stroke="#3B6FA0" stroke-width="2" fill="none"/><rect x="290" y="55" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="72" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">The Dungeon Entrance</text><text x="380" y="89" font-size="12" font-style="italic" fill="#555" text-anchor="middle">up-stair to exit</text><rect x="60" y="108" width="180" height="32" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="129" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Gnomish Mines</text><rect x="60" y="168" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="185" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Minetown</text><text x="150" y="202" font-size="12" font-style="italic" fill="#555" text-anchor="middle">shops, temple</text><rect x="60" y="246" width="180" height="40" rx="6" fill="#E8F4DC" stroke="#5B8E3A" stroke-width="1.5"/><text x="150" y="263" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Mine's End</text><text x="150" y="280" font-size="12" font-style="italic" fill="#555" text-anchor="middle">luckstone</text><rect x="290" y="163" width="180" height="40" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="180" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">The Oracle</text><text x="380" y="197" font-size="12" font-style="italic" fill="#555" text-anchor="middle">paid hints</text><rect x="540" y="126" width="180" height="40" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="143" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban prize</text><text x="630" y="160" font-size="12" font-style="italic" fill="#555" text-anchor="middle">bag of holding/amulet of reflection</text><rect x="540" y="194" width="180" height="32" rx="6" fill="#FFF4CC" stroke="#B58A1A" stroke-width="1.5"/><text x="630" y="215" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Sokoban entry</text><rect x="290" y="269" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="290" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest portal</text><rect x="540" y="265" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="282" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest entry</text><text x="630" y="299" font-size="12" font-style="italic" fill="#555" text-anchor="middle">your role's dungeon</text><rect x="540" y="343" width="180" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="630" y="360" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle"><tspan>Q</tspan>uest goal</text><text x="630" y="377" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Bell of Opening, role artifact</text><rect x="290" y="329" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="350" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Big Room (40%)</text><rect x="290" y="389" width="180" height="32" rx="6" fill="#FAF3E0" stroke="#B5651D" stroke-width="1.5"/><text x="380" y="410" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Rogue Level</text><rect x="60" y="420" width="180" height="40" rx="6" fill="#FFD966" stroke="#B5891A" stroke-width="1.5"/><text x="150" y="437" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fort Ludios</text><text x="150" y="454" font-size="12" font-style="italic" fill="#555" text-anchor="middle">vault of gold</text><rect x="290" y="479" width="180" height="32" rx="6" fill="#B8D4F0" stroke="#2E5C8E" stroke-width="1.5"/><text x="380" y="500" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Medusa's Island</text><rect x="230" y="539" width="300" height="58" rx="8" fill="#FFFFFF" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="565" font-size="17" font-weight="600" fill="#1f2933" text-anchor="middle">THE CASTLE</text><text x="380" y="582" font-size="14" font-style="italic" fill="#7A5A0A" text-anchor="middle">wand of wishing</text><line x1="380" y1="124" x2="240" y2="124" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="210" x2="540" y2="210" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="470" y1="285" x2="540" y2="285" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><line x1="380" y1="440" x2="240" y2="440" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="120" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">down</text><text x="500" y="206" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><text x="505" y="281" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><text x="275" y="436" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portal</text><circle cx="380" cy="124" r="4" fill="#B5651D"/><circle cx="380" cy="210" r="4" fill="#B5651D"/><circle cx="380" cy="440" r="4" fill="#B5651D"/><circle cx="380" cy="104.0" r="4" fill="#B5651D"/><circle cx="380" cy="114.0" r="4" fill="#B5651D"/><circle cx="150" cy="149.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="159.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="217.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="227.0" r="4" fill="#5B8E3A"/><circle cx="150" cy="237.0" r="4" fill="#5B8E3A"/><circle cx="380" cy="134.0" r="4" fill="#B5651D"/><circle cx="380" cy="144.0" r="4" fill="#B5651D"/><circle cx="380" cy="154.0" r="4" fill="#B5651D"/><circle cx="630" cy="175.0" r="4" fill="#B58A1A"/><circle cx="630" cy="185.0" r="4" fill="#B58A1A"/><circle cx="380" cy="220.0" r="4" fill="#B5651D"/><circle cx="380" cy="230.0" r="4" fill="#B5651D"/><circle cx="380" cy="240.0" r="4" fill="#B5651D"/><circle cx="380" cy="250.0" r="4" fill="#B5651D"/><circle cx="380" cy="260.0" r="4" fill="#B5651D"/><circle cx="630" cy="314.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="324.0" r="4" fill="#3B6FA0"/><circle cx="630" cy="334.0" r="4" fill="#3B6FA0"/><circle cx="380" cy="310.0" r="4" fill="#B5651D"/><circle cx="380" cy="320.0" r="4" fill="#B5651D"/><circle cx="380" cy="370.0" r="4" fill="#B5651D"/><circle cx="380" cy="380.0" r="4" fill="#B5651D"/><circle cx="380" cy="430.0" r="4" fill="#B5651D"/><circle cx="380" cy="450.0" r="4" fill="#B5651D"/><circle cx="380" cy="460.0" r="4" fill="#B5651D"/><circle cx="380" cy="470.0" r="4" fill="#B5651D"/><circle cx="380" cy="520.0" r="4" fill="#B5651D"/><circle cx="380" cy="530.0" r="4" fill="#B5651D"/></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 681" role="img" aria-label="Gehennom map" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><line x1="380" y1="0" x2="380" y2="39" stroke="#B5651D" stroke-width="2.5" fill="none"/><line x1="380" y1="0" x2="380" y2="625" stroke="#A14A3F" stroke-width="2.5" fill="none"/><rect x="40" y="0" width="680" height="39" rx="4" fill="#A14A3F"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">GEHENNOM</text><line x1="150" y1="288" x2="150" y2="306" stroke="#6B4E96" stroke-width="2" fill="none"/><rect x="290" y="53" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="70" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Valley of the Dead</text><text x="380" y="87" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Gehennom's entrance</text><rect x="290" y="141" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="162" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Asmodeus's Lair</text><rect x="290" y="191" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="212" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Juiblex's Swamp</text><rect x="290" y="251" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="272" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Baalzebub's Lair</text><rect x="60" y="248" width="180" height="40" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="265" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad the Impaler</text><text x="150" y="282" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Candelabrum</text><rect x="60" y="306" width="180" height="32" rx="6" fill="#E3D8F0" stroke="#6B4E96" stroke-width="1.5"/><text x="150" y="327" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Vlad's Tower</text><rect x="290" y="351" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="368" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Orcus Town</text><text x="380" y="385" font-size="12" font-style="italic" fill="#555" text-anchor="middle">Wand of Orcus · magic lamp/marker</text><rect x="290" y="419" width="180" height="32" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="440" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard's Tower</text><rect x="290" y="469" width="180" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="380" y="486" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Wizard of Yendor</text><text x="380" y="503" font-size="12" font-style="italic" fill="#555" text-anchor="middle">★ Book of the Dead</text><rect x="230" y="567" width="300" height="58" rx="8" fill="#2D2D2D" stroke="#FFC857" stroke-width="2.5"/><text x="380" y="593" font-size="17" font-weight="600" fill="#FFC857" text-anchor="middle">Moloch's Sanctum</text><text x="380" y="610" font-size="14" font-style="italic" fill="#FFE680" text-anchor="middle">the Amulet of Yendor</text><line x1="380" y1="322" x2="240" y2="322" stroke="#5a5a5a" stroke-width="1.5" marker-end="url(#arr)" fill="none"/><text x="275" y="318" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">up</text><circle cx="380" cy="322" r="4" fill="#A14A3F"/><circle cx="380" cy="102.0" r="4" fill="#A14A3F"/><circle cx="380" cy="112.0" r="4" fill="#A14A3F"/><circle cx="380" cy="122.0" r="4" fill="#A14A3F"/><circle cx="380" cy="132.0" r="4" fill="#A14A3F"/><circle cx="380" cy="182.0" r="4" fill="#A14A3F"/><circle cx="380" cy="232.0" r="4" fill="#A14A3F"/><circle cx="380" cy="242.0" r="4" fill="#A14A3F"/><circle cx="380" cy="292.0" r="4" fill="#A14A3F"/><circle cx="380" cy="302.0" r="4" fill="#A14A3F"/><circle cx="380" cy="312.0" r="4" fill="#A14A3F"/><circle cx="150" cy="297.0" r="4" fill="#6B4E96"/><circle cx="380" cy="332.0" r="4" fill="#A14A3F"/><circle cx="380" cy="342.0" r="4" fill="#A14A3F"/><circle cx="380" cy="400.0" r="4" fill="#A14A3F"/><circle cx="380" cy="410.0" r="4" fill="#A14A3F"/><circle cx="380" cy="460.0" r="4" fill="#A14A3F"/><circle cx="380" cy="518.0" r="4" fill="#A14A3F"/><circle cx="380" cy="528.0" r="4" fill="#A14A3F"/><circle cx="380" cy="538.0" r="4" fill="#A14A3F"/><circle cx="380" cy="548.0" r="4" fill="#A14A3F"/><circle cx="380" cy="558.0" r="4" fill="#A14A3F"/><line x1="380" y1="631" x2="380" y2="681" stroke="#5B8E3A" stroke-width="2.5" stroke-dasharray="7,5" fill="none"/><text x="400" y="661" font-size="15" font-weight="600" font-style="italic" fill="#5B8E3A">now go <tspan style="font-weight:800;font-size:17px">ALL</tspan> the way back up...</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 299" role="img" aria-label="Elemental Planes and Ascension" style="display:block;margin:0 auto;max-width:760px;width:100%;height:auto;font-family:'EB Garamond','Garamond','Georgia',serif;font-feature-settings:'liga' 0, 'dlig' 0;"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/></marker></defs><rect x="40" y="0" width="680" height="39" rx="4" fill="#5D3C8E"/><text x="380" y="26" font-size="22" font-weight="600" fill="#fff" text-anchor="middle" letter-spacing="0.08em">THE ELEMENTAL PLANES</text><rect x="68" y="89" width="120" height="40" rx="6" fill="#E8DDC8" stroke="#8B6F47" stroke-width="1.5"/><text x="128" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Earth</text><rect x="236" y="89" width="120" height="40" rx="6" fill="#E0F4FA" stroke="#3B9FA8" stroke-width="1.5"/><text x="296" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Air</text><rect x="404" y="89" width="120" height="40" rx="6" fill="#FAD7C0" stroke="#A14A3F" stroke-width="1.5"/><text x="464" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Fire</text><rect x="572" y="89" width="120" height="40" rx="6" fill="#DDE9F5" stroke="#3B6FA0" stroke-width="1.5"/><text x="632" y="115" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Water</text><rect x="260" y="179" width="240" height="42" rx="6" fill="#D8C6F0" stroke="#5D3C8E" stroke-width="1.5"/><text x="380" y="197" font-size="15" font-weight="600" fill="#1f2933" text-anchor="middle">Astral Plane</text><text x="380" y="213" font-size="12" font-style="italic" fill="#555" text-anchor="middle">three altars · pick yours</text><rect x="230" y="239" width="300" height="50" rx="10" fill="#FFE680" stroke="#B5891A" stroke-width="2.5"/><text x="380" y="262" font-size="18" font-weight="700" fill="#7A5A0A" text-anchor="middle" letter-spacing="0.1em">ASCENSION</text><text x="380" y="281" font-size="11" font-style="italic" fill="#7A5A0A" text-anchor="middle">offer the Amulet at your altar</text><path d="M 380 39 C 380 53 128 53 128 67 L 128 89" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="188" y1="109" x2="236" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><text x="212" y="105" font-size="11" font-style="italic" fill="#5a5a5a" text-anchor="middle">portals</text><line x1="356" y1="109" x2="404" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="524" y1="109" x2="572" y2="109" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><path d="M 632 129 C 632 143 380 143 380 157 L 380 179" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/><line x1="380" y1="221" x2="380" y2="239" stroke="#5a5a5a" stroke-width="1.5" fill="none" marker-end="url(#arr)"/></svg><figcaption style="font-style: italic; color: #5a5a5a; font-size: 0.9em; margin-top: 0.5em;">Branches extend left and right of the main trunk. Pearls (small colored dots) indicate the approximate number of intervening dungeon levels. ★ marks the three Invocation items (Bell of Opening, Candelabrum, Book of the Dead) needed to enter Moloch's Sanctum and claim the Amulet.</figcaption></figure></div>
 <!-- DMAP-END -->
 
-The typical trip: go down through the Dungeons, detour into the
-Mines for a luckstone and Minetown's shops, clear Sokoban for a
-prize, do your Quest, reach the Castle, descend through Gehennom
-to get the Amulet, then climb all the way back up and through the
-Planes. Simple enough on paper. Surviving it is another matter.
+Simple enough on paper. Surviving it is another matter.
 
 #### The Map Symbols
 
@@ -802,10 +800,9 @@ won't be friendly about your attempts. The priest will also accept
 gold donations in exchange for clairvoyance or a permanent AC bonus
 — see [Donating to Priests](#donating-to-priests).
 
-**Throne rooms.** A room with a throne (`\`) and usually surrounded
-by monsters. Sitting on the throne has random effects, sometimes
-wonderful, sometimes terrible. See
-[Points of Interest](#points-of-interest).
+**Throne rooms.** A room with a [*throne* (`\`)](#thrones) and
+usually surrounded by monsters. Sitting on the throne has random
+effects, sometimes wonderful, sometimes terrible.
 
 **Zoos.** A room packed with sleeping monsters and gold. They wake
 **not** when you enter, but from the noise of you fighting the
@@ -827,8 +824,9 @@ them. Some have unusual *shapes*, and some have unusual
 
 - **Light source rooms.** They reliably contain a lit oil
   lamp. Free torch.
-- **Buried treasure.** The floor needs digging, but the haul is
-  worth it. A pick-axe earns its weight here.
+- **Buried treasure.** A burned engraving somewhere on the floor
+  reads *"Dig 3 east 2 south"* (or wherever) and points to a buried
+  chest plus 3–12 random items. A pick-axe earns its weight here.
 - **Massacre.** Floor strewn with adventurer-role corpses (rogue,
   ranger, valkyrie, etc.). Useful for sacrifice and for eating
   the safe ones for intrinsics if you know the role.
@@ -849,12 +847,6 @@ Themed rooms are mixed in with ordinary rooms; you can have
 several on a single level. They make the early dungeon less
 predictable in a friendly way: more terrain types to fight in,
 more item discovery, and the occasional educational ambush.
-
-**A room full of one kind of monster is almost certainly a themed
-room, not a coincidence.** Themed rooms have above-average monster
-density concentrated around a single type, so any room that looks
-curated deserves more respect than a random room of equivalent
-apparent difficulty. Pause, assess, and enter with a plan.
 
 ---
 
@@ -889,19 +881,19 @@ AC / attack details on every monster, see the
 | [`a`](#ants-and-insects-a)    | [Ants](#ants-and-insects-a)      | Soldier ants are a frequent early-game killer: speed 18, two attacks per turn (bite + strength-draining sting), and they travel in packs. A wandering soldier-ant group on Dlvl 4 can end a careless run. Killer bees, giant ants, fire ants are all the same shape of problem. |
 | [`b`](#blobs-b)    | [Blobs](#blobs-b)     | Acidic or gelatinous. Acid blobs have no active attack — they only splash 1d8 acid back when *you* hit *them*, and the splash can corrode your weapon. Kill at range. Eat for [resistances](#useful-corpse-effects). |
 | [`B`](#bats-and-birds-b)    | [Bats](#bats-and-birds-b)      | The `B` class is **deceptively dangerous because of speed**. Bats and giant bats clock in at speed 22 — nearly twice the player's base 12, so they get roughly two bites per one of your swings. Giant bats bite for 1d6 each; the math catches up fast. Vampire bats are still in the bat class but their second bite drains Strength (not levels). |
-| [`d`](#dogs-and-canines-d)    | [Dogs and other canines](#dogs-and-canines-d) | The `d` class covers your starting pet (little dog, kitten via cat-class) **and** the most numerous early-game predators. **Jackals** are the single most common cause of death on the public server — they only bite for 1d2, but they spawn in packs and there are a *lot* of them on the upper levels. Foxes bite for 1d3 and are faster (speed 15) but spawn alone. Coyotes, dingos, wolves get progressively worse. Tame `d` (your pet, larger dogs you've fed up) help fight everything else. |
+| [`d`](#dogs-and-canines-d)    | [Dogs and other canines](#dogs-and-canines-d) | The `d` class covers your starting pet (little dog, kitten via cat-class) **and** the most numerous early-game predators. **Jackals** only bite for 1d2, but they spawn in packs and there are a *lot* of them on the upper levels — the single most common cause of death on the public server. Foxes bite for 1d3 and are faster (speed 15) but spawn alone. Coyotes, dingos, wolves get progressively worse. Tame `d` (your pet, larger dogs you've fed up) help fight everything else. |
 | [`e`](#eyes-and-spheres-e)    | [Eyes](#eyes-and-spheres-e)      | **Floating eyes paralyze on melee hit.** Never hit an `e` in melee. Use ranged attacks. (And eat them for telepathy.) Spheres (flaming/freezing/shocking) explode in a 3×3 area; also kill them at range. |
 | [`f`](#felines-f)    | [Cats](#felines-f)      | Like dogs, often starting pets. Felines can be tamed with tripe.                        |
-| [`G`](#gnomes-g)    | [Gnomes](#gnomes-g)    | The standard inhabitants of the Gnomish Mines. Individually weak, but the Mines have a lot of them — and **plain gnomes, gnome lords, and (later) gnome rulers are all in the top fifteen causes of death** on the public server, because mid-game players treat the Mines as a milk run and walk into a four-on-one with full-strength enemies. If you're a gnome yourself, most of them are peaceful. |
-| [`h`](#humanoids-h)    | [Humanoids](#humanoids-h) | Dwarves, bugbears, mind flayers. Wide range of difficulty. **Dwarves in particular are dangerously underrated**: they hit harder than they look, they're armored, and they're the second most common cause of death on the public server because of how many you meet in the Mines. Don't trade blows with one in melee until your AC is solid. |
+| [`G`](#gnomes-g)    | [Gnomes](#gnomes-g)    | The standard inhabitants of the Gnomish Mines. Individually weak, but the Mines have a lot of them, and mid-game players who treat the Mines as a milk run walk into a four-on-one with full-strength enemies. If you're a gnome yourself, most of them are peaceful. |
+| [`h`](#humanoids-h)    | [Humanoids](#humanoids-h) | Dwarves, bugbears, mind flayers. Wide range of difficulty. Dwarves in particular are dangerously underrated: they hit harder than they look, and they're armored. Don't trade blows with one in melee until your AC is solid. |
 | [`i`](#imps-and-minor-demons-i)    | [Imps](#imps-and-minor-demons-i)      | Minor pests. Weak claw, regeneration, and a stream of insults — annoying but not dangerous. |
 | [`j`](#jellies-j)    | [Jellies](#jellies-j)   | Spotted and ochre jellies. Passive acid damage on melee.                                |
 | [`k`](#kobolds-k)    | [Kobolds](#kobolds-k)   | Weak individually but sometimes carry poisoned weapons.                                 |
 | [`o`](#orcs-o)    | [Orcs](#orcs-o)      | Numerous and modest in strength one-on-one; dangerous in packs. Hill orcs and Mordor orcs are the common upper-dungeon variants. |
 | [`r`](#rodents-r)    | [Rodents](#rodents-r)   | Rats and rock moles. Rock moles eat metal items, so protect your gear.                  |
 | [`s`](#arachnids-and-centipedes-s)    | [Spiders](#arachnids-and-centipedes-s)   | Cave spiders are weak (eat them for poison resistance). Giant spiders poison.            |
-| [`x`](#xans-and-fantastic-insects-x)    | [Grid bugs](#xans-and-fantastic-insects-x) | The weakest monster in the game; they can't even move diagonally. Free XP — they don't leave corpses. The `x` class also covers the much-later **xan**, whose sting cripples your legs (slow movement until it heals). |
-| [`:`](#lizards)    | [Lizards](#lizards)   | Newts, geckos, and iguanas are individually weak — usually not too dangerous if you're paying attention. The class matters mostly for the corpses: **lizard corpses cure [petrification](#petrification-stoning)** (always carry one for cockatrice/Medusa insurance), and newt corpses may restore 1–3 mana to spellcasters. |
+| [`x`](#xans-and-fantastic-insects-x)    | [Grid bugs](#xans-and-fantastic-insects-x) | The weakest monster in the game; they can't even move diagonally. But they don't leave corpses. The `x` class also covers the much-later **xan**, whose sting cripples your legs (slow movement until it heals). |
+| [`:`](#lizards)    | [Lizards](#lizards)   | Newts, geckos, and iguanas are individually weak — usually not too dangerous if you're paying attention. The class matters mostly for the corpses: **lizard corpses cure [petrification](#petrification-stoning)** (always carry one for cockatrice/Medusa insurance), and newt corpses may restore 1–3 mana. |
 
 #### Mid-Dungeon Threats
 
@@ -921,7 +913,7 @@ AC / attack details on every monster, see the
 | [`l`](#leprechauns-l)    | [Leprechauns](#leprechauns-l)       | Steal your gold and teleport away. A single claw can grab up to *all* of your purse. Hide gold in a sack, drop it elsewhere, or fight at range. |
 | [`L`](#liches-l)    | [Liches](#liches-l)            | Spellcasters. Arch-liches are among the most dangerous monsters in the game.                         |
 | [`m`](#mimics-m)    | [Mimics](#mimics-m)            | Disguised as items, walls, doors, fountains, altars, or boulders. See [A note on mimics](#a-note-on-mimics). |
-| [`M`](#mummies-m)    | [Mummies](#mummies-m)           | Aggressive undead with physical claw attacks. Their corpses are dangerous to eat (age you). Mummy wrappings worn as a cloak block invisibility — usually a downside, but useful if you've gone invisible and need a shopkeeper to interact with you. |
+| [`M`](#mummies-m)    | [Mummies](#mummies-m)           | Aggressive undead with physical claw attacks. Their corpses are dangerous to eat (age you). Mummy wrappings worn as a cloak block invisibility. That is usually a downside, but very useful if you've gone invisible and you need a shopkeeper to interact with you. |
 | [`n`](#nymphs-n)    | [Nymphs](#nymphs-n)            | [Steal items from your inventory, then teleport away](#a-note-on-nymphs). Fight from range. |
 | [`N`](#nagas-n)    | [Nagas](#nagas-n)             | Large serpent-bodied creatures. Red nagas breathe fire, black nagas spit acid, golden nagas cast spells, guardian nagas spit Str-drain poison and have a paralyzing bite. Tough; speeds 12–16. |
 | [`O`](#ogres-o)    | [Ogres](#ogres-o)             | Strong melee fighters. Ogre lords and kings are tougher.                                             |
@@ -1293,11 +1285,12 @@ pictured below.
              └──┐····└  └───┘ ─┐·│····┌┘
 ```
 
-The Mines are populated primarily by gnomes, dwarves, and the
-occasional dwarf lord. If you're playing a gnomish character, most
-of them will be peaceful, which makes the Mines a relatively
-comfortable detour. Everyone else will need to fight through a
-steady stream of hostile gnomes and dwarves.
+The Mines are populated primarily by gnomes and dwarves, with
+tougher variants (gnome lords, dwarf lords, then gnome and dwarf
+kings) appearing as you descend. If you're playing a gnomish
+character, most of them will be peaceful, which makes the Mines a
+relatively comfortable detour. Everyone else will need to fight
+through a steady stream of hostile gnomes and dwarves.
 
 The Mines also have a notorious surprise guest: a mind flayer can
 spawn on any random Mines level outside Minetown and Mine's End.
@@ -1692,7 +1685,7 @@ Your options, from safest to most desperate:
 
 - **Levitation** (ring, boots, potion, or spell). The easiest way
   to cross. Eels can still grab you from adjacent water (see
-  [Drowning](#drowning) in [More Ways to Die](#more-ways-to-die)).
+  [Drowning](#drowning) in [Ways to Die Instantly](#ways-to-die-instantly)).
 - **Water walking boots.** You walk on the surface. Eels can still
   grab you in adjacent water.
 - **Wand of cold.** Zap the water to freeze a path of ice. Ice
@@ -2311,6 +2304,22 @@ messages still come through.)
 | *"You sense a lack of food nearby."*   | Scroll of food detection, no food on level.                                            |
 | *"You feel materially poor."*          | Scroll of gold detection, no gold on level.                                            |
 | *"You feel like someone is helping you."* | Scroll of remove curse; worn/wielded cursed items uncursed.                         |
+| *"Your hands begin to glow red."*      | Scroll or spell of confuse monster. Your next melee strike will confuse the target. (Purple if you read it while already confused.) |
+| *"You feel guilty."*                   | Blessed or confused scroll of punishment. The ball and chain don't attach — but the scroll is now identified. |
+| *"Who was that Maud person anyway?"*<br>*"As your mind turns inward…"* | Scroll of amnesia. Some of your memorized spells (all if cursed) are now gone. |
+| *"It tasted bad."*                     | Cursed potion of gain level read on a level you can't rise off (already at the top, no Amulet, or against the ceiling). Cursed, but otherwise harmless. |
+| *"You have an uneasy feeling…"*        | Cursed potion of enlightenment, or cursed potion of gain level in a no-rise spot. Identifies the potion; no other effect (a Wisdom exercise penalty for enlightenment). |
+| *"You feel like a hypocrite."*         | You just attacked a monster while standing on Elbereth. The engraving is gone, and your alignment took a hit (flat −5 if your record is comfortably positive, otherwise −1 to −5). |
+| *"You feel that monsters are aware of your presence."* | Aggravate-monster effect just turned on (cursed ring of aggravate monster, a cast from a foe, etc.). Until removed, monsters home in on you from further away. |
+| *"You feel that monsters have difficulty pinpointing your location."* | Stealth just turned on (you wore a ring of stealth, elven cloak, or other stealth source). *"…no longer have difficulty…"* means it just turned off. |
+| *"You hear the rumble of distant thunder…"* | You just killed your own pet (or tame creature). **−15 alignment and your god is now angry** — expect prayer to backfire for a long time. |
+| *"You feel as if you need some help."* | A nearby monster just cast curse-items on you: something in your inventory was randomly cursed. BUC-test gear before relying on it. |
+| *"You feel the presence of evil."* | A hostile water demon (or other major demon) was just summoned from a fountain but isn't visible to you yet. It's coming. |
+| *"You hear someone summoning something, and…"* (and *"…summoning <something>"*) | An offscreen spellcaster (wizard, demon, lich) just summoned a monster. Expect company on the next level transition or as it walks in. |
+| *"You feel mildly hot."* / *"You feel mildly chilly."* | A fire (or cold) attack hit you and your intrinsic resistance absorbed it. Useful confirmation that you actually have the resistance you think you do. |
+| *"You feel rather itchy under your <mummy wrapping>."* | You just read a scroll, zapped a wand, or cast a spell of invisibility, but the mummy-wrapping cloak blocked it. You're not invisible — and you've just confirmed the scroll/wand is invisibility. |
+| *"You feel less paranoid."* | A monster you'd sensed-but-not-seen (the `I` marker on the map) just left your awareness — it walked off the level, died, or vanished. You can stop worrying about it. |
+| *"You feel agile! You must have been working on your reflexes!"* (and Str / Wis / Con variants) | A stat just went up from the hidden exercise system. See [Exercising Your Stats](#exercising-your-stats) for what counts as exercise. The mirror message *"You haven't been working on reflexes lately"* fires after a streak of abuse instead. |
 | *"You move very quietly."*             | Ring of stealth or elven cloak. (Elven boots give *"You walk very quietly"* instead.)  |
 | *"Wow! This makes you feel great!"*    | Blessed potion of restore ability with no remaining troubles — *or* a blessed magic fountain hit. |
 | *"You feel feverish."*                 | Lycanthropy infection from a were-monster. `q`uaff holy water, eat wolfsbane, or `#pray`. |
@@ -2427,8 +2436,8 @@ sides — no shield, no launcher (bow, crossbow, sling), no ammo
 **Rogue** and **Samurai** can reach Expert; Valkyrie and Knight
 cap at Skilled; everyone else lower or none. Rangers don't have
 the skill at all. If you're not sure, just use one really good
-weapon. In 5.0, two-handed weapons got a buff (3/2 strength damage
-bonus) that makes them a good alternative.
+weapon. In 5.0, two-handed weapons gained a 3/2 strength damage
+bonus, making them a good alternative.
 
 #### Fighting Smart
 
@@ -2541,16 +2550,15 @@ Only about **0.4% of games end in ascension.** The other 99.6%
 are deaths. NetHack ends in death by default; survival is the
 exception.
 
-**The early dungeon is deadly.** The top ten killers are,
-in order: jackals, dwarves, soldier ants, gnome lords, sewer rats,
-giant bats, [small mimics](#a-note-on-mimics), gnomes, foxes, water moccasins. Every
-one of them lives on the upper dungeon levels. None are
-intrinsically dangerous to a prepared character. They get you
-because you haven't built HP, AC, or resistances yet and they
-outnumber you. The strategic takeaway: the early game has been the
-deadliest stretch of NetHack since 1987. Don't push to descend;
-spend the turns clearing levels, finding altars, and getting BUC
-information.
+**The early dungeon is deadly.** The monsters that kill the most
+characters all live on the upper levels — jackals, dwarves,
+soldier ants, gnome lords, sewer rats, giant bats,
+[small mimics](#a-note-on-mimics), gnomes, foxes, water
+moccasins. None of them are intrinsically dangerous to a prepared
+character. They get you because you haven't built HP, AC, or
+resistances yet, and they outnumber you. Spend the early turns
+clearing levels, finding altars, and getting BUC information
+before pushing deeper.
 
 **On pacing.** A rough rule of thumb: your experience level should
 be at least somewhere near the dungeon level you're standing on.
@@ -2583,18 +2591,17 @@ beginners than their depth or appearance would suggest.
 The shape of the threat is usually pack tactics, surprising
 speed, or one catastrophic special attack.
 
-**The Gnomish Mines is a choice, not a routine stop.** Mines
-residents are `G`, gnomes, and `h`, the humanoid class that
-includes dwarves.
-Plain gnomes, gnome lords, dwarves, and gnomish wizards all
-sit in the top fifteen causes of death on the public server,
-because the Mines funnel four or five armed opponents into
-a single room and beginners walk in at XL 3 expecting an
-extra branch. Dwarves hit harder than they look and come
-armored. Gnomish wizards (a `G` with spell attacks) can cast
-sleep at you among other things, and a sleeping adventurer in
-a Mines room is a dead one. Take the branch when you have HP, a real weapon,
-and sleep resistance. A positive AC at XL 5 is not enough.
+**The Gnomish Mines are a top killer.** This side branch is harder
+than it looks: Mines rooms are large open caves where four or five
+armed opponents have plenty of room to swarm around you. Use
+ranged attacks, or look for natural pinch points where the cave
+walls narrow. Dwarves hit harder than gnomes, and gnomish
+wizards (the first spellcasting enemy you meet) can sleep you,
+confuse you, and worse. Lords and kings appear deeper, with
+differently colored `G` and `h` glyphs. Take a look at the first
+Mines level, but it is usually wise to come back later after you
+are at XL 5 or better, have sleep resistance, and have AC at zero
+or below.
 
 **Sleep without resistance is a near-instadeath.** A homunculus
 (`i`) bite, a gnomish wizard's sleep spell, or later an orange dragon
@@ -2651,10 +2658,9 @@ depth, so casual quaffing pays worse the deeper you go.
 Don't quaff from fountains until you have magic resistance,
 reflection, or a clear path of retreat.
 
-**Floating eyes** (`e`). The single most preventable instadeath
-in the early dungeon. Hit one in melee and you're paralyzed for
-~70 turns; whatever passes by during that nap kills you. Kill at
-range, every time. Then eat the corpse for telepathy.
+**Floating eyes** (`e`). Hit one in melee and you're paralyzed for
+~70 turns; whatever passes by during the nap kills you. Kill at
+range, then eat the corpse for telepathy.
 
 **Minotaurs** (`H`, in the Castle and maze levels of Gehennom).
 Three attacks averaging ~38 damage per turn — the hardest hitter
@@ -2672,10 +2678,10 @@ Routine mistakes kill more adventurers than exotic instadeaths.
 The list below is sorted roughly by frequency on the public
 server.
 
-**Eating mistakes.** Rotted corpse, [poisonous corpse](#deadly-poison), and
-[choking](#choking) each rank in the top forty causes of death. Don't
-eat old corpses. Don't eat while Satiated. Don't finish a
-heavy corpse if you're already approaching Satiated. Pray
+**Eating mistakes.** Old corpses cause food poisoning, poisonous
+corpses ([deadly poison](#deadly-poison)) drop you fast, and
+eating while Satiated risks [choking](#choking). Watch your
+nutrition before committing to a heavy corpse, and pray
 immediately if you ate something you shouldn't have.
 
 **Reading unidentified scrolls in a shop.** A confused or
@@ -2685,13 +2691,12 @@ the shopkeeper hostile when you return. A scroll of fire
 destroys shop goods you are liable for. Save the price-ID
 session for outside.
 
-**Mount slips and riding accidents.** More heroes die slipping
-off saddled ponies than die to mind flayers. Getting on a
-steed rolls against your experience level plus the steed's
-tameness; on a failure you take 10 to 14 HP. Don't mount
-while Confused, Fumbling, or Glib, don't mount with a cursed
-or greased saddle, and don't mount a barely-tame pony at
-experience level 2.
+**Mount slips and riding accidents.** Getting on a steed rolls
+against your experience level plus the steed's tameness; a failure
+costs 10 to 14 HP. The dangerous cases are a cursed or greased
+saddle (the slip is essentially guaranteed and the fall hurts).
+The Confused or Fumbling or Glib cases just have worse odds, and
+a barely-tame pony at experience level 2 is a coin flip.
 
 **Pet kills.** Kittens, little dogs, housecats, and ponies
 all appear on the death list, almost always because the
@@ -2711,17 +2716,15 @@ ricocheting off a wall in a narrow corridor and back into
 your face. Engrave-test wands before pointing them at
 yourself.
 
-**Killed by a grid bug.** The weakest monster in the game
-kills more than 11,000 adventurers per year. They get the
-last hit on someone who walked away from a real fight at
-2 HP, or someone who decided to read a scroll on the turn
-one was adjacent. Don't read scrolls under threat.
+**Killed by a grid bug.** The weakest monster in the game gets
+the last hit on someone who walked away from a real fight at 2 HP,
+or who decided to read a scroll on the turn one was adjacent.
+Don't read scrolls under threat.
 
 **Killed by kicking.** Kicking sinks summons a [black pudding](#a-note-on-puddings),
-a foocubus, or worse. Kicking doors can break your toe.
-Kicking locked chests can electrocute you, and electric
-shock is a top-100 cause of death on its own. Stop kicking
-things.
+a foocubus, or worse. Kicking doors can break your toe. Kicking
+locked chests can electrocute you. Kick what you mean to kick,
+and only when you can spare the consequence.
 
 **Wrath of a god.** You prayed when your god wasn't willing.
 See [Divine Relations](#divine-relations) for the prayer
@@ -2736,12 +2739,7 @@ are.
 **Scroll of earth on yourself.** Buried under a pile of
 boulders you summoned on your own head.
 
-Routine mistakes kill far more adventurers than exotic
-instadeaths. Floating eyes, [cockatrices](#petrification-stoning),
-[mind flayers](#brainlessness), and
-[disenchanters](#enchantment-drain) all matter (and they're catalogued in
-[More Ways to Die](#more-ways-to-die)). But the median
-death is a preventable swarm of jackals on Dlvl 3.
+The median death is a preventable swarm of jackals on Dlvl 3.
 
 #### A note on dragons
 
@@ -3053,7 +3051,7 @@ mindless). If you do get blinded, a unicorn horn cures it.
 
 ---
 
-### More Ways to Die
+### Ways to Die Instantly
 
 Some things in the Mazes kill you outright. Not by whittling down
 your hit points, not by wearing you down over time, but by ending
@@ -3180,9 +3178,8 @@ Mind flayers drain Intelligence with their tentacle attacks. If
 your Intelligence drops to your racial minimum (3 for humans), the
 next drain kills you: "brainlessness." A regular mind flayer has
 three tentacle attacks per turn; the **master mind flayer** has
-*five*, plus a heavier weapon strike, and is widely called the
-most lethal non-boss monster in the dungeon. A single unprepared
-turn next to a master mind flayer can drop your Int by up to ten.
+*five*, plus a heavier weapon strike. A single unprepared turn
+next to a master mind flayer can drop your Int by up to ten.
 Each hit also has a 1-in-5 chance to trigger **spell amnesia**: a
 random number of your memorized spells (zero to all of them) drop
 to zero retention; re-study from spellbooks to restore. (Before
@@ -3447,15 +3444,12 @@ when you hit them in melee. Three or four melee strikes will take
 a +7 sword to +3; that passive drain is silent. Range-killing
 sidesteps both attacks at once.
 
-**Defenses.** Every artifact has a 90% chance to resist each
-enchantment-drain attempt on itself; ordinary items resist 10% of
-the time. The Invocation items (Amulet, Bell, Candelabrum, Book
-of the Dead) and Rider corpses always resist. **Magic-cancellation
-armor** is the strongest non-artifact armor defense for the active
-claw: at MC3 the claw will mostly fail to land. (MC doesn't help
-against the passive counter, so still don't melee them.) Range-kill
-is the cleanest plan; rings of conflict and pets reliably redirect
-them. **Don't eat the corpse**: it strips a random intrinsic.
+**Defenses.** **Magic-cancellation armor** at MC3 mostly blocks
+their armor drain, but doesn't stop melee from draining your
+weapon. Don't melee them even with MC3 armor. Rings of conflict and pets
+reliably redirect them to other targets. Artifacts resist drain
+9 times in 10; ordinary items only 1 in 10. **Don't eat the
+corpse**: it strips a random intrinsic.
 
 <!-- audit
 2026-05-18:
@@ -3541,8 +3535,7 @@ your own species. Don't do this.
 -->
 
 Not every fatal threat kills instantly. Several give you a few
-turns to react. Knowing the warning signs and the cures can save
-a run.
+turns to react.
 
 **Sliming.** Being hit by a green slime (or eating its glob, or
 being digested by one as a polyform) starts a ~10-turn
@@ -3583,7 +3576,7 @@ check uses the eel's tile, so levitation, water walking, and
 encumbrance status are irrelevant once the grab lands. **Cures:**
 magical breathing (amulet or spell), kill or teleport the eel
 before it pulls you under, or avoid water entirely. See
-[Drowning](#drowning) in [More Ways to Die](#more-ways-to-die) for the full picture.
+[Drowning](#drowning) in [Ways to Die Instantly](#ways-to-die-instantly) for the full picture.
 
 **Strangulation.** Wearing a cursed amulet of strangulation slowly
 kills you over a few turns. **Cure:** remove the amulet (requires
@@ -4018,15 +4011,13 @@ well-fed pet is also a better-armored one. This is not something you can
 reliably engineer, but it's a reason to let your pet eat rather than
 scooping up every corpse yourself.
 
-Second, and more importantly: pets can now be revived. If your companion
-falls in battle, stand on its corpse at a co-aligned altar and pray.
-The gods, in their occasional mercy, may return it to you. This is a
-last-resort miracle, not a renewable strategy: your prayer timeout,
-your alignment, and a certain amount of luck all factor in. But it means
-that the large cat you've carried since level 3, the one who has earned
-names and battle scars and the terrified respect of every dungeon denizen
-you've walked past, is worth a detour to the nearest temple before you
-write it off. The dungeon kept this secret for a long time. Now you know.
+Second: pets can now be revived. If your companion falls in battle,
+stand on its corpse at a co-aligned altar and pray. The gods, in
+their occasional mercy, may return it to you. This is a last-resort
+miracle, not a renewable strategy: your prayer timeout, your
+alignment, and a certain amount of luck all factor in. A pet
+you've carried since the early game is worth a detour to the
+nearest temple before you write it off.
 
 ---
 
@@ -4037,11 +4028,6 @@ write it off. The dungeon kept this secret for a long time. Now you know.
 Here is the central puzzle of the Mazes, and the thing that kills
 more promising expeditions than any monster: you will find dozens of
 items, and you won't know what most of them are.
-
-That potion might heal you or it might make you hallucinate. That
-scroll could enchant your armor or destroy it. That ring could grant
-you invisibility or slowly starve you to death. In the Mazes,
-ignorance is not bliss. Ignorance is death by unidentified wand.
 
 Every game, the dungeon shuffles the deck. Potions, scrolls, wands,
 rings, amulets, and spellbooks are all given randomized appearances.
@@ -4252,7 +4238,7 @@ per-item — the same pennypinching shop applies it to every
 unidentified item you bring in. *S^TP^* stacks both.
 
 | Charisma / Markups               |   Mult |  20 |  50 |  60 |  80 | 100 | 150 | 175 | 200 | 300 |  500 |
-|----------------------------------|-------:|----:|----:|----:|----:|----:|----:|----:|----:|----:|-----:|
+|----------------------------------|:-------|----:|----:|----:|----:|----:|----:|----:|----:|----:|-----:|
 | 6–7^T2^                          |  ×2.67 |  53 | 133 | 160 | 213 | 267 | 400 | 467 | 533 | 800 | 1333 |
 | 8–10^T2^                         |  ×2.37 |  47 | 119 | 142 | 190 | 237 | 356 | 415 | 474 | 711 | 1185 |
 | 6–7^T^                           |  ×2.0  |  40 | 100 | 120 | 160 | 200 | 300 | 350 | 400 | 600 | 1000 |
@@ -4616,8 +4602,8 @@ Then put it on. Many rings produce an immediate message or visible
 effect: you start levitating, you become invisible, you feel
 stronger. If nothing obvious happens, check your stats and inventory
 for subtle changes (protection, searching). Take it off quickly if
-you start feeling hungry faster than normal (hunger ring) or if
-monsters seem to be approaching more aggressively (aggravate monster).
+you feel hungry faster than normal (hunger ring) or if monsters
+seem newly aggressive (aggravate monster).
 
 **Amulets.** Most amulets are safe to wear briefly. Put it on, wait
 a few turns, take it off. The dangerous ones (strangulation, restful
@@ -4898,8 +4884,7 @@ When nutrition drops below certain thresholds, you get warnings:
 
 Eat when you get the "Hungry" message; don't wait for "Weak." If
 you hit Fainting and have no food, pray to your god (see
-[Divine Relations](#divine-relations)). Prayer cures hunger if
-your god is willing to help.
+[Divine Relations](#divine-relations)); a willing god cures hunger.
 
 #### What to Eat
 
@@ -4916,8 +4901,8 @@ while there's a freshly dead rat at your feet. A few rules:
 - Some corpses grant intrinsic resistances (poison resistance from
   killer bees, fire resistance from fire giants, etc.). Eat these
   deliberately, even when you're not hungry — see the table below.
-- Some corpses are harmful (floating eyes paralyze you, green slimes
-  turn you into slime, cockatrice corpses kill you). Know which
+- Some corpses are harmful (cockatrice corpses petrify you, green
+  slimes turn you into slime, kobold meat is poisonous). Know which
   corpses are safe before eating.
 
 **Food rations** are the emergency backup. 800 nutrition, weight
@@ -4978,7 +4963,7 @@ creature on a typical descent.
 | Newt                    | May restore 1 to 3 mana                                                |
 | Cave spider, centipede, killer bee | Poison resistance                                           |
 | Lizard                  | Cures stoning in progress                                              |
-| Floating eye            | Telepathy (but paralyzes you too)                                      |
+| Floating eye            | **Telepathy.** (Great to eat.)                                         |
 | Fire ant                | Fire resistance                                                        |
 | [Wraith](#a-note-on-wraiths) | **Gain an experience level**                                      |
 | Yeti                    | Cold resistance                                                        |
@@ -5239,9 +5224,9 @@ The $60 group is treasure (enchant weapon lurks there alongside
 innocent blank paper). The $80 group is equally good: enchant armor
 and remove curse, two scrolls you'll always want more of. The $100
 group is the danger zone, a grab-bag mixing magic mapping and
-teleportation with destroy armor. And at $300, you'll find both
-genocide (the game's nuclear option) and punishment
-(a ball and chain permanently attached to your ankle). Choose wisely.
+teleportation with destroy armor. At $300, you'll find both
+genocide (the nuclear option) and punishment (a ball and chain
+attached to your ankle). Choose wisely.
 
 #### Key Scrolls
 
@@ -5355,31 +5340,20 @@ monster just fizzles.
 
 **Confused teleportation** sends you to a random *dungeon level*
 instead of a random spot on this floor. Useful as a panic button,
-dangerous if you're shallow and don't want to skip the early game.
+dangerous if you're shallow and want to keep exploring.
 
-**Confused gold detection** detects *traps* on this level instead
-of gold. Faster and safer than the search command.
-
-**Confused light** creates a small posse of cancelled, friendly
-yellow lights around you (or black lights, if the scroll is cursed).
-They die quietly and can't harm you.
+**Confused gold detection** detects every trap on this level
+instead of gold. Far faster than searching tile by tile.
 
 **Confused charging** restores Pw, and if you're already at full,
 *raises your max Pw* by 4–16 (6–24 blessed). A spellcaster's
 permanent buff if you can spare the scroll. Cursed reading zeroes
 your Pw instead.
 
-**Confused scare monster** wakes nearby sleepers and you hear sad
-wailing in the distance. The opposite of helpful. Don't read this
-for an emergency.
-
-**Confused genocide** genocides your own role. This kills you.
-Don't get confused at the wrong moment.
-
 The cleanest way to confuse yourself on purpose is a **potion of
-confusion**: drink one and the timer runs about 25–80 turns. Eating
-a stalker corpse or a fortune cookie can do the same, with side
-effects of their own.
+confusion**: drink one and the timer runs about 25–80 turns. A
+non-blessed **potion of booze** will also confuse you for a few
+turns.
 
 ---
 
@@ -5864,17 +5838,12 @@ wish for one when you can.
 
 A warning: **never** put a wand of cancellation, another bag of
 holding, or a charged bag of tricks inside a bag of holding. The
-resulting magical explosion scatters your carefully curated
-inventory across the floor (in older editions it *destroyed*
-everything!). Either way, it's a game-ending mistake that every
-veteran has made exactly once.
+explosion scatters your inventory across the floor.
 
 If you find a *cursed* bag of holding (in a bones pile, perhaps),
 don't open it. Drop it on the floor and zap a wand of cancellation
-*at the bag from outside*. Cancellation uncurses items it touches,
-and the explosion rule only triggers on insertion, not on a zap.
-You'll have a safe, uncursed bag. (A bag of holding can also be
-*greased* — see [Can of grease](#other-notable-tools).)
+at it. The explosion rule only fires on insertion, not on a zap,
+so the bag uncurses safely.
 
 ##### Carrying capacity
 
@@ -6127,19 +6096,11 @@ edge against ambushes. Late game it competes with helm of
 brilliance (Wizards) and helm of telepathy (everyone), but the
 warning bonus stays useful all the way down.
 
-**Dragon scale mail** is the endgame body armor of choice. In
-5.0, most colors provide two extrinsic resistances (gray and
-silver provide only the named one). Gray dragon scale mail
-provides magic resistance and is a popular wish target.
-Silver provides reflection. Black provides disintegration
-resistance and drain resistance (one of two non-artifact sources,
-alongside the shield of drain resistance).
-Green provides poison resistance and sickness immunity.
-
-To get dragon scale mail: kill a dragon, pick up the scales it
-drops, then read a (non-cursed) scroll of enchant armor while
-wearing them (they transform into scale mail); or wish for the
-mail directly.
+**Dragon scale mail** is the endgame body armor of choice. **Gray**
+grants magic resistance and is the most-wished color, **silver**
+grants reflection, and other colors carry one or two intrinsics
+each. See [Dragon Scale Mail](#dragon-scale-mail) below for the
+full list and the forge recipe.
 
 **Speed boots** are worth wishing for. Being faster than your
 enemies means you get more turns — more chances to attack, cast
@@ -6344,9 +6305,9 @@ the suit drops it off into your inventory (curse and all), even
 though it would normally refuse to come off. From there, dip in
 holy water and re-wear. See [Polymorph as a Tool](#polymorph-as-a-tool).
 
-Always carry holy water and a scroll of remove curse. The moment
-you find yourself stuck with cursed levitation boots over a moat,
-you'll understand why veterans never leave home without them.
+Most veterans carry holy water and a scroll of remove curse at all
+times. The first time you find yourself stuck in cursed levitation
+boots over a moat is the moment you'll see why.
 
 ---
 
@@ -6682,6 +6643,54 @@ random numbers, which in the Mazes is the closest thing to love.
 
 ---
 
+### Exercising Your Stats
+
+Behind the scenes, NetHack keeps a hidden exercise counter for four
+of your six stats: **Str**, **Dex**, **Con**, and **Wis**. (Int and
+Cha don't exercise — they only change through magical sources like
+gain-ability potions.) Living a way that *trains* a stat slowly
+pushes the counter up; living a way that *abuses* it pushes the
+counter down. Every several hundred turns the game checks the
+counter and may grant a +1 or −1.
+
+#### How Exercise Works
+
+The counter is invisible. A long enough streak of exercising
+behavior, plus a passing random roll (with diminishing returns once
+you've already gained), gives you the message *"You feel agile! You
+must have been working on your reflexes!"* — or the matching one
+for the other stats. The reverse, *"You haven't been working on
+reflexes lately,"* fires when the abuse counter wins instead.
+
+Exercise can lift a stat up to **18** (your innate maximum isn't
+bypassed; potions of gain ability still rule the top end). Abuse
+can drop it down to your racial minimum.
+
+#### Actions That Exercise and Abuse
+
+| Stat | Exercises | Abuses |
+|------|-----------|--------|
+| **Str** | Carrying a moderate or heavy load, intrinsic regeneration, throwing heavy items | Being Weak from hunger |
+| **Dex** | Successful kicks (locks, sinks, doors), successful thrown weapons | Being Satiated, heavy encumbrance, Fumbling, Stunned, Wounded legs, missed kicks |
+| **Con** | Staying just-Not-Hungry consistently | Fainting, Sick, Vomiting, polluted fountains, extreme encumbrance |
+| **Wis** | Active Clairvoyance, successful detection (gold/monster/food), a willing prayer, a worthy sacrifice | Confusion, Hallucination, cursed enlightenment, digging up graves |
+
+Two Monk-specific quirks: a Monk who is Weak from fasting exercises
+Wis, and a Satiated Monk abuses it. The vow of restraint pays in
+wisdom.
+
+#### Why Exercise Matters
+
+Stats matter for almost everything: Str for damage and carrying
+capacity, Dex for hit chance, Con for HP per level, Wis for prayer
+success and Pw regeneration. Drifting one of them up over the
+course of a run is a small but real upgrade. Drifting one down
+because you've spent five hundred turns Satiated and Fumbling is a
+small but real loss. The mechanic rewards habits more than single
+actions.
+
+---
+
 ### Enhancing Skills
 <!-- audit
 2026-05-18:
@@ -6744,10 +6753,9 @@ can demote your most recent advancement.
 Each role has a per-skill **cap** beyond which no amount of
 training will help. A Wizard caps at Basic with a mace and is
 restricted from long swords. Restricted skills don't appear on
-`#enhance` and stay Unskilled, with one exception: if your god
-grants you an artifact weapon, you're auto-unrestricted in its
-skill up to Basic. The full role caps are tabled in
-[Per-Role Skill Caps](#per-role-skill-caps) below.
+`#enhance` and stay Unskilled, except for god-given artifact
+weapons, which unrestrict the skill to Basic. The full role caps
+appear in [Per-Role Skill Caps](#per-role-skill-caps) below.
 
 #### Training a Skill
 
@@ -6795,8 +6803,7 @@ at −7 each, which is much worse than one solid swing. Bare hands
 and martial arts bonuses apply on every hit; only the practice
 counter is gated by the dmg>1 roll. The Expert weapon line
 (+3 / +2) is why dedicating to a single weapon matters: that's
-the difference between landing the killing blow and watching the
-monster shrug.
+the difference between killing the monster and watching it shrug.
 
 #### The Seven Spell Schools
 
@@ -7192,11 +7199,9 @@ It needs Strength 25 to wield in either case (gauntlets of power
 or rings of gain strength get you there). Its +d24 shock damage
 is brutal against anything not shock-resistant.
 
-**Magicbane** is the Wizard's go-to athame. The combined effect of
-its stun damage, curse protection, and magic resistance — all of
-which require it to be **wielded**, not just carried — makes it
-Wizard's preferred melee weapon. Often the first gift from a
-Neutral sacrifice. One nuance for two-weapon Wizards: the curse
+**Magicbane** is the Wizard's go-to athame. Its stun damage, curse
+protection, and magic resistance all require it to be **wielded**,
+not just carried. Often the first gift from a Neutral sacrifice. One nuance for two-weapon Wizards: the curse
 protection only applies while Magicbane is the *primary* wielded
 weapon. If you stash Magicbane in the off-hand to swing a heavier
 blade, you've also turned off its anti-curse aura.
@@ -7234,22 +7239,20 @@ unique free version.)
 
 **Sunsword** is the Lawful long sword that wants to be a tool. Wielded,
 it lights its current radius (handy in caves and the Mines without
-costing an oil lamp). `#invoke` it for a directed *blinding ray* —
-mechanically a Camera flash in any direction, *not* limited to
-undead. It costs 5×spell-level Pw to invoke, so save it for the
-fights that demand it (Riders, mind flayers, the Wizard of Yendor),
-but a blind monster is a monster that misses you. Invoking up or
-down lights the room; invoking at yourself self-blinds (don't).
+costing an oil lamp). `#invoke` it for a directed *blinding ray*,
+mechanically a Camera flash in any direction (not limited to undead).
+It costs 5×spell-level Pw to invoke, so save it for the fights that
+demand it: Riders, mind flayers, the Wizard of Yendor. Invoking up
+or down lights the room; invoking at yourself self-blinds you.
 
 **Bane weapons** (Sunsword, Demonbane, Sting, Orcrist, Grimtooth,
 Dragonbane, Werebane, Giantslayer, Ogresmasher, Trollsbane) deal
 double base damage against their target class. Most are disappointing
 as a primary weapon, but the defensive riders are often the real
-reason to swap one in: Trollsbane regenerates while wielded (genuinely
-useful for an early character holding the line), Dragonbane reflects,
-Werebane neutralizes lycanthropy, Grimtooth defends against poison.
-Sting and Orcrist are notable because elves can start with elven
-daggers and broadswords as their base weapons.
+reason to swap one in: Trollsbane regenerates while wielded
+(genuinely useful for an early character holding the line),
+Dragonbane reflects, Werebane neutralizes lycanthropy, Grimtooth
+defends against poison.
 
 #### Quest artifacts
 
@@ -7674,12 +7677,11 @@ the Castle wand's single charge.
 #### The Wizard's Tower
 
 A sequence of three special Gehennom levels that lead to the
-**Wizard of Yendor** himself and the **Book of the Dead**. He
-is the most dangerous enemy in the game, not because he's the
-strongest fighter, but because he **never stops**. He teleports to
-your location, summons monsters, steals back his Amulet whenever
-you grab it, curses your gear, and once you wake him he *will not
-leave you alone* for the rest of the game.
+**Wizard of Yendor** himself and the **Book of the Dead**. He is
+dangerous not for raw combat power but because he *never stops*. He
+teleports to your location, summons monsters, steals back his
+Amulet whenever you grab it, curses your gear, and once you wake
+him he *will not leave you alone* for the rest of the game.
 
 Kill him cleanly the first time, grab the Book, and move on.
 Subsequent kills don't yield new loot (he respawns), so don't
@@ -7817,12 +7819,9 @@ was *behavior*:
   of the Sanctum — burned the last wand-of-death charge without any
   further escape route, then died blind and surrounded.
 
-The gear gets you to Gehennom, but **Discipline** gets you to the
-Sanctum. Keep at least one escape consumable (scroll of
-teleportation, wand of digging, oilskin sack with a potion of full
-healing) within reach. Stay alert, and do not get distracted from
-the many things that can kill you on your journey to retrieve the
-Amulet.
+Keep at least one escape consumable within reach: a scroll of
+teleportation, a wand of digging, or an oilskin sack with a potion
+of full healing.
 
 ---
 
@@ -8001,10 +8000,9 @@ that move on their own each turn: if you're standing in a bubble
 when it shifts, you shift with it. Walking with the drift can
 carry you across the level faster than fighting against it,
 and a bubble may eventually drift you onto the portal square
-itself. (Note that teleportation is blocked on every plane, so
-wand of teleport on yourself just prints "A mysterious force
-prevents you from teleporting!" It still works on monsters for
-clearing space.)
+itself. (Teleportation is blocked on every plane, so a wand of
+teleport on yourself just prints "A mysterious force prevents you
+from teleporting!" It still works on monsters.)
 
 #### Plane of Fire
 
@@ -8216,37 +8214,81 @@ milestones, and entries into major branches. Mainly for
 end-of-run storytelling; for current conduct state use
 `#conduct`.
 
-#### Options worth knowing about
+---
 
-Open the options screen with `O` (capital O, not zero). The
-defaults are reasonable, but a few settings change how the
-commands above feel:
+### Customization {#options-worth-knowing-about}
+
+NetHack's defaults are sensible, but a handful of options
+dramatically improve quality of life. Flip them in-session with
+`O` (capital O), or persist them in your rcfile: `~/.nethackrc` on
+macOS/Linux, `nethack.cnf` in the install folder on Windows, or
+the `NETHACKOPTIONS` environment variable.
+
+**Status display.**
+
+- **`hilite_status`** colorizes the bottom status line: HP turns
+  yellow then red as you take damage, hunger goes yellow at Hungry
+  and red at Weak, AC bands shift color as you improve. The single
+  most-recommended setting in community rcfiles.
+- **`menucolors`** colorizes menu entries by regex pattern. A
+  common setup highlights holy water, magic markers, and blessed
+  items so you can spot them at a glance.
+- **`force_invmenu`** shows inventory as a menu rather than a
+  letter prompt.
+- **`pile_limit:5`** triggers the pile menu when 5 or more items
+  are stacked on a tile.
+
+**Safety.**
+
+- **`paranoid_confirmation:Attack pray Remove quit`** requires you
+  to type the full word `yes` for the listed actions: attacking
+  peacefuls, praying, removing worn gear, and quitting. Catches
+  almost every fat-finger accident.
+
+**Pickup.**
+
+- **`autopickup`** picks items up as you walk over them, filtered
+  by **`pickup_types`** (e.g. `pickup_types:$?!=/` for gold,
+  scrolls, potions, rings, and wands). The `m` prefix on movement
+  suppresses autopickup for one step. Press `@` any time to toggle
+  autopickup on or off for the rest of the session.
+- **`autopickup_exception`** layers per-pattern rules on top:
+  `autopickup_exception:">rock"` skips rocks even when the type
+  filter would grab them; `autopickup_exception:"<holy water"`
+  always grabs holy water.
+
+**Movement.**
 
 - **`number_pad`** turns the numeric keypad into movement keys
   (1–9 for directions). Off by default; enabling it changes
   digit-prefix behavior so you press `n` first to enter a count.
-- **`autopickup`** picks items up as you walk over them, filtered
-  by `pickup_types` (e.g. `pickup_types:$?!` for gold, scrolls,
-  and potions). The `m` prefix on movement suppresses autopickup
-  for one step.
-- **`verbose`** turns on a layer of extra descriptive messages
-  (more detailed feedback when wielding, digging, hearing monsters,
-  watching your pet, and so on). Turn it off if the message log
-  feels noisy.
+- **`runmode:walk`** slows the travel command down enough that
+  you stop on interesting messages (default `runonly` blasts
+  through everything until you hit something).
 
-The full options list is deep, but the rest is taste and
-convenience. If something about the interface annoys you, there is
-almost certainly a setting for it.
+**Verbosity.**
 
-A bigger interface shift requires a different binary: NetHack
-built with the **curses** windowtype (`nethack-curses` on most
-distributions, or a custom build with curses support) draws a
-properly paneled UI inside the terminal. Set `windowtype:curses`,
-`align_message:right`, `align_status:bottom`, `perm_invent`, and
-`windowborders` in your rc, open a 120×40 terminal, and you get a
-permanent inventory column, a multi-line message panel, and
-bordered status and map regions. Plain tty NetHack pins the
-message line at row 0 no matter what you set.
+- **`verbose`** turns on extra descriptive messages. Turn it off
+  if the message log feels noisy.
+
+**A starter rcfile.** A few lines that cover most of the above:
+
+```
+OPTIONS=hilite_status,menucolors,force_invmenu,pile_limit:5
+OPTIONS=paranoid_confirmation:Attack pray Remove quit
+OPTIONS=autopickup,pickup_types:$?!=/
+OPTIONS=runmode:walk
+```
+
+**Curses for a paneled UI.** A bigger interface shift requires a
+different binary. NetHack built with the **curses** windowtype
+(`nethack-curses` on most distributions, or a custom build with
+curses support) draws a properly paneled UI inside the terminal.
+Set `windowtype:curses`, `align_message:right`, `align_status:bottom`,
+`perm_invent`, and `windowborders` in your rc, open a 120×40
+terminal, and you get a permanent inventory column, a multi-line
+message panel, and bordered status and map regions. Plain tty
+NetHack pins the message line at row 0 no matter what you set.
 
 ---
 
@@ -9936,7 +9978,7 @@ other bimanual weapon.
 - adjacent polearm bash: damage clamps to 1d2 base, no weapon-skill bonus, Strength still applies (uhitm.c:1075-1086, 1447-1469).
 -->
 
-All polearms are two-handed. To strike at range, `#apply` the weapon (not wield-and-attack): you can hit at distance 2 orthogonally at Basic skill, with extra positions opening up at Skilled. You can still hit an adjacent monster the normal way with a polearm in hand, but the attack is treated as bashing — damage clamps to 1d2 base before bonuses and the weapon-skill bonus doesn't apply (Strength still does). Reach is what makes them worth carrying. Notes below describe each entry's extra damage; the reach mechanic is identical across the class.
+All polearms are two-handed. To strike at range, `#apply` the weapon (not wield-and-attack): you can hit at distance 2 orthogonally at Basic skill, with extra positions opening up at Skilled. You can still hit an adjacent monster the normal way with a polearm in hand, but the attack is treated as bashing — damage clamps to 1d2 base before bonuses and the weapon-skill bonus doesn't apply (Strength still does). Reach is what makes polearms worth carrying, and it works the same across the class. Notes below describe each entry's extra damage.
 
 ::: dense-table
 
@@ -10437,10 +10479,7 @@ and jumping, which scales continuously).
 
 The to-hit chance of most rays (sleep, magic missile, finger of
 death, and the unskilled forms of cone of cold and fireball) also
-scales with rank, even when the spell's behavior doesn't otherwise
-change.
-
----
+scales with rank.
 
 ---
 
@@ -10828,7 +10867,7 @@ All nymphs teleport.
 - Goblin is correctly placed in S_ORC (monsters.h:727).
 -->
 
-Pack hunters with mediocre loot but real numbers. The Mines are full of them; bring a chokepoint.
+Pack hunters with mediocre loot but real numbers; bring a chokepoint to the Mines.
 
 ::: dense-table
 
@@ -12478,7 +12517,7 @@ Illiterate: \hyperref[illiterate]{conduct, only x signature allowed, p.~\pageref
 \hyperref[delayed-deaths]{Illness (food poisoning), unicorn horn cure, p.~\pageref*{delayed-deaths}}\par
 \hyperref[imps-and-minor-demons-i]{Imp, stream of insults, p.~\pageref*{imps-and-minor-demons-i}}\par
 \hyperref[seduction]{Incubus, succubus, encounter table, p.~\pageref*{seduction}}\par
-\hyperref[more-ways-to-die]{Instadeaths, recognizing the setup, p.~\pageref*{more-ways-to-die}}\par
+\hyperref[ways-to-die-instantly]{Instadeaths, recognizing the setup, p.~\pageref*{ways-to-die-instantly}}\par
 \hyperref[alignment-and-blasting]{Intelligent artifacts, 4d10 blast, p.~\pageref*{alignment-and-blasting}}\par
 \hyperref[the-heist]{Invocation ritual, three items on the vibrating square, p.~\pageref*{the-heist}}\par
 Iron: \hyperref[golems]{golem, poison breath, p.~\pageref*{golems}}; \hyperref[iron-bars]{bars, light passes through, bars, dig around them, bars, wand of lightning melts (sometimes), p.~\pageref*{iron-bars}}; \hyperref[boots]{shoes, traps protection, p.~\pageref*{boots}}\par
