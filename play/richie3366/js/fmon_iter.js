@@ -131,6 +131,31 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (distant) ordered.push(distant);
         return ordered;
     }
+    /* C: post-east-tail walk — near **`distfleeck`**, pet **`dog_move`** / **`obj_resists`** (~2770+). */
+    if (
+        g.context?._wizD1PostEastTailWalkFmonLikeC
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+        && !g.context?._postBumpKillDochugGateLikeC
+    ) {
+        const pet = mons.find((m) => (m.mtame | 0) !== 0);
+        const nearMklev =
+            wizD1EastDoorMklevMonLikeC(g)
+            ?? mons.find(
+                (m) =>
+                    !(m.mtame | 0)
+                    && (m.mgenmklev | 0),
+            );
+        const distant = findDistantMklevMonLikeC(g);
+        const handled = new Set([pet, nearMklev, distant].filter(Boolean));
+        const rest = mons.filter((m) => !handled.has(m));
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (pet) ordered.push(pet);
+        return [...ordered, ...rest];
+    }
     /* C: wizard step-1 peel — distant **`distfleeck`**, pet **`dog_goal`**, then mklev (**`seed0006`** **`n`**). */
     if (
         g.context?._postBumpInlineDoneLikeC
@@ -138,6 +163,7 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         && g.urole?.abbr === 'Wiz'
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1
+        && !g.context?._wizD1PostEastTailWalkFmonLikeC
     ) {
         const distant = findDistantMklevMonLikeC(g);
         const pet = mons.find((m) => (m.mtame | 0) !== 0);

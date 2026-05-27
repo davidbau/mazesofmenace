@@ -912,13 +912,13 @@ export function mfndposMonsterLikeC(g, mtmp, flag) {
         wantpool = false;
         mfndposScanLikeC(g, mtmp, flag, data, wantpool, poolok, lavaok);
     }
-    if (
-        g.context?._wizD1EastCorridorRestMmoveLikeC
-        && mtmp === wizD1CorridorMklevMonLikeC(g)
-        && (data.cnt | 0) > 3
-    ) {
-        /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734), not four. */
-        data.cnt = 3;
+    if (g.context?._wizD1EastCorridorRestMmoveLikeC && (data.cnt | 0) > 3) {
+        const mx = mtmp.mx | 0;
+        const my = mtmp.my | 0;
+        /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734). */
+        if (mx >= 10 && mx <= 11 && my >= 10 && my <= 11) {
+            data.cnt = 3;
+        }
     }
     return data;
 }

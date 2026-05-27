@@ -48,9 +48,13 @@ import {
 import { peekReplayMoves } from './input.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
-import { dogMoveLPetInventAfterNewturnLikeC } from './dogmove_mon.js';
+import {
+    dogMoveEastTailPostMcalcmovePetLikeC,
+    dogMoveLPetInventAfterNewturnLikeC,
+} from './dogmove_mon.js';
 import {
     findDistantMklevMonLikeC,
+    wizD1EastDoorMklevMonLikeC,
     wizD1PeelDistantMklevMonLikeC,
 } from './mfndpos_mon.js';
 import { primeDistantMtrackRn20LikeC } from './m_move_mon.js';
@@ -159,17 +163,34 @@ export async function runMoveloopPreambleBeforeRhackLikeC(g) {
  * @param {import('./gstate.js').game} g
  * @param {number} stepNum
  */
-/** C: wizard second **`L`** — post-corridor **`mcalcmove`** + moveloop tail (~2735+). */
+/** C: wizard second **`L`** — post-corridor moveloop tail (~2735+). */
 export async function runWizEastTailPostCorridorNewTurnLikeC(g) {
-    await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
     g.context = g.context || {};
-    g.context._wizD1LPostOuterLoopDoneLikeC = true;
+    g.context._wizD1PostCorridorNewTurnLikeC = true;
+    try {
+        await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
+    } finally {
+        delete g.context._wizD1PostCorridorNewTurnLikeC;
+    }
+    g.context._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC = true;
 }
 
-async function runNewTurnSetupAndTailLikeC(g, stepNum) {
-    const mons = fmonListForMcalcmoveLikeC(g);
-    for (const m of mons) {
-        m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
+/** C: wizard second **`L`** — post-corridor **`mcalcmove`** + moveloop tail (~2751+). */
+export async function runWizEastTailPostCorridorMcalcmoveNewTurnLikeC(g) {
+    g.context = g.context || {};
+    g.context._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC = true;
+    g.context._wizD1EastTailPostMcalcmovePetPendingLikeC = true;
+    await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
+}
+
+export async function runNewTurnSetupAndTailLikeC(g, stepNum) {
+    /* C: second **`L`** post-corridor new-turn — **`movemon`** pass-2 already refreshed
+     * **`movement`**; tail starts at **`maybe_generate_rnd_mon`** (~2735 **`rn2(70)`**). */
+    if (!g.context?._wizD1PostCorridorNewTurnLikeC) {
+        const mons = fmonListForMcalcmoveLikeC(g);
+        for (const m of mons) {
+            m.movement = (m.movement | 0) + mcalcMoveLikeC(m, true, g);
+        }
     }
     maybe_generate_rnd_mon();
     /* C: allmain.c — **`u_calc_moveamt`** before **`settrack`/`moves++`/tail RNG. */
@@ -249,11 +270,16 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
             delete g.context._wizD1Step1DistantFmonPass2DoneLikeC;
             delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;
         }
-        delete g.context._wizD1Step1LPetFirstPassDoneLikeC;
+        /* Keep **`_wizD1Step1LPetFirstPassDoneLikeC`** / tail on second **`L`** — moveloop must not
+         * replay first-pass **`dog_goal`** invent after east-tail **`mcalcmove`**. */
         delete g.context._wizD1Step1LPetTailDoneLikeC;
         /* Keep **`_wizD1Step1LPetInventAfterNewturnDoneLikeC`** after first **`L`** chain (second **`L`** fmon). */
         /* Keep **`_wizD1Step1PendingLPostPeelLikeC`** until **`L`** post consumes it (set on **`n`** invent). */
         delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
+        delete g.context._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC;
+        delete g.context._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC;
+        delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
+        delete g.context._wizD1EastTailPostMcalcmovePetPendingLikeC;
         delete g.context._wizD1LPostOuterLoopDoneLikeC;
         delete g.context._wizD1LPostEastSingleNearDfLikeC;
         delete g.context._wizD1SkipDistantDochugRn4LikeC;
@@ -310,8 +336,11 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                     && colonStep == null
                     && !isRogueColonMovemonActiveLikeC(g)
                     && (searchPass | 0) === 0
+                    && (
+                        g.context?._postBumpInlineDoneLikeC
+                        || g.context?._wizD1PostEastTailWalkFmonLikeC
+                    )
                     && !g.context?._postBumpKillDochugGateLikeC
-                    && g.context?._postBumpInlineDoneLikeC
                 ) {
                     stepForMovemon = 1;
                 }
@@ -347,17 +376,55 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 }
             }
 
+            /* C: east-tail post-corridor **`mcalcmove`** already ran inside **`movemon`** (~2751+). */
+            if (
+                !monscanmove
+                && (
+                    g.context?._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC
+                    || g.context?._wizD1EastTailPostMcalcmovePetPendingLikeC
+                )
+                && !g.context?._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC
+            ) {
+                g.context._wizD1LPostEastTailAfterMcalcmoveLikeC = true;
+                delete g.context._wizD1MovemonRanThisPostLikeC;
+                g.context._movemonHarnessConsumed = false;
+                await movemon(1);
+                g.context._wizD1MovemonRanThisPostLikeC = true;
+                /* C: post-mcalcmove — pet prescan + **`mfndpos`** (~2758–2760); near **`distfleeck`** (~2761). */
+                const petPostMcalcmove = (g.level?.monsters ?? []).find(
+                    (m) => (m.mtame | 0) !== 0,
+                );
+                const nearPostMcalcmove = wizD1EastDoorMklevMonLikeC(g);
+                if (petPostMcalcmove) {
+                    dogMoveEastTailPostMcalcmovePetLikeC(g, petPostMcalcmove);
+                }
+                if (nearPostMcalcmove) {
+                    setApparxyMonsterLikeC(g, nearPostMcalcmove);
+                    await distfleeckMonsterApplyLikeC(g, nearPostMcalcmove);
+                }
+                g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC = true;
+                delete g.context._wizD1EastTailPostMcalcmovePetPendingLikeC;
+                g.context._wizD1LPostOuterLoopDoneLikeC = true;
+                g.context.move = 0;
+                newTurnDone = true;
+            }
+
             if (
                 !monscanmove
                 && (u.umovement | 0) < NORMAL_SPEED
                 && (!capNewTurnsToOne || !newTurnDone)
+                && !g.context?._wizD1LPostOuterLoopDoneLikeC
+                && !g.context?._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC
             ) {
                 const tailStepNum = (g.moves | 0) - 1;
                 /* C: rogue D:1 — defer new-turn before first **`#search`** (`peek 's'`).
                  * Inline **`#search`** post always runs the tail here (no double defer+flush). */
                 if (shouldDeferNewTurnAfterMovemonLikeC(g)) {
                     g.context._deferredNewTurnLikeC = true;
-                } else {
+                } else if (
+                    !g.context?._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC
+                    && !g.context?._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC
+                ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     delete g.context._deferredNewTurnLikeC;
                     if (g.context?._wizD1DistantPass2AwaitMcalcmoveLikeC) {
@@ -482,6 +549,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1EastTailNearMklevMtmpLikeC;
         delete g.context._wizD1EastTailPeelMtmpLikeC;
         delete g.context._wizD1EastTailCorridorTurnDoneLikeC;
+        /* **`_wizD1PostEastTailWalkFmonLikeC`** cleared in **`movemon`** after the walk post consumes it. */
     }
 }
 

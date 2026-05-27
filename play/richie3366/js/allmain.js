@@ -279,23 +279,46 @@ export async function moveloop_core() {
 
     await runMoveloopPreambleBeforeRhackLikeC(g);
 
+    /* C: hack.c domove — rush into closed door leaves move=0; next step is autoopen only.
+     * Flag may be armed during this iteration's **`runPost`** (east-tail inline), so re-read after post. */
+    let skipPostForBlockedRunLikeC = !!g.context._wizD1BlockedRunNoTimeLikeC;
+
     /* C: allmain.c — **`if (svc.context.move)`** at top: spend hero time + **`movemon`**
        for the *previous* command before reading the next one. */
     if (g.context.move) {
         if (g.context._searchInlinePostDoneLikeC) {
             /* C: inline **`#search`** post already ran in cmd.js — do not run moveloop post again. */
+        } else if (skipPostForBlockedRunLikeC) {
+            /* C: run into closed door (no autoopen) — no monster post before lowercase move/autoopen. */
+            delete g.context._wizD1BlockedRunNoTimeLikeC;
+            delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
+            g.context.move = 0;
+        } else if (g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC) {
+            /* C: east-tail **`L`** post-corridor — **`movemon`** + new-turn already ran inside **`movemon`**;
+             * next command (**`seed0006`** step 45 **`l`** autoopen) must not duplicate **`distfleeck`**. */
+            delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
+            g.context._wizD1PostEastTailWalkFmonLikeC = true;
+            g.context.move = 0;
         } else {
             await runPostCommandTurnAdvanceLikeC(g);
         }
     }
 
+    skipPostForBlockedRunLikeC = !!g.context._wizD1BlockedRunNoTimeLikeC;
+
     /* C: allmain.c — default assume next command costs time; rhack may clear it. */
-    g.context.move = 1;
+    if (skipPostForBlockedRunLikeC) {
+        g.context.move = 0;
+    } else {
+        g.context.move = 1;
+    }
 
     /* C: allmain.c — gm.multi continuation: extra domove before next rhack(0). */
     if ((g.multi | 0) > 0) {
         g.context = g.context || {};
-        if (g.context.mv) {
+        if (skipPostForBlockedRunLikeC) {
+            endRunning(true);
+        } else if (g.context.mv) {
             if ((g.multi | 0) < COLNO && (g.multi = (g.multi | 0) - 1) <= 0) {
                 endRunning(true);
             }
@@ -326,6 +349,24 @@ export async function moveloop_core() {
 
     if (shouldClearMoveloopToplineLikeC(g)) clearPendingMessageAndToplineLikeC();
     latchRetainedToplineLikeC(g);
+
+    /* C: east-tail **`L`** post already ran — defer **`movemon`** until after autoopen **`l`**. */
+    if (g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC) {
+        g.context._wizD1BlockedRunNoTimeLikeC = true;
+        g.context._wizD1PostEastTailWalkFmonLikeC = true;
+        g.context.move = 0;
+        delete g.context._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC;
+    }
+
+    /* C: hack.c — blocked run / east-tail defer: next command must not spend hero time. */
+    if (g.context._wizD1BlockedRunNoTimeLikeC) {
+        g.context.move = 0;
+    }
+
+    if (g.context._wizD1AutoopenNoMoveLikeC) {
+        g.context.move = 0;
+        delete g.context._wizD1AutoopenNoMoveLikeC;
+    }
 
     g._prevMoveTick = g.context?.move ? 1 : 0;
 

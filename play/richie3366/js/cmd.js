@@ -19,6 +19,7 @@ import {
     searchPass1NearMonLikeC,
 } from './mfndpos_mon.js';
 import { disturbMonsterLikeC } from './disturb_mon.js';
+import { endRunning } from './timeout.js';
 import {
     runPostCommandTurnAdvanceLikeC,
 } from './moveloop_turn_advance.js';
@@ -203,7 +204,19 @@ export async function rhack(key) {
     }
     if (isMovementKey(ch)) {
         const moved = await domoveHeroDirLikeC(DIR_DX[ch], DIR_DY[ch]);
-        game.context.move = moved || game.context?.door_opened ? 1 : 0;
+        if (
+            game.urole?.abbr === 'Wiz'
+            && (game.u?.uz?.dnum | 0) === 0
+            && (game.u?.uz?.dlevel | 0) === 1
+        ) {
+            /* C: hack.c test_move autoopen — `move = (ux != u.ux || uy != u.uy)` only. */
+            game.context.move = moved ? 1 : 0;
+        } else {
+            game.context.move = moved || game.context?.door_opened ? 1 : 0;
+        }
+        if (game.context?.door_opened) {
+            delete game.context._wizD1BlockedRunNoTimeLikeC;
+        }
     } else if (isRunMovementKey(ch)) {
         /* C: cmd.c DOMOVE_RUSH — set_move_cmd + gm.multi=COLNO + context.mv; first domove here. */
         const lower = ch.toLowerCase();
@@ -217,8 +230,15 @@ export async function rhack(key) {
         g.context.run = 1;
         g.context.mv = true;
         g.multi = COLNO;
-        await domoveHeroDirLikeC(dx, dy);
-        g.context.move = 1;
+        const moved = await domoveHeroDirLikeC(dx, dy);
+        /* C: blocked run (e.g. closed door without autoopen) — no hero time; next cmd is autoopen. */
+        if (!moved && !g.context?.door_opened) {
+            endRunning(true);
+            g.context.move = 0;
+            g.context._wizD1BlockedRunNoTimeLikeC = true;
+        } else {
+            g.context.move = moved ? 1 : 0;
+        }
     } else if (ch === '.') {
         /* C: do.c donull — wait/rest one turn (ECMD_TIME). */
         game.context.move = 1;
@@ -362,11 +382,35 @@ export async function domoveHeroDirLikeC(dx, dy) {
         await doopenIndirHeroLikeC(g, newx, newy);
         g.context.door_opened = !isClosedDoorLoc(dest);
         u.dz = 0;
+        /* C: hack.c test_move — autoopen without moving does not spend hero time. */
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+        ) {
+            g.context.move = 0;
+            g.context._wizD1AutoopenNoMoveLikeC = true;
+        }
         /* C: autoopen pline stays on row 0 until the next command (do not cls here). */
         if (!g._retainMessageAfterCommand) clearPendingMessageAndToplineLikeC();
         g._overlayScreen = null;
         g._inventoryMode = false;
         /* C: no domove vision_recalc when autoopen without moving — moveloop_core tail. */
+        return false;
+    }
+
+    if (
+        g.context?.run
+        && dest
+        && IS_DOOR(dest.typ | 0)
+        && isClosedDoorLoc(dest)
+    ) {
+        /* C: hack.c test_move — run into closed door (no autoopen); no turn elapses. */
+        await pline('That door is closed.');
+        endRunning(true);
+        g.context.move = 0;
+        g.context._wizD1BlockedRunNoTimeLikeC = true;
+        if (game.u) game.u.dz = 0;
         return false;
     }
 

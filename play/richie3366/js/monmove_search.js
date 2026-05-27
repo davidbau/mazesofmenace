@@ -27,7 +27,10 @@ export function isMovemonStepOnePeelLikeC(g, stepNum) {
 /** C: wizard D:1 — **`movemon(stepNum 1)`** peel + post-peel distant **`m_move`** (**`seed0006`** **`n`**). */
 export function isWizardD1Step1PeelLikeC(g, stepNum) {
     return (
-        !!g.context?._postBumpInlineDoneLikeC
+        (
+            !!g.context?._postBumpInlineDoneLikeC
+            || !!g.context?._wizD1PostEastTailWalkFmonLikeC
+        )
         && g.urole?.abbr === 'Wiz'
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1
