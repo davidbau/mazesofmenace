@@ -3499,22 +3499,69 @@ function reportEggHatch(entry, mon, hatchcount, x, y, yours) {
     }
 }
 
+function containedObjectChildren(obj) {
+    const lists = [];
+    if (Array.isArray(obj?.contents)) lists.push(obj.contents);
+    if (Array.isArray(obj?.cobj) && obj.cobj !== obj.contents) lists.push(obj.cobj);
+    return lists.flat();
+}
+
+function appendContainedDueEggEntries(entries, container, context, seen, moves) {
+    for (const child of containedObjectChildren(container)) {
+        if (!child || seen.has(child)) continue;
+        seen.add(child);
+        if (isEggObject(child) && eggHasHatchTimer(child) && child.eggHatchTurn <= moves)
+            entries.push({ egg: child, source: 'contained', container, ...context });
+        appendContainedDueEggEntries(entries, child, context, seen, moves);
+    }
+}
+
+function appendInertDueEggEntries(entries, objects, source, seen, moves, context = {}) {
+    if (!Array.isArray(objects)) return;
+    for (const obj of objects) {
+        if (!obj || seen.has(obj)) continue;
+        seen.add(obj);
+        if (isEggObject(obj) && eggHasHatchTimer(obj) && obj.eggHatchTurn <= moves)
+            entries.push({ egg: obj, source, ...context });
+        appendInertDueEggEntries(entries, containedObjectChildren(obj), source, seen, moves, context);
+    }
+}
+
+function appendMigratingDueEggEntries(entries, g, seen, moves) {
+    if (g._impact_drop_migrations instanceof Map) {
+        for (const objects of g._impact_drop_migrations.values())
+            appendInertDueEggEntries(entries, objects, 'migrating', seen, moves);
+    }
+    appendInertDueEggEntries(entries, g.migrating_objs, 'migrating', seen, moves);
+    appendInertDueEggEntries(entries, g._migrating_objs, 'migrating', seen, moves);
+    for (const carrier of [...(g.migrating_mons || []), ...(g._migrating_mons || [])])
+        appendInertDueEggEntries(entries, carrier?.minvent, 'migrating', seen, moves, { carrier });
+}
+
 function dueEggEntries(g) {
     const entries = [];
+    const containedSeen = new Set();
+    const inertSeen = new Set();
+    const moves = g.moves || 0;
     for (const egg of [...(g.inventory || [])]) {
-        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
+        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
             entries.push({ egg, source: 'inventory' });
+        appendContainedDueEggEntries(entries, egg, { containerSource: 'inventory' }, containedSeen, moves);
     }
     for (const egg of [...(g.level?.objects || [])]) {
-        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
+        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
             entries.push({ egg, source: 'floor' });
+        appendContainedDueEggEntries(entries, egg, { containerSource: 'floor' }, containedSeen, moves);
     }
     for (const carrier of [...(g.level?.monsters || [])]) {
         for (const egg of [...(carrier.minvent || [])]) {
-            if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= g.moves)
+            if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
                 entries.push({ egg, source: 'minvent', carrier });
+            appendContainedDueEggEntries(entries, egg, { containerSource: 'minvent', carrier }, containedSeen, moves);
         }
     }
+    appendInertDueEggEntries(entries, g.level?.buriedobjlist, 'buried', inertSeen, moves);
+    appendMigratingDueEggEntries(entries, g, inertSeen, moves);
     return entries.sort((a, b) => ((a.egg.eggHatchTurn || 0) - (b.egg.eggHatchTurn || 0))
         || ((b.egg._egg_hatch_seq || 0) - (a.egg._egg_hatch_seq || 0)));
 }
@@ -3524,7 +3571,7 @@ export async function processEggHatchTimeouts(g = game) {
         const egg = entry.egg;
         killEggHatchTimer(egg);
         const data = eggHatchMonsterData(egg, g);
-        if (!data) continue;
+        if (!data || entry.source === 'contained' || entry.source === 'buried' || entry.source === 'migrating') continue;
 
         const yours = !!egg.spe || (entry.source === 'inventory' && !game.flags?.female && !rn2(2));
         const { x, y } = eggObjectLocation(entry);

@@ -246,6 +246,61 @@ function canSelectGreaseObject(item) {
     return !!item && item.cls !== 'coin' && item.letter !== '$';
 }
 
+function isSqueakyBoardGreaseTool(item) {
+    return !!item && item.cls === 'tool' && toolChargeKind(item) === 'can of grease';
+}
+
+function isKnownSqueakyBoardOil(item) {
+    if (!isPotionOfOil(item)) return false;
+    const kind = objectKindKey(item).replace(/^potion of /, '');
+    return item.known === true || kind === 'oil'
+        || (game._discoveries || []).some(entry =>
+            entry.section === 'Potions' && entry.name === 'potion of oil' && entry.known !== false);
+}
+
+function isSqueakyBoardSuggestedUntrapTool(item) {
+    return isSqueakyBoardGreaseTool(item) || isKnownSqueakyBoardOil(item);
+}
+
+function isSqueakyBoardUntrapTool(item) {
+    return isSqueakyBoardSuggestedUntrapTool(item) || isPotionObject(item);
+}
+
+function isBadSqueakyBoardUntrapTool(item) {
+    if (!item || item.cursed) return true;
+    if (isPotionOfOil(item)) return !!(item.lamplit || item.burning);
+    if (isSqueakyBoardGreaseTool(item)) return (item.spe ?? 0) <= 0;
+    return true;
+}
+
+function useSqueakyBoardUntrapTool(item, messages) {
+    if (isSqueakyBoardGreaseTool(item))
+        return spendChargedToolUse(item, messages);
+    if (isPotionOfOil(item)) {
+        useUpInventoryItem(item, 1);
+        identifyPotionOfOil(item);
+        return true;
+    }
+    return false;
+}
+
+function squeakyBoardUntrapChance(trap) {
+    let chance = 3;
+    if (heroIsConfused() || heroIsHallucinating()) chance++;
+    if (game.u?.blind || game.u?.Blind) chance++;
+    if (heroIsStunned()) chance += 2;
+    if (heroIsFumbling()) chance *= 2;
+    if (trap?.madeby_u) chance--;
+    return Math.max(1, chance);
+}
+
+function squeakyBoardUntrapPrompt() {
+    const letters = inventoryLetters(isSqueakyBoardSuggestedUntrapTool);
+    return letters
+        ? `What do you want to untrap with? [${getobjPromptLetters(letters)} or ?*]`
+        : 'What do you want to untrap with? [*]';
+}
+
 function greaseTargetPrompt() {
     const letters = inventoryLetters(canGreaseObject);
     const display = letters ? `- ${getobjPromptLetters(letters)}` : '-';
@@ -7363,6 +7418,16 @@ function dipItemDescription(item, shortened = false) {
     return `${buc}${rust}${spe}${baseName}${worn}`;
 }
 
+function dipItemPromptParts(item) {
+    let description = dipItemDescription(item);
+    let article = (item.quan || 1) > 1 ? '' : `${/^[aeiou]/i.test(description) ? 'an' : 'a'} `;
+    if (`${article}${description}`.length > 49) {
+        description = dipItemDescription(item, true);
+        article = (item.quan || 1) > 1 ? '' : `${/^[aeiou]/i.test(description) ? 'an' : 'a'} `;
+    }
+    return { article, description };
+}
+
 function nextToDoor(x, y) {
     for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -7711,6 +7776,13 @@ function billDummyAlteredCarriedObject(obj) {
     const dummyEntry = addObjectToShopBill(shkp, dummy, price, { useup: true });
     if (!dummyEntry) return false;
     rememberUsedUpShopBillEntry(obj, dummyEntry, price, shkp);
+    clearObjectShopBillState(obj);
+    return true;
+}
+
+function markAlteredShopObjectNoCharge(obj) {
+    if (!obj || shopBillableGold(obj)) return false;
+    obj.no_charge = true;
     clearObjectShopBillState(obj);
     return true;
 }
@@ -8849,11 +8921,10 @@ function billDummyAlteredShopObject(obj) {
         oy: undefined,
     };
     const entry = addObjectToShopBill(shkp, dummy, price, { useup: true });
-    if (!entry) return false;
+    if (!entry)
+        return shopBillIsFull(shkp) ? markAlteredShopObjectNoCharge(obj) : false;
     rememberUsedUpShopBillEntry(obj, entry, price, shkp);
-    obj.no_charge = true;
-    clearObjectShopBillState(obj);
-    obj.no_charge = true;
+    markAlteredShopObjectNoCharge(obj);
     return true;
 }
 
@@ -10416,6 +10487,12 @@ function isLampObject(item) {
         || kind === 'oil lamp' || kind === 'magic lamp' || kind === 'brass lantern';
 }
 
+function isOilRefuelLampObject(item) {
+    const kind = objectKindKey(item);
+    return item?.otyp === OIL_LAMP || item?.otyp === MAGIC_LAMP
+        || kind === 'oil lamp' || kind === 'magic lamp';
+}
+
 function isCrystalBallObject(item) {
     const kind = toolChargeKind(item);
     return item?.otyp === CRYSTAL_BALL || kind === 'crystal ball'
@@ -11383,6 +11460,133 @@ async function applyPotionOfOil(item) {
     game.context.move = 1;
 }
 
+function oilPotionDipSources(target) {
+    return (game.inventory || []).filter(item => item !== target && isPotionOfOil(item));
+}
+
+const OIL_DIP_AMMO_RE = /\b(?:arrow|arrows|ya|bolt|bolts|dart|darts|shuriken|throwing star|throwing stars)\b/;
+
+function isOilWeaponDipTargetObject(item) {
+    const cls = itemClassKey(item);
+    return cls === 'weapon' || item?.glyph === ')' || item?.otyp === WEAPON_CLASS || isWeaponTool(item);
+}
+
+function oilDipTargetName(item) {
+    return dipItemDescription(item).replace(/\s+\(being worn\)$/, '');
+}
+
+function oilDipVerb(item, singular, plural) {
+    return (item?.quan || 1) > 1 ? plural : singular;
+}
+
+function oilDipRepairKind(item) {
+    if (!isOilWeaponDipTargetObject(item) || OIL_DIP_AMMO_RE.test(objectKindKey(item))) return '';
+    const profile = wishedDamageProfile(item);
+    const rusty = profile.primaryWord === 'rusty' && (item.oeroded || 0) > 0;
+    const corroded = profile.secondaryWord === 'corroded' && (item.oeroded2 || 0) > 0;
+    if (rusty && corroded) return 'corroded and rusty';
+    if (rusty) return 'rusty';
+    if (corroded) return 'corroded';
+    return '';
+}
+
+function refreshOilDipTargetLine(item) {
+    refreshInventoryObjectLine(item);
+    if (item?.unpaid) syncUnpaidBillLine(item);
+}
+
+function consumeDipOilPotion(potion) {
+    if (potion?.dknown) identifyPotionOfOil(potion);
+    useUpInventoryItem(potion, 1);
+}
+
+function dipWeaponIntoOilPotion(target, potion) {
+    const messages = [];
+    if (!isOilWeaponDipTargetObject(target) || !isPotionOfOil(potion)) return messages;
+    if (potion.lamplit || potion.burning) {
+        messages.push('The lit potion burns away.');
+        consumeDipOilPotion(potion);
+        exerciseAttribute(A_WIS, false);
+        return messages;
+    }
+    if (potion.cursed) {
+        messages.push(`The potion spills and covers your ${fingersOrGloves()} with oil.`);
+        addHeroGlibTimeout(d(2, 10));
+        consumeDipOilPotion(potion);
+        exerciseAttribute(A_WIS, false);
+        return messages;
+    }
+
+    const name = oilDipTargetName(target);
+    const repairKind = oilDipRepairKind(target);
+    if (repairKind) {
+        messages.push(`Your ${name} ${oilDipVerb(target, game.u?.blind ? 'feels' : 'is', game.u?.blind ? 'feel' : 'are')} less ${repairKind}.`);
+        if ((target.oeroded || 0) > 0) target.oeroded--;
+        if ((target.oeroded2 || 0) > 0) target.oeroded2--;
+        exerciseAttribute(A_WIS, true);
+    } else {
+        messages.push(game.u?.blind
+            ? `Your ${name} ${oilDipVerb(target, 'feels', 'feel')} oily.`
+            : `Your ${name} ${oilDipVerb(target, 'gleams', 'gleam')} with an oily sheen.`);
+        exerciseAttribute(A_WIS, false);
+    }
+    refreshOilDipTargetLine(target);
+    consumeDipOilPotion(potion);
+    return messages;
+}
+
+function dipObjectIntoOilPotion(target, potion) {
+    if (isOilWeaponDipTargetObject(target)) return dipWeaponIntoOilPotion(target, potion);
+    return dipLampIntoOilPotion(target, potion);
+}
+
+function oilRefuelAmount(potion) {
+    return Math.trunc(((potion?.odiluted ? 3 : 4) * (potion?.age ?? 400)) / 2);
+}
+
+function dipLampIntoOilPotion(lamp, potion) {
+    const messages = [];
+    if (!isOilRefuelLampObject(lamp) || !isPotionOfOil(potion)) return messages;
+    if (potion.lamplit || potion.burning) {
+        messages.push('The lit potion burns away.');
+        useUpInventoryItem(potion, 1);
+        identifyPotionOfOil(potion);
+        return messages;
+    }
+    if (potion.cursed) {
+        messages.push(`The potion spills and covers your ${fingersOrGloves()} with oil.`);
+        addHeroGlibTimeout(d(2, 10));
+        useUpInventoryItem(potion, 1);
+        identifyPotionOfOil(potion);
+        return messages;
+    }
+    if (lamp.lamplit || lamp.burning) {
+        messages.push('Boom!  The oil catches fire.');
+        useUpInventoryItem(potion, 1);
+        identifyPotionOfOil(potion);
+        return messages;
+    }
+    const kind = objectKindKey(lamp);
+    if ((lamp.otyp === MAGIC_LAMP || kind === 'magic lamp') && (lamp.spe ?? 1) === 0) {
+        lamp.otyp = OIL_LAMP;
+        lamp.kind = 'oil lamp';
+        lamp.actualKind = 'oil lamp';
+        lamp.age = 0;
+    }
+    if ((lamp.age ?? 1500) > 1000) {
+        messages.push(`Your ${lampNoun(lamp)} is full.`);
+    } else {
+        messages.push(`You fill your ${lampNoun(lamp)} with oil.`);
+        checkUnpaidUsage(potion, messages);
+        lamp.age = Math.min(1500, (lamp.age ?? 0) + oilRefuelAmount(potion));
+        useUpInventoryItem(potion, 1);
+        identifyPotionOfOil(potion);
+    }
+    lamp.spe = 1;
+    refreshLightSourceLine(lamp);
+    return messages;
+}
+
 function removeMonsterFromLevel(mon) {
     if (!mon || !game.level?.monsters) return;
     game.level.monsters = game.level.monsters.filter(candidate => candidate !== mon);
@@ -11779,7 +11983,8 @@ function costlyBiteFood(item, { floorObject = false } = {}) {
         const entry = shopBillEntryForObject(shkp, item);
         const price = entry ? shopBillEntryTotal(entry) : shopItemPrice(item, x, y);
         if (!(price > 0)) return false;
-        if (!entry && !addObjectToShopBill(shkp, item, price, { useup: true })) return false;
+        if (!entry && !addObjectToShopBill(shkp, item, price, { useup: true }))
+            return shopBillIsFull(shkp) ? markAlteredShopObjectNoCharge(item) : false;
         const billed = markObjectShopBillUsedUp(item, shkp);
         if (billed) item.no_charge = true;
         return billed;
@@ -13882,9 +14087,14 @@ function costlyTinAlteration(tin, { floorObject = false, alterType = 'open' } = 
         const shkp = shopkeeperForCostlySpot(x, y);
         const entry = shopBillEntryForObject(shkp, chargedTin);
         const price = entry ? shopBillEntryTotal(entry) : shopItemPrice(chargedTin, x, y);
-        if (price > 0 && (entry || addObjectToShopBill(shkp, chargedTin, price, { useup: true }))) {
-            markObjectShopBillUsedUp(chargedTin, shkp);
-            chargedTin.no_charge = true;
+        if (price > 0) {
+            const billEntry = entry || addObjectToShopBill(shkp, chargedTin, price, { useup: true });
+            if (billEntry) {
+                markObjectShopBillUsedUp(chargedTin, shkp);
+                chargedTin.no_charge = true;
+            } else if (shopBillIsFull(shkp)) {
+                markAlteredShopObjectNoCharge(chargedTin);
+            }
         }
         return chargedTin;
     }
@@ -17468,9 +17678,12 @@ function containedShopGold(obj, seen = new Set()) {
     return total;
 }
 
-function addShopBillEntryOrMark(shkp, obj, totalPrice) {
+function addShopBillEntryOrMark(shkp, obj, totalPrice, { messages = null } = {}) {
     if (!shkp || !obj || shopBillableGold(obj) || !(totalPrice > 0)) return null;
-    return addObjectToShopBill(shkp, obj, totalPrice);
+    const entry = addObjectToShopBill(shkp, obj, totalPrice);
+    if (!entry && shopBillIsFull(shkp) && Array.isArray(messages))
+        messages.push('You got that for free!');
+    return entry;
 }
 
 function liveUnpaidBillOwnerOrClear(shkp, obj) {
@@ -17483,30 +17696,30 @@ function liveUnpaidBillOwnerOrClear(shkp, obj) {
     return { shkp: null, entry: null };
 }
 
-function addContainedObjectsToShopBill(shkp, obj, x, y, seen = new Set()) {
+function addContainedObjectsToShopBill(shkp, obj, x, y, seen = new Set(), messages = []) {
     let price = 0;
     const billEntries = [];
     for (const child of globContents(obj)) {
         if (!child || seen.has(child)) continue;
         seen.add(child);
         if (shopBillableGold(child)) continue;
+        const childPrice = child.no_charge ? 0 : shopItemPrice(child, x, y);
+        if (childPrice > 0) price += childPrice;
         if (liveUnpaidBillOwnerOrClear(shkp, child).entry) {
             syncUnpaidBillLine(child);
         } else if (!child.no_charge) {
-            const childPrice = shopItemPrice(child, x, y);
             if (childPrice > 0) {
-                const childEntry = addShopBillEntryOrMark(shkp, child, childPrice);
+                const childEntry = addShopBillEntryOrMark(shkp, child, childPrice, { messages });
                 if (childEntry) {
                     billEntries.push(childEntry);
-                    price += childPrice;
                 }
             }
         }
-        const nested = addContainedObjectsToShopBill(shkp, child, x, y, seen);
+        const nested = addContainedObjectsToShopBill(shkp, child, x, y, seen, messages);
         price += nested.price;
         billEntries.push(...nested.billEntries);
     }
-    return { price, billEntries };
+    return { price, billEntries, messages };
 }
 
 function addContainerAndContentsToShopBill(container, sourceObj, pickedItem, shkp, x, y) {
@@ -17529,10 +17742,11 @@ function addContainerAndContentsToShopBill(container, sourceObj, pickedItem, shk
         const topPrice = shopItemPrice(sourceObj, x, y);
         if (topPrice > 0) {
             billEntry = addShopBillEntryOrMark(shkp, pickedItem, topPrice);
-            if (billEntry) price += topPrice;
+            price += topPrice;
         }
     }
-    const nested = addContainedObjectsToShopBill(shkp, sourceObj, x, y);
+    const messages = [];
+    const nested = addContainedObjectsToShopBill(shkp, sourceObj, x, y, new Set(), messages);
     price += nested.price;
     const itemPrice = price;
     const gold = containedShopGold(sourceObj);
@@ -17555,6 +17769,7 @@ function addContainerAndContentsToShopBill(container, sourceObj, pickedItem, shk
         goldMessages,
         billEntry,
         billEntries: [billEntry, ...nested.billEntries].filter(Boolean),
+        messages,
     };
 }
 
@@ -43867,18 +44082,39 @@ export async function rhack(_cmd) {
         }
         const item = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (item) {
-            let description = dipItemDescription(item);
-            let article = (item.quan || 1) > 1 ? '' : `${/^[aeiou]/i.test(description) ? 'an' : 'a'} `;
-            if (`${article}${description}`.length > 49) {
-                description = dipItemDescription(item, true);
-                article = (item.quan || 1) > 1 ? '' : `${/^[aeiou]/i.test(description) ? 'an' : 'a'} `;
-            }
+            const { article, description } = dipItemPromptParts(item);
             game._dip_object = ch;
             game._dip_item = item;
+            const oilSources = isOilRefuelLampObject(item) ? oilPotionDipSources(item) : [];
+            if (oilSources.length) {
+                const sourceLetters = oilSources.map(source => source.letter).filter(Boolean).sort().join('');
+                await setMessage(`What do you want to dip ${article}${description} into? [${inventoryLetterMenu(sourceLetters)} or ?*]`);
+                game._command_mode = 'dipOilSource';
+                return;
+            }
             await setMessage(`Dip ${article}${description} into the fountain? [yn] (n)`);
             game._command_mode = 'dipConfirm';
             return;
         }
+        game._command_mode = null;
+        return;
+    }
+
+    if (game._command_mode === 'dipOilSource') {
+        if (ch === '\x1b') {
+            game._keep_pending_message = 1;
+            game._command_mode = null;
+            return;
+        }
+        const lamp = game._dip_item || (game.inventory || []).find(invItem => invItem.letter === game._dip_object);
+        const potion = (game.inventory || []).find(invItem => invItem.letter === ch);
+        if (lamp && potion && isPotionOfOil(potion)) {
+            const messages = dipObjectIntoOilPotion(lamp, potion);
+            await setMessage(messages.join('  ') || 'Nothing happens.', messages.length > 1);
+            game.context.move = 1;
+        }
+        game._dip_object = '';
+        game._dip_item = null;
         game._command_mode = null;
         return;
     }
@@ -43990,6 +44226,15 @@ export async function rhack(_cmd) {
                 game.context.move = 1;
             }
         } else {
+            const item = game._dip_item || (game.inventory || []).find(invItem => invItem.letter === game._dip_object);
+            const oilSources = ch === 'n' && isOilWeaponDipTargetObject(item) ? oilPotionDipSources(item) : [];
+            if (oilSources.length) {
+                const { article, description } = dipItemPromptParts(item);
+                const sourceLetters = oilSources.map(source => source.letter).filter(Boolean).sort().join('');
+                await setMessage(`What do you want to dip ${article}${description} into? [${inventoryLetterMenu(sourceLetters)} or ?*]`);
+                game._command_mode = 'dipOilSource';
+                return;
+            }
             await setMessage('Never mind.');
         }
         game._dip_object = '';
@@ -45224,7 +45469,86 @@ export async function rhack(_cmd) {
             await setMessage('');
             return;
         }
+        const dir = ch === '.' ? { dx: 0, dy: 0 } : movementDirection(ch);
+        if (dir) {
+            const x = (game.u?.ux || 0) + dir.dx;
+            const y = (game.u?.uy || 0) + dir.dy;
+            if (!isok(x, y)) {
+                await setMessage('The perils lurking there are beyond your grasp.');
+                return;
+            }
+            const trap = (game.level?.traps || []).find(candidate =>
+                candidate.tx === x && candidate.ty === y && candidate.tseen && candidate.ttyp === SQKY_BOARD);
+            if (trap) {
+                game._untrap_squeaky_target = { x, y };
+                await setMessage(squeakyBoardUntrapPrompt());
+                game._command_mode = 'untrapSqueakyTool';
+                return;
+            }
+        }
         await setMessage('And just how do you expect to do that?');
+        return;
+    }
+
+    if (game._command_mode === 'untrapSqueakyInventoryOverlay') {
+        game._overlay_lines = null;
+        game._overlay_hide_status = 0;
+        if (ch === ' ' || ch === '\x1b' || ch === '\r' || ch === '\n') {
+            await setMessage(squeakyBoardUntrapPrompt());
+            game._command_mode = 'untrapSqueakyTool';
+            return;
+        }
+        if (!(game.inventory || []).some(invItem => invItem.letter === ch && isSqueakyBoardUntrapTool(invItem))) {
+            game._keep_pending_message = 1;
+            return;
+        }
+        game._command_mode = 'untrapSqueakyTool';
+    }
+
+    if (game._command_mode === 'untrapSqueakyTool') {
+        if (ch === '\x1b' || ch === ' ' || ch === '\r' || ch === '\n') {
+            game._untrap_squeaky_target = null;
+            game._command_mode = null;
+            await setMessage('Never mind.');
+            return;
+        }
+        if (ch === '?' || ch === '*') {
+            setOverlay(inventoryOverlayLines(0, false, isSqueakyBoardUntrapTool), 24, true);
+            game._command_mode = 'untrapSqueakyInventoryOverlay';
+            return;
+        }
+        const tool = (game.inventory || []).find(invItem =>
+            invItem.letter === ch && isSqueakyBoardUntrapTool(invItem));
+        if (!tool) {
+            game._topline_after_more = squeakyBoardUntrapPrompt();
+            await setMessage("You don't have that object.", true);
+            return;
+        }
+        const target = game._untrap_squeaky_target;
+        const trap = target && (game.level?.traps || []).find(candidate =>
+            candidate.tx === target.x && candidate.ty === target.y && candidate.tseen && candidate.ttyp === SQKY_BOARD);
+        game._untrap_squeaky_target = null;
+        game._command_mode = null;
+        if (!trap) {
+            await setMessage('And just how do you expect to do that?');
+            return;
+        }
+        if (isBadSqueakyBoardUntrapTool(tool) || rn2(squeakyBoardUntrapChance(trap))) {
+            await setMessage('That squeaky board is difficult to disarm.');
+            game.context.move = 1;
+            return;
+        }
+        const messages = [];
+        if (!useSqueakyBoardUntrapTool(tool, messages)) {
+            await setMessage('That squeaky board is difficult to disarm.');
+            game.context.move = 1;
+            return;
+        }
+        messages.push('You repair the squeaky board.');
+        game.level.traps = (game.level?.traps || []).filter(candidate => candidate !== trap);
+        newsym(trap.tx, trap.ty);
+        await setMessage(messages.join('  '), messages.length > 1);
+        game.context.move = 1;
         return;
     }
 
