@@ -192,7 +192,21 @@ export function maybe_u_wipe_engr() {
 
 /** C: attrib.c exercise — extra rn2(31) after u-wipe tail (session step 6 → stepNum 5). */
 export function post_moveloop82_exercise(stepNum) {
-    if (stepNum === 5) rn2(31);
+    if (stepNum === 5) {
+        rn2(31);
+        const g = game;
+        if (
+            g.urole?.abbr === 'Wiz'
+            && (g.u?.uz?.dnum | 0) === 0
+            && (g.u?.uz?.dlevel | 0) === 1
+            && g.context?._wizD1Step1InventPostDoneLikeC
+        ) {
+            g.context = g.context || {};
+            /* C: next pet **`dog_move`** (~2696) — full **`mfndpos`** (~2696–2704), no follow **`rn2(4)`**. */
+            g.context._wizD1AfterLPostMfndposOnlyLikeC = true;
+            delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
+        }
+    }
 }
 
 /**
@@ -206,7 +220,11 @@ export async function end_of_turn_rng(stepNum) {
     ageSpellsMoveloopTailLikeC(game);
     for (const line of collectExerchkPlines()) await pline(line);
     maybe_u_wipe_engr();
-    if (stepNum > 0 && stepNum <= MOVE_MON_HARNESS_MAX_STEP) {
+    if (
+        stepNum > 0
+        && stepNum <= MOVE_MON_HARNESS_MAX_STEP
+        && !game.context?._wizD1LPetInventSkipMoveloop82ExerciseLikeC
+    ) {
         post_moveloop82_exercise(stepNum);
     }
 }

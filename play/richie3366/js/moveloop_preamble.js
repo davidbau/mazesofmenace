@@ -29,7 +29,7 @@ import { scheduleGotoHeroLikeC, deferredGotoHeroLikeC } from './goto_level_hero.
 /**
  * C: allmain.c **`maybe_do_tutorial`** → **`find_level("tut-1")`** (**`dungeon.c`**).
  * Returns **`g.sp_levchn`** node when **`proto`** matches (case-insensitive); **`null`** if absent
- * (contest stub usually has no **`tut-1`** until **`dungeon.c`** / Lua graph is ported).
+ * Absent only if **`initDungeonsLikeC`** did not run or **`tut-1`** missing from **`dungeon_proto`**.
  * @returns {object|null}
  */
 export function findLevelTut1LikeC() {

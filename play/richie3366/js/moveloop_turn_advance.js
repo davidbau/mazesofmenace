@@ -30,6 +30,7 @@ import { peekReplayMoves } from './input.js';
 import { setApparxyMonsterLikeC } from './set_apparxy_mon.js';
 import { distfleeckMonsterApplyLikeC } from './distfleeck_mon.js';
 import { dogMoveLPetInventAfterNewturnLikeC } from './dogmove_mon.js';
+import { findDistantMklevMonLikeC } from './mfndpos_mon.js';
 
 /**
  * C: rogue D:1 with only gate + pet — first **`movemon`** peel at **`stepNum` 1** waits for
@@ -185,14 +186,28 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         && (g.u?.uz?.dnum | 0) === 0
         && (g.u?.uz?.dlevel | 0) === 1;
     if (wizD1MovemonOnceLikeC && g.context?._wizD1Step1InventPostDoneLikeC) {
-        delete g.context._wizD1Step1DistantFirstDfDoneLikeC;
-        delete g.context._wizD1Step1DistantMmoveDoneLikeC;
-        delete g.context._wizD1Step1DistantPeelMtmpLikeC;
+        /* C: second **`L`** — pass-2 **`rn2(20)`** + one **`distfleeck`** can end a post; keep peel
+         * pin until the next post's **`mcalcmove`** (~2709), not a replayed pass-1 **`distfleeck`**. */
+        if (
+            !g.context?._wizD1DistantPass2AwaitMcalcmoveLikeC
+            && !g.context?._wizD1LPostEastTailAfterMcalcmoveLikeC
+        ) {
+            delete g.context._wizD1Step1DistantFirstDfDoneLikeC;
+            delete g.context._wizD1Step1DistantMmoveDoneLikeC;
+            delete g.context._wizD1Step1DistantPeelMtmpLikeC;
+            delete g.context._wizD1Step1DistantFmonPass2DoneLikeC;
+            delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;
+        }
         delete g.context._wizD1Step1LPetFirstPassDoneLikeC;
         delete g.context._wizD1Step1LPetTailDoneLikeC;
-        delete g.context._wizD1Step1LPetInventAfterNewturnDoneLikeC;
+        /* Keep **`_wizD1Step1LPetInventAfterNewturnDoneLikeC`** after first **`L`** chain (second **`L`** fmon). */
         /* Keep **`_wizD1Step1PendingLPostPeelLikeC`** until **`L`** post consumes it (set on **`n`** invent). */
         delete g.context._wizD1Step1PetMfndposPickDoneLikeC;
+        delete g.context._wizD1LPostOuterLoopDoneLikeC;
+        delete g.context._wizD1LPostEastSingleNearDfLikeC;
+        delete g.context._wizD1SkipDistantDochugRn4LikeC;
+        delete g.context._wizD1Step1NearMklevDistfleeckOnlyLikeC;
+        delete g.context._wizD1EastDistantMmoveTailDoneLikeC;
     }
     g.context.monMoving = true;
     try {
@@ -294,6 +309,25 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 } else {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);
                     delete g.context._deferredNewTurnLikeC;
+                    if (g.context?._wizD1DistantPass2AwaitMcalcmoveLikeC) {
+                        delete g.context._wizD1DistantPass2AwaitMcalcmoveLikeC;
+                        delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;
+                        /* C: pass-2 peel finished across **`mcalcmove`** — next **`fmon`** is near
+                         * **`distfleeck`** (~2716) then distant **`m_move`** (~2717+). */
+                        g.context._wizD1Step1DistantMmoveDoneLikeC = true;
+                        g.context._wizD1LPostEastTailAfterMcalcmoveLikeC = true;
+                        const peelDistant =
+                            g.context._wizD1Step1DistantPeelMtmpLikeC
+                            ?? findDistantMklevMonLikeC(g);
+                        if (peelDistant) {
+                            g.context._wizD1Step1DistantPeelMtmpLikeC = peelDistant;
+                        }
+                        /* C: same post — near **`distfleeck`** + distant **`m_move`** (~2716+) after
+                         * **`mcalcmove`**, not on the next hero command. */
+                        delete g.context._wizD1MovemonRanThisPostLikeC;
+                        g.context._movemonHarnessConsumed = false;
+                        await movemon(1);
+                    }
                     newTurnDone = true;
                     if (
                         wizD1MovemonOnceLikeC
@@ -323,13 +357,61 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                         if (pet) {
                             dogMoveLPetInventAfterNewturnLikeC(g, pet);
                         }
+                        /* C: after post-newturn **`mfndpos`** — near mklev **`distfleeck`** (~2653). */
+                        if (nearMklev) {
+                            setApparxyMonsterLikeC(g, nearMklev);
+                            await distfleeckMonsterApplyLikeC(g, nearMklev);
+                        }
+                        /* C: second new-turn block in same post (~2654+ **`mcalcmove`**). */
+                        g.context._wizD1LPetInventSkipMoveloop82ExerciseLikeC = true;
+                        try {
+                            await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
+                        } finally {
+                            delete g.context._wizD1LPetInventSkipMoveloop82ExerciseLikeC;
+                        }
                         g.context._wizD1Step1LPetInventAfterNewturnDoneLikeC = true;
+                        delete g.context._wizD1Step1CachedDogGoalLikeC;
+                        /* C: second **`movemon`** peel (~2660–2672) then third new-turn (~2673+). */
+                        delete g.context._wizD1DistantPass2AwaitMcalcmoveLikeC;
+                        delete g.context._wizD1Step1DistantFirstDfDoneLikeC;
+                        delete g.context._wizD1Step1DistantMmoveDoneLikeC;
+                        delete g.context._wizD1Step1DistantPeelMtmpLikeC;
+                        delete g.context._wizD1Step1DistantFmonPass2DoneLikeC;
+                        delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;
+                        g.context._wizD1Step1LPostSecondMovemonPendingLikeC = true;
+                        g.context._movemonHarnessConsumed = false;
+                        await movemon(1);
+                        g.context._wizD1LPetInventSkipMoveloop82ExerciseLikeC = true;
+                        try {
+                            await runNewTurnSetupAndTailLikeC(g, (g.moves | 0) - 1);
+                        } finally {
+                            delete g.context._wizD1LPetInventSkipMoveloop82ExerciseLikeC;
+                        }
+                        /* C: fourth **`movemon`** in same post (~2679+); keep **`MovemonRan`** so
+                         * outer loop does not re-enter peel before fourth new-turn (~2688+). */
+                        delete g.context._wizD1DistantPass2AwaitMcalcmoveLikeC;
+                        delete g.context._wizD1Step1DistantFirstDfDoneLikeC;
+                        delete g.context._wizD1Step1DistantMmoveDoneLikeC;
+                        delete g.context._wizD1Step1DistantPeelMtmpLikeC;
+                        delete g.context._wizD1Step1DistantFmonPass2DoneLikeC;
+                        delete g.context._wizD1Step1DistantPass2Rn20DoneLikeC;
+                        g.context._wizD1LPostFourthMovemonLikeC = true;
+                        g.context._movemonHarnessConsumed = false;
+                        try {
+                            await movemon(1);
+                        } finally {
+                            delete g.context._wizD1LPostFourthMovemonLikeC;
+                        }
+                        /* C: fourth new-turn (~2688+); **`post_moveloop82_exercise`** at step 5 (~2694). */
+                        await runNewTurnSetupAndTailLikeC(g, 5);
+                        g.context._wizD1LPostOuterLoopDoneLikeC = true;
                     }
                 }
             }
         } while (
             (u.umovement | 0) < NORMAL_SPEED
             && !g.context?._deferredNewTurnLikeC
+            && !g.context?._wizD1LPostOuterLoopDoneLikeC
         );
     } finally {
         g.context.monMoving = false;
@@ -342,6 +424,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._movemonSearch11SubPass;
         delete g.context._movemonStep7Passes;
         delete g.context._movemonStep8Passes;
+        delete g.context._wizD1LPostOuterLoopDoneLikeC;
     }
 }
 
