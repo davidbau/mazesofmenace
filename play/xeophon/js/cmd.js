@@ -5,8 +5,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, IN_SIGHT, IS_AIR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -22,7 +22,7 @@ import {
     applyColdRayTerrain, buriedBallToFreedom, buriedBallToPunishment,
     clearCorpseTimeout, corpseName, freezeObjectInIcebox,
     buryObjectsAt, findBuriedBallNear, isBuriedBallTrapActive, objectIceEffect, objIceEffectsAt,
-    removedFromIcebox, riderRevivalDelay, startCorpseTimeout, unearthObjectsAt, zombieFormNameForCorpse,
+    removedFromIcebox, riderRevivalDelay, startCorpseTimeout, startMeltIceTimeout, unearthObjectsAt, zombieFormNameForCorpse,
 } from './ice.js';
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
@@ -791,6 +791,8 @@ const GLOB_OF_GRAY_OOZE = 10180;
 const GLOB_OF_BROWN_PUDDING = 10181;
 const GLOB_OF_GREEN_SLIME = 10182;
 const GLOB_OF_BLACK_PUDDING = 10183;
+const BLINDING_VENOM = 10184;
+const ACID_VENOM = 10185;
 const GLOB_TYPES = new Map([
     ['gray ooze', { otyp: GLOB_OF_GRAY_OOZE, name: 'glob of gray ooze', color: CLR_GRAY }],
     ['brown pudding', { otyp: GLOB_OF_BROWN_PUDDING, name: 'glob of brown pudding', color: CLR_BROWN }],
@@ -1159,7 +1161,7 @@ const INVENTORY_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const APPLY_WEAPON_NAME_RE = /pick-axe|mattock|\baxe\b|bullwhip|lance|polearm|poleaxe|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge|snickersnee/;
 const POLEARM_NAME_RE = /\blance\b|polearm|poleaxe|bardiche|bec de corbin|bill-guisarme|fauchard|glaive|guisarme|halberd|lucern hammer|partisan|ranseur|spetum|voulge|snickersnee/;
 const PICK_DIG_NAME_RE = /(?:^|\b)(?:pick-axe|pick axe|pickaxe|pick-ax|pickax|dwarvish mattock|mattock)(?:\b|$)/;
-const WISH_LOCK_QUALIFIER_RE = /^(locked|unlocked|broken)\s+/i;
+const WISH_LOCK_QUALIFIER_RE = /^(locked|unlocked|broken|open|closed|doorless)\s+/i;
 const WISH_PROOF_QUALIFIER_RE = /^(rustproof|erodeproof|corrodeproof|fixed|fireproof|rotproof|tempered|crackproof)\s+/i;
 const WISH_PRIMARY_EROSION_RE = /^(rusty|rusted|burnt|burned|cracked)\s+/i;
 const WISH_SECONDARY_EROSION_RE = /^(corroded|rotted)\s+/i;
@@ -4910,6 +4912,7 @@ const CLASS_WEIGHTS = {
     gem: 1,
     food: 20,
     amulet: 20,
+    venom: 1,
 };
 const SHOP_OBJECT_COSTS = {
     'arrow': 2,
@@ -9815,67 +9818,400 @@ async function createWizardTrapWishResult(trapWish) {
     return true;
 }
 
-async function createWizardFurnitureWishResult(terrainWish) {
+function clearWizardTerrainTimers(loc, x, y) {
+    if (!loc) return;
+    delete loc.meltIceTurn;
+    delete loc.meltIceTimeout;
+    delete loc.meltIceAwayTurn;
+    if (game.level?.meltIceTimers)
+        game.level.meltIceTimers = game.level.meltIceTimers.filter(timer => timer.x !== x || timer.y !== y);
+}
+
+function deleteWizardTerrainEngraving(x, y) {
+    if (!game.level?.engravings) return;
+    game.level.engravings = game.level.engravings.filter(engr => engr.x !== x || engr.y !== y);
+}
+
+function addWizardHeadstone(x, y) {
+    deleteWizardTerrainEngraving(x, y);
+    game.level.engravings ??= [];
+    game.level.engravings.push({ x, y, text: 'Rest in peace.', type: HEADSTONE });
+}
+
+function adjustWizardTerrainCounters(oldTyp, newTyp) {
+    game.level.flags ??= {};
+    if (oldTyp === FOUNTAIN && newTyp !== FOUNTAIN && game.level.flags.nfountains)
+        game.level.flags.nfountains--;
+    if (oldTyp !== FOUNTAIN && newTyp === FOUNTAIN)
+        game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
+    if (oldTyp === SINK && newTyp !== SINK && game.level.flags.nsinks)
+        game.level.flags.nsinks--;
+    if (oldTyp !== SINK && newTyp === SINK)
+        game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
+}
+
+function clearWizardTerrainMetadata(loc, { keepHorizontal = false } = {}) {
+    loc.doormask = D_NODOOR;
+    loc.wall_info = 0;
+    if (!keepHorizontal) loc.horizontal = false;
+    loc.blessedftn = 0;
+    loc.fountainLooted = false;
+    loc.fountainWarned = false;
+    loc.disturbed = false;
+    loc.altarmask = 0;
+    delete loc.icedpool;
+}
+
+function finalizeWizardTerrainWish(x, y, oldTyp) {
+    const loc = game.level?.at?.(x, y);
+    if (!loc) return;
+    adjustWizardTerrainCounters(oldTyp, loc.typ);
+    if (!(loc.typ === ICE || ((loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN)
+        && ((loc.flags || 0) & DB_UNDER) === DB_ICE)))
+        clearWizardTerrainTimers(loc, x, y);
+    newsym(x, y);
+}
+
+function drawbridgeTerrainMessage(kind, loc) {
+    return `${kind} ${loc?.typ === DRAWBRIDGE_UP ? 'in front of' : 'under'} the drawbridge.`;
+}
+
+function waterTerrainName(typ) {
+    if (typ === MOAT) return 'moat';
+    if (typ === WATER) return Is_waterlevel(game.u?.uz) ? 'limitless water' : 'wall of water';
+    return 'pool of water';
+}
+
+function alignName(align) {
+    if (align === A_CHAOTIC) return 'chaotic';
+    if (align === A_NEUTRAL) return 'neutral';
+    if (align === A_LAWFUL) return 'lawful';
+    if (align === A_NONE) return 'unaligned';
+    return 'unknown';
+}
+
+function randomWizardAltarAlign() {
+    return !rn2(6) ? A_NONE : (rn2(A_LAWFUL + 2) - 1);
+}
+
+function wizardAltarAlign(name) {
+    if (name.startsWith('chaotic ')) return A_CHAOTIC;
+    if (name.startsWith('neutral ')) return A_NEUTRAL;
+    if (name.startsWith('lawful ')) return A_LAWFUL;
+    if (name.startsWith('unaligned ')) return A_NONE;
+    return randomWizardAltarAlign();
+}
+
+function wizardDoorBaseTerrain(typ) {
+    return typ === DOOR || typ === SDOOR || typ === IRONBARS
+        || (IS_WALL(typ) && typ !== DBWALL);
+}
+
+function wizardDoorMask(terrainWish, loc) {
+    const state = terrainWish.lockState || '';
+    let mask = state === 'locked' ? D_LOCKED
+        : (state === 'doorless' || terrainWish.secret) ? D_NODOOR
+            : state === 'open' ? D_ISOPEN
+                : state === 'broken' ? D_BROKEN
+                    : D_CLOSED;
+    let trapped = terrainWish.trappedState;
+    if (trapped === 2 || (((mask & (D_LOCKED | D_CLOSED)) === 0) && !terrainWish.secret))
+        trapped = 0;
+    if (trapped) mask |= D_TRAPPED;
+    return mask;
+}
+
+function wizardDoorDescription(loc) {
+    const parts = [];
+    const mask = loc.doormask || D_NODOOR;
+    if (mask & D_TRAPPED) parts.push('trapped');
+    if (mask & D_LOCKED) parts.push('locked');
+    if (loc.typ === SDOOR) {
+        parts.push('secret door');
+    } else {
+        if (mask & D_CLOSED) parts.push('closed');
+        if (mask & D_ISOPEN) parts.push('open');
+        if (mask & D_BROKEN) parts.push('broken');
+        if ((mask & ~D_TRAPPED) === D_NODOOR) parts.push('doorless doorway');
+        else parts.push('door');
+    }
+    return parts.join(' ');
+}
+
+function wizardWallTypeAt(x, y) {
+    const north = isok(x, y - 1) && IS_WALL(game.level?.at?.(x, y - 1)?.typ);
+    const south = isok(x, y + 1) && IS_WALL(game.level?.at?.(x, y + 1)?.typ);
+    if (north || south)
+        return VWALL;
+    return HWALL;
+}
+
+function roomWishCanOverwriteTerrain(typ) {
+    if (typ === STAIRS || typ === LADDER) return false;
+    return typ === ROOM || IS_FURNITURE(typ) || typ === ICE || IS_POOL(typ) || IS_LAVA(typ);
+}
+
+async function createWizardTerrainWishResult(terrainWish) {
     const { x, y, loc } = heroTerrainCell();
     if (!loc) return false;
     game.level.flags ??= {};
     const oldTyp = loc.typ;
-    loc.doormask = 0;
-    loc.wall_info = 0;
-    loc.horizontal = false;
-    if (terrainWish.typ === FOUNTAIN) {
+    const isDbridge = oldTyp === DRAWBRIDGE_DOWN || oldTyp === DRAWBRIDGE_UP;
+    if (terrainWish.kind === 'fountain') {
+        clearWizardTerrainMetadata(loc);
         loc.typ = FOUNTAIN;
         loc.flags = terrainWish.looted ? F_LOOTED : 0;
         loc.fountainLooted = !!terrainWish.looted;
         loc.fountainWarned = false;
         loc.blessedftn = terrainWish.blessed ? 1 : 0;
-        if (oldTyp !== FOUNTAIN) game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
-        if (oldTyp === SINK && game.level.flags.nsinks) game.level.flags.nsinks--;
-        newsym(x, y);
+        finalizeWizardTerrainWish(x, y, oldTyp);
         await setWishResultMessage(`A ${loc.blessedftn ? 'magic ' : ''}fountain.`);
         return true;
     }
-    if (terrainWish.typ === THRONE) {
+    if (terrainWish.kind === 'throne') {
+        clearWizardTerrainMetadata(loc);
         loc.typ = THRONE;
         loc.flags = terrainWish.looted ? T_LOOTED : 0;
-        loc.blessedftn = 0;
-        loc.fountainLooted = false;
-        loc.fountainWarned = false;
-        if (oldTyp === FOUNTAIN && game.level.flags.nfountains) game.level.flags.nfountains--;
-        if (oldTyp === SINK && game.level.flags.nsinks) game.level.flags.nsinks--;
-        newsym(x, y);
+        finalizeWizardTerrainWish(x, y, oldTyp);
         await setWishResultMessage('A throne.');
         return true;
     }
-    if (terrainWish.typ === SINK) {
+    if (terrainWish.kind === 'sink') {
+        clearWizardTerrainMetadata(loc);
         loc.typ = SINK;
         loc.flags = terrainWish.looted ? (S_LPUDDING | S_LDWASHER | S_LRING) : 0;
-        loc.blessedftn = 0;
-        loc.fountainLooted = false;
-        loc.fountainWarned = false;
-        if (oldTyp !== SINK) game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
-        if (oldTyp === FOUNTAIN && game.level.flags.nfountains) game.level.flags.nfountains--;
-        newsym(x, y);
+        finalizeWizardTerrainWish(x, y, oldTyp);
         await setWishResultMessage('A sink.');
+        return true;
+    }
+    if (terrainWish.kind === 'water') {
+        if (isDbridge) {
+            loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_MOAT;
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(drawbridgeTerrainMessage('Moat', loc));
+        } else {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = terrainWish.typ;
+            loc.flags = 0;
+            deleteWizardTerrainEngraving(x, y);
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(`${upstartText(articleForName(waterTerrainName(loc.typ)))}.`);
+        }
+        return true;
+    }
+    if (terrainWish.kind === 'lava') {
+        if (isDbridge) {
+            loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_LAVA;
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(drawbridgeTerrainMessage('Lava', loc));
+        } else {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = terrainWish.typ;
+            loc.flags = 0;
+            loc.lit = true;
+            deleteWizardTerrainEngraving(x, y);
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(`A ${loc.typ === LAVAPOOL ? 'pool' : 'wall'} of molten lava.`);
+        }
+        return true;
+    }
+    if (terrainWish.kind === 'ice') {
+        if (isDbridge) {
+            loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_ICE;
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(drawbridgeTerrainMessage('Ice', loc));
+        } else {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = ICE;
+            loc.flags = oldTyp === ROOM ? ICED_POOL : ICED_MOAT;
+            loc.icedpool = loc.flags;
+            deleteWizardTerrainEngraving(x, y);
+            if (terrainWish.melting) startMeltIceTimeout(x, y, 0);
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage('Ice.');
+        }
+        return true;
+    }
+    if (terrainWish.kind === 'altar') {
+        clearWizardTerrainMetadata(loc);
+        loc.typ = ALTAR;
+        loc.flags = Align2amask(terrainWish.align);
+        loc.altarmask = loc.flags;
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage(`${upstartText(articleForName(`${alignName(terrainWish.align)} altar`))}.`);
+        return true;
+    }
+    if (terrainWish.kind === 'grave') {
+        if ((oldTyp === ROOM || oldTyp === GRAVE)
+            && !(game.level?.traps || []).some(trap => trap.tx === x && trap.ty === y)) {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = GRAVE;
+            loc.flags = terrainWish.disturbed ? 1 : 0;
+            loc.disturbed = !!terrainWish.disturbed;
+            addWizardHeadstone(x, y);
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(`A ${loc.disturbed ? 'disturbed ' : ''}grave.`);
+        } else {
+            await setWishResultMessage("Can't place a grave here.");
+        }
+        return true;
+    }
+    if (terrainWish.kind === 'tree') {
+        clearWizardTerrainMetadata(loc);
+        loc.typ = TREE;
+        loc.flags = terrainWish.looted ? (TREE_LOOTED | TREE_SWARM) : 0;
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage('A tree.');
+        return true;
+    }
+    if (terrainWish.kind === 'bars') {
+        clearWizardTerrainMetadata(loc);
+        loc.typ = IRONBARS;
+        loc.flags = 0;
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage('Iron bars.');
+        return true;
+    }
+    if (terrainWish.kind === 'cloud') {
+        clearWizardTerrainMetadata(loc);
+        loc.typ = CLOUD;
+        loc.flags = 0;
+        deleteWizardTerrainEngraving(x, y);
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage('A cloud.');
+        return true;
+    }
+    if (terrainWish.kind === 'door') {
+        if (!wizardDoorBaseTerrain(oldTyp)) {
+            await setWishResultMessage(`${terrainWish.secret ? 'Secret door' : 'Door'} requires door or wall location.`);
+            return true;
+        }
+        const oldWallInfo = oldTyp !== DOOR ? (loc.wall_info || 0) : 0;
+        const keepHorizontal = true;
+        clearWizardTerrainMetadata(loc, { keepHorizontal });
+        loc.typ = terrainWish.secret ? SDOOR : DOOR;
+        loc.doormask = wizardDoorMask(terrainWish, loc);
+        loc.wall_info = terrainWish.secret ? (oldWallInfo & WM_MASK) : 0;
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage(`${upstartText(articleForName(wizardDoorDescription(loc)))}.`);
+        return true;
+    }
+    if (terrainWish.kind === 'wall') {
+        clearWizardTerrainMetadata(loc);
+        loc.typ = wizardWallTypeAt(x, y);
+        loc.flags = 0;
+        loc.horizontal = loc.typ === HWALL;
+        fix_wall_spines(Math.max(0, x - 1), Math.max(0, y - 1),
+            Math.min(COLNO - 1, x + 1), Math.min(ROWNO - 1, y + 1));
+        finalizeWizardTerrainWish(x, y, oldTyp);
+        await setWishResultMessage('A wall.');
+        return true;
+    }
+    if (terrainWish.kind === 'secret-corridor') {
+        if (oldTyp === CORR) {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = SCORR;
+            loc.flags = 0;
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage('Secret corridor.');
+        } else {
+            await setWishResultMessage('Secret corridor requires corridor location.');
+        }
+        return true;
+    }
+    if (terrainWish.kind === 'room') {
+        if (isDbridge) {
+            loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_FLOOR;
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage(drawbridgeTerrainMessage('Floor', loc));
+        } else if (roomWishCanOverwriteTerrain(oldTyp)) {
+            clearWizardTerrainMetadata(loc);
+            loc.typ = ROOM;
+            loc.flags = 0;
+            game.level.traps = (game.level.traps || [])
+                .filter(trap => trap.tx !== x || trap.ty !== y || trap.ttyp === MAGIC_PORTAL);
+            finalizeWizardTerrainWish(x, y, oldTyp);
+            await setWishResultMessage('Room floor.');
+        } else {
+            await setWishResultMessage('Room|floor|ground not allowed here.');
+        }
         return true;
     }
     return false;
 }
 
-function wizardFurnitureWishMatch(lowerName, qualifiers = {}) {
+function singularizeWizardTerrainWishName(name) {
+    if (name.endsWith('iron bars')) return name;
+    for (const [plural, singular] of [
+        ['fountains', 'fountain'], ['thrones', 'throne'], ['sinks', 'sink'],
+        ['pools', 'pool'], ['moats', 'moat'], ['altars', 'altar'],
+        ['graves', 'grave'], ['headstones', 'headstone'], ['trees', 'tree'],
+        ['clouds', 'cloud'], ['doors', 'door'], ['doorways', 'doorway'],
+        ['walls', 'wall'], ['corridors', 'corridor'], ['rooms', 'room'],
+        ['floors', 'floor'], ['grounds', 'ground'],
+    ]) {
+        if (name.endsWith(plural)) return `${name.slice(0, -plural.length)}${singular}`;
+    }
+    return name;
+}
+
+function wizardTerrainWishMatch(lowerName, qualifiers = {}) {
     if (!game.flags?.debug) return null;
     let name = normalizeWizardTerrainWishName(lowerName);
-    if (/(?:fountains|thrones|sinks)$/.test(name)) name = name.slice(0, -1);
+    name = singularizeWizardTerrainWishName(name);
     const looted = !!qualifiers.looted;
     if (name.endsWith('fountain')) {
         const prefix = name.slice(0, -'fountain'.length).trim();
-        return { typ: FOUNTAIN, blessed: prefix === 'magic' || !!qualifiers.blessed, looted };
+        return { kind: 'fountain', blessed: prefix === 'magic' || !!qualifiers.blessed, looted };
     }
     if (name.endsWith('throne')) {
-        return { typ: THRONE, looted };
+        return { kind: 'throne', looted };
     }
     if (name.endsWith('sink')) {
-        return { typ: SINK, looted };
+        return { kind: 'sink', looted };
+    }
+    if (name.endsWith('pool') || name.endsWith('moat') || name.endsWith('wall of water')) {
+        const typ = name.endsWith('pool') ? POOL : name.endsWith('moat') ? MOAT : WATER;
+        return { kind: 'water', typ };
+    }
+    if (name.endsWith('lava') || name.endsWith('wall of lava')) {
+        const typ = name.endsWith('wall of lava') ? LAVAWALL : LAVAPOOL;
+        return { kind: 'lava', typ };
+    }
+    if (name.endsWith('ice')) {
+        return { kind: 'ice', melting: name.startsWith('melting ') };
+    }
+    if (name.endsWith('altar')) {
+        return { kind: 'altar', align: wizardAltarAlign(name) };
+    }
+    if (name.endsWith('grave') || name.endsWith('headstone')) {
+        return { kind: 'grave', disturbed: looted };
+    }
+    if (name.endsWith('tree')) {
+        return { kind: 'tree', looted };
+    }
+    if (name.endsWith('bars')) {
+        return { kind: 'bars' };
+    }
+    if (name.endsWith('cloud')) {
+        return { kind: 'cloud' };
+    }
+    if (name.endsWith('door') || (qualifiers.lockState === 'doorless' && name.endsWith('doorway'))) {
+        return {
+            kind: 'door',
+            secret: name.endsWith('secret door'),
+            lockState: qualifiers.lockState || '',
+            trappedState: qualifiers.trappedState || 0,
+        };
+    }
+    if (name.endsWith('wall') && (name === 'wall' || name[name.length - 5] === ' ')) {
+        return { kind: 'wall' };
+    }
+    if (name.endsWith('secret corridor')) {
+        return { kind: 'secret-corridor' };
+    }
+    if (name.endsWith('room') || name.endsWith('floor') || name.endsWith('ground')) {
+        return { kind: 'room' };
     }
     return null;
 }
@@ -9899,8 +10235,8 @@ async function tryWizardNonObjectWish(lowerName, qualifiers = {}) {
     if (!game.flags?.debug) return false;
     const trapWish = wizardTrapWishMatch(lowerName);
     if (trapWish) return createWizardTrapWishResult(trapWish);
-    const terrainWish = wizardFurnitureWishMatch(lowerName, qualifiers);
-    if (terrainWish) return createWizardFurnitureWishResult(terrainWish);
+    const terrainWish = wizardTerrainWishMatch(lowerName, qualifiers);
+    if (terrainWish) return createWizardTerrainWishResult(terrainWish);
     return false;
 }
 
@@ -12201,15 +12537,29 @@ const RANDOM_MONSTER_BY_LOWER_NAME = new Map(
     [...RANDOM_MONSTER_BY_NAME.entries()].map(([name, data]) => [String(name).toLowerCase(), data]),
 );
 
+const WISHED_MONSTER_FALLBACKS = new Map([
+    ['human', { name: 'human', mlet: '@', glyph: '@', human: true, neuter: false }],
+    ['mail daemon', { name: 'mail daemon', mlet: '&', glyph: '&', noCorpse: true, neuter: false }],
+    ['medusa', { name: 'Medusa', mlet: '@', glyph: '@', human: true, unique: true, female: true }],
+    ['wizard of yendor', { name: 'Wizard of Yendor', mlet: '@', glyph: '@', human: true, unique: true, male: true }],
+    ['lord surtur', { name: 'Lord Surtur', mlet: 'H', glyph: 'H', unique: true, male: true }],
+    ['chromatic dragon', { name: 'Chromatic Dragon', mlet: 'D', glyph: 'D', unique: true, female: true }],
+    ['student', { name: 'student', mlet: '@', glyph: '@', human: true, guardian: true, neuter: false }],
+]);
+
 function wishedMonsterByName(name) {
     const raw = String(name || '').trim();
     if (!raw) return null;
     const lower = raw.toLowerCase();
     if (lower === 'elf') return { name: 'elf', weight: 800, mlet: '@', glyph: '@', color: CLR_BRIGHT_GREEN, neuter: false, elf: true };
+    if (lower === 'human wererat') return { ...(monsterByRndName('wererat') || {}), name: 'wererat', wereHuman: true };
+    if (lower === 'human werejackal') return { ...(monsterByRndName('werejackal') || {}), name: 'werejackal', wereHuman: true };
+    if (lower === 'human werewolf') return { ...(monsterByRndName('werewolf') || {}), name: 'werewolf', wereHuman: true };
     return monsterByRndName(raw)
         || RANDOM_MONSTER_BY_NAME.get(raw)
         || RANDOM_MONSTER_BY_LOWER_NAME.get(lower)
         || RANDOM_MONSTER_BY_LOWER_NAME.get(lower.replace(/\s+/g, '-'))
+        || WISHED_MONSTER_FALLBACKS.get(lower)
         || null;
 }
 
@@ -12557,7 +12907,7 @@ function parseWishedFigurineName(lowerName, qualifiers = {}) {
 
 function canWishedFigurineUseMonster(monster) {
     if (!monster || monster.unique || monster.name === 'mail daemon') return false;
-    const human = monster.mlet === '@' || monster.glyph === '@';
+    const human = monster.human || monster.mlet === '@' || monster.glyph === '@' || monster.mlet === 'human';
     return !human || monster.wereHuman;
 }
 
@@ -12960,6 +13310,61 @@ function makeOilLampFromMagicLampWishObject() {
         actualKind: 'oil lamp',
         wishedfor: true,
     });
+}
+
+const WISH_VENOM_TYPES = {
+    blinding: { otyp: BLINDING_VENOM, kind: 'splash of blinding venom' },
+    acid: { otyp: ACID_VENOM, kind: 'splash of acid venom' },
+};
+
+function wishedRandomVenomType() {
+    return rnd(1000) <= 500 ? WISH_VENOM_TYPES.blinding : WISH_VENOM_TYPES.acid;
+}
+
+function wishedDescriptionVenomType() {
+    return rn2(1002) < 501 ? WISH_VENOM_TYPES.blinding : WISH_VENOM_TYPES.acid;
+}
+
+function wishedVenomType(lowerName) {
+    const name = String(lowerName || '').trim().replace(/\s+/g, ' ');
+    if (name === 'venom')
+        return wishedRandomVenomType();
+    if (name === 'splash of venom' || name === 'splashes of venom')
+        return wishedDescriptionVenomType();
+    if (name === 'splash of blinding venom' || name === 'splashes of blinding venom'
+        || name === 'blinding venom') {
+        rn2(501);
+        return WISH_VENOM_TYPES.blinding;
+    }
+    if (name === 'splash of acid venom' || name === 'splashes of acid venom'
+        || name === 'acid venom') {
+        rn2(501);
+        return WISH_VENOM_TYPES.acid;
+    }
+    return null;
+}
+
+function makeWishedVenomObject(lowerName) {
+    const venom = wishedVenomType(lowerName);
+    if (!venom) return null;
+    if (!game.flags?.debug) return noFittingWishObject();
+    return {
+        id: next_ident(),
+        otyp: venom.otyp,
+        cls: 'venom',
+        glyph: '.',
+        color: CLR_BROWN,
+        _display_color: CLR_BROWN,
+        kind: venom.kind,
+        actualKind: venom.kind,
+        singular: venom.kind,
+        known: true,
+        dknown: true,
+        quan: 1,
+        spe: 1,
+        owt: 1,
+        wishedfor: true,
+    };
 }
 
 function makeWizardSpecialWishObject(lowerName) {
@@ -21873,6 +22278,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
     const eggWish = parseWishedEggName(lowerName, qualifiers);
     if (eggWish) return makeWishedEggObject(eggWish, qualifiers);
 
+    const venomWish = makeWishedVenomObject(lowerName);
+    if (venomWish) return venomWish;
+
     const wizardSpecial = makeWizardSpecialWishObject(lowerName);
     if (wizardSpecial) return wizardSpecial;
 
@@ -21976,6 +22384,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
     if (qualifiers.unlabeled && lowerName === 'paper')
         return makeAmbiguousBlankPaperWishObject();
 
+    if (lowerName === 'wall of water') return noFittingWishObject();
     if (/potion|juice|water/.test(lowerName)) {
         let potionName = lowerName.replace(/^potion(?: of)?\s+/, '');
         const appearanceWish = lowerName.match(/^(.+?) potions?$/);
@@ -22121,6 +22530,7 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
         const otmp = mksobj(FOOD_CLASS, true, false);
         return Object.assign(otmp, { cls: 'food', glyph: '%', kind: lowerName, wishedfor: true });
     }
+    if (lowerName === 'wall' || lowerName.endsWith(' wall')) return noFittingWishObject();
     if (/gem|stone|rock/.test(lowerName)) {
         const otmp = mksobj(GEM_CLASS, false, false);
         return Object.assign(otmp, { cls: 'gem', glyph: '*', gemDescription: lowerName, actualKind: lowerName, wishedfor: true });

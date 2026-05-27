@@ -177,6 +177,7 @@ const FIRE_HORN = 955;
 const MAGIC_HARP = 10169;
 const DRUM_OF_EARTHQUAKE = 975;
 const CRYSTAL_BALL = 10088;
+const FIGURINE = 795;
 const LUCKSTONE = 10127;
 const LOADSTONE = 10165;
 const LENSES = 10128;
@@ -4221,6 +4222,7 @@ function mksobj_init(otmp, otyp, artif) {
             rn1(21, 5);
             blessorcurse(otmp, 10);
         } else if (roll > 770 && roll <= 795) {
+            otmp.otyp = FIGURINE;
             let tryct = 0;
             do {
                 otmp.corpsenm = rndmonst_adj(5, 10);
@@ -20466,7 +20468,7 @@ function wall_cleanup(x1, y1, x2, y2) {
                 loc.typ = STONE;
         }
 }
-function fix_wall_spines(x1, y1, x2, y2) {
+export function fix_wall_spines(x1, y1, x2, y2) {
     const spineArray = [VWALL, HWALL, HWALL, HWALL,
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
