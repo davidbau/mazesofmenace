@@ -19,6 +19,8 @@ import {
     findWestKinkMonsterLikeC,
     isLandEelForMovemonLikeC,
     findDistantMklevMonLikeC,
+    wizD1EastDoorMklevMonLikeC,
+    wizD1EastTailFmonDistantMtmpLikeC,
     movemonStep8DistantMonEligibleLikeC,
     searchPass1NearMonLikeC,
     firstSearchNearMklevHostileLikeC,
@@ -104,6 +106,30 @@ export function fmonListForMovemonLikeC(g, stepNum = 0) {
         if (distant) ordered.push(distant);
         if (pet) ordered.push(pet);
         return [...ordered, ...rest];
+    }
+    /* C: wizard second **`L`** post-**`mcalcmove`** — near **`distfleeck`** (~2716) then distant **`m_move`** (~2717+). */
+    if (
+        g.context?._wizD1LPostEastTailAfterMcalcmoveLikeC
+        && (stepNum | 0) === 1
+        && g.urole?.abbr === 'Wiz'
+        && (g.u?.uz?.dnum | 0) === 0
+        && (g.u?.uz?.dlevel | 0) === 1
+    ) {
+        /* C: east-door **`m_move`** finished before **`mcalcmove`** — peel **`rn2(20)`** is ~915 mon **~(23,13)**. */
+        const distant = wizD1EastTailFmonDistantMtmpLikeC(g);
+        const nearMklev =
+            wizD1EastDoorMklevMonLikeC(g)
+            ?? mons.find(
+                (m) =>
+                    m !== distant
+                    && !(m.mtame | 0)
+                    && (m.mgenmklev | 0),
+            );
+        /** @type {typeof mons} */
+        const ordered = [];
+        if (nearMklev) ordered.push(nearMklev);
+        if (distant) ordered.push(distant);
+        return ordered;
     }
     /* C: wizard step-1 peel — distant **`distfleeck`**, pet **`dog_goal`**, then mklev (**`seed0006`** **`n`**). */
     if (

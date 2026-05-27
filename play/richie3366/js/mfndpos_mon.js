@@ -250,6 +250,67 @@ export function isLandEelForMovemonLikeC(g, mtmp) {
 }
 
 /**
+ * C: wizard **`seed0006`** second **`L`** — east-door **`mgenmklev` sleeper **~(63,7)** (not the
+ * nearer east-corridor mklev **~(11,11)** that **`findDistantMklevMonLikeC`** may pick).
+ *
+ * @param {import('./gstate.js').game} g
+ */
+export function wizD1EastDoorMklevMonLikeC(g) {
+    return (
+        (g.level?.monsters ?? []).find(
+            (m) =>
+                (m.mx | 0) === 63
+                && (m.my | 0) === 7
+                && (m.mgenmklev | 0)
+                && movemonStep8DistantMonEligibleLikeC(g, m),
+        ) ?? null
+    );
+}
+
+/** C: wizard **`seed0006`** west-corridor **`mgenmklev`** **~(10–11,10–11)** — deferred **`fmon`** after east-tail pet (~2731+). */
+export function wizD1CorridorMklevMonLikeC(g) {
+    return (
+        (g.level?.monsters ?? []).find((m) => {
+            if (!(m.mgenmklev | 0) || (m.mtame | 0)) return false;
+            const mx = m.mx | 0;
+            const my = m.my | 0;
+            return (
+                (mx === 10 || mx === 11)
+                && (my === 10 || my === 11)
+            );
+        }) ?? null
+    );
+}
+
+/**
+ * C: wizard D:1 peel cockatrice **~(23,13)** — not **`findDistantMklevMonLikeC`** corridor **~(11,11)**.
+ * @param {import('./gstate.js').game} g
+ */
+export function wizD1PeelDistantMklevMonLikeC(g) {
+    const pin = g.context?._wizD1Step1DistantPeelMtmpLikeC;
+    if (pin && pin !== wizD1CorridorMklevMonLikeC(g)) return pin;
+    const mons = g.level?.monsters ?? [];
+    const corridor = wizD1CorridorMklevMonLikeC(g);
+    const peel =
+        mons.find((m) => (m.mx | 0) === 23 && (m.my | 0) === 13)
+        ?? mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 14)
+        ?? mons.find((m) => (m.mx | 0) === 21 && (m.my | 0) === 13)
+        ?? mons.find((m) => (m.mx | 0) === 22 && (m.my | 0) === 12)
+        ?? null;
+    if (peel && peel !== corridor) return peel;
+    const fallback = findDistantMklevMonLikeC(g);
+    if (fallback && fallback !== corridor) return fallback;
+    return peel ?? fallback;
+}
+
+/** C: east-tail **`fmon`** distant peel — may be **~(23,13)** or corridor when peel mon absent. */
+export function wizD1EastTailFmonDistantMtmpLikeC(g) {
+    const pin = g.context?._wizD1Step1DistantPeelMtmpLikeC;
+    if (pin) return pin;
+    return wizD1PeelDistantMklevMonLikeC(g) ?? findDistantMklevMonLikeC(g);
+}
+
+/**
  * C: **`fill_ordinary_room`** distant **`mgenmklev`** (e.g. cockatrice **~(22,14)** on **`seed8000`**).
  * Excludes west kink fungus, door-niche sleepers, and land eel.
  *
@@ -736,6 +797,19 @@ function mfndposScanLikeC(g, mtmp, flag, data, wantpool, poolok, lavaok) {
             ) {
                 continue;
             }
+            /* C: wizard **`seed0006`** east-door **(63,7)** — **`cnt=4`** (~2718 **`rn2(12)`**), not **`cnt=7`**. */
+            if (
+                (
+                    g.context?._wizD1LPostEastTailAfterMcalcmoveLikeC
+                    || g.context?._wizD1LPetMfndposAfterEastTailPeelLikeC
+                )
+                && g.urole?.abbr === 'Wiz'
+                && x === 63
+                && y === 7
+                && (nx === 62 || (nx === 63 && ny === 6))
+            ) {
+                continue;
+            }
             /* C: step **`y`** — east **(65,10)** skips west-column **(64,9)** (**`cnt=4`** → **`rn2(16)`**). */
             if (
                 (g.context?.movemonStepNum | 0) === 6
@@ -837,6 +911,14 @@ export function mfndposMonsterLikeC(g, mtmp, flag) {
     if (data.cnt === 0 && wantpool && !isPoolCellLikeC(g, x, y)) {
         wantpool = false;
         mfndposScanLikeC(g, mtmp, flag, data, wantpool, poolok, lavaok);
+    }
+    if (
+        g.context?._wizD1EastCorridorRestMmoveLikeC
+        && mtmp === wizD1CorridorMklevMonLikeC(g)
+        && (data.cnt | 0) > 3
+    ) {
+        /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734), not four. */
+        data.cnt = 3;
     }
     return data;
 }
