@@ -27,6 +27,7 @@ import {
 import { createGasCloud } from './region.js';
 import { figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, maybeAttachCarriedFigurineTimeout, stopFigurineTransformTimeout, syncCarriedFigurineTransformTimer } from './figurine.js';
 import { applyMonsterLiquidEffectsAt } from './monster_liquid.js';
+import { applySlimeMoldFruitFields, currentFruitId, currentFruitJuiceName, currentFruitName, fruitWishMatch, setCurrentFruitName, slimeMoldNameForObject } from './fruit.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -1085,6 +1086,7 @@ const MIRROR = 10006;
 const CREAM_PIE = 10081;
 const LUMP_OF_ROYAL_JELLY = 10089;
 const KELP_FROND = 172;
+const SLIME_MOLD = 11009;
 const EUCALYPTUS_LEAF = 11000;
 const APPLE = 11001;
 const PANCAKE = 11011;
@@ -1180,6 +1182,7 @@ const FOOD_NUTRITION = new Map([
     ['tripe', 200],
     ['egg', 80],
     ['meatball', 5],
+    ['meat ring', 5],
     ['enormous meatball', 2000],
     ['kelp frond', 30],
     ['eucalyptus leaf', 1],
@@ -1223,8 +1226,11 @@ const DELAY_ONE_FOOD_VICTUALS = new Map([
     ['melon', { delay: 1, finishName: 'melon' }],
     ['banana', { delay: 1, finishName: 'banana' }],
     ['carrot', { delay: 1, finishName: 'carrot' }],
+    ['meat ring', { otyp: MEAT_RING, delay: 1, finishName: 'meat ring' }],
+    ['lump of royal jelly', { otyp: LUMP_OF_ROYAL_JELLY, delay: 1, finishName: 'lump of royal jelly' }],
     ['sprig of wolfsbane', { delay: 1, finishName: 'sprig of wolfsbane' }],
     ['clove of garlic', { delay: 1, finishName: 'clove of garlic' }],
+    ['slime mold', { otyp: SLIME_MOLD, delay: 1, finishName: 'slime mold' }],
     ['cream pie', { otyp: CREAM_PIE, delay: 1, finishName: 'cream pie' }],
     ['candy bar', { delay: 1, finishName: 'candy bar' }],
     ['fortune cookie', { otyp: FORTUNE_COOKIE, delay: 1, finishName: 'fortune cookie' }],
@@ -4876,6 +4882,7 @@ const OBJECT_WEIGHTS = {
     'pancake': 2,
     'pear': 2,
     'sprig of wolfsbane': 1,
+    'slime mold': 5,
     'tripe': 10,
     'tripe ration': 10,
     'meat ring': 5,
@@ -5080,6 +5087,7 @@ const SHOP_OBJECT_COSTS = {
     'slime mold': 17,
     'lump of royal jelly': 15,
     'meatball': 5,
+    'meat ring': 1,
     'enormous meatball': 105,
     'cream pie': 10,
     'candy bar': 10,
@@ -5378,7 +5386,7 @@ function toggleFlag(name, fallback = false) {
 
 function optionsPage1Lines() {
     const pickupTypes = game._autopickup_types || game.flags?.pickup_types || 'all';
-    const fruit = game._fruit || game.flags?.fruit || 'slime mold';
+    const fruit = currentFruitName();
     return [
         [0, 0, ' '],
         [0, 1, 'Options', 1],
@@ -11664,7 +11672,8 @@ function recordFoodConduct(item) {
     if ((isCorpseItem(item) || isGlobFood(item) || /\bcorpse$/.test(kind)) && !veganCorpse) {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
         conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
-    } else if (kind === 'tripe ration' || kind === 'tripe' || kind === 'meatball' || kind === 'enormous meatball' || (item?.foodRoll || 1000) <= 140) {
+    } else if (kind === 'tripe ration' || kind === 'tripe' || kind === 'meatball'
+        || kind === 'meat ring' || kind === 'enormous meatball' || (item?.foodRoll || 1000) <= 140) {
         conduct.unvegan = (conduct.unvegan || 0) + 1;
         conduct.unvegetarian = (conduct.unvegetarian || 0) + 1;
     } else if (isEggItem(item) || isRoyalJelly(item)
@@ -11847,10 +11856,10 @@ function delayOneFoodVictualSpec(item) {
     if (!item) return null;
     const kind = objectKindKey(item).replace(/^partly eaten /, '');
     const spec = DELAY_ONE_FOOD_VICTUALS.get(kind);
-    if (spec) return { ...spec, kind };
+    if (spec) return { ...spec, kind, finishName: kind === 'slime mold' ? slimeMoldNameForObject(item) : spec.finishName };
     for (const [entryKind, entrySpec] of DELAY_ONE_FOOD_VICTUALS) {
         if (entrySpec.otyp != null && item.otyp === entrySpec.otyp)
-            return { ...entrySpec, kind: entryKind };
+            return { ...entrySpec, kind: entryKind, finishName: entryKind === 'slime mold' ? slimeMoldNameForObject(item) : entrySpec.finishName };
     }
     return null;
 }
@@ -12018,6 +12027,43 @@ function eucalyptusPostEffect(touched) {
     return messages.length ? { message: messages.join('  ') } : {};
 }
 
+function royalJellyFatalPostEffect(messages) {
+    if (consumeLifeSavingAmulet()) {
+        if (game.u) game.u.uhp = 0;
+        game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
+        game._command_mode = 'lifeSavingMore';
+        return {
+            message: [...messages, 'You die...', 'But wait...  Your medallion begins to glow!'].join('  '),
+            more: true,
+            fatal: true,
+            lifesaved: true,
+            commandMode: 'lifeSavingMore',
+            move: 0,
+        };
+    }
+
+    if (game.u) game.u.uhp = 0;
+    game._pending_time_passed = 0;
+    if (game.context) game.context.move = 0;
+    game._process_command_time_now = 0;
+    game._run_steps_remaining = 0;
+    game._command_mode = 'deathDieMore';
+    prepareDeathBones();
+    return {
+        message: [...messages, 'You die...'].join('  '),
+        more: true,
+        fatal: true,
+        commandMode: 'deathDieMore',
+        move: 0,
+    };
+}
+
+function royalJellyDelayedPostEffect(touched) {
+    const result = royalJellyPostEffects(touched);
+    if (result.died) return royalJellyFatalPostEffect(result.messages || []);
+    return result.messages?.length ? { message: result.messages.join('  ') } : {};
+}
+
 function adjustedDelayedFoodBiteHunger(spec, baseNutrition) {
     let nutrition = Math.trunc(baseNutrition || 0);
     if (!(nutrition > 0)) return 0;
@@ -12031,7 +12077,7 @@ function adjustedDelayedFoodBiteHunger(spec, baseNutrition) {
     return Math.max(nutrition, 1);
 }
 
-function delayedFoodFirstBiteMessage(spec, hunger, { reqtime = spec?.delay || 1 } = {}) {
+function delayedFoodFirstBiteMessage(spec, hunger, { reqtime = spec?.delay || 1, food = null } = {}) {
     if (!spec) return '';
     if (spec.rationFeedback) {
         if ((hunger ?? 900) <= 200) return 'This food really hits the spot!';
@@ -12047,6 +12093,8 @@ function delayedFoodFirstBiteMessage(spec, hunger, { reqtime = spec?.delay || 1 
     if (spec.kind === 'apple') return 'Delicious!  Must be a Macintosh!';
     if (spec.kind === 'pear') return delayedPearFirstBiteMessage();
     if (spec.kind === 'clove of garlic') return delayedGarlicFirstBiteMessage(reqtime);
+    if (spec.kind === 'slime mold' && !food?.cursed && Number(food?.spe) === currentFruitId())
+        return `My, this is a ${heroIsHallucinating() ? 'primo' : 'yummy'} ${slimeMoldNameForObject(food)}!`;
     return `This ${spec.finishName || spec.kind} is ${spec.bland ? 'bland.' : heroIsHallucinating() ? 'gnarly!' : 'delicious!'}`;
 }
 
@@ -12063,6 +12111,8 @@ function applyDelayedFoodPostEffect(touched, spec) {
         return wolfsbanePostEffect();
     if (spec?.kind === 'eucalyptus leaf')
         return eucalyptusPostEffect(touched);
+    if (spec?.kind === 'lump of royal jelly')
+        return royalJellyDelayedPostEffect(touched);
     return {};
 }
 
@@ -12289,7 +12339,7 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
 
     const { reqtime, biteNutrition, biteHunger } = delayedFoodVictualState(touched, spec);
     if (!alreadyPartlyEaten && !rottenFirstBite)
-        message = delayedFoodFirstBiteMessage(spec, hungerBeforeBite, { reqtime });
+        message = delayedFoodFirstBiteMessage(spec, hungerBeforeBite, { reqtime, food: touched });
     game._eating_canchoke = heroIsSatiatedForEating();
     game._eating_fullwarn = 0;
     game._eating_nomovemsg = '';
@@ -12334,19 +12384,25 @@ function startDelayedFoodVictual(item, spec, { floorObject = false } = {}) {
 
     if (reqtime <= 1 || biteNutrition <= 0) {
         const postEffect = applyDelayedFoodPostEffect(touched, spec);
-        if (postEffect.message) message = `${message}  ${postEffect.message}`;
+        let finishMessage = reqtime <= 1 && alreadyPartlyEaten && !rottenFirstBite
+            ? `You eat the partly eaten ${finishName}.`
+            : message;
+        if (postEffect.message) finishMessage = [finishMessage, postEffect.message].filter(Boolean).join('  ');
         if (postEffect.more) more = true;
         if (postEffect.duration) move = postEffect.duration;
-        if (floorObject) consumeOneFloorObject(touched);
-        else {
-            removeInventoryItem(touched);
-            game._pet_food_scan_inventory = game.inventory || [];
+        if (!(postEffect.fatal && !postEffect.lifesaved)) {
+            if (floorObject) consumeOneFloorObject(touched);
+            else {
+                removeInventoryItem(touched);
+                game._pet_food_scan_inventory = game.inventory || [];
+            }
         }
         return {
-            message: reqtime <= 1 && alreadyPartlyEaten && !rottenFirstBite ? `You eat the partly eaten ${finishName}.` : message,
+            message: finishMessage,
             more,
-            processTimeWithMore,
-            move,
+            processTimeWithMore: postEffect.fatal ? false : processTimeWithMore,
+            commandMode: postEffect.commandMode || null,
+            move: postEffect.move ?? move,
             finished: true,
         };
     }
@@ -12547,6 +12603,37 @@ const WISHED_MONSTER_FALLBACKS = new Map([
     ['student', { name: 'student', mlet: '@', glyph: '@', human: true, guardian: true, neuter: false }],
 ]);
 
+const WISHED_WERE_BEAST_FORMS = new Map([
+    ['rat wererat', 'wererat'],
+    ['jackal werejackal', 'werejackal'],
+    ['wolf werewolf', 'werewolf'],
+    ['wererat', 'wererat'],
+    ['werejackal', 'werejackal'],
+    ['werewolf', 'werewolf'],
+]);
+
+const WISHED_WERE_BEAST_DATA = new Map([
+    ['wererat', { glyph: 'r', mlet: 'r', color: CLR_BROWN, verysmall: true }],
+    ['werejackal', { glyph: 'd', mlet: 'd', color: CLR_BROWN }],
+    ['werewolf', { glyph: 'd', mlet: 'd', color: CLR_GRAY }],
+]);
+
+function wishedWereBeastByName(lowerName) {
+    const wereName = WISHED_WERE_BEAST_FORMS.get(lowerName);
+    if (!wereName) return null;
+    const human = monsterByRndName(wereName) || RANDOM_MONSTER_BY_NAME.get(wereName) || {};
+    return {
+        ...human,
+        ...WISHED_WERE_BEAST_DATA.get(wereName),
+        name: wereName,
+        noCorpse: true,
+        nohands: true,
+        animal: true,
+        wereHuman: false,
+        wereBeast: true,
+    };
+}
+
 function wishedMonsterByName(name) {
     const raw = String(name || '').trim();
     if (!raw) return null;
@@ -12555,6 +12642,8 @@ function wishedMonsterByName(name) {
     if (lower === 'human wererat') return { ...(monsterByRndName('wererat') || {}), name: 'wererat', wereHuman: true };
     if (lower === 'human werejackal') return { ...(monsterByRndName('werejackal') || {}), name: 'werejackal', wereHuman: true };
     if (lower === 'human werewolf') return { ...(monsterByRndName('werewolf') || {}), name: 'werewolf', wereHuman: true };
+    const wereBeast = wishedWereBeastByName(lower);
+    if (wereBeast) return wereBeast;
     return monsterByRndName(raw)
         || RANDOM_MONSTER_BY_NAME.get(raw)
         || RANDOM_MONSTER_BY_LOWER_NAME.get(lower)
@@ -12877,9 +12966,10 @@ function makeWishedStatueObject(statueWish, qualifiers = {}) {
     if (resolved.monsterName && !monster) return null;
     const otmp = mksobj(STATUE, true, false);
     if (monster) {
-        otmp.corpsenm = monster;
+        const statueMonster = wishedNonFigurineCorpstatMonster(monster);
+        otmp.corpsenm = statueMonster;
         otmp.spe = wishedCorpstatSpe(monster, resolved.requestedGender);
-        if (monster.verysmall) delete otmp.contents;
+        if (statueMonster.verysmall) delete otmp.contents;
     }
     if (qualifiers.historic) {
         otmp.spe = (otmp.spe || 0) | CORPSTAT_HISTORIC;
@@ -13082,10 +13172,21 @@ function makeWishedDragonArmorObject(dragonWish = {}) {
     });
 }
 
-function wishedCorpseOverrideMonster(monster) {
+function wishedHumanWereCounterpart(monster) {
+    if (!monster?.wereBeast) return null;
+    return wishedMonsterByName(`human ${monster.name}`) || null;
+}
+
+function wishedNonFigurineCorpstatMonster(monster) {
     if (!monster) return null;
     if (monster.name === 'long worm tail')
         return wishedMonsterByName('long worm') || monster;
+    return wishedHumanWereCounterpart(monster) || monster;
+}
+
+function wishedCorpseOverrideMonster(monster) {
+    monster = wishedNonFigurineCorpstatMonster(monster);
+    if (!monster) return null;
     if (monster.guardian)
         return wishedMonsterByName('human') || monster;
     if (monster.unique && !game.flags?.debug) return null;
@@ -13232,9 +13333,15 @@ function makeWishedEggObject(eggWish, qualifiers = {}) {
 
     const otmp = mksobj(EGG, true, false);
     const hadHatchTimer = !!otmp.corpsenm;
-    const eggMonster = monster ? canWishedEggBeHatched(monster) : otmp.corpsenm;
+    const requestedMonster = monster ? wishedNonFigurineCorpstatMonster(monster) : null;
+    const eggMonster = requestedMonster ? canWishedEggBeHatched(requestedMonster) : otmp.corpsenm;
     otmp.corpsenm = eggMonster || null;
     if (eggMonster && !hadHatchTimer) consumeWishedEggHatchTimer(otmp);
+    if (!eggMonster) {
+        delete otmp.eggHatchTurn;
+        delete otmp._egg_hatch_consumed;
+        delete otmp._egg_hatch_seq;
+    }
     Object.assign(otmp, {
         cls: 'food',
         glyph: '%',
@@ -13469,6 +13576,24 @@ function setTinMonster(item, monster, varietyIndex = null) {
     setTinDisplayName(item, tinNameWithVariety(name, varietyIndex));
 }
 
+function wishedTinMonsterHasNutrition(monster) {
+    if (!monster?.name) return false;
+    if (typeof monster.cnutrit === 'number') return monster.cnutrit !== 0;
+    if (typeof monster.nutrition === 'number') return monster.nutrition !== 0;
+    const known = CORPSE_NUTRITION.get(String(monster.name).toLowerCase());
+    return known == null ? true : known !== 0;
+}
+
+function wishedTinMonsterBinding(monster) {
+    const tinMonster = wishedNonFigurineCorpstatMonster(monster);
+    if (!tinMonster) return { monster: null, empty: false };
+    if (isMonsterGenocidedName(tinMonster.name)) return { monster: null, empty: true };
+    if (tinMonster.unique && !game.flags?.debug) return { monster: null, empty: false };
+    if (tinMonster.noCorpse) return { monster: null, empty: false };
+    if (!wishedTinMonsterHasNutrition(tinMonster)) return { monster: null, empty: false };
+    return { monster: tinMonster, empty: false };
+}
+
 function corpseMonsterName(item) {
     return String(item?.corpsenm?.name || objectKindKey(item).replace(/\s+corpse$/, '') || '').toLowerCase();
 }
@@ -13665,6 +13790,10 @@ function tinVariety(item, display = false) {
     return r;
 }
 
+function heroIsMetallivorous() {
+    return !!(polyselfForm()?.metallivorous || game.u?.metallivorous);
+}
+
 function wieldedItem() {
     return (game.inventory || []).find(item =>
         item.wielded || item.line?.includes('weapon in') || item.line?.includes('(wielded)')) || null;
@@ -13811,7 +13940,7 @@ async function explodeTinTrap(tin, floorObject = false) {
     game.context.move = 1;
 }
 
-async function finishTinContents(tin, floorObject = false, eat = true, knownVariety = null) {
+async function finishTinContents(tin, floorObject = false, eat = true, knownVariety = null, options = {}) {
     if (!eat) {
         tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
@@ -13823,6 +13952,7 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
 
     const r = knownVariety == null ? tinVariety(tin, false) : knownVariety;
     const messages = [];
+    if (options.openingMessage) messages.push(options.openingMessage);
     if (r === SPINACH_TIN) {
         if (tin.cursed) messages.push('It contains some decaying green substance.');
         else {
@@ -13838,7 +13968,8 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
         }
         tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
-        const nutrition = tin.blessed ? 600 : !tin.cursed ? 400 + rnd(200) : 200 + rnd(400);
+        let nutrition = tin.blessed ? 600 : !tin.cursed ? 400 + rnd(200) : 200 + rnd(400);
+        if (options.ateTin) nutrition += 5;
         addHeroNutrition(nutrition);
         await setMessage(messages.join('  '), messages.length > 1);
         game._command_mode = null;
@@ -13850,7 +13981,9 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
         tin.known = true;
         tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
-        await setMessage("It turns out to be empty.");
+        if (options.ateTin) addHeroNutrition(5);
+        messages.push("It turns out to be empty.");
+        await setMessage(messages.join('  '), messages.length > 1);
         game._command_mode = null;
         game.context.move = 1;
         return;
@@ -13869,6 +14002,7 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
         nutrition = TIN_VARIETY_NUTRITION[r] || 0;
         if (r === HOMEMADE_TIN)
             nutrition = Math.min(nutrition, CORPSE_NUTRITION.get(monsterName) || nutrition);
+        if (options.ateTin) nutrition += 5;
     }
     if (TIN_GREASY_VARIETIES.has(r)) {
         const already = game.u?._glibTimeout || 0;
@@ -13886,6 +14020,7 @@ async function finishTinContents(tin, floorObject = false, eat = true, knownVari
 async function consumeOpenedTin(tin, floorObject = false, openMessage = 'You succeed in opening the tin.') {
     if (!tin) return false;
     const r = tinVariety(tin, false);
+    const alwaysEat = heroIsMetallivorous();
     if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8))) {
         await explodeTinTrap(tin, floorObject);
         return true;
@@ -13895,9 +14030,15 @@ async function consumeOpenedTin(tin, floorObject = false, openMessage = 'You suc
         tin.known = true;
         tin = costlyTinAlteration(tin, { floorObject });
         consumeTinObject(tin, floorObject);
+        if (alwaysEat) addHeroNutrition(5);
         await setMessage(`${openMessage}  It turns out to be empty.`, true);
         game._command_mode = null;
         game.context.move = 1;
+        return true;
+    }
+
+    if (alwaysEat) {
+        await finishTinContents(tin, floorObject, true, r, { openingMessage: openMessage, ateTin: true });
         return true;
     }
 
@@ -13952,7 +14093,7 @@ async function startTinOpening(tin, floorObject = false) {
     let message = '';
     let delay = null;
     let instantMessage = null;
-    if (form?.metallivorous || game.u?.metallivorous) {
+    if (heroIsMetallivorous()) {
         message = 'You bite right into the metal tin...';
         delay = 0;
     } else if (polyselfNoHands() || form?.verysmall) {
@@ -14061,8 +14202,8 @@ function parseWishedTinName(lowerName) {
     }
 
     const monsterName = rest.replace(/\s+meat$/, '').replace(/^(?:a|an|the)\s+/, '');
-    const monster = monsterByRndName(monsterName);
-    if (!monster || monster.noCorpse) return { content: 'plain', varietyIndex };
+    const monster = wishedMonsterByName(monsterName);
+    if (!monster) return { content: 'plain', varietyIndex };
     return { content: 'monster', monster, varietyIndex };
 }
 
@@ -14084,8 +14225,14 @@ function makeWishedTinObject(tinWish) {
         setTinSpinach(otmp);
         otmp._wish_tin_explicit_content = true;
     } else if (tinWish?.content === 'monster') {
-        setTinMonster(otmp, tinWish.monster);
-        otmp._wish_tin_explicit_content = true;
+        const binding = wishedTinMonsterBinding(tinWish.monster);
+        if (binding.empty) {
+            setTinEmpty(otmp);
+            otmp._wish_tin_explicit_content = true;
+        } else if (binding.monster) {
+            setTinMonster(otmp, binding.monster);
+            otmp._wish_tin_explicit_content = true;
+        }
         if (tinWish.varietyIndex != null)
             otmp._wish_tin_requested_variety = tinWish.varietyIndex;
     } else if (tinWish?.varietyIndex != null) {
@@ -14871,8 +15018,11 @@ function removeCurseScrollEffect(item) {
             const selected = item.blessed || removeCurseActiveTarget(obj);
             if (!selected) continue;
             if (confused) {
+                const shopWater = isWaterPotion(obj) && !!shopkeeperOwningBillEntry(obj).entry;
                 removeCurseBlessOrCurse(obj);
                 obj.bknown = false;
+                if (shopWater && (obj.blessed || obj.cursed))
+                    alterShopBillCostIfHigher(obj);
                 refreshInventoryLineAfterBucChange(obj);
             } else if (obj.cursed) {
                 if (obj.bknown === true) learned = true;
@@ -16755,6 +16905,26 @@ function shopkeeperOwningBillEntry(obj) {
     return { shkp: null, entry: null };
 }
 
+function alterShopBillCostIfHigher(obj, amount = 0) {
+    const entry = shopkeeperOwningBillEntry(obj).entry;
+    if (!entry || entry.useup) return false;
+    const forced = Number(amount || 0);
+    const newTotal = forced
+        ? Math.abs(Math.trunc(forced))
+        : shopItemPrice(obj, game.u?.ux, game.u?.uy)
+            || (shopBaseCost(obj) || 0) * shopPricingUnits(obj);
+    if (!(newTotal > 0)) return false;
+    const oldTotal = shopBillEntryTotal(entry);
+    if (newTotal <= oldTotal && forced >= 0) return false;
+    entry.price = newTotal;
+    entry.totalPrice = newTotal;
+    entry.bquan = obj.quan || entry.bquan || 1;
+    obj.unpaid = true;
+    obj.unpaidPrice = shopBillEntryTotal(entry);
+    syncUnpaidBillLine(obj);
+    return true;
+}
+
 function shopkeeperIdentity(shkp) {
     return shkp?.m_id ?? shkp?.id ?? shkp?.shknam ?? shkp?.shopkeeperName ?? null;
 }
@@ -18356,6 +18526,7 @@ const COVERED_SIMPLE_MERGEABLE_FOOD_KINDS = new Set([
     'kelp frond',
     'sprig of wolfsbane',
     'clove of garlic',
+    'slime mold',
     'eucalyptus leaf',
     'lump of royal jelly',
     'meatball',
@@ -22190,9 +22361,13 @@ function normalizeWishedGroupPhrase(name, quantity) {
 function applyWishedPluralQuantity(name, quantity) {
     if (quantity !== 1) return quantity;
     const rawLowerName = String(name || '').trim().toLowerCase();
+    const rawFruit = fruitWishMatch(rawLowerName);
+    if (rawFruit?.plural) return 2;
     const rawBaseObject = WISH_BASE_OBJECTS.get(rawLowerName);
     if (rawBaseObject?.plural && rawLowerName === String(rawBaseObject.plural).toLowerCase()) return 2;
     const lowerName = resolveWishedSpellingAlias(rawLowerName).name;
+    const fruit = fruitWishMatch(lowerName);
+    if (fruit?.plural) return 2;
     const baseObject = WISH_BASE_OBJECTS.get(lowerName);
     if (baseObject?.plural && lowerName === String(baseObject.plural).toLowerCase()) return 2;
     if (/^(?:worthless\s+)?pieces\s+of\s+.+\s+glass$/.test(lowerName)) return 2;
@@ -22216,6 +22391,14 @@ function makeWishedBaseObject(baseObject, metadata) {
     } finally {
         if (forceBagOfTricksTool) game._mkobj_force_bag_of_tricks = false;
     }
+}
+
+function makeWishedFruitObject(lowerName) {
+    const fruit = fruitWishMatch(lowerName);
+    if (!fruit) return null;
+    const otmp = mksobj(SLIME_MOLD, true, false);
+    applySlimeMoldFruitFields(otmp, fruit.fid);
+    return Object.assign(otmp, { wishedfor: true });
 }
 
 function wishedObjectFromName(name, qualifiers = {}) {
@@ -22297,6 +22480,9 @@ function wishedBaseObjectFromName(lowerName, qualifiers = {}, originalName = low
 
     const gemWish = makeWishedGemObject(lowerName);
     if (gemWish) return gemWish;
+
+    const fruitWish = makeWishedFruitObject(lowerName);
+    if (fruitWish) return fruitWish;
 
     const baseObject = WISH_BASE_OBJECTS.get(lowerName);
     if (baseObject) {
@@ -22595,6 +22781,10 @@ function maybeWishedInstanceName(obj, baseName) {
     return `${name} named ${objectName}`;
 }
 
+function isSlimeMoldObject(obj) {
+    return obj?.otyp === SLIME_MOLD || String(obj?.actualKind || '').toLowerCase() === 'slime mold';
+}
+
 export function pickupObjectName(obj) {
     const named = name => maybeWishedInstanceName(obj, name);
     const archeologist = (game.urole?.name?.m || game._startup_role) === 'Archeologist';
@@ -22605,6 +22795,8 @@ export function pickupObjectName(obj) {
     if (obj.otyp === 'corpse' || obj.otyp === CORPSE) return corpseObjectName(obj);
     if (obj.otyp === EGG) return named(eggObjectName(obj));
     if (obj.globby) return named(globObjectName(obj));
+    if (isSlimeMoldObject(obj))
+        return named(slimeMoldNameForObject(obj, (obj.quan || 1) > 1));
     if ((obj.kind === 'statue' || obj.otyp === STATUE) && obj.corpsenm?.name) {
         const historic = archeologist && (((obj.spe || 0) & CORPSTAT_HISTORIC) || obj.historic);
         return named(`${historic ? 'historic ' : ''}statue of ${monsterIndefiniteName(corpstatDisplayMonsterName(obj))}`);
@@ -27665,6 +27857,31 @@ function healWoundedLegsFromRoyalJelly() {
     game.u._woundedLegSide = '';
 }
 
+function rehumanizeAfterRoyalJelly() {
+    if (!game.u) return '';
+    const base = game.u._polyself_base || {};
+    const hpmax = Math.max(1, base.uhpmax ?? game.u.uhpmax ?? 1);
+    game.u.uhpmax = hpmax;
+    game.u.uhp = Math.max(1, Math.min(base.uhp ?? hpmax, hpmax));
+    if (base.uenmax != null) game.u.uenmax = base.uenmax;
+    if (base.uen != null) game.u.uen = Math.max(0, Math.min(base.uen, game.u.uenmax ?? base.uen));
+    if (base.uac != null) game.u.uac = base.uac;
+    if (base.ulevel != null) game.u.ulevel = base.ulevel;
+    if (base.uhpinc) game.u.uhpinc = [...base.uhpinc];
+    if (base.ueninc) game.u.ueninc = [...base.ueninc];
+    if (base.rank && game.urole) game.urole.rank = base.rank;
+    game.u._glyph = null;
+    game.u._glyphColor = undefined;
+    game.u._monsterHd = null;
+    game.u._monsterMove = null;
+    game.u._polyself_form = null;
+    game.u._polyself_base = null;
+    game.u.umovement = NORMAL_SPEED;
+    game.u._statusSuffix = '';
+    game.u._strDisplay = null;
+    return 'You return to human form!';
+}
+
 function royalJellyPostEffects(item) {
     if (game.u?._polyself_form?.name === 'killer bee' && !heroHasUnchanging()) {
         const result = becomeMonster('queen bee');
@@ -27683,6 +27900,11 @@ function royalJellyPostEffects(item) {
             if (!rn2(17)) game.u.uhpmax = (game.u.uhpmax || 1) + 1;
             game.u.uhp = game.u.uhpmax || 1;
         } else if ((game.u.uhp || 0) <= 0) {
+            if (game.u._polyself_form) {
+                const message = rehumanizeAfterRoyalJelly();
+                if (message) messages.push(message);
+                return { messages, died: false };
+            }
             game._death_cause = 'poisoned by a rotten lump of royal jelly';
             return { messages, died: true };
         }
@@ -36732,14 +36954,13 @@ export async function rhack(_cmd) {
                 game._call_potion_appearance = item.kind.replace(/ potion$/, '');
                 game._command_mode = 'callPotionAfterMore';
             }
-            await setMessage('This tastes like slime mold juice.', true);
+            await setMessage(`This tastes like ${currentFruitJuiceName()}.`, true);
             return;
         }
         if (potionName.includes('sickness')) {
             learnObjectScore('Potions', 'potion of sickness');
             if (item.blessed) {
-                const fruit = game.flags?.fruit || 'slime mold';
-                game._queued_message_after_more = `(But in fact it was mildly stale ${fruit} juice.)`;
+                game._queued_message_after_more = `(But in fact it was mildly stale ${currentFruitJuiceName()}.)`;
                 game._potion_sickness_after_more = 1;
                 await setMessage('Yecch!  This stuff tastes like poison.', true);
                 game.context.move = 1;
@@ -40376,10 +40597,7 @@ export async function rhack(_cmd) {
 
     if (game._command_mode === 'optionsFruit') {
         if (ch === '\r' || ch === '\n') {
-            const fruit = game._options_fruit_text || 'slime mold';
-            game._fruit = fruit;
-            game.flags = game.flags || {};
-            game.flags.fruit = fruit;
+            setCurrentFruitName(game._options_fruit_text || 'slime mold');
             game._options_fruit_text = '';
             game._overlay_hide_status_only = 0;
             game._options_page = 1;
@@ -45468,10 +45686,6 @@ export async function rhack(_cmd) {
                 await eatRottenNonCorpseFood(item);
                 return;
             }
-            if (isRoyalJelly(item)) {
-                await eatRoyalJelly(item);
-                return;
-            }
             const delayedFoodVictual = ordinaryFoodVictualSpec(item);
             if (delayedFoodVictual) {
                 const result = startCarriedDelayedFoodVictual(item, delayedFoodVictual);
@@ -45652,10 +45866,6 @@ export async function rhack(_cmd) {
             }
             if (!ordinaryFoodVictualSpec(food) && shouldUseGenericRottenFoodPath(food)) {
                 await eatRottenNonCorpseFood(food, true);
-                return;
-            }
-            if (isRoyalJelly(food)) {
-                await eatRoyalJelly(food, true);
                 return;
             }
             const delayedFoodVictual = ordinaryFoodVictualSpec(food);

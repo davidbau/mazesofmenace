@@ -18,6 +18,7 @@ import { createGasCloud } from './region.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
 import { processBuriedOrganicRot, processMeltIceTimers, removedFromIcebox } from './ice.js';
+import { SLIME_MOLD_OTYP, applySlimeMoldFruitFields } from './fruit.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
 
 const ROLE_STATE = {
@@ -1008,6 +1009,7 @@ function initFoodFromRoll(roll) {
         plural: food?.[2] || 'food rations',
         kind: food?.[3] || 'food ration',
     };
+    if (roll > 312 && roll <= 387) applySlimeMoldFruitFields(Object.assign(obj, { otyp: SLIME_MOLD_OTYP }));
     next_ident();
     if (roll > 925) {
         if (rn2(6)) {

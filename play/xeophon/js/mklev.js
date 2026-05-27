@@ -24,6 +24,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
 import { clearBuriedOrganicRotTimer, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
+import { applySlimeMoldFruitFields } from './fruit.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -3943,6 +3944,7 @@ export function mksobj(otyp, init, artif) {
             _display_color: color,
             age: otmp.age ?? Math.max(game.moves || 0, 1),
         });
+        if (otyp === SLIME_MOLD) applySlimeMoldFruitFields(otmp, otmp.spe || undefined);
     }
     if (otyp === CORPSE) {
         if (!otmp.corpsenm) {
@@ -4136,6 +4138,9 @@ function mksobj_init(otmp, otyp, artif) {
         rn2(6);
     } else if (otyp === KELP_FROND) {
         otmp.quan = rnd(2);
+    } else if (otyp === SLIME_MOLD) {
+        applySlimeMoldFruitFields(otmp);
+        if (!rn2(6)) otmp.quan = 2;
     } else if (otyp === TALLOW_CANDLE || otyp === WAX_CANDLE) {
         otmp.spe = 1;
         otmp.quan = 1 + (rn2(2) ? rn2(7) : 0);
@@ -4592,15 +4597,18 @@ export function mkobj(oclass, artif) {
         const prob = rnd(1000);
         let otmp;
         if (prob > 140 && prob <= 225) otmp = mksobj(EGG, true, artif);
+        else if (prob > 312 && prob <= 387) otmp = mksobj(SLIME_MOLD, true, artif);
         else if (prob > 387 && prob <= 412) otmp = mksobj(CREAM_PIE, true, artif);
         else if (prob > 412 && prob <= 425) otmp = mksobj(CANDY_BAR, true, artif);
         else if (prob > 925) otmp = mksobj(TIN, true, artif);
         else otmp = mksobj(FOOD_CLASS, true, artif);
         const food = FOOD_ROLL_KINDS.find(([max]) => prob <= max);
         otmp.cls = 'food';
-        otmp.kind = food?.[1] || 'food ration';
-        otmp.singular = food?.[1] || 'food ration';
-        otmp.plural = food?.[2] || 'food rations';
+        if (otmp.otyp !== SLIME_MOLD) {
+            otmp.kind = food?.[1] || 'food ration';
+            otmp.singular = food?.[1] || 'food ration';
+            otmp.plural = food?.[2] || 'food rations';
+        }
         otmp.foodRoll = prob;
         otmp._display_color = objectColorForRoll(prob, FOOD_ROLL_COLORS);
         return otmp;
