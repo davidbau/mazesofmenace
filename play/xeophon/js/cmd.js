@@ -321,6 +321,7 @@ function addHeroGlibTimeout(duration) {
 function dropCarriedObjectAtHero(item, messages = []) {
     const dropped = {
         ...item,
+        invlet: item.invlet ?? item.letter,
         letter: undefined,
         line: undefined,
         wielded: false,
@@ -1150,6 +1151,7 @@ const PANCAKE = 11011;
 const MEATBALL = 11012;
 const MEAT_STICK = 11014;
 const ENORMOUS_MEATBALL = 11013;
+const WAN_MAKE_INVISIBLE = 10091;
 const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
 const K_RATION = 10035;
@@ -3474,6 +3476,7 @@ function deliverImpactDroppedObjects(objects) {
                 const verb = many ? 'shatter' : 'shatters';
                 messages.push(`${subject} ${verb}${breakKind === 'pieces' ? ' into a thousand pieces' : ''}!`);
             }
+            brokenPotionBreathe(obj, game.u.ux || 0, game.u.uy || 0, messages);
             continue;
         }
         game.level.objects.push(obj);
@@ -8387,6 +8390,12 @@ function floorObjectTheName(obj) {
     return /^the\b/i.test(name) ? name : `the ${name}`;
 }
 
+function floorObjectTheSubject(obj) {
+    const quan = Math.max(1, obj?.quan || 1);
+    const name = pickupObjectName({ ...obj, line: '', quan }).replace(/ \(lit\)$/, '');
+    return upstartText(/^the\b/i.test(name) ? name : `the ${name}`);
+}
+
 function floorObjectVerb(obj, singular, plural) {
     const name = floorObjectBaseName(obj);
     return (obj?.quan || 1) > 1 ? plural : rustTrapNameVerb(name, singular, plural);
@@ -8728,14 +8737,15 @@ function hotGroundPotionFloorEffect(obj, x, y, messages, visible, {
 
     const plural = (obj?.quan || 1) > 1;
     if (visible) {
-        messages.push(`${floorObjectSubject(obj)} ${floorObjectVerb(obj, 'heats', 'heat')} up as ${plural ? 'they hit' : 'it hits'} the hot ground.`);
+        messages.push(`${floorObjectTheSubject(obj)} ${floorObjectVerb(obj, 'heats', 'heat')} up as ${plural ? 'they hit' : 'it hits'} the hot ground.`);
     }
     let survival = obj?.blessed ? 70 : 50;
-    if (obj?.invlet) survival += ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) * 2;
+    if (obj?.invlet || obj?.letter) survival += ((game.u?.uluck || 0) + (game.u?.moreluck || 0)) * 2;
     if (isPotionOfOil(obj)) survival = 100;
     if (rn2(100) < ((obj?.artifact || obj?.oartifact) ? 100 : survival)) return false;
     if (visible) messages.push(plural ? 'They shatter from the heat!' : 'It shatters from the heat!');
     else if (!heroIsDeaf()) messages.push('You hear a shattering noise.');
+    brokenPotionBreathe(obj, x, y, messages);
     destroyObject(obj);
     return true;
 }
@@ -8882,11 +8892,17 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
                     : quan === 2 ? `Both of your ${name}`
                         : `All of your ${name}`;
         const event = { text: '', damage: 0 };
+        const vaporMessages = [];
         const message = `${subject} ${fireInventoryDestroyVerb(cls, item, plural)}!`;
         if (cls === 'potion' || cls === 'slime') {
+            if (cls === 'potion') {
+                potionBreathe(item, vaporMessages);
+                if (vaporMessages.length) {
+                    const insertAfter = vaporMessages.map(text => ({ text, more: true }));
+                    event.insertAfter = insertAfter;
+                }
+            }
             event.damage = itemDamage;
-            if (cls === 'potion' && (item.potionIndex === 8 || /invisibility/i.test(item.actualKind || item.kind || inventoryItemName(item))))
-                event.breatheMessage = "For an instant you couldn't see yourself!";
             damage += itemDamage;
             deathCause = fireInventoryDeathCause(cls, item, plural);
             useUpInventoryItem(item, destroyed);
@@ -8900,6 +8916,7 @@ function fireDamageInventory(origDamage, forceDestroyItems = false, rollIgniteIt
             }
         }
         addFireInventoryMessage(messages, events, message, event, armor, joinState);
+        if (vaporMessages.length) messages.push(...vaporMessages);
     }
     if (rollIgniteAfterDestroy) igniteItems = !rn2(3);
     if (igniteItems) igniteFireInventoryItems(messages, events, armor, joinState);
@@ -11809,6 +11826,80 @@ function replaceInventoryObjectWithPolymorphResult(target, replacement) {
     if (target.unpaid) syncUnpaidBillLine(target);
 }
 
+function isStoneToFleshMarbleWandObject(item) {
+    if (!item || (itemClassKey(item) !== 'wand' && item?.glyph !== '/' && item?.otyp !== WAND_CLASS && item?.otyp !== WAN_MAKE_INVISIBLE))
+        return false;
+    const kind = objectKindKey(item).replace(/^wand of /, '');
+    const appearance = String(item?.appearance || '').toLowerCase();
+    return item?.otyp === WAN_MAKE_INVISIBLE
+        || item?.wandIndex === 8
+        || item?.wand === 'make invisible'
+        || kind === 'make invisible'
+        || appearance === 'marble';
+}
+
+function stoneToFleshMeatStickReplacement(target) {
+    const replacement = mksobj(MEAT_STICK, false, false);
+    Object.assign(replacement, object_display(replacement), {
+        quan: Math.max(1, Math.trunc(Number(target?.quan || 1))),
+        letter: target?.letter,
+        blessed: !!target?.blessed,
+        cursed: !!target?.cursed,
+        no_charge: !!target?.no_charge,
+        recharged: target?.recharged ?? 0,
+        cls: 'food',
+        glyph: '%',
+        otyp: MEAT_STICK,
+        kind: 'meat stick',
+        actualKind: 'meat stick',
+        singular: 'meat stick',
+        plural: 'meat sticks',
+        nutrition: 5,
+        owt: Math.max(1, Math.trunc(Number(target?.quan || 1))),
+    });
+    return replacement;
+}
+
+function stoneToFleshMergeSkipItem(item) {
+    return !!(item?.worn || item?.wielded || item?.alternate || item?.quivered);
+}
+
+function mergeStoneToFleshInventoryResults() {
+    let didMerge = false;
+    do {
+        didMerge = false;
+        const inventory = game.inventory || [];
+        for (let i = 0; !didMerge && i < inventory.length; i++) {
+            const target = inventory[i];
+            if (stoneToFleshMergeSkipItem(target)) continue;
+            for (let j = i + 1; j < inventory.length; j++) {
+                const source = inventory[j];
+                if (stoneToFleshMergeSkipItem(source)) continue;
+                if (!pickedObjectInventoryMergeCompatible(target, source, false, null)) continue;
+                mergePickedObjectIntoInventory(source, target);
+                game.inventory = (game.inventory || []).filter(item => item !== source);
+                didMerge = true;
+                break;
+            }
+        }
+    } while (didMerge);
+}
+
+function stoneToFleshInventoryEffect(messages = []) {
+    let transformed = false;
+    for (const item of [...(game.inventory || [])]) {
+        if (!isStoneToFleshMarbleWandObject(item)) continue;
+        markObjectShopBillUsedUp(item);
+        replaceInventoryObjectWithPolymorphResult(item, stoneToFleshMeatStickReplacement(item));
+        transformed = true;
+    }
+    if (transformed) {
+        mergeStoneToFleshInventoryResults();
+        messages.push('You smell the odor of meat.');
+    }
+    return { transformed, messages };
+}
+
 function learnPotionPolymorphDiscovery(item) {
     if (item && (game.inventory || []).includes(item)) {
         identifyPotionOfPolymorph(item);
@@ -12032,6 +12123,52 @@ function learnPotionVaporEffect(potion, name, knownEffect) {
     learnObjectScore('Potions', `potion of ${name}`);
 }
 
+function splitGremlinPolyselfFromWaterVapor(messages) {
+    const form = polyselfForm();
+    if (String(form?.name || '').toLowerCase() !== 'gremlin' || !game.u || !game.level) return false;
+    const currentHp = Math.min(game.u.uhp || 0, game.u.uhpmax || game.u.uhp || 0);
+    if (currentHp <= 1) return false;
+    const maxHp = Math.max(currentHp, game.u.uhpmax || currentHp);
+    const data = { ...(polyselfFormByName('gremlin') || {}), ...form };
+    const spot = enextoMonsterSpot(game.u.ux || 0, game.u.uy || 0, data);
+    if (!spot) return false;
+
+    const cloneHp = Math.trunc(currentHp / 2);
+    const cloneMaxHp = Math.trunc(maxHp / 2);
+    game.u.uhp = currentHp - cloneHp;
+    game.u.uhpmax = Math.max(1, maxHp - cloneMaxHp);
+
+    const clone = {
+        mx: spot.x,
+        my: spot.y,
+        m_id: next_ident(),
+        data,
+        name: data.name || 'gremlin',
+        mlet: data.mlet || 'g',
+        m_lev: data.mlevel ?? data.m_lev ?? 5,
+        mhp: Math.max(1, cloneHp),
+        mhpmax: Math.max(1, cloneMaxHp),
+        msleeping: 0,
+        mpeaceful: 1,
+        mtame: Math.max(5, baseScrollTameness({ data })),
+        pet: true,
+        mcanmove: true,
+        mcansee: true,
+        minvent: [],
+        mcloned: 1,
+        givenName: game.plname || 'wizard',
+    };
+    ensurePetExtension(clone);
+    set_malign(clone);
+    game.u.uconduct ??= {};
+    game.u.uconduct.pets = (game.u.uconduct.pets || 0) + 1;
+    game.level.monsters ??= [];
+    game.level.monsters.push(clone);
+    messages.push('You multiply!');
+    newsym(spot.x, spot.y);
+    return true;
+}
+
 function potionBreathe(potion, messages) {
     if (!heroCanReceivePotionVapor()) return;
     const name = alchemyPotionName(potion);
@@ -12129,6 +12266,9 @@ function potionBreathe(potion, messages) {
             game.u._blindTimeout = (game.u._blindTimeout || 0) + rnd(5);
         }
         break;
+    case 'water':
+        splitGremlinPolyselfFromWaterVapor(messages);
+        break;
     case 'acid':
     case 'polymorph':
         exerciseAttribute(A_CON, false);
@@ -12137,6 +12277,21 @@ function potionBreathe(potion, messages) {
         break;
     }
     learnPotionVaporEffect(potion, name, knownEffect);
+}
+
+function heroIsNextToPotionVapor(x, y) {
+    const ux = game.u?.ux ?? 0;
+    const uy = game.u?.uy ?? 0;
+    return Math.max(Math.abs((x ?? ux) - ux), Math.abs((y ?? uy) - uy)) <= 1;
+}
+
+function brokenPotionBreathe(potion, x, y, messages) {
+    if (!isPotionObject(potion) || !heroIsNextToPotionVapor(x, y) || !heroCanReceivePotionVapor()) return;
+    if (!isWaterPotion(potion) && !heroHasWetWornTowel()) {
+        if (heroBreathesPotionVapor()) messages.push('You smell a peculiar odor...');
+        else if (heroHasPotionVaporEyes()) messages.push('Your eyes water.');
+    }
+    potionBreathe(potion, messages);
 }
 
 function dipPotionAlchemyExplosion(target, amount, messages) {
@@ -18702,6 +18857,7 @@ function landProjectileObjectWithShopHandling(obj, x, y, options = {}) {
         const breakKind = projectileTopLevelBreakKind(obj, options);
         if (breakKind) {
             if (!options.silent) projectileTopLevelBreakMessage(obj, breakKind, messages);
+            brokenPotionBreathe(obj, x, y, messages);
             const shopLanding = convertUnpaidObjectToShopDebt(obj, { ...options, broken: true });
             if (!shopLanding.charged) obj.no_charge = true;
             if (shopLanding.message) messages.push(shopLanding.message);
@@ -20150,6 +20306,7 @@ export const __shopBillingTestHooks = {
     finishDroppedObjectSale,
     finishShopFloorContainerPutSale,
     impactDropFloorObjects,
+    deliverImpactDroppedObjects,
     mergePickedObjectIntoInventory,
     mergePickedObjectIntoShopBill,
     containerTakeoutBillMergeCompatible,
@@ -39318,14 +39475,16 @@ export async function rhack(_cmd) {
                                     if (fireInventory.events?.length) {
                                         const entries = fireInventory.events.map(event => {
                                             const entry = { text: event.text, damageAfter: event.damage || 0 };
-                                            if (event.breatheMessage)
-                                                entry.insertAfter = [{ text: event.breatheMessage, more: true }];
+                                            if (event.insertAfter?.length)
+                                                entry.insertAfter = event.insertAfter.map(next => ({ ...next }));
                                             return entry;
                                         });
-                                        const assignedDamage = entries.reduce((sum, entry) => sum + (entry.damageAfter || 0), 0);
+                                        const assignedDamage = entries.reduce((sum, entry) => sum
+                                            + (entry.damageAfter || 0)
+                                            + (entry.insertAfter || []).reduce((inner, next) => inner + (next.damageAfter || 0), 0), 0);
                                         const remainingDamage = Math.max(0, damage - assignedDamage);
                                         if (remainingDamage) {
-                                            const breatheEntry = entries.find(entry => entry.insertAfter?.length)?.insertAfter[0];
+                                            const breatheEntry = entries.flatMap(entry => entry.insertAfter || [])[0];
                                             if (lethal && breatheEntry) breatheEntry.damageAfter = (breatheEntry.damageAfter || 0) + remainingDamage;
                                             else entries[entries.length - 1].damageAfter = (entries[entries.length - 1].damageAfter || 0) + remainingDamage;
                                         }
@@ -39665,7 +39824,19 @@ export async function rhack(_cmd) {
     if (game._command_mode === 'spellDirection') {
         const spell = game._casting_spell;
         game._casting_spell = null;
-        if (spell?.category === 'healing') {
+        if (spell?.name === 'stone to flesh') {
+            if (ch === '.') {
+                const result = stoneToFleshInventoryEffect();
+                if (result.messages.length) await setMessage(result.messages.join('  '));
+                else {
+                    game._pending_message = '';
+                    game._message_more = 0;
+                    game._keep_pending_message = 1;
+                }
+            } else {
+                await setMessage(`You cast ${spell?.name || 'a spell'}.`);
+            }
+        } else if (spell?.category === 'healing') {
             game.u.uhp = Math.min(game.u.uhpmax || game.u.uhp || 1, (game.u.uhp || 1) + d(6, 4));
             await setMessage('You feel better.');
         } else if (spell?.name === 'force bolt') {
@@ -43797,6 +43968,7 @@ export async function rhack(_cmd) {
             game._pet_food_scan_inventory = game.inventory;
             const dropped = {
                 ...item,
+                invlet: item.invlet ?? item.letter,
                 letter: undefined,
                 line: undefined,
                 known: item.known || /(?:^| )[-+]\d+ /.test(String(item.line || '')),
