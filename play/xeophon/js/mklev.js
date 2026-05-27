@@ -155,6 +155,7 @@ const SLIME_MOLD = 11009;
 const FORTUNE_COOKIE = 11010;
 const PANCAKE = 11011;
 const MEATBALL = 11012;
+const MEAT_STICK = 11014;
 const ENORMOUS_MEATBALL = 11013;
 const LUMP_OF_ROYAL_JELLY = 10089;
 const GLOB_TYPES = new Map([
@@ -1576,6 +1577,7 @@ const SPECIFIC_FOOD_INFO = new Map([
     [FORTUNE_COOKIE, ['fortune cookie', 'fortune cookies', CLR_YELLOW]],
     [PANCAKE, ['pancake', 'pancakes', CLR_YELLOW]],
     [MEATBALL, ['meatball', 'meatballs', CLR_BROWN]],
+    [MEAT_STICK, ['meat stick', 'meat sticks', CLR_BROWN]],
     [ENORMOUS_MEATBALL, ['enormous meatball', 'enormous meatballs', CLR_BROWN]],
 ]);
 const VEGETARIAN_FOOD_PROBS = [
