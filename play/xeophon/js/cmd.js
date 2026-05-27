@@ -871,6 +871,7 @@ const SCR_SCARE_MONSTER = 279;
 const SCR_BLANK_PAPER = 293;
 const POTION_CLASS = 9;
 const POT_ACID = 238;
+const POT_POLYMORPH = 248;
 const POT_OIL = 252;
 const POT_WATER = 253;
 const WAND_CLASS = 10;
@@ -7769,7 +7770,7 @@ function useUpInventoryItem(item, amount = 1) {
     return true;
 }
 
-function splitCarriedCreamPieForSplat(item) {
+function splitOneCarriedInventoryItem(item) {
     if (!item || (item.quan || 1) <= 1) return item;
     const split = { ...item, id: next_ident(), quan: 1, line: '' };
     delete split.o_id;
@@ -7784,6 +7785,30 @@ function splitCarriedCreamPieForSplat(item) {
     game.inventory ??= [];
     game.inventory.push(split);
     return split;
+}
+
+function splitCarriedInventoryItemCount(item, count) {
+    if (!item) return item;
+    const quantity = Math.max(1, Math.trunc(Number(item.quan || 1)));
+    const splitCount = Math.max(1, Math.trunc(Number(count || 1)));
+    if (splitCount >= quantity) return item;
+    const split = { ...item, id: next_ident(), quan: splitCount, line: '' };
+    delete split.o_id;
+    delete split._shopBillObjectId;
+    split.letter = nextInventoryLetter();
+    if (item.unpaid && !splitCarriedObjectShopBill(item, split, splitCount))
+        clearObjectShopBillState(split);
+    item.quan = quantity - splitCount;
+    refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+    refreshInventoryObjectLine(split);
+    game.inventory ??= [];
+    game.inventory.push(split);
+    return split;
+}
+
+function splitCarriedCreamPieForSplat(item) {
+    return splitOneCarriedInventoryItem(item);
 }
 
 function billDummyAlteredCarriedObject(obj) {
@@ -10492,7 +10517,7 @@ function wishObjectMetadataForItem(item) {
 
 function isPotionObject(item) {
     return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_ACID
-        || item?.otyp === POT_OIL || item?.otyp === POT_WATER;
+        || item?.otyp === POT_POLYMORPH || item?.otyp === POT_OIL || item?.otyp === POT_WATER;
 }
 
 function isWaterPotion(item) {
@@ -10513,6 +10538,12 @@ function isPotionOfAcid(item) {
         || objectKindKey(item).replace(/^potion of /, '') === 'acid';
 }
 
+function isPotionOfPolymorph(item) {
+    if (!isPotionObject(item)) return false;
+    return item?.otyp === POT_POLYMORPH || item?.potionIndex === 19
+        || objectKindKey(item).replace(/^potion of /, '') === 'polymorph';
+}
+
 function potionDipKind(item) {
     if (!isPotionObject(item)) return '';
     return objectKindKey(item).replace(/^potion of /, '').trim();
@@ -10525,6 +10556,29 @@ function isHealingFamilyPotion(item) {
 
 function isPotionOfSickness(item) {
     return potionDipKind(item) === 'sickness';
+}
+
+function potionNeutralizationTargetKind(item) {
+    const kind = objectKindKey(item).replace(/^(?:blessed|uncursed|cursed) /, '');
+    if (kind === 'unicorn horn') return 'unicorn horn';
+    if (kind === 'amethyst' || kind === 'amethyst stone') return 'amethyst';
+    return '';
+}
+
+function isPotionNeutralizationTarget(item) {
+    return !!potionNeutralizationTargetKind(item);
+}
+
+function potionNeutralizationResultKind(target, potion) {
+    const targetKind = potionNeutralizationTargetKind(target);
+    const sourceKind = potionDipKind(potion);
+    if (targetKind === 'unicorn horn') {
+        if (sourceKind === 'sickness') return 'fruit juice';
+        if (sourceKind === 'hallucination' || sourceKind === 'blindness' || sourceKind === 'confusion') return 'water';
+    } else if (targetKind === 'amethyst' && sourceKind === 'booze') {
+        return 'fruit juice';
+    }
+    return '';
 }
 
 function maybeDilutedPotionName(obj, name) {
@@ -11458,20 +11512,7 @@ async function beginMusicalInstrumentUse(item) {
 }
 
 function splitOilPotionForApply(item) {
-    if (!item || (item.quan || 1) <= 1) return item;
-    const split = { ...item, id: next_ident(), quan: 1, line: '' };
-    delete split.o_id;
-    delete split._shopBillObjectId;
-    split.letter = nextInventoryLetter();
-    if (item.unpaid && !splitCarriedObjectShopBill(item, split, 1))
-        clearObjectShopBillState(split);
-    item.quan = (item.quan || 1) - 1;
-    refreshInventoryObjectLine(item);
-    if (item.unpaid) syncUnpaidBillLine(item);
-    refreshInventoryObjectLine(split);
-    game.inventory ??= [];
-    game.inventory.push(split);
-    return split;
+    return splitOneCarriedInventoryItem(item);
 }
 
 function identifyPotionOfOil(item) {
@@ -11482,6 +11523,16 @@ function identifyPotionOfOil(item) {
     item.potionIndex = 24;
     recordKnownPotionDiscovery(item, 'oil');
     learnObjectScore('Potions', 'potion of oil');
+}
+
+function identifyPotionOfPolymorph(item) {
+    if (!item) return;
+    item.known = true;
+    item.actualKind = 'potion of polymorph';
+    item.kind = 'polymorph';
+    item.potionIndex = 19;
+    recordKnownPotionDiscovery(item, 'polymorph');
+    learnObjectScore('Potions', 'potion of polymorph');
 }
 
 function recordKnownToolDiscovery(toolName) {
@@ -11554,13 +11605,27 @@ function poisonedWeaponObjectName(item) {
     return name;
 }
 
+function isWaterDipTargetObject(item) {
+    if (!item) return false;
+    return !(itemClassKey(item) === 'coin' || item?.otyp === GOLD_PIECE || item?.glyph === '$');
+}
+
+function isBlessedOrCursedWaterDipSource(item) {
+    if (!isWaterPotion(item)) return false;
+    const kind = objectKindKey(item).replace(/^potion of /, '');
+    return !!(item.blessed || item.cursed || kind === 'holy water' || kind === 'unholy water');
+}
+
+function isNeutralWaterDipSource(item) {
+    if (!isWaterPotion(item)) return false;
+    const kind = objectKindKey(item).replace(/^potion of /, '');
+    return !item.blessed && !item.cursed && kind !== 'holy water' && kind !== 'unholy water';
+}
+
 function dipPotionSources(target) {
     return (game.inventory || []).filter(item => {
         if (item === target || !isPotionObject(item)) return false;
-        if (isPotionOfAcid(item) && isAcidCorrosionDipTargetObject(target)) return true;
-        if (isPotionOfOil(item) && (isOilRefuelLampObject(target) || isOilWeaponDipTargetObject(target))) return true;
-        if (isPoisonableWeaponObject(target) && (isPotionOfSickness(item) || isHealingFamilyPotion(item))) return true;
-        return false;
+        return isWaterDipTargetObject(target);
     });
 }
 
@@ -11619,6 +11684,559 @@ function consumeDipOilPotion(potion) {
 
 function consumeDipPotion(potion) {
     useUpInventoryItem(potion, 1);
+}
+
+function polymorphObjectClassCode(item) {
+    const cls = itemClassKey(item);
+    if (isPotionObject(item)) return POTION_CLASS;
+    if (cls === 'weapon' || item?.glyph === ')') return WEAPON_CLASS;
+    if (cls === 'armor' || item?.glyph === '[') return ARMOR_CLASS;
+    if (cls === 'ring' || item?.glyph === '=') return RING_CLASS;
+    if (cls === 'food' || item?.glyph === '%') return FOOD_CLASS;
+    if (cls === 'scroll' || item?.glyph === '?') return SCROLL_CLASS;
+    if (cls === 'wand' || item?.glyph === '/') return WAND_CLASS;
+    if (cls === 'spellbook' || item?.glyph === '+') return SPBOOK_CLASS;
+    if (cls === 'tool' || item?.glyph === '(') return TOOL_CLASS;
+    if (cls === 'gem' || item?.glyph === '*') return GEM_CLASS;
+    if (cls === 'amulet' || item?.glyph === '"') return AMULET_CLASS;
+    return null;
+}
+
+function isWandOfPolymorphObject(item) {
+    if (!item || (itemClassKey(item) !== 'wand' && item?.glyph !== '/' && item?.otyp !== WAND_CLASS)) return false;
+    const kind = objectKindKey(item).replace(/^wand of /, '');
+    return item?.wand === 'polymorph' || item?.wandIndex === 12 || kind === 'polymorph';
+}
+
+function isSpellbookOfPolymorphObject(item) {
+    if (!item || (itemClassKey(item) !== 'spellbook' && item?.glyph !== '+' && item?.otyp !== SPBOOK_NO_NOVEL)) return false;
+    const kind = objectKindKey(item).replace(/^spellbook of /, '');
+    return item?.spellName === 'polymorph' || item?.spellbookIndex === 10 || kind === 'polymorph';
+}
+
+function isAmuletOfUnchangingObject(item) {
+    if (!item || (itemClassKey(item) !== 'amulet' && item?.glyph !== '"' && item?.otyp !== AMULET_CLASS)) return false;
+    const kind = objectKindKey(item).replace(/^amulet of /, '');
+    return item?.amuletIndex === 6 || kind === 'unchanging';
+}
+
+function isPotionDipUnpolyableObject(item) {
+    return isPotionOfPolymorph(item) || isWandOfPolymorphObject(item)
+        || isSpellbookOfPolymorphObject(item) || isAmuletOfUnchangingObject(item);
+}
+
+function potionDipPolymorphSubjectResists(item) {
+    return isPotionDipUnpolyableObject(item) || rn2(100) < (item?.artifact ? 95 : 5);
+}
+
+function polymorphObjectClassName(item) {
+    switch (polymorphObjectClassCode(item)) {
+    case WEAPON_CLASS: return 'weapon';
+    case ARMOR_CLASS: return 'armor';
+    case RING_CLASS: return 'ring';
+    case FOOD_CLASS: return 'food';
+    case SCROLL_CLASS: return 'scroll';
+    case POTION_CLASS: return 'potion';
+    case WAND_CLASS: return 'wand';
+    case SPBOOK_CLASS: return 'spellbook';
+    case TOOL_CLASS: return 'tool';
+    case GEM_CLASS: return 'gem';
+    case AMULET_CLASS: return 'amulet';
+    default: return itemClassKey(item) || '';
+    }
+}
+
+function polymorphObjectTypeKey(item) {
+    const cls = polymorphObjectClassName(item);
+    const kind = objectKindKey(item);
+    if (cls === 'potion' || isPotionObject(item))
+        return `potion:${item?.potionIndex ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'scroll')
+        return `scroll:${item?.scrollIndex ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'wand')
+        return `wand:${item?.wandIndex ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'spellbook')
+        return `spellbook:${item?.spellbookIndex ?? ''}:${item?.spellName ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'ring')
+        return `ring:${item?.ringRoll ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'amulet')
+        return `amulet:${item?.amuletIndex ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    if (cls === 'gem')
+        return `gem:${item?.gemDescription ?? ''}:${item?.otyp ?? ''}:${kind}`;
+    return `${cls}:${kind || item?.otyp || ''}`;
+}
+
+function polymorphReplacementDisallowed(item) {
+    return isPotionOfPolymorph(item) || isWandOfPolymorphObject(item) || isSpellbookOfPolymorphObject(item);
+}
+
+function polymorphReplacementForDipTarget(target) {
+    const classCode = polymorphObjectClassCode(target);
+    if (classCode == null) return null;
+    let replacement = null;
+    for (let tryCount = 0; tryCount < 20; tryCount++) {
+        replacement = mkobj(classCode, false);
+        Object.assign(replacement, object_display(replacement));
+        if (!polymorphReplacementDisallowed(replacement)) break;
+    }
+    if (!replacement || polymorphReplacementDisallowed(replacement)) return null;
+
+    replacement.quan = Math.max(1, Math.trunc(Number(target?.quan || 1)));
+    if (replacement.quan > 1 && replacement.quan > rn2(1000)) replacement.quan = 1;
+    replacement.letter = target.letter;
+    replacement.blessed = !!target.blessed;
+    replacement.cursed = !!target.cursed;
+    if (target.no_charge) replacement.no_charge = true;
+    if ([WEAPON_CLASS, ARMOR_CLASS, WAND_CLASS].includes(polymorphObjectClassCode(replacement)) && target.spe != null)
+        replacement.spe = target.spe;
+    if (target.recharged != null) replacement.recharged = target.recharged;
+    if (target.oeroded) replacement.oeroded = target.oeroded;
+    if (target.oeroded2) replacement.oeroded2 = target.oeroded2;
+    if (target.oerodeproof) replacement.oerodeproof = target.oerodeproof;
+    if (target.otrapped && /box|chest/.test(objectKindKey(replacement))) replacement.otrapped = true;
+    if (target.opoisoned && isPoisonableWeaponObject(replacement)) replacement.opoisoned = true;
+    delete replacement.contents;
+    return replacement;
+}
+
+function replaceInventoryObjectWithPolymorphResult(target, replacement) {
+    const preservedLetter = target.letter;
+    for (const key of Object.keys(target)) delete target[key];
+    Object.assign(target, replacement);
+    target.letter = preservedLetter;
+    syncCarriedFigurineTransformTimer(target);
+    refreshInventoryObjectLine(target);
+    if (target.unpaid) syncUnpaidBillLine(target);
+}
+
+function learnPotionPolymorphDiscovery(item) {
+    if (item && (game.inventory || []).includes(item)) {
+        identifyPotionOfPolymorph(item);
+        return;
+    }
+    recordKnownPotionDiscovery({ potionIndex: 19 }, 'polymorph');
+    learnObjectScore('Potions', 'potion of polymorph');
+}
+
+function incrementPolymorphedItemConduct() {
+    game.u ??= {};
+    game.u.uconduct ??= {};
+    game.u.uconduct.polypiles = (game.u.uconduct.polypiles || 0) + 1;
+}
+
+function dipObjectIntoPolymorphPotion(target, potion) {
+    const messages = [];
+    if (!isPotionOfPolymorph(target) && !isPotionOfPolymorph(potion)) return messages;
+
+    const resistSubject = isPotionOfPolymorph(target) ? potion : target;
+    if (potionDipPolymorphSubjectResists(resistSubject)) {
+        messages.push('Nothing happens.');
+        return messages;
+    }
+
+    const oldType = polymorphObjectTypeKey(target);
+    const discoveryItem = isPotionOfPolymorph(potion)
+        ? potion
+        : isPotionOfPolymorph(target) ? { potionIndex: 19 } : null;
+    const replacement = polymorphReplacementForDipTarget(target);
+    if (!replacement) {
+        messages.push('Nothing happens.');
+        return messages;
+    }
+
+    incrementPolymorphedItemConduct();
+    markObjectShopBillUsedUp(target);
+    replaceInventoryObjectWithPolymorphResult(target, replacement);
+    const changedType = polymorphObjectTypeKey(target) !== oldType;
+    if (changedType) {
+        learnPotionPolymorphDiscovery(discoveryItem);
+        consumeDipPotion(potion);
+        messages.push(normalInventoryLine(target));
+    } else {
+        consumeDipPotion(potion);
+        messages.push('Nothing seems to happen.');
+    }
+    return messages;
+}
+
+function alchemyPotionName(item) {
+    if (!item) return '';
+    let name = potionDipKind(item);
+    if (name === 'holy water' || name === 'unholy water') name = 'water';
+    if (!name && item.potionIndex != null) name = IDENTIFIED_POTION_NAMES[item.potionIndex] || '';
+    if (!name && item.otyp === POT_WATER) name = 'water';
+    if (!name && item.otyp === POT_ACID) name = 'acid';
+    if (!name && item.otyp === POT_OIL) name = 'oil';
+    if (!name && item.otyp === POT_POLYMORPH) name = 'polymorph';
+    return name;
+}
+
+function alchemyPotionIndex(name) {
+    if (name === 'water') return null;
+    const index = IDENTIFIED_POTION_NAMES.indexOf(name);
+    return index >= 0 ? index : undefined;
+}
+
+function alchemyPotionOtyp(name) {
+    if (name === 'water') return POT_WATER;
+    if (name === 'acid') return POT_ACID;
+    if (name === 'oil') return POT_OIL;
+    if (name === 'polymorph') return POT_POLYMORPH;
+    return POTION_CLASS;
+}
+
+function alchemyPotionIsMagic(name) {
+    const index = alchemyPotionIndex(name);
+    return index != null && index >= 0 && index <= 19;
+}
+
+function mixtypePotionResultName(target, source) {
+    let first = alchemyPotionName(target);
+    let second = alchemyPotionName(source);
+    if (!first || !second) return '';
+
+    if (new Set([
+        'gain level', 'gain energy', 'healing', 'extra healing',
+        'full healing', 'enlightenment', 'fruit juice',
+    ]).has(second)) {
+        [first, second] = [second, first];
+    }
+
+    if (first === 'healing' && second === 'speed') return 'extra healing';
+    if (['healing', 'extra healing', 'full healing'].includes(first)
+        && (second === 'gain level' || second === 'gain energy')) {
+        return first === 'healing' ? 'extra healing'
+            : first === 'extra healing' ? 'full healing'
+            : 'gain ability';
+    }
+    if (first === 'gain level' || first === 'gain energy') {
+        if (second === 'confusion') return rn2(3) ? 'booze' : 'enlightenment';
+        if (second === 'healing') return 'extra healing';
+        if (second === 'extra healing') return 'full healing';
+        if (second === 'full healing') return 'gain ability';
+        if (second === 'fruit juice') return 'see invisible';
+        if (second === 'booze') return 'hallucination';
+    }
+    if (first === 'fruit juice') {
+        if (second === 'sickness') return 'sickness';
+        if (second === 'enlightenment' || second === 'speed') return 'booze';
+        if (second === 'gain level' || second === 'gain energy') return 'see invisible';
+    }
+    if (first === 'enlightenment') {
+        if (second === 'levitation') return rn2(3) ? 'gain level' : '';
+        if (second === 'fruit juice') return 'booze';
+        if (second === 'booze') return 'confusion';
+    }
+    return '';
+}
+
+function alchemyStackMagic(target, source, resultName) {
+    if (resultName) return alchemyPotionIsMagic(resultName);
+    return alchemyPotionIsMagic(alchemyPotionName(target)) || alchemyPotionIsMagic(alchemyPotionName(source));
+}
+
+function alchemyAffectedPotionCount(target, source, resultName) {
+    let amount = Math.max(1, Math.trunc(Number(target?.quan || 1)));
+    const magic = alchemyStackMagic(target, source, resultName);
+    const threshold = target?.odiluted ? 2 : magic ? 3 : 7;
+    if (amount <= threshold) return amount;
+    if (target.odiluted) return 2;
+    if (magic) return rnd(Math.min(amount, 8) - 2) + 2;
+    return rnd(amount - 6) + 6;
+}
+
+function potionStackNameForAlchemyMessage(item) {
+    const name = alchemyPotionName(item) || potionDipKind(item) || 'unknown';
+    return (item?.quan || 1) > 1 ? `potions of ${name}` : `potion of ${name}`;
+}
+
+function potionAlchemyMixMessage(target, source, splitFromStack) {
+    const prefix = splitFromStack ? `${target.quan} of the` : 'The';
+    const verb = (target.quan || 1) > 1 ? 'mix' : 'mixes';
+    const sourcePrefix = (source?.quan || 1) > 1 ? 'one of ' : '';
+    return `${prefix} ${potionStackNameForAlchemyMessage(target)} ${verb} with ${sourcePrefix}${potionStackNameForAlchemyMessage(source)}...`;
+}
+
+function heroWearsAlchemySmock() {
+    return (game.inventory || []).some(item => (item.worn || item.line?.includes('being worn'))
+        && /alchemy smock/.test(objectKindKey(item) || inventoryItemName(item)));
+}
+
+function heroCanReceivePotionVapor() {
+    const form = polyselfForm() || {};
+    return !form.breathless || !form.noeyes;
+}
+
+function heroBreathesPotionVapor() {
+    return !((polyselfForm() || {}).breathless);
+}
+
+function heroHasPotionVaporEyes() {
+    return !((polyselfForm() || {}).noeyes);
+}
+
+function heroHasWetWornTowel() {
+    return (game.inventory || []).some(item =>
+        isWornInventoryItem(item) && objectKindKey(item) === 'towel' && towelWetness(item) > 0);
+}
+
+function heroHasFreeAction() {
+    return !!(game.u?.freeAction || game.u?.Free_action || (game.inventory || []).some(item =>
+        isWornInventoryItem(item) && (item.actualKind === 'ring of free action'
+            || item.kind === 'ring of free action' || item.ringRoll === 20)));
+}
+
+function heroHasSleepResistance() {
+    return !!(game.u?.sleepResistance || game.u?.Sleep_resistance || polyselfForm()?.sleepResistance);
+}
+
+function clearPotionVaporBlindness(messages) {
+    if (!game.u) return;
+    const wasBlind = heroIsBlind();
+    game.u.blind = false;
+    game.u._blindTimeout = 0;
+    game.u.ucreamed = 0;
+    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Blind', '');
+    game.u._deafTimeout = 0;
+    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Deaf', '');
+    if (wasBlind) messages.push(heroIsHallucinating()
+        ? 'Far out!  Everything is all cosmic again!'
+        : 'You can see again.');
+}
+
+function incrementAbilityFromPotionVapor(blessed) {
+    const stats = game.u?.acurr?.a;
+    if (!stats) return;
+    const maxStats = game.u?.amax?.a || [];
+    let attr = rn2(A_MAX);
+    for (let checked = 0; checked < A_MAX; checked++) {
+        const max = maxStats[attr] ?? stats[attr] ?? 10;
+        if ((stats[attr] ?? 10) < max) {
+            stats[attr]++;
+            if (!blessed) break;
+        }
+        attr = (attr + 1) % A_MAX;
+    }
+}
+
+function healHeroFromPotionVapor(amount) {
+    if (!game.u) return;
+    if (game.u._polyself_base && game.u.mh != null && game.u.mhmax != null)
+        game.u.mh = Math.min(game.u.mhmax, game.u.mh + amount);
+    game.u.uhp = Math.min(game.u.uhpmax || game.u.uhp || 1, (game.u.uhp || 1) + amount);
+}
+
+function learnPotionVaporEffect(potion, name, knownEffect) {
+    if (!potion?.dknown || !knownEffect || !name) return;
+    recordKnownPotionDiscovery(potion, name);
+    learnObjectScore('Potions', `potion of ${name}`);
+}
+
+function potionBreathe(potion, messages) {
+    if (!heroCanReceivePotionVapor()) return;
+    const name = alchemyPotionName(potion);
+    let knownEffect = false;
+
+    if (heroHasWetWornTowel()) {
+        messages.push('Some vapor passes harmlessly around you.');
+        return;
+    }
+
+    switch (name) {
+    case 'restore ability':
+    case 'gain ability':
+        if (potion.cursed) {
+            if (heroBreathesPotionVapor()) messages.push('Ulch!  That potion smells terrible!');
+            else if (heroHasPotionVaporEyes()) messages.push('Your eyes sting!');
+        } else {
+            incrementAbilityFromPotionVapor(!!potion.blessed);
+        }
+        break;
+    case 'full healing':
+        healHeroFromPotionVapor(1);
+        clearPotionVaporBlindness(messages);
+        // fall through
+    case 'extra healing':
+        healHeroFromPotionVapor(1);
+        if (!potion.cursed) clearPotionVaporBlindness(messages);
+        // fall through
+    case 'healing':
+        healHeroFromPotionVapor(1);
+        if (potion.blessed) clearPotionVaporBlindness(messages);
+        exerciseAttribute(A_CON, true);
+        break;
+    case 'sickness':
+        if ((game.urole?.name?.m || game._startup_role) !== 'Healer' && game.u) {
+            game.u.uhp = game.u.uhp <= 5 ? 1 : game.u.uhp - 5;
+            exerciseAttribute(A_CON, false);
+        }
+        break;
+    case 'hallucination':
+        messages.push('You have a momentary vision.');
+        break;
+    case 'confusion':
+    case 'booze':
+        if (!heroIsConfused()) messages.push('You feel somewhat dizzy.');
+        addHeroConfusion(rnd(5));
+        break;
+    case 'invisibility':
+        if (!heroIsBlind() && !game.u?.invisible) {
+            knownEffect = true;
+            messages.push(`For an instant you ${game.u?.seeInvisible
+                ? 'could see right through yourself'
+                : "couldn't see yourself"}!`);
+        }
+        break;
+    case 'paralysis':
+        knownEffect = true;
+        if (!heroHasFreeAction()) {
+            messages.push('Something seems to be holding you.');
+            game._helpless_time = Math.max(game._helpless_time || 0, rnd(5));
+            game._wake_message = 'You can move again.';
+            exerciseAttribute(A_DEX, false);
+        } else {
+            messages.push('You stiffen momentarily.');
+        }
+        break;
+    case 'sleeping':
+        knownEffect = true;
+        if (!heroHasFreeAction() && !heroHasSleepResistance()) {
+            messages.push('You feel rather tired.');
+            const duration = rnd(5);
+            game._helpless_time = Math.max(game._helpless_time || 0, duration);
+            game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
+            game._wake_message = 'You can move again.';
+            exerciseAttribute(A_DEX, false);
+        } else {
+            messages.push('You yawn.');
+        }
+        break;
+    case 'speed':
+        if (!game.u?.fast && !game.u?.veryfast) messages.push('Your knees seem more flexible now.');
+        if (game.u) {
+            game.u._veryfastTimeout = (game.u._veryfastTimeout || 0) + rnd(5);
+            syncHeroSpeedState();
+        }
+        exerciseAttribute(A_DEX, true);
+        break;
+    case 'blindness':
+        if (!heroIsBlind() && !(game._helpless_time > 0 && game._sleeping_time > 0)) {
+            knownEffect = true;
+            messages.push('It suddenly gets dark.');
+        }
+        if (game.u) {
+            game.u.blind = true;
+            game.u._blindTimeout = (game.u._blindTimeout || 0) + rnd(5);
+        }
+        break;
+    case 'acid':
+    case 'polymorph':
+        exerciseAttribute(A_CON, false);
+        break;
+    default:
+        break;
+    }
+    learnPotionVaporEffect(potion, name, knownEffect);
+}
+
+function dipPotionAlchemyExplosion(target, amount, messages) {
+    const damage = amount + rnd(9);
+    const explodes = target.cursed || isPotionOfAcid(target)
+        || (isPotionOfOil(target) && (target.lamplit || target.burning))
+        || !rn2(heroWearsAlchemySmock() ? 30 : 10);
+    if (!explodes) return false;
+    messages.push(`${heroIsDeaf() ? '' : 'BOOM!  '}They explode!`);
+    exerciseAttribute(A_STR, false);
+    potionBreathe(target, messages);
+    useUpInventoryItem(target, target.quan || 1);
+    if (game.u) {
+        game.u.uhp = Math.max(0, (game.u.uhp || 0) - damage);
+        if ((game.u.uhp || 0) <= 0) {
+            game._death_cause = 'alchemic blast';
+            messages.push('You die...');
+        }
+    }
+    return true;
+}
+
+function randomAlchemyResultName(target) {
+    if (target?.odiluted) return 'water';
+    switch (rnd(8)) {
+    case 1:
+        return 'water';
+    case 2:
+    case 3:
+        return 'sickness';
+    case 4: {
+        const randomPotion = mkobj(POTION_CLASS, false);
+        return alchemyPotionName(randomPotion) || IDENTIFIED_POTION_NAMES[randomPotion?.potionIndex] || '';
+    }
+    default:
+        return '';
+    }
+}
+
+function setAlchemyPotionIdentity(potion, resultName) {
+    potion.cls = 'potion';
+    potion.glyph = '!';
+    potion.otyp = alchemyPotionOtyp(resultName);
+    potion.kind = resultName;
+    potion.actualKind = `potion of ${resultName}`;
+    potion.potionIndex = alchemyPotionIndex(resultName);
+    potion.blessed = false;
+    potion.cursed = false;
+    potion.bknown = false;
+    potion.known = false;
+    if (game.u?.blind || heroIsHallucinating()) potion.dknown = false;
+    potion.odiluted = resultName !== 'water';
+    if (resultName === 'water') {
+        potion.kind = 'water';
+        potion.actualKind = 'potion of water';
+        potion.potionIndex = null;
+        potion.odiluted = false;
+    }
+    delete potion.plural;
+}
+
+function alchemyResultAppearance(resultName) {
+    if (resultName === 'water') return 'clear';
+    const index = alchemyPotionIndex(resultName);
+    return index != null ? game._object_descriptions?.potions?.[index]?.description || resultName : resultName;
+}
+
+function dipPotionIntoPotion(target, potion) {
+    const messages = [];
+    if (!isPotionObject(target) || !isPotionObject(potion) || target === potion) return messages;
+    if (alchemyPotionName(target) === alchemyPotionName(potion)) return messages;
+
+    const resultName = mixtypePotionResultName(target, potion);
+    const affectedCount = alchemyAffectedPotionCount(target, potion, resultName);
+    const splitFromStack = affectedCount < Math.max(1, Math.trunc(Number(target.quan || 1)));
+    const affected = splitCarriedInventoryItemCount(target, affectedCount);
+    const sourceForMessage = { ...potion };
+    messages.push(potionAlchemyMixMessage(affected, sourceForMessage, splitFromStack));
+    consumeDipPotion(potion);
+
+    if (dipPotionAlchemyExplosion(affected, affectedCount, messages))
+        return handledDipMessages(messages);
+
+    let finalName = resultName || randomAlchemyResultName(affected);
+    if (!finalName) {
+        useUpInventoryItem(affected, affected.quan || 1);
+        messages.push(`The mixture ${game.u?.blind ? '' : 'glows brightly and '}evaporates.`);
+        return handledDipMessages(messages);
+    }
+
+    setAlchemyPotionIdentity(affected, finalName);
+    refreshInventoryObjectLine(affected);
+    if (affected.unpaid) syncUnpaidBillLine(affected);
+    mergeNeutralizedPotionIfPossible(affected);
+    if (finalName === 'water' && !heroIsHallucinating()) {
+        messages.push(`The mixture bubbles${game.u?.blind ? '' : ', then clears'}.`);
+    } else if (!game.u?.blind) {
+        messages.push(`The mixture looks ${alchemyResultAppearance(finalName)}.`);
+    }
+    return handledDipMessages(messages);
 }
 
 function acidDipTargetName(item) {
@@ -11705,6 +12323,249 @@ function dipPoisonableWeaponIntoPotion(target, potion) {
     return messages;
 }
 
+function handledDipMessages(messages) {
+    messages.handled = true;
+    return messages;
+}
+
+function dipMessagesTopline(messages) {
+    return messages.join('  ') || (messages.handled ? '' : 'Interesting...');
+}
+
+function potionNeutralizationAppearance(item) {
+    const index = item?.potionIndex;
+    const appearance = index != null ? game._object_descriptions?.potions?.[index]?.description : '';
+    return appearance || potionDipKind(item) || 'clear';
+}
+
+function potionNeutralizationResultAppearance(kind) {
+    const index = kind === 'fruit juice' ? 22 : kind === 'water' ? null : undefined;
+    if (index != null) return game._object_descriptions?.potions?.[index]?.description || kind;
+    return kind === 'water' ? 'clear' : kind;
+}
+
+function potionNeutralizationTransformMessage(oldPotion, resultKind, fromStack) {
+    const oldAppearance = oldPotion?.dknown ? `${potionNeutralizationAppearance(oldPotion)} ` : '';
+    const stackSuffix = fromStack ? ' that you dipped into' : '';
+    if (resultKind === 'water') return `The ${oldAppearance}potion${stackSuffix} clears.`;
+    return `The ${oldAppearance}potion${stackSuffix} turns ${potionNeutralizationResultAppearance(resultKind)}.`;
+}
+
+function setNeutralizedPotionIdentity(potion, resultKind, neutralizer) {
+    potion.cls = 'potion';
+    potion.glyph = '!';
+    potion.quan = 1;
+    potion.blessed = false;
+    potion.bknown = false;
+    potion.known = false;
+    potion.dknown = !game.u?.blind && !heroIsHallucinating();
+    delete potion.plural;
+    if (resultKind === 'water') {
+        potion.otyp = POT_WATER;
+        potion.kind = 'water';
+        potion.actualKind = 'potion of water';
+        potion.potionIndex = null;
+        potion.cursed = false;
+        potion.odiluted = false;
+    } else {
+        potion.otyp = POTION_CLASS;
+        potion.kind = resultKind;
+        potion.actualKind = `potion of ${resultKind}`;
+        potion.potionIndex = resultKind === 'fruit juice' ? 22 : potion.potionIndex;
+        potion.cursed = !!neutralizer?.cursed;
+    }
+}
+
+function neutralizedPotionMergeCompatible(stacked, potion) {
+    if (!stacked || !potion || stacked === potion || !isPotionObject(stacked) || !isPotionObject(potion)) return false;
+    if (potionDipKind(stacked) !== potionDipKind(potion)) return false;
+    if (!!stacked.blessed !== !!potion.blessed || !!stacked.cursed !== !!potion.cursed) return false;
+    if (!!stacked.odiluted !== !!potion.odiluted) return false;
+    if (stacked.bknown !== potion.bknown || stacked.dknown !== potion.dknown || stacked.known !== potion.known) return false;
+    if (!!stacked.unpaid !== !!potion.unpaid) return false;
+    return !stacked.unpaid || sameShopBillUnitPrice(stacked, potion);
+}
+
+function mergeNeutralizedPotionIfPossible(potion) {
+    const stacked = (game.inventory || []).find(item => neutralizedPotionMergeCompatible(item, potion));
+    if (!stacked) return potion;
+    stacked.quan = (stacked.quan || 1) + (potion.quan || 1);
+    delete stacked.plural;
+    if (stacked.unpaid && potion.unpaid) mergeStackedShopBillEntries(stacked, potion);
+    refreshInventoryObjectLine(stacked);
+    if (stacked.unpaid) syncUnpaidBillLine(stacked);
+    game.inventory = (game.inventory || []).filter(item => item !== potion);
+    return stacked;
+}
+
+function dipPotionIntoNeutralizer(target, potion) {
+    const messages = [];
+    const resultKind = potionNeutralizationResultKind(target, potion);
+    if (!resultKind) return messages;
+
+    const fromStack = (potion.quan || 1) > 1;
+    const singlePotion = splitOneCarriedInventoryItem(potion);
+    const oldPotion = { ...singlePotion };
+    const payment = costlyAlterationPaymentMessage(singlePotion, 'neutralize');
+    if (payment) messages.push(payment);
+    setNeutralizedPotionIdentity(singlePotion, resultKind, target);
+    refreshInventoryObjectLine(singlePotion);
+    if (singlePotion.unpaid) syncUnpaidBillLine(singlePotion);
+    mergeNeutralizedPotionIfPossible(singlePotion);
+    if (!game.u?.blind)
+        messages.push(potionNeutralizationTransformMessage(oldPotion, resultKind, fromStack));
+    return handledDipMessages(messages);
+}
+
+function waterDipObjectGlowPhrase(item) {
+    const name = dipItemDescription(item, false).replace(/\s+\(being worn\)$/, '');
+    const verb = (item?.quan || 1) > 1 ? 'glow' : 'glows';
+    return `Your ${name} ${verb}`;
+}
+
+function waterDipBucAuraMessage(item, color) {
+    const article = /^[aeiou]/i.test(color) ? 'an' : 'a';
+    return `${waterDipObjectGlowPhrase(item)} with ${article} ${color} aura.`;
+}
+
+function normalizeWaterPotionIdentity(item) {
+    if (!isWaterPotion(item)) return;
+    item.kind = 'water';
+    item.actualKind = 'potion of water';
+    item.potionIndex = null;
+    item.plural = undefined;
+}
+
+function refreshWaterDipTargetLine(item) {
+    normalizeWaterPotionIdentity(item);
+    syncCarriedFigurineTransformTimer(item);
+    refreshInventoryLineAfterBucChange(item);
+    if (item?.unpaid) syncUnpaidBillLine(item);
+}
+
+function learnWaterDipBuc(target, potion) {
+    if (!game.u?.blind) {
+        target.bknown = !heroIsHallucinating();
+    } else if (!potion.bknown || !potion.dknown) {
+        target.bknown = false;
+    }
+}
+
+function waterDipDevaluationPayment(target, verb) {
+    if (!target?.unpaid || !isWaterPotion(target)) return '';
+    target.bknown = true;
+    return costlyAlterationPaymentMessage(target, verb);
+}
+
+function isTowelObject(item) {
+    return objectKindKey(item) === 'towel';
+}
+
+function wetTowelWithNeutralWater(towel, messages) {
+    if (!isTowelObject(towel) || (towel.spe || 0) >= 7) return false;
+    const wetness = Math.max(0, towel.spe || 0);
+    towel.spe = wetness + rnd(7 - wetness);
+    towel.wetness = towel.spe;
+    refreshInventoryObjectLine(towel);
+    if (towel.unpaid) syncUnpaidBillLine(towel);
+    messages.push('The towel soaks it up!');
+    return true;
+}
+
+function normalizeWaterDamagedPotionIdentity(item) {
+    if (!item || item.otyp !== POT_WATER) return;
+    item.kind = 'water';
+    item.actualKind = 'potion of water';
+    item.potionIndex = null;
+    item.dknown = false;
+}
+
+function refreshNeutralWaterDamagedTarget(item) {
+    if (!item || !(game.inventory || []).includes(item)) return;
+    normalizeWaterDamagedPotionIdentity(item);
+    refreshInventoryObjectLine(item);
+    if (item.unpaid) syncUnpaidBillLine(item);
+}
+
+function neutralWaterContainerDamage(container, messages) {
+    if (!isLiquidFlowContainer(container)) return false;
+    const name = pickupObjectName(container);
+    const waterproof = isLiquidFlowWaterproofContainer(container);
+    if (waterproof && (!container.cursed || rn2(3))) {
+        if (!game.u?.blind && !(game.u?.underwater || game.u?.uunderwater))
+            messages.push(`The water cannot get into your ${name}.`);
+        return true;
+    }
+    messages.push(`Some water gets into your ${name}!`);
+    const acidContext = { count: 0 };
+    for (const content of [...liquidFlowContainerContents(container)]) {
+        waterDamageFloorItem(content, messages, false, acidContext, {
+            removeObject: item => removeContainedObject(container, item),
+            usedUpShopBillOnDestroy: true,
+        });
+    }
+    return true;
+}
+
+function neutralWaterDamageCarriedTarget(target, messages) {
+    if (!target) return false;
+    if (objectKindKey(target) === 'can of grease' && (target.spe || 0) > 0) return false;
+    if (wetTowelWithNeutralWater(target, messages)) return true;
+    const changed = rustTrapWaterDamageItem(target, messages);
+    if (changed) refreshNeutralWaterDamagedTarget(target);
+    if (changed) return true;
+    return neutralWaterContainerDamage(target, messages);
+}
+
+function dipObjectIntoNeutralWaterPotion(target, potion) {
+    const messages = [];
+    if (!isNeutralWaterDipSource(potion) || !isWaterDipTargetObject(target)) return messages;
+    if (!neutralWaterDamageCarriedTarget(target, messages)) return messages;
+    consumeDipPotion(potion);
+    return handledDipMessages(messages);
+}
+
+function dipObjectIntoWaterPotion(target, potion) {
+    const messages = [];
+    if (!isWaterPotion(potion) || !isWaterDipTargetObject(target)) return messages;
+    if (isNeutralWaterDipSource(potion)) return dipObjectIntoNeutralWaterPotion(target, potion);
+
+    let effect = '';
+    if (potion.blessed) {
+        if (target.cursed) {
+            messages.push(`${waterDipObjectGlowPhrase(target)} amber.`);
+            messages.push(waterDipDevaluationPayment(target, 'uncurse'));
+            target.cursed = false;
+            effect = 'uncurse';
+        } else if (!target.blessed) {
+            messages.push(waterDipBucAuraMessage(target, 'light blue'));
+            target.blessed = true;
+            target.cursed = false;
+            effect = 'bless';
+        }
+    } else if (potion.cursed) {
+        if (target.blessed) {
+            messages.push(`${waterDipObjectGlowPhrase(target)} brown.`);
+            messages.push(waterDipDevaluationPayment(target, 'unbless'));
+            target.blessed = false;
+            effect = 'unbless';
+        } else if (!target.cursed) {
+            messages.push(waterDipBucAuraMessage(target, 'black'));
+            target.cursed = true;
+            target.blessed = false;
+            effect = 'curse';
+        }
+    }
+    if (!effect) return messages;
+
+    learnWaterDipBuc(target, potion);
+    refreshWaterDipTargetLine(target);
+    if ((effect === 'bless' || effect === 'curse') && target.unpaid && isWaterPotion(target))
+        alterShopBillCostIfHigher(target);
+    consumeDipPotion(potion);
+    return messages.filter(Boolean);
+}
+
 function dipWeaponIntoOilPotion(target, potion) {
     const messages = [];
     if (!isOilWeaponDipTargetObject(target) || !isPotionOfOil(potion)) return messages;
@@ -11746,9 +12607,13 @@ function dipObjectIntoOilPotion(target, potion) {
 }
 
 function dipObjectIntoPotion(target, potion) {
+    if (isWaterPotion(potion)) return dipObjectIntoWaterPotion(target, potion);
+    if (isPotionOfPolymorph(target) || isPotionOfPolymorph(potion)) return dipObjectIntoPolymorphPotion(target, potion);
+    if (isPotionObject(target) && isPotionObject(potion)) return dipPotionIntoPotion(target, potion);
     if (isPotionOfAcid(potion)) return dipObjectIntoAcidPotion(target, potion);
     if (isPotionOfOil(potion)) return dipObjectIntoOilPotion(target, potion);
     if (isPoisonableWeaponObject(target)) return dipPoisonableWeaponIntoPotion(target, potion);
+    if (isPotionNeutralizationTarget(target)) return dipPotionIntoNeutralizer(target, potion);
     return [];
 }
 
@@ -29503,7 +30368,7 @@ function rustTrapDestroyAcidPotion(item, messages, name, described = false) {
     messages.push(described
         ? `The potion${plural ? 's' : ''} ${plural ? 'explode' : 'explodes'}!`
         : `Your ${name} ${rustTrapNameVerb(name, 'explodes', 'explode')}!`);
-    removeInventoryItem(item, item.quan || 1);
+    useUpInventoryItem(item, item.quan || 1);
 }
 
 function rustTrapWaterDamageReadable(item, messages, cls, name) {
@@ -44373,7 +45238,7 @@ export async function rhack(_cmd) {
         const target = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (source && target && dipTargetsForSource(source).includes(target)) {
             const messages = dipObjectIntoPotion(target, source);
-            await setMessage(messages.join('  ') || 'Interesting...', messages.length > 1);
+            await setMessage(dipMessagesTopline(messages), messages.length > 1);
             game.context.move = 1;
         }
         game._dip_source_object = '';
@@ -44418,7 +45283,7 @@ export async function rhack(_cmd) {
         const potion = (game.inventory || []).find(invItem => invItem.letter === ch);
         if (target && potion && dipPotionSources(target).includes(potion)) {
             const messages = dipObjectIntoPotion(target, potion);
-            await setMessage(messages.join('  ') || 'Interesting...', messages.length > 1);
+            await setMessage(dipMessagesTopline(messages), messages.length > 1);
             game.context.move = 1;
         }
         game._dip_object = '';
