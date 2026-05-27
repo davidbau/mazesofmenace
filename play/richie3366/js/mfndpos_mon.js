@@ -912,11 +912,20 @@ export function mfndposMonsterLikeC(g, mtmp, flag) {
         wantpool = false;
         mfndposScanLikeC(g, mtmp, flag, data, wantpool, poolok, lavaok);
     }
-    if (g.context?._wizD1EastCorridorRestMmoveLikeC && (data.cnt | 0) > 3) {
+    if ((data.cnt | 0) > 3) {
         const mx = mtmp.mx | 0;
         const my = mtmp.my | 0;
-        /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734). */
-        if (mx >= 10 && mx <= 11 && my >= 10 && my <= 11) {
+        if (
+            g.context?._wizD1EastCorridorRestMmoveLikeC
+            && mx >= 10
+            && mx <= 11
+            && my >= 10
+            && my <= 11
+        ) {
+            /* C: corridor **~(10–11,10–11)** — three **`!appr`** **`rn2(12)`** picks (~2732–2734). */
+            data.cnt = 3;
+        } else if (g.context?._wizD1PostEastTailWalkDistantMmoveLikeC) {
+            /* C: post-east-tail walk distant — three **`rn2(12)`** chcnt picks (~2775–2777). */
             data.cnt = 3;
         }
     }

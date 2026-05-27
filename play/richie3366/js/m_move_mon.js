@@ -418,6 +418,9 @@ function dochugEntersMmoveBlockLikeC(
     if (g.context?._wizD1EastCorridorRestMmoveLikeC) {
         return true;
     }
+    if (g.context?._wizD1PostEastTailWalkDistantMmoveLikeC) {
+        return true;
+    }
     /* C: wizard D:1 step-1 post-peel — near mklev **`rn2(4)`** (~2575); peel is **`distfleeck`** only. */
     if (g.context?._wizD1Step1GateDochugLikeC && isWizardD1Step1PeelLikeC(g, stepNum)) {
         return (
@@ -532,8 +535,11 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
 
         appr = mBalksAtApproachingLikeC(appr, mtmp);
 
-        if (g.context?._wizD1EastCorridorRestMmoveLikeC) {
-            /* C: corridor rest ~2732+ — sleeping mklev **`mfndpos`** chcnt, no **`mtrack`** rejects. */
+        if (
+            g.context?._wizD1EastCorridorRestMmoveLikeC
+            || g.context?._wizD1PostEastTailWalkDistantMmoveLikeC
+        ) {
+            /* C: corridor / post-walk distant — **`mfndpos`** **`!appr`** **`rn2(12)`** chcnt picks. */
             appr = 0;
         }
 
@@ -548,7 +554,9 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
 
     const flag = monAllowflagsMonsterLikeC(g, mtmp);
     const mfp = mfndposMonsterLikeC(g, mtmp, flag);
-    const corridorRestPick = !!g.context?._wizD1EastCorridorRestMmoveLikeC;
+    const corridorRestPick =
+        !!g.context?._wizD1EastCorridorRestMmoveLikeC
+        || !!g.context?._wizD1PostEastTailWalkDistantMmoveLikeC;
     const cnt = corridorRestPick
         ? Math.min(mfp.cnt | 0, 3)
         : (mfp.cnt | 0);
@@ -615,7 +623,10 @@ function mMovePositionSelectLikeC(g, mtmp, silent) {
                 !appr
                 && !(mtmp._eelStep8ChcntBase | 0)
                 && (
-                    g.context?._wizD1EastCorridorRestMmoveLikeC
+                    (
+                        g.context?._wizD1EastCorridorRestMmoveLikeC
+                        || g.context?._wizD1PostEastTailWalkDistantMmoveLikeC
+                    )
                         ? !rn2(12)
                         : (silent ? mmoved === MMOVE_NOTHING : !rn2(++chcnt))
                 )
@@ -1735,9 +1746,14 @@ export async function mMoveOneMonsterSubsetLikeC(g, mtmp, stepNum = 0) {
         g.context?._wizD1PostEastTailWalkDistantMmoveLikeC
         && movemonStep8DistantMonEligibleLikeC(g, mtmp)
     ) {
+        const u = g.u;
+        if (u) {
+            mtmp.mux = u.ux | 0;
+            mtmp.muy = u.uy | 0;
+        }
         setApparxyMonsterLikeC(g, mtmp);
         ensureMonsterMtrack(mtmp);
-        primeDistantMtrackRn20LikeC(mtmp);
+        monTrackClear(mtmp);
         if (dochugEntersMmoveBlockLikeC(g, mtmp, 1, 0, stepNum)) {
             mMovePositionSelectRngLikeC(g, mtmp);
         }

@@ -285,6 +285,7 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
         delete g.context._wizD1SkipDistantDochugRn4LikeC;
         delete g.context._wizD1Step1NearMklevDistfleeckOnlyLikeC;
         delete g.context._wizD1EastDistantMmoveTailDoneLikeC;
+        delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
     }
     g.context.monMoving = true;
     try {
@@ -417,12 +418,21 @@ export async function runPostCommandTurnAdvanceLikeC(g) {
                 && !g.context?._wizD1EastTailPostCorridorMovemonAfterMcalcmoveDoneLikeC
             ) {
                 const tailStepNum = (g.moves | 0) - 1;
+                /* C: post-east-tail walk — new-turn already ran inside **`movemon`** (~2778+). */
+                if (g.context?._wizD1PostEastTailWalkNewTurnDoneLikeC) {
+                    delete g.context._wizD1PostEastTailWalkNewTurnDoneLikeC;
+                    newTurnDone = true;
+                }
                 /* C: rogue D:1 — defer new-turn before first **`#search`** (`peek 's'`).
                  * Inline **`#search`** post always runs the tail here (no double defer+flush). */
-                if (shouldDeferNewTurnAfterMovemonLikeC(g)) {
+                if (
+                    !newTurnDone
+                    && shouldDeferNewTurnAfterMovemonLikeC(g)
+                ) {
                     g.context._deferredNewTurnLikeC = true;
                 } else if (
-                    !g.context?._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC
+                    !newTurnDone
+                    && !g.context?._wizD1EastTailFirstPostCorridorNewTurnDoneLikeC
                     && !g.context?._wizD1EastTailSecondPostCorridorNewTurnDoneLikeC
                 ) {
                     await runNewTurnSetupAndTailLikeC(g, tailStepNum);

@@ -522,6 +522,24 @@ export async function movemon(stepNum) {
             }
         } else {
             for (const m of mons) {
+                /* C: post-east-tail walk — near + pet only in **`fmon`**; distant in tail (~2774+). */
+                if (g.context?._wizD1PostEastTailWalkFmonLikeC) {
+                    const walkDistant =
+                        wizD1PeelDistantMklevMonLikeC(g)
+                        ?? findDistantMklevMonLikeC(g);
+                    if (m === walkDistant) continue;
+                    const walkNear = wizD1EastDoorMklevMonLikeC(g)
+                        ?? (g.level?.monsters ?? []).find(
+                            (mm) =>
+                                !(mm.mtame | 0)
+                                && (mm.mgenmklev | 0)
+                                && mm !== walkDistant,
+                        );
+                    const walkPet = (g.level?.monsters ?? []).find(
+                        (mm) => (mm.mtame | 0) !== 0,
+                    );
+                    if (m !== walkNear && m !== walkPet) continue;
+                }
                 /* C: second **`L`** east-tail — pet **`dog_move`** only after corridor peel block. */
                 if (
                     g.context?._wizD1EastTailMovemonPetMfndposPendingLikeC
@@ -553,6 +571,30 @@ export async function movemon(stepNum) {
                     } finally {
                         delete g.context._wizD1PostEastTailWalkDistantMmoveLikeC;
                     }
+                    /* C: post-walk distant **`m_move`** — new-turn tail (~2778+ **`rn2(70)`**). */
+                    const { runWizEastTailPostCorridorNewTurnLikeC } = await import(
+                        './moveloop_turn_advance.js',
+                    );
+                    await runWizEastTailPostCorridorNewTurnLikeC(g);
+                    /* C: post-new-turn near **`distfleeck`** (~2781) before pet prescan (~2782+). */
+                    const nearWalkPost =
+                        wizD1EastDoorMklevMonLikeC(g)
+                        ?? (g.level?.monsters ?? []).find(
+                            (m) =>
+                                !(m.mtame | 0)
+                                && (m.mgenmklev | 0)
+                                && m
+                                !== (
+                                    wizD1PeelDistantMklevMonLikeC(g)
+                                    ?? findDistantMklevMonLikeC(g)
+                                ),
+                        );
+                    if (nearWalkPost) {
+                        setApparxyMonsterLikeC(g, nearWalkPost);
+                        await distfleeckMonsterApplyLikeC(g, nearWalkPost);
+                    }
+                    g.context._wizD1PostEastTailWalkPetAfterMintrapLikeC = true;
+                    g.context._wizD1PostEastTailWalkNewTurnDoneLikeC = true;
                 }
             }
         }
@@ -1017,8 +1059,21 @@ export async function movemon(stepNum) {
             }
         }
         await mintrapMoveloopTail();
+        if (g.context?._wizD1PostEastTailWalkPetAfterMintrapLikeC) {
+            const petWalkPost = (g.level?.monsters ?? []).find(
+                (m) => (m.mtame | 0) !== 0,
+            );
+            if (petWalkPost) {
+                const { dogMoveEastTailPostMcalcmovePetLikeC } = await import(
+                    './dogmove_mon.js',
+                );
+                dogMoveEastTailPostMcalcmovePetLikeC(g, petWalkPost);
+            }
+            delete g.context._wizD1PostEastTailWalkPetAfterMintrapLikeC;
+        }
     } finally {
         delete g.context.movemonStepNum;
+        delete g.context._wizD1PostEastTailWalkPetAfterMintrapLikeC;
         if (postBumpMovemonThisPass) {
             g.context._postBumpInlineDoneLikeC = true;
         }
