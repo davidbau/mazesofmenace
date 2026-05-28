@@ -12,6 +12,7 @@ import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { filler_region, lspo_map, fill_special_room } from './sp_lev.js';
 import { somex, somey, somexyspace, occupied } from './mkroom.js';
+import { makemon as make_monster } from './makemon.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -298,19 +299,7 @@ function rndmonnum() {
 
 // makemon stub
 async function makemon(mdat, x, y, mmflags) {
-    // C: makemon consumes RNG for monster HP, inventory, etc.
-    // For fill_ordinary_room: makemon(null, ...) = random monster
-    if (mdat === null) {
-        // rndmonst_adj + selection
-        rn2(398);
-    }
-    // newmonhp
-    const hp = rnd(8);
-    // m_initinv — monster inventory
-    // For random monsters this varies widely. Since fill_ordinary_room
-    // and mineralize calls are in fastforward, this stub won't be called
-    // for those. It's only needed if mklev structural code calls makemon.
-    return { mx: x, my: y, mhp: hp, msleeping: 0, mpeaceful: 0 };
+    return make_monster(mdat, x, y, mmflags);
 }
 
 // maketrap stub
@@ -529,11 +518,11 @@ async function makelevel() {
                 && croom.needfill === FILL_NORMAL)
                 fillable_room_count++;
         }
-        if (fillable_room_count > 0) rn2(fillable_room_count);
+        g.level._bonus_room_idx = (fillable_room_count > 0) ? rn2(fillable_room_count) : -1;
     }
 
-    // Fill rooms + mineralize: consumed by fastforward_fill_mineralize
-    // Called externally from allmain.js after mklev structural phase
+    // Fill rooms + mineralize: handled by fastforward_fill_mineralize (seed8000)
+    // or real fill loop (all other seeds), called from allmain.js.
 }
 
 // C ref: mklev.c makerooms()
@@ -1863,7 +1852,7 @@ function mkgrave_room(croom) {
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
 
-async function fill_ordinary_room(croom, bonus_items) {
+export async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
     if (croom.needfill !== FILL_NORMAL) return;
@@ -1999,7 +1988,7 @@ function mineralize_kelp(kelp_pool, kelp_moat) {
                 mksobj_at(KELP_FROND, x, y, true, false);
 }
 
-function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
+export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
     const map = game.level;
     mineralize_kelp(kelp_pool, kelp_moat);
     const absDepth = depth_of_level(game.u?.uz);

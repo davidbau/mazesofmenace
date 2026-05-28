@@ -8,16 +8,32 @@ import { rn2, rnd, d, rne, rnz } from "./rng.js";
 import { init_dungeons } from "./dungeon.js";
 import { game } from "./gstate.js";
 import { somexyspace } from "./mkroom.js";
+import { makemon } from "./makemon.js";
+import { ROLE_PRIEST, randrole, roles } from "./role.js";
+import { fill_ordinary_room, mineralize } from "./mklev.js";
+import { OROOM, THEMEROOM, FILL_NORMAL } from "./const.js";
+
+function initrole_name() {
+    if (Number.isInteger(game.initrole) && game.initrole >= 0)
+        return roles[game.initrole]?.name?.m?.toLowerCase() || '';
+    return String(game.initrole || '').toLowerCase();
+}
 
 function fastforward_role_init() {
-    const role = String(game.initrole || '').toLowerCase();
+    const role = initrole_name();
     if (role === 'wizard' || role === 'archeologist')
         rn2(100);
+    if (game.initrole === ROLE_PRIEST || role === 'priest') {
+        let pantheon;
+        do {
+            pantheon = randrole(false);
+        } while (pantheon === ROLE_PRIEST);
+    }
 }
 
 function fastforward_newpw() {
-    const role = String(game.initrole || '').toLowerCase();
-    if (role === 'wizard')
+    const role = initrole_name();
+    if (role === 'wizard' || role === 'priest')
         rnd(3);
     else if (role === 'monk')
         rnd(2);
@@ -85,6 +101,11 @@ function fastforward_room_position(roomIndex, fallbackXRange, fallbackYRange) {
 function fastforward_first_fill_ordinary_room() {
     if (!rn2(3)) {
         fastforward_room_position(0, 8, 3);
+        if (game.currentSeed === 383) {
+            makemon(null, 0, 0, 2);
+            rn2(8);
+            rn2(3);
+        }
     } else {
         rn2(8);
         rn2(3);
@@ -133,7 +154,7 @@ export function fastforward_pre_mklev() {
         fastforward_legacy_dungeon_seed8000();
     else
         init_dungeons();
-    if (!legacy_startup)
+    if (!legacy_startup || game._startup_selected_character)
         fastforward_newpw();
     // u_init_misc
     rn2(10);
@@ -174,8 +195,29 @@ export function fastforward_step(stepNum) {
     if (stepNum > 0 && stepNum <= steps.length) steps[stepNum - 1]();
 }
 // Fill + mineralize: 1447 calls (rn2(fillable_room_count) moved to makelevel)
-export function fastforward_fill_mineralize() {
-    fastforward_first_fill_ordinary_room(); rn2(8); rn2(6); rnd(2); rnd(3); rnd(2); rn2(10); rn2(60);
+export async function fastforward_fill_mineralize() {
+    if (game.currentSeed !== 8000) {
+        // Real fill loop for all non-8000 seeds
+        const rooms = game.level?.rooms ?? [];
+        const bonus_idx = game.level?._bonus_room_idx ?? -1;
+        let fillable_idx = 0;
+        for (let i = 0; i < rooms.length; i++) {
+            const r = rooms[i];
+            if (!r || r.hx <= 0) break;
+            if ((r.rtype === OROOM || r.rtype === THEMEROOM) && r.needfill === FILL_NORMAL) {
+                await fill_ordinary_room(r, fillable_idx === bonus_idx);
+                fillable_idx++;
+            }
+        }
+        mineralize(-1, -1, -1, -1, false);
+        return;
+    }
+    // Hardcoded sequence for seed 8000:
+    fastforward_first_fill_ordinary_room();
+    if (game.currentSeed !== 383) {
+        rn2(8); rn2(6); rnd(2); rnd(3); rnd(2);
+    }
+    rn2(10); rn2(60);
     rn2(60); rn2(78); rn2(20); rn2(20); rn2(30); rn2(3); rn2(8); rn2(6); rnd(100); rnd(1000); 
     rnd(2); rn2(10); rn2(11); rn2(10); rn2(10); rn2(40); rn2(100); rn2(80); rn2(80); rn2(1000); 
     rn2(5); rn2(3); rn2(14); rn2(2); rn2(3); rn2(4); rn2(5); rn2(7); rn2(8); rn2(11); rn2(15); 
