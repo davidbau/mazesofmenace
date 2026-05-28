@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
-import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
+import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, adjustedMonsterLevel, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, monster_hp, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
 import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, STRAT_WAITMASK, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, W_SADDLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -10823,32 +10823,37 @@ function wishObjectMetadataForItem(item) {
 }
 
 function isPotionObject(item) {
-    return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_ACID
-        || item?.otyp === POT_POLYMORPH || item?.otyp === POT_OIL || item?.otyp === POT_WATER;
+    return item?.cls === 'potion' || item?.otyp === POTION_CLASS || item?.otyp === POT_WATER
+        || POTION_INDEX_BY_OTYP.has(item?.otyp);
+}
+
+function potionIdentityName(item) {
+    if (!item || !isPotionObject(item)) return '';
+    if (item.potionIndex != null) return IDENTIFIED_POTION_NAMES[item.potionIndex] || '';
+    if (item.otyp === POT_WATER) return 'water';
+    const index = POTION_INDEX_BY_OTYP.get(item.otyp);
+    return index != null ? IDENTIFIED_POTION_NAMES[index] || '' : '';
 }
 
 function isWaterPotion(item) {
     if (!isPotionObject(item)) return false;
     const kind = objectKindKey(item).replace(/^potion of /, '');
-    return item?.otyp === POT_WATER || kind === 'water' || kind === 'holy water' || kind === 'unholy water';
+    return potionIdentityName(item) === 'water' || kind === 'water' || kind === 'holy water' || kind === 'unholy water';
 }
 
 function isPotionOfOil(item) {
     if (!isPotionObject(item)) return false;
-    return item?.otyp === POT_OIL || item?.potionIndex === 24
-        || objectKindKey(item).replace(/^potion of /, '') === 'oil';
+    return potionIdentityName(item) === 'oil' || objectKindKey(item).replace(/^potion of /, '') === 'oil';
 }
 
 function isPotionOfAcid(item) {
     if (!isPotionObject(item)) return false;
-    return item?.otyp === POT_ACID || item?.potionIndex === 23
-        || objectKindKey(item).replace(/^potion of /, '') === 'acid';
+    return potionIdentityName(item) === 'acid' || objectKindKey(item).replace(/^potion of /, '') === 'acid';
 }
 
 function isPotionOfPolymorph(item) {
     if (!isPotionObject(item)) return false;
-    return item?.otyp === POT_POLYMORPH || item?.potionIndex === 19
-        || objectKindKey(item).replace(/^potion of /, '') === 'polymorph';
+    return potionIdentityName(item) === 'polymorph' || objectKindKey(item).replace(/^potion of /, '') === 'polymorph';
 }
 
 function potionDipKind(item) {
@@ -12128,6 +12133,61 @@ function isStoneToFleshMarbleWandObject(item) {
         || appearance === 'marble';
 }
 
+const STONE_TO_FLESH_RING_MATERIALS = new Set(['mineral', 'gemstone']);
+const STONE_TO_FLESH_RING_APPEARANCE_MATERIALS = new Map([
+    ['wooden', 'wood'], ['granite', 'mineral'], ['opal', 'mineral'], ['clay', 'mineral'],
+    ['coral', 'mineral'], ['black onyx', 'mineral'], ['moonstone', 'mineral'],
+    ['tiger eye', 'gemstone'], ['jade', 'gemstone'], ['bronze', 'copper'],
+    ['agate', 'gemstone'], ['topaz', 'gemstone'], ['sapphire', 'gemstone'],
+    ['ruby', 'gemstone'], ['diamond', 'gemstone'], ['pearl', 'bone'],
+    ['iron', 'iron'], ['brass', 'copper'], ['copper', 'copper'], ['twisted', 'iron'],
+    ['steel', 'iron'], ['silver', 'silver'], ['gold', 'gold'], ['ivory', 'bone'],
+    ['emerald', 'gemstone'], ['wire', 'iron'], ['engagement', 'iron'], ['shiny', 'iron'],
+]);
+const STONE_TO_FLESH_RING_KIND_MATERIALS = new Map([
+    ['ring of adornment', 'wood'], ['ring of gain strength', 'mineral'],
+    ['ring of gain constitution', 'mineral'], ['ring of increase accuracy', 'mineral'],
+    ['ring of increase damage', 'mineral'], ['ring of protection', 'mineral'],
+    ['ring of regeneration', 'mineral'], ['ring of searching', 'gemstone'],
+    ['ring of stealth', 'gemstone'], ['ring of sustain ability', 'copper'],
+    ['ring of levitation', 'gemstone'], ['ring of hunger', 'gemstone'],
+    ['ring of aggravate monster', 'gemstone'], ['ring of conflict', 'gemstone'],
+    ['ring of warning', 'gemstone'], ['ring of poison resistance', 'bone'],
+    ['ring of fire resistance', 'iron'], ['ring of cold resistance', 'copper'],
+    ['ring of shock resistance', 'copper'], ['ring of free action', 'iron'],
+    ['ring of slow digestion', 'iron'], ['ring of teleportation', 'silver'],
+    ['ring of teleport control', 'gold'], ['ring of polymorph', 'bone'],
+    ['ring of polymorph control', 'gemstone'], ['ring of invisibility', 'iron'],
+    ['ring of see invisible', 'iron'], ['ring of protection from shape changers', 'iron'],
+]);
+
+function normalizeStoneToFleshMaterial(material) {
+    const text = String(material || '').toLowerCase().replace(/^hi_/, '');
+    if (text === 'steel') return 'iron';
+    if (text === 'brass' || text === 'bronze') return 'copper';
+    return text;
+}
+
+function stoneToFleshRingMaterial(item) {
+    const explicit = normalizeStoneToFleshMaterial(item?.oc_material || item?.material);
+    if (explicit) return explicit;
+    const ringName = objectKindKey(item);
+    const appearance = String(item?.appearance || (
+        typeof item?.kind === 'string' && /\bring$/.test(item.kind) && !/^ring of /.test(item.kind)
+            ? item.kind.replace(/\s+ring$/, '')
+            : ''
+    ) || (item?.ringRoll ? game._object_descriptions?.rings?.[item.ringRoll - 1] : '') || '').toLowerCase();
+    return normalizeStoneToFleshMaterial(STONE_TO_FLESH_RING_APPEARANCE_MATERIALS.get(appearance)
+        || STONE_TO_FLESH_RING_KIND_MATERIALS.get(ringName)
+        || '');
+}
+
+function isStoneToFleshMineralRingObject(item) {
+    if (!item || (itemClassKey(item) !== 'ring' && item?.glyph !== '=' && item?.otyp !== RING_CLASS))
+        return false;
+    return STONE_TO_FLESH_RING_MATERIALS.has(stoneToFleshRingMaterial(item));
+}
+
 function stoneToFleshMeatStickReplacement(target) {
     const replacement = mksobj(MEAT_STICK, false, false);
     Object.assign(replacement, object_display(replacement), {
@@ -12148,6 +12208,136 @@ function stoneToFleshMeatStickReplacement(target) {
         owt: Math.max(1, Math.trunc(Number(target?.quan || 1))),
     });
     return replacement;
+}
+
+function stoneToFleshMeatRingReplacement(target) {
+    const replacement = mksobj(MEAT_RING, false, false);
+    Object.assign(replacement, object_display(replacement), {
+        quan: 1,
+        letter: target?.letter,
+        blessed: !!target?.blessed,
+        cursed: !!target?.cursed,
+        no_charge: !!target?.no_charge,
+        cls: 'food',
+        glyph: '%',
+        otyp: MEAT_RING,
+        kind: 'meat ring',
+        actualKind: 'meat ring',
+        singular: 'meat ring',
+        plural: 'meat rings',
+        nutrition: 5,
+        owt: 5,
+    });
+    return replacement;
+}
+
+const STONE_TO_FLESH_GEMSTONE_NAMES = new Set([
+    'dilithium crystal', 'diamond', 'ruby', 'jacinth', 'jacinth stone',
+    'sapphire', 'black opal', 'emerald', 'turquoise', 'turquoise stone',
+    'citrine', 'citrine stone', 'aquamarine', 'aquamarine stone',
+    'amber', 'amber stone', 'topaz', 'topaz stone', 'jet', 'jet stone',
+    'opal', 'chrysoberyl', 'chrysoberyl stone', 'garnet', 'garnet stone',
+    'amethyst', 'amethyst stone', 'jasper', 'jasper stone', 'fluorite',
+    'fluorite stone', 'obsidian', 'obsidian stone', 'agate', 'agate stone',
+    'jade', 'jade stone',
+]);
+const STONE_TO_FLESH_MINERAL_GEM_NAMES = new Set([
+    'rock', 'rocks', 'luckstone', 'loadstone', 'touchstone', 'flint',
+    'flint stone', 'gray stone', 'grey stone',
+]);
+
+function stoneToFleshObjectMaterial(item) {
+    const explicit = normalizeStoneToFleshMaterial(item?.oc_material || item?.material);
+    if (explicit) return explicit;
+    if (isBoulderObject(item)) return 'mineral';
+    const cls = itemClassKey(item);
+    if (cls !== 'gem' && item?.glyph !== '*' && item?.otyp !== GEM_CLASS)
+        return '';
+    const values = [
+        objectKindKey(item),
+        item?.actualKind,
+        item?.kind,
+        item?.gemDescription,
+        item?.displayName,
+    ].map(value => String(value || '').toLowerCase().trim()).filter(Boolean);
+    if (values.some(value => /\bworthless piece of\b.*\bglass\b/.test(value) || value === 'glass'))
+        return 'glass';
+    if (values.some(value => STONE_TO_FLESH_GEMSTONE_NAMES.has(value)))
+        return 'gemstone';
+    if (values.some(value => STONE_TO_FLESH_MINERAL_GEM_NAMES.has(value)))
+        return 'mineral';
+    return '';
+}
+
+function isStoneToFleshGemObject(item) {
+    if (!item || (itemClassKey(item) !== 'gem' && item?.glyph !== '*' && item?.otyp !== GEM_CLASS))
+        return false;
+    const material = stoneToFleshObjectMaterial(item);
+    return material === 'mineral' || material === 'gemstone';
+}
+
+function stoneToFleshMeatballReplacement(target) {
+    const quantity = Math.max(1, Math.trunc(Number(target?.quan || 1)));
+    const replacement = mksobj(MEATBALL, false, false);
+    Object.assign(replacement, object_display(replacement), {
+        quan: quantity,
+        letter: target?.letter,
+        blessed: !!target?.blessed,
+        cursed: !!target?.cursed,
+        no_charge: !!target?.no_charge,
+        cls: 'food',
+        glyph: '%',
+        otyp: MEATBALL,
+        kind: 'meatball',
+        actualKind: 'meatball',
+        singular: 'meatball',
+        plural: 'meatballs',
+        nutrition: 5,
+        owt: quantity,
+    });
+    return replacement;
+}
+
+function stoneToFleshEnormousMeatballReplacement(target) {
+    const replacement = mksobj(ENORMOUS_MEATBALL, false, false);
+    Object.assign(replacement, object_display(replacement), {
+        quan: 1,
+        letter: target?.letter,
+        blessed: !!target?.blessed,
+        cursed: !!target?.cursed,
+        no_charge: !!target?.no_charge,
+        cls: 'food',
+        glyph: '%',
+        otyp: ENORMOUS_MEATBALL,
+        kind: 'enormous meatball',
+        actualKind: 'enormous meatball',
+        singular: 'enormous meatball',
+        plural: 'enormous meatballs',
+        nutrition: 2000,
+        owt: 400,
+    });
+    return replacement;
+}
+
+function stoneToFleshObjectAlwaysResists(item) {
+    return !!(item?.invocation || item?.riderCorpse || lavaObjResistsHard(item));
+}
+
+function stoneToFleshObjectResists(item) {
+    if (stoneToFleshObjectAlwaysResists(item)) return true;
+    return rn2(100) < (item?.artifact || item?.oartifact ? 98 : 2);
+}
+
+function stoneToFleshReplacementForObject(item) {
+    if (isStoneToFleshMarbleWandObject(item))
+        return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatStickReplacement(item);
+    if (isStoneToFleshMineralRingObject(item))
+        return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatRingReplacement(item);
+    if (isBoulderObject(item))
+        return stoneToFleshObjectResists(item) ? null : stoneToFleshEnormousMeatballReplacement(item);
+    if (isStoneToFleshGemObject(item))
+        return stoneToFleshObjectResists(item) ? null : stoneToFleshMeatballReplacement(item);
+    return null;
 }
 
 function stoneToFleshMergeSkipItem(item) {
@@ -12202,9 +12392,10 @@ function stoneToFleshInventoryEffect(messages = []) {
 
     let transformed = false;
     for (const item of [...(game.inventory || [])]) {
-        if (!isStoneToFleshMarbleWandObject(item)) continue;
+        const replacement = stoneToFleshReplacementForObject(item);
+        if (!replacement) continue;
         markObjectShopBillUsedUp(item);
-        replaceInventoryObjectWithPolymorphResult(item, stoneToFleshMeatStickReplacement(item));
+        replaceInventoryObjectWithPolymorphResult(item, replacement);
         transformed = true;
     }
     if (transformed) {
@@ -12221,8 +12412,8 @@ function stoneToFleshFloorEffect(x = game.u?.ux || 0, y = game.u?.uy || 0) {
     game.level.objects = (game.level?.objects || []).map(obj => {
         if (!obj || obj.hidden || obj.transientProjectile || obj.ox !== x || obj.oy !== y)
             return obj;
-        if (!isStoneToFleshMarbleWandObject(obj)) return obj;
-        const replacement = stoneToFleshMeatStickReplacement(obj);
+        const replacement = stoneToFleshReplacementForObject(obj);
+        if (!replacement) return obj;
         replacement.ox = x;
         replacement.oy = y;
         prepareFloorPolymorphReplacement(obj, replacement);
@@ -12292,6 +12483,8 @@ function dipObjectIntoPolymorphPotion(target, potion) {
 
 function alchemyPotionName(item) {
     if (!item) return '';
+    const identityName = potionIdentityName(item);
+    if (identityName) return identityName;
     let name = potionDipKind(item);
     if (name === 'holy water' || name === 'unholy water') name = 'water';
     if (!name && item.potionIndex != null) name = IDENTIFIED_POTION_NAMES[item.potionIndex] || '';
@@ -12457,8 +12650,88 @@ function healHeroFromPotionVapor(amount) {
     game.u.uhp = Math.min(game.u.uhpmax || game.u.uhp || 1, (game.u.uhp || 1) + amount);
 }
 
+function potionDiscoveryKnown(potionName) {
+    const discoveryName = `potion of ${potionName}`;
+    return (game._discoveries || [])
+        .some(entry => entry.section === 'Potions' && entry.name === discoveryName && entry.known !== false);
+}
+
+function potionCallAppearance(potion, fallback = 'clear') {
+    const index = potion?.potionIndex;
+    const described = index != null ? game._object_descriptions?.potions?.[index]?.description : '';
+    if (described) return described;
+    const kind = String(potion?.kind || '').trim();
+    if (kind.endsWith(' potion')) return kind.replace(/ potion$/, '') || fallback;
+    return fallback;
+}
+
+function potionObjectNameIsKnown(potion, potionName) {
+    const name = String(potionName || '').toLowerCase();
+    if (!name) return false;
+    if (potion?.known === true) return true;
+    const actual = String(potion?.actualKind || '').toLowerCase().replace(/^potion of /, '');
+    if (actual === name) return true;
+    const kind = String(potion?.kind || '').toLowerCase();
+    return kind === name || kind === `potion of ${name}`;
+}
+
+function potionEffectNameFromAppearance(potion, rawName) {
+    const identityName = potionIdentityName(potion);
+    if (identityName) return identityName;
+    const name = String(rawName || '').replace(/^potion of /, '').trim();
+    if (name && name !== 'potion' && !name.endsWith(' potion')) return name;
+    if (potion?.potionIndex != null) return IDENTIFIED_POTION_NAMES[potion.potionIndex] || name;
+    return name;
+}
+
+function recordCalledPotion(appearance, name, options = {}) {
+    const call = String(name || '').trim();
+    if (!call) return;
+    const potionAppearance = appearance || 'clear';
+    game._called_potions ??= {};
+    game._called_potions[potionAppearance] = call;
+    if (!options.discover) return;
+    game._discoveries ??= [];
+    const discoveryName = `potion called ${call}`;
+    const existing = game._discoveries.find(entry =>
+        entry.section === 'Potions'
+        && (entry.name === discoveryName || String(entry.text || '').endsWith(`(${potionAppearance})`)));
+    if (existing) {
+        existing.name = discoveryName;
+        existing.text = `${discoveryName} (${potionAppearance})`;
+        existing.starred = false;
+    } else {
+        game._discoveries.push({
+            section: 'Potions',
+            name: discoveryName,
+            text: `${discoveryName} (${potionAppearance})`,
+            starred: false,
+        });
+    }
+}
+
+function shouldTryCallPotion(potion, potionName) {
+    if (!potion || potion.dknown === false) return false;
+    if (potionObjectNameIsKnown(potion, potionName) || potionDiscoveryKnown(potionName)) return false;
+    const appearance = potionCallAppearance(potion);
+    return !game._called_potions?.[appearance];
+}
+
+function queuePotionTryCall(potion, potionName) {
+    if (!shouldTryCallPotion(potion, potionName)) return false;
+    game._call_potion_appearance = potionCallAppearance(potion);
+    game._call_potion_text = '';
+    game._call_potion_record_discovery = 1;
+    game._command_mode = 'callPotionAfterMore';
+    return true;
+}
+
 function learnPotionVaporEffect(potion, name, knownEffect) {
-    if (!potion?.dknown || !knownEffect || !name) return;
+    if (!potion?.dknown || !name) return;
+    if (!knownEffect) {
+        queuePotionTryCall(potion, name);
+        return;
+    }
     recordKnownPotionDiscovery(potion, name);
     learnObjectScore('Potions', `potion of ${name}`);
 }
@@ -12552,111 +12825,114 @@ function waterVaporLycanthropyEffect(potion, messages) {
 
 function potionBreathe(potion, messages) {
     if (!heroCanReceivePotionVapor()) return;
-    const name = alchemyPotionName(potion);
+    const name = potionEffectNameFromAppearance(potion, alchemyPotionName(potion));
     let knownEffect = false;
+    let blockedByWetTowel = false;
 
     if (heroHasWetWornTowel()) {
         messages.push('Some vapor passes harmlessly around you.');
-        return;
+        blockedByWetTowel = true;
     }
 
-    switch (name) {
-    case 'restore ability':
-    case 'gain ability':
-        if (potion.cursed) {
-            if (heroBreathesPotionVapor()) messages.push('Ulch!  That potion smells terrible!');
-            else if (heroHasPotionVaporEyes()) messages.push('Your eyes sting!');
-        } else {
-            incrementAbilityFromPotionVapor(!!potion.blessed);
-        }
-        break;
-    case 'full healing':
-        healHeroFromPotionVapor(1);
-        clearPotionVaporBlindness(messages);
-        // fall through
-    case 'extra healing':
-        healHeroFromPotionVapor(1);
-        if (!potion.cursed) clearPotionVaporBlindness(messages);
-        // fall through
-    case 'healing':
-        healHeroFromPotionVapor(1);
-        if (potion.blessed) clearPotionVaporBlindness(messages);
-        exerciseAttribute(A_CON, true);
-        break;
-    case 'sickness':
-        if ((game.urole?.name?.m || game._startup_role) !== 'Healer' && game.u) {
-            game.u.uhp = game.u.uhp <= 5 ? 1 : game.u.uhp - 5;
+    if (!blockedByWetTowel) {
+        switch (name) {
+        case 'restore ability':
+        case 'gain ability':
+            if (potion.cursed) {
+                if (heroBreathesPotionVapor()) messages.push('Ulch!  That potion smells terrible!');
+                else if (heroHasPotionVaporEyes()) messages.push('Your eyes sting!');
+            } else {
+                incrementAbilityFromPotionVapor(!!potion.blessed);
+            }
+            break;
+        case 'full healing':
+            healHeroFromPotionVapor(1);
+            clearPotionVaporBlindness(messages);
+            // fall through
+        case 'extra healing':
+            healHeroFromPotionVapor(1);
+            if (!potion.cursed) clearPotionVaporBlindness(messages);
+            // fall through
+        case 'healing':
+            healHeroFromPotionVapor(1);
+            if (potion.blessed) clearPotionVaporBlindness(messages);
+            exerciseAttribute(A_CON, true);
+            break;
+        case 'sickness':
+            if ((game.urole?.name?.m || game._startup_role) !== 'Healer' && game.u) {
+                game.u.uhp = game.u.uhp <= 5 ? 1 : game.u.uhp - 5;
+                exerciseAttribute(A_CON, false);
+            }
+            break;
+        case 'hallucination':
+            messages.push('You have a momentary vision.');
+            break;
+        case 'confusion':
+        case 'booze':
+            if (!heroIsConfused()) messages.push('You feel somewhat dizzy.');
+            addHeroConfusion(rnd(5));
+            break;
+        case 'invisibility':
+            if (!heroIsBlind() && !game.u?.invisible) {
+                knownEffect = true;
+                messages.push(`For an instant you ${game.u?.seeInvisible
+                    ? 'could see right through yourself'
+                    : "couldn't see yourself"}!`);
+            }
+            break;
+        case 'paralysis':
+            knownEffect = true;
+            if (!heroHasFreeAction()) {
+                messages.push('Something seems to be holding you.');
+                game._helpless_time = Math.max(game._helpless_time || 0, rnd(5));
+                game._wake_message = 'You can move again.';
+                exerciseAttribute(A_DEX, false);
+            } else {
+                messages.push('You stiffen momentarily.');
+            }
+            break;
+        case 'sleeping':
+            knownEffect = true;
+            if (!heroHasFreeAction() && !heroHasSleepResistance()) {
+                messages.push('You feel rather tired.');
+                const duration = rnd(5);
+                game._helpless_time = Math.max(game._helpless_time || 0, duration);
+                game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
+                game._wake_message = 'You can move again.';
+                exerciseAttribute(A_DEX, false);
+            } else {
+                messages.push('You yawn.');
+            }
+            break;
+        case 'speed':
+            if (!game.u?.fast && !game.u?.veryfast) messages.push('Your knees seem more flexible now.');
+            if (game.u) {
+                game.u._veryfastTimeout = (game.u._veryfastTimeout || 0) + rnd(5);
+                syncHeroSpeedState();
+            }
+            exerciseAttribute(A_DEX, true);
+            break;
+        case 'blindness':
+            if (!heroIsBlind() && !(game._helpless_time > 0 && game._sleeping_time > 0)) {
+                knownEffect = true;
+                messages.push('It suddenly gets dark.');
+            }
+            if (game.u) {
+                game.u.blind = true;
+                game.u._blindTimeout = (game.u._blindTimeout || 0) + rnd(5);
+            }
+            break;
+        case 'water':
+            if (!splitGremlinPolyselfFromWaterVapor(messages))
+                waterVaporLycanthropyEffect(potion, messages);
+            break;
+        case 'acid':
+        case 'polymorph':
             exerciseAttribute(A_CON, false);
+            break;
+        default:
+            break;
         }
-        break;
-    case 'hallucination':
-        messages.push('You have a momentary vision.');
-        break;
-    case 'confusion':
-    case 'booze':
-        if (!heroIsConfused()) messages.push('You feel somewhat dizzy.');
-        addHeroConfusion(rnd(5));
-        break;
-    case 'invisibility':
-        if (!heroIsBlind() && !game.u?.invisible) {
-            knownEffect = true;
-            messages.push(`For an instant you ${game.u?.seeInvisible
-                ? 'could see right through yourself'
-                : "couldn't see yourself"}!`);
-        }
-        break;
-    case 'paralysis':
-        knownEffect = true;
-        if (!heroHasFreeAction()) {
-            messages.push('Something seems to be holding you.');
-            game._helpless_time = Math.max(game._helpless_time || 0, rnd(5));
-            game._wake_message = 'You can move again.';
-            exerciseAttribute(A_DEX, false);
-        } else {
-            messages.push('You stiffen momentarily.');
-        }
-        break;
-    case 'sleeping':
-        knownEffect = true;
-        if (!heroHasFreeAction() && !heroHasSleepResistance()) {
-            messages.push('You feel rather tired.');
-            const duration = rnd(5);
-            game._helpless_time = Math.max(game._helpless_time || 0, duration);
-            game._sleeping_time = Math.max(game._sleeping_time || 0, duration + 1);
-            game._wake_message = 'You can move again.';
-            exerciseAttribute(A_DEX, false);
-        } else {
-            messages.push('You yawn.');
-        }
-        break;
-    case 'speed':
-        if (!game.u?.fast && !game.u?.veryfast) messages.push('Your knees seem more flexible now.');
-        if (game.u) {
-            game.u._veryfastTimeout = (game.u._veryfastTimeout || 0) + rnd(5);
-            syncHeroSpeedState();
-        }
-        exerciseAttribute(A_DEX, true);
-        break;
-    case 'blindness':
-        if (!heroIsBlind() && !(game._helpless_time > 0 && game._sleeping_time > 0)) {
-            knownEffect = true;
-            messages.push('It suddenly gets dark.');
-        }
-        if (game.u) {
-            game.u.blind = true;
-            game.u._blindTimeout = (game.u._blindTimeout || 0) + rnd(5);
-        }
-        break;
-    case 'water':
-        if (!splitGremlinPolyselfFromWaterVapor(messages))
-            waterVaporLycanthropyEffect(potion, messages);
-        break;
-    case 'acid':
-    case 'polymorph':
-        exerciseAttribute(A_CON, false);
-        break;
-    default:
-        break;
     }
     learnPotionVaporEffect(potion, name, knownEffect);
 }
@@ -12755,10 +13031,6 @@ function isBlessingHaterWaterPotionHit(potion, mon, kind = thrownPotionEffectKin
         && monsterHatesBlessingsForWaterHit(mon) && !monsterIsWereOrVampireForWaterHit(mon);
 }
 
-function isSaddlePotionHit(potion, mon, kind = thrownPotionEffectKind(potion)) {
-    return (kind === 'water' || kind === 'oil') && !!monsterWornSaddleForPotionHit(mon);
-}
-
 function isShapechangerWaterPotionHit(potion, mon, kind = thrownPotionEffectKind(potion), options = {}) {
     return kind === 'water' && (options.ignoreSaddle || !monsterHasWornSaddle(mon))
         && monsterIsWereOrVampireForWaterHit(mon);
@@ -12777,26 +13049,62 @@ function isNeutralOrdinaryWaterPotionHit(potion, mon, kind = thrownPotionEffectK
         && !monsterNeedsDeferredWaterPotionHit(mon, options);
 }
 
-function supportsHeroThrownPotionHit(potion, mon = null) {
-    if (!isPotionObject(potion)) return false;
-    const kind = thrownPotionEffectKind(potion);
+function supportsHeroThrownPotionBodyHit(potion, mon = null, kind = thrownPotionEffectKind(potion), options = {}) {
     return kind === 'confusion' || kind === 'booze' || kind === 'paralysis'
         || kind === 'sleeping' || kind === 'blindness' || kind === 'speed'
         || kind === 'invisibility' || kind === 'hallucination'
         || kind === 'healing' || kind === 'extra healing' || kind === 'full healing'
         || kind === 'restore ability' || kind === 'gain ability' || kind === 'sickness'
-        || kind === 'acid'
-        || isSaddlePotionHit(potion, mon, kind)
-        || isShapechangerWaterPotionHit(potion, mon, kind)
-        || isBlessingHaterWaterPotionHit(potion, mon, kind)
-        || isSpecialMonsterWaterPotionHit(potion, mon, kind)
-        || isNeutralOrdinaryWaterPotionHit(potion, mon, kind)
+        || kind === 'acid' || kind === 'polymorph'
+        || isShapechangerWaterPotionHit(potion, mon, kind, options)
+        || isBlessingHaterWaterPotionHit(potion, mon, kind, options)
+        || isSpecialMonsterWaterPotionHit(potion, mon, kind, options)
+        || isNeutralOrdinaryWaterPotionHit(potion, mon, kind, options)
         || COMMON_NO_MONSTER_EFFECT_POTION_HIT_KINDS.has(kind)
         || isUnlitOilPotionHit(potion, kind)
         || isLitOilPotionHit(potion, kind);
 }
 
+function isSaddlePotionHit(potion, mon, kind = thrownPotionEffectKind(potion)) {
+    return isPotionObject(potion) && !!monsterWornSaddleForPotionHit(mon)
+        && (kind === 'water'
+            || supportsHeroThrownPotionBodyHit(potion, mon, kind, { ignoreSaddle: true }));
+}
+
+function supportsHeroThrownPotionHit(potion, mon = null) {
+    if (!isPotionObject(potion)) return false;
+    const kind = thrownPotionEffectKind(potion);
+    return supportsHeroThrownPotionBodyHit(potion, mon, kind)
+        || isSaddlePotionHit(potion, mon, kind);
+}
+
+function wieldedPotionBashObject(potion) {
+    if (!potion || !isPotionObject(potion)) return null;
+    const bashObject = {
+        ...potion,
+        id: (potion.quan || 1) > 1 ? next_ident() : potion.id,
+        quan: 1,
+        letter: undefined,
+        line: undefined,
+        wielded: false,
+        alternate: false,
+        worn: false,
+        quivered: false,
+    };
+    if ((potion.quan || 1) > 1) splitCarriedObjectShopBill(potion, bashObject, 1);
+    return bashObject;
+}
+
+function refreshSurvivingWieldedPotionStack(potion) {
+    if (!potion || !(game.inventory || []).includes(potion) || !potion.wielded) return;
+    const baseName = normalInventoryLine({ ...potion, line: '', wielded: false, alternate: false })
+        .replace(/^[a-zA-Z$] - /, '');
+    potion.line = `${potion.letter || '?'} - ${baseName} (wielded)`;
+}
+
 function thrownPotionEffectKind(potion) {
+    const identityName = potionIdentityName(potion);
+    if (identityName) return identityName;
     const name = alchemyPotionName(potion);
     const effectName = String(name || '').replace(/^potion of /, '');
     if (effectName && effectName !== 'potion' && !effectName.endsWith(' potion')) return effectName;
@@ -13139,6 +13447,143 @@ function acidPotionHitMonster(potion, mon, messages) {
     return true;
 }
 
+function monsterHasMagicResistanceForPolymorph(mon) {
+    const data = mon?.data || {};
+    if (mon?.magicResistance || mon?.resistsMagic || mon?.resists_magm
+        || data.magicResistance || data.resistsMagic || data.resists_magm
+        || data.magicalBreath || data.rbreath) return true;
+    if ((mon.minvent || []).some(item => (item.worn || item.owornmask)
+        && /magic resistance|antimagic|gray dragon/i.test(String(item.kind || item.actualKind || item.line || ''))))
+        return true;
+    return false;
+}
+
+function monsterIsShapechangerForPolymorph(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!(mon?.cham || mon?.chamName || data.cham || data.chamName
+        || data.shapechanger || mon?.shapechanger || data.vampshifter || mon?.vampshifter
+        || data.were || data.isWere || data.wereHuman || data.wereBeast
+        || mon?.were || mon?.isWere || /^were/.test(name)
+        || name === 'chameleon' || name === 'doppelganger' || name === 'sandestin'
+        || /\bvampire\b/.test(name));
+}
+
+function monsterIsImmuneToNewcham(mon) {
+    const data = mon?.data || {};
+    const name = String(data.name || mon?.name || '').toLowerCase();
+    return !!(data.rider || name === 'death' || name === 'pestilence' || name === 'famine'
+        || name === 'nazgul' || name === 'erinys');
+}
+
+function monsterPolymorphTargetAllowed(data) {
+    if (!data) return false;
+    const name = String(data.name || '').toLowerCase();
+    return !(data.noPoly || data.nopoly || data.no_polymorph || data.placeholder
+        || data.unique || data.nemesis || data.rider || data.guardian
+        || data.were || data.wereHuman || data.wereBeast || /^were/.test(name)
+        || name === 'death' || name === 'pestilence' || name === 'famine'
+        || name === 'erinys' || name === 'nazgul');
+}
+
+function randomMonsterPolymorphTarget(mon) {
+    if (monsterIsImmuneToNewcham(mon)) return null;
+    for (let tries = 0; tries < 20; tries++) {
+        const candidate = rndmonnum();
+        if (monsterPolymorphTargetAllowed(candidate)
+            && String(candidate.name || '') !== String(mon?.data?.name || ''))
+            return candidate;
+    }
+    return null;
+}
+
+function indefiniteArticle(noun) {
+    return /^[aeiou]/i.test(String(noun || '')) ? 'an' : 'a';
+}
+
+function monsterCanWearSaddleData(data = {}) {
+    const mlet = data.mlet || data.glyph;
+    if (!['u', 'C', 'A', 'D', 'J'].includes(mlet)) return false;
+    if (data.verysmall || data.tiny || data.small || data.msize === 'tiny'
+        || data.msize === 'small' || data.size === 'tiny' || data.size === 'small')
+        return false;
+    if (mlet !== 'C' && (data.human || data.humanoid)) return false;
+    return !(data.amorphous || data.noncorporeal || data.whirly || data.unsolid);
+}
+
+function sSuffixText(text) {
+    return String(text || '').endsWith('s') ? `${text}'` : `${text}'s`;
+}
+
+function dropInvalidSaddleAfterPolymorph(mon, messages, visible) {
+    if (monsterCanWearSaddleData(mon?.data)) return;
+    const saddle = monsterWornSaddleForPotionHit(mon);
+    if (!saddle) return;
+    saddle.worn = false;
+    saddle.owornmask = 0;
+    saddle.oslot = null;
+    mon.saddled = false;
+    mon.misc_worn_check = (mon.misc_worn_check || 0) & ~W_SADDLE;
+    if (mon.saddle === saddle) delete mon.saddle;
+    if (visible) messages.push(`${sSuffixText(potionHitMonsterName(mon))} saddle falls off.`);
+    dropMonsterObject(mon, saddle, messages, { verb: 'fall', monsterMoving: false });
+}
+
+function killMonsterFromSystemShock(mon, messages) {
+    if (!mon || mon.dead) return;
+    const name = mon.givenName || `the ${mon.data?.name || mon.name || 'monster'}`;
+    mon.dead = true;
+    mon.mhp = 0;
+    messages.push(`You kill ${name}!`);
+    recordVanquished(mon);
+    dropMonsterInventory(mon, messages);
+    game.level.monsters = (game.level?.monsters || []).filter(candidate => candidate !== mon);
+    newsym(mon.mx, mon.my);
+}
+
+function polymorphPotionHitMonster(mon, messages) {
+    if (monsterHasMagicResistanceForPolymorph(mon)) return true;
+    if (monsterResistsEffect(mon, 6)) return true;
+
+    const visible = monsterCanBeSeenForPotionEffect(mon);
+    if (!monsterIsShapechangerForPolymorph(mon) && !rn2(25)) {
+        if (visible) messages.push(`${potionHitMonsterName(mon)} shudders!`);
+        killMonsterFromSystemShock(mon, messages);
+        return true;
+    }
+
+    const target = randomMonsterPolymorphTarget(mon);
+    if (!target) return true;
+    const oldVisible = visible;
+    const oldName = potionHitMonsterName(mon);
+    const oldHp = Math.max(1, mon.mhp || 1);
+    const oldMax = Math.max(1, mon.mhpmax || oldHp);
+    const nextData = { ...target };
+    const nextLevel = adjustedMonsterLevel(nextData);
+    const nextMax = Math.max(1, monster_hp(nextData, nextLevel));
+    if (nextData.male) mon.female = false;
+    else if (nextData.female) mon.female = true;
+    else if (!nextData.neuter && !rn2(10)) mon.female = !mon.female;
+    Object.assign(mon, {
+        data: { ...nextData, hpLevel: nextLevel },
+        name: nextData.name,
+        mlet: nextData.mlet,
+        glyph: nextData.glyph,
+        color: nextData.color,
+        m_lev: nextLevel,
+        mlevel: nextLevel,
+        mhpmax: nextMax,
+        mhp: Math.max(1, Math.min(nextMax, Math.trunc((oldHp * nextMax) / oldMax))),
+        meverseen: 0,
+    });
+    set_malign(mon);
+    if (oldVisible && monsterCanBeSeenForPotionEffect(mon) && !heroIsHallucinating())
+        messages.push(`${oldName} turns into ${indefiniteArticle(nextData.name)} ${nextData.name}!`);
+    dropInvalidSaddleAfterPolymorph(mon, messages, oldVisible);
+    newsym(mon.mx, mon.my);
+    return true;
+}
+
 function monsterResistsFire(mon) {
     const data = mon?.data || {};
     return !!(mon?.fireResistance || mon?.resistsFire || mon?.resists_fire
@@ -13407,10 +13852,16 @@ function learnSaddleWaterDipBuc(saddle, potion, visible) {
     }
 }
 
-function waterPotionHitSaddle(potion, mon, messages) {
+function potionHitTargetSquareVisible(mon) {
+    if (!mon || game.u?.blind) return false;
+    // Isolated unit tests may exercise potion hits before full vision init.
+    if (!game.viz_array) return true;
+    return cansee(mon.mx, mon.my);
+}
+
+function waterPotionHitSaddle(potion, mon, messages, visible = monsterCanBeSeenForPotionEffect(mon)) {
     const saddle = monsterWornSaddleForPotionHit(mon);
     if (!saddle) return false;
-    const visible = monsterCanBeSeenForPotionEffect(mon);
     let affected = false;
 
     if (potion?.blessed) {
@@ -13445,9 +13896,8 @@ function waterPotionHitSaddle(potion, mon, messages) {
     return affected;
 }
 
-function potionHitSaddle(potion, mon, messages, kind = thrownPotionEffectKind(potion)) {
-    if (kind === 'water') return waterPotionHitSaddle(potion, mon, messages);
-    const visible = monsterCanBeSeenForPotionEffect(mon);
+function potionHitSaddle(potion, mon, messages, kind = thrownPotionEffectKind(potion), visible = monsterCanBeSeenForPotionEffect(mon)) {
+    if (kind === 'water') return waterPotionHitSaddle(potion, mon, messages, visible);
     if (visible) messages.push(`${sentenceCase(saddlePotionHitTargetName(mon))} gets wet.`);
     return false;
 }
@@ -13458,15 +13908,24 @@ function heroThrownPotionHitMonster(potion, mon) {
     const kind = thrownPotionEffectKind(potion);
     const saddlePotion = isSaddlePotionHit(potion, mon, kind);
     const hitSaddle = saddlePotion && potionHitsSaddle(potion, kind);
+    const targetSquareVisible = potionHitTargetSquareVisible(mon);
+    const saddleVisible = targetSquareVisible && monsterCanBeSpottedForPotionHit(mon);
     const waterBranchOptions = { ignoreSaddle: saddlePotion };
     let angerMon = true;
-    messages.push(`The ${bottle} crashes on ${hitSaddle ? saddlePotionHitTargetName(mon) : thrownPotionHitTargetName(mon)} and breaks into shards.`);
-    if (!hitSaddle && rn2(5) && (mon.mhp || 1) > 1) mon.mhp--;
-    if (!hitSaddle && !isPotionOfOil(potion))
+    if (targetSquareVisible) {
+        messages.push(`The ${bottle} crashes on ${hitSaddle ? saddlePotionHitTargetName(mon) : thrownPotionHitTargetName(mon)} and breaks into shards.`);
+    } else {
+        messages.push('Crash!');
+    }
+    if ((mon.mhp || 1) > 1) {
+        const chipRoll = rn2(5);
+        if (!hitSaddle && chipRoll) mon.mhp--;
+    }
+    if (!hitSaddle && !isPotionOfOil(potion) && targetSquareVisible)
         messages.push(`The ${pickupObjectName({ ...potion, quan: 1 })} evaporates.`);
 
     if (hitSaddle) {
-        potionHitSaddle(potion, mon, messages, kind);
+        potionHitSaddle(potion, mon, messages, kind, saddleVisible);
     } else if (kind === 'confusion' || kind === 'booze') {
         if (!monsterResistsEffect(mon, 6)) mon.mconf = true;
     } else if (kind === 'paralysis') {
@@ -13482,7 +13941,6 @@ function heroThrownPotionHitMonster(potion, mon) {
         if (changed && (mon.data?.mmove ?? NORMAL_SPEED) && !(mon.mfrozen || mon.msleeping)
             && monsterCanBeSeenForPotionEffect(mon)) {
             messages.push(`${potionHitMonsterName(mon)} is suddenly moving faster.`);
-            learnPotionVaporEffect(potion, kind, true);
         }
     } else if (kind === 'invisibility') {
         angerMon = invisibilityPotionHitMonster(potion, mon, messages);
@@ -13490,6 +13948,8 @@ function heroThrownPotionHitMonster(potion, mon) {
         angerMon = sicknessPotionHitMonster(mon, messages);
     } else if (kind === 'acid') {
         angerMon = acidPotionHitMonster(potion, mon, messages);
+    } else if (kind === 'polymorph') {
+        angerMon = polymorphPotionHitMonster(mon, messages);
     } else if (kind === 'healing' || kind === 'extra healing' || kind === 'full healing'
         || kind === 'restore ability' || kind === 'gain ability') {
         angerMon = healingPotionHitMonster(potion, mon, kind, messages);
@@ -13521,8 +13981,8 @@ function heroThrownPotionHitMonster(potion, mon) {
     if ((distance === 0 || (distance < 3 && !rn2(Math.max(1, Math.trunc((1 + dex) / 2)))))
         && heroCanReceivePotionVapor()) {
         potionBreathe(potion, messages);
-    } else if (potion.dknown) {
-        learnPotionVaporEffect(potion, kind, false);
+    } else if (potion.dknown && !game.u?.blind && cansee(mon.mx, mon.my)) {
+        queuePotionTryCall(potion, kind);
     }
 
     const shopDebt = convertUnpaidObjectToShopDebt(potion, { silent: true, broken: true });
@@ -30213,6 +30673,13 @@ const IDENTIFIED_POTION_NAMES = [
     'full healing', 'polymorph', 'booze', 'sickness', 'fruit juice', 'acid',
     'oil',
 ];
+const POTION_INDEX_BY_OTYP = new Map([
+    [239, 2], [242, 3], [244, 4], [245, 5],
+    [247, 8], [POT_POLYMORPH, 19],
+    [235, 10], [236, 11], [237, 12], [249, 15],
+    [250, 16], [243, 17], [246, 18], [240, 20],
+    [241, 22], [POT_ACID, 23], [POT_OIL, 24],
+]);
 const POTION_WISH_PROBS = [
     40, 40, 40, 30, 40, 40, 40, 30, 40, 40, 115, 45, 20, 20, 40, 40,
     40, 40, 10, 10, 40, 40, 40, 10, 30,
@@ -34131,6 +34598,34 @@ async function moveHero(dx, dy) {
                 mon.msleeping = 0;
                 wokeByHit = true;
             }
+            if (attackWeapon && isPotionObject(attackWeapon)) {
+                const bashPotion = wieldedPotionBashObject(attackWeapon);
+                const potionMessages = bashPotion ? heroThrownPotionHitMonster(bashPotion, mon) : [];
+                removeInventoryItem(attackWeapon, 1);
+                refreshSurvivingWieldedPotionStack(attackWeapon);
+                killed = !!(mon.dead || (mon.mhp || 0) <= 0);
+                if (!killed) {
+                    const potionBashDamage = (mon.data?.name === 'shade') ? 0
+                        : Math.max(1, 1 + strengthDamageBonus + (game.u?.udaminc || 0));
+                    if (potionBashDamage > 0) {
+                        mon.mhp = (mon.mhp || 1) - potionBashDamage;
+                        killed = (mon.mhp || 0) <= 0;
+                    }
+                }
+                messages.push(...potionMessages);
+                if (killed) break;
+                if (attackIndex === 0 && !deferSleepingTwoWeapon) {
+                    const fleeRoll = rn2(25);
+                    if (!fleeRoll && (mon.mhp || 0) < Math.trunc((mon.mhpmax || 0) / 2)
+                        && !(game.u?.uswallow && game.u?.ustuck === mon)) {
+                        const fleeTime = rn2(3) ? 0 : rnd(100);
+                        mon.mflee = 1;
+                        mon.mfleetim = fleeTime ? Math.min(fleeTime + (mon.mfleetim || 0), 127) : 0;
+                        clearMonsterTrack(mon);
+                    }
+                }
+                continue;
+            }
             if (attackWeapon && !game._chronicle_first_weapon_hit) {
                 game._chronicle_entries ??= [];
                 game._chronicle_entries.push({ turn: game.moves || 1, text: `hit with a wielded weapon (${weaponName || 'weapon'}) for the first time` });
@@ -34232,7 +34727,8 @@ async function moveHero(dx, dy) {
                     mon._distfleeck_done_after_anger = 1;
                 }
             }
-	            await setMessage(messages.join('  '), peacefulShopkeeper || wokeByHit);
+            const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
+            await setMessage(messages.join('  '), potionCallPrompt || peacefulShopkeeper || wokeByHit);
             if (continuePeacefulShopkeeperTurn) {
                 game._continue_monsters_after_more = 1;
                 game._process_time_with_more = 1;
@@ -34268,7 +34764,8 @@ async function moveHero(dx, dy) {
         }
         recordVanquished(mon);
         dropMonsterInventory(mon, messages);
-	        await setMessage(messages.join('  '), killedPet && messages.length > 1);
+        const potionCallPrompt = game._command_mode === 'callPotionAfterMore';
+        await setMessage(messages.join('  '), potionCallPrompt || (killedPet && messages.length > 1));
         const treasureDrop = !rn2(6);
 
         const corpseData = data.corpse
@@ -35890,12 +36387,12 @@ export async function rhack(_cmd) {
     if (game._command_mode === 'callPotionText') {
         if (ch === '\r' || ch === '\n') {
             const name = (game._call_potion_text || '').trim();
-            if (name) {
-                game._called_potions ??= {};
-                game._called_potions[game._call_potion_appearance || 'clear'] = name;
-            }
+            if (name) recordCalledPotion(game._call_potion_appearance || 'clear', name, {
+                discover: !!game._call_potion_record_discovery,
+            });
             game._call_potion_appearance = '';
             game._call_potion_text = '';
+            game._call_potion_record_discovery = 0;
             game._pending_message = '';
             game._message_more = 0;
             game._command_mode = null;
@@ -35905,14 +36402,16 @@ export async function rhack(_cmd) {
         if (ch === '\x1b') {
             game._call_potion_appearance = '';
             game._call_potion_text = '';
+            game._call_potion_record_discovery = 0;
             game._pending_message = '';
             game._message_more = 0;
             game._command_mode = null;
             game.context.move = 1;
             return;
         }
-        if (key === 8 || key === 127) game._call_potion_text = (game._call_potion_text || '').slice(0, -1);
-        else if (key >= 32) game._call_potion_text = `${game._call_potion_text || ''}${ch}`;
+        const code = typeof key === 'number' ? key : ch.charCodeAt(0);
+        if (code === 8 || code === 127) game._call_potion_text = (game._call_potion_text || '').slice(0, -1);
+        else if (code >= 32) game._call_potion_text = `${game._call_potion_text || ''}${ch}`;
         const text = game._call_potion_text || '';
         await setMessage(`Call a ${game._call_potion_appearance || 'clear'} potion:${text ? ` ${text}` : ''}`);
         return;
@@ -40092,6 +40591,7 @@ export async function rhack(_cmd) {
         if (potionName.includes('fruit juice') || potionName.includes('slime mold')) {
             if (!item.actualKind && item.kind?.endsWith?.(' potion')) {
                 game._call_potion_appearance = item.kind.replace(/ potion$/, '');
+                game._call_potion_record_discovery = 0;
                 game._command_mode = 'callPotionAfterMore';
             }
             await setMessage(`This tastes like ${currentFruitJuiceName()}.`, true);
@@ -40159,6 +40659,7 @@ export async function rhack(_cmd) {
             let callPotion = false;
             if (!item.actualKind && item.kind?.endsWith?.(' potion')) {
                 game._call_potion_appearance = item.kind.replace(/ potion$/, '');
+                game._call_potion_record_discovery = 0;
                 game._command_mode = 'callPotionAfterMore';
                 callPotion = true;
             }
@@ -49868,8 +50369,9 @@ export async function rhack(_cmd) {
 	                const messages = heroThrownPotionHitMonster(thrownObject, targetMon);
 	                removeInventoryItem(item, 1);
 	                newsym(targetMon.mx, targetMon.my);
-	                await setMessage(messages.join('  '));
-	                game._command_mode = null;
+	                const keepPotionCallPrompt = game._command_mode === 'callPotionAfterMore';
+	                await setMessage(messages.join('  '), keepPotionCallPrompt);
+	                if (!keepPotionCallPrompt) game._command_mode = null;
 	                game._throw_item_letter = null;
 	                game._resume_time_after_more = 0;
 	                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 1);
