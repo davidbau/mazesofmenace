@@ -894,7 +894,7 @@ function isLiquidPoolLocation(loc) {
     return IS_POOL(loc.typ);
 }
 
-function settleBouldersAt(x, y) {
+function settleBouldersAt(x, y, { buriedMerchandiseDebtMessage = null } = {}) {
     const messages = [];
     let loc = game.level?.at(x, y);
     while (isLiquidPoolLocation(loc)) {
@@ -912,7 +912,12 @@ function settleBouldersAt(x, y) {
                 loc.flags = 0;
             }
             game.level.traps = (game.level?.traps || []).filter(trap => trap.tx !== x || trap.ty !== y);
+            let debtMessage = '';
+            if (typeof buriedMerchandiseDebtMessage === 'function') {
+                debtMessage = buriedMerchandiseDebtMessage(x, y);
+            }
             messages.push(...buryObjectsAt(x, y));
+            if (debtMessage) messages.push(debtMessage);
             newsym(x, y);
         }
         if (visible) {
@@ -925,7 +930,7 @@ function settleBouldersAt(x, y) {
     return messages;
 }
 
-export function applyColdRayTerrain(x, y) {
+export function applyColdRayTerrain(x, y, { buriedMerchandiseDebtMessage = null } = {}) {
     const loc = game.level?.at(x, y);
     if (!loc) return { handled: false, messages: [], rangeMod: 0, stopped: false };
 
@@ -988,7 +993,12 @@ export function applyColdRayTerrain(x, y) {
         if (lava) loc.flags = 0;
         loc.typ = lava ? ROOM : ICE;
     }
+    let debtMessage = '';
+    if (typeof buriedMerchandiseDebtMessage === 'function') {
+        debtMessage = buriedMerchandiseDebtMessage(x, y);
+    }
     const buryMessages = buryObjectsAt(x, y);
+    if (debtMessage) buryMessages.push(debtMessage);
     if (!lava) {
         startMeltIceTimeout(x, y, 0);
         objIceEffectsAt(x, y, { doBuried: true });
@@ -1018,7 +1028,7 @@ export function applyColdRayTerrain(x, y) {
     return { handled: true, messages, rangeMod: -3, stopped: false, blocked: solidifiedWall };
 }
 
-export function meltIceAt(x, y, { message = ICE_MELT_MESSAGE } = {}) {
+export function meltIceAt(x, y, { message = ICE_MELT_MESSAGE, buriedMerchandiseDebtMessage = null } = {}) {
     const loc = game.level?.at(x, y);
     if (!loc || !isIceAt(x, y)) return { melted: false, messages: [], becameLiquid: false };
 
@@ -1038,7 +1048,7 @@ export function meltIceAt(x, y, { message = ICE_MELT_MESSAGE } = {}) {
 
     const messages = [];
     if (visibleAt(x, y) || heroAt(x, y)) messages.push(message);
-    messages.push(...settleBouldersAt(x, y));
+    messages.push(...settleBouldersAt(x, y, { buriedMerchandiseDebtMessage }));
     const finalLoc = game.level?.at(x, y);
     return { melted: true, messages, becameLiquid: isLiquidPoolLocation(finalLoc) };
 }

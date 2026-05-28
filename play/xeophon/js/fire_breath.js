@@ -324,8 +324,10 @@ function applyFireRayPitEffects(x, y, trap) {
 }
 
 // C ref: zap.c zap_over_floor() fire case for ice.
-export function applyFireRayIceTerrain(x, y, { heroRay = false, recordKill = null } = {}) {
-    const result = meltIceAt(x, y);
+export function applyFireRayIceTerrain(x, y, { heroRay = false, recordKill = null, buriedMerchandiseDebtMessage = null } = {}) {
+    const result = meltIceAt(x, y, {
+        buriedMerchandiseDebtMessage: heroRay ? buriedMerchandiseDebtMessage : null,
+    });
     if (!result.melted) return { messages: [], handled: false, rangeMod: 0 };
     const messages = [...result.messages];
     if (result.becameLiquid)

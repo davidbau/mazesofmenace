@@ -6687,6 +6687,7 @@ async function processMonsterTurns() {
         if (!liveMons.has(mon)) continue;
         if (mon._skip_mfrozen_decrement) mon._skip_mfrozen_decrement = 0;
         else if (mon.mfrozen && !--mon.mfrozen) mon.mcanmove = true;
+        if (mon.mblinded && !--mon.mblinded) mon.mcansee = true;
         if (mon.mspec_used) mon.mspec_used--;
         let mmove = mon.data?.mmove ?? NORMAL_SPEED;
         if (mon.mspeed === 'fast') mmove = Math.trunc((4 * mmove + 2) / 3);
