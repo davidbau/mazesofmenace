@@ -6,7 +6,7 @@ import { nhgetch } from './input.js';
 import { bot, cls, docrt, flush_screen, newsym, pline, recordObservedObjectDiscovery, refreshHallucinatedMap, seeNearbyObjects, show_glyph_cell, strengthString } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_reset } from './vision.js';
 import { RANDOM_MONSTER_BY_NAME, SHOP_TYPES, STALKER_MONSTERS, add_to_container, add_to_minv, artifactDefinitionForName, artifactObjectName, enextoMonsterSpot, make_tutorial1_level, makemon, makeArtifactWishObject, maketrap, mkcorpstat, mklev, mkobj, mkobj_at, mksobj, monsterByRndName, morgueMonster, nameObjectAsArtifact, next_ident, object_display, potionIndexForRoll, resurrectWizardOfYendor, rndmonnum, scrollIndexForRoll, set_mimic_sym_rng, syncDungeonContext, u_on_dnstairs, u_on_rndspot, u_on_upstairs, wipe_engr_at, dropMonsterInventory as dropMonsterInventoryRaw, l_nhcore_init, getrumor, getbogusmon, level_difficulty, set_malign, somexyspace, fumaroles, fix_wall_spines, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles } from './mklev.js';
-import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
+import { ACCESSIBLE, A_CHA, A_CHAOTIC, A_CON, A_DEX, A_INT, A_LAWFUL, A_MAX, A_NEUTRAL, A_NONE, A_STR, A_WIS, ALTAR, AM_SANCTUM, AM_SHRINE, Align2amask, Amask2align, BC_BALL, BC_CHAIN, BEAR_TRAP, BLCORNER, BOLT_LIM, BRCORNER, CANDLESHOP, CLOUD, COLNO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NEUTER, CORR, DB_DIR, DB_EAST, DB_FLOOR, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, BURN, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, DUST, ENGRAVE, ENGR_BLOOD, FOUNTAIN, F_LOOTED, GRAVE, HEADSTONE, HWALL, ICE, ICED_MOAT, ICED_POOL, IN_SIGHT, IRONBARS, IS_AIR, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_TREE, IS_WALL, In_endgame, In_quest, In_sokoban, In_V_tower, Is_airlevel, Is_astralevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_stronghold, Is_waterlevel, LADDER, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MARK, MAX_EGG_HATCH_TIME, MM_EDOG, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, MOAT, MORGUE, M_AP_TYPE, N_DIRS, NO_MINVENT, NORMAL_SPEED, OVERLOADED, P_BASIC, P_UNSKILLED, PIT, POOL, ROLLING_BOULDER_TRAP, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS, SHOPBASE, SINK, SPIKED_PIT, STAIRS, STONE, S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, TEMPLE, THRONE, TLCORNER, TRCORNER, TREE, TREE_LOOTED, TREE_SWARM, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, TUWALL, T_LOOTED, VAULT, VIBRATING_SQUARE, VWALL, WAND_BACKFIRE_CHANCE, WATER, WEB, WM_MASK, WT_IRON_BALL_BASE, WT_IRON_BALL_INCR, W_NONDIGGABLE, ZAP_POS, isok, xdir, ydir } from './const.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd, rnl, rnz } from './rng.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_YELLOW, CLR_WHITE, NO_COLOR } from './terminal.js';
 import { vfsDeleteFile, vfsReadFile, vfsWriteFile } from './storage.js';
@@ -12500,7 +12500,8 @@ function supportsHeroThrownPotionHit(potion) {
     if (!isPotionObject(potion)) return false;
     const kind = thrownPotionEffectKind(potion);
     return kind === 'confusion' || kind === 'booze' || kind === 'paralysis'
-        || kind === 'sleeping' || kind === 'blindness';
+        || kind === 'sleeping' || kind === 'blindness' || kind === 'speed'
+        || kind === 'invisibility';
 }
 
 function thrownPotionEffectKind(potion) {
@@ -12563,9 +12564,70 @@ function blindMonsterFromPotion(mon) {
     return true;
 }
 
+function monsterSpeedState(mon) {
+    if (mon?.mspeed === 'fast' || mon?.mspeed === 2 || mon?.permspeed === 'fast') return 'fast';
+    if (mon?.mspeed === 'slow' || mon?.mspeed === 1 || mon?.permspeed === 'slow') return 'slow';
+    return 'normal';
+}
+
+function monsterCanBeSeenForPotionEffect(mon) {
+    return !!mon && !game.u?.blind && !mon.minvis && !mon.mundetected && cansee(mon.mx, mon.my);
+}
+
+function monsterCanBeSpottedForPotionHit(mon) {
+    return !!mon && !game.u?.blind && !mon.mundetected
+        && (!mon.minvis || game.u?.seeInvisible) && cansee(mon.mx, mon.my);
+}
+
+function speedMonsterFromPotion(mon) {
+    const oldState = monsterSpeedState(mon);
+    if (oldState === 'slow') {
+        mon.permspeed = 0;
+        mon.mspeed = 0;
+    } else {
+        mon.permspeed = 'fast';
+        mon.mspeed = 'fast';
+    }
+    return monsterSpeedState(mon) !== oldState;
+}
+
+function mapInvisibleMonsterAt(mon) {
+    const loc = game.level?.at(mon.mx, mon.my);
+    if (!loc) return;
+    loc.map_invisible = true;
+    loc.waslit = true;
+    loc.remembered_glyph = { ch: 'I', color: NO_COLOR, dec: false };
+    newsym(mon.mx, mon.my);
+}
+
+function setMonsterMinvisFromPotion(mon, cursedPotion) {
+    mon.perminvis = cursedPotion ? 0 : 1;
+    if (mon.invis_blkd) return;
+    mon.minvis = mon.perminvis;
+    newsym(mon.mx, mon.my);
+}
+
+function invisibilityPotionHitMonster(potion, mon, messages) {
+    const sawIt = monsterCanBeSpottedForPotionHit(mon);
+    const cursedPotion = !!potion.cursed;
+    const angerMon = !!mon.minvis && cursedPotion;
+    setMonsterMinvisFromPotion(mon, cursedPotion);
+    const canSpotNow = monsterCanBeSpottedForPotionHit(mon);
+
+    if (sawIt && !canSpotNow) {
+        if (cansee(mon.mx, mon.my)) mapInvisibleMonsterAt(mon);
+    } else if (sawIt && cursedPotion) {
+        messages.push(`${potionHitMonsterName(mon)} briefly seems to be transparent.`);
+    } else if (!sawIt && canSpotNow) {
+        messages.push(`${potionHitMonsterName(mon)} appears!`);
+    }
+    return angerMon;
+}
+
 function heroThrownPotionHitMonster(potion, mon) {
     const messages = [];
     const bottle = chestShatterBottleName();
+    let angerMon = true;
     messages.push(`The ${bottle} crashes on ${thrownPotionHitTargetName(mon)} and breaks into shards.`);
     if (rn2(5) && (mon.mhp || 1) > 1) mon.mhp--;
     if (!isPotionOfOil(potion))
@@ -12581,11 +12643,21 @@ function heroThrownPotionHitMonster(potion, mon) {
             messages.push(`${potionHitMonsterName(mon)} falls asleep.`);
     } else if (kind === 'blindness') {
         blindMonsterFromPotion(mon);
+    } else if (kind === 'speed') {
+        angerMon = false;
+        const changed = speedMonsterFromPotion(mon);
+        if (changed && (mon.data?.mmove ?? NORMAL_SPEED) && !(mon.mfrozen || mon.msleeping)
+            && monsterCanBeSeenForPotionEffect(mon)) {
+            messages.push(`${potionHitMonsterName(mon)} is suddenly moving faster.`);
+            learnPotionVaporEffect(potion, kind, true);
+        }
+    } else if (kind === 'invisibility') {
+        angerMon = invisibilityPotionHitMonster(potion, mon, messages);
     }
 
     if ((mon.mhp || 1) > 0) {
         mon.msleeping = 0;
-        mon.mpeaceful = false;
+        if (angerMon) mon.mpeaceful = false;
     }
 
     const dx = (mon.mx || 0) - (game.u?.ux || 0);
@@ -18370,14 +18442,52 @@ function fillBoulderLiquidTerrain(loc) {
     }
 }
 
-function shopkeeperForShopRoom(x, y) {
-    const roomno = game.level?.at?.(x, y)?.roomno || 0;
+function shopRoomMatchesType(roomno, typewanted = SHOPBASE) {
+    if (roomno < ROOMOFFSET) return false;
+    if (!typewanted) return true;
+    const room = levelRoomByRoomno(roomno);
+    if (!room) return false;
+    return room.rtype === typewanted || (typewanted === SHOPBASE && room.rtype >= SHOPBASE);
+}
+
+function shopRoomnosAt(x, y, typewanted = SHOPBASE) {
+    const loc = game.level?.at?.(x, y);
+    const roomno = loc?.roomno ?? 0;
+    if (roomno >= ROOMOFFSET)
+        return shopRoomMatchesType(roomno, typewanted) ? [roomno] : [];
+    if (roomno !== SHARED && roomno !== SHARED_PLUS) return [];
+
+    const found = [];
+    const step = roomno === SHARED ? 2 : 1;
+    const minX = Math.max(0, x - 1);
+    const maxX = Math.min(COLNO - 1, x + 1);
+    const minY = Math.max(0, y - 1);
+    const maxY = Math.min(ROWNO - 1, y + 1);
+    for (let nx = minX; nx <= maxX; nx += step) {
+        for (let ny = minY; ny <= maxY; ny += step) {
+            const adjRoomno = game.level?.at?.(nx, ny)?.roomno ?? 0;
+            if (adjRoomno >= ROOMOFFSET
+                && !found.includes(adjRoomno)
+                && shopRoomMatchesType(adjRoomno, typewanted)) {
+                found.push(adjRoomno);
+            }
+        }
+    }
+    return found;
+}
+
+function shopkeeperForRoomno(roomno) {
     const room = levelRoomByRoomno(roomno);
     if (!room || room.rtype < SHOPBASE) return null;
     const shkp = room.resident || (game.level?.monsters || [])
         .find(mon => mon.isshk && mon.shoproom === roomno);
     if (!shkp?.isshk) return null;
     return shkp;
+}
+
+function shopkeeperForShopRoom(x, y) {
+    const roomno = game.level?.at?.(x, y)?.roomno || 0;
+    return shopkeeperForRoomno(roomno);
 }
 
 function shopkeeperInHisShop(shkp) {
@@ -18722,6 +18832,35 @@ function shopkeeperOwningBillEntry(obj) {
     return { shkp: null, entry: null };
 }
 
+function findShopObjectOwnerAt(obj, x, y) {
+    const roomnos = shopRoomnosAt(x, y, SHOPBASE);
+    const candidates = roomnos
+        .map(roomno => shopkeeperForRoomno(roomno))
+        .filter(shkp => shkp?.isshk);
+    if (obj) {
+        for (const shkp of candidates) {
+            const entry = shopBillEntryForObject(shkp, obj);
+            if (entry) return { shkp, entry, roomnos };
+        }
+    }
+    return { shkp: candidates[0] || null, entry: null, roomnos };
+}
+
+function shopkeeperForStrictCostlySpot(x, y, obj = null) {
+    const loc = game.level?.at?.(x, y);
+    const roomno = loc?.roomno ?? 0;
+    if (roomno < ROOMOFFSET || loc?.edge) return null;
+    const roomnos = shopRoomnosAt(x, y, SHOPBASE);
+    if (!roomnos.length) return null;
+    const billedOwner = obj ? shopkeeperOwningBillEntry(obj).shkp : null;
+    const shkp = billedOwner && roomnos.includes(billedOwner.shoproom)
+        ? billedOwner
+        : shopkeeperForRoomno(roomno);
+    if (!shopkeeperInHisShop(shkp)) return null;
+    if (shkp.shk && x === shkp.shk.x && y === shkp.shk.y) return null;
+    return shkp;
+}
+
 function alterShopBillCostIfHigher(obj, amount = 0) {
     const entry = shopkeeperOwningBillEntry(obj).entry;
     if (!entry || entry.useup) return false;
@@ -19046,6 +19185,58 @@ function resolveUnpaidProjectileShopLanding(obj, x, y, options = {}) {
         return { handled: true, charged: false, returned: true, value: 0, shkp: returned.shkp, message: (returned.messages || []).join('  ') };
     const charged = convertUnpaidObjectToShopDebt(obj, options);
     return { ...charged, handled: charged.charged, returned: false };
+}
+
+function boulderPushShopBillPrice(obj) {
+    let price = 5;
+    let multiplier = 1;
+    let divisor = 1;
+    const oid = Math.trunc(Number(obj?.o_id ?? obj?.id ?? 0));
+    if ((obj?.dknown === false || !shopObjectNameKnown(obj)) && oid % 4 === 0) {
+        multiplier *= 4;
+        divisor *= 3;
+    }
+    const cha = game.u?.acurr?.a?.[A_CHA] ?? 10;
+    if (cha > 18) divisor *= 2;
+    else if (cha === 18) { multiplier *= 2; divisor *= 3; }
+    else if (cha >= 16) { multiplier *= 3; divisor *= 4; }
+    else if (cha <= 5) multiplier *= 2;
+    else if (cha <= 7) { multiplier *= 3; divisor *= 2; }
+    else if (cha <= 10) { multiplier *= 4; divisor *= 3; }
+
+    price *= multiplier;
+    if (divisor > 1) price = Math.trunc((Math.trunc(price * 10 / divisor) + 5) / 10);
+    return Math.max(1, Math.trunc(price));
+}
+
+function boulderPushShopBillMessage(price) {
+    return `The boulder will cost you ${price} zorkmid${price === 1 ? '' : 's'}.`;
+}
+
+function adjustBoulderPushShopBill(obj, fromX, fromY, toX, toY) {
+    if (!obj || obj.otyp !== BOULDER) return '';
+    const sourceShkp = shopkeeperForStrictCostlySpot(fromX, fromY);
+    const destShkp = shopkeeperForStrictCostlySpot(toX, toY, obj);
+    if (sourceShkp && !destShkp) {
+        if (shopkeeperOwningBillEntry(obj).entry) return '';
+        if (shopBillIsFull(sourceShkp)) return 'You got that for free!';
+        const price = boulderPushShopBillPrice(obj);
+        const entry = addObjectToShopBill(sourceShkp, obj, price);
+        return entry ? boulderPushShopBillMessage(shopBillEntryTotal(entry)) : '';
+    }
+    if (!sourceShkp && destShkp && obj.unpaid && shopBillEntryForObject(destShkp, obj)) {
+        subFromShopBill(obj, destShkp);
+        return '';
+    }
+    if (obj.unpaid) {
+        const ownerAtSource = findShopObjectOwnerAt(obj, fromX, fromY);
+        const billOwner = ownerAtSource.shkp || shopkeeperOwningBillEntry(obj).shkp;
+        if (billOwner && !shopRoomnosAt(toX, toY, SHOPBASE).includes(billOwner.shoproom)) {
+            const charged = convertUnpaidObjectToShopDebt(obj, { silent: false });
+            return charged.message || '';
+        }
+    }
+    return '';
 }
 
 function isProjectileImpactContainer(obj) {
@@ -20386,6 +20577,30 @@ function billMagicBagLostItem(source, obj) {
     if (shkp) return billLostMagicBagShopItem(source, obj);
     if (objectCarriedByHero(source)) return billHeldMagicBagLostItem(obj);
     return 0;
+}
+
+function billMagicBagLostItemFromExplosionContext(obj, { held, x = game.u?.ux, y = game.u?.uy } = {}) {
+    if (held) return billHeldMagicBagLostItem(obj);
+    const shkp = shopkeeperForCostlySpot(x, y);
+    if (!shopkeeperInHisShop(shkp)) {
+        markObjectTreeShopBillsUsedUp(obj);
+        return 0;
+    }
+    const charges = lostMagicBagShopChargesForObject({ ox: x, oy: y }, obj, shkp, new Set(), {
+        includeContainedGold: false,
+        inventoryLikeContents: true,
+    });
+    let charged = 0;
+    const peaceful = shopkeeperPeacefulForDebt(shkp);
+    for (const [owner, value] of charges)
+        charged += chargeShopkeeperForLostMerchandise(owner, value, { peaceful });
+    return charged;
+}
+
+function billMagicBagLostItemWithContext(source, obj, context = null) {
+    if (context && Object.hasOwn(context, 'held'))
+        return billMagicBagLostItemFromExplosionContext(obj, context);
+    return billMagicBagLostItem(source, obj);
 }
 
 function billShopFloorMagicBagExplosionTarget(targetBag) {
@@ -25483,7 +25698,7 @@ function putInventoryObjectIntoBag(bag, item, amount = item?.quan || 1) {
     curseLoadstoneLeavingInventory(putItem);
     if (isMagicBagObject(bag) && magicBagExplodesWithObject(putItem)) {
         removeInventoryItem(item, count);
-        return explodeMagicBagTransfer(bag, putItem, []);
+        return explodeMagicBagTransfer(bag, putItem, [], { triggerHeld: true });
     }
     removeInventoryItem(item, count);
     add_to_container(bag, putItem);
@@ -25595,7 +25810,7 @@ function putInventoryObjectIntoContainer(container, item, amount = item?.quan ||
         billShopFloorMagicBagExplosionTarget(container);
         removeInventoryItem(item, count);
         const messages = sellobjResult?.message ? [sellobjResult.message] : [];
-        return explodeMagicBagTransfer(container, putItem, messages);
+        return explodeMagicBagTransfer(container, putItem, messages, { triggerHeld: true });
     }
     const billing = billShopFloorContainerPutObject(container, putItem, {
         acceptedSale: !!options.acceptedSale,
@@ -26592,13 +26807,13 @@ function scatterOneMagicBagObject(scatterObj, sx, sy, messages, shopContext = nu
         maybeBillMagicBagScatterGold(scatterObj, sx, sy, x, y, shopContext);
 }
 
-function scatterMagicBagContents(container, messages) {
+function scatterMagicBagContents(container, messages, { lostContext = null } = {}) {
     const x = game.u?.ux ?? container?.ox ?? 0;
     const y = game.u?.uy ?? container?.oy ?? 0;
     const shopContext = magicBagScatterShopContext(x, y);
     for (const obj of [...liquidFlowContainerContents(container)]) {
         if (!rn2(13)) {
-            billMagicBagLostItem(container, obj);
+            billMagicBagLostItemWithContext(container, obj, lostContext);
             removeContainedObject(container, obj);
             destroyMagicBagItem(obj, messages, { silent: true });
             continue;
@@ -26629,9 +26844,12 @@ function damageHeroWithMagicBagExplosion(messages) {
     }
 }
 
-function explodeMagicBagTransfer(targetBag, triggerObj, messages, { tumble = false } = {}) {
+function explodeMagicBagTransfer(targetBag, triggerObj, messages, { tumble = false, triggerHeld = null } = {}) {
     messages.push(magicBagExplosionMessage(triggerObj, tumble));
-    if (isBagOfHoldingObject(triggerObj)) scatterMagicBagContents(triggerObj, messages);
+    if (isBagOfHoldingObject(triggerObj)) {
+        const lostContext = triggerHeld == null ? null : { held: !!triggerHeld };
+        scatterMagicBagContents(triggerObj, messages, { lostContext });
+    }
     destroyMagicBagItem(triggerObj, messages, { silent: true, usedUpShopBill: true });
     scatterMagicBagContents(targetBag, messages);
     destroyMagicBagItem(targetBag, messages, { silent: true, usedUpShopBill: true });
@@ -26996,6 +27214,7 @@ function tipContainerIntoContainer(source, targetBox) {
     if (!contents.length) return [tipContainerEmptyMessage(source)];
     targetBox.contents ??= [];
     const cursedMagicBag = isMagicBagObject(source) && source.cursed;
+    const sourceHeld = objectCarriedByHero(source);
     let lostMerchandise = 0;
     const messages = [contents.length === 1
         ? `An object tumbles into ${tipTargetPhrase(targetBox)}.`
@@ -27012,7 +27231,7 @@ function tipContainerIntoContainer(source, targetBox) {
         addTippedContainerObjectToShopBill(source, obj);
         prepareTippedObjectForContainer(obj);
         if (isMagicBagObject(targetBox) && magicBagExplodesWithObject(obj)) {
-            explodeMagicBagTransfer(targetBox, obj, messages, { tumble: true });
+            explodeMagicBagTransfer(targetBox, obj, messages, { tumble: true, triggerHeld: sourceHeld });
             targetGone = true;
             break;
         }
@@ -32671,6 +32890,7 @@ async function moveHero(dx, dy) {
             game.level.objects.splice(boulderIndex, 1);
             game.level.objects.push(targetBoulder);
         }
+        const boulderShopMessage = adjustBoulderPushShopBill(targetBoulder, newx, newy, pushx, pushy);
         vision_reset();
         game._bldrpushtime = pushTurn;
         game.u.ux0 = oldx;
@@ -32686,7 +32906,10 @@ async function moveHero(dx, dy) {
         newsym(pushx, pushy);
         vision_recalc(0);
         if (showPushMessage) {
-            await setMessage('With great effort you move the boulder.');
+            const pushMessage = 'With great effort you move the boulder.';
+            await setMessage(boulderShopMessage ? `${pushMessage}  ${boulderShopMessage}` : pushMessage);
+        } else if (boulderShopMessage) {
+            await setMessage(boulderShopMessage);
         } else {
             game._pending_message = '';
             game._keep_pending_message = 0;
